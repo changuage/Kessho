@@ -1,0 +1,1759 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Global Snapshot Prototypes</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111317;
+      --panel: #171b21;
+      --panel-2: #1d2229;
+      --panel-3: #222831;
+      --line: rgba(255, 255, 255, 0.1);
+      --line-strong: rgba(255, 255, 255, 0.18);
+      --text: #edf1f4;
+      --muted: #a3adb8;
+      --dim: #707a85;
+      --green: #48c78e;
+      --cyan: #4bbbc8;
+      --amber: #e4b354;
+      --rose: #df738a;
+      --blue: #7fa7e8;
+      --source-pad1: #E07A84;
+      --source-pad2: #B96A72;
+      --source-lead1: #D4A520;
+      --source-lead2: #BFA45A;
+      --source-piano: #E8DCC4;
+      --source-drums: #A870E8;
+      --source-earth: #4DD88A;
+      --source-waves: #5A7B8A;
+      --source-water: #6F9AB1;
+      --source-insects: #7B9A6D;
+      --source-nature: #A6B98A;
+      --source-granular: #E8B44A;
+      --source-delay-a: #32C8C8;
+      --source-delay-b: #32C7C7;
+      --source-reverb: #D49660;
+      --source-dynamics: #CC7DB8;
+      --source-degrade: #8B5CF6;
+      --source-saturation: #D4A520;
+      --source-freeze: #B8E0FF;
+      --source-pad1-rgb: 224, 122, 132;
+      --source-pad2-rgb: 185, 106, 114;
+      --source-lead1-rgb: 212, 165, 32;
+      --source-lead2-rgb: 191, 164, 90;
+      --source-piano-rgb: 232, 220, 196;
+      --source-drums-rgb: 168, 112, 232;
+      --source-earth-rgb: 77, 216, 138;
+      --source-waves-rgb: 90, 123, 138;
+      --source-water-rgb: 111, 154, 177;
+      --source-insects-rgb: 123, 154, 109;
+      --source-nature-rgb: 166, 185, 138;
+      --source-granular-rgb: 232, 180, 74;
+      --source-delay-a-rgb: 50, 200, 200;
+      --source-delay-b-rgb: 50, 199, 199;
+      --source-reverb-rgb: 212, 150, 96;
+      --source-dynamics-rgb: 204, 125, 184;
+      --source-degrade-rgb: 139, 92, 246;
+      --source-saturation-rgb: 212, 165, 32;
+      --source-freeze-rgb: 184, 224, 255;
+      --radius: 8px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      background: var(--bg);
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      letter-spacing: 0;
+    }
+
+    .page {
+      width: min(1260px, 100%);
+      margin: 0 auto;
+      padding: 22px clamp(14px, 3vw, 28px) 42px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: end;
+      margin-bottom: 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.2rem;
+      line-height: 1.1;
+      font-weight: 760;
+    }
+
+    .subtitle {
+      max-width: 780px;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.4;
+    }
+
+    .selection-note {
+      justify-self: end;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      white-space: nowrap;
+    }
+
+    .option-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .option {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .option.option-ultra {
+      grid-column: 1 / -1;
+    }
+
+    .option.option-ultra .option-head {
+      border-bottom: none;
+      padding-bottom: 4px;
+    }
+
+    .option-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 40px;
+      padding: 10px 11px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .option-name {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .option-letter {
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      font-weight: 760;
+    }
+
+    .option-title {
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 720;
+    }
+
+    .option-parts {
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      white-space: nowrap;
+    }
+
+    .snapshot {
+      padding: 11px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 650;
+    }
+
+    .value {
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 680;
+      white-space: nowrap;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 3px 7px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 680;
+      white-space: nowrap;
+    }
+
+    .pill.live {
+      border-color: rgba(72, 199, 142, 0.38);
+      color: #9be2bc;
+      background: rgba(72, 199, 142, 0.08);
+    }
+
+    .svg-defs {
+      position: absolute;
+      width: 0;
+      height: 0;
+      overflow: hidden;
+    }
+
+    .engine-icon {
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.8;
+    }
+
+    .engine-strip {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 5px;
+      margin-top: 8px;
+    }
+
+    .engine-chip {
+      position: relative;
+      min-width: 0;
+      min-height: 48px;
+      display: grid;
+      grid-template-rows: 16px auto;
+      gap: 3px;
+      justify-items: center;
+      align-content: center;
+      padding: 6px 4px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.025);
+      color: var(--dim);
+    }
+
+    .engine-chip.is-on {
+      border-color: color-mix(in srgb, var(--engine-color) 48%, rgba(255, 255, 255, 0.12));
+      background: color-mix(in srgb, var(--engine-color) 12%, rgba(255, 255, 255, 0.025));
+      color: var(--text);
+    }
+
+    .engine-chip.is-on::after {
+      content: "";
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      background: var(--engine-color);
+    }
+
+    .engine-chip.is-on .engine-icon,
+    .engine-pill.is-on .engine-icon,
+    .engine-callout.is-on .engine-icon,
+    .engine-mini.is-on .engine-icon,
+    .rail-item.is-on .engine-icon {
+      color: var(--engine-color);
+    }
+
+    .engine-name {
+      max-width: 100%;
+      overflow: hidden;
+      color: currentColor;
+      font-size: 0.56rem;
+      font-weight: 760;
+      line-height: 1.1;
+      text-align: center;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .engine-state {
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 0.56rem;
+      line-height: 1;
+    }
+
+    .engine-chip.is-on .engine-state {
+      color: color-mix(in srgb, var(--engine-color) 65%, white 35%);
+    }
+
+    .engine-callout {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      margin-top: 10px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .engine-callout.is-on {
+      border-color: color-mix(in srgb, var(--engine-color) 42%, rgba(255, 255, 255, 0.1));
+      background: color-mix(in srgb, var(--engine-color) 9%, rgba(255, 255, 255, 0.025));
+    }
+
+    .engine-callout strong {
+      display: block;
+      overflow: hidden;
+      color: var(--text);
+      font-size: 0.75rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .engine-callout span {
+      display: block;
+      color: var(--dim);
+      font-size: 0.62rem;
+      font-weight: 760;
+      text-transform: uppercase;
+    }
+
+    .engine-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 24px;
+      padding: 4px 7px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+
+    .engine-pill .engine-icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    .engine-pill.is-on {
+      border-color: color-mix(in srgb, var(--engine-color) 45%, rgba(255, 255, 255, 0.12));
+      background: color-mix(in srgb, var(--engine-color) 10%, rgba(255, 255, 255, 0.025));
+      color: var(--text);
+    }
+
+    .engine-pill.is-off {
+      color: var(--dim);
+    }
+
+    .engine-mini {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .engine-mini-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 650;
+    }
+
+    .engine-mini.is-on .engine-mini-label {
+      color: var(--text);
+    }
+
+    .meter {
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+
+    .meter > span {
+      display: block;
+      height: 100%;
+      width: var(--w);
+      border-radius: inherit;
+      background: var(--c, var(--cyan));
+    }
+
+    .mini-meter {
+      width: 68px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+
+    .mini-meter > span {
+      display: block;
+      width: var(--w);
+      height: 100%;
+      border-radius: inherit;
+      background: var(--c, var(--cyan));
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 7px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .metric .label {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--dim);
+      font-size: 0.62rem;
+      text-transform: uppercase;
+    }
+
+    .metric .value {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .divider {
+      height: 1px;
+      margin: 10px 0;
+      background: var(--line);
+    }
+
+    .balance-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .balance-row {
+      display: grid;
+      grid-template-columns: 58px minmax(0, 1fr) 34px;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .balance-row .label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .balance-row .value {
+      text-align: right;
+      color: var(--muted);
+      font-size: 0.68rem;
+    }
+
+    .a-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 9px;
+    }
+
+    .a-title {
+      font-size: 0.9rem;
+      font-weight: 760;
+    }
+
+    .ultra-snapshot {
+      display: grid;
+      gap: 10px;
+      padding: 11px;
+    }
+
+    .ultra-top {
+      display: grid;
+      gap: 8px;
+    }
+
+    .ultra-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .ultra-title {
+      color: var(--text);
+      font-size: 0.9rem;
+      font-weight: 760;
+    }
+
+    .ultra-harmony {
+      display: grid;
+      gap: 6px;
+    }
+
+    .harmony-value-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 27px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.045);
+      overflow: hidden;
+    }
+
+    .harmony-value-line span {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 760;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .progression-readout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 6px;
+    }
+
+    .progression-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+      min-height: 27px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.045);
+      color: var(--muted);
+      font-size: 0.66rem;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+
+    .progression-chip strong {
+      overflow: hidden;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      font-weight: 760;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .progression-chip.next {
+      color: color-mix(in srgb, var(--source-reverb) 50%, var(--muted));
+      border: 1px solid color-mix(in srgb, var(--source-reverb) 18%, transparent);
+    }
+
+    .arc-value {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .arc-dot {
+      width: 6px;
+      height: 6px;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: #facc15;
+      box-shadow: 0 0 6px rgba(250, 204, 21, 0.55);
+    }
+
+    .on-module-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+      gap: 6px;
+    }
+
+    .on-module {
+      --level: 0.5;
+      --rgb: 75, 187, 200;
+      min-width: 0;
+      min-height: 46px;
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: 7px;
+      align-items: center;
+      padding: 6px 7px;
+      border: 1px solid rgba(var(--rgb), calc(0.13 + var(--level) * 0.22));
+      border-radius: 6px;
+      background:
+        linear-gradient(180deg, rgba(var(--rgb), calc(0.04 + var(--level) * 0.13)), rgba(var(--rgb), calc(0.02 + var(--level) * 0.06))),
+        rgba(255, 255, 255, 0.025);
+    }
+
+    .on-module-icon {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border-radius: 5px;
+      background: rgba(var(--rgb), calc(0.08 + var(--level) * 0.36));
+      color: rgb(var(--rgb));
+      filter: brightness(calc(0.68 + var(--level) * 0.72));
+      box-shadow: 0 0 calc(2px + var(--level) * 10px) rgba(var(--rgb), calc(var(--level) * 0.18));
+    }
+
+    .on-module-icon .engine-icon {
+      width: 15px;
+      height: 15px;
+    }
+
+    .on-module-copy {
+      min-width: 0;
+    }
+
+    .on-module-name {
+      display: block;
+      overflow: hidden;
+      color: var(--text);
+      font-size: 0.68rem;
+      font-weight: 760;
+      line-height: 1.08;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .on-module-value {
+      display: block;
+      margin-top: 2px;
+      color: color-mix(in srgb, rgb(var(--rgb)) 55%, var(--muted));
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      font-weight: 720;
+      line-height: 1;
+    }
+
+    .signal-graph {
+      position: relative;
+      min-width: 0;
+      border: 1px solid rgba(232, 220, 196, 0.09);
+      border-radius: 8px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      background: linear-gradient(180deg, rgba(10, 10, 18, 0.96), rgba(15, 25, 40, 0.94));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.035),
+        inset 0 0 18px rgba(184, 224, 255, 0.03);
+    }
+
+    .signal-map {
+      position: relative;
+      z-index: 1;
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .signal-frame {
+      display: none;
+      fill: none;
+      stroke: rgba(232, 220, 196, 0.08);
+      stroke-dasharray: 2 10;
+      stroke-width: 1;
+    }
+
+    .signal-hub {
+      display: none;
+      fill: rgba(232, 220, 196, 0.018);
+      stroke: rgba(232, 220, 196, 0.07);
+      stroke-width: 1;
+    }
+
+    .send-line {
+      fill: none;
+      stroke: rgba(var(--rgb), calc(0.15 + var(--send) * 0.6));
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: calc(0.75px + var(--send) * 3.8px);
+      opacity: calc(0.24 + var(--send) * 0.72);
+      filter: drop-shadow(0 0 calc(1px + var(--send) * 5px) rgba(var(--rgb), calc(0.08 + var(--send) * 0.22)));
+      pointer-events: none;
+      transition: opacity 0.16s ease, stroke-width 0.16s ease, filter 0.16s ease;
+    }
+
+    .send-line.is-active {
+      opacity: 1;
+      stroke-width: calc(1.7px + var(--send) * 5px);
+      filter: drop-shadow(0 0 calc(3px + var(--send) * 8px) rgba(var(--rgb), calc(0.22 + var(--send) * 0.36)));
+    }
+
+    .signal-node {
+      color: rgb(var(--rgb));
+      cursor: pointer;
+      outline: none;
+    }
+
+    .signal-node-halo {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1;
+      opacity: calc(0.08 + var(--level) * 0.22);
+      filter: blur(2px);
+    }
+
+    .signal-node-shell {
+      fill: rgba(var(--rgb), calc(0.06 + var(--level) * 0.13));
+      stroke: rgba(var(--rgb), calc(0.28 + var(--level) * 0.54));
+      stroke-width: calc(0.8px + var(--level) * 1px);
+      filter: drop-shadow(0 0 calc(1px + var(--level) * 7px) rgba(var(--rgb), calc(0.08 + var(--level) * 0.20)));
+    }
+
+    .signal-node-core {
+      fill: rgba(10, 10, 18, 0.52);
+      stroke: rgba(232, 220, 196, 0.08);
+      stroke-width: 1;
+    }
+
+    .signal-node-icon {
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.9;
+      opacity: calc(0.62 + var(--level) * 0.38);
+      filter: brightness(calc(0.76 + var(--level) * 0.58));
+    }
+
+    .signal-node-name {
+      fill: var(--text);
+      font-family: var(--sans);
+      font-size: 15px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .signal-node-value {
+      fill: rgba(232, 220, 196, 0.66);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .signal-node.fx .signal-node-core {
+      fill: rgba(15, 25, 40, 0.62);
+    }
+
+    .signal-node.is-active .signal-node-shell,
+    .signal-node:focus-visible .signal-node-shell {
+      stroke: color-mix(in srgb, rgb(var(--rgb)) 72%, white 28%);
+      stroke-width: 2;
+      filter: drop-shadow(0 0 12px rgba(var(--rgb), 0.36));
+    }
+
+    .signal-node.is-active .signal-node-core,
+    .signal-node:focus-visible .signal-node-core {
+      stroke: rgba(232, 220, 196, 0.24);
+    }
+
+    .signal-inspector {
+      position: absolute;
+      z-index: 3;
+      left: var(--tip-x, 12px);
+      top: var(--tip-y, 12px);
+      width: min(250px, calc(100% - 22px));
+      padding: 10px;
+      border: 1px solid rgba(232, 220, 196, 0.18);
+      border-radius: 8px;
+      background: rgba(10, 10, 18, 0.94);
+      box-shadow:
+        0 14px 34px rgba(0, 0, 0, 0.42),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      pointer-events: none;
+    }
+
+    .signal-inspector[hidden] {
+      display: none;
+    }
+
+    .signal-inspector-title {
+      margin: 0;
+      color: var(--text);
+      font-size: 0.78rem;
+      font-weight: 780;
+      line-height: 1.1;
+    }
+
+    .signal-inspector-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      font-weight: 720;
+      line-height: 1.25;
+    }
+
+    .signal-inspector-rows {
+      display: grid;
+      gap: 5px;
+      margin-top: 8px;
+    }
+
+    .signal-inspector-row {
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr);
+      gap: 8px;
+      align-items: baseline;
+      min-width: 0;
+    }
+
+    .signal-inspector-row span {
+      color: var(--dim);
+      font-size: 0.6rem;
+      font-weight: 720;
+      text-transform: uppercase;
+    }
+
+    .signal-inspector-row strong {
+      overflow: hidden;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      font-weight: 760;
+      line-height: 1.22;
+      text-overflow: ellipsis;
+    }
+
+    .master-line {
+      display: grid;
+      grid-template-columns: 58px minmax(0, 1fr) 34px;
+      gap: 8px;
+      align-items: center;
+      margin: 10px 0;
+    }
+
+    .ledger {
+      display: grid;
+      border-top: 1px solid var(--line);
+    }
+
+    .ledger .row {
+      min-height: 30px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .ledger .label,
+    .ledger .value {
+      padding: 0 2px;
+    }
+
+    .ledger-balance {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1px;
+      margin-top: 10px;
+      background: var(--line);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .ledger-cell {
+      min-width: 0;
+      padding: 7px;
+      background: var(--panel-2);
+    }
+
+    .ledger-cell span {
+      display: block;
+      color: var(--dim);
+      font-size: 0.62rem;
+    }
+
+    .ledger-cell strong {
+      display: block;
+      margin-top: 2px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+    }
+
+    .chip-cloud {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .chip-cloud .pill {
+      border-radius: 6px;
+      color: var(--text);
+    }
+
+    .chip-cloud .pill.dimmed {
+      color: var(--dim);
+    }
+
+    .chip-footer {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .chip-footer .metric {
+      text-align: center;
+    }
+
+    .rail {
+      display: grid;
+      gap: 9px;
+    }
+
+    .rail-top {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .rail-title {
+      font-size: 0.82rem;
+      font-weight: 760;
+    }
+
+    .rail-balance {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 5px;
+    }
+
+    .rail-item {
+      min-width: 0;
+      padding: 7px 6px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .rail-item.is-on {
+      border-color: color-mix(in srgb, var(--engine-color) 42%, rgba(255, 255, 255, 0.1));
+      background: color-mix(in srgb, var(--engine-color) 9%, rgba(255, 255, 255, 0.025));
+    }
+
+    .rail-item-head {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .rail-item .engine-icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    .rail-item span {
+      display: block;
+      overflow: hidden;
+      color: var(--dim);
+      font-size: 0.6rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .rail-item strong {
+      display: block;
+      margin-top: 2px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.68rem;
+    }
+
+    .rail-item .rail-item-head {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--dim);
+    }
+
+    .rail-item.is-on .rail-item-head {
+      color: var(--text);
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 0.92fr 1.08fr;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .split-left,
+    .split-right {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.025);
+      padding: 8px;
+    }
+
+    .split-title {
+      color: var(--dim);
+      font-size: 0.62rem;
+      font-weight: 760;
+      text-transform: uppercase;
+    }
+
+    .split-key {
+      margin-top: 7px;
+      font-size: 1.55rem;
+      line-height: 1;
+      font-weight: 760;
+    }
+
+    .split-sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.72rem;
+    }
+
+    .split-right {
+      display: grid;
+      gap: 7px;
+    }
+
+    .text-only {
+      display: grid;
+      gap: 9px;
+    }
+
+    .text-line {
+      color: var(--text);
+      font-size: 0.78rem;
+      line-height: 1.35;
+    }
+
+    .text-line span {
+      color: var(--dim);
+    }
+
+    .mono-block {
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.025);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      line-height: 1.65;
+    }
+
+    .pick-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }
+
+    .pick-row span {
+      padding: 4px 6px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 0.62rem;
+    }
+
+    @media (max-width: 980px) {
+      .option-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 680px) {
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+
+      .selection-note {
+        justify-self: start;
+        white-space: normal;
+      }
+
+      .option-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .rail-balance {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .progression-readout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <svg class="svg-defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-pad" viewBox="0 0 24 24">
+      <path d="M3.5 12c2.25-4 4.5-4 6.75 0s4.5 4 6.75 0c1.2-2.1 2.35-3 3.5-3" />
+      <path d="M3.5 17c2.25-2.4 4.5-2.4 6.75 0s4.5 2.4 6.75 0c1.2-1.25 2.35-1.8 3.5-1.8" />
+    </symbol>
+    <symbol id="icon-lead" viewBox="0 0 24 24">
+      <path d="M13.5 2.8 5.2 13h6.1l-1.8 8.2 9.3-11.7h-6.1l.8-6.7z" />
+    </symbol>
+    <symbol id="icon-drum" viewBox="0 0 24 24">
+      <path d="M5.5 10.5c0 1.8 2.9 3.2 6.5 3.2s6.5-1.4 6.5-3.2S15.6 7.3 12 7.3s-6.5 1.4-6.5 3.2z" />
+      <path d="M5.5 10.5V16c0 1.8 2.9 3.2 6.5 3.2s6.5-1.4 6.5-3.2v-5.5" />
+      <path d="M8.6 5.2 5.5 2.8M15.4 5.2l3.1-2.4" />
+    </symbol>
+    <symbol id="icon-grain" viewBox="0 0 24 24">
+      <circle cx="7" cy="7" r="1.6" />
+      <circle cx="14.4" cy="5.8" r="1.3" />
+      <circle cx="18" cy="12" r="1.7" />
+      <circle cx="9.5" cy="15.2" r="1.4" />
+      <circle cx="14.5" cy="18" r="1.2" />
+      <path d="M8.2 8.2 13 14M15.7 6.8 17 10.4M10.8 15.7l2.5 1.4" />
+    </symbol>
+    <symbol id="icon-earth" viewBox="0 0 24 24">
+      <path d="M12 21c4.5-3.8 7-7.2 7-10.4A7 7 0 0 0 5 10.6C5 13.8 7.5 17.2 12 21z" />
+      <path d="M7.8 11c2.5-1.8 5.9-1.8 8.4 0M8.9 14.4c2 .9 4.2.9 6.2 0" />
+    </symbol>
+    <symbol id="icon-piano" viewBox="0 0 24 24">
+      <path d="M4 5h16v14H4z" />
+      <path d="M7 5v14M10 5v8M13 5v14M16 5v8" />
+    </symbol>
+    <symbol id="icon-delay" viewBox="0 0 24 24">
+      <path d="M12 5a7 7 0 1 1-6.4 4.2" />
+      <path d="M5 5v4h4M12 8v4l2.7 1.7" />
+    </symbol>
+    <symbol id="icon-reverb" viewBox="0 0 24 24">
+      <path d="M5 12c1.4-3.3 3.7-5 7-5s5.6 1.7 7 5" />
+      <path d="M7.5 14.5c1-2.1 2.5-3.1 4.5-3.1s3.5 1 4.5 3.1" />
+      <path d="M10 17c.5-.8 1.2-1.2 2-1.2s1.5.4 2 1.2" />
+    </symbol>
+    <symbol id="icon-dynamics" viewBox="0 0 24 24">
+      <path d="M5 18V9M12 18V5M19 18v-6" />
+      <path d="M3.5 18h17M3.5 9h4M10.5 5h3M17.5 12h3" />
+    </symbol>
+    <symbol id="icon-degrade" viewBox="0 0 24 24">
+      <path d="M4 5h7v7H4zM13 4h3v3h-3zM17 8h3v3h-3zM13 13h7v6h-7zM5 16h3v3H5z" />
+    </symbol>
+    <symbol id="icon-saturation" viewBox="0 0 24 24">
+      <path d="M12 21c3.4-1.7 5.1-4 5.1-6.9 0-2.3-1.1-4.1-3.2-5.5.2 1.6-.4 2.8-1.8 3.7.2-2.6-.8-5.1-3-7.3.2 3.1-1 5.1-2.6 7.1-2.1 2.7-.8 6.9 5.5 8.9z" />
+    </symbol>
+    <symbol id="icon-freeze" viewBox="0 0 24 24">
+      <path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9" />
+      <path d="m8.5 5 3.5 2 3.5-2M8.5 19l3.5-2 3.5 2M4.5 11.2l3.5 2v4M19.5 11.2l-3.5 2v4M4.5 12.8l3.5-2v-4M19.5 12.8l-3.5-2v-4" />
+    </symbol>
+  </svg>
+  <main class="page">
+    <header class="topbar">
+      <div>
+        <h1>Global Snapshot Prototypes</h1>
+        <div class="subtitle">Pick by letter, or mix parts: for example, B header + A balance + C chips.</div>
+      </div>
+      <div class="selection-note">scene data: active-only modules · app source colors</div>
+    </header>
+
+    <section class="option-grid" aria-label="Snapshot prototype options">
+      <article class="option option-ultra">
+        <div class="option-head">
+          <div class="option-name">
+            <span class="option-letter">A</span>
+            <span class="option-title">Ultra Compact</span>
+          </div>
+          <span class="option-parts">active signal flow</span>
+        </div>
+        <div class="ultra-snapshot">
+          <div class="ultra-top">
+            <div class="ultra-title-row">
+              <div class="ultra-title">Snapshot</div>
+              <span class="pill live">Running</span>
+            </div>
+            <div class="ultra-harmony">
+              <div class="harmony-value-line">
+                <span>E Lydian · Emaj7#11 · E G# B D# A# · I · Building · 2 left · 13.6s</span>
+              </div>
+            </div>
+          </div>
+          <div class="signal-graph" aria-label="Active sound engines and FX sends">
+            <svg class="signal-map" viewBox="0 0 1000 410" role="img" aria-labelledby="signal-title">
+              <title id="signal-title">Active sound engines and FX sends</title>
+              <rect class="signal-frame" x="18" y="20" width="964" height="370" rx="8" />
+              <path class="signal-hub" d="M430 205 700 44 970 205 700 366Z" />
+
+              <g class="send-layer">
+                <path class="send-line" style="--rgb: var(--source-pad1-rgb); --send: .44;" d="M154 52 C250 52 340 88 444 88" />
+                <path class="send-line" style="--rgb: var(--source-pad1-rgb); --send: .38;" d="M154 52 C280 42 470 50 634 68" />
+                <path class="send-line" style="--rgb: var(--source-pad1-rgb); --send: .72;" d="M154 52 C330 48 610 108 820 150" />
+                <path class="send-line" style="--rgb: var(--source-pad2-rgb); --send: .31;" d="M154 120 C250 118 334 92 444 88" />
+                <path class="send-line" style="--rgb: var(--source-pad2-rgb); --send: .46;" d="M154 120 C334 112 600 132 820 150" />
+                <path class="send-line" style="--rgb: var(--source-lead1-rgb); --send: .68;" d="M154 188 C318 154 470 88 634 68" />
+                <path class="send-line" style="--rgb: var(--source-lead1-rgb); --send: .36;" d="M154 188 C354 188 608 160 820 150" />
+                <path class="send-line" style="--rgb: var(--source-lead1-rgb); --send: .30;" d="M154 188 C340 236 500 306 634 326" />
+                <path class="send-line" style="--rgb: var(--source-lead2-rgb); --send: .34;" d="M154 256 C330 244 506 184 634 174" />
+                <path class="send-line" style="--rgb: var(--source-lead2-rgb); --send: .28;" d="M154 256 C382 250 600 176 820 150" />
+                <path class="send-line" style="--rgb: var(--source-piano-rgb); --send: .22;" d="M154 324 C338 264 464 104 634 68" />
+                <path class="send-line" style="--rgb: var(--source-piano-rgb); --send: .54;" d="M154 324 C392 286 606 188 820 150" />
+                <path class="send-line" style="--rgb: var(--source-drums-rgb); --send: .18;" d="M344 72 C440 94 526 152 634 174" />
+                <path class="send-line" style="--rgb: var(--source-drums-rgb); --send: .35;" d="M344 72 C470 158 442 296 444 354" />
+                <path class="send-line" style="--rgb: var(--source-drums-rgb); --send: .48;" d="M344 72 C502 166 560 288 634 326" />
+                <path class="send-line" style="--rgb: var(--source-waves-rgb); --send: .22;" d="M344 140 C384 118 416 94 444 88" />
+                <path class="send-line" style="--rgb: var(--source-waves-rgb); --send: .42;" d="M344 140 C502 132 660 138 820 150" />
+                <path class="send-line" style="--rgb: var(--source-water-rgb); --send: .20;" d="M344 208 C452 200 546 178 634 174" />
+                <path class="send-line" style="--rgb: var(--source-water-rgb); --send: .32;" d="M344 208 C512 210 656 166 820 150" />
+                <path class="send-line" style="--rgb: var(--source-nature-rgb); --send: .28;" d="M344 276 C528 264 662 182 820 150" />
+                <path class="send-line" style="--rgb: var(--source-insects-rgb); --send: .24;" d="M344 344 C494 304 552 198 634 174" />
+                <path class="send-line" style="--rgb: var(--source-insects-rgb); --send: .18;" d="M344 344 C556 312 674 204 820 150" />
+
+                <path class="send-line" style="--rgb: var(--source-granular-rgb); --send: .58;" d="M576 88 C606 110 612 148 634 174" />
+                <path class="send-line" style="--rgb: var(--source-granular-rgb); --send: .50;" d="M576 88 C668 92 742 128 820 150" />
+                <path class="send-line" style="--rgb: var(--source-delay-a-rgb); --send: .66;" d="M766 68 C798 84 804 124 820 150" />
+                <path class="send-line" style="--rgb: var(--source-delay-b-rgb); --send: .36;" d="M766 174 C792 172 804 158 820 150" />
+                <path class="send-line" style="--rgb: var(--source-freeze-rgb); --send: .30;" d="M576 286 C664 262 746 194 820 150" />
+                <path class="send-line" style="--rgb: var(--source-degrade-rgb); --send: .44;" d="M576 354 C602 350 614 332 634 326" />
+                <path class="send-line" style="--rgb: var(--source-saturation-rgb); --send: .58;" d="M766 326 C786 324 802 318 820 316" />
+                <path class="send-line" style="--rgb: var(--source-reverb-rgb); --send: .50;" d="M886 174 C916 218 916 260 886 292" />
+              </g>
+
+              <g class="node-layer">
+                <g class="signal-node sound" transform="translate(92 52)" style="--rgb: var(--source-pad1-rgb); --level: .60;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-pad" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Pad 1</text>
+                  <text class="signal-node-value" x="-22" y="13">60</text>
+                </g>
+                <g class="signal-node sound" transform="translate(92 120)" style="--rgb: var(--source-pad2-rgb); --level: .35;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-pad" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Pad 2</text>
+                  <text class="signal-node-value" x="-22" y="13">35</text>
+                </g>
+                <g class="signal-node sound" transform="translate(92 188)" style="--rgb: var(--source-lead1-rgb); --level: .72;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-lead" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Lead 1</text>
+                  <text class="signal-node-value" x="-22" y="13">72</text>
+                </g>
+                <g class="signal-node sound" transform="translate(92 256)" style="--rgb: var(--source-lead2-rgb); --level: .40;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-lead" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Lead 2</text>
+                  <text class="signal-node-value" x="-22" y="13">40</text>
+                </g>
+                <g class="signal-node sound" transform="translate(92 324)" style="--rgb: var(--source-piano-rgb); --level: .48;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-piano" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Piano</text>
+                  <text class="signal-node-value" x="-22" y="13">48</text>
+                </g>
+                <g class="signal-node sound" transform="translate(282 72)" style="--rgb: var(--source-drums-rgb); --level: .55;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-drum" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Drums</text>
+                  <text class="signal-node-value" x="-22" y="13">55</text>
+                </g>
+                <g class="signal-node sound" transform="translate(282 140)" style="--rgb: var(--source-waves-rgb); --level: .42;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-earth" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Waves</text>
+                  <text class="signal-node-value" x="-22" y="13">42</text>
+                </g>
+                <g class="signal-node sound" transform="translate(282 208)" style="--rgb: var(--source-water-rgb); --level: .36;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-earth" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Water</text>
+                  <text class="signal-node-value" x="-22" y="13">36</text>
+                </g>
+                <g class="signal-node sound" transform="translate(282 276)" style="--rgb: var(--source-nature-rgb); --level: .30;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-earth" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Nature</text>
+                  <text class="signal-node-value" x="-22" y="13">30</text>
+                </g>
+                <g class="signal-node sound" transform="translate(282 344)" style="--rgb: var(--source-insects-rgb); --level: .24;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-earth" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Insects</text>
+                  <text class="signal-node-value" x="-22" y="13">24</text>
+                </g>
+
+                <g class="signal-node fx" transform="translate(510 88)" style="--rgb: var(--source-granular-rgb); --level: .68;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-grain" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Granular</text>
+                  <text class="signal-node-value" x="-22" y="13">68</text>
+                </g>
+                <g class="signal-node fx" transform="translate(510 286)" style="--rgb: var(--source-freeze-rgb); --level: .34;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-freeze" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Freeze</text>
+                  <text class="signal-node-value" x="-22" y="13">34</text>
+                </g>
+                <g class="signal-node fx" transform="translate(510 354)" style="--rgb: var(--source-degrade-rgb); --level: .25;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-degrade" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Degrade</text>
+                  <text class="signal-node-value" x="-22" y="13">25</text>
+                </g>
+                <g class="signal-node fx" transform="translate(700 68)" style="--rgb: var(--source-delay-a-rgb); --level: .64;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-delay" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Delay A</text>
+                  <text class="signal-node-value" x="-22" y="13">64</text>
+                </g>
+                <g class="signal-node fx" transform="translate(700 174)" style="--rgb: var(--source-delay-b-rgb); --level: .28;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-delay" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Delay B</text>
+                  <text class="signal-node-value" x="-22" y="13">28</text>
+                </g>
+                <g class="signal-node fx" transform="translate(700 326)" style="--rgb: var(--source-saturation-rgb); --level: .58;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-saturation" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Saturation</text>
+                  <text class="signal-node-value" x="-22" y="13">58</text>
+                </g>
+                <g class="signal-node fx" transform="translate(886 150)" style="--rgb: var(--source-reverb-rgb); --level: .50;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-reverb" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Reverb</text>
+                  <text class="signal-node-value" x="-22" y="13">50</text>
+                </g>
+                <g class="signal-node fx" transform="translate(886 316)" style="--rgb: var(--source-dynamics-rgb); --level: .46;">
+                  <rect class="signal-node-halo" x="-72" y="-25" width="132" height="50" rx="25" />
+                  <rect class="signal-node-shell" x="-68" y="-22" width="128" height="44" rx="22" />
+                  <rect class="signal-node-core" x="-58" y="-17" width="108" height="34" rx="17" />
+                  <use class="signal-node-icon" href="#icon-dynamics" x="-50" y="-10" width="20" height="20" />
+                  <text class="signal-node-name" x="-22" y="-3">Dynamics</text>
+                  <text class="signal-node-value" x="-22" y="13">46</text>
+                </g>
+              </g>
+            </svg>
+            <div class="signal-inspector" id="signal-inspector" hidden>
+              <h3 class="signal-inspector-title"></h3>
+              <div class="signal-inspector-meta"></div>
+              <div class="signal-inspector-rows"></div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="option-name">
+            <span class="option-letter">B</span>
+            <span class="option-title">Ledger</span>
+          </div>
+          <span class="option-parts">table + ON row</span>
+        </div>
+        <div class="snapshot">
+          <div class="row" style="margin-bottom: 10px;">
+            <span class="label">Snapshot</span>
+            <span class="pill live">Running</span>
+          </div>
+          <div class="ledger">
+            <div class="row"><span class="label">Engines</span><span class="value">1 active / 7</span></div>
+            <div class="row"><span class="label">Clock</span><span class="value">16.0s · sync off</span></div>
+            <div class="row"><span class="label">Harmony</span><span class="value">E · auto</span></div>
+            <div class="row"><span class="label">Master</span><span class="value">85</span></div>
+          </div>
+          <div class="engine-callout is-on" style="--engine-color: var(--source-pad1);">
+            <svg class="engine-icon"><use href="#icon-pad"></use></svg>
+            <div><span>ON engine</span><strong>Pad 1</strong></div>
+            <strong class="value">60</strong>
+          </div>
+          <div class="ledger-balance">
+            <div class="ledger-cell"><span>Pads</span><strong>60</strong></div>
+            <div class="ledger-cell"><span>Leads</span><strong>0</strong></div>
+            <div class="ledger-cell"><span>Rhythm</span><strong>0</strong></div>
+            <div class="ledger-cell"><span>Texture</span><strong>0</strong></div>
+            <div class="ledger-cell"><span>Earth</span><strong>0</strong></div>
+            <div class="ledger-cell"><span>FX</span><strong>50</strong></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="option-name">
+            <span class="option-letter">C</span>
+            <span class="option-title">Chips Only</span>
+          </div>
+          <span class="option-parts">no bars</span>
+        </div>
+        <div class="snapshot">
+          <div class="row">
+            <span class="label">Snapshot</span>
+            <span class="pill live">Running</span>
+          </div>
+          <div class="chip-cloud">
+            <span class="pill">Master 85</span>
+            <span class="engine-pill is-on" style="--engine-color: var(--source-pad1);"><svg class="engine-icon"><use href="#icon-pad"></use></svg>Pad 1 60</span>
+            <span class="pill">FX 50</span>
+            <span class="pill">E Auto</span>
+            <span class="engine-pill is-off" style="--engine-color: var(--source-lead1);"><svg class="engine-icon"><use href="#icon-lead"></use></svg>Lead off</span>
+            <span class="engine-pill is-off" style="--engine-color: var(--source-drums);"><svg class="engine-icon"><use href="#icon-drum"></use></svg>Drums off</span>
+            <span class="engine-pill is-off" style="--engine-color: var(--source-earth);"><svg class="engine-icon"><use href="#icon-earth"></use></svg>Earth off</span>
+          </div>
+          <div class="chip-footer">
+            <div class="metric"><span class="label">Engines</span><span class="value">1/7</span></div>
+            <div class="metric"><span class="label">Clock</span><span class="value">16.0s</span></div>
+            <div class="metric"><span class="label">Sync</span><span class="value">Off</span></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="option-name">
+            <span class="option-letter">D</span>
+            <span class="option-title">Horizontal Rail</span>
+          </div>
+          <span class="option-parts">single strip</span>
+        </div>
+        <div class="snapshot rail">
+          <div class="rail-top">
+            <div class="rail-title">Snapshot</div>
+            <span class="pill live">Run</span>
+            <span class="value">E Auto</span>
+          </div>
+          <div class="meter"><span style="--w: 85%; --c: var(--green);"></span></div>
+          <div class="rail-balance">
+            <div class="rail-item"><span>Eng</span><strong>1/7</strong></div>
+            <div class="rail-item is-on" style="--engine-color: var(--source-pad1);"><span class="rail-item-head"><svg class="engine-icon"><use href="#icon-pad"></use></svg>Pad</span><strong>60</strong></div>
+            <div class="rail-item"><span class="rail-item-head"><svg class="engine-icon"><use href="#icon-lead"></use></svg>Lead</span><strong>off</strong></div>
+            <div class="rail-item"><span class="rail-item-head"><svg class="engine-icon"><use href="#icon-drum"></use></svg>Drums</span><strong>off</strong></div>
+            <div class="rail-item"><span class="rail-item-head"><svg class="engine-icon"><use href="#icon-earth"></use></svg>Earth</span><strong>off</strong></div>
+            <div class="rail-item"><span>FX</span><strong>50</strong></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="option-name">
+            <span class="option-letter">E</span>
+            <span class="option-title">Split Focus</span>
+          </div>
+          <span class="option-parts">key + ON</span>
+        </div>
+        <div class="snapshot">
+          <div class="split">
+            <div class="split-left">
+              <div class="split-title">Harmony</div>
+              <div class="split-key">E</div>
+              <div class="split-sub">Auto · 16.0s</div>
+              <div style="margin-top: 9px;"><span class="pill live">Running</span></div>
+            </div>
+            <div class="split-right">
+              <div class="row"><span class="label">Engines</span><span class="value">1/7</span></div>
+              <div class="engine-mini is-on" style="--engine-color: var(--source-pad1);">
+                <span class="engine-mini-label"><svg class="engine-icon"><use href="#icon-pad"></use></svg>Pad 1</span>
+                <span class="value">ON 60</span>
+              </div>
+              <div class="row"><span class="label">Master</span><span class="mini-meter"><span style="--w: 85%; --c: var(--green);"></span></span></div>
+              <div class="row"><span class="label">Pads</span><span class="mini-meter"><span style="--w: 60%; --c: var(--cyan);"></span></span></div>
+              <div class="row"><span class="label">FX</span><span class="mini-meter"><span style="--w: 50%; --c: var(--amber);"></span></span></div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="option-name">
+            <span class="option-letter">F</span>
+            <span class="option-title">Text First</span>
+          </div>
+          <span class="option-parts">text + icon</span>
+        </div>
+        <div class="snapshot text-only">
+          <div class="row">
+            <span class="label">Snapshot</span>
+            <span class="pill live">Running</span>
+          </div>
+          <div class="text-line"><span>Scene:</span> 1 active engine, master at 85.</div>
+          <div class="engine-pill is-on" style="--engine-color: var(--source-pad1); width: fit-content;"><svg class="engine-icon"><use href="#icon-pad"></use></svg>Pad 1 is ON at 60</div>
+          <div class="text-line"><span>Harmony:</span> E auto, 16.0s clock, sync off.</div>
+          <div class="mono-block">
+            pads 60 · leads 0<br />
+            rhythm 0 · texture 0<br />
+            earth 0 · fx 50
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <div class="pick-row" aria-label="Pickable parts">
+      <span>A active tiles</span>
+      <span>B table</span>
+      <span>C chips</span>
+      <span>D rail</span>
+      <span>E key block</span>
+      <span>F text</span>
+      <span>engine icons</span>
+      <span>no bars</span>
+      <span>fewer colors</span>
+    </div>
+  </main>
+  <script>
+    (() => {
+      const graph = document.querySelector('.option-ultra .signal-graph');
+      const inspector = document.getElementById('signal-inspector');
+      if (!graph || !inspector) return;
+
+      const titleEl = inspector.querySelector('.signal-inspector-title');
+      const metaEl = inspector.querySelector('.signal-inspector-meta');
+      const rowsEl = inspector.querySelector('.signal-inspector-rows');
+      let pinned = false;
+      let activeTarget = null;
+
+      const nodeDetails = [
+        ['Pad 1', 'sound engine · level 60', [['Sends', 'Granular 44 · Delay A 38 · Reverb 72'], ['Role', 'wide pad body']]],
+        ['Pad 2', 'sound engine · level 35', [['Sends', 'Granular 31 · Reverb 46'], ['Role', 'secondary pad layer']]],
+        ['Lead 1', 'sound engine · level 72', [['Sends', 'Delay A 68 · Reverb 36 · Saturation 30'], ['Role', 'primary melodic edge']]],
+        ['Lead 2', 'sound engine · level 40', [['Sends', 'Delay B 34 · Reverb 28'], ['Role', 'counter lead']]],
+        ['Piano', 'sound engine · level 48', [['Sends', 'Delay A 22 · Reverb 54'], ['Role', 'harmonic anchor']]],
+        ['Drums', 'sound engine · level 55', [['Sends', 'Delay B 18 · Degrade 35 · Saturation 48'], ['Role', 'rhythmic bus']]],
+        ['Waves', 'sound engine · level 42', [['Sends', 'Granular 22 · Reverb 42'], ['Role', 'earth texture']]],
+        ['Water', 'sound engine · level 36', [['Sends', 'Delay B 20 · Reverb 32'], ['Role', 'earth detail']]],
+        ['Nature', 'sound engine · level 30', [['Sends', 'Reverb 28'], ['Role', 'organic bed']]],
+        ['Insects', 'sound engine · level 24', [['Sends', 'Delay B 24 · Reverb 18'], ['Role', 'fine motion']]],
+        ['Granular', 'FX engine · level 68', [['Receives', 'Pad 1 · Pad 2 · Waves'], ['Sends', 'Delay B 58 · Reverb 50']]],
+        ['Freeze', 'FX engine · level 34', [['Receives', 'scene texture'], ['Sends', 'Reverb 30']]],
+        ['Degrade', 'FX engine · level 25', [['Receives', 'Drums 35'], ['Sends', 'Saturation 44']]],
+        ['Delay A', 'FX engine · level 64', [['Receives', 'Pad 1 · Lead 1 · Piano'], ['Sends', 'Reverb 66']]],
+        ['Delay B', 'FX engine · level 28', [['Receives', 'Lead 2 · Granular · Water · Insects'], ['Sends', 'Reverb 36']]],
+        ['Saturation', 'FX engine · level 58', [['Receives', 'Lead 1 · Drums · Degrade'], ['Sends', 'Dynamics 58']]],
+        ['Reverb', 'FX engine · level 50', [['Receives', 'pads · leads · earth · delay'], ['Sends', 'Dynamics 50']]],
+        ['Dynamics', 'FX engine · level 46', [['Receives', 'Saturation · Reverb'], ['Role', 'end-chain control']]],
+      ].map(([name, meta, rows]) => ({ name, title: name, meta, rows }));
+
+      const sendDetails = [
+        ['Pad 1', 'Granular', 44],
+        ['Pad 1', 'Delay A', 38],
+        ['Pad 1', 'Reverb', 72],
+        ['Pad 2', 'Granular', 31],
+        ['Pad 2', 'Reverb', 46],
+        ['Lead 1', 'Delay A', 68],
+        ['Lead 1', 'Reverb', 36],
+        ['Lead 1', 'Saturation', 30],
+        ['Lead 2', 'Delay B', 34],
+        ['Lead 2', 'Reverb', 28],
+        ['Piano', 'Delay A', 22],
+        ['Piano', 'Reverb', 54],
+        ['Drums', 'Delay B', 18],
+        ['Drums', 'Degrade', 35],
+        ['Drums', 'Saturation', 48],
+        ['Waves', 'Granular', 22],
+        ['Waves', 'Reverb', 42],
+        ['Water', 'Delay B', 20],
+        ['Water', 'Reverb', 32],
+        ['Nature', 'Reverb', 28],
+        ['Insects', 'Delay B', 24],
+        ['Insects', 'Reverb', 18],
+        ['Granular', 'Delay B', 58],
+        ['Granular', 'Reverb', 50],
+        ['Delay A', 'Reverb', 66],
+        ['Delay B', 'Reverb', 36],
+        ['Freeze', 'Reverb', 30],
+        ['Degrade', 'Saturation', 44],
+        ['Saturation', 'Dynamics', 58],
+        ['Reverb', 'Dynamics', 50],
+      ].map(([from, to, send]) => ({
+        from,
+        to,
+        send,
+        title: `${from} -> ${to}`,
+        meta: `send · ${send}`,
+        rows: [['Source', from], ['Target', to], ['Amount', `${send}`]],
+      }));
+
+      const nodes = Array.from(graph.querySelectorAll('.signal-node'));
+      const sends = Array.from(graph.querySelectorAll('.send-line'));
+
+      function render(detail) {
+        titleEl.textContent = detail.title;
+        metaEl.textContent = detail.meta;
+        rowsEl.replaceChildren(...detail.rows.map(([label, value]) => {
+          const row = document.createElement('div');
+          row.className = 'signal-inspector-row';
+          const labelEl = document.createElement('span');
+          labelEl.textContent = label;
+          const valueEl = document.createElement('strong');
+          valueEl.textContent = value;
+          row.append(labelEl, valueEl);
+          return row;
+        }));
+      }
+
+      function place(event, target) {
+        const graphRect = graph.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const anchorX = event?.clientX ?? targetRect.left + targetRect.width / 2;
+        const anchorY = event?.clientY ?? targetRect.top + targetRect.height / 2;
+        inspector.hidden = false;
+        const width = inspector.offsetWidth;
+        const height = inspector.offsetHeight;
+        const x = Math.max(8, Math.min(anchorX - graphRect.left + 14, graphRect.width - width - 8));
+        const y = Math.max(8, Math.min(anchorY - graphRect.top + 14, graphRect.height - height - 8));
+        inspector.style.setProperty('--tip-x', `${x}px`);
+        inspector.style.setProperty('--tip-y', `${y}px`);
+      }
+
+      function clearActive() {
+        nodes.forEach((node) => node.classList.remove('is-active'));
+        sends.forEach((send) => send.classList.remove('is-active'));
+      }
+
+      function activate(target, detail) {
+        clearActive();
+        target.classList.add('is-active');
+        if (detail.name) {
+          sends.forEach((send, index) => {
+            const related = sendDetails[index];
+            if (related?.from === detail.name || related?.to === detail.name) {
+              send.classList.add('is-active');
+            }
+          });
+        }
+        activeTarget = target;
+      }
+
+      function show(target, detail, event, shouldPin = false) {
+        pinned = shouldPin || pinned;
+        render(detail);
+        activate(target, detail);
+        place(event, target);
+      }
+
+      function hide() {
+        if (pinned) return;
+        inspector.hidden = true;
+        activeTarget = null;
+        clearActive();
+      }
+
+      nodes.forEach((node, index) => {
+        const detail = nodeDetails[index];
+        if (!detail) return;
+        node.setAttribute('tabindex', '0');
+        node.setAttribute('role', 'button');
+        node.setAttribute('aria-label', `${detail.title}, ${detail.meta}`);
+        node.addEventListener('mouseenter', (event) => { if (!pinned) show(node, detail, event); });
+        node.addEventListener('mousemove', (event) => { if (!pinned && activeTarget === node) place(event, node); });
+        node.addEventListener('mouseleave', hide);
+        node.addEventListener('focus', (event) => { if (!pinned) show(node, detail, event); });
+        node.addEventListener('blur', hide);
+        node.addEventListener('click', (event) => {
+          event.stopPropagation();
+          pinned = false;
+          show(node, detail, event, true);
+        });
+        node.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            pinned = false;
+            show(node, detail, event, true);
+          }
+        });
+      });
+
+      graph.addEventListener('click', () => {
+        pinned = false;
+        hide();
+      });
+
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          pinned = false;
+          hide();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
