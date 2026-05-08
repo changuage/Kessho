@@ -182,6 +182,7 @@ function assertCoreHostFxConfigContract(source) {
 
   const reverbConfig = readFunctionBody(source, 'createReverbModuleConfig', 'CoreEngineHost reverb config');
   for (const token of [
+    'const pad1Active = booleanValue(state.padEnabled, true) || coreEuclideanUsesPadSource(state);',
     'const pad1SendGain = reverbEnabled && pad1Active',
     'boundedNumber(state.pad1ReverbSend ?? state.synthReverbSend, 0.7, 0, 1)',
     'const pad2SendGain = reverbEnabled && pad2Active',
@@ -205,13 +206,13 @@ function assertCoreHostFxConfigContract(source) {
 
   const delayAConfig = readFunctionBody(source, 'createDelayAModuleConfig', 'CoreEngineHost Delay A config');
   for (const token of [
-    'const pad1SendGain = booleanValue(state.padEnabled, true)',
+    'const pad1SendGain = (booleanValue(state.padEnabled, true) || coreEuclideanUsesPadSource(state))',
     'boundedNumber(state.pad1DelayASend ?? state.padDelayASend, 0, 0, 1)',
     'const pad2SendGain = booleanValue(state.pad2Enabled, false)',
     'boundedNumber(state.pad2DelayASend ?? state.padDelayASend, 0, 0, 1)',
-    'const lead1SendGain = booleanValue(state.leadEnabled, false)',
+    'const lead1SendGain = coreIsLead1RouteActive(state)',
     'boundedNumber(state.lead1DelayASend, 0, 0, 1)',
-    'const lead2SendGain = booleanValue(state.lead2Enabled, false)',
+    'const lead2SendGain = coreIsLead2RouteActive(state)',
     'boundedNumber(state.lead2DelayASend, 0, 0, 1)',
     'drumSendGain > 0.0001',
     'soundscapeSendGain > 0.0001',
@@ -1731,7 +1732,17 @@ for (const token of [
   'finiteNumber(state.masterVolume, DEFAULT_MASTER_VOLUME) * MASTER_OUTPUT_TRIM',
   'getEffectivePadState(sliderState)',
   'const padState = getEffectivePadState(sliderState);',
-  'createCorePreviewSourceGroup(padState)',
+  'createCorePreviewSourceGroup(padState, {',
+  'CORE_SYNTH_EUCLID_CLOCK_DIVS',
+  'createSynthEuclidPreview',
+  'createLeadEuclidPreviewSource',
+  'setSynthEuclidClockDivs',
+  'setSynthEuclidSwings',
+  'this.synthEuclidClockDivs',
+  'this.synthEuclidSwings',
+  'coreEuclideanUsesPadSource',
+  'coreIsLead1RouteActive',
+  'coreIsLead2RouteActive',
   'configurePreviewSources(previewSources)',
   "type: 'configureAuxSource'",
   "type: 'triggerAuxSourceNote'",
@@ -1778,6 +1789,8 @@ for (const token of [
   'DRUM_MODULE_PARAM_COUNT = 126',
   'SOUNDSCAPES_MODULE_PARAM_COUNT = 96',
   'createDrumPreviewSource',
+  'DRUM_DELAY_SEND_KEYS',
+  'getCoreDrumDelaySendProfile',
   'createSoundscapesPreviewSource',
   "earthLayerActive(state, 'oceanSampleEnabled', 'oceanSampleLevel', 0.5)",
   "earthLayerActive(state, 'birdsEnabled', 'birdsLevel', 0.45)",

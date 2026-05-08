@@ -30,6 +30,7 @@ const KESSHO_AUX_SOURCE_SLOT_IDS = ['lead', 'drum', 'soundscapes'];
 const KESSHO_CORE_LEAD_RECORDABLE_TRIM_COMPENSATION = 2.0;
 const MIXER_ROUTE_BYTES = 20;
 const UINT32_BYTES = 4;
+const WEB_AUDIO_LOW_PASS_Q_0_7 = Math.pow(10, 0.7 / 20);
 
 class KesshoCoreProcessor extends AudioWorkletProcessor {
   constructor(options = {}) {
@@ -473,7 +474,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     const omega = (2 * Math.PI * cutoff) / sampleRate;
     const sin = Math.sin(omega);
     const cos = Math.cos(omega);
-    const alpha = sin / (2 * 0.7);
+    const alpha = sin / (2 * WEB_AUDIO_LOW_PASS_Q_0_7);
     const a0 = 1 + alpha;
     chain.b0 = ((1 - cos) * 0.5) / a0;
     chain.b1 = (1 - cos) / a0;
@@ -1245,7 +1246,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     }
   }
 
-  triggerSourceChord(chord) {
+  scheduleSourceChord(chord, startDelaySamples = 0) {
     if (!this.sourceModule) return;
     this.sourcePendingNotes = [];
     this.sourcePendingNoteOffs = [];
@@ -1253,15 +1254,20 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       this.api.moduleAllNotesOff(this.sourceModule);
     }
     const notes = Array.isArray(chord) ? chord : [];
+    const startDelay = Math.max(0, Math.floor(Number(startDelaySamples) || 0));
     for (const note of notes) {
       if (!note || typeof note !== 'object') continue;
-      const delaySamples = Math.max(0, Math.floor((Number(note.delaySeconds) || 0) * sampleRate));
+      const delaySamples = startDelay + Math.max(0, Math.floor((Number(note.delaySeconds) || 0) * sampleRate));
       if (delaySamples <= 0) {
         this.triggerSourceNote(note);
       } else {
         this.sourcePendingNotes.push({ samplesUntil: delaySamples, note });
       }
     }
+  }
+
+  triggerSourceChord(chord) {
+    this.scheduleSourceChord(chord, 0);
   }
 
   advanceSourcePendingNotes(frames) {
@@ -1320,7 +1326,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     if (!ok) this.postQueueFailure(`${slot.slotId}SourceNote`);
   }
 
-  triggerSlotChord(slot, chord) {
+  scheduleSlotChord(slot, chord, startDelaySamples = 0) {
     if (!slot?.module) return;
     slot.pendingNotes = [];
     slot.pendingNoteOffs = [];
@@ -1328,15 +1334,20 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       this.api.moduleAllNotesOff(slot.module);
     }
     const notes = Array.isArray(chord) ? chord : [];
+    const startDelay = Math.max(0, Math.floor(Number(startDelaySamples) || 0));
     for (const note of notes) {
       if (!note || typeof note !== 'object') continue;
-      const delaySamples = Math.max(0, Math.floor((Number(note.delaySeconds) || 0) * sampleRate));
+      const delaySamples = startDelay + Math.max(0, Math.floor((Number(note.delaySeconds) || 0) * sampleRate));
       if (delaySamples <= 0) {
         this.triggerSlotNote(slot, note);
       } else {
         slot.pendingNotes.push({ samplesUntil: delaySamples, note });
       }
     }
+  }
+
+  triggerSlotChord(slot, chord) {
+    this.scheduleSlotChord(slot, chord, 0);
   }
 
   advanceSlotPendingNotes(slot, frames) {
@@ -1481,7 +1492,11 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
         0,
         Math.floor((Number(message.initialChordLeadSeconds) || 0) * sampleRate),
       );
-      this.sourceSamplesUntilChord = Math.max(this.frames, this.sourceChordIntervalSamples - initialChordLeadSamples);
+      const initialStartDelaySamples = Math.max(
+        0,
+        Math.floor((Number(message.initialStartDelaySeconds) || 0) * sampleRate),
+      );
+      this.sourceSamplesUntilChord = initialStartDelaySamples + Math.max(this.frames, this.sourceChordIntervalSamples - initialChordLeadSamples);
       if (message.triggerInitial === false) {
         const nextIsManual = noteKey.startsWith('manual:');
         const previousWasManual = this.sourceNoteKey.startsWith('manual:');
@@ -1491,7 +1506,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
           this.killSourceVoices();
         }
       } else {
-        this.triggerSourceChord(this.sourceChordSets[0]);
+        this.scheduleSourceChord(this.sourceChordSets[0], initialStartDelaySamples);
       }
       this.sourceNoteKey = noteKey;
     }
@@ -1613,7 +1628,11 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
         0,
         Math.floor((Number(message.initialChordLeadSeconds) || 0) * sampleRate),
       );
-      slot.samplesUntilChord = Math.max(this.frames, slot.chordIntervalSamples - initialChordLeadSamples);
+      const initialStartDelaySamples = Math.max(
+        0,
+        Math.floor((Number(message.initialStartDelaySeconds) || 0) * sampleRate),
+      );
+      slot.samplesUntilChord = initialStartDelaySamples + Math.max(this.frames, slot.chordIntervalSamples - initialChordLeadSamples);
       if (message.triggerInitial === false) {
         const nextIsManual = noteKey.startsWith('manual:');
         const previousWasManual = slot.noteKey.startsWith('manual:');
@@ -1625,7 +1644,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
           slot.pendingNoteOffs = [];
         }
       } else {
-        this.triggerSlotChord(slot, slot.chordSets[0]);
+        this.scheduleSlotChord(slot, slot.chordSets[0], initialStartDelaySamples);
       }
       slot.noteKey = noteKey;
     }

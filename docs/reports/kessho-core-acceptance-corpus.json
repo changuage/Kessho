@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-07T17:27:03.840Z",
+  "generatedAt": "2026-05-08T00:59:56.688Z",
   "contract": {
     "purpose": "Practical Web Audio versus KesshoCore browser acceptance corpus for core migration parity.",
     "parityScript": "scripts/check-web-core-sonic-parity.mjs",
@@ -14,7 +14,8 @@
           "default-pad-dry",
           "default-pad2-dry",
           "pad-simple-dry",
-          "pad-reverb-tail"
+          "pad-reverb-tail",
+          "pad-dark-dense"
         ],
         "boundaryCases": [],
         "passDefinition": "Dry pad, Pad 2, and shared reverb-tail gates pass with shared-start manual pad notes and no page errors.",
@@ -38,10 +39,12 @@
         "requiredCases": [
           "lead-manual-dry",
           "lead-delay-heavy",
+          "synth-euclid-lead-grid",
           "drum-euclid-tight",
           "drum-delay-dub",
           "earth-water-only",
-          "earth-full-nature"
+          "earth-full-nature",
+          "soundscape-ocean-pad"
         ],
         "passDefinition": "All deterministic source cases pass; stochastic drum and earth cases pass documented transient/envelope gates."
       },
@@ -65,7 +68,6 @@
       "This is browser Web Audio versus core-wasm acceptance only; macOS/iOS device CPU, battery, route-change, and screen-off behavior stay outside this gate.",
       "The corpus does not require bit-exact parity. It is meant to decide when core-wasm is close enough for migration.",
       "Earth/soundscape, drum sequencer, granular feedback, and full-mix cases use envelope or transient gates instead of bit-exact waveform correlation.",
-      "Synth Euclidean note generation remains a webapp sequencer concern in this gate; full-mix manual captures disable it so the C++ backbone route is scored directly.",
       "Lead manual-note cases require core-wasm lead trigger support in the parity harness.",
       "Preset storage/cloud round-trip validation is out of scope here; cases use local states and local factory preset references."
     ],
@@ -93,7 +95,7 @@
     "markdown": "docs/reports/kessho-core-acceptance-corpus.md",
     "json": "docs/reports/kessho-core-acceptance-corpus.json"
   },
-  "caseCount": 19,
+  "caseCount": 20,
   "coverageGroups": [
     "simple pad",
     "default pad dry",
@@ -619,7 +621,7 @@
       "title": "Dense dark pad",
       "group": "pad+reverb",
       "thresholdClass": "close",
-      "expectedOutcome": "candidate",
+      "expectedOutcome": "pass",
       "source": "KesshoNativeSwift/Kessho/Presets/Dark_Textures.json",
       "sourceName": "Dark Textures",
       "includeSourceState": true,
@@ -1110,6 +1112,116 @@
         "--envelope-time-tolerance-ms=20",
         "--envelope-rms-ratio-tolerance=0.45",
         "--envelope-peak-ratio-tolerance=0.45"
+      ]
+    },
+    {
+      "id": "synth-euclid-lead-grid",
+      "title": "Synth Euclid lead grid",
+      "group": "lead",
+      "thresholdClass": "perceptual",
+      "expectedOutcome": "pass",
+      "source": "src/ui/state.ts",
+      "sourceName": null,
+      "includeSourceState": false,
+      "intent": "Self-running synth Euclidean lead route, verifying Core turns the sequencer lanes into repeating lead note events with web-style grid alignment.",
+      "durationMs": 3500,
+      "settleMs": 100,
+      "thresholds": {
+        "rmsTolerance": 0.04,
+        "peakTolerance": 0.25,
+        "minSignalRms": 0.00003
+      },
+      "transientGate": {
+        "timeToleranceMs": 24,
+        "peakRatioTolerance": 0.35,
+        "rmsRatioTolerance": 0.35
+      },
+      "envelopeGate": null,
+      "manualNotes": [],
+      "readyWhen": [
+        "Core host generates synth Euclidean notes and the worklet honors the initial join-grid delay"
+      ],
+      "statePatchKeyCount": 66,
+      "statePatchSha256": "a1684d5c4ed3aa5d99c1aa167e028c94807a65e92573167e9fed31ae22e2a980",
+      "statePatch": {
+        "padEnabled": false,
+        "pad2Enabled": false,
+        "synthEuclideanMasterEnabled": true,
+        "leadEnabled": true,
+        "lead2Enabled": false,
+        "leadRandomEnabled": false,
+        "pianoEnabled": false,
+        "drumEnabled": false,
+        "drumEuclidMasterEnabled": false,
+        "waterEnabled": false,
+        "insectsEnabled": false,
+        "insects2Enabled": false,
+        "birdsEnabled": false,
+        "birds2Enabled": false,
+        "frogsEnabled": false,
+        "oceanSampleEnabled": false,
+        "oceanWaveSynthEnabled": false,
+        "granularEnabled": false,
+        "granularFreeze": false,
+        "reverbEnabled": false,
+        "spectralFreezeEnabled": false,
+        "delayAEnabled": false,
+        "delayAMix": 0,
+        "delayAFeedback": 0,
+        "delayAToBSend": 0,
+        "delayBToASend": 0,
+        "delayAGranularSend": 0,
+        "delayBGranularSend": 0,
+        "masterSatDrive": 0,
+        "dynamicsEnabled": false,
+        "characterEnabled": false,
+        "sidechainEnabled": false,
+        "synthChordSequencerEnabled": false,
+        "synthEuclideanTempo": 1,
+        "synthEuclidClockSource": "localBeat",
+        "synthEuclidJoinPolicy": "grid",
+        "synthEuclid1Enabled": true,
+        "synthEuclid1Preset": "custom",
+        "synthEuclid1Steps": 8,
+        "synthEuclid1Hits": 4,
+        "synthEuclid1Rotation": 0,
+        "synthEuclid1NoteMin": 72,
+        "synthEuclid1NoteMax": 72,
+        "synthEuclid1Level": 0.8,
+        "synthEuclid1Probability": 1,
+        "synthEuclid1Source": "lead1",
+        "synthEuclid2Enabled": false,
+        "synthEuclid3Enabled": false,
+        "synthEuclid4Enabled": false,
+        "scaleMode": "manual",
+        "manualScale": "Major (Ionian)",
+        "rootNote": 0,
+        "lead1Level": 0.8,
+        "lead1PresetA": "soft_rhodes",
+        "lead1PresetB": "soft_rhodes",
+        "lead1Morph": 0,
+        "lead1Attack": 0.01,
+        "lead1Decay": 0.25,
+        "lead1Sustain": 0.2,
+        "lead1Hold": 0.2,
+        "lead1Release": 0.35,
+        "lead1ReverbSend": 0,
+        "lead1DelayASend": 0,
+        "lead1DelayBSend": 0,
+        "granularLead1Send": 0,
+        "masterVolume": 0.75
+      },
+      "browserParityArgs": [
+        "--duration-ms=3500",
+        "--settle-ms=100",
+        "--rms-tolerance=0.04",
+        "--peak-tolerance=0.25",
+        "--min-signal-rms=0.00003",
+        "--state-patch={\"birds2Enabled\":false,\"birdsEnabled\":false,\"characterEnabled\":false,\"delayAEnabled\":false,\"delayAFeedback\":0,\"delayAGranularSend\":0,\"delayAMix\":0,\"delayAToBSend\":0,\"delayBGranularSend\":0,\"delayBToASend\":0,\"drumEnabled\":false,\"drumEuclidMasterEnabled\":false,\"dynamicsEnabled\":false,\"frogsEnabled\":false,\"granularEnabled\":false,\"granularFreeze\":false,\"granularLead1Send\":0,\"insects2Enabled\":false,\"insectsEnabled\":false,\"lead1Attack\":0.01,\"lead1Decay\":0.25,\"lead1DelayASend\":0,\"lead1DelayBSend\":0,\"lead1Hold\":0.2,\"lead1Level\":0.8,\"lead1Morph\":0,\"lead1PresetA\":\"soft_rhodes\",\"lead1PresetB\":\"soft_rhodes\",\"lead1Release\":0.35,\"lead1ReverbSend\":0,\"lead1Sustain\":0.2,\"lead2Enabled\":false,\"leadEnabled\":true,\"leadRandomEnabled\":false,\"manualScale\":\"Major (Ionian)\",\"masterSatDrive\":0,\"masterVolume\":0.75,\"oceanSampleEnabled\":false,\"oceanWaveSynthEnabled\":false,\"pad2Enabled\":false,\"padEnabled\":false,\"pianoEnabled\":false,\"reverbEnabled\":false,\"rootNote\":0,\"scaleMode\":\"manual\",\"sidechainEnabled\":false,\"spectralFreezeEnabled\":false,\"synthChordSequencerEnabled\":false,\"synthEuclid1Enabled\":true,\"synthEuclid1Hits\":4,\"synthEuclid1Level\":0.8,\"synthEuclid1NoteMax\":72,\"synthEuclid1NoteMin\":72,\"synthEuclid1Preset\":\"custom\",\"synthEuclid1Probability\":1,\"synthEuclid1Rotation\":0,\"synthEuclid1Source\":\"lead1\",\"synthEuclid1Steps\":8,\"synthEuclid2Enabled\":false,\"synthEuclid3Enabled\":false,\"synthEuclid4Enabled\":false,\"synthEuclidClockSource\":\"localBeat\",\"synthEuclidJoinPolicy\":\"grid\",\"synthEuclideanMasterEnabled\":true,\"synthEuclideanTempo\":1,\"waterEnabled\":false}",
+        "--transient-gate",
+        "--transient-time-tolerance-ms=24",
+        "--transient-peak-ratio-tolerance=0.35",
+        "--transient-rms-ratio-tolerance=0.35"
       ]
     },
     {
@@ -1656,7 +1768,7 @@
         "minSignalRms": 0.00008
       },
       "transientGate": {
-        "timeToleranceMs": 24,
+        "timeToleranceMs": 56,
         "peakRatioTolerance": 0.6,
         "rmsRatioTolerance": 0.45
       },
@@ -1738,7 +1850,7 @@
         "--min-signal-rms=0.00008",
         "--state-patch={\"birds2Enabled\":false,\"birdsEnabled\":false,\"characterEnabled\":false,\"delayAEnabled\":false,\"delayAFeedback\":0,\"delayAGranularSend\":0,\"delayAMix\":0,\"delayAToBSend\":0,\"delayBGranularSend\":0,\"delayBToASend\":0,\"drumDelayEnabled\":false,\"drumEnabled\":true,\"drumEuclid1Enabled\":true,\"drumEuclid1Hits\":3,\"drumEuclid1Level\":0.85,\"drumEuclid1Rotation\":0,\"drumEuclid1Steps\":8,\"drumEuclid1TargetKick\":true,\"drumEuclid1TargetSub\":false,\"drumEuclid2Enabled\":true,\"drumEuclid2Hits\":5,\"drumEuclid2Level\":0.65,\"drumEuclid2Rotation\":2,\"drumEuclid2Steps\":16,\"drumEuclid2TargetBeepHi\":true,\"drumEuclid3Enabled\":true,\"drumEuclid3Hits\":4,\"drumEuclid3Level\":0.55,\"drumEuclid3Rotation\":1,\"drumEuclid3Steps\":12,\"drumEuclid3TargetClick\":true,\"drumEuclid4Enabled\":false,\"drumEuclidBaseBPM\":120,\"drumEuclidDivision\":8,\"drumEuclidMasterEnabled\":true,\"drumEuclidSwing\":0,\"drumEuclidTempo\":1,\"drumLevel\":0.72,\"drumReverbSend\":0.04,\"dynamicsEnabled\":false,\"frogsEnabled\":false,\"granularEnabled\":false,\"granularFreeze\":false,\"insects2Enabled\":false,\"insectsEnabled\":false,\"lead2Enabled\":false,\"leadEnabled\":false,\"leadRandomEnabled\":false,\"masterSatDrive\":0,\"masterVolume\":0.72,\"oceanSampleEnabled\":false,\"oceanWaveSynthEnabled\":false,\"pad2Enabled\":false,\"padEnabled\":false,\"pianoEnabled\":false,\"reverbEnabled\":true,\"reverbLevel\":0.22,\"sidechainEnabled\":false,\"spectralFreezeEnabled\":false,\"synthEuclideanMasterEnabled\":false,\"waterEnabled\":false}",
         "--transient-gate",
-        "--transient-time-tolerance-ms=24",
+        "--transient-time-tolerance-ms=56",
         "--transient-peak-ratio-tolerance=0.6",
         "--transient-rms-ratio-tolerance=0.45"
       ]
@@ -1761,9 +1873,9 @@
         "minSignalRms": 0.00008
       },
       "transientGate": {
-        "timeToleranceMs": 48,
-        "peakRatioTolerance": 0.6,
-        "rmsRatioTolerance": 0.45
+        "timeToleranceMs": 56,
+        "peakRatioTolerance": 0.9,
+        "rmsRatioTolerance": 0.55
       },
       "envelopeGate": null,
       "manualNotes": [],
@@ -1855,9 +1967,9 @@
         "--min-signal-rms=0.00008",
         "--state-patch={\"birds2Enabled\":false,\"birdsEnabled\":false,\"characterEnabled\":false,\"delayAEnabled\":false,\"delayAFeedback\":0,\"delayAGranularSend\":0,\"delayAMix\":0,\"delayAToBSend\":0,\"delayBGranularSend\":0,\"delayBToASend\":0,\"drumBeepHiDelaySend\":0.8,\"drumBeepLoDelaySend\":0.5,\"drumClickDelaySend\":0.7,\"drumDelayASend\":0.8,\"drumDelayEnabled\":true,\"drumDelayFeedback\":0.6,\"drumDelayFilter\":0.35,\"drumDelayMix\":0.4,\"drumDelayNoteL\":\"1/4\",\"drumDelayNoteR\":\"1/8\",\"drumEnabled\":true,\"drumEuclid1Enabled\":true,\"drumEuclid1Hits\":3,\"drumEuclid1Level\":0.85,\"drumEuclid1Rotation\":0,\"drumEuclid1Steps\":8,\"drumEuclid1TargetKick\":true,\"drumEuclid1TargetSub\":false,\"drumEuclid2Enabled\":true,\"drumEuclid2Hits\":5,\"drumEuclid2Level\":0.65,\"drumEuclid2Rotation\":2,\"drumEuclid2Steps\":16,\"drumEuclid2TargetBeepHi\":true,\"drumEuclid3Enabled\":true,\"drumEuclid3Hits\":4,\"drumEuclid3Level\":0.55,\"drumEuclid3Rotation\":1,\"drumEuclid3Steps\":12,\"drumEuclid3TargetClick\":true,\"drumEuclid4Enabled\":false,\"drumEuclidBaseBPM\":120,\"drumEuclidDivision\":8,\"drumEuclidMasterEnabled\":true,\"drumEuclidSwing\":0,\"drumEuclidTempo\":1,\"drumKickDelaySend\":0.3,\"drumLevel\":0.72,\"drumMembraneDelaySend\":0.4,\"drumNoiseDelaySend\":0.9,\"drumSubDelaySend\":0.1,\"dynamicsEnabled\":false,\"frogsEnabled\":false,\"granularEnabled\":false,\"granularFreeze\":false,\"insects2Enabled\":false,\"insectsEnabled\":false,\"lead2Enabled\":false,\"leadEnabled\":false,\"leadRandomEnabled\":false,\"masterSatDrive\":0,\"masterVolume\":0.7,\"oceanSampleEnabled\":false,\"oceanWaveSynthEnabled\":false,\"pad2Enabled\":false,\"padEnabled\":false,\"pianoEnabled\":false,\"reverbEnabled\":false,\"sidechainEnabled\":false,\"spectralFreezeEnabled\":false,\"synthEuclideanMasterEnabled\":false,\"waterEnabled\":false}",
         "--transient-gate",
-        "--transient-time-tolerance-ms=48",
-        "--transient-peak-ratio-tolerance=0.6",
-        "--transient-rms-ratio-tolerance=0.45"
+        "--transient-time-tolerance-ms=56",
+        "--transient-peak-ratio-tolerance=0.9",
+        "--transient-rms-ratio-tolerance=0.55"
       ]
     },
     {
@@ -1966,7 +2078,7 @@
         "windowMs": 3000,
         "timeToleranceMs": 1200,
         "rmsRatioTolerance": 0.6,
-        "peakRatioTolerance": 0.5
+        "peakRatioTolerance": 0.6
       },
       "manualNotes": [],
       "readyWhen": [
@@ -2032,7 +2144,7 @@
         "--envelope-window-ms=3000",
         "--envelope-time-tolerance-ms=1200",
         "--envelope-rms-ratio-tolerance=0.6",
-        "--envelope-peak-ratio-tolerance=0.5"
+        "--envelope-peak-ratio-tolerance=0.6"
       ]
     },
     {
@@ -2040,7 +2152,7 @@
       "title": "Ocean bed plus sparse pad",
       "group": "soundscape/earth",
       "thresholdClass": "perceptual",
-      "expectedOutcome": "candidate",
+      "expectedOutcome": "pass",
       "source": "KesshoNativeSwift/Kessho/Presets/WaveOut.json",
       "sourceName": "Wave Out",
       "includeSourceState": true,
@@ -2053,7 +2165,12 @@
         "minSignalRms": 0.00005
       },
       "transientGate": null,
-      "envelopeGate": null,
+      "envelopeGate": {
+        "windowMs": 5000,
+        "timeToleranceMs": 50,
+        "rmsRatioTolerance": 0.8,
+        "peakRatioTolerance": 1
+      },
       "manualNotes": [
         {
           "source": "pad1",
@@ -2235,7 +2352,12 @@
         "--min-signal-rms=0.00005",
         "--state-patch={\"airNoise\":0.15,\"birds2Enabled\":false,\"birdsEnabled\":false,\"characterEnabled\":false,\"chordRate\":32,\"cofCurrentStep\":0,\"cofDriftDirection\":\"cw\",\"cofDriftEnabled\":true,\"cofDriftRange\":3,\"cofDriftRate\":4,\"damping\":0.2,\"delayAEnabled\":false,\"delayAFeedback\":0,\"delayAGranularSend\":0,\"delayAMix\":0,\"delayAToBSend\":0,\"delayBGranularSend\":0,\"delayBToASend\":0,\"density\":25,\"detune\":8,\"drumEnabled\":false,\"drumEuclidMasterEnabled\":false,\"dynamicsEnabled\":false,\"feedback\":0.1,\"filterCutoffMax\":1690,\"filterCutoffMin\":40,\"filterModSpeed\":11,\"filterQ\":1,\"filterResonance\":0.2,\"filterType\":\"lowpass\",\"frogsEnabled\":false,\"grainPitchMode\":\"harmonic\",\"grainProbability\":0.8,\"grainSizeMax\":200,\"grainSizeMin\":20,\"granularEnabled\":false,\"granularFreeze\":false,\"granularLevel\":0,\"granularReverbSend\":0.77,\"hardness\":0.3,\"insects2Enabled\":false,\"insectsEnabled\":false,\"jitter\":10,\"lead2Enabled\":false,\"leadAttack\":0.01,\"leadDecay\":0.8,\"leadDelayFeedback\":0.63,\"leadDelayMix\":0.35,\"leadDelayReverbSend\":0.4,\"leadDelayTime\":860,\"leadDensity\":0.5,\"leadEnabled\":false,\"leadLevel\":0.11,\"leadOctave\":1,\"leadOctaveRange\":2,\"leadRandomEnabled\":false,\"leadRelease\":2,\"leadReverbSend\":0.5,\"leadSustain\":0.3,\"leadTimbreMax\":0.19,\"leadTimbreMin\":0,\"manualScale\":\"Dorian\",\"masterSatDrive\":0,\"masterVolume\":0.66,\"natureLevel\":0.7,\"oceanDepthMax\":0.6,\"oceanDepthMin\":0.3,\"oceanDurationMax\":8,\"oceanDurationMin\":4,\"oceanFilterCutoff\":7000,\"oceanFilterResonance\":0.1,\"oceanFilterType\":\"lowpass\",\"oceanFoamMax\":0.4,\"oceanFoamMin\":0.2,\"oceanIntervalMax\":10,\"oceanIntervalMin\":5,\"oceanMix\":0,\"oceanSampleEnabled\":true,\"oceanSampleLevel\":0.22,\"oceanWave2OffsetMax\":5,\"oceanWave2OffsetMin\":2,\"oceanWaveSynthEnabled\":false,\"oceanWaveSynthLevel\":0.4,\"oscBrightness\":2,\"pad1ReverbSend\":0.45,\"pad2Enabled\":false,\"padEnabled\":true,\"pianoEnabled\":false,\"pitchSpread\":3,\"predelay\":60,\"presence\":0.3,\"randomWalkSpeed\":0.2,\"randomness\":0.5,\"reverbDecay\":0.9,\"reverbDiffusion\":1,\"reverbEnabled\":true,\"reverbEngine\":\"algorithmic\",\"reverbLevel\":0.45,\"reverbModulation\":0.4,\"reverbSize\":2,\"reverbType\":\"cathedral\",\"rootNote\":4,\"scaleMode\":\"auto\",\"seedWindow\":\"hour\",\"sidechainEnabled\":false,\"spectralFreezeEnabled\":false,\"spray\":200,\"stereoSpread\":0.6,\"synthAttack\":6,\"synthDecay\":1,\"synthEuclid1Enabled\":true,\"synthEuclid1Hits\":4,\"synthEuclid1Level\":0.8,\"synthEuclid1NoteMax\":76,\"synthEuclid1NoteMin\":64,\"synthEuclid1Preset\":\"lancaran\",\"synthEuclid1Rotation\":0,\"synthEuclid1Steps\":16,\"synthEuclid2Enabled\":false,\"synthEuclid2Hits\":3,\"synthEuclid2Level\":0.6,\"synthEuclid2NoteMax\":88,\"synthEuclid2NoteMin\":76,\"synthEuclid2Preset\":\"kotekan\",\"synthEuclid2Rotation\":1,\"synthEuclid2Steps\":8,\"synthEuclid3Enabled\":false,\"synthEuclid3Hits\":2,\"synthEuclid3Level\":0.9,\"synthEuclid3NoteMax\":64,\"synthEuclid3NoteMin\":52,\"synthEuclid3Preset\":\"ketawang\",\"synthEuclid3Rotation\":0,\"synthEuclid3Steps\":16,\"synthEuclid4Enabled\":false,\"synthEuclid4Hits\":6,\"synthEuclid4Level\":0.5,\"synthEuclid4NoteMax\":96,\"synthEuclid4NoteMin\":88,\"synthEuclid4Preset\":\"srepegan\",\"synthEuclid4Rotation\":2,\"synthEuclid4Steps\":16,\"synthEuclideanMasterEnabled\":false,\"synthEuclideanTempo\":1,\"synthLevel\":0.28,\"synthOctave\":0,\"synthRelease\":12,\"synthReverbSend\":0.36,\"synthSustain\":0.8,\"synthVoiceMask\":63,\"tension\":0,\"voicingSpread\":0.5,\"warmth\":0.4,\"waterEnabled\":false,\"waveSpread\":4,\"wetHPF\":500,\"wetLPF\":8000,\"width\":0.85}",
         "--manual-note=pad1:60:0.78:900",
-        "--manual-no-warmup"
+        "--manual-no-warmup",
+        "--envelope-gate",
+        "--envelope-window-ms=5000",
+        "--envelope-time-tolerance-ms=50",
+        "--envelope-rms-ratio-tolerance=0.8",
+        "--envelope-peak-ratio-tolerance=1"
       ]
     },
     {

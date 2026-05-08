@@ -26,12 +26,13 @@ import {
   type Lead4opFMPreset,
 } from './lead4opfm';
 import { resolveDrumEuclidPatternParams, seqEuclidean } from './drumSequencer';
+import type { ClockDivision } from './drumSeqTypes';
 import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from './outputTrims';
 import { computeGranularMacroModel } from './granularMacroModel';
 import { getPadPreset, morphPadPresets, PAD1_TO_PAD2_KEY } from './padPresets';
-import { createHarmonyState, type HarmonyParams } from './harmony';
+import { createHarmonyState, getEffectiveTension, type HarmonyParams, type HarmonyState } from './harmony';
 import { createRng, getUtcBucket } from './rng';
-import { midiToFreq } from './scales';
+import { getScaleNotesInRange, midiToFreq } from './scales';
 import { getEffectiveSequencerBpm, getPhraseDurationForClockSource } from './transport';
 import { morphWaterPresets, type WaterPresetState } from './waterPresets';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
@@ -91,6 +92,7 @@ type PreviewSourceConfig = {
   configKey: string;
   triggerInitial?: boolean;
   initialChordLeadSeconds?: number;
+  initialStartDelaySeconds?: number;
 };
 
 type CoreAuxSourceSlot = 'lead' | 'drum' | 'soundscapes';
@@ -101,6 +103,25 @@ type PreviewSourceGroup = {
     slot: CoreAuxSourceSlot;
     config: PreviewSourceConfig | null;
   }>;
+};
+
+type CoreSynthEuclidGeneratedNote = PreviewNote & {
+  source: string;
+  midi: number;
+  laneIndex: number;
+};
+
+type CoreSynthEuclidPreview = {
+  padNotes: CoreSynthEuclidGeneratedNote[];
+  leadNotes: CoreSynthEuclidGeneratedNote[];
+  loopSeconds: number;
+  initialStartDelaySeconds: number;
+  noteKey: string;
+};
+
+type CoreSynthEuclidRuntime = {
+  clockDivs: readonly ClockDivision[];
+  swings: readonly number[];
 };
 
 type ReverbModuleConfig = {
@@ -262,6 +283,9 @@ const LEAD_FM_MODULE_PARAM_COUNT = 80;
 const DRUM_MODULE_PARAM_COUNT = 126;
 const CORE_DRUM_DRY_TRIM = 1.0;
 const CORE_DRUM_INITIAL_CHORD_LEAD_SECONDS = 640 / 48000;
+const CORE_SYNTH_LANE_INDICES = [0, 1, 2, 3] as const;
+const CORE_SYNTH_EUCLID_CLOCK_DIVS: ClockDivision[] = ['1/8', '1/16', '1/8T', '1/4'];
+const CORE_SYNTH_EUCLID_SWINGS = [0, 0, 0, 0] as const;
 const SOUNDSCAPES_MODULE_PARAM_COUNT = 96;
 const GRANULAR_VOICE_COUNT = 4;
 const GRANULAR_VOICE_PARAM_COUNT = 25;
@@ -289,6 +313,15 @@ const DRUM_VOICE_INDEX: Record<CoreDrumVoice, number> = {
   noise: 5,
   membrane: 6,
 };
+const DRUM_DELAY_SEND_KEYS = [
+  'drumSubDelaySend',
+  'drumKickDelaySend',
+  'drumClickDelaySend',
+  'drumBeepHiDelaySend',
+  'drumBeepLoDelaySend',
+  'drumNoiseDelaySend',
+  'drumMembraneDelaySend',
+] as const;
 
 const DRUM_PARAM_INDEX = {
   sub: 0,
@@ -328,6 +361,13 @@ const SOUNDSCAPES_PARAM_INDEX = {
   insects2Seed: 94,
   outputSelect: 95,
 } as const;
+
+function getCoreDrumDelaySendProfile(state: Record<string, unknown>): number {
+  const sends = DRUM_DELAY_SEND_KEYS.map((key) => boundedNumber(state[key], 0, 0, 1));
+  const average = sends.reduce((sum, value) => sum + value, 0) / sends.length;
+  const peak = Math.max(...sends, 0);
+  return boundedNumber(peak * 0.5 + average * 0.5, 0, 0, 1);
+}
 
 const LEAD_FM_PARAM_INDEX = {
   algorithm: 0,
@@ -729,6 +769,119 @@ function padStateKey(baseKey: string, padIndex: number): string {
   return padIndex === 0 ? baseKey : PAD1_TO_PAD2_KEY[baseKey] ?? baseKey;
 }
 
+function clockDivToSeconds(clockDiv: ClockDivision, beatDuration: number): number {
+  switch (clockDiv) {
+    case '1/4': return beatDuration;
+    case '1/4T': return beatDuration * (2 / 3);
+    case '1/8': return beatDuration / 2;
+    case '1/8T': return beatDuration / 3;
+    case '1/16': return beatDuration / 4;
+    case '1/16T': return beatDuration / 6;
+    case '1/32': return beatDuration / 8;
+    case '1/32T': return beatDuration / 12;
+    case '1/64': return beatDuration / 16;
+    default: return beatDuration / 2;
+  }
+}
+
+function clonePreviewNotes(notes: readonly PreviewNote[]): PreviewNote[] {
+  return notes.map((note) => ({ ...note }));
+}
+
+function coreSynthEuclidSource(state: Record<string, unknown>, lane: 1 | 2 | 3 | 4): string {
+  const value = state[`synthEuclid${lane}Source`];
+  return typeof value === 'string' ? value : 'lead';
+}
+
+function isCoreSynthPadSource(source: string): boolean {
+  return /^synth[1-6]$/.test(source);
+}
+
+function coreEuclideanUsesPadSource(state: Record<string, unknown>): boolean {
+  if (!booleanValue(state.synthEuclideanMasterEnabled, false)) return false;
+  return CORE_SYNTH_LANE_INDICES.some((laneIndex) => {
+    const lane = (laneIndex + 1) as 1 | 2 | 3 | 4;
+    return booleanValue(state[`synthEuclid${lane}Enabled`], laneIndex === 0) &&
+      isCoreSynthPadSource(coreSynthEuclidSource(state, lane));
+  });
+}
+
+function coreEuclideanUsesLead1Source(state: Record<string, unknown>): boolean {
+  if (!booleanValue(state.synthEuclideanMasterEnabled, false)) return false;
+  return CORE_SYNTH_LANE_INDICES.some((laneIndex) => {
+    const lane = (laneIndex + 1) as 1 | 2 | 3 | 4;
+    const source = coreSynthEuclidSource(state, lane);
+    return booleanValue(state[`synthEuclid${lane}Enabled`], laneIndex === 0) &&
+      (source === 'lead' || source === 'lead1');
+  });
+}
+
+function coreEuclideanUsesLead2Source(state: Record<string, unknown>): boolean {
+  if (!booleanValue(state.synthEuclideanMasterEnabled, false)) return false;
+  return CORE_SYNTH_LANE_INDICES.some((laneIndex) => {
+    const lane = (laneIndex + 1) as 1 | 2 | 3 | 4;
+    return booleanValue(state[`synthEuclid${lane}Enabled`], laneIndex === 0) &&
+      coreSynthEuclidSource(state, lane) === 'lead2';
+  });
+}
+
+function coreIsLead1RouteActive(state: Record<string, unknown>): boolean {
+  return booleanValue(state.leadEnabled, false) || coreEuclideanUsesLead1Source(state);
+}
+
+function coreIsLead2RouteActive(state: Record<string, unknown>): boolean {
+  return booleanValue(state.lead2Enabled, false) || coreEuclideanUsesLead2Source(state);
+}
+
+function coreSynthEuclidPadVoiceMask(state: Record<string, unknown>): number {
+  if (!booleanValue(state.synthEuclideanMasterEnabled, false)) return 0;
+  let mask = 0;
+  for (const laneIndex of CORE_SYNTH_LANE_INDICES) {
+    const lane = (laneIndex + 1) as 1 | 2 | 3 | 4;
+    if (!booleanValue(state[`synthEuclid${lane}Enabled`], laneIndex === 0)) continue;
+    const source = coreSynthEuclidSource(state, lane);
+    if (!isCoreSynthPadSource(source)) continue;
+    const voiceIndex = boundedInteger(Number.parseInt(source.replace('synth', ''), 10), 1, 1, PAD_VOICE_COUNT) - 1;
+    mask |= 1 << voiceIndex;
+  }
+  return mask;
+}
+
+function pickCoreChordWeightedNote(
+  rng: () => number,
+  availableNotes: number[],
+  chordMidiNotes: number[] | undefined,
+  chordBias = 0.7,
+): number {
+  if (availableNotes.length === 0) return 60;
+  if (!chordMidiNotes || chordMidiNotes.length === 0 || availableNotes.length <= 1) {
+    return availableNotes[Math.floor(rng() * availableNotes.length)] ?? availableNotes[0] ?? 60;
+  }
+  const chordPitchClasses = new Set(chordMidiNotes.map((note) => ((note % 12) + 12) % 12));
+  const chordTones = availableNotes.filter((note) => chordPitchClasses.has(((note % 12) + 12) % 12));
+  const passingTones = availableNotes.filter((note) => !chordPitchClasses.has(((note % 12) + 12) % 12));
+  if (chordTones.length === 0) {
+    return availableNotes[Math.floor(rng() * availableNotes.length)] ?? availableNotes[0] ?? 60;
+  }
+  if (passingTones.length === 0 || rng() < chordBias) {
+    return chordTones[Math.floor(rng() * chordTones.length)] ?? chordTones[0] ?? 60;
+  }
+  return passingTones[Math.floor(rng() * passingTones.length)] ?? passingTones[0] ?? 60;
+}
+
+function coreSynthEuclidInitialStartDelaySeconds(
+  state: Record<string, unknown>,
+  bpm: number,
+  laneStepSeconds: number,
+): number {
+  if (state.synthEuclidJoinPolicy === 'grid') {
+    return laneStepSeconds;
+  }
+  const beatSeconds = 60 / Math.max(1, bpm);
+  const beatsPerBar = boundedNumber(state.transportBeatsPerBar, 4, 1, 16);
+  return beatSeconds * beatsPerBar;
+}
+
 function morphedPadParams(sliderState: SliderState, padIndex: number): Record<string, number | string | boolean> {
   const state = sliderState as unknown as Record<string, unknown>;
   const scope = padIndex === 0 ? 'pad1' : 'pad2';
@@ -785,14 +938,14 @@ function getCorePreviewHarmonyParams(sliderState: SliderState): Partial<HarmonyP
   };
 }
 
-function createInitialPadPreviewFrequencies(sliderState: SliderState): number[] {
+function createCorePreviewHarmonyState(sliderState: SliderState): HarmonyState {
   const seedWindow = sliderState.seedWindow === 'day' ? 'day' : 'hour';
   const bucket = getUtcBucket(seedWindow);
   const phraseSeconds = getPhraseDurationForClockSource(
     sliderState,
     sliderState.harmonyClockSource ?? 'globalPhrase',
   );
-  const harmonyState = createHarmonyState(
+  return createHarmonyState(
     `${bucket}|E_ROOT`,
     boundedNumber(sliderState.tension, 0.3, 0, 1),
     boundedNumber(sliderState.chordRate, 32, 1, 128),
@@ -804,6 +957,10 @@ function createInitialPadPreviewFrequencies(sliderState: SliderState): number[] 
     phraseSeconds,
     getCorePreviewHarmonyParams(sliderState),
   );
+}
+
+function createInitialPadPreviewFrequencies(sliderState: SliderState): number[] {
+  const harmonyState = createCorePreviewHarmonyState(sliderState);
   const octaveMultiplier = 2 ** boundedInteger(sliderState.synthOctave, 0, -2, 2);
   return harmonyState.currentChord.frequencies.map((frequency) => frequency * octaveMultiplier);
 }
@@ -828,7 +985,9 @@ function createPadPreviewChords(sliderState: SliderState, velocity: number): Pre
   const pad2Assign = booleanValue(state.pad2Enabled, false)
     ? boundedInteger(state.pad2VoiceAssign, 0, 0, 63)
     : 0;
-  const voiceMask = Math.max(1, boundedInteger(state.synthVoiceMask, 63, 1, 63) & ~pad2Assign);
+  const euclidVoiceMask = coreSynthEuclidPadVoiceMask(state);
+  const voiceMask = boundedInteger(state.synthVoiceMask, 63, 1, 63) & ~pad2Assign & ~euclidVoiceMask;
+  if (voiceMask === 0) return [[]];
   const enabledFrequencies = frequencies
     .slice(0, 6)
     .filter((_, index) => (voiceMask & (1 << index)) !== 0);
@@ -853,19 +1012,182 @@ function createPadPreviewChords(sliderState: SliderState, velocity: number): Pre
   return [notes];
 }
 
-function createPadPreviewSource(sliderState: SliderState): PreviewSourceConfig | null {
+function createEmptySynthEuclidPreview(): CoreSynthEuclidPreview {
+  return {
+    padNotes: [],
+    leadNotes: [],
+    loopSeconds: 0,
+    initialStartDelaySeconds: 0,
+    noteKey: 'synth-euclid:off',
+  };
+}
+
+function chooseCoreSynthEuclidMidi(
+  sliderState: SliderState,
+  harmonyState: HarmonyState,
+  rng: () => number,
+  laneIndex: number,
+): number {
   const state = sliderState as unknown as Record<string, unknown>;
-  if (state.synthChordSequencerEnabled === false) return null;
+  const lane = (laneIndex + 1) as 1 | 2 | 3 | 4;
+  const noteMin = boundedInteger(state[`synthEuclid${lane}NoteMin`], laneIndex === 1 ? 76 : laneIndex === 2 ? 52 : laneIndex === 3 ? 88 : 64, 24, 108);
+  const noteMax = boundedInteger(state[`synthEuclid${lane}NoteMax`], laneIndex === 1 ? 88 : laneIndex === 2 ? 64 : laneIndex === 3 ? 96 : 76, 24, 108);
+  const low = Math.min(noteMin, noteMax);
+  const high = Math.max(noteMin, noteMax);
+  const scale = harmonyState.scaleFamily;
+  const availableNotes = scale
+    ? getScaleNotesInRange(scale, low, high, harmonyState.effectiveRoot)
+    : [];
+  const notes = availableNotes.length > 0
+    ? availableNotes
+    : [Math.round((low + high) * 0.5)];
+  const synthLeadTension = getEffectiveTension(
+    boundedNumber(state.tension, 0.3, 0, 1),
+    state.synthEuclidTensionMode === 'locked' || state.synthEuclidTensionMode === 'bypass' ? state.synthEuclidTensionMode : 'follow',
+    boundedNumber(state.synthEuclidTensionValue, 0, -0.5, 0.5),
+  );
+  const chordBias = 0.9 - (synthLeadTension < 0 ? 0 : synthLeadTension) * 0.4;
+  return clamp(
+    pickCoreChordWeightedNote(rng, notes, harmonyState.currentChord?.midiNotes, chordBias),
+    24,
+    108,
+  );
+}
+
+function createSynthEuclidPreview(
+  sliderState: SliderState,
+  runtime: CoreSynthEuclidRuntime,
+): CoreSynthEuclidPreview {
+  const state = sliderState as unknown as Record<string, unknown>;
+  if (!booleanValue(state.synthEuclideanMasterEnabled, false)) return createEmptySynthEuclidPreview();
+
+  const seedWindow = sliderState.seedWindow === 'day' ? 'day' : 'hour';
+  const bucket = getUtcBucket(seedWindow);
+  const harmonyState = createCorePreviewHarmonyState(sliderState);
+  const bpm = boundedNumber(getEffectiveSequencerBpm(sliderState), 120, 40, 300);
+  const tempo = boundedNumber(state.synthEuclideanTempo, 1, 0.25, 12);
+  const beatSeconds = 60 / (bpm * tempo);
+  const rng = createRng(`${bucket}|E_ROOT|core-synth-euclid`);
+  const pad2Assign = booleanValue(state.pad2Enabled, false)
+    ? boundedInteger(state.pad2VoiceAssign, 0, 0, 63)
+    : 0;
+  const padNotes: CoreSynthEuclidGeneratedNote[] = [];
+  const leadNotes: CoreSynthEuclidGeneratedNote[] = [];
+  const laneCycleEndSeconds: number[] = [];
+  let initialStartDelaySeconds = Number.POSITIVE_INFINITY;
+
+  for (const laneIndex of CORE_SYNTH_LANE_INDICES) {
+    const lane = (laneIndex + 1) as 1 | 2 | 3 | 4;
+    if (!booleanValue(state[`synthEuclid${lane}Enabled`], laneIndex === 0)) continue;
+
+    const source = coreSynthEuclidSource(state, lane);
+    if (!isCoreSynthPadSource(source) && source !== 'lead' && source !== 'lead1' && source !== 'lead2') continue;
+
+    const patternParams = resolveDrumEuclidPatternParams(
+      typeof state[`synthEuclid${lane}Preset`] === 'string' ? String(state[`synthEuclid${lane}Preset`]) : 'custom',
+      boundedInteger(state[`synthEuclid${lane}Steps`], laneIndex === 0 ? 16 : 8, 1, 64),
+      boundedInteger(state[`synthEuclid${lane}Hits`], laneIndex === 0 ? 4 : laneIndex === 1 ? 3 : laneIndex === 2 ? 2 : 6, 0, 64),
+      boundedInteger(state[`synthEuclid${lane}Rotation`], 0, 0, 63),
+    );
+    const pattern = seqEuclidean(patternParams.steps, patternParams.hits, patternParams.rotation);
+    const clockDiv = runtime.clockDivs[laneIndex] ?? CORE_SYNTH_EUCLID_CLOCK_DIVS[laneIndex] ?? '1/8';
+    const stepSeconds = clockDivToSeconds(clockDiv, beatSeconds);
+    const laneInitialStartDelaySeconds = coreSynthEuclidInitialStartDelaySeconds(state, bpm, stepSeconds);
+    initialStartDelaySeconds = Math.min(initialStartDelaySeconds, laneInitialStartDelaySeconds);
+    const swing = clamp(finiteNumber(runtime.swings[laneIndex], 0), 0, 1);
+    const laneLevel = boundedNumber(state[`synthEuclid${lane}Level`], laneIndex === 1 ? 0.6 : laneIndex === 3 ? 0.5 : 0.8, 0, 1);
+    const probability = boundedNumber(state[`synthEuclid${lane}Probability`], 1, 0, 1);
+    let stepTime = 0;
+
+    for (let step = 0; step < pattern.length; step += 1) {
+      if (pattern[step] && rng() <= probability) {
+        const midi = chooseCoreSynthEuclidMidi(sliderState, harmonyState, rng, laneIndex);
+        if (isCoreSynthPadSource(source)) {
+          const voiceIndex = boundedInteger(Number.parseInt(source.replace('synth', ''), 10), 1, 1, PAD_VOICE_COUNT) - 1;
+          const isPad2 = (pad2Assign & (1 << voiceIndex)) !== 0;
+          const attack = boundedNumber(isPad2 ? state.pad2Attack : state.synthAttack, 0.1, 0, 10);
+          const decay = boundedNumber(isPad2 ? state.pad2Decay : state.synthDecay, 0.3, 0, 10);
+          const holdSeconds = attack + decay + Math.max(0.1, (attack + decay) * 0.5);
+          padNotes.push({
+            source,
+            midi,
+            laneIndex,
+            frequency: midiToFreq(midi),
+            velocity: laneLevel,
+            route: voiceIndex + (isPad2 ? PAD_VOICE_COUNT : 0),
+            delaySeconds: laneInitialStartDelaySeconds + stepTime,
+            holdSeconds,
+          });
+        } else {
+          const leadSource = source === 'lead2' ? 'lead2' : 'lead1';
+          const { holdSeconds } = createLeadMorphedParams(sliderState, leadSource);
+          leadNotes.push({
+            source,
+            midi,
+            laneIndex,
+            frequency: midiToFreq(midi),
+            velocity: laneLevel,
+            route: leadSource === 'lead2' ? 1 : 0,
+            delaySeconds: laneInitialStartDelaySeconds + stepTime,
+            holdSeconds,
+          });
+        }
+      }
+
+      const swingOffset = step % 2 === 1 ? stepSeconds * swing * 0.5 : 0;
+      stepTime += stepSeconds + swingOffset;
+    }
+
+    laneCycleEndSeconds.push(laneInitialStartDelaySeconds + stepTime);
+  }
+
+  const allNotes = [...padNotes, ...leadNotes];
+  const hasNotes = allNotes.length > 0;
+  const startDelay = hasNotes && Number.isFinite(initialStartDelaySeconds)
+    ? Math.max(0, initialStartDelaySeconds)
+    : 0;
+  if (startDelay > 0) {
+    for (const note of allNotes) {
+      note.delaySeconds = Math.max(0, note.delaySeconds - startDelay);
+    }
+  }
+  padNotes.sort((left, right) => left.delaySeconds - right.delaySeconds || left.route - right.route || left.laneIndex - right.laneIndex);
+  leadNotes.sort((left, right) => left.delaySeconds - right.delaySeconds || left.route - right.route || left.laneIndex - right.laneIndex);
+  const loopSeconds = hasNotes
+    ? Math.max(beatSeconds, ...laneCycleEndSeconds.map((value) => Math.max(0, value - startDelay)))
+    : 0;
+  const noteKey = allNotes
+    .map((note) => `${note.source}:${note.route}:${note.midi}:${note.delaySeconds.toFixed(4)}:${note.velocity.toFixed(3)}:${note.holdSeconds?.toFixed(4) ?? '0'}`)
+    .join('|');
+
+  return {
+    padNotes,
+    leadNotes,
+    loopSeconds,
+    initialStartDelaySeconds: startDelay,
+    noteKey: noteKey.length > 0 ? `synth-euclid:${noteKey}` : 'synth-euclid:empty',
+  };
+}
+
+function createPadPreviewSource(
+  sliderState: SliderState,
+  synthEuclid: CoreSynthEuclidPreview,
+): PreviewSourceConfig | null {
+  const state = sliderState as unknown as Record<string, unknown>;
+  const chordSequencerEnabled = state.synthChordSequencerEnabled !== false;
+  const padEuclidNotes = synthEuclid.padNotes.map(({ source: _source, midi: _midi, laneIndex: _laneIndex, ...note }) => note);
 
   const pad1Enabled = booleanValue(state.padEnabled, true);
   const pad2Enabled = booleanValue(state.pad2Enabled, false);
-  const pad1Level = pad1Enabled
+  const padEuclidUsesPad1 = padEuclidNotes.some((note) => note.route < PAD_VOICE_COUNT);
+  const padEuclidUsesPad2 = padEuclidNotes.some((note) => note.route >= PAD_VOICE_COUNT);
+  const pad1Level = pad1Enabled || padEuclidUsesPad1
     ? finiteNumber(state.synthLevel, 0.6) * ENGINE_TRIMS.pad
     : 0;
-  const pad2Level = pad2Enabled
+  const pad2Level = pad2Enabled || padEuclidUsesPad2
     ? finiteNumber(state.pad2Level, 0.6) * ENGINE_TRIMS.pad
     : 0;
-  const hasPadSource = pad1Enabled || pad2Enabled;
+  const hasPadSource = pad1Enabled || pad2Enabled || padEuclidNotes.length > 0;
 
   if (!hasPadSource) return null;
 
@@ -876,17 +1198,31 @@ function createPadPreviewSource(sliderState: SliderState): PreviewSourceConfig |
   params[PAD_PARAMS_PER_PAD * 2 + 1] = 0;
   const postChain = createPadPostChainConfig(sliderState);
 
-  const chords = createPadPreviewChords(sliderState, 1);
-  const notes = chords[0] ?? [];
+  const chordNotes = chordSequencerEnabled
+    ? (createPadPreviewChords(sliderState, 1)[0] ?? [])
+    : [];
+  const notes = [...chordNotes, ...padEuclidNotes];
+  if (notes.length === 0) return null;
+  const chordSeconds = padEuclidNotes.length > 0 && synthEuclid.loopSeconds > 0
+    ? synthEuclid.loopSeconds
+    : boundedNumber(state.chordRate, 32, 1, 128);
+  const chords = [notes, clonePreviewNotes(notes)];
   const noteKey = chords
     .map((chord) => chord
-      .map((note) => `${note.route}:${note.frequency.toFixed(3)}:${note.velocity.toFixed(3)}:${note.delaySeconds.toFixed(4)}`)
+      .map((note) => `${note.route}:${note.frequency.toFixed(3)}:${note.velocity.toFixed(3)}:${note.delaySeconds.toFixed(4)}:${note.holdSeconds?.toFixed(4) ?? '0'}`)
       .join('|'))
     .join('>');
   const postKey = Object.values(postChain)
     .map((value) => Math.round(value * 1000) / 1000)
     .join(',');
-  const configKey = `${noteKey}:${params.map((value) => Math.round(value * 1000) / 1000).join(',')}:${postKey}`;
+  const configKey = [
+    noteKey,
+    synthEuclid.noteKey,
+    synthEuclid.initialStartDelaySeconds.toFixed(4),
+    chordSeconds.toFixed(4),
+    params.map((value) => Math.round(value * 1000) / 1000).join(','),
+    postKey,
+  ].join(':');
 
   return {
     enabled: true,
@@ -896,9 +1232,10 @@ function createPadPreviewSource(sliderState: SliderState): PreviewSourceConfig |
     dryGain: 1,
     notes,
     chords,
-    chordSeconds: 3.5,
-    noteKey,
+    chordSeconds,
+    noteKey: `${noteKey}:${synthEuclid.noteKey}`,
     configKey,
+    initialStartDelaySeconds: padEuclidNotes.length > 0 ? synthEuclid.initialStartDelaySeconds : 0,
   };
 }
 
@@ -919,6 +1256,23 @@ function pickManualPadVoice(source: 'pad1' | 'pad2', sliderState: SliderState, c
   const pool = getManualPadVoicePool(source, sliderState);
   const normalizedCursor = ((Math.trunc(cursor) % pool.length) + pool.length) % pool.length;
   return pool[normalizedCursor] ?? pool[0] ?? 0;
+}
+
+function applyManualPadVoiceRoute(
+  sliderState: SliderState,
+  source: 'pad1' | 'pad2',
+  voiceIndex: number,
+): SliderState {
+  const state = { ...(sliderState as unknown as Record<string, unknown>) };
+  const voiceBit = 1 << clamp(voiceIndex, 0, PAD_VOICE_COUNT - 1);
+  if (source === 'pad2') {
+    state.pad2Enabled = true;
+    state.pad2VoiceAssign = (boundedInteger(state.pad2VoiceAssign, 0, 0, 63) | voiceBit) & 63;
+  } else {
+    state.padEnabled = true;
+    state.pad2VoiceAssign = boundedInteger(state.pad2VoiceAssign, 0, 0, 63) & ~voiceBit;
+  }
+  return state as unknown as SliderState;
 }
 
 function createManualPadSourceConfig(
@@ -986,6 +1340,68 @@ function createManualPadSourceConfig(
       triggerInitial: false,
     },
     triggerNote,
+  };
+}
+
+function createManualPadBatchSourceConfig(
+  sliderState: SliderState,
+  source: 'pad1' | 'pad2',
+  notes: ManualSynthNoteOptions[],
+  voiceIndices: number[],
+): { config: PreviewSourceConfig; triggerNotes: PreviewNote[] } {
+  const effectiveState = getEffectivePadState(sliderState);
+  let routedState = effectiveState;
+  for (const voiceIndex of voiceIndices) {
+    routedState = applyManualPadVoiceRoute(routedState, source, voiceIndex);
+  }
+
+  const state = routedState as unknown as Record<string, unknown>;
+  const pad1Enabled = booleanValue(state.padEnabled, true);
+  const pad2Enabled = booleanValue(state.pad2Enabled, false);
+  const pad1Level = pad1Enabled
+    ? finiteNumber(state.synthLevel, 0.6) * ENGINE_TRIMS.pad
+    : 0;
+  const pad2Level = pad2Enabled
+    ? finiteNumber(state.pad2Level, 0.6) * ENGINE_TRIMS.pad
+    : 0;
+  const params = Array.from({ length: PAD_MODULE_PARAM_COUNT }, () => 0);
+  writePadParamsForPad(params, routedState, 0, pad1Level);
+  writePadParamsForPad(params, routedState, 1, pad2Level);
+  params[PAD_PARAMS_PER_PAD * 2] = boundedNumber(state.pad1ReverbSend ?? state.synthReverbSend, 0.1, 0, 1);
+  params[PAD_PARAMS_PER_PAD * 2 + 1] = 0;
+  const postChain = createPadPostChainConfig(routedState);
+  const triggerNotes = notes.map((note, index) => {
+    const voiceIndex = clamp(voiceIndices[index] ?? 0, 0, PAD_VOICE_COUNT - 1);
+    const safeMidi = boundedInteger(note.midi, 60, 24, 108);
+    return {
+      frequency: midiToFreq(safeMidi),
+      velocity: clamp(finiteNumber(note.velocity, 0.82), 0.05, 1),
+      route: source === 'pad2' ? voiceIndex + PAD_VOICE_COUNT : voiceIndex,
+      delaySeconds: 0,
+      holdSeconds: note.durationMs === undefined ? 0 : Math.max(80, note.durationMs) / 1000,
+    };
+  });
+  const noteKey = `manual:${source}:batch:${voiceIndices.map((voiceIndex) => clamp(voiceIndex, 0, PAD_VOICE_COUNT - 1)).join(',')}`;
+  const postKey = Object.values(postChain)
+    .map((value) => Math.round(value * 1000) / 1000)
+    .join(',');
+  const configKey = `${noteKey}:${params.map((value) => Math.round(value * 1000) / 1000).join(',')}:${postKey}`;
+
+  return {
+    config: {
+      enabled: true,
+      source: 'pad',
+      params,
+      ...postChain,
+      dryGain: 1,
+      notes: [],
+      chords: [[]],
+      chordSeconds: 3600,
+      noteKey,
+      configKey,
+      triggerInitial: false,
+    },
+    triggerNotes,
   };
 }
 
@@ -1248,6 +1664,88 @@ function createManualLeadSourceConfig(
   };
 }
 
+function createLeadEuclidPreviewSource(
+  sliderState: SliderState,
+  synthEuclid: CoreSynthEuclidPreview,
+): PreviewSourceConfig | null {
+  const state = sliderState as unknown as Record<string, unknown>;
+  const leadNotes = synthEuclid.leadNotes.map(({ source: _source, midi: _midi, laneIndex: _laneIndex, ...note }) => note);
+  if (leadNotes.length === 0) return null;
+
+  const usesLead1 = leadNotes.some((note) => note.route === 0);
+  const usesLead2 = leadNotes.some((note) => note.route === 1);
+  const leadSource: 'lead1' | 'lead2' = usesLead1 ? 'lead1' : 'lead2';
+  const firstFrequency = leadNotes[0]?.frequency ?? midiToFreq(60);
+  const { morphed } = createLeadMorphedParams(sliderState, leadSource);
+  const outputSelect: 0 | 1 | 2 = usesLead1 && usesLead2 ? 2 : usesLead2 ? 1 : 0;
+  const params = createLeadFmParams(morphed, outputSelect);
+  const postChain = createLeadPostChainConfig(sliderState, leadSource, firstFrequency);
+
+  const lead1Level = usesLead1 ? boundedNumber(applyDistanceValue('lead1Level', sliderState, 'lead1'), 0.8, 0, 1.5) : 0;
+  const lead2Level = usesLead2 ? boundedNumber(applyDistanceValue('lead2Level', sliderState, 'lead2'), 0.6, 0, 1.5) : 0;
+  const dryGain = Math.max(lead1Level, lead2Level) * ENGINE_TRIMS.lead;
+  const sendCompensation = dryGain > 0.0001 ? 1 / dryGain : 0;
+  const reverbSendGain = booleanValue(state.reverbEnabled, true)
+    ? Math.max(
+      usesLead1 ? boundedNumber(applyDistanceValue('lead1ReverbSend', sliderState, 'lead1'), 0.5, 0, 1) : 0,
+      usesLead2 ? boundedNumber(applyDistanceValue('lead2ReverbSend', sliderState, 'lead2'), 0.5, 0, 1) : 0,
+    ) * sendCompensation
+    : 0;
+  const delayASendGain = Math.max(
+    usesLead1 ? boundedNumber(state.lead1DelayASend, 0, 0, 1) : 0,
+    usesLead2 ? boundedNumber(state.lead2DelayASend, 0, 0, 1) : 0,
+  ) * sendCompensation;
+  const delayBSendGain = Math.max(
+    usesLead1 ? boundedNumber(state.lead1DelayBSend, 0, 0, 1) : 0,
+    usesLead2 ? boundedNumber(state.lead2DelayBSend, 0, 0, 1) : 0,
+  ) * sendCompensation;
+  const granularSendGain = booleanValue(state.granularEnabled, false)
+    ? Math.max(
+      usesLead1 ? boundedNumber(state.granularLead1Send, 0, 0, 1) : 0,
+      usesLead2 ? boundedNumber(state.granularLead2Send, 0, 0, 1) : 0,
+    ) * sendCompensation
+    : 0;
+  const noteKey = leadNotes
+    .map((note) => `${note.route}:${note.frequency.toFixed(3)}:${note.velocity.toFixed(3)}:${note.delaySeconds.toFixed(4)}:${note.holdSeconds?.toFixed(4) ?? '0'}`)
+    .join('|');
+  const postKey = Object.values(postChain)
+    .map((value) => Math.round(value * 1000) / 1000)
+    .join(',');
+  const configKey = [
+    `lead-euclid:${synthEuclid.noteKey}`,
+    synthEuclid.initialStartDelaySeconds.toFixed(4),
+    synthEuclid.loopSeconds.toFixed(4),
+    outputSelect,
+    Math.round(dryGain * 1_000_000) / 1_000_000,
+    paramConfigKey(params),
+    postKey,
+    Math.round(reverbSendGain * 1_000_000) / 1_000_000,
+    Math.round(delayASendGain * 1_000_000) / 1_000_000,
+    Math.round(delayBSendGain * 1_000_000) / 1_000_000,
+    Math.round(granularSendGain * 1_000_000) / 1_000_000,
+  ].join(':');
+
+  return {
+    enabled: true,
+    source: 'lead-fm',
+    params,
+    ...postChain,
+    dryGain,
+    reverbSendGain,
+    delayASendGain,
+    delayBSendGain,
+    granularSendGain,
+    leadIndex: usesLead2 && !usesLead1 ? 1 : 0,
+    notes: leadNotes,
+    chords: [leadNotes, clonePreviewNotes(leadNotes)],
+    chordSeconds: synthEuclid.loopSeconds,
+    noteKey: `lead-euclid:${noteKey}`,
+    configKey,
+    triggerInitial: true,
+    initialStartDelaySeconds: synthEuclid.initialStartDelaySeconds,
+  };
+}
+
 function writeDrumParamsFromState(params: number[], sliderState: SliderState): void {
   const state = sliderState as unknown as Record<string, unknown>;
 
@@ -1362,7 +1860,7 @@ function createDrumPreviewSource(sliderState: SliderState): PreviewSourceConfig 
   const reverbSendGain = booleanValue(state.reverbEnabled, true)
     ? boundedNumber(state.drumReverbSend, 0.1, 0, 1)
     : 0;
-  const delayASendGain = boundedNumber(state.drumDelayASend, 0, 0, 1);
+  const delayASendGain = getCoreDrumDelaySendProfile(state) * boundedNumber(state.drumDelayASend, 0, 0, 1);
   const delayBSendGain = boundedNumber(state.drumDelayBSend, 0, 0, 1);
   const granularSendGain = booleanValue(state.granularEnabled, false)
     ? boundedNumber(state.granularDrumSend, 0, 0, 1)
@@ -1782,16 +2280,16 @@ function createGranularModuleConfig(sliderState: SliderState): GranularModuleCon
     granularStateNumber(state, key, fallback),
   );
   const granularEnabled = booleanValue(state.granularEnabled, false);
-  const pad1SendGain = granularEnabled && booleanValue(state.padEnabled, true)
+  const pad1SendGain = granularEnabled && (booleanValue(state.padEnabled, true) || coreEuclideanUsesPadSource(state))
     ? boundedNumber(state.granularPad1Send, 1, 0, 1)
     : 0;
   const pad2SendGain = granularEnabled && booleanValue(state.pad2Enabled, false)
     ? boundedNumber(state.granularPad2Send, 0, 0, 1)
     : 0;
-  const lead1SendGain = granularEnabled && booleanValue(state.leadEnabled, false)
+  const lead1SendGain = granularEnabled && coreIsLead1RouteActive(state)
     ? boundedNumber(state.granularLead1Send, 0, 0, 1)
     : 0;
-  const lead2SendGain = granularEnabled && booleanValue(state.lead2Enabled, false)
+  const lead2SendGain = granularEnabled && coreIsLead2RouteActive(state)
     ? boundedNumber(state.granularLead2Send, 0, 0, 1)
     : 0;
   const drumSendGain = granularEnabled && booleanValue(state.drumEnabled, false)
@@ -1869,15 +2367,22 @@ function createGranularModuleConfig(sliderState: SliderState): GranularModuleCon
   };
 }
 
-function createCorePreviewSource(sliderState: SliderState): PreviewSourceConfig | null {
-  return createPadPreviewSource(sliderState);
+function createCorePreviewSource(
+  sliderState: SliderState,
+  synthEuclid: CoreSynthEuclidPreview,
+): PreviewSourceConfig | null {
+  return createPadPreviewSource(sliderState, synthEuclid);
 }
 
-function createCorePreviewSourceGroup(sliderState: SliderState): PreviewSourceGroup {
+function createCorePreviewSourceGroup(
+  sliderState: SliderState,
+  synthEuclidRuntime: CoreSynthEuclidRuntime,
+): PreviewSourceGroup {
+  const synthEuclid = createSynthEuclidPreview(sliderState, synthEuclidRuntime);
   return {
-    primary: createCorePreviewSource(sliderState),
+    primary: createCorePreviewSource(sliderState, synthEuclid),
     aux: [
-      { slot: 'lead', config: null },
+      { slot: 'lead', config: createLeadEuclidPreviewSource(sliderState, synthEuclid) },
       { slot: 'drum', config: createDrumPreviewSource(sliderState) },
       { slot: 'soundscapes', config: createSoundscapesPreviewSource(sliderState) },
     ],
@@ -1886,7 +2391,7 @@ function createCorePreviewSourceGroup(sliderState: SliderState): PreviewSourceGr
 
 function createReverbModuleConfig(sliderState: SliderState): ReverbModuleConfig {
   const state = sliderState as unknown as Record<string, unknown>;
-  const pad1Active = booleanValue(state.padEnabled, true);
+  const pad1Active = booleanValue(state.padEnabled, true) || coreEuclideanUsesPadSource(state);
   const pad2Active = booleanValue(state.pad2Enabled, false);
   const reverbEnabled = booleanValue(state.reverbEnabled, true);
   const spectralFreezeEnabled = booleanValue(state.spectralFreezeEnabled, false);
@@ -2002,20 +2507,20 @@ function createDelayAModuleConfig(sliderState: SliderState): DelayAModuleConfig 
   const bpm = getEffectiveSequencerBpm(sliderState);
   const delayNoteL = typeof state.drumDelayNoteL === 'string' ? state.drumDelayNoteL : '1/8d';
   const delayNoteR = typeof state.drumDelayNoteR === 'string' ? state.drumDelayNoteR : '1/4';
-  const pad1SendGain = booleanValue(state.padEnabled, true)
+  const pad1SendGain = (booleanValue(state.padEnabled, true) || coreEuclideanUsesPadSource(state))
     ? boundedNumber(state.pad1DelayASend ?? state.padDelayASend, 0, 0, 1)
     : 0;
   const pad2SendGain = booleanValue(state.pad2Enabled, false)
     ? boundedNumber(state.pad2DelayASend ?? state.padDelayASend, 0, 0, 1)
     : 0;
-  const lead1SendGain = booleanValue(state.leadEnabled, false)
+  const lead1SendGain = coreIsLead1RouteActive(state)
     ? boundedNumber(state.lead1DelayASend, 0, 0, 1)
     : 0;
-  const lead2SendGain = booleanValue(state.lead2Enabled, false)
+  const lead2SendGain = coreIsLead2RouteActive(state)
     ? boundedNumber(state.lead2DelayASend, 0, 0, 1)
     : 0;
   const drumSendGain = booleanValue(state.drumEnabled, false)
-    ? boundedNumber(state.drumDelayASend, 0, 0, 1)
+    ? getCoreDrumDelaySendProfile(state) * boundedNumber(state.drumDelayASend, 0, 0, 1)
     : 0;
   const soundscapeSendGain = Math.max(
     booleanValue(state.waterEnabled, false) ? boundedNumber(state.waterDelayASend, 0, 0, 1) : 0,
@@ -2088,16 +2593,16 @@ function createDelayBModuleConfig(sliderState: SliderState): DelayBModuleConfig 
   const state = sliderState as unknown as Record<string, unknown>;
   const bpm = getEffectiveSequencerBpm(sliderState);
   const delayBArmed = booleanValue(state.granularDelayEnabled, false);
-  const pad1SendGain = delayBArmed && booleanValue(state.padEnabled, true)
+  const pad1SendGain = delayBArmed && (booleanValue(state.padEnabled, true) || coreEuclideanUsesPadSource(state))
     ? boundedNumber(state.pad1DelayBSend ?? state.padDelayBSend, 0, 0, 1)
     : 0;
   const pad2SendGain = delayBArmed && booleanValue(state.pad2Enabled, false)
     ? boundedNumber(state.pad2DelayBSend ?? state.padDelayBSend, 0, 0, 1)
     : 0;
-  const lead1SendGain = delayBArmed && booleanValue(state.leadEnabled, false)
+  const lead1SendGain = delayBArmed && coreIsLead1RouteActive(state)
     ? boundedNumber(state.lead1DelayBSend, 0, 0, 1)
     : 0;
-  const lead2SendGain = delayBArmed && booleanValue(state.lead2Enabled, false)
+  const lead2SendGain = delayBArmed && coreIsLead2RouteActive(state)
     ? boundedNumber(state.lead2DelayBSend, 0, 0, 1)
     : 0;
   const drumSendGain = delayBArmed && booleanValue(state.drumEnabled, false)
@@ -2216,6 +2721,8 @@ export class CoreEngineHost {
   private lastGranularModuleConfigKey: string | null = null;
   private lastSpectralFreezeModuleConfigKey: string | null = null;
   private manualPadVoiceCursor: Record<'pad1' | 'pad2', number> = { pad1: 0, pad2: 0 };
+  private synthEuclidClockDivs: ClockDivision[] = [...CORE_SYNTH_EUCLID_CLOCK_DIVS];
+  private synthEuclidSwings: number[] = [...CORE_SYNTH_EUCLID_SWINGS];
 
   async start(sliderState: SliderState, options?: CoreEngineHostUpdateOptions): Promise<void> {
     if (this.isStarting) return;
@@ -2334,6 +2841,24 @@ export class CoreEngineHost {
     this.applyCoreState(sliderState, options);
   }
 
+  setSynthEuclidClockDivs(divs: ClockDivision[]): void {
+    const next = CORE_SYNTH_LANE_INDICES.map((index) =>
+      divs[index] ?? this.synthEuclidClockDivs[index] ?? CORE_SYNTH_EUCLID_CLOCK_DIVS[index] ?? '1/8',
+    );
+    if (next.every((value, index) => value === this.synthEuclidClockDivs[index])) return;
+    this.synthEuclidClockDivs = next;
+    this.reapplyLastState();
+  }
+
+  setSynthEuclidSwings(swings: number[]): void {
+    const next = CORE_SYNTH_LANE_INDICES.map((index) =>
+      clamp(finiteNumber(swings[index], this.synthEuclidSwings[index] ?? 0), 0, 1),
+    );
+    if (next.every((value, index) => value === this.synthEuclidSwings[index])) return;
+    this.synthEuclidSwings = next;
+    this.reapplyLastState();
+  }
+
   pushMidiMessage(message: KesshoMidiMessage): void {
     const context = this.ctx;
     const node = this.node;
@@ -2434,13 +2959,15 @@ export class CoreEngineHost {
     const node = this.node;
     if (!node) return;
 
-    const triggerNotes: PreviewNote[] = [];
-    for (const note of notes) {
-      const voiceIndex = this.pickManualPadVoice(source, getEffectivePadState(sliderState));
-      const { config, triggerNote } = createManualPadSourceConfig(sliderState, source, note, voiceIndex);
-      this.configurePreviewSource(config);
-      triggerNotes.push(triggerNote);
+    let routedState = sliderState;
+    const voiceIndices: number[] = [];
+    for (let index = 0; index < notes.length; index += 1) {
+      const voiceIndex = this.pickManualPadVoice(source, getEffectivePadState(routedState));
+      voiceIndices.push(voiceIndex);
+      routedState = applyManualPadVoiceRoute(routedState, source, voiceIndex);
     }
+    const { config, triggerNotes } = createManualPadBatchSourceConfig(sliderState, source, notes, voiceIndices);
+    this.configurePreviewSource(config);
     for (const triggerNote of triggerNotes) {
       node.port.postMessage({
         type: 'triggerSourceNote',
@@ -2540,6 +3067,12 @@ export class CoreEngineHost {
     });
   }
 
+  private reapplyLastState(): void {
+    if (this.lastSliderState) {
+      this.applyCoreState(this.lastSliderState);
+    }
+  }
+
   private applyCoreState(sliderState: SliderState, options?: CoreEngineHostUpdateOptions): void {
     const context = this.ctx;
     const node = this.node;
@@ -2565,7 +3098,10 @@ export class CoreEngineHost {
       1.5,
     );
     const padState = getEffectivePadState(sliderState);
-    const previewSources = createCorePreviewSourceGroup(padState);
+    const previewSources = createCorePreviewSourceGroup(padState, {
+      clockDivs: this.synthEuclidClockDivs,
+      swings: this.synthEuclidSwings,
+    });
     const reverbConfig = createReverbModuleConfig(padState);
     const delayAConfig = createDelayAModuleConfig(padState);
     const delayBConfig = createDelayBModuleConfig(padState);

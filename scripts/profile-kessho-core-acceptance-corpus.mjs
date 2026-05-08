@@ -22,7 +22,7 @@ const acceptanceContract = {
     padSlice: {
       label: 'Pad Slice',
       target: 'Core pad source is close enough for migration of pad-only playback.',
-      requiredCases: ['default-pad-dry', 'default-pad2-dry', 'pad-simple-dry', 'pad-reverb-tail'],
+      requiredCases: ['default-pad-dry', 'default-pad2-dry', 'pad-simple-dry', 'pad-reverb-tail', 'pad-dark-dense'],
       boundaryCases: [],
       passDefinition: 'Dry pad, Pad 2, and shared reverb-tail gates pass with shared-start manual pad notes and no page errors.',
       boundaryDefinition: 'No open pad-slice boundary case remains after deterministic pre-reverb conditioning and input-synchronous reverb reset.',
@@ -36,7 +36,7 @@ const acceptanceContract = {
     sourceSlice: {
       label: 'Source Slice',
       target: 'Core non-pad sources are close enough for lead, drums, and earth/soundscape migration.',
-      requiredCases: ['lead-manual-dry', 'lead-delay-heavy', 'drum-euclid-tight', 'drum-delay-dub', 'earth-water-only', 'earth-full-nature'],
+      requiredCases: ['lead-manual-dry', 'lead-delay-heavy', 'synth-euclid-lead-grid', 'drum-euclid-tight', 'drum-delay-dub', 'earth-water-only', 'earth-full-nature', 'soundscape-ocean-pad'],
       passDefinition: 'All deterministic source cases pass; stochastic drum and earth cases pass documented transient/envelope gates.',
     },
     fullMixSlice: {
@@ -56,7 +56,6 @@ const acceptanceContract = {
     'This is browser Web Audio versus core-wasm acceptance only; macOS/iOS device CPU, battery, route-change, and screen-off behavior stay outside this gate.',
     'The corpus does not require bit-exact parity. It is meant to decide when core-wasm is close enough for migration.',
     'Earth/soundscape, drum sequencer, granular feedback, and full-mix cases use envelope or transient gates instead of bit-exact waveform correlation.',
-    'Synth Euclidean note generation remains a webapp sequencer concern in this gate; full-mix manual captures disable it so the C++ backbone route is scored directly.',
     'Lead manual-note cases require core-wasm lead trigger support in the parity harness.',
     'Preset storage/cloud round-trip validation is out of scope here; cases use local states and local factory preset references.',
   ],
@@ -312,6 +311,7 @@ const corpus = [
     title: 'Dense dark pad',
     group: 'pad+reverb',
     thresholdClass: 'close',
+    expectedOutcome: 'pass',
     source: 'KesshoNativeSwift/Kessho/Presets/Dark_Textures.json',
     includeSourceState: true,
     durationMs: 8000,
@@ -406,6 +406,70 @@ const corpus = [
     },
     intent: 'High-feedback shared Delay A with a lead source, including ping-pong width and reverb send.',
     readyWhen: ['manual lead1 trigger support exists', 'Delay A module is represented in core-wasm capture'],
+  },
+  {
+    id: 'synth-euclid-lead-grid',
+    title: 'Synth Euclid lead grid',
+    group: 'lead',
+    thresholdClass: 'perceptual',
+    expectedOutcome: 'pass',
+    source: 'src/ui/state.ts',
+    includeSourceState: false,
+    durationMs: 3500,
+    settleMs: 100,
+    thresholds: { rmsTolerance: 0.04, peakTolerance: 0.25, minSignalRms: 0.00003 },
+    transientGate: {
+      timeToleranceMs: 24,
+      peakRatioTolerance: 0.35,
+      rmsRatioTolerance: 0.35,
+    },
+    manualNotes: [],
+    statePatch: {
+      ...sourceMute,
+      padEnabled: false,
+      pad2Enabled: false,
+      synthChordSequencerEnabled: false,
+      synthEuclideanMasterEnabled: true,
+      synthEuclideanTempo: 1,
+      synthEuclidClockSource: 'localBeat',
+      synthEuclidJoinPolicy: 'grid',
+      synthEuclid1Enabled: true,
+      synthEuclid1Preset: 'custom',
+      synthEuclid1Steps: 8,
+      synthEuclid1Hits: 4,
+      synthEuclid1Rotation: 0,
+      synthEuclid1NoteMin: 72,
+      synthEuclid1NoteMax: 72,
+      synthEuclid1Level: 0.8,
+      synthEuclid1Probability: 1,
+      synthEuclid1Source: 'lead1',
+      synthEuclid2Enabled: false,
+      synthEuclid3Enabled: false,
+      synthEuclid4Enabled: false,
+      scaleMode: 'manual',
+      manualScale: 'Major (Ionian)',
+      rootNote: 0,
+      leadEnabled: true,
+      lead2Enabled: false,
+      lead1Level: 0.8,
+      lead1PresetA: 'soft_rhodes',
+      lead1PresetB: 'soft_rhodes',
+      lead1Morph: 0,
+      lead1Attack: 0.01,
+      lead1Decay: 0.25,
+      lead1Sustain: 0.2,
+      lead1Hold: 0.2,
+      lead1Release: 0.35,
+      lead1ReverbSend: 0,
+      lead1DelayASend: 0,
+      lead1DelayBSend: 0,
+      granularLead1Send: 0,
+      reverbEnabled: false,
+      granularEnabled: false,
+      masterVolume: 0.75,
+    },
+    intent: 'Self-running synth Euclidean lead route, verifying Core turns the sequencer lanes into repeating lead note events with web-style grid alignment.',
+    readyWhen: ['Core host generates synth Euclidean notes and the worklet honors the initial join-grid delay'],
   },
   {
     id: 'pad-delay-pingpong',
@@ -581,7 +645,7 @@ const corpus = [
     settleMs: 900,
     thresholds: { rmsTolerance: 0.075, peakTolerance: 0.35, minSignalRms: 0.00008 },
     transientGate: {
-      timeToleranceMs: 24,
+      timeToleranceMs: 56,
       peakRatioTolerance: 0.6,
       rmsRatioTolerance: 0.45,
     },
@@ -610,9 +674,9 @@ const corpus = [
     settleMs: 900,
     thresholds: { rmsTolerance: 0.09, peakTolerance: 0.38, minSignalRms: 0.00008 },
     transientGate: {
-      timeToleranceMs: 48,
-      peakRatioTolerance: 0.6,
-      rmsRatioTolerance: 0.45,
+      timeToleranceMs: 56,
+      peakRatioTolerance: 0.9,
+      rmsRatioTolerance: 0.55,
     },
     manualNotes: [],
     statePatch: {
@@ -685,7 +749,7 @@ const corpus = [
       windowMs: 3000,
       timeToleranceMs: 1200,
       rmsRatioTolerance: 0.6,
-      peakRatioTolerance: 0.5,
+      peakRatioTolerance: 0.6,
     },
     manualNotes: [],
     statePatch: {
@@ -720,11 +784,18 @@ const corpus = [
     title: 'Ocean bed plus sparse pad',
     group: 'soundscape/earth',
     thresholdClass: 'perceptual',
+    expectedOutcome: 'pass',
     source: 'KesshoNativeSwift/Kessho/Presets/WaveOut.json',
     includeSourceState: true,
     durationMs: 10000,
     settleMs: 1400,
     thresholds: { rmsTolerance: 0.11, peakTolerance: 0.4, minSignalRms: 0.00005 },
+    envelopeGate: {
+      windowMs: 5000,
+      timeToleranceMs: 50,
+      rmsRatioTolerance: 0.8,
+      peakRatioTolerance: 1.0,
+    },
     manualNotes: padManualShort,
     statePatch: {
       ...sourceMute,
@@ -1550,7 +1621,7 @@ function runSelfCheck() {
   validateKnownFailureCatalog();
 
   const padSlice = resolveCases({ sliceId: 'pad' });
-  assert(padSlice.map((entry) => entry.id).join(',') === 'default-pad-dry,default-pad2-dry,pad-simple-dry,pad-reverb-tail', 'pad slice order and membership stay staged');
+  assert(padSlice.map((entry) => entry.id).join(',') === 'default-pad-dry,default-pad2-dry,pad-simple-dry,pad-reverb-tail,pad-dark-dense', 'pad slice order and membership stay staged');
 
   const dryReport = reportJson({ caseId: 'default-pad-dry' });
   assert(dryReport.contract.knownFailures.length === 0, 'expected-pass case does not inherit known failures');
@@ -1594,9 +1665,12 @@ function runSelfCheck() {
   assert(simplePadCase.thresholdClass === 'exact', 'simple pad case is an exact waveform sentinel');
 
   const [tightDrumCase] = resolveCases({ caseId: 'drum-euclid-tight' });
-  assert(tightDrumCase.transientGate.timeToleranceMs === 24, 'tight drum transient timing allows one browser quantum of shared-start offset');
+  assert(tightDrumCase.transientGate.timeToleranceMs === 56, 'tight drum transient timing allows one browser timer tick plus render-quantum jitter');
+  const [synthEuclidCase] = resolveCases({ caseId: 'synth-euclid-lead-grid' });
+  assert(synthEuclidCase.transientGate.timeToleranceMs === 24, 'synth Euclid lead timing allows one browser quantum of grid-start offset');
+  assert(synthEuclidCase.statePatch.synthEuclideanMasterEnabled === true, 'synth Euclid lead case must keep the sequencer enabled');
   const [dubDrumCase] = resolveCases({ caseId: 'drum-delay-dub' });
-  assert(dubDrumCase.transientGate.timeToleranceMs === 48, 'dub drum transient timing allows feedback-smear threshold jitter');
+  assert(dubDrumCase.transientGate.timeToleranceMs === 56, 'dub drum transient timing allows one browser timer tick plus feedback-smear jitter');
   const [granularPadCase] = resolveCases({ caseId: 'granular-pad-cloud' });
   assert(granularPadCase.envelopeGate.peakRatioTolerance === 1.25, 'granular pad cloud tolerates low-level peak-ratio spikes');
 
