@@ -10,6 +10,7 @@ const paramCount = 16;
 const outputTapCount = 4;
 const pi = Math.PI;
 const mergerDownmixGain = 0.75;
+const compressorLookaheadFrames = Math.round(sampleRate * 0.006);
 const rmsTolerance = 6e-6;
 const peakTolerance = 2.5e-4;
 
@@ -233,6 +234,8 @@ class DelayAReference {
     this.filterR1 = new RbjBiquad();
     this.crossFilterL = new RbjBiquad();
     this.crossFilterR = new RbjBiquad();
+    this.outputLatencyL = new BlockDelay(compressorLookaheadFrames);
+    this.outputLatencyR = new BlockDelay(compressorLookaheadFrames);
     this.envelope = 0;
     this.modPhase = 0;
     this.commit();
@@ -289,6 +292,8 @@ class DelayAReference {
 
   processSample(inputL, inputR) {
     if (!this.state.enabled) {
+      this.outputLatencyL.process(0);
+      this.outputLatencyR.process(0);
       return [
         [0, 0],
         [0, 0],
@@ -325,14 +330,16 @@ class DelayAReference {
     const filteredR = (filteredR0 + filteredR1) * mergerDownmixGain;
     const limitedL = Math.tanh(filteredL * 1.4) * 0.7142857;
     const limitedR = Math.tanh(filteredR * 1.4) * 0.7142857;
+    const outputL = this.outputLatencyL.process(limitedL);
+    const outputR = this.outputLatencyR.process(limitedR);
     return [
-      [limitedL * duckGain * this.state.mix, limitedR * duckGain * this.state.mix],
-      [limitedL * this.state.reverbSend, limitedR * this.state.reverbSend],
+      [outputL * duckGain * this.state.mix, outputR * duckGain * this.state.mix],
+      [outputL * this.state.reverbSend, outputR * this.state.reverbSend],
       [
-        this.crossFilterL.lowpass(limitedL, this.state.crossFeedFilterHz, 0.7) * this.state.toDelayB,
-        this.crossFilterR.lowpass(limitedR, this.state.crossFeedFilterHz, 0.7) * this.state.toDelayB,
+        this.crossFilterL.lowpass(outputL, this.state.crossFeedFilterHz, 0.7) * this.state.toDelayB,
+        this.crossFilterR.lowpass(outputR, this.state.crossFeedFilterHz, 0.7) * this.state.toDelayB,
       ],
-      [limitedL * this.state.granularSend, limitedR * this.state.granularSend],
+      [outputL * this.state.granularSend, outputR * this.state.granularSend],
     ];
   }
 }

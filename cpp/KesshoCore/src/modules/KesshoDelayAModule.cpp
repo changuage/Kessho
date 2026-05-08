@@ -30,6 +30,7 @@ constexpr int kParamGranularSend = 15;
 constexpr int kOutputTapCount = 4;
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kMergerDownmixGain = 0.75f;
+constexpr float kWebAudioCompressorLookaheadSeconds = 0.006f;
 
 float clamp(float value, float min_value, float max_value) {
   return std::max(min_value, std::min(max_value, value));
@@ -200,6 +201,11 @@ public:
     feedback_delay_l_1_.prepare(feedback_latency_frames);
     feedback_delay_r_0_.prepare(feedback_latency_frames);
     feedback_delay_r_1_.prepare(feedback_latency_frames);
+    const int output_latency_frames = std::max(
+        1,
+        static_cast<int>(std::lround(sample_rate_ * kWebAudioCompressorLookaheadSeconds)));
+    output_latency_l_.prepare(output_latency_frames);
+    output_latency_r_.prepare(output_latency_frames);
     if (
         !delay_l_0_.prepare(sample_rate_, 5.0f) ||
         !delay_l_1_.prepare(sample_rate_, 5.0f) ||
@@ -227,6 +233,8 @@ public:
     feedback_delay_r_1_.reset();
     cross_filter_l_.reset();
     cross_filter_r_.reset();
+    output_latency_l_.reset();
+    output_latency_r_.reset();
     envelope_ = 0.0f;
     mod_phase_ = 0.0f;
   }
@@ -401,6 +409,8 @@ private:
 
   void processSample(float input_l, float input_r, float* taps_l, float* taps_r) {
     if (!state_.enabled) {
+      output_latency_l_.process(0.0f);
+      output_latency_r_.process(0.0f);
       for (int bus = 0; bus < kOutputTapCount; ++bus) {
         taps_l[bus] = 0.0f;
         taps_r[bus] = 0.0f;
@@ -439,17 +449,19 @@ private:
     const float filtered_r = (filtered_r_0 + filtered_r_1) * kMergerDownmixGain;
     const float limited_l = std::tanh(filtered_l * 1.4f) * 0.7142857f;
     const float limited_r = std::tanh(filtered_r * 1.4f) * 0.7142857f;
-    const float main_l = limited_l * duck_gain * state_.mix;
-    const float main_r = limited_r * duck_gain * state_.mix;
+    const float output_l = output_latency_l_.process(limited_l);
+    const float output_r = output_latency_r_.process(limited_r);
+    const float main_l = output_l * duck_gain * state_.mix;
+    const float main_r = output_r * duck_gain * state_.mix;
 
     taps_l[0] = main_l;
     taps_r[0] = main_r;
-    taps_l[1] = limited_l * state_.reverb_send;
-    taps_r[1] = limited_r * state_.reverb_send;
-    taps_l[2] = cross_filter_l_.process(limited_l) * state_.to_delay_b;
-    taps_r[2] = cross_filter_r_.process(limited_r) * state_.to_delay_b;
-    taps_l[3] = limited_l * state_.granular_send;
-    taps_r[3] = limited_r * state_.granular_send;
+    taps_l[1] = output_l * state_.reverb_send;
+    taps_r[1] = output_r * state_.reverb_send;
+    taps_l[2] = cross_filter_l_.process(output_l) * state_.to_delay_b;
+    taps_r[2] = cross_filter_r_.process(output_r) * state_.to_delay_b;
+    taps_l[3] = output_l * state_.granular_send;
+    taps_r[3] = output_r * state_.granular_send;
   }
 
   float sample_rate_ = 48000.0f;
@@ -470,6 +482,8 @@ private:
   Biquad filter_r_1_;
   Biquad cross_filter_l_;
   Biquad cross_filter_r_;
+  BlockDelay output_latency_l_;
+  BlockDelay output_latency_r_;
   float envelope_ = 0.0f;
   float mod_phase_ = 0.0f;
 };
