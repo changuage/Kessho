@@ -141,6 +141,9 @@ const DEFAULT_MIDI_ROUTE_TARGETS = [
   { key: 'delayBWarpIntensity', label: 'Delay B Warp' },
   { key: 'sidechainAmount', label: 'Sidechain Amount' },
   { key: 'characterMix', label: 'Character Mix' },
+  { key: 'characterBias', label: 'Character Bias' },
+  { key: 'characterLpgAmount', label: 'Character LPG Open' },
+  { key: 'characterWetHp', label: 'Character Wet HP' },
   { key: 'degradeMix', label: 'Degrade Mix' },
   { key: 'masterSatDrive', label: 'Master Drive' },
 ] as const satisfies readonly KesshoMidiRouteTarget[];

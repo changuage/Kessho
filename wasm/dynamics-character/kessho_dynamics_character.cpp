@@ -225,6 +225,7 @@ struct DynamicsCharacterState {
 
     float wow_phase = 0.0f;
     float flutter_phase = 0.0f;
+    float lpg_env = 0.0f;
     float env = 0.0f;
     float compressor_gain = 1.0f;
     float master_sat_prev_l = 0.0f;
@@ -531,7 +532,8 @@ float degrade_sample(float dry, int channel, float mix, float alias, float gener
 void update_random_hold(const float* p) {
     const float hold_amount = clamp01(
         p[P_RANDOM_DRIFT] +
-        p[P_DEPTH] * (0.18f + p[P_SHALLOW] * 0.16f + p[P_ABYSS] * 0.1f) +
+        p[P_DEPTH] * (0.26f + p[P_SHALLOW] * 0.24f + p[P_ABYSS] * 0.18f) +
+        p[P_RATE] * 0.08f +
         p[P_DAMAGE] * 0.22f
     );
     if (hold_amount <= 0.0001f) {
@@ -544,7 +546,7 @@ void update_random_hold(const float* p) {
 
     auto next_hold = [](float previous) {
         float next = rand_bipolar();
-        if (std::fabs(next - previous) < 0.24f) next += next >= previous ? 0.34f : -0.34f;
+        if (std::fabs(next - previous) < 0.28f) next += next >= previous ? 0.4f : -0.4f;
         return clampf(next, -1.0f, 1.0f);
     };
     const float main_target = next_hold(g.hold_main_target);
@@ -558,8 +560,8 @@ void update_random_hold(const float* p) {
         spread_target = clampf(spread_target + (spread_target >= g.hold_spread_target ? 0.24f : -0.24f), -1.0f, 1.0f);
     }
 
-    const float clock_hz = p[P_RANDOM_HOLD_RATE_HZ] + p[P_DAMAGE] * 0.15f;
-    const float interval = std::fmax(0.32f, 1.0f / std::fmax(0.08f, clock_hz));
+    const float clock_hz = p[P_RANDOM_HOLD_RATE_HZ] + p[P_DAMAGE] * 0.18f + p[P_RATE] * 0.12f;
+    const float interval = std::fmax(0.18f, 1.0f / std::fmax(0.12f, clock_hz));
     g.hold_main_target = main_target;
     g.hold_spread_target = spread_target;
     g.next_hold_sample = g.sample_clock + static_cast<long long>(interval * (0.45f + rand01() * 1.25f + std::fabs(main_target) * 0.15f) * g.sample_rate);
@@ -583,18 +585,18 @@ void update_water_cv(const float* p) {
         return clampf(next, -1.0f, 1.0f);
     };
 
-    const float main_target = next_cv(g.water_cv_main_target, 0.22f + p[P_ABYSS] * 0.08f);
+    const float main_target = next_cv(g.water_cv_main_target, 0.28f + p[P_SHALLOW] * 0.06f + p[P_ABYSS] * 0.1f);
     const float spread_target = clampf(
-        main_target * (0.42f + rand01() * 0.18f + p[P_ABYSS] * 0.12f) +
-        rand_bipolar() * (0.36f + p[P_SHALLOW] * 0.28f + p[P_STEREO] * 0.18f),
+        main_target * (0.48f + rand01() * 0.24f + p[P_ABYSS] * 0.16f) +
+        rand_bipolar() * (0.4f + p[P_SHALLOW] * 0.32f + p[P_ABYSS] * 0.12f + p[P_STEREO] * 0.18f),
         -1.0f,
         1.0f
     );
 
     const float clock_hz = std::fmax(
-        0.025f,
-        p[P_RANDOM_HOLD_RATE_HZ] * (0.72f + p[P_SHALLOW] * 0.22f + p[P_ABYSS] * 0.08f) +
-        p[P_RATE] * (p[P_SHALLOW] * 0.075f + p[P_ABYSS] * 0.025f)
+        0.05f,
+        p[P_RANDOM_HOLD_RATE_HZ] * (0.96f + p[P_SHALLOW] * 0.38f + p[P_ABYSS] * 0.26f) +
+        p[P_RATE] * (0.06f + p[P_SHALLOW] * 0.18f + p[P_ABYSS] * 0.12f)
     );
     const float interval = 1.0f / clock_hz;
     g.water_cv_main_target = main_target;
@@ -642,24 +644,22 @@ void update_static_filters(const float* p) {
 
 void update_modulated_filters(const float* p) {
     const float water = clamp01(p[P_SHALLOW] + p[P_ABYSS]);
-    const float shallow_main_cv = p[P_SHALLOW] * g.water_cv_main;
-    const float shallow_spread_cv = p[P_SHALLOW] * g.water_cv_spread;
-    const float random_filter_scale = clampf(1.0f - p[P_ABYSS] * 1.0f - p[P_SHALLOW] * 0.26f, 0.0f, 1.0f);
-    const float random_filter_spread_scale = clampf(1.0f - p[P_ABYSS] * 1.0f - p[P_SHALLOW] * 0.18f, 0.0f, 1.0f);
+    const float water_main_cv = g.water_cv_main * water;
+    const float water_spread_cv = g.water_cv_spread * water;
+    const float random_filter_scale = clampf(1.0f - p[P_ABYSS] * 0.42f - p[P_SHALLOW] * 0.14f, 0.22f, 1.0f);
+    const float random_filter_spread_scale = clampf(1.0f - p[P_ABYSS] * 0.36f - p[P_SHALLOW] * 0.1f, 0.28f, 1.0f);
     const float water_filter_main =
-        shallow_main_cv * (32.0f + p[P_DEPTH] * 210.0f);
+        water_main_cv * (24.0f + p[P_DEPTH] * (210.0f + p[P_SHALLOW] * 60.0f + p[P_ABYSS] * 40.0f));
     const float water_filter_spread =
-        shallow_spread_cv * (42.0f + p[P_DEPTH] * 260.0f);
+        water_spread_cv * (34.0f + p[P_DEPTH] * (260.0f + p[P_SHALLOW] * 70.0f + p[P_ABYSS] * 50.0f));
     const float water_q = std::fmax(0.0f, g.water_cv_main) * (
-        p[P_SHALLOW] * (0.04f + p[P_DEPTH] * 0.12f)
+        p[P_SHALLOW] * (0.04f + p[P_DEPTH] * 0.12f) +
+        p[P_ABYSS] * (0.03f + p[P_DEPTH] * 0.08f)
     );
     const float env_lp_raw = p[P_LOWPASS_HZ] + g.env * p[P_ENV_TO_LOWPASS_GAIN] + g.hold_main * p[P_RANDOM_FILTER_DEPTH] * random_filter_scale + water_filter_main;
     const float env_lp2_raw = p[P_LOWPASS2_HZ] + g.env * p[P_ENV_TO_LOWPASS_GAIN] + g.hold_spread * p[P_RANDOM_SPREAD_FILTER_DEPTH] * random_filter_spread_scale + water_filter_spread;
-    const float water_min_lp = water > 0.0001f
-        ? std::fmax(120.0f + p[P_ABYSS] * 90.0f, p[P_LOWPASS_HZ] * (0.32f + p[P_ABYSS] * 0.22f))
-        : kMinFreq;
-    const float env_lp = std::fmax(env_lp_raw, water_min_lp);
-    const float env_lp2 = std::fmax(env_lp2_raw, water_min_lp * (0.85f + p[P_SHALLOW] * 0.12f));
+    const float env_lp = std::fmax(env_lp_raw, p[P_LOWPASS_HZ]);
+    const float env_lp2 = std::fmax(env_lp2_raw, p[P_LOWPASS2_HZ]);
     const float env_q = g.env * p[P_ENV_TO_RESONANCE_GAIN];
     set_lowpass(g.lp_l, env_lp, p[P_LOWPASS_Q] + env_q + water_q, g.sample_rate);
     set_lowpass(g.lp_r, env_lp, p[P_LOWPASS_Q] + env_q + water_q, g.sample_rate);
@@ -756,14 +756,18 @@ void dynamics_character_process_block(int block_size) {
     update_random_hold(p);
     update_water_cv(p);
     const float water_amount = clamp01(p[P_SHALLOW] + p[P_ABYSS]);
-    const float water_delay_cv_mix = clamp01(p[P_SHALLOW] * 0.72f);
+    const float water_delay_cv_mix = clamp01(p[P_SHALLOW] * 0.72f + p[P_ABYSS] * 0.54f);
     const float water_cv_lag = std::fmax(
-        0.04f,
-        p[P_RANDOM_HOLD_LAG] * (0.56f + p[P_ABYSS] * 0.5f + p[P_SHALLOW] * 0.18f)
+        0.02f,
+        p[P_RANDOM_HOLD_LAG] * (0.32f + p[P_ABYSS] * 0.22f + p[P_SHALLOW] * 0.1f)
     );
     const float water_cv_base_coeff = smooth_coeff(water_cv_lag, g.sample_rate);
-    const float hold_coeff = smooth_coeff(std::fmax(0.02f, p[P_RANDOM_HOLD_LAG] + (1.0f - p[P_RATE]) * 0.08f), g.sample_rate);
+    const float hold_coeff = smooth_coeff(std::fmax(0.012f, p[P_RANDOM_HOLD_LAG] * 0.48f + (1.0f - p[P_RATE]) * 0.045f), g.sample_rate);
     const float env_coeff = one_pole_coeff(p[P_ENV_FILTER_HZ], g.sample_rate);
+    const float lpg_attack_coeff = smooth_coeff(0.2f + p[P_ABYSS] * 0.035f - p[P_SHALLOW] * 0.02f, g.sample_rate);
+    const float lpg_decay_coeff = smooth_coeff(0.005f, g.sample_rate);
+    const float lpg_cv_attack_coeff = smooth_coeff(0.012f + p[P_ABYSS] * 0.006f, g.sample_rate);
+    const float lpg_cv_decay_coeff = smooth_coeff(0.075f + clampf(p[P_RANDOM_HOLD_LAG], 0.0f, 2.0f) * 0.025f + p[P_ABYSS] * 0.025f, g.sample_rate);
     const float drift_coeff = one_pole_coeff(p[P_RANDOM_DRIFT_FILTER_HZ], g.sample_rate);
     const float tape_wow_blend = clamp01(
         p[P_DEGRADE_MIX] * 1.25f +
@@ -771,8 +775,8 @@ void dynamics_character_process_block(int block_size) {
         p[P_DEGRADE_GENERATION] * 0.08f +
         p[P_DEGRADE_CORROSION] * 0.08f
     );
-    const float water_random_blend = clamp01(p[P_SHALLOW] * 0.62f + p[P_ABYSS] * 0.56f);
-    const float water_flutter_blend = clamp01(p[P_SHALLOW] * 0.46f + p[P_ABYSS] * 0.32f);
+    const float water_random_blend = clamp01(p[P_SHALLOW] * 0.74f + p[P_ABYSS] * 0.68f);
+    const float water_flutter_blend = clamp01(p[P_SHALLOW] * 0.58f + p[P_ABYSS] * 0.46f);
     const float wow_wander_coeff = one_pole_coeff(
         0.03f + p[P_WOW_FREQ] * 0.45f + p[P_RANDOM_DRIFT_FILTER_HZ] * 0.24f,
         g.sample_rate
@@ -796,7 +800,16 @@ void dynamics_character_process_block(int block_size) {
         g.telemetry[T_INPUT_PEAK] = std::fmax(g.telemetry[T_INPUT_PEAK], std::fmax(std::fabs(in_l), std::fabs(in_r)));
 
         const float abs_mono = std::fabs(mono);
-        g.env += (abs_mono - g.env) * env_coeff;
+        if (water_amount > 0.0001f) {
+            const float follower_coeff = abs_mono > g.lpg_env ? lpg_attack_coeff : lpg_decay_coeff;
+            g.lpg_env += (abs_mono - g.lpg_env) * follower_coeff;
+            const float cv_diff = g.lpg_env - g.env;
+            const float cv_coeff = cv_diff > 0.0f ? lpg_cv_attack_coeff : lpg_cv_decay_coeff;
+            g.env += cv_diff * cv_coeff;
+        } else {
+            g.lpg_env = abs_mono;
+            g.env += (abs_mono - g.env) * env_coeff;
+        }
         g.telemetry[T_ENV] = std::fmax(g.telemetry[T_ENV], g.env);
 
         g.hold_main += (g.hold_main_target - g.hold_main) * hold_coeff;
@@ -860,7 +873,7 @@ void dynamics_character_process_block(int block_size) {
 
         const float main_delay_cv = g.hold_main * (1.0f - water_delay_cv_mix) + g.water_cv_main * water_delay_cv_mix;
         const float spread_delay_cv = g.hold_spread * (1.0f - water_delay_cv_mix) + g.water_cv_spread * water_delay_cv_mix;
-        const float delay_mod_trim = clampf(1.0f - p[P_ABYSS], 0.0f, 1.0f);
+        const float delay_mod_trim = clampf(1.0f - p[P_ABYSS] * 0.35f, 0.4f, 1.0f);
         const float main_delay_s = clampf(
             p[P_BASE_DELAY] + (wow * p[P_WOW_DEPTH] + flutter * p[P_FLUTTER_DEPTH] + main_delay_cv * p[P_RANDOM_DELAY_DEPTH] + g.drift_noise * p[P_RANDOM_DRIFT_DEPTH] + jitter) * delay_mod_trim,
             0.00005f,
@@ -881,12 +894,12 @@ void dynamics_character_process_block(int block_size) {
         float main_l = 0.0f, main_r = 0.0f, spread_l = 0.0f, spread_r = 0.0f;
         const float water_spread_motion = g.water_cv_spread * p[P_STEREO] * (p[P_SHALLOW] * 0.24f + p[P_ABYSS] * 0.34f);
         const float water_gain_motion = clampf(
-            1.0f + g.water_cv_main * (p[P_SHALLOW] * 0.08f),
+            1.0f + g.water_cv_main * (p[P_SHALLOW] * 0.08f + p[P_ABYSS] * 0.05f),
             0.72f,
             1.24f
         );
         const float spread_gain_motion = clampf(
-            1.0f + g.water_cv_spread * (p[P_SHALLOW] * 0.18f),
+            1.0f + g.water_cv_spread * (p[P_SHALLOW] * 0.18f + p[P_ABYSS] * 0.1f),
             0.68f,
             1.28f
         );

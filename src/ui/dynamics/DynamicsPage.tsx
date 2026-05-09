@@ -266,10 +266,13 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
               <div className="dynamics-grid-2">
                 <Slider label="Mix" value={state.characterMix} paramKey="characterMix" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterMix')} />
                 <Slider label="Age" value={state.characterAge} paramKey="characterAge" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterAge')} />
+                <Slider label="Bias" value={state.characterBias} paramKey="characterBias" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterBias')} />
+                <Slider label="LPG Open" value={state.characterLpgAmount} paramKey="characterLpgAmount" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterLpgAmount')} />
                 <Slider label="Depth" value={state.characterDepth} paramKey="characterDepth" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterDepth')} />
                 <Slider label="Rate" value={state.characterRate} paramKey="characterRate" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterRate')} />
                 <Slider label="Damp" value={state.characterDamp} paramKey="characterDamp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterDamp')} />
                 <Slider label="Env Follow" value={state.characterEnvFollow} paramKey="characterEnvFollow" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterEnvFollow')} />
+                <Slider label="Wet HP" value={state.characterWetHp} paramKey="characterWetHp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterWetHp')} />
                 <Slider label="Stereo" value={state.characterStereo} paramKey="characterStereo" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterStereo')} />
                 <Slider label="Resonance" value={state.characterResonance} paramKey="characterResonance" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterResonance')} />
               </div>

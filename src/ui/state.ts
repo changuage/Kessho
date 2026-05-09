@@ -319,6 +319,9 @@ export interface SliderState {
   characterMode: 'clean' | 'abyssWater' | 'shallowWater';
   characterMix: number;
   characterAge: number;
+  characterBias: number;
+  characterLpgAmount: number;
+  characterWetHp: number;
   degradeEnabled: boolean;
   degradeMix: number;
   degradeAge: number;
@@ -1490,6 +1493,8 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'characterMode',
   'characterMix',
   'characterAge',
+  'characterBias',
+  'characterLpgAmount',
   'degradeEnabled',
   'degradeMix',
   'degradeAge',
@@ -1538,6 +1543,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'degradeModNoiseAlias',
   'characterStereo',
   'characterEnvFollow',
+  'characterWetHp',
   'characterDepth',
   'characterRate',
   'characterDamp',
@@ -2317,6 +2323,9 @@ export const DEFAULT_STATE: SliderState = {
   characterMode: 'clean' as const,
   characterMix: 0,
   characterAge: 0,
+  characterBias: 0.5,
+  characterLpgAmount: 0.5,
+  characterWetHp: 0,
   degradeEnabled: false,
   degradeMix: 0,
   degradeAge: 0,
@@ -3434,6 +3443,9 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   sidechainReverbTarget: { min: 0, max: 1, step: 0.01 },
   characterMix: { min: 0, max: 1, step: 0.01 },
   characterAge: { min: 0, max: 1, step: 0.01 },
+  characterBias: { min: 0, max: 1, step: 0.01 },
+  characterLpgAmount: { min: 0, max: 1, step: 0.01 },
+  characterWetHp: { min: 0, max: 1, step: 0.01 },
   degradeMix: { min: 0, max: 1, step: 0.01 },
   degradeAge: { min: 0, max: 1, step: 0.01 },
   degradeGeneration: { min: 0, max: 1, step: 0.01 },

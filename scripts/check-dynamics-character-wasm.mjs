@@ -317,7 +317,7 @@ const abyssSpreadOnlyInput = (block, i) => {
   return [sample, sample];
 };
 const abyssSpreadOnly = processBlocks(abyssSpreadOnlyParams, abyssSpreadOnlyInput, 180);
-const abyssExtremeIgnored = processBlocks({
+const abyssExtremeModulated = processBlocks({
   ...abyssSpreadOnlyParams,
   randomDelayDepth: 0.03,
   randomSpreadDelayDepth: 0.03,
@@ -327,8 +327,8 @@ const abyssExtremeIgnored = processBlocks({
   wowDepth: 0.03,
   flutterDepth: 0.03,
 }, abyssSpreadOnlyInput, 180);
-const abyssIgnoredModDiff = diffRms(abyssSpreadOnly, abyssExtremeIgnored);
-assert(abyssIgnoredModDiff < 1e-7, `Abyss delay/filter/pitch CV destinations are still audible: ${abyssIgnoredModDiff}`);
+const abyssModDiff = diffRms(abyssSpreadOnly, abyssExtremeModulated);
+assert(abyssModDiff > 0.01, `Abyss delay/filter/pitch CV destinations are still too subtle: ${abyssModDiff}`);
 
 const harsh = processBlocks(
   baseParams({
@@ -371,7 +371,7 @@ console.log(JSON.stringify({
       ...abyssStats,
       minBlockRms: abyssMinBlockRms,
       silentRun: abyssSilentRun,
-      ignoredDelayFilterPitchDiffRms: abyssIgnoredModDiff,
+      modulatedDelayFilterPitchDiffRms: abyssModDiff,
     },
     harsh: harshStats,
   },

@@ -225,6 +225,17 @@ function compressionReductionDb(inputDb: number, thresholdDb: number, kneeDb: nu
   return Math.max(0, kneeOverDb * (1 - 1 / safeRatio));
 }
 
+/** Format a raw DSP value for display with compact units. */
+function fmtDsp(raw: number, unit: string): string {
+  if (unit === 'Hz') return raw >= 1000 ? `${(raw / 1000).toFixed(1)}k` : raw >= 100 ? `${Math.round(raw)}` : `${raw.toFixed(1)}`;
+  if (unit === '%') return `${Math.round(raw * 100)}%`;
+  if (unit === 'ct') return `${(raw * 1200).toFixed(0)}c`;  // semitone cents from ratio
+  if (unit === 'ms') return raw >= 1 ? `${raw.toFixed(0)}ms` : `${(raw * 1000).toFixed(1)}µs`;
+  if (unit === 'dB') return `${raw >= 0 ? '+' : ''}${raw.toFixed(1)}`;
+  if (unit === 'x') return raw >= 10 ? `${Math.round(raw)}x` : `${raw.toFixed(1)}x`;
+  return raw >= 100 ? `${Math.round(raw)}` : raw >= 1 ? `${raw.toFixed(1)}` : raw >= 0.01 ? `${raw.toFixed(3)}` : `${raw.toFixed(4)}`;
+}
+
 function drawSplitLine(ctx: CanvasRenderingContext2D, x: number, y: number, height: number): void {
   ctx.strokeStyle = GRID_STRONG;
   ctx.lineWidth = 1;
@@ -682,18 +693,18 @@ export function DynamicsDegradeVisualizer({ state, getDynamicsAnalyser, getDynam
     const lpLoss = 1 - logNorm(targets.lowpassHz, 450, 16000);
     const hpLift = logNorm(targets.highpassHz, 20, 1600);
     const cells = [
-      { label: 'Wet', value: targets.degradeMix, color: CYAN },
-      { label: 'Wear', value: targets.rawMediaWear, color: PURPLE },
-      { label: 'Damage', value: targets.damage, color: ROSE },
-      { label: 'Alias', value: targets.workletAlias, color: YELLOW },
-      { label: 'Drop', value: clamp01(targets.dropoutDepth / 0.16), color: ROSE },
-      { label: 'Noise', value: clamp01(targets.noiseGain / 0.018), color: CYAN },
-      { label: 'Jitter', value: clamp01(targets.jitterDepth / 0.0012), color: AMBER },
-      { label: 'Wow', value: clamp01(targets.wowDepth / 0.018), color: GREEN },
-      { label: 'Flutter', value: clamp01(targets.flutterDepth / 0.0018), color: GREEN },
-      { label: 'Wobble', value: clamp01(state.degradeWobbleSpeed ?? 0.35), color: GREEN },
-      { label: 'LP Cut', value: lpLoss, color: YELLOW },
-      { label: 'Corrode', value: targets.corrosion, color: ROSE },
+      { label: 'Wet',     norm: targets.degradeMix,                           raw: targets.degradeMix,                unit: '%',  color: CYAN },
+      { label: 'Wear',    norm: targets.rawMediaWear,                          raw: targets.rawMediaWear,              unit: '%',  color: PURPLE },
+      { label: 'Damage',  norm: targets.damage,                                raw: targets.damage,                    unit: '%',  color: ROSE },
+      { label: 'Alias',   norm: targets.workletAlias,                           raw: targets.workletAlias,              unit: '%',  color: YELLOW },
+      { label: 'Drop',    norm: clamp01(targets.dropoutDepth / 0.16),           raw: targets.dropoutDepth,              unit: '',   color: ROSE },
+      { label: 'Noise',   norm: clamp01(targets.noiseGain / 0.018),             raw: targets.noiseGain,                 unit: '',   color: CYAN },
+      { label: 'Jitter',  norm: clamp01(targets.jitterDepth / 0.0012),          raw: targets.jitterDepth * 1200,        unit: 'ct', color: AMBER },
+      { label: 'Wow',     norm: clamp01(targets.wowDepth / 0.018),              raw: targets.wowDepth * 1200,           unit: 'ct', color: GREEN },
+      { label: 'Flutter', norm: clamp01(targets.flutterDepth / 0.0018),          raw: targets.flutterDepth * 1200,       unit: 'ct', color: GREEN },
+      { label: 'Wobble',  norm: clamp01(state.degradeWobbleSpeed ?? 0.35),       raw: state.degradeWobbleSpeed ?? 0.35,  unit: '%',  color: GREEN },
+      { label: 'LP Cut',  norm: lpLoss,                                         raw: targets.lowpassHz,                 unit: 'Hz', color: YELLOW },
+      { label: 'Corrode', norm: targets.corrosion,                               raw: targets.corrosion,                 unit: '%',  color: ROSE },
     ];
 
     const columns = width < 380 ? 3 : 4;
@@ -706,7 +717,7 @@ export function DynamicsDegradeVisualizer({ state, getDynamicsAnalyser, getDynam
       const row = Math.floor(index / columns);
       const x = mapRect.x + gap + column * (cellW + gap);
       const y = mapRect.y + gap + row * (cellH + gap);
-      const intensity = easeOut(clamp01(cell.value));
+      const intensity = easeOut(clamp01(cell.norm));
       const scan = livePulse * (0.03 + (index % 3) * 0.012);
       const rect: Rect = { x, y, w: cellW, h: cellH };
       fillRoundedRect(ctx, rect, 5, 'rgba(255, 255, 255, 0.04)');
@@ -716,7 +727,7 @@ export function DynamicsDegradeVisualizer({ state, getDynamicsAnalyser, getDynam
       fillRoundedRect(ctx, { x: x + innerPad, y: y + cellH - 9, w: cellW - innerPad * 2, h: 3 }, 2, 'rgba(255, 255, 255, 0.12)');
       fillRoundedRect(ctx, bar, 2, 'rgba(255, 255, 255, 0.76)');
       drawCaption(ctx, cell.label, x + innerPad, y + 10, TEXT);
-      drawCaption(ctx, `${Math.round(cell.value * 100)}`, x + cellW - innerPad, y + 10, TEXT, 'right');
+      drawCaption(ctx, fmtDsp(cell.raw, cell.unit), x + cellW - innerPad, y + 10, TEXT, 'right');
     });
 
     fillRoundedRect(ctx, footer, 5, 'rgba(255, 255, 255, 0.04)');
@@ -745,196 +756,313 @@ export function DynamicsDegradeVisualizer({ state, getDynamicsAnalyser, getDynam
   );
 }
 
-const CHARACTER_FINGERPRINT_POINTS = [
-  { key: 'characterMix' },
-  { key: 'characterAge' },
-  { key: 'characterDepth' },
-  { key: 'characterRate' },
-  { key: 'characterDamp' },
-  { key: 'characterEnvFollow' },
-  { key: 'characterStereo' },
-  { key: 'characterResonance' },
-] as const satisfies ReadonlyArray<{ key: keyof SliderState }>;
-
-type CharacterHandle = {
-  key: keyof SliderState;
-  angle: number;
-  x: number;
-  y: number;
-};
-
-type CharacterLayout = {
-  centerX: number;
-  centerY: number;
-  radius: number;
-  handles: CharacterHandle[];
-};
-
 function characterAccent(mode: SliderState['characterMode']): string {
   if (mode === 'abyssWater') return CYAN;
   if (mode === 'shallowWater') return GREEN;
   return PURPLE;
 }
 
-export function DynamicsCharacterVisualizer({ state, onParamChange, getDynamicsAnalyser, getDynamicsTelemetry }: EditableVisualizerProps) {
-  const layoutRef = useRef<CharacterLayout | null>(null);
-  const activeKeyRef = useRef<keyof SliderState | null>(null);
-  const inputDataRef = useRef<FloatBuffer | null>(null);
+function biquadLpMag(f: number, fc: number, q: number): number {
+  const r = f / fc;
+  const r2 = r * r;
+  return 1 / Math.sqrt((1 - r2) ** 2 + (r / q) ** 2);
+}
+
+function biquadHpMag(f: number, fc: number, q: number): number {
+  const r = f / fc;
+  const r2 = r * r;
+  return r2 / Math.sqrt((1 - r2) ** 2 + (r / q) ** 2);
+}
+
+export function DynamicsCharacterVisualizer({ state, getDynamicsAnalyser, getDynamicsTelemetry }: EditableVisualizerProps) {
   const outputDataRef = useRef<FloatBuffer | null>(null);
+  const targets = useMemo(() => resolveDynamicsTargets(state), [state]);
 
   const draw = useCallback(({ ctx, width, height }: CanvasDrawArgs) => {
     const accent = characterAccent(state.characterMode);
     drawBase(ctx, width, height, accent);
     const liveTelemetry = getLiveTelemetry(getDynamicsTelemetry);
-    const inputSample = sampleAnalyser(getDynamicsAnalyser?.('input'), inputDataRef);
     const outputSample = sampleAnalyser(getDynamicsAnalyser?.('postCharacter'), outputDataRef);
 
     const pad = 11;
-    const split = width * 0.5;
-    const wave: Rect = { x: pad, y: pad, w: split - pad * 1.5, h: height - pad * 2 };
-    const radar: Rect = { x: split + 8, y: wave.y, w: width - split - pad - 8, h: wave.h };
+    const gap = 12;
+    const split = Math.round(width * 0.42);
+    const motion: Rect = { x: pad, y: pad, w: split - pad - gap / 2, h: height - pad * 2 };
+    const filt: Rect = { x: split + gap / 2, y: pad, w: width - split - pad - gap / 2, h: height - pad * 2 };
 
-    fillRoundedRect(ctx, wave, 7, 'rgba(255, 255, 255, 0.025)');
-    strokeRoundedRect(ctx, wave, 7, 'rgba(255, 255, 255, 0.08)');
-    fillRoundedRect(ctx, radar, 7, 'rgba(255, 255, 255, 0.025)');
-    strokeRoundedRect(ctx, radar, 7, 'rgba(255, 255, 255, 0.08)');
-    drawSplitLine(ctx, split, wave.y, wave.h);
+    fillRoundedRect(ctx, motion, 7, 'rgba(255, 255, 255, 0.025)');
+    strokeRoundedRect(ctx, motion, 7, 'rgba(255, 255, 255, 0.08)');
+    fillRoundedRect(ctx, filt, 7, 'rgba(255, 255, 255, 0.025)');
+    strokeRoundedRect(ctx, filt, 7, 'rgba(255, 255, 255, 0.08)');
+    drawSplitLine(ctx, split, motion.y, motion.h);
 
-    const depth = clamp01(state.characterDepth ?? 0);
-    const rate = clamp01(state.characterRate ?? 0);
-    const damp = clamp01(state.characterDamp ?? 0);
     const envFollow = clamp01(state.characterEnvFollow ?? 0);
-    const resonance = clamp01(state.characterResonance ?? 0);
     const liveEnv = clamp01(Math.max(outputSample.peak, liveTelemetry.worklet?.characterEnv ?? 0) * (1 + envFollow * 2.2));
-    const laneGap = wave.h / 4;
-    const waveColors = [accent, CYAN, AMBER];
-    for (let lane = 0; lane < 3; lane += 1) {
-      const yBase = wave.y + laneGap * (lane + 1);
-      const points: Point[] = [];
-      for (let i = 0; i <= 78; i += 1) {
-        const unit = i / 78;
-        const x = wave.x + 8 + unit * (wave.w - 16);
-        const inWave = waveformSample(inputSample.data, unit);
-        const outWave = waveformSample(outputSample.data, unit);
-        const deltaWave = outWave - inWave;
-        const source = lane === 0 ? outWave : lane === 1 ? inWave : deltaWave;
-        const amp = (18 + depth * 20) * (1 - lane * 0.16) * lerp(0.55, 1.25, liveEnv) * lerp(1, 0.62, damp);
-        const harmonicLift = lane === 2 ? resonance * 0.7 + rate * 0.2 : rate * 0.08;
-        points.push({ x, y: yBase - source * amp * (1 + harmonicLift) });
+
+    // ── Motion panel (left) ──
+    const motionBars = [
+      { label: 'Wow',     norm: clamp01(targets.wowDepth / 0.018),          raw: targets.wowDepth * 1200,        unit: 'ct', color: accent },
+      { label: 'Flutter', norm: clamp01(targets.flutterDepth / 0.0018),     raw: targets.flutterDepth * 1200,    unit: 'ct', color: accent },
+      { label: 'Drift',   norm: clamp01(targets.randomDriftDepth / 0.006),  raw: targets.randomDriftDepth * 1200, unit: 'ct', color: CYAN },
+      { label: 'Delay',   norm: clamp01(targets.randomDelayDepth / 0.012),  raw: targets.randomDelayDepth * 1000, unit: 'ms', color: CYAN },
+      { label: 'Hold Hz', norm: clamp01(targets.randomHoldRateHz / 3.5),    raw: targets.randomHoldRateHz,       unit: 'Hz', color: AMBER },
+      { label: 'Stereo',  norm: clamp01(targets.stereo),                    raw: targets.stereo,                 unit: '%',  color: GREEN },
+      { label: 'Mix',     norm: clamp01(targets.wet),                       raw: targets.wet,                    unit: '%',  color: ROSE },
+    ];
+
+    const barPad = 6;
+    const titleH = 14;
+    const envStripH = 7;
+    const stereoFieldH = 22;
+    const barsAvailH = motion.h - titleH - envStripH - stereoFieldH - 14;
+    const barH = Math.min(14, (barsAvailH - (motionBars.length - 1) * 3) / motionBars.length);
+    const barGap = Math.min(3, (barsAvailH - barH * motionBars.length) / Math.max(1, motionBars.length - 1));
+
+    drawCaption(ctx, 'MOTION', motion.x + barPad, motion.y + titleH * 0.7, accent);
+
+    motionBars.forEach((bar, i) => {
+      const y = motion.y + titleH + 4 + i * (barH + barGap);
+      const trackW = motion.w - barPad * 2;
+      const labelW = 38;
+      const bW = trackW - labelW - 4;
+      const bX = motion.x + barPad + labelW + 4;
+      const pulse = 1 + liveEnv * 0.3;
+      const fillW = bW * clamp01(bar.norm * pulse);
+
+      drawCaption(ctx, bar.label, motion.x + barPad, y + barH * 0.55, MUTED);
+
+      // track background
+      const trackRect: Rect = { x: bX, y, w: bW, h: barH };
+      fillRoundedRect(ctx, trackRect, 3, 'rgba(255, 255, 255, 0.04)');
+
+      // filled bar
+      if (fillW > 1) {
+        const intensity = Math.round(clamp(60 + bar.norm * 140 + liveEnv * 40, 40, 200));
+        fillRoundedRect(ctx, { x: bX, y, w: fillW, h: barH }, 3, `${bar.color}${intensity.toString(16).padStart(2, '0')}`);
       }
-      drawLinePath(ctx, points);
-      ctx.strokeStyle = `${waveColors[lane] ?? accent}aa`;
-      ctx.lineWidth = lane === 0 ? 2 : 1.3;
-      ctx.stroke();
-    }
 
-    const centerX = radar.x + radar.w / 2;
-    const centerY = radar.y + radar.h / 2;
-    const radius = Math.max(30, Math.min(radar.w, radar.h) * 0.38);
-    for (let ring = 1; ring <= 3; ring += 1) {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, (radius * ring) / 3, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    const handles: CharacterHandle[] = [];
-    const polygon: Point[] = [];
-    CHARACTER_FINGERPRINT_POINTS.forEach((item, index) => {
-      const angle = -Math.PI / 2 + (index / CHARACTER_FINGERPRINT_POINTS.length) * Math.PI * 2;
-      const axisX = centerX + Math.cos(angle) * radius;
-      const axisY = centerY + Math.sin(angle) * radius;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.075)';
-      ctx.beginPath();
-      ctx.moveTo(centerX, centerY);
-      ctx.lineTo(axisX, axisY);
-      ctx.stroke();
-
-      const value = clamp01(Number(state[item.key] ?? 0));
-      const x = centerX + Math.cos(angle) * radius * value;
-      const y = centerY + Math.sin(angle) * radius * value;
-      handles.push({ key: item.key, angle, x, y });
-      polygon.push({ x, y });
+      // value readout — actual resolved value with unit
+      drawCaption(ctx, fmtDsp(bar.raw, bar.unit), bX + bW + 1, y + barH * 0.55, `${bar.color}88`, 'right');
     });
 
-    drawLinePath(ctx, polygon, true);
-    ctx.fillStyle = `${accent}30`;
-    ctx.fill();
-    ctx.strokeStyle = `${accent}e6`;
-    ctx.lineWidth = 1.8;
+    // stereo field indicator
+    const sfY = motion.y + motion.h - envStripH - stereoFieldH - 6;
+    const sfCx = motion.x + motion.w / 2;
+    const sfMaxR = (motion.w - barPad * 4) / 2;
+    // background circle
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(sfCx, sfY + stereoFieldH / 2, sfMaxR, 0, Math.PI * 2);
     ctx.stroke();
-    for (const handle of handles) {
-      ctx.fillStyle = activeKeyRef.current === handle.key ? '#fff' : accent;
-      ctx.strokeStyle = 'rgba(10, 16, 26, 0.8)';
-      ctx.lineWidth = 2;
+    // center line
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.beginPath();
+    ctx.moveTo(sfCx, sfY + 2);
+    ctx.lineTo(sfCx, sfY + stereoFieldH - 2);
+    ctx.stroke();
+    // stereo dots: main and spread
+    const mainPanX = sfCx + targets.mainPan * sfMaxR;
+    const spreadPanX = sfCx + targets.spreadPan * sfMaxR;
+    const mainGain = clamp01(targets.mainDelayGain);
+    const spreadGain = clamp01(targets.spreadDelayGain);
+    // spread channel
+    if (spreadGain > 0.01) {
+      ctx.fillStyle = `${accent}55`;
       ctx.beginPath();
-      ctx.arc(handle.x, handle.y, activeKeyRef.current === handle.key ? 4.8 : 3.8, 0, Math.PI * 2);
+      ctx.arc(spreadPanX, sfY + stereoFieldH / 2, 2.5 + spreadGain * 2.5, 0, Math.PI * 2);
       ctx.fill();
+    }
+    // main channel
+    ctx.fillStyle = `${accent}cc`;
+    ctx.beginPath();
+    ctx.arc(mainPanX, sfY + stereoFieldH / 2, 2.5 + mainGain * 2, 0, Math.PI * 2);
+    ctx.fill();
+    // labels
+    drawCaption(ctx, 'L', motion.x + barPad, sfY + stereoFieldH / 2 + 0.5, 'rgba(255, 255, 255, 0.2)');
+    drawCaption(ctx, 'R', motion.x + motion.w - barPad, sfY + stereoFieldH / 2 + 0.5, 'rgba(255, 255, 255, 0.2)', 'right');
+
+    // env follower meter strip (bottom)
+    const envY = motion.y + motion.h - envStripH - 2;
+    const envRect: Rect = { x: motion.x + barPad, y: envY, w: motion.w - barPad * 2, h: envStripH };
+    fillRoundedRect(ctx, envRect, 3, 'rgba(255, 255, 255, 0.055)');
+    fillRoundedRect(ctx, { ...envRect, w: envRect.w * liveEnv }, 3, `${accent}55`);
+    drawCaption(ctx, 'ENV', motion.x + motion.w - barPad, envY - 2, MUTED, 'right');
+
+    // ── Filter response panel (right) ──
+    const logMin = Math.log10(20);
+    const logMax = Math.log10(20000);
+    const logSpan = logMax - logMin;
+    const minDb = -36;
+    const maxDb = 9;
+    const dbSpan = maxDb - minDb;
+    const plotPad = 6;
+    const labelH = 16;
+    const plotX = filt.x + plotPad;
+    const plotW = filt.w - plotPad * 2;
+    const plotY = filt.y + plotPad;
+    const plotH = filt.h - plotPad - labelH - 4;
+    const freqToX = (f: number) => plotX + clamp01((Math.log10(clamp(f, 20, 20000)) - logMin) / logSpan) * plotW;
+    const dbToFiltY = (db: number) => plotY + clamp01(1 - (clamp(db, minDb, maxDb) - minDb) / dbSpan) * plotH;
+
+    // frequency grid
+    const gridFreqs = [50, 100, 500, 1000, 5000, 10000];
+    const labelFreqs = [100, 1000, 10000];
+    for (const gf of gridFreqs) {
+      const gx = freqToX(gf);
+      ctx.strokeStyle = labelFreqs.includes(gf) ? 'rgba(255, 255, 255, 0.07)' : 'rgba(255, 255, 255, 0.035)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(gx, plotY);
+      ctx.lineTo(gx, plotY + plotH);
       ctx.stroke();
     }
-    layoutRef.current = { centerX, centerY, radius, handles };
+    for (const lf of labelFreqs) {
+      drawCaption(ctx, lf >= 1000 ? `${lf / 1000}k` : `${lf}`, freqToX(lf), plotY + plotH + labelH * 0.6, MUTED, 'center');
+    }
+    // 0 dB reference line
+    const zeroY = dbToFiltY(0);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.09)';
+    ctx.setLineDash([3, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(plotX, zeroY);
+    ctx.lineTo(plotX + plotW, zeroY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // resolved filter targets
+    const hpHz = targets.highpassHz;
+    const hpQ = targets.highpassQ;
+    const lpHz = targets.lowpassHz;
+    const lpQ = targets.lowpassQ;
+    const lp2Hz = targets.lowpassStage2Hz;
+    const lp2Q = targets.lowpassStage2Q;
+
+    // envelope-opened LP
+    const envLpHz = clamp(lpHz + targets.envToLowpassGain * liveEnv, lpHz, 20000);
+    const envLp2Hz = clamp(lp2Hz + targets.envToLowpassGain * liveEnv * 0.9, lp2Hz, 20000);
+    const envLpQ = clamp(lpQ + targets.envToResonanceGain * liveEnv, lpQ, 14);
+
+    // compute response curves
+    const numPts = 112;
+    const staticCurve: Point[] = [];
+    const liveCurve: Point[] = [];
+    for (let i = 0; i <= numPts; i += 1) {
+      const u = i / numPts;
+      const f = Math.pow(10, logMin + u * logSpan);
+      const x = plotX + u * plotW;
+      // static
+      const sHp = Math.min(4, biquadHpMag(f, hpHz, hpQ));
+      const sLp = Math.min(4, biquadLpMag(f, lpHz, lpQ));
+      const sLp2 = Math.min(4, biquadLpMag(f, lp2Hz, lp2Q));
+      const sDb = clamp(20 * Math.log10(Math.max(0.0005, sHp * sLp * sLp2)), minDb, maxDb);
+      staticCurve.push({ x, y: dbToFiltY(sDb) });
+      // live (envelope-opened)
+      const eLp = Math.min(4, biquadLpMag(f, envLpHz, envLpQ));
+      const eLp2 = Math.min(4, biquadLpMag(f, envLp2Hz, lp2Q));
+      const eDb = clamp(20 * Math.log10(Math.max(0.0005, sHp * eLp * eLp2)), minDb, maxDb);
+      liveCurve.push({ x, y: dbToFiltY(eDb) });
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(filt.x + 1, plotY - 1, filt.w - 2, plotH + 2);
+    ctx.clip();
+
+    // fill passband under live curve
+    const bottomY = dbToFiltY(minDb);
+    ctx.beginPath();
+    ctx.moveTo(liveCurve[0]!.x, bottomY);
+    for (const p of liveCurve) ctx.lineTo(p.x, p.y);
+    ctx.lineTo(liveCurve[liveCurve.length - 1]!.x, bottomY);
+    ctx.closePath();
+    const passFill = ctx.createLinearGradient(0, plotY, 0, plotY + plotH);
+    passFill.addColorStop(0, `${accent}1a`);
+    passFill.addColorStop(1, `${accent}05`);
+    ctx.fillStyle = passFill;
+    ctx.fill();
+
+    // fill LPG opening region (between static and live)
+    const hasOpening = liveEnv > 0.005 && targets.envToLowpassGain > 1;
+    if (hasOpening) {
+      ctx.beginPath();
+      for (let i = 0; i <= numPts; i += 1) ctx.lineTo(liveCurve[i]!.x, Math.min(liveCurve[i]!.y, staticCurve[i]!.y));
+      for (let i = numPts; i >= 0; i -= 1) ctx.lineTo(staticCurve[i]!.x, Math.max(staticCurve[i]!.y, liveCurve[i]!.y));
+      ctx.closePath();
+      ctx.fillStyle = `${accent}20`;
+      ctx.fill();
+    }
+
+    // static curve
+    drawLinePath(ctx, staticCurve);
+    ctx.strokeStyle = `${accent}50`;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // live curve
+    drawLinePath(ctx, liveCurve);
+    ctx.strokeStyle = `${accent}dd`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // bias floor marker
+    const biasX = freqToX(lpHz);
+    ctx.strokeStyle = `${accent}55`;
+    ctx.setLineDash([3, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(biasX, plotY);
+    ctx.lineTo(biasX, plotY + plotH);
+    ctx.stroke();
+
+    // HP cutoff marker
+    if (hpHz > 25) {
+      const hpX = freqToX(hpHz);
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.45)';
+      ctx.beginPath();
+      ctx.moveTo(hpX, plotY);
+      ctx.lineTo(hpX, plotY + plotH);
+      ctx.stroke();
+    }
+
+    // live LP dot (env-opened position at 0 dB crossing)
+    if (hasOpening) {
+      const envX = freqToX(envLpHz);
+      ctx.strokeStyle = `${accent}44`;
+      ctx.beginPath();
+      ctx.moveTo(envX, plotY);
+      ctx.lineTo(envX, plotY + plotH);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // live dot at the envelope-opened LP cutoff
+    const dotX = freqToX(hasOpening ? envLpHz : lpHz);
+    const dotY = dbToFiltY(0);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(dotX, dotY, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+
+    // panel labels
+    drawCaption(ctx, 'BIAS', biasX, plotY + plotH + labelH * 0.6, `${accent}77`, 'center');
+    if (hpHz > 25) drawCaption(ctx, 'HP', freqToX(hpHz), plotY + plotH + labelH * 0.6, 'rgba(251, 191, 36, 0.5)', 'center');
   }, [
     getDynamicsAnalyser,
     getDynamicsTelemetry,
-    state.characterAge,
-    state.characterDamp,
-    state.characterDepth,
     state.characterEnvFollow,
-    state.characterMix,
     state.characterMode,
-    state.characterRate,
-    state.characterResonance,
-    state.characterStereo,
+    targets,
   ]);
-
-  const updateFingerprint = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const key = activeKeyRef.current;
-    const layout = layoutRef.current;
-    if (!key || !layout) return;
-    const point = getPointerPoint(event);
-    const handle = layout.handles.find((candidate) => candidate.key === key);
-    if (!handle) return;
-    const projection = ((point.x - layout.centerX) * Math.cos(handle.angle) + (point.y - layout.centerY) * Math.sin(handle.angle)) / layout.radius;
-    onParamChange(key, roundStep(clamp01(projection), 0.01));
-  }, [onParamChange]);
-
-  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const layout = layoutRef.current;
-    if (!layout) return;
-    const point = getPointerPoint(event);
-    let nearest: CharacterHandle | null = null;
-    let nearestDistance = Infinity;
-    for (const handle of layout.handles) {
-      const distance = Math.hypot(point.x - handle.x, point.y - handle.y);
-      if (distance < nearestDistance) {
-        nearest = handle;
-        nearestDistance = distance;
-      }
-    }
-    if (!nearest || nearestDistance > 18) return;
-    activeKeyRef.current = nearest.key;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    updateFingerprint(event);
-  }, [updateFingerprint]);
-
-  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (activeKeyRef.current) updateFingerprint(event);
-  }, [updateFingerprint]);
-
-  const handlePointerUp = useCallback(() => {
-    activeKeyRef.current = null;
-  }, []);
 
   return (
     <DynamicsCanvasSurface
       ariaLabel="Character visualizer"
       className="dynamics-viz-character"
       draw={draw}
-      interactive
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
     />
   );
 }

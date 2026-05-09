@@ -292,12 +292,15 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   characterMode:          { level: 1, scope: 'dynamicsCharacter' },
   characterMix:           { level: 1, scope: 'dynamicsCharacter' },
   characterAge:           { level: 1, scope: 'dynamicsCharacter' },
+  characterBias:          { level: 1, scope: 'dynamicsCharacter' },
+  characterLpgAmount:     { level: 1, scope: 'dynamicsCharacter' },
   characterResonance:     { level: 1, scope: 'dynamicsCharacter' },
   characterStereo:        { level: 1, scope: 'dynamicsCharacter' },
   characterEnvFollow:     { level: 1, scope: 'dynamicsCharacter' },
   characterDepth:         { level: 1, scope: 'dynamicsCharacter' },
   characterRate:          { level: 1, scope: 'dynamicsCharacter' },
   characterDamp:          { level: 1, scope: 'dynamicsCharacter' },
+  characterWetHp:         { level: 1, scope: 'dynamicsCharacter' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Dynamics Degrade Engine
