@@ -25,6 +25,7 @@ import {
   type CoreProductEvent,
   type CoreProductModulationRangeMode,
   type CoreProductRangeTarget,
+  type CoreProductRangeValueContext,
   type CoreProductSubLaneDirection,
   type CoreProductStepValueField,
   createCoreProductDrumTriggerEvent,
@@ -522,8 +523,7 @@ class CoreProductEngineHost {
   }
 
   resetSonicParityFx(): void {
-    // Product Core parity pages start from a fresh worklet instance. Avoid
-    // reloading the full product snapshot while the AudioWorklet is rendering.
+    this.runtime.reset();
   }
 
   setSeedLocked(locked: boolean): void {
@@ -896,9 +896,33 @@ class CoreProductEngineHost {
       if (!previousSource || !nextSource) return false;
       if (previousSource.sourceId !== nextSource.sourceId) return false;
       if (previousSource.assetId !== nextSource.assetId) return false;
+      if (this.padPatchChanged(previousSource, nextSource)) return false;
+      if (this.leadPatchChanged(previousSource, nextSource)) return false;
     }
     return this.canApplyLaneDiffs(previous.synthLanes, next.synthLanes) &&
       this.canApplyLaneDiffs(previous.drumLanes, next.drumLanes);
+  }
+
+  private padPatchChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
+    if (previous.exactPadParamCount !== next.exactPadParamCount) return true;
+    const count = Math.max(previous.exactPadParamCount, next.exactPadParamCount);
+    for (let index = 0; index < count; index += 1) {
+      if (this.valuesDiffer(previous.exactPadParams[index] ?? 0, next.exactPadParams[index] ?? 0)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private leadPatchChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
+    if (previous.exactLeadParamCount !== next.exactLeadParamCount) return true;
+    const count = Math.max(previous.exactLeadParamCount, next.exactLeadParamCount);
+    for (let index = 0; index < count; index += 1) {
+      if (this.valuesDiffer(previous.exactLeadParams[index] ?? 0, next.exactLeadParams[index] ?? 0)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private canApplyLaneDiffs(previous: ProductLaneSnapshot[], next: ProductLaneSnapshot[]): boolean {
@@ -981,6 +1005,9 @@ class CoreProductEngineHost {
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, previous.delayASend, next.delayASend, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, previous.delayBSend, next.delayBSend, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, previous.granularSend, next.granularSend, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, previous.postLpfHz, next.postLpfHz, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, previous.stereoWidth, next.stereoWidth, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, previous.postLpfKeyTracking, next.postLpfKeyTracking, targetId);
     }
   }
 
@@ -1133,6 +1160,12 @@ class CoreProductEngineHost {
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbSaturationMode, previous.fx.reverbSaturationMode, next.fx.reverbSaturationMode);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbTransientSmooth, previous.fx.reverbTransientSmooth, next.fx.reverbTransientSmooth);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbErLpFreq, previous.fx.reverbErLpFreq, next.fx.reverbErLpFreq);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompThreshold, previous.fx.reverbPreCompThreshold, next.fx.reverbPreCompThreshold);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompKnee, previous.fx.reverbPreCompKnee, next.fx.reverbPreCompKnee);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompRatio, previous.fx.reverbPreCompRatio, next.fx.reverbPreCompRatio);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompAttackMs, previous.fx.reverbPreCompAttackMs, next.fx.reverbPreCompAttackMs);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompReleaseMs, previous.fx.reverbPreCompReleaseMs, next.fx.reverbPreCompReleaseMs);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompMakeup, previous.fx.reverbPreCompMakeup, next.fx.reverbPreCompMakeup);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeMix, previous.fx.spectralFreezeMix, next.fx.spectralFreezeMix);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeEnabled, previous.fx.spectralFreezeEnabled, next.fx.spectralFreezeEnabled);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeActive, previous.fx.spectralFreezeActive, next.fx.spectralFreezeActive);
@@ -1169,6 +1202,36 @@ class CoreProductEngineHost {
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeNoise, previous.fx.dynamicsDegradeNoise, next.fx.dynamicsDegradeNoise);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeSaturation, previous.fx.dynamicsDegradeSaturation, next.fx.dynamicsDegradeSaturation);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeCorrosion, previous.fx.dynamicsDegradeCorrosion, next.fx.dynamicsDegradeCorrosion);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowWow, previous.fx.dynamicsModSlowWow, next.fx.dynamicsModSlowWow);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowFlutter, previous.fx.dynamicsModSlowFlutter, next.fx.dynamicsModSlowFlutter);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowLp, previous.fx.dynamicsModSlowLp, next.fx.dynamicsModSlowLp);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowWet, previous.fx.dynamicsModSlowWet, next.fx.dynamicsModSlowWet);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowDropout, previous.fx.dynamicsModSlowDropout, next.fx.dynamicsModSlowDropout);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowAlias, previous.fx.dynamicsModSlowAlias, next.fx.dynamicsModSlowAlias);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterWow, previous.fx.dynamicsModFlutterWow, next.fx.dynamicsModFlutterWow);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterFlutter, previous.fx.dynamicsModFlutterFlutter, next.fx.dynamicsModFlutterFlutter);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterLp, previous.fx.dynamicsModFlutterLp, next.fx.dynamicsModFlutterLp);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterWet, previous.fx.dynamicsModFlutterWet, next.fx.dynamicsModFlutterWet);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterDropout, previous.fx.dynamicsModFlutterDropout, next.fx.dynamicsModFlutterDropout);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterAlias, previous.fx.dynamicsModFlutterAlias, next.fx.dynamicsModFlutterAlias);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomWow, previous.fx.dynamicsModRandomWow, next.fx.dynamicsModRandomWow);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomFlutter, previous.fx.dynamicsModRandomFlutter, next.fx.dynamicsModRandomFlutter);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomLp, previous.fx.dynamicsModRandomLp, next.fx.dynamicsModRandomLp);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomWet, previous.fx.dynamicsModRandomWet, next.fx.dynamicsModRandomWet);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomDropout, previous.fx.dynamicsModRandomDropout, next.fx.dynamicsModRandomDropout);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomAlias, previous.fx.dynamicsModRandomAlias, next.fx.dynamicsModRandomAlias);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvWow, previous.fx.dynamicsModEnvWow, next.fx.dynamicsModEnvWow);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvFlutter, previous.fx.dynamicsModEnvFlutter, next.fx.dynamicsModEnvFlutter);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvLp, previous.fx.dynamicsModEnvLp, next.fx.dynamicsModEnvLp);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvWet, previous.fx.dynamicsModEnvWet, next.fx.dynamicsModEnvWet);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvDropout, previous.fx.dynamicsModEnvDropout, next.fx.dynamicsModEnvDropout);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvAlias, previous.fx.dynamicsModEnvAlias, next.fx.dynamicsModEnvAlias);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseWow, previous.fx.dynamicsModNoiseWow, next.fx.dynamicsModNoiseWow);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseFlutter, previous.fx.dynamicsModNoiseFlutter, next.fx.dynamicsModNoiseFlutter);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseLp, previous.fx.dynamicsModNoiseLp, next.fx.dynamicsModNoiseLp);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseWet, previous.fx.dynamicsModNoiseWet, next.fx.dynamicsModNoiseWet);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseDropout, previous.fx.dynamicsModNoiseDropout, next.fx.dynamicsModNoiseDropout);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseAlias, previous.fx.dynamicsModNoiseAlias, next.fx.dynamicsModNoiseAlias);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationEnabled, previous.fx.dynamicsSaturationEnabled, next.fx.dynamicsSaturationEnabled);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationMode, previous.fx.dynamicsSaturationMode, next.fx.dynamicsSaturationMode);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationDrive, previous.fx.dynamicsSaturationDrive, next.fx.dynamicsSaturationDrive);
@@ -1957,7 +2020,13 @@ class CoreProductEngineHost {
       range,
       mode,
       this.currentNumericValue(displayKey, range),
+      this.currentRangeValueContext(),
     ));
+  }
+
+  private currentRangeValueContext(): CoreProductRangeValueContext {
+    const snapshotBpm = this.latestProductSnapshot?.transport.bpm;
+    return { bpm: typeof snapshotBpm === 'number' && Number.isFinite(snapshotBpm) ? snapshotBpm : 120 };
   }
 
   private currentNumericValue(key: string, range: { min: number; max: number } | null): number {

@@ -5,8 +5,8 @@ import KesshoProductSchema
 #endif
 
 public enum KesshoProductCoreSnapshotEncoder {
-    public static let byteCount = 4492
-    public static let sourceByteCount = 56
+    public static let byteCount = 12644
+    public static let sourceByteCount = 1200
 
     private static let laneByteCount = 84
     private static let sequencerByteCount = 4 + 16 * laneByteCount
@@ -44,7 +44,31 @@ public enum KesshoProductCoreSnapshotEncoder {
             writer.f32(source.delayASend)
             writer.f32(source.delayBSend)
             writer.f32(source.granularSend)
-            writer.u32(0)
+            writer.f32(source.postLpfHz)
+            writer.f32(source.stereoWidth)
+            writer.f32(source.postLpfKeyTracking)
+            writer.u32(min(source.exactPadParamCount, KesshoProductSchema.padParamCount))
+            for index in 0..<Int(KesshoProductSchema.padParamCount) {
+                writer.f32(index < source.exactPadParams.count ? source.exactPadParams[index] : 0)
+            }
+            writer.u32(min(source.exactLeadParamCount, KesshoProductSchema.leadParamCount))
+            for index in 0..<Int(KesshoProductSchema.leadParamCount) {
+                writer.f32(index < source.exactLeadParams.count ? source.exactLeadParams[index] : 0)
+            }
+            writer.u32(min(source.exactDrumParamCount, KesshoProductSchema.drumParamCount))
+            for index in 0..<Int(KesshoProductSchema.drumParamCount) {
+                writer.f32(index < source.exactDrumParams.count ? source.exactDrumParams[index] : 0)
+            }
+            for index in 0..<Int(KesshoProductSchema.drumVoiceCount) {
+                writer.u32(index < source.drumVoicePresetAIds.count ? source.drumVoicePresetAIds[index] : 0)
+            }
+            for index in 0..<Int(KesshoProductSchema.drumVoiceCount) {
+                writer.u32(index < source.drumVoicePresetBIds.count ? source.drumVoicePresetBIds[index] : 0)
+            }
+            for index in 0..<Int(KesshoProductSchema.drumVoiceCount) {
+                writer.f32(index < source.drumVoiceMorphs.count ? min(max(source.drumVoiceMorphs[index], 0), 1) : 0)
+            }
+            writer.f32(source.holdSeconds)
         }
 
         writeSequencer(snapshot.synthLanes, writer: &writer)
@@ -133,6 +157,12 @@ public enum KesshoProductCoreSnapshotEncoder {
         writer.u32(snapshot.fx.reverbSaturationMode)
         writer.f32(snapshot.fx.reverbTransientSmooth)
         writer.f32(snapshot.fx.reverbErLpFreq)
+        writer.f32(snapshot.fx.reverbPreCompThreshold)
+        writer.f32(snapshot.fx.reverbPreCompKnee)
+        writer.f32(snapshot.fx.reverbPreCompRatio)
+        writer.f32(snapshot.fx.reverbPreCompAttackMs)
+        writer.f32(snapshot.fx.reverbPreCompReleaseMs)
+        writer.f32(snapshot.fx.reverbPreCompMakeup)
         writer.f32(snapshot.fx.spectralFreezeMix)
         writer.u32(snapshot.fx.spectralFreezeEnabled ? 1 : 0)
         writer.u32(snapshot.fx.spectralFreezeActive ? 1 : 0)
@@ -169,6 +199,36 @@ public enum KesshoProductCoreSnapshotEncoder {
         writer.f32(snapshot.fx.dynamicsDegradeNoise)
         writer.f32(snapshot.fx.dynamicsDegradeSaturation)
         writer.f32(snapshot.fx.dynamicsDegradeCorrosion)
+        writer.f32(snapshot.fx.dynamicsModSlowWow)
+        writer.f32(snapshot.fx.dynamicsModSlowFlutter)
+        writer.f32(snapshot.fx.dynamicsModSlowLp)
+        writer.f32(snapshot.fx.dynamicsModSlowWet)
+        writer.f32(snapshot.fx.dynamicsModSlowDropout)
+        writer.f32(snapshot.fx.dynamicsModSlowAlias)
+        writer.f32(snapshot.fx.dynamicsModFlutterWow)
+        writer.f32(snapshot.fx.dynamicsModFlutterFlutter)
+        writer.f32(snapshot.fx.dynamicsModFlutterLp)
+        writer.f32(snapshot.fx.dynamicsModFlutterWet)
+        writer.f32(snapshot.fx.dynamicsModFlutterDropout)
+        writer.f32(snapshot.fx.dynamicsModFlutterAlias)
+        writer.f32(snapshot.fx.dynamicsModRandomWow)
+        writer.f32(snapshot.fx.dynamicsModRandomFlutter)
+        writer.f32(snapshot.fx.dynamicsModRandomLp)
+        writer.f32(snapshot.fx.dynamicsModRandomWet)
+        writer.f32(snapshot.fx.dynamicsModRandomDropout)
+        writer.f32(snapshot.fx.dynamicsModRandomAlias)
+        writer.f32(snapshot.fx.dynamicsModEnvWow)
+        writer.f32(snapshot.fx.dynamicsModEnvFlutter)
+        writer.f32(snapshot.fx.dynamicsModEnvLp)
+        writer.f32(snapshot.fx.dynamicsModEnvWet)
+        writer.f32(snapshot.fx.dynamicsModEnvDropout)
+        writer.f32(snapshot.fx.dynamicsModEnvAlias)
+        writer.f32(snapshot.fx.dynamicsModNoiseWow)
+        writer.f32(snapshot.fx.dynamicsModNoiseFlutter)
+        writer.f32(snapshot.fx.dynamicsModNoiseLp)
+        writer.f32(snapshot.fx.dynamicsModNoiseWet)
+        writer.f32(snapshot.fx.dynamicsModNoiseDropout)
+        writer.f32(snapshot.fx.dynamicsModNoiseAlias)
         writer.u32(snapshot.fx.dynamicsSaturationEnabled ? 1 : 0)
         writer.u32(snapshot.fx.dynamicsSaturationMode)
         writer.f32(snapshot.fx.dynamicsSaturationDrive)
@@ -363,6 +423,12 @@ public enum KesshoProductCoreSnapshotEncoder {
                 reverbSaturationMode: reverbSaturationModeId(state.reverbSaturationMode),
                 reverbTransientSmooth: Float(clamp(state.reverbTransientSmooth, 0, 1)),
                 reverbErLpFreq: Float(clamp(state.reverbErLpFreq, 200, 12000)),
+                reverbPreCompThreshold: Float(clamp(state.reverbPreCompThreshold, -60, 0)),
+                reverbPreCompKnee: Float(clamp(state.reverbPreCompKnee, 0, 40)),
+                reverbPreCompRatio: Float(clamp(state.reverbPreCompRatio, 1, 20)),
+                reverbPreCompAttackMs: Float(clamp(state.reverbPreCompAttackMs, 0.1, 30)),
+                reverbPreCompReleaseMs: Float(clamp(state.reverbPreCompReleaseMs, 20, 1000)),
+                reverbPreCompMakeup: Float(clamp(state.reverbPreCompMakeup, 0.5, 4)),
                 spectralFreezeMix: Float(clamp(state.spectralFreezeMix, 0, 1)),
                 spectralFreezeEnabled: state.spectralFreezeEnabled,
                 spectralFreezeActive: state.spectralFreezeActive,
@@ -399,6 +465,36 @@ public enum KesshoProductCoreSnapshotEncoder {
                 dynamicsDegradeNoise: Float(clamp(state.degradeNoise, 0, 1)),
                 dynamicsDegradeSaturation: Float(clamp(state.degradeSaturation, 0, 1)),
                 dynamicsDegradeCorrosion: Float(clamp(state.degradeCorrosion, 0, 1)),
+                dynamicsModSlowWow: Float(clamp(state.degradeModSlowWow, 0, 1)),
+                dynamicsModSlowFlutter: Float(clamp(state.degradeModSlowFlutter, 0, 1)),
+                dynamicsModSlowLp: Float(clamp(state.degradeModSlowLp, 0, 1)),
+                dynamicsModSlowWet: Float(clamp(state.degradeModSlowWet, 0, 1)),
+                dynamicsModSlowDropout: Float(clamp(state.degradeModSlowDropout, 0, 1)),
+                dynamicsModSlowAlias: Float(clamp(state.degradeModSlowAlias, 0, 1)),
+                dynamicsModFlutterWow: Float(clamp(state.degradeModFlutterWow, 0, 1)),
+                dynamicsModFlutterFlutter: Float(clamp(state.degradeModFlutterFlutter, 0, 1)),
+                dynamicsModFlutterLp: Float(clamp(state.degradeModFlutterLp, 0, 1)),
+                dynamicsModFlutterWet: Float(clamp(state.degradeModFlutterWet, 0, 1)),
+                dynamicsModFlutterDropout: Float(clamp(state.degradeModFlutterDropout, 0, 1)),
+                dynamicsModFlutterAlias: Float(clamp(state.degradeModFlutterAlias, 0, 1)),
+                dynamicsModRandomWow: Float(clamp(state.degradeModRandomWow, 0, 1)),
+                dynamicsModRandomFlutter: Float(clamp(state.degradeModRandomFlutter, 0, 1)),
+                dynamicsModRandomLp: Float(clamp(state.degradeModRandomLp, 0, 1)),
+                dynamicsModRandomWet: Float(clamp(state.degradeModRandomWet, 0, 1)),
+                dynamicsModRandomDropout: Float(clamp(state.degradeModRandomDropout, 0, 1)),
+                dynamicsModRandomAlias: Float(clamp(state.degradeModRandomAlias, 0, 1)),
+                dynamicsModEnvWow: Float(clamp(state.degradeModEnvWow, 0, 1)),
+                dynamicsModEnvFlutter: Float(clamp(state.degradeModEnvFlutter, 0, 1)),
+                dynamicsModEnvLp: Float(clamp(state.degradeModEnvLp, 0, 1)),
+                dynamicsModEnvWet: Float(clamp(state.degradeModEnvWet, 0, 1)),
+                dynamicsModEnvDropout: Float(clamp(state.degradeModEnvDropout, 0, 1)),
+                dynamicsModEnvAlias: Float(clamp(state.degradeModEnvAlias, 0, 1)),
+                dynamicsModNoiseWow: Float(clamp(state.degradeModNoiseWow, 0, 1)),
+                dynamicsModNoiseFlutter: Float(clamp(state.degradeModNoiseFlutter, 0, 1)),
+                dynamicsModNoiseLp: Float(clamp(state.degradeModNoiseLp, 0, 1)),
+                dynamicsModNoiseWet: Float(clamp(state.degradeModNoiseWet, 0, 1)),
+                dynamicsModNoiseDropout: Float(clamp(state.degradeModNoiseDropout, 0, 1)),
+                dynamicsModNoiseAlias: Float(clamp(state.degradeModNoiseAlias, 0, 1)),
                 dynamicsSaturationEnabled: state.dynamicsEnabled && state.dynamicsSaturationEnabled,
                 dynamicsSaturationMode: dynamicsSaturationModeId(state.dynamicsSaturationMode),
                 dynamicsSaturationDrive: Float(clamp(state.dynamicsSaturationDrive, 0, 1)),
@@ -580,6 +676,8 @@ public enum KesshoProductCoreSnapshotEncoder {
             source.delayASend = Float(state.pad1DelayASend)
             source.delayBSend = Float(state.pad1DelayBSend)
             source.granularSend = Float(state.granularPad1Send)
+            source.postLpfHz = Float(state.padPostLPF)
+            source.stereoWidth = Float(state.padStereoWidth)
             source.presetId = endpointPresetId(source: "pad", morph: state.padMorph, a: state.padPresetA, b: state.padPresetB, fallbackKey: "init")
         case KesshoProductSourceId.pad2.rawValue:
             source.enabled = state.pad2Enabled
@@ -590,26 +688,36 @@ public enum KesshoProductCoreSnapshotEncoder {
             source.delayASend = Float(state.pad2DelayASend)
             source.delayBSend = Float(state.pad2DelayBSend)
             source.granularSend = Float(state.granularPad2Send)
+            source.postLpfHz = Float(state.pad2PostLPF)
+            source.stereoWidth = Float(state.pad2StereoWidth)
             source.presetId = endpointPresetId(source: "pad", morph: state.pad2Morph, a: state.pad2PresetA, b: state.pad2PresetB, fallbackKey: "init")
         case KesshoProductSourceId.lead1.rawValue:
             source.enabled = state.leadEnabled
             source.level = Float(state.lead1Level)
             source.morph = Float(state.lead1Morph)
             source.distance = Float(state.lead1Distance)
+            source.holdSeconds = Float(state.lead1Hold)
             source.reverbSend = Float(state.lead1ReverbSend)
             source.delayASend = Float(state.lead1DelayASend)
             source.delayBSend = Float(state.lead1DelayBSend)
             source.granularSend = Float(state.granularLead1Send)
+            source.postLpfHz = Float(state.lead1PostLPF)
+            source.stereoWidth = Float(state.lead1StereoWidth)
+            source.postLpfKeyTracking = Float(state.lead1PostLPFKeyTracking)
             source.presetId = endpointPresetId(source: "lead", morph: state.lead1Morph, a: state.lead1PresetA, b: state.lead1PresetB, fallbackKey: "soft_rhodes")
         case KesshoProductSourceId.lead2.rawValue:
             source.enabled = state.lead2Enabled
             source.level = Float(state.lead2Level)
             source.morph = Float(state.lead2Morph)
             source.distance = Float(state.lead2Distance)
+            source.holdSeconds = Float(state.lead2Hold)
             source.reverbSend = Float(state.lead2ReverbSend)
             source.delayASend = Float(state.lead2DelayASend)
             source.delayBSend = Float(state.lead2DelayBSend)
             source.granularSend = Float(state.granularLead2Send)
+            source.postLpfHz = Float(state.lead2PostLPF)
+            source.stereoWidth = Float(state.lead2StereoWidth)
+            source.postLpfKeyTracking = Float(state.lead2PostLPFKeyTracking)
             source.presetId = endpointPresetId(source: "lead", morph: state.lead2Morph, a: state.lead2PresetC, b: state.lead2PresetD, fallbackKey: "soft_rhodes")
         case KesshoProductSourceId.drum.rawValue:
             source.enabled = state.drumEnabled
@@ -628,6 +736,8 @@ public enum KesshoProductCoreSnapshotEncoder {
             source.delayASend = Float(state.pianoDelayASend)
             source.delayBSend = Float(state.pianoDelayBSend)
             source.granularSend = Float(state.granularPianoSend)
+            source.postLpfHz = Float(state.pianoPostLPF)
+            source.stereoWidth = Float(state.pianoStereoWidth)
             source.presetId = sourcePresetId(source: "piano", key: "default", fallbackKey: "default")
         case KesshoProductSourceId.soundscape.rawValue:
             source.enabled = state.oceanSampleEnabled || state.waterEnabled || state.insectsEnabled ||
@@ -649,6 +759,9 @@ public enum KesshoProductCoreSnapshotEncoder {
         source.delayASend = Float(clamp(Double(source.delayASend), 0, 2))
         source.delayBSend = Float(clamp(Double(source.delayBSend), 0, 2))
         source.granularSend = Float(clamp(Double(source.granularSend), 0, 2))
+        source.postLpfHz = Float(clamp(Double(source.postLpfHz), 20, 20_000))
+        source.stereoWidth = Float(clamp(Double(source.stereoWidth), 0, 1))
+        source.postLpfKeyTracking = Float(clamp(Double(source.postLpfKeyTracking), 0, 1))
         return source
     }
 
@@ -934,7 +1047,20 @@ public enum KesshoProductCoreSnapshotEncoder {
             reverbSend: 0.12,
             delayASend: 0,
             delayBSend: 0,
-            granularSend: 0
+            granularSend: 0,
+            postLpfHz: KesshoProductSchema.sourcePostLpfHz,
+            stereoWidth: KesshoProductSchema.sourceStereoWidth,
+            postLpfKeyTracking: KesshoProductSchema.sourcePostLpfKeyTracking,
+            exactPadParamCount: 0,
+            exactPadParams: Array(repeating: 0, count: Int(KesshoProductSchema.padParamCount)),
+            exactLeadParamCount: 0,
+            exactLeadParams: Array(repeating: 0, count: Int(KesshoProductSchema.leadParamCount)),
+            exactDrumParamCount: 0,
+            exactDrumParams: Array(repeating: 0, count: Int(KesshoProductSchema.drumParamCount)),
+            drumVoicePresetAIds: Array(repeating: 0, count: Int(KesshoProductSchema.drumVoiceCount)),
+            drumVoicePresetBIds: Array(repeating: 0, count: Int(KesshoProductSchema.drumVoiceCount)),
+            drumVoiceMorphs: Array(repeating: 0, count: Int(KesshoProductSchema.drumVoiceCount)),
+            holdSeconds: KesshoProductSchema.sourceHoldSeconds
         )
     }
 
@@ -1416,6 +1542,19 @@ private struct ProductSourceSnapshot {
     var delayASend: Float
     var delayBSend: Float
     var granularSend: Float
+    var postLpfHz: Float
+    var stereoWidth: Float
+    var postLpfKeyTracking: Float
+    var exactPadParamCount: UInt32
+    var exactPadParams: [Float]
+    var exactLeadParamCount: UInt32
+    var exactLeadParams: [Float]
+    var exactDrumParamCount: UInt32
+    var exactDrumParams: [Float]
+    var drumVoicePresetAIds: [UInt32]
+    var drumVoicePresetBIds: [UInt32]
+    var drumVoiceMorphs: [Float]
+    var holdSeconds: Float
 }
 
 private struct ProductLaneSnapshot {
@@ -1523,6 +1662,12 @@ private struct ProductFxSnapshot {
     var reverbSaturationMode: UInt32
     var reverbTransientSmooth: Float
     var reverbErLpFreq: Float
+    var reverbPreCompThreshold: Float
+    var reverbPreCompKnee: Float
+    var reverbPreCompRatio: Float
+    var reverbPreCompAttackMs: Float
+    var reverbPreCompReleaseMs: Float
+    var reverbPreCompMakeup: Float
     var spectralFreezeMix: Float
     var spectralFreezeEnabled: Bool
     var spectralFreezeActive: Bool
@@ -1559,6 +1704,36 @@ private struct ProductFxSnapshot {
     var dynamicsDegradeNoise: Float
     var dynamicsDegradeSaturation: Float
     var dynamicsDegradeCorrosion: Float
+    var dynamicsModSlowWow: Float
+    var dynamicsModSlowFlutter: Float
+    var dynamicsModSlowLp: Float
+    var dynamicsModSlowWet: Float
+    var dynamicsModSlowDropout: Float
+    var dynamicsModSlowAlias: Float
+    var dynamicsModFlutterWow: Float
+    var dynamicsModFlutterFlutter: Float
+    var dynamicsModFlutterLp: Float
+    var dynamicsModFlutterWet: Float
+    var dynamicsModFlutterDropout: Float
+    var dynamicsModFlutterAlias: Float
+    var dynamicsModRandomWow: Float
+    var dynamicsModRandomFlutter: Float
+    var dynamicsModRandomLp: Float
+    var dynamicsModRandomWet: Float
+    var dynamicsModRandomDropout: Float
+    var dynamicsModRandomAlias: Float
+    var dynamicsModEnvWow: Float
+    var dynamicsModEnvFlutter: Float
+    var dynamicsModEnvLp: Float
+    var dynamicsModEnvWet: Float
+    var dynamicsModEnvDropout: Float
+    var dynamicsModEnvAlias: Float
+    var dynamicsModNoiseWow: Float
+    var dynamicsModNoiseFlutter: Float
+    var dynamicsModNoiseLp: Float
+    var dynamicsModNoiseWet: Float
+    var dynamicsModNoiseDropout: Float
+    var dynamicsModNoiseAlias: Float
     var dynamicsSaturationEnabled: Bool
     var dynamicsSaturationMode: UInt32
     var dynamicsSaturationDrive: Float

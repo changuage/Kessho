@@ -24,6 +24,9 @@ public enum KesshoProductParamId: UInt32 {
     case sourceDelayASend = 107
     case sourceDelayBSend = 108
     case sourceGranularSend = 109
+    case sourcePostLpfHz = 110
+    case sourceStereoWidth = 111
+    case sourcePostLpfKeyTracking = 112
     case sequencerLaneEnabled = 200
     case sequencerLaneTargetSource = 201
     case sequencerLaneStepCount = 202
@@ -213,6 +216,12 @@ public enum KesshoProductParamId: UInt32 {
     case fxReverbSaturationMode = 377
     case fxReverbTransientSmooth = 378
     case fxReverbErLpFreq = 379
+    case fxReverbPreCompThreshold = 380
+    case fxReverbPreCompKnee = 381
+    case fxReverbPreCompRatio = 382
+    case fxReverbPreCompAttackMs = 383
+    case fxReverbPreCompReleaseMs = 384
+    case fxReverbPreCompMakeup = 385
     case fxSpectralFreezeEnabled = 930
     case fxSpectralFreezeActive = 931
     case fxSpectralFreezeSlushy = 932

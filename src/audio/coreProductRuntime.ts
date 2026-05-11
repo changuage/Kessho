@@ -121,6 +121,10 @@ export class CoreProductRuntime {
     this.node?.port.postMessage({ type: 'snapshot', snapshot }, [snapshot]);
   }
 
+  reset(): void {
+    this.node?.port.postMessage({ type: 'reset' });
+  }
+
   registerAsset(asset: DecodedCoreProductAsset): void {
     this.node?.port.postMessage({
       type: 'register-asset',

@@ -412,6 +412,19 @@ public:
     return 1;
   }
 
+  int setSourcePresetPatch(int source_index, const KesshoSourcePresetPatch& patch) override {
+    (void)source_index;
+    if (instance_ == nullptr || patch.exact_drum_param_count != KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT) {
+      return 0;
+    }
+    const auto defaults = makeDefaultParams();
+    for (uint32_t index = 0; index < KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT && index < params_.size(); ++index) {
+      params_[index] = std::isfinite(patch.exact_drum_params[index]) ? patch.exact_drum_params[index] : defaults[index];
+    }
+    commitParams();
+    return 1;
+  }
+
   void allNotesOff() override {
     if (instance_ != nullptr) {
       reset();

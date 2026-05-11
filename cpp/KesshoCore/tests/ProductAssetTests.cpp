@@ -73,6 +73,8 @@ KesshoProductSnapshotV2 makeSnapshot(uint32_t asset_id) {
     snapshot.sources[i].level = 0.9f;
     snapshot.sources[i].dry_gain = 1.0f;
     snapshot.sources[i].expression = 0.8f;
+    snapshot.sources[i].post_lpf_hz = 18000.0f;
+    snapshot.sources[i].stereo_width = 1.0f;
   }
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PIANO - 1].asset_id = asset_id;
   return snapshot;

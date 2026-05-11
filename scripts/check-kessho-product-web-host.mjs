@@ -120,6 +120,9 @@ for (const token of [
   'telemetryRngState',
   'rngSeed: this.latestTelemetry.rngSeed',
   'rngState: this.latestTelemetry.rngState',
+  'KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowWow',
+  'KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseAlias',
+  'currentRangeValueContext',
 ]) {
   assert(host.includes(token), `core-product host is missing ${token}`);
 }
@@ -145,7 +148,19 @@ for (const token of [
 }
 
 for (const token of [
+  'const SNAPSHOT_BYTES = 12644',
+  'const SOURCE_BYTES = 1200',
+  'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
+  'KESSHO_PRODUCT_DRUM_VOICE_COUNT',
+  'KESSHO_PRODUCT_DRUM_VOICE_PRESETS',
   'assetRefs: number[]',
+  'exactDrumParamCount: number',
+  'exactDrumParams: number[]',
+  'drumVoicePresetAIds: number[]',
+  'drumVoicePresetBIds: number[]',
+  'drumVoiceMorphs: number[]',
+  'function drumVoicePresetId(voiceIndex: number, presetName: unknown): number',
+  'function drumVoicePresetIdsFromState(state: Record<string, unknown> | undefined, endpoint:',
   'getCoreProductSoundscapeAssetDescriptorsForState(sliderState).map((asset) => asset.assetId)',
   'u32(snapshot.assetRefs[i] ?? 0)',
   'getTransportMetrics',
@@ -169,6 +184,7 @@ for (const token of [
   'spectralFreezePhaseJitter: number',
   'dynamicsEnabled: boolean',
   'dynamicsCharacterMix: number',
+  'dynamicsModSlowWow: number',
   'dynamicsEndCompProgramRelease: number',
   'sidechainEnabled: boolean',
   'sidechainPad1Target: number',
@@ -177,6 +193,7 @@ for (const token of [
   'f32(snapshot.fx.spectralFreezePhaseJitter)',
   'u32(bool(snapshot.fx.dynamicsEnabled))',
   'f32(snapshot.fx.dynamicsEndCompProgramRelease)',
+  'f32(snapshot.fx.dynamicsModNoiseAlias)',
   'u32(bool(snapshot.fx.sidechainEnabled))',
   'f32(snapshot.fx.sidechainReverbTarget)',
   'f32(snapshot.master.saturationDrive)',
@@ -197,6 +214,10 @@ for (const token of [
   '"release"',
   '"body"',
   '"transient"',
+  'KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ',
+  'KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH',
+  'KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING',
+  'KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS',
 ]) {
   assert(generatedSchema.includes(token), `generated Product Core source preset schema is missing ${token}`);
 }
@@ -226,8 +247,83 @@ for (const token of [
   'createCoreProductSequencerSubLaneConfigEvent',
   'createCoreProductMidiEvent',
   'resolveCoreProductDrumMorphRangeTarget',
+  'mapValue?: (value: number, context: CoreProductRangeValueContext) => number',
+  'GRANULAR_VOICE_RANGE_PARAM_SUFFIXES',
+  'granularVoiceRangeTargets',
+  'drumDelayNoteL',
+  'FxDelayATimeLeftMs',
+  'drumDelayNoteR',
+  'FxDelayATimeRightMs',
+  'granularDelayTime',
+  'FxDelayBBaseTimeMs',
+  'indexedDelayDivisionMs',
+  'pad1DelayASend',
+  'SourceDelayASend',
+  'lead2DelayBSend',
+  'SourceDelayBSend',
+  'granularPianoSend',
+  'SourceGranularSend',
+  'padPostLPF',
+  'SourcePostLpfHz',
+  'padStereoWidth',
+  'SourceStereoWidth',
+  'lead1PostLPFKeyTracking',
+  'SourcePostLpfKeyTracking',
+  'masterLimiterCeilingDb',
+  'delayAFeedback',
+  'FxDelayAFeedback',
+  'delayAModRate',
+  'normalizedToDelayAModRateHz',
+  'delayAModDepth',
+  'normalizedToDelayAModDepthMs',
+  'delayACrossFeedFilter',
+  'normalizedToDelayACrossFeedFilterHz',
+  'granularDelayMix',
+  'granularDelayActivity',
+  'delayAToBSend',
+  'reverbDecay',
+  'FxReverbDecay',
+  'spectralFreezePhaseJitter',
+  'characterResonance',
+  'degradeCorrosion',
+  'degradeModSlowWow',
+  'FxDynamicsModSlowWow',
+  'degradeModNoiseAlias',
+  'dynamicsSaturationBias',
+  'endCompProgramRelease',
+  'sidechainPad1Target',
 ]) {
   assert(events.includes(token), `core-product events are missing ${token}`);
+}
+
+const granularVoiceRangeSuffixes = [
+  ['Speed', 'Speed'],
+  ['Pitch', 'Pitch'],
+  ['WriteFollow', 'WriteFollow'],
+  ['Density', 'Density'],
+  ['GrainSize', 'GrainSizeMs'],
+  ['Spray', 'Spray'],
+  ['GrainOct', 'GrainOctaveProbability'],
+  ['Gain', 'Gain'],
+  ['Pan', 'Pan'],
+  ['Blur', 'Blur'],
+  ['PosLFODepth', 'PositionLfoDepth'],
+  ['PanLFORate', 'PanLfoRate'],
+];
+
+for (const [stateSuffix, paramSuffix] of granularVoiceRangeSuffixes) {
+  assert(
+    events.includes(`['${stateSuffix}', '${paramSuffix}']`),
+    `core-product events are missing granular voice ${stateSuffix} -> ${paramSuffix} range mapping`,
+  );
+}
+
+for (const token of [
+  'for (const voiceNumber of [1, 2, 3, 4] as const)',
+  '`granularV${voiceNumber}${stateSuffix}`',
+  '`FxGranularV${voiceNumber}${paramSuffix}`',
+]) {
+  assert(events.includes(token), `core-product events are missing generated granular voice range token ${token}`);
 }
 
 for (const token of [
@@ -300,6 +396,8 @@ for (const token of [
   "dynamicsDrive: dynamicsEnabled",
   "dynamicsCharacterMode: dynamicsCharacterModeId(sliderState?.characterMode)",
   "dynamicsDegradeMix: clamp(numberFromState(sliderState, 'degradeMix', 0), 0, 1)",
+  "dynamicsModSlowWow: clamp(numberFromState(sliderState, 'degradeModSlowWow', 0.18), 0, 1)",
+  "dynamicsModNoiseAlias: clamp(numberFromState(sliderState, 'degradeModNoiseAlias', 0.02), 0, 1)",
   "dynamicsSaturationDrive: clamp(numberFromState(sliderState, 'dynamicsSaturationDrive', 0), 0, 1)",
   "dynamicsEndCompThreshold: clamp(numberFromState(sliderState, 'endCompThreshold', -18), -60, 0)",
   "sidechainKeyA: sidechainKeyId(sliderState?.sidechainKeyA)",

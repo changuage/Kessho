@@ -1,5 +1,7 @@
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
+import { delayNoteToSeconds } from './delayBuses';
+import { getIndexedDelayDivisionValue, type IndexedDelayDivisionKey } from '../ui/state';
 
 export type CoreProductEvent = {
   sampleOffset?: number;
@@ -78,7 +80,15 @@ export type CoreProductRangeTarget = {
   targetId: number;
   paramId: number;
   controlId: number;
+  mapValue?: (value: number, context: CoreProductRangeValueContext) => number;
 };
+
+export type CoreProductRangeValueContext = {
+  bpm?: number;
+};
+
+type CoreProductRangeTargetResolver = (key: string) => CoreProductRangeTarget[];
+type ProductParamIdName = keyof typeof KESSHO_PRODUCT_PARAM_IDS;
 
 function stableControlId(key: string): number {
   let hash = 2166136261;
@@ -89,8 +99,13 @@ function stableControlId(key: string): number {
   return (hash >>> 0) || 1;
 }
 
-function sourceTarget(sourceId: number, paramId: number, key: string): CoreProductRangeTarget {
-  return { targetId: sourceId, paramId, controlId: stableControlId(key) };
+function sourceTarget(
+  sourceId: number,
+  paramId: number,
+  key: string,
+  mapValue?: (value: number, context: CoreProductRangeValueContext) => number,
+): CoreProductRangeTarget {
+  return { targetId: sourceId, paramId, controlId: stableControlId(key), mapValue };
 }
 
 function drumTarget(voiceIndex: number, paramId: number, key: string): CoreProductRangeTarget {
@@ -101,7 +116,78 @@ function drumTarget(voiceIndex: number, paramId: number, key: string): CoreProdu
   };
 }
 
-const RANGE_KEY_TARGETS: Record<string, (key: string) => CoreProductRangeTarget[]> = {
+function productParamTarget(
+  paramId: number,
+  key: string,
+  mapValue?: (value: number, context: CoreProductRangeValueContext) => number,
+): CoreProductRangeTarget {
+  return { targetId: 0, paramId, controlId: stableControlId(key), mapValue };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizedToDelayAModRateHz(value: number): number {
+  return clamp(value, 0, 1) * 5;
+}
+
+function normalizedToDelayAModDepthMs(value: number): number {
+  return clamp(value, 0, 1) * 50;
+}
+
+function normalizedToDelayACrossFeedFilterHz(value: number): number {
+  return 200 + clamp(value, 0, 1) * 7800;
+}
+
+function contextBpm(context: CoreProductRangeValueContext): number {
+  return clamp(context.bpm ?? 120, 1, 400);
+}
+
+function indexedDelayDivisionMs(key: IndexedDelayDivisionKey, minMs: number) {
+  return (value: number, context: CoreProductRangeValueContext): number => {
+    const division = getIndexedDelayDivisionValue(key, value);
+    return clamp(delayNoteToSeconds(division, contextBpm(context)) * 1000, minMs, 5000);
+  };
+}
+
+const GRANULAR_VOICE_RANGE_PARAM_SUFFIXES = [
+  ['Speed', 'Speed'],
+  ['ScanRate', 'ScanRate'],
+  ['Pitch', 'Pitch'],
+  ['WriteFollow', 'WriteFollow'],
+  ['Density', 'Density'],
+  ['GrainSize', 'GrainSizeMs'],
+  ['Spray', 'Spray'],
+  ['GrainOct', 'GrainOctaveProbability'],
+  ['Attack', 'AttackSeconds'],
+  ['Decay', 'DecaySeconds'],
+  ['Gain', 'Gain'],
+  ['Pan', 'Pan'],
+  ['Blur', 'Blur'],
+  ['StereoSpread', 'StereoSpread'],
+  ['PosLFORate', 'PositionLfoRate'],
+  ['PosLFODepth', 'PositionLfoDepth'],
+  ['PanLFORate', 'PanLfoRate'],
+  ['ReverseLFORate', 'ReverseLfoRate'],
+  ['RecordLFORate', 'RecordLfoRate'],
+] as const;
+
+function granularVoiceRangeTargets(): Record<string, CoreProductRangeTargetResolver> {
+  const targets: Record<string, CoreProductRangeTargetResolver> = {};
+  for (const voiceNumber of [1, 2, 3, 4] as const) {
+    for (const [stateSuffix, paramSuffix] of GRANULAR_VOICE_RANGE_PARAM_SUFFIXES) {
+      const stateKey = `granularV${voiceNumber}${stateSuffix}`;
+      const paramName = `FxGranularV${voiceNumber}${paramSuffix}` as ProductParamIdName;
+      targets[stateKey] = (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS[paramName], key)];
+    }
+  }
+  return targets;
+}
+
+const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
+  ...granularVoiceRangeTargets(),
   synthLevel: (key) => [
     sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, `${key}:pad1`),
     sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, `${key}:pad2`),
@@ -130,6 +216,18 @@ const RANGE_KEY_TARGETS: Record<string, (key: string) => CoreProductRangeTarget[
   pad2Expression: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceExpression, key)],
   lead1Expression: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceExpression, key)],
   lead2Expression: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceExpression, key)],
+  padPostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
+  pad2PostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
+  lead1PostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
+  lead2PostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
+  pianoPostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
+  padStereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
+  pad2StereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
+  lead1StereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
+  lead2StereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
+  pianoStereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
+  lead1PostLPFKeyTracking: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, key)],
+  lead2PostLPFKeyTracking: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, key)],
   pad1ReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
   pad2ReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
   lead1ReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
@@ -137,15 +235,196 @@ const RANGE_KEY_TARGETS: Record<string, (key: string) => CoreProductRangeTarget[
   drumReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.drum, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
   pianoReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
   natureReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
+  pad1DelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
+  pad2DelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
+  lead1DelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
+  lead2DelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
+  drumDelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.drum, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
+  pianoDelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
+  natureDelayASend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)],
+  pad1DelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
+  pad2DelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
+  lead1DelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
+  lead2DelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
+  drumDelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.drum, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
+  pianoDelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
+  natureDelayBSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, key)],
+  granularPad1Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
+  granularPad2Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
+  granularLead1Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
+  granularLead2Send: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
+  granularDrumSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.drum, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
+  granularPianoSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
+  granularNatureSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, key)],
   masterVolume: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.MasterGain, controlId: stableControlId(key) }],
+  masterLimiterCeilingDb: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterLimiterCeilingDb, key)],
   masterSatDrive: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.MasterSaturationDrive, controlId: stableControlId(key) }],
   masterSatTone: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.MasterSaturationTone, controlId: stableControlId(key) }],
   granularLevel: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxGranularMix, controlId: stableControlId(key) }],
   delayAMix: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDelayAMix, controlId: stableControlId(key) }],
+  drumDelayNoteL: (key) => [
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeLeftMs, key, indexedDelayDivisionMs('drumDelayNoteL', 10)),
+  ],
+  drumDelayNoteR: (key) => [
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeRightMs, key, indexedDelayDivisionMs('drumDelayNoteR', 10)),
+  ],
+  delayAFeedback: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAFeedback, key)],
+  delayAFilter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAFilterHz, key)],
+  delayAModRate: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAModRateHz, key, normalizedToDelayAModRateHz)],
+  delayAModDepth: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAModDepthMs, key, normalizedToDelayAModDepthMs)],
+  delayADuck: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayADuck, key)],
+  delayAWidth: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAWidth, key)],
+  delayACrossFeedFilter: (key) => [
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayACrossFeedFilterHz, key, normalizedToDelayACrossFeedFilterHz),
+  ],
   delayBMix: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDelayBMix, controlId: stableControlId(key) }],
+  granularDelayMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBMix, key)],
+  granularDelayTime: (key) => [
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBBaseTimeMs, key, indexedDelayDivisionMs('granularDelayTime', 20)),
+  ],
+  granularDelayActivity: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBActivity, key)],
+  granularDelayRepeats: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBRepeats, key)],
+  granularDelayFilter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBTone, key)],
+  granularDelayVibrato: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBVibrato, key)],
+  delayBWarpIntensity: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBWarpIntensity, key)],
+  delayBSpread: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBSpread, key)],
+  delayAToBSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingDelayAToDelayB, key)],
+  delayBToASend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToDelayA, key)],
+  delayAReverbSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingDelayToReverb, key)],
+  delayAGranularSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingDelayAToGranular, key)],
+  delayBGranularSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToGranular, key)],
+  granularDelayReverbSend: (key) => [
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToReverb, `${key}:granular`),
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToReverb, `${key}:delayB`),
+  ],
   reverbLevel: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxReverbMix, controlId: stableControlId(key) }],
+  reverbDecay: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbDecay, key)],
+  reverbSize: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbSize, key)],
+  damping: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbDamping, key)],
+  reverbDiffusion: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbDiffusion, key)],
+  reverbModulation: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbModulation, key)],
+  predelay: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbPredelayMs, key)],
+  width: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbWidth, key)],
+  reverbShimmer: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbShimmerAmount, key)],
+  reverbShimmerPitch: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbShimmerPitch, key)],
+  reverbSlowModRate: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbSlowRateHz, key)],
+  reverbSlowModDepth: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbSlowDepth, key)],
+  reverbReverse: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbReverseAmount, key)],
+  reverbReverseLength: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbReverseLengthSec, key)],
+  reverbChorusRate: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbChorusRateHz, key)],
+  reverbChorusDepth: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbChorusDepth, key)],
+  reverbDampLow: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbDampLow, key)],
+  reverbDampHigh: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbDampHigh, key)],
+  reverbCrossoverFreq: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbCrossoverHz, key)],
+  reverbInputTone: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbInputTone, key)],
+  reverbShimmerFeedback: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbShimmerFeedback, key)],
+  reverbWarp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbWarp, key)],
+  reverbCrossFeed: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbCrossFeed, key)],
+  reverbEarlyReflections: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbEarlyReflections, key)],
+  reverbAirAbsorption: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbAirAbsorption, key)],
+  reverbTransientSmooth: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbTransientSmooth, key)],
+  reverbErLpFreq: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbErLpFreq, key)],
+  reverbPreCompThreshold: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompThreshold, key)],
+  reverbPreCompKnee: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompKnee, key)],
+  reverbPreCompRatio: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompRatio, key)],
+  reverbPreCompAttackMs: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompAttackMs, key)],
+  reverbPreCompReleaseMs: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompReleaseMs, key)],
+  reverbPreCompMakeup: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompMakeup, key)],
   spectralFreezeMix: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeMix, controlId: stableControlId(key) }],
+  spectralFreezeSpeed: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeSpeed, key)],
+  spectralFreezeDecay: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeDecay, key)],
+  spectralFreezePhaseJitter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezePhaseJitter, key)],
   dynamicsDrive: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDrive, controlId: stableControlId(key) }],
+  characterMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterMix, key)],
+  characterAge: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterAge, key)],
+  characterBias: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterBias, key)],
+  characterLpgAmount: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterLpgAmount, key)],
+  characterDepth: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterDepth, key)],
+  characterRate: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterRate, key)],
+  characterDamp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterDamp, key)],
+  characterEnvFollow: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterEnvFollow, key)],
+  characterStereo: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterStereo, key)],
+  characterResonance: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterResonance, key)],
+  degradeMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeMix, key)],
+  degradeAge: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeAge, key)],
+  degradeGeneration: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeGeneration, key)],
+  degradeAlias: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeAlias, key)],
+  degradeWow: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeWow, key)],
+  degradeFlutter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeFlutter, key)],
+  degradeDrift: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeDrift, key)],
+  degradeNoise: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeNoise, key)],
+  degradeHp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeHp, key)],
+  degradeLp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeLp, key)],
+  degradeTone: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeTone, key)],
+  degradeSaturation: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeSaturation, key)],
+  degradeCorrosion: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeCorrosion, key)],
+  degradeModSlowWow: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowWow, key)],
+  degradeModSlowFlutter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowFlutter, key)],
+  degradeModSlowLp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowLp, key)],
+  degradeModSlowWet: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowWet, key)],
+  degradeModSlowDropout: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowDropout, key)],
+  degradeModSlowAlias: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowAlias, key)],
+  degradeModFlutterWow: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterWow, key)],
+  degradeModFlutterFlutter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterFlutter, key)],
+  degradeModFlutterLp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterLp, key)],
+  degradeModFlutterWet: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterWet, key)],
+  degradeModFlutterDropout: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterDropout, key)],
+  degradeModFlutterAlias: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterAlias, key)],
+  degradeModRandomWow: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomWow, key)],
+  degradeModRandomFlutter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomFlutter, key)],
+  degradeModRandomLp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomLp, key)],
+  degradeModRandomWet: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomWet, key)],
+  degradeModRandomDropout: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomDropout, key)],
+  degradeModRandomAlias: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomAlias, key)],
+  degradeModEnvWow: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvWow, key)],
+  degradeModEnvFlutter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvFlutter, key)],
+  degradeModEnvLp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvLp, key)],
+  degradeModEnvWet: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvWet, key)],
+  degradeModEnvDropout: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvDropout, key)],
+  degradeModEnvAlias: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvAlias, key)],
+  degradeModNoiseWow: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseWow, key)],
+  degradeModNoiseFlutter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseFlutter, key)],
+  degradeModNoiseLp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseLp, key)],
+  degradeModNoiseWet: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseWet, key)],
+  degradeModNoiseDropout: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseDropout, key)],
+  degradeModNoiseAlias: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseAlias, key)],
+  dynamicsSaturationDrive: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationDrive, key)],
+  dynamicsSaturationTone: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationTone, key)],
+  dynamicsSaturationBias: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationBias, key)],
+  endCompThreshold: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompThreshold, key)],
+  endCompKnee: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompKnee, key)],
+  endCompRatio: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompRatio, key)],
+  endCompAttackMs: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompAttackMs, key)],
+  endCompReleaseMs: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompReleaseMs, key)],
+  endCompMakeup: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompMakeup, key)],
+  endCompMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompMix, key)],
+  endCompDetectorHp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompDetectorHp, key)],
+  endCompDetectorTilt: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompDetectorTilt, key)],
+  endCompAutoMakeup: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompAutoMakeup, key)],
+  endCompProgramRelease: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompProgramRelease, key)],
+  sidechainKeyAWeight: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyAWeight, key)],
+  sidechainKeyBWeight: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyBWeight, key)],
+  sidechainAmount: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainAmount, key)],
+  sidechainThreshold: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainThreshold, key)],
+  sidechainRatio: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainRatio, key)],
+  sidechainKnee: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainKnee, key)],
+  sidechainAttackMs: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainAttackMs, key)],
+  sidechainHoldMs: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainHoldMs, key)],
+  sidechainReleaseMs: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainReleaseMs, key)],
+  sidechainMakeup: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainMakeup, key)],
+  sidechainMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainMix, key)],
+  sidechainCurve: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainCurve, key)],
+  sidechainDetectorHp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainDetectorHp, key)],
+  sidechainDetectorLp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainDetectorLp, key)],
+  sidechainPad1Target: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainPad1Target, key)],
+  sidechainPad2Target: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainPad2Target, key)],
+  sidechainLead1Target: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainLead1Target, key)],
+  sidechainLead2Target: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainLead2Target, key)],
+  sidechainPianoTarget: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainPianoTarget, key)],
+  sidechainGranularTarget: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainGranularTarget, key)],
+  sidechainDelayATarget: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainDelayATarget, key)],
+  sidechainDelayBTarget: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainDelayBTarget, key)],
+  sidechainReverbTarget: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainReverbTarget, key)],
 };
 
 export function resolveCoreProductRangeTargets(key: string): CoreProductRangeTarget[] {
@@ -252,10 +531,12 @@ export function createCoreProductModulationRangeEvent(
   range: { min: number; max: number } | null,
   mode: CoreProductModulationRangeMode,
   currentValue = 0,
+  context: CoreProductRangeValueContext = {},
 ): CoreProductEvent {
   const hasRange = !!range && Number.isFinite(range.min) && Number.isFinite(range.max);
-  const min = hasRange ? Math.min(range.min, range.max) : 0;
-  const max = hasRange ? Math.max(range.min, range.max) : 0;
+  const mapValue = target.mapValue ?? ((value: number) => value);
+  const min = hasRange ? mapValue(Math.min(range.min, range.max), context) : 0;
+  const max = hasRange ? mapValue(Math.max(range.min, range.max), context) : 0;
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.SetModulationRange,
     targetId: target.targetId,
@@ -264,7 +545,7 @@ export function createCoreProductModulationRangeEvent(
     value: min,
     value2: max,
     value3: hasRange ? mode : CORE_PRODUCT_MODULATION_RANGE_MODE.off,
-    value4: currentValue,
+    value4: mapValue(currentValue, context),
     flags: hasRange ? CORE_PRODUCT_MODULATION_RANGE_FLAGS.active : 0,
   };
 }

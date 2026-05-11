@@ -36,6 +36,15 @@
     { "name": "Piano", "id": 6 },
     { "name": "Soundscape", "id": 7 }
   ],
+  "drumVoiceIds": [
+    { "name": "sub", "id": 1, "presetAKey": "drumSubPresetA", "presetBKey": "drumSubPresetB", "morphKey": "drumSubMorph", "defaultPreset": "Classic Sub" },
+    { "name": "kick", "id": 2, "presetAKey": "drumKickPresetA", "presetBKey": "drumKickPresetB", "morphKey": "drumKickMorph", "defaultPreset": "Ikeda Kick" },
+    { "name": "click", "id": 3, "presetAKey": "drumClickPresetA", "presetBKey": "drumClickPresetB", "morphKey": "drumClickMorph", "defaultPreset": "Data Point" },
+    { "name": "beepHi", "id": 4, "presetAKey": "drumBeepHiPresetA", "presetBKey": "drumBeepHiPresetB", "morphKey": "drumBeepHiMorph", "defaultPreset": "Data Ping" },
+    { "name": "beepLo", "id": 5, "presetAKey": "drumBeepLoPresetA", "presetBKey": "drumBeepLoPresetB", "morphKey": "drumBeepLoMorph", "defaultPreset": "Blip" },
+    { "name": "noise", "id": 6, "presetAKey": "drumNoisePresetA", "presetBKey": "drumNoisePresetB", "morphKey": "drumNoiseMorph", "defaultPreset": "Hi-Hat" },
+    { "name": "membrane", "id": 7, "presetAKey": "drumMembranePresetA", "presetBKey": "drumMembranePresetB", "morphKey": "drumMembraneMorph", "defaultPreset": "Snare Classic" }
+  ],
   "sourcePresetIds": [
     { "name": "PadInit", "source": "pad", "key": "init", "id": 1001, "macroMorph": 0, "macroDistance": 0, "macroExpression": 1 },
     { "name": "PadSaturatedDrift", "source": "pad", "key": "saturated_drift", "id": 1002, "macroMorph": 0.12, "macroDistance": 0.18, "macroExpression": 0.95 },
@@ -125,7 +134,17 @@
       "reverbSend": 0.12,
       "delayASend": 0,
       "delayBSend": 0,
-      "granularSend": 0
+      "granularSend": 0,
+      "postLpfHz": 18000,
+      "stereoWidth": 1,
+      "postLpfKeyTracking": 0,
+      "holdSeconds": 0.5,
+      "exactPadParamCount": 0,
+      "exactPadParams": [],
+      "exactLeadParamCount": 0,
+      "exactLeadParams": [],
+      "exactDrumParamCount": 0,
+      "exactDrumParams": []
     },
     "sequencerLane": {
       "enabled": false,
@@ -341,6 +360,12 @@
       "reverbSaturationMode": 0,
       "reverbTransientSmooth": 0,
       "reverbErLpFreq": 2500,
+      "reverbPreCompThreshold": -36,
+      "reverbPreCompKnee": 20,
+      "reverbPreCompRatio": 5,
+      "reverbPreCompAttackMs": 0.7,
+      "reverbPreCompReleaseMs": 700,
+      "reverbPreCompMakeup": 2.9,
       "spectralFreezeMix": 0,
       "spectralFreezeEnabled": false,
       "spectralFreezeActive": false,

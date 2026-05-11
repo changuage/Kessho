@@ -22,6 +22,9 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SourceDelayASend: 107,
   SourceDelayBSend: 108,
   SourceGranularSend: 109,
+  SourcePostLpfHz: 110,
+  SourceStereoWidth: 111,
+  SourcePostLpfKeyTracking: 112,
   SequencerLaneEnabled: 200,
   SequencerLaneTargetSource: 201,
   SequencerLaneStepCount: 202,
@@ -211,6 +214,12 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   FxReverbSaturationMode: 377,
   FxReverbTransientSmooth: 378,
   FxReverbErLpFreq: 379,
+  FxReverbPreCompThreshold: 380,
+  FxReverbPreCompKnee: 381,
+  FxReverbPreCompRatio: 382,
+  FxReverbPreCompAttackMs: 383,
+  FxReverbPreCompReleaseMs: 384,
+  FxReverbPreCompMakeup: 385,
   FxSpectralFreezeEnabled: 930,
   FxSpectralFreezeActive: 931,
   FxSpectralFreezeSlushy: 932,
@@ -496,6 +505,30 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 109,
     "min": 0,
     "max": 2
+  },
+  {
+    "name": "SourcePostLpfHz",
+    "path": "sources.*.postLpfHz",
+    "type": "float",
+    "id": 110,
+    "min": 20,
+    "max": 20000
+  },
+  {
+    "name": "SourceStereoWidth",
+    "path": "sources.*.stereoWidth",
+    "type": "float",
+    "id": 111,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SourcePostLpfKeyTracking",
+    "path": "sources.*.postLpfKeyTracking",
+    "type": "float",
+    "id": 112,
+    "min": 0,
+    "max": 1
   },
   {
     "name": "SequencerLaneEnabled",
@@ -1956,6 +1989,54 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 379,
     "min": 200,
     "max": 12000
+  },
+  {
+    "name": "FxReverbPreCompThreshold",
+    "path": "fx.reverb.preComp.threshold",
+    "type": "float",
+    "id": 380,
+    "min": -60,
+    "max": 0
+  },
+  {
+    "name": "FxReverbPreCompKnee",
+    "path": "fx.reverb.preComp.knee",
+    "type": "float",
+    "id": 381,
+    "min": 0,
+    "max": 40
+  },
+  {
+    "name": "FxReverbPreCompRatio",
+    "path": "fx.reverb.preComp.ratio",
+    "type": "float",
+    "id": 382,
+    "min": 1,
+    "max": 20
+  },
+  {
+    "name": "FxReverbPreCompAttackMs",
+    "path": "fx.reverb.preComp.attackMs",
+    "type": "float",
+    "id": 383,
+    "min": 0.1,
+    "max": 30
+  },
+  {
+    "name": "FxReverbPreCompReleaseMs",
+    "path": "fx.reverb.preComp.releaseMs",
+    "type": "float",
+    "id": 384,
+    "min": 20,
+    "max": 1000
+  },
+  {
+    "name": "FxReverbPreCompMakeup",
+    "path": "fx.reverb.preComp.makeup",
+    "type": "float",
+    "id": 385,
+    "min": 0.5,
+    "max": 4
   },
   {
     "name": "FxSpectralFreezeEnabled",

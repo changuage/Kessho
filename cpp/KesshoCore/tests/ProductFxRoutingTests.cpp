@@ -7,6 +7,7 @@
 
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductParamIds.h"
+#include "KesshoProductSchema.h"
 
 namespace {
 
@@ -173,7 +174,11 @@ KesshoProductSnapshotV2 makeSnapshot() {
     snapshot.sources[i].level = 0.9f;
     snapshot.sources[i].dry_gain = 1.0f;
     snapshot.sources[i].expression = 0.8f;
+    snapshot.sources[i].post_lpf_hz = 18000.0f;
+    snapshot.sources[i].stereo_width = 1.0f;
   }
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].preset_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL;
   return snapshot;
 }
 
@@ -433,6 +438,15 @@ void applyDynamicsParamToSnapshot(KesshoProductSnapshotV2& snapshot, uint32_t pa
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_ALIAS_ID:
       snapshot.fx.dynamics_degrade_alias = value;
       break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_SLOW_WOW_ID:
+      snapshot.fx.dynamics_mod_slow_wow = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_FLUTTER_FLUTTER_ID:
+      snapshot.fx.dynamics_mod_flutter_flutter = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_NOISE_ALIAS_ID:
+      snapshot.fx.dynamics_mod_noise_alias = value;
+      break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID:
       snapshot.fx.dynamics_saturation_drive = value;
       break;
@@ -538,6 +552,9 @@ void configureDynamicsTestSnapshot(KesshoProductSnapshotV2& snapshot) {
   snapshot.fx.dynamics_degrade_noise = 0.3f;
   snapshot.fx.dynamics_degrade_saturation = 0.36f;
   snapshot.fx.dynamics_degrade_corrosion = 0.28f;
+  snapshot.fx.dynamics_mod_slow_wow = 0.18f;
+  snapshot.fx.dynamics_mod_flutter_flutter = 0.12f;
+  snapshot.fx.dynamics_mod_noise_alias = 0.02f;
   snapshot.fx.dynamics_saturation_enabled = 1;
   snapshot.fx.dynamics_saturation_mode = 1;
   snapshot.fx.dynamics_saturation_drive = 0.22f;
@@ -770,6 +787,45 @@ void requireMasterParamChangesTrace(uint32_t param_id, float baseline, float val
   require(maxAbsDiff(baseline_trace, changed_trace) > 0.00001f, message);
 }
 
+float renderMasterGainSampleHoldRangePeak(float value) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "master sample-hold range engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.fx.reverb_mix = 0.0f;
+  snapshot.fx.delay_a_mix = 0.0f;
+  snapshot.fx.delay_b_mix = 0.0f;
+  snapshot.fx.dynamics_enabled = 0u;
+  snapshot.master.gain = 1.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].level = 0.45f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].dry_gain = 1.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].expression = 0.7f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "master sample-hold range snapshot load failed");
+
+  KesshoProductEvent range{};
+  range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
+  range.target_id = 0u;
+  range.index = 301u;
+  range.param_id = KESSHO_PRODUCT_PARAM_MASTER_GAIN_ID;
+  range.value = value;
+  range.value2 = value;
+  range.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD);
+  range.value4 = value;
+  range.flags = KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE;
+  require(kessho_product_enqueue_event(engine, &range) == KESSHO_PRODUCT_OK, "master sample-hold range enqueue failed");
+
+  triggerPad(engine, 0.4f);
+  const float result = renderMasterPeak(engine, 16);
+  kessho_product_destroy(engine);
+  return result;
+}
+
+void requireProductParamSampleHoldRangeChangesMaster() {
+  const float quiet_peak = renderMasterGainSampleHoldRangePeak(0.2f);
+  const float loud_peak = renderMasterGainSampleHoldRangePeak(0.8f);
+  require(loud_peak > 0.00001f, "target-0 sample-hold range produced no master signal");
+  require(quiet_peak < loud_peak * 0.55f, "target-0 sample-hold range did not apply Product Core master param");
+}
+
 std::vector<float> renderSnapshotFxTrace(uint32_t param_id, float value) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "snapshot FX event parity engine create failed");
@@ -919,6 +975,7 @@ int main() {
       0.0f,
       0.8f,
       "master saturation drive parameter did not change C++ render");
+  requireProductParamSampleHoldRangeChangesMaster();
 
   requireFxSnapshotEventParity(
       KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID,
@@ -956,6 +1013,18 @@ int main() {
       KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_ALIAS_ID,
       0.82f,
       "dynamics degrade alias SetParam did not match snapshot-configured render");
+  requireDynamicsParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_SLOW_WOW_ID,
+      0.88f,
+      "dynamics modulation slow-to-wow SetParam did not match snapshot-configured render");
+  requireDynamicsParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_FLUTTER_FLUTTER_ID,
+      0.64f,
+      "dynamics modulation flutter-to-flutter SetParam did not match snapshot-configured render");
+  requireDynamicsParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_NOISE_ALIAS_ID,
+      0.71f,
+      "dynamics modulation noise-to-alias SetParam did not match snapshot-configured render");
   requireDynamicsParamSnapshotEventParity(
       KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID,
       0.55f,
@@ -1094,6 +1163,11 @@ int main() {
       0.0f,
       0.85f,
       "dynamics degrade mix parameter did not change C++ render");
+  requireDynamicsParamChangesTrace(
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_SLOW_WOW_ID,
+      0.0f,
+      1.0f,
+      "dynamics modulation matrix parameter did not change C++ render");
   requireDynamicsParamChangesTrace(
       KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_MIX_ID,
       0.0f,

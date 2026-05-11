@@ -18,6 +18,7 @@
 namespace {
 
 constexpr double kTwoPi = 6.283185307179586476925286766559;
+constexpr float kProductTuningA4Hz = 432.0f;
 constexpr uint32_t kSourceCount = 7;
 constexpr uint32_t kStemCount = 9;
 constexpr uint32_t kMaxLaneCount = 16;
@@ -44,6 +45,10 @@ constexpr double kSampleAttackSeconds = 0.004;
 constexpr double kSampleReleaseSeconds = 0.02;
 constexpr double kLoopCrossfadeSeconds = 0.012;
 constexpr uint32_t kSoundscapeRandomStartMinimumFrames = 64;
+constexpr float kDefaultPadPostLpfHz = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ;
+constexpr float kDefaultPadStereoWidth = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH;
+constexpr float kDefaultLeadPostLpfHz = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ;
+constexpr float kDefaultLeadStereoWidth = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH;
 constexpr uint32_t kSoundscapeAssetOcean = 7101;
 constexpr uint32_t kSoundscapeAssetBirds = 7102;
 constexpr uint32_t kSoundscapeAssetFrogs = 7103;
@@ -192,12 +197,36 @@ float clampFloat(float value, float min_value, float max_value) {
   return std::min(max_value, std::max(min_value, value));
 }
 
+float scaleSourceDistance(float distance) {
+  const float safe_distance = clampFloat(distance, 0.0f, 1.0f);
+  return 1.0f - (1.0f - safe_distance) * (1.0f - safe_distance);
+}
+
+float anchoredDistanceValue(float distance, float start_value, float slight_value, float max_value) {
+  constexpr float kSlightPoint = 0.25f;
+  const float scaled = scaleSourceDistance(distance);
+  if (scaled <= kSlightPoint) {
+    const float head_t = kSlightPoint <= 0.0f ? 1.0f : scaled / kSlightPoint;
+    return start_value + head_t * (slight_value - start_value);
+  }
+  const float tail_t = (scaled - kSlightPoint) / (1.0f - kSlightPoint);
+  return slight_value + tail_t * (max_value - slight_value);
+}
+
+float distanceMultiply(float base, float distance, float slight_mul, float max_mul) {
+  return base * anchoredDistanceValue(distance, 1.0f, slight_mul, max_mul);
+}
+
+float distanceAdd(float base, float distance, float slight_delta, float max_delta) {
+  return base + anchoredDistanceValue(distance, 0.0f, slight_delta, max_delta);
+}
+
 uint32_t clampU32(uint32_t value, uint32_t min_value, uint32_t max_value) {
   return std::min(max_value, std::max(min_value, value));
 }
 
 float midiToFrequency(float midi_note) {
-  return 440.0f * std::pow(2.0f, (midi_note - 69.0f) / 12.0f);
+  return kProductTuningA4Hz * std::pow(2.0f, (midi_note - 69.0f) / 12.0f);
 }
 
 float dbToGain(float db) {
@@ -351,6 +380,55 @@ struct SourceState {
   float delay_a_send = 0.0f;
   float delay_b_send = 0.0f;
   float granular_send = 0.0f;
+  float post_lpf_hz = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ;
+  float stereo_width = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH;
+  float post_lpf_key_tracking = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING;
+  float post_lpf_tracking_midi = 60.0f;
+  float hold_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
+  uint32_t exact_pad_param_count = 0u;
+  float exact_pad_params[kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT]{};
+  uint32_t exact_lead_param_count = 0u;
+  float exact_lead_params[kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT]{};
+  uint32_t exact_drum_param_count = 0u;
+  float exact_drum_params[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT]{};
+  uint32_t drum_voice_preset_a_ids[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT]{};
+  uint32_t drum_voice_preset_b_ids[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT]{};
+  float drum_voice_morphs[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT]{};
+};
+
+struct BiquadState {
+  float x1 = 0.0f;
+  float x2 = 0.0f;
+  float y1 = 0.0f;
+  float y2 = 0.0f;
+};
+
+struct PadPostChainState {
+  float post_lpf_hz = kDefaultPadPostLpfHz;
+  float stereo_width = kDefaultPadStereoWidth;
+  float coeff_cutoff = -1.0f;
+  float b0 = 1.0f;
+  float b1 = 0.0f;
+  float b2 = 0.0f;
+  float a1 = 0.0f;
+  float a2 = 0.0f;
+  BiquadState left{};
+  BiquadState right{};
+};
+
+struct LeadPostChainState {
+  float post_lpf_hz = kDefaultLeadPostLpfHz;
+  float stereo_width = kDefaultLeadStereoWidth;
+  float coeff_cutoff = -1.0f;
+  float b0 = 1.0f;
+  float b1 = 0.0f;
+  float b2 = 0.0f;
+  float a1 = 0.0f;
+  float a2 = 0.0f;
+  BiquadState stage1_left{};
+  BiquadState stage1_right{};
+  BiquadState stage2_left{};
+  BiquadState stage2_right{};
 };
 
 struct StepValueSubLaneConfig {
@@ -462,6 +540,12 @@ struct FxState {
   uint32_t reverb_saturation_mode = 0;
   float reverb_transient_smooth = 0.0f;
   float reverb_er_lp_freq = 2500.0f;
+  float reverb_pre_comp_threshold = -36.0f;
+  float reverb_pre_comp_knee = 20.0f;
+  float reverb_pre_comp_ratio = 5.0f;
+  float reverb_pre_comp_attack_ms = 0.7f;
+  float reverb_pre_comp_release_ms = 700.0f;
+  float reverb_pre_comp_makeup = 2.9f;
   float spectral_freeze_mix = 0.0f;
   bool spectral_freeze_enabled = false;
   bool spectral_freeze_active = false;
@@ -591,6 +675,33 @@ const kessho::product::generated::KesshoProductGeneratedSourcePreset* findSource
   return nullptr;
 }
 
+const kessho::product::generated::KesshoProductGeneratedDrumVoicePreset* findDrumVoicePreset(
+    uint32_t voice_index,
+    uint32_t preset_id) {
+  const kessho::product::generated::KesshoProductGeneratedDrumVoicePreset* fallback = nullptr;
+  for (const auto& preset : kessho::product::generated::KESSHO_PRODUCT_DRUM_VOICE_PRESETS) {
+    if (preset.voice_index != voice_index) {
+      continue;
+    }
+    if (preset.id == preset_id) {
+      return &preset;
+    }
+    if (fallback == nullptr || preset.default_for_voice != 0u) {
+      fallback = &preset;
+    }
+  }
+  return fallback;
+}
+
+float smoothstep01(float value) {
+  const float t = clampFloat(value, 0.0f, 1.0f);
+  return t * t * (3.0f - 2.0f * t);
+}
+
+bool drumParamUsesPresetSnap(uint32_t param_index) {
+  return param_index == 32u || param_index == 82u || param_index == 96u;
+}
+
 kessho::core::KesshoSourcePresetPatch sourcePresetPatch(
     const kessho::product::generated::KesshoProductGeneratedSourcePreset* preset) {
   kessho::core::KesshoSourcePresetPatch patch{};
@@ -605,7 +716,35 @@ kessho::core::KesshoSourcePresetPatch sourcePresetPatch(
   patch.release = clampFloat(preset->profile_release, 0.0f, 1.0f);
   patch.body = clampFloat(preset->profile_body, 0.0f, 1.0f);
   patch.transient = clampFloat(preset->profile_transient, 0.0f, 1.0f);
+  patch.exact_pad_param_count = std::min<uint32_t>(
+      preset->exact_pad_param_count,
+      kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT);
+  for (uint32_t i = 0; i < patch.exact_pad_param_count; ++i) {
+    patch.exact_pad_params[i] = preset->exact_pad_params[i];
+  }
+  patch.exact_lead_param_count = std::min<uint32_t>(
+      preset->exact_lead_param_count,
+      kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT);
+  for (uint32_t i = 0; i < patch.exact_lead_param_count; ++i) {
+    patch.exact_lead_params[i] = preset->exact_lead_params[i];
+  }
+  patch.exact_drum_param_count = std::min<uint32_t>(
+      preset->exact_drum_param_count,
+      kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT);
+  for (uint32_t i = 0; i < patch.exact_drum_param_count; ++i) {
+    patch.exact_drum_params[i] = preset->exact_drum_params[i];
+  }
   return patch;
+}
+
+float moduleSourceOutputTrim(uint32_t source_id) {
+  switch (source_id) {
+    case KESSHO_PRODUCT_SOURCE_LEAD1:
+    case KESSHO_PRODUCT_SOURCE_LEAD2:
+      return kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_OUTPUT_TRIM;
+    default:
+      return 1.0f;
+  }
 }
 
 struct LaneState {
@@ -693,6 +832,14 @@ struct Voice {
   uint32_t age_frames = 0;
   uint32_t remaining_frames = 0;
   uint32_t total_frames = 1;
+  float post_coeff_cutoff = -1.0f;
+  float post_b0 = 1.0f;
+  float post_b1 = 0.0f;
+  float post_b2 = 0.0f;
+  float post_a1 = 0.0f;
+  float post_a2 = 0.0f;
+  BiquadState post_left{};
+  BiquadState post_right{};
 };
 
 struct ModulationRange {
@@ -787,6 +934,7 @@ struct KesshoProductEngine {
   float granular_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float sidechain_gains[kSidechainTargetCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   SidechainEnvelope sidechain_envelopes[kSidechainTargetCount]{};
+  float reverb_pre_comp_gain = 1.0f;
   uint32_t last_stem_frames = 0;
   float master_gain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_GAIN;
   float master_limiter_ceiling_db = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_LIMITER_CEILING_DB;
@@ -814,6 +962,9 @@ struct KesshoProductEngine {
   std::unique_ptr<kessho::core::IKesshoModule> spectral_freeze_module{};
   std::unique_ptr<kessho::core::IKesshoModule> dynamics_character_module{};
   uint32_t pad_voice_cursors[2]{};
+  uint32_t pad_voice_release_frames[PAD_NUM_PADS][PAD_NUM_VOICES]{};
+  PadPostChainState pad_post_chains[PAD_NUM_PADS]{};
+  LeadPostChainState lead_post_chains[2]{};
 
   bool prepareProductModules() {
     pad_module = kessho::core::createPadModule();
@@ -1416,11 +1567,15 @@ struct KesshoProductEngine {
       range = {};
     }
     resetSidechainRuntime();
+    reverb_pre_comp_gain = 1.0f;
     telemetry.schema_hash = KESSHO_PRODUCT_SNAPSHOT_SCHEMA_HASH;
     telemetry.sample_rate = sample_rate;
     telemetry.block_size = max_block_size;
     pad_voice_cursors[0] = 0;
     pad_voice_cursors[1] = 0;
+    clearPadVoiceReleases(0u);
+    resetPadPostChains();
+    resetLeadPostChains();
     configureFxModules();
   }
 
@@ -1435,6 +1590,7 @@ struct KesshoProductEngine {
       range = {};
     }
     resetSidechainRuntime();
+    reverb_pre_comp_gain = 1.0f;
     rng_state = rng_seed;
     journey_phase = 0.0f;
     if (pad_module) {
@@ -1468,6 +1624,9 @@ struct KesshoProductEngine {
     }
     pad_voice_cursors[0] = 0;
     pad_voice_cursors[1] = 0;
+    clearPadVoiceReleases(0u);
+    resetPadPostChains();
+    resetLeadPostChains();
     configureFxModules();
     updateTelemetry(0);
   }
@@ -1606,6 +1765,12 @@ struct KesshoProductEngine {
     fx.reverb_saturation_mode = clampU32(snapshot.fx.reverb_saturation_mode, 0u, 2u);
     fx.reverb_transient_smooth = clampFloat(snapshot.fx.reverb_transient_smooth, 0.0f, 1.0f);
     fx.reverb_er_lp_freq = clampFloat(snapshot.fx.reverb_er_lp_freq, 200.0f, 12000.0f);
+    fx.reverb_pre_comp_threshold = clampFloat(snapshot.fx.reverb_pre_comp_threshold, -60.0f, 0.0f);
+    fx.reverb_pre_comp_knee = clampFloat(snapshot.fx.reverb_pre_comp_knee, 0.0f, 40.0f);
+    fx.reverb_pre_comp_ratio = clampFloat(snapshot.fx.reverb_pre_comp_ratio, 1.0f, 20.0f);
+    fx.reverb_pre_comp_attack_ms = clampFloat(snapshot.fx.reverb_pre_comp_attack_ms, 0.1f, 30.0f);
+    fx.reverb_pre_comp_release_ms = clampFloat(snapshot.fx.reverb_pre_comp_release_ms, 20.0f, 1000.0f);
+    fx.reverb_pre_comp_makeup = clampFloat(snapshot.fx.reverb_pre_comp_makeup, 0.5f, 4.0f);
     fx.spectral_freeze_mix = clampFloat(snapshot.fx.spectral_freeze_mix, 0.0f, 1.0f);
     fx.spectral_freeze_enabled = snapshot.fx.spectral_freeze_enabled != 0u;
     fx.spectral_freeze_active = snapshot.fx.spectral_freeze_active != 0u;
@@ -1743,6 +1908,50 @@ struct KesshoProductEngine {
       sources[i].delay_a_send = clampFloat(source.delay_a_send, 0.0f, 2.0f);
       sources[i].delay_b_send = clampFloat(source.delay_b_send, 0.0f, 2.0f);
       sources[i].granular_send = clampFloat(source.granular_send, 0.0f, 2.0f);
+      sources[i].post_lpf_hz = source.post_lpf_hz > 0.0f && std::isfinite(source.post_lpf_hz)
+          ? clampFloat(source.post_lpf_hz, 20.0f, 20000.0f)
+          : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ;
+      sources[i].stereo_width = std::isfinite(source.stereo_width)
+          ? clampFloat(source.stereo_width, 0.0f, 1.0f)
+          : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH;
+      sources[i].post_lpf_key_tracking = std::isfinite(source.post_lpf_key_tracking)
+          ? clampFloat(source.post_lpf_key_tracking, 0.0f, 1.0f)
+          : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING;
+      sources[i].hold_seconds = clampFloat(source.hold_seconds, 0.001f, 20.0f);
+      sources[i].exact_pad_param_count = std::min<uint32_t>(
+          source.exact_pad_param_count,
+          kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT);
+      for (uint32_t param_index = 0; param_index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT; ++param_index) {
+        sources[i].exact_pad_params[param_index] =
+            param_index < sources[i].exact_pad_param_count && std::isfinite(source.exact_pad_params[param_index])
+                ? source.exact_pad_params[param_index]
+                : 0.0f;
+      }
+      sources[i].exact_lead_param_count = std::min<uint32_t>(
+          source.exact_lead_param_count,
+          kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT);
+      for (uint32_t param_index = 0; param_index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT; ++param_index) {
+        sources[i].exact_lead_params[param_index] =
+            param_index < sources[i].exact_lead_param_count && std::isfinite(source.exact_lead_params[param_index])
+                ? source.exact_lead_params[param_index]
+                : 0.0f;
+      }
+      sources[i].exact_drum_param_count = std::min<uint32_t>(
+          source.exact_drum_param_count,
+          kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT);
+      for (uint32_t param_index = 0; param_index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT; ++param_index) {
+        sources[i].exact_drum_params[param_index] =
+            param_index < sources[i].exact_drum_param_count && std::isfinite(source.exact_drum_params[param_index])
+                ? source.exact_drum_params[param_index]
+                : 0.0f;
+      }
+      for (uint32_t voice_index = 0; voice_index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT; ++voice_index) {
+        sources[i].drum_voice_preset_a_ids[voice_index] = source.drum_voice_preset_a_ids[voice_index];
+        sources[i].drum_voice_preset_b_ids[voice_index] = source.drum_voice_preset_b_ids[voice_index];
+        sources[i].drum_voice_morphs[voice_index] = std::isfinite(source.drum_voice_morphs[voice_index])
+            ? clampFloat(source.drum_voice_morphs[voice_index], 0.0f, 1.0f)
+            : 0.0f;
+      }
     }
     SourceState& soundscape_source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
     soundscape_source.asset_ref_count = 0;
@@ -1842,6 +2051,16 @@ struct KesshoProductEngine {
     }
   }
 
+  float manualNoteHoldSeconds(uint32_t source_id, float requested_seconds) const {
+    if (
+        (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) &&
+        source_id >= 1u &&
+        source_id <= kSourceCount) {
+      return clampFloat(sources[source_id - 1u].hold_seconds, 0.001f, 20.0f);
+    }
+    return clampFloat(requested_seconds, 0.001f, 20.0f);
+  }
+
   void applyControlEvent(const KesshoProductEvent& event) {
     switch (event.event_kind) {
       case KESSHO_PRODUCT_EVENT_KIND_START:
@@ -1876,9 +2095,21 @@ struct KesshoProductEngine {
       case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET:
         applySourcePresetEvent(event);
         break;
-      case KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON:
-        triggerVoice(event.target_id == 0u ? KESSHO_PRODUCT_SOURCE_PAD1 : event.target_id, event.value, event.value2, event.value3);
+      case KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON: {
+        const uint32_t source_id = event.target_id == 0u ? KESSHO_PRODUCT_SOURCE_PAD1 : event.target_id;
+        triggerVoice(
+            source_id,
+            event.value,
+            event.value2,
+            manualNoteHoldSeconds(source_id, event.value3),
+            -1.0f,
+            -1.0f,
+            event.value4 > 0.0f ? event.value4 : -1.0f,
+            0u,
+            0u,
+            false);
         break;
+      }
       case KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_OFF:
         releaseSourceVoices(event.target_id);
         break;
@@ -2645,6 +2876,9 @@ struct KesshoProductEngine {
       case KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID:
       case KESSHO_PRODUCT_PARAM_SOURCE_DELAY_BSEND_ID:
       case KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID:
+      case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_HZ_ID:
+      case KESSHO_PRODUCT_PARAM_SOURCE_STEREO_WIDTH_ID:
+      case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_KEY_TRACKING_ID:
         applySourceParam(event);
         break;
       case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_ENABLED_ID:
@@ -2937,6 +3171,24 @@ struct KesshoProductEngine {
       case KESSHO_PRODUCT_PARAM_FX_REVERB_ER_LP_FREQ_ID:
         fx.reverb_er_lp_freq = clampFloat(event.value, 200.0f, 12000.0f);
         configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_THRESHOLD_ID:
+        fx.reverb_pre_comp_threshold = clampFloat(event.value, -60.0f, 0.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_KNEE_ID:
+        fx.reverb_pre_comp_knee = clampFloat(event.value, 0.0f, 40.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_RATIO_ID:
+        fx.reverb_pre_comp_ratio = clampFloat(event.value, 1.0f, 20.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_ATTACK_MS_ID:
+        fx.reverb_pre_comp_attack_ms = clampFloat(event.value, 0.1f, 30.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_RELEASE_MS_ID:
+        fx.reverb_pre_comp_release_ms = clampFloat(event.value, 20.0f, 1000.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_MAKEUP_ID:
+        fx.reverb_pre_comp_makeup = clampFloat(event.value, 0.5f, 4.0f);
         break;
       case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID:
         fx.spectral_freeze_mix = clampFloat(event.value, 0.0f, 1.0f);
@@ -3289,6 +3541,9 @@ struct KesshoProductEngine {
       case KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID:
       case KESSHO_PRODUCT_PARAM_SOURCE_DELAY_BSEND_ID:
       case KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID:
+      case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_HZ_ID:
+      case KESSHO_PRODUCT_PARAM_SOURCE_STEREO_WIDTH_ID:
+      case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_KEY_TRACKING_ID:
         return true;
       default:
         return false;
@@ -3382,6 +3637,16 @@ struct KesshoProductEngine {
     const float direction = hashUnit(range->seed ^ 0xa511e9b3u) < 0.5f ? -1.0f : 1.0f;
     const float span = std::max(0.0001f, max_value - min_value);
     range->velocity = direction * span * (0.015f + hashUnit(range->seed ^ 0x63d83595u) * 0.025f);
+    if (target_id == 0u && range->mode == KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD) {
+      KesshoProductEvent param_event{};
+      param_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+      param_event.target_id = 0u;
+      param_event.param_id = range->param_id;
+      param_event.value = range->current_value;
+      telemetry.last_error_code = KESSHO_PRODUCT_OK;
+      applyParam(param_event);
+      return;
+    }
     telemetry.last_error_code = KESSHO_PRODUCT_OK;
   }
 
@@ -3403,6 +3668,53 @@ struct KesshoProductEngine {
     morph = clampFloat(morph + preset->macro_morph, 0.0f, 1.0f);
     distance = clampFloat(distance + preset->macro_distance, 0.0f, 1.0f);
     expression = clampFloat(expression * preset->macro_expression, 0.0f, 1.0f);
+  }
+
+  kessho::core::KesshoSourcePresetPatch drumVoiceMorphPatch(const SourceState& source) const {
+    auto patch = sourcePresetPatch(findSourcePreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT));
+    if (patch.exact_drum_param_count != kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT) {
+      patch.exact_drum_param_count = kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
+      for (uint32_t i = 0; i < kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT; ++i) {
+        patch.exact_drum_params[i] = 0.0f;
+      }
+    }
+
+    for (const auto& voice : kessho::product::generated::KESSHO_PRODUCT_DRUM_VOICES) {
+      if (voice.index >= kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT) {
+        continue;
+      }
+      const auto* preset_a = findDrumVoicePreset(voice.index, source.drum_voice_preset_a_ids[voice.index]);
+      const auto* preset_b = findDrumVoicePreset(voice.index, source.drum_voice_preset_b_ids[voice.index]);
+      if (preset_a == nullptr && preset_b == nullptr) {
+        continue;
+      }
+      if (preset_a == nullptr) {
+        preset_a = preset_b;
+      }
+      if (preset_b == nullptr) {
+        preset_b = preset_a;
+      }
+
+      const float morph = clampFloat(source.drum_voice_morphs[voice.index], 0.0f, 1.0f);
+      const float smooth = smoothstep01(morph);
+      const uint32_t end = std::min<uint32_t>(
+          voice.param_start + voice.param_count,
+          kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT);
+      for (uint32_t param_index = voice.param_start; param_index < end; ++param_index) {
+        const float a = preset_a->params[param_index];
+        const float b = preset_b->params[param_index];
+        patch.exact_drum_params[param_index] = drumParamUsesPresetSnap(param_index)
+            ? (morph < 0.5f ? a : b)
+            : a + (b - a) * smooth;
+      }
+    }
+    return patch;
+  }
+
+  bool exactPadMacrosDifferFromDefaults(float morph, float distance, float expression) const {
+    return std::abs(morph) > 0.0001f ||
+           std::abs(distance) > 0.0001f ||
+           std::abs(expression - kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_EXPRESSION) > 0.0001f;
   }
 
   float modulationRangeSample(const ModulationRange& range, float fallback, uint32_t sample_seed) const {
@@ -3512,6 +3824,15 @@ struct KesshoProductEngine {
         break;
       case KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID:
         source.granular_send = clampFloat(event.value, 0.0f, 2.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_HZ_ID:
+        source.post_lpf_hz = clampFloat(event.value, 20.0f, 20000.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_SOURCE_STEREO_WIDTH_ID:
+        source.stereo_width = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_KEY_TRACKING_ID:
+        source.post_lpf_key_tracking = clampFloat(event.value, 0.0f, 1.0f);
         break;
       default:
         telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
@@ -3964,14 +4285,19 @@ struct KesshoProductEngine {
       float morph,
       float distance,
       float expression,
-      const kessho::core::KesshoSourcePresetPatch* preset_patch) {
+      const kessho::core::KesshoSourcePresetPatch* preset_patch,
+      float drum_delay_send,
+      bool scale_velocity_by_expression) {
     if (!modules_ready) {
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_ALLOCATION_FAILURE;
       return true;
     }
 
     const float frequency = midiToFrequency(clampFloat(midi_note, 0.0f, 127.0f));
-    const float clamped_velocity = clampFloat(velocity * clampFloat(expression, 0.0f, 1.5f), 0.0f, 1.0f);
+    const float clamped_velocity = clampFloat(
+        velocity * (scale_velocity_by_expression ? clampFloat(expression, 0.0f, 1.5f) : 1.0f),
+        0.0f,
+        1.0f);
     switch (source_id) {
       case KESSHO_PRODUCT_SOURCE_PAD1:
       case KESSHO_PRODUCT_SOURCE_PAD2: {
@@ -3981,16 +4307,30 @@ struct KesshoProductEngine {
         }
         const uint32_t pad_index = source_id == KESSHO_PRODUCT_SOURCE_PAD2 ? 1u : 0u;
         const int route = static_cast<int>(pad_index * PAD_NUM_VOICES + (pad_voice_cursors[pad_index]++ % PAD_NUM_VOICES));
-        if (preset_patch != nullptr) {
+        const bool exact_pad_patch =
+            preset_patch != nullptr &&
+            preset_patch->exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
+        if (exact_pad_patch) {
           pad_module->setSourcePresetPatch(static_cast<int>(pad_index), *preset_patch);
+          if (exactPadMacrosDifferFromDefaults(morph, distance, expression)) {
+            pad_module->setSourceMacros(static_cast<int>(pad_index), morph, distance, expression);
+          }
+        } else if (preset_patch != nullptr) {
+          pad_module->setSourcePresetPatch(static_cast<int>(pad_index), *preset_patch);
+          pad_module->setSourceMacros(static_cast<int>(pad_index), morph, distance, expression);
+        } else {
+          pad_module->setSourceMacros(static_cast<int>(pad_index), morph, distance, expression);
         }
-        pad_module->setSourceMacros(static_cast<int>(pad_index), morph, distance, expression);
-        pad_module->noteOn(frequency, clamped_velocity, 0.0f, route);
+        const int voice_index = route % PAD_NUM_VOICES;
+        if (pad_module->noteOn(frequency, clamped_velocity, hold_seconds, route) != 0) {
+          schedulePadVoiceRelease(pad_index, static_cast<uint32_t>(voice_index), hold_seconds);
+        }
         return true;
       }
       case KESSHO_PRODUCT_SOURCE_LEAD1:
       case KESSHO_PRODUCT_SOURCE_LEAD2: {
         const uint32_t lead_index = source_id == KESSHO_PRODUCT_SOURCE_LEAD2 ? 1u : 0u;
+        sources[source_id - 1u].post_lpf_tracking_midi = clampFloat(midi_note, 0.0f, 127.0f);
         if (!lead_modules[lead_index]) {
           telemetry.last_error_code = KESSHO_PRODUCT_ERROR_ALLOCATION_FAILURE;
           return true;
@@ -3998,7 +4338,12 @@ struct KesshoProductEngine {
         if (preset_patch != nullptr) {
           lead_modules[lead_index]->setSourcePresetPatch(static_cast<int>(lead_index), *preset_patch);
         }
-        lead_modules[lead_index]->setTriggerMacros(morph, distance, expression);
+        const bool exact_lead_patch =
+            preset_patch != nullptr &&
+            preset_patch->exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
+        if (!exact_lead_patch) {
+          lead_modules[lead_index]->setTriggerMacros(morph, distance, expression);
+        }
         lead_modules[lead_index]->noteOn(frequency, clamped_velocity, std::max(0.001f, hold_seconds), 0);
         return true;
       }
@@ -4008,6 +4353,12 @@ struct KesshoProductEngine {
           return true;
         }
         const int voice_type = std::clamp(roundedInt(midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1);
+        if (preset_patch != nullptr) {
+          drum_module->setSourcePresetPatch(0, *preset_patch);
+        }
+        if (std::isfinite(drum_delay_send) && drum_delay_send >= 0.0f) {
+          drum_module->setVoiceSend(voice_type, drum_delay_send);
+        }
         drum_module->setTriggerMacros(morph, distance, expression);
         drum_module->noteOn(0.0f, clamped_velocity, 0.0f, voice_type);
         return true;
@@ -4026,7 +4377,8 @@ struct KesshoProductEngine {
       float event_distance = -1.0f,
       float event_expression = -1.0f,
       uint32_t sample_seed = 0u,
-      uint32_t asset_id_override = 0u) {
+      uint32_t asset_id_override = 0u,
+      bool scale_velocity_by_expression = true) {
     if (source_id < 1u || source_id > kSourceCount) {
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
       return;
@@ -4052,25 +4404,84 @@ struct KesshoProductEngine {
     distance = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance, resolved_seed);
     expression = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression, resolved_seed);
 
+    float drum_delay_send = -1.0f;
     if (source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
       const uint32_t drum_voice = static_cast<uint32_t>(std::clamp(roundedInt(midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1));
       const uint32_t drum_target = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + drum_voice;
       morph = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, morph, resolved_seed);
       distance = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance, resolved_seed);
       expression = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression, resolved_seed);
-      const float delay_send = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID, source.delay_a_send, resolved_seed);
-      if (drum_module) {
-        drum_module->setVoiceSend(static_cast<int>(drum_voice), delay_send);
-      }
+      drum_delay_send = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID, source.delay_a_send, resolved_seed);
       triggerSidechainDuck(drum_voice, clampFloat(velocity * expression, 0.0f, 1.0f));
     }
 
-    const auto* preset = findSourcePreset(source.preset_id);
-    applySourcePresetMacros(source, morph, distance, expression);
-    const kessho::core::KesshoSourcePresetPatch preset_patch = sourcePresetPatch(preset);
-    const kessho::core::KesshoSourcePresetPatch* preset_patch_ptr = preset == nullptr ? nullptr : &preset_patch;
+    const bool pad_source = source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2;
+    const bool lead_source = source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
+    const bool drum_source = source_id == KESSHO_PRODUCT_SOURCE_DRUM;
+    kessho::core::KesshoSourcePresetPatch snapshot_patch{};
+    const bool snapshot_exact_pad_patch =
+        pad_source &&
+        source.exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
+    if (snapshot_exact_pad_patch) {
+      snapshot_patch.exact_pad_param_count = kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
+      for (uint32_t param_index = 0; param_index < kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT; ++param_index) {
+        snapshot_patch.exact_pad_params[param_index] = source.exact_pad_params[param_index];
+      }
+    }
+    const bool snapshot_exact_lead_patch =
+        lead_source &&
+        source.exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
+    if (snapshot_exact_lead_patch) {
+      snapshot_patch.exact_lead_param_count = kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
+      for (uint32_t param_index = 0; param_index < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT; ++param_index) {
+        snapshot_patch.exact_lead_params[param_index] = source.exact_lead_params[param_index];
+      }
+    }
+    const bool snapshot_exact_drum_patch =
+        drum_source &&
+        source.exact_drum_param_count == kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
+    if (snapshot_exact_drum_patch) {
+      snapshot_patch.exact_drum_param_count = kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
+      for (uint32_t param_index = 0; param_index < kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT; ++param_index) {
+        snapshot_patch.exact_drum_params[param_index] = source.exact_drum_params[param_index];
+      }
+    }
+    const bool snapshot_generated_drum_patch = drum_source && !snapshot_exact_drum_patch;
+    if (snapshot_generated_drum_patch) {
+      snapshot_patch = drumVoiceMorphPatch(source);
+    }
+    const bool snapshot_exact_patch =
+        snapshot_exact_pad_patch || snapshot_exact_lead_patch || snapshot_exact_drum_patch || snapshot_generated_drum_patch;
+    const auto* preset = snapshot_exact_patch ? nullptr : findSourcePreset(source.preset_id);
+    const kessho::core::KesshoSourcePresetPatch preset_patch = snapshot_exact_patch
+        ? snapshot_patch
+        : sourcePresetPatch(preset);
+    const bool exact_pad_patch =
+        pad_source &&
+        preset_patch.exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
+    const bool exact_lead_patch =
+        lead_source &&
+        preset_patch.exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
+    const bool exact_drum_patch =
+        drum_source &&
+        preset_patch.exact_drum_param_count == kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
+    if (!exact_pad_patch && !exact_lead_patch && !exact_drum_patch) {
+      applySourcePresetMacros(source, morph, distance, expression);
+    }
+    const kessho::core::KesshoSourcePresetPatch* preset_patch_ptr =
+        (snapshot_exact_patch || preset != nullptr) ? &preset_patch : nullptr;
 
-    if (triggerModuleSource(source_id, midi_note, velocity, hold_seconds, morph, distance, expression, preset_patch_ptr)) {
+    if (triggerModuleSource(
+            source_id,
+            midi_note,
+            velocity,
+            hold_seconds,
+            morph,
+            distance,
+            expression,
+            preset_patch_ptr,
+            drum_delay_send,
+            scale_velocity_by_expression)) {
       return;
     }
 
@@ -4158,6 +4569,7 @@ struct KesshoProductEngine {
   void releaseSourceVoices(uint32_t source_id) {
     if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) && pad_module) {
       pad_module->allNotesOff();
+      clearPadVoiceReleases(0u);
     }
     if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_LEAD1) && lead_modules[0]) {
       lead_modules[0]->allNotesOff();
@@ -4174,6 +4586,331 @@ struct KesshoProductEngine {
         voice.remaining_frames = std::min<uint32_t>(voice.remaining_frames, static_cast<uint32_t>(0.02 * sample_rate));
         voice.total_frames = std::max<uint32_t>(1u, voice.remaining_frames);
       }
+    }
+  }
+
+  void schedulePadVoiceRelease(uint32_t pad_index, uint32_t voice_index, float hold_seconds) {
+    if (pad_index >= static_cast<uint32_t>(PAD_NUM_PADS) || voice_index >= static_cast<uint32_t>(PAD_NUM_VOICES)) {
+      return;
+    }
+    for (uint32_t pad = 0; pad < static_cast<uint32_t>(PAD_NUM_PADS); ++pad) {
+      pad_voice_release_frames[pad][voice_index] = 0u;
+    }
+    if (!std::isfinite(hold_seconds) || hold_seconds <= 0.0f || sample_rate <= 0.0) {
+      return;
+    }
+    const double requested_frames = static_cast<double>(hold_seconds) * sample_rate;
+    pad_voice_release_frames[pad_index][voice_index] =
+        static_cast<uint32_t>(std::max(1.0, std::min(requested_frames, static_cast<double>(UINT32_MAX))));
+  }
+
+  void clearPadVoiceReleases(uint32_t source_id) {
+    const bool clear_all = source_id == 0u;
+    for (uint32_t pad = 0; pad < static_cast<uint32_t>(PAD_NUM_PADS); ++pad) {
+      const uint32_t pad_source_id = pad == 0u ? KESSHO_PRODUCT_SOURCE_PAD1 : KESSHO_PRODUCT_SOURCE_PAD2;
+      if (!clear_all && source_id != pad_source_id) {
+        continue;
+      }
+      for (uint32_t voice = 0; voice < static_cast<uint32_t>(PAD_NUM_VOICES); ++voice) {
+        pad_voice_release_frames[pad][voice] = 0u;
+      }
+    }
+  }
+
+  void advancePadVoiceReleases(uint32_t frames) {
+    if (!pad_module || frames == 0u) {
+      return;
+    }
+    for (uint32_t pad = 0; pad < static_cast<uint32_t>(PAD_NUM_PADS); ++pad) {
+      for (uint32_t voice = 0; voice < static_cast<uint32_t>(PAD_NUM_VOICES); ++voice) {
+        uint32_t& remaining = pad_voice_release_frames[pad][voice];
+        if (remaining == 0u) {
+          continue;
+        }
+        if (remaining <= frames) {
+          pad_module->noteOff(static_cast<int>(voice));
+          remaining = 0u;
+        } else {
+          remaining -= frames;
+        }
+      }
+    }
+  }
+
+  void resetPadPostChains() {
+    for (PadPostChainState& chain : pad_post_chains) {
+      chain = {};
+      chain.post_lpf_hz = kDefaultPadPostLpfHz;
+      chain.stereo_width = kDefaultPadStereoWidth;
+      updatePadPostChainCoefficients(chain);
+    }
+  }
+
+  float resolveSourcePostLpfHz(uint32_t source_id) const {
+    if (source_id < 1u || source_id > kSourceCount) {
+      return kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ;
+    }
+    const SourceState& source = sources[source_id - 1u];
+    float cutoff = source.post_lpf_hz;
+    switch (source_id) {
+      case KESSHO_PRODUCT_SOURCE_PAD1:
+      case KESSHO_PRODUCT_SOURCE_PAD2:
+        cutoff = distanceMultiply(cutoff, source.distance, 0.90f, 0.42f);
+        break;
+      case KESSHO_PRODUCT_SOURCE_LEAD1:
+        cutoff = distanceMultiply(cutoff, source.distance, 0.88f, 0.38f);
+        break;
+      case KESSHO_PRODUCT_SOURCE_LEAD2:
+        cutoff = distanceMultiply(cutoff, source.distance, 0.84f, 0.32f);
+        break;
+      case KESSHO_PRODUCT_SOURCE_PIANO:
+        cutoff = distanceMultiply(cutoff, source.distance, 0.82f, 0.30f);
+        break;
+      default:
+        break;
+    }
+    if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
+      const float tracking = clampFloat(source.post_lpf_key_tracking, 0.0f, 1.0f);
+      if (tracking > 0.0001f) {
+        const float tracking_frequency = midiToFrequency(clampFloat(source.post_lpf_tracking_midi, 0.0f, 127.0f));
+        const float ratio = clampFloat(tracking_frequency / midiToFrequency(60.0f), 0.125f, 8.0f);
+        cutoff *= std::pow(ratio, tracking);
+      }
+    }
+    return clampFloat(cutoff, 20.0f, 20000.0f);
+  }
+
+  float resolveSourceStereoWidth(uint32_t source_id) const {
+    if (source_id < 1u || source_id > kSourceCount) {
+      return kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH;
+    }
+    const SourceState& source = sources[source_id - 1u];
+    float width = source.stereo_width;
+    switch (source_id) {
+      case KESSHO_PRODUCT_SOURCE_PAD1:
+      case KESSHO_PRODUCT_SOURCE_PAD2:
+        width = distanceAdd(width, source.distance, -0.06f, -0.35f);
+        break;
+      case KESSHO_PRODUCT_SOURCE_LEAD1:
+        width = distanceAdd(width, source.distance, -0.08f, -0.42f);
+        break;
+      case KESSHO_PRODUCT_SOURCE_LEAD2:
+        width = distanceAdd(width, source.distance, -0.10f, -0.50f);
+        break;
+      case KESSHO_PRODUCT_SOURCE_PIANO:
+        width = distanceAdd(width, source.distance, -0.06f, -0.28f);
+        break;
+      default:
+        break;
+    }
+    return clampFloat(width, 0.0f, 1.0f);
+  }
+
+  void updatePadPostChainCoefficients(PadPostChainState& chain) {
+    const float nyquist_limit = static_cast<float>(sample_rate * 0.499);
+    const float cutoff = clampFloat(chain.post_lpf_hz, 20.0f, std::max(20.0f, nyquist_limit));
+    if (std::abs(chain.coeff_cutoff - cutoff) <= 0.0001f) {
+      return;
+    }
+
+    constexpr float kWebAudioLowPassQ07 = 1.0839269140212036f; // pow(10, 0.7 / 20)
+    const float omega = static_cast<float>((kTwoPi * static_cast<double>(cutoff)) / sample_rate);
+    const float sin_omega = std::sin(omega);
+    const float cos_omega = std::cos(omega);
+    const float alpha = sin_omega / (2.0f * kWebAudioLowPassQ07);
+    const float a0 = 1.0f + alpha;
+    chain.b0 = ((1.0f - cos_omega) * 0.5f) / a0;
+    chain.b1 = (1.0f - cos_omega) / a0;
+    chain.b2 = ((1.0f - cos_omega) * 0.5f) / a0;
+    chain.a1 = (-2.0f * cos_omega) / a0;
+    chain.a2 = (1.0f - alpha) / a0;
+    chain.coeff_cutoff = cutoff;
+  }
+
+  float processPadPostLpfSample(const PadPostChainState& chain, BiquadState& state, float input) const {
+    const float y =
+        chain.b0 * input +
+        chain.b1 * state.x1 +
+        chain.b2 * state.x2 -
+        chain.a1 * state.y1 -
+        chain.a2 * state.y2;
+    state.x2 = state.x1;
+    state.x1 = input;
+    state.y2 = state.y1;
+    state.y1 = std::isfinite(y) ? y : 0.0f;
+    return state.y1;
+  }
+
+  void processPadPostChain(uint32_t pad_index, uint32_t source_id, float* left, float* right, uint32_t frames) {
+    if (pad_index >= static_cast<uint32_t>(PAD_NUM_PADS) || left == nullptr || right == nullptr || frames == 0u) {
+      return;
+    }
+    PadPostChainState& chain = pad_post_chains[pad_index];
+    chain.post_lpf_hz = resolveSourcePostLpfHz(source_id);
+    chain.stereo_width = resolveSourceStereoWidth(source_id);
+    updatePadPostChainCoefficients(chain);
+    const float width = clampFloat(chain.stereo_width, 0.0f, 1.0f);
+    const float direct = 0.5f * (1.0f + width);
+    const float cross = 0.5f * (1.0f - width);
+    for (uint32_t i = 0; i < frames; ++i) {
+      const float filtered_left = processPadPostLpfSample(chain, chain.left, left[i]);
+      const float filtered_right = processPadPostLpfSample(chain, chain.right, right[i]);
+      left[i] = filtered_left * direct + filtered_right * cross;
+      right[i] = filtered_left * cross + filtered_right * direct;
+    }
+  }
+
+  void resetLeadPostChains() {
+    for (LeadPostChainState& chain : lead_post_chains) {
+      chain = {};
+      chain.post_lpf_hz = kDefaultLeadPostLpfHz;
+      chain.stereo_width = kDefaultLeadStereoWidth;
+      updateLeadPostChainCoefficients(chain);
+    }
+  }
+
+  void updateLeadPostChainCoefficients(LeadPostChainState& chain) {
+    const float nyquist_limit = static_cast<float>(sample_rate * 0.499);
+    const float cutoff = clampFloat(chain.post_lpf_hz, 20.0f, std::max(20.0f, nyquist_limit));
+    if (std::abs(chain.coeff_cutoff - cutoff) <= 0.0001f) {
+      return;
+    }
+
+    constexpr float kWebAudioLowPassQ07 = 1.0839269140212036f; // pow(10, 0.7 / 20)
+    const float omega = static_cast<float>((kTwoPi * static_cast<double>(cutoff)) / sample_rate);
+    const float sin_omega = std::sin(omega);
+    const float cos_omega = std::cos(omega);
+    const float alpha = sin_omega / (2.0f * kWebAudioLowPassQ07);
+    const float a0 = 1.0f + alpha;
+    chain.b0 = ((1.0f - cos_omega) * 0.5f) / a0;
+    chain.b1 = (1.0f - cos_omega) / a0;
+    chain.b2 = ((1.0f - cos_omega) * 0.5f) / a0;
+    chain.a1 = (-2.0f * cos_omega) / a0;
+    chain.a2 = (1.0f - alpha) / a0;
+    chain.coeff_cutoff = cutoff;
+  }
+
+  float processLeadPostLpfSample(const LeadPostChainState& chain, BiquadState& state, float input) const {
+    const float y =
+        chain.b0 * input +
+        chain.b1 * state.x1 +
+        chain.b2 * state.x2 -
+        chain.a1 * state.y1 -
+        chain.a2 * state.y2;
+    state.x2 = state.x1;
+    state.x1 = input;
+    state.y2 = state.y1;
+    state.y1 = std::isfinite(y) ? y : 0.0f;
+    return state.y1;
+  }
+
+  void processLeadPostChain(uint32_t lead_index, uint32_t source_id, float* left, float* right, uint32_t frames) {
+    if (lead_index >= 2u || left == nullptr || right == nullptr || frames == 0u) {
+      return;
+    }
+    LeadPostChainState& chain = lead_post_chains[lead_index];
+    chain.post_lpf_hz = resolveSourcePostLpfHz(source_id);
+    chain.stereo_width = resolveSourceStereoWidth(source_id);
+    updateLeadPostChainCoefficients(chain);
+    const float width = clampFloat(chain.stereo_width, 0.0f, 1.0f);
+    const float direct = 0.5f * (1.0f + width);
+    const float cross = 0.5f * (1.0f - width);
+    for (uint32_t i = 0; i < frames; ++i) {
+      const float stage1_left = processLeadPostLpfSample(chain, chain.stage1_left, left[i]);
+      const float stage1_right = processLeadPostLpfSample(chain, chain.stage1_right, right[i]);
+      const float filtered_left = processLeadPostLpfSample(chain, chain.stage2_left, stage1_left);
+      const float filtered_right = processLeadPostLpfSample(chain, chain.stage2_right, stage1_right);
+      left[i] = filtered_left * direct + filtered_right * cross;
+      right[i] = filtered_left * cross + filtered_right * direct;
+    }
+  }
+
+  void updateVoicePostChainCoefficients(Voice& voice, float cutoff_hz) {
+    const float nyquist_limit = static_cast<float>(sample_rate * 0.499);
+    const float cutoff = clampFloat(cutoff_hz, 20.0f, std::max(20.0f, nyquist_limit));
+    if (std::abs(voice.post_coeff_cutoff - cutoff) <= 0.0001f) {
+      return;
+    }
+
+    constexpr float kWebAudioLowPassQ07 = 1.0839269140212036f; // pow(10, 0.7 / 20)
+    const float omega = static_cast<float>((kTwoPi * static_cast<double>(cutoff)) / sample_rate);
+    const float sin_omega = std::sin(omega);
+    const float cos_omega = std::cos(omega);
+    const float alpha = sin_omega / (2.0f * kWebAudioLowPassQ07);
+    const float a0 = 1.0f + alpha;
+    voice.post_b0 = ((1.0f - cos_omega) * 0.5f) / a0;
+    voice.post_b1 = (1.0f - cos_omega) / a0;
+    voice.post_b2 = ((1.0f - cos_omega) * 0.5f) / a0;
+    voice.post_a1 = (-2.0f * cos_omega) / a0;
+    voice.post_a2 = (1.0f - alpha) / a0;
+    voice.post_coeff_cutoff = cutoff;
+  }
+
+  float processVoicePostLpfSample(const Voice& voice, BiquadState& state, float input) const {
+    const float y =
+        voice.post_b0 * input +
+        voice.post_b1 * state.x1 +
+        voice.post_b2 * state.x2 -
+        voice.post_a1 * state.y1 -
+        voice.post_a2 * state.y2;
+    state.x2 = state.x1;
+    state.x1 = input;
+    state.y2 = state.y1;
+    state.y1 = std::isfinite(y) ? y : 0.0f;
+    return state.y1;
+  }
+
+  void processVoicePostChain(Voice& voice, float& left, float& right) {
+    const uint32_t source_id = voice.source_id;
+    updateVoicePostChainCoefficients(voice, resolveSourcePostLpfHz(source_id));
+    const float width = resolveSourceStereoWidth(source_id);
+    const float filtered_left = processVoicePostLpfSample(voice, voice.post_left, left);
+    const float filtered_right = processVoicePostLpfSample(voice, voice.post_right, right);
+    const float direct = 0.5f * (1.0f + width);
+    const float cross = 0.5f * (1.0f - width);
+    left = filtered_left * direct + filtered_right * cross;
+    right = filtered_left * cross + filtered_right * direct;
+  }
+
+  void mixPadSourceBuffer(
+      uint32_t source_id,
+      const float* dry_l,
+      const float* dry_r,
+      const float* send_l,
+      const float* send_r,
+      float* out_l,
+      float* out_r,
+      uint32_t start,
+      uint32_t frames) {
+    if (source_id < 1u || source_id > kSourceCount) {
+      return;
+    }
+    const SourceState& source = sources[source_id - 1u];
+    if (!source.enabled) {
+      return;
+    }
+    const float dry_gain = source.level * source.dry_gain;
+    for (uint32_t i = 0; i < frames; ++i) {
+      const uint32_t frame = start + i;
+      const float dry_left = dry_l[i] * dry_gain;
+      const float dry_right = dry_r[i] * dry_gain;
+      const float send_left = send_l[i];
+      const float send_right = send_r[i];
+      const float duck_gain = sidechainGain(source_id - 1u, frame);
+      const float left = dry_left * duck_gain;
+      const float right = dry_right * duck_gain;
+      out_l[frame] += left;
+      out_r[frame] += right;
+      stem_l[source_id][frame] += left;
+      stem_r[source_id][frame] += right;
+      reverb_bus_l[frame] += send_left * source.reverb_send;
+      reverb_bus_r[frame] += send_right * source.reverb_send;
+      delay_a_bus_l[frame] += send_left * source.delay_a_send;
+      delay_a_bus_r[frame] += send_right * source.delay_a_send;
+      delay_b_bus_l[frame] += send_left * source.delay_b_send;
+      delay_b_bus_r[frame] += send_right * source.delay_b_send;
+      granular_bus_l[frame] += send_left * source.granular_send;
+      granular_bus_r[frame] += send_right * source.granular_send;
     }
   }
 
@@ -4370,7 +5107,7 @@ struct KesshoProductEngine {
     if (!source.enabled) {
       return;
     }
-    const float gain = source.level * source.dry_gain;
+    const float gain = source.level * source.dry_gain * moduleSourceOutputTrim(source_id);
     const uint32_t sidechain_target = sidechainTargetForSource(source_id);
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
@@ -4398,6 +5135,7 @@ struct KesshoProductEngine {
     if (!pad_module || frames == 0u) {
       return;
     }
+    advancePadVoiceReleases(frames);
     float* tap_l[kModuleTapCount]{};
     float* tap_r[kModuleTapCount]{};
     for (uint32_t bus = 0; bus < kModuleTapCount; ++bus) {
@@ -4407,8 +5145,38 @@ struct KesshoProductEngine {
       std::fill(module_tap_r[bus], module_tap_r[bus] + frames, 0.0f);
     }
     pad_module->processPlanarStereoTaps(silent_l, silent_r, tap_l, tap_r, KESSHO_MODULE_PAD_OUTPUT_TAP_COUNT, static_cast<int>(frames));
-    mixSourceBuffer(KESSHO_PRODUCT_SOURCE_PAD1, module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD1], module_tap_r[KESSHO_MODULE_TAP_POSTFADER_PAD1], out_l, out_r, start, frames);
-    mixSourceBuffer(KESSHO_PRODUCT_SOURCE_PAD2, module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD2], module_tap_r[KESSHO_MODULE_TAP_POSTFADER_PAD2], out_l, out_r, start, frames);
+    processPadPostChain(
+        0u,
+        KESSHO_PRODUCT_SOURCE_PAD1,
+        module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD1],
+        module_tap_r[KESSHO_MODULE_TAP_POSTFADER_PAD1],
+        frames);
+    processPadPostChain(
+        1u,
+        KESSHO_PRODUCT_SOURCE_PAD2,
+        module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD2],
+        module_tap_r[KESSHO_MODULE_TAP_POSTFADER_PAD2],
+        frames);
+    mixPadSourceBuffer(
+        KESSHO_PRODUCT_SOURCE_PAD1,
+        module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD1],
+        module_tap_r[KESSHO_MODULE_TAP_POSTFADER_PAD1],
+        module_tap_l[KESSHO_MODULE_TAP_PREFADER_PAD1],
+        module_tap_r[KESSHO_MODULE_TAP_PREFADER_PAD1],
+        out_l,
+        out_r,
+        start,
+        frames);
+    mixPadSourceBuffer(
+        KESSHO_PRODUCT_SOURCE_PAD2,
+        module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD2],
+        module_tap_r[KESSHO_MODULE_TAP_POSTFADER_PAD2],
+        module_tap_l[KESSHO_MODULE_TAP_PREFADER_PAD2],
+        module_tap_r[KESSHO_MODULE_TAP_PREFADER_PAD2],
+        out_l,
+        out_r,
+        start,
+        frames);
   }
 
   void renderSingleModuleSource(
@@ -4424,6 +5192,11 @@ struct KesshoProductEngine {
     std::fill(module_l, module_l + frames, 0.0f);
     std::fill(module_r, module_r + frames, 0.0f);
     module->processPlanarStereo(silent_l, silent_r, module_l, module_r, static_cast<int>(frames));
+    if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1) {
+      processLeadPostChain(0u, source_id, module_l, module_r, frames);
+    } else if (source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
+      processLeadPostChain(1u, source_id, module_l, module_r, frames);
+    }
     mixSourceBuffer(source_id, module_l, module_r, out_l, out_r, start, frames);
   }
 
@@ -4458,6 +5231,71 @@ struct KesshoProductEngine {
       out_r[frame] += right;
       stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
       stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;
+    }
+  }
+
+  float reverbPreCompressorGainDbForLevel(float level_db) const {
+    const float threshold = clampFloat(fx.reverb_pre_comp_threshold, -60.0f, 0.0f);
+    const float knee = clampFloat(fx.reverb_pre_comp_knee, 0.0f, 40.0f);
+    const float ratio = clampFloat(fx.reverb_pre_comp_ratio, 1.0f, 20.0f);
+    if (ratio <= 1.0f) {
+      return 0.0f;
+    }
+    constexpr float strength = 0.04f;
+    if (knee <= 0.0f) {
+      if (level_db <= threshold) {
+        return 0.0f;
+      }
+      return ((threshold + (level_db - threshold) / ratio) - level_db) * strength;
+    }
+
+    const float lower = threshold - knee * 0.5f;
+    const float upper = threshold + knee * 0.5f;
+    if (level_db <= lower) {
+      return 0.0f;
+    }
+    if (level_db >= upper) {
+      return ((threshold + (level_db - threshold) / ratio) - level_db) * strength;
+    }
+
+    const float x = level_db - lower;
+    return ((1.0f / ratio) - 1.0f) * x * x / (2.0f * knee) * strength;
+  }
+
+  float reverbPreconditionerSoftLimit(float value) const {
+    constexpr float limit = 1.047f;
+    const float abs_value = std::abs(value);
+    if (abs_value <= limit) {
+      return value;
+    }
+    return std::copysign(limit + std::tanh((abs_value - limit) * 6.0f) * 0.005f, value);
+  }
+
+  void processReverbPreconditioner(uint32_t start, uint32_t frames) {
+    if (frames == 0u || sample_rate <= 0.0) {
+      return;
+    }
+    const float attack_ms = clampFloat(fx.reverb_pre_comp_attack_ms, 0.1f, 30.0f);
+    const float release_ms = clampFloat(fx.reverb_pre_comp_release_ms, 20.0f, 1000.0f);
+    const float attack_coeff = std::exp(-1.0f / std::max(1.0f, attack_ms * 0.001f * static_cast<float>(sample_rate)));
+    const float release_coeff = std::exp(-1.0f / std::max(1.0f, release_ms * 0.001f * static_cast<float>(sample_rate)));
+    const float ratio = clampFloat(fx.reverb_pre_comp_ratio, 1.0f, 20.0f);
+    const float ratio_depth = clampFloat((ratio - 1.0f) / 4.0f, 0.0f, 1.0f);
+    const float native_auto_makeup = 1.0f + ratio_depth * 0.18f;
+    const float input_makeup = clampFloat(fx.reverb_pre_comp_makeup, 0.5f, 4.0f);
+
+    for (uint32_t i = 0; i < frames; ++i) {
+      const uint32_t frame = start + i;
+      const float left = reverb_bus_l[frame];
+      const float right = reverb_bus_r[frame];
+      const float detector = std::max(std::max(std::abs(left), std::abs(right)), 1.0e-9f);
+      const float level_db = 20.0f * std::log10(detector);
+      const float target_gain = std::pow(10.0f, reverbPreCompressorGainDbForLevel(level_db) / 20.0f);
+      const float coeff = target_gain < reverb_pre_comp_gain ? attack_coeff : release_coeff;
+      reverb_pre_comp_gain = target_gain + (reverb_pre_comp_gain - target_gain) * coeff;
+      const float gain = reverb_pre_comp_gain * native_auto_makeup * input_makeup;
+      reverb_bus_l[frame] = reverbPreconditionerSoftLimit(left * gain);
+      reverb_bus_r[frame] = reverbPreconditionerSoftLimit(right * gain);
     }
   }
 
@@ -4527,8 +5365,17 @@ struct KesshoProductEngine {
     }
     std::fill(module_l, module_l + frames, 0.0f);
     std::fill(module_r, module_r + frames, 0.0f);
+    processReverbPreconditioner(start, frames);
     reverb_module->processPlanarStereo(reverb_bus_l + start, reverb_bus_r + start, module_l, module_r, static_cast<int>(frames));
-    mixFxBuffer(module_l, module_r, out_l, out_r, start, frames, fx.reverb_mix, kSidechainReverb);
+    mixFxBuffer(
+        module_l,
+        module_r,
+        out_l,
+        out_r,
+        start,
+        frames,
+        fx.reverb_mix * kessho::product::generated::KESSHO_PRODUCT_GENERATED_REVERB_OUTPUT_TRIM,
+        kSidechainReverb);
   }
 
   void renderFx(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
@@ -4556,8 +5403,9 @@ struct KesshoProductEngine {
         const float pan_r = voice.pan >= 0.0f ? 1.0f : 1.0f + voice.pan * 0.5f;
         const uint32_t sidechain_target = sidechainTargetForSource(voice.source_id);
         const float duck_gain = sidechainGain(sidechain_target, frame);
-        const float send_left = value_l * source.dry_gain * pan_l;
-        const float send_right = value_r * source.dry_gain * pan_r;
+        float send_left = value_l * source.dry_gain * pan_l;
+        float send_right = value_r * source.dry_gain * pan_r;
+        processVoicePostChain(voice, send_left, send_right);
         const float left = send_left * duck_gain;
         const float right = send_right * duck_gain;
         out_l[frame] += left;

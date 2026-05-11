@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "KesshoCore/KesshoProductCore.h"
+#include "KesshoProductSchema.h"
 
 namespace {
 
@@ -42,6 +43,8 @@ KesshoProductSnapshotV2 makeSnapshot() {
     snapshot.sources[i].level = 0.8f;
     snapshot.sources[i].dry_gain = 1.0f;
     snapshot.sources[i].expression = 0.8f;
+    snapshot.sources[i].post_lpf_hz = 18000.0f;
+    snapshot.sources[i].stereo_width = 1.0f;
   }
   return snapshot;
 }
@@ -52,6 +55,8 @@ int main() {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].preset_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL;
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "snapshot load failed");
 
   KesshoProductEvent note{};

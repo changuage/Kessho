@@ -36,7 +36,19 @@ typedef struct KesshoProductSourceSnapshot {
   float delay_a_send;
   float delay_b_send;
   float granular_send;
-  uint32_t reserved0;
+  float post_lpf_hz;
+  float stereo_width;
+  float post_lpf_key_tracking;
+  uint32_t exact_pad_param_count;
+  float exact_pad_params[53];
+  uint32_t exact_lead_param_count;
+  float exact_lead_params[80];
+  uint32_t exact_drum_param_count;
+  float exact_drum_params[126];
+  uint32_t drum_voice_preset_a_ids[7];
+  uint32_t drum_voice_preset_b_ids[7];
+  float drum_voice_morphs[7];
+  float hold_seconds;
 } KesshoProductSourceSnapshot;
 
 typedef struct KesshoProductSequencerLaneSnapshot {
@@ -178,6 +190,12 @@ typedef struct KesshoProductFxSnapshot {
   uint32_t reverb_saturation_mode;
   float reverb_transient_smooth;
   float reverb_er_lp_freq;
+  float reverb_pre_comp_threshold;
+  float reverb_pre_comp_knee;
+  float reverb_pre_comp_ratio;
+  float reverb_pre_comp_attack_ms;
+  float reverb_pre_comp_release_ms;
+  float reverb_pre_comp_makeup;
   float spectral_freeze_mix;
   uint32_t spectral_freeze_enabled;
   uint32_t spectral_freeze_active;

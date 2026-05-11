@@ -373,6 +373,15 @@ public:
       return 0;
     }
 
+    const int base = source_index * kPadParamCount;
+    if (patch.exact_pad_param_count == KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT) {
+      for (int i = 0; i < kPadParamCount; ++i) {
+        params_[base + i] = patch.exact_pad_params[i];
+      }
+      commitParams();
+      return 1;
+    }
+
     const float tone = clampUnit(patch.tone);
     const float brightness = clampUnit(patch.brightness);
     const float texture = clampUnit(patch.texture);
@@ -381,7 +390,6 @@ public:
     const float release = clampUnit(patch.release);
     const float body = clampUnit(patch.body);
     const float transient = clampUnit(patch.transient);
-    const int base = source_index * kPadParamCount;
 
     params_[base + kOscAWave] =
         tone > 0.72f ? PAD_WAVE_SAWTOOTH : tone < 0.22f ? PAD_WAVE_SINE : PAD_WAVE_TRIANGLE;

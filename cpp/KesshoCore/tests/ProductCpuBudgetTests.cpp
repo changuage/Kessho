@@ -33,6 +33,8 @@ KesshoProductSnapshotV2 makeSnapshot() {
     snapshot.sources[i].level = 0.6f;
     snapshot.sources[i].dry_gain = 1.0f;
     snapshot.sources[i].expression = 0.8f;
+    snapshot.sources[i].post_lpf_hz = 18000.0f;
+    snapshot.sources[i].stereo_width = 1.0f;
   }
   snapshot.synth_euclid.lane_count = 2;
   for (uint32_t lane = 0; lane < 2; ++lane) {

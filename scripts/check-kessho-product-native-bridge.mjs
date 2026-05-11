@@ -81,10 +81,18 @@ for (const token of [
 
 for (const token of [
   'KesshoProductCoreSnapshotEncoder',
-  'public static let byteCount = 4492',
+  'public static let byteCount = 12644',
+  'public static let sourceByteCount = 1200',
   'KesshoProductSchema.version',
   'KesshoProductSchema.hash',
+  'KesshoProductSchema.drumParamCount',
+  'KesshoProductSchema.drumVoiceCount',
   'validateEncodedSnapshot',
+  'exactDrumParamCount',
+  'exactDrumParams',
+  'drumVoicePresetAIds',
+  'drumVoicePresetBIds',
+  'drumVoiceMorphs',
   'ProductGranularVoiceSnapshot',
   'granularVoice(_ voice: Int, state: SliderState)',
   'granularLegacyPitchModeId',
@@ -97,12 +105,15 @@ for (const token of [
   'dynamicsEnabled: state.dynamicsEnabled',
   'dynamicsCharacterMode: dynamicsCharacterModeId(state.characterMode)',
   'dynamicsDegradeMix: Float(clamp(state.degradeMix, 0, 1))',
+  'dynamicsModSlowWow: Float(clamp(state.degradeModSlowWow, 0, 1))',
+  'dynamicsModNoiseAlias: Float(clamp(state.degradeModNoiseAlias, 0, 1))',
   'dynamicsSaturationDrive: Float(clamp(state.dynamicsSaturationDrive, 0, 1))',
   'dynamicsEndCompThreshold: Float(clamp(state.endCompThreshold, -60, 0))',
   'sidechainKeyA: sidechainKeyId(state.sidechainKeyA)',
   'sidechainPad1Target: Float(clamp(state.sidechainPad1Target, 0, 1))',
   'writer.u32(snapshot.fx.dynamicsEnabled ? 1 : 0)',
   'writer.f32(snapshot.fx.dynamicsEndCompProgramRelease)',
+  'writer.f32(snapshot.fx.dynamicsModNoiseAlias)',
   'writer.u32(snapshot.fx.sidechainEnabled ? 1 : 0)',
   'writer.f32(snapshot.fx.sidechainReverbTarget)',
   'delayATimeLeftMs',
@@ -110,6 +121,8 @@ for (const token of [
   'reverbTypeId',
   'reverbQualityId',
   'reverbErLpFreq',
+  'reverbPreCompThreshold: Float(clamp(state.reverbPreCompThreshold, -60, 0))',
+  'writer.f32(snapshot.fx.reverbPreCompMakeup)',
   'writer.u32(snapshot.fx.reverbType)',
   'delayBToReverb',
   'KesshoProductSourceId.pad1.rawValue',
@@ -237,8 +250,20 @@ for (const token of [
   'public let profileRelease: Float',
   'public let profileBody: Float',
   'public let profileTransient: Float',
+  'public let exactPadParamCount: UInt32',
+  'public let exactPadParams: [Float]',
+  'public let exactLeadParamCount: UInt32',
+  'public let exactLeadParams: [Float]',
+  'public static let sourcePostLpfHz: Float',
+  'public static let sourceStereoWidth: Float',
+  'public static let sourcePostLpfKeyTracking: Float',
+  'public static let sourceHoldSeconds: Float',
   'profileTone:',
   'profileTransient:',
+  'exactPadParamCount:',
+  'exactPadParams:',
+  'exactLeadParamCount:',
+  'exactLeadParams:',
 ]) {
   assert(swiftGeneratedSchema.includes(token), `generated Swift Product Core source preset schema is missing ${token}`);
 }
@@ -286,7 +311,7 @@ KesshoProductSnapshotV2 makeSnapshot() {
     snapshot.sources[i].dry_gain = 1.0f;
   }
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].preset_id =
-      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_GLASS_SHIMMER;
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL;
   return snapshot;
 }
 
@@ -366,7 +391,7 @@ int main() {
     return 13;
   }
   if (telemetry.source_preset_ids[KESSHO_PRODUCT_SOURCE_PAD1 - 1u] !=
-      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_GLASS_SHIMMER) {
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL) {
     return 14;
   }
 

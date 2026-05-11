@@ -1030,6 +1030,7 @@ function parseArgs(argv) {
     caseId: '',
     sliceId: '',
     trackId: '',
+    coreEngine: 'core-wasm',
     stateOverride: {},
     hasStateOverride: false,
     noFail: false,
@@ -1055,6 +1056,7 @@ function parseArgs(argv) {
     else if (arg.startsWith('--slice=')) args.sliceId = arg.slice('--slice='.length);
     else if (arg.startsWith('--stage=')) args.sliceId = arg.slice('--stage='.length);
     else if (arg.startsWith('--track=')) args.trackId = arg.slice('--track='.length).trim();
+    else if (arg.startsWith('--core-engine=')) args.coreEngine = arg.slice('--core-engine='.length).trim();
     else if (arg.startsWith('--state-override=')) mergeStateOverride(args, arg.slice('--state-override='.length), '--state-override');
     else if (arg.startsWith('--state-patch=')) mergeStateOverride(args, arg.slice('--state-patch='.length), '--state-patch');
     else throw new Error(`Unknown argument: ${arg}`);
@@ -1065,6 +1067,9 @@ function parseArgs(argv) {
   }
   if ((args.trackId || args.hasStateOverride || args.printTransients) && !args.commands && !args.run) {
     throw new Error('--track, --print-transients, and temporary state overrides are only supported with --commands or --run.');
+  }
+  if (!['core-wasm', 'core-bridge', 'core-product'].includes(args.coreEngine)) {
+    throw new Error('--core-engine must be core-wasm, core-bridge, or core-product.');
   }
 
   if (!args.help && !args.write && !args.selfCheck && !args.list && !args.listSlices && !args.json && !args.markdown && !args.commands && !args.run) {
@@ -1107,6 +1112,7 @@ Options:
   --slice=<id>            Limit --commands, --run, --json, or --markdown to a staged slice
                           Supported aliases: pad, pad-dry, pad-boundary, fx, source, full-mix
   --track=<id>            Capture a specific recordable bus for --commands or --run. Default: mix
+  --core-engine=<id>      Core runtime for --commands or --run: core-wasm, core-bridge, or core-product
   --state-override=<json> Temporary JSON state patch merged after the corpus case patch for --commands or --run
   --state-patch=<json>    Alias for --state-override in this wrapper
   --url=<url>             Existing dev server URL for --commands or --run
@@ -1119,7 +1125,7 @@ Examples:
   node scripts/profile-kessho-core-acceptance-corpus.mjs --write
   node scripts/profile-kessho-core-acceptance-corpus.mjs --self-check
   node scripts/profile-kessho-core-acceptance-corpus.mjs --list-slices
-  node scripts/profile-kessho-core-acceptance-corpus.mjs --commands --slice=pad-dry --url=http://127.0.0.1:4173/
+  node scripts/profile-kessho-core-acceptance-corpus.mjs --commands --slice=pad-dry --core-engine=core-product --url=http://127.0.0.1:4173/
   node scripts/profile-kessho-core-acceptance-corpus.mjs --commands --case=pad-reverb-tail --track=reverb --state-override='{"reverbLevel":0.45}' --url=http://127.0.0.1:4173/
   node scripts/profile-kessho-core-acceptance-corpus.mjs --commands --url=http://127.0.0.1:4173/
   node scripts/profile-kessho-core-acceptance-corpus.mjs --run --slice=pad --url=http://127.0.0.1:4173/
@@ -1307,6 +1313,7 @@ function parityArgs(entry, patchJson, options = {}) {
     `--min-signal-rms=${entry.thresholds.minSignalRms}`,
     `--state-patch=${patchJson}`,
   ];
+  if (options.coreEngine) args.push(`--core-engine=${options.coreEngine}`);
   if (options.trackId) args.push(`--track=${options.trackId}`);
   for (const note of entry.manualNotes) {
     args.push(`--manual-note=${note.source}:${note.midi}:${note.velocity ?? 0.82}:${note.durationMs ?? 900}`);
@@ -1332,13 +1339,13 @@ function parityArgs(entry, patchJson, options = {}) {
   return args;
 }
 
-function commandForCase(entry, url, noFail = false, trackId = '', stateOverride = {}, printTransients = false) {
+function commandForCase(entry, url, noFail = false, trackId = '', stateOverride = {}, printTransients = false, coreEngine = 'core-wasm') {
   const commandEntry = withTemporaryStateOverride(entry, stateOverride);
   const patchJson = JSON.stringify(stableSort(commandEntry.statePatch));
   const args = [
     parityScript,
     `--url=${url}`,
-    ...parityArgs(commandEntry, patchJson, { noFail, trackId, printTransients }),
+    ...parityArgs(commandEntry, patchJson, { noFail, trackId, printTransients, coreEngine }),
   ];
   return ['node', ...args.map(shellQuote)].join(' ');
 }
@@ -1549,9 +1556,9 @@ function printSlices() {
   }
 }
 
-function printCommands(selection, url, noFail, trackId, stateOverride, printTransients = false) {
+function printCommands(selection, url, noFail, trackId, stateOverride, printTransients = false, coreEngine = 'core-wasm') {
   for (const entry of resolveCases(selection)) {
-    console.log(commandForCase(entry, url, noFail, trackId, stateOverride, printTransients));
+    console.log(commandForCase(entry, url, noFail, trackId, stateOverride, printTransients, coreEngine));
   }
 }
 
@@ -1578,20 +1585,21 @@ function isDefaultKnownFailureContext(trackId, hasStateOverride) {
   return !hasStateOverride && (!trackId || trackId === 'mix');
 }
 
-function runCases(selection, url, noFail, allowKnownFailures, trackId, stateOverride = {}, hasStateOverride = false, printTransients = false) {
+function runCases(selection, url, noFail, allowKnownFailures, trackId, stateOverride = {}, hasStateOverride = false, printTransients = false, coreEngine = 'core-wasm') {
   const cases = resolveCases(selection);
   const summary = [];
   let exitCode = 0;
   for (const entry of cases) {
     const runEntry = withTemporaryStateOverride(entry, stateOverride);
     console.log(`\n== ${entry.id}: ${entry.title} ==`);
+    console.log(`Core engine: ${coreEngine}`);
     if (trackId) console.log(`Temporary track override: ${trackId}`);
     if (hasStateOverride) console.log(`Temporary state override keys: ${Object.keys(stateOverride).sort().join(', ')}`);
     const patchJson = JSON.stringify(stableSort(runEntry.statePatch));
     const args = [
       parityScript,
       `--url=${url}`,
-      ...parityArgs(runEntry, patchJson, { noFail, trackId, printTransients }),
+      ...parityArgs(runEntry, patchJson, { noFail, trackId, printTransients, coreEngine }),
     ];
     const result = spawnSync(process.execPath, args, {
       cwd: root,
@@ -1695,6 +1703,17 @@ function runSelfCheck() {
   assert(boundaryCase.statePatchSha256 === originalHash, 'temporary probe does not rewrite case hash');
   assert(boundaryCase.statePatch.reverbLevel === originalReverbLevel, 'temporary probe does not mutate resolved case state');
 
+  const productCommand = commandForCase(
+    resolveCases({ caseId: 'lead-manual-dry' })[0],
+    DEFAULT_URL,
+    false,
+    '',
+    {},
+    false,
+    'core-product',
+  );
+  assert(productCommand.includes("'--core-engine=core-product'"), 'focused probe can target core-product');
+
   const parsedOverride = parseArgs([
     '--commands',
     '--case=pad-reverb-tail',
@@ -1760,8 +1779,8 @@ function main() {
   if (args.listSlices) printSlices();
   if (args.json) console.log(JSON.stringify(reportJson(selection), null, 2));
   if (args.markdown) process.stdout.write(reportMarkdown(selection));
-  if (args.commands) printCommands(selection, args.url, args.noFail, args.trackId, args.stateOverride, args.printTransients);
-  if (args.run) runCases(selection, args.url, args.noFail, args.allowKnownFailures, args.trackId, args.stateOverride, args.hasStateOverride, args.printTransients);
+  if (args.commands) printCommands(selection, args.url, args.noFail, args.trackId, args.stateOverride, args.printTransients, args.coreEngine);
+  if (args.run) runCases(selection, args.url, args.noFail, args.allowKnownFailures, args.trackId, args.stateOverride, args.hasStateOverride, args.printTransients, args.coreEngine);
 }
 
 main();

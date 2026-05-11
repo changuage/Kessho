@@ -1,9 +1,24 @@
 import {
   KESSHO_PRODUCT_SCHEMA_HASH,
   KESSHO_PRODUCT_SCHEMA_VERSION,
+  KESSHO_PRODUCT_PAD_OUTPUT_TRIM,
+  KESSHO_PRODUCT_PAD_PARAM_COUNT,
+  KESSHO_PRODUCT_PAD_PARAM_SPECS,
+  KESSHO_PRODUCT_LEAD_PARAM_COUNT,
+  KESSHO_PRODUCT_LEAD_PARAM_SPECS,
+  KESSHO_PRODUCT_DRUM_PARAM_COUNT,
+  KESSHO_PRODUCT_DRUM_DEFAULT_PARAMS,
+  KESSHO_PRODUCT_DRUM_VOICE_COUNT,
+  KESSHO_PRODUCT_DRUM_VOICES,
+  KESSHO_PRODUCT_DRUM_VOICE_PRESETS,
+  KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
+  KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
+  KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING,
+  KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS,
   KESSHO_PRODUCT_SOURCE_PRESETS,
 } from './generated/kesshoProductSchema';
-import type { SliderState } from '../ui/state';
+import { DEFAULT_REVERB_PRE_COMP, type SliderState } from '../ui/state';
+import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES, morphPresets } from './lead4opfm';
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import {
   CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID,
@@ -11,6 +26,7 @@ import {
   getDefaultCoreProductSoundscapeAssetId,
 } from './coreProductAssets';
 import { delayNoteToSeconds } from './delayBuses';
+import { DEFAULT_MASTER_VOLUME, MASTER_OUTPUT_TRIM } from './outputTrims';
 import { getTransportMetrics } from './transport';
 
 type ProductSourceSnapshot = {
@@ -27,6 +43,19 @@ type ProductSourceSnapshot = {
   delayASend: number;
   delayBSend: number;
   granularSend: number;
+  postLpfHz: number;
+  stereoWidth: number;
+  postLpfKeyTracking: number;
+  holdSeconds: number;
+  exactPadParamCount: number;
+  exactPadParams: number[];
+  exactLeadParamCount: number;
+  exactLeadParams: number[];
+  exactDrumParamCount: number;
+  exactDrumParams: number[];
+  drumVoicePresetAIds: number[];
+  drumVoicePresetBIds: number[];
+  drumVoiceMorphs: number[];
 };
 
 type ProductLaneSnapshot = {
@@ -181,6 +210,12 @@ export type CoreProductSnapshot = {
     reverbSaturationMode: number;
     reverbTransientSmooth: number;
     reverbErLpFreq: number;
+    reverbPreCompThreshold: number;
+    reverbPreCompKnee: number;
+    reverbPreCompRatio: number;
+    reverbPreCompAttackMs: number;
+    reverbPreCompReleaseMs: number;
+    reverbPreCompMakeup: number;
     spectralFreezeMix: number;
     spectralFreezeEnabled: boolean;
     spectralFreezeActive: boolean;
@@ -316,6 +351,7 @@ export type CoreProductSnapshot = {
     state: number;
   };
   assetRefs: number[];
+  assetRefLevels: number[];
 };
 
 const SOURCE_ORDER = [
@@ -328,8 +364,8 @@ const SOURCE_ORDER = [
   CORE_PRODUCT_SOURCE_IDS.soundscape,
 ] as const;
 
-const SNAPSHOT_BYTES = 4612;
-const SOURCE_BYTES = 56;
+const SNAPSHOT_BYTES = 12644;
+const SOURCE_BYTES = 1200;
 const LANE_BYTES = 84;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES;
 
@@ -572,6 +608,83 @@ function defaultPresetId(sourceId: number): number {
   }
 }
 
+function padParamValue(value: unknown, enumMap: Readonly<Record<string, number>> | null, fallback: number): number {
+  if (typeof value === 'string' && enumMap && Object.prototype.hasOwnProperty.call(enumMap, value)) {
+    return enumMap[value] ?? fallback;
+  }
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function emptyPadParams(): number[] {
+  return Array.from({ length: KESSHO_PRODUCT_PAD_PARAM_COUNT }, () => 0);
+}
+
+function exactPadParamsFromState(state: Record<string, unknown> | undefined, padIndex: 0 | 1): number[] {
+  const params = emptyPadParams();
+  for (const spec of KESSHO_PRODUCT_PAD_PARAM_SPECS) {
+    const key = padIndex === 0 ? spec.key : spec.pad2Key;
+    params[spec.index] = padParamValue(state?.[key], spec.enumMap, spec.fallback);
+  }
+  params[52] = KESSHO_PRODUCT_PAD_OUTPUT_TRIM;
+  return params;
+}
+
+function leadPresetFromKey(key: unknown) {
+  const normalized = normalizePresetKey(key, 'soft_rhodes');
+  return normalized === 'gamelan' ? DEFAULT_GAMELAN : DEFAULT_SOFT_RHODES;
+}
+
+function leadAlgorithmMode(value: unknown): 'snap' | 'presetA' {
+  return value === 'presetA' ? 'presetA' : 'snap';
+}
+
+function emptyLeadParams(): number[] {
+  return Array.from({ length: KESSHO_PRODUCT_LEAD_PARAM_COUNT }, () => 0);
+}
+
+function exactLeadParamsFromState(state: Record<string, unknown> | undefined, leadIndex: 0 | 1): number[] {
+  const params = emptyLeadParams();
+  const presetAKey = leadIndex === 0 ? state?.lead1PresetA : state?.lead2PresetC;
+  const presetBKey = leadIndex === 0 ? state?.lead1PresetB : state?.lead2PresetD;
+  const morph = clamp(numberFromState(state, leadIndex === 0 ? 'lead1Morph' : 'lead2Morph', 0), 0, 1);
+  const algorithm = leadAlgorithmMode(state?.[leadIndex === 0 ? 'lead1AlgorithmMode' : 'lead2AlgorithmMode']);
+  const morphed = morphPresets(leadPresetFromKey(presetAKey), leadPresetFromKey(presetBKey), morph, algorithm) as unknown as Record<string, unknown>;
+  for (const spec of KESSHO_PRODUCT_LEAD_PARAM_SPECS) {
+    params[spec.index] = padParamValue(morphed[spec.key], spec.enumMap, spec.fallback);
+  }
+  return params;
+}
+
+function emptyDrumParams(): number[] {
+  return Array.from({ length: KESSHO_PRODUCT_DRUM_PARAM_COUNT }, (_, index) => KESSHO_PRODUCT_DRUM_DEFAULT_PARAMS[index] ?? 0);
+}
+
+function drumVoicePresetId(voiceIndex: number, presetName: unknown): number {
+  const voice = KESSHO_PRODUCT_DRUM_VOICES[voiceIndex];
+  const name = typeof presetName === 'string' && presetName.length > 0 ? presetName : voice?.defaultPreset;
+  const preset =
+    KESSHO_PRODUCT_DRUM_VOICE_PRESETS.find((candidate) => candidate.voiceIndex === voiceIndex && candidate.name === name) ??
+    KESSHO_PRODUCT_DRUM_VOICE_PRESETS.find((candidate) => candidate.voiceIndex === voiceIndex && candidate.defaultForVoice) ??
+    KESSHO_PRODUCT_DRUM_VOICE_PRESETS.find((candidate) => candidate.voiceIndex === voiceIndex);
+  return preset?.id ?? 0;
+}
+
+function drumVoicePresetIdsFromState(state: Record<string, unknown> | undefined, endpoint: 'a' | 'b'): number[] {
+  return Array.from({ length: KESSHO_PRODUCT_DRUM_VOICE_COUNT }, (_, voiceIndex) => {
+    const voice = KESSHO_PRODUCT_DRUM_VOICES[voiceIndex];
+    const key = endpoint === 'a' ? voice?.presetAKey : voice?.presetBKey;
+    return drumVoicePresetId(voiceIndex, key ? state?.[key] : undefined);
+  });
+}
+
+function drumVoiceMorphsFromState(state: Record<string, unknown> | undefined): number[] {
+  return Array.from({ length: KESSHO_PRODUCT_DRUM_VOICE_COUNT }, (_, voiceIndex) => {
+    const voice = KESSHO_PRODUCT_DRUM_VOICES[voiceIndex];
+    return clamp(numberFromState(state, voice?.morphKey ?? '', 0), 0, 1);
+  });
+}
+
 function waterPresetKeyFromState(state: Record<string, unknown> | undefined): string {
   const morph = clamp(numberFromState(state, 'waterMorph', 0), 0, 1);
   const presetA = numberFromState(state, 'waterMorphA', numberFromState(state, 'waterPreset', 0));
@@ -641,6 +754,10 @@ function transportFromState(state: Record<string, unknown> | undefined): CorePro
     };
   }
   const metrics = getTransportMetrics(state as Partial<SliderState>);
+  const soundscapeAssets = soundscapeSource?.enabled
+    ? getCoreProductSoundscapeAssetDescriptorsForState(sliderState)
+    : [];
+
   return {
     running: false,
     bpm: clamp(metrics.effectiveBpm, 1, 400),
@@ -782,6 +899,19 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     delayASend: 0,
     delayBSend: 0,
     granularSend: 0,
+    postLpfHz: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
+    stereoWidth: KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
+    postLpfKeyTracking: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING,
+    holdSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS,
+    exactPadParamCount: 0,
+    exactPadParams: emptyPadParams(),
+    exactLeadParamCount: 0,
+    exactLeadParams: emptyLeadParams(),
+    exactDrumParamCount: 0,
+    exactDrumParams: emptyDrumParams(),
+    drumVoicePresetAIds: Array.from({ length: KESSHO_PRODUCT_DRUM_VOICE_COUNT }, () => 0),
+    drumVoicePresetBIds: Array.from({ length: KESSHO_PRODUCT_DRUM_VOICE_COUNT }, () => 0),
+    drumVoiceMorphs: Array.from({ length: KESSHO_PRODUCT_DRUM_VOICE_COUNT }, () => 0),
   };
 }
 
@@ -797,7 +927,11 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
       source.delayASend = numberFromState(state, 'pad1DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'pad1DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularPad1Send', source.granularSend);
+      source.postLpfHz = numberFromState(state, 'padPostLPF', source.postLpfHz);
+      source.stereoWidth = numberFromState(state, 'padStereoWidth', source.stereoWidth);
       source.presetId = endpointPresetId('pad', source.morph, state?.padPresetA, state?.padPresetB, 'init');
+      source.exactPadParamCount = KESSHO_PRODUCT_PAD_PARAM_COUNT;
+      source.exactPadParams = exactPadParamsFromState(state, 0);
       break;
     case CORE_PRODUCT_SOURCE_IDS.pad2:
       source.enabled = booleanFromState(state, 'pad2Enabled', false);
@@ -808,29 +942,45 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
       source.delayASend = numberFromState(state, 'pad2DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'pad2DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularPad2Send', source.granularSend);
+      source.postLpfHz = numberFromState(state, 'pad2PostLPF', source.postLpfHz);
+      source.stereoWidth = numberFromState(state, 'pad2StereoWidth', source.stereoWidth);
       source.presetId = endpointPresetId('pad', source.morph, state?.pad2PresetA, state?.pad2PresetB, 'init');
+      source.exactPadParamCount = KESSHO_PRODUCT_PAD_PARAM_COUNT;
+      source.exactPadParams = exactPadParamsFromState(state, 1);
       break;
     case CORE_PRODUCT_SOURCE_IDS.lead1:
       source.enabled = booleanFromState(state, 'leadEnabled', false);
       source.level = numberFromState(state, 'lead1Level', numberFromState(state, 'leadLevel', source.level));
       source.morph = numberFromState(state, 'lead1Morph', source.morph);
       source.distance = numberFromState(state, 'lead1Distance', source.distance);
+      source.holdSeconds = numberFromState(state, 'lead1Hold', source.holdSeconds);
       source.reverbSend = numberFromState(state, 'lead1ReverbSend', numberFromState(state, 'leadReverbSend', source.reverbSend));
       source.delayASend = numberFromState(state, 'lead1DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'lead1DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularLead1Send', source.granularSend);
+      source.postLpfHz = numberFromState(state, 'lead1PostLPF', source.postLpfHz);
+      source.stereoWidth = numberFromState(state, 'lead1StereoWidth', source.stereoWidth);
+      source.postLpfKeyTracking = numberFromState(state, 'lead1PostLPFKeyTracking', source.postLpfKeyTracking);
       source.presetId = endpointPresetId('lead', source.morph, state?.lead1PresetA, state?.lead1PresetB, 'soft_rhodes');
+      source.exactLeadParamCount = KESSHO_PRODUCT_LEAD_PARAM_COUNT;
+      source.exactLeadParams = exactLeadParamsFromState(state, 0);
       break;
     case CORE_PRODUCT_SOURCE_IDS.lead2:
       source.enabled = booleanFromState(state, 'leadEnabled', false);
       source.level = numberFromState(state, 'lead2Level', source.level);
       source.morph = numberFromState(state, 'lead2Morph', source.morph);
       source.distance = numberFromState(state, 'lead2Distance', source.distance);
+      source.holdSeconds = numberFromState(state, 'lead2Hold', source.holdSeconds);
       source.reverbSend = numberFromState(state, 'lead2ReverbSend', numberFromState(state, 'leadReverbSend', source.reverbSend));
       source.delayASend = numberFromState(state, 'lead2DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'lead2DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularLead2Send', source.granularSend);
+      source.postLpfHz = numberFromState(state, 'lead2PostLPF', source.postLpfHz);
+      source.stereoWidth = numberFromState(state, 'lead2StereoWidth', source.stereoWidth);
+      source.postLpfKeyTracking = numberFromState(state, 'lead2PostLPFKeyTracking', source.postLpfKeyTracking);
       source.presetId = endpointPresetId('lead', source.morph, state?.lead2PresetC, state?.lead2PresetD, 'soft_rhodes');
+      source.exactLeadParamCount = KESSHO_PRODUCT_LEAD_PARAM_COUNT;
+      source.exactLeadParams = exactLeadParamsFromState(state, 1);
       break;
     case CORE_PRODUCT_SOURCE_IDS.drum:
       source.enabled = booleanFromState(state, 'drumEnabled', false);
@@ -840,6 +990,11 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
       source.delayBSend = numberFromState(state, 'drumDelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularDrumSend', source.granularSend);
       source.presetId = sourcePresetId('drum', 'default', 'default');
+      source.exactDrumParamCount = 0;
+      source.exactDrumParams = emptyDrumParams();
+      source.drumVoicePresetAIds = drumVoicePresetIdsFromState(state, 'a');
+      source.drumVoicePresetBIds = drumVoicePresetIdsFromState(state, 'b');
+      source.drumVoiceMorphs = drumVoiceMorphsFromState(state);
       break;
     case CORE_PRODUCT_SOURCE_IDS.piano:
       source.enabled = booleanFromState(state, 'pianoEnabled', false);
@@ -850,6 +1005,8 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
       source.delayASend = numberFromState(state, 'pianoDelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'pianoDelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularPianoSend', source.granularSend);
+      source.postLpfHz = numberFromState(state, 'pianoPostLPF', source.postLpfHz);
+      source.stereoWidth = numberFromState(state, 'pianoStereoWidth', source.stereoWidth);
       source.presetId = sourcePresetId('piano', 'default', 'default');
       break;
     case CORE_PRODUCT_SOURCE_IDS.soundscape:
@@ -879,6 +1036,9 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
   source.level = clamp(source.level, 0, 1.5);
   source.morph = clamp(source.morph, 0, 1);
   source.distance = clamp(source.distance, 0, 1);
+  source.postLpfHz = clamp(source.postLpfHz, 20, 20000);
+  source.stereoWidth = clamp(source.stereoWidth, 0, 1);
+  source.postLpfKeyTracking = clamp(source.postLpfKeyTracking, 0, 1);
   return source;
 }
 
@@ -1146,6 +1306,12 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       reverbSaturationMode: reverbSaturationModeId(sliderState?.reverbSaturationMode),
       reverbTransientSmooth: clamp(numberFromState(sliderState, 'reverbTransientSmooth', 0), 0, 1),
       reverbErLpFreq: clamp(numberFromState(sliderState, 'reverbErLpFreq', 2500), 200, 12000),
+      reverbPreCompThreshold: clamp(numberFromState(sliderState, 'reverbPreCompThreshold', DEFAULT_REVERB_PRE_COMP.threshold), -60, 0),
+      reverbPreCompKnee: clamp(numberFromState(sliderState, 'reverbPreCompKnee', DEFAULT_REVERB_PRE_COMP.knee), 0, 40),
+      reverbPreCompRatio: clamp(numberFromState(sliderState, 'reverbPreCompRatio', DEFAULT_REVERB_PRE_COMP.ratio), 1, 20),
+      reverbPreCompAttackMs: clamp(numberFromState(sliderState, 'reverbPreCompAttackMs', DEFAULT_REVERB_PRE_COMP.attackMs), 0.1, 30),
+      reverbPreCompReleaseMs: clamp(numberFromState(sliderState, 'reverbPreCompReleaseMs', DEFAULT_REVERB_PRE_COMP.releaseMs), 20, 1000),
+      reverbPreCompMakeup: clamp(numberFromState(sliderState, 'reverbPreCompMakeup', DEFAULT_REVERB_PRE_COMP.makeup), 0.5, 4),
       spectralFreezeMix: clamp(numberFromState(sliderState, 'spectralFreezeMix', 1), 0, 1),
       spectralFreezeEnabled,
       spectralFreezeActive: booleanFromState(sliderState, 'spectralFreezeActive', false),
@@ -1268,7 +1434,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       delayBToReverb: clamp(numberFromState(sliderState, 'granularDelayReverbSend', 0.4), 0, 1),
     },
     master: {
-      gain: numberFromState(sliderState, 'masterVolume', 0.85),
+      gain: clamp(numberFromState(sliderState, 'masterVolume', DEFAULT_MASTER_VOLUME) * MASTER_OUTPUT_TRIM, 0, 1.5),
       limiterCeilingDb: clamp(numberFromState(sliderState, 'masterLimiterCeilingDb', -0.5), -24, 0),
       saturationMode: dynamicsSaturationModeId(sliderState?.masterSatMode),
       saturationDrive: clamp(numberFromState(sliderState, 'masterSatDrive', 0), 0, 1),
@@ -1282,9 +1448,8 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       amount: evolutionAmountFromState(sliderState),
       state: numberFromState(sliderState, 'evolutionState', numberFromState(sliderState, 'seed', 1)) >>> 0,
     },
-    assetRefs: soundscapeSource?.enabled
-      ? getCoreProductSoundscapeAssetDescriptorsForState(sliderState).map((asset) => asset.assetId)
-      : [],
+    assetRefs: soundscapeAssets.map((asset) => asset.assetId),
+    assetRefLevels: soundscapeAssets.map((asset) => asset.level),
   };
 }
 
@@ -1335,7 +1500,31 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
     f32(source.delayASend);
     f32(source.delayBSend);
     f32(source.granularSend);
-    u32(0);
+    f32(source.postLpfHz);
+    f32(source.stereoWidth);
+    f32(source.postLpfKeyTracking);
+    u32(Math.min(source.exactPadParamCount, KESSHO_PRODUCT_PAD_PARAM_COUNT));
+    for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_PAD_PARAM_COUNT; paramIndex += 1) {
+      f32(source.exactPadParams[paramIndex] ?? 0);
+    }
+    u32(Math.min(source.exactLeadParamCount, KESSHO_PRODUCT_LEAD_PARAM_COUNT));
+    for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_LEAD_PARAM_COUNT; paramIndex += 1) {
+      f32(source.exactLeadParams[paramIndex] ?? 0);
+    }
+    u32(Math.min(source.exactDrumParamCount, KESSHO_PRODUCT_DRUM_PARAM_COUNT));
+    for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_DRUM_PARAM_COUNT; paramIndex += 1) {
+      f32(source.exactDrumParams[paramIndex] ?? 0);
+    }
+    for (let voiceIndex = 0; voiceIndex < KESSHO_PRODUCT_DRUM_VOICE_COUNT; voiceIndex += 1) {
+      u32(source.drumVoicePresetAIds[voiceIndex] ?? 0);
+    }
+    for (let voiceIndex = 0; voiceIndex < KESSHO_PRODUCT_DRUM_VOICE_COUNT; voiceIndex += 1) {
+      u32(source.drumVoicePresetBIds[voiceIndex] ?? 0);
+    }
+    for (let voiceIndex = 0; voiceIndex < KESSHO_PRODUCT_DRUM_VOICE_COUNT; voiceIndex += 1) {
+      f32(clamp(source.drumVoiceMorphs[voiceIndex] ?? 0, 0, 1));
+    }
+    f32(source.holdSeconds);
   }
 
   const writeSequencer = (lanes: ProductLaneSnapshot[]) => {
@@ -1475,6 +1664,12 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   u32(snapshot.fx.reverbSaturationMode >>> 0);
   f32(snapshot.fx.reverbTransientSmooth);
   f32(snapshot.fx.reverbErLpFreq);
+  f32(snapshot.fx.reverbPreCompThreshold);
+  f32(snapshot.fx.reverbPreCompKnee);
+  f32(snapshot.fx.reverbPreCompRatio);
+  f32(snapshot.fx.reverbPreCompAttackMs);
+  f32(snapshot.fx.reverbPreCompReleaseMs);
+  f32(snapshot.fx.reverbPreCompMakeup);
   f32(snapshot.fx.spectralFreezeMix);
   u32(bool(snapshot.fx.spectralFreezeEnabled));
   u32(bool(snapshot.fx.spectralFreezeActive));
@@ -1602,7 +1797,7 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.evolution.amount);
   u32(snapshot.evolution.state);
   for (let i = 0; i < 32; i += 1) u32(snapshot.assetRefs[i] ?? 0);
-  for (let i = 0; i < 32; i += 1) u32(0);
+  for (let i = 0; i < 32; i += 1) f32(clamp(snapshot.assetRefLevels[i] ?? 0, 0, 2));
 
   if (offset !== SNAPSHOT_BYTES) {
     throw new Error(`Kessho Product snapshot encoder wrote ${offset} bytes; expected ${SNAPSHOT_BYTES}`);

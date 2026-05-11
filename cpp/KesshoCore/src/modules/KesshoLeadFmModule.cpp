@@ -327,6 +327,13 @@ public:
     if (instance_ == nullptr) {
       return 0;
     }
+    if (patch.exact_lead_param_count == KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT) {
+      for (uint32_t index = 0; index < KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT; ++index) {
+        params_[index] = std::isfinite(patch.exact_lead_params[index]) ? patch.exact_lead_params[index] : params_[index];
+      }
+      commitParams();
+      return 1;
+    }
 
     const float tone = clampUnit(patch.tone);
     const float brightness = clampUnit(patch.brightness);

@@ -77,6 +77,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         malloc: this.resolve('malloc'),
         free: this.resolve('free'),
         create: this.resolve('kessho_product_create'),
+        reset: this.resolve('kessho_product_reset'),
         render: this.resolve('kessho_product_render'),
         getStem: this.resolve('kessho_product_get_stem'),
         loadSnapshot: this.resolve('kessho_product_load_snapshot_v2'),
@@ -109,6 +110,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     }
     if (message.type === 'snapshot') {
       this.loadSnapshot(message.snapshot);
+      return;
+    }
+    if (message.type === 'reset') {
+      this.api.reset(this.engine);
       return;
     }
     if (message.type === 'register-asset') {
@@ -167,15 +172,22 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const ptrs = channels.slice(0, 2).map((channel) => {
       const data = channel instanceof Float32Array ? channel : new Float32Array(channel);
       const ptr = this.api.malloc(data.length * Float32Array.BYTES_PER_ELEMENT);
+      if (!ptr) {
+        throw new Error(`Kessho Product Core asset allocation failed for asset ${message.assetId}`);
+      }
       this.heapF32.set(data, ptr >> 2);
       return ptr;
     });
     const ptrArray = this.api.malloc(ptrs.length * Uint32Array.BYTES_PER_ELEMENT);
+    if (!ptrArray) {
+      ptrs.forEach((ptr) => this.api.free(ptr));
+      throw new Error(`Kessho Product Core asset pointer allocation failed for asset ${message.assetId}`);
+    }
     for (let i = 0; i < ptrs.length; i += 1) {
       this.view.setUint32(ptrArray + i * 4, ptrs[i], true);
     }
     this.assetAllocations.set(message.assetId, { ptrs, ptrArray });
-    this.api.registerAsset(
+    const result = this.api.registerAsset(
       this.engine,
       message.assetId,
       ptrArray,
@@ -184,6 +196,12 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       message.sampleRate || sampleRate,
       message.flags || 0,
     );
+    if (result !== 1) {
+      this.assetAllocations.delete(message.assetId);
+      ptrs.forEach((ptr) => this.api.free(ptr));
+      this.api.free(ptrArray);
+      throw new Error(`Kessho Product Core asset registration failed for asset ${message.assetId}: ${result}`);
+    }
   }
 
   readUint64Number(byteOffset) {
