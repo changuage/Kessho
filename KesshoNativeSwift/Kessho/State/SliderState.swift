@@ -39,6 +39,8 @@ public struct SliderState: Codable, Equatable {
     // Seed
     var seedWindow: String = "hour"  // "hour", "day" (matching web app)
     var randomness: Double = 0.5
+    var rngSeed: UInt32 = 0
+    var rngState: UInt32 = 0
 
     // Root Note & CoF Drift
     var rootNote: Int = 4  // 0-11 (C=0, C#=1, ..., B=11), default E=4
@@ -66,6 +68,9 @@ public struct SliderState: Codable, Equatable {
     var chordProgressionStepEnabled: [Bool] = [true, true, true, true]
     var chordProgressionPhraseMultiplier: Int = 1
     var chordProgressionClockSource: String = "harmony"
+    var journeyEnabled: Bool = false
+    var journeyMorphPhase: Double = 0
+    var journeyMorphRateBars: Double = 8
 
     // Synth Oscillator
     var waveSpread: Double = 4.0
@@ -1523,7 +1528,7 @@ private extension SliderState {
         assignNumberIfMissing("degradeFlutter", from: ["characterFlutter"], source: source, target: &target)
         assignNumberIfMissing("degradeDrift", from: ["characterDrift"], source: source, target: &target)
         assignNumberIfMissing("degradeTone", from: ["characterTone"], source: source, target: &target)
-        assignNumberIfMissing("degradeHp", from: ["characterHp"], source: source, target: &target)
+        assignNumberIfMissing("degradeHp", from: ["characterHp", "characterWetHp"], source: source, target: &target)
         assignNumberIfMissing("degradeLp", from: ["characterLp"], source: source, target: &target)
         assignNumberIfMissing("degradeNoise", from: ["characterNoise"], source: source, target: &target)
         assignNumberIfMissing("degradeSaturation", from: ["characterSaturation"], source: source, target: &target)

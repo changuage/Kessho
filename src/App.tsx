@@ -12,8 +12,8 @@ import {
   DEFAULT_STATE,
   MOBILE_STATE,
   quantize,
-  encodeStateToUrl,
   decodeStateFromUrl,
+  serializeState,
   getParamInfo,
   getSliderNumericValue,
   getStateValueFromSliderNumber,
@@ -129,10 +129,12 @@ const CLOUD_ENABLED = isCloudPresetConfigEnabled();
 const CAPACITOR_LOCAL_STATE_PRESET_SCOPE = 'global';
 const isSonicParityMode = () =>
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1';
-type AudioEngineRuntimeMode = 'web-audio' | 'core-wasm';
+type AudioEngineRuntimeMode = 'web-ts' | 'core-bridge' | 'core-product';
 const AUDIO_ENGINE_SWITCHER_PARAM = 'engineAB';
 const AUDIO_ENGINE_PARAM = 'engine';
+const AUDIO_ENGINE_SWITCH_STATE_PARAM = 'engineState';
 const AUDIO_ENGINE_CPU_SUMMARY_STORAGE_KEY = 'kessho:audio-engine-cpu-summary:v1';
+const AUDIO_ENGINE_SWITCH_STATE_STORAGE_PREFIX = 'kessho:audio-engine-switch-state:v1:';
 
 type AudioEnginePerfMetric = {
   avgPercent: number;
@@ -156,13 +158,16 @@ function isDevRuntime(): boolean {
 }
 
 function getAudioEngineRuntimeMode(): AudioEngineRuntimeMode {
-  if (typeof window === 'undefined') return 'web-audio';
+  if (typeof window === 'undefined') return 'core-bridge';
   try {
-    return new URLSearchParams(window.location.search).get(AUDIO_ENGINE_PARAM) === 'core-wasm'
-      ? 'core-wasm'
-      : 'web-audio';
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get(AUDIO_ENGINE_PARAM);
+    if (mode === 'web-ts' || mode === 'web-audio') return 'web-ts';
+    if (mode === 'core-bridge' || mode === 'core-wasm') return 'core-bridge';
+    if (mode === 'core-product') return 'core-product';
+    return 'core-bridge';
   } catch {
-    return 'web-audio';
+    return 'core-bridge';
   }
 }
 
@@ -173,28 +178,67 @@ function shouldShowAudioEngineSwitcher(): boolean {
     return (
       isDevRuntime() ||
       params.get(AUDIO_ENGINE_SWITCHER_PARAM) === '1' ||
-      params.get(AUDIO_ENGINE_PARAM) === 'core-wasm'
+      params.has(AUDIO_ENGINE_PARAM)
     );
   } catch {
     return isDevRuntime();
   }
 }
 
+function shouldStartInAdvancedEditor(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return (
+      params.get(AUDIO_ENGINE_SWITCHER_PARAM) === '1' ||
+      params.has(AUDIO_ENGINE_PARAM) ||
+      params.has(AUDIO_ENGINE_SWITCH_STATE_PARAM)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function saveAudioEngineSwitchState(state: SliderState): string | null {
+  try {
+    const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    window.sessionStorage.setItem(`${AUDIO_ENGINE_SWITCH_STATE_STORAGE_PREFIX}${key}`, serializeState(state));
+    return key;
+  } catch {
+    return null;
+  }
+}
+
+function readAudioEngineSwitchStateFromSession(): SliderState | null {
+  try {
+    const key = new URLSearchParams(window.location.search).get(AUDIO_ENGINE_SWITCH_STATE_PARAM);
+    if (!key) return null;
+    const serialized = window.sessionStorage.getItem(`${AUDIO_ENGINE_SWITCH_STATE_STORAGE_PREFIX}${key}`);
+    if (!serialized) return null;
+    const parsed = JSON.parse(serialized);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return migratePreset({
+      name: 'Audio Engine Switch',
+      state: { ...DEFAULT_STATE, ...(parsed as Partial<SliderState>) },
+    }).state;
+  } catch {
+    return null;
+  }
+}
+
 function buildAudioEngineSwitchUrl(mode: AudioEngineRuntimeMode, state: SliderState): string {
   const currentParams = new URLSearchParams(window.location.search);
-  const nextParams = new URLSearchParams(encodeStateToUrl(state));
+  const nextParams = new URLSearchParams();
+  const stateKey = saveAudioEngineSwitchState(state);
 
   for (const key of [AUDIO_ENGINE_SWITCHER_PARAM, 'parity', 'snowflakePrototype']) {
     const value = currentParams.get(key);
     if (value !== null) nextParams.set(key, value);
   }
   nextParams.set(AUDIO_ENGINE_SWITCHER_PARAM, '1');
+  if (stateKey) nextParams.set(AUDIO_ENGINE_SWITCH_STATE_PARAM, stateKey);
 
-  if (mode === 'core-wasm') {
-    nextParams.set(AUDIO_ENGINE_PARAM, 'core-wasm');
-  } else {
-    nextParams.delete(AUDIO_ENGINE_PARAM);
-  }
+  nextParams.set(AUDIO_ENGINE_PARAM, mode);
 
   const query = nextParams.toString();
   return `${window.location.pathname || '/'}${query ? `?${query}` : ''}${window.location.hash}`;
@@ -1733,13 +1777,14 @@ const App: React.FC = () => {
   
   // Load initial state from URL or defaults
   const [state, setState] = useState<SliderState>(() => {
-    const urlState = decodeStateFromUrl(window.location.search);
+    const urlState = readAudioEngineSwitchStateFromSession() ?? decodeStateFromUrl(window.location.search);
     const mobileDefaultState = isMobileDevice() || window.innerWidth < 768;
     return normalizePresetForWeb(urlState || (mobileDefaultState ? MOBILE_STATE : DEFAULT_STATE));
   });
   const stateRef = useRef(state);
   stateRef.current = state;
   const audioEngineRuntimeMode = useMemo(() => getAudioEngineRuntimeMode(), []);
+  const coreBridgeModeAvailable = true;
   const showAudioEngineSwitcher = useMemo(() => shouldShowAudioEngineSwitcher(), []);
   const handleAudioEngineRuntimeModeChange = useCallback((mode: AudioEngineRuntimeMode) => {
     if (mode === audioEngineRuntimeMode) return;
@@ -1860,12 +1905,15 @@ const App: React.FC = () => {
   const isSnowflakePrototypeRoute = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).get('snowflakePrototype') === '1'
     : false;
+  const startInAdvancedEditor = useMemo(() => shouldStartInAdvancedEditor(), []);
 
   // UI mode: 'snowflake', 'advanced', or 'journey'
-  const [uiMode, setUiMode] = useState<'snowflake' | 'advanced' | 'journey'>('snowflake');
+  const [uiMode, setUiMode] = useState<'snowflake' | 'advanced' | 'journey'>(
+    startInAdvancedEditor ? 'advanced' : 'snowflake',
+  );
 
   // Snowflake welcome state: show decorative 75% arms until user interacts
-  const [snowflakeActivated, setSnowflakeActivated] = useState(false);
+  const [snowflakeActivated, setSnowflakeActivated] = useState(startInAdvancedEditor);
   // Separate display state for welcome mode — user can drag arms visually without affecting real state
   const [welcomeDisplayState, setWelcomeDisplayState] = useState<SliderState>(SNOWFLAKE_WELCOME_STATE);
   const handleWelcomeSliderChange = useCallback((key: keyof SliderState, value: number) => {
@@ -7155,6 +7203,7 @@ const App: React.FC = () => {
             audioEngineMode={audioEngineRuntimeMode}
             audioEngineCpuSummaries={audioEngineCpuSummaries}
             showAudioEngineSwitcher={showAudioEngineSwitcher}
+            coreBridgeModeAvailable={coreBridgeModeAvailable}
             onAudioEngineModeChange={handleAudioEngineRuntimeModeChange}
             onResetCofDrift={() => audioEngine.resetCofDrift()}
             morphCoFViz={morphCoFViz}

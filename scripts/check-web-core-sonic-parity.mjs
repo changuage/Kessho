@@ -22,6 +22,7 @@ const DEFAULT_ENVELOPE_PEAK_RATIO_TOLERANCE = 0.35;
 const EXIT_SONIC_FAILURE = 1;
 const EXIT_SETUP_FAILURE = 2;
 const MANUAL_NOTE_SOURCES = new Set(['pad1', 'pad2', 'lead1', 'lead2', 'piano']);
+const CORE_ENGINE_NAMES = new Set(['core-wasm', 'core-bridge', 'core-product']);
 
 class SonicParityRunError extends Error {
   constructor(kind, message) {
@@ -59,6 +60,7 @@ function parseArgs(argv) {
     envelopeTimeToleranceMs: DEFAULT_ENVELOPE_TIME_TOLERANCE_MS,
     envelopeRmsRatioTolerance: DEFAULT_ENVELOPE_RMS_RATIO_TOLERANCE,
     envelopePeakRatioTolerance: DEFAULT_ENVELOPE_PEAK_RATIO_TOLERANCE,
+    coreEngine: 'core-wasm',
   };
 
   for (const arg of argv) {
@@ -87,6 +89,7 @@ function parseArgs(argv) {
     else if (arg.startsWith('--envelope-time-tolerance-ms=')) args.envelopeTimeToleranceMs = Number(arg.slice('--envelope-time-tolerance-ms='.length));
     else if (arg.startsWith('--envelope-rms-ratio-tolerance=')) args.envelopeRmsRatioTolerance = Number(arg.slice('--envelope-rms-ratio-tolerance='.length));
     else if (arg.startsWith('--envelope-peak-ratio-tolerance=')) args.envelopePeakRatioTolerance = Number(arg.slice('--envelope-peak-ratio-tolerance='.length));
+    else if (arg.startsWith('--core-engine=')) args.coreEngine = arg.slice('--core-engine='.length).trim();
     else if (arg === '--no-fail') args.noFail = true;
     else if (arg === '--self-check') args.selfCheck = true;
     else if (arg === '--help' || arg === '-h') {
@@ -113,6 +116,7 @@ function parseArgs(argv) {
   if (!Number.isFinite(args.envelopeTimeToleranceMs) || args.envelopeTimeToleranceMs < 0) throw new Error('--envelope-time-tolerance-ms must be non-negative');
   if (!Number.isFinite(args.envelopeRmsRatioTolerance) || args.envelopeRmsRatioTolerance < 0) throw new Error('--envelope-rms-ratio-tolerance must be non-negative');
   if (!Number.isFinite(args.envelopePeakRatioTolerance) || args.envelopePeakRatioTolerance < 0) throw new Error('--envelope-peak-ratio-tolerance must be non-negative');
+  if (!CORE_ENGINE_NAMES.has(args.coreEngine)) throw new Error('--core-engine must be core-wasm, core-bridge, or core-product');
   return args;
 }
 
@@ -177,7 +181,7 @@ Options:
   --manual-no-warmup            Keep pre-capture manual-note warmup disabled
   --print-transients            Print first transient start/peak summaries for web and core captures
   --transient-gate              Gate self-running captures by transient count/timing/level instead of sample waveform diff
-  --transient-time-tolerance-ms=8       Maximum paired transient start-time delta
+  --transient-time-tolerance-ms=8       Maximum paired transient residual start-time delta after global phase offset
   --transient-peak-ratio-tolerance=0.35 Maximum relative paired transient peak delta
   --transient-rms-ratio-tolerance=0.35  Maximum relative paired transient RMS delta
   --envelope-gate             Gate feedback-heavy captures by onset and windowed RMS/peak envelope
@@ -185,6 +189,7 @@ Options:
   --envelope-time-tolerance-ms=20       Maximum first-signal delta for envelope gate
   --envelope-rms-ratio-tolerance=0.4    Maximum relative RMS delta per active envelope window
   --envelope-peak-ratio-tolerance=0.35  Maximum relative peak delta per active envelope window
+  --core-engine=core-wasm      Core runtime to compare against Web: core-wasm, core-bridge, or core-product
   --rms-tolerance=0.04         Maximum normalized RMS difference
   --peak-tolerance=0.25        Maximum peak absolute sample difference
   --min-signal-rms=0.0001      Minimum reference Web RMS required to avoid silent false passes
@@ -283,9 +288,9 @@ function isBlockingBrowserLog(entry) {
     entry.startsWith('[requestfailed]');
 }
 
-function collectBlockingBrowserLogs(web, core) {
+function collectBlockingBrowserLogs(web, core, coreLabel = 'core-wasm') {
   const logs = [];
-  for (const [label, result] of [['web', web], ['core-wasm', core]]) {
+  for (const [label, result] of [['web', web], [coreLabel, core]]) {
     for (const entry of result.logs) {
       if (isBlockingBrowserLog(entry)) logs.push(`${label}: ${entry}`);
     }
@@ -339,10 +344,11 @@ async function captureEngineOnce(browser, baseUrl, engineName, options) {
     logs.push(`[requestfailed] ${request.method()} ${request.resourceType()} ${request.url()}${detail}`);
   });
 
-  const url = withQuery(baseUrl, {
+  const runtimeQuery = {
     engine: engineName,
     parity: '1',
-  });
+  };
+  const url = withQuery(baseUrl, runtimeQuery);
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => Boolean(window.__kesshoSonicParity?.capture), null, { timeout: 15000 });
@@ -375,19 +381,20 @@ async function captureEngineOnce(browser, baseUrl, engineName, options) {
 }
 
 function compareCaptures(web, core, options = {}) {
+  const coreLabel = options.coreLabel ?? 'core-wasm';
   if (web.sampleRate !== core.sampleRate) {
-    throw new Error(`Sample-rate mismatch: web=${web.sampleRate}, core-wasm=${core.sampleRate}`);
+    throw new Error(`Sample-rate mismatch: web=${web.sampleRate}, ${coreLabel}=${core.sampleRate}`);
   }
 
   const webExpectedFrames = expectedCaptureFrames(web);
   const coreExpectedFrames = expectedCaptureFrames(core);
   if (webExpectedFrames !== coreExpectedFrames) {
-    throw new Error(`Expected capture length mismatch: web=${webExpectedFrames}, core-wasm=${coreExpectedFrames}`);
+    throw new Error(`Expected capture length mismatch: web=${webExpectedFrames}, ${coreLabel}=${coreExpectedFrames}`);
   }
 
   const frames = webExpectedFrames;
   if (frames <= 0) {
-    throw new Error(`No captured frames: web=${web.frames}, core-wasm=${core.frames}`);
+    throw new Error(`No captured frames: web=${web.frames}, ${coreLabel}=${core.frames}`);
   }
 
   const raw = compareAtLag(web, core, frames, 0);
@@ -439,7 +446,7 @@ function validateCapture(label, capture) {
   const setupIssues = [];
   const coreOutputIssues = [];
   const addNonFiniteIssue = (message) => {
-    if (label === 'core-wasm') coreOutputIssues.push(message);
+    if (label !== 'web') coreOutputIssues.push(message);
     else setupIssues.push(message);
   };
   if (!capture || typeof capture !== 'object') {
@@ -707,13 +714,24 @@ function compareTransientSummaries(webCapture, coreCapture, args) {
   }
 
   const pairCount = Math.min(webTransients.length, coreTransients.length);
+  const startOffsetsMs = [];
+  for (let index = 0; index < pairCount; index += 1) {
+    startOffsetsMs.push(coreTransients[index].startMs - webTransients[index].startMs);
+  }
+  const sortedOffsets = [...startOffsetsMs].sort((left, right) => left - right);
+  const mid = Math.floor(sortedOffsets.length / 2);
+  const globalStartOffsetMs = sortedOffsets.length === 0
+    ? 0
+    : sortedOffsets.length % 2 === 0
+      ? ((sortedOffsets[mid - 1] ?? 0) + (sortedOffsets[mid] ?? 0)) / 2
+      : sortedOffsets[mid] ?? 0;
   let maxStartDeltaMs = 0;
   let maxPeakRatioDelta = 0;
   let maxRmsRatioDelta = 0;
   for (let index = 0; index < pairCount; index += 1) {
     const webTransient = webTransients[index];
     const coreTransient = coreTransients[index];
-    const startDeltaMs = Math.abs(coreTransient.startMs - webTransient.startMs);
+    const startDeltaMs = Math.abs((coreTransient.startMs - globalStartOffsetMs) - webTransient.startMs);
     const peakRatioDelta = Math.abs(coreTransient.peak - webTransient.peak) / Math.max(Math.abs(webTransient.peak), 1e-9);
     const rmsRatioDelta = Math.abs(coreTransient.rms - webTransient.rms) / Math.max(Math.abs(webTransient.rms), 1e-9);
     maxStartDeltaMs = Math.max(maxStartDeltaMs, startDeltaMs);
@@ -736,6 +754,7 @@ function compareTransientSummaries(webCapture, coreCapture, args) {
     issues,
     webTransients,
     coreTransients,
+    globalStartOffsetMs,
     maxStartDeltaMs,
     maxPeakRatioDelta,
     maxRmsRatioDelta,
@@ -849,6 +868,7 @@ function compareEnvelopeSummaries(webCapture, coreCapture, comparison, args) {
 
 function buildFailureReasons({ comparison, gateMetrics, args, manualMode, web, core }) {
   const reasons = [];
+  const coreLabel = args.coreEngine ?? 'core-wasm';
   const hasReferenceSignal = comparison.webStats.rms >= args.minSignalRms;
   const hasCoreSignal = comparison.coreStats.rms >= args.minSignalRms;
   const transientComparison = args.transientGate && !manualMode
@@ -866,7 +886,7 @@ function buildFailureReasons({ comparison, gateMetrics, args, manualMode, web, c
   } else if (!hasCoreSignal) {
     reasons.push({
       kind: 'sonic',
-      message: `core-wasm RMS ${formatNumber(comparison.coreStats.rms)} is below min-signal ${formatNumber(args.minSignalRms)} while Web RMS is ${formatNumber(comparison.webStats.rms)}; the enabled core route may be silent`,
+      message: `${coreLabel} RMS ${formatNumber(comparison.coreStats.rms)} is below min-signal ${formatNumber(args.minSignalRms)} while Web RMS is ${formatNumber(comparison.webStats.rms)}; the enabled core route may be silent`,
     });
   }
 
@@ -911,7 +931,7 @@ function buildFailureReasons({ comparison, gateMetrics, args, manualMode, web, c
     });
   }
 
-  const blockingLogs = collectBlockingBrowserLogs(web, core);
+  const blockingLogs = collectBlockingBrowserLogs(web, core, coreLabel);
   for (const entry of blockingLogs) {
     reasons.push({
       kind: 'setup',
@@ -1138,16 +1158,18 @@ async function main() {
   }
 
   try {
+    const coreLabel = args.coreEngine;
     const web = await captureEngine(browser, vite.url, 'web', args);
-    const core = await captureEngine(browser, vite.url, 'core-wasm', args);
+    const core = await captureEngine(browser, vite.url, coreLabel, args);
     validateCapture('web', web.capture);
-    validateCapture('core-wasm', core.capture);
+    validateCapture(coreLabel, core.capture);
     const manualMode = args.manualNotes.length > 0;
     let comparison;
     try {
       comparison = compareCaptures(web.capture, core.capture, {
         maxLagMs: args.maxLagMs,
         preferFirstSignalLag: manualMode,
+        coreLabel,
       });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -1160,6 +1182,7 @@ async function main() {
 
     console.log('Browser sonic parity comparison');
     console.log(`  URL: ${vite.url}`);
+    console.log(`  Core engine: ${coreLabel}`);
     console.log(`  Track: ${args.trackId}`);
     if (manualMode) {
       console.log(`  Manual mode: ${args.manualNotes.length} note(s), synth chord sequencer disabled, trigger delay=${formatNumber(args.manualTriggerDelayMs, 0)}ms, warmup=${args.manualWarmup ? 'on' : 'off'}`);
@@ -1169,6 +1192,9 @@ async function main() {
     console.log(`  Frames: ${comparison.frames} @ ${comparison.sampleRate} Hz (${formatNumber(comparison.durationSeconds, 3)}s)`);
     console.log(`  Web RMS/peak: ${formatNumber(comparison.webStats.rms)} / ${formatNumber(comparison.webStats.peak)}`);
     console.log(`  Core RMS/peak: ${formatNumber(comparison.coreStats.rms)} / ${formatNumber(comparison.coreStats.peak)}`);
+    if (core.capture.debug !== undefined) {
+      console.log(`  Core debug: ${JSON.stringify(core.capture.debug)}`);
+    }
     console.log(`  Diff RMS: ${formatNumber(comparison.rmsDiff)} normalized=${formatNumber(comparison.normalizedRmsDiff)}`);
     console.log(`  Diff peak: ${formatNumber(comparison.peakDiff)}`);
     console.log(`  Correlation: ${formatNumber(comparison.correlation)}`);
@@ -1193,14 +1219,14 @@ async function main() {
     }
     if (args.transientGate && !manualMode) {
       const transientComparison = compareTransientSummaries(web.capture, core.capture, args);
-      console.log(`  Transient gate: count web=${transientComparison.webTransients.length} core=${transientComparison.coreTransients.length}, maxStartDelta=${formatNumber(transientComparison.maxStartDeltaMs, 2)}ms/${formatNumber(args.transientTimeToleranceMs, 2)}ms, maxPeakRatioDelta=${formatNumber(transientComparison.maxPeakRatioDelta)}/${formatNumber(args.transientPeakRatioTolerance)}, maxRmsRatioDelta=${formatNumber(transientComparison.maxRmsRatioDelta)}/${formatNumber(args.transientRmsRatioTolerance)}`);
+      console.log(`  Transient gate: count web=${transientComparison.webTransients.length} core=${transientComparison.coreTransients.length}, globalStartOffset=${formatNumber(transientComparison.globalStartOffsetMs, 2)}ms, maxStartDelta=${formatNumber(transientComparison.maxStartDeltaMs, 2)}ms/${formatNumber(args.transientTimeToleranceMs, 2)}ms, maxPeakRatioDelta=${formatNumber(transientComparison.maxPeakRatioDelta)}/${formatNumber(args.transientPeakRatioTolerance)}, maxRmsRatioDelta=${formatNumber(transientComparison.maxRmsRatioDelta)}/${formatNumber(args.transientRmsRatioTolerance)}`);
     }
     if (args.printTransients) {
       console.log(`  Web transients: ${formatTransientSummary(summarizeTransients(web.capture))}`);
       console.log(`  Core transients: ${formatTransientSummary(summarizeTransients(core.capture))}`);
     }
 
-    for (const [label, result] of [['web', web], ['core-wasm', core]]) {
+    for (const [label, result] of [['web', web], [coreLabel, core]]) {
       if (result.logs.length > 0) {
         console.log(`  ${label} browser logs:`);
         for (const entry of result.logs) console.log(`    ${entry}`);

@@ -200,6 +200,39 @@ function makeReport() {
   }));
 
   rows.push(row({
+    id: 'pad-chord-live-sequencer',
+    area: 'sequencer',
+    status: passWhen(
+      has(webEngine, 'schedulePhraseUpdates()') &&
+      has(webEngine, 'onHarmonyTick(') &&
+      has(coreHost, 'getCoreHarmonyPreviewTickCount') &&
+      has(coreHost, 'advanceCorePreviewHarmonyState') &&
+      has(coreHost, 'getCoreHarmonyTickSeconds(sliderState)') &&
+      has(coreHost, 'padChordSets.map((chordSet) => [...chordSet, ...clonePreviewNotes(padEuclidNotes)])'),
+    ),
+    priority: 'required',
+    evidence: ['Web phrase/sub-phrase harmony scheduler', 'Core generated harmony tick chord sets'],
+    description: 'Core pad chord playback now advances through generated harmony tick chord sets instead of duplicating one frozen startup chord.',
+  }));
+
+  rows.push(row({
+    id: 'lead-random-phrase-scheduler',
+    area: 'sequencer',
+    status: passWhen(
+      has(webEngine, 'scheduleLeadMelody()') &&
+      has(webEngine, 'leadRandomClockSource') &&
+      has(coreHost, 'createLeadRandomPreview') &&
+      has(coreHost, 'coreIsLeadRandomSourceEnabled') &&
+      has(coreHost, 'leadRandom.leadChords') &&
+      has(coreHost, 'leadRandom.pianoChords') &&
+      has(coreHost, 'leadRandomSyncPolicy'),
+    ),
+    priority: 'required',
+    evidence: ['Web random lead phrase scheduler', 'Core lead/piano random preview sequence'],
+    description: 'Core mode now schedules Random Timing phrase notes for Lead 1, Lead 2, and Piano instead of only exposing Euclidean lead playback.',
+  }));
+
+  rows.push(row({
     id: 'shared-fx-core-routing',
     area: 'fx',
     status: passWhen(
@@ -242,10 +275,24 @@ function makeReport() {
   rows.push(row({
     id: 'earth-sample-texture-policy',
     area: 'source',
-    status: 'surrogate',
-    priority: 'decision',
-    evidence: ['Core soundscapes generator', 'Web OGG sample assets'],
-    description: 'Earth/soundscape parity uses deterministic generated coverage; embedding decoded OGG nature textures in Core remains a product/performance decision.',
+    status: passWhen(
+      has(coreHost, "from './earthTexturePlayer'") &&
+      has(coreHost, 'hostEarthTextures') &&
+      has(coreHost, 'configureHostEarthTextures(') &&
+      has(coreHost, 'createHostEarthTextureRuntime(') &&
+      has(coreHost, 'Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg') &&
+      has(coreHost, 'Alps Birds 2_noiseremoval_441_m.ogg') &&
+      has(coreHost, 'Fujian Birds 2_441_m_normalized.ogg') &&
+      has(coreHost, 'Fujian_Frogs_m_441_normalized.ogg') &&
+      has(coreHost, 'getEarthTextureDebugState(): EarthTextureDebugState') &&
+      has(coreHost, 'createCoreHostHaasWidenedBus(') &&
+      has(coreWorklet, 'configureExternalInputs') &&
+      has(coreWorklet, 'KESSHO_CORE_INPUT_GRANULAR'),
+      true,
+    ),
+    priority: 'required',
+    evidence: ['Core host EarthTexturePlayer bridge', 'Web OGG sample assets', 'Core worklet external FX input buses'],
+    description: 'Core mode now plays the same waves, birds, and frogs OGG texture assets as the Webapp through host-side sample players, with dry output and shared Core reverb, Delay A/B, and granular routing.',
   }));
 
   rows.push(row({

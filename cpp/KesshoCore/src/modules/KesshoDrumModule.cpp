@@ -392,6 +392,26 @@ public:
     return 1;
   }
 
+  int setTriggerMacros(float morph, float distance, float expression) override {
+    (void)expression;
+    if (instance_ == nullptr) {
+      return 0;
+    }
+    params_[kParamTrigger + 0] = std::isfinite(morph) ? std::clamp(morph, 0.0f, 1.0f) : -1.0f;
+    params_[kParamTrigger + 1] = std::isfinite(distance) ? std::clamp(distance, 0.0f, 1.0f) : -1.0f;
+    commitParams();
+    return 1;
+  }
+
+  int setVoiceSend(int voice_index, float delay_send) override {
+    if (instance_ == nullptr || voice_index < 0 || voice_index >= DRUM_NUM_VOICE_TYPES) {
+      return 0;
+    }
+    params_[kParamDelaySends + voice_index] = std::isfinite(delay_send) ? std::clamp(delay_send, 0.0f, 1.0f) : 0.0f;
+    commitParams();
+    return 1;
+  }
+
   void allNotesOff() override {
     if (instance_ != nullptr) {
       reset();

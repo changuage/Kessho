@@ -7,6 +7,17 @@
 
 namespace kessho::core {
 
+struct KesshoSourcePresetPatch {
+  float tone = 0.5f;
+  float brightness = 0.5f;
+  float texture = 0.5f;
+  float motion = 0.0f;
+  float attack = 0.5f;
+  float release = 0.5f;
+  float body = 0.5f;
+  float transient = 0.0f;
+};
+
 class IKesshoModule {
 public:
   virtual ~IKesshoModule() = default;
@@ -32,6 +43,26 @@ public:
     (void)velocity;
     (void)hold_seconds;
     (void)lead_index;
+    return 0;
+  }
+  virtual int setTriggerMacros(float morph, float distance, float expression) {
+    (void)morph;
+    (void)distance;
+    (void)expression;
+    return 0;
+  }
+  virtual int setSourceMacros(int source_index, float morph, float distance, float expression) {
+    (void)source_index;
+    return setTriggerMacros(morph, distance, expression);
+  }
+  virtual int setSourcePresetPatch(int source_index, const KesshoSourcePresetPatch& patch) {
+    (void)source_index;
+    (void)patch;
+    return 0;
+  }
+  virtual int setVoiceSend(int voice_index, float delay_send) {
+    (void)voice_index;
+    (void)delay_send;
     return 0;
   }
   virtual int noteOff(int voice_index) {

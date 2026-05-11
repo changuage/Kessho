@@ -254,6 +254,66 @@ function assertCoreHostFxConfigContract(source) {
   ]) {
     assert(source.includes(token), `CoreEngineHost must preserve Synth Euclid parity support: ${token}`);
   }
+
+  for (const token of [
+    'getCoreHarmonyPreviewTickCount',
+    'advanceCorePreviewHarmonyState',
+    'getCoreHarmonyTickSeconds(sliderState)',
+    'getCoreHarmonyInitialChordLeadSeconds',
+    'createLeadRandomPreview',
+    'createHostPianoPreview',
+    'coreIsLeadRandomSourceEnabled',
+    'leadRandom.leadChords',
+    'leadRandom.pianoChords',
+  ]) {
+    assert(source.includes(token), `CoreEngineHost must preserve live scheduling parity support: ${token}`);
+  }
+
+  const leadRandomPreview = readFunctionBody(source, 'createLeadRandomPreview', 'CoreEngineHost lead random preview');
+  assert(
+    leadRandomPreview.includes("`lead-random:${randomSource}:${phraseClock}:${sliderState.leadRandomSyncPolicy ?? 'nextPhrase'}:${phraseSeconds.toFixed(4)}:${noteKey}`"),
+    'CoreEngineHost lead random key must include stable clock/sync timing metadata',
+  );
+  assert(
+    !leadRandomPreview.includes('initialStartDelaySeconds.toFixed(4)'),
+    'CoreEngineHost lead random key must not include the live boundary countdown',
+  );
+
+  const leadPreviewSource = readFunctionBody(source, 'createLeadEuclidPreviewSource', 'CoreEngineHost lead preview source');
+  assert(
+    leadPreviewSource.includes('const sourceNoteKey = `lead-preview:${leadRandom.noteKey}:${synthEuclid.noteKey}:${noteKey}`;'),
+    'CoreEngineHost lead preview source must keep random and Euclid timing in the note key',
+  );
+  assert(
+    !leadPreviewSource.includes('initialStartDelaySeconds.toFixed(4)'),
+    'CoreEngineHost lead preview config must not churn on the live boundary countdown',
+  );
+
+  const padPreviewSource = readFunctionBody(source, 'createPadPreviewSource', 'CoreEngineHost pad preview source');
+  for (const token of [
+    'const harmonyTimingKey = `harmony:${sliderState.harmonyClockSource ?? \'globalPhrase\'}:${sliderState.harmonySyncPolicy ?? \'nextPhrase\'}:${chordSeconds.toFixed(4)}`;',
+    'initialStartDelaySeconds: padEuclidNotes.length > 0',
+    'initialChordLeadSeconds: padEuclidNotes.length > 0',
+    'getCoreHarmonyInitialChordLeadSeconds(sliderState, anchors)',
+  ]) {
+    assert(padPreviewSource.includes(token), `CoreEngineHost pad preview source must preserve scheduled chord timing token ${token}`);
+  }
+
+  const drumPreviewSource = readFunctionBody(source, 'createDrumPreviewSource', 'CoreEngineHost drum preview source');
+  for (const token of [
+    'const initialStartDelaySeconds = getCoreDrumInitialStartDelaySeconds(sliderState, runtime, anchors);',
+    'const sourceNoteKey = `${drumTimingKey}:${noteKey}`;',
+    'triggerInitial: true',
+    'initialStartDelaySeconds,',
+  ]) {
+    assert(drumPreviewSource.includes(token), `CoreEngineHost drum preview source must preserve continuous first-cycle scheduling token ${token}`);
+  }
+
+  const hostPianoEuclid = readMethodBody(source, 'configureHostPianoEuclid', 'CoreEngineHost host piano scheduler');
+  assert(
+    !hostPianoEuclid.includes('hostPiano.initialStartDelaySeconds.toFixed(4)'),
+    'CoreEngineHost host piano timer key must not churn on the live boundary countdown',
+  );
 }
 
 function loadWorkletProcessor(source, label) {
@@ -1703,8 +1763,15 @@ function assertWorkletMixerContract(source, label) {
   assertWorkletDelayADeferredInputBehavior(source, label);
 }
 
-assert(runtime.includes("params.get('engine') === 'core-wasm'"), 'runtime must gate the core host behind ?engine=core-wasm');
+assert(runtime.includes("case 'core-wasm':"), 'runtime must preserve ?engine=core-wasm as a legacy core-bridge alias');
+assert(!runtime.includes('isLegacyCoreBridgeOptInEnabled'), 'runtime must not hide the verified Core bridge behind a transitional opt-in');
+assert(!runtime.includes('legacyCoreBridge'), 'runtime must not require a legacy bridge query/storage escape hatch');
+assert(runtime.includes("if (typeof window === 'undefined') return 'core-bridge';"), 'runtime must default SSR to the verified Core bridge path');
+assert(runtime.includes("resolvedRuntimeMode = 'core-bridge';"), 'runtime must default browsers to the verified Core bridge path');
+assert(runtime.includes("engineMode === 'core-bridge'"), 'runtime must gate the core host behind core-bridge mode');
+assert(runtime.includes("engineMode === 'core-product'"), 'runtime must keep core-product separate from the transitional core host');
 assert(runtime.includes("import('./coreEngineHost')"), 'runtime must dynamically load CoreEngineHost');
+assert(runtime.includes("import('./coreProductEngineHost')"), 'runtime must dynamically load CoreProductEngineHost');
 assert(runtime.includes("import('./engine')"), 'runtime must keep the existing web engine fallback');
 
 for (const token of [
@@ -1717,6 +1784,8 @@ for (const token of [
   'createKesshoEngineSnapshot',
   'toKesshoCorePresetPreviewScalarsV1',
   'applyPadDistanceToState',
+  'createEarthTextureSeed',
+  "randomSeed: this.createEarthTextureSeed('ocean'",
   'resolveDynamicsTargets',
   'toDynamicsCharacterParamArray',
   'getPadPreset',
@@ -1829,10 +1898,14 @@ for (const token of [
   'DRUM_DELAY_SEND_KEYS',
   'getCoreDrumDelaySendProfile',
   'createSoundscapesPreviewSource',
-  "earthLayerActive(state, 'oceanSampleEnabled', 'oceanSampleLevel', 0.5)",
-  "earthLayerActive(state, 'birdsEnabled', 'birdsLevel', 0.45)",
-  "earthLayerActive(state, 'frogsEnabled', 'frogsLevel', 0.45)",
-  'oceanActive && !waterActive',
+  'EarthTexturePlayer',
+  'hostEarthTextures',
+  'configureHostEarthTextures',
+  'Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg',
+  'Alps Birds 2_noiseremoval_441_m.ogg',
+  'Fujian Birds 2_441_m_normalized.ogg',
+  'Fujian_Frogs_m_441_normalized.ogg',
+  'createCoreHostHaasWidenedBus',
   'boundedNumber(state.granularWavesSend, 0, 0, 1)',
   'createGranularModuleConfig',
   'computeGranularMacroModel',
@@ -1930,8 +2003,9 @@ for (const token of [
   'configureDelayBModule',
   'configureSpectralFreezeModule',
   'createPadPostChain()',
-  'configurePadPostChain(chain, postLpfHz, stereoWidth)',
+  'configurePadPostChain(chain, postLpfHz, stereoWidth, postLpfStages = 1)',
   'updatePadPostLpfCoefficients(chain)',
+  'message.postLpfStages',
   'processPadPostChain(padIndex, leftPtr, rightPtr, frames)',
   'this.processPadPostChain(',
   "noteKey.startsWith('manual:')",

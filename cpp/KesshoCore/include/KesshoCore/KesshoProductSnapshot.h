@@ -1,0 +1,227 @@
+#pragma once
+
+#include <stdint.h>
+
+#include "KesshoCore/KesshoProductTypes.h"
+
+typedef struct KesshoProductTransportSnapshot {
+  uint32_t running;
+  float bpm;
+  uint32_t beats_per_bar;
+  uint32_t bars_per_phrase;
+  float swing;
+  uint32_t reserved0;
+} KesshoProductTransportSnapshot;
+
+typedef struct KesshoProductHarmonySnapshot {
+  float root_midi;
+  uint32_t scale_id;
+  float tension;
+  uint32_t chord_mode;
+  uint32_t voicing_mode;
+  uint32_t reserved0;
+} KesshoProductHarmonySnapshot;
+
+typedef struct KesshoProductSourceSnapshot {
+  uint32_t enabled;
+  uint32_t source_id;
+  uint32_t preset_id;
+  uint32_t asset_id;
+  float level;
+  float morph;
+  float distance;
+  float expression;
+  float dry_gain;
+  float reverb_send;
+  float delay_a_send;
+  float delay_b_send;
+  float granular_send;
+  uint32_t reserved0;
+} KesshoProductSourceSnapshot;
+
+typedef struct KesshoProductSequencerLaneSnapshot {
+  uint32_t enabled;
+  uint32_t target_source_id;
+  uint32_t step_count;
+  uint32_t fill_count;
+  int32_t rotation;
+  uint32_t clock_division;
+  float swing;
+  float probability;
+  uint32_t ratchet;
+  uint32_t trig_condition;
+  float midi_note;
+  float velocity;
+  float hold_seconds;
+  float morph;
+  float distance;
+  float expression;
+  uint32_t seed;
+  uint32_t bar_reset;
+  uint32_t phrase_reset;
+  uint32_t manual_step_mask_low;
+  uint32_t manual_step_mask_high;
+} KesshoProductSequencerLaneSnapshot;
+
+typedef struct KesshoProductSequencerSnapshot {
+  uint32_t lane_count;
+  KesshoProductSequencerLaneSnapshot lanes[16];
+} KesshoProductSequencerSnapshot;
+
+typedef struct KesshoProductJourneySnapshot {
+  uint32_t enabled;
+  float morph_phase;
+  float morph_rate_bars;
+  uint32_t reserved0;
+} KesshoProductJourneySnapshot;
+
+typedef struct KesshoProductGranularVoiceSnapshot {
+  uint32_t enabled;
+  uint32_t mode;
+  uint32_t slice;
+  float speed;
+  float scan_rate;
+  uint32_t reverse;
+  float pitch;
+  float write_follow;
+  float density;
+  float grain_size_ms;
+  float spray;
+  float grain_octave_probability;
+  float attack_seconds;
+  float decay_seconds;
+  float gain;
+  float pan;
+  float blur;
+  float stereo_spread;
+  float position_lfo_rate;
+  float position_lfo_depth;
+  float pan_lfo_rate;
+  float reverse_lfo_rate;
+  float record_lfo_rate;
+  uint32_t euclid_gated;
+  uint32_t euclid_muted;
+} KesshoProductGranularVoiceSnapshot;
+
+typedef struct KesshoProductFxSnapshot {
+  float granular_mix;
+  uint32_t granular_enabled;
+  uint32_t granular_freeze;
+  uint32_t granular_freeze_with_feedback;
+  float granular_feedback;
+  float granular_feedback_lpf_hz;
+  float granular_buffer_seconds;
+  uint32_t granular_grain_shape;
+  float granular_bus_diffusion;
+  float granular_timing_randomness;
+  float granular_chord_bias;
+  float granular_legacy_jitter_ms;
+  float granular_legacy_probability;
+  uint32_t granular_legacy_pitch_mode;
+  float granular_legacy_pitch_spread;
+  uint32_t granular_legacy_max_grains;
+  float granular_legacy_feedback;
+  KesshoProductGranularVoiceSnapshot granular_voices[4];
+  uint32_t delay_a_enabled;
+  float delay_a_time_left_ms;
+  float delay_a_time_right_ms;
+  float delay_a_feedback;
+  float delay_a_mix;
+  float delay_a_filter_hz;
+  uint32_t delay_a_filter_type;
+  float delay_a_mod_rate_hz;
+  float delay_a_mod_depth_ms;
+  uint32_t delay_a_ping_pong;
+  float delay_a_duck;
+  float delay_a_width;
+  float delay_a_cross_feed_filter_hz;
+  uint32_t delay_b_enabled;
+  float delay_b_activity;
+  float delay_b_repeats;
+  float delay_b_base_time_ms;
+  float delay_b_tone;
+  float delay_b_vibrato;
+  float delay_b_mix;
+  uint32_t delay_b_space_mode;
+  uint32_t delay_b_pattern;
+  uint32_t delay_b_warp;
+  float delay_b_warp_intensity;
+  float delay_b_spread;
+  float reverb_mix;
+  uint32_t reverb_type;
+  uint32_t reverb_quality;
+  float reverb_decay;
+  float reverb_size;
+  float reverb_damping;
+  float reverb_diffusion;
+  float reverb_modulation;
+  float reverb_predelay_ms;
+  float reverb_width;
+  float reverb_shimmer_amount;
+  float reverb_shimmer_pitch;
+  float reverb_slow_rate_hz;
+  float reverb_slow_depth;
+  float reverb_reverse_amount;
+  float reverb_reverse_length_sec;
+  float reverb_chorus_rate_hz;
+  float reverb_chorus_depth;
+  uint32_t reverb_mod_character;
+  float reverb_damp_low;
+  float reverb_damp_high;
+  float reverb_crossover_hz;
+  float reverb_input_tone;
+  float reverb_shimmer_feedback;
+  float reverb_warp;
+  float reverb_cross_feed;
+  float reverb_early_reflections;
+  float reverb_air_absorption;
+  uint32_t reverb_saturation_mode;
+  float reverb_transient_smooth;
+  float reverb_er_lp_freq;
+  float spectral_freeze_mix;
+  float dynamics_drive;
+} KesshoProductFxSnapshot;
+
+typedef struct KesshoProductRoutingSnapshot {
+  float delay_a_to_delay_b;
+  float delay_b_to_delay_a;
+  float delay_to_reverb;
+  float granular_to_reverb;
+  float delay_a_to_granular;
+  float delay_b_to_granular;
+  float delay_b_to_reverb;
+  float reserved0;
+} KesshoProductRoutingSnapshot;
+
+typedef struct KesshoProductMasterSnapshot {
+  float gain;
+  float limiter_ceiling_db;
+} KesshoProductMasterSnapshot;
+
+typedef struct KesshoProductRngSnapshot {
+  uint32_t seed;
+  uint32_t state;
+} KesshoProductRngSnapshot;
+
+typedef struct KesshoProductEvolutionSnapshot {
+  float amount;
+  uint32_t state;
+} KesshoProductEvolutionSnapshot;
+
+typedef struct KesshoProductSnapshotV2 {
+  uint32_t version;
+  uint32_t schema_hash;
+  KesshoProductTransportSnapshot transport;
+  KesshoProductHarmonySnapshot harmony;
+  KesshoProductSourceSnapshot sources[7];
+  KesshoProductSequencerSnapshot synth_euclid;
+  KesshoProductSequencerSnapshot drum_euclid;
+  KesshoProductJourneySnapshot journey;
+  KesshoProductFxSnapshot fx;
+  KesshoProductRoutingSnapshot routing;
+  KesshoProductMasterSnapshot master;
+  KesshoProductRngSnapshot rng;
+  KesshoProductEvolutionSnapshot evolution;
+  uint32_t asset_refs[32];
+  uint32_t reserved[32];
+} KesshoProductSnapshotV2;

@@ -85,6 +85,24 @@ enum NativeGranularScene: String, CaseIterable, Identifiable {
     }
 }
 
+enum NativeAudioRuntimeMode: String {
+    case legacySwift
+    case coreProduct
+
+    static func fromEnvironment() -> NativeAudioRuntimeMode {
+        let requested = ProcessInfo.processInfo.environment["KESSHO_NATIVE_AUDIO_ENGINE"]?.lowercased()
+        switch requested {
+        case "legacy-swift", "legacy", "swift":
+            return .legacySwift
+        case "core-product", nil, "":
+            return .coreProduct
+        default:
+            print("AppState: unknown KESSHO_NATIVE_AUDIO_ENGINE '\(requested ?? "")', using core-product")
+            return .coreProduct
+        }
+    }
+}
+
 struct JourneyNode: Identifiable, Codable, Equatable {
     let id: String
     var position: JourneyPosition
@@ -210,7 +228,9 @@ class AppState: ObservableObject {
     private var shouldResumeAfterInterruption: Bool = false
 
     // MARK: - Audio Engine
+    private let audioRuntimeMode = NativeAudioRuntimeMode.fromEnvironment()
     let audioEngine = AudioEngine()
+    private var productCoreAudioEngine: KesshoProductCoreAudioEngine?
     let audioSessionManager = AudioSessionManager.shared
     let nowPlayingManager = NowPlayingManager.shared
 
@@ -287,7 +307,7 @@ class AppState: ObservableObject {
                 guard let self else { return }
                 shouldResumeAfterInterruption = isPlaying
                 if isPlaying {
-                    audioEngine.stop()
+                    stopActiveAudioEngine()
                     isPlaying = false
                     updatePlaybackTimer()
                     nowPlayingManager.setPlaybackState(isPlaying: false)
@@ -365,7 +385,7 @@ class AppState: ObservableObject {
             guard let state = self.pendingAudioState else { return }
             self.pendingAudioState = nil
             self.lastAudioUpdateTime = Date().timeIntervalSinceReferenceDate
-            self.audioEngine.updateParams(state)
+            self.updateActiveAudioEngine(state)
         }
     }
 
@@ -2272,6 +2292,71 @@ class AppState: ObservableObject {
         }
     }
 
+    private func ensureProductCoreAudioEngine() throws -> KesshoProductCoreAudioEngine {
+        if let productCoreAudioEngine {
+            return productCoreAudioEngine
+        }
+        let created = try KesshoProductCoreAudioEngine(sampleRate: 44_100, maxBlockSize: 512)
+        productCoreAudioEngine = created
+        created.configureRecorder(audioRecorder)
+        return created
+    }
+
+    private func preloadProductCoreStartupAssets(_ productEngine: KesshoProductCoreAudioEngine) {
+        let report = productEngine.preloadStartupAssets()
+        guard report.hasFailures else { return }
+
+        let failureSummary = report.failures
+            .map { "\($0.asset.relativePath) [\($0.asset.id)]: \($0.reason)" }
+            .joined(separator: "; ")
+        print("AppState: native Product Core asset preload incomplete: \(failureSummary)")
+    }
+
+    @discardableResult
+    private func startProductCoreAudio() -> Bool {
+        do {
+            let productEngine = try ensureProductCoreAudioEngine()
+            if productEngine.isRunning {
+                let result = productEngine.loadSnapshot(state: state, running: true)
+                if result != 1 {
+                    print("AppState: failed to update Product Core snapshot before start: \(result)")
+                    return false
+                }
+                return true
+            }
+            preloadProductCoreStartupAssets(productEngine)
+            try productEngine.start(state: state)
+            return true
+        } catch {
+            print("AppState: failed to start native Product Core audio: \(error)")
+            return false
+        }
+    }
+
+    private func stopActiveAudioEngine() {
+        if audioRuntimeMode == .coreProduct {
+            productCoreAudioEngine?.stop()
+        } else {
+            audioEngine.stop()
+        }
+    }
+
+    private func updateActiveAudioEngine(_ newState: SliderState) {
+        if audioRuntimeMode == .coreProduct {
+            do {
+                let productEngine = try ensureProductCoreAudioEngine()
+                let result = productEngine.loadSnapshot(state: newState, running: isPlaying)
+                if result != 1 {
+                    print("AppState: failed to update Product Core snapshot: \(result)")
+                }
+            } catch {
+                print("AppState: failed to update native Product Core audio: \(error)")
+            }
+        } else {
+            audioEngine.updateParams(newState)
+        }
+    }
+
     // MARK: - Playback Control
 
     func start() {
@@ -2289,7 +2374,14 @@ class AppState: ObservableObject {
         } catch {
             print("AppState: failed to activate audio session: \(error)")
         }
-        audioEngine.start(with: state)
+        let didStart: Bool
+        if audioRuntimeMode == .coreProduct {
+            didStart = startProductCoreAudio()
+        } else {
+            audioEngine.start(with: state)
+            didStart = true
+        }
+        guard didStart else { return }
         isPlaying = true
         if recordingState == .armed {
             startRecording()
@@ -2301,7 +2393,7 @@ class AppState: ObservableObject {
 
     func stop() {
         cancelPendingAudioEngineUpdate()
-        audioEngine.stop()
+        stopActiveAudioEngine()
         isPlaying = false
         if journeyPhase.isActive {
             stopJourney(stopAudio: false)
@@ -2347,7 +2439,16 @@ class AppState: ObservableObject {
         if !isPlaying {
             start()
         }
-        audioEngine.triggerMelodicSource(source, midiNote: midiNote)
+        if audioRuntimeMode == .coreProduct {
+            productCoreAudioEngine?.manualNoteOn(
+                sourceName: source,
+                midiNote: Float(midiNote),
+                velocity: 0.72,
+                holdSeconds: 0.2
+            )
+        } else {
+            audioEngine.triggerMelodicSource(source, midiNote: midiNote)
+        }
     }
 
     func applyGranularScene(_ scene: NativeGranularScene) {
@@ -2415,7 +2516,9 @@ class AppState: ObservableObject {
 
     /// Set up the audio recorder with engine nodes
     private func setupRecorder() {
-        audioEngine.configureRecorder(audioRecorder)
+        if audioRuntimeMode == .legacySwift {
+            audioEngine.configureRecorder(audioRecorder)
+        }
 
         audioRecorder.onStateChange = { [weak self] state in
             Task { @MainActor in
@@ -2432,6 +2535,14 @@ class AppState: ObservableObject {
 
     /// Arm recording - prepares to record on next play
     func armRecording() {
+        if audioRuntimeMode == .coreProduct {
+            do {
+                _ = try ensureProductCoreAudioEngine()
+            } catch {
+                print("AppState: failed to prepare Product Core recorder: \(error)")
+                return
+            }
+        }
         audioRecorder.enabledStems = recordingEnabledStems
         audioRecorder.recordMain = recordMain
         audioRecorder.arm()
@@ -2444,6 +2555,14 @@ class AppState: ObservableObject {
 
     /// Start recording immediately
     func startRecording() {
+        if audioRuntimeMode == .coreProduct {
+            do {
+                _ = try ensureProductCoreAudioEngine()
+            } catch {
+                print("AppState: failed to prepare Product Core recorder: \(error)")
+                return
+            }
+        }
         guard recordMain || !recordingEnabledStems.isEmpty else { return }
         audioRecorder.enabledStems = recordingEnabledStems
         audioRecorder.recordMain = recordMain
@@ -2516,7 +2635,11 @@ class AppState: ObservableObject {
             // Restore user preferences
             state.reverbQuality = savedReverbQuality
 
-            audioEngine.resetCofDrift()
+            if audioRuntimeMode == .coreProduct {
+                scheduleAudioEngineUpdate(state)
+            } else {
+                audioEngine.resetCofDrift()
+            }
             morphPosition = 0
 
             // Load dual ranges from preset (if any)

@@ -1,0 +1,33 @@
+{
+  "events": [
+    { "name": "SetParam", "id": 1 },
+    { "name": "SetTransport", "id": 2 },
+    { "name": "Start", "id": 3 },
+    { "name": "Stop", "id": 4 },
+    { "name": "ResetTransport", "id": 5 },
+    { "name": "LoadSnapshot", "id": 6 },
+    { "name": "SetSequencerStep", "id": 7 },
+    { "name": "SetSequencerLane", "id": 8 },
+    { "name": "SetSequencerPattern", "id": 9 },
+    { "name": "SetRoutingSend", "id": 10 },
+    { "name": "SetSourceEnabled", "id": 11 },
+    { "name": "SetSourcePreset", "id": 12 },
+    { "name": "SetJourneyState", "id": 13 },
+    { "name": "ManualNoteOn", "id": 14 },
+    { "name": "ManualNoteOff", "id": 15 },
+    { "name": "MidiEvent", "id": 16 },
+    { "name": "TriggerDrumVoice", "id": 17 },
+    { "name": "RegisterAsset", "id": 18 },
+    { "name": "UnregisterAsset", "id": 19 },
+    { "name": "RequestTelemetry", "id": 20 },
+    { "name": "StartJourneyMorphClock", "id": 21 },
+    { "name": "StopJourneyMorphClock", "id": 22 },
+    { "name": "SetHarmonyRoot", "id": 23 },
+    { "name": "SetScale", "id": 24 },
+    { "name": "SetSeed", "id": 25 },
+    { "name": "ResetRng", "id": 26 },
+    { "name": "SetModulationRange", "id": 27 },
+    { "name": "ResetSequencerLaneHome", "id": 28 },
+    { "name": "DiceSequencerLane", "id": 29 }
+  ]
+}

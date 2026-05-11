@@ -3048,6 +3048,7 @@ export class AudioEngine {
       sliceDuration: number;
       fadeTime: number;
       density: number;
+      randomSeed?: string | null;
       delayMs: number;
       sideGain: number;
       centerGain: number;
@@ -3081,6 +3082,7 @@ export class AudioEngine {
       sliceDuration: config.sliceDuration,
       fadeTime: config.fadeTime,
       density: config.density,
+      randomSeed: config.randomSeed,
     });
 
     return {
@@ -3172,6 +3174,13 @@ export class AudioEngine {
 
   private getEarthLayerOutputScale(level: number | undefined, masterLevel = 1): number {
     return Math.max(0, level ?? 0) * Math.max(0, masterLevel);
+  }
+
+  private createEarthTextureSeed(layer: string, state: SliderState | null | undefined = this.sliderState): string {
+    const seedWindow = state?.seedWindow === 'day' ? 'day' : 'hour';
+    const seedValue = (state as unknown as Record<string, unknown> | null | undefined)?.seed;
+    const seed = Number.isFinite(Number(seedValue)) ? Math.trunc(Number(seedValue)) : 42;
+    return `${getUtcBucket(seedWindow)}|${seed}|earth-texture|${layer}`;
   }
 
   private scaleEarthSend(send: number | undefined, levelScale: number): number {
@@ -6509,6 +6518,7 @@ export class AudioEngine {
       sliceDuration: 22,
       fadeTime: 5.5,
       density: 0.38,
+      randomSeed: this.createEarthTextureSeed('ocean'),
     });
 
     this.birdsTexture = this.createEarthTextureRuntime(ctx, {
@@ -6516,6 +6526,7 @@ export class AudioEngine {
       sliceDuration: 20,
       fadeTime: 3.2,
       density: 0.45,
+      randomSeed: this.createEarthTextureSeed('birds'),
       delayMs: 13,
       sideGain: 0.42,
       centerGain: 0.56,
@@ -6528,6 +6539,7 @@ export class AudioEngine {
       sliceDuration: 20,
       fadeTime: 3.1,
       density: 0.48,
+      randomSeed: this.createEarthTextureSeed('birds2'),
       delayMs: 15,
       sideGain: 0.45,
       centerGain: 0.5,
@@ -6540,6 +6552,7 @@ export class AudioEngine {
       sliceDuration: 18,
       fadeTime: 2.6,
       density: 0.52,
+      randomSeed: this.createEarthTextureSeed('frogs'),
       delayMs: 12,
       sideGain: 0.36,
       centerGain: 0.68,
@@ -9501,6 +9514,7 @@ export class AudioEngine {
     this.oceanTexturePlayer?.update({
       sliceDuration: state.oceanSliceDuration ?? 22,
       density: state.oceanSliceDensity ?? 0.38,
+      randomSeed: this.createEarthTextureSeed('ocean', state),
     });
     if (oceanShouldRun) void this.oceanTexturePlayer?.start();
     else this.oceanTexturePlayer?.stop();
@@ -9515,6 +9529,7 @@ export class AudioEngine {
       granularSend: shv('granularNatureSend', state.granularNatureSend ?? 0),
       sliceDuration: state.birdsSliceDuration ?? 20,
       density: state.birdsSliceDensity ?? 0.45,
+      randomSeed: this.createEarthTextureSeed('birds', state),
       smoothTime,
       now,
     });
@@ -9528,6 +9543,7 @@ export class AudioEngine {
       granularSend: shv('granularNatureSend', state.granularNatureSend ?? 0),
       sliceDuration: state.birds2SliceDuration ?? 20,
       density: state.birds2SliceDensity ?? 0.48,
+      randomSeed: this.createEarthTextureSeed('birds2', state),
       smoothTime,
       now,
     });
@@ -9541,6 +9557,7 @@ export class AudioEngine {
       granularSend: shv('granularNatureSend', state.granularNatureSend ?? 0),
       sliceDuration: state.frogsSliceDuration ?? 18,
       density: state.frogsSliceDensity ?? 0.52,
+      randomSeed: this.createEarthTextureSeed('frogs', state),
       smoothTime,
       now,
     });
@@ -9571,6 +9588,7 @@ export class AudioEngine {
       granularSend: number;
       sliceDuration: number;
       density: number;
+      randomSeed?: string | null;
       smoothTime: number;
       now: number;
     },
@@ -9597,7 +9615,11 @@ export class AudioEngine {
     runtime.delayASend?.gain.setTargetAtTime(routedDelayASend, options.now, options.smoothTime);
     runtime.delayBSend?.gain.setTargetAtTime(routedDelayBSend, options.now, options.smoothTime);
     runtime.granularSend?.gain.setTargetAtTime(routedGranularSend, options.now, options.smoothTime);
-    runtime.player.update({ sliceDuration: options.sliceDuration, density: options.density });
+    runtime.player.update({
+      sliceDuration: options.sliceDuration,
+      density: options.density,
+      randomSeed: options.randomSeed,
+    });
 
     const effectiveDryLevel = effectiveLevelScale;
 

@@ -13,9 +13,11 @@ export type {
 } from './engine';
 
 type EngineMethod = keyof AudioEngine & string;
+export type AudioEngineRuntimeMode = 'web-ts' | 'core-bridge' | 'core-product';
 
 let loadedAudioEngine: AudioEngine | null = null;
 let audioEngineLoadPromise: Promise<AudioEngine> | null = null;
+let resolvedRuntimeMode: AudioEngineRuntimeMode | null = null;
 
 const queuedCalls = new Map<EngineMethod, unknown[]>();
 const methodCache = new Map<EngineMethod, (...args: unknown[]) => unknown>();
@@ -62,22 +64,40 @@ const eagerAsyncMethods = new Set<EngineMethod>([
 
 const eagerVoidMethods = new Set<EngineMethod>([
   'resume',
+  'startJourneyMorphClock',
+  'stopJourneyMorphClock',
   'suspend',
 ]);
 
-const missingNoopMethods = new Set<string>([
-  'startJourneyMorphClock',
-  'stopJourneyMorphClock',
-  'triggerDrumVoice',
-]);
+function normalizeEngineMode(mode: string | null): AudioEngineRuntimeMode | null {
+  switch (mode) {
+    case 'web':
+    case 'web-ts':
+    case 'web-audio':
+      return 'web-ts';
+    case 'core-bridge':
+    case 'core-wasm':
+      return 'core-bridge';
+    case 'core-product':
+      return 'core-product';
+    default:
+      return null;
+  }
+}
 
-function shouldUseCoreWasmEngine(): boolean {
-  if (typeof window === 'undefined') return false;
+export function getAudioEngineRuntimeMode(): AudioEngineRuntimeMode {
+  if (resolvedRuntimeMode) return resolvedRuntimeMode;
+  if (typeof window === 'undefined') return 'core-bridge';
   try {
     const params = new URLSearchParams(window.location.search);
-    return params.get('engine') === 'core-wasm';
+    resolvedRuntimeMode =
+      normalizeEngineMode(params.get('engine')) ??
+      normalizeEngineMode(window.localStorage.getItem('kesshoEngine')) ??
+      'core-bridge';
+    return resolvedRuntimeMode;
   } catch {
-    return false;
+    resolvedRuntimeMode = 'core-bridge';
+    return resolvedRuntimeMode;
   }
 }
 
@@ -107,7 +127,14 @@ function flushQueuedCalls(engine: AudioEngine): void {
 async function loadAudioEngine(): Promise<AudioEngine> {
   if (loadedAudioEngine) return loadedAudioEngine;
   if (!audioEngineLoadPromise) {
-    audioEngineLoadPromise = shouldUseCoreWasmEngine()
+    const engineMode = getAudioEngineRuntimeMode();
+    audioEngineLoadPromise = engineMode === 'core-product'
+      ? import('./coreProductEngineHost').then((module) => {
+        loadedAudioEngine = module.coreProductEngineHost as unknown as AudioEngine;
+        flushQueuedCalls(loadedAudioEngine);
+        return loadedAudioEngine;
+      })
+      : engineMode === 'core-bridge'
       ? import('./coreEngineHost').then((module) => {
         loadedAudioEngine = module.coreEngineHost as unknown as AudioEngine;
         flushQueuedCalls(loadedAudioEngine);
@@ -170,10 +197,6 @@ function createMethodProxy(method: EngineMethod): (...args: unknown[]) => unknow
       if (!loadedAudioEngine) {
         queueCall(method, args);
       }
-      return undefined;
-    }
-
-    if (missingNoopMethods.has(method)) {
       return undefined;
     }
 

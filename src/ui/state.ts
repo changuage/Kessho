@@ -4217,6 +4217,22 @@ function applyLegacyStateKeyAliases(record: Record<string, unknown>): void {
     }
     delete record[legacyKey];
   }
+  if (record.characterWetHp !== undefined) {
+    if (record.degradeHp === undefined) {
+      record.degradeHp = record.characterWetHp;
+    } else {
+      const legacyWetHp = typeof record.characterWetHp === 'number'
+        ? record.characterWetHp
+        : Number(record.characterWetHp);
+      const currentHp = typeof record.degradeHp === 'number'
+        ? record.degradeHp
+        : Number(record.degradeHp);
+      if (Number.isFinite(legacyWetHp) && Number.isFinite(currentHp) && Math.abs(currentHp - DEFAULT_STATE.degradeHp) < 1e-9) {
+        record.degradeHp = legacyWetHp;
+      }
+    }
+    delete record.characterWetHp;
+  }
 }
 
 /**
@@ -4573,6 +4589,17 @@ export function decodeStateFromUrl(search: string): SliderState | null {
     state.sequencerMasterBPM = quantize('sequencerMasterBPM', sharedSequencerBpm);
     state.synthEuclidBaseBPM = state.sequencerMasterBPM;
     state.drumEuclidBaseBPM = state.sequencerMasterBPM;
+
+    const legacyCharacterWetHp = params.get('characterWetHp');
+    const explicitDynamicsHp = params.get('degradeHp') ?? params.get('characterHp');
+    if (legacyCharacterWetHp !== null) {
+      const legacyHp = parseFloat(legacyCharacterWetHp);
+      const currentHp = explicitDynamicsHp === null ? NaN : parseFloat(explicitDynamicsHp);
+      if (!Number.isNaN(legacyHp) && (Number.isNaN(currentHp) || Math.abs(currentHp - DEFAULT_STATE.degradeHp) < 1e-9)) {
+        state.degradeHp = quantize('degradeHp', legacyHp);
+      }
+      state.characterWetHp = DEFAULT_STATE.characterWetHp;
+    }
 
     return state;
   } catch {

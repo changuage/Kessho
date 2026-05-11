@@ -143,7 +143,8 @@ const DEFAULT_MIDI_ROUTE_TARGETS = [
   { key: 'characterMix', label: 'Character Mix' },
   { key: 'characterBias', label: 'Character Bias' },
   { key: 'characterLpgAmount', label: 'Character LPG Open' },
-  { key: 'characterWetHp', label: 'Character Wet HP' },
+  { key: 'degradeHp', label: 'Dynamics HP' },
+  { key: 'degradeLp', label: 'Dynamics LP' },
   { key: 'degradeMix', label: 'Degrade Mix' },
   { key: 'masterSatDrive', label: 'Master Drive' },
 ] as const satisfies readonly KesshoMidiRouteTarget[];

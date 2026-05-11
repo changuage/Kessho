@@ -134,6 +134,10 @@ int clampedRounded(float value, int lo, int hi) {
   return std::clamp(roundedInt(value), lo, hi);
 }
 
+float clampUnit(float value) {
+  return std::isfinite(value) ? std::clamp(value, 0.0f, 1.0f) : 0.0f;
+}
+
 class LeadFmModule final : public IKesshoModule {
 public:
   ~LeadFmModule() override {
@@ -281,6 +285,94 @@ public:
         velocity,
         hold_seconds,
         lead_index > 0 ? 1 : 0);
+    return 1;
+  }
+
+  int setTriggerMacros(float morph, float distance, float expression) override {
+    if (instance_ == nullptr) {
+      return 0;
+    }
+    const float m = clampUnit(morph);
+    const float d = clampUnit(distance);
+    const float e = clampUnit(expression);
+
+    params_[kParamFilterFreq] = std::clamp(850.0f + e * 4600.0f + m * 3400.0f, 300.0f, 12000.0f);
+    params_[kParamDrive] = m * 0.58f;
+    params_[kParamTransientClick] = m * 0.18f;
+    params_[kParamTransientNoise] = d * 0.1f;
+    params_[kParamGain] = std::clamp(0.14f + e * 0.46f, 0.0f, 0.9f);
+    params_[kParamXLevel] = std::clamp(1.0f - m * 0.18f, 0.0f, 1.2f);
+    params_[kParamYLevel] = std::clamp(0.45f + m * 0.55f, 0.0f, 1.2f);
+    params_[kParamXPan] = std::clamp(-0.18f - d * 0.22f, -1.0f, 1.0f);
+    params_[kParamYPan] = std::clamp(0.18f + d * 0.22f, -1.0f, 1.0f);
+    params_[kParamUnisonVoices] = static_cast<float>(1 + std::min(2, roundedInt(m * 2.0f)));
+    params_[kParamUnisonDetune] = d * 18.0f;
+
+    lead_fm_instance_set_filter_freq(instance_, params_[kParamFilterFreq]);
+    lead_fm_instance_set_drive(instance_, params_[kParamDrive]);
+    lead_fm_instance_set_transient_click(instance_, params_[kParamTransientClick]);
+    lead_fm_instance_set_transient_noise(instance_, params_[kParamTransientNoise]);
+    lead_fm_instance_set_gain(instance_, params_[kParamGain]);
+    lead_fm_instance_set_x_level(instance_, params_[kParamXLevel]);
+    lead_fm_instance_set_y_level(instance_, params_[kParamYLevel]);
+    lead_fm_instance_set_x_pan(instance_, params_[kParamXPan]);
+    lead_fm_instance_set_y_pan(instance_, params_[kParamYPan]);
+    lead_fm_instance_set_unison_voices(instance_, clampedRounded(params_[kParamUnisonVoices], 1, LEAD_FM_MAX_UNISON));
+    lead_fm_instance_set_unison_detune(instance_, params_[kParamUnisonDetune]);
+    return 1;
+  }
+
+  int setSourcePresetPatch(int source_index, const KesshoSourcePresetPatch& patch) override {
+    (void)source_index;
+    if (instance_ == nullptr) {
+      return 0;
+    }
+
+    const float tone = clampUnit(patch.tone);
+    const float brightness = clampUnit(patch.brightness);
+    const float texture = clampUnit(patch.texture);
+    const float motion = clampUnit(patch.motion);
+    const float attack = clampUnit(patch.attack);
+    const float release = clampUnit(patch.release);
+    const float body = clampUnit(patch.body);
+    const float transient = clampUnit(patch.transient);
+
+    params_[kParamAlgorithm] =
+        texture > 0.72f ? LEAD_FM_ALG_DX17 : tone > 0.58f ? LEAD_FM_ALG_SPLIT : LEAD_FM_ALG_PARALLEL;
+    params_[kParamBeatDetune] = texture * 7.0f;
+    params_[kParamCarrier2Mix] = std::clamp(0.08f + brightness * 0.38f, 0.0f, 1.0f);
+    for (int op = 0; op < LEAD_FM_NUM_OPERATORS; ++op) {
+      const int base = kOperatorParamStart + op * kOperatorParamCount;
+      const float op_position = static_cast<float>(op) / static_cast<float>(LEAD_FM_NUM_OPERATORS - 1);
+      params_[base + kOpRatio] = 1.0f + op_position * (1.0f + tone * 3.5f);
+      params_[base + kOpIndex] = std::clamp((0.12f + texture * 2.2f) * (1.0f - op_position * 0.22f), 0.0f, 8.0f);
+      params_[base + kOpDecay] = 0.22f + release * 1.8f + op_position * 0.45f;
+      params_[base + kOpSustain] = std::clamp(0.08f + body * 0.52f - op_position * 0.06f, 0.0f, 1.0f);
+      params_[base + kOpLevel] = std::clamp(0.55f + brightness * 0.38f - op_position * 0.08f, 0.0f, 1.0f);
+      params_[base + kOpFeedback] = std::clamp(texture * transient * (op == 0 ? 0.45f : 0.24f), 0.0f, 1.0f);
+      params_[base + kOpDetune] = (op_position - 0.5f) * texture * 24.0f;
+      params_[base + kOpEnvRate] = 0.65f + motion * 1.4f;
+      params_[base + kOpModAttack] = attack * 0.18f;
+      params_[base + kOpModDelay] = op_position * motion * 0.12f;
+    }
+    params_[kParamAttack] = 0.004f + attack * 0.18f;
+    params_[kParamDecay] = 0.18f + (1.0f - transient) * 1.6f;
+    params_[kParamSustain] = std::clamp(0.18f + body * 0.62f, 0.0f, 1.0f);
+    params_[kParamRelease] = 0.18f + release * 3.4f;
+    params_[kParamFilterFreq] = std::clamp(650.0f + brightness * 7600.0f + tone * 2400.0f, 120.0f, 14000.0f);
+    params_[kParamFilterQ] = std::clamp(0.35f + texture * 1.8f, 0.05f, 8.0f);
+    params_[kParamFilterEnvDepth] = brightness * transient * 2600.0f;
+    params_[kParamDrive] = std::clamp(tone * 0.26f + transient * 0.22f, 0.0f, 1.0f);
+    params_[kParamTransientClick] = transient * 0.18f;
+    params_[kParamTransientNoise] = texture * transient * 0.12f;
+    params_[kParamTransientDuration] = 8.0f + transient * 38.0f;
+    params_[kParamGain] = std::clamp(0.18f + body * 0.3f + brightness * 0.18f, 0.0f, 0.95f);
+    params_[kParamLfoRate] = motion * 4.0f;
+    params_[kParamLfoDepth] = motion * texture * 0.18f;
+    params_[kParamUnisonVoices] = 1.0f + std::floor(texture * 3.0f);
+    params_[kParamUnisonDetune] = texture * 18.0f;
+
+    commitParams();
     return 1;
   }
 

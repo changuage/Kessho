@@ -1196,7 +1196,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 978) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 978`);
+  if (count !== 981) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 981`);
   }
 }

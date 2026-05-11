@@ -33,6 +33,34 @@
 			A1000091 /* NatureTextureSynth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000091; };
 			A1000092 /* SharedDelayProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000092; };
 			A1000093 /* SpectralFreezeProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000093; };
+			A1000110 /* KesshoProductCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000110; };
+			A1000113 /* KesshoProductCoreAudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000113; };
+			A1000114 /* KesshoProductCoreAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000114; };
+			A1000115 /* KesshoProductCoreSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000115; };
+			A1000111 /* KesshoProductCoreBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = B1000111; };
+			A1000112 /* kessho_product_core_engine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000112; };
+			A1000120 /* KesshoProductSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000120; };
+			A1000121 /* KesshoProductEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000121; };
+			A1000122 /* KesshoProductParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000122; };
+			A1000130 /* kessho_product_core_modules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000130; };
+			A1000131 /* kessho_product_core_dynamics_character_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000131; };
+			A1000132 /* kessho_product_core_dynamics_degrade_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000132; };
+			A1000133 /* kessho_product_core_reverb_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000133; };
+			A1000134 /* kessho_product_core_granular_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000134; };
+			A1000135 /* kessho_product_core_spectral_freeze_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000135; };
+			A1000136 /* kessho_product_core_lead_fm_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000136; };
+			A1000137 /* kessho_product_core_pad_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000137; };
+			A1000138 /* kessho_product_core_drum_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000138; };
+			A1000139 /* kessho_product_core_soundscapes_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000139; };
+			A1000140 /* kessho_product_core_delay_a_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000140; };
+			A1000141 /* kessho_product_core_delay_b_module.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000141; };
+			A1000142 /* kessho_product_core_wasm_dynamics_degrade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000142; };
+			A1000143 /* kessho_product_core_wasm_granular.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000143; };
+			A1000144 /* kessho_product_core_wasm_spectral_freeze.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000144; };
+			A1000145 /* kessho_product_core_wasm_lead_fm.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000145; };
+			A1000146 /* kessho_product_core_wasm_pad.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000146; };
+			A1000147 /* kessho_product_core_wasm_drum.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000147; };
+			A1000148 /* kessho_product_core_wasm_soundscapes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1000148; };
 
 		/* Harmony */
 		A1000020 /* Scales.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000020; };
@@ -102,6 +130,34 @@
 			B1000091 /* NatureTextureSynth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NatureTextureSynth.swift; sourceTree = "<group>"; };
 			B1000092 /* SharedDelayProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDelayProcessor.swift; sourceTree = "<group>"; };
 			B1000093 /* SpectralFreezeProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectralFreezeProcessor.swift; sourceTree = "<group>"; };
+			B1000110 /* KesshoProductCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KesshoProductCore.swift; sourceTree = "<group>"; };
+			B1000113 /* KesshoProductCoreAudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KesshoProductCoreAudioEngine.swift; sourceTree = "<group>"; };
+			B1000114 /* KesshoProductCoreAssets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KesshoProductCoreAssets.swift; sourceTree = "<group>"; };
+			B1000115 /* KesshoProductCoreSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KesshoProductCoreSnapshot.swift; sourceTree = "<group>"; };
+			B1000111 /* KesshoProductCoreBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = KesshoProductCoreBridge.mm; sourceTree = "<group>"; };
+			B1000112 /* kessho_product_core_engine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_engine.cpp; sourceTree = "<group>"; };
+			B1000120 /* KesshoProductSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KesshoProductSchema.swift; sourceTree = "<group>"; };
+			B1000121 /* KesshoProductEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KesshoProductEvents.swift; sourceTree = "<group>"; };
+			B1000122 /* KesshoProductParams.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KesshoProductParams.swift; sourceTree = "<group>"; };
+			B1000130 /* kessho_product_core_modules.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_modules.cpp; sourceTree = "<group>"; };
+			B1000131 /* kessho_product_core_dynamics_character_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_dynamics_character_module.cpp; sourceTree = "<group>"; };
+			B1000132 /* kessho_product_core_dynamics_degrade_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_dynamics_degrade_module.cpp; sourceTree = "<group>"; };
+			B1000133 /* kessho_product_core_reverb_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_reverb_module.cpp; sourceTree = "<group>"; };
+			B1000134 /* kessho_product_core_granular_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_granular_module.cpp; sourceTree = "<group>"; };
+			B1000135 /* kessho_product_core_spectral_freeze_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_spectral_freeze_module.cpp; sourceTree = "<group>"; };
+			B1000136 /* kessho_product_core_lead_fm_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_lead_fm_module.cpp; sourceTree = "<group>"; };
+			B1000137 /* kessho_product_core_pad_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_pad_module.cpp; sourceTree = "<group>"; };
+			B1000138 /* kessho_product_core_drum_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_drum_module.cpp; sourceTree = "<group>"; };
+			B1000139 /* kessho_product_core_soundscapes_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_soundscapes_module.cpp; sourceTree = "<group>"; };
+			B1000140 /* kessho_product_core_delay_a_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_delay_a_module.cpp; sourceTree = "<group>"; };
+			B1000141 /* kessho_product_core_delay_b_module.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_delay_b_module.cpp; sourceTree = "<group>"; };
+			B1000142 /* kessho_product_core_wasm_dynamics_degrade.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_wasm_dynamics_degrade.cpp; sourceTree = "<group>"; };
+			B1000143 /* kessho_product_core_wasm_granular.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_wasm_granular.cpp; sourceTree = "<group>"; };
+			B1000144 /* kessho_product_core_wasm_spectral_freeze.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_wasm_spectral_freeze.cpp; sourceTree = "<group>"; };
+			B1000145 /* kessho_product_core_wasm_lead_fm.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_wasm_lead_fm.cpp; sourceTree = "<group>"; };
+			B1000146 /* kessho_product_core_wasm_pad.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_wasm_pad.cpp; sourceTree = "<group>"; };
+			B1000147 /* kessho_product_core_wasm_drum.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_wasm_drum.cpp; sourceTree = "<group>"; };
+			B1000148 /* kessho_product_core_wasm_soundscapes.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kessho_product_core_wasm_soundscapes.cpp; sourceTree = "<group>"; };
 
 		/* Harmony */
 		B1000020 /* Scales.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scales.swift; sourceTree = "<group>"; };
@@ -157,6 +213,8 @@
 				children = (
 					E1000001 /* Kessho */,
 					E1000070 /* NativeDSP */,
+					E1000111 /* CoreBridge */,
+					E1000120 /* Generated */,
 					E1000099 /* Products */,
 				);
 			sourceTree = "<group>";
@@ -178,6 +236,7 @@
 					B1000005 /* Kessho-Bridging-Header.h */,
 					B1000003 /* Assets.xcassets */,
 				E1000010 /* Audio */,
+				E1000110 /* CoreBridge */,
 				E1000020 /* Harmony */,
 				E1000030 /* State */,
 				E1000080 /* Platform */,
@@ -212,6 +271,17 @@
 					B1000093 /* SpectralFreezeProcessor.swift */,
 				);
 			path = Audio;
+			sourceTree = "<group>";
+		};
+		E1000110 /* CoreBridge */ = {
+			isa = PBXGroup;
+			children = (
+				B1000110 /* KesshoProductCore.swift */,
+				B1000113 /* KesshoProductCoreAudioEngine.swift */,
+				B1000114 /* KesshoProductCoreAssets.swift */,
+				B1000115 /* KesshoProductCoreSnapshot.swift */,
+			);
+			path = CoreBridge;
 			sourceTree = "<group>";
 		};
 		E1000020 /* Harmony */ = {
@@ -287,6 +357,44 @@
 					B1000082 /* kessho_reverb_unified.cpp */,
 				);
 				path = NativeDSP;
+				sourceTree = "<group>";
+			};
+			E1000111 /* CoreBridge */ = {
+				isa = PBXGroup;
+				children = (
+					B1000111 /* KesshoProductCoreBridge.mm */,
+					B1000112 /* kessho_product_core_engine.cpp */,
+					B1000130 /* kessho_product_core_modules.cpp */,
+					B1000131 /* kessho_product_core_dynamics_character_module.cpp */,
+					B1000132 /* kessho_product_core_dynamics_degrade_module.cpp */,
+					B1000133 /* kessho_product_core_reverb_module.cpp */,
+					B1000134 /* kessho_product_core_granular_module.cpp */,
+					B1000135 /* kessho_product_core_spectral_freeze_module.cpp */,
+					B1000136 /* kessho_product_core_lead_fm_module.cpp */,
+					B1000137 /* kessho_product_core_pad_module.cpp */,
+					B1000138 /* kessho_product_core_drum_module.cpp */,
+					B1000139 /* kessho_product_core_soundscapes_module.cpp */,
+					B1000140 /* kessho_product_core_delay_a_module.cpp */,
+					B1000141 /* kessho_product_core_delay_b_module.cpp */,
+					B1000142 /* kessho_product_core_wasm_dynamics_degrade.cpp */,
+					B1000143 /* kessho_product_core_wasm_granular.cpp */,
+					B1000144 /* kessho_product_core_wasm_spectral_freeze.cpp */,
+					B1000145 /* kessho_product_core_wasm_lead_fm.cpp */,
+					B1000146 /* kessho_product_core_wasm_pad.cpp */,
+					B1000147 /* kessho_product_core_wasm_drum.cpp */,
+					B1000148 /* kessho_product_core_wasm_soundscapes.cpp */,
+				);
+				path = CoreBridge;
+				sourceTree = "<group>";
+			};
+			E1000120 /* Generated */ = {
+				isa = PBXGroup;
+				children = (
+					B1000120 /* KesshoProductSchema.swift */,
+					B1000121 /* KesshoProductEvents.swift */,
+					B1000122 /* KesshoProductParams.swift */,
+				);
+				path = Generated;
 				sourceTree = "<group>";
 			};
 	/* End PBXGroup section */
@@ -379,6 +487,34 @@
 					A1000091 /* NatureTextureSynth.swift in Sources */,
 					A1000092 /* SharedDelayProcessor.swift in Sources */,
 					A1000093 /* SpectralFreezeProcessor.swift in Sources */,
+					A1000110 /* KesshoProductCore.swift in Sources */,
+					A1000113 /* KesshoProductCoreAudioEngine.swift in Sources */,
+					A1000114 /* KesshoProductCoreAssets.swift in Sources */,
+					A1000115 /* KesshoProductCoreSnapshot.swift in Sources */,
+					A1000111 /* KesshoProductCoreBridge.mm in Sources */,
+					A1000112 /* kessho_product_core_engine.cpp in Sources */,
+					A1000130 /* kessho_product_core_modules.cpp in Sources */,
+					A1000131 /* kessho_product_core_dynamics_character_module.cpp in Sources */,
+					A1000132 /* kessho_product_core_dynamics_degrade_module.cpp in Sources */,
+					A1000133 /* kessho_product_core_reverb_module.cpp in Sources */,
+					A1000134 /* kessho_product_core_granular_module.cpp in Sources */,
+					A1000135 /* kessho_product_core_spectral_freeze_module.cpp in Sources */,
+					A1000136 /* kessho_product_core_lead_fm_module.cpp in Sources */,
+					A1000137 /* kessho_product_core_pad_module.cpp in Sources */,
+					A1000138 /* kessho_product_core_drum_module.cpp in Sources */,
+					A1000139 /* kessho_product_core_soundscapes_module.cpp in Sources */,
+					A1000140 /* kessho_product_core_delay_a_module.cpp in Sources */,
+					A1000141 /* kessho_product_core_delay_b_module.cpp in Sources */,
+					A1000142 /* kessho_product_core_wasm_dynamics_degrade.cpp in Sources */,
+					A1000143 /* kessho_product_core_wasm_granular.cpp in Sources */,
+					A1000144 /* kessho_product_core_wasm_spectral_freeze.cpp in Sources */,
+					A1000145 /* kessho_product_core_wasm_lead_fm.cpp in Sources */,
+					A1000146 /* kessho_product_core_wasm_pad.cpp in Sources */,
+					A1000147 /* kessho_product_core_wasm_drum.cpp in Sources */,
+					A1000148 /* kessho_product_core_wasm_soundscapes.cpp in Sources */,
+					A1000120 /* KesshoProductSchema.swift in Sources */,
+					A1000121 /* KesshoProductEvents.swift in Sources */,
+					A1000122 /* KesshoProductParams.swift in Sources */,
 					A1000081 /* kessho_dynamics_character_unified.cpp in Sources */,
 					A1000082 /* kessho_reverb_unified.cpp in Sources */,
 					A1000020 /* Scales.swift in Sources */,
@@ -539,6 +675,21 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"CoreBridge/include",
+					"../cpp/KesshoCore/include",
+					"../cpp/KesshoCore/generated",
+					"../wasm/dynamics-character",
+					"../wasm/dynamics-degrade",
+					"../wasm/reverb",
+					"../wasm/granular-fx",
+					"../wasm/spectral-freeze",
+					"../wasm/lead-fm",
+					"../wasm/pad",
+					"../wasm/drum",
+					"../wasm/soundscapes",
+				);
 				INFOPLIST_FILE = Kessho/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Kessho;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -570,6 +721,21 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"CoreBridge/include",
+					"../cpp/KesshoCore/include",
+					"../cpp/KesshoCore/generated",
+					"../wasm/dynamics-character",
+					"../wasm/dynamics-degrade",
+					"../wasm/reverb",
+					"../wasm/granular-fx",
+					"../wasm/spectral-freeze",
+					"../wasm/lead-fm",
+					"../wasm/pad",
+					"../wasm/drum",
+					"../wasm/soundscapes",
+				);
 				INFOPLIST_FILE = Kessho/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Kessho;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";

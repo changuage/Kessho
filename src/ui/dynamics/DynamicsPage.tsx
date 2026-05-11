@@ -272,7 +272,8 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                 <Slider label="Rate" value={state.characterRate} paramKey="characterRate" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterRate')} />
                 <Slider label="Damp" value={state.characterDamp} paramKey="characterDamp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterDamp')} />
                 <Slider label="Env Follow" value={state.characterEnvFollow} paramKey="characterEnvFollow" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterEnvFollow')} />
-                <Slider label="Wet HP" value={state.characterWetHp} paramKey="characterWetHp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterWetHp')} />
+                <Slider label="HP" value={state.degradeHp} paramKey="degradeHp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeHp')} />
+                <Slider label="LP" value={state.degradeLp} paramKey="degradeLp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeLp')} />
                 <Slider label="Stereo" value={state.characterStereo} paramKey="characterStereo" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterStereo')} />
                 <Slider label="Resonance" value={state.characterResonance} paramKey="characterResonance" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterResonance')} />
               </div>

@@ -1,4 +1,4 @@
-# Delay Overhaul Spec — Echo Line + Clocked Space
+Delay Overhaul Spec — Echo Line + Clocked Space
 
 > Complete developer spec for DSP updates, UI aesthetic alignment, and all four visualizations (A/B/C/D).
 

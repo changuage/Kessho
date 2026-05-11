@@ -474,20 +474,25 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       b2: 0,
       a1: 0,
       a2: 0,
+      stages: 1,
       left: { x1: 0, x2: 0, y1: 0, y2: 0 },
       right: { x1: 0, x2: 0, y1: 0, y2: 0 },
+      left2: { x1: 0, x2: 0, y1: 0, y2: 0 },
+      right2: { x1: 0, x2: 0, y1: 0, y2: 0 },
     };
   }
 
-  configurePadPostChain(chain, postLpfHz, stereoWidth) {
+  configurePadPostChain(chain, postLpfHz, stereoWidth, postLpfStages = 1) {
     const nextPostLpfHz = Number(postLpfHz);
     const nextStereoWidth = Number(stereoWidth);
+    const nextStages = Math.round(Number(postLpfStages) || 1);
     chain.postLpfHz = Number.isFinite(nextPostLpfHz)
       ? Math.max(20, Math.min(20000, nextPostLpfHz))
       : chain.postLpfHz;
     chain.stereoWidth = Number.isFinite(nextStereoWidth)
       ? Math.max(0, Math.min(1, nextStereoWidth))
       : chain.stereoWidth;
+    chain.stages = Math.max(1, Math.min(2, nextStages));
     this.updatePadPostLpfCoefficients(chain);
   }
 
@@ -532,8 +537,12 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     const rightOffset = rightPtr >> 2;
 
     for (let i = 0; i < frames; i += 1) {
-      const filteredLeft = this.processPadPostLpfSample(chain, chain.left, this.heap[leftOffset + i]);
-      const filteredRight = this.processPadPostLpfSample(chain, chain.right, this.heap[rightOffset + i]);
+      let filteredLeft = this.processPadPostLpfSample(chain, chain.left, this.heap[leftOffset + i]);
+      let filteredRight = this.processPadPostLpfSample(chain, chain.right, this.heap[rightOffset + i]);
+      if ((chain.stages || 1) > 1) {
+        filteredLeft = this.processPadPostLpfSample(chain, chain.left2, filteredLeft);
+        filteredRight = this.processPadPostLpfSample(chain, chain.right2, filteredRight);
+      }
       this.heap[leftOffset + i] = filteredLeft * direct + filteredRight * cross;
       this.heap[rightOffset + i] = filteredLeft * cross + filteredRight * direct;
     }
@@ -1302,8 +1311,11 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
   }
 
   stepSourceGainRamp(frames) {
-    if (this.sourceGainRampRemainingSamples <= 0) return;
-    const progress = Math.min(1, frames / this.sourceGainRampRemainingSamples);
+    const remainingSamples = Number.isFinite(this.sourceGainRampRemainingSamples)
+      ? this.sourceGainRampRemainingSamples
+      : 0;
+    if (remainingSamples <= 0) return;
+    const progress = Math.min(1, frames / remainingSamples);
     this.sourceDryGain += (this.sourceDryGainTarget - this.sourceDryGain) * progress;
     this.sourceReverbSendGain += (this.sourceReverbSendGainTarget - this.sourceReverbSendGain) * progress;
     this.sourceDelayASendGain += (this.sourceDelayASendGainTarget - this.sourceDelayASendGain) * progress;
@@ -1320,8 +1332,12 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
   }
 
   stepSlotGainRamp(slot, frames) {
-    if (!slot || slot.gainRampRemainingSamples <= 0) return;
-    const progress = Math.min(1, frames / slot.gainRampRemainingSamples);
+    if (!slot) return;
+    const remainingSamples = Number.isFinite(slot.gainRampRemainingSamples)
+      ? slot.gainRampRemainingSamples
+      : 0;
+    if (remainingSamples <= 0) return;
+    const progress = Math.min(1, frames / remainingSamples);
     slot.dryGain += (slot.dryGainTarget - slot.dryGain) * progress;
     slot.reverbSendGain += (slot.reverbSendGainTarget - slot.reverbSendGain) * progress;
     slot.delayASendGain += (slot.delayASendGainTarget - slot.delayASendGain) * progress;
@@ -1713,11 +1729,13 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       this.padPostChains[0],
       message.pad1PostLpfHz,
       message.pad1StereoWidth,
+      message.postLpfStages,
     );
     this.configurePadPostChain(
       this.padPostChains[1],
       message.pad2PostLpfHz,
       message.pad2StereoWidth,
+      message.postLpfStages,
     );
 
     const noteKey = typeof message.noteKey === 'string' ? message.noteKey : '';
@@ -1862,6 +1880,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       slot.postChain,
       message.pad1PostLpfHz,
       message.pad1StereoWidth,
+      message.postLpfStages,
     );
 
     const noteKey = typeof message.noteKey === 'string' ? message.noteKey : '';
@@ -2142,7 +2161,6 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
 
   addExternalDelayBInput(inputs, frames) {
     if (!this.delayBModule || !this.externalDelayBInputActive) return;
-        this.stepSourceGainRamp(frames);
     this.addExternalInputToPlanarInput(
       inputs,
       KESSHO_CORE_INPUT_DELAY_B,
@@ -2715,6 +2733,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
           if (!ok) {
             this.postQueueFailure('sourceModuleProcess');
           }
+          this.stepSourceGainRamp(frames);
           if (this.delayAModule) {
             const delayInputLeftOffset = this.delayAInputLeftPtr >> 2;
             const delayInputRightOffset = this.delayAInputRightPtr >> 2;

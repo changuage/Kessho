@@ -1,0 +1,2 @@
+#include "KesshoCore/KesshoProductAssets.h"
+

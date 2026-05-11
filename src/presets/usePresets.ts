@@ -1,7 +1,7 @@
 // src/presets/usePresets.ts
 // Phase 1 — React hook for preset CRUD at any level.
 
-import { useState, useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useState, useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import type {
   PresetEntry,
   PresetFamilySummary,
@@ -85,6 +85,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
   const [presets, setPresets] = useState<PresetSummary[]>([]);
   const [families, setFamilies] = useState<PresetFamilySummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const emptySharedListRetryCountRef = useRef(0);
   const store = useSyncExternalStore(subscribePresetStore, getPresetStore, getPresetStore);
   const paramLevel = levelToParamLevel(type);
   const storeScope = scope;
@@ -92,14 +93,35 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await store.list(type, storeScope);
-      setPresets(list);
-      setFamilies(buildPresetFamilies(list));
+      const list = await getPresetStore().list(type, storeScope);
+      const visibleList = SHARED_PRESET_TEST_MODE
+        ? list.filter((preset) => !!preset.remoteId)
+        : list;
+      setPresets(visibleList);
+      setFamilies(buildPresetFamilies(visibleList));
+      if (SHARED_PRESET_TEST_MODE && visibleList.length === 0 && emptySharedListRetryCountRef.current < 4) {
+        const retryAttempt = ++emptySharedListRetryCountRef.current;
+        window.setTimeout(() => {
+          void refresh();
+        }, retryAttempt * 1500);
+      } else if (visibleList.length > 0) {
+        emptySharedListRetryCountRef.current = 0;
+      }
     } catch (e) {
       console.warn('Failed to load preset list:', e);
       setFamilies([]);
+      if (SHARED_PRESET_TEST_MODE && emptySharedListRetryCountRef.current < 4) {
+        const retryAttempt = ++emptySharedListRetryCountRef.current;
+        window.setTimeout(() => {
+          void refresh();
+        }, retryAttempt * 1500);
+      }
     }
     setLoading(false);
+  }, [type, storeScope, store]);
+
+  useEffect(() => {
+    emptySharedListRetryCountRef.current = 0;
   }, [type, storeScope, store]);
 
   // Load on mount and when scope changes
@@ -121,7 +143,8 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     const now = Date.now();
 
     // Check if preset already exists → push new version
-    const existing = await store.load(type, name, storeScope);
+    const activeStore = getPresetStore();
+    const existing = await activeStore.load(type, name, storeScope);
     const shouldForkExisting = !SHARED_PRESET_TEST_MODE && !!existing && (existing.author === 'factory' || existing.library === 'stock');
     const existingVersion = existing?.versions.find(v => v.v === existing.currentVersion)
       || existing?.versions[existing.versions.length - 1];
@@ -173,7 +196,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
       if (!existing.remoteId) {
         compressVersions(existing);
       }
-      await store.save(existing);
+      await activeStore.save(existing);
     } else {
       // New preset
       const entry: PresetEntry = {
@@ -204,14 +227,15 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
         createdAt: now,
         updatedAt: now,
       };
-      await store.save(entry);
+      await activeStore.save(entry);
     }
 
     await refresh();
   }, [type, scope, storeScope, paramLevel, store, refresh, options]);
 
   const load = useCallback(async (name: string, version?: number): Promise<PresetEntry | null> => {
-    const entry = await store.load(type, name, storeScope, version);
+    const activeStore = getPresetStore();
+    const entry = await activeStore.load(type, name, storeScope, version);
     // Lazy migration: compress uncompressed user presets on first load
     if (entry && !entry.remoteId && entry.author === 'user' && entry.versions.length > 1) {
       const needsCompression = entry.versions.some(
@@ -219,16 +243,17 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
       );
       if (needsCompression) {
         compressVersions(entry);
-        store.save(entry).catch(() => {});
+        activeStore.save(entry).catch(() => {});
       }
     }
     return entry;
   }, [type, storeScope, store]);
 
   const remove = useCallback(async (name: string): Promise<boolean> => {
-    const entry = await store.load(type, name, storeScope);
+    const activeStore = getPresetStore();
+    const entry = await activeStore.load(type, name, storeScope);
     if (!entry) return false;
-    await store.delete(type, name, storeScope);
+    await activeStore.delete(type, name, storeScope);
     await refresh();
     return true;
   }, [type, storeScope, store, refresh]);
@@ -249,7 +274,8 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
   }, [paramLevel, scope, options]);
 
   const updateMetadata = useCallback(async (name: string, meta: Partial<PresetIdentityMetadata>) => {
-    const entry = await store.load(type, name, storeScope);
+    const activeStore = getPresetStore();
+    const entry = await activeStore.load(type, name, storeScope);
     if (!entry) return;
     if (meta.rating !== undefined) entry.rating = meta.rating;
     if (meta.description !== undefined) entry.description = meta.description;
@@ -257,7 +283,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     else if (SHARED_PRESET_TEST_MODE) entry.visibility = 'public';
     if (meta.creator !== undefined) entry.creator = meta.creator;
     entry.updatedAt = Date.now();
-    await store.save(entry);
+    await activeStore.save(entry);
     await refresh();
   }, [type, storeScope, store, refresh]);
 

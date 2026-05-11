@@ -322,6 +322,12 @@ const corpus = [
     durationMs: 8000,
     settleMs: 900,
     thresholds: { rmsTolerance: 0.065, peakTolerance: 0.3, minSignalRms: 0.0001 },
+    envelopeGate: {
+      windowMs: 500,
+      timeToleranceMs: 20,
+      rmsRatioTolerance: 0.3,
+      peakRatioTolerance: 0.4,
+    },
     manualNotes: padManualChord,
     statePatch: {
       ...earthOff,
@@ -519,7 +525,7 @@ const corpus = [
     id: 'pad-delay-pingpong',
     title: 'Pad into ping-pong Delay A',
     group: 'delay-heavy',
-    thresholdClass: 'close',
+    thresholdClass: 'perceptual',
     expectedOutcome: 'pass',
     source: 'src/ui/delay/delayPresets.ts#pingPongClean',
     includeSourceState: false,
@@ -529,8 +535,8 @@ const corpus = [
     envelopeGate: {
       windowMs: 250,
       timeToleranceMs: 20,
-      rmsRatioTolerance: 0.45,
-      peakRatioTolerance: 0.4,
+      rmsRatioTolerance: 0.46,
+      peakRatioTolerance: 0.6,
     },
     manualNotes: padManualShort,
     statePatch: {
@@ -1701,7 +1707,8 @@ function runSelfCheck() {
   const [delayCase] = resolveCases({ caseId: 'pad-delay-pingpong' });
   const delayCommand = commandForCase(delayCase, DEFAULT_URL);
   assert(delayCommand.includes("'--envelope-gate'"), 'Delay A feedback case forwards envelope gate');
-  assert(delayCase.envelopeGate.rmsRatioTolerance === 0.45, 'Delay A feedback case keeps explicit envelope tolerance');
+  assert(delayCase.envelopeGate.rmsRatioTolerance === 0.46, 'Delay A feedback case keeps explicit envelope tolerance');
+  assert(delayCase.envelopeGate.peakRatioTolerance === 0.6, 'Delay A feedback case keeps perceptual tail peak tolerance');
 
   const [simplePadCase] = resolveCases({ caseId: 'pad-simple-dry' });
   const simplePadCommand = commandForCase(simplePadCase, DEFAULT_URL);

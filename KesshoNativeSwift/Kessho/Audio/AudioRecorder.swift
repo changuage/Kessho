@@ -36,8 +36,8 @@ class AudioRecorder {
     // MARK: - Properties
     
     private weak var engine: AVAudioEngine?
-    private var masterMixer: AVAudioMixerNode?
-    private var stemMixers: [RecordingStem: AVAudioMixerNode] = [:]
+    private var masterNode: AVAudioNode?
+    private var stemNodes: [RecordingStem: AVAudioNode] = [:]
     
     // Recording files
     private var mainRecordingFile: AVAudioFile?
@@ -79,19 +79,30 @@ class AudioRecorder {
         reverbNode: AVAudioNode?
     ) {
         self.engine = engine
-        self.masterMixer = masterMixer
+        self.masterNode = masterMixer
+        stemNodes.removeAll()
         
-        stemMixers[.synth] = synthMixer
-        stemMixers[.lead] = leadMixer
-        stemMixers[.drums] = drumMixer
-        stemMixers[.waves] = oceanMixer
-        stemMixers[.granular] = granularMixer
+        stemNodes[.synth] = synthMixer
+        stemNodes[.lead] = leadMixer
+        stemNodes[.drums] = drumMixer
+        stemNodes[.waves] = oceanMixer
+        stemNodes[.granular] = granularMixer
         
         // Reverb is a special case - we'd need the reverb output node
         // For now, we'll skip reverb stem if node is not a mixer
         if let reverbMixer = reverbNode as? AVAudioMixerNode {
-            stemMixers[.reverb] = reverbMixer
+            stemNodes[.reverb] = reverbMixer
         }
+    }
+
+    func configureProductCore(
+        engine: AVAudioEngine,
+        masterNode: AVAudioNode,
+        stemNodes: [RecordingStem: AVAudioNode]
+    ) {
+        self.engine = engine
+        self.masterNode = masterNode
+        self.stemNodes = stemNodes
     }
     
     // MARK: - Recording Control
@@ -137,7 +148,7 @@ class AudioRecorder {
         }
         
         // Setup main recording
-        if recordMain, let masterMixer = masterMixer {
+        if recordMain, let masterNode = masterNode {
             let mainURL = recordingsPath.appendingPathComponent("kessho-\(timestamp).wav")
             do {
                 mainRecordingFile = try AVAudioFile(
@@ -146,7 +157,7 @@ class AudioRecorder {
                 )
                 
                 // Install tap on master mixer
-                masterMixer.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, time in
+                masterNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, time in
                     self?.writeBuffer(buffer, to: self?.mainRecordingFile)
                 }
                 
@@ -158,7 +169,7 @@ class AudioRecorder {
         
         // Setup stem recordings
         for stem in enabledStems {
-            guard let mixer = stemMixers[stem] else { continue }
+            guard let node = stemNodes[stem] else { continue }
             
             let stemURL = recordingsPath.appendingPathComponent("kessho-\(timestamp)-\(stem.rawValue).wav")
             do {
@@ -169,7 +180,7 @@ class AudioRecorder {
                 stemRecordingFiles[stem] = stemFile
                 
                 // Install tap on stem mixer
-                mixer.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, time in
+                node.installTap(onBus: 0, bufferSize: 512, format: format) { [weak self] buffer, time in
                     self?.writeBuffer(buffer, to: self?.stemRecordingFiles[stem])
                 }
                 
@@ -208,8 +219,8 @@ class AudioRecorder {
         durationTimer = nil
         
         // Remove taps and close files
-        if recordMain, let masterMixer = masterMixer {
-            masterMixer.removeTap(onBus: 0)
+        if recordMain, let masterNode = masterNode {
+            masterNode.removeTap(onBus: 0)
             if let file = mainRecordingFile {
                 savedURLs.append(file.url)
                 print("AudioRecorder: Saved main recording: \(file.url.lastPathComponent)")
@@ -218,8 +229,8 @@ class AudioRecorder {
         }
         
         for stem in enabledStems {
-            if let mixer = stemMixers[stem] {
-                mixer.removeTap(onBus: 0)
+            if let node = stemNodes[stem] {
+                node.removeTap(onBus: 0)
             }
             if let file = stemRecordingFiles[stem] {
                 savedURLs.append(file.url)

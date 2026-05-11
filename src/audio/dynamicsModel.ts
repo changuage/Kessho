@@ -132,6 +132,9 @@ export function normalizeDynamicsDegradeAliases(data: Record<string, unknown>): 
       next[canonical] = next[legacy];
     }
   }
+  if (!('degradeHp' in next) && next.characterWetHp !== undefined) {
+    next.degradeHp = next.characterWetHp;
+  }
   return next;
 }
 
@@ -144,12 +147,6 @@ function clampUnitInterval(value: number | undefined): number {
 
 function mapUnitToLogFrequency(value: number, minHz: number, maxHz: number): number {
   const t = clampUnitInterval(value);
-  return minHz * Math.pow(maxHz / minHz, t);
-}
-
-function mapOptionalLogFrequency(value: number, minHz: number, maxHz: number, offHz = 8): number {
-  const t = clampUnitInterval(value);
-  if (t <= 0.0001) return offHz;
   return minHz * Math.pow(maxHz / minHz, t);
 }
 
@@ -217,8 +214,8 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
   const characterMix = characterEnabled ? clampUnitInterval(state.characterMix) : 0;
   const characterBias = characterEnabled ? clampUnitInterval(state.characterBias ?? defaults.bias) : defaults.bias;
   const characterLpgAmount = characterEnabled ? clampUnitInterval(state.characterLpgAmount ?? defaults.lpgAmount) : defaults.lpgAmount;
-  const characterWetHp = characterEnabled ? clampUnitInterval(state.characterWetHp ?? defaults.wetHp) : defaults.wetHp;
   const degradeMix = degradeEnabled ? clampUnitInterval(state.degradeMix ?? 0) : 0;
+  const sharedFilterActive = characterEnabled || degradeEnabled;
   const baseWet = clampUnitInterval(1 - (1 - characterMix) * (1 - degradeMix));
   const degradeInfluence = Math.sqrt(degradeMix);
   const baseDry = 1 - baseWet;
@@ -392,11 +389,11 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     rate * (0.05 + shallowFlavor * 0.09 + abyssFlavor * 0.06 + cleanFlavor * 0.08)
   ) * abyssPitchMotionTrim;
   const corrosion = clampUnitInterval(rawCorrosion * degradeInfluence * 0.72 + degradeGeneration * 0.035 + shapedAlias * 0.025);
-  const degradeHp = (degradeEnabled ? clampUnitInterval(state.degradeHp) : 0) * degradeInfluence;
-  const degradeLp = 1 - (1 - (degradeEnabled ? clampUnitInterval(state.degradeLp) : 1)) * degradeInfluence;
-  const hp = Math.max(degradeHp, modeActive ? defaults.hp : 0, damage * 0.025 + corrosion * 0.012);
+  const sharedHp = sharedFilterActive ? clampUnitInterval(state.degradeHp) : 0;
+  const sharedLp = sharedFilterActive ? clampUnitInterval(state.degradeLp) : 1;
+  const hp = Math.max(sharedHp, damage * 0.025 + corrosion * 0.012);
   const lpCeiling = Math.max(0.08, 1 - damage * 0.2 - corrosion * 0.1 - mediaWear * degradeMix * 0.08 - digitalDamage * 0.05 - modLp * 0.08);
-  const lp = Math.max(0.08, Math.min(degradeLp, modeActive ? defaults.lp : 1, lpCeiling));
+  const lp = Math.max(0.08, Math.min(sharedLp, lpCeiling));
   const resonance = characterEnabled ? Math.max(clampUnitInterval(state.characterResonance), modeActive ? defaults.resonance : 0.2) : 0.2;
   const damageActivity = degradeEnabled
     ? clampUnitInterval(rawDegradeAge + rawDegradeGeneration + rawDegradeAlias + rawCorrosion + clampUnitInterval(state.degradeNoise) + clampUnitInterval(state.degradeSaturation))
@@ -473,13 +470,18 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     : shallowFlavor
       ? mapWaterBiasFloor(characterBias, 140, 220, 1800)
       : mapWaterBiasFloor(characterBias, 130, 205, 1200);
-  const lowpassCeilingHz = mapUnitToLogFrequency(lp, 1000, 20000) * (0.82 + tone * 0.38) * (1 - contribution.bbdColor * 0.1) * (1 - modLp * 0.05);
+  const lowpassCeilingHz = Math.min(
+    20000,
+    nyquistSafeLp,
+    mapUnitToLogFrequency(lp, 1000, 20000) * (0.82 + tone * 0.38) * (1 - contribution.bbdColor * 0.1) * (1 - modLp * 0.05),
+  );
   const lowpassBaseHz = Math.min(
     20000,
     nyquistSafeLp,
+    lowpassCeilingHz,
     biasFloorHz * (0.9 + tone * 0.18) * (1 - contribution.bbdColor * 0.05),
   );
-  const lowpassOpenHeadroomHz = Math.max(0, Math.min(20000, nyquistSafeLp, lowpassCeilingHz) - lowpassBaseHz);
+  const lowpassOpenHeadroomHz = Math.max(0, lowpassCeilingHz - lowpassBaseHz);
   const lowpassHz = Math.min(
     20000,
     nyquistSafeLp,
@@ -560,12 +562,7 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     flutterRandomDepth: degradeMix * clampUnitInterval(0.2 + modFlutter * 1.8 + contribution.flutterJitter * 0.5 + corrosion * 0.25) * (0.00004 + flutter * 0.00082 + modFlutter * 0.00048),
     wowDepth,
     flutterDepth,
-    highpassHz: modeActive
-      ? mapOptionalLogFrequency(characterWetHp, 20, shallowFlavor ? 320 : 260)
-      : Math.max(
-          mapUnitToLogFrequency(hp, 20, 2400),
-          mapOptionalLogFrequency(characterWetHp, 20, 420),
-        ),
+    highpassHz: mapUnitToLogFrequency(hp, 20, 2400),
     highpassQ: 0.7 + resonance * 1.5,
     allpassAFrequency: 260 + shallowFlavor * 520 + depth * 380 + age * 240,
     allpassAQ: 0.25 + contribution.bbdColor * 1.4 + shallowFlavor * 0.1 + resonance * (abyssFlavor ? 0.18 : 1.1),

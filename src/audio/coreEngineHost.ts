@@ -15,6 +15,7 @@ import { delayNoteToSeconds } from './delayBuses';
 import { resolveDynamicsTargets } from './dynamicsModel';
 import { toDynamicsCharacterParamArray } from './dynamicsCharacterParams';
 import { toKesshoCoreMidiEventPayload } from './coreMidiEvents';
+import { EarthTexturePlayer } from './earthTexturePlayer';
 import {
   applyDistanceValue,
   applyLeadDistanceEnvelope,
@@ -48,10 +49,19 @@ import type { DrumEuclidEvolveConfig, DrumVoiceType } from './drumSynth';
 import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from './outputTrims';
 import { computeGranularMacroModel } from './granularMacroModel';
 import { getPadPreset, morphPadPresets, PAD1_TO_PAD2_KEY } from './padPresets';
-import { createHarmonyState, getEffectiveTension, type HarmonyParams, type HarmonyState } from './harmony';
-import { createRng, getUtcBucket } from './rng';
+import { createHarmonyState, getEffectiveTension, updateHarmonyState, type HarmonyParams, type HarmonyState } from './harmony';
+import { computeSeed, createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange, midiToFreq } from './scales';
-import { getEffectiveSequencerBpm, getPhraseDurationForClockSource, sampleGlobalWalkPosition, type TransportDebugSnapshot } from './transport';
+import {
+  getEffectiveSequencerBpm,
+  getPhraseDurationForClockSource,
+  getTimeUntilNextBoundaryWall,
+  getTransportMetrics,
+  resolveProgressionPhraseClockSource,
+  sampleGlobalWalkPosition,
+  type TransportAnchors,
+  type TransportDebugSnapshot,
+} from './transport';
 import { morphWaterPresets, type WaterPresetState } from './waterPresets';
 import {
   choosePianoSampleVariant,
@@ -85,6 +95,72 @@ const resolvePublicSampleUrl = (relativePath: string): string => {
   return new URL(`samples/${encodedPath}`, root).toString();
 };
 
+const createInactiveHostExternalInputActivity = (): CoreHostExternalInputActivity => ({
+  reverbActive: false,
+  delayAActive: false,
+  delayBActive: false,
+  granularActive: false,
+});
+
+const mergeHostExternalInputActivity = (
+  left: CoreHostExternalInputActivity,
+  right: CoreHostExternalInputActivity,
+): CoreHostExternalInputActivity => ({
+  reverbActive: left.reverbActive || right.reverbActive,
+  delayAActive: left.delayAActive || right.delayAActive,
+  delayBActive: left.delayBActive || right.delayBActive,
+  granularActive: left.granularActive || right.granularActive,
+});
+
+function createCoreHostHaasWidenedBus(
+  ctx: AudioContext,
+  input: AudioNode,
+  options: {
+    delayMs: number;
+    sideGain: number;
+    centerGain: number;
+    pan?: number;
+  },
+): GainNode {
+  const output = ctx.createGain();
+  output.gain.value = 1;
+
+  const center = ctx.createGain();
+  center.gain.value = options.centerGain;
+  input.connect(center);
+  center.connect(output);
+
+  const panAmount = options.pan ?? 1;
+
+  const leftGain = ctx.createGain();
+  leftGain.gain.value = options.sideGain;
+  const leftPanner = ctx.createStereoPanner();
+  leftPanner.pan.value = -panAmount;
+  input.connect(leftGain);
+  leftGain.connect(leftPanner);
+  leftPanner.connect(output);
+
+  const rightDelay = ctx.createDelay(0.05);
+  rightDelay.delayTime.value = Math.max(0, Math.min(0.05, options.delayMs / 1000));
+  const rightGain = ctx.createGain();
+  rightGain.gain.value = options.sideGain;
+  const rightPanner = ctx.createStereoPanner();
+  rightPanner.pan.value = panAmount;
+  input.connect(rightDelay);
+  rightDelay.connect(rightGain);
+  rightGain.connect(rightPanner);
+  rightPanner.connect(output);
+
+  return output;
+}
+
+function coreHostBiquadFilterType(value: unknown): BiquadFilterType {
+  return value === 'lowpass' || value === 'highpass' || value === 'bandpass' || value === 'notch' ||
+    value === 'lowshelf' || value === 'highshelf' || value === 'peaking' || value === 'allpass'
+    ? value
+    : 'lowpass';
+}
+
 type PerfMetrics = {
   avgPercent: number;
   peakPercent: number;
@@ -114,6 +190,27 @@ type ActiveHostPianoVoice = {
   filter: BiquadFilterNode | null;
 };
 
+type CoreHostExternalInputActivity = {
+  reverbActive: boolean;
+  delayAActive: boolean;
+  delayBActive: boolean;
+  granularActive: boolean;
+};
+
+type HostEarthTextureRuntime = {
+  player: EarthTexturePlayer;
+  sourceBus: GainNode;
+  gateGain: GainNode;
+  preFaderBus: GainNode;
+  levelGain: GainNode;
+  reverbSend: GainNode;
+  delayASend: GainNode;
+  delayBSend: GainNode;
+  granularSend: GainNode;
+  filter: BiquadFilterNode | null;
+  stopTimer: number | null;
+};
+
 type PreviewNote = {
   frequency: number;
   velocity: number;
@@ -136,6 +233,7 @@ type PreviewSourceConfig = {
   pad1StereoWidth: number;
   pad2PostLpfHz: number;
   pad2StereoWidth: number;
+  postLpfStages?: number;
   dryGain?: number;
   reverbSendGain?: number;
   delayASendGain?: number;
@@ -156,6 +254,7 @@ type CoreAuxSourceSlot = 'lead' | 'drum' | 'soundscapes';
 
 type PreviewSourceGroup = {
   synthEuclid: CoreSynthEuclidPreview;
+  hostPiano: CoreHostPianoPreview;
   primary: PreviewSourceConfig | null;
   aux: Array<{
     slot: CoreAuxSourceSlot;
@@ -167,6 +266,21 @@ type CoreSynthEuclidGeneratedNote = PreviewNote & {
   source: string;
   midi: number;
   laneIndex: number;
+};
+
+type CoreLeadRandomPreview = {
+  leadChords: CoreSynthEuclidGeneratedNote[][];
+  pianoChords: CoreSynthEuclidGeneratedNote[][];
+  loopSeconds: number;
+  initialStartDelaySeconds: number;
+  noteKey: string;
+};
+
+type CoreHostPianoPreview = {
+  chords: PreviewNote[][];
+  loopSeconds: number;
+  initialStartDelaySeconds: number;
+  noteKey: string;
 };
 
 type CoreSynthEuclidStepOverrides = {
@@ -1056,6 +1170,19 @@ function coreEuclideanUsesPianoSource(state: Record<string, unknown>): boolean {
   });
 }
 
+function coreLeadRandomSource(state: Record<string, unknown>): 'lead1' | 'lead2' | 'piano' {
+  const source = state.leadRandomSource;
+  return source === 'lead2' || source === 'piano' ? source : 'lead1';
+}
+
+function coreIsLeadRandomSourceEnabled(state: Record<string, unknown>): boolean {
+  if (!booleanValue(state.leadRandomEnabled, false)) return false;
+  const source = coreLeadRandomSource(state);
+  if (source === 'lead2') return booleanValue(state.lead2Enabled, false);
+  if (source === 'piano') return booleanValue(state.pianoEnabled, false);
+  return booleanValue(state.leadEnabled, false);
+}
+
 function coreIsLead1RouteActive(state: Record<string, unknown>): boolean {
   return booleanValue(state.leadEnabled, false) || coreEuclideanUsesLead1Source(state);
 }
@@ -1228,27 +1355,121 @@ function createCorePreviewHarmonyState(sliderState: SliderState): HarmonyState {
   );
 }
 
-function createInitialPadPreviewFrequencies(sliderState: SliderState): number[] {
-  const harmonyState = createCorePreviewHarmonyState(sliderState);
-  const octaveMultiplier = 2 ** boundedInteger(sliderState.synthOctave, 0, -2, 2);
-  return harmonyState.currentChord.frequencies.map((frequency) => frequency * octaveMultiplier);
+function corePreviewHarmonySeedMaterial(sliderState: SliderState): string {
+  const seedWindow = sliderState.seedWindow === 'day' ? 'day' : 'hour';
+  const bucket = getUtcBucket(seedWindow);
+  return `${bucket}|${JSON.stringify(sliderState)}|E_ROOT`;
 }
 
-function createPadPreviewVoiceDelays(sliderState: SliderState): number[] {
+function getCoreHarmonyPhraseSeconds(sliderState: SliderState): number {
+  return getPhraseDurationForClockSource(
+    sliderState,
+    sliderState.harmonyClockSource ?? 'globalPhrase',
+  );
+}
+
+function getCoreHarmonyTickSeconds(sliderState: SliderState): number {
+  const phraseSeconds = getCoreHarmonyPhraseSeconds(sliderState);
+  const chordRateSeconds = boundedNumber(sliderState.chordRate, 32, 1, 128);
+  if (chordRateSeconds < phraseSeconds) {
+    const chordsPerPhrase = Math.max(2, Math.round(phraseSeconds / chordRateSeconds));
+    return phraseSeconds / chordsPerPhrase;
+  }
+  return phraseSeconds;
+}
+
+function getCoreHarmonyInitialStartDelaySeconds(
+  sliderState: SliderState,
+  anchors: TransportAnchors | null,
+): number {
+  if ((sliderState.harmonySyncPolicy ?? 'nextPhrase') !== 'nextPhrase' || !anchors) return 0;
+  return getTimeUntilNextBoundaryWall(
+    sliderState.harmonyClockSource ?? 'globalPhrase',
+    getCoreHarmonyTickSeconds(sliderState),
+    anchors,
+  );
+}
+
+function getCoreHarmonyInitialChordLeadSeconds(
+  sliderState: SliderState,
+  anchors: TransportAnchors | null,
+): number {
+  const tickSeconds = getCoreHarmonyTickSeconds(sliderState);
+  const nextBoundarySeconds = getCoreHarmonyInitialStartDelaySeconds(sliderState, anchors);
+  if (nextBoundarySeconds <= 0.02 || nextBoundarySeconds >= tickSeconds) return 0;
+  return Math.max(0, tickSeconds - nextBoundarySeconds);
+}
+
+function getCoreHarmonyPreviewTickCount(sliderState: SliderState): number {
+  const phraseSeconds = getCoreHarmonyPhraseSeconds(sliderState);
+  const chordRateSeconds = boundedNumber(sliderState.chordRate, 32, 1, 128);
+  const chordsPerPhrase = chordRateSeconds < phraseSeconds
+    ? Math.max(2, Math.round(phraseSeconds / chordRateSeconds))
+    : 1;
+  const phrasesPerChord = Math.max(1, Math.round(chordRateSeconds / phraseSeconds));
+  const progressionSteps = sliderState.chordProgressionEnabled
+    ? Math.max(1, boundedInteger(sliderState.chordProgressionSteps, 4, 1, 16)) *
+      Math.max(1, boundedInteger(sliderState.chordProgressionPhraseMultiplier, 1, 1, 8))
+    : 1;
+  const driftPhrases = sliderState.cofDriftEnabled
+    ? Math.max(1, boundedInteger(sliderState.cofDriftRate, 2, 1, 32)) *
+      Math.max(2, boundedInteger(sliderState.cofDriftRange, 3, 1, 6) * 2)
+    : 1;
+  const phraseSpan = clamp(Math.max(4, phrasesPerChord * 4, progressionSteps, driftPhrases), 4, 64);
+  return clamp(Math.ceil(phraseSpan * chordsPerPhrase), 2, 128);
+}
+
+function advanceCorePreviewHarmonyState(
+  harmonyState: HarmonyState,
+  sliderState: SliderState,
+  tickIndex: number,
+): HarmonyState {
+  const phraseSeconds = getCoreHarmonyPhraseSeconds(sliderState);
+  const tickSeconds = getCoreHarmonyTickSeconds(sliderState);
+  const ticksPerPhrase = Math.max(1, Math.round(phraseSeconds / tickSeconds));
+  const phraseIndex = Math.floor(tickIndex / ticksPerPhrase);
+  const isPhraseBoundary = tickIndex % ticksPerPhrase === 0;
+  return updateHarmonyState(
+    harmonyState,
+    corePreviewHarmonySeedMaterial(sliderState),
+    phraseIndex,
+    boundedNumber(sliderState.tension, 0.3, 0, 1),
+    boundedNumber(sliderState.chordRate, 32, 1, 128),
+    boundedNumber(sliderState.voicingSpread, 0.5, 0, 1),
+    boundedNumber(sliderState.detune, 8, 0, 50),
+    sliderState.scaleMode === 'manual' ? 'manual' : 'auto',
+    typeof sliderState.manualScale === 'string' ? sliderState.manualScale : 'Major (Ionian)',
+    boundedInteger(sliderState.rootNote, 4, 0, 11),
+    phraseSeconds,
+    getCorePreviewHarmonyParams(sliderState),
+    phraseIndex,
+    isPhraseBoundary,
+  );
+}
+
+function createPadPreviewVoiceDelays(sliderState: SliderState, seedSuffix = ''): number[] {
   const seedWindow = sliderState.seedWindow === 'day' ? 'day' : 'hour';
   const bucket = getUtcBucket(seedWindow);
   const rng = createRng(`${bucket}|E_ROOT`);
+  const chordIndex = Number(/^:(\d+)$/.exec(seedSuffix)?.[1] ?? 0);
+  for (let skip = 0; skip < chordIndex * PAD_VOICE_COUNT; skip += 1) {
+    rng();
+  }
   const waveSpreadSeconds =
     boundedNumber(sliderState.waveSpread, 0.125, 0, 1) *
     boundedNumber(sliderState.chordRate, 32, 1, 128);
   return Array.from({ length: 6 }, () => rng() * waveSpreadSeconds).sort((a, b) => a - b);
 }
 
-function createPadPreviewChords(sliderState: SliderState, velocity: number): PreviewNote[][] {
+function createPadPreviewChordNotes(
+  sliderState: SliderState,
+  velocity: number,
+  rawFrequencies: readonly number[],
+  seedSuffix = '',
+): PreviewNote[] {
   const state = sliderState as unknown as Record<string, unknown>;
   const fallbackRoot = boundedInteger(state.rootNote, 4, 0, 11);
   const fallbackRootMidi = 48 + fallbackRoot;
-  const rawFrequencies = createInitialPadPreviewFrequencies(sliderState);
   const fallbackFrequencies = [0, 7, 10, 14, 17, 24].map((interval) => midiToFreq(fallbackRootMidi + interval));
   const frequencies = rawFrequencies.length > 0 ? rawFrequencies : fallbackFrequencies;
   const pad2Assign = booleanValue(state.pad2Enabled, false)
@@ -1256,12 +1477,12 @@ function createPadPreviewChords(sliderState: SliderState, velocity: number): Pre
     : 0;
   const euclidVoiceMask = coreSynthEuclidPadVoiceMask(state);
   const voiceMask = boundedInteger(state.synthVoiceMask, 63, 1, 63) & ~pad2Assign & ~euclidVoiceMask;
-  if (voiceMask === 0) return [[]];
+  if (voiceMask === 0) return [];
   const enabledFrequencies = frequencies
     .slice(0, 6)
     .filter((_, index) => (voiceMask & (1 << index)) !== 0);
   const frequencyPool = enabledFrequencies.length > 0 ? enabledFrequencies : [frequencies[0] ?? midiToFreq(fallbackRootMidi)];
-  const delays = createPadPreviewVoiceDelays(sliderState);
+  const delays = createPadPreviewVoiceDelays(sliderState, seedSuffix);
   const notes: PreviewNote[] = [];
 
   for (let route = 0; route < 6; route += 1) {
@@ -1278,7 +1499,29 @@ function createPadPreviewChords(sliderState: SliderState, velocity: number): Pre
     });
   }
 
-  return [notes];
+  return notes;
+}
+
+function createPadPreviewChords(sliderState: SliderState, velocity: number): PreviewNote[][] {
+  const octaveMultiplier = 2 ** boundedInteger(sliderState.synthOctave, 0, -2, 2);
+  const tickCount = getCoreHarmonyPreviewTickCount(sliderState);
+  const chords: PreviewNote[][] = [];
+  let harmonyState = createCorePreviewHarmonyState(sliderState);
+
+  for (let tickIndex = 0; tickIndex < tickCount; tickIndex += 1) {
+    if (tickIndex > 0) {
+      harmonyState = advanceCorePreviewHarmonyState(harmonyState, sliderState, tickIndex);
+    }
+    const frequencies = harmonyState.currentChord.frequencies.map((frequency) => frequency * octaveMultiplier);
+    chords.push(createPadPreviewChordNotes(
+      sliderState,
+      velocity,
+      frequencies,
+      tickIndex === 0 ? '' : `:${tickIndex}`,
+    ));
+  }
+
+  return chords.length > 0 ? chords : [[]];
 }
 
 function createEmptySynthEuclidPreview(): CoreSynthEuclidPreview {
@@ -1598,6 +1841,7 @@ function createSynthEuclidPreview(
       formatKeyPart(note.morphOverride),
     ].join(':'))
     .join('|');
+  const timingKey = `synth-euclid:${state.synthEuclidClockSource ?? 'localBeat'}:${state.synthEuclidJoinPolicy ?? 'bar'}:${startDelay.toFixed(4)}:${loopSeconds.toFixed(4)}`;
 
   return {
     padNotes,
@@ -1605,13 +1849,197 @@ function createSynthEuclidPreview(
     pianoNotes,
     loopSeconds,
     initialStartDelaySeconds: startDelay,
-    noteKey: noteKey.length > 0 ? `synth-euclid:${noteKey}` : 'synth-euclid:empty',
+    noteKey: noteKey.length > 0 ? `${timingKey}:${noteKey}` : 'synth-euclid:empty',
+  };
+}
+
+function createEmptyLeadRandomPreview(): CoreLeadRandomPreview {
+  return {
+    leadChords: [],
+    pianoChords: [],
+    loopSeconds: 0,
+    initialStartDelaySeconds: 0,
+    noteKey: 'lead-random:off',
+  };
+}
+
+function createLeadRandomPreview(
+  sliderState: SliderState,
+  anchors: TransportAnchors | null,
+): CoreLeadRandomPreview {
+  const state = sliderState as unknown as Record<string, unknown>;
+  if (!coreIsLeadRandomSourceEnabled(state)) return createEmptyLeadRandomPreview();
+
+  const randomSource = coreLeadRandomSource(state);
+  const seedWindow = sliderState.seedWindow === 'day' ? 'day' : 'hour';
+  const bucket = getUtcBucket(seedWindow);
+  const phraseClock = sliderState.leadRandomClockSource ?? 'globalPhrase';
+  const phraseSeconds = getPhraseDurationForClockSource(sliderState, phraseClock);
+  const density = boundedNumber(state.lead1Density, 0.5, 0.1, 12);
+  const baseOctaveOffset = boundedInteger(state.lead1Octave, 1, -1, 2);
+  const octaveRange = boundedInteger(state.lead1OctaveRange, 2, 1, 4);
+  const baseLow = 64 + baseOctaveOffset * 12;
+  const baseHigh = baseLow + octaveRange * 12;
+  const leadTension = getEffectiveTension(
+    boundedNumber(state.tension, 0.3, 0, 1),
+    state.leadTensionMode === 'locked' || state.leadTensionMode === 'bypass' ? state.leadTensionMode : 'follow',
+    boundedNumber(state.leadTensionValue, 0, -0.5, 0.5),
+  );
+  const chordBias = leadTension < 0 ? 0.9 : 0.9 - leadTension * 0.4;
+  const phraseCount = clamp(
+    Math.max(
+      4,
+      sliderState.chordProgressionEnabled
+        ? boundedInteger(sliderState.chordProgressionSteps, 4, 1, 16) *
+          boundedInteger(sliderState.chordProgressionPhraseMultiplier, 1, 1, 8)
+        : 1,
+      boundedNumber(sliderState.chordRate, 32, 1, 128) > phraseSeconds
+        ? Math.round(boundedNumber(sliderState.chordRate, 32, 1, 128) / phraseSeconds) * 4
+        : 4,
+    ),
+    4,
+    64,
+  );
+  const initialStartDelaySeconds =
+    (sliderState.leadRandomSyncPolicy ?? 'nextPhrase') === 'nextPhrase' && anchors
+      ? getTimeUntilNextBoundaryWall(phraseClock, phraseSeconds, anchors)
+      : 0;
+  let harmonyState = createCorePreviewHarmonyState(sliderState);
+  const leadChords: CoreSynthEuclidGeneratedNote[][] = [];
+  const pianoChords: CoreSynthEuclidGeneratedNote[][] = [];
+
+  for (let phraseIndex = 0; phraseIndex < phraseCount; phraseIndex += 1) {
+    if (phraseIndex > 0) {
+      harmonyState = updateHarmonyState(
+        harmonyState,
+        corePreviewHarmonySeedMaterial(sliderState),
+        phraseIndex,
+        boundedNumber(sliderState.tension, 0.3, 0, 1),
+        boundedNumber(sliderState.chordRate, 32, 1, 128),
+        boundedNumber(sliderState.voicingSpread, 0.5, 0, 1),
+        boundedNumber(sliderState.detune, 8, 0, 50),
+        sliderState.scaleMode === 'manual' ? 'manual' : 'auto',
+        typeof sliderState.manualScale === 'string' ? sliderState.manualScale : 'Major (Ionian)',
+        boundedInteger(sliderState.rootNote, 4, 0, 11),
+        getCoreHarmonyPhraseSeconds(sliderState),
+        getCorePreviewHarmonyParams(sliderState),
+        phraseIndex,
+        true,
+      );
+    }
+
+    const rng = createRng(`${bucket}|E_ROOT|core-lead-random|phrase:${phraseIndex}`);
+    const availableNotes = getScaleNotesInRange(
+      harmonyState.scaleFamily,
+      Math.max(24, baseLow),
+      Math.min(108, baseHigh),
+      harmonyState.effectiveRoot,
+    );
+    const notesThisPhrase = Math.max(1, Math.round(density * 3 + rng() * 2));
+    const phraseLeadNotes: CoreSynthEuclidGeneratedNote[] = [];
+    const phrasePianoNotes: CoreSynthEuclidGeneratedNote[] = [];
+
+    for (let noteIndex = 0; noteIndex < notesThisPhrase; noteIndex += 1) {
+      if (availableNotes.length === 0) continue;
+      const midi = pickCoreChordWeightedNote(rng, availableNotes, harmonyState.currentChord?.midiNotes, chordBias);
+      const frequency = midiToFreq(midi);
+      const velocity = 0.5 + rng() * 0.4;
+      const delaySeconds = rng() * phraseSeconds;
+
+      if (randomSource === 'piano') {
+        phrasePianoNotes.push({
+          source: 'piano',
+          midi,
+          laneIndex: -1,
+          frequency,
+          velocity,
+          route: 0,
+          delaySeconds,
+        });
+      } else {
+        const { holdSeconds } = createLeadMorphedParams(sliderState, randomSource);
+        phraseLeadNotes.push({
+          source: randomSource,
+          midi,
+          laneIndex: -1,
+          frequency,
+          velocity,
+          route: randomSource === 'lead2' ? 1 : 0,
+          delaySeconds,
+          holdSeconds,
+        });
+      }
+    }
+
+    phraseLeadNotes.sort((left, right) => left.delaySeconds - right.delaySeconds);
+    phrasePianoNotes.sort((left, right) => left.delaySeconds - right.delaySeconds);
+    if (randomSource === 'piano') {
+      pianoChords.push(phrasePianoNotes);
+    } else {
+      leadChords.push(phraseLeadNotes);
+    }
+  }
+
+  const keyChords = randomSource === 'piano' ? pianoChords : leadChords;
+  const noteKey = keyChords
+    .map((chord, phraseIndex) => chord
+      .map((note) => `${phraseIndex}:${note.source}:${note.midi}:${note.velocity.toFixed(3)}:${note.delaySeconds.toFixed(4)}`)
+      .join('|'))
+    .join('>');
+
+  return {
+    leadChords,
+    pianoChords,
+    loopSeconds: phraseSeconds,
+    initialStartDelaySeconds,
+    noteKey: noteKey.length > 0
+      ? `lead-random:${randomSource}:${phraseClock}:${sliderState.leadRandomSyncPolicy ?? 'nextPhrase'}:${phraseSeconds.toFixed(4)}:${noteKey}`
+      : 'lead-random:empty',
+  };
+}
+
+function createHostPianoPreview(
+  synthEuclid: CoreSynthEuclidPreview,
+  leadRandom: CoreLeadRandomPreview,
+): CoreHostPianoPreview {
+  const euclidNotes = synthEuclid.pianoNotes.map(({ source: _source, midi: _midi, laneIndex: _laneIndex, ...note }) => note);
+  const hasRandomPiano = leadRandom.pianoChords.length > 0;
+  const hasEuclidPiano = euclidNotes.length > 0 && synthEuclid.loopSeconds > 0;
+
+  if (!hasRandomPiano && !hasEuclidPiano) {
+    return {
+      chords: [],
+      loopSeconds: 0,
+      initialStartDelaySeconds: 0,
+      noteKey: 'host-piano:off',
+    };
+  }
+
+  if (hasRandomPiano) {
+    const chords = leadRandom.pianoChords.map((chord) => [
+      ...chord.map(({ source: _source, midi: _midi, laneIndex: _laneIndex, ...note }) => note),
+      ...clonePreviewNotes(euclidNotes),
+    ]);
+    return {
+      chords,
+      loopSeconds: leadRandom.loopSeconds,
+      initialStartDelaySeconds: leadRandom.initialStartDelaySeconds,
+      noteKey: `host-piano:${leadRandom.noteKey}:${synthEuclid.noteKey}`,
+    };
+  }
+
+  return {
+    chords: [euclidNotes],
+    loopSeconds: synthEuclid.loopSeconds,
+    initialStartDelaySeconds: synthEuclid.initialStartDelaySeconds,
+    noteKey: `host-piano:${synthEuclid.noteKey}`,
   };
 }
 
 function createPadPreviewSource(
   sliderState: SliderState,
   synthEuclid: CoreSynthEuclidPreview,
+  anchors: TransportAnchors | null = null,
 ): PreviewSourceConfig | null {
   const state = sliderState as unknown as Record<string, unknown>;
   const chordSequencerEnabled = state.synthChordSequencerEnabled !== false;
@@ -1638,9 +2066,10 @@ function createPadPreviewSource(
   params[PAD_PARAMS_PER_PAD * 2 + 1] = 0;
   const postChain = createPadPostChainConfig(sliderState);
 
-  const chordNotes = chordSequencerEnabled
-    ? (createPadPreviewChords(sliderState, 1)[0] ?? [])
-    : [];
+  const padChordSets = chordSequencerEnabled
+    ? createPadPreviewChords(sliderState, 1)
+    : [[]];
+  const chordNotes = padChordSets[0] ?? [];
   const padEuclidNotes = rawPadEuclidNotes.map((note) => ({
     ...note,
     paramsOverride: createPadParamsOverride(
@@ -1656,21 +2085,23 @@ function createPadPreviewSource(
   if (notes.length === 0) return null;
   const chordSeconds = padEuclidNotes.length > 0 && synthEuclid.loopSeconds > 0
     ? synthEuclid.loopSeconds
-    : boundedNumber(state.chordRate, 32, 1, 128);
-  const chords = [notes, clonePreviewNotes(notes)];
+    : getCoreHarmonyTickSeconds(sliderState);
+  const chords = padEuclidNotes.length > 0
+    ? padChordSets.map((chordSet) => [...chordSet, ...clonePreviewNotes(padEuclidNotes)])
+    : padChordSets;
   const noteKey = chords
     .map((chord) => chord
       .map((note) => `${note.route}:${note.frequency.toFixed(3)}:${note.velocity.toFixed(3)}:${note.delaySeconds.toFixed(4)}:${note.holdSeconds?.toFixed(4) ?? '0'}`)
       .join('|'))
     .join('>');
+  const harmonyTimingKey = `harmony:${sliderState.harmonyClockSource ?? 'globalPhrase'}:${sliderState.harmonySyncPolicy ?? 'nextPhrase'}:${chordSeconds.toFixed(4)}`;
+  const sourceNoteKey = `${harmonyTimingKey}:${noteKey}:${synthEuclid.noteKey}`;
   const postKey = Object.values(postChain)
     .map((value) => Math.round(value * 1000) / 1000)
     .join(',');
   const configKey = [
-    noteKey,
-    synthEuclid.noteKey,
+    sourceNoteKey,
     synthEuclid.initialStartDelaySeconds.toFixed(4),
-    chordSeconds.toFixed(4),
     params.map((value) => Math.round(value * 1000) / 1000).join(','),
     postKey,
   ].join(':');
@@ -1684,9 +2115,14 @@ function createPadPreviewSource(
     notes,
     chords,
     chordSeconds,
-    noteKey: `${noteKey}:${synthEuclid.noteKey}`,
+    noteKey: sourceNoteKey,
     configKey,
-    initialStartDelaySeconds: padEuclidNotes.length > 0 ? synthEuclid.initialStartDelaySeconds : 0,
+    initialStartDelaySeconds: padEuclidNotes.length > 0
+      ? synthEuclid.initialStartDelaySeconds
+      : 0,
+    initialChordLeadSeconds: padEuclidNotes.length > 0
+      ? undefined
+      : getCoreHarmonyInitialChordLeadSeconds(sliderState, anchors),
   };
 }
 
@@ -1901,7 +2337,7 @@ function createLeadPostChainConfig(
   sliderState: SliderState,
   source: 'lead1' | 'lead2',
   frequency: number,
-): Pick<PreviewSourceConfig, 'pad1PostLpfHz' | 'pad1StereoWidth' | 'pad2PostLpfHz' | 'pad2StereoWidth'> {
+): Pick<PreviewSourceConfig, 'pad1PostLpfHz' | 'pad1StereoWidth' | 'pad2PostLpfHz' | 'pad2StereoWidth' | 'postLpfStages'> {
   const state = sliderState as unknown as Record<string, unknown>;
   const postLpfKey = source === 'lead2' ? 'lead2PostLPF' : 'lead1PostLPF';
   const trackingKey = source === 'lead2' ? 'lead2PostLPFKeyTracking' : 'lead1PostLPFKeyTracking';
@@ -1928,6 +2364,7 @@ function createLeadPostChainConfig(
     pad1StereoWidth: stereoWidth,
     pad2PostLpfHz: cutoff,
     pad2StereoWidth: stereoWidth,
+    postLpfStages: 2,
   };
 }
 
@@ -2141,23 +2578,30 @@ function createManualLeadSourceConfig(
 function createLeadEuclidPreviewSource(
   sliderState: SliderState,
   synthEuclid: CoreSynthEuclidPreview,
+  leadRandom: CoreLeadRandomPreview,
 ): PreviewSourceConfig | null {
   const state = sliderState as unknown as Record<string, unknown>;
-  const rawLeadNotes = synthEuclid.leadNotes.map(({ source, midi: _midi, laneIndex: _laneIndex, ...note }) => ({
+  const rawEuclidLeadNotes = synthEuclid.leadNotes.map(({ source, midi: _midi, laneIndex: _laneIndex, ...note }) => ({
     ...note,
     source: source === 'lead2' ? 'lead2' as const : 'lead1' as const,
   }));
-  if (rawLeadNotes.length === 0) return null;
+  const rawRandomLeadChords = leadRandom.leadChords.map((chord) => chord.map(({ source, midi: _midi, laneIndex: _laneIndex, ...note }) => ({
+    ...note,
+    source: source === 'lead2' ? 'lead2' as const : 'lead1' as const,
+  })));
+  const rawRandomLeadNotes = rawRandomLeadChords.flat();
+  if (rawEuclidLeadNotes.length === 0 && rawRandomLeadNotes.length === 0) return null;
 
-  const usesLead1 = rawLeadNotes.some((note) => note.route === 0);
-  const usesLead2 = rawLeadNotes.some((note) => note.route === 1);
+  const allRawLeadNotes = [...rawEuclidLeadNotes, ...rawRandomLeadNotes];
+  const usesLead1 = allRawLeadNotes.some((note) => note.route === 0 || note.source === 'lead1');
+  const usesLead2 = allRawLeadNotes.some((note) => note.route === 1 || note.source === 'lead2');
   const leadSource: 'lead1' | 'lead2' = usesLead1 ? 'lead1' : 'lead2';
-  const firstFrequency = rawLeadNotes[0]?.frequency ?? midiToFreq(60);
+  const firstFrequency = allRawLeadNotes[0]?.frequency ?? midiToFreq(60);
   const { morphed } = createLeadMorphedParams(sliderState, leadSource);
   const outputSelect: 0 | 1 | 2 = usesLead1 && usesLead2 ? 2 : usesLead2 ? 1 : 0;
   const params = createLeadFmParams(morphed, outputSelect);
   const postChain = createLeadPostChainConfig(sliderState, leadSource, firstFrequency);
-  const leadNotes = rawLeadNotes.map(({ source, ...note }) => ({
+  const toLeadPreviewNote = ({ source, ...note }: typeof allRawLeadNotes[number]): PreviewNote => ({
     ...note,
     paramsOverride: createLeadParamsOverride(
       sliderState,
@@ -2166,7 +2610,9 @@ function createLeadEuclidPreviewSource(
       note.morphOverride,
       note.distanceOverride,
     ),
-  }));
+  });
+  const leadNotes = rawEuclidLeadNotes.map(toLeadPreviewNote);
+  const randomLeadChords = rawRandomLeadChords.map((chord) => chord.map(toLeadPreviewNote));
 
   const lead1Level = usesLead1 ? boundedNumber(applyDistanceValue('lead1Level', sliderState, 'lead1'), 0.8, 0, 1.5) : 0;
   const lead2Level = usesLead2 ? boundedNumber(applyDistanceValue('lead2Level', sliderState, 'lead2'), 0.6, 0, 1.5) : 0;
@@ -2192,16 +2638,28 @@ function createLeadEuclidPreviewSource(
       usesLead2 ? boundedNumber(state.granularLead2Send, 0, 0, 1) : 0,
     ) * sendCompensation
     : 0;
-  const noteKey = leadNotes
-    .map((note) => `${note.route}:${note.frequency.toFixed(3)}:${note.velocity.toFixed(3)}:${note.delaySeconds.toFixed(4)}:${note.holdSeconds?.toFixed(4) ?? '0'}`)
-    .join('|');
+  const hasRandomLead = randomLeadChords.length > 0;
+  const chords = hasRandomLead
+    ? randomLeadChords.map((chord) => [...chord, ...clonePreviewNotes(leadNotes)])
+    : [leadNotes, clonePreviewNotes(leadNotes)];
+  const chordSeconds = hasRandomLead
+    ? leadRandom.loopSeconds
+    : synthEuclid.loopSeconds;
+  const initialStartDelaySeconds = hasRandomLead
+    ? leadRandom.initialStartDelaySeconds
+    : synthEuclid.initialStartDelaySeconds;
+  const noteKey = chords
+    .map((chord) => chord
+      .map((note) => `${note.route}:${note.frequency.toFixed(3)}:${note.velocity.toFixed(3)}:${note.delaySeconds.toFixed(4)}:${note.holdSeconds?.toFixed(4) ?? '0'}`)
+      .join('|'))
+    .join('>');
+  const sourceNoteKey = `lead-preview:${leadRandom.noteKey}:${synthEuclid.noteKey}:${noteKey}`;
   const postKey = Object.values(postChain)
     .map((value) => Math.round(value * 1000) / 1000)
     .join(',');
   const configKey = [
-    `lead-euclid:${synthEuclid.noteKey}`,
-    synthEuclid.initialStartDelaySeconds.toFixed(4),
-    synthEuclid.loopSeconds.toFixed(4),
+    sourceNoteKey,
+    chordSeconds.toFixed(4),
     outputSelect,
     Math.round(dryGain * 1_000_000) / 1_000_000,
     paramConfigKey(params),
@@ -2224,12 +2682,12 @@ function createLeadEuclidPreviewSource(
     granularSendGain,
     leadIndex: usesLead2 && !usesLead1 ? 1 : 0,
     notes: leadNotes,
-    chords: [leadNotes, clonePreviewNotes(leadNotes)],
-    chordSeconds: synthEuclid.loopSeconds,
-    noteKey: `lead-euclid:${noteKey}`,
+    chords,
+    chordSeconds,
+    noteKey: sourceNoteKey,
     configKey,
     triggerInitial: true,
-    initialStartDelaySeconds: synthEuclid.initialStartDelaySeconds,
+    initialStartDelaySeconds,
   };
 }
 
@@ -2438,7 +2896,44 @@ function createDrumPreviewNotes(
   return { notes, loopSeconds: Math.max(beatSeconds, loopSeconds) };
 }
 
-function createDrumPreviewSource(sliderState: SliderState, runtime: CoreDrumEuclidRuntime): PreviewSourceConfig | null {
+function getCoreDrumInitialStartDelaySeconds(
+  sliderState: SliderState,
+  runtime: CoreDrumEuclidRuntime,
+  anchors: TransportAnchors | null,
+): number {
+  if (!anchors) return 0;
+  const state = sliderState as unknown as Record<string, unknown>;
+  const clockSource = sliderState.drumEuclidClockSource ?? 'localBeat';
+  const joinPolicy = sliderState.drumEuclidJoinPolicy ?? 'bar';
+  if (joinPolicy === 'bar') {
+    return getTimeUntilNextBoundaryWall(
+      clockSource,
+      getTransportMetrics(sliderState).barDurationSec,
+      anchors,
+    );
+  }
+
+  const bpm = boundedNumber(getEffectiveSequencerBpm(sliderState), 120, 40, 300);
+  const tempo = boundedNumber(state.drumEuclidTempo, 1, 0.25, 4);
+  const beatSeconds = 60 / (bpm * tempo);
+  let shortestStepSeconds = beatSeconds;
+  for (const laneIndex of CORE_DRUM_LANE_INDICES) {
+    const lane = (laneIndex + 1) as 1 | 2 | 3 | 4;
+    if (!booleanValue(state[`drumEuclid${lane}Enabled`], laneIndex < 3)) continue;
+    if (getCoreDrumLaneVoices(state, lane).length === 0) continue;
+    shortestStepSeconds = Math.min(
+      shortestStepSeconds,
+      getCoreDrumLaneStepSeconds(laneIndex, beatSeconds, runtime),
+    );
+  }
+  return getTimeUntilNextBoundaryWall(clockSource, shortestStepSeconds, anchors);
+}
+
+function createDrumPreviewSource(
+  sliderState: SliderState,
+  runtime: CoreDrumEuclidRuntime,
+  anchors: TransportAnchors | null = null,
+): PreviewSourceConfig | null {
   const state = sliderState as unknown as Record<string, unknown>;
   if (!booleanValue(state.drumEnabled, false) || !booleanValue(state.drumEuclidMasterEnabled, false)) return null;
 
@@ -2446,6 +2941,7 @@ function createDrumPreviewSource(sliderState: SliderState, runtime: CoreDrumEucl
   writeDrumParamsFromState(params, sliderState);
   const { notes, loopSeconds } = createDrumPreviewNotes(sliderState, runtime);
   if (notes.length === 0) return null;
+  const initialStartDelaySeconds = getCoreDrumInitialStartDelaySeconds(sliderState, runtime, anchors);
 
   const noteKey = notes
     .map((note) => [
@@ -2458,6 +2954,8 @@ function createDrumPreviewSource(sliderState: SliderState, runtime: CoreDrumEucl
       note.ratchetDecayCap == null ? 'r' : note.ratchetDecayCap.toFixed(5),
     ].join(':'))
     .join('|');
+  const drumTimingKey = `drum:${sliderState.drumEuclidClockSource ?? 'localBeat'}:${sliderState.drumEuclidJoinPolicy ?? 'bar'}:${loopSeconds.toFixed(4)}`;
+  const sourceNoteKey = `${drumTimingKey}:${noteKey}`;
   const reverbSendGain = booleanValue(state.reverbEnabled, true)
     ? boundedNumber(state.drumReverbSend, 0.1, 0, 1)
     : 0;
@@ -2468,8 +2966,7 @@ function createDrumPreviewSource(sliderState: SliderState, runtime: CoreDrumEucl
     : 0;
   const configKey = [
     'drum',
-    noteKey,
-    loopSeconds.toFixed(4),
+    sourceNoteKey,
     paramConfigKey(params),
     Math.round(reverbSendGain * 1_000_000) / 1_000_000,
     Math.round(delayASendGain * 1_000_000) / 1_000_000,
@@ -2493,9 +2990,10 @@ function createDrumPreviewSource(sliderState: SliderState, runtime: CoreDrumEucl
     notes,
     chords: [notes, notes],
     chordSeconds: loopSeconds,
-    noteKey,
+    noteKey: sourceNoteKey,
     configKey,
-    triggerInitial: false,
+    triggerInitial: true,
+    initialStartDelaySeconds,
     initialChordLeadSeconds: CORE_DRUM_INITIAL_CHORD_LEAD_SECONDS,
   };
 }
@@ -2578,21 +3076,15 @@ function writeSoundscapesParamsFromState(params: number[], sliderState: SliderSt
   const state = sliderState as unknown as Record<string, unknown>;
   const water = resolveWaterState(sliderState);
   const waterActive = earthLayerActive(state, 'waterEnabled', 'waterLevel', 0.8);
-  const oceanActive = earthLayerActive(state, 'oceanSampleEnabled', 'oceanSampleLevel', 0.5);
   const insectsActive = earthLayerActive(state, 'insectsEnabled', 'insectsLevel', 0.7);
   const insects2Active = earthLayerActive(state, 'insects2Enabled', 'insects2Level', 0.5);
-  const birdsActive = earthLayerActive(state, 'birdsEnabled', 'birdsLevel', 0.45);
-  const birds2Active = earthLayerActive(state, 'birds2Enabled', 'birds2Level', 0.4);
-  const frogsActive = earthLayerActive(state, 'frogsEnabled', 'frogsLevel', 0.45);
-  const waterEngineActive = waterActive || oceanActive;
-  const insectsEngineActive = insectsActive || birdsActive || frogsActive;
-  const insects2EngineActive = insects2Active || birds2Active;
+  const waterEngineActive = waterActive;
+  const insectsEngineActive = insectsActive;
+  const insects2EngineActive = insects2Active;
 
   params[SOUNDSCAPES_PARAM_INDEX.waterActive] = waterEngineActive ? 1 : 0;
   params[SOUNDSCAPES_PARAM_INDEX.waterPreset] = boundedInteger(
-    oceanActive && !waterActive
-      ? 4
-      : state.waterMorph !== undefined
+    state.waterMorph !== undefined
         ? (boundedNumber(state.waterMorph, 0, 0, 1) < 0.5 ? state.waterMorphA : state.waterMorphB)
         : state.waterPreset,
     0,
@@ -2694,8 +3186,8 @@ function writeSoundscapesParamsFromState(params: number[], sliderState: SliderSt
   ) => {
     const active = prefix === 'insects' ? insectsEngineActive : insects2EngineActive;
     const fallbackEngine = prefix === 'insects'
-      ? (!insectsActive && frogsActive && !birdsActive ? 5 : (!insectsActive && birdsActive ? 6 : 0))
-      : (!insects2Active && birds2Active ? 6 : 1);
+      ? 0
+      : 1;
     params[activeIndex] = active ? 1 : 0;
     params[engineIndex] = boundedInteger(state[`${prefix}Engine`], fallbackEngine, 0, 6);
     const values = [
@@ -2750,13 +3242,9 @@ function writeSoundscapesParamsFromState(params: number[], sliderState: SliderSt
 function createSoundscapesPreviewSource(sliderState: SliderState): PreviewSourceConfig | null {
   const state = sliderState as unknown as Record<string, unknown>;
   const waterActive = earthLayerActive(state, 'waterEnabled', 'waterLevel', 0.8);
-  const oceanActive = earthLayerActive(state, 'oceanSampleEnabled', 'oceanSampleLevel', 0.5);
   const insectsActive = earthLayerActive(state, 'insectsEnabled', 'insectsLevel', 0.7);
   const insects2Active = earthLayerActive(state, 'insects2Enabled', 'insects2Level', 0.5);
-  const birdsActive = earthLayerActive(state, 'birdsEnabled', 'birdsLevel', 0.45);
-  const birds2Active = earthLayerActive(state, 'birds2Enabled', 'birds2Level', 0.4);
-  const frogsActive = earthLayerActive(state, 'frogsEnabled', 'frogsLevel', 0.45);
-  if (!waterActive && !oceanActive && !insectsActive && !insects2Active && !birdsActive && !birds2Active && !frogsActive) {
+  if (!waterActive && !insectsActive && !insects2Active) {
     return null;
   }
 
@@ -2766,59 +3254,37 @@ function createSoundscapesPreviewSource(sliderState: SliderState): PreviewSource
   const natureLevel = boundedNumber(state.natureLevel, 1, 0, 1);
   const insectsSharedLevel = boundedNumber(state.insectsSharedLevel, 1, 0, 1);
   const waterGain = earthLayerLevel(state, waterActive, 'waterLevel', 0.8);
-  const oceanGain = earthLayerLevel(state, oceanActive, 'oceanSampleLevel', 0.5);
   const insectsGain = earthLayerLevel(state, insectsActive, 'insectsLevel', 0.7) * insectsSharedLevel;
   const insects2Gain = earthLayerLevel(state, insects2Active, 'insects2Level', 0.5) * insectsSharedLevel;
-  const birdsGain = earthLayerLevel(state, birdsActive, 'birdsLevel', 0.45);
-  const birds2Gain = earthLayerLevel(state, birds2Active, 'birds2Level', 0.4);
-  const frogsGain = earthLayerLevel(state, frogsActive, 'frogsLevel', 0.45);
-  const dryGain = Math.max(waterGain, oceanGain, insectsGain, insects2Gain, birdsGain, birds2Gain, frogsGain) * natureLevel * ENGINE_TRIMS.earth;
+  const dryGain = Math.max(waterGain, insectsGain, insects2Gain) * natureLevel * ENGINE_TRIMS.earth;
   const reverbSendGain = booleanValue(state.reverbEnabled, true)
     ? Math.max(
       waterActive ? boundedNumber(state.waterReverbSend, 0.3, 0, 1) : 0,
-      oceanActive ? boundedNumber(state.oceanReverbSend, 0.3, 0, 1) : 0,
       insectsActive || insects2Active ? boundedNumber(state.insectsReverbSend, 0.15, 0, 1) : 0,
-      birdsActive ? boundedNumber(state.birdsReverbSend, 0, 0, 1) : 0,
-      birds2Active ? boundedNumber(state.birds2ReverbSend, 0, 0, 1) : 0,
-      frogsActive ? boundedNumber(state.frogsReverbSend, 0, 0, 1) : 0,
       boundedNumber(state.natureReverbSend, 0, 0, 1),
     )
     : 0;
   const delayASendGain = Math.max(
     waterActive ? boundedNumber(state.waterDelayASend, 0, 0, 1) : 0,
-    oceanActive ? boundedNumber(state.oceanDelayASend, 0, 0, 1) : 0,
     insectsActive || insects2Active ? boundedNumber(state.insDelayASend, 0, 0, 1) : 0,
-    birdsActive ? boundedNumber(state.birdsDelayASend, 0, 0, 1) : 0,
-    birds2Active ? boundedNumber(state.birds2DelayASend, 0, 0, 1) : 0,
-    frogsActive ? boundedNumber(state.frogsDelayASend, 0, 0, 1) : 0,
     boundedNumber(state.natureDelayASend, 0, 0, 1),
   );
   const delayBSendGain = Math.max(
     waterActive ? boundedNumber(state.waterDelayBSend, 0, 0, 1) : 0,
-    oceanActive ? boundedNumber(state.oceanDelayBSend, 0, 0, 1) : 0,
     insectsActive || insects2Active ? boundedNumber(state.insDelayBSend, 0, 0, 1) : 0,
-    birdsActive ? boundedNumber(state.birdsDelayBSend, 0, 0, 1) : 0,
-    birds2Active ? boundedNumber(state.birds2DelayBSend, 0, 0, 1) : 0,
-    frogsActive ? boundedNumber(state.frogsDelayBSend, 0, 0, 1) : 0,
     boundedNumber(state.natureDelayBSend, 0, 0, 1),
   );
   const granularSendGain = booleanValue(state.granularEnabled, false)
     ? Math.max(
       waterActive ? boundedNumber(state.granularWaterSend, 0, 0, 1) : 0,
-      oceanActive ? boundedNumber(state.granularWavesSend, 0, 0, 1) : 0,
       insectsActive || insects2Active ? boundedNumber(state.granularInsectsSend, 0, 0, 1) : 0,
-      birdsActive || birds2Active || frogsActive ? boundedNumber(state.granularNatureSend, 0, 0, 1) : 0,
       boundedNumber(state.granularNatureSend, 0, 0, 1),
     )
     : 0;
   const noteKey = [
     waterActive ? 'water' : '',
-    oceanActive ? 'ocean' : '',
     insectsActive ? 'insects' : '',
     insects2Active ? 'insects2' : '',
-    birdsActive ? 'birds' : '',
-    birds2Active ? 'birds2' : '',
-    frogsActive ? 'frogs' : '',
   ].filter(Boolean).join('+');
   const configKey = [
     'soundscapes',
@@ -3018,22 +3484,26 @@ function createGranularModuleConfig(sliderState: SliderState): GranularModuleCon
 function createCorePreviewSource(
   sliderState: SliderState,
   synthEuclid: CoreSynthEuclidPreview,
+  anchors: TransportAnchors | null = null,
 ): PreviewSourceConfig | null {
-  return createPadPreviewSource(sliderState, synthEuclid);
+  return createPadPreviewSource(sliderState, synthEuclid, anchors);
 }
 
 function createCorePreviewSourceGroup(
   sliderState: SliderState,
   synthEuclidRuntime: CoreSynthEuclidRuntime,
   drumEuclidRuntime: CoreDrumEuclidRuntime,
+  anchors: TransportAnchors | null = null,
 ): PreviewSourceGroup {
   const synthEuclid = createSynthEuclidPreview(sliderState, synthEuclidRuntime);
+  const leadRandom = createLeadRandomPreview(sliderState, anchors);
   return {
     synthEuclid,
-    primary: createCorePreviewSource(sliderState, synthEuclid),
+    hostPiano: createHostPianoPreview(synthEuclid, leadRandom),
+    primary: createCorePreviewSource(sliderState, synthEuclid, anchors),
     aux: [
-      { slot: 'lead', config: createLeadEuclidPreviewSource(sliderState, synthEuclid) },
-      { slot: 'drum', config: createDrumPreviewSource(sliderState, drumEuclidRuntime) },
+      { slot: 'lead', config: createLeadEuclidPreviewSource(sliderState, synthEuclid, leadRandom) },
+      { slot: 'drum', config: createDrumPreviewSource(sliderState, drumEuclidRuntime, anchors) },
       { slot: 'soundscapes', config: createSoundscapesPreviewSource(sliderState) },
     ],
   };
@@ -3364,6 +3834,14 @@ export class CoreEngineHost {
   private hostPianoDelayASend: GainNode | null = null;
   private hostPianoDelayBSend: GainNode | null = null;
   private hostPianoGranularSend: GainNode | null = null;
+  private hostPianoExternalInputs: CoreHostExternalInputActivity = createInactiveHostExternalInputActivity();
+  private hostEarthExternalInputs: CoreHostExternalInputActivity = createInactiveHostExternalInputActivity();
+  private hostEarthTextures: Record<'waves' | 'birds' | 'birds2' | 'frogs', HostEarthTextureRuntime | null> = {
+    waves: null,
+    birds: null,
+    birds2: null,
+    frogs: null,
+  };
   private limiter: DynamicsCompressorNode | null = null;
   private analyser: AnalyserNode | null = null;
   private isRunning = false;
@@ -3374,6 +3852,7 @@ export class CoreEngineHost {
   private onStateChange: ((state: EngineState) => void) | null = null;
   private snapshotOptions: CoreEngineHostUpdateOptions = {};
   private lastSliderState: SliderState | null = null;
+  private transportAnchors: TransportAnchors | null = null;
   private lastDynamicsModuleConfigKey: string | null = null;
   private lastPreviewSourceConfigKey: string | null = null;
   private lastAuxPreviewSourceConfigKeys: Record<CoreAuxSourceSlot, string | null> = {
@@ -3475,6 +3954,7 @@ export class CoreEngineHost {
     }
 
     this.isStarting = true;
+    this.resetTransportAnchors();
 
     try {
       if (this.ctx && this.node && this.masterGain && this.ctx.state !== 'closed') {
@@ -3568,6 +4048,7 @@ export class CoreEngineHost {
       this.stopSynthEuclidLiveEvolve();
       this.softStopActiveHostPianoVoices(CORE_SOFT_STOP_SOURCE_FADE_SECONDS);
       this.softStopHostPianoFxSends(CORE_SOFT_STOP_SOURCE_FADE_SECONDS);
+      this.stopHostEarthTextures();
       this.stopRuntimeRandomWalk();
       this.stopJourneyMorphClock();
       this.node.port.postMessage({
@@ -3629,6 +4110,366 @@ export class CoreEngineHost {
     this.softStopGainNode(this.hostPianoDelayASend, fadeSeconds);
     this.softStopGainNode(this.hostPianoDelayBSend, fadeSeconds);
     this.softStopGainNode(this.hostPianoGranularSend, fadeSeconds);
+    this.hostPianoExternalInputs = createInactiveHostExternalInputActivity();
+    this.postHostExternalInputState();
+  }
+
+  private postHostExternalInputState(): void {
+    const node = this.node;
+    if (!node) return;
+    const activity = mergeHostExternalInputActivity(this.hostPianoExternalInputs, this.hostEarthExternalInputs);
+    node.port.postMessage({
+      type: 'configureExternalInputs',
+      reverbActive: activity.reverbActive,
+      delayAActive: activity.delayAActive,
+      delayBActive: activity.delayBActive,
+      granularActive: activity.granularActive,
+    });
+  }
+
+  private createEarthTextureSeed(layer: string, state: SliderState): string {
+    const seedWindow = state.seedWindow === 'day' ? 'day' : 'hour';
+    const seedValue = (state as unknown as Record<string, unknown>).seed;
+    const seed = Number.isFinite(Number(seedValue)) ? Math.trunc(Number(seedValue)) : 42;
+    return `${getUtcBucket(seedWindow)}|${seed}|earth-texture|${layer}`;
+  }
+
+  private createHostEarthTextureRuntime(config: {
+    fileName: string;
+    sliceDuration: number;
+    fadeTime: number;
+    density: number;
+    randomSeed?: string | null;
+    delayMs: number;
+    sideGain: number;
+    centerGain: number;
+    pan?: number;
+    filter?: boolean;
+  }): HostEarthTextureRuntime | null {
+    const ctx = this.ctx;
+    const node = this.node;
+    const masterGain = this.masterGain;
+    if (!ctx || !node || !masterGain) return null;
+
+    const sourceBus = ctx.createGain();
+    sourceBus.gain.value = 1;
+    const gateGain = ctx.createGain();
+    gateGain.gain.value = 0;
+    sourceBus.connect(gateGain);
+
+    const filter = config.filter ? ctx.createBiquadFilter() : null;
+    let widenedInput: AudioNode = gateGain;
+    if (filter) {
+      filter.type = 'lowpass';
+      filter.frequency.value = 8000;
+      filter.Q.value = 1.5;
+      gateGain.connect(filter);
+      widenedInput = filter;
+    }
+
+    const preFaderBus = createCoreHostHaasWidenedBus(ctx, widenedInput, {
+      delayMs: config.delayMs,
+      sideGain: config.sideGain,
+      centerGain: config.centerGain,
+      pan: config.pan,
+    });
+    const levelGain = ctx.createGain();
+    const reverbSend = ctx.createGain();
+    const delayASend = ctx.createGain();
+    const delayBSend = ctx.createGain();
+    const granularSend = ctx.createGain();
+    levelGain.gain.value = 0;
+    reverbSend.gain.value = 0;
+    delayASend.gain.value = 0;
+    delayBSend.gain.value = 0;
+    granularSend.gain.value = 0;
+
+    preFaderBus.connect(levelGain).connect(masterGain);
+    preFaderBus.connect(reverbSend).connect(node, 0, 0);
+    preFaderBus.connect(delayASend).connect(node, 0, 1);
+    preFaderBus.connect(delayBSend).connect(node, 0, 2);
+    preFaderBus.connect(granularSend).connect(node, 0, 3);
+
+    return {
+      player: new EarthTexturePlayer(ctx, sourceBus, {
+        fileName: config.fileName,
+        sliceDuration: config.sliceDuration,
+        fadeTime: config.fadeTime,
+        density: config.density,
+        randomSeed: config.randomSeed,
+      }),
+      sourceBus,
+      gateGain,
+      preFaderBus,
+      levelGain,
+      reverbSend,
+      delayASend,
+      delayBSend,
+      granularSend,
+      filter,
+      stopTimer: null,
+    };
+  }
+
+  private ensureHostEarthTextures(): void {
+    if (!this.hostEarthTextures.waves) {
+      this.hostEarthTextures.waves = this.createHostEarthTextureRuntime({
+        fileName: 'Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg',
+        sliceDuration: 22,
+        fadeTime: 5.5,
+        density: 0.38,
+        delayMs: 10,
+        sideGain: 0.24,
+        centerGain: 0.8,
+        pan: 0.85,
+        filter: true,
+      });
+    }
+    if (!this.hostEarthTextures.birds) {
+      this.hostEarthTextures.birds = this.createHostEarthTextureRuntime({
+        fileName: 'Alps Birds 2_noiseremoval_441_m.ogg',
+        sliceDuration: 20,
+        fadeTime: 3.2,
+        density: 0.45,
+        delayMs: 13,
+        sideGain: 0.42,
+        centerGain: 0.56,
+      });
+    }
+    if (!this.hostEarthTextures.birds2) {
+      this.hostEarthTextures.birds2 = this.createHostEarthTextureRuntime({
+        fileName: 'Fujian Birds 2_441_m_normalized.ogg',
+        sliceDuration: 20,
+        fadeTime: 3.1,
+        density: 0.48,
+        delayMs: 15,
+        sideGain: 0.45,
+        centerGain: 0.5,
+      });
+    }
+    if (!this.hostEarthTextures.frogs) {
+      this.hostEarthTextures.frogs = this.createHostEarthTextureRuntime({
+        fileName: 'Fujian_Frogs_m_441_normalized.ogg',
+        sliceDuration: 18,
+        fadeTime: 2.6,
+        density: 0.52,
+        delayMs: 12,
+        sideGain: 0.36,
+        centerGain: 0.68,
+      });
+    }
+  }
+
+  private updateHostEarthTextureRuntime(
+    runtime: HostEarthTextureRuntime | null,
+    options: {
+      enabled: boolean;
+      level: number;
+      masterLevel: number;
+      earthLevel: number;
+      reverbSend: number;
+      delayASend: number;
+      delayBSend: number;
+      granularSend: number;
+      sliceDuration: number;
+      density: number;
+      randomSeed?: string | null;
+      now: number;
+      smoothTime: number;
+    },
+  ): CoreHostExternalInputActivity {
+    if (!runtime) return createInactiveHostExternalInputActivity();
+
+    const enabled = options.enabled && options.level > 0.0001;
+    const levelScale = enabled ? options.level * options.masterLevel : 0;
+    const dryGain = levelScale * options.earthLevel * ENGINE_TRIMS.earth;
+    const reverbGain = levelScale > 0.0001 ? options.reverbSend * levelScale : 0;
+    const delayAGain = levelScale > 0.0001 ? options.delayASend * levelScale : 0;
+    const delayBGain = levelScale > 0.0001 ? options.delayBSend * levelScale : 0;
+    const granularGain = levelScale > 0.0001 ? options.granularSend * levelScale : 0;
+    const gateTarget = enabled ? 1 : 0;
+
+    runtime.gateGain.gain.setTargetAtTime(gateTarget, options.now, 0.08);
+    runtime.levelGain.gain.setTargetAtTime(dryGain, options.now, options.smoothTime);
+    runtime.reverbSend.gain.setTargetAtTime(reverbGain, options.now, options.smoothTime);
+    runtime.delayASend.gain.setTargetAtTime(delayAGain, options.now, options.smoothTime);
+    runtime.delayBSend.gain.setTargetAtTime(delayBGain, options.now, options.smoothTime);
+    runtime.granularSend.gain.setTargetAtTime(granularGain, options.now, options.smoothTime);
+    runtime.player.update({
+      sliceDuration: options.sliceDuration,
+      density: options.density,
+      randomSeed: options.randomSeed,
+    });
+
+    const shouldRun = enabled && (
+      dryGain > 0.0001 ||
+      reverbGain > 0.0001 ||
+      delayAGain > 0.0001 ||
+      delayBGain > 0.0001 ||
+      granularGain > 0.0001
+    );
+
+    if (shouldRun) {
+      if (runtime.stopTimer !== null) {
+        window.clearTimeout(runtime.stopTimer);
+        runtime.stopTimer = null;
+      }
+      void runtime.player.start();
+    } else if (runtime.stopTimer === null) {
+      runtime.stopTimer = window.setTimeout(() => {
+        runtime.stopTimer = null;
+        runtime.player.stop();
+      }, 450);
+    }
+
+    return {
+      reverbActive: reverbGain > 0.0001,
+      delayAActive: delayAGain > 0.0001,
+      delayBActive: delayBGain > 0.0001,
+      granularActive: granularGain > 0.0001,
+    };
+  }
+
+  private configureHostEarthTextures(sliderState: SliderState): void {
+    const context = this.ctx;
+    if (!context || !this.node || !this.masterGain) return;
+    this.ensureHostEarthTextures();
+
+    const state = sliderState as unknown as Record<string, unknown>;
+    const now = context.currentTime;
+    const smoothTime = 0.015;
+    const reverbEnabled = booleanValue(state.reverbEnabled, true);
+    const granularEnabled = booleanValue(state.granularEnabled, false);
+    const earthLevel = boundedNumber(state.earthLevel, 1, 0, 1);
+    const natureLevel = boundedNumber(state.natureLevel, 1, 0, 1);
+    const waves = this.hostEarthTextures.waves;
+    if (waves?.filter) {
+      waves.filter.type = coreHostBiquadFilterType(state.oceanFilterType);
+      waves.filter.frequency.setTargetAtTime(
+        boundedNumber(state.oceanFilterCutoff, 8000, 80, 20000),
+        now,
+        smoothTime,
+      );
+      waves.filter.Q.setTargetAtTime(
+        0.5 + boundedNumber(state.oceanFilterResonance, 0.1, 0, 1) * 10,
+        now,
+        smoothTime,
+      );
+    }
+
+    let activity = createInactiveHostExternalInputActivity();
+    activity = mergeHostExternalInputActivity(activity, this.updateHostEarthTextureRuntime(waves, {
+      enabled: booleanValue(state.oceanSampleEnabled, false),
+      level: boundedNumber(state.oceanSampleLevel, 0, 0, 1),
+      masterLevel: 1,
+      earthLevel,
+      reverbSend: reverbEnabled ? boundedNumber(state.oceanReverbSend, 0.3, 0, 1) : 0,
+      delayASend: boundedNumber(state.oceanDelayASend, 0, 0, 1),
+      delayBSend: boundedNumber(state.oceanDelayBSend, 0, 0, 1),
+      granularSend: granularEnabled ? boundedNumber(state.granularWavesSend, 0, 0, 1) : 0,
+      sliceDuration: boundedNumber(state.oceanSliceDuration, 22, 1, 120),
+      density: boundedNumber(state.oceanSliceDensity, 0.38, 0, 1),
+      randomSeed: this.createEarthTextureSeed('ocean', sliderState),
+      now,
+      smoothTime,
+    }));
+
+    activity = mergeHostExternalInputActivity(activity, this.updateHostEarthTextureRuntime(this.hostEarthTextures.birds, {
+      enabled: booleanValue(state.birdsEnabled, false),
+      level: boundedNumber(state.birdsLevel, 0, 0, 1),
+      masterLevel: natureLevel,
+      earthLevel,
+      reverbSend: reverbEnabled ? boundedNumber(state.natureReverbSend, 0, 0, 1) : 0,
+      delayASend: boundedNumber(state.natureDelayASend, 0, 0, 1),
+      delayBSend: boundedNumber(state.natureDelayBSend, 0, 0, 1),
+      granularSend: granularEnabled ? boundedNumber(state.granularNatureSend, 0, 0, 1) : 0,
+      sliceDuration: boundedNumber(state.birdsSliceDuration, 20, 1, 120),
+      density: boundedNumber(state.birdsSliceDensity, 0.45, 0, 1),
+      randomSeed: this.createEarthTextureSeed('birds', sliderState),
+      now,
+      smoothTime,
+    }));
+
+    activity = mergeHostExternalInputActivity(activity, this.updateHostEarthTextureRuntime(this.hostEarthTextures.birds2, {
+      enabled: booleanValue(state.birds2Enabled, false),
+      level: boundedNumber(state.birds2Level, 0, 0, 1),
+      masterLevel: natureLevel,
+      earthLevel,
+      reverbSend: reverbEnabled ? boundedNumber(state.natureReverbSend, 0, 0, 1) : 0,
+      delayASend: boundedNumber(state.natureDelayASend, 0, 0, 1),
+      delayBSend: boundedNumber(state.natureDelayBSend, 0, 0, 1),
+      granularSend: granularEnabled ? boundedNumber(state.granularNatureSend, 0, 0, 1) : 0,
+      sliceDuration: boundedNumber(state.birds2SliceDuration, 20, 1, 120),
+      density: boundedNumber(state.birds2SliceDensity, 0.48, 0, 1),
+      randomSeed: this.createEarthTextureSeed('birds2', sliderState),
+      now,
+      smoothTime,
+    }));
+
+    activity = mergeHostExternalInputActivity(activity, this.updateHostEarthTextureRuntime(this.hostEarthTextures.frogs, {
+      enabled: booleanValue(state.frogsEnabled, false),
+      level: boundedNumber(state.frogsLevel, 0, 0, 1),
+      masterLevel: natureLevel,
+      earthLevel,
+      reverbSend: reverbEnabled ? boundedNumber(state.natureReverbSend, 0, 0, 1) : 0,
+      delayASend: boundedNumber(state.natureDelayASend, 0, 0, 1),
+      delayBSend: boundedNumber(state.natureDelayBSend, 0, 0, 1),
+      granularSend: granularEnabled ? boundedNumber(state.granularNatureSend, 0, 0, 1) : 0,
+      sliceDuration: boundedNumber(state.frogsSliceDuration, 18, 1, 120),
+      density: boundedNumber(state.frogsSliceDensity, 0.52, 0, 1),
+      randomSeed: this.createEarthTextureSeed('frogs', sliderState),
+      now,
+      smoothTime,
+    }));
+
+    this.hostEarthExternalInputs = activity;
+    this.postHostExternalInputState();
+  }
+
+  private stopHostEarthTextures(): void {
+    for (const runtime of Object.values(this.hostEarthTextures)) {
+      if (!runtime) continue;
+      if (runtime.stopTimer !== null) {
+        window.clearTimeout(runtime.stopTimer);
+        runtime.stopTimer = null;
+      }
+      try { runtime.player.stop(); } catch { /* stale texture player */ }
+      this.softStopGainNode(runtime.gateGain, CORE_SOFT_STOP_SOURCE_FADE_SECONDS);
+      this.softStopGainNode(runtime.levelGain, CORE_SOFT_STOP_SOURCE_FADE_SECONDS);
+      this.softStopGainNode(runtime.reverbSend, CORE_SOFT_STOP_SOURCE_FADE_SECONDS);
+      this.softStopGainNode(runtime.delayASend, CORE_SOFT_STOP_SOURCE_FADE_SECONDS);
+      this.softStopGainNode(runtime.delayBSend, CORE_SOFT_STOP_SOURCE_FADE_SECONDS);
+      this.softStopGainNode(runtime.granularSend, CORE_SOFT_STOP_SOURCE_FADE_SECONDS);
+    }
+    this.hostEarthExternalInputs = createInactiveHostExternalInputActivity();
+    this.postHostExternalInputState();
+  }
+
+  private disconnectHostEarthTextures(): void {
+    for (const runtime of Object.values(this.hostEarthTextures)) {
+      if (!runtime) continue;
+      if (runtime.stopTimer !== null) {
+        window.clearTimeout(runtime.stopTimer);
+        runtime.stopTimer = null;
+      }
+      try { runtime.player.stop(); } catch { /* stale texture player */ }
+      try { runtime.sourceBus.disconnect(); } catch { /* stale texture bus */ }
+      try { runtime.gateGain.disconnect(); } catch { /* stale texture gate */ }
+      try { runtime.filter?.disconnect(); } catch { /* stale texture filter */ }
+      try { runtime.preFaderBus.disconnect(); } catch { /* stale texture bus */ }
+      try { runtime.levelGain.disconnect(); } catch { /* stale texture gain */ }
+      try { runtime.reverbSend.disconnect(); } catch { /* stale texture send */ }
+      try { runtime.delayASend.disconnect(); } catch { /* stale texture send */ }
+      try { runtime.delayBSend.disconnect(); } catch { /* stale texture send */ }
+      try { runtime.granularSend.disconnect(); } catch { /* stale texture send */ }
+    }
+    this.hostEarthTextures = {
+      waves: null,
+      birds: null,
+      birds2: null,
+      frogs: null,
+    };
+    this.hostEarthExternalInputs = createInactiveHostExternalInputActivity();
   }
 
   private softStopActiveHostPianoVoices(fadeSeconds: number): void {
@@ -3695,6 +4536,7 @@ export class CoreEngineHost {
       this.clearSoftStopCleanupTimers();
       this.stopSynthEuclidLiveEvolve();
       this.stopActiveHostPianoVoices();
+      this.disconnectHostEarthTextures();
       this.stopRuntimeRandomWalk();
       this.stopJourneyMorphClock();
       this.node?.port.postMessage({ type: 'stop' });
@@ -3720,11 +4562,14 @@ export class CoreEngineHost {
     this.hostPianoDelayASend = null;
     this.hostPianoDelayBSend = null;
     this.hostPianoGranularSend = null;
+    this.hostPianoExternalInputs = createInactiveHostExternalInputActivity();
+    this.hostEarthExternalInputs = createInactiveHostExternalInputActivity();
     this.limiter = null;
     this.analyser = null;
     this.ctx = null;
     this.isRunning = false;
     this.isStarting = false;
+    this.transportAnchors = null;
     this.resetConfigCaches();
     this.notifyStateChange();
   }
@@ -3901,25 +4746,26 @@ export class CoreEngineHost {
     this.hostPianoDelayASend?.gain.setTargetAtTime(delayAGain, now, smoothTime);
     this.hostPianoDelayBSend?.gain.setTargetAtTime(delayBGain, now, smoothTime);
     this.hostPianoGranularSend?.gain.setTargetAtTime(granularGain, now, smoothTime);
-    this.node.port.postMessage({
-      type: 'configureExternalInputs',
+    this.hostPianoExternalInputs = {
       reverbActive: reverbGain > 0.0001,
       delayAActive: delayAGain > 0.0001,
       delayBActive: delayBGain > 0.0001,
       granularActive: granularGain > 0.0001,
-    });
+    };
+    this.postHostExternalInputState();
   }
 
-  private configureHostPianoEuclid(sliderState: SliderState, synthEuclid: CoreSynthEuclidPreview): void {
-    const notes = synthEuclid.pianoNotes;
+  private configureHostPianoEuclid(sliderState: SliderState, hostPiano: CoreHostPianoPreview): void {
+    const chords = hostPiano.chords;
+    const notes = chords.flat();
     const configKey = notes.length > 0
-      ? `host-piano-euclid:${synthEuclid.noteKey}:${synthEuclid.initialStartDelaySeconds.toFixed(4)}:${synthEuclid.loopSeconds.toFixed(4)}`
+      ? `${hostPiano.noteKey}:${hostPiano.loopSeconds.toFixed(4)}`
       : 'host-piano-euclid:off';
     if (this.hostPianoEuclidConfigKey === configKey) return;
 
     this.clearHostPianoEuclidTimers();
     this.hostPianoEuclidConfigKey = configKey;
-    if (notes.length === 0 || synthEuclid.loopSeconds <= 0) return;
+    if (notes.length === 0 || hostPiano.loopSeconds <= 0) return;
 
     const playbackState = { ...sliderState };
     const uniqueSampleIndices = new Set(notes.map((note) => getNearestPianoSample(frequencyToMidiNote(note.frequency)).index));
@@ -3927,8 +4773,9 @@ export class CoreEngineHost {
       void this.ensureHostPianoSamplePairLoaded(index);
     }
 
-    const scheduleCycle = () => {
-      for (const note of notes) {
+    const scheduleCycle = (chordIndex = 0) => {
+      const chord = chords[chordIndex] ?? [];
+      for (const note of chord) {
         const timer = window.setTimeout(() => {
           this.hostPianoEuclidTimers.delete(timer);
           void this.playHostPianoNote(note.frequency, note.velocity, playbackState, note.distanceOverride ?? null);
@@ -3936,17 +4783,18 @@ export class CoreEngineHost {
         this.hostPianoEuclidTimers.add(timer);
       }
 
+      const nextChordIndex = (chordIndex + 1) % Math.max(1, chords.length);
       const nextCycleTimer = window.setTimeout(() => {
         this.hostPianoEuclidTimers.delete(nextCycleTimer);
-        scheduleCycle();
-      }, Math.max(100, synthEuclid.loopSeconds * 1000));
+        scheduleCycle(nextChordIndex);
+      }, Math.max(100, hostPiano.loopSeconds * 1000));
       this.hostPianoEuclidTimers.add(nextCycleTimer);
     };
 
     const firstCycleTimer = window.setTimeout(() => {
       this.hostPianoEuclidTimers.delete(firstCycleTimer);
-      scheduleCycle();
-    }, Math.max(0, synthEuclid.initialStartDelaySeconds * 1000));
+      scheduleCycle(0);
+    }, Math.max(0, hostPiano.initialStartDelaySeconds * 1000));
     this.hostPianoEuclidTimers.add(firstCycleTimer);
   }
 
@@ -4147,6 +4995,7 @@ export class CoreEngineHost {
 
   updateParams(sliderState: SliderState, options?: CoreEngineHostUpdateOptions): void {
     this.applyCoreState(sliderState, options);
+    this.notifyStateChange();
   }
 
   setDrumEuclidClockDivs(divs: ClockDivision[]): void {
@@ -4375,6 +5224,75 @@ export class CoreEngineHost {
     if (!callback) this.stopJourneyMorphClock();
   }
 
+  private resetTransportAnchors(): TransportAnchors {
+    const nowWallSec = Date.now() / 1000;
+    const nowCtxSec = this.ctx?.currentTime ?? 0;
+    const anchors = {
+      localPhraseWallStartSec: nowWallSec,
+      localBeatWallStartSec: nowWallSec,
+      localBeatCtxStartSec: nowCtxSec,
+    };
+    this.transportAnchors = anchors;
+    return anchors;
+  }
+
+  private ensureTransportAnchors(): TransportAnchors {
+    return this.transportAnchors ?? this.resetTransportAnchors();
+  }
+
+  private getCorePreviewBucket(state: SliderState): string {
+    return getUtcBucket(state.seedWindow === 'day' ? 'day' : 'hour');
+  }
+
+  private getCorePreviewHarmonyState(state: SliderState | null = this.lastSliderState): HarmonyState | null {
+    if (!state) return null;
+    return createCorePreviewHarmonyState(state);
+  }
+
+  private getTransportDebugStateInternal(nowWallSec: number = Date.now() / 1000): TransportDebugSnapshot | null {
+    const state = this.lastSliderState;
+    if (!state) return null;
+
+    const anchors = this.ensureTransportAnchors();
+    const clockSource = state.harmonyClockSource ?? 'globalPhrase';
+    const phraseSeconds = getPhraseDurationForClockSource(state, clockSource);
+    const metrics = getTransportMetrics(state);
+    const nextPhraseBoundaryIn = getTimeUntilNextBoundaryWall(
+      clockSource,
+      phraseSeconds,
+      anchors,
+      nowWallSec,
+    );
+
+    const chordRateSeconds = boundedNumber(state.chordRate, 32, 1, 128);
+    const nextHarmonyEventIn = chordRateSeconds < phraseSeconds
+      ? getTimeUntilNextBoundaryWall(
+        clockSource,
+        phraseSeconds / Math.max(2, Math.round(phraseSeconds / chordRateSeconds)),
+        anchors,
+        nowWallSec,
+      )
+      : nextPhraseBoundaryIn;
+
+    const progressionSource = resolveProgressionPhraseClockSource(
+      state.chordProgressionClockSource ?? 'harmony',
+      clockSource,
+    );
+    const progressionPhraseSeconds = getPhraseDurationForClockSource(state, progressionSource);
+    const progressionStepSeconds = progressionPhraseSeconds * Math.max(1, state.chordProgressionPhraseMultiplier ?? 1);
+    const nextProgressionStepIn = state.chordProgressionEnabled
+      ? getTimeUntilNextBoundaryWall(progressionSource, progressionStepSeconds, anchors, nowWallSec)
+      : null;
+
+    return {
+      effectiveBpm: metrics.effectiveBpm,
+      effectivePhraseSeconds: phraseSeconds,
+      nextPhraseBoundaryIn,
+      nextHarmonyEventIn,
+      nextProgressionStepIn,
+    };
+  }
+
   startJourneyMorphClock(): void {
     if (this.journeyMorphClockActive || !this.onJourneyMorphClockFrame) return;
     this.journeyMorphClockActive = true;
@@ -4402,11 +5320,16 @@ export class CoreEngineHost {
   }
 
   getTransportDebugState(): TransportDebugSnapshot | null {
-    return null;
+    return this.getTransportDebugStateInternal();
   }
 
   getEarthTextureDebugState(): EarthTextureDebugState {
-    return { waves: null, birds: null, birds2: null, frogs: null };
+    return {
+      waves: this.hostEarthTextures.waves?.player.getDebugSnapshot() ?? null,
+      birds: this.hostEarthTextures.birds?.player.getDebugSnapshot() ?? null,
+      birds2: this.hostEarthTextures.birds2?.player.getDebugSnapshot() ?? null,
+      frogs: this.hostEarthTextures.frogs?.player.getDebugSnapshot() ?? null,
+    };
   }
 
   getDynamicsAnalyser(_key: DynamicsAnalyserKey): AnalyserNode | null {
@@ -5058,17 +5981,19 @@ export class CoreEngineHost {
   }
 
   getState(): EngineState {
+    const harmonyState = this.getCorePreviewHarmonyState();
+    const bucket = this.lastSliderState ? this.getCorePreviewBucket(this.lastSliderState) : '';
     return {
       isRunning: this.isRunning,
-      harmonyState: null,
-      currentSeed: 1,
-      currentBucket: 'core-wasm',
+      harmonyState,
+      currentSeed: bucket ? computeSeed(bucket, 'E_ROOT') : 0,
+      currentBucket: bucket,
       currentFilterFreq: 0,
       currentLfoValue: 0,
       currentLfo2Value: 0,
-      cofCurrentStep: 0,
+      cofCurrentStep: harmonyState?.cof.currentStep ?? 0,
       fxOwners: emptyFxOwners(),
-      transportDebug: null,
+      transportDebug: this.getTransportDebugStateInternal(),
     };
   }
 
@@ -5158,7 +6083,7 @@ export class CoreEngineHost {
       subLaneEnabled: this.drumSubLaneEnabled,
       morphRanges: this.drumMorphRanges,
       paramSHRanges: this.drumParamSHRanges,
-    });
+    }, this.ensureTransportAnchors());
     const reverbConfig = createReverbModuleConfig(padState);
     const delayAConfig = createDelayAModuleConfig(padState);
     const delayBConfig = createDelayBModuleConfig(padState);
@@ -5178,7 +6103,8 @@ export class CoreEngineHost {
     node.port.postMessage({ type: 'applySnapshot', snapshot: coreSnapshot });
     this.configurePreviewSources(previewSources);
     this.configureHostPianoFxSends(padState);
-    this.configureHostPianoEuclid(padState, previewSources.synthEuclid);
+    this.configureHostEarthTextures(padState);
+    this.configureHostPianoEuclid(padState, previewSources.hostPiano);
     this.syncSynthEuclidLiveEvolve(padState);
     this.configureDelayAModule(delayAConfig);
     this.configureDelayBModule(delayBConfig);

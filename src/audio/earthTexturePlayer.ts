@@ -1,3 +1,5 @@
+import { createRng } from './rng';
+
 type ActiveSlice = {
   id: number;
   source: AudioBufferSourceNode;
@@ -42,6 +44,7 @@ export type EarthTexturePlayerConfig = {
   sliceDuration: number;
   fadeTime: number;
   density: number;
+  randomSeed?: string | null;
   schedulerLookAheadMs?: number;
   schedulerIntervalMs?: number;
 };
@@ -57,8 +60,8 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
-function randomSigned(amount: number): number {
-  return (Math.random() * 2 - 1) * amount;
+function randomSigned(rng: () => number, amount: number): number {
+  return (rng() * 2 - 1) * amount;
 }
 
 function resolveSampleUrl(fileName: string): string {
@@ -109,6 +112,8 @@ export class EarthTexturePlayer {
   private recentOffsets: number[] = [];
   private readonly activeSlices = new Set<ActiveSlice>();
   private nextSliceId = 1;
+  private randomSeed: string | null = null;
+  private rng: () => number = createRng('earth-texture');
 
   constructor(ctx: AudioContext, output: AudioNode, config: EarthTexturePlayerConfig) {
     this.ctx = ctx;
@@ -119,6 +124,7 @@ export class EarthTexturePlayer {
     this.density = config.density;
     this.schedulerLookAheadSec = (config.schedulerLookAheadMs ?? 500) / 1000;
     this.schedulerIntervalMs = config.schedulerIntervalMs ?? 140;
+    this.setRandomSeed(config.randomSeed ?? this.createFallbackRandomSeed());
   }
 
   private getSharedDecodedBufferCache(): Map<string, AudioBuffer> {
@@ -195,10 +201,11 @@ export class EarthTexturePlayer {
     return loadPromise;
   }
 
-  update(config: Partial<Pick<EarthTexturePlayerConfig, 'sliceDuration' | 'fadeTime' | 'density'>>): void {
+  update(config: Partial<Pick<EarthTexturePlayerConfig, 'sliceDuration' | 'fadeTime' | 'density' | 'randomSeed'>>): void {
     if (typeof config.sliceDuration === 'number') this.sliceDuration = config.sliceDuration;
     if (typeof config.fadeTime === 'number') this.fadeTime = config.fadeTime;
     if (typeof config.density === 'number') this.density = clamp(config.density, 0, 1);
+    if ('randomSeed' in config) this.setRandomSeed(config.randomSeed ?? this.createFallbackRandomSeed());
   }
 
   async start(): Promise<void> {
@@ -341,8 +348,8 @@ export class EarthTexturePlayer {
     if (!this.buffer) return null;
 
     const bufferDuration = clamp(this.sliceDuration, 1.5, Math.max(1.5, this.buffer.duration - 0.05));
-    const detuneCents = randomSigned(RANDOM_PITCH_RANGE_CENTS);
-    const speedMultiplier = 1 + randomSigned(RANDOM_SPEED_VARIATION);
+    const detuneCents = randomSigned(this.rng, RANDOM_PITCH_RANGE_CENTS);
+    const speedMultiplier = 1 + randomSigned(this.rng, RANDOM_SPEED_VARIATION);
     const totalRate = Math.max(0.25, speedMultiplier * Math.pow(2, detuneCents / 1200));
     const outputDuration = bufferDuration / totalRate;
     const fade = clamp(this.fadeTime, 0.1, outputDuration * 0.45);
@@ -407,10 +414,10 @@ export class EarthTexturePlayer {
     if (maxOffset <= 0.0001) return 0;
 
     const exclusionDistance = Math.min(duration * 0.75, Math.max(2.5, maxOffset * 0.12));
-    let candidate = Math.random() * maxOffset;
+    let candidate = this.rng() * maxOffset;
 
     for (let attempt = 0; attempt < 8; attempt += 1) {
-      candidate = Math.random() * maxOffset;
+      candidate = this.rng() * maxOffset;
       const tooClose = this.recentOffsets.some((recent) => Math.abs(recent - candidate) < exclusionDistance);
       if (!tooClose) break;
     }
@@ -421,5 +428,16 @@ export class EarthTexturePlayer {
     }
 
     return candidate;
+  }
+
+  private createFallbackRandomSeed(): string {
+    return `earth-texture|${this.fileName}`;
+  }
+
+  private setRandomSeed(randomSeed: string): void {
+    if (randomSeed === this.randomSeed) return;
+    this.randomSeed = randomSeed;
+    this.rng = createRng(randomSeed);
+    this.recentOffsets = [];
   }
 }

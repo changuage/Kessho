@@ -3274,6 +3274,8 @@ private struct KesshoMacDynamicsPage: View {
                     .init("Rate", key: "characterRate", icon: "speedometer", value: \.characterRate),
                     .init("Damp", key: "characterDamp", icon: "line.3.horizontal.decrease", value: \.characterDamp),
                     .init("Envelope", key: "characterEnvFollow", icon: "waveform.path", value: \.characterEnvFollow),
+                    .init("HP", key: "degradeHp", icon: "line.3.horizontal.decrease.circle", value: \.degradeHp),
+                    .init("LP", key: "degradeLp", icon: "line.3.horizontal.decrease", value: \.degradeLp),
                     .init("Stereo", key: "characterStereo", icon: "arrow.left.and.right", value: \.characterStereo),
                     .init("Resonance", key: "characterResonance", icon: "dot.radiowaves.left.and.right", value: \.characterResonance),
                 ], accent: accent, columns: 2)

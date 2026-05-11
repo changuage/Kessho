@@ -1,26 +1,14 @@
 {
-  "generatedAt": "2026-05-08T18:36:37.678Z",
+  "generatedAt": "2026-05-11T10:56:46.858Z",
   "overallStatus": "pass",
   "summary": {
-    "pass": 13,
+    "pass": 16,
     "debt": 0,
-    "surrogate": 1,
+    "surrogate": 0,
     "fail": 0,
-    "total": 14
+    "total": 16
   },
   "rows": [
-    {
-      "id": "earth-sample-texture-policy",
-      "area": "source",
-      "status": "surrogate",
-      "priority": "decision",
-      "evidence": [
-        "Core soundscapes generator",
-        "Web OGG sample assets"
-      ],
-      "description": "Earth/soundscape parity uses deterministic generated coverage; embedding decoded OGG nature textures in Core remains a product/performance decision.",
-      "next": ""
-    },
     {
       "id": "cpu-browser-core",
       "area": "cpu",
@@ -60,6 +48,31 @@
       "next": ""
     },
     {
+      "id": "earth-sample-texture-policy",
+      "area": "source",
+      "status": "pass",
+      "priority": "required",
+      "evidence": [
+        "Core host EarthTexturePlayer bridge",
+        "Web OGG sample assets",
+        "Core worklet external FX input buses"
+      ],
+      "description": "Core mode now plays the same waves, birds, and frogs OGG texture assets as the Webapp through host-side sample players, with dry output and shared Core reverb, Delay A/B, and granular routing.",
+      "next": ""
+    },
+    {
+      "id": "lead-random-phrase-scheduler",
+      "area": "sequencer",
+      "status": "pass",
+      "priority": "required",
+      "evidence": [
+        "Web random lead phrase scheduler",
+        "Core lead/piano random preview sequence"
+      ],
+      "description": "Core mode now schedules Random Timing phrase notes for Lead 1, Lead 2, and Piano instead of only exposing Euclidean lead playback.",
+      "next": ""
+    },
+    {
       "id": "lead-source-core",
       "area": "source",
       "status": "pass",
@@ -82,6 +95,18 @@
         "Core host contract"
       ],
       "description": "Native state and audio graph contain the current parity-critical source, sequencer, and shared-delay surfaces.",
+      "next": ""
+    },
+    {
+      "id": "pad-chord-live-sequencer",
+      "area": "sequencer",
+      "status": "pass",
+      "priority": "required",
+      "evidence": [
+        "Web phrase/sub-phrase harmony scheduler",
+        "Core generated harmony tick chord sets"
+      ],
+      "description": "Core pad chord playback now advances through generated harmony tick chord sets instead of duplicating one frozen startup chord.",
       "next": ""
     },
     {

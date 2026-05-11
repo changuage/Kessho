@@ -436,11 +436,12 @@ final class DynamicsCharacterProcessor {
             ? rawFlutter * 0.00022 + contribution.materialWear * 0.00009 + contribution.aliasDamage * 0.0001 + modFlutter * 0.0002
             : 0
         let corrosion = clamp01(rawCorrosion * degradeInfluence * 0.72 + damage * 0.09 + degradeGeneration * 0.035)
-        let degradeHp = (degradeEnabled ? clamp01(state.degradeHp) : 0) * degradeInfluence
-        let degradeLp = 1 - (1 - (degradeEnabled ? clamp01(state.degradeLp) : 1)) * degradeInfluence
-        let hp = max(degradeHp, modeActive ? defaults.hp : 0, damage * 0.08 + corrosion * 0.03)
+        let sharedFilterActive = characterEnabled || degradeEnabled
+        let sharedHp = sharedFilterActive ? clamp01(state.degradeHp) : 0
+        let sharedLp = sharedFilterActive ? clamp01(state.degradeLp) : 1
+        let hp = max(sharedHp, damage * 0.08 + corrosion * 0.03)
         let lpCeiling = max(0.08, 1 - damage * 0.2 - corrosion * 0.1 - mediaWear * degradeMix * 0.08 - digitalDamage * 0.05 - modLp * 0.08)
-        let lp = max(0.08, min(degradeLp, modeActive ? defaults.lp : 1, lpCeiling))
+        let lp = max(0.08, min(sharedLp, lpCeiling))
         let rate = characterEnabled ? max(clamp01(state.characterRate), modeActive ? defaults.rate : 0) : 0
         let damp = characterEnabled ? max(clamp01(state.characterDamp), modeActive ? defaults.damp : 0.5) : 0.5
         let stereo = characterEnabled ? clamp01(state.characterStereo) : 0

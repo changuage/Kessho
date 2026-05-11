@@ -1233,6 +1233,22 @@ struct SliderControlsView: View {
 	                        icon: "waveform.path"
 	                    )
 
+                        ParameterSlider(
+                            label: "HP",
+                            key: "degradeHp",
+                            value: $appState.state.degradeHp,
+                            range: 0...1,
+                            icon: "arrow.up.right"
+                        )
+
+                        ParameterSlider(
+                            label: "LP",
+                            key: "degradeLp",
+                            value: $appState.state.degradeLp,
+                            range: 0...1,
+                            icon: "arrow.down.right"
+                        )
+
 	                    ParameterSlider(
 	                        label: "Stereo",
 	                        key: "characterStereo",

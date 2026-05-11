@@ -42,6 +42,7 @@ type CaptureResult = {
     mean: number;
     dc: number;
   };
+  debug?: unknown;
 };
 
 type InstallOptions = {
@@ -378,6 +379,9 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
         left: Array.from(left),
         right: Array.from(right),
         stats,
+        debug: typeof (engine as unknown as { getSonicParityDebugState?: () => unknown }).getSonicParityDebugState === 'function'
+          ? (engine as unknown as { getSonicParityDebugState: () => unknown }).getSonicParityDebugState()
+          : undefined,
       };
     },
     teardown() {

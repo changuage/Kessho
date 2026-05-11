@@ -146,6 +146,10 @@ int clampedRounded(float value, int lo, int hi) {
   return std::clamp(roundedInt(value), lo, hi);
 }
 
+float clampUnit(float value) {
+  return std::isfinite(value) ? std::clamp(value, 0.0f, 1.0f) : 0.0f;
+}
+
 class PadModule final : public IKesshoModule {
 public:
   ~PadModule() override {
@@ -330,6 +334,94 @@ public:
     const int pad = std::clamp(route / PAD_NUM_VOICES, 0, PAD_NUM_PADS - 1);
     pad_instance_set_voice_pad(instance_, voice, pad);
     pad_instance_note_on(instance_, voice, frequency, velocity);
+    return 1;
+  }
+
+  int setSourceMacros(int source_index, float morph, float distance, float expression) override {
+    if (instance_ == nullptr || source_index < 0 || source_index >= PAD_NUM_PADS) {
+      return 0;
+    }
+    const float m = clampUnit(morph);
+    const float d = clampUnit(distance);
+    const float e = clampUnit(expression);
+    const int base = source_index * kPadParamCount;
+
+    params_[base + kHardness] = 0.05f + m * 0.45f;
+    params_[base + kWarmth] = std::clamp(0.82f - d * 0.42f + (1.0f - m) * 0.08f, 0.0f, 1.0f);
+    params_[base + kPresence] = std::clamp(0.22f + e * 0.58f + m * 0.16f, 0.0f, 1.0f);
+    params_[base + kFoldAmount] = m * m * 0.32f;
+    params_[base + kFilterCutoffMax] = std::clamp(900.0f + e * 4200.0f + m * 3200.0f, 400.0f, 12000.0f);
+    params_[base + kFilterResonance] = std::clamp(0.04f + d * 0.32f, 0.0f, 0.95f);
+    params_[base + kLfo1Rate] = 0.04f + d * 0.45f;
+    params_[base + kLfo1Depth] = m * 0.14f;
+    params_[base + kLevel] = std::clamp(0.35f + e * 0.65f, 0.0f, 1.2f);
+
+    pad_instance_set_hardness(instance_, source_index, params_[base + kHardness]);
+    pad_instance_set_warmth(instance_, source_index, params_[base + kWarmth]);
+    pad_instance_set_presence(instance_, source_index, params_[base + kPresence]);
+    pad_instance_set_fold_amount(instance_, source_index, params_[base + kFoldAmount]);
+    pad_instance_set_filter_cutoff_max(instance_, source_index, params_[base + kFilterCutoffMax]);
+    pad_instance_set_filter_resonance(instance_, source_index, params_[base + kFilterResonance]);
+    pad_instance_set_lfo1_rate(instance_, source_index, params_[base + kLfo1Rate]);
+    pad_instance_set_lfo1_depth(instance_, source_index, params_[base + kLfo1Depth]);
+    pad_instance_set_level(instance_, source_index, params_[base + kLevel]);
+    return 1;
+  }
+
+  int setSourcePresetPatch(int source_index, const KesshoSourcePresetPatch& patch) override {
+    if (instance_ == nullptr || source_index < 0 || source_index >= PAD_NUM_PADS) {
+      return 0;
+    }
+
+    const float tone = clampUnit(patch.tone);
+    const float brightness = clampUnit(patch.brightness);
+    const float texture = clampUnit(patch.texture);
+    const float motion = clampUnit(patch.motion);
+    const float attack = clampUnit(patch.attack);
+    const float release = clampUnit(patch.release);
+    const float body = clampUnit(patch.body);
+    const float transient = clampUnit(patch.transient);
+    const int base = source_index * kPadParamCount;
+
+    params_[base + kOscAWave] =
+        tone > 0.72f ? PAD_WAVE_SAWTOOTH : tone < 0.22f ? PAD_WAVE_SINE : PAD_WAVE_TRIANGLE;
+    params_[base + kOscBWave] =
+        texture > 0.72f ? PAD_WAVE_SQUARE : brightness > 0.68f ? PAD_WAVE_SINE : PAD_WAVE_TRIANGLE;
+    params_[base + kOscBDetune] = 2.0f + texture * 22.0f;
+    params_[base + kOscALevel] = std::clamp(0.42f + body * 0.42f + brightness * 0.16f, 0.0f, 1.0f);
+    params_[base + kOscBLevel] = std::clamp(0.18f + texture * 0.42f + brightness * 0.18f, 0.0f, 1.0f);
+    params_[base + kSubEnabled] = body > 0.64f ? 1.0f : 0.0f;
+    params_[base + kSubLevel] = std::clamp(0.08f + body * 0.55f, 0.0f, 1.0f);
+    params_[base + kNoiseType] = texture > 0.55f ? 1.0f : 0.0f;
+    params_[base + kNoiseLevel] = std::clamp(0.02f + texture * 0.18f + transient * 0.08f, 0.0f, 0.6f);
+    params_[base + kHardness] = std::clamp(tone * 0.54f + transient * 0.2f, 0.0f, 1.0f);
+    params_[base + kWarmth] = std::clamp(0.22f + body * 0.62f - brightness * 0.18f, 0.0f, 1.0f);
+    params_[base + kPresence] = std::clamp(0.18f + brightness * 0.62f + transient * 0.16f, 0.0f, 1.0f);
+    params_[base + kFoldAmount] = std::clamp(texture * transient * 0.55f, 0.0f, 1.0f);
+    params_[base + kFoldMode] =
+        texture > 0.72f ? PAD_FOLD_SERGE : texture > 0.42f ? PAD_FOLD_SINE : PAD_FOLD_BUCHLA;
+    params_[base + kFilterType] =
+        brightness > 0.78f ? PAD_FILTER_HP : tone > 0.65f ? PAD_FILTER_BP : PAD_FILTER_LP;
+    params_[base + kFilterCutoffMin] = std::clamp(80.0f + body * 460.0f + brightness * 220.0f, 20.0f, 20000.0f);
+    params_[base + kFilterCutoffMax] =
+        std::clamp(850.0f + brightness * 8400.0f + tone * 1800.0f, 80.0f, 20000.0f);
+    params_[base + kFilterResonance] = std::clamp(0.04f + texture * 0.32f + transient * 0.18f, 0.0f, 0.95f);
+    params_[base + kFilterQ] = std::clamp(0.55f + texture * 2.4f, 0.1f, 8.0f);
+    params_[base + kAttack] = 0.01f + attack * 0.8f;
+    params_[base + kDecay] = 0.25f + (1.0f - transient) * 2.8f;
+    params_[base + kSustain] = std::clamp(0.42f + body * 0.42f, 0.0f, 1.0f);
+    params_[base + kRelease] = 0.35f + release * 15.0f;
+    params_[base + kLfo1Rate] = 0.03f + motion * 1.1f;
+    params_[base + kLfo1Depth] = motion * (0.04f + texture * 0.16f);
+    params_[base + kLfo1Wave] = motion > 0.66f ? PAD_LFO_RANDOM_WALK : PAD_LFO_TRIANGLE;
+    params_[base + kLfo1Dest] = texture > 0.55f ? PAD_DEST_FOLD_AMOUNT : PAD_DEST_FILTER_CUTOFF;
+    params_[base + kModEnvEnabled] = transient > 0.18f ? 1.0f : 0.0f;
+    params_[base + kModEnvAttack] = 0.02f + attack * 0.45f;
+    params_[base + kModEnvDecay] = 0.35f + transient * 1.6f;
+    params_[base + kModEnvDepth] = transient * 0.75f;
+    params_[base + kModEnvDest] = PAD_DEST_FILTER_CUTOFF;
+
+    commitParams();
     return 1;
   }
 
