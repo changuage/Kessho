@@ -26,6 +26,17 @@ constexpr uint32_t kModuleTapCount = KESSHO_MODULE_MAX_OUTPUT_TAPS;
 constexpr uint32_t kMaxModulationRanges = 96;
 constexpr uint32_t kMaxRuntimeWalkTelemetry = 16;
 constexpr uint32_t kMaxSoundscapeAssetRefs = 16;
+constexpr uint32_t kGranularVoiceCount = 4;
+constexpr uint32_t kSidechainTargetCount = 9;
+constexpr uint32_t kGranularParamCount = 138;
+constexpr uint32_t kGranularGlobalParamCount = 10;
+constexpr uint32_t kGranularVoiceParamCount = 25;
+constexpr uint32_t kGranularScaleCountParam = 110;
+constexpr uint32_t kGranularScaleIntervalsParam = 111;
+constexpr uint32_t kGranularChordCountParam = 123;
+constexpr uint32_t kGranularChordPitchesParam = 124;
+constexpr uint32_t kGranularChordBiasParam = 131;
+constexpr uint32_t kGranularLegacyParamStart = 132;
 constexpr uint32_t kPianoAssetIdBase = 7200;
 constexpr uint32_t kPianoBaseMidi = 21;
 constexpr uint32_t kPianoSampleCount = 64;
@@ -39,6 +50,140 @@ constexpr uint32_t kSoundscapeAssetFrogs = 7103;
 constexpr uint32_t kSoundscapeAssetWater = 7104;
 constexpr uint32_t kSoundscapeAssetBirds2 = 7105;
 constexpr uint32_t kSoundscapeAssetInsects = 7106;
+constexpr uint32_t kDynamicsCharacterParamCount = 82;
+
+enum SidechainTargetIndex : uint32_t {
+  kSidechainPad1 = 0,
+  kSidechainPad2 = 1,
+  kSidechainLead1 = 2,
+  kSidechainLead2 = 3,
+  kSidechainPiano = 4,
+  kSidechainGranular = 5,
+  kSidechainDelayA = 6,
+  kSidechainDelayB = 7,
+  kSidechainReverb = 8,
+};
+
+enum SidechainKeyId : uint32_t {
+  kSidechainKeyOff = 0,
+  kSidechainKeySub = 1,
+  kSidechainKeyKick = 2,
+  kSidechainKeyClick = 3,
+  kSidechainKeyBeepHi = 4,
+  kSidechainKeyBeepLo = 5,
+  kSidechainKeyNoise = 6,
+  kSidechainKeyMembrane = 7,
+};
+
+enum DynamicsModSourceIndex : uint32_t {
+  kDynamicsModSourceSlow = 0,
+  kDynamicsModSourceFlutter = 1,
+  kDynamicsModSourceRandom = 2,
+  kDynamicsModSourceEnv = 3,
+  kDynamicsModSourceNoise = 4,
+  kDynamicsModSourceCount = 5,
+};
+
+enum DynamicsModTargetIndex : uint32_t {
+  kDynamicsModTargetWow = 0,
+  kDynamicsModTargetFlutter = 1,
+  kDynamicsModTargetLp = 2,
+  kDynamicsModTargetWet = 3,
+  kDynamicsModTargetDropout = 4,
+  kDynamicsModTargetAlias = 5,
+  kDynamicsModTargetCount = 6,
+};
+
+static_assert(
+    KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_NOISE_ALIAS_ID -
+            KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_SLOW_WOW_ID + 1u ==
+        kDynamicsModSourceCount * kDynamicsModTargetCount,
+    "Dynamics modulation matrix Product Core param IDs must remain contiguous");
+
+enum DynamicsCharacterParamIndex : uint32_t {
+  kDynActive = 0,
+  kDynAllpassActive = 1,
+  kDynDry = 2,
+  kDynWet = 3,
+  kDynDegradeMix = 4,
+  kDynDegradeAlias = 5,
+  kDynDegradeGeneration = 6,
+  kDynDegradeCorrosion = 7,
+  kDynDegradeWear = 8,
+  kDynNoiseGain = 9,
+  kDynJitterDepth = 10,
+  kDynRandomDriftFilterHz = 11,
+  kDynRandomDriftDepth = 12,
+  kDynBaseDelay = 13,
+  kDynSpreadDelay = 14,
+  kDynRandomDrift = 15,
+  kDynRandomHoldRateHz = 16,
+  kDynRandomHoldLag = 17,
+  kDynRandomDelayDepth = 18,
+  kDynRandomSpreadDelayDepth = 19,
+  kDynRandomFilterDepth = 20,
+  kDynRandomSpreadFilterDepth = 21,
+  kDynDepth = 22,
+  kDynRate = 23,
+  kDynShallow = 24,
+  kDynAbyss = 25,
+  kDynStereo = 26,
+  kDynDamage = 27,
+  kDynMainPan = 28,
+  kDynSpreadPan = 29,
+  kDynMainDelayGain = 30,
+  kDynSpreadDelayGain = 31,
+  kDynWowFrequency = 32,
+  kDynFlutterFrequency = 33,
+  kDynFlutterRandomDepth = 34,
+  kDynWowDepth = 35,
+  kDynFlutterDepth = 36,
+  kDynHighpassHz = 37,
+  kDynHighpassQ = 38,
+  kDynAllpassAFrequency = 39,
+  kDynAllpassAQ = 40,
+  kDynAllpassBFrequency = 41,
+  kDynAllpassBQ = 42,
+  kDynHeadBumpFrequency = 43,
+  kDynHeadBumpQ = 44,
+  kDynHeadBumpGain = 45,
+  kDynDropoutFilterHz = 46,
+  kDynDropoutDepth = 47,
+  kDynDropoutGain = 48,
+  kDynEnvFilterHz = 49,
+  kDynEnvToLowpassGain = 50,
+  kDynEnvToResonanceGain = 51,
+  kDynEnvToWetGain = 52,
+  kDynLowpassHz = 53,
+  kDynLowpassQ = 54,
+  kDynLowpassStage2Hz = 55,
+  kDynLowpassStage2Q = 56,
+  kDynCompressorThreshold = 57,
+  kDynCompressorKnee = 58,
+  kDynCompressorRatio = 59,
+  kDynCompressorAttack = 60,
+  kDynCompressorRelease = 61,
+  kDynCompressorMakeup = 62,
+  kDynSaturation = 63,
+  kDynCorrosion = 64,
+  kDynMasterSatActive = 65,
+  kDynMasterSatMode = 66,
+  kDynMasterSatDrive = 67,
+  kDynMasterSatTone = 68,
+  kDynMasterSatBias = 69,
+  kDynEndCompActive = 70,
+  kDynEndCompThreshold = 71,
+  kDynEndCompKnee = 72,
+  kDynEndCompRatio = 73,
+  kDynEndCompAttack = 74,
+  kDynEndCompRelease = 75,
+  kDynEndCompMakeup = 76,
+  kDynEndCompMix = 77,
+  kDynEndCompDetectorHpHz = 78,
+  kDynEndCompDetectorTilt = 79,
+  kDynEndCompAutoMakeup = 80,
+  kDynEndCompProgramRelease = 81,
+};
 
 float clampFloat(float value, float min_value, float max_value) {
   if (!std::isfinite(value)) {
@@ -57,6 +202,11 @@ float midiToFrequency(float midi_note) {
 
 float dbToGain(float db) {
   return std::pow(10.0f, db / 20.0f);
+}
+
+float unitToLogFrequency(float value, float min_hz, float max_hz) {
+  const float t = clampFloat(value, 0.0f, 1.0f);
+  return min_hz * std::pow(max_hz / min_hz, t);
 }
 
 uint32_t hashU32(uint32_t value) {
@@ -209,8 +359,53 @@ struct StepValueSubLaneConfig {
   uint32_t direction = KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD;
 };
 
+struct GranularVoiceState {
+  bool enabled = false;
+  uint32_t mode = 1;
+  uint32_t slice = 0;
+  float speed = 1.0f;
+  float scan_rate = 1.0f;
+  bool reverse = false;
+  float pitch = 0.0f;
+  float write_follow = 0.0f;
+  float density = 20.0f;
+  float grain_size_ms = 80.0f;
+  float spray = 0.3f;
+  float grain_octave_probability = 0.0f;
+  float attack_seconds = 0.003f;
+  float decay_seconds = 0.5f;
+  float gain = 0.5f;
+  float pan = 0.0f;
+  float blur = 0.0f;
+  float stereo_spread = 0.5f;
+  float position_lfo_rate = 0.0f;
+  float position_lfo_depth = 0.0f;
+  float pan_lfo_rate = 0.0f;
+  float reverse_lfo_rate = 0.0f;
+  float record_lfo_rate = 0.0f;
+  bool euclid_gated = false;
+  bool euclid_muted = false;
+};
+
 struct FxState {
   float granular_mix = 0.0f;
+  bool granular_enabled = false;
+  bool granular_freeze = false;
+  bool granular_freeze_with_feedback = false;
+  float granular_feedback = 0.1f;
+  float granular_feedback_lpf_hz = 8000.0f;
+  float granular_buffer_seconds = 16.0f;
+  uint32_t granular_grain_shape = 0;
+  float granular_bus_diffusion = 0.0f;
+  float granular_timing_randomness = 0.35f;
+  float granular_chord_bias = 0.0f;
+  float granular_legacy_jitter_ms = 10.0f;
+  float granular_legacy_probability = 0.8f;
+  uint32_t granular_legacy_pitch_mode = 1;
+  float granular_legacy_pitch_spread = 2.0f;
+  uint32_t granular_legacy_max_grains = 64;
+  float granular_legacy_feedback = 0.1f;
+  GranularVoiceState granular_voices[kGranularVoiceCount]{};
   bool delay_a_enabled = true;
   float delay_a_time_left_ms = 500.0f;
   float delay_a_time_right_ms = 375.0f;
@@ -268,7 +463,94 @@ struct FxState {
   float reverb_transient_smooth = 0.0f;
   float reverb_er_lp_freq = 2500.0f;
   float spectral_freeze_mix = 0.0f;
+  bool spectral_freeze_enabled = false;
+  bool spectral_freeze_active = false;
+  bool spectral_freeze_slushy = false;
+  float spectral_freeze_speed = 0.3f;
+  float spectral_freeze_decay = 1.0f;
+  float spectral_freeze_phase_jitter = 0.0f;
   float dynamics_drive = 0.0f;
+  bool dynamics_enabled = false;
+  bool dynamics_character_enabled = false;
+  uint32_t dynamics_character_mode = 0;
+  float dynamics_character_mix = 0.0f;
+  float dynamics_character_age = 0.0f;
+  float dynamics_character_bias = 0.5f;
+  float dynamics_character_lpg_amount = 0.5f;
+  float dynamics_character_resonance = 0.2f;
+  float dynamics_character_stereo = 0.5f;
+  float dynamics_character_env_follow = 0.0f;
+  float dynamics_character_depth = 0.0f;
+  float dynamics_character_rate = 0.3f;
+  float dynamics_character_damp = 0.5f;
+  bool dynamics_degrade_enabled = false;
+  float dynamics_degrade_mix = 0.0f;
+  float dynamics_degrade_age = 0.0f;
+  float dynamics_degrade_generation = 0.0f;
+  float dynamics_degrade_alias = 0.0f;
+  float dynamics_degrade_wow = 0.0f;
+  float dynamics_degrade_flutter = 0.0f;
+  float dynamics_degrade_drift = 0.0f;
+  float dynamics_degrade_wobble_speed = 0.35f;
+  float dynamics_degrade_tone = 0.5f;
+  float dynamics_degrade_hp = 0.0f;
+  float dynamics_degrade_lp = 1.0f;
+  float dynamics_degrade_noise = 0.0f;
+  float dynamics_degrade_saturation = 0.0f;
+  float dynamics_degrade_corrosion = 0.0f;
+  float dynamics_mod[kDynamicsModSourceCount][kDynamicsModTargetCount]{
+      {0.18f, 0.02f, 0.12f, 0.03f, 0.04f, 0.0f},
+      {0.0f, 0.12f, 0.02f, 0.0f, 0.02f, 0.0f},
+      {0.04f, 0.03f, 0.14f, 0.02f, 0.1f, 0.02f},
+      {0.0f, 0.0f, 0.08f, 0.04f, 0.0f, 0.0f},
+      {0.0f, 0.06f, 0.02f, 0.0f, 0.06f, 0.02f},
+  };
+  bool dynamics_saturation_enabled = false;
+  uint32_t dynamics_saturation_mode = 0;
+  float dynamics_saturation_drive = 0.0f;
+  float dynamics_saturation_tone = 0.5f;
+  float dynamics_saturation_bias = 0.5f;
+  bool dynamics_end_comp_enabled = false;
+  float dynamics_end_comp_threshold = -18.0f;
+  float dynamics_end_comp_knee = 12.0f;
+  float dynamics_end_comp_ratio = 2.0f;
+  float dynamics_end_comp_attack_ms = 10.0f;
+  float dynamics_end_comp_release_ms = 180.0f;
+  float dynamics_end_comp_makeup = 1.0f;
+  float dynamics_end_comp_mix = 1.0f;
+  float dynamics_end_comp_detector_hp = 0.25f;
+  float dynamics_end_comp_detector_tilt = 0.5f;
+  float dynamics_end_comp_auto_makeup = 0.7f;
+  float dynamics_end_comp_program_release = 0.65f;
+  bool sidechain_enabled = false;
+  uint32_t sidechain_key_a = kSidechainKeyKick;
+  uint32_t sidechain_key_b = kSidechainKeyOff;
+  float sidechain_key_a_weight = 1.0f;
+  float sidechain_key_b_weight = 0.7f;
+  float sidechain_amount = 0.5f;
+  float sidechain_threshold = -24.0f;
+  float sidechain_ratio = 4.0f;
+  float sidechain_knee = 6.0f;
+  float sidechain_attack_ms = 5.0f;
+  float sidechain_hold_ms = 20.0f;
+  float sidechain_release_ms = 180.0f;
+  float sidechain_makeup = 1.0f;
+  float sidechain_mix = 1.0f;
+  float sidechain_curve = 0.5f;
+  float sidechain_detector_hp = 0.0f;
+  float sidechain_detector_lp = 1.0f;
+  float sidechain_targets[kSidechainTargetCount]{};
+};
+
+struct SidechainEnvelope {
+  float current_gain = 1.0f;
+  float start_gain = 1.0f;
+  float target_gain = 1.0f;
+  uint32_t attack_elapsed = 0u;
+  uint32_t attack_frames = 0u;
+  uint32_t hold_remaining = 0u;
+  uint32_t release_elapsed = 0u;
+  uint32_t release_frames = 0u;
 };
 
 struct RoutingState {
@@ -503,10 +785,15 @@ struct KesshoProductEngine {
   float delay_b_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float granular_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float granular_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float sidechain_gains[kSidechainTargetCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  SidechainEnvelope sidechain_envelopes[kSidechainTargetCount]{};
   uint32_t last_stem_frames = 0;
   float master_gain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_GAIN;
   float master_limiter_ceiling_db = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_LIMITER_CEILING_DB;
   float master_limiter_ceiling_gain = dbToGain(kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_LIMITER_CEILING_DB);
+  uint32_t master_saturation_mode = 0;
+  float master_saturation_drive = 0.0f;
+  float master_saturation_tone = 0.5f;
   FxState fx{};
   RoutingState routing{};
   uint32_t rng_seed = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
@@ -557,6 +844,17 @@ struct KesshoProductEngine {
       return false;
     }
     return true;
+  }
+
+  float dynamicsModRoute(const float sources[kDynamicsModSourceCount], uint32_t target) const {
+    if (target >= kDynamicsModTargetCount) {
+      return 0.0f;
+    }
+    float sum = 0.0f;
+    for (uint32_t source = 0; source < kDynamicsModSourceCount; ++source) {
+      sum += sources[source] * clampFloat(fx.dynamics_mod[source][target], 0.0f, 1.0f);
+    }
+    return clampFloat(sum, 0.0f, 1.0f);
   }
 
   void configureFxModules() {
@@ -653,53 +951,274 @@ struct KesshoProductEngine {
     }
     if (granular_module) {
       float* params = granular_module->params();
-      if (params != nullptr && granular_module->paramCount() >= 10) {
-        params[0] = fx.granular_mix > 0.0001f ? 1.0f : 0.0f;
+      if (params != nullptr && granular_module->paramCount() >= static_cast<int>(kGranularParamCount)) {
+        params[0] = fx.granular_enabled ? 1.0f : 0.0f;
+        params[1] = fx.granular_freeze ? 1.0f : 0.0f;
+        params[2] = fx.granular_freeze_with_feedback ? 1.0f : 0.0f;
         params[3] = 1.0f;
-        params[4] = 0.08f + fx.granular_mix * 0.18f;
-        params[8] = 0.25f;
-        params[9] = 0.35f;
+        params[4] = clampFloat(fx.granular_feedback, 0.0f, 0.85f);
+        params[5] = clampFloat(fx.granular_feedback_lpf_hz, 200.0f, 12000.0f);
+        params[6] = clampFloat(fx.granular_buffer_seconds, 1.0f, 32.0f);
+        params[7] = static_cast<float>(clampU32(fx.granular_grain_shape, 0u, 3u));
+        params[8] = clampFloat(fx.granular_bus_diffusion, 0.0f, 1.0f);
+        params[9] = clampFloat(fx.granular_timing_randomness, 0.0f, 1.0f);
+        for (uint32_t voice_index = 0; voice_index < kGranularVoiceCount; ++voice_index) {
+          const GranularVoiceState& voice = fx.granular_voices[voice_index];
+          const uint32_t base = kGranularGlobalParamCount + voice_index * kGranularVoiceParamCount;
+          params[base + 0] = voice.enabled ? 1.0f : 0.0f;
+          params[base + 1] = static_cast<float>(clampU32(voice.mode, 0u, 2u));
+          params[base + 2] = static_cast<float>(clampU32(voice.slice, 0u, 15u));
+          params[base + 3] = clampFloat(voice.speed, 0.0f, 4.0f);
+          params[base + 4] = clampFloat(voice.scan_rate, 0.25f, 4.0f);
+          params[base + 5] = voice.reverse ? 1.0f : 0.0f;
+          params[base + 6] = clampFloat(voice.pitch, -24.0f, 24.0f);
+          params[base + 7] = clampFloat(voice.write_follow, 0.0f, 1.0f);
+          params[base + 8] = clampFloat(voice.density, 1.0f, 64.0f);
+          params[base + 9] = clampFloat(voice.grain_size_ms, 10.0f, 500.0f);
+          params[base + 10] = clampFloat(voice.spray, 0.0f, 1.0f);
+          params[base + 11] = clampFloat(voice.grain_octave_probability, 0.0f, 1.0f);
+          params[base + 12] = clampFloat(voice.attack_seconds, 0.001f, 0.5f);
+          params[base + 13] = clampFloat(voice.decay_seconds, 0.01f, 4.0f);
+          params[base + 14] = clampFloat(voice.gain, 0.0f, 1.0f);
+          params[base + 15] = clampFloat(voice.pan, -1.0f, 1.0f);
+          params[base + 16] = clampFloat(voice.blur, 0.0f, 1.0f);
+          params[base + 17] = clampFloat(voice.stereo_spread, 0.0f, 1.0f);
+          params[base + 18] = clampFloat(voice.position_lfo_rate, 0.0f, 1.0f);
+          params[base + 19] = clampFloat(voice.position_lfo_depth, 0.0f, 1.0f);
+          params[base + 20] = clampFloat(voice.pan_lfo_rate, 0.0f, 1.0f);
+          params[base + 21] = clampFloat(voice.reverse_lfo_rate, 0.0f, 1.0f);
+          params[base + 22] = clampFloat(voice.record_lfo_rate, 0.0f, 1.0f);
+          params[base + 23] = voice.euclid_gated ? 1.0f : 0.0f;
+          params[base + 24] = voice.euclid_muted ? 1.0f : 0.0f;
+        }
+        int intervals[kMaxScaleNotes]{};
+        const uint32_t interval_count = std::min<uint32_t>(scaleIntervals(harmony.scale_id, intervals), 12u);
+        params[kGranularScaleCountParam] = static_cast<float>(interval_count);
+        for (uint32_t i = 0; i < 12u; ++i) {
+          params[kGranularScaleIntervalsParam + i] = i < interval_count ? static_cast<float>(intervals[i]) : 0.0f;
+        }
+        params[kGranularChordCountParam] = 4.0f;
+        for (uint32_t i = 0; i < 7u; ++i) {
+          params[kGranularChordPitchesParam + i] =
+              i < 4u ? static_cast<float>(positiveModulo(roundedInt(harmony.chord_midi[i] - harmony.root_midi), 12u)) : 0.0f;
+        }
+        params[kGranularChordBiasParam] = clampFloat(fx.granular_chord_bias, 0.0f, 1.0f);
+        params[kGranularLegacyParamStart + 0] = clampFloat(fx.granular_legacy_jitter_ms, 0.0f, 30.0f);
+        params[kGranularLegacyParamStart + 1] = clampFloat(fx.granular_legacy_probability, 0.0f, 1.0f);
+        params[kGranularLegacyParamStart + 2] = static_cast<float>(clampU32(fx.granular_legacy_pitch_mode, 0u, 1u));
+        params[kGranularLegacyParamStart + 3] = clampFloat(fx.granular_legacy_pitch_spread, 0.0f, 12.0f);
+        params[kGranularLegacyParamStart + 4] = static_cast<float>(clampU32(fx.granular_legacy_max_grains, 0u, 128u));
+        params[kGranularLegacyParamStart + 5] = clampFloat(fx.granular_legacy_feedback, 0.0f, 0.35f);
         granular_module->commitParams();
       }
     }
     if (spectral_freeze_module) {
       float* params = spectral_freeze_module->params();
       if (params != nullptr && spectral_freeze_module->paramCount() >= 6) {
-        params[0] = fx.spectral_freeze_mix > 0.0001f ? 1.0f : 0.0f;
-        params[1] = fx.spectral_freeze_mix > 0.35f ? 1.0f : 0.0f;
-        params[2] = 0.0f;
+        params[0] = fx.spectral_freeze_active ? 1.0f : 0.0f;
+        params[1] = fx.spectral_freeze_slushy ? 1.0f : 0.0f;
+        params[2] = clampFloat(fx.spectral_freeze_speed, 0.0f, 1.0f);
         params[3] = 1.0f;
-        params[4] = 0.15f + fx.spectral_freeze_mix * 0.5f;
-        params[5] = fx.spectral_freeze_mix * 0.1f;
+        params[4] = clampFloat(1.0f - fx.spectral_freeze_decay, 0.0f, 1.0f);
+        params[5] = clampFloat(fx.spectral_freeze_phase_jitter, 0.0f, 1.0f);
         spectral_freeze_module->commitParams();
       }
     }
     if (dynamics_character_module) {
       float* params = dynamics_character_module->params();
-      if (params != nullptr && dynamics_character_module->paramCount() >= 82) {
+      if (
+          params != nullptr &&
+          static_cast<uint32_t>(dynamics_character_module->paramCount()) >= kDynamicsCharacterParamCount) {
         std::fill(params, params + dynamics_character_module->paramCount(), 0.0f);
-        params[0] = fx.dynamics_drive > 0.0001f ? 1.0f : 0.0f;
-        params[2] = 1.0f - fx.dynamics_drive * 0.35f;
-        params[3] = fx.dynamics_drive;
-        params[63] = fx.dynamics_drive * 0.25f;
-        params[64] = fx.dynamics_drive * 0.08f;
-        params[65] = fx.dynamics_drive > 0.0001f ? 1.0f : 0.0f;
-        params[66] = 1.0f;
-        params[67] = fx.dynamics_drive * 0.35f;
-        params[68] = 0.5f;
-        params[69] = 0.5f;
-        params[70] = fx.dynamics_drive > 0.55f ? 1.0f : 0.0f;
-        params[71] = -18.0f;
-        params[72] = 6.0f;
-        params[73] = 2.0f + fx.dynamics_drive * 2.0f;
-        params[74] = 0.01f;
-        params[75] = 0.12f;
-        params[76] = 0.0f;
-        params[77] = fx.dynamics_drive;
-        params[78] = 80.0f;
-        params[79] = 0.0f;
-        params[80] = 0.0f;
-        params[81] = 0.25f;
+        const float macro_drive = clampFloat(fx.dynamics_drive, 0.0f, 1.0f);
+        const float legacy_master_saturation_drive = clampFloat(master_saturation_drive, 0.0f, 1.0f);
+        const bool legacy_master_saturation_enabled =
+            !fx.dynamics_enabled && legacy_master_saturation_drive > 0.0001f;
+        const bool dynamics_enabled =
+            fx.dynamics_enabled || macro_drive > 0.0001f || legacy_master_saturation_enabled;
+        const bool character_enabled = dynamics_enabled && fx.dynamics_character_enabled;
+        const bool degrade_enabled = dynamics_enabled && fx.dynamics_degrade_enabled;
+        const bool saturation_enabled =
+            (fx.dynamics_enabled && fx.dynamics_saturation_enabled) || legacy_master_saturation_enabled;
+        const bool end_comp_enabled = dynamics_enabled && fx.dynamics_end_comp_enabled;
+        const float character_mix = character_enabled ? clampFloat(fx.dynamics_character_mix, 0.0f, 1.0f) : 0.0f;
+        const float degrade_mix = degrade_enabled ? clampFloat(fx.dynamics_degrade_mix, 0.0f, 1.0f) : 0.0f;
+        const float mode_wet = clampFloat(1.0f - (1.0f - character_mix) * (1.0f - degrade_mix), 0.0f, 1.0f);
+        const float wet = clampFloat(std::max(mode_wet, macro_drive), 0.0f, 1.0f);
+        const float dry = clampFloat(1.0f - wet * 0.72f - macro_drive * 0.12f, 0.0f, 1.0f);
+        const uint32_t character_mode = character_enabled ? clampU32(fx.dynamics_character_mode, 0u, 2u) : 0u;
+        const float shallow = character_mode == 2u ? 1.0f : 0.0f;
+        const float abyss = character_mode == 1u ? 1.0f : 0.0f;
+        const float depth = character_enabled ? clampFloat(fx.dynamics_character_depth, 0.0f, 1.0f) : 0.0f;
+        const float rate = character_enabled ? clampFloat(fx.dynamics_character_rate, 0.0f, 1.0f) : 0.0f;
+        const float damp = character_enabled ? clampFloat(fx.dynamics_character_damp, 0.0f, 1.0f) : 0.5f;
+        const float stereo = character_enabled ? clampFloat(fx.dynamics_character_stereo, 0.0f, 1.0f) : 0.0f;
+        const float resonance = character_enabled ? clampFloat(fx.dynamics_character_resonance, 0.0f, 1.0f) : 0.2f;
+        const float env_follow = character_enabled ? clampFloat(fx.dynamics_character_env_follow, 0.0f, 1.0f) : 0.0f;
+        const float character_age = character_enabled ? clampFloat(fx.dynamics_character_age, 0.0f, 1.0f) : 0.0f;
+        const float lpg_amount = character_enabled ? clampFloat(fx.dynamics_character_lpg_amount, 0.0f, 1.0f) : 0.0f;
+        const float bias = character_enabled ? clampFloat(fx.dynamics_character_bias, 0.0f, 1.0f) : 0.5f;
+        const float degrade_age = degrade_enabled ? clampFloat(fx.dynamics_degrade_age, 0.0f, 1.0f) : 0.0f;
+        const float degrade_generation = degrade_enabled ? clampFloat(fx.dynamics_degrade_generation, 0.0f, 1.0f) : 0.0f;
+        const float degrade_alias = degrade_enabled ? clampFloat(fx.dynamics_degrade_alias, 0.0f, 1.0f) : 0.0f;
+        const float degrade_wow = degrade_enabled ? clampFloat(fx.dynamics_degrade_wow, 0.0f, 1.0f) : 0.0f;
+        const float degrade_flutter = degrade_enabled ? clampFloat(fx.dynamics_degrade_flutter, 0.0f, 1.0f) : 0.0f;
+        const float degrade_drift = degrade_enabled ? clampFloat(fx.dynamics_degrade_drift, 0.0f, 1.0f) : 0.0f;
+        const float degrade_wobble_speed = degrade_enabled ? clampFloat(fx.dynamics_degrade_wobble_speed, 0.0f, 1.0f) : 0.35f;
+        const float degrade_tone = degrade_enabled ? clampFloat(fx.dynamics_degrade_tone, 0.0f, 1.0f) : 0.5f;
+        const float degrade_hp = degrade_enabled ? clampFloat(fx.dynamics_degrade_hp, 0.0f, 1.0f) : 0.0f;
+        const float degrade_lp = degrade_enabled ? clampFloat(fx.dynamics_degrade_lp, 0.0f, 1.0f) : 1.0f;
+        const float degrade_noise = degrade_enabled ? clampFloat(fx.dynamics_degrade_noise, 0.0f, 1.0f) : 0.0f;
+        const float degrade_saturation = degrade_enabled ? clampFloat(fx.dynamics_degrade_saturation, 0.0f, 1.0f) : 0.0f;
+        const float degrade_corrosion = degrade_enabled ? clampFloat(fx.dynamics_degrade_corrosion, 0.0f, 1.0f) : 0.0f;
+        const float degrade_influence = std::sqrt(clampFloat(degrade_mix, 0.0f, 1.0f));
+        float mod_sources[kDynamicsModSourceCount]{};
+        if (degrade_enabled) {
+          const float media_wear = clampFloat(degrade_age + degrade_generation * 0.42f, 0.0f, 1.0f);
+          mod_sources[kDynamicsModSourceSlow] = degrade_influence * clampFloat(
+              degrade_wow * 0.22f + degrade_drift * 0.34f + degrade_age * 0.2f + degrade_generation * 0.18f,
+              0.0f,
+              1.0f);
+          mod_sources[kDynamicsModSourceFlutter] = degrade_influence * clampFloat(
+              degrade_flutter * 0.55f + degrade_generation * 0.08f,
+              0.0f,
+              1.0f);
+          mod_sources[kDynamicsModSourceRandom] = degrade_influence * clampFloat(
+              degrade_drift * 0.3f + media_wear * 0.22f,
+              0.0f,
+              1.0f);
+          mod_sources[kDynamicsModSourceEnv] = degrade_influence * env_follow;
+          mod_sources[kDynamicsModSourceNoise] = degrade_influence * clampFloat(
+              degrade_noise * 0.64f + degrade_corrosion * 0.18f + degrade_alias * 0.12f,
+              0.0f,
+              1.0f);
+        }
+        const float mod_wow = dynamicsModRoute(mod_sources, kDynamicsModTargetWow);
+        const float mod_flutter = dynamicsModRoute(mod_sources, kDynamicsModTargetFlutter);
+        const float mod_lp = dynamicsModRoute(mod_sources, kDynamicsModTargetLp);
+        const float mod_wet = dynamicsModRoute(mod_sources, kDynamicsModTargetWet);
+        const float mod_dropout = dynamicsModRoute(mod_sources, kDynamicsModTargetDropout);
+        const float mod_alias = dynamicsModRoute(mod_sources, kDynamicsModTargetAlias);
+        const float shaped_alias = clampFloat(degrade_alias + mod_alias * 0.18f, 0.0f, 1.0f);
+        const float shaped_wow = clampFloat(degrade_wow + mod_wow * 0.2f, 0.0f, 1.0f);
+        const float shaped_flutter = clampFloat(degrade_flutter + mod_flutter * 0.08f, 0.0f, 1.0f);
+        const float wear = clampFloat(degrade_age + degrade_generation * 0.42f, 0.0f, 1.0f);
+        const float damage = clampFloat(
+            degrade_mix * (degrade_age * 0.32f + degrade_generation * 0.18f + shaped_alias * 0.08f + degrade_corrosion * 0.12f),
+            0.0f,
+            1.0f);
+        const float corrosion = clampFloat(degrade_corrosion * degrade_mix * 0.72f + degrade_generation * 0.04f + shaped_alias * 0.025f + macro_drive * 0.08f, 0.0f, 1.0f);
+        const float random_drift = clampFloat(degrade_drift * 0.52f + depth * (0.18f + shallow * 0.24f + abyss * 0.2f) + mod_flutter * 0.24f, 0.0f, 1.0f);
+        const float hold_rate_hz = 0.08f + rate * 1.2f + degrade_wobble_speed * degrade_mix * 0.48f + mod_wow * 0.08f;
+        const float hold_lag = 0.08f + damp * 0.54f + (1.0f - degrade_wobble_speed) * degrade_mix * 0.28f;
+        const float lowpass_unit = std::max(0.08f, std::min(degrade_lp, 1.0f - damage * 0.2f - corrosion * 0.1f - mod_lp * 0.08f));
+        const float lowpass_hz = unitToLogFrequency(lowpass_unit, 1000.0f, 20000.0f) * (0.82f + degrade_tone * 0.38f);
+        const float highpass_hz = unitToLogFrequency(std::max(degrade_hp, damage * 0.025f), 20.0f, 2400.0f);
+        const float bias_floor_hz = unitToLogFrequency(bias, 140.0f + 360.0f * (1.0f - abyss), 1200.0f + 10800.0f * (1.0f - abyss));
+        const float lpg_open_hz = std::max(0.0f, lowpass_hz - std::min(lowpass_hz, bias_floor_hz));
+        const float wow_frequency = 0.03f + rate * 0.64f + degrade_wobble_speed * shaped_wow * 0.18f + degrade_drift * 0.12f + mod_wow * 0.04f;
+        const float flutter_frequency = 2.4f + rate * 6.2f + shaped_flutter * 4.6f + corrosion * 3.0f;
+        const float wow_depth = (shaped_wow * 0.003f + depth * 0.002f + degrade_drift * 0.001f + mod_wow * 0.00085f) * (1.0f + macro_drive);
+        const float flutter_depth = (shaped_flutter * 0.0008f + depth * 0.0003f + corrosion * 0.0004f + mod_flutter * 0.0002f) * (1.0f + macro_drive);
+        const float saturation_drive = legacy_master_saturation_enabled
+            ? legacy_master_saturation_drive
+            : (saturation_enabled ? clampFloat(fx.dynamics_saturation_drive, 0.0f, 1.0f) : macro_drive * 0.35f);
+        const float end_comp_mix = end_comp_enabled
+            ? clampFloat(fx.dynamics_end_comp_mix, 0.0f, 1.0f)
+            : (macro_drive > 0.55f ? macro_drive : 0.0f);
+
+        params[kDynActive] = dynamics_enabled && (wet > 0.0001f || saturation_drive > 0.0001f || end_comp_mix > 0.0001f) ? 1.0f : 0.0f;
+        params[kDynAllpassActive] = 0.0f;
+        params[kDynDry] = dry;
+        params[kDynWet] = wet;
+        params[kDynDegradeMix] = degrade_mix;
+        params[kDynDegradeAlias] = shaped_alias;
+        params[kDynDegradeGeneration] = degrade_generation;
+        params[kDynDegradeCorrosion] = degrade_corrosion;
+        params[kDynDegradeWear] = wear;
+        params[kDynNoiseGain] = std::min(0.018f, wet * degrade_noise * (0.006f + wear * 0.014f + corrosion * 0.012f));
+        params[kDynJitterDepth] = degrade_mix * (shaped_flutter * 0.00008f + corrosion * 0.00006f + shaped_alias * 0.00004f + mod_flutter * 0.00011f);
+        params[kDynRandomDriftFilterHz] = std::max(0.08f, hold_rate_hz * (0.92f - damp * 0.58f));
+        params[kDynRandomDriftDepth] = random_drift * (0.00016f + degrade_drift * 0.00225f + wear * 0.0015f);
+        params[kDynBaseDelay] = 0.0003f + character_age * 0.0012f + degrade_drift * 0.004f;
+        params[kDynSpreadDelay] = 0.0006f + stereo * 0.004f + character_age * 0.002f + degrade_drift * 0.006f;
+        params[kDynRandomDrift] = random_drift;
+        params[kDynRandomHoldRateHz] = hold_rate_hz;
+        params[kDynRandomHoldLag] = hold_lag;
+        params[kDynRandomDelayDepth] = random_drift * (0.00008f + depth * 0.004f + shaped_wow * 0.0008f);
+        params[kDynRandomSpreadDelayDepth] = params[kDynRandomDelayDepth] * (0.68f + stereo * 0.56f);
+        params[kDynRandomFilterDepth] = random_drift * (18.0f + depth * 220.0f + shaped_wow * 80.0f + mod_lp * 120.0f);
+        params[kDynRandomSpreadFilterDepth] = params[kDynRandomFilterDepth] * (0.55f + stereo * 0.32f);
+        params[kDynDepth] = depth;
+        params[kDynRate] = rate;
+        params[kDynShallow] = shallow;
+        params[kDynAbyss] = abyss;
+        params[kDynStereo] = stereo;
+        params[kDynDamage] = damage;
+        params[kDynMainPan] = -stereo * (0.25f + shallow * 0.18f);
+        params[kDynSpreadPan] = stereo * (0.58f + shallow * 0.24f);
+        params[kDynMainDelayGain] = 1.0f - stereo * 0.14f;
+        params[kDynSpreadDelayGain] = stereo * (0.05f + depth * (0.12f + shallow * 0.28f + abyss * 0.12f));
+        params[kDynWowFrequency] = wow_frequency;
+        params[kDynFlutterFrequency] = flutter_frequency;
+        params[kDynFlutterRandomDepth] = degrade_mix * shaped_flutter * (0.00004f + flutter_depth * 0.4f + mod_flutter * 0.00048f);
+        params[kDynWowDepth] = wow_depth;
+        params[kDynFlutterDepth] = flutter_depth;
+        params[kDynHighpassHz] = highpass_hz;
+        params[kDynHighpassQ] = 0.7f + resonance * 1.5f;
+        params[kDynAllpassAFrequency] = 260.0f + shallow * 520.0f + depth * 380.0f + character_age * 240.0f;
+        params[kDynAllpassAQ] = 0.25f + resonance * (abyss > 0.0f ? 0.18f : 1.1f);
+        params[kDynAllpassBFrequency] = 900.0f + shallow * 2100.0f + depth * 680.0f + character_age * 420.0f;
+        params[kDynAllpassBQ] = 0.25f + resonance * (abyss > 0.0f ? 0.14f : 0.85f);
+        params[kDynHeadBumpFrequency] = 80.0f + wear * 45.0f + corrosion * 20.0f;
+        params[kDynHeadBumpQ] = 0.55f + wear * 0.55f;
+        params[kDynHeadBumpGain] = degrade_mix * 1.1f * (0.2f + wear * 0.65f) + character_mix * (abyss * 0.28f + shallow * 0.22f);
+        params[kDynDropoutFilterHz] = 0.25f + wear * 1.8f + corrosion * 4.5f + degrade_generation * 1.2f + mod_dropout * 2.2f;
+        params[kDynDropoutDepth] = clampFloat(damage + mod_dropout, 0.0f, 1.0f) * 0.16f;
+        params[kDynDropoutGain] = 1.0f - clampFloat(damage + mod_dropout, 0.0f, 1.0f) * 0.14f;
+        params[kDynEnvFilterHz] = 2.5f + env_follow * 26.0f + rate * 12.0f;
+        params[kDynEnvToLowpassGain] = env_follow * lpg_amount * lpg_open_hz * (0.18f + shallow * 0.58f + abyss * 0.7f) + mod_lp * 120.0f;
+        params[kDynEnvToResonanceGain] = env_follow * lpg_amount * (0.02f + resonance * (0.08f + abyss * 0.16f));
+        params[kDynEnvToWetGain] = env_follow * lpg_amount * character_mix * (0.012f + shallow * 0.033f + abyss * 0.068f) + mod_wet * degrade_mix * 0.03f;
+        params[kDynLowpassHz] = lowpass_hz;
+        params[kDynLowpassQ] = 0.7f + resonance * (0.45f + shallow * 0.45f + abyss * 0.15f);
+        params[kDynLowpassStage2Hz] = character_mode == 0u ? lowpass_hz : 20000.0f;
+        params[kDynLowpassStage2Q] = character_mode == 0u ? 0.7f + resonance * 0.2f : 0.707f;
+        params[kDynCompressorThreshold] = character_enabled ? -16.0f - character_mix * (shallow * 10.0f + abyss * 7.0f) : -4.0f;
+        params[kDynCompressorKnee] = 10.0f + shallow * 10.0f + abyss * 8.0f;
+        params[kDynCompressorRatio] = 1.2f + shallow * 0.8f + abyss * 0.9f + env_follow * abyss * 0.35f;
+        params[kDynCompressorAttack] = 0.004f + shallow * 0.014f + abyss * 0.003f;
+        params[kDynCompressorRelease] = 0.12f + shallow * 0.1f + abyss * 0.18f + damp * 0.08f;
+        params[kDynCompressorMakeup] = 1.0f + character_mix * (shallow * 0.05f + abyss * 0.16f);
+        params[kDynSaturation] = clampFloat(degrade_saturation * degrade_mix * 0.55f + character_mix * character_age * 0.06f + macro_drive * 0.25f, 0.0f, 1.0f);
+        params[kDynCorrosion] = corrosion;
+        params[kDynMasterSatActive] = saturation_drive > 0.0001f ? 1.0f : 0.0f;
+        params[kDynMasterSatMode] = static_cast<float>(
+            legacy_master_saturation_enabled
+                ? clampU32(master_saturation_mode, 0u, 4u)
+                : (saturation_enabled ? clampU32(fx.dynamics_saturation_mode, 0u, 4u) : 0u));
+        params[kDynMasterSatDrive] = saturation_drive;
+        params[kDynMasterSatTone] = legacy_master_saturation_enabled
+            ? clampFloat(master_saturation_tone, 0.0f, 1.0f)
+            : (saturation_enabled ? clampFloat(fx.dynamics_saturation_tone, 0.0f, 1.0f) : 0.5f);
+        params[kDynMasterSatBias] = legacy_master_saturation_enabled
+            ? 0.5f
+            : (saturation_enabled ? clampFloat(fx.dynamics_saturation_bias, 0.0f, 1.0f) : 0.5f);
+        params[kDynEndCompActive] = end_comp_mix > 0.0001f ? 1.0f : 0.0f;
+        params[kDynEndCompThreshold] = end_comp_enabled ? clampFloat(fx.dynamics_end_comp_threshold, -60.0f, 0.0f) : -18.0f;
+        params[kDynEndCompKnee] = end_comp_enabled ? clampFloat(fx.dynamics_end_comp_knee, 0.0f, 40.0f) : 6.0f;
+        params[kDynEndCompRatio] = end_comp_enabled ? clampFloat(fx.dynamics_end_comp_ratio, 1.0f, 20.0f) : 2.0f + macro_drive * 2.0f;
+        params[kDynEndCompAttack] = end_comp_enabled ? clampFloat(fx.dynamics_end_comp_attack_ms, 0.1f, 100.0f) * 0.001f : 0.01f;
+        params[kDynEndCompRelease] = end_comp_enabled ? clampFloat(fx.dynamics_end_comp_release_ms, 20.0f, 1500.0f) * 0.001f : 0.12f;
+        params[kDynEndCompMakeup] = end_comp_enabled ? clampFloat(fx.dynamics_end_comp_makeup, 0.25f, 4.0f) : 1.0f;
+        params[kDynEndCompMix] = end_comp_mix;
+        params[kDynEndCompDetectorHpHz] = unitToLogFrequency(
+            end_comp_enabled ? fx.dynamics_end_comp_detector_hp : 0.25f,
+            20.0f,
+            360.0f);
+        params[kDynEndCompDetectorTilt] = end_comp_enabled ? clampFloat(fx.dynamics_end_comp_detector_tilt, 0.0f, 1.0f) : 0.5f;
+        params[kDynEndCompAutoMakeup] = end_comp_enabled ? clampFloat(fx.dynamics_end_comp_auto_makeup, 0.0f, 1.0f) : 0.0f;
+        params[kDynEndCompProgramRelease] = end_comp_enabled ? clampFloat(fx.dynamics_end_comp_program_release, 0.0f, 1.0f) : 0.25f;
         dynamics_character_module->commitParams();
       }
     }
@@ -710,12 +1229,163 @@ struct KesshoProductEngine {
     master_limiter_ceiling_gain = dbToGain(master_limiter_ceiling_db);
   }
 
+  void resetSidechainRuntime() {
+    for (uint32_t target = 0; target < kSidechainTargetCount; ++target) {
+      sidechain_envelopes[target] = {};
+      sidechain_envelopes[target].current_gain = 1.0f;
+      sidechain_envelopes[target].start_gain = 1.0f;
+      sidechain_envelopes[target].target_gain = 1.0f;
+      for (uint32_t frame = 0; frame < kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES; ++frame) {
+        sidechain_gains[target][frame] = 1.0f;
+      }
+    }
+  }
+
+  float sidechainTargetAmount(uint32_t target) const {
+    if (!fx.sidechain_enabled || target >= kSidechainTargetCount) {
+      return 0.0f;
+    }
+    const float raw = clampFloat(fx.sidechain_targets[target], 0.0f, 1.0f) *
+        clampFloat(fx.sidechain_amount, 0.0f, 1.0f) *
+        clampFloat(fx.sidechain_mix, 0.0f, 1.0f);
+    return clampFloat(1.0f - (1.0f - raw) * (1.0f - raw), 0.0f, 1.0f);
+  }
+
+  uint32_t sidechainTargetForSource(uint32_t source_id) const {
+    switch (source_id) {
+      case KESSHO_PRODUCT_SOURCE_PAD1:
+        return kSidechainPad1;
+      case KESSHO_PRODUCT_SOURCE_PAD2:
+        return kSidechainPad2;
+      case KESSHO_PRODUCT_SOURCE_LEAD1:
+        return kSidechainLead1;
+      case KESSHO_PRODUCT_SOURCE_LEAD2:
+        return kSidechainLead2;
+      case KESSHO_PRODUCT_SOURCE_PIANO:
+        return kSidechainPiano;
+      default:
+        return kSidechainTargetCount;
+    }
+  }
+
+  float sidechainGain(uint32_t target, uint32_t frame) const {
+    if (!fx.sidechain_enabled || target >= kSidechainTargetCount ||
+        frame >= kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES) {
+      return 1.0f;
+    }
+    return sidechain_gains[target][frame];
+  }
+
+  void triggerSidechainDuck(uint32_t drum_voice, float velocity) {
+    if (!fx.sidechain_enabled) {
+      return;
+    }
+    const uint32_t key_id = clampU32(drum_voice + 1u, kSidechainKeySub, kSidechainKeyMembrane);
+    const float weight =
+        (key_id == fx.sidechain_key_a ? clampFloat(fx.sidechain_key_a_weight, 0.0f, 1.0f) : 0.0f) +
+        (key_id == fx.sidechain_key_b ? clampFloat(fx.sidechain_key_b_weight, 0.0f, 1.0f) : 0.0f);
+    if (weight <= 0.0001f) {
+      return;
+    }
+
+    const float curve = 0.65f + clampFloat(fx.sidechain_curve, 0.0f, 1.0f) * 0.7f;
+    const float trigger_strength = std::pow(clampFloat(velocity * weight, 0.0f, 1.0f), curve);
+    const float detector_db = 20.0f * std::log10(std::max(0.0001f, trigger_strength));
+    const float threshold_db = clampFloat(fx.sidechain_threshold, -60.0f, 0.0f);
+    const float ratio = clampFloat(fx.sidechain_ratio, 1.0f, 20.0f);
+    const float knee = clampFloat(fx.sidechain_knee, 0.0f, 40.0f);
+    const float over_db = detector_db - threshold_db;
+    const float knee_over_db =
+        knee > 0.0f && over_db > -knee && over_db < knee
+            ? ((over_db + knee) * (over_db + knee)) / (4.0f * knee)
+            : std::max(0.0f, over_db);
+    const float gain_reduction_db = knee_over_db * (1.0f - 1.0f / ratio);
+    const float duck_factor = std::max(0.005f, std::pow(10.0f, -gain_reduction_db / 20.0f));
+    const float makeup = clampFloat(fx.sidechain_makeup, 0.25f, 4.0f);
+    const uint32_t attack_frames = std::max<uint32_t>(1u, static_cast<uint32_t>(clampFloat(fx.sidechain_attack_ms, 0.1f, 100.0f) * 0.001f * sample_rate));
+    const uint32_t hold_frames = static_cast<uint32_t>(clampFloat(fx.sidechain_hold_ms, 0.0f, 250.0f) * 0.001f * sample_rate);
+    const uint32_t release_frames = std::max<uint32_t>(1u, static_cast<uint32_t>(clampFloat(fx.sidechain_release_ms, 20.0f, 1500.0f) * 0.001f * sample_rate));
+
+    for (uint32_t target = 0; target < kSidechainTargetCount; ++target) {
+      const float amount = sidechainTargetAmount(target);
+      if (amount <= 0.0001f) {
+        continue;
+      }
+      const float ducked_wet_gain = std::min(amount * 1.2f, amount * duck_factor * makeup);
+      const float computed_gain = clampFloat((1.0f - amount) + ducked_wet_gain, 0.0f, 1.0f);
+      SidechainEnvelope& envelope = sidechain_envelopes[target];
+      envelope.start_gain = envelope.current_gain;
+      envelope.target_gain = std::min(envelope.current_gain, computed_gain);
+      envelope.attack_elapsed = 0u;
+      envelope.attack_frames = attack_frames;
+      envelope.hold_remaining = hold_frames;
+      envelope.release_elapsed = 0u;
+      envelope.release_frames = release_frames;
+    }
+  }
+
+  float advanceSidechainEnvelope(SidechainEnvelope& envelope) {
+    if (envelope.attack_elapsed < envelope.attack_frames) {
+      ++envelope.attack_elapsed;
+      const float t = static_cast<float>(envelope.attack_elapsed) / static_cast<float>(std::max(1u, envelope.attack_frames));
+      const float shaped = 1.0f - (1.0f - t) * (1.0f - t);
+      envelope.current_gain = envelope.start_gain + (envelope.target_gain - envelope.start_gain) * shaped;
+      return envelope.current_gain;
+    }
+    if (envelope.hold_remaining > 0u) {
+      --envelope.hold_remaining;
+      envelope.current_gain = envelope.target_gain;
+      return envelope.current_gain;
+    }
+    if (envelope.release_elapsed < envelope.release_frames) {
+      ++envelope.release_elapsed;
+      const float t = static_cast<float>(envelope.release_elapsed) / static_cast<float>(std::max(1u, envelope.release_frames));
+      const float shaped = 1.0f - (1.0f - t) * (1.0f - t);
+      envelope.current_gain = envelope.target_gain + (1.0f - envelope.target_gain) * shaped;
+      return envelope.current_gain;
+    }
+    envelope.current_gain = 1.0f;
+    envelope.start_gain = 1.0f;
+    envelope.target_gain = 1.0f;
+    return envelope.current_gain;
+  }
+
+  void renderSidechainGains(uint32_t start, uint32_t frames) {
+    if (start + frames > kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES) {
+      return;
+    }
+    if (!fx.sidechain_enabled) {
+      for (uint32_t target = 0; target < kSidechainTargetCount; ++target) {
+        sidechain_envelopes[target].current_gain = 1.0f;
+        sidechain_envelopes[target].target_gain = 1.0f;
+        for (uint32_t i = 0; i < frames; ++i) {
+          sidechain_gains[target][start + i] = 1.0f;
+        }
+      }
+      return;
+    }
+    for (uint32_t i = 0; i < frames; ++i) {
+      const uint32_t frame = start + i;
+      for (uint32_t target = 0; target < kSidechainTargetCount; ++target) {
+        sidechain_gains[target][frame] = advanceSidechainEnvelope(sidechain_envelopes[target]);
+      }
+    }
+  }
+
   void loadDefaults() {
     transport = {};
     harmony = {};
     master_gain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_GAIN;
     setMasterLimiterCeilingDb(kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_LIMITER_CEILING_DB);
+    master_saturation_mode = 0u;
+    master_saturation_drive = 0.0f;
+    master_saturation_tone = 0.5f;
     fx = {};
+    for (uint32_t i = 0; i < kGranularVoiceCount; ++i) {
+      fx.granular_voices[i] = {};
+      fx.granular_voices[i].enabled = i == 0u;
+      fx.granular_voices[i].slice = i * 4u;
+    }
     routing = {};
     rng_seed = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
     rng_state = rng_seed;
@@ -745,6 +1415,7 @@ struct KesshoProductEngine {
     for (ModulationRange& range : modulation_ranges) {
       range = {};
     }
+    resetSidechainRuntime();
     telemetry.schema_hash = KESSHO_PRODUCT_SNAPSHOT_SCHEMA_HASH;
     telemetry.sample_rate = sample_rate;
     telemetry.block_size = max_block_size;
@@ -763,6 +1434,7 @@ struct KesshoProductEngine {
     for (ModulationRange& range : modulation_ranges) {
       range = {};
     }
+    resetSidechainRuntime();
     rng_state = rng_seed;
     journey_phase = 0.0f;
     if (pad_module) {
@@ -822,6 +1494,9 @@ struct KesshoProductEngine {
     harmony.voicing_mode = snapshot.harmony.voicing_mode;
     master_gain = clampFloat(snapshot.master.gain, 0.0f, 1.5f);
     setMasterLimiterCeilingDb(snapshot.master.limiter_ceiling_db);
+    master_saturation_mode = clampU32(snapshot.master.saturation_mode, 0u, 4u);
+    master_saturation_drive = clampFloat(snapshot.master.saturation_drive, 0.0f, 1.0f);
+    master_saturation_tone = clampFloat(snapshot.master.saturation_tone, 0.0f, 1.0f);
     rng_seed = snapshot.rng.seed == 0u ? 1u : snapshot.rng.seed;
     rng_state = snapshot.rng.state == 0u ? rng_seed : snapshot.rng.state;
     evolution_amount = clampFloat(snapshot.evolution.amount, 0.0f, 1.0f);
@@ -830,6 +1505,51 @@ struct KesshoProductEngine {
     journey_phase = clampFloat(snapshot.journey.morph_phase, 0.0f, 1.0f);
     journey_rate_bars = clampFloat(snapshot.journey.morph_rate_bars, 0.25f, 128.0f);
     fx.granular_mix = clampFloat(snapshot.fx.granular_mix, 0.0f, 1.0f);
+    fx.granular_enabled = snapshot.fx.granular_enabled != 0u;
+    fx.granular_freeze = snapshot.fx.granular_freeze != 0u;
+    fx.granular_freeze_with_feedback = snapshot.fx.granular_freeze_with_feedback != 0u;
+    fx.granular_feedback = clampFloat(snapshot.fx.granular_feedback, 0.0f, 0.85f);
+    fx.granular_feedback_lpf_hz = clampFloat(snapshot.fx.granular_feedback_lpf_hz, 200.0f, 12000.0f);
+    fx.granular_buffer_seconds = clampFloat(snapshot.fx.granular_buffer_seconds, 1.0f, 32.0f);
+    fx.granular_grain_shape = clampU32(snapshot.fx.granular_grain_shape, 0u, 3u);
+    fx.granular_bus_diffusion = clampFloat(snapshot.fx.granular_bus_diffusion, 0.0f, 1.0f);
+    fx.granular_timing_randomness = clampFloat(snapshot.fx.granular_timing_randomness, 0.0f, 1.0f);
+    fx.granular_chord_bias = clampFloat(snapshot.fx.granular_chord_bias, 0.0f, 1.0f);
+    fx.granular_legacy_jitter_ms = clampFloat(snapshot.fx.granular_legacy_jitter_ms, 0.0f, 30.0f);
+    fx.granular_legacy_probability = clampFloat(snapshot.fx.granular_legacy_probability, 0.0f, 1.0f);
+    fx.granular_legacy_pitch_mode = clampU32(snapshot.fx.granular_legacy_pitch_mode, 0u, 1u);
+    fx.granular_legacy_pitch_spread = clampFloat(snapshot.fx.granular_legacy_pitch_spread, 0.0f, 12.0f);
+    fx.granular_legacy_max_grains = clampU32(snapshot.fx.granular_legacy_max_grains, 0u, 128u);
+    fx.granular_legacy_feedback = clampFloat(snapshot.fx.granular_legacy_feedback, 0.0f, 0.35f);
+    for (uint32_t i = 0; i < kGranularVoiceCount; ++i) {
+      const KesshoProductGranularVoiceSnapshot& voice_snapshot = snapshot.fx.granular_voices[i];
+      GranularVoiceState& voice = fx.granular_voices[i];
+      voice.enabled = voice_snapshot.enabled != 0u;
+      voice.mode = clampU32(voice_snapshot.mode, 0u, 2u);
+      voice.slice = clampU32(voice_snapshot.slice, 0u, 15u);
+      voice.speed = clampFloat(voice_snapshot.speed, 0.0f, 4.0f);
+      voice.scan_rate = clampFloat(voice_snapshot.scan_rate, 0.25f, 4.0f);
+      voice.reverse = voice_snapshot.reverse != 0u;
+      voice.pitch = clampFloat(voice_snapshot.pitch, -24.0f, 24.0f);
+      voice.write_follow = clampFloat(voice_snapshot.write_follow, 0.0f, 1.0f);
+      voice.density = clampFloat(voice_snapshot.density, 1.0f, 64.0f);
+      voice.grain_size_ms = clampFloat(voice_snapshot.grain_size_ms, 10.0f, 500.0f);
+      voice.spray = clampFloat(voice_snapshot.spray, 0.0f, 1.0f);
+      voice.grain_octave_probability = clampFloat(voice_snapshot.grain_octave_probability, 0.0f, 1.0f);
+      voice.attack_seconds = clampFloat(voice_snapshot.attack_seconds, 0.001f, 0.5f);
+      voice.decay_seconds = clampFloat(voice_snapshot.decay_seconds, 0.01f, 4.0f);
+      voice.gain = clampFloat(voice_snapshot.gain, 0.0f, 1.0f);
+      voice.pan = clampFloat(voice_snapshot.pan, -1.0f, 1.0f);
+      voice.blur = clampFloat(voice_snapshot.blur, 0.0f, 1.0f);
+      voice.stereo_spread = clampFloat(voice_snapshot.stereo_spread, 0.0f, 1.0f);
+      voice.position_lfo_rate = clampFloat(voice_snapshot.position_lfo_rate, 0.0f, 1.0f);
+      voice.position_lfo_depth = clampFloat(voice_snapshot.position_lfo_depth, 0.0f, 1.0f);
+      voice.pan_lfo_rate = clampFloat(voice_snapshot.pan_lfo_rate, 0.0f, 1.0f);
+      voice.reverse_lfo_rate = clampFloat(voice_snapshot.reverse_lfo_rate, 0.0f, 1.0f);
+      voice.record_lfo_rate = clampFloat(voice_snapshot.record_lfo_rate, 0.0f, 1.0f);
+      voice.euclid_gated = voice_snapshot.euclid_gated != 0u;
+      voice.euclid_muted = voice_snapshot.euclid_muted != 0u;
+    }
     fx.delay_a_enabled = snapshot.fx.delay_a_enabled != 0u;
     fx.delay_a_time_left_ms = clampFloat(snapshot.fx.delay_a_time_left_ms, 10.0f, 5000.0f);
     fx.delay_a_time_right_ms = clampFloat(snapshot.fx.delay_a_time_right_ms, 10.0f, 5000.0f);
@@ -887,7 +1607,115 @@ struct KesshoProductEngine {
     fx.reverb_transient_smooth = clampFloat(snapshot.fx.reverb_transient_smooth, 0.0f, 1.0f);
     fx.reverb_er_lp_freq = clampFloat(snapshot.fx.reverb_er_lp_freq, 200.0f, 12000.0f);
     fx.spectral_freeze_mix = clampFloat(snapshot.fx.spectral_freeze_mix, 0.0f, 1.0f);
+    fx.spectral_freeze_enabled = snapshot.fx.spectral_freeze_enabled != 0u;
+    fx.spectral_freeze_active = snapshot.fx.spectral_freeze_active != 0u;
+    fx.spectral_freeze_slushy = snapshot.fx.spectral_freeze_slushy != 0u;
+    fx.spectral_freeze_speed = clampFloat(snapshot.fx.spectral_freeze_speed, 0.0f, 1.0f);
+    fx.spectral_freeze_decay = clampFloat(snapshot.fx.spectral_freeze_decay, 0.0f, 1.0f);
+    fx.spectral_freeze_phase_jitter = clampFloat(snapshot.fx.spectral_freeze_phase_jitter, 0.0f, 1.0f);
     fx.dynamics_drive = clampFloat(snapshot.fx.dynamics_drive, 0.0f, 1.0f);
+    fx.dynamics_enabled = snapshot.fx.dynamics_enabled != 0u;
+    fx.dynamics_character_enabled = snapshot.fx.dynamics_character_enabled != 0u;
+    fx.dynamics_character_mode = clampU32(snapshot.fx.dynamics_character_mode, 0u, 2u);
+    fx.dynamics_character_mix = clampFloat(snapshot.fx.dynamics_character_mix, 0.0f, 1.0f);
+    fx.dynamics_character_age = clampFloat(snapshot.fx.dynamics_character_age, 0.0f, 1.0f);
+    fx.dynamics_character_bias = clampFloat(snapshot.fx.dynamics_character_bias, 0.0f, 1.0f);
+    fx.dynamics_character_lpg_amount = clampFloat(snapshot.fx.dynamics_character_lpg_amount, 0.0f, 1.0f);
+    fx.dynamics_character_resonance = clampFloat(snapshot.fx.dynamics_character_resonance, 0.0f, 1.0f);
+    fx.dynamics_character_stereo = clampFloat(snapshot.fx.dynamics_character_stereo, 0.0f, 1.0f);
+    fx.dynamics_character_env_follow = clampFloat(snapshot.fx.dynamics_character_env_follow, 0.0f, 1.0f);
+    fx.dynamics_character_depth = clampFloat(snapshot.fx.dynamics_character_depth, 0.0f, 1.0f);
+    fx.dynamics_character_rate = clampFloat(snapshot.fx.dynamics_character_rate, 0.0f, 1.0f);
+    fx.dynamics_character_damp = clampFloat(snapshot.fx.dynamics_character_damp, 0.0f, 1.0f);
+    fx.dynamics_degrade_enabled = snapshot.fx.dynamics_degrade_enabled != 0u;
+    fx.dynamics_degrade_mix = clampFloat(snapshot.fx.dynamics_degrade_mix, 0.0f, 1.0f);
+    fx.dynamics_degrade_age = clampFloat(snapshot.fx.dynamics_degrade_age, 0.0f, 1.0f);
+    fx.dynamics_degrade_generation = clampFloat(snapshot.fx.dynamics_degrade_generation, 0.0f, 1.0f);
+    fx.dynamics_degrade_alias = clampFloat(snapshot.fx.dynamics_degrade_alias, 0.0f, 1.0f);
+    fx.dynamics_degrade_wow = clampFloat(snapshot.fx.dynamics_degrade_wow, 0.0f, 1.0f);
+    fx.dynamics_degrade_flutter = clampFloat(snapshot.fx.dynamics_degrade_flutter, 0.0f, 1.0f);
+    fx.dynamics_degrade_drift = clampFloat(snapshot.fx.dynamics_degrade_drift, 0.0f, 1.0f);
+    fx.dynamics_degrade_wobble_speed = clampFloat(snapshot.fx.dynamics_degrade_wobble_speed, 0.0f, 1.0f);
+    fx.dynamics_degrade_tone = clampFloat(snapshot.fx.dynamics_degrade_tone, 0.0f, 1.0f);
+    fx.dynamics_degrade_hp = clampFloat(snapshot.fx.dynamics_degrade_hp, 0.0f, 1.0f);
+    fx.dynamics_degrade_lp = clampFloat(snapshot.fx.dynamics_degrade_lp, 0.0f, 1.0f);
+    fx.dynamics_degrade_noise = clampFloat(snapshot.fx.dynamics_degrade_noise, 0.0f, 1.0f);
+    fx.dynamics_degrade_saturation = clampFloat(snapshot.fx.dynamics_degrade_saturation, 0.0f, 1.0f);
+    fx.dynamics_degrade_corrosion = clampFloat(snapshot.fx.dynamics_degrade_corrosion, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceSlow][kDynamicsModTargetWow] = clampFloat(snapshot.fx.dynamics_mod_slow_wow, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceSlow][kDynamicsModTargetFlutter] = clampFloat(snapshot.fx.dynamics_mod_slow_flutter, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceSlow][kDynamicsModTargetLp] = clampFloat(snapshot.fx.dynamics_mod_slow_lp, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceSlow][kDynamicsModTargetWet] = clampFloat(snapshot.fx.dynamics_mod_slow_wet, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceSlow][kDynamicsModTargetDropout] = clampFloat(snapshot.fx.dynamics_mod_slow_dropout, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceSlow][kDynamicsModTargetAlias] = clampFloat(snapshot.fx.dynamics_mod_slow_alias, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceFlutter][kDynamicsModTargetWow] = clampFloat(snapshot.fx.dynamics_mod_flutter_wow, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceFlutter][kDynamicsModTargetFlutter] = clampFloat(snapshot.fx.dynamics_mod_flutter_flutter, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceFlutter][kDynamicsModTargetLp] = clampFloat(snapshot.fx.dynamics_mod_flutter_lp, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceFlutter][kDynamicsModTargetWet] = clampFloat(snapshot.fx.dynamics_mod_flutter_wet, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceFlutter][kDynamicsModTargetDropout] = clampFloat(snapshot.fx.dynamics_mod_flutter_dropout, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceFlutter][kDynamicsModTargetAlias] = clampFloat(snapshot.fx.dynamics_mod_flutter_alias, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceRandom][kDynamicsModTargetWow] = clampFloat(snapshot.fx.dynamics_mod_random_wow, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceRandom][kDynamicsModTargetFlutter] = clampFloat(snapshot.fx.dynamics_mod_random_flutter, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceRandom][kDynamicsModTargetLp] = clampFloat(snapshot.fx.dynamics_mod_random_lp, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceRandom][kDynamicsModTargetWet] = clampFloat(snapshot.fx.dynamics_mod_random_wet, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceRandom][kDynamicsModTargetDropout] = clampFloat(snapshot.fx.dynamics_mod_random_dropout, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceRandom][kDynamicsModTargetAlias] = clampFloat(snapshot.fx.dynamics_mod_random_alias, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceEnv][kDynamicsModTargetWow] = clampFloat(snapshot.fx.dynamics_mod_env_wow, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceEnv][kDynamicsModTargetFlutter] = clampFloat(snapshot.fx.dynamics_mod_env_flutter, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceEnv][kDynamicsModTargetLp] = clampFloat(snapshot.fx.dynamics_mod_env_lp, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceEnv][kDynamicsModTargetWet] = clampFloat(snapshot.fx.dynamics_mod_env_wet, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceEnv][kDynamicsModTargetDropout] = clampFloat(snapshot.fx.dynamics_mod_env_dropout, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceEnv][kDynamicsModTargetAlias] = clampFloat(snapshot.fx.dynamics_mod_env_alias, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceNoise][kDynamicsModTargetWow] = clampFloat(snapshot.fx.dynamics_mod_noise_wow, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceNoise][kDynamicsModTargetFlutter] = clampFloat(snapshot.fx.dynamics_mod_noise_flutter, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceNoise][kDynamicsModTargetLp] = clampFloat(snapshot.fx.dynamics_mod_noise_lp, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceNoise][kDynamicsModTargetWet] = clampFloat(snapshot.fx.dynamics_mod_noise_wet, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceNoise][kDynamicsModTargetDropout] = clampFloat(snapshot.fx.dynamics_mod_noise_dropout, 0.0f, 1.0f);
+    fx.dynamics_mod[kDynamicsModSourceNoise][kDynamicsModTargetAlias] = clampFloat(snapshot.fx.dynamics_mod_noise_alias, 0.0f, 1.0f);
+    fx.dynamics_saturation_enabled = snapshot.fx.dynamics_saturation_enabled != 0u;
+    fx.dynamics_saturation_mode = clampU32(snapshot.fx.dynamics_saturation_mode, 0u, 4u);
+    fx.dynamics_saturation_drive = clampFloat(snapshot.fx.dynamics_saturation_drive, 0.0f, 1.0f);
+    fx.dynamics_saturation_tone = clampFloat(snapshot.fx.dynamics_saturation_tone, 0.0f, 1.0f);
+    fx.dynamics_saturation_bias = clampFloat(snapshot.fx.dynamics_saturation_bias, 0.0f, 1.0f);
+    fx.dynamics_end_comp_enabled = snapshot.fx.dynamics_end_comp_enabled != 0u;
+    fx.dynamics_end_comp_threshold = clampFloat(snapshot.fx.dynamics_end_comp_threshold, -60.0f, 0.0f);
+    fx.dynamics_end_comp_knee = clampFloat(snapshot.fx.dynamics_end_comp_knee, 0.0f, 40.0f);
+    fx.dynamics_end_comp_ratio = clampFloat(snapshot.fx.dynamics_end_comp_ratio, 1.0f, 20.0f);
+    fx.dynamics_end_comp_attack_ms = clampFloat(snapshot.fx.dynamics_end_comp_attack_ms, 0.1f, 100.0f);
+    fx.dynamics_end_comp_release_ms = clampFloat(snapshot.fx.dynamics_end_comp_release_ms, 20.0f, 1500.0f);
+    fx.dynamics_end_comp_makeup = clampFloat(snapshot.fx.dynamics_end_comp_makeup, 0.25f, 4.0f);
+    fx.dynamics_end_comp_mix = clampFloat(snapshot.fx.dynamics_end_comp_mix, 0.0f, 1.0f);
+    fx.dynamics_end_comp_detector_hp = clampFloat(snapshot.fx.dynamics_end_comp_detector_hp, 0.0f, 1.0f);
+    fx.dynamics_end_comp_detector_tilt = clampFloat(snapshot.fx.dynamics_end_comp_detector_tilt, 0.0f, 1.0f);
+    fx.dynamics_end_comp_auto_makeup = clampFloat(snapshot.fx.dynamics_end_comp_auto_makeup, 0.0f, 1.0f);
+    fx.dynamics_end_comp_program_release = clampFloat(snapshot.fx.dynamics_end_comp_program_release, 0.0f, 1.0f);
+    fx.sidechain_enabled = snapshot.fx.sidechain_enabled != 0u;
+    fx.sidechain_key_a = clampU32(snapshot.fx.sidechain_key_a, kSidechainKeyOff, kSidechainKeyMembrane);
+    fx.sidechain_key_b = clampU32(snapshot.fx.sidechain_key_b, kSidechainKeyOff, kSidechainKeyMembrane);
+    fx.sidechain_key_a_weight = clampFloat(snapshot.fx.sidechain_key_a_weight, 0.0f, 1.0f);
+    fx.sidechain_key_b_weight = clampFloat(snapshot.fx.sidechain_key_b_weight, 0.0f, 1.0f);
+    fx.sidechain_amount = clampFloat(snapshot.fx.sidechain_amount, 0.0f, 1.0f);
+    fx.sidechain_threshold = clampFloat(snapshot.fx.sidechain_threshold, -60.0f, 0.0f);
+    fx.sidechain_ratio = clampFloat(snapshot.fx.sidechain_ratio, 1.0f, 20.0f);
+    fx.sidechain_knee = clampFloat(snapshot.fx.sidechain_knee, 0.0f, 40.0f);
+    fx.sidechain_attack_ms = clampFloat(snapshot.fx.sidechain_attack_ms, 0.1f, 100.0f);
+    fx.sidechain_hold_ms = clampFloat(snapshot.fx.sidechain_hold_ms, 0.0f, 250.0f);
+    fx.sidechain_release_ms = clampFloat(snapshot.fx.sidechain_release_ms, 20.0f, 1500.0f);
+    fx.sidechain_makeup = clampFloat(snapshot.fx.sidechain_makeup, 0.25f, 4.0f);
+    fx.sidechain_mix = clampFloat(snapshot.fx.sidechain_mix, 0.0f, 1.0f);
+    fx.sidechain_curve = clampFloat(snapshot.fx.sidechain_curve, 0.0f, 1.0f);
+    fx.sidechain_detector_hp = clampFloat(snapshot.fx.sidechain_detector_hp, 0.0f, 1.0f);
+    fx.sidechain_detector_lp = clampFloat(snapshot.fx.sidechain_detector_lp, 0.0f, 1.0f);
+    fx.sidechain_targets[kSidechainPad1] = clampFloat(snapshot.fx.sidechain_pad1_target, 0.0f, 1.0f);
+    fx.sidechain_targets[kSidechainPad2] = clampFloat(snapshot.fx.sidechain_pad2_target, 0.0f, 1.0f);
+    fx.sidechain_targets[kSidechainLead1] = clampFloat(snapshot.fx.sidechain_lead1_target, 0.0f, 1.0f);
+    fx.sidechain_targets[kSidechainLead2] = clampFloat(snapshot.fx.sidechain_lead2_target, 0.0f, 1.0f);
+    fx.sidechain_targets[kSidechainPiano] = clampFloat(snapshot.fx.sidechain_piano_target, 0.0f, 1.0f);
+    fx.sidechain_targets[kSidechainGranular] = clampFloat(snapshot.fx.sidechain_granular_target, 0.0f, 1.0f);
+    fx.sidechain_targets[kSidechainDelayA] = clampFloat(snapshot.fx.sidechain_delay_a_target, 0.0f, 1.0f);
+    fx.sidechain_targets[kSidechainDelayB] = clampFloat(snapshot.fx.sidechain_delay_b_target, 0.0f, 1.0f);
+    fx.sidechain_targets[kSidechainReverb] = clampFloat(snapshot.fx.sidechain_reverb_target, 0.0f, 1.0f);
+    resetSidechainRuntime();
     routing.delay_a_to_delay_b = clampFloat(snapshot.routing.delay_a_to_delay_b, 0.0f, 1.0f);
     routing.delay_b_to_delay_a = clampFloat(snapshot.routing.delay_b_to_delay_a, 0.0f, 1.0f);
     routing.delay_to_reverb = clampFloat(snapshot.routing.delay_to_reverb, 0.0f, 1.0f);
@@ -1613,7 +2441,196 @@ struct KesshoProductEngine {
     telemetry.last_error_code = KESSHO_PRODUCT_OK;
   }
 
+  bool applyGranularVoiceParamEvent(const KesshoProductEvent& event) {
+    const uint32_t voice_param_bases[kGranularVoiceCount] = {
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_V1_ENABLED_ID,
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_V2_ENABLED_ID,
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_V3_ENABLED_ID,
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_V4_ENABLED_ID,
+    };
+    for (uint32_t voice_index = 0; voice_index < kGranularVoiceCount; ++voice_index) {
+      const uint32_t base = voice_param_bases[voice_index];
+      if (event.param_id < base || event.param_id >= base + kGranularVoiceParamCount) {
+        continue;
+      }
+      GranularVoiceState& voice = fx.granular_voices[voice_index];
+      switch (event.param_id - base) {
+        case 0:
+          voice.enabled = event.value >= 0.5f;
+          break;
+        case 1:
+          voice.mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
+          break;
+        case 2:
+          voice.slice = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 15u);
+          break;
+        case 3:
+          voice.speed = clampFloat(event.value, 0.0f, 4.0f);
+          break;
+        case 4:
+          voice.scan_rate = clampFloat(event.value, 0.25f, 4.0f);
+          break;
+        case 5:
+          voice.reverse = event.value >= 0.5f;
+          break;
+        case 6:
+          voice.pitch = clampFloat(event.value, -24.0f, 24.0f);
+          break;
+        case 7:
+          voice.write_follow = clampFloat(event.value, 0.0f, 1.0f);
+          break;
+        case 8:
+          voice.density = clampFloat(event.value, 1.0f, 64.0f);
+          break;
+        case 9:
+          voice.grain_size_ms = clampFloat(event.value, 10.0f, 500.0f);
+          break;
+        case 10:
+          voice.spray = clampFloat(event.value, 0.0f, 1.0f);
+          break;
+        case 11:
+          voice.grain_octave_probability = clampFloat(event.value, 0.0f, 1.0f);
+          break;
+        case 12:
+          voice.attack_seconds = clampFloat(event.value, 0.001f, 0.5f);
+          break;
+        case 13:
+          voice.decay_seconds = clampFloat(event.value, 0.01f, 4.0f);
+          break;
+        case 14:
+          voice.gain = clampFloat(event.value, 0.0f, 1.0f);
+          break;
+        case 15:
+          voice.pan = clampFloat(event.value, -1.0f, 1.0f);
+          break;
+        case 16:
+          voice.blur = clampFloat(event.value, 0.0f, 1.0f);
+          break;
+        case 17:
+          voice.stereo_spread = clampFloat(event.value, 0.0f, 1.0f);
+          break;
+        case 18:
+          voice.position_lfo_rate = clampFloat(event.value, 0.0f, 1.0f);
+          break;
+        case 19:
+          voice.position_lfo_depth = clampFloat(event.value, 0.0f, 1.0f);
+          break;
+        case 20:
+          voice.pan_lfo_rate = clampFloat(event.value, 0.0f, 1.0f);
+          break;
+        case 21:
+          voice.reverse_lfo_rate = clampFloat(event.value, 0.0f, 1.0f);
+          break;
+        case 22:
+          voice.record_lfo_rate = clampFloat(event.value, 0.0f, 1.0f);
+          break;
+        case 23:
+          voice.euclid_gated = event.value >= 0.5f;
+          break;
+        case 24:
+          voice.euclid_muted = event.value >= 0.5f;
+          break;
+        default:
+          telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+          return true;
+      }
+      configureFxModules();
+      telemetry.last_error_code = KESSHO_PRODUCT_OK;
+      return true;
+    }
+    return false;
+  }
+
+  bool applyGranularParamEvent(const KesshoProductEvent& event) {
+    if (applyGranularVoiceParamEvent(event)) {
+      return true;
+    }
+    switch (event.param_id) {
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_MIX_ID:
+        fx.granular_mix = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_ENABLED_ID:
+        fx.granular_enabled = event.value >= 0.5f;
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_FREEZE_ID:
+        fx.granular_freeze = event.value >= 0.5f;
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_FREEZE_WITH_FEEDBACK_ID:
+        fx.granular_freeze_with_feedback = event.value >= 0.5f;
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_FEEDBACK_ID:
+        fx.granular_feedback = clampFloat(event.value, 0.0f, 0.85f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_FEEDBACK_LPF_HZ_ID:
+        fx.granular_feedback_lpf_hz = clampFloat(event.value, 200.0f, 12000.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_BUFFER_SECONDS_ID:
+        fx.granular_buffer_seconds = clampFloat(event.value, 1.0f, 32.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_GRAIN_SHAPE_ID:
+        fx.granular_grain_shape = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 3u);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_BUS_DIFFUSION_ID:
+        fx.granular_bus_diffusion = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_TIMING_RANDOMNESS_ID:
+        fx.granular_timing_randomness = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_CHORD_BIAS_ID:
+        fx.granular_chord_bias = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_JITTER_MS_ID:
+        fx.granular_legacy_jitter_ms = clampFloat(event.value, 0.0f, 30.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_PROBABILITY_ID:
+        fx.granular_legacy_probability = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_PITCH_MODE_ID:
+        fx.granular_legacy_pitch_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 1u);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_PITCH_SPREAD_ID:
+        fx.granular_legacy_pitch_spread = clampFloat(event.value, 0.0f, 12.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_MAX_GRAINS_ID:
+        fx.granular_legacy_max_grains = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 128u);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_FEEDBACK_ID:
+        fx.granular_legacy_feedback = clampFloat(event.value, 0.0f, 0.35f);
+        break;
+      default:
+        return false;
+    }
+    configureFxModules();
+    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    return true;
+  }
+
+  bool applyDynamicsModParamEvent(const KesshoProductEvent& event) {
+    if (
+        event.param_id < KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_SLOW_WOW_ID ||
+        event.param_id > KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_NOISE_ALIAS_ID) {
+      return false;
+    }
+    const uint32_t offset = event.param_id - KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_SLOW_WOW_ID;
+    const uint32_t source = offset / kDynamicsModTargetCount;
+    const uint32_t target = offset % kDynamicsModTargetCount;
+    if (source >= kDynamicsModSourceCount || target >= kDynamicsModTargetCount) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+      return true;
+    }
+    fx.dynamics_mod[source][target] = clampFloat(event.value, 0.0f, 1.0f);
+    configureFxModules();
+    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    return true;
+  }
+
   void applyParam(const KesshoProductEvent& event) {
+    if (applyGranularParamEvent(event)) {
+      return;
+    }
+    if (applyDynamicsModParamEvent(event)) {
+      return;
+    }
     switch (event.param_id) {
       case KESSHO_PRODUCT_PARAM_TRANSPORT_RUNNING_ID:
         transport.running = event.value >= 0.5f;
@@ -1663,6 +2680,18 @@ struct KesshoProductEngine {
         break;
       case KESSHO_PRODUCT_PARAM_MASTER_LIMITER_CEILING_DB_ID:
         setMasterLimiterCeilingDb(event.value);
+        break;
+      case KESSHO_PRODUCT_PARAM_MASTER_SATURATION_MODE_ID:
+        master_saturation_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 4u);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_MASTER_SATURATION_DRIVE_ID:
+        master_saturation_drive = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_MASTER_SATURATION_TONE_ID:
+        master_saturation_tone = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
         break;
       case KESSHO_PRODUCT_PARAM_HARMONY_ROOT_MIDI_ID:
         harmony.root_midi = clampFloat(event.value, 0.0f, 127.0f);
@@ -1913,9 +2942,294 @@ struct KesshoProductEngine {
         fx.spectral_freeze_mix = clampFloat(event.value, 0.0f, 1.0f);
         configureFxModules();
         break;
+      case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ENABLED_ID:
+        fx.spectral_freeze_enabled = event.value >= 0.5f;
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID:
+        fx.spectral_freeze_active = event.value >= 0.5f;
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SLUSHY_ID:
+        fx.spectral_freeze_slushy = event.value >= 0.5f;
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SPEED_ID:
+        fx.spectral_freeze_speed = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DECAY_ID:
+        fx.spectral_freeze_decay = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_PHASE_JITTER_ID:
+        fx.spectral_freeze_phase_jitter = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
       case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID:
         fx.dynamics_drive = clampFloat(event.value, 0.0f, 1.0f);
         configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_ENABLED_ID:
+        fx.dynamics_enabled = event.value >= 0.5f;
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_ENABLED_ID:
+        fx.dynamics_character_enabled = event.value >= 0.5f;
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MODE_ID:
+        fx.dynamics_character_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MIX_ID:
+        fx.dynamics_character_mix = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_AGE_ID:
+        fx.dynamics_character_age = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_BIAS_ID:
+        fx.dynamics_character_bias = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_LPG_AMOUNT_ID:
+        fx.dynamics_character_lpg_amount = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_RESONANCE_ID:
+        fx.dynamics_character_resonance = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_STEREO_ID:
+        fx.dynamics_character_stereo = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_ENV_FOLLOW_ID:
+        fx.dynamics_character_env_follow = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_DEPTH_ID:
+        fx.dynamics_character_depth = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_RATE_ID:
+        fx.dynamics_character_rate = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_DAMP_ID:
+        fx.dynamics_character_damp = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_ENABLED_ID:
+        fx.dynamics_degrade_enabled = event.value >= 0.5f;
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_MIX_ID:
+        fx.dynamics_degrade_mix = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_AGE_ID:
+        fx.dynamics_degrade_age = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_GENERATION_ID:
+        fx.dynamics_degrade_generation = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_ALIAS_ID:
+        fx.dynamics_degrade_alias = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOW_ID:
+        fx.dynamics_degrade_wow = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_FLUTTER_ID:
+        fx.dynamics_degrade_flutter = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_DRIFT_ID:
+        fx.dynamics_degrade_drift = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOBBLE_SPEED_ID:
+        fx.dynamics_degrade_wobble_speed = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_TONE_ID:
+        fx.dynamics_degrade_tone = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_HP_ID:
+        fx.dynamics_degrade_hp = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_LP_ID:
+        fx.dynamics_degrade_lp = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_NOISE_ID:
+        fx.dynamics_degrade_noise = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_SATURATION_ID:
+        fx.dynamics_degrade_saturation = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_CORROSION_ID:
+        fx.dynamics_degrade_corrosion = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_ENABLED_ID:
+        fx.dynamics_saturation_enabled = event.value >= 0.5f;
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_MODE_ID:
+        fx.dynamics_saturation_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 4u);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID:
+        fx.dynamics_saturation_drive = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_TONE_ID:
+        fx.dynamics_saturation_tone = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_BIAS_ID:
+        fx.dynamics_saturation_bias = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_ENABLED_ID:
+        fx.dynamics_end_comp_enabled = event.value >= 0.5f;
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_THRESHOLD_ID:
+        fx.dynamics_end_comp_threshold = clampFloat(event.value, -60.0f, 0.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_KNEE_ID:
+        fx.dynamics_end_comp_knee = clampFloat(event.value, 0.0f, 40.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_RATIO_ID:
+        fx.dynamics_end_comp_ratio = clampFloat(event.value, 1.0f, 20.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_ATTACK_MS_ID:
+        fx.dynamics_end_comp_attack_ms = clampFloat(event.value, 0.1f, 100.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_RELEASE_MS_ID:
+        fx.dynamics_end_comp_release_ms = clampFloat(event.value, 20.0f, 1500.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_MAKEUP_ID:
+        fx.dynamics_end_comp_makeup = clampFloat(event.value, 0.25f, 4.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_MIX_ID:
+        fx.dynamics_end_comp_mix = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_DETECTOR_HP_ID:
+        fx.dynamics_end_comp_detector_hp = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_DETECTOR_TILT_ID:
+        fx.dynamics_end_comp_detector_tilt = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_AUTO_MAKEUP_ID:
+        fx.dynamics_end_comp_auto_makeup = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_PROGRAM_RELEASE_ID:
+        fx.dynamics_end_comp_program_release = clampFloat(event.value, 0.0f, 1.0f);
+        configureFxModules();
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_ENABLED_ID:
+        fx.sidechain_enabled = event.value >= 0.5f;
+        if (!fx.sidechain_enabled) {
+          resetSidechainRuntime();
+        }
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_KEY_A_ID:
+        fx.sidechain_key_a = clampU32(static_cast<uint32_t>(std::lround(event.value)), kSidechainKeyOff, kSidechainKeyMembrane);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_KEY_B_ID:
+        fx.sidechain_key_b = clampU32(static_cast<uint32_t>(std::lround(event.value)), kSidechainKeyOff, kSidechainKeyMembrane);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_KEY_AWEIGHT_ID:
+        fx.sidechain_key_a_weight = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_KEY_BWEIGHT_ID:
+        fx.sidechain_key_b_weight = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_AMOUNT_ID:
+        fx.sidechain_amount = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_THRESHOLD_ID:
+        fx.sidechain_threshold = clampFloat(event.value, -60.0f, 0.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_RATIO_ID:
+        fx.sidechain_ratio = clampFloat(event.value, 1.0f, 20.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_KNEE_ID:
+        fx.sidechain_knee = clampFloat(event.value, 0.0f, 40.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_ATTACK_MS_ID:
+        fx.sidechain_attack_ms = clampFloat(event.value, 0.1f, 100.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_HOLD_MS_ID:
+        fx.sidechain_hold_ms = clampFloat(event.value, 0.0f, 250.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_RELEASE_MS_ID:
+        fx.sidechain_release_ms = clampFloat(event.value, 20.0f, 1500.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_MAKEUP_ID:
+        fx.sidechain_makeup = clampFloat(event.value, 0.25f, 4.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_MIX_ID:
+        fx.sidechain_mix = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_CURVE_ID:
+        fx.sidechain_curve = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_DETECTOR_HP_ID:
+        fx.sidechain_detector_hp = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_DETECTOR_LP_ID:
+        fx.sidechain_detector_lp = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_PAD1_TARGET_ID:
+        fx.sidechain_targets[kSidechainPad1] = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_PAD2_TARGET_ID:
+        fx.sidechain_targets[kSidechainPad2] = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_LEAD1_TARGET_ID:
+        fx.sidechain_targets[kSidechainLead1] = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_LEAD2_TARGET_ID:
+        fx.sidechain_targets[kSidechainLead2] = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_PIANO_TARGET_ID:
+        fx.sidechain_targets[kSidechainPiano] = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_GRANULAR_TARGET_ID:
+        fx.sidechain_targets[kSidechainGranular] = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_DELAY_ATARGET_ID:
+        fx.sidechain_targets[kSidechainDelayA] = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_DELAY_BTARGET_ID:
+        fx.sidechain_targets[kSidechainDelayB] = clampFloat(event.value, 0.0f, 1.0f);
+        break;
+      case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_REVERB_TARGET_ID:
+        fx.sidechain_targets[kSidechainReverb] = clampFloat(event.value, 0.0f, 1.0f);
         break;
       case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_DELAY_B_ID:
         routing.delay_a_to_delay_b = clampFloat(event.value, 0.0f, 1.0f);
@@ -2748,6 +4062,7 @@ struct KesshoProductEngine {
       if (drum_module) {
         drum_module->setVoiceSend(static_cast<int>(drum_voice), delay_send);
       }
+      triggerSidechainDuck(drum_voice, clampFloat(velocity * expression, 0.0f, 1.0f));
     }
 
     const auto* preset = findSourcePreset(source.preset_id);
@@ -3056,22 +4371,26 @@ struct KesshoProductEngine {
       return;
     }
     const float gain = source.level * source.dry_gain;
+    const uint32_t sidechain_target = sidechainTargetForSource(source_id);
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
-      const float left = in_l[i] * gain;
-      const float right = in_r[i] * gain;
+      const float send_left = in_l[i] * gain;
+      const float send_right = in_r[i] * gain;
+      const float duck_gain = sidechainGain(sidechain_target, frame);
+      const float left = send_left * duck_gain;
+      const float right = send_right * duck_gain;
       out_l[frame] += left;
       out_r[frame] += right;
       stem_l[source_id][frame] += left;
       stem_r[source_id][frame] += right;
-      reverb_bus_l[frame] += left * source.reverb_send;
-      reverb_bus_r[frame] += right * source.reverb_send;
-      delay_a_bus_l[frame] += left * source.delay_a_send;
-      delay_a_bus_r[frame] += right * source.delay_a_send;
-      delay_b_bus_l[frame] += left * source.delay_b_send;
-      delay_b_bus_r[frame] += right * source.delay_b_send;
-      granular_bus_l[frame] += left * source.granular_send;
-      granular_bus_r[frame] += right * source.granular_send;
+      reverb_bus_l[frame] += send_left * source.reverb_send;
+      reverb_bus_r[frame] += send_right * source.reverb_send;
+      delay_a_bus_l[frame] += send_left * source.delay_a_send;
+      delay_a_bus_r[frame] += send_right * source.delay_a_send;
+      delay_b_bus_l[frame] += send_left * source.delay_b_send;
+      delay_b_bus_r[frame] += send_right * source.delay_b_send;
+      granular_bus_l[frame] += send_left * source.granular_send;
+      granular_bus_r[frame] += send_right * source.granular_send;
     }
   }
 
@@ -3118,14 +4437,23 @@ struct KesshoProductEngine {
     renderSingleModuleSource(drum_module.get(), KESSHO_PRODUCT_SOURCE_DRUM, out_l, out_r, start, frames);
   }
 
-  void mixFxBuffer(const float* in_l, const float* in_r, float* out_l, float* out_r, uint32_t start, uint32_t frames, float gain) {
+  void mixFxBuffer(
+      const float* in_l,
+      const float* in_r,
+      float* out_l,
+      float* out_r,
+      uint32_t start,
+      uint32_t frames,
+      float gain,
+      uint32_t sidechain_target) {
     if (gain <= 0.0f) {
       return;
     }
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
-      const float left = in_l[i] * gain;
-      const float right = in_r[i] * gain;
+      const float duck_gain = sidechainGain(sidechain_target, frame);
+      const float left = in_l[i] * gain * duck_gain;
+      const float right = in_r[i] * gain * duck_gain;
       out_l[frame] += left;
       out_r[frame] += right;
       stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
@@ -3155,7 +4483,15 @@ struct KesshoProductEngine {
       std::fill(module_tap_r[bus], module_tap_r[bus] + frames, 0.0f);
     }
     module->processPlanarStereoTaps(input_l + start, input_r + start, tap_l, tap_r, KESSHO_MODULE_DELAY_A_OUTPUT_TAP_COUNT, static_cast<int>(frames));
-    mixFxBuffer(module_tap_l[KESSHO_MODULE_DELAY_A_TAP_MAIN], module_tap_r[KESSHO_MODULE_DELAY_A_TAP_MAIN], out_l, out_r, start, frames, 1.0f);
+    mixFxBuffer(
+        module_tap_l[KESSHO_MODULE_DELAY_A_TAP_MAIN],
+        module_tap_r[KESSHO_MODULE_DELAY_A_TAP_MAIN],
+        out_l,
+        out_r,
+        start,
+        frames,
+        1.0f,
+        module == delay_a_module.get() ? kSidechainDelayA : kSidechainDelayB);
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
       reverb_bus_l[frame] += module_tap_l[KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND][i];
@@ -3168,13 +4504,16 @@ struct KesshoProductEngine {
   }
 
   void renderGranular(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
-    if (granular_module == nullptr || frames == 0u || fx.granular_mix <= 0.0f) {
+    const bool active =
+        fx.granular_enabled &&
+        (fx.granular_mix > 0.0001f || routing.granular_to_reverb > 0.0001f);
+    if (granular_module == nullptr || frames == 0u || !active) {
       return;
     }
     std::fill(module_l, module_l + frames, 0.0f);
     std::fill(module_r, module_r + frames, 0.0f);
     granular_module->processPlanarStereo(granular_bus_l + start, granular_bus_r + start, module_l, module_r, static_cast<int>(frames));
-    mixFxBuffer(module_l, module_r, out_l, out_r, start, frames, fx.granular_mix);
+    mixFxBuffer(module_l, module_r, out_l, out_r, start, frames, fx.granular_mix, kSidechainGranular);
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
       reverb_bus_l[frame] += module_l[i] * routing.granular_to_reverb;
@@ -3189,7 +4528,7 @@ struct KesshoProductEngine {
     std::fill(module_l, module_l + frames, 0.0f);
     std::fill(module_r, module_r + frames, 0.0f);
     reverb_module->processPlanarStereo(reverb_bus_l + start, reverb_bus_r + start, module_l, module_r, static_cast<int>(frames));
-    mixFxBuffer(module_l, module_r, out_l, out_r, start, frames, fx.reverb_mix);
+    mixFxBuffer(module_l, module_r, out_l, out_r, start, frames, fx.reverb_mix, kSidechainReverb);
   }
 
   void renderFx(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
@@ -3215,34 +4554,39 @@ struct KesshoProductEngine {
         const SourceState& source = sources[voice.source_id - 1u];
         const float pan_l = voice.pan <= 0.0f ? 1.0f : 1.0f - voice.pan * 0.5f;
         const float pan_r = voice.pan >= 0.0f ? 1.0f : 1.0f + voice.pan * 0.5f;
-        const float left = value_l * source.dry_gain * pan_l;
-        const float right = value_r * source.dry_gain * pan_r;
+        const uint32_t sidechain_target = sidechainTargetForSource(voice.source_id);
+        const float duck_gain = sidechainGain(sidechain_target, frame);
+        const float send_left = value_l * source.dry_gain * pan_l;
+        const float send_right = value_r * source.dry_gain * pan_r;
+        const float left = send_left * duck_gain;
+        const float right = send_right * duck_gain;
         out_l[frame] += left;
         out_r[frame] += right;
         if (voice.source_id < kStemCount) {
           stem_l[voice.source_id][frame] += left;
           stem_r[voice.source_id][frame] += right;
         }
-        reverb_bus_l[frame] += left * source.reverb_send;
-        reverb_bus_r[frame] += right * source.reverb_send;
-        delay_a_bus_l[frame] += left * source.delay_a_send;
-        delay_a_bus_r[frame] += right * source.delay_a_send;
-        delay_b_bus_l[frame] += left * source.delay_b_send;
-        delay_b_bus_r[frame] += right * source.delay_b_send;
-        granular_bus_l[frame] += left * source.granular_send;
-        granular_bus_r[frame] += right * source.granular_send;
+        reverb_bus_l[frame] += send_left * source.reverb_send;
+        reverb_bus_r[frame] += send_right * source.reverb_send;
+        delay_a_bus_l[frame] += send_left * source.delay_a_send;
+        delay_a_bus_r[frame] += send_right * source.delay_a_send;
+        delay_b_bus_l[frame] += send_left * source.delay_b_send;
+        delay_b_bus_r[frame] += send_right * source.delay_b_send;
+        granular_bus_l[frame] += send_left * source.granular_send;
+        granular_bus_r[frame] += send_right * source.granular_send;
       }
     }
   }
 
   void renderSegment(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
+    renderSidechainGains(start, frames);
     renderProductModules(out_l, out_r, start, frames);
     renderSampleVoices(out_l, out_r, start, frames);
     renderFx(out_l, out_r, start, frames);
   }
 
   void renderSpectralFreeze(float* out_l, float* out_r, uint32_t frames) {
-    if (spectral_freeze_module == nullptr || frames == 0u || fx.spectral_freeze_mix <= 0.0f) {
+    if (spectral_freeze_module == nullptr || frames == 0u || !fx.spectral_freeze_enabled || fx.spectral_freeze_mix <= 0.0f) {
       return;
     }
     std::fill(module_l, module_l + frames, 0.0f);
@@ -3260,16 +4604,24 @@ struct KesshoProductEngine {
   }
 
   void renderDynamics(float* out_l, float* out_r, uint32_t frames) {
-    if (dynamics_character_module == nullptr || frames == 0u || fx.dynamics_drive <= 0.0f) {
+    const bool dynamics_active =
+        fx.dynamics_drive > 0.0001f ||
+        (!fx.dynamics_enabled && master_saturation_drive > 0.0001f) ||
+        (
+            fx.dynamics_enabled &&
+            ((fx.dynamics_character_enabled && fx.dynamics_character_mix > 0.0001f) ||
+             (fx.dynamics_degrade_enabled && fx.dynamics_degrade_mix > 0.0001f) ||
+             (fx.dynamics_saturation_enabled && fx.dynamics_saturation_drive > 0.0001f) ||
+             (fx.dynamics_end_comp_enabled && fx.dynamics_end_comp_mix > 0.0001f)));
+    if (dynamics_character_module == nullptr || frames == 0u || !dynamics_active) {
       return;
     }
     std::fill(module_l, module_l + frames, 0.0f);
     std::fill(module_r, module_r + frames, 0.0f);
     dynamics_character_module->processPlanarStereo(out_l, out_r, module_l, module_r, static_cast<int>(frames));
-    const float mix = clampFloat(fx.dynamics_drive, 0.0f, 1.0f);
     for (uint32_t i = 0; i < frames; ++i) {
-      out_l[i] = out_l[i] * (1.0f - mix) + module_l[i] * mix;
-      out_r[i] = out_r[i] * (1.0f - mix) + module_r[i] * mix;
+      out_l[i] = module_l[i];
+      out_r[i] = module_r[i];
     }
   }
 

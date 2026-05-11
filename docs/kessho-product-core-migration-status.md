@@ -52,8 +52,12 @@ The web runtime now defaults to the verified `core-bridge`/`core-wasm` path whil
 - Initial C++ Product Core Delay A, Delay B, reverb, granular, spectral freeze, and dynamics/master processing through shared modules.
 - Product snapshot schema, web/native snapshot encoders, and generated `SetParam` events now carry Delay A enabled/time/feedback/filter/modulation/ping-pong/duck/width/cross-feed-filter controls, Delay B enabled/activity/repeats/time/tone/vibrato/mode/pattern/warp/spread controls, and Delay A/B granular/reverb routing sends into the C++ Product Core graph.
 - Product snapshot schema, web/native snapshot encoders, and generated `SetParam` events now carry the full shared C++ Reverb module parameter set: type, quality, decay, size, damping, diffusion, modulation, predelay, width, shimmer, slow modulation, reverse tail, chorus, modulation character, multiband damping, input tone, shimmer feedback, warp, cross-feed, early reflections, air absorption, saturation mode, transient smoothing, and early-reflection low-pass frequency.
-- Product Core master limiter ceiling is now loaded from product snapshots, accepted through generated `MasterLimiterCeilingDb` param events, encoded by web/native snapshot writers, and applied inside the C++ master chain.
-- Product Core live `SetParam` updates for spectral freeze mix and dynamics drive now reconfigure the shared C++ FX modules and are covered against equivalent snapshot-loaded renders.
+- Product snapshot schema, web/native snapshot encoders, and generated `SetParam` events now carry the shared C++ Granular module controls: enabled/freeze/feedback/buffer/shape/diffusion/timing randomness, chord bias, legacy compatibility controls, and four fixed-capacity granular voice parameter blocks.
+- Product snapshot schema, web/native snapshot encoders, and generated `SetParam` events now carry the shared C++ Spectral Freeze module controls: enabled, active freeze state, slushy mode, speed, wet/dry mix, sustain/decay, and phase jitter.
+- Product snapshot schema, web/native snapshot encoders, and generated `SetParam` events now carry primary Dynamics Character, Degrade, saturation, and end-compressor controls into C++; C++ maps those controls into the shared Dynamics Character module and owns the Product Core dynamics render gate.
+- Product snapshot schema, web/native snapshot encoders, and generated `SetParam` events now carry Dynamics sidechain key/threshold/envelope/target-depth controls into C++; Product Core owns drum-key duck triggering and applies fixed-capacity per-target sidechain gain to source and FX outputs.
+- Product Core master limiter ceiling and legacy master saturation mode/drive/tone are now loaded from product snapshots, accepted through generated `SetParam` events, encoded by web/native snapshot writers, and applied inside the C++ master chain.
+- Product Core live `SetParam` updates for spectral freeze and primary dynamics controls now reconfigure the shared C++ FX modules and are covered against equivalent snapshot-loaded renders.
 - C++ stems for master and source outputs.
 - Product capability report.
 - Web `core-product` host and worklet.
@@ -79,7 +83,7 @@ The web runtime now defaults to the verified `core-bridge`/`core-wasm` path whil
 - Native C/Objective-C++ Product Core bridge with engine lifecycle, snapshot load, event enqueue, render, stem, telemetry, and host-decoded PCM asset registration.
 - Swift Product Core wrapper for snapshot bytes, events, manual notes, render buffers, stems, telemetry, decoded `AVAudioPCMBuffer`/`AVAudioFile` asset conversion, and asset registration.
 - Initial Swift `AVAudioSourceNode` Product Core host that renders through C++ Product Core using preallocated render buffers.
-- Swift Product Core snapshot encoder that packs native `SliderState` into the generated 3708-byte product snapshot schema and exposes `loadSnapshot(state:)` / `start(state:)` bridge helpers.
+- Swift Product Core snapshot encoder that packs native `SliderState` into the generated 4492-byte product snapshot schema and exposes `loadSnapshot(state:)` / `start(state:)` bridge helpers.
 - Native AppState defaults to the Product Core render path, forwarding state updates and manual melodic notes through `KesshoProductCoreAudioEngine`; the duplicate Swift DSP path is selectable only with `KESSHO_NATIVE_AUDIO_ENGINE=legacy-swift`/`legacy`/`swift`.
 - Native Product Core startup asset manifest and preload path for default piano plus water/birds/frogs soundscape assets; assets are resolved from bundled resources, `KESSHO_PRODUCT_ASSET_ROOT`, or the repo `public/samples` tree during development and registered with C++ before the native render node starts.
 - Native Product Core recorder wiring now configures the shared `AudioRecorder` with Product Core master/stem nodes; recordable stems are sourced from C++ Product Core stem buffers rather than the legacy Swift DSP graph.
@@ -93,7 +97,7 @@ The web runtime now defaults to the verified `core-bridge`/`core-wasm` path whil
 
 - Pad/lead/drum product sources now use the shared C++ modules; source preset identity, bounded generated preset macro metadata, and initial Pad/Lead module profile patches are Product Core-owned, while exhaustive one-to-one preset parameter parity still needs deeper generated product state.
 - Harmony, scale, evolution, RNG, and journey have an initial C++ implementation with RNG telemetry preservation across web snapshot reloads; full RNG call-order policy, voicing depth, phrase-level mutation writes, complete journey preset/state morph ownership, and broader journey automation targets still need full C++ implementation.
-- Delay A/B, reverb, granular, spectral freeze, and dynamics have an initial C++ product-owned path; web/native Product snapshots now gate disabled FX from app enable flags and map the primary Delay A/B production controls plus the current shared Reverb module controls into C++, while granular, spectral freeze, dynamics, and final master-chain tuning still need broader parameter coverage.
+- Delay A/B, reverb, granular, spectral freeze, dynamics, sidechain, and master limiter/saturation have an initial C++ product-owned path; web/native Product snapshots now gate disabled FX from app enable flags and map the primary Delay A/B production controls plus the current shared Reverb, Granular, Spectral Freeze, Dynamics Character/Degrade/saturation/end-compressor, sidechain, and master controls into C++, while dynamics modulation-matrix depth and remaining master-chain polish beyond limiter/saturation still need broader parameter coverage.
 - Web UI calls may still produce unsupported `core-product` diagnostics for legacy production controls that do not yet have final product-level event mappings; drum morph/S&H ranges, dual ranges, runtime walk ranges, synth/drum sub-lane enable flags, and sequencer reset/dice controls now have Product Core event paths.
 - Sequencer dice currently mutates C++ lane event-generation overrides and restores them through reset-home, but detailed diced override state is not yet surfaced back to the UI as a generated Product Core snapshot/telemetry diff.
 - Native Swift duplicate DSP/generative logic remains present as an explicit legacy reference path; it is no longer the default runtime.
@@ -107,7 +111,7 @@ The web runtime now defaults to the verified `core-bridge`/`core-wasm` path whil
 
 | Capability | Status |
 | --- | --- |
-| Full product graph | Partial: source buses plus Delay A/B primary controls/routing, Reverb module controls, granular, spectral freeze, dynamics, and master limiter ceiling |
+| Full product graph | Partial: source buses plus Delay A/B primary controls/routing, Reverb module controls, granular, spectral freeze, primary dynamics/sidechain controls, master limiter ceiling, and master saturation |
 | Web runtime default | `core-bridge`/`core-wasm` is the verified default; `core-product` remains selectable for migration probes |
 | Synth sequencer | Implemented initial C++ event path with all four app lanes mapped from web snapshot state |
 | Drum sequencer | Implemented initial C++ event path with web drum target flags expanded into Product Core lanes |

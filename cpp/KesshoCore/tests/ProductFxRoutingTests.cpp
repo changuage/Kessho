@@ -39,9 +39,44 @@ KesshoProductSnapshotV2 makeSnapshot() {
   snapshot.harmony.scale_id = 1;
   snapshot.harmony.tension = 0.3f;
   snapshot.master.gain = 1.0f;
+  snapshot.master.limiter_ceiling_db = -0.5f;
+  snapshot.master.saturation_tone = 0.5f;
   snapshot.rng.seed = 123;
   snapshot.rng.state = 123;
   snapshot.fx.delay_a_enabled = 1;
+  snapshot.fx.granular_enabled = 0;
+  snapshot.fx.granular_feedback = 0.1f;
+  snapshot.fx.granular_feedback_lpf_hz = 8000.0f;
+  snapshot.fx.granular_buffer_seconds = 16.0f;
+  snapshot.fx.granular_grain_shape = 0;
+  snapshot.fx.granular_bus_diffusion = 0.0f;
+  snapshot.fx.granular_timing_randomness = 0.35f;
+  snapshot.fx.granular_chord_bias = 0.0f;
+  snapshot.fx.granular_legacy_jitter_ms = 10.0f;
+  snapshot.fx.granular_legacy_probability = 0.8f;
+  snapshot.fx.granular_legacy_pitch_mode = 1;
+  snapshot.fx.granular_legacy_pitch_spread = 2.0f;
+  snapshot.fx.granular_legacy_max_grains = 64;
+  snapshot.fx.granular_legacy_feedback = 0.1f;
+  for (uint32_t i = 0; i < 4u; ++i) {
+    snapshot.fx.granular_voices[i].enabled = i == 0u ? 1u : 0u;
+    snapshot.fx.granular_voices[i].mode = 1u;
+    snapshot.fx.granular_voices[i].slice = i * 4u;
+    snapshot.fx.granular_voices[i].speed = 1.0f;
+    snapshot.fx.granular_voices[i].scan_rate = 1.0f;
+    snapshot.fx.granular_voices[i].pitch = 0.0f;
+    snapshot.fx.granular_voices[i].write_follow = 0.0f;
+    snapshot.fx.granular_voices[i].density = 20.0f;
+    snapshot.fx.granular_voices[i].grain_size_ms = 80.0f;
+    snapshot.fx.granular_voices[i].spray = 0.3f;
+    snapshot.fx.granular_voices[i].grain_octave_probability = 0.0f;
+    snapshot.fx.granular_voices[i].attack_seconds = 0.003f;
+    snapshot.fx.granular_voices[i].decay_seconds = 0.5f;
+    snapshot.fx.granular_voices[i].gain = 0.5f;
+    snapshot.fx.granular_voices[i].pan = 0.0f;
+    snapshot.fx.granular_voices[i].blur = 0.0f;
+    snapshot.fx.granular_voices[i].stereo_spread = 0.5f;
+  }
   snapshot.fx.delay_a_time_left_ms = 500.0f;
   snapshot.fx.delay_a_time_right_ms = 375.0f;
   snapshot.fx.delay_a_feedback = 0.4f;
@@ -85,6 +120,50 @@ KesshoProductSnapshotV2 makeSnapshot() {
   snapshot.fx.reverb_saturation_mode = 0;
   snapshot.fx.reverb_transient_smooth = 0.0f;
   snapshot.fx.reverb_er_lp_freq = 2500.0f;
+  snapshot.fx.spectral_freeze_enabled = 0;
+  snapshot.fx.spectral_freeze_active = 0;
+  snapshot.fx.spectral_freeze_slushy = 0;
+  snapshot.fx.spectral_freeze_mix = 1.0f;
+  snapshot.fx.spectral_freeze_speed = 0.3f;
+  snapshot.fx.spectral_freeze_decay = 1.0f;
+  snapshot.fx.spectral_freeze_phase_jitter = 0.0f;
+  snapshot.fx.dynamics_character_bias = 0.5f;
+  snapshot.fx.dynamics_character_lpg_amount = 0.5f;
+  snapshot.fx.dynamics_character_resonance = 0.2f;
+  snapshot.fx.dynamics_character_stereo = 0.5f;
+  snapshot.fx.dynamics_character_rate = 0.3f;
+  snapshot.fx.dynamics_character_damp = 0.5f;
+  snapshot.fx.dynamics_degrade_wobble_speed = 0.35f;
+  snapshot.fx.dynamics_degrade_tone = 0.5f;
+  snapshot.fx.dynamics_degrade_lp = 1.0f;
+  snapshot.fx.dynamics_saturation_tone = 0.5f;
+  snapshot.fx.dynamics_saturation_bias = 0.5f;
+  snapshot.fx.dynamics_end_comp_threshold = -18.0f;
+  snapshot.fx.dynamics_end_comp_knee = 12.0f;
+  snapshot.fx.dynamics_end_comp_ratio = 2.0f;
+  snapshot.fx.dynamics_end_comp_attack_ms = 10.0f;
+  snapshot.fx.dynamics_end_comp_release_ms = 180.0f;
+  snapshot.fx.dynamics_end_comp_makeup = 1.0f;
+  snapshot.fx.dynamics_end_comp_mix = 1.0f;
+  snapshot.fx.dynamics_end_comp_detector_hp = 0.25f;
+  snapshot.fx.dynamics_end_comp_detector_tilt = 0.5f;
+  snapshot.fx.dynamics_end_comp_auto_makeup = 0.7f;
+  snapshot.fx.dynamics_end_comp_program_release = 0.65f;
+  snapshot.fx.sidechain_key_a = 2u;
+  snapshot.fx.sidechain_key_b = 0u;
+  snapshot.fx.sidechain_key_a_weight = 1.0f;
+  snapshot.fx.sidechain_key_b_weight = 0.7f;
+  snapshot.fx.sidechain_amount = 0.5f;
+  snapshot.fx.sidechain_threshold = -24.0f;
+  snapshot.fx.sidechain_ratio = 4.0f;
+  snapshot.fx.sidechain_knee = 6.0f;
+  snapshot.fx.sidechain_attack_ms = 5.0f;
+  snapshot.fx.sidechain_hold_ms = 20.0f;
+  snapshot.fx.sidechain_release_ms = 180.0f;
+  snapshot.fx.sidechain_makeup = 1.0f;
+  snapshot.fx.sidechain_mix = 1.0f;
+  snapshot.fx.sidechain_curve = 0.5f;
+  snapshot.fx.sidechain_detector_lp = 1.0f;
   snapshot.routing.delay_to_reverb = 0.2f;
   snapshot.routing.granular_to_reverb = 0.15f;
   snapshot.routing.delay_b_to_reverb = 0.4f;
@@ -106,6 +185,16 @@ void triggerPad(KesshoProductEngine* engine, float hold_seconds) {
   note.value2 = 0.9f;
   note.value3 = hold_seconds;
   require(kessho_product_enqueue_event(engine, &note) == KESSHO_PRODUCT_OK, "manual note enqueue failed");
+}
+
+void triggerKick(KesshoProductEngine* engine, float velocity = 1.0f) {
+  KesshoProductEvent note{};
+  note.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
+  note.target_id = KESSHO_PRODUCT_SOURCE_DRUM;
+  note.value = 37.0f;
+  note.value2 = velocity;
+  note.value3 = 0.05f;
+  require(kessho_product_enqueue_event(engine, &note) == KESSHO_PRODUCT_OK, "manual kick enqueue failed");
 }
 
 float renderFxPeak(KesshoProductEngine* engine, uint32_t blocks) {
@@ -156,6 +245,48 @@ float maxAbsDiff(const std::vector<float>& a, const std::vector<float>& b) {
     result = std::max(result, std::fabs(a[i] - b[i]));
   }
   return result;
+}
+
+float renderPadKickPeak(const KesshoProductSnapshotV2& snapshot) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "sidechain engine create failed");
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "sidechain snapshot load failed");
+  triggerKick(engine, 1.0f);
+  triggerPad(engine, 0.5f);
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  const float result = peak(left, right);
+  kessho_product_destroy(engine);
+  return result;
+}
+
+void requireSidechainDucksPadTarget() {
+  KesshoProductSnapshotV2 baseline = makeSnapshot();
+  baseline.fx.reverb_mix = 0.0f;
+  baseline.fx.delay_a_mix = 0.0f;
+  baseline.fx.delay_b_mix = 0.0f;
+  baseline.fx.dynamics_enabled = 0u;
+  baseline.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1].level = 0.0f;
+
+  KesshoProductSnapshotV2 ducked = baseline;
+  ducked.fx.sidechain_enabled = 1u;
+  ducked.fx.sidechain_key_a = 2u;
+  ducked.fx.sidechain_key_a_weight = 1.0f;
+  ducked.fx.sidechain_amount = 1.0f;
+  ducked.fx.sidechain_threshold = -60.0f;
+  ducked.fx.sidechain_ratio = 20.0f;
+  ducked.fx.sidechain_attack_ms = 0.1f;
+  ducked.fx.sidechain_hold_ms = 250.0f;
+  ducked.fx.sidechain_release_ms = 1500.0f;
+  ducked.fx.sidechain_makeup = 1.0f;
+  ducked.fx.sidechain_mix = 1.0f;
+  ducked.fx.sidechain_pad1_target = 1.0f;
+
+  const float baseline_peak = renderPadKickPeak(baseline);
+  const float ducked_peak = renderPadKickPeak(ducked);
+  require(baseline_peak > 0.00001f, "sidechain baseline had no signal");
+  require(ducked_peak < baseline_peak * 0.75f, "sidechain kick did not duck Pad 1 output");
 }
 
 void applyDelayParamToSnapshot(KesshoProductSnapshotV2& snapshot, uint32_t param_id, float value) {
@@ -226,6 +357,115 @@ void applyReverbParamToSnapshot(KesshoProductSnapshotV2& snapshot, uint32_t para
   }
 }
 
+void applyGranularParamToSnapshot(KesshoProductSnapshotV2& snapshot, uint32_t param_id, float value) {
+  switch (param_id) {
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_ENABLED_ID:
+      snapshot.fx.granular_enabled = value >= 0.5f ? 1u : 0u;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_FEEDBACK_ID:
+      snapshot.fx.granular_feedback = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_GRAIN_SHAPE_ID:
+      snapshot.fx.granular_grain_shape = static_cast<uint32_t>(value);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_PROBABILITY_ID:
+      snapshot.fx.granular_legacy_probability = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_V1_DENSITY_ID:
+      snapshot.fx.granular_voices[0].density = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_V1_GAIN_ID:
+      snapshot.fx.granular_voices[0].gain = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_V1_PITCH_ID:
+      snapshot.fx.granular_voices[0].pitch = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_V1_REVERSE_ID:
+      snapshot.fx.granular_voices[0].reverse = value >= 0.5f ? 1u : 0u;
+      break;
+    default:
+      require(false, "unsupported granular snapshot param test");
+  }
+}
+
+void applySpectralFreezeParamToSnapshot(KesshoProductSnapshotV2& snapshot, uint32_t param_id, float value) {
+  switch (param_id) {
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID:
+      snapshot.fx.spectral_freeze_mix = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ENABLED_ID:
+      snapshot.fx.spectral_freeze_enabled = value >= 0.5f ? 1u : 0u;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID:
+      snapshot.fx.spectral_freeze_active = value >= 0.5f ? 1u : 0u;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SLUSHY_ID:
+      snapshot.fx.spectral_freeze_slushy = value >= 0.5f ? 1u : 0u;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SPEED_ID:
+      snapshot.fx.spectral_freeze_speed = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DECAY_ID:
+      snapshot.fx.spectral_freeze_decay = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_PHASE_JITTER_ID:
+      snapshot.fx.spectral_freeze_phase_jitter = value;
+      break;
+    default:
+      require(false, "unsupported spectral freeze snapshot param test");
+  }
+}
+
+void applyDynamicsParamToSnapshot(KesshoProductSnapshotV2& snapshot, uint32_t param_id, float value) {
+  switch (param_id) {
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_ENABLED_ID:
+      snapshot.fx.dynamics_enabled = value >= 0.5f ? 1u : 0u;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MIX_ID:
+      snapshot.fx.dynamics_character_mix = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MODE_ID:
+      snapshot.fx.dynamics_character_mode = static_cast<uint32_t>(value);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_MIX_ID:
+      snapshot.fx.dynamics_degrade_mix = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_ALIAS_ID:
+      snapshot.fx.dynamics_degrade_alias = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID:
+      snapshot.fx.dynamics_saturation_drive = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_MODE_ID:
+      snapshot.fx.dynamics_saturation_mode = static_cast<uint32_t>(value);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_THRESHOLD_ID:
+      snapshot.fx.dynamics_end_comp_threshold = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_MIX_ID:
+      snapshot.fx.dynamics_end_comp_mix = value;
+      break;
+    default:
+      require(false, "unsupported dynamics snapshot param test");
+  }
+}
+
+void applyMasterParamToSnapshot(KesshoProductSnapshotV2& snapshot, uint32_t param_id, float value) {
+  switch (param_id) {
+    case KESSHO_PRODUCT_PARAM_MASTER_SATURATION_MODE_ID:
+      snapshot.master.saturation_mode = static_cast<uint32_t>(value);
+      break;
+    case KESSHO_PRODUCT_PARAM_MASTER_SATURATION_DRIVE_ID:
+      snapshot.master.saturation_drive = value;
+      break;
+    case KESSHO_PRODUCT_PARAM_MASTER_SATURATION_TONE_ID:
+      snapshot.master.saturation_tone = value;
+      break;
+    default:
+      require(false, "unsupported master snapshot param test");
+  }
+}
+
 void configureDelayATestSnapshot(KesshoProductSnapshotV2& snapshot) {
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].delay_a_send = 1.0f;
   snapshot.fx.delay_a_enabled = 1;
@@ -250,6 +490,71 @@ void configureReverbTestSnapshot(KesshoProductSnapshotV2& snapshot) {
   snapshot.fx.reverb_mix = 1.0f;
   snapshot.routing.delay_to_reverb = 0.0f;
   snapshot.routing.granular_to_reverb = 0.0f;
+}
+
+void configureGranularTestSnapshot(KesshoProductSnapshotV2& snapshot) {
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].granular_send = 1.0f;
+  snapshot.fx.granular_enabled = 1;
+  snapshot.fx.granular_mix = 1.0f;
+  snapshot.fx.reverb_mix = 0.0f;
+  snapshot.routing.granular_to_reverb = 0.0f;
+}
+
+void configureSpectralFreezeTestSnapshot(KesshoProductSnapshotV2& snapshot) {
+  snapshot.fx.spectral_freeze_enabled = 1;
+  snapshot.fx.spectral_freeze_active = 1;
+  snapshot.fx.spectral_freeze_mix = 1.0f;
+  snapshot.fx.spectral_freeze_decay = 1.0f;
+  snapshot.fx.reverb_mix = 0.0f;
+}
+
+void configureDynamicsTestSnapshot(KesshoProductSnapshotV2& snapshot) {
+  snapshot.fx.reverb_mix = 0.0f;
+  snapshot.fx.dynamics_enabled = 1;
+  snapshot.fx.dynamics_character_enabled = 1;
+  snapshot.fx.dynamics_character_mode = 2;
+  snapshot.fx.dynamics_character_mix = 0.35f;
+  snapshot.fx.dynamics_character_age = 0.2f;
+  snapshot.fx.dynamics_character_bias = 0.44f;
+  snapshot.fx.dynamics_character_lpg_amount = 0.7f;
+  snapshot.fx.dynamics_character_resonance = 0.35f;
+  snapshot.fx.dynamics_character_stereo = 0.65f;
+  snapshot.fx.dynamics_character_env_follow = 0.45f;
+  snapshot.fx.dynamics_character_depth = 0.72f;
+  snapshot.fx.dynamics_character_rate = 0.18f;
+  snapshot.fx.dynamics_character_damp = 0.62f;
+  snapshot.fx.dynamics_degrade_enabled = 1;
+  snapshot.fx.dynamics_degrade_mix = 0.45f;
+  snapshot.fx.dynamics_degrade_age = 0.35f;
+  snapshot.fx.dynamics_degrade_generation = 0.3f;
+  snapshot.fx.dynamics_degrade_alias = 0.25f;
+  snapshot.fx.dynamics_degrade_wow = 0.45f;
+  snapshot.fx.dynamics_degrade_flutter = 0.28f;
+  snapshot.fx.dynamics_degrade_drift = 0.42f;
+  snapshot.fx.dynamics_degrade_wobble_speed = 0.4f;
+  snapshot.fx.dynamics_degrade_tone = 0.42f;
+  snapshot.fx.dynamics_degrade_hp = 0.08f;
+  snapshot.fx.dynamics_degrade_lp = 0.82f;
+  snapshot.fx.dynamics_degrade_noise = 0.3f;
+  snapshot.fx.dynamics_degrade_saturation = 0.36f;
+  snapshot.fx.dynamics_degrade_corrosion = 0.28f;
+  snapshot.fx.dynamics_saturation_enabled = 1;
+  snapshot.fx.dynamics_saturation_mode = 1;
+  snapshot.fx.dynamics_saturation_drive = 0.22f;
+  snapshot.fx.dynamics_saturation_tone = 0.48f;
+  snapshot.fx.dynamics_saturation_bias = 0.52f;
+  snapshot.fx.dynamics_end_comp_enabled = 1;
+  snapshot.fx.dynamics_end_comp_threshold = -18.0f;
+  snapshot.fx.dynamics_end_comp_knee = 10.0f;
+  snapshot.fx.dynamics_end_comp_ratio = 2.8f;
+  snapshot.fx.dynamics_end_comp_attack_ms = 12.0f;
+  snapshot.fx.dynamics_end_comp_release_ms = 220.0f;
+  snapshot.fx.dynamics_end_comp_makeup = 1.1f;
+  snapshot.fx.dynamics_end_comp_mix = 0.8f;
+  snapshot.fx.dynamics_end_comp_detector_hp = 0.32f;
+  snapshot.fx.dynamics_end_comp_detector_tilt = 0.55f;
+  snapshot.fx.dynamics_end_comp_auto_makeup = 0.6f;
+  snapshot.fx.dynamics_end_comp_program_release = 0.7f;
 }
 
 std::vector<float> renderDelayParamTrace(uint32_t param_id, float value, bool delay_b, bool as_event) {
@@ -324,12 +629,154 @@ void requireReverbParamChangesTrace(uint32_t param_id, float baseline, float val
   require(maxAbsDiff(baseline_trace, changed_trace) > 0.00001f, message);
 }
 
+std::vector<float> renderGranularParamTrace(uint32_t param_id, float value, bool as_event) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "granular param parity engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configureGranularTestSnapshot(snapshot);
+  if (!as_event) {
+    applyGranularParamToSnapshot(snapshot, param_id, value);
+  }
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "granular param parity load failed");
+  if (as_event) {
+    KesshoProductEvent event{};
+    event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+    event.param_id = param_id;
+    event.value = value;
+    require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "granular param event enqueue failed");
+  }
+  triggerPad(engine, 0.4f);
+  std::vector<float> trace = renderMasterTrace(engine, 160);
+  kessho_product_destroy(engine);
+  return trace;
+}
+
+void requireGranularParamSnapshotEventParity(uint32_t param_id, float value, const char* message) {
+  const std::vector<float> snapshot_trace = renderGranularParamTrace(param_id, value, false);
+  const std::vector<float> event_trace = renderGranularParamTrace(param_id, value, true);
+  require(maxAbsDiff(snapshot_trace, event_trace) < 0.00001f, message);
+}
+
+void requireGranularParamChangesTrace(uint32_t param_id, float baseline, float value, const char* message) {
+  const std::vector<float> baseline_trace = renderGranularParamTrace(param_id, baseline, false);
+  const std::vector<float> changed_trace = renderGranularParamTrace(param_id, value, false);
+  require(maxAbsDiff(baseline_trace, changed_trace) > 0.00001f, message);
+}
+
+std::vector<float> renderSpectralFreezeParamTrace(uint32_t param_id, float value, bool as_event) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "spectral freeze param parity engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configureSpectralFreezeTestSnapshot(snapshot);
+  if (!as_event) {
+    applySpectralFreezeParamToSnapshot(snapshot, param_id, value);
+  }
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "spectral freeze param parity load failed");
+  if (as_event) {
+    KesshoProductEvent event{};
+    event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+    event.param_id = param_id;
+    event.value = value;
+    require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "spectral freeze param event enqueue failed");
+  }
+  triggerPad(engine, 0.4f);
+  std::vector<float> trace = renderMasterTrace(engine, 48);
+  kessho_product_destroy(engine);
+  return trace;
+}
+
+void requireSpectralFreezeParamSnapshotEventParity(uint32_t param_id, float value, const char* message) {
+  const std::vector<float> snapshot_trace = renderSpectralFreezeParamTrace(param_id, value, false);
+  const std::vector<float> event_trace = renderSpectralFreezeParamTrace(param_id, value, true);
+  require(maxAbsDiff(snapshot_trace, event_trace) < 0.00001f, message);
+}
+
+void requireSpectralFreezeParamChangesTrace(uint32_t param_id, float baseline, float value, const char* message) {
+  const std::vector<float> baseline_trace = renderSpectralFreezeParamTrace(param_id, baseline, false);
+  const std::vector<float> changed_trace = renderSpectralFreezeParamTrace(param_id, value, false);
+  require(maxAbsDiff(baseline_trace, changed_trace) > 0.00001f, message);
+}
+
+std::vector<float> renderDynamicsParamTrace(uint32_t param_id, float value, bool as_event) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "dynamics param parity engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configureDynamicsTestSnapshot(snapshot);
+  if (!as_event) {
+    applyDynamicsParamToSnapshot(snapshot, param_id, value);
+  }
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "dynamics param parity load failed");
+  if (as_event) {
+    KesshoProductEvent event{};
+    event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+    event.param_id = param_id;
+    event.value = value;
+    require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "dynamics param event enqueue failed");
+  }
+  triggerPad(engine, 0.4f);
+  std::vector<float> trace = renderMasterTrace(engine, 48);
+  kessho_product_destroy(engine);
+  return trace;
+}
+
+void requireDynamicsParamSnapshotEventParity(uint32_t param_id, float value, const char* message) {
+  const std::vector<float> snapshot_trace = renderDynamicsParamTrace(param_id, value, false);
+  const std::vector<float> event_trace = renderDynamicsParamTrace(param_id, value, true);
+  require(maxAbsDiff(snapshot_trace, event_trace) < 0.00001f, message);
+}
+
+void requireDynamicsParamChangesTrace(uint32_t param_id, float baseline, float value, const char* message) {
+  const std::vector<float> baseline_trace = renderDynamicsParamTrace(param_id, baseline, false);
+  const std::vector<float> changed_trace = renderDynamicsParamTrace(param_id, value, false);
+  require(maxAbsDiff(baseline_trace, changed_trace) > 0.00001f, message);
+}
+
+std::vector<float> renderMasterParamTrace(uint32_t param_id, float value, bool as_event) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "master param parity engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.fx.reverb_mix = 0.0f;
+  snapshot.fx.dynamics_enabled = 0u;
+  snapshot.fx.dynamics_saturation_enabled = 0u;
+  snapshot.master.saturation_mode = 1u;
+  snapshot.master.saturation_drive = 0.55f;
+  snapshot.master.saturation_tone = 0.45f;
+  if (!as_event) {
+    applyMasterParamToSnapshot(snapshot, param_id, value);
+  }
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "master param parity load failed");
+  if (as_event) {
+    KesshoProductEvent event{};
+    event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+    event.param_id = param_id;
+    event.value = value;
+    require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "master param event enqueue failed");
+  }
+  triggerPad(engine, 0.4f);
+  std::vector<float> trace = renderMasterTrace(engine, 48);
+  kessho_product_destroy(engine);
+  return trace;
+}
+
+void requireMasterParamSnapshotEventParity(uint32_t param_id, float value, const char* message) {
+  const std::vector<float> snapshot_trace = renderMasterParamTrace(param_id, value, false);
+  const std::vector<float> event_trace = renderMasterParamTrace(param_id, value, true);
+  require(maxAbsDiff(snapshot_trace, event_trace) < 0.00001f, message);
+}
+
+void requireMasterParamChangesTrace(uint32_t param_id, float baseline, float value, const char* message) {
+  const std::vector<float> baseline_trace = renderMasterParamTrace(param_id, baseline, false);
+  const std::vector<float> changed_trace = renderMasterParamTrace(param_id, value, false);
+  require(maxAbsDiff(baseline_trace, changed_trace) > 0.00001f, message);
+}
+
 std::vector<float> renderSnapshotFxTrace(uint32_t param_id, float value) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "snapshot FX event parity engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   snapshot.fx.reverb_mix = 0.0f;
   if (param_id == KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID) {
+    configureSpectralFreezeTestSnapshot(snapshot);
     snapshot.fx.spectral_freeze_mix = value;
   } else if (param_id == KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID) {
     snapshot.fx.dynamics_drive = value;
@@ -346,6 +793,9 @@ std::vector<float> renderEventFxTrace(uint32_t param_id, float value) {
   require(engine != nullptr, "live FX event parity engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   snapshot.fx.reverb_mix = 0.0f;
+  if (param_id == KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID) {
+    configureSpectralFreezeTestSnapshot(snapshot);
+  }
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "live FX event parity load failed");
 
   KesshoProductEvent event{};
@@ -395,6 +845,7 @@ int main() {
   require(granular_engine != nullptr, "granular engine create failed");
   KesshoProductSnapshotV2 granular_snapshot = makeSnapshot();
   granular_snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].granular_send = 1.0f;
+  granular_snapshot.fx.granular_enabled = 1;
   granular_snapshot.fx.granular_mix = 1.0f;
   granular_snapshot.fx.reverb_mix = 0.0f;
   require(kessho_product_load_snapshot_v2(granular_engine, &granular_snapshot, sizeof(granular_snapshot)) == KESSHO_PRODUCT_OK, "granular snapshot load failed");
@@ -406,6 +857,8 @@ int main() {
   require(spectral_engine != nullptr, "spectral engine create failed");
   KesshoProductSnapshotV2 spectral_snapshot = makeSnapshot();
   spectral_snapshot.fx.spectral_freeze_mix = 1.0f;
+  spectral_snapshot.fx.spectral_freeze_enabled = 1;
+  spectral_snapshot.fx.spectral_freeze_active = 1;
   spectral_snapshot.fx.reverb_mix = 0.0f;
   require(kessho_product_load_snapshot_v2(spectral_engine, &spectral_snapshot, sizeof(spectral_snapshot)) == KESSHO_PRODUCT_OK, "spectral snapshot load failed");
   triggerPad(spectral_engine, 0.4f);
@@ -449,14 +902,72 @@ int main() {
   require(open_peak > limited_peak * 1.5f, "master limiter ceiling event did not open master output");
   kessho_product_destroy(limiter_engine);
 
+  requireMasterParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_MASTER_SATURATION_DRIVE_ID,
+      0.72f,
+      "master saturation drive SetParam did not match snapshot-configured render");
+  requireMasterParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_MASTER_SATURATION_MODE_ID,
+      2.0f,
+      "master saturation mode SetParam did not match snapshot-configured render");
+  requireMasterParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_MASTER_SATURATION_TONE_ID,
+      0.78f,
+      "master saturation tone SetParam did not match snapshot-configured render");
+  requireMasterParamChangesTrace(
+      KESSHO_PRODUCT_PARAM_MASTER_SATURATION_DRIVE_ID,
+      0.0f,
+      0.8f,
+      "master saturation drive parameter did not change C++ render");
+
   requireFxSnapshotEventParity(
       KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID,
       1.0f,
       "spectral freeze SetParam did not match snapshot-configured render");
+  requireSpectralFreezeParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ACTIVE_ID,
+      1.0f,
+      "spectral freeze active SetParam did not match snapshot-configured render");
+  requireSpectralFreezeParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SLUSHY_ID,
+      1.0f,
+      "spectral freeze slushy SetParam did not match snapshot-configured render");
+  requireSpectralFreezeParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DECAY_ID,
+      0.2f,
+      "spectral freeze decay SetParam did not match snapshot-configured render");
+  requireSpectralFreezeParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_PHASE_JITTER_ID,
+      0.4f,
+      "spectral freeze phase jitter SetParam did not match snapshot-configured render");
   requireFxSnapshotEventParity(
       KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID,
       1.0f,
       "dynamics drive SetParam did not match snapshot-configured render");
+  requireDynamicsParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MIX_ID,
+      0.68f,
+      "dynamics character mix SetParam did not match snapshot-configured render");
+  requireDynamicsParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MODE_ID,
+      1.0f,
+      "dynamics character mode SetParam did not match snapshot-configured render");
+  requireDynamicsParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_ALIAS_ID,
+      0.82f,
+      "dynamics degrade alias SetParam did not match snapshot-configured render");
+  requireDynamicsParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID,
+      0.55f,
+      "dynamics saturation drive SetParam did not match snapshot-configured render");
+  requireDynamicsParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_MODE_ID,
+      4.0f,
+      "dynamics saturation mode SetParam did not match snapshot-configured render");
+  requireDynamicsParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_THRESHOLD_ID,
+      -32.0f,
+      "dynamics end-compressor threshold SetParam did not match snapshot-configured render");
   requireDelayParamSnapshotEventParity(
       KESSHO_PRODUCT_PARAM_FX_DELAY_AFEEDBACK_ID,
       0.82f,
@@ -517,6 +1028,22 @@ int main() {
       KESSHO_PRODUCT_PARAM_FX_REVERB_ER_LP_FREQ_ID,
       600.0f,
       "reverb early-reflection low-pass SetParam did not match snapshot-configured render");
+  requireGranularParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_FEEDBACK_ID,
+      0.5f,
+      "granular feedback SetParam did not match snapshot-configured render");
+  requireGranularParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_GRAIN_SHAPE_ID,
+      2.0f,
+      "granular grain shape SetParam did not match snapshot-configured render");
+  requireGranularParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_V1_DENSITY_ID,
+      36.0f,
+      "granular voice density SetParam did not match snapshot-configured render");
+  requireGranularParamSnapshotEventParity(
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_V1_GAIN_ID,
+      0.75f,
+      "granular voice gain SetParam did not match snapshot-configured render");
   requireDelayParamChangesTrace(
       KESSHO_PRODUCT_PARAM_FX_DELAY_AFEEDBACK_ID,
       0.82f,
@@ -537,6 +1064,42 @@ int main() {
       0.0f,
       5.0f,
       "reverb type parameter did not change C++ render");
+  requireGranularParamChangesTrace(
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_ENABLED_ID,
+      0.0f,
+      1.0f,
+      "granular enabled parameter did not change C++ render");
+  requireGranularParamChangesTrace(
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_V1_GAIN_ID,
+      0.0f,
+      1.0f,
+      "granular voice gain parameter did not change C++ render");
+  requireSpectralFreezeParamChangesTrace(
+      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ENABLED_ID,
+      0.0f,
+      1.0f,
+      "spectral freeze enabled parameter did not change C++ render");
+  requireSpectralFreezeParamChangesTrace(
+      KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID,
+      0.0f,
+      1.0f,
+      "spectral freeze mix parameter did not change C++ render");
+  requireDynamicsParamChangesTrace(
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_ENABLED_ID,
+      0.0f,
+      1.0f,
+      "dynamics enabled parameter did not change C++ render");
+  requireDynamicsParamChangesTrace(
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_MIX_ID,
+      0.0f,
+      0.85f,
+      "dynamics degrade mix parameter did not change C++ render");
+  requireDynamicsParamChangesTrace(
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_MIX_ID,
+      0.0f,
+      1.0f,
+      "dynamics end-compressor mix parameter did not change C++ render");
+  requireSidechainDucksPadTarget();
 
   std::cout << "Kessho Product FX Routing tests passed\n";
   return 0;

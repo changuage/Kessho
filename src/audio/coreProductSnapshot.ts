@@ -61,6 +61,34 @@ type ProductHarmonySnapshot = {
   voicingMode: number;
 };
 
+type ProductGranularVoiceSnapshot = {
+  enabled: boolean;
+  mode: number;
+  slice: number;
+  speed: number;
+  scanRate: number;
+  reverse: boolean;
+  pitch: number;
+  writeFollow: number;
+  density: number;
+  grainSizeMs: number;
+  spray: number;
+  grainOctaveProbability: number;
+  attackSeconds: number;
+  decaySeconds: number;
+  gain: number;
+  pan: number;
+  blur: number;
+  stereoSpread: number;
+  positionLfoRate: number;
+  positionLfoDepth: number;
+  panLfoRate: number;
+  reverseLfoRate: number;
+  recordLfoRate: number;
+  euclidGated: boolean;
+  euclidMuted: boolean;
+};
+
 export type CoreProductSnapshot = {
   transport: {
     running: boolean;
@@ -80,6 +108,23 @@ export type CoreProductSnapshot = {
   };
   fx: {
     granularMix: number;
+    granularEnabled: boolean;
+    granularFreeze: boolean;
+    granularFreezeWithFeedback: boolean;
+    granularFeedback: number;
+    granularFeedbackLpfHz: number;
+    granularBufferSeconds: number;
+    granularGrainShape: number;
+    granularBusDiffusion: number;
+    granularTimingRandomness: number;
+    granularChordBias: number;
+    granularLegacyJitterMs: number;
+    granularLegacyProbability: number;
+    granularLegacyPitchMode: number;
+    granularLegacyPitchSpread: number;
+    granularLegacyMaxGrains: number;
+    granularLegacyFeedback: number;
+    granularVoices: ProductGranularVoiceSnapshot[];
     delayAEnabled: boolean;
     delayATimeLeftMs: number;
     delayATimeRightMs: number;
@@ -137,7 +182,114 @@ export type CoreProductSnapshot = {
     reverbTransientSmooth: number;
     reverbErLpFreq: number;
     spectralFreezeMix: number;
+    spectralFreezeEnabled: boolean;
+    spectralFreezeActive: boolean;
+    spectralFreezeSlushy: boolean;
+    spectralFreezeSpeed: number;
+    spectralFreezeDecay: number;
+    spectralFreezePhaseJitter: number;
     dynamicsDrive: number;
+    dynamicsEnabled: boolean;
+    dynamicsCharacterEnabled: boolean;
+    dynamicsCharacterMode: number;
+    dynamicsCharacterMix: number;
+    dynamicsCharacterAge: number;
+    dynamicsCharacterBias: number;
+    dynamicsCharacterLpgAmount: number;
+    dynamicsCharacterResonance: number;
+    dynamicsCharacterStereo: number;
+    dynamicsCharacterEnvFollow: number;
+    dynamicsCharacterDepth: number;
+    dynamicsCharacterRate: number;
+    dynamicsCharacterDamp: number;
+    dynamicsDegradeEnabled: boolean;
+    dynamicsDegradeMix: number;
+    dynamicsDegradeAge: number;
+    dynamicsDegradeGeneration: number;
+    dynamicsDegradeAlias: number;
+    dynamicsDegradeWow: number;
+    dynamicsDegradeFlutter: number;
+    dynamicsDegradeDrift: number;
+    dynamicsDegradeWobbleSpeed: number;
+    dynamicsDegradeTone: number;
+    dynamicsDegradeHp: number;
+    dynamicsDegradeLp: number;
+    dynamicsDegradeNoise: number;
+    dynamicsDegradeSaturation: number;
+    dynamicsDegradeCorrosion: number;
+    dynamicsModSlowWow: number;
+    dynamicsModSlowFlutter: number;
+    dynamicsModSlowLp: number;
+    dynamicsModSlowWet: number;
+    dynamicsModSlowDropout: number;
+    dynamicsModSlowAlias: number;
+    dynamicsModFlutterWow: number;
+    dynamicsModFlutterFlutter: number;
+    dynamicsModFlutterLp: number;
+    dynamicsModFlutterWet: number;
+    dynamicsModFlutterDropout: number;
+    dynamicsModFlutterAlias: number;
+    dynamicsModRandomWow: number;
+    dynamicsModRandomFlutter: number;
+    dynamicsModRandomLp: number;
+    dynamicsModRandomWet: number;
+    dynamicsModRandomDropout: number;
+    dynamicsModRandomAlias: number;
+    dynamicsModEnvWow: number;
+    dynamicsModEnvFlutter: number;
+    dynamicsModEnvLp: number;
+    dynamicsModEnvWet: number;
+    dynamicsModEnvDropout: number;
+    dynamicsModEnvAlias: number;
+    dynamicsModNoiseWow: number;
+    dynamicsModNoiseFlutter: number;
+    dynamicsModNoiseLp: number;
+    dynamicsModNoiseWet: number;
+    dynamicsModNoiseDropout: number;
+    dynamicsModNoiseAlias: number;
+    dynamicsSaturationEnabled: boolean;
+    dynamicsSaturationMode: number;
+    dynamicsSaturationDrive: number;
+    dynamicsSaturationTone: number;
+    dynamicsSaturationBias: number;
+    dynamicsEndCompEnabled: boolean;
+    dynamicsEndCompThreshold: number;
+    dynamicsEndCompKnee: number;
+    dynamicsEndCompRatio: number;
+    dynamicsEndCompAttackMs: number;
+    dynamicsEndCompReleaseMs: number;
+    dynamicsEndCompMakeup: number;
+    dynamicsEndCompMix: number;
+    dynamicsEndCompDetectorHp: number;
+    dynamicsEndCompDetectorTilt: number;
+    dynamicsEndCompAutoMakeup: number;
+    dynamicsEndCompProgramRelease: number;
+    sidechainEnabled: boolean;
+    sidechainKeyA: number;
+    sidechainKeyB: number;
+    sidechainKeyAWeight: number;
+    sidechainKeyBWeight: number;
+    sidechainAmount: number;
+    sidechainThreshold: number;
+    sidechainRatio: number;
+    sidechainKnee: number;
+    sidechainAttackMs: number;
+    sidechainHoldMs: number;
+    sidechainReleaseMs: number;
+    sidechainMakeup: number;
+    sidechainMix: number;
+    sidechainCurve: number;
+    sidechainDetectorHp: number;
+    sidechainDetectorLp: number;
+    sidechainPad1Target: number;
+    sidechainPad2Target: number;
+    sidechainLead1Target: number;
+    sidechainLead2Target: number;
+    sidechainPianoTarget: number;
+    sidechainGranularTarget: number;
+    sidechainDelayATarget: number;
+    sidechainDelayBTarget: number;
+    sidechainReverbTarget: number;
   };
   routing: {
     delayAToDelayB: number;
@@ -151,6 +303,9 @@ export type CoreProductSnapshot = {
   master: {
     gain: number;
     limiterCeilingDb: number;
+    saturationMode: number;
+    saturationDrive: number;
+    saturationTone: number;
   };
   rng: {
     seed: number;
@@ -173,7 +328,7 @@ const SOURCE_ORDER = [
   CORE_PRODUCT_SOURCE_IDS.soundscape,
 ] as const;
 
-const SNAPSHOT_BYTES = 3708;
+const SNAPSHOT_BYTES = 4612;
 const SOURCE_BYTES = 56;
 const LANE_BYTES = 84;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES;
@@ -287,6 +442,86 @@ function reverbSaturationModeId(value: unknown): number {
     default:
       return 0;
   }
+}
+
+function dynamicsCharacterModeId(value: unknown): number {
+  switch (value) {
+    case 'abyssWater':
+      return 1;
+    case 'shallowWater':
+      return 2;
+    case 'clean':
+    default:
+      return 0;
+  }
+}
+
+function dynamicsSaturationModeId(value: unknown): number {
+  switch (value) {
+    case 'tape':
+      return 1;
+    case 'tube':
+      return 2;
+    case 'diode':
+      return 3;
+    case 'fold':
+      return 4;
+    case 'clean':
+    default:
+      return 0;
+  }
+}
+
+function sidechainKeyId(value: unknown): number {
+  switch (value) {
+    case 'sub':
+      return 1;
+    case 'kick':
+      return 2;
+    case 'click':
+      return 3;
+    case 'beepHi':
+      return 4;
+    case 'beepLo':
+      return 5;
+    case 'noise':
+      return 6;
+    case 'membrane':
+      return 7;
+    case 'off':
+    default:
+      return 0;
+  }
+}
+
+function granularShapeId(value: unknown): number {
+  switch (value) {
+    case 'sawUp':
+      return 1;
+    case 'sawDown':
+      return 2;
+    case 'square':
+      return 3;
+    case 'triangle':
+    default:
+      return 0;
+  }
+}
+
+function granularVoiceModeId(value: unknown): number {
+  switch (value) {
+    case 'clean':
+      return 0;
+    case 'legacy':
+      return 2;
+    case 'granular':
+    default:
+      return 1;
+  }
+}
+
+function granularLegacyPitchModeId(value: unknown): number {
+  return value === 'random' ? 0 : 1;
 }
 
 function normalizePresetKey(key: unknown, fallbackKey: string): string {
@@ -765,6 +1000,37 @@ function drumLanesFromState(state: Record<string, unknown> | undefined, defaultE
   return lanes;
 }
 
+function granularVoiceFromState(state: Record<string, unknown> | undefined, voiceNumber: number): ProductGranularVoiceSnapshot {
+  const prefix = `granularV${voiceNumber}`;
+  return {
+    enabled: booleanFromState(state, `${prefix}Enabled`, voiceNumber === 1),
+    mode: granularVoiceModeId(state?.[`${prefix}Mode`]),
+    slice: clamp(Math.round(numberFromState(state, `${prefix}Slice`, (voiceNumber - 1) * 4)), 0, 15),
+    speed: clamp(numberFromState(state, `${prefix}Speed`, 1), 0, 4),
+    scanRate: clamp(numberFromState(state, `${prefix}ScanRate`, 1), 0.25, 4),
+    reverse: booleanFromState(state, `${prefix}Reverse`, false),
+    pitch: clamp(numberFromState(state, `${prefix}Pitch`, 0), -24, 24),
+    writeFollow: clamp(numberFromState(state, `${prefix}WriteFollow`, 0), 0, 1),
+    density: clamp(numberFromState(state, `${prefix}Density`, 20), 1, 64),
+    grainSizeMs: clamp(numberFromState(state, `${prefix}GrainSize`, 80), 10, 500),
+    spray: clamp(numberFromState(state, `${prefix}Spray`, 0.3), 0, 1),
+    grainOctaveProbability: clamp(numberFromState(state, `${prefix}GrainOct`, 0), 0, 1),
+    attackSeconds: clamp(numberFromState(state, `${prefix}Attack`, 0.003), 0.001, 0.5),
+    decaySeconds: clamp(numberFromState(state, `${prefix}Decay`, 0.5), 0.01, 4),
+    gain: clamp(numberFromState(state, `${prefix}Gain`, 0.5), 0, 1),
+    pan: clamp(numberFromState(state, `${prefix}Pan`, 0), -1, 1),
+    blur: clamp(numberFromState(state, `${prefix}Blur`, 0), 0, 1),
+    stereoSpread: clamp(numberFromState(state, `${prefix}StereoSpread`, 0.5), 0, 1),
+    positionLfoRate: clamp(numberFromState(state, `${prefix}PosLFORate`, 0), 0, 1),
+    positionLfoDepth: clamp(numberFromState(state, `${prefix}PosLFODepth`, 0), 0, 1),
+    panLfoRate: clamp(numberFromState(state, `${prefix}PanLFORate`, 0), 0, 1),
+    reverseLfoRate: clamp(numberFromState(state, `${prefix}ReverseLFORate`, 0), 0, 1),
+    recordLfoRate: clamp(numberFromState(state, `${prefix}RecordLFORate`, 0), 0, 1),
+    euclidGated: booleanFromState(state, `${prefix}TempoSync`, false),
+    euclidMuted: false,
+  };
+}
+
 export function createCoreProductSnapshot(sliderState?: Record<string, unknown>): CoreProductSnapshot {
   const transport = transportFromState(sliderState);
   const tension = clamp(numberFromState(sliderState, 'tension', 0.35), 0, 1);
@@ -780,6 +1046,11 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   const delayBEnabled = booleanFromState(sliderState, 'granularDelayEnabled', false);
   const spectralFreezeEnabled = booleanFromState(sliderState, 'spectralFreezeEnabled', false);
   const dynamicsEnabled = booleanFromState(sliderState, 'dynamicsEnabled', false);
+  const granularTimingRandomness = numberFromState(
+    sliderState,
+    'granularTimingRandomness',
+    numberFromState(sliderState, 'granularMacroChaos', 0.35),
+  );
 
   return {
     transport,
@@ -800,6 +1071,23 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     },
     fx: {
       granularMix: granularEnabled ? clamp(numberFromState(sliderState, 'granularLevel', 0), 0, 1) : 0,
+      granularEnabled,
+      granularFreeze: booleanFromState(sliderState, 'granularFreeze', false),
+      granularFreezeWithFeedback: booleanFromState(sliderState, 'granularFreezeWithFeedback', false),
+      granularFeedback: clamp(numberFromState(sliderState, 'granularFeedback', 0.1), 0, 0.85),
+      granularFeedbackLpfHz: clamp(numberFromState(sliderState, 'granularFeedbackLPF', 8000), 200, 12000),
+      granularBufferSeconds: clamp(numberFromState(sliderState, 'granularBufferSeconds', 16), 1, 32),
+      granularGrainShape: granularShapeId(sliderState?.granularShape),
+      granularBusDiffusion: clamp(numberFromState(sliderState, 'granularDiffusion', 0.5), 0, 1),
+      granularTimingRandomness: clamp(granularTimingRandomness, 0, 1),
+      granularChordBias: clamp(numberFromState(sliderState, 'granularChordBias', 0), 0, 1),
+      granularLegacyJitterMs: clamp(numberFromState(sliderState, 'granularLegacyJitter', 10), 0, 30),
+      granularLegacyProbability: clamp(numberFromState(sliderState, 'granularLegacyProbability', 0.8), 0, 1),
+      granularLegacyPitchMode: granularLegacyPitchModeId(sliderState?.granularLegacyPitchMode),
+      granularLegacyPitchSpread: clamp(numberFromState(sliderState, 'granularLegacyPitchSpread', 2), 0, 12),
+      granularLegacyMaxGrains: clamp(Math.round(numberFromState(sliderState, 'granularLegacyMaxGrains', 64)), 0, 128),
+      granularLegacyFeedback: clamp(numberFromState(sliderState, 'granularLegacyFeedback', 0.1), 0, 0.35),
+      granularVoices: [1, 2, 3, 4].map((voiceNumber) => granularVoiceFromState(sliderState, voiceNumber)),
       delayAEnabled,
       delayATimeLeftMs: clamp(delayDivisionMs(sliderState, 'drumDelayNoteL', '1/4', transport.bpm), 10, 5000),
       delayATimeRightMs: clamp(delayDivisionMs(sliderState, 'drumDelayNoteR', '1/8d', transport.bpm), 10, 5000),
@@ -858,8 +1146,117 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       reverbSaturationMode: reverbSaturationModeId(sliderState?.reverbSaturationMode),
       reverbTransientSmooth: clamp(numberFromState(sliderState, 'reverbTransientSmooth', 0), 0, 1),
       reverbErLpFreq: clamp(numberFromState(sliderState, 'reverbErLpFreq', 2500), 200, 12000),
-      spectralFreezeMix: spectralFreezeEnabled ? clamp(numberFromState(sliderState, 'spectralFreezeMix', 0), 0, 1) : 0,
-      dynamicsDrive: dynamicsEnabled ? clamp(numberFromState(sliderState, 'dynamicsDrive', 0), 0, 1) : 0,
+      spectralFreezeMix: clamp(numberFromState(sliderState, 'spectralFreezeMix', 1), 0, 1),
+      spectralFreezeEnabled,
+      spectralFreezeActive: booleanFromState(sliderState, 'spectralFreezeActive', false),
+      spectralFreezeSlushy: booleanFromState(sliderState, 'spectralFreezeSlushy', false),
+      spectralFreezeSpeed: clamp(numberFromState(sliderState, 'spectralFreezeSpeed', 0.3), 0, 1),
+      spectralFreezeDecay: clamp(numberFromState(sliderState, 'spectralFreezeDecay', 1), 0, 1),
+      spectralFreezePhaseJitter: clamp(numberFromState(sliderState, 'spectralFreezePhaseJitter', 0), 0, 1),
+      dynamicsDrive: dynamicsEnabled
+        ? clamp(numberFromState(sliderState, 'dynamicsDrive', numberFromState(sliderState, 'dynamicsSaturationDrive', 0)), 0, 1)
+        : 0,
+      dynamicsEnabled,
+      dynamicsCharacterEnabled: dynamicsEnabled && booleanFromState(sliderState, 'characterEnabled', false),
+      dynamicsCharacterMode: dynamicsCharacterModeId(sliderState?.characterMode),
+      dynamicsCharacterMix: clamp(numberFromState(sliderState, 'characterMix', 0), 0, 1),
+      dynamicsCharacterAge: clamp(numberFromState(sliderState, 'characterAge', 0), 0, 1),
+      dynamicsCharacterBias: clamp(numberFromState(sliderState, 'characterBias', 0.5), 0, 1),
+      dynamicsCharacterLpgAmount: clamp(numberFromState(sliderState, 'characterLpgAmount', 0.5), 0, 1),
+      dynamicsCharacterResonance: clamp(numberFromState(sliderState, 'characterResonance', 0.2), 0, 1),
+      dynamicsCharacterStereo: clamp(numberFromState(sliderState, 'characterStereo', 0.5), 0, 1),
+      dynamicsCharacterEnvFollow: clamp(numberFromState(sliderState, 'characterEnvFollow', 0), 0, 1),
+      dynamicsCharacterDepth: clamp(numberFromState(sliderState, 'characterDepth', 0), 0, 1),
+      dynamicsCharacterRate: clamp(numberFromState(sliderState, 'characterRate', 0.3), 0, 1),
+      dynamicsCharacterDamp: clamp(numberFromState(sliderState, 'characterDamp', 0.5), 0, 1),
+      dynamicsDegradeEnabled: dynamicsEnabled && booleanFromState(sliderState, 'degradeEnabled', false),
+      dynamicsDegradeMix: clamp(numberFromState(sliderState, 'degradeMix', 0), 0, 1),
+      dynamicsDegradeAge: clamp(numberFromState(sliderState, 'degradeAge', 0), 0, 1),
+      dynamicsDegradeGeneration: clamp(numberFromState(sliderState, 'degradeGeneration', 0), 0, 1),
+      dynamicsDegradeAlias: clamp(numberFromState(sliderState, 'degradeAlias', 0), 0, 1),
+      dynamicsDegradeWow: clamp(numberFromState(sliderState, 'degradeWow', 0), 0, 1),
+      dynamicsDegradeFlutter: clamp(numberFromState(sliderState, 'degradeFlutter', 0), 0, 1),
+      dynamicsDegradeDrift: clamp(numberFromState(sliderState, 'degradeDrift', 0), 0, 1),
+      dynamicsDegradeWobbleSpeed: clamp(numberFromState(sliderState, 'degradeWobbleSpeed', 0.35), 0, 1),
+      dynamicsDegradeTone: clamp(numberFromState(sliderState, 'degradeTone', 0.5), 0, 1),
+      dynamicsDegradeHp: clamp(numberFromState(sliderState, 'degradeHp', 0), 0, 1),
+      dynamicsDegradeLp: clamp(numberFromState(sliderState, 'degradeLp', 1), 0, 1),
+      dynamicsDegradeNoise: clamp(numberFromState(sliderState, 'degradeNoise', 0), 0, 1),
+      dynamicsDegradeSaturation: clamp(numberFromState(sliderState, 'degradeSaturation', 0), 0, 1),
+      dynamicsDegradeCorrosion: clamp(numberFromState(sliderState, 'degradeCorrosion', 0), 0, 1),
+      dynamicsModSlowWow: clamp(numberFromState(sliderState, 'degradeModSlowWow', 0.18), 0, 1),
+      dynamicsModSlowFlutter: clamp(numberFromState(sliderState, 'degradeModSlowFlutter', 0.02), 0, 1),
+      dynamicsModSlowLp: clamp(numberFromState(sliderState, 'degradeModSlowLp', 0.12), 0, 1),
+      dynamicsModSlowWet: clamp(numberFromState(sliderState, 'degradeModSlowWet', 0.03), 0, 1),
+      dynamicsModSlowDropout: clamp(numberFromState(sliderState, 'degradeModSlowDropout', 0.04), 0, 1),
+      dynamicsModSlowAlias: clamp(numberFromState(sliderState, 'degradeModSlowAlias', 0), 0, 1),
+      dynamicsModFlutterWow: clamp(numberFromState(sliderState, 'degradeModFlutterWow', 0), 0, 1),
+      dynamicsModFlutterFlutter: clamp(numberFromState(sliderState, 'degradeModFlutterFlutter', 0.12), 0, 1),
+      dynamicsModFlutterLp: clamp(numberFromState(sliderState, 'degradeModFlutterLp', 0.02), 0, 1),
+      dynamicsModFlutterWet: clamp(numberFromState(sliderState, 'degradeModFlutterWet', 0), 0, 1),
+      dynamicsModFlutterDropout: clamp(numberFromState(sliderState, 'degradeModFlutterDropout', 0.02), 0, 1),
+      dynamicsModFlutterAlias: clamp(numberFromState(sliderState, 'degradeModFlutterAlias', 0), 0, 1),
+      dynamicsModRandomWow: clamp(numberFromState(sliderState, 'degradeModRandomWow', 0.04), 0, 1),
+      dynamicsModRandomFlutter: clamp(numberFromState(sliderState, 'degradeModRandomFlutter', 0.03), 0, 1),
+      dynamicsModRandomLp: clamp(numberFromState(sliderState, 'degradeModRandomLp', 0.14), 0, 1),
+      dynamicsModRandomWet: clamp(numberFromState(sliderState, 'degradeModRandomWet', 0.02), 0, 1),
+      dynamicsModRandomDropout: clamp(numberFromState(sliderState, 'degradeModRandomDropout', 0.1), 0, 1),
+      dynamicsModRandomAlias: clamp(numberFromState(sliderState, 'degradeModRandomAlias', 0.02), 0, 1),
+      dynamicsModEnvWow: clamp(numberFromState(sliderState, 'degradeModEnvWow', 0), 0, 1),
+      dynamicsModEnvFlutter: clamp(numberFromState(sliderState, 'degradeModEnvFlutter', 0), 0, 1),
+      dynamicsModEnvLp: clamp(numberFromState(sliderState, 'degradeModEnvLp', 0.08), 0, 1),
+      dynamicsModEnvWet: clamp(numberFromState(sliderState, 'degradeModEnvWet', 0.04), 0, 1),
+      dynamicsModEnvDropout: clamp(numberFromState(sliderState, 'degradeModEnvDropout', 0), 0, 1),
+      dynamicsModEnvAlias: clamp(numberFromState(sliderState, 'degradeModEnvAlias', 0), 0, 1),
+      dynamicsModNoiseWow: clamp(numberFromState(sliderState, 'degradeModNoiseWow', 0), 0, 1),
+      dynamicsModNoiseFlutter: clamp(numberFromState(sliderState, 'degradeModNoiseFlutter', 0.06), 0, 1),
+      dynamicsModNoiseLp: clamp(numberFromState(sliderState, 'degradeModNoiseLp', 0.02), 0, 1),
+      dynamicsModNoiseWet: clamp(numberFromState(sliderState, 'degradeModNoiseWet', 0), 0, 1),
+      dynamicsModNoiseDropout: clamp(numberFromState(sliderState, 'degradeModNoiseDropout', 0.06), 0, 1),
+      dynamicsModNoiseAlias: clamp(numberFromState(sliderState, 'degradeModNoiseAlias', 0.02), 0, 1),
+      dynamicsSaturationEnabled: dynamicsEnabled && booleanFromState(sliderState, 'dynamicsSaturationEnabled', false),
+      dynamicsSaturationMode: dynamicsSaturationModeId(sliderState?.dynamicsSaturationMode),
+      dynamicsSaturationDrive: clamp(numberFromState(sliderState, 'dynamicsSaturationDrive', 0), 0, 1),
+      dynamicsSaturationTone: clamp(numberFromState(sliderState, 'dynamicsSaturationTone', 0.5), 0, 1),
+      dynamicsSaturationBias: clamp(numberFromState(sliderState, 'dynamicsSaturationBias', 0.5), 0, 1),
+      dynamicsEndCompEnabled: dynamicsEnabled && booleanFromState(sliderState, 'endCompEnabled', false),
+      dynamicsEndCompThreshold: clamp(numberFromState(sliderState, 'endCompThreshold', -18), -60, 0),
+      dynamicsEndCompKnee: clamp(numberFromState(sliderState, 'endCompKnee', 12), 0, 40),
+      dynamicsEndCompRatio: clamp(numberFromState(sliderState, 'endCompRatio', 2), 1, 20),
+      dynamicsEndCompAttackMs: clamp(numberFromState(sliderState, 'endCompAttackMs', 10), 0.1, 100),
+      dynamicsEndCompReleaseMs: clamp(numberFromState(sliderState, 'endCompReleaseMs', 180), 20, 1500),
+      dynamicsEndCompMakeup: clamp(numberFromState(sliderState, 'endCompMakeup', 1), 0.25, 4),
+      dynamicsEndCompMix: clamp(numberFromState(sliderState, 'endCompMix', 1), 0, 1),
+      dynamicsEndCompDetectorHp: clamp(numberFromState(sliderState, 'endCompDetectorHp', 0.25), 0, 1),
+      dynamicsEndCompDetectorTilt: clamp(numberFromState(sliderState, 'endCompDetectorTilt', 0.5), 0, 1),
+      dynamicsEndCompAutoMakeup: clamp(numberFromState(sliderState, 'endCompAutoMakeup', 0.7), 0, 1),
+      dynamicsEndCompProgramRelease: clamp(numberFromState(sliderState, 'endCompProgramRelease', 0.65), 0, 1),
+      sidechainEnabled: booleanFromState(sliderState, 'sidechainEnabled', false),
+      sidechainKeyA: sidechainKeyId(sliderState?.sidechainKeyA),
+      sidechainKeyB: sidechainKeyId(sliderState?.sidechainKeyB),
+      sidechainKeyAWeight: clamp(numberFromState(sliderState, 'sidechainKeyAWeight', 1), 0, 1),
+      sidechainKeyBWeight: clamp(numberFromState(sliderState, 'sidechainKeyBWeight', 0.7), 0, 1),
+      sidechainAmount: clamp(numberFromState(sliderState, 'sidechainAmount', 0.5), 0, 1),
+      sidechainThreshold: clamp(numberFromState(sliderState, 'sidechainThreshold', -24), -60, 0),
+      sidechainRatio: clamp(numberFromState(sliderState, 'sidechainRatio', 4), 1, 20),
+      sidechainKnee: clamp(numberFromState(sliderState, 'sidechainKnee', 6), 0, 40),
+      sidechainAttackMs: clamp(numberFromState(sliderState, 'sidechainAttackMs', 5), 0.1, 100),
+      sidechainHoldMs: clamp(numberFromState(sliderState, 'sidechainHoldMs', 20), 0, 250),
+      sidechainReleaseMs: clamp(numberFromState(sliderState, 'sidechainReleaseMs', 180), 20, 1500),
+      sidechainMakeup: clamp(numberFromState(sliderState, 'sidechainMakeup', 1), 0.25, 4),
+      sidechainMix: clamp(numberFromState(sliderState, 'sidechainMix', 1), 0, 1),
+      sidechainCurve: clamp(numberFromState(sliderState, 'sidechainCurve', 0.5), 0, 1),
+      sidechainDetectorHp: clamp(numberFromState(sliderState, 'sidechainDetectorHp', 0), 0, 1),
+      sidechainDetectorLp: clamp(numberFromState(sliderState, 'sidechainDetectorLp', 1), 0, 1),
+      sidechainPad1Target: clamp(numberFromState(sliderState, 'sidechainPad1Target', 0), 0, 1),
+      sidechainPad2Target: clamp(numberFromState(sliderState, 'sidechainPad2Target', 0), 0, 1),
+      sidechainLead1Target: clamp(numberFromState(sliderState, 'sidechainLead1Target', 0), 0, 1),
+      sidechainLead2Target: clamp(numberFromState(sliderState, 'sidechainLead2Target', 0), 0, 1),
+      sidechainPianoTarget: clamp(numberFromState(sliderState, 'sidechainPianoTarget', 0), 0, 1),
+      sidechainGranularTarget: clamp(numberFromState(sliderState, 'sidechainGranularTarget', 0), 0, 1),
+      sidechainDelayATarget: clamp(numberFromState(sliderState, 'sidechainDelayATarget', 0), 0, 1),
+      sidechainDelayBTarget: clamp(numberFromState(sliderState, 'sidechainDelayBTarget', 0), 0, 1),
+      sidechainReverbTarget: clamp(numberFromState(sliderState, 'sidechainReverbTarget', 0), 0, 1),
     },
     routing: {
       delayAToDelayB: clamp(numberFromState(sliderState, 'delayAToBSend', 0), 0, 1),
@@ -873,6 +1270,9 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     master: {
       gain: numberFromState(sliderState, 'masterVolume', 0.85),
       limiterCeilingDb: clamp(numberFromState(sliderState, 'masterLimiterCeilingDb', -0.5), -24, 0),
+      saturationMode: dynamicsSaturationModeId(sliderState?.masterSatMode),
+      saturationDrive: clamp(numberFromState(sliderState, 'masterSatDrive', 0), 0, 1),
+      saturationTone: clamp(numberFromState(sliderState, 'masterSatTone', 0.5), 0, 1),
     },
     rng: {
       seed: rngSeed,
@@ -975,6 +1375,50 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.journey.morphRateBars);
   u32(0);
   f32(snapshot.fx.granularMix);
+  u32(bool(snapshot.fx.granularEnabled));
+  u32(bool(snapshot.fx.granularFreeze));
+  u32(bool(snapshot.fx.granularFreezeWithFeedback));
+  f32(snapshot.fx.granularFeedback);
+  f32(snapshot.fx.granularFeedbackLpfHz);
+  f32(snapshot.fx.granularBufferSeconds);
+  u32(snapshot.fx.granularGrainShape >>> 0);
+  f32(snapshot.fx.granularBusDiffusion);
+  f32(snapshot.fx.granularTimingRandomness);
+  f32(snapshot.fx.granularChordBias);
+  f32(snapshot.fx.granularLegacyJitterMs);
+  f32(snapshot.fx.granularLegacyProbability);
+  u32(snapshot.fx.granularLegacyPitchMode >>> 0);
+  f32(snapshot.fx.granularLegacyPitchSpread);
+  u32(snapshot.fx.granularLegacyMaxGrains >>> 0);
+  f32(snapshot.fx.granularLegacyFeedback);
+  for (let index = 0; index < 4; index += 1) {
+    const voice = snapshot.fx.granularVoices[index] ?? granularVoiceFromState(undefined, index + 1);
+    u32(bool(voice.enabled));
+    u32(voice.mode >>> 0);
+    u32(voice.slice >>> 0);
+    f32(voice.speed);
+    f32(voice.scanRate);
+    u32(bool(voice.reverse));
+    f32(voice.pitch);
+    f32(voice.writeFollow);
+    f32(voice.density);
+    f32(voice.grainSizeMs);
+    f32(voice.spray);
+    f32(voice.grainOctaveProbability);
+    f32(voice.attackSeconds);
+    f32(voice.decaySeconds);
+    f32(voice.gain);
+    f32(voice.pan);
+    f32(voice.blur);
+    f32(voice.stereoSpread);
+    f32(voice.positionLfoRate);
+    f32(voice.positionLfoDepth);
+    f32(voice.panLfoRate);
+    f32(voice.reverseLfoRate);
+    f32(voice.recordLfoRate);
+    u32(bool(voice.euclidGated));
+    u32(bool(voice.euclidMuted));
+  }
   u32(bool(snapshot.fx.delayAEnabled));
   f32(snapshot.fx.delayATimeLeftMs);
   f32(snapshot.fx.delayATimeRightMs);
@@ -1032,7 +1476,114 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.fx.reverbTransientSmooth);
   f32(snapshot.fx.reverbErLpFreq);
   f32(snapshot.fx.spectralFreezeMix);
+  u32(bool(snapshot.fx.spectralFreezeEnabled));
+  u32(bool(snapshot.fx.spectralFreezeActive));
+  u32(bool(snapshot.fx.spectralFreezeSlushy));
+  f32(snapshot.fx.spectralFreezeSpeed);
+  f32(snapshot.fx.spectralFreezeDecay);
+  f32(snapshot.fx.spectralFreezePhaseJitter);
   f32(snapshot.fx.dynamicsDrive);
+  u32(bool(snapshot.fx.dynamicsEnabled));
+  u32(bool(snapshot.fx.dynamicsCharacterEnabled));
+  u32(snapshot.fx.dynamicsCharacterMode >>> 0);
+  f32(snapshot.fx.dynamicsCharacterMix);
+  f32(snapshot.fx.dynamicsCharacterAge);
+  f32(snapshot.fx.dynamicsCharacterBias);
+  f32(snapshot.fx.dynamicsCharacterLpgAmount);
+  f32(snapshot.fx.dynamicsCharacterResonance);
+  f32(snapshot.fx.dynamicsCharacterStereo);
+  f32(snapshot.fx.dynamicsCharacterEnvFollow);
+  f32(snapshot.fx.dynamicsCharacterDepth);
+  f32(snapshot.fx.dynamicsCharacterRate);
+  f32(snapshot.fx.dynamicsCharacterDamp);
+  u32(bool(snapshot.fx.dynamicsDegradeEnabled));
+  f32(snapshot.fx.dynamicsDegradeMix);
+  f32(snapshot.fx.dynamicsDegradeAge);
+  f32(snapshot.fx.dynamicsDegradeGeneration);
+  f32(snapshot.fx.dynamicsDegradeAlias);
+  f32(snapshot.fx.dynamicsDegradeWow);
+  f32(snapshot.fx.dynamicsDegradeFlutter);
+  f32(snapshot.fx.dynamicsDegradeDrift);
+  f32(snapshot.fx.dynamicsDegradeWobbleSpeed);
+  f32(snapshot.fx.dynamicsDegradeTone);
+  f32(snapshot.fx.dynamicsDegradeHp);
+  f32(snapshot.fx.dynamicsDegradeLp);
+  f32(snapshot.fx.dynamicsDegradeNoise);
+  f32(snapshot.fx.dynamicsDegradeSaturation);
+  f32(snapshot.fx.dynamicsDegradeCorrosion);
+  f32(snapshot.fx.dynamicsModSlowWow);
+  f32(snapshot.fx.dynamicsModSlowFlutter);
+  f32(snapshot.fx.dynamicsModSlowLp);
+  f32(snapshot.fx.dynamicsModSlowWet);
+  f32(snapshot.fx.dynamicsModSlowDropout);
+  f32(snapshot.fx.dynamicsModSlowAlias);
+  f32(snapshot.fx.dynamicsModFlutterWow);
+  f32(snapshot.fx.dynamicsModFlutterFlutter);
+  f32(snapshot.fx.dynamicsModFlutterLp);
+  f32(snapshot.fx.dynamicsModFlutterWet);
+  f32(snapshot.fx.dynamicsModFlutterDropout);
+  f32(snapshot.fx.dynamicsModFlutterAlias);
+  f32(snapshot.fx.dynamicsModRandomWow);
+  f32(snapshot.fx.dynamicsModRandomFlutter);
+  f32(snapshot.fx.dynamicsModRandomLp);
+  f32(snapshot.fx.dynamicsModRandomWet);
+  f32(snapshot.fx.dynamicsModRandomDropout);
+  f32(snapshot.fx.dynamicsModRandomAlias);
+  f32(snapshot.fx.dynamicsModEnvWow);
+  f32(snapshot.fx.dynamicsModEnvFlutter);
+  f32(snapshot.fx.dynamicsModEnvLp);
+  f32(snapshot.fx.dynamicsModEnvWet);
+  f32(snapshot.fx.dynamicsModEnvDropout);
+  f32(snapshot.fx.dynamicsModEnvAlias);
+  f32(snapshot.fx.dynamicsModNoiseWow);
+  f32(snapshot.fx.dynamicsModNoiseFlutter);
+  f32(snapshot.fx.dynamicsModNoiseLp);
+  f32(snapshot.fx.dynamicsModNoiseWet);
+  f32(snapshot.fx.dynamicsModNoiseDropout);
+  f32(snapshot.fx.dynamicsModNoiseAlias);
+  u32(bool(snapshot.fx.dynamicsSaturationEnabled));
+  u32(snapshot.fx.dynamicsSaturationMode >>> 0);
+  f32(snapshot.fx.dynamicsSaturationDrive);
+  f32(snapshot.fx.dynamicsSaturationTone);
+  f32(snapshot.fx.dynamicsSaturationBias);
+  u32(bool(snapshot.fx.dynamicsEndCompEnabled));
+  f32(snapshot.fx.dynamicsEndCompThreshold);
+  f32(snapshot.fx.dynamicsEndCompKnee);
+  f32(snapshot.fx.dynamicsEndCompRatio);
+  f32(snapshot.fx.dynamicsEndCompAttackMs);
+  f32(snapshot.fx.dynamicsEndCompReleaseMs);
+  f32(snapshot.fx.dynamicsEndCompMakeup);
+  f32(snapshot.fx.dynamicsEndCompMix);
+  f32(snapshot.fx.dynamicsEndCompDetectorHp);
+  f32(snapshot.fx.dynamicsEndCompDetectorTilt);
+  f32(snapshot.fx.dynamicsEndCompAutoMakeup);
+  f32(snapshot.fx.dynamicsEndCompProgramRelease);
+  u32(bool(snapshot.fx.sidechainEnabled));
+  u32(snapshot.fx.sidechainKeyA >>> 0);
+  u32(snapshot.fx.sidechainKeyB >>> 0);
+  f32(snapshot.fx.sidechainKeyAWeight);
+  f32(snapshot.fx.sidechainKeyBWeight);
+  f32(snapshot.fx.sidechainAmount);
+  f32(snapshot.fx.sidechainThreshold);
+  f32(snapshot.fx.sidechainRatio);
+  f32(snapshot.fx.sidechainKnee);
+  f32(snapshot.fx.sidechainAttackMs);
+  f32(snapshot.fx.sidechainHoldMs);
+  f32(snapshot.fx.sidechainReleaseMs);
+  f32(snapshot.fx.sidechainMakeup);
+  f32(snapshot.fx.sidechainMix);
+  f32(snapshot.fx.sidechainCurve);
+  f32(snapshot.fx.sidechainDetectorHp);
+  f32(snapshot.fx.sidechainDetectorLp);
+  f32(snapshot.fx.sidechainPad1Target);
+  f32(snapshot.fx.sidechainPad2Target);
+  f32(snapshot.fx.sidechainLead1Target);
+  f32(snapshot.fx.sidechainLead2Target);
+  f32(snapshot.fx.sidechainPianoTarget);
+  f32(snapshot.fx.sidechainGranularTarget);
+  f32(snapshot.fx.sidechainDelayATarget);
+  f32(snapshot.fx.sidechainDelayBTarget);
+  f32(snapshot.fx.sidechainReverbTarget);
   f32(snapshot.routing.delayAToDelayB);
   f32(snapshot.routing.delayBToDelayA);
   f32(snapshot.routing.delayToReverb);
@@ -1043,6 +1594,9 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(0);
   f32(snapshot.master.gain);
   f32(snapshot.master.limiterCeilingDb);
+  u32(snapshot.master.saturationMode);
+  f32(snapshot.master.saturationDrive);
+  f32(snapshot.master.saturationTone);
   u32(snapshot.rng.seed);
   u32(snapshot.rng.state);
   f32(snapshot.evolution.amount);

@@ -4,8 +4,8 @@ import Foundation
 
 public enum KesshoProductSchema {
     public static let version: UInt32 = 2
-    public static let hash: UInt32 = 4132395774
-    public static let hashHex = "f64f5afe0147acf123bb514fd9bf9fc7448d33ebc9d5b1c88ced230937341e96"
+    public static let hash: UInt32 = 1997486798
+    public static let hashHex = "770f3ace3c34e05303647db4337b035d1e5c3741be53aa83fc051dbb34dc4425"
     public static let groups: [String] = ["transport","harmony","sources.pad1","sources.pad2","sources.lead1","sources.lead2","sources.drum","sources.piano","sources.soundscape","sequencers.synthEuclid","sequencers.drumEuclid","journey","fx.granular","fx.delayA","fx.delayB","fx.reverb","fx.spectralFreeze","fx.dynamics","routing","master","assets","rng","evolution","telemetry"]
 }
 

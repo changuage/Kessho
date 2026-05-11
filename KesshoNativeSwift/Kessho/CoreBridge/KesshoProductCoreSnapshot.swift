@@ -5,7 +5,7 @@ import KesshoProductSchema
 #endif
 
 public enum KesshoProductCoreSnapshotEncoder {
-    public static let byteCount = 3708
+    public static let byteCount = 4492
     public static let sourceByteCount = 56
 
     private static let laneByteCount = 84
@@ -55,6 +55,28 @@ public enum KesshoProductCoreSnapshotEncoder {
         writer.f32(snapshot.journey.morphRateBars)
         writer.u32(0)
         writer.f32(snapshot.fx.granularMix)
+        writer.u32(snapshot.fx.granularEnabled ? 1 : 0)
+        writer.u32(snapshot.fx.granularFreeze ? 1 : 0)
+        writer.u32(snapshot.fx.granularFreezeWithFeedback ? 1 : 0)
+        writer.f32(snapshot.fx.granularFeedback)
+        writer.f32(snapshot.fx.granularFeedbackLpfHz)
+        writer.f32(snapshot.fx.granularBufferSeconds)
+        writer.u32(snapshot.fx.granularGrainShape)
+        writer.f32(snapshot.fx.granularBusDiffusion)
+        writer.f32(snapshot.fx.granularTimingRandomness)
+        writer.f32(snapshot.fx.granularChordBias)
+        writer.f32(snapshot.fx.granularLegacyJitterMs)
+        writer.f32(snapshot.fx.granularLegacyProbability)
+        writer.u32(snapshot.fx.granularLegacyPitchMode)
+        writer.f32(snapshot.fx.granularLegacyPitchSpread)
+        writer.u32(snapshot.fx.granularLegacyMaxGrains)
+        writer.f32(snapshot.fx.granularLegacyFeedback)
+        for index in 0..<4 {
+            let voice = index < snapshot.fx.granularVoices.count
+                ? snapshot.fx.granularVoices[index]
+                : granularVoice(index + 1, state: .defaultState)
+            writeGranularVoice(voice, writer: &writer)
+        }
         writer.u32(snapshot.fx.delayAEnabled ? 1 : 0)
         writer.f32(snapshot.fx.delayATimeLeftMs)
         writer.f32(snapshot.fx.delayATimeRightMs)
@@ -112,7 +134,84 @@ public enum KesshoProductCoreSnapshotEncoder {
         writer.f32(snapshot.fx.reverbTransientSmooth)
         writer.f32(snapshot.fx.reverbErLpFreq)
         writer.f32(snapshot.fx.spectralFreezeMix)
+        writer.u32(snapshot.fx.spectralFreezeEnabled ? 1 : 0)
+        writer.u32(snapshot.fx.spectralFreezeActive ? 1 : 0)
+        writer.u32(snapshot.fx.spectralFreezeSlushy ? 1 : 0)
+        writer.f32(snapshot.fx.spectralFreezeSpeed)
+        writer.f32(snapshot.fx.spectralFreezeDecay)
+        writer.f32(snapshot.fx.spectralFreezePhaseJitter)
         writer.f32(snapshot.fx.dynamicsDrive)
+        writer.u32(snapshot.fx.dynamicsEnabled ? 1 : 0)
+        writer.u32(snapshot.fx.dynamicsCharacterEnabled ? 1 : 0)
+        writer.u32(snapshot.fx.dynamicsCharacterMode)
+        writer.f32(snapshot.fx.dynamicsCharacterMix)
+        writer.f32(snapshot.fx.dynamicsCharacterAge)
+        writer.f32(snapshot.fx.dynamicsCharacterBias)
+        writer.f32(snapshot.fx.dynamicsCharacterLpgAmount)
+        writer.f32(snapshot.fx.dynamicsCharacterResonance)
+        writer.f32(snapshot.fx.dynamicsCharacterStereo)
+        writer.f32(snapshot.fx.dynamicsCharacterEnvFollow)
+        writer.f32(snapshot.fx.dynamicsCharacterDepth)
+        writer.f32(snapshot.fx.dynamicsCharacterRate)
+        writer.f32(snapshot.fx.dynamicsCharacterDamp)
+        writer.u32(snapshot.fx.dynamicsDegradeEnabled ? 1 : 0)
+        writer.f32(snapshot.fx.dynamicsDegradeMix)
+        writer.f32(snapshot.fx.dynamicsDegradeAge)
+        writer.f32(snapshot.fx.dynamicsDegradeGeneration)
+        writer.f32(snapshot.fx.dynamicsDegradeAlias)
+        writer.f32(snapshot.fx.dynamicsDegradeWow)
+        writer.f32(snapshot.fx.dynamicsDegradeFlutter)
+        writer.f32(snapshot.fx.dynamicsDegradeDrift)
+        writer.f32(snapshot.fx.dynamicsDegradeWobbleSpeed)
+        writer.f32(snapshot.fx.dynamicsDegradeTone)
+        writer.f32(snapshot.fx.dynamicsDegradeHp)
+        writer.f32(snapshot.fx.dynamicsDegradeLp)
+        writer.f32(snapshot.fx.dynamicsDegradeNoise)
+        writer.f32(snapshot.fx.dynamicsDegradeSaturation)
+        writer.f32(snapshot.fx.dynamicsDegradeCorrosion)
+        writer.u32(snapshot.fx.dynamicsSaturationEnabled ? 1 : 0)
+        writer.u32(snapshot.fx.dynamicsSaturationMode)
+        writer.f32(snapshot.fx.dynamicsSaturationDrive)
+        writer.f32(snapshot.fx.dynamicsSaturationTone)
+        writer.f32(snapshot.fx.dynamicsSaturationBias)
+        writer.u32(snapshot.fx.dynamicsEndCompEnabled ? 1 : 0)
+        writer.f32(snapshot.fx.dynamicsEndCompThreshold)
+        writer.f32(snapshot.fx.dynamicsEndCompKnee)
+        writer.f32(snapshot.fx.dynamicsEndCompRatio)
+        writer.f32(snapshot.fx.dynamicsEndCompAttackMs)
+        writer.f32(snapshot.fx.dynamicsEndCompReleaseMs)
+        writer.f32(snapshot.fx.dynamicsEndCompMakeup)
+        writer.f32(snapshot.fx.dynamicsEndCompMix)
+        writer.f32(snapshot.fx.dynamicsEndCompDetectorHp)
+        writer.f32(snapshot.fx.dynamicsEndCompDetectorTilt)
+        writer.f32(snapshot.fx.dynamicsEndCompAutoMakeup)
+        writer.f32(snapshot.fx.dynamicsEndCompProgramRelease)
+        writer.u32(snapshot.fx.sidechainEnabled ? 1 : 0)
+        writer.u32(snapshot.fx.sidechainKeyA)
+        writer.u32(snapshot.fx.sidechainKeyB)
+        writer.f32(snapshot.fx.sidechainKeyAWeight)
+        writer.f32(snapshot.fx.sidechainKeyBWeight)
+        writer.f32(snapshot.fx.sidechainAmount)
+        writer.f32(snapshot.fx.sidechainThreshold)
+        writer.f32(snapshot.fx.sidechainRatio)
+        writer.f32(snapshot.fx.sidechainKnee)
+        writer.f32(snapshot.fx.sidechainAttackMs)
+        writer.f32(snapshot.fx.sidechainHoldMs)
+        writer.f32(snapshot.fx.sidechainReleaseMs)
+        writer.f32(snapshot.fx.sidechainMakeup)
+        writer.f32(snapshot.fx.sidechainMix)
+        writer.f32(snapshot.fx.sidechainCurve)
+        writer.f32(snapshot.fx.sidechainDetectorHp)
+        writer.f32(snapshot.fx.sidechainDetectorLp)
+        writer.f32(snapshot.fx.sidechainPad1Target)
+        writer.f32(snapshot.fx.sidechainPad2Target)
+        writer.f32(snapshot.fx.sidechainLead1Target)
+        writer.f32(snapshot.fx.sidechainLead2Target)
+        writer.f32(snapshot.fx.sidechainPianoTarget)
+        writer.f32(snapshot.fx.sidechainGranularTarget)
+        writer.f32(snapshot.fx.sidechainDelayATarget)
+        writer.f32(snapshot.fx.sidechainDelayBTarget)
+        writer.f32(snapshot.fx.sidechainReverbTarget)
         writer.f32(snapshot.routing.delayAToDelayB)
         writer.f32(snapshot.routing.delayBToDelayA)
         writer.f32(snapshot.routing.delayToReverb)
@@ -123,6 +222,9 @@ public enum KesshoProductCoreSnapshotEncoder {
         writer.f32(0)
         writer.f32(snapshot.master.gain)
         writer.f32(snapshot.master.limiterCeilingDb)
+        writer.u32(snapshot.master.saturationMode)
+        writer.f32(snapshot.master.saturationDrive)
+        writer.f32(snapshot.master.saturationTone)
         writer.u32(snapshot.rng.seed)
         writer.u32(snapshot.rng.state)
         writer.f32(snapshot.evolution.amount)
@@ -187,7 +289,24 @@ public enum KesshoProductCoreSnapshotEncoder {
                 morphRateBars: Float(clamp(state.journeyMorphRateBars, 0.25, 128))
             ),
             fx: ProductFxSnapshot(
-                granularMix: Float(clamp(state.granularLevel, 0, 1)),
+                granularMix: Float(state.granularEnabled ? clamp(state.granularLevel, 0, 1) : 0),
+                granularEnabled: state.granularEnabled,
+                granularFreeze: state.granularFreeze,
+                granularFreezeWithFeedback: false,
+                granularFeedback: Float(clamp(state.granularFeedback, 0, 0.85)),
+                granularFeedbackLpfHz: Float(clamp(state.granularFeedbackLPF, 200, 12000)),
+                granularBufferSeconds: Float(clamp(state.granularBufferSeconds, 1, 32)),
+                granularGrainShape: granularShapeId(state.granularShape),
+                granularBusDiffusion: Float(clamp(state.granularDiffusion, 0, 1)),
+                granularTimingRandomness: Float(clamp(state.granularMacroChaos, 0, 1)),
+                granularChordBias: Float(clamp(state.granularChordBias, 0, 1)),
+                granularLegacyJitterMs: Float(clamp(state.granularLegacyJitter, 0, 30)),
+                granularLegacyProbability: Float(clamp(state.granularLegacyProbability, 0, 1)),
+                granularLegacyPitchMode: granularLegacyPitchModeId(state.granularLegacyPitchMode),
+                granularLegacyPitchSpread: Float(clamp(state.granularLegacyPitchSpread, 0, 12)),
+                granularLegacyMaxGrains: UInt32(clampInt(Int(state.granularLegacyMaxGrains.rounded()), min: 0, max: 128)),
+                granularLegacyFeedback: Float(clamp(state.granularLegacyFeedback, 0, 0.35)),
+                granularVoices: (1...4).map { granularVoice($0, state: state) },
                 delayAEnabled: state.delayAEnabled,
                 delayATimeLeftMs: Float(clamp(delayDivisionMs(state.drumDelayNoteL, bpm: bpm), 10, 5000)),
                 delayATimeRightMs: Float(clamp(delayDivisionMs(state.drumDelayNoteR, bpm: bpm), 10, 5000)),
@@ -245,7 +364,84 @@ public enum KesshoProductCoreSnapshotEncoder {
                 reverbTransientSmooth: Float(clamp(state.reverbTransientSmooth, 0, 1)),
                 reverbErLpFreq: Float(clamp(state.reverbErLpFreq, 200, 12000)),
                 spectralFreezeMix: Float(clamp(state.spectralFreezeMix, 0, 1)),
-                dynamicsDrive: Float(clamp(state.dynamicsSaturationDrive, 0, 1))
+                spectralFreezeEnabled: state.spectralFreezeEnabled,
+                spectralFreezeActive: state.spectralFreezeActive,
+                spectralFreezeSlushy: state.spectralFreezeSlushy,
+                spectralFreezeSpeed: Float(clamp(state.spectralFreezeSpeed, 0, 1)),
+                spectralFreezeDecay: Float(clamp(state.spectralFreezeDecay, 0, 1)),
+                spectralFreezePhaseJitter: Float(clamp(state.spectralFreezePhaseJitter, 0, 1)),
+                dynamicsDrive: state.dynamicsEnabled ? Float(clamp(state.dynamicsSaturationDrive, 0, 1)) : 0,
+                dynamicsEnabled: state.dynamicsEnabled,
+                dynamicsCharacterEnabled: state.dynamicsEnabled && state.characterEnabled,
+                dynamicsCharacterMode: dynamicsCharacterModeId(state.characterMode),
+                dynamicsCharacterMix: Float(clamp(state.characterMix, 0, 1)),
+                dynamicsCharacterAge: Float(clamp(state.characterAge, 0, 1)),
+                dynamicsCharacterBias: 0.5,
+                dynamicsCharacterLpgAmount: 0.5,
+                dynamicsCharacterResonance: Float(clamp(state.characterResonance, 0, 1)),
+                dynamicsCharacterStereo: Float(clamp(state.characterStereo, 0, 1)),
+                dynamicsCharacterEnvFollow: Float(clamp(state.characterEnvFollow, 0, 1)),
+                dynamicsCharacterDepth: Float(clamp(state.characterDepth, 0, 1)),
+                dynamicsCharacterRate: Float(clamp(state.characterRate, 0, 1)),
+                dynamicsCharacterDamp: Float(clamp(state.characterDamp, 0, 1)),
+                dynamicsDegradeEnabled: state.dynamicsEnabled && state.degradeEnabled,
+                dynamicsDegradeMix: Float(clamp(state.degradeMix, 0, 1)),
+                dynamicsDegradeAge: Float(clamp(state.degradeAge, 0, 1)),
+                dynamicsDegradeGeneration: Float(clamp(state.degradeGeneration, 0, 1)),
+                dynamicsDegradeAlias: Float(clamp(state.degradeAlias, 0, 1)),
+                dynamicsDegradeWow: Float(clamp(state.degradeWow, 0, 1)),
+                dynamicsDegradeFlutter: Float(clamp(state.degradeFlutter, 0, 1)),
+                dynamicsDegradeDrift: Float(clamp(state.degradeDrift, 0, 1)),
+                dynamicsDegradeWobbleSpeed: Float(clamp(state.degradeWobbleSpeed, 0, 1)),
+                dynamicsDegradeTone: Float(clamp(state.degradeTone, 0, 1)),
+                dynamicsDegradeHp: Float(clamp(state.degradeHp, 0, 1)),
+                dynamicsDegradeLp: Float(clamp(state.degradeLp, 0, 1)),
+                dynamicsDegradeNoise: Float(clamp(state.degradeNoise, 0, 1)),
+                dynamicsDegradeSaturation: Float(clamp(state.degradeSaturation, 0, 1)),
+                dynamicsDegradeCorrosion: Float(clamp(state.degradeCorrosion, 0, 1)),
+                dynamicsSaturationEnabled: state.dynamicsEnabled && state.dynamicsSaturationEnabled,
+                dynamicsSaturationMode: dynamicsSaturationModeId(state.dynamicsSaturationMode),
+                dynamicsSaturationDrive: Float(clamp(state.dynamicsSaturationDrive, 0, 1)),
+                dynamicsSaturationTone: Float(clamp(state.dynamicsSaturationTone, 0, 1)),
+                dynamicsSaturationBias: Float(clamp(state.dynamicsSaturationBias, 0, 1)),
+                dynamicsEndCompEnabled: state.dynamicsEnabled && state.endCompEnabled,
+                dynamicsEndCompThreshold: Float(clamp(state.endCompThreshold, -60, 0)),
+                dynamicsEndCompKnee: Float(clamp(state.endCompKnee, 0, 40)),
+                dynamicsEndCompRatio: Float(clamp(state.endCompRatio, 1, 20)),
+                dynamicsEndCompAttackMs: Float(clamp(state.endCompAttackMs, 0.1, 100)),
+                dynamicsEndCompReleaseMs: Float(clamp(state.endCompReleaseMs, 20, 1500)),
+                dynamicsEndCompMakeup: Float(clamp(state.endCompMakeup, 0.25, 4)),
+                dynamicsEndCompMix: Float(clamp(state.endCompMix, 0, 1)),
+                dynamicsEndCompDetectorHp: Float(clamp(state.endCompDetectorHp, 0, 1)),
+                dynamicsEndCompDetectorTilt: Float(clamp(state.endCompDetectorTilt, 0, 1)),
+                dynamicsEndCompAutoMakeup: Float(clamp(state.endCompAutoMakeup, 0, 1)),
+                dynamicsEndCompProgramRelease: Float(clamp(state.endCompProgramRelease, 0, 1)),
+                sidechainEnabled: state.sidechainEnabled,
+                sidechainKeyA: sidechainKeyId(state.sidechainKeyA),
+                sidechainKeyB: sidechainKeyId(state.sidechainKeyB),
+                sidechainKeyAWeight: Float(clamp(state.sidechainKeyAWeight, 0, 1)),
+                sidechainKeyBWeight: Float(clamp(state.sidechainKeyBWeight, 0, 1)),
+                sidechainAmount: Float(clamp(state.sidechainAmount, 0, 1)),
+                sidechainThreshold: Float(clamp(state.sidechainThreshold, -60, 0)),
+                sidechainRatio: Float(clamp(state.sidechainRatio, 1, 20)),
+                sidechainKnee: Float(clamp(state.sidechainKnee, 0, 40)),
+                sidechainAttackMs: Float(clamp(state.sidechainAttackMs, 0.1, 100)),
+                sidechainHoldMs: Float(clamp(state.sidechainHoldMs, 0, 250)),
+                sidechainReleaseMs: Float(clamp(state.sidechainReleaseMs, 20, 1500)),
+                sidechainMakeup: Float(clamp(state.sidechainMakeup, 0.25, 4)),
+                sidechainMix: Float(clamp(state.sidechainMix, 0, 1)),
+                sidechainCurve: Float(clamp(state.sidechainCurve, 0, 1)),
+                sidechainDetectorHp: Float(clamp(state.sidechainDetectorHp, 0, 1)),
+                sidechainDetectorLp: Float(clamp(state.sidechainDetectorLp, 0, 1)),
+                sidechainPad1Target: Float(clamp(state.sidechainPad1Target, 0, 1)),
+                sidechainPad2Target: Float(clamp(state.sidechainPad2Target, 0, 1)),
+                sidechainLead1Target: Float(clamp(state.sidechainLead1Target, 0, 1)),
+                sidechainLead2Target: Float(clamp(state.sidechainLead2Target, 0, 1)),
+                sidechainPianoTarget: Float(clamp(state.sidechainPianoTarget, 0, 1)),
+                sidechainGranularTarget: Float(clamp(state.sidechainGranularTarget, 0, 1)),
+                sidechainDelayATarget: Float(clamp(state.sidechainDelayATarget, 0, 1)),
+                sidechainDelayBTarget: Float(clamp(state.sidechainDelayBTarget, 0, 1)),
+                sidechainReverbTarget: Float(clamp(state.sidechainReverbTarget, 0, 1))
             ),
             routing: ProductRoutingSnapshot(
                 delayAToDelayB: Float(clamp(state.delayAToBSend, 0, 1)),
@@ -258,7 +454,10 @@ public enum KesshoProductCoreSnapshotEncoder {
             ),
             master: ProductMasterSnapshot(
                 gain: Float(clamp(state.masterVolume, 0, 1.5)),
-                limiterCeilingDb: -0.5
+                limiterCeilingDb: -0.5,
+                saturationMode: dynamicsSaturationModeId(state.masterSatMode),
+                saturationDrive: Float(clamp(state.masterSatDrive, 0, 1)),
+                saturationTone: Float(clamp(state.masterSatTone, 0, 1))
             ),
             rng: ProductRngSnapshot(
                 seed: rngSeed,
@@ -681,6 +880,34 @@ public enum KesshoProductCoreSnapshotEncoder {
         precondition(writer.count == start + sequencerByteCount)
     }
 
+    private static func writeGranularVoice(_ voice: ProductGranularVoiceSnapshot, writer: inout SnapshotWriter) {
+        writer.u32(voice.enabled ? 1 : 0)
+        writer.u32(voice.mode)
+        writer.u32(voice.slice)
+        writer.f32(voice.speed)
+        writer.f32(voice.scanRate)
+        writer.u32(voice.reverse ? 1 : 0)
+        writer.f32(voice.pitch)
+        writer.f32(voice.writeFollow)
+        writer.f32(voice.density)
+        writer.f32(voice.grainSizeMs)
+        writer.f32(voice.spray)
+        writer.f32(voice.grainOctaveProbability)
+        writer.f32(voice.attackSeconds)
+        writer.f32(voice.decaySeconds)
+        writer.f32(voice.gain)
+        writer.f32(voice.pan)
+        writer.f32(voice.blur)
+        writer.f32(voice.stereoSpread)
+        writer.f32(voice.positionLfoRate)
+        writer.f32(voice.positionLfoDepth)
+        writer.f32(voice.panLfoRate)
+        writer.f32(voice.reverseLfoRate)
+        writer.f32(voice.recordLfoRate)
+        writer.u32(voice.euclidGated ? 1 : 0)
+        writer.u32(voice.euclidMuted ? 1 : 0)
+    }
+
     private static var sourceOrder: [UInt32] {
         [
             KesshoProductSourceId.pad1.rawValue,
@@ -939,6 +1166,184 @@ public enum KesshoProductCoreSnapshotEncoder {
         }
     }
 
+    private static func dynamicsCharacterModeId(_ value: String) -> UInt32 {
+        switch value {
+        case "abyssWater":
+            return 1
+        case "shallowWater":
+            return 2
+        default:
+            return 0
+        }
+    }
+
+    private static func dynamicsSaturationModeId(_ value: String) -> UInt32 {
+        switch value {
+        case "tape":
+            return 1
+        case "tube":
+            return 2
+        case "diode":
+            return 3
+        case "fold":
+            return 4
+        default:
+            return 0
+        }
+    }
+
+    private static func sidechainKeyId(_ value: String) -> UInt32 {
+        switch value {
+        case "sub":
+            return 1
+        case "kick":
+            return 2
+        case "click":
+            return 3
+        case "beepHi":
+            return 4
+        case "beepLo":
+            return 5
+        case "noise":
+            return 6
+        case "membrane":
+            return 7
+        default:
+            return 0
+        }
+    }
+
+    private static func granularShapeId(_ value: String) -> UInt32 {
+        switch value {
+        case "sawUp":
+            return 1
+        case "sawDown":
+            return 2
+        case "square":
+            return 3
+        default:
+            return 0
+        }
+    }
+
+    private static func granularVoiceModeId(_ value: String) -> UInt32 {
+        switch value {
+        case "clean":
+            return 0
+        case "legacy":
+            return 2
+        default:
+            return 1
+        }
+    }
+
+    private static func granularLegacyPitchModeId(_ value: String) -> UInt32 {
+        value == "random" ? 0 : 1
+    }
+
+    private static func granularVoice(_ voice: Int, state: SliderState) -> ProductGranularVoiceSnapshot {
+        let raw: (
+            enabled: Bool,
+            mode: String,
+            slice: Double,
+            speed: Double,
+            scanRate: Double,
+            reverse: Bool,
+            pitch: Double,
+            attack: Double,
+            decay: Double,
+            blur: Double,
+            grainOct: Double,
+            spray: Double,
+            density: Double,
+            tempoSync: Bool,
+            grainSize: Double,
+            pan: Double,
+            gain: Double,
+            posLfoRate: Double,
+            posLfoDepth: Double,
+            panLfoRate: Double,
+            stereoSpread: Double,
+            reverseLfoRate: Double,
+            writeFollow: Double,
+            recordLfoRate: Double
+        )
+        switch voice {
+        case 2:
+            raw = (
+                state.granularV2Enabled, state.granularV2Mode, state.granularV2Slice,
+                state.granularV2Speed, state.granularV2ScanRate, state.granularV2Reverse,
+                state.granularV2Pitch, state.granularV2Attack, state.granularV2Decay,
+                state.granularV2Blur, state.granularV2GrainOct, state.granularV2Spray,
+                state.granularV2Density, state.granularV2TempoSync, state.granularV2GrainSize,
+                state.granularV2Pan, state.granularV2Gain, state.granularV2PosLFORate,
+                state.granularV2PosLFODepth, state.granularV2PanLFORate, state.granularV2StereoSpread,
+                state.granularV2ReverseLFORate, state.granularV2WriteFollow, state.granularV2RecordLFORate
+            )
+        case 3:
+            raw = (
+                state.granularV3Enabled, state.granularV3Mode, state.granularV3Slice,
+                state.granularV3Speed, state.granularV3ScanRate, state.granularV3Reverse,
+                state.granularV3Pitch, state.granularV3Attack, state.granularV3Decay,
+                state.granularV3Blur, state.granularV3GrainOct, state.granularV3Spray,
+                state.granularV3Density, state.granularV3TempoSync, state.granularV3GrainSize,
+                state.granularV3Pan, state.granularV3Gain, state.granularV3PosLFORate,
+                state.granularV3PosLFODepth, state.granularV3PanLFORate, state.granularV3StereoSpread,
+                state.granularV3ReverseLFORate, state.granularV3WriteFollow, state.granularV3RecordLFORate
+            )
+        case 4:
+            raw = (
+                state.granularV4Enabled, state.granularV4Mode, state.granularV4Slice,
+                state.granularV4Speed, state.granularV4ScanRate, state.granularV4Reverse,
+                state.granularV4Pitch, state.granularV4Attack, state.granularV4Decay,
+                state.granularV4Blur, state.granularV4GrainOct, state.granularV4Spray,
+                state.granularV4Density, state.granularV4TempoSync, state.granularV4GrainSize,
+                state.granularV4Pan, state.granularV4Gain, state.granularV4PosLFORate,
+                state.granularV4PosLFODepth, state.granularV4PanLFORate, state.granularV4StereoSpread,
+                state.granularV4ReverseLFORate, state.granularV4WriteFollow, state.granularV4RecordLFORate
+            )
+        default:
+            raw = (
+                state.granularV1Enabled, state.granularV1Mode, state.granularV1Slice,
+                state.granularV1Speed, state.granularV1ScanRate, state.granularV1Reverse,
+                state.granularV1Pitch, state.granularV1Attack, state.granularV1Decay,
+                state.granularV1Blur, state.granularV1GrainOct, state.granularV1Spray,
+                state.granularV1Density, state.granularV1TempoSync, state.granularV1GrainSize,
+                state.granularV1Pan, state.granularV1Gain, state.granularV1PosLFORate,
+                state.granularV1PosLFODepth, state.granularV1PanLFORate, state.granularV1StereoSpread,
+                state.granularV1ReverseLFORate, state.granularV1WriteFollow, state.granularV1RecordLFORate
+            )
+        }
+
+        return ProductGranularVoiceSnapshot(
+            enabled: raw.enabled,
+            mode: granularVoiceModeId(raw.mode),
+            slice: UInt32(clampInt(Int(raw.slice.rounded()), min: 0, max: 15)),
+            speed: Float(clamp(raw.speed, 0, 4)),
+            scanRate: Float(clamp(raw.scanRate, 0.25, 4)),
+            reverse: raw.reverse,
+            pitch: Float(clamp(raw.pitch, -24, 24)),
+            writeFollow: Float(clamp(raw.writeFollow, 0, 1)),
+            density: Float(clamp(raw.density, 1, 64)),
+            grainSizeMs: Float(clamp(raw.grainSize, 10, 500)),
+            spray: Float(clamp(raw.spray, 0, 1)),
+            grainOctaveProbability: Float(clamp(raw.grainOct, 0, 1)),
+            attackSeconds: Float(clamp(raw.attack, 0.001, 0.5)),
+            decaySeconds: Float(clamp(raw.decay, 0.01, 4)),
+            gain: Float(clamp(raw.gain, 0, 1)),
+            pan: Float(clamp(raw.pan, -1, 1)),
+            blur: Float(clamp(raw.blur, 0, 1)),
+            stereoSpread: Float(clamp(raw.stereoSpread, 0, 1)),
+            positionLfoRate: Float(clamp(raw.posLfoRate, 0, 1)),
+            positionLfoDepth: Float(clamp(raw.posLfoDepth, 0, 1)),
+            panLfoRate: Float(clamp(raw.panLfoRate, 0, 1)),
+            reverseLfoRate: Float(clamp(raw.reverseLfoRate, 0, 1)),
+            recordLfoRate: Float(clamp(raw.recordLfoRate, 0, 1)),
+            euclidGated: raw.tempoSync,
+            euclidMuted: false
+        )
+    }
+
     private static func clamp(_ value: Double, _ minValue: Double, _ maxValue: Double) -> Double {
         min(max(value, minValue), maxValue)
     }
@@ -1045,6 +1450,23 @@ private struct ProductJourneySnapshot {
 
 private struct ProductFxSnapshot {
     var granularMix: Float
+    var granularEnabled: Bool
+    var granularFreeze: Bool
+    var granularFreezeWithFeedback: Bool
+    var granularFeedback: Float
+    var granularFeedbackLpfHz: Float
+    var granularBufferSeconds: Float
+    var granularGrainShape: UInt32
+    var granularBusDiffusion: Float
+    var granularTimingRandomness: Float
+    var granularChordBias: Float
+    var granularLegacyJitterMs: Float
+    var granularLegacyProbability: Float
+    var granularLegacyPitchMode: UInt32
+    var granularLegacyPitchSpread: Float
+    var granularLegacyMaxGrains: UInt32
+    var granularLegacyFeedback: Float
+    var granularVoices: [ProductGranularVoiceSnapshot]
     var delayAEnabled: Bool
     var delayATimeLeftMs: Float
     var delayATimeRightMs: Float
@@ -1102,7 +1524,112 @@ private struct ProductFxSnapshot {
     var reverbTransientSmooth: Float
     var reverbErLpFreq: Float
     var spectralFreezeMix: Float
+    var spectralFreezeEnabled: Bool
+    var spectralFreezeActive: Bool
+    var spectralFreezeSlushy: Bool
+    var spectralFreezeSpeed: Float
+    var spectralFreezeDecay: Float
+    var spectralFreezePhaseJitter: Float
     var dynamicsDrive: Float
+    var dynamicsEnabled: Bool
+    var dynamicsCharacterEnabled: Bool
+    var dynamicsCharacterMode: UInt32
+    var dynamicsCharacterMix: Float
+    var dynamicsCharacterAge: Float
+    var dynamicsCharacterBias: Float
+    var dynamicsCharacterLpgAmount: Float
+    var dynamicsCharacterResonance: Float
+    var dynamicsCharacterStereo: Float
+    var dynamicsCharacterEnvFollow: Float
+    var dynamicsCharacterDepth: Float
+    var dynamicsCharacterRate: Float
+    var dynamicsCharacterDamp: Float
+    var dynamicsDegradeEnabled: Bool
+    var dynamicsDegradeMix: Float
+    var dynamicsDegradeAge: Float
+    var dynamicsDegradeGeneration: Float
+    var dynamicsDegradeAlias: Float
+    var dynamicsDegradeWow: Float
+    var dynamicsDegradeFlutter: Float
+    var dynamicsDegradeDrift: Float
+    var dynamicsDegradeWobbleSpeed: Float
+    var dynamicsDegradeTone: Float
+    var dynamicsDegradeHp: Float
+    var dynamicsDegradeLp: Float
+    var dynamicsDegradeNoise: Float
+    var dynamicsDegradeSaturation: Float
+    var dynamicsDegradeCorrosion: Float
+    var dynamicsSaturationEnabled: Bool
+    var dynamicsSaturationMode: UInt32
+    var dynamicsSaturationDrive: Float
+    var dynamicsSaturationTone: Float
+    var dynamicsSaturationBias: Float
+    var dynamicsEndCompEnabled: Bool
+    var dynamicsEndCompThreshold: Float
+    var dynamicsEndCompKnee: Float
+    var dynamicsEndCompRatio: Float
+    var dynamicsEndCompAttackMs: Float
+    var dynamicsEndCompReleaseMs: Float
+    var dynamicsEndCompMakeup: Float
+    var dynamicsEndCompMix: Float
+    var dynamicsEndCompDetectorHp: Float
+    var dynamicsEndCompDetectorTilt: Float
+    var dynamicsEndCompAutoMakeup: Float
+    var dynamicsEndCompProgramRelease: Float
+    var sidechainEnabled: Bool
+    var sidechainKeyA: UInt32
+    var sidechainKeyB: UInt32
+    var sidechainKeyAWeight: Float
+    var sidechainKeyBWeight: Float
+    var sidechainAmount: Float
+    var sidechainThreshold: Float
+    var sidechainRatio: Float
+    var sidechainKnee: Float
+    var sidechainAttackMs: Float
+    var sidechainHoldMs: Float
+    var sidechainReleaseMs: Float
+    var sidechainMakeup: Float
+    var sidechainMix: Float
+    var sidechainCurve: Float
+    var sidechainDetectorHp: Float
+    var sidechainDetectorLp: Float
+    var sidechainPad1Target: Float
+    var sidechainPad2Target: Float
+    var sidechainLead1Target: Float
+    var sidechainLead2Target: Float
+    var sidechainPianoTarget: Float
+    var sidechainGranularTarget: Float
+    var sidechainDelayATarget: Float
+    var sidechainDelayBTarget: Float
+    var sidechainReverbTarget: Float
+}
+
+private struct ProductGranularVoiceSnapshot {
+    var enabled: Bool
+    var mode: UInt32
+    var slice: UInt32
+    var speed: Float
+    var scanRate: Float
+    var reverse: Bool
+    var pitch: Float
+    var writeFollow: Float
+    var density: Float
+    var grainSizeMs: Float
+    var spray: Float
+    var grainOctaveProbability: Float
+    var attackSeconds: Float
+    var decaySeconds: Float
+    var gain: Float
+    var pan: Float
+    var blur: Float
+    var stereoSpread: Float
+    var positionLfoRate: Float
+    var positionLfoDepth: Float
+    var panLfoRate: Float
+    var reverseLfoRate: Float
+    var recordLfoRate: Float
+    var euclidGated: Bool
+    var euclidMuted: Bool
 }
 
 private struct ProductRoutingSnapshot {
@@ -1118,6 +1645,9 @@ private struct ProductRoutingSnapshot {
 private struct ProductMasterSnapshot {
     var gain: Float
     var limiterCeilingDb: Float
+    var saturationMode: UInt32
+    var saturationDrive: Float
+    var saturationTone: Float
 }
 
 private struct ProductRngSnapshot {

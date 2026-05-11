@@ -37,6 +37,122 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SequencerLaneHoldSeconds: 212,
   SequencerLaneSeed: 213,
   FxGranularMix: 300,
+  FxGranularEnabled: 800,
+  FxGranularFreeze: 801,
+  FxGranularFreezeWithFeedback: 802,
+  FxGranularFeedback: 803,
+  FxGranularFeedbackLpfHz: 804,
+  FxGranularBufferSeconds: 805,
+  FxGranularGrainShape: 806,
+  FxGranularBusDiffusion: 807,
+  FxGranularTimingRandomness: 808,
+  FxGranularChordBias: 809,
+  FxGranularLegacyJitterMs: 810,
+  FxGranularLegacyProbability: 811,
+  FxGranularLegacyPitchMode: 812,
+  FxGranularLegacyPitchSpread: 813,
+  FxGranularLegacyMaxGrains: 814,
+  FxGranularLegacyFeedback: 815,
+  FxGranularV1Enabled: 820,
+  FxGranularV1Mode: 821,
+  FxGranularV1Slice: 822,
+  FxGranularV1Speed: 823,
+  FxGranularV1ScanRate: 824,
+  FxGranularV1Reverse: 825,
+  FxGranularV1Pitch: 826,
+  FxGranularV1WriteFollow: 827,
+  FxGranularV1Density: 828,
+  FxGranularV1GrainSizeMs: 829,
+  FxGranularV1Spray: 830,
+  FxGranularV1GrainOctaveProbability: 831,
+  FxGranularV1AttackSeconds: 832,
+  FxGranularV1DecaySeconds: 833,
+  FxGranularV1Gain: 834,
+  FxGranularV1Pan: 835,
+  FxGranularV1Blur: 836,
+  FxGranularV1StereoSpread: 837,
+  FxGranularV1PositionLfoRate: 838,
+  FxGranularV1PositionLfoDepth: 839,
+  FxGranularV1PanLfoRate: 840,
+  FxGranularV1ReverseLfoRate: 841,
+  FxGranularV1RecordLfoRate: 842,
+  FxGranularV1EuclidGated: 843,
+  FxGranularV1EuclidMuted: 844,
+  FxGranularV2Enabled: 845,
+  FxGranularV2Mode: 846,
+  FxGranularV2Slice: 847,
+  FxGranularV2Speed: 848,
+  FxGranularV2ScanRate: 849,
+  FxGranularV2Reverse: 850,
+  FxGranularV2Pitch: 851,
+  FxGranularV2WriteFollow: 852,
+  FxGranularV2Density: 853,
+  FxGranularV2GrainSizeMs: 854,
+  FxGranularV2Spray: 855,
+  FxGranularV2GrainOctaveProbability: 856,
+  FxGranularV2AttackSeconds: 857,
+  FxGranularV2DecaySeconds: 858,
+  FxGranularV2Gain: 859,
+  FxGranularV2Pan: 860,
+  FxGranularV2Blur: 861,
+  FxGranularV2StereoSpread: 862,
+  FxGranularV2PositionLfoRate: 863,
+  FxGranularV2PositionLfoDepth: 864,
+  FxGranularV2PanLfoRate: 865,
+  FxGranularV2ReverseLfoRate: 866,
+  FxGranularV2RecordLfoRate: 867,
+  FxGranularV2EuclidGated: 868,
+  FxGranularV2EuclidMuted: 869,
+  FxGranularV3Enabled: 870,
+  FxGranularV3Mode: 871,
+  FxGranularV3Slice: 872,
+  FxGranularV3Speed: 873,
+  FxGranularV3ScanRate: 874,
+  FxGranularV3Reverse: 875,
+  FxGranularV3Pitch: 876,
+  FxGranularV3WriteFollow: 877,
+  FxGranularV3Density: 878,
+  FxGranularV3GrainSizeMs: 879,
+  FxGranularV3Spray: 880,
+  FxGranularV3GrainOctaveProbability: 881,
+  FxGranularV3AttackSeconds: 882,
+  FxGranularV3DecaySeconds: 883,
+  FxGranularV3Gain: 884,
+  FxGranularV3Pan: 885,
+  FxGranularV3Blur: 886,
+  FxGranularV3StereoSpread: 887,
+  FxGranularV3PositionLfoRate: 888,
+  FxGranularV3PositionLfoDepth: 889,
+  FxGranularV3PanLfoRate: 890,
+  FxGranularV3ReverseLfoRate: 891,
+  FxGranularV3RecordLfoRate: 892,
+  FxGranularV3EuclidGated: 893,
+  FxGranularV3EuclidMuted: 894,
+  FxGranularV4Enabled: 895,
+  FxGranularV4Mode: 896,
+  FxGranularV4Slice: 897,
+  FxGranularV4Speed: 898,
+  FxGranularV4ScanRate: 899,
+  FxGranularV4Reverse: 900,
+  FxGranularV4Pitch: 901,
+  FxGranularV4WriteFollow: 902,
+  FxGranularV4Density: 903,
+  FxGranularV4GrainSizeMs: 904,
+  FxGranularV4Spray: 905,
+  FxGranularV4GrainOctaveProbability: 906,
+  FxGranularV4AttackSeconds: 907,
+  FxGranularV4DecaySeconds: 908,
+  FxGranularV4Gain: 909,
+  FxGranularV4Pan: 910,
+  FxGranularV4Blur: 911,
+  FxGranularV4StereoSpread: 912,
+  FxGranularV4PositionLfoRate: 913,
+  FxGranularV4PositionLfoDepth: 914,
+  FxGranularV4PanLfoRate: 915,
+  FxGranularV4ReverseLfoRate: 916,
+  FxGranularV4RecordLfoRate: 917,
+  FxGranularV4EuclidGated: 918,
+  FxGranularV4EuclidMuted: 919,
   FxDelayAMix: 301,
   FxDelayBMix: 302,
   FxReverbMix: 303,
@@ -95,6 +211,113 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   FxReverbSaturationMode: 377,
   FxReverbTransientSmooth: 378,
   FxReverbErLpFreq: 379,
+  FxSpectralFreezeEnabled: 930,
+  FxSpectralFreezeActive: 931,
+  FxSpectralFreezeSlushy: 932,
+  FxSpectralFreezeSpeed: 933,
+  FxSpectralFreezeDecay: 934,
+  FxSpectralFreezePhaseJitter: 935,
+  FxDynamicsEnabled: 940,
+  FxDynamicsCharacterEnabled: 941,
+  FxDynamicsCharacterMode: 942,
+  FxDynamicsCharacterMix: 943,
+  FxDynamicsCharacterAge: 944,
+  FxDynamicsCharacterBias: 945,
+  FxDynamicsCharacterLpgAmount: 946,
+  FxDynamicsCharacterResonance: 947,
+  FxDynamicsCharacterStereo: 948,
+  FxDynamicsCharacterEnvFollow: 949,
+  FxDynamicsCharacterDepth: 950,
+  FxDynamicsCharacterRate: 951,
+  FxDynamicsCharacterDamp: 952,
+  FxDynamicsDegradeEnabled: 953,
+  FxDynamicsDegradeMix: 954,
+  FxDynamicsDegradeAge: 955,
+  FxDynamicsDegradeGeneration: 956,
+  FxDynamicsDegradeAlias: 957,
+  FxDynamicsDegradeWow: 958,
+  FxDynamicsDegradeFlutter: 959,
+  FxDynamicsDegradeDrift: 960,
+  FxDynamicsDegradeWobbleSpeed: 961,
+  FxDynamicsDegradeTone: 962,
+  FxDynamicsDegradeHp: 963,
+  FxDynamicsDegradeLp: 964,
+  FxDynamicsDegradeNoise: 965,
+  FxDynamicsDegradeSaturation: 966,
+  FxDynamicsDegradeCorrosion: 967,
+  FxDynamicsModSlowWow: 1011,
+  FxDynamicsModSlowFlutter: 1012,
+  FxDynamicsModSlowLp: 1013,
+  FxDynamicsModSlowWet: 1014,
+  FxDynamicsModSlowDropout: 1015,
+  FxDynamicsModSlowAlias: 1016,
+  FxDynamicsModFlutterWow: 1017,
+  FxDynamicsModFlutterFlutter: 1018,
+  FxDynamicsModFlutterLp: 1019,
+  FxDynamicsModFlutterWet: 1020,
+  FxDynamicsModFlutterDropout: 1021,
+  FxDynamicsModFlutterAlias: 1022,
+  FxDynamicsModRandomWow: 1023,
+  FxDynamicsModRandomFlutter: 1024,
+  FxDynamicsModRandomLp: 1025,
+  FxDynamicsModRandomWet: 1026,
+  FxDynamicsModRandomDropout: 1027,
+  FxDynamicsModRandomAlias: 1028,
+  FxDynamicsModEnvWow: 1029,
+  FxDynamicsModEnvFlutter: 1030,
+  FxDynamicsModEnvLp: 1031,
+  FxDynamicsModEnvWet: 1032,
+  FxDynamicsModEnvDropout: 1033,
+  FxDynamicsModEnvAlias: 1034,
+  FxDynamicsModNoiseWow: 1035,
+  FxDynamicsModNoiseFlutter: 1036,
+  FxDynamicsModNoiseLp: 1037,
+  FxDynamicsModNoiseWet: 1038,
+  FxDynamicsModNoiseDropout: 1039,
+  FxDynamicsModNoiseAlias: 1040,
+  FxDynamicsSaturationEnabled: 968,
+  FxDynamicsSaturationMode: 969,
+  FxDynamicsSaturationDrive: 970,
+  FxDynamicsSaturationTone: 971,
+  FxDynamicsSaturationBias: 972,
+  FxDynamicsEndCompEnabled: 973,
+  FxDynamicsEndCompThreshold: 974,
+  FxDynamicsEndCompKnee: 975,
+  FxDynamicsEndCompRatio: 976,
+  FxDynamicsEndCompAttackMs: 977,
+  FxDynamicsEndCompReleaseMs: 978,
+  FxDynamicsEndCompMakeup: 979,
+  FxDynamicsEndCompMix: 980,
+  FxDynamicsEndCompDetectorHp: 981,
+  FxDynamicsEndCompDetectorTilt: 982,
+  FxDynamicsEndCompAutoMakeup: 983,
+  FxDynamicsEndCompProgramRelease: 984,
+  FxSidechainEnabled: 985,
+  FxSidechainKeyA: 986,
+  FxSidechainKeyB: 987,
+  FxSidechainKeyAWeight: 988,
+  FxSidechainKeyBWeight: 989,
+  FxSidechainAmount: 990,
+  FxSidechainThreshold: 991,
+  FxSidechainRatio: 992,
+  FxSidechainKnee: 993,
+  FxSidechainAttackMs: 994,
+  FxSidechainHoldMs: 995,
+  FxSidechainReleaseMs: 996,
+  FxSidechainMakeup: 997,
+  FxSidechainMix: 998,
+  FxSidechainCurve: 999,
+  FxSidechainDetectorHp: 1000,
+  FxSidechainDetectorLp: 1001,
+  FxSidechainPad1Target: 1002,
+  FxSidechainPad2Target: 1003,
+  FxSidechainLead1Target: 1004,
+  FxSidechainLead2Target: 1005,
+  FxSidechainPianoTarget: 1006,
+  FxSidechainGranularTarget: 1007,
+  FxSidechainDelayATarget: 1008,
+  FxSidechainDelayBTarget: 1009,
+  FxSidechainReverbTarget: 1010,
   RoutingDelayAToDelayB: 400,
   RoutingDelayBToDelayA: 401,
   RoutingDelayToReverb: 402,
@@ -104,6 +327,9 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   RoutingDelayBToReverb: 406,
   MasterGain: 500,
   MasterLimiterCeilingDb: 501,
+  MasterSaturationMode: 502,
+  MasterSaturationDrive: 503,
+  MasterSaturationTone: 504,
   RngSeed: 600,
   RngState: 601,
   EvolutionAmount: 700,
@@ -382,6 +608,896 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 300,
     "min": 0,
     "max": 1
+  },
+  {
+    "name": "FxGranularEnabled",
+    "path": "fx.granular.enabled",
+    "type": "bool",
+    "id": 800
+  },
+  {
+    "name": "FxGranularFreeze",
+    "path": "fx.granular.freeze",
+    "type": "bool",
+    "id": 801
+  },
+  {
+    "name": "FxGranularFreezeWithFeedback",
+    "path": "fx.granular.freezeWithFeedback",
+    "type": "bool",
+    "id": 802
+  },
+  {
+    "name": "FxGranularFeedback",
+    "path": "fx.granular.feedback",
+    "type": "float",
+    "id": 803,
+    "min": 0,
+    "max": 0.85
+  },
+  {
+    "name": "FxGranularFeedbackLpfHz",
+    "path": "fx.granular.feedbackLpfHz",
+    "type": "float",
+    "id": 804,
+    "min": 200,
+    "max": 12000
+  },
+  {
+    "name": "FxGranularBufferSeconds",
+    "path": "fx.granular.bufferSeconds",
+    "type": "float",
+    "id": 805,
+    "min": 1,
+    "max": 32
+  },
+  {
+    "name": "FxGranularGrainShape",
+    "path": "fx.granular.grainShape",
+    "type": "uint",
+    "id": 806,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "FxGranularBusDiffusion",
+    "path": "fx.granular.busDiffusion",
+    "type": "float",
+    "id": 807,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularTimingRandomness",
+    "path": "fx.granular.timingRandomness",
+    "type": "float",
+    "id": 808,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularChordBias",
+    "path": "fx.granular.chordBias",
+    "type": "float",
+    "id": 809,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularLegacyJitterMs",
+    "path": "fx.granular.legacy.jitterMs",
+    "type": "float",
+    "id": 810,
+    "min": 0,
+    "max": 30
+  },
+  {
+    "name": "FxGranularLegacyProbability",
+    "path": "fx.granular.legacy.probability",
+    "type": "float",
+    "id": 811,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularLegacyPitchMode",
+    "path": "fx.granular.legacy.pitchMode",
+    "type": "uint",
+    "id": 812,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularLegacyPitchSpread",
+    "path": "fx.granular.legacy.pitchSpread",
+    "type": "float",
+    "id": 813,
+    "min": 0,
+    "max": 12
+  },
+  {
+    "name": "FxGranularLegacyMaxGrains",
+    "path": "fx.granular.legacy.maxGrains",
+    "type": "uint",
+    "id": 814,
+    "min": 0,
+    "max": 128
+  },
+  {
+    "name": "FxGranularLegacyFeedback",
+    "path": "fx.granular.legacy.feedback",
+    "type": "float",
+    "id": 815,
+    "min": 0,
+    "max": 0.35
+  },
+  {
+    "name": "FxGranularV1Enabled",
+    "path": "fx.granular.voices.0.enabled",
+    "type": "bool",
+    "id": 820
+  },
+  {
+    "name": "FxGranularV1Mode",
+    "path": "fx.granular.voices.0.mode",
+    "type": "uint",
+    "id": 821,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "FxGranularV1Slice",
+    "path": "fx.granular.voices.0.slice",
+    "type": "uint",
+    "id": 822,
+    "min": 0,
+    "max": 15
+  },
+  {
+    "name": "FxGranularV1Speed",
+    "path": "fx.granular.voices.0.speed",
+    "type": "float",
+    "id": 823,
+    "min": 0,
+    "max": 4
+  },
+  {
+    "name": "FxGranularV1ScanRate",
+    "path": "fx.granular.voices.0.scanRate",
+    "type": "float",
+    "id": 824,
+    "min": 0.25,
+    "max": 4
+  },
+  {
+    "name": "FxGranularV1Reverse",
+    "path": "fx.granular.voices.0.reverse",
+    "type": "bool",
+    "id": 825
+  },
+  {
+    "name": "FxGranularV1Pitch",
+    "path": "fx.granular.voices.0.pitch",
+    "type": "float",
+    "id": 826,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxGranularV1WriteFollow",
+    "path": "fx.granular.voices.0.writeFollow",
+    "type": "float",
+    "id": 827,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1Density",
+    "path": "fx.granular.voices.0.density",
+    "type": "float",
+    "id": 828,
+    "min": 1,
+    "max": 64
+  },
+  {
+    "name": "FxGranularV1GrainSizeMs",
+    "path": "fx.granular.voices.0.grainSizeMs",
+    "type": "float",
+    "id": 829,
+    "min": 10,
+    "max": 500
+  },
+  {
+    "name": "FxGranularV1Spray",
+    "path": "fx.granular.voices.0.spray",
+    "type": "float",
+    "id": 830,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1GrainOctaveProbability",
+    "path": "fx.granular.voices.0.grainOctaveProbability",
+    "type": "float",
+    "id": 831,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1AttackSeconds",
+    "path": "fx.granular.voices.0.attackSeconds",
+    "type": "float",
+    "id": 832,
+    "min": 0.001,
+    "max": 0.5
+  },
+  {
+    "name": "FxGranularV1DecaySeconds",
+    "path": "fx.granular.voices.0.decaySeconds",
+    "type": "float",
+    "id": 833,
+    "min": 0.01,
+    "max": 4
+  },
+  {
+    "name": "FxGranularV1Gain",
+    "path": "fx.granular.voices.0.gain",
+    "type": "float",
+    "id": 834,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1Pan",
+    "path": "fx.granular.voices.0.pan",
+    "type": "float",
+    "id": 835,
+    "min": -1,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1Blur",
+    "path": "fx.granular.voices.0.blur",
+    "type": "float",
+    "id": 836,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1StereoSpread",
+    "path": "fx.granular.voices.0.stereoSpread",
+    "type": "float",
+    "id": 837,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1PositionLfoRate",
+    "path": "fx.granular.voices.0.positionLfoRate",
+    "type": "float",
+    "id": 838,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1PositionLfoDepth",
+    "path": "fx.granular.voices.0.positionLfoDepth",
+    "type": "float",
+    "id": 839,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1PanLfoRate",
+    "path": "fx.granular.voices.0.panLfoRate",
+    "type": "float",
+    "id": 840,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1ReverseLfoRate",
+    "path": "fx.granular.voices.0.reverseLfoRate",
+    "type": "float",
+    "id": 841,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1RecordLfoRate",
+    "path": "fx.granular.voices.0.recordLfoRate",
+    "type": "float",
+    "id": 842,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1EuclidGated",
+    "path": "fx.granular.voices.0.euclidGated",
+    "type": "bool",
+    "id": 843
+  },
+  {
+    "name": "FxGranularV1EuclidMuted",
+    "path": "fx.granular.voices.0.euclidMuted",
+    "type": "bool",
+    "id": 844
+  },
+  {
+    "name": "FxGranularV2Enabled",
+    "path": "fx.granular.voices.1.enabled",
+    "type": "bool",
+    "id": 845
+  },
+  {
+    "name": "FxGranularV2Mode",
+    "path": "fx.granular.voices.1.mode",
+    "type": "uint",
+    "id": 846,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "FxGranularV2Slice",
+    "path": "fx.granular.voices.1.slice",
+    "type": "uint",
+    "id": 847,
+    "min": 0,
+    "max": 15
+  },
+  {
+    "name": "FxGranularV2Speed",
+    "path": "fx.granular.voices.1.speed",
+    "type": "float",
+    "id": 848,
+    "min": 0,
+    "max": 4
+  },
+  {
+    "name": "FxGranularV2ScanRate",
+    "path": "fx.granular.voices.1.scanRate",
+    "type": "float",
+    "id": 849,
+    "min": 0.25,
+    "max": 4
+  },
+  {
+    "name": "FxGranularV2Reverse",
+    "path": "fx.granular.voices.1.reverse",
+    "type": "bool",
+    "id": 850
+  },
+  {
+    "name": "FxGranularV2Pitch",
+    "path": "fx.granular.voices.1.pitch",
+    "type": "float",
+    "id": 851,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxGranularV2WriteFollow",
+    "path": "fx.granular.voices.1.writeFollow",
+    "type": "float",
+    "id": 852,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2Density",
+    "path": "fx.granular.voices.1.density",
+    "type": "float",
+    "id": 853,
+    "min": 1,
+    "max": 64
+  },
+  {
+    "name": "FxGranularV2GrainSizeMs",
+    "path": "fx.granular.voices.1.grainSizeMs",
+    "type": "float",
+    "id": 854,
+    "min": 10,
+    "max": 500
+  },
+  {
+    "name": "FxGranularV2Spray",
+    "path": "fx.granular.voices.1.spray",
+    "type": "float",
+    "id": 855,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2GrainOctaveProbability",
+    "path": "fx.granular.voices.1.grainOctaveProbability",
+    "type": "float",
+    "id": 856,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2AttackSeconds",
+    "path": "fx.granular.voices.1.attackSeconds",
+    "type": "float",
+    "id": 857,
+    "min": 0.001,
+    "max": 0.5
+  },
+  {
+    "name": "FxGranularV2DecaySeconds",
+    "path": "fx.granular.voices.1.decaySeconds",
+    "type": "float",
+    "id": 858,
+    "min": 0.01,
+    "max": 4
+  },
+  {
+    "name": "FxGranularV2Gain",
+    "path": "fx.granular.voices.1.gain",
+    "type": "float",
+    "id": 859,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2Pan",
+    "path": "fx.granular.voices.1.pan",
+    "type": "float",
+    "id": 860,
+    "min": -1,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2Blur",
+    "path": "fx.granular.voices.1.blur",
+    "type": "float",
+    "id": 861,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2StereoSpread",
+    "path": "fx.granular.voices.1.stereoSpread",
+    "type": "float",
+    "id": 862,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2PositionLfoRate",
+    "path": "fx.granular.voices.1.positionLfoRate",
+    "type": "float",
+    "id": 863,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2PositionLfoDepth",
+    "path": "fx.granular.voices.1.positionLfoDepth",
+    "type": "float",
+    "id": 864,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2PanLfoRate",
+    "path": "fx.granular.voices.1.panLfoRate",
+    "type": "float",
+    "id": 865,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2ReverseLfoRate",
+    "path": "fx.granular.voices.1.reverseLfoRate",
+    "type": "float",
+    "id": 866,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2RecordLfoRate",
+    "path": "fx.granular.voices.1.recordLfoRate",
+    "type": "float",
+    "id": 867,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2EuclidGated",
+    "path": "fx.granular.voices.1.euclidGated",
+    "type": "bool",
+    "id": 868
+  },
+  {
+    "name": "FxGranularV2EuclidMuted",
+    "path": "fx.granular.voices.1.euclidMuted",
+    "type": "bool",
+    "id": 869
+  },
+  {
+    "name": "FxGranularV3Enabled",
+    "path": "fx.granular.voices.2.enabled",
+    "type": "bool",
+    "id": 870
+  },
+  {
+    "name": "FxGranularV3Mode",
+    "path": "fx.granular.voices.2.mode",
+    "type": "uint",
+    "id": 871,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "FxGranularV3Slice",
+    "path": "fx.granular.voices.2.slice",
+    "type": "uint",
+    "id": 872,
+    "min": 0,
+    "max": 15
+  },
+  {
+    "name": "FxGranularV3Speed",
+    "path": "fx.granular.voices.2.speed",
+    "type": "float",
+    "id": 873,
+    "min": 0,
+    "max": 4
+  },
+  {
+    "name": "FxGranularV3ScanRate",
+    "path": "fx.granular.voices.2.scanRate",
+    "type": "float",
+    "id": 874,
+    "min": 0.25,
+    "max": 4
+  },
+  {
+    "name": "FxGranularV3Reverse",
+    "path": "fx.granular.voices.2.reverse",
+    "type": "bool",
+    "id": 875
+  },
+  {
+    "name": "FxGranularV3Pitch",
+    "path": "fx.granular.voices.2.pitch",
+    "type": "float",
+    "id": 876,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxGranularV3WriteFollow",
+    "path": "fx.granular.voices.2.writeFollow",
+    "type": "float",
+    "id": 877,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3Density",
+    "path": "fx.granular.voices.2.density",
+    "type": "float",
+    "id": 878,
+    "min": 1,
+    "max": 64
+  },
+  {
+    "name": "FxGranularV3GrainSizeMs",
+    "path": "fx.granular.voices.2.grainSizeMs",
+    "type": "float",
+    "id": 879,
+    "min": 10,
+    "max": 500
+  },
+  {
+    "name": "FxGranularV3Spray",
+    "path": "fx.granular.voices.2.spray",
+    "type": "float",
+    "id": 880,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3GrainOctaveProbability",
+    "path": "fx.granular.voices.2.grainOctaveProbability",
+    "type": "float",
+    "id": 881,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3AttackSeconds",
+    "path": "fx.granular.voices.2.attackSeconds",
+    "type": "float",
+    "id": 882,
+    "min": 0.001,
+    "max": 0.5
+  },
+  {
+    "name": "FxGranularV3DecaySeconds",
+    "path": "fx.granular.voices.2.decaySeconds",
+    "type": "float",
+    "id": 883,
+    "min": 0.01,
+    "max": 4
+  },
+  {
+    "name": "FxGranularV3Gain",
+    "path": "fx.granular.voices.2.gain",
+    "type": "float",
+    "id": 884,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3Pan",
+    "path": "fx.granular.voices.2.pan",
+    "type": "float",
+    "id": 885,
+    "min": -1,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3Blur",
+    "path": "fx.granular.voices.2.blur",
+    "type": "float",
+    "id": 886,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3StereoSpread",
+    "path": "fx.granular.voices.2.stereoSpread",
+    "type": "float",
+    "id": 887,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3PositionLfoRate",
+    "path": "fx.granular.voices.2.positionLfoRate",
+    "type": "float",
+    "id": 888,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3PositionLfoDepth",
+    "path": "fx.granular.voices.2.positionLfoDepth",
+    "type": "float",
+    "id": 889,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3PanLfoRate",
+    "path": "fx.granular.voices.2.panLfoRate",
+    "type": "float",
+    "id": 890,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3ReverseLfoRate",
+    "path": "fx.granular.voices.2.reverseLfoRate",
+    "type": "float",
+    "id": 891,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3RecordLfoRate",
+    "path": "fx.granular.voices.2.recordLfoRate",
+    "type": "float",
+    "id": 892,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3EuclidGated",
+    "path": "fx.granular.voices.2.euclidGated",
+    "type": "bool",
+    "id": 893
+  },
+  {
+    "name": "FxGranularV3EuclidMuted",
+    "path": "fx.granular.voices.2.euclidMuted",
+    "type": "bool",
+    "id": 894
+  },
+  {
+    "name": "FxGranularV4Enabled",
+    "path": "fx.granular.voices.3.enabled",
+    "type": "bool",
+    "id": 895
+  },
+  {
+    "name": "FxGranularV4Mode",
+    "path": "fx.granular.voices.3.mode",
+    "type": "uint",
+    "id": 896,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "FxGranularV4Slice",
+    "path": "fx.granular.voices.3.slice",
+    "type": "uint",
+    "id": 897,
+    "min": 0,
+    "max": 15
+  },
+  {
+    "name": "FxGranularV4Speed",
+    "path": "fx.granular.voices.3.speed",
+    "type": "float",
+    "id": 898,
+    "min": 0,
+    "max": 4
+  },
+  {
+    "name": "FxGranularV4ScanRate",
+    "path": "fx.granular.voices.3.scanRate",
+    "type": "float",
+    "id": 899,
+    "min": 0.25,
+    "max": 4
+  },
+  {
+    "name": "FxGranularV4Reverse",
+    "path": "fx.granular.voices.3.reverse",
+    "type": "bool",
+    "id": 900
+  },
+  {
+    "name": "FxGranularV4Pitch",
+    "path": "fx.granular.voices.3.pitch",
+    "type": "float",
+    "id": 901,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxGranularV4WriteFollow",
+    "path": "fx.granular.voices.3.writeFollow",
+    "type": "float",
+    "id": 902,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4Density",
+    "path": "fx.granular.voices.3.density",
+    "type": "float",
+    "id": 903,
+    "min": 1,
+    "max": 64
+  },
+  {
+    "name": "FxGranularV4GrainSizeMs",
+    "path": "fx.granular.voices.3.grainSizeMs",
+    "type": "float",
+    "id": 904,
+    "min": 10,
+    "max": 500
+  },
+  {
+    "name": "FxGranularV4Spray",
+    "path": "fx.granular.voices.3.spray",
+    "type": "float",
+    "id": 905,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4GrainOctaveProbability",
+    "path": "fx.granular.voices.3.grainOctaveProbability",
+    "type": "float",
+    "id": 906,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4AttackSeconds",
+    "path": "fx.granular.voices.3.attackSeconds",
+    "type": "float",
+    "id": 907,
+    "min": 0.001,
+    "max": 0.5
+  },
+  {
+    "name": "FxGranularV4DecaySeconds",
+    "path": "fx.granular.voices.3.decaySeconds",
+    "type": "float",
+    "id": 908,
+    "min": 0.01,
+    "max": 4
+  },
+  {
+    "name": "FxGranularV4Gain",
+    "path": "fx.granular.voices.3.gain",
+    "type": "float",
+    "id": 909,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4Pan",
+    "path": "fx.granular.voices.3.pan",
+    "type": "float",
+    "id": 910,
+    "min": -1,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4Blur",
+    "path": "fx.granular.voices.3.blur",
+    "type": "float",
+    "id": 911,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4StereoSpread",
+    "path": "fx.granular.voices.3.stereoSpread",
+    "type": "float",
+    "id": 912,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4PositionLfoRate",
+    "path": "fx.granular.voices.3.positionLfoRate",
+    "type": "float",
+    "id": 913,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4PositionLfoDepth",
+    "path": "fx.granular.voices.3.positionLfoDepth",
+    "type": "float",
+    "id": 914,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4PanLfoRate",
+    "path": "fx.granular.voices.3.panLfoRate",
+    "type": "float",
+    "id": 915,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4ReverseLfoRate",
+    "path": "fx.granular.voices.3.reverseLfoRate",
+    "type": "float",
+    "id": 916,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4RecordLfoRate",
+    "path": "fx.granular.voices.3.recordLfoRate",
+    "type": "float",
+    "id": 917,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4EuclidGated",
+    "path": "fx.granular.voices.3.euclidGated",
+    "type": "bool",
+    "id": 918
+  },
+  {
+    "name": "FxGranularV4EuclidMuted",
+    "path": "fx.granular.voices.3.euclidMuted",
+    "type": "bool",
+    "id": 919
   },
   {
     "name": "FxDelayAMix",
@@ -842,6 +1958,844 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "max": 12000
   },
   {
+    "name": "FxSpectralFreezeEnabled",
+    "path": "fx.spectralFreeze.enabled",
+    "type": "bool",
+    "id": 930
+  },
+  {
+    "name": "FxSpectralFreezeActive",
+    "path": "fx.spectralFreeze.active",
+    "type": "bool",
+    "id": 931
+  },
+  {
+    "name": "FxSpectralFreezeSlushy",
+    "path": "fx.spectralFreeze.slushy",
+    "type": "bool",
+    "id": 932
+  },
+  {
+    "name": "FxSpectralFreezeSpeed",
+    "path": "fx.spectralFreeze.speed",
+    "type": "float",
+    "id": 933,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSpectralFreezeDecay",
+    "path": "fx.spectralFreeze.decay",
+    "type": "float",
+    "id": 934,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSpectralFreezePhaseJitter",
+    "path": "fx.spectralFreeze.phaseJitter",
+    "type": "float",
+    "id": 935,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEnabled",
+    "path": "fx.dynamics.enabled",
+    "type": "bool",
+    "id": 940
+  },
+  {
+    "name": "FxDynamicsCharacterEnabled",
+    "path": "fx.dynamics.character.enabled",
+    "type": "bool",
+    "id": 941
+  },
+  {
+    "name": "FxDynamicsCharacterMode",
+    "path": "fx.dynamics.character.mode",
+    "type": "uint",
+    "id": 942,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "FxDynamicsCharacterMix",
+    "path": "fx.dynamics.character.mix",
+    "type": "float",
+    "id": 943,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsCharacterAge",
+    "path": "fx.dynamics.character.age",
+    "type": "float",
+    "id": 944,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsCharacterBias",
+    "path": "fx.dynamics.character.bias",
+    "type": "float",
+    "id": 945,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsCharacterLpgAmount",
+    "path": "fx.dynamics.character.lpgAmount",
+    "type": "float",
+    "id": 946,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsCharacterResonance",
+    "path": "fx.dynamics.character.resonance",
+    "type": "float",
+    "id": 947,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsCharacterStereo",
+    "path": "fx.dynamics.character.stereo",
+    "type": "float",
+    "id": 948,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsCharacterEnvFollow",
+    "path": "fx.dynamics.character.envFollow",
+    "type": "float",
+    "id": 949,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsCharacterDepth",
+    "path": "fx.dynamics.character.depth",
+    "type": "float",
+    "id": 950,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsCharacterRate",
+    "path": "fx.dynamics.character.rate",
+    "type": "float",
+    "id": 951,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsCharacterDamp",
+    "path": "fx.dynamics.character.damp",
+    "type": "float",
+    "id": 952,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeEnabled",
+    "path": "fx.dynamics.degrade.enabled",
+    "type": "bool",
+    "id": 953
+  },
+  {
+    "name": "FxDynamicsDegradeMix",
+    "path": "fx.dynamics.degrade.mix",
+    "type": "float",
+    "id": 954,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeAge",
+    "path": "fx.dynamics.degrade.age",
+    "type": "float",
+    "id": 955,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeGeneration",
+    "path": "fx.dynamics.degrade.generation",
+    "type": "float",
+    "id": 956,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeAlias",
+    "path": "fx.dynamics.degrade.alias",
+    "type": "float",
+    "id": 957,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeWow",
+    "path": "fx.dynamics.degrade.wow",
+    "type": "float",
+    "id": 958,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeFlutter",
+    "path": "fx.dynamics.degrade.flutter",
+    "type": "float",
+    "id": 959,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeDrift",
+    "path": "fx.dynamics.degrade.drift",
+    "type": "float",
+    "id": 960,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeWobbleSpeed",
+    "path": "fx.dynamics.degrade.wobbleSpeed",
+    "type": "float",
+    "id": 961,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeTone",
+    "path": "fx.dynamics.degrade.tone",
+    "type": "float",
+    "id": 962,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeHp",
+    "path": "fx.dynamics.degrade.hp",
+    "type": "float",
+    "id": 963,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeLp",
+    "path": "fx.dynamics.degrade.lp",
+    "type": "float",
+    "id": 964,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeNoise",
+    "path": "fx.dynamics.degrade.noise",
+    "type": "float",
+    "id": 965,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeSaturation",
+    "path": "fx.dynamics.degrade.saturation",
+    "type": "float",
+    "id": 966,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeCorrosion",
+    "path": "fx.dynamics.degrade.corrosion",
+    "type": "float",
+    "id": 967,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModSlowWow",
+    "path": "fx.dynamics.mod.slow.wow",
+    "type": "float",
+    "id": 1011,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModSlowFlutter",
+    "path": "fx.dynamics.mod.slow.flutter",
+    "type": "float",
+    "id": 1012,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModSlowLp",
+    "path": "fx.dynamics.mod.slow.lp",
+    "type": "float",
+    "id": 1013,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModSlowWet",
+    "path": "fx.dynamics.mod.slow.wet",
+    "type": "float",
+    "id": 1014,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModSlowDropout",
+    "path": "fx.dynamics.mod.slow.dropout",
+    "type": "float",
+    "id": 1015,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModSlowAlias",
+    "path": "fx.dynamics.mod.slow.alias",
+    "type": "float",
+    "id": 1016,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModFlutterWow",
+    "path": "fx.dynamics.mod.flutter.wow",
+    "type": "float",
+    "id": 1017,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModFlutterFlutter",
+    "path": "fx.dynamics.mod.flutter.flutter",
+    "type": "float",
+    "id": 1018,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModFlutterLp",
+    "path": "fx.dynamics.mod.flutter.lp",
+    "type": "float",
+    "id": 1019,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModFlutterWet",
+    "path": "fx.dynamics.mod.flutter.wet",
+    "type": "float",
+    "id": 1020,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModFlutterDropout",
+    "path": "fx.dynamics.mod.flutter.dropout",
+    "type": "float",
+    "id": 1021,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModFlutterAlias",
+    "path": "fx.dynamics.mod.flutter.alias",
+    "type": "float",
+    "id": 1022,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModRandomWow",
+    "path": "fx.dynamics.mod.random.wow",
+    "type": "float",
+    "id": 1023,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModRandomFlutter",
+    "path": "fx.dynamics.mod.random.flutter",
+    "type": "float",
+    "id": 1024,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModRandomLp",
+    "path": "fx.dynamics.mod.random.lp",
+    "type": "float",
+    "id": 1025,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModRandomWet",
+    "path": "fx.dynamics.mod.random.wet",
+    "type": "float",
+    "id": 1026,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModRandomDropout",
+    "path": "fx.dynamics.mod.random.dropout",
+    "type": "float",
+    "id": 1027,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModRandomAlias",
+    "path": "fx.dynamics.mod.random.alias",
+    "type": "float",
+    "id": 1028,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModEnvWow",
+    "path": "fx.dynamics.mod.env.wow",
+    "type": "float",
+    "id": 1029,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModEnvFlutter",
+    "path": "fx.dynamics.mod.env.flutter",
+    "type": "float",
+    "id": 1030,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModEnvLp",
+    "path": "fx.dynamics.mod.env.lp",
+    "type": "float",
+    "id": 1031,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModEnvWet",
+    "path": "fx.dynamics.mod.env.wet",
+    "type": "float",
+    "id": 1032,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModEnvDropout",
+    "path": "fx.dynamics.mod.env.dropout",
+    "type": "float",
+    "id": 1033,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModEnvAlias",
+    "path": "fx.dynamics.mod.env.alias",
+    "type": "float",
+    "id": 1034,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModNoiseWow",
+    "path": "fx.dynamics.mod.noise.wow",
+    "type": "float",
+    "id": 1035,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModNoiseFlutter",
+    "path": "fx.dynamics.mod.noise.flutter",
+    "type": "float",
+    "id": 1036,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModNoiseLp",
+    "path": "fx.dynamics.mod.noise.lp",
+    "type": "float",
+    "id": 1037,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModNoiseWet",
+    "path": "fx.dynamics.mod.noise.wet",
+    "type": "float",
+    "id": 1038,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModNoiseDropout",
+    "path": "fx.dynamics.mod.noise.dropout",
+    "type": "float",
+    "id": 1039,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsModNoiseAlias",
+    "path": "fx.dynamics.mod.noise.alias",
+    "type": "float",
+    "id": 1040,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsSaturationEnabled",
+    "path": "fx.dynamics.saturation.enabled",
+    "type": "bool",
+    "id": 968
+  },
+  {
+    "name": "FxDynamicsSaturationMode",
+    "path": "fx.dynamics.saturation.mode",
+    "type": "uint",
+    "id": 969,
+    "min": 0,
+    "max": 4
+  },
+  {
+    "name": "FxDynamicsSaturationDrive",
+    "path": "fx.dynamics.saturation.drive",
+    "type": "float",
+    "id": 970,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsSaturationTone",
+    "path": "fx.dynamics.saturation.tone",
+    "type": "float",
+    "id": 971,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsSaturationBias",
+    "path": "fx.dynamics.saturation.bias",
+    "type": "float",
+    "id": 972,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEndCompEnabled",
+    "path": "fx.dynamics.endComp.enabled",
+    "type": "bool",
+    "id": 973
+  },
+  {
+    "name": "FxDynamicsEndCompThreshold",
+    "path": "fx.dynamics.endComp.threshold",
+    "type": "float",
+    "id": 974,
+    "min": -60,
+    "max": 0
+  },
+  {
+    "name": "FxDynamicsEndCompKnee",
+    "path": "fx.dynamics.endComp.knee",
+    "type": "float",
+    "id": 975,
+    "min": 0,
+    "max": 40
+  },
+  {
+    "name": "FxDynamicsEndCompRatio",
+    "path": "fx.dynamics.endComp.ratio",
+    "type": "float",
+    "id": 976,
+    "min": 1,
+    "max": 20
+  },
+  {
+    "name": "FxDynamicsEndCompAttackMs",
+    "path": "fx.dynamics.endComp.attackMs",
+    "type": "float",
+    "id": 977,
+    "min": 0.1,
+    "max": 100
+  },
+  {
+    "name": "FxDynamicsEndCompReleaseMs",
+    "path": "fx.dynamics.endComp.releaseMs",
+    "type": "float",
+    "id": 978,
+    "min": 20,
+    "max": 1500
+  },
+  {
+    "name": "FxDynamicsEndCompMakeup",
+    "path": "fx.dynamics.endComp.makeup",
+    "type": "float",
+    "id": 979,
+    "min": 0.25,
+    "max": 4
+  },
+  {
+    "name": "FxDynamicsEndCompMix",
+    "path": "fx.dynamics.endComp.mix",
+    "type": "float",
+    "id": 980,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEndCompDetectorHp",
+    "path": "fx.dynamics.endComp.detectorHp",
+    "type": "float",
+    "id": 981,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEndCompDetectorTilt",
+    "path": "fx.dynamics.endComp.detectorTilt",
+    "type": "float",
+    "id": 982,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEndCompAutoMakeup",
+    "path": "fx.dynamics.endComp.autoMakeup",
+    "type": "float",
+    "id": 983,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEndCompProgramRelease",
+    "path": "fx.dynamics.endComp.programRelease",
+    "type": "float",
+    "id": 984,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainEnabled",
+    "path": "fx.sidechain.enabled",
+    "type": "bool",
+    "id": 985
+  },
+  {
+    "name": "FxSidechainKeyA",
+    "path": "fx.sidechain.keyA",
+    "type": "uint",
+    "id": 986,
+    "min": 0,
+    "max": 7
+  },
+  {
+    "name": "FxSidechainKeyB",
+    "path": "fx.sidechain.keyB",
+    "type": "uint",
+    "id": 987,
+    "min": 0,
+    "max": 7
+  },
+  {
+    "name": "FxSidechainKeyAWeight",
+    "path": "fx.sidechain.keyAWeight",
+    "type": "float",
+    "id": 988,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainKeyBWeight",
+    "path": "fx.sidechain.keyBWeight",
+    "type": "float",
+    "id": 989,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainAmount",
+    "path": "fx.sidechain.amount",
+    "type": "float",
+    "id": 990,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainThreshold",
+    "path": "fx.sidechain.threshold",
+    "type": "float",
+    "id": 991,
+    "min": -60,
+    "max": 0
+  },
+  {
+    "name": "FxSidechainRatio",
+    "path": "fx.sidechain.ratio",
+    "type": "float",
+    "id": 992,
+    "min": 1,
+    "max": 20
+  },
+  {
+    "name": "FxSidechainKnee",
+    "path": "fx.sidechain.knee",
+    "type": "float",
+    "id": 993,
+    "min": 0,
+    "max": 40
+  },
+  {
+    "name": "FxSidechainAttackMs",
+    "path": "fx.sidechain.attackMs",
+    "type": "float",
+    "id": 994,
+    "min": 0.1,
+    "max": 100
+  },
+  {
+    "name": "FxSidechainHoldMs",
+    "path": "fx.sidechain.holdMs",
+    "type": "float",
+    "id": 995,
+    "min": 0,
+    "max": 250
+  },
+  {
+    "name": "FxSidechainReleaseMs",
+    "path": "fx.sidechain.releaseMs",
+    "type": "float",
+    "id": 996,
+    "min": 20,
+    "max": 1500
+  },
+  {
+    "name": "FxSidechainMakeup",
+    "path": "fx.sidechain.makeup",
+    "type": "float",
+    "id": 997,
+    "min": 0.25,
+    "max": 4
+  },
+  {
+    "name": "FxSidechainMix",
+    "path": "fx.sidechain.mix",
+    "type": "float",
+    "id": 998,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainCurve",
+    "path": "fx.sidechain.curve",
+    "type": "float",
+    "id": 999,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainDetectorHp",
+    "path": "fx.sidechain.detectorHp",
+    "type": "float",
+    "id": 1000,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainDetectorLp",
+    "path": "fx.sidechain.detectorLp",
+    "type": "float",
+    "id": 1001,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainPad1Target",
+    "path": "fx.sidechain.targets.pad1",
+    "type": "float",
+    "id": 1002,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainPad2Target",
+    "path": "fx.sidechain.targets.pad2",
+    "type": "float",
+    "id": 1003,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainLead1Target",
+    "path": "fx.sidechain.targets.lead1",
+    "type": "float",
+    "id": 1004,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainLead2Target",
+    "path": "fx.sidechain.targets.lead2",
+    "type": "float",
+    "id": 1005,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainPianoTarget",
+    "path": "fx.sidechain.targets.piano",
+    "type": "float",
+    "id": 1006,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainGranularTarget",
+    "path": "fx.sidechain.targets.granular",
+    "type": "float",
+    "id": 1007,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainDelayATarget",
+    "path": "fx.sidechain.targets.delayA",
+    "type": "float",
+    "id": 1008,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainDelayBTarget",
+    "path": "fx.sidechain.targets.delayB",
+    "type": "float",
+    "id": 1009,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSidechainReverbTarget",
+    "path": "fx.sidechain.targets.reverb",
+    "type": "float",
+    "id": 1010,
+    "min": 0,
+    "max": 1
+  },
+  {
     "name": "RoutingDelayAToDelayB",
     "path": "routing.delayAToDelayB",
     "type": "float",
@@ -912,6 +2866,30 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 501,
     "min": -24,
     "max": 0
+  },
+  {
+    "name": "MasterSaturationMode",
+    "path": "master.saturationMode",
+    "type": "uint",
+    "id": 502,
+    "min": 0,
+    "max": 4
+  },
+  {
+    "name": "MasterSaturationDrive",
+    "path": "master.saturationDrive",
+    "type": "float",
+    "id": 503,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "MasterSaturationTone",
+    "path": "master.saturationTone",
+    "type": "float",
+    "id": 504,
+    "min": 0,
+    "max": 1
   },
   {
     "name": "RngSeed",

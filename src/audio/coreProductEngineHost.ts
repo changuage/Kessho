@@ -72,6 +72,8 @@ type ProductRangeState = {
 type SequencerKind = 'synth' | 'drum';
 type ProductSourceSnapshot = CoreProductSnapshot['sources'][number];
 type ProductLaneSnapshot = CoreProductSnapshot['synthLanes'][number];
+type ProductGranularVoiceSnapshot = CoreProductSnapshot['fx']['granularVoices'][number];
+type ProductParamIdName = keyof typeof KESSHO_PRODUCT_PARAM_IDS;
 type SnapshotScalar = number | boolean;
 
 type SequencerStepToggleOverride = {
@@ -1009,12 +1011,72 @@ class CoreProductEngineHost {
     }
   }
 
+  private appendGranularVoiceDiffs(
+    events: CoreProductEvent[],
+    previousVoices: ProductGranularVoiceSnapshot[],
+    nextVoices: ProductGranularVoiceSnapshot[],
+  ): void {
+    const fields: Array<[string, keyof ProductGranularVoiceSnapshot]> = [
+      ['Enabled', 'enabled'],
+      ['Mode', 'mode'],
+      ['Slice', 'slice'],
+      ['Speed', 'speed'],
+      ['ScanRate', 'scanRate'],
+      ['Reverse', 'reverse'],
+      ['Pitch', 'pitch'],
+      ['WriteFollow', 'writeFollow'],
+      ['Density', 'density'],
+      ['GrainSizeMs', 'grainSizeMs'],
+      ['Spray', 'spray'],
+      ['GrainOctaveProbability', 'grainOctaveProbability'],
+      ['AttackSeconds', 'attackSeconds'],
+      ['DecaySeconds', 'decaySeconds'],
+      ['Gain', 'gain'],
+      ['Pan', 'pan'],
+      ['Blur', 'blur'],
+      ['StereoSpread', 'stereoSpread'],
+      ['PositionLfoRate', 'positionLfoRate'],
+      ['PositionLfoDepth', 'positionLfoDepth'],
+      ['PanLfoRate', 'panLfoRate'],
+      ['ReverseLfoRate', 'reverseLfoRate'],
+      ['RecordLfoRate', 'recordLfoRate'],
+      ['EuclidGated', 'euclidGated'],
+      ['EuclidMuted', 'euclidMuted'],
+    ];
+    for (let voiceIndex = 0; voiceIndex < 4; voiceIndex += 1) {
+      const previous = previousVoices[voiceIndex];
+      const next = nextVoices[voiceIndex];
+      if (!previous || !next) continue;
+      for (const [suffix, key] of fields) {
+        const paramName = `FxGranularV${voiceIndex + 1}${suffix}` as ProductParamIdName;
+        this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS[paramName], previous[key] as SnapshotScalar, next[key] as SnapshotScalar);
+      }
+    }
+  }
+
   private appendFxRoutingMasterDiffs(
     events: CoreProductEvent[],
     previous: CoreProductSnapshot,
     next: CoreProductSnapshot,
   ): void {
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularMix, previous.fx.granularMix, next.fx.granularMix);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularEnabled, previous.fx.granularEnabled, next.fx.granularEnabled);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularFreeze, previous.fx.granularFreeze, next.fx.granularFreeze);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularFreezeWithFeedback, previous.fx.granularFreezeWithFeedback, next.fx.granularFreezeWithFeedback);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularFeedback, previous.fx.granularFeedback, next.fx.granularFeedback);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularFeedbackLpfHz, previous.fx.granularFeedbackLpfHz, next.fx.granularFeedbackLpfHz);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularBufferSeconds, previous.fx.granularBufferSeconds, next.fx.granularBufferSeconds);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularGrainShape, previous.fx.granularGrainShape, next.fx.granularGrainShape);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularBusDiffusion, previous.fx.granularBusDiffusion, next.fx.granularBusDiffusion);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularTimingRandomness, previous.fx.granularTimingRandomness, next.fx.granularTimingRandomness);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularChordBias, previous.fx.granularChordBias, next.fx.granularChordBias);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyJitterMs, previous.fx.granularLegacyJitterMs, next.fx.granularLegacyJitterMs);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyProbability, previous.fx.granularLegacyProbability, next.fx.granularLegacyProbability);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyPitchMode, previous.fx.granularLegacyPitchMode, next.fx.granularLegacyPitchMode);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyPitchSpread, previous.fx.granularLegacyPitchSpread, next.fx.granularLegacyPitchSpread);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyMaxGrains, previous.fx.granularLegacyMaxGrains, next.fx.granularLegacyMaxGrains);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyFeedback, previous.fx.granularLegacyFeedback, next.fx.granularLegacyFeedback);
+    this.appendGranularVoiceDiffs(events, previous.fx.granularVoices, next.fx.granularVoices);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayAEnabled, previous.fx.delayAEnabled, next.fx.delayAEnabled);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeLeftMs, previous.fx.delayATimeLeftMs, next.fx.delayATimeLeftMs);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeRightMs, previous.fx.delayATimeRightMs, next.fx.delayATimeRightMs);
@@ -1072,7 +1134,84 @@ class CoreProductEngineHost {
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbTransientSmooth, previous.fx.reverbTransientSmooth, next.fx.reverbTransientSmooth);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbErLpFreq, previous.fx.reverbErLpFreq, next.fx.reverbErLpFreq);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeMix, previous.fx.spectralFreezeMix, next.fx.spectralFreezeMix);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeEnabled, previous.fx.spectralFreezeEnabled, next.fx.spectralFreezeEnabled);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeActive, previous.fx.spectralFreezeActive, next.fx.spectralFreezeActive);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeSlushy, previous.fx.spectralFreezeSlushy, next.fx.spectralFreezeSlushy);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeSpeed, previous.fx.spectralFreezeSpeed, next.fx.spectralFreezeSpeed);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeDecay, previous.fx.spectralFreezeDecay, next.fx.spectralFreezeDecay);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezePhaseJitter, previous.fx.spectralFreezePhaseJitter, next.fx.spectralFreezePhaseJitter);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDrive, previous.fx.dynamicsDrive, next.fx.dynamicsDrive);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEnabled, previous.fx.dynamicsEnabled, next.fx.dynamicsEnabled);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterEnabled, previous.fx.dynamicsCharacterEnabled, next.fx.dynamicsCharacterEnabled);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterMode, previous.fx.dynamicsCharacterMode, next.fx.dynamicsCharacterMode);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterMix, previous.fx.dynamicsCharacterMix, next.fx.dynamicsCharacterMix);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterAge, previous.fx.dynamicsCharacterAge, next.fx.dynamicsCharacterAge);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterBias, previous.fx.dynamicsCharacterBias, next.fx.dynamicsCharacterBias);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterLpgAmount, previous.fx.dynamicsCharacterLpgAmount, next.fx.dynamicsCharacterLpgAmount);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterResonance, previous.fx.dynamicsCharacterResonance, next.fx.dynamicsCharacterResonance);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterStereo, previous.fx.dynamicsCharacterStereo, next.fx.dynamicsCharacterStereo);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterEnvFollow, previous.fx.dynamicsCharacterEnvFollow, next.fx.dynamicsCharacterEnvFollow);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterDepth, previous.fx.dynamicsCharacterDepth, next.fx.dynamicsCharacterDepth);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterRate, previous.fx.dynamicsCharacterRate, next.fx.dynamicsCharacterRate);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterDamp, previous.fx.dynamicsCharacterDamp, next.fx.dynamicsCharacterDamp);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeEnabled, previous.fx.dynamicsDegradeEnabled, next.fx.dynamicsDegradeEnabled);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeMix, previous.fx.dynamicsDegradeMix, next.fx.dynamicsDegradeMix);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeAge, previous.fx.dynamicsDegradeAge, next.fx.dynamicsDegradeAge);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeGeneration, previous.fx.dynamicsDegradeGeneration, next.fx.dynamicsDegradeGeneration);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeAlias, previous.fx.dynamicsDegradeAlias, next.fx.dynamicsDegradeAlias);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeWow, previous.fx.dynamicsDegradeWow, next.fx.dynamicsDegradeWow);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeFlutter, previous.fx.dynamicsDegradeFlutter, next.fx.dynamicsDegradeFlutter);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeDrift, previous.fx.dynamicsDegradeDrift, next.fx.dynamicsDegradeDrift);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeWobbleSpeed, previous.fx.dynamicsDegradeWobbleSpeed, next.fx.dynamicsDegradeWobbleSpeed);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeTone, previous.fx.dynamicsDegradeTone, next.fx.dynamicsDegradeTone);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeHp, previous.fx.dynamicsDegradeHp, next.fx.dynamicsDegradeHp);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeLp, previous.fx.dynamicsDegradeLp, next.fx.dynamicsDegradeLp);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeNoise, previous.fx.dynamicsDegradeNoise, next.fx.dynamicsDegradeNoise);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeSaturation, previous.fx.dynamicsDegradeSaturation, next.fx.dynamicsDegradeSaturation);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeCorrosion, previous.fx.dynamicsDegradeCorrosion, next.fx.dynamicsDegradeCorrosion);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationEnabled, previous.fx.dynamicsSaturationEnabled, next.fx.dynamicsSaturationEnabled);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationMode, previous.fx.dynamicsSaturationMode, next.fx.dynamicsSaturationMode);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationDrive, previous.fx.dynamicsSaturationDrive, next.fx.dynamicsSaturationDrive);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationTone, previous.fx.dynamicsSaturationTone, next.fx.dynamicsSaturationTone);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationBias, previous.fx.dynamicsSaturationBias, next.fx.dynamicsSaturationBias);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompEnabled, previous.fx.dynamicsEndCompEnabled, next.fx.dynamicsEndCompEnabled);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompThreshold, previous.fx.dynamicsEndCompThreshold, next.fx.dynamicsEndCompThreshold);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompKnee, previous.fx.dynamicsEndCompKnee, next.fx.dynamicsEndCompKnee);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompRatio, previous.fx.dynamicsEndCompRatio, next.fx.dynamicsEndCompRatio);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompAttackMs, previous.fx.dynamicsEndCompAttackMs, next.fx.dynamicsEndCompAttackMs);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompReleaseMs, previous.fx.dynamicsEndCompReleaseMs, next.fx.dynamicsEndCompReleaseMs);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompMakeup, previous.fx.dynamicsEndCompMakeup, next.fx.dynamicsEndCompMakeup);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompMix, previous.fx.dynamicsEndCompMix, next.fx.dynamicsEndCompMix);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompDetectorHp, previous.fx.dynamicsEndCompDetectorHp, next.fx.dynamicsEndCompDetectorHp);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompDetectorTilt, previous.fx.dynamicsEndCompDetectorTilt, next.fx.dynamicsEndCompDetectorTilt);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompAutoMakeup, previous.fx.dynamicsEndCompAutoMakeup, next.fx.dynamicsEndCompAutoMakeup);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompProgramRelease, previous.fx.dynamicsEndCompProgramRelease, next.fx.dynamicsEndCompProgramRelease);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainEnabled, previous.fx.sidechainEnabled, next.fx.sidechainEnabled);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyA, previous.fx.sidechainKeyA, next.fx.sidechainKeyA);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyB, previous.fx.sidechainKeyB, next.fx.sidechainKeyB);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyAWeight, previous.fx.sidechainKeyAWeight, next.fx.sidechainKeyAWeight);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyBWeight, previous.fx.sidechainKeyBWeight, next.fx.sidechainKeyBWeight);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainAmount, previous.fx.sidechainAmount, next.fx.sidechainAmount);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainThreshold, previous.fx.sidechainThreshold, next.fx.sidechainThreshold);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainRatio, previous.fx.sidechainRatio, next.fx.sidechainRatio);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainKnee, previous.fx.sidechainKnee, next.fx.sidechainKnee);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainAttackMs, previous.fx.sidechainAttackMs, next.fx.sidechainAttackMs);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainHoldMs, previous.fx.sidechainHoldMs, next.fx.sidechainHoldMs);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainReleaseMs, previous.fx.sidechainReleaseMs, next.fx.sidechainReleaseMs);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainMakeup, previous.fx.sidechainMakeup, next.fx.sidechainMakeup);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainMix, previous.fx.sidechainMix, next.fx.sidechainMix);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainCurve, previous.fx.sidechainCurve, next.fx.sidechainCurve);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainDetectorHp, previous.fx.sidechainDetectorHp, next.fx.sidechainDetectorHp);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainDetectorLp, previous.fx.sidechainDetectorLp, next.fx.sidechainDetectorLp);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainPad1Target, previous.fx.sidechainPad1Target, next.fx.sidechainPad1Target);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainPad2Target, previous.fx.sidechainPad2Target, next.fx.sidechainPad2Target);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainLead1Target, previous.fx.sidechainLead1Target, next.fx.sidechainLead1Target);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainLead2Target, previous.fx.sidechainLead2Target, next.fx.sidechainLead2Target);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainPianoTarget, previous.fx.sidechainPianoTarget, next.fx.sidechainPianoTarget);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainGranularTarget, previous.fx.sidechainGranularTarget, next.fx.sidechainGranularTarget);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainDelayATarget, previous.fx.sidechainDelayATarget, next.fx.sidechainDelayATarget);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainDelayBTarget, previous.fx.sidechainDelayBTarget, next.fx.sidechainDelayBTarget);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainReverbTarget, previous.fx.sidechainReverbTarget, next.fx.sidechainReverbTarget);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingDelayAToDelayB, previous.routing.delayAToDelayB, next.routing.delayAToDelayB);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToDelayA, previous.routing.delayBToDelayA, next.routing.delayBToDelayA);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingDelayToReverb, previous.routing.delayToReverb, next.routing.delayToReverb);
@@ -1082,6 +1221,9 @@ class CoreProductEngineHost {
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToReverb, previous.routing.delayBToReverb, next.routing.delayBToReverb);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.MasterGain, previous.master.gain, next.master.gain);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.MasterLimiterCeilingDb, previous.master.limiterCeilingDb, next.master.limiterCeilingDb);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.MasterSaturationMode, previous.master.saturationMode, next.master.saturationMode);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.MasterSaturationDrive, previous.master.saturationDrive, next.master.saturationDrive);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.MasterSaturationTone, previous.master.saturationTone, next.master.saturationTone);
   }
 
   private appendEvolutionDiffs(
