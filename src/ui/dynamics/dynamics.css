@@ -115,19 +115,11 @@
 
 .dynamics-section-card {
   background: var(--k-bg-card);
-  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
   margin-bottom: 8px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
-
-.dynamics-sidechain-card { border-color: rgba(6, 182, 212, 0.18); }
-.dynamics-preset-card { border-color: rgba(6, 182, 212, 0.16); }
-.dynamics-end-card { border-color: rgba(245, 158, 11, 0.18); }
-.dynamics-character-card { border-color: rgba(16, 185, 129, 0.16); }
-.dynamics-degrade-card { border-color: rgba(139, 92, 246, 0.16); }
-.dynamics-saturation-card { border-color: rgba(234, 179, 8, 0.18); }
 
 .dynamics-section-head {
   display: flex;

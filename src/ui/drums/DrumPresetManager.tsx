@@ -221,7 +221,7 @@ const s: Record<string, React.CSSProperties> = {
     zIndex: 9999,
   },
   dialog: {
-    background: '#1a1a2e',
+    background: '#171615',
     border: '1px solid rgba(255,255,255,0.15)',
     borderRadius: 8,
     padding: 14,

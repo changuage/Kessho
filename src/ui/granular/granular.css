@@ -12,7 +12,7 @@
 .granular-root * { box-sizing: border-box; }
 .granular-root { overflow-x: hidden; max-width: 100%; }
 .granular-root select { color-scheme: dark; }
-.granular-root select option { background: #1a1a2e; color: #e0e0e0; }
+.granular-root select option { background: #171615; color: #e0e0e0; }
 
 /* Layout — Two-panel (left: controls, right: voices) */
 .granular-root .granular-container {
@@ -231,7 +231,6 @@
 
 .granular-root .granular-section-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
 }
@@ -664,7 +663,6 @@
 
 .granular-root .granular-voice-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
   transition: border-color 0.15s ease;

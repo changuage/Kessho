@@ -252,7 +252,7 @@ export const CircleOfFifths: React.FC<CircleOfFifthsProps> = ({
           key={index}
           d={getArcPath(index, innerRadius, outerRadius)}
           fill={getSegmentColor(index)}
-          stroke="#0a0a0a"
+          stroke="#171615"
           strokeWidth={1}
           style={{ cursor: onSelectRoot ? 'pointer' : 'default' }}
           onClick={() => onSelectRoot?.(semitone)}

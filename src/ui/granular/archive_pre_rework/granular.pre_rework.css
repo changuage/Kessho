@@ -4,7 +4,7 @@
 
 /* Root scoping class */
 .granular-root {
-  --bg-base: #1a1a2e;
+  --bg-base: #0a0a0a;
   --bg-input: rgba(0, 0, 0, 0.3);
   --bg-surface: rgba(15, 25, 40, 0.95);
   --bg-elevated: rgba(255,255,255,0.05);
@@ -47,7 +47,7 @@
 .granular-root * { box-sizing: border-box; }
 .granular-root { overflow-x: hidden; max-width: 100%; }
 .granular-root select { color-scheme: dark; }
-.granular-root select option { background: #1a1a2e; color: #e0e0e0; }
+.granular-root select option { background: #0a0a0a; color: #e0e0e0; }
 
 /* Layout — Two-panel (matching DrumPage/SynthPage pattern) */
 .granular-root .granular-container {

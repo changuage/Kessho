@@ -18,7 +18,7 @@
 .reverb-root { overflow-x: hidden; max-width: 100%; }
 .reverb-root select { color-scheme: dark; }
 .reverb-root select option {
-  background: #1a1a2e;
+  background: #171615;
   color: #e0e0e0;
 }
 
@@ -131,22 +131,11 @@
 /* ── Section Card (matches granular-section-card — NO border-left accent) ── */
 .reverb-root .reverb-section-card {
   background: var(--k-bg-card);
-  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
   margin-bottom: 8px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
 }
-
-/* Per-card border colour variants (subtle, like granular) */
-.reverb-root .reverb-preset-card     { border-color: rgba(139, 92, 246, 0.16); }
-.reverb-root .reverb-core-card       { border-color: rgba(139, 92, 246, 0.18); }
-.reverb-root .reverb-modulation-card { border-color: rgba(245, 158, 11, 0.18); }
-.reverb-root .reverb-tone-card       { border-color: rgba(167, 139, 250, 0.16); }
-.reverb-root .reverb-effects-card    { border-color: rgba(244, 114, 182, 0.16); }
-.reverb-root .reverb-visualizer-card { border-color: rgba(100, 150, 200, 0.2); }
-.reverb-root .reverb-spatial-card    { border-color: rgba(52, 211, 153, 0.16); }
-.reverb-root .reverb-freeze-card     { border-color: rgba(59, 130, 246, 0.18); }
 
 /* ── Section Head (matches granular-section-head) ── */
 .reverb-root .reverb-section-head {

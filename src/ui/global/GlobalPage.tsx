@@ -1806,7 +1806,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                       {...sliderProps('sequencerMasterBPM')}
                     />
                   ) : (
-                    <div style={{ padding: '10px 12px', border: '1px solid #262626', borderRadius: '10px', background: '#141414' }}>
+                    <div style={{ padding: '10px 12px', border: '1px solid #262626', borderRadius: '10px', background: '#21201e' }}>
                       <div style={{ fontSize: '0.62rem', color: '#7f7f7f', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
                         Decoupled Transport
                       </div>
@@ -1835,7 +1835,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                   </div>
                 )}
                 <div className="harmony-grid-2">
-                  <div style={{ padding: '10px 12px', border: '1px solid #262626', borderRadius: '10px', background: '#141414' }}>
+                  <div style={{ padding: '10px 12px', border: '1px solid #262626', borderRadius: '10px', background: '#21201e' }}>
                     <div style={{ fontSize: '0.62rem', color: '#7f7f7f', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
                       Beat Phrase from BPM
                     </div>
@@ -1843,7 +1843,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                       {transportMetrics.phraseDurationFromBeatClockSec.toFixed(2)}s
                     </div>
                   </div>
-                  <div style={{ padding: '10px 12px', border: '1px solid #262626', borderRadius: '10px', background: '#141414' }}>
+                  <div style={{ padding: '10px 12px', border: '1px solid #262626', borderRadius: '10px', background: '#21201e' }}>
                     <div style={{ fontSize: '0.62rem', color: '#7f7f7f', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
                       Equivalent BPM from Phrase
                     </div>

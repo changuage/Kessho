@@ -378,16 +378,16 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     ctx.clearRect(0, 0, canvasSize, canvasSize);
     
     // EXPERIMENTAL: Draw radial gradient background that fades to transparent at edges
-    // Original was: ctx.fillStyle = '#0a0a12'; ctx.fillRect(0, 0, canvasSize, canvasSize);
+    // Original was: ctx.fillStyle = '#060606'; ctx.fillRect(0, 0, canvasSize, canvasSize);
     const bgGradient = ctx.createRadialGradient(
       centerX, centerY, 0,
       centerX, centerY, canvasSize / 2
     );
-    bgGradient.addColorStop(0, '#0a0a12');      // Dark center
-    bgGradient.addColorStop(0.7, '#0a0a12');    // Stay solid until 70%
-    bgGradient.addColorStop(0.85, 'rgba(10, 10, 18, 0.7)');  // Start fading
-    bgGradient.addColorStop(0.92, 'rgba(10, 10, 18, 0.3)');  // More transparent
-    bgGradient.addColorStop(1, 'rgba(10, 10, 18, 0)');       // Fully transparent at edge
+    bgGradient.addColorStop(0, '#100f0e');      // Dark center
+    bgGradient.addColorStop(0.7, '#100f0e');    // Stay solid until 70%
+    bgGradient.addColorStop(0.85, 'rgba(16, 15, 14, 0.7)');  // Start fading
+    bgGradient.addColorStop(0.92, 'rgba(16, 15, 14, 0.3)');  // More transparent
+    bgGradient.addColorStop(1, 'rgba(16, 15, 14, 0)');       // Fully transparent at edge
     ctx.fillStyle = bgGradient;
     ctx.beginPath();
     ctx.arc(centerX, centerY, canvasSize / 2, 0, Math.PI * 2);
@@ -1414,7 +1414,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     minHeight: '100dvh',
     height: '100dvh',
     width: '100%',
-    background: 'linear-gradient(180deg, #0a0a18 0%, #101828 40%, #182040 100%)',
+    background: 'linear-gradient(180deg, #100f0e 0%, #171615 40%, #1c1b19 100%)',
     backgroundAttachment: 'fixed',
     overflow: 'hidden',
     padding: 'calc(10px + env(safe-area-inset-top)) calc(5px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(5px + env(safe-area-inset-left))',

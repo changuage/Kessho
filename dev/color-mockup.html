@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Kessho Snowflake — Charcoal Deep vs Sepia</title>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@300&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #050505;
+  color: #F7FAFC;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
+  padding: 20px;
+}
+h1 { font-size: 18px; margin-bottom: 4px; color: #B8E0FF; font-weight: 300; }
+h2 { font-size: 11px; margin-bottom: 20px; color: rgba(232,220,196,0.4); }
+
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
+.label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; color: rgba(232,220,196,0.45); }
+.label strong { color: #B8E0FF; font-weight: 500; }
+.label .tag { display: inline-block; padding: 2px 5px; border-radius: 3px; font-size: 8px; margin-left: 4px; vertical-align: middle; background: rgba(77,216,138,0.12); color: #4DD88A; }
+
+/* Full snowflake frame */
+.sf-frame {
+  width: 100%; aspect-ratio: 9/16; max-height: 520px;
+  border-radius: 14px; overflow: hidden; position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+/* Snowflake circle */
+.sf-circle {
+  width: 65%; aspect-ratio: 1; border-radius: 50%;
+  position: relative;
+}
+
+/* SVG snowflake arms */
+.sf-circle svg { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+
+/* Play button area */
+.play-area {
+  position: absolute; top: 12%; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 10px; align-items: center;
+}
+.play-btn {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; cursor: default;
+}
+.preset-btn {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; cursor: default;
+}
+
+/* Bottom nav */
+.bottom-nav {
+  position: absolute; bottom: 8%; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 12px; align-items: center;
+}
+.nav-btn {
+  padding: 5px 12px; border-radius: 14px; font-size: 9px;
+  letter-spacing: 0.5px; cursor: default;
+  display: flex; align-items: center; gap: 4px;
+}
+
+/* Volume ring */
+.vol-ring {
+  position: absolute; width: 72%; aspect-ratio: 1; border-radius: 50%;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+}
+
+.hex-info {
+  position: absolute; bottom: 4px; left: 6px;
+  font-size: 7px; font-family: monospace; opacity: 0.25; line-height: 1.4;
+}
+
+.notes {
+  margin-top: 16px; padding: 14px; border-radius: 8px;
+  border: 1px solid rgba(232,220,196,0.06); background: rgba(16,16,16,0.5);
+  font-size: 11px; line-height: 1.7; color: rgba(232,220,196,0.55);
+}
+.notes strong { color: #B8E0FF; font-weight: 500; }
+.notes .warm { color: #E8B44A; }
+</style>
+</head>
+<body>
+
+<h1>Kessho Snowflake — Background Comparison</h1>
+<h2>Full-screen immersive view with snowflake visualization, play controls, and nav buttons.</h2>
+
+<div class="grid">
+
+<!-- ═══ CURRENT ═══ -->
+<div>
+  <div class="label"><strong>Current</strong> — Purple-Indigo</div>
+  <div class="sf-frame" style="background: linear-gradient(180deg, #0a0a18 0%, #101828 40%, #182040 100%);">
+    <!-- Play area -->
+    <div class="play-area">
+      <div class="play-btn" style="background: rgba(60,113,129,0.15); border: 1px solid rgba(60,113,129,0.3); color: rgba(232,220,196,0.7);">▶</div>
+      <div class="preset-btn" style="background: rgba(232,220,196,0.06); border: 1px solid rgba(232,220,196,0.12); color: rgba(232,220,196,0.5);">⬡</div>
+    </div>
+
+    <!-- Volume ring -->
+    <div class="vol-ring" style="border: 1px solid rgba(60,113,129,0.2); box-shadow: 0 0 20px rgba(60,113,129,0.08);"></div>
+
+    <!-- Snowflake -->
+    <div class="sf-circle" style="background: radial-gradient(circle at center, #0a0a12 0%, #0a0a12 50%, transparent 100%); box-shadow: 0 0 30px rgba(60,113,129,0.3), 0 0 60px rgba(60,113,129,0.2), 0 0 100px rgba(60,113,129,0.15), inset 0 0 40px rgba(100,150,220,0.1);">
+      <svg viewBox="0 0 200 200">
+        <!-- Arms from center -->
+        <line x1="100" y1="100" x2="100" y2="25" stroke="#E8DCC4" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
+        <line x1="100" y1="100" x2="165" y2="62" stroke="#C4724E" stroke-width="3" stroke-linecap="round" opacity="0.85"/>
+        <line x1="100" y1="100" x2="165" y2="138" stroke="#7B9A6D" stroke-width="2" stroke-linecap="round" opacity="0.85"/>
+        <line x1="100" y1="100" x2="100" y2="175" stroke="#D4A520" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
+        <line x1="100" y1="100" x2="35" y2="138" stroke="#8B5CF6" stroke-width="3.5" stroke-linecap="round" opacity="0.85"/>
+        <line x1="100" y1="100" x2="35" y2="62" stroke="#5A7B8A" stroke-width="2" stroke-linecap="round" opacity="0.85"/>
+        <!-- Prong handles -->
+        <circle cx="100" cy="25" r="5" fill="#E8DCC4" opacity="0.9"/>
+        <circle cx="165" cy="62" r="5" fill="#C4724E" opacity="0.9"/>
+        <circle cx="165" cy="138" r="5" fill="#7B9A6D" opacity="0.9"/>
+        <circle cx="100" cy="175" r="5" fill="#D4A520" opacity="0.9"/>
+        <circle cx="35" cy="138" r="5" fill="#8B5CF6" opacity="0.9"/>
+        <circle cx="35" cy="62" r="5" fill="#5A7B8A" opacity="0.9"/>
+        <!-- Center hex -->
+        <polygon points="100,93 106,96.5 106,103.5 100,107 94,103.5 94,96.5" fill="none" stroke="rgba(232,220,196,0.3)" stroke-width="1"/>
+      </svg>
+    </div>
+
+    <!-- Bottom nav -->
+    <div class="bottom-nav">
+      <div class="nav-btn" style="background: rgba(232,220,196,0.06); border: 1px solid rgba(232,220,196,0.12); color: rgba(232,220,196,0.5);">⟡ journey</div>
+      <div class="nav-btn" style="background: rgba(232,220,196,0.06); border: 1px solid rgba(232,220,196,0.12); color: rgba(232,220,196,0.5);">✲ advanced</div>
+    </div>
+    <div class="hex-info">bg: #0a0a18 → #182040<br>glass: rgba(20,20,35)</div>
+  </div>
+</div>
+
+<!-- ═══ CHARCOAL DEEP ═══ -->
+<div>
+  <div class="label"><strong>Charcoal Deep</strong> <span class="tag">rec</span></div>
+  <div class="sf-frame" style="background: linear-gradient(180deg, #060606 0%, #0a0a0a 40%, #0e0e0e 100%);">
+    <div class="play-area">
+      <div class="play-btn" style="background: rgba(60,113,129,0.15); border: 1px solid rgba(60,113,129,0.3); color: rgba(232,220,196,0.7);">▶</div>
+      <div class="preset-btn" style="background: rgba(232,220,196,0.06); border: 1px solid rgba(232,220,196,0.12); color: rgba(232,220,196,0.5);">⬡</div>
+    </div>
+    <div class="vol-ring" style="border: 1px solid rgba(60,113,129,0.2); box-shadow: 0 0 20px rgba(60,113,129,0.08);"></div>
+    <div class="sf-circle" style="background: radial-gradient(circle at center, #060606 0%, #060606 50%, transparent 100%); box-shadow: 0 0 30px rgba(60,113,129,0.35), 0 0 60px rgba(60,113,129,0.22), 0 0 100px rgba(60,113,129,0.15), inset 0 0 40px rgba(100,150,220,0.08);">
+      <svg viewBox="0 0 200 200">
+        <line x1="100" y1="100" x2="100" y2="25" stroke="#E8DCC4" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+        <line x1="100" y1="100" x2="165" y2="62" stroke="#C4724E" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+        <line x1="100" y1="100" x2="165" y2="138" stroke="#7B9A6D" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+        <line x1="100" y1="100" x2="100" y2="175" stroke="#D4A520" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+        <line x1="100" y1="100" x2="35" y2="138" stroke="#8B5CF6" stroke-width="3.5" stroke-linecap="round" opacity="0.9"/>
+        <line x1="100" y1="100" x2="35" y2="62" stroke="#5A7B8A" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+        <circle cx="100" cy="25" r="5" fill="#E8DCC4" opacity="0.95"/>
+        <circle cx="165" cy="62" r="5" fill="#C4724E" opacity="0.95"/>
+        <circle cx="165" cy="138" r="5" fill="#7B9A6D" opacity="0.95"/>
+        <circle cx="100" cy="175" r="5" fill="#D4A520" opacity="0.95"/>
+        <circle cx="35" cy="138" r="5" fill="#8B5CF6" opacity="0.95"/>
+        <circle cx="35" cy="62" r="5" fill="#5A7B8A" opacity="0.95"/>
+        <polygon points="100,93 106,96.5 106,103.5 100,107 94,103.5 94,96.5" fill="none" stroke="rgba(232,220,196,0.3)" stroke-width="1"/>
+      </svg>
+    </div>
+    <div class="bottom-nav">
+      <div class="nav-btn" style="background: rgba(232,220,196,0.05); border: 1px solid rgba(232,220,196,0.1); color: rgba(232,220,196,0.5);">⟡ journey</div>
+      <div class="nav-btn" style="background: rgba(232,220,196,0.05); border: 1px solid rgba(232,220,196,0.1); color: rgba(232,220,196,0.5);">✲ advanced</div>
+    </div>
+    <div class="hex-info">bg: #060606 → #0e0e0e<br>void — arms glow brighter</div>
+  </div>
+</div>
+
+<!-- ═══ CHARCOAL WARM ═══ -->
+<div>
+  <div class="label"><strong>Charcoal Warm</strong></div>
+  <div class="sf-frame" style="background: linear-gradient(180deg, #080706 0%, #0b0a08 40%, #100e0c 100%);">
+    <div class="play-area">
+      <div class="play-btn" style="background: rgba(60,113,129,0.15); border: 1px solid rgba(60,113,129,0.3); color: rgba(232,220,196,0.7);">▶</div>
+      <div class="preset-btn" style="background: rgba(232,220,196,0.06); border: 1px solid rgba(232,220,196,0.12); color: rgba(232,220,196,0.5);">⬡</div>
+    </div>
+    <div class="vol-ring" style="border: 1px solid rgba(60,113,129,0.2); box-shadow: 0 0 20px rgba(60,113,129,0.08);"></div>
+    <div class="sf-circle" style="background: radial-gradient(circle at center, #080706 0%, #080706 50%, transparent 100%); box-shadow: 0 0 30px rgba(60,113,129,0.32), 0 0 60px rgba(60,113,129,0.2), 0 0 100px rgba(60,113,129,0.12), inset 0 0 40px rgba(100,150,220,0.08);">
+      <svg viewBox="0 0 200 200">
+        <line x1="100" y1="100" x2="100" y2="25" stroke="#E8DCC4" stroke-width="2.5" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="165" y2="62" stroke="#C4724E" stroke-width="3" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="165" y2="138" stroke="#7B9A6D" stroke-width="2" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="100" y2="175" stroke="#D4A520" stroke-width="2.5" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="35" y2="138" stroke="#8B5CF6" stroke-width="3.5" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="35" y2="62" stroke="#5A7B8A" stroke-width="2" stroke-linecap="round" opacity="0.88"/>
+        <circle cx="100" cy="25" r="5" fill="#E8DCC4" opacity="0.92"/>
+        <circle cx="165" cy="62" r="5" fill="#C4724E" opacity="0.92"/>
+        <circle cx="165" cy="138" r="5" fill="#7B9A6D" opacity="0.92"/>
+        <circle cx="100" cy="175" r="5" fill="#D4A520" opacity="0.92"/>
+        <circle cx="35" cy="138" r="5" fill="#8B5CF6" opacity="0.92"/>
+        <circle cx="35" cy="62" r="5" fill="#5A7B8A" opacity="0.92"/>
+        <polygon points="100,93 106,96.5 106,103.5 100,107 94,103.5 94,96.5" fill="none" stroke="rgba(232,220,196,0.3)" stroke-width="1"/>
+      </svg>
+    </div>
+    <div class="bottom-nav">
+      <div class="nav-btn" style="background: rgba(232,220,196,0.05); border: 1px solid rgba(232,220,196,0.1); color: rgba(232,220,196,0.5);">⟡ journey</div>
+      <div class="nav-btn" style="background: rgba(232,220,196,0.05); border: 1px solid rgba(232,220,196,0.1); color: rgba(232,220,196,0.5);">✲ advanced</div>
+    </div>
+    <div class="hex-info">bg: #080706 → #100e0c<br>faint amber — smoked glass</div>
+  </div>
+</div>
+
+<!-- ═══ SEPIA ═══ -->
+<div>
+  <div class="label"><strong>Sepia</strong></div>
+  <div class="sf-frame" style="background: linear-gradient(180deg, #0c0a07 0%, #110e08 40%, #181408 100%);">
+    <div class="play-area">
+      <div class="play-btn" style="background: rgba(60,113,129,0.15); border: 1px solid rgba(60,113,129,0.3); color: rgba(232,220,196,0.7);">▶</div>
+      <div class="preset-btn" style="background: rgba(232,220,196,0.07); border: 1px solid rgba(232,220,196,0.13); color: rgba(232,220,196,0.5);">⬡</div>
+    </div>
+    <div class="vol-ring" style="border: 1px solid rgba(60,113,129,0.18); box-shadow: 0 0 20px rgba(60,113,129,0.08);"></div>
+    <div class="sf-circle" style="background: radial-gradient(circle at center, #0c0a07 0%, #0c0a07 50%, transparent 100%); box-shadow: 0 0 30px rgba(60,113,129,0.28), 0 0 60px rgba(60,113,129,0.18), 0 0 100px rgba(60,113,129,0.1), inset 0 0 40px rgba(100,150,220,0.06);">
+      <svg viewBox="0 0 200 200">
+        <line x1="100" y1="100" x2="100" y2="25" stroke="#E8DCC4" stroke-width="2.5" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="165" y2="62" stroke="#C4724E" stroke-width="3" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="165" y2="138" stroke="#7B9A6D" stroke-width="2" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="100" y2="175" stroke="#D4A520" stroke-width="2.5" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="35" y2="138" stroke="#8B5CF6" stroke-width="3.5" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="35" y2="62" stroke="#5A7B8A" stroke-width="2" stroke-linecap="round" opacity="0.88"/>
+        <circle cx="100" cy="25" r="5" fill="#E8DCC4" opacity="0.92"/>
+        <circle cx="165" cy="62" r="5" fill="#C4724E" opacity="0.92"/>
+        <circle cx="165" cy="138" r="5" fill="#7B9A6D" opacity="0.92"/>
+        <circle cx="100" cy="175" r="5" fill="#D4A520" opacity="0.92"/>
+        <circle cx="35" cy="138" r="5" fill="#8B5CF6" opacity="0.92"/>
+        <circle cx="35" cy="62" r="5" fill="#5A7B8A" opacity="0.92"/>
+        <polygon points="100,93 106,96.5 106,103.5 100,107 94,103.5 94,96.5" fill="none" stroke="rgba(232,220,196,0.3)" stroke-width="1"/>
+      </svg>
+    </div>
+    <div class="bottom-nav">
+      <div class="nav-btn" style="background: rgba(232,220,196,0.06); border: 1px solid rgba(232,220,196,0.1); color: rgba(232,220,196,0.5);">⟡ journey</div>
+      <div class="nav-btn" style="background: rgba(232,220,196,0.06); border: 1px solid rgba(232,220,196,0.1); color: rgba(232,220,196,0.5);">✲ advanced</div>
+    </div>
+    <div class="hex-info">bg: #0c0a07 → #181408<br>warm amber glow behind crystal</div>
+  </div>
+</div>
+
+<!-- ═══ SEPIA RICH ═══ -->
+<div>
+  <div class="label"><strong>Sepia Rich</strong></div>
+  <div class="sf-frame" style="background: linear-gradient(180deg, #0e0b06 0%, #141006 40%, #1e1806 100%);">
+    <div class="play-area">
+      <div class="play-btn" style="background: rgba(60,113,129,0.15); border: 1px solid rgba(60,113,129,0.28); color: rgba(232,220,196,0.7);">▶</div>
+      <div class="preset-btn" style="background: rgba(232,220,196,0.07); border: 1px solid rgba(232,220,196,0.13); color: rgba(232,220,196,0.5);">⬡</div>
+    </div>
+    <div class="vol-ring" style="border: 1px solid rgba(60,113,129,0.16); box-shadow: 0 0 20px rgba(60,113,129,0.06);"></div>
+    <div class="sf-circle" style="background: radial-gradient(circle at center, #0e0b06 0%, #0e0b06 50%, transparent 100%); box-shadow: 0 0 30px rgba(60,113,129,0.25), 0 0 60px rgba(60,113,129,0.15), 0 0 100px rgba(60,113,129,0.08), inset 0 0 40px rgba(100,150,220,0.05);">
+      <svg viewBox="0 0 200 200">
+        <line x1="100" y1="100" x2="100" y2="25" stroke="#E8DCC4" stroke-width="2.5" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="165" y2="62" stroke="#C4724E" stroke-width="3" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="165" y2="138" stroke="#7B9A6D" stroke-width="2" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="100" y2="175" stroke="#D4A520" stroke-width="2.5" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="35" y2="138" stroke="#8B5CF6" stroke-width="3.5" stroke-linecap="round" opacity="0.88"/>
+        <line x1="100" y1="100" x2="35" y2="62" stroke="#5A7B8A" stroke-width="2" stroke-linecap="round" opacity="0.88"/>
+        <circle cx="100" cy="25" r="5" fill="#E8DCC4" opacity="0.92"/>
+        <circle cx="165" cy="62" r="5" fill="#C4724E" opacity="0.92"/>
+        <circle cx="165" cy="138" r="5" fill="#7B9A6D" opacity="0.92"/>
+        <circle cx="100" cy="175" r="5" fill="#D4A520" opacity="0.92"/>
+        <circle cx="35" cy="138" r="5" fill="#8B5CF6" opacity="0.92"/>
+        <circle cx="35" cy="62" r="5" fill="#5A7B8A" opacity="0.92"/>
+        <polygon points="100,93 106,96.5 106,103.5 100,107 94,103.5 94,96.5" fill="none" stroke="rgba(232,220,196,0.3)" stroke-width="1"/>
+      </svg>
+    </div>
+    <div class="bottom-nav">
+      <div class="nav-btn" style="background: rgba(232,220,196,0.06); border: 1px solid rgba(232,220,196,0.1); color: rgba(232,220,196,0.5);">⟡ journey</div>
+      <div class="nav-btn" style="background: rgba(232,220,196,0.06); border: 1px solid rgba(232,220,196,0.1); color: rgba(232,220,196,0.5);">✲ advanced</div>
+    </div>
+    <div class="hex-info">bg: #0e0b06 → #1e1806<br>strong amber — candlelit crystal</div>
+  </div>
+</div>
+
+</div>
+
+<div class="notes">
+  <strong>Snowflake observations:</strong><br>
+  • <strong>Current</strong> — the blue-violet gradient makes the teal glow halo blend into the background. Arms sit in a purple haze.<br>
+  • <strong>Charcoal Deep</strong> — the teal glow halo around the circle becomes dramatically visible against pure black. The snowflake feels like it's floating in space. Each arm color pops independently. Most striking.<br>
+  • <strong>Charcoal Warm</strong> — very similar to Deep but with the faintest warmth. The cream arm and gold arm feel slightly more at home. Subtle difference.<br>
+  • <strong class="warm">Sepia</strong> — the warm background creates an interesting tension with the cool teal glow halo. The crystal feels like it's sitting in warm amber light. Cream and gold arms blend more into the warmth; the cool colors (slate, teal glow) stand out.<br>
+  • <strong class="warm">Sepia Rich</strong> — the amber is clearly visible in the gradient, especially at the bottom edge. The snowflake feels like a crystal lit by firelight. Very characterful but might compete with the snowflake's own radial gradient.
+</div>
+
+</body>
+</html>

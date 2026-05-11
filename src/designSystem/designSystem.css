@@ -1,10 +1,10 @@
 :root {
-  --k-bg-deep: #0a0a12;
-  --k-bg-top: #0a0a18;
-  --k-bg-mid: #101828;
-  --k-bg-low: #182040;
-  --k-glass: rgba(20, 20, 35, 0.5);
-  --k-glass-strong: rgba(15, 25, 40, 0.82);
+  --k-bg-deep: #100f0e;
+  --k-bg-top: #171615;
+  --k-bg-mid: #1c1b19;
+  --k-bg-low: #21201e;
+  --k-glass: rgba(22, 21, 19, 0.5);
+  --k-glass-strong: rgba(18, 17, 15, 0.82);
   --k-control: rgba(255, 255, 255, 0.055);
   --k-control-hover: rgba(255, 255, 255, 0.09);
   --k-border: rgba(247, 250, 252, 0.12);
@@ -25,11 +25,11 @@
   --tab-global: #5A9CFF;
   --tab-synth: #E07A84;
   --tab-drums: #A870E8;
-  --tab-earth: #4DD88A;
+  --tab-earth: #6AAE82;
   --tab-granular: #E8B44A;
-  --tab-delay: #32C8C8;
+  --tab-delay: #5EA8A6;
   --tab-dynamics: #CC7DB8;
-  --tab-reverb: #D49660;
+  --tab-reverb: #B0785A;
   --tab-routing: #7ABFE8;
   --k-radius-card: 8px;
   --k-radius-control: 6px;
@@ -37,9 +37,9 @@
   --k-shadow-glow: 0 0 14px color-mix(in srgb, var(--page-accent, var(--k-icy)) 26%, transparent);
 
   /* ── Unified background hierarchy ── */
-  --k-bg-card: rgba(12, 18, 30, 0.85);
-  --k-bg-panel: rgba(12, 18, 30, 0.75);
-  --k-bg-tab: rgba(12, 18, 30, 0.6);
+  --k-bg-card: rgba(18, 17, 15, 0.85);
+  --k-bg-panel: rgba(18, 17, 15, 0.75);
+  --k-bg-tab: rgba(18, 17, 15, 0.6);
   --k-bg-inset: rgba(0, 0, 0, 0.2);
 
   --fx-card-bg:
@@ -319,7 +319,7 @@
 #root .global-root .global-card,
 #root .global-root .harmony-card {
   background: var(--fx-card-bg);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid color-mix(in srgb, var(--engine-accent, var(--page-accent, var(--k-icy))) 24%, rgba(255, 255, 255, 0.08));
   border-radius: var(--k-radius-card);
   box-shadow: var(--k-shadow-glass);
   backdrop-filter: blur(10px);
@@ -333,7 +333,7 @@
 #root .delay-root .delay-source-preset-bar,
 #root .earth-root .earth-kit-preset-bar {
   background: var(--k-bg-card);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid color-mix(in srgb, var(--engine-accent, var(--page-accent, var(--k-icy))) 24%, rgba(255, 255, 255, 0.08));
   border-radius: var(--k-radius-card);
   box-shadow: none;
   backdrop-filter: blur(10px);

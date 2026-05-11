@@ -15,7 +15,7 @@
 /* Force dark dropdowns */
 .synth-root select { color-scheme: dark; }
 .synth-root select option {
-  background: #1a1a2e;
+  background: #171615;
   color: #e0e0e0;
 }
 

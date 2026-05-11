@@ -44,7 +44,7 @@ const GLOW_BLUR = 12;               // Blur radius for glow effects
 
 // Refined color palette - warm, organic tones inspired by Snowflake UI
 const COLORS = {
-  background: '#0a0a12',
+  background: '#100f0e',
   // Node colors
   emptySlot: 'rgba(255, 255, 255, 0.08)',
   emptySlotBorder: 'rgba(255, 255, 255, 0.2)',
@@ -65,13 +65,13 @@ const COLORS = {
   endGlow: 'rgba(220, 235, 255, 0.6)',  // Icy blue glow
   text: '#E8DCC4',                   // Warm cream text
   textMuted: 'rgba(232, 220, 196, 0.5)',
-  textDark: '#1a1a2e',
+  textDark: '#171615',
   // Center node
   centerNode: 'rgba(184, 224, 255, 0.9)',  // Icy snowflake blue
   centerNodeBorder: '#B8E0FF',             // Icy snowflake blue
   centerNodePlaying: '#B8E0FF',            // Icy snowflake blue
   // Popups
-  popup: 'rgba(20, 20, 35, 0.5)',
+  popup: 'rgba(22, 21, 19, 0.5)',
   popupBorder: 'rgba(232, 220, 196, 0.3)',
   popupGlow: 'rgba(232, 220, 196, 0.1)',
   // Diamond frame

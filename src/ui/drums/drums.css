@@ -15,7 +15,7 @@
 /* Force dark dropdown menus (browser native option elements) */
 .drum-root select { color-scheme: dark; }
 .drum-root select option {
-  background: #1a1a2e;
+  background: #171615;
   color: #e0e0e0;
 }
 .drum-root select option:checked {

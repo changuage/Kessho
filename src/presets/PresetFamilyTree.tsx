@@ -215,7 +215,7 @@ const treeStyles = {
     zIndex: 10000,
   },
   confirmBox: {
-    background: '#1a1a2e',
+    background: '#171615',
     border: '1px solid rgba(255,255,255,0.2)',
     borderRadius: 8,
     padding: '16px 20px',
@@ -332,7 +332,7 @@ const treeStyles = {
   // Tooltip
   tooltip: {
     position: 'fixed' as const,
-    background: '#1a1a2e',
+    background: '#171615',
     border: '1px solid rgba(255,255,255,0.2)',
     borderRadius: 6,
     padding: '6px 10px',
@@ -355,7 +355,7 @@ const treeStyles = {
     zIndex: 9999,
   },
   dialog: {
-    background: '#1a1a2e',
+    background: '#171615',
     border: '1px solid rgba(255,255,255,0.15)',
     borderRadius: 8,
     padding: 16,

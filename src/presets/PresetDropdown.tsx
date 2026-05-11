@@ -104,7 +104,7 @@ const dropdownStyles: Record<string, React.CSSProperties> = {
     zIndex: 9999,
   },
   savePanel: {
-    background: '#1a1a2e',
+    background: '#171615',
     border: '1px solid rgba(255,255,255,0.15)',
     borderRadius: '8px',
     padding: '16px',

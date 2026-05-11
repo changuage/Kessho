@@ -152,7 +152,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     minHeight: '100dvh',
     height: '100dvh',
     // Match SnowflakeUI background gradient
-    background: 'linear-gradient(180deg, #0a0a18 0%, #101828 40%, #182040 100%)',
+    background: 'linear-gradient(180deg, #100f0e 0%, #171615 40%, #1c1b19 100%)',
     backgroundAttachment: 'fixed',
     display: 'flex',
     flexDirection: 'column',
