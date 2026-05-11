@@ -754,9 +754,6 @@ function transportFromState(state: Record<string, unknown> | undefined): CorePro
     };
   }
   const metrics = getTransportMetrics(state as Partial<SliderState>);
-  const soundscapeAssets = soundscapeSource?.enabled
-    ? getCoreProductSoundscapeAssetDescriptorsForState(sliderState)
-    : [];
 
   return {
     running: false,
@@ -1200,6 +1197,9 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   const sources = SOURCE_ORDER.map((sourceId) => sourceFromState(sourceId, sliderState));
   const delayBSendActive = sources.some((source) => source.delayBSend > 0.0001);
   const soundscapeSource = sources.find((source) => source.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape);
+  const soundscapeAssets = soundscapeSource?.enabled
+    ? getCoreProductSoundscapeAssetDescriptorsForState(sliderState)
+    : [];
   const rngSeed = rngSeedFromState(sliderState);
   const granularEnabled = booleanFromState(sliderState, 'granularEnabled', false);
   const delayAEnabled = booleanFromState(sliderState, 'delayAEnabled', true);
