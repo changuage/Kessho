@@ -5,6 +5,7 @@ const root = process.cwd();
 
 const productFiles = [
   'src/audio/coreProductAssets.ts',
+  'src/audio/CoreProductFallbackDiagnostics.ts',
   'src/audio/coreProductEngineHost.ts',
   'src/audio/coreProductEvents.ts',
   'src/audio/coreProductRuntime.ts',
@@ -44,6 +45,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['./coreProductAssets', 'product module'],
   ['./coreProductAssetManifest.json', 'versioned Product asset manifest'],
   ['./coreProductEvents', 'product module'],
+  ['./CoreProductFallbackDiagnostics', 'product runtime fallback diagnostics'],
   ['./coreProductRuntime', 'product module'],
   ['./coreProductSnapshot', 'product module'],
   ['./coreProductTelemetry', 'product module'],
@@ -103,5 +105,20 @@ assert(snapshot.includes("from './lead4opfm'"), 'Lead exact patch bridge import 
 assert(bridgePolicy.includes('TEMP_COMPAT_WEB_REFERENCE'), 'temporary web reference bridge must have a documented policy');
 assert(doc.includes('Forbidden Production Imports'), 'reference isolation doc must classify forbidden imports');
 assert(doc.includes('lead4opfm'), 'reference isolation doc must classify the temporary Lead bridge import');
+for (const token of [
+  '| Import path | Current reason | Owner | Classification | Replacement C++ Product Core owner | Retirement condition | Target removal phase |',
+  'CANONICAL_GENERATED_SCHEMA_HELPER',
+  'TEMP_COMPAT_WEB_REFERENCE',
+  'TEMP_COMPAT_NATIVE_REFERENCE',
+  'TEST_ONLY_REFERENCE',
+  'DEPRECATED_BRIDGE_FIELD',
+  'FORBIDDEN_FOR_CORE_PRODUCT',
+  './CoreProductFallbackDiagnostics',
+]) {
+  assert(doc.includes(token), `reference isolation doc is missing ${token}`);
+}
+for (const specifier of classifiedRuntimeAllowlist.keys()) {
+  assert(doc.includes(`\`${specifier}\``), `reference isolation doc does not classify allowlisted import ${specifier}`);
+}
 
 console.log('Kessho Product reference isolation checks passed');

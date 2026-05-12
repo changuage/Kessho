@@ -24,6 +24,7 @@ const pushSection = sectionBetween(workflow, 'push:', '\njobs:');
 
 const requiredPaths = [
   'cpp/KesshoCore/**',
+  'src/audio/CoreProduct*',
   'src/audio/coreProduct*',
   'src/audio/generated/**',
   'src/App.tsx',

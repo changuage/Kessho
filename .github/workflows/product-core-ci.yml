@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'cpp/KesshoCore/**'
+      - 'src/audio/CoreProduct*'
       - 'src/audio/coreProduct*'
       - 'src/audio/generated/**'
       - 'src/App.tsx'
@@ -30,6 +31,7 @@ on:
   push:
     paths:
       - 'cpp/KesshoCore/**'
+      - 'src/audio/CoreProduct*'
       - 'src/audio/coreProduct*'
       - 'src/audio/generated/**'
       - 'src/App.tsx'

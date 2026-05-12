@@ -15,11 +15,62 @@ function assert(condition, message) {
 
 const enginePath = 'cpp/KesshoCore/src/product/KesshoProductEngine.cpp';
 const engine = read(enginePath);
+const lineCount = (path) => read(path).split('\n').length;
 const engineLineCount = engine.split('\n').length;
 assert(
   engineLineCount <= 450,
   `Product engine glue file is too large after componentization (${engineLineCount} lines)`,
 );
+
+const internalHeaderPath = 'cpp/KesshoCore/src/product/KesshoProductEngineInternal.h';
+const internalHeader = read(internalHeaderPath);
+assert(
+  lineCount(internalHeaderPath) <= 80,
+  `Product internal aggregate header is too large (${lineCount(internalHeaderPath)} lines)`,
+);
+assert(
+  internalHeader.includes('#include "ProductState.h"'),
+  'Product internal aggregate header must delegate to focused state/contract headers',
+);
+for (const forbidden of [
+  'struct SourceState',
+  'struct FxState',
+  'struct LaneState',
+  'struct Voice',
+  'struct KesshoProductEngine {',
+  'inline float',
+]) {
+  assert(!internalHeader.includes(forbidden), `${internalHeaderPath} still owns catch-all content: ${forbidden}`);
+}
+
+const focusedHeaders = [
+  ['cpp/KesshoCore/src/product/ProductConstants.h', 220],
+  ['cpp/KesshoCore/src/product/ProductMath.h', 140],
+  ['cpp/KesshoCore/src/product/ProductForwardDecls.h', 80],
+  ['cpp/KesshoCore/src/product/ProductTransportState.h', 80],
+  ['cpp/KesshoCore/src/product/ProductVoiceState.h', 180],
+  ['cpp/KesshoCore/src/product/ProductFxState.h', 260],
+  ['cpp/KesshoCore/src/product/ProductModulationState.h', 80],
+  ['cpp/KesshoCore/src/product/ProductPresetBridge.h', 140],
+  ['cpp/KesshoCore/src/product/ProductSequencerState.h', 120],
+  ['cpp/KesshoCore/src/product/ProductBuffers.h', 80],
+  ['cpp/KesshoCore/src/product/ProductState.h', 540],
+];
+
+for (const [path, maxLines] of focusedHeaders) {
+  const source = read(path);
+  assert(source.includes('#pragma once'), `${path} must be a focused include-guarded header`);
+  assert(lineCount(path) <= maxLines, `${path} exceeds its focused header size cap (${lineCount(path)} > ${maxLines})`);
+  assert(!source.includes('KesshoProductEngine::'), `${path} must not contain Product Core method implementations`);
+}
+
+const secondStageCaps = [
+  ['cpp/KesshoCore/src/product/sources/ProductSources.cpp', 650],
+  ['cpp/KesshoCore/src/product/fx/ProductFx.cpp', 760],
+];
+for (const [path, maxLines] of secondStageCaps) {
+  assert(lineCount(path) <= maxLines, `${path} is becoming a second-stage monolith (${lineCount(path)} > ${maxLines})`);
+}
 
 const allowedEngineMethods = new Set([
   'KesshoProductEngine',

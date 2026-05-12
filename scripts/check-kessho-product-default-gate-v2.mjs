@@ -25,6 +25,29 @@ function sourceSlice(source, startToken, endToken) {
   return source.slice(start, end);
 }
 
+function gateRow(requirement) {
+  const escaped = requirement.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`\\| ${escaped} \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|`).exec(defaultGateDoc);
+  assert(match, `Product Default Gate v2 matrix is missing ${requirement}`);
+  return {
+    status: match[1].trim(),
+    evidence: match[2].trim(),
+    blocker: match[3].trim(),
+  };
+}
+
+function assertNotPassingWhenStatusIncomplete(statusDocToken, requirement) {
+  if (!statusDoc.includes(statusDocToken)) {
+    return;
+  }
+  const row = gateRow(requirement);
+  assert(
+    ['BLOCKED', 'DEFERRED', 'NOT_REQUIRED'].includes(row.status),
+    `${requirement} must be BLOCKED, DEFERRED, or NOT_REQUIRED while migration status includes: ${statusDocToken}`,
+  );
+  assert(row.blocker !== '-', `${requirement} must explain its blocker while migration status lists it as incomplete`);
+}
+
 const app = read('src/App.tsx');
 const globalPage = read('src/ui/global/GlobalPage.tsx');
 const packageJson = readJson('package.json');
@@ -68,6 +91,10 @@ const requiredDocTokens = [
   'core:readiness:browser',
   'core:product:native-release-smoke',
   'Product Core componentization complete',
+  'Internal header decomposition complete',
+  'Second-stage mega-file split or size cap',
+  'Web adapter split or size cap',
+  'Compatibility import retirement audit',
   'Exact patch bridge classification and retirement path exists',
   'Snapshot adapter authority audit passes',
   'Host state reconciliation tests pass',
@@ -77,6 +104,9 @@ const requiredDocTokens = [
   'Generated ABI hygiene gate passes',
   'WASM artifact integrity gate passes',
   'Product Core GitHub Actions workflow passes',
+  'Status/default-gate consistency lint passes',
+  'Gate quality classification exists',
+  'Behavioral cleanup proof gates pass',
   'Behavioral test quality gates pass',
   'Pad preset family probes pass',
   'Broader Lead preset probes pass',
@@ -86,6 +116,7 @@ const requiredDocTokens = [
   'Sequencer dice/evolve/reset-home state exports to UI',
   'sequencer UI state copy API',
   'Deterministic music engine closure passes',
+  'Journey morph ownership passes',
   'FX/dynamics/master depth closure passes',
   'Native release proof passes or native default is explicitly deferred with a signed-off blocker',
   'p95/p99 CPU, underrun, heap, and asset-memory gates pass',
@@ -105,9 +136,47 @@ for (const token of [
   'Product Default Gate v2',
   'web-default-deferred',
   'core:product:default-gate-v2',
+  'Product Core GitHub workflow/browser-readiness evidence',
+  'further web adapter decomposition',
 ]) {
   assert(statusDoc.includes(token), `migration status doc is missing ${token}`);
 }
+
+assert(gateRow('Native release proof passes or native default is explicitly deferred with a signed-off blocker').status === 'DEFERRED',
+  'native release proof must stay DEFERRED while native-default-deferred is present',
+);
+assert(gateRow('Status/default-gate consistency lint passes').status === 'PASS',
+  'status/default-gate consistency lint row must pass when this script passes',
+);
+
+assertNotPassingWhenStatusIncomplete(
+  'Product Core GitHub workflow/browser-readiness evidence',
+  'Product Core GitHub Actions workflow passes',
+);
+assertNotPassingWhenStatusIncomplete(
+  'Product Core GitHub workflow/browser-readiness evidence',
+  'Behavioral test quality gates pass',
+);
+assertNotPassingWhenStatusIncomplete(
+  'further web adapter decomposition',
+  'Web adapter split or size cap',
+);
+assertNotPassingWhenStatusIncomplete(
+  'broader Lead/scene/full-arrangement parity',
+  'Broader Lead preset probes pass',
+);
+assertNotPassingWhenStatusIncomplete(
+  'broader Lead/scene/full-arrangement parity',
+  'Representative scene/full-arrangement probes pass',
+);
+assertNotPassingWhenStatusIncomplete(
+  'deterministic music/journey ownership closure',
+  'Deterministic music engine closure passes',
+);
+assertNotPassingWhenStatusIncomplete(
+  'deterministic music/journey ownership closure',
+  'Journey morph ownership passes',
+);
 
 assert(
   packageJson.scripts?.['core:product:default-gate-v2'] ===

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 const root = process.cwd();
 const host = readFileSync(resolve(root, 'src/audio/coreProductEngineHost.ts'), 'utf8');
+const fallbackDiagnostics = readFileSync(resolve(root, 'src/audio/CoreProductFallbackDiagnostics.ts'), 'utf8');
 const doc = readFileSync(resolve(root, 'docs/kessho-product-placeholder-getter-classification.md'), 'utf8');
 const app = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
 const globalPage = readFileSync(resolve(root, 'src/ui/global/GlobalPage.tsx'), 'utf8');
@@ -63,11 +64,11 @@ for (const token of [
   "'reference-only-web-ts-behavior'",
   "'temporary-missing-product-telemetry'",
 ]) {
-  assert(host.includes(token), `placeholder getter classification code is missing ${token}`);
+  assert(fallbackDiagnostics.includes(token), `placeholder getter classification code is missing ${token}`);
 }
 
 for (const getter of getters) {
-  assert(host.includes(`${getter}: {`), `placeholder getter ${getter} is not classified in code`);
+  assert(fallbackDiagnostics.includes(`${getter}: {`), `placeholder getter ${getter} is not classified in code`);
   assert(doc.includes(`\`${getter}\``), `placeholder getter ${getter} is not classified in docs`);
   assert(
     host.includes(`classifiedPlaceholderGetter('${getter}'`) ||

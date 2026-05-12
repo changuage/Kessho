@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 const root = process.cwd();
 const host = readFileSync(resolve(root, 'src/audio/coreProductEngineHost.ts'), 'utf8');
+const fallbackDiagnostics = readFileSync(resolve(root, 'src/audio/CoreProductFallbackDiagnostics.ts'), 'utf8');
 const appRuntime = readFileSync(resolve(root, 'src/audio/runtime.ts'), 'utf8');
 const app = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
 const doc = readFileSync(resolve(root, 'docs/kessho-product-runtime-fallback-classification.md'), 'utf8');
@@ -23,18 +24,18 @@ function assert(condition, message) {
   }
 }
 
-function methodBody(name) {
+function methodBody(source, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const definition = new RegExp(`(?:^|\\n)\\s*(?:function\\s+)?(?:private\\s+)?(?:async\\s+)?${escaped}\\s*\\(`).exec(host);
+  const definition = new RegExp(`(?:^|\\n)\\s*(?:export\\s+)?(?:function\\s+)?(?:private\\s+)?(?:async\\s+)?${escaped}\\s*\\(`).exec(source);
   assert(definition, `missing ${name}()`);
-  const open = host.indexOf('{', definition.index);
+  const open = source.indexOf('{', definition.index);
   let depth = 0;
-  for (let index = open; index < host.length; index += 1) {
-    const char = host[index];
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
     if (char === '{') depth += 1;
     if (char === '}') {
       depth -= 1;
-      if (depth === 0) return host.slice(open + 1, index);
+      if (depth === 0) return source.slice(open + 1, index);
     }
   }
   throw new Error(`${name}() body was not balanced`);
@@ -79,20 +80,20 @@ for (const token of [
   'runtimeFallbackIsDevelopmentError(classification',
   'reportRuntimeFallback(method:',
 ]) {
-  assert(host.includes(token), `runtime fallback classifier is missing ${token}`);
+  assert(`${host}\n${fallbackDiagnostics}`.includes(token), `runtime fallback classifier is missing ${token}`);
 }
 
-const classifyBody = methodBody('classifyCoreProductRuntimeFallback');
+const classifyBody = methodBody(fallbackDiagnostics, 'classifyCoreProductRuntimeFallback');
 assert(classifyBody.includes("property.startsWith('get')"), 'getter fallbacks must be explicitly classified');
 assert(classifyBody.includes("'temporary-missing-product-telemetry'"), 'telemetry/debug getter fallbacks must be classified');
 assert(classifyBody.includes("'safe-visual-fallback'"), 'safe visual getter fallbacks must be classified');
 assert(classifyBody.includes('/^(set|update|reset|dice|start|stop|resume|suspend|trigger|push|load|register|ensure|audition)/'), 'audio-critical method prefixes must be forbidden');
 assert(classifyBody.includes("'reference-only-web-ts-behavior'"), 'non-critical legacy fallback classification must exist');
 
-const devErrorBody = methodBody('runtimeFallbackIsDevelopmentError');
+const devErrorBody = methodBody(fallbackDiagnostics, 'runtimeFallbackIsDevelopmentError');
 assert(devErrorBody.includes("classification === 'forbidden-production-fallback'"), 'only forbidden production fallbacks should throw in development');
 
-const reportBody = methodBody('reportRuntimeFallback');
+const reportBody = methodBody(host, 'reportRuntimeFallback');
 for (const token of [
   'this.unsupportedControlCount += 1',
   'this.reportedRuntimeFallbacks.has(method)',
@@ -113,7 +114,7 @@ for (const token of [
   assert(proxyBody.includes(token), `core-product proxy fallback is missing ${token}`);
 }
 
-const rangeBody = methodBody('reportUnsupportedRangeKey');
+const rangeBody = methodBody(host, 'reportUnsupportedRangeKey');
 assert(rangeBody.includes('forbidden-production-fallback'), 'unmapped modulation range keys must be classified as forbidden production fallbacks');
 assert(rangeBody.includes('this.unsupportedControlCount += 1'), 'unmapped modulation range keys must increment diagnostics');
 

@@ -14,6 +14,7 @@ function assert(condition, message) {
 }
 
 const host = read('src/audio/coreProductEngineHost.ts');
+const fallbackDiagnostics = read('src/audio/CoreProductFallbackDiagnostics.ts');
 const runtime = read('src/audio/coreProductRuntime.ts');
 const appRuntime = read('src/audio/runtime.ts');
 const app = read('src/App.tsx');
@@ -24,6 +25,15 @@ const assets = `${read('src/audio/coreProductAssets.ts')}\n${read('src/audio/cor
 const generatedSchema = read('src/audio/generated/kesshoProductSchema.ts');
 const worklet = read('public/worklets/kessho-core-product.worklet.js');
 const manifest = read('scripts/kessho-core-build-manifest.mjs');
+
+const lineCount = (source) => source.split('\n').length;
+assert(lineCount(host) <= 2500, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
+assert(lineCount(snapshot) <= 1900, `coreProductSnapshot.ts exceeds cleanup size cap (${lineCount(snapshot)} lines)`);
+assert(
+  fallbackDiagnostics.includes('classifyCoreProductRuntimeFallback') &&
+    fallbackDiagnostics.includes('CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS'),
+  'CoreProductFallbackDiagnostics.ts must own fallback and placeholder classification data',
+);
 
 for (const token of [
   'updateParams(sliderState: Record<string, unknown>): void',
@@ -537,6 +547,7 @@ const hostImportAllowlist = new Set([
   '../native/capacitorMidiRouting',
   './coreMidiEvents',
   './coreProductAssets',
+  './CoreProductFallbackDiagnostics',
   './coreProductEvents',
   './coreProductRuntime',
   './coreProductSnapshot',
