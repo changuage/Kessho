@@ -69,5 +69,9 @@ assert(
   workflow.includes('actions/setup-node@v4') && workflow.includes('node-version: 24'),
   'Product Core workflow must pin the Node version used by local Product Core scripts',
 );
+assert(
+  workflow.includes('brew install emscripten'),
+  'Product Core workflow must install Emscripten before running WASM build checks on macOS',
+);
 
 console.log('Kessho Product workflow contract checks passed');
