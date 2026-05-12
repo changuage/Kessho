@@ -26,6 +26,7 @@ const requiredPaths = [
   'cpp/KesshoCore/**',
   'src/audio/coreProduct*',
   'src/audio/generated/**',
+  'src/App.tsx',
   'public/worklets/kessho-core-product.worklet.js',
   'public/worklets/kessho_core.wasm',
   'scripts/check-kessho-product*',
