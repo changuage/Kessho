@@ -84,12 +84,13 @@ requireTokens('docs/kessho-product-source-parity-broadening.md', [
 ]);
 
 const packageJson = read('package.json');
+const productCiRunner = read('scripts/run-kessho-product-ci.mjs');
 assert(
   packageJson.includes('"core:product:source-parity"'),
   'package.json must expose core:product:source-parity',
 );
 assert(
-  packageJson.includes('npm run core:product:source-parity'),
+  productCiRunner.includes("'core:product:source-parity'"),
   'core:product:ci must run the source parity broadening gate',
 );
 
