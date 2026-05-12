@@ -99,7 +99,7 @@ run(findCompiler(), [
   '-sSTANDALONE_WASM=1',
   '-sALLOW_MEMORY_GROWTH=1',
   '-sINITIAL_MEMORY=67108864',
-  '-sMAXIMUM_MEMORY=268435456',
+  '-sMAXIMUM_MEMORY=402653184',
   formatEmscriptenExportedFunctions(),
   '-o',
   wasmOutput,

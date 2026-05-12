@@ -151,6 +151,7 @@ const swiftAssets = read('KesshoNativeSwift/Kessho/CoreBridge/KesshoProductCoreA
 const productAssetTests = read('cpp/KesshoCore/tests/ProductAssetTests.cpp');
 const doc = read('docs/kessho-product-asset-manifest-decode-matrix.md');
 const statusDoc = read('docs/kessho-product-core-migration-status.md');
+const wasmBuildScript = read('scripts/build-kessho-core-wasm.mjs');
 
 assert(manifest.schema === 'kessho-product-assets-v1', 'asset manifest schema mismatch');
 assert(manifest.version === 1, 'asset manifest version mismatch');
@@ -224,6 +225,10 @@ assert(manifest.memoryBudgets.startupPreloadDecodedBytes <= 256 * 1024 * 1024, '
 assert(manifest.memoryBudgets.totalRegisteredDecodedBytes <= 384 * 1024 * 1024, 'registered decoded budget exceeds 384 MiB');
 assert(manifest.memoryBudgets.webWorkletHeapBytes <= 384 * 1024 * 1024, 'web worklet heap budget exceeds 384 MiB');
 assert(manifest.memoryBudgets.wasmBaseHeapBytes <= manifest.memoryBudgets.webWorkletHeapBytes, 'base WASM heap budget exceeds web worklet heap budget');
+assert(
+  wasmBuildScript.includes(`'-sMAXIMUM_MEMORY=${manifest.memoryBudgets.webWorkletHeapBytes}'`),
+  'WASM maximum memory must match the Product Core web worklet heap budget',
+);
 
 const preloadPianoIndexes = new Set(manifest.piano.preloadMidiNotes.map(nearestPianoSampleIndex));
 const preloadPianoInfos = pianoRegularInfos.filter((_info, index) => preloadPianoIndexes.has(index + 1));
