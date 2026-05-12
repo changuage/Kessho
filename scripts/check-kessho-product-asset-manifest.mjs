@@ -7,6 +7,32 @@ const wasmPath = 'public/worklets/kessho_core.wasm';
 const oggContinuedGranule = 0xffffffffffffffffn;
 const float32Bytes = Float32Array.BYTES_PER_ELEMENT;
 
+function escapeGithubAnnotation(value) {
+  return String(value)
+    .replace(/%/g, '%25')
+    .replace(/\r/g, '%0D')
+    .replace(/\n/g, '%0A');
+}
+
+function reportFailure(error) {
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    const message = error instanceof Error ? error.message : error;
+    console.error(`::error title=Product asset manifest gate failed::${escapeGithubAnnotation(message)}`);
+  }
+}
+
+process.on('uncaughtException', (error) => {
+  reportFailure(error);
+  console.error(error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (error) => {
+  reportFailure(error);
+  console.error(error);
+  process.exit(1);
+});
+
 function read(path) {
   return readFileSync(resolve(root, path), 'utf8');
 }
