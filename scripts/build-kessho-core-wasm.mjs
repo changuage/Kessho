@@ -45,6 +45,17 @@ function firstExisting(candidates) {
 
 function buildEnv() {
   const emsdkRoot = resolve(root, 'emsdk');
+  const localEmscriptenBin = resolve(emsdkRoot, 'upstream/emscripten');
+  const env = {
+    ...process.env,
+    EMCC_SKIP_SANITY_CHECK: '1',
+    EMCC_CORES: '1',
+  };
+
+  if (!existsSync(localEmscriptenBin)) {
+    return env;
+  }
+
   const pythonBin = firstExisting([
     resolve(root, 'emsdk/python/3.13.3_64bit/bin'),
     resolve(root, '.python312/bin'),
@@ -52,16 +63,14 @@ function buildEnv() {
   const nodeBin = firstExisting([
     resolve(root, 'emsdk/node/22.16.0_64bit/bin'),
   ]);
-  const pathPrefix = [pythonBin, nodeBin, resolve(root, 'emsdk/upstream/emscripten')]
+  const pathPrefix = [pythonBin, nodeBin, localEmscriptenBin]
     .filter(Boolean)
     .join(':');
 
   return {
-    ...process.env,
+    ...env,
     EMSDK: emsdkRoot,
     EM_CONFIG: resolve(emsdkRoot, '.emscripten'),
-    EMCC_SKIP_SANITY_CHECK: '1',
-    EMCC_CORES: '1',
     PATH: `${pathPrefix}:${process.env.PATH || ''}`,
   };
 }

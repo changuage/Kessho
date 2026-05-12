@@ -30,6 +30,7 @@ const requiredPaths = [
   'public/worklets/kessho-core-product.worklet.js',
   'public/worklets/kessho_core.wasm',
   'scripts/check-kessho-product*',
+  'scripts/build-kessho-core-wasm.mjs',
   'scripts/generate-kessho-product-bindings.mjs',
   'KesshoNativeSwift/CoreBridge/**',
   'KesshoNativeSwift/Generated/**',
