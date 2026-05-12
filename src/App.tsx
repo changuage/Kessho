@@ -122,7 +122,6 @@ const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
 const DynamicsPage = React.lazy(() => import('./ui/dynamics/DynamicsPage'));
 const RoutingPage = React.lazy(() => import('./ui/routing/RoutingPage'));
 const EarthPage = React.lazy(() => import('./ui/earth/EarthPage'));
-const SnowflakeGeneratorPage = React.lazy(() => import('./ui/snowflakeGenerator/SnowflakeGeneratorPage'));
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -1917,9 +1916,6 @@ const App: React.FC = () => {
   
   const isSnowflakePrototypeRoute = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).get('snowflakePrototype') === '1'
-    : false;
-  const isSnowflakeGeneratorRoute = typeof window !== 'undefined'
-    ? new URLSearchParams(window.location.search).get('snowflakeGenerator') === '1'
     : false;
   const startInAdvancedEditor = useMemo(() => shouldStartInAdvancedEditor(), []);
 
@@ -6820,27 +6816,6 @@ const App: React.FC = () => {
       return nextState ?? prev;
     });
   }, []);
-
-  if (isSnowflakeGeneratorRoute) {
-    const clearGeneratorRoute = () => {
-      if (typeof window === 'undefined') return;
-      const params = new URLSearchParams(window.location.search);
-      params.delete('snowflakeGenerator');
-      const query = params.toString();
-      window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
-    };
-
-    return (
-      <React.Suspense fallback={LAZY_PAGE_FALLBACK}>
-        <SnowflakeGeneratorPage
-          onBack={() => {
-            clearGeneratorRoute();
-            setUiMode('snowflake');
-          }}
-        />
-      </React.Suspense>
-    );
-  }
 
   if (isSnowflakePrototypeRoute) {
     const clearPrototypeRoute = () => {
