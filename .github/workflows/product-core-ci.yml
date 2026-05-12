@@ -24,8 +24,6 @@ on:
       - 'package-lock.json'
       - '.github/workflows/product-core-ci.yml'
   push:
-    branches:
-      - main
     paths:
       - 'cpp/KesshoCore/**'
       - 'src/audio/coreProduct*'
