@@ -61,6 +61,7 @@ wasm/lead-fm/_ts1.txt
 SampleTransients/
 public/samples/*
 !public/samples/Alps Birds 2_noiseremoval_441_m.ogg
+!public/samples/Alps Birds_441_m_normalized.ogg
 !public/samples/Fujian Birds 2_441_m_normalized.ogg
 !public/samples/Fujian_Frogs_m_441_normalized.ogg
 !public/samples/Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg
