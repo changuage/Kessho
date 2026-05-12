@@ -32,6 +32,7 @@ const requiredPaths = [
   'scripts/check-kessho-product*',
   'scripts/build-kessho-core-wasm.mjs',
   'scripts/generate-kessho-product-bindings.mjs',
+  'scripts/run-kessho-product-ci.mjs',
   'KesshoNativeSwift/CoreBridge/**',
   'KesshoNativeSwift/Generated/**',
   'docs/kessho-product-core-migration-status.md',

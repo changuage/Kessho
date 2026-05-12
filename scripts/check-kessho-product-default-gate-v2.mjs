@@ -29,6 +29,7 @@ const app = read('src/App.tsx');
 const globalPage = read('src/ui/global/GlobalPage.tsx');
 const packageJson = readJson('package.json');
 const workflow = read('.github/workflows/product-core-ci.yml');
+const productCiRunner = read('scripts/run-kessho-product-ci.mjs');
 const defaultGateDoc = read('docs/kessho-product-default-gate-v2.md');
 const statusDoc = read('docs/kessho-product-core-migration-status.md');
 const readinessReport = read('docs/reports/kessho-core-parity-readiness-latest.md');
@@ -119,11 +120,15 @@ assert(
   'package.json must expose core:product:workflow',
 );
 assert(
-  packageJson.scripts?.['core:product:ci']?.includes('npm run core:product:default-gate-v2'),
+  packageJson.scripts?.['core:product:ci'] === 'node scripts/run-kessho-product-ci.mjs',
+  'package.json must expose core:product:ci through the annotated Product Core CI runner',
+);
+assert(
+  productCiRunner.includes("'core:product:default-gate-v2'"),
   'core:product:ci must include Product Default Gate v2 guard',
 );
 assert(
-  packageJson.scripts?.['core:product:ci']?.includes('npm run core:product:workflow'),
+  productCiRunner.includes("'core:product:workflow'"),
   'core:product:ci must include Product Core workflow contract guard',
 );
 
