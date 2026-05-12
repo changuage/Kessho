@@ -1,14 +1,18 @@
 import type {
   AudioEngine,
+  DynamicsVisualTelemetrySnapshot,
   EarthTextureDebugState,
   EngineState,
   ManualSynthNoteOptions,
   RecordableTrackSource,
 } from './engine';
+import type { TransportDebugSnapshot } from './transport';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import {
   CORE_PRODUCT_ASSET_FLAGS,
+  CORE_PRODUCT_MEMORY_BUDGETS,
   decodeCoreProductAsset,
+  getDecodedCoreProductAssetByteLength,
   getCoreProductPianoPreloadAssetDescriptors,
   getCoreProductPianoAssetIdForMidi,
   getCoreProductPianoAssetUrlForMidi,
@@ -19,6 +23,7 @@ import { midiSampleOffset } from './coreMidiEvents';
 import { createCoreProductSnapshot, encodeCoreProductSnapshot, type CoreProductSnapshot } from './coreProductSnapshot';
 import {
   CORE_PRODUCT_MODULATION_RANGE_MODE,
+  CORE_PRODUCT_SEQUENCER_IDS,
   CORE_PRODUCT_SUBLANE_DIRECTIONS,
   CORE_PRODUCT_STEP_VALUE_FIELDS,
   CORE_PRODUCT_SOURCE_IDS,
@@ -50,6 +55,7 @@ import {
   resolveCoreProductRangeTargets,
 } from './coreProductEvents';
 import {
+  type CoreProductSequencerLaneUiState,
   type CoreProductTelemetrySnapshot,
   initialCoreProductCapabilityReport,
 } from './coreProductTelemetry';
@@ -64,6 +70,8 @@ const EMPTY_EARTH_TEXTURE_DEBUG_STATE: EarthTextureDebugState = {
 };
 
 const MAX_SNAPSHOT_DIFF_EVENTS = 384;
+const CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE = 3;
+const CORE_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME = 4;
 
 type ProductRangeState = {
   range: { min: number; max: number };
@@ -76,6 +84,30 @@ type ProductLaneSnapshot = CoreProductSnapshot['synthLanes'][number];
 type ProductGranularVoiceSnapshot = CoreProductSnapshot['fx']['granularVoices'][number];
 type ProductParamIdName = keyof typeof KESSHO_PRODUCT_PARAM_IDS;
 type SnapshotScalar = number | boolean;
+type SnapshotReloadReason =
+  | 'none'
+  | 'initial-snapshot'
+  | 'runtime-start'
+  | 'runtime-bootstrap'
+  | 'manual-piano-asset'
+  | 'explicit-reset-request'
+  | 'asset-reference-change'
+  | 'harmony-mode-change'
+  | 'source-structure-change'
+  | 'exact-patch-change'
+  | 'sequencer-structure-change'
+  | 'dirty-diff-event-budget'
+  | 'adapter-update';
+type RuntimeFallbackClassification =
+  | 'safe-visual-fallback'
+  | 'temporary-missing-product-telemetry'
+  | 'reference-only-web-ts-behavior'
+  | 'forbidden-production-fallback';
+type PlaceholderGetterClassification =
+  | 'backed-by-product-core-api'
+  | 'explicitly-unsupported-hidden'
+  | 'reference-only-web-ts-behavior'
+  | 'temporary-missing-product-telemetry';
 
 type SequencerStepToggleOverride = {
   step: number;
@@ -94,6 +126,100 @@ type SequencerStepValueConfig = {
   steps: number;
   direction: CoreProductSubLaneDirection;
 };
+
+const CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS = {
+  getDynamicsAnalyser: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Web Audio dynamics analyser nodes are not exposed in core-product; Product Core telemetry backs dynamics visuals instead.',
+  },
+  getDynamicsVisualTelemetry: {
+    classification: 'backed-by-product-core-api',
+    blocker: 'Backed by Product Core master/dynamics telemetry; analyser nodes remain unavailable in core-product.',
+  },
+  getDrumVoiceAnalyser: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Web Audio drum analyser nodes are not exposed in core-product; drum live analyser callbacks are disabled for that runtime.',
+  },
+  getGranularActiveGrainCount: {
+    classification: 'backed-by-product-core-api',
+    blocker: 'Backed by activeGrains Product telemetry.',
+  },
+  getGranularBufferWaveform: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Live granular buffer waveform UI is hidden in core-product until Product Core exposes a debug waveform API.',
+  },
+  getGranularVoicePositions: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Live granular voice position UI is hidden in core-product until Product Core exposes voice position telemetry.',
+  },
+  getGranularWriteHeadPosition: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Live granular write-head UI is hidden in core-product until Product Core exposes write-head telemetry.',
+  },
+  getLeadMorphedParams: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Lead morphed-parameter preview is disabled in core-product until Product Core exposes resolved Lead source telemetry.',
+  },
+  getCurrentFilterFreq: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Live source filter telemetry polling is disabled in core-product until Product Core exposes source debug telemetry.',
+  },
+  getCurrentLfoValue: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Live source LFO telemetry polling is disabled in core-product until Product Core exposes source debug telemetry.',
+  },
+  getCurrentLfo2Value: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Live secondary LFO telemetry polling is disabled in core-product until Product Core exposes source debug telemetry.',
+  },
+  getCurrentPadFilterFreq: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Live Pad filter telemetry polling is disabled in core-product until Product Core exposes source debug telemetry.',
+  },
+  getCurrentPadLfoValue: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Live Pad LFO telemetry polling is disabled in core-product until Product Core exposes source debug telemetry.',
+  },
+  getRecordableBusNodes: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Stem-node recording is hidden in core-product; Product Core exposes stem buffers/peaks, not Web Audio bus nodes.',
+  },
+  getAllStemNodes: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Stem-node recording is hidden in core-product; Product Core exposes stem buffers/peaks, not Web Audio bus nodes.',
+  },
+  getEarthTextureDebugState: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Earth texture debug polling is disabled in core-product until Product Core exposes soundscape layer debug telemetry.',
+  },
+  getTransportDebugState: {
+    classification: 'backed-by-product-core-api',
+    blocker: 'Backed by Product Core transport telemetry and generated transport snapshot state.',
+  },
+} as const satisfies Record<string, { classification: PlaceholderGetterClassification; blocker: string }>;
+
+type PlaceholderGetterName = keyof typeof CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS;
+
+function classifiedPlaceholderGetter<T>(name: PlaceholderGetterName, fallback: T): T {
+  void CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS[name];
+  return fallback;
+}
+
+function classifyCoreProductRuntimeFallback(property: string): RuntimeFallbackClassification {
+  if (property.startsWith('get')) {
+    return property.includes('Analyser') || property.includes('Telemetry') || property.includes('Debug')
+      ? 'temporary-missing-product-telemetry'
+      : 'safe-visual-fallback';
+  }
+  if (/^(set|update|reset|dice|start|stop|resume|suspend|trigger|push|load|register|ensure|audition)/.test(property)) {
+    return 'forbidden-production-fallback';
+  }
+  return 'reference-only-web-ts-behavior';
+}
+
+function runtimeFallbackIsDevelopmentError(classification: RuntimeFallbackClassification): boolean {
+  return classification === 'forbidden-production-fallback';
+}
 
 function createCoreProductEngineState(isRunning: boolean): EngineState {
   return {
@@ -145,6 +271,10 @@ function midiFromFrequency(frequency: number): number {
   return Math.max(0, Math.min(127, 69 + 12 * Math.log2(frequency / 440)));
 }
 
+function gainToDb(gain: number): number {
+  return 20 * Math.log10(Math.max(0.000001, Math.abs(gain)));
+}
+
 class CoreProductEngineHost {
   private readonly runtime = new CoreProductRuntime();
   private readonly displayCallbacks = new Map<string, unknown>();
@@ -169,6 +299,15 @@ class CoreProductEngineHost {
   private readonly registeredAssetIds = new Set<number>();
   private readonly pianoAssetPromises = new Map<number, Promise<void>>();
   private readonly defaultSoundscapeAssetPromises = new Map<number, Promise<void>>();
+  private dirtyDiffCount = 0;
+  private fullSnapshotReloadCount = 0;
+  private unsupportedControlCount = 0;
+  private snapshotReloadCpuMs = 0;
+  private lastSnapshotReloadReason: SnapshotReloadReason = 'none';
+  private pendingSnapshotReloadReason: SnapshotReloadReason | null = null;
+  private readonly reportedRuntimeFallbacks = new Set<string>();
+  private readonly registeredAssetDecodedBytes = new Map<number, number>();
+  private lastSequencerUiStateRevision = 0;
   private synthStepToggleOverrides: SequencerStepToggleOverride[][] = [[], [], [], []];
   private drumStepToggleOverrides: SequencerStepToggleOverride[][] = [[], [], [], []];
   private synthStepValueOverrides: SequencerStepValueOverride[][] = [[], [], [], []];
@@ -196,77 +335,102 @@ class CoreProductEngineHost {
   }
 
   getDynamicsAnalyser(): AnalyserNode | null {
-    return null;
+    return classifiedPlaceholderGetter('getDynamicsAnalyser', null);
   }
 
-  getDynamicsVisualTelemetry(): {
-    contextTime: number;
-    endCompHandledByWorklet: boolean;
-    endCompReductionDb: number;
-    worklet: null;
-    sidechainEvents: never[];
-  } {
+  getDynamicsVisualTelemetry(): DynamicsVisualTelemetrySnapshot {
+    const telemetry = this.latestTelemetry;
+    const contextTime = this.runtime.audioContext?.currentTime ?? 0;
+    if (!telemetry) {
+      return {
+        contextTime,
+        endCompHandledByWorklet: false,
+        endCompReductionDb: 0,
+        worklet: null,
+        sidechainEvents: [],
+      };
+    }
+    const inputPeak = Math.max(0, telemetry.masterInputPeak ?? 0);
+    const outputPeak = Math.max(0, telemetry.masterTruePeak ?? telemetry.masterOutputPeak ?? 0);
+    const outputRms = Math.max(0, telemetry.masterOutputRms ?? 0);
+    const limiterReductionDb = Math.max(0, telemetry.masterLimiterGainReductionDb ?? 0);
+    const saturationDrive = Math.max(0, telemetry.dynamicsSaturationDrive ?? telemetry.masterSaturationDrive ?? 0);
+    const detectorDb = Number.isFinite(telemetry.masterIntegratedLufs ?? NaN)
+      ? telemetry.masterIntegratedLufs!
+      : gainToDb(inputPeak);
     return {
-      contextTime: this.runtime.audioContext?.currentTime ?? 0,
-      endCompHandledByWorklet: false,
-      endCompReductionDb: 0,
-      worklet: null,
+      contextTime,
+      endCompHandledByWorklet: true,
+      endCompReductionDb: limiterReductionDb,
+      worklet: {
+        inputPeak,
+        outputPeak,
+        wetPeak: outputPeak,
+        characterEnv: Math.max(outputRms, outputPeak * 0.5),
+        characterReductionDb: 0,
+        dropoutGain: saturationDrive > 0 ? Math.max(0.25, 1 - Math.min(0.75, saturationDrive * 0.25)) : 1,
+        endInputPeak: inputPeak,
+        endOutputPeak: outputPeak,
+        endReductionDb: limiterReductionDb,
+        endDetectorDb: detectorDb,
+        timestamp: contextTime,
+      },
       sidechainEvents: [],
     };
   }
 
   getDrumVoiceAnalyser(): undefined {
-    return undefined;
+    return classifiedPlaceholderGetter('getDrumVoiceAnalyser', undefined);
   }
 
   getGranularActiveGrainCount(): number {
-    return 0;
+    return this.latestTelemetry?.activeGrains ?? classifiedPlaceholderGetter('getGranularActiveGrainCount', 0);
   }
 
   getGranularBufferWaveform(): null {
-    return null;
+    return classifiedPlaceholderGetter('getGranularBufferWaveform', null);
   }
 
   getGranularVoicePositions(): [number, number, number, number] {
-    return [0, 0, 0, 0];
+    return classifiedPlaceholderGetter('getGranularVoicePositions', [0, 0, 0, 0] as [number, number, number, number]);
   }
 
   getGranularWriteHeadPosition(): number {
-    return 0;
+    return classifiedPlaceholderGetter('getGranularWriteHeadPosition', 0);
   }
 
   getLeadMorphedParams(): null {
-    return null;
+    return classifiedPlaceholderGetter('getLeadMorphedParams', null);
   }
 
   getCurrentFilterFreq(): number {
-    return 1000;
+    return classifiedPlaceholderGetter('getCurrentFilterFreq', 1000);
   }
 
   getCurrentLfoValue(): number {
-    return 0;
+    return classifiedPlaceholderGetter('getCurrentLfoValue', 0);
   }
 
   getCurrentLfo2Value(): number {
-    return 0;
+    return classifiedPlaceholderGetter('getCurrentLfo2Value', 0);
   }
 
   getCurrentPadFilterFreq(): number {
-    return 1000;
+    return classifiedPlaceholderGetter('getCurrentPadFilterFreq', 1000);
   }
 
   getCurrentPadLfoValue(): number {
-    return 0;
+    return classifiedPlaceholderGetter('getCurrentPadLfoValue', 0);
   }
 
   getRecordableBusNodes(): Record<string, RecordableTrackSource> {
-    return {
+    return classifiedPlaceholderGetter('getRecordableBusNodes', {
       master: { node: this.runtime.outputNode },
-    };
+    });
   }
 
   getEarthTextureDebugState(): EarthTextureDebugState {
-    return EMPTY_EARTH_TEXTURE_DEBUG_STATE;
+    return classifiedPlaceholderGetter('getEarthTextureDebugState', EMPTY_EARTH_TEXTURE_DEBUG_STATE);
   }
 
   getSonicParityDebugState(): Record<string, unknown> {
@@ -292,8 +456,31 @@ class CoreProductEngineHost {
     };
   }
 
-  getTransportDebugState(): null {
-    return null;
+  getTransportDebugState(): TransportDebugSnapshot | null {
+    const telemetry = this.latestTelemetry;
+    const transport = this.latestProductSnapshot?.transport;
+    if (!telemetry || !transport) return null;
+
+    const effectiveBpm = Number.isFinite(transport.bpm) && transport.bpm > 0 ? transport.bpm : 120;
+    const beatsPerBar = Math.max(1, transport.beatsPerBar || 4);
+    const barsPerPhrase = Math.max(1, transport.barsPerPhrase || 4);
+    const beatDurationSec = 60 / effectiveBpm;
+    const effectivePhraseSeconds = beatDurationSec * beatsPerBar * barsPerPhrase;
+    const beatsPerPhrase = beatsPerBar * barsPerPhrase;
+    const beatPosition = Number.isFinite(telemetry.beatPosition ?? NaN) ? telemetry.beatPosition! : 0;
+    const beatInPhrase = ((beatPosition % beatsPerPhrase) + beatsPerPhrase) % beatsPerPhrase;
+    const remainingBeats = beatInPhrase === 0 && telemetry.transportRunning
+      ? beatsPerPhrase
+      : Math.max(0, beatsPerPhrase - beatInPhrase);
+    const nextPhraseBoundaryIn = telemetry.transportRunning ? remainingBeats * beatDurationSec : 0;
+
+    return {
+      effectiveBpm,
+      effectivePhraseSeconds,
+      nextPhraseBoundaryIn,
+      nextHarmonyEventIn: null,
+      nextProgressionStepIn: null,
+    };
   }
 
   getState(): EngineState {
@@ -301,7 +488,7 @@ class CoreProductEngineHost {
   }
 
   getAllStemNodes(): Record<string, RecordableTrackSource> {
-    return this.getRecordableBusNodes();
+    return classifiedPlaceholderGetter('getAllStemNodes', this.getRecordableBusNodes());
   }
 
   setStateChangeCallback(callback: ((state: EngineState) => void) | null): void {
@@ -326,10 +513,27 @@ class CoreProductEngineHost {
     }
   }
 
+  reportRuntimeFallback(method: string, classification: RuntimeFallbackClassification): void {
+    this.unsupportedControlCount += 1;
+    const dev = (import.meta.env as unknown as { DEV?: boolean }).DEV === true;
+    const firstReport = !this.reportedRuntimeFallbacks.has(method);
+    if (firstReport) {
+      this.reportedRuntimeFallbacks.add(method);
+    }
+    if (dev || firstReport) {
+      console.error(
+        `core-product runtime fallback ${classification} for AudioEngine.${method}; add Product Core telemetry/event support before production use.`,
+      );
+    }
+    if (dev && runtimeFallbackIsDevelopmentError(classification)) {
+      throw new Error(`Missing audio-critical core-product method: AudioEngine.${method}`);
+    }
+  }
+
   updateParams(sliderState: Record<string, unknown>): void {
     this.latestSliderState = { ...sliderState };
     if (this.runtimeReady && (this.shouldUsePianoAsset() || this.shouldUseSoundscapeAsset())) {
-      void this.ensureDefaultAssetsForState().then(() => this.applyLatestSnapshotUpdate());
+      void this.ensureDefaultAssetsForState().then(() => this.applyLatestSnapshotUpdate('asset-reference-change'));
       return;
     }
     this.applyLatestSnapshotUpdate();
@@ -466,7 +670,7 @@ class CoreProductEngineHost {
     await this.runtime.ensureStarted();
     this.runtimeReady = true;
     await this.ensureDefaultAssetsForState();
-    this.loadLatestSnapshot();
+    this.loadLatestSnapshot('runtime-start');
     await this.runtime.resume();
     this.runtime.postEvent(createCoreProductStartEvent());
     this.flushModulationRanges();
@@ -502,6 +706,7 @@ class CoreProductEngineHost {
     this.running = false;
     this.latestProductSnapshot = null;
     this.registeredAssetIds.clear();
+    this.registeredAssetDecodedBytes.clear();
     this.pianoAssetPromises.clear();
     this.defaultSoundscapeAssetPromises.clear();
     this.stateChangeCallback?.(createCoreProductEngineState(false));
@@ -513,12 +718,12 @@ class CoreProductEngineHost {
     }
     void this.runtime.ensureStarted().then(() => {
       this.runtimeReady = true;
-      this.loadLatestSnapshot();
+      this.loadLatestSnapshot('runtime-bootstrap');
     });
   }
 
   resetCofDrift(): void {
-    this.loadLatestSnapshot();
+    this.loadLatestSnapshot('explicit-reset-request');
     this.stateChangeCallback?.(this.getState());
   }
 
@@ -555,7 +760,7 @@ class CoreProductEngineHost {
     }
     void this.runtime.ensureStarted().then(() => {
       this.runtimeReady = true;
-      this.loadLatestSnapshot();
+      this.loadLatestSnapshot('runtime-bootstrap');
       post();
     });
   }
@@ -573,8 +778,10 @@ class CoreProductEngineHost {
   }
 
   registerAsset(asset: DecodedCoreProductAsset): void {
+    const decodedBytes = getDecodedCoreProductAssetByteLength(asset);
     this.runtime.registerAsset(asset);
     this.registeredAssetIds.add(asset.assetId);
+    this.registeredAssetDecodedBytes.set(asset.assetId, decodedBytes);
   }
 
   pushMidiMessage(message: KesshoMidiMessage): void {
@@ -617,7 +824,7 @@ class CoreProductEngineHost {
     }
     void this.runtime.ensureStarted().then(() => {
       this.runtimeReady = true;
-      this.loadLatestSnapshot();
+      this.loadLatestSnapshot('runtime-bootstrap');
       post();
     });
   }
@@ -793,7 +1000,7 @@ class CoreProductEngineHost {
     this.runtimeReady = true;
     if (note.source === 'piano') {
       await this.ensurePianoAssetForMidi(note.midi);
-      this.loadLatestSnapshot();
+      this.loadLatestSnapshot('manual-piano-asset');
     }
     this.runtime.postEvent(createCoreProductManualNoteEvent(
       sourceId(note.source),
@@ -812,7 +1019,7 @@ class CoreProductEngineHost {
           .filter((note) => note.source === 'piano')
           .map((note) => this.ensurePianoAssetForMidi(note.midi)),
       );
-      this.loadLatestSnapshot();
+      this.loadLatestSnapshot('manual-piano-asset');
     }
     for (const note of notes) {
       this.runtime.postEvent(createCoreProductManualNoteEvent(
@@ -824,26 +1031,39 @@ class CoreProductEngineHost {
     }
   }
 
-  private loadLatestSnapshot(): void {
+  private loadLatestSnapshot(reason: SnapshotReloadReason = 'adapter-update'): void {
     if (!this.runtimeReady) return;
-    this.loadProductSnapshot(this.createLatestSnapshot());
+    this.loadProductSnapshot(this.createLatestSnapshot(), reason);
   }
 
-  private applyLatestSnapshotUpdate(): void {
+  private applyLatestSnapshotUpdate(reason: SnapshotReloadReason = 'adapter-update'): void {
     if (!this.runtimeReady) return;
     const nextSnapshot = this.createLatestSnapshot();
     const previousSnapshot = this.latestProductSnapshot;
     if (previousSnapshot && this.applySnapshotDiff(previousSnapshot, nextSnapshot)) {
+      this.dirtyDiffCount += 1;
       this.latestProductSnapshot = nextSnapshot;
       return;
     }
-    this.loadProductSnapshot(nextSnapshot);
+    const reloadReason = previousSnapshot ? (this.pendingSnapshotReloadReason ?? reason) : 'initial-snapshot';
+    this.loadProductSnapshot(nextSnapshot, reloadReason);
+    this.pendingSnapshotReloadReason = null;
   }
 
-  private loadProductSnapshot(snapshot: CoreProductSnapshot): void {
+  private loadProductSnapshot(snapshot: CoreProductSnapshot, reason: SnapshotReloadReason): void {
+    const startMs = this.nowMs();
     this.runtime.loadSnapshot(encodeCoreProductSnapshot(snapshot));
     this.latestProductSnapshot = snapshot;
     this.flushSequencerStepToggles();
+    this.fullSnapshotReloadCount += 1;
+    this.snapshotReloadCpuMs += Math.max(0, this.nowMs() - startMs);
+    this.lastSnapshotReloadReason = reason;
+  }
+
+  private nowMs(): number {
+    return typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
   }
 
   private createLatestSnapshot(): CoreProductSnapshot {
@@ -865,7 +1085,11 @@ class CoreProductEngineHost {
   }
 
   private applySnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean {
-    if (!this.canApplySnapshotDiff(previous, next)) return false;
+    this.pendingSnapshotReloadReason = null;
+    if (!this.canApplySnapshotDiff(previous, next)) {
+      this.pendingSnapshotReloadReason = this.classifySnapshotReloadReason(previous, next);
+      return false;
+    }
 
     const events: CoreProductEvent[] = [];
     this.appendTransportDiffs(events, previous, next);
@@ -878,11 +1102,33 @@ class CoreProductEngineHost {
     this.appendEvolutionDiffs(events, previous, next);
     this.appendRngDiffs(events, previous, next);
 
-    if (events.length > MAX_SNAPSHOT_DIFF_EVENTS) return false;
+    if (events.length > MAX_SNAPSHOT_DIFF_EVENTS) {
+      this.pendingSnapshotReloadReason = 'dirty-diff-event-budget';
+      return false;
+    }
     for (const event of events) {
       this.runtime.postEvent(event);
     }
     return true;
+  }
+
+  private classifySnapshotReloadReason(previous: CoreProductSnapshot, next: CoreProductSnapshot): SnapshotReloadReason {
+    if (this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return 'asset-reference-change';
+    if (previous.harmony.chordMode !== next.harmony.chordMode) return 'harmony-mode-change';
+    if (previous.harmony.voicingMode !== next.harmony.voicingMode) return 'harmony-mode-change';
+    if (previous.sources.length !== next.sources.length) return 'source-structure-change';
+    for (let index = 0; index < next.sources.length; index += 1) {
+      const previousSource = previous.sources[index];
+      const nextSource = next.sources[index];
+      if (!previousSource || !nextSource) return 'source-structure-change';
+      if (previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change';
+      if (previousSource.assetId !== nextSource.assetId) return 'source-structure-change';
+      if (this.padPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
+      if (this.leadPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
+    }
+    if (!this.canApplyLaneDiffs(previous.synthLanes, next.synthLanes)) return 'sequencer-structure-change';
+    if (!this.canApplyLaneDiffs(previous.drumLanes, next.drumLanes)) return 'sequencer-structure-change';
+    return 'adapter-update';
   }
 
   private canApplySnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean {
@@ -1472,18 +1718,201 @@ class CoreProductEngineHost {
   }
 
   private handleTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
-    this.latestTelemetry = telemetry;
-    if (this.journeyMorphClockRunning && typeof telemetry.journeyMorphPhase === 'number') {
+    const hostTelemetry = this.withHostDiagnostics(telemetry);
+    this.latestTelemetry = hostTelemetry;
+    if (this.journeyMorphClockRunning && typeof hostTelemetry.journeyMorphPhase === 'number') {
       this.adapterState = {
         ...this.adapterState,
         journeyEnabled: true,
-        journeyMorphPhase: telemetry.journeyMorphPhase,
+        journeyMorphPhase: hostTelemetry.journeyMorphPhase,
       };
     }
-    this.updateRuntimeWalkPositions(telemetry);
+    this.updateRuntimeWalkPositions(hostTelemetry);
+    this.reconcileSequencerUiState(hostTelemetry);
     if (this.perfMonitorEnabled) {
-      this.perfUpdateCallback?.(this.createPerfSnapshot(telemetry));
+      this.perfUpdateCallback?.(this.createPerfSnapshot(hostTelemetry));
     }
+  }
+
+  private reconcileSequencerUiState(telemetry: CoreProductTelemetrySnapshot): void {
+    const state = telemetry.sequencerUiState;
+    const revision = telemetry.sequencerUiStateRevision ?? state?.revision ?? 0;
+    if (!state || revision === 0 || revision === this.lastSequencerUiStateRevision) return;
+    this.lastSequencerUiStateRevision = revision;
+    const laneIndex = state.lastChangedLaneIndex;
+    if (!Number.isInteger(laneIndex) || laneIndex < 0 || laneIndex >= 16) return;
+    const shouldNotify =
+      state.lastChangeKind === CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE ||
+      state.lastChangeKind === CORE_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME;
+    if (state.lastChangedTargetId === CORE_PRODUCT_SEQUENCER_IDS.synth) {
+      const lane = state.synthLanes[laneIndex];
+      if (!lane) return;
+      this.reconcileSynthSequencerLane(laneIndex, lane, shouldNotify);
+      return;
+    }
+    if (state.lastChangedTargetId === CORE_PRODUCT_SEQUENCER_IDS.drum) {
+      const lane = state.drumLanes[laneIndex];
+      if (!lane) return;
+      this.reconcileDrumSequencerLane(laneIndex, lane, shouldNotify);
+    }
+  }
+
+  private reconcileSynthSequencerLane(
+    laneIndex: number,
+    lane: CoreProductSequencerLaneUiState,
+    notify: boolean,
+  ): void {
+    this.ensureSequencerLaneCache('synth', laneIndex);
+    const includeEmpty = lane.mutationFlags === 0;
+    this.synthStepToggleOverrides[laneIndex] = lane.triggerToggles.map(([step, value]) => ({ step, value }));
+    this.synthStepValueOverrides[laneIndex] = this.stepValueOverridesFromLane(lane, true);
+    this.synthStepValueConfigs[laneIndex] = [];
+    const payload = this.synthEvolvePayloadFromLane(lane, laneIndex, includeEmpty);
+    if (notify) {
+      this.invokeDisplayCallback('synthEvolveOverrides', laneIndex, payload);
+    }
+  }
+
+  private reconcileDrumSequencerLane(
+    laneIndex: number,
+    lane: CoreProductSequencerLaneUiState,
+    notify: boolean,
+  ): void {
+    this.ensureSequencerLaneCache('drum', laneIndex);
+    const includeEmpty = lane.mutationFlags === 0;
+    this.drumStepToggleOverrides[laneIndex] = lane.triggerToggles.map(([step, value]) => ({ step, value }));
+    this.drumStepValueOverrides[laneIndex] = this.stepValueOverridesFromLane(lane, false);
+    this.drumStepValueConfigs[laneIndex] = [];
+    const payload = this.drumEvolvePayloadFromLane(lane, laneIndex, includeEmpty);
+    if (notify) {
+      this.invokeDisplayCallback('drumEvolveOverrides', laneIndex, payload);
+    }
+  }
+
+  private ensureSequencerLaneCache(sequencer: SequencerKind, laneIndex: number): void {
+    const toggles = sequencer === 'synth' ? this.synthStepToggleOverrides : this.drumStepToggleOverrides;
+    const values = sequencer === 'synth' ? this.synthStepValueOverrides : this.drumStepValueOverrides;
+    const configs = sequencer === 'synth' ? this.synthStepValueConfigs : this.drumStepValueConfigs;
+    while (toggles.length <= laneIndex) toggles.push([]);
+    while (values.length <= laneIndex) values.push([]);
+    while (configs.length <= laneIndex) configs.push([]);
+  }
+
+  private stepValueOverridesFromLane(
+    lane: CoreProductSequencerLaneUiState,
+    includeMidiNote: boolean,
+  ): SequencerStepValueOverride[] {
+    const out: SequencerStepValueOverride[] = [];
+    const addValues = (field: CoreProductStepValueField, values: number[] | null | undefined, round = false) => {
+      if (!Array.isArray(values)) return;
+      for (let step = 0; step < Math.min(values.length, 64); step += 1) {
+        const value = values[step];
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          out.push({ step, field, value: round ? Math.round(value) : value });
+        }
+      }
+    };
+    addValues(CORE_PRODUCT_STEP_VALUE_FIELDS.probability, lane.probability);
+    addValues(CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet, lane.ratchet, true);
+    if (includeMidiNote) {
+      addValues(CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote, lane.midiNote);
+    }
+    addValues(CORE_PRODUCT_STEP_VALUE_FIELDS.expression, lane.expression);
+    addValues(CORE_PRODUCT_STEP_VALUE_FIELDS.morph, lane.morph);
+    addValues(CORE_PRODUCT_STEP_VALUE_FIELDS.distance, lane.distance);
+    if (Array.isArray(lane.trigCondition)) {
+      for (let step = 0; step < Math.min(lane.trigCondition.length, 64); step += 1) {
+        const value = lane.trigCondition[step];
+        if (Array.isArray(value)) {
+          out.push({
+            step,
+            field: CORE_PRODUCT_STEP_VALUE_FIELDS.trigCondition,
+            value: value[0] ?? 1,
+            value2: value[1] ?? 1,
+          });
+        }
+      }
+    }
+    return out.sort((left, right) => left.step - right.step || left.field - right.field);
+  }
+
+  private synthEvolvePayloadFromLane(
+    lane: CoreProductSequencerLaneUiState,
+    laneIndex: number,
+    includeEmpty: boolean,
+  ): Record<string, unknown> {
+    const payload: Record<string, unknown> = {};
+    payload.triggerToggles = lane.triggerToggles;
+    const baseMidi = this.latestProductSnapshot?.synthLanes[laneIndex]?.midiNote ?? 60;
+    const pitch = Array.isArray(lane.midiNote)
+      ? lane.midiNote.map((value) => Math.round(value - baseMidi))
+      : null;
+    for (const [key, values] of Object.entries({
+      pitch,
+      expression: lane.expression,
+      morph: lane.morph,
+      distance: lane.distance,
+      probability: lane.probability,
+      ratchet: lane.ratchet,
+    })) {
+      if (Array.isArray(values) || includeEmpty) {
+        payload[key] = Array.isArray(values) ? values : [];
+      }
+    }
+    return payload;
+  }
+
+  private drumEvolvePayloadFromLane(
+    lane: CoreProductSequencerLaneUiState,
+    laneIndex: number,
+    includeEmpty: boolean,
+  ): Record<string, unknown> {
+    const laneArray = <T>(value: T[] | null | undefined): (T[] | null)[] => {
+      const lanes: (T[] | null)[] = [null, null, null, null];
+      if (laneIndex < lanes.length) {
+        lanes[laneIndex] = Array.isArray(value) ? value : includeEmpty ? [] : null;
+      }
+      return lanes;
+    };
+    const triggerToggles = [new Map<number, boolean>(), new Map<number, boolean>(), new Map<number, boolean>(), new Map<number, boolean>()];
+    if (laneIndex < triggerToggles.length) {
+      triggerToggles[laneIndex] = new Map(lane.triggerToggles);
+    }
+    return {
+      triggerToggles,
+      probability: laneArray(lane.probability),
+      ratchet: laneArray(lane.ratchet),
+      trigCondition: laneArray(lane.trigCondition),
+      expression: laneArray(lane.expression),
+      pitch: laneArray(lane.midiNote),
+      morph: laneArray(lane.morph),
+      distance: laneArray(lane.distance),
+      slice: laneArray(null),
+      reverse: laneArray(null),
+    };
+  }
+
+  private withHostDiagnostics(telemetry: CoreProductTelemetrySnapshot): CoreProductTelemetrySnapshot {
+    const decodedAssetBytes = telemetry.decodedAssetBytes ?? this.registeredDecodedAssetByteLength();
+    return {
+      ...telemetry,
+      wasmHeapBudgetBytes: CORE_PRODUCT_MEMORY_BUDGETS.webWorkletHeapBytes,
+      decodedAssetBytes,
+      decodedAssetBudgetBytes: CORE_PRODUCT_MEMORY_BUDGETS.totalRegisteredDecodedBytes,
+      dirtyDiffCount: this.dirtyDiffCount,
+      fullSnapshotReloadCount: this.fullSnapshotReloadCount,
+      unsupportedControlCount: this.unsupportedControlCount,
+      snapshotReloadCpuMs: this.snapshotReloadCpuMs,
+      lastSnapshotReloadReason: this.lastSnapshotReloadReason,
+    };
+  }
+
+  private registeredDecodedAssetByteLength(): number {
+    let total = 0;
+    for (const bytes of this.registeredAssetDecodedBytes.values()) {
+      total += bytes;
+    }
+    return total;
   }
 
   private createPerfSnapshot(telemetry: CoreProductTelemetrySnapshot): Record<string, unknown> {
@@ -1499,13 +1928,26 @@ class CoreProductEngineHost {
       activeVoices: telemetry.activeVoices,
       activeSources: telemetry.activeSources,
       activeAssets: telemetry.activeAssets,
+      wasmHeapBytes: telemetry.wasmHeapBytes ?? 0,
+      wasmHeapBudgetBytes: telemetry.wasmHeapBudgetBytes ?? CORE_PRODUCT_MEMORY_BUDGETS.webWorkletHeapBytes,
+      decodedAssetBytes: telemetry.decodedAssetBytes ?? this.registeredDecodedAssetByteLength(),
+      decodedAssetBudgetBytes: telemetry.decodedAssetBudgetBytes ?? CORE_PRODUCT_MEMORY_BUDGETS.totalRegisteredDecodedBytes,
+      assetAllocationBytes: telemetry.assetAllocationBytes ?? telemetry.decodedAssetBytes ?? this.registeredDecodedAssetByteLength(),
       activeGrains: telemetry.activeGrains ?? 0,
+      masterTruePeak: telemetry.masterTruePeak ?? telemetry.masterOutputPeak ?? 0,
+      masterTruePeakDbtp: telemetry.masterTruePeakDbtp ?? 0,
+      masterIntegratedLufs: telemetry.masterIntegratedLufs ?? -100,
       journeyMorphPhase: telemetry.journeyMorphPhase ?? 0,
       journeyMorphRunning: telemetry.journeyMorphRunning ?? false,
       transportRunning: telemetry.transportRunning,
       absoluteSampleTime: telemetry.absoluteSampleTime ?? 0,
       assetMissingCount: telemetry.assetMissingCount,
       lastErrorCode: telemetry.lastErrorCode,
+      dirtyDiffCount: telemetry.dirtyDiffCount ?? this.dirtyDiffCount,
+      fullSnapshotReloadCount: telemetry.fullSnapshotReloadCount ?? this.fullSnapshotReloadCount,
+      unsupportedControlCount: telemetry.unsupportedControlCount ?? this.unsupportedControlCount,
+      snapshotReloadCpuMs: telemetry.snapshotReloadCpuMs ?? this.snapshotReloadCpuMs,
+      lastSnapshotReloadReason: telemetry.lastSnapshotReloadReason ?? this.lastSnapshotReloadReason,
     };
   }
 
@@ -1816,7 +2258,7 @@ class CoreProductEngineHost {
     }
     void this.runtime.ensureStarted().then(() => {
       this.runtimeReady = true;
-      this.loadLatestSnapshot();
+      this.loadLatestSnapshot('runtime-bootstrap');
       post();
     });
   }
@@ -2076,8 +2518,9 @@ class CoreProductEngineHost {
   private reportUnsupportedRangeKey(key: string): void {
     if (this.reportedUnsupportedRangeKeys.has(key)) return;
     this.reportedUnsupportedRangeKeys.add(key);
-    if ((import.meta.env as unknown as { DEV?: boolean }).DEV) {
-      console.error(`core-product has no Product Core modulation mapping for slider range "${key}".`);
+    this.unsupportedControlCount += 1;
+    if ((import.meta.env as unknown as { DEV?: boolean }).DEV || typeof console !== 'undefined') {
+      console.error(`core-product runtime fallback forbidden-production-fallback for slider range "${key}".`);
     }
   }
 }
@@ -2092,12 +2535,17 @@ export const coreProductEngineHost = new Proxy(host as unknown as AudioEngine, {
     const value = (target as unknown as Record<string, unknown>)[property];
     if (typeof value === 'function') return value.bind(target);
     if (value !== undefined) return value;
-    if (property.startsWith('get')) return () => null;
+    const classification = classifyCoreProductRuntimeFallback(property);
+    if (property.startsWith('get')) {
+      return () => {
+        unsupportedMethods.add(property);
+        host.reportRuntimeFallback(property, classification);
+        return null;
+      };
+    }
     return (..._args: unknown[]) => {
       unsupportedMethods.add(property);
-      if ((import.meta.env as unknown as { DEV?: boolean }).DEV) {
-        console.error(`core-product does not implement AudioEngine.${property}; add a product event instead of a silent fallback.`);
-      }
+      host.reportRuntimeFallback(property, classification);
     };
   },
 }) as AudioEngine;

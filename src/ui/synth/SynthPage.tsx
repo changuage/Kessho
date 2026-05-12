@@ -392,6 +392,8 @@ export interface SynthPageProps {
   isRunning: boolean;
   /** Get morphed lead params for ADSR preview */
   getLeadMorphedParams: (lead: 1 | 2) => { attack: number; decay: number; sustain: number; release: number } | null;
+  /** Whether live source filter/LFO telemetry is available from the current audio runtime */
+  liveSourceTelemetryAvailable?: boolean;
   /** Evolve configs change callback */
   onEvolveConfigsChange?: (configs: EvolveConfig[]) => void;
   /** Initial evolve configs to restore across tab switches / preset loads */
@@ -459,6 +461,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     // CollapsiblePanelComponent — available via props if needed
     isRunning,
     getLeadMorphedParams,
+    liveSourceTelemetryAvailable = true,
     onEvolveConfigsChange,
     onStepOverridesChange,
     onRawStepOverridesChange,
@@ -678,13 +681,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, []);
 
   const updateLiveFilterViz = useCallback(() => {
+    if (!liveSourceTelemetryAvailable) return;
     setLivePadViz({
       pad1FilterFreq: audioEngine.getCurrentPadFilterFreq('pad1'),
       pad1LfoValue: audioEngine.getCurrentPadLfoValue('pad1'),
       pad2FilterFreq: audioEngine.getCurrentPadFilterFreq('pad2'),
       pad2LfoValue: audioEngine.getCurrentPadLfoValue('pad2'),
     });
-  }, []);
+  }, [liveSourceTelemetryAvailable]);
 
   const livePad1Morph = useRuntimeValue('padMorph', state.padMorph ?? 0) ?? (state.padMorph ?? 0);
   const livePad2Morph = useRuntimeValue('pad2Morph', state.pad2Morph ?? 0) ?? (state.pad2Morph ?? 0);
@@ -772,7 +776,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   ]);
 
   useVisibleInterval(updateLiveFilterViz, synthLivePollMs, {
-    enabled: isRunning,
+    enabled: isRunning && liveSourceTelemetryAvailable,
   });
 
   const getPadMorphValue = useCallback((scope: PadRandomScope): number => (
@@ -2708,9 +2712,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 modEnvRelease={state.padModEnvRelease ?? 0.5}
                 modEnvDepth={state.padModEnvDepth ?? 0}
                 modEnvDest={state.padModEnvDest ?? 'filterCutoff'}
-                liveFilterFreq={livePadViz.pad1FilterFreq}
-                liveLfoValue={livePadViz.pad1LfoValue}
-                isRunning={isRunning}
+                liveFilterFreq={liveSourceTelemetryAvailable ? livePadViz.pad1FilterFreq : state.filterCutoffMin + (state.filterCutoffMax - state.filterCutoffMin) * 0.5}
+                liveLfoValue={liveSourceTelemetryAvailable ? livePadViz.pad1LfoValue : 0}
+                isRunning={isRunning && liveSourceTelemetryAvailable}
                 onFilterMinChange={(v) => onParamChange('filterCutoffMin', v)}
                 onFilterMaxChange={(v) => onParamChange('filterCutoffMax', v)}
                 onAdsrChange={(param, v) => onParamChange(param, v)}
@@ -3338,9 +3342,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 modEnvRelease={state.pad2ModEnvRelease ?? 0.5}
                 modEnvDepth={state.pad2ModEnvDepth ?? 0}
                 modEnvDest={state.pad2ModEnvDest ?? 'filterCutoff'}
-                liveFilterFreq={livePadViz.pad2FilterFreq}
-                liveLfoValue={livePadViz.pad2LfoValue}
-                isRunning={isRunning}
+                liveFilterFreq={liveSourceTelemetryAvailable ? livePadViz.pad2FilterFreq : (state.pad2FilterCutoffMin ?? 400) + ((state.pad2FilterCutoffMax ?? 3000) - (state.pad2FilterCutoffMin ?? 400)) * 0.5}
+                liveLfoValue={liveSourceTelemetryAvailable ? livePadViz.pad2LfoValue : 0}
+                isRunning={isRunning && liveSourceTelemetryAvailable}
                 onFilterMinChange={(v) => onParamChange('pad2FilterCutoffMin', v)}
                 onFilterMaxChange={(v) => onParamChange('pad2FilterCutoffMax', v)}
                 onAdsrChange={(param, v) => {

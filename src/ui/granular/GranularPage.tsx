@@ -136,6 +136,7 @@ export interface GranularPageProps {
   SliderComponent: React.ComponentType<Record<string, unknown>>;
   getDynamicsAnalyser?: (key: DynamicsAnalyserKey) => AnalyserNode | null;
   getDynamicsTelemetry?: () => DynamicsVisualTelemetrySnapshot;
+  liveBufferTelemetryAvailable?: boolean;
 }
 
 interface BufferRangeSegment {
@@ -218,6 +219,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
   onStateChange,
   sliderProps,
   SliderComponent,
+  liveBufferTelemetryAvailable = true,
 }) => {
   const { announceHelp } = useSliderHelp();
   const spaceMode = state.granularSpaceMode ?? 'clocked';
@@ -226,22 +228,25 @@ const GranularPage: React.FC<GranularPageProps> = ({
   const [voicePositions, setVoicePositions] = useState<number[]>([0, 0, 0, 0]);
   const [activeGrainCount, setActiveGrainCount] = useState(0);
   const [bufferWaveform, setBufferWaveform] = useState<Float32Array | null>(null);
-  const [visualizerEnabled, setVisualizerEnabled] = useState(() => !isMobile);
+  const [visualizerEnabled, setVisualizerEnabled] = useState(() => liveBufferTelemetryAvailable && !isMobile);
 
   const syncGranularUi = useCallback(() => {
+    const nextActiveGrains = audioEngine.getGranularActiveGrainCount();
+    setActiveGrainCount(prev => (prev === nextActiveGrains ? prev : nextActiveGrains));
+
+    if (!liveBufferTelemetryAvailable) return;
+
     const nextWriteHead = audioEngine.getGranularWriteHeadPosition();
     const nextVoicePositions = audioEngine.getGranularVoicePositions();
-    const nextActiveGrains = audioEngine.getGranularActiveGrainCount();
 
     setWriteHeadPosition(prev => (Math.abs(prev - nextWriteHead) > 0.002 ? nextWriteHead : prev));
     setVoicePositions(prev => (positionsEqual(prev, nextVoicePositions) ? prev : nextVoicePositions));
-    setActiveGrainCount(prev => (prev === nextActiveGrains ? prev : nextActiveGrains));
 
     const waveform = audioEngine.getGranularBufferWaveform();
     if (waveform) {
       setBufferWaveform(prev => (prev === waveform ? prev : waveform));
     }
-  }, []);
+  }, [liveBufferTelemetryAvailable]);
 
   const granularUiPollMs = useMemo(() => {
     if (activeGrainCount > 0 || state.granularFreeze) return 90;
@@ -250,16 +255,18 @@ const GranularPage: React.FC<GranularPageProps> = ({
   }, [activeGrainCount, state.granularEnabled, state.granularFreeze]);
 
   useVisibleInterval(syncGranularUi, granularUiPollMs, {
-    enabled: isRunning && visualizerEnabled,
+    enabled: isRunning && (visualizerEnabled || !liveBufferTelemetryAvailable),
   });
 
   useEffect(() => {
-    audioEngine.setGranularUiActive(isRunning && visualizerEnabled);
+    audioEngine.setGranularUiActive(isRunning && visualizerEnabled && liveBufferTelemetryAvailable);
 
-    if (!isRunning || !visualizerEnabled) {
+    if (!isRunning || !visualizerEnabled || !liveBufferTelemetryAvailable) {
       setWriteHeadPosition(prev => (prev === 0 ? prev : 0));
       setVoicePositions(prev => (positionsEqual(prev, [0, 0, 0, 0]) ? prev : [0, 0, 0, 0]));
-      setActiveGrainCount(prev => (prev === 0 ? prev : 0));
+      if (!isRunning) {
+        setActiveGrainCount(prev => (prev === 0 ? prev : 0));
+      }
       setBufferWaveform(prev => (prev === null ? prev : null));
       return () => {
         audioEngine.setGranularUiActive(false);
@@ -268,7 +275,13 @@ const GranularPage: React.FC<GranularPageProps> = ({
     return () => {
       audioEngine.setGranularUiActive(false);
     };
-  }, [isRunning, visualizerEnabled]);
+  }, [isRunning, liveBufferTelemetryAvailable, visualizerEnabled]);
+
+  useEffect(() => {
+    if (!liveBufferTelemetryAvailable) {
+      setVisualizerEnabled(false);
+    }
+  }, [liveBufferTelemetryAvailable]);
   const delayBExternallyDriven =
     (state.delayAToBSend ?? 0) > 0.001 ||
     (state.pad1DelayBSend ?? 0) > 0.001 ||
@@ -659,58 +672,60 @@ const GranularPage: React.FC<GranularPageProps> = ({
                 <span className="granular-chip-value">{activeGrainCount}</span>
               </div>
             </div>
-            {visualizerEnabled ? (
-              <>
-                {bufferVoiceVisuals.length > 0 && (
-                  <div className="granular-buffer-readouts">
-                    {bufferVoiceVisuals.map((voice) => (
-                      <div
-                        key={voice.index}
-                        className={`granular-buffer-readout mode-${voice.mode}`}
-                        style={{ '--voice-color': voice.color } as React.CSSProperties}
-                        title={voice.title}
-                      >
-                        {voice.summary}
-                      </div>
-                    ))}
+            {liveBufferTelemetryAvailable && (
+              visualizerEnabled ? (
+                <>
+                  {bufferVoiceVisuals.length > 0 && (
+                    <div className="granular-buffer-readouts">
+                      {bufferVoiceVisuals.map((voice) => (
+                        <div
+                          key={voice.index}
+                          className={`granular-buffer-readout mode-${voice.mode}`}
+                          style={{ '--voice-color': voice.color } as React.CSSProperties}
+                          title={voice.title}
+                        >
+                          {voice.summary}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="granular-buffer-legend">
+                    <span className="granular-buffer-legend-swatch anchor" />
+                    <span>anchor</span>
+                    <span className="granular-buffer-legend-swatch window" />
+                    <span>window</span>
+                    <span className="granular-buffer-legend-swatch marker" />
+                    <span>current</span>
+                    <span className="granular-buffer-legend-swatch particle" />
+                    <span>grains</span>
                   </div>
-                )}
-                <div className="granular-buffer-legend">
-                  <span className="granular-buffer-legend-swatch anchor" />
-                  <span>anchor</span>
-                  <span className="granular-buffer-legend-swatch window" />
-                  <span>window</span>
-                  <span className="granular-buffer-legend-swatch marker" />
-                  <span>current</span>
-                  <span className="granular-buffer-legend-swatch particle" />
-                  <span>grains</span>
+                  <GranularBufferCanvas
+                    height={128}
+                    isRunning={isRunning}
+                    voices={bufferVoiceVisuals as CanvasVoiceVisual[]}
+                    writeHeadPosition={writeHeadPosition}
+                    activeGrainCount={activeGrainCount}
+                    bufferWaveform={bufferWaveform}
+                    bufferSeconds={(state.granularBufferSeconds as number) || 16}
+                    isFrozen={Boolean(state.granularFreeze)}
+                    activeSlices={activeSlices}
+                    numSlices={NUM_SLICES}
+                  />
+                </>
+              ) : (
+                <div className="granular-buffer-readouts" style={{ gap: 12 }}>
+                  <div className="granular-buffer-readout" style={{ '--voice-color': '#6b7280' } as React.CSSProperties}>
+                    Mobile default keeps the live buffer canvas off to save CPU and battery.
+                  </div>
+                  <button
+                    type="button"
+                    className="granular-chip-btn active"
+                    onClick={() => setVisualizerEnabled(true)}
+                  >
+                    Enable Visualizer
+                  </button>
                 </div>
-                <GranularBufferCanvas
-                  height={128}
-                  isRunning={isRunning}
-                  voices={bufferVoiceVisuals as CanvasVoiceVisual[]}
-                  writeHeadPosition={writeHeadPosition}
-                  activeGrainCount={activeGrainCount}
-                  bufferWaveform={bufferWaveform}
-                  bufferSeconds={(state.granularBufferSeconds as number) || 16}
-                  isFrozen={Boolean(state.granularFreeze)}
-                  activeSlices={activeSlices}
-                  numSlices={NUM_SLICES}
-                />
-              </>
-            ) : (
-              <div className="granular-buffer-readouts" style={{ gap: 12 }}>
-                <div className="granular-buffer-readout" style={{ '--voice-color': '#6b7280' } as React.CSSProperties}>
-                  Mobile default keeps the live buffer canvas off to save CPU and battery.
-                </div>
-                <button
-                  type="button"
-                  className="granular-chip-btn active"
-                  onClick={() => setVisualizerEnabled(true)}
-                >
-                  Enable Visualizer
-                </button>
-              </div>
+              )
             )}
           </div>
 

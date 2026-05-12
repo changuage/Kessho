@@ -59,8 +59,10 @@ for (const token of [
   'KesshoProductAssetIDs',
   'KesshoProductCoreAssetManifest',
   'KESSHO_PRODUCT_ASSET_ROOT',
+  'KESSHO_PRODUCT_ASSET_DOWNLOAD_ROOT',
   'startupAssets',
   'assetURL(relativePath:',
+  'downloadedAssetSearchRoots',
   'pianoAssetId(forMidi',
   'Piano/piano_',
   'Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg',
@@ -237,6 +239,26 @@ assert(
     nativeBridgeImpl.includes('native.source_preset_ids[i] = telemetry.source_preset_ids[i];'),
   'native bridge telemetry must expose Product Core source preset IDs',
 );
+assert(
+  nativeBridgeHeader.includes('KESSHO_NATIVE_PRODUCT_SEQUENCER_UI_STATE_BYTES') &&
+    nativeBridgeHeader.includes('kessho_native_product_copy_sequencer_ui_state') &&
+    nativeBridgeImpl.includes('kessho_product_copy_sequencer_ui_state('),
+  'native bridge must expose Product Core sequencer UI state copy API',
+);
+for (const token of [
+  'master_input_peak',
+  'master_output_peak',
+  'master_output_rms',
+  'master_limiter_gain_reduction_db',
+  'master_saturation_drive',
+  'dynamics_saturation_drive',
+  'master_true_peak',
+  'master_true_peak_dbtp',
+  'master_integrated_lufs',
+]) {
+  assert(nativeBridgeHeader.includes(token), `native bridge telemetry header is missing ${token}`);
+  assert(nativeBridgeImpl.includes(`native.${token} = telemetry.${token};`), `native bridge telemetry conversion is missing ${token}`);
+}
 
 for (const token of [
   'public let macroMorph: Float',
@@ -312,6 +334,18 @@ KesshoProductSnapshotV2 makeSnapshot() {
   }
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].preset_id =
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL;
+  snapshot.synth_euclid.lane_count = 1;
+  snapshot.synth_euclid.lanes[0].enabled = 1;
+  snapshot.synth_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  snapshot.synth_euclid.lanes[0].step_count = 16;
+  snapshot.synth_euclid.lanes[0].fill_count = 4;
+  snapshot.synth_euclid.lanes[0].clock_division = 16;
+  snapshot.synth_euclid.lanes[0].probability = 1.0f;
+  snapshot.synth_euclid.lanes[0].ratchet = 1;
+  snapshot.synth_euclid.lanes[0].midi_note = 60.0f;
+  snapshot.synth_euclid.lanes[0].velocity = 0.8f;
+  snapshot.synth_euclid.lanes[0].hold_seconds = 0.2f;
+  snapshot.synth_euclid.lanes[0].expression = 0.8f;
   return snapshot;
 }
 
@@ -393,6 +427,35 @@ int main() {
   if (telemetry.source_preset_ids[KESSHO_PRODUCT_SOURCE_PAD1 - 1u] !=
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL) {
     return 14;
+  }
+
+  if (kessho_native_product_enqueue_event(
+          engine,
+          0,
+          KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE,
+          KESSHO_PRODUCT_SEQUENCER_SYNTH,
+          0,
+          0,
+          1.0f,
+          4242.0f,
+          0.0f,
+          0.0f,
+          0) != KESSHO_PRODUCT_OK) {
+    return 15;
+  }
+  if (kessho_native_product_render(engine, left.data(), right.data(), 128) != KESSHO_PRODUCT_OK) {
+    return 16;
+  }
+  KesshoProductSequencerUiState sequencerUiState{};
+  if (kessho_native_product_copy_sequencer_ui_state(
+          engine,
+          &sequencerUiState,
+          sizeof(sequencerUiState)) != KESSHO_PRODUCT_OK) {
+    return 17;
+  }
+  if (sequencerUiState.last_change_kind != KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_DICE ||
+      sequencerUiState.synth_lanes[0].mutation_flags == 0u) {
+    return 18;
   }
 
   if (kessho_native_product_unregister_asset(engine, 22) != KESSHO_PRODUCT_OK) {

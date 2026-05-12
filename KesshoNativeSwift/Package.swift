@@ -27,6 +27,10 @@ let package = Package(
             name: "KesshoProductSnapshotSmoke",
             targets: ["KesshoProductSnapshotSmoke"]
         ),
+        .executable(
+            name: "KesshoProductNativeReleaseSmoke",
+            targets: ["KesshoProductNativeReleaseSmoke"]
+        ),
         .library(
             name: "KesshoNativeCore",
             targets: ["KesshoNativeCore"]
@@ -65,6 +69,7 @@ let package = Package(
             sources: [
                 "KesshoProductCoreBridge.mm",
                 "kessho_product_core_engine.cpp",
+                "kessho_product_core_product_components.cpp",
                 "kessho_product_core_modules.cpp",
                 "kessho_product_core_dynamics_character_module.cpp",
                 "kessho_product_core_dynamics_degrade_module.cpp",
@@ -128,6 +133,11 @@ let package = Package(
             name: "KesshoProductSnapshotSmoke",
             dependencies: ["KesshoNativeCore"],
             path: "KesshoProductSnapshotSmoke"
+        ),
+        .executableTarget(
+            name: "KesshoProductNativeReleaseSmoke",
+            dependencies: ["KesshoNativeCore"],
+            path: "KesshoProductNativeReleaseSmoke"
         )
     ],
     cxxLanguageStandard: .cxx17

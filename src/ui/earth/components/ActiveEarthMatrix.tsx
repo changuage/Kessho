@@ -61,8 +61,8 @@ type SliderRuntime = {
   dualRange?: DualSliderRange;
   walkPosition?: number;
   isFlashing?: boolean;
-  onCycleMode: (key: keyof SliderState) => void;
-  onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
+  onCycleMode?: (key: keyof SliderState) => void;
+  onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
 };
 
 type MatrixControl = {
@@ -122,6 +122,14 @@ type ActiveEarthMatrixProps = {
   onSelectChange: <K extends keyof SliderState>(key: K, value: SliderState[K]) => void;
   sliderProps: (paramKey: keyof SliderState) => SliderRuntime;
   getEarthTextureDebugState: () => EarthTextureDebugState;
+  textureDebugAvailable?: boolean;
+};
+
+const EMPTY_EARTH_TEXTURE_DEBUG_STATE: EarthTextureDebugState = {
+  waves: null,
+  birds: null,
+  birds2: null,
+  frogs: null,
 };
 
 const MOBILE_EARTH_MATRIX_QUERY = '(max-width: 760px)';
@@ -261,6 +269,7 @@ export function ActiveEarthMatrix({
   onSelectChange,
   sliderProps,
   getEarthTextureDebugState,
+  textureDebugAvailable = true,
 }: ActiveEarthMatrixProps) {
   const { announceHelp } = useSliderHelp();
   const anyWaterChildActive = WATER_LAYER_KEYS.some((key) => numeric(state, key) > 0.01);
@@ -717,10 +726,10 @@ export function ActiveEarthMatrix({
   }, [onSelectChange, state, toggleWaterChild]);
 
   const activeTextureDebugKeys = useMemo(
-    () => activeRows
+    () => textureDebugAvailable ? activeRows
       .map((row) => row.textureDebugKey)
-      .filter((key): key is keyof EarthTextureDebugState => Boolean(key)),
-    [activeRows],
+      .filter((key): key is keyof EarthTextureDebugState => Boolean(key)) : [],
+    [activeRows, textureDebugAvailable],
   );
   const [activeSharedColumn, setActiveSharedColumn] = useState<SharedColumnId>(DEFAULT_SHARED_COLUMN);
   const [isCompactLayout, setIsCompactLayout] = useState<boolean>(() => {
@@ -731,7 +740,9 @@ export function ActiveEarthMatrix({
     () => SHARED_COLUMNS.find((column) => column.id === activeSharedColumn) ?? SHARED_COLUMNS[0]!,
     [activeSharedColumn],
   );
-  const [textureDebugState, setTextureDebugState] = useState<EarthTextureDebugState>(() => getEarthTextureDebugState());
+  const [textureDebugState, setTextureDebugState] = useState<EarthTextureDebugState>(() => (
+    textureDebugAvailable ? getEarthTextureDebugState() : EMPTY_EARTH_TEXTURE_DEBUG_STATE
+  ));
   const sectionRef = useRef<HTMLElement>(null);
   const { canAnimate: canPollTextureDebug } = useAnimationVisibility(sectionRef, { rootMargin: '220px' });
 
@@ -751,21 +762,22 @@ export function ActiveEarthMatrix({
   }, []);
 
   useEffect(() => {
-    if (activeTextureDebugKeys.length === 0) return;
+    if (!textureDebugAvailable || activeTextureDebugKeys.length === 0) return;
     const nextState = getEarthTextureDebugState();
     setTextureDebugState((prev) => {
       const changed = activeTextureDebugKeys.some((key) => !snapshotsEqual(prev[key], nextState[key]));
       return changed ? nextState : prev;
     });
-  }, [activeTextureDebugKeys, getEarthTextureDebugState]);
+  }, [activeTextureDebugKeys, getEarthTextureDebugState, textureDebugAvailable]);
 
   const updateTextureDebugState = useCallback(() => {
+    if (!textureDebugAvailable) return;
     const nextState = getEarthTextureDebugState();
     setTextureDebugState((prev) => {
       const changed = activeTextureDebugKeys.some((key) => !snapshotsEqual(prev[key], nextState[key]));
       return changed ? nextState : prev;
     });
-  }, [activeTextureDebugKeys, getEarthTextureDebugState]);
+  }, [activeTextureDebugKeys, getEarthTextureDebugState, textureDebugAvailable]);
 
   const textureDebugPollMs = useMemo(() => {
     if (activeTextureDebugKeys.length <= 1) return 180;
@@ -774,7 +786,7 @@ export function ActiveEarthMatrix({
   }, [activeTextureDebugKeys.length]);
 
   useVisibleInterval(updateTextureDebugState, textureDebugPollMs, {
-    enabled: activeTextureDebugKeys.length > 0,
+    enabled: textureDebugAvailable && activeTextureDebugKeys.length > 0,
     isVisible: canPollTextureDebug,
   });
 
@@ -882,6 +894,7 @@ export function ActiveEarthMatrix({
                   sliderProps={sliderProps}
                   onParamChange={onParamChange}
                   textureDebugState={textureDebugState}
+                  textureDebugAvailable={textureDebugAvailable}
                 />
               ))}
             </div>
@@ -901,6 +914,7 @@ export function ActiveEarthMatrix({
                     sliderProps={sliderProps}
                     onParamChange={onParamChange}
                     textureDebugState={textureDebugState}
+                    textureDebugAvailable={textureDebugAvailable}
                   />
                 ))}
               </div>
@@ -1060,12 +1074,14 @@ function ChildMatrixRow({
   sliderProps,
   onParamChange,
   textureDebugState,
+  textureDebugAvailable,
 }: {
   row: ChildRow;
   state: SliderState;
   sliderProps: (paramKey: keyof SliderState) => SliderRuntime;
   onParamChange: (key: keyof SliderState, value: number) => void;
   textureDebugState: EarthTextureDebugState;
+  textureDebugAvailable: boolean;
 }) {
   return (
     <>
@@ -1104,7 +1120,7 @@ function ChildMatrixRow({
         className={`earth-matrix-cell earth-matrix-info-cell${row.textureDebugKey ? ' nature' : ''}`}
         style={{ '--row-accent': row.accent } as CSSProperties}
       >
-        {row.textureDebugKey ? (
+        {row.textureDebugKey && textureDebugAvailable ? (
           <EarthTextureInfoCell
             debugKey={row.textureDebugKey}
             textureDebugState={textureDebugState}
@@ -1125,12 +1141,14 @@ function ChildMatrixMobileCard({
   sliderProps,
   onParamChange,
   textureDebugState,
+  textureDebugAvailable,
 }: {
   row: ChildRow;
   state: SliderState;
   sliderProps: (paramKey: keyof SliderState) => SliderRuntime;
   onParamChange: (key: keyof SliderState, value: number) => void;
   textureDebugState: EarthTextureDebugState;
+  textureDebugAvailable: boolean;
 }) {
   return (
     <div className="earth-matrix-mobile-card">
@@ -1179,7 +1197,7 @@ function ChildMatrixMobileCard({
           className={`earth-matrix-cell earth-matrix-info-cell${row.textureDebugKey ? ' nature' : ''}`}
           style={{ '--row-accent': row.accent } as CSSProperties}
         >
-          {row.textureDebugKey ? (
+          {row.textureDebugKey && textureDebugAvailable ? (
             <EarthTextureInfoCell
               debugKey={row.textureDebugKey}
               textureDebugState={textureDebugState}
@@ -1361,6 +1379,8 @@ function EarthMatrixSliderCell({
       return;
     }
 
+    if (!runtime.onDualRangeChange) return;
+
     if (drag.handle === 'min') {
       const nextMinNorm = Math.min(pointerNorm, drag.startRangeNorm.max);
       const nextMin = quantizeValue(normToValue(nextMinNorm, quantization, control.logarithmic), quantization);
@@ -1396,7 +1416,7 @@ function EarthMatrixSliderCell({
       dragRef.current = null;
       setDragging(false);
       setDragHandle(null);
-      runtime.onCycleMode(control.key);
+      runtime.onCycleMode?.(control.key);
       if (navigator.vibrate) navigator.vibrate(50);
     }, LONG_PRESS_MS);
   }, [clearLongPress, control.key, runtime]);
@@ -1428,7 +1448,7 @@ function EarthMatrixSliderCell({
       title={control.label}
       onMouseEnter={announce}
       onFocus={announce}
-      onDoubleClick={() => runtime.onCycleMode(control.key)}
+      onDoubleClick={() => runtime.onCycleMode?.(control.key)}
       onPointerDown={(event) => {
         announce();
         clearLongPress();

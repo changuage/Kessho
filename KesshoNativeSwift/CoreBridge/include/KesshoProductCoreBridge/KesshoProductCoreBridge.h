@@ -8,6 +8,8 @@ extern "C" {
 
 typedef void* KesshoNativeProductCoreHandle;
 
+#define KESSHO_NATIVE_PRODUCT_SEQUENCER_UI_STATE_BYTES 70948u
+
 typedef struct KesshoNativeProductCapabilityReport {
   uint32_t abi_version;
   uint32_t schema_hash;
@@ -56,6 +58,15 @@ typedef struct KesshoNativeProductTelemetry {
   uint32_t rng_seed;
   uint32_t rng_state;
   uint32_t source_preset_ids[7];
+  float master_input_peak;
+  float master_output_peak;
+  float master_output_rms;
+  float master_limiter_gain_reduction_db;
+  float master_saturation_drive;
+  float dynamics_saturation_drive;
+  float master_true_peak;
+  float master_true_peak_dbtp;
+  float master_integrated_lufs;
 } KesshoNativeProductTelemetry;
 
 int32_t kessho_native_product_get_abi_version(void);
@@ -102,6 +113,11 @@ int32_t kessho_native_product_get_stem(
 
 KesshoNativeProductTelemetry kessho_native_product_get_telemetry(
     KesshoNativeProductCoreHandle handle);
+
+int32_t kessho_native_product_copy_sequencer_ui_state(
+    KesshoNativeProductCoreHandle handle,
+    void* out_state,
+    uint32_t byte_count);
 
 int32_t kessho_native_product_register_interleaved_asset(
     KesshoNativeProductCoreHandle handle,

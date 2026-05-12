@@ -427,8 +427,40 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   sidechainReverbTarget: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSidechainReverbTarget, key)],
 };
 
+const DRUM_RUNTIME_RANGE_VOICES: Array<[RegExp, number]> = [
+  [/^drumSub/, 0],
+  [/^drumKick/, 1],
+  [/^drumClick/, 2],
+  [/^drumBeepHi/, 3],
+  [/^drumBeepLo/, 4],
+  [/^drumNoise/, 5],
+  [/^drumMembrane/, 6],
+];
+
+function resolveCoreProductDrumRuntimeRangeTargets(key: string): CoreProductRangeTarget[] {
+  const voiceIndex = DRUM_RUNTIME_RANGE_VOICES.find(([pattern]) => pattern.test(key))?.[1];
+  if (voiceIndex === undefined) return [];
+  if (/Morph$/.test(key)) {
+    return [drumTarget(voiceIndex, KESSHO_PRODUCT_PARAM_IDS.SourceMorph, key)];
+  }
+  if (/Expression/i.test(key)) {
+    return [drumTarget(voiceIndex, KESSHO_PRODUCT_PARAM_IDS.SourceExpression, key)];
+  }
+  if (/DelaySend/i.test(key)) {
+    return [drumTarget(voiceIndex, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, key)];
+  }
+  if (/Distance/i.test(key)) {
+    return [drumTarget(voiceIndex, KESSHO_PRODUCT_PARAM_IDS.SourceDistance, key)];
+  }
+  return [];
+}
+
 export function resolveCoreProductRangeTargets(key: string): CoreProductRangeTarget[] {
-  return RANGE_KEY_TARGETS[key]?.(key) ?? [];
+  return RANGE_KEY_TARGETS[key]?.(key) ?? resolveCoreProductDrumRuntimeRangeTargets(key);
+}
+
+export function isCoreProductRangeKeySupported(key: string): boolean {
+  return resolveCoreProductRangeTargets(key).length > 0;
 }
 
 export function resolveCoreProductDrumMorphRangeTarget(voiceIndex: number, key: string): CoreProductRangeTarget {

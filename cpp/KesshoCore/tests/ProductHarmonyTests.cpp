@@ -5,6 +5,7 @@
 
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductParamIds.h"
+#include "../src/product/KesshoProductEngineInternal.h"
 
 namespace {
 
@@ -70,9 +71,54 @@ int32_t renderEvents(const KesshoProductSnapshotV2& snapshot, KesshoSequencerEve
   return count;
 }
 
+void requireDirectMusicCoverage() {
+  KesshoProductEngine direct(48000.0, 128, 0);
+  direct.transport.running = true;
+  direct.transport.bpm = 120.0f;
+  direct.transport.beats_per_bar = 4u;
+  direct.transport.bars_per_phrase = 4u;
+  direct.harmony.root_midi = 60.0f;
+  direct.harmony.scale_id = 1u;
+  direct.harmony.tension = 0.3f;
+  direct.rng_seed = 17u;
+
+  LaneState lane{};
+  lane.enabled = true;
+  lane.target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  lane.midi_note = 60.0f;
+  lane.seed = 23u;
+
+  direct.updateHarmonyTelemetry(0u);
+  requireNear(direct.harmony.chord_midi[0], 60.0f, 0.001f, "direct harmony telemetry root mismatch");
+  requireNear(direct.harmony.chord_midi[1], 64.0f, 0.001f, "direct harmony telemetry third mismatch");
+  requireNear(direct.resolveHarmonyMidi(lane, 0u, 2u, 0u), 64.0f, 0.001f, "direct major voicing mismatch");
+
+  direct.harmony.scale_id = 2u;
+  requireNear(direct.resolveHarmonyMidi(lane, 0u, 2u, 0u), 63.0f, 0.001f, "direct minor voicing mismatch");
+
+  const uint32_t rng_a = hashU32(1234u);
+  const uint32_t rng_b = hashU32(1234u);
+  require(rng_a == rng_b, "direct deterministic RNG hash mismatch");
+  require(hashUnit(1234u) >= 0.0f && hashUnit(1234u) < 1.0f, "direct RNG unit hash out of range");
+
+  direct.evolution_amount = 1.0f;
+  direct.evolution_state = 99u;
+  const float evolved = direct.evolvedLaneValue(lane, 1u, 3u, 0u, 2u, 0.5f, 0.5f, 0.0f, 1.0f);
+  require(evolved >= 0.0f && evolved <= 1.0f, "direct evolution value out of range");
+  require(std::fabs(evolved - 0.5f) > 0.0001f, "direct evolution should alter lane value");
+
+  direct.journey_running = true;
+  direct.journey_phase = 0.1f;
+  direct.journey_rate_bars = 1.0f;
+  direct.advanceJourney(48000u);
+  require(direct.journey_phase > 0.1f, "direct journey clock did not advance");
+}
+
 } // namespace
 
 int main() {
+  requireDirectMusicCoverage();
+
   KesshoSequencerEvent major_events[16]{};
   int32_t count = renderEvents(makeSnapshot(60.0f, 1, 0.3f, 1), major_events, 16);
   require(count >= 3, "major scale event count too low");

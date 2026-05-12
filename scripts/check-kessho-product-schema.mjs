@@ -9,8 +9,16 @@ function read(path) {
 }
 
 const before = new Map([
+  ['cpp/KesshoCore/generated/KesshoProductDefaults.h', read('cpp/KesshoCore/generated/KesshoProductDefaults.h')],
+  ['cpp/KesshoCore/generated/KesshoProductEventIds.h', read('cpp/KesshoCore/generated/KesshoProductEventIds.h')],
+  ['cpp/KesshoCore/generated/KesshoProductParamIds.h', read('cpp/KesshoCore/generated/KesshoProductParamIds.h')],
+  ['cpp/KesshoCore/generated/KesshoProductSchema.h', read('cpp/KesshoCore/generated/KesshoProductSchema.h')],
   ['cpp/KesshoCore/generated/KesshoProductSchemaHash.h', read('cpp/KesshoCore/generated/KesshoProductSchemaHash.h')],
+  ['src/audio/generated/kesshoProductEvents.ts', read('src/audio/generated/kesshoProductEvents.ts')],
+  ['src/audio/generated/kesshoProductParams.ts', read('src/audio/generated/kesshoProductParams.ts')],
   ['src/audio/generated/kesshoProductSchema.ts', read('src/audio/generated/kesshoProductSchema.ts')],
+  ['KesshoNativeSwift/Generated/KesshoProductEvents.swift', read('KesshoNativeSwift/Generated/KesshoProductEvents.swift')],
+  ['KesshoNativeSwift/Generated/KesshoProductParams.swift', read('KesshoNativeSwift/Generated/KesshoProductParams.swift')],
   ['KesshoNativeSwift/Generated/KesshoProductSchema.swift', read('KesshoNativeSwift/Generated/KesshoProductSchema.swift')],
 ]);
 

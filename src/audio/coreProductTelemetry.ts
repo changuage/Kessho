@@ -13,6 +13,38 @@ export type CoreProductCapabilityReport = {
   legacyFallbacks: string[];
 };
 
+export type CoreProductSequencerLaneUiState = {
+  enabled: boolean;
+  targetSourceId: number;
+  stepCount: number;
+  fillCount: number;
+  rotation: number;
+  clockDivision: number;
+  mutationFlags: number;
+  triggerToggles: [number, boolean][];
+  probability: number[] | null;
+  ratchet: number[] | null;
+  trigCondition: [number, number][] | null;
+  midiNote: number[] | null;
+  expression: number[] | null;
+  morph: number[] | null;
+  distance: number[] | null;
+};
+
+export type CoreProductSequencerUiState = {
+  schemaHash: number;
+  revision: number;
+  synthLaneCount: number;
+  drumLaneCount: number;
+  evolutionAmount: number;
+  evolutionState: number;
+  lastChangedTargetId: number;
+  lastChangedLaneIndex: number;
+  lastChangeKind: number;
+  synthLanes: CoreProductSequencerLaneUiState[];
+  drumLanes: CoreProductSequencerLaneUiState[];
+};
+
 export type CoreProductTelemetrySnapshot = {
   schemaHash: number;
   sampleRate?: number;
@@ -32,6 +64,10 @@ export type CoreProductTelemetrySnapshot = {
   renderP99Ms?: number;
   missedQuantumCount?: number;
   wasmHeapBytes?: number;
+  wasmHeapBudgetBytes?: number;
+  decodedAssetBytes?: number;
+  decodedAssetBudgetBytes?: number;
+  assetAllocationBytes?: number;
   sequencerEventCount: number;
   controlQueueDepth: number;
   assetMissingCount: number;
@@ -49,6 +85,25 @@ export type CoreProductTelemetrySnapshot = {
   rngSeed?: number;
   rngState?: number;
   sourcePresetIds?: number[];
+  masterInputPeak?: number;
+  masterOutputPeak?: number;
+  masterOutputRms?: number;
+  masterLimiterGainReductionDb?: number;
+  masterSaturationDrive?: number;
+  dynamicsSaturationDrive?: number;
+  masterTruePeak?: number;
+  masterTruePeakDbtp?: number;
+  masterIntegratedLufs?: number;
+  sequencerUiStateRevision?: number;
+  sequencerUiState?: CoreProductSequencerUiState | null;
+  sequencerUiChangeDice?: number;
+  sequencerUiChangeResetHome?: number;
+  sequencerUiChangeEvolution?: number;
+  dirtyDiffCount?: number;
+  fullSnapshotReloadCount?: number;
+  unsupportedControlCount?: number;
+  snapshotReloadCpuMs?: number;
+  lastSnapshotReloadReason?: string;
   workletOutputPeak?: number;
   workletStemPeaks?: number[];
   workletMasterStemPeak?: number;

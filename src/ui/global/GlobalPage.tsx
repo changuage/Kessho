@@ -915,6 +915,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   const audioEngineModes = coreBridgeModeAvailable
     ? (['web-ts', 'core-bridge', 'core-product'] as const)
     : (['web-ts', 'core-product'] as const);
+  const stemRecordingAvailable = audioEngineMode !== 'core-product';
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(
     () => {
       if (typeof window === 'undefined') return new Set(DEFAULT_GLOBAL_EXPANDED_SECTIONS);
@@ -2123,19 +2124,23 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                     <span className="utility-toggle-hint">24-bit 48kHz · ~17 MB/min</span>
                   </button>
                 </div>
-                <div className="utility-sub-label" style={{ marginTop: '6px' }}>Stem Recording (Pre-Reverb)</div>
-                <div className="utility-stem-grid">
-                  {STEM_RECORD_TRACK_IDS.map((key) => (
-                    <button
-                      key={key}
-                      onClick={() => onRecordStemsChange(key)}
-                      disabled={isRecording}
-                      className={`utility-stem-btn ${recordStems[key] ? 'active' : ''}`}
-                    >
-                      {recordStems[key] ? '●' : '○'} {STEM_RECORD_TRACK_LABELS[key]}
-                    </button>
-                  ))}
-                </div>
+                {stemRecordingAvailable && (
+                  <>
+                    <div className="utility-sub-label" style={{ marginTop: '6px' }}>Stem Recording (Pre-Reverb)</div>
+                    <div className="utility-stem-grid">
+                      {STEM_RECORD_TRACK_IDS.map((key) => (
+                        <button
+                          key={key}
+                          onClick={() => onRecordStemsChange(key)}
+                          disabled={isRecording}
+                          className={`utility-stem-btn ${recordStems[key] ? 'active' : ''}`}
+                        >
+                          {recordStems[key] ? '●' : '○'} {STEM_RECORD_TRACK_LABELS[key]}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
                 {isRecording && (
                   <div className="utility-status recording-status">
                     <div className="utility-status-value recording-pulse">● {formatRecordingTime(recordingDuration)}</div>

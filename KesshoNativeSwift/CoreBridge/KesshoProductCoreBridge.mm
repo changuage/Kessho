@@ -87,6 +87,15 @@ KesshoNativeProductTelemetry convertTelemetry(const KesshoProductTelemetry& tele
   for (size_t i = 0; i < 7; ++i) {
     native.source_preset_ids[i] = telemetry.source_preset_ids[i];
   }
+  native.master_input_peak = telemetry.master_input_peak;
+  native.master_output_peak = telemetry.master_output_peak;
+  native.master_output_rms = telemetry.master_output_rms;
+  native.master_limiter_gain_reduction_db = telemetry.master_limiter_gain_reduction_db;
+  native.master_saturation_drive = telemetry.master_saturation_drive;
+  native.dynamics_saturation_drive = telemetry.dynamics_saturation_drive;
+  native.master_true_peak = telemetry.master_true_peak;
+  native.master_true_peak_dbtp = telemetry.master_true_peak_dbtp;
+  native.master_integrated_lufs = telemetry.master_integrated_lufs;
   return native;
 }
 
@@ -206,6 +215,22 @@ KesshoNativeProductTelemetry kessho_native_product_get_telemetry(
     return convertTelemetry(telemetry);
   }
   return convertTelemetry(kessho_product_get_telemetry(bridge->engine));
+}
+
+int32_t kessho_native_product_copy_sequencer_ui_state(
+    KesshoNativeProductCoreHandle handle,
+    void* out_state,
+    uint32_t byte_count) {
+  NativeProductCoreBridge* bridge = bridgeFromHandle(handle);
+  if (bridge == nullptr || bridge->engine == nullptr || out_state == nullptr) {
+    return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
+  }
+  if (byte_count < sizeof(KesshoProductSequencerUiState)) {
+    return KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+  }
+  return kessho_product_copy_sequencer_ui_state(
+      bridge->engine,
+      static_cast<KesshoProductSequencerUiState*>(out_state));
 }
 
 int32_t kessho_native_product_register_interleaved_asset(

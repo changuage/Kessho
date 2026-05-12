@@ -7,6 +7,7 @@
 
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductParamIds.h"
+#include "../src/product/KesshoProductEngineInternal.h"
 
 namespace {
 
@@ -95,6 +96,61 @@ bool hasOffset(const KesshoSequencerEvent* events, uint32_t count, uint32_t offs
   return false;
 }
 
+bool laneHasGeneratedOverrides(const LaneState& lane) {
+  return lane.step_override_set_low != 0u ||
+      lane.step_override_set_high != 0u ||
+      lane.probability_override_set_low != 0u ||
+      lane.probability_override_set_high != 0u ||
+      lane.ratchet_override_set_low != 0u ||
+      lane.ratchet_override_set_high != 0u ||
+      lane.trig_condition_override_set_low != 0u ||
+      lane.trig_condition_override_set_high != 0u ||
+      lane.midi_note_override_set_low != 0u ||
+      lane.midi_note_override_set_high != 0u ||
+      lane.expression_override_set_low != 0u ||
+      lane.expression_override_set_high != 0u ||
+      lane.morph_override_set_low != 0u ||
+      lane.morph_override_set_high != 0u ||
+      lane.distance_override_set_low != 0u ||
+      lane.distance_override_set_high != 0u;
+}
+
+void requireLaneMutationStateEqual(const LaneState& actual, const LaneState& expected, const char* message) {
+  require(actual.step_override_set_low == expected.step_override_set_low, message);
+  require(actual.step_override_set_high == expected.step_override_set_high, message);
+  require(actual.step_override_value_low == expected.step_override_value_low, message);
+  require(actual.step_override_value_high == expected.step_override_value_high, message);
+  require(actual.probability_override_set_low == expected.probability_override_set_low, message);
+  require(actual.probability_override_set_high == expected.probability_override_set_high, message);
+  require(actual.ratchet_override_set_low == expected.ratchet_override_set_low, message);
+  require(actual.ratchet_override_set_high == expected.ratchet_override_set_high, message);
+  require(actual.trig_condition_override_set_low == expected.trig_condition_override_set_low, message);
+  require(actual.trig_condition_override_set_high == expected.trig_condition_override_set_high, message);
+  require(actual.midi_note_override_set_low == expected.midi_note_override_set_low, message);
+  require(actual.midi_note_override_set_high == expected.midi_note_override_set_high, message);
+  require(actual.expression_override_set_low == expected.expression_override_set_low, message);
+  require(actual.expression_override_set_high == expected.expression_override_set_high, message);
+  require(actual.morph_override_set_low == expected.morph_override_set_low, message);
+  require(actual.morph_override_set_high == expected.morph_override_set_high, message);
+  require(actual.distance_override_set_low == expected.distance_override_set_low, message);
+  require(actual.distance_override_set_high == expected.distance_override_set_high, message);
+  for (uint32_t i = 0; i < 64u; ++i) {
+    require(std::fabs(actual.probability_overrides[i] - expected.probability_overrides[i]) < 0.000001f, message);
+    require(actual.ratchet_overrides[i] == expected.ratchet_overrides[i], message);
+    require(actual.trig_condition_numerators[i] == expected.trig_condition_numerators[i], message);
+    require(actual.trig_condition_denominators[i] == expected.trig_condition_denominators[i], message);
+    require(std::fabs(actual.midi_note_overrides[i] - expected.midi_note_overrides[i]) < 0.000001f, message);
+    require(std::fabs(actual.expression_overrides[i] - expected.expression_overrides[i]) < 0.000001f, message);
+    require(std::fabs(actual.morph_overrides[i] - expected.morph_overrides[i]) < 0.000001f, message);
+    require(std::fabs(actual.distance_overrides[i] - expected.distance_overrides[i]) < 0.000001f, message);
+  }
+  for (uint32_t i = 0; i < 8u; ++i) {
+    require(actual.step_value_configs[i].enabled == expected.step_value_configs[i].enabled, message);
+    require(actual.step_value_configs[i].steps == expected.step_value_configs[i].steps, message);
+    require(actual.step_value_configs[i].direction == expected.step_value_configs[i].direction, message);
+  }
+}
+
 void enqueueParam(
     KesshoProductEngine* engine,
     uint32_t event_kind,
@@ -111,9 +167,66 @@ void enqueueParam(
   require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "param event enqueue failed");
 }
 
+void requireDirectSequencerCoverage() {
+  KesshoProductEngine direct(48000.0, 128, 0);
+  direct.transport.running = true;
+  direct.transport.bpm = 120.0f;
+  direct.transport.beats_per_bar = 4u;
+  direct.transport.bars_per_phrase = 4u;
+  direct.synth_lane_count = 1u;
+  direct.drum_lane_count = 0u;
+
+  LaneState& lane = direct.synth_lanes[0];
+  lane.enabled = true;
+  lane.target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  lane.step_count = 16u;
+  lane.fill_count = 4u;
+  lane.rotation = 0;
+  lane.clock_division = 16u;
+  lane.probability = 1.0f;
+  lane.ratchet = 1u;
+  lane.midi_note = 60.0f;
+  lane.velocity = 0.8f;
+  lane.hold_seconds = 0.1f;
+  lane.expression = 0.7f;
+  lane.seed = 99u;
+
+  SequencerBuffer direct_events{};
+  direct.generateLaneEvents(direct.synth_lanes, direct.synth_lane_count, 96000u, direct_events);
+  require(direct_events.count == 4u, "direct sequencer generator should produce one bar of hits");
+  expectOffsets(direct_events.events, direct_events.count, {0, 24000, 48000, 72000});
+
+  KesshoProductEvent lane_event{};
+  lane_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+  lane_event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  lane_event.index = 0u;
+  lane_event.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_STEP_COUNT_ID;
+  lane_event.value = 8.0f;
+  direct.applySequencerLaneParamEvent(lane_event);
+  require(direct.synth_lanes[0].step_count == 8u, "direct lane param event should update sequencer state");
+
+  direct.clearLaneStepOverrides(direct.synth_lanes[0]);
+  direct.setStepFieldOverride(
+      direct.synth_lanes[0],
+      KESSHO_PRODUCT_STEP_FIELD_EXPRESSION,
+      0u,
+      0.42f,
+      0.0f);
+  require(
+      direct.stepFloatValue(
+          0u,
+          direct.synth_lanes[0].expression_override_set_low,
+          direct.synth_lanes[0].expression_override_set_high,
+          direct.synth_lanes[0].expression_overrides,
+          0.7f) >= 0.419f,
+      "direct step override should be readable without public C API indirection");
+}
+
 } // namespace
 
 int main() {
+  requireDirectSequencerCoverage();
+
   constexpr double sample_rate = 48000.0;
   KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096, 0);
   require(engine != nullptr, "product engine create failed");
@@ -300,6 +413,45 @@ int main() {
   dice_seed_telemetry = kessho_product_get_telemetry(engine);
   require(dice_seed_telemetry.rng_seed == 1234u, "dice should preserve C++ RNG seed");
   require(dice_seed_telemetry.rng_state != 1234u, "dice should advance C++ RNG state for later snapshot persistence");
+  KesshoProductSequencerUiState sequencer_ui_state{};
+  require(
+      kessho_product_copy_sequencer_ui_state(engine, &sequencer_ui_state) == KESSHO_PRODUCT_OK,
+      "sequencer UI state copy failed after dice");
+  require(
+      sequencer_ui_state.revision == dice_seed_telemetry.sequencer_ui_state_revision,
+      "telemetry revision should match copied sequencer UI state revision");
+  require(
+      sequencer_ui_state.last_changed_target_id == KESSHO_PRODUCT_SEQUENCER_SYNTH &&
+          sequencer_ui_state.last_changed_lane_index == 0u &&
+          sequencer_ui_state.last_change_kind == KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_DICE,
+      "sequencer UI state should classify the latest dice mutation");
+  require(
+      (sequencer_ui_state.synth_lanes[0].mutation_flags & KESSHO_PRODUCT_SEQUENCER_UI_MUTATION_HAS_OVERRIDES) != 0u,
+      "sequencer UI state should expose diced lane override state");
+  require(
+      sequencer_ui_state.synth_lanes[0].midi_note_override_set_low != 0u ||
+          sequencer_ui_state.synth_lanes[0].expression_override_set_low != 0u ||
+          sequencer_ui_state.synth_lanes[0].probability_override_set_low != 0u,
+      "sequencer UI state should expose detailed diced override masks");
+  require(
+      std::fabs(sequencer_ui_state.synth_lanes[0].expression_overrides[0] -
+          engine->synth_lanes[0].expression_overrides[0]) < 0.000001f,
+      "sequencer UI state should expose detailed diced override values");
+  const LaneState diced_lane_state = engine->synth_lanes[0];
+  require(laneHasGeneratedOverrides(diced_lane_state), "sequencer dice should leave Core-owned lane override state");
+  enqueueParam(
+      engine,
+      KESSHO_PRODUCT_EVENT_KIND_SET_PARAM,
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      0,
+      KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID,
+      0.42f);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 384000);
+  require(event_count > 0, "unrelated source-level diff should keep diced sequencer active");
+  requireLaneMutationStateEqual(
+      engine->synth_lanes[0],
+      diced_lane_state,
+      "unrelated source-level diff must preserve Core-owned dice state");
   KesshoProductEvent reset_lane_home{};
   reset_lane_home.event_kind = KESSHO_PRODUCT_EVENT_KIND_RESET_SEQUENCER_LANE_HOME;
   reset_lane_home.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
@@ -309,6 +461,70 @@ int main() {
   require(event_count == 4, "sequencer reset-home should restore base event count");
   expectOffsets(events, static_cast<uint32_t>(event_count), {0, 24000, 48000, 72000});
   require(std::fabs(events[0].midi_note - 60.0f) < 0.001f, "sequencer reset-home should clear pitch dice overrides");
+  const LaneState reset_home_lane_state = engine->synth_lanes[0];
+  require(!laneHasGeneratedOverrides(reset_home_lane_state), "reset-home should clear Core-owned lane override state");
+  const uint32_t reset_revision = kessho_product_get_telemetry(engine).sequencer_ui_state_revision;
+  require(
+      kessho_product_copy_sequencer_ui_state(engine, &sequencer_ui_state) == KESSHO_PRODUCT_OK,
+      "sequencer UI state copy failed after reset-home");
+  require(sequencer_ui_state.revision == reset_revision, "reset-home UI state revision mismatch");
+  require(
+      sequencer_ui_state.last_changed_target_id == KESSHO_PRODUCT_SEQUENCER_SYNTH &&
+          sequencer_ui_state.last_changed_lane_index == 0u &&
+          sequencer_ui_state.last_change_kind == KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME,
+      "sequencer UI state should classify the latest reset-home mutation");
+  require(
+      (sequencer_ui_state.synth_lanes[0].mutation_flags & KESSHO_PRODUCT_SEQUENCER_UI_MUTATION_HAS_OVERRIDES) == 0u,
+      "sequencer UI state should expose reset-home override clearing");
+  enqueueParam(
+      engine,
+      KESSHO_PRODUCT_EVENT_KIND_SET_PARAM,
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      0,
+      KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID,
+      0.58f);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
+  require(event_count == 4, "unrelated source-level diff should preserve reset-home event count");
+  requireLaneMutationStateEqual(
+      engine->synth_lanes[0],
+      reset_home_lane_state,
+      "unrelated source-level diff must preserve reset-home lane state");
+
+  KesshoProductEvent evolution_amount{};
+  evolution_amount.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  evolution_amount.param_id = KESSHO_PRODUCT_PARAM_EVOLUTION_AMOUNT_ID;
+  evolution_amount.value = 0.75f;
+  require(kessho_product_enqueue_event(engine, &evolution_amount) == KESSHO_PRODUCT_OK, "evolution amount enqueue failed");
+  KesshoProductEvent evolution_state{};
+  evolution_state.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  evolution_state.param_id = KESSHO_PRODUCT_PARAM_EVOLUTION_STATE_ID;
+  evolution_state.value = 9876.0f;
+  require(kessho_product_enqueue_event(engine, &evolution_state) == KESSHO_PRODUCT_OK, "evolution state enqueue failed");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
+  require(event_count == 4, "evolution update should preserve base event count");
+  require(std::fabs(engine->evolution_amount - 0.75f) < 0.000001f, "evolution amount event did not persist");
+  require(engine->evolution_state == 9876u, "evolution state event did not persist");
+  require(
+      kessho_product_copy_sequencer_ui_state(engine, &sequencer_ui_state) == KESSHO_PRODUCT_OK,
+      "sequencer UI state copy failed after evolution");
+  require(
+      std::fabs(sequencer_ui_state.evolution_amount - 0.75f) < 0.000001f &&
+          sequencer_ui_state.evolution_state == 9876u,
+      "sequencer UI state should expose Core-owned evolution state");
+  require(
+      sequencer_ui_state.last_change_kind == KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_EVOLUTION,
+      "sequencer UI state should classify the latest evolution mutation");
+  enqueueParam(
+      engine,
+      KESSHO_PRODUCT_EVENT_KIND_SET_PARAM,
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      0,
+      KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID,
+      0.61f);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
+  require(event_count == 4, "unrelated source-level diff should keep evolved sequencer active");
+  require(std::fabs(engine->evolution_amount - 0.75f) < 0.000001f, "unrelated source diff overwrote evolution amount");
+  require(engine->evolution_state == 9876u, "unrelated source diff overwrote evolution state");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();

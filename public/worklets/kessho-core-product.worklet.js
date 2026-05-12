@@ -1,5 +1,15 @@
 const EVENT_BYTES = 40;
-const TELEMETRY_BYTES = 324;
+const TELEMETRY_BYTES = 368;
+const SEQUENCER_UI_STATE_LANES = 16;
+const SEQUENCER_UI_STATE_STEPS = 64;
+const SEQUENCER_UI_LANE_BYTES = 2216;
+const SEQUENCER_UI_STATE_BYTES = 70948;
+const SEQUENCER_UI_SYNTH_LANES_OFFSET = 36;
+const SEQUENCER_UI_DRUM_LANES_OFFSET =
+  SEQUENCER_UI_SYNTH_LANES_OFFSET + SEQUENCER_UI_STATE_LANES * SEQUENCER_UI_LANE_BYTES;
+const SEQUENCER_UI_CHANGE_DICE = 3;
+const SEQUENCER_UI_CHANGE_RESET_HOME = 4;
+const SEQUENCER_UI_CHANGE_EVOLUTION = 5;
 
 class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   constructor(options = {}) {
@@ -13,7 +23,12 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.eventPtr = 0;
     this.snapshotPtr = 0;
     this.telemetryPtr = 0;
+    this.sequencerUiStatePtr = 0;
+    this.lastSequencerUiStateRevision = 0;
+    this.lastSequencerUiState = null;
     this.assetAllocations = new Map();
+    this.assetDecodedBytes = 0;
+    this.assetAllocationBytes = 0;
     this.frames = 128;
     this.lastOutputPeak = 0;
     this.lastStemPeaks = [];
@@ -83,6 +98,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         loadSnapshot: this.resolve('kessho_product_load_snapshot_v2'),
         enqueueEvent: this.resolve('kessho_product_enqueue_event'),
         copyTelemetry: this.resolve('kessho_product_copy_telemetry'),
+        copySequencerUiState: this.resolve('kessho_product_copy_sequencer_ui_state'),
         registerAsset: this.resolve('kessho_product_register_asset_buffer'),
         unregisterAsset: this.resolve('kessho_product_unregister_asset_buffer'),
       };
@@ -91,8 +107,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.rightPtr = this.api.malloc(bytesPerFrame);
       this.eventPtr = this.api.malloc(EVENT_BYTES);
       this.telemetryPtr = this.api.malloc(TELEMETRY_BYTES);
+      this.sequencerUiStatePtr = this.api.malloc(SEQUENCER_UI_STATE_BYTES);
       this.engine = this.api.create(sampleRate, this.frames, 0);
-      if (!this.engine || !this.leftPtr || !this.rightPtr || !this.eventPtr || !this.telemetryPtr) {
+      if (!this.engine || !this.leftPtr || !this.rightPtr || !this.eventPtr || !this.telemetryPtr || !this.sequencerUiStatePtr) {
         throw new Error('Failed to allocate Kessho Product Core worklet state');
       }
       this.ready = true;
@@ -168,17 +185,23 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.api.unregisterAsset(this.engine, message.assetId);
       old.ptrs.forEach((ptr) => this.api.free(ptr));
       this.api.free(old.ptrArray);
+      this.assetDecodedBytes -= old.decodedBytes || 0;
+      this.assetAllocationBytes -= old.allocationBytes || 0;
     }
+    let decodedBytes = 0;
     const ptrs = channels.slice(0, 2).map((channel) => {
       const data = channel instanceof Float32Array ? channel : new Float32Array(channel);
-      const ptr = this.api.malloc(data.length * Float32Array.BYTES_PER_ELEMENT);
+      const byteLength = data.length * Float32Array.BYTES_PER_ELEMENT;
+      decodedBytes += byteLength;
+      const ptr = this.api.malloc(byteLength);
       if (!ptr) {
         throw new Error(`Kessho Product Core asset allocation failed for asset ${message.assetId}`);
       }
       this.heapF32.set(data, ptr >> 2);
       return ptr;
     });
-    const ptrArray = this.api.malloc(ptrs.length * Uint32Array.BYTES_PER_ELEMENT);
+    const ptrArrayBytes = ptrs.length * Uint32Array.BYTES_PER_ELEMENT;
+    const ptrArray = this.api.malloc(ptrArrayBytes);
     if (!ptrArray) {
       ptrs.forEach((ptr) => this.api.free(ptr));
       throw new Error(`Kessho Product Core asset pointer allocation failed for asset ${message.assetId}`);
@@ -186,7 +209,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < ptrs.length; i += 1) {
       this.view.setUint32(ptrArray + i * 4, ptrs[i], true);
     }
-    this.assetAllocations.set(message.assetId, { ptrs, ptrArray });
+    const allocationBytes = decodedBytes + ptrArrayBytes;
+    this.assetAllocations.set(message.assetId, { ptrs, ptrArray, decodedBytes, allocationBytes });
+    this.assetDecodedBytes += decodedBytes;
+    this.assetAllocationBytes += allocationBytes;
     const result = this.api.registerAsset(
       this.engine,
       message.assetId,
@@ -198,6 +224,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     );
     if (result !== 1) {
       this.assetAllocations.delete(message.assetId);
+      this.assetDecodedBytes -= decodedBytes;
+      this.assetAllocationBytes -= allocationBytes;
       ptrs.forEach((ptr) => this.api.free(ptr));
       this.api.free(ptrArray);
       throw new Error(`Kessho Product Core asset registration failed for asset ${message.assetId}: ${result}`);
@@ -208,6 +236,141 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const low = this.view.getUint32(byteOffset, true);
     const high = this.view.getUint32(byteOffset + 4, true);
     return high * 4294967296 + low;
+  }
+
+  maskHas(low, high, step) {
+    if (step < 32) return (low & (1 << step)) !== 0;
+    return (high & (1 << (step - 32))) !== 0;
+  }
+
+  readToggleOverrides(ptr, setLow, setHigh, valueLow, valueHigh) {
+    const toggles = [];
+    for (let step = 0; step < SEQUENCER_UI_STATE_STEPS; step += 1) {
+      if (this.maskHas(setLow, setHigh, step)) {
+        toggles.push([step, this.maskHas(valueLow, valueHigh, step)]);
+      }
+    }
+    return toggles;
+  }
+
+  readFloatOverrides(ptr, setLow, setHigh, valuesOffset) {
+    if (setLow === 0 && setHigh === 0) return null;
+    const values = [];
+    for (let step = 0; step < SEQUENCER_UI_STATE_STEPS; step += 1) {
+      values.push(this.view.getFloat32(ptr + valuesOffset + step * 4, true));
+    }
+    return values;
+  }
+
+  readUintOverrides(ptr, setLow, setHigh, valuesOffset) {
+    if (setLow === 0 && setHigh === 0) return null;
+    const values = [];
+    for (let step = 0; step < SEQUENCER_UI_STATE_STEPS; step += 1) {
+      values.push(this.view.getUint32(ptr + valuesOffset + step * 4, true));
+    }
+    return values;
+  }
+
+  readTrigConditionOverrides(ptr, setLow, setHigh) {
+    if (setLow === 0 && setHigh === 0) return null;
+    const values = [];
+    for (let step = 0; step < SEQUENCER_UI_STATE_STEPS; step += 1) {
+      values.push([
+        this.view.getUint32(ptr + 680 + step * 4, true),
+        this.view.getUint32(ptr + 936 + step * 4, true),
+      ]);
+    }
+    return values;
+  }
+
+  readSequencerLaneUiState(ptr) {
+    const stepSetLow = this.view.getUint32(ptr + 28, true);
+    const stepSetHigh = this.view.getUint32(ptr + 32, true);
+    return {
+      enabled: this.view.getUint32(ptr, true) !== 0,
+      targetSourceId: this.view.getUint32(ptr + 4, true),
+      stepCount: this.view.getUint32(ptr + 8, true),
+      fillCount: this.view.getUint32(ptr + 12, true),
+      rotation: this.view.getInt32(ptr + 16, true),
+      clockDivision: this.view.getUint32(ptr + 20, true),
+      mutationFlags: this.view.getUint32(ptr + 24, true),
+      triggerToggles: this.readToggleOverrides(
+        ptr,
+        stepSetLow,
+        stepSetHigh,
+        this.view.getUint32(ptr + 36, true),
+        this.view.getUint32(ptr + 40, true),
+      ),
+      probability: this.readFloatOverrides(
+        ptr,
+        this.view.getUint32(ptr + 44, true),
+        this.view.getUint32(ptr + 48, true),
+        168,
+      ),
+      ratchet: this.readUintOverrides(
+        ptr,
+        this.view.getUint32(ptr + 52, true),
+        this.view.getUint32(ptr + 56, true),
+        424,
+      ),
+      trigCondition: this.readTrigConditionOverrides(
+        ptr,
+        this.view.getUint32(ptr + 60, true),
+        this.view.getUint32(ptr + 64, true),
+      ),
+      midiNote: this.readFloatOverrides(
+        ptr,
+        this.view.getUint32(ptr + 68, true),
+        this.view.getUint32(ptr + 72, true),
+        1192,
+      ),
+      expression: this.readFloatOverrides(
+        ptr,
+        this.view.getUint32(ptr + 76, true),
+        this.view.getUint32(ptr + 80, true),
+        1448,
+      ),
+      morph: this.readFloatOverrides(
+        ptr,
+        this.view.getUint32(ptr + 84, true),
+        this.view.getUint32(ptr + 88, true),
+        1704,
+      ),
+      distance: this.readFloatOverrides(
+        ptr,
+        this.view.getUint32(ptr + 92, true),
+        this.view.getUint32(ptr + 96, true),
+        1960,
+      ),
+    };
+  }
+
+  readSequencerUiState(revision) {
+    if (!this.sequencerUiStatePtr || this.api.copySequencerUiState(this.engine, this.sequencerUiStatePtr) !== 1) {
+      return this.lastSequencerUiState;
+    }
+    const ptr = this.sequencerUiStatePtr;
+    const synthLanes = [];
+    const drumLanes = [];
+    for (let lane = 0; lane < SEQUENCER_UI_STATE_LANES; lane += 1) {
+      synthLanes.push(this.readSequencerLaneUiState(ptr + SEQUENCER_UI_SYNTH_LANES_OFFSET + lane * SEQUENCER_UI_LANE_BYTES));
+      drumLanes.push(this.readSequencerLaneUiState(ptr + SEQUENCER_UI_DRUM_LANES_OFFSET + lane * SEQUENCER_UI_LANE_BYTES));
+    }
+    this.lastSequencerUiStateRevision = revision;
+    this.lastSequencerUiState = {
+      schemaHash: this.view.getUint32(ptr, true),
+      revision: this.view.getUint32(ptr + 4, true),
+      synthLaneCount: this.view.getUint32(ptr + 8, true),
+      drumLaneCount: this.view.getUint32(ptr + 12, true),
+      evolutionAmount: this.view.getFloat32(ptr + 16, true),
+      evolutionState: this.view.getUint32(ptr + 20, true),
+      lastChangedTargetId: this.view.getUint32(ptr + 24, true),
+      lastChangedLaneIndex: this.view.getUint32(ptr + 28, true),
+      lastChangeKind: this.view.getUint32(ptr + 32, true),
+      synthLanes,
+      drumLanes,
+    };
+    return this.lastSequencerUiState;
   }
 
   readTelemetry() {
@@ -228,6 +391,11 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     for (let index = 0; index < 7; index += 1) {
       sourcePresetIds.push(this.view.getUint32(ptr + 296 + index * 4, true));
     }
+    const sequencerUiStateRevision = this.view.getUint32(ptr + 348, true);
+    const sequencerUiState =
+      sequencerUiStateRevision !== 0 && sequencerUiStateRevision !== this.lastSequencerUiStateRevision
+        ? this.readSequencerUiState(sequencerUiStateRevision)
+        : null;
     return {
       schemaHash: this.view.getUint32(ptr, true),
       sampleRate: this.view.getFloat64(ptr + 8, true),
@@ -246,7 +414,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       renderP95Ms: this.view.getFloat32(ptr + 80, true),
       renderP99Ms: this.view.getFloat32(ptr + 84, true),
       missedQuantumCount: this.view.getUint32(ptr + 88, true),
-      wasmHeapBytes: this.view.getUint32(ptr + 92, true),
+      wasmHeapBytes: this.exports.memory.buffer.byteLength,
+      decodedAssetBytes: this.assetDecodedBytes,
+      assetAllocationBytes: this.assetAllocationBytes,
       sequencerEventCount: this.view.getUint32(ptr + 96, true),
       controlQueueDepth: this.view.getUint32(ptr + 100, true),
       assetMissingCount: this.view.getUint32(ptr + 104, true),
@@ -269,6 +439,20 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       rngSeed: this.view.getUint32(ptr + 288, true),
       rngState: this.view.getUint32(ptr + 292, true),
       sourcePresetIds,
+      masterInputPeak: this.view.getFloat32(ptr + 324, true),
+      masterOutputPeak: this.view.getFloat32(ptr + 328, true),
+      masterOutputRms: this.view.getFloat32(ptr + 332, true),
+      masterLimiterGainReductionDb: this.view.getFloat32(ptr + 336, true),
+      masterSaturationDrive: this.view.getFloat32(ptr + 340, true),
+      dynamicsSaturationDrive: this.view.getFloat32(ptr + 344, true),
+      sequencerUiStateRevision,
+      masterTruePeak: this.view.getFloat32(ptr + 352, true),
+      masterTruePeakDbtp: this.view.getFloat32(ptr + 356, true),
+      masterIntegratedLufs: this.view.getFloat32(ptr + 360, true),
+      sequencerUiState,
+      sequencerUiChangeDice: SEQUENCER_UI_CHANGE_DICE,
+      sequencerUiChangeResetHome: SEQUENCER_UI_CHANGE_RESET_HOME,
+      sequencerUiChangeEvolution: SEQUENCER_UI_CHANGE_EVOLUTION,
       workletOutputPeak: this.lastOutputPeak,
       workletStemPeaks: this.lastStemPeaks,
       workletMasterStemPeak: this.lastStemPeaks[0] || 0,

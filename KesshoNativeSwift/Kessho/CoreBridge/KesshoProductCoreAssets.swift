@@ -59,6 +59,7 @@ public struct KesshoProductCoreAssetPreloadReport: Equatable {
 
 public enum KesshoProductCoreAssetManifest {
     public static let assetRootEnvironmentKey = "KESSHO_PRODUCT_ASSET_ROOT"
+    public static let downloadRootEnvironmentKey = "KESSHO_PRODUCT_ASSET_DOWNLOAD_ROOT"
     public static let pianoPreloadMidiNotes = [
         36,
         40,
@@ -235,6 +236,20 @@ public enum KesshoProductCoreAssetProvider {
             }
         }
 
+        if let downloadRoot = ProcessInfo.processInfo.environment[KesshoProductCoreAssetManifest.downloadRootEnvironmentKey],
+           !downloadRoot.isEmpty {
+            let rootURL = URL(fileURLWithPath: downloadRoot)
+            if let url = existingFile(appendingRelativePath(normalizedPath, to: rootURL), fileManager: fileManager) {
+                return url
+            }
+        }
+
+        for rootURL in downloadedAssetSearchRoots(fileManager: fileManager) {
+            if let url = existingFile(appendingRelativePath(normalizedPath, to: rootURL), fileManager: fileManager) {
+                return url
+            }
+        }
+
         for rootURL in developmentSearchRoots(fileManager: fileManager) {
             if let url = existingFile(appendingRelativePath("public/samples/\(normalizedPath)", to: rootURL), fileManager: fileManager) {
                 return url
@@ -311,6 +326,26 @@ public enum KesshoProductCoreAssetProvider {
         relativePath.split(separator: "/").reduce(baseURL) { url, component in
             url.appendingPathComponent(String(component))
         }
+    }
+
+    private static func downloadedAssetSearchRoots(fileManager: FileManager) -> [URL] {
+        let directoryNames = [
+            "Kessho/ProductAssets",
+            "Kessho/ProductCoreAssets",
+        ]
+        let baseDirectories = [
+            FileManager.SearchPathDirectory.applicationSupportDirectory,
+            FileManager.SearchPathDirectory.cachesDirectory,
+        ]
+        var roots: [URL] = []
+        for directory in baseDirectories {
+            for baseURL in fileManager.urls(for: directory, in: .userDomainMask) {
+                for directoryName in directoryNames {
+                    roots.append(appendingRelativePath(directoryName, to: baseURL))
+                }
+            }
+        }
+        return roots
     }
 
     private static func developmentSearchRoots(fileManager: FileManager) -> [URL] {

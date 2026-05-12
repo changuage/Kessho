@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <algorithm>
 #include <iostream>
 #include <vector>
 
@@ -15,6 +16,14 @@ void require(bool condition, const char* message) {
     std::exit(1);
   }
 }
+
+struct RenderCpuStats {
+  double average_percent = 0.0;
+  double peak_percent = 0.0;
+  double p95_ms = 0.0;
+  double p99_ms = 0.0;
+  uint32_t missed_quantum_count = 0;
+};
 
 KesshoProductSnapshotV2 makeSnapshot() {
   KesshoProductSnapshotV2 snapshot{};
@@ -59,30 +68,152 @@ KesshoProductSnapshotV2 makeSnapshot() {
   return snapshot;
 }
 
-} // namespace
+void disableAllFx(KesshoProductSnapshotV2& snapshot) {
+  snapshot.fx.reverb_mix = 0.0f;
+  snapshot.fx.delay_a_enabled = 0u;
+  snapshot.fx.delay_a_mix = 0.0f;
+  snapshot.fx.delay_b_enabled = 0u;
+  snapshot.fx.delay_b_mix = 0.0f;
+  snapshot.fx.granular_enabled = 0u;
+  snapshot.fx.granular_mix = 0.0f;
+  snapshot.fx.spectral_freeze_enabled = 0u;
+  snapshot.fx.spectral_freeze_mix = 0.0f;
+  snapshot.fx.dynamics_enabled = 0u;
+  snapshot.fx.dynamics_drive = 0.0f;
+  snapshot.routing.delay_to_reverb = 0.0f;
+  snapshot.routing.granular_to_reverb = 0.0f;
+  snapshot.routing.delay_a_to_granular = 0.0f;
+  snapshot.routing.delay_b_to_granular = 0.0f;
+  snapshot.routing.delay_a_to_delay_b = 0.0f;
+  snapshot.routing.delay_b_to_delay_a = 0.0f;
+  snapshot.routing.delay_b_to_reverb = 0.0f;
+}
 
-int main() {
+void enableFxStress(KesshoProductSnapshotV2& snapshot) {
+  snapshot.fx.reverb_mix = 0.5f;
+  snapshot.fx.reverb_decay = 0.8f;
+  snapshot.fx.delay_a_enabled = 1u;
+  snapshot.fx.delay_a_mix = 0.35f;
+  snapshot.fx.delay_a_feedback = 0.45f;
+  snapshot.fx.delay_a_time_left_ms = 120.0f;
+  snapshot.fx.delay_a_time_right_ms = 180.0f;
+  snapshot.fx.delay_b_enabled = 1u;
+  snapshot.fx.delay_b_mix = 0.25f;
+  snapshot.fx.delay_b_activity = 0.5f;
+  snapshot.fx.delay_b_repeats = 0.45f;
+  snapshot.fx.granular_enabled = 1u;
+  snapshot.fx.granular_mix = 0.2f;
+  snapshot.fx.granular_voices[0].enabled = 1u;
+  snapshot.fx.granular_voices[0].density = 24.0f;
+  snapshot.fx.dynamics_enabled = 1u;
+  snapshot.fx.dynamics_drive = 0.35f;
+  snapshot.fx.dynamics_character_enabled = 1u;
+  snapshot.fx.dynamics_character_mix = 0.25f;
+  snapshot.fx.dynamics_degrade_enabled = 1u;
+  snapshot.fx.dynamics_degrade_mix = 0.2f;
+  snapshot.fx.dynamics_saturation_enabled = 1u;
+  snapshot.fx.dynamics_saturation_drive = 0.2f;
+  snapshot.fx.dynamics_end_comp_enabled = 1u;
+  snapshot.fx.dynamics_end_comp_mix = 0.35f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].reverb_send = 0.5f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].delay_a_send = 0.4f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].granular_send = 0.25f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].delay_b_send = 0.35f;
+  snapshot.routing.delay_to_reverb = 0.25f;
+  snapshot.routing.granular_to_reverb = 0.2f;
+  snapshot.routing.delay_a_to_granular = 0.15f;
+  snapshot.routing.delay_b_to_reverb = 0.25f;
+}
+
+double percentile(std::vector<double> values, double percentile_value) {
+  require(!values.empty(), "percentile input stayed empty");
+  std::sort(values.begin(), values.end());
+  const double rank = percentile_value * static_cast<double>(values.size() - 1u);
+  const size_t lo = static_cast<size_t>(std::floor(rank));
+  const size_t hi = static_cast<size_t>(std::ceil(rank));
+  if (lo == hi) {
+    return values[lo];
+  }
+  const double t = rank - static_cast<double>(lo);
+  return values[lo] + (values[hi] - values[lo]) * t;
+}
+
+RenderCpuStats renderCpuStats(const KesshoProductSnapshotV2& snapshot, uint32_t blocks) {
   constexpr uint32_t frames = 128;
-  constexpr uint32_t blocks = 750;
+  constexpr uint32_t warmup_blocks = 32;
   KesshoProductEngine* engine = kessho_product_create(48000.0, frames, 0);
   require(engine != nullptr, "engine create failed");
-  KesshoProductSnapshotV2 snapshot = makeSnapshot();
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "snapshot load failed");
 
   std::vector<float> left(frames);
   std::vector<float> right(frames);
+  for (uint32_t block = 0; block < warmup_blocks; ++block) {
+    kessho_product_render(engine, left.data(), right.data(), frames);
+  }
+
+  std::vector<double> block_ms;
+  block_ms.reserve(blocks);
   const auto start = std::chrono::steady_clock::now();
   for (uint32_t block = 0; block < blocks; ++block) {
+    const auto block_start = std::chrono::steady_clock::now();
     kessho_product_render(engine, left.data(), right.data(), frames);
+    const auto block_end = std::chrono::steady_clock::now();
+    block_ms.push_back(std::chrono::duration<double, std::milli>(block_end - block_start).count());
   }
   const auto end = std::chrono::steady_clock::now();
   const double elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
   const double rendered_ms = static_cast<double>(blocks * frames) * 1000.0 / 48000.0;
-  const double cpu_percent = (elapsed_ms / rendered_ms) * 100.0;
-  require(cpu_percent < 35.0, "product render CPU smoke budget exceeded");
+  const double quantum_ms = static_cast<double>(frames) * 1000.0 / 48000.0;
+  RenderCpuStats stats{};
+  stats.average_percent = (elapsed_ms / rendered_ms) * 100.0;
+  stats.p95_ms = percentile(block_ms, 0.95);
+  stats.p99_ms = percentile(block_ms, 0.99);
+  for (double block_elapsed_ms : block_ms) {
+    stats.peak_percent = std::max(stats.peak_percent, (block_elapsed_ms / quantum_ms) * 100.0);
+    if (block_elapsed_ms > quantum_ms) {
+      ++stats.missed_quantum_count;
+    }
+  }
   KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
-  require(telemetry.absolute_sample_time == blocks * frames, "sample time did not advance as expected");
+  require(telemetry.absolute_sample_time == (blocks + warmup_blocks) * frames, "sample time did not advance as expected");
   kessho_product_destroy(engine);
-  std::cout << "Kessho Product CPU smoke passed: " << cpu_percent << "%\n";
+  return stats;
+}
+
+} // namespace
+
+int main() {
+  constexpr uint32_t blocks = 750;
+  constexpr uint32_t max_allowed_missed_quantums = 2;
+  constexpr double quantum_ms = 128.0 * 1000.0 / 48000.0;
+  KesshoProductSnapshotV2 disabled_snapshot = makeSnapshot();
+  disableAllFx(disabled_snapshot);
+  const RenderCpuStats disabled_stats = renderCpuStats(disabled_snapshot, blocks);
+  require(disabled_stats.average_percent < 25.0, "disabled-FX product render CPU budget exceeded");
+  require(disabled_stats.p95_ms < quantum_ms * 0.5, "disabled-FX product render p95 budget exceeded");
+  require(disabled_stats.p99_ms < quantum_ms, "disabled-FX product render p99 budget exceeded");
+  require(
+      disabled_stats.missed_quantum_count <= max_allowed_missed_quantums,
+      "disabled-FX product render missed too many simulated quantums");
+
+  KesshoProductSnapshotV2 active_snapshot = makeSnapshot();
+  enableFxStress(active_snapshot);
+  const RenderCpuStats active_stats = renderCpuStats(active_snapshot, blocks);
+  require(active_stats.average_percent < 35.0, "active-FX product render CPU smoke budget exceeded");
+  require(active_stats.p95_ms < quantum_ms * 0.75, "active-FX product render p95 budget exceeded");
+  require(active_stats.p99_ms < quantum_ms, "active-FX product render p99 budget exceeded");
+  require(
+      active_stats.missed_quantum_count <= max_allowed_missed_quantums,
+      "active-FX product render missed too many simulated quantums");
+
+  std::cout << "Kessho Product CPU smoke passed: disabled FX "
+            << disabled_stats.average_percent << "% avg, "
+            << disabled_stats.peak_percent << "% peak, p95 " << disabled_stats.p95_ms
+            << " ms, p99 " << disabled_stats.p99_ms << " ms, missed "
+            << disabled_stats.missed_quantum_count << "; active FX "
+            << active_stats.average_percent << "% avg, "
+            << active_stats.peak_percent << "% peak, p95 " << active_stats.p95_ms
+            << " ms, p99 " << active_stats.p99_ms << " ms, missed "
+            << active_stats.missed_quantum_count << "\n";
   return 0;
 }

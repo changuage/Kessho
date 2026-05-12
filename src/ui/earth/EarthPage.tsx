@@ -50,11 +50,12 @@ export interface EarthPageProps {
     dualRange?: DualSliderRange;
     walkPosition?: number;
     isFlashing?: boolean;
-    onCycleMode: (key: keyof SliderState) => void;
-    onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
+    onCycleMode?: (key: keyof SliderState) => void;
+    onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
   };
   isRunning: boolean;
   getEarthTextureDebugState: () => EarthTextureDebugState;
+  textureDebugAvailable?: boolean;
 }
 
 const EARTH_DUAL_KEYS: readonly (keyof SliderState)[] = [
@@ -136,6 +137,7 @@ export default function EarthPage({
   sliderProps,
   isRunning: _isRunning,
   getEarthTextureDebugState,
+  textureDebugAvailable = true,
 }: EarthPageProps) {
   const [selectedWaterPreset, setSelectedWaterPreset] = useState(() => String(state.waterPreset));
   const [selectedInsects1Preset, setSelectedInsects1Preset] = useState(() => `stock:${state.insectsEngine}`);
@@ -671,8 +673,8 @@ export default function EarthPage({
         walkPosition={sp.walkPosition}
         isFlashing={sp.isFlashing}
         onChange={onParamChange}
-        onCycleMode={sp.onCycleMode}
-        onDualRangeChange={sp.onDualRangeChange}
+        onCycleMode={sp.onCycleMode ?? (() => undefined)}
+        onDualRangeChange={sp.onDualRangeChange ?? (() => undefined)}
         groupClassName="earth-slider-row"
         fillColor={fillColor}
         format={opts?.format}
@@ -808,6 +810,7 @@ export default function EarthPage({
             onSelectChange={onSelectChange}
             sliderProps={sliderProps}
             getEarthTextureDebugState={getEarthTextureDebugState}
+            textureDebugAvailable={textureDebugAvailable}
           />
         </div>
       </div>

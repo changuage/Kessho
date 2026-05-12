@@ -56,6 +56,10 @@ int32_t kessho_product_copy_telemetry(
     KesshoProductEngine* engine,
     KesshoProductTelemetry* out_telemetry);
 
+int32_t kessho_product_copy_sequencer_ui_state(
+    KesshoProductEngine* engine,
+    KesshoProductSequencerUiState* out_state);
+
 int32_t kessho_product_register_asset_buffer(
     KesshoProductEngine* engine,
     uint32_t asset_id,

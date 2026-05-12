@@ -8,6 +8,7 @@
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductParamIds.h"
 #include "KesshoProductSchema.h"
+#include "../src/product/KesshoProductEngineInternal.h"
 
 namespace {
 
@@ -250,6 +251,26 @@ float maxAbsDiff(const std::vector<float>& a, const std::vector<float>& b) {
     result = std::max(result, std::fabs(a[i] - b[i]));
   }
   return result;
+}
+
+struct RenderPeaks {
+  float master = 0.0f;
+  float fx = 0.0f;
+};
+
+RenderPeaks renderMasterAndFxPeaks(KesshoProductEngine* engine, uint32_t blocks) {
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  std::vector<float> fx_l(128);
+  std::vector<float> fx_r(128);
+  RenderPeaks peaks{};
+  for (uint32_t block = 0; block < blocks; ++block) {
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    peaks.master = std::max(peaks.master, peak(left, right));
+    require(kessho_product_get_stem(engine, KESSHO_PRODUCT_STEM_FX, fx_l.data(), fx_r.data(), 128) == KESSHO_PRODUCT_OK, "FX stem read failed");
+    peaks.fx = std::max(peaks.fx, peak(fx_l, fx_r));
+  }
+  return peaks;
 }
 
 float renderPadKickPeak(const KesshoProductSnapshotV2& snapshot) {
@@ -826,6 +847,134 @@ void requireProductParamSampleHoldRangeChangesMaster() {
   require(quiet_peak < loud_peak * 0.55f, "target-0 sample-hold range did not apply Product Core master param");
 }
 
+float renderDryMasterPeakWithGain(float master_gain) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "master gain staging engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.master.gain = master_gain;
+  snapshot.master.limiter_ceiling_db = 0.0f;
+  snapshot.fx.reverb_mix = 0.0f;
+  snapshot.fx.delay_a_mix = 0.0f;
+  snapshot.fx.delay_b_mix = 0.0f;
+  snapshot.fx.granular_mix = 0.0f;
+  snapshot.fx.granular_enabled = 0u;
+  snapshot.fx.spectral_freeze_enabled = 0u;
+  snapshot.fx.dynamics_enabled = 0u;
+  snapshot.fx.dynamics_drive = 0.0f;
+  snapshot.master.saturation_drive = 0.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].level = 0.25f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].dry_gain = 0.8f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].expression = 0.6f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "master gain staging snapshot load failed");
+  triggerPad(engine, 0.4f);
+  const float result = renderMasterPeak(engine, 16);
+  kessho_product_destroy(engine);
+  return result;
+}
+
+void requireMasterGainStagingScalesBeforeLimiter() {
+  const float quiet_peak = renderDryMasterPeakWithGain(0.25f);
+  const float loud_peak = renderDryMasterPeakWithGain(1.0f);
+  require(quiet_peak > 0.00001f, "quiet master gain staging probe produced no signal");
+  require(loud_peak > quiet_peak * 3.0f, "master gain staging did not scale before limiter");
+  require(loud_peak < quiet_peak * 4.5f, "master gain staging scaled outside expected linear range");
+}
+
+void requireMasterTelemetryReportsLimiterSaturationAndLoudness() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "master telemetry engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.master.gain = 1.8f;
+  snapshot.master.limiter_ceiling_db = -24.0f;
+  snapshot.master.saturation_drive = 0.63f;
+  snapshot.fx.reverb_mix = 0.0f;
+  snapshot.fx.delay_a_mix = 0.0f;
+  snapshot.fx.delay_b_mix = 0.0f;
+  snapshot.fx.granular_mix = 0.0f;
+  snapshot.fx.granular_enabled = 0u;
+  snapshot.fx.spectral_freeze_enabled = 0u;
+  snapshot.fx.dynamics_enabled = 1u;
+  snapshot.fx.dynamics_saturation_enabled = 1u;
+  snapshot.fx.dynamics_saturation_drive = 0.42f;
+  snapshot.fx.dynamics_saturation_mode = 2u;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].level = 1.5f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].dry_gain = 2.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].expression = 1.0f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "master telemetry snapshot load failed");
+  triggerPad(engine, 1.0f);
+  const float limited_peak = renderMasterPeak(engine, 32);
+  KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+  require(limited_peak <= 0.0645f, "master telemetry limiter probe did not clamp output");
+  require(telemetry.master_input_peak > telemetry.master_output_peak, "telemetry did not report pre-limiter peak above output");
+  require(telemetry.master_output_peak > 0.00001f, "telemetry master output peak missing");
+  require(telemetry.master_output_rms > 0.000001f, "telemetry master loudness RMS missing");
+  require(telemetry.master_true_peak >= telemetry.master_output_peak, "telemetry master true peak below sample peak");
+  require(std::isfinite(telemetry.master_true_peak_dbtp), "telemetry master true peak dBTP missing");
+  require(telemetry.master_true_peak_dbtp <= 0.25f, "telemetry master true peak dBTP exceeded limiter ceiling");
+  require(std::isfinite(telemetry.master_integrated_lufs), "telemetry master integrated LUFS missing");
+  require(telemetry.master_integrated_lufs > -100.0f, "telemetry master integrated LUFS stayed at silence");
+  require(telemetry.master_limiter_gain_reduction_db > 1.0f, "telemetry limiter gain reduction missing");
+  require(std::fabs(telemetry.master_saturation_drive - 0.63f) < 0.001f, "telemetry master saturation drive mismatch");
+  require(std::fabs(telemetry.dynamics_saturation_drive - 0.42f) < 0.001f, "telemetry dynamics saturation drive mismatch");
+  kessho_product_destroy(engine);
+}
+
+void requireDisabledFxBypassKeepsDryAndSilencesFxStem() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "disabled FX bypass engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.fx.reverb_mix = 0.0f;
+  snapshot.fx.delay_a_enabled = 0u;
+  snapshot.fx.delay_a_mix = 0.0f;
+  snapshot.fx.delay_b_enabled = 0u;
+  snapshot.fx.delay_b_mix = 0.0f;
+  snapshot.fx.granular_enabled = 0u;
+  snapshot.fx.granular_mix = 0.0f;
+  snapshot.fx.spectral_freeze_enabled = 0u;
+  snapshot.fx.spectral_freeze_mix = 0.0f;
+  snapshot.fx.dynamics_enabled = 0u;
+  snapshot.fx.dynamics_drive = 0.0f;
+  snapshot.routing.delay_to_reverb = 0.0f;
+  snapshot.routing.delay_a_to_delay_b = 0.0f;
+  snapshot.routing.delay_b_to_delay_a = 0.0f;
+  snapshot.routing.delay_a_to_granular = 0.0f;
+  snapshot.routing.delay_b_to_granular = 0.0f;
+  snapshot.routing.delay_b_to_reverb = 0.0f;
+  snapshot.routing.granular_to_reverb = 0.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].reverb_send = 1.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].delay_a_send = 1.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].delay_b_send = 1.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].granular_send = 1.0f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "disabled FX bypass snapshot load failed");
+  triggerPad(engine, 0.4f);
+  const RenderPeaks peaks = renderMasterAndFxPeaks(engine, 64);
+  require(peaks.master > 0.00001f, "disabled FX bypass suppressed dry signal");
+  require(peaks.fx <= 0.000001f, "disabled FX bypass leaked wet FX stem");
+  kessho_product_destroy(engine);
+}
+
+void requireProductResetClearsFxTails() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "FX tail reset engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].reverb_send = 1.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].delay_a_send = 1.0f;
+  snapshot.fx.reverb_mix = 1.0f;
+  snapshot.fx.delay_a_enabled = 1u;
+  snapshot.fx.delay_a_mix = 1.0f;
+  snapshot.fx.delay_a_feedback = 0.55f;
+  snapshot.routing.delay_to_reverb = 0.4f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "FX tail reset snapshot load failed");
+  triggerPad(engine, 0.15f);
+  const RenderPeaks active = renderMasterAndFxPeaks(engine, 80);
+  require(active.fx > 0.00001f, "FX tail reset probe did not build a wet tail");
+  kessho_product_reset(engine);
+  const RenderPeaks reset = renderMasterAndFxPeaks(engine, 16);
+  require(reset.master <= 0.000001f, "Product reset did not clear master output tail");
+  require(reset.fx <= 0.000001f, "Product reset did not clear FX stem tail");
+  kessho_product_destroy(engine);
+}
+
 std::vector<float> renderSnapshotFxTrace(uint32_t param_id, float value) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "snapshot FX event parity engine create failed");
@@ -871,9 +1020,71 @@ void requireFxSnapshotEventParity(uint32_t param_id, float value, const char* me
   require(maxAbsDiff(snapshot_trace, event_trace) < 0.00001f, message);
 }
 
+void requireDirectFxCoverage() {
+  KesshoProductEngine direct(48000.0, 128, 0);
+  for (uint32_t source = 0; source < kDynamicsModSourceCount; ++source) {
+    for (uint32_t target = 0; target < kDynamicsModTargetCount; ++target) {
+      direct.fx.dynamics_mod[source][target] = 0.0f;
+    }
+  }
+  direct.fx.dynamics_mod[kDynamicsModSourceSlow][kDynamicsModTargetWow] = 0.25f;
+  direct.fx.dynamics_mod[kDynamicsModSourceFlutter][kDynamicsModTargetWow] = 0.5f;
+  const float mod_sources[kDynamicsModSourceCount] = {1.0f, 0.5f, 0.0f, 0.0f, 0.0f};
+  require(
+      std::fabs(direct.dynamicsModRoute(mod_sources, kDynamicsModTargetWow) - 0.5f) < 0.001f,
+      "direct dynamics modulation route mismatch");
+  for (uint32_t source = 0; source < kDynamicsModSourceCount; ++source) {
+    for (uint32_t target = 0; target < kDynamicsModTargetCount; ++target) {
+      const float value = static_cast<float>((source + 1u) * (target + 2u)) / 40.0f;
+      KesshoProductEvent event{};
+      event.param_id = KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_SLOW_WOW_ID + source * kDynamicsModTargetCount + target;
+      event.value = value;
+      require(direct.applyDynamicsModParamEvent(event), "direct dynamics modulation matrix event was not handled");
+      require(
+          std::fabs(direct.fx.dynamics_mod[source][target] - value) < 0.001f,
+          "direct dynamics modulation matrix event mapped to wrong cell");
+    }
+  }
+
+  direct.fx.sidechain_enabled = true;
+  direct.fx.sidechain_key_a = kSidechainKeyKick;
+  direct.fx.sidechain_key_b = kSidechainKeyOff;
+  direct.fx.sidechain_key_a_weight = 1.0f;
+  direct.fx.sidechain_amount = 1.0f;
+  direct.fx.sidechain_mix = 1.0f;
+  direct.fx.sidechain_threshold = -60.0f;
+  direct.fx.sidechain_ratio = 20.0f;
+  direct.fx.sidechain_knee = 0.0f;
+  direct.fx.sidechain_attack_ms = 0.1f;
+  direct.fx.sidechain_hold_ms = 0.0f;
+  direct.fx.sidechain_release_ms = 20.0f;
+  direct.fx.sidechain_targets[kSidechainPad1] = 1.0f;
+  require(
+      direct.sidechainTargetForSource(KESSHO_PRODUCT_SOURCE_PAD1) == kSidechainPad1,
+      "direct sidechain source target mismatch");
+  require(direct.sidechainTargetAmount(kSidechainPad1) > 0.99f, "direct sidechain target amount mismatch");
+  direct.triggerSidechainDuck(1u, 1.0f);
+  direct.renderSidechainGains(0u, 16u);
+  require(direct.sidechainGain(kSidechainPad1, 0u) < 1.0f, "direct sidechain duck should lower gain");
+  for (uint32_t block = 0; block < 24u; ++block) {
+    direct.renderSidechainGains(0u, 128u);
+  }
+  require(direct.sidechainGain(kSidechainPad1, 127u) > 0.99f, "direct sidechain release did not return to unity");
+
+  float in_l[4] = {1.0f, 0.5f, 0.25f, 0.125f};
+  float in_r[4] = {0.5f, 0.25f, 0.125f, 0.0625f};
+  float out_l[4]{};
+  float out_r[4]{};
+  direct.mixFxBuffer(in_l, in_r, out_l, out_r, 0u, 4u, 0.5f, kSidechainTargetCount);
+  require(std::fabs(out_l[0] - 0.5f) < 0.001f, "direct FX bus mix left mismatch");
+  require(std::fabs(out_r[0] - 0.25f) < 0.001f, "direct FX bus mix right mismatch");
+}
+
 } // namespace
 
 int main() {
+  requireDirectFxCoverage();
+
   KesshoProductEngine* reverb_engine = kessho_product_create(48000.0, 128, 0);
   require(reverb_engine != nullptr, "reverb engine create failed");
   KesshoProductSnapshotV2 reverb_snapshot = makeSnapshot();
@@ -957,6 +1168,11 @@ int main() {
   const float open_peak = renderMasterPeak(limiter_engine, 64);
   require(open_peak > limited_peak * 1.5f, "master limiter ceiling event did not open master output");
   kessho_product_destroy(limiter_engine);
+
+  requireMasterGainStagingScalesBeforeLimiter();
+  requireMasterTelemetryReportsLimiterSaturationAndLoudness();
+  requireDisabledFxBypassKeepsDryAndSilencesFxStem();
+  requireProductResetClearsFxTails();
 
   requireMasterParamSnapshotEventParity(
       KESSHO_PRODUCT_PARAM_MASTER_SATURATION_DRIVE_ID,

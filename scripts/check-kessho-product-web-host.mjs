@@ -16,9 +16,11 @@ function assert(condition, message) {
 const host = read('src/audio/coreProductEngineHost.ts');
 const runtime = read('src/audio/coreProductRuntime.ts');
 const appRuntime = read('src/audio/runtime.ts');
+const app = read('src/App.tsx');
 const events = read('src/audio/coreProductEvents.ts');
 const snapshot = read('src/audio/coreProductSnapshot.ts');
-const assets = read('src/audio/coreProductAssets.ts');
+const telemetryTypes = read('src/audio/coreProductTelemetry.ts');
+const assets = `${read('src/audio/coreProductAssets.ts')}\n${read('src/audio/coreProductAssetManifest.json')}`;
 const generatedSchema = read('src/audio/generated/kesshoProductSchema.ts');
 const worklet = read('public/worklets/kessho-core-product.worklet.js');
 const manifest = read('scripts/kessho-core-build-manifest.mjs');
@@ -27,15 +29,23 @@ for (const token of [
   'updateParams(sliderState: Record<string, unknown>): void',
   'this.runtime.loadSnapshot(encodeCoreProductSnapshot(snapshot));',
   'latestProductSnapshot: CoreProductSnapshot | null',
-  'applyLatestSnapshotUpdate(): void',
+  'applyLatestSnapshotUpdate(reason: SnapshotReloadReason = \'adapter-update\'): void',
   'applySnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean',
   'MAX_SNAPSHOT_DIFF_EVENTS',
+  'dirtyDiffCount',
+  'fullSnapshotReloadCount',
+  'unsupportedControlCount',
+  'snapshotReloadCpuMs',
+  'lastSnapshotReloadReason',
   'assetRefsChanged(previous.assetRefs, next.assetRefs)',
   'appendSourceParamDiffs(events, previous.sources, next.sources)',
   'appendSequencerLaneDiffs(events, \'synth\', previous.synthLanes, next.synthLanes)',
   'createCoreProductParamEvent(',
   'createCoreProductSourcePresetEvent(',
   'registerAsset(asset: DecodedCoreProductAsset): void',
+  'getDecodedCoreProductAssetByteLength(asset)',
+  'registeredAssetDecodedBytes',
+  'CORE_PRODUCT_MEMORY_BUDGETS.totalRegisteredDecodedBytes',
   'ensureDefaultPianoAsset(): Promise<void>',
   'ensurePianoAssetsForState(): Promise<void>',
   'ensurePianoAssetForMidi(midiNote: number): Promise<void>',
@@ -116,6 +126,11 @@ for (const token of [
   'resolveCoreProductRangeTargets(key)',
   'setDrumTriggerCallback(callback:',
   'setTelemetryCallback((telemetry) => this.handleTelemetry(telemetry));',
+  'reconcileSequencerUiState(telemetry:',
+  'reconcileSynthSequencerLane(',
+  'reconcileDrumSequencerLane(',
+  'synthEvolvePayloadFromLane(',
+  'drumEvolvePayloadFromLane(',
   'createPerfSnapshot(telemetry:',
   'telemetryRngState',
   'rngSeed: this.latestTelemetry.rngSeed',
@@ -125,6 +140,16 @@ for (const token of [
   'currentRangeValueContext',
 ]) {
   assert(host.includes(token), `core-product host is missing ${token}`);
+}
+
+for (const token of [
+  'import { isCoreProductRangeKeySupported }',
+  'coreProductSupportsRuntimeRangeKey(key',
+  "audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(keyStr)",
+  "audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(key)",
+  'dualModeSupported',
+]) {
+  assert(app.includes(token), `App core-product unsupported-control gating is missing ${token}`);
 }
 
 assert(
@@ -161,7 +186,10 @@ for (const token of [
   'drumVoiceMorphs: number[]',
   'function drumVoicePresetId(voiceIndex: number, presetName: unknown): number',
   'function drumVoicePresetIdsFromState(state: Record<string, unknown> | undefined, endpoint:',
-  'getCoreProductSoundscapeAssetDescriptorsForState(sliderState).map((asset) => asset.assetId)',
+  'const soundscapeAssets = soundscapeSource?.enabled',
+  'getCoreProductSoundscapeAssetDescriptorsForState(sliderState)',
+  'assetRefs: soundscapeAssets.map((asset) => asset.assetId)',
+  'assetRefLevels',
   'u32(snapshot.assetRefs[i] ?? 0)',
   'getTransportMetrics',
   'rngSeedFromState',
@@ -292,6 +320,8 @@ for (const token of [
   'dynamicsSaturationBias',
   'endCompProgramRelease',
   'sidechainPad1Target',
+  'resolveCoreProductDrumRuntimeRangeTargets',
+  'isCoreProductRangeKeySupported(key: string)',
 ]) {
   assert(events.includes(token), `core-product events are missing ${token}`);
 }
@@ -342,27 +372,50 @@ for (const token of [
 }
 
 for (const token of [
+  'wasmHeapBudgetBytes?: number',
+  'decodedAssetBytes?: number',
+  'decodedAssetBudgetBytes?: number',
+  'assetAllocationBytes?: number',
+]) {
+  assert(telemetryTypes.includes(token), `core-product telemetry type is missing ${token}`);
+}
+
+for (const token of [
   "this.resolve('kessho_product_copy_telemetry')",
+  "this.resolve('kessho_product_copy_sequencer_ui_state')",
   'copyTelemetry(this.engine, this.telemetryPtr) !== 1',
+  'copySequencerUiState(this.engine, this.sequencerUiStatePtr)',
+  'const SEQUENCER_UI_STATE_BYTES = 70948;',
   "message.type === 'request-telemetry'",
   "this.port.postMessage({ type: 'telemetry', telemetry });",
   'this.heapF32.buffer !== this.exports.memory.buffer',
   'workletOutputPeak: this.lastOutputPeak',
+  'wasmHeapBytes: this.exports.memory.buffer.byteLength',
+  'decodedAssetBytes: this.assetDecodedBytes',
+  'assetAllocationBytes: this.assetAllocationBytes',
   "getStem: this.resolve('kessho_product_get_stem')",
   'workletStemPeaks: this.lastStemPeaks',
   'workletPadStemPeak: this.lastStemPeaks[1] || 0',
   'runtimeWalkValues[controlId] = value;',
-  'const TELEMETRY_BYTES = 324;',
+  'const TELEMETRY_BYTES = 368;',
   'rngSeed: this.view.getUint32(ptr + 288, true)',
   'rngState: this.view.getUint32(ptr + 292, true)',
   'sourcePresetIds.push(this.view.getUint32(ptr + 296 + index * 4, true));',
+  'masterOutputPeak: this.view.getFloat32(ptr + 328, true)',
+  'masterLimiterGainReductionDb: this.view.getFloat32(ptr + 336, true)',
+  'const sequencerUiStateRevision = this.view.getUint32(ptr + 348, true);',
+  'masterTruePeak: this.view.getFloat32(ptr + 352, true)',
+  'masterTruePeakDbtp: this.view.getFloat32(ptr + 356, true)',
+  'masterIntegratedLufs: this.view.getFloat32(ptr + 360, true)',
+  'sequencerUiState,',
 ]) {
   assert(worklet.includes(token), `core-product worklet is missing ${token}`);
 }
 
 assert(
-  manifest.includes("'kessho_product_copy_telemetry'"),
-  'WASM manifest must export kessho_product_copy_telemetry',
+  manifest.includes("'kessho_product_copy_telemetry'") &&
+    manifest.includes("'kessho_product_copy_sequencer_ui_state'"),
+  'WASM manifest must export Product Core telemetry and sequencer UI state copy APIs',
 );
 
 for (const token of [
@@ -448,5 +501,55 @@ assert(appRuntime.includes("if (typeof window === 'undefined') return 'core-brid
 assert(appRuntime.includes("resolvedRuntimeMode = 'core-bridge';"), 'runtime must default browsers to the verified Core bridge path');
 assert(appRuntime.includes("'startJourneyMorphClock'"), 'runtime must eagerly load startJourneyMorphClock');
 assert(appRuntime.includes("'stopJourneyMorphClock'"), 'runtime must eagerly load stopJourneyMorphClock');
+
+const appCalledAudioMethods = new Set(
+  Array.from(app.matchAll(/\baudioEngine\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/g), (match) => match[1]),
+);
+for (const method of appCalledAudioMethods) {
+  assert(
+    new RegExp(`(?:^|\\n)\\s*(?:async\\s+)?${method}\\s*\\(`).test(host),
+    `core-product host must explicitly implement app-called audioEngine.${method}()`,
+  );
+}
+
+function importSpecifiers(source) {
+  return Array.from(source.matchAll(/from ['"]([^'"]+)['"]/g), (match) => match[1]).sort();
+}
+
+const snapshotImportAllowlist = new Set([
+  '../ui/state',
+  './coreProductAssets',
+  './coreProductEvents',
+  './delayBuses',
+  './generated/kesshoProductSchema',
+  './lead4opfm',
+  './outputTrims',
+  './transport',
+]);
+for (const specifier of importSpecifiers(snapshot)) {
+  assert(
+    snapshotImportAllowlist.has(specifier),
+    `core-product snapshot adapter import is not classified: ${specifier}`,
+  );
+}
+
+const hostImportAllowlist = new Set([
+  '../native/capacitorMidiRouting',
+  './coreMidiEvents',
+  './coreProductAssets',
+  './coreProductEvents',
+  './coreProductRuntime',
+  './coreProductSnapshot',
+  './coreProductTelemetry',
+  './engine',
+  './generated/kesshoProductParams',
+  './transport',
+]);
+for (const specifier of importSpecifiers(host)) {
+  assert(
+    hostImportAllowlist.has(specifier),
+    `core-product host import is not classified: ${specifier}`,
+  );
+}
 
 console.log('Kessho Product web host checks passed');

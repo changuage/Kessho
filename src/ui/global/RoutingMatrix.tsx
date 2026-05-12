@@ -50,8 +50,8 @@ interface RoutingSliderRuntime {
   dualRange?: DualSliderRange;
   walkPosition?: number;
   isFlashing?: boolean;
-  onCycleMode: (key: keyof SliderState) => void;
-  onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
+  onCycleMode?: (key: keyof SliderState) => void;
+  onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
 }
 
 interface ColumnDragTarget {
@@ -447,7 +447,7 @@ function getColumnTargets(
       mode,
       startValue: quantize01(Number(state[cell.route.key] ?? 0) || 0),
       startRange: mode === 'single' ? undefined : normalizeUnitRange(runtime.dualRange),
-      onDualRangeChange: runtime.onDualRangeChange,
+      onDualRangeChange: runtime.onDualRangeChange ?? (() => undefined),
     });
   }
 
@@ -935,7 +935,7 @@ export default function RoutingMatrix({
         }}
         onDoubleClick={() => {
           if (!route || !runtime) return;
-          runtime.onCycleMode(route.key);
+          runtime.onCycleMode?.(route.key);
         }}
         onPointerDown={(event) => {
           if (!route || !runtime) return;
@@ -969,12 +969,12 @@ export default function RoutingMatrix({
               startValue: value,
               startRange: nextRange,
               startPointerNorm: pointerNorm,
-              onDualRangeChange: runtime.onDualRangeChange,
+              onDualRangeChange: runtime.onDualRangeChange ?? (() => undefined),
             };
             setSliderTouchSelectionLock(true);
             event.currentTarget.setPointerCapture(event.pointerId);
             scheduleLongPress(event.pointerId, event.clientX, event.clientY, () => {
-              runtime.onCycleMode(route.key);
+              runtime.onCycleMode?.(route.key);
             });
             return;
           }
@@ -988,7 +988,7 @@ export default function RoutingMatrix({
             value,
             nextRange,
             pointerNorm,
-            runtime.onDualRangeChange,
+            runtime.onDualRangeChange ?? (() => undefined),
           );
           applyCellDrag(pointerNorm);
           event.currentTarget.setPointerCapture(event.pointerId);

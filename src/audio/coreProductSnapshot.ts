@@ -29,6 +29,8 @@ import { delayNoteToSeconds } from './delayBuses';
 import { DEFAULT_MASTER_VOLUME, MASTER_OUTPUT_TRIM } from './outputTrims';
 import { getTransportMetrics } from './transport';
 
+// SNAPSHOT_AUTHORITY: GENERATED_SCHEMA_SERIALIZATION - this file maps app/UI state into generated Product Core fields.
+
 type ProductSourceSnapshot = {
   enabled: boolean;
   sourceId: number;
@@ -569,6 +571,7 @@ function normalizePresetKey(key: unknown, fallbackKey: string): string {
     .toLowerCase();
 }
 
+// SNAPSHOT_AUTHORITY: LEGACY_PRESET_KEY_TO_GENERATED_ID - maps old app keys to generated Product Core preset IDs.
 function sourcePresetId(sourceFamily: string, key: unknown, fallbackKey = 'default'): number {
   const normalized = normalizePresetKey(key, fallbackKey);
   const fallback = normalizePresetKey(fallbackKey, fallbackKey);
@@ -620,7 +623,9 @@ function emptyPadParams(): number[] {
   return Array.from({ length: KESSHO_PRODUCT_PAD_PARAM_COUNT }, () => 0);
 }
 
+// SNAPSHOT_AUTHORITY: TEMP_COMPAT_WEB_REFERENCE - temporary exact Pad bridge, not final source-patch ownership.
 function exactPadParamsFromState(state: Record<string, unknown> | undefined, padIndex: 0 | 1): number[] {
+  // PATCH_BRIDGE_RETIREMENT: exact Pad params are a DEPRECATED_BRIDGE_FIELD until Product Core owns structured Pad preset overrides.
   const params = emptyPadParams();
   for (const spec of KESSHO_PRODUCT_PAD_PARAM_SPECS) {
     const key = padIndex === 0 ? spec.key : spec.pad2Key;
@@ -643,7 +648,9 @@ function emptyLeadParams(): number[] {
   return Array.from({ length: KESSHO_PRODUCT_LEAD_PARAM_COUNT }, () => 0);
 }
 
+// SNAPSHOT_AUTHORITY: TEMP_COMPAT_WEB_REFERENCE - temporary exact Lead bridge, not final source-patch ownership.
 function exactLeadParamsFromState(state: Record<string, unknown> | undefined, leadIndex: 0 | 1): number[] {
+  // PATCH_BRIDGE_RETIREMENT: exact Lead params are a DEPRECATED_BRIDGE_FIELD until Product Core owns structured Lead preset overrides.
   const params = emptyLeadParams();
   const presetAKey = leadIndex === 0 ? state?.lead1PresetA : state?.lead2PresetC;
   const presetBKey = leadIndex === 0 ? state?.lead1PresetB : state?.lead2PresetD;
@@ -657,6 +664,8 @@ function exactLeadParamsFromState(state: Record<string, unknown> | undefined, le
 }
 
 function emptyDrumParams(): number[] {
+  // SNAPSHOT_AUTHORITY: TEMP_COMPAT_WEB_REFERENCE - temporary exact Drum ABI filler; generated Drum voice IDs own the bridge.
+  // PATCH_BRIDGE_RETIREMENT: exact Drum params stay zero/default here; Drum voice preset IDs and morphs are the canonical bridge.
   return Array.from({ length: KESSHO_PRODUCT_DRUM_PARAM_COUNT }, (_, index) => KESSHO_PRODUCT_DRUM_DEFAULT_PARAMS[index] ?? 0);
 }
 
@@ -728,6 +737,7 @@ function hashSeedMaterial(material: string): number {
   return hash === 0 ? 1 : hash;
 }
 
+// SNAPSHOT_AUTHORITY: INITIAL_RNG_SEED_ONLY - ongoing RNG state must be reconciled from Product Core telemetry.
 function rngSeedFromState(state: Record<string, unknown> | undefined): number {
   const explicitSeed = numberFromState(state, 'rngSeed', numberFromState(state, 'seed', Number.NaN));
   if (Number.isFinite(explicitSeed)) {
@@ -1188,6 +1198,7 @@ function granularVoiceFromState(state: Record<string, unknown> | undefined, voic
   };
 }
 
+// SNAPSHOT_AUTHORITY: SERIALIZE_PRODUCT_STATE - one-shot snapshot assembly from generated Product Core fields.
 export function createCoreProductSnapshot(sliderState?: Record<string, unknown>): CoreProductSnapshot {
   const transport = transportFromState(sliderState);
   const tension = clamp(numberFromState(sliderState, 'tension', 0.35), 0, 1);
@@ -1453,6 +1464,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   };
 }
 
+// SNAPSHOT_AUTHORITY: PACK_GENERATED_SNAPSHOT_BYTES - byte packing only, no musical interpretation.
 export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayBuffer {
   const buffer = new ArrayBuffer(SNAPSHOT_BYTES);
   const view = new DataView(buffer);

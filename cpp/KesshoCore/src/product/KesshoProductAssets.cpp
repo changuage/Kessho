@@ -1,2 +1,209 @@
-#include "KesshoCore/KesshoProductAssets.h"
+#include "KesshoProductEngineInternal.h"
 
+  uint32_t KesshoProductEngine::findAssetSlot(uint32_t asset_id) const {
+  for (uint32_t i = 0; i < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS; ++i) {
+    if (assets[i].active && assets[i].asset_id == asset_id) {
+      return i;
+    }
+  }
+  return kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS;
+}
+
+  bool KesshoProductEngine::pianoAssetRootMidi(uint32_t asset_id, float& out_midi) const {
+  if (asset_id <= kPianoAssetIdBase) {
+    return false;
+  }
+  const uint32_t index = asset_id - kPianoAssetIdBase;
+  if (index == 0u || index > kPianoSampleCount) {
+    return false;
+  }
+  out_midi = static_cast<float>(kPianoBaseMidi + index - 1u);
+  return true;
+}
+
+  uint32_t KesshoProductEngine::findPianoAssetSlot(float midi_note, float& out_root_midi) const {
+  uint32_t best_slot = kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS;
+  float best_distance = 1000000.0f;
+  float best_root = 60.0f;
+  for (uint32_t i = 0; i < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS; ++i) {
+    const AssetSlot& asset = assets[i];
+    if (!asset.active || (asset.flags & KESSHO_PRODUCT_ASSET_PIANO) == 0u) {
+      continue;
+    }
+    float root_midi = 60.0f;
+    pianoAssetRootMidi(asset.asset_id, root_midi);
+    const float distance = std::abs(root_midi - midi_note);
+    if (distance < best_distance) {
+      best_distance = distance;
+      best_slot = i;
+      best_root = root_midi;
+    }
+  }
+  out_root_midi = best_root;
+  return best_slot;
+}
+
+  uint32_t KesshoProductEngine::allocateVoice() {
+  for (uint32_t i = 0; i < kessho::product::generated::KESSHO_PRODUCT_MAX_VOICES; ++i) {
+    if (!voices[i].active) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+  bool KesshoProductEngine::hasActiveSourceVoice(uint32_t source_id) const {
+  for (const Voice& voice : voices) {
+    if (voice.active && voice.source_id == source_id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+  void KesshoProductEngine::releaseUnwantedSoundscapeVoices(const SourceState& source) {
+  for (Voice& voice : voices) {
+    if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE || !voice.sample_voice) {
+      continue;
+    }
+    const uint32_t asset_id = voice.asset_slot < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS
+        ? assets[voice.asset_slot].asset_id
+        : 0u;
+    if (asset_id == 0u || !soundscapeWantsAsset(source, asset_id)) {
+      voice.looping = false;
+      voice.remaining_frames = std::min<uint32_t>(voice.remaining_frames, static_cast<uint32_t>(0.02 * sample_rate));
+      voice.total_frames = std::max<uint32_t>(1u, voice.remaining_frames);
+    }
+  }
+}
+
+  void KesshoProductEngine::reportMissingSourceAsset(SourceState& source) {
+  if (source.asset_id == 0u || source.last_missing_asset_id == source.asset_id) {
+    return;
+  }
+  source.last_missing_asset_id = source.asset_id;
+  ++telemetry.asset_missing_count;
+  telemetry.last_error_code = KESSHO_PRODUCT_ERROR_MISSING_ASSET;
+}
+
+  void KesshoProductEngine::reportMissingSourceAsset(SourceState& source, uint32_t asset_id) {
+  if (asset_id == 0u || source.last_missing_asset_id == asset_id) {
+    return;
+  }
+  source.last_missing_asset_id = asset_id;
+  ++telemetry.asset_missing_count;
+  telemetry.last_error_code = KESSHO_PRODUCT_ERROR_MISSING_ASSET;
+}
+
+  uint32_t KesshoProductEngine::sampleFadeFrames(double seconds, uint32_t limit_frames) const {
+  if (limit_frames <= 1u || sample_rate <= 0.0) {
+    return 0u;
+  }
+  const uint32_t requested = static_cast<uint32_t>(std::max(1.0, seconds * sample_rate));
+  return std::min<uint32_t>(requested, std::max<uint32_t>(1u, limit_frames));
+}
+
+  uint32_t KesshoProductEngine::loopCrossfadeFrames(const AssetSlot& asset) const {
+  if (asset.frame_count <= 4u || sample_rate <= 0.0) {
+    return 0u;
+  }
+  const uint32_t requested = static_cast<uint32_t>(std::max(1.0, kLoopCrossfadeSeconds * sample_rate));
+  return std::min<uint32_t>(requested, std::max<uint32_t>(1u, asset.frame_count / 2u));
+}
+
+  float KesshoProductEngine::sampleVoiceEnvelope(const Voice& voice) const {
+  float envelope = 1.0f;
+  const uint32_t attack_frames = sampleFadeFrames(kSampleAttackSeconds, voice.total_frames / 2u);
+  if (attack_frames > 1u && voice.age_frames < attack_frames) {
+    envelope = std::min(envelope, static_cast<float>(voice.age_frames + 1u) / static_cast<float>(attack_frames));
+  }
+  if (!voice.looping) {
+    const uint32_t release_frames = sampleFadeFrames(kSampleReleaseSeconds, voice.total_frames);
+    if (release_frames > 1u && voice.remaining_frames < release_frames) {
+      envelope = std::min(
+          envelope,
+          static_cast<float>(voice.remaining_frames) / static_cast<float>(release_frames));
+    }
+  }
+  return clampFloat(envelope, 0.0f, 1.0f);
+}
+
+  float KesshoProductEngine::assetSample(const AssetSlot& asset, uint32_t channel, uint32_t frame) const {
+  const uint32_t resolved_channel = channel < asset.channel_count ? channel : 0u;
+  const float* data = asset.channels[resolved_channel] != nullptr ? asset.channels[resolved_channel] : asset.channels[0];
+  return data != nullptr && frame < asset.frame_count ? data[frame] : 0.0f;
+}
+
+  void KesshoProductEngine::renderVoiceSample(Voice& voice, float& out_l, float& out_r) {
+  out_l = 0.0f;
+  out_r = 0.0f;
+  if (!voice.active) {
+    return;
+  }
+  if (voice.remaining_frames == 0u) {
+    voice.active = false;
+    return;
+  }
+
+  float sample_l = 0.0f;
+  float sample_r = 0.0f;
+  if (voice.sample_voice) {
+    const AssetSlot& asset = assets[voice.asset_slot];
+    if (asset.frame_count == 0u || asset.channels[0] == nullptr) {
+      voice.active = false;
+      return;
+    }
+    uint32_t frame = static_cast<uint32_t>(voice.sample_position);
+    if (frame >= asset.frame_count) {
+      if (!voice.looping) {
+        voice.active = false;
+        return;
+      }
+      while (frame >= asset.frame_count) {
+        voice.sample_position -= static_cast<double>(asset.frame_count);
+        frame = static_cast<uint32_t>(voice.sample_position);
+      }
+    }
+    sample_l = assetSample(asset, 0u, frame);
+    sample_r = asset.channel_count > 1u ? assetSample(asset, 1u, frame) : sample_l;
+    const uint32_t crossfade_frames = loopCrossfadeFrames(asset);
+    if (voice.looping && crossfade_frames > 1u && asset.frame_count > crossfade_frames) {
+      const uint32_t crossfade_start = asset.frame_count - crossfade_frames;
+      if (frame >= crossfade_start) {
+        const uint32_t wrapped_frame = frame - crossfade_start;
+        const float mix = static_cast<float>(wrapped_frame + 1u) / static_cast<float>(crossfade_frames);
+        const float next_l = assetSample(asset, 0u, wrapped_frame);
+        const float next_r = asset.channel_count > 1u ? assetSample(asset, 1u, wrapped_frame) : next_l;
+        sample_l = sample_l * (1.0f - mix) + next_l * mix;
+        sample_r = sample_r * (1.0f - mix) + next_r * mix;
+      }
+    }
+    const float envelope = sampleVoiceEnvelope(voice);
+    sample_l *= envelope;
+    sample_r *= envelope;
+    voice.sample_position += voice.sample_step;
+  } else if (voice.drum_voice) {
+    const float envelope = static_cast<float>(voice.remaining_frames) / static_cast<float>(std::max(1u, voice.total_frames));
+    const float noise = hashUnit(static_cast<uint32_t>(voice.remaining_frames) ^ rng_state ^ voice.source_id) * 2.0f - 1.0f;
+    sample_l = (std::sin(voice.phase) * 0.7f + noise * 0.3f) * envelope;
+    sample_r = sample_l;
+    voice.phase += kTwoPi * voice.frequency / sample_rate;
+  } else {
+    const float envelope = std::min(
+        1.0f,
+        static_cast<float>(voice.remaining_frames) / static_cast<float>(std::max(1u, voice.total_frames / 3u)));
+    sample_l = std::sin(voice.phase) * envelope;
+    sample_r = sample_l;
+    voice.phase += kTwoPi * voice.frequency / sample_rate;
+  }
+
+  ++voice.age_frames;
+  if (!voice.looping) {
+    --voice.remaining_frames;
+    if (voice.remaining_frames == 0u) {
+      voice.active = false;
+    }
+  }
+  out_l = sample_l * voice.amplitude;
+  out_r = sample_r * voice.amplitude;
+}

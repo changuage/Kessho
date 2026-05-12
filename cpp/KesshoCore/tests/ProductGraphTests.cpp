@@ -7,6 +7,7 @@
 
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductSchema.h"
+#include "../src/product/KesshoProductEngineInternal.h"
 
 namespace {
 
@@ -49,9 +50,47 @@ KesshoProductSnapshotV2 makeSnapshot() {
   return snapshot;
 }
 
+void requireDirectGraphCoverage() {
+  KesshoProductEngine direct(48000.0, 128, 0);
+  SourceState& pad = direct.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
+  pad.enabled = true;
+  pad.source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  pad.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL;
+  pad.level = 0.5f;
+  pad.dry_gain = 1.0f;
+  pad.reverb_send = 0.25f;
+  pad.delay_a_send = 0.0f;
+  pad.delay_b_send = 0.0f;
+  pad.granular_send = 0.0f;
+
+  float dry_l[4] = {1.0f, 0.5f, 0.25f, 0.125f};
+  float dry_r[4] = {0.5f, 0.25f, 0.125f, 0.0625f};
+  float out_l[4]{};
+  float out_r[4]{};
+  direct.mixSourceBuffer(KESSHO_PRODUCT_SOURCE_PAD1, dry_l, dry_r, out_l, out_r, 0u, 4u);
+  require(std::fabs(out_l[0] - 0.5f) < 0.001f, "direct graph source mix left mismatch");
+  require(std::fabs(out_r[0] - 0.25f) < 0.001f, "direct graph source mix right mismatch");
+  require(std::fabs(direct.stem_l[KESSHO_PRODUCT_SOURCE_PAD1][0] - 0.5f) < 0.001f, "direct graph stem mix mismatch");
+  require(std::fabs(direct.reverb_bus_l[0] - 0.125f) < 0.001f, "direct graph send bus mix mismatch");
+
+  direct.triggerVoice(KESSHO_PRODUCT_SOURCE_PAD1, 60.0f, 0.8f, 0.2f);
+  std::vector<float> module_l(128);
+  std::vector<float> module_r(128);
+  float module_peak = 0.0f;
+  for (uint32_t block = 0; block < 16u; ++block) {
+    std::fill(module_l.begin(), module_l.end(), 0.0f);
+    std::fill(module_r.begin(), module_r.end(), 0.0f);
+    direct.renderProductModules(module_l.data(), module_r.data(), 0u, 128u);
+    module_peak = std::max(module_peak, std::max(peak(module_l), peak(module_r)));
+  }
+  require(module_peak > 0.001f, "direct product graph render produced silence");
+}
+
 } // namespace
 
 int main() {
+  requireDirectGraphCoverage();
+
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();

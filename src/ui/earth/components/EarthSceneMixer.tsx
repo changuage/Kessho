@@ -87,8 +87,8 @@ type EarthSceneMixerProps = {
     dualRange?: DualSliderRange;
     walkPosition?: number;
     isFlashing?: boolean;
-    onCycleMode: (key: keyof SliderState) => void;
-    onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
+    onCycleMode?: (key: keyof SliderState) => void;
+    onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
   };
 };
 
@@ -1156,6 +1156,8 @@ export function EarthSceneMixer({ state, onParamChange, onSelectChange, sliderPr
       return;
     }
 
+    if (!slider.onDualRangeChange) return;
+
     if (drag.target === 'min') {
       slider.onDualRangeChange(
         drag.key,
@@ -1329,7 +1331,7 @@ export function EarthSceneMixer({ state, onParamChange, onSelectChange, sliderPr
   const handleRailDoubleClick = useCallback((zone: ZoneData, kind: RailKind) => {
     const rail = kind === 'level' ? zone.levelRail : zone.reverbRail;
     if (!rail.key) return;
-    sliderProps(rail.key).onCycleMode(rail.key);
+    sliderProps(rail.key).onCycleMode?.(rail.key);
   }, [sliderProps]);
 
   const handleToggle = useCallback((zone: ZoneData) => {

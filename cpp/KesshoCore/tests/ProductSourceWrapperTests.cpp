@@ -87,6 +87,27 @@ const kessho::product::generated::KesshoProductGeneratedSourcePreset* generatedP
   return nullptr;
 }
 
+uint32_t generatedSourcePresetCount() {
+  return static_cast<uint32_t>(
+      sizeof(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESETS) /
+      sizeof(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESETS[0]));
+}
+
+bool generatedSourceMatches(
+    const kessho::product::generated::KesshoProductGeneratedSourcePreset& preset,
+    const char* source) {
+  return std::strcmp(preset.source, source) == 0;
+}
+
+bool generatedProfileIsFinite(const kessho::product::generated::KesshoProductGeneratedSourcePreset& preset) {
+  return std::isfinite(preset.macro_morph) && std::isfinite(preset.macro_distance) &&
+      std::isfinite(preset.macro_expression) && std::isfinite(preset.profile_tone) &&
+      std::isfinite(preset.profile_brightness) && std::isfinite(preset.profile_texture) &&
+      std::isfinite(preset.profile_motion) && std::isfinite(preset.profile_attack) &&
+      std::isfinite(preset.profile_release) && std::isfinite(preset.profile_body) &&
+      std::isfinite(preset.profile_transient);
+}
+
 const kessho::product::generated::KesshoProductGeneratedDrumVoicePreset* generatedDrumVoicePreset(
     uint32_t voice_index,
     const char* name) {
@@ -122,6 +143,89 @@ KesshoProductSnapshotV2 makeSnapshot() {
     snapshot.sources[i].stereo_width = 1.0f;
   }
   return snapshot;
+}
+
+void requireGeneratedSourcePresetFamilyCoverage() {
+  using namespace kessho::product::generated;
+
+  require(
+      generatedSourcePresetCount() == KESSHO_PRODUCT_SOURCE_PRESET_COUNT,
+      "generated source preset array count does not match schema count");
+
+  uint32_t pad_count = 0;
+  uint32_t lead_count = 0;
+  uint32_t drum_count = 0;
+  uint32_t piano_count = 0;
+  uint32_t soundscape_count = 0;
+  uint32_t water_soundscape_count = 0;
+
+  for (const auto& preset : KESSHO_PRODUCT_SOURCE_PRESETS) {
+    require(preset.name != nullptr && std::strlen(preset.name) > 0, "generated source preset name missing");
+    require(preset.source != nullptr && std::strlen(preset.source) > 0, "generated source preset source missing");
+    require(preset.key != nullptr && std::strlen(preset.key) > 0, "generated source preset key missing");
+    require(generatedProfileIsFinite(preset), "generated source preset profile contains non-finite value");
+
+    if (generatedSourceMatches(preset, "pad")) {
+      ++pad_count;
+      require(preset.id >= KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT, "generated pad preset id below pad range");
+      require(preset.id <= KESSHO_PRODUCT_SOURCE_PRESET_PAD_SERGE_SWARM, "generated pad preset id above pad range");
+      require(preset.exact_pad_param_count == KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT, "generated pad preset lacks exact pad patch");
+      require(preset.exact_lead_param_count == 0u, "generated pad preset unexpectedly owns lead patch");
+      require(preset.exact_drum_param_count == 0u, "generated pad preset unexpectedly owns drum patch");
+      continue;
+    }
+
+    if (generatedSourceMatches(preset, "lead")) {
+      ++lead_count;
+      require(preset.id >= KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES, "generated lead preset id below lead range");
+      require(preset.id <= KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN, "generated lead preset id above lead range");
+      require(preset.exact_pad_param_count == 0u, "generated lead preset unexpectedly owns pad patch");
+      require(preset.exact_lead_param_count == KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT, "generated lead preset lacks exact lead patch");
+      require(preset.exact_drum_param_count == 0u, "generated lead preset unexpectedly owns drum patch");
+      continue;
+    }
+
+    if (generatedSourceMatches(preset, "drum")) {
+      ++drum_count;
+      require(preset.id == KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT, "generated drum preset id mismatch");
+      require(preset.exact_pad_param_count == 0u, "generated drum preset unexpectedly owns pad patch");
+      require(preset.exact_lead_param_count == 0u, "generated drum preset unexpectedly owns lead patch");
+      require(preset.exact_drum_param_count == KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT, "generated drum preset lacks exact drum patch");
+      continue;
+    }
+
+    if (generatedSourceMatches(preset, "piano")) {
+      ++piano_count;
+      require(preset.id == KESSHO_PRODUCT_SOURCE_PRESET_PIANO_DEFAULT, "generated piano preset id mismatch");
+      require(preset.exact_pad_param_count == 0u, "generated piano preset unexpectedly owns pad patch");
+      require(preset.exact_lead_param_count == 0u, "generated piano preset unexpectedly owns lead patch");
+      require(preset.exact_drum_param_count == 0u, "generated piano preset unexpectedly owns drum patch");
+      continue;
+    }
+
+    if (generatedSourceMatches(preset, "soundscape")) {
+      ++soundscape_count;
+      require(preset.id >= KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_OCEAN_SAMPLE, "generated soundscape preset id below range");
+      require(preset.id <= KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_INSECTS2, "generated soundscape preset id above range");
+      require(preset.exact_pad_param_count == 0u, "generated soundscape preset unexpectedly owns pad patch");
+      require(preset.exact_lead_param_count == 0u, "generated soundscape preset unexpectedly owns lead patch");
+      require(preset.exact_drum_param_count == 0u, "generated soundscape preset unexpectedly owns drum patch");
+      if (preset.id >= KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER0 &&
+          preset.id <= KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER7) {
+        ++water_soundscape_count;
+      }
+      continue;
+    }
+
+    require(false, "generated source preset uses unknown source family");
+  }
+
+  require(pad_count == 24u, "generated pad preset family count mismatch");
+  require(lead_count == 2u, "generated lead preset family count mismatch");
+  require(drum_count == 1u, "generated drum preset family count mismatch");
+  require(piano_count == 1u, "generated piano preset family count mismatch");
+  require(soundscape_count == 14u, "generated soundscape preset family count mismatch");
+  require(water_soundscape_count == 8u, "generated water soundscape preset count mismatch");
 }
 
 void requireExactSourcePresetMetadata() {
@@ -349,7 +453,7 @@ void requireSourceMacrosAffectRender() {
   require(bright_lead > quiet_lead * 1.5f, "lead source macros did not affect render level/tone");
 }
 
-float renderPeakWithSourcePreset(uint32_t source_id, uint32_t preset_id) {
+float renderPeakWithSourcePreset(uint32_t source_id, uint32_t preset_id, uint32_t blocks = 64) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "preset macro engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
@@ -361,7 +465,7 @@ float renderPeakWithSourcePreset(uint32_t source_id, uint32_t preset_id) {
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "preset macro snapshot load failed");
   triggerManual(engine, source_id, source_id == KESSHO_PRODUCT_SOURCE_DRUM ? 36.0f : 64.0f);
 
-  const float result = renderPeakBlocks(engine);
+  const float result = renderPeakBlocks(engine, blocks);
   kessho_product_destroy(engine);
   return result;
 }
@@ -388,6 +492,102 @@ void requireSourcePresetMacrosAffectRender() {
       KESSHO_PRODUCT_SOURCE_LEAD1,
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN);
   require(std::fabs(gamelan_peak - rhodes_peak) > 0.00001f, "generated lead preset profile did not affect render");
+}
+
+void requireBroadPadPresetFamiliesRender() {
+  const uint32_t representative_pad_presets[] = {
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_DEEP_SUB_DRONE,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_GLASS_SHIMMER,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SYNC_LEAD,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SERGE_SWARM,
+  };
+  const uint32_t pad_sources[] = {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_SOURCE_PAD2};
+
+  for (const uint32_t source_id : pad_sources) {
+    float min_peak = 1000000.0f;
+    float max_peak = 0.0f;
+    for (const uint32_t preset_id : representative_pad_presets) {
+      const auto* preset = generatedPreset(preset_id);
+      require(preset != nullptr, "representative generated pad preset missing");
+      require(generatedSourceMatches(*preset, "pad"), "representative generated pad preset has wrong source family");
+      const float peak = renderPeakWithSourcePreset(source_id, preset_id, 256);
+      require(peak > 0.000001f, "representative generated pad preset did not render");
+      min_peak = std::min(min_peak, peak);
+      max_peak = std::max(max_peak, peak);
+    }
+    require(max_peak > min_peak * 1.1f, "representative generated pad presets did not produce distinct levels");
+  }
+}
+
+void requireBroadLeadPresetFamiliesRender() {
+  const uint32_t lead_sources[] = {KESSHO_PRODUCT_SOURCE_LEAD1, KESSHO_PRODUCT_SOURCE_LEAD2};
+  for (const uint32_t source_id : lead_sources) {
+    const float rhodes_peak = renderPeakWithSourcePreset(
+        source_id,
+        kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES);
+    const float gamelan_peak = renderPeakWithSourcePreset(
+        source_id,
+        kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN);
+    require(rhodes_peak > 0.000001f, "generated LeadSoftRhodes preset did not render");
+    require(gamelan_peak > 0.000001f, "generated LeadGamelan preset did not render");
+    require(std::fabs(gamelan_peak - rhodes_peak) > 0.00001f, "generated lead presets did not produce distinct levels");
+  }
+}
+
+void requireGeneratedDrumPresetRenders() {
+  const float drum_peak = renderPeakWithSourcePreset(
+      KESSHO_PRODUCT_SOURCE_DRUM,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT);
+  require(drum_peak > 0.0001f, "generated DrumDefault preset did not render");
+}
+
+void requireGeneratedAssetPresetTelemetryCoverage() {
+  const uint32_t asset_source_presets[] = {
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PIANO_DEFAULT,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_OCEAN_SAMPLE,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER0,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER1,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER2,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER3,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER4,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER5,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER6,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER7,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_BIRDS,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_BIRDS2,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_FROGS,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_INSECTS,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_INSECTS2,
+  };
+
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "asset preset telemetry engine create failed");
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  for (const uint32_t preset_id : asset_source_presets) {
+    const auto* preset = generatedPreset(preset_id);
+    require(preset != nullptr, "generated asset-backed source preset missing");
+    const uint32_t source_id = generatedSourceMatches(*preset, "piano")
+        ? KESSHO_PRODUCT_SOURCE_PIANO
+        : KESSHO_PRODUCT_SOURCE_SOUNDSCAPE;
+    require(
+        source_id == KESSHO_PRODUCT_SOURCE_PIANO || generatedSourceMatches(*preset, "soundscape"),
+        "asset-backed generated preset has wrong source family");
+
+    KesshoProductSnapshotV2 snapshot = makeSnapshot();
+    snapshot.sources[source_id - 1u].preset_id = preset_id;
+    require(
+        kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+        "asset-backed generated source preset snapshot load failed");
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+    require(telemetry.source_preset_ids[source_id - 1u] == preset_id, "asset-backed generated source preset missed telemetry");
+  }
+  kessho_product_destroy(engine);
 }
 
 float renderPeakWithLeadSnapshotGain(float gain) {
@@ -593,9 +793,122 @@ void requireSampleOffsetManualTrigger() {
   kessho_product_destroy(engine);
 }
 
+void requireRepresentativeFullArrangementProbe() {
+  constexpr uint32_t piano_asset_id = 8101u;
+  constexpr uint32_t soundscape_asset_id = 8102u;
+
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "full arrangement engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.master.gain = 0.55f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].preset_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_GLASS_SHIMMER;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD2 - 1u].preset_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SERGE_SWARM;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].preset_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD2 - 1u].preset_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].preset_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PIANO - 1u].preset_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PIANO_DEFAULT;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PIANO - 1u].asset_id = piano_asset_id;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u].preset_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER3;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u].asset_id = soundscape_asset_id;
+  snapshot.asset_refs[0] = soundscape_asset_id;
+  for (uint32_t index = 0; index < 7; ++index) {
+    snapshot.sources[index].level = 0.72f;
+    snapshot.sources[index].dry_gain = 1.0f;
+    snapshot.sources[index].expression = 0.85f;
+    snapshot.sources[index].post_lpf_hz = 16000.0f;
+    snapshot.sources[index].stereo_width = 1.0f;
+  }
+
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "full arrangement snapshot load failed");
+
+  float piano_data[256]{};
+  for (uint32_t index = 0; index < 256; ++index) {
+    piano_data[index] = (index < 96u) ? 0.45f : 0.0f;
+  }
+  const float* piano_channels[1] = {piano_data};
+  require(
+      kessho_product_register_asset_buffer(
+          engine,
+          piano_asset_id,
+          piano_channels,
+          1,
+          256,
+          48000.0,
+          KESSHO_PRODUCT_ASSET_PIANO) == KESSHO_PRODUCT_OK,
+      "full arrangement piano asset registration failed");
+
+  float soundscape_left[512]{};
+  float soundscape_right[512]{};
+  for (uint32_t index = 0; index < 512; ++index) {
+    const float phase = static_cast<float>(index) * 0.049087385f;
+    soundscape_left[index] = 0.28f * static_cast<float>(std::sin(phase));
+    soundscape_right[index] = 0.28f * static_cast<float>(std::sin(phase + 0.8f));
+  }
+  const float* soundscape_channels[2] = {soundscape_left, soundscape_right};
+  require(
+      kessho_product_register_asset_buffer(
+          engine,
+          soundscape_asset_id,
+          soundscape_channels,
+          2,
+          512,
+          48000.0,
+          KESSHO_PRODUCT_ASSET_LOOP | KESSHO_PRODUCT_ASSET_SOUNDSCAPE) == KESSHO_PRODUCT_OK,
+      "full arrangement soundscape asset registration failed");
+
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_PAD1, 60.0f, 0u);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_PAD2, 67.0f, 16u);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_LEAD1, 64.0f, 32u);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_LEAD2, 71.0f, 48u);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f, 64u);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_PIANO, 72.0f, 80u);
+
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  std::vector<float> stem_l(128);
+  std::vector<float> stem_r(128);
+  float master_peak = 0.0f;
+  float stem_peaks[8]{};
+  for (uint32_t block = 0; block < 256; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    master_peak = std::max(master_peak, peakRange(left, right, 0, 128));
+    for (uint32_t stem_id = KESSHO_PRODUCT_STEM_PAD1; stem_id <= KESSHO_PRODUCT_STEM_SOUNDSCAPE; ++stem_id) {
+      require(kessho_product_get_stem(engine, stem_id, stem_l.data(), stem_r.data(), 128) == KESSHO_PRODUCT_OK, "full arrangement stem read failed");
+      stem_peaks[stem_id] = std::max(stem_peaks[stem_id], peakRange(stem_l, stem_r, 0, 128));
+    }
+  }
+
+  require(master_peak > 0.001f, "full arrangement master did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_PAD1] > 0.00001f, "full arrangement Pad1 stem did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_PAD2] > 0.00001f, "full arrangement Pad2 stem did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_LEAD1] > 0.00001f, "full arrangement Lead1 stem did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_LEAD2] > 0.00001f, "full arrangement Lead2 stem did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_DRUM] > 0.00001f, "full arrangement Drum stem did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_PIANO] > 0.00001f, "full arrangement Piano stem did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_SOUNDSCAPE] > 0.00001f, "full arrangement Soundscape stem did not render");
+
+  const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+  require(telemetry.active_assets >= 2u, "full arrangement registered assets missing from telemetry");
+  require(telemetry.source_preset_ids[KESSHO_PRODUCT_SOURCE_PAD2 - 1u] == snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD2 - 1u].preset_id, "full arrangement Pad2 preset missed telemetry");
+  require(telemetry.source_preset_ids[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u] == snapshot.sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u].preset_id, "full arrangement Soundscape preset missed telemetry");
+  kessho_product_destroy(engine);
+}
+
 } // namespace
 
 int main() {
+  requireGeneratedSourcePresetFamilyCoverage();
   requireExactSourcePresetMetadata();
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_STEM_PAD1, 60.0f, "pad 1 did not render");
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_PAD2, KESSHO_PRODUCT_STEM_PAD2, 64.0f, "pad 2 did not render");
@@ -605,6 +918,10 @@ int main() {
   requireSourceParamEventsAffectRender();
   requireSourceMacrosAffectRender();
   requireSourcePresetMacrosAffectRender();
+  requireBroadPadPresetFamiliesRender();
+  requireBroadLeadPresetFamiliesRender();
+  requireGeneratedDrumPresetRenders();
+  requireGeneratedAssetPresetTelemetryCoverage();
   requireSnapshotExactLeadParamsAffectRender();
   requireSnapshotExactDrumParamsAffectRender();
   requireGeneratedDrumVoicePresetsAffectRender();
@@ -612,6 +929,7 @@ int main() {
   requireManualLeadUsesSourceHold();
   requireSourcePresetTelemetryAndEvent();
   requireSampleOffsetManualTrigger();
+  requireRepresentativeFullArrangementProbe();
 
   std::cout << "Kessho Product Source Wrapper tests passed\n";
   return 0;

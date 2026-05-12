@@ -211,6 +211,19 @@ public final class KesshoProductCore {
         kessho_native_product_get_telemetry(handle)
     }
 
+    public func sequencerUiStateBytes() -> [UInt8] {
+        var bytes = [UInt8](repeating: 0, count: Int(KESSHO_NATIVE_PRODUCT_SEQUENCER_UI_STATE_BYTES))
+        let result = bytes.withUnsafeMutableBytes { buffer -> Int32 in
+            guard let baseAddress = buffer.baseAddress else { return Int32(-1) }
+            return kessho_native_product_copy_sequencer_ui_state(
+                handle,
+                baseAddress,
+                UInt32(buffer.count)
+            )
+        }
+        return result == 1 ? bytes : []
+    }
+
     @discardableResult
     public func registerInterleavedAsset(
         id assetId: UInt32,

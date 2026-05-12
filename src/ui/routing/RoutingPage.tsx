@@ -16,8 +16,8 @@ export interface RoutingPageProps {
     dualRange?: DualSliderRange;
     walkPosition?: number;
     isFlashing?: boolean;
-    onCycleMode: (key: keyof SliderState) => void;
-    onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
+    onCycleMode?: (key: keyof SliderState) => void;
+    onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
   };
 }
 

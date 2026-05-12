@@ -1,59 +1,46 @@
-import { getNearestPianoSample, getPianoSamplePath } from './pianoSamples';
+import { getNearestPianoSample } from './pianoSamples';
+import coreProductAssetManifest from './coreProductAssetManifest.json';
 
 export const CORE_PRODUCT_ASSET_FLAGS = Object.freeze({
-  loop: 1 << 0,
-  piano: 1 << 1,
-  soundscape: 1 << 2,
+  loop: coreProductAssetManifest.flags.loop,
+  piano: coreProductAssetManifest.flags.piano,
+  soundscape: coreProductAssetManifest.flags.soundscape,
 } as const);
 
-export const CORE_PRODUCT_DEFAULT_PIANO_MIDI = 60;
-export const CORE_PRODUCT_PIANO_ASSET_ID_BASE = 7200;
+type CoreProductSoundscapeAssetManifestKey = 'ocean' | 'water' | 'birds' | 'birds2' | 'frogs' | 'insects';
+
+export const CORE_PRODUCT_ASSET_MANIFEST_VERSION = coreProductAssetManifest.version;
+export const CORE_PRODUCT_ASSET_BASE_PATH = coreProductAssetManifest.assetBasePath;
+export const CORE_PRODUCT_DEFAULT_PIANO_MIDI = coreProductAssetManifest.piano.defaultMidi;
+export const CORE_PRODUCT_PIANO_ASSET_ID_BASE = coreProductAssetManifest.piano.baseAssetId;
 export const CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID =
   CORE_PRODUCT_PIANO_ASSET_ID_BASE + getNearestPianoSample(CORE_PRODUCT_DEFAULT_PIANO_MIDI).index;
 export const CORE_PRODUCT_PIANO_PRELOAD_MIDI_NOTES = Object.freeze([
-  36,
-  40,
-  43,
-  48,
-  52,
-  55,
-  60,
-  64,
-  67,
-  72,
-  76,
-  79,
-  84,
-] as const);
-export const CORE_PRODUCT_DEFAULT_SOUNDSCAPE_ASSET_ID = 7101;
-export const CORE_PRODUCT_SOUNDSCAPE_ASSETS = Object.freeze({
-  ocean: {
-    assetId: CORE_PRODUCT_DEFAULT_SOUNDSCAPE_ASSET_ID,
-    path: 'Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg',
+  ...coreProductAssetManifest.piano.preloadMidiNotes,
+]);
+export const CORE_PRODUCT_MEMORY_BUDGETS = Object.freeze({
+  ...coreProductAssetManifest.memoryBudgets,
+});
+const soundscapeEntries = coreProductAssetManifest.soundscapes.map((asset) => [
+  asset.key,
+  {
+    assetId: asset.assetId,
+    path: asset.path,
+    layer: asset.layer,
+    startupPreload: asset.startupPreload,
   },
-  water: {
-    assetId: 7104,
-    path: 'Ghetary-Waves-Rocks_cl-normalized.ogg',
-  },
-  birds: {
-    assetId: 7102,
-    path: 'Alps Birds_441_m_normalized.ogg',
-  },
-  birds2: {
-    assetId: 7105,
-    path: 'Fujian Birds 2_441_m_normalized.ogg',
-  },
-  frogs: {
-    assetId: 7103,
-    path: 'Fujian_Frogs_m_441_normalized.ogg',
-  },
-  insects: {
-    assetId: 7106,
-    path: 'Alps Birds 2_noiseremoval_441_m.ogg',
-  },
-} as const);
+]);
+export const CORE_PRODUCT_SOUNDSCAPE_ASSETS = Object.freeze(
+  Object.fromEntries(soundscapeEntries),
+) as Readonly<Record<CoreProductSoundscapeAssetManifestKey, {
+  assetId: number;
+  path: string;
+  layer: string;
+  startupPreload: boolean;
+}>>;
+export const CORE_PRODUCT_DEFAULT_SOUNDSCAPE_ASSET_ID = CORE_PRODUCT_SOUNDSCAPE_ASSETS.ocean.assetId;
 
-export type CoreProductSoundscapeAssetKey = keyof typeof CORE_PRODUCT_SOUNDSCAPE_ASSETS;
+export type CoreProductSoundscapeAssetKey = CoreProductSoundscapeAssetManifestKey;
 
 export type CoreProductPianoAssetDescriptor = {
   assetId: number;
@@ -73,14 +60,26 @@ export type DecodedCoreProductAsset = {
   flags: number;
 };
 
+export function getDecodedCoreProductAssetByteLength(asset: DecodedCoreProductAsset): number {
+  return asset.channels.reduce((total, channel) => total + channel.byteLength, 0);
+}
+
 export function resolveCoreProductAssetUrl(path: string): string {
   const base = new URL(import.meta.env.BASE_URL, window.location.origin);
-  return new URL(`samples/${path}`, base).toString();
+  return new URL(`${CORE_PRODUCT_ASSET_BASE_PATH}/${path}`, base).toString();
+}
+
+function getManifestPianoSamplePath(variant: 'regular' | 'short', index: number): string {
+  const safeIndex = String(Math.max(1, Math.min(coreProductAssetManifest.piano.sampleCount, Math.round(index)))).padStart(2, '0');
+  const pattern = variant === 'short'
+    ? coreProductAssetManifest.piano.shortSamplePathPattern
+    : coreProductAssetManifest.piano.regularSamplePathPattern;
+  return pattern.replace('{index}', safeIndex);
 }
 
 export function getDefaultCoreProductPianoAssetUrl(): string {
   const { index } = getNearestPianoSample(CORE_PRODUCT_DEFAULT_PIANO_MIDI);
-  return resolveCoreProductAssetUrl(getPianoSamplePath('regular', index));
+  return resolveCoreProductAssetUrl(getManifestPianoSamplePath('regular', index));
 }
 
 export function getCoreProductPianoAssetIdForMidi(midiNote: number): number {
@@ -90,7 +89,7 @@ export function getCoreProductPianoAssetIdForMidi(midiNote: number): number {
 
 export function getCoreProductPianoAssetUrlForMidi(midiNote: number): string {
   const { index } = getNearestPianoSample(midiNote);
-  return resolveCoreProductAssetUrl(getPianoSamplePath('regular', index));
+  return resolveCoreProductAssetUrl(getManifestPianoSamplePath('regular', index));
 }
 
 function numberFromState(state: Record<string, unknown> | undefined | null, key: string): number | null {

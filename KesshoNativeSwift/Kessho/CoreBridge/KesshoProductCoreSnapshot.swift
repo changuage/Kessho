@@ -47,6 +47,7 @@ public enum KesshoProductCoreSnapshotEncoder {
             writer.f32(source.postLpfHz)
             writer.f32(source.stereoWidth)
             writer.f32(source.postLpfKeyTracking)
+            // PATCH_BRIDGE_RETIREMENT: exact Pad/Lead/Drum arrays are serialized only for ABI compatibility.
             writer.u32(min(source.exactPadParamCount, KesshoProductSchema.padParamCount))
             for index in 0..<Int(KesshoProductSchema.padParamCount) {
                 writer.f32(index < source.exactPadParams.count ? source.exactPadParams[index] : 0)

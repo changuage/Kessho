@@ -25,6 +25,8 @@ import { DualSlider, DualSliderRange } from './ui/DualSlider';
 import { SliderPrimitive } from './ui/sliderSystem';
 import { audioEngine, preloadAudioEngine } from './audio/runtime';
 import type { EngineState } from './audio/runtime';
+import type { EarthTextureDebugState } from './audio/engine';
+import { isCoreProductRangeKeySupported } from './audio/coreProductEvents';
 import { normalizeDynamicsDegradeAliases } from './audio/dynamicsModel';
 import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
 import { formatChordDegrees, calculateDriftedRoot } from './audio/harmony';
@@ -120,6 +122,7 @@ const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
 const DynamicsPage = React.lazy(() => import('./ui/dynamics/DynamicsPage'));
 const RoutingPage = React.lazy(() => import('./ui/routing/RoutingPage'));
 const EarthPage = React.lazy(() => import('./ui/earth/EarthPage'));
+const SnowflakeGeneratorPage = React.lazy(() => import('./ui/snowflakeGenerator/SnowflakeGeneratorPage'));
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -135,6 +138,12 @@ const AUDIO_ENGINE_PARAM = 'engine';
 const AUDIO_ENGINE_SWITCH_STATE_PARAM = 'engineState';
 const AUDIO_ENGINE_CPU_SUMMARY_STORAGE_KEY = 'kessho:audio-engine-cpu-summary:v1';
 const AUDIO_ENGINE_SWITCH_STATE_STORAGE_PREFIX = 'kessho:audio-engine-switch-state:v1:';
+const EMPTY_EARTH_TEXTURE_DEBUG_STATE: EarthTextureDebugState = {
+  waves: null,
+  birds: null,
+  birds2: null,
+  frogs: null,
+};
 
 type AudioEnginePerfMetric = {
   avgPercent: number;
@@ -1284,6 +1293,10 @@ function normalizeDualSliderMode(key: string, mode?: SliderMode): SliderMode | u
   return WALK_ONLY_DUAL_KEYS.has(key) && mode === 'sampleHold' ? 'walk' : mode;
 }
 
+function coreProductSupportsRuntimeRangeKey(key: string): boolean {
+  return isCoreProductRangeKeySupported(key);
+}
+
 const Slider: React.FC<SliderProps> = ({ 
   label, 
   value, 
@@ -1905,6 +1918,9 @@ const App: React.FC = () => {
   const isSnowflakePrototypeRoute = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).get('snowflakePrototype') === '1'
     : false;
+  const isSnowflakeGeneratorRoute = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('snowflakeGenerator') === '1'
+    : false;
   const startInAdvancedEditor = useMemo(() => shouldStartInAdvancedEditor(), []);
 
   // UI mode: 'snowflake', 'advanced', or 'journey'
@@ -2501,6 +2517,23 @@ const App: React.FC = () => {
       removeRuntimeTriggerPositions([keyStr]);
       return;
     }
+    if (audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(keyStr)) {
+      setSliderModes(prev => {
+        if (!(keyStr in prev)) return prev;
+        const next = { ...prev };
+        delete next[keyStr];
+        return next;
+      });
+      setDualSliderRanges(prev => {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      removeRuntimeWalkPositions([keyStr]);
+      removeRuntimeTriggerPositions([keyStr]);
+      return;
+    }
 
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
     
@@ -2666,7 +2699,7 @@ const App: React.FC = () => {
         }
       }
     }
-  }, [isJourneyPlaying, dualSliderRanges, sliderModes, state, drumMorphKeys, morphPosition, morphPresetA, morphPresetB]);
+  }, [audioEngineRuntimeMode, isJourneyPlaying, dualSliderRanges, sliderModes, state, drumMorphKeys, morphPosition, morphPresetA, morphPresetB]);
 
   // Update dual slider range
   const handleDualRangeChange = useCallback((key: keyof SliderState, min: number, max: number) => {
@@ -2675,6 +2708,7 @@ const App: React.FC = () => {
     
     const keyStr = key as string;
     if (SINGLE_ONLY_SLIDER_KEYS.has(keyStr)) return;
+    if (audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(keyStr)) return;
 
     setDualSliderRanges(prev => ({ ...prev, [key]: { min, max } }));
     
@@ -2723,7 +2757,7 @@ const App: React.FC = () => {
         setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 1);
       }
     }
-  }, [isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, state]);
+  }, [audioEngineRuntimeMode, isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, state]);
 
   // Update engine morph ranges when dual mode changes for drum morph sliders
   // Only set morphRange for sampleHold (per-trigger random within range).
@@ -2751,6 +2785,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!audioEngine.setDrumParamSHRange) return;
     drumSHParamKeys.forEach(key => {
+      if (audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(key)) return;
       if (sliderModes[key] === 'sampleHold') {
         const range = dualSliderRanges[key as keyof SliderState];
         if (range) {
@@ -2760,7 +2795,7 @@ const App: React.FC = () => {
         audioEngine.setDrumParamSHRange(key, null);
       }
     });
-  }, [sliderModes, dualSliderRanges, drumSHParamKeys]);
+  }, [audioEngineRuntimeMode, sliderModes, dualSliderRanges, drumSHParamKeys]);
 
   // Push non-drum dualSliderRanges to engine for per-trigger sampling (sampleHold only).
   // Walk mode updates state values directly via the walk timer, so the engine reads those.
@@ -2768,26 +2803,28 @@ const App: React.FC = () => {
     if (audioEngine.setDualRanges) {
       const engineRanges: Partial<Record<string, { min: number; max: number }>> = {};
       Object.entries(dualSliderRanges).forEach(([key, range]) => {
+        if (audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(key)) return;
         if (range && !DRUM_MORPH_KEYS.has(key as keyof SliderState) && !drumSHParamKeys.has(key) && sliderModes[key] === 'sampleHold') {
           engineRanges[key] = range;
         }
       });
       audioEngine.setDualRanges(engineRanges);
     }
-  }, [dualSliderRanges, sliderModes, drumSHParamKeys]);
+  }, [audioEngineRuntimeMode, dualSliderRanges, sliderModes, drumSHParamKeys]);
 
   // Engine-owned random-walk runtime: App only mirrors lightweight positions for slider indicators.
   useEffect(() => {
     const walkRanges: Record<string, { min: number; max: number }> = {};
     Object.entries(sliderModes).forEach(([key, mode]) => {
       if (mode !== 'walk') return;
+      if (audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(key)) return;
       const range = dualSliderRanges[key as keyof SliderState];
       if (range) {
         walkRanges[key] = range;
       }
     });
     audioEngine.setRuntimeWalkRanges(walkRanges);
-  }, [sliderModes, dualSliderRanges]);
+  }, [audioEngineRuntimeMode, sliderModes, dualSliderRanges]);
 
   // Keep the runtime walk indicator store live while hidden so walk-mode sliders
   // do not resubscribe to a stale snapshot and visibly jump on tab restore.
@@ -4106,23 +4143,27 @@ const App: React.FC = () => {
     dualRange?: DualSliderRange;
     walkPosition?: number;
     isFlashing?: boolean;
-    onCycleMode: (key: keyof SliderState) => void;
-    onDualRangeChange: (key: keyof SliderState, min: number, max: number) => void;
+    onCycleMode?: (key: keyof SliderState) => void;
+    onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
   } => {
     const keyStr = paramKey as string;
-    const mode: SliderMode = normalizeDualSliderMode(keyStr, sliderModes[keyStr]) ?? 'single';
+    const dualModeSupported =
+      audioEngineRuntimeMode !== 'core-product' || coreProductSupportsRuntimeRangeKey(keyStr);
+    const mode: SliderMode = dualModeSupported
+      ? normalizeDualSliderMode(keyStr, sliderModes[keyStr]) ?? 'single'
+      : 'single';
     const walkPos = getRuntimeSliderPosition(keyStr, mode);
     const isFlashing = getRuntimeSliderFlashing(keyStr, mode);
 
     return {
       mode,
-      dualRange: dualSliderRanges[paramKey],
-      walkPosition: walkPos,
-      isFlashing,
-      onCycleMode: handleCycleSliderMode,
-      onDualRangeChange: handleDualRangeChange,
+      dualRange: dualModeSupported ? dualSliderRanges[paramKey] : undefined,
+      walkPosition: dualModeSupported ? walkPos : undefined,
+      isFlashing: dualModeSupported ? isFlashing : false,
+      onCycleMode: dualModeSupported ? handleCycleSliderMode : undefined,
+      onDualRangeChange: dualModeSupported ? handleDualRangeChange : undefined,
     };
-  }, [sliderModes, dualSliderRanges, handleCycleSliderMode, handleDualRangeChange]);
+  }, [audioEngineRuntimeMode, sliderModes, dualSliderRanges, handleCycleSliderMode, handleDualRangeChange]);
 
   const shouldDisableLeadRandomTiming = useCallback((nextState: SliderState): boolean => {
     if (!nextState.leadRandomEnabled) return false;
@@ -4751,7 +4792,10 @@ const App: React.FC = () => {
       return;
     }
 
-    const enabledStemIds = STEM_RECORD_TRACK_IDS.filter((trackId) => recordStems[trackId]);
+    const stemRecordingAvailable = audioEngineRuntimeMode !== 'core-product';
+    const enabledStemIds = stemRecordingAvailable
+      ? STEM_RECORD_TRACK_IDS.filter((trackId) => recordStems[trackId])
+      : [];
     if (isMobileDevice() && (recordFormats.wav || enabledStemIds.length > 0)) {
       alert('Mobile recording is limited to the stereo WebM mix to avoid high CPU and memory use. Disable WAV and stem capture, or record on desktop.');
       return;
@@ -5971,8 +6015,9 @@ const App: React.FC = () => {
 
   // ── Record Stems Toggle Callback (used by GlobalPage) ──
   const handleRecordStemsToggle = useCallback((key: string) => {
+    if (audioEngineRuntimeMode === 'core-product') return;
     setRecordStems(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }));
-  }, []);
+  }, [audioEngineRuntimeMode]);
 
   // Auto-cycle morph effect - continuous smooth animation
   const morphStartTimeRef = useRef<number>(Date.now());
@@ -6509,7 +6554,11 @@ const App: React.FC = () => {
     }
   }, [savedPresets, handleLoadPresetFromList, playbackIsRunning, capacitorAudioSessionDiagnosticActive, dualSliderRanges, audioEngine, setupIOSMediaSession, connectMediaSessionToWebAudio]);
 
-  const getEarthTextureDebugState = useCallback(() => audioEngine.getEarthTextureDebugState(), []);
+  const getEarthTextureDebugState = useCallback(() => (
+    audioEngineRuntimeMode === 'core-product'
+      ? EMPTY_EARTH_TEXTURE_DEBUG_STATE
+      : audioEngine.getEarthTextureDebugState()
+  ), [audioEngineRuntimeMode]);
 
   const applyJourneyDualSnapshot = useCallback((
     nextDualModes: Record<string, SliderMode>,
@@ -6771,6 +6820,27 @@ const App: React.FC = () => {
       return nextState ?? prev;
     });
   }, []);
+
+  if (isSnowflakeGeneratorRoute) {
+    const clearGeneratorRoute = () => {
+      if (typeof window === 'undefined') return;
+      const params = new URLSearchParams(window.location.search);
+      params.delete('snowflakeGenerator');
+      const query = params.toString();
+      window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+    };
+
+    return (
+      <React.Suspense fallback={LAZY_PAGE_FALLBACK}>
+        <SnowflakeGeneratorPage
+          onBack={() => {
+            clearGeneratorRoute();
+            setUiMode('snowflake');
+          }}
+        />
+      </React.Suspense>
+    );
+  }
 
   if (isSnowflakePrototypeRoute) {
     const clearPrototypeRoute = () => {
@@ -7259,7 +7329,8 @@ const App: React.FC = () => {
             SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
             CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
             isRunning={playbackIsRunning}
-            getLeadMorphedParams={(lead: 1 | 2) => audioEngine.getLeadMorphedParams(lead)}
+            getLeadMorphedParams={audioEngineRuntimeMode === 'core-product' ? () => null : (lead: 1 | 2) => audioEngine.getLeadMorphedParams(lead)}
+            liveSourceTelemetryAvailable={audioEngineRuntimeMode !== 'core-product'}
             initialViewMode={synthViewModeRef.current}
             onViewModeChange={(mode) => { synthViewModeRef.current = mode; }}
             initialStepOverrides={synthStepOverridesRef.current}
@@ -7345,7 +7416,7 @@ const App: React.FC = () => {
             togglePanel={togglePanel}
             sliderProps={sliderProps}
             triggerVoice={(voice) => { void audioEngine.triggerDrumVoice(voice, 0.8, state); }}
-            getAnalyserNode={(v) => audioEngine.getDrumVoiceAnalyser(v)}
+            getAnalyserNode={audioEngineRuntimeMode === 'core-product' ? () => undefined : (v) => audioEngine.getDrumVoiceAnalyser(v)}
             resetEvolveHome={(laneIdx) => audioEngine.resetDrumEuclidLaneHome(laneIdx)}
             diceLane={(laneIdx, intensity) => audioEngine.diceDrumEuclidLane(laneIdx, intensity)}
             evolvedOverrides={drumEvolvedOverrides}
@@ -7393,6 +7464,7 @@ const App: React.FC = () => {
             onStateChange={setState}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+            liveBufferTelemetryAvailable={audioEngineRuntimeMode !== 'core-product'}
           />
         )}
 
@@ -7422,7 +7494,7 @@ const App: React.FC = () => {
             onStateChange={setState}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
-            getDynamicsAnalyser={(key) => audioEngine.getDynamicsAnalyser(key)}
+            getDynamicsAnalyser={audioEngineRuntimeMode === 'core-product' ? undefined : (key) => audioEngine.getDynamicsAnalyser(key)}
             getDynamicsTelemetry={() => audioEngine.getDynamicsVisualTelemetry()}
           />
         )}
@@ -7449,6 +7521,7 @@ const App: React.FC = () => {
             sliderProps={sliderProps}
             isRunning={playbackIsRunning}
             getEarthTextureDebugState={getEarthTextureDebugState}
+            textureDebugAvailable={audioEngineRuntimeMode !== 'core-product'}
           />
         )}
 
