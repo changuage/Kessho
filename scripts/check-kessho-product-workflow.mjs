@@ -59,6 +59,7 @@ for (const requiredPath of requiredPaths) {
 }
 
 const requiredCommands = [
+  'npx playwright install chromium',
   'npm run type-check',
   'npm run build',
   'npm run core:build:wasm',
