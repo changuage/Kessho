@@ -6,6 +6,7 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 
 - Generated Product schema/event/param files.
 - Product-specific host/runtime/event/snapshot/asset/telemetry modules.
+- `CoreProductAssetAdapter` for host-owned fetch/decode/register I/O only.
 - Type-only app interfaces from `src/audio/engine.ts`.
 - Asset manifest helpers such as `pianoSamples` and the versioned `coreProductAssetManifest.json`.
 - Unit/default helpers used only for serialization, such as `delayBuses`, `outputTrims`, `transport`, and selected UI state constants.
@@ -17,6 +18,7 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 | `./generated/kesshoProductEvents` | Generated event IDs and ABI constants | Product Core ABI | CANONICAL_GENERATED_SCHEMA_HELPER | Generated Product event schema | Never remove while generated bindings are used | Required |
 | `./generated/kesshoProductParams` | Generated param IDs and ABI constants | Product Core ABI | CANONICAL_GENERATED_SCHEMA_HELPER | Generated Product param schema | Never remove while generated bindings are used | Required |
 | `./coreProductAssets` | Host asset fetch/decode/register adapter | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product asset registry and source schedulers | Keep as thin host I/O adapter | Required |
+| `./CoreProductAssetAdapter` | Product host asset fetch/decode/register ownership boundary | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product asset registry and source schedulers | Keep as thin host I/O adapter; no source scheduling or tonal decisions allowed | Required |
 | `./coreProductAssetManifest.json` | Versioned Product asset manifest | Product asset gate | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product asset IDs and registry | Keep as host packaging manifest | Required |
 | `./coreProductEvents` | Generated Product event packing helpers | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product event dispatcher | Keep as thin ABI/event adapter | Required |
 | `./coreProductRuntime` | WASM/worklet runtime bridge | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product render/runtime API | Keep as thin runtime adapter | Required |

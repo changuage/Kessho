@@ -83,11 +83,5 @@ jobs:
       - run: npm run core:product:workflow
       - run: npm run core:product:ci
       - run: npm run core:product:default-gate-v2
-      - name: Run browser readiness
-        run: |
-          npm run dev -- --host 127.0.0.1 --port 4173 > /tmp/kessho-vite-dev.log 2>&1 &
-          vite_pid=$!
-          trap 'kill ${vite_pid}' EXIT
-          node -e 'const fs=require("fs"); const url=process.argv[1]; const logPath=process.argv[2]; const deadline=Date.now()+45000; (async function wait(){ while (Date.now()<deadline) { try { const response=await fetch(url); if (response.ok) return; } catch {} await new Promise((resolve)=>setTimeout(resolve,500)); } console.error("Timed out waiting for " + url); try { console.error(fs.readFileSync(logPath, "utf8")); } catch {} process.exit(1); })();' http://127.0.0.1:4173/ /tmp/kessho-vite-dev.log
-          npm run core:readiness:browser -- --url=http://127.0.0.1:4173/
+      - run: npm run core:readiness:browser
       - run: swift build --package-path KesshoNativeSwift

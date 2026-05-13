@@ -14,6 +14,7 @@ function assert(condition, message) {
 }
 
 const host = read('src/audio/coreProductEngineHost.ts');
+const assetAdapter = read('src/audio/CoreProductAssetAdapter.ts');
 const fallbackDiagnostics = read('src/audio/CoreProductFallbackDiagnostics.ts');
 const runtime = read('src/audio/coreProductRuntime.ts');
 const appRuntime = read('src/audio/runtime.ts');
@@ -27,7 +28,8 @@ const worklet = read('public/worklets/kessho-core-product.worklet.js');
 const manifest = read('scripts/kessho-core-build-manifest.mjs');
 
 const lineCount = (source) => source.split('\n').length;
-assert(lineCount(host) <= 2500, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
+assert(lineCount(host) <= 2350, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
+assert(lineCount(assetAdapter) <= 220, `CoreProductAssetAdapter.ts exceeds cleanup size cap (${lineCount(assetAdapter)} lines)`);
 assert(lineCount(snapshot) <= 1900, `coreProductSnapshot.ts exceeds cleanup size cap (${lineCount(snapshot)} lines)`);
 assert(
   fallbackDiagnostics.includes('classifyCoreProductRuntimeFallback') &&
@@ -47,29 +49,20 @@ for (const token of [
   'unsupportedControlCount',
   'snapshotReloadCpuMs',
   'lastSnapshotReloadReason',
+  'private readonly assetAdapter = new CoreProductAssetAdapter',
   'assetRefsChanged(previous.assetRefs, next.assetRefs)',
   'appendSourceParamDiffs(events, previous.sources, next.sources)',
   'appendSequencerLaneDiffs(events, \'synth\', previous.synthLanes, next.synthLanes)',
   'createCoreProductParamEvent(',
   'createCoreProductSourcePresetEvent(',
   'registerAsset(asset: DecodedCoreProductAsset): void',
-  'getDecodedCoreProductAssetByteLength(asset)',
-  'registeredAssetDecodedBytes',
+  'this.assetAdapter.registerAsset(asset)',
+  'this.assetAdapter.clear()',
+  'this.assetAdapter.shouldUseDefaultAssets()',
+  'this.assetAdapter.ensureDefaultAssetsForState()',
+  'this.assetAdapter.ensurePianoAssetForMidi(note.midi)',
+  'this.assetAdapter.registeredDecodedAssetByteLength()',
   'CORE_PRODUCT_MEMORY_BUDGETS.totalRegisteredDecodedBytes',
-  'ensureDefaultPianoAsset(): Promise<void>',
-  'ensurePianoAssetsForState(): Promise<void>',
-  'ensurePianoAssetForMidi(midiNote: number): Promise<void>',
-  'getCoreProductPianoPreloadAssetDescriptors(this.latestSliderState)',
-  'getCoreProductPianoAssetIdForMidi(midiNote)',
-  'ensureDefaultSoundscapeAsset(): Promise<void>',
-  'ensureSoundscapeAssetsForState(): Promise<void>',
-  'getCoreProductSoundscapeAssetDescriptorsForState(this.latestSliderState)',
-  'ensureDefaultAssetsForState(): Promise<void>',
-  'decodeCoreProductAsset(',
-  'birds2Enabled',
-  'insects2Enabled',
-  'CORE_PRODUCT_ASSET_FLAGS.piano',
-  'CORE_PRODUCT_ASSET_FLAGS.loop | CORE_PRODUCT_ASSET_FLAGS.soundscape',
   "if (property === 'then') return undefined;",
   'setJourneyMorphClockCallback(callback:',
   'journeyMorphClockRunning',
@@ -150,6 +143,34 @@ for (const token of [
   'currentRangeValueContext',
 ]) {
   assert(host.includes(token), `core-product host is missing ${token}`);
+}
+
+for (const token of [
+  'class CoreProductAssetAdapter',
+  'registeredAssetIds',
+  'pianoAssetPromises',
+  'defaultSoundscapeAssetPromises',
+  'registeredAssetDecodedBytes',
+  'registerAsset(asset: DecodedCoreProductAsset): void',
+  'getDecodedCoreProductAssetByteLength(asset)',
+  'registeredDecodedAssetByteLength(): number',
+  'shouldUseDefaultAssets(): boolean',
+  'ensureDefaultAssetsForState(): Promise<void>',
+  'ensureDefaultPianoAsset(): Promise<void>',
+  'ensurePianoAssetsForState(): Promise<void>',
+  'ensurePianoAssetForMidi(midiNote: number): Promise<void>',
+  'getCoreProductPianoPreloadAssetDescriptors(this.readSliderState())',
+  'getCoreProductPianoAssetIdForMidi(midiNote)',
+  'ensureDefaultSoundscapeAsset(): Promise<void>',
+  'ensureSoundscapeAssetsForState(): Promise<void>',
+  'getCoreProductSoundscapeAssetDescriptorsForState(this.readSliderState())',
+  'decodeCoreProductAsset(',
+  'birds2Enabled',
+  'insects2Enabled',
+  'CORE_PRODUCT_ASSET_FLAGS.piano',
+  'CORE_PRODUCT_ASSET_FLAGS.loop | CORE_PRODUCT_ASSET_FLAGS.soundscape',
+]) {
+  assert(assetAdapter.includes(token), `CoreProductAssetAdapter is missing ${token}`);
 }
 
 for (const token of [
@@ -545,6 +566,7 @@ for (const specifier of importSpecifiers(snapshot)) {
 
 const hostImportAllowlist = new Set([
   '../native/capacitorMidiRouting',
+  './CoreProductAssetAdapter',
   './coreMidiEvents',
   './coreProductAssets',
   './CoreProductFallbackDiagnostics',

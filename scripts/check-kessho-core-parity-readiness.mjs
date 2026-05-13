@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { resolve, relative } from 'node:path';
 
 const root = process.cwd();
@@ -537,6 +538,62 @@ function isLoopbackUrl(value) {
   }
 }
 
+async function waitForManagedBrowserServer(url, timeoutMs, outputProvider) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+    await delay(500);
+  }
+  const detail = lastError instanceof Error ? lastError.message : String(lastError);
+  const output = outputProvider().trim();
+  throw new Error(`Timed out waiting for ${url}: ${detail}${output ? `\nVite output:\n${output}` : ''}`);
+}
+
+async function startManagedBrowserServer(urlValue) {
+  const url = new URL(urlValue);
+  if (url.protocol !== 'http:' || !isLoopbackUrl(urlValue)) {
+    throw new Error('managed browser readiness server only supports loopback http URLs');
+  }
+  const port = Number(url.port || '80');
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error(`invalid managed browser readiness port: ${url.port}`);
+  }
+
+  const child = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+    cwd: root,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, BROWSER: 'none' },
+  });
+  let output = '';
+  child.stdout.on('data', (chunk) => {
+    output = tail(output + chunk.toString(), 20000);
+  });
+  child.stderr.on('data', (chunk) => {
+    output = tail(output + chunk.toString(), 20000);
+  });
+
+  try {
+    await waitForManagedBrowserServer(urlValue, 120000, () => output);
+  } catch (error) {
+    child.kill();
+    throw error;
+  }
+
+  return {
+    stop: async () => {
+      child.kill();
+      await delay(250);
+    },
+  };
+}
+
 function corpusSetupFailureCheck(slice, corpus) {
   return {
     id: `corpus-${slice.id}-setup`,
@@ -1027,27 +1084,36 @@ async function main() {
   const selectedSlices = sliceDefinitions.filter((slice) => options.slices.has(slice.id));
   const paths = reportPaths(options);
   const startedAt = new Date();
+  let managedBrowserServer = null;
 
-  console.log('KesshoCore staged parity readiness');
-  console.log(`Browser corpus: ${options.browserCorpus ? `run against ${options.url}` : 'skipped'}`);
-  console.log(`Slices: ${selectedSlices.map((slice) => slice.id).join(', ')}`);
-  console.log('\n== Corpus Contract ==');
+  try {
+    console.log('KesshoCore staged parity readiness');
+    console.log(`Browser corpus: ${options.browserCorpus ? `run against ${options.url}` : 'skipped'}`);
+    console.log(`Slices: ${selectedSlices.map((slice) => slice.id).join(', ')}`);
+    console.log('\n== Corpus Contract ==');
 
-  process.stdout.write('  Acceptance corpus JSON ... ');
-  const corpus = await loadCorpusContract();
-  console.log(`${corpus.report.status.toUpperCase()} (${formatDuration(corpus.report.durationMs)})`);
+    process.stdout.write('  Acceptance corpus JSON ... ');
+    const corpus = await loadCorpusContract();
+    console.log(`${corpus.report.status.toUpperCase()} (${formatDuration(corpus.report.durationMs)})`);
 
-  process.stdout.write('  Browser corpus URL ... ');
-  const browserSetup = await checkBrowserSetup(options);
-  console.log(`${browserSetup.status.toUpperCase()} (${formatDuration(browserSetup.durationMs)})`);
+    if (options.browserCorpus && !options.urlProvided) {
+      process.stdout.write('  Managed browser server ... ');
+      const start = performance.now();
+      managedBrowserServer = await startManagedBrowserServer(options.url);
+      console.log(`PASS (${formatDuration(Math.round(performance.now() - start))})`);
+    }
 
-  const slices = [];
-  for (const slice of selectedSlices) {
-    slices.push(await runSlice(slice, options, corpus, browserSetup));
-  }
+    process.stdout.write('  Browser corpus URL ... ');
+    const browserSetup = await checkBrowserSetup(options);
+    console.log(`${browserSetup.status.toUpperCase()} (${formatDuration(browserSetup.durationMs)})`);
 
-  const finishedAt = new Date();
-  const report = {
+    const slices = [];
+    for (const slice of selectedSlices) {
+      slices.push(await runSlice(slice, options, corpus, browserSetup));
+    }
+
+    const finishedAt = new Date();
+    const report = {
     schemaVersion: 1,
     generatedAt: finishedAt.toISOString(),
     runner: {
@@ -1087,19 +1153,22 @@ async function main() {
     corpusContract: corpus.report,
     slices,
   };
-  report.summary = summarize(report);
+    report.summary = summarize(report);
 
-  writeReports(report, paths);
+    writeReports(report, paths);
 
-  console.log('\n== Summary ==');
-  console.log(`  Overall: ${report.summary.status.toUpperCase()} (readiness ${report.summary.readiness.toUpperCase()}, coverage ${report.summary.sliceCoverage.toUpperCase()}, setup pass ${report.summary.setupPassed}, setup fail ${report.summary.setupFailed}, setup skip ${report.summary.setupSkipped})`);
-  for (const slice of report.slices) {
-    console.log(`  ${slice.label}: ${slice.status.toUpperCase()} (readiness ${slice.readiness.toUpperCase()}, pass ${slice.checksPassed}, fail ${slice.checksFailed}, known fail ${slice.checksKnownFailed}, candidate ${slice.checksCandidate}, skip ${slice.checksSkipped})`);
-  }
-  console.log(`Reports: ${toRelative(paths.markdown)}, ${toRelative(paths.json)}`);
+    console.log('\n== Summary ==');
+    console.log(`  Overall: ${report.summary.status.toUpperCase()} (readiness ${report.summary.readiness.toUpperCase()}, coverage ${report.summary.sliceCoverage.toUpperCase()}, setup pass ${report.summary.setupPassed}, setup fail ${report.summary.setupFailed}, setup skip ${report.summary.setupSkipped})`);
+    for (const slice of report.slices) {
+      console.log(`  ${slice.label}: ${slice.status.toUpperCase()} (readiness ${slice.readiness.toUpperCase()}, pass ${slice.checksPassed}, fail ${slice.checksFailed}, known fail ${slice.checksKnownFailed}, candidate ${slice.checksCandidate}, skip ${slice.checksSkipped})`);
+    }
+    console.log(`Reports: ${toRelative(paths.markdown)}, ${toRelative(paths.json)}`);
 
-  if (report.summary.status === 'fail' && !options.noFail) {
-    process.exitCode = 1;
+    if (report.summary.status === 'fail' && !options.noFail) {
+      process.exitCode = 1;
+    }
+  } finally {
+    await managedBrowserServer?.stop();
   }
 }
 

@@ -9,16 +9,10 @@ import type {
 import type { TransportDebugSnapshot } from './transport';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import {
-  CORE_PRODUCT_ASSET_FLAGS,
   CORE_PRODUCT_MEMORY_BUDGETS,
-  decodeCoreProductAsset,
-  getDecodedCoreProductAssetByteLength,
-  getCoreProductPianoPreloadAssetDescriptors,
-  getCoreProductPianoAssetIdForMidi,
-  getCoreProductPianoAssetUrlForMidi,
-  getCoreProductSoundscapeAssetDescriptorsForState,
   type DecodedCoreProductAsset,
 } from './coreProductAssets';
+import { CoreProductAssetAdapter } from './CoreProductAssetAdapter';
 import { midiSampleOffset } from './coreMidiEvents';
 import { createCoreProductSnapshot, encodeCoreProductSnapshot, type CoreProductSnapshot } from './coreProductSnapshot';
 import {
@@ -178,11 +172,12 @@ function gainToDb(gain: number): number {
 
 class CoreProductEngineHost {
   private readonly runtime = new CoreProductRuntime();
+  private latestSliderState: Record<string, unknown> | null = null;
+  private readonly assetAdapter = new CoreProductAssetAdapter(this.runtime, () => this.latestSliderState);
   private readonly displayCallbacks = new Map<string, unknown>();
   private stateChangeCallback: ((state: EngineState) => void) | null = null;
   private perfMonitorEnabled = false;
   private perfUpdateCallback: ((data: Record<string, unknown>) => void) | null = null;
-  private latestSliderState: Record<string, unknown> | null = null;
   private latestProductSnapshot: CoreProductSnapshot | null = null;
   private adapterState: Record<string, unknown> = {};
   private synthSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
@@ -197,9 +192,6 @@ class CoreProductEngineHost {
   private readonly runtimeWalkRanges = new Map<string, ProductRangeState>();
   private readonly runtimeWalkControlNames = new Map<number, string>();
   private readonly reportedUnsupportedRangeKeys = new Set<string>();
-  private readonly registeredAssetIds = new Set<number>();
-  private readonly pianoAssetPromises = new Map<number, Promise<void>>();
-  private readonly defaultSoundscapeAssetPromises = new Map<number, Promise<void>>();
   private dirtyDiffCount = 0;
   private fullSnapshotReloadCount = 0;
   private unsupportedControlCount = 0;
@@ -207,7 +199,6 @@ class CoreProductEngineHost {
   private lastSnapshotReloadReason: SnapshotReloadReason = 'none';
   private pendingSnapshotReloadReason: SnapshotReloadReason | null = null;
   private readonly reportedRuntimeFallbacks = new Set<string>();
-  private readonly registeredAssetDecodedBytes = new Map<number, number>();
   private lastSequencerUiStateRevision = 0;
   private synthStepToggleOverrides: SequencerStepToggleOverride[][] = [[], [], [], []];
   private drumStepToggleOverrides: SequencerStepToggleOverride[][] = [[], [], [], []];
@@ -433,8 +424,8 @@ class CoreProductEngineHost {
 
   updateParams(sliderState: Record<string, unknown>): void {
     this.latestSliderState = { ...sliderState };
-    if (this.runtimeReady && (this.shouldUsePianoAsset() || this.shouldUseSoundscapeAsset())) {
-      void this.ensureDefaultAssetsForState().then(() => this.applyLatestSnapshotUpdate('asset-reference-change'));
+    if (this.runtimeReady && this.assetAdapter.shouldUseDefaultAssets()) {
+      void this.assetAdapter.ensureDefaultAssetsForState().then(() => this.applyLatestSnapshotUpdate('asset-reference-change'));
       return;
     }
     this.applyLatestSnapshotUpdate();
@@ -570,7 +561,7 @@ class CoreProductEngineHost {
     }
     await this.runtime.ensureStarted();
     this.runtimeReady = true;
-    await this.ensureDefaultAssetsForState();
+    await this.assetAdapter.ensureDefaultAssetsForState();
     this.loadLatestSnapshot('runtime-start');
     await this.runtime.resume();
     this.runtime.postEvent(createCoreProductStartEvent());
@@ -606,10 +597,7 @@ class CoreProductEngineHost {
     this.runtimeReady = false;
     this.running = false;
     this.latestProductSnapshot = null;
-    this.registeredAssetIds.clear();
-    this.registeredAssetDecodedBytes.clear();
-    this.pianoAssetPromises.clear();
-    this.defaultSoundscapeAssetPromises.clear();
+    this.assetAdapter.clear();
     this.stateChangeCallback?.(createCoreProductEngineState(false));
   }
 
@@ -679,10 +667,7 @@ class CoreProductEngineHost {
   }
 
   registerAsset(asset: DecodedCoreProductAsset): void {
-    const decodedBytes = getDecodedCoreProductAssetByteLength(asset);
-    this.runtime.registerAsset(asset);
-    this.registeredAssetIds.add(asset.assetId);
-    this.registeredAssetDecodedBytes.set(asset.assetId, decodedBytes);
+    this.assetAdapter.registerAsset(asset);
   }
 
   pushMidiMessage(message: KesshoMidiMessage): void {
@@ -900,7 +885,7 @@ class CoreProductEngineHost {
     await this.runtime.ensureStarted();
     this.runtimeReady = true;
     if (note.source === 'piano') {
-      await this.ensurePianoAssetForMidi(note.midi);
+      await this.assetAdapter.ensurePianoAssetForMidi(note.midi);
       this.loadLatestSnapshot('manual-piano-asset');
     }
     this.runtime.postEvent(createCoreProductManualNoteEvent(
@@ -918,7 +903,7 @@ class CoreProductEngineHost {
       await Promise.all(
         notes
           .filter((note) => note.source === 'piano')
-          .map((note) => this.ensurePianoAssetForMidi(note.midi)),
+          .map((note) => this.assetAdapter.ensurePianoAssetForMidi(note.midi)),
       );
       this.loadLatestSnapshot('manual-piano-asset');
     }
@@ -1505,119 +1490,6 @@ class CoreProductEngineHost {
     return value === true ? 1 : value === false ? 0 : value;
   }
 
-  private shouldUsePianoAsset(): boolean {
-    if (!this.latestSliderState) return false;
-    if (this.latestSliderState.pianoEnabled === true) return true;
-    for (let index = 1; index <= 4; index += 1) {
-      if (
-        this.latestSliderState[`synthEuclid${index}Enabled`] === true &&
-        this.latestSliderState[`synthEuclid${index}Source`] === 'piano'
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private shouldUseSoundscapeAsset(): boolean {
-    if (!this.latestSliderState) return false;
-    return this.latestSliderState.oceanSampleEnabled === true ||
-      this.latestSliderState.waterEnabled === true ||
-      this.latestSliderState.insectsEnabled === true ||
-      this.latestSliderState.insects2Enabled === true ||
-      this.latestSliderState.birdsEnabled === true ||
-      this.latestSliderState.birds2Enabled === true ||
-      this.latestSliderState.frogsEnabled === true;
-  }
-
-  private async ensureDefaultPianoAsset(): Promise<void> {
-    await this.ensurePianoAssetsForState();
-  }
-
-  private async ensurePianoAssetsForState(): Promise<void> {
-    const descriptors = getCoreProductPianoPreloadAssetDescriptors(this.latestSliderState);
-    await Promise.all(
-      descriptors.map((descriptor) => this.ensurePianoAsset(descriptor.assetId, descriptor.url)),
-    );
-  }
-
-  private async ensurePianoAssetForMidi(midiNote: number): Promise<void> {
-    await this.ensurePianoAsset(
-      getCoreProductPianoAssetIdForMidi(midiNote),
-      getCoreProductPianoAssetUrlForMidi(midiNote),
-    );
-  }
-
-  private async ensurePianoAsset(assetId: number, url: string): Promise<void> {
-    if (this.registeredAssetIds.has(assetId)) return;
-    const pending = this.pianoAssetPromises.get(assetId);
-    if (pending) {
-      await pending;
-      return;
-    }
-    const context = this.runtime.audioContext;
-    if (!context) return;
-    const promise = decodeCoreProductAsset(
-      context,
-      assetId,
-      url,
-      CORE_PRODUCT_ASSET_FLAGS.piano,
-    ).then((asset) => {
-      this.registerAsset(asset);
-    }).finally(() => {
-      this.pianoAssetPromises.delete(assetId);
-    });
-    this.pianoAssetPromises.set(assetId, promise);
-    await promise;
-  }
-
-  private async ensureDefaultAssetsForState(): Promise<void> {
-    const pending: Promise<void>[] = [];
-    if (this.shouldUsePianoAsset()) {
-      pending.push(this.ensureDefaultPianoAsset());
-    }
-    if (this.shouldUseSoundscapeAsset()) {
-      pending.push(this.ensureDefaultSoundscapeAsset());
-    }
-    if (pending.length > 0) {
-      await Promise.all(pending);
-    }
-  }
-
-  private async ensureDefaultSoundscapeAsset(): Promise<void> {
-    await this.ensureSoundscapeAssetsForState();
-  }
-
-  private async ensureSoundscapeAssetsForState(): Promise<void> {
-    const descriptors = getCoreProductSoundscapeAssetDescriptorsForState(this.latestSliderState);
-    await Promise.all(
-      descriptors.map((descriptor) => this.ensureSoundscapeAsset(descriptor.assetId, descriptor.url)),
-    );
-  }
-
-  private async ensureSoundscapeAsset(assetId: number, url: string): Promise<void> {
-    if (this.registeredAssetIds.has(assetId)) return;
-    const pending = this.defaultSoundscapeAssetPromises.get(assetId);
-    if (pending) {
-      await pending;
-      return;
-    }
-    const context = this.runtime.audioContext;
-    if (!context) return;
-    const promise = decodeCoreProductAsset(
-      context,
-      assetId,
-      url,
-      CORE_PRODUCT_ASSET_FLAGS.loop | CORE_PRODUCT_ASSET_FLAGS.soundscape,
-    ).then((asset) => {
-      this.registerAsset(asset);
-    }).finally(() => {
-      this.defaultSoundscapeAssetPromises.delete(assetId);
-    });
-    this.defaultSoundscapeAssetPromises.set(assetId, promise);
-    await promise;
-  }
-
   private handleTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
     const hostTelemetry = this.withHostDiagnostics(telemetry);
     this.latestTelemetry = hostTelemetry;
@@ -1794,7 +1666,7 @@ class CoreProductEngineHost {
   }
 
   private withHostDiagnostics(telemetry: CoreProductTelemetrySnapshot): CoreProductTelemetrySnapshot {
-    const decodedAssetBytes = telemetry.decodedAssetBytes ?? this.registeredDecodedAssetByteLength();
+    const decodedAssetBytes = telemetry.decodedAssetBytes ?? this.assetAdapter.registeredDecodedAssetByteLength();
     return {
       ...telemetry,
       wasmHeapBudgetBytes: CORE_PRODUCT_MEMORY_BUDGETS.webWorkletHeapBytes,
@@ -1806,14 +1678,6 @@ class CoreProductEngineHost {
       snapshotReloadCpuMs: this.snapshotReloadCpuMs,
       lastSnapshotReloadReason: this.lastSnapshotReloadReason,
     };
-  }
-
-  private registeredDecodedAssetByteLength(): number {
-    let total = 0;
-    for (const bytes of this.registeredAssetDecodedBytes.values()) {
-      total += bytes;
-    }
-    return total;
   }
 
   private createPerfSnapshot(telemetry: CoreProductTelemetrySnapshot): Record<string, unknown> {
@@ -1831,9 +1695,9 @@ class CoreProductEngineHost {
       activeAssets: telemetry.activeAssets,
       wasmHeapBytes: telemetry.wasmHeapBytes ?? 0,
       wasmHeapBudgetBytes: telemetry.wasmHeapBudgetBytes ?? CORE_PRODUCT_MEMORY_BUDGETS.webWorkletHeapBytes,
-      decodedAssetBytes: telemetry.decodedAssetBytes ?? this.registeredDecodedAssetByteLength(),
+      decodedAssetBytes: telemetry.decodedAssetBytes ?? this.assetAdapter.registeredDecodedAssetByteLength(),
       decodedAssetBudgetBytes: telemetry.decodedAssetBudgetBytes ?? CORE_PRODUCT_MEMORY_BUDGETS.totalRegisteredDecodedBytes,
-      assetAllocationBytes: telemetry.assetAllocationBytes ?? telemetry.decodedAssetBytes ?? this.registeredDecodedAssetByteLength(),
+      assetAllocationBytes: telemetry.assetAllocationBytes ?? telemetry.decodedAssetBytes ?? this.assetAdapter.registeredDecodedAssetByteLength(),
       activeGrains: telemetry.activeGrains ?? 0,
       masterTruePeak: telemetry.masterTruePeak ?? telemetry.masterOutputPeak ?? 0,
       masterTruePeakDbtp: telemetry.masterTruePeakDbtp ?? 0,

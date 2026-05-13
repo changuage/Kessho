@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 const root = process.cwd();
 
 const productFiles = [
+  'src/audio/CoreProductAssetAdapter.ts',
   'src/audio/coreProductAssets.ts',
   'src/audio/CoreProductFallbackDiagnostics.ts',
   'src/audio/coreProductEngineHost.ts',
@@ -44,6 +45,7 @@ const forbiddenAudioModules = new Set([
 const classifiedRuntimeAllowlist = new Map([
   ['./coreProductAssets', 'product module'],
   ['./coreProductAssetManifest.json', 'versioned Product asset manifest'],
+  ['./CoreProductAssetAdapter', 'product host asset adapter'],
   ['./coreProductEvents', 'product module'],
   ['./CoreProductFallbackDiagnostics', 'product runtime fallback diagnostics'],
   ['./coreProductRuntime', 'product module'],

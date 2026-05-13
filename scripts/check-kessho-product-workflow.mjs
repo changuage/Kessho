@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 const root = process.cwd();
 const workflowPath = '.github/workflows/product-core-ci.yml';
 const workflow = readFileSync(resolve(root, workflowPath), 'utf8');
+const readiness = readFileSync(resolve(root, 'scripts/check-kessho-core-parity-readiness.mjs'), 'utf8');
 
 function assert(condition, message) {
   if (!condition) {
@@ -62,8 +63,7 @@ const requiredCommands = [
   'npm run build',
   'npm run core:build:wasm',
   'npm run core:product:ci',
-  'npm run dev -- --host 127.0.0.1 --port 4173',
-  'npm run core:readiness:browser -- --url=http://127.0.0.1:4173/',
+  'npm run core:readiness:browser',
   'swift build --package-path KesshoNativeSwift',
 ];
 
@@ -71,14 +71,16 @@ for (const command of requiredCommands) {
   assert(workflow.includes(command), `Product Core workflow is missing command: ${command}`);
 }
 
-assert(
-  workflow.includes("trap 'kill ${vite_pid}' EXIT"),
-  'Product Core workflow must stop the browser readiness Vite server after the check',
-);
-assert(
-  workflow.includes('/tmp/kessho-vite-dev.log') && workflow.includes('Timed out waiting for'),
-  'Product Core workflow must print the Vite server log if browser readiness setup fails',
-);
+for (const token of [
+  'startManagedBrowserServer',
+  "spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1'",
+  '--strictPort',
+  'Timed out waiting for',
+  'Vite output:',
+  'await managedBrowserServer?.stop();',
+]) {
+  assert(readiness.includes(token), `browser readiness runner is missing managed-server token: ${token}`);
+}
 
 assert(
   /runs-on:\s+macos-14/.test(workflow),
