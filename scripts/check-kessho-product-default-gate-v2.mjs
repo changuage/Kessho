@@ -171,7 +171,6 @@ for (const token of [
   'Product Default Gate v2',
   'web-default-deferred',
   'core:product:default-gate-v2',
-  'further web adapter decomposition',
 ]) {
   assert(statusDoc.includes(token), `migration status doc is missing ${token}`);
 }
@@ -190,10 +189,6 @@ assertNotPassingWhenStatusIncomplete(
 assertNotPassingWhenStatusIncomplete(
   'Product Core GitHub workflow/browser-readiness evidence',
   'Behavioral test quality gates pass',
-);
-assertNotPassingWhenStatusIncomplete(
-  'further web adapter decomposition',
-  'Web adapter split or size cap',
 );
 assertNotPassingWhenStatusIncomplete(
   'broader Lead/scene/full-arrangement parity',

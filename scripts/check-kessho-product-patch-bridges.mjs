@@ -84,12 +84,14 @@ for (const rowLabel of [
 }
 
 const webSnapshot = read('src/audio/coreProductSnapshot.ts');
+const webLegacyCompat = read('src/audio/CoreProductLegacyPresetCompat.ts');
+const webPatchBridgeSurface = `${webSnapshot}\n${webLegacyCompat}`;
 for (const token of [
   'PATCH_BRIDGE_RETIREMENT: exact Pad',
   'PATCH_BRIDGE_RETIREMENT: exact Lead',
   'PATCH_BRIDGE_RETIREMENT: exact Drum',
 ]) {
-  assert(webSnapshot.includes(token), `src/audio/coreProductSnapshot.ts missing ${token}`);
+  assert(webPatchBridgeSurface.includes(token), `src/audio/coreProductSnapshot.ts/CoreProductLegacyPresetCompat.ts missing ${token}`);
 }
 assert(
   webSnapshot.includes('source.exactDrumParamCount = 0;'),

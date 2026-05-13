@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 const root = process.cwd();
 const host = readFileSync(resolve(root, 'src/audio/coreProductEngineHost.ts'), 'utf8');
+const runtimeAdapter = readFileSync(resolve(root, 'src/audio/CoreProductRuntimeAdapter.ts'), 'utf8');
 const telemetry = readFileSync(resolve(root, 'src/audio/coreProductTelemetry.ts'), 'utf8');
 const doc = readFileSync(resolve(root, 'docs/kessho-product-control-classification.md'), 'utf8');
 const worklet = readFileSync(resolve(root, 'public/worklets/kessho-core-product.worklet.js'), 'utf8');
@@ -57,7 +58,7 @@ for (const reason of [
   "'dirty-diff-event-budget'",
   "'adapter-update'",
 ]) {
-  assert(host.includes(reason), `SnapshotReloadReason is missing ${reason}`);
+  assert(`${host}\n${runtimeAdapter}`.includes(reason), `SnapshotReloadReason is missing ${reason}`);
 }
 
 const updateBody = methodBody(host, 'applyLatestSnapshotUpdate');
@@ -77,10 +78,12 @@ for (const token of [
 }
 
 const diffBody = methodBody(host, 'applySnapshotDiff');
-assert(diffBody.includes("this.pendingSnapshotReloadReason = 'dirty-diff-event-budget'"), 'dirty diff event budget fallback must be classified');
-assert(diffBody.includes('events.length > MAX_SNAPSHOT_DIFF_EVENTS'), 'dirty diff must remain bounded by MAX_SNAPSHOT_DIFF_EVENTS');
+assert(diffBody.includes('buildCoreProductSnapshotDiff(previous, next'), 'host dirty diff must delegate to the focused runtime adapter');
+assert(diffBody.includes('this.pendingSnapshotReloadReason = diff.reason'), 'dirty diff fallback reason must be preserved from the runtime adapter');
+assert(runtimeAdapter.includes("reason: 'dirty-diff-event-budget'"), 'dirty diff event budget fallback must be classified');
+assert(runtimeAdapter.includes('events.length > MAX_SNAPSHOT_DIFF_EVENTS'), 'dirty diff must remain bounded by MAX_SNAPSHOT_DIFF_EVENTS');
 
-const classifyBody = methodBody(host, 'classifySnapshotReloadReason');
+const classifyBody = methodBody(runtimeAdapter, 'classifySnapshotReloadReason');
 for (const token of [
   "assetRefsChanged(previous.assetRefs, next.assetRefs)) return 'asset-reference-change'",
   "previous.harmony.chordMode !== next.harmony.chordMode) return 'harmony-mode-change'",
@@ -93,7 +96,7 @@ for (const token of [
   assert(classifyBody.includes(token), `snapshot reload reason classifier is missing ${token}`);
 }
 
-const canDiffBody = methodBody(host, 'canApplySnapshotDiff');
+const canDiffBody = methodBody(runtimeAdapter, 'canApplySnapshotDiff');
 for (const field of [
   'level',
   'morph',
@@ -112,7 +115,7 @@ for (const field of [
   assert(!canDiffBody.includes(`nextSource.${field}`), `high-frequency source ${field} must not be structural`);
 }
 
-const sourceDiffBody = methodBody(host, 'appendSourceParamDiffs');
+const sourceDiffBody = methodBody(runtimeAdapter, 'appendSourceParamDiffs');
 for (const token of [
   'KESSHO_PRODUCT_PARAM_IDS.SourceLevel',
   'KESSHO_PRODUCT_PARAM_IDS.SourceMorph',

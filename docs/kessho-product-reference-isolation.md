@@ -10,7 +10,7 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 - Type-only app interfaces from `src/audio/engine.ts`.
 - Asset manifest helpers such as `pianoSamples` and the versioned `coreProductAssetManifest.json`.
 - Unit/default helpers used only for serialization, such as `delayBuses`, `outputTrims`, `transport`, and selected UI state constants.
-- `lead4opfm` only inside `coreProductSnapshot.ts` as a labeled `TEMP_COMPAT_WEB_REFERENCE` conversion bridge for exact Lead patch parity.
+- `lead4opfm` only inside `CoreProductLegacyPresetCompat.ts` as a labeled `TEMP_COMPAT_WEB_REFERENCE` conversion bridge for exact Lead patch parity.
 
 | Import path | Current reason | Owner | Classification | Replacement C++ Product Core owner | Retirement condition | Target removal phase |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -19,6 +19,8 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 | `./generated/kesshoProductParams` | Generated param IDs and ABI constants | Product Core ABI | CANONICAL_GENERATED_SCHEMA_HELPER | Generated Product param schema | Never remove while generated bindings are used | Required |
 | `./coreProductAssets` | Host asset fetch/decode/register adapter | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product asset registry and source schedulers | Keep as thin host I/O adapter | Required |
 | `./CoreProductAssetAdapter` | Product host asset fetch/decode/register ownership boundary | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product asset registry and source schedulers | Keep as thin host I/O adapter; no source scheduling or tonal decisions allowed | Required |
+| `./CoreProductRuntimeAdapter` | Snapshot dirty-diff and reload classification boundary | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product event dispatcher and telemetry | Keep as thin generated-event adapter; no UI state ownership allowed | Cleanup |
+| `./CoreProductLegacyPresetCompat` | Temporary exact patch and legacy preset conversion boundary | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | C++ source preset/user override resolvers | Remove when Product Core reconstructs source patch state from generated IDs plus user overrides | Source parity closure |
 | `./coreProductAssetManifest.json` | Versioned Product asset manifest | Product asset gate | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product asset IDs and registry | Keep as host packaging manifest | Required |
 | `./coreProductEvents` | Generated Product event packing helpers | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product event dispatcher | Keep as thin ABI/event adapter | Required |
 | `./coreProductRuntime` | WASM/worklet runtime bridge | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product render/runtime API | Keep as thin runtime adapter | Required |
@@ -33,7 +35,7 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 | `./outputTrims` | Serialization trim constants | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | Generated Product defaults and C++ master/source trims | Remove when trims are generated Product defaults | Cleanup |
 | `./transport` | UI transport metrics serialization | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | C++ Product transport snapshot/default conversion | Remove when Product snapshot receives generated transport fields directly | Deterministic transport closure |
 | `./pianoSamples` | Asset manifest helper for host-decoded piano samples | Asset adapter | TEMP_COMPAT_WEB_REFERENCE | Product asset manifest plus C++ asset IDs | Remove when piano asset manifest generation owns the lookup fully | Asset manifest closure |
-| `./lead4opfm` | Exact Lead patch parity bridge in `coreProductSnapshot.ts` | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | C++ Lead source preset/user override resolver | Remove when C++ reconstructs Lead patch state from generated preset IDs plus user overrides | Source parity closure |
+| `./lead4opfm` | Exact Lead patch parity bridge in `CoreProductLegacyPresetCompat.ts` | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | C++ Lead source preset/user override resolver | Remove when C++ reconstructs Lead patch state from generated preset IDs plus user overrides | Source parity closure |
 
 ## Forbidden Production Imports
 

@@ -7,6 +7,8 @@ const productFiles = [
   'src/audio/CoreProductAssetAdapter.ts',
   'src/audio/coreProductAssets.ts',
   'src/audio/CoreProductFallbackDiagnostics.ts',
+  'src/audio/CoreProductLegacyPresetCompat.ts',
+  'src/audio/CoreProductRuntimeAdapter.ts',
   'src/audio/coreProductEngineHost.ts',
   'src/audio/coreProductEvents.ts',
   'src/audio/coreProductRuntime.ts',
@@ -46,6 +48,8 @@ const classifiedRuntimeAllowlist = new Map([
   ['./coreProductAssets', 'product module'],
   ['./coreProductAssetManifest.json', 'versioned Product asset manifest'],
   ['./CoreProductAssetAdapter', 'product host asset adapter'],
+  ['./CoreProductLegacyPresetCompat', 'temporary Product snapshot compatibility bridge'],
+  ['./CoreProductRuntimeAdapter', 'product host snapshot dirty-diff adapter'],
   ['./coreProductEvents', 'product module'],
   ['./CoreProductFallbackDiagnostics', 'product runtime fallback diagnostics'],
   ['./coreProductRuntime', 'product module'],
@@ -56,6 +60,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['./generated/kesshoProductEvents', 'generated Product ABI'],
   ['./generated/kesshoProductParams', 'generated Product ABI'],
   ['./generated/kesshoProductSchema', 'generated Product ABI'],
+  ['./lead4opfm', 'temporary Lead exact-patch compatibility bridge'],
   ['./outputTrims', 'serialization default/trim constants'],
   ['./pianoSamples', 'asset manifest helper'],
   ['./transport', 'transport serialization metrics'],
@@ -84,7 +89,7 @@ for (const file of productFiles) {
     if (specifier === './engine' && imported.typeOnly) {
       continue;
     }
-    if (specifier === './lead4opfm' && file === 'src/audio/coreProductSnapshot.ts') {
+    if (specifier === './lead4opfm' && file === 'src/audio/CoreProductLegacyPresetCompat.ts') {
       assert(source.includes('SNAPSHOT_AUTHORITY: TEMP_COMPAT_WEB_REFERENCE'), 'lead4opfm bridge import must stay labeled as TEMP_COMPAT_WEB_REFERENCE');
       continue;
     }
@@ -99,11 +104,11 @@ for (const file of productFiles) {
   }
 }
 
-const snapshot = readFileSync(resolve(root, 'src/audio/coreProductSnapshot.ts'), 'utf8');
+const legacyCompat = readFileSync(resolve(root, 'src/audio/CoreProductLegacyPresetCompat.ts'), 'utf8');
 const bridgePolicy = readFileSync(resolve(root, 'docs/kessho-product-patch-bridge-policy.md'), 'utf8');
 const doc = readFileSync(resolve(root, 'docs/kessho-product-reference-isolation.md'), 'utf8');
 
-assert(snapshot.includes("from './lead4opfm'"), 'Lead exact patch bridge import must remain visible until retired');
+assert(legacyCompat.includes("from './lead4opfm'"), 'Lead exact patch bridge import must remain visible until retired');
 assert(bridgePolicy.includes('TEMP_COMPAT_WEB_REFERENCE'), 'temporary web reference bridge must have a documented policy');
 assert(doc.includes('Forbidden Production Imports'), 'reference isolation doc must classify forbidden imports');
 assert(doc.includes('lead4opfm'), 'reference isolation doc must classify the temporary Lead bridge import');

@@ -16,11 +16,13 @@ function assert(condition, message) {
 const host = read('src/audio/coreProductEngineHost.ts');
 const assetAdapter = read('src/audio/CoreProductAssetAdapter.ts');
 const fallbackDiagnostics = read('src/audio/CoreProductFallbackDiagnostics.ts');
+const runtimeAdapter = read('src/audio/CoreProductRuntimeAdapter.ts');
 const runtime = read('src/audio/coreProductRuntime.ts');
 const appRuntime = read('src/audio/runtime.ts');
 const app = read('src/App.tsx');
 const events = read('src/audio/coreProductEvents.ts');
 const snapshot = read('src/audio/coreProductSnapshot.ts');
+const legacyPresetCompat = read('src/audio/CoreProductLegacyPresetCompat.ts');
 const telemetryTypes = read('src/audio/coreProductTelemetry.ts');
 const assets = `${read('src/audio/coreProductAssets.ts')}\n${read('src/audio/coreProductAssetManifest.json')}`;
 const generatedSchema = read('src/audio/generated/kesshoProductSchema.ts');
@@ -28,9 +30,11 @@ const worklet = read('public/worklets/kessho-core-product.worklet.js');
 const manifest = read('scripts/kessho-core-build-manifest.mjs');
 
 const lineCount = (source) => source.split('\n').length;
-assert(lineCount(host) <= 2350, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
+assert(lineCount(host) <= 1850, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
 assert(lineCount(assetAdapter) <= 220, `CoreProductAssetAdapter.ts exceeds cleanup size cap (${lineCount(assetAdapter)} lines)`);
-assert(lineCount(snapshot) <= 1900, `coreProductSnapshot.ts exceeds cleanup size cap (${lineCount(snapshot)} lines)`);
+assert(lineCount(runtimeAdapter) <= 650, `CoreProductRuntimeAdapter.ts exceeds cleanup size cap (${lineCount(runtimeAdapter)} lines)`);
+assert(lineCount(snapshot) <= 1600, `coreProductSnapshot.ts exceeds cleanup size cap (${lineCount(snapshot)} lines)`);
+assert(lineCount(legacyPresetCompat) <= 420, `CoreProductLegacyPresetCompat.ts exceeds cleanup size cap (${lineCount(legacyPresetCompat)} lines)`);
 assert(
   fallbackDiagnostics.includes('classifyCoreProductRuntimeFallback') &&
     fallbackDiagnostics.includes('CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS'),
@@ -43,18 +47,14 @@ for (const token of [
   'latestProductSnapshot: CoreProductSnapshot | null',
   'applyLatestSnapshotUpdate(reason: SnapshotReloadReason = \'adapter-update\'): void',
   'applySnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean',
-  'MAX_SNAPSHOT_DIFF_EVENTS',
   'dirtyDiffCount',
   'fullSnapshotReloadCount',
   'unsupportedControlCount',
   'snapshotReloadCpuMs',
   'lastSnapshotReloadReason',
   'private readonly assetAdapter = new CoreProductAssetAdapter',
-  'assetRefsChanged(previous.assetRefs, next.assetRefs)',
-  'appendSourceParamDiffs(events, previous.sources, next.sources)',
-  'appendSequencerLaneDiffs(events, \'synth\', previous.synthLanes, next.synthLanes)',
-  'createCoreProductParamEvent(',
-  'createCoreProductSourcePresetEvent(',
+  'buildCoreProductSnapshotDiff(previous, next',
+  'shouldForwardCoreProductRngDiffs(this.latestSliderState, this.latestTelemetry)',
   'registerAsset(asset: DecodedCoreProductAsset): void',
   'this.assetAdapter.registerAsset(asset)',
   'this.assetAdapter.clear()',
@@ -138,11 +138,25 @@ for (const token of [
   'telemetryRngState',
   'rngSeed: this.latestTelemetry.rngSeed',
   'rngState: this.latestTelemetry.rngState',
-  'KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowWow',
-  'KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseAlias',
   'currentRangeValueContext',
 ]) {
   assert(host.includes(token), `core-product host is missing ${token}`);
+}
+
+for (const token of [
+  'MAX_SNAPSHOT_DIFF_EVENTS',
+  'buildSnapshotDiff(',
+  'assetRefsChanged(previous.assetRefs, next.assetRefs)',
+  'appendSourceParamDiffs(events, previous.sources, next.sources)',
+  "appendSequencerLaneDiffs(events, 'synth', previous.synthLanes, next.synthLanes)",
+  'createCoreProductParamEvent(',
+  'createCoreProductSourcePresetEvent(',
+  'KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowWow',
+  'KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseAlias',
+  'shouldForwardCoreProductRngDiffs(',
+  'dirty-diff-event-budget',
+]) {
+  assert(runtimeAdapter.includes(token), `CoreProductRuntimeAdapter is missing ${token}`);
 }
 
 for (const token of [
@@ -208,15 +222,12 @@ for (const token of [
   'const SOURCE_BYTES = 1200',
   'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
   'KESSHO_PRODUCT_DRUM_VOICE_COUNT',
-  'KESSHO_PRODUCT_DRUM_VOICE_PRESETS',
   'assetRefs: number[]',
   'exactDrumParamCount: number',
   'exactDrumParams: number[]',
   'drumVoicePresetAIds: number[]',
   'drumVoicePresetBIds: number[]',
   'drumVoiceMorphs: number[]',
-  'function drumVoicePresetId(voiceIndex: number, presetName: unknown): number',
-  'function drumVoicePresetIdsFromState(state: Record<string, unknown> | undefined, endpoint:',
   'const soundscapeAssets = soundscapeSource?.enabled',
   'getCoreProductSoundscapeAssetDescriptorsForState(sliderState)',
   'assetRefs: soundscapeAssets.map((asset) => asset.assetId)',
@@ -226,7 +237,6 @@ for (const token of [
   'rngSeedFromState',
   'rngStateFromState',
   'hashSeedMaterial',
-  'KESSHO_PRODUCT_SOURCE_PRESETS',
   'sourcePresetId',
   'soundscapePresetIdFromState',
   'endpointPresetId',
@@ -258,6 +268,20 @@ for (const token of [
   'f32(snapshot.master.saturationDrive)',
 ]) {
   assert(snapshot.includes(token), `core-product snapshot is missing ${token}`);
+}
+
+for (const token of [
+  'SNAPSHOT_AUTHORITY: LEGACY_PRESET_KEY_TO_GENERATED_ID',
+  'SNAPSHOT_AUTHORITY: TEMP_COMPAT_WEB_REFERENCE',
+  'KESSHO_PRODUCT_SOURCE_PRESETS',
+  'KESSHO_PRODUCT_DRUM_VOICE_PRESETS',
+  'function drumVoicePresetId(voiceIndex: number, presetName: unknown): number',
+  'function drumVoicePresetIdsFromState(state: Record<string, unknown> | undefined, endpoint:',
+  'function exactPadParamsFromState(state: Record<string, unknown> | undefined, padIndex: 0 | 1): number[]',
+  'function exactLeadParamsFromState(state: Record<string, unknown> | undefined, leadIndex: 0 | 1): number[]',
+  'function exactDrumParamsFromState(): number[]',
+]) {
+  assert(legacyPresetCompat.includes(token), `CoreProductLegacyPresetCompat is missing ${token}`);
 }
 
 for (const token of [
@@ -549,11 +573,10 @@ function importSpecifiers(source) {
 
 const snapshotImportAllowlist = new Set([
   '../ui/state',
+  './CoreProductLegacyPresetCompat',
   './coreProductAssets',
   './coreProductEvents',
-  './delayBuses',
   './generated/kesshoProductSchema',
-  './lead4opfm',
   './outputTrims',
   './transport',
 ]);
@@ -567,6 +590,7 @@ for (const specifier of importSpecifiers(snapshot)) {
 const hostImportAllowlist = new Set([
   '../native/capacitorMidiRouting',
   './CoreProductAssetAdapter',
+  './CoreProductRuntimeAdapter',
   './coreMidiEvents',
   './coreProductAssets',
   './CoreProductFallbackDiagnostics',

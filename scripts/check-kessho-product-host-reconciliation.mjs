@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 
 const root = process.cwd();
 const host = readFileSync(resolve(root, 'src/audio/coreProductEngineHost.ts'), 'utf8');
+const runtimeAdapter = readFileSync(resolve(root, 'src/audio/CoreProductRuntimeAdapter.ts'), 'utf8');
+const hostRuntimeSurface = `${host}\n${runtimeAdapter}`;
 const sequencerTests = readFileSync(resolve(root, 'cpp/KesshoCore/tests/ProductSequencerTests.cpp'), 'utf8');
 
 function assert(condition, message) {
@@ -13,18 +15,18 @@ function assert(condition, message) {
 
 function methodBody(name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const definition = new RegExp(`(?:^|\\n)\\s*(?:private\\s+)?(?:async\\s+)?${escaped}\\s*\\(`).exec(host);
+  const definition = new RegExp(`(?:^|\\n)\\s*(?:private\\s+)?(?:async\\s+)?${escaped}\\s*\\(`).exec(hostRuntimeSurface);
   assert(definition, `core-product host is missing ${name}()`);
   const start = definition.index;
-  const open = host.indexOf('{', start);
+  const open = hostRuntimeSurface.indexOf('{', start);
   assert(open >= 0, `core-product host method ${name}() has no body`);
   let depth = 0;
-  for (let index = open; index < host.length; index += 1) {
-    const char = host[index];
+  for (let index = open; index < hostRuntimeSurface.length; index += 1) {
+    const char = hostRuntimeSurface[index];
     if (char === '{') depth += 1;
     if (char === '}') {
       depth -= 1;
-      if (depth === 0) return host.slice(open + 1, index);
+      if (depth === 0) return hostRuntimeSurface.slice(open + 1, index);
     }
   }
   throw new Error(`core-product host method ${name}() body was not balanced`);

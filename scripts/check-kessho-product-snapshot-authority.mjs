@@ -15,14 +15,16 @@ function assert(condition, message) {
 
 const snapshotPath = 'src/audio/coreProductSnapshot.ts';
 const snapshot = read(snapshotPath);
+const legacyCompatPath = 'src/audio/CoreProductLegacyPresetCompat.ts';
+const legacyCompat = read(legacyCompatPath);
+const snapshotAuthoritySurface = `${snapshot}\n${legacyCompat}`;
 
 const allowedImports = new Set([
   './generated/kesshoProductSchema',
   '../ui/state',
-  './lead4opfm',
+  './CoreProductLegacyPresetCompat',
   './coreProductEvents',
   './coreProductAssets',
-  './delayBuses',
   './outputTrims',
   './transport',
 ]);
@@ -43,7 +45,7 @@ for (const token of [
   'SNAPSHOT_AUTHORITY: SERIALIZE_PRODUCT_STATE',
   'SNAPSHOT_AUTHORITY: PACK_GENERATED_SNAPSHOT_BYTES',
 ]) {
-  assert(snapshot.includes(token), `${snapshotPath} missing authority label: ${token}`);
+  assert(snapshotAuthoritySurface.includes(token), `${snapshotPath}/${legacyCompatPath} missing authority label: ${token}`);
 }
 
 for (const forbidden of [
@@ -59,33 +61,39 @@ for (const forbidden of [
   'localStorage',
   'sessionStorage',
 ]) {
-  assert(!snapshot.includes(forbidden), `${snapshotPath} must not own runtime or hidden state via ${forbidden}`);
+  assert(!snapshotAuthoritySurface.includes(forbidden), `${snapshotPath}/${legacyCompatPath} must not own runtime or hidden state via ${forbidden}`);
 }
 
-function assertCallInside(callToken, startToken, endToken, message) {
-  const startIndex = snapshot.indexOf(startToken);
-  const endIndex = snapshot.indexOf(endToken);
-  const callIndex = snapshot.indexOf(callToken, startIndex);
-  assert(callIndex >= 0, `${snapshotPath} missing call token ${callToken}`);
-  assert(startIndex >= 0 && endIndex > startIndex, `${snapshotPath} missing bounded region for ${callToken}`);
+function assertCallInside(source, sourcePath, callToken, startToken, endToken, message) {
+  const startIndex = source.indexOf(startToken);
+  const endIndex = source.indexOf(endToken);
+  const callIndex = source.indexOf(callToken, startIndex);
+  assert(callIndex >= 0, `${sourcePath} missing call token ${callToken}`);
+  assert(startIndex >= 0 && endIndex > startIndex, `${sourcePath} missing bounded region for ${callToken}`);
   assert(callIndex > startIndex && callIndex < endIndex, message);
 }
 
 assertCallInside(
+  legacyCompat,
+  legacyCompatPath,
   'KESSHO_PRODUCT_PAD_PARAM_SPECS',
   'function exactPadParamsFromState',
   'function leadPresetFromKey',
   'Pad exact param specs must stay inside the labeled temporary Pad bridge',
 );
 assertCallInside(
+  legacyCompat,
+  legacyCompatPath,
   'morphPresets(',
   'function exactLeadParamsFromState',
-  'function emptyDrumParams',
+  'function exactDrumParamsFromState',
   'Lead preset morphing must stay inside the labeled temporary Lead bridge',
 );
 assertCallInside(
+  legacyCompat,
+  legacyCompatPath,
   'KESSHO_PRODUCT_DRUM_DEFAULT_PARAMS',
-  'function emptyDrumParams',
+  'function exactDrumParamsFromState',
   'function drumVoicePresetId',
   'Drum exact params must stay as the labeled temporary default filler',
 );
@@ -97,7 +105,7 @@ for (const forbiddenImportUsage of [
   'advanceCorePreviewHarmonyState',
   'getCoreHarmonyPreviewTickCount',
 ]) {
-  assert(!snapshot.includes(forbiddenImportUsage), `${snapshotPath} contains musical-brain helper usage: ${forbiddenImportUsage}`);
+  assert(!snapshotAuthoritySurface.includes(forbiddenImportUsage), `${snapshotPath}/${legacyCompatPath} contains musical-brain helper usage: ${forbiddenImportUsage}`);
 }
 
 assert(
