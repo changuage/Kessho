@@ -23,7 +23,7 @@ Native decision: native-default-deferred
 | --- | --- | --- | --- | --- |
 | Product Core componentization complete | PASS | static, integration | `core:product:architecture` | - |
 | Internal header decomposition complete | PASS | static | `core:product:architecture`, focused `Product*.h` size caps | - |
-| Second-stage mega-file split or size cap | PASS | static | `core:product:architecture` caps `ProductSources.cpp` and `ProductFx.cpp` | further split is required before either file exceeds its Product Core cap |
+| Second-stage mega-file split or size cap | PASS | static | `core:product:architecture` caps `ProductSources.cpp`, `ProductFx.cpp`, `ProductDelay.cpp`, `ProductReverb.cpp`, `ProductGranular.cpp`, `ProductSpectralFreeze.cpp`, and `ProductDynamics.cpp` | further split is required before any focused Product Core source exceeds its cap |
 | Web adapter split or size cap | BLOCKED | static | `CoreProductFallbackDiagnostics.ts`, `CoreProductAssetAdapter.ts`, `core:product:web-host` | `coreProductEngineHost.ts` and `coreProductSnapshot.ts` still need further adapter decomposition before default promotion |
 | Compatibility import retirement audit | PASS | static | `core:product:reference-isolation`, `docs/kessho-product-reference-isolation.md` | - |
 | Exact patch bridge classification and retirement path exists | PASS | static, integration | `core:product:patch-bridges`, `docs/kessho-product-patch-bridge-policy.md` | - |

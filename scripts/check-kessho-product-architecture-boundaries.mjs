@@ -66,10 +66,59 @@ for (const [path, maxLines] of focusedHeaders) {
 
 const secondStageCaps = [
   ['cpp/KesshoCore/src/product/sources/ProductSources.cpp', 650],
-  ['cpp/KesshoCore/src/product/fx/ProductFx.cpp', 760],
+  ['cpp/KesshoCore/src/product/fx/ProductFx.cpp', 430],
+  ['cpp/KesshoCore/src/product/fx/ProductDelay.cpp', 120],
+  ['cpp/KesshoCore/src/product/fx/ProductReverb.cpp', 140],
+  ['cpp/KesshoCore/src/product/fx/ProductGranular.cpp', 80],
+  ['cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp', 80],
+  ['cpp/KesshoCore/src/product/fx/ProductDynamics.cpp', 260],
 ];
 for (const [path, maxLines] of secondStageCaps) {
   assert(lineCount(path) <= maxLines, `${path} is becoming a second-stage monolith (${lineCount(path)} > ${maxLines})`);
+}
+
+for (const forbidden of [
+  'resetSidechainRuntime(',
+  'triggerSidechainDuck(',
+  'renderSidechainGains(',
+  'mixFxBuffer(',
+  'renderDelayModule(',
+  'renderGranular(',
+  'renderReverb(',
+  'renderSpectralFreeze(',
+  'renderDynamics(',
+]) {
+  assert(!read('cpp/KesshoCore/src/product/fx/ProductFx.cpp').includes(`KesshoProductEngine::${forbidden}`), `ProductFx.cpp must not reclaim focused FX runtime method: ${forbidden}`);
+}
+
+const focusedFxContracts = [
+  ['cpp/KesshoCore/src/product/fx/ProductDelay.cpp', ['KesshoProductEngine::renderDelayModule(']],
+  [
+    'cpp/KesshoCore/src/product/fx/ProductReverb.cpp',
+    [
+      'KesshoProductEngine::reverbPreCompressorGainDbForLevel(',
+      'KesshoProductEngine::processReverbPreconditioner(',
+      'KesshoProductEngine::renderReverb(',
+    ],
+  ],
+  ['cpp/KesshoCore/src/product/fx/ProductGranular.cpp', ['KesshoProductEngine::renderGranular(']],
+  ['cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp', ['KesshoProductEngine::renderSpectralFreeze(']],
+  [
+    'cpp/KesshoCore/src/product/fx/ProductDynamics.cpp',
+    [
+      'KesshoProductEngine::resetSidechainRuntime(',
+      'KesshoProductEngine::triggerSidechainDuck(',
+      'KesshoProductEngine::renderSidechainGains(',
+      'KesshoProductEngine::mixFxBuffer(',
+      'KesshoProductEngine::renderDynamics(',
+    ],
+  ],
+];
+for (const [path, tokens] of focusedFxContracts) {
+  const source = read(path);
+  for (const token of tokens) {
+    assert(source.includes(token), `${path} must own focused FX runtime token: ${token}`);
+  }
 }
 
 const allowedEngineMethods = new Set([
@@ -108,6 +157,11 @@ const componentFiles = [
   'cpp/KesshoCore/src/product/KesshoProductTelemetry.cpp',
   'cpp/KesshoCore/src/product/assets/ProductAssets.cpp',
   'cpp/KesshoCore/src/product/fx/ProductFx.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductDelay.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductReverb.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductGranular.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductDynamics.cpp',
   'cpp/KesshoCore/src/product/music/CircleOfFifths.cpp',
   'cpp/KesshoCore/src/product/music/DeterministicRng.cpp',
   'cpp/KesshoCore/src/product/music/EvolutionEngine.cpp',
