@@ -62,7 +62,7 @@ const requiredCommands = [
   'npm run build',
   'npm run core:build:wasm',
   'npm run core:product:ci',
-  'npm run preview -- --host 127.0.0.1 --port 4173',
+  'npm run dev -- --host 127.0.0.1 --port 4173',
   'npm run core:readiness:browser -- --url=http://127.0.0.1:4173/',
   'swift build --package-path KesshoNativeSwift',
 ];
@@ -72,8 +72,12 @@ for (const command of requiredCommands) {
 }
 
 assert(
-  workflow.includes("trap 'kill ${preview_pid}' EXIT"),
-  'Product Core workflow must stop the browser readiness preview server after the check',
+  workflow.includes("trap 'kill ${vite_pid}' EXIT"),
+  'Product Core workflow must stop the browser readiness Vite server after the check',
+);
+assert(
+  workflow.includes('/tmp/kessho-vite-dev.log') && workflow.includes('Timed out waiting for'),
+  'Product Core workflow must print the Vite server log if browser readiness setup fails',
 );
 
 assert(
