@@ -18,7 +18,12 @@ const FAILURE_KIND_SETUP = 'setup';
 const FAILURE_KIND_SONIC = 'sonic';
 const FAILURE_KIND_CORE_OUTPUT = 'sonic/core-output';
 const FAILURE_KIND_CHECK = 'check';
-const CORPUS_SONIC_RETRY_ATTEMPTS = 2;
+const DEFAULT_CORPUS_SONIC_RETRY_ATTEMPTS = 2;
+const MAX_CORPUS_SONIC_RETRY_ATTEMPTS = 6;
+const CORPUS_SONIC_RETRY_ATTEMPTS = parseBoundedRetryCount(
+  process.env.KESSHO_BROWSER_CORPUS_SONIC_RETRIES,
+  DEFAULT_CORPUS_SONIC_RETRY_ATTEMPTS,
+);
 
 const sliceDefinitions = [
   {
@@ -79,6 +84,17 @@ function check(id, label, args) {
     kind: 'module',
     command: [process.execPath, ...args],
   };
+}
+
+function parseBoundedRetryCount(value, fallback = DEFAULT_CORPUS_SONIC_RETRY_ATTEMPTS) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return fallback;
+  }
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(MAX_CORPUS_SONIC_RETRY_ATTEMPTS, parsed));
 }
 
 function parseArgs(argv) {
@@ -1111,6 +1127,11 @@ function runSelfCheck() {
   const reruns = buildRerunCommands({ url: DEFAULT_URL }, [sliceDefinitions[0]]);
   assert(reruns.browserCorpus.includes('--slice=pad'), 'selected browser rerun keeps slice filter');
   assert(!reruns.fullBrowserCorpus.includes('--slice='), 'full objective browser rerun has no slice filter');
+  assert(parseBoundedRetryCount(undefined, 3) === 3, 'retry count uses fallback when unset');
+  assert(parseBoundedRetryCount('4') === 4, 'retry count accepts explicit integer value');
+  assert(parseBoundedRetryCount('99') === MAX_CORPUS_SONIC_RETRY_ATTEMPTS, 'retry count is capped');
+  assert(parseBoundedRetryCount('-1') === 0, 'retry count lower bound disables retries');
+  assert(parseBoundedRetryCount('abc', 2) === 2, 'retry count falls back on invalid input');
 
   console.log(`Readiness runner self-check passed (${assertions} assertions).`);
 }

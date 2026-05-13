@@ -72,6 +72,11 @@ for (const command of requiredCommands) {
   assert(workflow.includes(command), `Product Core workflow is missing command: ${command}`);
 }
 
+assert(
+  workflow.includes('KESSHO_BROWSER_CORPUS_SONIC_RETRIES: 5'),
+  'Product Core workflow must keep bounded browser corpus sonic retries for macOS runner jitter',
+);
+
 for (const token of [
   'startManagedBrowserServer',
   "spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1'",

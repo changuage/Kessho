@@ -69,6 +69,8 @@ on:
 jobs:
   product-core:
     runs-on: macos-14
+    env:
+      KESSHO_BROWSER_CORPUS_SONIC_RETRIES: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
