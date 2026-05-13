@@ -193,6 +193,16 @@ void triggerPad(KesshoProductEngine* engine, float hold_seconds) {
   require(kessho_product_enqueue_event(engine, &note) == KESSHO_PRODUCT_OK, "manual note enqueue failed");
 }
 
+void triggerLead(KesshoProductEngine* engine, float hold_seconds) {
+  KesshoProductEvent note{};
+  note.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
+  note.target_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  note.value = 72.0f;
+  note.value2 = 0.85f;
+  note.value3 = hold_seconds;
+  require(kessho_product_enqueue_event(engine, &note) == KESSHO_PRODUCT_OK, "manual lead enqueue failed");
+}
+
 void triggerKick(KesshoProductEngine* engine, float velocity = 1.0f) {
   KesshoProductEvent note{};
   note.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
@@ -975,6 +985,34 @@ void requireProductResetClearsFxTails() {
   kessho_product_destroy(engine);
 }
 
+void requireModuleSourceFxSendsArePreFader() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "pre-fader module send engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1].enabled = 1u;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1].preset_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1].level = 0.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1].dry_gain = 1.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1].delay_a_send = 1.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1].reverb_send = 0.0f;
+  snapshot.fx.delay_a_enabled = 1u;
+  snapshot.fx.delay_a_time_left_ms = 48.0f;
+  snapshot.fx.delay_a_time_right_ms = 72.0f;
+  snapshot.fx.delay_a_feedback = 0.25f;
+  snapshot.fx.delay_a_mix = 1.0f;
+  snapshot.fx.reverb_mix = 0.0f;
+  snapshot.routing.delay_to_reverb = 0.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "pre-fader module send snapshot load failed");
+  triggerLead(engine, 0.45f);
+  const RenderPeaks peaks = renderMasterAndFxPeaks(engine, 96);
+  require(peaks.master > 0.00001f, "pre-fader Lead delay send did not reach master output");
+  require(peaks.fx > 0.00001f, "pre-fader Lead delay send did not reach FX stem");
+  kessho_product_destroy(engine);
+}
+
 std::vector<float> renderSnapshotFxTrace(uint32_t param_id, float value) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "snapshot FX event parity engine create failed");
@@ -1173,6 +1211,7 @@ int main() {
   requireMasterTelemetryReportsLimiterSaturationAndLoudness();
   requireDisabledFxBypassKeepsDryAndSilencesFxStem();
   requireProductResetClearsFxTails();
+  requireModuleSourceFxSendsArePreFader();
 
   requireMasterParamSnapshotEventParity(
       KESSHO_PRODUCT_PARAM_MASTER_SATURATION_DRIVE_ID,

@@ -71,7 +71,7 @@ void requireDirectGraphCoverage() {
   require(std::fabs(out_l[0] - 0.5f) < 0.001f, "direct graph source mix left mismatch");
   require(std::fabs(out_r[0] - 0.25f) < 0.001f, "direct graph source mix right mismatch");
   require(std::fabs(direct.stem_l[KESSHO_PRODUCT_SOURCE_PAD1][0] - 0.5f) < 0.001f, "direct graph stem mix mismatch");
-  require(std::fabs(direct.reverb_bus_l[0] - 0.125f) < 0.001f, "direct graph send bus mix mismatch");
+  require(std::fabs(direct.reverb_bus_l[0] - 0.25f) < 0.001f, "direct graph pre-fader send bus mix mismatch");
 
   direct.triggerVoice(KESSHO_PRODUCT_SOURCE_PAD1, 60.0f, 0.8f, 0.2f);
   std::vector<float> module_l(128);

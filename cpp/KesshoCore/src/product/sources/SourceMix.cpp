@@ -57,15 +57,19 @@
   if (!source.enabled) {
     return;
   }
-  const float gain = source.level * source.dry_gain * moduleSourceOutputTrim(source_id);
+  const float trim = moduleSourceOutputTrim(source_id);
+  const float dry_gain = source.level * source.dry_gain * trim;
+  const float send_gain = source.dry_gain;
   const uint32_t sidechain_target = sidechainTargetForSource(source_id);
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const float send_left = in_l[i] * gain;
-    const float send_right = in_r[i] * gain;
+    const float dry_left = in_l[i] * dry_gain;
+    const float dry_right = in_r[i] * dry_gain;
+    const float send_left = in_l[i] * send_gain;
+    const float send_right = in_r[i] * send_gain;
     const float duck_gain = sidechainGain(sidechain_target, frame);
-    const float left = send_left * duck_gain;
-    const float right = send_right * duck_gain;
+    const float left = dry_left * duck_gain;
+    const float right = dry_right * duck_gain;
     out_l[frame] += left;
     out_r[frame] += right;
     stem_l[source_id][frame] += left;
