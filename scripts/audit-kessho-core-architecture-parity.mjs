@@ -104,10 +104,11 @@ function makeReport() {
       has(coreHost, 'createManualLeadSourceConfig') &&
       has(coreHost, 'createLeadEuclidPreviewSource') &&
       has(corpus, "'lead-manual-dry'") &&
+      has(corpus, "'lead2-gamelan-dry'") &&
       has(corpus, "'synth-euclid-lead-grid'"),
     ),
     priority: 'required',
-    evidence: ['Core Lead FM aux slot', 'manual and Euclid corpus cases'],
+    evidence: ['Core Lead FM aux slot', 'Lead 1/2 manual and Euclid corpus cases'],
     description: 'Lead 1/2 use the Core Lead FM module for manual and synth-Euclid preview paths.',
   }));
 

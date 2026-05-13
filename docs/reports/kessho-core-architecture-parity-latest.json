@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-12T21:44:02.340Z",
+  "generatedAt": "2026-05-13T07:35:12.035Z",
   "overallStatus": "pass",
   "summary": {
     "pass": 16,
@@ -79,7 +79,7 @@
       "priority": "required",
       "evidence": [
         "Core Lead FM aux slot",
-        "manual and Euclid corpus cases"
+        "Lead 1/2 manual and Euclid corpus cases"
       ],
       "description": "Lead 1/2 use the Core Lead FM module for manual and synth-Euclid preview paths.",
       "next": ""

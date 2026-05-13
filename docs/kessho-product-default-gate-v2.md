@@ -40,7 +40,7 @@ Native decision: native-default-deferred
 | Behavioral cleanup proof gates pass | PASS | integration, browser/worklet | `core:product:host-reconciliation`, `core:product:dirty-diff`, `core:product:runtime-fallbacks`, `core:product:placeholder-getters`, `core:product:wasm` | stale WASM/schema mismatch is worklet-tested, and full-snapshot reload plus reconciled sequencer/RNG/evolution preservation is C++-tested |
 | Behavioral test quality gates pass | PASS | browser/worklet, production-readiness | `core:product:ci`, `core:readiness:browser`, passing main Product Core CI | - |
 | Pad preset family probes pass | PASS | audio-render | `core:product:source-parity` | - |
-| Broader Lead preset probes pass | BLOCKED | audio-render, browser/worklet | `core:product:source-parity`, focused `lead-manual-dry` and `lead-delay-heavy` browser probes | broader web-vs-Product Lead preset parity still needs completion before default promotion |
+| Broader Lead preset probes pass | BLOCKED | audio-render, browser/worklet | `core:product:source-parity`, focused `lead-manual-dry`, `lead-delay-heavy`, and `lead2-gamelan-dry` browser probes | broader web-vs-Product Lead preset parity still needs completion before default promotion |
 | Drum source probes pass | PASS | audio-render | `core:product:source-parity` | - |
 | Piano and soundscape asset probes pass | PASS | integration, audio-render | `core:product:asset-manifest`, `core:product:sources`, `core:product:assets` | - |
 | Representative scene/full-arrangement probes pass | BLOCKED | audio-render, browser/worklet | `core:readiness:browser`, `docs/reports/kessho-core-parity-readiness-latest.md` | broader web-vs-Product scene/full-arrangement sonic parity still needs final promotion review |

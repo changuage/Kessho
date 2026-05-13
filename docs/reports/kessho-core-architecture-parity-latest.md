@@ -1,6 +1,6 @@
 # Kessho Core Architecture Parity Audit
 
-Generated: 2026-05-12T21:44:02.340Z
+Generated: 2026-05-13T07:35:12.035Z
 
 Overall status: PASS
 
@@ -32,7 +32,7 @@ Summary: 16 pass, 0 debt, 0 surrogate, 0 fail, 16 total.
 - drum-source-core: Core drum aux slot; drum module parity; drum corpus cases; Drum Euclid Core control API
 - earth-sample-texture-policy: Core host EarthTexturePlayer bridge; Web OGG sample assets; Core worklet external FX input buses
 - lead-random-phrase-scheduler: Web random lead phrase scheduler; Core lead/piano random preview sequence
-- lead-source-core: Core Lead FM aux slot; manual and Euclid corpus cases
+- lead-source-core: Core Lead FM aux slot; Lead 1/2 manual and Euclid corpus cases
 - native-state-coverage: Native SliderState; Native audio engine; Core host contract
 - pad-chord-live-sequencer: Web phrase/sub-phrase harmony scheduler; Core generated harmony tick chord sets
 - pad-source-core: Core pad module; Pad 1/2 corpus cases

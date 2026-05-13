@@ -1,6 +1,6 @@
 # KesshoCore Acceptance Corpus
 
-Generated: 2026-05-12T23:58:14.075Z
+Generated: 2026-05-13T07:35:02.823Z
 
 Scope: practical browser parity acceptance corpus for the core migration. This is intentionally representative, not exhaustive perfect-parity coverage.
 
@@ -67,7 +67,7 @@ Pass definition: All required close/perceptual cases pass, using envelope gates 
 
 Target: Core non-pad sources are close enough for lead, drums, and earth/soundscape migration.
 
-Required cases: lead-manual-dry, lead-delay-heavy, piano-manual-dry, synth-euclid-lead-grid, drum-euclid-tight, drum-delay-dub, earth-water-only, earth-full-nature, soundscape-ocean-pad
+Required cases: lead-manual-dry, lead-delay-heavy, lead2-gamelan-dry, piano-manual-dry, synth-euclid-lead-grid, drum-euclid-tight, drum-delay-dub, earth-water-only, earth-full-nature, soundscape-ocean-pad
 
 Pass definition: All deterministic source cases pass; stochastic drum and earth cases pass documented transient/envelope gates.
 
@@ -104,6 +104,7 @@ Threshold classes:
 | pad-dark-dense | pad+reverb | close | pass | KesshoNativeSwift/Kessho/Presets/Dark_Textures.json | pad1:48:0.72:1800, pad1:55:0.68:1800, pad1:62:0.62:1800 | 8000 ms | rms 0.065, peak 0.3, min RMS 0.0001 |
 | lead-manual-dry | lead | close | pass | KesshoNativeSwift/Kessho/Presets/Bright_Bells.json | lead1:72:0.82:700, lead1:76:0.75:650 | 4500 ms | rms 0.05, peak 0.26, min RMS 0.0001 |
 | lead-delay-heavy | delay-heavy | perceptual | pass | KesshoNativeSwift/Kessho/Presets/StringWaves.json | lead1:72:0.82:700, lead1:76:0.75:650 | 7000 ms | rms 0.07, peak 0.32, min RMS 0.0001 |
+| lead2-gamelan-dry | lead | perceptual | pass | src/ui/state.ts#DEFAULT_STATE | lead2:67:0.8:800 | 4500 ms | rms 0.22, peak 0.04, min RMS 0.0001 |
 | piano-manual-dry | piano | perceptual | pass | src/ui/state.ts#DEFAULT_STATE | piano:60:0.78:900, piano:64:0.72:850 | 4500 ms | rms 0.2, peak 0.55, min RMS 0.00004 |
 | synth-euclid-lead-grid | lead | perceptual | pass | src/ui/state.ts | self-running | 3500 ms | rms 0.04, peak 0.25, min RMS 0.00003 |
 | pad-delay-pingpong | delay-heavy | perceptual | pass | src/ui/delay/delayPresets.ts#pingPongClean | pad1:60:0.78:900 | 6500 ms | rms 0.06, peak 0.3, min RMS 0.0001 |
@@ -232,6 +233,22 @@ Expected outcome: pass
 State patch keys: 121
 
 State patch SHA-256: `22f530fcf53e49c7decd130586c346dac512e32cddf7461d7a5b1ca26743c2f1`
+
+### lead2-gamelan-dry
+
+Title: Manual dry Lead 2 Gamelan
+
+Intent: Lead 2 route and Gamelan endpoint preset parity without Lead 1, delay, or reverb masking.
+
+Ready when: manual lead2 trigger support exists for core-product parity capture; Lead 2 endpoint preset routing is not silent
+
+Threshold class: perceptual
+
+Expected outcome: pass
+
+State patch keys: 45
+
+State patch SHA-256: `41310b1f39bf8aaa96e14dfa141582074ac6082ed5b13a0e7382d6319b5c630c`
 
 ### piano-manual-dry
 
