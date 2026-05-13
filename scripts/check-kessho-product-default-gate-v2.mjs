@@ -27,13 +27,23 @@ function sourceSlice(source, startToken, endToken) {
 
 function gateRow(requirement) {
   const escaped = requirement.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = new RegExp(`\\| ${escaped} \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|`).exec(defaultGateDoc);
+  const match = new RegExp(`\\| ${escaped} \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|`).exec(defaultGateDoc);
   assert(match, `Product Default Gate v2 matrix is missing ${requirement}`);
   return {
     status: match[1].trim(),
-    evidence: match[2].trim(),
-    blocker: match[3].trim(),
+    quality: match[2].trim(),
+    evidence: match[3].trim(),
+    blocker: match[4].trim(),
   };
+}
+
+function gateRows() {
+  const matrix = sourceSlice(defaultGateDoc, '## Gate Matrix', '## Promotion Blockers');
+  return matrix
+    .split('\n')
+    .filter((line) => line.startsWith('| ') && !line.startsWith('| ---'))
+    .filter((line) => !line.startsWith('| Requirement |'))
+    .map((line) => line.split('|').slice(1, -1).map((cell) => cell.trim()));
 }
 
 function assertNotPassingWhenStatusIncomplete(statusDocToken, requirement) {
@@ -87,6 +97,10 @@ const requiredDocTokens = [
   'Status: BLOCKED',
   'Decision: web-default-deferred',
   'Native decision: native-default-deferred',
+  '| Requirement | Status | Quality | Evidence | Blocker |',
+  'static, integration',
+  'browser/worklet, production-readiness',
+  'native-device, production-readiness',
   'core:product:ci',
   'core:readiness:browser',
   'core:product:native-release-smoke',
@@ -130,6 +144,27 @@ const requiredDocTokens = [
 ];
 for (const token of requiredDocTokens) {
   assert(defaultGateDoc.includes(token), `Product Default Gate v2 doc is missing ${token}`);
+}
+
+const allowedQualityTokens = new Set([
+  'static',
+  'integration',
+  'audio-render',
+  'browser/worklet',
+  'native-device',
+  'production-readiness',
+]);
+const rows = gateRows();
+assert(rows.length >= 30, 'Product Default Gate v2 matrix must classify every required gate row');
+for (const row of rows) {
+  assert(row.length === 5, `Product Default Gate v2 row must have five cells: ${row.join(' | ')}`);
+  const [requirement, status, quality] = row;
+  assert(requirement.length > 0, 'Product Default Gate v2 row is missing its requirement');
+  assert(['PASS', 'BLOCKED', 'DEFERRED', 'NOT_REQUIRED'].includes(status), `${requirement} has invalid gate status ${status}`);
+  assert(quality.length > 0, `${requirement} is missing its gate quality classification`);
+  for (const token of quality.split(',').map((part) => part.trim())) {
+    assert(allowedQualityTokens.has(token), `${requirement} has unsupported gate quality token ${token}`);
+  }
 }
 
 for (const token of [

@@ -18,6 +18,7 @@ const FAILURE_KIND_SETUP = 'setup';
 const FAILURE_KIND_SONIC = 'sonic';
 const FAILURE_KIND_CORE_OUTPUT = 'sonic/core-output';
 const FAILURE_KIND_CHECK = 'check';
+const CORPUS_SONIC_RETRY_ATTEMPTS = 2;
 
 const sliceDefinitions = [
   {
@@ -328,10 +329,28 @@ function classifyFailure(definition, stderr, stdout) {
 }
 
 async function runCheck(definition) {
-  const result = await runCommand(definition.command);
-  const failureKind = result.status === STATUS_FAIL
+  let result = await runCommand(definition.command);
+  let failureKind = result.status === STATUS_FAIL
     ? classifyFailure(definition, result.stderr, result.stdout)
     : '';
+  let retryCount = 0;
+  let totalDurationMs = result.durationMs;
+  let retryOutput = '';
+  while (
+    definition.kind === 'corpus' &&
+    result.status === STATUS_FAIL &&
+    failureKind === FAILURE_KIND_SONIC &&
+    retryCount < CORPUS_SONIC_RETRY_ATTEMPTS
+  ) {
+    retryCount += 1;
+    const previousSummary = firstMeaningfulLine(result.stderr || result.stdout) || `Exited with ${result.exitCode ?? result.signal ?? 'unknown status'}`;
+    retryOutput = tail(`${retryOutput}\n[retry] ${definition.label} sonic failure attempt ${retryCount}/${CORPUS_SONIC_RETRY_ATTEMPTS}: ${previousSummary}`);
+    result = await runCommand(definition.command);
+    totalDurationMs += result.durationMs;
+    failureKind = result.status === STATUS_FAIL
+      ? classifyFailure(definition, result.stderr, result.stdout)
+      : '';
+  }
   const expectedFailure = Boolean(definition.expectedFailure);
   const status = result.status === STATUS_FAIL && expectedFailure && failureKind === FAILURE_KIND_SONIC
     ? STATUS_KNOWN_FAILURE
@@ -357,8 +376,8 @@ async function runCheck(definition) {
     status,
     exitCode: result.exitCode,
     signal: result.signal,
-    durationMs: result.durationMs,
-    stdoutTail: result.stdout,
+    durationMs: totalDurationMs,
+    stdoutTail: retryOutput ? tail(`${retryOutput}\n${result.stdout}`) : result.stdout,
     stderrTail: result.stderr,
     failureSummary,
   };

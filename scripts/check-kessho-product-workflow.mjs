@@ -81,6 +81,8 @@ for (const token of [
   'await managedBrowserServer?.stop();',
   'emitGithubFailureAnnotations',
   '::error file=docs/reports/kessho-core-parity-readiness-latest.md::',
+  'CORPUS_SONIC_RETRY_ATTEMPTS',
+  'sonic failure attempt',
 ]) {
   assert(readiness.includes(token), `browser readiness runner is missing managed-server token: ${token}`);
 }
