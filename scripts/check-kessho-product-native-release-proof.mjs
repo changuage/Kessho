@@ -1,7 +1,79 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = process.cwd();
+const reportPath = 'docs/reports/kessho-product-native-release-proof-latest.json';
+
+const nativeBlockers = [
+  {
+    id: 'needs-device-cpu-proof',
+    area: 'device-cpu',
+    requiredProof: 'physical iOS and signed macOS CPU captures with render p95/p99 and underrun counters',
+    status: 'deferred',
+  },
+  {
+    id: 'needs-battery-thermal-proof',
+    area: 'battery-thermal',
+    requiredProof: 'battery drain and thermal-state captures during sustained foreground playback',
+    status: 'deferred',
+  },
+  {
+    id: 'needs-screen-off-background-proof',
+    area: 'screen-off-background',
+    requiredProof: 'screen-off, lock-screen, background, and foreground-resume playback behavior',
+    status: 'deferred',
+  },
+  {
+    id: 'needs-route-change-proof',
+    area: 'route-changes',
+    requiredProof: 'speaker, wired headphone, Bluetooth, AirPlay if supported, sample-rate, and buffer-size route transitions',
+    status: 'deferred',
+  },
+  {
+    id: 'needs-interruption-proof',
+    area: 'interruptions',
+    requiredProof: 'call, Siri, alarm, ducking, and media-services-reset interruption/resume behavior',
+    status: 'deferred',
+  },
+  {
+    id: 'needs-release-bundle-decode-proof',
+    area: 'release-bundle-decode',
+    requiredProof: 'TestFlight/App Store-style iOS and signed macOS bundle asset decode/register proof',
+    status: 'deferred',
+  },
+  {
+    id: 'needs-native-ogg-coverage-proof',
+    area: 'ogg-coverage',
+    requiredProof: 'every committed piano and soundscape Ogg/Vorbis asset decodes through native AVAudioFile on target OS/device combinations',
+    status: 'deferred',
+  },
+  {
+    id: 'needs-native-avsource-hardware-timing-proof',
+    area: 'avaudiosourcenode-timing',
+    requiredProof: 'AVAudioSourceNode master callback timing under live hardware IO',
+    status: 'deferred',
+  },
+  {
+    id: 'needs-live-stem-timing-proof',
+    area: 'stem-timing',
+    requiredProof: 'master and stem taps remain sample-aligned under live-device playback and recording',
+    status: 'deferred',
+  },
+  {
+    id: 'needs-native-asset-eviction-memory-pressure-proof',
+    area: 'eviction-memory-pressure',
+    requiredProof: 'decoded asset cache behavior under memory pressure, warnings, eviction, and re-registration',
+    status: 'deferred',
+  },
+];
+
+const nativeDeferral = {
+  id: 'native-default-deferred',
+  owner: 'native-release-owner',
+  reason: 'live-device CPU, battery, thermal, route, interruption, background, release-bundle decode, Ogg, AVAudioSourceNode timing, stem timing, and memory-pressure proof is absent',
+  signOffStatus: 'signed-for-deferral-only',
+  targetFollowUp: 'native-release-device-proof',
+};
 
 function read(path) {
   return readFileSync(resolve(root, path), 'utf8');
@@ -11,6 +83,12 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function writeJsonReport(path, payload) {
+  const absolute = resolve(root, path);
+  mkdirSync(resolve(absolute, '..'), { recursive: true });
+  writeFileSync(absolute, `${JSON.stringify(payload, null, 2)}\n`);
 }
 
 function sourceSlice(source, startToken, endToken) {
@@ -162,18 +240,53 @@ for (const token of [
   'Locally Proven',
   'Hardware/Release Blockers',
   'native-default-deferred',
-  'needs-device-cpu-battery-thermal-proof',
-  'needs-route-change-session-proof',
-  'needs-release-bundle-decode-proof',
+  'Native Default Deferral Mapping',
+  'owner: native-release-owner',
+  'reason: live-device CPU, battery, thermal, route, interruption, background, release-bundle decode, Ogg, AVAudioSourceNode timing, stem timing, and memory-pressure proof is absent',
+  'signOffStatus: signed-for-deferral-only',
+  'targetFollowUp: native-release-device-proof',
 ]) {
   assert(doc.includes(token), `native release proof doc is missing ${token}`);
+}
+for (const blocker of nativeBlockers) {
+  assert(doc.includes(blocker.id), `native release proof doc is missing blocker ${blocker.id}`);
+}
+for (const token of [
+  'needs-device-cpu-battery-thermal-proof',
+  'needs-route-change-session-proof',
+]) {
+  assert(doc.includes(token), `native release proof doc is missing compatibility blocker ${token}`);
 }
 for (const token of [
   'native release proof',
   'native-default-deferred',
-  'device CPU/battery/thermal',
+  'device CPU, battery/thermal',
+  'screen-off/background',
+  'memory-pressure/eviction',
 ]) {
   assert(statusDoc.includes(token), `migration status doc is missing native release token ${token}`);
 }
 
-console.log('Kessho Product native release proof checks passed');
+writeJsonReport(reportPath, {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  status: 'deferred',
+  nativeDecision: nativeDeferral.id,
+  reportPath,
+  localProof: {
+    smokeExecutable: 'KesshoProductNativeReleaseSmoke',
+    command: 'npm run core:product:native-release-smoke',
+    scope: [
+      'offline Swift bridge render golden',
+      'non-silent finite render',
+      'first audible master/stem block alignment',
+      'static AVAudioSourceNode callback boundary audit',
+      'native asset provider search-root coverage',
+    ],
+  },
+  deferral: nativeDeferral,
+  blockers: nativeBlockers,
+  releaseGatePolicy: 'core:product:native-release may pass with deferred blockers; native default release approval remains blocked until signed-off live-device and release-bundle evidence exists',
+});
+
+console.log(`Kessho Product native release proof checks passed (report: ${reportPath})`);

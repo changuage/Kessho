@@ -16,7 +16,16 @@ Legacy behavior that is meaningful only in `web-ts` reference mode may be classi
 
 ## forbidden-production-fallback
 
-Missing setters, updates, resets, dice/evolve controls, triggers, MIDI/event pushes, asset registration, startup, and audition controls are audio-critical. In development, these throw. In production, they increment `unsupportedControlCount` and log once.
+Missing setters, updates, resets, dice/evolve controls, triggers, MIDI/event pushes, asset registration, startup, and audition controls are audio-critical. In development, these throw. In production, they increment fallback diagnostics and log once.
+
+Runtime fallback diagnostics exposed through Product Core host telemetry/perf snapshots:
+
+- `unsupportedControlCount`
+- `unsupportedGetterCount`
+- `lastUnsupportedMethod`
+- `lastUnsupportedMethodClass`
+- `runtimeFallbackDiagnosticCount`
+- `audioCriticalFallbackCount`
 
 ## Enforcement
 

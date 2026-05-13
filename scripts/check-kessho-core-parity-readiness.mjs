@@ -20,6 +20,7 @@ const FAILURE_KIND_CORE_OUTPUT = 'sonic/core-output';
 const FAILURE_KIND_CHECK = 'check';
 const DEFAULT_CORPUS_SONIC_RETRY_ATTEMPTS = 2;
 const MAX_CORPUS_SONIC_RETRY_ATTEMPTS = 6;
+const BROWSER_CAPTURE_MAX_RETRIES = 2;
 const CORPUS_SONIC_RETRY_ATTEMPTS = parseBoundedRetryCount(
   process.env.KESSHO_BROWSER_CORPUS_SONIC_RETRIES,
   DEFAULT_CORPUS_SONIC_RETRY_ATTEMPTS,
@@ -307,26 +308,73 @@ function firstMeaningfulLine(value) {
 
 function browserCaseCheck(caseId, entry, url, caseRole = 'required') {
   const browserParityArgs = Array.isArray(entry?.browserParityArgs) ? entry.browserParityArgs : null;
+  const command = [
+    process.execPath,
+    browserParityArgs ? 'scripts/check-web-core-sonic-parity.mjs' : 'scripts/profile-kessho-core-acceptance-corpus.mjs',
+    ...(browserParityArgs ? [] : ['--run', `--case=${caseId}`]),
+    `--url=${url}`,
+    ...(browserParityArgs ?? []),
+  ];
   return {
     id: `corpus-${caseId}`,
     label: entry?.title ? `${caseId}: ${entry.title}` : caseId,
     kind: 'corpus',
     caseId,
     caseRole,
+    engineMode: engineModeFromCommand(command),
     expectedFailure: false,
     knownFailure: null,
     thresholdClass: entry?.thresholdClass ?? null,
     expectedOutcome: entry?.expectedOutcome ?? null,
     candidateOutcome: (entry?.expectedOutcome ?? '') === 'candidate',
     group: entry?.group ?? null,
-    command: [
-      process.execPath,
-      browserParityArgs ? 'scripts/check-web-core-sonic-parity.mjs' : 'scripts/profile-kessho-core-acceptance-corpus.mjs',
-      ...(browserParityArgs ? [] : ['--run', `--case=${caseId}`]),
-      `--url=${url}`,
-      ...(browserParityArgs ?? []),
-    ],
+    command,
   };
+}
+
+function engineModeFromCommand(command) {
+  const explicit = command
+    .map((part) => String(part))
+    .find((part) => part.startsWith('--core-engine='));
+  if (explicit) return explicit.slice('--core-engine='.length) || null;
+  return command.some((part) => /check-web-core-sonic-parity\.mjs|profile-kessho-core-acceptance-corpus\.mjs/.test(String(part)))
+    ? 'core-wasm'
+    : null;
+}
+
+function captureRetryTelemetryFromOutput(output) {
+  const events = [];
+  const regex = /^\s*\[retry\]\s+(.+?)\s+capture succeeded on attempt\s+([0-9]+)/gm;
+  let match;
+  while ((match = regex.exec(output ?? '')) !== null) {
+    const attempt = Number(match[2]);
+    if (!Number.isFinite(attempt) || attempt <= 1) continue;
+    events.push({
+      engineMode: match[1],
+      attempt,
+      retryCount: attempt - 1,
+    });
+  }
+  const captureAttemptCount = events.reduce((max, entry) => Math.max(max, entry.attempt), 1);
+  return {
+    captureAttemptCount,
+    captureRetryCount: Math.max(0, captureAttemptCount - 1),
+    captureMaxRetries: BROWSER_CAPTURE_MAX_RETRIES,
+    captureRetryEvents: events,
+  };
+}
+
+function flakinessDebtReason(wholeCaseRetryCount, captureRetryCount) {
+  if (wholeCaseRetryCount > 0 && captureRetryCount > 0) {
+    return 'The browser corpus case required both whole-case sonic retry and browser capture retry before the final pass.';
+  }
+  if (wholeCaseRetryCount > 0) {
+    return 'The first browser sonic attempt failed and this case required at least one whole-case retry.';
+  }
+  if (captureRetryCount > 0) {
+    return 'A browser capture attempt was retried inside the parity harness before this case passed.';
+  }
+  return '';
 }
 
 function classifyFailure(definition, stderr, stdout) {
@@ -346,40 +394,95 @@ function classifyFailure(definition, stderr, stdout) {
 
 async function runCheck(definition) {
   let result = await runCommand(definition.command);
+  const isBrowserCorpusCase = definition.kind === 'corpus' && Boolean(definition.caseId);
+  const engineMode = definition.engineMode ?? (isBrowserCorpusCase ? engineModeFromCommand(definition.command) : null);
+  const maxRetries = isBrowserCorpusCase ? CORPUS_SONIC_RETRY_ATTEMPTS : 0;
+  const firstCommandAttemptPassed = result.status === STATUS_PASS;
+  let attemptCount = 1;
   let failureKind = result.status === STATUS_FAIL
     ? classifyFailure(definition, result.stderr, result.stdout)
     : '';
   let retryCount = 0;
   let totalDurationMs = result.durationMs;
   let retryOutput = '';
+  const failureReasons = [];
+  const recordFailureReason = (attempt, failedResult, kind) => {
+    failureReasons.push({
+      attempt,
+      failureKind: kind,
+      exitCode: failedResult.exitCode,
+      signal: failedResult.signal,
+      summary: firstMeaningfulLine(failedResult.stderr || failedResult.stdout) ||
+        `Exited with ${failedResult.exitCode ?? failedResult.signal ?? 'unknown status'}`,
+    });
+  };
   while (
-    definition.kind === 'corpus' &&
+    isBrowserCorpusCase &&
     result.status === STATUS_FAIL &&
     failureKind === FAILURE_KIND_SONIC &&
-    retryCount < CORPUS_SONIC_RETRY_ATTEMPTS
+    retryCount < maxRetries
   ) {
+    recordFailureReason(attemptCount, result, failureKind);
     retryCount += 1;
     const previousSummary = firstMeaningfulLine(result.stderr || result.stdout) || `Exited with ${result.exitCode ?? result.signal ?? 'unknown status'}`;
-    retryOutput = tail(`${retryOutput}\n[retry] ${definition.label} sonic failure attempt ${retryCount}/${CORPUS_SONIC_RETRY_ATTEMPTS}: ${previousSummary}`);
+    retryOutput = tail(`${retryOutput}\n[retry] ${definition.label} sonic failure attempt ${retryCount}/${maxRetries}: ${previousSummary}`);
     result = await runCommand(definition.command);
+    attemptCount += 1;
     totalDurationMs += result.durationMs;
     failureKind = result.status === STATUS_FAIL
       ? classifyFailure(definition, result.stderr, result.stdout)
       : '';
   }
+  if (result.status === STATUS_FAIL) {
+    recordFailureReason(attemptCount, result, failureKind);
+  }
+  const captureRetryTelemetry = isBrowserCorpusCase
+    ? captureRetryTelemetryFromOutput(result.stdout)
+    : {
+        captureAttemptCount: 0,
+        captureRetryCount: 0,
+        captureMaxRetries: 0,
+        captureRetryEvents: [],
+      };
+  for (const event of captureRetryTelemetry.captureRetryEvents) {
+    failureReasons.push({
+      attempt: event.attempt - 1,
+      failureKind: FAILURE_KIND_SETUP,
+      exitCode: 0,
+      signal: null,
+      summary: `${event.engineMode} browser capture retried and succeeded on attempt ${event.attempt}`,
+    });
+  }
   const expectedFailure = Boolean(definition.expectedFailure);
   const status = result.status === STATUS_FAIL && expectedFailure && failureKind === FAILURE_KIND_SONIC
     ? STATUS_KNOWN_FAILURE
     : result.status;
+  const finalAttemptPassed = result.status === STATUS_PASS;
   const failureSummary = result.status === STATUS_FAIL
     ? firstMeaningfulLine(result.stderr || result.stdout) || `Exited with ${result.exitCode ?? result.signal ?? 'unknown status'}`
     : '';
+  const effectiveRetryCount = Math.max(retryCount, captureRetryTelemetry.captureRetryCount);
+  const effectiveAttemptCount = Math.max(attemptCount, captureRetryTelemetry.captureAttemptCount);
+  const flakinessDebt = isBrowserCorpusCase && effectiveRetryCount > 0;
   return {
     id: definition.id,
     label: definition.label,
     kind: definition.kind,
     caseId: definition.caseId ?? null,
     caseRole: definition.caseRole ?? null,
+    engineMode,
+    attemptCount: isBrowserCorpusCase ? effectiveAttemptCount : null,
+    retryCount: isBrowserCorpusCase ? effectiveRetryCount : null,
+    wholeCaseRetryCount: isBrowserCorpusCase ? retryCount : null,
+    captureRetryCount: isBrowserCorpusCase ? captureRetryTelemetry.captureRetryCount : null,
+    captureRetryEvents: isBrowserCorpusCase ? captureRetryTelemetry.captureRetryEvents : [],
+    maxRetries: isBrowserCorpusCase ? maxRetries : null,
+    captureMaxRetries: isBrowserCorpusCase ? captureRetryTelemetry.captureMaxRetries : null,
+    firstAttemptPassed: isBrowserCorpusCase ? firstCommandAttemptPassed && captureRetryTelemetry.captureRetryCount === 0 : null,
+    finalAttemptPassed: isBrowserCorpusCase ? finalAttemptPassed : null,
+    failureReasons: isBrowserCorpusCase ? failureReasons : [],
+    flakinessDebt,
+    flakinessDebtReason: flakinessDebtReason(retryCount, captureRetryTelemetry.captureRetryCount),
     expectedFailure,
     knownFailure: definition.knownFailure ?? null,
     failureKind,
@@ -407,6 +510,19 @@ function skippedBrowserCase(caseId, entry, reason, url, caseRole = 'required', k
     kind: 'corpus',
     caseId,
     caseRole,
+    engineMode: engineModeFromCommand(command),
+    attemptCount: 0,
+    retryCount: 0,
+    wholeCaseRetryCount: 0,
+    captureRetryCount: 0,
+    captureRetryEvents: [],
+    maxRetries: CORPUS_SONIC_RETRY_ATTEMPTS,
+    captureMaxRetries: BROWSER_CAPTURE_MAX_RETRIES,
+    firstAttemptPassed: null,
+    finalAttemptPassed: null,
+    failureReasons: [],
+    flakinessDebt: false,
+    flakinessDebtReason: '',
     expectedFailure: Boolean(knownFailure),
     knownFailure,
     failureKind: '',
@@ -636,6 +752,19 @@ function corpusSetupFailureCheck(slice, corpus) {
     kind: 'corpus',
     caseId: null,
     caseRole: null,
+    engineMode: null,
+    attemptCount: 0,
+    retryCount: 0,
+    wholeCaseRetryCount: 0,
+    captureRetryCount: 0,
+    captureRetryEvents: [],
+    maxRetries: CORPUS_SONIC_RETRY_ATTEMPTS,
+    captureMaxRetries: BROWSER_CAPTURE_MAX_RETRIES,
+    firstAttemptPassed: null,
+    finalAttemptPassed: null,
+    failureReasons: [],
+    flakinessDebt: false,
+    flakinessDebtReason: '',
     expectedFailure: false,
     knownFailure: null,
     failureKind: FAILURE_KIND_SETUP,
@@ -660,6 +789,19 @@ function corpusStageMissingCheck(slice, corpus) {
     kind: 'corpus',
     caseId: null,
     caseRole: null,
+    engineMode: null,
+    attemptCount: 0,
+    retryCount: 0,
+    wholeCaseRetryCount: 0,
+    captureRetryCount: 0,
+    captureRetryEvents: [],
+    maxRetries: CORPUS_SONIC_RETRY_ATTEMPTS,
+    captureMaxRetries: BROWSER_CAPTURE_MAX_RETRIES,
+    firstAttemptPassed: null,
+    finalAttemptPassed: null,
+    failureReasons: [],
+    flakinessDebt: false,
+    flakinessDebtReason: '',
     expectedFailure: false,
     knownFailure: null,
     failureKind: FAILURE_KIND_SETUP,
@@ -728,11 +870,12 @@ async function runSlice(slice, options, corpus, browserSetup) {
   const skippedChecks = checks.filter((entry) => entry.status === STATUS_SKIPPED);
   const knownFailureChecks = checks.filter((entry) => entry.status === STATUS_KNOWN_FAILURE);
   const candidateChecks = checks.filter((entry) => entry.candidateOutcome);
+  const flakyChecks = checks.filter((entry) => entry.flakinessDebt);
   const runChecks = checks.filter((entry) => entry.status !== STATUS_SKIPPED);
   const status = failedChecks.length > 0 ? 'fail' : 'pass';
   const readiness = failedChecks.length > 0
     ? 'fail'
-    : skippedChecks.length > 0 || knownFailureChecks.length > 0 || candidateChecks.length > 0
+    : skippedChecks.length > 0 || knownFailureChecks.length > 0 || candidateChecks.length > 0 || flakyChecks.length > 0
       ? 'incomplete'
       : 'pass';
 
@@ -749,6 +892,7 @@ async function runSlice(slice, options, corpus, browserSetup) {
     checksSkipped: skippedChecks.length,
     checksKnownFailed: knownFailureChecks.length,
     checksCandidate: candidateChecks.length,
+    checksFlaky: flakyChecks.length,
     checksTotal: checks.length,
     moduleChecks: moduleResults,
     corpusCases: corpusResults,
@@ -768,17 +912,19 @@ function summarize(report) {
   const failedSlices = report.slices.filter((slice) => slice.status === STATUS_FAIL);
   const incompleteSlices = report.slices.filter((slice) => slice.readiness === 'incomplete');
   const fullSliceCoverage = (report.runner.selectedSlices?.length ?? 0) === sliceDefinitions.length;
+  const browserRetryTelemetry = report.browserRetryTelemetry ?? collectBrowserRetryTelemetry(report);
   const checks = [
     ...setupChecks,
     ...report.slices.flatMap((slice) => [...slice.moduleChecks, ...slice.corpusCases]),
   ];
   const knownFailureChecks = checks.filter((entry) => entry.status === STATUS_KNOWN_FAILURE);
   const candidateChecks = checks.filter((entry) => entry.candidateOutcome);
+  const flakyChecks = checks.filter((entry) => entry.flakinessDebt);
   return {
     status: failedSetupChecks.length > 0 || failedSlices.length > 0 ? 'fail' : 'pass',
     readiness: failedSetupChecks.length > 0 || failedSlices.length > 0
       ? 'fail'
-      : !fullSliceCoverage || incompleteSlices.length > 0 || skippedSetupChecks.length > 0 || knownFailureChecks.length > 0 || candidateChecks.length > 0
+      : !fullSliceCoverage || incompleteSlices.length > 0 || skippedSetupChecks.length > 0 || knownFailureChecks.length > 0 || candidateChecks.length > 0 || browserRetryTelemetry.flakyCaseCount > 0
         ? 'incomplete'
         : 'pass',
     sliceCoverage: fullSliceCoverage ? 'complete' : 'partial',
@@ -794,7 +940,72 @@ function summarize(report) {
     checksSkipped: checks.filter((entry) => entry.status === STATUS_SKIPPED).length,
     checksKnownFailed: knownFailureChecks.length,
     checksCandidate: candidateChecks.length,
+    checksFlaky: flakyChecks.length,
     checksTotal: checks.length,
+    worstCaseRetries: browserRetryTelemetry.worstCaseRetries,
+    retryHistogram: browserRetryTelemetry.retryHistogram,
+    flakyCaseCount: browserRetryTelemetry.flakyCaseCount,
+  };
+}
+
+function collectBrowserRetryTelemetry(report) {
+  const corpusCases = (report.slices ?? [])
+    .flatMap((slice) => slice.corpusCases ?? [])
+    .filter((entry) => entry.kind === 'corpus' && entry.caseId);
+  const retryHistogram = Object.fromEntries(
+    Array.from({ length: CORPUS_SONIC_RETRY_ATTEMPTS + 1 }, (_entry, index) => [String(index), 0]),
+  );
+  let worstCaseRetries = 0;
+  const cases = corpusCases.map((entry) => {
+    const capturedRetryTelemetry = captureRetryTelemetryFromOutput(entry.stdoutTail ?? '');
+    const captureRetryCount = Number.isFinite(entry.captureRetryCount)
+      ? entry.captureRetryCount
+      : capturedRetryTelemetry.captureRetryCount;
+    const wholeCaseRetryCount = Number.isFinite(entry.wholeCaseRetryCount)
+      ? entry.wholeCaseRetryCount
+      : Math.max(0, Number(entry.attemptCount ?? 1) - 1);
+    const retryCount = Number.isFinite(entry.retryCount)
+      ? entry.retryCount
+      : Math.max(wholeCaseRetryCount, captureRetryCount);
+    worstCaseRetries = Math.max(worstCaseRetries, retryCount);
+    retryHistogram[String(retryCount)] = (retryHistogram[String(retryCount)] ?? 0) + 1;
+    const flakinessDebt = Boolean(entry.flakinessDebt) || retryCount > 0;
+    return {
+      caseId: entry.caseId,
+      engineMode: entry.engineMode ?? null,
+      status: entry.status,
+      attemptCount: Math.max(entry.attemptCount ?? 0, capturedRetryTelemetry.captureAttemptCount),
+      retryCount,
+      wholeCaseRetryCount,
+      captureRetryCount,
+      captureRetryEvents: entry.captureRetryEvents ?? capturedRetryTelemetry.captureRetryEvents,
+      maxRetries: entry.maxRetries ?? CORPUS_SONIC_RETRY_ATTEMPTS,
+      captureMaxRetries: entry.captureMaxRetries ?? BROWSER_CAPTURE_MAX_RETRIES,
+      firstAttemptPassed: entry.firstAttemptPassed ?? null,
+      finalAttemptPassed: entry.finalAttemptPassed ?? null,
+      failureReasons: entry.failureReasons ?? [],
+      flakinessDebt,
+      flakinessDebtReason: entry.flakinessDebtReason || flakinessDebtReason(wholeCaseRetryCount, captureRetryCount),
+    };
+  });
+  const flakyCases = cases.filter((entry) => entry.flakinessDebt);
+  return {
+    maxRetries: CORPUS_SONIC_RETRY_ATTEMPTS,
+    retryableFailureKinds: [FAILURE_KIND_SONIC],
+    nonRetryableFailureKinds: [FAILURE_KIND_SETUP, FAILURE_KIND_CORE_OUTPUT, FAILURE_KIND_CHECK],
+    thresholds: {
+      anyRetryIsFlakinessDebt: true,
+      maxAllowedFlakyCaseCountForFinalGate: 0,
+      maxAllowedWorstCaseRetriesForFinalGate: 0,
+      maxAllowedCaptureRetryCountForFinalGate: 0,
+      maxAllowedWholeCaseRetryCountForFinalGate: 0,
+    },
+    worstCaseRetries,
+    retryHistogram,
+    flakyCaseCount: flakyCases.length,
+    flakinessDebt: flakyCases.length > 0,
+    flakyCases,
+    cases,
   };
 }
 
@@ -879,6 +1090,8 @@ function markdownReport(report) {
     '',
     `Browser corpus: ${report.runner.browserCorpus ? `run against ${report.runner.url}` : 'skipped'}`,
     '',
+    `Browser retry telemetry: flaky cases ${report.browserRetryTelemetry.flakyCaseCount}, worst-case retries ${report.browserRetryTelemetry.worstCaseRetries}, max retries ${report.browserRetryTelemetry.maxRetries}`,
+    '',
     '## Rerun Commands',
     '',
     `Non-browser backbone: \`${report.runner.rerunCommands.nonBrowser}\``,
@@ -906,12 +1119,37 @@ function markdownReport(report) {
   lines.push(
     '## Slice Status',
     '',
-    '| Slice | Check Status | Full Readiness | Passed | Failed | Known Failed | Candidate | Skipped |',
-    '| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |',
+    '| Slice | Check Status | Full Readiness | Passed | Failed | Known Failed | Candidate | Flaky | Skipped |',
+    '| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |',
   );
 
   for (const slice of report.slices) {
-    lines.push(`| ${slice.label} | ${statusLabel(slice.status)} | ${statusLabel(slice.readiness)} | ${slice.checksPassed} | ${slice.checksFailed} | ${slice.checksKnownFailed} | ${slice.checksCandidate} | ${slice.checksSkipped} |`);
+    lines.push(`| ${slice.label} | ${statusLabel(slice.status)} | ${statusLabel(slice.readiness)} | ${slice.checksPassed} | ${slice.checksFailed} | ${slice.checksKnownFailed} | ${slice.checksCandidate} | ${slice.checksFlaky ?? 0} | ${slice.checksSkipped} |`);
+  }
+
+  lines.push(
+    '',
+    '## Browser Retry Telemetry',
+    '',
+    `Max whole-case sonic retries: ${report.browserRetryTelemetry.maxRetries}`,
+    '',
+    `Final gate clean thresholds: flakyCaseCount <= ${report.browserRetryTelemetry.thresholds.maxAllowedFlakyCaseCountForFinalGate}; worstCaseRetries <= ${report.browserRetryTelemetry.thresholds.maxAllowedWorstCaseRetriesForFinalGate}`,
+    '',
+    `Retry histogram: ${Object.entries(report.browserRetryTelemetry.retryHistogram).map(([retryCount, count]) => `${retryCount}:${count}`).join(', ')}`,
+    '',
+  );
+
+  if (report.browserRetryTelemetry.flakyCases.length > 0) {
+    lines.push(
+      '| Case | Engine | Attempts | Retries | Whole-Case Retries | Capture Retries | First Attempt | Final Attempt | Debt Reason |',
+      '| --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |',
+    );
+    for (const entry of report.browserRetryTelemetry.flakyCases) {
+      lines.push(`| ${entry.caseId} | ${entry.engineMode ?? '-'} | ${entry.attemptCount} | ${entry.retryCount}/${entry.maxRetries} | ${entry.wholeCaseRetryCount} | ${entry.captureRetryCount}/${entry.captureMaxRetries} | ${entry.firstAttemptPassed ? 'PASS' : 'FAIL'} | ${entry.finalAttemptPassed ? 'PASS' : 'FAIL'} | ${entry.flakinessDebtReason} |`);
+    }
+    lines.push('');
+  } else {
+    lines.push('No flakiness debt recorded; every executed browser corpus case passed on its first attempt.', '');
   }
 
   lines.push(
@@ -962,16 +1200,19 @@ function markdownReport(report) {
     }
 
     lines.push(
-      '| Status | Kind | Check | Duration | Rerun / Reason |',
-      '| --- | --- | --- | ---: | --- |',
+      '| Status | Kind | Check | Duration | Retries | Rerun / Reason |',
+      '| --- | --- | --- | ---: | ---: | --- |',
     );
 
     for (const entry of [...slice.moduleChecks, ...slice.corpusCases]) {
       const role = entry.caseRole ? ` (${entry.caseRole}${entry.candidateOutcome ? ', candidate' : ''})` : '';
+      const retryCell = entry.kind === 'corpus' && entry.caseId
+        ? `${entry.retryCount ?? 0}/${entry.maxRetries ?? 0}${entry.flakinessDebt ? ' debt' : ''}`
+        : '-';
       const reason = entry.status === STATUS_SKIPPED
         ? `${entry.skipReason} Rerun: \`${entry.rerunCommand}\``
         : `\`${entry.rerunCommand}\``;
-      lines.push(`| ${statusLabel(entry.status)} | ${entry.kind}${role} | ${entry.label} | ${formatDuration(entry.durationMs)} | ${reason} |`);
+      lines.push(`| ${statusLabel(entry.status)} | ${entry.kind}${role} | ${entry.label} | ${formatDuration(entry.durationMs)} | ${retryCell} | ${reason} |`);
     }
 
     const failures = [...slice.moduleChecks, ...slice.corpusCases].filter((entry) => (
@@ -1110,6 +1351,38 @@ function runSelfCheck() {
   assert(failedCandidateSummary.checksCandidate === 1, 'failed candidate case is still counted as candidate');
   assert(failedCandidateSummary.checksFailed === 1, 'failed candidate case is still counted as failed');
 
+  const flakyReport = {
+    ...completePassingReport,
+    slices: [
+      {
+        ...selfCheckSlice('pad', 'incomplete'),
+        corpusCases: [{
+          kind: 'corpus',
+          caseId: 'self-check-flaky',
+          engineMode: 'core-wasm',
+          status: STATUS_PASS,
+          attemptCount: 2,
+          retryCount: 1,
+          maxRetries: 2,
+          firstAttemptPassed: false,
+          finalAttemptPassed: true,
+          failureReasons: [{ attempt: 1, failureKind: FAILURE_KIND_SONIC, summary: 'first attempt failed' }],
+          flakinessDebt: true,
+        }],
+      },
+      selfCheckSlice('fx'),
+      selfCheckSlice('source'),
+      selfCheckSlice('full'),
+    ],
+  };
+  flakyReport.browserRetryTelemetry = collectBrowserRetryTelemetry(flakyReport);
+  const flakySummary = summarize(flakyReport);
+  assert(flakySummary.status === 'pass', 'flaky retry debt can keep check status passing after final pass');
+  assert(flakySummary.readiness === 'incomplete', 'flaky retry debt prevents full readiness');
+  assert(flakySummary.flakyCaseCount === 1, 'flaky case count is reported in summary');
+  assert(flakySummary.worstCaseRetries === 1, 'worst retry count is reported in summary');
+  assert(flakyReport.browserRetryTelemetry.retryHistogram['1'] === 1, 'retry histogram counts retried cases');
+
   const coreOutputKind = classifyFailure(
     { kind: 'corpus' },
     'Sonic parity sonic/core-output failure: core-wasm capture has non-finite core output',
@@ -1132,6 +1405,9 @@ function runSelfCheck() {
   assert(parseBoundedRetryCount('99') === MAX_CORPUS_SONIC_RETRY_ATTEMPTS, 'retry count is capped');
   assert(parseBoundedRetryCount('-1') === 0, 'retry count lower bound disables retries');
   assert(parseBoundedRetryCount('abc', 2) === 2, 'retry count falls back on invalid input');
+  const captureRetryTelemetry = captureRetryTelemetryFromOutput('  core-wasm browser logs:\n    [retry] core-wasm capture succeeded on attempt 2\n');
+  assert(captureRetryTelemetry.captureRetryCount === 1, 'browser capture retry telemetry parses retry logs');
+  assert(flakinessDebtReason(0, 1).includes('browser capture attempt'), 'capture retries get a flakiness debt reason');
 
   console.log(`Readiness runner self-check passed (${assertions} assertions).`);
 }
@@ -1180,53 +1456,54 @@ async function main() {
 
     const finishedAt = new Date();
     const report = {
-    schemaVersion: 1,
-    generatedAt: finishedAt.toISOString(),
-    runner: {
-      cwd: root,
-      command: commandText([process.execPath, 'scripts/check-kessho-core-parity-readiness.mjs', ...process.argv.slice(2)]),
-      browserCorpus: options.browserCorpus,
-      url: options.url,
-      selectedSlices: selectedSlices.map((slice) => slice.id),
-      startedAt: startedAt.toISOString(),
-      finishedAt: finishedAt.toISOString(),
-      durationMs: finishedAt.getTime() - startedAt.getTime(),
-      reportPaths: {
-        json: toRelative(paths.json),
-        markdown: toRelative(paths.markdown),
+      schemaVersion: 1,
+      generatedAt: finishedAt.toISOString(),
+      runner: {
+        cwd: root,
+        command: commandText([process.execPath, 'scripts/check-kessho-core-parity-readiness.mjs', ...process.argv.slice(2)]),
+        browserCorpus: options.browserCorpus,
+        url: options.url,
+        selectedSlices: selectedSlices.map((slice) => slice.id),
+        startedAt: startedAt.toISOString(),
+        finishedAt: finishedAt.toISOString(),
+        durationMs: finishedAt.getTime() - startedAt.getTime(),
+        reportPaths: {
+          json: toRelative(paths.json),
+          markdown: toRelative(paths.markdown),
+        },
+        rerunCommands: buildRerunCommands(options, selectedSlices),
       },
-      rerunCommands: buildRerunCommands(options, selectedSlices),
-    },
-    setupChecks: [
-      {
-        id: corpus.report.id,
-        label: corpus.report.label,
-        kind: 'setup',
-        status: corpus.report.status,
-        failureKind: corpus.report.status === STATUS_FAIL ? FAILURE_KIND_SETUP : '',
-        command: corpus.report.commandText,
-        rerunCommand: corpus.report.rerunCommand ?? corpus.report.commandText,
-        exitCode: corpus.report.exitCode,
-        signal: null,
-        durationMs: corpus.report.durationMs,
-        stdoutTail: corpus.report.stdoutTail,
-        stderrTail: corpus.report.stderrTail,
-        failureSummary: corpus.report.error,
-        skipReason: '',
-      },
-      browserSetup,
-    ],
-    corpusContract: corpus.report,
-    slices,
-  };
+      setupChecks: [
+        {
+          id: corpus.report.id,
+          label: corpus.report.label,
+          kind: 'setup',
+          status: corpus.report.status,
+          failureKind: corpus.report.status === STATUS_FAIL ? FAILURE_KIND_SETUP : '',
+          command: corpus.report.commandText,
+          rerunCommand: corpus.report.rerunCommand ?? corpus.report.commandText,
+          exitCode: corpus.report.exitCode,
+          signal: null,
+          durationMs: corpus.report.durationMs,
+          stdoutTail: corpus.report.stdoutTail,
+          stderrTail: corpus.report.stderrTail,
+          failureSummary: corpus.report.error,
+          skipReason: '',
+        },
+        browserSetup,
+      ],
+      corpusContract: corpus.report,
+      slices,
+    };
+    report.browserRetryTelemetry = collectBrowserRetryTelemetry(report);
     report.summary = summarize(report);
 
     writeReports(report, paths);
 
     console.log('\n== Summary ==');
-    console.log(`  Overall: ${report.summary.status.toUpperCase()} (readiness ${report.summary.readiness.toUpperCase()}, coverage ${report.summary.sliceCoverage.toUpperCase()}, setup pass ${report.summary.setupPassed}, setup fail ${report.summary.setupFailed}, setup skip ${report.summary.setupSkipped})`);
+    console.log(`  Overall: ${report.summary.status.toUpperCase()} (readiness ${report.summary.readiness.toUpperCase()}, coverage ${report.summary.sliceCoverage.toUpperCase()}, setup pass ${report.summary.setupPassed}, setup fail ${report.summary.setupFailed}, setup skip ${report.summary.setupSkipped}, flaky cases ${report.summary.flakyCaseCount}, worst retries ${report.summary.worstCaseRetries})`);
     for (const slice of report.slices) {
-      console.log(`  ${slice.label}: ${slice.status.toUpperCase()} (readiness ${slice.readiness.toUpperCase()}, pass ${slice.checksPassed}, fail ${slice.checksFailed}, known fail ${slice.checksKnownFailed}, candidate ${slice.checksCandidate}, skip ${slice.checksSkipped})`);
+      console.log(`  ${slice.label}: ${slice.status.toUpperCase()} (readiness ${slice.readiness.toUpperCase()}, pass ${slice.checksPassed}, fail ${slice.checksFailed}, known fail ${slice.checksKnownFailed}, candidate ${slice.checksCandidate}, flaky ${slice.checksFlaky ?? 0}, skip ${slice.checksSkipped})`);
     }
     console.log(`Reports: ${toRelative(paths.markdown)}, ${toRelative(paths.json)}`);
 

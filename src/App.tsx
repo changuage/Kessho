@@ -111,6 +111,7 @@ import {
   type RecordTrackId,
   type StemRecordTrackId,
 } from './audio/recordingTracks';
+import SnowflakeGeneratorPage from './ui/snowflakeGenerator/SnowflakeGeneratorPage';
 
 const JourneyModeView = React.lazy(() => import('./ui/JourneyModeView'));
 const GlobalPage = React.lazy(() => import('./ui/global/GlobalPage'));
@@ -132,6 +133,7 @@ const CAPACITOR_LOCAL_STATE_PRESET_SCOPE = 'global';
 const isSonicParityMode = () =>
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1';
 type AudioEngineRuntimeMode = 'web-ts' | 'core-bridge' | 'core-product';
+const AUDIO_ENGINE_RUNTIME_MODES = ['web-ts', 'core-bridge', 'core-product'] as const satisfies readonly AudioEngineRuntimeMode[];
 const AUDIO_ENGINE_SWITCHER_PARAM = 'engineAB';
 const AUDIO_ENGINE_PARAM = 'engine';
 const AUDIO_ENGINE_SWITCH_STATE_PARAM = 'engineState';
@@ -205,6 +207,18 @@ function shouldStartInAdvancedEditor(): boolean {
   } catch {
     return false;
   }
+}
+
+function audioEngineRuntimeModeLabel(mode: AudioEngineRuntimeMode): string {
+  if (mode === 'web-ts') return 'Web';
+  if (mode === 'core-bridge') return 'Bridge';
+  return 'Product';
+}
+
+function audioEngineRuntimeModeTitle(mode: AudioEngineRuntimeMode): string {
+  if (mode === 'web-ts') return 'Switch to Web TS reference';
+  if (mode === 'core-bridge') return 'Switch to Core bridge';
+  return 'Switch to Product Core';
 }
 
 function saveAudioEngineSwitchState(state: SliderState): string | null {
@@ -948,6 +962,44 @@ const styles = {
   } as React.CSSProperties,
   presetButton: {
     color: 'rgba(255,255,255,0.7)',
+  } as React.CSSProperties,
+  mainEngineSwitch: {
+    display: 'grid',
+    gridTemplateColumns: `repeat(${AUDIO_ENGINE_RUNTIME_MODES.length}, minmax(0, 1fr))`,
+    width: 'min(270px, 100%)',
+    minHeight: '36px',
+    overflow: 'hidden',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: '8px',
+    background: 'rgba(0, 0, 0, 0.24)',
+    boxShadow: '0 10px 24px rgba(0, 0, 0, 0.18)',
+  } as React.CSSProperties,
+  mainEngineSwitchFloating: {
+    position: 'fixed',
+    top: 'calc(14px + env(safe-area-inset-top))',
+    right: '14px',
+    zIndex: 1200,
+    width: 'min(270px, calc(100vw - 28px))',
+    backdropFilter: 'blur(12px)',
+  } as React.CSSProperties,
+  mainEngineSwitchButton: {
+    minWidth: 0,
+    padding: '8px 10px',
+    border: 'none',
+    borderRight: '1px solid rgba(255, 255, 255, 0.1)',
+    background: 'transparent',
+    color: 'rgba(255, 255, 255, 0.58)',
+    cursor: 'pointer',
+    fontSize: '0.72rem',
+    fontWeight: 800,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    transition: 'background 0.16s ease, color 0.16s ease',
+  } as React.CSSProperties,
+  mainEngineSwitchButtonActive: {
+    background: 'rgba(103, 232, 249, 0.16)',
+    color: '#67e8f9',
+    boxShadow: 'inset 0 -2px 0 rgba(103, 232, 249, 0.55)',
   } as React.CSSProperties,
   presetListContainer: {
     background: 'rgba(15, 25, 40, 0.95)',
@@ -1916,6 +1968,9 @@ const App: React.FC = () => {
   
   const isSnowflakePrototypeRoute = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).get('snowflakePrototype') === '1'
+    : false;
+  const isSnowflakeGeneratorRoute = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('snowflakeGenerator') === '1'
     : false;
   const startInAdvancedEditor = useMemo(() => shouldStartInAdvancedEditor(), []);
 
@@ -6817,6 +6872,29 @@ const App: React.FC = () => {
     });
   }, []);
 
+  if (isSnowflakeGeneratorRoute) {
+    const clearGeneratorRoute = () => {
+      if (typeof window === 'undefined') return;
+      const params = new URLSearchParams(window.location.search);
+      params.delete('snowflakeGenerator');
+      const nextSearch = params.toString();
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`,
+      );
+    };
+
+    return (
+      <SnowflakeGeneratorPage
+        onBack={() => {
+          clearGeneratorRoute();
+          setUiMode('snowflake');
+        }}
+      />
+    );
+  }
+
   if (isSnowflakePrototypeRoute) {
     const clearPrototypeRoute = () => {
       if (typeof window === 'undefined') return;
@@ -6941,6 +7019,30 @@ const App: React.FC = () => {
           transition: 'opacity 0.5s ease-in-out',
           visibility: showSplash ? 'hidden' : 'visible',
         }}>
+          <div
+            style={{ ...styles.mainEngineSwitch, ...styles.mainEngineSwitchFloating }}
+            role="group"
+            aria-label="Audio engine"
+            data-testid="main-audio-engine-switch"
+          >
+            {AUDIO_ENGINE_RUNTIME_MODES.map((mode, index) => (
+              <button
+                key={mode}
+                type="button"
+                data-testid={`main-audio-engine-switch-${mode}`}
+                style={{
+                  ...styles.mainEngineSwitchButton,
+                  ...(index === AUDIO_ENGINE_RUNTIME_MODES.length - 1 ? { borderRight: 'none' } : {}),
+                  ...(audioEngineRuntimeMode === mode ? styles.mainEngineSwitchButtonActive : {}),
+                }}
+                aria-pressed={audioEngineRuntimeMode === mode}
+                onClick={() => handleAudioEngineRuntimeModeChange(mode)}
+                title={audioEngineRuntimeModeTitle(mode)}
+              >
+                {audioEngineRuntimeModeLabel(mode)}
+              </button>
+            ))}
+          </div>
           <SnowflakeUI
             state={snowflakeActivated ? state : welcomeDisplayState}
             onChange={snowflakeActivated ? handleSliderChange : handleWelcomeSliderChange}
@@ -7064,6 +7166,25 @@ const App: React.FC = () => {
         >
           ❄
         </button>
+        <div style={styles.mainEngineSwitch} role="group" aria-label="Audio engine" data-testid="main-audio-engine-switch">
+          {AUDIO_ENGINE_RUNTIME_MODES.map((mode, index) => (
+            <button
+              key={mode}
+              type="button"
+              data-testid={`main-audio-engine-switch-${mode}`}
+              style={{
+                ...styles.mainEngineSwitchButton,
+                ...(index === AUDIO_ENGINE_RUNTIME_MODES.length - 1 ? { borderRight: 'none' } : {}),
+                ...(audioEngineRuntimeMode === mode ? styles.mainEngineSwitchButtonActive : {}),
+              }}
+              aria-pressed={audioEngineRuntimeMode === mode}
+              onClick={() => handleAudioEngineRuntimeModeChange(mode)}
+              title={audioEngineRuntimeModeTitle(mode)}
+            >
+              {audioEngineRuntimeModeLabel(mode)}
+            </button>
+          ))}
+        </div>
         <input
           ref={(el) => (fileInputRef.current = el)}
           type="file"

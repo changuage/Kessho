@@ -18,6 +18,8 @@ type ArmSlot = 0 | 1 | 2 | 3 | 4 | 5;
 
 type SourceFamily = 'synth' | 'lead' | 'drums' | 'granular' | 'earth' | 'other';
 
+type SnowflakeFamily = 'stellarPlate' | 'fernDendrite' | 'sectoredPlate' | 'broadPlate' | 'needleStar';
+
 interface SourceConfig {
   id: string;
   label: string;
@@ -63,6 +65,30 @@ interface ArmLayout {
 interface Point {
   x: number;
   y: number;
+}
+
+interface SnowflakeMorphology {
+  seed: number;
+  family: SnowflakeFamily;
+  armFullness: number;
+  branchCount: number;
+  branchStart: number;
+  branchEnd: number;
+  branchAngle: number;
+  secondaryAngle: number;
+  tertiaryAngle: number;
+  branchLength: number;
+  branchTaper: number;
+  branchJitter: number;
+  stemWidth: number;
+  branchWidth: number;
+  plateStrength: number;
+  plateRadius: number;
+  ringCount: number;
+  ringWeight: number;
+  terminalScale: number;
+  sideForkScale: number;
+  crystalFill: number;
 }
 
 interface SnowflakePrototypePageProps {
@@ -335,6 +361,192 @@ function resolveCurrentNorm(source: SourceVisual, time: number, runtimePosition?
 
 function formatPercent(value: number): string {
   return `${Math.round(clamp01(value) * 100)}%`;
+}
+
+function sourcePatternSeed(id: string): number {
+  return Array.from(id).reduce((sum, char, index) => sum + char.charCodeAt(0) * (index + 3), 0);
+}
+
+function snowflakeValueNorm(value: number): number {
+  return clamp(value / 1.5, 0, 1);
+}
+
+function hashString(value: string): number {
+  return Array.from(value).reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) | 0, 0);
+}
+
+function radians(degrees: number): number {
+  return (degrees * Math.PI) / 180;
+}
+
+function lerp(min: number, max: number, t: number): number {
+  return min + (max - min) * t;
+}
+
+function buildSnowflakeMorphology(seedKey: string, scenario: PrototypeScenario, activeCount: number): SnowflakeMorphology {
+  const seed = Math.abs(hashString(`${scenario}:${activeCount}:${seedKey}`));
+  const n = (offset: number) => seededNoise(seed + offset * 97);
+  const liveChoice = n(1);
+  const family: SnowflakeFamily = scenario === 'sparse'
+    ? 'stellarPlate'
+    : scenario === 'dense'
+      ? 'fernDendrite'
+      : scenario === 'full'
+        ? 'sectoredPlate'
+        : liveChoice < 0.22
+          ? 'broadPlate'
+          : liveChoice < 0.48
+            ? 'fernDendrite'
+            : liveChoice < 0.74
+              ? 'sectoredPlate'
+              : 'needleStar';
+
+  const base = {
+    seed,
+    family,
+    armFullness: 0.92,
+    branchCount: 7,
+    branchStart: 0.16,
+    branchEnd: 0.9,
+    branchAngle: radians(55),
+    secondaryAngle: radians(44),
+    tertiaryAngle: radians(66),
+    branchLength: 0.15,
+    branchTaper: 0.08,
+    branchJitter: 0.03,
+    stemWidth: 3,
+    branchWidth: 1.6,
+    plateStrength: 0.35,
+    plateRadius: 3.2,
+    ringCount: 3,
+    ringWeight: 1,
+    terminalScale: 1,
+    sideForkScale: 0.75,
+    crystalFill: 0.12,
+  };
+
+  if (family === 'stellarPlate') {
+    return {
+      ...base,
+      armFullness: lerp(0.82, 0.94, n(2)),
+      branchCount: 4 + Math.round(n(3) * 2),
+      branchStart: 0.24,
+      branchEnd: 0.82,
+      branchAngle: radians(43 + n(4) * 12),
+      secondaryAngle: radians(54 + n(5) * 10),
+      tertiaryAngle: radians(34 + n(6) * 12),
+      branchLength: lerp(0.12, 0.18, n(7)),
+      branchTaper: 0.035,
+      branchJitter: 0.018,
+      stemWidth: lerp(3.8, 5.2, n(8)),
+      branchWidth: lerp(2.1, 3.1, n(9)),
+      plateStrength: lerp(0.62, 0.86, n(10)),
+      plateRadius: lerp(4.6, 7.2, n(11)),
+      ringCount: 4,
+      ringWeight: 1.35,
+      terminalScale: 1.28,
+      sideForkScale: 0.5,
+      crystalFill: 0.2,
+    };
+  }
+
+  if (family === 'fernDendrite') {
+    return {
+      ...base,
+      armFullness: lerp(0.94, 1, n(12)),
+      branchCount: 8 + Math.round(n(13) * 3),
+      branchStart: 0.12,
+      branchEnd: 0.93,
+      branchAngle: radians(56 + n(14) * 10),
+      secondaryAngle: radians(31 + n(15) * 13),
+      tertiaryAngle: radians(68 + n(16) * 9),
+      branchLength: lerp(0.15, 0.22, n(17)),
+      branchTaper: lerp(0.08, 0.14, n(18)),
+      branchJitter: 0.042,
+      stemWidth: lerp(2.7, 3.6, n(19)),
+      branchWidth: lerp(1.3, 2.0, n(20)),
+      plateStrength: lerp(0.18, 0.36, n(21)),
+      plateRadius: lerp(2.3, 4.1, n(22)),
+      ringCount: 2,
+      ringWeight: 0.7,
+      terminalScale: 0.95,
+      sideForkScale: 0.95,
+      crystalFill: 0.08,
+    };
+  }
+
+  if (family === 'sectoredPlate') {
+    return {
+      ...base,
+      armFullness: lerp(0.88, 0.98, n(23)),
+      branchCount: 5 + Math.round(n(24) * 2),
+      branchStart: 0.2,
+      branchEnd: 0.88,
+      branchAngle: radians(49 + n(25) * 12),
+      secondaryAngle: radians(59 + n(26) * 8),
+      tertiaryAngle: radians(40 + n(27) * 10),
+      branchLength: lerp(0.16, 0.24, n(28)),
+      branchTaper: 0.055,
+      branchJitter: 0.02,
+      stemWidth: lerp(3.4, 4.8, n(29)),
+      branchWidth: lerp(2.0, 2.8, n(30)),
+      plateStrength: lerp(0.75, 1, n(31)),
+      plateRadius: lerp(5.2, 8.4, n(32)),
+      ringCount: 5,
+      ringWeight: 1.55,
+      terminalScale: 1.15,
+      sideForkScale: 0.62,
+      crystalFill: 0.22,
+    };
+  }
+
+  if (family === 'broadPlate') {
+    return {
+      ...base,
+      armFullness: lerp(0.78, 0.9, n(33)),
+      branchCount: 3 + Math.round(n(34) * 2),
+      branchStart: 0.28,
+      branchEnd: 0.76,
+      branchAngle: radians(35 + n(35) * 12),
+      secondaryAngle: radians(65 + n(36) * 8),
+      tertiaryAngle: radians(30 + n(37) * 8),
+      branchLength: lerp(0.18, 0.28, n(38)),
+      branchTaper: 0.02,
+      branchJitter: 0.015,
+      stemWidth: lerp(4.4, 6.3, n(39)),
+      branchWidth: lerp(2.8, 4.2, n(40)),
+      plateStrength: lerp(0.86, 1, n(41)),
+      plateRadius: lerp(7, 10, n(42)),
+      ringCount: 4,
+      ringWeight: 1.85,
+      terminalScale: 1.45,
+      sideForkScale: 0.36,
+      crystalFill: 0.28,
+    };
+  }
+
+  return {
+    ...base,
+    armFullness: lerp(0.96, 1, n(43)),
+    branchCount: 6 + Math.round(n(44) * 2),
+    branchStart: 0.18,
+    branchEnd: 0.9,
+    branchAngle: radians(62 + n(45) * 8),
+    secondaryAngle: radians(28 + n(46) * 10),
+    tertiaryAngle: radians(75 + n(47) * 8),
+    branchLength: lerp(0.09, 0.14, n(48)),
+    branchTaper: 0.04,
+    branchJitter: 0.03,
+    stemWidth: lerp(2.9, 4.2, n(49)),
+    branchWidth: lerp(1.8, 2.5, n(50)),
+    plateStrength: lerp(0.24, 0.48, n(51)),
+    plateRadius: lerp(3.2, 5.2, n(52)),
+    ringCount: 1,
+    ringWeight: 0.55,
+    terminalScale: 1.15,
+    sideForkScale: 0.42,
+    crystalFill: 0.1,
+  };
 }
 
 function slotAngle(slot: number): number {
@@ -641,6 +853,16 @@ const SnowflakePrototypePage: React.FC<SnowflakePrototypePageProps> = ({
     return new Map(entries);
   }, [layout]);
   const globalFx = useMemo(() => getGlobalFx(state, scenario), [scenario, state]);
+  const layoutSeedKey = useMemo(() => layout.map((arm) => `${arm.slot}:${arm.source.id}`).join('|'), [layout]);
+  const morphology = useMemo(
+    () => buildSnowflakeMorphology(layoutSeedKey || 'empty', scenario, layout.length),
+    [layout.length, layoutSeedKey, scenario],
+  );
+  const latticeComplexity = useMemo(() => {
+    if (layout.length === 0) return 0.28;
+    const activeAverage = layout.reduce((sum, arm) => sum + snowflakeValueNorm(arm.source.displayNorm), 0) / layout.length;
+    return clamp01(0.32 + activeAverage * 0.34 + morphology.plateStrength * 0.34 + (layout.length / 6) * 0.08 + globalFx.reverb * 0.1);
+  }, [globalFx.reverb, layout, morphology.plateStrength]);
 
   const animateTrimTo = useCallback((id: string, to: number, duration = 10000) => {
     const from = trims[id] ?? 1;
@@ -820,6 +1042,14 @@ const SnowflakePrototypePage: React.FC<SnowflakePrototypePageProps> = ({
           </defs>
 
           <circle cx={center.x} cy={center.y} r={size * 0.49} fill="url(#prototypeBg)" />
+          <SnowflakePlateLattice
+            center={center}
+            baseRadius={baseRadius}
+            maxArmLength={maxArmLength}
+            complexity={latticeComplexity}
+            morphology={morphology}
+            time={time}
+          />
           {Array.from({ length: 6 }, (_, slot) => (
             <ScaffoldArm
               key={`scaffold-${slot}`}
@@ -827,23 +1057,30 @@ const SnowflakePrototypePage: React.FC<SnowflakePrototypePageProps> = ({
               center={center}
               baseRadius={baseRadius}
               maxArmLength={maxArmLength}
+              morphology={morphology}
               time={time}
             />
           ))}
+          <OverlappingCrystalField
+            center={center}
+            baseRadius={baseRadius}
+            maxArmLength={maxArmLength}
+            complexity={latticeComplexity}
+            morphology={morphology}
+            time={time}
+          />
 
-          <circle
-            cx={center.x}
-            cy={center.y}
-            r={baseRadius * (0.82 + globalFx.dynamics * 0.08)}
-            fill="rgba(235,247,255,0.12)"
-            stroke="rgba(235,247,255,0.42)"
-            strokeWidth={1}
+          <polygon
+            points={hexagonPoints(center, -Math.PI / 2, baseRadius * (0.96 + globalFx.dynamics * 0.04))}
+            fill="rgba(235,247,255,0.008)"
+            stroke="rgba(235,247,255,0.08)"
+            strokeWidth={0.55}
           />
           <polygon
             points={hexagonPoints(center, -Math.PI / 2, baseRadius * 0.52)}
-            fill="rgba(245,251,255,0.16)"
-            stroke="rgba(245,251,255,0.64)"
-            strokeWidth={0.9}
+            fill="rgba(245,251,255,0.018)"
+            stroke="rgba(245,251,255,0.18)"
+            strokeWidth={0.6}
           />
           {Array.from({ length: 6 }, (_, slot) => {
             const angle = slotAngle(slot);
@@ -856,8 +1093,8 @@ const SnowflakePrototypePage: React.FC<SnowflakePrototypePageProps> = ({
                 y1={inner.y}
                 x2={outer.x}
                 y2={outer.y}
-                stroke="rgba(235,247,255,0.42)"
-                strokeWidth={0.75}
+                stroke="rgba(235,247,255,0.12)"
+                strokeWidth={0.5}
                 strokeLinecap="round"
               />
             );
@@ -873,8 +1110,8 @@ const SnowflakePrototypePage: React.FC<SnowflakePrototypePageProps> = ({
               time={time}
               hovered={hoveredId === arm.source.id}
               selected={selectedId === arm.source.id}
-              globalCharacter={globalFx.character}
               globalDynamics={globalFx.dynamics}
+              morphology={morphology}
               compact={compact}
               onPointerDown={(event) => {
                 clearLongPress();
@@ -933,7 +1170,7 @@ const SnowflakePrototypePage: React.FC<SnowflakePrototypePageProps> = ({
           <span style={styles.statValue}>
             {selectedSource
               ? `Verb ${formatPercent(selectedSource.reverb)} Delay ${formatPercent(Math.max(selectedSource.delayA, selectedSource.delayB))} Grain ${formatPercent(selectedSource.granular)}`
-              : 'Feathers, beads, shards'}
+              : 'Facets, plates, shards'}
           </span>
         </div>
       </div>
@@ -946,48 +1183,394 @@ interface ScaffoldArmProps {
   center: Point;
   baseRadius: number;
   maxArmLength: number;
+  morphology: SnowflakeMorphology;
   time: number;
 }
 
-const ScaffoldArm: React.FC<ScaffoldArmProps> = ({ slot, center, baseRadius, maxArmLength, time }) => {
+interface SnowflakePlateLatticeProps {
+  center: Point;
+  baseRadius: number;
+  maxArmLength: number;
+  complexity: number;
+  morphology: SnowflakeMorphology;
+  time: number;
+}
+
+function SnowflakePlateLattice({
+  center,
+  baseRadius,
+  maxArmLength,
+  complexity,
+  morphology,
+  time,
+}: SnowflakePlateLatticeProps) {
+  const allRings = [0.2, 0.32, 0.44, 0.56, 0.68, 0.8, 0.92];
+  const rings = allRings.slice(0, morphology.ringCount + 1);
+
+  return (
+    <g opacity={0.78 + Math.sin(time * 0.32) * 0.025}>
+      {rings.map((t, index) => {
+        const threshold = 0.08 + index * 0.13;
+        const reveal = clamp((complexity - threshold) / 0.2, 0, 1);
+        if (reveal <= 0) return null;
+        const radius = baseRadius + maxArmLength * t;
+        const previousRadius = baseRadius + maxArmLength * (rings[index - 1] ?? 0.12);
+        const points = Array.from({ length: 6 }, (_, slot) => polar(center, slotAngle(slot), radius));
+        const previousPoints = Array.from({ length: 6 }, (_, slot) => polar(center, slotAngle(slot), previousRadius));
+        return (
+          <g key={t}>
+            <polygon
+              points={points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ')}
+              fill="rgba(210,238,255,0.34)"
+              fillOpacity={morphology.crystalFill * reveal * (0.6 + index * 0.1)}
+              stroke="rgba(205,236,255,0.62)"
+              strokeOpacity={(0.24 + morphology.plateStrength * 0.22 + index * 0.034) * reveal}
+              strokeWidth={(0.95 + morphology.ringWeight * 0.52) * reveal}
+            />
+            {points.map((point, slot) => {
+              const previous = previousPoints[slot]!;
+              const next = points[(slot + 1) % 6]!;
+              const mid = {
+                x: point.x + (next.x - point.x) * 0.5,
+                y: point.y + (next.y - point.y) * 0.5,
+              };
+              return (
+                <g key={slot}>
+                  <line
+                    x1={previous.x}
+                    y1={previous.y}
+                    x2={point.x}
+                    y2={point.y}
+                    stroke="rgba(205,236,255,0.38)"
+                    strokeOpacity={(0.04 + morphology.plateStrength * 0.06 + index * 0.008) * reveal}
+                    strokeWidth={(0.5 + morphology.ringWeight * 0.18) * reveal}
+                    strokeLinecap="round"
+                  />
+                  {index > 1 && morphology.plateStrength > 0.72 && (
+                    <line
+                      x1={point.x}
+                      y1={point.y}
+                      x2={mid.x}
+                      y2={mid.y}
+                      stroke="rgba(205,236,255,0.38)"
+                      strokeOpacity={(0.04 + morphology.plateStrength * 0.04) * reveal}
+                      strokeWidth={(0.42 + morphology.ringWeight * 0.16) * reveal}
+                      strokeLinecap="round"
+                    />
+                  )}
+                </g>
+              );
+            })}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+interface OverlappingCrystalFieldProps {
+  center: Point;
+  baseRadius: number;
+  maxArmLength: number;
+  complexity: number;
+  morphology: SnowflakeMorphology;
+  time: number;
+}
+
+interface MiniCrystalProps {
+  point: Point;
+  rotation: number;
+  radius: number;
+  width: number;
+  opacity: number;
+  morphology: SnowflakeMorphology;
+}
+
+const MiniCrystal: React.FC<MiniCrystalProps> = ({
+  point,
+  rotation,
+  radius,
+  width,
+  opacity,
+  morphology,
+}) => {
+  const arms = morphology.family === 'broadPlate' ? 6 : 8;
+  return (
+    <g opacity={opacity}>
+      {Array.from({ length: arms }, (_, index) => {
+        const angle = rotation + (index * Math.PI * 2) / arms;
+        const inner = {
+          x: point.x - Math.cos(angle) * radius * 0.12,
+          y: point.y - Math.sin(angle) * radius * 0.12,
+        };
+        const outer = {
+          x: point.x + Math.cos(angle) * radius,
+          y: point.y + Math.sin(angle) * radius,
+        };
+        const tineBase = {
+          x: point.x + Math.cos(angle) * radius * 0.55,
+          y: point.y + Math.sin(angle) * radius * 0.55,
+        };
+        return (
+          <g key={index}>
+            <line
+              x1={inner.x}
+              y1={inner.y}
+              x2={outer.x}
+              y2={outer.y}
+              stroke="rgba(235,248,255,0.76)"
+              strokeWidth={width}
+              strokeLinecap="round"
+            />
+            {([-1, 1] as const).map((side) => {
+              const tineAngle = angle + side * morphology.secondaryAngle;
+              const tineEnd = {
+                x: tineBase.x + Math.cos(tineAngle) * radius * 0.34,
+                y: tineBase.y + Math.sin(tineAngle) * radius * 0.34,
+              };
+              return (
+                <line
+                  key={side}
+                  x1={tineBase.x}
+                  y1={tineBase.y}
+                  x2={tineEnd.x}
+                  y2={tineEnd.y}
+                  stroke="rgba(235,248,255,0.5)"
+                  strokeWidth={Math.max(0.5, width * 0.62)}
+                  strokeLinecap="round"
+                />
+              );
+            })}
+          </g>
+        );
+      })}
+      {morphology.plateStrength > 0.45 && (
+        <polygon
+          points={hexagonPoints(point, rotation + Math.PI / 6, radius * 0.42)}
+          fill="rgba(235,248,255,0.1)"
+          stroke="rgba(235,248,255,0.44)"
+          strokeWidth={Math.max(0.5, width * 0.55)}
+        />
+      )}
+    </g>
+  );
+};
+
+function OverlappingCrystalField({
+  center,
+  baseRadius,
+  maxArmLength,
+  complexity,
+  morphology,
+  time,
+}: OverlappingCrystalFieldProps) {
+  const ringCount = morphology.family === 'fernDendrite' ? 4 : 3;
+  const rings = Array.from({ length: ringCount }, (_, index) => 0.28 + index * (morphology.family === 'broadPlate' ? 0.16 : 0.18));
+  const reveal = clamp((complexity - 0.3) / 0.52, 0, 1);
+  if (reveal <= 0) return null;
+
+  return (
+    <g opacity={reveal}>
+      {rings.map((t, ringIndex) => {
+        const radius = baseRadius + maxArmLength * morphology.armFullness * t;
+        const nextRadius = baseRadius + maxArmLength * morphology.armFullness * Math.min(0.94, t + 0.12);
+        const motifRadius = maxArmLength * (0.042 + morphology.plateStrength * 0.022) * (1 - ringIndex * 0.08);
+        return (
+          <g key={t}>
+            {Array.from({ length: 6 }, (_, slot) => {
+              const angle = slotAngle(slot);
+              const nextAngle = slotAngle((slot + 1) % 6);
+              const armPoint = polar(center, angle, radius);
+              const nextArmPoint = polar(center, nextAngle, radius);
+              const betweenAngle = angle + Math.PI / 6;
+              const betweenPoint = polar(center, betweenAngle, radius * (0.92 + morphology.plateStrength * 0.03));
+              const outerBetween = polar(center, betweenAngle, nextRadius);
+              const sectorStart = polar(center, angle, radius * 0.95);
+              const sectorNext = polar(center, nextAngle, radius * 0.95);
+              const sectorOuterStart = polar(center, angle, nextRadius);
+              const sectorOuterNext = polar(center, nextAngle, nextRadius);
+              const sectorOpacity = (0.035 + morphology.crystalFill * 0.16) * (ringIndex + 1) * 0.34;
+
+              return (
+                <g key={slot}>
+                  <polygon
+                    points={[
+                      `${sectorStart.x.toFixed(2)},${sectorStart.y.toFixed(2)}`,
+                      `${sectorOuterStart.x.toFixed(2)},${sectorOuterStart.y.toFixed(2)}`,
+                      `${outerBetween.x.toFixed(2)},${outerBetween.y.toFixed(2)}`,
+                      `${sectorOuterNext.x.toFixed(2)},${sectorOuterNext.y.toFixed(2)}`,
+                      `${sectorNext.x.toFixed(2)},${sectorNext.y.toFixed(2)}`,
+                      `${betweenPoint.x.toFixed(2)},${betweenPoint.y.toFixed(2)}`,
+                    ].join(' ')}
+                    fill="rgba(215,240,255,0.55)"
+                    fillOpacity={sectorOpacity * 0.72}
+                    stroke="rgba(220,244,255,0.38)"
+                    strokeOpacity={(0.06 + morphology.plateStrength * 0.08) * reveal}
+                    strokeWidth={0.56 + morphology.ringWeight * 0.08}
+                  />
+                  <line
+                    x1={armPoint.x}
+                    y1={armPoint.y}
+                    x2={betweenPoint.x}
+                    y2={betweenPoint.y}
+                    stroke="rgba(235,248,255,0.42)"
+                    strokeOpacity={(0.18 + morphology.plateStrength * 0.08) * reveal}
+                    strokeWidth={Math.max(0.75, morphology.branchWidth * 0.34)}
+                    strokeLinecap="round"
+                  />
+                  <line
+                    x1={betweenPoint.x}
+                    y1={betweenPoint.y}
+                    x2={nextArmPoint.x}
+                    y2={nextArmPoint.y}
+                    stroke="rgba(235,248,255,0.38)"
+                    strokeOpacity={(0.16 + morphology.plateStrength * 0.06) * reveal}
+                    strokeWidth={Math.max(0.68, morphology.branchWidth * 0.3)}
+                    strokeLinecap="round"
+                  />
+                  <MiniCrystal
+                    point={armPoint}
+                    rotation={angle + time * 0.01}
+                    radius={motifRadius * (0.8 + morphology.sideForkScale * 0.28)}
+                    width={Math.max(0.72, morphology.branchWidth * 0.38)}
+                    opacity={(0.36 + morphology.plateStrength * 0.28) * reveal}
+                    morphology={morphology}
+                  />
+                  <MiniCrystal
+                    point={betweenPoint}
+                    rotation={betweenAngle + Math.PI / 6 - time * 0.006}
+                    radius={motifRadius * (0.62 + morphology.plateStrength * 0.22)}
+                    width={Math.max(0.6, morphology.branchWidth * 0.3)}
+                    opacity={(0.28 + morphology.plateStrength * 0.24) * reveal}
+                    morphology={morphology}
+                  />
+                </g>
+              );
+            })}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+const ScaffoldArm: React.FC<ScaffoldArmProps> = ({ slot, center, baseRadius, maxArmLength, morphology, time }) => {
   const angle = slotAngle(slot);
   const start = polar(center, angle, baseRadius * 0.92);
-  const end = polar(center, angle, baseRadius + maxArmLength);
-  const branchTs = [0.22, 0.36, 0.5, 0.64, 0.78];
+  const end = polar(center, angle, baseRadius + maxArmLength * morphology.armFullness);
+  const branchTs = Array.from({ length: morphology.branchCount }, (_, index) => {
+    const denominator = Math.max(1, morphology.branchCount - 1);
+    return morphology.branchStart + (index / denominator) * (morphology.branchEnd - morphology.branchStart);
+  });
   return (
-    <g opacity={0.3 + Math.sin(time * 0.45 + slot) * 0.025}>
+    <g opacity={0.46 + morphology.plateStrength * 0.1 + Math.sin(time * 0.45 + slot) * 0.018}>
       <line
         x1={start.x}
         y1={start.y}
         x2={end.x}
         y2={end.y}
-        stroke="rgba(230,244,255,0.32)"
-        strokeWidth={0.9}
+        stroke="rgba(230,244,255,0.48)"
+        strokeWidth={Math.max(1.35, morphology.stemWidth * 0.4)}
         strokeLinecap="round"
       />
       {branchTs.map((t, index) => {
-        const origin = polar(center, angle, baseRadius + maxArmLength * t);
-        const branchLength = maxArmLength * (0.095 - index * 0.009);
+        const origin = polar(center, angle, baseRadius + maxArmLength * morphology.armFullness * t);
+        const branchLength = maxArmLength * morphology.branchLength * (0.42 + morphology.plateStrength * 0.28) * (1 - Math.abs(t - 0.5) * morphology.branchTaper);
         return [-1, 1].map((side) => {
-          const branchAngle = angle + side * (Math.PI / 5.6);
+          const branchAngle = angle + side * morphology.branchAngle;
           const branchEnd = {
             x: origin.x + Math.cos(branchAngle) * branchLength,
             y: origin.y + Math.sin(branchAngle) * branchLength,
           };
+          const forkBase = {
+            x: origin.x + (branchEnd.x - origin.x) * 0.62,
+            y: origin.y + (branchEnd.y - origin.y) * 0.62,
+          };
+          const forkEnd = {
+            x: forkBase.x + Math.cos(branchAngle - side * morphology.secondaryAngle) * branchLength * 0.18,
+            y: forkBase.y + Math.sin(branchAngle - side * morphology.secondaryAngle) * branchLength * 0.18,
+          };
+          const outerForkEnd = {
+            x: forkBase.x + Math.cos(branchAngle + side * morphology.tertiaryAngle) * branchLength * 0.22,
+            y: forkBase.y + Math.sin(branchAngle + side * morphology.tertiaryAngle) * branchLength * 0.22,
+          };
+          const innerSecondary = {
+            x: branchEnd.x + Math.cos(branchAngle - side * morphology.secondaryAngle) * branchLength * 0.2,
+            y: branchEnd.y + Math.sin(branchAngle - side * morphology.secondaryAngle) * branchLength * 0.2,
+          };
+          const outerSecondary = {
+            x: branchEnd.x + Math.cos(branchAngle + side * morphology.tertiaryAngle) * branchLength * 0.18,
+            y: branchEnd.y + Math.sin(branchAngle + side * morphology.tertiaryAngle) * branchLength * 0.18,
+          };
           return (
-            <line
-              key={`${t}-${side}`}
-              x1={origin.x}
-              y1={origin.y}
-              x2={branchEnd.x}
-              y2={branchEnd.y}
-              stroke="rgba(230,244,255,0.18)"
-              strokeWidth={0.68}
-              strokeLinecap="round"
-            />
+            <g key={`${t}-${side}`}>
+              <line
+                x1={origin.x}
+                y1={origin.y}
+                x2={branchEnd.x}
+                y2={branchEnd.y}
+                stroke="rgba(230,244,255,0.34)"
+                strokeWidth={Math.max(0.9, morphology.branchWidth * 0.48)}
+                strokeLinecap="round"
+              />
+              <line
+                x1={forkBase.x}
+                y1={forkBase.y}
+                x2={forkEnd.x}
+                y2={forkEnd.y}
+                stroke="rgba(230,244,255,0.26)"
+                strokeWidth={Math.max(0.7, morphology.branchWidth * 0.34)}
+                strokeLinecap="round"
+              />
+              <line
+                x1={forkBase.x}
+                y1={forkBase.y}
+                x2={outerForkEnd.x}
+                y2={outerForkEnd.y}
+                stroke="rgba(230,244,255,0.24)"
+                strokeWidth={Math.max(0.66, morphology.branchWidth * 0.32)}
+                strokeLinecap="round"
+              />
+              {morphology.family !== 'broadPlate' && (
+                <>
+                  <line
+                    x1={branchEnd.x}
+                    y1={branchEnd.y}
+                    x2={innerSecondary.x}
+                    y2={innerSecondary.y}
+                    stroke="rgba(230,244,255,0.2)"
+                    strokeWidth={Math.max(0.55, morphology.branchWidth * 0.24)}
+                    strokeLinecap="round"
+                  />
+                  <line
+                    x1={branchEnd.x}
+                    y1={branchEnd.y}
+                    x2={outerSecondary.x}
+                    y2={outerSecondary.y}
+                    stroke="rgba(230,244,255,0.18)"
+                    strokeWidth={Math.max(0.5, morphology.branchWidth * 0.22)}
+                    strokeLinecap="round"
+                  />
+                </>
+              )}
+              {(index % 2 === 1 || morphology.plateStrength > 0.6) && (
+                <polygon
+                  points={hexagonPoints(branchEnd, Math.PI / 6, morphology.plateRadius * 0.32)}
+                  fill="rgba(230,244,255,0.08)"
+                  stroke="rgba(230,244,255,0.24)"
+                  strokeWidth={0.64}
+                />
+              )}
+            </g>
           );
         });
       })}
+      <polygon
+        points={hexagonPoints(end, angle + Math.PI / 6, morphology.plateRadius * (0.4 + morphology.terminalScale * 0.12))}
+        fill="rgba(230,244,255,0.08)"
+        stroke="rgba(230,244,255,0.24)"
+        strokeWidth={0.7}
+      />
     </g>
   );
 };
@@ -1001,8 +1584,8 @@ interface ActiveArmProps {
   hovered: boolean;
   selected: boolean;
   compact: boolean;
-  globalCharacter: number;
   globalDynamics: number;
+  morphology: SnowflakeMorphology;
   index: number;
   onPointerDown: (event: React.PointerEvent<SVGLineElement>) => void;
   onHoverChange: (hovered: boolean) => void;
@@ -1018,8 +1601,8 @@ const ActiveArm: React.FC<ActiveArmProps> = ({
   hovered,
   selected,
   compact,
-  globalCharacter,
   globalDynamics,
+  morphology,
   index,
   onPointerDown,
   onHoverChange,
@@ -1028,22 +1611,25 @@ const ActiveArm: React.FC<ActiveArmProps> = ({
   const { source, slot } = arm;
   const angle = slotAngle(slot);
   const seed = index * 13 + slot * 7;
-  const rangeStartRadius = baseRadius + source.displayRange.min * maxArmLength;
-  const rangeEndRadius = baseRadius + source.displayRange.max * maxArmLength;
-  const currentRadius = baseRadius + source.displayNorm * maxArmLength;
-  const authoredRadius = baseRadius + source.authoredNorm * maxArmLength;
+  const valueNorm = snowflakeValueNorm(source.displayNorm);
+  const rangeStartRadius = baseRadius + snowflakeValueNorm(source.displayRange.min) * maxArmLength;
+  const rangeEndRadius = baseRadius + snowflakeValueNorm(source.displayRange.max) * maxArmLength;
+  const currentRadius = baseRadius + valueNorm * maxArmLength;
+  const authoredRadius = baseRadius + snowflakeValueNorm(source.authoredNorm) * maxArmLength;
+  const structureRadius = baseRadius + maxArmLength * morphology.armFullness * (0.98 + source.score * 0.02);
   const start = polar(center, angle, baseRadius);
   const rangeStart = polar(center, angle, rangeStartRadius);
   const rangeEnd = polar(center, angle, rangeEndRadius);
   const current = polar(center, angle, currentRadius);
+  const structureEnd = polar(center, angle, structureRadius);
   const authored = polar(center, angle, authoredRadius);
-  const labelPoint = polar(center, angle, Math.min(baseRadius + maxArmLength * 1.08, currentRadius + maxArmLength * 0.13));
+  const labelPoint = polar(center, angle, Math.min(baseRadius + maxArmLength * 1.08, structureRadius + maxArmLength * 0.08));
   const labelVisible = hovered || selected;
-  const stemWidth = 1.2 + source.score * 1.8 + globalDynamics * 0.35;
-  const wobble = globalCharacter * 0.28 + source.granular * 0.08;
-  const branchDensity = 0.65 + source.reverb * 0.55 + source.granular * 0.14;
-  const delayCount = Math.round(Math.max(source.delayA, source.delayB) * 4);
-  const shardCount = Math.round(source.granular * 5);
+  const stemWidth = morphology.stemWidth * (0.74 + source.score * 0.28) + globalDynamics * 0.28;
+  const branchDensity = 0.46 + source.reverb * 0.42 + source.granular * 0.16 + morphology.plateStrength * 0.1;
+  const crystalComplexity = clamp01(0.46 + valueNorm * 0.34 + source.reverb * 0.1 + source.granular * 0.06 + morphology.plateStrength * 0.16);
+  const delayCount = Math.round(Math.max(source.delayA, source.delayB) * 3);
+  const shardCount = Math.round(source.granular * 4);
   const flashScale = source.flash ? 1.24 : 1;
 
   return (
@@ -1053,10 +1639,10 @@ const ActiveArm: React.FC<ActiveArmProps> = ({
       onDoubleClick={onDoubleClick}
     >
       <path
-        d={linePath(center, slot, baseRadius, rangeEndRadius, wobble * 0.4, time, seed)}
+        d={linePath(center, slot, baseRadius, structureRadius, 0, time, seed)}
         stroke="rgba(235,247,255,0.62)"
-        strokeOpacity={0.1 + source.reverb * 0.12}
-        strokeWidth={stemWidth + source.reverb * 2.8}
+        strokeOpacity={0.06 + source.reverb * 0.06}
+        strokeWidth={stemWidth + source.reverb * 2.2}
         strokeLinecap="round"
         fill="none"
       />
@@ -1074,10 +1660,30 @@ const ActiveArm: React.FC<ActiveArmProps> = ({
       />
 
       <path
-        d={linePath(center, slot, baseRadius, currentRadius, wobble, time, seed)}
-        stroke="rgba(226,243,255,0.94)"
-        strokeOpacity={0.82 + source.score * 0.12}
-        strokeWidth={stemWidth}
+        d={linePath(center, slot, baseRadius, structureRadius, 0, time, seed)}
+        stroke="rgba(120,200,248,0.34)"
+        strokeOpacity={0.24}
+        strokeWidth={stemWidth + 2.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+
+      <path
+        d={linePath(center, slot, baseRadius, structureRadius, 0, time, seed)}
+        stroke="rgba(236,249,255,0.96)"
+        strokeOpacity={0.34 + crystalComplexity * 0.22}
+        strokeWidth={stemWidth * 0.86}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+
+      <path
+        d={linePath(center, slot, baseRadius, currentRadius, 0, time, seed)}
+        stroke={source.color}
+        strokeOpacity={hovered || selected ? 0.34 : 0.1}
+        strokeWidth={stemWidth + 0.7}
         strokeLinecap="round"
         strokeLinejoin="round"
         fill="none"
@@ -1086,8 +1692,8 @@ const ActiveArm: React.FC<ActiveArmProps> = ({
       <line
         x1={start.x}
         y1={start.y}
-        x2={current.x}
-        y2={current.y}
+        x2={structureEnd.x}
+        y2={structureEnd.y}
         stroke="transparent"
         strokeWidth={36}
         strokeLinecap="round"
@@ -1099,10 +1705,15 @@ const ActiveArm: React.FC<ActiveArmProps> = ({
         center={center}
         slot={slot}
         baseRadius={baseRadius}
-        currentRadius={currentRadius}
+        currentRadius={structureRadius}
         maxArmLength={maxArmLength}
         density={branchDensity}
+        complexity={crystalComplexity}
+        morphology={morphology}
         time={time}
+        activeColor={source.color}
+        flash={source.flash}
+        patternSeed={sourcePatternSeed(source.id)}
       />
 
       {Array.from({ length: delayCount }, (_, beadIndex) => (
@@ -1114,7 +1725,7 @@ const ActiveArm: React.FC<ActiveArmProps> = ({
           beadIndex={beadIndex}
           beadCount={delayCount}
           baseRadius={baseRadius}
-          currentRadius={currentRadius}
+          currentRadius={structureRadius}
           time={time}
         />
       ))}
@@ -1126,7 +1737,7 @@ const ActiveArm: React.FC<ActiveArmProps> = ({
           center={center}
           slot={slot}
           shardIndex={shardIndex}
-          currentRadius={currentRadius}
+          currentRadius={structureRadius}
           maxArmLength={maxArmLength}
           time={time}
         />
@@ -1137,10 +1748,19 @@ const ActiveArm: React.FC<ActiveArmProps> = ({
           center={center}
           slot={slot}
           baseRadius={baseRadius}
-          currentRadius={currentRadius}
+          currentRadius={structureRadius}
           amount={globalDynamics}
         />
       )}
+
+      <polygon
+        points={hexagonPoints(current, angle + Math.PI / 6, 3.4 + crystalComplexity * 2.6)}
+        fill={source.color}
+        fillOpacity={hovered || selected ? 0.24 : 0.1}
+        stroke="rgba(245,251,255,0.76)"
+        strokeOpacity={hovered || selected ? 0.82 : 0.32}
+        strokeWidth={0.7}
+      />
 
       {(hovered || selected) && (
         <line
@@ -1155,10 +1775,10 @@ const ActiveArm: React.FC<ActiveArmProps> = ({
       )}
 
       <TerminalCrystal
-        point={current}
+        point={structureEnd}
         angle={angle}
         color={source.color}
-        size={(8 + source.score * 5) * flashScale}
+        size={(7 + crystalComplexity * 7) * flashScale}
         selected={hovered || selected}
         flashing={source.flash}
       />
@@ -1213,16 +1833,16 @@ interface TerminalCrystalProps {
 }
 
 const TerminalCrystal: React.FC<TerminalCrystalProps> = ({ point, angle, color, size, selected, flashing }) => {
-  const sideAngle = angle + Math.PI / 2;
-  const short = size * 0.56;
-  const tine = size * 0.42;
+  const plateRadius = size * 0.44;
+  const sideLength = size * 0.46;
+  const forkLength = size * 0.34;
   const back = {
-    x: point.x - Math.cos(angle) * size * 0.34,
-    y: point.y - Math.sin(angle) * size * 0.34,
+    x: point.x - Math.cos(angle) * size * 0.56,
+    y: point.y - Math.sin(angle) * size * 0.56,
   };
   const tip = {
-    x: point.x + Math.cos(angle) * size * 0.26,
-    y: point.y + Math.sin(angle) * size * 0.26,
+    x: point.x + Math.cos(angle) * size * 0.3,
+    y: point.y + Math.sin(angle) * size * 0.3,
   };
 
   return (
@@ -1235,38 +1855,44 @@ const TerminalCrystal: React.FC<TerminalCrystalProps> = ({ point, angle, color, 
         y1={back.y}
         x2={tip.x}
         y2={tip.y}
-        stroke="rgba(242,250,255,0.9)"
-        strokeWidth={1.2}
+        stroke="rgba(242,250,255,0.82)"
+        strokeWidth={1.35}
         strokeLinecap="round"
       />
+      <polygon
+        points={hexagonPoints(point, angle + Math.PI / 6, plateRadius)}
+        fill="rgba(242,250,255,0.18)"
+        stroke="rgba(242,250,255,0.74)"
+        strokeWidth={1.05}
+      />
       {([-1, 1] as const).map((side) => {
-        const across = {
-          x: point.x + Math.cos(sideAngle) * side * short,
-          y: point.y + Math.sin(sideAngle) * side * short,
+        const branchAngle = angle + side * Math.PI / 3.15;
+        const sideEnd = {
+          x: point.x - Math.cos(angle) * size * 0.16 + Math.cos(branchAngle) * sideLength,
+          y: point.y - Math.sin(angle) * size * 0.16 + Math.sin(branchAngle) * sideLength,
         };
-        const branchAngle = angle + side * Math.PI / 4.6;
         const feather = {
-          x: point.x - Math.cos(angle) * size * 0.05 + Math.cos(branchAngle) * tine,
-          y: point.y - Math.sin(angle) * size * 0.05 + Math.sin(branchAngle) * tine,
+          x: sideEnd.x + Math.cos(angle) * forkLength,
+          y: sideEnd.y + Math.sin(angle) * forkLength,
         };
         return (
           <g key={side}>
             <line
               x1={point.x}
               y1={point.y}
-              x2={across.x}
-              y2={across.y}
-              stroke="rgba(242,250,255,0.82)"
-              strokeWidth={0.95}
+              x2={sideEnd.x}
+              y2={sideEnd.y}
+              stroke="rgba(242,250,255,0.76)"
+              strokeWidth={1.05}
               strokeLinecap="round"
             />
             <line
-              x1={point.x}
-              y1={point.y}
+              x1={sideEnd.x}
+              y1={sideEnd.y}
               x2={feather.x}
               y2={feather.y}
-              stroke="rgba(242,250,255,0.72)"
-              strokeWidth={0.85}
+              stroke="rgba(242,250,255,0.58)"
+              strokeWidth={0.86}
               strokeLinecap="round"
             />
           </g>
@@ -1294,7 +1920,12 @@ interface FractalBranchesProps {
   currentRadius: number;
   maxArmLength: number;
   density: number;
+  complexity: number;
+  morphology: SnowflakeMorphology;
   time: number;
+  activeColor: string;
+  flash: boolean;
+  patternSeed: number;
 }
 
 interface FractalSegment {
@@ -1302,18 +1933,25 @@ interface FractalSegment {
   end: Point;
   width: number;
   opacity: number;
+  threshold: number;
 }
 
-function addFractalBranch(
+interface CrystalPlate {
+  center: Point;
+  radius: number;
+  opacity: number;
+  threshold: number;
+}
+
+function pushSegment(
   segments: FractalSegment[],
   start: Point,
   angle: number,
   length: number,
-  depth: number,
-  side: -1 | 1,
-  density: number,
-): void {
-  if (length < 3 || depth < 0) return;
+  width: number,
+  opacity: number,
+  threshold = 0,
+): Point {
   const end = {
     x: start.x + Math.cos(angle) * length,
     y: start.y + Math.sin(angle) * length,
@@ -1321,27 +1959,172 @@ function addFractalBranch(
   segments.push({
     start,
     end,
-    width: 0.38 + depth * 0.28 + density * 0.18,
-    opacity: 0.34 + depth * 0.14 + density * 0.13,
+    width,
+    opacity,
+    threshold,
   });
-  if (depth === 0) return;
+  return end;
+}
 
-  const childStarts = depth > 1 ? [0.44, 0.72] : [0.58];
-  childStarts.forEach((t, index) => {
-    const childStart = {
-      x: start.x + (end.x - start.x) * t,
-      y: start.y + (end.y - start.y) * t,
+function addCrystalFacet(
+  segments: FractalSegment[],
+  plates: CrystalPlate[],
+  origin: Point,
+  mainAngle: number,
+  side: -1 | 1,
+  length: number,
+  density: number,
+  index: number,
+  morphology: SnowflakeMorphology,
+  patternSeed: number,
+): void {
+  const angleJitter = (seededNoise(patternSeed + index * 19 + side * 23) - 0.5) * morphology.branchJitter;
+  const branchAngle = mainAngle + side * (morphology.branchAngle + angleJitter);
+  const width = morphology.branchWidth * (0.74 + density * 0.28);
+  const opacity = 0.52 + density * 0.17;
+  const threshold = 0.04 + index * 0.055;
+  const variant = 0.86 + seededNoise(patternSeed + index * 31 + side * 17) * 0.24;
+  const scaledLength = length * variant;
+  const end = pushSegment(segments, origin, branchAngle, scaledLength, width, opacity, threshold);
+  const innerPoint = {
+    x: origin.x + (end.x - origin.x) * 0.48,
+    y: origin.y + (end.y - origin.y) * 0.48,
+  };
+  const outerPoint = {
+    x: origin.x + (end.x - origin.x) * 0.72,
+    y: origin.y + (end.y - origin.y) * 0.72,
+  };
+  const subLength = scaledLength * (0.24 + density * 0.06);
+  const forkLength = scaledLength * (0.2 + density * 0.045);
+  const inwardAngle = branchAngle - side * morphology.secondaryAngle;
+  const outwardAngle = branchAngle + side * morphology.tertiaryAngle;
+  const plateAngle = mainAngle + side * (morphology.branchAngle * 0.48);
+
+  pushSegment(
+    segments,
+    innerPoint,
+    inwardAngle,
+    subLength * morphology.sideForkScale,
+    morphology.branchWidth * (0.46 + density * 0.12),
+    0.36 + density * 0.13,
+    threshold + 0.1,
+  );
+  pushSegment(
+    segments,
+    innerPoint,
+    outwardAngle,
+    subLength * (0.56 + morphology.plateStrength * 0.28),
+    morphology.branchWidth * (0.4 + density * 0.12),
+    0.32 + density * 0.12,
+    threshold + 0.2,
+  );
+  pushSegment(
+    segments,
+    outerPoint,
+    inwardAngle,
+    subLength * morphology.sideForkScale * 0.7,
+    morphology.branchWidth * (0.38 + density * 0.1),
+    0.32 + density * 0.12,
+    threshold + 0.18,
+  );
+  pushSegment(
+    segments,
+    outerPoint,
+    outwardAngle,
+    subLength * (0.48 + morphology.plateStrength * 0.2),
+    morphology.branchWidth * (0.34 + density * 0.1),
+    0.28 + density * 0.1,
+    threshold + 0.28,
+  );
+  pushSegment(
+    segments,
+    end,
+    plateAngle,
+    forkLength * (0.5 + morphology.plateStrength * 0.25),
+    morphology.branchWidth * (0.44 + density * 0.12),
+    0.42 + density * 0.12,
+    threshold + 0.24,
+  );
+  pushSegment(
+    segments,
+    end,
+    outwardAngle,
+    forkLength * (0.64 + morphology.sideForkScale * 0.34),
+    morphology.branchWidth * (0.38 + density * 0.1),
+    0.32 + density * 0.12,
+    threshold + 0.34,
+  );
+
+  if (density > 0.98 || index % 2 === 0) {
+    const facetPoint = {
+      x: origin.x + (end.x - origin.x) * 0.86,
+      y: origin.y + (end.y - origin.y) * 0.86,
     };
-    const childAngle = angle + side * (0.58 - depth * 0.06 + index * 0.08);
-    addFractalBranch(
+    pushSegment(
       segments,
-      childStart,
-      childAngle,
-      length * (0.42 - index * 0.08),
-      depth - 1,
-      side,
-      density,
+      facetPoint,
+      inwardAngle,
+      scaledLength * (0.08 + morphology.plateStrength * 0.08),
+      morphology.branchWidth * (0.28 + density * 0.08),
+      0.28 + density * 0.1,
+      threshold + 0.42,
     );
+  }
+
+  if (index % 2 === 1 || density > 1.04) {
+    plates.push({
+      center: end,
+      radius: morphology.plateRadius * (0.52 + density * 0.2),
+      opacity: 0.18 + density * 0.1,
+      threshold: threshold + 0.16,
+    });
+  }
+
+  if (morphology.plateStrength > 0.55 && index % 2 === 0) {
+    plates.push({
+      center: outerPoint,
+      radius: morphology.plateRadius * (0.34 + morphology.plateStrength * 0.16),
+      opacity: 0.12 + morphology.plateStrength * 0.12,
+      threshold: threshold + 0.08,
+    });
+  }
+}
+
+function addTerminalFacet(
+  segments: FractalSegment[],
+  plates: CrystalPlate[],
+  tip: Point,
+  mainAngle: number,
+  maxArmLength: number,
+  density: number,
+  morphology: SnowflakeMorphology,
+): void {
+  const baseLength = maxArmLength * (0.026 + density * 0.012) * morphology.terminalScale;
+  ([-1, 1] as const).forEach((side) => {
+    const firstEnd = pushSegment(
+      segments,
+      tip,
+      mainAngle + side * morphology.branchAngle,
+      baseLength,
+      morphology.branchWidth * (0.5 + density * 0.16),
+      0.62,
+      0.18,
+    );
+    pushSegment(
+      segments,
+      firstEnd,
+      mainAngle + side * (morphology.branchAngle - morphology.secondaryAngle * 0.55),
+      baseLength * (0.45 + morphology.sideForkScale * 0.22),
+      morphology.branchWidth * (0.36 + density * 0.12),
+      0.42,
+      0.34,
+    );
+  });
+  plates.push({
+    center: tip,
+    radius: morphology.plateRadius * (0.58 + morphology.terminalScale * 0.18),
+    opacity: 0.2 + density * 0.1,
+    threshold: 0.14,
   });
 }
 
@@ -1352,63 +2135,107 @@ const FractalBranches: React.FC<FractalBranchesProps> = ({
   currentRadius,
   maxArmLength,
   density,
+  complexity,
+  morphology,
   time,
+  activeColor,
+  flash,
+  patternSeed,
 }) => {
   const angle = slotAngle(slot);
   const armLength = Math.max(0, currentRadius - baseRadius);
-  const branchCount = Math.round(2 + density * 3);
   const segments: FractalSegment[] = [];
-  const anchors = Array.from({ length: branchCount }, (_, index) => 0.16 + (index / Math.max(1, branchCount - 1)) * 0.68);
+  const plates: CrystalPlate[] = [];
+  const anchorBase = Array.from({ length: morphology.branchCount }, (_, index) => {
+    const denominator = Math.max(1, morphology.branchCount - 1);
+    return morphology.branchStart + (index / denominator) * (morphology.branchEnd - morphology.branchStart);
+  });
+  const anchors = anchorBase.filter((t) => t * armLength > 18);
 
   anchors.forEach((t, index) => {
     const origin = polar(center, angle, baseRadius + armLength * t);
-    const pulse = 0.96 + Math.sin(time * 0.9 + slot * 0.7 + index * 0.5) * 0.035;
-    const branchLength = armLength * (0.32 - t * 0.18 + density * 0.055) * pulse;
-    const spread = 0.76 - t * 0.2 + density * 0.04;
+    const pulse = 1 + Math.sin(time * 0.55 + slot * 0.7 + index * 0.5) * 0.012;
+    const uniqueScale = 0.9 + seededNoise(patternSeed + index * 43) * 0.18;
+    const profile = 1 - Math.abs(t - 0.5) * morphology.branchTaper;
+    const branchLength = armLength * morphology.branchLength * (0.78 + density * 0.24) * profile * pulse * uniqueScale;
     ([-1, 1] as const).forEach((side) => {
-      addFractalBranch(
+      addCrystalFacet(
         segments,
+        plates,
         origin,
-        angle + side * spread,
-        branchLength,
-        2,
+        angle,
         side,
+        branchLength,
         density,
+        index,
+        morphology,
+        patternSeed,
       );
     });
   });
 
-  const terminalAnchors = [0.9, 0.98];
-  terminalAnchors.forEach((t, index) => {
-    const origin = polar(center, angle, baseRadius + armLength * t);
-    ([-1, 1] as const).forEach((side) => {
-      addFractalBranch(
-        segments,
-        origin,
-        angle + side * (0.48 + index * 0.1),
-        maxArmLength * (0.035 + density * 0.02),
-        1,
-        side,
-        density,
-      );
-    });
-  });
+  const tip = polar(center, angle, currentRadius);
+  addTerminalFacet(segments, plates, tip, angle, maxArmLength, density, morphology);
 
   return (
-    <g opacity={0.82}>
-      {segments.map((segment, index) => (
-        <line
-          key={index}
-          x1={segment.start.x}
-          y1={segment.start.y}
-          x2={segment.end.x}
-          y2={segment.end.y}
-          stroke="rgba(232,247,255,0.92)"
-          strokeOpacity={segment.opacity}
-          strokeWidth={segment.width}
-          strokeLinecap="round"
-        />
-      ))}
+    <g opacity={flash ? 0.96 : 0.86}>
+      {segments.map((segment, index) => {
+        const reveal = clamp((complexity - segment.threshold) / 0.18, 0, 1);
+        if (reveal <= 0) return null;
+        const end = {
+          x: segment.start.x + (segment.end.x - segment.start.x) * reveal,
+          y: segment.start.y + (segment.end.y - segment.start.y) * reveal,
+        };
+        return (
+          <g key={index}>
+            <line
+              x1={segment.start.x}
+              y1={segment.start.y}
+              x2={end.x}
+              y2={end.y}
+              stroke="rgba(130,205,245,0.34)"
+              strokeOpacity={segment.opacity * 0.26 * reveal}
+              strokeWidth={segment.width + 1.45}
+              strokeLinecap="round"
+            />
+            <line
+              x1={segment.start.x}
+              y1={segment.start.y}
+              x2={end.x}
+              y2={end.y}
+              stroke="rgba(238,250,255,0.96)"
+              strokeOpacity={segment.opacity * reveal}
+              strokeWidth={segment.width}
+              strokeLinecap="round"
+            />
+            <line
+              x1={segment.start.x}
+              y1={segment.start.y}
+              x2={end.x}
+              y2={end.y}
+              stroke={activeColor}
+              strokeOpacity={0.04 * reveal}
+              strokeWidth={segment.width + 2.7}
+              strokeLinecap="round"
+            />
+          </g>
+        );
+      })}
+      {plates.map((plate, index) => {
+        const reveal = clamp((complexity - plate.threshold) / 0.18, 0, 1);
+        if (reveal <= 0) return null;
+        return (
+          <polygon
+            key={`plate-${index}`}
+            points={hexagonPoints(plate.center, Math.PI / 6, plate.radius * (0.45 + reveal * 0.55))}
+            fill="rgba(238,250,255,0.2)"
+            fillOpacity={plate.opacity * reveal}
+            stroke="rgba(238,250,255,0.5)"
+            strokeOpacity={(plate.opacity + 0.08) * reveal}
+            strokeWidth={0.72}
+          />
+        );
+      })}
     </g>
   );
 };
@@ -1444,14 +2271,19 @@ const DelayBead: React.FC<DelayBeadProps> = ({
   const perp = angle + Math.PI / 2;
   const pulse = (Math.sin(time * (1.8 + amount) - beadIndex * 0.9) + 1) / 2;
   return (
-    <circle
-      cx={base.x + Math.cos(perp) * offset}
-      cy={base.y + Math.sin(perp) * offset}
-      r={0.95 + amount * 1.6 * (0.65 + pulse * 0.35)}
-      fill="rgba(238,249,255,0.76)"
-      fillOpacity={0.26 + amount * (0.12 + pulse * 0.14)}
-      stroke="rgba(238,249,255,0.44)"
-      strokeWidth={0.45}
+    <polygon
+      points={hexagonPoints(
+        {
+          x: base.x + Math.cos(perp) * offset,
+          y: base.y + Math.sin(perp) * offset,
+        },
+        angle + Math.PI / 6,
+        1.2 + amount * 1.35 * (0.65 + pulse * 0.35),
+      )}
+      fill="rgba(238,249,255,0.7)"
+      fillOpacity={0.16 + amount * (0.08 + pulse * 0.1)}
+      stroke="rgba(238,249,255,0.36)"
+      strokeWidth={0.4}
     />
   );
 };

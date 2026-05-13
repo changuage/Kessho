@@ -15,4 +15,4 @@ This gate keeps the Product Core FX/master path from regressing into host-owned 
 
 - Per-FX reset is covered through Product Core reset; individual effect-only reset events still need generated public event coverage if the UI requires them.
 - disabled-FX CPU is a native smoke budget, not a full p95/p99 browser/native device performance matrix.
-- Master-chain polish beyond limiter and saturation can continue after Product Default Gate v2, but the required master gain staging, limiter/saturation/loudness telemetry, reset/tail/bypass, and disabled-FX CPU gates are covered here.
+- Master-chain polish beyond limiter and saturation can continue after Product Default Gate v3, but the required master gain staging, limiter/saturation/loudness telemetry, reset/tail/bypass, and disabled-FX CPU gates are covered here.

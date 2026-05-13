@@ -14,6 +14,21 @@ The production asset contract is versioned in `src/audio/coreProductAssetManifes
 
 Snapshots carry enabled soundscape asset refs and per-ref levels. Product Core owns loop playback, loop crossfade, deterministic random start, texture-specific level, pan spread, and playback-rate policy. Hosts may decode/register PCM, but may not synthesize replacement soundscape behavior in `core-product`.
 
+Scene-level asset policy is fixed by the manifest and mirrored by the C++ soundscape layer policy:
+
+| Scene | Asset ID | Enable key | Level policy | C++ layer policy |
+| --- | --- | --- | --- | --- |
+| Ocean | `7101` | `oceanSampleEnabled` | `oceanSampleLevel` | level `0.90..1.00`, pan spread `0.12 + distance*0.28`, rate depth `0.006` |
+| Water | `7104` | `waterEnabled` | `waterLevel` | level `0.88..1.00`, pan spread `0.14 + distance*0.26`, rate depth `0.012` |
+| Birds | `7102` | `birdsEnabled` | `birdsLevel * natureLevel` | level `0.72..1.00`, pan spread `0.30 + distance*0.62`, rate depth `0.035` |
+| Birds 2 | `7105` | `birds2Enabled` | `birds2Level * natureLevel` | level `0.72..1.00`, pan spread `0.30 + distance*0.62`, rate depth `0.035` |
+| Frogs | `7103` | `frogsEnabled` | `frogsLevel * natureLevel` | level `0.76..0.96`, pan spread `0.26 + distance*0.48`, rate depth `0.020` |
+| Insects | `7106` | `insectsEnabled` or `insects2Enabled` | `max(insectsLevel, insects2Level) * insectsSharedLevel` | level `0.62..0.86`, pan spread `0.36 + distance*0.64`, rate depth `0.045` |
+
+Combined nature scenes include one asset ref per active, non-zero scene layer. Duplicate refs are deduped by asset ID, so the current insects layer pair intentionally resolves to the single committed insects asset until a second release asset exists. Product Core schedules one loop voice per active registered asset ref and applies deterministic random start, level jitter, pan, playback-rate variation, and loop crossfade.
+
+Minimal or degraded scenes must stay silent rather than replaced by host synthesis. With no enabled nature layers, the Product Core soundscape source is disabled and the snapshot carries no soundscape refs. If an enabled layer has no registered asset or decode fails, Product Core missing-asset telemetry owns the failure mode; hosts may retry decode/register but may not fake ocean, water, birds, frogs, or insects audio in `core-product`.
+
 ## Decode Matrix
 
 | Runtime | Decoder | Source Format | Bundle Path | Fallback |
@@ -43,6 +58,6 @@ Snapshots carry enabled soundscape asset refs and per-ref levels. Product Core o
 
 ## Remaining Blockers
 
-- iOS/macOS Ogg decode still needs live-device and release-bundle proof; the manifest classifies this as `needs-device-format-proof` / `needs-release-bundle-proof`.
-- Network download is not performed inside the render path. Native fallback currently resolves already-downloaded files from configured roots or Application Support/Caches.
-- Hard decoded-byte accounting is enforced against the manifest budgets. Runtime eviction remains part of native release proof.
+- DEFERRED_WITH_SIGNOFF: iOS/macOS Ogg decode still needs live-device and release-bundle proof; the manifest classifies this as `needs-device-format-proof` / `needs-release-bundle-proof`. Owner: Native Product Core owner. Target follow-up: add TestFlight/App Store-style iOS and signed macOS decode evidence.
+- NOT_REQUIRED_FOR_WEB_DEFAULT_WITH_REASON: Network download is not performed inside the render path. Native fallback currently resolves already-downloaded files from configured roots or Application Support/Caches. Reason: web default proof does not require native network download, and native release remains deferred.
+- DEFERRED_WITH_SIGNOFF: Hard decoded-byte accounting is enforced against the manifest budgets. Runtime eviction remains part of native release proof. Owner: Native Product Core owner. Target follow-up: add memory-pressure, eviction, and re-registration proof on target devices.

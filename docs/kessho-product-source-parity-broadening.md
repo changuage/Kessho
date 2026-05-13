@@ -18,6 +18,6 @@ This gate keeps the next migration pass focused on Product Core-owned source beh
 
 ## Remaining Work
 
-- Broader web-vs-Product sonic parity still needs additional acceptance-corpus probes beyond the focused default Pad, Lead 1, Lead 2, and Delay A source checks.
-- Piano and soundscape production asset packaging, native decode matrix, and scene-level nature policy depth remain part of the later asset/native release gates.
-- Exact Pad/Lead/Drum patch bridges remain temporary compatibility fields until generated preset IDs plus user overrides fully reconstruct source state across web and native.
+- BLOCKED: Broader web-vs-Product sonic parity still needs additional acceptance-corpus probes beyond the focused default Pad, Lead 1, Lead 2, and Delay A source checks. Owner: Product Core parity owner. Target follow-up: expand browser corpus and record full scene/full-arrangement sign-off.
+- DEFERRED_WITH_SIGNOFF: Piano and soundscape production asset packaging, native decode matrix, and scene-level nature policy depth remain part of the asset/native release gates. Owner: Product Core asset owner. Target follow-up: complete native release-bundle/decode and eviction proof.
+- DEFERRED_WITH_SIGNOFF: Exact Pad/Lead/Drum patch bridges remain temporary compatibility fields until generated preset IDs plus user overrides fully reconstruct source state across web and native. Owner: Product Core source owner. Target follow-up: retire bridge fields after reconstruction proof.

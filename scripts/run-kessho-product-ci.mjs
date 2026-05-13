@@ -1,7 +1,15 @@
 import { spawnSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
-const steps = [
+const root = process.cwd();
+const skipFinalGate = process.argv.includes('--skip-final-gate');
+const reportPath = resolve(root, 'docs/reports/kessho-product-ci-latest.json');
+
+const prerequisiteSteps = [
   'core:product:generate',
+  'type-check',
+  'build',
   'core:product:schema',
   'core:product:workflow',
   'core:product:architecture',
@@ -28,20 +36,70 @@ const steps = [
   'core:product:web-host',
   'core:product:native',
   'core:product:native-release',
-  'core:product:default-gate-v2',
   'core:product:cpu',
+  'core:readiness:browser',
+  'core:product:native-build',
+  'core:product:native-release-smoke',
 ];
+
+const finalGateStep = 'core:product:default-gate-v3';
+const steps = skipFinalGate ? prerequisiteSteps : [...prerequisiteSteps, finalGateStep];
+
+const report = {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  command: [process.execPath, 'scripts/run-kessho-product-ci.mjs', ...process.argv.slice(2)].join(' '),
+  mode: skipFinalGate ? 'prerequisites-only' : 'full-with-final-gate',
+  finalGateStep,
+  finalGateSkipped: skipFinalGate,
+  prerequisiteSteps,
+  expectedSteps: steps,
+  steps: [],
+  summary: {
+    status: 'running',
+    passed: 0,
+    failed: 0,
+    skippedFinalGate: skipFinalGate,
+  },
+};
+
+function writeReport() {
+  report.updatedAt = new Date().toISOString();
+  report.summary.passed = report.steps.filter((step) => step.status === 'pass').length;
+  report.summary.failed = report.steps.filter((step) => step.status === 'fail').length;
+  mkdirSync(resolve(root, 'docs/reports'), { recursive: true });
+  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+}
+
+writeReport();
 
 for (const step of steps) {
   const label = `npm run ${step}`;
   if (process.env.GITHUB_ACTIONS === 'true') {
     console.log(`::group::${label}`);
   }
+  const startedAt = new Date().toISOString();
+  const startMs = performance.now();
   const result = spawnSync('npm', ['run', step], {
-    cwd: process.cwd(),
+    cwd: root,
     env: process.env,
     stdio: 'inherit',
   });
+  const finishedAt = new Date().toISOString();
+  const status = result.status === 0 ? 'pass' : 'fail';
+  report.steps.push({
+    step,
+    label,
+    status,
+    startedAt,
+    finishedAt,
+    durationMs: Math.round(performance.now() - startMs),
+    exitCode: result.status,
+    signal: result.signal,
+  });
+  report.summary.status = status === 'fail' ? 'fail' : 'running';
+  writeReport();
   if (process.env.GITHUB_ACTIONS === 'true') {
     console.log('::endgroup::');
   }
@@ -52,3 +110,6 @@ for (const step of steps) {
     process.exit(result.status ?? 1);
   }
 }
+
+report.summary.status = 'pass';
+writeReport();

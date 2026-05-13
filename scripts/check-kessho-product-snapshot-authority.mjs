@@ -15,9 +15,11 @@ function assert(condition, message) {
 
 const snapshotPath = 'src/audio/coreProductSnapshot.ts';
 const snapshot = read(snapshotPath);
+const snapshotEncoderPath = 'src/audio/coreProductSnapshotEncoder.ts';
+const snapshotEncoder = read(snapshotEncoderPath);
 const legacyCompatPath = 'src/audio/CoreProductLegacyPresetCompat.ts';
 const legacyCompat = read(legacyCompatPath);
-const snapshotAuthoritySurface = `${snapshot}\n${legacyCompat}`;
+const snapshotAuthoritySurface = `${snapshot}\n${snapshotEncoder}\n${legacyCompat}`;
 
 const allowedImports = new Set([
   './generated/kesshoProductSchema',
@@ -25,6 +27,7 @@ const allowedImports = new Set([
   './CoreProductLegacyPresetCompat',
   './coreProductEvents',
   './coreProductAssets',
+  './coreProductSnapshotEncoder',
   './outputTrims',
   './transport',
 ]);
@@ -35,6 +38,20 @@ for (const source of imports) {
 }
 for (const source of allowedImports) {
   assert(imports.includes(source), `${snapshotPath} import allowlist drifted; missing expected dependency: ${source}`);
+}
+
+const encoderAllowedImports = new Set([
+  './generated/kesshoProductSchema',
+  './coreProductEvents',
+  './CoreProductLegacyPresetCompat',
+  './coreProductSnapshot',
+]);
+const encoderImports = Array.from(snapshotEncoder.matchAll(/from '([^']+)'/g), (match) => match[1]);
+for (const source of encoderImports) {
+  assert(encoderAllowedImports.has(source), `${snapshotEncoderPath} imports unclassified dependency: ${source}`);
+}
+for (const source of encoderAllowedImports) {
+  assert(encoderImports.includes(source), `${snapshotEncoderPath} import allowlist drifted; missing expected dependency: ${source}`);
 }
 
 for (const token of [

@@ -16,24 +16,30 @@ function assert(condition, message) {
 const host = read('src/audio/coreProductEngineHost.ts');
 const assetAdapter = read('src/audio/CoreProductAssetAdapter.ts');
 const fallbackDiagnostics = read('src/audio/CoreProductFallbackDiagnostics.ts');
+const hostSequencerAdapter = read('src/audio/CoreProductHostSequencerAdapter.ts');
 const runtimeAdapter = read('src/audio/CoreProductRuntimeAdapter.ts');
 const runtime = read('src/audio/coreProductRuntime.ts');
 const appRuntime = read('src/audio/runtime.ts');
 const app = read('src/App.tsx');
 const events = read('src/audio/coreProductEvents.ts');
 const snapshot = read('src/audio/coreProductSnapshot.ts');
+const snapshotEncoder = read('src/audio/coreProductSnapshotEncoder.ts');
 const legacyPresetCompat = read('src/audio/CoreProductLegacyPresetCompat.ts');
 const telemetryTypes = read('src/audio/coreProductTelemetry.ts');
 const assets = `${read('src/audio/coreProductAssets.ts')}\n${read('src/audio/coreProductAssetManifest.json')}`;
 const generatedSchema = read('src/audio/generated/kesshoProductSchema.ts');
 const worklet = read('public/worklets/kessho-core-product.worklet.js');
 const manifest = read('scripts/kessho-core-build-manifest.mjs');
+const hostSurface = `${host}\n${hostSequencerAdapter}`;
+const snapshotSurface = `${snapshot}\n${snapshotEncoder}`;
 
 const lineCount = (source) => source.split('\n').length;
-assert(lineCount(host) <= 1850, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
+assert(lineCount(host) <= 1550, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
 assert(lineCount(assetAdapter) <= 220, `CoreProductAssetAdapter.ts exceeds cleanup size cap (${lineCount(assetAdapter)} lines)`);
+assert(lineCount(hostSequencerAdapter) <= 320, `CoreProductHostSequencerAdapter.ts exceeds cleanup size cap (${lineCount(hostSequencerAdapter)} lines)`);
 assert(lineCount(runtimeAdapter) <= 650, `CoreProductRuntimeAdapter.ts exceeds cleanup size cap (${lineCount(runtimeAdapter)} lines)`);
-assert(lineCount(snapshot) <= 1600, `coreProductSnapshot.ts exceeds cleanup size cap (${lineCount(snapshot)} lines)`);
+assert(lineCount(snapshot) <= 1200, `coreProductSnapshot.ts exceeds cleanup size cap (${lineCount(snapshot)} lines)`);
+assert(lineCount(snapshotEncoder) <= 520, `coreProductSnapshotEncoder.ts exceeds cleanup size cap (${lineCount(snapshotEncoder)} lines)`);
 assert(lineCount(legacyPresetCompat) <= 420, `CoreProductLegacyPresetCompat.ts exceeds cleanup size cap (${lineCount(legacyPresetCompat)} lines)`);
 assert(
   fallbackDiagnostics.includes('classifyCoreProductRuntimeFallback') &&
@@ -116,8 +122,8 @@ for (const token of [
   "this.syncSequencerStepToggles('synth', true);",
   "this.syncSequencerStepToggles('drum', true);",
   'this.flushSequencerStepToggles();',
-  'synthEuclidEvolveConfigs: this.normalizeEvolveConfigs(configs)',
-  'drumEuclidEvolveConfigs: this.normalizeEvolveConfigs(configs)',
+  'synthEuclidEvolveConfigs: normalizeEvolveConfigs(configs)',
+  'drumEuclidEvolveConfigs: normalizeEvolveConfigs(configs)',
   'createCoreProductModulationRangeEvent(',
   'createCoreProductSequencerStepEvent(',
   'createCoreProductSequencerStepValueEvent(',
@@ -140,7 +146,7 @@ for (const token of [
   'rngState: this.latestTelemetry.rngState',
   'currentRangeValueContext',
 ]) {
-  assert(host.includes(token), `core-product host is missing ${token}`);
+  assert(hostSurface.includes(token), `core-product host/sequencer adapter is missing ${token}`);
 }
 
 for (const token of [
@@ -267,7 +273,7 @@ for (const token of [
   'f32(snapshot.fx.sidechainReverbTarget)',
   'f32(snapshot.master.saturationDrive)',
 ]) {
-  assert(snapshot.includes(token), `core-product snapshot is missing ${token}`);
+  assert(snapshotSurface.includes(token), `core-product snapshot/encoder is missing ${token}`);
 }
 
 for (const token of [
@@ -535,7 +541,7 @@ for (const token of [
   'u32(snapshot.fx.reverbType >>> 0)',
   'f32(snapshot.fx.reverbErLpFreq)',
 ]) {
-  assert(snapshot.includes(token), `core-product snapshot is missing ${token}`);
+  assert(snapshotSurface.includes(token), `core-product snapshot/encoder is missing ${token}`);
 }
 
 for (const forbidden of [
@@ -577,6 +583,7 @@ const snapshotImportAllowlist = new Set([
   './CoreProductLegacyPresetCompat',
   './coreProductAssets',
   './coreProductEvents',
+  './coreProductSnapshotEncoder',
   './generated/kesshoProductSchema',
   './outputTrims',
   './transport',
@@ -591,6 +598,7 @@ for (const specifier of importSpecifiers(snapshot)) {
 const hostImportAllowlist = new Set([
   '../native/capacitorMidiRouting',
   './CoreProductAssetAdapter',
+  './CoreProductHostSequencerAdapter',
   './CoreProductRuntimeAdapter',
   './coreMidiEvents',
   './coreProductAssets',

@@ -18,14 +18,12 @@ import { createCoreProductSnapshot, encodeCoreProductSnapshot, type CoreProductS
 import {
   CORE_PRODUCT_MODULATION_RANGE_MODE,
   CORE_PRODUCT_SEQUENCER_IDS,
-  CORE_PRODUCT_SUBLANE_DIRECTIONS,
   CORE_PRODUCT_STEP_VALUE_FIELDS,
   CORE_PRODUCT_SOURCE_IDS,
   type CoreProductEvent,
   type CoreProductModulationRangeMode,
   type CoreProductRangeTarget,
   type CoreProductRangeValueContext,
-  type CoreProductSubLaneDirection,
   type CoreProductStepValueField,
   createCoreProductDrumTriggerEvent,
   createCoreProductJourneyEvent,
@@ -62,6 +60,19 @@ import {
   shouldForwardCoreProductRngDiffs,
   type SnapshotReloadReason,
 } from './CoreProductRuntimeAdapter';
+import {
+  normalizeClockDivisionValue,
+  normalizeEvolveConfigs,
+  normalizeSequencerStepToggleOverrides,
+  normalizeSequencerStepValueConfigs,
+  normalizeSequencerStepValueOverrides,
+  normalizeSubLaneEnabledStates,
+  normalizedUnitValue,
+  type SequencerKind,
+  type SequencerStepToggleOverride,
+  type SequencerStepValueConfig,
+  type SequencerStepValueOverride,
+} from './CoreProductHostSequencerAdapter';
 import { CoreProductRuntime } from './coreProductRuntime';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 
@@ -78,25 +89,6 @@ const CORE_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME = 4;
 type ProductRangeState = {
   range: { min: number; max: number };
   targets: CoreProductRangeTarget[];
-};
-
-type SequencerKind = 'synth' | 'drum';
-type SequencerStepToggleOverride = {
-  step: number;
-  value: boolean;
-};
-
-type SequencerStepValueOverride = {
-  step: number;
-  field: CoreProductStepValueField;
-  value: number;
-  value2?: number;
-};
-
-type SequencerStepValueConfig = {
-  field: CoreProductStepValueField;
-  steps: number;
-  direction: CoreProductSubLaneDirection;
 };
 
 function createCoreProductEngineState(isRunning: boolean): EngineState {
@@ -178,6 +170,11 @@ class CoreProductEngineHost {
   private dirtyDiffCount = 0;
   private fullSnapshotReloadCount = 0;
   private unsupportedControlCount = 0;
+  private unsupportedGetterCount = 0;
+  private lastUnsupportedMethod: string | null = null;
+  private lastUnsupportedMethodClass: RuntimeFallbackClassification | null = null;
+  private runtimeFallbackDiagnosticCount = 0;
+  private audioCriticalFallbackCount = 0;
   private snapshotReloadCpuMs = 0;
   private lastSnapshotReloadReason: SnapshotReloadReason = 'none';
   private pendingSnapshotReloadReason: SnapshotReloadReason | null = null;
@@ -390,6 +387,15 @@ class CoreProductEngineHost {
 
   reportRuntimeFallback(method: string, classification: RuntimeFallbackClassification): void {
     this.unsupportedControlCount += 1;
+    if (method.startsWith('get')) {
+      this.unsupportedGetterCount += 1;
+    }
+    this.lastUnsupportedMethod = method;
+    this.lastUnsupportedMethodClass = classification;
+    this.runtimeFallbackDiagnosticCount += 1;
+    if (classification === 'forbidden-production-fallback') {
+      this.audioCriticalFallbackCount += 1;
+    }
     const dev = (import.meta.env as unknown as { DEV?: boolean }).DEV === true;
     const firstReport = !this.reportedRuntimeFallbacks.has(method);
     if (firstReport) {
@@ -419,14 +425,14 @@ class CoreProductEngineHost {
       'synthEuclid',
       'ClockDivision',
       divs,
-      (value) => this.normalizeClockDivisionValue(value, 16),
+      (value) => normalizeClockDivisionValue(value, 16),
       false,
     );
     this.syncSequencerLaneParams(
       'synth',
       divs,
       KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision,
-      (value) => this.normalizeClockDivisionValue(value, 16),
+      (value) => normalizeClockDivisionValue(value, 16),
     );
   }
 
@@ -435,56 +441,56 @@ class CoreProductEngineHost {
       'drumEuclid',
       'ClockDivision',
       divs,
-      (value) => this.normalizeClockDivisionValue(value, 16),
+      (value) => normalizeClockDivisionValue(value, 16),
       false,
     );
     this.syncSequencerLaneParams(
       'drum',
       divs,
       KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision,
-      (value) => this.normalizeClockDivisionValue(value, 16),
+      (value) => normalizeClockDivisionValue(value, 16),
     );
   }
 
   setSynthEuclidSwings(swings: unknown[]): void {
-    this.patchIndexedAdapterState('synthEuclid', 'Swing', swings, (value) => this.normalizedUnitValue(value, 0), false);
+    this.patchIndexedAdapterState('synthEuclid', 'Swing', swings, (value) => normalizedUnitValue(value, 0), false);
     this.syncSequencerLaneParams(
       'synth',
       swings,
       KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing,
-      (value) => this.normalizedUnitValue(value, 0),
+      (value) => normalizedUnitValue(value, 0),
     );
   }
 
   setDrumEuclidSwings(swings: unknown[]): void {
-    this.patchIndexedAdapterState('drumEuclid', 'Swing', swings, (value) => this.normalizedUnitValue(value, 0), false);
+    this.patchIndexedAdapterState('drumEuclid', 'Swing', swings, (value) => normalizedUnitValue(value, 0), false);
     this.syncSequencerLaneParams(
       'drum',
       swings,
       KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing,
-      (value) => this.normalizedUnitValue(value, 0),
+      (value) => normalizedUnitValue(value, 0),
     );
   }
 
   setSynthEuclidEvolveConfigs(configs: unknown[]): void {
     this.patchAdapterState({
-      synthEuclidEvolveConfigs: this.normalizeEvolveConfigs(configs),
+      synthEuclidEvolveConfigs: normalizeEvolveConfigs(configs),
     });
   }
 
   setDrumEuclidEvolveConfigs(configs: unknown[]): void {
     this.patchAdapterState({
-      drumEuclidEvolveConfigs: this.normalizeEvolveConfigs(configs),
+      drumEuclidEvolveConfigs: normalizeEvolveConfigs(configs),
     });
   }
 
   setSynthSubLaneEnabled(states: Record<string, boolean>[]): void {
-    this.synthSubLaneEnabled = this.normalizeSubLaneEnabledStates(states);
+    this.synthSubLaneEnabled = normalizeSubLaneEnabledStates(states);
     this.syncSequencerStepToggles('synth', true);
   }
 
   setDrumSubLaneEnabled(states: Record<string, boolean>[]): void {
-    this.drumSubLaneEnabled = this.normalizeSubLaneEnabledStates(states);
+    this.drumSubLaneEnabled = normalizeSubLaneEnabledStates(states);
     this.syncSequencerStepToggles('drum', true);
   }
 
@@ -503,16 +509,16 @@ class CoreProductEngineHost {
   }
 
   setSynthStepOverrides(overrides: unknown): void {
-    this.synthStepToggleOverrides = this.normalizeSequencerStepToggleOverrides(
+    this.synthStepToggleOverrides = normalizeSequencerStepToggleOverrides(
       overrides,
       this.synthStepToggleOverrides,
     );
-    this.synthStepValueOverrides = this.normalizeSequencerStepValueOverrides(
+    this.synthStepValueOverrides = normalizeSequencerStepValueOverrides(
       overrides,
       this.synthStepValueOverrides,
       true,
     );
-    this.synthStepValueConfigs = this.normalizeSequencerStepValueConfigs(
+    this.synthStepValueConfigs = normalizeSequencerStepValueConfigs(
       overrides,
       this.synthStepValueConfigs,
       true,
@@ -521,16 +527,16 @@ class CoreProductEngineHost {
   }
 
   setDrumStepOverrides(overrides: unknown): void {
-    this.drumStepToggleOverrides = this.normalizeSequencerStepToggleOverrides(
+    this.drumStepToggleOverrides = normalizeSequencerStepToggleOverrides(
       overrides,
       this.drumStepToggleOverrides,
     );
-    this.drumStepValueOverrides = this.normalizeSequencerStepValueOverrides(
+    this.drumStepValueOverrides = normalizeSequencerStepValueOverrides(
       overrides,
       this.drumStepValueOverrides,
       false,
     );
-    this.drumStepValueConfigs = this.normalizeSequencerStepValueConfigs(
+    this.drumStepValueConfigs = normalizeSequencerStepValueConfigs(
       overrides,
       this.drumStepValueConfigs,
       false,
@@ -1153,6 +1159,11 @@ class CoreProductEngineHost {
       dirtyDiffCount: this.dirtyDiffCount,
       fullSnapshotReloadCount: this.fullSnapshotReloadCount,
       unsupportedControlCount: this.unsupportedControlCount,
+      unsupportedGetterCount: this.unsupportedGetterCount,
+      lastUnsupportedMethod: this.lastUnsupportedMethod,
+      lastUnsupportedMethodClass: this.lastUnsupportedMethodClass,
+      runtimeFallbackDiagnosticCount: this.runtimeFallbackDiagnosticCount,
+      audioCriticalFallbackCount: this.audioCriticalFallbackCount,
       snapshotReloadCpuMs: this.snapshotReloadCpuMs,
       lastSnapshotReloadReason: this.lastSnapshotReloadReason,
     };
@@ -1189,6 +1200,11 @@ class CoreProductEngineHost {
       dirtyDiffCount: telemetry.dirtyDiffCount ?? this.dirtyDiffCount,
       fullSnapshotReloadCount: telemetry.fullSnapshotReloadCount ?? this.fullSnapshotReloadCount,
       unsupportedControlCount: telemetry.unsupportedControlCount ?? this.unsupportedControlCount,
+      unsupportedGetterCount: telemetry.unsupportedGetterCount ?? this.unsupportedGetterCount,
+      lastUnsupportedMethod: telemetry.lastUnsupportedMethod ?? this.lastUnsupportedMethod,
+      lastUnsupportedMethodClass: telemetry.lastUnsupportedMethodClass ?? this.lastUnsupportedMethodClass,
+      runtimeFallbackDiagnosticCount: telemetry.runtimeFallbackDiagnosticCount ?? this.runtimeFallbackDiagnosticCount,
+      audioCriticalFallbackCount: telemetry.audioCriticalFallbackCount ?? this.audioCriticalFallbackCount,
       snapshotReloadCpuMs: telemetry.snapshotReloadCpuMs ?? this.snapshotReloadCpuMs,
       lastSnapshotReloadReason: telemetry.lastSnapshotReloadReason ?? this.lastSnapshotReloadReason,
     };
@@ -1213,279 +1229,6 @@ class CoreProductEngineHost {
       patch[`${prefix}${index + 1}${suffix}`] = mapValue(values[index]);
     }
     this.patchAdapterState(patch, loadSnapshot);
-  }
-
-  private normalizedUnitValue(value: unknown, fallback: number): number {
-    return typeof value === 'number' && Number.isFinite(value)
-      ? Math.max(0, Math.min(1, value))
-      : fallback;
-  }
-
-  private normalizeClockDivisionValue(value: unknown, fallback: number): number {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return Math.max(1, Math.min(128, Math.round(value)));
-    }
-    if (typeof value !== 'string') {
-      return fallback;
-    }
-    const table: Record<string, number> = {
-      '1/4': 4,
-      '1/4T': 6,
-      '1/8': 8,
-      '1/8T': 12,
-      '1/16': 16,
-      '1/16T': 24,
-      '1/32': 32,
-      '1/32T': 48,
-      '1/64': 64,
-    };
-    return table[value] ?? fallback;
-  }
-
-  private normalizeEvolveConfigs(configs: unknown): Array<{ enabled: boolean; evolution: number; everyBars: number }> {
-    const items = Array.isArray(configs) ? configs : [];
-    return items.slice(0, 4).map((config) => {
-      const source = config && typeof config === 'object' ? config as Record<string, unknown> : {};
-      const evolution = typeof source.evolution === 'number' && Number.isFinite(source.evolution)
-        ? source.evolution
-        : 0;
-      const everyBars = typeof source.everyBars === 'number' && Number.isFinite(source.everyBars)
-        ? source.everyBars
-        : 4;
-      return {
-        enabled: source.enabled !== false,
-        evolution: Math.max(0, Math.min(1, evolution)),
-        everyBars: Math.max(1, Math.round(everyBars)),
-      };
-    });
-  }
-
-  private normalizeSubLaneEnabledStates(states: unknown): Record<string, boolean>[] {
-    const lanes = Array.isArray(states) ? states : [];
-    return Array.from({ length: Math.max(4, Math.min(16, lanes.length || 4)) }, (_, laneIndex) => {
-      const source = lanes[laneIndex];
-      if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
-      const out: Record<string, boolean> = {};
-      for (const [key, value] of Object.entries(source as Record<string, unknown>)) {
-        if (typeof value === 'boolean') {
-          out[key] = value;
-        }
-      }
-      return out;
-    });
-  }
-
-  private normalizeSequencerStepToggleOverrides(
-    overrides: unknown,
-    fallback: SequencerStepToggleOverride[][],
-  ): SequencerStepToggleOverride[][] {
-    const source = overrides && typeof overrides === 'object' && !Array.isArray(overrides) && !(overrides instanceof Map)
-      ? overrides as Record<string, unknown>
-      : null;
-    if (source && !Object.prototype.hasOwnProperty.call(source, 'triggerToggles')) {
-      return this.cloneStepToggleOverrides(fallback);
-    }
-    const candidate = source ? source.triggerToggles : overrides;
-    if (candidate === undefined) {
-      return this.cloneStepToggleOverrides(fallback);
-    }
-    const lanes = Array.isArray(candidate) ? candidate : [];
-    const laneCount = Math.max(4, Math.min(16, Math.max(lanes.length, fallback.length)));
-    return Array.from({ length: laneCount }, (_, laneIndex) =>
-      this.normalizeStepToggleLane(lanes[laneIndex]),
-    );
-  }
-
-  private cloneStepToggleOverrides(overrides: SequencerStepToggleOverride[][]): SequencerStepToggleOverride[][] {
-    return overrides.map((lane) => lane.map((toggle) => ({ ...toggle })));
-  }
-
-  private normalizeStepToggleLane(lane: unknown): SequencerStepToggleOverride[] {
-    const toggles = new Map<number, boolean>();
-    const add = (stepValue: unknown, enabledValue: unknown) => {
-      if (typeof stepValue !== 'number' || !Number.isFinite(stepValue)) return;
-      const step = Math.round(stepValue);
-      if (step < 0 || step > 63) return;
-      toggles.set(step, this.booleanToggleValue(enabledValue));
-    };
-
-    if (lane instanceof Map) {
-      for (const [step, enabled] of lane.entries()) {
-        add(step, enabled);
-      }
-    } else if (Array.isArray(lane)) {
-      lane.forEach((entry, index) => {
-        if (Array.isArray(entry)) {
-          add(entry[0], entry[1]);
-          return;
-        }
-        if (entry && typeof entry === 'object') {
-          const record = entry as Record<string, unknown>;
-          add(record.step, record.value);
-          return;
-        }
-        if (typeof entry === 'boolean' || typeof entry === 'number') {
-          add(index, entry);
-        }
-      });
-    } else if (lane && typeof lane === 'object') {
-      for (const [step, enabled] of Object.entries(lane as Record<string, unknown>)) {
-        const parsedStep = Number(step);
-        add(parsedStep, enabled);
-      }
-    }
-
-    return Array.from(toggles.entries())
-      .sort(([left], [right]) => left - right)
-      .map(([step, value]) => ({ step, value }));
-  }
-
-  private booleanToggleValue(value: unknown): boolean {
-    if (typeof value === 'boolean') return value;
-    if (typeof value === 'number' && Number.isFinite(value)) return value !== 0;
-    if (typeof value === 'string') return value.toLowerCase() === 'true' || value === '1';
-    return Boolean(value);
-  }
-
-  private normalizeSequencerStepValueOverrides(
-    overrides: unknown,
-    fallback: SequencerStepValueOverride[][],
-    includeMidiNote: boolean,
-  ): SequencerStepValueOverride[][] {
-    const source = overrides && typeof overrides === 'object' && !Array.isArray(overrides) && !(overrides instanceof Map)
-      ? overrides as Record<string, unknown>
-      : null;
-    if (!source) {
-      return fallback.map((lane) => lane.map((entry) => ({ ...entry })));
-    }
-    const laneCount = Math.max(4, Math.min(16, fallback.length));
-    const lanes: SequencerStepValueOverride[][] = Array.from({ length: laneCount }, () => []);
-    const addNumericField = (
-      key: string,
-      field: CoreProductStepValueField,
-      min: number,
-      max: number,
-      round = false,
-    ) => {
-      const value = source[key];
-      if (!Array.isArray(value)) return;
-      const count = Math.max(laneCount, Math.min(16, value.length));
-      while (lanes.length < count) lanes.push([]);
-      for (let laneIndex = 0; laneIndex < Math.min(value.length, lanes.length); laneIndex += 1) {
-        const laneOut = lanes[laneIndex];
-        if (!laneOut) continue;
-        this.collectNumericStepValues(value[laneIndex], field, min, max, round, laneOut);
-      }
-    };
-
-    addNumericField('probability', CORE_PRODUCT_STEP_VALUE_FIELDS.probability, 0, 1);
-    addNumericField('ratchet', CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet, 1, 8, true);
-    if (includeMidiNote) {
-      addNumericField('pitch', CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote, 0, 127);
-    }
-    addNumericField('expression', CORE_PRODUCT_STEP_VALUE_FIELDS.expression, 0, 1);
-    addNumericField('morph', CORE_PRODUCT_STEP_VALUE_FIELDS.morph, 0, 1);
-    addNumericField('distance', CORE_PRODUCT_STEP_VALUE_FIELDS.distance, 0, 1);
-
-    if (Array.isArray(source.trigCondition)) {
-      for (let laneIndex = 0; laneIndex < Math.min(source.trigCondition.length, lanes.length); laneIndex += 1) {
-        const laneOut = lanes[laneIndex];
-        if (!laneOut) continue;
-        this.collectTrigConditionStepValues(source.trigCondition[laneIndex], laneOut);
-      }
-    }
-    return lanes.map((lane) => lane.sort((left, right) => left.step - right.step || left.field - right.field));
-  }
-
-  private normalizeSequencerStepValueConfigs(
-    overrides: unknown,
-    fallback: SequencerStepValueConfig[][],
-    includeMidiNote: boolean,
-  ): SequencerStepValueConfig[][] {
-    const source = overrides && typeof overrides === 'object' && !Array.isArray(overrides) && !(overrides instanceof Map)
-      ? overrides as Record<string, unknown>
-      : null;
-    if (!source) {
-      return fallback.map((lane) => lane.map((entry) => ({ ...entry })));
-    }
-
-    const laneCount = Math.max(4, Math.min(16, fallback.length));
-    const lanes: SequencerStepValueConfig[][] = Array.from({ length: laneCount }, () => []);
-    const addConfig = (
-      valueKey: string,
-      directionKey: string,
-      field: CoreProductStepValueField,
-    ) => {
-      const values = source[valueKey];
-      if (!Array.isArray(values)) return;
-      const directions = Array.isArray(source[directionKey]) ? source[directionKey] as unknown[] : [];
-      while (lanes.length < Math.min(16, values.length)) lanes.push([]);
-      for (let laneIndex = 0; laneIndex < Math.min(values.length, lanes.length); laneIndex += 1) {
-        const laneValues = values[laneIndex];
-        if (!Array.isArray(laneValues) || laneValues.length === 0) continue;
-        const laneOut = lanes[laneIndex];
-        if (!laneOut) continue;
-        laneOut.push({
-          field,
-          steps: Math.max(1, Math.min(64, laneValues.length)),
-          direction: this.normalizeSubLaneDirection(directions[laneIndex]),
-        });
-      }
-    };
-
-    if (includeMidiNote) {
-      addConfig('pitch', 'pitchDirection', CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote);
-    }
-    addConfig('ratchet', 'expressionDirection', CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet);
-    addConfig('expression', 'expressionDirection', CORE_PRODUCT_STEP_VALUE_FIELDS.expression);
-    addConfig('morph', 'morphDirection', CORE_PRODUCT_STEP_VALUE_FIELDS.morph);
-    addConfig('distance', 'distanceDirection', CORE_PRODUCT_STEP_VALUE_FIELDS.distance);
-
-    return lanes;
-  }
-
-  private normalizeSubLaneDirection(value: unknown): CoreProductSubLaneDirection {
-    const text = String(value ?? 'forward').toLowerCase();
-    if (text === 'reverse') return CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse;
-    if (text === 'pingpong') return CORE_PRODUCT_SUBLANE_DIRECTIONS.pingpong;
-    return CORE_PRODUCT_SUBLANE_DIRECTIONS.forward;
-  }
-
-  private collectNumericStepValues(
-    lane: unknown,
-    field: CoreProductStepValueField,
-    min: number,
-    max: number,
-    round: boolean,
-    out: SequencerStepValueOverride[],
-  ): void {
-    if (!Array.isArray(lane)) return;
-    for (let step = 0; step < Math.min(64, lane.length); step += 1) {
-      const raw = lane[step];
-      if (typeof raw !== 'number' || !Number.isFinite(raw)) continue;
-      const value = Math.max(min, Math.min(max, round ? Math.round(raw) : raw));
-      out.push({ step, field, value });
-    }
-  }
-
-  private collectTrigConditionStepValues(lane: unknown, out: SequencerStepValueOverride[]): void {
-    if (!Array.isArray(lane)) return;
-    for (let step = 0; step < Math.min(64, lane.length); step += 1) {
-      const condition = lane[step];
-      if (!Array.isArray(condition)) continue;
-      const numerator = typeof condition[0] === 'number' && Number.isFinite(condition[0])
-        ? Math.max(1, Math.min(16, Math.round(condition[0])))
-        : 1;
-      const denominator = typeof condition[1] === 'number' && Number.isFinite(condition[1])
-        ? Math.max(1, Math.min(16, Math.round(condition[1])))
-        : 1;
-      out.push({
-        step,
-        field: CORE_PRODUCT_STEP_VALUE_FIELDS.trigCondition,
-        value: Math.min(numerator, denominator),
-        value2: denominator,
-      });
-    }
   }
 
   private flushSequencerStepToggles(): void {
@@ -1762,6 +1505,10 @@ class CoreProductEngineHost {
     if (this.reportedUnsupportedRangeKeys.has(key)) return;
     this.reportedUnsupportedRangeKeys.add(key);
     this.unsupportedControlCount += 1;
+    this.lastUnsupportedMethod = `range:${key}`;
+    this.lastUnsupportedMethodClass = 'forbidden-production-fallback';
+    this.runtimeFallbackDiagnosticCount += 1;
+    this.audioCriticalFallbackCount += 1;
     if ((import.meta.env as unknown as { DEV?: boolean }).DEV || typeof console !== 'undefined') {
       console.error(`core-product runtime fallback forbidden-production-fallback for slider range "${key}".`);
     }

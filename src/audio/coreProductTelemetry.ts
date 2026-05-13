@@ -102,6 +102,11 @@ export type CoreProductTelemetrySnapshot = {
   dirtyDiffCount?: number;
   fullSnapshotReloadCount?: number;
   unsupportedControlCount?: number;
+  unsupportedGetterCount?: number;
+  lastUnsupportedMethod?: string | null;
+  lastUnsupportedMethodClass?: string | null;
+  runtimeFallbackDiagnosticCount?: number;
+  audioCriticalFallbackCount?: number;
   snapshotReloadCpuMs?: number;
   lastSnapshotReloadReason?: string;
   workletOutputPeak?: number;

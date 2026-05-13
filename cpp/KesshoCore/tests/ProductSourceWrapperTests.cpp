@@ -29,6 +29,25 @@ float peakRange(const std::vector<float>& left, const std::vector<float>& right,
   return result;
 }
 
+float peakSamples(const std::vector<float>& samples) {
+  float result = 0.0f;
+  for (const float sample : samples) {
+    require(std::isfinite(sample), "non-finite output sample");
+    result = std::max(result, std::fabs(sample));
+  }
+  return result;
+}
+
+float maxAbsDiff(const std::vector<float>& a, const std::vector<float>& b) {
+  require(a.size() == b.size(), "sample buffers have different sizes");
+  float result = 0.0f;
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    require(std::isfinite(a[i]) && std::isfinite(b[i]), "non-finite output sample");
+    result = std::max(result, std::fabs(a[i] - b[i]));
+  }
+  return result;
+}
+
 float renderPeakBlocks(KesshoProductEngine* engine, uint32_t blocks = 64) {
   std::vector<float> left(128);
   std::vector<float> right(128);
@@ -686,6 +705,72 @@ void requireGeneratedDrumVoicePresetsAffectRender() {
   require(soft < classic * 0.75f, "generated drum voice preset selection did not affect rendered sub level");
 }
 
+std::vector<float> renderDrumSubReconstructionProof(const char* preset_name, bool use_voice_preset_ids) {
+  const auto* drum = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT);
+  const auto* preset = generatedDrumVoicePreset(0u, preset_name);
+  require(drum != nullptr, "DrumDefault preset missing for reconstruction proof");
+  require(preset != nullptr, "generated drum voice preset missing for reconstruction proof");
+  require(
+      drum->exact_drum_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT,
+      "DrumDefault exact params missing for reconstruction proof");
+
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "drum reconstruction proof engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
+  source.level = 1.0f;
+  source.expression = 1.0f;
+  source.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT;
+
+  if (use_voice_preset_ids) {
+    source.exact_drum_param_count = 0u;
+    source.drum_voice_preset_a_ids[preset->voice_index] = preset->id;
+    source.drum_voice_preset_b_ids[preset->voice_index] = preset->id;
+    source.drum_voice_morphs[preset->voice_index] = 0.0f;
+  } else {
+    source.exact_drum_param_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT;
+    for (uint32_t index = 0; index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT; ++index) {
+      source.exact_drum_params[index] = drum->exact_drum_params[index];
+    }
+    const uint32_t end = std::min<uint32_t>(
+        preset->param_start + preset->param_count,
+        kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT);
+    for (uint32_t index = preset->param_start; index < end; ++index) {
+      source.exact_drum_params[index] = preset->params[index];
+    }
+  }
+
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "drum reconstruction proof snapshot load failed");
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
+
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  std::vector<float> samples;
+  samples.reserve(64u * 128u * 2u);
+  for (uint32_t block = 0; block < 64; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    for (uint32_t index = 0; index < 128; ++index) {
+      samples.push_back(left[index]);
+      samples.push_back(right[index]);
+    }
+  }
+  kessho_product_destroy(engine);
+  return samples;
+}
+
+void requireDrumVoicePresetIdsReconstructExactDrumPatch() {
+  const std::vector<float> from_voice_ids = renderDrumSubReconstructionProof("Soft Touch", true);
+  const std::vector<float> from_exact_patch = renderDrumSubReconstructionProof("Soft Touch", false);
+  require(peakSamples(from_voice_ids) > 0.0001f, "drum voice preset ID reconstruction did not render");
+  require(
+      maxAbsDiff(from_voice_ids, from_exact_patch) < 0.000001f,
+      "drum voice preset IDs did not reconstruct the equivalent exact drum patch");
+}
+
 float renderDelayedLeadPeakWithSourceHold(float source_hold_seconds, float event_hold_seconds) {
   const auto* rhodes = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES);
   require(rhodes != nullptr, "LeadSoftRhodes preset missing for source hold test");
@@ -925,6 +1010,7 @@ int main() {
   requireSnapshotExactLeadParamsAffectRender();
   requireSnapshotExactDrumParamsAffectRender();
   requireGeneratedDrumVoicePresetsAffectRender();
+  requireDrumVoicePresetIdsReconstructExactDrumPatch();
   requireSourcePostChainAffectsRender();
   requireManualLeadUsesSourceHold();
   requireSourcePresetTelemetryAndEvent();

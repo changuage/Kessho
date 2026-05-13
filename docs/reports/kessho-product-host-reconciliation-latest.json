@@ -1,0 +1,303 @@
+{
+  "status": "pass",
+  "generatedAt": "2026-05-13T11:57:06.706Z",
+  "command": "node scripts/check-kessho-product-host-reconciliation.mjs",
+  "evidence": [
+    {
+      "status": "pass",
+      "id": "static-host-reconciliation-contract",
+      "summary": "Static host/Core reconciliation and Product Core C++ preservation assertions are present.",
+      "details": {
+        "liveSequencerMethods": [
+          "diceSynthEuclidLane",
+          "diceDrumEuclidLane",
+          "resetSynthEuclidLaneHome",
+          "resetDrumEuclidLaneHome"
+        ],
+        "cppPreservationAssertions": 13
+      }
+    },
+    {
+      "status": "pass",
+      "id": "host-reconciliation-behavior",
+      "summary": "Host harness posts live dice/reset events, reconciles Core sequencer UI telemetry, and replays cached Core-owned state after full reload.",
+      "details": {
+        "liveEvents": [
+          {
+            "type": "sequencer-dice",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "intensity": 0.42
+          },
+          {
+            "type": "sequencer-reset-home",
+            "sequencer": "drum",
+            "laneIndex": 2
+          }
+        ],
+        "synthOverridePayloads": [
+          {
+            "laneIndex": 1,
+            "payload": {
+              "triggerToggles": [
+                [
+                  0,
+                  true
+                ],
+                [
+                  3,
+                  false
+                ]
+              ],
+              "pitch": [
+                0,
+                4
+              ],
+              "expression": [
+                0.2,
+                0.8
+              ],
+              "morph": [
+                0.3,
+                0.7
+              ],
+              "distance": [
+                0.1,
+                0.9
+              ],
+              "probability": [
+                0.25,
+                0.5
+              ],
+              "ratchet": [
+                1,
+                2
+              ]
+            }
+          }
+        ],
+        "drumOverridePayloads": [
+          {
+            "laneIndex": 2,
+            "payload": {
+              "triggerToggles": [
+                {},
+                {},
+                {},
+                {}
+              ],
+              "probability": [
+                null,
+                null,
+                [],
+                null
+              ],
+              "ratchet": [
+                null,
+                null,
+                [],
+                null
+              ],
+              "trigCondition": [
+                null,
+                null,
+                [],
+                null
+              ],
+              "expression": [
+                null,
+                null,
+                [],
+                null
+              ],
+              "pitch": [
+                null,
+                null,
+                [],
+                null
+              ],
+              "morph": [
+                null,
+                null,
+                [],
+                null
+              ],
+              "distance": [
+                null,
+                null,
+                [],
+                null
+              ],
+              "slice": [
+                null,
+                null,
+                [],
+                null
+              ],
+              "reverse": [
+                null,
+                null,
+                [],
+                null
+              ]
+            }
+          }
+        ],
+        "replayedEvents": [
+          {
+            "type": "sequencer-clear-steps",
+            "sequencer": "synth",
+            "laneIndex": 1
+          },
+          {
+            "type": "sequencer-step",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 0,
+            "value": true
+          },
+          {
+            "type": "sequencer-step",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 3,
+            "value": false
+          },
+          {
+            "type": "sequencer-step-value",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 0,
+            "field": 1,
+            "value": 0.25,
+            "value2": 0
+          },
+          {
+            "type": "sequencer-step-value",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 0,
+            "field": 2,
+            "value": 1,
+            "value2": 0
+          },
+          {
+            "type": "sequencer-step-value",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 0,
+            "field": 3,
+            "value": 60,
+            "value2": 0
+          },
+          {
+            "type": "sequencer-step-value",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 0,
+            "field": 4,
+            "value": 0.2,
+            "value2": 0
+          },
+          {
+            "type": "sequencer-step-value",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 0,
+            "field": 5,
+            "value": 0.3,
+            "value2": 0
+          },
+          {
+            "type": "sequencer-step-value",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 0,
+            "field": 6,
+            "value": 0.1,
+            "value2": 0
+          },
+          {
+            "type": "sequencer-step-value",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 0,
+            "field": 7,
+            "value": 1,
+            "value2": 2
+          },
+          {
+            "type": "sequencer-step-value",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 1,
+            "field": 1,
+            "value": 0.5,
+            "value2": 0
+          },
+          {
+            "type": "sequencer-step-value",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 1,
+            "field": 2,
+            "value": 2,
+            "value2": 0
+          },
+          {
+            "type": "sequencer-step-value",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 1,
+            "field": 3,
+            "value": 64,
+            "value2": 0
+          },
+          {
+            "type": "sequencer-step-value",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 1,
+            "field": 4,
+            "value": 0.8,
+            "value2": 0
+          },
+          {
+            "type": "sequencer-step-value",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 1,
+            "field": 5,
+            "value": 0.7,
+            "value2": 0
+          },
+          {
+            "type": "sequencer-step-value",
+            "sequencer": "synth",
+            "laneIndex": 1,
+            "step": 1,
+            "field": 6,
+            "value": 0.9,
+            "value2": 0
+          }
+        ]
+      }
+    },
+    {
+      "status": "pass",
+      "id": "rng-state-reconciliation-behavior",
+      "summary": "Host snapshot creation carries reconciled Core RNG state while preserving host adapter overrides.",
+      "details": {
+        "capturedSnapshotState": {
+          "rngSeed": 123,
+          "rngState": 456,
+          "seed": 999,
+          "sourceLevel": 0.75,
+          "journeyEnabled": false
+        }
+      }
+    }
+  ],
+  "blocker": [],
+  "deferred": []
+}

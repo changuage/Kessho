@@ -5,6 +5,7 @@ const root = process.cwd();
 
 const productFiles = [
   'src/audio/CoreProductAssetAdapter.ts',
+  'src/audio/CoreProductHostSequencerAdapter.ts',
   'src/audio/coreProductAssets.ts',
   'src/audio/CoreProductFallbackDiagnostics.ts',
   'src/audio/CoreProductLegacyPresetCompat.ts',
@@ -13,6 +14,7 @@ const productFiles = [
   'src/audio/coreProductEvents.ts',
   'src/audio/coreProductRuntime.ts',
   'src/audio/coreProductSnapshot.ts',
+  'src/audio/coreProductSnapshotEncoder.ts',
   'src/audio/coreProductTelemetry.ts',
 ];
 
@@ -48,12 +50,14 @@ const classifiedRuntimeAllowlist = new Map([
   ['./coreProductAssets', 'product module'],
   ['./coreProductAssetManifest.json', 'versioned Product asset manifest'],
   ['./CoreProductAssetAdapter', 'product host asset adapter'],
+  ['./CoreProductHostSequencerAdapter', 'product host sequencer input adapter'],
   ['./CoreProductLegacyPresetCompat', 'temporary Product snapshot compatibility bridge'],
   ['./CoreProductRuntimeAdapter', 'product host snapshot dirty-diff adapter'],
   ['./coreProductEvents', 'product module'],
   ['./CoreProductFallbackDiagnostics', 'product runtime fallback diagnostics'],
   ['./coreProductRuntime', 'product module'],
   ['./coreProductSnapshot', 'product module'],
+  ['./coreProductSnapshotEncoder', 'product snapshot byte encoder'],
   ['./coreProductTelemetry', 'product module'],
   ['./coreMidiEvents', 'product MIDI event packing'],
   ['./delayBuses', 'unit conversion for generated Product params'],

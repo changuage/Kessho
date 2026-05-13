@@ -15,6 +15,8 @@ import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES, morphPresets } from './lead4opfm'
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import { delayNoteToSeconds } from './delayBuses';
 
+// SNAPSHOT_AUTHORITY: TEMP_COMPAT_WEB_REFERENCE - legacy UI/preset conversions are isolated here for retirement.
+
 function numberFromState(state: Record<string, unknown> | undefined, key: string, fallback: number): number {
   const value = state?.[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;

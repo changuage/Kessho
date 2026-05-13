@@ -17,6 +17,6 @@ This gate locks down the first deterministic music and journey ownership contrac
 
 ## Remaining Work
 
-- Random lead/piano phrase generation is still primarily represented in the old web host and needs Product Core-owned phrase scheduling.
-- Journey preset graph/state transitions beyond morph phase/rate still need full C++ ownership.
-- Native-vs-WASM timeline coverage should expand from the deterministic synth event fixture to multi-lane synth/drum timelines once the remaining source and arrangement parity probes are stable.
+- BLOCKED: Random lead/piano phrase generation is still primarily represented in the old web host and needs Product Core-owned phrase scheduling. Owner: Product Core deterministic music owner. Target follow-up: implement Product Core phrase scheduling and add report references.
+- BLOCKED: Journey preset graph/state transitions beyond morph phase/rate still need full C++ ownership. Owner: Product Core deterministic music owner. Target follow-up: move journey graph/state transitions into Product Core and update deterministic proof.
+- DEFERRED_WITH_SIGNOFF: Native-vs-WASM timeline coverage should expand from the deterministic synth event fixture to multi-lane synth/drum timelines once the remaining source and arrangement parity probes are stable. Owner: Product Core parity owner. Target follow-up: add multi-lane timeline coverage after scene parity stabilizes.

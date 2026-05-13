@@ -42,8 +42,11 @@ const requiredPaths = [
   'KesshoNativeSwift/CoreBridge/**',
   'KesshoNativeSwift/Generated/**',
   'docs/kessho-product-core-migration-status.md',
+  'docs/kessho-product-default-gate-v3.md',
   'docs/reports/kessho-core-acceptance-corpus.*',
   'docs/reports/kessho-core-parity-readiness-latest.*',
+  'docs/reports/kessho-product-*.json',
+  'docs/reports/kessho-product-*.md',
 ];
 
 for (const requiredPath of requiredPaths) {
@@ -60,12 +63,8 @@ for (const requiredPath of requiredPaths) {
 
 const requiredCommands = [
   'npx playwright install chromium',
-  'npm run type-check',
-  'npm run build',
-  'npm run core:build:wasm',
-  'npm run core:product:ci',
-  'npm run core:readiness:browser',
-  'swift build --package-path KesshoNativeSwift',
+  'npm run core:product:ci:prereqs',
+  'npm run core:product:default-gate-v3',
 ];
 
 for (const command of requiredCommands) {
@@ -75,6 +74,20 @@ for (const command of requiredCommands) {
 assert(
   workflow.includes('KESSHO_BROWSER_CORPUS_SONIC_RETRIES: 5'),
   'Product Core workflow must keep bounded browser corpus sonic retries for macOS runner jitter',
+);
+
+const runCommands = workflow
+  .split('\n')
+  .map((line) => line.trim())
+  .filter((line) => line.startsWith('- run: '))
+  .map((line) => line.slice('- run: '.length).trim());
+assert(
+  runCommands.at(-1) === 'npm run core:product:default-gate-v3',
+  'Product Default Gate v3 must be the final Product Core workflow command',
+);
+assert(
+  !runCommands.includes('npm run core:product:default-gate-v2'),
+  'Product Core workflow must not run Product Default Gate v2',
 );
 
 for (const token of [

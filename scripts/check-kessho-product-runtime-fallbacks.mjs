@@ -1,12 +1,19 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  addEvidence,
+  assert,
+  loadCoreProductHostHarness,
+  loadFallbackDiagnosticsHarness,
+  methodBody,
+  readProjectFile,
+  runCheckWithReport,
+} from './lib/kesshoProductBehaviorHarness.mjs';
 
-const root = process.cwd();
-const host = readFileSync(resolve(root, 'src/audio/coreProductEngineHost.ts'), 'utf8');
-const fallbackDiagnostics = readFileSync(resolve(root, 'src/audio/CoreProductFallbackDiagnostics.ts'), 'utf8');
-const appRuntime = readFileSync(resolve(root, 'src/audio/runtime.ts'), 'utf8');
-const app = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
-const doc = readFileSync(resolve(root, 'docs/kessho-product-runtime-fallback-classification.md'), 'utf8');
+const host = readProjectFile('src/audio/coreProductEngineHost.ts');
+const fallbackDiagnostics = readProjectFile('src/audio/CoreProductFallbackDiagnostics.ts');
+const appRuntime = readProjectFile('src/audio/runtime.ts');
+const app = readProjectFile('src/App.tsx');
+const doc = readProjectFile('docs/kessho-product-runtime-fallback-classification.md');
+const placeholderDoc = readProjectFile('docs/kessho-product-placeholder-getter-classification.md');
 const uiCallsiteFiles = [
   'src/App.tsx',
   'src/ui/CpuOverlay.tsx',
@@ -17,29 +24,6 @@ const uiCallsiteFiles = [
   'src/audio/sonicParityHarness.ts',
   'src/ui/presetUtils.ts',
 ];
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-function methodBody(source, name) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const definition = new RegExp(`(?:^|\\n)\\s*(?:export\\s+)?(?:function\\s+)?(?:private\\s+)?(?:async\\s+)?${escaped}\\s*\\(`).exec(source);
-  assert(definition, `missing ${name}()`);
-  const open = source.indexOf('{', definition.index);
-  let depth = 0;
-  for (let index = open; index < source.length; index += 1) {
-    const char = source[index];
-    if (char === '{') depth += 1;
-    if (char === '}') {
-      depth -= 1;
-      if (depth === 0) return source.slice(open + 1, index);
-    }
-  }
-  throw new Error(`${name}() body was not balanced`);
-}
 
 function hostMethodNames() {
   const start = host.indexOf('class CoreProductEngineHost');
@@ -56,7 +40,7 @@ function hostMethodNames() {
 function usedAudioEngineMethods() {
   const names = new Set();
   for (const path of uiCallsiteFiles) {
-    const source = readFileSync(resolve(root, path), 'utf8');
+    const source = readProjectFile(path);
     for (const match of source.matchAll(/audioEngine\.([A-Za-z_$][\w$]*)\s*\(/g)) {
       names.add(match[1]);
     }
@@ -69,86 +53,282 @@ function usedAudioEngineMethods() {
   return names;
 }
 
-for (const token of [
-  'type RuntimeFallbackClassification',
-  "'safe-visual-fallback'",
-  "'temporary-missing-product-telemetry'",
-  "'reference-only-web-ts-behavior'",
-  "'forbidden-production-fallback'",
-  'reportedRuntimeFallbacks',
-  'classifyCoreProductRuntimeFallback(property',
-  'runtimeFallbackIsDevelopmentError(classification',
-  'reportRuntimeFallback(method:',
-]) {
-  assert(`${host}\n${fallbackDiagnostics}`.includes(token), `runtime fallback classifier is missing ${token}`);
+function assertThrowsMissingMethod(harness, method) {
+  try {
+    harness.coreProductEngineHost[method](0.5);
+  } catch (error) {
+    const message = error && typeof error === 'object' && 'message' in error ? String(error.message) : String(error);
+    assert(
+      message === `Missing audio-critical core-product method: AudioEngine.${method}`,
+      `${method} threw the wrong development fallback error`,
+    );
+    return message;
+  }
+  throw new Error(`${method} did not throw in development`);
 }
 
-const classifyBody = methodBody(fallbackDiagnostics, 'classifyCoreProductRuntimeFallback');
-assert(classifyBody.includes("property.startsWith('get')"), 'getter fallbacks must be explicitly classified');
-assert(classifyBody.includes("'temporary-missing-product-telemetry'"), 'telemetry/debug getter fallbacks must be classified');
-assert(classifyBody.includes("'safe-visual-fallback'"), 'safe visual getter fallbacks must be classified');
-assert(classifyBody.includes('/^(set|update|reset|dice|start|stop|resume|suspend|trigger|push|load|register|ensure|audition)/'), 'audio-critical method prefixes must be forbidden');
-assert(classifyBody.includes("'reference-only-web-ts-behavior'"), 'non-critical legacy fallback classification must exist');
-
-const devErrorBody = methodBody(fallbackDiagnostics, 'runtimeFallbackIsDevelopmentError');
-assert(devErrorBody.includes("classification === 'forbidden-production-fallback'"), 'only forbidden production fallbacks should throw in development');
-
-const reportBody = methodBody(host, 'reportRuntimeFallback');
-for (const token of [
-  'this.unsupportedControlCount += 1',
-  'this.reportedRuntimeFallbacks.has(method)',
-  'this.reportedRuntimeFallbacks.add(method)',
-  'dev || firstReport',
-  'runtimeFallbackIsDevelopmentError(classification)',
-  'throw new Error(`Missing audio-critical core-product method: AudioEngine.${method}`)',
-]) {
-  assert(reportBody.includes(token), `reportRuntimeFallback() is missing ${token}`);
+function fallbackDiagnosticDetails(hostInstance) {
+  return {
+    unsupportedControlCount: hostInstance.unsupportedControlCount,
+    unsupportedGetterCount: hostInstance.unsupportedGetterCount,
+    lastUnsupportedMethod: hostInstance.lastUnsupportedMethod,
+    lastUnsupportedMethodClass: hostInstance.lastUnsupportedMethodClass,
+    runtimeFallbackDiagnosticCount: hostInstance.runtimeFallbackDiagnosticCount,
+    audioCriticalFallbackCount: hostInstance.audioCriticalFallbackCount,
+  };
 }
 
-const proxyBody = host.slice(host.indexOf('export const coreProductEngineHost = new Proxy'));
-for (const token of [
-  'const classification = classifyCoreProductRuntimeFallback(property);',
-  'host.reportRuntimeFallback(property, classification);',
-  "if (property.startsWith('get'))",
-]) {
-  assert(proxyBody.includes(token), `core-product proxy fallback is missing ${token}`);
-}
+await runCheckWithReport({
+  scriptUrl: import.meta.url,
+  reportName: 'kessho-product-runtime-fallbacks-latest.json',
+  run: async (report) => {
+    for (const token of [
+      'type RuntimeFallbackClassification',
+      "'safe-visual-fallback'",
+      "'temporary-missing-product-telemetry'",
+      "'reference-only-web-ts-behavior'",
+      "'forbidden-production-fallback'",
+      'reportedRuntimeFallbacks',
+      'classifyCoreProductRuntimeFallback(property',
+      'runtimeFallbackIsDevelopmentError(classification',
+      'reportRuntimeFallback(method:',
+    ]) {
+      assert(`${host}\n${fallbackDiagnostics}`.includes(token), `runtime fallback classifier is missing ${token}`);
+    }
 
-const rangeBody = methodBody(host, 'reportUnsupportedRangeKey');
-assert(rangeBody.includes('forbidden-production-fallback'), 'unmapped modulation range keys must be classified as forbidden production fallbacks');
-assert(rangeBody.includes('this.unsupportedControlCount += 1'), 'unmapped modulation range keys must increment diagnostics');
+    const classifyBody = methodBody(fallbackDiagnostics, 'classifyCoreProductRuntimeFallback');
+    assert(classifyBody.includes("property.startsWith('get')"), 'getter fallbacks must be explicitly classified');
+    assert(classifyBody.includes("'temporary-missing-product-telemetry'"), 'telemetry/debug getter fallbacks must be classified');
+    assert(classifyBody.includes("'safe-visual-fallback'"), 'safe visual getter fallbacks must be classified');
+    assert(classifyBody.includes('/^(set|update|reset|dice|start|stop|resume|suspend|trigger|push|load|register|ensure|audition)/'), 'audio-critical method prefixes must be forbidden');
+    assert(classifyBody.includes("'reference-only-web-ts-behavior'"), 'non-critical legacy fallback classification must exist');
 
-const missingRequiredMethods = [...usedAudioEngineMethods()]
-  .filter((name) => !hostMethodNames().has(name))
-  .sort();
-assert(
-  missingRequiredMethods.length === 0,
-  `core-product host is missing required app-facing AudioEngine methods: ${missingRequiredMethods.join(', ')}`,
-);
+    const devErrorBody = methodBody(fallbackDiagnostics, 'runtimeFallbackIsDevelopmentError');
+    assert(devErrorBody.includes("classification === 'forbidden-production-fallback'"), 'only forbidden production fallbacks should throw in development');
 
-for (const token of [
-  'import { isCoreProductRangeKeySupported }',
-  'coreProductSupportsRuntimeRangeKey(key',
-  "audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(keyStr)",
-  "audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(key)",
-  'dualModeSupported',
-]) {
-  assert(app.includes(token), `App core-product unsupported-control gating is missing ${token}`);
-}
+    const reportBody = methodBody(host, 'reportRuntimeFallback');
+    for (const token of [
+      'this.unsupportedControlCount += 1',
+      'this.unsupportedGetterCount += 1',
+      'this.lastUnsupportedMethod = method',
+      'this.lastUnsupportedMethodClass = classification',
+      'this.runtimeFallbackDiagnosticCount += 1',
+      'this.audioCriticalFallbackCount += 1',
+      'this.reportedRuntimeFallbacks.has(method)',
+      'this.reportedRuntimeFallbacks.add(method)',
+      'dev || firstReport',
+      'runtimeFallbackIsDevelopmentError(classification)',
+      'throw new Error(`Missing audio-critical core-product method: AudioEngine.${method}`)',
+    ]) {
+      assert(reportBody.includes(token), `reportRuntimeFallback() is missing ${token}`);
+    }
 
-for (const section of [
-  '## safe-visual-fallback',
-  '## temporary-missing-product-telemetry',
-  '## reference-only-web-ts-behavior',
-  '## forbidden-production-fallback',
-  'In development, these throw',
-  'In production, they increment `unsupportedControlCount` and log once',
-  'Required App callsites are statically audited against `CoreProductEngineHost`',
-  'Unsupported dual-mode slider ranges are hidden in `core-product`',
-]) {
-  assert(doc.includes(section), `runtime fallback documentation is missing ${section}`);
-}
+    const proxyBody = host.slice(host.indexOf('export const coreProductEngineHost = new Proxy'));
+    for (const token of [
+      'const classification = classifyCoreProductRuntimeFallback(property);',
+      'host.reportRuntimeFallback(property, classification);',
+      "if (property.startsWith('get'))",
+    ]) {
+      assert(proxyBody.includes(token), `core-product proxy fallback is missing ${token}`);
+    }
 
-assert(!appRuntime.includes('missingNoopMethods'), 'runtime must not keep missing-method no-op fallbacks');
+    const rangeBody = methodBody(host, 'reportUnsupportedRangeKey');
+    assert(rangeBody.includes('forbidden-production-fallback'), 'unmapped modulation range keys must be classified as forbidden production fallbacks');
+    assert(rangeBody.includes('this.unsupportedControlCount += 1'), 'unmapped modulation range keys must increment diagnostics');
+    assert(rangeBody.includes('this.runtimeFallbackDiagnosticCount += 1'), 'unmapped modulation range keys must increment runtime fallback diagnostics');
+    assert(rangeBody.includes('this.audioCriticalFallbackCount += 1'), 'unmapped modulation range keys must increment audio-critical diagnostics');
 
-console.log('Kessho Product runtime fallback checks passed');
+    const missingRequiredMethods = [...usedAudioEngineMethods()]
+      .filter((name) => !hostMethodNames().has(name))
+      .sort();
+    assert(
+      missingRequiredMethods.length === 0,
+      `core-product host is missing required app-facing AudioEngine methods: ${missingRequiredMethods.join(', ')}`,
+    );
+
+    for (const token of [
+      'import { isCoreProductRangeKeySupported }',
+      'coreProductSupportsRuntimeRangeKey(key',
+      "audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(keyStr)",
+      "audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(key)",
+      'dualModeSupported',
+    ]) {
+      assert(app.includes(token), `App core-product unsupported-control gating is missing ${token}`);
+    }
+
+    for (const section of [
+      '## safe-visual-fallback',
+      '## temporary-missing-product-telemetry',
+      '## reference-only-web-ts-behavior',
+      '## forbidden-production-fallback',
+      'In development, these throw',
+      'In production, they increment fallback diagnostics and log once',
+      '`unsupportedGetterCount`',
+      '`lastUnsupportedMethod`',
+      '`lastUnsupportedMethodClass`',
+      '`runtimeFallbackDiagnosticCount`',
+      '`audioCriticalFallbackCount`',
+      'Required App callsites are statically audited against `CoreProductEngineHost`',
+      'Unsupported dual-mode slider ranges are hidden in `core-product`',
+    ]) {
+      assert(doc.includes(section), `runtime fallback documentation is missing ${section}`);
+    }
+
+    assert(!appRuntime.includes('missingNoopMethods'), 'runtime must not keep missing-method no-op fallbacks');
+    addEvidence(report, {
+      id: 'static-runtime-fallback-contract',
+      summary: 'Static fallback contract, App callsite coverage, and documentation checks passed.',
+      details: {
+        auditedUiFiles: uiCallsiteFiles,
+        appFacingMethodCount: usedAudioEngineMethods().size,
+        missingRequiredMethods,
+      },
+    });
+
+    const diagnostics = loadFallbackDiagnosticsHarness();
+    const classificationCases = [
+      ['setUnknownAudioCriticalParam', 'forbidden-production-fallback'],
+      ['updateUnknownAudioCriticalState', 'forbidden-production-fallback'],
+      ['resetUnknownAudioCriticalLane', 'forbidden-production-fallback'],
+      ['diceUnknownAudioCriticalLane', 'forbidden-production-fallback'],
+      ['legacyWebTsOnlyBehavior', 'reference-only-web-ts-behavior'],
+      ['getOptionalVisualSurface', 'safe-visual-fallback'],
+      ['getMissingProductTelemetry', 'temporary-missing-product-telemetry'],
+      ['getMissingProductDebugState', 'temporary-missing-product-telemetry'],
+    ];
+    for (const [method, expected] of classificationCases) {
+      const actual = diagnostics.classifyCoreProductRuntimeFallback(method);
+      assert(actual === expected, `${method} classified as ${actual}, expected ${expected}`);
+    }
+    assert(
+      diagnostics.runtimeFallbackIsDevelopmentError('forbidden-production-fallback') === true &&
+        diagnostics.runtimeFallbackIsDevelopmentError('safe-visual-fallback') === false &&
+        diagnostics.runtimeFallbackIsDevelopmentError('temporary-missing-product-telemetry') === false &&
+        diagnostics.runtimeFallbackIsDevelopmentError('reference-only-web-ts-behavior') === false,
+      'development error behavior must be limited to forbidden production fallbacks',
+    );
+    addEvidence(report, {
+      id: 'classifier-behavior',
+      summary: 'Actual fallback classifier maps unknown control/getter names to the expected runtime classifications.',
+      details: Object.fromEntries(classificationCases),
+    });
+
+    const devHarness = loadCoreProductHostHarness({ dev: true });
+    const devThrowMethods = [
+      'setUnknownAudioCriticalParam',
+      'updateUnknownAudioCriticalState',
+      'resetUnknownAudioCriticalLane',
+      'diceUnknownAudioCriticalLane',
+    ];
+    const thrownMessages = devThrowMethods.map((method) => assertThrowsMissingMethod(devHarness, method));
+    assert(devHarness.host.unsupportedControlCount === devThrowMethods.length, 'development fallback throws must still increment unsupportedControlCount');
+    assert(devHarness.host.unsupportedGetterCount === 0, 'development audio-critical fallbacks must not increment getter count');
+    assert(devHarness.host.runtimeFallbackDiagnosticCount === devThrowMethods.length, 'development fallback throws must increment runtimeFallbackDiagnosticCount');
+    assert(devHarness.host.audioCriticalFallbackCount === devThrowMethods.length, 'development fallback throws must increment audioCriticalFallbackCount');
+    assert(devHarness.host.lastUnsupportedMethod === devThrowMethods.at(-1), 'development fallback throws must record lastUnsupportedMethod');
+    assert(devHarness.host.lastUnsupportedMethodClass === 'forbidden-production-fallback', 'development fallback throws must record lastUnsupportedMethodClass');
+    assert(
+      devHarness.consoleErrors.length === devThrowMethods.length &&
+        devHarness.consoleErrors.every((line) => line.includes('forbidden-production-fallback')),
+      'development fallback throws must emit diagnostics before throwing',
+    );
+    addEvidence(report, {
+      id: 'dev-audio-critical-fallbacks-throw',
+      summary: 'Unknown setter/update/reset/dice methods throw in development after incrementing diagnostics.',
+      details: {
+        methods: devThrowMethods,
+        thrownMessages,
+        ...fallbackDiagnosticDetails(devHarness.host),
+      },
+    });
+
+    const prodHarness = loadCoreProductHostHarness({ dev: false });
+    prodHarness.coreProductEngineHost.setUnknownProductionParam(1);
+    prodHarness.coreProductEngineHost.setUnknownProductionParam(2);
+    prodHarness.coreProductEngineHost.updateUnknownProductionState(3);
+    const setLogs = prodHarness.consoleErrors.filter((line) => line.includes('AudioEngine.setUnknownProductionParam'));
+    const updateLogs = prodHarness.consoleErrors.filter((line) => line.includes('AudioEngine.updateUnknownProductionState'));
+    assert(setLogs.length === 1, 'production fallback must log once per missing method');
+    assert(updateLogs.length === 1, 'production fallback must log first use of each missing method');
+    assert(prodHarness.host.unsupportedControlCount === 3, 'production fallback must increment unsupportedControlCount for every use');
+    assert(prodHarness.host.unsupportedGetterCount === 0, 'production setter/update fallbacks must not increment getter count');
+    assert(prodHarness.host.runtimeFallbackDiagnosticCount === 3, 'production fallback must increment runtimeFallbackDiagnosticCount for every use');
+    assert(prodHarness.host.audioCriticalFallbackCount === 3, 'production fallback must increment audioCriticalFallbackCount for every use');
+    assert(prodHarness.host.lastUnsupportedMethod === 'updateUnknownProductionState', 'production fallback must record lastUnsupportedMethod');
+    assert(prodHarness.host.lastUnsupportedMethodClass === 'forbidden-production-fallback', 'production fallback must record lastUnsupportedMethodClass');
+    addEvidence(report, {
+      id: 'production-diagnostics-log-once',
+      summary: 'Production unknown methods increment every use but log only once per missing method.',
+      details: {
+        ...fallbackDiagnosticDetails(prodHarness.host),
+        consoleErrors: prodHarness.consoleErrors,
+      },
+    });
+
+    const getterHarness = loadCoreProductHostHarness({ dev: true });
+    assert(getterHarness.coreProductEngineHost.getOptionalVisualSurface() === null, 'unknown safe visual getter must return null');
+    assert(getterHarness.coreProductEngineHost.getMissingProductTelemetry() === null, 'unknown missing telemetry getter must return null');
+    assert(getterHarness.host.unsupportedControlCount === 2, 'getter fallbacks must be surfaced in unsupportedControlCount');
+    assert(getterHarness.host.unsupportedGetterCount === 2, 'getter fallbacks must increment unsupportedGetterCount');
+    assert(getterHarness.host.runtimeFallbackDiagnosticCount === 2, 'getter fallbacks must increment runtimeFallbackDiagnosticCount');
+    assert(getterHarness.host.audioCriticalFallbackCount === 0, 'safe/missing telemetry getter fallbacks must not increment audioCriticalFallbackCount');
+    assert(getterHarness.host.lastUnsupportedMethod === 'getMissingProductTelemetry', 'getter fallbacks must record lastUnsupportedMethod');
+    assert(getterHarness.host.lastUnsupportedMethodClass === 'temporary-missing-product-telemetry', 'getter fallbacks must record lastUnsupportedMethodClass');
+    assert(
+      getterHarness.consoleErrors.some((line) => line.includes('safe-visual-fallback')) &&
+        getterHarness.consoleErrors.some((line) => line.includes('temporary-missing-product-telemetry')),
+      'getter fallbacks must emit their classifications in diagnostics',
+    );
+    addEvidence(report, {
+      id: 'getter-fallback-behavior',
+      summary: 'Safe visual and missing telemetry getters return null while surfacing classified diagnostics.',
+      details: {
+        ...fallbackDiagnosticDetails(getterHarness.host),
+        consoleErrors: getterHarness.consoleErrors,
+      },
+    });
+
+    const placeholderClassifications = diagnostics.CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS;
+    const surfacedTelemetryBlockers = Object.entries(placeholderClassifications)
+      .filter(([, entry]) => /telemetry|debug|exposes/i.test(entry.blocker))
+      .map(([getter, entry]) => ({ getter, classification: entry.classification, blocker: entry.blocker }));
+    assert(surfacedTelemetryBlockers.length >= 8, 'missing telemetry/debug getters must be surfaced with tracked blockers');
+    for (const { getter, classification } of surfacedTelemetryBlockers) {
+      assert(placeholderDoc.includes(`\`${getter}\``), `${getter} is missing from placeholder getter docs`);
+      assert(placeholderDoc.includes(`\`${classification}\``), `${getter} classification ${classification} is missing from placeholder getter docs`);
+    }
+    addEvidence(report, {
+      id: 'documented-telemetry-getter-blockers',
+      summary: 'Placeholder getter classifications surface missing telemetry/debug APIs with documented blockers.',
+      details: {
+        surfacedTelemetryBlockers,
+      },
+    });
+
+    const referenceHarness = loadCoreProductHostHarness({ dev: true });
+    referenceHarness.coreProductEngineHost.legacyWebTsOnlyBehavior();
+    assert(referenceHarness.host.unsupportedControlCount === 1, 'reference-only missing methods must not be treated as supported');
+    assert(referenceHarness.host.unsupportedGetterCount === 0, 'reference-only non-getter fallback must not increment unsupportedGetterCount');
+    assert(referenceHarness.host.runtimeFallbackDiagnosticCount === 1, 'reference-only fallback must increment runtimeFallbackDiagnosticCount');
+    assert(referenceHarness.host.audioCriticalFallbackCount === 0, 'reference-only fallback must not increment audioCriticalFallbackCount');
+    assert(referenceHarness.host.lastUnsupportedMethod === 'legacyWebTsOnlyBehavior', 'reference-only fallback must record lastUnsupportedMethod');
+    assert(referenceHarness.host.lastUnsupportedMethodClass === 'reference-only-web-ts-behavior', 'reference-only fallback must record lastUnsupportedMethodClass');
+    assert(
+      referenceHarness.consoleErrors.length === 1 &&
+        referenceHarness.consoleErrors[0].includes('reference-only-web-ts-behavior'),
+      'reference-only missing methods must emit reference-only diagnostics',
+    );
+    assert(!hostMethodNames().has('legacyWebTsOnlyBehavior'), 'reference-only fixture unexpectedly exists as a host method');
+    addEvidence(report, {
+      id: 'reference-only-web-ts-not-supported',
+      summary: 'Reference-only web-ts behavior remains a reported fallback, not a supported Product Core host method.',
+      details: {
+        method: 'legacyWebTsOnlyBehavior',
+        ...fallbackDiagnosticDetails(referenceHarness.host),
+        consoleErrors: referenceHarness.consoleErrors,
+      },
+    });
+
+    console.log('Kessho Product runtime fallback checks passed');
+  },
+});

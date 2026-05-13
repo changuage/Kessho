@@ -1,9 +1,10 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = process.cwd();
 const manifestPath = 'src/audio/coreProductAssetManifest.json';
 const wasmPath = 'public/worklets/kessho_core.wasm';
+const reportPath = 'docs/reports/kessho-product-asset-manifest-latest.json';
 const oggContinuedGranule = 0xffffffffffffffffn;
 const float32Bytes = Float32Array.BYTES_PER_ELEMENT;
 
@@ -39,6 +40,12 @@ function read(path) {
 
 function readJson(path) {
   return JSON.parse(read(path));
+}
+
+function writeJsonReport(path, payload) {
+  const absolute = resolve(root, path);
+  mkdirSync(resolve(absolute, '..'), { recursive: true });
+  writeFileSync(absolute, `${JSON.stringify(payload, null, 2)}\n`);
 }
 
 function assert(condition, message) {
@@ -175,6 +182,7 @@ const manifest = readJson(manifestPath);
 const webAssets = read('src/audio/coreProductAssets.ts');
 const swiftAssets = read('KesshoNativeSwift/Kessho/CoreBridge/KesshoProductCoreAssets.swift');
 const productAssetTests = read('cpp/KesshoCore/tests/ProductAssetTests.cpp');
+const productAssetPolicySource = read('cpp/KesshoCore/src/product/assets/ProductAssets.cpp');
 const doc = read('docs/kessho-product-asset-manifest-decode-matrix.md');
 const statusDoc = read('docs/kessho-product-core-migration-status.md');
 const wasmBuildScript = read('scripts/build-kessho-core-wasm.mjs');
@@ -208,6 +216,50 @@ for (let index = 1; index <= manifest.piano.sampleCount; index += 1) {
 }
 
 const expectedSoundscapeKeys = ['ocean', 'water', 'birds', 'birds2', 'frogs', 'insects'];
+const expectedScenePolicies = {
+  ocean: {
+    assetId: 7101,
+    enableKeys: ['oceanSampleEnabled'],
+    levelExpression: 'oceanSampleLevel',
+    productCorePolicy: { levelBase: 0.9, levelRange: 0.1, panBase: 0.12, panDistance: 0.28, rateDepth: 0.006 },
+    cppReturn: 'return {0.90f, 0.10f, 0.12f, 0.28f, 0.006f};',
+  },
+  water: {
+    assetId: 7104,
+    enableKeys: ['waterEnabled'],
+    levelExpression: 'waterLevel',
+    productCorePolicy: { levelBase: 0.88, levelRange: 0.12, panBase: 0.14, panDistance: 0.26, rateDepth: 0.012 },
+    cppReturn: 'return {0.88f, 0.12f, 0.14f, 0.26f, 0.012f};',
+  },
+  birds: {
+    assetId: 7102,
+    enableKeys: ['birdsEnabled'],
+    levelExpression: 'birdsLevel * natureLevel',
+    productCorePolicy: { levelBase: 0.72, levelRange: 0.28, panBase: 0.3, panDistance: 0.62, rateDepth: 0.035 },
+    cppReturn: 'return {0.72f, 0.28f, 0.30f, 0.62f, 0.035f};',
+  },
+  birds2: {
+    assetId: 7105,
+    enableKeys: ['birds2Enabled'],
+    levelExpression: 'birds2Level * natureLevel',
+    productCorePolicy: { levelBase: 0.72, levelRange: 0.28, panBase: 0.3, panDistance: 0.62, rateDepth: 0.035 },
+    cppReturn: 'return {0.72f, 0.28f, 0.30f, 0.62f, 0.035f};',
+  },
+  frogs: {
+    assetId: 7103,
+    enableKeys: ['frogsEnabled'],
+    levelExpression: 'frogsLevel * natureLevel',
+    productCorePolicy: { levelBase: 0.76, levelRange: 0.2, panBase: 0.26, panDistance: 0.48, rateDepth: 0.02 },
+    cppReturn: 'return {0.76f, 0.20f, 0.26f, 0.48f, 0.020f};',
+  },
+  insects: {
+    assetId: 7106,
+    enableKeys: ['insectsEnabled', 'insects2Enabled'],
+    levelExpression: 'max(insectsLevel, insects2Level) * insectsSharedLevel',
+    productCorePolicy: { levelBase: 0.62, levelRange: 0.24, panBase: 0.36, panDistance: 0.64, rateDepth: 0.045 },
+    cppReturn: 'return {0.62f, 0.24f, 0.36f, 0.64f, 0.045f};',
+  },
+};
 assert(manifest.soundscapes.length === expectedSoundscapeKeys.length, 'soundscape manifest count mismatch');
 const soundscapeIds = new Set();
 const soundscapeKeys = new Set();
@@ -225,6 +277,36 @@ for (const asset of manifest.soundscapes) {
   const info = parseOggVorbisInfo(asset.path);
   assert(info.productChannelCount <= 2, `soundscape ${asset.key} must stay bounded to two Product Core channels`);
   soundscapeInfos.push({ ...info, key: asset.key });
+}
+
+assert(manifest.scenePolicies && Array.isArray(manifest.scenePolicies.soundscapeLayers), 'scene policy manifest is missing soundscapeLayers');
+assert(manifest.scenePolicies.soundscapeLayers.length === expectedSoundscapeKeys.length, 'scene policy count mismatch');
+const scenePolicyByKey = new Map(manifest.scenePolicies.soundscapeLayers.map((policy) => [policy.key, policy]));
+for (const key of expectedSoundscapeKeys) {
+  const policy = scenePolicyByKey.get(key);
+  const expected = expectedScenePolicies[key];
+  const manifestAsset = manifest.soundscapes.find((asset) => asset.key === key);
+  assert(policy, `scene policy missing ${key}`);
+  assert(policy.assetId === expected.assetId, `scene policy asset ID mismatch for ${key}`);
+  assert(policy.assetId === manifestAsset.assetId, `scene policy asset ID must match soundscape manifest for ${key}`);
+  assert(JSON.stringify(policy.enableKeys) === JSON.stringify(expected.enableKeys), `scene policy enable keys mismatch for ${key}`);
+  assert(policy.levelExpression === expected.levelExpression, `scene policy level expression mismatch for ${key}`);
+  assert(policy.missingAssetBehavior === 'telemetry-and-silence', `scene policy missing-asset behavior mismatch for ${key}`);
+  for (const [field, value] of Object.entries(expected.productCorePolicy)) {
+    assert(policy.productCorePolicy?.[field] === value, `scene policy ${key}.${field} mismatch`);
+  }
+  assert(productAssetPolicySource.includes(expected.cppReturn), `C++ soundscape layer policy missing ${key} return ${expected.cppReturn}`);
+}
+for (const token of [
+  'one-active-nonzero-ref-per-scene-layer',
+  'dedupe-by-asset-id',
+  'insectsEnabled and insects2Enabled currently share asset 7106',
+  'Product Core schedules one loop voice per active registered asset ref',
+  'soundscape-source-disabled-with-no-soundscape-refs',
+  'KESSHO_PRODUCT_ERROR_MISSING_ASSET',
+  'hosts may retry decode/register but may not synthesize replacement scene audio in core-product',
+]) {
+  assert(JSON.stringify(manifest.scenePolicies).includes(token), `scene policy manifest missing ${token}`);
 }
 
 const decodeRuntimes = new Set(manifest.decodeMatrix.map((entry) => entry.runtime));
@@ -326,6 +408,14 @@ for (const token of [
   'Kessho Product Asset Manifest And Decode Matrix',
   'Manifest V1',
   'Nature Scene Policy',
+  'Ocean',
+  'Water',
+  'Birds',
+  'Birds 2',
+  'Frogs',
+  'Insects',
+  'Combined nature scenes include one asset ref per active, non-zero scene layer',
+  'Minimal or degraded scenes must stay silent rather than replaced by host synthesis',
   'Decode Matrix',
   'Memory Budgets',
   'Measured Decoded Bytes',
@@ -344,8 +434,51 @@ for (const token of [
   assert(statusDoc.includes(token), `migration status doc is missing asset manifest token ${token}`);
 }
 
+writeJsonReport(reportPath, {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  status: 'pass-with-native-release-blockers',
+  reportPath,
+  manifest: {
+    path: manifestPath,
+    schema: manifest.schema,
+    version: manifest.version,
+    assetBasePath: manifest.assetBasePath,
+  },
+  soundscapes: soundscapeInfos.map((info) => ({
+    key: info.key,
+    assetId: manifest.soundscapes.find((asset) => asset.key === info.key).assetId,
+    path: info.relativePath,
+    channelCount: info.channelCount,
+    productChannelCount: info.productChannelCount,
+    sampleRate: info.sampleRate,
+    frameCount: info.frameCount,
+    compressedBytes: info.compressedBytes,
+    decodedBytes: info.decodedBytes,
+  })),
+  scenePolicies: manifest.scenePolicies,
+  decodeMatrix: manifest.decodeMatrix,
+  memory: {
+    budgets: manifest.memoryBudgets,
+    measured: {
+      startupDecodedBytes,
+      totalRegisteredDecodedBytes,
+      maxPianoDecodedBytes,
+      maxSoundscapeDecodedBytes,
+      webWorkletHeapBytes,
+      startupCompressedBytes,
+    },
+  },
+  nativeReleaseBlockers: [
+    'needs-device-format-proof',
+    'needs-release-bundle-proof',
+    'needs-native-ogg-coverage-proof',
+    'needs-native-asset-eviction-memory-pressure-proof',
+  ],
+});
+
 console.log(
   `Kessho Product asset manifest checks passed (${startupCompressedBytes} compressed startup bytes, ` +
     `${startupDecodedBytes} decoded startup bytes, ${totalRegisteredDecodedBytes} registered decoded bytes, ` +
-    `${webWorkletHeapBytes} WASM heap bytes)`,
+    `${webWorkletHeapBytes} WASM heap bytes, report: ${reportPath})`,
 );
