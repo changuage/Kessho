@@ -1,6 +1,6 @@
 # Kessho Core Architecture Parity Audit
 
-Generated: 2026-05-13T07:35:12.035Z
+Generated: 2026-05-13T08:16:00.271Z
 
 Overall status: PASS
 

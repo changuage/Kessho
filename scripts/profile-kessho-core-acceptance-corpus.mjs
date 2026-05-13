@@ -36,7 +36,7 @@ const acceptanceContract = {
     sourceSlice: {
       label: 'Source Slice',
       target: 'Core non-pad sources are close enough for lead, drums, and earth/soundscape migration.',
-      requiredCases: ['lead-manual-dry', 'lead-delay-heavy', 'lead2-gamelan-dry', 'piano-manual-dry', 'synth-euclid-lead-grid', 'drum-euclid-tight', 'drum-delay-dub', 'earth-water-only', 'earth-full-nature', 'soundscape-ocean-pad'],
+      requiredCases: ['lead-manual-dry', 'lead-delay-heavy', 'lead2-gamelan-dry', 'lead2-soft-rhodes-dry', 'piano-manual-dry', 'synth-euclid-lead-grid', 'drum-euclid-tight', 'drum-delay-dub', 'earth-water-only', 'earth-full-nature', 'soundscape-ocean-pad'],
       passDefinition: 'All deterministic source cases pass; stochastic drum and earth cases pass documented transient/envelope gates.',
     },
     fullMixSlice: {
@@ -465,6 +465,48 @@ const corpus = [
     },
     intent: 'Lead 2 route and Gamelan endpoint preset parity without Lead 1, delay, or reverb masking.',
     readyWhen: ['manual lead2 trigger support exists for core-product parity capture', 'Lead 2 endpoint preset routing is not silent'],
+  },
+  {
+    id: 'lead2-soft-rhodes-dry',
+    title: 'Manual dry Lead 2 Soft Rhodes',
+    group: 'lead',
+    thresholdClass: 'perceptual',
+    expectedOutcome: 'pass',
+    source: 'src/ui/state.ts#DEFAULT_STATE',
+    includeSourceState: false,
+    durationMs: 4500,
+    settleMs: 700,
+    thresholds: { rmsTolerance: 0.22, peakTolerance: 0.04, minSignalRms: 0.0001 },
+    envelopeGate: {
+      windowMs: 500,
+      timeToleranceMs: 20,
+      rmsRatioTolerance: 0.9,
+      peakRatioTolerance: 0.85,
+    },
+    manualNotes: lead2ManualLine,
+    statePatch: {
+      ...sourceMute,
+      leadEnabled: true,
+      lead1Level: 0,
+      lead1ReverbSend: 0,
+      lead1DelayASend: 0,
+      lead1DelayBSend: 0,
+      lead2Enabled: true,
+      lead2Level: 0.74,
+      lead2PresetC: 'soft_rhodes',
+      lead2PresetD: 'gamelan',
+      lead2Morph: 0,
+      lead2MorphAuto: false,
+      lead2ReverbSend: 0,
+      lead2DelayASend: 0,
+      lead2DelayBSend: 0,
+      leadRandomEnabled: false,
+      delayAEnabled: false,
+      reverbEnabled: false,
+      masterVolume: 0.72,
+    },
+    intent: 'Lead 2 route and Soft Rhodes endpoint preset parity without Lead 1, delay, or reverb masking.',
+    readyWhen: ['manual lead2 trigger support exists for core-product parity capture', 'Lead 2 Soft Rhodes endpoint preset routing is not silent'],
   },
   {
     id: 'piano-manual-dry',
@@ -1779,6 +1821,21 @@ function runSelfCheck() {
   assert(lead2ProductCommand.includes('"lead2PresetD":"gamelan"'), 'Lead 2 dry probe covers the Gamelan endpoint preset bridge');
   assert(lead2ProductCommand.includes("'--envelope-gate'"), 'Lead 2 Gamelan probe uses an envelope gate for phase-sensitive FM output');
   assert(lead2ProductCommand.includes("'--core-engine=core-product'"), 'Lead 2 dry probe can target core-product');
+
+  const lead2SoftRhodesCommand = commandForCase(
+    resolveCases({ caseId: 'lead2-soft-rhodes-dry' })[0],
+    DEFAULT_URL,
+    false,
+    '',
+    {},
+    false,
+    'core-product',
+  );
+  assert(lead2SoftRhodesCommand.includes("'--manual-note=lead2:67:0.8:800'"), 'Lead 2 Soft Rhodes probe triggers the Lead 2 manual route');
+  assert(lead2SoftRhodesCommand.includes('"lead2PresetC":"soft_rhodes"'), 'Lead 2 Soft Rhodes probe covers the Soft Rhodes endpoint preset bridge');
+  assert(lead2SoftRhodesCommand.includes('"lead2Morph":0'), 'Lead 2 Soft Rhodes probe selects the C endpoint explicitly');
+  assert(lead2SoftRhodesCommand.includes("'--envelope-gate'"), 'Lead 2 Soft Rhodes probe uses an envelope gate for phase-sensitive FM output');
+  assert(lead2SoftRhodesCommand.includes("'--core-engine=core-product'"), 'Lead 2 Soft Rhodes probe can target core-product');
 
   const parsedOverride = parseArgs([
     '--commands',

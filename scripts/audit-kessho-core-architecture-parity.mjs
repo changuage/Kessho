@@ -105,6 +105,7 @@ function makeReport() {
       has(coreHost, 'createLeadEuclidPreviewSource') &&
       has(corpus, "'lead-manual-dry'") &&
       has(corpus, "'lead2-gamelan-dry'") &&
+      has(corpus, "'lead2-soft-rhodes-dry'") &&
       has(corpus, "'synth-euclid-lead-grid'"),
     ),
     priority: 'required',
