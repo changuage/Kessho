@@ -291,6 +291,12 @@ const corpus = [
     durationMs: 8000,
     settleMs: 900,
     thresholds: { rmsTolerance: 0.055, peakTolerance: 0.28, minSignalRms: 0.0001 },
+    envelopeGate: {
+      windowMs: 500,
+      timeToleranceMs: 20,
+      rmsRatioTolerance: 0.35,
+      peakRatioTolerance: 0.45,
+    },
     manualNotes: padManualChord,
     statePatch: {
       ...sourceMute,
@@ -1690,6 +1696,10 @@ function runSelfCheck() {
   const [boundaryCase] = resolveCases({ caseId: 'pad-reverb-tail' });
   const originalHash = boundaryCase.statePatchSha256;
   const originalReverbLevel = boundaryCase.statePatch.reverbLevel;
+  const boundaryCommand = commandForCase(boundaryCase, DEFAULT_URL);
+  assert(boundaryCommand.includes("'--envelope-gate'"), 'pad reverb-tail case uses envelope gate for long shared reverb tails');
+  assert(boundaryCase.envelopeGate.rmsRatioTolerance === 0.35, 'pad reverb-tail case keeps explicit envelope RMS tolerance');
+  assert(boundaryCase.envelopeGate.peakRatioTolerance === 0.45, 'pad reverb-tail case keeps explicit envelope peak tolerance');
   const probeCommand = commandForCase(
     boundaryCase,
     DEFAULT_URL,

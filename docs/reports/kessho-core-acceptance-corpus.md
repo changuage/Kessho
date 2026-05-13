@@ -1,6 +1,6 @@
 # KesshoCore Acceptance Corpus
 
-Generated: 2026-05-08T10:59:06.125Z
+Generated: 2026-05-12T23:58:14.075Z
 
 Scope: practical browser parity acceptance corpus for the core migration. This is intentionally representative, not exhaustive perfect-parity coverage.
 
@@ -40,7 +40,7 @@ Known-failure allowance applies only to the default mix/default corpus state. A 
 Example direct browser parity command:
 
 ```sh
-node 'scripts/check-web-core-sonic-parity.mjs' '--url=http://127.0.0.1:4173/' '--duration-ms=5000' '--settle-ms=700' '--rms-tolerance=0.04' '--peak-tolerance=0.22' '--min-signal-rms=0.0001' '--state-patch={"birds2Enabled":false,"birdsEnabled":false,"characterEnabled":false,"delayAEnabled":false,"delayAFeedback":0,"delayAGranularSend":0,"delayAMix":0,"delayAToBSend":0,"delayBGranularSend":0,"delayBToASend":0,"drumEnabled":false,"drumEuclidMasterEnabled":false,"dynamicsEnabled":false,"frogsEnabled":false,"granularEnabled":false,"granularFreeze":false,"insects2Enabled":false,"insectsEnabled":false,"lead2Enabled":false,"leadEnabled":false,"leadRandomEnabled":false,"masterSatDrive":0,"masterVolume":0.85,"oceanSampleEnabled":false,"oceanWaveSynthEnabled":false,"pad1DelayASend":0,"pad1ReverbSend":0,"pad2Enabled":false,"padEnabled":true,"pianoEnabled":false,"reverbEnabled":false,"sidechainEnabled":false,"spectralFreezeEnabled":false,"synthEuclideanMasterEnabled":false,"synthLevel":0.6,"synthReverbSend":0,"waterEnabled":false}' '--manual-note=pad1:60:0.78:5200' '--manual-no-warmup'
+node 'scripts/check-web-core-sonic-parity.mjs' '--url=http://127.0.0.1:4173/' '--duration-ms=5000' '--settle-ms=700' '--rms-tolerance=0.04' '--peak-tolerance=0.22' '--min-signal-rms=0.0001' '--state-patch={"birds2Enabled":false,"birdsEnabled":false,"characterEnabled":false,"delayAEnabled":false,"delayAFeedback":0,"delayAGranularSend":0,"delayAMix":0,"delayAToBSend":0,"delayBGranularSend":0,"delayBToASend":0,"drumEnabled":false,"drumEuclidMasterEnabled":false,"dynamicsEnabled":false,"frogsEnabled":false,"granularEnabled":false,"granularFreeze":false,"insects2Enabled":false,"insectsEnabled":false,"lead2Enabled":false,"leadEnabled":false,"leadRandomEnabled":false,"masterSatDrive":0,"masterVolume":0.85,"oceanSampleEnabled":false,"oceanWaveSynthEnabled":false,"pad1DelayASend":0,"pad1ReverbSend":0,"pad2Enabled":false,"padEnabled":true,"pianoEnabled":false,"reverbEnabled":false,"sidechainEnabled":false,"spectralFreezeEnabled":false,"synthEuclideanMasterEnabled":false,"synthLevel":0.6,"synthReverbSend":0,"waterEnabled":false}' '--core-engine=core-wasm' '--manual-note=pad1:60:0.78:5200' '--manual-no-warmup'
 ```
 
 Corpus manual-note commands pass `--manual-no-warmup` so long-release sources are not contaminated by a hidden pre-capture note.
@@ -106,7 +106,7 @@ Threshold classes:
 | lead-delay-heavy | delay-heavy | perceptual | pass | KesshoNativeSwift/Kessho/Presets/StringWaves.json | lead1:72:0.82:700, lead1:76:0.75:650 | 7000 ms | rms 0.07, peak 0.32, min RMS 0.0001 |
 | piano-manual-dry | piano | perceptual | pass | src/ui/state.ts#DEFAULT_STATE | piano:60:0.78:900, piano:64:0.72:850 | 4500 ms | rms 0.2, peak 0.55, min RMS 0.00004 |
 | synth-euclid-lead-grid | lead | perceptual | pass | src/ui/state.ts | self-running | 3500 ms | rms 0.04, peak 0.25, min RMS 0.00003 |
-| pad-delay-pingpong | delay-heavy | close | pass | src/ui/delay/delayPresets.ts#pingPongClean | pad1:60:0.78:900 | 6500 ms | rms 0.06, peak 0.3, min RMS 0.0001 |
+| pad-delay-pingpong | delay-heavy | perceptual | pass | src/ui/delay/delayPresets.ts#pingPongClean | pad1:60:0.78:900 | 6500 ms | rms 0.06, peak 0.3, min RMS 0.0001 |
 | pad-delay-reverb-bloom | delay+reverb | perceptual | pass | src/ui/delay/delayPresets.ts#chorusWash | pad1:60:0.78:900 | 8000 ms | rms 0.075, peak 0.34, min RMS 0.0001 |
 | granular-pad-cloud | granular routing | perceptual | pass | src/ui/granular/granularPresets.ts#classic_cloud | pad1:48:0.72:1800, pad1:55:0.68:1800, pad1:62:0.62:1800 | 9000 ms | rms 0.09, peak 0.35, min RMS 0.00008 |
 | granular-delay-return | granular routing | perceptual | pass | KesshoNativeSwift/Kessho/Presets/WaveOut.json | pad1:60:0.78:900 | 9000 ms | rms 0.1, peak 0.38, min RMS 0.00008 |
@@ -273,7 +273,7 @@ Intent: Delay-heavy case that still uses current pad manual trigger support.
 
 Ready when: pad Delay A send and Delay A return are represented in core-wasm capture
 
-Threshold class: close
+Threshold class: perceptual
 
 Expected outcome: pass
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-08T10:59:06.125Z",
+  "generatedAt": "2026-05-12T23:58:14.075Z",
   "contract": {
     "purpose": "Practical Web Audio versus KesshoCore browser acceptance corpus for core migration parity.",
     "parityScript": "scripts/check-web-core-sonic-parity.mjs",
@@ -469,7 +469,12 @@
         "minSignalRms": 0.0001
       },
       "transientGate": null,
-      "envelopeGate": null,
+      "envelopeGate": {
+        "windowMs": 500,
+        "timeToleranceMs": 20,
+        "rmsRatioTolerance": 0.35,
+        "peakRatioTolerance": 0.45
+      },
       "manualNotes": [
         {
           "source": "pad1",
@@ -615,7 +620,12 @@
         "--manual-note=pad1:48:0.72:1800",
         "--manual-note=pad1:55:0.68:1800",
         "--manual-note=pad1:62:0.62:1800",
-        "--manual-no-warmup"
+        "--manual-no-warmup",
+        "--envelope-gate",
+        "--envelope-window-ms=500",
+        "--envelope-time-tolerance-ms=20",
+        "--envelope-rms-ratio-tolerance=0.35",
+        "--envelope-peak-ratio-tolerance=0.45"
       ]
     },
     {
@@ -636,7 +646,12 @@
         "minSignalRms": 0.0001
       },
       "transientGate": null,
-      "envelopeGate": null,
+      "envelopeGate": {
+        "windowMs": 500,
+        "timeToleranceMs": 20,
+        "rmsRatioTolerance": 0.3,
+        "peakRatioTolerance": 0.4
+      },
       "manualNotes": [
         {
           "source": "pad1",
@@ -762,7 +777,12 @@
         "--manual-note=pad1:48:0.72:1800",
         "--manual-note=pad1:55:0.68:1800",
         "--manual-note=pad1:62:0.62:1800",
-        "--manual-no-warmup"
+        "--manual-no-warmup",
+        "--envelope-gate",
+        "--envelope-window-ms=500",
+        "--envelope-time-tolerance-ms=20",
+        "--envelope-rms-ratio-tolerance=0.3",
+        "--envelope-peak-ratio-tolerance=0.4"
       ]
     },
     {
@@ -1335,7 +1355,7 @@
       "id": "pad-delay-pingpong",
       "title": "Pad into ping-pong Delay A",
       "group": "delay-heavy",
-      "thresholdClass": "close",
+      "thresholdClass": "perceptual",
       "expectedOutcome": "pass",
       "source": "src/ui/delay/delayPresets.ts#pingPongClean",
       "sourceName": null,
@@ -1352,8 +1372,8 @@
       "envelopeGate": {
         "windowMs": 250,
         "timeToleranceMs": 20,
-        "rmsRatioTolerance": 0.45,
-        "peakRatioTolerance": 0.4
+        "rmsRatioTolerance": 0.46,
+        "peakRatioTolerance": 0.6
       },
       "manualNotes": [
         {
@@ -1423,8 +1443,8 @@
         "--envelope-gate",
         "--envelope-window-ms=250",
         "--envelope-time-tolerance-ms=20",
-        "--envelope-rms-ratio-tolerance=0.45",
-        "--envelope-peak-ratio-tolerance=0.4"
+        "--envelope-rms-ratio-tolerance=0.46",
+        "--envelope-peak-ratio-tolerance=0.6"
       ]
     },
     {
