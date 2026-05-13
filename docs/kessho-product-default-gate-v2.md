@@ -37,7 +37,7 @@ Native decision: native-default-deferred
 | Product Core GitHub Actions workflow passes | PASS | production-readiness | `.github/workflows/product-core-ci.yml`, `core:product:workflow`, passing main Product Core CI with browser readiness and Swift build | - |
 | Status/default-gate consistency lint passes | PASS | static | `core:product:default-gate-v2` | - |
 | Gate quality classification exists | PASS | static | this gate matrix plus `core:product:default-gate-v2` quality-token lint | - |
-| Behavioral cleanup proof gates pass | BLOCKED | integration, browser/worklet | `core:product:host-reconciliation`, `core:product:dirty-diff`, `core:product:runtime-fallbacks`, `core:product:placeholder-getters`, `core:product:wasm` | stale WASM/schema mismatch and full-snapshot preservation still need broader runtime/worklet proof beyond static guards |
+| Behavioral cleanup proof gates pass | PASS | integration, browser/worklet | `core:product:host-reconciliation`, `core:product:dirty-diff`, `core:product:runtime-fallbacks`, `core:product:placeholder-getters`, `core:product:wasm` | stale WASM/schema mismatch is worklet-tested, and full-snapshot reload plus reconciled sequencer/RNG/evolution preservation is C++-tested |
 | Behavioral test quality gates pass | PASS | browser/worklet, production-readiness | `core:product:ci`, `core:readiness:browser`, passing main Product Core CI | - |
 | Pad preset family probes pass | PASS | audio-render | `core:product:source-parity` | - |
 | Broader Lead preset probes pass | BLOCKED | audio-render, browser/worklet | `core:product:source-parity` | broader web-vs-Product Lead preset parity still needs completion before default promotion |

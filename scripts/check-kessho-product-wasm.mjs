@@ -1,9 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import vm from 'node:vm';
 import { kesshoCoreWasmExportedFunctions } from './kessho-core-build-manifest.mjs';
 
 const root = process.cwd();
 const wasmPath = resolve(root, 'public/worklets/kessho_core.wasm');
+const workletPath = resolve(root, 'public/worklets/kessho-core-product.worklet.js');
+const schemaPath = resolve(root, 'src/audio/generated/kesshoProductSchema.ts');
 
 if (!existsSync(wasmPath)) {
   throw new Error('Missing public/worklets/kessho_core.wasm; run npm run core:build:wasm first.');
@@ -23,7 +26,27 @@ function assert(condition, message) {
   }
 }
 
-const module = await WebAssembly.compile(readFileSync(wasmPath));
+function toArrayBuffer(buffer) {
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+}
+
+function parseGeneratedSchemaHash() {
+  const schemaSource = readFileSync(schemaPath, 'utf8');
+  const match = schemaSource.match(/KESSHO_PRODUCT_SCHEMA_HASH = (\d+) as const/);
+  assert(match, 'generated TypeScript schema is missing KESSHO_PRODUCT_SCHEMA_HASH');
+  return Number(match[1]) >>> 0;
+}
+
+const expectedSchemaHash = parseGeneratedSchemaHash();
+const expectedSchemaHashHex = `0x${expectedSchemaHash.toString(16).padStart(8, '0')}`;
+const wasmBinary = readFileSync(wasmPath);
+const workletSource = readFileSync(workletPath, 'utf8');
+assert(
+  workletSource.includes(`EXPECTED_PRODUCT_SCHEMA_HASH = ${expectedSchemaHashHex}`),
+  'Product worklet expected schema hash is stale relative to generated TypeScript schema',
+);
+
+const module = await WebAssembly.compile(wasmBinary);
 const instance = await WebAssembly.instantiate(module, {
   env: {
     emscripten_notify_memory_growth: () => {},
@@ -115,4 +138,121 @@ free(rightPtr);
 free(eventPtr);
 free(telemetryPtr);
 free(sequencerUiStatePtr);
+
+function waitForMessage(messages, predicate, timeoutMs = 5000) {
+  const start = Date.now();
+  return new Promise((resolveWait, rejectWait) => {
+    const tick = () => {
+      const message = messages.find(predicate);
+      if (message) {
+        resolveWait(message);
+        return;
+      }
+      if (Date.now() - start > timeoutMs) {
+        rejectWait(new Error('Timed out waiting for Product worklet message'));
+        return;
+      }
+      setTimeout(tick, 10);
+    };
+    tick();
+  });
+}
+
+function instantiateWorklet({ wasmBinaryOverride = toArrayBuffer(wasmBinary), webAssemblyOverride = WebAssembly } = {}) {
+  const messages = [];
+  let Processor = null;
+  class AudioWorkletProcessor {
+    constructor() {
+      this.port = {
+        onmessage: null,
+        postMessage: (message) => messages.push(message),
+      };
+    }
+  }
+  const sandbox = {
+    AudioWorkletProcessor,
+    registerProcessor: (_name, processorClass) => {
+      Processor = processorClass;
+    },
+    sampleRate: 48000,
+    WebAssembly: webAssemblyOverride,
+    ArrayBuffer,
+    Uint8Array,
+    Float32Array,
+    DataView,
+    Map,
+    Error,
+    Math,
+    Number,
+    console,
+    fetch: async () => {
+      throw new Error('Product worklet test must not fetch WASM');
+    },
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(workletSource, sandbox, { filename: workletPath });
+  assert(typeof Processor === 'function', 'Product worklet did not register its processor');
+  return {
+    processor: new Processor({ processorOptions: { wasmBinary: wasmBinaryOverride } }),
+    messages,
+  };
+}
+
+function fakeWebAssemblyWithTelemetryHash(schemaHash) {
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  let nextPtr = 1024;
+  const align = (value) => (value + 7) & ~7;
+  const malloc = (bytes) => {
+    const ptr = nextPtr;
+    nextPtr = align(nextPtr + Math.max(0, bytes | 0));
+    return ptr;
+  };
+  const copyTelemetry = (_engine, ptr) => {
+    new DataView(memory.buffer).setUint32(ptr, schemaHash >>> 0, true);
+    return 1;
+  };
+  const exports = {
+    memory,
+    malloc,
+    free: () => {},
+    kessho_product_create: () => 64,
+    kessho_product_reset: () => {},
+    kessho_product_render: () => {},
+    kessho_product_get_stem: () => 0,
+    kessho_product_load_snapshot_v2: () => 1,
+    kessho_product_enqueue_event: () => 1,
+    kessho_product_copy_telemetry: copyTelemetry,
+    kessho_product_copy_sequencer_ui_state: () => 1,
+    kessho_product_register_asset_buffer: () => 1,
+    kessho_product_unregister_asset_buffer: () => 1,
+  };
+  return {
+    instantiate: async () => ({ instance: { exports } }),
+  };
+}
+
+const staleWasm = instantiateWorklet({
+  wasmBinaryOverride: new ArrayBuffer(8),
+  webAssemblyOverride: fakeWebAssemblyWithTelemetryHash(expectedSchemaHash ^ 0xffffffff),
+});
+const staleWasmError = await waitForMessage(staleWasm.messages, (message) => message.type === 'error');
+assert(
+  staleWasmError.message.includes('WASM telemetry schema hash mismatch'),
+  'Product worklet did not reject stale WASM telemetry schema hash',
+);
+assert(staleWasm.processor.ready === false, 'Product worklet must not become ready after stale WASM schema mismatch');
+
+const liveWorklet = instantiateWorklet();
+await waitForMessage(liveWorklet.messages, (message) => message.type === 'ready' || message.type === 'error');
+const liveInitError = liveWorklet.messages.find((message) => message.type === 'error');
+assert(!liveInitError, `Product worklet failed to initialize with committed WASM: ${liveInitError?.message}`);
+const staleSnapshot = new ArrayBuffer(16);
+new DataView(staleSnapshot).setUint32(4, expectedSchemaHash ^ 0xffffffff, true);
+liveWorklet.processor.handleMessage({ type: 'snapshot', snapshot: staleSnapshot });
+const staleSnapshotError = liveWorklet.messages.find(
+  (message) => message.type === 'error' && message.message.includes('snapshot schema hash mismatch'),
+);
+assert(staleSnapshotError, 'Product worklet did not report stale snapshot schema mismatch');
+assert(liveWorklet.processor.snapshotPtr === 0, 'Product worklet must refuse stale snapshots before allocation');
+
 console.log('Kessho Product WASM smoke passed');

@@ -1,5 +1,7 @@
 const EVENT_BYTES = 40;
 const TELEMETRY_BYTES = 368;
+const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0x7c091990;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
 const SEQUENCER_UI_LANE_BYTES = 2216;
@@ -62,6 +64,27 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     return fn;
   }
 
+  formatSchemaHash(schemaHash) {
+    return `0x${(schemaHash >>> 0).toString(16).padStart(8, '0')}`;
+  }
+
+  assertSchemaHash(label, schemaHash) {
+    if ((schemaHash >>> 0) !== EXPECTED_PRODUCT_SCHEMA_HASH) {
+      throw new Error(
+        `Kessho Product Core ${label} schema hash mismatch: expected ` +
+          `${this.formatSchemaHash(EXPECTED_PRODUCT_SCHEMA_HASH)}, got ${this.formatSchemaHash(schemaHash)}`,
+      );
+    }
+  }
+
+  validateSnapshotBytes(bytes) {
+    if (bytes.byteLength < SNAPSHOT_SCHEMA_HASH_OFFSET + 4) {
+      throw new Error(`Kessho Product Core snapshot too small: ${bytes.byteLength} bytes`);
+    }
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    this.assertSchemaHash('snapshot', view.getUint32(SNAPSHOT_SCHEMA_HASH_OFFSET, true));
+  }
+
   refreshViews() {
     this.heapF32 = new Float32Array(this.exports.memory.buffer);
     this.heapU8 = new Uint8Array(this.exports.memory.buffer);
@@ -112,6 +135,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       if (!this.engine || !this.leftPtr || !this.rightPtr || !this.eventPtr || !this.telemetryPtr || !this.sequencerUiStatePtr) {
         throw new Error('Failed to allocate Kessho Product Core worklet state');
       }
+      if (this.api.copyTelemetry(this.engine, this.telemetryPtr) !== 1) {
+        throw new Error('Kessho Product Core WASM telemetry schema probe failed');
+      }
+      this.assertSchemaHash('WASM telemetry', this.view.getUint32(this.telemetryPtr, true));
       this.ready = true;
       this.port.postMessage({ type: 'ready' });
     } catch (error) {
@@ -168,13 +195,22 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         ? new Uint8Array(snapshot.buffer, snapshot.byteOffset, snapshot.byteLength)
         : null;
     if (!bytes) return;
+    try {
+      this.validateSnapshotBytes(bytes);
+    } catch (error) {
+      this.port.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+      return;
+    }
     if (this.snapshotPtr) {
       this.api.free(this.snapshotPtr);
       this.snapshotPtr = 0;
     }
     this.snapshotPtr = this.api.malloc(bytes.byteLength);
     this.heapU8.set(bytes, this.snapshotPtr);
-    this.api.loadSnapshot(this.engine, this.snapshotPtr, bytes.byteLength);
+    const result = this.api.loadSnapshot(this.engine, this.snapshotPtr, bytes.byteLength);
+    if (result !== 1) {
+      this.port.postMessage({ type: 'error', message: `Kessho Product Core snapshot load failed: ${result}` });
+    }
   }
 
   registerAsset(message) {

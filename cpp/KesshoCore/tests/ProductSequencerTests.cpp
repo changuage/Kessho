@@ -151,6 +151,139 @@ void requireLaneMutationStateEqual(const LaneState& actual, const LaneState& exp
   }
 }
 
+bool maskHas(uint32_t low, uint32_t high, uint32_t step) {
+  if (step < 32u) {
+    return (low & (1u << step)) != 0u;
+  }
+  return (high & (1u << (step - 32u))) != 0u;
+}
+
+void enqueueSequencerStep(
+    KesshoProductEngine* engine,
+    uint32_t target_id,
+    uint32_t lane_index,
+    uint32_t step,
+    uint32_t field,
+    float value,
+    float value2 = 0.0f,
+    float value3 = 0.0f) {
+  KesshoProductEvent event{};
+  event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP;
+  event.target_id = target_id;
+  event.index = lane_index;
+  event.param_id = step;
+  event.value = value;
+  event.value2 = value2;
+  event.value3 = value3;
+  event.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE | field;
+  require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "sequencer UI replay enqueue failed");
+}
+
+void replaySequencerUiLane(
+    KesshoProductEngine* engine,
+    uint32_t target_id,
+    uint32_t lane_index,
+    const KesshoProductSequencerLaneUiState& lane) {
+  KesshoProductEvent clear{};
+  clear.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP;
+  clear.target_id = target_id;
+  clear.index = lane_index;
+  clear.flags = KESSHO_PRODUCT_STEP_TOGGLE_CLEAR_LANE;
+  require(kessho_product_enqueue_event(engine, &clear) == KESSHO_PRODUCT_OK, "sequencer UI replay clear failed");
+
+  for (uint32_t field_id = 0; field_id < KESSHO_PRODUCT_SEQUENCER_UI_STATE_SUBLANES; ++field_id) {
+    if ((lane.step_value_config_enabled_mask & (1u << field_id)) == 0u) {
+      continue;
+    }
+    KesshoProductEvent config{};
+    config.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP;
+    config.target_id = target_id;
+    config.index = lane_index;
+    config.param_id = field_id;
+    config.value = 1.0f;
+    config.value2 = static_cast<float>(lane.step_value_config_steps[field_id]);
+    config.value3 = static_cast<float>(lane.step_value_config_directions[field_id]);
+    config.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE | KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG;
+    require(kessho_product_enqueue_event(engine, &config) == KESSHO_PRODUCT_OK, "sequencer UI replay config failed");
+  }
+
+  for (uint32_t step = 0; step < KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS; ++step) {
+    if (maskHas(lane.step_override_set_low, lane.step_override_set_high, step)) {
+      enqueueSequencerStep(
+          engine,
+          target_id,
+          lane_index,
+          step,
+          KESSHO_PRODUCT_STEP_FIELD_TRIGGER,
+          maskHas(lane.step_override_value_low, lane.step_override_value_high, step) ? 1.0f : 0.0f);
+    }
+    if (maskHas(lane.probability_override_set_low, lane.probability_override_set_high, step)) {
+      enqueueSequencerStep(
+          engine,
+          target_id,
+          lane_index,
+          step,
+          KESSHO_PRODUCT_STEP_FIELD_PROBABILITY,
+          lane.probability_overrides[step]);
+    }
+    if (maskHas(lane.ratchet_override_set_low, lane.ratchet_override_set_high, step)) {
+      enqueueSequencerStep(
+          engine,
+          target_id,
+          lane_index,
+          step,
+          KESSHO_PRODUCT_STEP_FIELD_RATCHET,
+          static_cast<float>(lane.ratchet_overrides[step]));
+    }
+    if (maskHas(lane.trig_condition_override_set_low, lane.trig_condition_override_set_high, step)) {
+      enqueueSequencerStep(
+          engine,
+          target_id,
+          lane_index,
+          step,
+          KESSHO_PRODUCT_STEP_FIELD_TRIG_CONDITION,
+          static_cast<float>(lane.trig_condition_numerators[step]),
+          static_cast<float>(lane.trig_condition_denominators[step]));
+    }
+    if (maskHas(lane.midi_note_override_set_low, lane.midi_note_override_set_high, step)) {
+      enqueueSequencerStep(
+          engine,
+          target_id,
+          lane_index,
+          step,
+          KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE,
+          lane.midi_note_overrides[step]);
+    }
+    if (maskHas(lane.expression_override_set_low, lane.expression_override_set_high, step)) {
+      enqueueSequencerStep(
+          engine,
+          target_id,
+          lane_index,
+          step,
+          KESSHO_PRODUCT_STEP_FIELD_EXPRESSION,
+          lane.expression_overrides[step]);
+    }
+    if (maskHas(lane.morph_override_set_low, lane.morph_override_set_high, step)) {
+      enqueueSequencerStep(
+          engine,
+          target_id,
+          lane_index,
+          step,
+          KESSHO_PRODUCT_STEP_FIELD_MORPH,
+          lane.morph_overrides[step]);
+    }
+    if (maskHas(lane.distance_override_set_low, lane.distance_override_set_high, step)) {
+      enqueueSequencerStep(
+          engine,
+          target_id,
+          lane_index,
+          step,
+          KESSHO_PRODUCT_STEP_FIELD_DISTANCE,
+          lane.distance_overrides[step]);
+    }
+  }
+}
+
 void enqueueParam(
     KesshoProductEngine* engine,
     uint32_t event_kind,
@@ -439,6 +572,28 @@ int main() {
       "sequencer UI state should expose detailed diced override values");
   const LaneState diced_lane_state = engine->synth_lanes[0];
   require(laneHasGeneratedOverrides(diced_lane_state), "sequencer dice should leave Core-owned lane override state");
+  KesshoProductSnapshotV2 preserved_reload_snapshot = makeSnapshot();
+  preserved_reload_snapshot.drum_euclid.lane_count = 0;
+  preserved_reload_snapshot.rng.seed = dice_seed_telemetry.rng_seed;
+  preserved_reload_snapshot.rng.state = dice_seed_telemetry.rng_state;
+  require(
+      kessho_product_load_snapshot_v2(engine, &preserved_reload_snapshot, sizeof(preserved_reload_snapshot)) ==
+          KESSHO_PRODUCT_OK,
+      "full snapshot reload with reconciled RNG state should load");
+  require(
+      kessho_product_get_telemetry(engine).rng_state == dice_seed_telemetry.rng_state,
+      "full snapshot reload must preserve reconciled Core-owned RNG state");
+  replaySequencerUiLane(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0u,
+      sequencer_ui_state.synth_lanes[0]);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 384000);
+  require(event_count > 0, "reconciled UI replay should restore diced event generation after full reload");
+  requireLaneMutationStateEqual(
+      engine->synth_lanes[0],
+      diced_lane_state,
+      "full snapshot reload plus reconciled UI replay must preserve Core-owned dice state");
   enqueueParam(
       engine,
       KESSHO_PRODUCT_EVENT_KIND_SET_PARAM,
@@ -514,6 +669,20 @@ int main() {
   require(
       sequencer_ui_state.last_change_kind == KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_EVOLUTION,
       "sequencer UI state should classify the latest evolution mutation");
+  KesshoProductTelemetry evolved_telemetry = kessho_product_get_telemetry(engine);
+  preserved_reload_snapshot = makeSnapshot();
+  preserved_reload_snapshot.drum_euclid.lane_count = 0;
+  preserved_reload_snapshot.rng.seed = evolved_telemetry.rng_seed;
+  preserved_reload_snapshot.rng.state = evolved_telemetry.rng_state;
+  preserved_reload_snapshot.evolution.amount = sequencer_ui_state.evolution_amount;
+  preserved_reload_snapshot.evolution.state = sequencer_ui_state.evolution_state;
+  require(
+      kessho_product_load_snapshot_v2(engine, &preserved_reload_snapshot, sizeof(preserved_reload_snapshot)) ==
+          KESSHO_PRODUCT_OK,
+      "full snapshot reload with reconciled evolution state should load");
+  require(
+      std::fabs(engine->evolution_amount - 0.75f) < 0.000001f && engine->evolution_state == 9876u,
+      "full snapshot reload must preserve reconciled Core-owned evolution state");
   enqueueParam(
       engine,
       KESSHO_PRODUCT_EVENT_KIND_SET_PARAM,

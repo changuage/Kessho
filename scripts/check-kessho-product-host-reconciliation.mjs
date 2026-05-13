@@ -70,6 +70,12 @@ assert(
   'snapshot update must only full-reload after dirty diff rejection',
 );
 
+const loadSnapshotBody = methodBody('loadProductSnapshot');
+assert(
+  loadSnapshotBody.includes('this.flushSequencerStepToggles();'),
+  'full snapshot reloads must replay reconciled sequencer UI caches after load',
+);
+
 const patchBody = methodBody('patchAdapterState');
 assert(patchBody.includes('this.applyLatestSnapshotUpdate();'), 'adapter state patches must enter the dirty diff path');
 assert(!patchBody.includes('this.loadProductSnapshot('), 'adapter state patches must not bypass dirty diff with direct snapshot loads');
@@ -165,6 +171,9 @@ for (const token of [
   'sequencer UI state should expose detailed diced override values',
   'sequencer UI state should expose reset-home override clearing',
   'sequencer UI state should expose Core-owned evolution state',
+  'full snapshot reload plus reconciled UI replay must preserve Core-owned dice state',
+  'full snapshot reload must preserve reconciled Core-owned RNG state',
+  'full snapshot reload must preserve reconciled Core-owned evolution state',
 ]) {
   assert(sequencerTests.includes(token), `Product sequencer tests are missing reconciliation assertion: ${token}`);
 }
