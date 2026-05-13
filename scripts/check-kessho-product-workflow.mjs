@@ -32,12 +32,17 @@ const requiredPaths = [
   'public/worklets/kessho_core.wasm',
   'public/samples/**',
   'scripts/check-kessho-product*',
+  'scripts/check-kessho-core-parity-readiness.mjs',
+  'scripts/check-web-core-sonic-parity.mjs',
+  'scripts/profile-kessho-core-acceptance-corpus.mjs',
   'scripts/build-kessho-core-wasm.mjs',
   'scripts/generate-kessho-product-bindings.mjs',
   'scripts/run-kessho-product-ci.mjs',
   'KesshoNativeSwift/CoreBridge/**',
   'KesshoNativeSwift/Generated/**',
   'docs/kessho-product-core-migration-status.md',
+  'docs/reports/kessho-core-acceptance-corpus.*',
+  'docs/reports/kessho-core-parity-readiness-latest.*',
 ];
 
 for (const requiredPath of requiredPaths) {
