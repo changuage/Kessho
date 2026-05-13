@@ -1089,21 +1089,25 @@ function assertWorkletAuxSourceLayeringBehavior(source, label) {
 
   const leadModule = 601;
   const drumModule = 602;
+  const soundscapesModule = 603;
   const leadLeft = [0.2, -0.1, 0.05, -0.025];
   const leadRight = [-0.15, 0.12, -0.06, 0.03];
   const drumLeft = [0.08, 0.04, -0.02, 0.01];
   const drumRight = [0.07, -0.03, 0.015, -0.005];
+  const soundscapesLeft = [0.04, -0.02, 0.03, -0.01];
+  const soundscapesRight = [-0.03, 0.025, -0.015, 0.02];
   const postMessages = [];
   const makeSlot = (slotId, module, dryGain, granularSendGain = 0) => ({
     slotId,
     module,
-    moduleType: slotId === 'drum' ? 8 : 6,
+    moduleType: slotId === 'drum' ? 8 : slotId === 'soundscapes' ? 9 : 6,
     moduleTapCount: 1,
-    kind: slotId === 'drum' ? 'drum' : 'lead-fm',
+    kind: slotId === 'drum' ? 'drum' : slotId === 'soundscapes' ? 'soundscapes' : 'lead-fm',
     dryGain,
     reverbSendGain: 0,
     delayASendGain: 0,
     granularSendGain,
+    sendsPreDry: true,
     leadIndex: 0,
     noteKey: '',
     chordSets: [],
@@ -1122,7 +1126,14 @@ function assertWorkletAuxSourceLayeringBehavior(source, label) {
   const processor = Object.create(Processor.prototype);
   const granularModule = 703;
   const leadSlot = makeSlot('lead', leadModule, 0.5, 0.25);
-  const drumSlot = makeSlot('drum', drumModule, 1);
+  const drumSlot = makeSlot('drum', drumModule, 0.4, 0.35);
+  const soundscapesSlot = makeSlot('soundscapes', soundscapesModule, 0.2, 0.3);
+  const expectedGranularLeft = leadLeft.map((value, index) =>
+    value * 0.25 + drumLeft[index] * 0.35 + soundscapesLeft[index] * 0.3,
+  );
+  const expectedGranularRight = leadRight.map((value, index) =>
+    value * 0.25 + drumRight[index] * 0.35 + soundscapesRight[index] * 0.3,
+  );
   Object.assign(processor, {
     ready: true,
     engine: 1,
@@ -1180,7 +1191,7 @@ function assertWorkletAuxSourceLayeringBehavior(source, label) {
     sourcePendingNoteOffs: [],
     sourceTapLeftPtrs: Array.from({ length: 6 }, allocFrames),
     sourceTapRightPtrs: Array.from({ length: 6 }, allocFrames),
-    auxSourceSlots: [leadSlot, drumSlot],
+    auxSourceSlots: [leadSlot, drumSlot, soundscapesSlot],
     padPostChains: [
       Processor.prototype.createPadPostChain.call(processor),
       Processor.prototype.createPadPostChain.call(processor),
@@ -1216,15 +1227,20 @@ function assertWorkletAuxSourceLayeringBehavior(source, label) {
         writePlanar(outputRPtr, drumRight);
         return 1;
       }
+      if (module === soundscapesModule) {
+        writePlanar(outputLPtr, soundscapesLeft);
+        writePlanar(outputRPtr, soundscapesRight);
+        return 1;
+      }
       if (module === granularModule) {
         assertArrayClose(
           readPlanar(_inputLPtr),
-          leadLeft.map((value) => value * 0.5 * 0.25),
+          expectedGranularLeft,
           `${label} granular aux input L`,
         );
         assertArrayClose(
           readPlanar(_inputRPtr),
-          leadRight.map((value) => value * 0.5 * 0.25),
+          expectedGranularRight,
           `${label} granular aux input R`,
         );
         writePlanar(outputLPtr, readPlanar(_inputLPtr).map((value) => value * 2));
@@ -1256,20 +1272,31 @@ function assertWorkletAuxSourceLayeringBehavior(source, label) {
   assert(postMessages.length === 0, `${label} aux source emitted unexpected messages: ${JSON.stringify(postMessages)}`);
   assertArrayClose(
     Array.from(outputs[0][0]),
-    leadLeft.map((value, index) => value * 0.5 + drumLeft[index] + value * 0.5 * 0.25 * 2 * 0.75),
+    leadLeft.map((value, index) =>
+      value * 0.5 +
+      drumLeft[index] * 0.4 +
+      soundscapesLeft[index] * 0.2 +
+      expectedGranularLeft[index] * 2 * 0.75,
+    ),
     `${label} aux dry mix L`,
   );
   assertArrayClose(
     Array.from(outputs[0][1]),
-    leadRight.map((value, index) => value * 0.5 + drumRight[index] + value * 0.5 * 0.25 * 2 * 0.75),
+    leadRight.map((value, index) =>
+      value * 0.5 +
+      drumRight[index] * 0.4 +
+      soundscapesRight[index] * 0.2 +
+      expectedGranularRight[index] * 2 * 0.75,
+    ),
     `${label} aux dry mix R`,
   );
   for (const outputIndex of [1, 2, 3, 4, 5, 6]) {
     assertArrayClose(Array.from(outputs[outputIndex][0]), [0, 0, 0, 0], `${label} aux stem ${outputIndex} L`);
     assertArrayClose(Array.from(outputs[outputIndex][1]), [0, 0, 0, 0], `${label} aux stem ${outputIndex} R`);
   }
-  assertArrayClose(readPlanar(leadSlot.leftPtr), leadLeft.map((value) => value * 0.5), `${label} aux lead slot L`);
+  assertArrayClose(readPlanar(leadSlot.leftPtr), leadLeft, `${label} aux lead slot L`);
   assertArrayClose(readPlanar(drumSlot.leftPtr), drumLeft, `${label} aux drum slot L`);
+  assertArrayClose(readPlanar(soundscapesSlot.leftPtr), soundscapesLeft, `${label} aux soundscapes slot L`);
 }
 
 function assertWorkletSpectralFreezeRoutingBehavior(source, label) {

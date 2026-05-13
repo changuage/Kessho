@@ -2521,14 +2521,13 @@ function createManualLeadSourceConfig(
   const delayASendKey = source === 'lead2' ? 'lead2DelayASend' : 'lead1DelayASend';
   const delayBSendKey = source === 'lead2' ? 'lead2DelayBSend' : 'lead1DelayBSend';
   const dryGain = boundedNumber(applyDistanceValue(levelKey, sliderState, source), source === 'lead2' ? 0.6 : 0.8, 0, 1.5) * ENGINE_TRIMS.lead;
-  const sendCompensation = dryGain > 0.0001 ? 1 / dryGain : 0;
   const reverbSendGain = booleanValue(state.reverbEnabled, true)
-    ? boundedNumber(applyDistanceValue(reverbKey, sliderState, source), 0.5, 0, 1) * sendCompensation
+    ? boundedNumber(applyDistanceValue(reverbKey, sliderState, source), 0.5, 0, 1)
     : 0;
-  const delayASendGain = boundedNumber(state[delayASendKey], 0, 0, 1) * sendCompensation;
-  const delayBSendGain = boundedNumber(state[delayBSendKey], 0, 0, 1) * sendCompensation;
+  const delayASendGain = boundedNumber(state[delayASendKey], 0, 0, 1);
+  const delayBSendGain = boundedNumber(state[delayBSendKey], 0, 0, 1);
   const granularSendGain = booleanValue(state.granularEnabled, false)
-    ? boundedNumber(state[source === 'lead2' ? 'granularLead2Send' : 'granularLead1Send'], 0, 0, 1) * sendCompensation
+    ? boundedNumber(state[source === 'lead2' ? 'granularLead2Send' : 'granularLead1Send'], 0, 0, 1)
     : 0;
   const triggerNote = {
     frequency,
@@ -2617,26 +2616,25 @@ function createLeadEuclidPreviewSource(
   const lead1Level = usesLead1 ? boundedNumber(applyDistanceValue('lead1Level', sliderState, 'lead1'), 0.8, 0, 1.5) : 0;
   const lead2Level = usesLead2 ? boundedNumber(applyDistanceValue('lead2Level', sliderState, 'lead2'), 0.6, 0, 1.5) : 0;
   const dryGain = Math.max(lead1Level, lead2Level) * ENGINE_TRIMS.lead;
-  const sendCompensation = dryGain > 0.0001 ? 1 / dryGain : 0;
   const reverbSendGain = booleanValue(state.reverbEnabled, true)
     ? Math.max(
       usesLead1 ? boundedNumber(applyDistanceValue('lead1ReverbSend', sliderState, 'lead1'), 0.5, 0, 1) : 0,
       usesLead2 ? boundedNumber(applyDistanceValue('lead2ReverbSend', sliderState, 'lead2'), 0.5, 0, 1) : 0,
-    ) * sendCompensation
+    )
     : 0;
   const delayASendGain = Math.max(
     usesLead1 ? boundedNumber(state.lead1DelayASend, 0, 0, 1) : 0,
     usesLead2 ? boundedNumber(state.lead2DelayASend, 0, 0, 1) : 0,
-  ) * sendCompensation;
+  );
   const delayBSendGain = Math.max(
     usesLead1 ? boundedNumber(state.lead1DelayBSend, 0, 0, 1) : 0,
     usesLead2 ? boundedNumber(state.lead2DelayBSend, 0, 0, 1) : 0,
-  ) * sendCompensation;
+  );
   const granularSendGain = booleanValue(state.granularEnabled, false)
     ? Math.max(
       usesLead1 ? boundedNumber(state.granularLead1Send, 0, 0, 1) : 0,
       usesLead2 ? boundedNumber(state.granularLead2Send, 0, 0, 1) : 0,
-    ) * sendCompensation
+    )
     : 0;
   const hasRandomLead = randomLeadChords.length > 0;
   const chords = hasRandomLead

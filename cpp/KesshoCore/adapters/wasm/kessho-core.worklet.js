@@ -446,6 +446,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       delayASendGainTarget: 0,
       delayBSendGainTarget: 0,
       granularSendGainTarget: 0,
+      sendsPreDry: true,
       gainRampRemainingSamples: 0,
       leadIndex: 0,
       baseParams: [],
@@ -1217,6 +1218,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     slot.delayASendGainTarget = 0;
     slot.delayBSendGainTarget = 0;
     slot.granularSendGainTarget = 0;
+    slot.sendsPreDry = true;
     slot.gainRampRemainingSamples = 0;
     slot.leadIndex = 0;
     slot.baseParams = [];
@@ -1845,6 +1847,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     this.api.moduleCommitParams(slot.module);
 
     slot.leadIndex = Number(message.leadIndex) > 0 ? 1 : 0;
+    slot.sendsPreDry = true;
     this.setSlotGains(
       slot,
       Number.isFinite(Number(message.dryGain))
@@ -2058,16 +2061,14 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       }
       this.processPostChain(slot.postChain, slot.leftPtr, slot.rightPtr, frames);
       this.stepSlotGainRamp(slot, frames);
-      const dryGain = Number.isFinite(slot.dryGain) ? slot.dryGain : 1;
-      if (Math.abs(dryGain - 1) > 1e-7) {
-        for (let i = 0; i < frames; i += 1) {
-          slot.left[i] *= dryGain;
-          slot.right[i] *= dryGain;
-        }
-      }
       active.push(slot);
     }
     return active;
+  }
+
+  auxSendDryMultiplier(slot) {
+    if (slot?.sendsPreDry) return 1;
+    return Number.isFinite(slot?.dryGain) ? slot.dryGain : 1;
   }
 
   addAuxDelaySendsToInput(activeAuxSlots, frames) {
@@ -2077,9 +2078,10 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     for (const slot of activeAuxSlots) {
       const sendGain = Number.isFinite(slot.delayASendGain) ? slot.delayASendGain : 0;
       if (sendGain <= 0.0001) continue;
+      const sourceGain = this.auxSendDryMultiplier(slot);
       for (let i = 0; i < frames; i += 1) {
-        this.heap[delayInputLeftOffset + i] += slot.left[i] * sendGain;
-        this.heap[delayInputRightOffset + i] += slot.right[i] * sendGain;
+        this.heap[delayInputLeftOffset + i] += slot.left[i] * sendGain * sourceGain;
+        this.heap[delayInputRightOffset + i] += slot.right[i] * sendGain * sourceGain;
       }
     }
   }
@@ -2091,9 +2093,10 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     for (const slot of activeAuxSlots) {
       const sendGain = Number.isFinite(slot.delayBSendGain) ? slot.delayBSendGain : 0;
       if (sendGain <= 0.0001) continue;
+      const sourceGain = this.auxSendDryMultiplier(slot);
       for (let i = 0; i < frames; i += 1) {
-        this.heap[delayInputLeftOffset + i] += slot.left[i] * sendGain;
-        this.heap[delayInputRightOffset + i] += slot.right[i] * sendGain;
+        this.heap[delayInputLeftOffset + i] += slot.left[i] * sendGain * sourceGain;
+        this.heap[delayInputRightOffset + i] += slot.right[i] * sendGain * sourceGain;
       }
     }
   }
@@ -2103,7 +2106,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     for (const slot of activeAuxSlots) {
       const sendGain = Number.isFinite(slot.reverbSendGain) ? slot.reverbSendGain : 0;
       if (sendGain <= 0.0001) continue;
-      value += (channel === 'left' ? slot.left[index] : slot.right[index]) * sendGain;
+      value += (channel === 'left' ? slot.left[index] : slot.right[index]) * sendGain * this.auxSendDryMultiplier(slot);
     }
     return value;
   }
@@ -2113,7 +2116,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     for (const slot of activeAuxSlots) {
       const sendGain = Number.isFinite(slot.granularSendGain) ? slot.granularSendGain : 0;
       if (sendGain <= 0.0001) continue;
-      value += (channel === 'left' ? slot.left[index] : slot.right[index]) * sendGain;
+      value += (channel === 'left' ? slot.left[index] : slot.right[index]) * sendGain * this.auxSendDryMultiplier(slot);
     }
     return value;
   }
@@ -2173,9 +2176,10 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
   addAuxDryToMix(activeAuxSlots, frames) {
     if (activeAuxSlots.length === 0) return;
     for (const slot of activeAuxSlots) {
+      const dryGain = Number.isFinite(slot.dryGain) ? slot.dryGain : 1;
       for (let i = 0; i < frames; i += 1) {
-        this.mixLeft[i] += slot.left[i];
-        this.mixRight[i] += slot.right[i];
+        this.mixLeft[i] += slot.left[i] * dryGain;
+        this.mixRight[i] += slot.right[i] * dryGain;
       }
     }
   }
@@ -2929,7 +2933,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
           slot.leftPtr,
           slot.rightPtr,
           frames,
-          KESSHO_CORE_LEAD_RECORDABLE_TRIM_COMPENSATION,
+          (Number.isFinite(slot.dryGain) ? slot.dryGain : 1) * KESSHO_CORE_LEAD_RECORDABLE_TRIM_COMPENSATION,
         );
         if (slot.leadIndex > 0) copiedLead2Stem = true;
         else copiedLead1Stem = true;
