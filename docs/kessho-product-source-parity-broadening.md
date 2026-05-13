@@ -6,7 +6,7 @@ This gate keeps the next migration pass focused on Product Core-owned source beh
 
 - Pad preset family probes: generated metadata now asserts all 24 Pad presets carry exact Product Core Pad patch data, and representative Pad presets render through Product Core.
 - Pad 2 probes: representative generated Pad preset render checks run for both Pad 1 and Pad 2.
-- Broader Lead preset probes: `LeadSoftRhodes` and `LeadGamelan` render and produce distinct Product Core output through both Lead 1 and Lead 2. Browser/worklet coverage now includes focused `lead-manual-dry`, `lead-delay-heavy`, `lead2-gamelan-dry`, and `lead2-soft-rhodes-dry` web-vs-Product probes.
+- Broader Lead preset probes: `LeadSoftRhodes` and `LeadGamelan` render and produce distinct Product Core output through both Lead 1 and Lead 2. Browser/worklet coverage now includes focused `lead-manual-dry`, `lead1-gamelan-dry`, `lead1-soft-rhodes-dry`, `lead-delay-heavy`, `lead2-gamelan-dry`, and `lead2-soft-rhodes-dry` web-vs-Product probes.
 - Drum source probes: `DrumDefault` generated patch metadata and render output remain covered, along with generated drum voice preset morph selection.
 - Piano asset probes: Product Core reports missing piano assets instead of faking host playback, renders registered host-decoded piano buffers, selects nearest registered piano samples, and preserves stereo channel behavior.
 - Soundscape asset probes: Product Core reports missing soundscape assets, renders looped and layered host-decoded soundscape buffers, crossfades loop boundaries, randomizes deterministic starts, and applies texture spread policy.

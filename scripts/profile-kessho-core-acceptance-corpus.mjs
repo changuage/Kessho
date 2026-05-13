@@ -36,7 +36,7 @@ const acceptanceContract = {
     sourceSlice: {
       label: 'Source Slice',
       target: 'Core non-pad sources are close enough for lead, drums, and earth/soundscape migration.',
-      requiredCases: ['lead-manual-dry', 'lead-delay-heavy', 'lead2-gamelan-dry', 'lead2-soft-rhodes-dry', 'piano-manual-dry', 'synth-euclid-lead-grid', 'drum-euclid-tight', 'drum-delay-dub', 'earth-water-only', 'earth-full-nature', 'soundscape-ocean-pad'],
+      requiredCases: ['lead-manual-dry', 'lead1-gamelan-dry', 'lead1-soft-rhodes-dry', 'lead-delay-heavy', 'lead2-gamelan-dry', 'lead2-soft-rhodes-dry', 'piano-manual-dry', 'synth-euclid-lead-grid', 'drum-euclid-tight', 'drum-delay-dub', 'earth-water-only', 'earth-full-nature', 'soundscape-ocean-pad'],
       passDefinition: 'All deterministic source cases pass; stochastic drum and earth cases pass documented transient/envelope gates.',
     },
     fullMixSlice: {
@@ -137,6 +137,10 @@ const pad2ManualDefaultSustain = [
 const leadManualLine = [
   { source: 'lead1', midi: 72, velocity: 0.82, durationMs: 700 },
   { source: 'lead1', midi: 76, velocity: 0.75, durationMs: 650 },
+];
+
+const lead1EndpointNote = [
+  { source: 'lead1', midi: 72, velocity: 0.82, durationMs: 700 },
 ];
 
 const lead2ManualLine = [
@@ -381,6 +385,88 @@ const corpus = [
     },
     intent: 'Single-source 4-op lead timbre without pad, delay, or reverb masking.',
     readyWhen: ['manual lead1 trigger support exists for core-wasm parity capture'],
+  },
+  {
+    id: 'lead1-gamelan-dry',
+    title: 'Manual dry Lead 1 Gamelan',
+    group: 'lead',
+    thresholdClass: 'perceptual',
+    expectedOutcome: 'pass',
+    source: 'src/ui/state.ts#DEFAULT_STATE',
+    includeSourceState: false,
+    durationMs: 4500,
+    settleMs: 700,
+    thresholds: { rmsTolerance: 0.22, peakTolerance: 0.04, minSignalRms: 0.0001 },
+    envelopeGate: {
+      windowMs: 500,
+      timeToleranceMs: 20,
+      rmsRatioTolerance: 0.9,
+      peakRatioTolerance: 0.85,
+    },
+    manualNotes: lead1EndpointNote,
+    statePatch: {
+      ...sourceMute,
+      leadEnabled: true,
+      lead1Level: 0.74,
+      lead1PresetA: 'soft_rhodes',
+      lead1PresetB: 'gamelan',
+      lead1Morph: 1,
+      lead1MorphAuto: false,
+      leadTensionMode: 'locked',
+      leadTensionValue: 0,
+      tension: 0,
+      lead1ReverbSend: 0,
+      lead1DelayASend: 0,
+      lead1DelayBSend: 0,
+      granularLead1Send: 0,
+      leadRandomEnabled: false,
+      delayAEnabled: false,
+      reverbEnabled: false,
+      masterVolume: 0.72,
+    },
+    intent: 'Lead 1 route and Gamelan endpoint preset parity without Lead 2, delay, or reverb masking.',
+    readyWhen: ['manual lead1 trigger support exists for core-product parity capture', 'Lead 1 Gamelan endpoint preset routing is not silent'],
+  },
+  {
+    id: 'lead1-soft-rhodes-dry',
+    title: 'Manual dry Lead 1 Soft Rhodes',
+    group: 'lead',
+    thresholdClass: 'perceptual',
+    expectedOutcome: 'pass',
+    source: 'src/ui/state.ts#DEFAULT_STATE',
+    includeSourceState: false,
+    durationMs: 4500,
+    settleMs: 700,
+    thresholds: { rmsTolerance: 0.22, peakTolerance: 0.04, minSignalRms: 0.0001 },
+    envelopeGate: {
+      windowMs: 500,
+      timeToleranceMs: 20,
+      rmsRatioTolerance: 0.9,
+      peakRatioTolerance: 0.85,
+    },
+    manualNotes: lead1EndpointNote,
+    statePatch: {
+      ...sourceMute,
+      leadEnabled: true,
+      lead1Level: 0.74,
+      lead1PresetA: 'soft_rhodes',
+      lead1PresetB: 'gamelan',
+      lead1Morph: 0,
+      lead1MorphAuto: false,
+      leadTensionMode: 'locked',
+      leadTensionValue: 0,
+      tension: 0,
+      lead1ReverbSend: 0,
+      lead1DelayASend: 0,
+      lead1DelayBSend: 0,
+      granularLead1Send: 0,
+      leadRandomEnabled: false,
+      delayAEnabled: false,
+      reverbEnabled: false,
+      masterVolume: 0.72,
+    },
+    intent: 'Lead 1 route and Soft Rhodes endpoint preset parity without Lead 2, delay, or reverb masking.',
+    readyWhen: ['manual lead1 trigger support exists for core-product parity capture', 'Lead 1 Soft Rhodes endpoint preset routing is not silent'],
   },
   {
     id: 'lead-delay-heavy',
@@ -1807,6 +1893,36 @@ function runSelfCheck() {
     'core-product',
   );
   assert(productCommand.includes("'--core-engine=core-product'"), 'focused probe can target core-product');
+
+  const lead1GamelanProductCommand = commandForCase(
+    resolveCases({ caseId: 'lead1-gamelan-dry' })[0],
+    DEFAULT_URL,
+    false,
+    '',
+    {},
+    false,
+    'core-product',
+  );
+  assert(lead1GamelanProductCommand.includes("'--manual-note=lead1:72:0.82:700'"), 'Lead 1 Gamelan probe triggers the Lead 1 manual route');
+  assert(lead1GamelanProductCommand.includes('"lead1PresetB":"gamelan"'), 'Lead 1 Gamelan probe covers the Gamelan endpoint preset bridge');
+  assert(lead1GamelanProductCommand.includes('"lead1Morph":1'), 'Lead 1 Gamelan probe selects the B endpoint explicitly');
+  assert(lead1GamelanProductCommand.includes("'--envelope-gate'"), 'Lead 1 Gamelan probe uses an envelope gate for phase-sensitive FM output');
+  assert(lead1GamelanProductCommand.includes("'--core-engine=core-product'"), 'Lead 1 Gamelan probe can target core-product');
+
+  const lead1SoftRhodesProductCommand = commandForCase(
+    resolveCases({ caseId: 'lead1-soft-rhodes-dry' })[0],
+    DEFAULT_URL,
+    false,
+    '',
+    {},
+    false,
+    'core-product',
+  );
+  assert(lead1SoftRhodesProductCommand.includes("'--manual-note=lead1:72:0.82:700'"), 'Lead 1 Soft Rhodes probe triggers the Lead 1 manual route');
+  assert(lead1SoftRhodesProductCommand.includes('"lead1PresetA":"soft_rhodes"'), 'Lead 1 Soft Rhodes probe covers the Soft Rhodes endpoint preset bridge');
+  assert(lead1SoftRhodesProductCommand.includes('"lead1Morph":0'), 'Lead 1 Soft Rhodes probe selects the A endpoint explicitly');
+  assert(lead1SoftRhodesProductCommand.includes("'--envelope-gate'"), 'Lead 1 Soft Rhodes probe uses an envelope gate for phase-sensitive FM output');
+  assert(lead1SoftRhodesProductCommand.includes("'--core-engine=core-product'"), 'Lead 1 Soft Rhodes probe can target core-product');
 
   const lead2ProductCommand = commandForCase(
     resolveCases({ caseId: 'lead2-gamelan-dry' })[0],

@@ -1,6 +1,6 @@
 # KesshoCore Acceptance Corpus
 
-Generated: 2026-05-13T08:15:59.937Z
+Generated: 2026-05-13T08:37:48.105Z
 
 Scope: practical browser parity acceptance corpus for the core migration. This is intentionally representative, not exhaustive perfect-parity coverage.
 
@@ -67,7 +67,7 @@ Pass definition: All required close/perceptual cases pass, using envelope gates 
 
 Target: Core non-pad sources are close enough for lead, drums, and earth/soundscape migration.
 
-Required cases: lead-manual-dry, lead-delay-heavy, lead2-gamelan-dry, lead2-soft-rhodes-dry, piano-manual-dry, synth-euclid-lead-grid, drum-euclid-tight, drum-delay-dub, earth-water-only, earth-full-nature, soundscape-ocean-pad
+Required cases: lead-manual-dry, lead1-gamelan-dry, lead1-soft-rhodes-dry, lead-delay-heavy, lead2-gamelan-dry, lead2-soft-rhodes-dry, piano-manual-dry, synth-euclid-lead-grid, drum-euclid-tight, drum-delay-dub, earth-water-only, earth-full-nature, soundscape-ocean-pad
 
 Pass definition: All deterministic source cases pass; stochastic drum and earth cases pass documented transient/envelope gates.
 
@@ -103,6 +103,8 @@ Threshold classes:
 | pad-reverb-tail | pad+reverb | close | pass | KesshoNativeSwift/Kessho/Presets/Ethereal_Ambient.json | pad1:48:0.72:1800, pad1:55:0.68:1800, pad1:62:0.62:1800 | 8000 ms | rms 0.055, peak 0.28, min RMS 0.0001 |
 | pad-dark-dense | pad+reverb | close | pass | KesshoNativeSwift/Kessho/Presets/Dark_Textures.json | pad1:48:0.72:1800, pad1:55:0.68:1800, pad1:62:0.62:1800 | 8000 ms | rms 0.065, peak 0.3, min RMS 0.0001 |
 | lead-manual-dry | lead | close | pass | KesshoNativeSwift/Kessho/Presets/Bright_Bells.json | lead1:72:0.82:700, lead1:76:0.75:650 | 4500 ms | rms 0.05, peak 0.26, min RMS 0.0001 |
+| lead1-gamelan-dry | lead | perceptual | pass | src/ui/state.ts#DEFAULT_STATE | lead1:72:0.82:700 | 4500 ms | rms 0.22, peak 0.04, min RMS 0.0001 |
+| lead1-soft-rhodes-dry | lead | perceptual | pass | src/ui/state.ts#DEFAULT_STATE | lead1:72:0.82:700 | 4500 ms | rms 0.22, peak 0.04, min RMS 0.0001 |
 | lead-delay-heavy | delay-heavy | perceptual | pass | KesshoNativeSwift/Kessho/Presets/StringWaves.json | lead1:72:0.82:700, lead1:76:0.75:650 | 7000 ms | rms 0.07, peak 0.32, min RMS 0.0001 |
 | lead2-gamelan-dry | lead | perceptual | pass | src/ui/state.ts#DEFAULT_STATE | lead2:67:0.8:800 | 4500 ms | rms 0.22, peak 0.04, min RMS 0.0001 |
 | lead2-soft-rhodes-dry | lead | perceptual | pass | src/ui/state.ts#DEFAULT_STATE | lead2:67:0.8:800 | 4500 ms | rms 0.22, peak 0.04, min RMS 0.0001 |
@@ -218,6 +220,38 @@ Expected outcome: pass
 State patch keys: 115
 
 State patch SHA-256: `e0a5d50803c07c881e17e3b6adac4d2c569840302bce33db42683234f9dd6869`
+
+### lead1-gamelan-dry
+
+Title: Manual dry Lead 1 Gamelan
+
+Intent: Lead 1 route and Gamelan endpoint preset parity without Lead 2, delay, or reverb masking.
+
+Ready when: manual lead1 trigger support exists for core-product parity capture; Lead 1 Gamelan endpoint preset routing is not silent
+
+Threshold class: perceptual
+
+Expected outcome: pass
+
+State patch keys: 45
+
+State patch SHA-256: `fbd685d449e7142ce11679f0a1fbc1b37847aec82593bf63b9c898a2c89239dc`
+
+### lead1-soft-rhodes-dry
+
+Title: Manual dry Lead 1 Soft Rhodes
+
+Intent: Lead 1 route and Soft Rhodes endpoint preset parity without Lead 2, delay, or reverb masking.
+
+Ready when: manual lead1 trigger support exists for core-product parity capture; Lead 1 Soft Rhodes endpoint preset routing is not silent
+
+Threshold class: perceptual
+
+Expected outcome: pass
+
+State patch keys: 45
+
+State patch SHA-256: `524e4a6ea603335ad728ef6c22a7f745db57487c2335c2f2c6a1e40ffcce0591`
 
 ### lead-delay-heavy
 
