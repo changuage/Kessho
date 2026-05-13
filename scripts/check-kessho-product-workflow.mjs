@@ -79,6 +79,8 @@ for (const token of [
   'Timed out waiting for',
   'Vite output:',
   'await managedBrowserServer?.stop();',
+  'emitGithubFailureAnnotations',
+  '::error file=docs/reports/kessho-core-parity-readiness-latest.md::',
 ]) {
   assert(readiness.includes(token), `browser readiness runner is missing managed-server token: ${token}`);
 }

@@ -763,6 +763,32 @@ function summarize(report) {
   };
 }
 
+function githubCommandEscape(value) {
+  return String(value)
+    .replace(/%/g, '%25')
+    .replace(/\r/g, '%0D')
+    .replace(/\n/g, '%0A');
+}
+
+function collectFailedChecks(report) {
+  return [
+    ...(report.setupChecks ?? []),
+    ...report.slices.flatMap((slice) => [...slice.moduleChecks, ...slice.corpusCases]),
+  ].filter((entry) => entry.status === STATUS_FAIL);
+}
+
+function emitGithubFailureAnnotations(report) {
+  const failures = collectFailedChecks(report);
+  if (failures.length === 0) return;
+  console.error('\n== Failure Details ==');
+  for (const entry of failures.slice(0, 8)) {
+    const summary = entry.failureSummary || `Exited with ${entry.exitCode ?? entry.signal ?? 'unknown status'}`;
+    const detail = `${entry.label}: ${entry.failureKind || 'check'} - ${summary}. Rerun: ${entry.rerunCommand}`;
+    console.error(`  ${detail}`);
+    console.error(`::error file=docs/reports/kessho-core-parity-readiness-latest.md::${githubCommandEscape(detail)}`);
+  }
+}
+
 function selectedSliceArg(selectedSlices) {
   if (selectedSlices.length === sliceDefinitions.length) return '';
   return ` --slice=${selectedSlices.map((slice) => slice.id).join(',')}`;
@@ -1163,6 +1189,10 @@ async function main() {
       console.log(`  ${slice.label}: ${slice.status.toUpperCase()} (readiness ${slice.readiness.toUpperCase()}, pass ${slice.checksPassed}, fail ${slice.checksFailed}, known fail ${slice.checksKnownFailed}, candidate ${slice.checksCandidate}, skip ${slice.checksSkipped})`);
     }
     console.log(`Reports: ${toRelative(paths.markdown)}, ${toRelative(paths.json)}`);
+
+    if (report.summary.status === 'fail') {
+      emitGithubFailureAnnotations(report);
+    }
 
     if (report.summary.status === 'fail' && !options.noFail) {
       process.exitCode = 1;
