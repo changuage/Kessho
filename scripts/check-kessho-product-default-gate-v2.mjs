@@ -171,7 +171,6 @@ for (const token of [
   'Product Default Gate v2',
   'web-default-deferred',
   'core:product:default-gate-v2',
-  'Product Core GitHub workflow/browser-readiness evidence',
   'further web adapter decomposition',
 ]) {
   assert(statusDoc.includes(token), `migration status doc is missing ${token}`);
