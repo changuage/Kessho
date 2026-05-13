@@ -65,7 +65,15 @@ for (const [path, maxLines] of focusedHeaders) {
 }
 
 const secondStageCaps = [
-  ['cpp/KesshoCore/src/product/sources/ProductSources.cpp', 650],
+  ['cpp/KesshoCore/src/product/sources/ProductSources.cpp', 140],
+  ['cpp/KesshoCore/src/product/sources/ProductSourcePostChain.cpp', 260],
+  ['cpp/KesshoCore/src/product/sources/PadSource.cpp', 80],
+  ['cpp/KesshoCore/src/product/sources/SourceMix.cpp', 120],
+  ['cpp/KesshoCore/src/product/sources/SourceModulation.cpp', 220],
+  ['cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp', 80],
+  ['cpp/KesshoCore/src/product/sources/DrumSource.cpp', 80],
+  ['cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp', 340],
+  ['cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp', 80],
   ['cpp/KesshoCore/src/product/fx/ProductFx.cpp', 430],
   ['cpp/KesshoCore/src/product/fx/ProductDelay.cpp', 120],
   ['cpp/KesshoCore/src/product/fx/ProductReverb.cpp', 140],
@@ -75,6 +83,97 @@ const secondStageCaps = [
 ];
 for (const [path, maxLines] of secondStageCaps) {
   assert(lineCount(path) <= maxLines, `${path} is becoming a second-stage monolith (${lineCount(path)} > ${maxLines})`);
+}
+
+for (const forbidden of [
+  'findModulationRange(',
+  'findOrAllocateModulationRange(',
+  'applyModulationRangeEvent(',
+  'applySourcePresetMacros(',
+  'drumVoiceMorphPatch(',
+  'exactPadMacrosDifferFromDefaults(',
+  'modulationRangeSample(',
+  'resolveModulatedValue(',
+  'applyRuntimeWalkValue(',
+  'advanceModulationRanges(',
+  'triggerModuleSource(',
+  'triggerVoice(',
+  'ensureSoundscapeVoice(',
+  'releaseSourceVoices(',
+]) {
+  assert(!read('cpp/KesshoCore/src/product/sources/ProductSources.cpp').includes(`KesshoProductEngine::${forbidden}`), `ProductSources.cpp must not reclaim focused source runtime method: ${forbidden}`);
+}
+
+for (const forbidden of [
+  'schedulePadVoiceRelease(',
+  'clearPadVoiceReleases(',
+  'advancePadVoiceReleases(',
+  'mixPadSourceBuffer(',
+  'mixSourceBuffer(',
+]) {
+  assert(!read('cpp/KesshoCore/src/product/sources/ProductSourcePostChain.cpp').includes(`KesshoProductEngine::${forbidden}`), `ProductSourcePostChain.cpp must not reclaim focused source runtime method: ${forbidden}`);
+}
+
+const focusedSourceContracts = [
+  [
+    'cpp/KesshoCore/src/product/sources/ProductSourcePostChain.cpp',
+    [
+      'KesshoProductEngine::resolveSourcePostLpfHz(',
+      'KesshoProductEngine::processPadPostChain(',
+      'KesshoProductEngine::processLeadPostChain(',
+      'KesshoProductEngine::processVoicePostChain(',
+    ],
+  ],
+  [
+    'cpp/KesshoCore/src/product/sources/PadSource.cpp',
+    [
+      'KesshoProductEngine::schedulePadVoiceRelease(',
+      'KesshoProductEngine::clearPadVoiceReleases(',
+      'KesshoProductEngine::advancePadVoiceReleases(',
+    ],
+  ],
+  [
+    'cpp/KesshoCore/src/product/sources/SourceMix.cpp',
+    [
+      'KesshoProductEngine::mixPadSourceBuffer(',
+      'KesshoProductEngine::mixSourceBuffer(',
+    ],
+  ],
+  [
+    'cpp/KesshoCore/src/product/sources/SourceModulation.cpp',
+    [
+      'KesshoProductEngine::findModulationRange(',
+      'KesshoProductEngine::findOrAllocateModulationRange(',
+      'KesshoProductEngine::applyModulationRangeEvent(',
+      'KesshoProductEngine::modulationRangeSample(',
+      'KesshoProductEngine::resolveModulatedValue(',
+      'KesshoProductEngine::applyRuntimeWalkValue(',
+      'KesshoProductEngine::advanceModulationRanges(',
+    ],
+  ],
+  [
+    'cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp',
+    [
+      'KesshoProductEngine::applySourcePresetMacros(',
+      'KesshoProductEngine::exactPadMacrosDifferFromDefaults(',
+    ],
+  ],
+  ['cpp/KesshoCore/src/product/sources/DrumSource.cpp', ['KesshoProductEngine::drumVoiceMorphPatch(']],
+  [
+    'cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp',
+    [
+      'KesshoProductEngine::triggerModuleSource(',
+      'KesshoProductEngine::triggerVoice(',
+      'KesshoProductEngine::releaseSourceVoices(',
+    ],
+  ],
+  ['cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp', ['KesshoProductEngine::ensureSoundscapeVoice(']],
+];
+for (const [path, tokens] of focusedSourceContracts) {
+  const source = read(path);
+  for (const token of tokens) {
+    assert(source.includes(token), `${path} must own focused source runtime token: ${token}`);
+  }
 }
 
 for (const forbidden of [
@@ -177,6 +276,13 @@ const componentFiles = [
   'cpp/KesshoCore/src/product/sequencer/TrigConditionEngine.cpp',
   'cpp/KesshoCore/src/product/sources/ProductSourcePostChain.cpp',
   'cpp/KesshoCore/src/product/sources/ProductSources.cpp',
+  'cpp/KesshoCore/src/product/sources/PadSource.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceMix.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceModulation.cpp',
+  'cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp',
+  'cpp/KesshoCore/src/product/sources/DrumSource.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp',
+  'cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp',
   'cpp/KesshoCore/src/product/transport/MusicalClock.cpp',
   'cpp/KesshoCore/src/product/transport/ProductTransport.cpp',
 ];
