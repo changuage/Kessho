@@ -5,8 +5,8 @@ import KesshoProductSchema
 #endif
 
 public enum KesshoProductCoreSnapshotEncoder {
-    public static let byteCount = 12644
-    public static let sourceByteCount = 1200
+    public static let byteCount = 12692
+    public static let sourceByteCount = 1204
 
     private static let laneByteCount = 84
     private static let sequencerByteCount = 4 + 16 * laneByteCount
@@ -44,6 +44,7 @@ public enum KesshoProductCoreSnapshotEncoder {
             writer.f32(source.delayASend)
             writer.f32(source.delayBSend)
             writer.f32(source.granularSend)
+            writer.f32(source.diffuseSend)
             writer.f32(source.postLpfHz)
             writer.f32(source.stereoWidth)
             writer.f32(source.postLpfKeyTracking)
@@ -85,6 +86,8 @@ public enum KesshoProductCoreSnapshotEncoder {
         writer.u32(snapshot.fx.granularFreezeWithFeedback ? 1 : 0)
         writer.f32(snapshot.fx.granularFeedback)
         writer.f32(snapshot.fx.granularFeedbackLpfHz)
+        writer.f32(snapshot.fx.granularReverbLpfHz)
+        writer.f32(snapshot.fx.granularOutputLpfHz)
         writer.f32(snapshot.fx.granularBufferSeconds)
         writer.u32(snapshot.fx.granularGrainShape)
         writer.f32(snapshot.fx.granularBusDiffusion)
@@ -171,6 +174,8 @@ public enum KesshoProductCoreSnapshotEncoder {
         writer.f32(snapshot.fx.spectralFreezeSpeed)
         writer.f32(snapshot.fx.spectralFreezeDecay)
         writer.f32(snapshot.fx.spectralFreezePhaseJitter)
+        writer.u32(snapshot.fx.spectralFreezeRouting)
+        writer.f32(snapshot.fx.spectralFreezeReverbCrossfade)
         writer.f32(snapshot.fx.dynamicsDrive)
         writer.u32(snapshot.fx.dynamicsEnabled ? 1 : 0)
         writer.u32(snapshot.fx.dynamicsCharacterEnabled ? 1 : 0)
@@ -280,7 +285,8 @@ public enum KesshoProductCoreSnapshotEncoder {
         writer.f32(snapshot.routing.delayAToGranular)
         writer.f32(snapshot.routing.delayBToGranular)
         writer.f32(snapshot.routing.delayBToReverb)
-        writer.f32(0)
+        writer.f32(snapshot.routing.granularToDelayA)
+        writer.f32(snapshot.routing.granularToDelayB)
         writer.f32(snapshot.master.gain)
         writer.f32(snapshot.master.limiterCeilingDb)
         writer.u32(snapshot.master.saturationMode)
@@ -294,8 +300,8 @@ public enum KesshoProductCoreSnapshotEncoder {
         for index in 0..<32 {
             writer.u32(index < snapshot.assetRefs.count ? snapshot.assetRefs[index] : 0)
         }
-        for _ in 0..<32 {
-            writer.u32(0)
+        for index in 0..<32 {
+            writer.f32(index < snapshot.assetRefLevels.count ? snapshot.assetRefLevels[index] : 0)
         }
 
         precondition(writer.count == byteCount, "Kessho Product snapshot encoder wrote \(writer.count) bytes; expected \(byteCount)")
@@ -356,6 +362,8 @@ public enum KesshoProductCoreSnapshotEncoder {
                 granularFreezeWithFeedback: false,
                 granularFeedback: Float(clamp(state.granularFeedback, 0, 0.85)),
                 granularFeedbackLpfHz: Float(clamp(state.granularFeedbackLPF, 200, 12000)),
+                granularReverbLpfHz: Float(clamp(state.granularReverbLPF, 200, 12000)),
+                granularOutputLpfHz: Float(clamp(state.granularOutputLPF, 200, 12000)),
                 granularBufferSeconds: Float(clamp(state.granularBufferSeconds, 1, 32)),
                 granularGrainShape: granularShapeId(state.granularShape),
                 granularBusDiffusion: Float(clamp(state.granularDiffusion, 0, 1)),
@@ -437,6 +445,8 @@ public enum KesshoProductCoreSnapshotEncoder {
                 spectralFreezeSpeed: Float(clamp(state.spectralFreezeSpeed, 0, 1)),
                 spectralFreezeDecay: Float(clamp(state.spectralFreezeDecay, 0, 1)),
                 spectralFreezePhaseJitter: Float(clamp(state.spectralFreezePhaseJitter, 0, 1)),
+                spectralFreezeRouting: state.spectralFreezeRouting == "post" ? 1 : 0,
+                spectralFreezeReverbCrossfade: Float(clamp(state.spectralFreezeReverbCrossfade, 0, 1)),
                 dynamicsDrive: state.dynamicsEnabled ? Float(clamp(state.dynamicsSaturationDrive, 0, 1)) : 0,
                 dynamicsEnabled: state.dynamicsEnabled,
                 dynamicsCharacterEnabled: state.dynamicsEnabled && state.characterEnabled,
@@ -544,10 +554,12 @@ public enum KesshoProductCoreSnapshotEncoder {
                 delayAToDelayB: Float(clamp(state.delayAToBSend, 0, 1)),
                 delayBToDelayA: Float(clamp(state.delayBToASend, 0, 1)),
                 delayToReverb: Float(clamp(state.delayAReverbSend, 0, 1)),
-                granularToReverb: Float(clamp(state.granularDelayReverbSend, 0, 1)),
+                granularToReverb: Float(clamp(state.granularReverbSend, 0, 1)),
                 delayAToGranular: Float(clamp(state.delayAGranularSend, 0, 1)),
                 delayBToGranular: Float(clamp(state.delayBGranularSend, 0, 1)),
-                delayBToReverb: Float(clamp(state.granularDelayReverbSend, 0, 1))
+                delayBToReverb: Float(clamp(state.granularDelayReverbSend, 0, 1)),
+                granularToDelayA: Float(clamp(state.granularDelayASend, 0, 1)),
+                granularToDelayB: Float(clamp(state.granularDelayBSend, 0, 1))
             ),
             master: ProductMasterSnapshot(
                 gain: Float(clamp(state.masterVolume, 0, 1.5)),
@@ -561,7 +573,8 @@ public enum KesshoProductCoreSnapshotEncoder {
                 state: state.rngState == 0 ? rngSeed : state.rngState
             ),
             evolution: ProductEvolutionSnapshot(amount: 0, state: 1),
-            assetRefs: soundscapeAssetIds(from: state)
+            assetRefs: soundscapeAssetIds(from: state),
+            assetRefLevels: soundscapeAssetLevels(from: state)
         )
     }
 
@@ -677,6 +690,7 @@ public enum KesshoProductCoreSnapshotEncoder {
             source.delayASend = Float(state.pad1DelayASend)
             source.delayBSend = Float(state.pad1DelayBSend)
             source.granularSend = Float(state.granularPad1Send)
+            source.diffuseSend = Float(state.padDiffuseSend)
             source.postLpfHz = Float(state.padPostLPF)
             source.stereoWidth = Float(state.padStereoWidth)
             source.presetId = endpointPresetId(source: "pad", morph: state.padMorph, a: state.padPresetA, b: state.padPresetB, fallbackKey: "init")
@@ -689,6 +703,7 @@ public enum KesshoProductCoreSnapshotEncoder {
             source.delayASend = Float(state.pad2DelayASend)
             source.delayBSend = Float(state.pad2DelayBSend)
             source.granularSend = Float(state.granularPad2Send)
+            source.diffuseSend = Float(state.pad2DiffuseSend)
             source.postLpfHz = Float(state.pad2PostLPF)
             source.stereoWidth = Float(state.pad2StereoWidth)
             source.presetId = endpointPresetId(source: "pad", morph: state.pad2Morph, a: state.pad2PresetA, b: state.pad2PresetB, fallbackKey: "init")
@@ -702,6 +717,7 @@ public enum KesshoProductCoreSnapshotEncoder {
             source.delayASend = Float(state.lead1DelayASend)
             source.delayBSend = Float(state.lead1DelayBSend)
             source.granularSend = Float(state.granularLead1Send)
+            source.diffuseSend = Float(state.lead1DiffuseSend)
             source.postLpfHz = Float(state.lead1PostLPF)
             source.stereoWidth = Float(state.lead1StereoWidth)
             source.postLpfKeyTracking = Float(state.lead1PostLPFKeyTracking)
@@ -716,6 +732,7 @@ public enum KesshoProductCoreSnapshotEncoder {
             source.delayASend = Float(state.lead2DelayASend)
             source.delayBSend = Float(state.lead2DelayBSend)
             source.granularSend = Float(state.granularLead2Send)
+            source.diffuseSend = Float(state.lead2DiffuseSend)
             source.postLpfHz = Float(state.lead2PostLPF)
             source.stereoWidth = Float(state.lead2StereoWidth)
             source.postLpfKeyTracking = Float(state.lead2PostLPFKeyTracking)
@@ -737,18 +754,42 @@ public enum KesshoProductCoreSnapshotEncoder {
             source.delayASend = Float(state.pianoDelayASend)
             source.delayBSend = Float(state.pianoDelayBSend)
             source.granularSend = Float(state.granularPianoSend)
+            source.diffuseSend = Float(state.pianoDiffuseSend)
             source.postLpfHz = Float(state.pianoPostLPF)
             source.stereoWidth = Float(state.pianoStereoWidth)
             source.presetId = sourcePresetId(source: "piano", key: "default", fallbackKey: "default")
         case KesshoProductSourceId.soundscape.rawValue:
-            source.enabled = state.oceanSampleEnabled || state.waterEnabled || state.insectsEnabled ||
-                state.insects2Enabled || state.birdsEnabled || state.birds2Enabled || state.frogsEnabled
+            let oceanActive = state.oceanSampleEnabled
+            let waterActive = state.waterEnabled
+            let insectsActive = state.insectsEnabled || state.insects2Enabled
+            let natureActive = state.birdsEnabled || state.birds2Enabled || state.frogsEnabled
+            source.enabled = oceanActive || waterActive || insectsActive || natureActive
             source.assetId = soundscapeAssetId(from: state)
-            source.level = Float(state.natureLevel)
-            source.reverbSend = Float(state.natureReverbSend)
-            source.delayASend = Float(state.natureDelayASend)
-            source.delayBSend = Float(state.natureDelayBSend)
-            source.granularSend = Float(state.granularNatureSend)
+            source.level = 1
+            source.reverbSend = Float(maxActiveSoundscapeRoute([
+                oceanActive ? state.oceanReverbSend : 0,
+                waterActive ? state.waterReverbSend : 0,
+                insectsActive ? state.insectsReverbSend : 0,
+                natureActive ? state.natureReverbSend : 0
+            ]))
+            source.delayASend = Float(maxActiveSoundscapeRoute([
+                oceanActive ? state.oceanDelayASend : 0,
+                waterActive ? state.waterDelayASend : 0,
+                insectsActive ? state.insDelayASend : 0,
+                natureActive ? state.natureDelayASend : 0
+            ]))
+            source.delayBSend = Float(maxActiveSoundscapeRoute([
+                oceanActive ? state.oceanDelayBSend : 0,
+                waterActive ? state.waterDelayBSend : 0,
+                insectsActive ? state.insDelayBSend : 0,
+                natureActive ? state.natureDelayBSend : 0
+            ]))
+            source.granularSend = Float(maxActiveSoundscapeRoute([
+                oceanActive ? state.granularWavesSend : 0,
+                waterActive ? state.granularWaterSend : 0,
+                insectsActive ? state.granularInsectsSend : 0,
+                natureActive ? state.granularNatureSend : 0
+            ]))
             source.presetId = soundscapePresetId(from: state)
         default:
             break
@@ -760,10 +801,28 @@ public enum KesshoProductCoreSnapshotEncoder {
         source.delayASend = Float(clamp(Double(source.delayASend), 0, 2))
         source.delayBSend = Float(clamp(Double(source.delayBSend), 0, 2))
         source.granularSend = Float(clamp(Double(source.granularSend), 0, 2))
+        source.diffuseSend = Float(clamp(Double(source.diffuseSend), 0, 2))
         source.postLpfHz = Float(clamp(Double(source.postLpfHz), 20, 20_000))
         source.stereoWidth = Float(clamp(Double(source.stereoWidth), 0, 1))
         source.postLpfKeyTracking = Float(clamp(Double(source.postLpfKeyTracking), 0, 1))
+        applyGeneratedSourcePreset(to: &source)
         return source
+    }
+
+    private static func applyGeneratedSourcePreset(to source: inout ProductSourceSnapshot) {
+        guard let preset = KesshoProductSchema.sourcePresets.first(where: { $0.id == source.presetId }) else {
+            return
+        }
+        switch source.sourceId {
+        case KesshoProductSourceId.pad1.rawValue, KesshoProductSourceId.pad2.rawValue:
+            source.exactPadParamCount = preset.exactPadParamCount
+            source.exactPadParams = preset.exactPadParams
+        case KesshoProductSourceId.lead1.rawValue, KesshoProductSourceId.lead2.rawValue:
+            source.exactLeadParamCount = preset.exactLeadParamCount
+            source.exactLeadParams = preset.exactLeadParams
+        default:
+            break
+        }
     }
 
     private static func synthLanes(from state: SliderState) -> [ProductLaneSnapshot] {
@@ -1049,6 +1108,7 @@ public enum KesshoProductCoreSnapshotEncoder {
             delayASend: 0,
             delayBSend: 0,
             granularSend: 0,
+            diffuseSend: 0,
             postLpfHz: KesshoProductSchema.sourcePostLpfHz,
             stereoWidth: KesshoProductSchema.sourceStereoWidth,
             postLpfKeyTracking: KesshoProductSchema.sourcePostLpfKeyTracking,
@@ -1159,30 +1219,50 @@ public enum KesshoProductCoreSnapshotEncoder {
     }
 
     private static func soundscapeAssetIds(from state: SliderState) -> [UInt32] {
-        var ids: [UInt32] = []
+        soundscapeAssetDescriptors(from: state).map(\.id)
+    }
+
+    private static func soundscapeAssetLevels(from state: SliderState) -> [Float] {
+        soundscapeAssetDescriptors(from: state).map(\.level)
+    }
+
+    private static func soundscapeAssetDescriptors(from state: SliderState) -> [(id: UInt32, level: Float)] {
+        let earthLevel = clamp(state.earthLevel, 0, 1)
+        let natureLevel = clamp(state.natureLevel, 0, 1)
+        let insectsSharedLevel = clamp(state.insectsSharedLevel, 0, 1)
+        var descriptors: [(id: UInt32, level: Float)] = []
+        func append(_ id: UInt32, _ level: Double) {
+            let clampedLevel = Float(clamp(level, 0, 1))
+            guard clampedLevel > 0.0001, !descriptors.contains(where: { $0.id == id }) else {
+                return
+            }
+            descriptors.append((id: id, level: clampedLevel))
+        }
         if state.oceanSampleEnabled {
-            ids.append(KesshoProductAssetIDs.defaultSoundscape)
+            append(KesshoProductAssetIDs.defaultSoundscape, clamp(state.oceanSampleLevel, 0, 1) * earthLevel)
         }
         if state.waterEnabled {
-            ids.append(KesshoProductAssetIDs.waterSoundscape)
+            append(KesshoProductAssetIDs.waterSoundscape, clamp(state.waterLevel, 0, 1) * earthLevel)
         }
         if state.birdsEnabled {
-            ids.append(KesshoProductAssetIDs.birdsSoundscape)
+            append(KesshoProductAssetIDs.birdsSoundscape, clamp(state.birdsLevel, 0, 1) * natureLevel * earthLevel)
         }
         if state.birds2Enabled {
-            ids.append(KesshoProductAssetIDs.birds2Soundscape)
+            append(KesshoProductAssetIDs.birds2Soundscape, clamp(state.birds2Level, 0, 1) * natureLevel * earthLevel)
         }
         if state.frogsEnabled {
-            ids.append(KesshoProductAssetIDs.frogsSoundscape)
+            append(KesshoProductAssetIDs.frogsSoundscape, clamp(state.frogsLevel, 0, 1) * natureLevel * earthLevel)
         }
         if state.insectsEnabled || state.insects2Enabled {
-            ids.append(KesshoProductAssetIDs.insectsSoundscape)
+            let insectsLevel = state.insectsEnabled ? clamp(state.insectsLevel, 0, 1) : 0
+            let insects2Level = state.insects2Enabled ? clamp(state.insects2Level, 0, 1) : 0
+            append(KesshoProductAssetIDs.insectsSoundscape, max(insectsLevel, insects2Level) * insectsSharedLevel * earthLevel)
         }
-        var uniqueIds: [UInt32] = []
-        for id in ids where !uniqueIds.contains(id) {
-            uniqueIds.append(id)
-        }
-        return uniqueIds
+        return descriptors
+    }
+
+    private static func maxActiveSoundscapeRoute(_ values: [Double]) -> Double {
+        values.reduce(0) { max($0, clamp($1, 0, 2)) }
     }
 
     private static func delayDivisionMs(_ note: String, bpm: Double) -> Double {
@@ -1511,6 +1591,7 @@ private struct ProductSnapshot {
     var rng: ProductRngSnapshot
     var evolution: ProductEvolutionSnapshot
     var assetRefs: [UInt32]
+    var assetRefLevels: [Float]
 }
 
 private struct ProductTransportSnapshot {
@@ -1543,6 +1624,7 @@ private struct ProductSourceSnapshot {
     var delayASend: Float
     var delayBSend: Float
     var granularSend: Float
+    var diffuseSend: Float
     var postLpfHz: Float
     var stereoWidth: Float
     var postLpfKeyTracking: Float
@@ -1595,6 +1677,8 @@ private struct ProductFxSnapshot {
     var granularFreezeWithFeedback: Bool
     var granularFeedback: Float
     var granularFeedbackLpfHz: Float
+    var granularReverbLpfHz: Float
+    var granularOutputLpfHz: Float
     var granularBufferSeconds: Float
     var granularGrainShape: UInt32
     var granularBusDiffusion: Float
@@ -1676,6 +1760,8 @@ private struct ProductFxSnapshot {
     var spectralFreezeSpeed: Float
     var spectralFreezeDecay: Float
     var spectralFreezePhaseJitter: Float
+    var spectralFreezeRouting: UInt32
+    var spectralFreezeReverbCrossfade: Float
     var dynamicsDrive: Float
     var dynamicsEnabled: Bool
     var dynamicsCharacterEnabled: Bool
@@ -1816,6 +1902,8 @@ private struct ProductRoutingSnapshot {
     var delayAToGranular: Float
     var delayBToGranular: Float
     var delayBToReverb: Float
+    var granularToDelayA: Float
+    var granularToDelayB: Float
 }
 
 private struct ProductMasterSnapshot {

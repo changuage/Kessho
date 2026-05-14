@@ -7,9 +7,11 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 - Generated Product schema/event/param files.
 - Product-specific host/runtime/event/snapshot/asset/telemetry modules.
 - `CoreProductAssetAdapter` for host-owned fetch/decode/register I/O only.
+- `CoreProductHostRuntimeGuards` for strict host-side validation and UI audition state normalization only.
 - Type-only app interfaces from `src/audio/engine.ts`.
 - Asset manifest helpers such as `pianoSamples` and the versioned `coreProductAssetManifest.json`.
 - Unit/default helpers used only for serialization, such as `delayBuses`, `outputTrims`, `transport`, and selected UI state constants.
+- Shared serializer shaping helpers such as `granularMacroCore`, when they do not import old Web engine runtime modules.
 - `lead4opfm` only inside `CoreProductLegacyPresetCompat.ts` as a labeled `TEMP_COMPAT_WEB_REFERENCE` conversion bridge for exact Lead patch parity.
 
 | Import path | Current reason | Owner | Classification | Replacement C++ Product Core owner | Retirement condition | Target removal phase |
@@ -20,11 +22,17 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 | `./coreProductAssets` | Host asset fetch/decode/register adapter | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product asset registry and source schedulers | Keep as thin host I/O adapter | Required |
 | `./CoreProductAssetAdapter` | Product host asset fetch/decode/register ownership boundary | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product asset registry and source schedulers | Keep as thin host I/O adapter; no source scheduling or tonal decisions allowed | Required |
 | `./CoreProductHostSequencerAdapter` | Product host sequencer UI input normalization boundary | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product event dispatcher and sequencer UI state API | Keep as pure input adapter; no runtime scheduling or snapshot reload ownership allowed | Cleanup |
+| `./CoreProductHostRuntimeGuards` | Product host strict runtime validation and manual audition state normalization | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product event validators and source enablement state | Keep as pure host guard adapter; no rendering, scheduling, or fake defaults allowed | Cleanup |
 | `./CoreProductRuntimeAdapter` | Snapshot dirty-diff and reload classification boundary | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product event dispatcher and telemetry | Keep as thin generated-event adapter; no UI state ownership allowed | Cleanup |
 | `./CoreProductLegacyPresetCompat` | Temporary exact patch and legacy preset conversion boundary | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | C++ source preset/user override resolvers | Remove when Product Core reconstructs source patch state from generated IDs plus user overrides | Source parity closure |
 | `./coreProductAssetManifest.json` | Versioned Product asset manifest | Product asset gate | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product asset IDs and registry | Keep as host packaging manifest | Required |
 | `./coreProductEvents` | Generated Product event packing helpers | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product event dispatcher | Keep as thin ABI/event adapter | Required |
+| `./coreProductGraphTaps` | Product graph tap ID map for matched Web/Product capture names | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product graph tap enum/API | Keep as thin tap-name adapter | Required |
 | `./coreProductRuntime` | WASM/worklet runtime bridge | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product render/runtime API | Keep as thin runtime adapter | Required |
+| `./coreProductArrangementScheduler` | Product host live chord and random-note event scheduler that feeds Product Core manual-note events | Web Product host | TEMP_COMPAT_WEB_REFERENCE | C++ Product arrangement scheduler | Remove when native Product Core owns chord/lead arrangement scheduling with sample-accurate free timing | Arrangement scheduler closure |
+| `./harmony` | Canonical web harmony kernel used only by `coreProductArrangementScheduler` to match chord/progression intent | Product arrangement scheduler | TEMP_COMPAT_WEB_REFERENCE | C++ Product harmony/progression scheduler | Remove when Product Core owns harmony/chord progression state and exposes it in the runtime API | Arrangement scheduler closure |
+| `./rng` | Canonical deterministic web RNG used only by `coreProductArrangementScheduler` for matching pad stagger and lead random intent | Product arrangement scheduler | TEMP_COMPAT_WEB_REFERENCE | C++ Product deterministic music RNG | Remove when Product Core owns equivalent deterministic arrangement RNG | Arrangement scheduler closure |
+| `./scales` | Canonical scale note helper used only by `coreProductArrangementScheduler` for lead random note choices | Product arrangement scheduler | TEMP_COMPAT_WEB_REFERENCE | C++ Product scale/note resolver | Remove when Product Core owns scale range note selection | Arrangement scheduler closure |
 | `./coreProductSnapshot` | Product snapshot assembly from generated fields | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product snapshot loader | Keep as serialization orchestration only | Cleanup |
 | `./coreProductSnapshotEncoder` | Product snapshot generated ABI byte packing | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product snapshot loader | Keep as byte-layout-only encoder; no UI state ownership allowed | Cleanup |
 | `./coreProductTelemetry` | Product telemetry/capability types | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product telemetry API | Keep as thin telemetry adapter | Required |
@@ -34,6 +42,7 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 | `../native/capacitorMidiRouting` | Type-only native MIDI message interface | Web/native MIDI bridge | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product MIDI event handling | Keep type-only import | Required |
 | `../ui/state` | UI serialization defaults only | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | Generated Product defaults and C++ snapshot defaults | Remove when Product snapshot no longer imports UI state defaults | Cleanup |
 | `./delayBuses` | Delay division conversion for generated Product params | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | C++ Product delay time/division resolver | Remove when generated Product schema accepts UI delay-division IDs directly | FX/master closure |
+| `./granularMacroCore` | Shared host-side granular macro serializer shaping | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | C++ Product granular macro resolver and generated defaults | Remove when Product Core derives macro-shaped granular params natively | Granular graph parity closure |
 | `./outputTrims` | Serialization trim constants | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | Generated Product defaults and C++ master/source trims | Remove when trims are generated Product defaults | Cleanup |
 | `./transport` | UI transport metrics serialization | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | C++ Product transport snapshot/default conversion | Remove when Product snapshot receives generated transport fields directly | Deterministic transport closure |
 | `./pianoSamples` | Asset manifest helper for host-decoded piano samples | Asset adapter | TEMP_COMPAT_WEB_REFERENCE | Product asset manifest plus C++ asset IDs | Remove when piano asset manifest generation owns the lookup fully | Asset manifest closure |
@@ -41,7 +50,7 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 
 ## Forbidden Production Imports
 
-`core-product` production modules must not import old TypeScript musical-brain modules such as `engine`, `coreEngineHost`, `drumSynth`, `synthSeqEvolve`, `drumSeqEvolve`, `granularSeqEvolve`, `seqEvolveCore`, `drumSequencer`, `harmony`, `scales`, `rng`, preset randomizers, or legacy sonic parity harnesses as runtime dependencies.
+`core-product` production modules must not import old TypeScript musical-brain modules such as `engine`, `coreEngineHost`, `drumSynth`, `synthSeqEvolve`, `drumSeqEvolve`, `granularSeqEvolve`, `seqEvolveCore`, `drumSequencer`, preset randomizers, or legacy sonic parity harnesses as runtime dependencies. The only current exception is the documented `coreProductArrangementScheduler` bridge to `harmony`, `rng`, and `scales`, which exists so Product Core receives the same chord progression and random timing intent while the native Product arrangement scheduler is still missing.
 
 Classification vocabulary:
 

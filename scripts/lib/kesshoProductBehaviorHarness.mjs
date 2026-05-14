@@ -114,8 +114,7 @@ export function loadFallbackDiagnosticsHarness() {
   const context = {};
   vm.runInNewContext(`${js}
 globalThis.__fallbackDiagnosticsHarness = {
-  CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS,
-  classifiedPlaceholderGetter,
+  CORE_PRODUCT_GETTER_POLICIES,
   classifyCoreProductRuntimeFallback,
   runtimeFallbackIsDevelopmentError,
 };`, context, { filename: path });
@@ -235,12 +234,16 @@ export function loadCoreProductHostHarness(options = {}) {
       unsupportedMethods: [],
       legacyFallbacks: [],
     },
-    classifiedPlaceholderGetter: diagnostics.classifiedPlaceholderGetter,
     classifyCoreProductRuntimeFallback: diagnostics.classifyCoreProductRuntimeFallback,
     runtimeFallbackIsDevelopmentError: diagnostics.runtimeFallbackIsDevelopmentError,
     buildCoreProductSnapshotDiff: () => ({ applied: true, events: [] }),
     shouldForwardCoreProductRngDiffs: () => false,
-    createCoreProductSnapshot: () => ({}),
+    CoreProductArrangementScheduler: class {
+      start() {}
+      update() {}
+      stop() {}
+    },
+    createCoreProductSnapshot: () => ({ transport: { bpm: 120 } }),
     encodeCoreProductSnapshot: () => new ArrayBuffer(8),
     KESSHO_PRODUCT_PARAM_IDS: createParamIds(),
     CORE_PRODUCT_MODULATION_RANGE_MODE: { sampleHold: 1, randomWalk: 2 },

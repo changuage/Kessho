@@ -22,6 +22,7 @@ KesshoProductEngine* kessho_product_create(
 
 void kessho_product_destroy(KesshoProductEngine* engine);
 void kessho_product_reset(KesshoProductEngine* engine);
+void kessho_product_reset_parity_fx(KesshoProductEngine* engine);
 
 int32_t kessho_product_load_snapshot_v2(
     KesshoProductEngine* engine,
@@ -46,6 +47,13 @@ void kessho_product_render(
 int32_t kessho_product_get_stem(
     KesshoProductEngine* engine,
     uint32_t stem_id,
+    float* out_l,
+    float* out_r,
+    uint32_t frames);
+
+int32_t kessho_product_get_graph_tap(
+    KesshoProductEngine* engine,
+    uint32_t tap_id,
     float* out_l,
     float* out_r,
     uint32_t frames);

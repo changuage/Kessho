@@ -1,6 +1,7 @@
 import {
   audioEngine,
   ensureAudioEngineLoaded,
+  getAudioEngineRuntimeMode,
   type ManualSynthNoteOptions,
   type RecordableTrackSource,
 } from './runtime';
@@ -12,9 +13,23 @@ type CaptureOptions = {
   chunkFrames?: number;
   trackId?: string;
   statePatch?: Partial<SliderState>;
+  stateEvents?: TimedStateEventOptions[];
   manualNotes?: ManualSynthNoteOptions[];
+  manualDrumTriggers?: ManualDrumTriggerOptions[];
   manualTriggerDelayMs?: number;
   manualWarmup?: boolean;
+  telemetrySampleIntervalMs?: number;
+};
+
+type TimedStateEventOptions = {
+  delayMs?: number;
+  patch?: Partial<SliderState>;
+};
+
+type ManualDrumTriggerOptions = {
+  voice: string | number;
+  velocity?: number;
+  delayMs?: number;
 };
 
 type CaptureResult = {
@@ -25,6 +40,8 @@ type CaptureResult = {
   manual: {
     enabled: boolean;
     noteCount: number;
+    drumTriggerCount: number;
+    stateEventCount: number;
     triggerDelayMs: number;
     warmedUp: boolean;
     warmupStartContextTime: number | null;
@@ -49,14 +66,28 @@ type InstallOptions = {
   getState: () => SliderState;
 };
 
+type CaptureChunk = { left: Float32Array; right: Float32Array; frameCount: number };
+
 type TapSession = {
   source: AudioNode;
   sourceOutputIndex?: number;
   tap: AudioWorkletNode;
   sink: GainNode;
-  chunks: Array<{ left: Float32Array; right: Float32Array; frameCount: number }>;
+  chunks: CaptureChunk[];
   flush: () => Promise<void>;
   destroy: () => void;
+};
+
+type ProductGraphCaptureHost = {
+  getSonicParityGraphTapId?: (trackId: string) => number | null;
+  startSonicParityGraphCapture?: (trackId: string, chunkFrames: number) => number;
+  flushSonicParityGraphCapture?: (tapId: number) => Promise<CaptureChunk[]>;
+  stopSonicParityGraphCapture?: (tapId: number) => Promise<CaptureChunk[]>;
+};
+
+type ModulationRangeHost = {
+  setDualRanges?: (ranges: Partial<Record<string, { min: number; max: number }>>) => void;
+  setRuntimeWalkRanges?: (ranges: Partial<Record<string, { min: number; max: number }>>) => void;
 };
 
 declare global {
@@ -81,11 +112,43 @@ function delay(ms: number): Promise<void> {
 }
 
 function getEngineName(): string {
-  try {
-    return new URLSearchParams(window.location.search).get('engine') || 'web';
-  } catch {
-    return 'web';
-  }
+  return getAudioEngineRuntimeMode();
+}
+
+function normalizeTrackId(trackId: string): string {
+  return trackId.startsWith('graph:') ? trackId.slice('graph:'.length) : trackId;
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+const TELEMETRY_PEAK_FIELDS = [
+  'activeVoices',
+  'activeAssets',
+  'masterOutputPeak',
+  'masterOutputRms',
+  'workletMasterStemPeak',
+  'workletPadStemPeak',
+  'workletLeadStemPeak',
+  'workletFxStemPeak',
+] as const;
+
+function mergeTelemetryPeaks(debug: unknown, peaks: Record<string, number>): unknown {
+  const debugRecord = objectRecord(debug);
+  if (!debugRecord || Object.keys(peaks).length === 0) return debug;
+  const telemetry = objectRecord(debugRecord.latestTelemetry) ?? {};
+  return {
+    ...debugRecord,
+    latestTelemetry: {
+      ...telemetry,
+      ...peaks,
+    },
+  };
 }
 
 async function ensureRecorderTapWorklet(ctx: AudioContext): Promise<void> {
@@ -185,7 +248,7 @@ function createTapSession(
   };
 }
 
-function flattenChunks(chunks: TapSession['chunks']): { left: Float32Array; right: Float32Array; frames: number } {
+function flattenChunks(chunks: CaptureChunk[]): { left: Float32Array; right: Float32Array; frames: number } {
   const frames = chunks.reduce((sum, chunk) => sum + chunk.frameCount, 0);
   const left = new Float32Array(frames);
   const right = new Float32Array(frames);
@@ -196,6 +259,29 @@ function flattenChunks(chunks: TapSession['chunks']): { left: Float32Array; righ
     offset += chunk.frameCount;
   }
   return { left, right, frames };
+}
+
+function countChunkFrames(chunks: CaptureChunk[]): number {
+  return chunks.reduce((sum, chunk) => sum + chunk.frameCount, 0);
+}
+
+function getProductGraphCaptureHost(engine: unknown, trackId: string): ProductGraphCaptureHost | null {
+  const host = engine as ProductGraphCaptureHost;
+  if (
+    typeof host.getSonicParityGraphTapId !== 'function' ||
+    typeof host.startSonicParityGraphCapture !== 'function' ||
+    typeof host.flushSonicParityGraphCapture !== 'function' ||
+    typeof host.stopSonicParityGraphCapture !== 'function'
+  ) {
+    return null;
+  }
+  return host.getSonicParityGraphTapId(trackId) === null ? null : host;
+}
+
+function isolateModulationRanges(engine: unknown): void {
+  const host = engine as ModulationRangeHost;
+  host.setDualRanges?.({});
+  host.setRuntimeWalkRanges?.({});
 }
 
 function normalizeCaptureLength(
@@ -276,20 +362,64 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
       const settleMs = Math.max(0, options.settleMs ?? DEFAULT_SETTLE_MS);
       const chunkFrames = Math.max(512, Math.round(options.chunkFrames ?? 4096));
       const trackId = typeof options.trackId === 'string' && options.trackId.trim()
-        ? options.trackId.trim()
+        ? normalizeTrackId(options.trackId.trim())
         : 'mix';
+      const stateEvents = Array.isArray(options.stateEvents)
+        ? options.stateEvents
+            .filter((event) => event && typeof event === 'object' && event.patch && typeof event.patch === 'object')
+            .map((event) => ({
+              delayMs: Math.max(0, Number(event.delayMs ?? 0)),
+              patch: event.patch ?? {},
+            }))
+        : [];
       const manualNotes = Array.isArray(options.manualNotes) ? options.manualNotes : [];
+      const manualDrumTriggers = Array.isArray(options.manualDrumTriggers) ? options.manualDrumTriggers : [];
       const manualTriggerDelayMs = Math.max(0, options.manualTriggerDelayMs ?? DEFAULT_MANUAL_TRIGGER_DELAY_MS);
-      const manualMode = manualNotes.length > 0;
+      const manualMode = manualNotes.length > 0 || manualDrumTriggers.length > 0;
       const manualWarmup = manualMode && options.manualWarmup === true;
       const engine = await ensureAudioEngineLoaded();
+      isolateModulationRanges(engine);
       const state = createCaptureState(getState(), options.statePatch, manualMode);
+      const getDebugState =
+        typeof (engine as unknown as { getSonicParityDebugState?: () => unknown }).getSonicParityDebugState === 'function'
+          ? () => (engine as unknown as { getSonicParityDebugState: () => unknown }).getSonicParityDebugState()
+          : null;
+      const telemetryPeaks: Record<string, number> = {};
+      let latestDebugState: unknown;
+      const collectTelemetryPeaks = (): void => {
+        if (!getDebugState) return;
+        latestDebugState = getDebugState();
+        const telemetry = objectRecord(objectRecord(latestDebugState)?.latestTelemetry);
+        if (!telemetry) return;
+        for (const field of TELEMETRY_PEAK_FIELDS) {
+          const value = finiteNumber(telemetry[field]);
+          if (value === null) continue;
+          telemetryPeaks[field] = Math.max(telemetryPeaks[field] ?? 0, value);
+        }
+      };
 
       await engine.start(state);
-      const ctx = audioEngine.getAudioContext();
+      const engineContext = audioEngine.getAudioContext();
       const limiter = audioEngine.getLimiterNode();
-      if (!ctx || !limiter) {
+      const productGraphCaptureHost = getProductGraphCaptureHost(engine, trackId);
+      if (!engineContext || (!limiter && !productGraphCaptureHost)) {
         throw new Error(`Sonic parity capture could not find an AudioContext and "${trackId}" source node.`);
+      }
+      if (engineContext.state !== 'running') {
+        await engineContext.resume();
+      }
+      const recordableSource = trackId === 'mix' || productGraphCaptureHost
+        ? null
+        : ((audioEngine.getRecordableBusNodes?.() ?? {}) as Record<string, RecordableTrackSource>)[trackId];
+      const captureSource = productGraphCaptureHost ? null : trackId === 'mix'
+        ? limiter
+        : recordableSource?.node ?? null;
+      if (!captureSource && !productGraphCaptureHost) {
+        throw new Error(`Sonic parity capture could not find an AudioContext and "${trackId}" source node.`);
+      }
+      const ctx = productGraphCaptureHost ? engineContext : captureSource!.context;
+      if (!(ctx instanceof AudioContext)) {
+        throw new Error(`Sonic parity capture source "${trackId}" is not attached to a live AudioContext.`);
       }
       if (ctx.state !== 'running') {
         await ctx.resume();
@@ -306,58 +436,133 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
       }
       await delay(settleMs);
 
-      const recordableNodes = (audioEngine.getRecordableBusNodes?.() ?? {}) as Record<string, RecordableTrackSource>;
-      const recordableSource = trackId === 'mix' ? null : recordableNodes[trackId];
-      const captureSource = trackId === 'mix'
-        ? limiter
-        : recordableSource?.node ?? null;
-      if (!captureSource) {
-        throw new Error(`Sonic parity capture could not find an AudioContext and "${trackId}" source node.`);
-      }
-
-      const session = createTapSession(
-        ctx,
-        captureSource,
-        chunkFrames,
-        trackId,
-        trackId === 'mix' ? undefined : recordableSource?.outputIndex,
-      );
+      const session = productGraphCaptureHost
+        ? null
+        : createTapSession(
+          ctx,
+          captureSource!,
+          chunkFrames,
+          trackId,
+          trackId === 'mix' ? undefined : recordableSource?.outputIndex,
+        );
       activeSession = session;
+      let productGraphTapId: number | null = null;
+      let productGraphCaptureStopped = false;
+      if (productGraphCaptureHost) {
+        productGraphTapId = productGraphCaptureHost.startSonicParityGraphCapture!(trackId, chunkFrames);
+      }
       const recorderStartContextTime = ctx.currentTime;
+      const telemetrySampleIntervalMs = Math.max(50, Math.round(options.telemetrySampleIntervalMs ?? 100));
+      collectTelemetryPeaks();
+      const telemetrySampler = getDebugState
+        ? window.setInterval(collectTelemetryPeaks, telemetrySampleIntervalMs)
+        : null;
       let preTriggerFrames = 0;
       let triggerStartContextTime: number | null = null;
       let triggerEndContextTime: number | null = null;
-      if (manualMode) {
-        if (typeof engine.resetSonicParityFx === 'function') {
-          engine.resetSonicParityFx();
-          await delay(50);
+      let capturedChunks: CaptureChunk[] = [];
+      let eventState = state;
+      const stateEventTimers: number[] = [];
+      const scheduleStateEvents = (): void => {
+        const paramTarget = engine as unknown as {
+          updateParams?: (state: SliderState) => void;
+          applyParams?: (state: SliderState) => void;
+          sourceSliderState?: SliderState;
+          sliderState?: SliderState;
+          _sliderStateJsonDirty?: boolean;
+        };
+        for (const event of stateEvents) {
+          const timer = window.setTimeout(() => {
+            eventState = { ...eventState, ...event.patch };
+            if (manualMode && getEngineName() === 'web-ts' && typeof paramTarget.applyParams === 'function') {
+              paramTarget.sourceSliderState = eventState;
+              paramTarget.sliderState = eventState;
+              paramTarget._sliderStateJsonDirty = true;
+              paramTarget.applyParams.call(engine, eventState);
+              return;
+            }
+            if (typeof paramTarget.updateParams === 'function') {
+              paramTarget.updateParams.call(engine, eventState);
+            }
+          }, event.delayMs);
+          stateEventTimers.push(timer);
         }
-        if (manualTriggerDelayMs > 0) {
-          await delay(manualTriggerDelayMs);
-        }
-        await session.flush();
-        preTriggerFrames = session.chunks.reduce((sum, chunk) => sum + chunk.frameCount, 0);
-        session.chunks.length = 0;
-        triggerStartContextTime = ctx.currentTime;
-        if (typeof engine.auditionSynthNotes === 'function') {
-          await engine.auditionSynthNotes(manualNotes, state);
-        } else {
-          for (const note of manualNotes) {
-            await engine.auditionSynthNote(note, state);
+      };
+      try {
+        if (manualMode) {
+          if (typeof engine.resetSonicParityFx === 'function') {
+            engine.resetSonicParityFx();
+            await delay(50);
           }
+          if (manualTriggerDelayMs > 0) {
+            await delay(manualTriggerDelayMs);
+          }
+          if (productGraphCaptureHost && productGraphTapId !== null) {
+            const flushedChunks = await productGraphCaptureHost.flushSonicParityGraphCapture!(productGraphTapId);
+            preTriggerFrames = countChunkFrames(flushedChunks);
+          } else if (session) {
+            await session.flush();
+            preTriggerFrames = countChunkFrames(session.chunks);
+            session.chunks.length = 0;
+          }
+          triggerStartContextTime = ctx.currentTime;
+          if (typeof engine.auditionSynthNotes === 'function') {
+            await engine.auditionSynthNotes(manualNotes, state);
+          } else {
+            for (const note of manualNotes) {
+              await engine.auditionSynthNote(note, state);
+            }
+          }
+          for (const trigger of manualDrumTriggers) {
+            const delayMs = Math.max(0, trigger.delayMs ?? 0);
+            if (delayMs > 0) {
+              await delay(delayMs);
+            }
+            await (engine as unknown as {
+              triggerDrumVoice: (voice: string | number, velocity: number, externalState?: SliderState) => Promise<void>;
+            }).triggerDrumVoice(
+              trigger.voice,
+              Math.max(0.000001, Math.min(1, trigger.velocity ?? 0.8)),
+              state,
+            );
+          }
+          triggerEndContextTime = ctx.currentTime;
         }
-        triggerEndContextTime = ctx.currentTime;
+        scheduleStateEvents();
+        await delay(durationMs);
+        if (productGraphCaptureHost && productGraphTapId !== null) {
+          capturedChunks = await productGraphCaptureHost.stopSonicParityGraphCapture!(productGraphTapId);
+          productGraphCaptureStopped = true;
+        } else if (session) {
+          await session.flush();
+          capturedChunks = session.chunks;
+        }
+        collectTelemetryPeaks();
+      } finally {
+        if (telemetrySampler !== null) {
+          window.clearInterval(telemetrySampler);
+        }
+        for (const timer of stateEventTimers) {
+          window.clearTimeout(timer);
+        }
+        if (productGraphCaptureHost && productGraphTapId !== null && !productGraphCaptureStopped) {
+          try {
+            await productGraphCaptureHost.stopSonicParityGraphCapture!(productGraphTapId);
+          } catch { /* noop */ }
+        }
       }
-      await delay(durationMs);
-      await session.flush();
 
       const expectedFrames = Math.max(1, Math.round((durationMs / 1000) * ctx.sampleRate));
       const { left, right, frames } = normalizeCaptureLength(
-        flattenChunks(session.chunks),
+        flattenChunks(capturedChunks),
         expectedFrames,
       );
       const stats = calculateStats(left, right);
       stopActiveSession();
+      const debugState = mergeTelemetryPeaks(
+        getDebugState ? getDebugState() : latestDebugState,
+        telemetryPeaks,
+      );
 
       return {
         engine: getEngineName(),
@@ -367,6 +572,8 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
         manual: {
           enabled: manualMode,
           noteCount: manualNotes.length,
+          drumTriggerCount: manualDrumTriggers.length,
+          stateEventCount: stateEvents.length,
           triggerDelayMs: manualTriggerDelayMs,
           warmedUp: manualWarmup,
           warmupStartContextTime,
@@ -379,9 +586,7 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
         left: Array.from(left),
         right: Array.from(right),
         stats,
-        debug: typeof (engine as unknown as { getSonicParityDebugState?: () => unknown }).getSonicParityDebugState === 'function'
-          ? (engine as unknown as { getSonicParityDebugState: () => unknown }).getSonicParityDebugState()
-          : undefined,
+        debug: debugState,
       };
     },
     teardown() {

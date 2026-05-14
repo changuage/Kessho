@@ -305,8 +305,6 @@ public:
     params_[kParamYLevel] = std::clamp(0.45f + m * 0.55f, 0.0f, 1.2f);
     params_[kParamXPan] = std::clamp(-0.18f - d * 0.22f, -1.0f, 1.0f);
     params_[kParamYPan] = std::clamp(0.18f + d * 0.22f, -1.0f, 1.0f);
-    params_[kParamUnisonVoices] = static_cast<float>(1 + std::min(2, roundedInt(m * 2.0f)));
-    params_[kParamUnisonDetune] = d * 18.0f;
 
     lead_fm_instance_set_filter_freq(instance_, params_[kParamFilterFreq]);
     lead_fm_instance_set_drive(instance_, params_[kParamDrive]);
@@ -317,8 +315,6 @@ public:
     lead_fm_instance_set_y_level(instance_, params_[kParamYLevel]);
     lead_fm_instance_set_x_pan(instance_, params_[kParamXPan]);
     lead_fm_instance_set_y_pan(instance_, params_[kParamYPan]);
-    lead_fm_instance_set_unison_voices(instance_, clampedRounded(params_[kParamUnisonVoices], 1, LEAD_FM_MAX_UNISON));
-    lead_fm_instance_set_unison_detune(instance_, params_[kParamUnisonDetune]);
     return 1;
   }
 

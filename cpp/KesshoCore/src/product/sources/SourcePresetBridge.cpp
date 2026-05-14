@@ -10,7 +10,7 @@
   expression = clampFloat(expression * preset->macro_expression, 0.0f, 1.0f);
 }
 
-  bool KesshoProductEngine::exactPadMacrosDifferFromDefaults(float morph, float distance, float expression) const {
+  bool KesshoProductEngine::sourceMacrosDifferFromDefaults(float morph, float distance, float expression) const {
   return std::abs(morph) > 0.0001f ||
          std::abs(distance) > 0.0001f ||
          std::abs(expression - kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_EXPRESSION) > 0.0001f;

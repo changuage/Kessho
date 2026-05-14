@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "KesshoCore/KesshoProductCore.h"
+#include "ProductSnapshotTestHelpers.h"
 
 namespace {
 
@@ -77,6 +78,7 @@ KesshoProductSnapshotV2 makeSnapshot(uint32_t asset_id) {
     snapshot.sources[i].stereo_width = 1.0f;
   }
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PIANO - 1].asset_id = asset_id;
+  kessho::product::tests::applyGeneratedSourceDefaults(snapshot);
   return snapshot;
 }
 
@@ -276,7 +278,9 @@ int main() {
   require(soundscape_layer_engine != nullptr, "soundscape layer engine create failed");
   KesshoProductSnapshotV2 soundscape_layer_snapshot = makeSoundscapeSnapshot(soundscape_layer_a_id);
   soundscape_layer_snapshot.asset_refs[0] = soundscape_layer_a_id;
+  soundscape_layer_snapshot.asset_ref_levels[0] = 1.0f;
   soundscape_layer_snapshot.asset_refs[1] = soundscape_layer_b_id;
+  soundscape_layer_snapshot.asset_ref_levels[1] = 1.0f;
   require(
       kessho_product_load_snapshot_v2(
           soundscape_layer_engine,

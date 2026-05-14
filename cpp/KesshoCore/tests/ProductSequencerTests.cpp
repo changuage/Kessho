@@ -27,6 +27,28 @@ float maxAbs(const std::vector<float>& values) {
   return peak;
 }
 
+void applySourceDefaults(KesshoProductSnapshotV2& snapshot) {
+  for (uint32_t i = 0; i < 7; ++i) {
+    const uint32_t source_id = i + 1u;
+    KesshoProductSourceSnapshot& source = snapshot.sources[i];
+    source.source_id = source_id;
+    source.preset_id = defaultSourcePresetId(source_id);
+    const auto patch = sourcePresetPatch(findSourcePreset(source.preset_id));
+    if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
+      source.exact_pad_param_count = patch.exact_pad_param_count;
+      for (uint32_t param_index = 0; param_index < source.exact_pad_param_count; ++param_index) {
+        source.exact_pad_params[param_index] = patch.exact_pad_params[param_index];
+      }
+    }
+    if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
+      source.exact_lead_param_count = patch.exact_lead_param_count;
+      for (uint32_t param_index = 0; param_index < source.exact_lead_param_count; ++param_index) {
+        source.exact_lead_params[param_index] = patch.exact_lead_params[param_index];
+      }
+    }
+  }
+}
+
 KesshoProductSnapshotV2 makeSnapshot() {
   KesshoProductSnapshotV2 snapshot{};
   snapshot.version = KESSHO_PRODUCT_SNAPSHOT_VERSION;
@@ -48,6 +70,7 @@ KesshoProductSnapshotV2 makeSnapshot() {
     snapshot.sources[i].post_lpf_hz = 18000.0f;
     snapshot.sources[i].stereo_width = 1.0f;
   }
+  applySourceDefaults(snapshot);
 
   snapshot.synth_euclid.lane_count = 1;
   snapshot.synth_euclid.lanes[0].enabled = 1;
@@ -329,6 +352,25 @@ void requireDirectSequencerCoverage() {
   require(direct_events.count == 4u, "direct sequencer generator should produce one bar of hits");
   expectOffsets(direct_events.events, direct_events.count, {0, 24000, 48000, 72000});
 
+  lane.seed = 4000u;
+  lane.step_count = 64u;
+  lane.fill_count = 1u;
+  lane.clock_division = 16u;
+  lane.midi_note = 73.0f;
+  lane.manual_step_mask_low = 1u << 7u;
+  lane.manual_step_mask_high = 0u;
+  direct_events.clear();
+  direct.generateLaneEvents(direct.synth_lanes, direct.synth_lane_count, 48000u, direct_events);
+  require(direct_events.count == 1u, "arrangement lane manual mask should generate one quantized random-timing event");
+  require(direct_events.events[0].sample_offset == 42000u, "arrangement lane event should use sixteenth-grid timing");
+  require(std::fabs(direct_events.events[0].midi_note - 73.0f) < 0.001f, "arrangement lane should keep generated web MIDI instead of re-harmonizing");
+  lane.manual_step_mask_low = 0u;
+  lane.seed = 99u;
+  lane.step_count = 16u;
+  lane.fill_count = 4u;
+  lane.clock_division = 16u;
+  lane.midi_note = 60.0f;
+
   KesshoProductEvent lane_event{};
   lane_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
   lane_event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
@@ -381,6 +423,20 @@ int main() {
   expectOffsets(events, static_cast<uint32_t>(event_count), {0, 24000, 48000, 72000});
   require(events[0].source_id == KESSHO_PRODUCT_SOURCE_PAD1, "synth event source mismatch");
   require(events[1].source_id == KESSHO_PRODUCT_SOURCE_DRUM, "drum event source mismatch");
+  KesshoProductTelemetry loop_telemetry = kessho_product_get_telemetry(engine);
+  require(loop_telemetry.transport_running == 1, "transport should remain running after first sequencer pass");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "64-step loop product snapshot should load");
+  KesshoSequencerEvent loop_events[64]{};
+  event_count = kessho_product_debug_render_events(engine, loop_events, 64, 384000);
+  require(event_count == 32, "16-step synth plus drum pattern should loop for 64 steps");
+  expectOffsets(loop_events, static_cast<uint32_t>(event_count), {0, 24000, 48000, 72000, 96000, 120000, 144000, 168000});
+  loop_telemetry = kessho_product_get_telemetry(engine);
+  require(loop_telemetry.transport_running == 1, "transport should keep running through a 64-step sequencer render");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
@@ -839,12 +895,66 @@ int main() {
       "schema hash mismatch should be rejected");
 
   kessho_product_reset(engine);
+  KesshoProductEvent bad_manual_target{};
+  bad_manual_target.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
+  bad_manual_target.value = 60.0f;
+  bad_manual_target.value2 = 0.8f;
+  bad_manual_target.value3 = 0.2f;
+  require(
+      kessho_product_enqueue_event(engine, &bad_manual_target) == KESSHO_PRODUCT_ERROR_INVALID_SOURCE,
+      "missing manual note target must be rejected");
+  KesshoProductEvent bad_manual_velocity = bad_manual_target;
+  bad_manual_velocity.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  bad_manual_velocity.value2 = 0.0f;
+  require(
+      kessho_product_enqueue_event(engine, &bad_manual_velocity) == KESSHO_PRODUCT_ERROR_INVALID_EVENT,
+      "missing manual note velocity must be rejected");
+  KesshoProductEvent bad_drum_target{};
+  bad_drum_target.event_kind = KESSHO_PRODUCT_EVENT_KIND_TRIGGER_DRUM_VOICE;
+  bad_drum_target.target_id = 99u;
+  bad_drum_target.value = 0.8f;
+  require(
+      kessho_product_enqueue_event(engine, &bad_drum_target) == KESSHO_PRODUCT_ERROR_INVALID_SOURCE,
+      "unknown drum target must be rejected");
+  KesshoProductEvent bad_param{};
+  bad_param.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  bad_param.value = 0.5f;
+  require(
+      kessho_product_enqueue_event(engine, &bad_param) == KESSHO_PRODUCT_ERROR_INVALID_PARAM,
+      "unknown product param must be rejected");
+  KesshoProductEvent bad_sequencer_target{};
+  bad_sequencer_target.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP;
+  bad_sequencer_target.target_id = 99u;
+  bad_sequencer_target.index = 0u;
+  bad_sequencer_target.param_id = 0u;
+  bad_sequencer_target.value = 1.0f;
+  bad_sequencer_target.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE;
+  require(
+      kessho_product_enqueue_event(engine, &bad_sequencer_target) == KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE,
+      "unknown sequencer target must be rejected");
+  KesshoProductEvent bad_unknown_command{};
+  bad_unknown_command.event_kind = 999u;
+  require(
+      kessho_product_enqueue_event(engine, &bad_unknown_command) == KESSHO_PRODUCT_ERROR_INVALID_EVENT,
+      "unknown product command must be rejected");
+
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lanes[0].enabled = 1;
+  snapshot.drum_euclid.lanes[0].step_count = 0;
+  snapshot.drum_euclid.lanes[0].fill_count = 0;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) ==
+          KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE,
+      "empty enabled drum pattern must fail explicitly");
+
+  kessho_product_reset(engine);
   snapshot = makeSnapshot();
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "manual render snapshot load failed");
   std::vector<float> left(128, 0.0f);
   std::vector<float> right(128, 0.0f);
   KesshoProductEvent drum_event{};
   drum_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_TRIGGER_DRUM_VOICE;
+  drum_event.target_id = 1u;
   drum_event.value = 0.9f;
   require(kessho_product_enqueue_event(engine, &drum_event) == KESSHO_PRODUCT_OK, "drum trigger event enqueue failed");
   kessho_product_render(engine, left.data(), right.data(), 128);

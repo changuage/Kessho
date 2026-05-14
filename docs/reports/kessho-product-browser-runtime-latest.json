@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-13T22:36:19.914Z",
+  "status": "pass",
+  "defaultRuntime": "core-product",
+  "url": "http://127.0.0.1:4185/",
+  "cases": [
+    {
+      "id": "default-pad-note",
+      "engine": "core-product",
+      "rms": 0.043494332297198735,
+      "peak": 0.08145071566104889,
+      "activeVoices": 1,
+      "activeAssets": 0,
+      "masterOutputPeak": 0.07567474246025085,
+      "masterOutputRms": 0.06119171157479286,
+      "workletPadStemPeak": 0.08016391843557358,
+      "workletLeadStemPeak": 0,
+      "workletMasterStemPeak": 0.07567474246025085,
+      "decodedAssetBytes": 0
+    },
+    {
+      "id": "default-lead-note",
+      "engine": "core-product",
+      "rms": 0.04972319662713881,
+      "peak": 0.13984975218772888,
+      "activeVoices": 1,
+      "activeAssets": 0,
+      "masterOutputPeak": 0.10257961601018906,
+      "masterOutputRms": 0.068538136780262,
+      "workletPadStemPeak": 0,
+      "workletLeadStemPeak": 0.1086648479104042,
+      "workletMasterStemPeak": 0.10257961601018906,
+      "decodedAssetBytes": 0
+    },
+    {
+      "id": "default-sample-and-synth",
+      "engine": "core-product",
+      "rms": 0.06049027208990366,
+      "peak": 0.4078916609287262,
+      "activeVoices": 2,
+      "activeAssets": 13,
+      "masterOutputPeak": 0.3907252848148346,
+      "masterOutputRms": 0.24396847188472748,
+      "workletPadStemPeak": 0.05209106579422951,
+      "workletLeadStemPeak": 0,
+      "workletMasterStemPeak": 0.3907252848148346,
+      "decodedAssetBytes": 7895296
+    },
+    {
+      "id": "string-waves-arrangement",
+      "engine": "core-product",
+      "rms": 0.0582247730926921,
+      "peak": 0.2025347799062729,
+      "activeVoices": 10,
+      "activeAssets": 1,
+      "masterOutputPeak": 0.1709129959344864,
+      "masterOutputRms": 0.09782946854829788,
+      "workletPadStemPeak": 0.16495101153850555,
+      "workletLeadStemPeak": 0.0019463000353425741,
+      "workletMasterStemPeak": 0.1709129959344864,
+      "decodedAssetBytes": 20934656
+    }
+  ]
+}

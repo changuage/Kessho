@@ -255,7 +255,11 @@
     return;
   }
 
-  const uint32_t step = event.param_id % std::max(1u, lane.step_count);
+  if (lane.step_count == 0u || event.param_id >= lane.step_count) {
+    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    return;
+  }
+  const uint32_t step = event.param_id;
   if ((event.flags & KESSHO_PRODUCT_STEP_TOGGLE_CLEAR_FIELD) != 0u) {
     clearStepFieldOverride(lane, field, step);
   } else if ((event.flags & KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE) != 0u) {

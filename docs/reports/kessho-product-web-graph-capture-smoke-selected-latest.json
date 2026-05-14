@@ -1,0 +1,16 @@
+{
+  "schema": "kessho-product-web-graph-capture-smoke-v1",
+  "generatedAt": "2026-05-14T11:36:13.136Z",
+  "status": "pass",
+  "filteredCaseIds": [
+    "manual-pad-reverb-return-tension-scale-shimmer"
+  ],
+  "cases": [
+    {
+      "id": "manual-pad-reverb-return-tension-scale-shimmer",
+      "track": "reverbReturn",
+      "status": "pass",
+      "exitCode": 0
+    }
+  ]
+}

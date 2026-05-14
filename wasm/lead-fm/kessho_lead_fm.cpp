@@ -379,9 +379,11 @@ static void render_note(LeadNote& note, float* out_l, float* out_r, int block_si
                 detune_mod = lfo_val * note.base_freq * 0.01f;
             }
 
-            // Process modulator envelopes and compute FM output
+            // Process modulator envelopes and compute FM output. Stack-style algorithms
+            // feed operators into each other before the final carrier modulation, matching
+            // the WebAudio graph routing in lead4opfm.ts.
             float mod_outputs[4] = {};
-            for (int op = 0; op < 4; op++) {
+            auto advance_operator = [&](int op, float external_fm) -> float {
                 OperatorState& os = uv.ops[op];
 
                 // ADE mod envelope
@@ -422,7 +424,7 @@ static void render_note(LeadNote& note, float* out_l, float* out_r, int block_si
                 }
 
                 // Advance operator oscillator with FM input
-                float freq_mod = fb + lfo_mod;
+                float freq_mod = external_fm + fb + lfo_mod;
                 os.osc.freq += freq_mod;
                 os.osc.advance(g_sample_rate);
                 float op_out = os.osc.generate(WAVE_SINE, g_sample_rate, g_sine);
@@ -430,6 +432,27 @@ static void render_note(LeadNote& note, float* out_l, float* out_r, int block_si
 
                 os.phase_fb = op_out; // store for feedback
                 mod_outputs[op] = op_out * os.mod_env_value * p.ops[op].level;
+                return mod_outputs[op];
+            };
+
+            switch (p.algorithm) {
+                case LEAD_FM_ALG_STACK:
+                    advance_operator(3, 0.0f);
+                    advance_operator(2, mod_outputs[3]);
+                    advance_operator(1, mod_outputs[2]);
+                    advance_operator(0, mod_outputs[1]);
+                    break;
+                case LEAD_FM_ALG_DX17:
+                    advance_operator(3, 0.0f);
+                    advance_operator(1, 0.0f);
+                    advance_operator(2, mod_outputs[3] + mod_outputs[1]);
+                    advance_operator(0, 0.0f);
+                    break;
+                default:
+                    for (int op = 0; op < 4; op++) {
+                        advance_operator(op, 0.0f);
+                    }
+                    break;
             }
 
             // Apply algorithm routing → carrier frequency modulation
@@ -438,9 +461,6 @@ static void render_note(LeadNote& note, float* out_l, float* out_r, int block_si
 
             switch (p.algorithm) {
                 case LEAD_FM_ALG_STACK:
-                    // 4→3→2→1→carriers
-                    // Mod[3] → Mod[2] (accumulated in chain)
-                    // For per-sample, we approximate: each op modulates the next
                     carrier1_fm = mod_outputs[0];
                     carrier2_fm = mod_outputs[0];
                     break;
@@ -478,7 +498,8 @@ static void render_note(LeadNote& note, float* out_l, float* out_r, int block_si
             uv.carrier2.freq -= carrier2_fm + pitch_mod + detune_mod;
 
             carrier_sum_x += c1;
-            carrier_sum_y += c2 * uv.carrier2_mix;
+            const float carrier2_mix = p.algorithm == LEAD_FM_ALG_DX17 ? 0.0f : uv.carrier2_mix;
+            carrier_sum_y += c2 * carrier2_mix;
         }
 
         // Scale by unison count
@@ -720,7 +741,7 @@ void lead_fm_note_on_ex(float frequency, float velocity, float hold_seconds, int
         // Carriers
         uv.carrier1.freq = unison_freq;
         uv.carrier1.phase = 0;
-        uv.carrier2.freq = unison_freq * semitones_to_ratio(p.beat_detune / 1200.0f);
+        uv.carrier2.freq = unison_freq * semitones_to_ratio(p.beat_detune / 100.0f);
         uv.carrier2.phase = 0;
         uv.carrier2_mix = p.carrier2_mix;
 
@@ -729,7 +750,7 @@ void lead_fm_note_on_ex(float frequency, float velocity, float hold_seconds, int
             OperatorState& os = uv.ops[op];
             const OperatorParams& op_p = p.ops[op];
 
-            float op_freq = unison_freq * op_p.ratio * semitones_to_ratio(op_p.detune_cents / 1200.0f);
+            float op_freq = unison_freq * op_p.ratio * semitones_to_ratio(op_p.detune_cents / 100.0f);
             os.osc.freq = op_freq;
             os.osc.phase = 0;
             os.phase_fb = 0;

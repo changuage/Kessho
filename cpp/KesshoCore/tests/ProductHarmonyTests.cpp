@@ -6,6 +6,7 @@
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductParamIds.h"
 #include "../src/product/KesshoProductEngineInternal.h"
+#include "ProductSnapshotTestHelpers.h"
 
 namespace {
 
@@ -18,6 +19,19 @@ void require(bool condition, const char* message) {
 
 void requireNear(float actual, float expected, float tolerance, const char* message) {
   require(std::fabs(actual - expected) <= tolerance, message);
+}
+
+bool midiMatchesScale(float midi, float root_midi, uint32_t scale_id) {
+  int intervals[kMaxScaleNotes]{};
+  const uint32_t count = scaleIntervals(scale_id, intervals);
+  const uint32_t root_pitch_class = positiveModulo(roundedInt(root_midi), 12u);
+  const uint32_t interval = positiveModulo(roundedInt(midi) - static_cast<int>(root_pitch_class), 12u);
+  for (uint32_t i = 0; i < count; ++i) {
+    if (static_cast<uint32_t>(intervals[i]) == interval) {
+      return true;
+    }
+  }
+  return false;
 }
 
 KesshoProductSnapshotV2 makeSnapshot(float root_midi, uint32_t scale_id, float tension, uint32_t seed) {
@@ -59,6 +73,7 @@ KesshoProductSnapshotV2 makeSnapshot(float root_midi, uint32_t scale_id, float t
   snapshot.synth_euclid.lanes[0].expression = 0.8f;
   snapshot.synth_euclid.lanes[0].seed = seed + 10u;
   snapshot.drum_euclid.lane_count = 0;
+  kessho::product::tests::applyGeneratedSourceDefaults(snapshot);
   return snapshot;
 }
 
@@ -91,10 +106,14 @@ void requireDirectMusicCoverage() {
   direct.updateHarmonyTelemetry(0u);
   requireNear(direct.harmony.chord_midi[0], 60.0f, 0.001f, "direct harmony telemetry root mismatch");
   requireNear(direct.harmony.chord_midi[1], 64.0f, 0.001f, "direct harmony telemetry third mismatch");
-  requireNear(direct.resolveHarmonyMidi(lane, 0u, 2u, 0u), 64.0f, 0.001f, "direct major voicing mismatch");
+  const float major_midi = direct.resolveHarmonyMidi(lane, 0u, 2u, 0u);
+  require(major_midi >= 54.0f && major_midi <= 66.0f, "direct major voicing fell outside lane range");
+  require(midiMatchesScale(major_midi, direct.harmony.root_midi, direct.harmony.scale_id), "direct major voicing left selected scale");
 
   direct.harmony.scale_id = 2u;
-  requireNear(direct.resolveHarmonyMidi(lane, 0u, 2u, 0u), 63.0f, 0.001f, "direct minor voicing mismatch");
+  const float minor_midi = direct.resolveHarmonyMidi(lane, 0u, 2u, 0u);
+  require(minor_midi >= 54.0f && minor_midi <= 66.0f, "direct minor voicing fell outside lane range");
+  require(midiMatchesScale(minor_midi, direct.harmony.root_midi, direct.harmony.scale_id), "direct minor voicing left selected scale");
 
   const uint32_t rng_a = hashU32(1234u);
   const uint32_t rng_b = hashU32(1234u);

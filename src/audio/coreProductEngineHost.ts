@@ -1,17 +1,7 @@
-import type {
-  AudioEngine,
-  DynamicsVisualTelemetrySnapshot,
-  EarthTextureDebugState,
-  EngineState,
-  ManualSynthNoteOptions,
-  RecordableTrackSource,
-} from './engine';
+import type { AudioEngine, DynamicsVisualTelemetrySnapshot, EarthTextureDebugState, EngineState, ManualSynthNoteOptions, RecordableTrackSource } from './engine';
 import type { TransportDebugSnapshot } from './transport';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
-import {
-  CORE_PRODUCT_MEMORY_BUDGETS,
-  type DecodedCoreProductAsset,
-} from './coreProductAssets';
+import { CORE_PRODUCT_MEMORY_BUDGETS, type DecodedCoreProductAsset } from './coreProductAssets';
 import { CoreProductAssetAdapter } from './CoreProductAssetAdapter';
 import { midiSampleOffset } from './coreMidiEvents';
 import { createCoreProductSnapshot, encodeCoreProductSnapshot, type CoreProductSnapshot } from './coreProductSnapshot';
@@ -44,109 +34,32 @@ import {
   resolveCoreProductDrumParamRangeTarget,
   resolveCoreProductRangeTargets,
 } from './coreProductEvents';
-import {
-  type CoreProductSequencerLaneUiState,
-  type CoreProductTelemetrySnapshot,
-  initialCoreProductCapabilityReport,
-} from './coreProductTelemetry';
-import {
-  classifiedPlaceholderGetter,
-  classifyCoreProductRuntimeFallback,
-  runtimeFallbackIsDevelopmentError,
-  type RuntimeFallbackClassification,
-} from './CoreProductFallbackDiagnostics';
-import {
-  buildCoreProductSnapshotDiff,
-  shouldForwardCoreProductRngDiffs,
-  type SnapshotReloadReason,
-} from './CoreProductRuntimeAdapter';
-import {
-  normalizeClockDivisionValue,
-  normalizeEvolveConfigs,
-  normalizeSequencerStepToggleOverrides,
-  normalizeSequencerStepValueConfigs,
-  normalizeSequencerStepValueOverrides,
-  normalizeSubLaneEnabledStates,
-  normalizedUnitValue,
-  type SequencerKind,
-  type SequencerStepToggleOverride,
-  type SequencerStepValueConfig,
-  type SequencerStepValueOverride,
-} from './CoreProductHostSequencerAdapter';
-import { CoreProductRuntime } from './coreProductRuntime';
+import { type CoreProductSequencerLaneUiState, type CoreProductTelemetrySnapshot, initialCoreProductCapabilityReport } from './coreProductTelemetry';
+import { classifyCoreProductRuntimeFallback, runtimeFallbackIsDevelopmentError, type RuntimeFallbackClassification } from './CoreProductFallbackDiagnostics';
+import { CoreProductArrangementScheduler } from './coreProductArrangementScheduler';
+import { buildCoreProductSnapshotDiff, shouldForwardCoreProductRngDiffs, type SnapshotReloadReason } from './CoreProductRuntimeAdapter';
+import { normalizeClockDivisionValue, normalizeEvolveConfigs, normalizeSequencerStepToggleOverrides, normalizeSequencerStepValueConfigs, normalizeSequencerStepValueOverrides, normalizeSubLaneEnabledStates, normalizedUnitValue, type SequencerKind, type SequencerStepToggleOverride, type SequencerStepValueConfig, type SequencerStepValueOverride } from './CoreProductHostSequencerAdapter';
+import { createCoreProductEngineState, drumVoiceIndex, gainToDb, manualAuditionState, midiFromFrequency, requireFiniteRange, requireManualNote, requirePositive, sourceId } from './CoreProductHostRuntimeGuards';
+import { CORE_PRODUCT_GRAPH_TAP_IDS } from './coreProductGraphTaps';
+import { CoreProductRuntime, type CoreProductGraphTapCaptureChunk } from './coreProductRuntime';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
-
-const EMPTY_EARTH_TEXTURE_DEBUG_STATE: EarthTextureDebugState = {
-  waves: null,
-  birds: null,
-  birds2: null,
-  frogs: null,
-};
+import { loadProductLead4opFMPreset } from './CoreProductLegacyPresetCompat';
 
 const CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE = 3;
 const CORE_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME = 4;
+const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = 4;
 
 type ProductRangeState = {
   range: { min: number; max: number };
   targets: CoreProductRangeTarget[];
 };
 
-function createCoreProductEngineState(isRunning: boolean): EngineState {
-  return {
-    isRunning,
-    harmonyState: null,
-    currentSeed: 0,
-    currentBucket: '',
-    currentFilterFreq: 1000,
-    currentLfoValue: 0,
-    currentLfo2Value: 0,
-    cofCurrentStep: 0,
-    fxOwners: {
-      delayA: { owner: null, strength: 0, lastOrigin: null, active: false },
-      delayB: { owner: null, strength: 0, lastOrigin: null, active: false },
-      granular: { owner: null, strength: 0, lastOrigin: null, active: false },
-      reverb: { owner: null, strength: 0, lastOrigin: null, active: false },
-    },
-    transportDebug: null,
-  };
-}
-
-function drumVoiceIndex(voice: unknown): number {
-  if (typeof voice === 'number' && Number.isFinite(voice)) return Math.max(0, voice | 0);
-  const text = String(voice ?? 'kick').toLowerCase();
-  const known: Record<string, number> = {
-    sub: 0,
-    kick: 1,
-    snare: 2,
-    click: 2,
-    clap: 2,
-    beephi: 3,
-    beeplo: 4,
-    noise: 5,
-    hat: 5,
-    hihat: 5,
-    membrane: 6,
-    perc: 6,
-    tom: 6,
-  };
-  return known[text] ?? Math.abs([...text].reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 24;
-}
-
-function sourceId(source: ManualSynthNoteOptions['source']): number {
-  return CORE_PRODUCT_SOURCE_IDS[source] ?? CORE_PRODUCT_SOURCE_IDS.pad1;
-}
-
-function midiFromFrequency(frequency: number): number {
-  if (!Number.isFinite(frequency) || frequency <= 0) return 60;
-  return Math.max(0, Math.min(127, 69 + 12 * Math.log2(frequency / 440)));
-}
-
-function gainToDb(gain: number): number {
-  return 20 * Math.log10(Math.max(0.000001, Math.abs(gain)));
-}
-
 class CoreProductEngineHost {
   private readonly runtime = new CoreProductRuntime();
+  private readonly arrangementScheduler = new CoreProductArrangementScheduler(
+    (event) => this.runtime.postEvent(event),
+    () => this.runtime.audioContext,
+  );
   private latestSliderState: Record<string, unknown> | null = null;
   private readonly assetAdapter = new CoreProductAssetAdapter(this.runtime, () => this.latestSliderState);
   private readonly displayCallbacks = new Map<string, unknown>();
@@ -207,7 +120,7 @@ class CoreProductEngineHost {
   }
 
   getDynamicsAnalyser(): AnalyserNode | null {
-    return classifiedPlaceholderGetter('getDynamicsAnalyser', null);
+    return this.unsupportedGetter('getDynamicsAnalyser');
   }
 
   getDynamicsVisualTelemetry(): DynamicsVisualTelemetrySnapshot {
@@ -252,57 +165,60 @@ class CoreProductEngineHost {
   }
 
   getDrumVoiceAnalyser(): undefined {
-    return classifiedPlaceholderGetter('getDrumVoiceAnalyser', undefined);
+    return this.unsupportedGetter('getDrumVoiceAnalyser');
   }
 
   getGranularActiveGrainCount(): number {
-    return this.latestTelemetry?.activeGrains ?? classifiedPlaceholderGetter('getGranularActiveGrainCount', 0);
+    return this.latestTelemetry?.activeGrains ?? 0;
   }
 
   getGranularBufferWaveform(): null {
-    return classifiedPlaceholderGetter('getGranularBufferWaveform', null);
+    return this.unsupportedGetter('getGranularBufferWaveform');
   }
 
   getGranularVoicePositions(): [number, number, number, number] {
-    return classifiedPlaceholderGetter('getGranularVoicePositions', [0, 0, 0, 0] as [number, number, number, number]);
+    return this.unsupportedGetter('getGranularVoicePositions');
   }
 
   getGranularWriteHeadPosition(): number {
-    return classifiedPlaceholderGetter('getGranularWriteHeadPosition', 0);
+    return this.unsupportedGetter('getGranularWriteHeadPosition');
   }
 
   getLeadMorphedParams(): null {
-    return classifiedPlaceholderGetter('getLeadMorphedParams', null);
+    return this.unsupportedGetter('getLeadMorphedParams');
   }
 
   getCurrentFilterFreq(): number {
-    return classifiedPlaceholderGetter('getCurrentFilterFreq', 1000);
+    return this.unsupportedGetter('getCurrentFilterFreq');
   }
 
   getCurrentLfoValue(): number {
-    return classifiedPlaceholderGetter('getCurrentLfoValue', 0);
+    return this.unsupportedGetter('getCurrentLfoValue');
   }
 
   getCurrentLfo2Value(): number {
-    return classifiedPlaceholderGetter('getCurrentLfo2Value', 0);
+    return this.unsupportedGetter('getCurrentLfo2Value');
   }
 
   getCurrentPadFilterFreq(): number {
-    return classifiedPlaceholderGetter('getCurrentPadFilterFreq', 1000);
+    return this.unsupportedGetter('getCurrentPadFilterFreq');
   }
 
   getCurrentPadLfoValue(): number {
-    return classifiedPlaceholderGetter('getCurrentPadLfoValue', 0);
+    return this.unsupportedGetter('getCurrentPadLfoValue');
   }
 
   getRecordableBusNodes(): Record<string, RecordableTrackSource> {
-    return classifiedPlaceholderGetter('getRecordableBusNodes', {
-      master: { node: this.runtime.outputNode },
-    });
+    return this.unsupportedGetter('getRecordableBusNodes');
   }
 
+  getSonicParityGraphTapId(trackId: string): number | null { return CORE_PRODUCT_GRAPH_TAP_IDS[trackId.startsWith('graph:') ? trackId.slice('graph:'.length) : trackId] ?? null; }
+  startSonicParityGraphCapture(trackId: string, chunkFrames: number): number { const tapId = this.getSonicParityGraphTapId(trackId); if (tapId === null) throw new Error(`Unknown Core Product sonic parity graph tap: ${trackId}`); this.runtime.startGraphTapCapture(tapId, chunkFrames); return tapId; }
+  flushSonicParityGraphCapture(tapId: number): Promise<CoreProductGraphTapCaptureChunk[]> { return this.runtime.flushGraphTapCapture(tapId); }
+  stopSonicParityGraphCapture(tapId: number): Promise<CoreProductGraphTapCaptureChunk[]> { return this.runtime.stopGraphTapCapture(tapId); }
+
   getEarthTextureDebugState(): EarthTextureDebugState {
-    return classifiedPlaceholderGetter('getEarthTextureDebugState', EMPTY_EARTH_TEXTURE_DEBUG_STATE);
+    return this.unsupportedGetter('getEarthTextureDebugState');
   }
 
   getSonicParityDebugState(): Record<string, unknown> {
@@ -315,14 +231,22 @@ class CoreProductEngineHost {
       hasOutputNode: Boolean(this.runtime.outputNode),
       snapshot: {
         master: snapshot.master,
-        sources: snapshot.sources.map((source) => ({
-          sourceId: source.sourceId,
-          enabled: source.enabled,
-          level: source.level,
-          dryGain: source.dryGain,
-          presetId: source.presetId,
-          expression: source.expression,
-        })),
+	        sources: snapshot.sources.map((source) => ({
+	          sourceId: source.sourceId,
+	          enabled: source.enabled,
+	          level: source.level,
+	          dryGain: source.dryGain,
+	          presetId: source.presetId,
+	          expression: source.expression,
+	          soundscapes: source.sourceId === 7 ? {
+	            waterActive: source.exactDrumParams[0],
+	            waterSeed: source.exactDrumParams[60],
+	            insectsActive: source.exactDrumParams[61],
+	            insectsSeed: source.exactDrumParams[77],
+	            insects2Active: source.exactDrumParams[78],
+	            insects2Seed: source.exactDrumParams[94],
+	          } : undefined,
+	        })),
       },
       latestTelemetry: this.latestTelemetry,
     };
@@ -360,7 +284,13 @@ class CoreProductEngineHost {
   }
 
   getAllStemNodes(): Record<string, RecordableTrackSource> {
-    return classifiedPlaceholderGetter('getAllStemNodes', this.getRecordableBusNodes());
+    return this.unsupportedGetter('getAllStemNodes');
+  }
+
+  private unsupportedGetter<T>(method: string): T {
+    const classification = classifyCoreProductRuntimeFallback(method);
+    this.reportRuntimeFallback(method, classification);
+    throw new Error(`AudioEngine.${method} is not implemented by core-product`);
   }
 
   setStateChangeCallback(callback: ((state: EngineState) => void) | null): void {
@@ -414,10 +344,14 @@ class CoreProductEngineHost {
   updateParams(sliderState: Record<string, unknown>): void {
     this.latestSliderState = { ...sliderState };
     if (this.runtimeReady && this.assetAdapter.shouldUseDefaultAssets()) {
-      void this.assetAdapter.ensureDefaultAssetsForState().then(() => this.applyLatestSnapshotUpdate('asset-reference-change'));
+      void this.assetAdapter.ensureDefaultAssetsForState().then(() => {
+        this.applyLatestSnapshotUpdate('asset-reference-change');
+        if (this.running) this.arrangementScheduler.update(this.createLatestArrangementState());
+      });
       return;
     }
     this.applyLatestSnapshotUpdate();
+    if (this.running) this.arrangementScheduler.update(this.createLatestArrangementState());
   }
 
   setSynthEuclidClockDivs(divs: unknown[]): void {
@@ -556,6 +490,7 @@ class CoreProductEngineHost {
     this.runtime.postEvent(createCoreProductStartEvent());
     this.flushModulationRanges();
     this.running = true;
+    this.arrangementScheduler.start(this.createLatestArrangementState());
     this.stateChangeCallback?.(createCoreProductEngineState(true));
   }
 
@@ -563,10 +498,12 @@ class CoreProductEngineHost {
     await this.runtime.resume();
     this.runtime.postEvent(createCoreProductStartEvent());
     this.running = true;
+    this.arrangementScheduler.start(this.createLatestArrangementState());
     this.stateChangeCallback?.(createCoreProductEngineState(true));
   }
 
   async suspend(): Promise<void> {
+    this.arrangementScheduler.stop();
     this.runtime.postEvent(createCoreProductStopEvent());
     await this.runtime.suspend();
     this.running = false;
@@ -574,14 +511,20 @@ class CoreProductEngineHost {
   }
 
   stop(): void {
-    this.runtime.postEvent(createCoreProductStopEvent());
+    this.arrangementScheduler.stop();
+    if (this.runtimeReady) {
+      this.runtime.postEvent(createCoreProductStopEvent());
+    }
     void this.runtime.suspend();
     this.running = false;
     this.stateChangeCallback?.(createCoreProductEngineState(false));
   }
 
   dispose(): void {
-    this.runtime.postEvent(createCoreProductStopEvent());
+    this.arrangementScheduler.stop();
+    if (this.runtimeReady) {
+      this.runtime.postEvent(createCoreProductStopEvent());
+    }
     this.runtime.dispose();
     this.runtimeReady = false;
     this.running = false;
@@ -606,7 +549,10 @@ class CoreProductEngineHost {
   }
 
   resetSonicParityFx(): void {
-    this.runtime.reset();
+    if (!this.runtimeReady) {
+      throw new Error('Core Product runtime cannot reset FX before the product worklet is initialized');
+    }
+    this.runtime.resetParityFx();
   }
 
   setSeedLocked(locked: boolean): void {
@@ -620,6 +566,9 @@ class CoreProductEngineHost {
     noteDuration = 0.18,
     padParamsOverride?: Record<string, unknown>,
   ): void {
+    const midi = midiFromFrequency(frequency);
+    const triggerVelocity = requireFiniteRange(velocity, 'synth trigger velocity', 0.000001, 1);
+    const durationSeconds = requirePositive(noteDuration, 'synth trigger duration');
     if (padParamsOverride) {
       this.updateParams(padParamsOverride);
     }
@@ -627,9 +576,9 @@ class CoreProductEngineHost {
     const post = () => {
       this.runtime.postEvent(createCoreProductManualNoteEvent(
         targetSource,
-        midiFromFrequency(frequency),
-        velocity,
-        noteDuration * 1000,
+        midi,
+        triggerVelocity,
+        durationSeconds * 1000,
       ));
     };
     if (this.runtimeReady) {
@@ -651,8 +600,17 @@ class CoreProductEngineHost {
       C: 'lead2PresetC',
       D: 'lead2PresetD',
     };
+    const dataKeyBySlot: Record<string, string> = {
+      A: 'lead1PresetAData',
+      B: 'lead1PresetBData',
+      C: 'lead2PresetCData',
+      D: 'lead2PresetDData',
+    };
     const key = stateKeyBySlot[slotKey] ?? 'lead1PresetA';
-    this.patchAdapterState({ [key]: String(presetId ?? '') });
+    const dataKey = dataKeyBySlot[slotKey] ?? 'lead1PresetAData';
+    const id = String(presetId ?? 'soft_rhodes');
+    const preset = await loadProductLead4opFMPreset(id);
+    this.patchAdapterState({ [key]: id, [dataKey]: preset });
   }
 
   registerAsset(asset: DecodedCoreProductAsset): void {
@@ -823,10 +781,21 @@ class CoreProductEngineHost {
     this.displayCallbacks.set('granularUiActive', active);
   }
 
-  async triggerDrumVoice(voice: unknown, velocity = 0.8): Promise<void> {
+  async triggerDrumVoice(
+    voice: unknown,
+    velocity: number,
+    externalState?: Record<string, unknown>,
+  ): Promise<void> {
+    const voiceIndex = drumVoiceIndex(voice);
+    const triggerVelocity = requireFiniteRange(velocity, 'drum trigger velocity', 0.000001, 1);
+    if (externalState) {
+      this.latestSliderState = { ...externalState, drumEnabled: true };
+    }
     await this.runtime.ensureStarted();
-    this.runtime.postEvent(createCoreProductDrumTriggerEvent(drumVoiceIndex(voice), velocity));
-    this.invokeDisplayCallback('drumTrigger', voice, velocity);
+    this.runtimeReady = true;
+    this.applyLatestSnapshotUpdate('runtime-bootstrap');
+    this.runtime.postEvent(createCoreProductDrumTriggerEvent(voiceIndex, triggerVelocity));
+    this.invokeDisplayCallback('drumTrigger', voice, triggerVelocity);
   }
 
   resetSynthEuclidLaneHome(laneIndex: number): void {
@@ -855,8 +824,8 @@ class CoreProductEngineHost {
       journeyEnabled: true,
       journeyMorphPhase: phase,
     };
-    this.runtime.postEvent(createCoreProductJourneyEvent(true));
-    this.runtime.postEvent(createCoreProductJourneyStateEvent(true, phase));
+    this.postSequencerControlEvent(createCoreProductJourneyEvent(true));
+    this.postSequencerControlEvent(createCoreProductJourneyStateEvent(true, phase));
   }
 
   stopJourneyMorphClock(): void {
@@ -866,42 +835,60 @@ class CoreProductEngineHost {
       journeyEnabled: false,
       journeyMorphPhase: this.latestTelemetry?.journeyMorphPhase ?? 0,
     };
-    this.runtime.postEvent(createCoreProductJourneyEvent(false));
-    this.runtime.postEvent(createCoreProductJourneyStateEvent(false, this.latestTelemetry?.journeyMorphPhase ?? 0));
+    this.postSequencerControlEvent(createCoreProductJourneyEvent(false));
+    this.postSequencerControlEvent(createCoreProductJourneyStateEvent(false, this.latestTelemetry?.journeyMorphPhase ?? 0));
   }
 
-  async auditionSynthNote(note: ManualSynthNoteOptions): Promise<void> {
+  async auditionSynthNote(
+    note: ManualSynthNoteOptions,
+    externalState?: Record<string, unknown>,
+  ): Promise<void> {
+    const manualNote = requireManualNote(note);
+    this.latestSliderState = manualAuditionState(manualNote.source, externalState ?? this.latestSliderState ?? undefined);
     await this.runtime.ensureStarted();
     this.runtimeReady = true;
-    if (note.source === 'piano') {
-      await this.assetAdapter.ensurePianoAssetForMidi(note.midi);
-      this.loadLatestSnapshot('manual-piano-asset');
+    if (manualNote.source === 'piano') {
+      await this.assetAdapter.ensurePianoAssetForMidi(manualNote.midi);
+      this.applyLatestSnapshotUpdate('manual-piano-asset');
+    } else {
+      this.applyLatestSnapshotUpdate('runtime-bootstrap');
     }
     this.runtime.postEvent(createCoreProductManualNoteEvent(
-      sourceId(note.source),
-      note.midi,
-      note.velocity ?? 0.8,
-      note.durationMs ?? 180,
+      sourceId(manualNote.source),
+      manualNote.midi,
+      manualNote.velocity,
+      manualNote.durationMs,
     ));
   }
 
-  async auditionSynthNotes(notes: ManualSynthNoteOptions[]): Promise<void> {
+  async auditionSynthNotes(
+    notes: ManualSynthNoteOptions[],
+    externalState?: Record<string, unknown>,
+  ): Promise<void> {
+    const manualNotes = notes.map(requireManualNote);
+    let nextState = { ...(externalState ?? this.latestSliderState ?? {}) };
+    for (const note of manualNotes) {
+      nextState = manualAuditionState(note.source, nextState);
+    }
+    this.latestSliderState = nextState;
     await this.runtime.ensureStarted();
     this.runtimeReady = true;
-    if (notes.some((note) => note.source === 'piano')) {
+    if (manualNotes.some((note) => note.source === 'piano')) {
       await Promise.all(
-        notes
+        manualNotes
           .filter((note) => note.source === 'piano')
           .map((note) => this.assetAdapter.ensurePianoAssetForMidi(note.midi)),
       );
-      this.loadLatestSnapshot('manual-piano-asset');
+      this.applyLatestSnapshotUpdate('manual-piano-asset');
+    } else {
+      this.applyLatestSnapshotUpdate('runtime-bootstrap');
     }
-    for (const note of notes) {
+    for (const note of manualNotes) {
       this.runtime.postEvent(createCoreProductManualNoteEvent(
         sourceId(note.source),
         note.midi,
-        note.velocity ?? 0.8,
-        note.durationMs ?? 180,
+        note.velocity,
+        note.durationMs,
       ));
     }
   }
@@ -956,7 +943,17 @@ class CoreProductEngineHost {
       : this.journeyMorphClockRunning
       ? { ...telemetryRngState, journeyEnabled: true }
       : undefined;
-    return createCoreProductSnapshot(snapshotState);
+    const snapshot = createCoreProductSnapshot(snapshotState);
+    snapshot.transport.running = this.running;
+    return snapshot;
+  }
+
+  private createLatestArrangementState(): Record<string, unknown> | null {
+    if (!this.latestSliderState && Object.keys(this.adapterState).length === 0) return null;
+    return {
+      ...(this.latestSliderState ?? {}),
+      ...this.adapterState,
+    };
   }
 
   private applySnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean {
@@ -1002,6 +999,7 @@ class CoreProductEngineHost {
       state.lastChangeKind === CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE ||
       state.lastChangeKind === CORE_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME;
     if (state.lastChangedTargetId === CORE_PRODUCT_SEQUENCER_IDS.synth) {
+      if (laneIndex >= PRODUCT_VISIBLE_SYNTH_LANE_COUNT) return;
       const lane = state.synthLanes[laneIndex];
       if (!lane) return;
       this.reconcileSynthSequencerLane(laneIndex, lane, shouldNotify);
@@ -1214,6 +1212,7 @@ class CoreProductEngineHost {
     this.adapterState = { ...this.adapterState, ...patch };
     if (loadSnapshot) {
       this.applyLatestSnapshotUpdate();
+      if (this.running) this.arrangementScheduler.update(this.createLatestArrangementState());
     }
   }
 
@@ -1373,8 +1372,10 @@ class CoreProductEngineHost {
     if (!range || !Number.isFinite(range.min) || !Number.isFinite(range.max)) {
       const previous = store.get(key);
       if (previous) {
-        for (const previousTarget of previous.targets) {
-          this.postModulationRange(previousTarget, null, mode, displayKey);
+        if (this.runtimeReady) {
+          for (const previousTarget of previous.targets) {
+            this.postModulationRange(previousTarget, null, mode, displayKey);
+          }
         }
         store.delete(key);
       }
@@ -1382,7 +1383,7 @@ class CoreProductEngineHost {
     }
     const normalized = { min: Math.min(range.min, range.max), max: Math.max(range.min, range.max) };
     store.set(key, { range: normalized, targets: [target] });
-    this.postModulationRange(target, normalized, mode, displayKey);
+    if (this.runtimeReady) this.postModulationRange(target, normalized, mode, displayKey);
   }
 
   private syncRangeSet(
@@ -1401,20 +1402,25 @@ class CoreProductEngineHost {
       const normalized = { min: Math.min(range.min, range.max), max: Math.max(range.min, range.max) };
       store.set(key, { range: normalized, targets });
       nextKeys.add(key);
-      for (const target of targets) {
-        this.postModulationRange(target, normalized, mode, key);
+      if (this.runtimeReady) {
+        for (const target of targets) {
+          this.postModulationRange(target, normalized, mode, key);
+        }
       }
     }
     for (const [key, previous] of Array.from(store.entries())) {
       if (nextKeys.has(key)) continue;
-      for (const target of previous.targets) {
-        this.postModulationRange(target, null, mode, key);
+      if (this.runtimeReady) {
+        for (const target of previous.targets) {
+          this.postModulationRange(target, null, mode, key);
+        }
       }
       store.delete(key);
     }
   }
 
   private flushModulationRanges(): void {
+    if (!this.runtimeReady) return;
     for (const [key, state] of this.sampleHoldRanges.entries()) {
       for (const target of state.targets) {
         this.postModulationRange(target, state.range, CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold, key);
@@ -1438,6 +1444,9 @@ class CoreProductEngineHost {
     mode: CoreProductModulationRangeMode,
     displayKey: string,
   ): void {
+    if (!this.runtimeReady) {
+      throw new Error('Core Product runtime cannot post modulation ranges before the product worklet is initialized');
+    }
     if (mode === CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk && range) {
       this.runtimeWalkControlNames.set(target.controlId, displayKey);
     } else if (!range) {
@@ -1516,7 +1525,6 @@ class CoreProductEngineHost {
 }
 
 const host = new CoreProductEngineHost();
-const unsupportedMethods = new Set<string>();
 
 export const coreProductEngineHost = new Proxy(host as unknown as AudioEngine, {
   get(target, property) {
@@ -1528,14 +1536,13 @@ export const coreProductEngineHost = new Proxy(host as unknown as AudioEngine, {
     const classification = classifyCoreProductRuntimeFallback(property);
     if (property.startsWith('get')) {
       return () => {
-        unsupportedMethods.add(property);
         host.reportRuntimeFallback(property, classification);
-        return null;
+        throw new Error(`AudioEngine.${property} is not implemented by core-product`);
       };
     }
     return (..._args: unknown[]) => {
-      unsupportedMethods.add(property);
       host.reportRuntimeFallback(property, classification);
+      throw new Error(`AudioEngine.${property} is not implemented by core-product`);
     };
   },
 }) as AudioEngine;

@@ -36,10 +36,13 @@ function makeSource(sourceId = 1) {
     postLpfHz: 18000,
     stereoWidth: 1,
     postLpfKeyTracking: 0,
+    holdSeconds: 0.5,
     exactPadParamCount: 2,
     exactPadParams: [0.1, 0.2],
     exactLeadParamCount: 2,
     exactLeadParams: [0.3, 0.4],
+    exactDrumParamCount: 2,
+    exactDrumParams: [0.5, 0.6],
   };
 }
 
@@ -73,6 +76,7 @@ function makeSnapshot({ laneCount = 4 } = {}) {
   const lanes = Array.from({ length: laneCount }, (_, index) => makeLane(index));
   return {
     assetRefs: [11, 12],
+    assetRefLevels: [0.75, 0.5],
     transport: {
       running: false,
       bpm: 120,
@@ -151,8 +155,10 @@ await runCheckWithReport({
       "'manual-piano-asset'",
       "'explicit-reset-request'",
       "'asset-reference-change'",
+      "'asset-reference-level-change'",
       "'harmony-mode-change'",
       "'source-structure-change'",
+      "'source-hold-change'",
       "'exact-patch-change'",
       "'sequencer-structure-change'",
       "'dirty-diff-event-budget'",
@@ -284,7 +290,7 @@ await runCheckWithReport({
       id: 'static-dirty-diff-contract',
       summary: 'Static dirty-diff classification, telemetry, and render-path guards passed.',
       details: {
-        reloadReasonsAudited: 12,
+        reloadReasonsAudited: 14,
         diffableSourceControlsAudited: 12,
       },
     });
@@ -320,10 +326,25 @@ await runCheckWithReport({
     const assetDiff = adapterHarness.buildCoreProductSnapshotDiff(base, assetNext);
     assert(assetDiff.applied === false && assetDiff.reason === 'asset-reference-change', 'asset reference changes must full-reload with classified reason');
 
+    const assetLevelNext = clone(base);
+    assetLevelNext.assetRefLevels = [0.75, 0.9];
+    const assetLevelDiff = adapterHarness.buildCoreProductSnapshotDiff(base, assetLevelNext);
+    assert(assetLevelDiff.applied === false && assetLevelDiff.reason === 'asset-reference-level-change', 'asset reference level changes must full-reload with classified reason');
+
     const patchNext = clone(base);
     patchNext.sources[0].exactPadParams[0] = 0.9;
     const patchDiff = adapterHarness.buildCoreProductSnapshotDiff(base, patchNext);
     assert(patchDiff.applied === false && patchDiff.reason === 'exact-patch-change', 'exact patch changes must full-reload with classified reason');
+
+    const holdNext = clone(base);
+    holdNext.sources[0].holdSeconds = 0.95;
+    const holdDiff = adapterHarness.buildCoreProductSnapshotDiff(base, holdNext);
+    assert(holdDiff.applied === false && holdDiff.reason === 'source-hold-change', 'source hold changes must full-reload until a generated Product source-hold event exists');
+
+    const drumPatchNext = clone(base);
+    drumPatchNext.sources[0].exactDrumParams[0] = 0.95;
+    const drumPatchDiff = adapterHarness.buildCoreProductSnapshotDiff(base, drumPatchNext);
+    assert(drumPatchDiff.applied === false && drumPatchDiff.reason === 'exact-patch-change', 'exact drum patch changes must full-reload with classified reason');
 
     const budgetBase = makeSnapshot({ laneCount: 24 });
     const budgetNext = clone(budgetBase);
@@ -348,9 +369,9 @@ await runCheckWithReport({
     });
 
     const hostSnapshots = [
-      { id: 'initial' },
-      { id: 'dirty' },
-      { id: 'structural' },
+      { id: 'initial', transport: { running: false, bpm: 120, beatsPerBar: 4, barsPerPhrase: 4, swing: 0 } },
+      { id: 'dirty', transport: { running: false, bpm: 120, beatsPerBar: 4, barsPerPhrase: 4, swing: 0 } },
+      { id: 'structural', transport: { running: false, bpm: 120, beatsPerBar: 4, barsPerPhrase: 4, swing: 0 } },
     ];
     let nextSnapshotIndex = 0;
     const hostHarness = loadCoreProductHostHarness({
@@ -389,6 +410,35 @@ await runCheckWithReport({
         lastSnapshotReloadReason: hostHarness.host.lastSnapshotReloadReason,
         postedEvents: hostHarness.runtime.events,
         loadedSnapshots: hostHarness.runtime.snapshots,
+      },
+    });
+
+    let liveSnapshotIndex = 0;
+    const liveReloadHarness = loadCoreProductHostHarness({
+      globals: {
+        createCoreProductSnapshot: () => clone({
+          id: `live-${liveSnapshotIndex++}`,
+          transport: { running: false, bpm: 120, beatsPerBar: 4, barsPerPhrase: 4, swing: 0 },
+        }),
+        encodeCoreProductSnapshot: (snapshot) => clone(snapshot),
+        buildCoreProductSnapshotDiff: () => ({ applied: false, reason: 'sequencer-structure-change' }),
+      },
+    });
+    await liveReloadHarness.host.start({ sequencerMasterBPM: 120 });
+    liveReloadHarness.host.updateParams({ sequencerMasterBPM: 121 });
+    const reloadedSnapshot = liveReloadHarness.runtime.snapshots[liveReloadHarness.runtime.snapshots.length - 1];
+    assert(
+      reloadedSnapshot.transport.running === true &&
+        liveReloadHarness.host.latestProductSnapshot.transport.running === true,
+      'running Product full snapshot reloads must preserve transport running',
+    );
+    addEvidence(report, {
+      id: 'host-live-full-reload-transport-preservation',
+      summary: 'A structural full snapshot reload while Product Core is playing keeps C++ transport running.',
+      details: {
+        snapshotCount: liveReloadHarness.runtime.snapshots.length,
+        reloadedTransport: reloadedSnapshot.transport,
+        postedEvents: liveReloadHarness.runtime.events,
       },
     });
 

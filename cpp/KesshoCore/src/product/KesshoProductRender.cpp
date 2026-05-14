@@ -1,5 +1,106 @@
 #include "KesshoProductEngineInternal.h"
 
+  void KesshoProductEngine::resetDiffuseRuntime() {
+  diffuse_highpass = {};
+  diffuse_lowpass = {};
+  diffuse_delay_index = 0u;
+  std::fill(diffuse_delay_l, diffuse_delay_l + kDiffuseDelayMaxFrames, 0.0f);
+  std::fill(diffuse_delay_r, diffuse_delay_r + kDiffuseDelayMaxFrames, 0.0f);
+}
+
+  void KesshoProductEngine::updateProductBiquadCoefficients(
+      ProductBiquadFilterState& filter,
+      float cutoff_hz,
+      uint32_t type) {
+  const float nyquist_limit = static_cast<float>(sample_rate * 0.499);
+  const float cutoff = clampFloat(cutoff_hz, 20.0f, std::max(20.0f, nyquist_limit));
+  if (std::abs(filter.coeff_cutoff - cutoff) <= 0.0001f && filter.coeff_type == type) {
+    return;
+  }
+
+  constexpr float kWebAudioQ07 = 1.0839269140212036f; // pow(10, 0.7 / 20)
+  const float omega = static_cast<float>((kTwoPi * static_cast<double>(cutoff)) / sample_rate);
+  const float sin_omega = std::sin(omega);
+  const float cos_omega = std::cos(omega);
+  const float alpha = sin_omega / (2.0f * kWebAudioQ07);
+  const float a0 = 1.0f + alpha;
+  if (type == kProductBiquadHighpass) {
+    filter.b0 = ((1.0f + cos_omega) * 0.5f) / a0;
+    filter.b1 = -(1.0f + cos_omega) / a0;
+    filter.b2 = ((1.0f + cos_omega) * 0.5f) / a0;
+  } else {
+    filter.b0 = ((1.0f - cos_omega) * 0.5f) / a0;
+    filter.b1 = (1.0f - cos_omega) / a0;
+    filter.b2 = ((1.0f - cos_omega) * 0.5f) / a0;
+  }
+  filter.a1 = (-2.0f * cos_omega) / a0;
+  filter.a2 = (1.0f - alpha) / a0;
+  filter.coeff_cutoff = cutoff;
+  filter.coeff_type = type;
+}
+
+  float KesshoProductEngine::processProductBiquadSample(
+      const ProductBiquadFilterState& filter,
+      BiquadState& state,
+      float input) const {
+  const float y =
+      filter.b0 * input +
+      filter.b1 * state.x1 +
+      filter.b2 * state.x2 -
+      filter.a1 * state.y1 -
+      filter.a2 * state.y2;
+  state.x2 = state.x1;
+  state.x1 = input;
+  state.y2 = state.y1;
+  state.y1 = std::isfinite(y) ? y : 0.0f;
+  return state.y1;
+}
+
+  void KesshoProductEngine::renderDiffuseBus(float* out_l, float* out_r, uint32_t frames) {
+  if (out_l == nullptr || out_r == nullptr || frames == 0u) {
+    return;
+  }
+  updateProductBiquadCoefficients(diffuse_highpass, kDiffuseHighpassHz, kProductBiquadHighpass);
+  updateProductBiquadCoefficients(diffuse_lowpass, kDiffuseLowpassHz, kProductBiquadLowpass);
+  const uint32_t delay_frames = clampU32(
+      static_cast<uint32_t>(std::lround(sample_rate * static_cast<double>(kDiffuseHaasDelayMs) * 0.001)),
+      1u,
+      kDiffuseDelayMaxFrames - 1u);
+
+  for (uint32_t i = 0; i < frames; ++i) {
+    const float high_l = processProductBiquadSample(diffuse_highpass, diffuse_highpass.left, diffuse_bus_l[i]);
+    const float high_r = processProductBiquadSample(diffuse_highpass, diffuse_highpass.right, diffuse_bus_r[i]);
+    const float filtered_l = processProductBiquadSample(diffuse_lowpass, diffuse_lowpass.left, high_l);
+    const float filtered_r = processProductBiquadSample(diffuse_lowpass, diffuse_lowpass.right, high_r);
+
+    const uint32_t read_index =
+        (diffuse_delay_index + kDiffuseDelayMaxFrames - delay_frames) % kDiffuseDelayMaxFrames;
+    const float delayed_l = diffuse_delay_l[read_index];
+    const float delayed_r = diffuse_delay_r[read_index];
+    diffuse_delay_l[diffuse_delay_index] = filtered_l;
+    diffuse_delay_r[diffuse_delay_index] = filtered_r;
+    diffuse_delay_index = (diffuse_delay_index + 1u) % kDiffuseDelayMaxFrames;
+
+    const float center_l = filtered_l * kDiffuseHaasCenterGain;
+    const float center_r = filtered_r * kDiffuseHaasCenterGain;
+    const float spread_l = center_l + (filtered_l + filtered_r) * 0.5f * kDiffuseHaasSideGain;
+    const float spread_r = center_r + (delayed_l + delayed_r) * 0.5f * kDiffuseHaasSideGain;
+    const float out_left = spread_l * kDiffuseOutputGain;
+    const float out_right = spread_r * kDiffuseOutputGain;
+    const float reverb_left = spread_l * kDiffuseReverbSendGain;
+    const float reverb_right = spread_r * kDiffuseReverbSendGain;
+
+    graph_diffuse_output_l[i] = out_left;
+    graph_diffuse_output_r[i] = out_right;
+    graph_diffuse_reverb_send_l[i] = reverb_left;
+    graph_diffuse_reverb_send_r[i] = reverb_right;
+    out_l[i] += out_left;
+    out_r[i] += out_right;
+    reverb_bus_l[i] += reverb_left;
+    reverb_bus_r[i] += reverb_right;
+  }
+}
+
   void KesshoProductEngine::renderSampleVoices(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
@@ -15,25 +116,83 @@
       const float pan_r = voice.pan >= 0.0f ? 1.0f : 1.0f + voice.pan * 0.5f;
       const uint32_t sidechain_target = sidechainTargetForSource(voice.source_id);
       const float duck_gain = sidechainGain(sidechain_target, frame);
+      const bool piano_voice = voice.source_id == KESSHO_PRODUCT_SOURCE_PIANO;
       float send_left = value_l * source.dry_gain * pan_l;
       float send_right = value_r * source.dry_gain * pan_r;
-      processVoicePostChain(voice, send_left, send_right);
-      const float left = send_left * duck_gain;
-      const float right = send_right * duck_gain;
+      float dry_left = piano_voice ? send_left * source.level * kPianoSampleParityTrim : send_left;
+      float dry_right = piano_voice ? send_right * source.level * kPianoSampleParityTrim : send_right;
+      processVoicePostChain(voice, dry_left, dry_right);
+      const float left = dry_left * duck_gain;
+      const float right = dry_right * duck_gain;
+      recordSourceGraphTaps(voice.source_id, frame, source, dry_left, dry_right, left, right, send_left, send_right);
+      float reverb_send = source.reverb_send;
+      float delay_a_send = source.delay_a_send;
+      float delay_b_send = source.delay_b_send;
+      float granular_send = source.granular_send;
+      if (voice.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
+          voice.sample_voice &&
+          voice.asset_slot < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS &&
+          assets[voice.asset_slot].active) {
+        const uint32_t layer = soundscapeLayerIndexForAsset(assets[voice.asset_slot].asset_id);
+        if (layer < kSoundscapeLayerCount) {
+          reverb_send = soundscapeLayerRouteSend(source, layer, kSoundscapeLayerRouteReverb, reverb_send);
+          delay_a_send = soundscapeLayerRouteSend(source, layer, kSoundscapeLayerRouteDelayA, delay_a_send);
+          delay_b_send = soundscapeLayerRouteSend(source, layer, kSoundscapeLayerRouteDelayB, delay_b_send);
+          granular_send = soundscapeLayerRouteSend(source, layer, kSoundscapeLayerRouteGranular, granular_send);
+          float layer_send_left = send_left;
+          float layer_send_right = send_right;
+          if (layer == kSoundscapeLayerOcean) {
+            const float asset_level = soundscapeAssetRefLevel(source, assets[voice.asset_slot].asset_id);
+            if (asset_level > 0.000001f) {
+              layer_send_left /= asset_level;
+              layer_send_right /= asset_level;
+            }
+          }
+          graph_soundscape_layer_dry_l[layer][frame] += dry_left;
+          graph_soundscape_layer_dry_r[layer][frame] += dry_right;
+          graph_soundscape_layer_reverb_send_l[layer][frame] += layer_send_left * reverb_send;
+          graph_soundscape_layer_reverb_send_r[layer][frame] += layer_send_right * reverb_send;
+          graph_soundscape_layer_delay_a_send_l[layer][frame] += layer_send_left * delay_a_send;
+          graph_soundscape_layer_delay_a_send_r[layer][frame] += layer_send_right * delay_a_send;
+          graph_soundscape_layer_delay_b_send_l[layer][frame] += layer_send_left * delay_b_send;
+          graph_soundscape_layer_delay_b_send_r[layer][frame] += layer_send_right * delay_b_send;
+          graph_soundscape_layer_granular_send_l[layer][frame] += layer_send_left * granular_send;
+          graph_soundscape_layer_granular_send_r[layer][frame] += layer_send_right * granular_send;
+        }
+      }
+      if (voice.source_id == KESSHO_PRODUCT_SOURCE_PAD1) {
+        graph_sidechain_pad1_input_l[frame] += send_left;
+        graph_sidechain_pad1_input_r[frame] += send_right;
+        graph_sidechain_pad1_output_l[frame] += left;
+        graph_sidechain_pad1_output_r[frame] += right;
+      }
       out_l[frame] += left;
       out_r[frame] += right;
       if (voice.source_id < kStemCount) {
         stem_l[voice.source_id][frame] += left;
         stem_r[voice.source_id][frame] += right;
       }
-      reverb_bus_l[frame] += send_left * source.reverb_send;
-      reverb_bus_r[frame] += send_right * source.reverb_send;
-      delay_a_bus_l[frame] += send_left * source.delay_a_send;
-      delay_a_bus_r[frame] += send_right * source.delay_a_send;
-      delay_b_bus_l[frame] += send_left * source.delay_b_send;
-      delay_b_bus_r[frame] += send_right * source.delay_b_send;
-      granular_bus_l[frame] += send_left * source.granular_send;
-      granular_bus_r[frame] += send_right * source.granular_send;
+      float bus_send_left = send_left;
+      float bus_send_right = send_right;
+      if (voice.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
+          voice.sample_voice &&
+          voice.asset_slot < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS &&
+          assets[voice.asset_slot].active &&
+          soundscapeLayerIndexForAsset(assets[voice.asset_slot].asset_id) == kSoundscapeLayerOcean) {
+        const float asset_level = soundscapeAssetRefLevel(source, assets[voice.asset_slot].asset_id);
+        if (asset_level > 0.000001f) {
+          bus_send_left /= asset_level;
+          bus_send_right /= asset_level;
+        }
+      }
+      reverb_bus_l[frame] += bus_send_left * reverb_send;
+      reverb_bus_r[frame] += bus_send_right * reverb_send;
+      delay_a_bus_l[frame] += bus_send_left * delay_a_send;
+      delay_a_bus_r[frame] += bus_send_right * delay_a_send;
+      delay_b_bus_l[frame] += bus_send_left * delay_b_send;
+      delay_b_bus_r[frame] += bus_send_right * delay_b_send;
+      granular_bus_l[frame] += bus_send_left * granular_send;
+      granular_bus_r[frame] += bus_send_right * granular_send;
     }
   }
 }
@@ -42,12 +201,20 @@
   renderSidechainGains(start, frames);
   renderProductModules(out_l, out_r, start, frames);
   renderSampleVoices(out_l, out_r, start, frames);
-  renderFx(out_l, out_r, start, frames);
 }
 
   void KesshoProductEngine::applyMaster(float* out_l, float* out_r, uint32_t frames) {
-  renderSpectralFreeze(out_l, out_r, frames);
+  for (uint32_t i = 0; i < frames; ++i) {
+    out_l[i] *= master_gain;
+    out_r[i] *= master_gain;
+    graph_dynamics_input_l[i] = out_l[i];
+    graph_dynamics_input_r[i] = out_r[i];
+  }
   renderDynamics(out_l, out_r, frames);
+  for (uint32_t i = 0; i < frames; ++i) {
+    graph_dynamics_output_l[i] = out_l[i];
+    graph_dynamics_output_r[i] = out_r[i];
+  }
   const float ceiling = master_limiter_ceiling_gain;
   float master_input_peak = 0.0f;
   float master_output_peak = 0.0f;
@@ -56,8 +223,10 @@
   double master_loudness_energy = 0.0;
   float limiter_gain_reduction_db = 0.0f;
   for (uint32_t i = 0; i < frames; ++i) {
-    const float pre_limiter_l = out_l[i] * master_gain;
-    const float pre_limiter_r = out_r[i] * master_gain;
+    const float pre_limiter_l = out_l[i];
+    const float pre_limiter_r = out_r[i];
+    graph_master_pre_limiter_l[i] = pre_limiter_l;
+    graph_master_pre_limiter_r[i] = pre_limiter_r;
     const float input_peak = std::max(std::fabs(pre_limiter_l), std::fabs(pre_limiter_r));
     master_input_peak = std::max(master_input_peak, input_peak);
     if (input_peak > ceiling && ceiling > 0.0f) {
@@ -121,12 +290,154 @@
   for (uint32_t i = 0; i < stem_frames; ++i) {
     reverb_bus_l[i] = 0.0f;
     reverb_bus_r[i] = 0.0f;
-    delay_a_bus_l[i] = 0.0f;
-    delay_a_bus_r[i] = 0.0f;
+    delay_a_bus_l[i] = delay_a_cross_carry_l[i];
+    delay_a_bus_r[i] = delay_a_cross_carry_r[i];
+    delay_a_cross_carry_l[i] = 0.0f;
+    delay_a_cross_carry_r[i] = 0.0f;
     delay_b_bus_l[i] = 0.0f;
     delay_b_bus_r[i] = 0.0f;
     granular_bus_l[i] = 0.0f;
     granular_bus_r[i] = 0.0f;
+    diffuse_bus_l[i] = 0.0f;
+    diffuse_bus_r[i] = 0.0f;
+    graph_reverb_input_l[i] = 0.0f;
+    graph_reverb_input_r[i] = 0.0f;
+    graph_delay_a_input_l[i] = 0.0f;
+    graph_delay_a_input_r[i] = 0.0f;
+    graph_delay_b_input_l[i] = 0.0f;
+    graph_delay_b_input_r[i] = 0.0f;
+    graph_granular_input_l[i] = 0.0f;
+    graph_granular_input_r[i] = 0.0f;
+    graph_diffuse_input_l[i] = 0.0f;
+    graph_diffuse_input_r[i] = 0.0f;
+    graph_diffuse_output_l[i] = 0.0f;
+    graph_diffuse_output_r[i] = 0.0f;
+    graph_diffuse_reverb_send_l[i] = 0.0f;
+    graph_diffuse_reverb_send_r[i] = 0.0f;
+    for (uint32_t layer = 0; layer < kSoundscapeLayerCount; ++layer) {
+      graph_soundscape_layer_dry_l[layer][i] = 0.0f;
+      graph_soundscape_layer_dry_r[layer][i] = 0.0f;
+      graph_soundscape_layer_reverb_send_l[layer][i] = 0.0f;
+      graph_soundscape_layer_reverb_send_r[layer][i] = 0.0f;
+      graph_soundscape_layer_delay_a_send_l[layer][i] = 0.0f;
+      graph_soundscape_layer_delay_a_send_r[layer][i] = 0.0f;
+      graph_soundscape_layer_delay_b_send_l[layer][i] = 0.0f;
+      graph_soundscape_layer_delay_b_send_r[layer][i] = 0.0f;
+      graph_soundscape_layer_granular_send_l[layer][i] = 0.0f;
+      graph_soundscape_layer_granular_send_r[layer][i] = 0.0f;
+    }
+    graph_delay_a_output_l[i] = 0.0f;
+    graph_delay_a_output_r[i] = 0.0f;
+    graph_delay_a_reverb_send_l[i] = 0.0f;
+    graph_delay_a_reverb_send_r[i] = 0.0f;
+    graph_delay_a_to_delay_b_send_l[i] = 0.0f;
+    graph_delay_a_to_delay_b_send_r[i] = 0.0f;
+    graph_delay_a_to_granular_send_l[i] = 0.0f;
+    graph_delay_a_to_granular_send_r[i] = 0.0f;
+    graph_delay_b_output_l[i] = 0.0f;
+    graph_delay_b_output_r[i] = 0.0f;
+    graph_delay_b_reverb_send_l[i] = 0.0f;
+    graph_delay_b_reverb_send_r[i] = 0.0f;
+    graph_delay_b_to_delay_a_send_l[i] = 0.0f;
+    graph_delay_b_to_delay_a_send_r[i] = 0.0f;
+    graph_delay_b_to_granular_send_l[i] = 0.0f;
+    graph_delay_b_to_granular_send_r[i] = 0.0f;
+    graph_granular_output_l[i] = 0.0f;
+    graph_granular_output_r[i] = 0.0f;
+    graph_granular_reverb_send_l[i] = 0.0f;
+    graph_granular_reverb_send_r[i] = 0.0f;
+    graph_granular_to_delay_a_send_l[i] = 0.0f;
+    graph_granular_to_delay_a_send_r[i] = 0.0f;
+    graph_granular_to_delay_b_send_l[i] = 0.0f;
+    graph_granular_to_delay_b_send_r[i] = 0.0f;
+    graph_reverb_preconditioner_output_l[i] = 0.0f;
+    graph_reverb_preconditioner_output_r[i] = 0.0f;
+    graph_spectral_freeze_input_l[i] = 0.0f;
+    graph_spectral_freeze_input_r[i] = 0.0f;
+    graph_spectral_freeze_output_l[i] = 0.0f;
+    graph_spectral_freeze_output_r[i] = 0.0f;
+    graph_reverb_output_l[i] = 0.0f;
+    graph_reverb_output_r[i] = 0.0f;
+    graph_dynamics_input_l[i] = 0.0f;
+    graph_dynamics_input_r[i] = 0.0f;
+    graph_dynamics_output_l[i] = 0.0f;
+    graph_dynamics_output_r[i] = 0.0f;
+    graph_master_pre_limiter_l[i] = 0.0f;
+    graph_master_pre_limiter_r[i] = 0.0f;
+    graph_sidechain_pad1_input_l[i] = 0.0f;
+    graph_sidechain_pad1_input_r[i] = 0.0f;
+    graph_sidechain_pad1_output_l[i] = 0.0f;
+    graph_sidechain_pad1_output_r[i] = 0.0f;
+    graph_drum_dry_l[i] = 0.0f;
+    graph_drum_dry_r[i] = 0.0f;
+    graph_drum_reverb_send_l[i] = 0.0f;
+    graph_drum_reverb_send_r[i] = 0.0f;
+    graph_drum_delay_a_send_l[i] = 0.0f;
+    graph_drum_delay_a_send_r[i] = 0.0f;
+    graph_drum_delay_b_send_l[i] = 0.0f;
+    graph_drum_delay_b_send_r[i] = 0.0f;
+    graph_drum_granular_send_l[i] = 0.0f;
+    graph_drum_granular_send_r[i] = 0.0f;
+    graph_pad1_dry_l[i] = 0.0f;
+    graph_pad1_dry_r[i] = 0.0f;
+    graph_pad1_reverb_send_l[i] = 0.0f;
+    graph_pad1_reverb_send_r[i] = 0.0f;
+    graph_pad1_delay_a_send_l[i] = 0.0f;
+    graph_pad1_delay_a_send_r[i] = 0.0f;
+    graph_pad1_delay_b_send_l[i] = 0.0f;
+    graph_pad1_delay_b_send_r[i] = 0.0f;
+    graph_pad1_granular_send_l[i] = 0.0f;
+    graph_pad1_granular_send_r[i] = 0.0f;
+    graph_pad1_diffuse_send_l[i] = 0.0f;
+    graph_pad1_diffuse_send_r[i] = 0.0f;
+    graph_pad2_dry_l[i] = 0.0f;
+    graph_pad2_dry_r[i] = 0.0f;
+    graph_pad2_reverb_send_l[i] = 0.0f;
+    graph_pad2_reverb_send_r[i] = 0.0f;
+    graph_pad2_delay_a_send_l[i] = 0.0f;
+    graph_pad2_delay_a_send_r[i] = 0.0f;
+    graph_pad2_delay_b_send_l[i] = 0.0f;
+    graph_pad2_delay_b_send_r[i] = 0.0f;
+    graph_pad2_granular_send_l[i] = 0.0f;
+    graph_pad2_granular_send_r[i] = 0.0f;
+    graph_pad2_diffuse_send_l[i] = 0.0f;
+    graph_pad2_diffuse_send_r[i] = 0.0f;
+    graph_lead1_dry_l[i] = 0.0f;
+    graph_lead1_dry_r[i] = 0.0f;
+    graph_lead1_reverb_send_l[i] = 0.0f;
+    graph_lead1_reverb_send_r[i] = 0.0f;
+    graph_lead1_delay_a_send_l[i] = 0.0f;
+    graph_lead1_delay_a_send_r[i] = 0.0f;
+    graph_lead1_delay_b_send_l[i] = 0.0f;
+    graph_lead1_delay_b_send_r[i] = 0.0f;
+    graph_lead1_granular_send_l[i] = 0.0f;
+    graph_lead1_granular_send_r[i] = 0.0f;
+    graph_lead1_diffuse_send_l[i] = 0.0f;
+    graph_lead1_diffuse_send_r[i] = 0.0f;
+    graph_lead2_dry_l[i] = 0.0f;
+    graph_lead2_dry_r[i] = 0.0f;
+    graph_lead2_reverb_send_l[i] = 0.0f;
+    graph_lead2_reverb_send_r[i] = 0.0f;
+    graph_lead2_delay_a_send_l[i] = 0.0f;
+    graph_lead2_delay_a_send_r[i] = 0.0f;
+    graph_lead2_delay_b_send_l[i] = 0.0f;
+    graph_lead2_delay_b_send_r[i] = 0.0f;
+    graph_lead2_granular_send_l[i] = 0.0f;
+    graph_lead2_granular_send_r[i] = 0.0f;
+    graph_lead2_diffuse_send_l[i] = 0.0f;
+    graph_lead2_diffuse_send_r[i] = 0.0f;
+    graph_piano_dry_l[i] = 0.0f;
+    graph_piano_dry_r[i] = 0.0f;
+    graph_piano_reverb_send_l[i] = 0.0f;
+    graph_piano_reverb_send_r[i] = 0.0f;
+    graph_piano_delay_a_send_l[i] = 0.0f;
+    graph_piano_delay_a_send_r[i] = 0.0f;
+    graph_piano_delay_b_send_l[i] = 0.0f;
+    graph_piano_delay_b_send_r[i] = 0.0f;
+    graph_piano_granular_send_l[i] = 0.0f;
+    graph_piano_granular_send_r[i] = 0.0f;
+    graph_piano_diffuse_send_l[i] = 0.0f;
+    graph_piano_diffuse_send_r[i] = 0.0f;
   }
   last_stem_frames = stem_frames;
 }
@@ -184,6 +495,8 @@
     cursor = next_event_offset;
   }
 
+  renderDiffuseBus(out_l, out_r, frames);
+  renderFx(out_l, out_r, 0u, frames);
   applyMaster(out_l, out_r, frames);
   compactControlEvents(frames, control_index);
   advanceJourney(frames);

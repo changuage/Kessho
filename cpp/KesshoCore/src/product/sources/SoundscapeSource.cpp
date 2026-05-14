@@ -12,7 +12,7 @@
   }
   for (uint32_t ref_index = 0; ref_index < source.asset_ref_count; ++ref_index) {
     const uint32_t asset_id = source.asset_refs[ref_index];
-    if (asset_id == 0u || hasActiveSoundscapeVoice(asset_id)) {
+    if (asset_id == 0u || soundscapeAssetUsesModule(source, asset_id) || hasActiveSoundscapeVoice(asset_id)) {
       continue;
     }
     const uint32_t slot = findAssetSlot(asset_id);

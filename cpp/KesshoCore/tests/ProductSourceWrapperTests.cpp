@@ -9,6 +9,7 @@
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductParamIds.h"
 #include "KesshoProductSchema.h"
+#include "ProductSnapshotTestHelpers.h"
 
 namespace {
 
@@ -161,6 +162,7 @@ KesshoProductSnapshotV2 makeSnapshot() {
     snapshot.sources[i].post_lpf_hz = 18000.0f;
     snapshot.sources[i].stereo_width = 1.0f;
   }
+  kessho::product::tests::applyGeneratedSourceDefaults(snapshot);
   return snapshot;
 }
 
@@ -376,7 +378,7 @@ float renderRmsWithLeadPostLpf(float snapshot_cutoff_hz, bool send_param_event) 
   KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
   source.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
   source.level = 1.0f;
-  source.expression = 1.0f;
+  source.expression = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_EXPRESSION;
   source.post_lpf_hz = send_param_event ? 18000.0f : snapshot_cutoff_hz;
   source.stereo_width = 1.0f;
   source.exact_lead_param_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT;
@@ -405,7 +407,7 @@ float renderDeltaRmsWithLeadPostLpfTracking(float tracking, bool send_param_even
   KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
   source.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
   source.level = 1.0f;
-  source.expression = 1.0f;
+  source.expression = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_EXPRESSION;
   source.post_lpf_hz = 400.0f;
   source.stereo_width = 1.0f;
   source.post_lpf_key_tracking = send_param_event ? 0.0f : tracking;
@@ -477,6 +479,7 @@ float renderPeakWithSourcePreset(uint32_t source_id, uint32_t preset_id, uint32_
   require(engine != nullptr, "preset macro engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   snapshot.sources[source_id - 1u].preset_id = preset_id;
+  kessho::product::tests::applyGeneratedSourcePreset(snapshot, source_id, preset_id);
   snapshot.sources[source_id - 1u].morph = 0.15f;
   snapshot.sources[source_id - 1u].distance = 0.1f;
   snapshot.sources[source_id - 1u].expression = 0.65f;
@@ -597,6 +600,7 @@ void requireGeneratedAssetPresetTelemetryCoverage() {
 
     KesshoProductSnapshotV2 snapshot = makeSnapshot();
     snapshot.sources[source_id - 1u].preset_id = preset_id;
+    kessho::product::tests::applyGeneratedSourcePreset(snapshot, source_id, preset_id);
     require(
         kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
         "asset-backed generated source preset snapshot load failed");
@@ -624,7 +628,7 @@ float renderPeakWithLeadSnapshotGain(float gain) {
   source.level = 1.0f;
   source.morph = 0.0f;
   source.distance = 0.0f;
-  source.expression = 1.0f;
+  source.expression = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_EXPRESSION;
   source.exact_lead_param_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT;
   for (uint32_t index = 0; index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT; ++index) {
     source.exact_lead_params[index] = rhodes->exact_lead_params[index];
@@ -829,6 +833,10 @@ void requireSourcePresetTelemetryAndEvent() {
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].preset_id =
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_GLASS_SHIMMER;
+  kessho::product::tests::applyGeneratedSourcePreset(
+      snapshot,
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_GLASS_SHIMMER);
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "source preset snapshot load failed");
 
   std::vector<float> left(128);
@@ -860,6 +868,10 @@ void requireSampleOffsetManualTrigger() {
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].preset_id =
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL;
+  kessho::product::tests::applyGeneratedSourcePreset(
+      snapshot,
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL);
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "offset snapshot load failed");
   triggerManual(engine, KESSHO_PRODUCT_SOURCE_PAD1, 60.0f, 64);
 
@@ -902,7 +914,9 @@ void requireRepresentativeFullArrangementProbe() {
   snapshot.sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u].preset_id =
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER3;
   snapshot.sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u].asset_id = soundscape_asset_id;
+  kessho::product::tests::applyGeneratedSourceDefaults(snapshot);
   snapshot.asset_refs[0] = soundscape_asset_id;
+  snapshot.asset_ref_levels[0] = 1.0f;
   for (uint32_t index = 0; index < 7; ++index) {
     snapshot.sources[index].level = 0.72f;
     snapshot.sources[index].dry_gain = 1.0f;

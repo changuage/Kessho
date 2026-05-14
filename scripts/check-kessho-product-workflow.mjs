@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 const root = process.cwd();
 const workflowPath = '.github/workflows/product-core-ci.yml';
 const workflow = readFileSync(resolve(root, workflowPath), 'utf8');
-const readiness = readFileSync(resolve(root, 'scripts/check-kessho-core-parity-readiness.mjs'), 'utf8');
+const browserRuntime = readFileSync(resolve(root, 'scripts/check-kessho-product-browser-runtime.mjs'), 'utf8');
 
 function assert(condition, message) {
   if (!condition) {
@@ -33,9 +33,6 @@ const requiredPaths = [
   'public/worklets/kessho_core.wasm',
   'public/samples/**',
   'scripts/check-kessho-product*',
-  'scripts/check-kessho-core-parity-readiness.mjs',
-  'scripts/check-web-core-sonic-parity.mjs',
-  'scripts/profile-kessho-core-acceptance-corpus.mjs',
   'scripts/build-kessho-core-wasm.mjs',
   'scripts/generate-kessho-product-bindings.mjs',
   'scripts/run-kessho-product-ci.mjs',
@@ -43,8 +40,6 @@ const requiredPaths = [
   'KesshoNativeSwift/Generated/**',
   'docs/kessho-product-core-migration-status.md',
   'docs/kessho-product-default-gate-v3.md',
-  'docs/reports/kessho-core-acceptance-corpus.*',
-  'docs/reports/kessho-core-parity-readiness-latest.*',
   'docs/reports/kessho-product-*.json',
   'docs/reports/kessho-product-*.md',
 ];
@@ -71,11 +66,6 @@ for (const command of requiredCommands) {
   assert(workflow.includes(command), `Product Core workflow is missing command: ${command}`);
 }
 
-assert(
-  workflow.includes('KESSHO_BROWSER_CORPUS_SONIC_RETRIES: 5'),
-  'Product Core workflow must keep bounded browser corpus sonic retries for macOS runner jitter',
-);
-
 const runCommands = workflow
   .split('\n')
   .map((line) => line.trim())
@@ -91,18 +81,18 @@ assert(
 );
 
 for (const token of [
-  'startManagedBrowserServer',
-  "spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1'",
+  'startPreview',
+  "spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1'",
   '--strictPort',
   'Timed out waiting for',
-  'Vite output:',
-  'await managedBrowserServer?.stop();',
-  'emitGithubFailureAnnotations',
-  '::error file=docs/reports/kessho-core-parity-readiness-latest.md::',
-  'CORPUS_SONIC_RETRY_ATTEMPTS',
-  'sonic failure attempt',
+  'await vite.stop();',
+  'default-pad-note',
+  'default-lead-note',
+  'default-sample-and-synth',
+  "capture?.engine === 'core-product'",
+  'kessho-product-browser-runtime-latest.json',
 ]) {
-  assert(readiness.includes(token), `browser readiness runner is missing managed-server token: ${token}`);
+  assert(browserRuntime.includes(token), `Product browser runtime proof is missing token: ${token}`);
 }
 
 assert(

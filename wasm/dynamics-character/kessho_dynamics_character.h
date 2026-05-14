@@ -12,6 +12,7 @@ extern "C" {
 typedef struct KesshoDynamicsCharacterInstance KesshoDynamicsCharacterInstance;
 
 int dynamics_character_init(float sample_rate);
+int dynamics_character_reset(float sample_rate);
 void dynamics_character_destroy(void);
 
 float* dynamics_character_get_input_ptr(void);

@@ -12,9 +12,6 @@ on:
       - 'public/worklets/kessho_core.wasm'
       - 'public/samples/**'
       - 'scripts/check-kessho-product*'
-      - 'scripts/check-kessho-core-parity-readiness.mjs'
-      - 'scripts/check-web-core-sonic-parity.mjs'
-      - 'scripts/profile-kessho-core-acceptance-corpus.mjs'
       - 'scripts/build-kessho-core-wasm.mjs'
       - 'scripts/generate-kessho-product-bindings.mjs'
       - 'scripts/run-kessho-product-ci.mjs'
@@ -24,13 +21,10 @@ on:
       - 'KesshoNativeSwift/KesshoProductNativeReleaseSmoke/**'
       - 'KesshoNativeSwift/Generated/**'
       - 'docs/kessho-product-core-migration-status.md'
-      - 'docs/kessho-product-default-gate-v2.md'
       - 'docs/kessho-product-default-gate-v3.md'
       - 'docs/kessho-product-patch-bridge-policy.md'
       - 'docs/kessho-product-native-release-proof.md'
       - 'docs/kessho-product-asset-manifest-decode-matrix.md'
-      - 'docs/reports/kessho-core-acceptance-corpus.*'
-      - 'docs/reports/kessho-core-parity-readiness-latest.*'
       - 'docs/reports/kessho-product-*.json'
       - 'docs/reports/kessho-product-*.md'
       - 'package.json'
@@ -47,9 +41,6 @@ on:
       - 'public/worklets/kessho_core.wasm'
       - 'public/samples/**'
       - 'scripts/check-kessho-product*'
-      - 'scripts/check-kessho-core-parity-readiness.mjs'
-      - 'scripts/check-web-core-sonic-parity.mjs'
-      - 'scripts/profile-kessho-core-acceptance-corpus.mjs'
       - 'scripts/build-kessho-core-wasm.mjs'
       - 'scripts/generate-kessho-product-bindings.mjs'
       - 'scripts/run-kessho-product-ci.mjs'
@@ -59,13 +50,10 @@ on:
       - 'KesshoNativeSwift/KesshoProductNativeReleaseSmoke/**'
       - 'KesshoNativeSwift/Generated/**'
       - 'docs/kessho-product-core-migration-status.md'
-      - 'docs/kessho-product-default-gate-v2.md'
       - 'docs/kessho-product-default-gate-v3.md'
       - 'docs/kessho-product-patch-bridge-policy.md'
       - 'docs/kessho-product-native-release-proof.md'
       - 'docs/kessho-product-asset-manifest-decode-matrix.md'
-      - 'docs/reports/kessho-core-acceptance-corpus.*'
-      - 'docs/reports/kessho-core-parity-readiness-latest.*'
       - 'docs/reports/kessho-product-*.json'
       - 'docs/reports/kessho-product-*.md'
       - 'package.json'
@@ -75,8 +63,6 @@ on:
 jobs:
   product-core:
     runs-on: macos-14
-    env:
-      KESSHO_BROWSER_CORPUS_SONIC_RETRIES: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

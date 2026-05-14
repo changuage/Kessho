@@ -1,6 +1,6 @@
 # Kessho Product CPU And Heap Budget
 
-Generated: 2026-05-13T12:01:15.932Z
+Generated: 2026-05-14T11:51:38.223Z
 
 Run command: `node scripts/check-kessho-product-cpu-budget.mjs`
 
@@ -16,8 +16,8 @@ Render quantum: 2.666667 ms (128 frames at 48000 Hz)
 
 | Scenario | Status | Avg CPU % | Peak CPU % | p95 ms | p99 ms | Simulated Underruns |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| disabledFx | PASS | 2.598110 | 47.839100 | 0.094564 | 0.118253 | 0 |
-| activeFx | PASS | 6.740220 | 53.203100 | 0.217069 | 0.338799 | 0 |
+| disabledFx | PASS | 7.288600 | 13.087500 | 0.213000 | 0.235530 | 0 |
+| activeFx | PASS | 10.764500 | 24.300000 | 0.345400 | 0.489590 | 0 |
 
 ## Heap And Asset Memory
 

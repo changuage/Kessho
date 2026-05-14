@@ -34,8 +34,8 @@ const SOURCE_ORDER = [
   CORE_PRODUCT_SOURCE_IDS.soundscape,
 ] as const;
 
-const SNAPSHOT_BYTES = 12644;
-const SOURCE_BYTES = 1200;
+const SNAPSHOT_BYTES = 12692;
+const SOURCE_BYTES = 1204;
 const LANE_BYTES = 84;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES;
 
@@ -62,6 +62,7 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     delayASend: 0,
     delayBSend: 0,
     granularSend: 0,
+    diffuseSend: 0,
     postLpfHz: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
     stereoWidth: KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
     postLpfKeyTracking: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING,
@@ -182,6 +183,7 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
     f32(source.delayASend);
     f32(source.delayBSend);
     f32(source.granularSend);
+    f32(source.diffuseSend);
     f32(source.postLpfHz);
     f32(source.stereoWidth);
     f32(source.postLpfKeyTracking);
@@ -251,6 +253,8 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   u32(bool(snapshot.fx.granularFreezeWithFeedback));
   f32(snapshot.fx.granularFeedback);
   f32(snapshot.fx.granularFeedbackLpfHz);
+  f32(snapshot.fx.granularReverbLpfHz);
+  f32(snapshot.fx.granularOutputLpfHz);
   f32(snapshot.fx.granularBufferSeconds);
   u32(snapshot.fx.granularGrainShape >>> 0);
   f32(snapshot.fx.granularBusDiffusion);
@@ -359,6 +363,8 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.fx.spectralFreezeSpeed);
   f32(snapshot.fx.spectralFreezeDecay);
   f32(snapshot.fx.spectralFreezePhaseJitter);
+  u32(snapshot.fx.spectralFreezeRouting >>> 0);
+  f32(snapshot.fx.spectralFreezeReverbCrossfade);
   f32(snapshot.fx.dynamicsDrive);
   u32(bool(snapshot.fx.dynamicsEnabled));
   u32(bool(snapshot.fx.dynamicsCharacterEnabled));
@@ -468,7 +474,8 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.routing.delayAToGranular);
   f32(snapshot.routing.delayBToGranular);
   f32(snapshot.routing.delayBToReverb);
-  f32(0);
+  f32(snapshot.routing.granularToDelayA);
+  f32(snapshot.routing.granularToDelayB);
   f32(snapshot.master.gain);
   f32(snapshot.master.limiterCeilingDb);
   u32(snapshot.master.saturationMode);

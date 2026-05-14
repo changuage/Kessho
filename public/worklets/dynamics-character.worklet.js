@@ -110,6 +110,7 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
     this.telemetryPtr = 0;
     this.ready = false;
     this.pendingParams = null;
+    this.currentParams = null;
     this.perfEnabled = false;
     this.perfTotalTime = 0;
     this.perfPeakTime = 0;
@@ -170,6 +171,18 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
       else this.pendingParams = { ...(this.pendingParams || {}), ...(data.params || {}) };
       return;
     }
+    if (data.type === 'reset') {
+      if (this.wasm && this.ready && typeof this.wasm.dynamics_character_reset === 'function') {
+        this.wasm.dynamics_character_reset(sampleRate);
+        this.inputPtr = this.wasm.dynamics_character_get_input_ptr();
+        this.outputPtr = this.wasm.dynamics_character_get_output_ptr();
+        this.paramsPtr = this.wasm.dynamics_character_get_params_ptr();
+        this.telemetryPtr = this.wasm.dynamics_character_get_telemetry_ptr();
+        if (this.currentParams) this.applyParams(this.currentParams);
+        this.resetTelemetryAccum();
+      }
+      return;
+    }
     if (data.type === 'destroy') {
       if (this.wasm && this.ready) {
         try { this.wasm.dynamics_character_destroy(); } catch { /* noop */ }
@@ -199,6 +212,7 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
 
   applyParams(params) {
     if (!this.wasm || !this.ready) return;
+    this.currentParams = { ...params };
     const heap = this.getHeapF32();
     const offset = this.paramsPtr >> 2;
     for (let i = 0; i < PARAM_ORDER.length; i++) {

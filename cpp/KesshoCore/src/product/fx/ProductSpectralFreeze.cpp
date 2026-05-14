@@ -1,19 +1,36 @@
 #include "../KesshoProductEngineInternal.h"
 
-  void KesshoProductEngine::renderSpectralFreeze(float* out_l, float* out_r, uint32_t frames) {
-  if (spectral_freeze_module == nullptr || frames == 0u || !fx.spectral_freeze_enabled || fx.spectral_freeze_mix <= 0.0f) {
-    return;
+  bool KesshoProductEngine::processSpectralFreezeBranch(
+      float* input_l,
+      float* input_r,
+      float* output_l,
+      float* output_r,
+      uint32_t start,
+      uint32_t frames) {
+  if (
+      spectral_freeze_module == nullptr ||
+      input_l == nullptr ||
+      input_r == nullptr ||
+      output_l == nullptr ||
+      output_r == nullptr ||
+      frames == 0u ||
+      !fx.spectral_freeze_enabled ||
+      fx.spectral_freeze_mix <= 0.0f) {
+    return false;
   }
-  std::fill(module_l, module_l + frames, 0.0f);
-  std::fill(module_r, module_r + frames, 0.0f);
-  spectral_freeze_module->processPlanarStereo(out_l, out_r, module_l, module_r, static_cast<int>(frames));
+  for (uint32_t i = 0; i < frames; ++i) {
+    const uint32_t frame = start + i;
+    graph_spectral_freeze_input_l[frame] = input_l[i];
+    graph_spectral_freeze_input_r[frame] = input_r[i];
+  }
+  spectral_freeze_module->processPlanarStereo(input_l, input_r, output_l, output_r, static_cast<int>(frames));
   const float mix = clampFloat(fx.spectral_freeze_mix, 0.0f, 1.0f);
   for (uint32_t i = 0; i < frames; ++i) {
-    const float wet_l = module_l[i] * mix;
-    const float wet_r = module_r[i] * mix;
-    out_l[i] = out_l[i] * (1.0f - mix) + wet_l;
-    out_r[i] = out_r[i] * (1.0f - mix) + wet_r;
-    stem_l[KESSHO_PRODUCT_STEM_FX][i] += wet_l;
-    stem_r[KESSHO_PRODUCT_STEM_FX][i] += wet_r;
+    const uint32_t frame = start + i;
+    output_l[i] = input_l[i] * (1.0f - mix) + output_l[i] * mix;
+    output_r[i] = input_r[i] * (1.0f - mix) + output_r[i] * mix;
+    graph_spectral_freeze_output_l[frame] = output_l[i];
+    graph_spectral_freeze_output_r[frame] = output_r[i];
   }
+  return true;
 }

@@ -35,7 +35,7 @@
           preset_patch->exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
       if (exact_pad_patch) {
         pad_module->setSourcePresetPatch(static_cast<int>(pad_index), *preset_patch);
-        if (exactPadMacrosDifferFromDefaults(morph, distance, expression)) {
+        if (sourceMacrosDifferFromDefaults(morph, distance, expression)) {
           pad_module->setSourceMacros(static_cast<int>(pad_index), morph, distance, expression);
         }
       } else if (preset_patch != nullptr) {
@@ -64,7 +64,7 @@
       const bool exact_lead_patch =
           preset_patch != nullptr &&
           preset_patch->exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
-      if (!exact_lead_patch) {
+      if (!exact_lead_patch || sourceMacrosDifferFromDefaults(morph, distance, expression)) {
         lead_modules[lead_index]->setTriggerMacros(morph, distance, expression);
       }
       lead_modules[lead_index]->noteOn(frequency, clamped_velocity, std::max(0.001f, hold_seconds), 0);
@@ -120,15 +120,18 @@
   source.delay_a_send = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID, source.delay_a_send, resolved_seed);
   source.delay_b_send = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_BSEND_ID, source.delay_b_send, resolved_seed);
   source.granular_send = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID, source.granular_send, resolved_seed);
-  float morph = event_morph >= 0.0f ? event_morph : source.morph;
-  float distance = event_distance >= 0.0f ? event_distance : source.distance;
-  float expression = event_expression >= 0.0f ? event_expression : source.expression;
-  morph = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, morph, resolved_seed);
-  distance = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance, resolved_seed);
+  const bool drum_source = source_id == KESSHO_PRODUCT_SOURCE_DRUM;
+  float morph = event_morph >= 0.0f ? event_morph : (drum_source ? -1.0f : source.morph);
+  float distance = event_distance >= 0.0f ? event_distance : (drum_source ? -1.0f : source.distance);
+  float expression = event_expression >= 0.0f ? event_expression : (drum_source ? 1.0f : source.expression);
+  if (!drum_source) {
+    morph = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, morph, resolved_seed);
+    distance = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance, resolved_seed);
+  }
   expression = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression, resolved_seed);
 
   float drum_delay_send = -1.0f;
-  if (source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+  if (drum_source) {
     const uint32_t drum_voice = static_cast<uint32_t>(std::clamp(roundedInt(midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1));
     const uint32_t drum_target = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + drum_voice;
     morph = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, morph, resolved_seed);
@@ -140,7 +143,6 @@
 
   const bool pad_source = source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2;
   const bool lead_source = source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
-  const bool drum_source = source_id == KESSHO_PRODUCT_SOURCE_DRUM;
   kessho::core::KesshoSourcePresetPatch snapshot_patch{};
   const bool snapshot_exact_pad_patch =
       pad_source &&
@@ -244,7 +246,71 @@
     voice.looping = (assets[slot].flags & KESSHO_PRODUCT_ASSET_LOOP) != 0u;
     voice.remaining_frames = assets[slot].frame_count;
     voice.total_frames = std::max(1u, voice.remaining_frames);
+    if (source_id == KESSHO_PRODUCT_SOURCE_PIANO) {
+      const auto seconds_to_frames = [this](float seconds) -> uint32_t {
+        if (!std::isfinite(seconds) || seconds <= 0.0f || sample_rate <= 0.0) {
+          return 1u;
+        }
+        return std::max<uint32_t>(1u, static_cast<uint32_t>(std::ceil(static_cast<double>(seconds) * sample_rate)));
+      };
+      const float piano_distance = clampFloat(source.distance, 0.0f, 1.0f);
+      const float attack_base = (std::abs(piano_distance) <= 0.0001f || kPianoEnvelopeAttackSeconds > 0.005f)
+          ? kPianoEnvelopeAttackSeconds
+          : kPianoEnvelopeAttackSeconds + 0.1f;
+      const float attack_seconds = clampFloat(
+          distanceMultiply(attack_base, piano_distance, 1.35f, 4.5f),
+          0.001f,
+          2.0f);
+      const float decay_seconds = clampFloat(
+          distanceMultiply(kPianoEnvelopeDecaySeconds, piano_distance, 0.96f, 0.80f),
+          0.01f,
+          4.0f);
+      const float hold = clampFloat(hold_seconds, 0.0f, 4.0f);
+      const float hold_seconds_resolved = clampFloat(
+          distanceAdd(hold, piano_distance, -0.03f, -0.18f),
+          0.0f,
+          4.0f);
+      const float release_seconds = clampFloat(
+          distanceMultiply(kPianoEnvelopeReleaseSeconds, piano_distance, 1.12f, 1.80f),
+          0.01f,
+          8.0f);
+      voice.piano_sample_voice = true;
+      voice.pan = 0.0f;
+      voice.envelope_attack_frames = seconds_to_frames(attack_seconds);
+      voice.envelope_decay_frames = seconds_to_frames(decay_seconds);
+      voice.envelope_hold_frames = hold_seconds_resolved <= 0.0f
+          ? 0u
+          : static_cast<uint32_t>(std::ceil(static_cast<double>(hold_seconds_resolved) * sample_rate));
+      voice.envelope_release_frames = seconds_to_frames(release_seconds);
+      voice.envelope_sustain = clampFloat(
+          distanceAdd(kPianoEnvelopeSustain, piano_distance, -0.04f, -0.22f),
+          0.0f,
+          1.0f);
+      voice.amplitude = clampFloat(velocity, 0.0f, 1.0f);
+      const uint32_t envelope_tail_frames = seconds_to_frames(kPianoEnvelopePostReleaseTailSeconds);
+      const uint64_t envelope_stop_frames =
+          static_cast<uint64_t>(voice.envelope_attack_frames) +
+          static_cast<uint64_t>(voice.envelope_decay_frames) +
+          static_cast<uint64_t>(voice.envelope_hold_frames) +
+          static_cast<uint64_t>(voice.envelope_release_frames) +
+          static_cast<uint64_t>(envelope_tail_frames);
+      const double step = std::max(0.000001, voice.sample_step);
+      const uint32_t source_duration_frames = std::max<uint32_t>(
+          1u,
+          static_cast<uint32_t>(std::ceil(static_cast<double>(assets[slot].frame_count) / step)));
+      voice.remaining_frames = std::min<uint32_t>(
+          source_duration_frames,
+          static_cast<uint32_t>(std::min<uint64_t>(envelope_stop_frames, UINT32_MAX)));
+      voice.total_frames = std::max(1u, voice.remaining_frames);
+    }
     if (source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE && voice.looping) {
+      if (soundscapeParityFixtureEnabled(source)) {
+        voice.sample_position = 0.0;
+        voice.amplitude = source.level;
+        voice.pan = 0.0f;
+        voice.sample_step = base_step;
+        return;
+      }
       voice.sample_position = soundscapeRandomStartFrame(assets[slot], resolved_seed);
       voice.amplitude *= soundscapeLayerLevel(assets[slot], resolved_seed);
       voice.pan = soundscapeLayerPan(assets[slot], resolved_seed, distance);
@@ -266,6 +332,9 @@
   }
   if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_DRUM) && drum_module) {
     drum_module->allNotesOff();
+  }
+  if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) && soundscapes_module) {
+    soundscapes_module->allNotesOff();
   }
   for (Voice& voice : voices) {
     if (voice.active && (source_id == 0u || voice.source_id == source_id)) {

@@ -1,38 +1,84 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-13T10:20:35.657Z",
-  "status": "blocked",
-  "defaultPromotionReady": false,
+  "generatedAt": "2026-05-13T22:36:59.547Z",
+  "status": "pass",
+  "defaultPromotionReady": true,
+  "webDefaultRuntime": "core-product",
   "localCi": {
     "report": "docs/reports/kessho-product-ci-latest.json",
     "mode": "prerequisites-only",
-    "lastCommand": "core:product:default-gate-v3 (separate final gate after prerequisite report)",
-    "lastPrerequisiteCommand": "core:product:native-release-smoke",
-    "prerequisiteCount": 33
+    "prerequisiteCount": 36
   },
-  "githubCi": {
-    "workflow": ".github/workflows/product-core-ci.yml",
-    "lastCommand": "npm run core:product:default-gate-v3"
-  },
-  "browserReadiness": {
-    "report": "docs/reports/kessho-core-parity-readiness-latest.json",
-    "caseCount": 25,
-    "worstCaseRetries": 0,
-    "retryHistogram": {
-      "1": 25
-    },
-    "flakyCaseCount": 0,
-    "flakyCases": []
+  "browserRuntime": {
+    "report": "docs/reports/kessho-product-browser-runtime-latest.json",
+    "cases": [
+      {
+        "id": "default-pad-note",
+        "engine": "core-product",
+        "rms": 0.043494332297198735,
+        "peak": 0.08145071566104889,
+        "activeVoices": 1,
+        "activeAssets": 0,
+        "masterOutputPeak": 0.07567474246025085,
+        "masterOutputRms": 0.06119171157479286,
+        "workletPadStemPeak": 0.08016391843557358,
+        "workletLeadStemPeak": 0,
+        "workletMasterStemPeak": 0.07567474246025085,
+        "decodedAssetBytes": 0
+      },
+      {
+        "id": "default-lead-note",
+        "engine": "core-product",
+        "rms": 0.04972319662713881,
+        "peak": 0.13984975218772888,
+        "activeVoices": 1,
+        "activeAssets": 0,
+        "masterOutputPeak": 0.10257961601018906,
+        "masterOutputRms": 0.068538136780262,
+        "workletPadStemPeak": 0,
+        "workletLeadStemPeak": 0.1086648479104042,
+        "workletMasterStemPeak": 0.10257961601018906,
+        "decodedAssetBytes": 0
+      },
+      {
+        "id": "default-sample-and-synth",
+        "engine": "core-product",
+        "rms": 0.06049027208990366,
+        "peak": 0.4078916609287262,
+        "activeVoices": 2,
+        "activeAssets": 13,
+        "masterOutputPeak": 0.3907252848148346,
+        "masterOutputRms": 0.24396847188472748,
+        "workletPadStemPeak": 0.05209106579422951,
+        "workletLeadStemPeak": 0,
+        "workletMasterStemPeak": 0.3907252848148346,
+        "decodedAssetBytes": 7895296
+      },
+      {
+        "id": "string-waves-arrangement",
+        "engine": "core-product",
+        "rms": 0.0582247730926921,
+        "peak": 0.2025347799062729,
+        "activeVoices": 10,
+        "activeAssets": 1,
+        "masterOutputPeak": 0.1709129959344864,
+        "masterOutputRms": 0.09782946854829788,
+        "workletPadStemPeak": 0.16495101153850555,
+        "workletLeadStemPeak": 0.0019463000353425741,
+        "workletMasterStemPeak": 0.1709129959344864,
+        "decodedAssetBytes": 20934656
+      }
+    ]
   },
   "cpu": {
     "report": "docs/reports/kessho-product-cpu-budget-latest.json",
     "disabledFx": {
-      "averageCpuPercent": 2.3494,
-      "peakCpuPercent": 7.33125,
-      "p95Ms": 0.0875225,
-      "p95RenderMs": 0.0875225,
-      "p99Ms": 0.104182,
-      "p99RenderMs": 0.104182,
+      "averageCpuPercent": 3.4572,
+      "peakCpuPercent": 4.05,
+      "p95Ms": 0.099,
+      "p95RenderMs": 0.099,
+      "p99Ms": 0.103,
+      "p99RenderMs": 0.103,
       "missedQuantumCount": 0,
       "simulatedUnderrunCount": 0,
       "budget": {
@@ -45,12 +91,12 @@
       "failures": []
     },
     "activeFx": {
-      "averageCpuPercent": 6.10655,
-      "peakCpuPercent": 48.9344,
-      "p95Ms": 0.184148,
-      "p95RenderMs": 0.184148,
-      "p99Ms": 0.28005,
-      "p99RenderMs": 0.28005,
+      "averageCpuPercent": 6.19035,
+      "peakCpuPercent": 7.3125,
+      "p95Ms": 0.181,
+      "p95RenderMs": 0.181,
+      "p99Ms": 0.188,
+      "p99RenderMs": 0.188,
       "missedQuantumCount": 0,
       "simulatedUnderrunCount": 0,
       "budget": {
@@ -77,64 +123,8 @@
       "failures": []
     }
   },
-  "behavioralProofs": {
-    "runtimeFallback": "docs/reports/kessho-product-runtime-fallbacks-latest.json",
-    "runtimeFallbackDiagnostics": {
-      "dev-audio-critical-fallbacks-throw": {
-        "unsupportedControlCount": 4,
-        "unsupportedGetterCount": 0,
-        "lastUnsupportedMethod": "diceUnknownAudioCriticalLane",
-        "lastUnsupportedMethodClass": "forbidden-production-fallback",
-        "runtimeFallbackDiagnosticCount": 4,
-        "audioCriticalFallbackCount": 4
-      },
-      "production-diagnostics-log-once": {
-        "unsupportedControlCount": 3,
-        "unsupportedGetterCount": 0,
-        "lastUnsupportedMethod": "updateUnknownProductionState",
-        "lastUnsupportedMethodClass": "forbidden-production-fallback",
-        "runtimeFallbackDiagnosticCount": 3,
-        "audioCriticalFallbackCount": 3
-      },
-      "getter-fallback-behavior": {
-        "unsupportedControlCount": 2,
-        "unsupportedGetterCount": 2,
-        "lastUnsupportedMethod": "getMissingProductTelemetry",
-        "lastUnsupportedMethodClass": "temporary-missing-product-telemetry",
-        "runtimeFallbackDiagnosticCount": 2,
-        "audioCriticalFallbackCount": 0
-      },
-      "reference-only-web-ts-not-supported": {
-        "unsupportedControlCount": 1,
-        "unsupportedGetterCount": 0,
-        "lastUnsupportedMethod": "legacyWebTsOnlyBehavior",
-        "lastUnsupportedMethodClass": "reference-only-web-ts-behavior",
-        "runtimeFallbackDiagnosticCount": 1,
-        "audioCriticalFallbackCount": 0
-      }
-    },
-    "dirtyDiff": "docs/reports/kessho-product-dirty-diff-classification-latest.json",
-    "hostReconciliation": "docs/reports/kessho-product-host-reconciliation-latest.json"
-  },
-  "patchBridges": {
-    "report": "docs/reports/kessho-product-patch-bridges.json",
-    "sunsetEntryCount": 42,
-    "reconstructionProofCount": 1
-  },
   "native": {
-    "defaultDisposition": "native-default-deferred",
-    "evidence": "docs/kessho-product-native-release-proof.md",
+    "defaultDisposition": "native-default-deferred-web-default-not-blocked",
     "report": "docs/reports/kessho-product-native-release-proof-latest.json"
-  },
-  "assets": {
-    "report": "docs/reports/kessho-product-asset-manifest-latest.json",
-    "scenePolicyCount": 6
-  },
-  "blockers": [
-    "Patch bridge sunset status is accepted temporary debt or blocker: exact Pad/Lead/Drum bridges remain temporary compatibility debt until Product Core reconstructs all shipped preset families from preset IDs plus bounded overrides",
-    "Scene/full-arrangement parity passes: broader scene/full-arrangement promotion review remains incomplete",
-    "Deterministic music closure passes: random lead/piano phrase generation and complete journey graph ownership remain incomplete",
-    "Native release proof passes or native default is explicitly deferred with sign-off: native-default-deferred",
-    "Scene-level nature policy and release asset behavior are mapped: live native release-bundle/decode and runtime eviction behavior remain native release blockers"
-  ]
+  }
 }

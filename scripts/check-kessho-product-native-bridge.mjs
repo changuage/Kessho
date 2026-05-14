@@ -83,8 +83,8 @@ for (const token of [
 
 for (const token of [
   'KesshoProductCoreSnapshotEncoder',
-  'public static let byteCount = 12644',
-  'public static let sourceByteCount = 1200',
+  'public static let byteCount = 12692',
+  'public static let sourceByteCount = 1204',
   'KesshoProductSchema.version',
   'KesshoProductSchema.hash',
   'KesshoProductSchema.drumParamCount',
@@ -313,6 +313,39 @@ bool hasSignal(const std::vector<float>& left, const std::vector<float>& right) 
   return peak > 0.0001f;
 }
 
+const kessho::product::generated::KesshoProductGeneratedSourcePreset* findGeneratedSourcePreset(uint32_t preset_id) {
+  for (const auto& preset : kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESETS) {
+    if (preset.id == preset_id) {
+      return &preset;
+    }
+  }
+  return nullptr;
+}
+
+void applyGeneratedSourcePreset(KesshoProductSnapshotV2& snapshot, uint32_t source_id, uint32_t preset_id) {
+  if (source_id < 1u || source_id > 7u) {
+    return;
+  }
+  KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
+  source.preset_id = preset_id;
+  const auto* preset = findGeneratedSourcePreset(preset_id);
+  if (preset == nullptr) {
+    return;
+  }
+  if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
+    source.exact_pad_param_count = preset->exact_pad_param_count;
+    for (uint32_t index = 0; index < source.exact_pad_param_count; ++index) {
+      source.exact_pad_params[index] = preset->exact_pad_params[index];
+    }
+  }
+  if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
+    source.exact_lead_param_count = preset->exact_lead_param_count;
+    for (uint32_t index = 0; index < source.exact_lead_param_count; ++index) {
+      source.exact_lead_params[index] = preset->exact_lead_params[index];
+    }
+  }
+}
+
 KesshoProductSnapshotV2 makeSnapshot() {
   KesshoProductSnapshotV2 snapshot{};
   snapshot.version = KESSHO_PRODUCT_SNAPSHOT_VERSION;
@@ -332,8 +365,34 @@ KesshoProductSnapshotV2 makeSnapshot() {
     snapshot.sources[i].expression = 0.8f;
     snapshot.sources[i].dry_gain = 1.0f;
   }
-  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].preset_id =
-      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL;
+  applyGeneratedSourcePreset(
+      snapshot,
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL);
+  applyGeneratedSourcePreset(
+      snapshot,
+      KESSHO_PRODUCT_SOURCE_PAD2,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT);
+  applyGeneratedSourcePreset(
+      snapshot,
+      KESSHO_PRODUCT_SOURCE_LEAD1,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES);
+  applyGeneratedSourcePreset(
+      snapshot,
+      KESSHO_PRODUCT_SOURCE_LEAD2,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN);
+  applyGeneratedSourcePreset(
+      snapshot,
+      KESSHO_PRODUCT_SOURCE_DRUM,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT);
+  applyGeneratedSourcePreset(
+      snapshot,
+      KESSHO_PRODUCT_SOURCE_PIANO,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PIANO_DEFAULT);
+  applyGeneratedSourcePreset(
+      snapshot,
+      KESSHO_PRODUCT_SOURCE_SOUNDSCAPE,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_OCEAN_SAMPLE);
   snapshot.synth_euclid.lane_count = 1;
   snapshot.synth_euclid.lanes[0].enabled = 1;
   snapshot.synth_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;

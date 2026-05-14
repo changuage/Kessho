@@ -9,6 +9,7 @@
 #include "KesshoProductParamIds.h"
 #include "KesshoProductSchema.h"
 #include "../src/product/KesshoProductEngineInternal.h"
+#include "ProductSnapshotTestHelpers.h"
 
 namespace {
 
@@ -129,6 +130,8 @@ KesshoProductSnapshotV2 makeSnapshot() {
   snapshot.fx.spectral_freeze_speed = 0.3f;
   snapshot.fx.spectral_freeze_decay = 1.0f;
   snapshot.fx.spectral_freeze_phase_jitter = 0.0f;
+  snapshot.fx.spectral_freeze_routing = 0u;
+  snapshot.fx.spectral_freeze_reverb_crossfade = 1.0f;
   snapshot.fx.dynamics_character_bias = 0.5f;
   snapshot.fx.dynamics_character_lpg_amount = 0.5f;
   snapshot.fx.dynamics_character_resonance = 0.2f;
@@ -180,6 +183,7 @@ KesshoProductSnapshotV2 makeSnapshot() {
   }
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].preset_id =
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_PLUCK_BELL;
+  kessho::product::tests::applyGeneratedSourceDefaults(snapshot);
   return snapshot;
 }
 
@@ -291,8 +295,13 @@ float renderPadKickPeak(const KesshoProductSnapshotV2& snapshot) {
   triggerPad(engine, 0.5f);
   std::vector<float> left(128);
   std::vector<float> right(128);
-  kessho_product_render(engine, left.data(), right.data(), 128);
-  const float result = peak(left, right);
+  float result = 0.0f;
+  for (uint32_t block = 0; block < 8u; ++block) {
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    if (block > 0u) {
+      result = std::max(result, peak(left, right));
+    }
+  }
   kessho_product_destroy(engine);
   return result;
 }
@@ -447,6 +456,12 @@ void applySpectralFreezeParamToSnapshot(KesshoProductSnapshotV2& snapshot, uint3
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_PHASE_JITTER_ID:
       snapshot.fx.spectral_freeze_phase_jitter = value;
       break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ROUTING_ID:
+      snapshot.fx.spectral_freeze_routing = value >= 0.5f ? 1u : 0u;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_REVERB_CROSSFADE_ID:
+      snapshot.fx.spectral_freeze_reverb_crossfade = value;
+      break;
     default:
       require(false, "unsupported spectral freeze snapshot param test");
   }
@@ -546,11 +561,14 @@ void configureGranularTestSnapshot(KesshoProductSnapshotV2& snapshot) {
 }
 
 void configureSpectralFreezeTestSnapshot(KesshoProductSnapshotV2& snapshot) {
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].reverb_send = 1.0f;
   snapshot.fx.spectral_freeze_enabled = 1;
   snapshot.fx.spectral_freeze_active = 1;
   snapshot.fx.spectral_freeze_mix = 1.0f;
   snapshot.fx.spectral_freeze_decay = 1.0f;
-  snapshot.fx.reverb_mix = 0.0f;
+  snapshot.fx.spectral_freeze_routing = 0u;
+  snapshot.fx.spectral_freeze_reverb_crossfade = 1.0f;
+  snapshot.fx.reverb_mix = 0.5f;
 }
 
 void configureDynamicsTestSnapshot(KesshoProductSnapshotV2& snapshot) {
@@ -1164,10 +1182,12 @@ int main() {
   spectral_snapshot.fx.spectral_freeze_mix = 1.0f;
   spectral_snapshot.fx.spectral_freeze_enabled = 1;
   spectral_snapshot.fx.spectral_freeze_active = 1;
-  spectral_snapshot.fx.reverb_mix = 0.0f;
+  spectral_snapshot.fx.spectral_freeze_reverb_crossfade = 1.0f;
+  spectral_snapshot.fx.reverb_mix = 0.5f;
+  spectral_snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].reverb_send = 1.0f;
   require(kessho_product_load_snapshot_v2(spectral_engine, &spectral_snapshot, sizeof(spectral_snapshot)) == KESSHO_PRODUCT_OK, "spectral snapshot load failed");
   triggerPad(spectral_engine, 0.4f);
-  require(renderFxPeak(spectral_engine, 8) > 0.00001f, "spectral freeze did not reach FX stem");
+  require(renderFxPeak(spectral_engine, 80) > 0.00001f, "spectral freeze did not reach FX stem");
   kessho_product_destroy(spectral_engine);
 
   KesshoProductEngine* dynamics_engine = kessho_product_create(48000.0, 128, 0);

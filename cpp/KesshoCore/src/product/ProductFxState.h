@@ -41,6 +41,8 @@ struct FxState {
   bool granular_freeze_with_feedback = false;
   float granular_feedback = 0.1f;
   float granular_feedback_lpf_hz = 8000.0f;
+  float granular_reverb_lpf_hz = 4000.0f;
+  float granular_output_lpf_hz = 12000.0f;
   float granular_buffer_seconds = 16.0f;
   uint32_t granular_grain_shape = 0;
   float granular_bus_diffusion = 0.0f;
@@ -122,6 +124,8 @@ struct FxState {
   float spectral_freeze_speed = 0.3f;
   float spectral_freeze_decay = 1.0f;
   float spectral_freeze_phase_jitter = 0.0f;
+  uint32_t spectral_freeze_routing = 0;
+  float spectral_freeze_reverb_crossfade = 0.5f;
   float dynamics_drive = 0.0f;
   bool dynamics_enabled = false;
   bool dynamics_character_enabled = false;
@@ -204,6 +208,7 @@ struct SidechainEnvelope {
   uint32_t hold_remaining = 0u;
   uint32_t release_elapsed = 0u;
   uint32_t release_frames = 0u;
+  float release_coeff = 0.0f;
 };
 
 struct RoutingState {
@@ -214,6 +219,8 @@ struct RoutingState {
   float delay_a_to_granular = 0.0f;
   float delay_b_to_granular = 0.0f;
   float delay_b_to_reverb = 0.4f;
+  float granular_to_delay_a = 0.0f;
+  float granular_to_delay_b = 0.0f;
 };
 
 } // namespace kessho::product::internal

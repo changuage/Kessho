@@ -225,6 +225,47 @@ public:
     }
   }
 
+  int outputTapCount() const override {
+    return 2;
+  }
+
+  void processPlanarStereoTaps(
+      const float* input_l,
+      const float* input_r,
+      float* const* output_l,
+      float* const* output_r,
+      uint32_t output_bus_count,
+      int frames) override {
+    (void)input_l;
+    (void)input_r;
+    if (
+        instance_ == nullptr ||
+        output_l == nullptr ||
+        output_r == nullptr ||
+        output_bus_count == 0 ||
+        frames <= 0) {
+      return;
+    }
+    for (uint32_t bus = 0; bus < output_bus_count; ++bus) {
+      if (output_l[bus] == nullptr || output_r[bus] == nullptr) {
+        return;
+      }
+      std::fill(output_l[bus], output_l[bus] + frames, 0.0f);
+      std::fill(output_r[bus], output_r[bus] + frames, 0.0f);
+    }
+
+    int rendered = 0;
+    while (rendered < frames) {
+      const int block = std::min(kDrumBlockSize, std::min(max_block_size_, frames - rendered));
+      drum_instance_process_block(instance_, block);
+      copyInterleavedOutput(drum_instance_get_output_ptr(instance_), output_l[0] + rendered, output_r[0] + rendered, block);
+      if (output_bus_count > 1) {
+        copyInterleavedOutput(drum_instance_get_reverb_send_ptr(instance_), output_l[1] + rendered, output_r[1] + rendered, block);
+      }
+      rendered += block;
+    }
+  }
+
   int paramCount() const override {
     return kParamCount;
   }
@@ -397,8 +438,8 @@ public:
     if (instance_ == nullptr) {
       return 0;
     }
-    params_[kParamTrigger + 0] = std::isfinite(morph) ? std::clamp(morph, 0.0f, 1.0f) : -1.0f;
-    params_[kParamTrigger + 1] = std::isfinite(distance) ? std::clamp(distance, 0.0f, 1.0f) : -1.0f;
+    params_[kParamTrigger + 0] = std::isfinite(morph) && morph >= 0.0f ? std::clamp(morph, 0.0f, 1.0f) : -1.0f;
+    params_[kParamTrigger + 1] = std::isfinite(distance) && distance >= 0.0f ? std::clamp(distance, 0.0f, 1.0f) : -1.0f;
     commitParams();
     return 1;
   }
@@ -444,6 +485,18 @@ private:
     return outputSelect() == 1 ? drum_instance_get_reverb_send_ptr(instance_) : drum_instance_get_output_ptr(instance_);
   }
 
+  void copyInterleavedOutput(const float* source, float* output_l, float* output_r, int frames) {
+    if (source == nullptr) {
+      std::fill(output_l, output_l + frames, 0.0f);
+      std::fill(output_r, output_r + frames, 0.0f);
+      return;
+    }
+    for (int i = 0; i < frames; ++i) {
+      output_l[i] = source[i * 2];
+      output_r[i] = source[i * 2 + 1];
+    }
+  }
+
   void copySelectedOutput(float* output_interleaved, int frames) {
     const float* source = selectedInterleavedOutput();
     if (source == nullptr) {
@@ -454,16 +507,7 @@ private:
   }
 
   void copySelectedOutput(float* output_l, float* output_r, int frames) {
-    const float* source = selectedInterleavedOutput();
-    if (source == nullptr) {
-      std::fill(output_l, output_l + frames, 0.0f);
-      std::fill(output_r, output_r + frames, 0.0f);
-      return;
-    }
-    for (int i = 0; i < frames; ++i) {
-      output_l[i] = source[i * 2];
-      output_r[i] = source[i * 2 + 1];
-    }
+    copyInterleavedOutput(selectedInterleavedOutput(), output_l, output_r, frames);
   }
 
   KesshoDrumInstance* instance_ = nullptr;

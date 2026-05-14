@@ -36,6 +36,7 @@ typedef struct KesshoProductSourceSnapshot {
   float delay_a_send;
   float delay_b_send;
   float granular_send;
+  float diffuse_send;
   float post_lpf_hz;
   float stereo_width;
   float post_lpf_key_tracking;
@@ -122,6 +123,8 @@ typedef struct KesshoProductFxSnapshot {
   uint32_t granular_freeze_with_feedback;
   float granular_feedback;
   float granular_feedback_lpf_hz;
+  float granular_reverb_lpf_hz;
+  float granular_output_lpf_hz;
   float granular_buffer_seconds;
   uint32_t granular_grain_shape;
   float granular_bus_diffusion;
@@ -203,6 +206,8 @@ typedef struct KesshoProductFxSnapshot {
   float spectral_freeze_speed;
   float spectral_freeze_decay;
   float spectral_freeze_phase_jitter;
+  uint32_t spectral_freeze_routing;
+  float spectral_freeze_reverb_crossfade;
   float dynamics_drive;
   uint32_t dynamics_enabled;
   uint32_t dynamics_character_enabled;
@@ -315,7 +320,8 @@ typedef struct KesshoProductRoutingSnapshot {
   float delay_a_to_granular;
   float delay_b_to_granular;
   float delay_b_to_reverb;
-  float reserved0;
+  float granular_to_delay_a;
+  float granular_to_delay_b;
 } KesshoProductRoutingSnapshot;
 
 typedef struct KesshoProductMasterSnapshot {
@@ -351,5 +357,5 @@ typedef struct KesshoProductSnapshotV2 {
   KesshoProductRngSnapshot rng;
   KesshoProductEvolutionSnapshot evolution;
   uint32_t asset_refs[32];
-  uint32_t reserved[32];
+  float asset_ref_levels[32];
 } KesshoProductSnapshotV2;

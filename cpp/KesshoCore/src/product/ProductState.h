@@ -9,6 +9,7 @@
 #include "ProductTransportState.h"
 #include "ProductVoiceState.h"
 
+#include <array>
 #include <memory>
 
 #include "../modules/KesshoModule.h"
@@ -52,11 +53,159 @@ struct KesshoProductEngine {
   float delay_a_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float delay_b_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float delay_b_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float delay_a_cross_carry_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float delay_a_cross_carry_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float granular_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float granular_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float diffuse_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float diffuse_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_reverb_input_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_reverb_input_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_a_input_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_a_input_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_b_input_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_b_input_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_granular_input_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_granular_input_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_diffuse_input_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_diffuse_input_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_diffuse_output_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_diffuse_output_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_diffuse_reverb_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_diffuse_reverb_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_soundscape_layer_dry_l[kSoundscapeLayerCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_soundscape_layer_dry_r[kSoundscapeLayerCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_soundscape_layer_reverb_send_l[kSoundscapeLayerCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_soundscape_layer_reverb_send_r[kSoundscapeLayerCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_soundscape_layer_delay_a_send_l[kSoundscapeLayerCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_soundscape_layer_delay_a_send_r[kSoundscapeLayerCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_soundscape_layer_delay_b_send_l[kSoundscapeLayerCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_soundscape_layer_delay_b_send_r[kSoundscapeLayerCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_soundscape_layer_granular_send_l[kSoundscapeLayerCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_soundscape_layer_granular_send_r[kSoundscapeLayerCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_a_output_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_a_output_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_a_reverb_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_a_reverb_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_a_to_delay_b_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_a_to_delay_b_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_a_to_granular_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_a_to_granular_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_b_output_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_b_output_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_b_reverb_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_b_reverb_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_b_to_delay_a_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_b_to_delay_a_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_b_to_granular_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_delay_b_to_granular_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_granular_output_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_granular_output_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_granular_reverb_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_granular_reverb_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_granular_to_delay_a_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_granular_to_delay_a_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_granular_to_delay_b_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_granular_to_delay_b_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_reverb_preconditioner_output_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_reverb_preconditioner_output_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_spectral_freeze_input_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_spectral_freeze_input_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_spectral_freeze_output_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_spectral_freeze_output_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_reverb_output_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_reverb_output_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_dynamics_input_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_dynamics_input_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_dynamics_output_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_dynamics_output_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_master_pre_limiter_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_master_pre_limiter_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sidechain_pad1_input_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sidechain_pad1_input_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sidechain_pad1_output_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_sidechain_pad1_output_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_drum_dry_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_drum_dry_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_drum_reverb_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_drum_reverb_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_drum_delay_a_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_drum_delay_a_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_drum_delay_b_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_drum_delay_b_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_drum_granular_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_drum_granular_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad1_dry_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad1_dry_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad1_reverb_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad1_reverb_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad1_delay_a_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad1_delay_a_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad1_delay_b_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad1_delay_b_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad1_granular_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad1_granular_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad1_diffuse_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad1_diffuse_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad2_dry_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad2_dry_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad2_reverb_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad2_reverb_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad2_delay_a_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad2_delay_a_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad2_delay_b_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad2_delay_b_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad2_granular_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad2_granular_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad2_diffuse_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_pad2_diffuse_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead1_dry_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead1_dry_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead1_reverb_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead1_reverb_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead1_delay_a_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead1_delay_a_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead1_delay_b_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead1_delay_b_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead1_granular_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead1_granular_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead1_diffuse_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead1_diffuse_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead2_dry_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead2_dry_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead2_reverb_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead2_reverb_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead2_delay_a_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead2_delay_a_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead2_delay_b_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead2_delay_b_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead2_granular_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead2_granular_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead2_diffuse_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_lead2_diffuse_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_piano_dry_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_piano_dry_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_piano_reverb_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_piano_reverb_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_piano_delay_a_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_piano_delay_a_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_piano_delay_b_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_piano_delay_b_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_piano_granular_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_piano_granular_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_piano_diffuse_send_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float graph_piano_diffuse_send_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float sidechain_gains[kSidechainTargetCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   SidechainEnvelope sidechain_envelopes[kSidechainTargetCount]{};
   float reverb_pre_comp_gain = 1.0f;
+  ProductBiquadLowpassState granular_output_lpf{};
+  ProductBiquadLowpassState granular_reverb_lpf{};
+  float granular_reverb_comp_gain = 1.0f;
+  ProductBiquadFilterState diffuse_highpass{};
+  ProductBiquadFilterState diffuse_lowpass{};
+  float diffuse_delay_l[kDiffuseDelayMaxFrames]{};
+  float diffuse_delay_r[kDiffuseDelayMaxFrames]{};
+  uint32_t diffuse_delay_index = 0u;
   uint32_t last_stem_frames = 0;
   float master_gain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_GAIN;
   float master_limiter_ceiling_db = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_LIMITER_CEILING_DB;
@@ -91,6 +240,9 @@ struct KesshoProductEngine {
   std::unique_ptr<kessho::core::IKesshoModule> granular_module{};
   std::unique_ptr<kessho::core::IKesshoModule> spectral_freeze_module{};
   std::unique_ptr<kessho::core::IKesshoModule> dynamics_character_module{};
+  std::unique_ptr<kessho::core::IKesshoModule> soundscapes_module{};
+  std::array<float, kSoundscapeModuleParamCount> soundscapes_module_param_cache{};
+  bool soundscapes_module_params_configured = false;
   uint32_t pad_voice_cursors[2]{};
   uint32_t pad_voice_release_frames[PAD_NUM_PADS][PAD_NUM_VOICES]{};
   PadPostChainState pad_post_chains[PAD_NUM_PADS]{};
@@ -124,6 +276,10 @@ struct KesshoProductEngine {
 
   void reset();
 
+  void resetSonicParityFxRuntime();
+
+  void resetDiffuseRuntime();
+
   int32_t loadSnapshot(const KesshoProductSnapshotV2& snapshot);
 
   void loadLaneSnapshots(
@@ -132,6 +288,8 @@ struct KesshoProductEngine {
       uint32_t fallback_source);
 
   int32_t enqueueEvent(const KesshoProductEvent& event);
+
+  int32_t validateEvent(const KesshoProductEvent& event) const;
 
   void sortControlEvents();
 
@@ -231,7 +389,7 @@ struct KesshoProductEngine {
 
   kessho::core::KesshoSourcePresetPatch drumVoiceMorphPatch(const SourceState& source) const;
 
-  bool exactPadMacrosDifferFromDefaults(float morph, float distance, float expression) const;
+  bool sourceMacrosDifferFromDefaults(float morph, float distance, float expression) const;
 
   float modulationRangeSample(const ModulationRange& range, float fallback, uint32_t sample_seed) const;
 
@@ -282,7 +440,7 @@ struct KesshoProductEngine {
       const LaneState* lanes,
       uint32_t lane_count,
       uint32_t frames,
-      SequencerBuffer& out) const;
+      SequencerBuffer& out);
 
   void generateSequencerEvents(uint32_t frames);
 
@@ -297,6 +455,12 @@ struct KesshoProductEngine {
   bool hasActiveSourceVoice(uint32_t source_id) const;
 
   bool soundscapeWantsAsset(const SourceState& source, uint32_t asset_id) const;
+
+  float soundscapeAssetRefLevel(const SourceState& source, uint32_t asset_id) const;
+
+  bool soundscapeModuleParamsAvailable(const SourceState& source) const;
+
+  bool soundscapeAssetUsesModule(const SourceState& source, uint32_t asset_id) const;
 
   bool hasActiveSoundscapeVoice(uint32_t asset_id) const;
 
@@ -366,6 +530,10 @@ struct KesshoProductEngine {
 
   void processVoicePostChain(Voice& voice, float& left, float& right);
 
+  void updateProductBiquadCoefficients(ProductBiquadFilterState& filter, float cutoff_hz, uint32_t type);
+
+  float processProductBiquadSample(const ProductBiquadFilterState& filter, BiquadState& state, float input) const;
+
   void mixPadSourceBuffer(
       uint32_t source_id,
       const float* dry_l,
@@ -376,6 +544,17 @@ struct KesshoProductEngine {
       float* out_r,
       uint32_t start,
       uint32_t frames);
+
+  void recordSourceGraphTaps(
+      uint32_t source_id,
+      uint32_t frame,
+      const SourceState& source,
+      float dry_left,
+      float dry_right,
+      float ducked_left,
+      float ducked_right,
+      float send_left,
+      float send_right);
 
   void triggerSequencerEvent(const KesshoSequencerEvent& event);
 
@@ -392,6 +571,12 @@ struct KesshoProductEngine {
   float soundscapeLayerPan(const AssetSlot& asset, uint32_t sample_seed, float distance) const;
 
   float soundscapeLayerPlaybackRate(const AssetSlot& asset, uint32_t sample_seed) const;
+
+  uint32_t soundscapeLayerIndexForAsset(uint32_t asset_id) const;
+
+  bool soundscapeParityFixtureEnabled(const SourceState& source) const;
+
+  float soundscapeLayerRouteSend(const SourceState& source, uint32_t layer, uint32_t route, float fallback) const;
 
   float sampleVoiceEnvelope(const Voice& voice) const;
 
@@ -417,6 +602,12 @@ struct KesshoProductEngine {
       float* out_r,
       uint32_t start,
       uint32_t frames);
+
+  void renderDrumModule(float* out_l, float* out_r, uint32_t start, uint32_t frames);
+
+  void configureSoundscapesModuleFromSource();
+
+  void renderSoundscapesModule(float* out_l, float* out_r, uint32_t start, uint32_t frames);
 
   void renderProductModules(float* out_l, float* out_r, uint32_t start, uint32_t frames);
 
@@ -453,11 +644,13 @@ struct KesshoProductEngine {
 
   void renderFx(float* out_l, float* out_r, uint32_t start, uint32_t frames);
 
+  void renderDiffuseBus(float* out_l, float* out_r, uint32_t frames);
+
   void renderSampleVoices(float* out_l, float* out_r, uint32_t start, uint32_t frames);
 
   void renderSegment(float* out_l, float* out_r, uint32_t start, uint32_t frames);
 
-  void renderSpectralFreeze(float* out_l, float* out_r, uint32_t frames);
+  bool processSpectralFreezeBranch(float* input_l, float* input_r, float* output_l, float* output_r, uint32_t start, uint32_t frames);
 
   void renderDynamics(float* out_l, float* out_r, uint32_t frames);
 

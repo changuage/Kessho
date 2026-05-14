@@ -14,6 +14,7 @@ struct SourceState {
   uint32_t preset_id = 0;
   uint32_t asset_id = 0;
   uint32_t asset_refs[kMaxSoundscapeAssetRefs]{};
+  float asset_ref_levels[kMaxSoundscapeAssetRefs]{};
   uint32_t asset_ref_count = 0;
   uint32_t last_missing_asset_id = 0;
   float level = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_LEVEL;
@@ -25,6 +26,7 @@ struct SourceState {
   float delay_a_send = 0.0f;
   float delay_b_send = 0.0f;
   float granular_send = 0.0f;
+  float diffuse_send = 0.0f;
   float post_lpf_hz = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ;
   float stereo_width = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH;
   float post_lpf_key_tracking = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING;
@@ -46,6 +48,34 @@ struct BiquadState {
   float x2 = 0.0f;
   float y1 = 0.0f;
   float y2 = 0.0f;
+};
+
+struct ProductBiquadLowpassState {
+  float coeff_cutoff = -1.0f;
+  float b0 = 1.0f;
+  float b1 = 0.0f;
+  float b2 = 0.0f;
+  float a1 = 0.0f;
+  float a2 = 0.0f;
+  BiquadState left{};
+  BiquadState right{};
+};
+
+enum ProductBiquadFilterType : uint32_t {
+  kProductBiquadLowpass = 0u,
+  kProductBiquadHighpass = 1u,
+};
+
+struct ProductBiquadFilterState {
+  float coeff_cutoff = -1.0f;
+  uint32_t coeff_type = kProductBiquadLowpass;
+  float b0 = 1.0f;
+  float b1 = 0.0f;
+  float b2 = 0.0f;
+  float a1 = 0.0f;
+  float a2 = 0.0f;
+  BiquadState left{};
+  BiquadState right{};
 };
 
 struct PadPostChainState {
@@ -99,6 +129,7 @@ struct Voice {
   uint32_t source_id = 0;
   uint32_t asset_slot = 0;
   bool sample_voice = false;
+  bool piano_sample_voice = false;
   bool drum_voice = false;
   bool looping = false;
   double phase = 0.0;
@@ -110,6 +141,11 @@ struct Voice {
   uint32_t age_frames = 0;
   uint32_t remaining_frames = 0;
   uint32_t total_frames = 1;
+  uint32_t envelope_attack_frames = 1;
+  uint32_t envelope_decay_frames = 1;
+  uint32_t envelope_hold_frames = 0;
+  uint32_t envelope_release_frames = 1;
+  float envelope_sustain = 1.0f;
   float post_coeff_cutoff = -1.0f;
   float post_b0 = 1.0f;
   float post_b1 = 0.0f;
@@ -118,6 +154,8 @@ struct Voice {
   float post_a2 = 0.0f;
   BiquadState post_left{};
   BiquadState post_right{};
+  BiquadState post_stage2_left{};
+  BiquadState post_stage2_right{};
 };
 
 } // namespace kessho::product::internal

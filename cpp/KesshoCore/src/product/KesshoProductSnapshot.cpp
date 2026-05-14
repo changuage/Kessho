@@ -9,6 +9,50 @@
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_SCHEMA_HASH_MISMATCH;
     return KESSHO_PRODUCT_ERROR_SCHEMA_HASH_MISMATCH;
   }
+  for (uint32_t i = 0; i < kSourceCount; ++i) {
+    const KesshoProductSourceSnapshot& source = snapshot.sources[i];
+    if (source.source_id != i + 1u || source.preset_id == 0u) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+      return KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+    }
+    if (
+        (source.source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source.source_id == KESSHO_PRODUCT_SOURCE_PAD2) &&
+        source.exact_pad_param_count != kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
+      return KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
+    }
+    if (
+        (source.source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source.source_id == KESSHO_PRODUCT_SOURCE_LEAD2) &&
+        source.exact_lead_param_count != kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
+      return KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
+    }
+  }
+  const auto validate_lanes = [](const KesshoProductSequencerSnapshot& sequencer_snapshot) -> int32_t {
+    if (sequencer_snapshot.lane_count > kMaxLaneCount) {
+      return KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE;
+    }
+    for (uint32_t i = 0; i < sequencer_snapshot.lane_count; ++i) {
+      const KesshoProductSequencerLaneSnapshot& lane = sequencer_snapshot.lanes[i];
+      if (lane.target_source_id < 1u || lane.target_source_id > kSourceCount) {
+        return KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+      }
+      if (lane.enabled != 0u && (lane.step_count == 0u || lane.fill_count == 0u)) {
+        return KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE;
+      }
+    }
+    return KESSHO_PRODUCT_OK;
+  };
+  const int32_t synth_lane_validation = validate_lanes(snapshot.synth_euclid);
+  if (synth_lane_validation != KESSHO_PRODUCT_OK) {
+    telemetry.last_error_code = synth_lane_validation;
+    return synth_lane_validation;
+  }
+  const int32_t drum_lane_validation = validate_lanes(snapshot.drum_euclid);
+  if (drum_lane_validation != KESSHO_PRODUCT_OK) {
+    telemetry.last_error_code = drum_lane_validation;
+    return drum_lane_validation;
+  }
 
   transport.running = snapshot.transport.running != 0u;
   transport.bpm = clampFloat(snapshot.transport.bpm, 1.0f, 400.0f);
@@ -32,12 +76,14 @@
   journey_running = snapshot.journey.enabled != 0u;
   journey_phase = clampFloat(snapshot.journey.morph_phase, 0.0f, 1.0f);
   journey_rate_bars = clampFloat(snapshot.journey.morph_rate_bars, 0.25f, 128.0f);
-  fx.granular_mix = clampFloat(snapshot.fx.granular_mix, 0.0f, 1.0f);
+  fx.granular_mix = clampFloat(snapshot.fx.granular_mix, 0.0f, 4.0f);
   fx.granular_enabled = snapshot.fx.granular_enabled != 0u;
   fx.granular_freeze = snapshot.fx.granular_freeze != 0u;
   fx.granular_freeze_with_feedback = snapshot.fx.granular_freeze_with_feedback != 0u;
   fx.granular_feedback = clampFloat(snapshot.fx.granular_feedback, 0.0f, 0.85f);
   fx.granular_feedback_lpf_hz = clampFloat(snapshot.fx.granular_feedback_lpf_hz, 200.0f, 12000.0f);
+  fx.granular_reverb_lpf_hz = clampFloat(snapshot.fx.granular_reverb_lpf_hz, 200.0f, 12000.0f);
+  fx.granular_output_lpf_hz = clampFloat(snapshot.fx.granular_output_lpf_hz, 200.0f, 12000.0f);
   fx.granular_buffer_seconds = clampFloat(snapshot.fx.granular_buffer_seconds, 1.0f, 32.0f);
   fx.granular_grain_shape = clampU32(snapshot.fx.granular_grain_shape, 0u, 3u);
   fx.granular_bus_diffusion = clampFloat(snapshot.fx.granular_bus_diffusion, 0.0f, 1.0f);
@@ -147,6 +193,8 @@
   fx.spectral_freeze_speed = clampFloat(snapshot.fx.spectral_freeze_speed, 0.0f, 1.0f);
   fx.spectral_freeze_decay = clampFloat(snapshot.fx.spectral_freeze_decay, 0.0f, 1.0f);
   fx.spectral_freeze_phase_jitter = clampFloat(snapshot.fx.spectral_freeze_phase_jitter, 0.0f, 1.0f);
+  fx.spectral_freeze_routing = clampU32(snapshot.fx.spectral_freeze_routing, 0u, 1u);
+  fx.spectral_freeze_reverb_crossfade = clampFloat(snapshot.fx.spectral_freeze_reverb_crossfade, 0.0f, 1.0f);
   fx.dynamics_drive = clampFloat(snapshot.fx.dynamics_drive, 0.0f, 1.0f);
   fx.dynamics_enabled = snapshot.fx.dynamics_enabled != 0u;
   fx.dynamics_character_enabled = snapshot.fx.dynamics_character_enabled != 0u;
@@ -253,17 +301,19 @@
   routing.delay_a_to_delay_b = clampFloat(snapshot.routing.delay_a_to_delay_b, 0.0f, 1.0f);
   routing.delay_b_to_delay_a = clampFloat(snapshot.routing.delay_b_to_delay_a, 0.0f, 1.0f);
   routing.delay_to_reverb = clampFloat(snapshot.routing.delay_to_reverb, 0.0f, 1.0f);
-  routing.granular_to_reverb = clampFloat(snapshot.routing.granular_to_reverb, 0.0f, 1.0f);
+  routing.granular_to_reverb = clampFloat(snapshot.routing.granular_to_reverb, 0.0f, 4.0f);
   routing.delay_a_to_granular = clampFloat(snapshot.routing.delay_a_to_granular, 0.0f, 1.0f);
   routing.delay_b_to_granular = clampFloat(snapshot.routing.delay_b_to_granular, 0.0f, 1.0f);
   routing.delay_b_to_reverb = clampFloat(snapshot.routing.delay_b_to_reverb, 0.0f, 1.0f);
+  routing.granular_to_delay_a = clampFloat(snapshot.routing.granular_to_delay_a, 0.0f, 1.0f);
+  routing.granular_to_delay_b = clampFloat(snapshot.routing.granular_to_delay_b, 0.0f, 1.0f);
   configureFxModules();
 
   for (uint32_t i = 0; i < kSourceCount; ++i) {
     const KesshoProductSourceSnapshot& source = snapshot.sources[i];
     sources[i].enabled = source.enabled != 0u;
-    sources[i].source_id = source.source_id == 0u ? i + 1u : source.source_id;
-    sources[i].preset_id = source.preset_id == 0u ? defaultSourcePresetId(sources[i].source_id) : source.preset_id;
+    sources[i].source_id = source.source_id;
+    sources[i].preset_id = source.preset_id;
     sources[i].asset_id = source.asset_id;
     if (sources[i].last_missing_asset_id != source.asset_id) {
       sources[i].last_missing_asset_id = 0u;
@@ -277,6 +327,7 @@
     sources[i].delay_a_send = clampFloat(source.delay_a_send, 0.0f, 2.0f);
     sources[i].delay_b_send = clampFloat(source.delay_b_send, 0.0f, 2.0f);
     sources[i].granular_send = clampFloat(source.granular_send, 0.0f, 2.0f);
+    sources[i].diffuse_send = clampFloat(source.diffuse_send, 0.0f, 2.0f);
     sources[i].post_lpf_hz = source.post_lpf_hz > 0.0f && std::isfinite(source.post_lpf_hz)
         ? clampFloat(source.post_lpf_hz, 20.0f, 20000.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ;
@@ -325,23 +376,35 @@
   SourceState& soundscape_source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
   soundscape_source.asset_ref_count = 0;
   std::fill(soundscape_source.asset_refs, soundscape_source.asset_refs + kMaxSoundscapeAssetRefs, 0u);
+  std::fill(soundscape_source.asset_ref_levels, soundscape_source.asset_ref_levels + kMaxSoundscapeAssetRefs, 0.0f);
   for (uint32_t ref_index = 0; ref_index < 32u && soundscape_source.asset_ref_count < kMaxSoundscapeAssetRefs; ++ref_index) {
     const uint32_t asset_id = snapshot.asset_refs[ref_index];
     if (asset_id == 0u) {
       continue;
     }
+    const float asset_level = std::isfinite(snapshot.asset_ref_levels[ref_index])
+        ? clampFloat(snapshot.asset_ref_levels[ref_index], 0.0f, 2.0f)
+        : 1.0f;
     bool already_present = false;
     for (uint32_t i = 0; i < soundscape_source.asset_ref_count; ++i) {
-      already_present = already_present || soundscape_source.asset_refs[i] == asset_id;
+      if (soundscape_source.asset_refs[i] == asset_id) {
+        soundscape_source.asset_ref_levels[i] = std::max(soundscape_source.asset_ref_levels[i], asset_level);
+        already_present = true;
+      }
     }
     if (!already_present) {
-      soundscape_source.asset_refs[soundscape_source.asset_ref_count++] = asset_id;
+      const uint32_t write_index = soundscape_source.asset_ref_count++;
+      soundscape_source.asset_refs[write_index] = asset_id;
+      soundscape_source.asset_ref_levels[write_index] = asset_level;
     }
   }
   if (soundscape_source.asset_ref_count == 0u && soundscape_source.asset_id != 0u) {
-    soundscape_source.asset_refs[soundscape_source.asset_ref_count++] = soundscape_source.asset_id;
+    soundscape_source.asset_refs[soundscape_source.asset_ref_count] = soundscape_source.asset_id;
+    soundscape_source.asset_ref_levels[soundscape_source.asset_ref_count] = 1.0f;
+    ++soundscape_source.asset_ref_count;
   }
   soundscape_source.last_missing_asset_id = 0u;
+  configureSoundscapesModuleFromSource();
 
   synth_lane_count = std::min<uint32_t>(snapshot.synth_euclid.lane_count, kMaxLaneCount);
   drum_lane_count = std::min<uint32_t>(snapshot.drum_euclid.lane_count, kMaxLaneCount);
@@ -360,7 +423,8 @@
   for (uint32_t i = 0; i < count; ++i) {
     const KesshoProductSequencerLaneSnapshot& lane = snapshot.lanes[i];
     lanes[i].enabled = lane.enabled != 0u;
-    lanes[i].target_source_id = lane.target_source_id == 0u ? fallback_source : lane.target_source_id;
+    (void) fallback_source;
+    lanes[i].target_source_id = lane.target_source_id;
     lanes[i].step_count = clampU32(lane.step_count, 1u, 64u);
     lanes[i].fill_count = clampU32(lane.fill_count, 0u, lanes[i].step_count);
     lanes[i].rotation = lane.rotation;

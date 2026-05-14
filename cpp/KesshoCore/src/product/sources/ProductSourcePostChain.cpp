@@ -227,8 +227,12 @@
   const uint32_t source_id = voice.source_id;
   updateVoicePostChainCoefficients(voice, resolveSourcePostLpfHz(source_id));
   const float width = resolveSourceStereoWidth(source_id);
-  const float filtered_left = processVoicePostLpfSample(voice, voice.post_left, left);
-  const float filtered_right = processVoicePostLpfSample(voice, voice.post_right, right);
+  float filtered_left = processVoicePostLpfSample(voice, voice.post_left, left);
+  float filtered_right = processVoicePostLpfSample(voice, voice.post_right, right);
+  if (source_id == KESSHO_PRODUCT_SOURCE_PIANO) {
+    filtered_left = processVoicePostLpfSample(voice, voice.post_stage2_left, filtered_left);
+    filtered_right = processVoicePostLpfSample(voice, voice.post_stage2_right, filtered_right);
+  }
   const float direct = 0.5f * (1.0f + width);
   const float cross = 0.5f * (1.0f - width);
   left = filtered_left * direct + filtered_right * cross;

@@ -13,7 +13,7 @@ const fallbackDiagnostics = readProjectFile('src/audio/CoreProductFallbackDiagno
 const appRuntime = readProjectFile('src/audio/runtime.ts');
 const app = readProjectFile('src/App.tsx');
 const doc = readProjectFile('docs/kessho-product-runtime-fallback-classification.md');
-const placeholderDoc = readProjectFile('docs/kessho-product-placeholder-getter-classification.md');
+const getterPolicyDoc = readProjectFile('docs/kessho-product-getter-policies.md');
 const uiCallsiteFiles = [
   'src/App.tsx',
   'src/ui/CpuOverlay.tsx',
@@ -65,6 +65,20 @@ function assertThrowsMissingMethod(harness, method) {
     return message;
   }
   throw new Error(`${method} did not throw in development`);
+}
+
+function assertThrowsUnimplemented(harness, method) {
+  try {
+    harness.coreProductEngineHost[method](0.5);
+  } catch (error) {
+    const message = error && typeof error === 'object' && 'message' in error ? String(error.message) : String(error);
+    assert(
+      message === `AudioEngine.${method} is not implemented by core-product`,
+      `${method} threw the wrong strict proxy error`,
+    );
+    return message;
+  }
+  throw new Error(`${method} did not throw`);
 }
 
 function fallbackDiagnosticDetails(hostInstance) {
@@ -128,6 +142,7 @@ await runCheckWithReport({
       'const classification = classifyCoreProductRuntimeFallback(property);',
       'host.reportRuntimeFallback(property, classification);',
       "if (property.startsWith('get'))",
+      'throw new Error(`AudioEngine.${property} is not implemented by core-product`)',
     ]) {
       assert(proxyBody.includes(token), `core-product proxy fallback is missing ${token}`);
     }
@@ -161,8 +176,8 @@ await runCheckWithReport({
       '## temporary-missing-product-telemetry',
       '## reference-only-web-ts-behavior',
       '## forbidden-production-fallback',
-      'In development, these throw',
-      'In production, they increment fallback diagnostics and log once',
+      'All missing `core-product` proxy methods throw',
+      'Diagnostics still increment and production logging remains once per missing method',
       '`unsupportedGetterCount`',
       '`lastUnsupportedMethod`',
       '`lastUnsupportedMethodClass`',
@@ -175,6 +190,7 @@ await runCheckWithReport({
     }
 
     assert(!appRuntime.includes('missingNoopMethods'), 'runtime must not keep missing-method no-op fallbacks');
+    assert(!appRuntime.includes('methodCache'), 'runtime proxy must not cache generated method wrappers');
     addEvidence(report, {
       id: 'static-runtime-fallback-contract',
       summary: 'Static fallback contract, App callsite coverage, and documentation checks passed.',
@@ -182,6 +198,26 @@ await runCheckWithReport({
         auditedUiFiles: uiCallsiteFiles,
         appFacingMethodCount: usedAudioEngineMethods().size,
         missingRequiredMethods,
+      },
+    });
+
+    const startupRangeHarness = loadCoreProductHostHarness({ dev: true });
+    startupRangeHarness.host.setDualRanges({ productStartupRange: { min: 0.2, max: 0.8 } });
+    startupRangeHarness.host.setRuntimeWalkRanges({ productStartupWalk: { min: 0.1, max: 0.9 } });
+    assert(startupRangeHarness.runtime.events.length === 0, 'startup range setters must not post before runtime initialization');
+    await startupRangeHarness.host.start({ productStartupRange: 0.5, productStartupWalk: 0.4 });
+    const startupRangeEvents = startupRangeHarness.runtime.events.filter((entry) => entry.type === 'modulation-range');
+    assert(startupRangeEvents.length === 2, 'startup range setters must flush once the Product Core runtime is initialized');
+    assert(
+      startupRangeEvents.every((entry) => entry.range && entry.valueContext && entry.valueContext.bpm === 120),
+      'startup range flush must include explicit range/value context after snapshot load',
+    );
+    addEvidence(report, {
+      id: 'startup-ranges-flush-after-runtime-ready',
+      summary: 'Dual and runtime-walk ranges update host state before startup and flush only after Product Core is initialized.',
+      details: {
+        eventTypes: startupRangeHarness.runtime.events.map((entry) => entry.type),
+        startupRangeEvents,
       },
     });
 
@@ -243,13 +279,15 @@ await runCheckWithReport({
     });
 
     const prodHarness = loadCoreProductHostHarness({ dev: false });
-    prodHarness.coreProductEngineHost.setUnknownProductionParam(1);
-    prodHarness.coreProductEngineHost.setUnknownProductionParam(2);
-    prodHarness.coreProductEngineHost.updateUnknownProductionState(3);
+    const prodThrownMessages = [
+      assertThrowsUnimplemented(prodHarness, 'setUnknownProductionParam'),
+      assertThrowsUnimplemented(prodHarness, 'setUnknownProductionParam'),
+      assertThrowsUnimplemented(prodHarness, 'updateUnknownProductionState'),
+    ];
     const setLogs = prodHarness.consoleErrors.filter((line) => line.includes('AudioEngine.setUnknownProductionParam'));
     const updateLogs = prodHarness.consoleErrors.filter((line) => line.includes('AudioEngine.updateUnknownProductionState'));
-    assert(setLogs.length === 1, 'production fallback must log once per missing method');
-    assert(updateLogs.length === 1, 'production fallback must log first use of each missing method');
+    assert(setLogs.length === 1, 'production missing method diagnostics must log once per method');
+    assert(updateLogs.length === 1, 'production missing method diagnostics must log first use of each method');
     assert(prodHarness.host.unsupportedControlCount === 3, 'production fallback must increment unsupportedControlCount for every use');
     assert(prodHarness.host.unsupportedGetterCount === 0, 'production setter/update fallbacks must not increment getter count');
     assert(prodHarness.host.runtimeFallbackDiagnosticCount === 3, 'production fallback must increment runtimeFallbackDiagnosticCount for every use');
@@ -257,17 +295,20 @@ await runCheckWithReport({
     assert(prodHarness.host.lastUnsupportedMethod === 'updateUnknownProductionState', 'production fallback must record lastUnsupportedMethod');
     assert(prodHarness.host.lastUnsupportedMethodClass === 'forbidden-production-fallback', 'production fallback must record lastUnsupportedMethodClass');
     addEvidence(report, {
-      id: 'production-diagnostics-log-once',
-      summary: 'Production unknown methods increment every use but log only once per missing method.',
+      id: 'production-diagnostics-throw-log-once',
+      summary: 'Production unknown methods throw, increment every use, and log only once per missing method.',
       details: {
+        thrownMessages: prodThrownMessages,
         ...fallbackDiagnosticDetails(prodHarness.host),
         consoleErrors: prodHarness.consoleErrors,
       },
     });
 
     const getterHarness = loadCoreProductHostHarness({ dev: true });
-    assert(getterHarness.coreProductEngineHost.getOptionalVisualSurface() === null, 'unknown safe visual getter must return null');
-    assert(getterHarness.coreProductEngineHost.getMissingProductTelemetry() === null, 'unknown missing telemetry getter must return null');
+    const getterThrownMessages = [
+      assertThrowsUnimplemented(getterHarness, 'getOptionalVisualSurface'),
+      assertThrowsUnimplemented(getterHarness, 'getMissingProductTelemetry'),
+    ];
     assert(getterHarness.host.unsupportedControlCount === 2, 'getter fallbacks must be surfaced in unsupportedControlCount');
     assert(getterHarness.host.unsupportedGetterCount === 2, 'getter fallbacks must increment unsupportedGetterCount');
     assert(getterHarness.host.runtimeFallbackDiagnosticCount === 2, 'getter fallbacks must increment runtimeFallbackDiagnosticCount');
@@ -281,32 +322,33 @@ await runCheckWithReport({
     );
     addEvidence(report, {
       id: 'getter-fallback-behavior',
-      summary: 'Safe visual and missing telemetry getters return null while surfacing classified diagnostics.',
+      summary: 'Safe visual and missing telemetry getters throw while surfacing classified diagnostics.',
       details: {
+        thrownMessages: getterThrownMessages,
         ...fallbackDiagnosticDetails(getterHarness.host),
         consoleErrors: getterHarness.consoleErrors,
       },
     });
 
-    const placeholderClassifications = diagnostics.CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS;
-    const surfacedTelemetryBlockers = Object.entries(placeholderClassifications)
+    const getterPolicies = diagnostics.CORE_PRODUCT_GETTER_POLICIES;
+    const surfacedTelemetryBlockers = Object.entries(getterPolicies)
       .filter(([, entry]) => /telemetry|debug|exposes/i.test(entry.blocker))
       .map(([getter, entry]) => ({ getter, classification: entry.classification, blocker: entry.blocker }));
     assert(surfacedTelemetryBlockers.length >= 8, 'missing telemetry/debug getters must be surfaced with tracked blockers');
     for (const { getter, classification } of surfacedTelemetryBlockers) {
-      assert(placeholderDoc.includes(`\`${getter}\``), `${getter} is missing from placeholder getter docs`);
-      assert(placeholderDoc.includes(`\`${classification}\``), `${getter} classification ${classification} is missing from placeholder getter docs`);
+      assert(getterPolicyDoc.includes(`\`${getter}\``), `${getter} is missing from Product Core getter policy docs`);
+      assert(getterPolicyDoc.includes(`\`${classification}\``), `${getter} classification ${classification} is missing from Product Core getter policy docs`);
     }
     addEvidence(report, {
       id: 'documented-telemetry-getter-blockers',
-      summary: 'Placeholder getter classifications surface missing telemetry/debug APIs with documented blockers.',
+      summary: 'Product Core getter policies surface missing telemetry/debug APIs with documented blockers.',
       details: {
         surfacedTelemetryBlockers,
       },
     });
 
     const referenceHarness = loadCoreProductHostHarness({ dev: true });
-    referenceHarness.coreProductEngineHost.legacyWebTsOnlyBehavior();
+    const referenceThrownMessage = assertThrowsUnimplemented(referenceHarness, 'legacyWebTsOnlyBehavior');
     assert(referenceHarness.host.unsupportedControlCount === 1, 'reference-only missing methods must not be treated as supported');
     assert(referenceHarness.host.unsupportedGetterCount === 0, 'reference-only non-getter fallback must not increment unsupportedGetterCount');
     assert(referenceHarness.host.runtimeFallbackDiagnosticCount === 1, 'reference-only fallback must increment runtimeFallbackDiagnosticCount');
@@ -324,6 +366,7 @@ await runCheckWithReport({
       summary: 'Reference-only web-ts behavior remains a reported fallback, not a supported Product Core host method.',
       details: {
         method: 'legacyWebTsOnlyBehavior',
+        thrownMessage: referenceThrownMessage,
         ...fallbackDiagnosticDetails(referenceHarness.host),
         consoleErrors: referenceHarness.consoleErrors,
       },

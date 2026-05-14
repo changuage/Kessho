@@ -135,6 +135,7 @@
       "delayASend": 0,
       "delayBSend": 0,
       "granularSend": 0,
+      "diffuseSend": 0,
       "postLpfHz": 18000,
       "stereoWidth": 1,
       "postLpfKeyTracking": 0,
@@ -174,7 +175,9 @@
       "granularToReverb": 0.15,
       "delayAToGranular": 0,
       "delayBToGranular": 0,
-      "delayBToReverb": 0.4
+      "delayBToReverb": 0.4,
+      "granularToDelayA": 0,
+      "granularToDelayB": 0
     },
     "fx": {
       "granularMix": 0,
@@ -183,6 +186,8 @@
       "granularFreezeWithFeedback": false,
       "granularFeedback": 0.1,
       "granularFeedbackLpfHz": 8000,
+      "granularReverbLpfHz": 4000,
+      "granularOutputLpfHz": 12000,
       "granularBufferSeconds": 16,
       "granularGrainShape": 0,
       "granularBusDiffusion": 0,
@@ -373,6 +378,8 @@
       "spectralFreezeSpeed": 0.3,
       "spectralFreezeDecay": 1,
       "spectralFreezePhaseJitter": 0,
+      "spectralFreezeRouting": 0,
+      "spectralFreezeReverbCrossfade": 1,
       "dynamicsDrive": 0,
       "dynamicsEnabled": false,
       "dynamicsCharacterEnabled": false,

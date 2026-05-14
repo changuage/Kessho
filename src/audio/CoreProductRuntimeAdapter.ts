@@ -19,8 +19,10 @@ export type SnapshotReloadReason =
   | 'manual-piano-asset'
   | 'explicit-reset-request'
   | 'asset-reference-change'
+  | 'asset-reference-level-change'
   | 'harmony-mode-change'
   | 'source-structure-change'
+  | 'source-hold-change'
   | 'exact-patch-change'
   | 'sequencer-structure-change'
   | 'dirty-diff-event-budget'
@@ -76,6 +78,7 @@ class CoreProductRuntimeAdapter {
 
   private classifySnapshotReloadReason(previous: CoreProductSnapshot, next: CoreProductSnapshot): SnapshotReloadReason {
     if (this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return 'asset-reference-change';
+    if (this.assetRefLevelsChanged(previous.assetRefLevels, next.assetRefLevels)) return 'asset-reference-level-change';
     if (previous.harmony.chordMode !== next.harmony.chordMode) return 'harmony-mode-change';
     if (previous.harmony.voicingMode !== next.harmony.voicingMode) return 'harmony-mode-change';
     if (previous.sources.length !== next.sources.length) return 'source-structure-change';
@@ -85,8 +88,10 @@ class CoreProductRuntimeAdapter {
       if (!previousSource || !nextSource) return 'source-structure-change';
       if (previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change';
       if (previousSource.assetId !== nextSource.assetId) return 'source-structure-change';
+      if (this.valuesDiffer(previousSource.holdSeconds, nextSource.holdSeconds)) return 'source-hold-change';
       if (this.padPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
       if (this.leadPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
+      if (this.drumPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
     }
     if (!this.canApplyLaneDiffs(previous.synthLanes, next.synthLanes)) return 'sequencer-structure-change';
     if (!this.canApplyLaneDiffs(previous.drumLanes, next.drumLanes)) return 'sequencer-structure-change';
@@ -95,6 +100,7 @@ class CoreProductRuntimeAdapter {
 
   private canApplySnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean {
     if (this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return false;
+    if (this.assetRefLevelsChanged(previous.assetRefLevels, next.assetRefLevels)) return false;
     if (previous.harmony.chordMode !== next.harmony.chordMode) return false;
     if (previous.harmony.voicingMode !== next.harmony.voicingMode) return false;
     if (previous.sources.length !== next.sources.length) return false;
@@ -104,8 +110,10 @@ class CoreProductRuntimeAdapter {
       if (!previousSource || !nextSource) return false;
       if (previousSource.sourceId !== nextSource.sourceId) return false;
       if (previousSource.assetId !== nextSource.assetId) return false;
+      if (this.valuesDiffer(previousSource.holdSeconds, nextSource.holdSeconds)) return false;
       if (this.padPatchChanged(previousSource, nextSource)) return false;
       if (this.leadPatchChanged(previousSource, nextSource)) return false;
+      if (this.drumPatchChanged(previousSource, nextSource)) return false;
     }
     return this.canApplyLaneDiffs(previous.synthLanes, next.synthLanes) &&
       this.canApplyLaneDiffs(previous.drumLanes, next.drumLanes);
@@ -115,7 +123,10 @@ class CoreProductRuntimeAdapter {
     if (previous.exactPadParamCount !== next.exactPadParamCount) return true;
     const count = Math.max(previous.exactPadParamCount, next.exactPadParamCount);
     for (let index = 0; index < count; index += 1) {
-      if (this.valuesDiffer(previous.exactPadParams[index] ?? 0, next.exactPadParams[index] ?? 0)) {
+      if (this.valuesDiffer(
+        this.requiredExactPatchParam(previous.exactPadParams, index, 'pad', previous.sourceId),
+        this.requiredExactPatchParam(next.exactPadParams, index, 'pad', next.sourceId),
+      )) {
         return true;
       }
     }
@@ -126,11 +137,41 @@ class CoreProductRuntimeAdapter {
     if (previous.exactLeadParamCount !== next.exactLeadParamCount) return true;
     const count = Math.max(previous.exactLeadParamCount, next.exactLeadParamCount);
     for (let index = 0; index < count; index += 1) {
-      if (this.valuesDiffer(previous.exactLeadParams[index] ?? 0, next.exactLeadParams[index] ?? 0)) {
+      if (this.valuesDiffer(
+        this.requiredExactPatchParam(previous.exactLeadParams, index, 'lead', previous.sourceId),
+        this.requiredExactPatchParam(next.exactLeadParams, index, 'lead', next.sourceId),
+      )) {
         return true;
       }
     }
     return false;
+  }
+
+  private drumPatchChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
+    if (previous.exactDrumParamCount !== next.exactDrumParamCount) return true;
+    const count = Math.max(previous.exactDrumParamCount, next.exactDrumParamCount);
+    for (let index = 0; index < count; index += 1) {
+      if (this.valuesDiffer(
+        this.requiredExactPatchParam(previous.exactDrumParams, index, 'drum', previous.sourceId),
+        this.requiredExactPatchParam(next.exactDrumParams, index, 'drum', next.sourceId),
+      )) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private requiredExactPatchParam(
+    params: readonly number[],
+    index: number,
+    patchKind: 'pad' | 'lead' | 'drum',
+    sourceId: number,
+  ): number {
+    const value = params[index];
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new Error(`Core Product ${patchKind} patch for source ${sourceId} is missing required param ${index}`);
+    }
+    return value;
   }
 
   private canApplyLaneDiffs(previous: ProductLaneSnapshot[], next: ProductLaneSnapshot[]): boolean {
@@ -213,6 +254,7 @@ class CoreProductRuntimeAdapter {
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend, previous.delayASend, next.delayASend, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend, previous.delayBSend, next.delayBSend, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend, previous.granularSend, next.granularSend, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, previous.diffuseSend, next.diffuseSend, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, previous.postLpfHz, next.postLpfHz, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, previous.stereoWidth, next.stereoWidth, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, previous.postLpfKeyTracking, next.postLpfKeyTracking, targetId);
@@ -300,6 +342,8 @@ class CoreProductRuntimeAdapter {
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularFreezeWithFeedback, previous.fx.granularFreezeWithFeedback, next.fx.granularFreezeWithFeedback);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularFeedback, previous.fx.granularFeedback, next.fx.granularFeedback);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularFeedbackLpfHz, previous.fx.granularFeedbackLpfHz, next.fx.granularFeedbackLpfHz);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularReverbLpfHz, previous.fx.granularReverbLpfHz, next.fx.granularReverbLpfHz);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularOutputLpfHz, previous.fx.granularOutputLpfHz, next.fx.granularOutputLpfHz);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularBufferSeconds, previous.fx.granularBufferSeconds, next.fx.granularBufferSeconds);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularGrainShape, previous.fx.granularGrainShape, next.fx.granularGrainShape);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularBusDiffusion, previous.fx.granularBusDiffusion, next.fx.granularBusDiffusion);
@@ -381,6 +425,8 @@ class CoreProductRuntimeAdapter {
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeSpeed, previous.fx.spectralFreezeSpeed, next.fx.spectralFreezeSpeed);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeDecay, previous.fx.spectralFreezeDecay, next.fx.spectralFreezeDecay);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezePhaseJitter, previous.fx.spectralFreezePhaseJitter, next.fx.spectralFreezePhaseJitter);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeRouting, previous.fx.spectralFreezeRouting, next.fx.spectralFreezeRouting);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeReverbCrossfade, previous.fx.spectralFreezeReverbCrossfade, next.fx.spectralFreezeReverbCrossfade);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDrive, previous.fx.dynamicsDrive, next.fx.dynamicsDrive);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEnabled, previous.fx.dynamicsEnabled, next.fx.dynamicsEnabled);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterEnabled, previous.fx.dynamicsCharacterEnabled, next.fx.dynamicsCharacterEnabled);
@@ -490,6 +536,8 @@ class CoreProductRuntimeAdapter {
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingDelayAToGranular, previous.routing.delayAToGranular, next.routing.delayAToGranular);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToGranular, previous.routing.delayBToGranular, next.routing.delayBToGranular);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToReverb, previous.routing.delayBToReverb, next.routing.delayBToReverb);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToDelayA, previous.routing.granularToDelayA, next.routing.granularToDelayA);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToDelayB, previous.routing.granularToDelayB, next.routing.granularToDelayB);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.MasterGain, previous.master.gain, next.master.gain);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.MasterLimiterCeilingDb, previous.master.limiterCeilingDb, next.master.limiterCeilingDb);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.MasterSaturationMode, previous.master.saturationMode, next.master.saturationMode);
@@ -545,6 +593,14 @@ class CoreProductRuntimeAdapter {
     if (previous.length !== next.length) return true;
     for (let index = 0; index < next.length; index += 1) {
       if (previous[index] !== next[index]) return true;
+    }
+    return false;
+  }
+
+  private assetRefLevelsChanged(previous: number[], next: number[]): boolean {
+    if (previous.length !== next.length) return true;
+    for (let index = 0; index < next.length; index += 1) {
+      if (this.valuesDiffer(previous[index] ?? 0, next[index] ?? 0)) return true;
     }
     return false;
   }

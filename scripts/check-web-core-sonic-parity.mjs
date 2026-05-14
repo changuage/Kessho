@@ -12,6 +12,7 @@ const DEFAULT_MAX_LAG_MS = 200;
 const DEFAULT_MIN_LAG_CORRELATION = 0.98;
 const DEFAULT_MANUAL_TRIGGER_DELAY_MS = 0;
 const DEFAULT_CAPTURE_ATTEMPTS = 3;
+const MOBILE_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1';
 const DEFAULT_TRANSIENT_TIME_TOLERANCE_MS = 8;
 const DEFAULT_TRANSIENT_PEAK_RATIO_TOLERANCE = 0.35;
 const DEFAULT_TRANSIENT_RMS_RATIO_TOLERANCE = 0.35;
@@ -22,7 +23,8 @@ const DEFAULT_ENVELOPE_PEAK_RATIO_TOLERANCE = 0.35;
 const EXIT_SONIC_FAILURE = 1;
 const EXIT_SETUP_FAILURE = 2;
 const MANUAL_NOTE_SOURCES = new Set(['pad1', 'pad2', 'lead1', 'lead2', 'piano']);
-const CORE_ENGINE_NAMES = new Set(['core-wasm', 'core-bridge', 'core-product']);
+const MANUAL_DRUM_VOICES = new Set(['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane']);
+const CORE_ENGINE_NAMES = new Set(['core-product', 'core-smoke']);
 
 class SonicParityRunError extends Error {
   constructor(kind, message) {
@@ -45,10 +47,13 @@ function parseArgs(argv) {
     minLagCorrelation: DEFAULT_MIN_LAG_CORRELATION,
     noFail: false,
     statePatch: {},
+    stateEvents: [],
     trackId: 'mix',
     manualNotes: [],
+    manualDrumTriggers: [],
     manualTriggerDelayMs: DEFAULT_MANUAL_TRIGGER_DELAY_MS,
     manualWarmup: false,
+    alignmentGate: false,
     selfCheck: false,
     printTransients: false,
     transientGate: false,
@@ -60,7 +65,9 @@ function parseArgs(argv) {
     envelopeTimeToleranceMs: DEFAULT_ENVELOPE_TIME_TOLERANCE_MS,
     envelopeRmsRatioTolerance: DEFAULT_ENVELOPE_RMS_RATIO_TOLERANCE,
     envelopePeakRatioTolerance: DEFAULT_ENVELOPE_PEAK_RATIO_TOLERANCE,
-    coreEngine: 'core-wasm',
+    coreEngine: 'core-product',
+    printDebug: false,
+    mobileDevice: false,
   };
 
   for (const arg of argv) {
@@ -74,11 +81,14 @@ function parseArgs(argv) {
     else if (arg.startsWith('--max-lag-ms=')) args.maxLagMs = Number(arg.slice('--max-lag-ms='.length));
     else if (arg.startsWith('--min-lag-correlation=')) args.minLagCorrelation = Number(arg.slice('--min-lag-correlation='.length));
     else if (arg.startsWith('--state-patch=')) args.statePatch = JSON.parse(arg.slice('--state-patch='.length));
+    else if (arg.startsWith('--state-event=')) args.stateEvents.push(...parseStateEventArg(arg.slice('--state-event='.length)));
     else if (arg.startsWith('--track=')) args.trackId = arg.slice('--track='.length).trim() || 'mix';
     else if (arg.startsWith('--manual-note=')) args.manualNotes.push(...parseManualNoteArg(arg.slice('--manual-note='.length)));
+    else if (arg.startsWith('--manual-drum=')) args.manualDrumTriggers.push(...parseManualDrumArg(arg.slice('--manual-drum='.length)));
     else if (arg.startsWith('--manual-trigger-delay-ms=')) args.manualTriggerDelayMs = Number(arg.slice('--manual-trigger-delay-ms='.length));
     else if (arg === '--manual-warmup') args.manualWarmup = true;
     else if (arg === '--manual-no-warmup') args.manualWarmup = false;
+    else if (arg === '--alignment-gate') args.alignmentGate = true;
     else if (arg === '--print-transients') args.printTransients = true;
     else if (arg === '--transient-gate') args.transientGate = true;
     else if (arg.startsWith('--transient-time-tolerance-ms=')) args.transientTimeToleranceMs = Number(arg.slice('--transient-time-tolerance-ms='.length));
@@ -90,6 +100,8 @@ function parseArgs(argv) {
     else if (arg.startsWith('--envelope-rms-ratio-tolerance=')) args.envelopeRmsRatioTolerance = Number(arg.slice('--envelope-rms-ratio-tolerance='.length));
     else if (arg.startsWith('--envelope-peak-ratio-tolerance=')) args.envelopePeakRatioTolerance = Number(arg.slice('--envelope-peak-ratio-tolerance='.length));
     else if (arg.startsWith('--core-engine=')) args.coreEngine = arg.slice('--core-engine='.length).trim();
+    else if (arg === '--print-debug') args.printDebug = true;
+    else if (arg === '--mobile-device') args.mobileDevice = true;
     else if (arg === '--no-fail') args.noFail = true;
     else if (arg === '--self-check') args.selfCheck = true;
     else if (arg === '--help' || arg === '-h') {
@@ -116,8 +128,27 @@ function parseArgs(argv) {
   if (!Number.isFinite(args.envelopeTimeToleranceMs) || args.envelopeTimeToleranceMs < 0) throw new Error('--envelope-time-tolerance-ms must be non-negative');
   if (!Number.isFinite(args.envelopeRmsRatioTolerance) || args.envelopeRmsRatioTolerance < 0) throw new Error('--envelope-rms-ratio-tolerance must be non-negative');
   if (!Number.isFinite(args.envelopePeakRatioTolerance) || args.envelopePeakRatioTolerance < 0) throw new Error('--envelope-peak-ratio-tolerance must be non-negative');
-  if (!CORE_ENGINE_NAMES.has(args.coreEngine)) throw new Error('--core-engine must be core-wasm, core-bridge, or core-product');
+  if (!CORE_ENGINE_NAMES.has(args.coreEngine)) throw new Error('--core-engine must be core-product or core-smoke');
   return args;
+}
+
+function parseStateEventArg(value) {
+  const parsed = JSON.parse(value.trim());
+  const events = Array.isArray(parsed) ? parsed : [parsed];
+  return events.map((event) => normalizeStateEvent(event, value));
+}
+
+function normalizeStateEvent(raw, originalValue) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`--state-event must be a JSON object or JSON array: ${originalValue}`);
+  }
+  const event = {
+    delayMs: Number(raw.delayMs ?? 0),
+    patch: raw.patch,
+  };
+  if (!Number.isFinite(event.delayMs) || event.delayMs < 0) throw new Error(`--state-event delayMs must be non-negative: ${originalValue}`);
+  if (!event.patch || typeof event.patch !== 'object' || Array.isArray(event.patch)) throw new Error(`--state-event patch must be an object: ${originalValue}`);
+  return event;
 }
 
 function parseManualNoteArg(value) {
@@ -163,6 +194,39 @@ function normalizeManualNote(raw, originalValue) {
   return note;
 }
 
+function parseManualDrumArg(value) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    const parsed = JSON.parse(trimmed);
+    const triggers = Array.isArray(parsed) ? parsed : [parsed];
+    return triggers.map((trigger) => normalizeManualDrumTrigger(trigger, value));
+  }
+  const [voice = 'kick', velocity = '0.8', delayMs = '0'] = value.split(':');
+  return [normalizeManualDrumTrigger({
+    voice,
+    velocity: Number(velocity),
+    delayMs: Number(delayMs),
+  }, value)];
+}
+
+function normalizeManualDrumTrigger(raw, originalValue) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`--manual-drum must be a JSON object, JSON array, or voice:velocity:delayMs shorthand: ${originalValue}`);
+  }
+  const voice = typeof raw.voice === 'number' ? raw.voice : String(raw.voice ?? 'kick');
+  if (typeof voice === 'string' && !MANUAL_DRUM_VOICES.has(voice)) {
+    throw new Error(`--manual-drum voice must be sub, kick, click, beepHi, beepLo, noise, or membrane: ${originalValue}`);
+  }
+  const trigger = {
+    voice,
+    velocity: Number(raw.velocity ?? 0.8),
+    delayMs: Number(raw.delayMs ?? 0),
+  };
+  if (!Number.isFinite(trigger.velocity) || trigger.velocity < 0) throw new Error(`--manual-drum velocity must be numeric: ${originalValue}`);
+  if (!Number.isFinite(trigger.delayMs) || trigger.delayMs < 0) throw new Error(`--manual-drum delayMs must be non-negative: ${originalValue}`);
+  return trigger;
+}
+
 function printHelp() {
   console.log(`Usage: node scripts/check-web-core-sonic-parity.mjs [options]
 
@@ -172,13 +236,17 @@ Options:
   --duration-ms=3000           Capture duration per engine
   --settle-ms=600              Time to let the graph settle before capture
   --state-patch='{"synthLevel":0.8}'  JSON merged into the current App slider state for both engines
+  --state-event='{"delayMs":300,"patch":{"spectralFreezeActive":true}}'
+                                Timed state update applied during capture; repeatable
   --track=mix                   Capture mix, reverb, or delayAOut. Default: mix
   --manual-note='{"source":"pad1","midi":60,"velocity":1,"durationMs":1200}'
+  --manual-drum=kick:1:0        Trigger a drum voice after manual notes; fields are voice:velocity:delayMs
                                 Trigger deterministic note(s) from recorder/capture start.
                                 Also accepts pad1:60:0.82:900 shorthand and repeated flags.
   --manual-trigger-delay-ms=0   Optional recorder warm-up before clearing the tap and triggering manual note(s)
   --manual-warmup               Opt into a low-velocity pre-capture note. Default is off to avoid long release tails
   --manual-no-warmup            Keep pre-capture manual-note warmup disabled
+  --alignment-gate              Gate self-running captures on best/onset-aligned buffers instead of raw frame zero
   --print-transients            Print first transient start/peak summaries for web and core captures
   --transient-gate              Gate self-running captures by transient count/timing/level instead of sample waveform diff
   --transient-time-tolerance-ms=8       Maximum paired transient residual start-time delta after global phase offset
@@ -189,12 +257,14 @@ Options:
   --envelope-time-tolerance-ms=20       Maximum first-signal delta for envelope gate
   --envelope-rms-ratio-tolerance=0.4    Maximum relative RMS delta per active envelope window
   --envelope-peak-ratio-tolerance=0.35  Maximum relative peak delta per active envelope window
-  --core-engine=core-wasm      Core runtime to compare against Web: core-wasm, core-bridge, or core-product
+  --core-engine=core-product      Core runtime to compare against Web: core-product or core-smoke
+  --mobile-device              Emulate a mobile browser user agent for platform-dependent graph choices
   --rms-tolerance=0.04         Maximum normalized RMS difference
   --peak-tolerance=0.25        Maximum peak absolute sample difference
   --min-signal-rms=0.0001      Minimum reference Web RMS required to avoid silent false passes
   --max-lag-ms=200             Maximum lag search/correction window
   --min-lag-correlation=0.98   Minimum onset-corrected correlation for manual-note gate
+  --print-debug                Print optional engine debug snapshots when available
   --no-fail                    Print comparison without failing on threshold mismatch
   --self-check                 Run no-browser comparator/classification invariants
 
@@ -288,7 +358,7 @@ function isBlockingBrowserLog(entry) {
     entry.startsWith('[requestfailed]');
 }
 
-function collectBlockingBrowserLogs(web, core, coreLabel = 'core-wasm') {
+function collectBlockingBrowserLogs(web, core, coreLabel = 'core-product') {
   const logs = [];
   for (const [label, result] of [['web', web], [coreLabel, core]]) {
     for (const entry of result.logs) {
@@ -317,7 +387,15 @@ async function captureEngine(browser, baseUrl, engineName, options) {
 }
 
 async function captureEngineOnce(browser, baseUrl, engineName, options) {
-  const page = await browser.newPage();
+  const page = await browser.newPage(options.mobileDevice
+    ? {
+        userAgent: MOBILE_USER_AGENT,
+        viewport: { width: 390, height: 844 },
+        deviceScaleFactor: 3,
+        isMobile: true,
+        hasTouch: true,
+      }
+    : undefined);
   const logs = [];
   page.on('console', (message) => {
     const text = message.text();
@@ -354,12 +432,14 @@ async function captureEngineOnce(browser, baseUrl, engineName, options) {
     await page.waitForFunction(() => Boolean(window.__kesshoSonicParity?.capture), null, { timeout: 15000 });
 
     const capture = await page.evaluate(
-      async ({ durationMs, settleMs, trackId, statePatch, manualNotes, manualTriggerDelayMs, manualWarmup }) => window.__kesshoSonicParity.capture({
+      async ({ durationMs, settleMs, trackId, statePatch, stateEvents, manualNotes, manualDrumTriggers, manualTriggerDelayMs, manualWarmup }) => window.__kesshoSonicParity.capture({
         durationMs,
         settleMs,
         trackId,
         statePatch,
+        stateEvents,
         manualNotes,
+        manualDrumTriggers,
         manualTriggerDelayMs,
         manualWarmup,
       }),
@@ -368,7 +448,9 @@ async function captureEngineOnce(browser, baseUrl, engineName, options) {
         settleMs: options.settleMs,
         trackId: options.trackId,
         statePatch: options.statePatch,
+        stateEvents: options.stateEvents,
         manualNotes: options.manualNotes,
+        manualDrumTriggers: options.manualDrumTriggers,
         manualTriggerDelayMs: options.manualTriggerDelayMs,
         manualWarmup: options.manualWarmup,
       },
@@ -381,7 +463,7 @@ async function captureEngineOnce(browser, baseUrl, engineName, options) {
 }
 
 function compareCaptures(web, core, options = {}) {
-  const coreLabel = options.coreLabel ?? 'core-wasm';
+  const coreLabel = options.coreLabel ?? 'core-product';
   if (web.sampleRate !== core.sampleRate) {
     throw new Error(`Sample-rate mismatch: web=${web.sampleRate}, ${coreLabel}=${core.sampleRate}`);
   }
@@ -868,7 +950,7 @@ function compareEnvelopeSummaries(webCapture, coreCapture, comparison, args) {
 
 function buildFailureReasons({ comparison, gateMetrics, args, manualMode, web, core }) {
   const reasons = [];
-  const coreLabel = args.coreEngine ?? 'core-wasm';
+  const coreLabel = args.coreEngine ?? 'core-product';
   const hasReferenceSignal = comparison.webStats.rms >= args.minSignalRms;
   const hasCoreSignal = comparison.coreStats.rms >= args.minSignalRms;
   const transientComparison = args.transientGate && !manualMode
@@ -918,13 +1000,14 @@ function buildFailureReasons({ comparison, gateMetrics, args, manualMode, web, c
       });
     }
   }
-  if (!envelopeComparison && manualMode && Math.abs(comparison.alignmentLag.lagMs) > args.maxLagMs) {
+  const alignmentGate = manualMode || args.alignmentGate;
+  if (!envelopeComparison && alignmentGate && Math.abs(comparison.alignmentLag.lagMs) > args.maxLagMs) {
     reasons.push({
       kind: 'sonic',
       message: `alignment lag ${formatNumber(Math.abs(comparison.alignmentLag.lagMs), 2)}ms exceeds max ${formatNumber(args.maxLagMs, 2)}ms`,
     });
   }
-  if (!envelopeComparison && manualMode && comparison.aligned.correlation < args.minLagCorrelation) {
+  if (!envelopeComparison && alignmentGate && comparison.aligned.correlation < args.minLagCorrelation) {
     reasons.push({
       kind: 'sonic',
       message: `aligned correlation ${formatNumber(comparison.aligned.correlation)} is below minimum ${formatNumber(args.minLagCorrelation)}`,
@@ -1084,7 +1167,7 @@ function runSelfCheck() {
 
   const coreNonFinite = selfCheckCapture({ left: [0, NaN], right: [0, 0] });
   assertThrowsKind(
-    () => validateCapture('core-wasm', coreNonFinite),
+    () => validateCapture('core-product', coreNonFinite),
     'sonic/core-output',
     'core non-finite samples are core-output sonic failures',
   );
@@ -1168,14 +1251,14 @@ async function main() {
     try {
       comparison = compareCaptures(web.capture, core.capture, {
         maxLagMs: args.maxLagMs,
-        preferFirstSignalLag: manualMode,
+        preferFirstSignalLag: manualMode || args.alignmentGate,
         coreLabel,
       });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       throw new SonicParityRunError('setup', `Could not compare browser captures: ${detail}`);
     }
-    const gateMetrics = manualMode ? comparison.aligned : comparison.raw;
+    const gateMetrics = manualMode || args.alignmentGate ? comparison.aligned : comparison.raw;
     const failureReasons = buildFailureReasons({ comparison, gateMetrics, args, manualMode, web, core });
     const passed = failureReasons.length === 0;
     const failureKind = passed ? '' : summarizeFailureKind(failureReasons);
@@ -1192,7 +1275,10 @@ async function main() {
     console.log(`  Frames: ${comparison.frames} @ ${comparison.sampleRate} Hz (${formatNumber(comparison.durationSeconds, 3)}s)`);
     console.log(`  Web RMS/peak: ${formatNumber(comparison.webStats.rms)} / ${formatNumber(comparison.webStats.peak)}`);
     console.log(`  Core RMS/peak: ${formatNumber(comparison.coreStats.rms)} / ${formatNumber(comparison.coreStats.peak)}`);
-    if (core.capture.debug !== undefined) {
+    if (args.printDebug && web.capture.debug !== undefined) {
+      console.log(`  Web debug: ${JSON.stringify(web.capture.debug)}`);
+    }
+    if (args.printDebug && core.capture.debug !== undefined) {
       console.log(`  Core debug: ${JSON.stringify(core.capture.debug)}`);
     }
     console.log(`  Diff RMS: ${formatNumber(comparison.rmsDiff)} normalized=${formatNumber(comparison.normalizedRmsDiff)}`);
@@ -1211,7 +1297,7 @@ async function main() {
     if (comparison.webFirstSignalMs !== null && comparison.coreFirstSignalMs !== null) {
       console.log(`  First-signal delta: ${formatNumber(comparison.coreFirstSignalMs - comparison.webFirstSignalMs, 2)}ms (core-web)`);
     }
-    console.log(`  Gate: ${args.envelopeGate ? 'envelope' : (manualMode ? 'manual onset-corrected' : 'raw')} RMS<=${formatNumber(args.rmsTolerance)} peak<=${formatNumber(args.peakTolerance)}${manualMode && !args.envelopeGate ? ` lag-corr>=${formatNumber(args.minLagCorrelation)} maxLag<=${formatNumber(args.maxLagMs, 2)}ms` : ''}`);
+    console.log(`  Gate: ${args.envelopeGate ? 'envelope' : ((manualMode || args.alignmentGate) ? 'aligned' : 'raw')} RMS<=${formatNumber(args.rmsTolerance)} peak<=${formatNumber(args.peakTolerance)}${(manualMode || args.alignmentGate) && !args.envelopeGate ? ` lag-corr>=${formatNumber(args.minLagCorrelation)} maxLag<=${formatNumber(args.maxLagMs, 2)}ms` : ''}`);
     console.log(`  Min Web RMS: ${formatNumber(args.minSignalRms)} (${comparison.webStats.rms >= args.minSignalRms ? 'met' : 'not met'})`);
     if (args.envelopeGate) {
       const envelopeComparison = compareEnvelopeSummaries(web.capture, core.capture, comparison, args);

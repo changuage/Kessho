@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <memory>
 
 #include "kessho_soundscapes.h"
@@ -30,6 +31,7 @@ constexpr int kParamInsects2Params = kParamInsects2Engine + 1;
 constexpr int kParamInsects2Seed = kParamInsects2Params + 14;
 constexpr int kParamOutputSelect = kParamInsects2Seed + 1;
 constexpr int kParamCount = kParamOutputSelect + 1;
+constexpr float kSeedNoChange = -1.0f;
 
 int roundedInt(float value) {
   return static_cast<int>(value >= 0.0f ? value + 0.5f : value - 0.5f);
@@ -105,7 +107,7 @@ std::array<float, kParamCount> makeDefaultParams() {
 
   params[kParamWaterChannels + 0] = 0.0f;
   params[kParamWaterChannels + 1] = 0.5f;
-  params[kParamWaterSeed] = 12345.0f;
+  params[kParamWaterSeed] = kSeedNoChange;
 
   params[kParamInsectsActive] = 0.0f;
   params[kParamInsectsEngine] = 0.0f;
@@ -129,8 +131,8 @@ std::array<float, kParamCount> makeDefaultParams() {
     params[base + 13] = 0.5f;
   }
 
-  params[kParamInsectsSeed] = 12345.0f;
-  params[kParamInsects2Seed] = 67890.0f;
+  params[kParamInsectsSeed] = kSeedNoChange;
+  params[kParamInsects2Seed] = kSeedNoChange;
   params[kParamOutputSelect] = 0.0f;
   return params;
 }
@@ -157,7 +159,6 @@ public:
       return false;
     }
 
-    commitParams();
     return true;
   }
 
@@ -171,7 +172,9 @@ public:
     if (insects2_ != nullptr) {
       insects2_instance_reset(insects2_, sample_rate_);
     }
-    commitParams();
+    water_started_ = false;
+    insects_started_ = false;
+    insects2_started_ = false;
   }
 
   void processInterleaved(const float* input_interleaved, float* output_interleaved, int frames) override {
@@ -223,7 +226,8 @@ public:
       return;
     }
 
-    water_instance_set_seed(water_, roundedInt(params_[kParamWaterSeed]));
+    maybeSetWaterSeed();
+    syncWaterActive();
     water_instance_set_preset(water_, std::clamp(roundedInt(params_[kParamWaterPreset]), 0, 7));
     water_instance_set_params(
         water_,
@@ -259,15 +263,6 @@ public:
         params_[kParamWaterLayerDensity + 3],
         params_[kParamWaterLayerDensity + 4],
         params_[kParamWaterLayerDensity + 5]);
-    water_instance_set_density_loop_params(
-        water_,
-        params_[kParamWaterDensityLoop + 0],
-        params_[kParamWaterDensityLoop + 1],
-        params_[kParamWaterDensityLoop + 2],
-        params_[kParamWaterDensityLoop + 3],
-        params_[kParamWaterDensityLoop + 4],
-        params_[kParamWaterDensityLoop + 5],
-        params_[kParamWaterDensityLoop + 6]);
     water_instance_set_surf_params(
         water_,
         params_[kParamWaterSurf + 0], params_[kParamWaterSurf + 1],
@@ -282,20 +277,22 @@ public:
         water_,
         params_[kParamWaterChannels + 0],
         params_[kParamWaterChannels + 1]);
-    if (params_[kParamWaterActive] > 0.5f) {
-      water_instance_start(water_);
-    } else {
-      water_instance_stop(water_);
-    }
+    water_instance_set_density_loop_params(
+        water_,
+        params_[kParamWaterDensityLoop + 0],
+        params_[kParamWaterDensityLoop + 1],
+        params_[kParamWaterDensityLoop + 2],
+        params_[kParamWaterDensityLoop + 3],
+        params_[kParamWaterDensityLoop + 4],
+        params_[kParamWaterDensityLoop + 5],
+        params_[kParamWaterDensityLoop + 6]);
 
-    commitInsectsParams(insects_, kParamInsectsEngine, kParamInsectsParams, kParamInsectsSeed);
-    if (params_[kParamInsectsActive] > 0.5f) {
-      insects_instance_start(insects_);
-    } else {
-      insects_instance_stop(insects_);
-    }
+    maybeSetInsectsSeed(insects_, kParamInsectsSeed);
+    syncInsectsActive();
+    commitInsectsParams(insects_, kParamInsectsEngine, kParamInsectsParams);
 
-    insects2_instance_set_seed(insects2_, roundedInt(params_[kParamInsects2Seed]));
+    maybeSetInsects2Seed();
+    syncInsects2Active();
     insects2_instance_set_engine(insects2_, std::clamp(roundedInt(params_[kParamInsects2Engine]), 0, 6));
     insects2_instance_set_params(
         insects2_,
@@ -306,11 +303,6 @@ public:
         params_[kParamInsects2Params + 8], params_[kParamInsects2Params + 9],
         params_[kParamInsects2Params + 10], params_[kParamInsects2Params + 11],
         params_[kParamInsects2Params + 12], params_[kParamInsects2Params + 13]);
-    if (params_[kParamInsects2Active] > 0.5f) {
-      insects2_instance_start(insects2_);
-    } else {
-      insects2_instance_stop(insects2_);
-    }
   }
 
   void allNotesOff() override {
@@ -323,6 +315,9 @@ public:
     if (insects2_ != nullptr) {
       insects2_instance_stop(insects2_);
     }
+    water_started_ = false;
+    insects_started_ = false;
+    insects2_started_ = false;
   }
 
   int activeVoiceCount() override {
@@ -339,13 +334,42 @@ public:
     return count;
   }
 
+  int outputTapCount() const override {
+    return 3;
+  }
+
+  void processPlanarStereoTaps(
+      const float* input_l,
+      const float* input_r,
+      float* const* output_l,
+      float* const* output_r,
+      uint32_t output_bus_count,
+      int frames) override {
+    (void)input_l;
+    (void)input_r;
+    if (output_bus_count == 0u || output_l == nullptr || output_r == nullptr || frames <= 0) {
+      return;
+    }
+    for (uint32_t bus = 0; bus < output_bus_count; ++bus) {
+      if (output_l[bus] == nullptr || output_r[bus] == nullptr) {
+        return;
+      }
+    }
+
+    int rendered = 0;
+    while (rendered < frames) {
+      const int block = std::min(kSoundscapesBlockSize, std::min(max_block_size_, frames - rendered));
+      processBlock(block);
+      copyTapOutputs(output_l, output_r, output_bus_count, rendered, block);
+      rendered += block;
+    }
+  }
+
 private:
   void commitInsectsParams(
       KesshoInsectsInstance* instance,
       int engine_base,
-      int params_base,
-      int seed_index) {
-    insects_instance_set_seed(instance, roundedInt(params_[seed_index]));
+      int params_base) {
     insects_instance_set_engine(instance, std::clamp(roundedInt(params_[engine_base]), 0, 6));
     insects_instance_set_params(
         instance,
@@ -360,6 +384,61 @@ private:
 
   int outputSelect() const {
     return std::clamp(roundedInt(params_[kParamOutputSelect]), 0, 3);
+  }
+
+  bool shouldSetSeed(int seed_index) const {
+    return std::isfinite(params_[seed_index]) && params_[seed_index] >= 0.0f;
+  }
+
+  void maybeSetWaterSeed() {
+    if (shouldSetSeed(kParamWaterSeed)) {
+      water_instance_set_seed(water_, roundedInt(params_[kParamWaterSeed]));
+    }
+  }
+
+  void syncWaterActive() {
+    const bool should_start = params_[kParamWaterActive] > 0.5f;
+    if (should_start && !water_started_) {
+      water_instance_start(water_);
+      water_started_ = true;
+    } else if (!should_start && water_started_) {
+      water_instance_stop(water_);
+      water_started_ = false;
+    }
+  }
+
+  void maybeSetInsectsSeed(KesshoInsectsInstance* instance, int seed_index) {
+    if (shouldSetSeed(seed_index)) {
+      insects_instance_set_seed(instance, roundedInt(params_[seed_index]));
+    }
+  }
+
+  void syncInsectsActive() {
+    const bool should_start = params_[kParamInsectsActive] > 0.5f;
+    if (should_start && !insects_started_) {
+      insects_instance_start(insects_);
+      insects_started_ = true;
+    } else if (!should_start && insects_started_) {
+      insects_instance_stop(insects_);
+      insects_started_ = false;
+    }
+  }
+
+  void maybeSetInsects2Seed() {
+    if (shouldSetSeed(kParamInsects2Seed)) {
+      insects2_instance_set_seed(insects2_, roundedInt(params_[kParamInsects2Seed]));
+    }
+  }
+
+  void syncInsects2Active() {
+    const bool should_start = params_[kParamInsects2Active] > 0.5f;
+    if (should_start && !insects2_started_) {
+      insects2_instance_start(insects2_);
+      insects2_started_ = true;
+    } else if (!should_start && insects2_started_) {
+      insects2_instance_stop(insects2_);
+      insects2_started_ = false;
+    }
   }
 
   void processBlock(int block) {
@@ -443,12 +522,41 @@ private:
     }
   }
 
+  void copyTapOutputs(
+      float* const* output_l,
+      float* const* output_r,
+      uint32_t output_bus_count,
+      int offset,
+      int frames) {
+    const float* taps[] = {waterOutput(), insectsOutput(), insects2Output()};
+    const uint32_t copy_bus_count = std::min<uint32_t>(output_bus_count, 3u);
+    for (uint32_t bus = 0; bus < copy_bus_count; ++bus) {
+      const float* source = taps[bus];
+      if (source == nullptr) {
+        std::fill(output_l[bus] + offset, output_l[bus] + offset + frames, 0.0f);
+        std::fill(output_r[bus] + offset, output_r[bus] + offset + frames, 0.0f);
+        continue;
+      }
+      for (int i = 0; i < frames; ++i) {
+        output_l[bus][offset + i] = source[i * 2];
+        output_r[bus][offset + i] = source[i * 2 + 1];
+      }
+    }
+    for (uint32_t bus = copy_bus_count; bus < output_bus_count; ++bus) {
+      std::fill(output_l[bus] + offset, output_l[bus] + offset + frames, 0.0f);
+      std::fill(output_r[bus] + offset, output_r[bus] + offset + frames, 0.0f);
+    }
+  }
+
   KesshoWaterInstance* water_ = nullptr;
   KesshoInsectsInstance* insects_ = nullptr;
   KesshoInsects2Instance* insects2_ = nullptr;
   float sample_rate_ = 48000.0f;
   int max_block_size_ = kSoundscapesBlockSize;
   std::array<float, kParamCount> params_ = makeDefaultParams();
+  bool water_started_ = false;
+  bool insects_started_ = false;
+  bool insects2_started_ = false;
 };
 
 } // namespace

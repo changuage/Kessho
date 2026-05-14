@@ -1,6 +1,6 @@
 {
   "status": "pass",
-  "generatedAt": "2026-05-13T11:57:07.508Z",
+  "generatedAt": "2026-05-13T22:33:02.727Z",
   "command": "node scripts/check-kessho-product-dirty-diff-classification.mjs",
   "evidence": [
     {
@@ -8,7 +8,7 @@
       "id": "static-dirty-diff-contract",
       "summary": "Static dirty-diff classification, telemetry, and render-path guards passed.",
       "details": {
-        "reloadReasonsAudited": 12,
+        "reloadReasonsAudited": 14,
         "diffableSourceControlsAudited": 12
       }
     },
@@ -44,6 +44,26 @@
           },
           {
             "encodedSnapshotId": "structural"
+          }
+        ]
+      }
+    },
+    {
+      "status": "pass",
+      "id": "host-live-full-reload-transport-preservation",
+      "summary": "A structural full snapshot reload while Product Core is playing keeps C++ transport running.",
+      "details": {
+        "snapshotCount": 2,
+        "reloadedTransport": {
+          "running": true,
+          "bpm": 120,
+          "beatsPerBar": 4,
+          "barsPerPhrase": 4,
+          "swing": 0
+        },
+        "postedEvents": [
+          {
+            "type": "start"
           }
         ]
       }

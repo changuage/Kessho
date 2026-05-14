@@ -12,6 +12,15 @@
   }
 }
 
+  void KesshoProductEngine::resetSonicParityFxRuntime() {
+  if (dynamics_character_module) {
+    dynamics_character_module->reset();
+  }
+  resetSidechainRuntime();
+  resetDiffuseRuntime();
+  configureFxModules();
+}
+
   float KesshoProductEngine::sidechainTargetAmount(uint32_t target) const {
   if (!fx.sidechain_enabled || target >= kSidechainTargetCount) {
     return 0.0f;
@@ -76,6 +85,8 @@
   const uint32_t attack_frames = std::max<uint32_t>(1u, static_cast<uint32_t>(clampFloat(fx.sidechain_attack_ms, 0.1f, 100.0f) * 0.001f * sample_rate));
   const uint32_t hold_frames = static_cast<uint32_t>(clampFloat(fx.sidechain_hold_ms, 0.0f, 250.0f) * 0.001f * sample_rate);
   const uint32_t release_frames = std::max<uint32_t>(1u, static_cast<uint32_t>(clampFloat(fx.sidechain_release_ms, 20.0f, 1500.0f) * 0.001f * sample_rate));
+  const float release_tau_seconds = std::max(0.000001f, clampFloat(fx.sidechain_release_ms, 20.0f, 1500.0f) / 3000.0f);
+  const float release_coeff = std::exp(-1.0f / static_cast<float>(release_tau_seconds * sample_rate));
 
   for (uint32_t target = 0; target < kSidechainTargetCount; ++target) {
     const float amount = sidechainTargetAmount(target);
@@ -92,6 +103,7 @@
     envelope.hold_remaining = hold_frames;
     envelope.release_elapsed = 0u;
     envelope.release_frames = release_frames;
+    envelope.release_coeff = release_coeff;
   }
 }
 
@@ -99,8 +111,7 @@
   if (envelope.attack_elapsed < envelope.attack_frames) {
     ++envelope.attack_elapsed;
     const float t = static_cast<float>(envelope.attack_elapsed) / static_cast<float>(std::max(1u, envelope.attack_frames));
-    const float shaped = 1.0f - (1.0f - t) * (1.0f - t);
-    envelope.current_gain = envelope.start_gain + (envelope.target_gain - envelope.start_gain) * shaped;
+    envelope.current_gain = envelope.start_gain + (envelope.target_gain - envelope.start_gain) * t;
     return envelope.current_gain;
   }
   if (envelope.hold_remaining > 0u) {
@@ -108,16 +119,15 @@
     envelope.current_gain = envelope.target_gain;
     return envelope.current_gain;
   }
-  if (envelope.release_elapsed < envelope.release_frames) {
+  if (envelope.release_coeff > 0.0f && std::fabs(envelope.current_gain - 1.0f) > 0.00001f) {
     ++envelope.release_elapsed;
-    const float t = static_cast<float>(envelope.release_elapsed) / static_cast<float>(std::max(1u, envelope.release_frames));
-    const float shaped = 1.0f - (1.0f - t) * (1.0f - t);
-    envelope.current_gain = envelope.target_gain + (1.0f - envelope.target_gain) * shaped;
+    envelope.current_gain = 1.0f + (envelope.current_gain - 1.0f) * envelope.release_coeff;
     return envelope.current_gain;
   }
   envelope.current_gain = 1.0f;
   envelope.start_gain = 1.0f;
   envelope.target_gain = 1.0f;
+  envelope.release_coeff = 0.0f;
   return envelope.current_gain;
 }
 

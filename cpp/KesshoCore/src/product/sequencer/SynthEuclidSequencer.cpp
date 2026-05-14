@@ -4,7 +4,7 @@
       const LaneState* lanes,
       uint32_t lane_count,
       uint32_t frames,
-      SequencerBuffer& out) const {
+      SequencerBuffer& out) {
   const uint64_t block_start = transport.sample_frame;
   const uint64_t block_end = block_start + frames;
   for (uint32_t lane_index = 0; lane_index < lane_count; ++lane_index) {
@@ -161,7 +161,10 @@
         event.distance = evolvedLaneValue(lane, lane_index, step_id, ratchet_sample, 4u, event.distance, 0.35f, 0.0f, 1.0f);
         event.expression = evolvedLaneValue(lane, lane_index, step_id, ratchet_sample, 5u, event.expression, 0.25f, 0.0f, 1.0f);
         event.flags = ratchet_index;
-        out.push(event);
+        if (!out.push(event)) {
+          telemetry.last_error_code = KESSHO_PRODUCT_ERROR_EVENT_QUEUE_FULL;
+          return;
+        }
       }
     }
   }

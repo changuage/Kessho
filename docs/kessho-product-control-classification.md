@@ -25,6 +25,7 @@ This file classifies the `core-product` host control surface by Product Core upd
 - Asset reference changes use a full Product snapshot after host-side asset decode/registration.
 - Harmony chord/voicing mode changes use a full Product snapshot until mode-specific events are final.
 - Source structure changes use a full Product snapshot: source count, source ID, or source asset ID.
+- Source hold changes use a full Product snapshot until a generated Product source-hold event exists.
 - Exact Pad/Lead compatibility patch changes use a full Product snapshot while those bridge fields remain temporary.
 - Sequencer structural changes use a full Product snapshot: lane count mismatch, manual step masks, morph/distance/expression structural fields, bar reset, or phrase reset.
 - Dirty diffs exceeding `MAX_SNAPSHOT_DIFF_EVENTS` use a full Product snapshot with reason `dirty-diff-event-budget`.
@@ -35,6 +36,12 @@ This file classifies the `core-product` host control surface by Product Core upd
 - Unknown future modulation range keys increment `unsupportedControlCount` and log in development, but current `core-product` UI range controls are gated to Product-mapped keys before they reach the host.
 - Unknown future app-facing `AudioEngine` methods increment `unsupportedControlCount` and log in development through the `core-product` proxy, but required App callsites are statically audited against `CoreProductEngineHost`.
 - Placeholder visual getters are either backed by Product telemetry/generated state or hidden/disabled in `core-product`.
+
+## Parameter Accounting
+
+`core:product:param-accounting` audits every `SliderState` key. A key must be either wired into Product Core through generated snapshots/events, or explicitly classified as deferred, legacy, or UI policy with an owner and reason. The current deferred groups are soundscape layer policy, arrangement/clock policy, runtime-walk global policy, source scheduler UI policy, source-extra fields, legacy delay/granular aliases, FX macros, sequencer preset templates, drum-module extras, and the legacy `leadTimbre` alias.
+
+Lead custom ADSR is not deferred: `lead1UseCustomAdsr`, `lead2UseCustomAdsr`, and the matching attack/decay/sustain/release keys are bridged through the exact Lead patch compatibility path until structured Product Core Lead overrides replace it. Generated Pad, Lead, and Drum exact patch keys are counted as Product-wired bridge fields, not as final ownership.
 
 ## Telemetry
 

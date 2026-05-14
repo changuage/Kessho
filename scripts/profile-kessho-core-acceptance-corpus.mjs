@@ -53,10 +53,10 @@ const acceptanceContract = {
     'manual-review': 'Acceptance requires listening or repeated-run judgement even if numeric thresholds pass.',
   },
   knownExclusionsDebt: [
-    'This is browser Web Audio versus core-wasm acceptance only; macOS/iOS device CPU, battery, route-change, and screen-off behavior stay outside this gate.',
-    'The corpus does not require bit-exact parity. It is meant to decide when core-wasm is close enough for migration.',
+    'This is browser Web Audio versus core-product acceptance only; macOS/iOS device CPU, battery, route-change, and screen-off behavior stay outside this gate.',
+    'The corpus does not require bit-exact parity. It is meant to decide when core-product is close enough for migration.',
     'Earth/soundscape, drum sequencer, granular feedback, and full-mix cases use envelope or transient gates instead of bit-exact waveform correlation.',
-    'Lead manual-note cases require core-wasm lead trigger support in the parity harness.',
+    'Lead manual-note cases require core-product lead trigger support in the parity harness.',
     'Preset storage/cloud round-trip validation is out of scope here; cases use local states and local factory preset references.',
   ],
   scoring: {
@@ -384,7 +384,7 @@ const corpus = [
       masterVolume: 0.74,
     },
     intent: 'Single-source 4-op lead timbre without pad, delay, or reverb masking.',
-    readyWhen: ['manual lead1 trigger support exists for core-wasm parity capture'],
+    readyWhen: ['manual lead1 trigger support exists for core-product parity capture'],
   },
   {
     id: 'lead1-gamelan-dry',
@@ -508,7 +508,7 @@ const corpus = [
       masterVolume: 0.7,
     },
     intent: 'High-feedback shared Delay A with a lead source, including ping-pong width and reverb send.',
-    readyWhen: ['manual lead1 trigger support exists', 'Delay A module is represented in core-wasm capture'],
+    readyWhen: ['manual lead1 trigger support exists', 'Delay A module is represented in core-product capture'],
   },
   {
     id: 'lead2-gamelan-dry',
@@ -631,7 +631,7 @@ const corpus = [
       masterVolume: 0.78,
     },
     intent: 'Sampled piano dry source parity. Core mode uses a bounded host-side sample bridge so piano no longer goes silent while keeping idle Core CPU unchanged.',
-    readyWhen: ['manual piano trigger support exists for core-wasm parity capture'],
+    readyWhen: ['manual piano trigger support exists for core-product parity capture'],
   },
   {
     id: 'synth-euclid-lead-grid',
@@ -733,7 +733,7 @@ const corpus = [
       pad1ReverbSend: 0,
     },
     intent: 'Delay-heavy case that still uses current pad manual trigger support.',
-    readyWhen: ['pad Delay A send and Delay A return are represented in core-wasm capture'],
+    readyWhen: ['pad Delay A send and Delay A return are represented in core-product capture'],
   },
   {
     id: 'pad-delay-reverb-bloom',
@@ -778,7 +778,7 @@ const corpus = [
       pad1ReverbSend: 0.22,
     },
     intent: 'Representative combined FX case: pad excites Delay A, the delay return feeds shared reverb, and both tails must stay sane.',
-    readyWhen: ['Delay A and shared reverb return are both represented in core-wasm capture'],
+    readyWhen: ['Delay A and shared reverb return are both represented in core-product capture'],
   },
   {
     id: 'granular-pad-cloud',
@@ -815,7 +815,7 @@ const corpus = [
       pad1ReverbSend: 0.08,
     },
     intent: 'Pad source routed through the granular bus with a modest reverb return.',
-    readyWhen: ['granular bus routing is available in core-wasm capture'],
+    readyWhen: ['granular bus routing is available in core-product capture'],
   },
   {
     id: 'granular-delay-return',
@@ -857,7 +857,7 @@ const corpus = [
       granularReverbSend: 0.32,
     },
     intent: 'Exercises cross-routing where the delay path becomes a granular input rather than only a wet return.',
-    readyWhen: ['Delay A to granular and granular return routing are represented in core-wasm capture'],
+    readyWhen: ['Delay A to granular and granular return routing are represented in core-product capture'],
   },
   {
     id: 'drum-euclid-tight',
@@ -1098,7 +1098,7 @@ const corpus = [
       masterSatTone: 0.5,
     },
     intent: 'Master-chain acceptance case covering Dynamics page character/degrade/saturation/end compressor plus master saturation.',
-    readyWhen: ['dynamics and master-chain routing are represented in core-wasm capture'],
+    readyWhen: ['dynamics and master-chain routing are represented in core-product capture'],
   },
   {
     id: 'full-mix-gamelan',
@@ -1206,7 +1206,7 @@ function parseArgs(argv) {
     caseId: '',
     sliceId: '',
     trackId: '',
-    coreEngine: 'core-wasm',
+    coreEngine: 'core-product',
     stateOverride: {},
     hasStateOverride: false,
     noFail: false,
@@ -1244,8 +1244,8 @@ function parseArgs(argv) {
   if ((args.trackId || args.hasStateOverride || args.printTransients) && !args.commands && !args.run) {
     throw new Error('--track, --print-transients, and temporary state overrides are only supported with --commands or --run.');
   }
-  if (!['core-wasm', 'core-bridge', 'core-product'].includes(args.coreEngine)) {
-    throw new Error('--core-engine must be core-wasm, core-bridge, or core-product.');
+  if (!['core-product', 'core-smoke'].includes(args.coreEngine)) {
+    throw new Error('--core-engine must be core-product or core-smoke.');
   }
 
   if (!args.help && !args.write && !args.selfCheck && !args.list && !args.listSlices && !args.json && !args.markdown && !args.commands && !args.run) {
@@ -1288,7 +1288,7 @@ Options:
   --slice=<id>            Limit --commands, --run, --json, or --markdown to a staged slice
                           Supported aliases: pad, pad-dry, pad-boundary, fx, source, full-mix
   --track=<id>            Capture a specific recordable bus for --commands or --run. Default: mix
-  --core-engine=<id>      Core runtime for --commands or --run: core-wasm, core-bridge, or core-product
+  --core-engine=<id>      Core runtime for --commands or --run: core-product or core-smoke
   --state-override=<json> Temporary JSON state patch merged after the corpus case patch for --commands or --run
   --state-patch=<json>    Alias for --state-override in this wrapper
   --url=<url>             Existing dev server URL for --commands or --run
@@ -1515,7 +1515,7 @@ function parityArgs(entry, patchJson, options = {}) {
   return args;
 }
 
-function commandForCase(entry, url, noFail = false, trackId = '', stateOverride = {}, printTransients = false, coreEngine = 'core-wasm') {
+function commandForCase(entry, url, noFail = false, trackId = '', stateOverride = {}, printTransients = false, coreEngine = 'core-product') {
   const commandEntry = withTemporaryStateOverride(entry, stateOverride);
   const patchJson = JSON.stringify(stableSort(commandEntry.statePatch));
   const args = [
@@ -1732,7 +1732,7 @@ function printSlices() {
   }
 }
 
-function printCommands(selection, url, noFail, trackId, stateOverride, printTransients = false, coreEngine = 'core-wasm') {
+function printCommands(selection, url, noFail, trackId, stateOverride, printTransients = false, coreEngine = 'core-product') {
   for (const entry of resolveCases(selection)) {
     console.log(commandForCase(entry, url, noFail, trackId, stateOverride, printTransients, coreEngine));
   }
@@ -1761,7 +1761,7 @@ function isDefaultKnownFailureContext(trackId, hasStateOverride) {
   return !hasStateOverride && (!trackId || trackId === 'mix');
 }
 
-function runCases(selection, url, noFail, allowKnownFailures, trackId, stateOverride = {}, hasStateOverride = false, printTransients = false, coreEngine = 'core-wasm') {
+function runCases(selection, url, noFail, allowKnownFailures, trackId, stateOverride = {}, hasStateOverride = false, printTransients = false, coreEngine = 'core-product') {
   const cases = resolveCases(selection);
   const summary = [];
   let exitCode = 0;
@@ -1999,7 +1999,7 @@ function runSelfCheck() {
   assert(sonicFailure.kind === 'sonic' && sonicFailure.exitCode === 1, 'sonic exit code classification is preserved');
   const suppressedFailure = classifyRunResult({ status: 0, stdout: '  Result: FAIL (sonic) [not enforced due to --no-fail]', stderr: '' });
   assert(suppressedFailure.kind === 'sonic' && suppressedFailure.suppressed, 'suppressed sonic failure remains distinguishable');
-  const coreOutputFailure = classifyRunResult({ status: 1, stdout: '', stderr: 'Sonic parity sonic/core-output failure: core-wasm capture has non-finite core output' });
+  const coreOutputFailure = classifyRunResult({ status: 1, stdout: '', stderr: 'Sonic parity sonic/core-output failure: core-product capture has non-finite core output' });
   assert(coreOutputFailure.kind === 'sonic/core-output' && coreOutputFailure.exitCode === 1, 'core output failures keep their sonic subkind');
 
   console.log(`Acceptance corpus self-check passed (${assertions} assertions).`);

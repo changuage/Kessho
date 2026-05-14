@@ -1,19 +1,8 @@
-import { rmSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-function prunePublicArchivePlugin(): Plugin {
-  return {
-    name: 'kessho-prune-public-archive',
-    closeBundle() {
-      rmSync(resolve('dist/ARCHIVE'), { recursive: true, force: true });
-    },
-  };
-}
-
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), prunePublicArchivePlugin()],
+  plugins: [react()],
   build: {
     target: 'esnext',
     sourcemap: mode !== 'production',

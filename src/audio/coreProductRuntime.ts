@@ -2,11 +2,29 @@ import type { CoreProductEvent } from './coreProductEvents';
 import type { DecodedCoreProductAsset } from './coreProductAssets';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 
+const CORE_PRODUCT_GRAPH_TAP_COUNT = 86;
+
 type RuntimeMessage =
   | { type: 'ready' }
   | { type: 'error'; message: string }
   | { type: 'perf'; cpuPercent: number; peakPercent: number; sequencerEventCount?: number; controlQueueDepth?: number }
-  | { type: 'telemetry'; telemetry: CoreProductTelemetrySnapshot };
+  | { type: 'telemetry'; telemetry: CoreProductTelemetrySnapshot }
+  | { type: 'graph-capture-chunk'; tapId: number; frameCount: number; left: Float32Array; right: Float32Array }
+  | { type: 'graph-capture-flushed'; tapId: number; stopped?: boolean };
+
+export type CoreProductGraphTapCaptureChunk = {
+  tapId: number;
+  frameCount: number;
+  left: Float32Array;
+  right: Float32Array;
+};
+
+type GraphTapCaptureSession = {
+  tapId: number;
+  chunks: CoreProductGraphTapCaptureChunk[];
+  resolveFlush: (() => void) | null;
+  rejectFlush: ((error: Error) => void) | null;
+};
 
 export class CoreProductRuntime {
   private context: AudioContext | null = null;
@@ -16,6 +34,7 @@ export class CoreProductRuntime {
   private lastError: string | null = null;
   private telemetryTimer: number | null = null;
   private telemetryCallback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null = null;
+  private readonly graphTapCaptureSessions = new Map<number, GraphTapCaptureSession>();
 
   get audioContext(): AudioContext | null {
     return this.context;
@@ -68,11 +87,38 @@ export class CoreProductRuntime {
         }
         if (message.type === 'error') {
           this.lastError = message.message;
-          reject(new Error(message.message));
+          const runtimeError = new Error(message.message);
+          for (const session of this.graphTapCaptureSessions.values()) {
+            session.rejectFlush?.(runtimeError);
+            session.resolveFlush = null;
+            session.rejectFlush = null;
+          }
+          reject(runtimeError);
           return;
         }
         if (message.type === 'telemetry') {
           this.telemetryCallback?.(message.telemetry);
+          return;
+        }
+        if (message.type === 'graph-capture-chunk') {
+          const session = this.graphTapCaptureSessions.get(message.tapId);
+          if (session) {
+            session.chunks.push({
+              tapId: message.tapId,
+              frameCount: message.frameCount,
+              left: message.left,
+              right: message.right,
+            });
+          }
+          return;
+        }
+        if (message.type === 'graph-capture-flushed') {
+          const session = this.graphTapCaptureSessions.get(message.tapId);
+          if (session?.resolveFlush) {
+            session.resolveFlush();
+            session.resolveFlush = null;
+            session.rejectFlush = null;
+          }
         }
       };
       node.connect(outputGain);
@@ -114,25 +160,94 @@ export class CoreProductRuntime {
   }
 
   postEvent(event: CoreProductEvent): void {
-    this.node?.port.postMessage({ type: 'event', event });
+    this.requireNode('postEvent').port.postMessage({ type: 'event', event });
   }
 
   loadSnapshot(snapshot: ArrayBuffer): void {
-    this.node?.port.postMessage({ type: 'snapshot', snapshot }, [snapshot]);
+    this.requireNode('loadSnapshot').port.postMessage({ type: 'snapshot', snapshot }, [snapshot]);
   }
 
   reset(): void {
-    this.node?.port.postMessage({ type: 'reset' });
+    this.requireNode('reset').port.postMessage({ type: 'reset' });
+  }
+
+  resetParityFx(): void {
+    this.requireNode('resetParityFx').port.postMessage({ type: 'reset-parity-fx' });
+  }
+
+  startGraphTapCapture(tapId: number, chunkFrames: number): void {
+    const node = this.requireNode('startGraphTapCapture');
+    const normalizedTapId = this.normalizeGraphTapId(tapId);
+    const normalizedChunkFrames = Math.max(128, Math.round(chunkFrames || 4096));
+    this.graphTapCaptureSessions.set(normalizedTapId, {
+      tapId: normalizedTapId,
+      chunks: [],
+      resolveFlush: null,
+      rejectFlush: null,
+    });
+    node.port.postMessage({
+      type: 'graph-capture-start',
+      tapId: normalizedTapId,
+      chunkFrames: normalizedChunkFrames,
+    });
+  }
+
+  async flushGraphTapCapture(tapId: number): Promise<CoreProductGraphTapCaptureChunk[]> {
+    return this.requestGraphTapFlush(tapId, false);
+  }
+
+  async stopGraphTapCapture(tapId: number): Promise<CoreProductGraphTapCaptureChunk[]> {
+    return this.requestGraphTapFlush(tapId, true);
   }
 
   registerAsset(asset: DecodedCoreProductAsset): void {
-    this.node?.port.postMessage({
+    this.requireNode('registerAsset').port.postMessage({
       type: 'register-asset',
       assetId: asset.assetId,
       sampleRate: asset.sampleRate,
       flags: asset.flags,
       channels: asset.channels,
     }, asset.channels.map((channel) => channel.buffer));
+  }
+
+  private requireNode(operation: string): AudioWorkletNode {
+    if (!this.node) {
+      throw new Error(`Core Product runtime cannot ${operation} before the product worklet is initialized`);
+    }
+    return this.node;
+  }
+
+  private normalizeGraphTapId(tapId: number): number {
+    const normalized = Math.trunc(Number(tapId));
+    if (!Number.isFinite(normalized) || normalized < 0 || normalized >= CORE_PRODUCT_GRAPH_TAP_COUNT) {
+      throw new Error(`Core Product graph tap id is invalid: ${String(tapId)}`);
+    }
+    return normalized;
+  }
+
+  private async requestGraphTapFlush(tapId: number, stopped: boolean): Promise<CoreProductGraphTapCaptureChunk[]> {
+    const node = this.requireNode(stopped ? 'stopGraphTapCapture' : 'flushGraphTapCapture');
+    const normalizedTapId = this.normalizeGraphTapId(tapId);
+    const session = this.graphTapCaptureSessions.get(normalizedTapId);
+    if (!session) {
+      throw new Error(`Core Product graph tap ${normalizedTapId} capture has not been started`);
+    }
+    if (session.resolveFlush) {
+      throw new Error(`Core Product graph tap ${normalizedTapId} capture is already flushing`);
+    }
+    await new Promise<void>((resolve, reject) => {
+      session.resolveFlush = resolve;
+      session.rejectFlush = reject;
+      node.port.postMessage({
+        type: stopped ? 'graph-capture-stop' : 'graph-capture-flush',
+        tapId: normalizedTapId,
+      });
+    });
+    const chunks = session.chunks.splice(0);
+    if (stopped) {
+      this.graphTapCaptureSessions.delete(normalizedTapId);
+    }
+    return chunks;
   }
 
   private startTelemetryLoop(): void {

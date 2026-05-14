@@ -30,6 +30,13 @@ function requireTokens(path, tokens) {
   }
 }
 
+const generatedSchemaSource = read('src/audio/generated/kesshoProductSchema.ts');
+function generatedConstNumber(name) {
+  const match = generatedSchemaSource.match(new RegExp(`export const ${name} = ([0-9.]+) as const`));
+  assert(match, `generated schema is missing ${name}`);
+  return Number(match[1]);
+}
+
 requireTokens('cpp/KesshoCore/tests/ProductDeterminismTests.cpp', [
   'requireRngCallOrderIsolation',
   'requireRngTransactionTrace',
@@ -78,15 +85,18 @@ const destroy = resolveExport(wasm, 'kessho_product_destroy');
 const loadSnapshot = resolveExport(wasm, 'kessho_product_load_snapshot_v2');
 const debugRenderEvents = resolveExport(wasm, 'kessho_product_debug_render_events');
 
-const SNAPSHOT_SIZE = 12644;
-const SOURCE_SIZE = 1200;
+const SNAPSHOT_SIZE = 12692;
+const SOURCE_SIZE = 1204;
 const SOURCE_COUNT = 7;
 const SOURCE_OFFSET = 56;
 const SYNTH_OFFSET = SOURCE_OFFSET + SOURCE_SIZE * SOURCE_COUNT;
 const LANE_SIZE = 84;
 const LANE0_OFFSET = SYNTH_OFFSET + 4;
 const SEQUENCER_EVENT_SIZE = 60;
-const SCHEMA_HASH = 2080971152;
+const SCHEMA_HASH = generatedConstNumber('KESSHO_PRODUCT_SCHEMA_HASH');
+const DEFAULT_SOURCE_PRESET_IDS = [1001, 1001, 2001, 2001, 3001, 4001, 5001];
+const PAD_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_PAD_PARAM_COUNT');
+const LEAD_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_LEAD_PARAM_COUNT');
 
 const snapshotPtr = malloc(SNAPSHOT_SIZE);
 const eventsPtr = malloc(SEQUENCER_EVENT_SIZE * 8);
@@ -113,11 +123,18 @@ for (let index = 0; index < SOURCE_COUNT; index += 1) {
   const source = SOURCE_OFFSET + index * SOURCE_SIZE;
   setU32(source, 1);
   setU32(source + 4, index + 1);
+  setU32(source + 8, DEFAULT_SOURCE_PRESET_IDS[index]);
   setF32(source + 16, 0.8);
   setF32(source + 28, 0.8);
   setF32(source + 32, 1.0);
-  setF32(source + 52, 18000.0);
-  setF32(source + 56, 1.0);
+  setF32(source + 56, 18000.0);
+  setF32(source + 60, 1.0);
+  if (index === 0 || index === 1) {
+    setU32(source + 68, PAD_PARAM_COUNT);
+  }
+  if (index === 2 || index === 3) {
+    setU32(source + 284, LEAD_PARAM_COUNT);
+  }
 }
 
 setU32(SYNTH_OFFSET, 1);

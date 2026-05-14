@@ -111,14 +111,16 @@ export type CoreProductTelemetrySnapshot = {
   lastSnapshotReloadReason?: string;
   workletOutputPeak?: number;
   workletStemPeaks?: number[];
+  workletGraphTapPeaks?: number[];
   workletMasterStemPeak?: number;
   workletPadStemPeak?: number;
+  workletLeadStemPeak?: number;
   workletFxStemPeak?: number;
 };
 
 export const initialCoreProductCapabilityReport: CoreProductCapabilityReport = {
   engineMode: 'core-product',
-  supportsFullProductGraph: false,
+  supportsFullProductGraph: true,
   supportsSynthSequencer: true,
   supportsDrumSequencer: true,
   supportsJourneyMorphClock: true,
@@ -127,6 +129,6 @@ export const initialCoreProductCapabilityReport: CoreProductCapabilityReport = {
   supportsNativeBridge: false,
   supportsRecordableStems: true,
   supportsCpuTelemetry: true,
-  unsupportedMethods: ['full-fx-graph', 'native-bridge'],
+  unsupportedMethods: ['native-bridge'],
   legacyFallbacks: [],
 };

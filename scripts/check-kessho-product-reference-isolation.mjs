@@ -6,10 +6,12 @@ const root = process.cwd();
 const productFiles = [
   'src/audio/CoreProductAssetAdapter.ts',
   'src/audio/CoreProductHostSequencerAdapter.ts',
+  'src/audio/CoreProductHostRuntimeGuards.ts',
   'src/audio/coreProductAssets.ts',
   'src/audio/CoreProductFallbackDiagnostics.ts',
   'src/audio/CoreProductLegacyPresetCompat.ts',
   'src/audio/CoreProductRuntimeAdapter.ts',
+  'src/audio/coreProductArrangementScheduler.ts',
   'src/audio/coreProductEngineHost.ts',
   'src/audio/coreProductEvents.ts',
   'src/audio/coreProductRuntime.ts',
@@ -51,11 +53,17 @@ const classifiedRuntimeAllowlist = new Map([
   ['./coreProductAssetManifest.json', 'versioned Product asset manifest'],
   ['./CoreProductAssetAdapter', 'product host asset adapter'],
   ['./CoreProductHostSequencerAdapter', 'product host sequencer input adapter'],
+  ['./CoreProductHostRuntimeGuards', 'product host strict runtime guards'],
   ['./CoreProductLegacyPresetCompat', 'temporary Product snapshot compatibility bridge'],
   ['./CoreProductRuntimeAdapter', 'product host snapshot dirty-diff adapter'],
+  ['./coreProductArrangementScheduler', 'product host live arrangement scheduler'],
   ['./coreProductEvents', 'product module'],
+  ['./coreProductGraphTaps', 'product graph tap ID map'],
   ['./CoreProductFallbackDiagnostics', 'product runtime fallback diagnostics'],
   ['./coreProductRuntime', 'product module'],
+  ['./harmony', 'temporary canonical web harmony kernel for Product live arrangement scheduling'],
+  ['./rng', 'temporary canonical deterministic RNG for Product live arrangement scheduling'],
+  ['./scales', 'temporary canonical scale note helper for Product live arrangement scheduling'],
   ['./coreProductSnapshot', 'product module'],
   ['./coreProductSnapshotEncoder', 'product snapshot byte encoder'],
   ['./coreProductTelemetry', 'product module'],
@@ -64,12 +72,19 @@ const classifiedRuntimeAllowlist = new Map([
   ['./generated/kesshoProductEvents', 'generated Product ABI'],
   ['./generated/kesshoProductParams', 'generated Product ABI'],
   ['./generated/kesshoProductSchema', 'generated Product ABI'],
+  ['./granularMacroCore', 'shared granular host macro serializer shaping'],
   ['./lead4opfm', 'temporary Lead exact-patch compatibility bridge'],
   ['./outputTrims', 'serialization default/trim constants'],
   ['./pianoSamples', 'asset manifest helper'],
   ['./transport', 'transport serialization metrics'],
   ['../native/capacitorMidiRouting', 'type-only MIDI message interface'],
   ['../ui/state', 'UI serialization defaults only'],
+]);
+
+const arrangementSharedMusicAllowlist = new Set([
+  './harmony',
+  './rng',
+  './scales',
 ]);
 
 function assert(condition, message) {
@@ -91,6 +106,13 @@ for (const file of productFiles) {
   for (const imported of importDeclarations(source)) {
     const specifier = imported.specifier;
     if (specifier === './engine' && imported.typeOnly) {
+      continue;
+    }
+    if (file === 'src/audio/coreProductArrangementScheduler.ts' && arrangementSharedMusicAllowlist.has(specifier)) {
+      assert(
+        classifiedRuntimeAllowlist.has(specifier),
+        `${file} shared arrangement import is not reference-isolation classified: ${specifier}`,
+      );
       continue;
     }
     if (specifier === './lead4opfm' && file === 'src/audio/CoreProductLegacyPresetCompat.ts') {

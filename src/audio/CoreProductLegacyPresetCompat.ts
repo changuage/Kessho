@@ -6,16 +6,22 @@ import {
   KESSHO_PRODUCT_LEAD_PARAM_SPECS,
   KESSHO_PRODUCT_DRUM_PARAM_COUNT,
   KESSHO_PRODUCT_DRUM_DEFAULT_PARAMS,
+  KESSHO_PRODUCT_DRUM_PARAM_SPECS,
   KESSHO_PRODUCT_DRUM_VOICE_COUNT,
   KESSHO_PRODUCT_DRUM_VOICES,
   KESSHO_PRODUCT_DRUM_VOICE_PRESETS,
   KESSHO_PRODUCT_SOURCE_PRESETS,
 } from './generated/kesshoProductSchema';
-import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES, morphPresets } from './lead4opfm';
+import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES, loadLead4opFMPreset, morphPresets, type Lead4opFMPreset } from './lead4opfm';
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import { delayNoteToSeconds } from './delayBuses';
 
 // SNAPSHOT_AUTHORITY: TEMP_COMPAT_WEB_REFERENCE - legacy UI/preset conversions are isolated here for retirement.
+
+const DRUM_PARAM_MASTER_LEVEL = 122;
+const DRUM_PARAM_REVERB_SEND = 123;
+
+export { loadLead4opFMPreset as loadProductLead4opFMPreset };
 
 function numberFromState(state: Record<string, unknown> | undefined, key: string, fallback: number): number {
   const value = state?.[key];
@@ -282,6 +288,15 @@ export function exactPadParamsFromState(state: Record<string, unknown> | undefin
 }
 
 export function leadPresetFromKey(key: unknown) {
+  if (
+    key &&
+    typeof key === 'object' &&
+    typeof (key as Record<string, unknown>).algorithm === 'string' &&
+    (key as Record<string, unknown>).params &&
+    typeof (key as Record<string, unknown>).params === 'object'
+  ) {
+    return key as Lead4opFMPreset;
+  }
   const normalized = normalizePresetKey(key, 'soft_rhodes');
   return normalized === 'gamelan' ? DEFAULT_GAMELAN : DEFAULT_SOFT_RHODES;
 }
@@ -300,19 +315,37 @@ export function exactLeadParamsFromState(state: Record<string, unknown> | undefi
   const params = emptyLeadParams();
   const presetAKey = leadIndex === 0 ? state?.lead1PresetA : state?.lead2PresetC;
   const presetBKey = leadIndex === 0 ? state?.lead1PresetB : state?.lead2PresetD;
+  const presetAData = leadIndex === 0 ? state?.lead1PresetAData : state?.lead2PresetCData;
+  const presetBData = leadIndex === 0 ? state?.lead1PresetBData : state?.lead2PresetDData;
   const morph = clamp(numberFromState(state, leadIndex === 0 ? 'lead1Morph' : 'lead2Morph', 0), 0, 1);
   const algorithm = leadAlgorithmMode(state?.[leadIndex === 0 ? 'lead1AlgorithmMode' : 'lead2AlgorithmMode']);
-  const morphed = morphPresets(leadPresetFromKey(presetAKey), leadPresetFromKey(presetBKey), morph, algorithm) as unknown as Record<string, unknown>;
+  const morphed = morphPresets(leadPresetFromKey(presetAData ?? presetAKey), leadPresetFromKey(presetBData ?? presetBKey), morph, algorithm) as unknown as Record<string, unknown>;
+  const prefix = leadIndex === 0 ? 'lead1' : 'lead2';
+  if (booleanFromState(state, `${prefix}UseCustomAdsr`, false)) {
+    morphed.attack = numberFromState(state, `${prefix}Attack`, 0.01);
+    morphed.decay = numberFromState(state, `${prefix}Decay`, 0.8);
+    morphed.sustain = numberFromState(state, `${prefix}Sustain`, 0.3);
+    morphed.release = numberFromState(state, `${prefix}Release`, 2);
+  }
   for (const spec of KESSHO_PRODUCT_LEAD_PARAM_SPECS) {
     params[spec.index] = padParamValue(morphed[spec.key], spec.enumMap, spec.fallback);
   }
   return params;
 }
 
-export function exactDrumParamsFromState(): number[] {
-  // SNAPSHOT_AUTHORITY: TEMP_COMPAT_WEB_REFERENCE - temporary exact Drum ABI filler; generated Drum voice IDs own the bridge.
-  // PATCH_BRIDGE_RETIREMENT: exact Drum params stay zero/default here; Drum voice preset IDs and morphs are the canonical bridge.
-  return Array.from({ length: KESSHO_PRODUCT_DRUM_PARAM_COUNT }, (_, index) => KESSHO_PRODUCT_DRUM_DEFAULT_PARAMS[index] ?? 0);
+export function exactDrumParamsFromState(state?: Record<string, unknown>): number[] {
+  // SNAPSHOT_AUTHORITY: TEMP_COMPAT_WEB_REFERENCE - temporary exact Drum bridge, not final source-patch ownership.
+  // PATCH_BRIDGE_RETIREMENT: exact Drum params carry host-edited Drum voice controls until structured Product Core Drum overrides replace the exact array.
+  const params: number[] = Array.from(
+    { length: KESSHO_PRODUCT_DRUM_PARAM_COUNT },
+    (_, index) => KESSHO_PRODUCT_DRUM_DEFAULT_PARAMS[index] ?? 0,
+  );
+  for (const spec of KESSHO_PRODUCT_DRUM_PARAM_SPECS) {
+    params[spec.index] = padParamValue(state?.[spec.key], spec.enumMap, spec.fallback);
+  }
+  params[DRUM_PARAM_MASTER_LEVEL] = clamp(numberFromState(state, 'drumLevel', 0.8), 0, 1.5);
+  params[DRUM_PARAM_REVERB_SEND] = clamp(numberFromState(state, 'drumReverbSend', 0.1), 0, 1);
+  return params;
 }
 
 export function drumVoicePresetId(voiceIndex: number, presetName: unknown): number {

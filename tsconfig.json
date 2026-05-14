@@ -20,6 +20,5 @@
     "esModuleInterop": true
   },
   "include": ["src"],
-  "exclude": ["src/ui/granular/archive_pre_rework"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

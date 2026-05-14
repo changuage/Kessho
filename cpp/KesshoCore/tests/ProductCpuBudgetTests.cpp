@@ -1,12 +1,13 @@
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <algorithm>
+#include <ctime>
 #include <iostream>
 #include <vector>
 
 #include "KesshoCore/KesshoProductCore.h"
+#include "ProductSnapshotTestHelpers.h"
 
 namespace {
 
@@ -65,6 +66,7 @@ KesshoProductSnapshotV2 makeSnapshot() {
   snapshot.drum_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_DRUM;
   snapshot.drum_euclid.lanes[0].midi_note = 36.0f;
   snapshot.drum_euclid.lanes[0].hold_seconds = 0.08f;
+  kessho::product::tests::applyGeneratedSourceDefaults(snapshot);
   return snapshot;
 }
 
@@ -140,7 +142,7 @@ double percentile(std::vector<double> values, double percentile_value) {
 
 RenderCpuStats renderCpuStats(const KesshoProductSnapshotV2& snapshot, uint32_t blocks) {
   constexpr uint32_t frames = 128;
-  constexpr uint32_t warmup_blocks = 32;
+  constexpr uint32_t warmup_blocks = 256;
   KesshoProductEngine* engine = kessho_product_create(48000.0, frames, 0);
   require(engine != nullptr, "engine create failed");
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "snapshot load failed");
@@ -153,15 +155,16 @@ RenderCpuStats renderCpuStats(const KesshoProductSnapshotV2& snapshot, uint32_t 
 
   std::vector<double> block_ms;
   block_ms.reserve(blocks);
-  const auto start = std::chrono::steady_clock::now();
+  const std::clock_t start_clock = std::clock();
   for (uint32_t block = 0; block < blocks; ++block) {
-    const auto block_start = std::chrono::steady_clock::now();
+    const std::clock_t block_start_clock = std::clock();
     kessho_product_render(engine, left.data(), right.data(), frames);
-    const auto block_end = std::chrono::steady_clock::now();
-    block_ms.push_back(std::chrono::duration<double, std::milli>(block_end - block_start).count());
+    const std::clock_t block_end_clock = std::clock();
+    block_ms.push_back(
+        1000.0 * static_cast<double>(block_end_clock - block_start_clock) / static_cast<double>(CLOCKS_PER_SEC));
   }
-  const auto end = std::chrono::steady_clock::now();
-  const double elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
+  const std::clock_t end_clock = std::clock();
+  const double elapsed_ms = 1000.0 * static_cast<double>(end_clock - start_clock) / static_cast<double>(CLOCKS_PER_SEC);
   const double rendered_ms = static_cast<double>(blocks * frames) * 1000.0 / 48000.0;
   const double quantum_ms = static_cast<double>(frames) * 1000.0 / 48000.0;
   RenderCpuStats stats{};
@@ -180,6 +183,14 @@ RenderCpuStats renderCpuStats(const KesshoProductSnapshotV2& snapshot, uint32_t 
   return stats;
 }
 
+void printCpuStats(const char* label, const RenderCpuStats& stats) {
+  std::cout << label << " "
+            << stats.average_percent << "% avg, "
+            << stats.peak_percent << "% peak, p95 " << stats.p95_ms
+            << " ms, p99 " << stats.p99_ms << " ms, missed "
+            << stats.missed_quantum_count << "\n";
+}
+
 } // namespace
 
 int main() {
@@ -189,6 +200,7 @@ int main() {
   KesshoProductSnapshotV2 disabled_snapshot = makeSnapshot();
   disableAllFx(disabled_snapshot);
   const RenderCpuStats disabled_stats = renderCpuStats(disabled_snapshot, blocks);
+  printCpuStats("Kessho Product CPU measured: disabled FX", disabled_stats);
   require(disabled_stats.average_percent < 25.0, "disabled-FX product render CPU budget exceeded");
   require(disabled_stats.p95_ms < quantum_ms * 0.5, "disabled-FX product render p95 budget exceeded");
   require(disabled_stats.p99_ms < quantum_ms, "disabled-FX product render p99 budget exceeded");
@@ -199,6 +211,7 @@ int main() {
   KesshoProductSnapshotV2 active_snapshot = makeSnapshot();
   enableFxStress(active_snapshot);
   const RenderCpuStats active_stats = renderCpuStats(active_snapshot, blocks);
+  printCpuStats("Kessho Product CPU measured: active FX", active_stats);
   require(active_stats.average_percent < 35.0, "active-FX product render CPU smoke budget exceeded");
   require(active_stats.p95_ms < quantum_ms * 0.75, "active-FX product render p95 budget exceeded");
   require(active_stats.p99_ms < quantum_ms, "active-FX product render p99 budget exceeded");

@@ -806,6 +806,10 @@ export class DrumSynth {
     return this.masterGain;
   }
 
+  getReverbSend(): GainNode {
+    return this.reverbSend;
+  }
+
   /** Pre-fader bus: sum of all drum voices BEFORE drumLevel gain.
    *  Used by granular engine for pre-fader send (independent of drum volume slider). */
   getPreFaderBus(): GainNode {

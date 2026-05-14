@@ -10,6 +10,22 @@
       float* out_r,
       uint32_t start,
       uint32_t frames) {
+  const bool is_delay_a = module == delay_a_module.get();
+  float* graph_input_l = is_delay_a ? graph_delay_a_input_l : graph_delay_b_input_l;
+  float* graph_input_r = is_delay_a ? graph_delay_a_input_r : graph_delay_b_input_r;
+  float* graph_output_l = is_delay_a ? graph_delay_a_output_l : graph_delay_b_output_l;
+  float* graph_output_r = is_delay_a ? graph_delay_a_output_r : graph_delay_b_output_r;
+  float* graph_reverb_l = is_delay_a ? graph_delay_a_reverb_send_l : graph_delay_b_reverb_send_l;
+  float* graph_reverb_r = is_delay_a ? graph_delay_a_reverb_send_r : graph_delay_b_reverb_send_r;
+  float* graph_cross_l = is_delay_a ? graph_delay_a_to_delay_b_send_l : graph_delay_b_to_delay_a_send_l;
+  float* graph_cross_r = is_delay_a ? graph_delay_a_to_delay_b_send_r : graph_delay_b_to_delay_a_send_r;
+  float* graph_granular_l = is_delay_a ? graph_delay_a_to_granular_send_l : graph_delay_b_to_granular_send_l;
+  float* graph_granular_r = is_delay_a ? graph_delay_a_to_granular_send_r : graph_delay_b_to_granular_send_r;
+  for (uint32_t i = 0; i < frames; ++i) {
+    const uint32_t frame = start + i;
+    graph_input_l[frame] = input_l[frame];
+    graph_input_r[frame] = input_r[frame];
+  }
   if (module == nullptr || frames == 0u) {
     return;
   }
@@ -33,11 +49,27 @@
       module == delay_a_module.get() ? kSidechainDelayA : kSidechainDelayB);
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    reverb_bus_l[frame] += module_tap_l[KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND][i];
-    reverb_bus_r[frame] += module_tap_r[KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND][i];
-    cross_l[frame] += module_tap_l[KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND][i];
-    cross_r[frame] += module_tap_r[KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND][i];
-    granular_bus_l[frame] += module_tap_l[KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND][i];
-    granular_bus_r[frame] += module_tap_r[KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND][i];
+    const float output_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_MAIN][i];
+    const float output_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_MAIN][i];
+    const float reverb_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND][i];
+    const float reverb_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND][i];
+    const float cross_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND][i];
+    const float cross_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND][i];
+    const float granular_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND][i];
+    const float granular_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND][i];
+    graph_output_l[frame] = output_l_sample;
+    graph_output_r[frame] = output_r_sample;
+    graph_reverb_l[frame] = reverb_l_sample;
+    graph_reverb_r[frame] = reverb_r_sample;
+    graph_cross_l[frame] = cross_l_sample;
+    graph_cross_r[frame] = cross_r_sample;
+    graph_granular_l[frame] = granular_l_sample;
+    graph_granular_r[frame] = granular_r_sample;
+    reverb_bus_l[frame] += reverb_l_sample;
+    reverb_bus_r[frame] += reverb_r_sample;
+    cross_l[frame] += cross_l_sample;
+    cross_r[frame] += cross_r_sample;
+    granular_bus_l[frame] += granular_l_sample;
+    granular_bus_r[frame] += granular_r_sample;
   }
 }

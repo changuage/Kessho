@@ -84,7 +84,124 @@ export interface RecordableTrackSource {
   outputIndex?: number;
 }
 
-type DiagnosticRecordTrackId = StemRecordTrackId | 'pad1Pre' | 'reverbFeed';
+type WebGraphRecordTrackId =
+  | 'reverbInput'
+  | 'pad1Dry'
+  | 'pad1ReverbSend'
+  | 'pad1DelayASend'
+  | 'pad1DelayBSend'
+  | 'pad1GranularSend'
+  | 'pad2Dry'
+  | 'pad2ReverbSend'
+  | 'pad2DelayASend'
+  | 'pad2DelayBSend'
+  | 'pad2GranularSend'
+  | 'lead1Dry'
+  | 'lead1ReverbSend'
+  | 'lead1DelayASend'
+  | 'lead1DelayBSend'
+  | 'lead1GranularSend'
+  | 'lead2Dry'
+  | 'lead2ReverbSend'
+  | 'lead2DelayASend'
+  | 'lead2DelayBSend'
+  | 'lead2GranularSend'
+  | 'pianoDry'
+  | 'pianoReverbSend'
+  | 'pianoDelayASend'
+  | 'pianoDelayBSend'
+  | 'pianoGranularSend'
+  | 'diffuseInput'
+  | 'diffuseOutput'
+  | 'diffuseDirectOut'
+  | 'diffuseOut'
+  | 'diffuseReverbSend'
+  | 'pad1DiffuseSend'
+  | 'padDiffuseSend'
+  | 'pad2DiffuseSend'
+  | 'lead1DiffuseSend'
+  | 'lead2DiffuseSend'
+  | 'pianoDiffuseSend'
+  | 'oceanDry'
+  | 'wavesDry'
+  | 'waterDry'
+  | 'insectsDry'
+  | 'natureDry'
+  | 'oceanReverbSend'
+  | 'wavesReverbSend'
+  | 'oceanDelayASend'
+  | 'wavesDelayASend'
+  | 'oceanDelayBSend'
+  | 'wavesDelayBSend'
+  | 'oceanGranularSend'
+  | 'wavesGranularSend'
+  | 'granularWavesSend'
+  | 'waterReverbSend'
+  | 'waterDelayASend'
+  | 'waterDelayBSend'
+  | 'waterGranularSend'
+  | 'granularWaterSend'
+  | 'insectsReverbSend'
+  | 'insectsDelayASend'
+  | 'insDelayASend'
+  | 'insectsDelayBSend'
+  | 'insDelayBSend'
+  | 'insectsGranularSend'
+  | 'granularInsectsSend'
+  | 'natureReverbSend'
+  | 'natureDelayASend'
+  | 'natureDelayBSend'
+  | 'natureGranularSend'
+  | 'granularNatureSend'
+  | 'soundscapeStem'
+  | 'earthStem'
+  | 'delayAInput'
+  | 'delayBInput'
+  | 'granularInput'
+  | 'delayAOutput'
+  | 'delayADirectOut'
+  | 'delayAReverbSend'
+  | 'delayAToDelayBSend'
+  | 'delayAToBSend'
+  | 'delayAToGranularSend'
+  | 'delayAGranularSend'
+  | 'delayBOutput'
+  | 'delayBDirectOut'
+  | 'delayBReverbSend'
+  | 'delayBToDelayASend'
+  | 'delayBToASend'
+  | 'delayBToGranularSend'
+  | 'delayBGranularSend'
+  | 'granularOutput'
+  | 'granularDirectOut'
+  | 'granularFxDirect'
+  | 'granularReverbSend'
+  | 'granularFxReverbSend'
+  | 'granularToDelayASend'
+  | 'granularDelayASend'
+  | 'granularToDelayBSend'
+  | 'granularDelayBSend'
+  | 'reverbOutput'
+  | 'reverbReturn'
+  | 'reverbPreconditionerOut'
+  | 'reverbPreconditionerOutput'
+  | 'reverbConditionedInput'
+  | 'spectralFreezeInput'
+  | 'spectralFreezeOutput'
+  | 'drumDry'
+  | 'drumReverbSend'
+  | 'drumDelayASend'
+  | 'drumDelayBSend'
+  | 'drumGranularSend'
+  | 'sidechainPad1Input'
+  | 'sidechainPad1Output'
+  | 'sidechainPad1GainTrace'
+  | 'dynamicsInput'
+  | 'dynamicsOutput'
+  | 'masterPreLimiter'
+  | 'masterPostLimiter';
+
+type DiagnosticRecordTrackId = StemRecordTrackId | 'pad1Pre' | 'reverbFeed' | WebGraphRecordTrackId;
 
 type StereoWidthProcessor = {
   input: GainNode;
@@ -111,6 +228,11 @@ type SidechainTargetNode = {
   input: GainNode;
   dry: GainNode;
   duck: GainNode;
+  output: GainNode;
+  traceSource: ConstantSourceNode | null;
+  traceDry: GainNode | null;
+  traceDuck: GainNode | null;
+  traceOutput: GainNode | null;
   duckingUntil: number;
 };
 
@@ -358,7 +480,7 @@ import {
   DEFAULT_SOFT_RHODES,
   DEFAULT_GAMELAN,
 } from './lead4opfm';
-import { morphWaterPresets, WATER_MORPH_PARAM_KEYS } from './waterPresets';
+import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, type WaterPresetState } from './waterPresets';
 
 type GranularVoiceMode = SliderState['granularV1Mode'];
 type GranularGrainShape = NonNullable<SliderState['granularShape']>;
@@ -814,6 +936,7 @@ export class AudioEngine {
   // Pad Synth (WASM — replaces Web Audio oscillator voices)
   private wasmPadBinary: ArrayBuffer | null = null;
   private padWasmNode: AudioWorkletNode | null = null;
+  private padWasmReady = false;
   private padWasmModuleContext: AudioContext | null = null;
   private padWasmInitPromise: Promise<void> | null = null;
   private padWasmUnavailableWarned = false;
@@ -822,6 +945,8 @@ export class AudioEngine {
   private wasmLeadFmBinary: ArrayBuffer | null = null;
   private leadFmWasmNode: AudioWorkletNode | null = null;
   private leadFmWasmReady = false;
+  private leadFmWasmInitPromise: Promise<void> | null = null;
+  private leadFmWasmModuleContext: AudioContext | null = null;
 
   // Drum Synth (WASM — replaces per-trigger Web Audio nodes)
   private wasmDrumBinary: ArrayBuffer | null = null;
@@ -922,6 +1047,10 @@ export class AudioEngine {
   private oceanTexturePlayer: EarthTexturePlayer | null = null;
   private natureBus: GainNode | null = null;            // Shared dry bus for birds + birds2 + frogs
   private natureLevelGain: GainNode | null = null;      // Nature dry master → earthBus
+  private natureReverbSendTap: GainNode | null = null;
+  private natureDelayASendTap: GainNode | null = null;
+  private natureDelayBSendTap: GainNode | null = null;
+  private natureGranularSendTap: GainNode | null = null;
   private birdsTexture: EarthTextureRuntime | null = null;
   private birds2Texture: EarthTextureRuntime | null = null;
   private frogsTexture: EarthTextureRuntime | null = null;
@@ -2127,7 +2256,15 @@ export class AudioEngine {
 
     if (source === 'pad1' || source === 'pad2') {
       await this.ensurePadWasmForIndependentSynth();
-      await Promise.resolve();
+      await this.waitForPadWasmReady();
+      this.sendPadWasmParams(state);
+      this.applyManualAuditionMixState(source, state);
+    }
+
+    if (source === 'lead1' || source === 'lead2') {
+      await this.ensureLeadFmWasmForIndependentSynth();
+      await this.waitForLeadFmWasmReady();
+      this.applyManualAuditionMixState(source, state);
     }
 
     if (source === 'piano') {
@@ -2170,6 +2307,7 @@ export class AudioEngine {
       try { this.padWasmNode.port.close(); } catch { /* */ }
       try { this.padWasmNode.disconnect(); } catch { /* */ }
       this.padWasmNode = null;
+      this.padWasmReady = false;
       this.padWasmInitPromise = null;
     }
 
@@ -2762,10 +2900,12 @@ export class AudioEngine {
       runtime.delayASend = this.ensureTappedSend(ctx, runtime.delayASend, (gain) => {
         runtime.preFaderBus.connect(gain);
       }, destination);
+      if (runtime.delayASend && this.natureDelayASendTap) runtime.delayASend.connect(this.natureDelayASendTap);
     } else {
       runtime.delayBSend = this.ensureTappedSend(ctx, runtime.delayBSend, (gain) => {
         runtime.preFaderBus.connect(gain);
       }, destination);
+      if (runtime.delayBSend && this.natureDelayBSendTap) runtime.delayBSend.connect(this.natureDelayBSendTap);
     }
     return runtime;
   }
@@ -2778,6 +2918,7 @@ export class AudioEngine {
     runtime.granularSend = this.ensureTappedSend(ctx, runtime.granularSend, (gain) => {
       runtime.preFaderBus.connect(gain);
     }, this.granularFxInputGain);
+    if (runtime.granularSend && this.natureGranularSendTap) runtime.granularSend.connect(this.natureGranularSendTap);
     return runtime;
   }
 
@@ -3055,6 +3196,8 @@ export class AudioEngine {
       initialLevel: number;
       initialReverbSend: number;
       dryDestination: AudioNode;
+      parityDryBypass?: boolean;
+      parityDeterministic?: boolean;
     },
   ): EarthTextureRuntime {
     const sourceBus = ctx.createGain();
@@ -3062,11 +3205,17 @@ export class AudioEngine {
     const gateGain = ctx.createGain();
     gateGain.gain.value = 0;
     sourceBus.connect(gateGain);
-    const preFaderBus = this.createHaasWidenedBus(ctx, gateGain, {
-      delayMs: config.delayMs,
-      sideGain: config.sideGain,
-      centerGain: config.centerGain,
-    });
+    const preFaderBus = config.parityDryBypass === true
+      ? ctx.createGain()
+      : this.createHaasWidenedBus(ctx, gateGain, {
+          delayMs: config.delayMs,
+          sideGain: config.sideGain,
+          centerGain: config.centerGain,
+        });
+    if (config.parityDryBypass === true) {
+      preFaderBus.gain.value = 1;
+      gateGain.connect(preFaderBus);
+    }
     const levelGain = ctx.createGain();
     levelGain.gain.value = config.initialLevel;
     const reverbSend = ctx.createGain();
@@ -3083,6 +3232,7 @@ export class AudioEngine {
       fadeTime: config.fadeTime,
       density: config.density,
       randomSeed: config.randomSeed,
+      parityDeterministic: config.parityDeterministic,
     });
 
     return {
@@ -3181,6 +3331,51 @@ export class AudioEngine {
     const seedValue = (state as unknown as Record<string, unknown> | null | undefined)?.seed;
     const seed = Number.isFinite(Number(seedValue)) ? Math.trunc(Number(seedValue)) : 42;
     return `${getUtcBucket(seedWindow)}|${seed}|earth-texture|${layer}`;
+  }
+
+  private isSoundscapeParityFixture(state: SliderState | null | undefined = this.sliderState): boolean {
+    return (state as unknown as Record<string, unknown> | null | undefined)?.soundscapeParityFixture === true;
+  }
+
+  private getFiniteStateNumber(
+    state: SliderState | null | undefined,
+    key: keyof SliderState | string,
+    fallback: number,
+  ): number {
+    const value = (state as unknown as Record<string, unknown> | null | undefined)?.[key as string];
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  }
+
+  private getBoundedStateNumber(
+    state: SliderState | null | undefined,
+    key: keyof SliderState | string,
+    fallback: number,
+    min: number,
+    max: number,
+  ): number {
+    return Math.max(min, Math.min(max, this.getFiniteStateNumber(state, key, fallback)));
+  }
+
+  private getWaterSoundscapePresetIndex(state: SliderState | null | undefined): number {
+    const presetA = Math.round(this.getBoundedStateNumber(state, 'waterMorphA', this.getFiniteStateNumber(state, 'waterPreset', 0), 0, 7));
+    const presetB = Math.round(this.getBoundedStateNumber(state, 'waterMorphB', this.getFiniteStateNumber(state, 'waterPreset', presetA), 0, 7));
+    const morph = this.getBoundedStateNumber(state, 'waterMorph', 0, 0, 1);
+    return morph < 0.5 ? presetA : presetB;
+  }
+
+  private resolveWaterSoundscapeState(state: SliderState): WaterPresetState {
+    const presetA = Math.round(this.getBoundedStateNumber(state, 'waterMorphA', this.getFiniteStateNumber(state, 'waterPreset', 0), 0, 7));
+    const presetB = Math.round(this.getBoundedStateNumber(state, 'waterMorphB', this.getFiniteStateNumber(state, 'waterPreset', presetA), 0, 7));
+    const morph = this.getBoundedStateNumber(state, 'waterMorph', 0, 0, 1);
+    const resolved = { ...morphWaterPresets(presetA, presetB, morph) };
+    const stateRecord = state as unknown as Record<string, unknown>;
+    for (const key of WATER_MORPH_PARAM_KEYS) {
+      const value = stateRecord[key];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        resolved[key] = value;
+      }
+    }
+    return resolved;
   }
 
   private scaleEarthSend(send: number | undefined, levelScale: number): number {
@@ -3403,6 +3598,12 @@ export class AudioEngine {
       try { target.input.disconnect(); } catch { /* */ }
       try { target.dry.disconnect(); } catch { /* */ }
       try { target.duck.disconnect(); } catch { /* */ }
+      try { target.output.disconnect(); } catch { /* */ }
+      try { target.traceSource?.disconnect(); } catch { /* */ }
+      try { target.traceDry?.disconnect(); } catch { /* */ }
+      try { target.traceDuck?.disconnect(); } catch { /* */ }
+      try { target.traceOutput?.disconnect(); } catch { /* */ }
+      try { target.traceSource?.stop(); } catch { /* */ }
     }
     this.sidechainTargets = {};
     this.sidechainVisualEvents = [];
@@ -3419,20 +3620,53 @@ export class AudioEngine {
         input: ctx.createGain(),
         dry: ctx.createGain(),
         duck: ctx.createGain(),
+        output: ctx.createGain(),
+        traceSource: null,
+        traceDry: null,
+        traceDuck: null,
+        traceOutput: null,
         duckingUntil: 0,
       };
       target.input.gain.value = 1;
       target.dry.gain.value = 1;
       target.duck.gain.value = 0;
+      target.output.gain.value = 1;
       target.input.connect(target.dry);
       target.input.connect(target.duck);
+      target.dry.connect(target.output);
+      target.duck.connect(target.output);
       this.sidechainTargets[key] = target;
     }
-    try { target.dry.disconnect(); } catch { /* */ }
-    try { target.duck.disconnect(); } catch { /* */ }
-    target.dry.connect(destination);
-    target.duck.connect(destination);
+    try { target.output.disconnect(); } catch { /* */ }
+    target.output.connect(destination);
     return target.input;
+  }
+
+  private getSidechainTargetGainTraceNode(key: SidechainTargetKey): AudioNode | null {
+    const target = this.sidechainTargets[key];
+    const ctx = this.ctx;
+    if (!target || !ctx || target.input.context !== ctx) return null;
+    if (!target.traceSource || !target.traceDry || !target.traceDuck || !target.traceOutput) {
+      const source = ctx.createConstantSource();
+      const dry = ctx.createGain();
+      const duck = ctx.createGain();
+      const output = ctx.createGain();
+      source.offset.value = 1;
+      output.gain.value = 1;
+      source.connect(dry);
+      source.connect(duck);
+      dry.connect(output);
+      duck.connect(output);
+      const amount = this.sliderState ? this.getSidechainTargetAmount(this.sliderState, key) : 0;
+      dry.gain.value = 1 - amount;
+      duck.gain.value = amount;
+      source.start();
+      target.traceSource = source;
+      target.traceDry = dry;
+      target.traceDuck = duck;
+      target.traceOutput = output;
+    }
+    return target.traceOutput;
   }
 
   private getSidechainTargetAmount(state: SliderState, key: SidechainTargetKey): number {
@@ -3459,14 +3693,18 @@ export class AudioEngine {
     for (const [key, target] of Object.entries(this.sidechainTargets) as Array<[SidechainTargetKey, SidechainTargetNode]>) {
       const amount = this.getSidechainTargetAmount(state, key);
       target.dry.gain.setTargetAtTime(1 - amount, now, smoothTime);
+      target.traceDry?.gain.setTargetAtTime(1 - amount, now, smoothTime);
       if (amount <= 0.0001) {
         target.duck.gain.cancelScheduledValues(now);
         target.duck.gain.setTargetAtTime(0, now, smoothTime);
+        target.traceDuck?.gain.cancelScheduledValues(now);
+        target.traceDuck?.gain.setTargetAtTime(0, now, smoothTime);
         target.duckingUntil = 0;
         continue;
       }
       if (now >= target.duckingUntil) {
         target.duck.gain.setTargetAtTime(amount, now, smoothTime);
+        target.traceDuck?.gain.setTargetAtTime(amount, now, smoothTime);
       }
     }
   }
@@ -3516,11 +3754,13 @@ export class AudioEngine {
       visualTargetStrength = Math.max(visualTargetStrength, amount);
       visualDuckAmount = Math.max(visualDuckAmount, 1 - totalDuckedGain);
       visualReductionDb = Math.max(visualReductionDb, -20 * Math.log10(Math.max(0.0001, totalDuckedGain)));
-      const param = target.duck.gain;
-      param.cancelScheduledValues(now);
-      param.setValueAtTime(param.value, now);
-      param.linearRampToValueAtTime(duckedGain, now + attack);
-      param.setTargetAtTime(restGain, now + attack + hold, release / 3);
+      const params = [target.duck.gain, target.traceDuck?.gain].filter((param): param is AudioParam => Boolean(param));
+      for (const param of params) {
+        param.cancelScheduledValues(now);
+        param.setValueAtTime(param.value, now);
+        param.linearRampToValueAtTime(duckedGain, now + attack);
+        param.setTargetAtTime(restGain, now + attack + hold, release / 3);
+      }
       target.duckingUntil = now + attack + hold + release;
     }
     if (visualTargetStrength > 0.0001) {
@@ -4995,6 +5235,7 @@ export class AudioEngine {
       () => rngSource(),
       () => this.ensureTransportAnchors(),
     );
+    tempSynth.setDrumTriggerCallback(this.drumTriggerRouter);
     tempSynth.triggerVoice(voice, velocity);
 
     // Store references so stop() and next preview can clean up
@@ -5026,10 +5267,10 @@ export class AudioEngine {
     try {
       switch (note.source) {
         case 'lead1':
-          this.playLeadNote(frequency, velocity, 'lead1');
+          this.playLeadNote(frequency, velocity, 'lead1', null, true);
           break;
         case 'lead2':
-          this.playLeadNote(frequency, velocity, 'lead2');
+          this.playLeadNote(frequency, velocity, 'lead2', null, true);
           break;
         case 'piano':
           this.playPianoNote(frequency, velocity);
@@ -5161,6 +5402,71 @@ export class AudioEngine {
     if (this.reverbNode && (this.reverbNode as any).port) {
       (this.reverbNode as AudioWorkletNode).port.postMessage({ type: 'reset' });
     }
+    if (this.characterProcessorNode instanceof AudioWorkletNode) {
+      this.characterProcessorNode.port.postMessage({ type: 'reset' });
+    }
+  }
+
+  getSonicParityDebugState(): Record<string, unknown> {
+    const state = this.sliderState;
+    const water = state ? this.resolveWaterSoundscapeState(state) : null;
+    return {
+      engineMode: 'web-ts',
+      running: this.isRunning,
+      soundscapesWasmReady: this.soundscapesWasmReady,
+      soundscapes: state ? {
+        parityFixture: this.isSoundscapeParityFixture(state),
+        waterStarted: this._scWaterStarted,
+        waterEnabled: state.waterEnabled,
+        waterSignalActive: this.getWaterFamilySendScale(state) > 0.0001,
+        waterLevel: state.waterLevel,
+        waterPreset: this.getWaterSoundscapePresetIndex(state),
+        waterSeed: this.isSoundscapeParityFixture(state) ? 12345 : 'no-change',
+        waterParams: water ? {
+          intensity: water.waterIntensity,
+          distance: water.waterDistance,
+          hardDropBaseFreq: water.waterHardDropBaseFreq ?? water.waterBaseFreq,
+          waterDropBaseFreq: water.waterWaterDropBaseFreq ?? water.waterBaseFreq,
+          dropSize: water.waterDropSize,
+          hardness: water.waterHardness,
+          glassThickness: water.waterGlassThickness,
+          layerMix: [
+            water.waterLayerHardDrops,
+            water.waterLayerWaterDrops,
+            water.waterLayerTurbulence,
+            water.waterLayerBubbling,
+            water.waterLayerSurf,
+            water.waterLayerChannels,
+          ],
+          surf: [
+            water.waterSurfDuration,
+            water.waterSurfInterval,
+            water.waterSurfFoam,
+            water.waterSurfProximity,
+            water.waterSurfDepth,
+            water.waterSurfBody,
+            water.waterSurfSpray,
+            water.waterSurfFoamBright,
+          ],
+          densityLoop: [
+            water.waterDensityHardSend,
+            water.waterDensityWaterSend,
+            water.waterDensityBubbleSend,
+            water.waterDensityFeedback,
+            water.waterDensityTone,
+            water.waterDensityRing,
+            water.waterDensityWet,
+          ],
+          channels: [water.waterChannelsMorph, water.waterChannelsSpeed],
+        } : null,
+        insectsStarted: this._scInsects1Started,
+        insects2Started: this._scInsects2Started,
+        insectsEnabled: state.insectsEnabled,
+        insects2Enabled: state.insects2Enabled,
+        insectsSeed: this.isSoundscapeParityFixture(state) ? 12345 : 'no-change',
+        insects2Seed: this.isSoundscapeParityFixture(state) ? 67890 : 'no-change',
+      } : null,
+    };
   }
 
   /** Tear down the temporary one-shot drum synth and clear its timer */
@@ -5302,6 +5608,7 @@ export class AudioEngine {
       this.pad2ReverbSend = null;
       this.synthDirect = null;
       this.padWasmNode = null;
+      this.padWasmReady = false;
       this.padWasmInitPromise = null;
       this.oceanDelayASend = null;
       this.oceanDelayBSend = null;
@@ -5682,6 +5989,12 @@ export class AudioEngine {
       try { this.natureLevelGain.disconnect(); } catch { /* */ }
       this.natureLevelGain = null;
     }
+    for (const key of ['natureReverbSendTap', 'natureDelayASendTap', 'natureDelayBSendTap', 'natureGranularSendTap'] as const) {
+      if (this[key]) {
+        try { this[key]?.disconnect(); } catch { /* */ }
+        this[key] = null;
+      }
+    }
     this.birdsTexture = this.destroyEarthTextureRuntime(this.birdsTexture);
     this.birds2Texture = this.destroyEarthTextureRuntime(this.birds2Texture);
     this.frogsTexture = this.destroyEarthTextureRuntime(this.frogsTexture);
@@ -5785,6 +6098,7 @@ export class AudioEngine {
       try { this.padWasmNode.port.close(); } catch { /* */ }
       try { this.padWasmNode.disconnect(); } catch { /* */ }
       this.padWasmNode = null;
+      this.padWasmReady = false;
       this.padWasmInitPromise = null;
     }
 
@@ -6150,6 +6464,7 @@ export class AudioEngine {
         this.birds2Texture = null;
         this.frogsTexture = null;
         this.padWasmNode = null;
+        this.padWasmReady = false;
         this.padWasmInitPromise = null;
         this.voices = [];
         this.resetIndependentSynthContextState();
@@ -6264,8 +6579,8 @@ export class AudioEngine {
   }
 
   pushMidiMessage(_message: KesshoMidiMessage): void {
-    // The legacy web engine keeps MIDI as a UI routing layer. The core-wasm host
-    // overrides this method to feed normalized MIDI events into KesshoCore.
+    // The legacy web engine keeps MIDI as a UI routing layer. Product and smoke
+    // hosts override this method to feed normalized MIDI events into their engines.
   }
 
   private async createAudioGraph(): Promise<void> {
@@ -6418,7 +6733,7 @@ export class AudioEngine {
           // Send initial drum params
           if (this.sliderState) this.sendDrumWasmParams(this.sliderState);
           // Notify DrumSynth that WASM is ready for triggers
-          if (this.drumSynth) this.drumSynth.setWasmReady(true);
+          if (this.drumSynth) this.drumSynth.setWasmNode(this.drumWasmNode, true);
         } else if (e.data.type === 'perf') {
           this.handlePerfMessage(e.data);
         }
@@ -6508,6 +6823,16 @@ export class AudioEngine {
     this.natureBus.gain.value = 1.0;
     this.natureLevelGain = ctx.createGain();
     this.natureLevelGain.gain.value = this.sliderState?.natureLevel ?? 1.0;
+    this.natureReverbSendTap = ctx.createGain();
+    this.natureReverbSendTap.gain.value = 1.0;
+    this.natureDelayASendTap = ctx.createGain();
+    this.natureDelayASendTap.gain.value = 1.0;
+    this.natureDelayBSendTap = ctx.createGain();
+    this.natureDelayBSendTap.gain.value = 1.0;
+    this.natureGranularSendTap = ctx.createGain();
+    this.natureGranularSendTap.gain.value = 1.0;
+
+    const soundscapeParityFixture = this.isSoundscapeParityFixture(this.sliderState);
 
     this.oceanSourceBus = ctx.createGain();
     this.oceanSourceBus.gain.value = 1.0;
@@ -6519,6 +6844,7 @@ export class AudioEngine {
       fadeTime: 5.5,
       density: 0.38,
       randomSeed: this.createEarthTextureSeed('ocean'),
+      parityDeterministic: soundscapeParityFixture,
     });
 
     this.birdsTexture = this.createEarthTextureRuntime(ctx, {
@@ -6533,7 +6859,10 @@ export class AudioEngine {
       initialLevel: this.sliderState?.birdsLevel ?? 0,
       initialReverbSend: this.sliderState?.natureReverbSend ?? 0.18,
       dryDestination: this.natureBus,
+      parityDryBypass: soundscapeParityFixture,
+      parityDeterministic: soundscapeParityFixture,
     });
+    this.birdsTexture.reverbSend.connect(this.natureReverbSendTap);
     this.birds2Texture = this.createEarthTextureRuntime(ctx, {
       fileName: 'Fujian Birds 2_441_m_normalized.ogg',
       sliceDuration: 20,
@@ -6546,7 +6875,10 @@ export class AudioEngine {
       initialLevel: this.sliderState?.birds2Level ?? 0,
       initialReverbSend: this.sliderState?.natureReverbSend ?? 0.18,
       dryDestination: this.natureBus,
+      parityDryBypass: soundscapeParityFixture,
+      parityDeterministic: soundscapeParityFixture,
     });
+    this.birds2Texture.reverbSend.connect(this.natureReverbSendTap);
     this.frogsTexture = this.createEarthTextureRuntime(ctx, {
       fileName: 'Fujian_Frogs_m_441_normalized.ogg',
       sliceDuration: 18,
@@ -6559,7 +6891,10 @@ export class AudioEngine {
       initialLevel: this.sliderState?.frogsLevel ?? 0,
       initialReverbSend: this.sliderState?.natureReverbSend ?? 0.18,
       dryDestination: this.natureBus,
+      parityDryBypass: soundscapeParityFixture,
+      parityDeterministic: soundscapeParityFixture,
     });
+    this.frogsTexture.reverbSend.connect(this.natureReverbSendTap);
 
     // Granular FX (unified granular engine)
     const canCreateGranularFx = !!this.wasmGranularBinary && this.granularFxModuleContext === ctx;
@@ -6930,15 +7265,24 @@ export class AudioEngine {
     this.oceanFilter.type = this.sliderState?.oceanFilterType ?? 'lowpass';
     this.oceanFilter.frequency.value = this.sliderState?.oceanFilterCutoff ?? 8000;
     this.oceanFilter.Q.value = 0.5 + (this.sliderState?.oceanFilterResonance ?? 0.1) * 10;
-    this.oceanPreFaderBus = this.createHaasWidenedBus(ctx, this.oceanFilter, {
-      delayMs: 10,
-      sideGain: 0.24,
-      centerGain: 0.8,
-      pan: 0.85,
-    });
+    if (this.isSoundscapeParityFixture(this.sliderState)) {
+      this.oceanPreFaderBus = ctx.createGain();
+      this.oceanPreFaderBus.gain.value = 1;
+    } else {
+      this.oceanPreFaderBus = this.createHaasWidenedBus(ctx, this.oceanFilter, {
+        delayMs: 10,
+        sideGain: 0.24,
+        centerGain: 0.8,
+        pan: 0.85,
+      });
+    }
 
     this.oceanSourceBus!.connect(this.oceanGateGain!);
-    this.oceanGateGain!.connect(this.oceanFilter);
+    if (this.isSoundscapeParityFixture(this.sliderState)) {
+      this.oceanGateGain!.connect(this.oceanPreFaderBus);
+    } else {
+      this.oceanGateGain!.connect(this.oceanFilter);
+    }
     // Reverb send (pre-fader — taps after filter and widening, before oceanLevelGain)
     if (this.oceanReverbSendNode) {
       this.oceanPreFaderBus.connect(this.oceanReverbSendNode);
@@ -7913,11 +8257,13 @@ export class AudioEngine {
       numberOfOutputs: 6,
       outputChannelCount: [2, 2, 2, 2, 2, 2],
     });
+    this.padWasmReady = false;
     this.padWasmNode.onprocessorerror = () => {
       console.error('[PadSynth-WASM] processorerror fired');
     };
     this.padWasmNode.port.onmessage = (e) => {
       if (e.data.type === 'wasmReady') {
+        this.padWasmReady = true;
         this.padWasmUnavailableWarned = false;
         if (this.sliderState) {
           this.sendPadWasmParams(this.sliderState);
@@ -8025,6 +8371,113 @@ export class AudioEngine {
     })();
 
     return this.padWasmInitPromise;
+  }
+
+  private async waitForPadWasmReady(timeoutMs = 1000): Promise<void> {
+    if (!this.padWasmNode || this.padWasmReady) return;
+    const start = performance.now();
+    while (this.padWasmNode && !this.padWasmReady && performance.now() - start < timeoutMs) {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    }
+  }
+
+  /** Ensure lead WASM exists when manual/random lead starts from a lead-disabled graph. */
+  private async ensureLeadFmWasmForIndependentSynth(): Promise<void> {
+    const ctx = this.ctx;
+    if (!ctx || this.leadFmWasmNode || !this.lead1SpatialChain || !this.lead2SpatialChain) return;
+    if (this.leadFmWasmInitPromise) return this.leadFmWasmInitPromise;
+
+    this.leadFmWasmInitPromise = (async () => {
+      try {
+        if (this.leadFmWasmModuleContext !== ctx) {
+          await ctx.audioWorklet.addModule(leadFmWasmWorkletUrl);
+          this.leadFmWasmModuleContext = ctx;
+        }
+
+        if (!this.wasmLeadFmBinary) {
+          const leadFmWasmUrl = getWorkletUrl('kessho_lead_fm.wasm');
+          const leadFmResp = await fetch(leadFmWasmUrl);
+          if (!leadFmResp.ok) throw new Error(`Lead FM WASM fetch failed: ${leadFmResp.status}`);
+          this.wasmLeadFmBinary = await leadFmResp.arrayBuffer();
+        }
+
+        this.createLeadFmWasmNode(ctx);
+        this.connectLeadFmWasmOutputs(ctx);
+      } catch (error) {
+        console.warn('Independent lead FM WASM init failed; JS fallback will be used:', error);
+      } finally {
+        this.leadFmWasmInitPromise = null;
+      }
+    })();
+
+    return this.leadFmWasmInitPromise;
+  }
+
+  private createLeadFmWasmNode(ctx: AudioContext): void {
+    if (!this.wasmLeadFmBinary || this.leadFmWasmNode) return;
+
+    this.leadFmWasmNode = new AudioWorkletNode(ctx, 'lead-fm-wasm', {
+      numberOfInputs: 0,
+      numberOfOutputs: 2,
+      outputChannelCount: [2, 2],
+    });
+    this.leadFmWasmReady = false;
+    this.leadFmWasmNode.port.onmessage = (event) => {
+      if (event.data.type === 'wasmReady') {
+        this.leadFmWasmReady = true;
+        const initMorphed = morphPresets(
+          this.lead1PresetA,
+          this.lead1PresetB,
+          0.5,
+          this.sliderState?.lead1AlgorithmMode ?? 'snap',
+        );
+        this.leadFmWasmNode!.port.postMessage({ type: 'params', params: initMorphed });
+        if (this.sliderState) this.sendLeadFmWasmDelay(this.sliderState);
+      } else if (event.data.type === 'perf') {
+        this.handlePerfMessage(event.data);
+      }
+    };
+
+    const leadFmBin = this.wasmLeadFmBinary;
+    this.wasmLeadFmBinary = null;
+    this.leadFmWasmNode.port.postMessage({ type: 'wasmBinary', binary: leadFmBin }, [leadFmBin]);
+  }
+
+  private connectLeadFmWasmOutputs(ctx: AudioContext): void {
+    if (!this.leadFmWasmNode || !this.lead1SpatialChain || !this.lead2SpatialChain) return;
+
+    if (this.leadWasmLevelGain) {
+      try { this.leadWasmLevelGain.disconnect(); } catch { /* noop */ }
+    }
+    if (this.leadWasmLead2LevelGain) {
+      try { this.leadWasmLead2LevelGain.disconnect(); } catch { /* noop */ }
+    }
+
+    this.leadWasmLevelGain = ctx.createGain();
+    this.leadWasmLevelGain.gain.value = this.sliderState?.lead1Level ?? 0.8;
+    this.leadFmWasmNode.connect(this.leadWasmLevelGain, 0);
+    this.leadWasmLevelGain.connect(this.lead1SpatialChain.postLpf);
+    if (this.lead1ReverbSend) this.leadFmWasmNode.connect(this.lead1ReverbSend, 0);
+    if (this.granularLead1Send) this.leadFmWasmNode.connect(this.granularLead1Send, 0);
+    if (this.lead1DelayASend) this.leadFmWasmNode.connect(this.lead1DelayASend, 0);
+    if (this.lead1DelayBSend) this.leadFmWasmNode.connect(this.lead1DelayBSend, 0);
+
+    this.leadWasmLead2LevelGain = ctx.createGain();
+    this.leadWasmLead2LevelGain.gain.value = this.sliderState?.lead2Level ?? 0.6;
+    this.leadFmWasmNode.connect(this.leadWasmLead2LevelGain, 1);
+    this.leadWasmLead2LevelGain.connect(this.lead2SpatialChain.postLpf);
+    if (this.lead2ReverbSend) this.leadFmWasmNode.connect(this.lead2ReverbSend, 1);
+    if (this.granularLead2Send) this.leadFmWasmNode.connect(this.granularLead2Send, 1);
+    if (this.lead2DelayASend) this.leadFmWasmNode.connect(this.lead2DelayASend, 1);
+    if (this.lead2DelayBSend) this.leadFmWasmNode.connect(this.lead2DelayBSend, 1);
+  }
+
+  private async waitForLeadFmWasmReady(timeoutMs = 1000): Promise<void> {
+    if (!this.leadFmWasmNode || this.leadFmWasmReady) return;
+    const start = performance.now();
+    while (this.leadFmWasmNode && !this.leadFmWasmReady && performance.now() - start < timeoutMs) {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    }
   }
 
   /** Voice type name prefixes for drum slider state extraction. */
@@ -8692,7 +9145,21 @@ export class AudioEngine {
     const oceanLayerActive = this.isOceanLayerFadeActive(state, now);
     const waterLayerActive = this.isWaterLayerFadeActive(state, now);
     const insectsLayerActive = this.isInsectsLayerFadeActive(state, now);
-    let delayBEnabled = false;
+    const lead1RoutingActive = !!lead1WetActive;
+    const lead2RoutingActive = !!lead2WetActive;
+    const pianoRoutingActive = !!pianoWetActive;
+    const delayBState = this.getSharedDelayBState(
+      state,
+      pad1Active,
+      pad2Active,
+      lead1RoutingActive,
+      lead2RoutingActive,
+      pianoRoutingActive,
+      granularBusArmed,
+    );
+    const delayBEnabled = delayBState.delayBEnabled;
+    this.sharedGranularDelayBSend?.gain.setTargetAtTime(delayBState.granularDelaySourceLevel, now, smoothTime);
+    this.sharedDelayB?.update(delayBState.params, now, smoothTime);
 
     if (pianoWetActive) {
       this.startPianoPriorityWarmup();
@@ -8704,9 +9171,6 @@ export class AudioEngine {
     if (this.granularFxNode) {
       const granularEnabled = granularBusArmed;
       const macroModel = computeGranularMacroModel(state, (key, fallback) => shv(key as string, fallback));
-      const lead1RoutingActive = !!lead1WetActive;
-      const lead2RoutingActive = !!lead2WetActive;
-      const pianoRoutingActive = !!pianoWetActive;
       // Use granularLevel as the Granular FX output level (replaces hardcoded 1.0)
       const granularOutputLevel = granularEnabled ? shv('granularLevel', state.granularLevel) * ENGINE_TRIMS.granular * macroModel.directLevelScale : 0;
       this.granularFxDirect?.gain.setTargetAtTime(granularOutputLevel, now, smoothTime);
@@ -8809,21 +9273,6 @@ export class AudioEngine {
         harmony: granularHarmonyParams,
         legacy: granularLegacyParams,
       });
-
-      // ── Granular Multi-Tap Delay ──
-      // Bidirectional mutual exclusion: only one direction can be active at a time
-      const delayBState = this.getSharedDelayBState(
-        state,
-        pad1Active,
-        pad2Active,
-        lead1RoutingActive,
-        lead2RoutingActive,
-        pianoRoutingActive,
-        granularEnabled,
-      );
-      delayBEnabled = delayBState.delayBEnabled;
-      this.sharedGranularDelayBSend?.gain.setTargetAtTime(delayBState.granularDelaySourceLevel, now, smoothTime);
-      this.sharedDelayB?.update(delayBState.params, now, smoothTime);
 
       // The old granular-local multitap nodes are left disconnected while the shared Delay B
       // takes over, so keep their gains pinned to zero in case a fallback path instantiated them.
@@ -9188,6 +9637,14 @@ export class AudioEngine {
         },
       });
       const waterSignalActive = this.getWaterFamilySendScale(state) > 0.0001;
+      const water = this.resolveWaterSoundscapeState(state);
+      if (this.isSoundscapeParityFixture(state)) {
+        const waterSeed = { seed: 12345 };
+        this.postCachedWorkletMessage('soundscapes:waterSeed', this.soundscapesNode, {
+          type: 'waterSeed',
+          ...waterSeed,
+        }, waterSeed);
+      }
 
       // Water start/stop follows the shared water level so dry and wet scale together.
       const waterShouldRun = this.isEarthFadeActive(this.waterFadeState, now) && waterSignalActive;
@@ -9200,7 +9657,7 @@ export class AudioEngine {
       }
 
       // Water preset (snap to nearest endpoint of morph)
-      const waterPresetIdx = Math.round(state.waterMorph < 0.5 ? state.waterMorphA : state.waterMorphB);
+      const waterPresetIdx = this.getWaterSoundscapePresetIndex(state);
       if (waterPresetIdx !== this._scWaterPreset) {
         this.soundscapesNode.port.postMessage({ type: 'waterPreset', preset: waterPresetIdx });
         this._scWaterPreset = waterPresetIdx;
@@ -9215,20 +9672,20 @@ export class AudioEngine {
       const wHd = this.dualRanges['waterHardness'];
       const wGt = this.dualRanges['waterGlassThickness'];
       const waterParams = {
-        intensityMin: wInt ? wInt.min : state.waterIntensity,
-        intensityMax: wInt ? wInt.max : state.waterIntensity,
-        distanceMin: wDist ? wDist.min : state.waterDistance,
-        distanceMax: wDist ? wDist.max : state.waterDistance,
-        hardDropBaseFreqMin: wHardBf ? wHardBf.min : (state.waterHardDropBaseFreq ?? state.waterBaseFreq),
-        hardDropBaseFreqMax: wHardBf ? wHardBf.max : (state.waterHardDropBaseFreq ?? state.waterBaseFreq),
-        waterDropBaseFreqMin: wWaterBf ? wWaterBf.min : (state.waterWaterDropBaseFreq ?? state.waterBaseFreq),
-        waterDropBaseFreqMax: wWaterBf ? wWaterBf.max : (state.waterWaterDropBaseFreq ?? state.waterBaseFreq),
-        dropSizeMin: wDs ? wDs.min : state.waterDropSize,
-        dropSizeMax: wDs ? wDs.max : state.waterDropSize,
-        hardnessMin: wHd ? wHd.min : state.waterHardness,
-        hardnessMax: wHd ? wHd.max : state.waterHardness,
-        glassThicknessMin: wGt ? wGt.min : state.waterGlassThickness,
-        glassThicknessMax: wGt ? wGt.max : state.waterGlassThickness,
+        intensityMin: wInt ? wInt.min : water.waterIntensity,
+        intensityMax: wInt ? wInt.max : water.waterIntensity,
+        distanceMin: wDist ? wDist.min : water.waterDistance,
+        distanceMax: wDist ? wDist.max : water.waterDistance,
+        hardDropBaseFreqMin: wHardBf ? wHardBf.min : (water.waterHardDropBaseFreq ?? water.waterBaseFreq),
+        hardDropBaseFreqMax: wHardBf ? wHardBf.max : (water.waterHardDropBaseFreq ?? water.waterBaseFreq),
+        waterDropBaseFreqMin: wWaterBf ? wWaterBf.min : (water.waterWaterDropBaseFreq ?? water.waterBaseFreq),
+        waterDropBaseFreqMax: wWaterBf ? wWaterBf.max : (water.waterWaterDropBaseFreq ?? water.waterBaseFreq),
+        dropSizeMin: wDs ? wDs.min : water.waterDropSize,
+        dropSizeMax: wDs ? wDs.max : water.waterDropSize,
+        hardnessMin: wHd ? wHd.min : water.waterHardness,
+        hardnessMax: wHd ? wHd.max : water.waterHardness,
+        glassThicknessMin: wGt ? wGt.min : water.waterGlassThickness,
+        glassThicknessMax: wGt ? wGt.max : water.waterGlassThickness,
       };
       this.postCachedWorkletMessage('soundscapes:waterParams', this.soundscapesNode, {
         type: 'waterParams',
@@ -9236,13 +9693,13 @@ export class AudioEngine {
       }, waterParams);
 
       const waterLayerDetailParams = {
-        hardRate: shv('waterHardDropRate', state.waterHardDropRate),
-        hardTone: shv('waterHardDropLPF', state.waterHardDropLPF),
-        hardCharacter: shv('waterHardDropTone', state.waterHardDropTone),
-        waterRate: shv('waterWaterDropRate', state.waterWaterDropRate),
-        waterTone: shv('waterWaterDropLPF', state.waterWaterDropLPF),
-        bubbleRate: shv('waterBubblingRate', state.waterBubblingRate),
-        bubbleTone: shv('waterBubblingLPF', state.waterBubblingLPF),
+        hardRate: shv('waterHardDropRate', water.waterHardDropRate),
+        hardTone: shv('waterHardDropLPF', water.waterHardDropLPF),
+        hardCharacter: shv('waterHardDropTone', water.waterHardDropTone),
+        waterRate: shv('waterWaterDropRate', water.waterWaterDropRate),
+        waterTone: shv('waterWaterDropLPF', water.waterWaterDropLPF),
+        bubbleRate: shv('waterBubblingRate', water.waterBubblingRate),
+        bubbleTone: shv('waterBubblingLPF', water.waterBubblingLPF),
       };
       this.postCachedWorkletMessage('soundscapes:waterLayerDetailParams', this.soundscapesNode, {
         type: 'waterLayerDetailParams',
@@ -9251,12 +9708,12 @@ export class AudioEngine {
 
       // Water layer mix
       const waterLayerMix = {
-        hardDrops: state.waterLayerHardDrops,
-        waterDrops: state.waterLayerWaterDrops,
-        turbulence: state.waterLayerTurbulence,
-        bubbling: state.waterLayerBubbling,
-        surf: state.waterLayerSurf,
-        channels: state.waterLayerChannels,
+        hardDrops: water.waterLayerHardDrops,
+        waterDrops: water.waterLayerWaterDrops,
+        turbulence: water.waterLayerTurbulence,
+        bubbling: water.waterLayerBubbling,
+        surf: water.waterLayerSurf,
+        channels: water.waterLayerChannels,
       };
       this.postCachedWorkletMessage('soundscapes:waterLayerMix', this.soundscapesNode, {
         type: 'waterLayerMix',
@@ -9288,22 +9745,22 @@ export class AudioEngine {
       const sSpray = this.dualRanges['waterSurfSpray'];
       const sFoamBright = this.dualRanges['waterSurfFoamBright'];
       const surfParams = {
-        durationMin: sDur ? sDur.min : state.waterSurfDuration,
-        durationMax: sDur ? sDur.max : state.waterSurfDuration,
-        intervalMin: sInt ? sInt.min : state.waterSurfInterval,
-        intervalMax: sInt ? sInt.max : state.waterSurfInterval,
-        foamMin: sFoam ? sFoam.min : state.waterSurfFoam,
-        foamMax: sFoam ? sFoam.max : state.waterSurfFoam,
-        proximityMin: sProx ? sProx.min : state.waterSurfProximity,
-        proximityMax: sProx ? sProx.max : state.waterSurfProximity,
-        depthMin: sDep ? sDep.min : state.waterSurfDepth,
-        depthMax: sDep ? sDep.max : state.waterSurfDepth,
-        bodyFreqMin: sBody ? sBody.min : state.waterSurfBody,
-        bodyFreqMax: sBody ? sBody.max : state.waterSurfBody,
-        sprayFreqMin: sSpray ? sSpray.min : state.waterSurfSpray,
-        sprayFreqMax: sSpray ? sSpray.max : state.waterSurfSpray,
-        foamBrightMin: sFoamBright ? sFoamBright.min : state.waterSurfFoamBright,
-        foamBrightMax: sFoamBright ? sFoamBright.max : state.waterSurfFoamBright,
+        durationMin: sDur ? sDur.min : water.waterSurfDuration,
+        durationMax: sDur ? sDur.max : water.waterSurfDuration,
+        intervalMin: sInt ? sInt.min : water.waterSurfInterval,
+        intervalMax: sInt ? sInt.max : water.waterSurfInterval,
+        foamMin: sFoam ? sFoam.min : water.waterSurfFoam,
+        foamMax: sFoam ? sFoam.max : water.waterSurfFoam,
+        proximityMin: sProx ? sProx.min : water.waterSurfProximity,
+        proximityMax: sProx ? sProx.max : water.waterSurfProximity,
+        depthMin: sDep ? sDep.min : water.waterSurfDepth,
+        depthMax: sDep ? sDep.max : water.waterSurfDepth,
+        bodyFreqMin: sBody ? sBody.min : water.waterSurfBody,
+        bodyFreqMax: sBody ? sBody.max : water.waterSurfBody,
+        sprayFreqMin: sSpray ? sSpray.min : water.waterSurfSpray,
+        sprayFreqMax: sSpray ? sSpray.max : water.waterSurfSpray,
+        foamBrightMin: sFoamBright ? sFoamBright.min : water.waterSurfFoamBright,
+        foamBrightMax: sFoamBright ? sFoamBright.max : water.waterSurfFoamBright,
       };
       this.postCachedWorkletMessage('soundscapes:waterSurfParams', this.soundscapesNode, {
         type: 'waterSurfParams',
@@ -9314,8 +9771,8 @@ export class AudioEngine {
       const cMorph = this.dualRanges['waterChannelsMorph'];
       const cSpeed = this.dualRanges['waterChannelsSpeed'];
       const channelsParams = {
-        morph: cMorph ? (cMorph.min + cMorph.max) * 0.5 : state.waterChannelsMorph,
-        speed: cSpeed ? (cSpeed.min + cSpeed.max) * 0.5 : state.waterChannelsSpeed,
+        morph: cMorph ? (cMorph.min + cMorph.max) * 0.5 : water.waterChannelsMorph,
+        speed: cSpeed ? (cSpeed.min + cSpeed.max) * 0.5 : water.waterChannelsSpeed,
       };
       this.postCachedWorkletMessage('soundscapes:waterChannelsParams', this.soundscapesNode, {
         type: 'waterChannelsParams',
@@ -9323,13 +9780,13 @@ export class AudioEngine {
       }, channelsParams);
 
       const densityLoopParams = {
-        hardSend: shv('waterDensityHardSend', state.waterDensityHardSend),
-        waterSend: shv('waterDensityWaterSend', state.waterDensityWaterSend),
-        bubbleSend: shv('waterDensityBubbleSend', state.waterDensityBubbleSend),
-        feedback: shv('waterDensityFeedback', state.waterDensityFeedback),
-        tone: shv('waterDensityTone', state.waterDensityTone),
-        ring: shv('waterDensityRing', state.waterDensityRing),
-        wet: shv('waterDensityWet', state.waterDensityWet),
+        hardSend: shv('waterDensityHardSend', water.waterDensityHardSend),
+        waterSend: shv('waterDensityWaterSend', water.waterDensityWaterSend),
+        bubbleSend: shv('waterDensityBubbleSend', water.waterDensityBubbleSend),
+        feedback: shv('waterDensityFeedback', water.waterDensityFeedback),
+        tone: shv('waterDensityTone', water.waterDensityTone),
+        ring: shv('waterDensityRing', water.waterDensityRing),
+        wet: shv('waterDensityWet', water.waterDensityWet),
       };
       this.postCachedWorkletMessage('soundscapes:waterDensityLoopParams', this.soundscapesNode, {
         type: 'waterDensityLoopParams',
@@ -9340,6 +9797,18 @@ export class AudioEngine {
       const insectsSharedMasterScale = this.getInsectsSharedMasterScale(state);
       const insects1EffectiveLevel = this.getEarthLayerOutputScale(state.insectsLevel, insectsSharedMasterScale);
       const insects2EffectiveLevel = this.getEarthLayerOutputScale(state.insects2Level, insectsSharedMasterScale);
+      if (this.isSoundscapeParityFixture(state)) {
+        const insectsSeed = { seed: 12345 };
+        const insects2Seed = { seed: 67890 };
+        this.postCachedWorkletMessage('soundscapes:insectsSeed', this.soundscapesNode, {
+          type: 'insectsSeed',
+          ...insectsSeed,
+        }, insectsSeed);
+        this.postCachedWorkletMessage('soundscapes:insects2Seed', this.soundscapesNode, {
+          type: 'insects2Seed',
+          ...insects2Seed,
+        }, insects2Seed);
+      }
       this.syncEarthFadeState(this.insects1FadeState, state.insectsEnabled, now, {
         onInit: (target) => {
           this.soundscapesNode?.port.postMessage({ type: 'insectsGate', enabled: target > 0.5, fadeSeconds: 0 });
@@ -9493,6 +9962,7 @@ export class AudioEngine {
     );
     this.natureLevelGain?.gain.setTargetAtTime(state.natureLevel ?? 1.0, now, smoothTime);
 
+    const soundscapeParityFixture = this.isSoundscapeParityFixture(state);
     const oceanLevel = state.oceanSampleLevel ?? 0;
     const oceanReverb = shv('oceanReverbSend', state.oceanReverbSend);
     const oceanDelayA = state.oceanDelayASend ?? 0;
@@ -9513,8 +9983,10 @@ export class AudioEngine {
     );
     this.oceanTexturePlayer?.update({
       sliceDuration: state.oceanSliceDuration ?? 22,
+      fadeTime: soundscapeParityFixture ? 0 : 5.5,
       density: state.oceanSliceDensity ?? 0.38,
       randomSeed: this.createEarthTextureSeed('ocean', state),
+      parityDeterministic: soundscapeParityFixture,
     });
     if (oceanShouldRun) void this.oceanTexturePlayer?.start();
     else this.oceanTexturePlayer?.stop();
@@ -9530,6 +10002,7 @@ export class AudioEngine {
       sliceDuration: state.birdsSliceDuration ?? 20,
       density: state.birdsSliceDensity ?? 0.45,
       randomSeed: this.createEarthTextureSeed('birds', state),
+      parityDeterministic: soundscapeParityFixture,
       smoothTime,
       now,
     });
@@ -9544,6 +10017,7 @@ export class AudioEngine {
       sliceDuration: state.birds2SliceDuration ?? 20,
       density: state.birds2SliceDensity ?? 0.48,
       randomSeed: this.createEarthTextureSeed('birds2', state),
+      parityDeterministic: soundscapeParityFixture,
       smoothTime,
       now,
     });
@@ -9558,6 +10032,7 @@ export class AudioEngine {
       sliceDuration: state.frogsSliceDuration ?? 18,
       density: state.frogsSliceDensity ?? 0.52,
       randomSeed: this.createEarthTextureSeed('frogs', state),
+      parityDeterministic: soundscapeParityFixture,
       smoothTime,
       now,
     });
@@ -9589,6 +10064,7 @@ export class AudioEngine {
       sliceDuration: number;
       density: number;
       randomSeed?: string | null;
+      parityDeterministic?: boolean;
       smoothTime: number;
       now: number;
     },
@@ -9619,6 +10095,7 @@ export class AudioEngine {
       sliceDuration: options.sliceDuration,
       density: options.density,
       randomSeed: options.randomSeed,
+      parityDeterministic: options.parityDeterministic === true,
     });
 
     const effectiveDryLevel = effectiveLevelScale;
@@ -9714,6 +10191,7 @@ export class AudioEngine {
     velocity: number = 0.8,
     leadSource: 'lead' | 'lead1' | 'lead2' = 'lead1',
     distanceOverride: number | null = null,
+    manualAudition = false,
   ): void {
     if (!this.ctx || !this.leadGain || !this.sliderState) return;
     // Determine which lead to use and check if enabled
@@ -9898,7 +10376,7 @@ export class AudioEngine {
       this.sliderState.leadTensionMode ?? 'follow',
       this.sliderState.leadTensionValue ?? 0,
     );
-    if (leadTension > 0.05) {
+    if (!manualAudition && leadTension > 0.05) {
       const spread = leadTension * 0.3; // max ±30% at tension=1
       const rOff = () => (Math.random() * 2 - 1) * spread;
       effectiveMorphed.mod1Index  = Math.max(0, effectiveMorphed.mod1Index  * (1 + rOff()));
@@ -11271,26 +11749,150 @@ export class AudioEngine {
   }
 
   getRecordableBusNodes(): Record<DiagnosticRecordTrackId, RecordableTrackSource> {
+    const activeDrumWasmNode = this.drumWasmNode;
+    const reverbConditionedSource = this.reverbPreConditionerNode ?? this.reverbPreMakeupGain ?? this.reverbPreCompressor ?? this.reverbInputBus;
+    const spectralFreezeInputNode = (this.sliderState?.spectralFreezeRouting ?? 'pre') === 'post'
+      ? this.reverbNode
+      : reverbConditionedSource;
     return {
       pad1: { node: this.pad1SpatialChain?.output ?? (this.padWasmNode ? this.padWasmNode : this.pad1Bus), outputIndex: this.pad1SpatialChain ? undefined : (this.padWasmNode ? 4 : undefined) },
+      pad1Dry: { node: this.pad1SpatialChain?.output ?? (this.padWasmNode ? this.padWasmNode : this.pad1Bus), outputIndex: this.pad1SpatialChain ? undefined : (this.padWasmNode ? 4 : undefined) },
+      pad1ReverbSend: { node: this.pad1ReverbSend },
+      pad1DelayASend: { node: this.pad1DelayASend },
+      pad1DelayBSend: { node: this.pad1DelayBSend },
+      pad1GranularSend: { node: this.granularPad1Send },
       pad2: { node: this.pad2SpatialChain?.output ?? (this.padWasmNode ? this.padWasmNode : this.pad2Bus), outputIndex: this.pad2SpatialChain ? undefined : (this.padWasmNode ? 5 : undefined) },
+      pad2Dry: { node: this.pad2SpatialChain?.output ?? (this.padWasmNode ? this.padWasmNode : this.pad2Bus), outputIndex: this.pad2SpatialChain ? undefined : (this.padWasmNode ? 5 : undefined) },
+      pad2ReverbSend: { node: this.pad2ReverbSend },
+      pad2DelayASend: { node: this.pad2DelayASend },
+      pad2DelayBSend: { node: this.pad2DelayBSend },
+      pad2GranularSend: { node: this.granularPad2Send },
       lead1: { node: this.lead1SpatialChain?.output ?? this.leadWasmLevelGain ?? this.lead1LevelGain },
+      lead1Dry: { node: this.lead1SpatialChain?.output ?? this.leadWasmLevelGain ?? this.lead1LevelGain },
+      lead1ReverbSend: { node: this.lead1ReverbSend },
+      lead1DelayASend: { node: this.lead1DelayASend },
+      lead1DelayBSend: { node: this.lead1DelayBSend },
+      lead1GranularSend: { node: this.granularLead1Send },
       lead2: { node: this.lead2SpatialChain?.output ?? this.leadWasmLead2LevelGain ?? this.lead2LevelGain },
+      lead2Dry: { node: this.lead2SpatialChain?.output ?? this.leadWasmLead2LevelGain ?? this.lead2LevelGain },
+      lead2ReverbSend: { node: this.lead2ReverbSend },
+      lead2DelayASend: { node: this.lead2DelayASend },
+      lead2DelayBSend: { node: this.lead2DelayBSend },
+      lead2GranularSend: { node: this.granularLead2Send },
       piano: { node: this.pianoSpatialChain?.output ?? this.pianoLevelGain },
-      drums: this.drumWasmNode
-        ? { node: this.drumWasmNode, outputIndex: 0 }
+      pianoDry: { node: this.pianoSpatialChain?.output ?? this.pianoLevelGain },
+      pianoReverbSend: { node: this.pianoReverbSend },
+      pianoDelayASend: { node: this.pianoDelayASend },
+      pianoDelayBSend: { node: this.pianoDelayBSend },
+      pianoGranularSend: { node: this.granularPianoSend },
+      diffuseInput: { node: this.diffuseInputBus },
+      diffuseOutput: { node: this.diffuseOutputGain },
+      diffuseDirectOut: { node: this.diffuseOutputGain },
+      diffuseOut: { node: this.diffuseOutputGain },
+      diffuseReverbSend: { node: this.diffuseReverbSend },
+      pad1DiffuseSend: { node: this.pad1SpatialChain?.diffuseSend ?? null },
+      padDiffuseSend: { node: this.pad1SpatialChain?.diffuseSend ?? null },
+      pad2DiffuseSend: { node: this.pad2SpatialChain?.diffuseSend ?? null },
+      lead1DiffuseSend: { node: this.lead1SpatialChain?.diffuseSend ?? null },
+      lead2DiffuseSend: { node: this.lead2SpatialChain?.diffuseSend ?? null },
+      pianoDiffuseSend: { node: this.pianoSpatialChain?.diffuseSend ?? null },
+      drums: activeDrumWasmNode
+        ? { node: activeDrumWasmNode, outputIndex: 0 }
         : { node: this.drumSynth?.getMasterGain() ?? null },
+      drumDry: activeDrumWasmNode
+        ? { node: activeDrumWasmNode, outputIndex: 0 }
+        : { node: this.drumSynth?.getMasterGain() ?? null },
+      drumReverbSend: activeDrumWasmNode
+        ? { node: activeDrumWasmNode, outputIndex: 1 }
+        : { node: this.drumSynth?.getReverbSend() ?? null },
+      drumDelayASend: { node: this.drumDelayASend },
+      drumDelayBSend: { node: this.drumDelayBSend },
+      drumGranularSend: { node: this.granularDrumSend },
       granular: { node: this.granularFxDirect },
       pad1Pre: { node: this.padWasmNode ?? this.pad1PreFaderBus, outputIndex: this.padWasmNode ? 2 : undefined },
-      reverbFeed: { node: this.reverbPreConditionerNode ?? this.reverbPreMakeupGain ?? this.reverbPreCompressor ?? this.reverbInputBus },
+      reverbFeed: { node: reverbConditionedSource },
       waves: { node: this.oceanLevelGain },
+      oceanDry: { node: this.oceanLevelGain },
+      wavesDry: { node: this.oceanLevelGain },
       water: { node: this.waterLevelGain },
+      waterDry: { node: this.waterLevelGain },
       insects: { node: this.insectsLevelGain },
+      insectsDry: { node: this.insectsLevelGain },
       nature: { node: this.natureLevelGain },
+      natureDry: { node: this.natureLevelGain },
+      oceanReverbSend: { node: this.oceanReverbSendNode },
+      wavesReverbSend: { node: this.oceanReverbSendNode },
+      oceanDelayASend: { node: this.oceanDelayASend },
+      wavesDelayASend: { node: this.oceanDelayASend },
+      oceanDelayBSend: { node: this.oceanDelayBSend },
+      wavesDelayBSend: { node: this.oceanDelayBSend },
+      oceanGranularSend: { node: this.granularWavesSend },
+      wavesGranularSend: { node: this.granularWavesSend },
+      granularWavesSend: { node: this.granularWavesSend },
+      waterReverbSend: { node: this.waterReverbSend },
+      waterDelayASend: { node: this.waterDelayASend },
+      waterDelayBSend: { node: this.waterDelayBSend },
+      waterGranularSend: { node: this.granularWaterSend },
+      granularWaterSend: { node: this.granularWaterSend },
+      insectsReverbSend: { node: this.insectsReverbSendNode },
+      insectsDelayASend: { node: this.insectsDelayASend },
+      insDelayASend: { node: this.insectsDelayASend },
+      insectsDelayBSend: { node: this.insectsDelayBSend },
+      insDelayBSend: { node: this.insectsDelayBSend },
+      insectsGranularSend: { node: this.granularInsectsSend },
+      granularInsectsSend: { node: this.granularInsectsSend },
+      natureReverbSend: { node: this.natureReverbSendTap },
+      natureDelayASend: { node: this.natureDelayASendTap },
+      natureDelayBSend: { node: this.natureDelayBSendTap },
+      natureGranularSend: { node: this.natureGranularSendTap },
+      granularNatureSend: { node: this.natureGranularSendTap },
+      soundscapeStem: { node: this.earthLevelGain },
+      earthStem: { node: this.earthLevelGain },
       delayAOut: { node: this.sharedDelayA?.getDirectOutputNode() ?? null },
+      delayAOutput: { node: this.sharedDelayA?.getDirectOutputNode() ?? null },
+      delayADirectOut: { node: this.sharedDelayA?.getDirectOutputNode() ?? null },
+      delayAReverbSend: { node: this.sharedDelayA?.getReverbSendNode() ?? null },
+      delayAToDelayBSend: { node: this.sharedDelayA?.getDelayBSendNode() ?? null },
+      delayAToBSend: { node: this.sharedDelayA?.getDelayBSendNode() ?? null },
+      delayAToGranularSend: { node: this.sharedDelayA?.getGranularSendNode() ?? null },
+      delayAGranularSend: { node: this.sharedDelayA?.getGranularSendNode() ?? null },
       delayBOut: { node: this.sharedDelayB?.getDirectOutputNode() ?? null },
+      delayBOutput: { node: this.sharedDelayB?.getDirectOutputNode() ?? null },
+      delayBDirectOut: { node: this.sharedDelayB?.getDirectOutputNode() ?? null },
+      delayBReverbSend: { node: this.sharedDelayB?.getReverbSendNode() ?? null },
+      delayBToDelayASend: { node: this.sharedDelayB?.getDelayASendNode() ?? null },
+      delayBToASend: { node: this.sharedDelayB?.getDelayASendNode() ?? null },
+      delayBToGranularSend: { node: this.sharedDelayB?.getGranularSendNode() ?? null },
+      delayBGranularSend: { node: this.sharedDelayB?.getGranularSendNode() ?? null },
+      granularOutput: { node: this.granularFxDirect },
+      granularDirectOut: { node: this.granularFxDirect },
+      granularFxDirect: { node: this.granularFxDirect },
+      granularReverbSend: { node: this.granularFxReverbSend },
+      granularFxReverbSend: { node: this.granularFxReverbSend },
+      granularToDelayASend: { node: this.granularDelayASend },
+      granularDelayASend: { node: this.granularDelayASend },
+      granularToDelayBSend: { node: this.sharedGranularDelayBSend },
+      granularDelayBSend: { node: this.sharedGranularDelayBSend },
       reverb: { node: this.reverbOutputGain },
+      reverbOutput: { node: this.reverbOutputGain },
+      reverbReturn: { node: this.reverbOutputGain },
+      reverbPreconditionerOut: { node: reverbConditionedSource },
+      reverbPreconditionerOutput: { node: reverbConditionedSource },
+      reverbConditionedInput: { node: reverbConditionedSource },
+      spectralFreezeInput: { node: spectralFreezeInputNode },
+      spectralFreezeOutput: { node: this.spectralFreezeNode },
+      sidechainPad1Input: { node: this.sidechainTargets.pad1?.input ?? null },
+      sidechainPad1Output: { node: this.sidechainTargets.pad1?.output ?? null },
+      sidechainPad1GainTrace: { node: this.getSidechainTargetGainTraceNode('pad1') },
       dynamics: { node: this.getDynamicsRecordableNode() },
+      reverbInput: { node: this.reverbInputBus },
+      delayAInput: { node: this.sharedDelayA?.input ?? null },
+      delayBInput: { node: this.sharedDelayB?.input ?? null },
+      granularInput: { node: this.granularFxInputGain },
+      dynamicsInput: { node: this.masterGain },
+      dynamicsOutput: { node: this.getDynamicsRecordableNode() },
+      masterPreLimiter: { node: this.getDynamicsRecordableNode() },
+      masterPostLimiter: { node: this.limiter },
     };
   }
 

@@ -118,6 +118,52 @@ const GlobalPage = React.lazy(() => import('./ui/global/GlobalPage'));
 const SynthPage = React.lazy(() => import('./ui/synth/SynthPage'));
 const ReverbPage = React.lazy(() => import('./ui/reverb/ReverbPage'));
 const DrumPage = React.lazy(() => import('./ui/drums/DrumPage'));
+
+const ROUTING_MATRIX_DELAY_A_INPUT_KEYS = new Set<string>([
+  'pad1DelayASend',
+  'pad2DelayASend',
+  'lead1DelayASend',
+  'lead2DelayASend',
+  'pianoDelayASend',
+  'drumDelayASend',
+  'oceanDelayASend',
+  'waterDelayASend',
+  'insDelayASend',
+  'natureDelayASend',
+  'granularDelayASend',
+  'delayBToASend',
+]);
+
+const ROUTING_MATRIX_DELAY_B_INPUT_KEYS = new Set<string>([
+  'pad1DelayBSend',
+  'pad2DelayBSend',
+  'lead1DelayBSend',
+  'lead2DelayBSend',
+  'pianoDelayBSend',
+  'drumDelayBSend',
+  'oceanDelayBSend',
+  'waterDelayBSend',
+  'insDelayBSend',
+  'natureDelayBSend',
+  'granularDelayBSend',
+  'delayAToBSend',
+]);
+
+const ROUTING_MATRIX_NATURE_KEYS = new Set<string>([
+  'natureLevel',
+  'natureReverbSend',
+  'natureDelayASend',
+  'natureDelayBSend',
+  'granularNatureSend',
+]);
+
+const ROUTING_MATRIX_INSECTS_KEYS = new Set<string>([
+  'insectsSharedLevel',
+  'insectsReverbSend',
+  'insDelayASend',
+  'insDelayBSend',
+  'granularInsectsSend',
+]);
 const GranularPage = React.lazy(() => import('./ui/granular/GranularPage'));
 const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
 const DynamicsPage = React.lazy(() => import('./ui/dynamics/DynamicsPage'));
@@ -132,13 +178,14 @@ const CLOUD_ENABLED = isCloudPresetConfigEnabled();
 const CAPACITOR_LOCAL_STATE_PRESET_SCOPE = 'global';
 const isSonicParityMode = () =>
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1';
-type AudioEngineRuntimeMode = 'web-ts' | 'core-bridge' | 'core-product';
-const AUDIO_ENGINE_RUNTIME_MODES = ['web-ts', 'core-bridge', 'core-product'] as const satisfies readonly AudioEngineRuntimeMode[];
+type AudioEngineRuntimeMode = 'web-ts' | 'core-product' | 'core-smoke';
+const AUDIO_ENGINE_RUNTIME_MODES = ['core-product', 'web-ts', 'core-smoke'] as const satisfies readonly AudioEngineRuntimeMode[];
 const AUDIO_ENGINE_SWITCHER_PARAM = 'engineAB';
 const AUDIO_ENGINE_PARAM = 'engine';
 const AUDIO_ENGINE_SWITCH_STATE_PARAM = 'engineState';
 const AUDIO_ENGINE_CPU_SUMMARY_STORAGE_KEY = 'kessho:audio-engine-cpu-summary:v1';
 const AUDIO_ENGINE_SWITCH_STATE_STORAGE_PREFIX = 'kessho:audio-engine-switch-state:v1:';
+const CORE_PRODUCT_PARAM_UPDATE_INTERVAL_MS = 33;
 const EMPTY_EARTH_TEXTURE_DEBUG_STATE: EarthTextureDebugState = {
   waves: null,
   birds: null,
@@ -168,16 +215,16 @@ function isDevRuntime(): boolean {
 }
 
 function getAudioEngineRuntimeMode(): AudioEngineRuntimeMode {
-  if (typeof window === 'undefined') return 'core-bridge';
+  if (typeof window === 'undefined') return 'core-product';
   try {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get(AUDIO_ENGINE_PARAM);
     if (mode === 'web-ts' || mode === 'web-audio') return 'web-ts';
-    if (mode === 'core-bridge' || mode === 'core-wasm') return 'core-bridge';
     if (mode === 'core-product') return 'core-product';
-    return 'core-bridge';
+    if (mode === 'core-smoke') return 'core-smoke';
+    return 'core-product';
   } catch {
-    return 'core-bridge';
+    return 'core-product';
   }
 }
 
@@ -211,13 +258,13 @@ function shouldStartInAdvancedEditor(): boolean {
 
 function audioEngineRuntimeModeLabel(mode: AudioEngineRuntimeMode): string {
   if (mode === 'web-ts') return 'Web';
-  if (mode === 'core-bridge') return 'Bridge';
+  if (mode === 'core-smoke') return 'Smoke';
   return 'Product';
 }
 
 function audioEngineRuntimeModeTitle(mode: AudioEngineRuntimeMode): string {
   if (mode === 'web-ts') return 'Switch to Web TS reference';
-  if (mode === 'core-bridge') return 'Switch to Core bridge';
+  if (mode === 'core-smoke') return 'Switch to Core smoke renderer';
   return 'Switch to Product Core';
 }
 
@@ -1848,7 +1895,50 @@ const App: React.FC = () => {
   const stateRef = useRef(state);
   stateRef.current = state;
   const audioEngineRuntimeMode = useMemo(() => getAudioEngineRuntimeMode(), []);
-  const coreBridgeModeAvailable = true;
+  const pendingAudioEngineStateRef = useRef<SliderState | null>(null);
+  const audioEngineUpdateTimerRef = useRef<number | null>(null);
+  const lastAudioEngineUpdateMsRef = useRef(0);
+  const flushAudioEngineParamUpdate = useCallback(() => {
+    audioEngineUpdateTimerRef.current = null;
+    const nextState = pendingAudioEngineStateRef.current;
+    pendingAudioEngineStateRef.current = null;
+    if (!nextState) return;
+    lastAudioEngineUpdateMsRef.current = performance.now();
+    audioEngine.updateParams(nextState);
+  }, []);
+  const scheduleAudioEngineParamUpdate = useCallback((
+    nextState: SliderState,
+    options?: { immediate?: boolean },
+  ) => {
+    if (audioEngineRuntimeMode !== 'core-product' || options?.immediate) {
+      pendingAudioEngineStateRef.current = null;
+      if (audioEngineUpdateTimerRef.current !== null) {
+        window.clearTimeout(audioEngineUpdateTimerRef.current);
+        audioEngineUpdateTimerRef.current = null;
+      }
+      lastAudioEngineUpdateMsRef.current = performance.now();
+      audioEngine.updateParams(nextState);
+      return;
+    }
+
+    pendingAudioEngineStateRef.current = nextState;
+    if (audioEngineUpdateTimerRef.current !== null) return;
+
+    const now = performance.now();
+    const elapsedMs = now - lastAudioEngineUpdateMsRef.current;
+    const delayMs = Math.max(0, CORE_PRODUCT_PARAM_UPDATE_INTERVAL_MS - elapsedMs);
+    audioEngineUpdateTimerRef.current = window.setTimeout(flushAudioEngineParamUpdate, delayMs);
+  }, [audioEngineRuntimeMode, flushAudioEngineParamUpdate]);
+
+  useEffect(() => () => {
+    if (audioEngineUpdateTimerRef.current !== null) {
+      window.clearTimeout(audioEngineUpdateTimerRef.current);
+      audioEngineUpdateTimerRef.current = null;
+    }
+    pendingAudioEngineStateRef.current = null;
+  }, []);
+
+  const coreSmokeModeAvailable = true;
   const showAudioEngineSwitcher = useMemo(() => shouldShowAudioEngineSwitcher(), []);
   const handleAudioEngineRuntimeModeChange = useCallback((mode: AudioEngineRuntimeMode) => {
     if (mode === audioEngineRuntimeMode) return;
@@ -3418,8 +3508,8 @@ const App: React.FC = () => {
   // Web audio does not consume dual-slider ranges, so avoid re-sending params when
   // only the UI runtime range model changes.
   useEffect(() => {
-    audioEngine.updateParams(state);
-  }, [state]);
+    scheduleAudioEngineParamUpdate(state);
+  }, [scheduleAudioEngineParamUpdate, state]);
 
   useEffect(() => {
     if (!capacitorAudioSessionDiagnosticActive) return;
@@ -3768,6 +3858,28 @@ const App: React.FC = () => {
           default:
             break;
         }
+        const routeKeyString = String(routeKey);
+        if (ROUTING_MATRIX_DELAY_A_INPUT_KEYS.has(routeKeyString)) {
+          newState.delayAEnabled = true;
+        }
+        if (ROUTING_MATRIX_DELAY_B_INPUT_KEYS.has(routeKeyString)) {
+          newState.granularDelayEnabled = true;
+        }
+        if (
+          ROUTING_MATRIX_NATURE_KEYS.has(routeKeyString) &&
+          !newState.birdsEnabled &&
+          !newState.birds2Enabled &&
+          !newState.frogsEnabled
+        ) {
+          newState.birdsEnabled = true;
+        }
+        if (
+          ROUTING_MATRIX_INSECTS_KEYS.has(routeKeyString) &&
+          !newState.insectsEnabled &&
+          !newState.insects2Enabled
+        ) {
+          newState.insectsEnabled = true;
+        }
       }
 
       const pad1WetActive =
@@ -3803,12 +3915,36 @@ const App: React.FC = () => {
         (newState.delayAMix ?? 0) > 0 ||
         (newState.delayAReverbSend ?? 0) > 0 ||
         (newState.delayAToBSend ?? 0) > 0 ||
-        (newState.delayAGranularSend ?? 0) > 0;
+        (newState.delayAGranularSend ?? 0) > 0 ||
+        (newState.delayBToASend ?? 0) > 0 ||
+        (newState.pad1DelayASend ?? 0) > 0 ||
+        (newState.pad2DelayASend ?? 0) > 0 ||
+        (newState.lead1DelayASend ?? 0) > 0 ||
+        (newState.lead2DelayASend ?? 0) > 0 ||
+        (newState.pianoDelayASend ?? 0) > 0 ||
+        (newState.drumDelayASend ?? 0) > 0 ||
+        (newState.oceanDelayASend ?? 0) > 0 ||
+        (newState.waterDelayASend ?? 0) > 0 ||
+        (newState.insDelayASend ?? 0) > 0 ||
+        (newState.natureDelayASend ?? 0) > 0 ||
+        (newState.granularDelayASend ?? 0) > 0;
       const delayBWetActive =
         (newState.granularDelayMix ?? 0) > 0 ||
         (newState.granularDelayReverbSend ?? 0) > 0 ||
         (newState.delayBToASend ?? 0) > 0 ||
-        (newState.delayBGranularSend ?? 0) > 0;
+        (newState.delayBGranularSend ?? 0) > 0 ||
+        (newState.delayAToBSend ?? 0) > 0 ||
+        (newState.pad1DelayBSend ?? 0) > 0 ||
+        (newState.pad2DelayBSend ?? 0) > 0 ||
+        (newState.lead1DelayBSend ?? 0) > 0 ||
+        (newState.lead2DelayBSend ?? 0) > 0 ||
+        (newState.pianoDelayBSend ?? 0) > 0 ||
+        (newState.drumDelayBSend ?? 0) > 0 ||
+        (newState.oceanDelayBSend ?? 0) > 0 ||
+        (newState.waterDelayBSend ?? 0) > 0 ||
+        (newState.insDelayBSend ?? 0) > 0 ||
+        (newState.natureDelayBSend ?? 0) > 0 ||
+        (newState.granularDelayBSend ?? 0) > 0;
       const lead1WetActive =
         (newState.lead1Level ?? 0) > 0 ||
         (newState.lead1ReverbSend ?? 0) > 0 ||
@@ -4893,15 +5029,17 @@ const App: React.FC = () => {
           attachRecorderTap(ctx, 'mix', limiterNode, worker);
         }
 
-        const recordableNodes = audioEngine.getRecordableBusNodes();
-        for (const stemName of enabledStemIds) {
-          const stemSource = recordableNodes[stemName];
-          if (!stemSource?.node) {
-            console.warn(`Stem node not available for ${stemName}`);
-            continue;
+        if (enabledStemIds.length > 0) {
+          const recordableNodes = audioEngine.getRecordableBusNodes();
+          for (const stemName of enabledStemIds) {
+            const stemSource = recordableNodes[stemName];
+            if (!stemSource?.node) {
+              console.warn(`Stem node not available for ${stemName}`);
+              continue;
+            }
+            attachRecorderTap(ctx, stemName, stemSource.node, worker, stemSource.outputIndex ?? 0);
+            console.log(`Stem recording started for: ${stemName}`);
           }
-          attachRecorderTap(ctx, stemName, stemSource.node, worker, stemSource.outputIndex ?? 0);
-          console.log(`Stem recording started for: ${stemName}`);
         }
       }
       
@@ -5716,7 +5854,7 @@ const App: React.FC = () => {
     
     // Apply the interpolated state
     setState(prev => ({ ...prev, ...stateWithPrefs }));
-    audioEngine.updateParams(stateWithPrefs);
+    scheduleAudioEngineParamUpdate(stateWithPrefs);
     
     // Apply interpolated dual ranges — merge (don't wipe modes unrelated to morph)
     setSliderModes(prev => {
@@ -5933,7 +6071,7 @@ const App: React.FC = () => {
     }
     
     setState(finalState);
-    audioEngine.updateParams(finalState);
+    scheduleAudioEngineParamUpdate(finalState);
     
     // Update CoF morph visualization (clear at endpoints - we've arrived)
     const atEndpoint = isAtEndpoint0(newPosition, true) || isAtEndpoint1(newPosition, true);
@@ -6282,7 +6420,7 @@ const App: React.FC = () => {
       }
 
       if (positionChanged && stateWithPrefs) {
-        audioEngine.updateParams(stateWithPrefs);
+        scheduleAudioEngineParamUpdate(stateWithPrefs);
         if (isAtEndpoint0(newPos, true) || isAtEndpoint1(newPos, true)) {
           audioEngine.resetCofDrift();
         }
@@ -6371,7 +6509,7 @@ const App: React.FC = () => {
       setMorphCountdown(null);
       setMorphCoFViz(null); // Clear CoF morph visualization
     };
-  }, [morphMode, engineState.isRunning, morphPresetA, morphPresetB, lerpPresets]);
+  }, [morphMode, engineState.isRunning, morphPresetA, morphPresetB, lerpPresets, scheduleAudioEngineParamUpdate]);
 
   // Load preset from list - modified to support morph slots in advanced mode
   const handleLoadPresetFromList = useCallback((preset: SavedPreset) => {
@@ -6500,7 +6638,7 @@ const App: React.FC = () => {
             // In snowflake mode, just apply directly
             setState(result.state);
             setStatePresetName(importedPreset.name);
-            audioEngine.updateParams(result.state);
+            scheduleAudioEngineParamUpdate(result.state, { immediate: true });
             audioEngine.resetCofDrift();
             
             // Apply dual ranges and slider modes from migrated preset
@@ -6755,8 +6893,7 @@ const App: React.FC = () => {
       journeyLastMorphPositionRef.current = newPosition;
       journeyLastMorphCoFVizRef.current = nextMorphCoFViz;
 
-      // ALWAYS update audio engine at full frame rate for smooth audio
-      audioEngine.updateParams(stateWithPrefs);
+      scheduleAudioEngineParamUpdate(stateWithPrefs);
       
       // Throttle visible UI sync while the engine owns the actual morph clock.
       const shouldUpdateUI = now - lastUIUpdate >= 66 || progress >= 1;
@@ -6779,7 +6916,7 @@ const App: React.FC = () => {
 
     audioEngine.setJourneyMorphClockCallback(animateMorph);
     audioEngine.startJourneyMorphClock();
-  }, [savedPresets, stopJourneyMorphPlayback, state.phraseLength, lerpPresets, engineState.cofCurrentStep, audioEngine, commitJourneyRuntimeState]);
+  }, [savedPresets, stopJourneyMorphPlayback, state.phraseLength, lerpPresets, engineState.cofCurrentStep, audioEngine, commitJourneyRuntimeState, scheduleAudioEngineParamUpdate]);
   
   // Journey mode: handle journey end
   const handleJourneyEnd = useCallback(() => {
@@ -7369,7 +7506,7 @@ const App: React.FC = () => {
             audioEngineMode={audioEngineRuntimeMode}
             audioEngineCpuSummaries={audioEngineCpuSummaries}
             showAudioEngineSwitcher={showAudioEngineSwitcher}
-            coreBridgeModeAvailable={coreBridgeModeAvailable}
+            coreSmokeModeAvailable={coreSmokeModeAvailable}
             onAudioEngineModeChange={handleAudioEngineRuntimeModeChange}
             onResetCofDrift={() => audioEngine.resetCofDrift()}
             morphCoFViz={morphCoFViz}

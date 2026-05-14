@@ -338,7 +338,7 @@ function engineModeFromCommand(command) {
     .find((part) => part.startsWith('--core-engine='));
   if (explicit) return explicit.slice('--core-engine='.length) || null;
   return command.some((part) => /check-web-core-sonic-parity\.mjs|profile-kessho-core-acceptance-corpus\.mjs/.test(String(part)))
-    ? 'core-wasm'
+    ? 'core-product'
     : null;
 }
 
@@ -380,7 +380,7 @@ function flakinessDebtReason(wholeCaseRetryCount, captureRetryCount) {
 function classifyFailure(definition, stderr, stdout) {
   const output = `${stderr ?? ''}\n${stdout ?? ''}`;
   if (definition.kind === 'corpus') {
-    if (/Result:\s*FAIL \(sonic\/core-output\)|fail\/sonic\/core-output|Sonic parity sonic\/core-output failure|non-finite core output|core-wasm capture has non-finite/i.test(output)) {
+    if (/Result:\s*FAIL \(sonic\/core-output\)|fail\/sonic\/core-output|Sonic parity sonic\/core-output failure|non-finite core output|core-product capture has non-finite/i.test(output)) {
       return FAILURE_KIND_CORE_OUTPUT;
     }
     if (/Result:\s*FAIL \(sonic\)|Sonic parity sonic failure|Sonic parity thresholds exceeded|thresholds exceeded|silent capture|non-finite samples|unexpectedly quiet/i.test(output)) {
@@ -1359,7 +1359,7 @@ function runSelfCheck() {
         corpusCases: [{
           kind: 'corpus',
           caseId: 'self-check-flaky',
-          engineMode: 'core-wasm',
+          engineMode: 'core-product',
           status: STATUS_PASS,
           attemptCount: 2,
           retryCount: 1,
@@ -1385,7 +1385,7 @@ function runSelfCheck() {
 
   const coreOutputKind = classifyFailure(
     { kind: 'corpus' },
-    'Sonic parity sonic/core-output failure: core-wasm capture has non-finite core output',
+    'Sonic parity sonic/core-output failure: core-product capture has non-finite core output',
     '',
   );
   assert(coreOutputKind === FAILURE_KIND_CORE_OUTPUT, 'core non-finite output is classified as sonic/core-output');
@@ -1405,7 +1405,7 @@ function runSelfCheck() {
   assert(parseBoundedRetryCount('99') === MAX_CORPUS_SONIC_RETRY_ATTEMPTS, 'retry count is capped');
   assert(parseBoundedRetryCount('-1') === 0, 'retry count lower bound disables retries');
   assert(parseBoundedRetryCount('abc', 2) === 2, 'retry count falls back on invalid input');
-  const captureRetryTelemetry = captureRetryTelemetryFromOutput('  core-wasm browser logs:\n    [retry] core-wasm capture succeeded on attempt 2\n');
+  const captureRetryTelemetry = captureRetryTelemetryFromOutput('  core-product browser logs:\n    [retry] core-product capture succeeded on attempt 2\n');
   assert(captureRetryTelemetry.captureRetryCount === 1, 'browser capture retry telemetry parses retry logs');
   assert(flakinessDebtReason(0, 1).includes('browser capture attempt'), 'capture retries get a flakiness debt reason');
 

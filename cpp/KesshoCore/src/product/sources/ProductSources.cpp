@@ -12,6 +12,7 @@
     case KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_DELAY_BSEND_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_DIFFUSE_SEND_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_HZ_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_STEREO_WIDTH_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_KEY_TRACKING_ID:
@@ -35,7 +36,11 @@
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
     return;
   }
-  const uint32_t preset_id = event.value <= 0.0f ? 0u : static_cast<uint32_t>(std::lround(event.value));
+  if (event.value <= 0.0f) {
+    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+    return;
+  }
+  const uint32_t preset_id = static_cast<uint32_t>(std::lround(event.value));
   sources[event.target_id - 1u].preset_id = preset_id;
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
 }
@@ -78,6 +83,9 @@
     case KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID:
       source.granular_send = clampFloat(event.value, 0.0f, 2.0f);
       break;
+    case KESSHO_PRODUCT_PARAM_SOURCE_DIFFUSE_SEND_ID:
+      source.diffuse_send = clampFloat(event.value, 0.0f, 2.0f);
+      break;
     case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_HZ_ID:
       source.post_lpf_hz = clampFloat(event.value, 20.0f, 20000.0f);
       break;
@@ -89,6 +97,7 @@
       break;
     default:
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
-      break;
+      return;
   }
+  telemetry.last_error_code = KESSHO_PRODUCT_OK;
 }

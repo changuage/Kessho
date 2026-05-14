@@ -12,7 +12,7 @@ function assert(condition, message) {
 }
 
 const webGranularPage = read('src/ui/granular/GranularPage.tsx');
-const webMacroModel = read('src/audio/granularMacroModel.ts');
+const webMacroModel = read('src/audio/granularMacroCore.ts');
 const iosAudioEngine = read('KesshoNativeSwift/Kessho/Audio/AudioEngine.swift');
 const iosMacPages = read('KesshoNativeSwift/Kessho/Platform/KesshoMacPages.swift');
 const iosAppState = read('KesshoNativeSwift/Kessho/State/AppState.swift');

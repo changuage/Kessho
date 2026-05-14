@@ -2214,6 +2214,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       source: effectiveKeyboardSource,
       midi,
       velocity: MANUAL_KEYBOARD_VELOCITY,
+      durationMs: 180,
     });
   }, [canWriteSequenceNotes, effectiveKeyboardSource, keyboardBaseMidi, keyboardInputMode, onAuditionNote, seq.activeTab, writeKeyboardSequenceNote]);
   const toggleKeyboardPanel = useCallback(() => {

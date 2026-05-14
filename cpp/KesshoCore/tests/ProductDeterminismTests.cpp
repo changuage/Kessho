@@ -5,6 +5,7 @@
 
 #include "KesshoCore/KesshoProductCore.h"
 #include "../src/product/KesshoProductEngineInternal.h"
+#include "ProductSnapshotTestHelpers.h"
 
 namespace {
 
@@ -62,6 +63,7 @@ KesshoProductSnapshotV2 makeSnapshot(uint32_t seed = 19u) {
   lane.seed = seed + 101u;
   lane.manual_step_mask_low = 0x0fu;
   snapshot.drum_euclid.lane_count = 0;
+  kessho::product::tests::applyGeneratedSourceDefaults(snapshot);
   return snapshot;
 }
 

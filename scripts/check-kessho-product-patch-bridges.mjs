@@ -66,12 +66,12 @@ const familySpecs = [
     snake: 'drum',
     camel: 'Drum',
     range: '[0..125]',
-    generatedWhy: 'Preserves factory web Drum patch parity while Drum voice preset IDs and morphs become the canonical bridge.',
+    generatedWhy: 'Preserves factory web Drum patch parity while generated Drum voice preset IDs, morphs, and host-edited exact Drum controls remain bridged to Product Core.',
     generatedReconstructability:
       'Factory DrumDefault is reconstructable by generated preset ID lookup today; voice-family patches are reconstructable from drum voice preset A/B IDs plus morphs and are covered by a source reconstruction proof.',
     generatedRetirement:
       'Retire when Drum source patches reconstruct from generated Drum source preset ID, drum voice preset IDs, voice morphs, and structured Product Core drum metadata, with Drum source probes passing without exact Drum arrays.',
-    snapshotWhy: 'Carries legacy host-authored Drum module overrides across the Product snapshot ABI.',
+    snapshotWhy: 'Carries legacy host-authored Drum module overrides across the Product snapshot ABI so individual Drum voice controls reach Product Core.',
     snapshotReconstructability:
       'Partially replaced: canonical Drum voice preset IDs and morphs reconstruct voice-family patches, but arbitrary exact Drum snapshot overrides still need bounded Product Core override fields or events.',
     snapshotRetirement:
@@ -316,8 +316,9 @@ for (const token of [
   assert(webPatchBridgeSurface.includes(token), `src/audio/coreProductSnapshot.ts/CoreProductLegacyPresetCompat.ts missing ${token}`);
 }
 assert(
-  webSnapshot.includes('source.exactDrumParamCount = 0;'),
-  'Web Product snapshot must not emit host-owned exact Drum arrays while Drum voice preset IDs are the canonical bridge',
+  webSnapshot.includes('source.exactDrumParamCount = KESSHO_PRODUCT_DRUM_PARAM_COUNT;') &&
+    webSnapshot.includes('source.exactDrumParams = exactDrumParamsFromState(state);'),
+  'Web Product snapshot must emit host-owned exact Drum arrays until bounded Drum override fields replace the bridge',
 );
 
 const nativeSnapshot = read('KesshoNativeSwift/Kessho/CoreBridge/KesshoProductCoreSnapshot.swift');

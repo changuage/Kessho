@@ -39,11 +39,19 @@
       lane.enabled = event.value >= 0.5f;
       break;
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TARGET_SOURCE_ID: {
-      const uint32_t source_id = clampU32(static_cast<uint32_t>(std::lround(event.value)), 1u, kSourceCount);
+      if (event.value < 1.0f || event.value > static_cast<float>(kSourceCount)) {
+        telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+        return;
+      }
+      const uint32_t source_id = static_cast<uint32_t>(std::lround(event.value));
       lane.target_source_id = source_id;
       break;
     }
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_STEP_COUNT_ID:
+      if (event.value < 1.0f) {
+        telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE;
+        return;
+      }
       lane.step_count = clampU32(static_cast<uint32_t>(std::lround(event.value)), 1u, 64u);
       lane.fill_count = clampU32(lane.fill_count, 0u, lane.step_count);
       break;

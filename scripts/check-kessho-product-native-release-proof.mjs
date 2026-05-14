@@ -116,7 +116,7 @@ assert(
 );
 
 for (const token of [
-  'expectedHash: UInt64 = 2_228_222_591_653_782_738',
+  'expectedHash: UInt64 = 1_032_899_717_477_308_578',
   'expectedPeak: Float = 0.008_095_407',
   'expectedRms: Float = 0.003_726_907_5',
   'expectedStemPeak: Float = 0.009_092_237',

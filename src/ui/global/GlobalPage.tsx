@@ -22,7 +22,7 @@ const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 
 const DEGREE_LABELS = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'];
 const GLOBAL_EXPANDED_SECTIONS_STORAGE_KEY = 'global:expanded-sections:v1';
 const DEFAULT_GLOBAL_EXPANDED_SECTIONS = ['morph', 'state-presets', 'root-cof', 'chord-progression', 'scale-tension', 'transport-sync'];
-type AudioEngineMode = 'web-ts' | 'core-bridge' | 'core-product';
+type AudioEngineMode = 'web-ts' | 'core-product' | 'core-smoke';
 type AudioEngineCpuSummary = {
   avgPercent: number;
   peakPercent: number;
@@ -803,7 +803,7 @@ export interface GlobalPageProps {
   audioEngineMode?: AudioEngineMode;
   audioEngineCpuSummaries?: Partial<Record<AudioEngineMode, AudioEngineCpuSummary>>;
   showAudioEngineSwitcher?: boolean;
-  coreBridgeModeAvailable?: boolean;
+  coreSmokeModeAvailable?: boolean;
   onAudioEngineModeChange?: (mode: AudioEngineMode) => void;
   onResetCofDrift: () => void;
 
@@ -870,10 +870,10 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   SelectComponent: Select,
   CircleOfFifthsComponent: CircleOfFifths,
   engineState,
-  audioEngineMode = 'core-bridge',
+  audioEngineMode = 'core-product',
   audioEngineCpuSummaries,
   showAudioEngineSwitcher = false,
-  coreBridgeModeAvailable = true,
+  coreSmokeModeAvailable = true,
   onAudioEngineModeChange,
   onResetCofDrift,
   morphCoFViz,
@@ -912,9 +912,9 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   dualSliderRanges,
   getStatePresetSaveMetadata,
 }) => {
-  const audioEngineModes = coreBridgeModeAvailable
-    ? (['web-ts', 'core-bridge', 'core-product'] as const)
-    : (['web-ts', 'core-product'] as const);
+  const audioEngineModes = coreSmokeModeAvailable
+    ? (['core-product', 'web-ts', 'core-smoke'] as const)
+    : (['core-product', 'web-ts'] as const);
   const stemRecordingAvailable = audioEngineMode !== 'core-product';
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(
     () => {
@@ -1413,7 +1413,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
             <div className="scene-card-header">
               <h3 className="scene-card-title">Audio Engine Test</h3>
               <span className={`scene-run-pill ${audioEngineMode === 'core-product' ? 'running' : 'stopped'}`}>
-                {audioEngineMode === 'core-product' ? 'Product Core' : audioEngineMode === 'core-bridge' ? 'Bridge' : 'Web'}
+                {audioEngineMode === 'core-product' ? 'Product Core' : audioEngineMode === 'core-smoke' ? 'Smoke' : 'Web'}
               </span>
             </div>
             <div className="scene-engine-switch">
@@ -1430,12 +1430,12 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                       title={
                         mode === 'web-ts'
                           ? 'Switch to Web TS reference'
-                          : mode === 'core-bridge'
-                          ? 'Switch to Core bridge'
+                          : mode === 'core-smoke'
+                          ? 'Switch to Core smoke renderer'
                           : 'Switch to Product Core'
                       }
                     >
-                      {mode === 'web-ts' ? 'Web TS' : mode === 'core-bridge' ? 'Bridge' : 'Product'}
+                      {mode === 'web-ts' ? 'Web TS' : mode === 'core-smoke' ? 'Smoke' : 'Product'}
                     </button>
                   ))}
                 </div>
@@ -1444,7 +1444,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                     const summary = audioEngineCpuSummaries?.[mode];
                     return (
                       <div key={mode} className={`scene-engine-cpu-row${audioEngineMode === mode ? ' active' : ''}`}>
-                        <span>{mode === 'web-ts' ? 'Web TS' : mode === 'core-bridge' ? 'Bridge' : 'Product'}</span>
+                        <span>{mode === 'web-ts' ? 'Web TS' : mode === 'core-smoke' ? 'Smoke' : 'Product'}</span>
                         <span>avg {formatCpuPercent(summary?.avgPercent)}</span>
                         <span>peak {formatCpuPercent(summary?.peakPercent)}</span>
                       </div>

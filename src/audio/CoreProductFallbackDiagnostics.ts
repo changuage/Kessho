@@ -4,13 +4,13 @@ export type RuntimeFallbackClassification =
   | 'reference-only-web-ts-behavior'
   | 'forbidden-production-fallback';
 
-export type PlaceholderGetterClassification =
+export type ProductCoreGetterPolicy =
   | 'backed-by-product-core-api'
   | 'explicitly-unsupported-hidden'
   | 'reference-only-web-ts-behavior'
   | 'temporary-missing-product-telemetry';
 
-export const CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS = {
+export const CORE_PRODUCT_GETTER_POLICIES = {
   getDynamicsAnalyser: {
     classification: 'explicitly-unsupported-hidden',
     blocker: 'Web Audio dynamics analyser nodes are not exposed in core-product; Product Core telemetry backs dynamics visuals instead.',
@@ -79,14 +79,9 @@ export const CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS = {
     classification: 'backed-by-product-core-api',
     blocker: 'Backed by Product Core transport telemetry and generated transport snapshot state.',
   },
-} as const satisfies Record<string, { classification: PlaceholderGetterClassification; blocker: string }>;
+} as const satisfies Record<string, { classification: ProductCoreGetterPolicy; blocker: string }>;
 
-export type PlaceholderGetterName = keyof typeof CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS;
-
-export function classifiedPlaceholderGetter<T>(name: PlaceholderGetterName, fallback: T): T {
-  void CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS[name];
-  return fallback;
-}
+export type ProductCoreGetterName = keyof typeof CORE_PRODUCT_GETTER_POLICIES;
 
 export function classifyCoreProductRuntimeFallback(property: string): RuntimeFallbackClassification {
   if (property.startsWith('get')) {

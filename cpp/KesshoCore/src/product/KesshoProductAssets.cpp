@@ -112,6 +112,34 @@
 }
 
   float KesshoProductEngine::sampleVoiceEnvelope(const Voice& voice) const {
+  if (voice.piano_sample_voice) {
+    const uint32_t attack_frames = std::max(1u, voice.envelope_attack_frames);
+    const uint32_t decay_frames = std::max(1u, voice.envelope_decay_frames);
+    const uint32_t hold_frames = voice.envelope_hold_frames;
+    const uint32_t release_frames = std::max(1u, voice.envelope_release_frames);
+    const float sustain = clampFloat(voice.envelope_sustain, 0.0f, 1.0f);
+    const float quiet = 0.0001f;
+    const uint32_t age = voice.age_frames;
+    if (age < attack_frames) {
+      return clampFloat(static_cast<float>(age + 1u) / static_cast<float>(attack_frames), 0.0f, 1.0f);
+    }
+    const uint32_t decay_age = age - attack_frames;
+    if (decay_age < decay_frames) {
+      const float t = static_cast<float>(decay_age + 1u) / static_cast<float>(decay_frames);
+      return clampFloat(1.0f + (sustain - 1.0f) * t, 0.0f, 1.0f);
+    }
+    const uint32_t hold_age = decay_age - decay_frames;
+    if (hold_age < hold_frames) {
+      return sustain;
+    }
+    const uint32_t release_age = hold_age - hold_frames;
+    if (release_age < release_frames) {
+      const float t = static_cast<float>(release_age + 1u) / static_cast<float>(release_frames);
+      return clampFloat(sustain + (quiet - sustain) * t, 0.0f, 1.0f);
+    }
+    return quiet;
+  }
+
   float envelope = 1.0f;
   const uint32_t attack_frames = sampleFadeFrames(kSampleAttackSeconds, voice.total_frames / 2u);
   if (attack_frames > 1u && voice.age_frames < attack_frames) {
@@ -204,6 +232,11 @@
       voice.active = false;
     }
   }
-  out_l = sample_l * voice.amplitude;
-  out_r = sample_r * voice.amplitude;
+  float live_level = 1.0f;
+  if (voice.sample_voice && voice.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
+    const AssetSlot& asset = assets[voice.asset_slot];
+    live_level = soundscapeAssetRefLevel(sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u], asset.asset_id);
+  }
+  out_l = sample_l * voice.amplitude * live_level;
+  out_r = sample_r * voice.amplitude * live_level;
 }

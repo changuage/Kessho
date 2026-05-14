@@ -703,6 +703,11 @@ int dynamics_character_init(float sample_rate) {
     return 0;
 }
 
+int dynamics_character_reset(float sample_rate) {
+    init_dynamics_character_state(g, sample_rate);
+    return 0;
+}
+
 void dynamics_character_destroy(void) {
     std::memset(&g, 0, sizeof(g));
 }

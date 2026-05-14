@@ -1,12 +1,36 @@
 #include "../KesshoProductEngineInternal.h"
 
   bool KesshoProductEngine::soundscapeWantsAsset(const SourceState& source, uint32_t asset_id) const {
+  if (soundscapeAssetUsesModule(source, asset_id)) {
+    return false;
+  }
   for (uint32_t i = 0; i < source.asset_ref_count; ++i) {
     if (source.asset_refs[i] == asset_id) {
       return true;
     }
   }
   return false;
+}
+
+  float KesshoProductEngine::soundscapeAssetRefLevel(const SourceState& source, uint32_t asset_id) const {
+  for (uint32_t i = 0; i < source.asset_ref_count; ++i) {
+    if (source.asset_refs[i] == asset_id) {
+      return clampFloat(source.asset_ref_levels[i], 0.0f, 2.0f);
+    }
+  }
+  return 1.0f;
+}
+
+  bool KesshoProductEngine::soundscapeModuleParamsAvailable(const SourceState& source) const {
+  return source.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
+      source.exact_drum_param_count >= kSoundscapeProductModuleParamCount;
+}
+
+  bool KesshoProductEngine::soundscapeAssetUsesModule(const SourceState& source, uint32_t asset_id) const {
+  if (!soundscapeModuleParamsAvailable(source)) {
+    return false;
+  }
+  return asset_id == kSoundscapeAssetWater || asset_id == kSoundscapeAssetInsects;
 }
 
   bool KesshoProductEngine::hasActiveSoundscapeVoice(uint32_t asset_id) const {
@@ -53,6 +77,23 @@
   }
 }
 
+  uint32_t KesshoProductEngine::soundscapeLayerIndexForAsset(uint32_t asset_id) const {
+  switch (asset_id) {
+    case kSoundscapeAssetOcean:
+      return kSoundscapeLayerOcean;
+    case kSoundscapeAssetWater:
+      return kSoundscapeLayerWater;
+    case kSoundscapeAssetInsects:
+      return kSoundscapeLayerInsects;
+    case kSoundscapeAssetBirds:
+    case kSoundscapeAssetBirds2:
+    case kSoundscapeAssetFrogs:
+      return kSoundscapeLayerNature;
+    default:
+      return kSoundscapeLayerCount;
+  }
+}
+
   float KesshoProductEngine::soundscapeLayerLevel(const AssetSlot& asset, uint32_t sample_seed) const {
   const SoundscapeLayerPolicy policy = soundscapeLayerPolicy(asset.asset_id);
   return policy.level_base + policy.level_range * hashUnit(sample_seed ^ 0x8da6b343u);
@@ -68,4 +109,29 @@
   const SoundscapeLayerPolicy policy = soundscapeLayerPolicy(asset.asset_id);
   const float rate_delta = ((hashUnit(sample_seed ^ 0xc2b2ae35u) * 2.0f) - 1.0f) * policy.rate_depth;
   return clampFloat(1.0f + rate_delta, 0.5f, 2.0f);
+}
+
+  bool KesshoProductEngine::soundscapeParityFixtureEnabled(const SourceState& source) const {
+  if (source.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
+      source.exact_pad_param_count < kSoundscapeParityParamCount) {
+    return false;
+  }
+  const float value = source.exact_pad_params[kSoundscapeParityFixtureParam];
+  return std::isfinite(value) && value >= 0.5f;
+}
+
+  float KesshoProductEngine::soundscapeLayerRouteSend(
+      const SourceState& source,
+      uint32_t layer,
+      uint32_t route,
+      float fallback) const {
+  if (source.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
+      layer >= kSoundscapeLayerCount ||
+      route >= kSoundscapeLayerRouteStride ||
+      source.exact_pad_param_count < kSoundscapeLayerRouteParamCount) {
+    return fallback;
+  }
+  const uint32_t param_index = layer * kSoundscapeLayerRouteStride + route;
+  const float value = source.exact_pad_params[param_index];
+  return std::isfinite(value) ? clampFloat(value, 0.0f, 2.0f) : fallback;
 }

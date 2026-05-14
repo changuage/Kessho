@@ -97,6 +97,10 @@ function numberFromState(state: Record<string, unknown> | undefined | null, key:
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function booleanFromState(state: Record<string, unknown> | undefined | null, key: string): boolean {
+  return state?.[key] === true;
+}
+
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.min(1, Math.max(0, value));
@@ -158,6 +162,14 @@ export function getDefaultCoreProductSoundscapeAssetId(state?: Record<string, un
   return CORE_PRODUCT_SOUNDSCAPE_ASSETS[getDefaultCoreProductSoundscapeAssetKey(state)].assetId;
 }
 
+export function getPrimaryCoreProductSoundscapeAssetIdForState(state?: Record<string, unknown> | null): number {
+  if (booleanFromState(state, 'frogsEnabled')) return CORE_PRODUCT_SOUNDSCAPE_ASSETS.frogs.assetId;
+  if (booleanFromState(state, 'birds2Enabled')) return CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds2.assetId;
+  if (booleanFromState(state, 'birdsEnabled')) return CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId;
+  if (booleanFromState(state, 'oceanSampleEnabled')) return CORE_PRODUCT_SOUNDSCAPE_ASSETS.ocean.assetId;
+  return 0;
+}
+
 export function getDefaultCoreProductSoundscapeAssetUrl(state?: Record<string, unknown> | null): string {
   const asset = CORE_PRODUCT_SOUNDSCAPE_ASSETS[getDefaultCoreProductSoundscapeAssetKey(state)];
   return resolveCoreProductAssetUrl(asset.path);
@@ -166,38 +178,21 @@ export function getDefaultCoreProductSoundscapeAssetUrl(state?: Record<string, u
 export function getCoreProductSoundscapeAssetDescriptorsForState(
   state?: Record<string, unknown> | null,
 ): CoreProductSoundscapeAssetDescriptor[] {
+  const earthLevel = clamp01(numberFromState(state, 'earthLevel') ?? 1);
   const natureLevel = clamp01(numberFromState(state, 'natureLevel') ?? 1);
-  const insectsSharedLevel = clamp01(numberFromState(state, 'insectsSharedLevel') ?? 1);
   const candidates: Array<{ key: CoreProductSoundscapeAssetKey; level: number }> = [];
-  if (state?.oceanSampleEnabled === true) {
-    candidates.push({ key: 'ocean', level: clamp01(numberFromState(state, 'oceanSampleLevel') ?? 0) });
+  if (booleanFromState(state, 'oceanSampleEnabled')) {
+    candidates.push({ key: 'ocean', level: clamp01(numberFromState(state, 'oceanSampleLevel') ?? 0) * earthLevel });
   }
-  if (state?.waterEnabled === true) {
-    candidates.push({ key: 'water', level: clamp01(numberFromState(state, 'waterLevel') ?? 0) });
+  if (booleanFromState(state, 'birdsEnabled')) {
+    candidates.push({ key: 'birds', level: clamp01(numberFromState(state, 'birdsLevel') ?? 0) * natureLevel * earthLevel });
   }
-  if (state?.birdsEnabled === true) {
-    candidates.push({ key: 'birds', level: clamp01(numberFromState(state, 'birdsLevel') ?? 0) * natureLevel });
+  if (booleanFromState(state, 'birds2Enabled')) {
+    candidates.push({ key: 'birds2', level: clamp01(numberFromState(state, 'birds2Level') ?? 0) * natureLevel * earthLevel });
   }
-  if (state?.birds2Enabled === true) {
-    candidates.push({ key: 'birds2', level: clamp01(numberFromState(state, 'birds2Level') ?? 0) * natureLevel });
+  if (booleanFromState(state, 'frogsEnabled')) {
+    candidates.push({ key: 'frogs', level: clamp01(numberFromState(state, 'frogsLevel') ?? 0) * natureLevel * earthLevel });
   }
-  if (state?.frogsEnabled === true) {
-    candidates.push({ key: 'frogs', level: clamp01(numberFromState(state, 'frogsLevel') ?? 0) * natureLevel });
-  }
-  if (state?.insectsEnabled === true || state?.insects2Enabled === true) {
-    candidates.push({
-      key: 'insects',
-      level: Math.max(
-        state?.insectsEnabled === true ? clamp01(numberFromState(state, 'insectsLevel') ?? 0) : 0,
-        state?.insects2Enabled === true ? clamp01(numberFromState(state, 'insects2Level') ?? 0) : 0,
-      ) * insectsSharedLevel,
-    });
-  }
-
-  if (candidates.length === 0 && getDefaultCoreProductSoundscapeAssetKey(state)) {
-    candidates.push({ key: getDefaultCoreProductSoundscapeAssetKey(state), level: 1 });
-  }
-
   const seen = new Set<number>();
   return candidates.flatMap(({ key, level }) => {
     const clampedLevel = clamp01(level);

@@ -25,6 +25,7 @@ fi
 
 EXPORTS="[
   '_dynamics_character_init',
+  '_dynamics_character_reset',
   '_dynamics_character_destroy',
   '_dynamics_character_get_input_ptr',
   '_dynamics_character_get_output_ptr',

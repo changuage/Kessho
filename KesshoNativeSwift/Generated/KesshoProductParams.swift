@@ -24,6 +24,7 @@ public enum KesshoProductParamId: UInt32 {
     case sourceDelayASend = 107
     case sourceDelayBSend = 108
     case sourceGranularSend = 109
+    case sourceDiffuseSend = 113
     case sourcePostLpfHz = 110
     case sourceStereoWidth = 111
     case sourcePostLpfKeyTracking = 112
@@ -47,6 +48,8 @@ public enum KesshoProductParamId: UInt32 {
     case fxGranularFreezeWithFeedback = 802
     case fxGranularFeedback = 803
     case fxGranularFeedbackLpfHz = 804
+    case fxGranularReverbLpfHz = 816
+    case fxGranularOutputLpfHz = 817
     case fxGranularBufferSeconds = 805
     case fxGranularGrainShape = 806
     case fxGranularBusDiffusion = 807
@@ -228,6 +231,8 @@ public enum KesshoProductParamId: UInt32 {
     case fxSpectralFreezeSpeed = 933
     case fxSpectralFreezeDecay = 934
     case fxSpectralFreezePhaseJitter = 935
+    case fxSpectralFreezeRouting = 936
+    case fxSpectralFreezeReverbCrossfade = 937
     case fxDynamicsEnabled = 940
     case fxDynamicsCharacterEnabled = 941
     case fxDynamicsCharacterMode = 942
@@ -336,6 +341,8 @@ public enum KesshoProductParamId: UInt32 {
     case routingDelayAToGranular = 404
     case routingDelayBToGranular = 405
     case routingDelayBToReverb = 406
+    case routingGranularToDelayA = 407
+    case routingGranularToDelayB = 408
     case masterGain = 500
     case masterLimiterCeilingDb = 501
     case masterSaturationMode = 502

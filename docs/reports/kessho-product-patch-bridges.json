@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-13T11:57:05.758Z",
+  "generatedAt": "2026-05-13T22:33:01.630Z",
   "status": "pass",
   "command": "node scripts/check-kessho-product-patch-bridges.mjs",
   "reportName": "kessho-product-patch-bridges",
@@ -296,7 +296,7 @@
       "sourceFamily": "Drum",
       "classification": "TEMP_COMPAT_WEB_REFERENCE",
       "owner": "scripts/generate-kessho-product-bindings.mjs and cpp/KesshoCore/generated/KesshoProductSchema.h",
-      "whyItExists": "Preserves factory web Drum patch parity while Drum voice preset IDs and morphs become the canonical bridge.",
+      "whyItExists": "Preserves factory web Drum patch parity while generated Drum voice preset IDs, morphs, and host-edited exact Drum controls remain bridged to Product Core.",
       "reconstructabilityFromPresetIdAndUserOverrides": "Factory DrumDefault is reconstructable by generated preset ID lookup today; voice-family patches are reconstructable from drum voice preset A/B IDs plus morphs and are covered by a source reconstruction proof.",
       "retirementCondition": "Retire when Drum source patches reconstruct from generated Drum source preset ID, drum voice preset IDs, voice morphs, and structured Product Core drum metadata, with Drum source probes passing without exact Drum arrays.",
       "replacementProductCoreOwner": "C++ Product Core Drum source and drum voice preset resolver"
@@ -306,7 +306,7 @@
       "sourceFamily": "Drum",
       "classification": "TEMP_COMPAT_WEB_REFERENCE",
       "owner": "scripts/generate-kessho-product-bindings.mjs and cpp/KesshoCore/generated/KesshoProductSchema.h",
-      "whyItExists": "Preserves factory web Drum patch parity while Drum voice preset IDs and morphs become the canonical bridge.",
+      "whyItExists": "Preserves factory web Drum patch parity while generated Drum voice preset IDs, morphs, and host-edited exact Drum controls remain bridged to Product Core.",
       "reconstructabilityFromPresetIdAndUserOverrides": "Factory DrumDefault is reconstructable by generated preset ID lookup today; voice-family patches are reconstructable from drum voice preset A/B IDs plus morphs and are covered by a source reconstruction proof.",
       "retirementCondition": "Retire when Drum source patches reconstruct from generated Drum source preset ID, drum voice preset IDs, voice morphs, and structured Product Core drum metadata, with Drum source probes passing without exact Drum arrays.",
       "replacementProductCoreOwner": "C++ Product Core Drum source and drum voice preset resolver"
@@ -316,7 +316,7 @@
       "sourceFamily": "Drum",
       "classification": "TEMP_COMPAT_WEB_REFERENCE",
       "owner": "scripts/generate-kessho-product-bindings.mjs, src/audio/generated/kesshoProductSchema.ts, and KesshoNativeSwift/Generated/KesshoProductSchema.swift",
-      "whyItExists": "Preserves factory web Drum patch parity while Drum voice preset IDs and morphs become the canonical bridge.",
+      "whyItExists": "Preserves factory web Drum patch parity while generated Drum voice preset IDs, morphs, and host-edited exact Drum controls remain bridged to Product Core.",
       "reconstructabilityFromPresetIdAndUserOverrides": "Factory DrumDefault is reconstructable by generated preset ID lookup today; voice-family patches are reconstructable from drum voice preset A/B IDs plus morphs and are covered by a source reconstruction proof.",
       "retirementCondition": "Retire when Drum source patches reconstruct from generated Drum source preset ID, drum voice preset IDs, voice morphs, and structured Product Core drum metadata, with Drum source probes passing without exact Drum arrays.",
       "replacementProductCoreOwner": "C++ Product Core Drum source and drum voice preset resolver"
@@ -326,7 +326,7 @@
       "sourceFamily": "Drum",
       "classification": "TEMP_COMPAT_WEB_REFERENCE",
       "owner": "scripts/generate-kessho-product-bindings.mjs, src/audio/generated/kesshoProductSchema.ts, and KesshoNativeSwift/Generated/KesshoProductSchema.swift",
-      "whyItExists": "Preserves factory web Drum patch parity while Drum voice preset IDs and morphs become the canonical bridge.",
+      "whyItExists": "Preserves factory web Drum patch parity while generated Drum voice preset IDs, morphs, and host-edited exact Drum controls remain bridged to Product Core.",
       "reconstructabilityFromPresetIdAndUserOverrides": "Factory DrumDefault is reconstructable by generated preset ID lookup today; voice-family patches are reconstructable from drum voice preset A/B IDs plus morphs and are covered by a source reconstruction proof.",
       "retirementCondition": "Retire when Drum source patches reconstruct from generated Drum source preset ID, drum voice preset IDs, voice morphs, and structured Product Core drum metadata, with Drum source probes passing without exact Drum arrays.",
       "replacementProductCoreOwner": "C++ Product Core Drum source and drum voice preset resolver"
@@ -336,7 +336,7 @@
       "sourceFamily": "Drum",
       "classification": "DEPRECATED_BRIDGE_FIELD",
       "owner": "cpp/KesshoCore/include/KesshoCore/KesshoProductSnapshot.h and cpp/KesshoCore/src/product/KesshoProductSnapshot.cpp",
-      "whyItExists": "Carries legacy host-authored Drum module overrides across the Product snapshot ABI.",
+      "whyItExists": "Carries legacy host-authored Drum module overrides across the Product snapshot ABI so individual Drum voice controls reach Product Core.",
       "reconstructabilityFromPresetIdAndUserOverrides": "Partially replaced: canonical Drum voice preset IDs and morphs reconstruct voice-family patches, but arbitrary exact Drum snapshot overrides still need bounded Product Core override fields or events.",
       "retirementCondition": "Retire when Drum user overrides are represented by generated Drum voice preset IDs, voice morphs, bounded Product Core drum override fields, and live Product Core events.",
       "replacementProductCoreOwner": "C++ Product Core Drum source and drum voice preset resolver"
@@ -346,7 +346,7 @@
       "sourceFamily": "Drum",
       "classification": "DEPRECATED_BRIDGE_FIELD",
       "owner": "cpp/KesshoCore/include/KesshoCore/KesshoProductSnapshot.h and cpp/KesshoCore/src/product/KesshoProductSnapshot.cpp",
-      "whyItExists": "Carries legacy host-authored Drum module overrides across the Product snapshot ABI.",
+      "whyItExists": "Carries legacy host-authored Drum module overrides across the Product snapshot ABI so individual Drum voice controls reach Product Core.",
       "reconstructabilityFromPresetIdAndUserOverrides": "Partially replaced: canonical Drum voice preset IDs and morphs reconstruct voice-family patches, but arbitrary exact Drum snapshot overrides still need bounded Product Core override fields or events.",
       "retirementCondition": "Retire when Drum user overrides are represented by generated Drum voice preset IDs, voice morphs, bounded Product Core drum override fields, and live Product Core events.",
       "replacementProductCoreOwner": "C++ Product Core Drum source and drum voice preset resolver"
@@ -356,7 +356,7 @@
       "sourceFamily": "Drum",
       "classification": "DEPRECATED_BRIDGE_FIELD",
       "owner": "src/audio/coreProductSnapshot.ts and src/audio/CoreProductLegacyPresetCompat.ts",
-      "whyItExists": "Carries legacy host-authored Drum module overrides across the Product snapshot ABI.",
+      "whyItExists": "Carries legacy host-authored Drum module overrides across the Product snapshot ABI so individual Drum voice controls reach Product Core.",
       "reconstructabilityFromPresetIdAndUserOverrides": "Partially replaced: canonical Drum voice preset IDs and morphs reconstruct voice-family patches, but arbitrary exact Drum snapshot overrides still need bounded Product Core override fields or events.",
       "retirementCondition": "Retire when Drum user overrides are represented by generated Drum voice preset IDs, voice morphs, bounded Product Core drum override fields, and live Product Core events.",
       "replacementProductCoreOwner": "C++ Product Core Drum source and drum voice preset resolver"
@@ -366,7 +366,7 @@
       "sourceFamily": "Drum",
       "classification": "DEPRECATED_BRIDGE_FIELD",
       "owner": "src/audio/coreProductSnapshot.ts and src/audio/CoreProductLegacyPresetCompat.ts",
-      "whyItExists": "Carries legacy host-authored Drum module overrides across the Product snapshot ABI.",
+      "whyItExists": "Carries legacy host-authored Drum module overrides across the Product snapshot ABI so individual Drum voice controls reach Product Core.",
       "reconstructabilityFromPresetIdAndUserOverrides": "Partially replaced: canonical Drum voice preset IDs and morphs reconstruct voice-family patches, but arbitrary exact Drum snapshot overrides still need bounded Product Core override fields or events.",
       "retirementCondition": "Retire when Drum user overrides are represented by generated Drum voice preset IDs, voice morphs, bounded Product Core drum override fields, and live Product Core events.",
       "replacementProductCoreOwner": "C++ Product Core Drum source and drum voice preset resolver"

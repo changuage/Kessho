@@ -155,7 +155,7 @@ const focusedSourceContracts = [
     'cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp',
     [
       'KesshoProductEngine::applySourcePresetMacros(',
-      'KesshoProductEngine::exactPadMacrosDifferFromDefaults(',
+      'KesshoProductEngine::sourceMacrosDifferFromDefaults(',
     ],
   ],
   ['cpp/KesshoCore/src/product/sources/DrumSource.cpp', ['KesshoProductEngine::drumVoiceMorphPatch(']],

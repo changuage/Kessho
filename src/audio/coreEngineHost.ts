@@ -588,6 +588,7 @@ const SOUNDSCAPES_PARAM_INDEX = {
   insects2Seed: 94,
   outputSelect: 95,
 } as const;
+const SOUNDSCAPES_SEED_NO_CHANGE = -1;
 
 function getCoreDrumDelaySendProfile(state: Record<string, unknown>): number {
   const sends = DRUM_DELAY_SEND_KEYS.map((key) => boundedNumber(state[key], 0, 0, 1));
@@ -3076,6 +3077,7 @@ function writeSoundscapesParamsFromState(params: number[], sliderState: SliderSt
   const waterActive = earthLayerActive(state, 'waterEnabled', 'waterLevel', 0.8);
   const insectsActive = earthLayerActive(state, 'insectsEnabled', 'insectsLevel', 0.7);
   const insects2Active = earthLayerActive(state, 'insects2Enabled', 'insects2Level', 0.5);
+  const deterministicSeeds = booleanValue(state.soundscapeParityFixture, false);
   const waterEngineActive = waterActive;
   const insectsEngineActive = insectsActive;
   const insects2EngineActive = insects2Active;
@@ -3172,7 +3174,7 @@ function writeSoundscapesParamsFromState(params: number[], sliderState: SliderSt
 
   params[SOUNDSCAPES_PARAM_INDEX.waterChannels + 0] = finiteNumber(water.waterChannelsMorph, 0);
   params[SOUNDSCAPES_PARAM_INDEX.waterChannels + 1] = finiteNumber(water.waterChannelsSpeed, 0.5);
-  params[SOUNDSCAPES_PARAM_INDEX.waterSeed] = boundedInteger(state.seed, 12345, 0, 1_000_000);
+  params[SOUNDSCAPES_PARAM_INDEX.waterSeed] = deterministicSeeds ? 12345 : SOUNDSCAPES_SEED_NO_CHANGE;
 
   const writeInsectParams = (
     activeIndex: number,
@@ -3180,7 +3182,6 @@ function writeSoundscapesParamsFromState(params: number[], sliderState: SliderSt
     paramsIndex: number,
     seedIndex: number,
     prefix: 'insects' | 'insects2',
-    fallbackSeed: number,
   ) => {
     const active = prefix === 'insects' ? insectsEngineActive : insects2EngineActive;
     const fallbackEngine = prefix === 'insects'
@@ -3207,7 +3208,9 @@ function writeSoundscapesParamsFromState(params: number[], sliderState: SliderSt
     values.forEach((value, index) => {
       params[paramsIndex + index] = finiteNumber(value, index >= 4 && index <= 5 ? 0.3 : 0.5);
     });
-    params[seedIndex] = boundedInteger(state.seed, fallbackSeed, 0, 1_000_000) + (prefix === 'insects2' ? 17 : 0);
+    params[seedIndex] = deterministicSeeds
+      ? (prefix === 'insects2' ? 67890 : 12345)
+      : SOUNDSCAPES_SEED_NO_CHANGE;
   };
 
   writeInsectParams(
@@ -3216,7 +3219,6 @@ function writeSoundscapesParamsFromState(params: number[], sliderState: SliderSt
     SOUNDSCAPES_PARAM_INDEX.insectsParams,
     SOUNDSCAPES_PARAM_INDEX.insectsSeed,
     'insects',
-    12345,
   );
   writeInsectParams(
     SOUNDSCAPES_PARAM_INDEX.insects2Active,
@@ -3224,7 +3226,6 @@ function writeSoundscapesParamsFromState(params: number[], sliderState: SliderSt
     SOUNDSCAPES_PARAM_INDEX.insects2Params,
     SOUNDSCAPES_PARAM_INDEX.insects2Seed,
     'insects2',
-    67890,
   );
 
   const activeCount = [waterEngineActive, insectsEngineActive, insects2EngineActive].filter(Boolean).length;

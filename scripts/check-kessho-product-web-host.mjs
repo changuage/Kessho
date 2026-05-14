@@ -17,12 +17,14 @@ const host = read('src/audio/coreProductEngineHost.ts');
 const assetAdapter = read('src/audio/CoreProductAssetAdapter.ts');
 const fallbackDiagnostics = read('src/audio/CoreProductFallbackDiagnostics.ts');
 const hostSequencerAdapter = read('src/audio/CoreProductHostSequencerAdapter.ts');
+const hostRuntimeGuards = read('src/audio/CoreProductHostRuntimeGuards.ts');
 const runtimeAdapter = read('src/audio/CoreProductRuntimeAdapter.ts');
 const runtime = read('src/audio/coreProductRuntime.ts');
 const appRuntime = read('src/audio/runtime.ts');
 const app = read('src/App.tsx');
 const events = read('src/audio/coreProductEvents.ts');
 const snapshot = read('src/audio/coreProductSnapshot.ts');
+const arrangementScheduler = read('src/audio/coreProductArrangementScheduler.ts');
 const snapshotEncoder = read('src/audio/coreProductSnapshotEncoder.ts');
 const legacyPresetCompat = read('src/audio/CoreProductLegacyPresetCompat.ts');
 const telemetryTypes = read('src/audio/coreProductTelemetry.ts');
@@ -30,21 +32,23 @@ const assets = `${read('src/audio/coreProductAssets.ts')}\n${read('src/audio/cor
 const generatedSchema = read('src/audio/generated/kesshoProductSchema.ts');
 const worklet = read('public/worklets/kessho-core-product.worklet.js');
 const manifest = read('scripts/kessho-core-build-manifest.mjs');
-const hostSurface = `${host}\n${hostSequencerAdapter}`;
+const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostRuntimeGuards}`;
 const snapshotSurface = `${snapshot}\n${snapshotEncoder}`;
 
 const lineCount = (source) => source.split('\n').length;
 assert(lineCount(host) <= 1550, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
 assert(lineCount(assetAdapter) <= 220, `CoreProductAssetAdapter.ts exceeds cleanup size cap (${lineCount(assetAdapter)} lines)`);
 assert(lineCount(hostSequencerAdapter) <= 320, `CoreProductHostSequencerAdapter.ts exceeds cleanup size cap (${lineCount(hostSequencerAdapter)} lines)`);
+assert(lineCount(hostRuntimeGuards) <= 180, `CoreProductHostRuntimeGuards.ts exceeds cleanup size cap (${lineCount(hostRuntimeGuards)} lines)`);
 assert(lineCount(runtimeAdapter) <= 650, `CoreProductRuntimeAdapter.ts exceeds cleanup size cap (${lineCount(runtimeAdapter)} lines)`);
-assert(lineCount(snapshot) <= 1200, `coreProductSnapshot.ts exceeds cleanup size cap (${lineCount(snapshot)} lines)`);
+assert(lineCount(arrangementScheduler) <= 520, `coreProductArrangementScheduler.ts exceeds cleanup size cap (${lineCount(arrangementScheduler)} lines)`);
+assert(lineCount(snapshot) <= 1240, `coreProductSnapshot.ts exceeds cleanup size cap (${lineCount(snapshot)} lines)`);
 assert(lineCount(snapshotEncoder) <= 520, `coreProductSnapshotEncoder.ts exceeds cleanup size cap (${lineCount(snapshotEncoder)} lines)`);
 assert(lineCount(legacyPresetCompat) <= 420, `CoreProductLegacyPresetCompat.ts exceeds cleanup size cap (${lineCount(legacyPresetCompat)} lines)`);
 assert(
   fallbackDiagnostics.includes('classifyCoreProductRuntimeFallback') &&
-    fallbackDiagnostics.includes('CORE_PRODUCT_PLACEHOLDER_GETTER_CLASSIFICATIONS'),
-  'CoreProductFallbackDiagnostics.ts must own fallback and placeholder classification data',
+    fallbackDiagnostics.includes('CORE_PRODUCT_GETTER_POLICIES'),
+  'CoreProductFallbackDiagnostics.ts must own fallback classification and Product Core getter policy data',
 );
 
 for (const token of [
@@ -209,6 +213,33 @@ assert(
 );
 
 for (const token of [
+  'class CoreProductArrangementScheduler',
+  'createSchedulerHarmonyState',
+  'scheduleHarmonyTicks',
+  'scheduleNextHarmonyTick',
+  'onHarmonyTick(isPhraseBoundary',
+  'triggerPadChord',
+  'startLeadMelody',
+  'scheduleLeadPhrase',
+  'getTimeUntilNextBoundaryWall',
+  'getCurrentClockIndexWall',
+  'updateHarmonyState',
+  'getScaleNotesInRange',
+  'createCoreProductManualNoteEvent',
+  "boundedNumber(this.state, 'lead1Density', 0.5, 0.1, 12)",
+  'const timingSeconds = (this.rng() * phraseMs) / 1000;',
+  'pickChordWeightedNote(this.rng, availableNotes',
+  'this.scheduleNote(delaySeconds',
+]) {
+  assert(arrangementScheduler.includes(token), `Product arrangement scheduler must preserve web timing/music intent: missing ${token}`);
+}
+
+assert(
+  !snapshot.includes('appendCoreProductArrangementLanes') && !snapshot.includes('arrangementStepValues'),
+  'Product chord/random arrangement must not be flattened into hidden snapshot lanes',
+);
+
+for (const token of [
   'CORE_PRODUCT_PIANO_PRELOAD_MIDI_NOTES',
   'CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID',
   'getCoreProductPianoPreloadAssetDescriptors',
@@ -224,8 +255,8 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 12644',
-  'const SOURCE_BYTES = 1200',
+  'const SNAPSHOT_BYTES = 12692',
+  'const SOURCE_BYTES = 1204',
   'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
   'KESSHO_PRODUCT_DRUM_VOICE_COUNT',
   'assetRefs: number[]',
@@ -285,7 +316,7 @@ for (const token of [
   'function drumVoicePresetIdsFromState(state: Record<string, unknown> | undefined, endpoint:',
   'function exactPadParamsFromState(state: Record<string, unknown> | undefined, padIndex: 0 | 1): number[]',
   'function exactLeadParamsFromState(state: Record<string, unknown> | undefined, leadIndex: 0 | 1): number[]',
-  'function exactDrumParamsFromState(): number[]',
+  'function exactDrumParamsFromState(state?: Record<string, unknown>): number[]',
 ]) {
   assert(legacyPresetCompat.includes(token), `CoreProductLegacyPresetCompat is missing ${token}`);
 }
@@ -437,6 +468,8 @@ for (const token of [
   'decodedAssetBytes?: number',
   'decodedAssetBudgetBytes?: number',
   'assetAllocationBytes?: number',
+  'workletLeadStemPeak?: number',
+  'workletGraphTapPeaks?: number[]',
 ]) {
   assert(telemetryTypes.includes(token), `core-product telemetry type is missing ${token}`);
 }
@@ -455,8 +488,11 @@ for (const token of [
   'decodedAssetBytes: this.assetDecodedBytes',
   'assetAllocationBytes: this.assetAllocationBytes',
   "getStem: this.resolve('kessho_product_get_stem')",
+  "getGraphTap: this.resolve('kessho_product_get_graph_tap')",
   'workletStemPeaks: this.lastStemPeaks',
+  'workletGraphTapPeaks: this.lastGraphTapPeaks',
   'workletPadStemPeak: this.lastStemPeaks[1] || 0',
+  'workletLeadStemPeak: Math.max(this.lastStemPeaks[3] || 0, this.lastStemPeaks[4] || 0)',
   'runtimeWalkValues[controlId] = value;',
   'const TELEMETRY_BYTES = 368;',
   'rngSeed: this.view.getUint32(ptr + 288, true)',
@@ -475,8 +511,9 @@ for (const token of [
 
 assert(
   manifest.includes("'kessho_product_copy_telemetry'") &&
-    manifest.includes("'kessho_product_copy_sequencer_ui_state'"),
-  'WASM manifest must export Product Core telemetry and sequencer UI state copy APIs',
+    manifest.includes("'kessho_product_copy_sequencer_ui_state'") &&
+    manifest.includes("'kessho_product_get_graph_tap'"),
+  'WASM manifest must export Product Core telemetry, sequencer UI state, and graph tap APIs',
 );
 
 for (const token of [
@@ -491,11 +528,11 @@ for (const token of [
   "numberFromState(sliderState, 'journeyMorphRateBars', 8)",
   'fx',
   "const granularEnabled = booleanFromState(sliderState, 'granularEnabled', false)",
-  "const delayAEnabled = booleanFromState(sliderState, 'delayAEnabled', true)",
-  "const delayBEnabled = booleanFromState(sliderState, 'granularDelayEnabled', false)",
+  "const delayAEnabled =",
+  "const delayBEnabled =",
   "const spectralFreezeEnabled = booleanFromState(sliderState, 'spectralFreezeEnabled', false)",
   "const dynamicsEnabled = booleanFromState(sliderState, 'dynamicsEnabled', false)",
-  "granularMix: granularEnabled ?",
+  "granularMix: granularEnabled",
   "delayATimeLeftMs: clamp(delayDivisionMs(sliderState, 'drumDelayNoteL', '1/8d', transport.bpm), 10, 5000)",
   "delayATimeRightMs: clamp(delayDivisionMs(sliderState, 'drumDelayNoteR', '1/4', transport.bpm), 10, 5000)",
   "delayAFeedback: clamp(numberFromState(sliderState, 'delayAFeedback', 0.4), 0, 0.95)",
@@ -556,11 +593,11 @@ for (const forbidden of [
 
 assert(!appRuntime.includes('missingNoopMethods'), 'runtime must not keep audio-critical missing-method no-op fallbacks');
 assert(appRuntime.includes("case 'core-product':"), 'runtime must keep Product Core selectable');
-assert(appRuntime.includes("case 'core-bridge':"), 'runtime must keep Core bridge selectable');
+assert(appRuntime.includes("case 'core-smoke':"), 'runtime must keep the Core smoke renderer explicitly selectable');
 assert(!appRuntime.includes('isLegacyCoreBridgeOptInEnabled'), 'runtime must not hide the verified Core bridge behind a transitional opt-in');
 assert(!appRuntime.includes('legacyCoreBridge'), 'runtime must not require a legacy bridge query/storage escape hatch');
-assert(appRuntime.includes("if (typeof window === 'undefined') return 'core-bridge';"), 'runtime must default SSR to the verified Core bridge path');
-assert(appRuntime.includes("resolvedRuntimeMode = 'core-bridge';"), 'runtime must default browsers to the verified Core bridge path');
+assert(appRuntime.includes("if (typeof window === 'undefined') return 'core-product';"), 'runtime must default SSR to Product Core');
+assert(appRuntime.includes("'core-product'"), 'runtime must default browsers to Product Core');
 assert(appRuntime.includes("'startJourneyMorphClock'"), 'runtime must eagerly load startJourneyMorphClock');
 assert(appRuntime.includes("'stopJourneyMorphClock'"), 'runtime must eagerly load stopJourneyMorphClock');
 
@@ -585,6 +622,7 @@ const snapshotImportAllowlist = new Set([
   './coreProductEvents',
   './coreProductSnapshotEncoder',
   './generated/kesshoProductSchema',
+  './granularMacroCore',
   './outputTrims',
   './transport',
 ]);
@@ -599,11 +637,15 @@ const hostImportAllowlist = new Set([
   '../native/capacitorMidiRouting',
   './CoreProductAssetAdapter',
   './CoreProductHostSequencerAdapter',
+  './CoreProductHostRuntimeGuards',
+  './CoreProductLegacyPresetCompat',
   './CoreProductRuntimeAdapter',
   './coreMidiEvents',
+  './coreProductArrangementScheduler',
   './coreProductAssets',
   './CoreProductFallbackDiagnostics',
   './coreProductEvents',
+  './coreProductGraphTaps',
   './coreProductRuntime',
   './coreProductSnapshot',
   './coreProductTelemetry',

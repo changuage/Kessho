@@ -22,6 +22,7 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SourceDelayASend: 107,
   SourceDelayBSend: 108,
   SourceGranularSend: 109,
+  SourceDiffuseSend: 113,
   SourcePostLpfHz: 110,
   SourceStereoWidth: 111,
   SourcePostLpfKeyTracking: 112,
@@ -45,6 +46,8 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   FxGranularFreezeWithFeedback: 802,
   FxGranularFeedback: 803,
   FxGranularFeedbackLpfHz: 804,
+  FxGranularReverbLpfHz: 816,
+  FxGranularOutputLpfHz: 817,
   FxGranularBufferSeconds: 805,
   FxGranularGrainShape: 806,
   FxGranularBusDiffusion: 807,
@@ -226,6 +229,8 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   FxSpectralFreezeSpeed: 933,
   FxSpectralFreezeDecay: 934,
   FxSpectralFreezePhaseJitter: 935,
+  FxSpectralFreezeRouting: 936,
+  FxSpectralFreezeReverbCrossfade: 937,
   FxDynamicsEnabled: 940,
   FxDynamicsCharacterEnabled: 941,
   FxDynamicsCharacterMode: 942,
@@ -334,6 +339,8 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   RoutingDelayAToGranular: 404,
   RoutingDelayBToGranular: 405,
   RoutingDelayBToReverb: 406,
+  RoutingGranularToDelayA: 407,
+  RoutingGranularToDelayB: 408,
   MasterGain: 500,
   MasterLimiterCeilingDb: 501,
   MasterSaturationMode: 502,
@@ -507,6 +514,14 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "max": 2
   },
   {
+    "name": "SourceDiffuseSend",
+    "path": "sources.*.diffuseSend",
+    "type": "float",
+    "id": 113,
+    "min": 0,
+    "max": 2
+  },
+  {
     "name": "SourcePostLpfHz",
     "path": "sources.*.postLpfHz",
     "type": "float",
@@ -640,7 +655,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "float",
     "id": 300,
     "min": 0,
-    "max": 1
+    "max": 4
   },
   {
     "name": "FxGranularEnabled",
@@ -673,6 +688,22 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "path": "fx.granular.feedbackLpfHz",
     "type": "float",
     "id": 804,
+    "min": 200,
+    "max": 12000
+  },
+  {
+    "name": "FxGranularReverbLpfHz",
+    "path": "fx.granular.reverbLpfHz",
+    "type": "float",
+    "id": 816,
+    "min": 200,
+    "max": 12000
+  },
+  {
+    "name": "FxGranularOutputLpfHz",
+    "path": "fx.granular.outputLpfHz",
+    "type": "float",
+    "id": 817,
     "min": 200,
     "max": 12000
   },
@@ -2081,6 +2112,22 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "max": 1
   },
   {
+    "name": "FxSpectralFreezeRouting",
+    "path": "fx.spectralFreeze.routing",
+    "type": "uint",
+    "id": 936,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxSpectralFreezeReverbCrossfade",
+    "path": "fx.spectralFreeze.reverbCrossfade",
+    "type": "float",
+    "id": 937,
+    "min": 0,
+    "max": 1
+  },
+  {
     "name": "FxDynamicsEnabled",
     "path": "fx.dynamics.enabled",
     "type": "bool",
@@ -2929,6 +2976,22 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "path": "routing.delayBToReverb",
     "type": "float",
     "id": 406,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "RoutingGranularToDelayA",
+    "path": "routing.granularToDelayA",
+    "type": "float",
+    "id": 407,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "RoutingGranularToDelayB",
+    "path": "routing.granularToDelayB",
+    "type": "float",
+    "id": 408,
     "min": 0,
     "max": 1
   },

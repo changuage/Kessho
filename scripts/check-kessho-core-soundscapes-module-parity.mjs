@@ -28,6 +28,7 @@ const paramInsects2Params = paramInsects2Engine + 1;
 const paramInsects2Seed = paramInsects2Params + 14;
 const paramOutputSelect = paramInsects2Seed + 1;
 const paramCount = paramOutputSelect + 1;
+const seedNoChange = -1;
 
 function assert(condition, message) {
   if (!condition) {
@@ -136,14 +137,14 @@ function makeDefaultParams() {
 
   params[paramWaterChannels + 0] = 0;
   params[paramWaterChannels + 1] = 0.5;
-  params[paramWaterSeed] = 12345;
+  params[paramWaterSeed] = seedNoChange;
 
   params[paramInsectsActive] = 0;
   params[paramInsectsEngine] = 0;
-  params[paramInsectsSeed] = 12345;
+  params[paramInsectsSeed] = seedNoChange;
   params[paramInsects2Active] = 0;
   params[paramInsects2Engine] = 1;
-  params[paramInsects2Seed] = 67890;
+  params[paramInsects2Seed] = seedNoChange;
 
   for (const base of [paramInsectsParams, paramInsects2Params]) {
     params[base + 0] = 0.5;
@@ -179,7 +180,10 @@ function writeCoreParams(heap, ptr, params) {
 function applyStandaloneParams(exports, params) {
   const call = (name, ...args) => requireExport(exports, name)(...args);
 
-  call('water_set_seed', Math.round(params[paramWaterSeed]));
+  if (params[paramWaterSeed] >= 0) {
+    call('water_set_seed', Math.round(params[paramWaterSeed]));
+  }
+  call(params[paramWaterActive] > 0.5 ? 'water_start' : 'water_stop');
   call('water_set_preset', Math.max(0, Math.min(7, Math.round(params[paramWaterPreset]))));
   call(
     'water_set_params',
@@ -227,16 +231,6 @@ function applyStandaloneParams(exports, params) {
     params[paramWaterLayerDensity + 5],
   );
   call(
-    'water_set_density_loop_params',
-    params[paramWaterDensityLoop + 0],
-    params[paramWaterDensityLoop + 1],
-    params[paramWaterDensityLoop + 2],
-    params[paramWaterDensityLoop + 3],
-    params[paramWaterDensityLoop + 4],
-    params[paramWaterDensityLoop + 5],
-    params[paramWaterDensityLoop + 6],
-  );
-  call(
     'water_set_surf_params',
     params[paramWaterSurf + 0],
     params[paramWaterSurf + 1],
@@ -256,9 +250,21 @@ function applyStandaloneParams(exports, params) {
     params[paramWaterSurf + 15],
   );
   call('water_set_channels_params', params[paramWaterChannels + 0], params[paramWaterChannels + 1]);
-  call(params[paramWaterActive] > 0.5 ? 'water_start' : 'water_stop');
+  call(
+    'water_set_density_loop_params',
+    params[paramWaterDensityLoop + 0],
+    params[paramWaterDensityLoop + 1],
+    params[paramWaterDensityLoop + 2],
+    params[paramWaterDensityLoop + 3],
+    params[paramWaterDensityLoop + 4],
+    params[paramWaterDensityLoop + 5],
+    params[paramWaterDensityLoop + 6],
+  );
 
-  call('insects_set_seed', Math.round(params[paramInsectsSeed]));
+  if (params[paramInsectsSeed] >= 0) {
+    call('insects_set_seed', Math.round(params[paramInsectsSeed]));
+  }
+  call(params[paramInsectsActive] > 0.5 ? 'insects_start' : 'insects_stop');
   call('insects_set_engine', Math.max(0, Math.min(6, Math.round(params[paramInsectsEngine]))));
   call(
     'insects_set_params',
@@ -277,9 +283,11 @@ function applyStandaloneParams(exports, params) {
     params[paramInsectsParams + 12],
     params[paramInsectsParams + 13],
   );
-  call(params[paramInsectsActive] > 0.5 ? 'insects_start' : 'insects_stop');
 
-  call('insects2_set_seed', Math.round(params[paramInsects2Seed]));
+  if (params[paramInsects2Seed] >= 0) {
+    call('insects2_set_seed', Math.round(params[paramInsects2Seed]));
+  }
+  call(params[paramInsects2Active] > 0.5 ? 'insects2_start' : 'insects2_stop');
   call('insects2_set_engine', Math.max(0, Math.min(6, Math.round(params[paramInsects2Engine]))));
   call(
     'insects2_set_params',
@@ -298,7 +306,6 @@ function applyStandaloneParams(exports, params) {
     params[paramInsects2Params + 12],
     params[paramInsects2Params + 13],
   );
-  call(params[paramInsects2Active] > 0.5 ? 'insects2_start' : 'insects2_stop');
 }
 
 function copySelected(heap, ptrs, output, outputOffset, frames, select) {
@@ -432,6 +439,15 @@ const cases = [
     name: 'water-waterfall',
     params: withParams((params) => {
       setWaterfall(params);
+      params[paramOutputSelect] = 0;
+    }),
+    blocks: 384,
+  },
+  {
+    name: 'water-waterfall-seeded',
+    params: withParams((params) => {
+      setWaterfall(params);
+      params[paramWaterSeed] = 12345;
       params[paramOutputSelect] = 0;
     }),
     blocks: 384,

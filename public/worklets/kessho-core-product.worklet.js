@@ -1,7 +1,7 @@
 const EVENT_BYTES = 40;
 const TELEMETRY_BYTES = 368;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
-const EXPECTED_PRODUCT_SCHEMA_HASH = 0x7c091990;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0x8bc63814;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
 const SEQUENCER_UI_LANE_BYTES = 2216;
@@ -12,6 +12,39 @@ const SEQUENCER_UI_DRUM_LANES_OFFSET =
 const SEQUENCER_UI_CHANGE_DICE = 3;
 const SEQUENCER_UI_CHANGE_RESET_HOME = 4;
 const SEQUENCER_UI_CHANGE_EVOLUTION = 5;
+const PRODUCT_EVENT_IDS = Object.freeze({
+  SetParam: 1,
+  SetTransport: 2,
+  Start: 3,
+  Stop: 4,
+  ResetTransport: 5,
+  SetSequencerStep: 7,
+  SetSequencerLane: 8,
+  SetSourceEnabled: 11,
+  SetSourcePreset: 12,
+  SetJourneyState: 13,
+  ManualNoteOn: 14,
+  ManualNoteOff: 15,
+  MidiEvent: 16,
+  TriggerDrumVoice: 17,
+  StartJourneyMorphClock: 21,
+  StopJourneyMorphClock: 22,
+  SetHarmonyRoot: 23,
+  SetScale: 24,
+  SetSeed: 25,
+  ResetRng: 26,
+  SetModulationRange: 27,
+  ResetSequencerLaneHome: 28,
+  DiceSequencerLane: 29,
+});
+const PRODUCT_EVENT_ID_SET = new Set(Object.values(PRODUCT_EVENT_IDS));
+const PRODUCT_SOURCE_IDS = new Set([1, 2, 3, 4, 5, 6, 7]);
+const PRODUCT_SEQUENCER_IDS = new Set([1, 2]);
+const PRODUCT_DRUM_VOICE_COUNT = 7;
+const PRODUCT_GRAPH_TAP_COUNT = 86;
+const STEP_TOGGLE_CLEAR_LANE = 2;
+const STEP_FIELD_MASK = 15 << 8;
+const STEP_FIELD_SUBLANE_CONFIG = 8 << 8;
 
 class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   constructor(options = {}) {
@@ -34,6 +67,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.frames = 128;
     this.lastOutputPeak = 0;
     this.lastStemPeaks = [];
+    this.lastGraphTapPeaks = [];
+    this.graphTapCaptures = new Map();
     this.port.onmessage = (event) => this.handleMessage(event.data);
     this.load(options.processorOptions?.wasmBinary, options.processorOptions?.wasmUrl || 'kessho_core.wasm');
   }
@@ -116,8 +151,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         free: this.resolve('free'),
         create: this.resolve('kessho_product_create'),
         reset: this.resolve('kessho_product_reset'),
+        resetParityFx: this.resolve('kessho_product_reset_parity_fx'),
         render: this.resolve('kessho_product_render'),
         getStem: this.resolve('kessho_product_get_stem'),
+        getGraphTap: this.resolve('kessho_product_get_graph_tap'),
         loadSnapshot: this.resolve('kessho_product_load_snapshot_v2'),
         enqueueEvent: this.resolve('kessho_product_enqueue_event'),
         copyTelemetry: this.resolve('kessho_product_copy_telemetry'),
@@ -148,44 +185,318 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
 
   handleMessage(message) {
     if (!message || !this.ready) return;
-    if (message.type === 'event') {
-      this.enqueueEvent(message.event || {});
-      return;
+    try {
+      if (message.type === 'event') {
+        this.enqueueEvent(message.event);
+        return;
+      }
+      if (message.type === 'snapshot') {
+        this.loadSnapshot(message.snapshot);
+        return;
+      }
+      if (message.type === 'reset') {
+        this.api.reset(this.engine);
+        return;
+      }
+      if (message.type === 'reset-parity-fx') {
+        this.api.resetParityFx(this.engine);
+        return;
+      }
+      if (message.type === 'register-asset') {
+        this.registerAsset(message);
+        return;
+      }
+      if (message.type === 'request-telemetry') {
+        this.postTelemetry();
+        return;
+      }
+      if (message.type === 'graph-capture-start') {
+        this.startGraphTapCapture(message);
+        return;
+      }
+      if (message.type === 'graph-capture-flush') {
+        this.flushGraphTapCapture(message.tapId, false);
+        return;
+      }
+      if (message.type === 'graph-capture-stop') {
+        this.flushGraphTapCapture(message.tapId, true);
+        return;
+      }
+      throw new Error(`Unknown Kessho Product Core worklet message: ${String(message.type)}`);
+    } catch (error) {
+      this.port.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
     }
-    if (message.type === 'snapshot') {
-      this.loadSnapshot(message.snapshot);
-      return;
+  }
+
+  normalizeGraphTapId(rawTapId) {
+    const tapId = Math.trunc(Number(rawTapId));
+    if (!Number.isFinite(tapId) || tapId < 0 || tapId >= PRODUCT_GRAPH_TAP_COUNT) {
+      throw new Error(`Invalid Kessho Product Core graph tap id: ${String(rawTapId)}`);
     }
-    if (message.type === 'reset') {
-      this.api.reset(this.engine);
-      return;
+    return tapId;
+  }
+
+  startGraphTapCapture(message) {
+    const tapId = this.normalizeGraphTapId(message.tapId);
+    const chunkFrames = Math.max(128, Math.round(Number(message.chunkFrames) || 4096));
+    this.graphTapCaptures.set(tapId, {
+      tapId,
+      chunkFrames,
+      leftChunk: new Float32Array(chunkFrames),
+      rightChunk: new Float32Array(chunkFrames),
+      writeIndex: 0,
+    });
+  }
+
+  emitGraphTapCaptureChunk(capture, frameCount) {
+    if (frameCount <= 0) return;
+    const left = capture.leftChunk.slice(0, frameCount);
+    const right = capture.rightChunk.slice(0, frameCount);
+    this.port.postMessage(
+      {
+        type: 'graph-capture-chunk',
+        tapId: capture.tapId,
+        frameCount,
+        left,
+        right,
+      },
+      [left.buffer, right.buffer],
+    );
+  }
+
+  resetGraphTapCaptureBuffers(capture) {
+    capture.leftChunk = new Float32Array(capture.chunkFrames);
+    capture.rightChunk = new Float32Array(capture.chunkFrames);
+    capture.writeIndex = 0;
+  }
+
+  appendGraphTapCapture(capture, leftIndex, rightIndex, frames) {
+    let offset = 0;
+    while (offset < frames) {
+      const available = capture.chunkFrames - capture.writeIndex;
+      const copyCount = Math.min(available, frames - offset);
+      for (let i = 0; i < copyCount; i += 1) {
+        capture.leftChunk[capture.writeIndex + i] = this.heapF32[leftIndex + offset + i] || 0;
+        capture.rightChunk[capture.writeIndex + i] = this.heapF32[rightIndex + offset + i] || 0;
+      }
+      capture.writeIndex += copyCount;
+      offset += copyCount;
+      if (capture.writeIndex >= capture.chunkFrames) {
+        this.emitGraphTapCaptureChunk(capture, capture.chunkFrames);
+        this.resetGraphTapCaptureBuffers(capture);
+      }
     }
-    if (message.type === 'register-asset') {
-      this.registerAsset(message);
-      return;
+  }
+
+  flushGraphTapCapture(rawTapId, stopped) {
+    const tapId = this.normalizeGraphTapId(rawTapId);
+    const capture = this.graphTapCaptures.get(tapId);
+    if (capture) {
+      if (capture.writeIndex > 0) {
+        this.emitGraphTapCaptureChunk(capture, capture.writeIndex);
+      }
+      if (stopped) {
+        this.graphTapCaptures.delete(tapId);
+      } else {
+        this.resetGraphTapCaptureBuffers(capture);
+      }
     }
-    if (message.type === 'request-telemetry') {
-      this.postTelemetry();
+    this.port.postMessage({ type: 'graph-capture-flushed', tapId, stopped: Boolean(stopped) });
+  }
+
+  hasField(event, field) {
+    return event && Object.prototype.hasOwnProperty.call(event, field);
+  }
+
+  requireUint(event, field, min, max) {
+    if (!this.hasField(event, field)) {
+      throw new Error(`Kessho Product Core event missing required field: ${field}`);
+    }
+    const value = event[field];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
+      throw new Error(`Kessho Product Core event field ${field} must be an integer in [${min}, ${max}]`);
+    }
+    return value >>> 0;
+  }
+
+  requireFloat(event, field, min = -Number.MAX_VALUE, max = Number.MAX_VALUE) {
+    if (!this.hasField(event, field)) {
+      throw new Error(`Kessho Product Core event missing required field: ${field}`);
+    }
+    const value = event[field];
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
+      throw new Error(`Kessho Product Core event field ${field} must be a finite number in [${min}, ${max}]`);
+    }
+    return value;
+  }
+
+  optionalUint(event, field, fallback, min, max) {
+    if (!this.hasField(event, field)) return fallback >>> 0;
+    return this.requireUint(event, field, min, max);
+  }
+
+  optionalFloat(event, field, fallback, min = -Number.MAX_VALUE, max = Number.MAX_VALUE) {
+    if (!this.hasField(event, field)) return fallback;
+    return this.requireFloat(event, field, min, max);
+  }
+
+  requireSourceId(value, field) {
+    if (!PRODUCT_SOURCE_IDS.has(value)) {
+      throw new Error(`Kessho Product Core event field ${field} has unknown source id: ${value}`);
+    }
+    return value;
+  }
+
+  requireSequencerId(value, field) {
+    if (!PRODUCT_SEQUENCER_IDS.has(value)) {
+      throw new Error(`Kessho Product Core event field ${field} has unknown sequencer id: ${value}`);
+    }
+    return value;
+  }
+
+  normalizeEvent(event) {
+    if (!event || typeof event !== 'object') {
+      throw new Error('Kessho Product Core event must be an object');
+    }
+    const eventKind = this.requireUint(event, 'eventKind', 1, 29);
+    if (!PRODUCT_EVENT_ID_SET.has(eventKind)) {
+      throw new Error(`Unknown Kessho Product Core event kind: ${eventKind}`);
+    }
+    const normalized = {
+      sampleOffset: this.optionalUint(event, 'sampleOffset', 0, 0, 0xffffffff),
+      eventKind,
+      targetId: 0,
+      index: 0,
+      paramId: 0,
+      value: 0,
+      value2: 0,
+      value3: 0,
+      value4: 0,
+      flags: 0,
+    };
+    switch (eventKind) {
+      case PRODUCT_EVENT_IDS.Start:
+      case PRODUCT_EVENT_IDS.Stop:
+      case PRODUCT_EVENT_IDS.ResetTransport:
+      case PRODUCT_EVENT_IDS.ResetRng:
+      case PRODUCT_EVENT_IDS.StartJourneyMorphClock:
+      case PRODUCT_EVENT_IDS.StopJourneyMorphClock:
+        return normalized;
+      case PRODUCT_EVENT_IDS.SetParam:
+        normalized.targetId = this.requireUint(event, 'targetId', 0, 0xffffffff);
+        normalized.index = this.requireUint(event, 'index', 0, 0xffffffff);
+        normalized.paramId = this.requireUint(event, 'paramId', 1, 0xffffffff);
+        normalized.value = this.requireFloat(event, 'value');
+        return normalized;
+      case PRODUCT_EVENT_IDS.SetSourceEnabled:
+        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, 7), 'targetId');
+        normalized.value = this.requireFloat(event, 'value', 0, 1);
+        return normalized;
+      case PRODUCT_EVENT_IDS.SetSourcePreset:
+        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, 7), 'targetId');
+        normalized.value = this.requireFloat(event, 'value', Number.MIN_VALUE);
+        return normalized;
+      case PRODUCT_EVENT_IDS.ManualNoteOn:
+        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, 7), 'targetId');
+        normalized.value = this.requireFloat(event, 'value', 0, 127);
+        normalized.value2 = this.requireFloat(event, 'value2', Number.MIN_VALUE, 1);
+        normalized.value3 = this.requireFloat(event, 'value3', Number.MIN_VALUE);
+        normalized.value4 = this.optionalFloat(event, 'value4', 0);
+        return normalized;
+      case PRODUCT_EVENT_IDS.ManualNoteOff:
+        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, 7), 'targetId');
+        return normalized;
+      case PRODUCT_EVENT_IDS.TriggerDrumVoice:
+        normalized.targetId = this.requireUint(event, 'targetId', 0, PRODUCT_DRUM_VOICE_COUNT - 1);
+        normalized.value = this.requireFloat(event, 'value', Number.MIN_VALUE, 1);
+        return normalized;
+      case PRODUCT_EVENT_IDS.MidiEvent:
+        normalized.targetId = this.optionalUint(event, 'targetId', 0, 0, 7);
+        if (normalized.targetId !== 0) this.requireSourceId(normalized.targetId, 'targetId');
+        normalized.index = this.requireUint(event, 'index', 0, 15);
+        normalized.value = this.requireFloat(event, 'value', 0, 255);
+        normalized.value2 = this.requireFloat(event, 'value2', 0, 127);
+        normalized.value3 = this.requireFloat(event, 'value3', 0, 127);
+        normalized.value4 = this.optionalFloat(event, 'value4', 0, 0, 1);
+        normalized.flags = this.optionalUint(event, 'flags', 0, 0, 16);
+        return normalized;
+      case PRODUCT_EVENT_IDS.SetSequencerStep:
+        normalized.targetId = this.requireSequencerId(this.requireUint(event, 'targetId', 1, 2), 'targetId');
+        normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
+        normalized.flags = this.requireUint(event, 'flags', 0, 0xffffffff);
+        if ((normalized.flags & STEP_TOGGLE_CLEAR_LANE) === 0) {
+          normalized.paramId = this.requireUint(event, 'paramId', 0, 63);
+          normalized.value = this.requireFloat(event, 'value');
+          normalized.value2 = this.optionalFloat(event, 'value2', 0);
+          normalized.value3 = this.optionalFloat(event, 'value3', 0);
+        }
+        if ((normalized.flags & STEP_FIELD_MASK) === STEP_FIELD_SUBLANE_CONFIG) {
+          normalized.value2 = this.requireFloat(event, 'value2', 1, 64);
+          normalized.value3 = this.requireFloat(event, 'value3', 0, 2);
+        }
+        return normalized;
+      case PRODUCT_EVENT_IDS.SetSequencerLane:
+        normalized.targetId = this.requireSequencerId(this.requireUint(event, 'targetId', 1, 2), 'targetId');
+        normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
+        normalized.paramId = this.requireUint(event, 'paramId', 1, 0xffffffff);
+        normalized.value = this.requireFloat(event, 'value');
+        return normalized;
+      case PRODUCT_EVENT_IDS.SetJourneyState:
+        normalized.value = this.requireFloat(event, 'value', 0, 1);
+        normalized.value2 = this.requireFloat(event, 'value2', 0, 1);
+        normalized.value3 = this.requireFloat(event, 'value3', Number.MIN_VALUE);
+        return normalized;
+      case PRODUCT_EVENT_IDS.SetHarmonyRoot:
+      case PRODUCT_EVENT_IDS.SetTransport:
+        normalized.value = this.requireFloat(event, 'value');
+        return normalized;
+      case PRODUCT_EVENT_IDS.SetScale:
+      case PRODUCT_EVENT_IDS.SetSeed:
+        normalized.targetId = this.requireUint(event, 'targetId', 1, 0xffffffff);
+        return normalized;
+      case PRODUCT_EVENT_IDS.SetModulationRange:
+        normalized.targetId = this.requireUint(event, 'targetId', 0, 0xffffffff);
+        normalized.index = this.requireUint(event, 'index', 1, 0xffffffff);
+        normalized.paramId = this.requireUint(event, 'paramId', 1, 0xffffffff);
+        normalized.value = this.requireFloat(event, 'value');
+        normalized.value2 = this.requireFloat(event, 'value2');
+        normalized.value3 = this.requireFloat(event, 'value3', 0, 2);
+        normalized.value4 = this.requireFloat(event, 'value4');
+        normalized.flags = this.requireUint(event, 'flags', 0, 0xffffffff);
+        return normalized;
+      case PRODUCT_EVENT_IDS.ResetSequencerLaneHome:
+      case PRODUCT_EVENT_IDS.DiceSequencerLane:
+        normalized.targetId = this.requireSequencerId(this.requireUint(event, 'targetId', 1, 2), 'targetId');
+        normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
+        normalized.value = this.optionalFloat(event, 'value', 0);
+        normalized.value2 = this.optionalFloat(event, 'value2', 0);
+        return normalized;
+      default:
+        throw new Error(`Unhandled Kessho Product Core event kind: ${eventKind}`);
     }
   }
 
   writeEvent(event) {
+    const normalized = this.normalizeEvent(event);
     const ptr = this.eventPtr;
-    this.view.setUint32(ptr, event.sampleOffset || 0, true);
-    this.view.setUint32(ptr + 4, event.eventKind || 0, true);
-    this.view.setUint32(ptr + 8, event.targetId || 0, true);
-    this.view.setUint32(ptr + 12, event.index || 0, true);
-    this.view.setUint32(ptr + 16, event.paramId || 0, true);
-    this.view.setFloat32(ptr + 20, event.value || 0, true);
-    this.view.setFloat32(ptr + 24, event.value2 || 0, true);
-    this.view.setFloat32(ptr + 28, event.value3 || 0, true);
-    this.view.setFloat32(ptr + 32, event.value4 || 0, true);
-    this.view.setUint32(ptr + 36, event.flags || 0, true);
+    this.view.setUint32(ptr, normalized.sampleOffset, true);
+    this.view.setUint32(ptr + 4, normalized.eventKind, true);
+    this.view.setUint32(ptr + 8, normalized.targetId, true);
+    this.view.setUint32(ptr + 12, normalized.index, true);
+    this.view.setUint32(ptr + 16, normalized.paramId, true);
+    this.view.setFloat32(ptr + 20, normalized.value, true);
+    this.view.setFloat32(ptr + 24, normalized.value2, true);
+    this.view.setFloat32(ptr + 28, normalized.value3, true);
+    this.view.setFloat32(ptr + 32, normalized.value4, true);
+    this.view.setUint32(ptr + 36, normalized.flags, true);
   }
 
   enqueueEvent(event) {
     this.writeEvent(event);
-    this.api.enqueueEvent(this.engine, this.eventPtr);
+    const result = this.api.enqueueEvent(this.engine, this.eventPtr);
+    if (result !== 1) {
+      throw new Error(`Kessho Product Core event enqueue failed: ${result}`);
+    }
   }
 
   loadSnapshot(snapshot) {
@@ -194,13 +505,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       : ArrayBuffer.isView(snapshot)
         ? new Uint8Array(snapshot.buffer, snapshot.byteOffset, snapshot.byteLength)
         : null;
-    if (!bytes) return;
-    try {
-      this.validateSnapshotBytes(bytes);
-    } catch (error) {
-      this.port.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
-      return;
+    if (!bytes) {
+      throw new Error('Kessho Product Core snapshot message missing snapshot bytes');
     }
+    this.validateSnapshotBytes(bytes);
     if (this.snapshotPtr) {
       this.api.free(this.snapshotPtr);
       this.snapshotPtr = 0;
@@ -209,13 +517,24 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.heapU8.set(bytes, this.snapshotPtr);
     const result = this.api.loadSnapshot(this.engine, this.snapshotPtr, bytes.byteLength);
     if (result !== 1) {
-      this.port.postMessage({ type: 'error', message: `Kessho Product Core snapshot load failed: ${result}` });
+      throw new Error(`Kessho Product Core snapshot load failed: ${result}`);
     }
   }
 
   registerAsset(message) {
     const channels = Array.isArray(message.channels) ? message.channels : [];
-    if (!channels.length) return;
+    if (!Number.isInteger(message.assetId) || message.assetId <= 0) {
+      throw new Error('Kessho Product Core asset registration missing required assetId');
+    }
+    if (!channels.length) {
+      throw new Error(`Kessho Product Core asset ${message.assetId} has no channels`);
+    }
+    if (typeof message.sampleRate !== 'number' || !Number.isFinite(message.sampleRate) || message.sampleRate <= 0) {
+      throw new Error(`Kessho Product Core asset ${message.assetId} missing required sampleRate`);
+    }
+    if (!Number.isInteger(message.flags) || message.flags < 0) {
+      throw new Error(`Kessho Product Core asset ${message.assetId} missing required flags`);
+    }
     const old = this.assetAllocations.get(message.assetId);
     if (old) {
       this.api.unregisterAsset(this.engine, message.assetId);
@@ -255,8 +574,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       ptrArray,
       ptrs.length,
       channels[0].length,
-      message.sampleRate || sampleRate,
-      message.flags || 0,
+      message.sampleRate,
+      message.flags,
     );
     if (result !== 1) {
       this.assetAllocations.delete(message.assetId);
@@ -491,8 +810,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       sequencerUiChangeEvolution: SEQUENCER_UI_CHANGE_EVOLUTION,
       workletOutputPeak: this.lastOutputPeak,
       workletStemPeaks: this.lastStemPeaks,
+      workletGraphTapPeaks: this.lastGraphTapPeaks,
       workletMasterStemPeak: this.lastStemPeaks[0] || 0,
       workletPadStemPeak: this.lastStemPeaks[1] || 0,
+      workletLeadStemPeak: Math.max(this.lastStemPeaks[3] || 0, this.lastStemPeaks[4] || 0),
       workletFxStemPeak: this.lastStemPeaks[8] || 0,
     };
   }
@@ -547,6 +868,27 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       stemPeaks.push(stemPeak);
     }
     this.lastStemPeaks = stemPeaks;
+    const graphTapPeaks = [];
+    for (let tap = 0; tap < PRODUCT_GRAPH_TAP_COUNT; tap += 1) {
+      let tapPeak = 0;
+      if (this.api.getGraphTap(this.engine, tap, this.leftPtr, this.rightPtr, frames) === 1) {
+        const leftIndex = this.leftPtr >> 2;
+        const rightIndex = this.rightPtr >> 2;
+        for (let i = 0; i < frames; i += 1) {
+          tapPeak = Math.max(
+            tapPeak,
+            Math.abs(this.heapF32[leftIndex + i] || 0),
+            Math.abs(this.heapF32[rightIndex + i] || 0),
+          );
+        }
+        const capture = this.graphTapCaptures.get(tap);
+        if (capture) {
+          this.appendGraphTapCapture(capture, leftIndex, rightIndex, frames);
+        }
+      }
+      graphTapPeaks.push(tapPeak);
+    }
+    this.lastGraphTapPeaks = graphTapPeaks;
     return true;
   }
 }

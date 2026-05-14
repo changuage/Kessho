@@ -4,8 +4,8 @@ import Foundation
 
 public enum KesshoProductSchema {
     public static let version: UInt32 = 2
-    public static let hash: UInt32 = 2080971152
-    public static let hashHex = "7c091990719de72e508d105e8ae092c4250177b3cb84a158f0984de7af81ebdb"
+    public static let hash: UInt32 = 2345023508
+    public static let hashHex = "8bc63814ab1f3ec31fd250d985639f9d61bda8dcbbf0f0c73c3e4889e44f610c"
     public static let padParamCount: UInt32 = 53
     public static let leadParamCount: UInt32 = 80
     public static let drumParamCount: UInt32 = 126

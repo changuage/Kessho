@@ -47,6 +47,7 @@ export type EarthTexturePlayerConfig = {
   randomSeed?: string | null;
   schedulerLookAheadMs?: number;
   schedulerIntervalMs?: number;
+  parityDeterministic?: boolean;
 };
 
 const RANDOM_PITCH_RANGE_CENTS = 200;
@@ -106,6 +107,7 @@ export class EarthTexturePlayer {
   private sliceDuration: number;
   private fadeTime: number;
   private density: number;
+  private parityDeterministic: boolean;
 
   private nextStartTime = 0;
   private running = false;
@@ -122,6 +124,7 @@ export class EarthTexturePlayer {
     this.sliceDuration = config.sliceDuration;
     this.fadeTime = config.fadeTime;
     this.density = config.density;
+    this.parityDeterministic = config.parityDeterministic === true;
     this.schedulerLookAheadSec = (config.schedulerLookAheadMs ?? 500) / 1000;
     this.schedulerIntervalMs = config.schedulerIntervalMs ?? 140;
     this.setRandomSeed(config.randomSeed ?? this.createFallbackRandomSeed());
@@ -201,10 +204,16 @@ export class EarthTexturePlayer {
     return loadPromise;
   }
 
-  update(config: Partial<Pick<EarthTexturePlayerConfig, 'sliceDuration' | 'fadeTime' | 'density' | 'randomSeed'>>): void {
+  update(config: Partial<Pick<EarthTexturePlayerConfig, 'sliceDuration' | 'fadeTime' | 'density' | 'randomSeed' | 'parityDeterministic'>>): void {
     if (typeof config.sliceDuration === 'number') this.sliceDuration = config.sliceDuration;
     if (typeof config.fadeTime === 'number') this.fadeTime = config.fadeTime;
     if (typeof config.density === 'number') this.density = clamp(config.density, 0, 1);
+    if (typeof config.parityDeterministic === 'boolean') {
+      if (config.parityDeterministic !== this.parityDeterministic) {
+        this.recentOffsets = [];
+      }
+      this.parityDeterministic = config.parityDeterministic;
+    }
     if ('randomSeed' in config) this.setRandomSeed(config.randomSeed ?? this.createFallbackRandomSeed());
   }
 
@@ -347,14 +356,16 @@ export class EarthTexturePlayer {
   private scheduleSlice(when: number): { outputDuration: number; fade: number } | null {
     if (!this.buffer) return null;
 
-    const bufferDuration = clamp(this.sliceDuration, 1.5, Math.max(1.5, this.buffer.duration - 0.05));
-    const detuneCents = randomSigned(this.rng, RANDOM_PITCH_RANGE_CENTS);
-    const speedMultiplier = 1 + randomSigned(this.rng, RANDOM_SPEED_VARIATION);
+    const bufferDuration = this.parityDeterministic
+      ? clamp(this.sliceDuration, 0.01, Math.max(0.01, this.buffer.duration - 0.05))
+      : clamp(this.sliceDuration, 1.5, Math.max(1.5, this.buffer.duration - 0.05));
+    const detuneCents = this.parityDeterministic ? 0 : randomSigned(this.rng, RANDOM_PITCH_RANGE_CENTS);
+    const speedMultiplier = this.parityDeterministic ? 1 : 1 + randomSigned(this.rng, RANDOM_SPEED_VARIATION);
     const totalRate = Math.max(0.25, speedMultiplier * Math.pow(2, detuneCents / 1200));
     const outputDuration = bufferDuration / totalRate;
-    const fade = clamp(this.fadeTime, 0.1, outputDuration * 0.45);
+    const fade = this.parityDeterministic ? 0 : clamp(this.fadeTime, 0.1, outputDuration * 0.45);
     const maxOffset = Math.max(0, this.buffer.duration - bufferDuration - 0.02);
-    const offset = this.pickOffset(maxOffset, bufferDuration);
+    const offset = this.parityDeterministic ? 0 : this.pickOffset(maxOffset, bufferDuration);
 
     const source = this.ctx.createBufferSource();
     source.buffer = this.buffer;
@@ -362,13 +373,19 @@ export class EarthTexturePlayer {
     source.detune.setValueAtTime(detuneCents, when);
 
     const env = this.ctx.createGain();
-    env.gain.setValueAtTime(0, when);
-    env.gain.setValueCurveAtTime(this.fadeInCurve, when, fade);
-    if (outputDuration > fade * 2) {
+    if (fade <= 0) {
+      env.gain.setValueAtTime(1, when);
+    } else {
+      env.gain.setValueAtTime(0, when);
+      env.gain.setValueCurveAtTime(this.fadeInCurve, when, fade);
+    }
+    if (fade > 0 && outputDuration > fade * 2) {
       env.gain.setValueAtTime(1, when + fade);
       env.gain.setValueAtTime(1, when + outputDuration - fade);
     }
-    env.gain.setValueCurveAtTime(this.fadeOutCurve, when + outputDuration - fade, fade);
+    if (fade > 0) {
+      env.gain.setValueCurveAtTime(this.fadeOutCurve, when + outputDuration - fade, fade);
+    }
 
     source.connect(env);
     env.connect(this.output);

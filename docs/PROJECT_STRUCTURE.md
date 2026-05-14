@@ -26,7 +26,7 @@ Rules:
 - Avoid changing web behavior only to satisfy an experimental host.
 - Use this path as the reference for presets, routing, and UI behavior.
 
-### `?engine=core-wasm`
+### `?engine=core-product`
 
 This is the experimental shared C++ backbone running through WASM and an
 AudioWorklet. It must stay opt-in behind the query parameter until golden

@@ -74,6 +74,7 @@ const malloc = resolveExport(wasm, 'malloc');
 const free = resolveExport(wasm, 'free');
 const create = resolveExport(wasm, 'kessho_product_create');
 const destroy = resolveExport(wasm, 'kessho_product_destroy');
+const reset = resolveExport(wasm, 'kessho_product_reset');
 const enqueueEvent = resolveExport(wasm, 'kessho_product_enqueue_event');
 const render = resolveExport(wasm, 'kessho_product_render');
 const copyTelemetry = resolveExport(wasm, 'kessho_product_copy_telemetry');
@@ -89,19 +90,70 @@ const engine = create(48000, frames, 0);
 assert(leftPtr && rightPtr && eventPtr && telemetryPtr && sequencerUiStatePtr && engine, 'WASM product smoke allocation failed');
 
 const view = new DataView(wasm.memory.buffer);
-view.setUint32(eventPtr + 4, 17, true);
-view.setFloat32(eventPtr + 20, 0.9, true);
-assert(enqueueEvent(engine, eventPtr) === 1, 'WASM product drum trigger enqueue failed');
-render(engine, leftPtr, rightPtr, frames);
-
 const heap = new Float32Array(wasm.memory.buffer);
-let peak = 0;
-for (let i = 0; i < frames; i += 1) {
-  const sample = heap[(leftPtr >> 2) + i];
-  assert(Number.isFinite(sample), 'WASM product render produced non-finite output');
-  peak = Math.max(peak, Math.abs(sample));
+function writeEvent(fields) {
+  view.setUint32(eventPtr, fields.sampleOffset ?? 0, true);
+  view.setUint32(eventPtr + 4, fields.eventKind, true);
+  view.setUint32(eventPtr + 8, fields.targetId ?? 0, true);
+  view.setUint32(eventPtr + 12, fields.index ?? 0, true);
+  view.setUint32(eventPtr + 16, fields.paramId ?? 0, true);
+  view.setFloat32(eventPtr + 20, fields.value ?? 0, true);
+  view.setFloat32(eventPtr + 24, fields.value2 ?? 0, true);
+  view.setFloat32(eventPtr + 28, fields.value3 ?? 0, true);
+  view.setFloat32(eventPtr + 32, fields.value4 ?? 0, true);
+  view.setUint32(eventPtr + 36, fields.flags ?? 0, true);
 }
-assert(peak > 0.001, 'WASM product render stayed silent after drum trigger');
+
+function enqueueRawEvent(fields, message) {
+  writeEvent(fields);
+  assert(enqueueEvent(engine, eventPtr) === 1, message);
+}
+
+function renderPeak(blocks = 1) {
+  let peak = 0;
+  for (let block = 0; block < blocks; block += 1) {
+    render(engine, leftPtr, rightPtr, frames);
+    for (let i = 0; i < frames; i += 1) {
+      const left = heap[(leftPtr >> 2) + i];
+      const right = heap[(rightPtr >> 2) + i];
+      assert(Number.isFinite(left) && Number.isFinite(right), 'WASM product render produced non-finite output');
+      peak = Math.max(peak, Math.abs(left), Math.abs(right));
+    }
+  }
+  return peak;
+}
+
+writeEvent({ eventKind: 14, value: 60, value2: 0.8, value3: 0.2 });
+assert(
+  enqueueEvent(engine, eventPtr) === -9,
+  'WASM product manual note without target must fail explicitly',
+);
+
+reset(engine);
+enqueueRawEvent(
+  { eventKind: 17, targetId: 1, value: 0.9 },
+  'WASM product drum trigger enqueue failed',
+);
+assert(renderPeak() > 0.001, 'WASM product render stayed silent after drum trigger');
+
+reset(engine);
+enqueueRawEvent(
+  { eventKind: 12, targetId: 1, value: 1009 },
+  'WASM product pad preset enqueue failed',
+);
+enqueueRawEvent(
+  { eventKind: 14, targetId: 1, value: 60, value2: 0.85, value3: 0.25 },
+  'WASM product pad manual note enqueue failed',
+);
+assert(renderPeak(32) > 0.001, 'WASM product pad manual note rendered silence');
+
+reset(engine);
+enqueueRawEvent(
+  { eventKind: 14, targetId: 3, value: 72, value2: 0.85, value3: 0.25 },
+  'WASM product lead manual note enqueue failed',
+);
+assert(renderPeak(32) > 0.001, 'WASM product lead manual note rendered silence');
+
 assert(copyTelemetry(engine, telemetryPtr) === 1, 'WASM product telemetry copy failed');
 assert(view.getUint32(telemetryPtr + 60, true) > 0, 'WASM product telemetry did not report active voices');
 assert(view.getUint32(telemetryPtr + 288, true) > 0, 'WASM product telemetry did not expose RNG seed');
@@ -217,8 +269,10 @@ function fakeWebAssemblyWithTelemetryHash(schemaHash) {
     free: () => {},
     kessho_product_create: () => 64,
     kessho_product_reset: () => {},
+    kessho_product_reset_parity_fx: () => {},
     kessho_product_render: () => {},
     kessho_product_get_stem: () => 0,
+    kessho_product_get_graph_tap: () => 0,
     kessho_product_load_snapshot_v2: () => 1,
     kessho_product_enqueue_event: () => 1,
     kessho_product_copy_telemetry: copyTelemetry,
@@ -254,5 +308,13 @@ const staleSnapshotError = liveWorklet.messages.find(
 );
 assert(staleSnapshotError, 'Product worklet did not report stale snapshot schema mismatch');
 assert(liveWorklet.processor.snapshotPtr === 0, 'Product worklet must refuse stale snapshots before allocation');
+liveWorklet.processor.handleMessage({
+  type: 'event',
+  event: { eventKind: 14, value: 60, value2: 0.8, value3: 0.2 },
+});
+const missingTargetError = liveWorklet.messages.find(
+  (message) => message.type === 'error' && message.message.includes('missing required field: targetId'),
+);
+assert(missingTargetError, 'Product worklet did not reject manual note events missing targetId');
 
 console.log('Kessho Product WASM smoke passed');

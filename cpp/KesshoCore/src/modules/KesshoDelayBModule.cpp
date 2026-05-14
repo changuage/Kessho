@@ -30,6 +30,8 @@ constexpr int kParamReserved = 15;
 constexpr int kTapCount = 8;
 constexpr int kOutputTapCount = 4;
 constexpr float kPi = 3.14159265358979323846f;
+constexpr float kWebAudioCompressorLookaheadSeconds = 0.006f;
+constexpr float kWebAudioCompressorMakeupGain = 1.477f;
 constexpr std::array<float, kTapCount> kDiffuseTapFactors{
     0.78f, 1.07f, 1.41f, 1.86f, 2.34f, 2.93f, 3.58f, 4.26f};
 constexpr std::array<float, kTapCount> kDiffuseTapWeights{
@@ -251,6 +253,29 @@ struct DelayLine {
   size_t write_index = 0;
 };
 
+struct BlockDelay {
+  void prepare(int frames) {
+    buffer.assign(static_cast<size_t>(std::max(1, frames)), 0.0f);
+    write_index = 0;
+  }
+
+  void reset() {
+    std::fill(buffer.begin(), buffer.end(), 0.0f);
+    write_index = 0;
+  }
+
+  float process(float input) {
+    if (buffer.empty()) return input;
+    const float output = buffer[write_index];
+    buffer[write_index] = input;
+    write_index = (write_index + 1) % buffer.size();
+    return output;
+  }
+
+  std::vector<float> buffer;
+  size_t write_index = 0;
+};
+
 struct DelayBState {
   bool enabled = false;
   float activity = 0.3f;
@@ -274,6 +299,11 @@ public:
   bool prepare(double sample_rate, int max_block_size) override {
     sample_rate_ = sample_rate > 1000.0 ? static_cast<float>(sample_rate) : 48000.0f;
     max_block_size_ = std::max(1, max_block_size);
+    const int output_latency_frames = std::max(
+        1,
+        static_cast<int>(std::lround(sample_rate_ * kWebAudioCompressorLookaheadSeconds)));
+    output_latency_l_.prepare(output_latency_frames);
+    output_latency_r_.prepare(output_latency_frames);
     for (int i = 0; i < kTapCount; ++i) {
       if (!tap_l_[static_cast<size_t>(i)].prepare(sample_rate_, 5.0f) ||
           !tap_r_[static_cast<size_t>(i)].prepare(sample_rate_, 5.0f) ||
@@ -301,6 +331,8 @@ public:
     high_cut_r_.reset();
     low_cut_l_.reset();
     low_cut_r_.reset();
+    output_latency_l_.reset();
+    output_latency_r_.reset();
     feedback_l_ = 0.0f;
     feedback_r_ = 0.0f;
   }
@@ -531,10 +563,15 @@ private:
       const float warped_l = delayed_l * dry + offset_l * wet;
       const float warped_r = delayed_r * dry + offset_r * wet;
       const float pan = tapPan(i);
-      const float left_scale = pan <= 0.0f ? 1.0f : 1.0f - pan * 0.65f;
-      const float right_scale = pan >= 0.0f ? 1.0f : 1.0f + pan * 0.65f;
-      sum_l += warped_l * left_scale;
-      sum_r += warped_r * right_scale;
+      if (pan <= 0.0f) {
+        const float angle = (pan + 1.0f) * kPi * 0.5f;
+        sum_l += warped_l + warped_r * std::cos(angle);
+        sum_r += warped_r * std::sin(angle);
+      } else {
+        const float angle = pan * kPi * 0.5f;
+        sum_l += warped_l * std::cos(angle);
+        sum_r += warped_r + warped_l * std::sin(angle);
+      }
     }
 
     const float raw_feedback = state_.diffuse ? state_.repeats * 0.9f : state_.repeats;
@@ -542,8 +579,10 @@ private:
     feedback_l_ = low_cut_l_.process(high_cut_l_.process(sum_l)) * normalized_feedback;
     feedback_r_ = low_cut_r_.process(high_cut_r_.process(sum_r)) * normalized_feedback;
 
-    const float limited_l = std::tanh(sum_l * 1.15f) * 0.8695652f;
-    const float limited_r = std::tanh(sum_r * 1.15f) * 0.8695652f;
+    const float compressed_l = std::tanh(sum_l * 1.15f) * 0.8695652f * kWebAudioCompressorMakeupGain;
+    const float compressed_r = std::tanh(sum_r * 1.15f) * 0.8695652f * kWebAudioCompressorMakeupGain;
+    const float limited_l = output_latency_l_.process(compressed_l);
+    const float limited_r = output_latency_r_.process(compressed_r);
     taps_l[0] = limited_l * state_.mix;
     taps_r[0] = limited_r * state_.mix;
     taps_l[1] = limited_l * state_.reverb_send;
@@ -568,6 +607,8 @@ private:
   Biquad high_cut_r_{};
   Biquad low_cut_l_{};
   Biquad low_cut_r_{};
+  BlockDelay output_latency_l_;
+  BlockDelay output_latency_r_;
   std::array<float, kTapCount> vibrato_phase_{};
   float feedback_l_ = 0.0f;
   float feedback_r_ = 0.0f;

@@ -17,9 +17,10 @@
   granular_module = kessho::core::createGranularModule();
   spectral_freeze_module = kessho::core::createSpectralFreezeModule();
   dynamics_character_module = kessho::core::createDynamicsCharacterModule();
+  soundscapes_module = kessho::core::createSoundscapesModule();
   if (!pad_module || !lead_modules[0] || !lead_modules[1] || !drum_module ||
       !delay_a_module || !delay_b_module || !reverb_module || !granular_module ||
-      !spectral_freeze_module || !dynamics_character_module) {
+      !spectral_freeze_module || !dynamics_character_module || !soundscapes_module) {
     return false;
   }
   if (!pad_module->prepare(sample_rate, static_cast<int>(max_block_size)) ||
@@ -31,7 +32,8 @@
       !reverb_module->prepare(sample_rate, static_cast<int>(max_block_size)) ||
       !granular_module->prepare(sample_rate, static_cast<int>(max_block_size)) ||
       !spectral_freeze_module->prepare(sample_rate, static_cast<int>(max_block_size)) ||
-      !dynamics_character_module->prepare(sample_rate, static_cast<int>(max_block_size))) {
+      !dynamics_character_module->prepare(sample_rate, static_cast<int>(max_block_size)) ||
+      !soundscapes_module->prepare(sample_rate, static_cast<int>(max_block_size))) {
     return false;
   }
   return true;
@@ -88,6 +90,12 @@
   resetSidechainRuntime();
   resetMasterTelemetryState();
   reverb_pre_comp_gain = 1.0f;
+  granular_output_lpf = {};
+  granular_reverb_lpf = {};
+  granular_reverb_comp_gain = 1.0f;
+  std::fill(delay_a_cross_carry_l, delay_a_cross_carry_l + kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES, 0.0f);
+  std::fill(delay_a_cross_carry_r, delay_a_cross_carry_r + kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES, 0.0f);
+  resetDiffuseRuntime();
   telemetry.schema_hash = KESSHO_PRODUCT_SNAPSHOT_SCHEMA_HASH;
   telemetry.sample_rate = sample_rate;
   telemetry.block_size = max_block_size;
@@ -112,6 +120,12 @@
   resetSidechainRuntime();
   resetMasterTelemetryState();
   reverb_pre_comp_gain = 1.0f;
+  granular_output_lpf = {};
+  granular_reverb_lpf = {};
+  granular_reverb_comp_gain = 1.0f;
+  std::fill(delay_a_cross_carry_l, delay_a_cross_carry_l + kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES, 0.0f);
+  std::fill(delay_a_cross_carry_r, delay_a_cross_carry_r + kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES, 0.0f);
+  resetDiffuseRuntime();
   rng_state = rng_seed;
   journey_phase = 0.0f;
   if (pad_module) {
@@ -143,12 +157,17 @@
   if (dynamics_character_module) {
     dynamics_character_module->reset();
   }
+  if (soundscapes_module) {
+    soundscapes_module->reset();
+    soundscapes_module_params_configured = false;
+  }
   pad_voice_cursors[0] = 0;
   pad_voice_cursors[1] = 0;
   clearPadVoiceReleases(0u);
   resetPadPostChains();
   resetLeadPostChains();
   configureFxModules();
+  configureSoundscapesModuleFromSource();
   updateTelemetry(0);
 }
 
@@ -162,7 +181,7 @@ KesshoProductCapabilityReport kessho_product_get_capability_report(void) {
   KesshoProductCapabilityReport report{};
   report.abi_version = KESSHO_PRODUCT_ABI_VERSION;
   report.schema_hash = KESSHO_PRODUCT_SNAPSHOT_SCHEMA_HASH;
-  report.supports_full_product_graph = 0;
+  report.supports_full_product_graph = 1;
   report.supports_synth_sequencer = 1;
   report.supports_drum_sequencer = 1;
   report.supports_journey_morph_clock = 1;
@@ -201,6 +220,13 @@ void kessho_product_reset(KesshoProductEngine* engine) {
     return;
   }
   engine->reset();
+}
+
+void kessho_product_reset_parity_fx(KesshoProductEngine* engine) {
+  if (engine == nullptr) {
+    return;
+  }
+  engine->resetSonicParityFxRuntime();
 }
 
 int32_t kessho_product_load_snapshot_v2(
@@ -270,6 +296,124 @@ int32_t kessho_product_get_stem(
   for (uint32_t i = 0; i < copy_frames; ++i) {
     out_l[i] = engine->stem_l[stem_id][i];
     out_r[i] = engine->stem_r[stem_id][i];
+  }
+  for (uint32_t i = copy_frames; i < frames; ++i) {
+    out_l[i] = 0.0f;
+    out_r[i] = 0.0f;
+  }
+  return KESSHO_PRODUCT_OK;
+}
+
+int32_t kessho_product_get_graph_tap(KesshoProductEngine* engine, uint32_t tap_id, float* out_l, float* out_r, uint32_t frames) {
+  if (engine == nullptr) {
+    return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
+  }
+  if (out_l == nullptr || out_r == nullptr) {
+    return KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+  }
+  const float* tap_l = nullptr;
+  const float* tap_r = nullptr;
+#define KESSHO_PRODUCT_GRAPH_TAP_CASE(id, left, right) case id: tap_l = engine->left; tap_r = engine->right; break
+  switch (tap_id) {
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_REVERB_INPUT, graph_reverb_input_l, graph_reverb_input_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DELAY_A_INPUT, graph_delay_a_input_l, graph_delay_a_input_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DELAY_B_INPUT, graph_delay_b_input_l, graph_delay_b_input_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_GRANULAR_INPUT, graph_granular_input_l, graph_granular_input_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DYNAMICS_INPUT, graph_dynamics_input_l, graph_dynamics_input_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DYNAMICS_OUTPUT, graph_dynamics_output_l, graph_dynamics_output_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_MASTER_PRE_LIMITER, graph_master_pre_limiter_l, graph_master_pre_limiter_r);
+    case KESSHO_PRODUCT_GRAPH_TAP_MASTER_POST_LIMITER:
+      tap_l = engine->stem_l[KESSHO_PRODUCT_STEM_MASTER]; tap_r = engine->stem_r[KESSHO_PRODUCT_STEM_MASTER]; break;
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DELAY_A_OUTPUT, graph_delay_a_output_l, graph_delay_a_output_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DELAY_A_REVERB_SEND, graph_delay_a_reverb_send_l, graph_delay_a_reverb_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DELAY_A_TO_DELAY_B_SEND, graph_delay_a_to_delay_b_send_l, graph_delay_a_to_delay_b_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DELAY_A_TO_GRANULAR_SEND, graph_delay_a_to_granular_send_l, graph_delay_a_to_granular_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DELAY_B_OUTPUT, graph_delay_b_output_l, graph_delay_b_output_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DELAY_B_REVERB_SEND, graph_delay_b_reverb_send_l, graph_delay_b_reverb_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DELAY_B_TO_DELAY_A_SEND, graph_delay_b_to_delay_a_send_l, graph_delay_b_to_delay_a_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DELAY_B_TO_GRANULAR_SEND, graph_delay_b_to_granular_send_l, graph_delay_b_to_granular_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_GRANULAR_OUTPUT, graph_granular_output_l, graph_granular_output_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_GRANULAR_REVERB_SEND, graph_granular_reverb_send_l, graph_granular_reverb_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_GRANULAR_TO_DELAY_A_SEND, graph_granular_to_delay_a_send_l, graph_granular_to_delay_a_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_GRANULAR_TO_DELAY_B_SEND, graph_granular_to_delay_b_send_l, graph_granular_to_delay_b_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DIFFUSE_INPUT, graph_diffuse_input_l, graph_diffuse_input_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DIFFUSE_OUTPUT, graph_diffuse_output_l, graph_diffuse_output_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DIFFUSE_REVERB_SEND, graph_diffuse_reverb_send_l, graph_diffuse_reverb_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_REVERB_PRECONDITIONER_OUTPUT, graph_reverb_preconditioner_output_l, graph_reverb_preconditioner_output_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_REVERB_OUTPUT, graph_reverb_output_l, graph_reverb_output_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD1_INPUT, graph_sidechain_pad1_input_l, graph_sidechain_pad1_input_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD1_OUTPUT, graph_sidechain_pad1_output_l, graph_sidechain_pad1_output_r);
+    case KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD1_GAIN_TRACE:
+      tap_l = engine->sidechain_gains[kessho::product::internal::kSidechainPad1];
+      tap_r = engine->sidechain_gains[kessho::product::internal::kSidechainPad1];
+      break;
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SPECTRAL_FREEZE_INPUT, graph_spectral_freeze_input_l, graph_spectral_freeze_input_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SPECTRAL_FREEZE_OUTPUT, graph_spectral_freeze_output_l, graph_spectral_freeze_output_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DRUM_DRY, graph_drum_dry_l, graph_drum_dry_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DRUM_REVERB_SEND, graph_drum_reverb_send_l, graph_drum_reverb_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DRUM_DELAY_A_SEND, graph_drum_delay_a_send_l, graph_drum_delay_a_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DRUM_DELAY_B_SEND, graph_drum_delay_b_send_l, graph_drum_delay_b_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_DRUM_GRANULAR_SEND, graph_drum_granular_send_l, graph_drum_granular_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PAD1_DRY, graph_pad1_dry_l, graph_pad1_dry_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PAD1_REVERB_SEND, graph_pad1_reverb_send_l, graph_pad1_reverb_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PAD1_DELAY_A_SEND, graph_pad1_delay_a_send_l, graph_pad1_delay_a_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PAD1_DELAY_B_SEND, graph_pad1_delay_b_send_l, graph_pad1_delay_b_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PAD1_GRANULAR_SEND, graph_pad1_granular_send_l, graph_pad1_granular_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PAD1_DIFFUSE_SEND, graph_pad1_diffuse_send_l, graph_pad1_diffuse_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PAD2_DRY, graph_pad2_dry_l, graph_pad2_dry_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PAD2_REVERB_SEND, graph_pad2_reverb_send_l, graph_pad2_reverb_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PAD2_DELAY_A_SEND, graph_pad2_delay_a_send_l, graph_pad2_delay_a_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PAD2_DELAY_B_SEND, graph_pad2_delay_b_send_l, graph_pad2_delay_b_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PAD2_GRANULAR_SEND, graph_pad2_granular_send_l, graph_pad2_granular_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PAD2_DIFFUSE_SEND, graph_pad2_diffuse_send_l, graph_pad2_diffuse_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_LEAD1_DRY, graph_lead1_dry_l, graph_lead1_dry_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_LEAD1_REVERB_SEND, graph_lead1_reverb_send_l, graph_lead1_reverb_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_LEAD1_DELAY_A_SEND, graph_lead1_delay_a_send_l, graph_lead1_delay_a_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_LEAD1_DELAY_B_SEND, graph_lead1_delay_b_send_l, graph_lead1_delay_b_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_LEAD1_GRANULAR_SEND, graph_lead1_granular_send_l, graph_lead1_granular_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_LEAD1_DIFFUSE_SEND, graph_lead1_diffuse_send_l, graph_lead1_diffuse_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_LEAD2_DRY, graph_lead2_dry_l, graph_lead2_dry_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_LEAD2_REVERB_SEND, graph_lead2_reverb_send_l, graph_lead2_reverb_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_LEAD2_DELAY_A_SEND, graph_lead2_delay_a_send_l, graph_lead2_delay_a_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_LEAD2_DELAY_B_SEND, graph_lead2_delay_b_send_l, graph_lead2_delay_b_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_LEAD2_GRANULAR_SEND, graph_lead2_granular_send_l, graph_lead2_granular_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_LEAD2_DIFFUSE_SEND, graph_lead2_diffuse_send_l, graph_lead2_diffuse_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PIANO_DRY, graph_piano_dry_l, graph_piano_dry_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PIANO_REVERB_SEND, graph_piano_reverb_send_l, graph_piano_reverb_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PIANO_DELAY_A_SEND, graph_piano_delay_a_send_l, graph_piano_delay_a_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PIANO_DELAY_B_SEND, graph_piano_delay_b_send_l, graph_piano_delay_b_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PIANO_GRANULAR_SEND, graph_piano_granular_send_l, graph_piano_granular_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_PIANO_DIFFUSE_SEND, graph_piano_diffuse_send_l, graph_piano_diffuse_send_r);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_OCEAN_DRY, graph_soundscape_layer_dry_l[kessho::product::internal::kSoundscapeLayerOcean], graph_soundscape_layer_dry_r[kessho::product::internal::kSoundscapeLayerOcean]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_WATER_DRY, graph_soundscape_layer_dry_l[kessho::product::internal::kSoundscapeLayerWater], graph_soundscape_layer_dry_r[kessho::product::internal::kSoundscapeLayerWater]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_INSECTS_DRY, graph_soundscape_layer_dry_l[kessho::product::internal::kSoundscapeLayerInsects], graph_soundscape_layer_dry_r[kessho::product::internal::kSoundscapeLayerInsects]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_NATURE_DRY, graph_soundscape_layer_dry_l[kessho::product::internal::kSoundscapeLayerNature], graph_soundscape_layer_dry_r[kessho::product::internal::kSoundscapeLayerNature]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_OCEAN_REVERB_SEND, graph_soundscape_layer_reverb_send_l[kessho::product::internal::kSoundscapeLayerOcean], graph_soundscape_layer_reverb_send_r[kessho::product::internal::kSoundscapeLayerOcean]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_OCEAN_DELAY_A_SEND, graph_soundscape_layer_delay_a_send_l[kessho::product::internal::kSoundscapeLayerOcean], graph_soundscape_layer_delay_a_send_r[kessho::product::internal::kSoundscapeLayerOcean]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_OCEAN_DELAY_B_SEND, graph_soundscape_layer_delay_b_send_l[kessho::product::internal::kSoundscapeLayerOcean], graph_soundscape_layer_delay_b_send_r[kessho::product::internal::kSoundscapeLayerOcean]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_OCEAN_GRANULAR_SEND, graph_soundscape_layer_granular_send_l[kessho::product::internal::kSoundscapeLayerOcean], graph_soundscape_layer_granular_send_r[kessho::product::internal::kSoundscapeLayerOcean]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_WATER_REVERB_SEND, graph_soundscape_layer_reverb_send_l[kessho::product::internal::kSoundscapeLayerWater], graph_soundscape_layer_reverb_send_r[kessho::product::internal::kSoundscapeLayerWater]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_WATER_DELAY_A_SEND, graph_soundscape_layer_delay_a_send_l[kessho::product::internal::kSoundscapeLayerWater], graph_soundscape_layer_delay_a_send_r[kessho::product::internal::kSoundscapeLayerWater]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_WATER_DELAY_B_SEND, graph_soundscape_layer_delay_b_send_l[kessho::product::internal::kSoundscapeLayerWater], graph_soundscape_layer_delay_b_send_r[kessho::product::internal::kSoundscapeLayerWater]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_WATER_GRANULAR_SEND, graph_soundscape_layer_granular_send_l[kessho::product::internal::kSoundscapeLayerWater], graph_soundscape_layer_granular_send_r[kessho::product::internal::kSoundscapeLayerWater]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_INSECTS_REVERB_SEND, graph_soundscape_layer_reverb_send_l[kessho::product::internal::kSoundscapeLayerInsects], graph_soundscape_layer_reverb_send_r[kessho::product::internal::kSoundscapeLayerInsects]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_INSECTS_DELAY_A_SEND, graph_soundscape_layer_delay_a_send_l[kessho::product::internal::kSoundscapeLayerInsects], graph_soundscape_layer_delay_a_send_r[kessho::product::internal::kSoundscapeLayerInsects]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_INSECTS_DELAY_B_SEND, graph_soundscape_layer_delay_b_send_l[kessho::product::internal::kSoundscapeLayerInsects], graph_soundscape_layer_delay_b_send_r[kessho::product::internal::kSoundscapeLayerInsects]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_INSECTS_GRANULAR_SEND, graph_soundscape_layer_granular_send_l[kessho::product::internal::kSoundscapeLayerInsects], graph_soundscape_layer_granular_send_r[kessho::product::internal::kSoundscapeLayerInsects]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_NATURE_REVERB_SEND, graph_soundscape_layer_reverb_send_l[kessho::product::internal::kSoundscapeLayerNature], graph_soundscape_layer_reverb_send_r[kessho::product::internal::kSoundscapeLayerNature]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_NATURE_DELAY_A_SEND, graph_soundscape_layer_delay_a_send_l[kessho::product::internal::kSoundscapeLayerNature], graph_soundscape_layer_delay_a_send_r[kessho::product::internal::kSoundscapeLayerNature]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_NATURE_DELAY_B_SEND, graph_soundscape_layer_delay_b_send_l[kessho::product::internal::kSoundscapeLayerNature], graph_soundscape_layer_delay_b_send_r[kessho::product::internal::kSoundscapeLayerNature]);
+    KESSHO_PRODUCT_GRAPH_TAP_CASE(KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_NATURE_GRANULAR_SEND, graph_soundscape_layer_granular_send_l[kessho::product::internal::kSoundscapeLayerNature], graph_soundscape_layer_granular_send_r[kessho::product::internal::kSoundscapeLayerNature]);
+    case KESSHO_PRODUCT_GRAPH_TAP_SOUNDSCAPE_STEM:
+      tap_l = engine->stem_l[KESSHO_PRODUCT_STEM_SOUNDSCAPE]; tap_r = engine->stem_r[KESSHO_PRODUCT_STEM_SOUNDSCAPE]; break;
+    default:
+      return KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+  }
+#undef KESSHO_PRODUCT_GRAPH_TAP_CASE
+  const uint32_t copy_frames = std::min<uint32_t>(frames, engine->last_stem_frames);
+  for (uint32_t i = 0; i < copy_frames; ++i) {
+    out_l[i] = tap_l[i];
+    out_r[i] = tap_r[i];
   }
   for (uint32_t i = copy_frames; i < frames; ++i) {
     out_l[i] = 0.0f;

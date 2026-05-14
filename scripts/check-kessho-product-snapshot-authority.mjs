@@ -28,6 +28,7 @@ const allowedImports = new Set([
   './coreProductEvents',
   './coreProductAssets',
   './coreProductSnapshotEncoder',
+  './granularMacroCore',
   './outputTrims',
   './transport',
 ]);
@@ -109,10 +110,10 @@ assertCallInside(
 assertCallInside(
   legacyCompat,
   legacyCompatPath,
-  'KESSHO_PRODUCT_DRUM_DEFAULT_PARAMS',
+  'KESSHO_PRODUCT_DRUM_PARAM_SPECS',
   'function exactDrumParamsFromState',
   'function drumVoicePresetId',
-  'Drum exact params must stay as the labeled temporary default filler',
+  'Drum exact params must stay inside the labeled temporary Drum bridge',
 );
 
 for (const forbiddenImportUsage of [

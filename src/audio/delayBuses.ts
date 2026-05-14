@@ -273,6 +273,18 @@ export class SharedDelayBusA {
     return this.directGain;
   }
 
+  getReverbSendNode(): GainNode {
+    return this.reverbSendGain;
+  }
+
+  getDelayBSendNode(): BiquadFilterNode {
+    return this.crossFeedFilter;
+  }
+
+  getGranularSendNode(): GainNode {
+    return this.granularSendGain;
+  }
+
   private sampleInputEnvelope(): number {
     this.inputAnalyser.getFloatTimeDomainData(this.analyserBuffer);
     let peak = 0;
@@ -489,6 +501,18 @@ export class SharedDelayBusB {
 
   getDirectOutputNode(): GainNode {
     return this.directGain;
+  }
+
+  getReverbSendNode(): GainNode {
+    return this.reverbSendGain;
+  }
+
+  getDelayASendNode(): GainNode {
+    return this.delayASendGain;
+  }
+
+  getGranularSendNode(): GainNode {
+    return this.granularSendGain;
   }
 
   update(params: DelayBusBParams, now: number, smoothTime: number): void {

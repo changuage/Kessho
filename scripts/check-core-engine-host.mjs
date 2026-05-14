@@ -1790,12 +1790,12 @@ function assertWorkletMixerContract(source, label) {
   assertWorkletDelayADeferredInputBehavior(source, label);
 }
 
-assert(runtime.includes("case 'core-wasm':"), 'runtime must preserve ?engine=core-wasm as a legacy core-bridge alias');
+assert(runtime.includes("case 'core-smoke':"), 'runtime must expose the Core smoke renderer behind ?engine=core-smoke');
 assert(!runtime.includes('isLegacyCoreBridgeOptInEnabled'), 'runtime must not hide the verified Core bridge behind a transitional opt-in');
 assert(!runtime.includes('legacyCoreBridge'), 'runtime must not require a legacy bridge query/storage escape hatch');
-assert(runtime.includes("if (typeof window === 'undefined') return 'core-bridge';"), 'runtime must default SSR to the verified Core bridge path');
-assert(runtime.includes("resolvedRuntimeMode = 'core-bridge';"), 'runtime must default browsers to the verified Core bridge path');
-assert(runtime.includes("engineMode === 'core-bridge'"), 'runtime must gate the core host behind core-bridge mode');
+assert(runtime.includes("if (typeof window === 'undefined') return 'core-product';"), 'runtime must default SSR to Product Core');
+assert(runtime.includes("'core-product'"), 'runtime must default browsers to Product Core');
+assert(runtime.includes("engineMode === 'core-smoke'"), 'runtime must gate the smoke host behind core-smoke mode');
 assert(runtime.includes("engineMode === 'core-product'"), 'runtime must keep core-product separate from the transitional core host');
 assert(runtime.includes("import('./coreEngineHost')"), 'runtime must dynamically load CoreEngineHost');
 assert(runtime.includes("import('./coreProductEngineHost')"), 'runtime must dynamically load CoreProductEngineHost');

@@ -1,13 +1,116 @@
 #include "KesshoProductEngineInternal.h"
 
+  int32_t KesshoProductEngine::validateEvent(const KesshoProductEvent& event) const {
+  if (!std::isfinite(event.value) || !std::isfinite(event.value2) || !std::isfinite(event.value3) || !std::isfinite(event.value4)) {
+    return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+  }
+  const auto valid_source = [](uint32_t source_id) {
+    return source_id >= 1u && source_id <= kSourceCount;
+  };
+  const auto valid_sequencer = [](uint32_t target_id) {
+    return target_id == KESSHO_PRODUCT_SEQUENCER_SYNTH || target_id == KESSHO_PRODUCT_SEQUENCER_DRUM;
+  };
+  const auto valid_drum_voice = [](uint32_t voice_id) {
+    return voice_id < static_cast<uint32_t>(DRUM_NUM_VOICE_TYPES);
+  };
+
+  switch (event.event_kind) {
+    case KESSHO_PRODUCT_EVENT_KIND_START:
+    case KESSHO_PRODUCT_EVENT_KIND_STOP:
+    case KESSHO_PRODUCT_EVENT_KIND_RESET_TRANSPORT:
+    case KESSHO_PRODUCT_EVENT_KIND_RESET_RNG:
+    case KESSHO_PRODUCT_EVENT_KIND_START_JOURNEY_MORPH_CLOCK:
+    case KESSHO_PRODUCT_EVENT_KIND_STOP_JOURNEY_MORPH_CLOCK:
+      return KESSHO_PRODUCT_OK;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT:
+      return event.value > 0.0f ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_PARAM:
+      return event.param_id == 0u ? KESSHO_PRODUCT_ERROR_INVALID_PARAM : KESSHO_PRODUCT_OK;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_ENABLED:
+      return valid_source(event.target_id) ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET:
+      return valid_source(event.target_id) && event.value > 0.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+    case KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON:
+      if (!valid_source(event.target_id)) {
+        return KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+      }
+      return event.value >= 0.0f && event.value <= 127.0f &&
+              event.value2 > 0.0f && event.value2 <= 1.0f &&
+              event.value3 > 0.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_OFF:
+      return valid_source(event.target_id) ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+    case KESSHO_PRODUCT_EVENT_KIND_MIDI_EVENT:
+      return event.value >= 0.0f && event.value <= 255.0f &&
+              event.value2 >= 0.0f && event.value2 <= 127.0f &&
+              event.value3 >= 0.0f && event.value3 <= 127.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_TRIGGER_DRUM_VOICE:
+      return valid_drum_voice(event.target_id) && event.value > 0.0f && event.value <= 1.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_HARMONY_ROOT:
+      return event.value >= 0.0f && event.value <= 127.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SCALE:
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SEED:
+      return event.target_id != 0u ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_STATE:
+      return event.value2 >= 0.0f && event.value2 <= 1.0f && event.value3 > 0.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE:
+      if (event.param_id == 0u || event.index == 0u) {
+        return KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+      }
+      if (event.target_id != 0u && !valid_source(event.target_id) && !isDrumRangeTarget(event.target_id)) {
+        return KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+      }
+      return KESSHO_PRODUCT_OK;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP:
+      if (!valid_sequencer(event.target_id) || event.index >= kMaxLaneCount) {
+        return KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE;
+      }
+      if ((event.flags & KESSHO_PRODUCT_STEP_TOGGLE_CLEAR_LANE) != 0u) {
+        return KESSHO_PRODUCT_OK;
+      }
+      if ((event.flags & KESSHO_PRODUCT_STEP_FIELD_MASK) == KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG) {
+        return validStepFieldId(event.param_id) && event.value2 >= 1.0f && event.value2 <= 64.0f
+            ? KESSHO_PRODUCT_OK
+            : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      }
+      return event.param_id < 64u ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE:
+      if (!valid_sequencer(event.target_id) || event.index >= kMaxLaneCount) {
+        return KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE;
+      }
+      return isSequencerLaneParam(event.param_id)
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+    case KESSHO_PRODUCT_EVENT_KIND_RESET_SEQUENCER_LANE_HOME:
+    case KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE:
+      return valid_sequencer(event.target_id) && event.index < kMaxLaneCount
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE;
+    default:
+      return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+  }
+}
+
   int32_t KesshoProductEngine::enqueueEvent(const KesshoProductEvent& event) {
   if (control_event_count >= kessho::product::generated::KESSHO_PRODUCT_MAX_CONTROL_EVENTS) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_EVENT_QUEUE_FULL;
     return KESSHO_PRODUCT_ERROR_EVENT_QUEUE_FULL;
   }
-  if (!std::isfinite(event.value) || !std::isfinite(event.value2) || !std::isfinite(event.value3) || !std::isfinite(event.value4)) {
-    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
-    return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+  const int32_t validation_result = validateEvent(event);
+  if (validation_result != KESSHO_PRODUCT_OK) {
+    telemetry.last_error_code = validation_result;
+    return validation_result;
   }
   control_events[control_event_count].event = event;
   control_events[control_event_count].sequence = next_control_sequence++;
@@ -35,7 +138,9 @@
 
   float KesshoProductEngine::manualNoteHoldSeconds(uint32_t source_id, float requested_seconds) const {
   if (
-      (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) &&
+      (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 ||
+       source_id == KESSHO_PRODUCT_SOURCE_LEAD2 ||
+       source_id == KESSHO_PRODUCT_SOURCE_PIANO) &&
       source_id >= 1u &&
       source_id <= kSourceCount) {
     return clampFloat(sources[source_id - 1u].hold_seconds, 0.001f, 20.0f);
@@ -72,13 +177,15 @@
     case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_ENABLED:
       if (event.target_id >= 1u && event.target_id <= kSourceCount) {
         sources[event.target_id - 1u].enabled = event.value >= 0.5f;
+      } else {
+        telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
       }
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET:
       applySourcePresetEvent(event);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON: {
-      const uint32_t source_id = event.target_id == 0u ? KESSHO_PRODUCT_SOURCE_PAD1 : event.target_id;
+      const uint32_t source_id = event.target_id;
       triggerVoice(
           source_id,
           event.value,
@@ -99,7 +206,7 @@
       applyMidiEvent(event);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_TRIGGER_DRUM_VOICE:
-      triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 36.0f + static_cast<float>(event.target_id % 24u), event.value <= 0.0f ? 0.8f : event.value, 0.12f);
+      triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 36.0f + static_cast<float>(event.target_id), event.value, 0.12f);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_START_JOURNEY_MORPH_CLOCK:
       journey_running = true;
@@ -111,10 +218,10 @@
       harmony.root_midi = clampFloat(event.value, 0.0f, 127.0f);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SCALE:
-      harmony.scale_id = event.target_id == 0u ? 1u : event.target_id;
+      harmony.scale_id = event.target_id;
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SEED:
-      rng_seed = event.target_id == 0u ? 1u : event.target_id;
+      rng_seed = event.target_id;
       rng_state = rng_seed;
       break;
     case KESSHO_PRODUCT_EVENT_KIND_RESET_RNG:
@@ -289,7 +396,7 @@
   }
   switch (event.param_id) {
     case KESSHO_PRODUCT_PARAM_FX_GRANULAR_MIX_ID:
-      fx.granular_mix = clampFloat(event.value, 0.0f, 1.0f);
+      fx.granular_mix = clampFloat(event.value, 0.0f, 4.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_GRANULAR_ENABLED_ID:
       fx.granular_enabled = event.value >= 0.5f;
@@ -305,6 +412,12 @@
       break;
     case KESSHO_PRODUCT_PARAM_FX_GRANULAR_FEEDBACK_LPF_HZ_ID:
       fx.granular_feedback_lpf_hz = clampFloat(event.value, 200.0f, 12000.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_REVERB_LPF_HZ_ID:
+      fx.granular_reverb_lpf_hz = clampFloat(event.value, 200.0f, 12000.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_OUTPUT_LPF_HZ_ID:
+      fx.granular_output_lpf_hz = clampFloat(event.value, 200.0f, 12000.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_GRANULAR_BUFFER_SECONDS_ID:
       fx.granular_buffer_seconds = clampFloat(event.value, 1.0f, 32.0f);
@@ -457,7 +570,7 @@
       journey_rate_bars = clampFloat(event.value, 0.25f, 128.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_GRANULAR_MIX_ID:
-      fx.granular_mix = clampFloat(event.value, 0.0f, 1.0f);
+      fx.granular_mix = clampFloat(event.value, 0.0f, 4.0f);
       configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_AENABLED_ID:
@@ -728,6 +841,12 @@
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_PHASE_JITTER_ID:
       fx.spectral_freeze_phase_jitter = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_ROUTING_ID:
+      fx.spectral_freeze_routing = event.value >= 0.5f ? 1u : 0u;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_REVERB_CROSSFADE_ID:
+      fx.spectral_freeze_reverb_crossfade = clampFloat(event.value, 0.0f, 1.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID:
       fx.dynamics_drive = clampFloat(event.value, 0.0f, 1.0f);
@@ -1007,7 +1126,7 @@
       configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_REVERB_ID:
-      routing.granular_to_reverb = clampFloat(event.value, 0.0f, 1.0f);
+      routing.granular_to_reverb = clampFloat(event.value, 0.0f, 4.0f);
       break;
     case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_GRANULAR_ID:
       routing.delay_a_to_granular = clampFloat(event.value, 0.0f, 1.0f);
@@ -1019,6 +1138,14 @@
       break;
     case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_REVERB_ID:
       routing.delay_b_to_reverb = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_DELAY_A_ID:
+      routing.granular_to_delay_a = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_DELAY_B_ID:
+      routing.granular_to_delay_b = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_RNG_SEED_ID:
