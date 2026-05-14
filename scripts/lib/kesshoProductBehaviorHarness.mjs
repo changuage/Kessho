@@ -202,7 +202,7 @@ export function loadCoreProductHostHarness(options = {}) {
       this.assets = [];
     }
 
-    shouldUseDefaultAssets() {
+    hasMissingDefaultAssetsForState() {
       return false;
     }
 

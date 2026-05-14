@@ -1,54 +1,67 @@
 # Kessho Project Structure
 
-This workspace currently carries two active product builds and one shared
-engine track. Keep their roles separate so the C++ backbone migration can move
-without blurring the production web app, Capacitor shells, and paused native
-Swift work.
+This workspace carries the Product Core runtime, an explicit Web TS reference
+runtime, Capacitor shells, and a paused native Swift line. Keep their roles
+separate so cleanup does not blur product code, reference code, and packaging
+code.
 
 ## Runtime Lanes
 
-### `?engine=web`
+### `core-product`
 
-This is the production baseline. Normal app loads and `?engine=web` must keep
-using the existing React UI and TypeScript/Web Audio conductor in `src/audio`.
+This is the default product runtime. Normal app loads use Product Core unless a
+query parameter explicitly selects another runtime.
 
 Ownership:
 
 - `src/App.tsx`
-- `src/audio/engine.ts`
 - `src/audio/runtime.ts`
+- `src/audio/coreProduct*.ts`
+- `src/audio/CoreProduct*.ts`
+- `src/audio/generated/**`
+- `cpp/KesshoCore/**`
+- `public/worklets/kessho-core-product.worklet.js`
+- `public/worklets/kessho_core.wasm`
+- `scripts/check-kessho-product*.mjs`
+- `scripts/run-kessho-product-ci.mjs`
+
+Rules:
+
+- Keep Product Core as the default browser runtime.
+- Keep musical behavior in Product Core, not in host-side fallback code.
+- Product checks should guard runtime ownership, CPU budget, generated schema,
+  assets, native bridge, and browser default behavior.
+
+### `web-ts`
+
+This is the explicit TypeScript/Web Audio reference runtime. It remains useful
+for comparison and preserving the original webapp line, but it is not the
+default product path.
+
+Ownership:
+
+- `src/audio/engine.ts`
+- `src/audio/drumSynth.ts`
+- `src/audio/lead4opfm.ts`
+- `src/audio/drumSequencer.ts`
+- `src/audio/earthTexturePlayer.ts`
 - `src/ui/**`
 - `public/worklets/kessho_*.wasm`
 
 Rules:
 
-- Keep this path as the default until replacement parity is proven.
-- Avoid changing web behavior only to satisfy an experimental host.
-- Use this path as the reference for presets, routing, and UI behavior.
+- Do not change Web TS behavior as a side effect of Product Core cleanup.
+- Keep this runtime explicit and auditable.
+- Reference-only scripts and docs should not become Product Core gates.
 
-### `?engine=core-product`
+### `core-smoke`
 
-This is the experimental shared C++ backbone running through WASM and an
-AudioWorklet. It must stay opt-in behind the query parameter until golden
-preset, CPU, MIDI, and browser audio parity are captured.
-
-Ownership:
-
-- `cpp/KesshoCore/**`
-- `src/audio/coreEngineHost.ts`
-- `src/audio/coreSnapshot.ts`
-- `src/audio/coreMidiEvents.ts`
-- `public/worklets/kessho-core.worklet.js`
-- `public/worklets/kessho_core.wasm`
-- `scripts/*kessho-core*.mjs`
-- `scripts/check-core-*.mjs`
+This is a development smoke renderer for the old bridge path.
 
 Rules:
 
-- Keep the web engine switch narrow and easy to audit.
-- New C++ render-thread code must avoid allocation, locking, logging, file IO,
-  and JSON parsing.
-- Add or update parity gates before expanding the core path's responsibility.
+- Keep it explicit and development-only.
+- Do not let smoke-renderer behavior stand in for Product Core product behavior.
 
 ### Kessho Capacitor
 
@@ -68,9 +81,9 @@ Rules:
 - Treat Capacitor as a product shell around the web UI.
 - CoreMIDI, audio-session metadata, remote controls, app identity, and packaging
   are Capacitor concerns.
-- Audio behavior should converge through the shared Kessho Core. Today that is
-  the web/Core WASM lane; future iOS background audio should use a thin native
-  host around the same C++ core, not the paused Swift engine.
+- Audio behavior should converge through Product Core. iOS background audio
+  should use a thin native host around the same C++ core, not the paused Swift
+  engine.
 
 ### Paused Native iOS And macOS
 
@@ -110,6 +123,8 @@ Generated and ignored artifacts:
 
 - `build/`
 - `dist/`
+- `docs/reports/`
+- `docs/ui-audit/`
 - `KesshoNativeSwift/.build/`
 - `CapacitorMac/.build/`
 - `CapacitorMac/.swiftpm/`
@@ -138,7 +153,7 @@ npm run clean:local
 Use these boundaries when splitting large work:
 
 1. Web engine host switch.
-2. C++ backbone and core build/parity scripts.
+2. Product Core build and runtime contract scripts.
 3. Standalone WASM DSP source refactors.
 4. Capacitor iOS/macOS shell and native plugins.
 5. Paused native SwiftUI harness cleanup, only when intentionally touched.
@@ -155,10 +170,10 @@ npm run core:snapshot
 npm run core:midi
 ```
 
-Core migration checks:
+Product Core checks:
 
 ```sh
-npm run core:ci
+npm run core:product:ci
 ```
 
 Release/readiness checks:

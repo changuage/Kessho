@@ -170,7 +170,6 @@ The web runtime now defaults to `core-product`. `web-ts` remains selectable for 
 - `npm run core:product:native`
 - `npm run core:product:default-gate-v3`
 - `swift build --package-path KesshoNativeSwift`
-- Focused `lead-manual-dry` and `lead-delay-heavy` web-vs-Product parity probes from `scripts/profile-kessho-core-acceptance-corpus.mjs`
 
 ## Architecture Notes
 

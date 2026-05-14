@@ -45,8 +45,8 @@ export class CoreProductAssetAdapter {
     return total;
   }
 
-  shouldUseDefaultAssets(): boolean {
-    return this.shouldUsePianoAsset() || this.shouldUseSoundscapeAsset();
+  hasMissingDefaultAssetsForState(): boolean {
+    return this.hasMissingDefaultPianoAsset() || this.hasMissingDefaultSoundscapeAsset();
   }
 
   async ensureDefaultAssetsForState(): Promise<void> {
@@ -84,6 +84,12 @@ export class CoreProductAssetAdapter {
     return false;
   }
 
+  private hasMissingDefaultPianoAsset(): boolean {
+    if (!this.shouldUsePianoAsset()) return false;
+    return getCoreProductPianoPreloadAssetDescriptors(this.readSliderState())
+      .some((descriptor) => !this.registeredAssetIds.has(descriptor.assetId));
+  }
+
   private shouldUseSoundscapeAsset(): boolean {
     const sliderState = this.readSliderState();
     if (!sliderState) return false;
@@ -94,6 +100,12 @@ export class CoreProductAssetAdapter {
       sliderState.birdsEnabled === true ||
       sliderState.birds2Enabled === true ||
       sliderState.frogsEnabled === true;
+  }
+
+  private hasMissingDefaultSoundscapeAsset(): boolean {
+    if (!this.shouldUseSoundscapeAsset()) return false;
+    return getCoreProductSoundscapeAssetDescriptorsForState(this.readSliderState())
+      .some((descriptor) => !this.registeredAssetIds.has(descriptor.assetId));
   }
 
   private async ensureDefaultPianoAsset(): Promise<void> {

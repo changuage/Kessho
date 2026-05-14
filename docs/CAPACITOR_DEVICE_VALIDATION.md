@@ -2,11 +2,10 @@
 
 ## Purpose
 
-This runbook covers the release-confidence layer that browser sonic parity does
-not prove: real-device background audio, CPU, battery, route changes, and MIDI
-behavior for Kessho Capacitor. The audio engine under test is still the shared
-web/Core WASM lane unless a future native host explicitly swaps in the same
-Kessho Core C++ library from an `AVAudioEngine` render path.
+This runbook covers the release-confidence layer that Product Core CI does not
+prove by itself: real-device background audio, CPU, battery, route changes, and
+MIDI behavior for Kessho Capacitor. The audio engine under test is the Product
+Core path unless a run explicitly opts into a legacy runtime.
 
 ## Required Baseline Before Device Work
 
@@ -14,22 +13,15 @@ Run these from the repo root before opening a device build:
 
 ```sh
 npm run type-check
-npm run core:ci
-npm run core:readiness:browser -- --url=http://127.0.0.1:4173/
-```
-
-The browser readiness command requires a local app server:
-
-```sh
-npm run dev -- --host 127.0.0.1 --port 4173
+npm run core:product:ci:prereqs
+npm run core:product:default-gate-v3
 ```
 
 Pass criteria:
 
-- readiness status is `PASS`
-- slice coverage is `COMPLETE`
-- failed checks are `0`
-- [kessho-core-parity-readiness-latest.md](/Users/panguroo/Documents/generativemusic/docs/reports/kessho-core-parity-readiness-latest.md) records the run
+- Product Core CI prerequisite report status is `pass`
+- Product Default Gate v3 status is `pass`
+- generated reports under `docs/reports/` record the run locally
 
 ## iOS Capacitor Device Gate
 
@@ -46,7 +38,7 @@ Bluetooth, route changes, thermal behavior, or screen-off stability.
 Required passes:
 
 - App identity shows `Kessho Capacitor`.
-- The app starts playback from the normal React UI with the Core WASM worklets
+- The app starts playback from the normal React UI with Product Core worklets
   loaded and no visible browser/core error overlay.
 - Audio continues for at least 30 minutes with the screen locked.
 - CPU remains stable enough that the device does not thermal-throttle into
@@ -93,7 +85,7 @@ npm run cap:mac:open
 Required passes:
 
 - The app launches from `build/macos/Kessho Capacitor.app`.
-- Core WASM assets load from the bundled localhost server.
+- Product Core WASM assets load from the bundled localhost server.
 - Playback starts from the React UI and keeps running while the window is
   backgrounded.
 - App Nap and idle sleep suppression engage while playback is active.
@@ -103,13 +95,13 @@ Required passes:
 
 ## Failure Policy
 
-Treat these as blockers before defaulting a Capacitor release to Core WASM:
+Treat these as blockers before defaulting a Capacitor release to Product Core:
 
 - screen-off iOS playback stops unexpectedly
 - repeated audio dropouts, non-finite output, or stuck notes
 - route changes leave the app silent until force quit
 - MIDI input stops being delivered while audio continues
-- CPU or thermal behavior is materially worse than the browser/Core WASM
+- CPU or thermal behavior is materially worse than the browser Product Core
   baseline for the same state
 
 Do not mark a device issue solved by changing browser corpus thresholds. Device
@@ -120,7 +112,7 @@ packaging, or the shared C++/WASM audio path that actually caused the failure.
 
 For every serious device run, keep:
 
-- the latest readiness report from `docs/reports/`
+- the latest Product Core reports from `docs/reports/`
 - the commit SHA under test
 - Xcode device logs or Console.app logs for failures
 - a short note with scenario, route, CPU/thermal observations, and pass/fail

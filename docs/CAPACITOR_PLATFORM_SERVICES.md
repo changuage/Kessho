@@ -5,8 +5,8 @@
 Kessho Capacitor is the packaged webapp. It should use the same React UI,
 state model, presets, and audio engine lane as Kessho Webapp.
 
-The shared C++ backbone enters Capacitor the same way it enters the webapp:
-through the Core WASM/AudioWorklet path, not through the paused SwiftUI native
+Product Core enters Capacitor the same way it enters the webapp: through the
+Product Core WASM/AudioWorklet path, not through the paused SwiftUI native
 port.
 
 ## Active Capacitor Pieces
@@ -30,7 +30,7 @@ Local Capacitor plugins:
 
 ## Audio Ownership
 
-Default Capacitor playback should stay on the web/Core WASM lane. The
+Default Capacitor playback should stay on the Product Core lane. The
 audio-session plugin is a Capacitor platform-service bridge for
 `AVAudioSession`, Now Playing metadata, and remote controls. It no longer links
 or imports `KesshoNativeCore`.
@@ -38,15 +38,15 @@ or imports `KesshoNativeCore`.
 Use `?audioSession=debug` only as an opt-in diagnostic for `AVAudioSession`,
 Now Playing metadata, and remote controls. The legacy
 `?nativeAudio=capacitor` flag is accepted as a compatibility alias, but it no
-longer bypasses the web/Core audio lane. Full audio parity work belongs in:
+longer bypasses the Product Core audio lane. Full audio parity work belongs in:
 
 - [cpp/KesshoCore](/Users/panguroo/Documents/generativemusic/cpp/KesshoCore)
-- [src/audio/coreEngineHost.ts](/Users/panguroo/Documents/generativemusic/src/audio/coreEngineHost.ts)
-- [public/worklets/kessho-core.worklet.js](/Users/panguroo/Documents/generativemusic/public/worklets/kessho-core.worklet.js)
+- [src/audio/coreProductEngineHost.ts](/Users/panguroo/Documents/generativemusic/src/audio/coreProductEngineHost.ts)
+- [public/worklets/kessho-core-product.worklet.js](/Users/panguroo/Documents/generativemusic/public/worklets/kessho-core-product.worklet.js)
 - [public/worklets/kessho_core.wasm](/Users/panguroo/Documents/generativemusic/public/worklets/kessho_core.wasm)
 
-The intended low-CPU iOS background-audio path is a future native host that
-calls the same Kessho Core C++ library from an `AVAudioEngine` render path. That
+The intended low-CPU iOS background-audio path is a thin native host that calls
+the same Product Core C++ library from an `AVAudioEngine` render path. That
 should be a thin host around the shared core, not a revival of the paused Swift
 audio engine.
 

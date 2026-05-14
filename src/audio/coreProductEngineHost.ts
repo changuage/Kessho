@@ -342,8 +342,8 @@ class CoreProductEngineHost {
   }
 
   updateParams(sliderState: Record<string, unknown>): void {
-    this.latestSliderState = { ...sliderState };
-    if (this.runtimeReady && this.assetAdapter.shouldUseDefaultAssets()) {
+    this.latestSliderState = sliderState;
+    if (this.runtimeReady && this.assetAdapter.hasMissingDefaultAssetsForState()) {
       void this.assetAdapter.ensureDefaultAssetsForState().then(() => {
         this.applyLatestSnapshotUpdate('asset-reference-change');
         if (this.running) this.arrangementScheduler.update(this.createLatestArrangementState());

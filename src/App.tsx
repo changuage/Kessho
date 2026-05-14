@@ -1896,6 +1896,7 @@ const App: React.FC = () => {
   stateRef.current = state;
   const audioEngineRuntimeMode = useMemo(() => getAudioEngineRuntimeMode(), []);
   const pendingAudioEngineStateRef = useRef<SliderState | null>(null);
+  const immediatelyAppliedAudioEngineStateRef = useRef<SliderState | null>(null);
   const audioEngineUpdateTimerRef = useRef<number | null>(null);
   const lastAudioEngineUpdateMsRef = useRef(0);
   const flushAudioEngineParamUpdate = useCallback(() => {
@@ -1936,7 +1937,20 @@ const App: React.FC = () => {
       audioEngineUpdateTimerRef.current = null;
     }
     pendingAudioEngineStateRef.current = null;
+    immediatelyAppliedAudioEngineStateRef.current = null;
   }, []);
+
+  const presetEngineUpdateOptions = useMemo(() => ({
+    updateEngine: audioEngineRuntimeMode !== 'core-product',
+    resetCofDrift: audioEngineRuntimeMode !== 'core-product',
+  }), [audioEngineRuntimeMode]);
+
+  const syncCoreProductAppliedPreset = useCallback((nextState: SliderState) => {
+    if (audioEngineRuntimeMode !== 'core-product') return;
+    immediatelyAppliedAudioEngineStateRef.current = nextState;
+    scheduleAudioEngineParamUpdate(nextState, { immediate: true });
+    audioEngine.resetCofDrift();
+  }, [audioEngineRuntimeMode, scheduleAudioEngineParamUpdate]);
 
   const coreSmokeModeAvailable = true;
   const showAudioEngineSwitcher = useMemo(() => shouldShowAudioEngineSwitcher(), []);
@@ -3040,7 +3054,8 @@ const App: React.FC = () => {
             synthSubLaneStates: wrappedData?.synthSubLaneStates,
             synthPitchSettings: wrappedData?.synthPitchSettings,
             synthPitchBindingModes: wrappedData?.synthPitchBindingModes,
-          }, { currentState: state, normalize: normalizePresetForWeb });
+          }, { currentState: state, normalize: normalizePresetForWeb, ...presetEngineUpdateOptions });
+          syncCoreProductAppliedPreset(result.state);
           setState(result.state);
           applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
           restoreEvolveConfigs(result.preset);
@@ -3052,7 +3067,13 @@ const App: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [applyDualRangesFromPreset, restoreEvolveConfigs, usesCapacitorLocalPresetLibrary]);
+  }, [
+    applyDualRangesFromPreset,
+    presetEngineUpdateOptions,
+    restoreEvolveConfigs,
+    syncCoreProductAppliedPreset,
+    usesCapacitorLocalPresetLibrary,
+  ]);
 
   // Engine state callback
   useEffect(() => {
@@ -3508,6 +3529,10 @@ const App: React.FC = () => {
   // Web audio does not consume dual-slider ranges, so avoid re-sending params when
   // only the UI runtime range model changes.
   useEffect(() => {
+    if (immediatelyAppliedAudioEngineStateRef.current === state) {
+      immediatelyAppliedAudioEngineStateRef.current = null;
+      return;
+    }
     scheduleAudioEngineParamUpdate(state);
   }, [scheduleAudioEngineParamUpdate, state]);
 
@@ -5780,7 +5805,8 @@ const App: React.FC = () => {
       
       if (shouldApplyPresetA) {
         // Apply the preset immediately when loading to slot A (and at or near position 0)
-        const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
+        const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s, ...presetEngineUpdateOptions });
+        syncCoreProductAppliedPreset(result.state);
         setState(result.state);
         applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
         restoreEvolveConfigs(normalizedPreset);
@@ -5805,14 +5831,26 @@ const App: React.FC = () => {
 
       if (shouldApplyPresetB) {
         // Apply the preset immediately when loading to slot B (and at or near position 100)
-        const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s });
+        const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s, ...presetEngineUpdateOptions });
+        syncCoreProductAppliedPreset(result.state);
         setState(result.state);
         applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
         restoreEvolveConfigs(normalizedPreset);
       }
     }
     setMorphLoadTarget(null);
-  }, [state, morphPresetA, morphPresetB, sliderModes, dualSliderRanges, morphPosition]);
+  }, [
+    state,
+    morphPresetA,
+    morphPresetB,
+    sliderModes,
+    dualSliderRanges,
+    morphPosition,
+    applyDualRangesFromPreset,
+    presetEngineUpdateOptions,
+    restoreEvolveConfigs,
+    syncCoreProductAppliedPreset,
+  ]);
 
   // Reapply morph interpolation when a preset changes while in mid-morph
   // This ensures that if you're at position 50 and load a new preset A or B,
@@ -6169,13 +6207,25 @@ const App: React.FC = () => {
     setMorphPresetA(preset);
     const atEndpoint0 = isAtEndpoint0(morphPosition, true);
     if (atEndpoint0 || !morphPresetB) {
-      const result = applyPreset(preset, { migrate: false, currentState: state, normalize: s => s });
+      const result = applyPreset(preset, { migrate: false, currentState: state, normalize: s => s, ...presetEngineUpdateOptions });
+      syncCoreProductAppliedPreset(result.state);
       setState(result.state);
       setStatePresetName(entry.name);
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
       restoreEvolveConfigs(preset);
     }
-  }, [presetEntryToSavedPreset, morphPresetB, morphPosition, state, sliderModes, dualSliderRanges, applyDualRangesFromPreset, restoreEvolveConfigs]);
+  }, [
+    presetEntryToSavedPreset,
+    morphPresetB,
+    morphPosition,
+    state,
+    sliderModes,
+    dualSliderRanges,
+    applyDualRangesFromPreset,
+    presetEngineUpdateOptions,
+    restoreEvolveConfigs,
+    syncCoreProductAppliedPreset,
+  ]);
 
   const handleLoadMorphB = useCallback((entry: PresetEntry, data: Record<string, unknown>) => {
     hasLoadedPresetRef.current = true;
@@ -6194,13 +6244,25 @@ const App: React.FC = () => {
     setMorphPresetB(preset);
     const atEndpoint1 = isAtEndpoint1(morphPosition, true);
     if (atEndpoint1 || !morphPresetA) {
-      const result = applyPreset(preset, { migrate: false, currentState: state, normalize: s => s });
+      const result = applyPreset(preset, { migrate: false, currentState: state, normalize: s => s, ...presetEngineUpdateOptions });
+      syncCoreProductAppliedPreset(result.state);
       setState(result.state);
       setStatePresetName(entry.name);
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
       restoreEvolveConfigs(preset);
     }
-  }, [presetEntryToSavedPreset, morphPresetA, morphPosition, state, sliderModes, dualSliderRanges, applyDualRangesFromPreset, restoreEvolveConfigs]);
+  }, [
+    presetEntryToSavedPreset,
+    morphPresetA,
+    morphPosition,
+    state,
+    sliderModes,
+    dualSliderRanges,
+    applyDualRangesFromPreset,
+    presetEngineUpdateOptions,
+    restoreEvolveConfigs,
+    syncCoreProductAppliedPreset,
+  ]);
 
   // ── Record Stems Toggle Callback (used by GlobalPage) ──
   const handleRecordStemsToggle = useCallback((key: string) => {
@@ -6559,7 +6621,8 @@ const App: React.FC = () => {
     const shouldApplyPresetA = atEndpoint0 || !morphPresetB;
     
     if (shouldApplyPresetA) {
-      const result = applyPreset(preset, { currentState: state, normalize: normalizePresetForWeb });
+      const result = applyPreset(preset, { currentState: state, normalize: normalizePresetForWeb, ...presetEngineUpdateOptions });
+      syncCoreProductAppliedPreset(result.state);
       setState(result.state);
       setStatePresetName(preset.name);
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
@@ -6568,7 +6631,21 @@ const App: React.FC = () => {
     // If in mid-morph, the useEffect will handle applying the interpolated state
     
     setShowPresetList(false);
-  }, [uiMode, morphLoadTarget, handleLoadPresetToSlot, state, sliderModes, dualSliderRanges, morphPresetB, morphPosition, snowflakeActivated]);
+  }, [
+    uiMode,
+    morphLoadTarget,
+    handleLoadPresetToSlot,
+    state,
+    sliderModes,
+    dualSliderRanges,
+    morphPresetB,
+    morphPosition,
+    snowflakeActivated,
+    applyDualRangesFromPreset,
+    presetEngineUpdateOptions,
+    restoreEvolveConfigs,
+    syncCoreProductAppliedPreset,
+  ]);
 
   // Delete preset - just removes from UI list (can't delete files from browser)
   const handleDeletePreset = async (index: number) => {

@@ -38,6 +38,10 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Generated audit/check output
+docs/reports/
+docs/ui-audit/
+
 # Environment
 .env
 .env.local

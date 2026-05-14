@@ -44,8 +44,6 @@ const generatedPaths = [
   '.tmp_wasm_exports.cjs',
   '.DS_Store',
   'public/.DS_Store',
-  'public/ARCHIVE/.DS_Store',
-  'public/ARCHIVE/Zoia/.DS_Store',
   'public/samples/.DS_Store',
 ];
 

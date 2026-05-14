@@ -405,9 +405,7 @@ Add level rows + sends for the 3 new slots. Follow the existing pattern for wate
 
 ## 7. Interactive Scene Mixer — Visual Concept
 
-This is a **future feature** (build the audio first, then this). A working reference mockup exists at:
-
-👉 `public/ARCHIVE/earth-scene-mockup.html` — open it in a browser to interact with it.
+This is a **future feature** (build the audio first, then this). Historical mockups are kept outside the active app repository.
 
 ### Core concept
 

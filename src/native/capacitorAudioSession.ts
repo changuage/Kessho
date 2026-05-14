@@ -247,7 +247,7 @@ export function shouldUseCapacitorAudioSessionDiagnostics(): boolean {
     if (storedMode === 'debug' || storedMode === 'on') return true;
     if (storedMode === 'off') return false;
   } catch {
-    // Ignore storage failures and keep the web/Core WASM lane as the default.
+    // Ignore storage failures and keep runtime detection as the default.
   }
   return false;
 }

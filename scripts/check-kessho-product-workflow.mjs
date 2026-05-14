@@ -40,8 +40,6 @@ const requiredPaths = [
   'KesshoNativeSwift/Generated/**',
   'docs/kessho-product-core-migration-status.md',
   'docs/kessho-product-default-gate-v3.md',
-  'docs/reports/kessho-product-*.json',
-  'docs/reports/kessho-product-*.md',
 ];
 
 for (const requiredPath of requiredPaths) {
@@ -53,6 +51,23 @@ for (const requiredPath of requiredPaths) {
   assert(
     pushSection.includes(quoted),
     `Product Core workflow push trigger is missing ${requiredPath}`,
+  );
+}
+
+const forbiddenGeneratedReportTriggers = [
+  'docs/reports/kessho-product-*.json',
+  'docs/reports/kessho-product-*.md',
+];
+
+for (const forbiddenPath of forbiddenGeneratedReportTriggers) {
+  const quoted = `- '${forbiddenPath}'`;
+  assert(
+    !pullRequestSection.includes(quoted),
+    `Product Core workflow pull_request trigger must not include generated report output: ${forbiddenPath}`,
+  );
+  assert(
+    !pushSection.includes(quoted),
+    `Product Core workflow push trigger must not include generated report output: ${forbiddenPath}`,
   );
 }
 

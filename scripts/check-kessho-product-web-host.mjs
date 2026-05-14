@@ -24,6 +24,7 @@ const appRuntime = read('src/audio/runtime.ts');
 const app = read('src/App.tsx');
 const events = read('src/audio/coreProductEvents.ts');
 const snapshot = read('src/audio/coreProductSnapshot.ts');
+const snapshotTypes = read('src/audio/coreProductSnapshotTypes.ts');
 const arrangementScheduler = read('src/audio/coreProductArrangementScheduler.ts');
 const snapshotEncoder = read('src/audio/coreProductSnapshotEncoder.ts');
 const legacyPresetCompat = read('src/audio/CoreProductLegacyPresetCompat.ts');
@@ -33,7 +34,7 @@ const generatedSchema = read('src/audio/generated/kesshoProductSchema.ts');
 const worklet = read('public/worklets/kessho-core-product.worklet.js');
 const manifest = read('scripts/kessho-core-build-manifest.mjs');
 const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostRuntimeGuards}`;
-const snapshotSurface = `${snapshot}\n${snapshotEncoder}`;
+const snapshotSurface = `${snapshotTypes}\n${snapshot}\n${snapshotEncoder}`;
 
 const lineCount = (source) => source.split('\n').length;
 assert(lineCount(host) <= 1550, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
@@ -68,7 +69,7 @@ for (const token of [
   'registerAsset(asset: DecodedCoreProductAsset): void',
   'this.assetAdapter.registerAsset(asset)',
   'this.assetAdapter.clear()',
-  'this.assetAdapter.shouldUseDefaultAssets()',
+  'this.assetAdapter.hasMissingDefaultAssetsForState()',
   'this.assetAdapter.ensureDefaultAssetsForState()',
   'this.assetAdapter.ensurePianoAssetForMidi(note.midi)',
   'this.assetAdapter.registeredDecodedAssetByteLength()',
@@ -178,7 +179,7 @@ for (const token of [
   'registerAsset(asset: DecodedCoreProductAsset): void',
   'getDecodedCoreProductAssetByteLength(asset)',
   'registeredDecodedAssetByteLength(): number',
-  'shouldUseDefaultAssets(): boolean',
+  'hasMissingDefaultAssetsForState(): boolean',
   'ensureDefaultAssetsForState(): Promise<void>',
   'ensureDefaultPianoAsset(): Promise<void>',
   'ensurePianoAssetsForState(): Promise<void>',
@@ -540,7 +541,7 @@ for (const token of [
   "delayBMix: delayBEnabled",
   "delayBPattern: delayBPatternId(sliderState?.delayBPattern)",
   "reverbType: reverbTypeId(sliderState?.reverbType)",
-  "reverbQuality: reverbQualityId(sliderState?.reverbQuality)",
+  "reverbQuality: reverbQualityId(shouldUseMobileReverbQualityOverride(sliderState) ? 'balanced' : sliderState?.reverbQuality)",
   "reverbErLpFreq: clamp(numberFromState(sliderState, 'reverbErLpFreq', 2500), 200, 12000)",
   "delayBToReverb: clamp(numberFromState(sliderState, 'granularDelayReverbSend', 0.4), 0, 1)",
   "spectralFreezeMix: clamp(numberFromState(sliderState, 'spectralFreezeMix', 1), 0, 1)",
@@ -572,7 +573,7 @@ for (const token of [
   'synthSourceIdFromState',
   'drumTargetVoiceIndices',
   'CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID',
-  'getDefaultCoreProductSoundscapeAssetId(state)',
+  'getPrimaryCoreProductSoundscapeAssetIdForState(state)',
   'sourcePresetId',
   'soundscapePresetIdFromState',
   'u32(snapshot.fx.reverbType >>> 0)',
@@ -617,14 +618,19 @@ function importSpecifiers(source) {
 
 const snapshotImportAllowlist = new Set([
   '../ui/state',
+  '../platform',
   './CoreProductLegacyPresetCompat',
   './coreProductAssets',
   './coreProductEvents',
   './coreProductSnapshotEncoder',
+  './coreProductSnapshotTypes',
   './generated/kesshoProductSchema',
   './granularMacroCore',
+  './harmony',
   './outputTrims',
+  './rng',
   './transport',
+  './waterPresets',
 ]);
 for (const specifier of importSpecifiers(snapshot)) {
   assert(
