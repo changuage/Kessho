@@ -171,7 +171,7 @@
     "routing": {
       "delayAToDelayB": 0,
       "delayBToDelayA": 0,
-      "delayToReverb": 0.2,
+      "delayToReverb": 0.4,
       "granularToReverb": 0.15,
       "delayAToGranular": 0,
       "delayBToGranular": 0,
@@ -371,6 +371,8 @@
       "reverbPreCompAttackMs": 0.7,
       "reverbPreCompReleaseMs": 700,
       "reverbPreCompMakeup": 2.9,
+      "reverbChordWash": false,
+      "reverbResolutionBloom": false,
       "spectralFreezeMix": 0,
       "spectralFreezeEnabled": false,
       "spectralFreezeActive": false,

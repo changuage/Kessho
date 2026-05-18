@@ -121,6 +121,44 @@ export const applyLeadDistanceEnvelope = (
   };
 };
 
+type LeadDistanceTimbreParams = {
+  filterFreq: number;
+  filterQ: number;
+  filterEnvDepth: number;
+  transientClick: number;
+  transientNoise: number;
+  mod1Index: number;
+  mod2Index: number;
+  mod3Index: number;
+  mod4Index: number;
+  drive: number;
+  carrier2Mix: number;
+  gain: number;
+};
+
+export const applyLeadDistanceTimbre = <T extends LeadDistanceTimbreParams>(
+  morphed: T,
+  distance: number,
+): T => {
+  if (distance <= 1e-4) return morphed;
+  const shaped = scaleDistance(distance);
+  return {
+    ...morphed,
+    filterFreq: Math.max(80, morphed.filterFreq * (1 - shaped * 0.72)),
+    filterQ: Math.max(0.05, morphed.filterQ * (1 - shaped * 0.18)),
+    filterEnvDepth: morphed.filterEnvDepth * (1 - shaped * 0.55),
+    transientClick: morphed.transientClick * (1 - shaped * 0.92),
+    transientNoise: morphed.transientNoise * (1 - shaped * 0.82),
+    mod1Index: morphed.mod1Index * (1 - shaped * 0.34),
+    mod2Index: morphed.mod2Index * (1 - shaped * 0.30),
+    mod3Index: morphed.mod3Index * (1 - shaped * 0.24),
+    mod4Index: morphed.mod4Index * (1 - shaped * 0.18),
+    drive: morphed.drive * (1 - shaped * 0.62),
+    carrier2Mix: morphed.carrier2Mix * (1 - shaped * 0.12),
+    gain: morphed.gain * (1 - shaped * 0.15),
+  };
+};
+
 export const applyPianoDistanceEnvelope = (env: EnvelopeShape, distance: number): EnvelopeShape => {
   if (Math.abs(distance) <= 1e-4) return env;
   return {

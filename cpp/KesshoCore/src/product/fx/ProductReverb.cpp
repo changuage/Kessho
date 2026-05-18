@@ -1,5 +1,89 @@
 #include "../KesshoProductEngineInternal.h"
 
+namespace {
+constexpr float kReverbWashDecayPerVisualFrame = 0.92f;
+constexpr float kReverbBloomDecayPerVisualFrame = 0.95f;
+constexpr float kReverbBoostEpsilon = 0.001f;
+}
+
+  void KesshoProductEngine::resetReverbHarmonyCoupling() {
+  reverb_wash_boost = 0.0f;
+  reverb_bloom_boost = 0.0f;
+  reverb_prev_chord_tension = 0.0f;
+  reverb_last_chord_degree = 0u;
+  reverb_last_phrase_index = 0u;
+  reverb_harmony_runtime_initialized = false;
+  reverb_harmony_boost_active_last_block = false;
+}
+
+  void KesshoProductEngine::advanceReverbHarmonyCoupling(uint32_t frames) {
+  if (frames == 0u || sample_rate <= 0.0) {
+    return;
+  }
+
+  bool triggered = false;
+  const bool coupling_enabled = fx.reverb_chord_wash || fx.reverb_resolution_bloom;
+  if (transport.running && coupling_enabled) {
+    int intervals[kMaxScaleNotes]{};
+    const uint32_t scale_count = std::max(1u, scaleIntervals(harmony.scale_id, intervals));
+    const uint64_t phrase = transport.phraseIndex(sample_rate);
+    const uint64_t bar = transport.barIndex(sample_rate);
+    const uint32_t chord_degree =
+        circleOfFifthsProgressionDegree(rng_seed, harmony.tension, bar, phrase, scale_count);
+    const float chord_tension =
+        clampFloat(std::fmod(clampFloat(harmony.tension, 0.0f, 1.0f), 0.5f) * 2.0f, 0.0f, 1.0f);
+
+    if (!reverb_harmony_runtime_initialized) {
+      reverb_harmony_runtime_initialized = true;
+      reverb_last_phrase_index = phrase;
+      reverb_last_chord_degree = chord_degree;
+      reverb_prev_chord_tension = chord_tension;
+    } else if (phrase != reverb_last_phrase_index) {
+      if (fx.reverb_chord_wash && chord_degree != reverb_last_chord_degree) {
+        reverb_wash_boost = 1.0f;
+        triggered = true;
+      }
+      if (fx.reverb_resolution_bloom && chord_tension < reverb_prev_chord_tension - 0.15f) {
+        reverb_bloom_boost = 1.0f;
+        triggered = true;
+      }
+      reverb_last_phrase_index = phrase;
+      reverb_last_chord_degree = chord_degree;
+      reverb_prev_chord_tension = chord_tension;
+    }
+  }
+
+  const bool boost_active_before_decay =
+      reverb_wash_boost > kReverbBoostEpsilon ||
+      reverb_bloom_boost > kReverbBoostEpsilon ||
+      triggered;
+  const bool boost_active = boost_active_before_decay || reverb_harmony_boost_active_last_block;
+  if (boost_active) {
+    configureReverbModule();
+  }
+
+  const float visual_frames =
+      std::max(0.0f, static_cast<float>(frames) / std::max(1.0f, static_cast<float>(sample_rate) / 60.0f));
+  if (reverb_wash_boost > kReverbBoostEpsilon) {
+    reverb_wash_boost *= std::pow(kReverbWashDecayPerVisualFrame, visual_frames);
+    if (reverb_wash_boost <= kReverbBoostEpsilon) {
+      reverb_wash_boost = 0.0f;
+    }
+  }
+  if (reverb_bloom_boost > kReverbBoostEpsilon) {
+    reverb_bloom_boost *= std::pow(kReverbBloomDecayPerVisualFrame, visual_frames);
+    if (reverb_bloom_boost <= kReverbBoostEpsilon) {
+      reverb_bloom_boost = 0.0f;
+    }
+  }
+  const bool boost_active_after_decay =
+      reverb_wash_boost > kReverbBoostEpsilon ||
+      reverb_bloom_boost > kReverbBoostEpsilon;
+  reverb_harmony_boost_active_last_block =
+      boost_active_after_decay ||
+      (boost_active_before_decay && !boost_active_after_decay);
+}
+
   float KesshoProductEngine::reverbPreCompressorGainDbForLevel(float level_db) const {
   const float threshold = clampFloat(fx.reverb_pre_comp_threshold, -60.0f, 0.0f);
   const float knee = clampFloat(fx.reverb_pre_comp_knee, 0.0f, 40.0f);

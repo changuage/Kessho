@@ -15,6 +15,7 @@ public enum KesshoProductAssetIDs {
     public static let pianoBase: UInt32 = 7_200
     public static let pianoBaseMidi: Int = 21
     public static let pianoSampleCount: Int = 64
+    public static let pianoShortBase: UInt32 = pianoBase + UInt32(pianoSampleCount)
     public static let defaultPianoMidi: Int = 60
     public static let defaultPiano: UInt32 = pianoAssetId(forMidi: defaultPianoMidi)
     public static let defaultSoundscape: UInt32 = 7_101
@@ -24,9 +25,15 @@ public enum KesshoProductAssetIDs {
     public static let birds2Soundscape: UInt32 = 7_105
     public static let insectsSoundscape: UInt32 = 7_106
 
-    public static func pianoAssetId(forMidi midiNote: Int) -> UInt32 {
+    public enum PianoSampleVariant {
+        case regular
+        case short
+    }
+
+    public static func pianoAssetId(forMidi midiNote: Int, variant: PianoSampleVariant = .regular) -> UInt32 {
         let clamped = max(pianoBaseMidi, min(pianoBaseMidi + pianoSampleCount - 1, midiNote))
-        return pianoBase + UInt32(clamped - pianoBaseMidi + 1)
+        let base = variant == .short ? pianoShortBase : pianoBase
+        return base + UInt32(clamped - pianoBaseMidi + 1)
     }
 }
 
@@ -76,16 +83,22 @@ public enum KesshoProductCoreAssetManifest {
         84,
     ]
 
-    public static func pianoDescriptor(forMidi midiNote: Int = KesshoProductAssetIDs.defaultPianoMidi) -> KesshoProductCoreAssetDescriptor {
+    public static func pianoDescriptor(
+        forMidi midiNote: Int = KesshoProductAssetIDs.defaultPianoMidi,
+        variant: KesshoProductAssetIDs.PianoSampleVariant = .regular
+    ) -> KesshoProductCoreAssetDescriptor {
         let clamped = max(
             KesshoProductAssetIDs.pianoBaseMidi,
             min(KesshoProductAssetIDs.pianoBaseMidi + KesshoProductAssetIDs.pianoSampleCount - 1, midiNote)
         )
         let index = clamped - KesshoProductAssetIDs.pianoBaseMidi + 1
         let indexText = String(format: "%02d", index)
+        let relativePath = variant == .short
+            ? "Piano/piano short_\(indexText).ogg"
+            : "Piano/piano_\(indexText).ogg"
         return KesshoProductCoreAssetDescriptor(
-            id: KesshoProductAssetIDs.pianoAssetId(forMidi: clamped),
-            relativePath: "Piano/piano_\(indexText).ogg",
+            id: KesshoProductAssetIDs.pianoAssetId(forMidi: clamped, variant: variant),
+            relativePath: relativePath,
             flags: KesshoProductAssetFlags.piano
         )
     }

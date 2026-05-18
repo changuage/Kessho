@@ -196,6 +196,30 @@ type WebGraphRecordTrackId =
   | 'sidechainPad1Input'
   | 'sidechainPad1Output'
   | 'sidechainPad1GainTrace'
+  | 'sidechainPad2Input'
+  | 'sidechainPad2Output'
+  | 'sidechainPad2GainTrace'
+  | 'sidechainLead1Input'
+  | 'sidechainLead1Output'
+  | 'sidechainLead1GainTrace'
+  | 'sidechainLead2Input'
+  | 'sidechainLead2Output'
+  | 'sidechainLead2GainTrace'
+  | 'sidechainPianoInput'
+  | 'sidechainPianoOutput'
+  | 'sidechainPianoGainTrace'
+  | 'sidechainGranularInput'
+  | 'sidechainGranularOutput'
+  | 'sidechainGranularGainTrace'
+  | 'sidechainDelayAInput'
+  | 'sidechainDelayAOutput'
+  | 'sidechainDelayAGainTrace'
+  | 'sidechainDelayBInput'
+  | 'sidechainDelayBOutput'
+  | 'sidechainDelayBGainTrace'
+  | 'sidechainReverbInput'
+  | 'sidechainReverbOutput'
+  | 'sidechainReverbGainTrace'
   | 'dynamicsInput'
   | 'dynamicsOutput'
   | 'masterPreLimiter'
@@ -1016,6 +1040,8 @@ export class AudioEngine {
   private pendingGranularWorkletUpdate: GranularWorkletUpdate | null = null;
   private granularWorkletDispatchTimer: number | null = null;
   private lastGranularWorkletDispatchMs = 0;
+  private lastGranularRandomSeedMaterial = '';
+  private lastGranularRandomSequencePreview: number[] = [];
 
   // Granular multi-tap delay (Microcosm-style)
   private granularDelayInputNode: GainNode | null = null;
@@ -2191,45 +2217,48 @@ export class AudioEngine {
     return nextState;
   }
 
-  private applyManualAuditionMixState(source: ManualSynthSource, state: SliderState): void {
+  private applyManualAuditionMixStateForSources(sources: ReadonlySet<ManualSynthSource>, state: SliderState): void {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
     const smoothTime = 0.01;
     const shv = (key: string, fallback: number) => this.shv(key, fallback);
     const padState = this.getEffectivePadState(state);
+    const hasPad1 = sources.has('pad1');
+    const hasPad2 = sources.has('pad2');
+    const hasLead1 = sources.has('lead1');
+    const hasLead2 = sources.has('lead2');
+    const hasPiano = sources.has('piano');
 
-    if (source === 'pad1' || source === 'pad2') {
-      const isPad2 = source === 'pad2';
+    if (hasPad1 || hasPad2) {
       this.synthDirect?.gain.setTargetAtTime(1, now, smoothTime);
-      this.pad1ReverbSend?.gain.setTargetAtTime(!isPad2 && state.reverbEnabled ? shv('pad1ReverbSend', padState.pad1ReverbSend ?? 0) : 0, now, smoothTime);
-      this.pad2ReverbSend?.gain.setTargetAtTime(isPad2 && state.reverbEnabled ? shv('pad2ReverbSend', padState.pad2ReverbSend ?? 0) : 0, now, smoothTime);
-      this.pad1DelayASend?.gain.setTargetAtTime(!isPad2 ? shv('pad1DelayASend', padState.pad1DelayASend ?? 0) : 0, now, smoothTime);
-      this.pad1DelayBSend?.gain.setTargetAtTime(!isPad2 ? shv('pad1DelayBSend', padState.pad1DelayBSend ?? 0) : 0, now, smoothTime);
-      this.pad2DelayASend?.gain.setTargetAtTime(isPad2 ? shv('pad2DelayASend', padState.pad2DelayASend ?? 0) : 0, now, smoothTime);
-      this.pad2DelayBSend?.gain.setTargetAtTime(isPad2 ? shv('pad2DelayBSend', padState.pad2DelayBSend ?? 0) : 0, now, smoothTime);
-      return;
+      this.pad1ReverbSend?.gain.setTargetAtTime(hasPad1 && state.reverbEnabled ? shv('pad1ReverbSend', padState.pad1ReverbSend ?? 0) : 0, now, smoothTime);
+      this.pad2ReverbSend?.gain.setTargetAtTime(hasPad2 && state.reverbEnabled ? shv('pad2ReverbSend', padState.pad2ReverbSend ?? 0) : 0, now, smoothTime);
+      this.pad1DelayASend?.gain.setTargetAtTime(hasPad1 ? shv('pad1DelayASend', padState.pad1DelayASend ?? 0) : 0, now, smoothTime);
+      this.pad1DelayBSend?.gain.setTargetAtTime(hasPad1 ? shv('pad1DelayBSend', padState.pad1DelayBSend ?? 0) : 0, now, smoothTime);
+      this.pad2DelayASend?.gain.setTargetAtTime(hasPad2 ? shv('pad2DelayASend', padState.pad2DelayASend ?? 0) : 0, now, smoothTime);
+      this.pad2DelayBSend?.gain.setTargetAtTime(hasPad2 ? shv('pad2DelayBSend', padState.pad2DelayBSend ?? 0) : 0, now, smoothTime);
     }
 
     const lead1Level = applyDistanceValue('lead1Level', state, 'lead1');
     const lead2Level = applyDistanceValue('lead2Level', state, 'lead2');
     const pianoLevel = applyDistanceValue('pianoLevel', state, 'piano') * ENGINE_TRIMS.piano;
 
-    this.lead1LevelGain?.gain.setTargetAtTime(source === 'lead1' ? lead1Level : 0, now, smoothTime);
-    this.leadWasmLevelGain?.gain.setTargetAtTime(source === 'lead1' ? lead1Level : 0, now, smoothTime);
-    this.lead2LevelGain?.gain.setTargetAtTime(source === 'lead2' ? lead2Level : 0, now, smoothTime);
-    this.leadWasmLead2LevelGain?.gain.setTargetAtTime(source === 'lead2' ? lead2Level : 0, now, smoothTime);
-    this.pianoLevelGain?.gain.setTargetAtTime(source === 'piano' ? pianoLevel : 0, now, smoothTime);
+    this.lead1LevelGain?.gain.setTargetAtTime(hasLead1 ? lead1Level : 0, now, smoothTime);
+    this.leadWasmLevelGain?.gain.setTargetAtTime(hasLead1 ? lead1Level : 0, now, smoothTime);
+    this.lead2LevelGain?.gain.setTargetAtTime(hasLead2 ? lead2Level : 0, now, smoothTime);
+    this.leadWasmLead2LevelGain?.gain.setTargetAtTime(hasLead2 ? lead2Level : 0, now, smoothTime);
+    this.pianoLevelGain?.gain.setTargetAtTime(hasPiano ? pianoLevel : 0, now, smoothTime);
 
-    this.lead1ReverbSend?.gain.setTargetAtTime(source === 'lead1' && state.reverbEnabled ? applyDistanceValue('lead1ReverbSend', state, 'lead1') : 0, now, smoothTime);
-    this.lead2ReverbSend?.gain.setTargetAtTime(source === 'lead2' && state.reverbEnabled ? applyDistanceValue('lead2ReverbSend', state, 'lead2') : 0, now, smoothTime);
-    this.pianoReverbSend?.gain.setTargetAtTime(source === 'piano' && state.reverbEnabled ? applyDistanceValue('pianoReverbSend', state, 'piano') : 0, now, smoothTime);
+    this.lead1ReverbSend?.gain.setTargetAtTime(hasLead1 && state.reverbEnabled ? applyDistanceValue('lead1ReverbSend', state, 'lead1') : 0, now, smoothTime);
+    this.lead2ReverbSend?.gain.setTargetAtTime(hasLead2 && state.reverbEnabled ? applyDistanceValue('lead2ReverbSend', state, 'lead2') : 0, now, smoothTime);
+    this.pianoReverbSend?.gain.setTargetAtTime(hasPiano && state.reverbEnabled ? applyDistanceValue('pianoReverbSend', state, 'piano') : 0, now, smoothTime);
 
-    this.lead1DelayASend?.gain.setTargetAtTime(source === 'lead1' ? shv('lead1DelayASend', state.lead1DelayASend ?? 0) : 0, now, smoothTime);
-    this.lead1DelayBSend?.gain.setTargetAtTime(source === 'lead1' ? shv('lead1DelayBSend', state.lead1DelayBSend ?? 0) : 0, now, smoothTime);
-    this.lead2DelayASend?.gain.setTargetAtTime(source === 'lead2' ? shv('lead2DelayASend', state.lead2DelayASend ?? 0) : 0, now, smoothTime);
-    this.lead2DelayBSend?.gain.setTargetAtTime(source === 'lead2' ? shv('lead2DelayBSend', state.lead2DelayBSend ?? 0) : 0, now, smoothTime);
-    this.pianoDelayASend?.gain.setTargetAtTime(source === 'piano' ? shv('pianoDelayASend', state.pianoDelayASend ?? 0) : 0, now, smoothTime);
-    this.pianoDelayBSend?.gain.setTargetAtTime(source === 'piano' ? shv('pianoDelayBSend', state.pianoDelayBSend ?? 0) : 0, now, smoothTime);
+    this.lead1DelayASend?.gain.setTargetAtTime(hasLead1 ? shv('lead1DelayASend', state.lead1DelayASend ?? 0) : 0, now, smoothTime);
+    this.lead1DelayBSend?.gain.setTargetAtTime(hasLead1 ? shv('lead1DelayBSend', state.lead1DelayBSend ?? 0) : 0, now, smoothTime);
+    this.lead2DelayASend?.gain.setTargetAtTime(hasLead2 ? shv('lead2DelayASend', state.lead2DelayASend ?? 0) : 0, now, smoothTime);
+    this.lead2DelayBSend?.gain.setTargetAtTime(hasLead2 ? shv('lead2DelayBSend', state.lead2DelayBSend ?? 0) : 0, now, smoothTime);
+    this.pianoDelayASend?.gain.setTargetAtTime(hasPiano ? shv('pianoDelayASend', state.pianoDelayASend ?? 0) : 0, now, smoothTime);
+    this.pianoDelayBSend?.gain.setTargetAtTime(hasPiano ? shv('pianoDelayBSend', state.pianoDelayBSend ?? 0) : 0, now, smoothTime);
     this.sendLeadFmWasmDelay(state);
   }
 
@@ -2238,6 +2267,14 @@ export class AudioEngine {
   }
 
   private async prepareManualSynthChain(state: SliderState, source: ManualSynthSource, focusMidi?: number): Promise<void> {
+    await this.prepareManualSynthChainForSources(state, new Set([source]), focusMidi);
+  }
+
+  private async prepareManualSynthChainForSources(
+    state: SliderState,
+    sources: ReadonlySet<ManualSynthSource>,
+    focusMidi?: number,
+  ): Promise<void> {
     if (this.ctx?.state === 'closed') {
       this.resetIndependentSynthContextState();
       this.ctx = null;
@@ -2252,22 +2289,22 @@ export class AudioEngine {
     this.ensureSynthChain();
     await Promise.resolve();
     this.applyParams(state);
-    this.applyManualAuditionMixState(source, state);
+    this.applyManualAuditionMixStateForSources(sources, state);
 
-    if (source === 'pad1' || source === 'pad2') {
+    if (sources.has('pad1') || sources.has('pad2')) {
       await this.ensurePadWasmForIndependentSynth();
       await this.waitForPadWasmReady();
       this.sendPadWasmParams(state);
-      this.applyManualAuditionMixState(source, state);
+      this.applyManualAuditionMixStateForSources(sources, state);
     }
 
-    if (source === 'lead1' || source === 'lead2') {
+    if (sources.has('lead1') || sources.has('lead2')) {
       await this.ensureLeadFmWasmForIndependentSynth();
       await this.waitForLeadFmWasmReady();
-      this.applyManualAuditionMixState(source, state);
+      this.applyManualAuditionMixStateForSources(sources, state);
     }
 
-    if (source === 'piano') {
+    if (sources.has('piano')) {
       await this.ensurePianoFocusSampleLoaded(focusMidi);
     }
 
@@ -5315,16 +5352,9 @@ export class AudioEngine {
 
   async auditionSynthNotes(notes: ManualSynthNoteOptions[], externalState?: SliderState): Promise<void> {
     if (!Array.isArray(notes) || notes.length === 0) return;
-
-    const firstSource = notes[0]?.source;
-    const canBatchPad = (
-      (firstSource === 'pad1' || firstSource === 'pad2') &&
-      notes.every((note) => note.source === firstSource)
-    );
-    if (!canBatchPad) {
-      for (const note of notes) {
-        await this.auditionSynthNote(note, externalState);
-      }
+    if (notes.length === 1) {
+      const onlyNote = notes[0];
+      if (onlyNote) await this.auditionSynthNote(onlyNote, externalState);
       return;
     }
 
@@ -5334,59 +5364,83 @@ export class AudioEngine {
       return;
     }
 
-    const source = firstSource as 'pad1' | 'pad2';
     const entries: Array<{
       note: ManualSynthNoteOptions;
+      source: ManualSynthSource;
       safeMidi: number;
       frequency: number;
       velocity: number;
-      voiceIndex: number;
+      voiceIndex: number | null;
       originalIsPad2: boolean;
     }> = [];
     let effectiveState = baseState;
+    const sources = new Set<ManualSynthSource>();
     for (const note of notes) {
+      sources.add(note.source);
       const safeMidi = Math.max(24, Math.min(108, Math.round(note.midi)));
-      const voiceIndex = this.pickManualPadVoice(source, effectiveState);
-      const bit = 1 << voiceIndex;
+      const padSource = note.source === 'pad1' || note.source === 'pad2' ? note.source : null;
+      const voiceIndex = padSource ? this.pickManualPadVoice(padSource, effectiveState) : null;
+      const bit = voiceIndex === null ? 0 : 1 << voiceIndex;
       entries.push({
         note,
+        source: note.source,
         safeMidi,
         frequency: midiToFreq(safeMidi),
         velocity: Math.max(0.05, Math.min(1, note.velocity ?? 0.82)),
         voiceIndex,
-        originalIsPad2: ((baseState.pad2VoiceAssign ?? 0) & bit) !== 0,
+        originalIsPad2: voiceIndex === null ? false : ((baseState.pad2VoiceAssign ?? 0) & bit) !== 0,
       });
-      effectiveState = this.createManualAuditionState(source, effectiveState, voiceIndex);
+      effectiveState = this.createManualAuditionState(note.source, effectiveState, voiceIndex);
     }
 
     const previousState = this.sliderState ?? baseState;
-    const noteState = this.buildPadTriggerState(source, effectiveState) ?? effectiveState;
-    await this.prepareManualSynthChain(noteState, source, entries[0]?.safeMidi);
+    const firstPianoMidi = entries.find((entry) => entry.source === 'piano')?.safeMidi;
+    await this.prepareManualSynthChainForSources(effectiveState, sources, firstPianoMidi ?? entries[0]?.safeMidi);
 
     try {
-      const isPad2 = source === 'pad2';
-      this.clearManualPadAuditionTails();
+      if (entries.some((entry) => entry.voiceIndex !== null)) {
+        this.clearManualPadAuditionTails();
+      }
       for (const entry of entries) {
-        const noteDuration = entry.note.durationMs !== undefined
-          ? Math.max(80, entry.note.durationMs) / 1000
-          : this.getManualPadTapDuration(noteState, source);
-        const release = Math.max(0.05, isPad2 ? (noteState.pad2Release ?? 0.6) : (noteState.synthRelease ?? 0.6));
+        switch (entry.source) {
+          case 'lead1':
+            this.playLeadNote(entry.frequency, entry.velocity, 'lead1', null, true);
+            break;
+          case 'lead2':
+            this.playLeadNote(entry.frequency, entry.velocity, 'lead2', null, true);
+            break;
+          case 'piano':
+            this.playPianoNote(entry.frequency, entry.velocity);
+            break;
+          case 'pad1':
+          case 'pad2': {
+            if (entry.voiceIndex === null) break;
+            const voiceIndex = entry.voiceIndex;
+            const isPad2 = entry.source === 'pad2';
+            const noteState = this.buildPadTriggerState(entry.source, effectiveState) ?? effectiveState;
+            const noteDuration = entry.note.durationMs !== undefined
+              ? Math.max(80, entry.note.durationMs) / 1000
+              : this.getManualPadTapDuration(noteState, entry.source);
+            const release = Math.max(0.05, isPad2 ? (noteState.pad2Release ?? 0.6) : (noteState.synthRelease ?? 0.6));
 
-        this.setPadVoiceTarget(entry.voiceIndex, isPad2);
-        this.triggerSynthVoice(entry.voiceIndex, entry.frequency, entry.velocity, noteDuration, noteState);
+            this.setPadVoiceTarget(voiceIndex, isPad2);
+            this.triggerSynthVoice(voiceIndex, entry.frequency, entry.velocity, noteDuration, noteState);
 
-        if (entry.originalIsPad2 !== isPad2) {
-          const existingRestore = this.manualPadRouteRestoreTimers[entry.voiceIndex];
-          if (existingRestore !== null) {
-            clearTimeout(existingRestore);
-          }
-          const generation = this.synthVoiceNoteGen[entry.voiceIndex];
-          this.manualPadRouteRestoreTimers[entry.voiceIndex] = window.setTimeout(() => {
-            this.manualPadRouteRestoreTimers[entry.voiceIndex] = null;
-            if (this.synthVoiceNoteGen[entry.voiceIndex] === generation) {
-              this.setPadVoiceTarget(entry.voiceIndex, entry.originalIsPad2);
+            if (entry.originalIsPad2 !== isPad2) {
+              const existingRestore = this.manualPadRouteRestoreTimers[voiceIndex];
+              if (existingRestore !== null) {
+                clearTimeout(existingRestore);
+              }
+              const generation = this.synthVoiceNoteGen[voiceIndex];
+              this.manualPadRouteRestoreTimers[voiceIndex] = window.setTimeout(() => {
+                this.manualPadRouteRestoreTimers[voiceIndex] = null;
+                if (this.synthVoiceNoteGen[voiceIndex] === generation) {
+                  this.setPadVoiceTarget(voiceIndex, entry.originalIsPad2);
+                }
+              }, Math.round((noteDuration + release + 0.08) * 1000));
             }
-          }, Math.round((noteDuration + release + 0.08) * 1000));
+            break;
+          }
         }
       }
     } finally {
@@ -5396,6 +5450,9 @@ export class AudioEngine {
   }
 
   resetSonicParityFx(): void {
+    if (this.granularFxNode instanceof AudioWorkletNode) {
+      this.granularFxNode.port.postMessage({ type: 'reset' });
+    }
     if (this.reverbPreConditionerNode) {
       this.reverbPreConditionerNode.port.postMessage({ type: 'reset' });
     }
@@ -5416,6 +5473,7 @@ export class AudioEngine {
       soundscapesWasmReady: this.soundscapesWasmReady,
       soundscapes: state ? {
         parityFixture: this.isSoundscapeParityFixture(state),
+        textures: this.getEarthTextureDebugState(),
         waterStarted: this._scWaterStarted,
         waterEnabled: state.waterEnabled,
         waterSignalActive: this.getWaterFamilySendScale(state) > 0.0001,
@@ -5466,6 +5524,15 @@ export class AudioEngine {
         insectsSeed: this.isSoundscapeParityFixture(state) ? 12345 : 'no-change',
         insects2Seed: this.isSoundscapeParityFixture(state) ? 67890 : 'no-change',
       } : null,
+      granular: {
+        currentBucket: this.currentBucket,
+        currentSeed: this.currentSeed,
+        randomSeedMaterial: this.lastGranularRandomSeedMaterial,
+        randomSequencePreview: this.lastGranularRandomSequencePreview,
+        activeGrains: this.granularActiveGrainCount,
+        writeHead: this.granularWriteHeadPosition,
+        voicePositions: this.granularVoicePositions,
+      },
     };
   }
 
@@ -7465,7 +7532,8 @@ export class AudioEngine {
     // Compute seed based on time bucket only (not slider values)
     this.currentBucket = getUtcBucket(this.sliderState.seedWindow);
     this.currentSeed = computeSeed(this.currentBucket, 'E_ROOT');
-    this.rng = createRng(`${this.currentBucket}|E_ROOT`);
+    this.lastGranularRandomSeedMaterial = `${this.currentBucket}|E_ROOT`;
+    this.rng = createRng(this.lastGranularRandomSeedMaterial);
 
     // Create harmony state with full params (CoF + progression)
     this.harmonyState = createHarmonyState(
@@ -7506,7 +7574,8 @@ export class AudioEngine {
 
     this.currentBucket = getUtcBucket(this.sliderState.seedWindow);
     this.currentSeed = computeSeed(this.currentBucket, 'E_ROOT');
-    this.rng = createRng(`${this.currentBucket}|E_ROOT`);
+    this.lastGranularRandomSeedMaterial = `${this.currentBucket}|E_ROOT`;
+    this.rng = createRng(this.lastGranularRandomSeedMaterial);
 
     // Send new random sequence to granular (legacy granulator removed)
     this.sendGranularRandomSequence();
@@ -7521,9 +7590,10 @@ export class AudioEngine {
   }
 
   private sendGranularRandomSequence(): void {
-    if (!this.granularFxNode || !this.rng) return;
+    if (!this.granularFxNode || !this.lastGranularRandomSeedMaterial) return;
 
-    const sequence = generateRandomSequence(this.rng, 4096);
+    const sequence = generateRandomSequence(createRng(this.lastGranularRandomSeedMaterial), 4096);
+    this.lastGranularRandomSequencePreview = Array.from(sequence.slice(0, 8));
     this.granularFxNode.port.postMessage({
       type: 'randomSequence',
       sequence,
@@ -9440,17 +9510,31 @@ export class AudioEngine {
         effectiveShimmer  = Math.min(1, effectiveShimmer + reverbT * 0.08);
       }
 
+      const parityReverbBoost = (key: string): number | null => {
+        const raw = (state as unknown as Record<string, unknown>)[key];
+        return typeof raw === 'number' && Number.isFinite(raw)
+          ? Math.max(0, Math.min(1, raw))
+          : null;
+      };
       // ── Reverb Harmony Coupling ──
       // Chord wash — boost shimmer on chord change, then decay
-      if (this.reverbWashBoost > 0.001) {
-        effectiveShimmer = Math.min(1, effectiveShimmer + this.reverbWashBoost * 0.15);
-        this.reverbWashBoost *= 0.92; // ~180ms decay at 60fps
+      const parityWashBoost = parityReverbBoost('sonicParityReverbWashBoost');
+      const washBoost = parityWashBoost ?? this.reverbWashBoost;
+      if (washBoost > 0.001) {
+        effectiveShimmer = Math.min(1, effectiveShimmer + washBoost * 0.15);
+        if (parityWashBoost === null) {
+          this.reverbWashBoost *= 0.92; // ~180ms decay at 60fps
+        }
       }
       // Resolution bloom — boost decay+shimmer on tension resolution
-      if (this.reverbBloomBoost > 0.001) {
-        effectiveDecay = Math.min(1, effectiveDecay + this.reverbBloomBoost * 0.12);
-        effectiveShimmer = Math.min(1, effectiveShimmer + this.reverbBloomBoost * 0.1);
-        this.reverbBloomBoost *= 0.95; // ~300ms decay
+      const parityBloomBoost = parityReverbBoost('sonicParityReverbBloomBoost');
+      const bloomBoost = parityBloomBoost ?? this.reverbBloomBoost;
+      if (bloomBoost > 0.001) {
+        effectiveDecay = Math.min(1, effectiveDecay + bloomBoost * 0.12);
+        effectiveShimmer = Math.min(1, effectiveShimmer + bloomBoost * 0.1);
+        if (parityBloomBoost === null) {
+          this.reverbBloomBoost *= 0.95; // ~300ms decay
+        }
       }
 
       // Scale-aware shimmer pitch — quantize to nearest scale interval
@@ -11884,6 +11968,30 @@ export class AudioEngine {
       sidechainPad1Input: { node: this.sidechainTargets.pad1?.input ?? null },
       sidechainPad1Output: { node: this.sidechainTargets.pad1?.output ?? null },
       sidechainPad1GainTrace: { node: this.getSidechainTargetGainTraceNode('pad1') },
+      sidechainPad2Input: { node: this.sidechainTargets.pad2?.input ?? null },
+      sidechainPad2Output: { node: this.sidechainTargets.pad2?.output ?? null },
+      sidechainPad2GainTrace: { node: this.getSidechainTargetGainTraceNode('pad2') },
+      sidechainLead1Input: { node: this.sidechainTargets.lead1?.input ?? null },
+      sidechainLead1Output: { node: this.sidechainTargets.lead1?.output ?? null },
+      sidechainLead1GainTrace: { node: this.getSidechainTargetGainTraceNode('lead1') },
+      sidechainLead2Input: { node: this.sidechainTargets.lead2?.input ?? null },
+      sidechainLead2Output: { node: this.sidechainTargets.lead2?.output ?? null },
+      sidechainLead2GainTrace: { node: this.getSidechainTargetGainTraceNode('lead2') },
+      sidechainPianoInput: { node: this.sidechainTargets.piano?.input ?? null },
+      sidechainPianoOutput: { node: this.sidechainTargets.piano?.output ?? null },
+      sidechainPianoGainTrace: { node: this.getSidechainTargetGainTraceNode('piano') },
+      sidechainGranularInput: { node: this.sidechainTargets.granular?.input ?? null },
+      sidechainGranularOutput: { node: this.sidechainTargets.granular?.output ?? null },
+      sidechainGranularGainTrace: { node: this.getSidechainTargetGainTraceNode('granular') },
+      sidechainDelayAInput: { node: this.sidechainTargets.delayA?.input ?? null },
+      sidechainDelayAOutput: { node: this.sidechainTargets.delayA?.output ?? null },
+      sidechainDelayAGainTrace: { node: this.getSidechainTargetGainTraceNode('delayA') },
+      sidechainDelayBInput: { node: this.sidechainTargets.delayB?.input ?? null },
+      sidechainDelayBOutput: { node: this.sidechainTargets.delayB?.output ?? null },
+      sidechainDelayBGainTrace: { node: this.getSidechainTargetGainTraceNode('delayB') },
+      sidechainReverbInput: { node: this.sidechainTargets.reverb?.input ?? null },
+      sidechainReverbOutput: { node: this.sidechainTargets.reverb?.output ?? null },
+      sidechainReverbGainTrace: { node: this.getSidechainTargetGainTraceNode('reverb') },
       dynamics: { node: this.getDynamicsRecordableNode() },
       reverbInput: { node: this.reverbInputBus },
       delayAInput: { node: this.sharedDelayA?.input ?? null },

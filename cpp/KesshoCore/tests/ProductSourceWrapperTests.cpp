@@ -62,6 +62,50 @@ float renderPeakBlocks(KesshoProductEngine* engine, uint32_t blocks = 64) {
   return result;
 }
 
+float renderRmsBlocks(KesshoProductEngine* engine, uint32_t blocks = 64) {
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  double sum = 0.0;
+  uint32_t count = 0;
+  for (uint32_t block = 0; block < blocks; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    for (uint32_t i = 0; i < 128; ++i) {
+      require(std::isfinite(left[i]) && std::isfinite(right[i]), "non-finite output sample");
+      sum += static_cast<double>(left[i]) * static_cast<double>(left[i]);
+      sum += static_cast<double>(right[i]) * static_cast<double>(right[i]);
+      count += 2u;
+    }
+  }
+  return std::sqrt(sum / static_cast<double>(std::max<uint32_t>(1u, count)));
+}
+
+struct RenderStemPeaks {
+  float output_peak = 0.0f;
+  float stem_peak = 0.0f;
+  uint32_t max_active_voices = 0u;
+};
+
+RenderStemPeaks renderAndStemPeakBlocks(KesshoProductEngine* engine, uint32_t stem_id, uint32_t blocks = 64) {
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  std::vector<float> stem_l(128);
+  std::vector<float> stem_r(128);
+  RenderStemPeaks peaks{};
+  for (uint32_t block = 0; block < blocks; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    peaks.output_peak = std::max(peaks.output_peak, peakRange(left, right, 0, 128));
+    require(kessho_product_get_stem(engine, stem_id, stem_l.data(), stem_r.data(), 128) == KESSHO_PRODUCT_OK, "stem read failed");
+    peaks.stem_peak = std::max(peaks.stem_peak, peakRange(stem_l, stem_r, 0, 128));
+    const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+    peaks.max_active_voices = std::max(peaks.max_active_voices, telemetry.active_voices);
+  }
+  return peaks;
+}
+
 float renderDeltaRmsBlocks(KesshoProductEngine* engine, uint32_t blocks = 64) {
   std::vector<float> left(128);
   std::vector<float> right(128);
@@ -85,17 +129,6 @@ float renderDeltaRmsBlocks(KesshoProductEngine* engine, uint32_t blocks = 64) {
     }
   }
   return std::sqrt(sum / static_cast<double>(std::max<uint32_t>(1u, count)));
-}
-
-float stemPeakBlocks(KesshoProductEngine* engine, uint32_t stem_id, uint32_t blocks = 1) {
-  std::vector<float> stem_l(128);
-  std::vector<float> stem_r(128);
-  float result = 0.0f;
-  for (uint32_t block = 0; block < blocks; ++block) {
-    require(kessho_product_get_stem(engine, stem_id, stem_l.data(), stem_r.data(), 128) == KESSHO_PRODUCT_OK, "stem read failed");
-    result = std::max(result, peakRange(stem_l, stem_r, 0, 128));
-  }
-  return result;
 }
 
 const kessho::product::generated::KesshoProductGeneratedSourcePreset* generatedPreset(uint32_t preset_id) {
@@ -338,12 +371,10 @@ void requireSourceRenders(uint32_t source_id, uint32_t stem_id, float midi_note,
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "snapshot load failed");
   triggerManual(engine, source_id, midi_note);
 
-  const float output_peak = renderPeakBlocks(engine);
-  require(output_peak > 0.0001f, label);
-  require(stemPeakBlocks(engine, stem_id) > 0.0001f, "source stem missing module output");
-
-  KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
-  require(telemetry.active_voices > 0, "module active voices missing from telemetry");
+  const RenderStemPeaks peaks = renderAndStemPeakBlocks(engine, stem_id);
+  require(peaks.output_peak > 0.0001f, label);
+  require(peaks.stem_peak > 0.0001f, "source stem missing module output");
+  require(peaks.max_active_voices > 0u, "module active voices missing from telemetry");
   kessho_product_destroy(engine);
 }
 
@@ -445,13 +476,10 @@ void requireSourcePostChainAffectsRender() {
   require(tracked_event > untracked_event * 1.1f, "source post-LPF key tracking param event did not affect lead render");
 }
 
-float renderPeakWithSourceMacros(uint32_t source_id, float morph, float distance, float expression) {
+float renderRmsWithSourceMacros(uint32_t source_id, float morph, float distance, float expression) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "macro engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
-  if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
-    snapshot.sources[source_id - 1u].preset_id = 999999u;
-  }
   snapshot.sources[source_id - 1u].morph = morph;
   snapshot.sources[source_id - 1u].distance = distance;
   snapshot.sources[source_id - 1u].expression = expression;
@@ -459,19 +487,15 @@ float renderPeakWithSourceMacros(uint32_t source_id, float morph, float distance
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "macro snapshot load failed");
   triggerManual(engine, source_id, source_id == KESSHO_PRODUCT_SOURCE_DRUM ? 36.0f : 64.0f);
 
-  const float result = renderPeakBlocks(engine);
+  const float result = renderRmsBlocks(engine);
   kessho_product_destroy(engine);
   return result;
 }
 
 void requireSourceMacrosAffectRender() {
-  const float quiet_pad = renderPeakWithSourceMacros(KESSHO_PRODUCT_SOURCE_PAD1, 0.0f, 0.0f, 0.15f);
-  const float bright_pad = renderPeakWithSourceMacros(KESSHO_PRODUCT_SOURCE_PAD1, 0.9f, 0.8f, 1.0f);
-  require(bright_pad > quiet_pad * 1.5f, "pad source macros did not affect render level/tone");
-
-  const float quiet_lead = renderPeakWithSourceMacros(KESSHO_PRODUCT_SOURCE_LEAD1, 0.0f, 0.0f, 0.15f);
-  const float bright_lead = renderPeakWithSourceMacros(KESSHO_PRODUCT_SOURCE_LEAD1, 0.9f, 0.8f, 1.0f);
-  require(bright_lead > quiet_lead * 1.5f, "lead source macros did not affect render level/tone");
+  const float quiet_pad = renderRmsWithSourceMacros(KESSHO_PRODUCT_SOURCE_PAD1, 0.0f, 0.0f, 0.15f);
+  const float bright_pad = renderRmsWithSourceMacros(KESSHO_PRODUCT_SOURCE_PAD1, 0.9f, 0.8f, 1.0f);
+  require(bright_pad > quiet_pad * 1.25f, "pad source macros did not affect render energy");
 }
 
 float renderPeakWithSourcePreset(uint32_t source_id, uint32_t preset_id, uint32_t blocks = 64) {

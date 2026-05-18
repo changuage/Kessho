@@ -75,6 +75,10 @@ public:
     (void)delay_send;
     return 0;
   }
+  virtual int setRandomSeed(uint32_t seed) {
+    (void)seed;
+    return 0;
+  }
   virtual int noteOff(int voice_index) {
     (void)voice_index;
     return 0;

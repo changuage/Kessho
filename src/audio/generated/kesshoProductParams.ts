@@ -223,6 +223,8 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   FxReverbPreCompAttackMs: 383,
   FxReverbPreCompReleaseMs: 384,
   FxReverbPreCompMakeup: 385,
+  FxReverbChordWash: 386,
+  FxReverbResolutionBloom: 387,
   FxSpectralFreezeEnabled: 930,
   FxSpectralFreezeActive: 931,
   FxSpectralFreezeSlushy: 932,
@@ -2068,6 +2070,18 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 385,
     "min": 0.5,
     "max": 4
+  },
+  {
+    "name": "FxReverbChordWash",
+    "path": "fx.reverb.chordWash",
+    "type": "bool",
+    "id": 386
+  },
+  {
+    "name": "FxReverbResolutionBloom",
+    "path": "fx.reverb.resolutionBloom",
+    "type": "bool",
+    "id": 387
   },
   {
     "name": "FxSpectralFreezeEnabled",

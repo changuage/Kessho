@@ -2,7 +2,7 @@ import type { CoreProductEvent } from './coreProductEvents';
 import type { DecodedCoreProductAsset } from './coreProductAssets';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 
-const CORE_PRODUCT_GRAPH_TAP_COUNT = 86;
+const CORE_PRODUCT_GRAPH_TAP_COUNT = 110;
 
 type RuntimeMessage =
   | { type: 'ready' }

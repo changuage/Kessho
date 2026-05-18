@@ -1,5 +1,30 @@
 #include "KesshoProductEngineInternal.h"
 
+namespace {
+
+bool decodePianoAssetRootMidi(uint32_t asset_id, uint32_t base_asset_id, bool short_variant, float& out_midi, bool* out_short_variant) {
+  if (asset_id <= base_asset_id) {
+    return false;
+  }
+  const uint32_t index = asset_id - base_asset_id;
+  if (index == 0u || index > kessho::product::internal::kPianoSampleCount) {
+    return false;
+  }
+  out_midi = static_cast<float>(kessho::product::internal::kPianoBaseMidi + index - 1u);
+  if (out_short_variant != nullptr) {
+    *out_short_variant = short_variant;
+  }
+  return true;
+}
+
+bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
+  const int note_key = std::max(0, static_cast<int>(std::lround(midi_note)));
+  const int velocity_key = std::max(0, std::min(127, static_cast<int>(std::lround(clampFloat(velocity, 0.0f, 1.0f) * 127.0f))));
+  return ((note_key * 31 + velocity_key) % 2) != 0;
+}
+
+} // namespace
+
   uint32_t KesshoProductEngine::findAssetSlot(uint32_t asset_id) const {
   for (uint32_t i = 0; i < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS; ++i) {
     if (assets[i].active && assets[i].asset_id == asset_id) {
@@ -9,32 +34,34 @@
   return kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS;
 }
 
-  bool KesshoProductEngine::pianoAssetRootMidi(uint32_t asset_id, float& out_midi) const {
-  if (asset_id <= kPianoAssetIdBase) {
-    return false;
-  }
-  const uint32_t index = asset_id - kPianoAssetIdBase;
-  if (index == 0u || index > kPianoSampleCount) {
-    return false;
-  }
-  out_midi = static_cast<float>(kPianoBaseMidi + index - 1u);
-  return true;
+  bool KesshoProductEngine::pianoAssetRootMidi(uint32_t asset_id, float& out_midi, bool* out_short_variant) const {
+  return decodePianoAssetRootMidi(asset_id, kPianoAssetIdBase, false, out_midi, out_short_variant) ||
+      decodePianoAssetRootMidi(asset_id, kPianoShortAssetIdBase, true, out_midi, out_short_variant);
 }
 
-  uint32_t KesshoProductEngine::findPianoAssetSlot(float midi_note, float& out_root_midi) const {
+  uint32_t KesshoProductEngine::findPianoAssetSlot(float midi_note, float velocity, float& out_root_midi) const {
   uint32_t best_slot = kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS;
-  float best_distance = 1000000.0f;
+  float best_score = 1000000.0f;
   float best_root = 60.0f;
+  const bool wants_short_variant = chooseShortPianoSampleVariant(midi_note, velocity);
   for (uint32_t i = 0; i < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS; ++i) {
     const AssetSlot& asset = assets[i];
     if (!asset.active || (asset.flags & KESSHO_PRODUCT_ASSET_PIANO) == 0u) {
       continue;
     }
     float root_midi = 60.0f;
-    pianoAssetRootMidi(asset.asset_id, root_midi);
+    bool short_variant = false;
+    const bool known_piano_asset = pianoAssetRootMidi(asset.asset_id, root_midi, &short_variant);
+    if (!known_piano_asset) {
+      root_midi = midi_note;
+      short_variant = wants_short_variant;
+    }
     const float distance = std::abs(root_midi - midi_note);
-    if (distance < best_distance) {
-      best_distance = distance;
+    const float variant_penalty = short_variant == wants_short_variant ? 0.0f : 0.25f;
+    const float legacy_penalty = known_piano_asset ? 0.0f : 0.5f;
+    const float score = distance + variant_penalty + legacy_penalty;
+    if (score < best_score) {
+      best_score = score;
       best_slot = i;
       best_root = root_midi;
     }
@@ -71,6 +98,7 @@
         : 0u;
     if (asset_id == 0u || !soundscapeWantsAsset(source, asset_id)) {
       voice.looping = false;
+      voice.start_delay_frames = 0u;
       voice.remaining_frames = std::min<uint32_t>(voice.remaining_frames, static_cast<uint32_t>(0.02 * sample_rate));
       voice.total_frames = std::max<uint32_t>(1u, voice.remaining_frames);
     }
@@ -112,6 +140,29 @@
 }
 
   float KesshoProductEngine::sampleVoiceEnvelope(const Voice& voice) const {
+  if (voice.soundscape_texture_voice) {
+    float envelope = 1.0f;
+    if (voice.envelope_attack_frames > 1u && voice.age_frames < voice.envelope_attack_frames) {
+      const float t = clampFloat(
+          static_cast<float>(voice.age_frames) / static_cast<float>(voice.envelope_attack_frames),
+          0.0f,
+          1.0f);
+      envelope = std::min(envelope, std::sin(t * static_cast<float>(kTwoPi * 0.25)));
+    }
+    if (voice.envelope_release_frames > 1u && voice.total_frames > voice.envelope_release_frames) {
+      const uint32_t release_start = voice.total_frames - voice.envelope_release_frames;
+      if (voice.age_frames >= release_start) {
+        const float t = clampFloat(
+            static_cast<float>(voice.age_frames - release_start) /
+                static_cast<float>(voice.envelope_release_frames),
+            0.0f,
+            1.0f);
+        envelope = std::min(envelope, std::cos(t * static_cast<float>(kTwoPi * 0.25)));
+      }
+    }
+    return clampFloat(envelope, 0.0f, 1.0f);
+  }
+
   if (voice.piano_sample_voice) {
     const uint32_t attack_frames = std::max(1u, voice.envelope_attack_frames);
     const uint32_t decay_frames = std::max(1u, voice.envelope_decay_frames);
@@ -162,10 +213,72 @@
   return data != nullptr && frame < asset.frame_count ? data[frame] : 0.0f;
 }
 
+  float KesshoProductEngine::assetSampleInterpolated(
+      const AssetSlot& asset,
+      uint32_t channel,
+      double frame_position,
+      bool looping) const {
+  if (asset.frame_count == 0u || !std::isfinite(frame_position)) {
+    return 0.0f;
+  }
+  if (frame_position < 0.0) {
+    frame_position = 0.0;
+  }
+  uint32_t frame0 = static_cast<uint32_t>(frame_position);
+  if (frame0 >= asset.frame_count) {
+    if (!looping) {
+      return 0.0f;
+    }
+    frame0 %= asset.frame_count;
+  }
+  uint32_t frame1 = frame0 + 1u;
+  if (frame1 >= asset.frame_count) {
+    frame1 = looping ? 0u : frame0;
+  }
+  const float frac = clampFloat(static_cast<float>(frame_position - std::floor(frame_position)), 0.0f, 1.0f);
+  if (asset.frame_count < 4u) {
+    const float sample0 = assetSample(asset, channel, frame0);
+    const float sample1 = assetSample(asset, channel, frame1);
+    return sample0 + (sample1 - sample0) * frac;
+  }
+
+  const auto sample_at = [&](int64_t frame) -> float {
+    if (looping) {
+      const int64_t count = static_cast<int64_t>(asset.frame_count);
+      frame %= count;
+      if (frame < 0) {
+        frame += count;
+      }
+      return assetSample(asset, channel, static_cast<uint32_t>(frame));
+    }
+    if (frame < 0 || frame >= static_cast<int64_t>(asset.frame_count)) {
+      return 0.0f;
+    }
+    return assetSample(asset, channel, static_cast<uint32_t>(frame));
+  };
+
+  const int64_t base = static_cast<int64_t>(std::floor(frame_position));
+  const float p0 = sample_at(base - 1);
+  const float p1 = sample_at(base);
+  const float p2 = sample_at(base + 1);
+  const float p3 = sample_at(base + 2);
+  const float t2 = frac * frac;
+  const float t3 = t2 * frac;
+  return 0.5f * (
+      (2.0f * p1) +
+      (-p0 + p2) * frac +
+      (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
+      (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
+}
+
   void KesshoProductEngine::renderVoiceSample(Voice& voice, float& out_l, float& out_r) {
   out_l = 0.0f;
   out_r = 0.0f;
   if (!voice.active) {
+    return;
+  }
+  if (voice.start_delay_frames > 0u) {
+    --voice.start_delay_frames;
     return;
   }
   if (voice.remaining_frames == 0u) {
@@ -192,8 +305,8 @@
         frame = static_cast<uint32_t>(voice.sample_position);
       }
     }
-    sample_l = assetSample(asset, 0u, frame);
-    sample_r = asset.channel_count > 1u ? assetSample(asset, 1u, frame) : sample_l;
+    sample_l = assetSampleInterpolated(asset, 0u, voice.sample_position, voice.looping);
+    sample_r = asset.channel_count > 1u ? assetSampleInterpolated(asset, 1u, voice.sample_position, voice.looping) : sample_l;
     const uint32_t crossfade_frames = loopCrossfadeFrames(asset);
     if (voice.looping && crossfade_frames > 1u && asset.frame_count > crossfade_frames) {
       const uint32_t crossfade_start = asset.frame_count - crossfade_frames;
@@ -232,11 +345,6 @@
       voice.active = false;
     }
   }
-  float live_level = 1.0f;
-  if (voice.sample_voice && voice.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
-    const AssetSlot& asset = assets[voice.asset_slot];
-    live_level = soundscapeAssetRefLevel(sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u], asset.asset_id);
-  }
-  out_l = sample_l * voice.amplitude * live_level;
-  out_r = sample_r * voice.amplitude * live_level;
+  out_l = sample_l * voice.amplitude;
+  out_r = sample_r * voice.amplitude;
 }

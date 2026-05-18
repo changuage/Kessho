@@ -38,6 +38,7 @@ constexpr uint32_t kGranularLegacyParamStart = 132;
 constexpr uint32_t kPianoAssetIdBase = 7200;
 constexpr uint32_t kPianoBaseMidi = 21;
 constexpr uint32_t kPianoSampleCount = 64;
+constexpr uint32_t kPianoShortAssetIdBase = kPianoAssetIdBase + kPianoSampleCount;
 constexpr double kSampleAttackSeconds = 0.004;
 constexpr double kSampleReleaseSeconds = 0.02;
 constexpr float kPianoEnvelopeAttackSeconds = 0.005f;
@@ -56,6 +57,8 @@ constexpr float kDiffuseHaasCenterGain = 0.78f;
 constexpr float kDiffuseOutputGain = 0.22f;
 constexpr float kDiffuseReverbSendGain = 0.18f;
 constexpr uint32_t kDiffuseDelayMaxFrames = 9600u;
+constexpr float kDiffuseIdleReleaseSeconds = 0.25f;
+constexpr float kDiffuseIdleSleepPeak = 1.0e-7f;
 constexpr float kDefaultPadPostLpfHz = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ;
 constexpr float kDefaultPadStereoWidth = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH;
 constexpr float kDefaultLeadPostLpfHz = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ;
@@ -79,6 +82,29 @@ constexpr uint32_t kSoundscapeLayerRouteStride = 4u;
 constexpr uint32_t kSoundscapeLayerRouteParamCount = kSoundscapeLayerCount * kSoundscapeLayerRouteStride;
 constexpr uint32_t kSoundscapeParityFixtureParam = kSoundscapeLayerRouteParamCount;
 constexpr uint32_t kSoundscapeParityParamCount = kSoundscapeParityFixtureParam + 1u;
+constexpr uint32_t kSoundscapeTextureParamStart = kSoundscapeParityParamCount;
+constexpr uint32_t kSoundscapeTextureSlotOcean = 0u;
+constexpr uint32_t kSoundscapeTextureSlotBirds = 1u;
+constexpr uint32_t kSoundscapeTextureSlotBirds2 = 2u;
+constexpr uint32_t kSoundscapeTextureSlotFrogs = 3u;
+constexpr uint32_t kSoundscapeTextureSlotCount = 4u;
+constexpr uint32_t kSoundscapeTextureParamStride = 5u;
+constexpr uint32_t kSoundscapeTextureParamSliceDuration = 0u;
+constexpr uint32_t kSoundscapeTextureParamDensity = 1u;
+constexpr uint32_t kSoundscapeTextureParamFadeTime = 2u;
+constexpr uint32_t kSoundscapeTextureParamSeedLo = 3u;
+constexpr uint32_t kSoundscapeTextureParamSeedHi = 4u;
+constexpr uint32_t kSoundscapeTextureParamCount =
+    kSoundscapeTextureParamStart + kSoundscapeTextureSlotCount * kSoundscapeTextureParamStride;
+static_assert(
+    kSoundscapeTextureParamCount <= kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT,
+    "Soundscape texture params must fit in Product source exact pad params");
+constexpr uint32_t kSoundscapeTextureMinimumQueuedSlices = 4u;
+constexpr double kSoundscapeTextureInitialDelaySeconds = 0.158;
+constexpr double kSoundscapeTextureLookAheadSeconds = 0.5;
+constexpr float kSoundscapeTexturePitchRangeCents = 200.0f;
+constexpr float kSoundscapeTextureSpeedVariation = 0.2f;
+constexpr uint32_t kSoundscapeTextureHaasDelayMaxFrames = 2400u;
 constexpr uint32_t kSoundscapeModuleParamCount = 96u;
 constexpr uint32_t kSoundscapeModuleWaterActiveParam = 0u;
 constexpr uint32_t kSoundscapeModuleWaterSeedParam = 60u;
@@ -137,95 +163,6 @@ enum DynamicsModTargetIndex : uint32_t {
   kDynamicsModTargetCount = 6,
 };
 
-static_assert(
-    KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_NOISE_ALIAS_ID -
-            KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_SLOW_WOW_ID + 1u ==
-        kDynamicsModSourceCount * kDynamicsModTargetCount,
-    "Dynamics modulation matrix Product Core param IDs must remain contiguous");
-
-enum DynamicsCharacterParamIndex : uint32_t {
-  kDynActive = 0,
-  kDynAllpassActive = 1,
-  kDynDry = 2,
-  kDynWet = 3,
-  kDynDegradeMix = 4,
-  kDynDegradeAlias = 5,
-  kDynDegradeGeneration = 6,
-  kDynDegradeCorrosion = 7,
-  kDynDegradeWear = 8,
-  kDynNoiseGain = 9,
-  kDynJitterDepth = 10,
-  kDynRandomDriftFilterHz = 11,
-  kDynRandomDriftDepth = 12,
-  kDynBaseDelay = 13,
-  kDynSpreadDelay = 14,
-  kDynRandomDrift = 15,
-  kDynRandomHoldRateHz = 16,
-  kDynRandomHoldLag = 17,
-  kDynRandomDelayDepth = 18,
-  kDynRandomSpreadDelayDepth = 19,
-  kDynRandomFilterDepth = 20,
-  kDynRandomSpreadFilterDepth = 21,
-  kDynDepth = 22,
-  kDynRate = 23,
-  kDynShallow = 24,
-  kDynAbyss = 25,
-  kDynStereo = 26,
-  kDynDamage = 27,
-  kDynMainPan = 28,
-  kDynSpreadPan = 29,
-  kDynMainDelayGain = 30,
-  kDynSpreadDelayGain = 31,
-  kDynWowFrequency = 32,
-  kDynFlutterFrequency = 33,
-  kDynFlutterRandomDepth = 34,
-  kDynWowDepth = 35,
-  kDynFlutterDepth = 36,
-  kDynHighpassHz = 37,
-  kDynHighpassQ = 38,
-  kDynAllpassAFrequency = 39,
-  kDynAllpassAQ = 40,
-  kDynAllpassBFrequency = 41,
-  kDynAllpassBQ = 42,
-  kDynHeadBumpFrequency = 43,
-  kDynHeadBumpQ = 44,
-  kDynHeadBumpGain = 45,
-  kDynDropoutFilterHz = 46,
-  kDynDropoutDepth = 47,
-  kDynDropoutGain = 48,
-  kDynEnvFilterHz = 49,
-  kDynEnvToLowpassGain = 50,
-  kDynEnvToResonanceGain = 51,
-  kDynEnvToWetGain = 52,
-  kDynLowpassHz = 53,
-  kDynLowpassQ = 54,
-  kDynLowpassStage2Hz = 55,
-  kDynLowpassStage2Q = 56,
-  kDynCompressorThreshold = 57,
-  kDynCompressorKnee = 58,
-  kDynCompressorRatio = 59,
-  kDynCompressorAttack = 60,
-  kDynCompressorRelease = 61,
-  kDynCompressorMakeup = 62,
-  kDynSaturation = 63,
-  kDynCorrosion = 64,
-  kDynMasterSatActive = 65,
-  kDynMasterSatMode = 66,
-  kDynMasterSatDrive = 67,
-  kDynMasterSatTone = 68,
-  kDynMasterSatBias = 69,
-  kDynEndCompActive = 70,
-  kDynEndCompThreshold = 71,
-  kDynEndCompKnee = 72,
-  kDynEndCompRatio = 73,
-  kDynEndCompAttack = 74,
-  kDynEndCompRelease = 75,
-  kDynEndCompMakeup = 76,
-  kDynEndCompMix = 77,
-  kDynEndCompDetectorHpHz = 78,
-  kDynEndCompDetectorTilt = 79,
-  kDynEndCompAutoMakeup = 80,
-  kDynEndCompProgramRelease = 81,
-};
-
 } // namespace kessho::product::internal
+
+#include "ProductDynamicsConstants.h"

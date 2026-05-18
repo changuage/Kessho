@@ -35,9 +35,6 @@
           preset_patch->exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
       if (exact_pad_patch) {
         pad_module->setSourcePresetPatch(static_cast<int>(pad_index), *preset_patch);
-        if (sourceMacrosDifferFromDefaults(morph, distance, expression)) {
-          pad_module->setSourceMacros(static_cast<int>(pad_index), morph, distance, expression);
-        }
       } else if (preset_patch != nullptr) {
         pad_module->setSourcePresetPatch(static_cast<int>(pad_index), *preset_patch);
         pad_module->setSourceMacros(static_cast<int>(pad_index), morph, distance, expression);
@@ -64,7 +61,7 @@
       const bool exact_lead_patch =
           preset_patch != nullptr &&
           preset_patch->exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
-      if (!exact_lead_patch || sourceMacrosDifferFromDefaults(morph, distance, expression)) {
+      if (!exact_lead_patch) {
         lead_modules[lead_index]->setTriggerMacros(morph, distance, expression);
       }
       lead_modules[lead_index]->noteOn(frequency, clamped_velocity, std::max(0.001f, hold_seconds), 0);
@@ -227,7 +224,7 @@
     const float requested_midi = clampFloat(midi_note, 0.0f, 127.0f);
     float asset_root_midi = requested_midi;
     const uint32_t slot = source_id == KESSHO_PRODUCT_SOURCE_PIANO
-        ? findPianoAssetSlot(requested_midi, asset_root_midi)
+        ? findPianoAssetSlot(requested_midi, velocity, asset_root_midi)
         : findAssetSlot(asset_id_override != 0u ? asset_id_override : source.asset_id);
     if (slot == kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS) {
       voice.active = false;
@@ -315,32 +312,6 @@
       voice.amplitude *= soundscapeLayerLevel(assets[slot], resolved_seed);
       voice.pan = soundscapeLayerPan(assets[slot], resolved_seed, distance);
       voice.sample_step *= soundscapeLayerPlaybackRate(assets[slot], resolved_seed);
-    }
-  }
-}
-
-  void KesshoProductEngine::releaseSourceVoices(uint32_t source_id) {
-  if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) && pad_module) {
-    pad_module->allNotesOff();
-    clearPadVoiceReleases(0u);
-  }
-  if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_LEAD1) && lead_modules[0]) {
-    lead_modules[0]->allNotesOff();
-  }
-  if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) && lead_modules[1]) {
-    lead_modules[1]->allNotesOff();
-  }
-  if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_DRUM) && drum_module) {
-    drum_module->allNotesOff();
-  }
-  if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) && soundscapes_module) {
-    soundscapes_module->allNotesOff();
-  }
-  for (Voice& voice : voices) {
-    if (voice.active && (source_id == 0u || voice.source_id == source_id)) {
-      voice.looping = false;
-      voice.remaining_frames = std::min<uint32_t>(voice.remaining_frames, static_cast<uint32_t>(0.02 * sample_rate));
-      voice.total_frames = std::max<uint32_t>(1u, voice.remaining_frames);
     }
   }
 }

@@ -4,10 +4,10 @@ The production asset contract is versioned in `src/audio/coreProductAssetManifes
 
 ## Manifest V1
 
-- Piano uses asset IDs `7201...7264`, rooted at MIDI 21, with `7200 + sampleIndex`.
+- Piano regular samples use asset IDs `7201...7264`, rooted at MIDI 21, with `7200 + sampleIndex`; short samples use `7265...7328`, with `7264 + sampleIndex`.
 - The default piano asset is nearest MIDI 60.
 - Startup piano preload covers representative low, mid, and high notes: `36, 40, 43, 48, 52, 55, 60, 64, 67, 72, 76, 79, 84`.
-- Piano note rendering is on-demand beyond the preload set: hosts register the nearest sample for manual notes and piano sequencer lane min/max/mid before Product Core render.
+- Piano note rendering is on-demand beyond the preload set: hosts register the nearest Web-matched regular/short sample variant for manual notes and piano sequencer lane min/max/mid before Product Core render.
 - Soundscape asset IDs `7101...7106` cover ocean, water, birds, birds2, frogs, and insects.
 
 ## Nature Scene Policy
@@ -51,10 +51,10 @@ Minimal or degraded scenes must stay silent rather than replaced by host synthes
 `core:product:asset-manifest` parses the committed Ogg/Vorbis page headers and final granule positions instead of trusting compressed file sizes. The current committed Product Core asset set accounts for:
 
 - Startup decoded assets: 185,875,176 bytes.
-- All regular Product Core piano assets plus all soundscape assets: 224,738,368 decoded bytes.
+- All regular/short Product Core piano assets plus all soundscape assets: 245,432,084 decoded bytes.
 - Largest piano asset: 1,078,488 decoded bytes.
 - Largest soundscape asset: 110,592,000 decoded bytes.
-- WASM heap after allocating every Product Core registered asset: 225,705,984 bytes.
+- WASM heap after allocating every Product Core registered asset: 246,415,360 bytes.
 
 ## Remaining Blockers
 

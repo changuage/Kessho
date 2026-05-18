@@ -188,6 +188,8 @@ export type CoreProductSnapshot = {
     reverbPreCompAttackMs: number;
     reverbPreCompReleaseMs: number;
     reverbPreCompMakeup: number;
+    reverbChordWash: boolean;
+    reverbResolutionBloom: boolean;
     spectralFreezeMix: number;
     spectralFreezeEnabled: boolean;
     spectralFreezeActive: boolean;

@@ -19,6 +19,8 @@ const requiredDomainIds = [
   'dynamicsSidechainMaster',
 ];
 
+const validDomainStatuses = ['blocked', 'partial', 'proven', 'deferred'];
+
 const requiredBoundaryKinds = [
   'sourceDry',
   'sourceReverbSend',
@@ -73,19 +75,26 @@ function validateEvidence(entry, domainId, group) {
   };
 }
 
-function passedCaseSet(report, label) {
+function auditedCaseSets(report, label, ignoredFailedCaseIds = new Set()) {
   assert(report && typeof report === 'object', `${label} report must be an object`);
-  assert(report.status === 'pass', `${label} report status must be pass`);
   assert(Array.isArray(report.cases), `${label} report must include cases`);
   const failed = report.cases.filter((caseResult) => caseResult?.status !== 'pass');
-  assert(failed.length === 0, `${label} report contains failing cases: ${failed.map((item) => item.id).join(', ')}`);
-  return new Set(report.cases.map((caseResult) => caseResult.id));
+  const blockingFailed = failed.filter((caseResult) => !ignoredFailedCaseIds.has(caseResult.id));
+  assert(
+    blockingFailed.length === 0,
+    `${label} report contains failing active cases: ${blockingFailed.map((item) => item.id).join(', ')}`,
+  );
+  return {
+    all: new Set(report.cases.map((caseResult) => caseResult.id)),
+    passed: new Set(report.cases.filter((caseResult) => caseResult.status === 'pass').map((caseResult) => caseResult.id)),
+    ignoredFailedCaseIds: failed.filter((caseResult) => ignoredFailedCaseIds.has(caseResult.id)).map((caseResult) => caseResult.id),
+  };
 }
 
-function validateCaseIds(caseIds, passedCases, domainId, group) {
+function validateCaseIds(caseIds, allowedCases, domainId, group, requirement = 'passing') {
   assert(Array.isArray(caseIds) && caseIds.length > 0, `${domainId}.${group} must list at least one case id`);
-  const missing = caseIds.filter((caseId) => !passedCases.has(caseId));
-  assert(missing.length === 0, `${domainId}.${group} references missing or non-passing cases: ${missing.join(', ')}`);
+  const missing = caseIds.filter((caseId) => !allowedCases.has(caseId));
+  assert(missing.length === 0, `${domainId}.${group} references missing or non-${requirement} cases: ${missing.join(', ')}`);
   return {
     count: caseIds.length,
     caseIds,
@@ -96,8 +105,6 @@ const manifest = readJson(manifestPath);
 const packageJson = readJson('package.json');
 const smokeReport = readJson(smokeReportPath);
 const masterReport = readJson(masterReportPath);
-const passingSmokeCases = passedCaseSet(smokeReport, 'web graph capture smoke');
-const passingMasterCases = passedCaseSet(masterReport, 'web master corpus');
 
 assert(
   packageJson.scripts?.['core:product:web-graph-capture-smoke'] ===
@@ -105,13 +112,31 @@ assert(
   'package.json must expose core:product:web-graph-capture-smoke',
 );
 assert(
+  packageJson.scripts?.['core:product:web-graph-capture-smoke:fast'] ===
+    'node scripts/check-kessho-product-web-graph-capture-smoke.mjs --tier=fast',
+  'package.json must expose core:product:web-graph-capture-smoke:fast',
+);
+assert(
+  packageJson.scripts?.['core:product:web-graph-capture-smoke:full'] ===
+    'node scripts/check-kessho-product-web-graph-capture-smoke.mjs',
+  'package.json must expose core:product:web-graph-capture-smoke:full',
+);
+assert(
   packageJson.scripts?.['core:product:web-master-corpus'] ===
     'node scripts/check-kessho-product-web-master-corpus.mjs',
   'package.json must expose core:product:web-master-corpus',
 );
+assert(
+  packageJson.scripts?.['core:product:web-master-corpus:full'] ===
+    'node scripts/check-kessho-product-web-master-corpus.mjs',
+  'package.json must expose core:product:web-master-corpus:full',
+);
 
 assert(manifest.schema === 'kessho-product-web-audio-graph-parity-v1', 'manifest schema is unexpected');
 assert(manifest.masterCorpusScript === 'npm run core:product:web-master-corpus', 'manifest must name the Web/Product master corpus script');
+assert(manifest.smokeFastScript === 'npm run core:product:web-graph-capture-smoke:fast', 'manifest must name the fast Web/Product smoke script');
+assert(manifest.smokeFullScript === 'npm run core:product:web-graph-capture-smoke:full', 'manifest must name the full Web/Product smoke script');
+assert(manifest.masterCorpusFullScript === 'npm run core:product:web-master-corpus:full', 'manifest must name the full Web/Product master corpus script');
 assert(manifest.matchedBoundaryPolicy?.requiredMasterComparison === true, 'manifest must require master comparison');
 arrayIncludesAll(
   manifest.matchedBoundaryPolicy?.requiredBoundaryKinds,
@@ -122,18 +147,43 @@ arrayIncludesAll(
 const domainIds = (manifest.domains ?? []).map((domain) => domain.id);
 arrayIncludesAll(domainIds, requiredDomainIds, 'manifest.domains');
 
+const deferredDomains = (manifest.domains ?? []).filter((domain) => domain.status === 'deferred');
+const deferredSmokeCaseIds = new Set(deferredDomains.flatMap((domain) => domain.smokeCaseIds ?? []));
+const deferredMasterCaseIds = new Set(deferredDomains.flatMap((domain) => domain.masterCaseIds ?? []));
+const smokeCaseSets = auditedCaseSets(smokeReport, 'web graph capture smoke', deferredSmokeCaseIds);
+const masterCaseSets = auditedCaseSets(masterReport, 'web master corpus', deferredMasterCaseIds);
+
 const domainReports = [];
 for (const id of requiredDomainIds) {
   const domain = manifest.domains.find((item) => item.id === id);
   assert(domain, `manifest is missing domain ${id}`);
   assert(typeof domain.name === 'string' && domain.name.length > 0, `${id} is missing name`);
-  assert(['blocked', 'partial', 'proven'].includes(domain.status), `${id} has invalid status ${domain.status}`);
+  assert(validDomainStatuses.includes(domain.status), `${id} has invalid status ${domain.status}`);
   assert(Array.isArray(domain.requiredBoundaries) && domain.requiredBoundaries.length > 0, `${id} is missing required boundaries`);
   assert(Array.isArray(domain.webEvidence) && domain.webEvidence.length > 0, `${id} is missing Web evidence`);
   assert(Array.isArray(domain.productEvidence) && domain.productEvidence.length > 0, `${id} is missing Product evidence`);
-  const smokeCases = validateCaseIds(domain.smokeCaseIds, passingSmokeCases, id, 'smokeCaseIds');
-  const masterCases = validateCaseIds(domain.masterCaseIds, passingMasterCases, id, 'masterCaseIds');
-  if (domain.status !== 'proven') {
+  const deferred = domain.status === 'deferred';
+  const smokeCases = validateCaseIds(
+    domain.smokeCaseIds,
+    deferred ? smokeCaseSets.all : smokeCaseSets.passed,
+    id,
+    'smokeCaseIds',
+    deferred ? 'listed' : 'passing',
+  );
+  const masterCases = validateCaseIds(
+    domain.masterCaseIds,
+    deferred ? masterCaseSets.all : masterCaseSets.passed,
+    id,
+    'masterCaseIds',
+    deferred ? 'listed' : 'passing',
+  );
+  if (deferred) {
+    assert(
+      typeof domain.deferredReason === 'string' && domain.deferredReason.length > 0,
+      `${id} must explain why it is deferred`,
+    );
+    assert(!domain.blockers || domain.blockers.length === 0, `${id} cannot carry active blockers while deferred`);
+  } else if (domain.status !== 'proven') {
     assert(Array.isArray(domain.blockers) && domain.blockers.length > 0, `${id} must list blockers until proven`);
   }
   if (domain.status === 'proven') {
@@ -155,6 +205,7 @@ for (const id of requiredDomainIds) {
   domainReports.push({
     id,
     status: domain.status,
+    deferredReason: domain.deferredReason,
     requiredBoundaries: domain.requiredBoundaries,
     blockers: domain.blockers ?? [],
     smokeCases,
@@ -163,8 +214,10 @@ for (const id of requiredDomainIds) {
   });
 }
 
-const provenCount = domainReports.filter((domain) => domain.status === 'proven').length;
-const blockedCount = domainReports.filter((domain) => domain.status !== 'proven').length;
+const activeDomainReports = domainReports.filter((domain) => domain.status !== 'deferred');
+const deferredDomainReports = domainReports.filter((domain) => domain.status === 'deferred');
+const provenCount = activeDomainReports.filter((domain) => domain.status === 'proven').length;
+const blockedCount = activeDomainReports.filter((domain) => domain.status !== 'proven').length;
 const report = {
   schema: 'kessho-product-web-audio-graph-parity-report-v1',
   mode: strict ? 'strict' : 'audit',
@@ -172,16 +225,21 @@ const report = {
   provenCount,
   blockedCount,
   requiredDomainCount: requiredDomainIds.length,
+  activeDomainCount: activeDomainReports.length,
+  deferredCount: deferredDomainReports.length,
+  deferredDomainIds: deferredDomainReports.map((domain) => domain.id),
   strictGateReady: blockedCount === 0,
   smokeReport: {
     path: smokeReportPath,
     status: smokeReport.status,
     caseCount: smokeReport.cases.length,
+    ignoredFailedCaseIds: smokeCaseSets.ignoredFailedCaseIds,
   },
   masterReport: {
     path: masterReportPath,
     status: masterReport.status,
     caseCount: masterReport.cases.length,
+    ignoredFailedCaseIds: masterCaseSets.ignoredFailedCaseIds,
   },
   generatedAt: new Date().toISOString(),
   domains: domainReports,
@@ -196,5 +254,6 @@ if (strict && blockedCount > 0) {
 
 console.log(
   `Kessho Product Web graph parity ${strict ? 'strict' : 'audit'}: ${report.status}; ` +
-    `${provenCount}/${requiredDomainIds.length} domains proven; report ${reportPath}`,
+    `${provenCount}/${activeDomainReports.length} active domains proven; ` +
+    `${deferredDomainReports.length} deferred; report ${reportPath}`,
 );

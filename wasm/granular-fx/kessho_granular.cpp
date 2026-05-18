@@ -660,6 +660,11 @@ static float next_random(GranularState* s) {
     return v;
 }
 
+static inline int legacy_scheduler_silence_threshold(const GranularState* s) {
+    int threshold = (int)(s->sample_rate * 0.02f);
+    return threshold > 64 ? threshold : 64;
+}
+
 // ═══════════════ Trigger Envelope ═══════════════
 
 static inline float trig_env_level(const GranularState* s, int v) {
@@ -1091,10 +1096,15 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
     int* active_indices = s->active_grain_indices[v];
     int is_gated = vp->euclid_gated;
     float euclidSchedulerThrottle = is_gated ? 0.42f : 1.0f;
+    int active_grain_count = s->active_grain_counts[v];
+    const int legacy_scheduler_idle =
+        !s->freeze &&
+        vp->mode == KESSHO_MODE_LEGACY &&
+        active_grain_count == 0 &&
+        s->silent_samples >= legacy_scheduler_silence_threshold(s);
 
     // Anti-alias: max absolute rate across active grains
     float max_abs_rate = 1.0f;
-    int active_grain_count = s->active_grain_counts[v];
     for (int gi = 0; gi < active_grain_count; gi++) {
         Grain* grain = &pool[active_indices[gi]];
         float ar = fabsf(grain->playback_rate);
@@ -1127,7 +1137,7 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
         }
 
         // Grain scheduling
-        if (s->initialized) {
+        if (s->initialized && !legacy_scheduler_idle) {
             s->samples_since_grain[v]++;
             s->samples_until_grain[v]--;
             if (s->samples_until_grain[v] <= 0) {
@@ -1240,6 +1250,8 @@ static void process_block_internal(GranularState* s, int block_size) {
     }
 
     // ── Step 1: Write input to buffer ──
+    const int legacySilenceThreshold = legacy_scheduler_silence_threshold(s);
+    int legacyInputRearmed = 0;
     for (int i = 0; i < block_size; i++) {
         float in_l = in_buf[i * 2];
         float in_r = in_buf[i * 2 + 1];
@@ -1256,6 +1268,9 @@ static void process_block_internal(GranularState* s, int block_size) {
                 s->buffer_r[s->write_pos] *= decay;
             }
         } else {
+            if (!s->freeze && s->silent_samples >= legacySilenceThreshold) {
+                legacyInputRearmed = 1;
+            }
             s->silent_samples = 0;
         }
 
@@ -1278,6 +1293,16 @@ static void process_block_internal(GranularState* s, int block_size) {
                 s->buffer_r[s->write_pos] = in_r;
             }
             s->write_pos = (s->write_pos + 1) % s->buffer_size;
+        }
+    }
+
+    if (legacyInputRearmed && !s->freeze) {
+        for (int v = 0; v < KESSHO_NUM_VOICES; ++v) {
+            if (!s->voice[v].enabled || s->voice[v].mode != KESSHO_MODE_LEGACY || s->active_grain_counts[v] != 0) continue;
+            int interval = s->samples_per_grain[v];
+            if (interval < 1) interval = 1;
+            s->samples_since_grain[v] = 0;
+            s->samples_until_grain[v] = interval;
         }
     }
 

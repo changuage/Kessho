@@ -117,6 +117,8 @@ struct FxState {
   float reverb_pre_comp_attack_ms = 0.7f;
   float reverb_pre_comp_release_ms = 700.0f;
   float reverb_pre_comp_makeup = 2.9f;
+  bool reverb_chord_wash = false;
+  bool reverb_resolution_bloom = false;
   float spectral_freeze_mix = 0.0f;
   bool spectral_freeze_enabled = false;
   bool spectral_freeze_active = false;
@@ -214,7 +216,7 @@ struct SidechainEnvelope {
 struct RoutingState {
   float delay_a_to_delay_b = 0.0f;
   float delay_b_to_delay_a = 0.0f;
-  float delay_to_reverb = 0.2f;
+  float delay_to_reverb = 0.4f;
   float granular_to_reverb = 0.15f;
   float delay_a_to_granular = 0.0f;
   float delay_b_to_granular = 0.0f;

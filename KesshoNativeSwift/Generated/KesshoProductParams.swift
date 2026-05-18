@@ -225,6 +225,8 @@ public enum KesshoProductParamId: UInt32 {
     case fxReverbPreCompAttackMs = 383
     case fxReverbPreCompReleaseMs = 384
     case fxReverbPreCompMakeup = 385
+    case fxReverbChordWash = 386
+    case fxReverbResolutionBloom = 387
     case fxSpectralFreezeEnabled = 930
     case fxSpectralFreezeActive = 931
     case fxSpectralFreezeSlushy = 932

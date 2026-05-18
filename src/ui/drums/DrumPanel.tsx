@@ -68,7 +68,7 @@ const DrumPanel: React.FC<DrumPanelProps> = ({
           editingVoice={editingVoice}
           onToggleEditing={onToggleEditing}
           isTriggered={triggeredVoices?.[voice] ?? false}
-          analyserNode={getAnalyserNode?.(voice)}
+          getAnalyserNode={getAnalyserNode}
         />
       ))}
     </>

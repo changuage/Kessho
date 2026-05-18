@@ -43,6 +43,7 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
     this.outputPtr = 0;
     this.positionsPtr = 0;   // for voice position query (4 floats)
     this.scalePtr = 0;       // for scale intervals (12 ints)
+    this.chordPtr = 0;       // for chord pitches (7 ints)
     this.ready = false;
 
     // Perf measurement
@@ -77,6 +78,7 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
 
     // Buffered random sequence (in case it arrives before WASM is ready)
     this.pendingRandomSequence = null;
+    this.latestRandomSequence = null;
 
     this.port.onmessage = (event) => this.handleMessage(event.data);
   }
@@ -124,6 +126,7 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
     // Allocate persistent heap regions for queries
     this.positionsPtr = exports.malloc(NUM_VOICES * 4); // 4 floats
     this.scalePtr = exports.malloc(12 * 4);             // 12 ints
+    this.chordPtr = exports.malloc(7 * 4);              // 7 ints
 
     this.ready = true;
     this.port.postMessage({ type: 'wasmReady' });
@@ -139,11 +142,43 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
     if (this.pendingRandomSequence) {
       const seq = this.pendingRandomSequence;
       this.pendingRandomSequence = null;
-      const ptr = this.wasm.malloc(seq.length * 4);
-      this.getHeapF32().set(seq, ptr >> 2);
-      this.wasm.granular_set_random_sequence(ptr, seq.length);
-      this.wasm.free(ptr);
+      this.applyRandomSequence(seq);
     }
+  }
+
+  resetWasmState() {
+    if (!this.ready || !this.wasm) return;
+    const bufferSeconds = this.globalParams?.bufferSeconds ?? 16;
+    const result = this.wasm.granular_init(sampleRate, bufferSeconds);
+    if (result !== 0) {
+      console.error('[GranularFX-WASM] Reset failed:', result);
+      return;
+    }
+    this.inputPtr = this.wasm.granular_get_input_ptr();
+    this.outputPtr = this.wasm.granular_get_output_ptr();
+    this.appliedGlobalParams = null;
+    this.appliedSpaceParams = null;
+    this.appliedVoiceParams = null;
+    this.appliedHarmonyParams = null;
+    this.appliedLegacyParams = null;
+    if (this.globalParams) this.applyGlobalParams(this.globalParams);
+    if (this.spaceParams) this.applySpaceParams(this.spaceParams);
+    if (this.harmonyParams) this.applyHarmonyParams(this.harmonyParams);
+    if (this.voiceParams) this.applyVoiceParams(this.voiceParams);
+    if (this.legacyParams) this.applyLegacyParams(this.legacyParams);
+    if (this.latestRandomSequence) this.applyRandomSequence(this.latestRandomSequence);
+  }
+
+  applyRandomSequence(seq) {
+    if (!this.ready || !this.wasm) {
+      this.pendingRandomSequence = seq;
+      return;
+    }
+    this.latestRandomSequence = seq;
+    const ptr = this.wasm.malloc(seq.length * 4);
+    this.getHeapF32().set(seq, ptr >> 2);
+    this.wasm.granular_set_random_sequence(ptr, seq.length);
+    this.wasm.free(ptr);
   }
 
   handleMessage(data) {
@@ -197,15 +232,7 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
       case 'randomSequence':
       case 'reseed': {
         const seq = data.sequence;
-        if (!this.ready || !this.wasm) {
-          // Buffer for later � will be applied once WASM is initialized
-          this.pendingRandomSequence = seq;
-          break;
-        }
-        const ptr = this.wasm.malloc(seq.length * 4);
-        this.getHeapF32().set(seq, ptr >> 2);
-        this.wasm.granular_set_random_sequence(ptr, seq.length);
-        this.wasm.free(ptr);
+        this.applyRandomSequence(seq);
         break;
       }
 
@@ -238,12 +265,17 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
         this.posReportCounter = 0;
         break;
 
+      case 'reset':
+        this.resetWasmState();
+        break;
+
       case 'destroy':
         // Free WASM heap allocations and mark as not-ready to stop processing
         if (this.wasm && this.ready) {
           try {
             if (this.positionsPtr) { this.wasm.free(this.positionsPtr); this.positionsPtr = 0; }
             if (this.scalePtr) { this.wasm.free(this.scalePtr); this.scalePtr = 0; }
+            if (this.chordPtr) { this.wasm.free(this.chordPtr); this.chordPtr = 0; }
             this.wasm.granular_destroy();
           } catch (e) { /* */ }
         }

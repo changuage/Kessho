@@ -199,6 +199,8 @@ typedef struct KesshoProductFxSnapshot {
   float reverb_pre_comp_attack_ms;
   float reverb_pre_comp_release_ms;
   float reverb_pre_comp_makeup;
+  uint32_t reverb_chord_wash;
+  uint32_t reverb_resolution_bloom;
   float spectral_freeze_mix;
   uint32_t spectral_freeze_enabled;
   uint32_t spectral_freeze_active;

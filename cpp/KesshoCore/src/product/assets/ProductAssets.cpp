@@ -26,6 +26,14 @@
       source.exact_drum_param_count >= kSoundscapeProductModuleParamCount;
 }
 
+  bool KesshoProductEngine::soundscapeModuleShouldRun(const SourceState& source) const {
+  return source.enabled &&
+      soundscapeModuleParamsAvailable(source) &&
+      (source.exact_drum_params[kSoundscapeModuleWaterActiveParam] > 0.5f ||
+       source.exact_drum_params[kSoundscapeModuleInsectsActiveParam] > 0.5f ||
+       source.exact_drum_params[kSoundscapeModuleInsects2ActiveParam] > 0.5f);
+}
+
   bool KesshoProductEngine::soundscapeAssetUsesModule(const SourceState& source, uint32_t asset_id) const {
   if (!soundscapeModuleParamsAvailable(source)) {
     return false;
@@ -94,6 +102,21 @@
   }
 }
 
+  uint32_t KesshoProductEngine::soundscapeTextureSlotForAsset(uint32_t asset_id) const {
+  switch (asset_id) {
+    case kSoundscapeAssetOcean:
+      return kSoundscapeTextureSlotOcean;
+    case kSoundscapeAssetBirds:
+      return kSoundscapeTextureSlotBirds;
+    case kSoundscapeAssetBirds2:
+      return kSoundscapeTextureSlotBirds2;
+    case kSoundscapeAssetFrogs:
+      return kSoundscapeTextureSlotFrogs;
+    default:
+      return kSoundscapeTextureSlotCount;
+  }
+}
+
   float KesshoProductEngine::soundscapeLayerLevel(const AssetSlot& asset, uint32_t sample_seed) const {
   const SoundscapeLayerPolicy policy = soundscapeLayerPolicy(asset.asset_id);
   return policy.level_base + policy.level_range * hashUnit(sample_seed ^ 0x8da6b343u);
@@ -118,6 +141,202 @@
   }
   const float value = source.exact_pad_params[kSoundscapeParityFixtureParam];
   return std::isfinite(value) && value >= 0.5f;
+}
+
+  bool KesshoProductEngine::soundscapeTextureParamsAvailable(const SourceState& source) const {
+  return source.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
+      source.exact_pad_param_count >= kSoundscapeTextureParamCount;
+}
+
+  float KesshoProductEngine::soundscapeTextureParam(
+      const SourceState& source,
+      uint32_t slot,
+      uint32_t param,
+      float fallback) const {
+  if (!soundscapeTextureParamsAvailable(source) ||
+      slot >= kSoundscapeTextureSlotCount ||
+      param >= kSoundscapeTextureParamStride) {
+    return fallback;
+  }
+  const uint32_t param_index = kSoundscapeTextureParamStart + slot * kSoundscapeTextureParamStride + param;
+  const float value = source.exact_pad_params[param_index];
+  return std::isfinite(value) ? value : fallback;
+}
+
+  uint32_t KesshoProductEngine::soundscapeTextureSeed(
+      const SourceState& source,
+      uint32_t slot,
+      uint32_t fallback) const {
+  if (!soundscapeTextureParamsAvailable(source) || slot >= kSoundscapeTextureSlotCount) {
+    return fallback == 0u ? 1u : fallback;
+  }
+  const uint32_t lo_param = kSoundscapeTextureParamStart + slot * kSoundscapeTextureParamStride + kSoundscapeTextureParamSeedLo;
+  const uint32_t hi_param = kSoundscapeTextureParamStart + slot * kSoundscapeTextureParamStride + kSoundscapeTextureParamSeedHi;
+  const uint32_t lo = static_cast<uint32_t>(clampFloat(source.exact_pad_params[lo_param], 0.0f, 65535.0f)) & 0xffffu;
+  const uint32_t hi = static_cast<uint32_t>(clampFloat(source.exact_pad_params[hi_param], 0.0f, 65535.0f)) & 0xffffu;
+  const uint32_t seed = lo | (hi << 16u);
+  return seed == 0u ? (fallback == 0u ? 1u : fallback) : seed;
+}
+
+  float KesshoProductEngine::soundscapeTextureRandom(uint32_t slot) {
+  if (slot >= kSoundscapeTextureSlotCount) {
+    return 0.0f;
+  }
+  SoundscapeTextureRuntime& runtime = soundscape_texture_runtimes[slot];
+  uint32_t t = (runtime.rng_state += 0x6d2b79f5u);
+  t = (t ^ (t >> 15u)) * (t | 1u);
+  t ^= t + ((t ^ (t >> 7u)) * (t | 61u));
+  return static_cast<float>(t ^ (t >> 14u)) / 4294967296.0f;
+}
+
+  double KesshoProductEngine::soundscapeTexturePickOffset(
+      uint32_t slot,
+      double max_offset,
+      double duration) {
+  if (slot >= kSoundscapeTextureSlotCount || max_offset <= 0.0001) {
+    return 0.0;
+  }
+  SoundscapeTextureRuntime& runtime = soundscape_texture_runtimes[slot];
+  const double exclusion_distance =
+      std::min(duration * 0.75, std::max(2.5, max_offset * 0.12));
+  double candidate = soundscapeTextureRandom(slot) * max_offset;
+  for (uint32_t attempt = 0; attempt < 8u; ++attempt) {
+    candidate = soundscapeTextureRandom(slot) * max_offset;
+    bool too_close = false;
+    for (uint32_t i = 0; i < runtime.recent_offset_count; ++i) {
+      if (std::abs(static_cast<double>(runtime.recent_offsets[i]) - candidate) < exclusion_distance) {
+        too_close = true;
+        break;
+      }
+    }
+    if (!too_close) {
+      break;
+    }
+  }
+  if (runtime.recent_offset_count < 6u) {
+    runtime.recent_offsets[runtime.recent_offset_count++] = static_cast<float>(candidate);
+  } else {
+    for (uint32_t i = 1u; i < 6u; ++i) {
+      runtime.recent_offsets[i - 1u] = runtime.recent_offsets[i];
+    }
+    runtime.recent_offsets[5u] = static_cast<float>(candidate);
+  }
+  return candidate;
+}
+
+  double KesshoProductEngine::soundscapeTextureStrideSeconds(
+      double output_duration,
+      double fade,
+      float density_value) const {
+  const double duration = std::max(1.5, output_duration);
+  const double density = clampFloat(density_value, 0.0f, 1.0f);
+  const double silence_gap_at_zero = std::min(std::max(std::min(fade * 0.45, duration * 0.14), 0.18), 1.25);
+  const double handoff_overlap = fade;
+  const double dense_overlap = std::min(std::max(fade + duration * 0.16, fade * 1.25), duration * 0.42);
+  const double overlap_or_gap = density <= 0.25
+      ? (-silence_gap_at_zero + (handoff_overlap + silence_gap_at_zero) * (density / 0.25))
+      : (handoff_overlap + (dense_overlap - handoff_overlap) * ((density - 0.25) / 0.75));
+  return std::min(std::max(duration - overlap_or_gap, 0.35), duration + silence_gap_at_zero);
+}
+
+  void KesshoProductEngine::resetSoundscapeTextureRuntime(uint32_t slot) {
+  if (slot >= kSoundscapeTextureSlotCount) {
+    return;
+  }
+  soundscape_texture_runtimes[slot] = {};
+  std::fill(
+      soundscape_texture_delay[slot],
+      soundscape_texture_delay[slot] + kSoundscapeTextureHaasDelayMaxFrames,
+      0.0f);
+  soundscape_texture_delay_index[slot] = 0u;
+}
+
+  void KesshoProductEngine::resetSoundscapeTextureRuntimes() {
+  for (uint32_t slot = 0u; slot < kSoundscapeTextureSlotCount; ++slot) {
+    resetSoundscapeTextureRuntime(slot);
+  }
+}
+
+  void KesshoProductEngine::releaseSoundscapeTextureVoices(uint32_t asset_id) {
+  for (Voice& voice : voices) {
+    if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
+        !voice.sample_voice || !voice.soundscape_texture_voice ||
+        voice.asset_slot >= kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS ||
+        !assets[voice.asset_slot].active ||
+        assets[voice.asset_slot].asset_id != asset_id) {
+      continue;
+    }
+    voice.looping = false;
+    voice.start_delay_frames = 0u;
+    voice.remaining_frames = std::min<uint32_t>(voice.remaining_frames, static_cast<uint32_t>(0.02 * sample_rate));
+    voice.total_frames = std::max<uint32_t>(1u, voice.remaining_frames);
+  }
+}
+
+  void KesshoProductEngine::processSoundscapeTextureSpatial(
+      uint32_t asset_id,
+      float& left,
+      float& right) {
+  const uint32_t slot = soundscapeTextureSlotForAsset(asset_id);
+  if (slot >= kSoundscapeTextureSlotCount) {
+    return;
+  }
+
+  float delay_ms = 0.0f;
+  float side_gain = 0.0f;
+  float center_gain = 1.0f;
+  float pan = 1.0f;
+  switch (asset_id) {
+    case kSoundscapeAssetOcean:
+      delay_ms = 10.0f;
+      side_gain = 0.24f;
+      center_gain = 0.80f;
+      pan = 0.85f;
+      break;
+    case kSoundscapeAssetBirds:
+      delay_ms = 13.0f;
+      side_gain = 0.42f;
+      center_gain = 0.56f;
+      pan = 1.0f;
+      break;
+    case kSoundscapeAssetBirds2:
+      delay_ms = 15.0f;
+      side_gain = 0.45f;
+      center_gain = 0.50f;
+      pan = 1.0f;
+      break;
+    case kSoundscapeAssetFrogs:
+      delay_ms = 12.0f;
+      side_gain = 0.36f;
+      center_gain = 0.68f;
+      pan = 1.0f;
+      break;
+    default:
+      return;
+  }
+
+  const uint32_t delay_frames = clampU32(
+      static_cast<uint32_t>(std::lround(sample_rate * static_cast<double>(delay_ms) * 0.001)),
+      1u,
+      kSoundscapeTextureHaasDelayMaxFrames - 1u);
+  const uint32_t read_index =
+      (soundscape_texture_delay_index[slot] + kSoundscapeTextureHaasDelayMaxFrames - delay_frames) %
+      kSoundscapeTextureHaasDelayMaxFrames;
+  const float mono = (left + right) * 0.5f;
+  const float delayed = soundscape_texture_delay[slot][read_index];
+  soundscape_texture_delay[slot][soundscape_texture_delay_index[slot]] = mono;
+  soundscape_texture_delay_index[slot] =
+      (soundscape_texture_delay_index[slot] + 1u) % kSoundscapeTextureHaasDelayMaxFrames;
+
+  const float left_angle = (clampFloat(-pan, -1.0f, 1.0f) + 1.0f) * static_cast<float>(kTwoPi * 0.125);
+  const float right_angle = (clampFloat(pan, -1.0f, 1.0f) + 1.0f) * static_cast<float>(kTwoPi * 0.125);
+  const float left_branch_l = std::cos(left_angle);
+  const float left_branch_r = std::sin(left_angle);
+  const float right_branch_l = std::cos(right_angle);
+  const float right_branch_r = std::sin(right_angle);
+
+  left = mono * center_gain + mono * side_gain * left_branch_l + delayed * side_gain * right_branch_l;
+  right = mono * center_gain + mono * side_gain * left_branch_r + delayed * side_gain * right_branch_r;
 }
 
   float KesshoProductEngine::soundscapeLayerRouteSend(

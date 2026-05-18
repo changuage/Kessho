@@ -137,11 +137,7 @@
     return;
   }
   const SourceState& source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
-  const bool module_params_available = source.enabled && soundscapeModuleParamsAvailable(source);
-  const bool module_should_run = module_params_available && (
-      source.exact_drum_params[kSoundscapeModuleWaterActiveParam] > 0.5f ||
-      source.exact_drum_params[kSoundscapeModuleInsectsActiveParam] > 0.5f ||
-      source.exact_drum_params[kSoundscapeModuleInsects2ActiveParam] > 0.5f);
+  const bool module_should_run = soundscapeModuleShouldRun(source);
   if (!module_should_run) {
     if (soundscapes_module_params_configured) {
       soundscapes_module->allNotesOff();
@@ -177,7 +173,7 @@
     return;
   }
   const SourceState& source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
-  if (!source.enabled || !soundscapeModuleParamsAvailable(source)) {
+  if (!soundscapeModuleShouldRun(source)) {
     return;
   }
 

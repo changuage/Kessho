@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <memory>
 
 #include "kessho_granular.h"
@@ -10,6 +11,7 @@ namespace kessho::core {
 namespace {
 
 constexpr int kGranularBlockSize = KESSHO_MAX_BLOCK_SIZE;
+constexpr int kGranularRandomSequenceCount = 4096;
 constexpr int kGlobalParamCount = 10;
 constexpr int kVoiceParamCount = 25;
 constexpr int kVoiceParamStart = kGlobalParamCount;
@@ -116,6 +118,13 @@ int roundedInt(float value) {
   return static_cast<int>(value >= 0.0f ? value + 0.5f : value - 0.5f);
 }
 
+float nextMulberry32(uint32_t& seed) {
+  uint32_t t = (seed += 0x6d2b79f5u);
+  t = (t ^ (t >> 15u)) * (t | 1u);
+  t ^= t + ((t ^ (t >> 7u)) * (t | 61u));
+  return static_cast<float>(static_cast<double>(t ^ (t >> 14u)) / 4294967296.0);
+}
+
 class GranularModule final : public IKesshoModule {
 public:
   ~GranularModule() override {
@@ -130,7 +139,7 @@ public:
     if (instance_ == nullptr) {
       return false;
     }
-    commitParams();
+    applied_random_seed_ = 0u;
     return true;
   }
 
@@ -138,6 +147,8 @@ public:
     if (instance_ != nullptr &&
         granular_instance_reset(instance_, sample_rate_, params_[kParamBufferSeconds]) == 1) {
       commitParams();
+      applied_random_seed_ = 0u;
+      applyRandomSeed();
     }
   }
 
@@ -296,10 +307,31 @@ public:
         params_[kLegacyParamStart + 5]);
   }
 
+  int setRandomSeed(uint32_t seed) override {
+    pending_random_seed_ = seed == 0u ? 1u : seed;
+    applyRandomSeed();
+    return 1;
+  }
+
 private:
+  void applyRandomSeed() {
+    if (instance_ == nullptr || pending_random_seed_ == 0u || applied_random_seed_ == pending_random_seed_) {
+      return;
+    }
+    uint32_t seed = pending_random_seed_;
+    std::array<float, kGranularRandomSequenceCount> sequence{};
+    for (float& value : sequence) {
+      value = nextMulberry32(seed);
+    }
+    granular_instance_set_random_sequence(instance_, sequence.data(), static_cast<int>(sequence.size()));
+    applied_random_seed_ = pending_random_seed_;
+  }
+
   KesshoGranularInstance* instance_ = nullptr;
   float sample_rate_ = 48000.0f;
   int max_block_size_ = kGranularBlockSize;
+  uint32_t pending_random_seed_ = 1u;
+  uint32_t applied_random_seed_ = 0u;
   std::array<float, kParamCount> params_ = makeDefaultParams();
 };
 

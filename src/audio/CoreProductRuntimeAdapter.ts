@@ -5,7 +5,7 @@ import {
   createCoreProductSequencerLaneParamEvent,
   createCoreProductSourcePresetEvent,
 } from './coreProductEvents';
-import type { CoreProductSnapshot } from './coreProductSnapshot';
+import { usesLegacyGranularRuntimeSeed, type CoreProductSnapshot } from './coreProductSnapshot';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 
@@ -46,6 +46,7 @@ export function shouldForwardCoreProductRngDiffs(
   if (!latestSliderState) return false;
   if (Object.prototype.hasOwnProperty.call(latestSliderState, 'rngSeed')) return true;
   if (Object.prototype.hasOwnProperty.call(latestSliderState, 'rngState')) return true;
+  if (usesLegacyGranularRuntimeSeed(latestSliderState)) return true;
   return !latestTelemetry && Object.prototype.hasOwnProperty.call(latestSliderState, 'seed');
 }
 
@@ -418,6 +419,8 @@ class CoreProductRuntimeAdapter {
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompAttackMs, previous.fx.reverbPreCompAttackMs, next.fx.reverbPreCompAttackMs);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompReleaseMs, previous.fx.reverbPreCompReleaseMs, next.fx.reverbPreCompReleaseMs);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompMakeup, previous.fx.reverbPreCompMakeup, next.fx.reverbPreCompMakeup);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbChordWash, previous.fx.reverbChordWash, next.fx.reverbChordWash);
+    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbResolutionBloom, previous.fx.reverbResolutionBloom, next.fx.reverbResolutionBloom);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeMix, previous.fx.spectralFreezeMix, next.fx.spectralFreezeMix);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeEnabled, previous.fx.spectralFreezeEnabled, next.fx.spectralFreezeEnabled);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeActive, previous.fx.spectralFreezeActive, next.fx.spectralFreezeActive);

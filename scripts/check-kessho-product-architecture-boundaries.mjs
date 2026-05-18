@@ -45,8 +45,10 @@ for (const forbidden of [
 
 const focusedHeaders = [
   ['cpp/KesshoCore/src/product/ProductConstants.h', 220],
+  ['cpp/KesshoCore/src/product/ProductDynamicsConstants.h', 120],
   ['cpp/KesshoCore/src/product/ProductMath.h', 140],
   ['cpp/KesshoCore/src/product/ProductForwardDecls.h', 80],
+  ['cpp/KesshoCore/src/product/ProductGraphState.h', 180],
   ['cpp/KesshoCore/src/product/ProductTransportState.h', 80],
   ['cpp/KesshoCore/src/product/ProductVoiceState.h', 180],
   ['cpp/KesshoCore/src/product/ProductFxState.h', 260],
@@ -65,19 +67,25 @@ for (const [path, maxLines] of focusedHeaders) {
 }
 
 const secondStageCaps = [
+  ['cpp/KesshoCore/src/product/KesshoProductApi.cpp', 420],
   ['cpp/KesshoCore/src/product/sources/ProductSources.cpp', 140],
   ['cpp/KesshoCore/src/product/sources/ProductSourcePostChain.cpp', 260],
   ['cpp/KesshoCore/src/product/sources/PadSource.cpp', 80],
+  ['cpp/KesshoCore/src/product/sources/SourceGraphTaps.cpp', 140],
   ['cpp/KesshoCore/src/product/sources/SourceMix.cpp', 120],
   ['cpp/KesshoCore/src/product/sources/SourceModulation.cpp', 220],
   ['cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp', 80],
   ['cpp/KesshoCore/src/product/sources/DrumSource.cpp', 80],
   ['cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp', 340],
+  ['cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp', 60],
   ['cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp', 80],
-  ['cpp/KesshoCore/src/product/fx/ProductFx.cpp', 430],
+  ['cpp/KesshoCore/src/product/fx/ProductFx.cpp', 80],
+  ['cpp/KesshoCore/src/product/fx/ProductFxModules.cpp', 220],
+  ['cpp/KesshoCore/src/product/fx/ProductDynamicsConfig.cpp', 540],
   ['cpp/KesshoCore/src/product/fx/ProductDelay.cpp', 120],
   ['cpp/KesshoCore/src/product/fx/ProductReverb.cpp', 140],
   ['cpp/KesshoCore/src/product/fx/ProductGranular.cpp', 80],
+  ['cpp/KesshoCore/src/product/fx/ProductGranularFilters.cpp', 80],
   ['cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp', 80],
   ['cpp/KesshoCore/src/product/fx/ProductDynamics.cpp', 260],
 ];
@@ -164,9 +172,9 @@ const focusedSourceContracts = [
     [
       'KesshoProductEngine::triggerModuleSource(',
       'KesshoProductEngine::triggerVoice(',
-      'KesshoProductEngine::releaseSourceVoices(',
     ],
   ],
+  ['cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp', ['KesshoProductEngine::releaseSourceVoices(']],
   ['cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp', ['KesshoProductEngine::ensureSoundscapeVoice(']],
 ];
 for (const [path, tokens] of focusedSourceContracts) {
@@ -183,14 +191,30 @@ for (const forbidden of [
   'mixFxBuffer(',
   'renderDelayModule(',
   'renderGranular(',
+  'configureGranularLowpass(',
+  'processGranularLowpass(',
+  'granularCompressorGainDbForLevel(',
   'renderReverb(',
-  'renderSpectralFreeze(',
+  'processSpectralFreezeBranch(',
   'renderDynamics(',
+  'dynamicsModRoute(',
+  'configureDynamicsCharacterModule(',
 ]) {
   assert(!read('cpp/KesshoCore/src/product/fx/ProductFx.cpp').includes(`KesshoProductEngine::${forbidden}`), `ProductFx.cpp must not reclaim focused FX runtime method: ${forbidden}`);
 }
 
 const focusedFxContracts = [
+  [
+    'cpp/KesshoCore/src/product/fx/ProductFxModules.cpp',
+    ['KesshoProductEngine::configureFxModules('],
+  ],
+  [
+    'cpp/KesshoCore/src/product/fx/ProductDynamicsConfig.cpp',
+    [
+      'KesshoProductEngine::dynamicsModRoute(',
+      'KesshoProductEngine::configureDynamicsCharacterModule(',
+    ],
+  ],
   ['cpp/KesshoCore/src/product/fx/ProductDelay.cpp', ['KesshoProductEngine::renderDelayModule(']],
   [
     'cpp/KesshoCore/src/product/fx/ProductReverb.cpp',
@@ -201,7 +225,15 @@ const focusedFxContracts = [
     ],
   ],
   ['cpp/KesshoCore/src/product/fx/ProductGranular.cpp', ['KesshoProductEngine::renderGranular(']],
-  ['cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp', ['KesshoProductEngine::renderSpectralFreeze(']],
+  [
+    'cpp/KesshoCore/src/product/fx/ProductGranularFilters.cpp',
+    [
+      'KesshoProductEngine::configureGranularLowpass(',
+      'KesshoProductEngine::processGranularLowpass(',
+      'KesshoProductEngine::granularCompressorGainDbForLevel(',
+    ],
+  ],
+  ['cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp', ['KesshoProductEngine::processSpectralFreezeBranch(']],
   [
     'cpp/KesshoCore/src/product/fx/ProductDynamics.cpp',
     [
@@ -248,6 +280,7 @@ for (const forbidden of [
 }
 
 const componentFiles = [
+  'cpp/KesshoCore/src/product/KesshoProductApi.cpp',
   'cpp/KesshoCore/src/product/KesshoProductAssets.cpp',
   'cpp/KesshoCore/src/product/KesshoProductEvents.cpp',
   'cpp/KesshoCore/src/product/KesshoProductGraph.cpp',
@@ -277,11 +310,13 @@ const componentFiles = [
   'cpp/KesshoCore/src/product/sources/ProductSourcePostChain.cpp',
   'cpp/KesshoCore/src/product/sources/ProductSources.cpp',
   'cpp/KesshoCore/src/product/sources/PadSource.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceGraphTaps.cpp',
   'cpp/KesshoCore/src/product/sources/SourceMix.cpp',
   'cpp/KesshoCore/src/product/sources/SourceModulation.cpp',
   'cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp',
   'cpp/KesshoCore/src/product/sources/DrumSource.cpp',
   'cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp',
   'cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp',
   'cpp/KesshoCore/src/product/transport/MusicalClock.cpp',
   'cpp/KesshoCore/src/product/transport/ProductTransport.cpp',

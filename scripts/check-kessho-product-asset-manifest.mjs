@@ -193,6 +193,7 @@ assert(manifest.assetBasePath === 'samples', 'asset manifest base path mismatch'
 assert(manifest.flags.loop === 1 && manifest.flags.piano === 2 && manifest.flags.soundscape === 4, 'asset flag ABI mismatch');
 
 assert(manifest.piano.baseAssetId === 7200, 'piano asset base mismatch');
+assert(manifest.piano.shortBaseAssetId === manifest.piano.baseAssetId + manifest.piano.sampleCount, 'piano short asset base mismatch');
 assert(manifest.piano.baseMidi === 21, 'piano base MIDI mismatch');
 assert(manifest.piano.sampleCount === 64, 'piano sample count mismatch');
 assert(manifest.piano.defaultMidi === 60, 'piano default MIDI mismatch');
@@ -342,14 +343,14 @@ const preloadPianoIndexes = new Set(manifest.piano.preloadMidiNotes.map(nearestP
 const preloadPianoInfos = pianoRegularInfos.filter((_info, index) => preloadPianoIndexes.has(index + 1));
 const startupDecodedBytes = sumDecodedBytes(preloadPianoInfos) +
   sumDecodedBytes(soundscapeInfos.filter((info) => manifest.soundscapes.some((asset) => asset.path === info.relativePath && asset.startupPreload)));
-const totalRegisteredDecodedBytes = sumDecodedBytes(pianoRegularInfos) + sumDecodedBytes(soundscapeInfos);
+const totalRegisteredDecodedBytes = sumDecodedBytes([...pianoRegularInfos, ...pianoShortInfos]) + sumDecodedBytes(soundscapeInfos);
 const maxPianoDecodedBytes = Math.max(maxDecodedBytes(pianoRegularInfos), maxDecodedBytes(pianoShortInfos));
 const maxSoundscapeDecodedBytes = maxDecodedBytes(soundscapeInfos);
 assert(startupDecodedBytes <= manifest.memoryBudgets.startupPreloadDecodedBytes, `startup decoded bytes ${startupDecodedBytes} exceed budget ${manifest.memoryBudgets.startupPreloadDecodedBytes}`);
 assert(totalRegisteredDecodedBytes <= manifest.memoryBudgets.totalRegisteredDecodedBytes, `registered decoded bytes ${totalRegisteredDecodedBytes} exceed budget ${manifest.memoryBudgets.totalRegisteredDecodedBytes}`);
 assert(maxPianoDecodedBytes <= manifest.memoryBudgets.singlePianoAssetDecodedBytes, `single piano decoded bytes ${maxPianoDecodedBytes} exceed budget ${manifest.memoryBudgets.singlePianoAssetDecodedBytes}`);
 assert(maxSoundscapeDecodedBytes <= manifest.memoryBudgets.singleSoundscapeAssetDecodedBytes, `single soundscape decoded bytes ${maxSoundscapeDecodedBytes} exceed budget ${manifest.memoryBudgets.singleSoundscapeAssetDecodedBytes}`);
-const webWorkletHeapBytes = await measureWasmHeapAfterAssetAllocations([...pianoRegularInfos, ...soundscapeInfos]);
+const webWorkletHeapBytes = await measureWasmHeapAfterAssetAllocations([...pianoRegularInfos, ...pianoShortInfos, ...soundscapeInfos]);
 assert(webWorkletHeapBytes >= manifest.memoryBudgets.wasmBaseHeapBytes, `web worklet heap ${webWorkletHeapBytes} is below base heap budget ${manifest.memoryBudgets.wasmBaseHeapBytes}`);
 assert(webWorkletHeapBytes <= manifest.memoryBudgets.webWorkletHeapBytes, `web worklet heap ${webWorkletHeapBytes} exceeds budget ${manifest.memoryBudgets.webWorkletHeapBytes}`);
 

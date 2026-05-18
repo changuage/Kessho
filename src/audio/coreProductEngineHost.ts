@@ -4,7 +4,7 @@ import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import { CORE_PRODUCT_MEMORY_BUDGETS, type DecodedCoreProductAsset } from './coreProductAssets';
 import { CoreProductAssetAdapter } from './CoreProductAssetAdapter';
 import { midiSampleOffset } from './coreMidiEvents';
-import { createCoreProductSnapshot, encodeCoreProductSnapshot, type CoreProductSnapshot } from './coreProductSnapshot';
+import { createCoreProductSnapshot, encodeCoreProductSnapshot, usesLegacyGranularRuntimeSeed, type CoreProductSnapshot } from './coreProductSnapshot';
 import {
   CORE_PRODUCT_MODULATION_RANGE_MODE,
   CORE_PRODUCT_SEQUENCER_IDS,
@@ -239,6 +239,9 @@ class CoreProductEngineHost {
 	          presetId: source.presetId,
 	          expression: source.expression,
 	          soundscapes: source.sourceId === 7 ? {
+	            exactPadParamCount: source.exactPadParamCount,
+	            routeParams: source.exactPadParams.slice(0, 16),
+	            textureParams: source.exactPadParams.slice(17, 37),
 	            waterActive: source.exactDrumParams[0],
 	            waterSeed: source.exactDrumParams[60],
 	            insectsActive: source.exactDrumParams[61],
@@ -848,7 +851,7 @@ class CoreProductEngineHost {
     await this.runtime.ensureStarted();
     this.runtimeReady = true;
     if (manualNote.source === 'piano') {
-      await this.assetAdapter.ensurePianoAssetForMidi(manualNote.midi);
+      await this.assetAdapter.ensurePianoAssetForNote(manualNote.midi, manualNote.velocity);
       this.applyLatestSnapshotUpdate('manual-piano-asset');
     } else {
       this.applyLatestSnapshotUpdate('runtime-bootstrap');
@@ -877,7 +880,7 @@ class CoreProductEngineHost {
       await Promise.all(
         manualNotes
           .filter((note) => note.source === 'piano')
-          .map((note) => this.assetAdapter.ensurePianoAssetForMidi(note.midi)),
+          .map((note) => this.assetAdapter.ensurePianoAssetForNote(note.midi, note.velocity)),
       );
       this.applyLatestSnapshotUpdate('manual-piano-asset');
     } else {
@@ -930,18 +933,23 @@ class CoreProductEngineHost {
 
   private createLatestSnapshot(): CoreProductSnapshot {
     const hasAdapterState = Object.keys(this.adapterState).length > 0;
-    const telemetryRngState = this.latestTelemetry?.rngSeed || this.latestTelemetry?.rngState
+    const baseSnapshotState = this.latestSliderState
+      ? { ...this.latestSliderState, ...this.adapterState, journeyEnabled: this.journeyMorphClockRunning }
+      : hasAdapterState
+      ? { ...this.adapterState, journeyEnabled: this.journeyMorphClockRunning }
+      : this.journeyMorphClockRunning
+      ? { journeyEnabled: true }
+      : undefined;
+    const telemetryRngState = !usesLegacyGranularRuntimeSeed(baseSnapshotState) && (this.latestTelemetry?.rngSeed || this.latestTelemetry?.rngState)
       ? {
         rngSeed: this.latestTelemetry.rngSeed,
         rngState: this.latestTelemetry.rngState,
       }
       : {};
-    const snapshotState = this.latestSliderState
-      ? { ...telemetryRngState, ...this.latestSliderState, ...this.adapterState, journeyEnabled: this.journeyMorphClockRunning }
-      : hasAdapterState
-      ? { ...telemetryRngState, ...this.adapterState, journeyEnabled: this.journeyMorphClockRunning }
-      : this.journeyMorphClockRunning
-      ? { ...telemetryRngState, journeyEnabled: true }
+    const snapshotState = baseSnapshotState
+      ? { ...telemetryRngState, ...baseSnapshotState }
+      : Object.keys(telemetryRngState).length > 0
+      ? telemetryRngState
       : undefined;
     const snapshot = createCoreProductSnapshot(snapshotState);
     snapshot.transport.running = this.running;

@@ -1,7 +1,8 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumVoiceConfig } from '../../audio/drumVoiceConfig';
+import { preloadAudioEngine } from '../../audio/runtime';
 import MorphSlider from './MorphSlider';
 import VoiceCardAdvanced from './VoiceCardAdvanced';
 import DrumPresetManager from './DrumPresetManager';
@@ -24,7 +25,7 @@ interface VoiceCardProps {
   editingVoice?: string | null;
   onToggleEditing?: (voice: string) => void;
   isTriggered?: boolean;
-  analyserNode?: AnalyserNode;
+  getAnalyserNode?: (voice: DrumVoiceType) => AnalyserNode | undefined;
 }
 
 const DELAY_SEND_KEYS: Partial<Record<DrumVoiceType, keyof SliderState>> = {
@@ -59,12 +60,13 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
   editingVoice,
   onToggleEditing,
   isTriggered = false,
-  analyserNode,
+  getAnalyserNode,
 }) => {
   const isEditing = editingVoice === voice;
   const macros = VARIATION_KEYS[voice];
   const varVal = state[macros.variation] as number;
   const distVal = state[macros.distance] as number;
+  const [analyserNode, setAnalyserNode] = useState<AnalyserNode | undefined>(undefined);
   const { announceHelp } = useSliderHelp();
   const delaySendKey = DELAY_SEND_KEYS[voice];
   const bindHelp = useCallback((helpKey: string) => ({
@@ -72,6 +74,34 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
     onPointerDown: () => announceHelp(helpKey),
     onFocus: () => announceHelp(helpKey),
   }), [announceHelp]);
+
+  useEffect(() => {
+    if (!isEditing || !getAnalyserNode) {
+      setAnalyserNode(undefined);
+      return;
+    }
+
+    let cancelled = false;
+
+    const resolveAnalyserNode = async () => {
+      try {
+        await preloadAudioEngine();
+        if (cancelled) return;
+        const nextAnalyserNode = getAnalyserNode(voice);
+        setAnalyserNode((prev) => (prev === nextAnalyserNode ? prev : nextAnalyserNode));
+      } catch {
+        if (!cancelled) {
+          setAnalyserNode(undefined);
+        }
+      }
+    };
+
+    void resolveAnalyserNode();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getAnalyserNode, isEditing, isTriggered, voice]);
 
   return (
     <div

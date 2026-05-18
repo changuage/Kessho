@@ -224,6 +224,7 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
 
   // Buffered random sequence (in case it arrives before WASM is ready)
   private pendingRandomSequence: Float32Array | null = null;
+  private latestRandomSequence: Float32Array | null = null;
 
   constructor() {
     super();
@@ -289,11 +290,43 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
     if (this.pendingRandomSequence) {
       const seq = this.pendingRandomSequence;
       this.pendingRandomSequence = null;
-      const ptr = this.wasm!.malloc(seq.length * 4);
-      this.getHeapF32().set(seq, ptr >> 2);
-      this.wasm!.granular_set_random_sequence(ptr, seq.length);
-      this.wasm!.free(ptr);
+      this.applyRandomSequence(seq);
     }
+  }
+
+  private resetWasmState(): void {
+    if (!this.ready || !this.wasm) return;
+    const bufferSeconds = this.globalParams?.bufferSeconds ?? 16;
+    const result = this.wasm.granular_init(sampleRate, bufferSeconds);
+    if (result !== 0) {
+      console.error('[GranularFX-WASM] Reset failed:', result);
+      return;
+    }
+    this.inputPtr = this.wasm.granular_get_input_ptr();
+    this.outputPtr = this.wasm.granular_get_output_ptr();
+    this.appliedGlobalParams = null;
+    this.appliedSpaceParams = null;
+    this.appliedVoiceParams = null;
+    this.appliedHarmonyParams = null;
+    this.appliedLegacyParams = null;
+    if (this.globalParams) this.applyGlobalParams(this.globalParams);
+    if (this.spaceParams) this.applySpaceParams(this.spaceParams);
+    if (this.harmonyParams) this.applyHarmonyParams(this.harmonyParams);
+    if (this.voiceParams) this.applyVoiceParams(this.voiceParams);
+    if (this.legacyParams) this.applyLegacyParams(this.legacyParams);
+    if (this.latestRandomSequence) this.applyRandomSequence(this.latestRandomSequence);
+  }
+
+  private applyRandomSequence(seq: Float32Array): void {
+    if (!this.ready || !this.wasm) {
+      this.pendingRandomSequence = seq;
+      return;
+    }
+    this.latestRandomSequence = seq;
+    const ptr = this.wasm.malloc(seq.length * 4);
+    this.getHeapF32().set(seq, ptr >> 2);
+    this.wasm.granular_set_random_sequence(ptr, seq.length);
+    this.wasm.free(ptr);
   }
 
   private handleMessage(data: { type: string; [key: string]: unknown }) {
@@ -347,15 +380,7 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
       case 'randomSequence':
       case 'reseed': {
         const seq = data.sequence as Float32Array;
-        if (!this.ready || !this.wasm) {
-          // Buffer for later � will be applied once WASM is initialized
-          this.pendingRandomSequence = seq;
-          break;
-        }
-        const ptr = this.wasm.malloc(seq.length * 4);
-        this.getHeapF32().set(seq, ptr >> 2);
-        this.wasm.granular_set_random_sequence(ptr, seq.length);
-        this.wasm.free(ptr);
+        this.applyRandomSequence(seq);
         break;
       }
 
@@ -383,6 +408,10 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
       case 'uiActive':
         this.uiActive = Boolean(data.active);
         this.posReportCounter = 0;
+        break;
+
+      case 'reset':
+        this.resetWasmState();
         break;
 
       case 'destroy':

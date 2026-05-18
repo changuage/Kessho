@@ -3,12 +3,13 @@ import {
   decodeCoreProductAsset,
   getDecodedCoreProductAssetByteLength,
   getCoreProductPianoPreloadAssetDescriptors,
-  getCoreProductPianoAssetIdForMidi,
-  getCoreProductPianoAssetUrlForMidi,
+  getCoreProductPianoAssetIdForMidiVariant,
+  getCoreProductPianoAssetUrlForMidiVariant,
   getCoreProductSoundscapeAssetDescriptorsForState,
   type DecodedCoreProductAsset,
 } from './coreProductAssets';
 import type { CoreProductRuntime } from './coreProductRuntime';
+import { choosePianoSampleVariant, type PianoSampleVariant } from './pianoSamples';
 
 type SliderStateReader = () => Record<string, unknown> | null;
 
@@ -62,11 +63,15 @@ export class CoreProductAssetAdapter {
     }
   }
 
-  async ensurePianoAssetForMidi(midiNote: number): Promise<void> {
+  async ensurePianoAssetForMidi(midiNote: number, variant: PianoSampleVariant = 'regular'): Promise<void> {
     await this.ensurePianoAsset(
-      getCoreProductPianoAssetIdForMidi(midiNote),
-      getCoreProductPianoAssetUrlForMidi(midiNote),
+      getCoreProductPianoAssetIdForMidiVariant(midiNote, variant),
+      getCoreProductPianoAssetUrlForMidiVariant(midiNote, variant),
     );
+  }
+
+  async ensurePianoAssetForNote(midiNote: number, velocity: number): Promise<void> {
+    await this.ensurePianoAssetForMidi(midiNote, choosePianoSampleVariant(midiNote, velocity));
   }
 
   private shouldUsePianoAsset(): boolean {

@@ -3,7 +3,10 @@
   "status": "blocked",
   "strictGateScript": "npm run core:product:web-graph-parity:strict",
   "auditScript": "npm run core:product:web-graph-parity:audit",
+  "smokeFastScript": "npm run core:product:web-graph-capture-smoke:fast",
+  "smokeFullScript": "npm run core:product:web-graph-capture-smoke:full",
   "masterCorpusScript": "npm run core:product:web-master-corpus",
+  "masterCorpusFullScript": "npm run core:product:web-master-corpus:full",
   "matchedBoundaryPolicy": {
     "requiredBoundaryKinds": [
       "sourceDry",
@@ -40,12 +43,20 @@
         "manual-pad1-granular-send",
         "manual-pad-granular-input",
         "manual-pad-granular-output-clean-direct",
+        "manual-pad-granular-output-two-voice-clean",
+        "manual-pad-granular-output-modulated-clean",
+        "manual-pad-granular-output-feedback-clean",
+        "manual-pad-granular-output-delayed-freeze-clean",
         "manual-pad-granular-reverb-send-clean",
+        "manual-pad-granular-reverb-send-two-voice-clean",
         "manual-pad-granular-to-delay-a-send-clean",
         "manual-pad-granular-to-delay-b-send-clean"
       ],
       "masterCaseIds": [
-        "master-pad-granular-clean-scene"
+        "master-pad-granular-clean-scene",
+        "master-pad-granular-two-voice-clean-scene",
+        "master-pad-granular-modulated-clean-scene",
+        "master-pad-granular-feedback-clean-scene"
       ],
       "webEvidence": [
         {
@@ -86,20 +97,34 @@
           ]
         },
         {
-          "file": "scripts/check-kessho-product-web-master-corpus.mjs",
+          "file": "scripts/lib/kesshoProductWebMasterCases.mjs",
           "tokens": [
-            "master-pad-granular-clean-scene"
+            "master-pad-granular-clean-scene",
+            "master-pad-granular-two-voice-clean-scene",
+            "master-pad-granular-modulated-clean-scene",
+            "master-pad-granular-feedback-clean-scene"
+          ]
+        },
+        {
+          "file": "scripts/lib/kesshoProductWebGraphSmokeCases.mjs",
+          "tokens": [
+            "manual-pad-granular-output-two-voice-clean",
+            "manual-pad-granular-output-modulated-clean",
+            "manual-pad-granular-output-feedback-clean",
+            "manual-pad-granular-output-delayed-freeze-clean",
+            "manual-pad-granular-reverb-send-two-voice-clean"
           ]
         }
       ],
       "blockers": [
-        "Granular input, deterministic clean-mode granularOutput, granularReverbSend, granular-to-Delay A/B sends, and a clean-mode full master scene now have Web/Product comparisons. Product Core no longer resets the full runtime during manual parity triggers, granular direct/reverb gain can carry Web's ENGINE_TRIMS.granular range, and the Product granular branch now carries Web's macro-shaped output/reverb LPFs plus WebAudio reverb-send compressor makeup. Remaining granular blockers are broader multi-voice, modulated, feedback/freeze, and legacy cloud corpus cases."
+        "Granular input, deterministic one-voice and two-voice clean-mode granularOutput, LFO-modulated clean granularOutput, feedback clean granularOutput, delayed-freeze clean granularOutput, deterministic one-voice and two-voice granularReverbSend, granular-to-Delay A/B sends, and clean/modulated/feedback full master scenes now have Web/Product comparisons. Product Core no longer resets the full runtime during manual parity triggers, granular direct/reverb gain can carry Web's ENGINE_TRIMS.granular range, and the Product granular branch now carries Web's macro-shaped output/reverb LPFs plus WebAudio reverb-send compressor makeup. Remaining granular blockers are audit-visible delayed-freeze full-master proof and legacy cloud corpus cases."
       ]
     },
     {
       "id": "spectralFreeze",
       "name": "Spectral freeze graph placement",
-      "status": "partial",
+      "status": "deferred",
+      "deferredReason": "Spectral freeze parity is intentionally excluded from active blocker accounting while the module is rewritten from the bottom up. Existing smoke and master cases remain historical regression coverage only and must not be used for strict sign-off until the rewrite re-enters the active parity plan.",
       "requiredBoundaries": [
         "reverbConditionedInput",
         "spectralFreezeInput",
@@ -173,7 +198,7 @@
           ]
         },
         {
-          "file": "scripts/check-kessho-product-web-graph-capture-smoke.mjs",
+          "file": "scripts/lib/kesshoProductWebGraphSmokeCases.mjs",
           "tokens": [
             "manual-pad-spectral-freeze-pad1-dry-pre-active-event",
             "manual-pad-spectral-freeze-output-pre-active-event",
@@ -181,14 +206,11 @@
           ]
         },
         {
-          "file": "scripts/check-kessho-product-web-master-corpus.mjs",
+          "file": "scripts/lib/kesshoProductWebMasterCases.mjs",
           "tokens": [
             "master-pad-spectral-freeze-live-pre-scene"
           ]
         }
-      ],
-      "blockers": [
-        "Product Core now routes spectral freeze inside the reverb branch instead of the full master buffer, carries Web pre/post routing and reverb crossfade through snapshot/live params, and exposes spectralFreezeInput/spectralFreezeOutput graph taps. Focused pre-route and post-route live-resynthesis smoke comparisons, timed active-freeze pad1Dry/spectralFreezeOutput/masterPostLimiter comparisons, and a live pre-route full master scene pass. Product Core applies active-freeze pad dry attenuation at the audible dry mix while keeping the pad1Dry graph tap at Web's upstream boundary. Remaining blockers are broader frozen/slushy stateful freeze coverage and stricter master pre/post limiter proof."
       ]
     },
     {
@@ -211,10 +233,22 @@
         "manual-piano-diffuse-send",
         "manual-pad-diffuse-input",
         "manual-pad-diffuse-output",
-        "manual-pad-diffuse-reverb-send"
+        "manual-pad-diffuse-output-distance",
+        "manual-pad-diffuse-reverb-send",
+        "manual-pad-diffuse-reverb-send-distance"
       ],
       "masterCaseIds": [
-        "master-pad-diffuse-scene"
+        "master-pad-diffuse-scene",
+        "master-pad-diffuse-distance-scene",
+        "master-pad2-diffuse-scene",
+        "master-lead1-diffuse-scene",
+        "master-lead1-diffuse-distance-scene",
+        "master-lead2-diffuse-scene",
+        "master-lead2-diffuse-distance-scene",
+        "master-piano-diffuse-scene",
+        "master-piano-diffuse-distance-scene",
+        "master-diffuse-modulated-source-scene",
+        "master-diffuse-all-source-distance-scene"
       ],
       "webEvidence": [
         {
@@ -228,7 +262,8 @@
             "diffuseInput: { node: this.diffuseInputBus }",
             "diffuseOutput: { node: this.diffuseOutputGain }",
             "diffuseReverbSend: { node: this.diffuseReverbSend }",
-            "pad1DiffuseSend: { node: this.pad1SpatialChain?.diffuseSend ?? null }"
+            "pad1DiffuseSend: { node: this.pad1SpatialChain?.diffuseSend ?? null }",
+            "applyManualAuditionMixStateForSources"
           ]
         }
       ],
@@ -242,7 +277,7 @@
           ]
         },
         {
-          "file": "cpp/KesshoCore/src/product/sources/SourceMix.cpp",
+          "file": "cpp/KesshoCore/src/product/sources/SourceGraphTaps.cpp",
           "tokens": [
             "source.diffuse_send",
             "graph_diffuse_input_l",
@@ -267,20 +302,56 @@
           ]
         },
         {
-          "file": "scripts/check-kessho-product-web-master-corpus.mjs",
+          "file": "src/audio/coreProductSnapshot.ts",
           "tokens": [
-            "master-pad-diffuse-scene"
+            "distanceAdjustedNumberFromState",
+            "applyLeadDistanceEnvelope",
+            "applyDistanceValue(key, distanceState, voice, distance)",
+            "source.level = distanceAdjustedNumberFromState(state, 'lead1Level', 'lead1'",
+            "source.reverbSend = distanceAdjustedNumberFromState(state, 'lead1ReverbSend', 'lead1'",
+            "source.diffuseSend = distanceAdjustedNumberFromState(state, 'padDiffuseSend', 'pad1'",
+            "source.diffuseSend = distanceAdjustedNumberFromState(state, 'lead1DiffuseSend', 'lead1'"
+          ]
+        },
+        {
+          "file": "cpp/KesshoCore/src/product/KesshoProductRender.cpp",
+          "tokens": [
+            "const float spread_l = center_l + (filtered_l + filtered_r) * kDiffuseHaasSideGain;",
+            "const float spread_r = center_r + (delayed_l + delayed_r) * kDiffuseHaasSideGain;"
+          ]
+        },
+        {
+          "file": "scripts/lib/kesshoProductWebGraphSmokeCases.mjs",
+          "tokens": [
+            "manual-pad-diffuse-output-distance",
+            "manual-pad-diffuse-reverb-send-distance"
+          ]
+        },
+        {
+          "file": "scripts/lib/kesshoProductWebMasterCases.mjs",
+          "tokens": [
+            "master-pad-diffuse-scene",
+            "master-pad-diffuse-distance-scene",
+            "master-pad2-diffuse-scene",
+            "master-lead1-diffuse-scene",
+            "master-lead1-diffuse-distance-scene",
+            "master-lead2-diffuse-scene",
+            "master-lead2-diffuse-distance-scene",
+            "master-piano-diffuse-scene",
+            "master-piano-diffuse-distance-scene",
+            "master-diffuse-modulated-source-scene",
+            "master-diffuse-all-source-distance-scene"
           ]
         }
       ],
       "blockers": [
-        "Product Core now has diffuse source send, diffuse bus, Haas-like output, and diffuse reverb send graph taps with focused smoke coverage, plus a pad diffuse full master scene. Remaining blockers are exact Web StereoPanner/Haas output parity, broader all-source distance/modulated scenes, and all-source full-scene master proof."
+        "Product Core now has diffuse source send, diffuse bus, Web hard-panned StereoPanner/Haas side folding, diffuse reverb send graph taps with focused smoke coverage, carries Web distance-shaped diffuse sends through the Product snapshot, and adds distance-shaped pad diffuse output/reverb-send captures plus pad-distance, lead-1-distance, lead-2-distance, piano-distance, pad2, lead-1, lead-2, piano, mixed modulated-source, and all-source distance diffuse full master scenes. Product snapshots also carry Web distance-shaped lead source level/reverb send/hold plus exact lead envelope/timbre params, exact Product lead triggers no longer overwrite those params with the coarse trigger macro, and Web manual parity captures now prepare mixed-source auditions as one combined active-source state. Remaining blockers are broader production-style modulated scenes and upstream distance/source render residuals, including tighter lead-source waveform residuals from Web's shared lead worklet versus Product's per-lead module instances."
       ]
     },
     {
       "id": "soundscapeLayers",
       "name": "Soundscape layer graph",
-      "status": "partial",
+      "status": "proven",
       "requiredBoundaries": [
         "oceanDry",
         "waterDry",
@@ -314,11 +385,31 @@
         "soundscape-insects-delay-a-send-deterministic",
         "soundscape-insects-delay-b-send-deterministic",
         "soundscape-insects-granular-send-deterministic",
-        "soundscape-insects2-dry-deterministic"
+        "soundscape-insects2-dry-deterministic",
+        "soundscape-nature-dry-production-texture",
+        "soundscape-nature-reverb-send-production-texture",
+        "soundscape-nature-delay-a-send-production-texture",
+        "soundscape-nature-delay-b-send-production-texture",
+        "soundscape-nature-granular-send-production-texture",
+        "soundscape-ocean-dry-production-texture",
+        "soundscape-ocean-reverb-send-production-texture",
+        "soundscape-ocean-delay-a-send-production-texture",
+        "soundscape-ocean-delay-b-send-production-texture",
+        "soundscape-ocean-granular-send-production-texture",
+        "soundscape-ocean-production-stem",
+        "soundscape-nature-production-stem",
+        "soundscape-ocean-nature-production-stem",
+        "soundscape-water-insects-stem-deterministic"
       ],
       "masterCaseIds": [
         "master-soundscape-ocean-dry-scene",
+        "master-soundscape-ocean-production-texture-dry-scene",
+        "master-soundscape-ocean-production-texture-source-send-fx-scene",
         "master-soundscape-nature-dry-scene",
+        "master-soundscape-nature-production-texture-dry-scene",
+        "master-soundscape-nature-production-texture-source-send-fx-scene",
+        "master-soundscape-ocean-nature-production-texture-dry-scene",
+        "master-soundscape-ocean-nature-production-texture-source-send-fx-scene",
         "master-soundscape-water-dry-scene",
         "master-soundscape-insects-dry-scene",
         "master-soundscape-water-insects-dry-scene"
@@ -354,11 +445,12 @@
           "tokens": [
             "parityDeterministic?: boolean",
             "this.parityDeterministic ? 0 : randomSigned",
-            "const offset = this.parityDeterministic ? 0"
+            "const offset = this.parityDeterministic ? 0",
+            "minimumQueuedSlices"
           ]
         },
         {
-          "file": "scripts/check-kessho-product-web-graph-capture-smoke.mjs",
+          "file": "scripts/lib/kesshoProductWebGraphSmokeCases.mjs",
           "tokens": [
             "soundscapeParityFixture: true",
             "soundscape-nature-dry-deterministic",
@@ -381,20 +473,50 @@
             "soundscape-insects-delay-a-send-deterministic",
             "soundscape-insects-delay-b-send-deterministic",
             "soundscape-insects-granular-send-deterministic",
-            "soundscape-insects2-dry-deterministic"
+            "soundscape-insects2-dry-deterministic",
+            "soundscape-nature-dry-production-texture",
+            "soundscape-nature-reverb-send-production-texture",
+            "soundscape-nature-delay-a-send-production-texture",
+            "soundscape-nature-delay-b-send-production-texture",
+            "soundscape-nature-granular-send-production-texture",
+            "soundscapeNatureProductionStatePatch",
+            "soundscape-ocean-dry-production-texture",
+            "soundscape-ocean-reverb-send-production-texture",
+            "soundscape-ocean-delay-a-send-production-texture",
+            "soundscape-ocean-delay-b-send-production-texture",
+            "soundscape-ocean-granular-send-production-texture",
+            "soundscapeOceanProductionStatePatch",
+            "soundscapeOceanNatureProductionStatePatch",
+            "soundscape-ocean-production-stem",
+            "soundscape-nature-production-stem",
+            "soundscape-ocean-nature-production-stem",
+            "soundscape-water-insects-stem-deterministic",
+            "oceanSampleEnabled: false"
           ]
         },
         {
-          "file": "scripts/check-kessho-product-web-master-corpus.mjs",
+          "file": "scripts/lib/kesshoProductWebMasterCases.mjs",
           "tokens": [
             "master-soundscape-ocean-dry-scene",
+            "master-soundscape-ocean-production-texture-dry-scene",
+            "master-soundscape-ocean-production-texture-source-send-fx-scene",
             "master-soundscape-nature-dry-scene",
+            "master-soundscape-nature-production-texture-dry-scene",
+            "master-soundscape-nature-production-texture-source-send-fx-scene",
+            "master-soundscape-ocean-nature-production-texture-dry-scene",
+            "master-soundscape-ocean-nature-production-texture-source-send-fx-scene",
             "master-soundscape-water-dry-scene",
             "master-soundscape-insects-dry-scene",
             "master-soundscape-water-insects-dry-scene",
             "domain: 'soundscapeLayers'",
             "soundscapeOceanState",
+            "soundscapeOceanProductionState",
+            "soundscapeOceanProductionSourceSendState",
+            "soundscapeOceanNatureProductionState",
+            "soundscapeOceanNatureProductionSourceSendState",
             "soundscapeNatureState",
+            "soundscapeNatureProductionState",
+            "soundscapeNatureProductionSourceSendState",
             "soundscapeWaterState",
             "soundscapeInsectsState",
             "soundscapeWaterInsectsState"
@@ -420,7 +542,17 @@
             "graph_soundscape_layer_granular_send_l",
             "soundscapeLayerRouteSend",
             "layer == kSoundscapeLayerOcean",
-            "soundscapeAssetRefLevel"
+            "soundscapeAssetRefLevel",
+            "soundscape_earth_level",
+            "processSoundscapeTextureSpatial",
+            "stem_l[voice.source_id][frame] += left"
+          ]
+        },
+        {
+          "file": "cpp/KesshoCore/src/product/KesshoProductAssets.cpp",
+          "tokens": [
+            "assetSampleInterpolated",
+            "renderVoiceSample"
           ]
         },
         {
@@ -429,6 +561,9 @@
             "soundscapeLayerIndexForAsset",
             "soundscapeLayerRouteSend",
             "soundscapeParityFixtureEnabled",
+            "soundscapeTextureParamsAvailable",
+            "soundscapeTexturePickOffset",
+            "soundscapeTextureStrideSeconds",
             "kSoundscapeLayerOcean",
             "kSoundscapeLayerWater",
             "kSoundscapeLayerInsects",
@@ -436,15 +571,48 @@
           ]
         },
         {
+          "file": "cpp/KesshoCore/src/product/KesshoProductGraph.cpp",
+          "tokens": [
+            "stem_l[KESSHO_PRODUCT_STEM_SOUNDSCAPE][frame] += water_out_l + insects_out_l"
+          ]
+        },
+        {
           "file": "src/audio/coreProductSnapshot.ts",
           "tokens": [
             "CORE_PRODUCT_SOURCE_IDS.soundscape",
-            "SOUNDSCAPE_ROUTE_PARAM_COUNT",
+            "SOUNDSCAPE_TEXTURE_PARAM_COUNT",
             "SOUNDSCAPE_PARITY_FIXTURE_PARAM",
             "SOUNDSCAPE_ROUTE_KEYS",
             "soundscapeParityFixture",
+            "writeSoundscapeTextureParamsFromState",
             "getCoreProductSoundscapeAssetDescriptorsForState",
             "getPrimaryCoreProductSoundscapeAssetIdForState"
+          ]
+        },
+        {
+          "file": "src/audio/coreProductAssets.ts",
+          "tokens": [
+            "oceanSendActive",
+            "required: oceanSendActive",
+            "birdsLevel') ?? 0) * natureLevel"
+          ]
+        },
+        {
+          "file": "src/audio/coreProductSoundscapesSnapshot.ts",
+          "tokens": [
+            "SOUNDSCAPE_TEXTURE_PARAM_START",
+            "writeSoundscapeTextureParamsFromState",
+            "earthTextureSeed",
+            "xmur3"
+          ]
+        },
+        {
+          "file": "cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp",
+          "tokens": [
+            "ensureSoundscapeTextureVoice",
+            "kSoundscapeTextureMinimumQueuedSlices",
+            "kSoundscapeTextureInitialDelaySeconds",
+            "soundscapeTextureSeed"
           ]
         },
         {
@@ -456,14 +624,12 @@
           ]
         }
       ],
-      "blockers": [
-        "Product Core now exposes per-layer ocean/water/insects/nature dry and send graph taps plus the aggregate soundscape stem, carries layer-specific route values for combined scenes, preserves Web-style pre-fader ocean sends, and Web exposes matching aggregate nature capture node names. Product Core no longer decodes unused water/insects sample assets when those layers are module-backed. Deterministic fixture coverage now proves nature, ocean, water, and insects dry/reverb/Delay A/Delay B/granular-send boundaries, insects2 dry output, and nature/ocean/water/insects/combined water-insects dry master scenes. Remaining blockers are production Web/Product texture timing and random-start policy alignment for non-fixture scenes and broader production corpus coverage."
-      ]
+      "blockers": []
     },
     {
       "id": "delayAB",
       "name": "Delay A/B shared bus graph",
-      "status": "partial",
+      "status": "proven",
       "requiredBoundaries": [
         "delayAInput",
         "delayADirectOut",
@@ -482,6 +648,7 @@
         "manual-pad1-delay-b-send",
         "manual-pad-delay-a-output",
         "manual-pad-delay-a-reverb-send",
+        "manual-pad-delay-a-reverb-send-default",
         "manual-pad-delay-a-to-delay-b-send",
         "manual-pad-delay-a-to-granular-send",
         "manual-pad-delay-b-input",
@@ -493,7 +660,11 @@
         "manual-pad-delay-bidirectional-b-to-a-safe-send"
       ],
       "masterCaseIds": [
-        "master-pad-delay-ab-feedback-scene"
+        "master-pad-delay-ab-feedback-scene",
+        "master-pad-delay-a-long-feedback-scene",
+        "master-pad-delay-b-long-feedback-scene",
+        "master-pad-delay-a-to-b-order-scene",
+        "master-pad-delay-b-to-a-order-scene"
       ],
       "webEvidence": [
         {
@@ -574,6 +745,7 @@
         {
           "file": "src/audio/coreProductSnapshot.ts",
           "tokens": [
+            "delayToReverb: clamp(numberFromState(sliderState, 'delayAReverbSend', 0.4)",
             "rawDelayAToB",
             "delayCrossScale",
             "delayBToATrim",
@@ -582,28 +754,30 @@
           ]
         },
         {
-          "file": "scripts/check-kessho-product-web-graph-capture-smoke.mjs",
+          "file": "scripts/lib/kesshoProductWebGraphSmokeCases.mjs",
           "tokens": [
             "delayBidirectionalStatePatch",
+            "manual-pad-delay-a-reverb-send-default",
             "manual-pad-delay-bidirectional-a-to-b-safe-send",
             "manual-pad-delay-bidirectional-b-to-a-safe-send"
           ]
         },
         {
-          "file": "scripts/check-kessho-product-web-master-corpus.mjs",
+          "file": "scripts/lib/kesshoProductWebMasterCases.mjs",
           "tokens": [
-            "master-pad-delay-ab-feedback-scene"
+            "master-pad-delay-ab-feedback-scene",
+            "master-pad-delay-a-long-feedback-scene",
+            "master-pad-delay-b-long-feedback-scene",
+            "master-pad-delay-a-to-b-order-scene",
+            "master-pad-delay-b-to-a-order-scene"
           ]
         }
-      ],
-      "blockers": [
-        "Delay A direct output, Delay A reverb send, Delay A to Delay B send, Delay A to granular send, Delay B input/direct output, Delay B reverb send, Delay B to Delay A send, Delay B to granular send, granular-origin Delay A/B sends, both directed bidirectional safe-crossfeed cases, and a feedback full master scene now have Web/Product comparisons. The B-to-A bidirectional case uses looser envelope-ratio tolerances because Product carries the Web graph's feedback edge across render quanta. Remaining Delay A/B blockers are longer feedback/order scenes outside the current corpus."
       ]
     },
     {
       "id": "reverbMacro",
       "name": "Reverb macro/context shaping",
-      "status": "partial",
+      "status": "proven",
       "requiredBoundaries": [
         "reverbInput",
         "reverbPreconditionerOut",
@@ -614,11 +788,18 @@
         "manual-pad-reverb-input",
         "manual-pad-reverb-preconditioner-output",
         "manual-pad-reverb-return",
-        "manual-pad-reverb-return-tension-scale-shimmer"
+        "manual-pad-reverb-return-tension-scale-shimmer",
+        "manual-pad-reverb-return-wash-bloom-boost",
+        "manual-pad-reverb-return-live-wash-bloom-decay",
+        "manual-pad-reverb-return-mobile-quality"
       ],
       "masterCaseIds": [
         "master-pad-reverb-scene",
-        "master-pad-reverb-tension-scale-scene"
+        "master-pad-reverb-tension-scale-scene",
+        "master-pad-reverb-wash-bloom-scene",
+        "master-pad-reverb-live-wash-bloom-decay-scene",
+        "master-pad-reverb-mobile-quality-scene",
+        "master-pad-reverb-production-wide-scene"
       ],
       "webEvidence": [
         {
@@ -627,7 +808,10 @@
             "reverbTensionMode",
             "reverbWashBoost",
             "reverbBloomBoost",
+            "sonicParityReverbWashBoost",
+            "sonicParityReverbBloomBoost",
             "reverbScaleShimmer",
+            "quality: this.isMobile ? 'balanced' : state.reverbQuality",
             "reverbInput: { node: this.reverbInputBus }",
             "reverbPreconditionerOut: { node:",
             "reverbReturn: { node: this.reverbOutputGain }",
@@ -640,6 +824,12 @@
           "file": "src/audio/coreProductSnapshot.ts",
           "tokens": [
             "resolveReverbSnapshotParams",
+            "shouldUseMobileReverbQualityOverride",
+            "isMobileDevice(nav)",
+            "sonicParityReverbWashBoost",
+            "sonicParityReverbBloomBoost",
+            "reverbChordWash",
+            "reverbResolutionBloom",
             "getEffectiveTension",
             "quantizeShimmerPitchToScale",
             "reverbMix:",
@@ -650,6 +840,12 @@
         {
           "file": "cpp/KesshoCore/src/product/fx/ProductReverb.cpp",
           "tokens": [
+            "advanceReverbHarmonyCoupling",
+            "resetReverbHarmonyCoupling",
+            "reverb_wash_boost",
+            "reverb_bloom_boost",
+            "fx.reverb_chord_wash",
+            "fx.reverb_resolution_bloom",
             "processReverbPreconditioner",
             "renderReverb",
             "graph_reverb_preconditioner_output_l",
@@ -658,22 +854,39 @@
           ]
         },
         {
-          "file": "scripts/check-kessho-product-web-master-corpus.mjs",
+          "file": "cpp/KesshoCore/src/product/fx/ProductFxModules.cpp",
+          "tokens": [
+            "configureReverbModule",
+            "effective_decay",
+            "effective_shimmer",
+            "reverb_wash_boost",
+            "reverb_bloom_boost"
+          ]
+        },
+        {
+          "file": "scripts/lib/kesshoProductWebMasterCases.mjs",
           "tokens": [
             "master-pad-reverb-scene",
             "master-pad-reverb-tension-scale-scene",
-            "reverbTensionScaleState"
+            "master-pad-reverb-wash-bloom-scene",
+            "master-pad-reverb-live-wash-bloom-decay-scene",
+            "master-pad-reverb-mobile-quality-scene",
+            "master-pad-reverb-production-wide-scene",
+            "reverbTensionScaleState",
+            "reverbWashBloomState",
+            "reverbLiveWashBloomState",
+            "reverbMobileQualityState",
+            "reverbProductionWideState",
+            "mobileDevice"
           ]
         }
       ],
-      "blockers": [
-        "Reverb input, preconditioner output, reverb return, tension/scale-shimmer reverb return, a basic reverb full master scene, and a tension/scale-shimmer full master scene now have Web/Product comparisons. Product Core now resolves Web-style reverb tension and scale-shimmer parameters before the shared module. Remaining blockers are Web's runtime harmony wash/bloom boosts, mobile quality override proof, and broader full-scene master parity."
-      ]
+      "blockers": []
     },
     {
       "id": "drumSourceSends",
       "name": "Drum and source send semantics",
-      "status": "partial",
+      "status": "proven",
       "requiredBoundaries": [
         "drumDry",
         "drumReverbSend",
@@ -706,7 +919,9 @@
         "manual-lead2-delay-b-send",
         "manual-lead2-granular-send",
         "manual-piano-dry",
+        "manual-piano-short-dry",
         "manual-piano-reverb-send",
+        "manual-piano-short-reverb-send",
         "manual-piano-delay-a-send",
         "manual-piano-delay-b-send",
         "manual-piano-granular-send",
@@ -722,10 +937,29 @@
         "soundscape-insects-reverb-send-deterministic",
         "soundscape-insects-delay-a-send-deterministic",
         "soundscape-insects-delay-b-send-deterministic",
-        "soundscape-insects-granular-send-deterministic"
+        "soundscape-insects-granular-send-deterministic",
+        "soundscape-nature-reverb-send-production-texture",
+        "soundscape-nature-delay-a-send-production-texture",
+        "soundscape-nature-delay-b-send-production-texture",
+        "soundscape-nature-granular-send-production-texture",
+        "soundscape-ocean-reverb-send-production-texture",
+        "soundscape-ocean-delay-a-send-production-texture",
+        "soundscape-ocean-delay-b-send-production-texture",
+        "soundscape-ocean-granular-send-production-texture"
       ],
       "masterCaseIds": [
-        "master-drum-kick-scene"
+        "master-drum-kick-scene",
+        "master-pad1-source-send-fx-scene",
+        "master-pad2-source-send-fx-scene",
+        "master-lead1-source-send-fx-scene",
+        "master-lead2-source-send-fx-scene",
+        "master-piano-source-send-fx-scene",
+        "master-drum-source-send-fx-scene",
+        "master-soundscape-water-source-send-fx-scene",
+        "master-soundscape-insects-source-send-fx-scene",
+        "master-soundscape-nature-production-texture-source-send-fx-scene",
+        "master-soundscape-ocean-production-texture-source-send-fx-scene",
+        "master-soundscape-ocean-nature-production-texture-source-send-fx-scene"
       ],
       "webEvidence": [
         {
@@ -764,7 +998,9 @@
             "pianoReverbSend: { node: this.pianoReverbSend }",
             "pianoDelayASend: { node: this.pianoDelayASend }",
             "pianoDelayBSend: { node: this.pianoDelayBSend }",
-            "pianoGranularSend: { node: this.granularPianoSend }"
+            "pianoGranularSend: { node: this.granularPianoSend }",
+            "choosePianoSampleVariant(midiNote, velocity)",
+            "fallbackVariant"
           ]
         }
       ],
@@ -781,7 +1017,7 @@
           ]
         },
         {
-          "file": "cpp/KesshoCore/src/product/sources/SourceMix.cpp",
+          "file": "cpp/KesshoCore/src/product/sources/SourceGraphTaps.cpp",
           "tokens": [
             "graph_pad1_dry_l",
             "graph_pad1_reverb_send_l",
@@ -814,7 +1050,16 @@
           "file": "cpp/KesshoCore/src/product/ProductConstants.h",
           "tokens": [
             "kPianoEnvelopeAttackSeconds",
-            "kPianoSampleParityTrim"
+            "kPianoSampleParityTrim",
+            "kPianoShortAssetIdBase"
+          ]
+        },
+        {
+          "file": "cpp/KesshoCore/src/product/KesshoProductAssets.cpp",
+          "tokens": [
+            "chooseShortPianoSampleVariant",
+            "kPianoShortAssetIdBase",
+            "variant_penalty"
           ]
         },
         {
@@ -832,25 +1077,67 @@
           ]
         },
         {
-          "file": "scripts/check-kessho-product-web-master-corpus.mjs",
+          "file": "src/audio/CoreProductAssetAdapter.ts",
           "tokens": [
-            "master-drum-kick-scene"
+            "ensurePianoAssetForMidi(midiNote: number, variant",
+            "ensurePianoAssetForNote",
+            "choosePianoSampleVariant",
+            "getCoreProductPianoAssetIdForMidiVariant"
+          ]
+        },
+        {
+          "file": "src/audio/coreProductEngineHost.ts",
+          "tokens": [
+            "ensurePianoAssetForNote(manualNote.midi, manualNote.velocity)"
+          ]
+        },
+        {
+          "file": "scripts/lib/kesshoProductWebMasterCases.mjs",
+          "tokens": [
+            "master-drum-kick-scene",
+            "master-pad1-source-send-fx-scene",
+            "master-pad2-source-send-fx-scene",
+            "master-lead1-source-send-fx-scene",
+            "master-lead2-source-send-fx-scene",
+            "master-piano-source-send-fx-scene",
+            "master-drum-source-send-fx-scene",
+            "master-soundscape-water-source-send-fx-scene",
+            "master-soundscape-insects-source-send-fx-scene",
+            "master-soundscape-nature-production-texture-source-send-fx-scene",
+            "master-soundscape-ocean-production-texture-source-send-fx-scene",
+            "master-soundscape-ocean-nature-production-texture-source-send-fx-scene",
+            "soundscapeNatureProductionSourceSendState",
+            "soundscapeOceanProductionSourceSendState",
+            "soundscapeOceanNatureProductionSourceSendState"
+          ]
+        },
+        {
+          "file": "scripts/lib/kesshoProductWebGraphSmokeCases.mjs",
+          "tokens": [
+            "manual-piano-short-dry",
+            "manual-piano-short-reverb-send",
+            "soundscape-nature-reverb-send-production-texture",
+            "soundscape-nature-delay-a-send-production-texture",
+            "soundscape-nature-delay-b-send-production-texture",
+            "soundscape-nature-granular-send-production-texture",
+            "soundscape-ocean-reverb-send-production-texture",
+            "soundscape-ocean-delay-a-send-production-texture",
+            "soundscape-ocean-delay-b-send-production-texture",
+            "soundscape-ocean-granular-send-production-texture"
           ]
         }
       ],
-      "blockers": [
-        "Drum dry, drum reverb send, drum Delay A/B sends, drum granular send, pad-1/pad-2/lead-1/lead-2/piano dry/reverb/Delay A/Delay B/granular sends, deterministic nature/ocean/water/insects soundscape dry/sends, and drum kick plus nature/ocean dry full master scenes now have Web/Product comparisons. Piano is proven for the deterministic regular-sample path after adding Web-like ADSHR, a pre-fader send split, 24 dB post-LPF dry shaping, and dry-only parity trim. Remaining work: Web's short piano sample variant, production soundscape sends, and full master corpus proof for more source-send scenes."
-      ]
+      "blockers": []
     },
     {
       "id": "dynamicsSidechainMaster",
       "name": "Dynamics, sidechain, and master",
-      "status": "partial",
-    "requiredBoundaries": [
-      "sidechainTargetInput",
-      "sidechainTargetOutput",
-      "sidechainGainTrace",
-      "dynamicsInput",
+      "status": "proven",
+      "requiredBoundaries": [
+        "sidechainTargetInput",
+        "sidechainTargetOutput",
+        "sidechainGainTrace",
+        "dynamicsInput",
         "dynamicsOutput",
         "masterPreLimiter",
         "masterPostLimiter"
@@ -858,14 +1145,46 @@
       "smokeCaseIds": [
         "manual-pad-dynamics-input-active-character",
         "manual-pad-dynamics-output-active-character",
+        "manual-pad-dynamics-input-saturation",
+        "manual-pad-dynamics-output-saturation",
+        "manual-pad-dynamics-input-end-comp",
+        "manual-pad-dynamics-output-end-comp",
+        "manual-pad-dynamics-output-sat-end-comp",
         "manual-pad-sidechain-pad1-input",
         "manual-pad-sidechain-pad1-output",
         "manual-pad-sidechain-pad1-gain-trace",
+        "manual-pad-sidechain-pad2-input",
+        "manual-pad-sidechain-pad2-output",
+        "manual-pad-sidechain-pad2-gain-trace",
+        "manual-pad-sidechain-lead1-input",
+        "manual-pad-sidechain-lead1-output",
+        "manual-pad-sidechain-lead1-gain-trace",
+        "manual-pad-sidechain-lead2-input",
+        "manual-pad-sidechain-lead2-output",
+        "manual-pad-sidechain-lead2-gain-trace",
+        "manual-pad-sidechain-piano-input",
+        "manual-pad-sidechain-piano-output",
+        "manual-pad-sidechain-piano-gain-trace",
+        "manual-pad-sidechain-granular-input",
+        "manual-pad-sidechain-granular-output",
+        "manual-pad-sidechain-granular-gain-trace",
+        "manual-pad-sidechain-delay-a-input",
+        "manual-pad-sidechain-delay-a-output",
+        "manual-pad-sidechain-delay-a-gain-trace",
+        "manual-pad-sidechain-delay-b-input",
+        "manual-pad-sidechain-delay-b-output",
+        "manual-pad-sidechain-delay-b-gain-trace",
+        "manual-pad-sidechain-reverb-input",
+        "manual-pad-sidechain-reverb-output",
+        "manual-pad-sidechain-reverb-gain-trace",
         "manual-pad-master-pre-limiter",
         "manual-pad-master-post-limiter"
       ],
       "masterCaseIds": [
         "master-pad-dynamics-character-scene",
+        "master-pad-dynamics-saturation-scene",
+        "master-pad-dynamics-end-comp-scene",
+        "master-pad-dynamics-sat-end-comp-scene",
         "master-pad-sidechain-kick-scene"
       ],
       "webEvidence": [
@@ -873,13 +1192,22 @@
           "file": "src/audio/engine.ts",
           "tokens": [
             "getSidechainTargetInput",
-        "triggerSidechainDuck",
-        "sidechainPad1Input: { node: this.sidechainTargets.pad1?.input",
-        "sidechainPad1Output: { node: this.sidechainTargets.pad1?.output",
-        "sidechainPad1GainTrace: { node: this.getSidechainTargetGainTraceNode('pad1')",
-        "wireMasterOutputChain",
-        "applyDynamics",
-        "dynamicsInput: { node: this.masterGain }",
+            "triggerSidechainDuck",
+            "sidechainPad1Input: { node: this.sidechainTargets.pad1?.input",
+            "sidechainPad1Output: { node: this.sidechainTargets.pad1?.output",
+            "sidechainPad1GainTrace: { node: this.getSidechainTargetGainTraceNode('pad1')",
+            "sidechainPad2Input: { node: this.sidechainTargets.pad2?.input",
+            "sidechainLead1Output: { node: this.sidechainTargets.lead1?.output",
+            "sidechainPianoGainTrace: { node: this.getSidechainTargetGainTraceNode('piano')",
+            "sidechainGranularInput: { node: this.sidechainTargets.granular?.input",
+            "sidechainDelayAOutput: { node: this.sidechainTargets.delayA?.output",
+            "sidechainReverbGainTrace: { node: this.getSidechainTargetGainTraceNode('reverb')",
+            "wireMasterOutputChain",
+            "applyDynamics",
+            "saturationHandledByWorklet",
+            "endHandledByWorklet",
+            "dynamicsInput: { node: this.masterGain }",
+            "dynamicsOutput: { node: this.getDynamicsRecordableNode() }",
             "masterPostLimiter: { node: this.limiter }"
           ]
         }
@@ -891,12 +1219,14 @@
             "sidechainTargetAmount",
             "triggerSidechainDuck",
             "renderSidechainGains",
+            "mixFxBuffer",
+            "graph_sidechain_input_l[sidechain_target]",
             "renderDynamics",
             "resetSonicParityFxRuntime"
           ]
         },
         {
-          "file": "cpp/KesshoCore/src/product/fx/ProductFx.cpp",
+          "file": "cpp/KesshoCore/src/product/fx/ProductDynamicsConfig.cpp",
           "tokens": [
             "worklet_alias",
             "random_hold_rate_hz",
@@ -910,6 +1240,8 @@
           "tokens": [
             "graph_dynamics_input_l",
             "graph_dynamics_output_l",
+            "graph_sidechain_input_l",
+            "graph_sidechain_output_l",
             "graph_master_pre_limiter_l",
             "master_limiter_gain_reduction_db",
             "master_integrated_lufs",
@@ -920,14 +1252,20 @@
           "file": "cpp/KesshoCore/include/KesshoCore/KesshoProductTypes.h",
           "tokens": [
             "KESSHO_PRODUCT_GRAPH_TAP_DYNAMICS_INPUT",
-        "KESSHO_PRODUCT_GRAPH_TAP_DYNAMICS_OUTPUT",
-        "KESSHO_PRODUCT_GRAPH_TAP_MASTER_PRE_LIMITER",
-        "KESSHO_PRODUCT_GRAPH_TAP_MASTER_POST_LIMITER",
-        "KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD1_INPUT",
-        "KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD1_OUTPUT",
-        "KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD1_GAIN_TRACE"
-      ]
-    },
+            "KESSHO_PRODUCT_GRAPH_TAP_DYNAMICS_OUTPUT",
+            "KESSHO_PRODUCT_GRAPH_TAP_MASTER_PRE_LIMITER",
+            "KESSHO_PRODUCT_GRAPH_TAP_MASTER_POST_LIMITER",
+            "KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD1_INPUT",
+            "KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD1_OUTPUT",
+            "KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD1_GAIN_TRACE",
+            "KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD2_INPUT",
+            "KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_LEAD1_OUTPUT",
+            "KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PIANO_GAIN_TRACE",
+            "KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_GRANULAR_INPUT",
+            "KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_DELAY_A_OUTPUT",
+            "KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_REVERB_GAIN_TRACE"
+          ]
+        },
         {
           "file": "src/audio/coreProductRuntime.ts",
           "tokens": [
@@ -941,25 +1279,25 @@
         {
           "file": "src/audio/sonicParityHarness.ts",
           "tokens": [
-        "getProductGraphCaptureHost",
-        "startSonicParityGraphCapture",
-        "stopSonicParityGraphCapture",
-        "stateEventCount",
-        "manualDrumTriggers",
-        "normalizeTrackId"
-      ]
-    },
+            "getProductGraphCaptureHost",
+            "startSonicParityGraphCapture",
+            "stopSonicParityGraphCapture",
+            "stateEventCount",
+            "manualDrumTriggers",
+            "normalizeTrackId"
+          ]
+        },
         {
-          "file": "scripts/check-kessho-product-web-master-corpus.mjs",
+          "file": "scripts/lib/kesshoProductWebMasterCases.mjs",
           "tokens": [
             "master-pad-dynamics-character-scene",
+            "master-pad-dynamics-saturation-scene",
+            "master-pad-dynamics-end-comp-scene",
+            "master-pad-dynamics-sat-end-comp-scene",
             "master-pad-sidechain-kick-scene"
           ]
+        }
+      ]
     }
-  ],
-  "blockers": [
-    "Master pre/post limiter, active-character dynamics input/output, pad-1 sidechain target input/output/gain-trace captures, active-character full master, and pad-1/kick sidechain full master now have Web/Product comparisons. Product Core applies master gain before dynamics, mirrors Web's dynamics-character parameter model, uses a targeted parity FX reset for dynamics state, and matches Web's sidechain linear attack plus setTarget-style release for the exercised pad-1/kick path. Remaining blockers are broader sidechain target coverage plus saturation/end-compressor corpus coverage against Web."
-  ]
-}
   ]
 }

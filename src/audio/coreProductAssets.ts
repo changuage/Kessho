@@ -1,4 +1,4 @@
-import { getNearestPianoSample } from './pianoSamples';
+import { getNearestPianoSample, type PianoSampleVariant } from './pianoSamples';
 import coreProductAssetManifest from './coreProductAssetManifest.json';
 
 export const CORE_PRODUCT_ASSET_FLAGS = Object.freeze({
@@ -13,6 +13,7 @@ export const CORE_PRODUCT_ASSET_MANIFEST_VERSION = coreProductAssetManifest.vers
 export const CORE_PRODUCT_ASSET_BASE_PATH = coreProductAssetManifest.assetBasePath;
 export const CORE_PRODUCT_DEFAULT_PIANO_MIDI = coreProductAssetManifest.piano.defaultMidi;
 export const CORE_PRODUCT_PIANO_ASSET_ID_BASE = coreProductAssetManifest.piano.baseAssetId;
+export const CORE_PRODUCT_PIANO_SHORT_ASSET_ID_BASE = coreProductAssetManifest.piano.shortBaseAssetId;
 export const CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID =
   CORE_PRODUCT_PIANO_ASSET_ID_BASE + getNearestPianoSample(CORE_PRODUCT_DEFAULT_PIANO_MIDI).index;
 export const CORE_PRODUCT_PIANO_PRELOAD_MIDI_NOTES = Object.freeze([
@@ -83,13 +84,30 @@ export function getDefaultCoreProductPianoAssetUrl(): string {
 }
 
 export function getCoreProductPianoAssetIdForMidi(midiNote: number): number {
+  return getCoreProductPianoAssetIdForMidiVariant(midiNote, 'regular');
+}
+
+export function getCoreProductPianoAssetIdForMidiVariant(
+  midiNote: number,
+  variant: PianoSampleVariant,
+): number {
   const { index } = getNearestPianoSample(midiNote);
-  return CORE_PRODUCT_PIANO_ASSET_ID_BASE + index;
+  const base = variant === 'short'
+    ? CORE_PRODUCT_PIANO_SHORT_ASSET_ID_BASE
+    : CORE_PRODUCT_PIANO_ASSET_ID_BASE;
+  return base + index;
 }
 
 export function getCoreProductPianoAssetUrlForMidi(midiNote: number): string {
+  return getCoreProductPianoAssetUrlForMidiVariant(midiNote, 'regular');
+}
+
+export function getCoreProductPianoAssetUrlForMidiVariant(
+  midiNote: number,
+  variant: PianoSampleVariant,
+): string {
   const { index } = getNearestPianoSample(midiNote);
-  return resolveCoreProductAssetUrl(getManifestPianoSamplePath('regular', index));
+  return resolveCoreProductAssetUrl(getManifestPianoSamplePath(variant, index));
 }
 
 function numberFromState(state: Record<string, unknown> | undefined | null, key: string): number | null {
@@ -178,25 +196,32 @@ export function getDefaultCoreProductSoundscapeAssetUrl(state?: Record<string, u
 export function getCoreProductSoundscapeAssetDescriptorsForState(
   state?: Record<string, unknown> | null,
 ): CoreProductSoundscapeAssetDescriptor[] {
-  const earthLevel = clamp01(numberFromState(state, 'earthLevel') ?? 1);
   const natureLevel = clamp01(numberFromState(state, 'natureLevel') ?? 1);
-  const candidates: Array<{ key: CoreProductSoundscapeAssetKey; level: number }> = [];
+  const candidates: Array<{ key: CoreProductSoundscapeAssetKey; level: number; required?: boolean }> = [];
   if (booleanFromState(state, 'oceanSampleEnabled')) {
-    candidates.push({ key: 'ocean', level: clamp01(numberFromState(state, 'oceanSampleLevel') ?? 0) * earthLevel });
+    const oceanLevel = clamp01(numberFromState(state, 'oceanSampleLevel') ?? 0);
+    const oceanSendActive =
+      clamp01(numberFromState(state, 'oceanReverbSend') ?? 0) > 0.0001 ||
+      clamp01(numberFromState(state, 'oceanDelayASend') ?? 0) > 0.0001 ||
+      clamp01(numberFromState(state, 'oceanDelayBSend') ?? 0) > 0.0001 ||
+      clamp01(numberFromState(state, 'granularWavesSend') ?? 0) > 0.0001;
+    if (oceanLevel > 0.0001 || oceanSendActive) {
+      candidates.push({ key: 'ocean', level: oceanLevel, required: oceanSendActive });
+    }
   }
   if (booleanFromState(state, 'birdsEnabled')) {
-    candidates.push({ key: 'birds', level: clamp01(numberFromState(state, 'birdsLevel') ?? 0) * natureLevel * earthLevel });
+    candidates.push({ key: 'birds', level: clamp01(numberFromState(state, 'birdsLevel') ?? 0) * natureLevel });
   }
   if (booleanFromState(state, 'birds2Enabled')) {
-    candidates.push({ key: 'birds2', level: clamp01(numberFromState(state, 'birds2Level') ?? 0) * natureLevel * earthLevel });
+    candidates.push({ key: 'birds2', level: clamp01(numberFromState(state, 'birds2Level') ?? 0) * natureLevel });
   }
   if (booleanFromState(state, 'frogsEnabled')) {
-    candidates.push({ key: 'frogs', level: clamp01(numberFromState(state, 'frogsLevel') ?? 0) * natureLevel * earthLevel });
+    candidates.push({ key: 'frogs', level: clamp01(numberFromState(state, 'frogsLevel') ?? 0) * natureLevel });
   }
   const seen = new Set<number>();
-  return candidates.flatMap(({ key, level }) => {
+  return candidates.flatMap(({ key, level, required }) => {
     const clampedLevel = clamp01(level);
-    if (clampedLevel <= 0.0001) return [];
+    if (clampedLevel <= 0.0001 && required !== true) return [];
     const asset = CORE_PRODUCT_SOUNDSCAPE_ASSETS[key];
     if (seen.has(asset.assetId)) return [];
     seen.add(asset.assetId);

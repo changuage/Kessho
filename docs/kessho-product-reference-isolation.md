@@ -11,6 +11,8 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 - Type-only app interfaces from `src/audio/engine.ts`.
 - Asset manifest helpers such as `pianoSamples` and the versioned `coreProductAssetManifest.json`.
 - Unit/default helpers used only for serialization, such as `delayBuses`, `outputTrims`, `transport`, and selected UI state constants.
+- `distanceMacro` only as a temporary source-distance snapshot shaping bridge.
+- `coreProductSoundscapesSnapshot` only as the Product snapshot helper for soundscape module params and layer route slots.
 - Shared serializer shaping helpers such as `granularMacroCore`, when they do not import old Web engine runtime modules.
 - `waterPresets` only as a temporary Water/Soundscape preset morph bridge for Product snapshot serialization.
 - `lead4opfm` only inside `CoreProductLegacyPresetCompat.ts` as a labeled `TEMP_COMPAT_WEB_REFERENCE` conversion bridge for exact Lead patch parity.
@@ -35,6 +37,7 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 | `./rng` | Canonical deterministic web RNG used by Product arrangement scheduling and snapshot serialization for seed-window behavior | Product arrangement/snapshot adapters | TEMP_COMPAT_WEB_REFERENCE | C++ Product deterministic music RNG | Remove when Product Core owns equivalent deterministic arrangement RNG | Arrangement scheduler closure |
 | `./scales` | Canonical scale note helper used only by `coreProductArrangementScheduler` for lead random note choices | Product arrangement scheduler | TEMP_COMPAT_WEB_REFERENCE | C++ Product scale/note resolver | Remove when Product Core owns scale range note selection | Arrangement scheduler closure |
 | `./coreProductSnapshot` | Product snapshot assembly from generated fields | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product snapshot loader | Keep as serialization orchestration only | Cleanup |
+| `./coreProductSoundscapesSnapshot` | Soundscape module params and per-layer route slot assembly for Product snapshots | Snapshot adapter | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product soundscape source/module loader | Keep soundscape-specific serialization out of the main snapshot mapper | Cleanup |
 | `./coreProductSnapshotTypes` | Product snapshot type surface split from the snapshot mapper | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | Generated Product schema types | Keep as type-only Product snapshot boundary | Cleanup |
 | `./coreProductSnapshotEncoder` | Product snapshot generated ABI byte packing | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product snapshot loader | Keep as byte-layout-only encoder; no UI state ownership allowed | Cleanup |
 | `./coreProductTelemetry` | Product telemetry/capability types | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product telemetry API | Keep as thin telemetry adapter | Required |
@@ -44,6 +47,7 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 | `../native/capacitorMidiRouting` | Type-only native MIDI message interface | Web/native MIDI bridge | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product MIDI event handling | Keep type-only import | Required |
 | `../ui/state` | UI serialization defaults only | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | Generated Product defaults and C++ snapshot defaults | Remove when Product snapshot no longer imports UI state defaults | Cleanup |
 | `./delayBuses` | Delay division conversion for generated Product params | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | C++ Product delay time/division resolver | Remove when generated Product schema accepts UI delay-division IDs directly | FX/master closure |
+| `./distanceMacro` | Temporary source distance macro shaping used to serialize Product source snapshots and Lead preset compatibility | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | C++ Product source distance macro resolver and generated distance fields | Remove when Product Core owns source distance macro shaping natively | Diffuse/source spatial closure |
 | `./granularMacroCore` | Shared host-side granular macro serializer shaping | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | C++ Product granular macro resolver and generated defaults | Remove when Product Core derives macro-shaped granular params natively | Granular graph parity closure |
 | `./outputTrims` | Serialization trim constants | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | Generated Product defaults and C++ master/source trims | Remove when trims are generated Product defaults | Cleanup |
 | `./transport` | UI transport metrics serialization | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | C++ Product transport snapshot/default conversion | Remove when Product snapshot receives generated transport fields directly | Deterministic transport closure |

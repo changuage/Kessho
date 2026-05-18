@@ -186,6 +186,8 @@
   fx.reverb_pre_comp_attack_ms = clampFloat(snapshot.fx.reverb_pre_comp_attack_ms, 0.1f, 30.0f);
   fx.reverb_pre_comp_release_ms = clampFloat(snapshot.fx.reverb_pre_comp_release_ms, 20.0f, 1000.0f);
   fx.reverb_pre_comp_makeup = clampFloat(snapshot.fx.reverb_pre_comp_makeup, 0.5f, 4.0f);
+  fx.reverb_chord_wash = snapshot.fx.reverb_chord_wash != 0u;
+  fx.reverb_resolution_bloom = snapshot.fx.reverb_resolution_bloom != 0u;
   fx.spectral_freeze_mix = clampFloat(snapshot.fx.spectral_freeze_mix, 0.0f, 1.0f);
   fx.spectral_freeze_enabled = snapshot.fx.spectral_freeze_enabled != 0u;
   fx.spectral_freeze_active = snapshot.fx.spectral_freeze_active != 0u;
@@ -307,6 +309,8 @@
   routing.delay_b_to_reverb = clampFloat(snapshot.routing.delay_b_to_reverb, 0.0f, 1.0f);
   routing.granular_to_delay_a = clampFloat(snapshot.routing.granular_to_delay_a, 0.0f, 1.0f);
   routing.granular_to_delay_b = clampFloat(snapshot.routing.granular_to_delay_b, 0.0f, 1.0f);
+  resetReverbHarmonyCoupling();
+  resetGranularPhraseRuntime();
   configureFxModules();
 
   for (uint32_t i = 0; i < kSourceCount; ++i) {

@@ -35,7 +35,7 @@ const prerequisiteSteps = [
   'core:product:assets',
   'core:product:source-parity',
   'core:product:web-graph-parity:audit',
-  'core:product:web-graph-capture-smoke',
+  'core:product:web-graph-capture-smoke:fast',
   'core:product:web-host',
   'core:product:native',
   'core:product:native-release',

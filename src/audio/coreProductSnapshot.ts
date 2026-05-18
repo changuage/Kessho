@@ -45,10 +45,19 @@ import {
 } from './CoreProductLegacyPresetCompat';
 import { getTransportMetrics } from './transport';
 import { computeGranularMacroModel, type GranularMacroModel } from './granularMacroCore';
-import { morphWaterPresets, type WaterPresetState } from './waterPresets';
+import { applyDistanceValue, applyLeadDistanceEnvelope, getVoiceDistanceKey, type DistanceVoice } from './distanceMacro';
 import { createHarmonyState, getEffectiveTension } from './harmony';
-import { getUtcBucket } from './rng';
+import { computeSeed, getUtcBucket } from './rng';
 import { isIOSLikeDevice, isMobileDevice } from '../platform';
+import {
+  SOUNDSCAPE_PARITY_FIXTURE_PARAM,
+  SOUNDSCAPE_ROUTE_FALLBACKS,
+  SOUNDSCAPE_ROUTE_KEYS,
+  SOUNDSCAPE_TEXTURE_PARAM_COUNT,
+  SOUNDSCAPES_PRODUCT_PARAM_COUNT,
+  exactSoundscapesModuleParamsFromState,
+  writeSoundscapeTextureParamsFromState,
+} from './coreProductSoundscapesSnapshot';
 import type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 
 export type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductHarmonySnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
@@ -64,52 +73,6 @@ const SOURCE_ORDER = [
   CORE_PRODUCT_SOURCE_IDS.piano,
   CORE_PRODUCT_SOURCE_IDS.soundscape,
 ] as const;
-
-const SOUNDSCAPE_ROUTE_PARAM_COUNT = 16;
-const SOUNDSCAPE_ROUTE_KEYS = [
-  ['oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend'],
-  ['waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'granularWaterSend'],
-  ['insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'granularInsectsSend'],
-  ['natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'granularNatureSend'],
-] as const;
-const SOUNDSCAPE_ROUTE_FALLBACKS = [
-  [0.2, 0, 0, 0],
-  [0.3, 0, 0, 0],
-  [0.15, 0, 0, 0],
-  [0.18, 0, 0, 0],
-] as const;
-const SOUNDSCAPE_PARITY_FIXTURE_PARAM = SOUNDSCAPE_ROUTE_PARAM_COUNT, SOUNDSCAPE_PARITY_PARAM_COUNT = SOUNDSCAPE_PARITY_FIXTURE_PARAM + 1;
-const SOUNDSCAPES_MODULE_PARAM_COUNT = 96;
-const SOUNDSCAPES_PRODUCT_PARAM_COUNT = SOUNDSCAPES_MODULE_PARAM_COUNT + 5;
-const SOUNDSCAPES_SEED_NO_CHANGE = -1;
-const SOUNDSCAPES_PARAM_INDEX = {
-  waterActive: 0,
-  waterPreset: 1,
-  waterParams: 2,
-  waterLayerDetail: 16,
-  waterLayerMix: 23,
-  waterLayerDensity: 29,
-  waterDensityLoop: 35,
-  waterSurf: 42,
-  waterChannels: 58,
-  waterSeed: 60,
-  insectsActive: 61,
-  insectsEngine: 62,
-  insectsParams: 63,
-  insectsSeed: 77,
-  insects2Active: 78,
-  insects2Engine: 79,
-  insects2Params: 80,
-  insects2Seed: 94,
-  outputSelect: 95,
-} as const;
-const SOUNDSCAPES_PRODUCT_PARAM_INDEX = {
-  waterLevel: SOUNDSCAPES_MODULE_PARAM_COUNT,
-  insectsLevel: SOUNDSCAPES_MODULE_PARAM_COUNT + 1,
-  insects2Level: SOUNDSCAPES_MODULE_PARAM_COUNT + 2,
-  insectsSharedLevel: SOUNDSCAPES_MODULE_PARAM_COUNT + 3,
-  earthLevel: SOUNDSCAPES_MODULE_PARAM_COUNT + 4,
-} as const;
 
 function numberFromState(state: Record<string, unknown> | undefined, key: string, fallback: number): number {
   const value = state?.[key];
@@ -138,6 +101,40 @@ function drumDelaySendProfile(state: Record<string, unknown> | undefined): numbe
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function distanceAdjustedNumberFromState(
+  state: Record<string, unknown> | undefined,
+  key: keyof SliderState,
+  voice: DistanceVoice,
+  fallback: number,
+): number {
+  const base = numberFromState(state, key, fallback);
+  const distanceKey = getVoiceDistanceKey(voice);
+  const distance = numberFromState(state, distanceKey, 0);
+  const distanceState = {
+    ...(state ?? {}),
+    [key]: base,
+    [distanceKey]: distance,
+  } as unknown as SliderState;
+  return applyDistanceValue(key, distanceState, voice, distance);
+}
+
+function distanceAdjustedLeadHoldSecondsFromState(
+  state: Record<string, unknown> | undefined,
+  voice: 'lead1' | 'lead2',
+  fallback: number,
+): number {
+  const holdKey = voice === 'lead2' ? 'lead2Hold' : 'lead1Hold';
+  const hold = numberFromState(state, holdKey, fallback);
+  const distance = numberFromState(state, getVoiceDistanceKey(voice), 0);
+  return applyLeadDistanceEnvelope(voice, {
+    attack: 0.01,
+    decay: 0.8,
+    sustain: 0.3,
+    hold,
+    release: 2,
+  }, distance).hold ?? hold;
 }
 
 function positiveU32(value: number, fallback: number): number {
@@ -175,6 +172,24 @@ function rngSeedFromState(state: Record<string, unknown> | undefined): number {
 
 function rngStateFromState(state: Record<string, unknown> | undefined, seed: number): number {
   return positiveU32(numberFromState(state, 'rngState', Number.NaN), seed);
+}
+
+function granularRuntimeSeedFromState(state: Record<string, unknown> | undefined): number {
+  const seedWindow = state?.seedWindow === 'day' ? 'day' : 'hour';
+  return positiveU32(computeSeed(getUtcBucket(seedWindow), 'E_ROOT'), 1);
+}
+
+export function usesLegacyGranularRuntimeSeed(state: Record<string, unknown> | undefined): boolean {
+  if (!booleanFromState(state, 'granularEnabled', false)) return false;
+  for (let voiceNumber = 1; voiceNumber <= 4; voiceNumber += 1) {
+    const prefix = `granularV${voiceNumber}`;
+    const enabled = booleanFromState(state, `${prefix}Enabled`, voiceNumber === 1);
+    if (!enabled) continue;
+    if (granularVoiceModeId(state?.[`${prefix}Mode`]) === 2) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function transportFromState(state: Record<string, unknown> | undefined): CoreProductSnapshot['transport'] {
@@ -332,6 +347,16 @@ function resolveReverbSnapshotParams(state: Record<string, unknown> | undefined,
     shimmer = clamp(shimmer + reverbTension * 0.08, 0, 1);
   }
 
+  const washBoost = clamp(numberFromState(state, 'sonicParityReverbWashBoost', 0), 0, 1);
+  if (washBoost > 0.001) {
+    shimmer = clamp(shimmer + washBoost * 0.15, 0, 1);
+  }
+  const bloomBoost = clamp(numberFromState(state, 'sonicParityReverbBloomBoost', 0), 0, 1);
+  if (bloomBoost > 0.001) {
+    decay = clamp(decay + bloomBoost * 0.12, 0, 1);
+    shimmer = clamp(shimmer + bloomBoost * 0.1, 0, 1);
+  }
+
   if (booleanFromState(state, 'reverbScaleShimmer', false)) {
     shimmerPitch = clamp(quantizeShimmerPitchToScale(shimmerPitch, resolveHarmonyScaleIntervals(state, tension)), -24, 24);
   }
@@ -398,204 +423,6 @@ function midiCenterFromState(state: Record<string, unknown> | undefined, prefix:
   return fallback;
 }
 
-function finiteNumber(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
-function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
-  return clamp(finiteNumber(value, fallback), min, max);
-}
-
-function boundedInteger(value: unknown, fallback: number, min: number, max: number): number {
-  return Math.round(boundedNumber(value, fallback, min, max));
-}
-
-function resolveWaterState(state: Record<string, unknown> | undefined): WaterPresetState {
-  const presetA = boundedInteger(state?.waterMorphA ?? state?.waterPreset, 0, 0, 7);
-  const presetB = boundedInteger(state?.waterMorphB ?? state?.waterPreset, presetA, 0, 7);
-  const morph = boundedNumber(state?.waterMorph, 0, 0, 1);
-  const morphed = morphWaterPresets(presetA, presetB, morph);
-  const resolved = { ...morphed };
-  for (const key of Object.keys(morphed) as Array<keyof WaterPresetState>) {
-    if (typeof state?.[key] === 'number') {
-      resolved[key] = Number(state[key]);
-    }
-  }
-  return resolved;
-}
-
-function earthLayerActive(
-  state: Record<string, unknown> | undefined,
-  enabledKey: string,
-  levelKey: string,
-  fallbackLevel: number,
-): boolean {
-  return booleanFromState(state, enabledKey, false) && numberFromState(state, levelKey, fallbackLevel) > 0.0001;
-}
-
-function exactSoundscapesModuleParamsFromState(state: Record<string, unknown> | undefined): number[] {
-  const params = Array.from({ length: KESSHO_PRODUCT_DRUM_PARAM_COUNT }, () => 0);
-  const water = resolveWaterState(state);
-  const waterActive = earthLayerActive(state, 'waterEnabled', 'waterLevel', 0.8);
-  const insectsActive = earthLayerActive(state, 'insectsEnabled', 'insectsLevel', 0.7);
-  const insects2Active = earthLayerActive(state, 'insects2Enabled', 'insects2Level', 0.5);
-  const deterministicSeeds = booleanFromState(state, 'soundscapeParityFixture', false);
-
-  params[SOUNDSCAPES_PARAM_INDEX.waterActive] = waterActive ? 1 : 0;
-  params[SOUNDSCAPES_PARAM_INDEX.waterPreset] = boundedInteger(
-    state?.waterMorph !== undefined
-      ? (boundedNumber(state.waterMorph, 0, 0, 1) < 0.5 ? state.waterMorphA : state.waterMorphB)
-      : state?.waterPreset,
-    0,
-    0,
-    7,
-  );
-  [
-    water.waterIntensity,
-    water.waterIntensity,
-    water.waterDistance,
-    water.waterDistance,
-    water.waterHardDropBaseFreq ?? water.waterBaseFreq,
-    water.waterHardDropBaseFreq ?? water.waterBaseFreq,
-    water.waterWaterDropBaseFreq ?? water.waterBaseFreq,
-    water.waterWaterDropBaseFreq ?? water.waterBaseFreq,
-    water.waterDropSize,
-    water.waterDropSize,
-    water.waterHardness,
-    water.waterHardness,
-    water.waterGlassThickness,
-    water.waterGlassThickness,
-  ].forEach((value, index) => {
-    params[SOUNDSCAPES_PARAM_INDEX.waterParams + index] = finiteNumber(value, 0.5);
-  });
-  [
-    water.waterHardDropRate,
-    water.waterHardDropLPF,
-    water.waterHardDropTone,
-    water.waterWaterDropRate,
-    water.waterWaterDropLPF,
-    water.waterBubblingRate,
-    water.waterBubblingLPF,
-  ].forEach((value, index) => {
-    params[SOUNDSCAPES_PARAM_INDEX.waterLayerDetail + index] = finiteNumber(value, index % 3 === 1 ? 12000 : 1);
-  });
-  [
-    water.waterLayerHardDrops,
-    water.waterLayerWaterDrops,
-    water.waterLayerTurbulence,
-    water.waterLayerBubbling,
-    water.waterLayerSurf,
-    water.waterLayerChannels,
-  ].forEach((value, index) => {
-    params[SOUNDSCAPES_PARAM_INDEX.waterLayerMix + index] = finiteNumber(value, 0);
-  });
-  [0.5, 0.5, 0.5, 0.5, 1, 1].forEach((value, index) => {
-    params[SOUNDSCAPES_PARAM_INDEX.waterLayerDensity + index] = value;
-  });
-  [
-    water.waterDensityHardSend,
-    water.waterDensityWaterSend,
-    water.waterDensityBubbleSend,
-    water.waterDensityFeedback,
-    water.waterDensityTone,
-    water.waterDensityRing,
-    water.waterDensityWet,
-  ].forEach((value, index) => {
-    params[SOUNDSCAPES_PARAM_INDEX.waterDensityLoop + index] = finiteNumber(value, 0.5);
-  });
-  [
-    water.waterSurfDuration,
-    water.waterSurfDuration,
-    water.waterSurfInterval,
-    water.waterSurfInterval,
-    water.waterSurfFoam,
-    water.waterSurfFoam,
-    water.waterSurfProximity,
-    water.waterSurfProximity,
-    water.waterSurfDepth,
-    water.waterSurfDepth,
-    water.waterSurfBody,
-    water.waterSurfBody,
-    water.waterSurfSpray,
-    water.waterSurfSpray,
-    water.waterSurfFoamBright,
-    water.waterSurfFoamBright,
-  ].forEach((value, index) => {
-    params[SOUNDSCAPES_PARAM_INDEX.waterSurf + index] = finiteNumber(value, 0.5);
-  });
-  params[SOUNDSCAPES_PARAM_INDEX.waterChannels] = finiteNumber(water.waterChannelsMorph, 0);
-  params[SOUNDSCAPES_PARAM_INDEX.waterChannels + 1] = finiteNumber(water.waterChannelsSpeed, 0.5);
-  params[SOUNDSCAPES_PARAM_INDEX.waterSeed] = deterministicSeeds ? 12345 : SOUNDSCAPES_SEED_NO_CHANGE;
-
-  const writeInsectsParams = (
-    activeIndex: number,
-    engineIndex: number,
-    paramsIndex: number,
-    seedIndex: number,
-    prefix: 'insects' | 'insects2',
-    active: boolean,
-    fallbackEngine: number,
-  ) => {
-    params[activeIndex] = active ? 1 : 0;
-    params[engineIndex] = boundedInteger(state?.[`${prefix}Engine`], fallbackEngine, 0, 6);
-    [
-      state?.[`${prefix}Density`],
-      state?.[`${prefix}Density`],
-      state?.[`${prefix}Temperature`],
-      state?.[`${prefix}Temperature`],
-      state?.[`${prefix}Distance`],
-      state?.[`${prefix}Distance`],
-      state?.[`${prefix}Proximity`],
-      state?.[`${prefix}Proximity`],
-      state?.[`${prefix}Antiphony`],
-      state?.[`${prefix}Antiphony`],
-      state?.[`${prefix}ClickRate`],
-      state?.[`${prefix}ClickRate`],
-      state?.[`${prefix}Motion`],
-      state?.[`${prefix}Motion`],
-    ].forEach((value, index) => {
-      params[paramsIndex + index] = finiteNumber(value, index >= 4 && index <= 5 ? 0.3 : 0.5);
-    });
-    params[seedIndex] = deterministicSeeds
-      ? (prefix === 'insects2' ? 67890 : 12345)
-      : SOUNDSCAPES_SEED_NO_CHANGE;
-  };
-
-  writeInsectsParams(
-    SOUNDSCAPES_PARAM_INDEX.insectsActive,
-    SOUNDSCAPES_PARAM_INDEX.insectsEngine,
-    SOUNDSCAPES_PARAM_INDEX.insectsParams,
-    SOUNDSCAPES_PARAM_INDEX.insectsSeed,
-    'insects',
-    insectsActive,
-    0,
-  );
-  writeInsectsParams(
-    SOUNDSCAPES_PARAM_INDEX.insects2Active,
-    SOUNDSCAPES_PARAM_INDEX.insects2Engine,
-    SOUNDSCAPES_PARAM_INDEX.insects2Params,
-    SOUNDSCAPES_PARAM_INDEX.insects2Seed,
-    'insects2',
-    insects2Active,
-    1,
-  );
-
-  const activeCount = [waterActive, insectsActive, insects2Active].filter(Boolean).length;
-  params[SOUNDSCAPES_PARAM_INDEX.outputSelect] = activeCount > 1
-    ? 3
-    : insects2Active
-      ? 2
-      : insectsActive
-        ? 1
-        : 0;
-  params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.waterLevel] = waterActive ? numberFromState(state, 'waterLevel', 0.8) : 0;
-  params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.insectsLevel] = insectsActive ? numberFromState(state, 'insectsLevel', 0.7) : 0;
-  params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.insects2Level] = insects2Active ? numberFromState(state, 'insects2Level', 0.5) : 0;
-  params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.insectsSharedLevel] = numberFromState(state, 'insectsSharedLevel', 1);
-  params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.earthLevel] = numberFromState(state, 'earthLevel', 1);
-  return params;
-}
-
 function defaultSynthEuclidMidiCenter(laneNumber: number): number {
   return [82, 58, 92, 70][laneNumber - 1] ?? 82;
 }
@@ -640,11 +467,11 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
       source.level = numberFromState(state, 'synthLevel', source.level);
       source.morph = numberFromState(state, 'padMorph', source.morph);
       source.distance = numberFromState(state, 'padDistance', source.distance);
-      source.reverbSend = numberFromState(state, 'pad1ReverbSend', source.reverbSend);
+      source.reverbSend = distanceAdjustedNumberFromState(state, 'pad1ReverbSend', 'pad1', source.reverbSend);
       source.delayASend = numberFromState(state, 'pad1DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'pad1DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularPad1Send', source.granularSend);
-      source.diffuseSend = numberFromState(state, 'padDiffuseSend', source.diffuseSend);
+      source.diffuseSend = distanceAdjustedNumberFromState(state, 'padDiffuseSend', 'pad1', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'padPostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'padStereoWidth', source.stereoWidth);
       source.presetId = endpointPresetId('pad', source.morph, state?.padPresetA, state?.padPresetB, 'init');
@@ -656,11 +483,11 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
       source.level = numberFromState(state, 'pad2Level', source.level);
       source.morph = numberFromState(state, 'pad2Morph', source.morph);
       source.distance = numberFromState(state, 'pad2Distance', source.distance);
-      source.reverbSend = numberFromState(state, 'pad2ReverbSend', source.reverbSend);
+      source.reverbSend = distanceAdjustedNumberFromState(state, 'pad2ReverbSend', 'pad2', source.reverbSend);
       source.delayASend = numberFromState(state, 'pad2DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'pad2DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularPad2Send', source.granularSend);
-      source.diffuseSend = numberFromState(state, 'pad2DiffuseSend', source.diffuseSend);
+      source.diffuseSend = distanceAdjustedNumberFromState(state, 'pad2DiffuseSend', 'pad2', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'pad2PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'pad2StereoWidth', source.stereoWidth);
       source.presetId = endpointPresetId('pad', source.morph, state?.pad2PresetA, state?.pad2PresetB, 'init');
@@ -669,15 +496,15 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
       break;
     case CORE_PRODUCT_SOURCE_IDS.lead1:
       source.enabled = booleanFromState(state, 'leadEnabled', false);
-      source.level = numberFromState(state, 'lead1Level', numberFromState(state, 'leadLevel', source.level));
+      source.level = distanceAdjustedNumberFromState(state, 'lead1Level', 'lead1', numberFromState(state, 'leadLevel', source.level));
       source.morph = numberFromState(state, 'lead1Morph', source.morph);
       source.distance = numberFromState(state, 'lead1Distance', source.distance);
-      source.holdSeconds = numberFromState(state, 'lead1Hold', source.holdSeconds);
-      source.reverbSend = numberFromState(state, 'lead1ReverbSend', numberFromState(state, 'leadReverbSend', source.reverbSend));
+      source.holdSeconds = distanceAdjustedLeadHoldSecondsFromState(state, 'lead1', source.holdSeconds);
+      source.reverbSend = distanceAdjustedNumberFromState(state, 'lead1ReverbSend', 'lead1', numberFromState(state, 'leadReverbSend', source.reverbSend));
       source.delayASend = numberFromState(state, 'lead1DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'lead1DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularLead1Send', source.granularSend);
-      source.diffuseSend = numberFromState(state, 'lead1DiffuseSend', source.diffuseSend);
+      source.diffuseSend = distanceAdjustedNumberFromState(state, 'lead1DiffuseSend', 'lead1', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'lead1PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'lead1StereoWidth', source.stereoWidth);
       source.postLpfKeyTracking = numberFromState(state, 'lead1PostLPFKeyTracking', source.postLpfKeyTracking);
@@ -687,15 +514,15 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
       break;
     case CORE_PRODUCT_SOURCE_IDS.lead2:
       source.enabled = booleanFromState(state, 'lead2Enabled', booleanFromState(state, 'leadEnabled', false));
-      source.level = numberFromState(state, 'lead2Level', source.level);
+      source.level = distanceAdjustedNumberFromState(state, 'lead2Level', 'lead2', source.level);
       source.morph = numberFromState(state, 'lead2Morph', source.morph);
       source.distance = numberFromState(state, 'lead2Distance', source.distance);
-      source.holdSeconds = numberFromState(state, 'lead2Hold', source.holdSeconds);
-      source.reverbSend = numberFromState(state, 'lead2ReverbSend', numberFromState(state, 'leadReverbSend', source.reverbSend));
+      source.holdSeconds = distanceAdjustedLeadHoldSecondsFromState(state, 'lead2', source.holdSeconds);
+      source.reverbSend = distanceAdjustedNumberFromState(state, 'lead2ReverbSend', 'lead2', numberFromState(state, 'leadReverbSend', source.reverbSend));
       source.delayASend = numberFromState(state, 'lead2DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'lead2DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularLead2Send', source.granularSend);
-      source.diffuseSend = numberFromState(state, 'lead2DiffuseSend', source.diffuseSend);
+      source.diffuseSend = distanceAdjustedNumberFromState(state, 'lead2DiffuseSend', 'lead2', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'lead2PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'lead2StereoWidth', source.stereoWidth);
       source.postLpfKeyTracking = numberFromState(state, 'lead2PostLPFKeyTracking', source.postLpfKeyTracking);
@@ -720,14 +547,14 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
     case CORE_PRODUCT_SOURCE_IDS.piano:
       source.enabled = booleanFromState(state, 'pianoEnabled', false);
       source.assetId = CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID;
-      source.level = numberFromState(state, 'pianoLevel', source.level) * ENGINE_TRIMS.piano;
+      source.level = distanceAdjustedNumberFromState(state, 'pianoLevel', 'piano', source.level) * ENGINE_TRIMS.piano;
       source.distance = numberFromState(state, 'pianoDistance', source.distance);
       source.holdSeconds = numberFromState(state, 'pianoHold', 0.2);
-      source.reverbSend = numberFromState(state, 'pianoReverbSend', source.reverbSend);
+      source.reverbSend = distanceAdjustedNumberFromState(state, 'pianoReverbSend', 'piano', source.reverbSend);
       source.delayASend = numberFromState(state, 'pianoDelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'pianoDelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularPianoSend', source.granularSend);
-      source.diffuseSend = numberFromState(state, 'pianoDiffuseSend', source.diffuseSend);
+      source.diffuseSend = distanceAdjustedNumberFromState(state, 'pianoDiffuseSend', 'piano', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'pianoPostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'pianoStereoWidth', source.stereoWidth);
       source.presetId = sourcePresetId('piano', 'default', 'default');
@@ -744,11 +571,12 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
         source.assetId = getPrimaryCoreProductSoundscapeAssetIdForState(state);
         source.level = 1;
         source.expression = parityFixture ? 1 : source.expression;
-        source.exactPadParamCount = parityFixture ? SOUNDSCAPE_PARITY_PARAM_COUNT : SOUNDSCAPE_ROUTE_PARAM_COUNT;
+        source.exactPadParamCount = SOUNDSCAPE_TEXTURE_PARAM_COUNT;
         source.exactPadParams = emptyPadParams();
         source.exactDrumParamCount = SOUNDSCAPES_PRODUCT_PARAM_COUNT;
         source.exactDrumParams = exactSoundscapesModuleParamsFromState(state);
         if (parityFixture) source.exactPadParams[SOUNDSCAPE_PARITY_FIXTURE_PARAM] = 1;
+        writeSoundscapeTextureParamsFromState(source.exactPadParams, state);
         const layerActive = [oceanActive, waterActive, insectsActive, natureActive];
         const routePeaks = [0, 0, 0, 0];
         for (let layer = 0; layer < SOUNDSCAPE_ROUTE_KEYS.length; layer += 1) {
@@ -953,6 +781,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     ? getCoreProductSoundscapeAssetDescriptorsForState(sliderState)
     : [];
   const rngSeed = rngSeedFromState(sliderState);
+  const rngState = rngStateFromState(sliderState, rngSeed);
   const granularEnabled = booleanFromState(sliderState, 'granularEnabled', false);
   const granularToDelayA = clamp(numberFromState(sliderState, 'granularDelayASend', 0), 0, 1);
   const granularToDelayB = clamp(numberFromState(sliderState, 'granularDelayBSend', 0), 0, 1);
@@ -974,6 +803,8 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   const spectralFreezeEnabled = booleanFromState(sliderState, 'spectralFreezeEnabled', false);
   const dynamicsEnabled = booleanFromState(sliderState, 'dynamicsEnabled', false);
   const granularMacroModel = computeGranularMacroModel((sliderState ?? {}) as unknown as SliderState, (key, fallback) => numberFromState(sliderState, key as string, fallback));
+  const granularVoices = [1, 2, 3, 4].map((voiceNumber) => granularVoiceFromState(sliderState, voiceNumber, granularMacroModel));
+  const granularUsesLegacyRuntimeSeed = usesLegacyGranularRuntimeSeed(sliderState);
   const reverbParams = resolveReverbSnapshotParams(sliderState, tension);
 
   return {
@@ -1015,7 +846,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       granularLegacyPitchSpread: clamp(numberFromState(sliderState, 'granularLegacyPitchSpread', 2), 0, 12),
       granularLegacyMaxGrains: clamp(Math.round(numberFromState(sliderState, 'granularLegacyMaxGrains', 64)), 0, 128),
       granularLegacyFeedback: clamp(numberFromState(sliderState, 'granularLegacyFeedback', 0.1), 0, 0.35),
-      granularVoices: [1, 2, 3, 4].map((voiceNumber) => granularVoiceFromState(sliderState, voiceNumber, granularMacroModel)),
+      granularVoices,
       delayAEnabled,
       delayATimeLeftMs: clamp(delayDivisionMs(sliderState, 'drumDelayNoteL', '1/8d', transport.bpm), 10, 5000),
       delayATimeRightMs: clamp(delayDivisionMs(sliderState, 'drumDelayNoteR', '1/4', transport.bpm), 10, 5000),
@@ -1080,6 +911,8 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       reverbPreCompAttackMs: clamp(numberFromState(sliderState, 'reverbPreCompAttackMs', DEFAULT_REVERB_PRE_COMP.attackMs), 0.1, 30),
       reverbPreCompReleaseMs: clamp(numberFromState(sliderState, 'reverbPreCompReleaseMs', DEFAULT_REVERB_PRE_COMP.releaseMs), 20, 1000),
       reverbPreCompMakeup: clamp(numberFromState(sliderState, 'reverbPreCompMakeup', DEFAULT_REVERB_PRE_COMP.makeup), 0.5, 4),
+      reverbChordWash: booleanFromState(sliderState, 'reverbChordWash', false),
+      reverbResolutionBloom: booleanFromState(sliderState, 'reverbResolutionBloom', false),
       spectralFreezeMix: clamp(numberFromState(sliderState, 'spectralFreezeMix', 1), 0, 1),
       spectralFreezeEnabled,
       spectralFreezeActive: booleanFromState(sliderState, 'spectralFreezeActive', false),
@@ -1197,7 +1030,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     routing: {
       delayAToDelayB: rawDelayAToB * delayCrossScale,
       delayBToDelayA: rawDelayBToA * delayCrossScale * delayBToATrim,
-      delayToReverb: clamp(numberFromState(sliderState, 'delayAReverbSend', 0.2), 0, 1),
+      delayToReverb: clamp(numberFromState(sliderState, 'delayAReverbSend', 0.4), 0, 1),
       granularToReverb: clamp(numberFromState(sliderState, 'granularReverbSend', 0.3) * ENGINE_TRIMS.granular, 0, 4),
       delayAToGranular: clamp(numberFromState(sliderState, 'delayAGranularSend', 0), 0, 1),
       delayBToGranular: clamp(numberFromState(sliderState, 'delayBGranularSend', 0), 0, 1),
@@ -1214,7 +1047,9 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     },
     rng: {
       seed: rngSeed,
-      state: rngStateFromState(sliderState, rngSeed),
+      // Web legacy-cloud parity uses the transport bucket seed, while the broader
+      // Product snapshot seed continues to drive non-granular runtime state.
+      state: granularUsesLegacyRuntimeSeed ? granularRuntimeSeedFromState(sliderState) : rngState,
     },
     evolution: {
       amount: evolutionAmountFromState(sliderState),

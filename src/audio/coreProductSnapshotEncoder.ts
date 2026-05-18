@@ -34,7 +34,7 @@ const SOURCE_ORDER = [
   CORE_PRODUCT_SOURCE_IDS.soundscape,
 ] as const;
 
-const SNAPSHOT_BYTES = 12692;
+const SNAPSHOT_BYTES = 12700;
 const SOURCE_BYTES = 1204;
 const LANE_BYTES = 84;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES;
@@ -356,6 +356,8 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.fx.reverbPreCompAttackMs);
   f32(snapshot.fx.reverbPreCompReleaseMs);
   f32(snapshot.fx.reverbPreCompMakeup);
+  u32(bool(snapshot.fx.reverbChordWash));
+  u32(bool(snapshot.fx.reverbResolutionBloom));
   f32(snapshot.fx.spectralFreezeMix);
   u32(bool(snapshot.fx.spectralFreezeEnabled));
   u32(bool(snapshot.fx.spectralFreezeActive));

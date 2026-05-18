@@ -9,6 +9,7 @@
   },
   "piano": {
     "baseAssetId": 7200,
+    "shortBaseAssetId": 7264,
     "baseMidi": 21,
     "sampleCount": 64,
     "defaultMidi": 60,
@@ -16,7 +17,7 @@
     "shortSamplePathPattern": "Piano/piano short_{index}.ogg",
     "preloadMidiNotes": [36, 40, 43, 48, 52, 55, 60, 64, 67, 72, 76, 79, 84],
     "preloadPolicy": "Always preload default piano; preload representative low/mid/high samples when piano is active; add sequencer lane min/max/mid samples before rendering piano lanes.",
-    "onDemandPolicy": "Manual and generated piano notes resolve to the nearest fixed Product Core piano asset ID. Hosts may register additional nearest samples on demand; Product Core reports missing asset telemetry instead of synthesizing fallback piano audio."
+    "onDemandPolicy": "Manual and generated piano notes resolve to the nearest Web-matched regular/short variant-specific Product Core piano asset ID. Hosts may register additional nearest samples on demand; Product Core reports missing asset telemetry instead of synthesizing fallback piano audio."
   },
   "soundscapes": [
     {

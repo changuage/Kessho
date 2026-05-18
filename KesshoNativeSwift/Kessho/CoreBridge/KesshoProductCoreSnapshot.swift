@@ -5,7 +5,7 @@ import KesshoProductSchema
 #endif
 
 public enum KesshoProductCoreSnapshotEncoder {
-    public static let byteCount = 12692
+    public static let byteCount = 12700
     public static let sourceByteCount = 1204
 
     private static let laneByteCount = 84
@@ -167,6 +167,8 @@ public enum KesshoProductCoreSnapshotEncoder {
         writer.f32(snapshot.fx.reverbPreCompAttackMs)
         writer.f32(snapshot.fx.reverbPreCompReleaseMs)
         writer.f32(snapshot.fx.reverbPreCompMakeup)
+        writer.u32(snapshot.fx.reverbChordWash ? 1 : 0)
+        writer.u32(snapshot.fx.reverbResolutionBloom ? 1 : 0)
         writer.f32(snapshot.fx.spectralFreezeMix)
         writer.u32(snapshot.fx.spectralFreezeEnabled ? 1 : 0)
         writer.u32(snapshot.fx.spectralFreezeActive ? 1 : 0)
@@ -438,6 +440,8 @@ public enum KesshoProductCoreSnapshotEncoder {
                 reverbPreCompAttackMs: Float(clamp(state.reverbPreCompAttackMs, 0.1, 30)),
                 reverbPreCompReleaseMs: Float(clamp(state.reverbPreCompReleaseMs, 20, 1000)),
                 reverbPreCompMakeup: Float(clamp(state.reverbPreCompMakeup, 0.5, 4)),
+                reverbChordWash: state.reverbChordWash,
+                reverbResolutionBloom: state.reverbResolutionBloom,
                 spectralFreezeMix: Float(clamp(state.spectralFreezeMix, 0, 1)),
                 spectralFreezeEnabled: state.spectralFreezeEnabled,
                 spectralFreezeActive: state.spectralFreezeActive,
@@ -1753,6 +1757,8 @@ private struct ProductFxSnapshot {
     var reverbPreCompAttackMs: Float
     var reverbPreCompReleaseMs: Float
     var reverbPreCompMakeup: Float
+    var reverbChordWash: Bool
+    var reverbResolutionBloom: Bool
     var spectralFreezeMix: Float
     var spectralFreezeEnabled: Bool
     var spectralFreezeActive: Bool

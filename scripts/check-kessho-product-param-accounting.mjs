@@ -197,6 +197,7 @@ function collectProductWiredKeys(sliderKeys) {
 
   for (const path of [
     'src/audio/coreProductSnapshot.ts',
+    'src/audio/coreProductSoundscapesSnapshot.ts',
     'src/audio/CoreProductLegacyPresetCompat.ts',
     'src/audio/coreProductAssets.ts',
     'src/audio/coreProductArrangementScheduler.ts',
@@ -214,7 +215,7 @@ function collectProductWiredKeys(sliderKeys) {
   }
 
   for (const prefix of ['lead1', 'lead2']) {
-    for (const suffix of ['UseCustomAdsr', 'Attack', 'Decay', 'Sustain', 'Release', 'AlgorithmMode']) {
+    for (const suffix of ['UseCustomAdsr', 'Attack', 'Decay', 'Sustain', 'Hold', 'Release', 'AlgorithmMode']) {
       keys.add(`${prefix}${suffix}`);
     }
   }

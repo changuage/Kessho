@@ -129,6 +129,7 @@ struct Voice {
   uint32_t source_id = 0;
   uint32_t asset_slot = 0;
   bool sample_voice = false;
+  bool soundscape_texture_voice = false;
   bool piano_sample_voice = false;
   bool drum_voice = false;
   bool looping = false;
@@ -156,6 +157,16 @@ struct Voice {
   BiquadState post_right{};
   BiquadState post_stage2_left{};
   BiquadState post_stage2_right{};
+  uint32_t start_delay_frames = 0;
+};
+
+struct SoundscapeTextureRuntime {
+  bool initialized = false;
+  uint32_t seed = 0u;
+  uint32_t rng_state = 0u;
+  uint64_t next_start_frame = 0u;
+  float recent_offsets[6]{};
+  uint32_t recent_offset_count = 0u;
 };
 
 } // namespace kessho::product::internal

@@ -15,11 +15,13 @@ function assert(condition, message) {
 
 const snapshotPath = 'src/audio/coreProductSnapshot.ts';
 const snapshot = read(snapshotPath);
+const soundscapesSnapshotPath = 'src/audio/coreProductSoundscapesSnapshot.ts';
+const soundscapesSnapshot = read(soundscapesSnapshotPath);
 const snapshotEncoderPath = 'src/audio/coreProductSnapshotEncoder.ts';
 const snapshotEncoder = read(snapshotEncoderPath);
 const legacyCompatPath = 'src/audio/CoreProductLegacyPresetCompat.ts';
 const legacyCompat = read(legacyCompatPath);
-const snapshotAuthoritySurface = `${snapshot}\n${snapshotEncoder}\n${legacyCompat}`;
+const snapshotAuthoritySurface = `${snapshot}\n${soundscapesSnapshot}\n${snapshotEncoder}\n${legacyCompat}`;
 
 const allowedImports = new Set([
   './generated/kesshoProductSchema',
@@ -27,9 +29,15 @@ const allowedImports = new Set([
   './CoreProductLegacyPresetCompat',
   './coreProductEvents',
   './coreProductAssets',
+  './coreProductSoundscapesSnapshot',
   './coreProductSnapshotEncoder',
+  './coreProductSnapshotTypes',
+  './distanceMacro',
   './granularMacroCore',
+  './harmony',
   './outputTrims',
+  '../platform',
+  './rng',
   './transport',
 ]);
 
@@ -39,6 +47,18 @@ for (const source of imports) {
 }
 for (const source of allowedImports) {
   assert(imports.includes(source), `${snapshotPath} import allowlist drifted; missing expected dependency: ${source}`);
+}
+
+const soundscapesAllowedImports = new Set([
+  './generated/kesshoProductSchema',
+  './waterPresets',
+]);
+const soundscapesImports = Array.from(soundscapesSnapshot.matchAll(/from '([^']+)'/g), (match) => match[1]);
+for (const source of soundscapesImports) {
+  assert(soundscapesAllowedImports.has(source), `${soundscapesSnapshotPath} imports unclassified dependency: ${source}`);
+}
+for (const source of soundscapesAllowedImports) {
+  assert(soundscapesImports.includes(source), `${soundscapesSnapshotPath} import allowlist drifted; missing expected dependency: ${source}`);
 }
 
 const encoderAllowedImports = new Set([

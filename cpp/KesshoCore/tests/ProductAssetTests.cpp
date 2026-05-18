@@ -96,14 +96,18 @@ KesshoProductSnapshotV2 makeSoundscapeSnapshot(uint32_t asset_id) {
   return snapshot;
 }
 
-void triggerPianoNote(KesshoProductEngine* engine, float midi_note) {
+void triggerPianoNoteWithVelocity(KesshoProductEngine* engine, float midi_note, float velocity) {
   KesshoProductEvent event{};
   event.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
   event.target_id = KESSHO_PRODUCT_SOURCE_PIANO;
   event.value = midi_note;
-  event.value2 = 1.0f;
+  event.value2 = velocity;
   event.value3 = 0.2f;
   require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "piano event enqueue failed");
+}
+
+void triggerPianoNote(KesshoProductEngine* engine, float midi_note) {
+  triggerPianoNoteWithVelocity(engine, midi_note, 1.0f);
 }
 
 void triggerPiano(KesshoProductEngine* engine) {
@@ -193,6 +197,50 @@ int main() {
   kessho_product_render(piano_select_engine, left.data(), right.data(), 128);
   require(peak(left) > 0.001f || peak(right) > 0.001f, "piano did not select nearest registered sample");
   kessho_product_destroy(piano_select_engine);
+
+  constexpr uint32_t piano_short_asset_id_base = piano_asset_id_base + 64;
+  KesshoProductEngine* piano_variant_engine = kessho_product_create(48000.0, 128, 0);
+  require(piano_variant_engine != nullptr, "piano variant engine create failed");
+  KesshoProductSnapshotV2 piano_variant_snapshot = makeSnapshot(piano_asset_id_base + 40);
+  require(
+      kessho_product_load_snapshot_v2(
+          piano_variant_engine,
+          &piano_variant_snapshot,
+          sizeof(piano_variant_snapshot)) == KESSHO_PRODUCT_OK,
+      "piano variant snapshot load failed");
+  float silent_variant_piano_data[64]{};
+  float high_variant_piano_data[64]{};
+  for (uint32_t i = 0; i < 64; ++i) {
+    high_variant_piano_data[i] = 0.5f;
+  }
+  const float* silent_variant_piano_channels[1] = {silent_variant_piano_data};
+  const float* high_variant_piano_channels[1] = {high_variant_piano_data};
+  require(
+      kessho_product_register_asset_buffer(
+          piano_variant_engine,
+          piano_asset_id_base + 40,
+          silent_variant_piano_channels,
+          1,
+          64,
+          48000.0,
+          KESSHO_PRODUCT_ASSET_PIANO) == KESSHO_PRODUCT_OK,
+      "regular piano variant asset registration failed");
+  require(
+      kessho_product_register_asset_buffer(
+          piano_variant_engine,
+          piano_short_asset_id_base + 40,
+          high_variant_piano_channels,
+          1,
+          64,
+          48000.0,
+          KESSHO_PRODUCT_ASSET_PIANO) == KESSHO_PRODUCT_OK,
+      "short piano variant asset registration failed");
+  std::fill(left.begin(), left.end(), 0.0f);
+  std::fill(right.begin(), right.end(), 0.0f);
+  triggerPianoNoteWithVelocity(piano_variant_engine, 60.0f, 1.0f);
+  kessho_product_render(piano_variant_engine, left.data(), right.data(), 128);
+  require(peak(left) > 0.001f || peak(right) > 0.001f, "piano did not select Web-style short sample variant");
+  kessho_product_destroy(piano_variant_engine);
 
   constexpr uint32_t piano_stereo_asset_id = piano_asset_id_base + 40;
   KesshoProductEngine* piano_stereo_engine = kessho_product_create(48000.0, 128, 0);

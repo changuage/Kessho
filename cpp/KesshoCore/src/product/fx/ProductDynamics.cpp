@@ -13,12 +13,40 @@
 }
 
   void KesshoProductEngine::resetSonicParityFxRuntime() {
+  if (delay_a_module) {
+    delay_a_module->reset();
+  }
+  if (delay_b_module) {
+    delay_b_module->reset();
+  }
+  if (reverb_module) {
+    reverb_module->reset();
+  }
+  if (granular_module) {
+    granular_module->reset();
+  }
+  if (spectral_freeze_module) {
+    spectral_freeze_module->reset();
+  }
   if (dynamics_character_module) {
     dynamics_character_module->reset();
   }
+  if (soundscapes_module) {
+    soundscapes_module->reset();
+    soundscapes_module_params_configured = false;
+  }
+  granular_output_lpf = {};
+  granular_reverb_lpf = {};
+  granular_reverb_comp_gain = 1.0f;
+  reverb_pre_comp_gain = 1.0f;
+  resetReverbHarmonyCoupling();
+  resetGranularPhraseRuntime();
+  std::fill(delay_a_cross_carry_l, delay_a_cross_carry_l + kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES, 0.0f);
+  std::fill(delay_a_cross_carry_r, delay_a_cross_carry_r + kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES, 0.0f);
   resetSidechainRuntime();
   resetDiffuseRuntime();
   configureFxModules();
+  configureSoundscapesModuleFromSource();
 }
 
   float KesshoProductEngine::sidechainTargetAmount(uint32_t target) const {
@@ -167,9 +195,17 @@
   }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
+    const float input_left = in_l[i] * gain;
+    const float input_right = in_r[i] * gain;
     const float duck_gain = sidechainGain(sidechain_target, frame);
-    const float left = in_l[i] * gain * duck_gain;
-    const float right = in_r[i] * gain * duck_gain;
+    const float left = input_left * duck_gain;
+    const float right = input_right * duck_gain;
+    if (sidechain_target < kSidechainTargetCount) {
+      graph_sidechain_input_l[sidechain_target][frame] += input_left;
+      graph_sidechain_input_r[sidechain_target][frame] += input_right;
+      graph_sidechain_output_l[sidechain_target][frame] += left;
+      graph_sidechain_output_r[sidechain_target][frame] += right;
+    }
     out_l[frame] += left;
     out_r[frame] += right;
     stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;

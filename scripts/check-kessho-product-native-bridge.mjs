@@ -83,7 +83,7 @@ for (const token of [
 
 for (const token of [
   'KesshoProductCoreSnapshotEncoder',
-  'public static let byteCount = 12692',
+  'public static let byteCount = 12700',
   'public static let sourceByteCount = 1204',
   'KesshoProductSchema.version',
   'KesshoProductSchema.hash',
@@ -125,6 +125,8 @@ for (const token of [
   'reverbErLpFreq',
   'reverbPreCompThreshold: Float(clamp(state.reverbPreCompThreshold, -60, 0))',
   'writer.f32(snapshot.fx.reverbPreCompMakeup)',
+  'writer.u32(snapshot.fx.reverbChordWash ? 1 : 0)',
+  'writer.u32(snapshot.fx.reverbResolutionBloom ? 1 : 0)',
   'writer.u32(snapshot.fx.reverbType)',
   'delayBToReverb',
   'KesshoProductSourceId.pad1.rawValue',

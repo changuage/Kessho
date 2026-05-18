@@ -12,9 +12,10 @@ import {
   KESSHO_PRODUCT_DRUM_VOICE_PRESETS,
   KESSHO_PRODUCT_SOURCE_PRESETS,
 } from './generated/kesshoProductSchema';
-import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES, loadLead4opFMPreset, morphPresets, type Lead4opFMPreset } from './lead4opfm';
+import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES, loadLead4opFMPreset, morphPresets, type Lead4opFMMorphedParams, type Lead4opFMPreset } from './lead4opfm';
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import { delayNoteToSeconds } from './delayBuses';
+import { applyLeadDistanceEnvelope, applyLeadDistanceTimbre, getVoiceDistanceKey } from './distanceMacro';
 
 // SNAPSHOT_AUTHORITY: TEMP_COMPAT_WEB_REFERENCE - legacy UI/preset conversions are isolated here for retirement.
 
@@ -319,7 +320,7 @@ export function exactLeadParamsFromState(state: Record<string, unknown> | undefi
   const presetBData = leadIndex === 0 ? state?.lead1PresetBData : state?.lead2PresetDData;
   const morph = clamp(numberFromState(state, leadIndex === 0 ? 'lead1Morph' : 'lead2Morph', 0), 0, 1);
   const algorithm = leadAlgorithmMode(state?.[leadIndex === 0 ? 'lead1AlgorithmMode' : 'lead2AlgorithmMode']);
-  const morphed = morphPresets(leadPresetFromKey(presetAData ?? presetAKey), leadPresetFromKey(presetBData ?? presetBKey), morph, algorithm) as unknown as Record<string, unknown>;
+  let morphed = morphPresets(leadPresetFromKey(presetAData ?? presetAKey), leadPresetFromKey(presetBData ?? presetBKey), morph, algorithm);
   const prefix = leadIndex === 0 ? 'lead1' : 'lead2';
   if (booleanFromState(state, `${prefix}UseCustomAdsr`, false)) {
     morphed.attack = numberFromState(state, `${prefix}Attack`, 0.01);
@@ -327,8 +328,26 @@ export function exactLeadParamsFromState(state: Record<string, unknown> | undefi
     morphed.sustain = numberFromState(state, `${prefix}Sustain`, 0.3);
     morphed.release = numberFromState(state, `${prefix}Release`, 2);
   }
+  const voice = leadIndex === 0 ? 'lead1' : 'lead2';
+  const distance = clamp(numberFromState(state, getVoiceDistanceKey(voice), 0), 0, 1);
+  if (distance > 0.0001) {
+    const envelope = applyLeadDistanceEnvelope(voice, {
+      attack: morphed.attack,
+      decay: morphed.decay,
+      sustain: morphed.sustain,
+      release: morphed.release,
+    }, distance);
+    morphed = applyLeadDistanceTimbre({
+      ...morphed,
+      attack: envelope.attack,
+      decay: envelope.decay,
+      sustain: envelope.sustain,
+      release: envelope.release,
+    } satisfies Lead4opFMMorphedParams, distance);
+  }
+  const morphedParams = morphed as unknown as Record<string, unknown>;
   for (const spec of KESSHO_PRODUCT_LEAD_PARAM_SPECS) {
-    params[spec.index] = padParamValue(morphed[spec.key], spec.enumMap, spec.fallback);
+    params[spec.index] = padParamValue(morphedParams[spec.key], spec.enumMap, spec.fallback);
   }
   return params;
 }

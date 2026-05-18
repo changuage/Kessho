@@ -814,6 +814,20 @@
     case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_MAKEUP_ID:
       fx.reverb_pre_comp_makeup = clampFloat(event.value, 0.5f, 4.0f);
       break;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_CHORD_WASH_ID:
+      fx.reverb_chord_wash = event.value >= 0.5f;
+      if (!fx.reverb_chord_wash) {
+        reverb_wash_boost = 0.0f;
+        configureReverbModule();
+      }
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_RESOLUTION_BLOOM_ID:
+      fx.reverb_resolution_bloom = event.value >= 0.5f;
+      if (!fx.reverb_resolution_bloom) {
+        reverb_bloom_boost = 0.0f;
+        configureReverbModule();
+      }
+      break;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID:
       fx.spectral_freeze_mix = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
