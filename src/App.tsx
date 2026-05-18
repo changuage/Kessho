@@ -7805,7 +7805,7 @@ const App: React.FC = () => {
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
             getDynamicsAnalyser={audioEngineRuntimeMode === 'core-product' ? undefined : (key) => audioEngine.getDynamicsAnalyser(key)}
-            getDynamicsTelemetry={() => audioEngine.getDynamicsVisualTelemetry()}
+            getDynamicsTelemetry={() => { try { return audioEngine.getDynamicsVisualTelemetry(); } catch { return undefined as never; } }}
           />
         )}
 

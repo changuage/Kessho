@@ -245,6 +245,7 @@ export function loadCoreProductHostHarness(options = {}) {
     },
     createCoreProductSnapshot: () => ({ transport: { bpm: 120 } }),
     encodeCoreProductSnapshot: () => new ArrayBuffer(8),
+    usesLegacyGranularRuntimeSeed: () => false,
     KESSHO_PRODUCT_PARAM_IDS: createParamIds(),
     CORE_PRODUCT_MODULATION_RANGE_MODE: { sampleHold: 1, randomWalk: 2 },
     CORE_PRODUCT_SEQUENCER_IDS: { synth: 1, drum: 2 },

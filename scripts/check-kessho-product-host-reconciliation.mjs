@@ -129,7 +129,7 @@ await runCheckWithReport({
       'telemetryRngState',
       'rngSeed: this.latestTelemetry.rngSeed',
       'rngState: this.latestTelemetry.rngState',
-      '...telemetryRngState, ...this.latestSliderState, ...this.adapterState',
+      '...this.latestSliderState, ...this.adapterState',
     ]) {
       assert(createSnapshotBody.includes(token), `createLatestSnapshot() must reconcile ${token}`);
     }

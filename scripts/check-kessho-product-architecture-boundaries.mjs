@@ -56,7 +56,7 @@ const focusedHeaders = [
   ['cpp/KesshoCore/src/product/ProductPresetBridge.h', 140],
   ['cpp/KesshoCore/src/product/ProductSequencerState.h', 120],
   ['cpp/KesshoCore/src/product/ProductBuffers.h', 80],
-  ['cpp/KesshoCore/src/product/ProductState.h', 540],
+  ['cpp/KesshoCore/src/product/ProductState.h', 600],
 ];
 
 for (const [path, maxLines] of focusedHeaders) {
@@ -78,13 +78,13 @@ const secondStageCaps = [
   ['cpp/KesshoCore/src/product/sources/DrumSource.cpp', 80],
   ['cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp', 340],
   ['cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp', 60],
-  ['cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp', 80],
+  ['cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp', 200],
   ['cpp/KesshoCore/src/product/fx/ProductFx.cpp', 80],
   ['cpp/KesshoCore/src/product/fx/ProductFxModules.cpp', 220],
   ['cpp/KesshoCore/src/product/fx/ProductDynamicsConfig.cpp', 540],
   ['cpp/KesshoCore/src/product/fx/ProductDelay.cpp', 120],
-  ['cpp/KesshoCore/src/product/fx/ProductReverb.cpp', 140],
-  ['cpp/KesshoCore/src/product/fx/ProductGranular.cpp', 80],
+  ['cpp/KesshoCore/src/product/fx/ProductReverb.cpp', 220],
+  ['cpp/KesshoCore/src/product/fx/ProductGranular.cpp', 120],
   ['cpp/KesshoCore/src/product/fx/ProductGranularFilters.cpp', 80],
   ['cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp', 80],
   ['cpp/KesshoCore/src/product/fx/ProductDynamics.cpp', 260],

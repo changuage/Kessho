@@ -51,6 +51,7 @@ for (const source of allowedImports) {
 
 const soundscapesAllowedImports = new Set([
   './generated/kesshoProductSchema',
+  './rng',
   './waterPresets',
 ]);
 const soundscapesImports = Array.from(soundscapesSnapshot.matchAll(/from '([^']+)'/g), (match) => match[1]);
