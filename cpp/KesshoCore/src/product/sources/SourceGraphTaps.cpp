@@ -94,8 +94,7 @@
       diffuse_l = graph_piano_diffuse_send_l;
       diffuse_r = graph_piano_diffuse_send_r;
       break;
-    default:
-      return;
+    default: return;
   }
 
   const uint32_t sidechain_target = sidechainTargetForSource(source_id);
@@ -122,14 +121,10 @@
     granular_l[frame] += send_left * source.granular_send;
     granular_r[frame] += send_right * source.granular_send;
   }
-  if (source.diffuse_send <= 0.0f) {
-    return;
-  }
+  if (source.diffuse_send <= 0.0f) return;
   const float diffuse_left = dry_left * source.diffuse_send;
   const float diffuse_right = dry_right * source.diffuse_send;
-  if (diffuse_left == 0.0f && diffuse_right == 0.0f) {
-    return;
-  }
+  if (diffuse_left == 0.0f && diffuse_right == 0.0f) return;
   if (graph_taps_enabled) {
     diffuse_l[frame] += diffuse_left;
     diffuse_r[frame] += diffuse_right;

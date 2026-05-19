@@ -278,6 +278,7 @@ function fakeWebAssemblyWithTelemetryHash(schemaHash) {
     kessho_product_render: () => {},
     kessho_product_get_stem: () => 0,
     kessho_product_get_graph_tap: () => 0,
+    kessho_product_set_graph_taps_enabled: () => 1,
     kessho_product_load_snapshot_v2: () => 1,
     kessho_product_enqueue_event: () => 1,
     kessho_product_copy_telemetry: copyTelemetry,

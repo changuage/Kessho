@@ -44,6 +44,7 @@ const PRODUCT_DRUM_VOICE_COUNT = 7;
 const PRODUCT_GRAPH_TAP_COUNT = 110;
 const STEM_PEAK_COUNT = 9;
 const STEM_PEAK_PROBE_INTERVAL_BLOCKS = 16;
+const GRAPH_TAP_IDLE_DISABLE_SECONDS = 5;
 const STEP_TOGGLE_CLEAR_LANE = 2;
 const STEP_FIELD_MASK = 15 << 8;
 const STEP_FIELD_SUBLANE_CONFIG = 8 << 8;
@@ -74,6 +75,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.stemPeakProbeCountdown = 0;
     this.lastGraphTapPeaks = new Array(PRODUCT_GRAPH_TAP_COUNT).fill(0);
     this.graphTapCaptures = new Map();
+    this.coreGraphTapsEnabled = true;
+    this.graphTapDisableCountdownBlocks = 0;
     this.perfEnabled = false;
     this.perfTotalMs = 0;
     this.perfCount = 0;
@@ -193,7 +196,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         throw new Error('Kessho Product Core WASM telemetry schema probe failed');
       }
       this.assertSchemaHash('WASM telemetry', this.view.getUint32(this.telemetryPtr, true));
-      this.setCoreGraphTapsEnabled(false);
+      this.setCoreGraphTapsEnabled(true);
+      this.scheduleGraphTapIdleDisable();
       this.ready = true;
       this.port.postMessage({ type: 'ready' });
     } catch (error) {
@@ -319,9 +323,27 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
 
   setCoreGraphTapsEnabled(enabled) {
     if (!this.api?.setGraphTapsEnabled || !this.engine) return;
+    if (this.coreGraphTapsEnabled === enabled) return;
     const result = this.api.setGraphTapsEnabled(this.engine, enabled ? 1 : 0);
     if (result !== 1) {
       throw new Error(`Kessho Product Core graph tap mode update failed: ${result}`);
+    }
+    this.coreGraphTapsEnabled = enabled;
+  }
+
+  scheduleGraphTapIdleDisable() {
+    this.graphTapDisableCountdownBlocks = Math.max(
+      1,
+      Math.ceil((sampleRate * GRAPH_TAP_IDLE_DISABLE_SECONDS) / this.frames),
+    );
+  }
+
+  maintainGraphTapMode() {
+    if (!this.coreGraphTapsEnabled || this.graphTapCaptures.size > 0) return;
+    if (this.graphTapDisableCountdownBlocks <= 0) return;
+    this.graphTapDisableCountdownBlocks -= 1;
+    if (this.graphTapDisableCountdownBlocks === 0) {
+      this.setCoreGraphTapsEnabled(false);
     }
   }
 
@@ -339,6 +361,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     if (this.graphTapCaptures.size === 0) {
       this.setCoreGraphTapsEnabled(true);
     }
+    this.graphTapDisableCountdownBlocks = 0;
     this.lastGraphTapPeaks[tapId] = 0;
     this.graphTapCaptures.set(tapId, {
       tapId,
@@ -399,7 +422,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       if (stopped) {
         this.graphTapCaptures.delete(tapId);
         if (this.graphTapCaptures.size === 0) {
-          this.setCoreGraphTapsEnabled(false);
+          this.scheduleGraphTapIdleDisable();
         }
       } else {
         this.resetGraphTapCaptureBuffers(capture);
@@ -1035,6 +1058,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.sampleStemPeaks(frames);
     }
     this.processActiveGraphTapCaptures(frames);
+    this.maintainGraphTapMode();
     this.recordPerfBlock(perfStartMs, frames);
     return true;
   }
