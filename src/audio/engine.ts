@@ -665,6 +665,9 @@ const dynamicsCharacterWasmUrl = getWorkletUrl('kessho_dynamics_character.wasm')
 const GRANULAR_WORKLET_DISPATCH_INTERVAL_MS = 16;
 const RUNTIME_RANDOM_WALK_INTERVAL_MS = 100;
 const RANDOM_WALK_MAX_CATCHUP_STEPS = 600;
+const MAIN_THREAD_MODULATION_MAX_DELTA_MS = 250;
+const FOREGROUND_PARAM_RESYNC_WINDOW_MS = 1200;
+const FOREGROUND_PARAM_RESYNC_SMOOTH_TIME = 0.35;
 const PIANO_SAMPLE_CACHE_LIMIT_PER_VARIANT = 24;
 
 const FX_OWNERSHIP_WINDOW_MS = 140;
@@ -1037,11 +1040,15 @@ export class AudioEngine {
   private granularActiveGrainCount = 0;
   private granularBufferWaveform: Float32Array | null = null;  // downsampled buffer peaks for viz
   private granularUiActive = false;
+  private lastGranularUiActiveSent: boolean | null = null;
   private pendingGranularWorkletUpdate: GranularWorkletUpdate | null = null;
   private granularWorkletDispatchTimer: number | null = null;
   private lastGranularWorkletDispatchMs = 0;
   private lastGranularRandomSeedMaterial = '';
   private lastGranularRandomSequencePreview: number[] = [];
+  private foregroundParamResyncUntilMs = 0;
+  private hiddenWallClockStartedMs: number | null = null;
+  private hiddenWallClockOffsetSec = 0;
 
   // Granular multi-tap delay (Microcosm-style)
   private granularDelayInputNode: GainNode | null = null;
@@ -1346,8 +1353,53 @@ export class AudioEngine {
     this.onDrumTrigger?.(voice, velocity);
   };
 
+  private readonly handleDocumentVisibilityChange = () => {
+    const nowMs = performance.now();
+    if (this.isDocumentVisible()) {
+      if (this.hiddenWallClockStartedMs !== null) {
+        this.hiddenWallClockOffsetSec += Math.max(0, nowMs - this.hiddenWallClockStartedMs) / 1000;
+        this.hiddenWallClockStartedMs = null;
+      }
+      this.runtimeRandomWalkLastUpdateMs = nowMs;
+      this.foregroundParamResyncUntilMs = nowMs + FOREGROUND_PARAM_RESYNC_WINDOW_MS;
+      this.syncGranularUiActive();
+      if (this.sliderState && (this.isRunning || this.synthEuclidScheduleTimer !== null)) {
+        this.scheduleApplyParamsRefresh();
+      }
+      return;
+    }
+
+    this.hiddenWallClockStartedMs = nowMs;
+    this.runtimeRandomWalkLastUpdateMs = nowMs;
+    this.syncGranularUiActive();
+  };
+
   constructor() {
-    // Empty constructor
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.handleDocumentVisibilityChange);
+    }
+  }
+
+  private isDocumentVisible(): boolean {
+    return typeof document === 'undefined' || document.visibilityState === 'visible';
+  }
+
+  private shouldRunMainThreadModulation(): boolean {
+    return this.isDocumentVisible();
+  }
+
+  private capMainThreadModulationDelta(elapsedMs: number): number {
+    return Math.min(MAIN_THREAD_MODULATION_MAX_DELTA_MS, Math.max(0, elapsedMs));
+  }
+
+  private getRuntimeWalkWallTimeSec(): number {
+    return Date.now() / 1000 - this.hiddenWallClockOffsetSec;
+  }
+
+  private getParamSmoothTime(defaultSmoothTime: number): number {
+    return performance.now() < this.foregroundParamResyncUntilMs
+      ? Math.max(defaultSmoothTime, FOREGROUND_PARAM_RESYNC_SMOOTH_TIME)
+      : defaultSmoothTime;
   }
 
   /**
@@ -4540,9 +4592,18 @@ export class AudioEngine {
 
   setGranularUiActive(active: boolean) {
     this.granularUiActive = active;
-    if (this.granularFxNode) {
-      this.granularFxNode.port.postMessage({ type: 'uiActive', active });
+    this.syncGranularUiActive();
+  }
+
+  private syncGranularUiActive(): void {
+    const active = this.granularUiActive && this.isDocumentVisible();
+    if (!this.granularFxNode) {
+      this.lastGranularUiActiveSent = null;
+      return;
     }
+    if (this.lastGranularUiActiveSent === active) return;
+    this.lastGranularUiActiveSent = active;
+    this.granularFxNode.port.postMessage({ type: 'uiActive', active });
   }
 
   setDrumTriggerCallback(callback: (voice: DrumVoiceType, velocity: number) => void) {
@@ -6261,6 +6322,7 @@ export class AudioEngine {
       try { this.granularFxNode.port.close(); } catch { /* */ }
       try { this.granularFxNode.disconnect(); } catch { /* */ }
       this.granularFxNode = null;
+      this.lastGranularUiActiveSent = null;
     }
     if (this.granularFxInputGain) { try { this.granularFxInputGain.disconnect(); } catch { /* */ } this.granularFxInputGain = null; }
     if (this.granularFxReverbSend) { try { this.granularFxReverbSend.disconnect(); } catch { /* */ } this.granularFxReverbSend = null; }
@@ -6999,7 +7061,8 @@ export class AudioEngine {
           [toTransfer] // transfer ownership
         );
       }
-      this.granularFxNode.port.postMessage({ type: 'uiActive', active: this.granularUiActive });
+      this.lastGranularUiActiveSent = null;
+      this.syncGranularUiActive();
 
       // Send enablePerf immediately if monitoring is active
       if (this.perfMonitorEnabled) {
@@ -7497,7 +7560,7 @@ export class AudioEngine {
         v = ls.smoothCurrent; break;
       case 'randomWalk': {
         const rwNow = performance.now();
-        const elapsedMs = ls.rwLast > 0 ? Math.max(0, rwNow - ls.rwLast) : 100;
+        const elapsedMs = ls.rwLast > 0 ? this.capMainThreadModulationDelta(rwNow - ls.rwLast) : 100;
         if (elapsedMs >= 100) {
           ls.rwLast = rwNow;
           const stepCount = Math.max(
@@ -7750,13 +7813,13 @@ export class AudioEngine {
         return;
       }
 
-      const shouldAnimate = this.isRunning || document.visibilityState === 'visible';
+      const shouldAnimate = this.shouldRunMainThreadModulation();
       if (!shouldAnimate) {
         this.runtimeRandomWalkLastUpdateMs = now;
         return;
       }
 
-      const elapsedMs = Math.max(0, now - this.runtimeRandomWalkLastUpdateMs);
+      const elapsedMs = this.capMainThreadModulationDelta(now - this.runtimeRandomWalkLastUpdateMs);
       this.runtimeRandomWalkLastUpdateMs = now;
 
       const speed = Math.max(0.01, sourceState.randomWalkSpeed ?? 1);
@@ -7778,7 +7841,7 @@ export class AudioEngine {
         let nextVelocity = walkState.velocity;
 
         if (globalWalk) {
-          nextPosition = sampleGlobalWalkPosition(key, speed, sourceState.seedWindow);
+          nextPosition = sampleGlobalWalkPosition(key, speed, sourceState.seedWindow, this.getRuntimeWalkWallTimeSec());
           nextVelocity = 0;
         } else {
           for (let step = 0; step < localStepCount; step += 1) {
@@ -7934,14 +7997,14 @@ export class AudioEngine {
       if (!baseState) return;
 
       const now = performance.now();
-      const canAnimate = this.isRunning || document.visibilityState === 'visible';
+      const canAnimate = this.shouldRunMainThreadModulation();
       if (!canAnimate) {
         lastPadUpdateTime = now;
         this.drumAutoMorphManager.syncClock(now);
         return;
       }
 
-      const deltaTime = Math.max(0, (now - lastPadUpdateTime) / 1000);
+      const deltaTime = this.capMainThreadModulationDelta(now - lastPadUpdateTime) / 1000;
       lastPadUpdateTime = now;
       let runtimeChanged = false;
 
@@ -8028,13 +8091,13 @@ export class AudioEngine {
         return;
       }
 
-      const canAnimate = this.isRunning || document.visibilityState === 'visible';
+      const canAnimate = this.shouldRunMainThreadModulation();
       if (!canAnimate) {
         lastUpdateMs = now;
         return;
       }
 
-      const elapsedMs = Math.max(0, now - lastUpdateMs);
+      const elapsedMs = this.capMainThreadModulationDelta(now - lastUpdateMs);
       lastUpdateMs = now;
       const stepCount = Math.max(
         1,
@@ -8763,7 +8826,7 @@ export class AudioEngine {
 
     const ctx = this.ctx;
     const now = ctx.currentTime;
-    const smoothTime = 0.05;
+    const smoothTime = this.getParamSmoothTime(0.05);
 
     // Helper: guard against NaN/Infinity in audio param values (crash prevention)
     const fin = (v: number, fallback: number): number => Number.isFinite(v) ? v : fallback;
