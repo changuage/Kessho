@@ -7,6 +7,7 @@
     "build": "npm run core:product:wasm && tsc && vite build",
     "test:preset-metadata": "node scripts/run-preset-metadata-regression.mjs",
     "test:preset-dedup": "node scripts/run-preset-dedup-regression.mjs",
+    "test:preset-soft-delete": "node scripts/run-preset-soft-delete-regression.mjs",
     "test:dynamics-character": "node scripts/check-dynamics-character-wasm.mjs",
     "test:native-swift-dynamics-parity": "node scripts/check-native-swift-dynamics-parity.mjs",
     "test:native-swift-shared-reverb": "node scripts/check-native-swift-shared-reverb.mjs",

@@ -7,6 +7,10 @@
 
 BEGIN;
 
+ALTER TABLE public.presets_v2
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+
 CREATE INDEX IF NOT EXISTS idx_presets_v2_type_scope_hash
   ON public.presets_v2(type, scope, latest_resolved_hash)
   WHERE latest_resolved_hash IS NOT NULL;
@@ -17,11 +21,22 @@ CREATE INDEX IF NOT EXISTS idx_presets_v2_tags_gin
 DROP POLICY IF EXISTS "presets_v2_read_shared_or_own" ON public.presets_v2;
 CREATE POLICY "presets_v2_read_shared_or_own" ON public.presets_v2
   FOR SELECT USING (
-    visibility IN ('public', 'featured')
-    OR auth.uid() = owner_user_id
+    (
+      deleted_at IS NULL
+      AND (
+        visibility IN ('public', 'featured')
+        OR auth.uid() = owner_user_id
+        OR (
+          auth.uid() IS NOT NULL
+          AND 'internal-derived' = ANY(tags)
+        )
+      )
+    )
     OR (
+      deleted_at IS NOT NULL
+      AND
       auth.uid() IS NOT NULL
-      AND 'internal-derived' = ANY(tags)
+      AND (owner_key = 'public' OR auth.uid() = owner_user_id)
     )
   );
 
@@ -56,14 +71,20 @@ DECLARE
   deleted_count INTEGER := 0;
   total_deleted INTEGER := 0;
 BEGIN
+  PERFORM set_config('app.kessho_allow_preset_recycle_update', 'on', TRUE);
+
   LOOP
-    DELETE FROM public.presets_v2 p
-    WHERE 'internal-derived' = ANY(p.tags)
-      AND NOT EXISTS (
-        SELECT 1
-        FROM public.preset_version_refs_v2 r
-        WHERE r.target_preset_id = p.id
-      );
+    UPDATE public.presets_v2 p
+       SET deleted_at = COALESCE(p.deleted_at, now()),
+           deleted_by = NULL,
+           archived = TRUE
+     WHERE 'internal-derived' = ANY(p.tags)
+       AND p.deleted_at IS NULL
+       AND NOT EXISTS (
+         SELECT 1
+         FROM public.preset_version_refs_v2 r
+         WHERE r.target_preset_id = p.id
+       );
 
     GET DIAGNOSTICS deleted_count = ROW_COUNT;
     total_deleted := total_deleted + deleted_count;

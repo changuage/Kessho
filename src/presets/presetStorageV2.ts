@@ -44,6 +44,8 @@ export interface PresetV2Row {
   play_count: number | null;
   rating: number | null;
   archived: boolean;
+  deleted_at: string | null;
+  deleted_by: string | null;
   created_at: string;
   updated_at: string;
 }

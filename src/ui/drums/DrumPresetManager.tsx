@@ -9,7 +9,7 @@ import type { DrumVoiceType } from '../../audio/drumSynth';
 import { usePresets } from '../../presets/usePresets';
 import { PresetRatingStars } from '../../presets/PresetRatingStars';
 import { getVersionData } from '../../presets/codec';
-import { SHARED_PRESET_TEST_MODE } from '../../presets/sharedMode';
+import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from '../../presets/sharedMode';
 import {
   getFactoryPresetNames,
   upsertUserPreset,
@@ -423,7 +423,8 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
     setConfirm({
       message: `Delete "${selectedPresetName}"?`,
       onConfirm: async () => {
-        await remove(selectedPresetName);
+        const removed = await remove(selectedPresetName);
+        if (!removed) return;
         setConfirm(null);
         setSelectedPresetName('');
         setShowVersions(false);
@@ -501,7 +502,7 @@ const DrumPresetManager: React.FC<DrumPresetManagerProps> = ({
               onMouseLeave={e => { e.currentTarget.style.color = '#5f8f5f'; e.currentTarget.style.background = 'none'; }}
               title={`Save current state as ${selectedPresetName}`}
             >💾</button>
-            {!SHARED_PRESET_TEST_MODE && (
+            {PRESET_DELETE_ENABLED && (SHARED_PRESET_TEST_MODE || selectedSummary?.library !== 'stock') && (
               <button
                 style={s.deleteBtn}
                 onClick={handleDelete}

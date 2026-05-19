@@ -35,7 +35,7 @@ import {
   stripReferencedChildData,
   stableStringifyCanonical,
 } from './presetStorageV2';
-import { SHARED_PRESET_TEST_MODE } from './sharedMode';
+import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import type {
   PresetEntry,
   PresetLevel,
@@ -50,6 +50,11 @@ const VERSION_CHECKPOINT_INTERVAL = 8;
 const PATCH_TO_SNAPSHOT_RATIO = 0.65;
 const INTERNAL_DERIVED_TAG = 'internal-derived';
 const AUTO_CHILD_TAG = 'auto-child';
+
+interface V2LookupOptions {
+  includeDeleted?: boolean;
+  deletedOnly?: boolean;
+}
 
 /** Row shape returned from the legacy Supabase `presets` table */
 interface PresetRow {
@@ -229,6 +234,10 @@ function dedupePreferredV2Rows(rows: PresetV2Row[], userId: string | null): Pres
     }
   }
   return Array.from(preferred.values()).sort((left, right) => comparePresetV2Priority(left, right, userId));
+}
+
+function isActivePresetV2Row(row: Pick<PresetV2Row, 'deleted_at'>): boolean {
+  return !row.deleted_at;
 }
 
 function isInternalDerivedTags(tags: string[] | null | undefined): boolean {
@@ -493,26 +502,12 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   private async deleteLegacy(type: PresetLevel, name: string, scope?: string): Promise<void> {
-    if (SHARED_PRESET_TEST_MODE) {
+    if (!PRESET_DELETE_ENABLED) {
       console.warn('Shared preset delete is disabled in testing mode:', type, scope ?? '', name);
       return;
     }
 
-    if (!this.userId) return;
-
-    let query = this.client
-      .from('presets')
-      .delete()
-      .eq('type', type)
-      .eq('name', name)
-      .eq('user_id', this.userId);
-
-    if (scope) query = query.eq('scope', scope);
-
-    const { error } = await query;
-    if (error) {
-      console.error('SupabasePresetStore.delete error:', error);
-    }
+    console.warn('Legacy Supabase preset hard delete is disabled; apply preset_storage_v2_recycle_bin.sql to enable recycle-bin deletes.', type, scope ?? '', name);
   }
 
   private async existsLegacy(type: PresetLevel, name: string, scope?: string): Promise<boolean> {
@@ -529,7 +524,12 @@ export class SupabasePresetStore implements IPresetStore {
     return !!data && data.length > 0;
   }
 
-  private async queryPresetRowsV2(type: PresetLevel, name: string, scope?: string): Promise<PresetV2Row[]> {
+  private async queryPresetRowsV2(
+    type: PresetLevel,
+    name: string,
+    scope?: string,
+    options: V2LookupOptions = {},
+  ): Promise<PresetV2Row[]> {
     let query = this.client
       .from('presets_v2')
       .select('*')
@@ -538,6 +538,8 @@ export class SupabasePresetStore implements IPresetStore {
 
     if (scope) query = query.eq('scope', scope);
     else query = query.is('scope', null);
+    if (options.deletedOnly) query = query.not('deleted_at', 'is', null);
+    else if (!options.includeDeleted) query = query.is('deleted_at', null);
 
     const { data, error } = await query
       .order('updated_at', { ascending: false })
@@ -563,6 +565,7 @@ export class SupabasePresetStore implements IPresetStore {
       .eq('type', type)
       .eq('scope', scope)
       .eq('latest_resolved_hash', resolvedHash)
+      .is('deleted_at', null)
       .order('updated_at', { ascending: false })
       .limit(20);
 
@@ -1038,6 +1041,7 @@ export class SupabasePresetStore implements IPresetStore {
       .eq('type', type);
 
     if (scope) query = query.eq('scope', scope);
+    query = query.is('deleted_at', null);
 
     const { data, error } = await query
       .order('updated_at', { ascending: false })
@@ -1050,6 +1054,7 @@ export class SupabasePresetStore implements IPresetStore {
     }
 
     const rows = dedupePreferredV2Rows((data ?? []) as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId)
+      .filter(isActivePresetV2Row)
       .filter(row => !isInternalDerivedRow(row));
     const summaries: PresetSummary[] = rows.map((row) => ({
       id: row.id,
@@ -1113,7 +1118,7 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   private async deleteV2(type: PresetLevel, name: string, scope?: string): Promise<void> {
-    if (SHARED_PRESET_TEST_MODE) {
+    if (!PRESET_DELETE_ENABLED) {
       console.warn('Shared preset delete is disabled in testing mode:', type, scope ?? '', name);
       return;
     }
@@ -1122,13 +1127,16 @@ export class SupabasePresetStore implements IPresetStore {
     const target = rows[0];
     if (!target) return;
 
-    const { error } = await this.client
-      .from('presets_v2')
-      .delete()
-      .eq('id', target.id);
+    const { data, error } = await this.client.rpc('kessho_soft_delete_preset_v2', {
+      target_preset_id: target.id,
+    });
 
     if (error && !this.markV2UnavailableIfMissing(error)) {
-      console.error('SupabasePresetStore.deleteV2 error:', error);
+      throw new Error(`Cloud preset delete failed: ${error.message}`);
+    }
+
+    if (data === false) {
+      throw new Error(`Cloud preset delete failed: "${name}" is not deletable or is already recycled.`);
     }
   }
 
@@ -1383,6 +1391,7 @@ export class SupabasePresetStore implements IPresetStore {
     if (await this.supportsV2()) {
       const v2Entry = await this.loadV2(type, name, scope, version);
       if (v2Entry) return v2Entry;
+      if (SHARED_PRESET_TEST_MODE) return null;
     }
 
     return this.loadLegacy(type, name, scope, version);
@@ -1393,6 +1402,7 @@ export class SupabasePresetStore implements IPresetStore {
 
     if (await this.supportsV2()) {
       summaries.push(...await this.listV2(type, scope));
+      if (SHARED_PRESET_TEST_MODE) return summaries;
     }
 
     const legacySummaries = await this.listLegacy(type, scope);
@@ -1430,6 +1440,7 @@ export class SupabasePresetStore implements IPresetStore {
   async exists(type: PresetLevel, name: string, scope?: string): Promise<boolean> {
     if (await this.supportsV2()) {
       if (await this.existsV2(type, name, scope)) return true;
+      if (SHARED_PRESET_TEST_MODE) return false;
     }
     return this.existsLegacy(type, name, scope);
   }
@@ -1490,7 +1501,8 @@ export class SupabasePresetStore implements IPresetStore {
       const [{ count }, { data }] = await Promise.all([
         this.client
           .from('presets_v2')
-          .select('*', { count: 'exact', head: true }),
+          .select('*', { count: 'exact', head: true })
+          .is('deleted_at', null),
         this.client
           .from('preset_payloads_v2')
           .select('payload_bytes'),
@@ -1520,10 +1532,12 @@ export class SupabasePresetStore implements IPresetStore {
   async exportAll(): Promise<Blob> {
     const entries: PresetEntry[] = [];
 
-    if (await this.supportsV2()) {
+    const v2Supported = await this.supportsV2();
+    if (v2Supported) {
       const { data, error } = await this.client
         .from('presets_v2')
         .select('*')
+        .is('deleted_at', null)
         .order('updated_at', { ascending: false });
 
       if (!error) {
@@ -1532,6 +1546,17 @@ export class SupabasePresetStore implements IPresetStore {
           if (entry) entries.push(entry);
         }
       }
+    }
+
+    if (v2Supported && SHARED_PRESET_TEST_MODE) {
+      const payload = {
+        kesshoBackup: true,
+        formatVersion: 2,
+        exportedAt: new Date().toISOString(),
+        count: entries.length,
+        entries,
+      };
+      return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     }
 
     let legacyQuery = this.client

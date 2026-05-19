@@ -269,6 +269,9 @@
 .granular-root .granular-voices-card {
   border-color: rgba(168, 85, 247, 0.16);
 }
+.granular-root .granular-voices-card .granular-section-head {
+  margin-bottom: 4px;
+}
 
 .granular-root .granular-space-card {
   border-color: rgba(245, 158, 11, 0.18);
@@ -393,8 +396,10 @@
 .granular-root .granular-buffer-readouts {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  justify-content: space-evenly;
+  gap: 8px;
   margin: 0 0 8px;
+  padding: 0 10px;
 }
 
 .granular-root .granular-buffer-readout {
@@ -411,9 +416,11 @@
 .granular-root .granular-buffer-legend {
   display: flex;
   align-items: center;
+  justify-content: center;
   flex-wrap: wrap;
-  gap: 5px 8px;
+  gap: 5px 12px;
   margin: 0 0 8px;
+  padding: 0 10px;
   color: rgba(255,255,255,0.52);
   font-size: 0.58rem;
   text-transform: uppercase;
@@ -652,7 +659,8 @@
 .granular-root .granular-voices {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  gap: 12px;
+  padding: 8px 10px 10px;
 }
 
 @media (max-width: 600px) {
@@ -663,9 +671,11 @@
 
 .granular-root .granular-voice-card {
   background: var(--bg-surface);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-md);
   overflow: hidden;
   transition: border-color 0.15s ease;
+  box-shadow: none;
 }
 .granular-root .granular-voice-card.editing {
   border-color: var(--border-accent);

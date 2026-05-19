@@ -119,7 +119,7 @@ if (!skipAuth) {
 }
 
 const [presets, versions, refs, payloads] = await Promise.all([
-  fetchAll('presets_v2', 'id,type,scope,name,latest_version_no,latest_version_id,latest_resolved_hash,latest_metadata_hash,updated_at,archived'),
+  fetchAll('presets_v2', 'id,type,scope,name,latest_version_no,latest_version_id,latest_resolved_hash,latest_metadata_hash,updated_at,archived,deleted_at,tags'),
   fetchAll('preset_versions_v2', 'id,preset_id,version_no,parent_version_id,storage_mode,override_hash,metadata_hash,patch_from_prev_hash,resolved_hash,is_checkpoint,created_at'),
   fetchAll('preset_version_refs_v2', 'version_id,ref_slot,target_preset_id,target_version_no,follow_latest,override_hash,created_at'),
   fetchAll('preset_payloads_v2', 'hash,payload_kind,payload,payload_bytes,created_at,last_seen_at'),
@@ -233,6 +233,7 @@ for (const version of versions) {
 }
 
 const refIssues = [];
+const activeLatestRefsToRecycled = [];
 for (const ref of refs) {
   const owner = versionById.get(ref.version_id);
   const target = presetById.get(ref.target_preset_id);
@@ -255,7 +256,37 @@ for (const ref of refs) {
   if (ref.override_hash && !payloadByHash.has(ref.override_hash)) {
     refIssues.push({ context, issue: 'ref override payload missing', hash: shortHash(ref.override_hash) });
   }
+  if (
+    ownerPreset
+    && target
+    && ownerPreset.deleted_at == null
+    && ownerPreset.latest_version_id === ref.version_id
+    && target.deleted_at != null
+  ) {
+    activeLatestRefsToRecycled.push({
+      context,
+      target: `${target.type}:${target.scope ?? ''}:${target.name}`,
+      deletedAt: target.deleted_at,
+    });
+  }
 }
+
+const referencedPresetIds = new Set(refs.map((ref) => ref.target_preset_id));
+const activeUnreferencedInternalDerived = presets
+  .filter((preset) => (
+    preset.deleted_at == null
+    && Array.isArray(preset.tags)
+    && preset.tags.includes('internal-derived')
+    && !referencedPresetIds.has(preset.id)
+  ))
+  .map((preset) => ({
+    type: preset.type,
+    scope: preset.scope,
+    name: preset.name,
+    updatedAt: preset.updated_at,
+  }))
+  .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+  .slice(0, 20);
 
 const hashMismatches = [];
 for (const payload of payloads) {
@@ -345,6 +376,10 @@ const report = {
     versionStorageIssues: versionStorageIssues.slice(0, 20),
     refIssueCount: refIssues.length,
     refIssues: refIssues.slice(0, 20),
+    activeLatestRefToRecycledCount: activeLatestRefsToRecycled.length,
+    activeLatestRefsToRecycled: activeLatestRefsToRecycled.slice(0, 20),
+    activeUnreferencedInternalDerivedCount: activeUnreferencedInternalDerived.length,
+    activeUnreferencedInternalDerived,
     kindMismatchCount: kindMismatches.length,
     kindMismatches: kindMismatches.slice(0, 20),
     unreferencedPayloadCount: unreferencedPayloads.length,
@@ -374,6 +409,7 @@ const blockingIssueCount =
   + report.integrity.hashMismatchCount
   + report.integrity.latestRollupIssueCount
   + report.integrity.refIssueCount
+  + report.integrity.activeLatestRefToRecycledCount
   + report.integrity.kindMismatchCount;
 
 if (outputJson) {

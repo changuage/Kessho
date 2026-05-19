@@ -8,7 +8,7 @@ import type { SliderState } from '../state';
 import { usePresets } from '../../presets/usePresets';
 import { PresetRatingStars } from '../../presets/PresetRatingStars';
 import { getVersionData } from '../../presets/codec';
-import { SHARED_PRESET_TEST_MODE } from '../../presets/sharedMode';
+import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from '../../presets/sharedMode';
 import {
   getFactoryPadPresetIdByName,
   getPadPresetOptions,
@@ -499,7 +499,8 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
     setConfirm({
       message: `Delete "${selectedEntryName}"?`,
       onConfirm: async () => {
-        await remove(selectedEntryName);
+        const removed = await remove(selectedEntryName);
+        if (!removed) return;
         setConfirm(null);
         setSelectedPresetId('');
         setShowVersions(false);
@@ -564,7 +565,7 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
               onMouseLeave={e => { e.currentTarget.style.color = '#5f8f5f'; e.currentTarget.style.background = 'none'; }}
               title={`Save current state as ${selectedEntryName}`}
             >💾</button>
-            {!SHARED_PRESET_TEST_MODE && selectedSummary?.library !== 'stock' && (
+            {PRESET_DELETE_ENABLED && (SHARED_PRESET_TEST_MODE || selectedSummary?.library !== 'stock') && (
               <button
                 style={s.deleteBtn}
                 onClick={handleDelete}

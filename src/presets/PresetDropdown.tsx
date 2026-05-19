@@ -10,7 +10,7 @@ import { getPresetStore } from './PresetStore';
 import { extractPresetVersionMetadata, isPresetCompatibleWithSlot, presetValuesEqual } from './presetUtils';
 import { getPresetDisplayLabel } from './catalog';
 import { getVersionData } from './codec';
-import { SHARED_PRESET_TEST_MODE } from './sharedMode';
+import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { PresetRatingStars } from './PresetRatingStars';
 import { DEFAULT_STATE, type SliderMode, type SliderState } from '../ui/state';
 import type { UsePresetsOptions } from './usePresets';
@@ -391,12 +391,14 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
 
   // Delete selected preset
   const handleDelete = useCallback(async () => {
-    if (SHARED_PRESET_TEST_MODE) return;
+    if (!PRESET_DELETE_ENABLED) return;
     if (!selectedName) return;
     const entry = await load(selectedName);
     if (!entry) return;
+    if (!SHARED_PRESET_TEST_MODE && (entry.library === 'stock' || entry.author === 'factory')) return;
     if (!confirm(`Delete preset "${selectedName}"?`)) return;
-    await remove(selectedName);
+    const removed = await remove(selectedName);
+    if (!removed) return;
     setSelectedName('');
     setLoadedEntry(null);
     setLoadedData(null);
@@ -533,7 +535,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
           </button>
         )}
 
-        {!SHARED_PRESET_TEST_MODE && selectedName && selectedPresetSummary && selectedPresetSummary.library !== 'stock' && (
+        {PRESET_DELETE_ENABLED && selectedName && selectedPresetSummary && (SHARED_PRESET_TEST_MODE || selectedPresetSummary.library !== 'stock') && (
           <button
             onClick={handleDelete}
             style={{ ...dropdownStyles.iconBtn, color: '#664444' }}

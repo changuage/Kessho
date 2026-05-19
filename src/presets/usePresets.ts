@@ -15,7 +15,7 @@ import { getPresetStore, subscribePresetStore } from './PresetStore';
 import { extractParams, applyParams, extractCascade, applyCascade, compressVersions, getVersionData } from './codec';
 import { extractPresetVersionMetadata, presetValuesEqual } from './presetUtils';
 import { buildPresetFamilies } from './catalog';
-import { SHARED_PRESET_TEST_MODE } from './sharedMode';
+import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
 
@@ -250,12 +250,20 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
   }, [type, storeScope, store]);
 
   const remove = useCallback(async (name: string): Promise<boolean> => {
+    if (!PRESET_DELETE_ENABLED) return false;
     const activeStore = getPresetStore();
     const entry = await activeStore.load(type, name, storeScope);
     if (!entry) return false;
-    await activeStore.delete(type, name, storeScope);
-    await refresh();
-    return true;
+    if (!SHARED_PRESET_TEST_MODE && (entry.library === 'stock' || entry.author === 'factory')) return false;
+    try {
+      await activeStore.delete(type, name, storeScope);
+      await refresh();
+      return true;
+    } catch (error) {
+      console.warn('Failed to delete preset:', error);
+      await refresh();
+      return false;
+    }
   }, [type, storeScope, store, refresh]);
 
   const extract = useCallback((state: SliderState): Record<string, unknown> => {

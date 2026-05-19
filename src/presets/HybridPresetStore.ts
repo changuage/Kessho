@@ -8,7 +8,7 @@
 
 import type { PresetEntry, PresetLevel, PresetLibrary, PresetSummary } from './types';
 import type { IPresetStore } from './PresetStore';
-import { SHARED_PRESET_TEST_MODE } from './sharedMode';
+import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 
 function comparePresetSummaryPriority(left: PresetSummary, right: PresetSummary): number {
   const rank = (preset: PresetSummary) => {
@@ -123,18 +123,23 @@ export class HybridPresetStore implements IPresetStore {
   }
 
   async delete(type: PresetLevel, name: string, scope?: string): Promise<void> {
-    if (SHARED_PRESET_TEST_MODE && this.cloud) {
+    if (!PRESET_DELETE_ENABLED) {
       console.warn('Shared preset delete is disabled in testing mode:', type, scope ?? '', name);
+      return;
+    }
+
+    if (SHARED_PRESET_TEST_MODE) {
+      if (!this.cloud) {
+        throw new Error('Cloud preset delete is unavailable in shared preset mode.');
+      }
+      await this.cloud.delete(type, name, scope);
+      await this.local.delete(type, name, scope);
       return;
     }
 
     await this.local.delete(type, name, scope);
     if (this.cloud) {
-      try {
-        await this.cloud.delete(type, name, scope);
-      } catch (e) {
-        console.warn('Cloud delete failed:', e);
-      }
+      await this.cloud.delete(type, name, scope);
     }
   }
 

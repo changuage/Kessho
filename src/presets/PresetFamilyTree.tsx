@@ -1,5 +1,5 @@
 // src/presets/PresetFamilyTree.tsx
-// Visualizer for a parent preset and its children (max 1 level, max 5 children).
+// Visualizer for a parent preset and its children (max 1 level, max 10 children).
 // Children share the parent's familyId but have distinct variantName + description.
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
@@ -8,7 +8,7 @@ import { usePresets } from './usePresets';
 import { getVersionData } from './codec';
 import { extractCascade, getCascadeKeys } from './codec';
 import { presetValuesEqual } from './presetUtils';
-import { SHARED_PRESET_TEST_MODE } from './sharedMode';
+import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import { PresetRatingStars } from './PresetRatingStars';
 import { DEFAULT_STATE, migratePreset, type SliderState } from '../ui/state';
 import type { SliderMode } from '../ui/state';
@@ -16,7 +16,7 @@ import { DERIVED_PAD_KEYS } from '../audio/padPresets';
 import { isStatePresetDiffKeyActive, normalizeStatePresetDiffData } from './statePresetDiffs';
 import { buildPresetVersionMetadata, getPresetVersionSnapshot } from './versionMetadataHelpers';
 
-const MAX_CHILDREN = 5;
+const MAX_CHILDREN = 10;
 const FAMILY_TREE_SELECTION_STORAGE_PREFIX = 'preset-family-tree:selected:';
 
 function getFamilyTreeSelectionStorageKey(level: PresetLevel, scope?: string): string {
@@ -694,7 +694,8 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     setConfirmAction({
       message: `Delete "${name}"?`,
       onConfirm: async () => {
-        await remove(name);
+        const removed = await remove(name);
+        if (!removed) return;
         if (selectedParentName === name) setSelectedParentName('');
         await refresh();
       },
@@ -1101,11 +1102,11 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
               <span style={treeStyles.parentName}>
                 {selectedParentName}
               </span>
-              <PresetRatingStars
-                value={localRatings[selectedParentName] ?? presets.find(p => p.name === selectedParentName)?.rating ?? 0}
-                onChange={(r) => { void handleRate(selectedParentName, r); }}
-                size="0.72rem"
-              />
+              <button
+                style={{ ...treeStyles.expandBtn, ...(expandedVersions.has(selectedParentName) ? { color: '#a5c4d4' } : {}) }}
+                onClick={() => toggleVersionExpand(selectedParentName)}
+                title="Show version history"
+              >+</button>
               <button
                 style={{ ...treeStyles.slotBtn, ...treeStyles.slotA }}
                 onClick={() => requestLoadToSlot(selectedParentName, 'A', onLoadSlotA)}
@@ -1127,7 +1128,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                 onMouseLeave={e => { e.currentTarget.style.color = '#5f8f5f'; e.currentTarget.style.background = 'none'; }}
                 title={`Save current state as ${selectedParentName}`}
               >💾</button>
-              {!SHARED_PRESET_TEST_MODE && presets.find(p => p.name === selectedParentName)?.library !== 'stock' && (
+              {PRESET_DELETE_ENABLED && (SHARED_PRESET_TEST_MODE || presets.find(p => p.name === selectedParentName)?.library !== 'stock') && (
                 <button
                   style={treeStyles.deleteBtn}
                   onClick={() => requestDelete(selectedParentName)}
@@ -1136,11 +1137,11 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                   title={`Delete ${selectedParentName}`}
                 >✕</button>
               )}
-              <button
-                style={{ ...treeStyles.expandBtn, ...(expandedVersions.has(selectedParentName) ? { color: '#a5c4d4' } : {}) }}
-                onClick={() => toggleVersionExpand(selectedParentName)}
-                title="Show version history"
-              >+</button>
+              <PresetRatingStars
+                value={localRatings[selectedParentName] ?? presets.find(p => p.name === selectedParentName)?.rating ?? 0}
+                onChange={(r) => { void handleRate(selectedParentName, r); }}
+                size="0.72rem"
+              />
             </div>
             {renderVersionPanel(selectedParentName)}
 
@@ -1165,11 +1166,13 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                       </span>
                     )}
                   </span>
-                  <PresetRatingStars
-                    value={localRatings[child.name] ?? child.rating ?? 0}
-                    onChange={(r) => { void handleRate(child.name, r); }}
-                    size="0.62rem"
-                  />
+                  {child.versionCount > 1 && (
+                    <button
+                      style={{ ...treeStyles.expandBtn, ...(expandedVersions.has(child.name) ? { color: '#a5c4d4' } : {}) }}
+                      onClick={() => toggleVersionExpand(child.name)}
+                      title="Show version history"
+                    >+</button>
+                  )}
                   <button
                     style={{ ...treeStyles.slotBtn, ...treeStyles.slotA }}
                     onClick={() => requestLoadToSlot(child.name, 'A', onLoadSlotA)}
@@ -1184,7 +1187,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                     onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
                     title="Load into Slot B"
                   >B</button>
-                  {child.library !== 'stock' && (
+                  {(SHARED_PRESET_TEST_MODE || child.library !== 'stock') && (
                     <>
                       <button
                         style={treeStyles.saveBtn}
@@ -1193,7 +1196,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                         onMouseLeave={e => { e.currentTarget.style.color = '#5f8f5f'; e.currentTarget.style.background = 'none'; }}
                         title={`Save current state as v${(child.currentVersion || 1) + 1} of ${child.variantName !== child.familyName ? child.variantName : child.name}`}
                       >💾</button>
-                      {!SHARED_PRESET_TEST_MODE && (
+                      {PRESET_DELETE_ENABLED && (
                         <button
                           style={treeStyles.deleteBtn}
                           onClick={() => requestDelete(child.name)}
@@ -1204,13 +1207,11 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                       )}
                     </>
                   )}
-                  {child.versionCount > 1 && (
-                    <button
-                      style={{ ...treeStyles.expandBtn, ...(expandedVersions.has(child.name) ? { color: '#a5c4d4' } : {}) }}
-                      onClick={() => toggleVersionExpand(child.name)}
-                      title="Show version history"
-                    >+</button>
-                  )}
+                  <PresetRatingStars
+                    value={localRatings[child.name] ?? child.rating ?? 0}
+                    onChange={(r) => { void handleRate(child.name, r); }}
+                    size="0.62rem"
+                  />
                 </div>
                 {renderVersionPanel(child.name)}
                 </React.Fragment>
