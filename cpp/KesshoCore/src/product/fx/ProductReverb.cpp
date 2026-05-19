@@ -152,8 +152,10 @@ constexpr float kReverbBoostEpsilon = 0.001f;
   void KesshoProductEngine::renderReverb(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    graph_reverb_input_l[frame] = reverb_bus_l[frame];
-    graph_reverb_input_r[frame] = reverb_bus_r[frame];
+    if (graph_taps_enabled) {
+      graph_reverb_input_l[frame] = reverb_bus_l[frame];
+      graph_reverb_input_r[frame] = reverb_bus_r[frame];
+    }
   }
   const bool spectral_freeze_active =
       fx.spectral_freeze_enabled && fx.spectral_freeze_mix > 0.0f;
@@ -163,18 +165,20 @@ constexpr float kReverbBoostEpsilon = 0.001f;
   std::fill(module_l, module_l + frames, 0.0f);
   std::fill(module_r, module_r + frames, 0.0f);
   processReverbPreconditioner(start, frames);
-  for (uint32_t i = 0; i < frames; ++i) {
-    const uint32_t frame = start + i;
-    graph_reverb_preconditioner_output_l[frame] = reverb_bus_l[frame];
-    graph_reverb_preconditioner_output_r[frame] = reverb_bus_r[frame];
+  if (graph_taps_enabled) {
+    for (uint32_t i = 0; i < frames; ++i) {
+      const uint32_t frame = start + i;
+      graph_reverb_preconditioner_output_l[frame] = reverb_bus_l[frame];
+      graph_reverb_preconditioner_output_r[frame] = reverb_bus_r[frame];
+    }
   }
   if (spectral_freeze_active && fx.spectral_freeze_routing == 0u) {
     if (processSpectralFreezeBranch(reverb_bus_l + start, reverb_bus_r + start, module_l, module_r, start, frames)) {
       const float live_gain = 1.0f - clampFloat(fx.spectral_freeze_reverb_crossfade, 0.0f, 1.0f);
       for (uint32_t i = 0; i < frames; ++i) {
         const uint32_t frame = start + i;
-        reverb_bus_l[frame] = module_l[i] + graph_spectral_freeze_input_l[frame] * live_gain;
-        reverb_bus_r[frame] = module_r[i] + graph_spectral_freeze_input_r[frame] * live_gain;
+        reverb_bus_l[frame] = module_l[i] + reverb_bus_l[frame] * live_gain;
+        reverb_bus_r[frame] = module_r[i] + reverb_bus_r[frame] * live_gain;
       }
     }
   }
@@ -190,10 +194,12 @@ constexpr float kReverbBoostEpsilon = 0.001f;
     }
   }
   const float return_gain = fx.reverb_mix * kessho::product::generated::KESSHO_PRODUCT_GENERATED_REVERB_OUTPUT_TRIM;
-  for (uint32_t i = 0; i < frames; ++i) {
-    const uint32_t frame = start + i;
-    graph_reverb_output_l[frame] = module_l[i] * return_gain;
-    graph_reverb_output_r[frame] = module_r[i] * return_gain;
+  if (graph_taps_enabled) {
+    for (uint32_t i = 0; i < frames; ++i) {
+      const uint32_t frame = start + i;
+      graph_reverb_output_l[frame] = module_l[i] * return_gain;
+      graph_reverb_output_r[frame] = module_r[i] * return_gain;
+    }
   }
   mixFxBuffer(
       module_l,

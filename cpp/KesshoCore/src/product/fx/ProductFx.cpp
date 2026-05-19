@@ -17,10 +17,5 @@ void KesshoProductEngine::renderFx(float* out_l, float* out_r, uint32_t start, u
     renderDelayModule(delay_b_module.get(), delay_b_bus_l, delay_b_bus_r, delay_a_bus_l, delay_a_bus_r, out_l, out_r, start, frames);
     renderGranular(out_l, out_r, start, frames);
   }
-  for (uint32_t i = 0; i < frames; ++i) {
-    const uint32_t frame = start + i;
-    delay_a_cross_carry_l[i] = graph_delay_b_to_delay_a_send_l[frame];
-    delay_a_cross_carry_r[i] = graph_delay_b_to_delay_a_send_r[frame];
-  }
   renderReverb(out_l, out_r, start, frames);
 }

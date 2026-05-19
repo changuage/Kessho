@@ -99,7 +99,7 @@
   }
 
   const uint32_t sidechain_target = sidechainTargetForSource(source_id);
-  if (sidechain_target < kSidechainTargetCount) {
+  if (graph_taps_enabled && sidechain_target < kSidechainTargetCount) {
     const bool lead_source = source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
     const float duck_gain_for_tap = lead_source ? sidechainGain(sidechain_target, frame) : 1.0f;
     const float sidechain_output_left = lead_source ? dry_left * duck_gain_for_tap : ducked_left;
@@ -110,16 +110,18 @@
     graph_sidechain_output_r[sidechain_target][frame] += sidechain_output_right;
   }
 
-  dry_l[frame] += dry_left;
-  dry_r[frame] += dry_right;
-  reverb_l[frame] += send_left * source.reverb_send;
-  reverb_r[frame] += send_right * source.reverb_send;
-  delay_a_l[frame] += send_left * source.delay_a_send;
-  delay_a_r[frame] += send_right * source.delay_a_send;
-  delay_b_l[frame] += send_left * source.delay_b_send;
-  delay_b_r[frame] += send_right * source.delay_b_send;
-  granular_l[frame] += send_left * source.granular_send;
-  granular_r[frame] += send_right * source.granular_send;
+  if (graph_taps_enabled) {
+    dry_l[frame] += dry_left;
+    dry_r[frame] += dry_right;
+    reverb_l[frame] += send_left * source.reverb_send;
+    reverb_r[frame] += send_right * source.reverb_send;
+    delay_a_l[frame] += send_left * source.delay_a_send;
+    delay_a_r[frame] += send_right * source.delay_a_send;
+    delay_b_l[frame] += send_left * source.delay_b_send;
+    delay_b_r[frame] += send_right * source.delay_b_send;
+    granular_l[frame] += send_left * source.granular_send;
+    granular_r[frame] += send_right * source.granular_send;
+  }
   if (source.diffuse_send <= 0.0f) {
     return;
   }
@@ -128,10 +130,12 @@
   if (diffuse_left == 0.0f && diffuse_right == 0.0f) {
     return;
   }
-  diffuse_l[frame] += diffuse_left;
-  diffuse_r[frame] += diffuse_right;
-  graph_diffuse_input_l[frame] += diffuse_left;
-  graph_diffuse_input_r[frame] += diffuse_right;
+  if (graph_taps_enabled) {
+    diffuse_l[frame] += diffuse_left;
+    diffuse_r[frame] += diffuse_right;
+    graph_diffuse_input_l[frame] += diffuse_left;
+    graph_diffuse_input_r[frame] += diffuse_right;
+  }
   diffuse_bus_l[frame] += diffuse_left;
   diffuse_bus_r[frame] += diffuse_right;
   diffuse_bus_active_this_block = true;

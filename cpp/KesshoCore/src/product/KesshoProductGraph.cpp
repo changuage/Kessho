@@ -115,16 +115,18 @@
     granular_bus_l[frame] += granular_l;
     granular_bus_r[frame] += granular_r;
 
-    graph_drum_dry_l[frame] += dry_l;
-    graph_drum_dry_r[frame] += dry_r;
-    graph_drum_reverb_send_l[frame] += reverb_l;
-    graph_drum_reverb_send_r[frame] += reverb_r;
-    graph_drum_delay_a_send_l[frame] += delay_a_l;
-    graph_drum_delay_a_send_r[frame] += delay_a_r;
-    graph_drum_delay_b_send_l[frame] += delay_b_l;
-    graph_drum_delay_b_send_r[frame] += delay_b_r;
-    graph_drum_granular_send_l[frame] += granular_l;
-    graph_drum_granular_send_r[frame] += granular_r;
+    if (graph_taps_enabled) {
+      graph_drum_dry_l[frame] += dry_l;
+      graph_drum_dry_r[frame] += dry_r;
+      graph_drum_reverb_send_l[frame] += reverb_l;
+      graph_drum_reverb_send_r[frame] += reverb_r;
+      graph_drum_delay_a_send_l[frame] += delay_a_l;
+      graph_drum_delay_a_send_r[frame] += delay_a_r;
+      graph_drum_delay_b_send_l[frame] += delay_b_l;
+      graph_drum_delay_b_send_r[frame] += delay_b_r;
+      graph_drum_granular_send_l[frame] += granular_l;
+      graph_drum_granular_send_r[frame] += granular_r;
+    }
   }
 }
 
@@ -218,27 +220,29 @@
     const float insects_out_l = insects_prefader_l * earth_level;
     const float insects_out_r = insects_prefader_r * earth_level;
 
-    graph_soundscape_layer_dry_l[kSoundscapeLayerWater][frame] += water_l;
-    graph_soundscape_layer_dry_r[kSoundscapeLayerWater][frame] += water_r;
-    graph_soundscape_layer_reverb_send_l[kSoundscapeLayerWater][frame] += water_l * water_reverb_send;
-    graph_soundscape_layer_reverb_send_r[kSoundscapeLayerWater][frame] += water_r * water_reverb_send;
-    graph_soundscape_layer_delay_a_send_l[kSoundscapeLayerWater][frame] += water_l * water_delay_a_send;
-    graph_soundscape_layer_delay_a_send_r[kSoundscapeLayerWater][frame] += water_r * water_delay_a_send;
-    graph_soundscape_layer_delay_b_send_l[kSoundscapeLayerWater][frame] += water_l * water_delay_b_send;
-    graph_soundscape_layer_delay_b_send_r[kSoundscapeLayerWater][frame] += water_r * water_delay_b_send;
-    graph_soundscape_layer_granular_send_l[kSoundscapeLayerWater][frame] += water_l * water_granular_send;
-    graph_soundscape_layer_granular_send_r[kSoundscapeLayerWater][frame] += water_r * water_granular_send;
+    if (graph_taps_enabled) {
+      graph_soundscape_layer_dry_l[kSoundscapeLayerWater][frame] += water_l;
+      graph_soundscape_layer_dry_r[kSoundscapeLayerWater][frame] += water_r;
+      graph_soundscape_layer_reverb_send_l[kSoundscapeLayerWater][frame] += water_l * water_reverb_send;
+      graph_soundscape_layer_reverb_send_r[kSoundscapeLayerWater][frame] += water_r * water_reverb_send;
+      graph_soundscape_layer_delay_a_send_l[kSoundscapeLayerWater][frame] += water_l * water_delay_a_send;
+      graph_soundscape_layer_delay_a_send_r[kSoundscapeLayerWater][frame] += water_r * water_delay_a_send;
+      graph_soundscape_layer_delay_b_send_l[kSoundscapeLayerWater][frame] += water_l * water_delay_b_send;
+      graph_soundscape_layer_delay_b_send_r[kSoundscapeLayerWater][frame] += water_r * water_delay_b_send;
+      graph_soundscape_layer_granular_send_l[kSoundscapeLayerWater][frame] += water_l * water_granular_send;
+      graph_soundscape_layer_granular_send_r[kSoundscapeLayerWater][frame] += water_r * water_granular_send;
 
-    graph_soundscape_layer_dry_l[kSoundscapeLayerInsects][frame] += insects_prefader_l;
-    graph_soundscape_layer_dry_r[kSoundscapeLayerInsects][frame] += insects_prefader_r;
-    graph_soundscape_layer_reverb_send_l[kSoundscapeLayerInsects][frame] += insects_prefader_l * insects_reverb_send;
-    graph_soundscape_layer_reverb_send_r[kSoundscapeLayerInsects][frame] += insects_prefader_r * insects_reverb_send;
-    graph_soundscape_layer_delay_a_send_l[kSoundscapeLayerInsects][frame] += insects_prefader_l * insects_delay_a_send;
-    graph_soundscape_layer_delay_a_send_r[kSoundscapeLayerInsects][frame] += insects_prefader_r * insects_delay_a_send;
-    graph_soundscape_layer_delay_b_send_l[kSoundscapeLayerInsects][frame] += insects_prefader_l * insects_delay_b_send;
-    graph_soundscape_layer_delay_b_send_r[kSoundscapeLayerInsects][frame] += insects_prefader_r * insects_delay_b_send;
-    graph_soundscape_layer_granular_send_l[kSoundscapeLayerInsects][frame] += insects_prefader_l * insects_granular_send;
-    graph_soundscape_layer_granular_send_r[kSoundscapeLayerInsects][frame] += insects_prefader_r * insects_granular_send;
+      graph_soundscape_layer_dry_l[kSoundscapeLayerInsects][frame] += insects_prefader_l;
+      graph_soundscape_layer_dry_r[kSoundscapeLayerInsects][frame] += insects_prefader_r;
+      graph_soundscape_layer_reverb_send_l[kSoundscapeLayerInsects][frame] += insects_prefader_l * insects_reverb_send;
+      graph_soundscape_layer_reverb_send_r[kSoundscapeLayerInsects][frame] += insects_prefader_r * insects_reverb_send;
+      graph_soundscape_layer_delay_a_send_l[kSoundscapeLayerInsects][frame] += insects_prefader_l * insects_delay_a_send;
+      graph_soundscape_layer_delay_a_send_r[kSoundscapeLayerInsects][frame] += insects_prefader_r * insects_delay_a_send;
+      graph_soundscape_layer_delay_b_send_l[kSoundscapeLayerInsects][frame] += insects_prefader_l * insects_delay_b_send;
+      graph_soundscape_layer_delay_b_send_r[kSoundscapeLayerInsects][frame] += insects_prefader_r * insects_delay_b_send;
+      graph_soundscape_layer_granular_send_l[kSoundscapeLayerInsects][frame] += insects_prefader_l * insects_granular_send;
+      graph_soundscape_layer_granular_send_r[kSoundscapeLayerInsects][frame] += insects_prefader_r * insects_granular_send;
+    }
 
     out_l[frame] += water_out_l + insects_out_l;
     out_r[frame] += water_out_r + insects_out_r;

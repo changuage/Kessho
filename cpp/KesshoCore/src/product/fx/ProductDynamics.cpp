@@ -200,7 +200,7 @@
     const float duck_gain = sidechainGain(sidechain_target, frame);
     const float left = input_left * duck_gain;
     const float right = input_right * duck_gain;
-    if (sidechain_target < kSidechainTargetCount) {
+    if (graph_taps_enabled && sidechain_target < kSidechainTargetCount) {
       graph_sidechain_input_l[sidechain_target][frame] += input_left;
       graph_sidechain_input_r[sidechain_target][frame] += input_right;
       graph_sidechain_output_l[sidechain_target][frame] += left;

@@ -23,8 +23,10 @@
   float* graph_granular_r = is_delay_a ? graph_delay_a_to_granular_send_r : graph_delay_b_to_granular_send_r;
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    graph_input_l[frame] = input_l[frame];
-    graph_input_r[frame] = input_r[frame];
+    if (graph_taps_enabled) {
+      graph_input_l[frame] = input_l[frame];
+      graph_input_r[frame] = input_r[frame];
+    }
   }
   if (module == nullptr || frames == 0u) {
     return;
@@ -57,18 +59,24 @@
     const float cross_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND][i];
     const float granular_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND][i];
     const float granular_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND][i];
-    graph_output_l[frame] = output_l_sample;
-    graph_output_r[frame] = output_r_sample;
-    graph_reverb_l[frame] = reverb_l_sample;
-    graph_reverb_r[frame] = reverb_r_sample;
-    graph_cross_l[frame] = cross_l_sample;
-    graph_cross_r[frame] = cross_r_sample;
-    graph_granular_l[frame] = granular_l_sample;
-    graph_granular_r[frame] = granular_r_sample;
+    if (graph_taps_enabled) {
+      graph_output_l[frame] = output_l_sample;
+      graph_output_r[frame] = output_r_sample;
+      graph_reverb_l[frame] = reverb_l_sample;
+      graph_reverb_r[frame] = reverb_r_sample;
+      graph_cross_l[frame] = cross_l_sample;
+      graph_cross_r[frame] = cross_r_sample;
+      graph_granular_l[frame] = granular_l_sample;
+      graph_granular_r[frame] = granular_r_sample;
+    }
     reverb_bus_l[frame] += reverb_l_sample;
     reverb_bus_r[frame] += reverb_r_sample;
     cross_l[frame] += cross_l_sample;
     cross_r[frame] += cross_r_sample;
+    if (!is_delay_a) {
+      delay_a_cross_carry_l[i] = cross_l_sample;
+      delay_a_cross_carry_r[i] = cross_r_sample;
+    }
     granular_bus_l[frame] += granular_l_sample;
     granular_bus_r[frame] += granular_r_sample;
   }
