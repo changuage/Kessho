@@ -21,7 +21,15 @@ import {
   getEffectiveTension,
 } from './harmony';
 import { getScaleNotesInRange, midiToFreq } from './scales';
-import { createRng, generateRandomSequence, getUtcBucket, computeSeed, rngFloat } from './rng';
+import {
+  createRng,
+  generateRandomSequence,
+  getUtcBucket,
+  computeSeed,
+  computeGranularRuntimeSeed,
+  granularRuntimeSeedMaterial,
+  rngFloat,
+} from './rng';
 import { DrumSynth, DrumVoiceType } from './drumSynth';
 import type { DrumStepOverrides, LaneDirection, TrigCondition, ClockDivision, PitchMode, ScaleName, PitchBindingMode } from './drumSeqTypes';
 import { SCALES } from './drumSeqTypes';
@@ -2668,6 +2676,57 @@ export class AudioEngine {
           this.applyParams(this.sliderState);
         }
       });
+    }
+  }
+
+  private async waitForWorkletReady(
+    getNode: () => AudioWorkletNode | null,
+    isReady: () => boolean,
+    timeoutMs = 1000,
+  ): Promise<void> {
+    if (!getNode() || isReady()) return;
+    const start = performance.now();
+    while (getNode() && !isReady() && performance.now() - start < timeoutMs) {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    }
+  }
+
+  private async waitForStartupRuntimeReadiness(state: SliderState, timeoutMs = 1000): Promise<void> {
+    const waits: Promise<void>[] = [];
+    if (this.padWasmNode) waits.push(this.waitForPadWasmReady(timeoutMs));
+    if (this.leadFmWasmNode) waits.push(this.waitForLeadFmWasmReady(timeoutMs));
+    if (this.drumWasmNode) waits.push(this.waitForDrumWasmReady(timeoutMs));
+    if (this.soundscapesNode && (state.waterEnabled || state.insectsEnabled || state.insects2Enabled)) {
+      waits.push(this.waitForSoundscapesWasmReady(timeoutMs));
+    }
+    if (this.dynamicsCharacterWorkletLoadPromise && this.dynamicsCharacterWorkletLoadContext === this.ctx) {
+      const loadPromise = this.dynamicsCharacterWorkletLoadPromise;
+      waits.push(Promise.race([
+        loadPromise.then(() => undefined).catch(() => undefined),
+        new Promise<void>((resolve) => window.setTimeout(resolve, timeoutMs)),
+      ]));
+    }
+    if (waits.length > 0) {
+      await Promise.all(waits);
+    }
+  }
+
+  private async preloadStartupEarthTextures(state: SliderState): Promise<void> {
+    const textureLoads: Promise<AudioBuffer | null>[] = [];
+    if (state.oceanSampleEnabled && this.oceanTexturePlayer) {
+      textureLoads.push(this.oceanTexturePlayer.ensureLoaded());
+    }
+    if (state.birdsEnabled && this.birdsTexture) {
+      textureLoads.push(this.birdsTexture.player.ensureLoaded());
+    }
+    if (state.birds2Enabled && this.birds2Texture) {
+      textureLoads.push(this.birds2Texture.player.ensureLoaded());
+    }
+    if (state.frogsEnabled && this.frogsTexture) {
+      textureLoads.push(this.frogsTexture.player.ensureLoaded());
+    }
+    if (textureLoads.length > 0) {
+      await Promise.all(textureLoads);
     }
   }
 
@@ -5924,6 +5983,8 @@ export class AudioEngine {
 
       // Create audio graph
       await this.createAudioGraph();
+      await this.preloadStartupEarthTextures(sliderState);
+      await this.waitForStartupRuntimeReadiness(sliderState);
     }
 
     // Initialize harmony (sets rng)
@@ -5939,6 +6000,9 @@ export class AudioEngine {
         this.rng,
         () => this.ensureTransportAnchors(),
       );
+      if (this.drumWasmNode) {
+        this.drumSynth.setWasmNode(this.drumWasmNode, this.drumWasmReady);
+      }
       this.wireDrumSynthCallbacks();
       this.wireDrumGranularSend();
       this.wireDrumDelaySends(this.ctx);
@@ -7594,8 +7658,8 @@ export class AudioEngine {
 
     // Compute seed based on time bucket only (not slider values)
     this.currentBucket = getUtcBucket(this.sliderState.seedWindow);
-    this.currentSeed = computeSeed(this.currentBucket, 'E_ROOT');
-    this.lastGranularRandomSeedMaterial = `${this.currentBucket}|E_ROOT`;
+    this.currentSeed = computeGranularRuntimeSeed(this.currentBucket);
+    this.lastGranularRandomSeedMaterial = granularRuntimeSeedMaterial(this.currentBucket);
     this.rng = createRng(this.lastGranularRandomSeedMaterial);
 
     // Create harmony state with full params (CoF + progression)
@@ -7636,8 +7700,8 @@ export class AudioEngine {
     if (this.seedLocked) return; // Don't recompute if locked
 
     this.currentBucket = getUtcBucket(this.sliderState.seedWindow);
-    this.currentSeed = computeSeed(this.currentBucket, 'E_ROOT');
-    this.lastGranularRandomSeedMaterial = `${this.currentBucket}|E_ROOT`;
+    this.currentSeed = computeGranularRuntimeSeed(this.currentBucket);
+    this.lastGranularRandomSeedMaterial = granularRuntimeSeedMaterial(this.currentBucket);
     this.rng = createRng(this.lastGranularRandomSeedMaterial);
 
     // Send new random sequence to granular (legacy granulator removed)
@@ -8507,11 +8571,7 @@ export class AudioEngine {
   }
 
   private async waitForPadWasmReady(timeoutMs = 1000): Promise<void> {
-    if (!this.padWasmNode || this.padWasmReady) return;
-    const start = performance.now();
-    while (this.padWasmNode && !this.padWasmReady && performance.now() - start < timeoutMs) {
-      await new Promise((resolve) => window.setTimeout(resolve, 10));
-    }
+    await this.waitForWorkletReady(() => this.padWasmNode, () => this.padWasmReady, timeoutMs);
   }
 
   /** Ensure lead WASM exists when manual/random lead starts from a lead-disabled graph. */
@@ -8606,11 +8666,15 @@ export class AudioEngine {
   }
 
   private async waitForLeadFmWasmReady(timeoutMs = 1000): Promise<void> {
-    if (!this.leadFmWasmNode || this.leadFmWasmReady) return;
-    const start = performance.now();
-    while (this.leadFmWasmNode && !this.leadFmWasmReady && performance.now() - start < timeoutMs) {
-      await new Promise((resolve) => window.setTimeout(resolve, 10));
-    }
+    await this.waitForWorkletReady(() => this.leadFmWasmNode, () => this.leadFmWasmReady, timeoutMs);
+  }
+
+  private async waitForDrumWasmReady(timeoutMs = 1000): Promise<void> {
+    await this.waitForWorkletReady(() => this.drumWasmNode, () => this.drumWasmReady, timeoutMs);
+  }
+
+  private async waitForSoundscapesWasmReady(timeoutMs = 1000): Promise<void> {
+    await this.waitForWorkletReady(() => this.soundscapesNode, () => this.soundscapesWasmReady, timeoutMs);
   }
 
   /** Voice type name prefixes for drum slider state extraction. */
@@ -11056,7 +11120,7 @@ export class AudioEngine {
     if (!this.harmonyState && this.sliderState) {
       this.ensureTransportAnchors();
       this.currentBucket = getUtcBucket(this.sliderState.seedWindow);
-      this.currentSeed = computeSeed(this.currentBucket, 'E_ROOT');
+      this.currentSeed = computeGranularRuntimeSeed(this.currentBucket);
       this.harmonyState = createHarmonyState(
         `${this.currentBucket}|E_ROOT`,
         this.sliderState.tension,

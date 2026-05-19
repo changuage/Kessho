@@ -847,6 +847,53 @@ int main() {
   require(saw_synth_expression_range, "source sample-hold range did not affect sequencer event expression");
   require(saw_drum_morph_range, "drum morph range did not affect sequencer event morph");
 
+  {
+    KesshoProductEngine direct_sh(48000.0, 128, 0);
+    direct_sh.master_gain = 1.0f;
+    KesshoProductEvent product_range{};
+    product_range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
+    product_range.target_id = 0u;
+    product_range.index = 301u;
+    product_range.param_id = KESSHO_PRODUCT_PARAM_MASTER_GAIN_ID;
+    product_range.value = 0.2f;
+    product_range.value2 = 0.8f;
+    product_range.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD);
+    product_range.value4 = 0.2f;
+    product_range.flags = KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE;
+    direct_sh.applyModulationRangeEvent(product_range);
+    require(std::fabs(direct_sh.master_gain - 0.2f) < 0.0001f, "product-param sample-hold initial value mismatch");
+    direct_sh.advanceModulationRanges(4800u);
+    require(direct_sh.master_gain >= 0.2f && direct_sh.master_gain <= 0.8f, "product-param sample-hold left range");
+    require(std::fabs(direct_sh.master_gain - 0.2f) > 0.0001f, "product-param sample-hold did not advance");
+  }
+
+  {
+    KesshoProductEngine owned_sh(48000.0, 128, 0);
+    owned_sh.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].enabled = true;
+    owned_sh.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].delay_a_send = 1.0f;
+    owned_sh.fx.delay_a_enabled = true;
+    owned_sh.fx.delay_a_feedback = 0.1f;
+    KesshoProductEvent owned_range{};
+    owned_range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
+    owned_range.target_id = 0u;
+    owned_range.index = 302u;
+    owned_range.param_id = KESSHO_PRODUCT_PARAM_FX_DELAY_AFEEDBACK_ID;
+    owned_range.value = 0.1f;
+    owned_range.value2 = 0.9f;
+    owned_range.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD);
+    owned_range.value4 = 0.1f;
+    owned_range.flags = KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE | KESSHO_PRODUCT_MODULATION_RANGE_TRIGGER_DELAY_A;
+    owned_sh.applyModulationRangeEvent(owned_range);
+    require(std::fabs(owned_sh.fx.delay_a_feedback - 0.1f) < 0.0001f, "owned FX sample-hold initial value mismatch");
+    owned_sh.advanceModulationRanges(4800u);
+    require(std::fabs(owned_sh.fx.delay_a_feedback - 0.1f) < 0.0001f, "owned FX sample-hold should not use 10Hz timer");
+    owned_sh.triggerVoice(KESSHO_PRODUCT_SOURCE_PAD1, 60.0f, 0.8f, 0.1f, -1.0f, -1.0f, -1.0f, 12345u);
+    require(
+        owned_sh.fx.delay_a_feedback >= 0.1f && owned_sh.fx.delay_a_feedback <= 0.9f,
+        "owned FX sample-hold trigger left range");
+    require(std::fabs(owned_sh.fx.delay_a_feedback - 0.1f) > 0.0001f, "owned FX sample-hold did not advance on source onset");
+  }
+
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "walk modulation snapshot load failed");
@@ -869,6 +916,63 @@ int main() {
   require(
       walk_telemetry.runtime_walk_values[0] >= 0.1f && walk_telemetry.runtime_walk_values[0] <= 0.9f,
       "runtime walk telemetry value out of range");
+
+  const auto random_walk_speed_flags = [](float speed) -> uint32_t {
+    return static_cast<uint32_t>(std::lround(speed * KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_SPEED_SCALE))
+        << KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_SPEED_SHIFT;
+  };
+
+  {
+    KesshoProductEngine configured_walk(48000.0, 128, 0);
+    KesshoProductEvent configured_range = walk_range;
+    configured_range.index = 202u;
+    configured_range.flags =
+        KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE |
+        KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_GLOBAL |
+        random_walk_speed_flags(4.25f);
+    configured_walk.applyModulationRangeEvent(configured_range);
+    ModulationRange* configured = configured_walk.findModulationRange(
+        KESSHO_PRODUCT_SOURCE_PAD1,
+        KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID);
+    require(configured != nullptr, "configured runtime walk range missing");
+    require(std::fabs(configured->random_walk_speed - 4.25f) < 0.001f, "runtime walk speed flag not decoded");
+    require(configured->random_walk_global, "runtime walk global mode flag not decoded");
+    const float configured_initial = configured->current_value;
+    configured_walk.advanceModulationRanges(48000u);
+    require(
+        std::fabs(configured->current_value - configured_initial) > 0.00001f,
+        "global runtime walk did not advance");
+  }
+
+  {
+    KesshoProductEngine paired_walk(48000.0, 128, 0);
+    KesshoProductEvent pair_a{};
+    pair_a.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
+    pair_a.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+    pair_a.index = 777u;
+    pair_a.param_id = KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID;
+    pair_a.value = 0.2f;
+    pair_a.value2 = 0.8f;
+    pair_a.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK);
+    pair_a.value4 = 0.4f;
+    pair_a.flags = KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE | random_walk_speed_flags(1.0f);
+    KesshoProductEvent pair_b = pair_a;
+    pair_b.target_id = KESSHO_PRODUCT_SOURCE_PAD2;
+    paired_walk.applyModulationRangeEvent(pair_a);
+    paired_walk.applyModulationRangeEvent(pair_b);
+    ModulationRange* pad1_range = paired_walk.findModulationRange(
+        KESSHO_PRODUCT_SOURCE_PAD1,
+        KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID);
+    ModulationRange* pad2_range = paired_walk.findModulationRange(
+        KESSHO_PRODUCT_SOURCE_PAD2,
+        KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID);
+    require(pad1_range != nullptr && pad2_range != nullptr, "paired runtime walk ranges missing");
+    require(pad1_range->seed == pad2_range->seed, "paired runtime walk ranges should share a control seed");
+    paired_walk.advanceModulationRanges(48000u);
+    require(
+        std::fabs(pad1_range->current_value - pad2_range->current_value) < 0.0001f,
+        "paired runtime walk ranges with one slider should stay in sync");
+  }
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();

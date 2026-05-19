@@ -1,6 +1,62 @@
 import type { EngineState, ManualSynthNoteOptions } from './engine';
-import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
+import { CORE_PRODUCT_SOURCE_IDS, type CoreProductRangeTarget, type CoreProductRangeValueContext } from './coreProductEvents';
 import { KESSHO_PRODUCT_DRUM_VOICE_COUNT } from './generated/kesshoProductSchema';
+
+export type RuntimeWalkConfig = { speed: number; mode: 'localBrownian' | 'globalWalk' };
+
+export function runtimeWalkConfigFromState(state: Record<string, unknown> | null): RuntimeWalkConfig {
+  const speed = state?.randomWalkSpeed;
+  const mode = state?.randomWalkMode;
+  return {
+    speed: typeof speed === 'number' && Number.isFinite(speed) ? speed : 1,
+    mode: mode === 'globalWalk' ? 'globalWalk' : 'localBrownian',
+  };
+}
+
+export function runtimeWalkConfigChanged(left: RuntimeWalkConfig, right: RuntimeWalkConfig): boolean {
+  return Math.abs(left.speed - right.speed) > 0.0005 || left.mode !== right.mode;
+}
+
+export function coreProductRangeValueContext(
+  snapshotBpm: unknown,
+  state: Record<string, unknown> | null,
+): CoreProductRangeValueContext {
+  return { bpm: typeof snapshotBpm === 'number' && Number.isFinite(snapshotBpm) ? snapshotBpm : 120, ...runtimeWalkConfigFromState(state) };
+}
+
+export function mappedCoreProductRange(
+  target: CoreProductRangeTarget,
+  range: { min: number; max: number },
+  context: CoreProductRangeValueContext,
+): { min: number; max: number } {
+  const mapValue = target.mapValue ?? ((value: number) => value);
+  const mappedMin = mapValue(Math.min(range.min, range.max), context);
+  const mappedMax = mapValue(Math.max(range.min, range.max), context);
+  return { min: Math.min(mappedMin, mappedMax), max: Math.max(mappedMin, mappedMax) };
+}
+
+export function normalizeCoreProductRuntimeWalkValue(
+  value: number,
+  range?: { min: number; max: number },
+): number {
+  return Math.max(0, Math.min(1, range && range.max > range.min ? (value - range.min) / (range.max - range.min) : value));
+}
+
+export function runtimeWalkPositionsFromTelemetry(
+  values: Record<number, number> | undefined,
+  controlNames: Map<number, string>,
+  controlRanges: Map<number, { min: number; max: number }>,
+): Record<string, number> | null {
+  if (!values) return null;
+  const next: Record<string, number> = {};
+  for (const [idText, value] of Object.entries(values)) {
+    const controlId = Number(idText);
+    const key = controlNames.get(controlId);
+    if (!key || typeof value !== 'number') continue;
+    next[key] = normalizeCoreProductRuntimeWalkValue(value, controlRanges.get(controlId));
+  }
+  return next;
+}
 
 export function createCoreProductEngineState(isRunning: boolean): EngineState {
   return {

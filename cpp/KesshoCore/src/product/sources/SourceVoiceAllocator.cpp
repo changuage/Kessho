@@ -137,6 +137,13 @@
     drum_delay_send = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID, source.delay_a_send, resolved_seed);
     triggerSidechainDuck(drum_voice, clampFloat(velocity * expression, 0.0f, 1.0f));
   }
+  triggerFxSampleHoldRanges(
+      source_id,
+      fxSampleHoldSourceStrength(kProductSampleHoldTriggerDelayA, source_id, drum_delay_send),
+      fxSampleHoldSourceStrength(kProductSampleHoldTriggerDelayB, source_id, drum_delay_send),
+      fxSampleHoldSourceStrength(kProductSampleHoldTriggerGranular, source_id, drum_delay_send),
+      fxSampleHoldSourceStrength(kProductSampleHoldTriggerReverb, source_id, drum_delay_send),
+      resolved_seed);
 
   const bool pad_source = source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2;
   const bool lead_source = source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2;

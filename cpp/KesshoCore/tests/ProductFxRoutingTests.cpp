@@ -1174,6 +1174,14 @@ int main() {
   require(kessho_product_load_snapshot_v2(granular_engine, &granular_snapshot, sizeof(granular_snapshot)) == KESSHO_PRODUCT_OK, "granular snapshot load failed");
   triggerPad(granular_engine, 0.4f);
   require(renderFxPeak(granular_engine, 32) > 0.00001f, "granular send did not reach FX stem");
+  const KesshoProductTelemetry granular_telemetry = kessho_product_get_telemetry(granular_engine);
+  require(granular_telemetry.active_grains > 0u, "granular telemetry did not report active grains");
+  require(
+      granular_telemetry.granular_write_head > 0.0f && granular_telemetry.granular_write_head <= 1.0f,
+      "granular telemetry write head was not normalized");
+  for (float position : granular_telemetry.granular_voice_positions) {
+    require(position >= 0.0f && position <= 1.0f, "granular telemetry voice position was not normalized");
+  }
   kessho_product_destroy(granular_engine);
 
   KesshoProductEngine* spectral_engine = kessho_product_create(48000.0, 128, 0);

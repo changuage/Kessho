@@ -128,4 +128,6 @@ typedef struct KesshoProductTelemetry {
   float master_true_peak;
   float master_true_peak_dbtp;
   float master_integrated_lufs;
+  float granular_write_head;
+  float granular_voice_positions[4];
 } KesshoProductTelemetry;

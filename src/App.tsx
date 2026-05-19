@@ -268,6 +268,17 @@ function audioEngineRuntimeModeTitle(mode: AudioEngineRuntimeMode): string {
   return 'Switch to Product Core';
 }
 
+function isAudioEnginePerfMetric(entry: unknown): entry is AudioEnginePerfMetric {
+  if (!entry || typeof entry !== 'object') return false;
+  const metric = entry as Partial<AudioEnginePerfMetric>;
+  return (
+    typeof metric.avgPercent === 'number' &&
+    Number.isFinite(metric.avgPercent) &&
+    typeof metric.peakPercent === 'number' &&
+    Number.isFinite(metric.peakPercent)
+  );
+}
+
 function saveAudioEngineSwitchState(state: SliderState): string | null {
   try {
     const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -314,7 +325,9 @@ function buildAudioEngineSwitchUrl(mode: AudioEngineRuntimeMode, state: SliderSt
 }
 
 function summarizeAudioEngineCpu(data: Record<string, AudioEnginePerfMetric>): AudioEngineCpuSummary | null {
-  const primaryMetrics = Object.values(data).filter((entry) => entry && entry.scope !== 'source');
+  const primaryMetrics = Object.values(data).filter((entry): entry is AudioEnginePerfMetric => (
+    isAudioEnginePerfMetric(entry) && entry.scope !== 'source'
+  ));
   if (primaryMetrics.length === 0) return null;
 
   const avgPercent = primaryMetrics.reduce((sum, entry) => sum + entry.avgPercent, 0);
@@ -2672,24 +2685,6 @@ const App: React.FC = () => {
       removeRuntimeTriggerPositions([keyStr]);
       return;
     }
-    if (audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(keyStr)) {
-      setSliderModes(prev => {
-        if (!(keyStr in prev)) return prev;
-        const next = { ...prev };
-        delete next[keyStr];
-        return next;
-      });
-      setDualSliderRanges(prev => {
-        if (!(key in prev)) return prev;
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-      removeRuntimeWalkPositions([keyStr]);
-      removeRuntimeTriggerPositions([keyStr]);
-      return;
-    }
-
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
     
     // Check if this is a drum synth param and get its voice/morph key
@@ -2863,7 +2858,8 @@ const App: React.FC = () => {
     
     const keyStr = key as string;
     if (SINGLE_ONLY_SLIDER_KEYS.has(keyStr)) return;
-    if (audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(keyStr)) return;
+    // Product Core runtime forwarding still gates unsupported keys in the audio sync effects:
+    // audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(keyStr)
 
     setDualSliderRanges(prev => ({ ...prev, [key]: { min, max } }));
     
@@ -2979,7 +2975,7 @@ const App: React.FC = () => {
       }
     });
     audioEngine.setRuntimeWalkRanges(walkRanges);
-  }, [audioEngineRuntimeMode, sliderModes, dualSliderRanges]);
+  }, [audioEngineRuntimeMode, sliderModes, dualSliderRanges, state.randomWalkSpeed, state.randomWalkMode]);
 
   // Keep the runtime walk indicator store live while hidden so walk-mode sliders
   // do not resubscribe to a stale snapshot and visibly jump on tab restore.
@@ -4359,8 +4355,9 @@ const App: React.FC = () => {
     onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
   } => {
     const keyStr = paramKey as string;
-    const dualModeSupported =
+    const coreProductRuntimeRangeSupported =
       audioEngineRuntimeMode !== 'core-product' || coreProductSupportsRuntimeRangeKey(keyStr);
+    const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);
     const mode: SliderMode = dualModeSupported
       ? normalizeDualSliderMode(keyStr, sliderModes[keyStr]) ?? 'single'
       : 'single';
@@ -4371,7 +4368,7 @@ const App: React.FC = () => {
       mode,
       dualRange: dualModeSupported ? dualSliderRanges[paramKey] : undefined,
       walkPosition: dualModeSupported ? walkPos : undefined,
-      isFlashing: dualModeSupported ? isFlashing : false,
+      isFlashing: dualModeSupported && coreProductRuntimeRangeSupported ? isFlashing : false,
       onCycleMode: dualModeSupported ? handleCycleSliderMode : undefined,
       onDualRangeChange: dualModeSupported ? handleDualRangeChange : undefined,
     };
@@ -4435,6 +4432,14 @@ const App: React.FC = () => {
             }
           }
         }
+      }
+
+      if (key === 'lead1PresetA' || key === 'lead1PresetB') {
+        newState.lead1UseCustomAdsr = false;
+      }
+
+      if (key === 'lead2PresetC' || key === 'lead2PresetD') {
+        newState.lead2UseCustomAdsr = false;
       }
 
       // ═══ GRANULAR ↔ GRANULAR SYNC: granularEnabled controls granularEnabled ═══
@@ -7775,7 +7780,7 @@ const App: React.FC = () => {
             onStateChange={setState}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
-            liveBufferTelemetryAvailable={audioEngineRuntimeMode !== 'core-product'}
+            liveBufferTelemetryAvailable
           />
         )}
 

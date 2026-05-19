@@ -36,4 +36,4 @@ Runtime fallback diagnostics exposed through Product Core host telemetry/perf sn
 - The `core-product` proxy throws for every missing method or getter.
 - Unmapped modulation range keys are classified as `forbidden-production-fallback`.
 - Required App callsites are statically audited against `CoreProductEngineHost` so current UI controls cannot depend on the diagnostic proxy.
-- Unsupported dual-mode slider ranges are hidden in `core-product`; only Product-mapped range keys can enter walk/sample-hold mode for that runtime.
+- Unsupported native range keys keep the same dual-mode UI state machine in `core-product`; unsupported keys report diagnostics when a runtime range is sent, instead of hiding saved slider mode/range state.

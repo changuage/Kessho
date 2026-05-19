@@ -137,8 +137,15 @@ int32_t kessho_product_get_graph_tap(KesshoProductEngine* engine, uint32_t tap_i
   if (engine == nullptr) {
     return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
   }
-  if (out_l == nullptr || out_r == nullptr) {
+  if (out_l == nullptr || out_r == nullptr || tap_id >= KESSHO_PRODUCT_GRAPH_TAP_COUNT) {
     return KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+  }
+  if (!engine->graph_taps_enabled) {
+    for (uint32_t i = 0; i < frames; ++i) {
+      out_l[i] = 0.0f;
+      out_r[i] = 0.0f;
+    }
+    return KESSHO_PRODUCT_OK;
   }
   const float* tap_l = nullptr;
   const float* tap_r = nullptr;
@@ -275,6 +282,14 @@ int32_t kessho_product_get_graph_tap(KesshoProductEngine* engine, uint32_t tap_i
     out_l[i] = 0.0f;
     out_r[i] = 0.0f;
   }
+  return KESSHO_PRODUCT_OK;
+}
+
+int32_t kessho_product_set_graph_taps_enabled(KesshoProductEngine* engine, uint32_t enabled) {
+  if (engine == nullptr) {
+    return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
+  }
+  engine->graph_taps_enabled = enabled != 0u;
   return KESSHO_PRODUCT_OK;
 }
 

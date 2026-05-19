@@ -34,6 +34,7 @@ export class CoreProductRuntime {
   private lastError: string | null = null;
   private telemetryTimer: number | null = null;
   private telemetryCallback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null = null;
+  private perfMonitorEnabled = false;
   private readonly graphTapCaptureSessions = new Map<number, GraphTapCaptureSession>();
 
   get audioContext(): AudioContext | null {
@@ -79,6 +80,9 @@ export class CoreProductRuntime {
       outputGain.gain.value = 1;
       this.node = node;
       this.outputGain = outputGain;
+      if (this.perfMonitorEnabled) {
+        node.port.postMessage({ type: 'enablePerf', enabled: true });
+      }
       node.port.onmessage = (event: MessageEvent<RuntimeMessage>) => {
         const message = event.data;
         if (message.type === 'ready') {
@@ -157,6 +161,11 @@ export class CoreProductRuntime {
 
   setTelemetryCallback(callback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null): void {
     this.telemetryCallback = callback;
+  }
+
+  setPerfMonitorEnabled(enabled: boolean): void {
+    this.perfMonitorEnabled = enabled;
+    this.node?.port.postMessage({ type: 'enablePerf', enabled });
   }
 
   postEvent(event: CoreProductEvent): void {

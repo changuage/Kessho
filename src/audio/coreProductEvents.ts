@@ -35,6 +35,13 @@ export const CORE_PRODUCT_MODULATION_RANGE_MODE = Object.freeze({
 
 export const CORE_PRODUCT_MODULATION_RANGE_FLAGS = Object.freeze({
   active: 1,
+  triggerDelayA: 1 << 8,
+  triggerDelayB: 1 << 9,
+  triggerGranular: 1 << 10,
+  triggerReverb: 1 << 11,
+  randomWalkGlobal: 1 << 12,
+  randomWalkSpeedShift: 16,
+  randomWalkSpeedScale: 1000,
 } as const);
 
 export const CORE_PRODUCT_SEQUENCER_IDS = Object.freeze({
@@ -185,13 +192,17 @@ export type CoreProductRangeTarget = {
   targetId: number;
   paramId: number;
   controlId: number;
+  sampleHoldTrigger?: CoreProductSampleHoldTriggerBus;
   mapValue?: (value: number, context: CoreProductRangeValueContext) => number;
 };
 
 export type CoreProductRangeValueContext = {
   bpm?: number;
+  randomWalkSpeed?: number;
+  randomWalkMode?: 'localBrownian' | 'globalWalk' | string;
 };
 
+type CoreProductSampleHoldTriggerBus = 'delayA' | 'delayB' | 'granular' | 'reverb';
 type CoreProductRangeTargetResolver = (key: string) => CoreProductRangeTarget[];
 type ProductParamIdName = keyof typeof KESSHO_PRODUCT_PARAM_IDS;
 
@@ -226,7 +237,13 @@ function productParamTarget(
   key: string,
   mapValue?: (value: number, context: CoreProductRangeValueContext) => number,
 ): CoreProductRangeTarget {
-  return { targetId: 0, paramId: requireParamId(paramId), controlId: stableControlId(key), mapValue };
+  return {
+    targetId: 0,
+    paramId: requireParamId(paramId),
+    controlId: stableControlId(key),
+    sampleHoldTrigger: coreProductSampleHoldTriggerForKey(key),
+    mapValue,
+  };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -234,8 +251,18 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function coreProductRandomWalkFlags(context: CoreProductRangeValueContext): number {
+  const speed = clamp(context.randomWalkSpeed ?? 1, 0.01, 5);
+  const encodedSpeed = Math.round(speed * CORE_PRODUCT_MODULATION_RANGE_FLAGS.randomWalkSpeedScale);
+  const speedFlags = encodedSpeed * (2 ** CORE_PRODUCT_MODULATION_RANGE_FLAGS.randomWalkSpeedShift);
+  const modeFlags = context.randomWalkMode === 'globalWalk'
+    ? CORE_PRODUCT_MODULATION_RANGE_FLAGS.randomWalkGlobal
+    : 0;
+  return speedFlags | modeFlags;
+}
+
 function normalizedToDelayAModRateHz(value: number): number {
-  return clamp(value, 0, 1) * 5;
+  return 0.05 + clamp(value, 0, 1) * 4.95;
 }
 
 function normalizedToDelayAModDepthMs(value: number): number {
@@ -259,6 +286,117 @@ function indexedDelayDivisionMs(key: IndexedDelayDivisionKey, minMs: number) {
     const division = getIndexedDelayDivisionValue(key, value);
     return clamp(delayNoteToSeconds(division, contextBpm(context)) * 1000, minMs, 5000);
   };
+}
+
+const CORE_PRODUCT_REVERB_OWNERSHIP_KEYS = new Set<string>([
+  'reverbLevel',
+  'reverbDecay',
+  'reverbSize',
+  'reverbDiffusion',
+  'reverbModulation',
+  'predelay',
+  'damping',
+  'width',
+  'reverbShimmer',
+  'reverbShimmerPitch',
+  'reverbSlowModRate',
+  'reverbSlowModDepth',
+  'reverbReverse',
+  'reverbReverseLength',
+  'reverbChorusRate',
+  'reverbChorusDepth',
+  'reverbDampLow',
+  'reverbDampHigh',
+  'reverbCrossoverFreq',
+  'reverbInputTone',
+  'reverbShimmerFeedback',
+  'reverbWarp',
+  'reverbCrossFeed',
+  'reverbEarlyReflections',
+  'reverbAirAbsorption',
+  'reverbTransientSmooth',
+  'reverbErLpFreq',
+  'reverbPreCompThreshold',
+  'reverbPreCompKnee',
+  'reverbPreCompRatio',
+  'reverbPreCompAttackMs',
+  'reverbPreCompReleaseMs',
+  'reverbPreCompMakeup',
+]);
+
+const CORE_PRODUCT_GRANULAR_OWNERSHIP_PREFIX_EXCLUSIONS = [
+  'granularPad',
+  'granularLead',
+  'granularDrum',
+  'granularWaves',
+  'granularWater',
+  'granularInsects',
+  'granularDelay',
+] as const;
+
+function coreProductSampleHoldTriggerForKey(key: string): CoreProductSampleHoldTriggerBus | undefined {
+  if (key === 'drumDelayNoteL' || key === 'drumDelayNoteR') {
+    return 'delayA';
+  }
+  if (key.startsWith('delayA')) {
+    if (
+      key === 'delayATime' ||
+      key === 'delayASpread' ||
+      key === 'delayAPingPong' ||
+      key === 'delayAFilterType' ||
+      key === 'delayAEnabled' ||
+      key === 'delayASend'
+    ) {
+      return undefined;
+    }
+    return 'delayA';
+  }
+  if (key.startsWith('granularDelay')) {
+    return key === 'granularDelayEnabled' ? undefined : 'delayB';
+  }
+  if (
+    key === 'delayBGranularSend' ||
+    key === 'delayBToASend' ||
+    key === 'delayBWarpIntensity' ||
+    key === 'delayBSpread'
+  ) {
+    return 'delayB';
+  }
+  if (CORE_PRODUCT_REVERB_OWNERSHIP_KEYS.has(key)) {
+    return 'reverb';
+  }
+  if (key.startsWith('granular')) {
+    if (
+      CORE_PRODUCT_GRANULAR_OWNERSHIP_PREFIX_EXCLUSIONS.some(prefix => key.startsWith(prefix)) ||
+      key === 'granularEnabled' ||
+      key === 'granularFreeze' ||
+      key === 'granularShape' ||
+      key.endsWith('Enabled') ||
+      key.endsWith('Mode') ||
+      key.endsWith('Slice') ||
+      key.endsWith('Reverse') ||
+      key.includes('TempoSync')
+    ) {
+      return undefined;
+    }
+    return 'granular';
+  }
+  return undefined;
+}
+
+function coreProductSampleHoldTriggerFlag(bus: CoreProductSampleHoldTriggerBus | undefined): number {
+  switch (bus) {
+    case 'delayA':
+      return CORE_PRODUCT_MODULATION_RANGE_FLAGS.triggerDelayA;
+    case 'delayB':
+      return CORE_PRODUCT_MODULATION_RANGE_FLAGS.triggerDelayB;
+    case 'granular':
+      return CORE_PRODUCT_MODULATION_RANGE_FLAGS.triggerGranular;
+    case 'reverb':
+      return CORE_PRODUCT_MODULATION_RANGE_FLAGS.triggerReverb;
+    default:
+      return 0;
+  }
 }
 
 const GRANULAR_VOICE_RANGE_PARAM_SUFFIXES = [
@@ -298,13 +436,13 @@ function granularVoiceRangeTargets(): Record<string, CoreProductRangeTargetResol
 const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   ...granularVoiceRangeTargets(),
   synthLevel: (key) => [
-    sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, `${key}:pad1`),
-    sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, `${key}:pad2`),
+    sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key),
+    sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key),
   ],
   pad2Level: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
   leadLevel: (key) => [
-    sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, `${key}:lead1`),
-    sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, `${key}:lead2`),
+    sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key),
+    sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key),
   ],
   lead1Level: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
   lead2Level: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
@@ -385,12 +523,12 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   lead1DiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)],
   lead2DiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)],
   pianoDiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)],
-  masterVolume: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.MasterGain, controlId: stableControlId(key) }],
+  masterVolume: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterGain, key)],
   masterLimiterCeilingDb: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterLimiterCeilingDb, key)],
-  masterSatDrive: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.MasterSaturationDrive, controlId: stableControlId(key) }],
-  masterSatTone: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.MasterSaturationTone, controlId: stableControlId(key) }],
-  granularLevel: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxGranularMix, controlId: stableControlId(key) }],
-  delayAMix: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDelayAMix, controlId: stableControlId(key) }],
+  masterSatDrive: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterSaturationDrive, key)],
+  masterSatTone: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterSaturationTone, key)],
+  granularLevel: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularMix, key)],
+  delayAMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAMix, key)],
   drumDelayNoteL: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeLeftMs, key, indexedDelayDivisionMs('drumDelayNoteL', 10)),
   ],
@@ -406,7 +544,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   delayACrossFeedFilter: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayACrossFeedFilterHz, key, normalizedToDelayACrossFeedFilterHz),
   ],
-  delayBMix: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDelayBMix, controlId: stableControlId(key) }],
+  delayBMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBMix, key)],
   granularDelayMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBMix, key)],
   granularDelayTime: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBBaseTimeMs, key, indexedDelayDivisionMs('granularDelayTime', 20)),
@@ -426,7 +564,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   granularDelayBSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToDelayB, key)],
   granularReverbSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToReverb, key)],
   granularDelayReverbSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToReverb, key)],
-  reverbLevel: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxReverbMix, controlId: stableControlId(key) }],
+  reverbLevel: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbMix, key)],
   reverbDecay: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbDecay, key)],
   reverbSize: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbSize, key)],
   damping: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbDamping, key)],
@@ -461,13 +599,13 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   reverbPreCompMakeup: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompMakeup, key)],
   reverbChordWash: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbChordWash, key)],
   reverbResolutionBloom: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbResolutionBloom, key)],
-  spectralFreezeMix: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeMix, controlId: stableControlId(key) }],
+  spectralFreezeMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeMix, key)],
   spectralFreezeSpeed: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeSpeed, key)],
   spectralFreezeDecay: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeDecay, key)],
   spectralFreezePhaseJitter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezePhaseJitter, key)],
   spectralFreezeRouting: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeRouting, key, spectralFreezeRoutingValue)],
   spectralFreezeReverbCrossfade: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeReverbCrossfade, key)],
-  dynamicsDrive: (key) => [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDrive, controlId: stableControlId(key) }],
+  dynamicsDrive: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDrive, key)],
   characterMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterMix, key)],
   characterAge: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterAge, key)],
   characterBias: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterBias, key)],
@@ -708,6 +846,12 @@ export function createCoreProductModulationRangeEvent(
   const mapValue = target.mapValue ?? ((value: number) => value);
   const min = hasRange ? mapValue(Math.min(range.min, range.max), context) : 0;
   const max = hasRange ? mapValue(Math.max(range.min, range.max), context) : 0;
+  const triggerFlag = hasRange && mode === CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold
+    ? coreProductSampleHoldTriggerFlag(target.sampleHoldTrigger)
+    : 0;
+  const randomWalkFlags = hasRange && mode === CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk
+    ? coreProductRandomWalkFlags(context)
+    : 0;
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.SetModulationRange,
     targetId,
@@ -717,7 +861,7 @@ export function createCoreProductModulationRangeEvent(
     value2: max,
     value3: hasRange ? mode : CORE_PRODUCT_MODULATION_RANGE_MODE.off,
     value4: mapValue(currentValue, context),
-    flags: hasRange ? CORE_PRODUCT_MODULATION_RANGE_FLAGS.active : 0,
+    flags: hasRange ? CORE_PRODUCT_MODULATION_RANGE_FLAGS.active | triggerFlag | randomWalkFlags : 0,
   };
 }
 

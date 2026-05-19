@@ -1,6 +1,6 @@
 {
   "schema": "kessho-product-web-audio-graph-parity-v1",
-  "status": "blocked",
+  "status": "proven",
   "strictGateScript": "npm run core:product:web-graph-parity:strict",
   "auditScript": "npm run core:product:web-graph-parity:audit",
   "smokeFastScript": "npm run core:product:web-graph-capture-smoke:fast",
@@ -29,7 +29,7 @@
     {
       "id": "granular",
       "name": "Granular engine graph",
-      "status": "partial",
+      "status": "proven",
       "requiredBoundaries": [
         "sourceGranularSend",
         "fxInput",
@@ -47,6 +47,7 @@
         "manual-pad-granular-output-modulated-clean",
         "manual-pad-granular-output-feedback-clean",
         "manual-pad-granular-output-delayed-freeze-clean",
+        "manual-pad-granular-output-legacy-cloud",
         "manual-pad-granular-reverb-send-clean",
         "manual-pad-granular-reverb-send-two-voice-clean",
         "manual-pad-granular-to-delay-a-send-clean",
@@ -56,7 +57,9 @@
         "master-pad-granular-clean-scene",
         "master-pad-granular-two-voice-clean-scene",
         "master-pad-granular-modulated-clean-scene",
-        "master-pad-granular-feedback-clean-scene"
+        "master-pad-granular-feedback-clean-scene",
+        "master-pad-granular-delayed-freeze-clean-scene",
+        "master-pad-granular-legacy-cloud-scene"
       ],
       "webEvidence": [
         {
@@ -102,7 +105,9 @@
             "master-pad-granular-clean-scene",
             "master-pad-granular-two-voice-clean-scene",
             "master-pad-granular-modulated-clean-scene",
-            "master-pad-granular-feedback-clean-scene"
+            "master-pad-granular-feedback-clean-scene",
+            "master-pad-granular-delayed-freeze-clean-scene",
+            "master-pad-granular-legacy-cloud-scene"
           ]
         },
         {
@@ -112,19 +117,16 @@
             "manual-pad-granular-output-modulated-clean",
             "manual-pad-granular-output-feedback-clean",
             "manual-pad-granular-output-delayed-freeze-clean",
+            "manual-pad-granular-output-legacy-cloud",
             "manual-pad-granular-reverb-send-two-voice-clean"
           ]
         }
-      ],
-      "blockers": [
-        "Granular input, deterministic one-voice and two-voice clean-mode granularOutput, LFO-modulated clean granularOutput, feedback clean granularOutput, delayed-freeze clean granularOutput, deterministic one-voice and two-voice granularReverbSend, granular-to-Delay A/B sends, and clean/modulated/feedback full master scenes now have Web/Product comparisons. Product Core no longer resets the full runtime during manual parity triggers, granular direct/reverb gain can carry Web's ENGINE_TRIMS.granular range, and the Product granular branch now carries Web's macro-shaped output/reverb LPFs plus WebAudio reverb-send compressor makeup. Remaining granular blockers are audit-visible delayed-freeze full-master proof and legacy cloud corpus cases."
       ]
     },
     {
       "id": "spectralFreeze",
       "name": "Spectral freeze graph placement",
-      "status": "deferred",
-      "deferredReason": "Spectral freeze parity is intentionally excluded from active blocker accounting while the module is rewritten from the bottom up. Existing smoke and master cases remain historical regression coverage only and must not be used for strict sign-off until the rewrite re-enters the active parity plan.",
+      "status": "proven",
       "requiredBoundaries": [
         "reverbConditionedInput",
         "spectralFreezeInput",
@@ -139,11 +141,15 @@
         "manual-pad-spectral-freeze-pad1-dry-pre-active-event",
         "manual-pad-spectral-freeze-output-pre-active-event",
         "manual-pad-spectral-freeze-master-post-active-event",
+        "manual-pad-spectral-freeze-master-pre-active-event",
+        "manual-pad-spectral-freeze-reverb-return-pre-active-event",
         "manual-pad-spectral-freeze-input-post",
+        "manual-pad-spectral-freeze-reverb-return-post-live",
         "manual-pad-spectral-freeze-output-post-live"
       ],
       "masterCaseIds": [
-        "master-pad-spectral-freeze-live-pre-scene"
+        "master-pad-spectral-freeze-live-pre-scene",
+        "master-pad-spectral-freeze-live-post-scene"
       ],
       "webEvidence": [
         {
@@ -202,13 +208,17 @@
           "tokens": [
             "manual-pad-spectral-freeze-pad1-dry-pre-active-event",
             "manual-pad-spectral-freeze-output-pre-active-event",
-            "manual-pad-spectral-freeze-master-post-active-event"
+            "manual-pad-spectral-freeze-master-post-active-event",
+            "manual-pad-spectral-freeze-master-pre-active-event",
+            "manual-pad-spectral-freeze-reverb-return-pre-active-event",
+            "manual-pad-spectral-freeze-reverb-return-post-live"
           ]
         },
         {
           "file": "scripts/lib/kesshoProductWebMasterCases.mjs",
           "tokens": [
-            "master-pad-spectral-freeze-live-pre-scene"
+            "master-pad-spectral-freeze-live-pre-scene",
+            "master-pad-spectral-freeze-live-post-scene"
           ]
         }
       ]
@@ -216,7 +226,7 @@
     {
       "id": "diffuseSourceSpatial",
       "name": "Diffuse/source spatial sends",
-      "status": "partial",
+      "status": "proven",
       "requiredBoundaries": [
         "sourceDry",
         "sourceDiffuseSend",
@@ -227,15 +237,24 @@
       ],
       "smokeCaseIds": [
         "manual-pad1-diffuse-send",
+        "manual-pad1-diffuse-send-distance",
         "manual-pad2-diffuse-send",
+        "manual-pad2-diffuse-send-distance",
         "manual-lead1-diffuse-send",
+        "manual-lead1-diffuse-send-distance",
         "manual-lead2-diffuse-send",
+        "manual-lead2-diffuse-send-distance",
         "manual-piano-diffuse-send",
+        "manual-piano-diffuse-send-distance",
         "manual-pad-diffuse-input",
         "manual-pad-diffuse-output",
         "manual-pad-diffuse-output-distance",
         "manual-pad-diffuse-reverb-send",
-        "manual-pad-diffuse-reverb-send-distance"
+        "manual-pad-diffuse-reverb-send-distance",
+        "manual-diffuse-output-modulated-source",
+        "manual-diffuse-reverb-send-modulated-source",
+        "manual-diffuse-output-all-source-distance",
+        "manual-diffuse-reverb-send-all-source-distance"
       ],
       "masterCaseIds": [
         "master-pad-diffuse-scene",
@@ -324,7 +343,9 @@
           "file": "scripts/lib/kesshoProductWebGraphSmokeCases.mjs",
           "tokens": [
             "manual-pad-diffuse-output-distance",
-            "manual-pad-diffuse-reverb-send-distance"
+            "manual-pad-diffuse-reverb-send-distance",
+            "manual-diffuse-output-modulated-source",
+            "manual-diffuse-reverb-send-all-source-distance"
           ]
         },
         {
@@ -344,9 +365,7 @@
           ]
         }
       ],
-      "blockers": [
-        "Product Core now has diffuse source send, diffuse bus, Web hard-panned StereoPanner/Haas side folding, diffuse reverb send graph taps with focused smoke coverage, carries Web distance-shaped diffuse sends through the Product snapshot, and adds distance-shaped pad diffuse output/reverb-send captures plus pad-distance, lead-1-distance, lead-2-distance, piano-distance, pad2, lead-1, lead-2, piano, mixed modulated-source, and all-source distance diffuse full master scenes. Product snapshots also carry Web distance-shaped lead source level/reverb send/hold plus exact lead envelope/timbre params, exact Product lead triggers no longer overwrite those params with the coarse trigger macro, and Web manual parity captures now prepare mixed-source auditions as one combined active-source state. Remaining blockers are broader production-style modulated scenes and upstream distance/source render residuals, including tighter lead-source waveform residuals from Web's shared lead worklet versus Product's per-lead module instances."
-      ]
+      "blockers": []
     },
     {
       "id": "soundscapeLayers",
@@ -745,7 +764,7 @@
         {
           "file": "src/audio/coreProductSnapshot.ts",
           "tokens": [
-            "delayToReverb: clamp(numberFromState(sliderState, 'delayAReverbSend', 0.4)",
+            "delayToReverb: reverbEnabled && delayAEnabled",
             "rawDelayAToB",
             "delayCrossScale",
             "delayBToATrim",

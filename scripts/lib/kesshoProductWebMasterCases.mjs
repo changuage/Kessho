@@ -159,6 +159,38 @@ const granularDelayedFreezeState = {
   granularTensionMode: 'bypass',
 };
 
+const granularLegacyCloudState = {
+  granularEnabled: true,
+  granularPreset: 'legacy_cloud',
+  granularPresetBehavior: 'pure',
+  granularLevel: 1,
+  granularPad1Send: 1,
+  pad2Level: 0,
+  lead1Level: 0,
+  lead2Level: 0,
+  pianoLevel: 0,
+  drumLevel: 0,
+  reverbEnabled: false,
+  delayAEnabled: false,
+  granularDelayEnabled: false,
+  spectralFreezeEnabled: false,
+  dynamicsEnabled: false,
+  characterEnabled: false,
+  sidechainEnabled: false,
+  granularV1Mode: 'legacy',
+  granularV1Density: 20,
+  granularV1GrainSize: 80,
+  granularV1Spray: 0.3,
+  granularLegacyJitter: 10,
+  granularLegacyProbability: 0.8,
+  granularLegacyPitchMode: 'harmonic',
+  granularLegacyPitchSpread: 2,
+  granularLegacyMaxGrains: 64,
+  granularLegacyFeedback: 0.1,
+  seed: 42,
+  seedWindow: 'day',
+};
+
 const spectralFreezeLiveState = {
   ...baseState,
   reverbEnabled: true,
@@ -174,6 +206,11 @@ const spectralFreezeLiveState = {
   spectralFreezePhaseJitter: 0,
   spectralFreezeRouting: 'pre',
   spectralFreezeReverbCrossfade: 1,
+};
+
+const spectralFreezeLivePostState = {
+  ...spectralFreezeLiveState,
+  spectralFreezeRouting: 'post',
 };
 
 const padDistanceDiffuseState = {
@@ -1098,12 +1135,36 @@ const cases = [
     envelopePeakRatioTolerance: 0.55,
   },
   {
+    id: 'master-pad-granular-legacy-cloud-scene',
+    domain: 'granular',
+    durationMs: 1500,
+    settleMs: 250,
+    noteDurationMs: 1100,
+    statePatch: granularLegacyCloudState,
+    rmsTolerance: 0.12,
+    peakTolerance: 0.16,
+    minLagCorrelation: 0.9,
+    envelopeRmsRatioTolerance: 0.4,
+    envelopePeakRatioTolerance: 0.4,
+  },
+  {
     id: 'master-pad-spectral-freeze-live-pre-scene',
     domain: 'spectralFreeze',
     durationMs: 1800,
     settleMs: 250,
     noteDurationMs: 1400,
     statePatch: spectralFreezeLiveState,
+    rmsTolerance: 0.5,
+    peakTolerance: 0.5,
+    minLagCorrelation: 0.85,
+  },
+  {
+    id: 'master-pad-spectral-freeze-live-post-scene',
+    domain: 'spectralFreeze',
+    durationMs: 1800,
+    settleMs: 250,
+    noteDurationMs: 1400,
+    statePatch: spectralFreezeLivePostState,
     rmsTolerance: 0.5,
     peakTolerance: 0.5,
     minLagCorrelation: 0.85,

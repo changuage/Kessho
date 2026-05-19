@@ -74,6 +74,7 @@ const secondStageCaps = [
   ['cpp/KesshoCore/src/product/sources/SourceGraphTaps.cpp', 140],
   ['cpp/KesshoCore/src/product/sources/SourceMix.cpp', 120],
   ['cpp/KesshoCore/src/product/sources/SourceModulation.cpp', 220],
+  ['cpp/KesshoCore/src/product/sources/SourceModulationRuntime.cpp', 160],
   ['cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp', 80],
   ['cpp/KesshoCore/src/product/sources/DrumSource.cpp', 80],
   ['cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp', 340],
@@ -156,6 +157,11 @@ const focusedSourceContracts = [
       'KesshoProductEngine::modulationRangeSample(',
       'KesshoProductEngine::resolveModulatedValue(',
       'KesshoProductEngine::applyRuntimeWalkValue(',
+    ],
+  ],
+  [
+    'cpp/KesshoCore/src/product/sources/SourceModulationRuntime.cpp',
+    [
       'KesshoProductEngine::advanceModulationRanges(',
     ],
   ],
@@ -313,6 +319,8 @@ const componentFiles = [
   'cpp/KesshoCore/src/product/sources/SourceGraphTaps.cpp',
   'cpp/KesshoCore/src/product/sources/SourceMix.cpp',
   'cpp/KesshoCore/src/product/sources/SourceModulation.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceModulationFx.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceModulationRuntime.cpp',
   'cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp',
   'cpp/KesshoCore/src/product/sources/DrumSource.cpp',
   'cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp',

@@ -5,6 +5,7 @@
 using namespace kessho::product::internal;
 
 struct ProductGraphState {
+  bool graph_taps_enabled = true;
   float graph_reverb_input_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float graph_reverb_input_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float graph_delay_a_input_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};

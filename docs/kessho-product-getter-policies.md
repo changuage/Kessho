@@ -8,9 +8,9 @@ Getter policies in `core-product` must be visible Product Core blockers. Unsuppo
 | `getDynamicsVisualTelemetry` | `backed-by-product-core-api` | Backed by Product Core master/dynamics telemetry; analyser nodes remain unavailable in `core-product`. |
 | `getDrumVoiceAnalyser` | `explicitly-unsupported-hidden` | Web Audio drum analyser nodes are not passed to `core-product`; drum envelope visuals remain state-based without live analyser input. |
 | `getGranularActiveGrainCount` | `backed-by-product-core-api` | Backed by Product Core `activeGrains` telemetry. |
-| `getGranularBufferWaveform` | `explicitly-unsupported-hidden` | Live granular buffer waveform UI is hidden in `core-product` until Product Core exposes a debug waveform API. |
-| `getGranularVoicePositions` | `explicitly-unsupported-hidden` | Live granular voice position UI is hidden in `core-product` until Product Core exposes voice position telemetry. |
-| `getGranularWriteHeadPosition` | `explicitly-unsupported-hidden` | Live granular write-head UI is hidden in `core-product` until Product Core exposes write-head telemetry. |
+| `getGranularBufferWaveform` | `backed-by-product-core-api` | Core-product uses low-cost granular head/voice telemetry; waveform samples intentionally stay null to avoid realtime buffer copies. |
+| `getGranularVoicePositions` | `backed-by-product-core-api` | Backed by Product Core granular voice position telemetry. |
+| `getGranularWriteHeadPosition` | `backed-by-product-core-api` | Backed by Product Core granular write-head telemetry. |
 | `getLeadMorphedParams` | `explicitly-unsupported-hidden` | Lead morphed-parameter preview is disabled in `core-product` until Product Core exposes resolved Lead source telemetry. |
 | `getCurrentFilterFreq` | `explicitly-unsupported-hidden` | Live source filter telemetry polling is disabled in `core-product` until Product Core exposes source debug telemetry. |
 | `getCurrentLfoValue` | `explicitly-unsupported-hidden` | Live source LFO telemetry polling is disabled in `core-product` until Product Core exposes source debug telemetry. |

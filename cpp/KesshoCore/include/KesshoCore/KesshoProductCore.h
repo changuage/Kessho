@@ -58,6 +58,10 @@ int32_t kessho_product_get_graph_tap(
     float* out_r,
     uint32_t frames);
 
+int32_t kessho_product_set_graph_taps_enabled(
+    KesshoProductEngine* engine,
+    uint32_t enabled);
+
 KesshoProductTelemetry kessho_product_get_telemetry(KesshoProductEngine* engine);
 
 int32_t kessho_product_copy_telemetry(

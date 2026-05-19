@@ -1,5 +1,32 @@
 #include "../KesshoProductEngineInternal.h"
 
+namespace {
+
+constexpr double kProductSampleHoldRateHz = 10.0;
+constexpr float kProductRandomWalkMinSpeed = 0.01f;
+constexpr float kProductRandomWalkMaxSpeed = 5.0f;
+
+uint32_t sampleHoldIntervalFrames(double sample_rate) {
+  if (!std::isfinite(sample_rate) || sample_rate <= 0.0) {
+    return 1u;
+  }
+  return std::max<uint32_t>(1u, static_cast<uint32_t>(std::lround(sample_rate / kProductSampleHoldRateHz)));
+}
+
+float randomWalkSpeedFromFlags(uint32_t flags) {
+  const uint32_t encoded = (flags & KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_SPEED_MASK) >>
+      KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_SPEED_SHIFT;
+  if (encoded == 0u) {
+    return 1.0f;
+  }
+  return clampFloat(
+      static_cast<float>(encoded) / static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_SPEED_SCALE),
+      kProductRandomWalkMinSpeed,
+      kProductRandomWalkMaxSpeed);
+}
+
+} // namespace
+
   ModulationRange* KesshoProductEngine::findModulationRange(uint32_t target_id, uint32_t param_id) {
   for (ModulationRange& range : modulation_ranges) {
     if (range.active && range.target_id == target_id && range.param_id == param_id) {
@@ -58,6 +85,11 @@
     return;
   }
 
+  const bool was_random_walk = range->active && range->mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK;
+  const float previous_current_value = range->current_value;
+  const float previous_velocity = range->velocity;
+  const float previous_walk_accumulator = range->random_walk_step_accumulator;
+  const uint32_t previous_walk_counter = range->random_walk_counter;
   const float min_value = std::min(event.value, event.value2);
   const float max_value = std::max(event.value, event.value2);
   range->active = true;
@@ -71,13 +103,33 @@
   range->max_value = max_value;
   const float fallback_current = (min_value + max_value) * 0.5f;
   range->current_value = clampFloat(
-      std::isfinite(event.value4) ? event.value4 : fallback_current,
+      was_random_walk ? previous_current_value : (std::isfinite(event.value4) ? event.value4 : fallback_current),
       min_value,
       max_value);
-  range->seed = hashU32(rng_seed ^ range->control_id ^ range->target_id ^ range->param_id);
-  const float direction = hashUnit(range->seed ^ 0xa511e9b3u) < 0.5f ? -1.0f : 1.0f;
-  const float span = std::max(0.0001f, max_value - min_value);
-  range->velocity = direction * span * (0.015f + hashUnit(range->seed ^ 0x63d83595u) * 0.025f);
+  range->seed = hashU32(rng_seed ^ range->control_id);
+  range->random_walk_speed = 1.0f;
+  range->random_walk_global = false;
+  range->random_walk_step_accumulator = 0.0f;
+  range->random_walk_counter = 0u;
+  range->velocity = 0.0f;
+  if (range->mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK) {
+    range->random_walk_speed = randomWalkSpeedFromFlags(event.flags);
+    range->random_walk_global = (event.flags & KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_GLOBAL) != 0u;
+    if (was_random_walk) {
+      const float max_velocity = 0.05f * range->random_walk_speed;
+      range->velocity = clampFloat(previous_velocity, -max_velocity, max_velocity);
+      range->random_walk_step_accumulator = previous_walk_accumulator;
+      range->random_walk_counter = previous_walk_counter;
+    } else {
+      range->velocity = (hashUnit(range->seed ^ 0x63d83595u) - 0.5f) * 0.02f;
+    }
+  }
+  if (range->mode == KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD) {
+    range->sample_hold_interval_frames = sampleHoldIntervalFrames(sample_rate);
+    range->sample_hold_frames_until_next = range->sample_hold_interval_frames;
+    range->sample_hold_counter = 0u;
+    range->sample_hold_trigger_bus = sampleHoldTriggerBusForEvent(event);
+  }
   if (target_id == 0u && range->mode == KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD) {
     KesshoProductEvent param_event{};
     param_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
@@ -113,8 +165,8 @@
   return modulationRangeSample(*range, fallback, sample_seed);
 }
 
-  void KesshoProductEngine::applyRuntimeWalkValue(const ModulationRange& range) {
-  if (!range.active || range.mode != KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK) {
+  void KesshoProductEngine::applyModulationRangeValue(const ModulationRange& range) {
+  if (!range.active) {
     return;
   }
   if (isDrumRangeTarget(range.target_id)) {
@@ -132,31 +184,9 @@
   applyParam(event);
 }
 
-  void KesshoProductEngine::advanceModulationRanges(uint32_t frames) {
-  if (frames == 0u) {
+  void KesshoProductEngine::applyRuntimeWalkValue(const ModulationRange& range) {
+  if (!range.active || range.mode != KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK) {
     return;
   }
-  const float beats = static_cast<float>(static_cast<double>(frames) / transport.samplesPerBeat(sample_rate));
-  for (ModulationRange& range : modulation_ranges) {
-    if (!range.active || range.mode != KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK) {
-      continue;
-    }
-    if (range.max_value <= range.min_value) {
-      range.current_value = range.min_value;
-      applyRuntimeWalkValue(range);
-      continue;
-    }
-    const float span = range.max_value - range.min_value;
-    const uint32_t time_seed = static_cast<uint32_t>(transport.sample_frame) ^ static_cast<uint32_t>(transport.sample_frame >> 32);
-    const float jitter = (hashUnit(range.seed ^ time_seed ^ 0x9e3779b9u) - 0.5f) * span * 0.01f;
-    range.current_value += (range.velocity + jitter) * beats;
-    if (range.current_value <= range.min_value) {
-      range.current_value = range.min_value;
-      range.velocity = std::abs(range.velocity);
-    } else if (range.current_value >= range.max_value) {
-      range.current_value = range.max_value;
-      range.velocity = -std::abs(range.velocity);
-    }
-    applyRuntimeWalkValue(range);
-  }
+  applyModulationRangeValue(range);
 }

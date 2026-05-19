@@ -28,16 +28,16 @@ export const CORE_PRODUCT_GETTER_POLICIES = {
     blocker: 'Backed by activeGrains Product telemetry.',
   },
   getGranularBufferWaveform: {
-    classification: 'explicitly-unsupported-hidden',
-    blocker: 'Live granular buffer waveform UI is hidden in core-product until Product Core exposes a debug waveform API.',
+    classification: 'backed-by-product-core-api',
+    blocker: 'Core-product uses low-cost granular head/voice telemetry; waveform samples intentionally stay null to avoid realtime buffer copies.',
   },
   getGranularVoicePositions: {
-    classification: 'explicitly-unsupported-hidden',
-    blocker: 'Live granular voice position UI is hidden in core-product until Product Core exposes voice position telemetry.',
+    classification: 'backed-by-product-core-api',
+    blocker: 'Backed by Product Core granular voice position telemetry.',
   },
   getGranularWriteHeadPosition: {
-    classification: 'explicitly-unsupported-hidden',
-    blocker: 'Live granular write-head UI is hidden in core-product until Product Core exposes write-head telemetry.',
+    classification: 'backed-by-product-core-api',
+    blocker: 'Backed by Product Core granular write-head telemetry.',
   },
   getLeadMorphedParams: {
     classification: 'explicitly-unsupported-hidden',

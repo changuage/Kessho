@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Slider Mode Color Comparison</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', monospace;
+    background: #0f1320;
+    color: #d2dbeb;
+    padding: 24px;
+    min-height: 100vh;
+  }
+  h1 { font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 20px; }
+  h2 { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin: 28px 0 12px; }
+  .section { margin-bottom: 32px; padding: 16px; background: #181c2a; border-radius: 8px; }
+
+  /* Slider structure matching real app */
+  .sl-slider {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 4px 0;
+  }
+  .sl-slider-head {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.78rem;
+    color: #d2dbeb;
+  }
+  .sl-label {
+    flex: 1 1 auto;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .sl-value {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.68rem;
+    color: #9aa5b8;
+    white-space: nowrap;
+  }
+
+  /* Mode badge (hit area) */
+  .sl-mode {
+    width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    font-family: ui-monospace, monospace;
+    font-size: 0.65rem;
+    font-weight: 600;
+    line-height: 0;
+    cursor: pointer;
+    transition: transform 0.1s, border-color 0.12s, background 0.12s;
+    position: relative;
+    border: 1.5px solid transparent;
+    background: transparent;
+  }
+  .sl-mode:hover { transform: scale(1.2); }
+
+  /* Single mode: just a dot via ::before */
+  .sl-mode.single::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  /* Rail */
+  .sl-rail {
+    position: relative;
+    height: 18px;
+  }
+  .sl-track {
+    position: absolute;
+    left: 0; right: 0;
+    top: 50%; transform: translateY(-50%);
+    height: 4px;
+    background: rgba(207,217,232,0.12);
+    border-radius: 2px;
+  }
+  .sl-fill {
+    position: absolute;
+    top: 50%; left: 0; transform: translateY(-50%);
+    height: 4px;
+    border-radius: 2px;
+  }
+  .sl-band {
+    position: absolute;
+    top: 50%; transform: translateY(-50%);
+    height: 6px;
+    border-radius: 2px;
+  }
+  .sl-thumb {
+    position: absolute;
+    top: 50%;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    border: 1px solid #0f1320;
+  }
+
+  /* Color schemes */
+  .color-hero .sl-mode.single::before { background: #cfd9e8; box-shadow: 0 0 6px rgba(207,217,232,0.3); }
+  .color-hero .sl-fill { background: #cfd9e8; opacity: 0.55; }
+  .color-hero .sl-thumb { background: #cfd9e8; box-shadow: 0 0 0 1px #cfd9e8; }
+
+  /* Walk colors - all candidates */
+  .walk-current .sl-mode {
+    border-color: rgba(165,196,212,0.5);
+    background: rgba(165,196,212,0.15);
+    color: #a5c4d4;
+    box-shadow: 0 0 6px rgba(165,196,212,0.2);
+  }
+  .walk-current .sl-band { background: rgba(165,196,212,0.35); }
+  .walk-current .sl-thumb { background: #a5c4d4; box-shadow: 0 0 0 1px #a5c4d4; }
+
+  .walk-teal .sl-mode {
+    border-color: rgba(94,196,184,0.5);
+    background: rgba(94,196,184,0.15);
+    color: #5ec4b8;
+    box-shadow: 0 0 6px rgba(94,196,184,0.2);
+  }
+  .walk-teal .sl-band { background: rgba(94,196,184,0.35); }
+  .walk-teal .sl-thumb { background: #5ec4b8; box-shadow: 0 0 0 1px #5ec4b8; }
+
+  .walk-purple .sl-mode {
+    border-color: rgba(184,165,212,0.5);
+    background: rgba(184,165,212,0.15);
+    color: #b8a5d4;
+    box-shadow: 0 0 6px rgba(184,165,212,0.2);
+  }
+  .walk-purple .sl-band { background: rgba(184,165,212,0.35); }
+  .walk-purple .sl-thumb { background: #b8a5d4; box-shadow: 0 0 0 1px #b8a5d4; }
+
+  .walk-mint .sl-mode {
+    border-color: rgba(125,212,165,0.5);
+    background: rgba(125,212,165,0.15);
+    color: #7dd4a5;
+    box-shadow: 0 0 6px rgba(125,212,165,0.2);
+  }
+  .walk-mint .sl-band { background: rgba(125,212,165,0.35); }
+  .walk-mint .sl-thumb { background: #7dd4a5; box-shadow: 0 0 0 1px #7dd4a5; }
+
+  .walk-coral .sl-mode {
+    border-color: rgba(212,134,122,0.5);
+    background: rgba(212,134,122,0.15);
+    color: #d4867a;
+    box-shadow: 0 0 6px rgba(212,134,122,0.2);
+  }
+  .walk-coral .sl-band { background: rgba(212,134,122,0.35); }
+  .walk-coral .sl-thumb { background: #d4867a; box-shadow: 0 0 0 1px #d4867a; }
+
+  .walk-lilac .sl-mode {
+    border-color: rgba(165,176,212,0.5);
+    background: rgba(165,176,212,0.15);
+    color: #a5b0d4;
+    box-shadow: 0 0 6px rgba(165,176,212,0.2);
+  }
+  .walk-lilac .sl-band { background: rgba(165,176,212,0.35); }
+  .walk-lilac .sl-thumb { background: #a5b0d4; box-shadow: 0 0 0 1px #a5b0d4; }
+
+  /* Ocean blue variations */
+  .walk-ocean .sl-mode {
+    border-color: rgba(91,158,196,0.5);
+    background: rgba(91,158,196,0.15);
+    color: #5b9ec4;
+    box-shadow: 0 0 6px rgba(91,158,196,0.2);
+  }
+  .walk-ocean .sl-band { background: rgba(91,158,196,0.35); }
+  .walk-ocean .sl-thumb { background: #5b9ec4; box-shadow: 0 0 0 1px #5b9ec4; }
+
+  .walk-pacific .sl-mode {
+    border-color: rgba(77,154,186,0.5);
+    background: rgba(77,154,186,0.15);
+    color: #4d9aba;
+    box-shadow: 0 0 6px rgba(77,154,186,0.2);
+  }
+  .walk-pacific .sl-band { background: rgba(77,154,186,0.35); }
+  .walk-pacific .sl-thumb { background: #4d9aba; box-shadow: 0 0 0 1px #4d9aba; }
+
+  .walk-shallow .sl-mode {
+    border-color: rgba(107,168,200,0.5);
+    background: rgba(107,168,200,0.15);
+    color: #6ba8c8;
+    box-shadow: 0 0 6px rgba(107,168,200,0.2);
+  }
+  .walk-shallow .sl-band { background: rgba(107,168,200,0.35); }
+  .walk-shallow .sl-thumb { background: #6ba8c8; box-shadow: 0 0 0 1px #6ba8c8; }
+
+  .walk-deep .sl-mode {
+    border-color: rgba(68,140,180,0.5);
+    background: rgba(68,140,180,0.15);
+    color: #448cb4;
+    box-shadow: 0 0 6px rgba(68,140,180,0.2);
+  }
+  .walk-deep .sl-band { background: rgba(68,140,180,0.35); }
+  .walk-deep .sl-thumb { background: #448cb4; box-shadow: 0 0 0 1px #448cb4; }
+
+  /* S&H gold */
+  .sh-gold .sl-mode {
+    border-color: rgba(212,165,32,0.5);
+    background: rgba(212,165,32,0.15);
+    color: #D4A520;
+    box-shadow: 0 0 6px rgba(212,165,32,0.2);
+  }
+  .sh-gold .sl-band {
+    height: 8px;
+    border-radius: 0;
+    background: repeating-linear-gradient(90deg, rgba(212,165,32,0.4) 0, rgba(212,165,32,0.4) 4px, transparent 4px, transparent 7px);
+  }
+  .sh-gold .sl-thumb { background: #D4A520; box-shadow: 0 0 0 1px #D4A520; }
+
+  .color-tag {
+    font-size: 9px;
+    color: #555;
+    margin-left: 8px;
+    font-weight: 400;
+  }
+  .separator {
+    height: 1px;
+    background: rgba(255,255,255,0.06);
+    margin: 16px 0;
+  }
+</style>
+</head>
+<body>
+
+<h1>Walk Color Candidates vs. Single (Hero) & S&H (Gold)</h1>
+
+<!-- Reference: Single mode with hero color -->
+<div class="section">
+  <h2>Reference — Single mode (hero color: #cfd9e8)</h2>
+  <div class="sl-slider color-hero">
+    <div class="sl-slider-head">
+      <span class="sl-mode single"></span>
+      <span class="sl-label">Cutoff</span>
+      <span class="sl-value">2.4 kHz</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-fill" style="width:45%"></span><span class="sl-thumb" style="left:45%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+  <h2>Reference — Sample & Hold (gold: #D4A520)</h2>
+  <div class="sl-slider sh-gold">
+    <div class="sl-slider-head">
+      <span class="sl-mode">‖</span>
+      <span class="sl-label">Attack</span>
+      <span class="sl-value">10ms–80ms</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:10%;width:55%"></span><span class="sl-thumb" style="left:40%"></span></div>
+  </div>
+</div>
+
+<!-- Walk candidates -->
+<div class="section">
+  <h2>Current walk color — #a5c4d4 (light blue)<span class="color-tag">⚠️ too close to hero</span></h2>
+  <div class="sl-slider walk-current">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+
+  <h2>1. Teal — #5ec4b8</h2>
+  <div class="sl-slider walk-teal">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+
+  <h2>2. Soft purple — #b8a5d4</h2>
+  <div class="sl-slider walk-purple">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+
+  <h2>3. Mint green — #7dd4a5</h2>
+  <div class="sl-slider walk-mint">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+
+  <h2>4. Coral — #d4867a</h2>
+  <div class="sl-slider walk-coral">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+
+  <h2>5. Lilac — #a5b0d4</h2>
+  <div class="sl-slider walk-lilac">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+
+  <h2>6. Ocean — #5b9ec4<span class="color-tag">mid ocean blue</span></h2>
+  <div class="sl-slider walk-ocean">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+
+  <h2>7. Pacific — #4d9aba<span class="color-tag">deeper, richer ocean</span></h2>
+  <div class="sl-slider walk-pacific">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+
+  <h2>8. Shallow — #6ba8c8<span class="color-tag">lighter, coastal blue</span></h2>
+  <div class="sl-slider walk-shallow">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+
+  <h2>9. Deep — #448cb4<span class="color-tag">dark ocean, most saturated</span></h2>
+  <div class="sl-slider walk-deep">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+</div>
+
+<!-- All three together -->
+<div class="section">
+  <h2>All three modes together (using Teal for walk)</h2>
+  <div class="sl-slider color-hero">
+    <div class="sl-slider-head">
+      <span class="sl-mode single"></span>
+      <span class="sl-label">Cutoff</span>
+      <span class="sl-value">2.4 kHz</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-fill" style="width:45%"></span><span class="sl-thumb" style="left:45%"></span></div>
+  </div>
+  <div class="sl-slider walk-teal">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+  <div class="sl-slider sh-gold">
+    <div class="sl-slider-head">
+      <span class="sl-mode">‖</span>
+      <span class="sl-label">Attack</span>
+      <span class="sl-value">10ms–80ms</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:10%;width:55%"></span><span class="sl-thumb" style="left:40%"></span></div>
+  </div>
+  <div class="sl-slider color-hero">
+    <div class="sl-slider-head">
+      <span class="sl-mode single"></span>
+      <span class="sl-label">Decay</span>
+      <span class="sl-value">320 ms</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-fill" style="width:65%"></span><span class="sl-thumb" style="left:65%"></span></div>
+  </div>
+  <div class="sl-slider walk-teal">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Detune</span>
+      <span class="sl-value">-8ct–+12ct</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:30%;width:35%"></span><span class="sl-thumb" style="left:52%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+  <h2>All three modes together (using Purple for walk)</h2>
+  <div class="sl-slider color-hero">
+    <div class="sl-slider-head">
+      <span class="sl-mode single"></span>
+      <span class="sl-label">Cutoff</span>
+      <span class="sl-value">2.4 kHz</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-fill" style="width:45%"></span><span class="sl-thumb" style="left:45%"></span></div>
+  </div>
+  <div class="sl-slider walk-purple">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+  <div class="sl-slider sh-gold">
+    <div class="sl-slider-head">
+      <span class="sl-mode">‖</span>
+      <span class="sl-label">Attack</span>
+      <span class="sl-value">10ms–80ms</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:10%;width:55%"></span><span class="sl-thumb" style="left:40%"></span></div>
+  </div>
+  <div class="sl-slider color-hero">
+    <div class="sl-slider-head">
+      <span class="sl-mode single"></span>
+      <span class="sl-label">Decay</span>
+      <span class="sl-value">320 ms</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-fill" style="width:65%"></span><span class="sl-thumb" style="left:65%"></span></div>
+  </div>
+  <div class="sl-slider walk-purple">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Detune</span>
+      <span class="sl-value">-8ct–+12ct</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:30%;width:35%"></span><span class="sl-thumb" style="left:52%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+  <h2>All three modes together (using Mint for walk)</h2>
+  <div class="sl-slider color-hero">
+    <div class="sl-slider-head">
+      <span class="sl-mode single"></span>
+      <span class="sl-label">Cutoff</span>
+      <span class="sl-value">2.4 kHz</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-fill" style="width:45%"></span><span class="sl-thumb" style="left:45%"></span></div>
+  </div>
+  <div class="sl-slider walk-mint">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+  <div class="sl-slider sh-gold">
+    <div class="sl-slider-head">
+      <span class="sl-mode">‖</span>
+      <span class="sl-label">Attack</span>
+      <span class="sl-value">10ms–80ms</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:10%;width:55%"></span><span class="sl-thumb" style="left:40%"></span></div>
+  </div>
+  <div class="sl-slider color-hero">
+    <div class="sl-slider-head">
+      <span class="sl-mode single"></span>
+      <span class="sl-label">Decay</span>
+      <span class="sl-value">320 ms</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-fill" style="width:65%"></span><span class="sl-thumb" style="left:65%"></span></div>
+  </div>
+  <div class="sl-slider walk-mint">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Detune</span>
+      <span class="sl-value">-8ct–+12ct</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:30%;width:35%"></span><span class="sl-thumb" style="left:52%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+  <h2>All three modes together (using Ocean #5b9ec4 for walk)</h2>
+  <div class="sl-slider color-hero">
+    <div class="sl-slider-head">
+      <span class="sl-mode single"></span>
+      <span class="sl-label">Cutoff</span>
+      <span class="sl-value">2.4 kHz</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-fill" style="width:45%"></span><span class="sl-thumb" style="left:45%"></span></div>
+  </div>
+  <div class="sl-slider walk-ocean">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+  <div class="sl-slider sh-gold">
+    <div class="sl-slider-head">
+      <span class="sl-mode">‖</span>
+      <span class="sl-label">Attack</span>
+      <span class="sl-value">10ms–80ms</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:10%;width:55%"></span><span class="sl-thumb" style="left:40%"></span></div>
+  </div>
+  <div class="sl-slider color-hero">
+    <div class="sl-slider-head">
+      <span class="sl-mode single"></span>
+      <span class="sl-label">Decay</span>
+      <span class="sl-value">320 ms</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-fill" style="width:65%"></span><span class="sl-thumb" style="left:65%"></span></div>
+  </div>
+  <div class="sl-slider walk-ocean">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Detune</span>
+      <span class="sl-value">-8ct–+12ct</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:30%;width:35%"></span><span class="sl-thumb" style="left:52%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+  <h2>All three modes together (using Pacific #4d9aba for walk)</h2>
+  <div class="sl-slider color-hero">
+    <div class="sl-slider-head">
+      <span class="sl-mode single"></span>
+      <span class="sl-label">Cutoff</span>
+      <span class="sl-value">2.4 kHz</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-fill" style="width:45%"></span><span class="sl-thumb" style="left:45%"></span></div>
+  </div>
+  <div class="sl-slider walk-pacific">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+  <div class="sl-slider sh-gold">
+    <div class="sl-slider-head">
+      <span class="sl-mode">‖</span>
+      <span class="sl-label">Attack</span>
+      <span class="sl-value">10ms–80ms</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:10%;width:55%"></span><span class="sl-thumb" style="left:40%"></span></div>
+  </div>
+  <div class="sl-slider color-hero">
+    <div class="sl-slider-head">
+      <span class="sl-mode single"></span>
+      <span class="sl-label">Decay</span>
+      <span class="sl-value">320 ms</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-fill" style="width:65%"></span><span class="sl-thumb" style="left:65%"></span></div>
+  </div>
+  <div class="sl-slider walk-pacific">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Detune</span>
+      <span class="sl-value">-8ct–+12ct</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:30%;width:35%"></span><span class="sl-thumb" style="left:52%"></span></div>
+  </div>
+
+  <div class="separator"></div>
+  <h2>All three modes together (using Deep #448cb4 for walk)</h2>
+  <div class="sl-slider color-hero">
+    <div class="sl-slider-head">
+      <span class="sl-mode single"></span>
+      <span class="sl-label">Cutoff</span>
+      <span class="sl-value">2.4 kHz</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-fill" style="width:45%"></span><span class="sl-thumb" style="left:45%"></span></div>
+  </div>
+  <div class="sl-slider walk-deep">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Resonance</span>
+      <span class="sl-value">20%–60%</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:20%;width:40%"></span><span class="sl-thumb" style="left:38%"></span></div>
+  </div>
+  <div class="sl-slider sh-gold">
+    <div class="sl-slider-head">
+      <span class="sl-mode">‖</span>
+      <span class="sl-label">Attack</span>
+      <span class="sl-value">10ms–80ms</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:10%;width:55%"></span><span class="sl-thumb" style="left:40%"></span></div>
+  </div>
+  <div class="sl-slider color-hero">
+    <div class="sl-slider-head">
+      <span class="sl-mode single"></span>
+      <span class="sl-label">Decay</span>
+      <span class="sl-value">320 ms</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-fill" style="width:65%"></span><span class="sl-thumb" style="left:65%"></span></div>
+  </div>
+  <div class="sl-slider walk-deep">
+    <div class="sl-slider-head">
+      <span class="sl-mode">~</span>
+      <span class="sl-label">Detune</span>
+      <span class="sl-value">-8ct–+12ct</span>
+    </div>
+    <div class="sl-rail"><span class="sl-track"></span><span class="sl-band" style="left:30%;width:35%"></span><span class="sl-thumb" style="left:52%"></span></div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -313,6 +313,31 @@ public:
     return 1;
   }
 
+  int activeGrainCount() override {
+    return instance_ == nullptr ? 0 : granular_instance_get_active_grain_count(instance_);
+  }
+
+  float granularWriteHeadPosition() override {
+    return instance_ == nullptr ? 0.0f : granular_instance_get_write_head(instance_);
+  }
+
+  void granularVoicePositions(float* out_positions, uint32_t position_count) override {
+    if (out_positions == nullptr) {
+      return;
+    }
+    std::array<float, KESSHO_NUM_VOICES> positions{};
+    if (instance_ != nullptr) {
+      granular_instance_get_voice_positions(instance_, positions.data());
+    }
+    const uint32_t copy_count = std::min<uint32_t>(position_count, KESSHO_NUM_VOICES);
+    for (uint32_t index = 0; index < copy_count; ++index) {
+      out_positions[index] = positions[index];
+    }
+    for (uint32_t index = copy_count; index < position_count; ++index) {
+      out_positions[index] = 0.0f;
+    }
+  }
+
 private:
   void applyRandomSeed() {
     if (instance_ == nullptr || pending_random_seed_ == 0u || applied_random_seed_ == pending_random_seed_) {

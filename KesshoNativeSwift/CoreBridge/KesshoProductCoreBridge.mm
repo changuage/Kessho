@@ -96,6 +96,10 @@ KesshoNativeProductTelemetry convertTelemetry(const KesshoProductTelemetry& tele
   native.master_true_peak = telemetry.master_true_peak;
   native.master_true_peak_dbtp = telemetry.master_true_peak_dbtp;
   native.master_integrated_lufs = telemetry.master_integrated_lufs;
+  native.granular_write_head = telemetry.granular_write_head;
+  for (size_t i = 0; i < 4; ++i) {
+    native.granular_voice_positions[i] = telemetry.granular_voice_positions[i];
+  }
   return native;
 }
 

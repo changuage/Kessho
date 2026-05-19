@@ -91,6 +91,20 @@ public:
   virtual int activeVoiceCount() {
     return 0;
   }
+  virtual int activeGrainCount() {
+    return 0;
+  }
+  virtual float granularWriteHeadPosition() {
+    return 0.0f;
+  }
+  virtual void granularVoicePositions(float* out_positions, uint32_t position_count) {
+    if (out_positions == nullptr) {
+      return;
+    }
+    for (uint32_t index = 0; index < position_count; ++index) {
+      out_positions[index] = 0.0f;
+    }
+  }
   virtual int outputTapCount() const {
     return 1;
   }

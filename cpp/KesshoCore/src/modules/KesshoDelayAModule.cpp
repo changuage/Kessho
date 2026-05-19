@@ -338,13 +338,19 @@ public:
     state_.filter_hz = clamp(params_[kParamFilterHz], 200.0f, 12000.0f);
     state_.filter_type = static_cast<int>(clamp(std::round(params_[kParamFilterType]), 0.0f, 2.0f));
     state_.reverb_send = enabled ? clamp(params_[kParamReverbSend], 0.0f, 1.0f) : 0.0f;
-    state_.mod_rate_hz = std::max(0.01f, clamp(params_[kParamModRateHz], 0.0f, 5.0f));
+    const float mod_depth_ms = enabled ? clamp(params_[kParamModDepthMs], 0.0f, 50.0f) : 0.0f;
+    state_.mod_rate_hz = mod_depth_ms > 0.0001f
+        ? std::max(0.01f, clamp(params_[kParamModRateHz], 0.0f, 5.0f))
+        : 0.0f;
     state_.mod_depth_l = enabled
-        ? std::min(final_l * 0.8f, clamp(params_[kParamModDepthMs], 0.0f, 50.0f) * 0.001f)
+        ? std::min(final_l * 0.8f, mod_depth_ms * 0.001f)
         : 0.0f;
     state_.mod_depth_r = enabled
-        ? std::min(final_r * 0.8f, clamp(params_[kParamModDepthMs], 0.0f, 50.0f) * 0.001f)
+        ? std::min(final_r * 0.8f, mod_depth_ms * 0.001f)
         : 0.0f;
+    if (state_.mod_rate_hz <= 0.0f) {
+      mod_phase_ = 0.0f;
+    }
     state_.ping_pong = params_[kParamPingPong] > 0.5f;
     state_.duck = enabled ? clamp(params_[kParamDuck], 0.0f, 1.0f) : 0.0f;
     state_.to_delay_b = enabled ? clamp(params_[kParamToDelayB], 0.0f, 1.0f) : 0.0f;
@@ -418,9 +424,12 @@ private:
       return;
     }
 
-    const float mod = std::sin(mod_phase_);
-    mod_phase_ += 2.0f * kPi * state_.mod_rate_hz / sample_rate_;
-    if (mod_phase_ >= 2.0f * kPi) mod_phase_ -= 2.0f * kPi;
+    float mod = 0.0f;
+    if (state_.mod_rate_hz > 0.0f && (state_.mod_depth_l > 0.0f || state_.mod_depth_r > 0.0f)) {
+      mod = std::sin(mod_phase_);
+      mod_phase_ += 2.0f * kPi * state_.mod_rate_hz / sample_rate_;
+      if (mod_phase_ >= 2.0f * kPi) mod_phase_ -= 2.0f * kPi;
+    }
 
     const float delay_samples_l = (state_.time_l + mod * state_.mod_depth_l) * sample_rate_;
     const float delay_samples_r = (state_.time_r - mod * state_.mod_depth_r) * sample_rate_;

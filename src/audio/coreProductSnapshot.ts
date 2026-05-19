@@ -47,7 +47,7 @@ import { getTransportMetrics } from './transport';
 import { computeGranularMacroModel, type GranularMacroModel } from './granularMacroCore';
 import { applyDistanceValue, applyLeadDistanceEnvelope, getVoiceDistanceKey, type DistanceVoice } from './distanceMacro';
 import { createHarmonyState, getEffectiveTension } from './harmony';
-import { computeSeed, getUtcBucket } from './rng';
+import { computeGranularRuntimeSeed, getUtcBucket } from './rng';
 import { isIOSLikeDevice, isMobileDevice } from '../platform';
 import {
   SOUNDSCAPE_PARITY_FIXTURE_PARAM,
@@ -176,7 +176,7 @@ function rngStateFromState(state: Record<string, unknown> | undefined, seed: num
 
 function granularRuntimeSeedFromState(state: Record<string, unknown> | undefined): number {
   const seedWindow = state?.seedWindow === 'day' ? 'day' : 'hour';
-  return positiveU32(computeSeed(getUtcBucket(seedWindow), 'E_ROOT'), 1);
+  return positiveU32(computeGranularRuntimeSeed(getUtcBucket(seedWindow)), 1);
 }
 
 export function usesLegacyGranularRuntimeSeed(state: Record<string, unknown> | undefined): boolean {
@@ -854,7 +854,9 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       delayAMix: delayAEnabled ? clamp(numberFromState(sliderState, 'delayAMix', 0), 0, 1) : 0,
       delayAFilterHz: clamp(numberFromState(sliderState, 'delayAFilter', 2000), 200, 12000),
       delayAFilterType: delayAFilterTypeId(sliderState?.delayAFilterType),
-      delayAModRateHz: clamp(numberFromState(sliderState, 'delayAModRate', 0) * 5, 0, 5),
+      delayAModRateHz: numberFromState(sliderState, 'delayAModDepth', 0) > 0
+        ? 0.05 + clamp(numberFromState(sliderState, 'delayAModRate', 0), 0, 1) * 4.95
+        : 0,
       delayAModDepthMs: clamp(numberFromState(sliderState, 'delayAModDepth', 0) * 50, 0, 50),
       delayAPingPong: booleanFromState(sliderState, 'delayAPingPong', false),
       delayADuck: clamp(numberFromState(sliderState, 'delayADuck', 0), 0, 1),
@@ -1038,9 +1040,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
         : 0,
       delayAToGranular: clamp(numberFromState(sliderState, 'delayAGranularSend', 0), 0, 1),
       delayBToGranular: clamp(numberFromState(sliderState, 'delayBGranularSend', 0), 0, 1),
-      delayBToReverb: reverbEnabled && delayBEnabled
-        ? clamp(numberFromState(sliderState, 'granularDelayReverbSend', 0.4), 0, 1)
-        : 0,
+      delayBToReverb: clamp(numberFromState(sliderState, 'granularDelayReverbSend', 0.4), 0, 1),
       granularToDelayA,
       granularToDelayB,
     },

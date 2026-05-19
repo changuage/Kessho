@@ -67,6 +67,8 @@ typedef struct KesshoNativeProductTelemetry {
   float master_true_peak;
   float master_true_peak_dbtp;
   float master_integrated_lufs;
+  float granular_write_head;
+  float granular_voice_positions[4];
 } KesshoNativeProductTelemetry;
 
 int32_t kessho_native_product_get_abi_version(void);

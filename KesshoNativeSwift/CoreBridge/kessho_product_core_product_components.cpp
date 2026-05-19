@@ -34,6 +34,8 @@
 #include "../../cpp/KesshoCore/src/product/sources/SourceGraphTaps.cpp"
 #include "../../cpp/KesshoCore/src/product/sources/SourceMix.cpp"
 #include "../../cpp/KesshoCore/src/product/sources/SourceModulation.cpp"
+#include "../../cpp/KesshoCore/src/product/sources/SourceModulationFx.cpp"
+#include "../../cpp/KesshoCore/src/product/sources/SourceModulationRuntime.cpp"
 #include "../../cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp"
 #include "../../cpp/KesshoCore/src/product/sources/DrumSource.cpp"
 #include "../../cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp"

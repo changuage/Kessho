@@ -116,6 +116,8 @@ export type CoreProductTelemetrySnapshot = {
   workletPadStemPeak?: number;
   workletLeadStemPeak?: number;
   workletFxStemPeak?: number;
+  granularWriteHeadPosition?: number;
+  granularVoicePositions?: [number, number, number, number];
 };
 
 export const initialCoreProductCapabilityReport: CoreProductCapabilityReport = {

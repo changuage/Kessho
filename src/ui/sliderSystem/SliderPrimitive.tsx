@@ -22,9 +22,9 @@ const MODE_LABEL: Record<SliderMode, string> = {
 };
 
 const MODE_GLYPH: Record<SliderMode, string> = {
-  single: '.',
+  single: '',
   walk: '~',
-  sampleHold: '||',
+  sampleHold: '‖',
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -542,11 +542,9 @@ export function SliderPrimitive({
           if (!disabled) onModeCycle?.();
         }}
       >
-        {hero && <span className="sl-slider-hero-dot" aria-hidden="true" />}
-        <span className="sl-slider-label">{label}</span>
-        {showsModeControl && (
+        {showsModeControl ? (
           <span
-            className={`sl-slider-mode${disabled ? '' : ' interactive'}`}
+            className={`sl-slider-mode sl-slider-mode--${mode}${disabled ? '' : ' interactive'}`}
             aria-label={MODE_LABEL[mode]}
             role={disabled ? undefined : 'button'}
             tabIndex={disabled ? -1 : 0}
@@ -572,7 +570,10 @@ export function SliderPrimitive({
             <span className="sl-slider-mode-glyph">{MODE_GLYPH[mode]}</span>
             <span className="sl-slider-mode-text">{MODE_LABEL[mode]}</span>
           </span>
+        ) : (
+          hero && <span className="sl-slider-hero-dot" aria-hidden="true" />
         )}
+        <span className="sl-slider-label">{label}</span>
         <span className="sl-slider-value app-slider-value">{valueText}</span>
       </div>
 

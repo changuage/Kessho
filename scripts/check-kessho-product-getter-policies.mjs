@@ -74,9 +74,6 @@ for (const forbidden of ['classifiedPlaceholderGetter', 'PlaceholderGetterClassi
 const unsupportedGetters = new Set([
   'getDynamicsAnalyser',
   'getDrumVoiceAnalyser',
-  'getGranularBufferWaveform',
-  'getGranularVoicePositions',
-  'getGranularWriteHeadPosition',
   'getLeadMorphedParams',
   'getCurrentFilterFreq',
   'getCurrentLfoValue',
@@ -102,6 +99,20 @@ for (const getter of getters) {
 assert(
   methodBody('getGranularActiveGrainCount').includes('this.latestTelemetry?.activeGrains'),
   'granular active grain count must use Product Core telemetry instead of a fixed placeholder',
+);
+assert(
+  methodBody('getGranularVoicePositions').includes('this.latestTelemetry?.granularVoicePositions') &&
+    methodBody('getGranularVoicePositions').includes('this.normalizedPosition'),
+  'granular voice positions must use Product Core granular telemetry instead of a hidden fallback',
+);
+assert(
+  methodBody('getGranularWriteHeadPosition').includes('this.latestTelemetry?.granularWriteHeadPosition') &&
+    methodBody('getGranularWriteHeadPosition').includes('this.normalizedPosition'),
+  'granular write head must use Product Core granular telemetry instead of a hidden fallback',
+);
+assert(
+  methodBody('getGranularBufferWaveform').includes('return null;'),
+  'granular waveform getter must stay a cheap null surface until Product Core exposes an explicit debug waveform API',
 );
 assert(
   methodBody('getDynamicsVisualTelemetry').includes('telemetry.masterInputPeak') &&
@@ -134,11 +145,12 @@ assert(
   'core-product UI must hide stem recording controls when stem nodes are unsupported',
 );
 assert(
-  app.includes("liveBufferTelemetryAvailable={audioEngineRuntimeMode !== 'core-product'}") &&
+  app.includes('liveBufferTelemetryAvailable') &&
+    !app.includes("liveBufferTelemetryAvailable={audioEngineRuntimeMode !== 'core-product'}") &&
     granularPage.includes('liveBufferTelemetryAvailable?: boolean;') &&
     granularPage.includes('if (!liveBufferTelemetryAvailable) return;') &&
     granularPage.includes('{liveBufferTelemetryAvailable && ('),
-  'core-product UI must hide granular live buffer waveform/write-head/voice-position surfaces when those telemetry getters are unsupported',
+  'core-product UI must enable granular live head/voice telemetry while preserving the telemetry availability guard',
 );
 assert(
   app.includes("getDynamicsAnalyser={audioEngineRuntimeMode === 'core-product' ? undefined") &&

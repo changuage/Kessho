@@ -20,7 +20,7 @@ int main() {
   static_assert(sizeof(KesshoProductSnapshotV2) == 12700, "product snapshot ABI size changed");
   static_assert(sizeof(KesshoProductEvent) == 40, "product event ABI size changed");
   static_assert(sizeof(KesshoSequencerEvent) == 60, "sequencer event ABI size changed");
-  static_assert(sizeof(KesshoProductTelemetry) == 368, "product telemetry ABI size changed");
+  static_assert(sizeof(KesshoProductTelemetry) == 384, "product telemetry ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneUiState) == 2216, "sequencer UI lane state ABI size changed");
   static_assert(sizeof(KesshoProductSequencerUiState) == 70948, "sequencer UI state ABI size changed");
 
@@ -45,6 +45,12 @@ int main() {
   require(
       offsetof(KesshoProductTelemetry, master_integrated_lufs) == 360,
       "telemetry master integrated LUFS offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, granular_write_head) == 364,
+      "telemetry granular write head offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, granular_voice_positions) == 368,
+      "telemetry granular voice positions offset changed");
   require(
       offsetof(KesshoProductSequencerLaneUiState, probability_overrides) == 168,
       "sequencer UI probability override offset changed");

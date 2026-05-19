@@ -170,6 +170,14 @@ await runCheckWithReport({
     ]) {
       assert(app.includes(token), `App core-product unsupported-control gating is missing ${token}`);
     }
+    assert(
+      app.includes('const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);'),
+      'App sliderProps must keep dual-slider UI state available for every non-single-only key',
+    );
+    assert(
+      !app.includes('const dualModeSupported = coreProductRuntimeRangeSupported && !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);'),
+      'App sliderProps must not hide dual-slider UI state behind native Product Core range support',
+    );
 
     for (const section of [
       '## safe-visual-fallback',
@@ -184,7 +192,7 @@ await runCheckWithReport({
       '`runtimeFallbackDiagnosticCount`',
       '`audioCriticalFallbackCount`',
       'Required App callsites are statically audited against `CoreProductEngineHost`',
-      'Unsupported dual-mode slider ranges are hidden in `core-product`',
+      'Unsupported native range keys keep the same dual-mode UI state machine in `core-product`',
     ]) {
       assert(doc.includes(section), `runtime fallback documentation is missing ${section}`);
     }

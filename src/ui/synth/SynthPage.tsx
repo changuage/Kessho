@@ -57,6 +57,7 @@ import {
 import {
   getLead4opFMPresetList,
   loadLead4opFMPreset,
+  morphPresets,
   overwriteLead4opFMPreset,
   saveUserLead4opFMPreset,
   setUserLead4opFMPresets,
@@ -526,6 +527,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [dragPopup, setDragPopup] = useState<{ x: number; y: number; text: string } | null>(null);
   const [activeKeyboardCodes, setActiveKeyboardCodes] = useState<string[]>([]);
   const [lead4opPresets, setLead4opPresets] = useState<Array<{ id: string; name: string }>>([]);
+  const [leadPresetPreviewCache, setLeadPresetPreviewCache] = useState<Record<string, Lead4opFMPreset>>({});
   const [leadEditorSlot, setLeadEditorSlot] = useState<LeadEditorSession | null>(null);
   const [leadEditorRuntimeOptions, setLeadEditorRuntimeOptions] = useState<LeadPresetOption[]>([]);
   const [lead1LoaderPresetId, setLead1LoaderPresetId] = useState(() => String(state.lead1PresetA ?? ''));
@@ -620,6 +622,67 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       ]);
     });
   }, []);
+
+  const leadPresetPreviewIds = useMemo(() => (
+    Array.from(new Set([
+      state.lead1PresetA,
+      state.lead1PresetB,
+      state.lead2PresetC,
+      state.lead2PresetD,
+    ].map((value) => String(value ?? '').trim()).filter(Boolean)))
+  ), [state.lead1PresetA, state.lead1PresetB, state.lead2PresetC, state.lead2PresetD]);
+  const leadPresetPreviewSignature = leadPresetPreviewIds.join('\t');
+
+  useEffect(() => {
+    const missingIds = leadPresetPreviewIds.filter((id) => !leadPresetPreviewCache[id]);
+    if (missingIds.length === 0) return undefined;
+
+    let cancelled = false;
+    Promise.all(
+      missingIds.map(async (id) => [id, await loadLead4opFMPreset(id)] as const),
+    )
+      .then((entries) => {
+        if (cancelled) return;
+        setLeadPresetPreviewCache((previous) => {
+          const next = { ...previous };
+          for (const [id, preset] of entries) next[id] = preset;
+          return next;
+        });
+      })
+      .catch((error) => {
+        console.warn('Failed to load lead preset preview:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leadPresetPreviewCache, leadPresetPreviewIds, leadPresetPreviewSignature]);
+
+  const getLeadPreviewMorphedParams = useCallback((leadNum: 1 | 2) => {
+    const engineParams = getLeadMorphedParams(leadNum);
+    if (engineParams) return engineParams;
+
+    const presetAId = String(leadNum === 2 ? state.lead2PresetC : state.lead1PresetA);
+    const presetBId = String(leadNum === 2 ? state.lead2PresetD : state.lead1PresetB);
+    const presetA = leadPresetPreviewCache[presetAId];
+    const presetB = leadPresetPreviewCache[presetBId];
+    if (!presetA || !presetB) return null;
+
+    const morph = leadNum === 2 ? state.lead2Morph : state.lead1Morph;
+    const algorithmMode = leadNum === 2 ? state.lead2AlgorithmMode : state.lead1AlgorithmMode;
+    return morphPresets(presetA, presetB, morph, algorithmMode);
+  }, [
+    getLeadMorphedParams,
+    leadPresetPreviewCache,
+    state.lead1AlgorithmMode,
+    state.lead1Morph,
+    state.lead1PresetA,
+    state.lead1PresetB,
+    state.lead2AlgorithmMode,
+    state.lead2Morph,
+    state.lead2PresetC,
+    state.lead2PresetD,
+  ]);
 
   useEffect(() => {
     setLead1LoaderPresetId(String(state.lead1PresetA ?? ''));
@@ -2495,7 +2558,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   // ── ADSR renderer (per-lead: Lead 1 uses lead1* params, Lead 2 uses lead2* params) ──
   const renderLeadAdsr = (leadNum: 1 | 2) => {
-    const mp = getLeadMorphedParams(leadNum);
+    const mp = getLeadPreviewMorphedParams(leadNum);
     const env = mp
       ? { attack: mp.attack, decay: mp.decay, sustain: mp.sustain, release: mp.release }
       : null;

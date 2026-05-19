@@ -35,6 +35,7 @@ struct KesshoProductEngine : ProductGraphState {
   AssetSlot assets[kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS]{};
   Voice voices[kessho::product::generated::KESSHO_PRODUCT_MAX_VOICES]{};
   ModulationRange modulation_ranges[kMaxModulationRanges]{};
+  ProductFxSampleHoldOwner fx_sample_hold_owners[kProductSampleHoldTriggerReverb + 1]{};
   QueuedProductEvent control_events[kessho::product::generated::KESSHO_PRODUCT_MAX_CONTROL_EVENTS]{};
   uint32_t control_event_count = 0;
   uint32_t next_control_sequence = 1;
@@ -276,21 +277,22 @@ struct KesshoProductEngine : ProductGraphState {
   void applyModulationRangeEvent(const KesshoProductEvent& event);
 
   void applySourcePresetEvent(const KesshoProductEvent& event);
-
   void applySourcePresetMacros(const SourceState& source, float& morph, float& distance, float& expression) const;
 
   kessho::core::KesshoSourcePresetPatch drumVoiceMorphPatch(const SourceState& source) const;
 
   bool sourceMacrosDifferFromDefaults(float morph, float distance, float expression) const;
-
   float modulationRangeSample(const ModulationRange& range, float fallback, uint32_t sample_seed) const;
-
   float resolveModulatedValue(uint32_t target_id, uint32_t param_id, float fallback, uint32_t sample_seed) const;
-
+  void applyModulationRangeValue(const ModulationRange& range);
   void applyRuntimeWalkValue(const ModulationRange& range);
-
+  uint32_t sampleHoldTriggerBusForParam(uint32_t param_id) const;
+  uint32_t sampleHoldTriggerBusForEvent(const KesshoProductEvent& event) const;
+  void resetFxSampleHoldOwners();
+  float fxSampleHoldSourceStrength(uint32_t bus, uint32_t source_id, float drum_delay_send) const;
+  bool shouldTriggerFxSampleHoldBus(uint32_t bus, uint32_t source_id, float strength) const;
+  void triggerFxSampleHoldRanges(uint32_t source_id, float delay_a_strength, float delay_b_strength, float granular_strength, float reverb_strength, uint32_t sample_seed);
   void advanceModulationRanges(uint32_t frames);
-
   void applySourceParam(const KesshoProductEvent& event);
 
   void compactControlEvents(uint32_t frames, uint32_t first_unprocessed);

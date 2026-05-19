@@ -71,6 +71,8 @@ for (const token of [
   'float master_true_peak;',
   'float master_true_peak_dbtp;',
   'float master_integrated_lufs;',
+  'float granular_write_head;',
+  'float granular_voice_positions[4];',
   'float master_limiter_gain_reduction_db;',
   'float master_saturation_drive;',
   'float dynamics_saturation_drive;',
@@ -86,6 +88,8 @@ for (const token of [
   'masterTruePeak?: number;',
   'masterTruePeakDbtp?: number;',
   'masterIntegratedLufs?: number;',
+  'granularWriteHeadPosition?: number;',
+  'granularVoicePositions?: [number, number, number, number];',
   'masterLimiterGainReductionDb?: number;',
   'masterSaturationDrive?: number;',
   'dynamicsSaturationDrive?: number;',
@@ -94,7 +98,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const TELEMETRY_BYTES = 368;',
+  'const TELEMETRY_BYTES = 384;',
   'masterInputPeak: this.view.getFloat32(ptr + 324, true)',
   'masterOutputPeak: this.view.getFloat32(ptr + 328, true)',
   'masterOutputRms: this.view.getFloat32(ptr + 332, true)',
@@ -104,6 +108,8 @@ for (const token of [
   'masterTruePeak: this.view.getFloat32(ptr + 352, true)',
   'masterTruePeakDbtp: this.view.getFloat32(ptr + 356, true)',
   'masterIntegratedLufs: this.view.getFloat32(ptr + 360, true)',
+  'granularWriteHeadPosition: this.view.getFloat32(ptr + 364, true)',
+  'granularVoicePositions: [',
 ]) {
   assert(worklet.includes(token), `worklet telemetry reader is missing ${token}`);
 }
@@ -118,16 +124,20 @@ for (const token of [
   'native.master_true_peak = telemetry.master_true_peak;',
   'native.master_true_peak_dbtp = telemetry.master_true_peak_dbtp;',
   'native.master_integrated_lufs = telemetry.master_integrated_lufs;',
+  'native.granular_write_head = telemetry.granular_write_head;',
+  'native.granular_voice_positions[i] = telemetry.granular_voice_positions[i];',
 ]) {
   assert(nativeBridge.includes(token), `native telemetry bridge is missing ${token}`);
 }
 
 for (const token of [
-  'sizeof(KesshoProductTelemetry) == 368',
+  'sizeof(KesshoProductTelemetry) == 384',
   'offsetof(KesshoProductTelemetry, master_input_peak) == 324',
   'offsetof(KesshoProductTelemetry, dynamics_saturation_drive) == 344',
   'offsetof(KesshoProductTelemetry, master_true_peak) == 352',
   'offsetof(KesshoProductTelemetry, master_integrated_lufs) == 360',
+  'offsetof(KesshoProductTelemetry, granular_write_head) == 364',
+  'offsetof(KesshoProductTelemetry, granular_voice_positions) == 368',
 ]) {
   assert(abiTest.includes(token), `ABI layout test is missing ${token}`);
 }

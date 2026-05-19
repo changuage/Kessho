@@ -134,6 +134,19 @@ export function computeSeed(bucket: string, sliderStateJson: string): number {
 }
 
 /**
+ * Legacy granular parity uses a dedicated runtime seed material instead of the
+ * broader state-hash seed so both Web and Product expand the same sequence.
+ */
+export function granularRuntimeSeedMaterial(bucket: string): string {
+  return `${bucket}|E_ROOT`;
+}
+
+export function computeGranularRuntimeSeed(bucket: string): number {
+  const hashFn = xmur3(granularRuntimeSeedMaterial(bucket));
+  return hashFn();
+}
+
+/**
  * Pre-generate a sequence of random numbers for worklet use
  */
 export function generateRandomSequence(rng: () => number, count: number): Float32Array {

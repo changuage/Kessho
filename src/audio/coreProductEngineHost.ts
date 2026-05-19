@@ -13,7 +13,6 @@ import {
   type CoreProductEvent,
   type CoreProductModulationRangeMode,
   type CoreProductRangeTarget,
-  type CoreProductRangeValueContext,
   type CoreProductStepValueField,
   createCoreProductDrumTriggerEvent,
   createCoreProductJourneyEvent,
@@ -39,20 +38,24 @@ import { classifyCoreProductRuntimeFallback, runtimeFallbackIsDevelopmentError, 
 import { CoreProductArrangementScheduler } from './coreProductArrangementScheduler';
 import { buildCoreProductSnapshotDiff, shouldForwardCoreProductRngDiffs, type SnapshotReloadReason } from './CoreProductRuntimeAdapter';
 import { normalizeClockDivisionValue, normalizeEvolveConfigs, normalizeSequencerStepToggleOverrides, normalizeSequencerStepValueConfigs, normalizeSequencerStepValueOverrides, normalizeSubLaneEnabledStates, normalizedUnitValue, type SequencerKind, type SequencerStepToggleOverride, type SequencerStepValueConfig, type SequencerStepValueOverride } from './CoreProductHostSequencerAdapter';
-import { createCoreProductEngineState, drumVoiceIndex, gainToDb, manualAuditionState, midiFromFrequency, requireFiniteRange, requireManualNote, requirePositive, sourceId } from './CoreProductHostRuntimeGuards';
+import { coreProductRangeValueContext, createCoreProductEngineState, drumVoiceIndex, gainToDb, manualAuditionState, mappedCoreProductRange, midiFromFrequency, requireFiniteRange, requireManualNote, requirePositive, runtimeWalkConfigChanged, runtimeWalkConfigFromState, runtimeWalkPositionsFromTelemetry, sourceId } from './CoreProductHostRuntimeGuards';
 import { CORE_PRODUCT_GRAPH_TAP_IDS } from './coreProductGraphTaps';
 import { CoreProductRuntime, type CoreProductGraphTapCaptureChunk } from './coreProductRuntime';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import { loadProductLead4opFMPreset } from './CoreProductLegacyPresetCompat';
-
 const CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE = 3;
 const CORE_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME = 4;
 const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = 4;
-
 type ProductRangeState = {
   range: { min: number; max: number };
   targets: CoreProductRangeTarget[];
 };
+const PRODUCT_LEAD_PRESET_SLOTS = [
+  { slot: 'A', stateKey: 'lead1PresetA', dataKey: 'lead1PresetAData', fallback: 'soft_rhodes' },
+  { slot: 'B', stateKey: 'lead1PresetB', dataKey: 'lead1PresetBData', fallback: 'gamelan' },
+  { slot: 'C', stateKey: 'lead2PresetC', dataKey: 'lead2PresetCData', fallback: 'soft_rhodes' },
+  { slot: 'D', stateKey: 'lead2PresetD', dataKey: 'lead2PresetDData', fallback: 'gamelan' },
+] as const;
 
 class CoreProductEngineHost {
   private readonly runtime = new CoreProductRuntime();
@@ -68,6 +71,7 @@ class CoreProductEngineHost {
   private perfUpdateCallback: ((data: Record<string, unknown>) => void) | null = null;
   private latestProductSnapshot: CoreProductSnapshot | null = null;
   private adapterState: Record<string, unknown> = {};
+  private readonly pendingLeadPresetLoads = new Map<string, string>();
   private synthSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
   private drumSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
   private latestTelemetry: CoreProductTelemetrySnapshot | null = null;
@@ -79,6 +83,7 @@ class CoreProductEngineHost {
   private readonly drumSampleHoldRanges = new Map<string, ProductRangeState>();
   private readonly runtimeWalkRanges = new Map<string, ProductRangeState>();
   private readonly runtimeWalkControlNames = new Map<number, string>();
+  private readonly runtimeWalkControlRanges = new Map<number, { min: number; max: number }>();
   private readonly reportedUnsupportedRangeKeys = new Set<string>();
   private dirtyDiffCount = 0;
   private fullSnapshotReloadCount = 0;
@@ -99,26 +104,20 @@ class CoreProductEngineHost {
   private drumStepValueOverrides: SequencerStepValueOverride[][] = [[], [], [], []];
   private synthStepValueConfigs: SequencerStepValueConfig[][] = [[], [], [], []];
   private drumStepValueConfigs: SequencerStepValueConfig[][] = [[], [], [], []];
-
   readonly engineMode = 'core-product';
   readonly capabilityReport = initialCoreProductCapabilityReport;
-
   constructor() {
     this.runtime.setTelemetryCallback((telemetry) => this.handleTelemetry(telemetry));
   }
-
   getAudioContext(): AudioContext | null {
     return this.runtime.audioContext;
   }
-
   getMediaStream(): MediaStream | null {
     return null;
   }
-
   getLimiterNode(): AudioNode | null {
     return this.runtime.outputNode;
   }
-
   getDynamicsAnalyser(): AnalyserNode | null {
     return this.unsupportedGetter('getDynamicsAnalyser');
   }
@@ -163,25 +162,30 @@ class CoreProductEngineHost {
       sidechainEvents: [],
     };
   }
-
   getDrumVoiceAnalyser(): undefined {
     return this.unsupportedGetter('getDrumVoiceAnalyser');
   }
-
   getGranularActiveGrainCount(): number {
     return this.latestTelemetry?.activeGrains ?? 0;
   }
 
-  getGranularBufferWaveform(): null {
-    return this.unsupportedGetter('getGranularBufferWaveform');
+  getGranularBufferWaveform(): Float32Array | null {
+    return null;
   }
 
   getGranularVoicePositions(): [number, number, number, number] {
-    return this.unsupportedGetter('getGranularVoicePositions');
+    const positions = this.latestTelemetry?.granularVoicePositions;
+    if (!positions) return [0, 0, 0, 0];
+    return [
+      this.normalizedPosition(positions[0]),
+      this.normalizedPosition(positions[1]),
+      this.normalizedPosition(positions[2]),
+      this.normalizedPosition(positions[3]),
+    ];
   }
 
   getGranularWriteHeadPosition(): number {
-    return this.unsupportedGetter('getGranularWriteHeadPosition');
+    return this.normalizedPosition(this.latestTelemetry?.granularWriteHeadPosition);
   }
 
   getLeadMorphedParams(): null {
@@ -296,12 +300,21 @@ class CoreProductEngineHost {
     throw new Error(`AudioEngine.${method} is not implemented by core-product`);
   }
 
+  private normalizedPosition(value: unknown): number {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 0;
+    if (numeric <= 0) return 0;
+    if (numeric >= 1) return 1;
+    return numeric;
+  }
+
   setStateChangeCallback(callback: ((state: EngineState) => void) | null): void {
     this.stateChangeCallback = callback;
   }
 
   setPerfMonitorEnabled(enabled: boolean): void {
     this.perfMonitorEnabled = enabled;
+    this.runtime.setPerfMonitorEnabled(enabled);
     if (!enabled) {
       this.perfUpdateCallback?.({});
       return;
@@ -345,15 +358,20 @@ class CoreProductEngineHost {
   }
 
   updateParams(sliderState: Record<string, unknown>): void {
+    const previousWalkConfig = runtimeWalkConfigFromState(this.latestSliderState);
     this.latestSliderState = sliderState;
+    const nextWalkConfig = runtimeWalkConfigFromState(this.latestSliderState);
+    this.syncLeadPresetData(sliderState);
     if (this.runtimeReady && this.assetAdapter.hasMissingDefaultAssetsForState()) {
       void this.assetAdapter.ensureDefaultAssetsForState().then(() => {
         this.applyLatestSnapshotUpdate('asset-reference-change');
+        if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.flushRuntimeWalkRanges();
         if (this.running) this.arrangementScheduler.update(this.createLatestArrangementState());
       });
       return;
     }
     this.applyLatestSnapshotUpdate();
+    if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.flushRuntimeWalkRanges();
     if (this.running) this.arrangementScheduler.update(this.createLatestArrangementState());
   }
 
@@ -596,23 +614,31 @@ class CoreProductEngineHost {
   }
 
   async loadLeadPreset(slot: unknown, presetId: unknown): Promise<void> {
-    const slotKey = String(slot ?? '').toUpperCase();
-    const stateKeyBySlot: Record<string, string> = {
+    const requestedSlotKey = String(slot ?? '').toUpperCase();
+    const stateKeyBySlot = {
       A: 'lead1PresetA',
       B: 'lead1PresetB',
       C: 'lead2PresetC',
       D: 'lead2PresetD',
-    };
-    const dataKeyBySlot: Record<string, string> = {
+    } as const;
+    const dataKeyBySlot = {
       A: 'lead1PresetAData',
       B: 'lead1PresetBData',
       C: 'lead2PresetCData',
       D: 'lead2PresetDData',
-    };
-    const key = stateKeyBySlot[slotKey] ?? 'lead1PresetA';
-    const dataKey = dataKeyBySlot[slotKey] ?? 'lead1PresetAData';
+    } as const;
+    const slotKey = (
+      requestedSlotKey === 'A' || requestedSlotKey === 'B' || requestedSlotKey === 'C' || requestedSlotKey === 'D'
+        ? requestedSlotKey
+        : 'A'
+    ) as keyof typeof stateKeyBySlot;
+    const key = stateKeyBySlot[slotKey];
+    const dataKey = dataKeyBySlot[slotKey];
     const id = String(presetId ?? 'soft_rhodes');
+    this.pendingLeadPresetLoads.set(slotKey, id);
     const preset = await loadProductLead4opFMPreset(id);
+    if (this.pendingLeadPresetLoads.get(slotKey) !== id) return;
+    this.pendingLeadPresetLoads.delete(slotKey);
     this.patchAdapterState({ [key]: id, [dataKey]: preset });
   }
 
@@ -669,14 +695,12 @@ class CoreProductEngineHost {
     this.setDisplayCallback('runtimeWalkPositions', callback);
     callback?.({ ...this.runtimeWalkPositions });
   }
-
   setDrumMorphRange(voice: unknown, range: { min: number; max: number } | null): void {
     const voiceIndex = drumVoiceIndex(voice);
     const key = `drum:${voiceIndex}:morph`;
     const target = resolveCoreProductDrumMorphRangeTarget(voiceIndex, key);
     this.syncSingleRange(this.drumSampleHoldRanges, key, target, range, CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold, key);
   }
-
   setDrumParamSHRange(key: string, range: { min: number; max: number } | null): void {
     const target = this.resolveDrumParamRangeTarget(key);
     if (!target) {
@@ -685,15 +709,12 @@ class CoreProductEngineHost {
     }
     this.syncSingleRange(this.drumSampleHoldRanges, key, target, range, CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold, key);
   }
-
   setDualRanges(ranges: Partial<Record<string, { min: number; max: number }>>): void {
     this.syncRangeSet(this.sampleHoldRanges, ranges, CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold);
   }
-
   setRuntimeWalkRanges(ranges: Partial<Record<string, { min: number; max: number }>>): void {
     this.syncRangeSet(this.runtimeWalkRanges, ranges, CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk);
   }
-
   setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void { this.setDisplayCallback('journeyMorphClock', callback); }
   setLeadExpressionCallback(callback: ((expression: { lead1: number; lead2: number }) => void) | null): void { this.setDisplayCallback('leadExpression', callback); }
   setLeadMorphCallback(callback: ((morph: { lead1: number; lead2: number }) => void) | null): void { this.setDisplayCallback('leadMorph', callback); }
@@ -711,17 +732,14 @@ class CoreProductEngineHost {
   setDrumEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void { this.setDisplayCallback('drumEvolveOverrides', callback); }
   setSynthEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void { this.setDisplayCallback('synthEvolveOverrides', callback); }
   setSynthNoteRangeEvolvedCallback(callback: ((laneIndex: number, noteMin: number, noteMax: number) => void) | null): void { this.setDisplayCallback('synthNoteRangeEvolved', callback); }
-
   setDrumStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
     this.setDisplayCallback('drumStepPosition', callback);
     callback?.([0, 0, 0, 0], [0, 0, 0, 0]);
   }
-
   setSynthStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
     this.setDisplayCallback('synthStepPosition', callback);
     callback?.([0, 0, 0, 0], [0, 0, 0, 0]);
   }
-
   setDrumEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void { this.setDisplayCallback('drumEuclidEvolve', callback); }
   setSynthEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void { this.setDisplayCallback('synthEuclidEvolve', callback); }
   setGranularUiActive(active: boolean): void { this.displayCallbacks.set('granularUiActive', active); }
@@ -865,6 +883,40 @@ class CoreProductEngineHost {
     this.fullSnapshotReloadCount += 1;
     this.snapshotReloadCpuMs += Math.max(0, this.nowMs() - startMs);
     this.lastSnapshotReloadReason = reason;
+  }
+
+  private syncLeadPresetData(sliderState: Record<string, unknown>): void {
+    for (const slot of PRODUCT_LEAD_PRESET_SLOTS) {
+      const id = String(sliderState[slot.stateKey] ?? slot.fallback);
+      const currentId = typeof this.adapterState[slot.stateKey] === 'string'
+        ? this.adapterState[slot.stateKey]
+        : undefined;
+      const hasCurrentData = currentId === id && !!this.adapterState[slot.dataKey];
+
+      if (currentId !== id) {
+        const nextAdapterState = { ...this.adapterState, [slot.stateKey]: id };
+        delete nextAdapterState[slot.dataKey];
+        this.adapterState = nextAdapterState;
+      }
+
+      if (hasCurrentData || this.pendingLeadPresetLoads.get(slot.slot) === id) {
+        continue;
+      }
+
+      this.pendingLeadPresetLoads.set(slot.slot, id);
+      void loadProductLead4opFMPreset(id)
+        .then((preset) => {
+          if (this.pendingLeadPresetLoads.get(slot.slot) !== id) return;
+          this.pendingLeadPresetLoads.delete(slot.slot);
+          this.patchAdapterState({ [slot.stateKey]: id, [slot.dataKey]: preset });
+        })
+        .catch((error) => {
+          if (this.pendingLeadPresetLoads.get(slot.slot) === id) {
+            this.pendingLeadPresetLoads.delete(slot.slot);
+          }
+          console.warn(`Failed to hydrate Product Core lead preset ${slot.slot}:`, error);
+        });
+    }
   }
 
   private nowMs(): number {
@@ -1122,7 +1174,7 @@ class CoreProductEngineHost {
       product: {
         avgPercent: telemetry.renderCpuPercent ?? 0,
         peakPercent: telemetry.renderCpuPeakPercent ?? 0,
-        missPercent: null,
+        missPercent: telemetry.missedQuantumCount ?? null,
         scope: 'worklet',
       },
       sequencerEventCount: telemetry.sequencerEventCount,
@@ -1381,6 +1433,11 @@ class CoreProductEngineHost {
         this.postModulationRange(target, state.range, CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold, key);
       }
     }
+    this.flushRuntimeWalkRanges();
+  }
+
+  private flushRuntimeWalkRanges(): void {
+    if (!this.runtimeReady) return;
     for (const [key, state] of this.runtimeWalkRanges.entries()) {
       for (const target of state.targets) {
         this.postModulationRange(target, state.range, CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk, key);
@@ -1397,23 +1454,21 @@ class CoreProductEngineHost {
     if (!this.runtimeReady) {
       throw new Error('Core Product runtime cannot post modulation ranges before the product worklet is initialized');
     }
+    const context = coreProductRangeValueContext(this.latestProductSnapshot?.transport.bpm, this.latestSliderState);
     if (mode === CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk && range) {
       this.runtimeWalkControlNames.set(target.controlId, displayKey);
+      this.runtimeWalkControlRanges.set(target.controlId, mappedCoreProductRange(target, range, context));
     } else if (!range) {
       this.runtimeWalkControlNames.delete(target.controlId);
+      this.runtimeWalkControlRanges.delete(target.controlId);
     }
     this.runtime.postEvent(createCoreProductModulationRangeEvent(
       target,
       range,
       mode,
       this.currentNumericValue(displayKey, range),
-      this.currentRangeValueContext(),
+      context,
     ));
-  }
-
-  private currentRangeValueContext(): CoreProductRangeValueContext {
-    const snapshotBpm = this.latestProductSnapshot?.transport.bpm;
-    return { bpm: typeof snapshotBpm === 'number' && Number.isFinite(snapshotBpm) ? snapshotBpm : 120 };
   }
 
   private currentNumericValue(key: string, range: { min: number; max: number } | null): number {
@@ -1424,14 +1479,8 @@ class CoreProductEngineHost {
   }
 
   private updateRuntimeWalkPositions(telemetry: CoreProductTelemetrySnapshot): void {
-    const values = telemetry.runtimeWalkValues;
-    if (!values) return;
-    const next: Record<string, number> = {};
-    for (const [idText, value] of Object.entries(values)) {
-      const key = this.runtimeWalkControlNames.get(Number(idText));
-      if (!key || typeof value !== 'number') continue;
-      next[key] = value;
-    }
+    const next = runtimeWalkPositionsFromTelemetry(telemetry.runtimeWalkValues, this.runtimeWalkControlNames, this.runtimeWalkControlRanges);
+    if (!next) return;
     this.runtimeWalkPositions = next;
     this.invokeDisplayCallback('runtimeWalkPositions', { ...next });
   }

@@ -258,7 +258,7 @@ const productDeferredClassifications = [
     id: 'runtime-walk-global-policy',
     owner: 'Product Core modulation range scheduler',
     reason:
-      'Product Core receives per-control modulation ranges, but the global web random-walk speed/mode controls are not part of the generated modulation range ABI yet.',
+      'Product Core carries random-walk speed/mode as modulation-range scheduler metadata rather than generated scalar Product params.',
     patterns: [/^randomWalk(Speed|Mode)$/],
   },
   {

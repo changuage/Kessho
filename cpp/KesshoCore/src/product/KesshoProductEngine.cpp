@@ -87,6 +87,7 @@
   for (ModulationRange& range : modulation_ranges) {
     range = {};
   }
+  resetFxSampleHoldOwners();
   resetSidechainRuntime();
   resetMasterTelemetryState();
   reverb_pre_comp_gain = 1.0f;
@@ -121,6 +122,7 @@
   for (ModulationRange& range : modulation_ranges) {
     range = {};
   }
+  resetFxSampleHoldOwners();
   resetSidechainRuntime();
   resetMasterTelemetryState();
   reverb_pre_comp_gain = 1.0f;

@@ -53,7 +53,6 @@
     telemetry.last_error_code = drum_lane_validation;
     return drum_lane_validation;
   }
-
   transport.running = snapshot.transport.running != 0u;
   transport.bpm = clampFloat(snapshot.transport.bpm, 1.0f, 400.0f);
   transport.beats_per_bar = clampU32(snapshot.transport.beats_per_bar, 1u, 32u);

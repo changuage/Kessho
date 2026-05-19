@@ -107,10 +107,12 @@
         std::max(std::fabs(out_left), std::fabs(out_right)),
         std::max(std::fabs(reverb_left), std::fabs(reverb_right))));
 
-    graph_diffuse_output_l[i] = out_left;
-    graph_diffuse_output_r[i] = out_right;
-    graph_diffuse_reverb_send_l[i] = reverb_left;
-    graph_diffuse_reverb_send_r[i] = reverb_right;
+    if (graph_taps_enabled) {
+      graph_diffuse_output_l[i] = out_left;
+      graph_diffuse_output_r[i] = out_right;
+      graph_diffuse_reverb_send_l[i] = reverb_left;
+      graph_diffuse_reverb_send_r[i] = reverb_right;
+    }
     out_l[i] += out_left;
     out_r[i] += out_right;
     reverb_bus_l[i] += reverb_left;
@@ -202,16 +204,18 @@
           delay_a_send = soundscapeLayerRouteSend(source, soundscape_layer, kSoundscapeLayerRouteDelayA, delay_a_send);
           delay_b_send = soundscapeLayerRouteSend(source, soundscape_layer, kSoundscapeLayerRouteDelayB, delay_b_send);
           granular_send = soundscapeLayerRouteSend(source, soundscape_layer, kSoundscapeLayerRouteGranular, granular_send);
-          graph_soundscape_layer_dry_l[soundscape_layer][frame] += graph_dry_left;
-          graph_soundscape_layer_dry_r[soundscape_layer][frame] += graph_dry_right;
-          graph_soundscape_layer_reverb_send_l[soundscape_layer][frame] += layer_send_left * reverb_send;
-          graph_soundscape_layer_reverb_send_r[soundscape_layer][frame] += layer_send_right * reverb_send;
-          graph_soundscape_layer_delay_a_send_l[soundscape_layer][frame] += layer_send_left * delay_a_send;
-          graph_soundscape_layer_delay_a_send_r[soundscape_layer][frame] += layer_send_right * delay_a_send;
-          graph_soundscape_layer_delay_b_send_l[soundscape_layer][frame] += layer_send_left * delay_b_send;
-          graph_soundscape_layer_delay_b_send_r[soundscape_layer][frame] += layer_send_right * delay_b_send;
-          graph_soundscape_layer_granular_send_l[soundscape_layer][frame] += layer_send_left * granular_send;
-          graph_soundscape_layer_granular_send_r[soundscape_layer][frame] += layer_send_right * granular_send;
+          if (graph_taps_enabled) {
+            graph_soundscape_layer_dry_l[soundscape_layer][frame] += graph_dry_left;
+            graph_soundscape_layer_dry_r[soundscape_layer][frame] += graph_dry_right;
+            graph_soundscape_layer_reverb_send_l[soundscape_layer][frame] += layer_send_left * reverb_send;
+            graph_soundscape_layer_reverb_send_r[soundscape_layer][frame] += layer_send_right * reverb_send;
+            graph_soundscape_layer_delay_a_send_l[soundscape_layer][frame] += layer_send_left * delay_a_send;
+            graph_soundscape_layer_delay_a_send_r[soundscape_layer][frame] += layer_send_right * delay_a_send;
+            graph_soundscape_layer_delay_b_send_l[soundscape_layer][frame] += layer_send_left * delay_b_send;
+            graph_soundscape_layer_delay_b_send_r[soundscape_layer][frame] += layer_send_right * delay_b_send;
+            graph_soundscape_layer_granular_send_l[soundscape_layer][frame] += layer_send_left * granular_send;
+            graph_soundscape_layer_granular_send_r[soundscape_layer][frame] += layer_send_right * granular_send;
+          }
         }
       }
       out_l[frame] += left;
@@ -244,13 +248,17 @@
   for (uint32_t i = 0; i < frames; ++i) {
     out_l[i] *= master_gain;
     out_r[i] *= master_gain;
-    graph_dynamics_input_l[i] = out_l[i];
-    graph_dynamics_input_r[i] = out_r[i];
+    if (graph_taps_enabled) {
+      graph_dynamics_input_l[i] = out_l[i];
+      graph_dynamics_input_r[i] = out_r[i];
+    }
   }
   renderDynamics(out_l, out_r, frames);
-  for (uint32_t i = 0; i < frames; ++i) {
-    graph_dynamics_output_l[i] = out_l[i];
-    graph_dynamics_output_r[i] = out_r[i];
+  if (graph_taps_enabled) {
+    for (uint32_t i = 0; i < frames; ++i) {
+      graph_dynamics_output_l[i] = out_l[i];
+      graph_dynamics_output_r[i] = out_r[i];
+    }
   }
   const float ceiling = master_limiter_ceiling_gain;
   float master_input_peak = 0.0f;
@@ -262,8 +270,10 @@
   for (uint32_t i = 0; i < frames; ++i) {
     const float pre_limiter_l = out_l[i];
     const float pre_limiter_r = out_r[i];
-    graph_master_pre_limiter_l[i] = pre_limiter_l;
-    graph_master_pre_limiter_r[i] = pre_limiter_r;
+    if (graph_taps_enabled) {
+      graph_master_pre_limiter_l[i] = pre_limiter_l;
+      graph_master_pre_limiter_r[i] = pre_limiter_r;
+    }
     const float input_peak = std::max(std::fabs(pre_limiter_l), std::fabs(pre_limiter_r));
     master_input_peak = std::max(master_input_peak, input_peak);
     if (input_peak > ceiling && ceiling > 0.0f) {
@@ -337,6 +347,7 @@
     granular_bus_r[i] = 0.0f;
     diffuse_bus_l[i] = 0.0f;
     diffuse_bus_r[i] = 0.0f;
+    if (graph_taps_enabled) {
     graph_reverb_input_l[i] = 0.0f;
     graph_reverb_input_r[i] = 0.0f;
     graph_delay_a_input_l[i] = 0.0f;
@@ -477,6 +488,7 @@
     graph_piano_granular_send_r[i] = 0.0f;
     graph_piano_diffuse_send_l[i] = 0.0f;
     graph_piano_diffuse_send_r[i] = 0.0f;
+    }
   }
   diffuse_bus_active_this_block = false;
   last_stem_frames = stem_frames;

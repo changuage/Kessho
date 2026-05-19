@@ -1,5 +1,5 @@
 const EVENT_BYTES = 40;
-const TELEMETRY_BYTES = 368;
+const TELEMETRY_BYTES = 384;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
 const EXPECTED_PRODUCT_SCHEMA_HASH = 0x3573d8e2;
 const SEQUENCER_UI_STATE_LANES = 16;
@@ -42,6 +42,8 @@ const PRODUCT_SOURCE_IDS = new Set([1, 2, 3, 4, 5, 6, 7]);
 const PRODUCT_SEQUENCER_IDS = new Set([1, 2]);
 const PRODUCT_DRUM_VOICE_COUNT = 7;
 const PRODUCT_GRAPH_TAP_COUNT = 110;
+const STEM_PEAK_COUNT = 9;
+const STEM_PEAK_PROBE_INTERVAL_BLOCKS = 16;
 const STEP_TOGGLE_CLEAR_LANE = 2;
 const STEP_FIELD_MASK = 15 << 8;
 const STEP_FIELD_SUBLANE_CONFIG = 8 << 8;
@@ -66,9 +68,23 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.assetAllocationBytes = 0;
     this.frames = 128;
     this.lastOutputPeak = 0;
-    this.lastStemPeaks = [];
-    this.lastGraphTapPeaks = [];
+    this.outputPeakWindow = 0;
+    this.lastStemPeaks = new Array(STEM_PEAK_COUNT).fill(0);
+    this.stemPeakWindow = new Array(STEM_PEAK_COUNT).fill(0);
+    this.stemPeakProbeCountdown = 0;
+    this.lastGraphTapPeaks = new Array(PRODUCT_GRAPH_TAP_COUNT).fill(0);
     this.graphTapCaptures = new Map();
+    this.perfEnabled = false;
+    this.perfTotalMs = 0;
+    this.perfCount = 0;
+    this.perfPeakMs = 0;
+    this.perfMissedQuantumCount = 0;
+    this.perfBlockMs = [];
+    this.lastRenderCpuPercent = 0;
+    this.lastRenderCpuPeakPercent = 0;
+    this.lastRenderP95Ms = 0;
+    this.lastRenderP99Ms = 0;
+    this.lastMissedQuantumCount = 0;
     this.port.onmessage = (event) => this.handleMessage(event.data);
     this.load(options.processorOptions?.wasmBinary, options.processorOptions?.wasmUrl || 'kessho_core.wasm');
   }
@@ -155,6 +171,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         render: this.resolve('kessho_product_render'),
         getStem: this.resolve('kessho_product_get_stem'),
         getGraphTap: this.resolve('kessho_product_get_graph_tap'),
+        setGraphTapsEnabled: this.resolve('kessho_product_set_graph_taps_enabled'),
         loadSnapshot: this.resolve('kessho_product_load_snapshot_v2'),
         enqueueEvent: this.resolve('kessho_product_enqueue_event'),
         copyTelemetry: this.resolve('kessho_product_copy_telemetry'),
@@ -176,6 +193,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         throw new Error('Kessho Product Core WASM telemetry schema probe failed');
       }
       this.assertSchemaHash('WASM telemetry', this.view.getUint32(this.telemetryPtr, true));
+      this.setCoreGraphTapsEnabled(false);
       this.ready = true;
       this.port.postMessage({ type: 'ready' });
     } catch (error) {
@@ -184,7 +202,12 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   }
 
   handleMessage(message) {
-    if (!message || !this.ready) return;
+    if (!message) return;
+    if (message.type === 'enablePerf') {
+      this.setPerfEnabled(Boolean(message.enabled));
+      return;
+    }
+    if (!this.ready) return;
     try {
       if (message.type === 'event') {
         this.enqueueEvent(message.event);
@@ -228,6 +251,80 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     }
   }
 
+  nowMs() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+      return performance.now();
+    }
+    return typeof Date !== 'undefined' && typeof Date.now === 'function'
+      ? Date.now()
+      : 0;
+  }
+
+  setPerfEnabled(enabled) {
+    this.perfEnabled = enabled;
+    this.resetPerfWindow();
+    this.lastRenderCpuPercent = 0;
+    this.lastRenderCpuPeakPercent = 0;
+    this.lastRenderP95Ms = 0;
+    this.lastRenderP99Ms = 0;
+    this.lastMissedQuantumCount = 0;
+  }
+
+  resetPerfWindow() {
+    this.perfTotalMs = 0;
+    this.perfCount = 0;
+    this.perfPeakMs = 0;
+    this.perfMissedQuantumCount = 0;
+    this.perfBlockMs.length = 0;
+  }
+
+  recordPerfBlock(startMs, frames) {
+    if (!this.perfEnabled || startMs <= 0) return;
+    const elapsedMs = Math.max(0, this.nowMs() - startMs);
+    const budgetMs = sampleRate > 0 ? (frames * 1000) / sampleRate : 0;
+    this.perfTotalMs += elapsedMs;
+    this.perfCount += 1;
+    this.perfPeakMs = Math.max(this.perfPeakMs, elapsedMs);
+    if (budgetMs > 0 && elapsedMs > budgetMs) {
+      this.perfMissedQuantumCount += 1;
+    }
+    this.perfBlockMs.push(elapsedMs);
+    if (this.perfBlockMs.length > 2048) {
+      this.perfBlockMs.shift();
+    }
+  }
+
+  percentile(values, percentileValue) {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((left, right) => left - right);
+    const rank = percentileValue * (sorted.length - 1);
+    const lo = Math.floor(rank);
+    const hi = Math.ceil(rank);
+    if (lo === hi) return sorted[lo];
+    const t = rank - lo;
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * t;
+  }
+
+  flushPerfWindow() {
+    if (!this.perfEnabled || this.perfCount === 0) return;
+    const budgetMs = sampleRate > 0 ? (this.frames * 1000) / sampleRate : 0;
+    const averageMs = this.perfTotalMs / this.perfCount;
+    this.lastRenderCpuPercent = budgetMs > 0 ? (averageMs / budgetMs) * 100 : 0;
+    this.lastRenderCpuPeakPercent = budgetMs > 0 ? (this.perfPeakMs / budgetMs) * 100 : 0;
+    this.lastRenderP95Ms = this.percentile(this.perfBlockMs, 0.95);
+    this.lastRenderP99Ms = this.percentile(this.perfBlockMs, 0.99);
+    this.lastMissedQuantumCount = this.perfMissedQuantumCount;
+    this.resetPerfWindow();
+  }
+
+  setCoreGraphTapsEnabled(enabled) {
+    if (!this.api?.setGraphTapsEnabled || !this.engine) return;
+    const result = this.api.setGraphTapsEnabled(this.engine, enabled ? 1 : 0);
+    if (result !== 1) {
+      throw new Error(`Kessho Product Core graph tap mode update failed: ${result}`);
+    }
+  }
+
   normalizeGraphTapId(rawTapId) {
     const tapId = Math.trunc(Number(rawTapId));
     if (!Number.isFinite(tapId) || tapId < 0 || tapId >= PRODUCT_GRAPH_TAP_COUNT) {
@@ -239,6 +336,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   startGraphTapCapture(message) {
     const tapId = this.normalizeGraphTapId(message.tapId);
     const chunkFrames = Math.max(128, Math.round(Number(message.chunkFrames) || 4096));
+    if (this.graphTapCaptures.size === 0) {
+      this.setCoreGraphTapsEnabled(true);
+    }
+    this.lastGraphTapPeaks[tapId] = 0;
     this.graphTapCaptures.set(tapId, {
       tapId,
       chunkFrames,
@@ -297,11 +398,83 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       }
       if (stopped) {
         this.graphTapCaptures.delete(tapId);
+        if (this.graphTapCaptures.size === 0) {
+          this.setCoreGraphTapsEnabled(false);
+        }
       } else {
         this.resetGraphTapCaptureBuffers(capture);
       }
     }
     this.port.postMessage({ type: 'graph-capture-flushed', tapId, stopped: Boolean(stopped) });
+  }
+
+  shouldSampleStemPeaks() {
+    if (this.stemPeakProbeCountdown <= 0) {
+      this.stemPeakProbeCountdown = STEM_PEAK_PROBE_INTERVAL_BLOCKS - 1;
+      return true;
+    }
+    this.stemPeakProbeCountdown -= 1;
+    return false;
+  }
+
+  resetStemPeakWindow() {
+    this.stemPeakWindow.fill(0);
+  }
+
+  sampleOutputPeak(left, right, frames) {
+    let peak = 0;
+    for (let i = 0; i < frames; i += 1) {
+      peak = Math.max(peak, Math.abs(left[i] || 0), Math.abs(right[i] || 0));
+    }
+    this.outputPeakWindow = Math.max(this.outputPeakWindow || 0, peak);
+  }
+
+  flushOutputPeakWindow() {
+    this.lastOutputPeak = this.outputPeakWindow || 0;
+    this.outputPeakWindow = 0;
+  }
+
+  sampleStemPeaks(frames) {
+    const leftIndex = this.leftPtr >> 2;
+    const rightIndex = this.rightPtr >> 2;
+    for (let stem = 0; stem < STEM_PEAK_COUNT; stem += 1) {
+      let stemPeak = 0;
+      if (this.api.getStem(this.engine, stem, this.leftPtr, this.rightPtr, frames) === 1) {
+        for (let i = 0; i < frames; i += 1) {
+          stemPeak = Math.max(
+            stemPeak,
+            Math.abs(this.heapF32[leftIndex + i] || 0),
+            Math.abs(this.heapF32[rightIndex + i] || 0),
+          );
+        }
+      }
+      this.stemPeakWindow[stem] = Math.max(this.stemPeakWindow[stem] || 0, stemPeak);
+    }
+  }
+
+  flushStemPeakWindow() {
+    this.lastStemPeaks = this.stemPeakWindow.slice(0, STEM_PEAK_COUNT);
+    this.resetStemPeakWindow();
+  }
+
+  processActiveGraphTapCaptures(frames) {
+    if (this.graphTapCaptures.size === 0) return;
+    const leftIndex = this.leftPtr >> 2;
+    const rightIndex = this.rightPtr >> 2;
+    for (const [tap, capture] of this.graphTapCaptures) {
+      let tapPeak = 0;
+      if (this.api.getGraphTap(this.engine, tap, this.leftPtr, this.rightPtr, frames) === 1) {
+        for (let i = 0; i < frames; i += 1) {
+          tapPeak = Math.max(
+            tapPeak,
+            Math.abs(this.heapF32[leftIndex + i] || 0),
+            Math.abs(this.heapF32[rightIndex + i] || 0),
+          );
+        }
+        this.appendGraphTapCapture(capture, leftIndex, rightIndex, frames);
+      }
+      this.lastGraphTapPeaks[tap] = Math.max(this.lastGraphTapPeaks[tap] || 0, tapPeak);
+    }
   }
 
   hasField(event, field) {
@@ -732,6 +905,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     if (!this.telemetryPtr || this.api.copyTelemetry(this.engine, this.telemetryPtr) !== 1) {
       return null;
     }
+    this.flushPerfWindow();
+    this.flushOutputPeakWindow();
+    this.flushStemPeakWindow();
     const ptr = this.telemetryPtr;
     const runtimeWalkValues = {};
     const runtimeWalkCount = Math.min(this.view.getUint32(ptr + 156, true), 16);
@@ -764,11 +940,11 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       activeVoices: this.view.getUint32(ptr + 60, true),
       activeAssets: this.view.getUint32(ptr + 64, true),
       activeGrains: this.view.getUint32(ptr + 68, true),
-      renderCpuPercent: this.view.getFloat32(ptr + 72, true),
-      renderCpuPeakPercent: this.view.getFloat32(ptr + 76, true),
-      renderP95Ms: this.view.getFloat32(ptr + 80, true),
-      renderP99Ms: this.view.getFloat32(ptr + 84, true),
-      missedQuantumCount: this.view.getUint32(ptr + 88, true),
+      renderCpuPercent: this.perfEnabled ? this.lastRenderCpuPercent : this.view.getFloat32(ptr + 72, true),
+      renderCpuPeakPercent: this.perfEnabled ? this.lastRenderCpuPeakPercent : this.view.getFloat32(ptr + 76, true),
+      renderP95Ms: this.perfEnabled ? this.lastRenderP95Ms : this.view.getFloat32(ptr + 80, true),
+      renderP99Ms: this.perfEnabled ? this.lastRenderP99Ms : this.view.getFloat32(ptr + 84, true),
+      missedQuantumCount: this.perfEnabled ? this.lastMissedQuantumCount : this.view.getUint32(ptr + 88, true),
       wasmHeapBytes: this.exports.memory.buffer.byteLength,
       decodedAssetBytes: this.assetDecodedBytes,
       assetAllocationBytes: this.assetAllocationBytes,
@@ -804,6 +980,13 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       masterTruePeak: this.view.getFloat32(ptr + 352, true),
       masterTruePeakDbtp: this.view.getFloat32(ptr + 356, true),
       masterIntegratedLufs: this.view.getFloat32(ptr + 360, true),
+      granularWriteHeadPosition: this.view.getFloat32(ptr + 364, true),
+      granularVoicePositions: [
+        this.view.getFloat32(ptr + 368, true),
+        this.view.getFloat32(ptr + 372, true),
+        this.view.getFloat32(ptr + 376, true),
+        this.view.getFloat32(ptr + 380, true),
+      ],
       sequencerUiState,
       sequencerUiChangeDice: SEQUENCER_UI_CHANGE_DICE,
       sequencerUiChangeResetHome: SEQUENCER_UI_CHANGE_RESET_HOME,
@@ -839,6 +1022,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       right.fill(0);
       return true;
     }
+    const perfStartMs = this.perfEnabled ? this.nowMs() : 0;
     const frames = left.length;
     this.api.render(this.engine, this.leftPtr, this.rightPtr, frames);
     if (this.heapF32.buffer !== this.exports.memory.buffer) {
@@ -846,49 +1030,12 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     }
     left.set(this.heapF32.subarray(this.leftPtr >> 2, (this.leftPtr >> 2) + frames));
     right.set(this.heapF32.subarray(this.rightPtr >> 2, (this.rightPtr >> 2) + frames));
-    let peak = 0;
-    for (let i = 0; i < frames; i += 1) {
-      peak = Math.max(peak, Math.abs(left[i] || 0), Math.abs(right[i] || 0));
+    if (this.shouldSampleStemPeaks()) {
+      this.sampleOutputPeak(left, right, frames);
+      this.sampleStemPeaks(frames);
     }
-    this.lastOutputPeak = peak;
-    const stemPeaks = [];
-    for (let stem = 0; stem <= 8; stem += 1) {
-      let stemPeak = 0;
-      if (this.api.getStem(this.engine, stem, this.leftPtr, this.rightPtr, frames) === 1) {
-        const leftIndex = this.leftPtr >> 2;
-        const rightIndex = this.rightPtr >> 2;
-        for (let i = 0; i < frames; i += 1) {
-          stemPeak = Math.max(
-            stemPeak,
-            Math.abs(this.heapF32[leftIndex + i] || 0),
-            Math.abs(this.heapF32[rightIndex + i] || 0),
-          );
-        }
-      }
-      stemPeaks.push(stemPeak);
-    }
-    this.lastStemPeaks = stemPeaks;
-    const graphTapPeaks = [];
-    for (let tap = 0; tap < PRODUCT_GRAPH_TAP_COUNT; tap += 1) {
-      let tapPeak = 0;
-      if (this.api.getGraphTap(this.engine, tap, this.leftPtr, this.rightPtr, frames) === 1) {
-        const leftIndex = this.leftPtr >> 2;
-        const rightIndex = this.rightPtr >> 2;
-        for (let i = 0; i < frames; i += 1) {
-          tapPeak = Math.max(
-            tapPeak,
-            Math.abs(this.heapF32[leftIndex + i] || 0),
-            Math.abs(this.heapF32[rightIndex + i] || 0),
-          );
-        }
-        const capture = this.graphTapCaptures.get(tap);
-        if (capture) {
-          this.appendGraphTapCapture(capture, leftIndex, rightIndex, frames);
-        }
-      }
-      graphTapPeaks.push(tapPeak);
-    }
-    this.lastGraphTapPeaks = graphTapPeaks;
+    this.processActiveGraphTapCaptures(frames);
+    this.recordPerfBlock(perfStartMs, frames);
     return true;
   }
 }

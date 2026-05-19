@@ -84,7 +84,7 @@ const frames = 128;
 const leftPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
 const rightPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
 const eventPtr = malloc(40);
-const telemetryPtr = malloc(368);
+const telemetryPtr = malloc(384);
 const sequencerUiStatePtr = malloc(70948);
 const engine = create(48000, frames, 0);
 assert(leftPtr && rightPtr && eventPtr && telemetryPtr && sequencerUiStatePtr && engine, 'WASM product smoke allocation failed');
@@ -164,6 +164,11 @@ assert(view.getFloat32(telemetryPtr + 332, true) > 0, 'WASM product telemetry di
 assert(view.getFloat32(telemetryPtr + 352, true) >= view.getFloat32(telemetryPtr + 328, true), 'WASM product telemetry did not expose master true peak');
 assert(Number.isFinite(view.getFloat32(telemetryPtr + 356, true)), 'WASM product telemetry did not expose master true peak dBTP');
 assert(view.getFloat32(telemetryPtr + 360, true) > -100, 'WASM product telemetry did not expose integrated LUFS');
+assert(Number.isFinite(view.getFloat32(telemetryPtr + 364, true)), 'WASM product telemetry did not expose granular write head');
+for (let index = 0; index < 4; index += 1) {
+  const position = view.getFloat32(telemetryPtr + 368 + index * 4, true);
+  assert(position >= 0 && position <= 1, 'WASM product telemetry did not expose normalized granular voice positions');
+}
 view.setUint32(eventPtr, 0, true);
 view.setUint32(eventPtr + 4, 29, true);
 view.setUint32(eventPtr + 8, 1, true);

@@ -149,7 +149,7 @@ for (const token of [
   'telemetryRngState',
   'rngSeed: this.latestTelemetry.rngSeed',
   'rngState: this.latestTelemetry.rngState',
-  'currentRangeValueContext',
+  'coreProductRangeValueContext',
 ]) {
   assert(hostSurface.includes(token), `core-product host/sequencer adapter is missing ${token}`);
 }
@@ -209,6 +209,14 @@ for (const token of [
 ]) {
   assert(app.includes(token), `App core-product unsupported-control gating is missing ${token}`);
 }
+assert(
+  app.includes('const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);'),
+  'App sliderProps must keep dual-slider UI state available for every non-single-only key',
+);
+assert(
+  !app.includes('const dualModeSupported = coreProductRuntimeRangeSupported && !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);'),
+  'App sliderProps must not hide dual-slider UI state behind native Product Core range support',
+);
 
 assert(
   /private patchAdapterState[\s\S]*if \(loadSnapshot\) \{\s*this\.applyLatestSnapshotUpdate\(\);/.test(host),
@@ -497,7 +505,7 @@ for (const token of [
   'workletPadStemPeak: this.lastStemPeaks[1] || 0',
   'workletLeadStemPeak: Math.max(this.lastStemPeaks[3] || 0, this.lastStemPeaks[4] || 0)',
   'runtimeWalkValues[controlId] = value;',
-  'const TELEMETRY_BYTES = 368;',
+  'const TELEMETRY_BYTES = 384;',
   'rngSeed: this.view.getUint32(ptr + 288, true)',
   'rngState: this.view.getUint32(ptr + 292, true)',
   'sourcePresetIds.push(this.view.getUint32(ptr + 296 + index * 4, true));',
@@ -507,6 +515,8 @@ for (const token of [
   'masterTruePeak: this.view.getFloat32(ptr + 352, true)',
   'masterTruePeakDbtp: this.view.getFloat32(ptr + 356, true)',
   'masterIntegratedLufs: this.view.getFloat32(ptr + 360, true)',
+  'granularWriteHeadPosition: this.view.getFloat32(ptr + 364, true)',
+  'granularVoicePositions: [',
   'sequencerUiState,',
 ]) {
   assert(worklet.includes(token), `core-product worklet is missing ${token}`);

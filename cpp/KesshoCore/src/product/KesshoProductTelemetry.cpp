@@ -149,6 +149,19 @@
   telemetry.active_sources = active_source_count;
   telemetry.active_voices = active_voice_count;
   telemetry.active_assets = active_asset_count;
+  telemetry.active_grains = granular_module == nullptr
+      ? 0u
+      : static_cast<uint32_t>(std::max(0, granular_module->activeGrainCount()));
+  telemetry.granular_write_head = granular_module == nullptr
+      ? 0.0f
+      : granular_module->granularWriteHeadPosition();
+  if (granular_module != nullptr) {
+    granular_module->granularVoicePositions(telemetry.granular_voice_positions, 4u);
+  } else {
+    for (float& position : telemetry.granular_voice_positions) {
+      position = 0.0f;
+    }
+  }
   telemetry.sequencer_event_count = sequencer_events.count;
   telemetry.control_queue_depth = control_event_count;
   telemetry.journey_morph_running = journey_running ? 1u : 0u;

@@ -156,6 +156,10 @@ export function loadCoreProductHostHarness(options = {}) {
   const consoleCapture = createConsoleCapture();
   const runtimeInstances = [];
   let nowMs = 1000;
+  const runtimeWalkConfigFromState = (state) => ({
+    speed: typeof state?.randomWalkSpeed === 'number' ? state.randomWalkSpeed : 1,
+    mode: state?.randomWalkMode === 'globalWalk' ? 'globalWalk' : 'localBrownian',
+  });
 
   class CoreProductRuntime {
     constructor() {
@@ -246,6 +250,31 @@ export function loadCoreProductHostHarness(options = {}) {
     createCoreProductSnapshot: () => ({ transport: { bpm: 120 } }),
     encodeCoreProductSnapshot: () => new ArrayBuffer(8),
     usesLegacyGranularRuntimeSeed: () => false,
+    loadProductLead4opFMPreset: async () => ({}),
+    runtimeWalkConfigFromState,
+    runtimeWalkConfigChanged: (left, right) => Math.abs(left.speed - right.speed) > 0.0005 || left.mode !== right.mode,
+    coreProductRangeValueContext: (bpm, state) => ({
+      bpm: typeof bpm === 'number' && Number.isFinite(bpm) ? bpm : 120,
+      ...runtimeWalkConfigFromState(state),
+    }),
+    mappedCoreProductRange: (target, range, valueContext) => {
+      const mapValue = target.mapValue ?? ((value) => value);
+      const mappedMin = mapValue(Math.min(range.min, range.max), valueContext);
+      const mappedMax = mapValue(Math.max(range.min, range.max), valueContext);
+      return { min: Math.min(mappedMin, mappedMax), max: Math.max(mappedMin, mappedMax) };
+    },
+    runtimeWalkPositionsFromTelemetry: (values, names, ranges) => {
+      if (!values) return null;
+      const next = {};
+      for (const [idText, value] of Object.entries(values)) {
+        const id = Number(idText);
+        const key = names.get(id);
+        const range = ranges.get(id);
+        if (!key || typeof value !== 'number') continue;
+        next[key] = Math.max(0, Math.min(1, range && range.max > range.min ? (value - range.min) / (range.max - range.min) : value));
+      }
+      return next;
+    },
     KESSHO_PRODUCT_PARAM_IDS: createParamIds(),
     CORE_PRODUCT_MODULATION_RANGE_MODE: { sampleHold: 1, randomWalk: 2 },
     CORE_PRODUCT_SEQUENCER_IDS: { synth: 1, drum: 2 },
