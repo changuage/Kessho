@@ -1,6 +1,9 @@
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { smokeCases } from './lib/kesshoProductWebGraphSmokeCases.mjs';
+import { masterCases } from './lib/kesshoProductWebMasterCases.mjs';
+
 const root = process.cwd();
 const strict = process.argv.includes('--strict');
 const manifestPath = 'docs/kessho-product-web-audio-graph-parity.manifest.json';
@@ -44,6 +47,15 @@ function readJson(path) {
   return JSON.parse(read(path));
 }
 
+function readJsonIfExists(path) {
+  try {
+    return readJson(path);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
@@ -75,7 +87,19 @@ function validateEvidence(entry, domainId, group) {
   };
 }
 
-function auditedCaseSets(report, label, ignoredFailedCaseIds = new Set()) {
+function auditedCaseSets(report, label, fallbackCases, ignoredFailedCaseIds = new Set()) {
+  if (report == null) {
+    assert(!strict, `${label} report must exist for strict parity`);
+    const definedCaseIds = fallbackCases.map((caseDef) => caseDef.id);
+    return {
+      source: 'case-inventory',
+      status: 'not-run',
+      all: new Set(definedCaseIds),
+      passed: new Set(definedCaseIds),
+      caseCount: definedCaseIds.length,
+      ignoredFailedCaseIds: [],
+    };
+  }
   assert(report && typeof report === 'object', `${label} report must be an object`);
   assert(Array.isArray(report.cases), `${label} report must include cases`);
   const failed = report.cases.filter((caseResult) => caseResult?.status !== 'pass');
@@ -85,8 +109,11 @@ function auditedCaseSets(report, label, ignoredFailedCaseIds = new Set()) {
     `${label} report contains failing active cases: ${blockingFailed.map((item) => item.id).join(', ')}`,
   );
   return {
+    source: 'report',
+    status: report.status,
     all: new Set(report.cases.map((caseResult) => caseResult.id)),
     passed: new Set(report.cases.filter((caseResult) => caseResult.status === 'pass').map((caseResult) => caseResult.id)),
+    caseCount: report.cases.length,
     ignoredFailedCaseIds: failed.filter((caseResult) => ignoredFailedCaseIds.has(caseResult.id)).map((caseResult) => caseResult.id),
   };
 }
@@ -103,8 +130,8 @@ function validateCaseIds(caseIds, allowedCases, domainId, group, requirement = '
 
 const manifest = readJson(manifestPath);
 const packageJson = readJson('package.json');
-const smokeReport = readJson(smokeReportPath);
-const masterReport = readJson(masterReportPath);
+const smokeReport = readJsonIfExists(smokeReportPath);
+const masterReport = readJsonIfExists(masterReportPath);
 
 assert(
   packageJson.scripts?.['core:product:web-graph-capture-smoke'] ===
@@ -150,8 +177,8 @@ arrayIncludesAll(domainIds, requiredDomainIds, 'manifest.domains');
 const deferredDomains = (manifest.domains ?? []).filter((domain) => domain.status === 'deferred');
 const deferredSmokeCaseIds = new Set(deferredDomains.flatMap((domain) => domain.smokeCaseIds ?? []));
 const deferredMasterCaseIds = new Set(deferredDomains.flatMap((domain) => domain.masterCaseIds ?? []));
-const smokeCaseSets = auditedCaseSets(smokeReport, 'web graph capture smoke', deferredSmokeCaseIds);
-const masterCaseSets = auditedCaseSets(masterReport, 'web master corpus', deferredMasterCaseIds);
+const smokeCaseSets = auditedCaseSets(smokeReport, 'web graph capture smoke', smokeCases, deferredSmokeCaseIds);
+const masterCaseSets = auditedCaseSets(masterReport, 'web master corpus', masterCases, deferredMasterCaseIds);
 
 const domainReports = [];
 for (const id of requiredDomainIds) {
@@ -163,19 +190,25 @@ for (const id of requiredDomainIds) {
   assert(Array.isArray(domain.webEvidence) && domain.webEvidence.length > 0, `${id} is missing Web evidence`);
   assert(Array.isArray(domain.productEvidence) && domain.productEvidence.length > 0, `${id} is missing Product evidence`);
   const deferred = domain.status === 'deferred';
+  const smokeRequirement = smokeCaseSets.source === 'report'
+    ? deferred ? 'listed' : 'passing'
+    : 'defined';
+  const masterRequirement = masterCaseSets.source === 'report'
+    ? deferred ? 'listed' : 'passing'
+    : 'defined';
   const smokeCases = validateCaseIds(
     domain.smokeCaseIds,
     deferred ? smokeCaseSets.all : smokeCaseSets.passed,
     id,
     'smokeCaseIds',
-    deferred ? 'listed' : 'passing',
+    smokeRequirement,
   );
   const masterCases = validateCaseIds(
     domain.masterCaseIds,
     deferred ? masterCaseSets.all : masterCaseSets.passed,
     id,
     'masterCaseIds',
-    deferred ? 'listed' : 'passing',
+    masterRequirement,
   );
   if (deferred) {
     assert(
@@ -231,14 +264,16 @@ const report = {
   strictGateReady: blockedCount === 0,
   smokeReport: {
     path: smokeReportPath,
-    status: smokeReport.status,
-    caseCount: smokeReport.cases.length,
+    source: smokeCaseSets.source,
+    status: smokeCaseSets.status,
+    caseCount: smokeCaseSets.caseCount,
     ignoredFailedCaseIds: smokeCaseSets.ignoredFailedCaseIds,
   },
   masterReport: {
     path: masterReportPath,
-    status: masterReport.status,
-    caseCount: masterReport.cases.length,
+    source: masterCaseSets.source,
+    status: masterCaseSets.status,
+    caseCount: masterCaseSets.caseCount,
     ignoredFailedCaseIds: masterCaseSets.ignoredFailedCaseIds,
   },
   generatedAt: new Date().toISOString(),
