@@ -802,6 +802,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   const rawDelayAToB = clamp(numberFromState(sliderState, 'delayAToBSend', 0), 0, 1), rawDelayBToA = clamp(numberFromState(sliderState, 'delayBToASend', 0), 0, 1), delayCrossScale = rawDelayAToB * rawDelayBToA > 0.4 ? Math.sqrt(0.4 / (rawDelayAToB * rawDelayBToA)) : 1, delayBToATrim = rawDelayAToB > 0.0001 && rawDelayBToA > 0.0001 ? 0.7 : 1;
   const spectralFreezeEnabled = booleanFromState(sliderState, 'spectralFreezeEnabled', false);
   const dynamicsEnabled = booleanFromState(sliderState, 'dynamicsEnabled', false);
+  const reverbEnabled = booleanFromState(sliderState, 'reverbEnabled', false);
   const granularMacroModel = computeGranularMacroModel((sliderState ?? {}) as unknown as SliderState, (key, fallback) => numberFromState(sliderState, key as string, fallback));
   const granularUsesLegacyRuntimeSeed = usesLegacyGranularRuntimeSeed(sliderState);
   const reverbParams = resolveReverbSnapshotParams(sliderState, tension);
@@ -1029,11 +1030,17 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     routing: {
       delayAToDelayB: rawDelayAToB * delayCrossScale,
       delayBToDelayA: rawDelayBToA * delayCrossScale * delayBToATrim,
-      delayToReverb: clamp(numberFromState(sliderState, 'delayAReverbSend', 0.4), 0, 1),
-      granularToReverb: clamp(numberFromState(sliderState, 'granularReverbSend', 0.3) * ENGINE_TRIMS.granular, 0, 4),
+      delayToReverb: reverbEnabled && delayAEnabled
+        ? clamp(numberFromState(sliderState, 'delayAReverbSend', 0.4), 0, 1)
+        : 0,
+      granularToReverb: reverbEnabled && granularEnabled
+        ? clamp(numberFromState(sliderState, 'granularReverbSend', 0.3) * ENGINE_TRIMS.granular, 0, 4)
+        : 0,
       delayAToGranular: clamp(numberFromState(sliderState, 'delayAGranularSend', 0), 0, 1),
       delayBToGranular: clamp(numberFromState(sliderState, 'delayBGranularSend', 0), 0, 1),
-      delayBToReverb: clamp(numberFromState(sliderState, 'granularDelayReverbSend', 0.4), 0, 1),
+      delayBToReverb: reverbEnabled && delayBEnabled
+        ? clamp(numberFromState(sliderState, 'granularDelayReverbSend', 0.4), 0, 1)
+        : 0,
       granularToDelayA,
       granularToDelayB,
     },

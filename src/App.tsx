@@ -5650,6 +5650,7 @@ const App: React.FC = () => {
     // Note: reverbQuality is excluded - it's a user preference, not a musical parameter
     const discreteKeys: (keyof SliderState)[] = [
       'seedWindow', 'filterType', 'reverbEngine', 'reverbType', 'grainPitchMode', 'cofDriftDirection',
+      'leadRandomSource',
       // Dynamics discrete choices
       'characterMode', 'dynamicsSaturationMode', 'sidechainKeyA', 'sidechainKeyB',
       // Drum preset names and discrete settings should snap at 50%

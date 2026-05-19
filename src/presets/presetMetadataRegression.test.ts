@@ -11,6 +11,7 @@ import {
   buildDerivedStatePresetData,
   extractOptimizedStatePresetData,
 } from './statePresetOptimization';
+import { isStatePresetDiffKeyActive, normalizeStatePresetDiffData } from './statePresetDiffs';
 import { buildPresetVersionMetadata, getPresetVersionSnapshot } from './versionMetadataHelpers';
 import type { PresetEntry } from './types';
 import { DEFAULT_STATE, migratePreset, type SavedPreset } from '../ui/state';
@@ -201,6 +202,45 @@ function testOptimizedStatePresetRoundTripKeepsOnlyOverrides(): void {
   assert.equal(roundTrip.state.granularV1Mode, overriddenState.granularV1Mode);
 }
 
+function testStatePresetDiffIgnoresInactiveMixerValues(): void {
+  const saved = {
+    ...DEFAULT_STATE,
+    padEnabled: false,
+    synthLevel: 0.54,
+    pad1ReverbSend: 0.44,
+    pianoEnabled: false,
+    pianoLevel: 0.8,
+    pianoReverbSend: 0.7,
+    birdsEnabled: false,
+    birdsLevel: 0.6,
+    natureLevel: 0.9,
+    natureReverbSend: 0.5,
+  } as unknown as Record<string, unknown>;
+  const current = {
+    ...saved,
+    padEnabled: true,
+    pianoLevel: 0.2,
+    pianoReverbSend: 0.1,
+    birdsLevel: 0.2,
+    natureLevel: 0.4,
+    natureReverbSend: 0.1,
+  };
+
+  const normalizedSaved = normalizeStatePresetDiffData(saved);
+  const normalizedCurrent = normalizeStatePresetDiffData(current);
+
+  assert.equal(normalizedSaved.synthLevel, 0, 'disabled pad level should compare as silent');
+  assert.equal(normalizedCurrent.synthLevel, 0.54, 'enabled pad level should remain visible');
+  assert.equal(normalizedSaved.pianoLevel, 0, 'disabled saved piano level should compare as silent');
+  assert.equal(normalizedCurrent.pianoLevel, 0, 'disabled current piano level should compare as silent');
+  assert.equal(normalizedSaved.birdsLevel, 0, 'disabled saved birds level should compare as silent');
+  assert.equal(normalizedCurrent.birdsLevel, 0, 'disabled current birds level should compare as silent');
+  assert.equal(normalizedSaved.natureReverbSend, 0, 'disabled saved nature send should compare as silent');
+  assert.equal(normalizedCurrent.natureReverbSend, 0, 'disabled current nature send should compare as silent');
+  assert.equal(isStatePresetDiffKeyActive(current, 'pianoLevel'), false);
+  assert.equal(isStatePresetDiffKeyActive({ ...current, pianoEnabled: true }, 'pianoLevel'), true);
+}
+
 function testMaterializedV2VersionPreservesAncillaryMetadata(): void {
   const metadata = buildPresetVersionMetadata({
     drumClockDivs: ['1/8', '1/16', '1/4', '1/32T'],
@@ -299,6 +339,7 @@ async function run(): Promise<void> {
   testGetPresetVersionSnapshotReturnsSelectedVersionMetadata();
   testLegacyImportPreservesSynthPitchBindingModes();
   testOptimizedStatePresetRoundTripKeepsOnlyOverrides();
+  testStatePresetDiffIgnoresInactiveMixerValues();
   testMaterializedV2VersionPreservesAncillaryMetadata();
   await testMetadataOnlyChangeKeepsResolvedHashShared();
   console.log('preset metadata regression checks passed');

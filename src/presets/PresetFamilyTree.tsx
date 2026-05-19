@@ -13,6 +13,7 @@ import { PresetRatingStars } from './PresetRatingStars';
 import { DEFAULT_STATE, migratePreset, type SliderState } from '../ui/state';
 import type { SliderMode } from '../ui/state';
 import { DERIVED_PAD_KEYS } from '../audio/padPresets';
+import { isStatePresetDiffKeyActive, normalizeStatePresetDiffData } from './statePresetDiffs';
 import { buildPresetVersionMetadata, getPresetVersionSnapshot } from './versionMetadataHelpers';
 
 const MAX_CHILDREN = 5;
@@ -423,6 +424,12 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   );
   const { presets, families, save, load, remove, refresh, updateMetadata } = usePresets(level, scope, presetOptions);
   const selectionStorageKey = useMemo(() => getFamilyTreeSelectionStorageKey(level, scope), [level, scope]);
+  const normalizeDiffData = useCallback((data: Record<string, unknown>): Record<string, unknown> => {
+    return level === 'state' ? normalizeStatePresetDiffData(data) : data;
+  }, [level]);
+  const isDiffKeyActive = useCallback((data: Record<string, unknown>, key: string): boolean => {
+    return level !== 'state' || isStatePresetDiffKeyActive(data, key);
+  }, [level]);
 
   // Optimistic local rating state (keyed by preset name)
   const [localRatings, setLocalRatings] = useState<Record<string, number>>({});
@@ -570,8 +577,8 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
       ...DEFAULT_STATE,
       ...(migrated.state as Partial<SliderState>),
     } as SliderState;
-    return extractCascade(canonicalState, paramLevel as 1 | 2 | 3 | 4, scope);
-  }, [level, scope]);
+    return normalizeDiffData(extractCascade(canonicalState, paramLevel as 1 | 2 | 3 | 4, scope));
+  }, [level, scope, normalizeDiffData]);
 
   const getCurrentSaveMetadata = useCallback((): PresetVersionMetadata | undefined => {
     if (getSaveMetadata) return getSaveMetadata();
@@ -839,8 +846,8 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
         if (!relevantKeys.has(key)) continue;
         if (DERIVED_PAD_KEYS.has(key)) continue;
 
-        const aRange = aRanges[key];
-        const bRange = bRanges[key];
+        const aRange = isDiffKeyActive(aData, key) ? aRanges[key] : undefined;
+        const bRange = isDiffKeyActive(bData, key) ? bRanges[key] : undefined;
         // If either version has a dual range for this key, compare ranges
         if (aRange || bRange) {
           const aMin = aRange?.min ?? 0;
@@ -866,7 +873,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
       : [];
 
     return { fromV1, fromPrev };
-  }, [humanize, relevantKeys, getCanonicalVersionData]);
+  }, [humanize, relevantKeys, getCanonicalVersionData, isDiffKeyActive]);
 
   // Render version panel for a preset
   const renderVersionPanel = useCallback((name: string) => {
@@ -880,6 +887,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     // "Current" snapshot: live state as preset data (not saved)
     const paramLevel = level === 'state' ? 4 : level === 'source' ? 3 : level === 'kit' ? 2 : 1;
     const currentData = extractCascade(state, paramLevel as 1 | 2 | 3 | 4, scope);
+    const currentCompareData = normalizeDiffData(currentData);
 
     // Get saved dual ranges from the latest version.
     // Use canonicalized saved data here so old presets that predate newer params
@@ -889,7 +897,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     const savedDualRanges = latestVer?.dualRanges || {};
 
     const currentDiffKeys: string[] = [];
-    for (const key of new Set([...Object.keys(currentData), ...Object.keys(latestSaved)])) {
+    for (const key of new Set([...Object.keys(currentCompareData), ...Object.keys(latestSaved)])) {
       if (key === '_isDelta') continue;
       // Only compare params at this preset's own level+scope
       if (!relevantKeys.has(key)) continue;
@@ -897,10 +905,13 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
       if (DERIVED_PAD_KEYS.has(key)) continue;
 
       // If this param is in dual mode, compare its range instead of instantaneous value
-      const mode = sliderModes?.[key];
-      if (mode && mode !== 'single') {
-        const curRange = dualSliderRanges?.[key];
-        const savRange = savedDualRanges[key];
+      const currentKeyActive = isDiffKeyActive(currentCompareData, key);
+      const savedKeyActive = isDiffKeyActive(latestSaved, key);
+      const mode = currentKeyActive ? sliderModes?.[key] : undefined;
+      const useCurrentRange = !!mode && mode !== 'single';
+      const savRange = savedKeyActive ? savedDualRanges[key] : undefined;
+      if (useCurrentRange || savRange) {
+        const curRange = useCurrentRange ? dualSliderRanges?.[key] : undefined;
         const curMin = curRange?.min ?? 0;
         const curMax = curRange?.max ?? 0;
         const savMin = savRange?.min ?? 0;
@@ -911,7 +922,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
         continue;
       }
 
-      if (!presetValuesEqual(currentData[key], latestSaved[key])) currentDiffKeys.push(humanize(key));
+      if (!presetValuesEqual(currentCompareData[key], latestSaved[key])) currentDiffKeys.push(humanize(key));
     }
 
     return (
@@ -1007,7 +1018,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
         </div>
       </div>
     );
-  }, [versionEntries, expandedVersions, getVersionDiffs, requestLoadVersion, requestPromoteVersion, onLoadSlotA, onLoadSlotB, state, level, scope, humanize, sliderModes, dualSliderRanges, relevantKeys, getCanonicalVersionData]);
+  }, [versionEntries, expandedVersions, getVersionDiffs, requestLoadVersion, requestPromoteVersion, onLoadSlotA, onLoadSlotB, state, level, scope, humanize, sliderModes, dualSliderRanges, relevantKeys, getCanonicalVersionData, normalizeDiffData, isDiffKeyActive]);
 
   // Tooltip handlers
   const handleChildMouseEnter = useCallback((e: React.MouseEvent, description: string) => {
