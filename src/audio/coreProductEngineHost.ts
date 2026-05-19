@@ -694,73 +694,23 @@ class CoreProductEngineHost {
     this.syncRangeSet(this.runtimeWalkRanges, ranges, CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk);
   }
 
-  setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void {
-    this.setDisplayCallback('journeyMorphClock', callback);
-  }
-
-  setLeadExpressionCallback(callback: ((expression: { lead1: number; lead2: number }) => void) | null): void {
-    this.setDisplayCallback('leadExpression', callback);
-  }
-
-  setLeadMorphCallback(callback: ((morph: { lead1: number; lead2: number }) => void) | null): void {
-    this.setDisplayCallback('leadMorph', callback);
-  }
-
-  setPadMorphTriggerCallback(callback: ((morphPosition: number) => void) | null): void {
-    this.setDisplayCallback('padMorph', callback);
-  }
-
-  setPad2MorphTriggerCallback(callback: ((morphPosition: number) => void) | null): void {
-    this.setDisplayCallback('pad2Morph', callback);
-  }
-
-  setLeadDistanceCallback(callback: ((distance: { lead1: number; lead2: number }) => void) | null): void {
-    this.setDisplayCallback('leadDistance', callback);
-  }
-
-  setPadDistanceTriggerCallback(callback: ((distance: number) => void) | null): void {
-    this.setDisplayCallback('padDistance', callback);
-  }
-
-  setPad2DistanceTriggerCallback(callback: ((distance: number) => void) | null): void {
-    this.setDisplayCallback('pad2Distance', callback);
-  }
-
-  setPianoDistanceTriggerCallback(callback: ((distance: number) => void) | null): void {
-    this.setDisplayCallback('pianoDistance', callback);
-  }
-
-  setLeadDelayCallback(callback: ((delay: { lead1: string; lead2: string }) => void) | null): void {
-    this.setDisplayCallback('leadDelay', callback);
-  }
-
-  setDrumTriggerCallback(callback: ((voice: unknown, velocity: number) => void) | null): void {
-    this.setDisplayCallback('drumTrigger', callback);
-  }
-
-  setDrumMorphTriggerCallback(callback: ((voice: unknown, morphPosition: number) => void) | null): void {
-    this.setDisplayCallback('drumMorph', callback);
-  }
-
-  setDrumParamSHTriggerCallback(callback: ((voice: unknown, key: string, position: number) => void) | null): void {
-    this.setDisplayCallback('drumParamSH', callback);
-  }
-
-  setGranularSHTriggerCallback(callback: ((positions: Record<string, number>) => void) | null): void {
-    this.setDisplayCallback('granularSH', callback);
-  }
-
-  setDrumEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void {
-    this.setDisplayCallback('drumEvolveOverrides', callback);
-  }
-
-  setSynthEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void {
-    this.setDisplayCallback('synthEvolveOverrides', callback);
-  }
-
-  setSynthNoteRangeEvolvedCallback(callback: ((laneIndex: number, noteMin: number, noteMax: number) => void) | null): void {
-    this.setDisplayCallback('synthNoteRangeEvolved', callback);
-  }
+  setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void { this.setDisplayCallback('journeyMorphClock', callback); }
+  setLeadExpressionCallback(callback: ((expression: { lead1: number; lead2: number }) => void) | null): void { this.setDisplayCallback('leadExpression', callback); }
+  setLeadMorphCallback(callback: ((morph: { lead1: number; lead2: number }) => void) | null): void { this.setDisplayCallback('leadMorph', callback); }
+  setPadMorphTriggerCallback(callback: ((morphPosition: number) => void) | null): void { this.setDisplayCallback('padMorph', callback); }
+  setPad2MorphTriggerCallback(callback: ((morphPosition: number) => void) | null): void { this.setDisplayCallback('pad2Morph', callback); }
+  setLeadDistanceCallback(callback: ((distance: { lead1: number; lead2: number }) => void) | null): void { this.setDisplayCallback('leadDistance', callback); }
+  setPadDistanceTriggerCallback(callback: ((distance: number) => void) | null): void { this.setDisplayCallback('padDistance', callback); }
+  setPad2DistanceTriggerCallback(callback: ((distance: number) => void) | null): void { this.setDisplayCallback('pad2Distance', callback); }
+  setPianoDistanceTriggerCallback(callback: ((distance: number) => void) | null): void { this.setDisplayCallback('pianoDistance', callback); }
+  setLeadDelayCallback(callback: ((delay: { lead1: string; lead2: string }) => void) | null): void { this.setDisplayCallback('leadDelay', callback); }
+  setDrumTriggerCallback(callback: ((voice: unknown, velocity: number) => void) | null): void { this.setDisplayCallback('drumTrigger', callback); }
+  setDrumMorphTriggerCallback(callback: ((voice: unknown, morphPosition: number) => void) | null): void { this.setDisplayCallback('drumMorph', callback); }
+  setDrumParamSHTriggerCallback(callback: ((voice: unknown, key: string, position: number) => void) | null): void { this.setDisplayCallback('drumParamSH', callback); }
+  setGranularSHTriggerCallback(callback: ((positions: Record<string, number>) => void) | null): void { this.setDisplayCallback('granularSH', callback); }
+  setDrumEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void { this.setDisplayCallback('drumEvolveOverrides', callback); }
+  setSynthEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void { this.setDisplayCallback('synthEvolveOverrides', callback); }
+  setSynthNoteRangeEvolvedCallback(callback: ((laneIndex: number, noteMin: number, noteMax: number) => void) | null): void { this.setDisplayCallback('synthNoteRangeEvolved', callback); }
 
   setDrumStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
     this.setDisplayCallback('drumStepPosition', callback);
@@ -772,17 +722,9 @@ class CoreProductEngineHost {
     callback?.([0, 0, 0, 0], [0, 0, 0, 0]);
   }
 
-  setDrumEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void {
-    this.setDisplayCallback('drumEuclidEvolve', callback);
-  }
-
-  setSynthEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void {
-    this.setDisplayCallback('synthEuclidEvolve', callback);
-  }
-
-  setGranularUiActive(active: boolean): void {
-    this.displayCallbacks.set('granularUiActive', active);
-  }
+  setDrumEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void { this.setDisplayCallback('drumEuclidEvolve', callback); }
+  setSynthEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void { this.setDisplayCallback('synthEuclidEvolve', callback); }
+  setGranularUiActive(active: boolean): void { this.displayCallbacks.set('granularUiActive', active); }
 
   async triggerDrumVoice(
     voice: unknown,

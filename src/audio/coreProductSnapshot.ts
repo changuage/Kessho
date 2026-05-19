@@ -803,7 +803,6 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   const spectralFreezeEnabled = booleanFromState(sliderState, 'spectralFreezeEnabled', false);
   const dynamicsEnabled = booleanFromState(sliderState, 'dynamicsEnabled', false);
   const granularMacroModel = computeGranularMacroModel((sliderState ?? {}) as unknown as SliderState, (key, fallback) => numberFromState(sliderState, key as string, fallback));
-  const granularVoices = [1, 2, 3, 4].map((voiceNumber) => granularVoiceFromState(sliderState, voiceNumber, granularMacroModel));
   const granularUsesLegacyRuntimeSeed = usesLegacyGranularRuntimeSeed(sliderState);
   const reverbParams = resolveReverbSnapshotParams(sliderState, tension);
 
@@ -846,7 +845,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       granularLegacyPitchSpread: clamp(numberFromState(sliderState, 'granularLegacyPitchSpread', 2), 0, 12),
       granularLegacyMaxGrains: clamp(Math.round(numberFromState(sliderState, 'granularLegacyMaxGrains', 64)), 0, 128),
       granularLegacyFeedback: clamp(numberFromState(sliderState, 'granularLegacyFeedback', 0.1), 0, 0.35),
-      granularVoices,
+      granularVoices: [1, 2, 3, 4].map((voiceNumber) => granularVoiceFromState(sliderState, voiceNumber, granularMacroModel)),
       delayAEnabled,
       delayATimeLeftMs: clamp(delayDivisionMs(sliderState, 'drumDelayNoteL', '1/8d', transport.bpm), 10, 5000),
       delayATimeRightMs: clamp(delayDivisionMs(sliderState, 'drumDelayNoteR', '1/4', transport.bpm), 10, 5000),

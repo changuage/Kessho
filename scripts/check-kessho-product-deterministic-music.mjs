@@ -85,7 +85,7 @@ const destroy = resolveExport(wasm, 'kessho_product_destroy');
 const loadSnapshot = resolveExport(wasm, 'kessho_product_load_snapshot_v2');
 const debugRenderEvents = resolveExport(wasm, 'kessho_product_debug_render_events');
 
-const SNAPSHOT_SIZE = 12692;
+const SNAPSHOT_SIZE = 12700;
 const SOURCE_SIZE = 1204;
 const SOURCE_COUNT = 7;
 const SOURCE_OFFSET = 56;

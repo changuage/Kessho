@@ -646,7 +646,12 @@ const fastSmokeCaseMetadata = new Map([
   ['soundscape-nature-dry-deterministic', { domains: ['soundscapeLayers'], coverage: 'proven-domain-sentinel' }],
   ['manual-pad-delay-a-output', { domains: ['delayAB'], coverage: 'proven-domain-sentinel' }],
   ['manual-pad-delay-b-output', { domains: ['delayAB'], coverage: 'proven-domain-sentinel' }],
-  ['manual-pad-reverb-return-live-wash-bloom-decay', { domains: ['reverbMacro'], coverage: 'proven-domain-sentinel' }],
+  ['manual-pad-reverb-return-live-wash-bloom-decay', {
+    domains: ['reverbMacro'],
+    coverage: 'proven-domain-sentinel',
+    retryInFast: true,
+    retryReason: 'isolated browser launch can overstate the first Product reverb return capture',
+  }],
   ['manual-drum-dry', { domains: ['drumSourceSends'], coverage: 'proven-domain-sentinel' }],
   ['manual-pad-dynamics-input-active-character', { domains: ['dynamicsSidechainMaster'], coverage: 'proven-domain-sentinel' }],
   ['manual-pad-master-post-limiter', { domains: ['dynamicsSidechainMaster'], coverage: 'proven-domain-sentinel' }],

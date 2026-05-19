@@ -15,9 +15,9 @@ private let blockCount = 96
 private let sourcePad1: UInt32 = 1
 private let stemPad1: UInt32 = 1
 private let audibleThreshold: Float = 0.00001
-private let expectedHash: UInt64 = 1_579_872_048_537_521_951
-private let expectedPeak: Float = 0.008_101_273
-private let expectedRms: Float = 0.003_727_890_3
+private let expectedHash: UInt64 = 8_383_529_826_250_272_307
+private let expectedPeak: Float = 0.008_171_113
+private let expectedRms: Float = 0.003_711_54
 private let expectedStemPeak: Float = 0.009_092_237
 
 private func fail(_ message: String, code: Int32) -> Never {

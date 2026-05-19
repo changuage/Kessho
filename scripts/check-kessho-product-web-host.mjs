@@ -258,7 +258,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 12692',
+  'const SNAPSHOT_BYTES = 12700',
   'const SOURCE_BYTES = 1204',
   'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
   'KESSHO_PRODUCT_DRUM_VOICE_COUNT',

@@ -116,9 +116,9 @@ assert(
 );
 
 for (const token of [
-  'expectedHash: UInt64 = 1_579_872_048_537_521_951',
-  'expectedPeak: Float = 0.008_101_273',
-  'expectedRms: Float = 0.003_727_890_3',
+  'expectedHash: UInt64 = 8_383_529_826_250_272_307',
+  'expectedPeak: Float = 0.008_171_113',
+  'expectedRms: Float = 0.003_711_54',
   'expectedStemPeak: Float = 0.009_092_237',
   'renderScenario()',
   'KesshoProductCoreSnapshotEncoder.encode(.defaultState, running: true)',

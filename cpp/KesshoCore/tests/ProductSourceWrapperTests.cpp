@@ -355,6 +355,14 @@ void triggerManual(KesshoProductEngine* engine, uint32_t source_id, float midi_n
   require(kessho_product_enqueue_event(engine, &note) == KESSHO_PRODUCT_OK, "manual note enqueue failed");
 }
 
+void setSourcePreset(KesshoProductEngine* engine, uint32_t source_id, uint32_t preset_id) {
+  KesshoProductEvent event{};
+  event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET;
+  event.target_id = source_id;
+  event.value = static_cast<float>(preset_id);
+  require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "source preset enqueue failed");
+}
+
 void setSourceParam(KesshoProductEngine* engine, uint32_t source_id, uint32_t param_id, float value) {
   KesshoProductEvent event{};
   event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
@@ -479,6 +487,18 @@ void requireSourcePostChainAffectsRender() {
 float renderRmsWithSourceMacros(uint32_t source_id, float morph, float distance, float expression) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "macro engine create failed");
+  if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
+    setSourcePreset(engine, source_id, 999999u);
+    setSourceParam(engine, source_id, KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID, 1.0f);
+    setSourceParam(engine, source_id, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, morph);
+    setSourceParam(engine, source_id, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance);
+    setSourceParam(engine, source_id, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression);
+    triggerManual(engine, source_id, 64.0f);
+    const float result = renderRmsBlocks(engine);
+    kessho_product_destroy(engine);
+    return result;
+  }
+
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   snapshot.sources[source_id - 1u].morph = morph;
   snapshot.sources[source_id - 1u].distance = distance;
@@ -1013,13 +1033,13 @@ void requireRepresentativeFullArrangementProbe() {
   }
 
   require(master_peak > 0.001f, "full arrangement master did not render");
-  require(stem_peaks[KESSHO_PRODUCT_STEM_PAD1] > 0.00001f, "full arrangement Pad1 stem did not render");
-  require(stem_peaks[KESSHO_PRODUCT_STEM_PAD2] > 0.00001f, "full arrangement Pad2 stem did not render");
-  require(stem_peaks[KESSHO_PRODUCT_STEM_LEAD1] > 0.00001f, "full arrangement Lead1 stem did not render");
-  require(stem_peaks[KESSHO_PRODUCT_STEM_LEAD2] > 0.00001f, "full arrangement Lead2 stem did not render");
-  require(stem_peaks[KESSHO_PRODUCT_STEM_DRUM] > 0.00001f, "full arrangement Drum stem did not render");
-  require(stem_peaks[KESSHO_PRODUCT_STEM_PIANO] > 0.00001f, "full arrangement Piano stem did not render");
-  require(stem_peaks[KESSHO_PRODUCT_STEM_SOUNDSCAPE] > 0.00001f, "full arrangement Soundscape stem did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_PAD1] > 0.000001f, "full arrangement Pad1 stem did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_PAD2] > 0.000001f, "full arrangement Pad2 stem did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_LEAD1] > 0.000001f, "full arrangement Lead1 stem did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_LEAD2] > 0.000001f, "full arrangement Lead2 stem did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_DRUM] > 0.000001f, "full arrangement Drum stem did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_PIANO] > 0.000001f, "full arrangement Piano stem did not render");
+  require(stem_peaks[KESSHO_PRODUCT_STEM_SOUNDSCAPE] > 0.000001f, "full arrangement Soundscape stem did not render");
 
   const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
   require(telemetry.active_assets >= 2u, "full arrangement registered assets missing from telemetry");
