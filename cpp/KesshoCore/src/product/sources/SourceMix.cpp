@@ -4,8 +4,6 @@ void KesshoProductEngine::mixPadSourceBuffer(
       uint32_t source_id,
       const float* dry_l,
       const float* dry_r,
-      const float* send_l,
-      const float* send_r,
       float* out_l,
       float* out_r,
       uint32_t start,
@@ -30,8 +28,8 @@ void KesshoProductEngine::mixPadSourceBuffer(
       const uint32_t frame = start + i;
       const float dry_left = dry_l[i] * graph_dry_gain * freeze_dry_gain;
       const float dry_right = dry_r[i] * graph_dry_gain * freeze_dry_gain;
-      const float send_left = send_l[i];
-      const float send_right = send_r[i];
+      const float send_left = dry_l[i];
+      const float send_right = dry_r[i];
       out_l[frame] += dry_left;
       out_r[frame] += dry_right;
       stem_l[source_id][frame] += dry_left;
@@ -53,8 +51,8 @@ void KesshoProductEngine::mixPadSourceBuffer(
     const float graph_dry_right = dry_r[i] * graph_dry_gain;
     const float dry_left = graph_dry_left * freeze_dry_gain;
     const float dry_right = graph_dry_right * freeze_dry_gain;
-    const float send_left = send_l[i];
-    const float send_right = send_r[i];
+    const float send_left = dry_l[i];
+    const float send_right = dry_r[i];
     const float duck_gain = sidechainGain(source_id - 1u, frame);
     const float left = dry_left * duck_gain;
     const float right = dry_right * duck_gain;

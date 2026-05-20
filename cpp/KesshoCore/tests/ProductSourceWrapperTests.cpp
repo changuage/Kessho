@@ -627,6 +627,96 @@ void requireSourceParamEventsAffectRender() {
   kessho_product_destroy(engine);
 }
 
+float maxGraphTapDiff(
+    KesshoProductEngine* engine,
+    uint32_t dry_tap_id,
+    uint32_t send_tap_id,
+    uint32_t blocks,
+    float& dry_peak) {
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  std::vector<float> dry_l(128);
+  std::vector<float> dry_r(128);
+  std::vector<float> send_l(128);
+  std::vector<float> send_r(128);
+  float diff = 0.0f;
+  dry_peak = 0.0f;
+  for (uint32_t block = 0; block < blocks; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    require(
+        kessho_product_get_graph_tap(engine, dry_tap_id, dry_l.data(), dry_r.data(), 128) == KESSHO_PRODUCT_OK,
+        "dry graph tap read failed");
+    require(
+        kessho_product_get_graph_tap(engine, send_tap_id, send_l.data(), send_r.data(), 128) == KESSHO_PRODUCT_OK,
+        "send graph tap read failed");
+    dry_peak = std::max(dry_peak, peakRange(dry_l, dry_r, 0, 128));
+    diff = std::max(diff, maxAbsDiff(dry_l, send_l));
+    diff = std::max(diff, maxAbsDiff(dry_r, send_r));
+  }
+  return diff;
+}
+
+void requirePadFxSendsFollowPostLpf(uint32_t source_id, uint32_t dry_tap_id, const uint32_t* send_tap_ids, const char* label) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "pad post-LPF send engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
+  source.level = 1.0f;
+  source.dry_gain = 1.0f;
+  source.reverb_send = 1.0f;
+  source.delay_a_send = 1.0f;
+  source.delay_b_send = 1.0f;
+  source.granular_send = 1.0f;
+  source.diffuse_send = 0.0f;
+  source.post_lpf_hz = 220.0f;
+  source.stereo_width = 1.0f;
+  kessho::product::tests::applyGeneratedSourcePreset(
+      snapshot,
+      source_id,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_GLASS_SHIMMER);
+
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "pad post-LPF send snapshot load failed");
+  triggerManual(engine, source_id, source_id == KESSHO_PRODUCT_SOURCE_PAD2 ? 67.0f : 60.0f);
+
+  for (uint32_t index = 0; index < 4u; ++index) {
+    float dry_peak = 0.0f;
+    const float diff = maxGraphTapDiff(engine, dry_tap_id, send_tap_ids[index], 96u, dry_peak);
+    require(dry_peak > 0.000001f, "pad post-LPF dry graph tap did not render");
+    require(diff < 0.000001f, label);
+  }
+  kessho_product_destroy(engine);
+}
+
+void requirePadFxSendsFollowPostLpfForBothPads() {
+  const uint32_t pad1_send_taps[] = {
+      KESSHO_PRODUCT_GRAPH_TAP_PAD1_REVERB_SEND,
+      KESSHO_PRODUCT_GRAPH_TAP_PAD1_DELAY_A_SEND,
+      KESSHO_PRODUCT_GRAPH_TAP_PAD1_DELAY_B_SEND,
+      KESSHO_PRODUCT_GRAPH_TAP_PAD1_GRANULAR_SEND,
+  };
+  requirePadFxSendsFollowPostLpf(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      KESSHO_PRODUCT_GRAPH_TAP_PAD1_DRY,
+      pad1_send_taps,
+      "pad 1 FX send bypassed source post-LPF");
+
+  const uint32_t pad2_send_taps[] = {
+      KESSHO_PRODUCT_GRAPH_TAP_PAD2_REVERB_SEND,
+      KESSHO_PRODUCT_GRAPH_TAP_PAD2_DELAY_A_SEND,
+      KESSHO_PRODUCT_GRAPH_TAP_PAD2_DELAY_B_SEND,
+      KESSHO_PRODUCT_GRAPH_TAP_PAD2_GRANULAR_SEND,
+  };
+  requirePadFxSendsFollowPostLpf(
+      KESSHO_PRODUCT_SOURCE_PAD2,
+      KESSHO_PRODUCT_GRAPH_TAP_PAD2_DRY,
+      pad2_send_taps,
+      "pad 2 FX send bypassed source post-LPF");
+}
+
 float renderRmsWithLeadPostLpf(float snapshot_cutoff_hz, bool send_param_event) {
   const auto* rhodes = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES);
   require(rhodes != nullptr, "LeadSoftRhodes preset missing for source post-chain test");
@@ -652,6 +742,38 @@ float renderRmsWithLeadPostLpf(float snapshot_cutoff_hz, bool send_param_event) 
   }
   triggerManual(engine, KESSHO_PRODUCT_SOURCE_LEAD1, 64.0f);
   const float result = renderDeltaRmsBlocks(engine);
+  kessho_product_destroy(engine);
+  return result;
+}
+
+float renderDeltaRmsWithPadPostLpf(uint32_t source_id, float snapshot_cutoff_hz, bool send_param_event) {
+  const uint32_t preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_GLASS_SHIMMER;
+  const auto* preset = generatedPreset(preset_id);
+  require(preset != nullptr, "Glass Shimmer preset missing for pad post-chain test");
+
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "pad source post-chain engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
+  source.level = 1.0f;
+  source.dry_gain = 1.0f;
+  source.reverb_send = 0.0f;
+  source.delay_a_send = 0.0f;
+  source.delay_b_send = 0.0f;
+  source.granular_send = 0.0f;
+  source.diffuse_send = 0.0f;
+  source.post_lpf_hz = send_param_event ? 18000.0f : snapshot_cutoff_hz;
+  source.stereo_width = 1.0f;
+  kessho::product::tests::applyGeneratedSourcePreset(snapshot, source_id, preset_id);
+
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "pad source post-chain snapshot load failed");
+  if (send_param_event) {
+    setSourceParam(engine, source_id, KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_HZ_ID, snapshot_cutoff_hz);
+  }
+  triggerManual(engine, source_id, source_id == KESSHO_PRODUCT_SOURCE_PAD2 ? 67.0f : 60.0f);
+  const float result = renderDeltaRmsBlocks(engine, 96u);
   kessho_product_destroy(engine);
   return result;
 }
@@ -687,6 +809,17 @@ float renderDeltaRmsWithLeadPostLpfTracking(float tracking, bool send_param_even
 }
 
 void requireSourcePostChainAffectsRender() {
+  const uint32_t pad_sources[] = {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_SOURCE_PAD2};
+  for (const uint32_t source_id : pad_sources) {
+    const float high_pad_snapshot = renderDeltaRmsWithPadPostLpf(source_id, 18000.0f, false);
+    const float low_pad_snapshot = renderDeltaRmsWithPadPostLpf(source_id, 250.0f, false);
+    require(high_pad_snapshot > low_pad_snapshot * 1.5f, "source snapshot post-LPF did not affect pad render");
+
+    const float high_pad_event = renderDeltaRmsWithPadPostLpf(source_id, 18000.0f, true);
+    const float low_pad_event = renderDeltaRmsWithPadPostLpf(source_id, 250.0f, true);
+    require(high_pad_event > low_pad_event * 1.5f, "source post-LPF param event did not affect pad render");
+  }
+
   const float high_snapshot = renderRmsWithLeadPostLpf(18000.0f, false);
   const float low_snapshot = renderRmsWithLeadPostLpf(250.0f, false);
   require(high_snapshot > low_snapshot * 2.0f, "source snapshot post-LPF did not affect lead render");
@@ -1294,6 +1427,7 @@ int main() {
   requireGeneratedDrumVoicePresetsAffectRender();
   requireDrumVoicePresetIdsReconstructExactDrumPatch();
   requireSourcePostChainAffectsRender();
+  requirePadFxSendsFollowPostLpfForBothPads();
   requireManualLeadUsesSourceHold();
   requireSourcePresetTelemetryAndEvent();
   requireSampleOffsetManualTrigger();

@@ -434,8 +434,6 @@ struct KesshoProductEngine : ProductGraphState {
       uint32_t source_id,
       const float* dry_l,
       const float* dry_r,
-      const float* send_l,
-      const float* send_r,
       float* out_l,
       float* out_r,
       uint32_t start,
