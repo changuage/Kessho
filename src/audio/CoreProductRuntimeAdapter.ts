@@ -1,5 +1,7 @@
 import type { CoreProductEvent } from './coreProductEvents';
 import {
+  CORE_PRODUCT_SOURCE_IDS,
+  coreProductPadRuntimeParamId,
   createCoreProductJourneyStateEvent,
   createCoreProductParamEvent,
   createCoreProductSequencerLaneParamEvent,
@@ -8,6 +10,7 @@ import {
 import { usesLegacyGranularRuntimeSeed, type CoreProductSnapshot } from './coreProductSnapshot';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
+import { KESSHO_PRODUCT_PAD_PARAM_COUNT } from './generated/kesshoProductSchema';
 
 export const MAX_SNAPSHOT_DIFF_EVENTS = 384;
 
@@ -65,6 +68,7 @@ class CoreProductRuntimeAdapter {
     this.appendHarmonyDiffs(events, previous, next);
     this.appendJourneyDiffs(events, previous, next);
     this.appendSourceParamDiffs(events, previous.sources, next.sources);
+    this.appendPadExactPatchDiffs(events, previous.sources, next.sources);
     this.appendSequencerLaneDiffs(events, 'synth', previous.synthLanes, next.synthLanes);
     this.appendSequencerLaneDiffs(events, 'drum', previous.drumLanes, next.drumLanes);
     this.appendFxRoutingMasterDiffs(events, previous, next);
@@ -90,7 +94,7 @@ class CoreProductRuntimeAdapter {
       if (previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change';
       if (previousSource.assetId !== nextSource.assetId) return 'source-structure-change';
       if (this.valuesDiffer(previousSource.holdSeconds, nextSource.holdSeconds)) return 'source-hold-change';
-      if (this.padPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
+      if (this.padPatchChanged(previousSource, nextSource) && !this.canApplyPadExactPatchDiff(previousSource, nextSource)) return 'exact-patch-change';
       if (this.leadPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
       if (this.drumPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
     }
@@ -112,7 +116,7 @@ class CoreProductRuntimeAdapter {
       if (previousSource.sourceId !== nextSource.sourceId) return false;
       if (previousSource.assetId !== nextSource.assetId) return false;
       if (this.valuesDiffer(previousSource.holdSeconds, nextSource.holdSeconds)) return false;
-      if (this.padPatchChanged(previousSource, nextSource)) return false;
+      if (this.padPatchChanged(previousSource, nextSource) && !this.canApplyPadExactPatchDiff(previousSource, nextSource)) return false;
       if (this.leadPatchChanged(previousSource, nextSource)) return false;
       if (this.drumPatchChanged(previousSource, nextSource)) return false;
     }
@@ -132,6 +136,16 @@ class CoreProductRuntimeAdapter {
       }
     }
     return false;
+  }
+
+  private canApplyPadExactPatchDiff(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
+    if (!this.isPadSourceId(previous.sourceId) || previous.sourceId !== next.sourceId) return false;
+    return previous.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT &&
+      next.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT;
+  }
+
+  private isPadSourceId(sourceId: number): boolean {
+    return sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 || sourceId === CORE_PRODUCT_SOURCE_IDS.pad2;
   }
 
   private leadPatchChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
@@ -259,6 +273,27 @@ class CoreProductRuntimeAdapter {
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, previous.postLpfHz, next.postLpfHz, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, previous.stereoWidth, next.stereoWidth, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, previous.postLpfKeyTracking, next.postLpfKeyTracking, targetId);
+    }
+  }
+
+  private appendPadExactPatchDiffs(
+    events: CoreProductEvent[],
+    previousSources: ProductSourceSnapshot[],
+    nextSources: ProductSourceSnapshot[],
+  ): void {
+    for (let sourceIndex = 0; sourceIndex < nextSources.length; sourceIndex += 1) {
+      const previous = previousSources[sourceIndex];
+      const next = nextSources[sourceIndex];
+      if (!previous || !next || !this.canApplyPadExactPatchDiff(previous, next)) continue;
+      const padIndex = next.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ? 1 : 0;
+      for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_PAD_PARAM_COUNT; paramIndex += 1) {
+        this.appendParamDiff(
+          events,
+          coreProductPadRuntimeParamId(padIndex, paramIndex),
+          this.requiredExactPatchParam(previous.exactPadParams, paramIndex, 'pad', previous.sourceId),
+          this.requiredExactPatchParam(next.exactPadParams, paramIndex, 'pad', next.sourceId),
+        );
+      }
     }
   }
 

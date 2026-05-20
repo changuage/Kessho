@@ -21,6 +21,7 @@ typedef struct KesshoProductCapabilityReport {
 #define KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES 16u
 #define KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS 64u
 #define KESSHO_PRODUCT_SEQUENCER_UI_STATE_SUBLANES 8u
+#define KESSHO_PRODUCT_RUNTIME_WALK_TELEMETRY_CAPACITY 96u
 #define KESSHO_PRODUCT_SEQUENCER_UI_MUTATION_HAS_OVERRIDES 1u
 #define KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_SNAPSHOT 1u
 #define KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_STEP 2u
@@ -113,8 +114,8 @@ typedef struct KesshoProductTelemetry {
   float harmony_chord_midi[4];
   uint32_t modulation_range_count;
   uint32_t runtime_walk_count;
-  uint32_t runtime_walk_control_ids[16];
-  float runtime_walk_values[16];
+  uint32_t runtime_walk_control_ids[KESSHO_PRODUCT_RUNTIME_WALK_TELEMETRY_CAPACITY];
+  float runtime_walk_values[KESSHO_PRODUCT_RUNTIME_WALK_TELEMETRY_CAPACITY];
   uint32_t rng_seed;
   uint32_t rng_state;
   uint32_t source_preset_ids[7];

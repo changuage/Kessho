@@ -31,4 +31,5 @@ export const APP_TAB_SYMBOLS = {
   reverb: '\u25C8\uFE0E',
   dynamics: '\u224B\uFE0E',
   routing: '\u25A6\uFE0E',
+  visualizer: TEXT_SYMBOLS.sparkle,
 } as const;

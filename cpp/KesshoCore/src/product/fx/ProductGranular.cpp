@@ -29,9 +29,9 @@ void KesshoProductEngine::advanceGranularPhraseReseed() {
 }
 
   void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
-  for (uint32_t i = 0; i < frames; ++i) {
-    const uint32_t frame = start + i;
-    if (graph_taps_enabled) {
+  if (graph_taps_enabled) {
+    for (uint32_t i = 0; i < frames; ++i) {
+      const uint32_t frame = start + i;
       graph_granular_input_l[frame] = granular_bus_l[frame];
       graph_granular_input_r[frame] = granular_bus_r[frame];
     }

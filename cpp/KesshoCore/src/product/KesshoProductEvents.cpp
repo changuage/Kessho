@@ -1,5 +1,31 @@
 #include "KesshoProductEngineInternal.h"
 
+namespace {
+
+bool resolvePadRuntimeParamId(
+    uint32_t param_id,
+    uint32_t& source_id,
+    uint32_t& pad_index,
+    uint32_t& param_index) {
+  if (param_id >= kProductPadRuntimeParamIdBase &&
+      param_id < kProductPadRuntimeParamIdBase + kProductPadRuntimeParamCount) {
+    source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+    pad_index = 0u;
+    param_index = param_id - kProductPadRuntimeParamIdBase;
+    return true;
+  }
+  if (param_id >= kProductPad2RuntimeParamIdBase &&
+      param_id < kProductPad2RuntimeParamIdBase + kProductPadRuntimeParamCount) {
+    source_id = KESSHO_PRODUCT_SOURCE_PAD2;
+    pad_index = 1u;
+    param_index = param_id - kProductPad2RuntimeParamIdBase;
+    return true;
+  }
+  return false;
+}
+
+} // namespace
+
   int32_t KesshoProductEngine::validateEvent(const KesshoProductEvent& event) const {
   if (!std::isfinite(event.value) || !std::isfinite(event.value2) || !std::isfinite(event.value3) || !std::isfinite(event.value4)) {
     return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
@@ -480,6 +506,21 @@
 }
 
   void KesshoProductEngine::applyParam(const KesshoProductEvent& event) {
+  uint32_t pad_source_id = 0u;
+  uint32_t pad_index = 0u;
+  uint32_t pad_param_index = 0u;
+  if (resolvePadRuntimeParamId(event.param_id, pad_source_id, pad_index, pad_param_index)) {
+    SourceState& source = sources[pad_source_id - 1u];
+    source.exact_pad_param_count = kProductPadRuntimeParamCount;
+    source.exact_pad_params[pad_param_index] = event.value;
+    if (pad_module) {
+      pad_module->setIndexedParam(
+          static_cast<int>(pad_index * kProductPadRuntimeParamCount + pad_param_index),
+          event.value);
+    }
+    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    return;
+  }
   if (applyGranularParamEvent(event)) {
     return;
   }

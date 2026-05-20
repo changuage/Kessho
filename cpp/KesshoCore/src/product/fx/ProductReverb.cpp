@@ -121,12 +121,24 @@ constexpr float kReverbBoostEpsilon = 0.001f;
   return std::copysign(limit + std::tanh((abs_value - limit) * 6.0f) * 0.005f, value);
 }
 
-  void KesshoProductEngine::processReverbPreconditioner(uint32_t start, uint32_t frames) {
+  void KesshoProductEngine::processReverbPreconditioner(uint32_t start, uint32_t frames, float input_peak) {
   if (frames == 0u || sample_rate <= 0.0) {
     return;
   }
   const float attack_ms = clampFloat(fx.reverb_pre_comp_attack_ms, 0.1f, 30.0f);
   const float release_ms = clampFloat(fx.reverb_pre_comp_release_ms, 20.0f, 1000.0f);
+  if (input_peak <= 1.0e-9f) {
+    if (std::abs(reverb_pre_comp_gain - 1.0f) > 0.000001f) {
+      const float block_release_coeff = std::exp(
+          -static_cast<float>(frames) /
+          std::max(1.0f, release_ms * 0.001f * static_cast<float>(sample_rate)));
+      reverb_pre_comp_gain = 1.0f + (reverb_pre_comp_gain - 1.0f) * block_release_coeff;
+      if (std::abs(reverb_pre_comp_gain - 1.0f) <= 0.000001f) {
+        reverb_pre_comp_gain = 1.0f;
+      }
+    }
+    return;
+  }
   const float attack_coeff = std::exp(-1.0f / std::max(1.0f, attack_ms * 0.001f * static_cast<float>(sample_rate)));
   const float release_coeff = std::exp(-1.0f / std::max(1.0f, release_ms * 0.001f * static_cast<float>(sample_rate)));
   const float ratio = clampFloat(fx.reverb_pre_comp_ratio, 1.0f, 20.0f);
@@ -150,21 +162,30 @@ constexpr float kReverbBoostEpsilon = 0.001f;
 }
 
   void KesshoProductEngine::renderReverb(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
+  const bool spectral_freeze_active =
+      fx.spectral_freeze_enabled && fx.spectral_freeze_mix > 0.0f;
+  const bool reverb_active =
+      reverb_module != nullptr && frames > 0u && (!(fx.reverb_mix <= 0.0f) || spectral_freeze_active);
+  if (!graph_taps_enabled && !reverb_active) {
+    return;
+  }
+  float reverb_input_peak = 0.0f;
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
+    reverb_input_peak = std::max(
+        reverb_input_peak,
+        std::max(std::abs(reverb_bus_l[frame]), std::abs(reverb_bus_r[frame])));
     if (graph_taps_enabled) {
       graph_reverb_input_l[frame] = reverb_bus_l[frame];
       graph_reverb_input_r[frame] = reverb_bus_r[frame];
     }
   }
-  const bool spectral_freeze_active =
-      fx.spectral_freeze_enabled && fx.spectral_freeze_mix > 0.0f;
-  if (reverb_module == nullptr || frames == 0u || (fx.reverb_mix <= 0.0f && !spectral_freeze_active)) {
+  if (!reverb_active) {
     return;
   }
   std::fill(module_l, module_l + frames, 0.0f);
   std::fill(module_r, module_r + frames, 0.0f);
-  processReverbPreconditioner(start, frames);
+  processReverbPreconditioner(start, frames, reverb_input_peak);
   if (graph_taps_enabled) {
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;

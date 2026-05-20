@@ -1,5 +1,5 @@
 const EVENT_BYTES = 40;
-const TELEMETRY_BYTES = 384;
+const TELEMETRY_BYTES = 1024;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
 const EXPECTED_PRODUCT_SCHEMA_HASH = 0x3573d8e2;
 const SEQUENCER_UI_STATE_LANES = 16;
@@ -43,7 +43,7 @@ const PRODUCT_SEQUENCER_IDS = new Set([1, 2]);
 const PRODUCT_DRUM_VOICE_COUNT = 7;
 const PRODUCT_GRAPH_TAP_COUNT = 110;
 const STEM_PEAK_COUNT = 9;
-const STEM_PEAK_PROBE_INTERVAL_BLOCKS = 16;
+const STEM_PEAK_PROBE_INTERVAL_BLOCKS = 64;
 const GRAPH_TAP_IDLE_DISABLE_SECONDS = 5;
 const STEP_TOGGLE_CLEAR_LANE = 2;
 const STEP_FIELD_MASK = 15 << 8;
@@ -933,19 +933,19 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.flushStemPeakWindow();
     const ptr = this.telemetryPtr;
     const runtimeWalkValues = {};
-    const runtimeWalkCount = Math.min(this.view.getUint32(ptr + 156, true), 16);
+    const runtimeWalkCount = Math.min(this.view.getUint32(ptr + 156, true), 96);
     for (let index = 0; index < runtimeWalkCount; index += 1) {
       const controlId = this.view.getUint32(ptr + 160 + index * 4, true);
-      const value = this.view.getFloat32(ptr + 224 + index * 4, true);
+      const value = this.view.getFloat32(ptr + 544 + index * 4, true);
       if (controlId !== 0) {
         runtimeWalkValues[controlId] = value;
       }
     }
     const sourcePresetIds = [];
     for (let index = 0; index < 7; index += 1) {
-      sourcePresetIds.push(this.view.getUint32(ptr + 296 + index * 4, true));
+      sourcePresetIds.push(this.view.getUint32(ptr + 936 + index * 4, true));
     }
-    const sequencerUiStateRevision = this.view.getUint32(ptr + 348, true);
+    const sequencerUiStateRevision = this.view.getUint32(ptr + 988, true);
     const sequencerUiState =
       sequencerUiStateRevision !== 0 && sequencerUiStateRevision !== this.lastSequencerUiStateRevision
         ? this.readSequencerUiState(sequencerUiStateRevision)
@@ -990,25 +990,25 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       modulationRangeCount: this.view.getUint32(ptr + 152, true),
       runtimeWalkCount,
       runtimeWalkValues,
-      rngSeed: this.view.getUint32(ptr + 288, true),
-      rngState: this.view.getUint32(ptr + 292, true),
+      rngSeed: this.view.getUint32(ptr + 928, true),
+      rngState: this.view.getUint32(ptr + 932, true),
       sourcePresetIds,
-      masterInputPeak: this.view.getFloat32(ptr + 324, true),
-      masterOutputPeak: this.view.getFloat32(ptr + 328, true),
-      masterOutputRms: this.view.getFloat32(ptr + 332, true),
-      masterLimiterGainReductionDb: this.view.getFloat32(ptr + 336, true),
-      masterSaturationDrive: this.view.getFloat32(ptr + 340, true),
-      dynamicsSaturationDrive: this.view.getFloat32(ptr + 344, true),
+      masterInputPeak: this.view.getFloat32(ptr + 964, true),
+      masterOutputPeak: this.view.getFloat32(ptr + 968, true),
+      masterOutputRms: this.view.getFloat32(ptr + 972, true),
+      masterLimiterGainReductionDb: this.view.getFloat32(ptr + 976, true),
+      masterSaturationDrive: this.view.getFloat32(ptr + 980, true),
+      dynamicsSaturationDrive: this.view.getFloat32(ptr + 984, true),
       sequencerUiStateRevision,
-      masterTruePeak: this.view.getFloat32(ptr + 352, true),
-      masterTruePeakDbtp: this.view.getFloat32(ptr + 356, true),
-      masterIntegratedLufs: this.view.getFloat32(ptr + 360, true),
-      granularWriteHeadPosition: this.view.getFloat32(ptr + 364, true),
+      masterTruePeak: this.view.getFloat32(ptr + 992, true),
+      masterTruePeakDbtp: this.view.getFloat32(ptr + 996, true),
+      masterIntegratedLufs: this.view.getFloat32(ptr + 1000, true),
+      granularWriteHeadPosition: this.view.getFloat32(ptr + 1004, true),
       granularVoicePositions: [
-        this.view.getFloat32(ptr + 368, true),
-        this.view.getFloat32(ptr + 372, true),
-        this.view.getFloat32(ptr + 376, true),
-        this.view.getFloat32(ptr + 380, true),
+        this.view.getFloat32(ptr + 1008, true),
+        this.view.getFloat32(ptr + 1012, true),
+        this.view.getFloat32(ptr + 1016, true),
+        this.view.getFloat32(ptr + 1020, true),
       ],
       sequencerUiState,
       sequencerUiChangeDice: SEQUENCER_UI_CHANGE_DICE,

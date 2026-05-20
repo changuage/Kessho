@@ -21,9 +21,9 @@
   float* graph_cross_r = is_delay_a ? graph_delay_a_to_delay_b_send_r : graph_delay_b_to_delay_a_send_r;
   float* graph_granular_l = is_delay_a ? graph_delay_a_to_granular_send_l : graph_delay_b_to_granular_send_l;
   float* graph_granular_r = is_delay_a ? graph_delay_a_to_granular_send_r : graph_delay_b_to_granular_send_r;
-  for (uint32_t i = 0; i < frames; ++i) {
-    const uint32_t frame = start + i;
-    if (graph_taps_enabled) {
+  if (graph_taps_enabled) {
+    for (uint32_t i = 0; i < frames; ++i) {
+      const uint32_t frame = start + i;
       graph_input_l[frame] = input_l[frame];
       graph_input_r[frame] = input_r[frame];
     }

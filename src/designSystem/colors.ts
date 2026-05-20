@@ -28,6 +28,7 @@ export const TAB_HERO_COLORS = {
   dynamics: '#CC7DB8',
   reverb: '#B0785A',
   routing: '#7ABFE8',
+  visualizer: '#9CCFBD',
 } as const;
 
 export const SOURCE_COLORS = {
@@ -50,6 +51,7 @@ export const SOURCE_COLORS = {
   reverb: TAB_HERO_COLORS.reverb,
   dynamics: TAB_HERO_COLORS.dynamics,
   routing: TAB_HERO_COLORS.routing,
+  visualizer: TAB_HERO_COLORS.visualizer,
 } as const;
 
 export const DYNAMICS_ENGINE_COLORS = {

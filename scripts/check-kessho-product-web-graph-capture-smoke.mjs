@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { defaultSmokeStatePatch as statePatch, smokeCases as cases } from './lib/kesshoProductWebGraphSmokeCases.mjs';
-import { fastRetryCaseIds, fastSmokeCaseIds } from './lib/kesshoProductWebParityFastTier.mjs';
+import { fastSmokeCaseIds } from './lib/kesshoProductWebParityFastTier.mjs';
 
 const root = process.cwd();
 const fullReportPath = resolve(root, 'docs/reports/kessho-product-web-graph-capture-smoke-latest.json');
@@ -13,7 +13,6 @@ const selectedReportPath = resolve(root, 'docs/reports/kessho-product-web-graph-
 const DEFAULT_PORT = 4195;
 const DEFAULT_CASE_ATTEMPTS = 2;
 const fastSmokeCaseIdSet = new Set(fastSmokeCaseIds);
-const fastRetryCaseIdSet = new Set(fastRetryCaseIds);
 
 function parseArgs(argv) {
   const args = { url: '', port: DEFAULT_PORT, caseIds: [], tier: 'full' };
@@ -41,7 +40,7 @@ function runCaseAttempt(caseDef, args, attempt) {
     `--track=${caseDef.track}`,
     `--duration-ms=${caseDef.durationMs ?? 700}`,
     `--settle-ms=${caseDef.settleMs ?? 150}`,
-    '--manual-trigger-delay-ms=0',
+    `--manual-trigger-delay-ms=${caseDef.manualTriggerDelayMs ?? 0}`,
     `--state-patch=${JSON.stringify(caseDef.statePatch ?? statePatch)}`,
     `--max-lag-ms=${caseDef.maxLagMs ?? 90}`,
     `--min-lag-correlation=${caseDef.minLagCorrelation}`,
@@ -87,8 +86,7 @@ function runCaseAttempt(caseDef, args, attempt) {
 }
 
 function runCase(caseDef, args) {
-  const fastAttempts = args.tier === 'fast' && !fastRetryCaseIdSet.has(caseDef.id) ? 1 : undefined;
-  const maxAttempts = Math.max(1, fastAttempts ?? caseDef.attempts ?? DEFAULT_CASE_ATTEMPTS);
+  const maxAttempts = Math.max(1, caseDef.attempts ?? DEFAULT_CASE_ATTEMPTS);
   const attempts = [];
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const result = runCaseAttempt(caseDef, args, attempt);

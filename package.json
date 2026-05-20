@@ -72,6 +72,7 @@
     "core:product:native-release-smoke": "swift run --package-path KesshoNativeSwift KesshoProductNativeReleaseSmoke",
     "core:product:default-gate-v3": "node scripts/check-kessho-product-default-gate-v3.mjs",
     "core:product:cpu": "node scripts/check-kessho-product-cpu-budget.mjs",
+    "core:product:web-cpu-comparison": "node scripts/check-kessho-product-web-cpu-comparison.mjs",
     "core:product:wasm": "node scripts/check-kessho-product-wasm.mjs",
     "core:product:ci:prereqs": "node scripts/run-kessho-product-ci.mjs --skip-final-gate",
     "core:product:ci": "node scripts/run-kessho-product-ci.mjs"

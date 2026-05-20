@@ -10,6 +10,21 @@
       float ducked_right,
       float send_left,
       float send_right) {
+  if (!graph_taps_enabled) {
+    if (source.diffuse_send <= 0.0f) {
+      return;
+    }
+    const float diffuse_left = dry_left * source.diffuse_send;
+    const float diffuse_right = dry_right * source.diffuse_send;
+    if (diffuse_left == 0.0f && diffuse_right == 0.0f) {
+      return;
+    }
+    diffuse_bus_l[frame] += diffuse_left;
+    diffuse_bus_r[frame] += diffuse_right;
+    diffuse_bus_active_this_block = true;
+    return;
+  }
+
   float* dry_l = nullptr;
   float* dry_r = nullptr;
   float* reverb_l = nullptr;

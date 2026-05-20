@@ -25,6 +25,28 @@ void KesshoProductEngine::mixPadSourceBuffer(
       ? 1.0f - clampFloat(fx.spectral_freeze_reverb_crossfade, 0.0f, 1.0f)
       : 1.0f;
   const float graph_dry_gain = source.level * source.dry_gain;
+  if (!graph_taps_enabled && !fx.sidechain_enabled && source.diffuse_send <= 0.0f) {
+    for (uint32_t i = 0; i < frames; ++i) {
+      const uint32_t frame = start + i;
+      const float dry_left = dry_l[i] * graph_dry_gain * freeze_dry_gain;
+      const float dry_right = dry_r[i] * graph_dry_gain * freeze_dry_gain;
+      const float send_left = send_l[i];
+      const float send_right = send_r[i];
+      out_l[frame] += dry_left;
+      out_r[frame] += dry_right;
+      stem_l[source_id][frame] += dry_left;
+      stem_r[source_id][frame] += dry_right;
+      reverb_bus_l[frame] += send_left * source.reverb_send;
+      reverb_bus_r[frame] += send_right * source.reverb_send;
+      delay_a_bus_l[frame] += send_left * source.delay_a_send;
+      delay_a_bus_r[frame] += send_right * source.delay_a_send;
+      delay_b_bus_l[frame] += send_left * source.delay_b_send;
+      delay_b_bus_r[frame] += send_right * source.delay_b_send;
+      granular_bus_l[frame] += send_left * source.granular_send;
+      granular_bus_r[frame] += send_right * source.granular_send;
+    }
+    return;
+  }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
     const float graph_dry_left = dry_l[i] * graph_dry_gain;
@@ -73,6 +95,28 @@ void KesshoProductEngine::mixPadSourceBuffer(
   const float graph_dry_gain = source.level * source.dry_gain * (lead_source ? 1.0f : trim);
   const float send_gain = source.dry_gain;
   const uint32_t sidechain_target = sidechainTargetForSource(source_id);
+  if (!graph_taps_enabled && !fx.sidechain_enabled && source.diffuse_send <= 0.0f) {
+    for (uint32_t i = 0; i < frames; ++i) {
+      const uint32_t frame = start + i;
+      const float dry_left = in_l[i] * dry_gain;
+      const float dry_right = in_r[i] * dry_gain;
+      const float send_left = in_l[i] * send_gain;
+      const float send_right = in_r[i] * send_gain;
+      out_l[frame] += dry_left;
+      out_r[frame] += dry_right;
+      stem_l[source_id][frame] += dry_left;
+      stem_r[source_id][frame] += dry_right;
+      reverb_bus_l[frame] += send_left * source.reverb_send;
+      reverb_bus_r[frame] += send_right * source.reverb_send;
+      delay_a_bus_l[frame] += send_left * source.delay_a_send;
+      delay_a_bus_r[frame] += send_right * source.delay_a_send;
+      delay_b_bus_l[frame] += send_left * source.delay_b_send;
+      delay_b_bus_r[frame] += send_right * source.delay_b_send;
+      granular_bus_l[frame] += send_left * source.granular_send;
+      granular_bus_r[frame] += send_right * source.granular_send;
+    }
+    return;
+  }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
     const float dry_left = in_l[i] * dry_gain;

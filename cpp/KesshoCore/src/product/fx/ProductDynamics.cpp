@@ -13,6 +13,14 @@
 }
 
   void KesshoProductEngine::resetSonicParityFxRuntime() {
+  control_event_count = 0;
+  sequencer_events.clear();
+  for (Voice& voice : voices) {
+    voice = {};
+  }
+  pad_voice_cursors[0] = 0;
+  pad_voice_cursors[1] = 0;
+  clearPadVoiceReleases(0u);
   if (delay_a_module) {
     delay_a_module->reset();
   }
@@ -166,9 +174,18 @@
   if (!fx.sidechain_enabled) {
     for (uint32_t target = 0; target < kSidechainTargetCount; ++target) {
       sidechain_envelopes[target].current_gain = 1.0f;
+      sidechain_envelopes[target].start_gain = 1.0f;
       sidechain_envelopes[target].target_gain = 1.0f;
-      for (uint32_t i = 0; i < frames; ++i) {
-        sidechain_gains[target][start + i] = 1.0f;
+      sidechain_envelopes[target].attack_elapsed = 0u;
+      sidechain_envelopes[target].attack_frames = 0u;
+      sidechain_envelopes[target].hold_remaining = 0u;
+      sidechain_envelopes[target].release_elapsed = 0u;
+      sidechain_envelopes[target].release_frames = 0u;
+      sidechain_envelopes[target].release_coeff = 0.0f;
+      if (graph_taps_enabled) {
+        for (uint32_t i = 0; i < frames; ++i) {
+          sidechain_gains[target][start + i] = 1.0f;
+        }
       }
     }
     return;
@@ -191,6 +208,18 @@
       float gain,
       uint32_t sidechain_target) {
   if (gain <= 0.0f) {
+    return;
+  }
+  if (!fx.sidechain_enabled && !graph_taps_enabled) {
+    for (uint32_t i = 0; i < frames; ++i) {
+      const uint32_t frame = start + i;
+      const float left = in_l[i] * gain;
+      const float right = in_r[i] * gain;
+      out_l[frame] += left;
+      out_r[frame] += right;
+      stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
+      stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;
+    }
     return;
   }
   for (uint32_t i = 0; i < frames; ++i) {

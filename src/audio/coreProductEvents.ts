@@ -1,6 +1,10 @@
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
-import { KESSHO_PRODUCT_DRUM_VOICE_COUNT } from './generated/kesshoProductSchema';
+import {
+  KESSHO_PRODUCT_DRUM_VOICE_COUNT,
+  KESSHO_PRODUCT_PAD_PARAM_COUNT,
+  KESSHO_PRODUCT_PAD_PARAM_SPECS,
+} from './generated/kesshoProductSchema';
 import { delayNoteToSeconds } from './delayBuses';
 import { getIndexedDelayDivisionValue, type IndexedDelayDivisionKey } from '../ui/state';
 
@@ -74,10 +78,23 @@ export const CORE_PRODUCT_SUBLANE_DIRECTIONS = Object.freeze({
 } as const);
 
 export const CORE_PRODUCT_DRUM_RANGE_TARGET_BASE = 1000;
+export const CORE_PRODUCT_PAD_RUNTIME_PARAM_ID_BASE = 2000;
+export const CORE_PRODUCT_PAD2_RUNTIME_PARAM_ID_BASE = 2100;
 
 const VALID_SOURCE_IDS = new Set<number>(Object.values(CORE_PRODUCT_SOURCE_IDS));
 const VALID_SEQUENCER_IDS = new Set<number>(Object.values(CORE_PRODUCT_SEQUENCER_IDS));
-const VALID_PARAM_IDS = new Set<number>(Object.values(KESSHO_PRODUCT_PARAM_IDS));
+const CORE_PRODUCT_PAD_RUNTIME_PARAM_IDS = Array.from(
+  { length: KESSHO_PRODUCT_PAD_PARAM_COUNT * 2 },
+  (_, index) => (
+    index < KESSHO_PRODUCT_PAD_PARAM_COUNT
+      ? CORE_PRODUCT_PAD_RUNTIME_PARAM_ID_BASE + index
+      : CORE_PRODUCT_PAD2_RUNTIME_PARAM_ID_BASE + index - KESSHO_PRODUCT_PAD_PARAM_COUNT
+  ),
+);
+const VALID_PARAM_IDS = new Set<number>([
+  ...Object.values(KESSHO_PRODUCT_PARAM_IDS),
+  ...CORE_PRODUCT_PAD_RUNTIME_PARAM_IDS,
+]);
 const VALID_STEP_FIELDS = new Set<number>(Object.values(CORE_PRODUCT_STEP_VALUE_FIELDS));
 const VALID_SUBLANE_DIRECTIONS = new Set<number>(Object.values(CORE_PRODUCT_SUBLANE_DIRECTIONS));
 
@@ -213,6 +230,11 @@ function stableControlId(key: string): number {
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0) || 1;
+}
+
+export function coreProductPadRuntimeParamId(padIndex: 0 | 1, paramIndex: number): number {
+  const base = padIndex === 0 ? CORE_PRODUCT_PAD_RUNTIME_PARAM_ID_BASE : CORE_PRODUCT_PAD2_RUNTIME_PARAM_ID_BASE;
+  return base + requireIntegerInRange(paramIndex, 'pad param index', 0, KESSHO_PRODUCT_PAD_PARAM_COUNT - 1);
 }
 
 function sourceTarget(
@@ -433,7 +455,17 @@ function granularVoiceRangeTargets(): Record<string, CoreProductRangeTargetResol
   return targets;
 }
 
+function padExactRangeTargets(): Record<string, CoreProductRangeTargetResolver> {
+  const targets: Record<string, CoreProductRangeTargetResolver> = {};
+  for (const spec of KESSHO_PRODUCT_PAD_PARAM_SPECS) {
+    targets[spec.key] = (key) => [productParamTarget(coreProductPadRuntimeParamId(0, spec.index), key)];
+    targets[spec.pad2Key] = (key) => [productParamTarget(coreProductPadRuntimeParamId(1, spec.index), key)];
+  }
+  return targets;
+}
+
 const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
+  ...padExactRangeTargets(),
   ...granularVoiceRangeTargets(),
   synthLevel: (key) => [
     sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key),

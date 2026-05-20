@@ -20,7 +20,7 @@ int main() {
   static_assert(sizeof(KesshoProductSnapshotV2) == 12700, "product snapshot ABI size changed");
   static_assert(sizeof(KesshoProductEvent) == 40, "product event ABI size changed");
   static_assert(sizeof(KesshoSequencerEvent) == 60, "sequencer event ABI size changed");
-  static_assert(sizeof(KesshoProductTelemetry) == 384, "product telemetry ABI size changed");
+  static_assert(sizeof(KesshoProductTelemetry) == 1024, "product telemetry ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneUiState) == 2216, "sequencer UI lane state ABI size changed");
   static_assert(sizeof(KesshoProductSequencerUiState) == 70948, "sequencer UI state ABI size changed");
 
@@ -31,25 +31,25 @@ int main() {
   require(offsetof(KesshoSequencerEvent, midi_note) == 16, "sequencer event midi offset changed");
   require(offsetof(KesshoSequencerEvent, flags) == 56, "sequencer event flags offset changed");
   require(offsetof(KesshoProductTelemetry, schema_hash) == 0, "telemetry schema hash offset changed");
-  require(offsetof(KesshoProductTelemetry, rng_seed) == 288, "telemetry rng seed offset changed");
-  require(offsetof(KesshoProductTelemetry, master_input_peak) == 324, "telemetry master input peak offset changed");
+  require(offsetof(KesshoProductTelemetry, rng_seed) == 928, "telemetry rng seed offset changed");
+  require(offsetof(KesshoProductTelemetry, master_input_peak) == 964, "telemetry master input peak offset changed");
   require(
-      offsetof(KesshoProductTelemetry, dynamics_saturation_drive) == 344,
+      offsetof(KesshoProductTelemetry, dynamics_saturation_drive) == 984,
       "telemetry dynamics saturation offset changed");
   require(
-      offsetof(KesshoProductTelemetry, sequencer_ui_state_revision) == 348,
+      offsetof(KesshoProductTelemetry, sequencer_ui_state_revision) == 988,
       "telemetry sequencer UI revision offset changed");
   require(
-      offsetof(KesshoProductTelemetry, master_true_peak) == 352,
+      offsetof(KesshoProductTelemetry, master_true_peak) == 992,
       "telemetry master true peak offset changed");
   require(
-      offsetof(KesshoProductTelemetry, master_integrated_lufs) == 360,
+      offsetof(KesshoProductTelemetry, master_integrated_lufs) == 1000,
       "telemetry master integrated LUFS offset changed");
   require(
-      offsetof(KesshoProductTelemetry, granular_write_head) == 364,
+      offsetof(KesshoProductTelemetry, granular_write_head) == 1004,
       "telemetry granular write head offset changed");
   require(
-      offsetof(KesshoProductTelemetry, granular_voice_positions) == 368,
+      offsetof(KesshoProductTelemetry, granular_voice_positions) == 1008,
       "telemetry granular voice positions offset changed");
   require(
       offsetof(KesshoProductSequencerLaneUiState, probability_overrides) == 168,

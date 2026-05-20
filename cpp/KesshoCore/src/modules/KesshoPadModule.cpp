@@ -253,6 +253,27 @@ public:
     return params_.data();
   }
 
+  int setIndexedParam(int param_index, float value) override {
+    if (param_index < 0 || param_index >= kParamCount) {
+      return 0;
+    }
+    params_[param_index] = value;
+    if (instance_ == nullptr) {
+      return 1;
+    }
+    if (param_index == kParamReverbSend) {
+      pad_instance_set_reverb_send(instance_, params_[kParamReverbSend]);
+      return 1;
+    }
+    if (param_index >= 0 && param_index < kPadParamCount * PAD_NUM_PADS) {
+      const int pad = param_index / kPadParamCount;
+      const int pad_param = param_index - pad * kPadParamCount;
+      applyPadParam(pad, pad_param);
+      return 1;
+    }
+    return 1;
+  }
+
   void commitParams() override {
     if (instance_ == nullptr) {
       return;
@@ -466,6 +487,176 @@ public:
   }
 
 private:
+  void applyPadParam(int pad, int pad_param) {
+    if (instance_ == nullptr || pad < 0 || pad >= PAD_NUM_PADS) {
+      return;
+    }
+    const int base = pad * kPadParamCount;
+    switch (pad_param) {
+      case kOscAWave:
+        pad_instance_set_osc_a_wave(instance_, pad, clampedRounded(params_[base + kOscAWave], 0, 3));
+        break;
+      case kOscAOctave:
+        pad_instance_set_osc_a_octave(instance_, pad, roundedInt(params_[base + kOscAOctave]));
+        break;
+      case kOscADetune:
+        pad_instance_set_osc_a_detune(instance_, pad, params_[base + kOscADetune]);
+        break;
+      case kOscALevel:
+        pad_instance_set_osc_a_level(instance_, pad, params_[base + kOscALevel]);
+        break;
+      case kOscBWave:
+        pad_instance_set_osc_b_wave(instance_, pad, clampedRounded(params_[base + kOscBWave], 0, 3));
+        break;
+      case kOscBOctave:
+        pad_instance_set_osc_b_octave(instance_, pad, roundedInt(params_[base + kOscBOctave]));
+        break;
+      case kOscBDetune:
+        pad_instance_set_osc_b_detune(instance_, pad, params_[base + kOscBDetune]);
+        break;
+      case kOscBLevel:
+        pad_instance_set_osc_b_level(instance_, pad, params_[base + kOscBLevel]);
+        break;
+      case kOscMix:
+        pad_instance_set_osc_mix(instance_, pad, params_[base + kOscMix]);
+        break;
+      case kSubEnabled:
+        pad_instance_set_sub_enabled(instance_, pad, params_[base + kSubEnabled] > 0.5f ? 1 : 0);
+        break;
+      case kSubOctave:
+        pad_instance_set_sub_octave(instance_, pad, roundedInt(params_[base + kSubOctave]));
+        break;
+      case kSubWave:
+        pad_instance_set_sub_wave(instance_, pad, clampedRounded(params_[base + kSubWave], 0, 3));
+        break;
+      case kSubLevel:
+        pad_instance_set_sub_level(instance_, pad, params_[base + kSubLevel]);
+        break;
+      case kNoiseType:
+        pad_instance_set_noise_type(instance_, pad, clampedRounded(params_[base + kNoiseType], 0, 1));
+        break;
+      case kNoiseLevel:
+        pad_instance_set_noise_level(instance_, pad, params_[base + kNoiseLevel]);
+        break;
+      case kHardness:
+        pad_instance_set_hardness(instance_, pad, params_[base + kHardness]);
+        break;
+      case kWarmth:
+        pad_instance_set_warmth(instance_, pad, params_[base + kWarmth]);
+        break;
+      case kPresence:
+        pad_instance_set_presence(instance_, pad, params_[base + kPresence]);
+        break;
+      case kFoldAmount:
+        pad_instance_set_fold_amount(instance_, pad, params_[base + kFoldAmount]);
+        break;
+      case kFoldMode:
+        pad_instance_set_fold_mode(instance_, pad, clampedRounded(params_[base + kFoldMode], 0, 2));
+        break;
+      case kFilterType:
+        pad_instance_set_filter_type(instance_, pad, clampedRounded(params_[base + kFilterType], 0, 3));
+        break;
+      case kFilterCutoffMin:
+        pad_instance_set_filter_cutoff_min(instance_, pad, params_[base + kFilterCutoffMin]);
+        break;
+      case kFilterCutoffMax:
+        pad_instance_set_filter_cutoff_max(instance_, pad, params_[base + kFilterCutoffMax]);
+        break;
+      case kFilterResonance:
+        pad_instance_set_filter_resonance(instance_, pad, params_[base + kFilterResonance]);
+        break;
+      case kFilterQ:
+        pad_instance_set_filter_q(instance_, pad, params_[base + kFilterQ]);
+        break;
+      case kFilterSlope:
+        pad_instance_set_filter_slope(instance_, pad, params_[base + kFilterSlope]);
+        break;
+      case kFilterKeyTracking:
+        pad_instance_set_filter_key_tracking(instance_, pad, params_[base + kFilterKeyTracking]);
+        break;
+      case kFilterBEnabled:
+        pad_instance_set_filter_b_enabled(instance_, pad, params_[base + kFilterBEnabled] > 0.5f ? 1 : 0);
+        break;
+      case kFilterBType:
+        pad_instance_set_filter_b_type(instance_, pad, clampedRounded(params_[base + kFilterBType], 0, 3));
+        break;
+      case kFilterBCutoff:
+        pad_instance_set_filter_b_cutoff(instance_, pad, params_[base + kFilterBCutoff]);
+        break;
+      case kFilterBResonance:
+        pad_instance_set_filter_b_resonance(instance_, pad, params_[base + kFilterBResonance]);
+        break;
+      case kFilterBQ:
+        pad_instance_set_filter_b_q(instance_, pad, params_[base + kFilterBQ]);
+        break;
+      case kFilterRouting:
+        pad_instance_set_filter_routing(instance_, pad, clampedRounded(params_[base + kFilterRouting], 0, 2));
+        break;
+      case kAttack:
+        pad_instance_set_attack(instance_, pad, params_[base + kAttack]);
+        break;
+      case kDecay:
+        pad_instance_set_decay(instance_, pad, params_[base + kDecay]);
+        break;
+      case kSustain:
+        pad_instance_set_sustain(instance_, pad, params_[base + kSustain]);
+        break;
+      case kRelease:
+        pad_instance_set_release(instance_, pad, params_[base + kRelease]);
+        break;
+      case kLfo1Rate:
+        pad_instance_set_lfo1_rate(instance_, pad, params_[base + kLfo1Rate]);
+        break;
+      case kLfo1Depth:
+        pad_instance_set_lfo1_depth(instance_, pad, params_[base + kLfo1Depth]);
+        break;
+      case kLfo1Wave:
+        pad_instance_set_lfo1_wave(instance_, pad, clampedRounded(params_[base + kLfo1Wave], 0, 6));
+        break;
+      case kLfo1Dest:
+        pad_instance_set_lfo1_dest(instance_, pad, clampedRounded(params_[base + kLfo1Dest], 0, 6));
+        break;
+      case kLfo2Rate:
+        pad_instance_set_lfo2_rate(instance_, pad, params_[base + kLfo2Rate]);
+        break;
+      case kLfo2Depth:
+        pad_instance_set_lfo2_depth(instance_, pad, params_[base + kLfo2Depth]);
+        break;
+      case kLfo2Wave:
+        pad_instance_set_lfo2_wave(instance_, pad, clampedRounded(params_[base + kLfo2Wave], 0, 6));
+        break;
+      case kLfo2Dest:
+        pad_instance_set_lfo2_dest(instance_, pad, clampedRounded(params_[base + kLfo2Dest], 0, 6));
+        break;
+      case kModEnvEnabled:
+        pad_instance_set_mod_env_enabled(instance_, pad, params_[base + kModEnvEnabled] > 0.5f ? 1 : 0);
+        break;
+      case kModEnvAttack:
+        pad_instance_set_mod_env_attack(instance_, pad, params_[base + kModEnvAttack]);
+        break;
+      case kModEnvDecay:
+        pad_instance_set_mod_env_decay(instance_, pad, params_[base + kModEnvDecay]);
+        break;
+      case kModEnvSustain:
+        pad_instance_set_mod_env_sustain(instance_, pad, params_[base + kModEnvSustain]);
+        break;
+      case kModEnvRelease:
+        pad_instance_set_mod_env_release(instance_, pad, params_[base + kModEnvRelease]);
+        break;
+      case kModEnvDepth:
+        pad_instance_set_mod_env_depth(instance_, pad, params_[base + kModEnvDepth]);
+        break;
+      case kModEnvDest:
+        pad_instance_set_mod_env_dest(instance_, pad, clampedRounded(params_[base + kModEnvDest], 0, 6));
+        break;
+      case kLevel:
+        pad_instance_set_level(instance_, pad, params_[base + kLevel]);
+        break;
+      default:
+        break;
+    }
+  }
+
   int outputSelect() const {
     return clampedRounded(params_[kParamOutputSelect], 0, kPadOutputTapCount - 1);
   }

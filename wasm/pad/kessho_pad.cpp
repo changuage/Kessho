@@ -434,6 +434,8 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
             mod_env_val = v.mod_env.process(g_sample_rate) * p.mod_env_depth;
             switch (p.mod_env_dest) {
                 case PAD_DEST_FILTER_CUTOFF: filter_a_mod += mod_env_val; break;
+                case PAD_DEST_FILTER_B: filter_b_mod += mod_env_val; break;
+                case PAD_DEST_AMPLITUDE: amp_mod += mod_env_val * 0.5f; break;
                 case PAD_DEST_PITCH: pitch_mod += mod_env_val * 0.05f; break;
                 case PAD_DEST_OSC_B_LEVEL: osc_b_mod += mod_env_val; break;
                 case PAD_DEST_FOLD_AMOUNT: fold_mod += mod_env_val; break;

@@ -128,6 +128,16 @@
 }
 
   void KesshoProductEngine::renderSampleVoices(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
+  bool has_active_voice = false;
+  for (const Voice& voice : voices) {
+    if (voice.active) {
+      has_active_voice = true;
+      break;
+    }
+  }
+  if (!has_active_voice) {
+    return;
+  }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
     for (Voice& voice : voices) {

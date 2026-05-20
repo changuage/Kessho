@@ -554,7 +554,7 @@ struct KesshoProductEngine : ProductGraphState {
 
   float reverbPreconditionerSoftLimit(float value) const;
 
-  void processReverbPreconditioner(uint32_t start, uint32_t frames);
+  void processReverbPreconditioner(uint32_t start, uint32_t frames, float input_peak);
 
   void renderDelayModule(
       kessho::core::IKesshoModule* module,

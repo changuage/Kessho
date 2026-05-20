@@ -59,6 +59,11 @@ import {
   removeRuntimeValues,
 } from './ui/runtimeValueState';
 import {
+  emitVisualizerPulse,
+  emitVisualizerPulses,
+  setVisualizerSequencerState,
+} from './ui/visualizer/visualizerSignals';
+import {
   getGranularPresetData,
   getGranularPresetSliderModes,
   isGranularDelayBStateKey,
@@ -169,6 +174,7 @@ const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
 const DynamicsPage = React.lazy(() => import('./ui/dynamics/DynamicsPage'));
 const RoutingPage = React.lazy(() => import('./ui/routing/RoutingPage'));
 const EarthPage = React.lazy(() => import('./ui/earth/EarthPage'));
+const ReactiveVisualizerPage = React.lazy(() => import('./ui/visualizer/ReactiveVisualizerPage'));
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -1228,10 +1234,11 @@ function extractNativeDualRanges(ranges: DualSliderState): Record<string, { min:
   return output;
 }
 
-type AdvancedTab = 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing';
+type AdvancedTab = 'global' | 'visualizer' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing';
 
 const ADVANCED_TAB_COLORS: Record<AdvancedTab, string> = {
   global: SOURCE_COLORS.global,
+  visualizer: SOURCE_COLORS.visualizer,
   synth: SOURCE_COLORS.synth,
   drums: SOURCE_COLORS.drums,
   reverb: SOURCE_COLORS.reverb,
@@ -1251,14 +1258,15 @@ const getAdvancedTabActiveStyle = (accent: string): React.CSSProperties => ({
 
 const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
   '1': 'global',
-  '2': 'synth',
-  '3': 'drums',
-  '4': 'earth',
-  '5': 'granular',
-  '6': 'delay',
-  '7': 'reverb',
-  '8': 'dynamics',
-  '9': 'routing',
+  '2': 'visualizer',
+  '3': 'synth',
+  '4': 'drums',
+  '5': 'earth',
+  '6': 'granular',
+  '7': 'delay',
+  '8': 'reverb',
+  '9': 'dynamics',
+  '0': 'routing',
 };
 
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
@@ -1311,12 +1319,7 @@ const WALK_ONLY_DUAL_KEYS = new Set<string>([
   'insects2Antiphony', 'insects2ClickRate', 'insects2Motion',
 ]);
 
-const SINGLE_ONLY_SLIDER_KEYS = new Set<string>([
-  'filterCutoffMin',
-  'filterCutoffMax',
-  'pad2FilterCutoffMin',
-  'pad2FilterCutoffMax',
-]);
+const SINGLE_ONLY_SLIDER_KEYS = new Set<string>();
 
 const PAD_FILTER_CUTOFF_PAIRS = [
   { minKey: 'filterCutoffMin', maxKey: 'filterCutoffMax' },
@@ -3115,7 +3118,21 @@ const App: React.FC = () => {
   // Lead expression trigger callback
   useEffect(() => {
     audioEngine.setLeadExpressionCallback((expression) => {
-      if (uiMode !== 'advanced' || activeTab !== 'synth' || document.visibilityState !== 'visible') return;
+      if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
+      if (activeTab === 'visualizer') {
+        const expr = expression as unknown as Record<string, number>;
+        const amount = Math.max(
+          expr.vibratoDepth ?? 0,
+          expr.vibratoRate ?? 0,
+          expr.glide ?? 0,
+          expr.lead1 ?? 0,
+          expr.lead2 ?? 0,
+        );
+        emitVisualizerPulse('lead', amount * 0.5 + 0.12);
+        emitVisualizerPulse('synth', 0.08);
+        return;
+      }
+      if (activeTab !== 'synth') return;
       mergeRuntimeTriggerPositions({
         leadVibratoDepth: expression.vibratoDepth,
         leadVibratoRate: expression.vibratoRate,
@@ -3136,10 +3153,16 @@ const App: React.FC = () => {
   useEffect(() => {
     let lastLeadMorph = 0;
     audioEngine.setLeadMorphCallback((morph) => {
-      if (uiMode !== 'advanced' || activeTab !== 'synth' || document.visibilityState !== 'visible') return;
+      if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
       const now = performance.now();
       if (now - lastLeadMorph < 66) return;
       lastLeadMorph = now;
+      if (activeTab === 'visualizer') {
+        emitVisualizerPulse('lead', Math.max(morph.lead1, morph.lead2, 0) * 0.55 + 0.12, now);
+        emitVisualizerPulse('synth', 0.1, now);
+        return;
+      }
+      if (activeTab !== 'synth') return;
       const triggerUpdates: Record<string, number> = {};
       if (morph.lead1 >= 0) triggerUpdates.lead1Morph = morph.lead1;
       if (morph.lead2 >= 0) triggerUpdates.lead2Morph = morph.lead2;
@@ -3158,10 +3181,16 @@ const App: React.FC = () => {
   useEffect(() => {
     let lastPad1Morph = 0;
     audioEngine.setPadMorphTriggerCallback((morphPosition: number) => {
-      if (uiMode !== 'advanced' || activeTab !== 'synth' || document.visibilityState !== 'visible') return;
+      if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
       const now = performance.now();
       if (now - lastPad1Morph < 66) return;
       lastPad1Morph = now;
+      if (activeTab === 'visualizer') {
+        emitVisualizerPulse('pad', morphPosition * 0.46 + 0.12, now);
+        emitVisualizerPulse('synth', 0.08, now);
+        return;
+      }
+      if (activeTab !== 'synth') return;
       mergeRuntimeTriggerPositions({ padMorph: morphPosition });
       mergeRuntimeValues({ padMorph: morphPosition });
     });
@@ -3175,10 +3204,16 @@ const App: React.FC = () => {
   useEffect(() => {
     let lastPad2Morph = 0;
     audioEngine.setPad2MorphTriggerCallback((morphPosition: number) => {
-      if (uiMode !== 'advanced' || activeTab !== 'synth' || document.visibilityState !== 'visible') return;
+      if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
       const now = performance.now();
       if (now - lastPad2Morph < 66) return;
       lastPad2Morph = now;
+      if (activeTab === 'visualizer') {
+        emitVisualizerPulse('pad', morphPosition * 0.42 + 0.1, now);
+        emitVisualizerPulse('synth', 0.07, now);
+        return;
+      }
+      if (activeTab !== 'synth') return;
       mergeRuntimeTriggerPositions({ pad2Morph: morphPosition });
       mergeRuntimeValues({ pad2Morph: morphPosition });
     });
@@ -3198,10 +3233,16 @@ const App: React.FC = () => {
       pianoDistance: 0,
     } as Record<typeof distanceKeys[number], number>;
     const commitDistance = (key: typeof distanceKeys[number], value: number) => {
-      if (uiMode !== 'advanced' || activeTab !== 'synth' || document.visibilityState !== 'visible') return;
+      if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
       const now = performance.now();
       if (now - lastDistanceUpdate[key] < 66) return;
       lastDistanceUpdate[key] = now;
+      if (activeTab === 'visualizer') {
+        emitVisualizerPulse(key.startsWith('lead') || key === 'pianoDistance' ? 'lead' : 'pad', value * 0.36 + 0.08, now);
+        emitVisualizerPulse('synth', 0.06, now);
+        return;
+      }
+      if (activeTab !== 'synth') return;
       mergeRuntimeTriggerPositions({ [key]: value });
       mergeRuntimeValues({ [key]: value });
     };
@@ -3231,7 +3272,14 @@ const App: React.FC = () => {
   // Lead delay trigger callback
   useEffect(() => {
     audioEngine.setLeadDelayCallback((delay) => {
-      if (uiMode !== 'advanced' || (activeTab !== 'synth' && activeTab !== 'delay') || document.visibilityState !== 'visible') return;
+      if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
+      if (activeTab === 'visualizer') {
+        const delayValues = delay as unknown as Record<string, number>;
+        emitVisualizerPulse('delay', Math.max(delayValues.feedback ?? 0, delayValues.mix ?? 0) * 0.44 + 0.1);
+        emitVisualizerPulse('lead', 0.05);
+        return;
+      }
+      if (activeTab !== 'synth' && activeTab !== 'delay') return;
       mergeRuntimeTriggerPositions({
         delayATime: delay.time,
         delayAFeedback: delay.feedback,
@@ -3261,9 +3309,15 @@ const App: React.FC = () => {
         membrane: 'drumMembraneMorph',
       };
       audioEngine.setDrumMorphTriggerCallback((voice, morphPosition) => {
-        if (uiMode !== 'advanced' || activeTab !== 'drums' || document.visibilityState !== 'visible') return;
+        if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
         const now = performance.now();
         const morphKey = voiceToMorphKey[voice];
+        if (activeTab === 'visualizer') {
+          emitVisualizerPulse('drums', morphPosition * 0.54 + 0.12, now);
+          emitVisualizerPulse('dynamics', 0.06, now);
+          return;
+        }
+        if (activeTab !== 'drums') return;
         // Throttle indicator update to ~15Hz per voice
         if (now - (lastMorphIndicator[voice] || 0) >= 66) {
           lastMorphIndicator[voice] = now;
@@ -3291,10 +3345,15 @@ const App: React.FC = () => {
     if (audioEngine.setDrumParamSHTriggerCallback) {
       const lastSH: Record<string, number> = {};
       audioEngine.setDrumParamSHTriggerCallback((_voice, key, position) => {
-        if (uiMode !== 'advanced' || activeTab !== 'drums' || document.visibilityState !== 'visible') return;
+        if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
         const now = performance.now();
         if (now - (lastSH[key] || 0) < 80) return; // max ~12Hz per key
         lastSH[key] = now;
+        if (activeTab === 'visualizer') {
+          emitVisualizerPulse('drums', position * 0.42 + 0.08, now);
+          return;
+        }
+        if (activeTab !== 'drums') return;
         mergeRuntimeTriggerPositions({ [key]: position });
       });
       return () => {
@@ -3307,6 +3366,27 @@ const App: React.FC = () => {
   useEffect(() => {
     audioEngine.setGranularSHTriggerCallback((positions: Record<string, number>) => {
       if (uiMode !== 'advanced' || (activeTab === 'synth' || activeTab === 'drums') || document.visibilityState !== 'visible') return;
+      if (activeTab === 'visualizer') {
+        const now = performance.now();
+        let granularAmount = 0;
+        let earthAmount = 0;
+        let delayAmount = 0;
+        let reverbAmount = 0;
+        for (const [key, value] of Object.entries(positions)) {
+          const amount = Math.max(0, value);
+          if (key.includes('granular') || key.includes('grain')) granularAmount = Math.max(granularAmount, amount);
+          if (key.includes('ocean') || key.includes('water') || key.includes('waves') || key.includes('nature') || key.includes('insects')) earthAmount = Math.max(earthAmount, amount);
+          if (key.includes('delay')) delayAmount = Math.max(delayAmount, amount);
+          if (key.includes('reverb')) reverbAmount = Math.max(reverbAmount, amount);
+        }
+        emitVisualizerPulses({
+          granular: granularAmount * 0.46 + 0.08,
+          earth: earthAmount * 0.4,
+          delay: delayAmount * 0.34,
+          reverb: reverbAmount * 0.3,
+        }, now);
+        return;
+      }
       setRuntimeFlashKeys(Object.keys(positions));
       mergeRuntimeTriggerPositions(positions);
       if (shFlashTimerRef.current) window.clearTimeout(shFlashTimerRef.current);
@@ -3321,10 +3401,52 @@ const App: React.FC = () => {
     };
   }, [activeTab, uiMode]);
 
+  // Visualizer tab display callbacks keep the renderer reactive without pushing
+  // high-frequency state through React.
+  useEffect(() => {
+    if (uiMode !== 'advanced' || activeTab !== 'visualizer') return;
+
+    audioEngine.setDrumTriggerCallback((voice: unknown, velocity: number) => {
+      const amount = Math.max(0.08, Math.min(1, velocity || 0.4));
+      emitVisualizerPulse('drums', amount);
+      emitVisualizerPulse('dynamics', amount * 0.12);
+      if (String(voice).toLowerCase().includes('kick')) {
+        emitVisualizerPulse('global', amount * 0.18);
+      }
+    });
+    audioEngine.setDrumStepPositionCallback((steps: number[], hitCounts: number[]) => {
+      setVisualizerSequencerState('drum', steps, hitCounts);
+    });
+    audioEngine.setSynthStepPositionCallback((steps: number[], hitCounts: number[]) => {
+      setVisualizerSequencerState('synth', steps, hitCounts);
+    });
+    audioEngine.setDrumEuclidEvolveTriggerCallback((laneIndex: number) => {
+      emitVisualizerPulse('drums', 0.22 + Math.min(0.24, laneIndex * 0.04));
+      emitVisualizerPulse('sequencer', 0.18);
+    });
+    audioEngine.setSynthEuclidEvolveTriggerCallback((laneIndex: number) => {
+      emitVisualizerPulse('synth', 0.2 + Math.min(0.24, laneIndex * 0.04));
+      emitVisualizerPulse('sequencer', 0.18);
+    });
+
+    return () => {
+      audioEngine.setDrumTriggerCallback(() => {});
+      audioEngine.setDrumStepPositionCallback(() => {});
+      audioEngine.setSynthStepPositionCallback(() => {});
+      audioEngine.setDrumEuclidEvolveTriggerCallback(() => {});
+      audioEngine.setSynthEuclidEvolveTriggerCallback(() => {});
+    };
+  }, [activeTab, uiMode]);
+
   // Drum evolve overrides callback — push evolved values to UI for visual sync
   useEffect(() => {
     audioEngine.setDrumEvolveOverridesChangedCallback((laneIndex, overrides) => {
       drumEvolvedVersionRef.current += 1;
+      if (activeTab === 'visualizer' && document.visibilityState === 'visible') {
+        emitVisualizerPulse('drums', 0.2 + Math.min(0.24, laneIndex * 0.04));
+        emitVisualizerPulse('sequencer', 0.16);
+        return;
+      }
       if (activeTab !== 'drums' || document.visibilityState !== 'visible') return;
       setDrumEvolvedOverrides({ laneIndex, version: drumEvolvedVersionRef.current, data: overrides as Partial<StepOverrides> });
     });
@@ -3375,6 +3497,11 @@ const App: React.FC = () => {
           }
         }
         synthStepOverridesRef.current = next;
+      }
+      if (activeTab === 'visualizer' && document.visibilityState === 'visible') {
+        emitVisualizerPulse('synth', 0.2 + Math.min(0.24, laneIndex * 0.04));
+        emitVisualizerPulse('sequencer', 0.16);
+        return;
       }
       if (activeTab !== 'synth' || document.visibilityState !== 'visible') return;
       setSynthEvolvedOverrides({ laneIndex, version: synthEvolvedVersionRef.current, data });
@@ -7286,7 +7413,7 @@ const App: React.FC = () => {
 
   // Render advanced UI
   return (
-    <SliderHelpProvider activePage={activeTab}>
+    <SliderHelpProvider activePage={activeTab === 'visualizer' ? 'global' : activeTab}>
       <div className="app-container" style={{ ...activePageAccentStyle, ...styles.container, ...m?.container }}>
         <CpuOverlay />
         {/* Controls - centered */}
@@ -7473,6 +7600,18 @@ const App: React.FC = () => {
           <span>Global</span>
         </HelpButton>
         <HelpButton
+          helpKey="tabGlobal"
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'visualizer' ? activeTabStyle : {}),
+            ...m?.tab,
+          }}
+          onClick={() => setActiveTab('visualizer')}
+        >
+          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.visualizer}</span>
+          <span>Visualizer</span>
+        </HelpButton>
+        <HelpButton
           helpKey="tabSynth"
           style={{
             ...styles.tab,
@@ -7627,6 +7766,17 @@ const App: React.FC = () => {
             sliderModes={sliderModes}
             dualSliderRanges={dualSliderRanges as Record<string, { min: number; max: number }>}
             getStatePresetSaveMetadata={getStatePresetSaveMetadata}
+          />
+        )}
+
+        {/* === VISUALIZER TAB === */}
+        {activeTab === 'visualizer' && (
+          <ReactiveVisualizerPage
+            state={state}
+            sliderModes={sliderModes}
+            dualRanges={dualSliderRanges as Record<string, { min: number; max: number }>}
+            engineState={engineState}
+            isPlaying={playbackIsRunning || isJourneyPlaying}
           />
         )}
 

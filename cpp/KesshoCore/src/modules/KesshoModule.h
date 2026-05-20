@@ -48,6 +48,15 @@ public:
     return nullptr;
   }
   virtual void commitParams() {}
+  virtual int setIndexedParam(int param_index, float value) {
+    float* module_params = params();
+    if (module_params == nullptr || param_index < 0 || param_index >= paramCount()) {
+      return 0;
+    }
+    module_params[param_index] = value;
+    commitParams();
+    return 1;
+  }
   virtual int noteOn(float frequency, float velocity, float hold_seconds, int lead_index) {
     (void)frequency;
     (void)velocity;

@@ -1,10 +1,13 @@
 #include "KesshoProductEngineInternal.h"
 
-  void KesshoProductEngine::renderPadModule(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
+void KesshoProductEngine::renderPadModule(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (!pad_module || frames == 0u) {
     return;
   }
   advancePadVoiceReleases(frames);
+  if (pad_module->activeVoiceCount() <= 0) {
+    return;
+  }
   float* tap_l[kModuleTapCount]{};
   float* tap_r[kModuleTapCount]{};
   for (uint32_t bus = 0; bus < kModuleTapCount; ++bus) {
@@ -48,7 +51,7 @@
       frames);
 }
 
-  void KesshoProductEngine::renderSingleModuleSource(
+void KesshoProductEngine::renderSingleModuleSource(
       kessho::core::IKesshoModule* module,
       uint32_t source_id,
       float* out_l,
@@ -56,6 +59,9 @@
       uint32_t start,
       uint32_t frames) {
   if (module == nullptr || frames == 0u) {
+    return;
+  }
+  if (module->activeVoiceCount() <= 0) {
     return;
   }
   std::fill(module_l, module_l + frames, 0.0f);
@@ -69,7 +75,7 @@
   mixSourceBuffer(source_id, module_l, module_r, out_l, out_r, start, frames);
 }
 
-  void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
+void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (!drum_module || frames == 0u) {
     return;
   }
@@ -130,7 +136,7 @@
   }
 }
 
-  void KesshoProductEngine::configureSoundscapesModuleFromSource() {
+void KesshoProductEngine::configureSoundscapesModuleFromSource() {
   if (!soundscapes_module) {
     return;
   }
@@ -170,7 +176,7 @@
   soundscapes_module_params_configured = true;
 }
 
-  void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
+void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (!soundscapes_module || frames == 0u) {
     return;
   }
@@ -259,7 +265,7 @@
   }
 }
 
-  void KesshoProductEngine::renderProductModules(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
+void KesshoProductEngine::renderProductModules(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (!modules_ready || frames == 0u) {
     return;
   }
