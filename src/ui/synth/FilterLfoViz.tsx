@@ -224,17 +224,17 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     const postLpfCutoff = typeof props.postLpfHz === 'number' && Number.isFinite(props.postLpfHz)
       ? Math.max(20, Math.min(20000, props.postLpfHz))
       : null;
-    const effectiveLowpassCutoff = postLpfCutoff === null
-      ? liveCutoff
-      : props.filterAType === 'lowpass'
-        ? Math.min(liveCutoff, postLpfCutoff)
-        : postLpfCutoff;
     const postLpfDominant = postLpfCutoff !== null && postLpfCutoff < liveCutoff - 1;
 
     // Store layout for hit testing
     layoutRef.current = { filterH, envY, envH, w, h };
 
     // ── Filter A response curve ──
+    const gainToY = (gain: number) => {
+      const dB = 20 * Math.log10(Math.max(0.001, Math.min(10, gain)));
+      return filterH * 0.5 - (dB / 40) * filterH * 0.4;
+    };
+
     const drawFilterCurve = (
       type: string, cutoff: number, res: number, q: number, slope: number,
       color: string, alpha: number, fillAlpha: number, hard: number
@@ -246,8 +246,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       for (let px = 0; px < w; px++) {
         const freq = 20 * Math.pow(20000 / 20, px / w);
         const g = filterGain(freq, cutoff, res, q, type, hard, slope);
-        const dB = 20 * Math.log10(Math.max(0.001, Math.min(10, g)));
-        const y = filterH * 0.5 - (dB / 40) * filterH * 0.4;
+        const y = gainToY(g);
         px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
       }
       ctx.stroke();
@@ -269,6 +268,35 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     if (postLpfCutoff !== null && postLpfCutoff < 19950) {
       drawFilterCurve('lowpass', postLpfCutoff, 0, 0.7, 12, '#38bdf8', 0.55, 0.035, 0);
     }
+
+    const drawCombinedResponseCurve = () => {
+      const postActive = postLpfCutoff !== null && postLpfCutoff < 19950;
+      const filterBActive = props.filterBEnabled && props.filterRouting !== 'aOnly';
+      if (!postActive && !filterBActive) return;
+
+      ctx.beginPath();
+      ctx.strokeStyle = postLpfDominant ? 'rgba(186,230,253,0.9)' : 'rgba(226,232,240,0.62)';
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 1.1;
+      for (let px = 0; px < w; px++) {
+        const freq = 20 * Math.pow(20000 / 20, px / w);
+        const aGain = props.filterRouting === 'bOnly' && props.filterBEnabled
+          ? 1
+          : filterGain(freq, liveCutoff, props.filterARes, props.filterAQ, props.filterAType, props.hardness, props.filterASlope ?? 12);
+        const bGain = filterBActive
+          ? filterGain(freq, props.filterBCutoff, props.filterBRes, 1, props.filterBType, 0, 12)
+          : 1;
+        const postGain = postLpfCutoff !== null
+          ? filterGain(freq, postLpfCutoff, 0, 0.7, 'lowpass', 0, 12)
+          : 1;
+        const y = gainToY(aGain * bGain * postGain);
+        px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    };
+
+    drawCombinedResponseCurve();
 
     // Live cutoff marker
     const cutoffX = freqToX(liveCutoff);
@@ -372,9 +400,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       ctx.fillStyle = postLpfDominant ? 'rgba(56,189,248,0.86)' : 'rgba(0,255,150,0.8)';
       ctx.textAlign = 'center';
       ctx.fillText(
-        postLpfDominant
-          ? `${Math.round(effectiveLowpassCutoff)} Hz audible`
-          : `${Math.round(liveCutoff)} Hz`,
+        `${Math.round(liveCutoff)} Hz`,
         w / 2,
         11,
       );
@@ -562,7 +588,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
         if (postLpfDominant) {
           ctx.font = '7px monospace';
           ctx.fillStyle = 'rgba(56,189,248,0.7)';
-          ctx.fillText(`${Math.round(effectiveLowpassCutoff)} Hz audible`, w / 2, Math.min(botY - 2, posY + 11));
+          ctx.fillText(`post ${Math.round(postLpfCutoff ?? 0)} Hz`, w / 2, Math.min(botY - 2, posY + 11));
         }
         ctx.textAlign = 'start';
       } else {

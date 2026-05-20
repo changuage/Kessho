@@ -530,11 +530,16 @@ for (const token of [
   '1 - Math.exp(-elapsedMs / 80)',
   'postLpfHz?: number',
   'postLpfDominant',
-  'Hz audible',
+  'drawCombinedResponseCurve',
+  "filterGain(freq, postLpfCutoff, 0, 0.7, 'lowpass', 0, 12)",
   "const hasLiveFilterMotion = props.isRunning && props.lfoDest !== 'none';",
 ]) {
   assert(filterLfoViz.includes(token), `FilterLfoViz must smooth live Product Core telemetry between polling ticks: missing ${token}`);
 }
+assert(
+  !filterLfoViz.includes('Hz audible'),
+  'FilterLfoViz must not present the pad source post-LPF as a hard audible ceiling',
+);
 
 for (const token of [
   'applyPadDistanceToState',

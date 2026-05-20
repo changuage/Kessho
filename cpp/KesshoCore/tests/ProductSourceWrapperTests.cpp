@@ -131,6 +131,73 @@ float renderDeltaRmsBlocks(KesshoProductEngine* engine, uint32_t blocks = 64) {
   return std::sqrt(sum / static_cast<double>(std::max<uint32_t>(1u, count)));
 }
 
+struct TestBiquad {
+  float b0 = 1.0f;
+  float b1 = 0.0f;
+  float b2 = 0.0f;
+  float a1 = 0.0f;
+  float a2 = 0.0f;
+  float x1 = 0.0f;
+  float x2 = 0.0f;
+  float y1 = 0.0f;
+  float y2 = 0.0f;
+};
+
+TestBiquad makeTestHighpass(float cutoff_hz, float sample_rate) {
+  TestBiquad filter{};
+  constexpr double kTwoPi = 6.283185307179586476925286766559;
+  constexpr float kWebAudioQ07 = 1.0839269140212036f;
+  const float cutoff = std::max(20.0f, std::min(cutoff_hz, sample_rate * 0.499f));
+  const float omega = static_cast<float>((kTwoPi * static_cast<double>(cutoff)) / sample_rate);
+  const float sin_omega = std::sin(omega);
+  const float cos_omega = std::cos(omega);
+  const float alpha = sin_omega / (2.0f * kWebAudioQ07);
+  const float a0 = 1.0f + alpha;
+  filter.b0 = ((1.0f + cos_omega) * 0.5f) / a0;
+  filter.b1 = -(1.0f + cos_omega) / a0;
+  filter.b2 = ((1.0f + cos_omega) * 0.5f) / a0;
+  filter.a1 = (-2.0f * cos_omega) / a0;
+  filter.a2 = (1.0f - alpha) / a0;
+  return filter;
+}
+
+float processTestBiquad(TestBiquad& filter, float input) {
+  const float y =
+      filter.b0 * input +
+      filter.b1 * filter.x1 +
+      filter.b2 * filter.x2 -
+      filter.a1 * filter.y1 -
+      filter.a2 * filter.y2;
+  filter.x2 = filter.x1;
+  filter.x1 = input;
+  filter.y2 = filter.y1;
+  filter.y1 = std::isfinite(y) ? y : 0.0f;
+  return filter.y1;
+}
+
+float renderHighpassRmsBlocks(KesshoProductEngine* engine, float highpass_hz, uint32_t blocks = 64) {
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  TestBiquad highpass_l = makeTestHighpass(highpass_hz, 48000.0f);
+  TestBiquad highpass_r = makeTestHighpass(highpass_hz, 48000.0f);
+  double sum = 0.0;
+  uint32_t count = 0;
+  for (uint32_t block = 0; block < blocks; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    for (uint32_t i = 0; i < 128; ++i) {
+      require(std::isfinite(left[i]) && std::isfinite(right[i]), "non-finite output sample");
+      const float high_l = processTestBiquad(highpass_l, left[i]);
+      const float high_r = processTestBiquad(highpass_r, right[i]);
+      sum += static_cast<double>(high_l) * static_cast<double>(high_l);
+      sum += static_cast<double>(high_r) * static_cast<double>(high_r);
+      count += 2u;
+    }
+  }
+  return std::sqrt(sum / static_cast<double>(std::max<uint32_t>(1u, count)));
+}
+
 const kessho::product::generated::KesshoProductGeneratedSourcePreset* generatedPreset(uint32_t preset_id) {
   for (const auto& preset : kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESETS) {
     if (preset.id == preset_id) {
@@ -778,6 +845,90 @@ float renderDeltaRmsWithPadPostLpf(uint32_t source_id, float snapshot_cutoff_hz,
   return result;
 }
 
+float renderDeltaRmsWithOpenPadFilterAndPostLpf(uint32_t source_id, float internal_filter_hz, float post_lpf_hz) {
+  const uint32_t preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT;
+  const auto* preset = generatedPreset(preset_id);
+  require(preset != nullptr, "Saturated Drift preset missing for pad post-LPF dominance test");
+
+  constexpr uint32_t kPadParamFilterCutoffMin = 21u;
+  constexpr uint32_t kPadParamFilterCutoffMax = 22u;
+  constexpr uint32_t kPadParamLfo1Depth = 38u;
+  constexpr uint32_t kPadParamLfo2Depth = 42u;
+  constexpr uint32_t kPadParamModEnvEnabled = 45u;
+  constexpr uint32_t kPadParamLevel = 52u;
+
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "pad open-filter post-LPF engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
+  source.level = 1.0f;
+  source.dry_gain = 1.0f;
+  source.reverb_send = 0.0f;
+  source.delay_a_send = 0.0f;
+  source.delay_b_send = 0.0f;
+  source.granular_send = 0.0f;
+  source.diffuse_send = 0.0f;
+  source.post_lpf_hz = post_lpf_hz;
+  source.stereo_width = 1.0f;
+  kessho::product::tests::applyGeneratedSourcePreset(snapshot, source_id, preset_id);
+  source.exact_pad_params[kPadParamFilterCutoffMin] = internal_filter_hz;
+  source.exact_pad_params[kPadParamFilterCutoffMax] = internal_filter_hz;
+  source.exact_pad_params[kPadParamLfo1Depth] = 0.0f;
+  source.exact_pad_params[kPadParamLfo2Depth] = 0.0f;
+  source.exact_pad_params[kPadParamModEnvEnabled] = 0.0f;
+  source.exact_pad_params[kPadParamLevel] = 1.0f;
+
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "pad open-filter post-LPF snapshot load failed");
+  triggerManual(engine, source_id, source_id == KESSHO_PRODUCT_SOURCE_PAD2 ? 67.0f : 60.0f);
+  const float result = renderDeltaRmsBlocks(engine, 96u);
+  kessho_product_destroy(engine);
+  return result;
+}
+
+float renderHighBandRmsWithOpenPadFilterAndPostLpf(uint32_t source_id, float internal_filter_hz, float post_lpf_hz) {
+  const uint32_t preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT;
+  const auto* preset = generatedPreset(preset_id);
+  require(preset != nullptr, "Saturated Drift preset missing for pad post-LPF high-band test");
+
+  constexpr uint32_t kPadParamFilterCutoffMin = 21u;
+  constexpr uint32_t kPadParamFilterCutoffMax = 22u;
+  constexpr uint32_t kPadParamLfo1Depth = 38u;
+  constexpr uint32_t kPadParamLfo2Depth = 42u;
+  constexpr uint32_t kPadParamModEnvEnabled = 45u;
+  constexpr uint32_t kPadParamLevel = 52u;
+
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "pad high-band post-LPF engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
+  source.level = 1.0f;
+  source.dry_gain = 1.0f;
+  source.reverb_send = 0.0f;
+  source.delay_a_send = 0.0f;
+  source.delay_b_send = 0.0f;
+  source.granular_send = 0.0f;
+  source.diffuse_send = 0.0f;
+  source.post_lpf_hz = post_lpf_hz;
+  source.stereo_width = 1.0f;
+  kessho::product::tests::applyGeneratedSourcePreset(snapshot, source_id, preset_id);
+  source.exact_pad_params[kPadParamFilterCutoffMin] = internal_filter_hz;
+  source.exact_pad_params[kPadParamFilterCutoffMax] = internal_filter_hz;
+  source.exact_pad_params[kPadParamLfo1Depth] = 0.0f;
+  source.exact_pad_params[kPadParamLfo2Depth] = 0.0f;
+  source.exact_pad_params[kPadParamModEnvEnabled] = 0.0f;
+  source.exact_pad_params[kPadParamLevel] = 1.0f;
+
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "pad high-band post-LPF snapshot load failed");
+  triggerManual(engine, source_id, source_id == KESSHO_PRODUCT_SOURCE_PAD2 ? 67.0f : 60.0f);
+  const float result = renderHighpassRmsBlocks(engine, 3000.0f, 96u);
+  kessho_product_destroy(engine);
+  return result;
+}
+
 float renderDeltaRmsWithLeadPostLpfTracking(float tracking, bool send_param_event) {
   const auto* rhodes = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES);
   require(rhodes != nullptr, "LeadSoftRhodes preset missing for source post-LPF tracking test");
@@ -818,6 +969,18 @@ void requireSourcePostChainAffectsRender() {
     const float high_pad_event = renderDeltaRmsWithPadPostLpf(source_id, 18000.0f, true);
     const float low_pad_event = renderDeltaRmsWithPadPostLpf(source_id, 250.0f, true);
     require(high_pad_event > low_pad_event * 1.5f, "source post-LPF param event did not affect pad render");
+
+    const float open_filter_high_post = renderDeltaRmsWithOpenPadFilterAndPostLpf(source_id, 8000.0f, 8000.0f);
+    const float open_filter_low_post = renderDeltaRmsWithOpenPadFilterAndPostLpf(source_id, 8000.0f, 600.0f);
+    require(
+        open_filter_high_post > open_filter_low_post * 1.5f,
+        "pad post-LPF did not remain downstream when internal filter was opened");
+
+    const float open_filter_high_band_high_post = renderHighBandRmsWithOpenPadFilterAndPostLpf(source_id, 8000.0f, 8000.0f);
+    const float open_filter_high_band_low_post = renderHighBandRmsWithOpenPadFilterAndPostLpf(source_id, 8000.0f, 600.0f);
+    require(
+        open_filter_high_band_high_post > open_filter_high_band_low_post * 3.0f,
+        "pad post-LPF did not attenuate high-band energy when internal filter was opened");
   }
 
   const float high_snapshot = renderRmsWithLeadPostLpf(18000.0f, false);
