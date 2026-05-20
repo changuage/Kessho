@@ -52,12 +52,29 @@
   }
 
   SourceState& source = sources[event.target_id - 1u];
+  const auto sync_drum_param = [this, &source, &event](uint32_t param_index, float value) {
+    if (event.target_id != KESSHO_PRODUCT_SOURCE_DRUM || param_index >= kProductDrumRuntimeParamCount) {
+      return;
+    }
+    if (source.exact_drum_param_count != kProductDrumRuntimeParamCount) {
+      const auto patch = sourcePresetPatch(findSourcePreset(defaultSourcePresetId(KESSHO_PRODUCT_SOURCE_DRUM)));
+      source.exact_drum_param_count = kProductDrumRuntimeParamCount;
+      for (uint32_t index = 0u; index < kProductDrumRuntimeParamCount; ++index) {
+        source.exact_drum_params[index] = index < patch.exact_drum_param_count ? patch.exact_drum_params[index] : 0.0f;
+      }
+    }
+    source.exact_drum_params[param_index] = value;
+    if (drum_module) {
+      drum_module->setIndexedParam(static_cast<int>(param_index), value);
+    }
+  };
   switch (event.param_id) {
     case KESSHO_PRODUCT_PARAM_SOURCE_ENABLED_ID:
       source.enabled = event.value >= 0.5f;
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID:
       source.level = clampFloat(event.value, 0.0f, 1.5f);
+      sync_drum_param(kProductDrumMasterLevelParam, source.level);
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID:
       source.morph = clampFloat(event.value, 0.0f, 1.0f);
@@ -73,6 +90,7 @@
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_REVERB_SEND_ID:
       source.reverb_send = clampFloat(event.value, 0.0f, 2.0f);
+      sync_drum_param(kProductDrumReverbSendParam, clampFloat(source.reverb_send, 0.0f, 1.0f));
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID:
       source.delay_a_send = clampFloat(event.value, 0.0f, 2.0f);

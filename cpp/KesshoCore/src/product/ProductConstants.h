@@ -28,6 +28,8 @@ constexpr uint32_t kProductPad2RuntimeParamIdBase = 2100u;
 constexpr uint32_t kProductPadRuntimeParamCount = kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
 constexpr uint32_t kProductDrumRuntimeParamIdBase = 3000u;
 constexpr uint32_t kProductDrumRuntimeParamCount = kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
+constexpr uint32_t kProductDrumMasterLevelParam = 122u;
+constexpr uint32_t kProductDrumReverbSendParam = 123u;
 constexpr uint32_t kMaxSoundscapeAssetRefs = 16;
 
 inline bool productDrumRuntimeParamIndex(uint32_t param_id, uint32_t& param_index) {

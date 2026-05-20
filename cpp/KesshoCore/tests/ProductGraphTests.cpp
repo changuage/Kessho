@@ -187,6 +187,11 @@ void requireSoundscapeLayerRouteGraphCoverage() {
   source.exact_pad_params[kSoundscapeLayerWater * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteDelayA] = 0.30f;
   source.exact_pad_params[kSoundscapeLayerWater * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteDelayB] = 0.35f;
   source.exact_pad_params[kSoundscapeLayerWater * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteGranular] = 0.40f;
+  source.asset_ref_count = 2u;
+  source.asset_refs[0] = kSoundscapeAssetOcean;
+  source.asset_ref_levels[0] = 0.2f;
+  source.asset_refs[1] = kSoundscapeAssetWater;
+  source.asset_ref_levels[1] = 0.4f;
 
   float ocean_samples[16];
   float water_samples[16];
@@ -231,8 +236,14 @@ void requireSoundscapeLayerRouteGraphCoverage() {
       std::fabs(ocean_reverb * 0.10f - ocean_delay_a * 0.25f) < 0.00001f,
       "ocean layer reverb send did not use layer route");
   require(
+      std::fabs(ocean_reverb - ocean_dry * 0.25f) < 0.00001f,
+      "ocean layer reverb send bypassed asset level");
+  require(
       std::fabs(water_reverb * 0.30f - water_delay_a * 0.75f) < 0.00001f,
       "water layer reverb send did not use layer route");
+  require(
+      std::fabs(water_reverb - water_dry * 0.75f) < 0.00001f,
+      "water layer reverb send bypassed asset level");
   require(
       std::fabs(water_granular * 0.30f - water_delay_a * 0.40f) < 0.00001f,
       "water layer Delay A send did not use layer route");

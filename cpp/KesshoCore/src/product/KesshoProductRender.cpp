@@ -168,10 +168,16 @@
           assets[voice.asset_slot].active;
       float send_left = value_l * source.dry_gain * pan_l;
       float send_right = value_r * source.dry_gain * pan_r;
-      float dry_left = piano_voice ? send_left * source.level * kPianoSampleParityTrim : send_left;
-      float dry_right = piano_voice ? send_right * source.level * kPianoSampleParityTrim : send_right;
+      float dry_left = send_left;
+      float dry_right = send_right;
       if (!soundscape_sample) {
         processVoicePostChain(voice, dry_left, dry_right);
+        if (piano_voice) {
+          send_left = dry_left;
+          send_right = dry_right;
+          dry_left *= source.level * kPianoSampleParityTrim;
+          dry_right *= source.level * kPianoSampleParityTrim;
+        }
       }
       uint32_t soundscape_layer = kSoundscapeLayerCount;
       float soundscape_asset_level = 1.0f;
@@ -193,13 +199,8 @@
         graph_dry_right = dry_right * soundscape_asset_level;
         output_dry_left = graph_dry_left * soundscape_earth_level;
         output_dry_right = graph_dry_right * soundscape_earth_level;
-        if (soundscape_layer == kSoundscapeLayerOcean) {
-          layer_send_left = send_left;
-          layer_send_right = send_right;
-        } else {
-          layer_send_left = send_left * soundscape_asset_level;
-          layer_send_right = send_right * soundscape_asset_level;
-        }
+        layer_send_left = send_left * soundscape_asset_level;
+        layer_send_right = send_right * soundscape_asset_level;
       }
       const float left = output_dry_left * duck_gain;
       const float right = output_dry_right * duck_gain;

@@ -439,6 +439,8 @@ for (const token of [
   'endCompProgramRelease',
   'sidechainPad1Target',
   'CORE_PRODUCT_DRUM_RUNTIME_PARAM_ID_BASE',
+  'CORE_PRODUCT_DRUM_MASTER_LEVEL_PARAM_INDEX',
+  'CORE_PRODUCT_DRUM_REVERB_SEND_PARAM_INDEX',
   'coreProductDrumRuntimeParamId(paramIndex:',
   'resolveCoreProductDrumRuntimeRangeTargets',
   'KESSHO_PRODUCT_DRUM_PARAM_SPECS',
@@ -449,6 +451,16 @@ for (const token of [
 ]) {
   assert(events.includes(token), `core-product events are missing ${token}`);
 }
+assert(
+  events.includes('drumLevel: (key) => [') &&
+    events.includes('coreProductDrumRuntimeParamId(CORE_PRODUCT_DRUM_MASTER_LEVEL_PARAM_INDEX)'),
+  'core-product drumLevel range target must update the drum module master level param',
+);
+assert(
+  events.includes('drumReverbSend: (key) => [') &&
+    events.includes('coreProductDrumRuntimeParamId(CORE_PRODUCT_DRUM_REVERB_SEND_PARAM_INDEX)'),
+  'core-product drumReverbSend range target must update the drum module reverb send param',
+);
 assert(
   events.includes('context.randomWalkSpeed ?? context.speed ?? 1') &&
     events.includes('context.randomWalkMode ?? context.mode'),

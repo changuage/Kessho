@@ -694,6 +694,56 @@ void requireSourceParamEventsAffectRender() {
   kessho_product_destroy(engine);
 }
 
+float renderDrumPeakWithSourceLevel(float level) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "drum source level event engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum source level event snapshot load failed");
+  setSourceParam(engine, KESSHO_PRODUCT_SOURCE_DRUM, KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID, level);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
+  const float result = renderPeakBlocks(engine, 32u);
+  kessho_product_destroy(engine);
+  return result;
+}
+
+float renderDrumReverbSendPeakWithSourceParam(float send) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "drum source reverb event engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.fx.reverb_mix = 0.0f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum source reverb event snapshot load failed");
+  setSourceParam(engine, KESSHO_PRODUCT_SOURCE_DRUM, KESSHO_PRODUCT_PARAM_SOURCE_REVERB_SEND_ID, send);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  std::vector<float> tap_l(128);
+  std::vector<float> tap_r(128);
+  float result = 0.0f;
+  for (uint32_t block = 0; block < 32u; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    require(
+        kessho_product_get_graph_tap(engine, KESSHO_PRODUCT_GRAPH_TAP_DRUM_REVERB_SEND, tap_l.data(), tap_r.data(), 128) == KESSHO_PRODUCT_OK,
+        "drum source reverb graph tap read failed");
+    result = std::max(result, peakRange(tap_l, tap_r, 0, 128));
+  }
+  kessho_product_destroy(engine);
+  return result;
+}
+
+void requireDrumSourceParamsDriveModule() {
+  const float muted_level = renderDrumPeakWithSourceLevel(0.0f);
+  const float open_level = renderDrumPeakWithSourceLevel(1.0f);
+  require(muted_level < 0.000001f, "drum source level event did not mute drum module");
+  require(open_level > 0.00001f, "drum source level event did not restore drum module");
+
+  const float muted_reverb = renderDrumReverbSendPeakWithSourceParam(0.0f);
+  const float open_reverb = renderDrumReverbSendPeakWithSourceParam(1.0f);
+  require(muted_reverb < 0.000001f, "drum source reverb event did not mute drum module reverb send");
+  require(open_reverb > 0.00001f, "drum source reverb event did not restore drum module reverb send");
+}
+
 float maxGraphTapDiff(
     KesshoProductEngine* engine,
     uint32_t dry_tap_id,
@@ -782,6 +832,115 @@ void requirePadFxSendsFollowPostLpfForBothPads() {
       KESSHO_PRODUCT_GRAPH_TAP_PAD2_DRY,
       pad2_send_taps,
       "pad 2 FX send bypassed source post-LPF");
+}
+
+struct PianoPostLpfGraphProbe {
+  float dry_rms = 0.0f;
+  float reverb_send_rms = 0.0f;
+  float delay_a_send_rms = 0.0f;
+  float delay_b_send_rms = 0.0f;
+  float granular_send_rms = 0.0f;
+};
+
+void accumulateTapEnergy(
+    KesshoProductEngine* engine,
+    uint32_t tap_id,
+    double& sum,
+    uint32_t& count) {
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  require(
+      kessho_product_get_graph_tap(engine, tap_id, left.data(), right.data(), 128) == KESSHO_PRODUCT_OK,
+      "piano post-LPF graph tap read failed");
+  for (uint32_t i = 0; i < 128u; ++i) {
+    require(std::isfinite(left[i]) && std::isfinite(right[i]), "non-finite piano graph tap sample");
+    sum += static_cast<double>(left[i]) * static_cast<double>(left[i]);
+    sum += static_cast<double>(right[i]) * static_cast<double>(right[i]);
+    count += 2u;
+  }
+}
+
+PianoPostLpfGraphProbe renderPianoPostLpfGraphProbe(float post_lpf_hz) {
+  constexpr uint32_t piano_asset_id = 9013u;
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "piano post-LPF graph engine create failed");
+
+  std::vector<float> piano_sample(4096);
+  constexpr float kFourKhzRadians = 0.5235987755982988f;
+  for (uint32_t index = 0; index < piano_sample.size(); ++index) {
+    piano_sample[index] = 0.65f * std::sin(static_cast<float>(index) * kFourKhzRadians);
+  }
+  const float* piano_channels[1] = {piano_sample.data()};
+  require(
+      kessho_product_register_asset_buffer(
+          engine,
+          piano_asset_id,
+          piano_channels,
+          1u,
+          static_cast<uint32_t>(piano_sample.size()),
+          48000.0,
+          KESSHO_PRODUCT_ASSET_PIANO) == KESSHO_PRODUCT_OK,
+      "piano post-LPF graph asset registration failed");
+
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_PIANO - 1u];
+  source.enabled = 1;
+  source.asset_id = piano_asset_id;
+  source.level = 1.0f;
+  source.dry_gain = 1.0f;
+  source.reverb_send = 1.0f;
+  source.delay_a_send = 1.0f;
+  source.delay_b_send = 1.0f;
+  source.granular_send = 1.0f;
+  source.diffuse_send = 0.0f;
+  source.post_lpf_hz = post_lpf_hz;
+  source.stereo_width = 1.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "piano post-LPF graph snapshot load failed");
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_PIANO, 60.0f);
+
+  double dry_sum = 0.0;
+  double reverb_sum = 0.0;
+  double delay_a_sum = 0.0;
+  double delay_b_sum = 0.0;
+  double granular_sum = 0.0;
+  uint32_t dry_count = 0u;
+  uint32_t reverb_count = 0u;
+  uint32_t delay_a_count = 0u;
+  uint32_t delay_b_count = 0u;
+  uint32_t granular_count = 0u;
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  for (uint32_t block = 0; block < 32u; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    accumulateTapEnergy(engine, KESSHO_PRODUCT_GRAPH_TAP_PIANO_DRY, dry_sum, dry_count);
+    accumulateTapEnergy(engine, KESSHO_PRODUCT_GRAPH_TAP_PIANO_REVERB_SEND, reverb_sum, reverb_count);
+    accumulateTapEnergy(engine, KESSHO_PRODUCT_GRAPH_TAP_PIANO_DELAY_A_SEND, delay_a_sum, delay_a_count);
+    accumulateTapEnergy(engine, KESSHO_PRODUCT_GRAPH_TAP_PIANO_DELAY_B_SEND, delay_b_sum, delay_b_count);
+    accumulateTapEnergy(engine, KESSHO_PRODUCT_GRAPH_TAP_PIANO_GRANULAR_SEND, granular_sum, granular_count);
+  }
+
+  PianoPostLpfGraphProbe probe{};
+  probe.dry_rms = std::sqrt(dry_sum / static_cast<double>(std::max<uint32_t>(1u, dry_count)));
+  probe.reverb_send_rms = std::sqrt(reverb_sum / static_cast<double>(std::max<uint32_t>(1u, reverb_count)));
+  probe.delay_a_send_rms = std::sqrt(delay_a_sum / static_cast<double>(std::max<uint32_t>(1u, delay_a_count)));
+  probe.delay_b_send_rms = std::sqrt(delay_b_sum / static_cast<double>(std::max<uint32_t>(1u, delay_b_count)));
+  probe.granular_send_rms = std::sqrt(granular_sum / static_cast<double>(std::max<uint32_t>(1u, granular_count)));
+  kessho_product_destroy(engine);
+  return probe;
+}
+
+void requirePianoFxSendsFollowPostLpf() {
+  const PianoPostLpfGraphProbe high = renderPianoPostLpfGraphProbe(18000.0f);
+  const PianoPostLpfGraphProbe low = renderPianoPostLpfGraphProbe(250.0f);
+  require(high.dry_rms > low.dry_rms * 8.0f, "piano post-LPF did not affect dry graph tap");
+  require(high.reverb_send_rms > low.reverb_send_rms * 8.0f, "piano reverb send bypassed source post-LPF");
+  require(high.delay_a_send_rms > low.delay_a_send_rms * 8.0f, "piano Delay A send bypassed source post-LPF");
+  require(high.delay_b_send_rms > low.delay_b_send_rms * 8.0f, "piano Delay B send bypassed source post-LPF");
+  require(high.granular_send_rms > low.granular_send_rms * 8.0f, "piano granular send bypassed source post-LPF");
 }
 
 float renderRmsWithLeadPostLpf(float snapshot_cutoff_hz, bool send_param_event) {
@@ -1590,6 +1749,7 @@ int main() {
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_LEAD2, KESSHO_PRODUCT_STEM_LEAD2, 71.0f, "lead 2 did not render");
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_DRUM, KESSHO_PRODUCT_STEM_DRUM, 36.0f, "drum did not render");
   requireSourceParamEventsAffectRender();
+  requireDrumSourceParamsDriveModule();
   requireSourceMacrosAffectRender();
   requireSourcePresetMacrosAffectRender();
   requireBroadPadPresetFamiliesRender();
@@ -1602,6 +1762,7 @@ int main() {
   requireDrumVoicePresetIdsReconstructExactDrumPatch();
   requireSourcePostChainAffectsRender();
   requirePadFxSendsFollowPostLpfForBothPads();
+  requirePianoFxSendsFollowPostLpf();
   requireManualLeadUsesSourceHold();
   requireSourcePresetTelemetryAndEvent();
   requireSampleOffsetManualTrigger();
