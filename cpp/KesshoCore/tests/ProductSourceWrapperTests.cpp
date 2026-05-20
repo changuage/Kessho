@@ -406,6 +406,44 @@ void configurePadFilterLfoTelemetryPatch(KesshoProductSourceSnapshot& source, fl
   source.exact_pad_params[kPadParamLevel] = 1.0f;
 }
 
+void configurePadModEnvelopeTelemetryPatch(KesshoProductSourceSnapshot& source, float cutoff_min, float cutoff_max) {
+  constexpr uint32_t kPadParamFilterCutoffMin = 21u;
+  constexpr uint32_t kPadParamFilterCutoffMax = 22u;
+  constexpr uint32_t kPadParamFilterKeyTracking = 26u;
+  constexpr uint32_t kPadParamAttack = 33u;
+  constexpr uint32_t kPadParamDecay = 34u;
+  constexpr uint32_t kPadParamSustain = 35u;
+  constexpr uint32_t kPadParamRelease = 36u;
+  constexpr uint32_t kPadParamLfo1Depth = 38u;
+  constexpr uint32_t kPadParamLfo2Depth = 42u;
+  constexpr uint32_t kPadParamModEnvEnabled = 45u;
+  constexpr uint32_t kPadParamModEnvAttack = 46u;
+  constexpr uint32_t kPadParamModEnvDecay = 47u;
+  constexpr uint32_t kPadParamModEnvSustain = 48u;
+  constexpr uint32_t kPadParamModEnvRelease = 49u;
+  constexpr uint32_t kPadParamModEnvDepth = 50u;
+  constexpr uint32_t kPadParamModEnvDest = 51u;
+  constexpr uint32_t kPadParamLevel = 52u;
+  require(source.exact_pad_param_count == 53u, "Pad source mod-envelope test requires exact Pad params");
+  source.exact_pad_params[kPadParamFilterCutoffMin] = cutoff_min;
+  source.exact_pad_params[kPadParamFilterCutoffMax] = cutoff_max;
+  source.exact_pad_params[kPadParamFilterKeyTracking] = 0.0f;
+  source.exact_pad_params[kPadParamAttack] = 0.001f;
+  source.exact_pad_params[kPadParamDecay] = 0.05f;
+  source.exact_pad_params[kPadParamSustain] = 1.0f;
+  source.exact_pad_params[kPadParamRelease] = 0.5f;
+  source.exact_pad_params[kPadParamLfo1Depth] = 0.0f;
+  source.exact_pad_params[kPadParamLfo2Depth] = 0.0f;
+  source.exact_pad_params[kPadParamModEnvEnabled] = 1.0f;
+  source.exact_pad_params[kPadParamModEnvAttack] = 0.001f;
+  source.exact_pad_params[kPadParamModEnvDecay] = 0.05f;
+  source.exact_pad_params[kPadParamModEnvSustain] = 1.0f;
+  source.exact_pad_params[kPadParamModEnvRelease] = 0.25f;
+  source.exact_pad_params[kPadParamModEnvDepth] = 1.0f;
+  source.exact_pad_params[kPadParamModEnvDest] = 1.0f;
+  source.exact_pad_params[kPadParamLevel] = 1.0f;
+}
+
 void requirePadFilterLfoTelemetryTracksBothPads() {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "Pad telemetry engine create failed");
@@ -431,6 +469,34 @@ void requirePadFilterLfoTelemetryTracksBothPads() {
       "Pad 2 filter telemetry did not track Product Core cutoff");
   require(std::fabs(telemetry.pad1_lfo1_value) > 0.0001f, "Pad 1 LFO telemetry did not move");
   require(std::fabs(telemetry.pad2_lfo1_value) > 0.0001f, "Pad 2 LFO telemetry did not move");
+  kessho_product_destroy(engine);
+}
+
+void requirePadModEnvelopeTelemetryTracksBothPads() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "Pad mod-envelope telemetry engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configurePadModEnvelopeTelemetryPatch(snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u], 250.0f, 4200.0f);
+  configurePadModEnvelopeTelemetryPatch(snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD2 - 1u], 650.0f, 8600.0f);
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Pad mod-envelope snapshot load failed");
+
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_PAD1, 60.0f);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_PAD2, 67.0f);
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  for (int block = 0; block < 8; ++block) {
+    kessho_product_render(engine, left.data(), right.data(), 128);
+  }
+
+  const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+  require(
+      telemetry.pad1_filter_freq > 250.0f + (4200.0f - 250.0f) * 0.8f &&
+          telemetry.pad1_filter_freq <= 4200.0f,
+      "Pad 1 mod envelope did not drive Product Core filter cutoff");
+  require(
+      telemetry.pad2_filter_freq > 650.0f + (8600.0f - 650.0f) * 0.8f &&
+          telemetry.pad2_filter_freq <= 8600.0f,
+      "Pad 2 mod envelope did not drive Product Core filter cutoff");
   kessho_product_destroy(engine);
 }
 
@@ -1104,6 +1170,7 @@ int main() {
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_STEM_PAD1, 60.0f, "pad 1 did not render");
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_PAD2, KESSHO_PRODUCT_STEM_PAD2, 64.0f, "pad 2 did not render");
   requirePadFilterLfoTelemetryTracksBothPads();
+  requirePadModEnvelopeTelemetryTracksBothPads();
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_LEAD1, KESSHO_PRODUCT_STEM_LEAD1, 67.0f, "lead 1 did not render");
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_LEAD2, KESSHO_PRODUCT_STEM_LEAD2, 71.0f, "lead 2 did not render");
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_DRUM, KESSHO_PRODUCT_STEM_DRUM, 36.0f, "drum did not render");

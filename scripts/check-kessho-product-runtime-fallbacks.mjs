@@ -229,6 +229,82 @@ await runCheckWithReport({
       },
     });
 
+    const representativeWalkTargets = {
+      masterVolume: { controlId: 610, targetId: 0, paramId: 1 },
+      delayAFeedback: { controlId: 611, targetId: 0, paramId: 2 },
+      granularLevel: { controlId: 612, targetId: 0, paramId: 3 },
+      reverbLevel: { controlId: 613, targetId: 0, paramId: 4 },
+      spectralFreezeMix: { controlId: 614, targetId: 0, paramId: 5 },
+      dynamicsSaturationDrive: { controlId: 615, targetId: 0, paramId: 6 },
+      padExpression: { controlId: 616, targetId: 1, paramId: 7 },
+      pad2Expression: { controlId: 617, targetId: 2, paramId: 7 },
+      drumSubExpression: { controlId: 618, targetId: 1000, paramId: 7 },
+    };
+    const runtimeWalkHarness = loadCoreProductHostHarness({
+      dev: true,
+      globals: {
+        resolveCoreProductRangeTargets: (key) => {
+          const target = representativeWalkTargets[key];
+          return target ? [target] : [];
+        },
+      },
+    });
+    const runtimeWalkPositions = [];
+    runtimeWalkHarness.host.setRuntimeWalkPositionsCallback((positions) => {
+      runtimeWalkPositions.push(positions);
+    });
+    await runtimeWalkHarness.host.start({
+      randomWalkSpeed: 2.5,
+      randomWalkMode: 'globalWalk',
+      masterVolume: 0.5,
+      delayAFeedback: 0.3,
+      granularLevel: 0.4,
+      reverbLevel: 0.45,
+      spectralFreezeMix: 0.5,
+      dynamicsSaturationDrive: 0.55,
+      padExpression: 0.6,
+      pad2Expression: 0.65,
+      drumSubExpression: 0.7,
+    });
+    const representativeRanges = Object.fromEntries(
+      Object.keys(representativeWalkTargets).map((key, index) => [key, { min: 0.1 + index * 0.01, max: 0.9 - index * 0.01 }]),
+    );
+    runtimeWalkHarness.host.setRuntimeWalkRanges(representativeRanges);
+    const representativeWalkEvents = runtimeWalkHarness.runtime.events.filter((entry) => entry.type === 'modulation-range');
+    assert(
+      representativeWalkEvents.length === Object.keys(representativeWalkTargets).length,
+      'representative runtime-walk ranges must post one event per source/FX key',
+    );
+    assert(
+      representativeWalkEvents.every((entry) => entry.mode === 2 && entry.valueContext.speed === 2.5 && entry.valueContext.mode === 'globalWalk'),
+      'representative runtime-walk events must preserve speed/mode context',
+    );
+    runtimeWalkHarness.runtime.telemetryCallback({
+      runtimeWalkValues: Object.fromEntries(
+        Object.entries(representativeWalkTargets).map(([key, target]) => {
+          const range = representativeRanges[key];
+          return [target.controlId, (range.min + range.max) * 0.5];
+        }),
+      ),
+    });
+    const latestRuntimeWalkPositions = runtimeWalkPositions.at(-1);
+    assert(latestRuntimeWalkPositions, 'runtime-walk telemetry must invoke the host display callback');
+    for (const key of Object.keys(representativeWalkTargets)) {
+      assert(
+        Math.abs(latestRuntimeWalkPositions[key] - 0.5) < 0.0001,
+        `${key} runtime-walk telemetry did not normalize back to the UI position`,
+      );
+    }
+    addEvidence(report, {
+      id: 'representative-runtime-walk-ui-telemetry',
+      summary: 'Representative source, drum, master, and FX runtime-walk ranges post events and map Product Core telemetry back to UI slider positions.',
+      details: {
+        representativeKeys: Object.keys(representativeWalkTargets),
+        eventCount: representativeWalkEvents.length,
+        latestRuntimeWalkPositions,
+      },
+    });
+
     const diagnostics = loadFallbackDiagnosticsHarness();
     const classificationCases = [
       ['setUnknownAudioCriticalParam', 'forbidden-production-fallback'],
