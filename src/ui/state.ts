@@ -539,7 +539,7 @@ export interface SliderState {
   // Osc Mix — crossfade between Osc A and Osc B levels
   padOscMix: number;            // 0..1 (0=A only, 0.5=both full, 1=B only)
   padDistance: number;          // 0..1 expressive placement macro
-  padPostLPF: number;           // 40..8000 Hz post-voice LPF
+  padPostLPF: number;           // 20..20000 Hz post-voice LPF
   padStereoWidth: number;       // 0..1 post-voice stereo width
   padDiffuseSend: number;       // 0..1 diffuse room send
 
@@ -616,7 +616,7 @@ export interface SliderState {
   pad2MorphAuto: boolean;
   pad2MorphSpeed: number;
   pad2Distance: number;
-  pad2PostLPF: number;          // 40..8000 Hz post-voice LPF
+  pad2PostLPF: number;          // 20..20000 Hz post-voice LPF
   pad2StereoWidth: number;
   pad2DiffuseSend: number;
 
@@ -734,7 +734,7 @@ export interface SliderState {
   lead1Level: number;         // 0..1 level for lead 1
   lead1ReverbSend: number;    // 0..1 step 0.01 - how much lead 1 goes to reverb
   lead1Distance: number;      // 0..1 expressive placement macro
-  lead1PostLPF: number;       // 40..8000 Hz post-voice LPF
+  lead1PostLPF: number;       // 20..20000 Hz post-voice LPF
   lead1PostLPFKeyTracking: number; // 0..1 - post LPF follows most recent note
   lead1StereoWidth: number;   // 0..1 post-voice stereo width
   lead1DiffuseSend: number;   // 0..1 diffuse room send
@@ -757,7 +757,7 @@ export interface SliderState {
   lead2Hold: number;           // 0..4 seconds - how long to hold at sustain level
   lead2Release: number;        // 0.01..8 seconds
   lead2Distance: number;
-  lead2PostLPF: number;       // 40..8000 Hz post-voice LPF
+  lead2PostLPF: number;       // 20..20000 Hz post-voice LPF
   lead2PostLPFKeyTracking: number;
   lead2StereoWidth: number;
   lead2DiffuseSend: number;
@@ -771,7 +771,7 @@ export interface SliderState {
   pianoRelease: number;
   pianoReverbSend: number;
   pianoDistance: number;
-  pianoPostLPF: number;       // 40..8000 Hz post-voice LPF
+  pianoPostLPF: number;       // 20..20000 Hz post-voice LPF
   pianoStereoWidth: number;
   pianoDiffuseSend: number;
 
@@ -3557,7 +3557,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   padMorphSpeed: { min: 1, max: 32, step: 1 },
   padOscMix: { min: 0, max: 1, step: 0.01 },
   padDistance: { min: 0, max: 1, step: 0.01 },
-  padPostLPF: { min: 40, max: 8000, step: 10 },
+  padPostLPF: { min: 20, max: 20000, step: 10 },
   padStereoWidth: { min: 0, max: 1, step: 0.01 },
   padDiffuseSend: { min: 0, max: 1, step: 0.01 },
   // Pad Synth 2
@@ -3603,7 +3603,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   pad2Morph: { min: 0, max: 1, step: 0.01 },
   pad2MorphSpeed: { min: 1, max: 32, step: 1 },
   pad2Distance: { min: 0, max: 1, step: 0.01 },
-  pad2PostLPF: { min: 40, max: 8000, step: 10 },
+  pad2PostLPF: { min: 20, max: 20000, step: 10 },
   pad2StereoWidth: { min: 0, max: 1, step: 0.01 },
   pad2DiffuseSend: { min: 0, max: 1, step: 0.01 },
   reverbLevel: { min: 0, max: 1, step: 0.01 },
@@ -3750,7 +3750,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   drumNoiseFilterQ: { min: 0.5, max: 15, step: 0.1 },
   drumNoiseDecay: { min: 5, max: 15000, step: 1 },
   drumNoiseLevel: { min: 0, max: 1, step: 0.01 },
-  drumNoiseAttack: { min: 0.1, max: 5000, step: 1 },
+  drumNoiseAttack: { min: 0, max: 5000, step: 1 },
   drumNoiseFormant: { min: 0, max: 1, step: 0.01 },
   drumNoiseBreath: { min: 0, max: 1, step: 0.01 },
   drumNoiseFilterEnv: { min: -1, max: 1, step: 0.01 },
@@ -3835,7 +3835,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   lead1Level: { min: 0, max: 1, step: 0.01 },
   lead1ReverbSend: { min: 0, max: 1, step: 0.01 },
   lead1Distance: { min: 0, max: 1, step: 0.01 },
-  lead1PostLPF: { min: 40, max: 8000, step: 10 },
+  lead1PostLPF: { min: 20, max: 20000, step: 10 },
   lead1PostLPFKeyTracking: { min: 0, max: 1, step: 0.01 },
   lead1StereoWidth: { min: 0, max: 1, step: 0.01 },
   lead1DiffuseSend: { min: 0, max: 1, step: 0.01 },
@@ -3849,7 +3849,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   lead2Hold: { min: 0, max: 4, step: 0.01 },
   lead2Release: { min: 0.01, max: 8, step: 0.01 },
   lead2Distance: { min: 0, max: 1, step: 0.01 },
-  lead2PostLPF: { min: 40, max: 8000, step: 10 },
+  lead2PostLPF: { min: 20, max: 20000, step: 10 },
   lead2PostLPFKeyTracking: { min: 0, max: 1, step: 0.01 },
   lead2StereoWidth: { min: 0, max: 1, step: 0.01 },
   lead2DiffuseSend: { min: 0, max: 1, step: 0.01 },
@@ -3861,7 +3861,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   pianoRelease: { min: 0.01, max: 8, step: 0.01 },
   pianoReverbSend: { min: 0, max: 1, step: 0.01 },
   pianoDistance: { min: 0, max: 1, step: 0.01 },
-  pianoPostLPF: { min: 40, max: 8000, step: 10 },
+  pianoPostLPF: { min: 20, max: 20000, step: 10 },
   pianoStereoWidth: { min: 0, max: 1, step: 0.01 },
   pianoDiffuseSend: { min: 0, max: 1, step: 0.01 },
   pianoDelayASend: { min: 0, max: 1, step: 0.01 },

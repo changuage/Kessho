@@ -161,7 +161,7 @@ function createVoices(state: StateRecord): KesshoVoiceSnapshot[] {
       params: {
         distance: boundedNumber(state.padDistance, 0, 0, 1),
         foldAmount: boundedNumber(state.padFoldAmount, 0, 0, 1),
-        postLPF: boundedNumber(state.padPostLPF, 8000, 20, 20000),
+        postLPF: boundedNumber(state.padPostLPF, 18000, 20, 20000),
         stereoWidth: boundedNumber(state.padStereoWidth, 0.5, 0, 1),
       },
     },
@@ -176,7 +176,7 @@ function createVoices(state: StateRecord): KesshoVoiceSnapshot[] {
       params: {
         distance: boundedNumber(state.pad2Distance, 0, 0, 1),
         foldAmount: boundedNumber(state.pad2FoldAmount, 0, 0, 1),
-        postLPF: boundedNumber(state.pad2PostLPF, 8000, 20, 20000),
+        postLPF: boundedNumber(state.pad2PostLPF, 18000, 20, 20000),
         stereoWidth: boundedNumber(state.pad2StereoWidth, 0.5, 0, 1),
       },
     },
@@ -192,7 +192,7 @@ function createVoices(state: StateRecord): KesshoVoiceSnapshot[] {
         density: boundedNumber(state.lead1Density, 1, 0, 4),
         distance: boundedNumber(state.lead1Distance, 0, 0, 1),
         octave: boundedNumber(state.lead1Octave, 0, -4, 4),
-        postLPF: boundedNumber(state.lead1PostLPF, 8000, 20, 20000),
+        postLPF: boundedNumber(state.lead1PostLPF, 18000, 20, 20000),
       },
     },
     {
@@ -205,7 +205,7 @@ function createVoices(state: StateRecord): KesshoVoiceSnapshot[] {
       presetB: stringValue(state.lead2PresetD, 'gamelan'),
       params: {
         distance: boundedNumber(state.lead2Distance, 0, 0, 1),
-        postLPF: boundedNumber(state.lead2PostLPF, 8000, 20, 20000),
+        postLPF: boundedNumber(state.lead2PostLPF, 18000, 20, 20000),
       },
     },
     {

@@ -4689,7 +4689,7 @@ export class CoreEngineHost {
     const filter = context.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(
-      boundedNumber(applyDistanceValue('pianoPostLPF', sliderState, 'piano', pianoDistance), 16000, 40, 20000),
+      boundedNumber(applyDistanceValue('pianoPostLPF', sliderState, 'piano', pianoDistance), 16000, 20, 20000),
       now,
     );
     filter.Q.value = 0.707;

@@ -36,6 +36,44 @@ function unwrapExpression(expression) {
   return current;
 }
 
+function propertyNameText(name) {
+  return ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name) ? name.text : null;
+}
+
+function numericLiteralValue(expression) {
+  const current = unwrapExpression(expression);
+  if (ts.isNumericLiteral(current)) {
+    return Number(current.text);
+  }
+  if (ts.isPrefixUnaryExpression(current) && ts.isNumericLiteral(current.operand)) {
+    const value = Number(current.operand.text);
+    return current.operator === ts.SyntaxKind.MinusToken ? -value : value;
+  }
+  return null;
+}
+
+function objectLiteralConst(path, declarationName) {
+  const file = sourceFile(path);
+  let objectLiteral = null;
+  function visit(node) {
+    if (
+      objectLiteral === null &&
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === declarationName &&
+      node.initializer
+    ) {
+      const initializer = unwrapExpression(node.initializer);
+      if (ts.isObjectLiteralExpression(initializer)) {
+        objectLiteral = initializer;
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(file);
+  return objectLiteral;
+}
+
 function collectSliderStateKeys() {
   const keys = new Set();
   const state = sourceFile('src/ui/state.ts');
@@ -55,30 +93,115 @@ function collectSliderStateKeys() {
 
 function objectKeysInConst(path, declarationName) {
   const keys = new Set();
-  const file = sourceFile(path);
-  function visit(node) {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === declarationName &&
-      node.initializer
-    ) {
-      const initializer = unwrapExpression(node.initializer);
-      if (ts.isObjectLiteralExpression(initializer)) {
-        for (const property of initializer.properties) {
-          if (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property) || ts.isMethodDeclaration(property)) {
-            const name = property.name;
-            if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
-              keys.add(name.text);
+  const objectLiteral = objectLiteralConst(path, declarationName);
+  if (objectLiteral) {
+    for (const property of objectLiteral.properties) {
+      if (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property) || ts.isMethodDeclaration(property)) {
+        const name = propertyNameText(property.name);
+        if (name) {
+          keys.add(name);
+        }
+      }
+    }
+  }
+  return keys;
+}
+
+function collectDefaultNumericValues() {
+  const values = new Map();
+  const defaults = objectLiteralConst('src/ui/state.ts', 'DEFAULT_STATE');
+  if (!defaults) {
+    return values;
+  }
+  for (const property of defaults.properties) {
+    if (!ts.isPropertyAssignment(property)) {
+      continue;
+    }
+    const name = propertyNameText(property.name);
+    const value = numericLiteralValue(property.initializer);
+    if (name && value !== null) {
+      values.set(name, value);
+    }
+  }
+  return values;
+}
+
+function collectQuantizationRanges() {
+  const ranges = new Map();
+  const quantization = objectLiteralConst('src/ui/state.ts', 'QUANTIZATION');
+  if (!quantization) {
+    return ranges;
+  }
+  for (const property of quantization.properties) {
+    if (!ts.isPropertyAssignment(property)) {
+      continue;
+    }
+    const key = propertyNameText(property.name);
+    const initializer = unwrapExpression(property.initializer);
+    if (!key || !ts.isObjectLiteralExpression(initializer)) {
+      continue;
+    }
+    let min = null;
+    let max = null;
+    for (const rangeProperty of initializer.properties) {
+      if (!ts.isPropertyAssignment(rangeProperty)) {
+        continue;
+      }
+      const name = propertyNameText(rangeProperty.name);
+      const value = numericLiteralValue(rangeProperty.initializer);
+      if (name === 'min') {
+        min = value;
+      }
+      if (name === 'max') {
+        max = value;
+      }
+    }
+    if (min !== null && max !== null) {
+      ranges.set(key, { min, max });
+    }
+  }
+  return ranges;
+}
+
+function collectPostLpfBoundedNumberRangeMismatches() {
+  const mismatches = [];
+  const postLpfKeys = [
+    'padPostLPF',
+    'pad2PostLPF',
+    'lead1PostLPF',
+    'lead2PostLPF',
+    'pianoPostLPF',
+  ];
+  for (const path of [
+    'src/audio/coreSnapshot.ts',
+    'src/audio/coreEngineHost.ts',
+  ]) {
+    const file = sourceFile(path);
+    function visit(node) {
+      if (ts.isCallExpression(node)) {
+        const expression = node.expression;
+        const name = ts.isIdentifier(expression)
+          ? expression.text
+          : ts.isPropertyAccessExpression(expression)
+            ? expression.name.text
+            : '';
+        if (name === 'boundedNumber' && node.arguments.length >= 4) {
+          const valueExpression = node.arguments[0].getText(file);
+          const key = postLpfKeys.find((candidate) => valueExpression.includes(candidate));
+          if (key) {
+            const min = numericLiteralValue(node.arguments[2]);
+            const max = numericLiteralValue(node.arguments[3]);
+            if (min !== 20 || max !== 20000) {
+              mismatches.push({ path, key, min, max });
             }
           }
         }
       }
+      ts.forEachChild(node, visit);
     }
-    ts.forEachChild(node, visit);
+    visit(file);
   }
-  visit(file);
-  return keys;
+  return mismatches;
 }
 
 function addDynamicSequencerKeys(keys) {
@@ -350,8 +473,27 @@ const sliderKeys = collectSliderStateKeys();
 const registryKeys = objectKeysInConst('src/presets/ParamRegistry.ts', 'PARAM_REGISTRY');
 const productWiredKeys = collectProductWiredKeys(sliderKeys);
 const productWiredSliderKeys = [...sliderKeys].filter((key) => productWiredKeys.has(key)).sort();
+const defaultNumericValues = collectDefaultNumericValues();
+const quantizationRanges = collectQuantizationRanges();
+const defaultsOutsideQuantization = [];
+const postLpfBoundedNumberRangeMismatches = collectPostLpfBoundedNumberRangeMismatches();
 const deferred = [];
 const unaccounted = [];
+
+for (const [key, value] of defaultNumericValues.entries()) {
+  const range = quantizationRanges.get(key);
+  if (!range) {
+    continue;
+  }
+  if (value < range.min || value > range.max) {
+    defaultsOutsideQuantization.push({
+      key,
+      value,
+      min: range.min,
+      max: range.max,
+    });
+  }
+}
 
 for (const key of [...sliderKeys].sort()) {
   if (productWiredKeys.has(key)) {
@@ -382,17 +524,25 @@ const deferredCounts = Object.fromEntries(productDeferredClassifications.map((cl
 const report = {
   schemaVersion: 1,
   generatedAt: new Date().toISOString(),
-  status: unaccounted.length === 0 ? 'pass' : 'fail',
+  status: unaccounted.length === 0 && defaultsOutsideQuantization.length === 0 && postLpfBoundedNumberRangeMismatches.length === 0
+    ? 'pass'
+    : 'fail',
   counts: {
     sliderStateKeys: sliderKeys.size,
     paramRegistryKeys: registryKeys.size,
     productWiredSliderKeys: productWiredSliderKeys.length,
     explicitlyDeferredOrLegacyKeys: deferred.length,
     unaccountedKeys: unaccounted.length,
+    defaultNumericValues: defaultNumericValues.size,
+    quantizationRanges: quantizationRanges.size,
+    defaultsOutsideQuantization: defaultsOutsideQuantization.length,
+    postLpfBoundedNumberRangeMismatches: postLpfBoundedNumberRangeMismatches.length,
   },
   deferredCounts,
   deferred,
   unaccounted,
+  defaultsOutsideQuantization,
+  postLpfBoundedNumberRangeMismatches,
 };
 
 write(reportPath, `${JSON.stringify(report, null, 2)}\n`);
@@ -408,6 +558,18 @@ assert(
 assert(
   unaccounted.length === 0,
   `Unaccounted Product Core parameter keys: ${unaccounted.map((entry) => entry.key).join(', ')}`,
+);
+assert(
+  defaultsOutsideQuantization.length === 0,
+  `Default slider values outside quantization ranges: ${defaultsOutsideQuantization
+    .map((entry) => `${entry.key}=${entry.value} outside ${entry.min}..${entry.max}`)
+    .join(', ')}`,
+);
+assert(
+  postLpfBoundedNumberRangeMismatches.length === 0,
+  `Source post LPF boundedNumber ranges must stay 20..20000: ${postLpfBoundedNumberRangeMismatches
+    .map((entry) => `${entry.path}:${entry.key}=${entry.min}..${entry.max}`)
+    .join(', ')}`,
 );
 
 console.log('Kessho Product parameter accounting checks passed');
