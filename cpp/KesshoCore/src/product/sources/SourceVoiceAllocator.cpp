@@ -128,8 +128,9 @@
   expression = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression, resolved_seed);
 
   float drum_delay_send = -1.0f;
+  uint32_t drum_voice = 0u;
   if (drum_source) {
-    const uint32_t drum_voice = static_cast<uint32_t>(std::clamp(roundedInt(midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1));
+    drum_voice = static_cast<uint32_t>(std::clamp(roundedInt(midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1));
     const uint32_t drum_target = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + drum_voice;
     morph = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, morph, resolved_seed);
     distance = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance, resolved_seed);
@@ -178,6 +179,18 @@
   const bool snapshot_generated_drum_patch = drum_source && !snapshot_exact_drum_patch;
   if (snapshot_generated_drum_patch) {
     snapshot_patch = drumVoiceMorphPatch(source);
+  }
+  if (
+      drum_source &&
+      snapshot_patch.exact_drum_param_count == kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT) {
+    const uint32_t drum_target = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + drum_voice;
+    for (uint32_t param_index = 0u; param_index < kProductDrumRuntimeParamCount; ++param_index) {
+      snapshot_patch.exact_drum_params[param_index] = resolveModulatedValue(
+          drum_target,
+          kProductDrumRuntimeParamIdBase + param_index,
+          snapshot_patch.exact_drum_params[param_index],
+          resolved_seed);
+    }
   }
   const bool snapshot_exact_patch =
       snapshot_exact_pad_patch || snapshot_exact_lead_patch || snapshot_exact_drum_patch || snapshot_generated_drum_patch;

@@ -521,6 +521,25 @@ bool resolvePadRuntimeParamId(
     telemetry.last_error_code = KESSHO_PRODUCT_OK;
     return;
   }
+  uint32_t drum_param_index = 0u;
+  if (productDrumRuntimeParamIndex(event.param_id, drum_param_index)) {
+    SourceState& source = sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
+    if (source.exact_drum_param_count != kProductDrumRuntimeParamCount) {
+      const auto patch = sourcePresetPatch(findSourcePreset(defaultSourcePresetId(KESSHO_PRODUCT_SOURCE_DRUM)));
+      source.exact_drum_param_count = kProductDrumRuntimeParamCount;
+      for (uint32_t param_index = 0u; param_index < kProductDrumRuntimeParamCount; ++param_index) {
+        source.exact_drum_params[param_index] = param_index < patch.exact_drum_param_count
+            ? patch.exact_drum_params[param_index]
+            : 0.0f;
+      }
+    }
+    source.exact_drum_params[drum_param_index] = event.value;
+    if (drum_module) {
+      drum_module->setIndexedParam(static_cast<int>(drum_param_index), event.value);
+    }
+    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    return;
+  }
   if (applyGranularParamEvent(event)) {
     return;
   }

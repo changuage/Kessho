@@ -69,7 +69,8 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
     return;
   }
-  if (isDrumRangeTarget(target_id) && !isSourceParam(param_id)) {
+  uint32_t drum_param_index = 0u;
+  if (isDrumRangeTarget(target_id) && !isSourceParam(param_id) && !productDrumRuntimeParamIndex(param_id, drum_param_index)) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
     return;
   }
@@ -173,6 +174,15 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
     if (range.param_id == KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID && drum_module) {
       const int voice = static_cast<int>(range.target_id - KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE);
       drum_module->setVoiceSend(voice, range.current_value);
+      return;
+    }
+    uint32_t drum_param_index = 0u;
+    if (productDrumRuntimeParamIndex(range.param_id, drum_param_index)) {
+      KesshoProductEvent event{};
+      event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+      event.param_id = range.param_id;
+      event.value = range.current_value;
+      applyParam(event);
     }
     return;
   }

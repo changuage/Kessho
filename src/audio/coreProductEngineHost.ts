@@ -30,7 +30,6 @@ import {
   createCoreProductStartEvent,
   createCoreProductStopEvent,
   resolveCoreProductDrumMorphRangeTarget,
-  resolveCoreProductDrumParamRangeTarget,
   resolveCoreProductRangeTargets,
 } from './coreProductEvents';
 import { type CoreProductSequencerLaneUiState, type CoreProductTelemetrySnapshot, initialCoreProductCapabilityReport } from './coreProductTelemetry';
@@ -690,12 +689,12 @@ class CoreProductEngineHost {
     this.syncSingleRange(this.drumSampleHoldRanges, key, target, range, CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold, key);
   }
   setDrumParamSHRange(key: string, range: { min: number; max: number } | null): void {
-    const target = this.resolveDrumParamRangeTarget(key);
-    if (!target) {
+    const targets = resolveCoreProductRangeTargets(key);
+    if (targets.length === 0) {
       this.reportUnsupportedRangeKey(key);
       return;
     }
-    this.syncSingleRange(this.drumSampleHoldRanges, key, target, range, CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold, key);
+    this.syncSingleRange(this.drumSampleHoldRanges, key, targets, range, CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold, key);
   }
   setDualRanges(ranges: Partial<Record<string, { min: number; max: number }>>): void {
     this.syncRangeSet(this.sampleHoldRanges, ranges, CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold);
@@ -1354,7 +1353,7 @@ class CoreProductEngineHost {
   private syncSingleRange(
     store: Map<string, ProductRangeState>,
     key: string,
-    target: CoreProductRangeTarget,
+    target: CoreProductRangeTarget | CoreProductRangeTarget[],
     range: { min: number; max: number } | null,
     mode: CoreProductModulationRangeMode,
     displayKey: string,
@@ -1372,8 +1371,13 @@ class CoreProductEngineHost {
       return;
     }
     const normalized = { min: Math.min(range.min, range.max), max: Math.max(range.min, range.max) };
-    store.set(key, { range: normalized, targets: [target] });
-    if (this.runtimeReady) this.postModulationRange(target, normalized, mode, displayKey);
+    const targets = Array.isArray(target) ? target : [target];
+    store.set(key, { range: normalized, targets });
+    if (this.runtimeReady) {
+      for (const rangeTarget of targets) {
+        this.postModulationRange(rangeTarget, normalized, mode, displayKey);
+      }
+    }
   }
 
   private syncRangeSet(
@@ -1471,30 +1475,6 @@ class CoreProductEngineHost {
     if (!next) return;
     this.runtimeWalkPositions = next;
     this.invokeDisplayCallback('runtimeWalkPositions', { ...next });
-  }
-
-  private resolveDrumParamRangeTarget(key: string): CoreProductRangeTarget | null {
-    const voicePatterns: Array<[RegExp, number]> = [
-      [/^drumSub/, 0],
-      [/^drumKick/, 1],
-      [/^drumClick/, 2],
-      [/^drumBeepHi/, 3],
-      [/^drumBeepLo/, 4],
-      [/^drumNoise/, 5],
-      [/^drumMembrane/, 6],
-    ];
-    const voice = voicePatterns.find(([pattern]) => pattern.test(key))?.[1];
-    if (voice === undefined) return null;
-    if (/Expression/i.test(key)) {
-      return resolveCoreProductDrumParamRangeTarget(voice, 'expression', key);
-    }
-    if (/DelaySend/i.test(key)) {
-      return resolveCoreProductDrumParamRangeTarget(voice, 'delayA', key);
-    }
-    if (/Distance/i.test(key)) {
-      return resolveCoreProductDrumParamRangeTarget(voice, 'distance', key);
-    }
-    return null;
   }
 
   private reportUnsupportedRangeKey(key: string): void {

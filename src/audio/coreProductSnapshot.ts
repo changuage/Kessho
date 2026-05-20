@@ -99,6 +99,10 @@ function drumDelaySendProfile(state: Record<string, unknown> | undefined): numbe
   return clamp(peak * 0.5 + average * 0.5, 0, 1);
 }
 
+function drumDelayFilterHz(state: Record<string, unknown> | undefined): number {
+  return clamp(500 * Math.pow(32, clamp(numberFromState(state, 'drumDelayFilter', 0.5), 0, 1)), 200, 12000);
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -850,9 +854,13 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       delayAEnabled,
       delayATimeLeftMs: clamp(delayDivisionMs(sliderState, 'drumDelayNoteL', '1/8d', transport.bpm), 10, 5000),
       delayATimeRightMs: clamp(delayDivisionMs(sliderState, 'drumDelayNoteR', '1/4', transport.bpm), 10, 5000),
-      delayAFeedback: clamp(numberFromState(sliderState, 'delayAFeedback', 0.4), 0, 0.95),
-      delayAMix: delayAEnabled ? clamp(numberFromState(sliderState, 'delayAMix', 0), 0, 1) : 0,
-      delayAFilterHz: clamp(numberFromState(sliderState, 'delayAFilter', 2000), 200, 12000),
+      delayAFeedback: clamp(numberFromState(sliderState, booleanFromState(sliderState, 'drumDelayEnabled', false) ? 'drumDelayFeedback' : 'delayAFeedback', 0.4), 0, 0.95),
+      delayAMix: delayAEnabled
+        ? clamp(numberFromState(sliderState, booleanFromState(sliderState, 'drumDelayEnabled', false) ? 'drumDelayMix' : 'delayAMix', 0), 0, 1)
+        : 0,
+      delayAFilterHz: booleanFromState(sliderState, 'drumDelayEnabled', false)
+        ? drumDelayFilterHz(sliderState)
+        : clamp(numberFromState(sliderState, 'delayAFilter', 2000), 200, 12000),
       delayAFilterType: delayAFilterTypeId(sliderState?.delayAFilterType),
       delayAModRateHz: numberFromState(sliderState, 'delayAModDepth', 0) > 0
         ? 0.05 + clamp(numberFromState(sliderState, 'delayAModRate', 0), 0, 1) * 4.95

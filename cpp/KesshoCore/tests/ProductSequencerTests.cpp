@@ -501,10 +501,34 @@ float productRuntimeFieldValue(const KesshoProductEngine& engine, uint32_t param
       return engine.fx.granular_legacy_feedback;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_MIX_ID:
       return engine.fx.reverb_mix;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_DECAY_ID:
+      return engine.fx.reverb_decay;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_SIZE_ID:
+      return engine.fx.reverb_size;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_DAMPING_ID:
+      return engine.fx.reverb_damping;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_MODULATION_ID:
+      return engine.fx.reverb_modulation;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_WIDTH_ID:
+      return engine.fx.reverb_width;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_CROSS_FEED_ID:
+      return engine.fx.reverb_cross_feed;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID:
       return engine.fx.spectral_freeze_mix;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID:
+      return engine.fx.dynamics_drive;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_RATE_ID:
+      return engine.fx.dynamics_character_rate;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOBBLE_SPEED_ID:
+      return engine.fx.dynamics_degrade_wobble_speed;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_NOISE_ID:
+      return engine.fx.dynamics_degrade_noise;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID:
       return engine.fx.dynamics_saturation_drive;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_TONE_ID:
+      return engine.fx.dynamics_saturation_tone;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_ATTACK_MS_ID:
+      return engine.fx.dynamics_end_comp_attack_ms;
     case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_AMOUNT_ID:
       return engine.fx.sidechain_amount;
     case kProductPadRuntimeParamIdBase + 21u:
@@ -537,6 +561,43 @@ void requireGranularModuleRuntimeFieldValue(
   require(
       static_cast<uint32_t>(engine.granular_module->paramCount()) > module_param_index,
       "granular module param index outside module range");
+  require(std::fabs(params[module_param_index] - expected) < 0.001f, label);
+}
+
+uint32_t reverbModuleParamIndexForProductParam(uint32_t param_id) {
+  switch (param_id) {
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_DECAY_ID:
+      return 2u;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_SIZE_ID:
+      return 3u;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_DAMPING_ID:
+      return 4u;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_MODULATION_ID:
+      return 6u;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_WIDTH_ID:
+      return 8u;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_CROSS_FEED_ID:
+      return 24u;
+    default:
+      return UINT32_MAX;
+  }
+}
+
+void requireReverbModuleRuntimeFieldValue(
+    const KesshoProductEngine& engine,
+    uint32_t param_id,
+    float expected,
+    const char* label) {
+  const uint32_t module_param_index = reverbModuleParamIndexForProductParam(param_id);
+  if (module_param_index == UINT32_MAX) {
+    return;
+  }
+  require(engine.reverb_module != nullptr, "reverb module missing for runtime probe");
+  const float* params = engine.reverb_module->params();
+  require(params != nullptr, "reverb module params missing for runtime probe");
+  require(
+      static_cast<uint32_t>(engine.reverb_module->paramCount()) > module_param_index,
+      "reverb module param index outside module range");
   require(std::fabs(params[module_param_index] - expected) < 0.001f, label);
 }
 
@@ -579,8 +640,12 @@ void requireRuntimeWalkMovementAcrossAudioAndFxTargets() {
       {KESSHO_PRODUCT_PARAM_FX_DELAY_BMIX_ID, 0.05f, 0.95f, 0.24f, "Delay B mix runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_GRANULAR_MIX_ID, 0.05f, 0.95f, 0.26f, "granular mix runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_REVERB_MIX_ID, 0.05f, 0.95f, 0.28f, "reverb mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_DECAY_ID, 0.1f, 0.9f, 0.45f, "reverb decay runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_WIDTH_ID, 0.2f, 1.0f, 0.6f, "reverb width runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID, 0.05f, 0.95f, 0.30f, "spectral freeze mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID, 0.05f, 0.95f, 0.31f, "dynamics drive runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID, 0.05f, 0.95f, 0.32f, "dynamics saturation drive runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOBBLE_SPEED_ID, 0.05f, 0.95f, 0.35f, "dynamics degrade wobble-speed runtime walk did not move"},
       {kProductPadRuntimeParamIdBase + 21u, 250.0f, 3200.0f, 900.0f, "Pad 1 exact cutoff runtime walk did not move"},
       {kProductPad2RuntimeParamIdBase + 21u, 450.0f, 6200.0f, 1600.0f, "Pad 2 exact cutoff runtime walk did not move"},
   };
@@ -610,6 +675,7 @@ void requireRuntimeWalkMovementAcrossAudioAndFxTargets() {
     require(range->current_value >= probe.min_value && range->current_value <= probe.max_value, probe.label);
     require(std::fabs(range->current_value - probe.current_value) > 0.00001f, probe.label);
     require(std::fabs(productRuntimeFieldValue(*product_walk, probe.param_id) - range->current_value) < 0.0001f, probe.label);
+    requireReverbModuleRuntimeFieldValue(*product_walk, probe.param_id, range->current_value, probe.label);
     requireTelemetryContainsRuntimeWalk(product_walk->telemetry, control_id++, probe.min_value, probe.max_value, probe.label);
   }
   kessho_product_destroy(product_walk);
@@ -653,8 +719,12 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
       {KESSHO_PRODUCT_PARAM_FX_DELAY_BMIX_ID, 0.05f, 0.95f, 0.24f, "low-rate Delay B mix runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_GRANULAR_MIX_ID, 0.05f, 0.95f, 0.26f, "low-rate granular mix runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_REVERB_MIX_ID, 0.05f, 0.95f, 0.28f, "low-rate reverb mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_DECAY_ID, 0.1f, 0.9f, 0.45f, "low-rate reverb decay runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_WIDTH_ID, 0.2f, 1.0f, 0.6f, "low-rate reverb width runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID, 0.05f, 0.95f, 0.30f, "low-rate spectral freeze mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID, 0.05f, 0.95f, 0.31f, "low-rate dynamics drive runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID, 0.05f, 0.95f, 0.32f, "low-rate dynamics saturation drive runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOBBLE_SPEED_ID, 0.05f, 0.95f, 0.35f, "low-rate dynamics degrade wobble-speed runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_AMOUNT_ID, 0.05f, 0.95f, 0.34f, "low-rate sidechain amount runtime walk did not move"},
       {kProductPadRuntimeParamIdBase + 21u, 250.0f, 3200.0f, 900.0f, "low-rate Pad 1 exact cutoff runtime walk did not move"},
       {kProductPad2RuntimeParamIdBase + 21u, 450.0f, 6200.0f, 1600.0f, "low-rate Pad 2 exact cutoff runtime walk did not move"},
@@ -685,6 +755,7 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
     require(range->current_value >= probe.min_value && range->current_value <= probe.max_value, probe.label);
     require(std::fabs(range->current_value - probe.current_value) > 0.00001f, probe.label);
     require(std::fabs(productRuntimeFieldValue(*product_walk, probe.param_id) - range->current_value) < 0.0001f, probe.label);
+    requireReverbModuleRuntimeFieldValue(*product_walk, probe.param_id, range->current_value, probe.label);
     requireTelemetryContainsRuntimeWalk(product_walk->telemetry, control_id++, probe.min_value, probe.max_value, probe.label);
   }
   kessho_product_destroy(product_walk);
@@ -747,6 +818,62 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
   require(std::fabs(drum_delay->current_value - 0.38f) > 0.00001f, "low-rate Drum voice delay-send runtime walk did not move");
   requireTelemetryContainsRuntimeWalk(source_walk->telemetry, control_id++, 0.1f, 0.9f, "low-rate Drum voice runtime walk telemetry missing");
   kessho_product_destroy(source_walk);
+}
+
+void requireDrumExactRuntimeRangesApplyToSourceAndModule() {
+  constexpr uint32_t kKickDecayParamIndex = 15u;
+  const uint32_t kick_decay_param_id = kProductDrumRuntimeParamIdBase + kKickDecayParamIndex;
+  const uint32_t kick_target = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + 1u;
+  const uint32_t low_rate_flags = randomWalkSpeedFlags(0.09f);
+  constexpr uint32_t kLowRateRenderBlocks = 360u;
+
+  KesshoProductEngine* drum_walk = kessho_product_create(48000.0, 128, 0);
+  require(drum_walk != nullptr, "drum exact runtime walk engine allocation failed");
+  enqueueRuntimeWalkRange(
+      drum_walk,
+      kick_target,
+      kick_decay_param_id,
+      1001u,
+      80.0f,
+      900.0f,
+      300.0f,
+      low_rate_flags);
+  renderSilentBlocks(drum_walk, kLowRateRenderBlocks);
+  const ModulationRange* kick_decay = drum_walk->findModulationRange(kick_target, kick_decay_param_id);
+  require(kick_decay != nullptr, "Drum exact kick decay runtime walk range missing");
+  require(std::fabs(kick_decay->random_walk_speed - 0.09f) < 0.001f, "Drum exact kick decay runtime walk speed mismatch");
+  require(std::fabs(kick_decay->current_value - 300.0f) > 0.00001f, "Drum exact kick decay runtime walk did not move");
+  const SourceState& drum_source = drum_walk->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
+  require(drum_source.exact_drum_param_count == kProductDrumRuntimeParamCount, "Drum exact runtime walk did not initialize exact params");
+  require(std::fabs(drum_source.exact_drum_params[kKickDecayParamIndex] - kick_decay->current_value) < 0.001f, "Drum exact runtime walk did not update source params");
+  require(drum_walk->drum_module != nullptr, "drum module missing for exact runtime walk");
+  const float* drum_params = drum_walk->drum_module->params();
+  require(drum_params != nullptr, "drum module params missing for exact runtime walk");
+  require(std::fabs(drum_params[kKickDecayParamIndex] - kick_decay->current_value) < 0.001f, "Drum exact runtime walk did not update module params");
+  requireTelemetryContainsRuntimeWalk(drum_walk->telemetry, 1001u, 80.0f, 900.0f, "Drum exact runtime walk telemetry missing");
+  kessho_product_destroy(drum_walk);
+
+  KesshoProductEngine* drum_sh = kessho_product_create(48000.0, 128, 0);
+  require(drum_sh != nullptr, "drum exact sample-hold engine allocation failed");
+  KesshoProductEvent range{};
+  range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
+  range.target_id = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE;
+  range.index = 1002u;
+  range.param_id = kProductDrumRuntimeParamIdBase;
+  range.value = 80.0f;
+  range.value2 = 90.0f;
+  range.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD);
+  range.value4 = 85.0f;
+  range.flags = KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE;
+  drum_sh->applyModulationRangeEvent(range);
+  require(drum_sh->telemetry.last_error_code == KESSHO_PRODUCT_OK, "Drum exact sample-hold range was rejected");
+  drum_sh->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].enabled = true;
+  drum_sh->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 36.0f, 1.0f, 0.12f);
+  require(drum_sh->drum_module != nullptr, "drum module missing for exact sample-hold");
+  drum_params = drum_sh->drum_module->params();
+  require(drum_params != nullptr, "drum module params missing for exact sample-hold");
+  require(drum_params[0] >= 80.0f && drum_params[0] <= 90.0f, "Drum exact sample-hold did not apply to triggered voice patch");
+  kessho_product_destroy(drum_sh);
 }
 
 void requireLowRateGranularRuntimeWalkMovementAcrossEngineParams() {
@@ -965,6 +1092,7 @@ int main() {
   requireDirectSequencerCoverage();
   requireRuntimeWalkMovementAcrossAudioAndFxTargets();
   requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets();
+  requireDrumExactRuntimeRangesApplyToSourceAndModule();
   requireLowRateGranularRuntimeWalkMovementAcrossEngineParams();
 
   constexpr double sample_rate = 48000.0;

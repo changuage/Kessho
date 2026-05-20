@@ -26,7 +26,19 @@ constexpr uint32_t kMaxRuntimeWalkTelemetry = KESSHO_PRODUCT_RUNTIME_WALK_TELEME
 constexpr uint32_t kProductPadRuntimeParamIdBase = 2000u;
 constexpr uint32_t kProductPad2RuntimeParamIdBase = 2100u;
 constexpr uint32_t kProductPadRuntimeParamCount = kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
+constexpr uint32_t kProductDrumRuntimeParamIdBase = 3000u;
+constexpr uint32_t kProductDrumRuntimeParamCount = kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
 constexpr uint32_t kMaxSoundscapeAssetRefs = 16;
+
+inline bool productDrumRuntimeParamIndex(uint32_t param_id, uint32_t& param_index) {
+  if (param_id < kProductDrumRuntimeParamIdBase ||
+      param_id >= kProductDrumRuntimeParamIdBase + kProductDrumRuntimeParamCount) {
+    return false;
+  }
+  param_index = param_id - kProductDrumRuntimeParamIdBase;
+  return true;
+}
+
 constexpr uint32_t kGranularVoiceCount = 4;
 constexpr uint32_t kSidechainTargetCount = 9;
 constexpr uint32_t kGranularParamCount = 138;

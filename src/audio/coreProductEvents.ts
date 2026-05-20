@@ -1,6 +1,8 @@
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import {
+  KESSHO_PRODUCT_DRUM_PARAM_COUNT,
+  KESSHO_PRODUCT_DRUM_PARAM_SPECS,
   KESSHO_PRODUCT_DRUM_VOICE_COUNT,
   KESSHO_PRODUCT_PAD_PARAM_COUNT,
   KESSHO_PRODUCT_PAD_PARAM_SPECS,
@@ -81,6 +83,7 @@ export const CORE_PRODUCT_SUBLANE_DIRECTIONS = Object.freeze({
 export const CORE_PRODUCT_DRUM_RANGE_TARGET_BASE = 1000;
 export const CORE_PRODUCT_PAD_RUNTIME_PARAM_ID_BASE = 2000;
 export const CORE_PRODUCT_PAD2_RUNTIME_PARAM_ID_BASE = 2100;
+export const CORE_PRODUCT_DRUM_RUNTIME_PARAM_ID_BASE = 3000;
 
 const VALID_SOURCE_IDS = new Set<number>(Object.values(CORE_PRODUCT_SOURCE_IDS));
 const VALID_SEQUENCER_IDS = new Set<number>(Object.values(CORE_PRODUCT_SEQUENCER_IDS));
@@ -92,9 +95,14 @@ const CORE_PRODUCT_PAD_RUNTIME_PARAM_IDS = Array.from(
       : CORE_PRODUCT_PAD2_RUNTIME_PARAM_ID_BASE + index - KESSHO_PRODUCT_PAD_PARAM_COUNT
   ),
 );
+const CORE_PRODUCT_DRUM_RUNTIME_PARAM_IDS = Array.from(
+  { length: KESSHO_PRODUCT_DRUM_PARAM_COUNT },
+  (_, index) => CORE_PRODUCT_DRUM_RUNTIME_PARAM_ID_BASE + index,
+);
 const VALID_PARAM_IDS = new Set<number>([
   ...Object.values(KESSHO_PRODUCT_PARAM_IDS),
   ...CORE_PRODUCT_PAD_RUNTIME_PARAM_IDS,
+  ...CORE_PRODUCT_DRUM_RUNTIME_PARAM_IDS,
 ]);
 const VALID_STEP_FIELDS = new Set<number>(Object.values(CORE_PRODUCT_STEP_VALUE_FIELDS));
 const VALID_SUBLANE_DIRECTIONS = new Set<number>(Object.values(CORE_PRODUCT_SUBLANE_DIRECTIONS));
@@ -241,6 +249,11 @@ export function coreProductPadRuntimeParamId(padIndex: 0 | 1, paramIndex: number
   return base + requireIntegerInRange(paramIndex, 'pad param index', 0, KESSHO_PRODUCT_PAD_PARAM_COUNT - 1);
 }
 
+export function coreProductDrumRuntimeParamId(paramIndex: number): number {
+  return CORE_PRODUCT_DRUM_RUNTIME_PARAM_ID_BASE +
+    requireIntegerInRange(paramIndex, 'drum param index', 0, KESSHO_PRODUCT_DRUM_PARAM_COUNT - 1);
+}
+
 function sourceTarget(
   sourceId: number,
   paramId: number,
@@ -256,6 +269,10 @@ function drumTarget(voiceIndex: number, paramId: number, key: string): CoreProdu
     paramId: requireParamId(paramId),
     controlId: stableControlId(key),
   };
+}
+
+function drumExactTarget(voiceIndex: number, paramIndex: number, key: string): CoreProductRangeTarget {
+  return drumTarget(voiceIndex, coreProductDrumRuntimeParamId(paramIndex), key);
 }
 
 function productParamTarget(
@@ -297,6 +314,10 @@ function normalizedToDelayAModDepthMs(value: number): number {
 
 function normalizedToDelayACrossFeedFilterHz(value: number): number {
   return 200 + clamp(value, 0, 1) * 7800;
+}
+
+function normalizedToDrumDelayFilterHz(value: number): number {
+  return 500 * Math.pow(32, clamp(value, 0, 1));
 }
 
 function spectralFreezeRoutingValue(value: number | string): number {
@@ -662,6 +683,9 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   drumDelayNoteR: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeRightMs, key, indexedDelayDivisionMs('drumDelayNoteR', 10)),
   ],
+  drumDelayFeedback: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAFeedback, key)],
+  drumDelayMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAMix, key)],
+  drumDelayFilter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAFilterHz, key, normalizedToDrumDelayFilterHz)],
   delayAFeedback: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAFeedback, key)],
   delayAFilter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAFilterHz, key)],
   delayAModRate: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAModRateHz, key, normalizedToDelayAModRateHz)],
@@ -750,6 +774,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   degradeWow: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeWow, key)],
   degradeFlutter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeFlutter, key)],
   degradeDrift: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeDrift, key)],
+  degradeWobbleSpeed: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeWobbleSpeed, key)],
   degradeNoise: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeNoise, key)],
   degradeHp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeHp, key)],
   degradeLp: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeLp, key)],
@@ -849,6 +874,12 @@ function resolveCoreProductDrumRuntimeRangeTargets(key: string): CoreProductRang
   }
   if (/Distance/i.test(key)) {
     return [drumTarget(voiceIndex, KESSHO_PRODUCT_PARAM_IDS.SourceDistance, key)];
+  }
+  const exactTargets = KESSHO_PRODUCT_DRUM_PARAM_SPECS
+    .filter((spec) => spec.key === key)
+    .map((spec) => drumExactTarget(voiceIndex, spec.index, key));
+  if (exactTargets.length > 0) {
+    return exactTargets;
   }
   return [];
 }
