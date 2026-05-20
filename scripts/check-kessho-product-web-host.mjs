@@ -403,6 +403,17 @@ for (const token of [
   'masterLimiterCeilingDb',
   'delayAFeedback',
   'FxDelayAFeedback',
+  'granularFeedback',
+  'FxGranularFeedback',
+  'granularFeedbackLPF',
+  'FxGranularFeedbackLpfHz',
+  'granularDiffusion',
+  'FxGranularBusDiffusion',
+  'granularLegacyJitter',
+  'FxGranularLegacyJitterMs',
+  'granularMacroActivity',
+  'granularMacroVoiceTargets',
+  'computeGranularMacroModel',
   'delayAModRate',
   'normalizedToDelayAModRateHz',
   'delayAModDepth',
@@ -428,6 +439,16 @@ for (const token of [
 ]) {
   assert(events.includes(token), `core-product events are missing ${token}`);
 }
+assert(
+  events.includes('context.randomWalkSpeed ?? context.speed ?? 1') &&
+    events.includes('context.randomWalkMode ?? context.mode'),
+  'core-product random-walk flags must accept the host runtime walk speed/mode context aliases',
+);
+assert(
+  hostRuntimeGuards.includes('randomWalkSpeed: walk.speed') &&
+    hostRuntimeGuards.includes('randomWalkMode: walk.mode'),
+  'CoreProductHostRuntimeGuards must pass explicit random-walk speed/mode aliases into range events',
+);
 
 const granularVoiceRangeSuffixes = [
   ['Speed', 'Speed'],

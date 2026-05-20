@@ -6,7 +6,8 @@ import {
   KESSHO_PRODUCT_PAD_PARAM_SPECS,
 } from './generated/kesshoProductSchema';
 import { delayNoteToSeconds } from './delayBuses';
-import { getIndexedDelayDivisionValue, type IndexedDelayDivisionKey } from '../ui/state';
+import { computeGranularMacroModel, type GranularMacroModel } from './granularMacroCore';
+import { DEFAULT_STATE, getIndexedDelayDivisionValue, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
 
 export type CoreProductEvent = {
   sampleOffset?: number;
@@ -215,8 +216,11 @@ export type CoreProductRangeTarget = {
 
 export type CoreProductRangeValueContext = {
   bpm?: number;
+  speed?: number;
+  mode?: 'localBrownian' | 'globalWalk' | string;
   randomWalkSpeed?: number;
   randomWalkMode?: 'localBrownian' | 'globalWalk' | string;
+  state?: Record<string, unknown> | null;
 };
 
 type CoreProductSampleHoldTriggerBus = 'delayA' | 'delayB' | 'granular' | 'reverb';
@@ -274,10 +278,10 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function coreProductRandomWalkFlags(context: CoreProductRangeValueContext): number {
-  const speed = clamp(context.randomWalkSpeed ?? 1, 0.01, 5);
+  const speed = clamp(context.randomWalkSpeed ?? context.speed ?? 1, 0.01, 5);
   const encodedSpeed = Math.round(speed * CORE_PRODUCT_MODULATION_RANGE_FLAGS.randomWalkSpeedScale);
   const speedFlags = encodedSpeed * (2 ** CORE_PRODUCT_MODULATION_RANGE_FLAGS.randomWalkSpeedShift);
-  const modeFlags = context.randomWalkMode === 'globalWalk'
+  const modeFlags = (context.randomWalkMode ?? context.mode) === 'globalWalk'
     ? CORE_PRODUCT_MODULATION_RANGE_FLAGS.randomWalkGlobal
     : 0;
   return speedFlags | modeFlags;
@@ -308,6 +312,39 @@ function indexedDelayDivisionMs(key: IndexedDelayDivisionKey, minMs: number) {
     const division = getIndexedDelayDivisionValue(key, value);
     return clamp(delayNoteToSeconds(division, contextBpm(context)) * 1000, minMs, 5000);
   };
+}
+
+function numericContextStateValue(state: Partial<SliderState>, key: keyof SliderState, fallback: number): number {
+  const value = state[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function granularMacroModelForRangeValue(
+  key: string,
+  value: number,
+  context: CoreProductRangeValueContext,
+): GranularMacroModel {
+  const state = {
+    ...DEFAULT_STATE,
+    ...(context.state ?? {}),
+    [key]: value,
+  } as SliderState;
+  return computeGranularMacroModel(state, (stateKey, fallback) => numericContextStateValue(state, stateKey, fallback));
+}
+
+function granularMacroMap(
+  key: string,
+  select: (model: GranularMacroModel) => number,
+): (value: number, context: CoreProductRangeValueContext) => number {
+  return (value, context) => select(granularMacroModelForRangeValue(key, value, context));
+}
+
+function granularMacroVoiceMap(
+  key: string,
+  select: (model: GranularMacroModel, voiceIndex: number) => number,
+  voiceIndex: number,
+): (value: number, context: CoreProductRangeValueContext) => number {
+  return (value, context) => select(granularMacroModelForRangeValue(key, value, context), voiceIndex);
 }
 
 const CORE_PRODUCT_REVERB_OWNERSHIP_KEYS = new Set<string>([
@@ -455,6 +492,23 @@ function granularVoiceRangeTargets(): Record<string, CoreProductRangeTargetResol
   return targets;
 }
 
+function granularMacroVoiceTargets(
+  key: string,
+  paramSuffix: string,
+  select: (model: GranularMacroModel, voiceIndex: number) => number,
+): CoreProductRangeTarget[] {
+  const targets: CoreProductRangeTarget[] = [];
+  for (const voiceNumber of [1, 2, 3, 4] as const) {
+    const paramName = `FxGranularV${voiceNumber}${paramSuffix}` as ProductParamIdName;
+    targets.push(productParamTarget(
+      KESSHO_PRODUCT_PARAM_IDS[paramName],
+      key,
+      granularMacroVoiceMap(key, select, voiceNumber - 1),
+    ));
+  }
+  return targets;
+}
+
 function padExactRangeTargets(): Record<string, CoreProductRangeTargetResolver> {
   const targets: Record<string, CoreProductRangeTargetResolver> = {};
   for (const spec of KESSHO_PRODUCT_PAD_PARAM_SPECS) {
@@ -560,6 +614,47 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   masterSatDrive: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterSaturationDrive, key)],
   masterSatTone: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterSaturationTone, key)],
   granularLevel: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularMix, key)],
+  granularFeedback: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularFeedback, key)],
+  granularFeedbackLPF: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularFeedbackLpfHz, key)],
+  granularBufferSeconds: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularBufferSeconds, key)],
+  granularDiffusion: (key) => [
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularBusDiffusion, key, granularMacroMap(key, (model) => model.busDiffusion)),
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularTimingRandomness, key, granularMacroMap(key, (model) => model.timingRandomness)),
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularReverbLpfHz, key, granularMacroMap(key, (model) => model.finalReverbLPF)),
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularOutputLpfHz, key, granularMacroMap(key, (model) => model.finalOutputLPF)),
+  ],
+  granularReverbLPF: (key) => [
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularReverbLpfHz, key, granularMacroMap(key, (model) => model.finalReverbLPF)),
+  ],
+  granularOutputLPF: (key) => [
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularOutputLpfHz, key, granularMacroMap(key, (model) => model.finalOutputLPF)),
+  ],
+  granularChordBias: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularChordBias, key)],
+  granularLegacyJitter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyJitterMs, key)],
+  granularLegacyProbability: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyProbability, key)],
+  granularLegacyPitchSpread: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyPitchSpread, key)],
+  granularLegacyMaxGrains: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyMaxGrains, key)],
+  granularLegacyFeedback: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyFeedback, key)],
+  granularMacroActivity: (key) => [
+    ...granularMacroVoiceTargets(key, 'Density', (model, voiceIndex) => model.voiceDensity[voiceIndex] ?? 1),
+    ...granularMacroVoiceTargets(key, 'GrainSizeMs', (model, voiceIndex) => model.voiceGrainSize[voiceIndex] ?? 10),
+  ],
+  granularMacroTexture: (key) => [
+    ...granularMacroVoiceTargets(key, 'Blur', (model, voiceIndex) => model.voiceBlur[voiceIndex] ?? 0),
+    ...granularMacroVoiceTargets(key, 'GrainSizeMs', (model, voiceIndex) => model.voiceGrainSize[voiceIndex] ?? 10),
+  ],
+  granularMacroComplexity: (key) => [
+    ...granularMacroVoiceTargets(key, 'PositionLfoRate', (model, voiceIndex) => model.voicePosLFORate[voiceIndex] ?? 0),
+    ...granularMacroVoiceTargets(key, 'PanLfoRate', (model, voiceIndex) => model.voicePanLFORate[voiceIndex] ?? 0),
+  ],
+  granularMacroDarkness: (key) => [
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularReverbLpfHz, key, granularMacroMap(key, (model) => model.finalReverbLPF)),
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularOutputLpfHz, key, granularMacroMap(key, (model) => model.finalOutputLPF)),
+  ],
+  granularMacroChaos: (key) => [
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularTimingRandomness, key, granularMacroMap(key, (model) => model.timingRandomness)),
+    ...granularMacroVoiceTargets(key, 'ReverseLfoRate', (model, voiceIndex) => model.voiceReverseLFORate[voiceIndex] ?? 0),
+  ],
   delayAMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAMix, key)],
   drumDelayNoteL: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeLeftMs, key, indexedDelayDivisionMs('drumDelayNoteL', 10)),

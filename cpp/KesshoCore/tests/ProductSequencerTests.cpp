@@ -369,6 +369,100 @@ void enqueueRuntimeWalkRange(
       KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_GLOBAL | randomWalkSpeedFlags(4.25f));
 }
 
+bool granularVoiceParamOffset(uint32_t param_id, uint32_t& voice_index, uint32_t& offset) {
+  if (param_id < KESSHO_PRODUCT_PARAM_FX_GRANULAR_V1_ENABLED_ID ||
+      param_id > KESSHO_PRODUCT_PARAM_FX_GRANULAR_V4_EUCLID_MUTED_ID) {
+    return false;
+  }
+  const uint32_t raw_offset = param_id - KESSHO_PRODUCT_PARAM_FX_GRANULAR_V1_ENABLED_ID;
+  voice_index = raw_offset / kGranularVoiceParamCount;
+  offset = raw_offset % kGranularVoiceParamCount;
+  return voice_index < kGranularVoiceCount;
+}
+
+float granularVoiceRuntimeFieldValue(const GranularVoiceState& voice, uint32_t offset) {
+  switch (offset) {
+    case 3:
+      return voice.speed;
+    case 4:
+      return voice.scan_rate;
+    case 6:
+      return voice.pitch;
+    case 7:
+      return voice.write_follow;
+    case 8:
+      return voice.density;
+    case 9:
+      return voice.grain_size_ms;
+    case 10:
+      return voice.spray;
+    case 11:
+      return voice.grain_octave_probability;
+    case 12:
+      return voice.attack_seconds;
+    case 13:
+      return voice.decay_seconds;
+    case 14:
+      return voice.gain;
+    case 15:
+      return voice.pan;
+    case 16:
+      return voice.blur;
+    case 17:
+      return voice.stereo_spread;
+    case 18:
+      return voice.position_lfo_rate;
+    case 19:
+      return voice.position_lfo_depth;
+    case 20:
+      return voice.pan_lfo_rate;
+    case 21:
+      return voice.reverse_lfo_rate;
+    case 22:
+      return voice.record_lfo_rate;
+    default:
+      require(false, "granular voice runtime probe missing field reader");
+      return 0.0f;
+  }
+}
+
+uint32_t granularModuleParamIndexForProductParam(uint32_t param_id) {
+  switch (param_id) {
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_FEEDBACK_ID:
+      return 4u;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_FEEDBACK_LPF_HZ_ID:
+      return 5u;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_BUFFER_SECONDS_ID:
+      return 6u;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_BUS_DIFFUSION_ID:
+      return 8u;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_TIMING_RANDOMNESS_ID:
+      return 9u;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_CHORD_BIAS_ID:
+      return kGranularChordBiasParam;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_JITTER_MS_ID:
+      return kGranularLegacyParamStart;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_PROBABILITY_ID:
+      return kGranularLegacyParamStart + 1u;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_PITCH_SPREAD_ID:
+      return kGranularLegacyParamStart + 3u;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_MAX_GRAINS_ID:
+      return kGranularLegacyParamStart + 4u;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_FEEDBACK_ID:
+      return kGranularLegacyParamStart + 5u;
+    default:
+      break;
+  }
+
+  uint32_t voice_index = 0u;
+  uint32_t offset = 0u;
+  if (granularVoiceParamOffset(param_id, voice_index, offset) &&
+      (offset == 3u || offset == 4u || (offset >= 6u && offset <= 22u))) {
+    return kGranularGlobalParamCount + voice_index * kGranularVoiceParamCount + offset;
+  }
+  return UINT32_MAX;
+}
+
 float productRuntimeFieldValue(const KesshoProductEngine& engine, uint32_t param_id) {
   switch (param_id) {
     case KESSHO_PRODUCT_PARAM_MASTER_GAIN_ID:
@@ -379,6 +473,32 @@ float productRuntimeFieldValue(const KesshoProductEngine& engine, uint32_t param
       return engine.fx.delay_b_mix;
     case KESSHO_PRODUCT_PARAM_FX_GRANULAR_MIX_ID:
       return engine.fx.granular_mix;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_FEEDBACK_ID:
+      return engine.fx.granular_feedback;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_FEEDBACK_LPF_HZ_ID:
+      return engine.fx.granular_feedback_lpf_hz;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_REVERB_LPF_HZ_ID:
+      return engine.fx.granular_reverb_lpf_hz;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_OUTPUT_LPF_HZ_ID:
+      return engine.fx.granular_output_lpf_hz;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_BUFFER_SECONDS_ID:
+      return engine.fx.granular_buffer_seconds;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_BUS_DIFFUSION_ID:
+      return engine.fx.granular_bus_diffusion;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_TIMING_RANDOMNESS_ID:
+      return engine.fx.granular_timing_randomness;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_CHORD_BIAS_ID:
+      return engine.fx.granular_chord_bias;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_JITTER_MS_ID:
+      return engine.fx.granular_legacy_jitter_ms;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_PROBABILITY_ID:
+      return engine.fx.granular_legacy_probability;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_PITCH_SPREAD_ID:
+      return engine.fx.granular_legacy_pitch_spread;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_MAX_GRAINS_ID:
+      return static_cast<float>(engine.fx.granular_legacy_max_grains);
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_FEEDBACK_ID:
+      return engine.fx.granular_legacy_feedback;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_MIX_ID:
       return engine.fx.reverb_mix;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID:
@@ -392,9 +512,32 @@ float productRuntimeFieldValue(const KesshoProductEngine& engine, uint32_t param
     case kProductPad2RuntimeParamIdBase + 21u:
       return engine.sources[KESSHO_PRODUCT_SOURCE_PAD2 - 1u].exact_pad_params[21];
     default:
+      uint32_t voice_index = 0u;
+      uint32_t offset = 0u;
+      if (granularVoiceParamOffset(param_id, voice_index, offset)) {
+        return granularVoiceRuntimeFieldValue(engine.fx.granular_voices[voice_index], offset);
+      }
       require(false, "runtime walk product probe missing field reader");
       return 0.0f;
   }
+}
+
+void requireGranularModuleRuntimeFieldValue(
+    const KesshoProductEngine& engine,
+    uint32_t param_id,
+    float expected,
+    const char* label) {
+  const uint32_t module_param_index = granularModuleParamIndexForProductParam(param_id);
+  if (module_param_index == UINT32_MAX) {
+    return;
+  }
+  require(engine.granular_module != nullptr, "granular module missing for runtime probe");
+  const float* params = engine.granular_module->params();
+  require(params != nullptr, "granular module params missing for runtime probe");
+  require(
+      static_cast<uint32_t>(engine.granular_module->paramCount()) > module_param_index,
+      "granular module param index outside module range");
+  require(std::fabs(params[module_param_index] - expected) < 0.001f, label);
 }
 
 void requireTelemetryContainsRuntimeWalk(
@@ -606,6 +749,142 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
   kessho_product_destroy(source_walk);
 }
 
+void requireLowRateGranularRuntimeWalkMovementAcrossEngineParams() {
+  struct ProductProbe {
+    uint32_t param_id;
+    float min_value;
+    float max_value;
+    float current_value;
+    const char* label;
+  };
+  const ProductProbe global_probes[] = {
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_MIX_ID, 0.05f, 0.95f, 0.26f, "granular mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_FEEDBACK_ID, 0.0f, 0.85f, 0.2f, "granular feedback runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_FEEDBACK_LPF_HZ_ID, 2000.0f, 10000.0f, 6500.0f, "granular feedback LPF runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_REVERB_LPF_HZ_ID, 600.0f, 9000.0f, 4000.0f, "granular reverb LPF runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_OUTPUT_LPF_HZ_ID, 800.0f, 12000.0f, 8000.0f, "granular output LPF runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_BUFFER_SECONDS_ID, 4.0f, 16.0f, 10.0f, "granular buffer seconds runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_BUS_DIFFUSION_ID, 0.0f, 1.0f, 0.25f, "granular diffusion runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_TIMING_RANDOMNESS_ID, 0.0f, 0.95f, 0.3f, "granular timing randomness runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_CHORD_BIAS_ID, 0.0f, 1.0f, 0.35f, "granular chord bias runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_JITTER_MS_ID, 0.0f, 30.0f, 8.0f, "granular legacy jitter runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_PROBABILITY_ID, 0.0f, 1.0f, 0.7f, "granular legacy probability runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_PITCH_SPREAD_ID, 0.0f, 12.0f, 3.0f, "granular legacy pitch spread runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_MAX_GRAINS_ID, 16.0f, 112.0f, 64.0f, "granular legacy max grains runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_FEEDBACK_ID, 0.0f, 0.35f, 0.12f, "granular legacy feedback runtime walk did not move"},
+  };
+  struct VoiceProbe {
+    uint32_t offset;
+    float min_value;
+    float max_value;
+    float current_value;
+  };
+  const VoiceProbe voice_probes[] = {
+      {3u, 0.0f, 4.0f, 1.0f},
+      {4u, 0.25f, 4.0f, 1.2f},
+      {6u, -24.0f, 24.0f, 0.0f},
+      {7u, 0.0f, 1.0f, 0.2f},
+      {8u, 1.0f, 64.0f, 20.0f},
+      {9u, 10.0f, 500.0f, 80.0f},
+      {10u, 0.0f, 1.0f, 0.3f},
+      {11u, 0.0f, 1.0f, 0.1f},
+      {12u, 0.001f, 0.5f, 0.05f},
+      {13u, 0.01f, 4.0f, 0.5f},
+      {14u, 0.0f, 1.0f, 0.4f},
+      {15u, -1.0f, 1.0f, 0.0f},
+      {16u, 0.0f, 1.0f, 0.2f},
+      {17u, 0.0f, 1.0f, 0.5f},
+      {18u, 0.0f, 1.0f, 0.1f},
+      {19u, 0.0f, 1.0f, 0.2f},
+      {20u, 0.0f, 1.0f, 0.12f},
+      {21u, 0.0f, 1.0f, 0.05f},
+      {22u, 0.0f, 1.0f, 0.08f},
+  };
+  const uint32_t voice_bases[kGranularVoiceCount] = {
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_V1_ENABLED_ID,
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_V2_ENABLED_ID,
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_V3_ENABLED_ID,
+      KESSHO_PRODUCT_PARAM_FX_GRANULAR_V4_ENABLED_ID,
+  };
+
+  const uint32_t low_rate_flags = randomWalkSpeedFlags(0.09f);
+  constexpr uint32_t kLowRateRenderBlocks = 360u;
+  KesshoProductEngine* granular_walk = kessho_product_create(48000.0, 128, 0);
+  require(granular_walk != nullptr, "low-rate granular runtime walk engine allocation failed");
+  granular_walk->fx.granular_enabled = true;
+
+  uint32_t control_id = 1100u;
+  for (const ProductProbe& probe : global_probes) {
+    enqueueRuntimeWalkRange(
+        granular_walk,
+        0u,
+        probe.param_id,
+        control_id++,
+        probe.min_value,
+        probe.max_value,
+        probe.current_value,
+        low_rate_flags);
+  }
+  for (uint32_t voice_index = 0u; voice_index < kGranularVoiceCount; ++voice_index) {
+    granular_walk->fx.granular_voices[voice_index].enabled = true;
+    for (const VoiceProbe& probe : voice_probes) {
+      enqueueRuntimeWalkRange(
+          granular_walk,
+          0u,
+          voice_bases[voice_index] + probe.offset,
+          control_id++,
+          probe.min_value,
+          probe.max_value,
+          probe.current_value,
+          low_rate_flags);
+    }
+  }
+
+  renderSilentBlocks(granular_walk, kLowRateRenderBlocks);
+  const uint32_t global_probe_count = static_cast<uint32_t>(sizeof(global_probes) / sizeof(global_probes[0]));
+  const uint32_t voice_probe_count = static_cast<uint32_t>(sizeof(voice_probes) / sizeof(voice_probes[0]));
+  const uint32_t total_probe_count = global_probe_count + kGranularVoiceCount * voice_probe_count;
+  require(granular_walk->telemetry.runtime_walk_count == total_probe_count, "low-rate granular runtime walk telemetry missed targets");
+
+  control_id = 1100u;
+  for (const ProductProbe& probe : global_probes) {
+    const ModulationRange* range = granular_walk->findModulationRange(0u, probe.param_id);
+    require(range != nullptr, probe.label);
+    require(range->mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK, probe.label);
+    require(!range->random_walk_global, probe.label);
+    require(std::fabs(range->random_walk_speed - 0.09f) < 0.001f, probe.label);
+    require(range->current_value >= probe.min_value && range->current_value <= probe.max_value, probe.label);
+    require(std::fabs(range->current_value - probe.current_value) > 0.00001f, probe.label);
+    const float expected = probe.param_id == KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_MAX_GRAINS_ID
+        ? static_cast<float>(std::lround(range->current_value))
+        : range->current_value;
+    require(std::fabs(productRuntimeFieldValue(*granular_walk, probe.param_id) - expected) < 0.001f, probe.label);
+    requireGranularModuleRuntimeFieldValue(*granular_walk, probe.param_id, expected, probe.label);
+    requireTelemetryContainsRuntimeWalk(granular_walk->telemetry, control_id++, probe.min_value, probe.max_value, probe.label);
+  }
+  for (uint32_t voice_index = 0u; voice_index < kGranularVoiceCount; ++voice_index) {
+    for (const VoiceProbe& probe : voice_probes) {
+      const uint32_t param_id = voice_bases[voice_index] + probe.offset;
+      const ModulationRange* range = granular_walk->findModulationRange(0u, param_id);
+      require(range != nullptr, "low-rate granular voice runtime walk range missing");
+      require(range->mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK, "low-rate granular voice runtime walk mode mismatch");
+      require(!range->random_walk_global, "low-rate granular voice runtime walk unexpectedly global");
+      require(std::fabs(range->random_walk_speed - 0.09f) < 0.001f, "low-rate granular voice runtime walk speed mismatch");
+      require(range->current_value >= probe.min_value && range->current_value <= probe.max_value, "low-rate granular voice runtime walk out of range");
+      require(std::fabs(range->current_value - probe.current_value) > 0.00001f, "low-rate granular voice runtime walk did not move");
+      require(std::fabs(productRuntimeFieldValue(*granular_walk, param_id) - range->current_value) < 0.001f, "low-rate granular voice runtime walk did not apply");
+      requireGranularModuleRuntimeFieldValue(*granular_walk, param_id, range->current_value, "low-rate granular voice runtime walk did not reach module");
+      requireTelemetryContainsRuntimeWalk(
+          granular_walk->telemetry,
+          control_id++,
+          probe.min_value,
+          probe.max_value,
+          "low-rate granular voice runtime walk telemetry missing");
+    }
+  }
+  kessho_product_destroy(granular_walk);
+}
+
 void requireDirectSequencerCoverage() {
   KesshoProductEngine direct(48000.0, 128, 0);
   direct.transport.running = true;
@@ -686,6 +965,7 @@ int main() {
   requireDirectSequencerCoverage();
   requireRuntimeWalkMovementAcrossAudioAndFxTargets();
   requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets();
+  requireLowRateGranularRuntimeWalkMovementAcrossEngineParams();
 
   constexpr double sample_rate = 48000.0;
   KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096, 0);

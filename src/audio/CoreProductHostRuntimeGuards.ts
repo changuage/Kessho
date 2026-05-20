@@ -21,7 +21,8 @@ export function coreProductRangeValueContext(
   snapshotBpm: unknown,
   state: Record<string, unknown> | null,
 ): CoreProductRangeValueContext {
-  return { bpm: typeof snapshotBpm === 'number' && Number.isFinite(snapshotBpm) ? snapshotBpm : 120, ...runtimeWalkConfigFromState(state) };
+  const walk = runtimeWalkConfigFromState(state);
+  return { bpm: typeof snapshotBpm === 'number' && Number.isFinite(snapshotBpm) ? snapshotBpm : 120, ...walk, randomWalkSpeed: walk.speed, randomWalkMode: walk.mode, state };
 }
 
 export function mappedCoreProductRange(

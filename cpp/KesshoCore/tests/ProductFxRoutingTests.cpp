@@ -1184,6 +1184,37 @@ int main() {
   }
   kessho_product_destroy(granular_engine);
 
+  KesshoProductEngine* granular_input_only_engine = kessho_product_create(48000.0, 128, 0);
+  require(granular_input_only_engine != nullptr, "granular input-only engine create failed");
+  KesshoProductSnapshotV2 granular_input_only_snapshot = makeSnapshot();
+  granular_input_only_snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].granular_send = 1.0f;
+  granular_input_only_snapshot.fx.granular_enabled = 1;
+  granular_input_only_snapshot.fx.granular_mix = 0.0f;
+  granular_input_only_snapshot.fx.reverb_mix = 0.0f;
+  granular_input_only_snapshot.routing.granular_to_reverb = 0.0f;
+  granular_input_only_snapshot.routing.granular_to_delay_a = 0.0f;
+  granular_input_only_snapshot.routing.granular_to_delay_b = 0.0f;
+  require(
+      kessho_product_load_snapshot_v2(
+          granular_input_only_engine,
+          &granular_input_only_snapshot,
+          sizeof(granular_input_only_snapshot)) == KESSHO_PRODUCT_OK,
+      "granular input-only snapshot load failed");
+  triggerPad(granular_input_only_engine, 0.4f);
+  require(renderFxPeak(granular_input_only_engine, 48) < 0.000001f, "granular input-only path should not leak to FX stem");
+  const KesshoProductTelemetry granular_input_only_telemetry = kessho_product_get_telemetry(granular_input_only_engine);
+  require(
+      granular_input_only_telemetry.active_grains > 0u,
+      "granular input-only visual telemetry did not report active grains");
+  require(
+      granular_input_only_telemetry.granular_write_head > 0.0f &&
+          granular_input_only_telemetry.granular_write_head <= 1.0f,
+      "granular input-only visual telemetry write head was not advancing");
+  for (float position : granular_input_only_telemetry.granular_voice_positions) {
+    require(position >= 0.0f && position <= 1.0f, "granular input-only voice position was not normalized");
+  }
+  kessho_product_destroy(granular_input_only_engine);
+
   KesshoProductEngine* spectral_engine = kessho_product_create(48000.0, 128, 0);
   require(spectral_engine != nullptr, "spectral engine create failed");
   KesshoProductSnapshotV2 spectral_snapshot = makeSnapshot();

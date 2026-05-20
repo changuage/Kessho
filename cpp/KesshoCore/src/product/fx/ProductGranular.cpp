@@ -36,12 +36,24 @@ void KesshoProductEngine::advanceGranularPhraseReseed() {
       graph_granular_input_r[frame] = granular_bus_r[frame];
     }
   }
-  const bool active =
-      fx.granular_enabled &&
-      (fx.granular_mix > 0.0001f ||
-       routing.granular_to_reverb > 0.0001f ||
-       routing.granular_to_delay_a > 0.0001f ||
-       routing.granular_to_delay_b > 0.0001f);
+  const bool output_armed =
+      fx.granular_mix > 0.0001f ||
+      routing.granular_to_reverb > 0.0001f ||
+      routing.granular_to_delay_a > 0.0001f ||
+      routing.granular_to_delay_b > 0.0001f;
+  bool input_armed =
+      routing.delay_a_to_granular > 0.0001f ||
+      routing.delay_b_to_granular > 0.0001f;
+  if (!input_armed) {
+    for (uint32_t source_index = 0; source_index < kSourceCount; ++source_index) {
+      const SourceState& source = sources[source_index];
+      if (source.enabled && source.granular_send > 0.0001f) {
+        input_armed = true;
+        break;
+      }
+    }
+  }
+  const bool active = fx.granular_enabled && (input_armed || output_armed);
   if (granular_module == nullptr || frames == 0u || !active) {
     return;
   }
