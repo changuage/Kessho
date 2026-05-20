@@ -729,6 +729,7 @@
             "graph_delay_a_reverb_send_l",
             "graph_delay_a_to_delay_b_send_l",
             "graph_delay_b_output_l",
+            "delay_a_cross_carry_l[i] = cross_l_sample",
             "KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND",
             "KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND",
             "KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND"
@@ -750,8 +751,7 @@
           "tokens": [
             "granular_feeds_delay",
             "delay_feeds_granular",
-            "renderDelayModule(delay_a_module.get()",
-            "delay_a_cross_carry_l[i] = graph_delay_b_to_delay_a_send_l[frame]"
+            "renderDelayModule(delay_a_module.get()"
           ]
         },
         {
