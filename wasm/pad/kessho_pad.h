@@ -200,6 +200,7 @@ void pad_set_reverb_send(float level);
 // ═══════════════ Status ═══════════════
 
 int pad_get_active_count(void);
+void pad_advance_idle_telemetry(int pad_idx, int frames);
 float pad_get_current_filter_freq(int pad_idx);
 float pad_get_current_lfo1_value(int pad_idx);
 
@@ -295,6 +296,7 @@ void pad_instance_set_level(KesshoPadInstance* instance, int pad_idx, float leve
 void pad_instance_set_reverb_send(KesshoPadInstance* instance, float level);
 
 int pad_instance_get_active_count(KesshoPadInstance* instance);
+void pad_instance_advance_idle_telemetry(KesshoPadInstance* instance, int pad_idx, int frames);
 float pad_instance_get_current_filter_freq(KesshoPadInstance* instance, int pad_idx);
 float pad_instance_get_current_lfo1_value(KesshoPadInstance* instance, int pad_idx);
 

@@ -406,6 +406,30 @@ void configurePadFilterLfoTelemetryPatch(KesshoProductSourceSnapshot& source, fl
   source.exact_pad_params[kPadParamLevel] = 1.0f;
 }
 
+void configurePadLowRateRandomWalkTelemetryPatch(KesshoProductSourceSnapshot& source, float cutoff_min, float cutoff_max) {
+  constexpr uint32_t kPadParamFilterCutoffMin = 21u;
+  constexpr uint32_t kPadParamFilterCutoffMax = 22u;
+  constexpr uint32_t kPadParamFilterKeyTracking = 26u;
+  constexpr uint32_t kPadParamLfo1Rate = 37u;
+  constexpr uint32_t kPadParamLfo1Depth = 38u;
+  constexpr uint32_t kPadParamLfo1Wave = 39u;
+  constexpr uint32_t kPadParamLfo1Dest = 40u;
+  constexpr uint32_t kPadParamLfo2Depth = 42u;
+  constexpr uint32_t kPadParamModEnvEnabled = 45u;
+  constexpr uint32_t kPadParamLevel = 52u;
+  require(source.exact_pad_param_count == 53u, "Pad idle random-walk telemetry test requires exact Pad params");
+  source.exact_pad_params[kPadParamFilterCutoffMin] = cutoff_min;
+  source.exact_pad_params[kPadParamFilterCutoffMax] = cutoff_max;
+  source.exact_pad_params[kPadParamFilterKeyTracking] = 0.0f;
+  source.exact_pad_params[kPadParamLfo1Rate] = 0.09f;
+  source.exact_pad_params[kPadParamLfo1Depth] = 1.0f;
+  source.exact_pad_params[kPadParamLfo1Wave] = 6.0f;
+  source.exact_pad_params[kPadParamLfo1Dest] = 1.0f;
+  source.exact_pad_params[kPadParamLfo2Depth] = 0.0f;
+  source.exact_pad_params[kPadParamModEnvEnabled] = 0.0f;
+  source.exact_pad_params[kPadParamLevel] = 1.0f;
+}
+
 void configurePadModEnvelopeTelemetryPatch(KesshoProductSourceSnapshot& source, float cutoff_min, float cutoff_max) {
   constexpr uint32_t kPadParamFilterCutoffMin = 21u;
   constexpr uint32_t kPadParamFilterCutoffMax = 22u;
@@ -469,6 +493,44 @@ void requirePadFilterLfoTelemetryTracksBothPads() {
       "Pad 2 filter telemetry did not track Product Core cutoff");
   require(std::fabs(telemetry.pad1_lfo1_value) > 0.0001f, "Pad 1 LFO telemetry did not move");
   require(std::fabs(telemetry.pad2_lfo1_value) > 0.0001f, "Pad 2 LFO telemetry did not move");
+  kessho_product_destroy(engine);
+}
+
+void requireIdlePadLowRateRandomWalkTelemetryTracksBothPads() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "Idle Pad random-walk telemetry engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configurePadLowRateRandomWalkTelemetryPatch(snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u], 40.0f, 1690.0f);
+  configurePadLowRateRandomWalkTelemetryPatch(snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD2 - 1u], 80.0f, 2600.0f);
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Idle Pad random-walk snapshot load failed");
+
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  for (int block = 0; block < 80; ++block) {
+    kessho_product_render(engine, left.data(), right.data(), 128);
+  }
+
+  const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+  const float pad1_center = 40.0f + (1690.0f - 40.0f) * 0.5f;
+  const float pad2_center = 80.0f + (2600.0f - 80.0f) * 0.5f;
+  require(telemetry.active_voices == 0u, "Idle Pad random-walk telemetry test unexpectedly triggered a voice");
+  require(std::fabs(telemetry.pad1_lfo1_value) > 0.000001f, "Idle Pad 1 low-rate random-walk LFO telemetry did not move");
+  require(std::fabs(telemetry.pad2_lfo1_value) > 0.000001f, "Idle Pad 2 low-rate random-walk LFO telemetry did not move");
+  require(std::fabs(telemetry.pad1_filter_freq - pad1_center) > 0.001f, "Idle Pad 1 low-rate random-walk filter telemetry stayed at center");
+  require(std::fabs(telemetry.pad2_filter_freq - pad2_center) > 0.001f, "Idle Pad 2 low-rate random-walk filter telemetry stayed at center");
+
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_PAD1, 60.0f);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_PAD2, 67.0f);
+  for (int block = 0; block < 80; ++block) {
+    kessho_product_render(engine, left.data(), right.data(), 128);
+  }
+
+  const KesshoProductTelemetry active_telemetry = kessho_product_get_telemetry(engine);
+  require(active_telemetry.active_voices > 0u, "Active Pad random-walk telemetry test did not trigger voices");
+  require(std::fabs(active_telemetry.pad1_lfo1_value) > 0.000001f, "Active Pad 1 low-rate random-walk LFO telemetry did not move");
+  require(std::fabs(active_telemetry.pad2_lfo1_value) > 0.000001f, "Active Pad 2 low-rate random-walk LFO telemetry did not move");
+  require(std::fabs(active_telemetry.pad1_filter_freq - pad1_center) > 0.001f, "Active Pad 1 low-rate random-walk filter telemetry stayed at center");
+  require(std::fabs(active_telemetry.pad2_filter_freq - pad2_center) > 0.001f, "Active Pad 2 low-rate random-walk filter telemetry stayed at center");
   kessho_product_destroy(engine);
 }
 
@@ -1170,6 +1232,7 @@ int main() {
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_STEM_PAD1, 60.0f, "pad 1 did not render");
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_PAD2, KESSHO_PRODUCT_STEM_PAD2, 64.0f, "pad 2 did not render");
   requirePadFilterLfoTelemetryTracksBothPads();
+  requireIdlePadLowRateRandomWalkTelemetryTracksBothPads();
   requirePadModEnvelopeTelemetryTracksBothPads();
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_LEAD1, KESSHO_PRODUCT_STEM_LEAD1, 67.0f, "lead 1 did not render");
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_LEAD2, KESSHO_PRODUCT_STEM_LEAD2, 71.0f, "lead 2 did not render");

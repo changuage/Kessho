@@ -100,6 +100,10 @@ public:
   virtual int activeVoiceCount() {
     return 0;
   }
+  virtual void advancePadIdleTelemetry(int source_index, int frames) {
+    (void)source_index;
+    (void)frames;
+  }
   virtual float currentPadFilterFrequency(int source_index) {
     (void)source_index;
     return 0.0f;

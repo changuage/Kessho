@@ -376,6 +376,21 @@
           : 0.0f;
     }
   }
+  if (pad_module) {
+    for (uint32_t pad_index = 0; pad_index < static_cast<uint32_t>(PAD_NUM_PADS); ++pad_index) {
+      const uint32_t source_id = pad_index == 0u ? KESSHO_PRODUCT_SOURCE_PAD1 : KESSHO_PRODUCT_SOURCE_PAD2;
+      const SourceState& source = sources[source_id - 1u];
+      if (source.exact_pad_param_count != kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT) {
+        continue;
+      }
+      kessho::core::KesshoSourcePresetPatch patch{};
+      patch.exact_pad_param_count = kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
+      for (uint32_t param_index = 0; param_index < kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT; ++param_index) {
+        patch.exact_pad_params[param_index] = source.exact_pad_params[param_index];
+      }
+      pad_module->setSourcePresetPatch(static_cast<int>(pad_index), patch);
+    }
+  }
   SourceState& soundscape_source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
   soundscape_source.asset_ref_count = 0;
   std::fill(soundscape_source.asset_refs, soundscape_source.asset_refs + kMaxSoundscapeAssetRefs, 0u);

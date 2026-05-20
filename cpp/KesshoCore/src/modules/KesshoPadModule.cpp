@@ -486,6 +486,13 @@ public:
     return instance_ != nullptr ? pad_instance_get_active_count(instance_) : 0;
   }
 
+  void advancePadIdleTelemetry(int source_index, int frames) override {
+    if (instance_ == nullptr || source_index < 0 || source_index >= PAD_NUM_PADS || frames <= 0) {
+      return;
+    }
+    pad_instance_advance_idle_telemetry(instance_, source_index, std::min(frames, max_block_size_));
+  }
+
   float currentPadFilterFrequency(int source_index) override {
     if (instance_ == nullptr || source_index < 0 || source_index >= PAD_NUM_PADS) {
       return 0.0f;

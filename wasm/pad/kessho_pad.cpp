@@ -115,6 +115,8 @@ struct LFOState {
     float prev_random = 0;
     float next_random = 0;
     float random_walk = 0;
+    float random_walk_velocity = 0;
+    float random_walk_elapsed_seconds = 0.1f;
     PRNG  rng;
 
     float process(float rate, int wave_type, float sample_rate, const SineTable& sine) {
@@ -126,8 +128,6 @@ struct LFOState {
             // Update S&H / random targets on cycle
             prev_random = next_random;
             next_random = rng.next_bipolar();
-            random_walk += rng.next_bipolar() * 0.2f;
-            random_walk = std::max(-1.0f, std::min(1.0f, random_walk));
         }
 
         switch (wave_type) {
@@ -152,9 +152,23 @@ struct LFOState {
                 value = prev_random + (next_random - prev_random) * t;
                 break;
             }
-            case PAD_LFO_RANDOM_WALK:
+            case PAD_LFO_RANDOM_WALK: {
+                random_walk_elapsed_seconds += 1.0f / std::max(1.0f, sample_rate);
+                while (random_walk_elapsed_seconds >= 0.1f) {
+                    random_walk_elapsed_seconds -= 0.1f;
+                    const float speed = 0.02f * rate;
+                    random_walk_velocity += rng.next_bipolar() * speed;
+                    random_walk_velocity *= 0.92f;
+                    const float max_velocity = speed * 4.0f;
+                    random_walk_velocity = std::max(-max_velocity, std::min(max_velocity, random_walk_velocity));
+                    float position = (random_walk + 1.0f) * 0.5f;
+                    position += random_walk_velocity;
+                    position = std::max(0.0f, std::min(1.0f, position));
+                    random_walk = position * 2.0f - 1.0f;
+                }
                 value = random_walk;
                 break;
+            }
             default:
                 value = 0;
                 break;
@@ -168,6 +182,8 @@ struct LFOState {
         prev_random = 0;
         next_random = 0;
         random_walk = 0;
+        random_walk_velocity = 0;
+        random_walk_elapsed_seconds = 0.1f;
     }
 };
 
@@ -246,6 +262,8 @@ struct PadState {
 
     PadVoice g_voices[PAD_NUM_VOICES];
     PadParams g_pads[PAD_NUM_PADS];
+    LFOState g_preview_lfo1[PAD_NUM_PADS];
+    LFOState g_preview_lfo2[PAD_NUM_PADS];
 
     float g_output[PAD_MAX_BLOCK_SIZE * 2] = {};
     float g_reverb_output[PAD_MAX_BLOCK_SIZE * 2] = {};
@@ -292,6 +310,8 @@ struct KesshoPadInstance {
 #define g_rng pad_current_state().g_rng
 #define g_voices pad_current_state().g_voices
 #define g_pads pad_current_state().g_pads
+#define g_preview_lfo1 pad_current_state().g_preview_lfo1
+#define g_preview_lfo2 pad_current_state().g_preview_lfo2
 #define g_output pad_current_state().g_output
 #define g_reverb_output pad_current_state().g_reverb_output
 #define g_prefader_pad1_output pad_current_state().g_prefader_pad1_output
@@ -564,6 +584,36 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
     }
 }
 
+static void update_idle_pad_telemetry(int pad_idx, int block_size) {
+    if (pad_idx < 0 || pad_idx >= PAD_NUM_PADS) return;
+    const PadParams& p = g_pads[pad_idx];
+
+    float lfo1_val = 0.0f;
+    float lfo2_val = 0.0f;
+    const int frames = std::max(1, block_size);
+    for (int n = 0; n < frames; n++) {
+        lfo1_val = g_preview_lfo1[pad_idx].process(p.lfo1_rate, p.lfo1_wave, g_sample_rate, g_sine);
+        lfo2_val = g_preview_lfo2[pad_idx].process(p.lfo2_rate, p.lfo2_wave, g_sample_rate, g_sine);
+    }
+
+    float filter_a_mod = 0.0f;
+    float filter_b_mod = 0.0f;
+    float amp_mod = 0.0f;
+    float pitch_mod = 0.0f;
+    float osc_b_mod = 0.0f;
+    float fold_mod = 0.0f;
+    apply_lfo_modulation(lfo1_val, p.lfo1_depth, p.lfo1_dest,
+        filter_a_mod, filter_b_mod, amp_mod, pitch_mod, osc_b_mod, fold_mod);
+    apply_lfo_modulation(lfo2_val, p.lfo2_depth, p.lfo2_dest,
+        filter_a_mod, filter_b_mod, amp_mod, pitch_mod, osc_b_mod, fold_mod);
+
+    const float cutoff_min = std::min(p.filter_cutoff_min, p.filter_cutoff_max);
+    const float cutoff_max = std::max(p.filter_cutoff_min, p.filter_cutoff_max);
+    float filter_cutoff = cutoff_min + (cutoff_max - cutoff_min) * 0.5f * (1.0f + filter_a_mod);
+    g_current_filter_freq[pad_idx] = clamp_hz(filter_cutoff);
+    g_current_lfo1_value[pad_idx] = lfo1_val * p.lfo1_depth;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Public API Implementation
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -581,6 +631,12 @@ int pad_init(float sample_rate) {
         g_voices[i].noise_rng.seed(g_rng.next());
         g_voices[i].lfo1.rng.seed(g_rng.next());
         g_voices[i].lfo2.rng.seed(g_rng.next());
+    }
+    for (int pad = 0; pad < PAD_NUM_PADS; pad++) {
+        g_preview_lfo1[pad].reset();
+        g_preview_lfo2[pad].reset();
+        g_preview_lfo1[pad].rng.seed(g_rng.next());
+        g_preview_lfo2[pad].rng.seed(g_rng.next());
     }
 
     memset(g_output, 0, sizeof(g_output));
@@ -630,9 +686,12 @@ void pad_process_block(int block_size) {
     float post_pad1_r[PAD_MAX_BLOCK_SIZE] = {};
     float post_pad2_l[PAD_MAX_BLOCK_SIZE] = {};
     float post_pad2_r[PAD_MAX_BLOCK_SIZE] = {};
+    bool active_pads[PAD_NUM_PADS] = {};
 
     for (int i = 0; i < PAD_NUM_VOICES; i++) {
         if (g_voices[i].active) {
+            const int pad_idx = std::max(0, std::min(PAD_NUM_PADS - 1, g_voices[i].pad_idx));
+            active_pads[pad_idx] = true;
             render_voice(
                 g_voices[i],
                 dry_l,
@@ -647,6 +706,11 @@ void pad_process_block(int block_size) {
                 post_pad2_r,
                 block_size
             );
+        }
+    }
+    for (int pad = 0; pad < PAD_NUM_PADS; pad++) {
+        if (!active_pads[pad]) {
+            update_idle_pad_telemetry(pad, block_size);
         }
     }
 
@@ -807,6 +871,10 @@ int pad_get_active_count(void) {
         if (g_voices[i].active) count++;
     }
     return count;
+}
+
+void pad_advance_idle_telemetry(int p, int frames) {
+    update_idle_pad_telemetry(p, frames);
 }
 
 float pad_get_current_filter_freq(int p) {
@@ -1006,6 +1074,12 @@ int pad_instance_get_active_count(KesshoPadInstance* instance) {
     if (!instance) return 0;
     ScopedPadState scoped(&instance->state);
     return pad_get_active_count();
+}
+
+void pad_instance_advance_idle_telemetry(KesshoPadInstance* instance, int pad_idx, int frames) {
+    if (!instance) return;
+    ScopedPadState scoped(&instance->state);
+    pad_advance_idle_telemetry(pad_idx, frames);
 }
 
 float pad_instance_get_current_filter_freq(KesshoPadInstance* instance, int pad_idx) {

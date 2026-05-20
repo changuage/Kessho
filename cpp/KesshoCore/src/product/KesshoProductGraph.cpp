@@ -6,6 +6,8 @@ void KesshoProductEngine::renderPadModule(float* out_l, float* out_r, uint32_t s
   }
   advancePadVoiceReleases(frames);
   if (pad_module->activeVoiceCount() <= 0) {
+    pad_module->advancePadIdleTelemetry(0, static_cast<int>(frames));
+    pad_module->advancePadIdleTelemetry(1, static_cast<int>(frames));
     return;
   }
   float* tap_l[kModuleTapCount]{};
