@@ -87,8 +87,10 @@ struct PadPostChainState {
   float b2 = 0.0f;
   float a1 = 0.0f;
   float a2 = 0.0f;
-  BiquadState left{};
-  BiquadState right{};
+  BiquadState stage1_left{};
+  BiquadState stage1_right{};
+  BiquadState stage2_left{};
+  BiquadState stage2_right{};
 };
 
 struct LeadPostChainState {

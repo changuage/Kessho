@@ -887,7 +887,11 @@ float renderDeltaRmsWithOpenPadFilterAndPostLpf(uint32_t source_id, float intern
   return result;
 }
 
-float renderHighBandRmsWithOpenPadFilterAndPostLpf(uint32_t source_id, float internal_filter_hz, float post_lpf_hz) {
+float renderHighBandRmsWithOpenPadFilterAndPostLpf(
+    uint32_t source_id,
+    float internal_filter_hz,
+    float post_lpf_hz,
+    float highpass_hz = 3000.0f) {
   const uint32_t preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT;
   const auto* preset = generatedPreset(preset_id);
   require(preset != nullptr, "Saturated Drift preset missing for pad post-LPF high-band test");
@@ -924,7 +928,7 @@ float renderHighBandRmsWithOpenPadFilterAndPostLpf(uint32_t source_id, float int
       kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
       "pad high-band post-LPF snapshot load failed");
   triggerManual(engine, source_id, source_id == KESSHO_PRODUCT_SOURCE_PAD2 ? 67.0f : 60.0f);
-  const float result = renderHighpassRmsBlocks(engine, 3000.0f, 96u);
+  const float result = renderHighpassRmsBlocks(engine, highpass_hz, 96u);
   kessho_product_destroy(engine);
   return result;
 }
@@ -981,6 +985,13 @@ void requireSourcePostChainAffectsRender() {
     require(
         open_filter_high_band_high_post > open_filter_high_band_low_post * 3.0f,
         "pad post-LPF did not attenuate high-band energy when internal filter was opened");
+    const float open_filter_presence_high_post =
+        renderHighBandRmsWithOpenPadFilterAndPostLpf(source_id, 8000.0f, 8000.0f, 1200.0f);
+    const float open_filter_presence_low_post =
+        renderHighBandRmsWithOpenPadFilterAndPostLpf(source_id, 8000.0f, 600.0f, 1200.0f);
+    require(
+        open_filter_presence_low_post < open_filter_presence_high_post * 0.30f,
+        "pad post-LPF did not suppress near-band brightness when internal filter was opened above it");
   }
 
   const float high_snapshot = renderRmsWithLeadPostLpf(18000.0f, false);

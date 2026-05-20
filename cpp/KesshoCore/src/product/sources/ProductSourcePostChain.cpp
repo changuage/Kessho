@@ -116,8 +116,10 @@
   const float direct = 0.5f * (1.0f + width);
   const float cross = 0.5f * (1.0f - width);
   for (uint32_t i = 0; i < frames; ++i) {
-    const float filtered_left = processPadPostLpfSample(chain, chain.left, left[i]);
-    const float filtered_right = processPadPostLpfSample(chain, chain.right, right[i]);
+    const float stage1_left = processPadPostLpfSample(chain, chain.stage1_left, left[i]);
+    const float stage1_right = processPadPostLpfSample(chain, chain.stage1_right, right[i]);
+    const float filtered_left = processPadPostLpfSample(chain, chain.stage2_left, stage1_left);
+    const float filtered_right = processPadPostLpfSample(chain, chain.stage2_right, stage1_right);
     left[i] = filtered_left * direct + filtered_right * cross;
     right[i] = filtered_left * cross + filtered_right * direct;
   }

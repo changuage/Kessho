@@ -1,13 +1,15 @@
 #include "../KesshoProductEngineInternal.h"
 
-void KesshoProductEngine::mixPadSourceBuffer(
-      uint32_t source_id,
-      const float* dry_l,
-      const float* dry_r,
-      float* out_l,
-      float* out_r,
-      uint32_t start,
-      uint32_t frames) {
+namespace {
+void addStereo(float* left_bus, float* right_bus, uint32_t frame, float left, float right) {
+  left_bus[frame] += left;
+  right_bus[frame] += right;
+}
+
+} // namespace
+
+void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dry_l, const float* dry_r,
+      float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (source_id < 1u || source_id > kSourceCount) {
     return;
   }
@@ -32,16 +34,11 @@ void KesshoProductEngine::mixPadSourceBuffer(
       const float send_right = dry_r[i];
       out_l[frame] += dry_left;
       out_r[frame] += dry_right;
-      stem_l[source_id][frame] += dry_left;
-      stem_r[source_id][frame] += dry_right;
-      reverb_bus_l[frame] += send_left * source.reverb_send;
-      reverb_bus_r[frame] += send_right * source.reverb_send;
-      delay_a_bus_l[frame] += send_left * source.delay_a_send;
-      delay_a_bus_r[frame] += send_right * source.delay_a_send;
-      delay_b_bus_l[frame] += send_left * source.delay_b_send;
-      delay_b_bus_r[frame] += send_right * source.delay_b_send;
-      granular_bus_l[frame] += send_left * source.granular_send;
-      granular_bus_r[frame] += send_right * source.granular_send;
+      addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
+      addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
+      addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
+      addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
+      addStereo(granular_bus_l, granular_bus_r, frame, send_left * source.granular_send, send_right * source.granular_send);
     }
     return;
   }
@@ -59,27 +56,16 @@ void KesshoProductEngine::mixPadSourceBuffer(
     recordSourceGraphTaps(source_id, frame, source, graph_dry_left, graph_dry_right, left, right, send_left, send_right);
     out_l[frame] += left;
     out_r[frame] += right;
-    stem_l[source_id][frame] += left;
-    stem_r[source_id][frame] += right;
-    reverb_bus_l[frame] += send_left * source.reverb_send;
-    reverb_bus_r[frame] += send_right * source.reverb_send;
-    delay_a_bus_l[frame] += send_left * source.delay_a_send;
-    delay_a_bus_r[frame] += send_right * source.delay_a_send;
-    delay_b_bus_l[frame] += send_left * source.delay_b_send;
-    delay_b_bus_r[frame] += send_right * source.delay_b_send;
-    granular_bus_l[frame] += send_left * source.granular_send;
-    granular_bus_r[frame] += send_right * source.granular_send;
+    addStereo(stem_l[source_id], stem_r[source_id], frame, left, right);
+    addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
+    addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
+    addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
+    addStereo(granular_bus_l, granular_bus_r, frame, send_left * source.granular_send, send_right * source.granular_send);
   }
 }
 
-  void KesshoProductEngine::mixSourceBuffer(
-      uint32_t source_id,
-      const float* in_l,
-      const float* in_r,
-      float* out_l,
-      float* out_r,
-      uint32_t start,
-      uint32_t frames) {
+  void KesshoProductEngine::mixSourceBuffer(uint32_t source_id, const float* in_l, const float* in_r,
+      float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (source_id < 1u || source_id > kSourceCount || source_id >= kStemCount) {
     return;
   }
@@ -102,16 +88,11 @@ void KesshoProductEngine::mixPadSourceBuffer(
       const float send_right = in_r[i] * send_gain;
       out_l[frame] += dry_left;
       out_r[frame] += dry_right;
-      stem_l[source_id][frame] += dry_left;
-      stem_r[source_id][frame] += dry_right;
-      reverb_bus_l[frame] += send_left * source.reverb_send;
-      reverb_bus_r[frame] += send_right * source.reverb_send;
-      delay_a_bus_l[frame] += send_left * source.delay_a_send;
-      delay_a_bus_r[frame] += send_right * source.delay_a_send;
-      delay_b_bus_l[frame] += send_left * source.delay_b_send;
-      delay_b_bus_r[frame] += send_right * source.delay_b_send;
-      granular_bus_l[frame] += send_left * source.granular_send;
-      granular_bus_r[frame] += send_right * source.granular_send;
+      addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
+      addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
+      addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
+      addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
+      addStereo(granular_bus_l, granular_bus_r, frame, send_left * source.granular_send, send_right * source.granular_send);
     }
     return;
   }
@@ -129,15 +110,10 @@ void KesshoProductEngine::mixPadSourceBuffer(
     recordSourceGraphTaps(source_id, frame, source, graph_dry_left, graph_dry_right, left, right, send_left, send_right);
     out_l[frame] += left;
     out_r[frame] += right;
-    stem_l[source_id][frame] += left;
-    stem_r[source_id][frame] += right;
-    reverb_bus_l[frame] += send_left * source.reverb_send;
-    reverb_bus_r[frame] += send_right * source.reverb_send;
-    delay_a_bus_l[frame] += send_left * source.delay_a_send;
-    delay_a_bus_r[frame] += send_right * source.delay_a_send;
-    delay_b_bus_l[frame] += send_left * source.delay_b_send;
-    delay_b_bus_r[frame] += send_right * source.delay_b_send;
-    granular_bus_l[frame] += send_left * source.granular_send;
-    granular_bus_r[frame] += send_right * source.granular_send;
+    addStereo(stem_l[source_id], stem_r[source_id], frame, left, right);
+    addStereo(reverb_bus_l, reverb_bus_r, frame, send_left * source.reverb_send, send_right * source.reverb_send);
+    addStereo(delay_a_bus_l, delay_a_bus_r, frame, send_left * source.delay_a_send, send_right * source.delay_a_send);
+    addStereo(delay_b_bus_l, delay_b_bus_r, frame, send_left * source.delay_b_send, send_right * source.delay_b_send);
+    addStereo(granular_bus_l, granular_bus_r, frame, send_left * source.granular_send, send_right * source.granular_send);
   }
 }

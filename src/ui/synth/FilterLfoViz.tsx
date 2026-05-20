@@ -277,7 +277,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
           ? filterGain(freq, props.filterBCutoff, props.filterBRes, 1, props.filterBType, 0, 12)
           : 1;
         const postGain = postLpfCutoff !== null
-          ? filterGain(freq, postLpfCutoff, 0, 0.7, 'lowpass', 0, 12)
+          ? filterGain(freq, postLpfCutoff, 0, 0.7, 'lowpass', 0, 24)
           : 1;
         const y = gainToY(aGain * bGain * postGain);
         px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);

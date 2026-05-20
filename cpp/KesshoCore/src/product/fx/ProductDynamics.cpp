@@ -198,15 +198,8 @@
   }
 }
 
-  void KesshoProductEngine::mixFxBuffer(
-      const float* in_l,
-      const float* in_r,
-      float* out_l,
-      float* out_r,
-      uint32_t start,
-      uint32_t frames,
-      float gain,
-      uint32_t sidechain_target) {
+  void KesshoProductEngine::mixFxBuffer(const float* in_l, const float* in_r, float* out_l, float* out_r,
+      uint32_t start, uint32_t frames, float gain, uint32_t sidechain_target) {
   if (gain <= 0.0f) {
     return;
   }

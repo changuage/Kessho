@@ -1960,6 +1960,10 @@ for (const token of [
 ]) {
   assert(host.includes(token), `CoreEngineHost parity alignment is missing ${token}`);
 }
+assert(
+  readFunctionBody(host, 'createPadPostChainConfig', 'CoreEngineHost pad post-chain config').includes('postLpfStages: 2'),
+  'CoreEngineHost pad post-LPF must use two stages so the source filter cannot masquerade as a post-LPF bypass',
+);
 
 assertCoreHostFxConfigContract(host);
 

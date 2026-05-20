@@ -473,6 +473,7 @@ function createPadPostChainConfig(sliderState: SliderState): Pick<
   | 'pad1StereoWidth'
   | 'pad2PostLpfHz'
   | 'pad2StereoWidth'
+  | 'postLpfStages'
 > {
   const state = sliderState as unknown as Record<string, unknown>;
   return {
@@ -480,6 +481,7 @@ function createPadPostChainConfig(sliderState: SliderState): Pick<
     pad1StereoWidth: boundedNumber(state.padStereoWidth, 1, 0, 1),
     pad2PostLpfHz: boundedNumber(state.pad2PostLPF, 18000, 20, 20000),
     pad2StereoWidth: boundedNumber(state.pad2StereoWidth, 1, 0, 1),
+    postLpfStages: 2,
   };
 }
 

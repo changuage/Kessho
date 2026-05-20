@@ -533,7 +533,7 @@ for (const token of [
   'postLpfHz?: number',
   'postLpfDominant',
   'drawCombinedResponseCurve',
-  "filterGain(freq, postLpfCutoff, 0, 0.7, 'lowpass', 0, 12)",
+  "filterGain(freq, postLpfCutoff, 0, 0.7, 'lowpass', 0, 24)",
   'Engine telemetry owns live cutoff, including LFO and mod-envelope motion.',
   'const hasFilterTelemetryMotion = props.isRunning',
   "props.lfoDest !== 'none' || hasFilterModEnvelopeMotion(props)",

@@ -25,92 +25,47 @@
     return;
   }
 
-  float* dry_l = nullptr;
-  float* dry_r = nullptr;
-  float* reverb_l = nullptr;
-  float* reverb_r = nullptr;
-  float* delay_a_l = nullptr;
-  float* delay_a_r = nullptr;
-  float* delay_b_l = nullptr;
-  float* delay_b_r = nullptr;
-  float* granular_l = nullptr;
-  float* granular_r = nullptr;
-  float* diffuse_l = nullptr;
-  float* diffuse_r = nullptr;
-
-  switch (source_id) {
-    case KESSHO_PRODUCT_SOURCE_PAD1:
-      dry_l = graph_pad1_dry_l;
-      dry_r = graph_pad1_dry_r;
-      reverb_l = graph_pad1_reverb_send_l;
-      reverb_r = graph_pad1_reverb_send_r;
-      delay_a_l = graph_pad1_delay_a_send_l;
-      delay_a_r = graph_pad1_delay_a_send_r;
-      delay_b_l = graph_pad1_delay_b_send_l;
-      delay_b_r = graph_pad1_delay_b_send_r;
-      granular_l = graph_pad1_granular_send_l;
-      granular_r = graph_pad1_granular_send_r;
-      diffuse_l = graph_pad1_diffuse_send_l;
-      diffuse_r = graph_pad1_diffuse_send_r;
-      break;
-    case KESSHO_PRODUCT_SOURCE_PAD2:
-      dry_l = graph_pad2_dry_l;
-      dry_r = graph_pad2_dry_r;
-      reverb_l = graph_pad2_reverb_send_l;
-      reverb_r = graph_pad2_reverb_send_r;
-      delay_a_l = graph_pad2_delay_a_send_l;
-      delay_a_r = graph_pad2_delay_a_send_r;
-      delay_b_l = graph_pad2_delay_b_send_l;
-      delay_b_r = graph_pad2_delay_b_send_r;
-      granular_l = graph_pad2_granular_send_l;
-      granular_r = graph_pad2_granular_send_r;
-      diffuse_l = graph_pad2_diffuse_send_l;
-      diffuse_r = graph_pad2_diffuse_send_r;
-      break;
-    case KESSHO_PRODUCT_SOURCE_LEAD1:
-      dry_l = graph_lead1_dry_l;
-      dry_r = graph_lead1_dry_r;
-      reverb_l = graph_lead1_reverb_send_l;
-      reverb_r = graph_lead1_reverb_send_r;
-      delay_a_l = graph_lead1_delay_a_send_l;
-      delay_a_r = graph_lead1_delay_a_send_r;
-      delay_b_l = graph_lead1_delay_b_send_l;
-      delay_b_r = graph_lead1_delay_b_send_r;
-      granular_l = graph_lead1_granular_send_l;
-      granular_r = graph_lead1_granular_send_r;
-      diffuse_l = graph_lead1_diffuse_send_l;
-      diffuse_r = graph_lead1_diffuse_send_r;
-      break;
-    case KESSHO_PRODUCT_SOURCE_LEAD2:
-      dry_l = graph_lead2_dry_l;
-      dry_r = graph_lead2_dry_r;
-      reverb_l = graph_lead2_reverb_send_l;
-      reverb_r = graph_lead2_reverb_send_r;
-      delay_a_l = graph_lead2_delay_a_send_l;
-      delay_a_r = graph_lead2_delay_a_send_r;
-      delay_b_l = graph_lead2_delay_b_send_l;
-      delay_b_r = graph_lead2_delay_b_send_r;
-      granular_l = graph_lead2_granular_send_l;
-      granular_r = graph_lead2_granular_send_r;
-      diffuse_l = graph_lead2_diffuse_send_l;
-      diffuse_r = graph_lead2_diffuse_send_r;
-      break;
-    case KESSHO_PRODUCT_SOURCE_PIANO:
-      dry_l = graph_piano_dry_l;
-      dry_r = graph_piano_dry_r;
-      reverb_l = graph_piano_reverb_send_l;
-      reverb_r = graph_piano_reverb_send_r;
-      delay_a_l = graph_piano_delay_a_send_l;
-      delay_a_r = graph_piano_delay_a_send_r;
-      delay_b_l = graph_piano_delay_b_send_l;
-      delay_b_r = graph_piano_delay_b_send_r;
-      granular_l = graph_piano_granular_send_l;
-      granular_r = graph_piano_granular_send_r;
-      diffuse_l = graph_piano_diffuse_send_l;
-      diffuse_r = graph_piano_diffuse_send_r;
-      break;
-    default: return;
-  }
+  struct SourceGraphTapPointers {
+    float* dry_l;
+    float* dry_r;
+    float* reverb_l;
+    float* reverb_r;
+    float* delay_a_l;
+    float* delay_a_r;
+    float* delay_b_l;
+    float* delay_b_r;
+    float* granular_l;
+    float* granular_r;
+    float* diffuse_l;
+    float* diffuse_r;
+  };
+  const auto taps = [this, source_id]() -> SourceGraphTapPointers {
+    switch (source_id) {
+      case KESSHO_PRODUCT_SOURCE_PAD1:
+        return {graph_pad1_dry_l, graph_pad1_dry_r, graph_pad1_reverb_send_l, graph_pad1_reverb_send_r,
+            graph_pad1_delay_a_send_l, graph_pad1_delay_a_send_r, graph_pad1_delay_b_send_l, graph_pad1_delay_b_send_r,
+            graph_pad1_granular_send_l, graph_pad1_granular_send_r, graph_pad1_diffuse_send_l, graph_pad1_diffuse_send_r};
+      case KESSHO_PRODUCT_SOURCE_PAD2:
+        return {graph_pad2_dry_l, graph_pad2_dry_r, graph_pad2_reverb_send_l, graph_pad2_reverb_send_r,
+            graph_pad2_delay_a_send_l, graph_pad2_delay_a_send_r, graph_pad2_delay_b_send_l, graph_pad2_delay_b_send_r,
+            graph_pad2_granular_send_l, graph_pad2_granular_send_r, graph_pad2_diffuse_send_l, graph_pad2_diffuse_send_r};
+      case KESSHO_PRODUCT_SOURCE_LEAD1:
+        return {graph_lead1_dry_l, graph_lead1_dry_r, graph_lead1_reverb_send_l, graph_lead1_reverb_send_r,
+            graph_lead1_delay_a_send_l, graph_lead1_delay_a_send_r, graph_lead1_delay_b_send_l, graph_lead1_delay_b_send_r,
+            graph_lead1_granular_send_l, graph_lead1_granular_send_r, graph_lead1_diffuse_send_l, graph_lead1_diffuse_send_r};
+      case KESSHO_PRODUCT_SOURCE_LEAD2:
+        return {graph_lead2_dry_l, graph_lead2_dry_r, graph_lead2_reverb_send_l, graph_lead2_reverb_send_r,
+            graph_lead2_delay_a_send_l, graph_lead2_delay_a_send_r, graph_lead2_delay_b_send_l, graph_lead2_delay_b_send_r,
+            graph_lead2_granular_send_l, graph_lead2_granular_send_r, graph_lead2_diffuse_send_l, graph_lead2_diffuse_send_r};
+      case KESSHO_PRODUCT_SOURCE_PIANO:
+        return {graph_piano_dry_l, graph_piano_dry_r, graph_piano_reverb_send_l, graph_piano_reverb_send_r,
+            graph_piano_delay_a_send_l, graph_piano_delay_a_send_r, graph_piano_delay_b_send_l, graph_piano_delay_b_send_r,
+            graph_piano_granular_send_l, graph_piano_granular_send_r, graph_piano_diffuse_send_l, graph_piano_diffuse_send_r};
+      default:
+        return {};
+    }
+  }();
+  if (taps.dry_l == nullptr) return;
 
   const uint32_t sidechain_target = sidechainTargetForSource(source_id);
   if (graph_taps_enabled && sidechain_target < kSidechainTargetCount) {
@@ -125,24 +80,24 @@
   }
 
   if (graph_taps_enabled) {
-    dry_l[frame] += dry_left;
-    dry_r[frame] += dry_right;
-    reverb_l[frame] += send_left * source.reverb_send;
-    reverb_r[frame] += send_right * source.reverb_send;
-    delay_a_l[frame] += send_left * source.delay_a_send;
-    delay_a_r[frame] += send_right * source.delay_a_send;
-    delay_b_l[frame] += send_left * source.delay_b_send;
-    delay_b_r[frame] += send_right * source.delay_b_send;
-    granular_l[frame] += send_left * source.granular_send;
-    granular_r[frame] += send_right * source.granular_send;
+    taps.dry_l[frame] += dry_left;
+    taps.dry_r[frame] += dry_right;
+    taps.reverb_l[frame] += send_left * source.reverb_send;
+    taps.reverb_r[frame] += send_right * source.reverb_send;
+    taps.delay_a_l[frame] += send_left * source.delay_a_send;
+    taps.delay_a_r[frame] += send_right * source.delay_a_send;
+    taps.delay_b_l[frame] += send_left * source.delay_b_send;
+    taps.delay_b_r[frame] += send_right * source.delay_b_send;
+    taps.granular_l[frame] += send_left * source.granular_send;
+    taps.granular_r[frame] += send_right * source.granular_send;
   }
   if (source.diffuse_send <= 0.0f) return;
   const float diffuse_left = dry_left * source.diffuse_send;
   const float diffuse_right = dry_right * source.diffuse_send;
   if (diffuse_left == 0.0f && diffuse_right == 0.0f) return;
   if (graph_taps_enabled) {
-    diffuse_l[frame] += diffuse_left;
-    diffuse_r[frame] += diffuse_right;
+    taps.diffuse_l[frame] += diffuse_left;
+    taps.diffuse_r[frame] += diffuse_right;
     graph_diffuse_input_l[frame] += diffuse_left;
     graph_diffuse_input_r[frame] += diffuse_right;
   }

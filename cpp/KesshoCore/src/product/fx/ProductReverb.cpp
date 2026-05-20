@@ -4,7 +4,7 @@ namespace {
 constexpr float kReverbWashDecayPerVisualFrame = 0.92f;
 constexpr float kReverbBloomDecayPerVisualFrame = 0.95f;
 constexpr float kReverbBoostEpsilon = 0.001f;
-}
+} // namespace
 
   void KesshoProductEngine::resetReverbHarmonyCoupling() {
   reverb_wash_boost = 0.0f;
@@ -53,10 +53,8 @@ constexpr float kReverbBoostEpsilon = 0.001f;
     }
   }
 
-  const bool boost_active_before_decay =
-      reverb_wash_boost > kReverbBoostEpsilon ||
-      reverb_bloom_boost > kReverbBoostEpsilon ||
-      triggered;
+  const bool boost_active_before_decay = reverb_wash_boost > kReverbBoostEpsilon ||
+      reverb_bloom_boost > kReverbBoostEpsilon || triggered;
   const bool boost_active = boost_active_before_decay || reverb_harmony_boost_active_last_block;
   if (boost_active) {
     configureReverbModule();
@@ -76,11 +74,9 @@ constexpr float kReverbBoostEpsilon = 0.001f;
       reverb_bloom_boost = 0.0f;
     }
   }
-  const bool boost_active_after_decay =
-      reverb_wash_boost > kReverbBoostEpsilon ||
+  const bool boost_active_after_decay = reverb_wash_boost > kReverbBoostEpsilon ||
       reverb_bloom_boost > kReverbBoostEpsilon;
-  reverb_harmony_boost_active_last_block =
-      boost_active_after_decay ||
+  reverb_harmony_boost_active_last_block = boost_active_after_decay ||
       (boost_active_before_decay && !boost_active_after_decay);
 }
 
@@ -88,22 +84,16 @@ constexpr float kReverbBoostEpsilon = 0.001f;
   const float threshold = clampFloat(fx.reverb_pre_comp_threshold, -60.0f, 0.0f);
   const float knee = clampFloat(fx.reverb_pre_comp_knee, 0.0f, 40.0f);
   const float ratio = clampFloat(fx.reverb_pre_comp_ratio, 1.0f, 20.0f);
-  if (ratio <= 1.0f) {
-    return 0.0f;
-  }
+  if (ratio <= 1.0f) return 0.0f;
   constexpr float strength = 0.04f;
   if (knee <= 0.0f) {
-    if (level_db <= threshold) {
-      return 0.0f;
-    }
+    if (level_db <= threshold) return 0.0f;
     return ((threshold + (level_db - threshold) / ratio) - level_db) * strength;
   }
 
   const float lower = threshold - knee * 0.5f;
   const float upper = threshold + knee * 0.5f;
-  if (level_db <= lower) {
-    return 0.0f;
-  }
+  if (level_db <= lower) return 0.0f;
   if (level_db >= upper) {
     return ((threshold + (level_db - threshold) / ratio) - level_db) * strength;
   }
@@ -222,13 +212,5 @@ constexpr float kReverbBoostEpsilon = 0.001f;
       graph_reverb_output_r[frame] = module_r[i] * return_gain;
     }
   }
-  mixFxBuffer(
-      module_l,
-      module_r,
-      out_l,
-      out_r,
-      start,
-      frames,
-      return_gain,
-      kSidechainReverb);
+  mixFxBuffer(module_l, module_r, out_l, out_r, start, frames, return_gain, kSidechainReverb);
 }

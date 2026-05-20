@@ -7249,12 +7249,14 @@ export class AudioEngine {
       initialStereoWidth: applyDistanceValue('padStereoWidth', this.sliderState!, 'pad1'),
       initialDiffuseSend: applyDistanceValue('padDiffuseSend', this.sliderState!, 'pad1'),
       dryDestination: this.getSidechainTargetInput(ctx, 'pad1', this.synthBus!),
+      postLpfSlope: 24,
     });
     this.pad2SpatialChain = this.createVoiceSpatialChain(ctx, {
       initialPostLpf: applyDistanceValue('pad2PostLPF', this.sliderState!, 'pad2'),
       initialStereoWidth: applyDistanceValue('pad2StereoWidth', this.sliderState!, 'pad2'),
       initialDiffuseSend: applyDistanceValue('pad2DiffuseSend', this.sliderState!, 'pad2'),
       dryDestination: this.getSidechainTargetInput(ctx, 'pad2', this.synthBus!),
+      postLpfSlope: 24,
     });
     this.lead1SpatialChain = this.createVoiceSpatialChain(ctx, {
       initialPostLpf: this.getLeadPostLpfCutoff(this.sliderState!, 'lead1'),
@@ -11299,12 +11301,14 @@ export class AudioEngine {
         initialStereoWidth: applyDistanceValue('padStereoWidth', this.sliderState!, 'pad1'),
         initialDiffuseSend: applyDistanceValue('padDiffuseSend', this.sliderState!, 'pad1'),
         dryDestination: this.getSidechainTargetInput(ctx, 'pad1', this.synthBus!),
+        postLpfSlope: 24,
       });
       this.pad2SpatialChain = this.createVoiceSpatialChain(ctx, {
         initialPostLpf: applyDistanceValue('pad2PostLPF', this.sliderState!, 'pad2'),
         initialStereoWidth: applyDistanceValue('pad2StereoWidth', this.sliderState!, 'pad2'),
         initialDiffuseSend: applyDistanceValue('pad2DiffuseSend', this.sliderState!, 'pad2'),
         dryDestination: this.getSidechainTargetInput(ctx, 'pad2', this.synthBus!),
+        postLpfSlope: 24,
       });
       this.pad1Bus.connect(this.pad1SpatialChain!.postLpf);
       this.pad2Bus.connect(this.pad2SpatialChain!.postLpf);
