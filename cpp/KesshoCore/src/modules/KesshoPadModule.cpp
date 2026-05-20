@@ -352,7 +352,7 @@ public:
 
     const int route = std::max(0, lead_index);
     const int voice = route % PAD_NUM_VOICES;
-    const int pad = std::clamp(route / PAD_NUM_VOICES, 0, PAD_NUM_PADS - 1);
+    const int pad = std::clamp(route / PAD_VOICES_PER_PAD, 0, PAD_NUM_PADS - 1);
     pad_instance_set_voice_pad(instance_, voice, pad);
     pad_instance_note_on(instance_, voice, frequency, velocity);
     return 1;
@@ -484,6 +484,20 @@ public:
 
   int activeVoiceCount() override {
     return instance_ != nullptr ? pad_instance_get_active_count(instance_) : 0;
+  }
+
+  float currentPadFilterFrequency(int source_index) override {
+    if (instance_ == nullptr || source_index < 0 || source_index >= PAD_NUM_PADS) {
+      return 0.0f;
+    }
+    return pad_instance_get_current_filter_freq(instance_, source_index);
+  }
+
+  float currentPadLfoValue(int source_index) override {
+    if (instance_ == nullptr || source_index < 0 || source_index >= PAD_NUM_PADS) {
+      return 0.0f;
+    }
+    return pad_instance_get_current_lfo1_value(instance_, source_index);
   }
 
 private:

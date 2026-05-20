@@ -7796,7 +7796,7 @@ const App: React.FC = () => {
             CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
             isRunning={playbackIsRunning}
             getLeadMorphedParams={audioEngineRuntimeMode === 'core-product' ? () => null : (lead: 1 | 2) => audioEngine.getLeadMorphedParams(lead)}
-            liveSourceTelemetryAvailable={audioEngineRuntimeMode !== 'core-product'}
+            liveSourceTelemetryAvailable
             initialViewMode={synthViewModeRef.current}
             onViewModeChange={(mode) => { synthViewModeRef.current = mode; }}
             initialStepOverrides={synthStepOverridesRef.current}

@@ -24,8 +24,6 @@ const getters = [
   'getCurrentFilterFreq',
   'getCurrentLfoValue',
   'getCurrentLfo2Value',
-  'getCurrentPadFilterFreq',
-  'getCurrentPadLfoValue',
   'getRecordableBusNodes',
   'getAllStemNodes',
   'getEarthTextureDebugState',
@@ -128,6 +126,16 @@ assert(
   'transport debug state must use Product Core telemetry and generated transport state instead of a fixed placeholder',
 );
 assert(
+  methodBody('getCurrentPadFilterFreq').includes('this.latestTelemetry?.pad1FilterFreq') &&
+    methodBody('getCurrentPadFilterFreq').includes('this.latestTelemetry?.pad2FilterFreq'),
+  'Pad filter frequency getter must use Product Core Pad telemetry instead of a hidden fallback',
+);
+assert(
+  methodBody('getCurrentPadLfoValue').includes('this.latestTelemetry?.pad1Lfo1Value') &&
+    methodBody('getCurrentPadLfoValue').includes('this.latestTelemetry?.pad2Lfo1Value'),
+  'Pad LFO getter must use Product Core Pad telemetry instead of a hidden fallback',
+);
+assert(
   methodBody('unsupportedGetter').includes('this.reportRuntimeFallback(method, classification)') &&
     methodBody('unsupportedGetter').includes('throw new Error(`AudioEngine.${method} is not implemented by core-product`)'),
   'unsupportedGetter() must increment runtime diagnostics and throw instead of returning fake Product Core values',
@@ -158,12 +166,13 @@ assert(
   'core-product UI must not request Web Audio analyser nodes for dynamics or drum visuals',
 );
 assert(
-  app.includes("liveSourceTelemetryAvailable={audioEngineRuntimeMode !== 'core-product'}") &&
+  app.includes('liveSourceTelemetryAvailable') &&
+    !app.includes("liveSourceTelemetryAvailable={audioEngineRuntimeMode !== 'core-product'}") &&
     synthPage.includes('liveSourceTelemetryAvailable?: boolean;') &&
     synthPage.includes('if (!liveSourceTelemetryAvailable) return;') &&
     synthPage.includes('enabled: isRunning && liveSourceTelemetryAvailable') &&
     synthPage.includes('isRunning={isRunning && liveSourceTelemetryAvailable}'),
-  'core-product Synth UI must disable live source filter/LFO polling until Product Core source telemetry exists',
+  'core-product Synth UI must enable Pad filter/LFO polling while preserving the telemetry availability guard',
 );
 assert(
   app.includes("getLeadMorphedParams={audioEngineRuntimeMode === 'core-product' ? () => null"),

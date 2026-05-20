@@ -386,6 +386,54 @@ void requireSourceRenders(uint32_t source_id, uint32_t stem_id, float midi_note,
   kessho_product_destroy(engine);
 }
 
+void configurePadFilterLfoTelemetryPatch(KesshoProductSourceSnapshot& source, float cutoff_min, float cutoff_max) {
+  constexpr uint32_t kPadParamFilterCutoffMin = 21u;
+  constexpr uint32_t kPadParamFilterCutoffMax = 22u;
+  constexpr uint32_t kPadParamFilterKeyTracking = 26u;
+  constexpr uint32_t kPadParamLfo1Rate = 37u;
+  constexpr uint32_t kPadParamLfo1Depth = 38u;
+  constexpr uint32_t kPadParamLfo1Wave = 39u;
+  constexpr uint32_t kPadParamLfo1Dest = 40u;
+  constexpr uint32_t kPadParamLevel = 52u;
+  require(source.exact_pad_param_count == 53u, "Pad source telemetry test requires exact Pad params");
+  source.exact_pad_params[kPadParamFilterCutoffMin] = cutoff_min;
+  source.exact_pad_params[kPadParamFilterCutoffMax] = cutoff_max;
+  source.exact_pad_params[kPadParamFilterKeyTracking] = 0.0f;
+  source.exact_pad_params[kPadParamLfo1Rate] = 64.0f;
+  source.exact_pad_params[kPadParamLfo1Depth] = 0.85f;
+  source.exact_pad_params[kPadParamLfo1Wave] = 6.0f;
+  source.exact_pad_params[kPadParamLfo1Dest] = 1.0f;
+  source.exact_pad_params[kPadParamLevel] = 1.0f;
+}
+
+void requirePadFilterLfoTelemetryTracksBothPads() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "Pad telemetry engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configurePadFilterLfoTelemetryPatch(snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u], 200.0f, 4000.0f);
+  configurePadFilterLfoTelemetryPatch(snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD2 - 1u], 500.0f, 9000.0f);
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Pad telemetry snapshot load failed");
+
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_PAD1, 60.0f);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_PAD2, 67.0f);
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  for (int block = 0; block < 16; ++block) {
+    kessho_product_render(engine, left.data(), right.data(), 128);
+  }
+
+  const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+  require(
+      telemetry.pad1_filter_freq >= 200.0f && telemetry.pad1_filter_freq <= 4000.0f,
+      "Pad 1 filter telemetry did not track Product Core cutoff");
+  require(
+      telemetry.pad2_filter_freq >= 500.0f && telemetry.pad2_filter_freq <= 9000.0f,
+      "Pad 2 filter telemetry did not track Product Core cutoff");
+  require(std::fabs(telemetry.pad1_lfo1_value) > 0.0001f, "Pad 1 LFO telemetry did not move");
+  require(std::fabs(telemetry.pad2_lfo1_value) > 0.0001f, "Pad 2 LFO telemetry did not move");
+  kessho_product_destroy(engine);
+}
+
 void requireSourceParamEventsAffectRender() {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "source param engine create failed");
@@ -1055,6 +1103,7 @@ int main() {
   requireExactSourcePresetMetadata();
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_STEM_PAD1, 60.0f, "pad 1 did not render");
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_PAD2, KESSHO_PRODUCT_STEM_PAD2, 64.0f, "pad 2 did not render");
+  requirePadFilterLfoTelemetryTracksBothPads();
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_LEAD1, KESSHO_PRODUCT_STEM_LEAD1, 67.0f, "lead 1 did not render");
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_LEAD2, KESSHO_PRODUCT_STEM_LEAD2, 71.0f, "lead 2 did not render");
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_DRUM, KESSHO_PRODUCT_STEM_DRUM, 36.0f, "drum did not render");

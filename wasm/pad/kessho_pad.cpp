@@ -4,7 +4,7 @@
  * Full port of engine.ts pad voice synthesis to per-sample C++.
  *
  * Architecture:
- *   - 6 voices, each assignable to pad 1 or pad 2
+ *   - 12 voices total: 6 assigned to pad 1, 6 assigned to pad 2
  *   - Per voice: 4 oscillators (OscA, OscA detuned, OscB, Sub) + noise
  *   - Dual SVF filters (A+B) with configurable routing (series/aOnly/bOnly)
  *   - Warmth (low shelf) + Presence (peaking EQ) via Biquad
@@ -255,6 +255,8 @@ struct PadState {
     float g_postfader_pad2_output[PAD_MAX_BLOCK_SIZE * 2] = {};
 
     float g_reverb_send_level = 0.1f;
+    float g_current_filter_freq[PAD_NUM_PADS] = {1000.0f, 1000.0f};
+    float g_current_lfo1_value[PAD_NUM_PADS] = {};
 };
 
 static PadState g_default_pad;
@@ -297,6 +299,8 @@ struct KesshoPadInstance {
 #define g_postfader_pad1_output pad_current_state().g_postfader_pad1_output
 #define g_postfader_pad2_output pad_current_state().g_postfader_pad2_output
 #define g_reverb_send_level pad_current_state().g_reverb_send_level
+#define g_current_filter_freq pad_current_state().g_current_filter_freq
+#define g_current_lfo1_value pad_current_state().g_current_lfo1_value
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -489,6 +493,8 @@ static void render_voice(PadVoice& v, float* out_l, float* out_r,
             (cutoff_max - cutoff_min) * 0.5f * (1.0f + filter_a_mod);
         filter_cutoff = apply_key_tracking(filter_cutoff, v.base_freq, p.filter_key_tracking);
         filter_cutoff = clamp_hz(filter_cutoff);
+        g_current_filter_freq[v.pad_idx] = filter_cutoff;
+        g_current_lfo1_value[v.pad_idx] = lfo1_val * p.lfo1_depth;
 
         // Low-cutoff boost
         if (filter_cutoff < 200.0f) {
@@ -583,6 +589,12 @@ int pad_init(float sample_rate) {
     memset(g_prefader_pad2_output, 0, sizeof(g_prefader_pad2_output));
     memset(g_postfader_pad1_output, 0, sizeof(g_postfader_pad1_output));
     memset(g_postfader_pad2_output, 0, sizeof(g_postfader_pad2_output));
+    for (int pad = 0; pad < PAD_NUM_PADS; ++pad) {
+        const float cutoff_min = std::min(g_pads[pad].filter_cutoff_min, g_pads[pad].filter_cutoff_max);
+        const float cutoff_max = std::max(g_pads[pad].filter_cutoff_min, g_pads[pad].filter_cutoff_max);
+        g_current_filter_freq[pad] = clamp_hz(cutoff_min + (cutoff_max - cutoff_min) * 0.5f);
+        g_current_lfo1_value[pad] = 0.0f;
+    }
 
     return 0;
 }
@@ -797,6 +809,16 @@ int pad_get_active_count(void) {
     return count;
 }
 
+float pad_get_current_filter_freq(int p) {
+    if (p < 0 || p >= PAD_NUM_PADS) return 0.0f;
+    return g_current_filter_freq[p];
+}
+
+float pad_get_current_lfo1_value(int p) {
+    if (p < 0 || p >= PAD_NUM_PADS) return 0.0f;
+    return g_current_lfo1_value[p];
+}
+
 KesshoPadInstance* pad_instance_create(float sample_rate) {
     KesshoPadInstance* instance = new (std::nothrow) KesshoPadInstance{};
     if (!instance) return nullptr;
@@ -984,6 +1006,18 @@ int pad_instance_get_active_count(KesshoPadInstance* instance) {
     if (!instance) return 0;
     ScopedPadState scoped(&instance->state);
     return pad_get_active_count();
+}
+
+float pad_instance_get_current_filter_freq(KesshoPadInstance* instance, int pad_idx) {
+    if (!instance) return 0.0f;
+    ScopedPadState scoped(&instance->state);
+    return pad_get_current_filter_freq(pad_idx);
+}
+
+float pad_instance_get_current_lfo1_value(KesshoPadInstance* instance, int pad_idx) {
+    if (!instance) return 0.0f;
+    ScopedPadState scoped(&instance->state);
+    return pad_get_current_lfo1_value(pad_idx);
 }
 
 } // extern "C"

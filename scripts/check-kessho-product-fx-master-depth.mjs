@@ -73,6 +73,10 @@ for (const token of [
   'float master_integrated_lufs;',
   'float granular_write_head;',
   'float granular_voice_positions[4];',
+  'float pad1_filter_freq;',
+  'float pad1_lfo1_value;',
+  'float pad2_filter_freq;',
+  'float pad2_lfo1_value;',
   'float master_limiter_gain_reduction_db;',
   'float master_saturation_drive;',
   'float dynamics_saturation_drive;',
@@ -90,6 +94,10 @@ for (const token of [
   'masterIntegratedLufs?: number;',
   'granularWriteHeadPosition?: number;',
   'granularVoicePositions?: [number, number, number, number];',
+  'pad1FilterFreq?: number;',
+  'pad1Lfo1Value?: number;',
+  'pad2FilterFreq?: number;',
+  'pad2Lfo1Value?: number;',
   'masterLimiterGainReductionDb?: number;',
   'masterSaturationDrive?: number;',
   'dynamicsSaturationDrive?: number;',
@@ -98,7 +106,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const TELEMETRY_BYTES = 1024;',
+  'const TELEMETRY_BYTES = 1040;',
   'masterInputPeak: this.view.getFloat32(ptr + 964, true)',
   'masterOutputPeak: this.view.getFloat32(ptr + 968, true)',
   'masterOutputRms: this.view.getFloat32(ptr + 972, true)',
@@ -110,6 +118,10 @@ for (const token of [
   'masterIntegratedLufs: this.view.getFloat32(ptr + 1000, true)',
   'granularWriteHeadPosition: this.view.getFloat32(ptr + 1004, true)',
   'granularVoicePositions: [',
+  'pad1FilterFreq: this.view.getFloat32(ptr + 1024, true)',
+  'pad1Lfo1Value: this.view.getFloat32(ptr + 1028, true)',
+  'pad2FilterFreq: this.view.getFloat32(ptr + 1032, true)',
+  'pad2Lfo1Value: this.view.getFloat32(ptr + 1036, true)',
 ]) {
   assert(worklet.includes(token), `worklet telemetry reader is missing ${token}`);
 }
@@ -126,18 +138,26 @@ for (const token of [
   'native.master_integrated_lufs = telemetry.master_integrated_lufs;',
   'native.granular_write_head = telemetry.granular_write_head;',
   'native.granular_voice_positions[i] = telemetry.granular_voice_positions[i];',
+  'native.pad1_filter_freq = telemetry.pad1_filter_freq;',
+  'native.pad1_lfo1_value = telemetry.pad1_lfo1_value;',
+  'native.pad2_filter_freq = telemetry.pad2_filter_freq;',
+  'native.pad2_lfo1_value = telemetry.pad2_lfo1_value;',
 ]) {
   assert(nativeBridge.includes(token), `native telemetry bridge is missing ${token}`);
 }
 
 for (const token of [
-  'sizeof(KesshoProductTelemetry) == 1024',
+  'sizeof(KesshoProductTelemetry) == 1040',
   'offsetof(KesshoProductTelemetry, master_input_peak) == 964',
   'offsetof(KesshoProductTelemetry, dynamics_saturation_drive) == 984',
   'offsetof(KesshoProductTelemetry, master_true_peak) == 992',
   'offsetof(KesshoProductTelemetry, master_integrated_lufs) == 1000',
   'offsetof(KesshoProductTelemetry, granular_write_head) == 1004',
   'offsetof(KesshoProductTelemetry, granular_voice_positions) == 1008',
+  'offsetof(KesshoProductTelemetry, pad1_filter_freq) == 1024',
+  'offsetof(KesshoProductTelemetry, pad1_lfo1_value) == 1028',
+  'offsetof(KesshoProductTelemetry, pad2_filter_freq) == 1032',
+  'offsetof(KesshoProductTelemetry, pad2_lfo1_value) == 1036',
 ]) {
   assert(abiTest.includes(token), `ABI layout test is missing ${token}`);
 }

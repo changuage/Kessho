@@ -15,21 +15,10 @@ import { KESSHO_PRODUCT_PAD_PARAM_COUNT } from './generated/kesshoProductSchema'
 export const MAX_SNAPSHOT_DIFF_EVENTS = 384;
 
 export type SnapshotReloadReason =
-  | 'none'
-  | 'initial-snapshot'
-  | 'runtime-start'
-  | 'runtime-bootstrap'
-  | 'manual-piano-asset'
-  | 'explicit-reset-request'
-  | 'asset-reference-change'
-  | 'asset-reference-level-change'
-  | 'harmony-mode-change'
-  | 'source-structure-change'
-  | 'source-hold-change'
-  | 'exact-patch-change'
-  | 'sequencer-structure-change'
-  | 'dirty-diff-event-budget'
-  | 'adapter-update';
+  | 'none' | 'initial-snapshot' | 'runtime-start' | 'runtime-bootstrap' | 'manual-piano-asset'
+  | 'explicit-reset-request' | 'asset-reference-change' | 'asset-reference-level-change' | 'harmony-mode-change'
+  | 'source-structure-change' | 'source-hold-change' | 'exact-patch-change' | 'sequencer-structure-change'
+  | 'dirty-diff-event-budget' | 'adapter-update';
 
 type SequencerKind = 'synth' | 'drum';
 type ProductSourceSnapshot = CoreProductSnapshot['sources'][number];
@@ -38,9 +27,7 @@ type ProductGranularVoiceSnapshot = CoreProductSnapshot['fx']['granularVoices'][
 type ProductParamIdName = keyof typeof KESSHO_PRODUCT_PARAM_IDS;
 type SnapshotScalar = number | boolean;
 
-export type CoreProductSnapshotDiffResult =
-  | { applied: true; events: CoreProductEvent[] }
-  | { applied: false; reason: SnapshotReloadReason };
+export type CoreProductSnapshotDiffResult = { applied: true; events: CoreProductEvent[] } | { applied: false; reason: SnapshotReloadReason };
 
 export function shouldForwardCoreProductRngDiffs(
   latestSliderState: Record<string, unknown> | null,
@@ -592,12 +579,7 @@ class CoreProductRuntimeAdapter {
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.EvolutionState, previous.evolution.state, next.evolution.state);
   }
 
-  private appendRngDiffs(
-    events: CoreProductEvent[],
-    previous: CoreProductSnapshot,
-    next: CoreProductSnapshot,
-    forwardRngDiffs: boolean,
-  ): void {
+  private appendRngDiffs(events: CoreProductEvent[], previous: CoreProductSnapshot, next: CoreProductSnapshot, forwardRngDiffs: boolean): void {
     if (!forwardRngDiffs) return;
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RngSeed, previous.rng.seed, next.rng.seed);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RngState, previous.rng.state, next.rng.state);
@@ -653,8 +635,6 @@ class CoreProductRuntimeAdapter {
   private eventValue(value: SnapshotScalar): number {
     return value === true ? 1 : value === false ? 0 : value;
   }
-
-
 }
 
 const runtimeAdapter = new CoreProductRuntimeAdapter();

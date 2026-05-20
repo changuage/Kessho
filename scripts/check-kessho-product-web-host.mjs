@@ -505,7 +505,7 @@ for (const token of [
   'workletPadStemPeak: this.lastStemPeaks[1] || 0',
   'workletLeadStemPeak: Math.max(this.lastStemPeaks[3] || 0, this.lastStemPeaks[4] || 0)',
   'runtimeWalkValues[controlId] = value;',
-  'const TELEMETRY_BYTES = 1024;',
+  'const TELEMETRY_BYTES = 1040;',
   'rngSeed: this.view.getUint32(ptr + 928, true)',
   'rngState: this.view.getUint32(ptr + 932, true)',
   'sourcePresetIds.push(this.view.getUint32(ptr + 936 + index * 4, true));',
@@ -517,6 +517,10 @@ for (const token of [
   'masterIntegratedLufs: this.view.getFloat32(ptr + 1000, true)',
   'granularWriteHeadPosition: this.view.getFloat32(ptr + 1004, true)',
   'granularVoicePositions: [',
+  'pad1FilterFreq: this.view.getFloat32(ptr + 1024, true)',
+  'pad1Lfo1Value: this.view.getFloat32(ptr + 1028, true)',
+  'pad2FilterFreq: this.view.getFloat32(ptr + 1032, true)',
+  'pad2Lfo1Value: this.view.getFloat32(ptr + 1036, true)',
   'sequencerUiState,',
 ]) {
   assert(worklet.includes(token), `core-product worklet is missing ${token}`);

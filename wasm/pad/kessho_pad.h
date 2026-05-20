@@ -26,9 +26,10 @@ typedef struct KesshoPadInstance KesshoPadInstance;
 
 // ═══════════════ Constants ═══════════════
 
-#define PAD_NUM_VOICES          6    // 6 voices total, assigned to pad 1 or 2
-#define PAD_MAX_BLOCK_SIZE      128
 #define PAD_NUM_PADS            2
+#define PAD_VOICES_PER_PAD      6
+#define PAD_NUM_VOICES          (PAD_VOICES_PER_PAD * PAD_NUM_PADS)
+#define PAD_MAX_BLOCK_SIZE      128
 
 // Waveform indices
 #define PAD_WAVE_SINE      0
@@ -199,6 +200,8 @@ void pad_set_reverb_send(float level);
 // ═══════════════ Status ═══════════════
 
 int pad_get_active_count(void);
+float pad_get_current_filter_freq(int pad_idx);
+float pad_get_current_lfo1_value(int pad_idx);
 
 // ═══════════════ Instance API ═══════════════
 //
@@ -292,6 +295,8 @@ void pad_instance_set_level(KesshoPadInstance* instance, int pad_idx, float leve
 void pad_instance_set_reverb_send(KesshoPadInstance* instance, float level);
 
 int pad_instance_get_active_count(KesshoPadInstance* instance);
+float pad_instance_get_current_filter_freq(KesshoPadInstance* instance, int pad_idx);
+float pad_instance_get_current_lfo1_value(KesshoPadInstance* instance, int pad_idx);
 
 #ifdef __cplusplus
 }

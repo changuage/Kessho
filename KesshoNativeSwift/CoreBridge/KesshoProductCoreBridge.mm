@@ -100,6 +100,10 @@ KesshoNativeProductTelemetry convertTelemetry(const KesshoProductTelemetry& tele
   for (size_t i = 0; i < 4; ++i) {
     native.granular_voice_positions[i] = telemetry.granular_voice_positions[i];
   }
+  native.pad1_filter_freq = telemetry.pad1_filter_freq;
+  native.pad1_lfo1_value = telemetry.pad1_lfo1_value;
+  native.pad2_filter_freq = telemetry.pad2_filter_freq;
+  native.pad2_lfo1_value = telemetry.pad2_lfo1_value;
   return native;
 }
 

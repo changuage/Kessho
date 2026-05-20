@@ -84,7 +84,7 @@ const frames = 128;
 const leftPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
 const rightPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
 const eventPtr = malloc(40);
-const telemetryPtr = malloc(1024);
+const telemetryPtr = malloc(1040);
 const sequencerUiStatePtr = malloc(70948);
 const engine = create(48000, frames, 0);
 assert(leftPtr && rightPtr && eventPtr && telemetryPtr && sequencerUiStatePtr && engine, 'WASM product smoke allocation failed');

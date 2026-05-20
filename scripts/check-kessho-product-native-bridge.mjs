@@ -257,6 +257,10 @@ for (const token of [
   'master_true_peak',
   'master_true_peak_dbtp',
   'master_integrated_lufs',
+  'pad1_filter_freq',
+  'pad1_lfo1_value',
+  'pad2_filter_freq',
+  'pad2_lfo1_value',
 ]) {
   assert(nativeBridgeHeader.includes(token), `native bridge telemetry header is missing ${token}`);
   assert(nativeBridgeImpl.includes(`native.${token} = telemetry.${token};`), `native bridge telemetry conversion is missing ${token}`);

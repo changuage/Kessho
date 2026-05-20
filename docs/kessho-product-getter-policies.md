@@ -15,8 +15,8 @@ Getter policies in `core-product` must be visible Product Core blockers. Unsuppo
 | `getCurrentFilterFreq` | `explicitly-unsupported-hidden` | Live source filter telemetry polling is disabled in `core-product` until Product Core exposes source debug telemetry. |
 | `getCurrentLfoValue` | `explicitly-unsupported-hidden` | Live source LFO telemetry polling is disabled in `core-product` until Product Core exposes source debug telemetry. |
 | `getCurrentLfo2Value` | `explicitly-unsupported-hidden` | Live secondary LFO telemetry polling is disabled in `core-product` until Product Core exposes source debug telemetry. |
-| `getCurrentPadFilterFreq` | `explicitly-unsupported-hidden` | Live Pad filter telemetry polling is disabled in `core-product` until Product Core exposes source debug telemetry. |
-| `getCurrentPadLfoValue` | `explicitly-unsupported-hidden` | Live Pad LFO telemetry polling is disabled in `core-product` until Product Core exposes source debug telemetry. |
+| `getCurrentPadFilterFreq` | `backed-by-product-core-api` | Backed by Product Core Pad source filter telemetry. |
+| `getCurrentPadLfoValue` | `backed-by-product-core-api` | Backed by Product Core Pad source LFO telemetry. |
 | `getRecordableBusNodes` | `explicitly-unsupported-hidden` | Stem recording UI is hidden in `core-product`; Product Core exposes stem buffers/peaks rather than Web Audio bus nodes. |
 | `getAllStemNodes` | `explicitly-unsupported-hidden` | Stem recording UI is hidden in `core-product`; Product Core exposes stem buffers/peaks rather than Web Audio bus nodes. |
 | `getEarthTextureDebugState` | `explicitly-unsupported-hidden` | Earth texture debug polling is disabled in `core-product` until Product Core exposes soundscape layer debug telemetry. |

@@ -56,12 +56,12 @@ export const CORE_PRODUCT_GETTER_POLICIES = {
     blocker: 'Live secondary LFO telemetry polling is disabled in core-product until Product Core exposes source debug telemetry.',
   },
   getCurrentPadFilterFreq: {
-    classification: 'explicitly-unsupported-hidden',
-    blocker: 'Live Pad filter telemetry polling is disabled in core-product until Product Core exposes source debug telemetry.',
+    classification: 'backed-by-product-core-api',
+    blocker: 'Backed by Product Core Pad source filter telemetry.',
   },
   getCurrentPadLfoValue: {
-    classification: 'explicitly-unsupported-hidden',
-    blocker: 'Live Pad LFO telemetry polling is disabled in core-product until Product Core exposes source debug telemetry.',
+    classification: 'backed-by-product-core-api',
+    blocker: 'Backed by Product Core Pad source LFO telemetry.',
   },
   getRecordableBusNodes: {
     classification: 'explicitly-unsupported-hidden',

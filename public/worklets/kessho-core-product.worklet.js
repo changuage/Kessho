@@ -1,5 +1,5 @@
 const EVENT_BYTES = 40;
-const TELEMETRY_BYTES = 1024;
+const TELEMETRY_BYTES = 1040;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
 const EXPECTED_PRODUCT_SCHEMA_HASH = 0x3573d8e2;
 const SEQUENCER_UI_STATE_LANES = 16;
@@ -1010,6 +1010,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         this.view.getFloat32(ptr + 1016, true),
         this.view.getFloat32(ptr + 1020, true),
       ],
+      pad1FilterFreq: this.view.getFloat32(ptr + 1024, true),
+      pad1Lfo1Value: this.view.getFloat32(ptr + 1028, true),
+      pad2FilterFreq: this.view.getFloat32(ptr + 1032, true),
+      pad2Lfo1Value: this.view.getFloat32(ptr + 1036, true),
       sequencerUiState,
       sequencerUiChangeDice: SEQUENCER_UI_CHANGE_DICE,
       sequencerUiChangeResetHome: SEQUENCER_UI_CHANGE_RESET_HOME,

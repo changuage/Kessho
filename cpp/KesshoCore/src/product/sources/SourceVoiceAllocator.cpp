@@ -29,7 +29,7 @@
         return true;
       }
       const uint32_t pad_index = source_id == KESSHO_PRODUCT_SOURCE_PAD2 ? 1u : 0u;
-      const int route = static_cast<int>(pad_index * PAD_NUM_VOICES + (pad_voice_cursors[pad_index]++ % PAD_NUM_VOICES));
+      const int route = static_cast<int>(pad_index * PAD_VOICES_PER_PAD + (pad_voice_cursors[pad_index]++ % PAD_VOICES_PER_PAD));
       const bool exact_pad_patch =
           preset_patch != nullptr &&
           preset_patch->exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;

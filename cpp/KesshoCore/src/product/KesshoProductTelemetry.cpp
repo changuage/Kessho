@@ -162,6 +162,10 @@
       position = 0.0f;
     }
   }
+  telemetry.pad1_filter_freq = pad_module == nullptr ? 0.0f : pad_module->currentPadFilterFrequency(0);
+  telemetry.pad1_lfo1_value = pad_module == nullptr ? 0.0f : pad_module->currentPadLfoValue(0);
+  telemetry.pad2_filter_freq = pad_module == nullptr ? 0.0f : pad_module->currentPadFilterFrequency(1);
+  telemetry.pad2_lfo1_value = pad_module == nullptr ? 0.0f : pad_module->currentPadLfoValue(1);
   telemetry.sequencer_event_count = sequencer_events.count;
   telemetry.control_queue_depth = control_event_count;
   telemetry.journey_morph_running = journey_running ? 1u : 0u;

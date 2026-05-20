@@ -118,6 +118,10 @@ export type CoreProductTelemetrySnapshot = {
   workletFxStemPeak?: number;
   granularWriteHeadPosition?: number;
   granularVoicePositions?: [number, number, number, number];
+  pad1FilterFreq?: number;
+  pad1Lfo1Value?: number;
+  pad2FilterFreq?: number;
+  pad2Lfo1Value?: number;
 };
 
 export const initialCoreProductCapabilityReport: CoreProductCapabilityReport = {

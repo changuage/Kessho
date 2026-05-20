@@ -100,6 +100,14 @@ public:
   virtual int activeVoiceCount() {
     return 0;
   }
+  virtual float currentPadFilterFrequency(int source_index) {
+    (void)source_index;
+    return 0.0f;
+  }
+  virtual float currentPadLfoValue(int source_index) {
+    (void)source_index;
+    return 0.0f;
+  }
   virtual int activeGrainCount() {
     return 0;
   }

@@ -2,17 +2,17 @@
 
 namespace {
 
-constexpr double kProductSampleHoldRateHz = 10.0;
+constexpr double kProductRuntimeSampleHoldRateHz = 10.0;
 constexpr float kProductRandomWalkTickSeconds = 0.15f;
 constexpr uint32_t kProductRandomWalkMaxCatchupSteps = 24u;
-constexpr float kProductRandomWalkMinSpeed = 0.01f;
-constexpr float kProductRandomWalkMaxSpeed = 5.0f;
+constexpr float kProductRuntimeRandomWalkMinSpeed = 0.01f;
+constexpr float kProductRuntimeRandomWalkMaxSpeed = 5.0f;
 
-uint32_t sampleHoldIntervalFrames(double sample_rate) {
+uint32_t runtimeSampleHoldIntervalFrames(double sample_rate) {
   if (!std::isfinite(sample_rate) || sample_rate <= 0.0) {
     return 1u;
   }
-  return std::max<uint32_t>(1u, static_cast<uint32_t>(std::lround(sample_rate / kProductSampleHoldRateHz)));
+  return std::max<uint32_t>(1u, static_cast<uint32_t>(std::lround(sample_rate / kProductRuntimeSampleHoldRateHz)));
 }
 
 float randomWalkPosition(const ModulationRange& range) {
@@ -24,7 +24,7 @@ float randomWalkPosition(const ModulationRange& range) {
 }
 
 float smoothRandomWalkPosition(const ModulationRange& range, double seconds) {
-  const float speed = clampFloat(range.random_walk_speed, kProductRandomWalkMinSpeed, kProductRandomWalkMaxSpeed);
+  const float speed = clampFloat(range.random_walk_speed, kProductRuntimeRandomWalkMinSpeed, kProductRuntimeRandomWalkMaxSpeed);
   const float phase = static_cast<float>(seconds) * std::max(0.05f, speed) * 0.08f;
   const float phase_floor = std::floor(phase);
   const uint32_t i0 = static_cast<uint32_t>(std::max(0.0f, phase_floor));
@@ -55,7 +55,7 @@ float smoothRandomWalkPosition(const ModulationRange& range, double seconds) {
         continue;
       }
       if (range.sample_hold_interval_frames == 0u) {
-        range.sample_hold_interval_frames = sampleHoldIntervalFrames(sample_rate);
+        range.sample_hold_interval_frames = runtimeSampleHoldIntervalFrames(sample_rate);
         range.sample_hold_frames_until_next = range.sample_hold_interval_frames;
       }
       if (range.sample_hold_frames_until_next > frames) {
@@ -102,7 +102,7 @@ float smoothRandomWalkPosition(const ModulationRange& range, double seconds) {
         static_cast<uint32_t>(std::floor(range.random_walk_step_accumulator)));
     range.random_walk_step_accumulator -= static_cast<float>(step_count);
     float position = randomWalkPosition(range);
-    const float speed = clampFloat(range.random_walk_speed, kProductRandomWalkMinSpeed, kProductRandomWalkMaxSpeed);
+    const float speed = clampFloat(range.random_walk_speed, kProductRuntimeRandomWalkMinSpeed, kProductRuntimeRandomWalkMaxSpeed);
     for (uint32_t step = 0; step < step_count; ++step) {
       const uint32_t step_seed = range.seed ^
           (range.random_walk_counter * 0x9e3779b9u) ^

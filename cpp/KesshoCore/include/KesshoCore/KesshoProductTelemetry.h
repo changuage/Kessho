@@ -131,4 +131,8 @@ typedef struct KesshoProductTelemetry {
   float master_integrated_lufs;
   float granular_write_head;
   float granular_voice_positions[4];
+  float pad1_filter_freq;
+  float pad1_lfo1_value;
+  float pad2_filter_freq;
+  float pad2_lfo1_value;
 } KesshoProductTelemetry;

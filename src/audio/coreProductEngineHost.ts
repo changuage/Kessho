@@ -188,33 +188,13 @@ class CoreProductEngineHost {
     return this.normalizedPosition(this.latestTelemetry?.granularWriteHeadPosition);
   }
 
-  getLeadMorphedParams(): null {
-    return this.unsupportedGetter('getLeadMorphedParams');
-  }
-
-  getCurrentFilterFreq(): number {
-    return this.unsupportedGetter('getCurrentFilterFreq');
-  }
-
-  getCurrentLfoValue(): number {
-    return this.unsupportedGetter('getCurrentLfoValue');
-  }
-
-  getCurrentLfo2Value(): number {
-    return this.unsupportedGetter('getCurrentLfo2Value');
-  }
-
-  getCurrentPadFilterFreq(): number {
-    return this.unsupportedGetter('getCurrentPadFilterFreq');
-  }
-
-  getCurrentPadLfoValue(): number {
-    return this.unsupportedGetter('getCurrentPadLfoValue');
-  }
-
-  getRecordableBusNodes(): Record<string, RecordableTrackSource> {
-    return this.unsupportedGetter('getRecordableBusNodes');
-  }
+  getLeadMorphedParams(): null { return this.unsupportedGetter('getLeadMorphedParams'); }
+  getCurrentFilterFreq(): number { return this.unsupportedGetter('getCurrentFilterFreq'); }
+  getCurrentLfoValue(): number { return this.unsupportedGetter('getCurrentLfoValue'); }
+  getCurrentLfo2Value(): number { return this.unsupportedGetter('getCurrentLfo2Value'); }
+  getCurrentPadFilterFreq(pad: 'pad1' | 'pad2' = 'pad1'): number { return pad === 'pad2' ? this.latestTelemetry?.pad2FilterFreq ?? 0 : this.latestTelemetry?.pad1FilterFreq ?? 0; }
+  getCurrentPadLfoValue(pad: 'pad1' | 'pad2' = 'pad1'): number { return pad === 'pad2' ? this.latestTelemetry?.pad2Lfo1Value ?? 0 : this.latestTelemetry?.pad1Lfo1Value ?? 0; }
+  getRecordableBusNodes(): Record<string, RecordableTrackSource> { return this.unsupportedGetter('getRecordableBusNodes'); }
 
   getSonicParityGraphTapId(trackId: string): number | null { return CORE_PRODUCT_GRAPH_TAP_IDS[trackId.startsWith('graph:') ? trackId.slice('graph:'.length) : trackId] ?? null; }
   startSonicParityGraphCapture(trackId: string, chunkFrames: number): number { const tapId = this.getSonicParityGraphTapId(trackId); if (tapId === null) throw new Error(`Unknown Core Product sonic parity graph tap: ${trackId}`); this.runtime.startGraphTapCapture(tapId, chunkFrames); return tapId; }

@@ -69,6 +69,10 @@ typedef struct KesshoNativeProductTelemetry {
   float master_integrated_lufs;
   float granular_write_head;
   float granular_voice_positions[4];
+  float pad1_filter_freq;
+  float pad1_lfo1_value;
+  float pad2_filter_freq;
+  float pad2_lfo1_value;
 } KesshoNativeProductTelemetry;
 
 int32_t kessho_native_product_get_abi_version(void);
