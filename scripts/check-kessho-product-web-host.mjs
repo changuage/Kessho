@@ -514,6 +514,8 @@ for (const token of [
   'Math.abs(prev.pad1LfoValue - next.pad1LfoValue) < 0.00001',
   "useRuntimeSliderPosition('padPostLPF'",
   'postLpfHz={livePad1PostLpf}',
+  'pad1FilterModEnvActive',
+  'pad2FilterModEnvActive',
   'return hasAnimatedFilterView ? 50 : 180;',
   'useVisibleInterval(updateLiveFilterViz, synthLivePollMs',
 ]) {
@@ -532,10 +534,17 @@ for (const token of [
   'postLpfDominant',
   'drawCombinedResponseCurve',
   "filterGain(freq, postLpfCutoff, 0, 0.7, 'lowpass', 0, 12)",
-  "const hasLiveFilterMotion = props.isRunning && props.lfoDest !== 'none';",
+  'Engine telemetry owns live cutoff, including LFO and mod-envelope motion.',
+  'const hasFilterTelemetryMotion = props.isRunning',
+  "props.lfoDest !== 'none' || hasFilterModEnvelopeMotion(props)",
 ]) {
   assert(filterLfoViz.includes(token), `FilterLfoViz must smooth live Product Core telemetry between polling ticks: missing ${token}`);
 }
+assert(
+  !filterLfoViz.includes('loopingModEnvValue') &&
+    !filterLfoViz.includes('filterEnv * (props.filterCutoffMax - props.filterCutoffMin)'),
+  'FilterLfoViz must not locally synthesize live filter cutoff on top of Product Core telemetry',
+);
 assert(
   !filterLfoViz.includes('Hz audible'),
   'FilterLfoViz must not present the pad source post-LPF as a hard audible ceiling',

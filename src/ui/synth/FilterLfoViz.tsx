@@ -106,13 +106,6 @@ function adsrValue(t: number, a: number, d: number, s: number, r: number, noteLe
   return 0;
 }
 
-function loopingModEnvValue(nowSeconds: number, a: number, d: number, s: number, r: number): number {
-  const noteLen = Math.max(0.5, a + d + 1 + r);
-  const totalTime = noteLen + 0.1;
-  const t = ((nowSeconds % totalTime) + totalTime) % totalTime;
-  return adsrValue(t, a, d, s, r, noteLen);
-}
-
 // Max number of samples in the LFO history ring buffer
 const LFO_HISTORY_LEN = 120; // ~2 seconds at 50ms polling + 60fps interp
 
@@ -122,6 +115,12 @@ const DRAG_HIT_PX = 10; // hit zone radius for drag handles
 
 const hasModEnvelope = (props: FilterLfoVizProps): boolean =>
   !!props.modEnvEnabled && props.modEnvDest !== 'none';
+
+const hasFilterModEnvelopeMotion = (props: FilterLfoVizProps): boolean =>
+  !!props.isRunning &&
+  !!props.modEnvEnabled &&
+  props.modEnvDest === 'filterCutoff' &&
+  Math.abs(props.modEnvDepth ?? 0) > 0.0001;
 
 const quantizeEnvelopeTime = (value: number): number => (
   value < 0.1 ? parseFloat(value.toFixed(3)) : parseFloat(value.toFixed(2))
@@ -190,23 +189,14 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       ctx.stroke();
     }
 
-    const showFilterModEnv = props.isRunning && props.modEnvEnabled && props.modEnvDest === 'filterCutoff' && Math.abs(props.modEnvDepth ?? 0) > 0.0001;
-    const modA = props.modEnvAttack ?? props.synthAttack;
-    const modD = props.modEnvDecay ?? props.synthDecay;
-    const modS = props.modEnvSustain ?? props.synthSustain;
-    const modR = props.modEnvRelease ?? props.synthRelease;
     const nowMs = performance.now();
-    const filterEnv = showFilterModEnv
-      ? loopingModEnvValue(nowMs / 1000, modA, modD, modS, modR) * (props.modEnvDepth ?? 0)
-      : 0;
-
-    // Engine telemetry gives the LFO/base cutoff. The mod envelope is visualized
-    // here so the canvas can move smoothly between engine polling ticks.
+    // Engine telemetry owns live cutoff, including LFO and mod-envelope motion.
+    // The canvas only smooths display between polling ticks.
     const targetCutoff = Math.max(
       20,
       Math.min(
         20000,
-        (props.liveFilterFreq || props.filterACutoff) + filterEnv * (props.filterCutoffMax - props.filterCutoffMin) * 0.5,
+        props.liveFilterFreq || props.filterACutoff,
       ),
     );
     const previousCutoff = displayedCutoffRef.current;
@@ -729,12 +719,9 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
 
   useEffect(() => {
     if (!canAnimate) return;
-    const hasAnimatedModEnv = props.isRunning
-      && props.modEnvEnabled
-      && props.modEnvDest === 'filterCutoff'
-      && Math.abs(props.modEnvDepth ?? 0) > 0.0001;
-    const hasLiveFilterMotion = props.isRunning && props.lfoDest !== 'none';
-    if (!hasAnimatedModEnv && !hasLiveFilterMotion) {
+    const hasFilterTelemetryMotion = props.isRunning
+      && (props.lfoDest !== 'none' || hasFilterModEnvelopeMotion(props));
+    if (!hasFilterTelemetryMotion) {
       requestDraw();
       return;
     }

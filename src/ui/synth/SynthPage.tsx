@@ -898,6 +898,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, [sliderProps, state]);
 
   const synthLivePollMs = useMemo(() => {
+    const pad1FilterModEnvActive =
+      !!state.padModEnvEnabled &&
+      (state.padModEnvDest ?? 'filterCutoff') === 'filterCutoff' &&
+      Math.abs(state.padModEnvDepth ?? 0) > 0.001;
+    const pad2FilterModEnvActive =
+      !!state.pad2ModEnvEnabled &&
+      (state.pad2ModEnvDest ?? 'filterCutoff') === 'filterCutoff' &&
+      Math.abs(state.pad2ModEnvDepth ?? 0) > 0.001;
     const hasAnimatedFilterView =
       !!state.synthEuclideanMasterEnabled ||
       !!state.leadRandomEnabled ||
@@ -905,15 +913,23 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       (((state.padLfo2Dest ?? 'none') !== 'none') && (state.padLfo2Depth ?? 0) > 0.001) ||
       (((state.pad2Lfo1Dest ?? 'none') !== 'none') && (state.pad2Lfo1Depth ?? 0) > 0.001) ||
       (((state.pad2Lfo2Dest ?? 'none') !== 'none') && (state.pad2Lfo2Depth ?? 0) > 0.001) ||
+      pad1FilterModEnvActive ||
+      pad2FilterModEnvActive ||
       (state.leadVibratoDepth ?? 0) > 0.001;
     return hasAnimatedFilterView ? 50 : 180;
   }, [
     state.leadRandomEnabled,
     state.leadVibratoDepth,
+    state.pad2ModEnvDepth,
+    state.pad2ModEnvDest,
+    state.pad2ModEnvEnabled,
     state.pad2Lfo1Depth,
     state.pad2Lfo1Dest,
     state.pad2Lfo2Depth,
     state.pad2Lfo2Dest,
+    state.padModEnvDepth,
+    state.padModEnvDest,
+    state.padModEnvEnabled,
     state.padLfo1Depth,
     state.padLfo1Dest,
     state.padLfo2Depth,
