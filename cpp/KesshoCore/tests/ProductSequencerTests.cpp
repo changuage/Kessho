@@ -335,7 +335,8 @@ void enqueueRuntimeWalkRange(
     uint32_t control_id,
     float min_value,
     float max_value,
-    float current_value) {
+    float current_value,
+    uint32_t extra_flags) {
   KesshoProductEvent range{};
   range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
   range.target_id = target_id;
@@ -345,11 +346,27 @@ void enqueueRuntimeWalkRange(
   range.value2 = max_value;
   range.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK);
   range.value4 = current_value;
-  range.flags =
-      KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE |
-      KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_GLOBAL |
-      randomWalkSpeedFlags(4.25f);
+  range.flags = KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE | extra_flags;
   require(kessho_product_enqueue_event(engine, &range) == KESSHO_PRODUCT_OK, "runtime walk range enqueue failed");
+}
+
+void enqueueRuntimeWalkRange(
+    KesshoProductEngine* engine,
+    uint32_t target_id,
+    uint32_t param_id,
+    uint32_t control_id,
+    float min_value,
+    float max_value,
+    float current_value) {
+  enqueueRuntimeWalkRange(
+      engine,
+      target_id,
+      param_id,
+      control_id,
+      min_value,
+      max_value,
+      current_value,
+      KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_GLOBAL | randomWalkSpeedFlags(4.25f));
 }
 
 float productRuntimeFieldValue(const KesshoProductEngine& engine, uint32_t param_id) {
@@ -368,6 +385,8 @@ float productRuntimeFieldValue(const KesshoProductEngine& engine, uint32_t param
       return engine.fx.spectral_freeze_mix;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID:
       return engine.fx.dynamics_saturation_drive;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_AMOUNT_ID:
+      return engine.fx.sidechain_amount;
     case kProductPadRuntimeParamIdBase + 21u:
       return engine.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].exact_pad_params[21];
     case kProductPad2RuntimeParamIdBase + 21u:
@@ -391,6 +410,16 @@ void requireTelemetryContainsRuntimeWalk(
     return;
   }
   require(false, label);
+}
+
+void renderSilentBlocks(KesshoProductEngine* engine, uint32_t block_count) {
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  for (uint32_t block = 0; block < block_count; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), 128u);
+  }
 }
 
 void requireRuntimeWalkMovementAcrossAudioAndFxTargets() {
@@ -464,6 +493,116 @@ void requireRuntimeWalkMovementAcrossAudioAndFxTargets() {
   requireTelemetryContainsRuntimeWalk(source_walk->telemetry, 501u, 0.2f, 0.8f, "Pad source runtime walk telemetry missing");
   requireTelemetryContainsRuntimeWalk(source_walk->telemetry, 502u, 0.15f, 0.9f, "Lead source runtime walk telemetry missing");
   requireTelemetryContainsRuntimeWalk(source_walk->telemetry, 503u, 0.1f, 0.9f, "Drum source runtime walk telemetry missing");
+  kessho_product_destroy(source_walk);
+}
+
+void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
+  struct ProductProbe {
+    uint32_t param_id;
+    float min_value;
+    float max_value;
+    float current_value;
+    const char* label;
+  };
+  const ProductProbe product_probes[] = {
+      {KESSHO_PRODUCT_PARAM_MASTER_GAIN_ID, 0.15f, 0.95f, 0.35f, "low-rate master gain runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_AFEEDBACK_ID, 0.05f, 0.85f, 0.22f, "low-rate Delay A feedback runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_BMIX_ID, 0.05f, 0.95f, 0.24f, "low-rate Delay B mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_GRANULAR_MIX_ID, 0.05f, 0.95f, 0.26f, "low-rate granular mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_MIX_ID, 0.05f, 0.95f, 0.28f, "low-rate reverb mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID, 0.05f, 0.95f, 0.30f, "low-rate spectral freeze mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID, 0.05f, 0.95f, 0.32f, "low-rate dynamics saturation drive runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_AMOUNT_ID, 0.05f, 0.95f, 0.34f, "low-rate sidechain amount runtime walk did not move"},
+      {kProductPadRuntimeParamIdBase + 21u, 250.0f, 3200.0f, 900.0f, "low-rate Pad 1 exact cutoff runtime walk did not move"},
+      {kProductPad2RuntimeParamIdBase + 21u, 450.0f, 6200.0f, 1600.0f, "low-rate Pad 2 exact cutoff runtime walk did not move"},
+  };
+
+  const uint32_t low_rate_flags = randomWalkSpeedFlags(0.09f);
+  constexpr uint32_t kLowRateRenderBlocks = 360u;
+
+  KesshoProductEngine* product_walk = kessho_product_create(48000.0, 128, 0);
+  require(product_walk != nullptr, "low-rate runtime walk product engine allocation failed");
+  product_walk->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].exact_pad_param_count = kProductPadRuntimeParamCount;
+  product_walk->sources[KESSHO_PRODUCT_SOURCE_PAD2 - 1u].exact_pad_param_count = kProductPadRuntimeParamCount;
+  uint32_t control_id = 810u;
+  for (const ProductProbe& probe : product_probes) {
+    enqueueRuntimeWalkRange(product_walk, 0u, probe.param_id, control_id++, probe.min_value, probe.max_value, probe.current_value, low_rate_flags);
+  }
+  renderSilentBlocks(product_walk, kLowRateRenderBlocks);
+  const uint32_t product_probe_count = static_cast<uint32_t>(sizeof(product_probes) / sizeof(product_probes[0]));
+  require(product_walk->telemetry.runtime_walk_count == product_probe_count, "low-rate runtime walk telemetry missed product/FX targets");
+
+  control_id = 810u;
+  for (const ProductProbe& probe : product_probes) {
+    const ModulationRange* range = product_walk->findModulationRange(0u, probe.param_id);
+    require(range != nullptr, probe.label);
+    require(range->mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK, probe.label);
+    require(!range->random_walk_global, probe.label);
+    require(std::fabs(range->random_walk_speed - 0.09f) < 0.001f, probe.label);
+    require(range->current_value >= probe.min_value && range->current_value <= probe.max_value, probe.label);
+    require(std::fabs(range->current_value - probe.current_value) > 0.00001f, probe.label);
+    require(std::fabs(productRuntimeFieldValue(*product_walk, probe.param_id) - range->current_value) < 0.0001f, probe.label);
+    requireTelemetryContainsRuntimeWalk(product_walk->telemetry, control_id++, probe.min_value, probe.max_value, probe.label);
+  }
+  kessho_product_destroy(product_walk);
+
+  struct SourceProbe {
+    uint32_t target_id;
+    float current_value;
+    const char* label;
+  };
+  const SourceProbe source_probes[] = {
+      {KESSHO_PRODUCT_SOURCE_PAD1, 0.31f, "low-rate Pad 1 source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD2, 0.32f, "low-rate Pad 2 source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_LEAD1, 0.33f, "low-rate Lead 1 source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_LEAD2, 0.34f, "low-rate Lead 2 source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_DRUM, 0.35f, "low-rate Drum source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PIANO, 0.36f, "low-rate Piano source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_SOUNDSCAPE, 0.37f, "low-rate Soundscape source level runtime walk did not move"},
+  };
+
+  KesshoProductEngine* source_walk = kessho_product_create(48000.0, 128, 0);
+  require(source_walk != nullptr, "low-rate runtime walk source engine allocation failed");
+  control_id = 910u;
+  for (const SourceProbe& probe : source_probes) {
+    source_walk->sources[probe.target_id - 1u].level = probe.current_value;
+    enqueueRuntimeWalkRange(
+        source_walk,
+        probe.target_id,
+        KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID,
+        control_id++,
+        0.1f,
+        0.9f,
+        probe.current_value,
+        low_rate_flags);
+  }
+  enqueueRuntimeWalkRange(
+      source_walk,
+      KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE,
+      KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID,
+      control_id++,
+      0.1f,
+      0.9f,
+      0.38f,
+      low_rate_flags);
+  renderSilentBlocks(source_walk, kLowRateRenderBlocks);
+
+  const uint32_t source_probe_count = static_cast<uint32_t>(sizeof(source_probes) / sizeof(source_probes[0]));
+  require(source_walk->telemetry.runtime_walk_count == source_probe_count + 1u, "low-rate runtime walk telemetry missed source/drum targets");
+  control_id = 910u;
+  for (const SourceProbe& probe : source_probes) {
+    const ModulationRange* range = source_walk->findModulationRange(probe.target_id, KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID);
+    require(range != nullptr, probe.label);
+    require(std::fabs(range->random_walk_speed - 0.09f) < 0.001f, probe.label);
+    require(std::fabs(range->current_value - probe.current_value) > 0.00001f, probe.label);
+    require(std::fabs(source_walk->sources[probe.target_id - 1u].level - range->current_value) < 0.0001f, probe.label);
+    requireTelemetryContainsRuntimeWalk(source_walk->telemetry, control_id++, 0.1f, 0.9f, probe.label);
+  }
+  const ModulationRange* drum_delay = source_walk->findModulationRange(KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID);
+  require(drum_delay != nullptr, "low-rate Drum voice delay-send runtime walk missing");
+  require(std::fabs(drum_delay->random_walk_speed - 0.09f) < 0.001f, "low-rate Drum voice delay-send runtime walk speed mismatch");
+  require(std::fabs(drum_delay->current_value - 0.38f) > 0.00001f, "low-rate Drum voice delay-send runtime walk did not move");
+  requireTelemetryContainsRuntimeWalk(source_walk->telemetry, control_id++, 0.1f, 0.9f, "low-rate Drum voice runtime walk telemetry missing");
   kessho_product_destroy(source_walk);
 }
 
@@ -546,6 +685,7 @@ void requireDirectSequencerCoverage() {
 int main() {
   requireDirectSequencerCoverage();
   requireRuntimeWalkMovementAcrossAudioAndFxTargets();
+  requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets();
 
   constexpr double sample_rate = 48000.0;
   KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096, 0);
