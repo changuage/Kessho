@@ -1,14 +1,17 @@
 import type { CoreProductEvent } from './coreProductEvents';
 import type { DecodedCoreProductAsset } from './coreProductAssets';
-import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
+import type { CoreProductTelemetrySnapshot, CoreProductVisualTelemetrySnapshot } from './coreProductTelemetry';
 
 const CORE_PRODUCT_GRAPH_TAP_COUNT = 110;
+const CORE_PRODUCT_TELEMETRY_INTERVAL_MS = 250;
+const CORE_PRODUCT_VISUAL_TELEMETRY_INTERVAL_MS = 33;
 
 type RuntimeMessage =
   | { type: 'ready' }
   | { type: 'error'; message: string }
   | { type: 'perf'; cpuPercent: number; peakPercent: number; sequencerEventCount?: number; controlQueueDepth?: number }
   | { type: 'telemetry'; telemetry: CoreProductTelemetrySnapshot }
+  | { type: 'visual-telemetry'; telemetry: CoreProductVisualTelemetrySnapshot }
   | { type: 'graph-capture-chunk'; tapId: number; frameCount: number; left: Float32Array; right: Float32Array }
   | { type: 'graph-capture-flushed'; tapId: number; stopped?: boolean };
 
@@ -33,7 +36,10 @@ export class CoreProductRuntime {
   private readyPromise: Promise<void> | null = null;
   private lastError: string | null = null;
   private telemetryTimer: number | null = null;
+  private visualTelemetryTimer: number | null = null;
   private telemetryCallback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null = null;
+  private visualTelemetryCallback: ((telemetry: CoreProductVisualTelemetrySnapshot) => void) | null = null;
+  private visualTelemetryActive = false;
   private perfMonitorEnabled = false;
   private readonly graphTapCaptureSessions = new Map<number, GraphTapCaptureSession>();
 
@@ -104,6 +110,10 @@ export class CoreProductRuntime {
           this.telemetryCallback?.(message.telemetry);
           return;
         }
+        if (message.type === 'visual-telemetry') {
+          this.visualTelemetryCallback?.(message.telemetry);
+          return;
+        }
         if (message.type === 'graph-capture-chunk') {
           const session = this.graphTapCaptureSessions.get(message.tapId);
           if (session) {
@@ -128,6 +138,7 @@ export class CoreProductRuntime {
       node.connect(outputGain);
       outputGain.connect(context.destination);
       this.startTelemetryLoop();
+      this.syncVisualTelemetryLoop();
     });
 
     await this.readyPromise;
@@ -147,6 +158,10 @@ export class CoreProductRuntime {
       window.clearInterval(this.telemetryTimer);
       this.telemetryTimer = null;
     }
+    if (this.visualTelemetryTimer !== null) {
+      window.clearInterval(this.visualTelemetryTimer);
+      this.visualTelemetryTimer = null;
+    }
     this.node?.disconnect();
     this.outputGain?.disconnect();
     const context = this.context;
@@ -161,6 +176,15 @@ export class CoreProductRuntime {
 
   setTelemetryCallback(callback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null): void {
     this.telemetryCallback = callback;
+  }
+
+  setVisualTelemetryCallback(callback: ((telemetry: CoreProductVisualTelemetrySnapshot) => void) | null): void {
+    this.visualTelemetryCallback = callback;
+  }
+
+  setVisualTelemetryActive(active: boolean): void {
+    this.visualTelemetryActive = active;
+    this.syncVisualTelemetryLoop();
   }
 
   setPerfMonitorEnabled(enabled: boolean): void {
@@ -263,6 +287,23 @@ export class CoreProductRuntime {
     if (this.telemetryTimer !== null) return;
     this.telemetryTimer = window.setInterval(() => {
       this.node?.port.postMessage({ type: 'request-telemetry' });
-    }, 250);
+    }, CORE_PRODUCT_TELEMETRY_INTERVAL_MS);
+  }
+
+  private syncVisualTelemetryLoop(): void {
+    if (!this.visualTelemetryActive || !this.node) {
+      if (this.visualTelemetryTimer !== null) {
+        window.clearInterval(this.visualTelemetryTimer);
+        this.visualTelemetryTimer = null;
+      }
+      return;
+    }
+    if (this.visualTelemetryTimer !== null) return;
+    const requestVisualTelemetry = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      this.node?.port.postMessage({ type: 'request-visual-telemetry' });
+    };
+    requestVisualTelemetry();
+    this.visualTelemetryTimer = window.setInterval(requestVisualTelemetry, CORE_PRODUCT_VISUAL_TELEMETRY_INTERVAL_MS);
   }
 }

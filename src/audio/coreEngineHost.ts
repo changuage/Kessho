@@ -5218,6 +5218,10 @@ export class CoreEngineHost {
     if (callback) callback({ ...this.runtimeWalkPositions });
   }
 
+  setVisualTelemetryActive(_active: boolean): void {
+    // Core smoke host already mirrors visual state in-process.
+  }
+
   setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void {
     this.onJourneyMorphClockFrame = callback;
     if (!callback) this.stopJourneyMorphClock();

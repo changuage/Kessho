@@ -170,11 +170,21 @@ export function loadCoreProductHostHarness(options = {}) {
       this.snapshots = [];
       this.resetCount = 0;
       this.telemetryCallback = null;
+      this.visualTelemetryCallback = null;
+      this.visualTelemetryActive = false;
       runtimeInstances.push(this);
     }
 
     setTelemetryCallback(callback) {
       this.telemetryCallback = callback;
+    }
+
+    setVisualTelemetryCallback(callback) {
+      this.visualTelemetryCallback = callback;
+    }
+
+    setVisualTelemetryActive(active) {
+      this.visualTelemetryActive = active;
     }
 
     async ensureStarted() {}

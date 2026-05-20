@@ -3,7 +3,7 @@
 namespace {
 
 constexpr double kProductRuntimeSampleHoldRateHz = 10.0;
-constexpr float kProductRandomWalkTickSeconds = 0.15f;
+constexpr float kProductRandomWalkTickSeconds = 0.10f;
 constexpr uint32_t kProductRandomWalkMaxCatchupSteps = 24u;
 constexpr float kProductRuntimeRandomWalkMinSpeed = 0.01f;
 constexpr float kProductRuntimeRandomWalkMaxSpeed = 5.0f;

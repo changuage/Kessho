@@ -10,7 +10,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { formatIndexedDelayDivision, getSliderNumericValue, type SerializedStepOverrides, type SliderState } from '../state';
+import { formatIndexedDelayDivision, getSliderNumericValue, type SerializedStepOverrides, type SliderMode, type SliderState } from '../state';
 import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState, type PitchSettings } from '../sequencer/useEuclideanSequencer';
 import { serializeStepOverrides } from '../sequencer/stepOverrideSerialization';
 import { applySequencePresetOverrides, copySequenceLaneForPreset } from '../sequencer/sequencePresetLane';
@@ -26,6 +26,7 @@ import { useSliderHelp } from '../SliderHelpOverlay';
 import { SliderPrimitive } from '../sliderSystem';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
 import { useRuntimeValue } from '../runtimeValueState';
+import { useRuntimeSliderPosition } from '../runtimeSliderState';
 import './synth.css';
 import SynthPresetManager from './SynthPresetManager';
 import { usePresets } from '../../presets/usePresets';
@@ -67,6 +68,7 @@ import {
 import { audioEngine, type ManualSynthNoteOptions, type ManualSynthSource } from '../../audio/runtime';
 import {
   applyLeadDistanceEnvelope,
+  applyPadDistanceToState,
   applyPianoDistanceEnvelope,
   getLeadDistancePreview,
   getPadDistancePreview,
@@ -83,6 +85,28 @@ import {
 import { SEQUENCER_LANE_COLORS, SEQUENCER_SUB_LANE_COLORS, SOURCE_COLORS } from '../../designSystem/colors';
 
 const OV_PROB_DRAG_PX = 80;
+
+type RuntimeSliderProps = {
+  mode?: SliderMode;
+  dualRange?: { min: number; max: number };
+  walkPosition?: number;
+};
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function resolveRuntimeSliderValue(
+  value: number,
+  runtimeProps: RuntimeSliderProps,
+  runtimePosition?: number,
+): number {
+  const mode = runtimeProps.mode ?? 'single';
+  const range = runtimeProps.dualRange;
+  if (mode === 'single' || !range) return value;
+  const position = runtimePosition ?? runtimeProps.walkPosition ?? 0.5;
+  return range.min + clamp01(position) * (range.max - range.min);
+}
 
 const formatEnvelopeSeconds = (value: number): string => {
   const safeValue = Math.max(0, value);
@@ -745,11 +769,22 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   const updateLiveFilterViz = useCallback(() => {
     if (!liveSourceTelemetryAvailable) return;
-    setLivePadViz({
+    const next = {
       pad1FilterFreq: audioEngine.getCurrentPadFilterFreq('pad1'),
       pad1LfoValue: audioEngine.getCurrentPadLfoValue('pad1'),
       pad2FilterFreq: audioEngine.getCurrentPadFilterFreq('pad2'),
       pad2LfoValue: audioEngine.getCurrentPadLfoValue('pad2'),
+    };
+    setLivePadViz((prev) => {
+      if (
+        Math.abs(prev.pad1FilterFreq - next.pad1FilterFreq) < 0.01 &&
+        Math.abs(prev.pad2FilterFreq - next.pad2FilterFreq) < 0.01 &&
+        Math.abs(prev.pad1LfoValue - next.pad1LfoValue) < 0.00001 &&
+        Math.abs(prev.pad2LfoValue - next.pad2LfoValue) < 0.00001
+      ) {
+        return prev;
+      }
+      return next;
     });
   }, [liveSourceTelemetryAvailable]);
 
@@ -762,6 +797,54 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const liveLead1Distance = useRuntimeValue('lead1Distance', state.lead1Distance ?? 0) ?? (state.lead1Distance ?? 0);
   const liveLead2Distance = useRuntimeValue('lead2Distance', state.lead2Distance ?? 0) ?? (state.lead2Distance ?? 0);
   const livePianoDistance = useRuntimeValue('pianoDistance', state.pianoDistance ?? 0) ?? (state.pianoDistance ?? 0);
+  const pad1FilterMinRuntime = sliderProps('filterCutoffMin') as RuntimeSliderProps;
+  const pad1FilterMaxRuntime = sliderProps('filterCutoffMax') as RuntimeSliderProps;
+  const pad1PostLpfRuntime = sliderProps('padPostLPF') as RuntimeSliderProps;
+  const pad2FilterMinRuntime = sliderProps('pad2FilterCutoffMin') as RuntimeSliderProps;
+  const pad2FilterMaxRuntime = sliderProps('pad2FilterCutoffMax') as RuntimeSliderProps;
+  const pad2PostLpfRuntime = sliderProps('pad2PostLPF') as RuntimeSliderProps;
+  const livePad1FilterMinPosition = useRuntimeSliderPosition('filterCutoffMin', pad1FilterMinRuntime.mode ?? 'single', pad1FilterMinRuntime.walkPosition);
+  const livePad1FilterMaxPosition = useRuntimeSliderPosition('filterCutoffMax', pad1FilterMaxRuntime.mode ?? 'single', pad1FilterMaxRuntime.walkPosition);
+  const livePad1PostLpfPosition = useRuntimeSliderPosition('padPostLPF', pad1PostLpfRuntime.mode ?? 'single', pad1PostLpfRuntime.walkPosition);
+  const livePad2FilterMinPosition = useRuntimeSliderPosition('pad2FilterCutoffMin', pad2FilterMinRuntime.mode ?? 'single', pad2FilterMinRuntime.walkPosition);
+  const livePad2FilterMaxPosition = useRuntimeSliderPosition('pad2FilterCutoffMax', pad2FilterMaxRuntime.mode ?? 'single', pad2FilterMaxRuntime.walkPosition);
+  const livePad2PostLpfPosition = useRuntimeSliderPosition('pad2PostLPF', pad2PostLpfRuntime.mode ?? 'single', pad2PostLpfRuntime.walkPosition);
+  const livePad1FilterMinBase = resolveRuntimeSliderValue(state.filterCutoffMin ?? 400, pad1FilterMinRuntime, livePad1FilterMinPosition);
+  const livePad1FilterMaxBase = resolveRuntimeSliderValue(state.filterCutoffMax ?? 3000, pad1FilterMaxRuntime, livePad1FilterMaxPosition);
+  const livePad1PostLpfBase = resolveRuntimeSliderValue(state.padPostLPF ?? 18000, pad1PostLpfRuntime, livePad1PostLpfPosition);
+  const livePad2FilterMinBase = resolveRuntimeSliderValue(state.pad2FilterCutoffMin ?? 400, pad2FilterMinRuntime, livePad2FilterMinPosition);
+  const livePad2FilterMaxBase = resolveRuntimeSliderValue(state.pad2FilterCutoffMax ?? 3000, pad2FilterMaxRuntime, livePad2FilterMaxPosition);
+  const livePad2PostLpfBase = resolveRuntimeSliderValue(state.pad2PostLPF ?? 18000, pad2PostLpfRuntime, livePad2PostLpfPosition);
+  const livePad1DistanceState = useMemo(() => applyPadDistanceToState({
+    ...state,
+    filterCutoffMin: livePad1FilterMinBase,
+    filterCutoffMax: livePad1FilterMaxBase,
+    padPostLPF: livePad1PostLpfBase,
+  }, 'pad1', livePad1Distance), [
+    livePad1Distance,
+    livePad1FilterMaxBase,
+    livePad1FilterMinBase,
+    livePad1PostLpfBase,
+    state,
+  ]);
+  const livePad2DistanceState = useMemo(() => applyPadDistanceToState({
+    ...state,
+    pad2FilterCutoffMin: livePad2FilterMinBase,
+    pad2FilterCutoffMax: livePad2FilterMaxBase,
+    pad2PostLPF: livePad2PostLpfBase,
+  }, 'pad2', livePad2Distance), [
+    livePad2Distance,
+    livePad2FilterMaxBase,
+    livePad2FilterMinBase,
+    livePad2PostLpfBase,
+    state,
+  ]);
+  const livePad1FilterMin = Math.min(livePad1DistanceState.filterCutoffMin, livePad1DistanceState.filterCutoffMax);
+  const livePad1FilterMax = Math.max(livePad1DistanceState.filterCutoffMin, livePad1DistanceState.filterCutoffMax);
+  const livePad2FilterMin = Math.min(livePad2DistanceState.pad2FilterCutoffMin ?? 400, livePad2DistanceState.pad2FilterCutoffMax ?? 3000);
+  const livePad2FilterMax = Math.max(livePad2DistanceState.pad2FilterCutoffMin ?? 400, livePad2DistanceState.pad2FilterCutoffMax ?? 3000);
+  const livePad1PostLpf = livePad1DistanceState.padPostLPF ?? livePad1PostLpfBase;
+  const livePad2PostLpf = livePad2DistanceState.pad2PostLPF ?? livePad2PostLpfBase;
   const liveSynthNoteMin1 = useRuntimeValue('synthEuclid1NoteMin', state.synthEuclid1NoteMin ?? 48) ?? (state.synthEuclid1NoteMin ?? 48);
   const liveSynthNoteMax1 = useRuntimeValue('synthEuclid1NoteMax', state.synthEuclid1NoteMax ?? 72) ?? (state.synthEuclid1NoteMax ?? 72);
   const liveSynthNoteMin2 = useRuntimeValue('synthEuclid2NoteMin', state.synthEuclid2NoteMin ?? 48) ?? (state.synthEuclid2NoteMin ?? 48);
@@ -823,7 +906,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       (((state.pad2Lfo1Dest ?? 'none') !== 'none') && (state.pad2Lfo1Depth ?? 0) > 0.001) ||
       (((state.pad2Lfo2Dest ?? 'none') !== 'none') && (state.pad2Lfo2Depth ?? 0) > 0.001) ||
       (state.leadVibratoDepth ?? 0) > 0.001;
-    return hasAnimatedFilterView ? 120 : 240;
+    return hasAnimatedFilterView ? 50 : 180;
   }, [
     state.leadRandomEnabled,
     state.leadVibratoDepth,
@@ -2749,7 +2832,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               {/* Interactive Visualization — drag filter min/max & ADSR points */}
               <FilterLfoViz
                 filterAType={state.filterType}
-                filterACutoff={state.filterCutoffMin + (state.filterCutoffMax - state.filterCutoffMin) * 0.5}
+                filterACutoff={livePad1FilterMin + (livePad1FilterMax - livePad1FilterMin) * 0.5}
                 filterARes={state.filterResonance}
                 filterAQ={state.filterQ}
                 filterASlope={state.filterSlope ?? 12}
@@ -2763,8 +2846,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 lfoRate={state.padLfo1Rate ?? 0.5}
                 lfoDepth={state.padLfo1Depth ?? 0}
                 lfoDest={state.padLfo1Dest ?? 'none'}
-                filterCutoffMin={state.filterCutoffMin}
-                filterCutoffMax={state.filterCutoffMax}
+                filterCutoffMin={livePad1FilterMin}
+                filterCutoffMax={livePad1FilterMax}
+                postLpfHz={livePad1PostLpf}
                 synthAttack={state.synthAttack}
                 synthDecay={state.synthDecay}
                 synthSustain={state.synthSustain}
@@ -2776,7 +2860,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 modEnvRelease={state.padModEnvRelease ?? 0.5}
                 modEnvDepth={state.padModEnvDepth ?? 0}
                 modEnvDest={state.padModEnvDest ?? 'filterCutoff'}
-                liveFilterFreq={liveSourceTelemetryAvailable ? livePadViz.pad1FilterFreq : state.filterCutoffMin + (state.filterCutoffMax - state.filterCutoffMin) * 0.5}
+                liveFilterFreq={liveSourceTelemetryAvailable ? livePadViz.pad1FilterFreq : livePad1FilterMin + (livePad1FilterMax - livePad1FilterMin) * 0.5}
                 liveLfoValue={liveSourceTelemetryAvailable ? livePadViz.pad1LfoValue : 0}
                 isRunning={isRunning && liveSourceTelemetryAvailable}
                 onFilterMinChange={(v) => onParamChange('filterCutoffMin', v)}
@@ -3379,7 +3463,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               {/* Interactive Visualization */}
               <FilterLfoViz
                 filterAType={state.pad2FilterType ?? 'lowpass'}
-                filterACutoff={(state.pad2FilterCutoffMin ?? 400) + ((state.pad2FilterCutoffMax ?? 3000) - (state.pad2FilterCutoffMin ?? 400)) * 0.5}
+                filterACutoff={livePad2FilterMin + (livePad2FilterMax - livePad2FilterMin) * 0.5}
                 filterARes={state.pad2FilterResonance ?? 0.2}
                 filterAQ={state.pad2FilterQ ?? 1}
                 filterASlope={state.pad2FilterSlope ?? 12}
@@ -3393,8 +3477,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 lfoRate={state.pad2Lfo1Rate ?? 0.5}
                 lfoDepth={state.pad2Lfo1Depth ?? 0}
                 lfoDest={state.pad2Lfo1Dest ?? 'none'}
-                filterCutoffMin={state.pad2FilterCutoffMin ?? 400}
-                filterCutoffMax={state.pad2FilterCutoffMax ?? 3000}
+                filterCutoffMin={livePad2FilterMin}
+                filterCutoffMax={livePad2FilterMax}
+                postLpfHz={livePad2PostLpf}
                 synthAttack={state.pad2Attack ?? 6}
                 synthDecay={state.pad2Decay ?? 1}
                 synthSustain={state.pad2Sustain ?? 0.8}
@@ -3406,7 +3491,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 modEnvRelease={state.pad2ModEnvRelease ?? 0.5}
                 modEnvDepth={state.pad2ModEnvDepth ?? 0}
                 modEnvDest={state.pad2ModEnvDest ?? 'filterCutoff'}
-                liveFilterFreq={liveSourceTelemetryAvailable ? livePadViz.pad2FilterFreq : (state.pad2FilterCutoffMin ?? 400) + ((state.pad2FilterCutoffMax ?? 3000) - (state.pad2FilterCutoffMin ?? 400)) * 0.5}
+                liveFilterFreq={liveSourceTelemetryAvailable ? livePadViz.pad2FilterFreq : livePad2FilterMin + (livePad2FilterMax - livePad2FilterMin) * 0.5}
                 liveLfoValue={liveSourceTelemetryAvailable ? livePadViz.pad2LfoValue : 0}
                 isRunning={isRunning && liveSourceTelemetryAvailable}
                 onFilterMinChange={(v) => onParamChange('pad2FilterCutoffMin', v)}

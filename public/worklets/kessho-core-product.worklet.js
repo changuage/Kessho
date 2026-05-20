@@ -237,6 +237,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         this.postTelemetry();
         return;
       }
+      if (message.type === 'request-visual-telemetry') {
+        this.postVisualTelemetry();
+        return;
+      }
       if (message.type === 'graph-capture-start') {
         this.startGraphTapCapture(message);
         return;
@@ -1028,11 +1032,68 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     };
   }
 
+  readVisualTelemetry() {
+    if (!this.telemetryPtr || this.api.copyTelemetry(this.engine, this.telemetryPtr) !== 1) {
+      return null;
+    }
+    const ptr = this.telemetryPtr;
+    const runtimeWalkValues = {};
+    const runtimeWalkCount = Math.min(this.view.getUint32(ptr + 156, true), 96);
+    for (let index = 0; index < runtimeWalkCount; index += 1) {
+      const controlId = this.view.getUint32(ptr + 160 + index * 4, true);
+      const value = this.view.getFloat32(ptr + 544 + index * 4, true);
+      if (controlId !== 0) {
+        runtimeWalkValues[controlId] = value;
+      }
+    }
+    return {
+      schemaHash: this.view.getUint32(ptr, true),
+      transportRunning: this.view.getUint32(ptr + 20, true) !== 0,
+      absoluteSampleTime: this.readUint64Number(ptr + 24),
+      activeGrains: this.view.getUint32(ptr + 68, true),
+      runtimeWalkCount,
+      runtimeWalkValues,
+      masterInputPeak: this.view.getFloat32(ptr + 964, true),
+      masterOutputPeak: this.view.getFloat32(ptr + 968, true),
+      masterOutputRms: this.view.getFloat32(ptr + 972, true),
+      dynamicsSaturationDrive: this.view.getFloat32(ptr + 984, true),
+      masterTruePeak: this.view.getFloat32(ptr + 992, true),
+      granularWriteHeadPosition: this.view.getFloat32(ptr + 1004, true),
+      granularVoicePositions: [
+        this.view.getFloat32(ptr + 1008, true),
+        this.view.getFloat32(ptr + 1012, true),
+        this.view.getFloat32(ptr + 1016, true),
+        this.view.getFloat32(ptr + 1020, true),
+      ],
+      pad1FilterFreq: this.view.getFloat32(ptr + 1024, true),
+      pad1Lfo1Value: this.view.getFloat32(ptr + 1028, true),
+      pad2FilterFreq: this.view.getFloat32(ptr + 1032, true),
+      pad2Lfo1Value: this.view.getFloat32(ptr + 1036, true),
+      workletOutputPeak: this.lastOutputPeak,
+      workletStemPeaks: this.lastStemPeaks,
+      workletMasterStemPeak: this.lastStemPeaks[0] || 0,
+      workletPadStemPeak: this.lastStemPeaks[1] || 0,
+      workletLeadStemPeak: Math.max(this.lastStemPeaks[3] || 0, this.lastStemPeaks[4] || 0),
+      workletFxStemPeak: this.lastStemPeaks[8] || 0,
+    };
+  }
+
   postTelemetry() {
     try {
       const telemetry = this.readTelemetry();
       if (telemetry) {
         this.port.postMessage({ type: 'telemetry', telemetry });
+      }
+    } catch (error) {
+      this.port.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  postVisualTelemetry() {
+    try {
+      const telemetry = this.readVisualTelemetry();
+      if (telemetry) {
+        this.port.postMessage({ type: 'visual-telemetry', telemetry });
       }
     } catch (error) {
       this.port.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });

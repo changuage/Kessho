@@ -8,7 +8,7 @@ import {
   KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING,
   KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS,
 } from './generated/kesshoProductSchema';
-import { DEFAULT_REVERB_PRE_COMP, type SliderState } from '../ui/state';
+import { DEFAULT_REVERB_PRE_COMP, DEFAULT_STATE, type SliderState } from '../ui/state';
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import {
   CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID,
@@ -45,7 +45,7 @@ import {
 } from './CoreProductLegacyPresetCompat';
 import { getTransportMetrics } from './transport';
 import { computeGranularMacroModel, type GranularMacroModel } from './granularMacroCore';
-import { applyDistanceValue, applyLeadDistanceEnvelope, getVoiceDistanceKey, type DistanceVoice } from './distanceMacro';
+import { applyDistanceValue, applyLeadDistanceEnvelope, applyPadDistanceToState, getVoiceDistanceKey, type DistanceVoice } from './distanceMacro';
 import { createHarmonyState, getEffectiveTension } from './harmony';
 import { computeGranularRuntimeSeed, getUtcBucket } from './rng';
 import { isIOSLikeDevice, isMobileDevice } from '../platform';
@@ -122,6 +122,21 @@ function distanceAdjustedNumberFromState(
     [distanceKey]: distance,
   } as unknown as SliderState;
   return applyDistanceValue(key, distanceState, voice, distance);
+}
+
+function distanceAdjustedPadExactState(
+  state: Record<string, unknown> | undefined,
+  voice: 'pad1' | 'pad2',
+): Record<string, unknown> | undefined {
+  if (!state) return state;
+  const distanceKey = getVoiceDistanceKey(voice);
+  const distance = numberFromState(state, distanceKey, 0);
+  if (distance <= 1e-4) return state;
+  return applyPadDistanceToState({
+    ...DEFAULT_STATE,
+    ...state,
+    [distanceKey]: distance,
+  } as SliderState, voice, distance) as unknown as Record<string, unknown>;
 }
 
 function distanceAdjustedLeadHoldSecondsFromState(
@@ -480,7 +495,7 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
       source.stereoWidth = numberFromState(state, 'padStereoWidth', source.stereoWidth);
       source.presetId = endpointPresetId('pad', source.morph, state?.padPresetA, state?.padPresetB, 'init');
       source.exactPadParamCount = KESSHO_PRODUCT_PAD_PARAM_COUNT;
-      source.exactPadParams = exactPadParamsFromState(state, 0);
+      source.exactPadParams = exactPadParamsFromState(distanceAdjustedPadExactState(state, 'pad1'), 0);
       break;
     case CORE_PRODUCT_SOURCE_IDS.pad2:
       source.enabled = booleanFromState(state, 'pad2Enabled', false);
@@ -496,7 +511,7 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
       source.stereoWidth = numberFromState(state, 'pad2StereoWidth', source.stereoWidth);
       source.presetId = endpointPresetId('pad', source.morph, state?.pad2PresetA, state?.pad2PresetB, 'init');
       source.exactPadParamCount = KESSHO_PRODUCT_PAD_PARAM_COUNT;
-      source.exactPadParams = exactPadParamsFromState(state, 1);
+      source.exactPadParams = exactPadParamsFromState(distanceAdjustedPadExactState(state, 'pad2'), 1);
       break;
     case CORE_PRODUCT_SOURCE_IDS.lead1:
       source.enabled = booleanFromState(state, 'leadEnabled', false);

@@ -9,6 +9,7 @@ import {
 } from './generated/kesshoProductSchema';
 import { delayNoteToSeconds } from './delayBuses';
 import { computeGranularMacroModel, type GranularMacroModel } from './granularMacroCore';
+import { applyPadDistanceToState } from './distanceMacro';
 import { DEFAULT_STATE, getIndexedDelayDivisionValue, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
 
 export type CoreProductEvent = {
@@ -294,6 +295,31 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function mapPadExactValueForDistance(
+  padIndex: 0 | 1,
+  key: string,
+  value: number,
+  context: CoreProductRangeValueContext,
+): number {
+  const state = context.state;
+  if (!state) return value;
+  const voice = padIndex === 0 ? 'pad1' : 'pad2';
+  const distanceKey = padIndex === 0 ? 'padDistance' : 'pad2Distance';
+  const distanceValue = state[distanceKey];
+  const distance = typeof distanceValue === 'number' && Number.isFinite(distanceValue)
+    ? distanceValue
+    : 0;
+  if (distance <= 1e-4) return value;
+  const distanceState = {
+    ...DEFAULT_STATE,
+    ...state,
+    [key]: value,
+    [distanceKey]: distance,
+  } as SliderState;
+  const adjusted = applyPadDistanceToState(distanceState, voice, distance)[key as keyof SliderState];
+  return typeof adjusted === 'number' && Number.isFinite(adjusted) ? adjusted : value;
+}
+
 function coreProductRandomWalkFlags(context: CoreProductRangeValueContext): number {
   const speed = clamp(context.randomWalkSpeed ?? context.speed ?? 1, 0.01, 5);
   const encodedSpeed = Math.round(speed * CORE_PRODUCT_MODULATION_RANGE_FLAGS.randomWalkSpeedScale);
@@ -533,8 +559,16 @@ function granularMacroVoiceTargets(
 function padExactRangeTargets(): Record<string, CoreProductRangeTargetResolver> {
   const targets: Record<string, CoreProductRangeTargetResolver> = {};
   for (const spec of KESSHO_PRODUCT_PAD_PARAM_SPECS) {
-    targets[spec.key] = (key) => [productParamTarget(coreProductPadRuntimeParamId(0, spec.index), key)];
-    targets[spec.pad2Key] = (key) => [productParamTarget(coreProductPadRuntimeParamId(1, spec.index), key)];
+    targets[spec.key] = (key) => [
+      productParamTarget(coreProductPadRuntimeParamId(0, spec.index), key, (value, context) => (
+        mapPadExactValueForDistance(0, key, value, context)
+      )),
+    ];
+    targets[spec.pad2Key] = (key) => [
+      productParamTarget(coreProductPadRuntimeParamId(1, spec.index), key, (value, context) => (
+        mapPadExactValueForDistance(1, key, value, context)
+      )),
+    ];
   }
   return targets;
 }

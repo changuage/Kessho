@@ -107,7 +107,13 @@ import {
   syncCapacitorAudioSessionState,
   type KesshoRemoteCommand,
 } from './native/capacitorAudioSession';
-import { setCapacitorMacPlaybackState } from './native/capacitorMacShell';
+import {
+  getCapacitorMacAudioOutputStatus,
+  isCapacitorMacShell,
+  openCapacitorMacSoundSettings,
+  setCapacitorMacPlaybackState,
+  type KesshoMacAudioOutputStatus,
+} from './native/capacitorMacShell';
 import type { SynthKeyboardUiState } from './ui/synth/SynthPage';
 import {
   RECORD_TRACK_FILENAME_SUFFIX,
@@ -192,6 +198,7 @@ const AUDIO_ENGINE_SWITCH_STATE_PARAM = 'engineState';
 const AUDIO_ENGINE_CPU_SUMMARY_STORAGE_KEY = 'kessho:audio-engine-cpu-summary:v1';
 const AUDIO_ENGINE_SWITCH_STATE_STORAGE_PREFIX = 'kessho:audio-engine-switch-state:v1:';
 const CORE_PRODUCT_PARAM_UPDATE_INTERVAL_MS = 33;
+const MAC_AIRPLAY_PERFORMANCE_STORAGE_KEY = 'kessho:mac-airplay-performance:v1';
 const EMPTY_EARTH_TEXTURE_DEBUG_STATE: EarthTextureDebugState = {
   waves: null,
   birds: null,
@@ -215,6 +222,34 @@ type AudioEngineCpuSummary = {
 };
 
 type AudioEngineCpuSummaries = Partial<Record<AudioEngineRuntimeMode, AudioEngineCpuSummary>>;
+
+function readMacAirPlayPerformancePinned(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const queryMode = params.get('airplayPerformance') ?? params.get('airplayMode');
+    if (queryMode === 'on' || queryMode === '1' || queryMode === 'true') {
+      window.localStorage.setItem(MAC_AIRPLAY_PERFORMANCE_STORAGE_KEY, 'on');
+      return true;
+    }
+    if (queryMode === 'off' || queryMode === '0' || queryMode === 'false') {
+      window.localStorage.setItem(MAC_AIRPLAY_PERFORMANCE_STORAGE_KEY, 'off');
+      return false;
+    }
+    return window.localStorage.getItem(MAC_AIRPLAY_PERFORMANCE_STORAGE_KEY) === 'on';
+  } catch {
+    return false;
+  }
+}
+
+function writeMacAirPlayPerformancePinned(enabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(MAC_AIRPLAY_PERFORMANCE_STORAGE_KEY, enabled ? 'on' : 'off');
+  } catch {
+    // Ignore storage failures; the mode still applies for this session.
+  }
+}
 
 function isDevRuntime(): boolean {
   return Boolean((import.meta.env as unknown as { DEV?: boolean }).DEV);
@@ -460,11 +495,14 @@ const stopIOSMediaSession = () => {
   }
 };
 
+type SavedPresetSource = 'bundled' | 'device-local' | 'cloud';
+
 // Preset type - local override with sliderModes support
 interface SavedPreset {
   name: string;
   timestamp: string;
   state: SliderState;
+  source?: SavedPresetSource;
   dualRanges?: Record<string, { min: number; max: number }>;  // Optional for backward compatibility
   sliderModes?: Record<string, SliderMode>;  // Mode per parameter key
   drumEvolveConfigs?: EvolveConfig[];
@@ -703,6 +741,74 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
   return merged;
 };
 
+const BUNDLED_PRESET_FALLBACK_FILES = [
+  'Ethereal_Ambient.json',
+  'Dark_Textures.json',
+  'Bright_Bells.json',
+  'StringWaves.json',
+  'ZoneOut1.json',
+  'Gamelantest.json',
+];
+
+function savedPresetFromFileData(
+  data: Partial<SavedPreset> & Record<string, unknown>,
+  fallbackName: string,
+  source: SavedPresetSource,
+): SavedPreset {
+  const migrated = migratePreset({
+    name: typeof data.name === 'string' && data.name.trim() ? data.name : fallbackName,
+    timestamp: typeof data.timestamp === 'string' ? data.timestamp : new Date().toISOString(),
+    state: (data.state && typeof data.state === 'object' ? data.state : data) as SliderState,
+    dualRanges: data.dualRanges,
+    sliderModes: data.sliderModes,
+    drumEvolveConfigs: data.drumEvolveConfigs,
+    synthEvolveConfigs: data.synthEvolveConfigs,
+    drumStepOverrides: data.drumStepOverrides,
+    synthStepOverrides: data.synthStepOverrides,
+    drumClockDivs: data.drumClockDivs,
+    synthClockDivs: data.synthClockDivs,
+    drumSwings: data.drumSwings,
+    synthSwings: data.synthSwings,
+    drumLinked: data.drumLinked,
+    synthLinked: data.synthLinked,
+    drumSubLaneStates: data.drumSubLaneStates,
+    synthSubLaneStates: data.synthSubLaneStates,
+    synthPitchSettings: data.synthPitchSettings,
+    synthPitchBindingModes: data.synthPitchBindingModes,
+  });
+  return { ...migrated, source };
+}
+
+async function loadBundledPresetFiles(files: string[]): Promise<SavedPreset[]> {
+  const presets: SavedPreset[] = [];
+  for (const file of files) {
+    try {
+      const response = await fetch(`/presets/${file}`);
+      if (response.ok) {
+        const data = await response.json();
+        presets.push(savedPresetFromFileData(data, file.replace('.json', ''), 'bundled'));
+      }
+    } catch (e) {
+      // Skip missing or invalid bundled files.
+    }
+  }
+  return presets;
+}
+
+function sortSavedStatePresetsByFreshness(presets: SavedPreset[]): SavedPreset[] {
+  return [...presets].sort((left, right) => {
+    const timeDiff = new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime();
+    if (timeDiff !== 0) return timeDiff;
+    return left.name.localeCompare(right.name);
+  });
+}
+
+function savedPresetSourceForEntry(entry: PresetEntry): SavedPresetSource {
+  if (entry.remoteId || entry.library === 'cloud') return 'cloud';
+  if (entry.author === 'factory' || entry.library === 'stock') return 'bundled';
+  return 'device-local';
+}
+
 // Load presets by fetching the manifest from public/presets
 const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
   const presets: SavedPreset[] = [];
@@ -711,69 +817,21 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
     const manifestResponse = await fetch('/presets/manifest.json');
     if (!manifestResponse.ok) {
       console.warn('No preset manifest found, trying known files...');
-      // Fallback: try known preset files
-      const knownFiles = ['Ethereal_Ambient.json', 'Dark_Textures.json', 'Bright_Bells.json', 'StringWavesR.json', 'ZoneOut1.json', 'Gamelantest.json'];
-      for (const file of knownFiles) {
-        try {
-          const response = await fetch(`/presets/${file}`);
-          if (response.ok) {
-            const data = await response.json();
-            presets.push(migratePreset({
-              name: data.name || file.replace('.json', ''),
-              timestamp: data.timestamp || new Date().toISOString(),
-              state: data.state || data,
-              dualRanges: data.dualRanges,
-              sliderModes: data.sliderModes,
-              drumEvolveConfigs: data.drumEvolveConfigs,
-              synthEvolveConfigs: data.synthEvolveConfigs,
-              drumStepOverrides: data.drumStepOverrides,
-              synthStepOverrides: data.synthStepOverrides,
-              drumClockDivs: data.drumClockDivs,
-              synthClockDivs: data.synthClockDivs,
-              drumSwings: data.drumSwings,
-              synthSwings: data.synthSwings,
-              drumLinked: data.drumLinked,
-              synthLinked: data.synthLinked,
-              drumSubLaneStates: data.drumSubLaneStates,
-              synthSubLaneStates: data.synthSubLaneStates,
-              synthPitchSettings: data.synthPitchSettings,
-              synthPitchBindingModes: data.synthPitchBindingModes,
-            }));
-          }
-        } catch (e) {
-          // Skip missing files
-        }
-      }
-      return presets;
+      return loadBundledPresetFiles(BUNDLED_PRESET_FALLBACK_FILES);
     }
     
     const manifest = await manifestResponse.json();
-    for (const file of manifest.files || []) {
+    const files = Array.isArray(manifest.files) ? manifest.files : [];
+    if (files.length === 0) {
+      return loadBundledPresetFiles(BUNDLED_PRESET_FALLBACK_FILES);
+    }
+
+    for (const file of files) {
       try {
         const response = await fetch(`/presets/${file}`);
         if (response.ok) {
           const data = await response.json();
-          presets.push(migratePreset({
-            name: data.name || file.replace('.json', ''),
-            timestamp: data.timestamp || new Date().toISOString(),
-            state: data.state || data,
-            dualRanges: data.dualRanges,
-            sliderModes: data.sliderModes,
-            drumEvolveConfigs: data.drumEvolveConfigs,
-            synthEvolveConfigs: data.synthEvolveConfigs,
-            drumStepOverrides: data.drumStepOverrides,
-            synthStepOverrides: data.synthStepOverrides,
-            drumClockDivs: data.drumClockDivs,
-            synthClockDivs: data.synthClockDivs,
-            drumSwings: data.drumSwings,
-            synthSwings: data.synthSwings,
-            drumLinked: data.drumLinked,
-            synthLinked: data.synthLinked,
-            drumSubLaneStates: data.drumSubLaneStates,
-            synthSubLaneStates: data.synthSubLaneStates,
-            synthPitchSettings: data.synthPitchSettings,
-            synthPitchBindingModes: data.synthPitchBindingModes,
-          }));
+          presets.push(savedPresetFromFileData(data, file.replace('.json', ''), 'bundled'));
         }
       } catch (e) {
         console.warn(`Failed to load preset ${file}:`, e);
@@ -800,12 +858,17 @@ function statePresetEntryToSavedPreset(
   const versionData = getVersionData(entry, version.v);
   if (!versionData) return null;
 
-  return migratePreset({
+  const migrated = migratePreset({
     name: entry.name,
     timestamp: new Date(version.timestamp).toISOString(),
     state: versionData as unknown as SliderState,
     ...(extractPresetVersionMetadata(version) ?? {}),
   });
+
+  return {
+    ...migrated,
+    source: savedPresetSourceForEntry(entry),
+  };
 }
 
 async function loadCapacitorLocalStatePresets(): Promise<SavedPreset[]> {
@@ -818,14 +881,35 @@ async function loadCapacitorLocalStatePresets(): Promise<SavedPreset[]> {
       .map((summary) => store.load('state', summary.name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE)),
   );
 
-  return entries
+  return sortSavedStatePresetsByFreshness(entries
     .map((entry) => (entry ? statePresetEntryToSavedPreset(entry) : null))
-    .filter((preset): preset is SavedPreset => !!preset)
-    .sort((left, right) => {
-      const timeDiff = new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime();
-      if (timeDiff !== 0) return timeDiff;
-      return left.name.localeCompare(right.name);
-    });
+    .filter((preset): preset is SavedPreset => !!preset));
+}
+
+async function loadActiveStatePresetStorePresets(): Promise<SavedPreset[]> {
+  const { getPresetStore } = await import('./presets');
+  const store = getPresetStore();
+  const summaries = await store.list('state', CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
+  const entries: (PresetEntry | null)[] = new Array(summaries.length).fill(null);
+  let nextIndex = 0;
+  const workerCount = Math.min(6, summaries.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < summaries.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const summary = summaries[index];
+      if (!summary) continue;
+      try {
+        entries[index] = await store.load('state', summary.name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
+      } catch (error) {
+        console.warn(`Failed to load Supabase preset ${summary.name}:`, error);
+      }
+    }
+  }));
+
+  return sortSavedStatePresetsByFreshness(entries
+    .map((entry) => (entry ? statePresetEntryToSavedPreset(entry) : null))
+    .filter((preset): preset is SavedPreset => !!preset));
 }
 
 async function saveCapacitorLocalStatePreset(preset: SavedPreset): Promise<void> {
@@ -878,6 +962,55 @@ async function saveCapacitorLocalStatePreset(preset: SavedPreset): Promise<void>
     }],
     currentVersion: 1,
     createdAt: existing?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  });
+}
+
+async function saveActiveStatePresetStorePreset(preset: SavedPreset): Promise<void> {
+  const { getPresetStore } = await import('./presets');
+  const store = getPresetStore();
+  const existing = await store.load('state', preset.name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
+  const parsedTimestamp = Date.parse(preset.timestamp);
+  const timestamp = Number.isFinite(parsedTimestamp) ? parsedTimestamp : Date.now();
+  const migratedPreset = migratePreset(preset);
+  const versionMetadata = buildPresetVersionMetadata(migratedPreset);
+  const optimizedState = extractOptimizedStatePresetData(migratedPreset.state);
+
+  if (existing) {
+    const nextVersion = Math.max(...existing.versions.map((version) => version.v), 0) + 1;
+    existing.versions.push({
+      v: nextVersion,
+      note: 'Saved from macOS app',
+      timestamp,
+      data: optimizedState,
+      ...versionMetadata,
+    });
+    existing.currentVersion = nextVersion;
+    existing.updatedAt = timestamp;
+    if (SHARED_PRESET_TEST_MODE) existing.visibility = 'public';
+    await store.save(existing);
+    return;
+  }
+
+  await store.save({
+    type: 'state',
+    scope: CAPACITOR_LOCAL_STATE_PRESET_SCOPE,
+    name: preset.name,
+    author: 'user',
+    library: 'user',
+    visibility: SHARED_PRESET_TEST_MODE ? 'public' : 'private',
+    familyName: preset.name,
+    variantName: preset.name,
+    tags: [],
+    versions: [{
+      v: 1,
+      note: 'Saved from macOS app',
+      timestamp,
+      data: optimizedState,
+      ...versionMetadata,
+    }],
+    currentVersion: 1,
+    createdAt: timestamp,
     updatedAt: timestamp,
   });
 }
@@ -1066,6 +1199,49 @@ const styles = {
     background: 'rgba(103, 232, 249, 0.16)',
     color: '#67e8f9',
     boxShadow: 'inset 0 -2px 0 rgba(103, 232, 249, 0.55)',
+  } as React.CSSProperties,
+  macAudioStatus: {
+    position: 'fixed',
+    left: '14px',
+    bottom: 'calc(14px + env(safe-area-inset-bottom))',
+    zIndex: 1300,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    maxWidth: 'min(520px, calc(100vw - 28px))',
+    padding: '8px 10px',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: '8px',
+    background: 'rgba(6, 10, 14, 0.82)',
+    boxShadow: '0 10px 24px rgba(0, 0, 0, 0.22)',
+    backdropFilter: 'blur(12px)',
+  } as React.CSSProperties,
+  macAudioStatusText: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: 'rgba(255, 255, 255, 0.72)',
+    fontSize: '0.72rem',
+    fontWeight: 700,
+  } as React.CSSProperties,
+  macAudioStatusButton: {
+    flex: '0 0 auto',
+    minHeight: '26px',
+    padding: '5px 9px',
+    border: '1px solid rgba(255, 255, 255, 0.16)',
+    borderRadius: '7px',
+    background: 'rgba(255, 255, 255, 0.06)',
+    color: 'rgba(255, 255, 255, 0.68)',
+    cursor: 'pointer',
+    fontSize: '0.68rem',
+    fontWeight: 800,
+    lineHeight: 1,
+  } as React.CSSProperties,
+  macAudioStatusButtonActive: {
+    borderColor: 'rgba(94, 234, 212, 0.45)',
+    background: 'rgba(20, 184, 166, 0.18)',
+    color: '#99f6e4',
   } as React.CSSProperties,
   presetListContainer: {
     background: 'rgba(15, 25, 40, 0.95)',
@@ -1659,7 +1835,7 @@ const App: React.FC = () => {
       markCloudPresetStoreReady();
       return;
     }
-    if (isCapacitorNativeShell()) {
+    if (isCapacitorNativeShell() && !isCapacitorMacShell()) {
       markCloudPresetStoreReady();
       return;
     }
@@ -1911,6 +2087,8 @@ const App: React.FC = () => {
   const stateRef = useRef(state);
   stateRef.current = state;
   const audioEngineRuntimeMode = useMemo(() => getAudioEngineRuntimeMode(), []);
+  const macShellAvailable = useMemo(() => isCapacitorMacShell(), []);
+  const macAudioRecoveryInFlightRef = useRef(false);
   const pendingAudioEngineStateRef = useRef<SliderState | null>(null);
   const immediatelyAppliedAudioEngineStateRef = useRef<SliderState | null>(null);
   const audioEngineUpdateTimerRef = useRef<number | null>(null);
@@ -2227,8 +2405,116 @@ const App: React.FC = () => {
   // Absent key means 'single'. dualSliderRanges stores ranges for walk/sampleHold modes.
   const [sliderModes, setSliderModes] = useState<Record<string, SliderMode>>({});
   const [dualSliderRanges, setDualSliderRanges] = useState<DualSliderState>({});
-  const usesCapacitorLocalPresetLibrary = isCapacitorNativeShell();
+  const usesSupabaseStatePresetLibrary = macShellAvailable && CLOUD_ENABLED && !isSonicParityMode();
+  const usesCapacitorLocalPresetLibrary = isCapacitorNativeShell() && !usesSupabaseStatePresetLibrary;
+  const usesManagedStatePresetLibrary = usesSupabaseStatePresetLibrary || usesCapacitorLocalPresetLibrary;
   const playbackIsRunning = engineState.isRunning;
+  const [macAudioOutputStatus, setMacAudioOutputStatus] = useState<KesshoMacAudioOutputStatus | null>(null);
+  const [macAirPlayPerformancePinned, setMacAirPlayPerformancePinned] = useState(readMacAirPlayPerformancePinned);
+  const macDetectedAirPlay = macAudioOutputStatus?.isAirPlay === true;
+  const macAirPlayPerformanceActive = macShellAvailable && (macDetectedAirPlay || macAirPlayPerformancePinned);
+
+  const refreshMacAudioOutputStatus = useCallback(async () => {
+    if (!macShellAvailable) return;
+    try {
+      const status = await getCapacitorMacAudioOutputStatus();
+      if (status) setMacAudioOutputStatus(status);
+    } catch (error) {
+      console.warn('Failed to read macOS audio output status:', error);
+    }
+  }, [macShellAvailable]);
+
+  useVisibleInterval(refreshMacAudioOutputStatus, playbackIsRunning ? 1500 : 5000, {
+    enabled: macShellAvailable,
+    pauseWhenHidden: false,
+  });
+
+  useEffect(() => {
+    if (!macShellAvailable) return;
+    void preloadAudioEngine();
+  }, [macShellAvailable]);
+
+  useVisibleInterval(() => {
+    if (!macShellAvailable || !playbackIsRunning || macAudioRecoveryInFlightRef.current) return;
+    const ctx = audioEngine.getAudioContext();
+    if (!ctx) return;
+    const contextState = ctx.state as AudioContextState | 'interrupted';
+    if (contextState === 'running') return;
+
+    macAudioRecoveryInFlightRef.current = true;
+    const recover = async () => {
+      try {
+        if (contextState === 'closed') {
+          (audioEngine as unknown as { dispose?: () => void }).dispose?.();
+          await audioEngine.start(stateRef.current);
+        } else {
+          await Promise.resolve(audioEngine.resume());
+        }
+      } catch (error) {
+        console.warn('macOS audio context recovery failed:', error);
+      } finally {
+        macAudioRecoveryInFlightRef.current = false;
+      }
+    };
+    void recover();
+  }, 2000, {
+    enabled: macShellAvailable && playbackIsRunning,
+    pauseWhenHidden: false,
+  });
+
+  const handleMacAirPlayPerformanceToggle = useCallback(() => {
+    setMacAirPlayPerformancePinned((prev) => {
+      const next = !prev;
+      writeMacAirPlayPerformancePinned(next);
+      return next;
+    });
+  }, []);
+
+  const renderMacAudioStatusPill = useCallback(() => {
+    if (!macShellAvailable) return null;
+    const outputName = macAudioOutputStatus?.outputName ?? 'Mac Output';
+    const routeLabel = macAudioOutputStatus?.isAirPlay
+      ? 'AirPlay'
+      : macAudioOutputStatus?.transportType
+        ? macAudioOutputStatus.transportType
+        : 'macOS';
+    const sampleRate = macAudioOutputStatus?.sampleRate
+      ? `${Math.round(macAudioOutputStatus.sampleRate / 100) / 10}k`
+      : null;
+
+    return (
+      <div style={styles.macAudioStatus} aria-label="macOS audio output">
+        <span style={styles.macAudioStatusText}>
+          {routeLabel} · {outputName}{sampleRate ? ` · ${sampleRate}` : ''}
+        </span>
+        <button
+          type="button"
+          style={{
+            ...styles.macAudioStatusButton,
+            ...(macAirPlayPerformanceActive ? styles.macAudioStatusButtonActive : {}),
+          }}
+          aria-pressed={macAirPlayPerformanceActive}
+          onClick={handleMacAirPlayPerformanceToggle}
+          title="Toggle AirPlay performance mode"
+        >
+          Stable
+        </button>
+        <button
+          type="button"
+          style={styles.macAudioStatusButton}
+          onClick={() => { void openCapacitorMacSoundSettings(); }}
+          title="Open macOS Sound settings"
+        >
+          Sound
+        </button>
+      </div>
+    );
+  }, [
+    handleMacAirPlayPerformanceToggle,
+    macAirPlayPerformanceActive,
+    macAudioOutputStatus,
+    macShellAvailable,
+  ]);
 
   useEffect(() => {
     if (!capacitorAudioSessionDiagnosticActive) return;
@@ -2351,7 +2637,13 @@ const App: React.FC = () => {
     const deviceLocalPreset = savedPresets.find((preset) => preset.name === DEFAULT_AUTO_START_PRESET_NAME) ?? null;
     if (deviceLocalPreset) {
       autoStartPresetRef.current = deviceLocalPreset;
-      autoStartPresetSourceRef.current = usesCapacitorLocalPresetLibrary ? 'device-local' : 'bundled';
+      autoStartPresetSourceRef.current = deviceLocalPreset.source ?? (
+        usesSupabaseStatePresetLibrary
+          ? 'cloud'
+          : usesCapacitorLocalPresetLibrary
+            ? 'device-local'
+            : 'bundled'
+      );
       return {
         preset: deviceLocalPreset,
         source: autoStartPresetSourceRef.current,
@@ -2369,12 +2661,12 @@ const App: React.FC = () => {
     }
 
     return { preset: null, source: null };
-  }, [loadCloudAutoStartPreset, savedPresets, usesCapacitorLocalPresetLibrary]);
+  }, [loadCloudAutoStartPreset, savedPresets, usesCapacitorLocalPresetLibrary, usesSupabaseStatePresetLibrary]);
 
   useEffect(() => {
-    if (!usesCapacitorLocalPresetLibrary || !CLOUD_ENABLED || autoStartPresetRef.current) return;
+    if (!(usesCapacitorLocalPresetLibrary || usesSupabaseStatePresetLibrary) || !CLOUD_ENABLED || autoStartPresetRef.current) return;
     void loadCloudAutoStartPreset();
-  }, [loadCloudAutoStartPreset, usesCapacitorLocalPresetLibrary]);
+  }, [loadCloudAutoStartPreset, usesCapacitorLocalPresetLibrary, usesSupabaseStatePresetLibrary]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2999,19 +3291,42 @@ const App: React.FC = () => {
     };
   }, [shouldMirrorRuntimeWalkPositions]);
 
+  useEffect(() => {
+    const active = audioEngineRuntimeMode === 'core-product' && uiMode === 'advanced';
+    audioEngine.setVisualTelemetryActive(active);
+    return () => {
+      audioEngine.setVisualTelemetryActive(false);
+    };
+  }, [audioEngineRuntimeMode, uiMode]);
+
   // Load presets from folder on mount
   useEffect(() => {
     let cancelled = false;
+    setPresetsLoading(true);
 
-    const loadPresets = usesCapacitorLocalPresetLibrary
-      ? loadCapacitorLocalStatePresets
-      : loadPresetsFromFolder;
+    const loadPresets = async () => {
+      if (usesSupabaseStatePresetLibrary) {
+        await cloudPresetStoreReadyPromiseRef.current;
+        return loadActiveStatePresetStorePresets();
+      }
+      if (usesCapacitorLocalPresetLibrary) {
+        return loadCapacitorLocalStatePresets();
+      }
+      return loadPresetsFromFolder();
+    };
 
-    loadPresets().then((presets) => {
-      if (cancelled) return;
-      setSavedPresets(presets);
-      setPresetsLoading(false);
-    });
+    loadPresets()
+      .then((presets) => {
+        if (cancelled) return;
+        setSavedPresets(presets);
+      })
+      .catch((error) => {
+        console.warn('Failed to load presets:', error);
+        if (!cancelled) setSavedPresets([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPresetsLoading(false);
+      });
 
     // Check for cloud preset in URL (?cloud=presetId)
     const urlParams = new URLSearchParams(window.location.search);
@@ -3072,6 +3387,7 @@ const App: React.FC = () => {
     restoreEvolveConfigs,
     syncCoreProductAppliedPreset,
     usesCapacitorLocalPresetLibrary,
+    usesSupabaseStatePresetLibrary,
   ]);
 
   // Engine state callback
@@ -5335,6 +5651,15 @@ const App: React.FC = () => {
       synthPitchBindingModes: synthPitchBindingModesRef.current,
     };
 
+    if (usesSupabaseStatePresetLibrary) {
+      await cloudPresetStoreReadyPromiseRef.current;
+      await saveActiveStatePresetStorePreset(preset);
+      setSavedPresets(await loadActiveStatePresetStorePresets());
+      setStatePresetName(name);
+      setShowPresetList(true);
+      return;
+    }
+
     if (usesCapacitorLocalPresetLibrary) {
       await saveCapacitorLocalStatePreset(preset);
       setSavedPresets(await loadCapacitorLocalStatePresets());
@@ -6782,6 +7107,17 @@ const App: React.FC = () => {
 
   // Delete preset - just removes from UI list (can't delete files from browser)
   const handleDeletePreset = async (index: number) => {
+    if (usesSupabaseStatePresetLibrary) {
+      const preset = savedPresets[index];
+      if (!preset) return;
+      if (!confirm(`Delete Supabase preset "${preset.name}"?`)) return;
+      const { getPresetStore } = await import('./presets');
+      await cloudPresetStoreReadyPromiseRef.current;
+      await getPresetStore().delete('state', preset.name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
+      setSavedPresets(await loadActiveStatePresetStorePresets());
+      return;
+    }
+
     if (usesCapacitorLocalPresetLibrary) {
       const preset = savedPresets[index];
       if (!preset) return;
@@ -6832,7 +7168,11 @@ const App: React.FC = () => {
             synthPitchBindingModes: result.preset.synthPitchBindingModes,
           };
 
-          if (usesCapacitorLocalPresetLibrary) {
+          if (usesSupabaseStatePresetLibrary) {
+            await cloudPresetStoreReadyPromiseRef.current;
+            await saveActiveStatePresetStorePreset(importedPreset);
+            setSavedPresets(await loadActiveStatePresetStorePresets());
+          } else if (usesCapacitorLocalPresetLibrary) {
             await saveCapacitorLocalStatePreset(importedPreset);
             setSavedPresets(await loadCapacitorLocalStatePresets());
           } else {
@@ -7366,6 +7706,7 @@ const App: React.FC = () => {
           transition: 'opacity 0.5s ease-in-out',
           visibility: showSplash ? 'hidden' : 'visible',
         }}>
+          {renderMacAudioStatusPill()}
           <div
             style={{ ...styles.mainEngineSwitch, ...styles.mainEngineSwitchFloating }}
             role="group"
@@ -7416,6 +7757,7 @@ const App: React.FC = () => {
     <SliderHelpProvider activePage={activeTab === 'visualizer' ? 'global' : activeTab}>
       <div className="app-container" style={{ ...activePageAccentStyle, ...styles.container, ...m?.container }}>
         <CpuOverlay />
+        {renderMacAudioStatusPill()}
         {/* Controls - centered */}
         <div className="app-controls" style={{ ...styles.controls, paddingTop: '12px', ...m?.controls }}>
         {!(playbackIsRunning || isJourneyPlaying) ? (
@@ -7489,13 +7831,19 @@ const App: React.FC = () => {
         <button
           style={{ ...styles.iconButton, ...styles.presetButton, ...m?.iconButton }}
           onClick={() => {
-            if (usesCapacitorLocalPresetLibrary) {
+            if (usesManagedStatePresetLibrary) {
               setShowPresetList(prev => !prev);
             } else {
               fileInputRef.current?.click();
             }
           }}
-          title={usesCapacitorLocalPresetLibrary ? 'Load Local Preset' : 'Import Preset'}
+          title={
+            usesSupabaseStatePresetLibrary
+              ? 'Load Supabase Preset'
+              : usesCapacitorLocalPresetLibrary
+                ? 'Load Local Preset'
+                : 'Import Preset'
+          }
         >
           {TEXT_SYMBOLS.upload}
         </button>
@@ -7545,15 +7893,21 @@ const App: React.FC = () => {
       {showPresetList && (
         <div className="app-preset-list" style={{ ...styles.presetListContainer, ...m?.presetList }}>
           <h4 style={{ margin: '0 0 10px', color: '#a855f7' }}>
-            {usesCapacitorLocalPresetLibrary ? 'Local Presets (saved on this device)' : 'Presets (from /presets folder)'}
+            {usesSupabaseStatePresetLibrary
+              ? 'Supabase Presets'
+              : usesCapacitorLocalPresetLibrary
+                ? 'Local Presets (saved on this device)'
+                : 'Presets (from /presets folder)'}
           </h4>
           {presetsLoading ? (
             <p style={{ color: '#6b7280', fontStyle: 'italic' }}>Loading presets...</p>
           ) : savedPresets.length === 0 ? (
             <p style={{ color: '#6b7280', fontStyle: 'italic' }}>
-              {usesCapacitorLocalPresetLibrary
-                ? 'No local presets saved on this device yet.'
-                : 'No presets found. Save one to the presets folder.'}
+              {usesSupabaseStatePresetLibrary
+                ? 'No Supabase presets loaded. Check the network connection and Supabase configuration.'
+                : usesCapacitorLocalPresetLibrary
+                  ? 'No local presets saved on this device yet.'
+                  : 'No presets found. Save one to the presets folder.'}
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -7574,7 +7928,13 @@ const App: React.FC = () => {
                   <button
                     style={{ ...styles.button, ...styles.deletePresetBtn }}
                     onClick={() => handleDeletePreset(index)}
-                    title={usesCapacitorLocalPresetLibrary ? 'Delete local preset from this device' : 'Remove from list (doesn\'t delete file)'}
+                    title={
+                      usesSupabaseStatePresetLibrary
+                        ? 'Delete Supabase preset'
+                        : usesCapacitorLocalPresetLibrary
+                          ? 'Delete local preset from this device'
+                          : 'Remove from list (doesn\'t delete file)'
+                    }
                   >
                     ✕
                   </button>
@@ -7776,7 +8136,7 @@ const App: React.FC = () => {
             sliderModes={sliderModes}
             dualRanges={dualSliderRanges as Record<string, { min: number; max: number }>}
             engineState={engineState}
-            isPlaying={playbackIsRunning || isJourneyPlaying}
+            isPlaying={(playbackIsRunning || isJourneyPlaying) && !macAirPlayPerformanceActive}
           />
         )}
 

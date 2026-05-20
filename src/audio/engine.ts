@@ -1571,6 +1571,10 @@ export class AudioEngine {
     }
   }
 
+  setVisualTelemetryActive(_active: boolean): void {
+    // Web TS owns visual values directly on the main engine path.
+  }
+
   private emitRuntimeWalkPositions(force = false): void {
     const nextPositions: Record<string, number> = {};
     for (const key of Object.keys(this.runtimeWalkRanges)) {

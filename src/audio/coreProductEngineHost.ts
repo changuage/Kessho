@@ -32,7 +32,7 @@ import {
   resolveCoreProductDrumMorphRangeTarget,
   resolveCoreProductRangeTargets,
 } from './coreProductEvents';
-import { type CoreProductSequencerLaneUiState, type CoreProductTelemetrySnapshot, initialCoreProductCapabilityReport } from './coreProductTelemetry';
+import { type CoreProductSequencerLaneUiState, type CoreProductTelemetrySnapshot, type CoreProductVisualTelemetrySnapshot, initialCoreProductCapabilityReport } from './coreProductTelemetry';
 import { classifyCoreProductRuntimeFallback, runtimeFallbackIsDevelopmentError, type RuntimeFallbackClassification } from './CoreProductFallbackDiagnostics';
 import { CoreProductArrangementScheduler } from './coreProductArrangementScheduler';
 import { buildCoreProductSnapshotDiff, shouldForwardCoreProductRngDiffs, type SnapshotReloadReason } from './CoreProductRuntimeAdapter';
@@ -107,6 +107,7 @@ class CoreProductEngineHost {
   readonly capabilityReport = initialCoreProductCapabilityReport;
   constructor() {
     this.runtime.setTelemetryCallback((telemetry) => this.handleTelemetry(telemetry));
+    this.runtime.setVisualTelemetryCallback((telemetry) => this.handleVisualTelemetry(telemetry));
   }
   getAudioContext(): AudioContext | null {
     return this.runtime.audioContext;
@@ -316,6 +317,10 @@ class CoreProductEngineHost {
     if (this.perfMonitorEnabled && this.latestTelemetry) {
       callback?.(this.createPerfSnapshot(this.latestTelemetry));
     }
+  }
+
+  setVisualTelemetryActive(active: boolean): void {
+    this.runtime.setVisualTelemetryActive(active);
   }
 
   reportRuntimeFallback(method: string, classification: RuntimeFallbackClassification): void {
@@ -975,6 +980,26 @@ class CoreProductEngineHost {
     if (this.perfMonitorEnabled) {
       this.perfUpdateCallback?.(this.createPerfSnapshot(hostTelemetry));
     }
+  }
+
+  private handleVisualTelemetry(telemetry: CoreProductVisualTelemetrySnapshot): void {
+    const previous = this.latestTelemetry;
+    const merged: CoreProductTelemetrySnapshot = {
+      ...(previous ?? {}),
+      ...telemetry,
+      schemaHash: telemetry.schemaHash,
+      transportRunning: telemetry.transportRunning ?? this.running,
+      activeSources: previous?.activeSources ?? 0,
+      activeVoices: previous?.activeVoices ?? 0,
+      activeAssets: previous?.activeAssets ?? 0,
+      sequencerEventCount: previous?.sequencerEventCount ?? 0,
+      controlQueueDepth: previous?.controlQueueDepth ?? 0,
+      assetMissingCount: previous?.assetMissingCount ?? 0,
+      lastErrorCode: previous?.lastErrorCode ?? 0,
+    };
+    const hostTelemetry = this.withHostDiagnostics(merged);
+    this.latestTelemetry = hostTelemetry;
+    this.updateRuntimeWalkPositions(hostTelemetry);
   }
 
   private reconcileSequencerUiState(telemetry: CoreProductTelemetrySnapshot): void {

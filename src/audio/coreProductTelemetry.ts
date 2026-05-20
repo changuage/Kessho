@@ -124,6 +124,33 @@ export type CoreProductTelemetrySnapshot = {
   pad2Lfo1Value?: number;
 };
 
+export type CoreProductVisualTelemetrySnapshot = Pick<
+  CoreProductTelemetrySnapshot,
+  | 'schemaHash'
+  | 'transportRunning'
+  | 'absoluteSampleTime'
+  | 'activeGrains'
+  | 'runtimeWalkCount'
+  | 'runtimeWalkValues'
+  | 'masterInputPeak'
+  | 'masterOutputPeak'
+  | 'masterOutputRms'
+  | 'masterTruePeak'
+  | 'dynamicsSaturationDrive'
+  | 'granularWriteHeadPosition'
+  | 'granularVoicePositions'
+  | 'pad1FilterFreq'
+  | 'pad1Lfo1Value'
+  | 'pad2FilterFreq'
+  | 'pad2Lfo1Value'
+  | 'workletOutputPeak'
+  | 'workletStemPeaks'
+  | 'workletMasterStemPeak'
+  | 'workletPadStemPeak'
+  | 'workletLeadStemPeak'
+  | 'workletFxStemPeak'
+>;
+
 export const initialCoreProductCapabilityReport: CoreProductCapabilityReport = {
   engineMode: 'core-product',
   supportsFullProductGraph: true,

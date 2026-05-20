@@ -29,6 +29,8 @@ const arrangementScheduler = read('src/audio/coreProductArrangementScheduler.ts'
 const snapshotEncoder = read('src/audio/coreProductSnapshotEncoder.ts');
 const legacyPresetCompat = read('src/audio/CoreProductLegacyPresetCompat.ts');
 const telemetryTypes = read('src/audio/coreProductTelemetry.ts');
+const synthPage = read('src/ui/synth/SynthPage.tsx');
+const filterLfoViz = read('src/ui/synth/FilterLfoViz.tsx');
 const assets = `${read('src/audio/coreProductAssets.ts')}\n${read('src/audio/coreProductAssetManifest.json')}`;
 const generatedSchema = read('src/audio/generated/kesshoProductSchema.ts');
 const worklet = read('public/worklets/kessho-core-product.worklet.js');
@@ -492,15 +494,62 @@ for (const token of [
   "type: 'snapshot'",
   "type: 'register-asset'",
   "type: 'request-telemetry'",
+  "type: 'visual-telemetry'",
+  'CORE_PRODUCT_VISUAL_TELEMETRY_INTERVAL_MS',
   "type: 'telemetry'",
   'get outputNode(): AudioNode | null',
   'context.createGain()',
   'setTelemetryCallback(callback:',
+  'setVisualTelemetryActive(active:',
   'dispose(): void',
   'window.clearInterval(this.telemetryTimer)',
+  'window.clearInterval(this.visualTelemetryTimer)',
   'void context.close();',
 ]) {
   assert(runtime.includes(token), `core-product runtime is missing ${token}`);
+}
+
+for (const token of [
+  'Math.abs(prev.pad1FilterFreq - next.pad1FilterFreq) < 0.01',
+  'Math.abs(prev.pad1LfoValue - next.pad1LfoValue) < 0.00001',
+  "useRuntimeSliderPosition('padPostLPF'",
+  'postLpfHz={livePad1PostLpf}',
+  'return hasAnimatedFilterView ? 50 : 180;',
+  'useVisibleInterval(updateLiveFilterViz, synthLivePollMs',
+]) {
+  assert(synthPage.includes(token), `Synth live filter visualizer must stay responsive in Product Core: missing ${token}`);
+}
+assert(
+  !synthPage.includes('window.setInterval(poll, 50)'),
+  'Synth live filter visualizer must use one visible interval instead of duplicate Product Core polling loops',
+);
+
+for (const token of [
+  'displayedCutoffRef',
+  'lastDrawMsRef',
+  '1 - Math.exp(-elapsedMs / 80)',
+  'postLpfHz?: number',
+  'postLpfDominant',
+  'Hz audible',
+  "const hasLiveFilterMotion = props.isRunning && props.lfoDest !== 'none';",
+]) {
+  assert(filterLfoViz.includes(token), `FilterLfoViz must smooth live Product Core telemetry between polling ticks: missing ${token}`);
+}
+
+for (const token of [
+  'applyPadDistanceToState',
+  "exactPadParamsFromState(distanceAdjustedPadExactState(state, 'pad1'), 0)",
+  "exactPadParamsFromState(distanceAdjustedPadExactState(state, 'pad2'), 1)",
+]) {
+  assert(snapshot.includes(token), `Product Core Pad snapshot must apply distance to exact Pad params for web parity: missing ${token}`);
+}
+
+for (const token of [
+  'mapPadExactValueForDistance',
+  'productParamTarget(coreProductPadRuntimeParamId(0, spec.index), key, (value, context)',
+  'productParamTarget(coreProductPadRuntimeParamId(1, spec.index), key, (value, context)',
+]) {
+  assert(events.includes(token), `Product Core Pad runtime ranges must apply distance mapping for web parity: missing ${token}`);
 }
 
 for (const token of [
@@ -521,7 +570,10 @@ for (const token of [
   'copySequencerUiState(this.engine, this.sequencerUiStatePtr)',
   'const SEQUENCER_UI_STATE_BYTES = 70948;',
   "message.type === 'request-telemetry'",
+  "message.type === 'request-visual-telemetry'",
   "this.port.postMessage({ type: 'telemetry', telemetry });",
+  "this.port.postMessage({ type: 'visual-telemetry', telemetry });",
+  'readVisualTelemetry()',
   'this.heapF32.buffer !== this.exports.memory.buffer',
   'workletOutputPeak: this.lastOutputPeak',
   'wasmHeapBytes: this.exports.memory.buffer.byteLength',

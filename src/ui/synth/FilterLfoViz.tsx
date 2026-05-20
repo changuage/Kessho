@@ -28,6 +28,7 @@ interface FilterLfoVizProps {
   lfoDest: string;
   filterCutoffMin: number;
   filterCutoffMax: number;
+  postLpfHz?: number;
   synthAttack: number;
   synthDecay: number;
   synthSustain: number;
@@ -129,6 +130,8 @@ const quantizeEnvelopeTime = (value: number): number => (
 const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
+  const displayedCutoffRef = useRef<number | null>(null);
+  const lastDrawMsRef = useRef<number>(0);
   // Ring buffer of real engine LFO values for trailing waveform
   const lfoHistoryRef = useRef<number[]>([]);
   // Drag interaction state
@@ -192,19 +195,41 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     const modD = props.modEnvDecay ?? props.synthDecay;
     const modS = props.modEnvSustain ?? props.synthSustain;
     const modR = props.modEnvRelease ?? props.synthRelease;
+    const nowMs = performance.now();
     const filterEnv = showFilterModEnv
-      ? loopingModEnvValue(performance.now() / 1000, modA, modD, modS, modR) * (props.modEnvDepth ?? 0)
+      ? loopingModEnvValue(nowMs / 1000, modA, modD, modS, modR) * (props.modEnvDepth ?? 0)
       : 0;
 
     // Engine telemetry gives the LFO/base cutoff. The mod envelope is visualized
     // here so the canvas can move smoothly between engine polling ticks.
-    const liveCutoff = Math.max(
+    const targetCutoff = Math.max(
       20,
       Math.min(
         20000,
         (props.liveFilterFreq || props.filterACutoff) + filterEnv * (props.filterCutoffMax - props.filterCutoffMin) * 0.5,
       ),
     );
+    const previousCutoff = displayedCutoffRef.current;
+    const previousDrawMs = lastDrawMsRef.current;
+    const elapsedMs = previousDrawMs > 0 ? Math.min(100, Math.max(0, nowMs - previousDrawMs)) : 16.67;
+    const smoothing = props.isRunning ? 1 - Math.exp(-elapsedMs / 80) : 1;
+    let liveCutoff = previousCutoff === null
+      ? targetCutoff
+      : previousCutoff + (targetCutoff - previousCutoff) * smoothing;
+    if (Math.abs(liveCutoff - targetCutoff) < 0.01) {
+      liveCutoff = targetCutoff;
+    }
+    displayedCutoffRef.current = liveCutoff;
+    lastDrawMsRef.current = nowMs;
+    const postLpfCutoff = typeof props.postLpfHz === 'number' && Number.isFinite(props.postLpfHz)
+      ? Math.max(20, Math.min(20000, props.postLpfHz))
+      : null;
+    const effectiveLowpassCutoff = postLpfCutoff === null
+      ? liveCutoff
+      : props.filterAType === 'lowpass'
+        ? Math.min(liveCutoff, postLpfCutoff)
+        : postLpfCutoff;
+    const postLpfDominant = postLpfCutoff !== null && postLpfCutoff < liveCutoff - 1;
 
     // Store layout for hit testing
     layoutRef.current = { filterH, envY, envH, w, h };
@@ -241,6 +266,10 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       drawFilterCurve(props.filterBType, props.filterBCutoff, props.filterBRes, 1, 12, '#3b82f6', 0.6, 0.05, 0);
     }
 
+    if (postLpfCutoff !== null && postLpfCutoff < 19950) {
+      drawFilterCurve('lowpass', postLpfCutoff, 0, 0.7, 12, '#38bdf8', 0.55, 0.035, 0);
+    }
+
     // Live cutoff marker
     const cutoffX = freqToX(liveCutoff);
     ctx.beginPath();
@@ -253,6 +282,19 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
+
+    if (postLpfCutoff !== null && postLpfCutoff < 19950) {
+      const postX = freqToX(postLpfCutoff);
+      ctx.beginPath();
+      ctx.strokeStyle = postLpfDominant ? 'rgba(56,189,248,0.8)' : 'rgba(56,189,248,0.35)';
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = postLpfDominant ? 1.25 : 0.75;
+      ctx.setLineDash([2, 3]);
+      ctx.moveTo(postX, 2);
+      ctx.lineTo(postX, filterH - 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
     // Filter Min / Max range markers
     const fMin = props.filterCutoffMin;
@@ -327,9 +369,20 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     // Live Hz readout
     if (props.isRunning) {
       ctx.font = '10px monospace';
-      ctx.fillStyle = 'rgba(0,255,150,0.8)';
+      ctx.fillStyle = postLpfDominant ? 'rgba(56,189,248,0.86)' : 'rgba(0,255,150,0.8)';
       ctx.textAlign = 'center';
-      ctx.fillText(`${Math.round(liveCutoff)} Hz`, w / 2, 11);
+      ctx.fillText(
+        postLpfDominant
+          ? `${Math.round(effectiveLowpassCutoff)} Hz audible`
+          : `${Math.round(liveCutoff)} Hz`,
+        w / 2,
+        11,
+      );
+      if (postLpfCutoff !== null && postLpfCutoff < 19950) {
+        ctx.font = '7px monospace';
+        ctx.fillStyle = 'rgba(56,189,248,0.58)';
+        ctx.fillText(`post ${Math.round(postLpfCutoff)} Hz`, w / 2, 21);
+      }
       ctx.textAlign = 'start';
     }
 
@@ -505,7 +558,12 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
         ctx.font = '9px monospace';
         ctx.fillStyle = 'rgba(196,181,253,0.8)';
         ctx.textAlign = 'center';
-        ctx.fillText(`${Math.round(curHz)} Hz`, w / 2, posY - 6);
+        ctx.fillText(`${Math.round(curHz)} Hz filter`, w / 2, posY - 6);
+        if (postLpfDominant) {
+          ctx.font = '7px monospace';
+          ctx.fillStyle = 'rgba(56,189,248,0.7)';
+          ctx.fillText(`${Math.round(effectiveLowpassCutoff)} Hz audible`, w / 2, Math.min(botY - 2, posY + 11));
+        }
         ctx.textAlign = 'start';
       } else {
         // All other LFO types: draw trailing history from engine + current value indicator
@@ -649,7 +707,8 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       && props.modEnvEnabled
       && props.modEnvDest === 'filterCutoff'
       && Math.abs(props.modEnvDepth ?? 0) > 0.0001;
-    if (!hasAnimatedModEnv) {
+    const hasLiveFilterMotion = props.isRunning && props.lfoDest !== 'none';
+    if (!hasAnimatedModEnv && !hasLiveFilterMotion) {
       requestDraw();
       return;
     }
@@ -665,6 +724,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     canAnimate,
     draw,
     props.isRunning,
+    props.lfoDest,
     props.modEnvDepth,
     props.modEnvDest,
     props.modEnvEnabled,

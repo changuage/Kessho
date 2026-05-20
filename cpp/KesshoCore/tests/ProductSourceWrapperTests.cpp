@@ -534,6 +534,50 @@ void requireIdlePadLowRateRandomWalkTelemetryTracksBothPads() {
   kessho_product_destroy(engine);
 }
 
+void requirePadLowRateRandomWalkTelemetryUpdatesContinuously() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "Pad random-walk cadence engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configurePadLowRateRandomWalkTelemetryPatch(snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u], 40.0f, 360.0f);
+  configurePadLowRateRandomWalkTelemetryPatch(snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD2 - 1u], 80.0f, 620.0f);
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Pad random-walk cadence snapshot load failed");
+
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  auto renderBlocks = [&](int block_count) {
+    for (int block = 0; block < block_count; ++block) {
+      kessho_product_render(engine, left.data(), right.data(), 128);
+    }
+  };
+  auto countFilterChanges = [&](int samples, int blocks_per_sample) {
+    KesshoProductTelemetry previous = kessho_product_get_telemetry(engine);
+    uint32_t pad1_changes = 0u;
+    uint32_t pad2_changes = 0u;
+    for (int sample = 0; sample < samples; ++sample) {
+      renderBlocks(blocks_per_sample);
+      const KesshoProductTelemetry next = kessho_product_get_telemetry(engine);
+      if (std::fabs(next.pad1_filter_freq - previous.pad1_filter_freq) > 0.001f) {
+        ++pad1_changes;
+      }
+      if (std::fabs(next.pad2_filter_freq - previous.pad2_filter_freq) > 0.001f) {
+        ++pad2_changes;
+      }
+      previous = next;
+    }
+    return std::min(pad1_changes, pad2_changes);
+  };
+
+  const uint32_t idle_changes = countFilterChanges(30, 38);
+  require(idle_changes >= 8u, "Idle Pad low-rate random-walk telemetry updated too sparsely");
+
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_PAD1, 60.0f);
+  triggerManual(engine, KESSHO_PRODUCT_SOURCE_PAD2, 67.0f);
+  const uint32_t active_changes = countFilterChanges(30, 38);
+  require(active_changes >= 8u, "Active Pad low-rate random-walk telemetry updated too sparsely");
+
+  kessho_product_destroy(engine);
+}
+
 void requirePadModEnvelopeTelemetryTracksBothPads() {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "Pad mod-envelope telemetry engine create failed");
@@ -1233,6 +1277,7 @@ int main() {
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_PAD2, KESSHO_PRODUCT_STEM_PAD2, 64.0f, "pad 2 did not render");
   requirePadFilterLfoTelemetryTracksBothPads();
   requireIdlePadLowRateRandomWalkTelemetryTracksBothPads();
+  requirePadLowRateRandomWalkTelemetryUpdatesContinuously();
   requirePadModEnvelopeTelemetryTracksBothPads();
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_LEAD1, KESSHO_PRODUCT_STEM_LEAD1, 67.0f, "lead 1 did not render");
   requireSourceRenders(KESSHO_PRODUCT_SOURCE_LEAD2, KESSHO_PRODUCT_STEM_LEAD2, 71.0f, "lead 2 did not render");
