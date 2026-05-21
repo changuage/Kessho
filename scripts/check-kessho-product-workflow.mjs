@@ -130,8 +130,10 @@ assert(
   'Product Core workflow must run on macOS for local Emscripten/Homebrew parity with developer machines',
 );
 assert(
-  workflow.includes('actions/setup-node@v4') && workflow.includes('node-version: 24'),
-  'Product Core workflow must pin the Node version used by local Product Core scripts',
+  /actions\/checkout@v[56]/.test(workflow) &&
+    /actions\/setup-node@v[56]/.test(workflow) &&
+    workflow.includes('node-version: 24'),
+  'Product Core workflow must use Node 24-backed actions and pin the Node version used by local Product Core scripts',
 );
 assert(
   workflow.includes('brew install emscripten'),

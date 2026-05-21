@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import { defaultSmokeStatePatch as statePatch, smokeCases as cases } from './lib/kesshoProductWebGraphSmokeCases.mjs';
 import { fastSmokeCaseIds } from './lib/kesshoProductWebParityFastTier.mjs';
@@ -34,7 +35,69 @@ function parseArgs(argv) {
   return args;
 }
 
-function runCaseAttempt(caseDef, args, attempt) {
+async function waitForHttp(url, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+    await delay(250);
+  }
+  throw new Error(`Timed out waiting for ${url}: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
+}
+
+function killProcessTree(child) {
+  if (!child.pid) return;
+  try {
+    if (process.platform === 'win32') child.kill();
+    else process.kill(-child.pid, 'SIGTERM');
+  } catch {
+    child.kill();
+  }
+}
+
+async function startSharedVite(port) {
+  const url = `http://127.0.0.1:${port}/`;
+  const child = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port)], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, BROWSER: 'none' },
+    detached: process.platform !== 'win32',
+  });
+
+  let output = '';
+  let exited = false;
+  child.stdout.on('data', (chunk) => {
+    output += chunk.toString();
+  });
+  child.stderr.on('data', (chunk) => {
+    output += chunk.toString();
+  });
+  child.on('exit', () => {
+    exited = true;
+  });
+
+  try {
+    await waitForHttp(url, 30000);
+  } catch (error) {
+    killProcessTree(child);
+    throw new Error(`${error instanceof Error ? error.message : String(error)}\nVite output:\n${output.trim()}`);
+  }
+
+  return {
+    url,
+    stop: async () => {
+      if (!exited) killProcessTree(child);
+      await delay(500);
+    },
+  };
+}
+
+function runCaseAttempt(caseDef, args, attempt, captureUrl) {
   const command = [
     'scripts/check-web-core-sonic-parity.mjs',
     `--track=${caseDef.track}`,
@@ -60,7 +123,7 @@ function runCaseAttempt(caseDef, args, attempt) {
   for (const manualDrum of caseDef.manualDrums ?? []) {
     command.push(`--manual-drum=${manualDrum}`);
   }
-  if (args.url) command.push(`--url=${args.url}`);
+  if (captureUrl) command.push(`--url=${captureUrl}`);
   else command.push(`--port=${args.port}`);
   if (caseDef.mobileDevice) command.push('--mobile-device');
   if (caseDef.envelopeGate) command.push('--envelope-gate');
@@ -85,11 +148,11 @@ function runCaseAttempt(caseDef, args, attempt) {
   };
 }
 
-function runCase(caseDef, args) {
+function runCase(caseDef, args, captureUrl) {
   const maxAttempts = Math.max(1, caseDef.attempts ?? DEFAULT_CASE_ATTEMPTS);
   const attempts = [];
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const result = runCaseAttempt(caseDef, args, attempt);
+    const result = runCaseAttempt(caseDef, args, attempt, captureUrl);
     attempts.push(result);
     if (result.status === 'pass') {
       return {
@@ -136,52 +199,59 @@ const outputTail = (value) => {
   return value.length > limit ? value.slice(-limit) : value;
 };
 
-const results = [];
-for (const [index, caseDef] of selectedCases.entries()) {
-  process.stderr.write(`[${index + 1}/${selectedCases.length}] ${caseDef.id}\n`);
-  const result = runCase(caseDef, args);
-  process.stderr.write(`[${index + 1}/${selectedCases.length}] ${caseDef.id}: ${result.status}${result.attempts > 1 ? ` after ${result.attempts} attempts` : ''}\n`);
-  results.push(result);
-}
-const failed = results.filter((result) => result.status !== 'pass');
-const report = {
-  schema: 'kessho-product-web-graph-capture-smoke-v1',
-  generatedAt: new Date().toISOString(),
-  status: failed.length === 0 ? 'pass' : 'fail',
-  tier: args.tier,
-  filteredCaseIds: args.caseIds,
-  cases: results.map((result) => ({
-    id: result.id,
-    track: result.track,
-    status: result.status,
-    exitCode: result.exitCode,
-    attempts: result.attempts,
-    ...(result.attempts > 1
-      ? {
-          attemptStatuses: result.attemptResults.map((attempt) => ({
-            attempt: attempt.attempt,
-            status: attempt.status,
-            exitCode: attempt.exitCode,
-          })),
-        }
-      : {}),
-    ...(result.status === 'pass'
-      ? {}
-      : {
-          stdoutTail: outputTail(result.stdout),
-          stderrTail: outputTail(result.stderr),
-        }),
-  })),
-};
-const reportPath = writeReport(report, args);
+let sharedVite = null;
+try {
+  sharedVite = args.url ? null : await startSharedVite(args.port);
+  const captureUrl = args.url || sharedVite?.url || '';
+  const results = [];
+  for (const [index, caseDef] of selectedCases.entries()) {
+    process.stderr.write(`[${index + 1}/${selectedCases.length}] ${caseDef.id}\n`);
+    const result = runCase(caseDef, args, captureUrl);
+    process.stderr.write(`[${index + 1}/${selectedCases.length}] ${caseDef.id}: ${result.status}${result.attempts > 1 ? ` after ${result.attempts} attempts` : ''}\n`);
+    results.push(result);
+  }
+  const failed = results.filter((result) => result.status !== 'pass');
+  const report = {
+    schema: 'kessho-product-web-graph-capture-smoke-v1',
+    generatedAt: new Date().toISOString(),
+    status: failed.length === 0 ? 'pass' : 'fail',
+    tier: args.tier,
+    filteredCaseIds: args.caseIds,
+    cases: results.map((result) => ({
+      id: result.id,
+      track: result.track,
+      status: result.status,
+      exitCode: result.exitCode,
+      attempts: result.attempts,
+      ...(result.attempts > 1
+        ? {
+            attemptStatuses: result.attemptResults.map((attempt) => ({
+              attempt: attempt.attempt,
+              status: attempt.status,
+              exitCode: attempt.exitCode,
+            })),
+          }
+        : {}),
+      ...(result.status === 'pass'
+        ? {}
+        : {
+            stdoutTail: outputTail(result.stdout),
+            stderrTail: outputTail(result.stderr),
+          }),
+    })),
+  };
+  const reportPath = writeReport(report, args);
 
-for (const result of results) {
-  process.stdout.write(result.stdout);
-  process.stderr.write(result.stderr);
-}
+  for (const result of results) {
+    process.stdout.write(result.stdout);
+    process.stderr.write(result.stderr);
+  }
 
-if (failed.length > 0) {
-  throw new Error(`Kessho Product Web graph capture smoke failed: ${failed.map((result) => result.id).join(', ')}. See ${reportPath}`);
-}
+  if (failed.length > 0) {
+    throw new Error(`Kessho Product Web graph capture smoke failed: ${failed.map((result) => result.id).join(', ')}. See ${reportPath}`);
+  }
 
-console.log(`Kessho Product Web graph capture smoke passed (${results.length} cases, report: ${reportPath})`);
+  console.log(`Kessho Product Web graph capture smoke passed (${results.length} cases, report: ${reportPath})`);
+} finally {
+  await sharedVite?.stop();
+}
