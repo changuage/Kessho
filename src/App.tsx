@@ -1516,6 +1516,9 @@ interface SliderProps {
   ghostValue?: number;
   format?: (value: number) => string;
   unit?: string;
+  min?: number;
+  max?: number;
+  step?: number;
   logarithmic?: boolean;  // Use logarithmic scaling (for frequency params)
   helpPage?: SliderPageId;
   disabled?: boolean;
@@ -1636,6 +1639,9 @@ const Slider: React.FC<SliderProps> = ({
   ghostValue,
   format,
   unit,
+  min,
+  max,
+  step,
   logarithmic,
   helpPage,
   disabled = false,
@@ -1649,18 +1655,32 @@ const Slider: React.FC<SliderProps> = ({
 }) => {
   const { announceSlider } = useSliderHelp();
   const announceHelp = () => announceSlider(String(paramKey), { label, page: helpPage });
+  const baseInfo = getParamInfo(paramKey);
+  if (!baseInfo) return null;
+
+  const info = {
+    ...baseInfo,
+    min: min ?? baseInfo.min,
+    max: max ?? baseInfo.max,
+    step: step ?? baseInfo.step,
+  };
+
+  const quantizeWithInfo = (_key: keyof SliderState, nextValue: number): number => {
+    const clamped = Math.max(info.min, Math.min(info.max, nextValue));
+    const stepSize = Math.max(info.step, 1e-9);
+    const steps = Math.round((clamped - info.min) / stepSize);
+    return info.min + steps * stepSize;
+  };
 
   // If dual mode props are provided, use shared DualSlider
   if (onCycleMode && onDualRangeChange && !SINGLE_ONLY_SLIDER_KEYS.has(String(paramKey))) {
-    const info = getParamInfo(paramKey);
-    if (!info) return null;
     return (
       <DualSlider<keyof SliderState>
         label={label}
         value={value}
         paramKey={paramKey}
         paramInfo={info}
-        quantizeFn={quantize}
+        quantizeFn={quantizeWithInfo}
         unit={unit}
         logarithmic={logarithmic}
         format={format}
@@ -1680,14 +1700,12 @@ const Slider: React.FC<SliderProps> = ({
   }
   
   // Fallback sliders still use the same primitive; they just do not expose dual-mode editing.
-  const info = getParamInfo(paramKey);
-  if (!info) return null;
-
   const valueToPercent = (nextValue: number) => {
+    const clampedValue = Math.max(info.min, Math.min(info.max, nextValue));
     if (logarithmic) {
-      return logToLinear(Math.max(info.min, Math.min(info.max, nextValue)), info.min, info.max) * 100;
+      return logToLinear(clampedValue, info.min, info.max) * 100;
     }
-    return ((nextValue - info.min) / Math.max(1e-9, info.max - info.min)) * 100;
+    return ((clampedValue - info.min) / Math.max(1e-9, info.max - info.min)) * 100;
   };
 
   const percentToValue = (percent: number) => {
@@ -1695,7 +1713,7 @@ const Slider: React.FC<SliderProps> = ({
     const raw = logarithmic
       ? linearToLog(normalized, info.min, info.max)
       : info.min + normalized * (info.max - info.min);
-    return quantize(paramKey, raw);
+    return quantizeWithInfo(paramKey, raw);
   };
 
   const formatDisplayValue = (nextValue: number) =>

@@ -249,7 +249,7 @@ void granular_set_voice_euclid_muted(int voice, int muted);
  * @param probability    Grain trigger probability (0–1)
  * @param pitch_mode     KESSHO_PITCH_RANDOM or KESSHO_PITCH_HARMONIC
  * @param pitch_spread   Pitch spread in semitones
- * @param max_grains     (unused, kept for ABI compat) (0–128)
+ * @param max_grains     Legacy-mode global grain cap (0–64)
  * @param feedback       Legacy feedback amount (0–0.35)
  */
 void granular_set_legacy_params(float jitter, float probability, int pitch_mode,

@@ -1068,7 +1068,7 @@
         {
           "file": "cpp/KesshoCore/src/product/ProductConstants.h",
           "tokens": [
-            "kPianoEnvelopeAttackSeconds",
+            "kPianoEnvelopePostReleaseTailSeconds",
             "kPianoSampleParityTrim",
             "kPianoShortAssetIdBase"
           ]
@@ -1092,7 +1092,7 @@
           "file": "cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp",
           "tokens": [
             "voice.piano_sample_voice = true",
-            "kPianoEnvelopeAttackSeconds"
+            "voice.envelope_attack_frames = seconds_to_frames(attack_seconds)"
           ]
         },
         {

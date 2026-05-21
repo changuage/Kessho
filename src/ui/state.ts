@@ -1387,7 +1387,7 @@ export interface SliderState {
   granularLegacyProbability: number;   // 0..1
   granularLegacyPitchMode: 'random' | 'harmonic';
   granularLegacyPitchSpread: number;   // 0..12
-  granularLegacyMaxGrains: number;     // 0..128
+  granularLegacyMaxGrains: number;     // 0..64
   granularLegacyFeedback: number;      // 0..0.35
 
   // ─── Granular Harmony ───
@@ -4041,13 +4041,14 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   transportBarsPerPhrase: { min: 1, max: 16, step: 1 },
   transportBeatsPerBar: { min: 2, max: 12, step: 1 },
 
-  // Per-engine tension overrides (value range depends on mode: follow = ±0.5 offset, locked = 0..1 absolute)
-  padTensionValue: { min: -0.5, max: 0.5, step: 0.01 },
-  leadTensionValue: { min: -0.5, max: 0.5, step: 0.01 },
-  synthEuclidTensionValue: { min: -0.5, max: 0.5, step: 0.01 },
-  granularTensionValue: { min: -0.5, max: 0.5, step: 0.01 },
-  reverbTensionValue: { min: -0.5, max: 0.5, step: 0.01 },
-  drumTensionValue: { min: -0.5, max: 0.5, step: 0.01 },
+  // Per-engine tension overrides use the union range; individual sliders narrow
+  // this per mode (follow = +/-0.5 offset, locked = 0..1 absolute).
+  padTensionValue: { min: -0.5, max: 1, step: 0.01 },
+  leadTensionValue: { min: -0.5, max: 1, step: 0.01 },
+  synthEuclidTensionValue: { min: -0.5, max: 1, step: 0.01 },
+  granularTensionValue: { min: -0.5, max: 1, step: 0.01 },
+  reverbTensionValue: { min: -0.5, max: 1, step: 0.01 },
+  drumTensionValue: { min: -0.5, max: 1, step: 0.01 },
 
   // ─── Granular FX ───
   granularFeedback: { min: 0, max: 0.85, step: 0.01 },
@@ -4154,7 +4155,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   granularLegacyJitter: { min: 0, max: 30, step: 1 },
   granularLegacyProbability: { min: 0, max: 1, step: 0.01 },
   granularLegacyPitchSpread: { min: 0, max: 12, step: 1 },
-  granularLegacyMaxGrains: { min: 0, max: 128, step: 1 },
+  granularLegacyMaxGrains: { min: 0, max: 64, step: 1 },
   granularLegacyFeedback: { min: 0, max: 0.35, step: 0.01 },
   // Harmony
   granularChordBias: { min: 0, max: 1, step: 0.01 },

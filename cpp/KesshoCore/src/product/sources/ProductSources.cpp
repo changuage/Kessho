@@ -16,6 +16,11 @@
     case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_HZ_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_STEREO_WIDTH_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_KEY_TRACKING_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_DECAY_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_SUSTAIN_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_HOLD_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID:
       return true;
     default:
       return false;
@@ -112,6 +117,21 @@
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_KEY_TRACKING_ID:
       source.post_lpf_key_tracking = clampFloat(event.value, 0.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID:
+      source.attack_seconds = clampFloat(event.value, 0.001f, 2.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SOURCE_DECAY_SECONDS_ID:
+      source.decay_seconds = clampFloat(event.value, 0.01f, 4.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SOURCE_SUSTAIN_ID:
+      source.sustain = clampFloat(event.value, 0.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SOURCE_HOLD_SECONDS_ID:
+      source.hold_seconds = clampFloat(event.value, 0.0f, 20.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID:
+      source.release_seconds = clampFloat(event.value, 0.01f, 8.0f);
       break;
     default:
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;

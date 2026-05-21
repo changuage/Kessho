@@ -6,7 +6,11 @@ import {
   KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
   KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
   KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING,
+  KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS,
+  KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS,
+  KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN,
   KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS,
+  KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS,
 } from './generated/kesshoProductSchema';
 import { DEFAULT_REVERB_PRE_COMP, DEFAULT_STATE, type SliderState } from '../ui/state';
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
@@ -465,7 +469,11 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     postLpfHz: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
     stereoWidth: KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
     postLpfKeyTracking: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING,
+    attackSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS,
+    decaySeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS,
+    sustain: KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN,
     holdSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS,
+    releaseSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS,
     exactPadParamCount: 0,
     exactPadParams: emptyPadParams(),
     exactLeadParamCount: 0,
@@ -568,7 +576,11 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
       source.assetId = CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID;
       source.level = distanceAdjustedNumberFromState(state, 'pianoLevel', 'piano', source.level) * ENGINE_TRIMS.piano;
       source.distance = numberFromState(state, 'pianoDistance', source.distance);
+      source.attackSeconds = numberFromState(state, 'pianoAttack', source.attackSeconds);
+      source.decaySeconds = numberFromState(state, 'pianoDecay', source.decaySeconds);
+      source.sustain = numberFromState(state, 'pianoSustain', source.sustain);
       source.holdSeconds = numberFromState(state, 'pianoHold', 0.2);
+      source.releaseSeconds = numberFromState(state, 'pianoRelease', source.releaseSeconds);
       source.reverbSend = distanceAdjustedNumberFromState(state, 'pianoReverbSend', 'piano', source.reverbSend);
       source.delayASend = numberFromState(state, 'pianoDelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'pianoDelayBSend', source.delayBSend);
@@ -631,6 +643,11 @@ function sourceFromState(sourceId: number, state: Record<string, unknown> | unde
   source.postLpfHz = clamp(source.postLpfHz, 20, 20000);
   source.stereoWidth = clamp(source.stereoWidth, 0, 1);
   source.postLpfKeyTracking = clamp(source.postLpfKeyTracking, 0, 1);
+  source.attackSeconds = clamp(source.attackSeconds, 0.001, 2);
+  source.decaySeconds = clamp(source.decaySeconds, 0.01, 4);
+  source.sustain = clamp(source.sustain, 0, 1);
+  source.holdSeconds = clamp(source.holdSeconds, 0, 20);
+  source.releaseSeconds = clamp(source.releaseSeconds, 0.01, 8);
   return source;
 }
 
@@ -863,7 +880,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       granularLegacyProbability: clamp(numberFromState(sliderState, 'granularLegacyProbability', 0.8), 0, 1),
       granularLegacyPitchMode: granularLegacyPitchModeId(sliderState?.granularLegacyPitchMode),
       granularLegacyPitchSpread: clamp(numberFromState(sliderState, 'granularLegacyPitchSpread', 2), 0, 12),
-      granularLegacyMaxGrains: clamp(Math.round(numberFromState(sliderState, 'granularLegacyMaxGrains', 64)), 0, 128),
+      granularLegacyMaxGrains: clamp(Math.round(numberFromState(sliderState, 'granularLegacyMaxGrains', 64)), 0, 64),
       granularLegacyFeedback: clamp(numberFromState(sliderState, 'granularLegacyFeedback', 0.1), 0, 0.35),
       granularVoices: [1, 2, 3, 4].map((voiceNumber) => granularVoiceFromState(sliderState, voiceNumber, granularMacroModel)),
       delayAEnabled,

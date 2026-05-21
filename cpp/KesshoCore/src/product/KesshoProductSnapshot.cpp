@@ -341,7 +341,21 @@
     sources[i].post_lpf_key_tracking = std::isfinite(source.post_lpf_key_tracking)
         ? clampFloat(source.post_lpf_key_tracking, 0.0f, 1.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING;
-    sources[i].hold_seconds = clampFloat(source.hold_seconds, 0.001f, 20.0f);
+    sources[i].attack_seconds = source.attack_seconds > 0.0f && std::isfinite(source.attack_seconds)
+        ? clampFloat(source.attack_seconds, 0.001f, 2.0f)
+        : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS;
+    sources[i].decay_seconds = source.decay_seconds > 0.0f && std::isfinite(source.decay_seconds)
+        ? clampFloat(source.decay_seconds, 0.01f, 4.0f)
+        : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS;
+    sources[i].sustain = std::isfinite(source.sustain)
+        ? clampFloat(source.sustain, 0.0f, 1.0f)
+        : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN;
+    sources[i].hold_seconds = std::isfinite(source.hold_seconds)
+        ? clampFloat(source.hold_seconds, 0.0f, 20.0f)
+        : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
+    sources[i].release_seconds = source.release_seconds > 0.0f && std::isfinite(source.release_seconds)
+        ? clampFloat(source.release_seconds, 0.01f, 8.0f)
+        : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
     sources[i].exact_pad_param_count = std::min<uint32_t>(
         source.exact_pad_param_count,
         kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT);

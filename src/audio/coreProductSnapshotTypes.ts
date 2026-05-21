@@ -16,7 +16,11 @@ export type ProductSourceSnapshot = {
   postLpfHz: number;
   stereoWidth: number;
   postLpfKeyTracking: number;
+  attackSeconds: number;
+  decaySeconds: number;
+  sustain: number;
   holdSeconds: number;
+  releaseSeconds: number;
   exactPadParamCount: number;
   exactPadParams: number[];
   exactLeadParamCount: number;

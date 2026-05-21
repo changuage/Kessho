@@ -16,8 +16,8 @@ void require(bool condition, const char* message) {
 } // namespace
 
 int main() {
-  static_assert(sizeof(KesshoProductSourceSnapshot) == 1204, "source snapshot ABI size changed");
-  static_assert(sizeof(KesshoProductSnapshotV2) == 12700, "product snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSourceSnapshot) == 1220, "source snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSnapshotV2) == 12812, "product snapshot ABI size changed");
   static_assert(sizeof(KesshoProductEvent) == 40, "product event ABI size changed");
   static_assert(sizeof(KesshoSequencerEvent) == 60, "sequencer event ABI size changed");
   static_assert(sizeof(KesshoProductTelemetry) == 1040, "product telemetry ABI size changed");

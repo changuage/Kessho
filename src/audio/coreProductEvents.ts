@@ -9,6 +9,7 @@ import {
 } from './generated/kesshoProductSchema';
 import { delayNoteToSeconds } from './delayBuses';
 import { computeGranularMacroModel, type GranularMacroModel } from './granularMacroCore';
+import { ENGINE_TRIMS } from './outputTrims';
 import { applyPadDistanceToState } from './distanceMacro';
 import { DEFAULT_STATE, getIndexedDelayDivisionValue, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
 
@@ -388,6 +389,19 @@ function granularMacroMap(
   return (value, context) => select(granularMacroModelForRangeValue(key, value, context));
 }
 
+function granularLevelMap(
+  key: string,
+): (value: number, context: CoreProductRangeValueContext) => number {
+  return (value, context) => {
+    const model = granularMacroModelForRangeValue(key, value, context);
+    return clamp(value * ENGINE_TRIMS.granular * model.directLevelScale, 0, 4);
+  };
+}
+
+function granularSendTrim(value: number): number {
+  return clamp(value * ENGINE_TRIMS.granular, 0, 4);
+}
+
 function granularMacroVoiceMap(
   key: string,
   select: (model: GranularMacroModel, voiceIndex: number) => number,
@@ -624,6 +638,11 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   pianoStereoWidth: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, key)],
   lead1PostLPFKeyTracking: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, key)],
   lead2PostLPFKeyTracking: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, key)],
+  pianoAttack: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds, key)],
+  pianoDecay: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds, key)],
+  pianoSustain: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceSustain, key)],
+  pianoHold: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds, key)],
+  pianoRelease: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds, key)],
   pad1ReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
   pad2ReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
   lead1ReverbSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceReverbSend, key)],
@@ -676,7 +695,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   masterLimiterCeilingDb: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterLimiterCeilingDb, key)],
   masterSatDrive: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterSaturationDrive, key)],
   masterSatTone: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterSaturationTone, key)],
-  granularLevel: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularMix, key)],
+  granularLevel: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularMix, key, granularLevelMap(key))],
   granularFeedback: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularFeedback, key)],
   granularFeedbackLPF: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularFeedbackLpfHz, key)],
   granularBufferSeconds: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularBufferSeconds, key)],
@@ -685,6 +704,12 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularTimingRandomness, key, granularMacroMap(key, (model) => model.timingRandomness)),
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularReverbLpfHz, key, granularMacroMap(key, (model) => model.finalReverbLPF)),
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularOutputLpfHz, key, granularMacroMap(key, (model) => model.finalOutputLPF)),
+    ...granularMacroVoiceTargets(key, 'AttackSeconds', (model, voiceIndex) => model.voiceAttack[voiceIndex] ?? 0.01),
+    ...granularMacroVoiceTargets(key, 'DecaySeconds', (model, voiceIndex) => model.voiceDecay[voiceIndex] ?? 0.1),
+    ...granularMacroVoiceTargets(key, 'Blur', (model, voiceIndex) => model.voiceBlur[voiceIndex] ?? 0),
+    ...granularMacroVoiceTargets(key, 'Spray', (model, voiceIndex) => model.voiceSpray[voiceIndex] ?? 0),
+    ...granularMacroVoiceTargets(key, 'Density', (model, voiceIndex) => model.voiceDensity[voiceIndex] ?? 1),
+    ...granularMacroVoiceTargets(key, 'GrainSizeMs', (model, voiceIndex) => model.voiceGrainSize[voiceIndex] ?? 10),
   ],
   granularReverbLPF: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularReverbLpfHz, key, granularMacroMap(key, (model) => model.finalReverbLPF)),
@@ -696,18 +721,26 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   granularLegacyJitter: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyJitterMs, key)],
   granularLegacyProbability: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyProbability, key)],
   granularLegacyPitchSpread: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyPitchSpread, key)],
-  granularLegacyMaxGrains: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyMaxGrains, key)],
+  granularLegacyMaxGrains: (key) => [
+    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyMaxGrains, key, (value) => clamp(Math.round(value), 0, 64)),
+  ],
   granularLegacyFeedback: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyFeedback, key)],
   granularMacroActivity: (key) => [
     ...granularMacroVoiceTargets(key, 'Density', (model, voiceIndex) => model.voiceDensity[voiceIndex] ?? 1),
     ...granularMacroVoiceTargets(key, 'GrainSizeMs', (model, voiceIndex) => model.voiceGrainSize[voiceIndex] ?? 10),
+    ...granularMacroVoiceTargets(key, 'DecaySeconds', (model, voiceIndex) => model.voiceDecay[voiceIndex] ?? 0.1),
+    ...granularMacroVoiceTargets(key, 'Blur', (model, voiceIndex) => model.voiceBlur[voiceIndex] ?? 0),
   ],
   granularMacroTexture: (key) => [
     ...granularMacroVoiceTargets(key, 'Blur', (model, voiceIndex) => model.voiceBlur[voiceIndex] ?? 0),
+    ...granularMacroVoiceTargets(key, 'Spray', (model, voiceIndex) => model.voiceSpray[voiceIndex] ?? 0),
     ...granularMacroVoiceTargets(key, 'GrainSizeMs', (model, voiceIndex) => model.voiceGrainSize[voiceIndex] ?? 10),
+    ...granularMacroVoiceTargets(key, 'GrainOctaveProbability', (model, voiceIndex) => model.voiceGrainOct[voiceIndex] ?? 0),
+    ...granularMacroVoiceTargets(key, 'DecaySeconds', (model, voiceIndex) => model.voiceDecay[voiceIndex] ?? 0.1),
   ],
   granularMacroComplexity: (key) => [
     ...granularMacroVoiceTargets(key, 'PositionLfoRate', (model, voiceIndex) => model.voicePosLFORate[voiceIndex] ?? 0),
+    ...granularMacroVoiceTargets(key, 'PositionLfoDepth', (model, voiceIndex) => model.voicePosLFODepth[voiceIndex] ?? 0),
     ...granularMacroVoiceTargets(key, 'PanLfoRate', (model, voiceIndex) => model.voicePanLFORate[voiceIndex] ?? 0),
   ],
   granularMacroDarkness: (key) => [
@@ -716,6 +749,8 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   ],
   granularMacroChaos: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularTimingRandomness, key, granularMacroMap(key, (model) => model.timingRandomness)),
+    ...granularMacroVoiceTargets(key, 'Spray', (model, voiceIndex) => model.voiceSpray[voiceIndex] ?? 0),
+    ...granularMacroVoiceTargets(key, 'GrainOctaveProbability', (model, voiceIndex) => model.voiceGrainOct[voiceIndex] ?? 0),
     ...granularMacroVoiceTargets(key, 'ReverseLfoRate', (model, voiceIndex) => model.voiceReverseLFORate[voiceIndex] ?? 0),
   ],
   delayAMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAMix, key)],
@@ -755,7 +790,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   delayBGranularSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToGranular, key)],
   granularDelayASend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToDelayA, key)],
   granularDelayBSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToDelayB, key)],
-  granularReverbSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToReverb, key)],
+  granularReverbSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToReverb, key, granularSendTrim)],
   granularDelayReverbSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToReverb, key)],
   reverbLevel: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbMix, key)],
   reverbDecay: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxReverbDecay, key)],

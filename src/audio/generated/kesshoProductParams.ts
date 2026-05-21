@@ -26,6 +26,11 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SourcePostLpfHz: 110,
   SourceStereoWidth: 111,
   SourcePostLpfKeyTracking: 112,
+  SourceAttackSeconds: 114,
+  SourceDecaySeconds: 115,
+  SourceSustain: 116,
+  SourceHoldSeconds: 117,
+  SourceReleaseSeconds: 118,
   SequencerLaneEnabled: 200,
   SequencerLaneTargetSource: 201,
   SequencerLaneStepCount: 202,
@@ -548,6 +553,46 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "max": 1
   },
   {
+    "name": "SourceAttackSeconds",
+    "path": "sources.*.attackSeconds",
+    "type": "float",
+    "id": 114,
+    "min": 0.001,
+    "max": 2
+  },
+  {
+    "name": "SourceDecaySeconds",
+    "path": "sources.*.decaySeconds",
+    "type": "float",
+    "id": 115,
+    "min": 0.01,
+    "max": 4
+  },
+  {
+    "name": "SourceSustain",
+    "path": "sources.*.sustain",
+    "type": "float",
+    "id": 116,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SourceHoldSeconds",
+    "path": "sources.*.holdSeconds",
+    "type": "float",
+    "id": 117,
+    "min": 0,
+    "max": 20
+  },
+  {
+    "name": "SourceReleaseSeconds",
+    "path": "sources.*.releaseSeconds",
+    "type": "float",
+    "id": 118,
+    "min": 0.01,
+    "max": 8
+  },
+  {
     "name": "SequencerLaneEnabled",
     "path": "sequencers.*.lanes.*.enabled",
     "type": "bool",
@@ -787,7 +832,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "uint",
     "id": 814,
     "min": 0,
-    "max": 128
+    "max": 64
   },
   {
     "name": "FxGranularLegacyFeedback",

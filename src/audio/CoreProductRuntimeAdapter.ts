@@ -8,7 +8,7 @@ import { KESSHO_PRODUCT_PAD_PARAM_COUNT } from './generated/kesshoProductSchema'
 export const MAX_SNAPSHOT_DIFF_EVENTS = 384;
 
 export type SnapshotReloadReason =
-  | 'none' | 'initial-snapshot' | 'runtime-start' | 'runtime-bootstrap' | 'manual-piano-asset' | 'explicit-reset-request' | 'asset-reference-change' | 'asset-reference-level-change' | 'harmony-mode-change' | 'source-structure-change' | 'source-hold-change' | 'exact-patch-change' | 'sequencer-structure-change' | 'dirty-diff-event-budget' | 'adapter-update';
+  | 'none' | 'initial-snapshot' | 'runtime-start' | 'runtime-bootstrap' | 'manual-piano-asset' | 'explicit-reset-request' | 'asset-reference-change' | 'asset-reference-level-change' | 'harmony-mode-change' | 'source-structure-change' | 'exact-patch-change' | 'sequencer-structure-change' | 'dirty-diff-event-budget' | 'adapter-update';
 
 type SequencerKind = 'synth' | 'drum';
 type ProductSourceSnapshot = CoreProductSnapshot['sources'][number];
@@ -64,7 +64,6 @@ class CoreProductRuntimeAdapter {
       if (!previousSource || !nextSource) return 'source-structure-change';
       if (previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change';
       if (previousSource.assetId !== nextSource.assetId) return 'source-structure-change';
-      if (this.valuesDiffer(previousSource.holdSeconds, nextSource.holdSeconds)) return 'source-hold-change';
       const soundscapeFadeCanCoverPatchRemoval =
         soundscapeFadeCanCoverAssetRemoval && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape;
       if (!soundscapeFadeCanCoverPatchRemoval) {
@@ -91,7 +90,6 @@ class CoreProductRuntimeAdapter {
       if (!previousSource || !nextSource) return false;
       if (previousSource.sourceId !== nextSource.sourceId) return false;
       if (previousSource.assetId !== nextSource.assetId) return false;
-      if (this.valuesDiffer(previousSource.holdSeconds, nextSource.holdSeconds)) return false;
       const soundscapeFadeCanCoverPatchRemoval =
         soundscapeFadeCanCoverAssetRemoval && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape;
       if (!soundscapeFadeCanCoverPatchRemoval) {
@@ -258,6 +256,11 @@ class CoreProductRuntimeAdapter {
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, previous.postLpfHz, next.postLpfHz, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, previous.stereoWidth, next.stereoWidth, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, previous.postLpfKeyTracking, next.postLpfKeyTracking, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds, previous.attackSeconds, next.attackSeconds, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds, previous.decaySeconds, next.decaySeconds, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceSustain, previous.sustain, next.sustain, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds, previous.holdSeconds, next.holdSeconds, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds, previous.releaseSeconds, next.releaseSeconds, targetId);
     }
   }
 

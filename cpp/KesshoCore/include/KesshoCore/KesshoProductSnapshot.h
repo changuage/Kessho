@@ -49,7 +49,11 @@ typedef struct KesshoProductSourceSnapshot {
   uint32_t drum_voice_preset_a_ids[7];
   uint32_t drum_voice_preset_b_ids[7];
   float drum_voice_morphs[7];
+  float attack_seconds;
+  float decay_seconds;
+  float sustain;
   float hold_seconds;
+  float release_seconds;
 } KesshoProductSourceSnapshot;
 
 typedef struct KesshoProductSequencerLaneSnapshot {

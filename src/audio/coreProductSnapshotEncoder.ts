@@ -8,7 +8,11 @@ import {
   KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
   KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
   KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING,
+  KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS,
+  KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS,
+  KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN,
   KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS,
+  KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS,
 } from './generated/kesshoProductSchema';
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import {
@@ -34,8 +38,8 @@ const SOURCE_ORDER = [
   CORE_PRODUCT_SOURCE_IDS.soundscape,
 ] as const;
 
-const SNAPSHOT_BYTES = 12700;
-const SOURCE_BYTES = 1204;
+const SNAPSHOT_BYTES = 12812;
+const SOURCE_BYTES = 1220;
 const LANE_BYTES = 84;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES;
 
@@ -66,7 +70,11 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     postLpfHz: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
     stereoWidth: KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
     postLpfKeyTracking: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING,
+    attackSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS,
+    decaySeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS,
+    sustain: KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN,
     holdSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS,
+    releaseSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS,
     exactPadParamCount: 0,
     exactPadParams: emptyPadParams(),
     exactLeadParamCount: 0,
@@ -208,7 +216,11 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
     for (let voiceIndex = 0; voiceIndex < KESSHO_PRODUCT_DRUM_VOICE_COUNT; voiceIndex += 1) {
       f32(clamp(source.drumVoiceMorphs[voiceIndex] ?? 0, 0, 1));
     }
+    f32(source.attackSeconds);
+    f32(source.decaySeconds);
+    f32(source.sustain);
     f32(source.holdSeconds);
+    f32(source.releaseSeconds);
   }
 
   const writeSequencer = (lanes: ProductLaneSnapshot[]) => {

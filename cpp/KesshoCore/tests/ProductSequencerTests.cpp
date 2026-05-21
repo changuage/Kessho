@@ -37,6 +37,11 @@ void applySourceDefaults(KesshoProductSnapshotV2& snapshot) {
     const uint32_t source_id = i + 1u;
     KesshoProductSourceSnapshot& source = snapshot.sources[i];
     source.source_id = source_id;
+    source.attack_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS;
+    source.decay_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS;
+    source.sustain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN;
+    source.hold_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
+    source.release_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
     source.preset_id = defaultSourcePresetId(source_id);
     const auto patch = sourcePresetPatch(findSourcePreset(source.preset_id));
     if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {

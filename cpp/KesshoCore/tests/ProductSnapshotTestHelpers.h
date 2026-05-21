@@ -33,6 +33,12 @@ inline void applyGeneratedSourceDefaults(KesshoProductSnapshotV2& snapshot) {
   using namespace kessho::product::internal;
   for (uint32_t index = 0; index < 7u; ++index) {
     const uint32_t source_id = index + 1u;
+    KesshoProductSourceSnapshot& source = snapshot.sources[index];
+    source.attack_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS;
+    source.decay_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS;
+    source.sustain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN;
+    source.hold_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
+    source.release_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
     const uint32_t preset_id = snapshot.sources[index].preset_id == 0u
         ? defaultSourcePresetId(source_id)
         : snapshot.sources[index].preset_id;

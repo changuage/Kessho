@@ -114,6 +114,7 @@ struct LegacyParams {
     float probability;  // 0–1
     int   pitch_mode;   // KESSHO_PITCH_*
     float pitch_spread; // semitones
+    int   max_grains;   // 0–KESSHO_MAX_TOTAL_GRAINS
     float feedback;     // 0–0.35
 };
 
@@ -723,7 +724,10 @@ static void spawn_grain(GranularState* s, int voice_idx) {
     VoiceParams* vp = &s->voice[voice_idx];
     Grain* pool = s->grain_pool[voice_idx];
 
-    if (s->total_active_grains >= KESSHO_MAX_TOTAL_GRAINS) return;
+    const int max_total_grains = (vp->mode == KESSHO_MODE_LEGACY)
+        ? clampi(s->legacy.max_grains, 0, KESSHO_MAX_TOTAL_GRAINS)
+        : KESSHO_MAX_TOTAL_GRAINS;
+    if (s->total_active_grains >= max_total_grains) return;
 
     // Find inactive grain
     Grain* grain = nullptr;
@@ -1516,6 +1520,7 @@ int granular_init(float sample_rate, float buffer_seconds) {
     s->legacy.probability = 0.8f;
     s->legacy.pitch_mode = KESSHO_PITCH_HARMONIC;
     s->legacy.pitch_spread = 2.0f;
+    s->legacy.max_grains = KESSHO_MAX_TOTAL_GRAINS;
     s->legacy.feedback = 0.1f;
 
     // Per-voice init
@@ -1922,15 +1927,14 @@ void granular_set_voice_euclid_muted(int voice, int muted) {
     g_state->voice[voice].euclid_muted = muted;
 }
 
-// Note: max_grains parameter is accepted but unused (kept for WASM ABI compatibility)
 void granular_set_legacy_params(float jitter, float probability, int pitch_mode,
                                float pitch_spread, int max_grains, float feedback) {
     if (!g_state) return;
-    (void)max_grains;
     g_state->legacy.jitter = jitter;
     g_state->legacy.probability = clampf(probability, 0.0f, 1.0f);
     g_state->legacy.pitch_mode = pitch_mode;
     g_state->legacy.pitch_spread = pitch_spread;
+    g_state->legacy.max_grains = clampi(max_grains, 0, KESSHO_MAX_TOTAL_GRAINS);
     g_state->legacy.feedback = clampf(feedback, 0.0f, 0.35f);
 }
 

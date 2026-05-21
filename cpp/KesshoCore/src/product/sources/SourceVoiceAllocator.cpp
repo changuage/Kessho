@@ -270,25 +270,50 @@
         }
         return std::max<uint32_t>(1u, static_cast<uint32_t>(std::ceil(static_cast<double>(seconds) * sample_rate)));
       };
-      const float piano_distance = clampFloat(source.distance, 0.0f, 1.0f);
-      const float attack_base = (std::abs(piano_distance) <= 0.0001f || kPianoEnvelopeAttackSeconds > 0.005f)
-          ? kPianoEnvelopeAttackSeconds
-          : kPianoEnvelopeAttackSeconds + 0.1f;
+      const float piano_distance = clampFloat(distance, 0.0f, 1.0f);
+      const float attack_base_unmodulated = resolveModulatedValue(
+          source_id,
+          KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID,
+          source.attack_seconds,
+          resolved_seed);
+      const float decay_base_unmodulated = resolveModulatedValue(
+          source_id,
+          KESSHO_PRODUCT_PARAM_SOURCE_DECAY_SECONDS_ID,
+          source.decay_seconds,
+          resolved_seed);
+      const float sustain_base_unmodulated = resolveModulatedValue(
+          source_id,
+          KESSHO_PRODUCT_PARAM_SOURCE_SUSTAIN_ID,
+          source.sustain,
+          resolved_seed);
+      const float release_base_unmodulated = resolveModulatedValue(
+          source_id,
+          KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID,
+          source.release_seconds,
+          resolved_seed);
+      const float hold_base_unmodulated = resolveModulatedValue(
+          source_id,
+          KESSHO_PRODUCT_PARAM_SOURCE_HOLD_SECONDS_ID,
+          source.hold_seconds,
+          resolved_seed);
+      const float attack_base = (std::abs(piano_distance) <= 0.0001f || attack_base_unmodulated > 0.005f)
+          ? attack_base_unmodulated
+          : attack_base_unmodulated + 0.1f;
       const float attack_seconds = clampFloat(
           distanceMultiply(attack_base, piano_distance, 1.35f, 4.5f),
           0.001f,
           2.0f);
       const float decay_seconds = clampFloat(
-          distanceMultiply(kPianoEnvelopeDecaySeconds, piano_distance, 0.96f, 0.80f),
+          distanceMultiply(decay_base_unmodulated, piano_distance, 0.96f, 0.80f),
           0.01f,
           4.0f);
-      const float hold = clampFloat(hold_seconds, 0.0f, 4.0f);
+      const float hold = clampFloat(hold_base_unmodulated, 0.0f, 4.0f);
       const float hold_seconds_resolved = clampFloat(
           distanceAdd(hold, piano_distance, -0.03f, -0.18f),
           0.0f,
           4.0f);
       const float release_seconds = clampFloat(
-          distanceMultiply(kPianoEnvelopeReleaseSeconds, piano_distance, 1.12f, 1.80f),
+          distanceMultiply(release_base_unmodulated, piano_distance, 1.12f, 1.80f),
           0.01f,
           8.0f);
       voice.piano_sample_voice = true;
@@ -300,7 +325,7 @@
           : static_cast<uint32_t>(std::ceil(static_cast<double>(hold_seconds_resolved) * sample_rate));
       voice.envelope_release_frames = seconds_to_frames(release_seconds);
       voice.envelope_sustain = clampFloat(
-          distanceAdd(kPianoEnvelopeSustain, piano_distance, -0.04f, -0.22f),
+          distanceAdd(sustain_base_unmodulated, piano_distance, -0.04f, -0.22f),
           0.0f,
           1.0f);
       voice.amplitude = clampFloat(velocity, 0.0f, 1.0f);

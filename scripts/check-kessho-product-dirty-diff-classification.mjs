@@ -33,10 +33,15 @@ function makeSource(sourceId = 1) {
     delayASend: 0.1,
     delayBSend: 0.1,
     granularSend: 0.1,
+    diffuseSend: 0.1,
     postLpfHz: 18000,
     stereoWidth: 1,
     postLpfKeyTracking: 0,
+    attackSeconds: 0.005,
+    decaySeconds: 0.65,
+    sustain: 0.72,
     holdSeconds: 0.5,
+    releaseSeconds: 1.4,
     exactPadParamCount: 2,
     exactPadParams: [0.1, 0.2],
     exactLeadParamCount: 2,
@@ -158,7 +163,6 @@ await runCheckWithReport({
       "'asset-reference-level-change'",
       "'harmony-mode-change'",
       "'source-structure-change'",
-      "'source-hold-change'",
       "'exact-patch-change'",
       "'sequencer-structure-change'",
       "'dirty-diff-event-budget'",
@@ -214,9 +218,15 @@ await runCheckWithReport({
       'delayASend',
       'delayBSend',
       'granularSend',
+      'diffuseSend',
       'postLpfHz',
       'stereoWidth',
       'postLpfKeyTracking',
+      'attackSeconds',
+      'decaySeconds',
+      'sustain',
+      'holdSeconds',
+      'releaseSeconds',
     ]) {
       assert(!canDiffBody.includes(`previousSource.${field}`), `high-frequency source ${field} must not be structural`);
       assert(!canDiffBody.includes(`nextSource.${field}`), `high-frequency source ${field} must not be structural`);
@@ -233,9 +243,15 @@ await runCheckWithReport({
       'KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend',
       'KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend',
       'KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend',
       'KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz',
       'KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth',
       'KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSustain',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds',
     ]) {
       assert(sourceDiffBody.includes(token), `high-frequency source control must be dirty diff event: ${token}`);
     }
@@ -291,8 +307,8 @@ await runCheckWithReport({
       id: 'static-dirty-diff-contract',
       summary: 'Static dirty-diff classification, telemetry, and render-path guards passed.',
       details: {
-        reloadReasonsAudited: 14,
-        diffableSourceControlsAudited: 12,
+        reloadReasonsAudited: 13,
+        diffableSourceControlsAudited: 18,
       },
     });
 
@@ -360,7 +376,14 @@ await runCheckWithReport({
     const holdNext = clone(base);
     holdNext.sources[0].holdSeconds = 0.95;
     const holdDiff = adapterHarness.buildCoreProductSnapshotDiff(base, holdNext);
-    assert(holdDiff.applied === false && holdDiff.reason === 'source-hold-change', 'source hold changes must full-reload until a generated Product source-hold event exists');
+    assert(
+      holdDiff.applied === true &&
+        holdDiff.events.some((event) =>
+          event.paramId === 'SourceHoldSeconds' &&
+          event.targetId === 1 &&
+          event.value === 0.95),
+      'source hold changes must dirty-diff through generated Product source-hold events',
+    );
 
     const drumPatchNext = clone(base);
     drumPatchNext.sources[0].exactDrumParams[0] = 0.95;

@@ -3379,7 +3379,7 @@ function writeGranularParamsFromState(params: number[], sliderState: SliderState
   params[GRANULAR_LEGACY_INDEX + 1] = boundedNumber(state.granularLegacyProbability, 0.8, 0, 1);
   params[GRANULAR_LEGACY_INDEX + 2] = enumParam(state.granularLegacyPitchMode, GRANULAR_LEGACY_PITCH_VALUES, 1);
   params[GRANULAR_LEGACY_INDEX + 3] = boundedNumber(state.granularLegacyPitchSpread, 2, 0, 12);
-  params[GRANULAR_LEGACY_INDEX + 4] = boundedInteger(state.granularLegacyMaxGrains, 64, 0, 128);
+  params[GRANULAR_LEGACY_INDEX + 4] = boundedInteger(state.granularLegacyMaxGrains, 64, 0, 64);
   params[GRANULAR_LEGACY_INDEX + 5] = boundedNumber(state.granularLegacyFeedback, 0.1, 0, 0.35);
 }
 

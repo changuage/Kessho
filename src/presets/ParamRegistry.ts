@@ -236,10 +236,14 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularFeedbackLPF:     { level: 3, scope: 'granular' },
   granularBufferSeconds:   { level: 3, scope: 'granular' },
   granularShape:           { level: 3, scope: 'granular' },
+  granularSpaceMode:       { level: 3, scope: 'granular' },
+  granularPresetBehavior:  { level: 3, scope: 'granular' },
   granularDiffusion:       { level: 3, scope: 'granular' },
   granularReverbLPF:       { level: 3, scope: 'granular' },
   granularOutputLPF:       { level: 3, scope: 'granular' },
   granularChordBias:       { level: 3, scope: 'granular' },
+  granularTensionMode:     { level: 3, scope: 'granular' },
+  granularTensionValue:    { level: 3, scope: 'granular' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L3: Dynamics Source (full page)
@@ -1188,7 +1192,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // ═══════════════════════════════════════════════════════════════════════
   // L3: Delay Source (page-level modes)
   // ═══════════════════════════════════════════════════════════════════════
-  granularSpaceMode:      { level: 3, scope: 'delay' },
   delayBGranularLinked:   { level: 3, scope: 'delay' },
 
 };
@@ -1196,7 +1199,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 981) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 981`);
+  if (count !== 984) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 984`);
   }
 }

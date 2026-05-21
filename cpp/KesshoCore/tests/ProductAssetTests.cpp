@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "KesshoCore/KesshoProductCore.h"
+#include "KesshoProductParamIds.h"
 #include "ProductSnapshotTestHelpers.h"
 
 namespace {
@@ -112,6 +113,52 @@ void triggerPianoNote(KesshoProductEngine* engine, float midi_note) {
 
 void triggerPiano(KesshoProductEngine* engine) {
   triggerPianoNote(engine, 60.0f);
+}
+
+float renderPianoAttackProbe(float attack_seconds, bool via_param_event = false) {
+  constexpr uint32_t piano_probe_asset_id = 7240;
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "piano envelope probe engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot(piano_probe_asset_id);
+  KesshoProductSourceSnapshot& piano = snapshot.sources[KESSHO_PRODUCT_SOURCE_PIANO - 1];
+  piano.attack_seconds = via_param_event ? 0.001f : attack_seconds;
+  piano.decay_seconds = 0.01f;
+  piano.sustain = 1.0f;
+  piano.hold_seconds = 0.5f;
+  piano.release_seconds = 0.1f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "piano envelope probe snapshot load failed");
+
+  std::vector<float> sample_data(4096, 1.0f);
+  const float* channels[1] = {sample_data.data()};
+  require(
+      kessho_product_register_asset_buffer(
+          engine,
+          piano_probe_asset_id,
+          channels,
+          1,
+          static_cast<uint32_t>(sample_data.size()),
+          48000.0,
+          KESSHO_PRODUCT_ASSET_PIANO) == KESSHO_PRODUCT_OK,
+      "piano envelope probe asset registration failed");
+
+  if (via_param_event) {
+    KesshoProductEvent param_event{};
+    param_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+    param_event.target_id = KESSHO_PRODUCT_SOURCE_PIANO;
+    param_event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID;
+    param_event.value = attack_seconds;
+    require(kessho_product_enqueue_event(engine, &param_event) == KESSHO_PRODUCT_OK, "piano attack param enqueue failed");
+  }
+
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  triggerPianoNoteWithVelocity(engine, 60.0f, 1.0f);
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  const float rendered_peak = std::max(peak(left), peak(right));
+  kessho_product_destroy(engine);
+  return rendered_peak;
 }
 
 } // namespace
@@ -276,6 +323,16 @@ int main() {
   require(peak(left) > 0.001f, "stereo piano left channel did not render");
   require(peak(right) < 0.000001f, "stereo piano right channel was collapsed from left");
   kessho_product_destroy(piano_stereo_engine);
+
+  const float fast_attack_peak = renderPianoAttackProbe(0.001f);
+  const float slow_attack_peak = renderPianoAttackProbe(0.5f);
+  const float slow_attack_param_peak = renderPianoAttackProbe(0.5f, true);
+  require(
+      slow_attack_peak < fast_attack_peak * 0.2f,
+      "piano source attack seconds did not shape Product Core sample playback");
+  require(
+      slow_attack_param_peak < fast_attack_peak * 0.2f,
+      "piano source attack param event did not shape Product Core sample playback");
 
   constexpr uint32_t soundscape_asset_id = 7101;
   KesshoProductEngine* soundscape_engine = kessho_product_create(48000.0, 128, 0);

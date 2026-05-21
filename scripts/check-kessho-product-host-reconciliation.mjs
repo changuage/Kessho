@@ -177,9 +177,15 @@ await runCheckWithReport({
       'delayASend',
       'delayBSend',
       'granularSend',
+      'diffuseSend',
       'postLpfHz',
       'stereoWidth',
       'postLpfKeyTracking',
+      'attackSeconds',
+      'decaySeconds',
+      'sustain',
+      'holdSeconds',
+      'releaseSeconds',
     ]) {
       assert(!canDiffBody.includes(`previousSource.${field}`), `source ${field} must not force a full snapshot reload`);
       assert(!canDiffBody.includes(`nextSource.${field}`), `source ${field} must not force a full snapshot reload`);
@@ -196,6 +202,12 @@ await runCheckWithReport({
       'KESSHO_PRODUCT_PARAM_IDS.SourceDelayASend',
       'KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend',
       'KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceSustain',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceHoldSeconds',
+      'KESSHO_PRODUCT_PARAM_IDS.SourceReleaseSeconds',
     ]) {
       assert(sourceDiffBody.includes(token), `unrelated UI source update must be a live diff event: ${token}`);
     }
