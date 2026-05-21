@@ -131,6 +131,6 @@
     "filterCutoff": 2000,
     "oceanMix": 0,
     "oceanWave2OffsetMin": 2,
-    "oceanWave2OffsetMax": 5,
-                  }
+    "oceanWave2OffsetMax": 5
+  }
 }

@@ -270,8 +270,8 @@ void main() {
   float t = u_time * motionSpeed;
   float screenAngle = atan(p.y, p.x);
   float screenRadius = length(p);
-  float granularFold = clamp(granular * 0.52 + u_pulseB.y * 0.5 + abs(kaleidoControl) * 0.36, 0.0, 1.0);
-  float foldAmount = smoothstep(0.16, 0.92, granularFold);
+  float granularFold = clamp(granular * 0.78 + u_pulseB.y * 0.6 + abs(kaleidoControl) * 0.46, 0.0, 1.0);
+  float foldAmount = smoothstep(0.1, 0.78, granularFold);
   float foldSegments = floor(mix(4.0, 14.0, clamp(granularFold + geometryDensity * 0.34 + max(-kaleidoControl, 0.0) * 0.44, 0.0, 1.0)));
   float foldSector = TAU / max(3.0, foldSegments);
   float foldSpin = root * TAU * 0.08 + seed * 0.001 + t * (0.55 + max(-motionControl, 0.0) * 1.8);

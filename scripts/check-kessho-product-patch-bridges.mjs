@@ -22,7 +22,6 @@ function assert(condition, message) {
 const allowedClassifications = [
   'CANONICAL_CORE_FIELD',
   'TEMP_COMPAT_WEB_REFERENCE',
-  'TEMP_COMPAT_NATIVE_REFERENCE',
   'DEPRECATED_BRIDGE_FIELD',
 ];
 
@@ -97,7 +96,7 @@ const surfaces = [
   {
     id: 'generated-host-schema',
     classification: 'TEMP_COMPAT_WEB_REFERENCE',
-    owner: 'scripts/generate-kessho-product-bindings.mjs, src/audio/generated/kesshoProductSchema.ts, and KesshoNativeSwift/Generated/KesshoProductSchema.swift',
+    owner: 'scripts/generate-kessho-product-bindings.mjs and src/audio/generated/kesshoProductSchema.ts',
     why: (spec) => spec.generatedWhy,
     reconstructability: (spec) => spec.generatedReconstructability,
     retirement: (spec) => spec.generatedRetirement,
@@ -131,23 +130,6 @@ const surfaces = [
     fields: (spec) => [
       `ProductSourceSnapshot.exact${spec.camel}ParamCount`,
       `ProductSourceSnapshot.exact${spec.camel}Params${spec.range}`,
-    ],
-  },
-  {
-    id: 'snapshot-native',
-    classification: 'TEMP_COMPAT_NATIVE_REFERENCE',
-    owner: 'KesshoNativeSwift/Kessho/CoreBridge/KesshoProductCoreSnapshot.swift',
-    why: () => 'Preserves native snapshot serialization shape while native remains a thin Product Core bridge and does not author exact patch arrays.',
-    reconstructability: (spec) =>
-      spec.family === 'Drum'
-        ? 'Native emits zero/default exact arrays; Drum source state reconstructs through generated source preset ID plus drum voice preset IDs and morphs.'
-        : `Native emits zero/default exact arrays; ${spec.family} source state reconstructs through generated source preset ID until bounded override fields/events exist.`,
-    retirement: (spec) =>
-      `Retire when native ${spec.family} snapshot serialization no longer carries exact ${spec.family} patch ABI fields and generated preset IDs plus bounded overrides cover the same behavior.`,
-    replacementOwner: (spec) => spec.replacementOwner,
-    fields: (spec) => [
-      `NativeProductSourceSnapshot.exact${spec.camel}ParamCount`,
-      `NativeProductSourceSnapshot.exact${spec.camel}Params${spec.range}`,
     ],
   },
   {
@@ -319,18 +301,6 @@ assert(
   webSnapshot.includes('source.exactDrumParamCount = KESSHO_PRODUCT_DRUM_PARAM_COUNT;') &&
     webSnapshot.includes('source.exactDrumParams = exactDrumParamsFromState(state);'),
   'Web Product snapshot must emit host-owned exact Drum arrays until bounded Drum override fields replace the bridge',
-);
-
-const nativeSnapshot = read('KesshoNativeSwift/Kessho/CoreBridge/KesshoProductCoreSnapshot.swift');
-assert(
-  nativeSnapshot.includes('PATCH_BRIDGE_RETIREMENT: exact Pad/Lead/Drum'),
-  'Native Product snapshot must label exact patch serialization as temporary compatibility',
-);
-assert(
-  nativeSnapshot.includes('exactPadParamCount: 0') &&
-    nativeSnapshot.includes('exactLeadParamCount: 0') &&
-    nativeSnapshot.includes('exactDrumParamCount: 0'),
-  'Native Product snapshot defaults must not author exact patch arrays',
 );
 
 const generator = read('scripts/generate-kessho-product-bindings.mjs');

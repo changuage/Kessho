@@ -36,10 +36,14 @@ const requiredPaths = [
   'scripts/build-kessho-core-wasm.mjs',
   'scripts/generate-kessho-product-bindings.mjs',
   'scripts/run-kessho-product-ci.mjs',
-  'KesshoNativeSwift/CoreBridge/**',
-  'KesshoNativeSwift/Generated/**',
   'docs/kessho-product-core-migration-status.md',
   'docs/kessho-product-default-gate-v3.md',
+];
+
+const archivedNativeSwiftPaths = [
+  'Kessho' + 'NativeSwift/',
+  'docs/kessho-native-swift/',
+  'docs/kessho-product-' + 'native' + '-release-proof.md',
 ];
 
 for (const requiredPath of requiredPaths) {
@@ -68,6 +72,17 @@ for (const forbiddenPath of forbiddenGeneratedReportTriggers) {
   assert(
     !pushSection.includes(quoted),
     `Product Core workflow push trigger must not include generated report output: ${forbiddenPath}`,
+  );
+}
+
+for (const archivedPath of archivedNativeSwiftPaths) {
+  assert(
+    !pullRequestSection.includes(archivedPath),
+    `Product Core workflow pull_request trigger must not include archived Swift path: ${archivedPath}`,
+  );
+  assert(
+    !pushSection.includes(archivedPath),
+    `Product Core workflow push trigger must not include archived Swift path: ${archivedPath}`,
   );
 }
 
@@ -112,7 +127,7 @@ for (const token of [
 
 assert(
   /runs-on:\s+macos-14/.test(workflow),
-  'Product Core workflow must run on macOS so Swift/native Product Core checks are available',
+  'Product Core workflow must run on macOS for local Emscripten/Homebrew parity with developer machines',
 );
 assert(
   workflow.includes('actions/setup-node@v4') && workflow.includes('node-version: 24'),

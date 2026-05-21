@@ -70,7 +70,7 @@
   };
   switch (event.param_id) {
     case KESSHO_PRODUCT_PARAM_SOURCE_ENABLED_ID:
-      source.enabled = event.value >= 0.5f;
+      setSourceEnabled(source, event.value >= 0.5f, false);
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID:
       source.level = clampFloat(event.value, 0.0f, 1.5f);

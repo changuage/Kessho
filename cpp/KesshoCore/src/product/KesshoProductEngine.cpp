@@ -114,6 +114,7 @@
 
   void KesshoProductEngine::reset() {
   transport.reset();
+  snapshot_loaded_once = false;
   control_event_count = 0;
   sequencer_events.clear();
   for (Voice& voice : voices) {

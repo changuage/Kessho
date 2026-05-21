@@ -1013,21 +1013,64 @@ void requireModuleSourceFxSendsArePreFader() {
   snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1].level = 0.0f;
   snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1].dry_gain = 1.0f;
   snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1].delay_a_send = 1.0f;
-  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1].reverb_send = 0.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1].delay_b_send = 1.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1].granular_send = 1.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1].reverb_send = 1.0f;
   snapshot.fx.delay_a_enabled = 1u;
   snapshot.fx.delay_a_time_left_ms = 48.0f;
   snapshot.fx.delay_a_time_right_ms = 72.0f;
   snapshot.fx.delay_a_feedback = 0.25f;
   snapshot.fx.delay_a_mix = 1.0f;
-  snapshot.fx.reverb_mix = 0.0f;
+  snapshot.fx.delay_b_enabled = 1u;
+  snapshot.fx.delay_b_activity = 1.0f;
+  snapshot.fx.delay_b_mix = 1.0f;
+  snapshot.fx.granular_enabled = 1u;
+  snapshot.fx.granular_mix = 1.0f;
+  snapshot.fx.reverb_mix = 1.0f;
   snapshot.routing.delay_to_reverb = 0.0f;
   require(
       kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
       "pre-fader module send snapshot load failed");
+  require(
+      kessho_product_set_graph_taps_enabled(engine, 1u) == KESSHO_PRODUCT_OK,
+      "pre-fader module send graph tap enable failed");
   triggerLead(engine, 0.45f);
-  const RenderPeaks peaks = renderMasterAndFxPeaks(engine, 96);
-  require(peaks.master > 0.00001f, "pre-fader Lead delay send did not reach master output");
-  require(peaks.fx > 0.00001f, "pre-fader Lead delay send did not reach FX stem");
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  std::vector<float> fx_l(128);
+  std::vector<float> fx_r(128);
+  std::vector<float> tap_l(128);
+  std::vector<float> tap_r(128);
+  float master_peak = 0.0f;
+  float fx_peak = 0.0f;
+  float dry_peak = 0.0f;
+  float reverb_send_peak = 0.0f;
+  float delay_a_send_peak = 0.0f;
+  float delay_b_send_peak = 0.0f;
+  float granular_send_peak = 0.0f;
+  for (uint32_t block = 0; block < 96u; ++block) {
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    master_peak = std::max(master_peak, peak(left, right));
+    require(kessho_product_get_stem(engine, KESSHO_PRODUCT_STEM_FX, fx_l.data(), fx_r.data(), 128) == KESSHO_PRODUCT_OK, "pre-fader FX stem read failed");
+    fx_peak = std::max(fx_peak, peak(fx_l, fx_r));
+    require(kessho_product_get_graph_tap(engine, KESSHO_PRODUCT_GRAPH_TAP_LEAD1_DRY, tap_l.data(), tap_r.data(), 128) == KESSHO_PRODUCT_OK, "pre-fader Lead dry graph tap read failed");
+    dry_peak = std::max(dry_peak, peak(tap_l, tap_r));
+    require(kessho_product_get_graph_tap(engine, KESSHO_PRODUCT_GRAPH_TAP_LEAD1_REVERB_SEND, tap_l.data(), tap_r.data(), 128) == KESSHO_PRODUCT_OK, "pre-fader Lead reverb graph tap read failed");
+    reverb_send_peak = std::max(reverb_send_peak, peak(tap_l, tap_r));
+    require(kessho_product_get_graph_tap(engine, KESSHO_PRODUCT_GRAPH_TAP_LEAD1_DELAY_A_SEND, tap_l.data(), tap_r.data(), 128) == KESSHO_PRODUCT_OK, "pre-fader Lead Delay A graph tap read failed");
+    delay_a_send_peak = std::max(delay_a_send_peak, peak(tap_l, tap_r));
+    require(kessho_product_get_graph_tap(engine, KESSHO_PRODUCT_GRAPH_TAP_LEAD1_DELAY_B_SEND, tap_l.data(), tap_r.data(), 128) == KESSHO_PRODUCT_OK, "pre-fader Lead Delay B graph tap read failed");
+    delay_b_send_peak = std::max(delay_b_send_peak, peak(tap_l, tap_r));
+    require(kessho_product_get_graph_tap(engine, KESSHO_PRODUCT_GRAPH_TAP_LEAD1_GRANULAR_SEND, tap_l.data(), tap_r.data(), 128) == KESSHO_PRODUCT_OK, "pre-fader Lead granular graph tap read failed");
+    granular_send_peak = std::max(granular_send_peak, peak(tap_l, tap_r));
+  }
+  require(dry_peak <= 0.000001f, "zero-level Lead dry graph tap should stay silent");
+  require(reverb_send_peak > 0.00001f, "zero-level Lead reverb send was muted by source level");
+  require(delay_a_send_peak > 0.00001f, "zero-level Lead Delay A send was muted by source level");
+  require(delay_b_send_peak > 0.00001f, "zero-level Lead Delay B send was muted by source level");
+  require(granular_send_peak > 0.00001f, "zero-level Lead granular send was muted by source level");
+  require(master_peak > 0.00001f, "pre-fader Lead FX sends did not reach master output");
+  require(fx_peak > 0.00001f, "pre-fader Lead FX sends did not reach FX stem");
   kessho_product_destroy(engine);
 }
 

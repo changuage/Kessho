@@ -19,6 +19,7 @@ export const kesshoCoreSourceFiles = Object.freeze([
   'cpp/KesshoCore/src/product/sources/ProductSources.cpp',
   'cpp/KesshoCore/src/product/sources/ProductSourcePostChain.cpp',
   'cpp/KesshoCore/src/product/sources/PadSource.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceEnable.cpp',
   'cpp/KesshoCore/src/product/sources/SourceGraphTaps.cpp',
   'cpp/KesshoCore/src/product/sources/SourceMix.cpp',
   'cpp/KesshoCore/src/product/sources/SourceModulation.cpp',

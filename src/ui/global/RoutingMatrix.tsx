@@ -42,6 +42,7 @@ interface MatrixRow {
   label: string;
   accent: string;
   note?: string;
+  sourceToggle?: 'toggle' | 'disable-only';
   cells: Record<ColumnId, MatrixCell>;
 }
 
@@ -257,6 +258,7 @@ const ROWS: MatrixRow[] = [
     id: 'insects',
     label: 'Insects',
     accent: '#7B9A6D',
+    sourceToggle: 'disable-only',
     note: 'The current Earth engine exposes one shared insects dry master plus combined wet sends for both insect layers, so this row controls the family-level routing.',
     cells: {
       level: { kind: 'editable', route: { key: 'insectsSharedLevel', label: 'Insects Level' } },
@@ -270,6 +272,7 @@ const ROWS: MatrixRow[] = [
     id: 'nature',
     label: 'Nature',
     accent: '#A6B98A',
+    sourceToggle: 'disable-only',
     note: 'Nature now has a shared dry master plus one wet bus for Birds Alps, Birds Fujian, and Frogs. Individual source levels and texture shaping still live in the Active Earth Matrix.',
     cells: {
       level: { kind: 'editable', route: { key: 'natureLevel', label: 'Nature Level' } },
@@ -795,50 +798,33 @@ export default function RoutingMatrix({
   }, [onParamChange]);
 
   const renderRowLabel = React.useCallback((row: MatrixRow, rowEnabled: boolean, suffix = '') => {
-    const canToggle = !showActiveOnly && !!onToggleSource;
+    const disableOnly = row.sourceToggle === 'disable-only';
+    const canToggle = !showActiveOnly && !!onToggleSource && (!disableOnly || rowEnabled);
     const offInAll = !showActiveOnly && !rowEnabled;
-    const title = canToggle
-      ? `${row.note ?? row.label}${isMobile ? ' Long-press to toggle this source.' : ' Click to toggle this source.'}`
-      : (row.note ?? row.label);
+    const note = row.note ?? row.label;
+    const title = disableOnly && !rowEnabled && !showActiveOnly
+      ? `${note} Choose child sources in the Active Earth Matrix to enable this family.`
+      : canToggle
+        ? `${note} Click or tap to ${disableOnly ? 'disable this family' : 'toggle this source'}.`
+        : note;
 
-  return (
-    <button
-      key={`row:${row.id}${suffix}`}
-      type="button"
+    return (
+      <button
+        key={`row:${row.id}${suffix}`}
+        type="button"
         className={`routing-matrix-rowlabel routing-matrix-rowlabel-button${canToggle ? ' is-toggleable' : ''}${offInAll ? ' source-off' : ''}`}
         style={{ '--row-accent': offInAll ? '#7e8794' : row.accent } as React.CSSProperties}
         title={title}
         aria-pressed={canToggle ? rowEnabled : undefined}
         aria-disabled={!canToggle}
         tabIndex={canToggle ? 0 : -1}
-        onClick={!isMobile && canToggle ? () => onToggleSource(row.id, !rowEnabled) : undefined}
-        onPointerDown={isMobile && canToggle ? (event) => {
-          if (event.pointerType !== 'touch') return;
-          clearLongPress();
-          scheduleLongPress(event.pointerId, event.clientX, event.clientY, () => {
-            onToggleSource(row.id, !rowEnabled);
-          });
-          event.currentTarget.setPointerCapture(event.pointerId);
-        } : undefined}
-        onPointerMove={isMobile && canToggle ? (event) => {
-          maybeCancelLongPress(event.pointerId, event.clientX, event.clientY);
-        } : undefined}
-        onPointerUp={isMobile && canToggle ? (event) => {
-          clearLongPress();
-          releasePointerCaptureSafely(event.currentTarget, event.pointerId);
-          resetInteraction();
-        } : undefined}
-        onPointerCancel={isMobile && canToggle ? (event) => {
-          clearLongPress();
-          releasePointerCaptureSafely(event.currentTarget, event.pointerId);
-          resetInteraction();
-        } : undefined}
+        onClick={canToggle ? () => onToggleSource(row.id, !rowEnabled) : undefined}
       >
         <span className={`routing-matrix-rowdot${offInAll ? ' is-off' : ''}`} style={{ backgroundColor: offInAll ? undefined : row.accent }} />
-      <span>{row.label}</span>
-    </button>
-  );
-  }, [clearLongPress, isMobile, maybeCancelLongPress, onToggleSource, resetInteraction, scheduleLongPress, showActiveOnly]);
+        <span>{row.label}</span>
+      </button>
+    );
+  }, [onToggleSource, showActiveOnly]);
 
   const renderSourceHeader = React.useCallback((suffix = '') => (
     <button

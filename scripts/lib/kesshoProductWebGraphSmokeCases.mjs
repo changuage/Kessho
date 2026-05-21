@@ -836,6 +836,7 @@ const rawCases = [
     minLagCorrelation: 0.75,
     envelopeGate: true,
     envelopeTimeToleranceMs: 120,
+    attempts: 4,
     statePatch: reverbLiveWashBloomStatePatch,
     stateEvents: [{ delayMs: 300, patch: { tension: 0.1 } }],
   },

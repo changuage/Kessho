@@ -1,4 +1,6 @@
+import AppKit
 import CoreMIDI
+import CoreAudio
 import Foundation
 import Network
 import SwiftUI
@@ -153,6 +155,10 @@ final class KesshoMacRuntime: ObservableObject {
         switch method {
         case "getStatus":
             return shellStatusPayload()
+        case "getAudioOutputStatus":
+            return MacAudioOutputInspector.statusPayload()
+        case "openSoundSettings":
+            return ["opened": MacAudioOutputInspector.openSoundSettings()]
         case "setPlaybackState":
             guard let isPlaying = options["isPlaying"] as? Bool else {
                 throw BridgeError.missingArgument("isPlaying")
@@ -178,7 +184,9 @@ final class KesshoMacRuntime: ObservableObject {
                 "appNapSuppressionWhilePlaying": true,
                 "idleSystemSleepPreventionWhilePlaying": true,
                 "assetMemoryCache": true,
+                "coreAudioOutputDiagnostics": true,
             ],
+            "audioOutput": MacAudioOutputInspector.statusPayload(),
         ]
     }
 
@@ -397,6 +405,8 @@ struct KesshoWebView: NSViewRepresentable {
 
       const KesshoMacShell = {
         getStatus: () => call('KesshoMacShell', 'getStatus'),
+        getAudioOutputStatus: () => call('KesshoMacShell', 'getAudioOutputStatus'),
+        openSoundSettings: () => call('KesshoMacShell', 'openSoundSettings'),
         setPlaybackState: (options) => call('KesshoMacShell', 'setPlaybackState', options),
       };
 
@@ -452,6 +462,196 @@ final class MacPerformanceActivity {
         if let activityToken {
             ProcessInfo.processInfo.endActivity(activityToken)
         }
+    }
+}
+
+enum MacAudioOutputInspector {
+    static func statusPayload() -> [String: Any] {
+        guard let deviceID = defaultOutputDeviceID() else {
+            return [
+                "available": false,
+                "deviceID": 0,
+                "outputName": "Unknown Output",
+                "transportType": "unknown",
+                "transportCode": 0,
+                "isAirPlay": false,
+                "sampleRate": NSNull(),
+                "bufferFrameSize": NSNull(),
+            ]
+        }
+
+        let transportCode = uint32Property(
+            deviceID: deviceID,
+            selector: kAudioDevicePropertyTransportType,
+            scope: kAudioObjectPropertyScopeGlobal
+        ) ?? 0
+        let sampleRate = doubleProperty(
+            deviceID: deviceID,
+            selector: kAudioDevicePropertyNominalSampleRate,
+            scope: kAudioObjectPropertyScopeGlobal
+        )
+        let bufferFrameSize = uint32Property(
+            deviceID: deviceID,
+            selector: kAudioDevicePropertyBufferFrameSize,
+            scope: kAudioObjectPropertyScopeGlobal
+        )
+
+        return [
+            "available": true,
+            "deviceID": Int(deviceID),
+            "outputName": stringProperty(deviceID: deviceID, selector: kAudioObjectPropertyName)
+                ?? "Output \(deviceID)",
+            "transportType": transportName(transportCode),
+            "transportCode": Int(transportCode),
+            "isAirPlay": transportCode == kAudioDeviceTransportTypeAirPlay,
+            "sampleRate": sampleRate.map { NSNumber(value: $0) } ?? NSNull(),
+            "bufferFrameSize": bufferFrameSize.map { NSNumber(value: $0) } ?? NSNull(),
+        ]
+    }
+
+    @MainActor
+    static func openSoundSettings() -> Bool {
+        let candidates = [
+            URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension"),
+            URL(fileURLWithPath: "/System/Applications/System Settings.app"),
+            URL(fileURLWithPath: "/System/Applications/System Preferences.app"),
+        ].compactMap { $0 }
+
+        for url in candidates {
+            if NSWorkspace.shared.open(url) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func defaultOutputDeviceID() -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = AudioDeviceID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            &size,
+            &deviceID
+        )
+        guard status == noErr, deviceID != kAudioObjectUnknown else {
+            return nil
+        }
+        return deviceID
+    }
+
+    private static func stringProperty(
+        deviceID: AudioDeviceID,
+        selector: AudioObjectPropertySelector
+    ) -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectHasProperty(deviceID, &address) else {
+            return nil
+        }
+        let valuePointer = UnsafeMutablePointer<CFString?>.allocate(capacity: 1)
+        valuePointer.initialize(to: nil)
+        defer {
+            valuePointer.deinitialize(count: 1)
+            valuePointer.deallocate()
+        }
+        var size = UInt32(MemoryLayout<CFString?>.size)
+        let status = AudioObjectGetPropertyData(
+            deviceID,
+            &address,
+            0,
+            nil,
+            &size,
+            UnsafeMutableRawPointer(valuePointer)
+        )
+        guard status == noErr else {
+            return nil
+        }
+        return valuePointer.pointee as String?
+    }
+
+    private static func uint32Property(
+        deviceID: AudioDeviceID,
+        selector: AudioObjectPropertySelector,
+        scope: AudioObjectPropertyScope
+    ) -> UInt32? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: scope,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectHasProperty(deviceID, &address) else {
+            return nil
+        }
+        var value = UInt32(0)
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value)
+        return status == noErr ? value : nil
+    }
+
+    private static func doubleProperty(
+        deviceID: AudioDeviceID,
+        selector: AudioObjectPropertySelector,
+        scope: AudioObjectPropertyScope
+    ) -> Double? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: scope,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectHasProperty(deviceID, &address) else {
+            return nil
+        }
+        var value = Float64(0)
+        var size = UInt32(MemoryLayout<Float64>.size)
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value)
+        return status == noErr ? Double(value) : nil
+    }
+
+    private static func transportName(_ transportCode: UInt32) -> String {
+        switch transportCode {
+        case kAudioDeviceTransportTypeAirPlay:
+            return "airplay"
+        case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:
+            return "bluetooth"
+        case kAudioDeviceTransportTypeBuiltIn:
+            return "built-in"
+        case kAudioDeviceTransportTypeUSB:
+            return "usb"
+        case kAudioDeviceTransportTypeHDMI:
+            return "hdmi"
+        case kAudioDeviceTransportTypeDisplayPort:
+            return "display-port"
+        case kAudioDeviceTransportTypeAggregate:
+            return "aggregate"
+        case kAudioDeviceTransportTypeVirtual:
+            return "virtual"
+        default:
+            return fourCharCodeString(transportCode) ?? "unknown"
+        }
+    }
+
+    private static func fourCharCodeString(_ code: UInt32) -> String? {
+        let bytes = [
+            UInt8((code >> 24) & 0xff),
+            UInt8((code >> 16) & 0xff),
+            UInt8((code >> 8) & 0xff),
+            UInt8(code & 0xff),
+        ]
+        guard bytes.allSatisfy({ $0 >= 32 && $0 <= 126 }) else {
+            return nil
+        }
+        return String(bytes: bytes, encoding: .ascii)
     }
 }
 

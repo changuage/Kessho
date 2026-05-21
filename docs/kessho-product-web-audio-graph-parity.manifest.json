@@ -560,7 +560,7 @@
             "graph_soundscape_layer_delay_a_send_l",
             "graph_soundscape_layer_granular_send_l",
             "soundscapeLayerRouteSend",
-            "layer == kSoundscapeLayerOcean",
+            "soundscapeLayerIndexForAsset",
             "soundscapeAssetRefLevel",
             "soundscape_earth_level",
             "processSoundscapeTextureSpatial",

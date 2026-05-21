@@ -20,21 +20,35 @@ void KesshoProductEngine::renderPadModule(float* out_l, float* out_r, uint32_t s
   }
   pad_module->processPlanarStereoTaps(silent_l, silent_r, tap_l, tap_r, KESSHO_MODULE_PAD_OUTPUT_TAP_COUNT, static_cast<int>(frames));
   processPadPostChain(
-      0u,
+      pad_post_chains[0],
       KESSHO_PRODUCT_SOURCE_PAD1,
       module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD1],
       module_tap_r[KESSHO_MODULE_TAP_POSTFADER_PAD1],
       frames);
   processPadPostChain(
-      1u,
+      pad_post_chains[1],
       KESSHO_PRODUCT_SOURCE_PAD2,
       module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD2],
       module_tap_r[KESSHO_MODULE_TAP_POSTFADER_PAD2],
+      frames);
+  processPadPostChain(
+      pad_send_post_chains[0],
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      module_tap_l[KESSHO_MODULE_TAP_PREFADER_PAD1],
+      module_tap_r[KESSHO_MODULE_TAP_PREFADER_PAD1],
+      frames);
+  processPadPostChain(
+      pad_send_post_chains[1],
+      KESSHO_PRODUCT_SOURCE_PAD2,
+      module_tap_l[KESSHO_MODULE_TAP_PREFADER_PAD2],
+      module_tap_r[KESSHO_MODULE_TAP_PREFADER_PAD2],
       frames);
   mixPadSourceBuffer(
       KESSHO_PRODUCT_SOURCE_PAD1,
       module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD1],
       module_tap_r[KESSHO_MODULE_TAP_POSTFADER_PAD1],
+      module_tap_l[KESSHO_MODULE_TAP_PREFADER_PAD1],
+      module_tap_r[KESSHO_MODULE_TAP_PREFADER_PAD1],
       out_l,
       out_r,
       start,
@@ -43,6 +57,8 @@ void KesshoProductEngine::renderPadModule(float* out_l, float* out_r, uint32_t s
       KESSHO_PRODUCT_SOURCE_PAD2,
       module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD2],
       module_tap_r[KESSHO_MODULE_TAP_POSTFADER_PAD2],
+      module_tap_l[KESSHO_MODULE_TAP_PREFADER_PAD2],
+      module_tap_r[KESSHO_MODULE_TAP_PREFADER_PAD2],
       out_l,
       out_r,
       start,
@@ -77,8 +93,8 @@ void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t 
   if (!drum_module || frames == 0u) {
     return;
   }
-  const SourceState& source = sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
-  if (!source.enabled) {
+  SourceState& source = sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
+  if (!sourceRenderActive(source)) {
     return;
   }
   float* tap_l[kModuleTapCount]{};
@@ -95,10 +111,11 @@ void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t 
   const float granular_send = std::max(0.0f, source.granular_send);
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const float dry_l = module_tap_l[0][i];
-    const float dry_r = module_tap_r[0][i];
-    const float reverb_l = module_tap_l[1][i];
-    const float reverb_r = module_tap_r[1][i];
+    const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
+    const float dry_l = module_tap_l[0][i] * source_gate;
+    const float dry_r = module_tap_r[0][i] * source_gate;
+    const float reverb_l = module_tap_l[1][i] * source_gate;
+    const float reverb_r = module_tap_r[1][i] * source_gate;
     const float delay_a_l = dry_l * delay_a_send;
     const float delay_a_r = dry_r * delay_a_send;
     const float delay_b_l = dry_l * delay_b_send;
@@ -142,7 +159,7 @@ void KesshoProductEngine::configureSoundscapesModuleFromSource() {
   if (params == nullptr || soundscapes_module->paramCount() < static_cast<int>(kSoundscapeModuleParamCount)) {
     return;
   }
-  const SourceState& source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
+  SourceState& source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
   const bool module_should_run = soundscapeModuleShouldRun(source);
   if (!module_should_run) {
     if (soundscapes_module_params_configured) {
@@ -178,7 +195,7 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
   if (!soundscapes_module || frames == 0u) {
     return;
   }
-  const SourceState& source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
+  SourceState& source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
   if (!soundscapeModuleShouldRun(source)) {
     return;
   }
@@ -213,12 +230,13 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
 
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const float water_l = module_tap_l[0][i] * water_level;
-    const float water_r = module_tap_r[0][i] * water_level;
+    const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
+    const float water_l = module_tap_l[0][i] * water_level * source_gate;
+    const float water_r = module_tap_r[0][i] * water_level * source_gate;
     const float insects_prefader_l =
-        (module_tap_l[1][i] * insects_level + module_tap_l[2][i] * insects2_level) * insects_shared_level;
+        (module_tap_l[1][i] * insects_level + module_tap_l[2][i] * insects2_level) * insects_shared_level * source_gate;
     const float insects_prefader_r =
-        (module_tap_r[1][i] * insects_level + module_tap_r[2][i] * insects2_level) * insects_shared_level;
+        (module_tap_r[1][i] * insects_level + module_tap_r[2][i] * insects2_level) * insects_shared_level * source_gate;
     const float water_out_l = water_l * earth_level;
     const float water_out_r = water_r * earth_level;
     const float insects_out_l = insects_prefader_l * earth_level;

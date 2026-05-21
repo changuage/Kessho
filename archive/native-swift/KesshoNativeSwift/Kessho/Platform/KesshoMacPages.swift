@@ -3415,6 +3415,7 @@ private struct KesshoMacDynamicsPage: View {
 }
 
 private struct KesshoMacRoutingPage: View {
+    @EnvironmentObject private var appState: AppState
     private let accent = KesshoMacDesign.accent(for: .routing)
 
     var body: some View {
@@ -3437,86 +3438,156 @@ private struct KesshoMacRoutingPage: View {
                         matrixHeader("Level")
                         matrixHeader("Delay A")
                         matrixHeader("Delay B")
-                        matrixHeader("Reverb")
                         matrixHeader("Granular")
+                        matrixHeader("Reverb")
 
-                        routingRow("Pad", [
+                        routingRow(
+                            "Pad 1",
+                            isActive: appState.state.padEnabled,
+                            action: togglePad1,
+                            [
                             .init("Level", key: "synthLevel", value: \.synthLevel),
                             .init("A", key: "pad1DelayASend", value: \.pad1DelayASend),
                             .init("B", key: "pad1DelayBSend", value: \.pad1DelayBSend),
-                            .init("Rev", key: "synthReverbSend", value: \.synthReverbSend),
                             .init("Grain", key: "granularPad1Send", value: \.granularPad1Send),
+                            .init("Rev", key: "pad1ReverbSend", value: \.pad1ReverbSend),
                         ])
-                        routingRow("Lead 1", [
-                            .init("Level", key: "leadLevel", value: \.leadLevel),
+                        routingRow(
+                            "Pad 2",
+                            isActive: appState.state.pad2Enabled,
+                            action: togglePad2,
+                            [
+                            .init("Level", key: "pad2Level", value: \.pad2Level),
+                            .init("A", key: "pad2DelayASend", value: \.pad2DelayASend),
+                            .init("B", key: "pad2DelayBSend", value: \.pad2DelayBSend),
+                            .init("Grain", key: "granularPad2Send", value: \.granularPad2Send),
+                            .init("Rev", key: "pad2ReverbSend", value: \.pad2ReverbSend),
+                        ])
+                        routingRow(
+                            "Lead 1",
+                            isActive: appState.state.leadEnabled,
+                            action: toggleLead1,
+                            [
+                            .init("Level", key: "lead1Level", value: \.lead1Level),
                             .init("A", key: "lead1DelayASend", value: \.lead1DelayASend),
                             .init("B", key: "lead1DelayBSend", value: \.lead1DelayBSend),
-                            .init("Rev", key: "leadReverbSend", value: \.leadReverbSend),
                             .init("Grain", key: "granularLead1Send", value: \.granularLead1Send),
+                            .init("Rev", key: "lead1ReverbSend", value: \.lead1ReverbSend),
                         ])
-                        routingRow("Lead 2", [
+                        routingRow(
+                            "Lead 2",
+                            isActive: appState.state.lead2Enabled,
+                            action: toggleLead2,
+                            [
                             .init("Level", key: "lead2Level", value: \.lead2Level),
                             .init("A", key: "lead2DelayASend", value: \.lead2DelayASend),
                             .init("B", key: "lead2DelayBSend", value: \.lead2DelayBSend),
-                            .init("Rev", key: "lead2ReverbSend", value: \.lead2ReverbSend),
                             .init("Grain", key: "granularLead2Send", value: \.granularLead2Send),
+                            .init("Rev", key: "lead2ReverbSend", value: \.lead2ReverbSend),
                         ])
-                        routingRow("Piano", [
+                        routingRow(
+                            "Piano",
+                            isActive: appState.state.pianoEnabled,
+                            action: togglePiano,
+                            [
                             .init("Level", key: "pianoLevel", value: \.pianoLevel),
                             .init("A", key: "pianoDelayASend", value: \.pianoDelayASend),
                             .init("B", key: "pianoDelayBSend", value: \.pianoDelayBSend),
-                            .init("Rev", key: "pianoReverbSend", value: \.pianoReverbSend),
                             .init("Grain", key: "granularPianoSend", value: \.granularPianoSend),
+                            .init("Rev", key: "pianoReverbSend", value: \.pianoReverbSend),
                         ])
-                        routingRow("Drums", [
+                        routingRow(
+                            "Drums",
+                            isActive: appState.state.drumEnabled,
+                            action: toggleDrums,
+                            [
                             .init("Level", key: "drumLevel", value: \.drumLevel),
                             .init("A", key: "drumDelayASend", value: \.drumDelayASend),
                             .init("B", key: "drumDelayBSend", value: \.drumDelayBSend),
-                            .init("Rev", key: "drumReverbSend", value: \.drumReverbSend),
                             .init("Grain", key: "granularDrumSend", value: \.granularDrumSend),
+                            .init("Rev", key: "drumReverbSend", value: \.drumReverbSend),
                         ])
-                        Text("Granular")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(KesshoMacDesign.text)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        routingSourceButton("Granular", isActive: appState.state.granularEnabled, action: toggleGranular)
                         KesshoMacSliderRow(spec: .init("Level", key: "granularLevel", value: \.granularLevel), accent: accent)
                         KesshoMacSliderRow(spec: .init("A", key: "granularDelayASend", value: \.granularDelayASend), accent: accent)
                         KesshoMacSliderRow(spec: .init("B", key: "granularDelayBSend", value: \.granularDelayBSend), accent: accent)
-                        KesshoMacSliderRow(spec: .init("Rev", key: "granularReverbSend", value: \.granularReverbSend), accent: accent)
                         blockedRoutingCell("Self")
-                        routingRow("Waves", [
+                        KesshoMacSliderRow(spec: .init("Rev", key: "granularReverbSend", value: \.granularReverbSend), accent: accent)
+                        routingRow(
+                            "Waves",
+                            isActive: appState.state.oceanSampleEnabled,
+                            action: toggleWaves,
+                            [
                             .init("Level", key: "oceanSampleLevel", value: \.oceanSampleLevel),
                             .init("A", key: "oceanDelayASend", value: \.oceanDelayASend),
                             .init("B", key: "oceanDelayBSend", value: \.oceanDelayBSend),
-                            .init("Rev", key: "oceanReverbSend", value: \.oceanReverbSend),
                             .init("Grain", key: "granularWavesSend", value: \.granularWavesSend),
+                            .init("Rev", key: "oceanReverbSend", value: \.oceanReverbSend),
                         ])
-                        routingRow("Water", [
+                        routingRow(
+                            "Water",
+                            isActive: appState.state.waterEnabled,
+                            action: toggleWater,
+                            [
                             .init("Level", key: "waterLevel", value: \.waterLevel),
                             .init("A", key: "waterDelayASend", value: \.waterDelayASend),
                             .init("B", key: "waterDelayBSend", value: \.waterDelayBSend),
-                            .init("Rev", key: "waterReverbSend", value: \.waterReverbSend),
                             .init("Grain", key: "granularWaterSend", value: \.granularWaterSend),
+                            .init("Rev", key: "waterReverbSend", value: \.waterReverbSend),
                         ])
-                        routingRow("Nature", [
-                            .init("Level", key: "natureLevel", value: \.natureLevel),
-                            .init("A", key: "natureDelayASend", value: \.natureDelayASend),
-                            .init("B", key: "natureDelayBSend", value: \.natureDelayBSend),
-                            .init("Rev", key: "natureReverbSend", value: \.natureReverbSend),
-                            .init("Grain", key: "granularNatureSend", value: \.granularNatureSend),
-                        ])
-                        routingRow("Insects", [
+                        routingRow(
+                            "Insects",
+                            isActive: insectsActive,
+                            action: toggleInsects,
+                            [
                             .init("Level", key: "insectsSharedLevel", value: \.insectsSharedLevel),
                             .init("A", key: "insDelayASend", value: \.insDelayASend),
                             .init("B", key: "insDelayBSend", value: \.insDelayBSend),
-                            .init("Rev", key: "insectsReverbSend", value: \.insectsReverbSend),
                             .init("Grain", key: "granularInsectsSend", value: \.granularInsectsSend),
+                            .init("Rev", key: "insectsReverbSend", value: \.insectsReverbSend),
                         ])
+                        routingRow(
+                            "Nature",
+                            isActive: natureActive,
+                            action: toggleNature,
+                            [
+                            .init("Level", key: "natureLevel", value: \.natureLevel),
+                            .init("A", key: "natureDelayASend", value: \.natureDelayASend),
+                            .init("B", key: "natureDelayBSend", value: \.natureDelayBSend),
+                            .init("Grain", key: "granularNatureSend", value: \.granularNatureSend),
+                            .init("Rev", key: "natureReverbSend", value: \.natureReverbSend),
+                        ])
+                        routingSourceButton("Delay A Out", isActive: appState.state.delayAEnabled, action: toggleDelayA)
+                        KesshoMacSliderRow(spec: .init("Level", key: "delayAMix", value: \.delayAMix), accent: accent)
+                        blockedRoutingCell("Self")
+                        KesshoMacSliderRow(spec: .init("B", key: "delayAToBSend", value: \.delayAToBSend), accent: accent)
+                        KesshoMacSliderRow(spec: .init("Grain", key: "delayAGranularSend", value: \.delayAGranularSend), accent: accent)
+                        KesshoMacSliderRow(spec: .init("Rev", key: "delayAReverbSend", value: \.delayAReverbSend), accent: accent)
+                        routingSourceButton("Delay B Out", isActive: appState.state.granularDelayEnabled, action: toggleDelayB)
+                        KesshoMacSliderRow(spec: .init("Level", key: "granularDelayMix", value: \.granularDelayMix), accent: accent)
+                        KesshoMacSliderRow(spec: .init("A", key: "delayBToASend", value: \.delayBToASend), accent: accent)
+                        blockedRoutingCell("Self")
+                        KesshoMacSliderRow(spec: .init("Grain", key: "delayBGranularSend", value: \.delayBGranularSend), accent: accent)
+                        KesshoMacSliderRow(spec: .init("Rev", key: "granularDelayReverbSend", value: \.granularDelayReverbSend), accent: accent)
+                        routingSourceButton("Reverb", isActive: appState.state.reverbEnabled, action: toggleReverb)
+                        KesshoMacSliderRow(spec: .init("Level", key: "reverbLevel", value: \.reverbLevel), accent: accent)
+                        blockedRoutingCell("Blocked")
+                        blockedRoutingCell("Blocked")
+                        blockedRoutingCell("Blocked")
+                        blockedRoutingCell("Self")
                     }
-                    .frame(minWidth: 830, alignment: .leading)
+                    .frame(minWidth: 920, alignment: .leading)
                 }
             }
         }
+    }
+
+    private var natureActive: Bool {
+        appState.state.birdsEnabled || appState.state.birds2Enabled || appState.state.frogsEnabled
+    }
+
+    private var insectsActive: Bool {
+        appState.state.insectsEnabled || appState.state.insects2Enabled
     }
 
     private func matrixHeader(_ title: String) -> some View {
@@ -3526,16 +3597,43 @@ private struct KesshoMacRoutingPage: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func routingRow(_ title: String, _ specs: [KesshoMacSliderSpec]) -> some View {
+    private func routingRow(
+        _ title: String,
+        isActive: Bool,
+        action: @escaping () -> Void,
+        _ specs: [KesshoMacSliderSpec]
+    ) -> some View {
         Group {
-            Text(title)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(KesshoMacDesign.text)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            routingSourceButton(title, isActive: isActive, action: action)
             ForEach(specs) { spec in
                 KesshoMacSliderRow(spec: spec, accent: accent)
             }
         }
+    }
+
+    private func routingSourceButton(_ title: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(isActive ? accent : KesshoMacDesign.mutedText.opacity(0.8))
+                    .frame(width: 7, height: 7)
+                Text(title)
+                    .font(.system(size: 12, weight: .bold))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+            }
+            .foregroundStyle(isActive ? KesshoMacDesign.text : KesshoMacDesign.secondaryText)
+            .padding(.horizontal, 9)
+            .frame(height: 42)
+            .background(isActive ? accent.opacity(0.12) : KesshoMacDesign.control.opacity(0.68))
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(isActive ? accent.opacity(0.45) : KesshoMacDesign.border.opacity(0.55), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .help(isActive ? "Disable \(title)" : "Enable \(title)")
     }
 
     private func blockedRoutingCell(_ title: String) -> some View {
@@ -3555,6 +3653,81 @@ private struct KesshoMacRoutingPage: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .stroke(KesshoMacDesign.border.opacity(0.55), lineWidth: 1)
         }
+    }
+
+    private func togglePad1() {
+        let shouldEnable = !appState.state.padEnabled
+        appState.state.padEnabled = shouldEnable
+    }
+
+    private func togglePad2() {
+        let shouldEnable = !appState.state.pad2Enabled
+        appState.state.pad2Enabled = shouldEnable
+    }
+
+    private func toggleLead1() {
+        let shouldEnable = !appState.state.leadEnabled
+        appState.state.leadEnabled = shouldEnable
+    }
+
+    private func toggleLead2() {
+        let shouldEnable = !appState.state.lead2Enabled
+        appState.state.lead2Enabled = shouldEnable
+    }
+
+    private func togglePiano() {
+        let shouldEnable = !appState.state.pianoEnabled
+        appState.state.pianoEnabled = shouldEnable
+    }
+
+    private func toggleDrums() {
+        let shouldEnable = !appState.state.drumEnabled
+        appState.state.drumEnabled = shouldEnable
+    }
+
+    private func toggleGranular() {
+        let shouldEnable = !appState.state.granularEnabled
+        appState.state.granularEnabled = shouldEnable
+    }
+
+    private func toggleWaves() {
+        let shouldEnable = !appState.state.oceanSampleEnabled
+        appState.state.oceanSampleEnabled = shouldEnable
+    }
+
+    private func toggleWater() {
+        let shouldEnable = !appState.state.waterEnabled
+        appState.state.waterEnabled = shouldEnable
+    }
+
+    private func toggleNature() {
+        if natureActive {
+            appState.state.birdsEnabled = false
+            appState.state.birds2Enabled = false
+            appState.state.frogsEnabled = false
+        }
+    }
+
+    private func toggleInsects() {
+        if insectsActive {
+            appState.state.insectsEnabled = false
+            appState.state.insects2Enabled = false
+        }
+    }
+
+    private func toggleDelayA() {
+        let shouldEnable = !appState.state.delayAEnabled
+        appState.state.delayAEnabled = shouldEnable
+    }
+
+    private func toggleDelayB() {
+        let shouldEnable = !appState.state.granularDelayEnabled
+        appState.state.granularDelayEnabled = shouldEnable
+    }
+
+    private func toggleReverb() {
+        let shouldEnable = !appState.state.reverbEnabled
+        appState.state.reverbEnabled = shouldEnable
     }
 }
 

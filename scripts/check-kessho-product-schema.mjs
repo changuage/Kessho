@@ -17,9 +17,6 @@ const before = new Map([
   ['src/audio/generated/kesshoProductEvents.ts', read('src/audio/generated/kesshoProductEvents.ts')],
   ['src/audio/generated/kesshoProductParams.ts', read('src/audio/generated/kesshoProductParams.ts')],
   ['src/audio/generated/kesshoProductSchema.ts', read('src/audio/generated/kesshoProductSchema.ts')],
-  ['KesshoNativeSwift/Generated/KesshoProductEvents.swift', read('KesshoNativeSwift/Generated/KesshoProductEvents.swift')],
-  ['KesshoNativeSwift/Generated/KesshoProductParams.swift', read('KesshoNativeSwift/Generated/KesshoProductParams.swift')],
-  ['KesshoNativeSwift/Generated/KesshoProductSchema.swift', read('KesshoNativeSwift/Generated/KesshoProductSchema.swift')],
 ]);
 
 execFileSync('node', ['scripts/generate-kessho-product-bindings.mjs'], { cwd: root, stdio: 'inherit' });
@@ -32,14 +29,13 @@ for (const [path, content] of before.entries()) {
 
 const cppHash = read('cpp/KesshoCore/generated/KesshoProductSchemaHash.h');
 const tsHash = read('src/audio/generated/kesshoProductSchema.ts');
-const swiftHash = read('KesshoNativeSwift/Generated/KesshoProductSchema.swift');
 const hashMatch = cppHash.match(/KESSHO_PRODUCT_SCHEMA_HASH_HEX = "([^"]+)"/);
 if (!hashMatch) {
   throw new Error('Missing C++ schema hash string');
 }
 const hash = hashMatch[1];
-if (!tsHash.includes(`KESSHO_PRODUCT_SCHEMA_HASH_HEX = '${hash}'`) || !swiftHash.includes(`hashHex = "${hash}"`)) {
-  throw new Error('Schema hash mismatch across C++/TypeScript/Swift generated files');
+if (!tsHash.includes(`KESSHO_PRODUCT_SCHEMA_HASH_HEX = '${hash}'`)) {
+  throw new Error('Schema hash mismatch across C++/TypeScript generated files');
 }
 
 console.log(`Kessho Product schema is deterministic (${hash}).`);

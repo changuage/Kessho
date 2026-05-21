@@ -180,7 +180,6 @@ function pianoPath(pattern, index) {
 
 const manifest = readJson(manifestPath);
 const webAssets = read('src/audio/coreProductAssets.ts');
-const swiftAssets = read('KesshoNativeSwift/Kessho/CoreBridge/KesshoProductCoreAssets.swift');
 const productAssetTests = read('cpp/KesshoCore/tests/ProductAssetTests.cpp');
 const productAssetPolicySource = read('cpp/KesshoCore/src/product/assets/ProductAssets.cpp');
 const doc = read('docs/kessho-product-asset-manifest-decode-matrix.md');
@@ -378,23 +377,6 @@ for (const token of [
   assert(webAssets.includes(token), `web Product asset helper is missing ${token}`);
 }
 
-for (const asset of manifest.soundscapes) {
-  const swiftIdName = asset.key === 'ocean' ? 'defaultSoundscape' : `${asset.key}Soundscape`;
-  assert(swiftAssets.includes(`id: KesshoProductAssetIDs.${swiftIdName}`), `Swift manifest ID for ${asset.key} is missing`);
-  assert(swiftAssets.includes(`relativePath: "${asset.path}"`), `Swift manifest path for ${asset.key} is missing`);
-}
-for (const token of [
-  'KESSHO_PRODUCT_ASSET_ROOT',
-  'KESSHO_PRODUCT_ASSET_DOWNLOAD_ROOT',
-  'downloadedAssetSearchRoots',
-  'applicationSupportDirectory',
-  'cachesDirectory',
-  'AVAudioFile(forReading:',
-  'preloadStartupAssets',
-]) {
-  assert(swiftAssets.includes(token), `native asset fallback/decode path is missing ${token}`);
-}
-
 for (const token of [
   'missing piano asset should not fake host playback',
   'missing soundscape asset should not fake host playback',
@@ -438,7 +420,7 @@ for (const token of [
 writeJsonReport(reportPath, {
   schemaVersion: 1,
   generatedAt: new Date().toISOString(),
-  status: 'pass-with-native-release-blockers',
+  status: 'pass',
   reportPath,
   manifest: {
     path: manifestPath,
@@ -470,11 +452,9 @@ writeJsonReport(reportPath, {
       startupCompressedBytes,
     },
   },
-  nativeReleaseBlockers: [
+  platformDecodeBlockers: [
     'needs-device-format-proof',
     'needs-release-bundle-proof',
-    'needs-native-ogg-coverage-proof',
-    'needs-native-asset-eviction-memory-pressure-proof',
   ],
 });
 

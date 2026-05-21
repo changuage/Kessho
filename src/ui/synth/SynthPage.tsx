@@ -370,6 +370,10 @@ const PAD2_TO_PAD1_KEY = Object.fromEntries(
   Object.entries(PAD1_TO_PAD2_KEY).map(([pad1Key, pad2Key]) => [pad2Key, pad1Key]),
 ) as Record<string, string>;
 
+const SYNTH_SOURCE_CARD_IDS = ['pad1', 'pad2', 'lead1', 'lead2', 'piano'] as const;
+type SynthSourceCardId = typeof SYNTH_SOURCE_CARD_IDS[number];
+type SynthSourceCardExpansion = Partial<Record<SynthSourceCardId, boolean>>;
+
 function createRuntimePadPreset(scope: 'pad1' | 'pad2', name: string, data: Record<string, unknown>): PadPreset {
   const params: Record<string, number | string | boolean> = {};
 
@@ -625,6 +629,62 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onPointerDown: () => announceHelp(helpKey, options),
     onFocus: () => announceHelp(helpKey, options),
   }), [announceHelp]);
+  const [manualExpandedCards, setManualExpandedCards] = useState<SynthSourceCardExpansion>({});
+  const defaultExpandedCards = useMemo<Record<SynthSourceCardId, boolean>>(() => ({
+    pad1: Boolean(state.padEnabled),
+    pad2: Boolean(state.pad2Enabled),
+    lead1: Boolean(state.leadEnabled),
+    lead2: Boolean(state.lead2Enabled),
+    piano: Boolean(state.pianoEnabled),
+  }), [
+    state.lead2Enabled,
+    state.leadEnabled,
+    state.pad2Enabled,
+    state.padEnabled,
+    state.pianoEnabled,
+  ]);
+  const previousDefaultExpandedCards = useRef(defaultExpandedCards);
+
+  useEffect(() => {
+    const changedCardIds = SYNTH_SOURCE_CARD_IDS.filter(
+      (cardId) => previousDefaultExpandedCards.current[cardId] !== defaultExpandedCards[cardId],
+    );
+    previousDefaultExpandedCards.current = defaultExpandedCards;
+    if (changedCardIds.length === 0) return;
+
+    setManualExpandedCards((previous) => {
+      if (!changedCardIds.some((cardId) => Object.prototype.hasOwnProperty.call(previous, cardId))) {
+        return previous;
+      }
+
+      const next = { ...previous };
+      changedCardIds.forEach((cardId) => {
+        delete next[cardId];
+      });
+      return next;
+    });
+  }, [defaultExpandedCards]);
+
+  const isSynthSourceCardExpanded = useCallback((cardId: SynthSourceCardId) => (
+    manualExpandedCards[cardId] ?? defaultExpandedCards[cardId]
+  ), [defaultExpandedCards, manualExpandedCards]);
+
+  const toggleSynthSourceCard = useCallback((cardId: SynthSourceCardId) => {
+    setManualExpandedCards((previous) => ({
+      ...previous,
+      [cardId]: !(previous[cardId] ?? defaultExpandedCards[cardId]),
+    }));
+  }, [defaultExpandedCards]);
+
+  const handleSynthSourceHeaderKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>, cardId: SynthSourceCardId) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const target = event.target as HTMLElement;
+    if (target !== event.currentTarget && target.closest('button, select, input, textarea, a')) return;
+
+    event.preventDefault();
+    toggleSynthSourceCard(cardId);
+  }, [toggleSynthSourceCard]);
+
   const activeKeyboardCodeSetRef = useRef<Set<string>>(new Set());
   const leftShiftHeldRef = useRef(false);
   const zHeldRef = useRef(false);
@@ -2765,6 +2825,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   };
 
   // ═══════════════ Render ═══════════════
+  const pad1CardExpanded = isSynthSourceCardExpanded('pad1');
+  const pad2CardExpanded = isSynthSourceCardExpanded('pad2');
+  const lead1CardExpanded = isSynthSourceCardExpanded('lead1');
+  const lead2CardExpanded = isSynthSourceCardExpanded('lead2');
+  const pianoCardExpanded = isSynthSourceCardExpanded('piano');
 
   return (
     <div className="synth-root">
@@ -2777,27 +2842,47 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           </div>
 
           {/* ── Pad Synth Card ── */}
-          <div className={`synth-card${padTier > 0 ? ' editing' : ''}`} style={{ '--sc': SOURCE_COLORS.pad1 } as React.CSSProperties}>
-            <div className="synth-card-header">
+          <div className={`synth-card${padTier > 0 ? ' editing' : ''}${pad1CardExpanded ? '' : ' collapsed'}`} style={{ '--sc': SOURCE_COLORS.pad1 } as React.CSSProperties}>
+            <div
+              className="synth-card-header clickable"
+              role="button"
+              tabIndex={0}
+              aria-expanded={pad1CardExpanded}
+              onClick={() => toggleSynthSourceCard('pad1')}
+              onKeyDown={(event) => handleSynthSourceHeaderKeyDown(event, 'pad1')}
+            >
               <span className="sc-name">Pad Synth</span>
               <button
+                type="button"
                 className={`sc-enable-btn${state.padEnabled ? ' on' : ''}`}
-                onClick={() => onSelectChange('padEnabled' as keyof SliderState, !state.padEnabled)}
+                aria-pressed={state.padEnabled}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectChange('padEnabled' as keyof SliderState, !state.padEnabled);
+                }}
               >
                 {state.padEnabled ? 'ON' : 'OFF'}
               </button>
               {/* Tier toggle buttons */}
               <button
+                type="button"
                 className={`sc-tier-btn${padTier >= 1 ? ' active' : ''}`}
-                onClick={() => setPadTier(padTier >= 1 ? 0 : 1)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPadTier(padTier >= 1 ? 0 : 1);
+                }}
                 title="Primary controls"
                 {...bindHelp('synthPadPrimaryTier')}
               >
                 {'\u2699'}
               </button>
               <button
+                type="button"
                 className={`sc-tier-btn adv${padTier === 2 ? ' active' : ''}`}
-                onClick={() => setPadTier(padTier === 2 ? 1 : 2)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPadTier(padTier === 2 ? 1 : 2);
+                }}
                 title="Advanced controls"
                 {...bindHelp('synthPadAdvancedTier')}
               >
@@ -2805,6 +2890,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               </button>
             </div>
 
+            {pad1CardExpanded && (
+              <>
             {/* ══ TIER 1 — Always visible: Presets + Interactive Viz ══ */}
             <div className="synth-card-simple sc-tier1">
               <SynthPresetManager
@@ -3400,32 +3487,54 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 </div>
               </div>
             )}
+              </>
+            )}
           </div>
 
           {/* ── Pad 2 Card ── */}
-          <div className={`synth-card${pad2Tier > 0 ? ' editing' : ''}`} style={{ '--sc': SOURCE_COLORS.pad2 } as React.CSSProperties}>
-            <div className="synth-card-header">
+          <div className={`synth-card${pad2Tier > 0 ? ' editing' : ''}${pad2CardExpanded ? '' : ' collapsed'}`} style={{ '--sc': SOURCE_COLORS.pad2 } as React.CSSProperties}>
+            <div
+              className="synth-card-header clickable"
+              role="button"
+              tabIndex={0}
+              aria-expanded={pad2CardExpanded}
+              onClick={() => toggleSynthSourceCard('pad2')}
+              onKeyDown={(event) => handleSynthSourceHeaderKeyDown(event, 'pad2')}
+            >
               <span className="sc-name">Pad 2</span>
               <button
+                type="button"
                 className={`sc-enable-btn${state.pad2Enabled ? ' on' : ''}`}
-                onClick={() => onSelectChange('pad2Enabled' as keyof SliderState, !state.pad2Enabled)}
+                aria-pressed={state.pad2Enabled}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectChange('pad2Enabled' as keyof SliderState, !state.pad2Enabled);
+                }}
               >
                 {state.pad2Enabled ? 'ON' : 'OFF'}
               </button>
-              {state.pad2Enabled && (
+              {pad2CardExpanded && (
                 <button
+                  type="button"
                   className={`sc-tier-btn${pad2Tier >= 1 ? ' active' : ''}`}
-                  onClick={() => setPad2Tier(pad2Tier >= 1 ? 0 : 1)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setPad2Tier(pad2Tier >= 1 ? 0 : 1);
+                  }}
                   title="Primary controls"
                   {...bindHelp('synthPadPrimaryTier')}
                 >
                   {'\u2699'}
                 </button>
               )}
-              {state.pad2Enabled && (
+              {pad2CardExpanded && (
                 <button
+                  type="button"
                   className={`sc-tier-btn adv${pad2Tier === 2 ? ' active' : ''}`}
-                  onClick={() => setPad2Tier(pad2Tier === 2 ? 1 : 2)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setPad2Tier(pad2Tier === 2 ? 1 : 2);
+                  }}
                   title="Advanced controls"
                   {...bindHelp('synthPadAdvancedTier')}
                 >
@@ -3434,7 +3543,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               )}
             </div>
 
-            {state.pad2Enabled && (<>
+            {pad2CardExpanded && (<>
             {/* ══ TIER 1 — Always visible: Presets + Viz + Drive + Voice Assign ══ */}
             <div className="synth-card-simple sc-tier1">
               <SynthPresetManager
@@ -4030,28 +4139,47 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           </div>
 
           {/* ── Lead 1 Card ── */}
-          <div className={`synth-card${editingSection === 'lead1' ? ' editing' : ''}`} style={{ '--sc': SOURCE_COLORS.lead1 } as React.CSSProperties}>
-            <div className="synth-card-header">
+          <div className={`synth-card${editingSection === 'lead1' ? ' editing' : ''}${lead1CardExpanded ? '' : ' collapsed'}`} style={{ '--sc': SOURCE_COLORS.lead1 } as React.CSSProperties}>
+            <div
+              className="synth-card-header clickable"
+              role="button"
+              tabIndex={0}
+              aria-expanded={lead1CardExpanded}
+              onClick={() => toggleSynthSourceCard('lead1')}
+              onKeyDown={(event) => handleSynthSourceHeaderKeyDown(event, 'lead1')}
+            >
               <span className="sc-name">Lead 1</span>
               <button
+                type="button"
                 className={`sc-enable-btn${state.leadEnabled ? ' on' : ''}`}
-                onClick={() => onSelectChange('leadEnabled' as keyof SliderState, !state.leadEnabled)}
+                aria-pressed={state.leadEnabled}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectChange('leadEnabled' as keyof SliderState, !state.leadEnabled);
+                }}
               >
                 {state.leadEnabled ? 'ON' : 'OFF'}
               </button>
               <button
                 className="sc-preset-editor-btn"
                 type="button"
-                onClick={() => openLeadPresetEditor('Lead 1', [
-                  { slotKey: 'lead1PresetA', slotLabel: 'Slot A', accentColor: '#f59e0b' },
-                  { slotKey: 'lead1PresetB', slotLabel: 'Slot B', accentColor: '#8b5cf6' },
-                ], 'lead1PresetA')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openLeadPresetEditor('Lead 1', [
+                    { slotKey: 'lead1PresetA', slotLabel: 'Slot A', accentColor: '#f59e0b' },
+                    { slotKey: 'lead1PresetB', slotLabel: 'Slot B', accentColor: '#8b5cf6' },
+                  ], 'lead1PresetA');
+                }}
               >
                 Edit preset
               </button>
               <button
+                type="button"
                 className={`sc-edit-btn${editingSection === 'lead1' ? ' active' : ''}`}
-                onClick={() => toggleEdit('lead1')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleEdit('lead1');
+                }}
                 title={editingSection === 'lead1' ? 'Close advanced' : 'Advanced parameters'}
                 {...bindHelp('synthLeadEdit')}
               >
@@ -4059,6 +4187,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               </button>
             </div>
 
+            {lead1CardExpanded && (
+              <>
             <div className="synth-card-simple">
               {renderLeadPresetLoader({
                 selectedPresetId: lead1LoaderPresetId,
@@ -4173,31 +4303,52 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 </div>
               </div>
             )}
+              </>
+            )}
           </div>
 
           {/* ── Lead 2 Card ── */}
-          <div className={`synth-card${editingSection === 'lead2' ? ' editing' : ''}`} style={{ '--sc': SOURCE_COLORS.lead2 } as React.CSSProperties}>
-            <div className="synth-card-header">
+          <div className={`synth-card${editingSection === 'lead2' ? ' editing' : ''}${lead2CardExpanded ? '' : ' collapsed'}`} style={{ '--sc': SOURCE_COLORS.lead2 } as React.CSSProperties}>
+            <div
+              className="synth-card-header clickable"
+              role="button"
+              tabIndex={0}
+              aria-expanded={lead2CardExpanded}
+              onClick={() => toggleSynthSourceCard('lead2')}
+              onKeyDown={(event) => handleSynthSourceHeaderKeyDown(event, 'lead2')}
+            >
               <span className="sc-name">Lead 2</span>
               <button
+                type="button"
                 className={`sc-enable-btn${state.lead2Enabled ? ' on' : ''}`}
-                onClick={() => onSelectChange('lead2Enabled' as keyof SliderState, !state.lead2Enabled)}
+                aria-pressed={state.lead2Enabled}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectChange('lead2Enabled' as keyof SliderState, !state.lead2Enabled);
+                }}
               >
                 {state.lead2Enabled ? 'ON' : 'OFF'}
               </button>
               <button
                 className="sc-preset-editor-btn"
                 type="button"
-                onClick={() => openLeadPresetEditor('Lead 2', [
-                  { slotKey: 'lead2PresetC', slotLabel: 'Slot C', accentColor: '#06b6d4' },
-                  { slotKey: 'lead2PresetD', slotLabel: 'Slot D', accentColor: '#a78bfa' },
-                ], 'lead2PresetC')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openLeadPresetEditor('Lead 2', [
+                    { slotKey: 'lead2PresetC', slotLabel: 'Slot C', accentColor: '#06b6d4' },
+                    { slotKey: 'lead2PresetD', slotLabel: 'Slot D', accentColor: '#a78bfa' },
+                  ], 'lead2PresetC');
+                }}
               >
                 Edit preset
               </button>
               <button
+                type="button"
                 className={`sc-edit-btn${editingSection === 'lead2' ? ' active' : ''}`}
-                onClick={() => toggleEdit('lead2')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleEdit('lead2');
+                }}
                 title={editingSection === 'lead2' ? 'Close advanced' : 'Advanced parameters'}
                 {...bindHelp('synthLeadEdit')}
               >
@@ -4205,7 +4356,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               </button>
             </div>
 
-            {state.lead2Enabled && (
+            {lead2CardExpanded && (
               <div className="synth-card-simple">
                 {renderLeadPresetLoader({
                   selectedPresetId: lead2LoaderPresetId,
@@ -4251,7 +4402,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             )}
 
             {/* Advanced */}
-            {editingSection === 'lead2' && state.lead2Enabled && (
+            {editingSection === 'lead2' && lead2CardExpanded && (
               <div className="synth-card-advanced">
                 {/* Random walk */}
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
@@ -4321,24 +4472,42 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             )}
           </div>
 
-          <div className={`synth-card${editingSection === 'piano' ? ' editing' : ''}`} style={{ '--sc': SOURCE_COLORS.piano } as React.CSSProperties}>
-            <div className="synth-card-header">
+          <div className={`synth-card${editingSection === 'piano' ? ' editing' : ''}${pianoCardExpanded ? '' : ' collapsed'}`} style={{ '--sc': SOURCE_COLORS.piano } as React.CSSProperties}>
+            <div
+              className="synth-card-header clickable"
+              role="button"
+              tabIndex={0}
+              aria-expanded={pianoCardExpanded}
+              onClick={() => toggleSynthSourceCard('piano')}
+              onKeyDown={(event) => handleSynthSourceHeaderKeyDown(event, 'piano')}
+            >
               <span className="sc-name">Piano</span>
               <button
+                type="button"
                 className={`sc-enable-btn${state.pianoEnabled ? ' on' : ''}`}
-                onClick={() => onSelectChange('pianoEnabled' as keyof SliderState, !state.pianoEnabled)}
+                aria-pressed={state.pianoEnabled}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectChange('pianoEnabled' as keyof SliderState, !state.pianoEnabled);
+                }}
               >
                 {state.pianoEnabled ? 'ON' : 'OFF'}
               </button>
               <button
+                type="button"
                 className={`sc-edit-btn${editingSection === 'piano' ? ' active' : ''}`}
-                onClick={() => toggleEdit('piano')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleEdit('piano');
+                }}
                 title={editingSection === 'piano' ? 'Close advanced' : 'Advanced parameters'}
               >
                 {'\u270E'}
               </button>
             </div>
 
+            {pianoCardExpanded && (
+              <>
             <div className="synth-card-simple">
               <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '6px' }}>
                 Sampled piano with randomized regular and short note variants.
@@ -4391,6 +4560,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <Slider label="Granular Send" value={state.granularPianoSend} paramKey="granularPianoSend" onChange={onParamChange} {...sliderProps('granularPianoSend')} />
                 </div>
               </div>
+            )}
+              </>
             )}
           </div>
         </div>

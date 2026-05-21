@@ -8,7 +8,7 @@
  * Layout: Left = Sound-engine controls, Right = Scene mixer + advanced layers
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './earth.css';
 import { DualSlider, type DualSliderRange } from '../DualSlider';
 import type { SliderMode, SliderState } from '../state';
@@ -90,6 +90,12 @@ const EARTH_DUAL_KEYS: readonly (keyof SliderState)[] = [
   'waterChannelsMorph', 'waterChannelsSpeed',
 ] as const;
 
+const EARTH_ENGINE_CARD_IDS = ['water', 'ocean', 'birds', 'birds2', 'frogs', 'insects1', 'insects2'] as const;
+
+type EarthEngineCardId = typeof EARTH_ENGINE_CARD_IDS[number];
+
+type EarthEngineCardExpansion = Partial<Record<EarthEngineCardId, boolean>>;
+
 type QuantizationRange = { min: number; max: number; step: number };
 
 function quantize(key: string, v: number): number {
@@ -145,6 +151,7 @@ export default function EarthPage({
   const [earthKitPresetName, setEarthKitPresetName] = useState<string | undefined>();
   const [waterLocalRatings, setWaterLocalRatings] = useState<Record<string, number>>({});
   const [insectsLocalRatings, setInsectsLocalRatings] = useState<Record<string, number>>({});
+  const [manualExpandedCards, setManualExpandedCards] = useState<EarthEngineCardExpansion>({});
   const {
     presets: waterEnginePresets,
     save: saveWaterPreset,
@@ -172,39 +179,56 @@ export default function EarthPage({
     [sliderProps],
   );
 
-  const expandedCards = useMemo(() => {
-    const next = new Set<string>();
-    const anyWaterLayerActive =
-      Number(state.waterLayerHardDrops) > 0.01 ||
-      Number(state.waterLayerWaterDrops) > 0.01 ||
-      Number(state.waterLayerBubbling) > 0.01 ||
-      Number(state.waterLayerChannels) > 0.01 ||
-      Number(state.waterLayerTurbulence) > 0.01 ||
-      Number(state.waterLayerSurf) > 0.01;
-
-    if (anyWaterLayerActive) next.add('water');
-    if (state.oceanSampleEnabled) next.add('ocean');
-    if (state.birdsEnabled) next.add('birds');
-    if (state.birds2Enabled) next.add('birds2');
-    if (state.frogsEnabled) next.add('frogs');
-    if (state.insectsEnabled) next.add('insects1');
-    if (state.insects2Enabled) next.add('insects2');
-
-    return next;
-  }, [
+  const defaultExpandedCards = useMemo<Record<EarthEngineCardId, boolean>>(() => ({
+    water: Boolean(state.waterEnabled),
+    ocean: Boolean(state.oceanSampleEnabled),
+    birds: Boolean(state.birdsEnabled),
+    birds2: Boolean(state.birds2Enabled),
+    frogs: Boolean(state.frogsEnabled),
+    insects1: Boolean(state.insectsEnabled),
+    insects2: Boolean(state.insects2Enabled),
+  }), [
     state.birds2Enabled,
     state.birdsEnabled,
     state.frogsEnabled,
     state.insects2Enabled,
     state.insectsEnabled,
     state.oceanSampleEnabled,
-    state.waterLayerBubbling,
-    state.waterLayerChannels,
-    state.waterLayerHardDrops,
-    state.waterLayerSurf,
-    state.waterLayerTurbulence,
-    state.waterLayerWaterDrops,
+    state.waterEnabled,
   ]);
+
+  const previousDefaultExpandedCards = useRef(defaultExpandedCards);
+
+  useEffect(() => {
+    const changedCards = EARTH_ENGINE_CARD_IDS.filter((cardId) => (
+      previousDefaultExpandedCards.current[cardId] !== defaultExpandedCards[cardId]
+    ));
+    previousDefaultExpandedCards.current = defaultExpandedCards;
+    if (changedCards.length === 0) return;
+    setManualExpandedCards((prev) => {
+      if (!changedCards.some((cardId) => Object.prototype.hasOwnProperty.call(prev, cardId))) return prev;
+      const next = { ...prev };
+      changedCards.forEach((cardId) => { delete next[cardId]; });
+      return next;
+    });
+  }, [defaultExpandedCards]);
+
+  const toggleCard = useCallback((cardId: string) => {
+    if (!EARTH_ENGINE_CARD_IDS.includes(cardId as EarthEngineCardId)) return;
+    const engineCardId = cardId as EarthEngineCardId;
+    setManualExpandedCards((prev) => ({
+      ...prev,
+      [engineCardId]: !(prev[engineCardId] ?? defaultExpandedCards[engineCardId]),
+    }));
+  }, [defaultExpandedCards]);
+
+  const expandedCards = useMemo(() => {
+    const next = new Set<string>();
+    EARTH_ENGINE_CARD_IDS.forEach((cardId) => {
+      if (manualExpandedCards[cardId] ?? defaultExpandedCards[cardId]) next.add(cardId);
+    });
+    return next;
+  }, [defaultExpandedCards, manualExpandedCards]);
 
   useEffect(() => {
     setSelectedWaterPreset(String(state.waterPreset));
@@ -710,6 +734,7 @@ export default function EarthPage({
             waterPresetOptions={waterPresetOptions}
             selectedWaterPreset={selectedWaterPreset}
             expandedCards={expandedCards}
+            onToggleCard={toggleCard}
             onSelectChange={onSelectChange}
             onWaterPresetSelect={handleWaterPresetSelect}
             onWaterPresetLoadToSlot={handleWaterPresetLoad}
@@ -721,6 +746,7 @@ export default function EarthPage({
             state={state}
             ds={ds}
             expandedCards={expandedCards}
+            onToggleCard={toggleCard}
             onSelectChange={onSelectChange}
             enabled={Boolean(state.oceanSampleEnabled)}
           />
@@ -735,6 +761,7 @@ export default function EarthPage({
             state={state}
             ds={ds}
             expandedCards={expandedCards}
+            onToggleCard={toggleCard}
             onSelectChange={onSelectChange}
             enabled={Boolean(state.birdsEnabled)}
           />
@@ -749,6 +776,7 @@ export default function EarthPage({
             state={state}
             ds={ds}
             expandedCards={expandedCards}
+            onToggleCard={toggleCard}
             onSelectChange={onSelectChange}
             enabled={Boolean(state.birds2Enabled)}
           />
@@ -763,6 +791,7 @@ export default function EarthPage({
             state={state}
             ds={ds}
             expandedCards={expandedCards}
+            onToggleCard={toggleCard}
             onSelectChange={onSelectChange}
             enabled={Boolean(state.frogsEnabled)}
           />
@@ -773,6 +802,7 @@ export default function EarthPage({
             selectedPreset={selectedInsects1Preset}
             presetOptions={insects1PresetOptions}
             expandedCards={expandedCards}
+            onToggleCard={toggleCard}
             onPresetLoad={(scope, value) => { void handleInsectsPresetLoad(scope, value); }}
             onPresetSave={(scope) => { void handleInsectsPresetSave(scope); }}
             onPresetRate={handleInsectsPresetRate}
@@ -788,6 +818,7 @@ export default function EarthPage({
             selectedPreset={selectedInsects2Preset}
             presetOptions={insects2PresetOptions}
             expandedCards={expandedCards}
+            onToggleCard={toggleCard}
             onPresetLoad={(scope, value) => { void handleInsectsPresetLoad(scope, value); }}
             onPresetSave={(scope) => { void handleInsectsPresetSave(scope); }}
             onPresetRate={handleInsectsPresetRate}

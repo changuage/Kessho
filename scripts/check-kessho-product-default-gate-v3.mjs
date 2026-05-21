@@ -71,10 +71,8 @@ function collectFiles(path, collected = []) {
       childRelative.startsWith('src/audio/generated/') ||
       childRelative === 'cpp/KesshoCore/generated' ||
       childRelative.startsWith('cpp/KesshoCore/generated/') ||
-      childRelative === 'KesshoNativeSwift/.build' ||
-      childRelative.startsWith('KesshoNativeSwift/.build/') ||
-      childRelative === 'KesshoNativeSwift/Generated' ||
-      childRelative.startsWith('KesshoNativeSwift/Generated/') ||
+      childRelative === 'archive' ||
+      childRelative.startsWith('archive/') ||
       childRelative.includes('node_modules') ||
       childRelative.includes('/.git/')
     ) {
@@ -113,8 +111,6 @@ function writeGateReport(report) {
     '',
     `Product browser runtime report: ${report.browserRuntime.report}`,
     '',
-    `Native disposition: ${report.native.defaultDisposition}`,
-    '',
     '## Browser Runtime Cases',
     '',
     '| Case | RMS | Peak |',
@@ -140,7 +136,6 @@ const runtimeFallbackReport = readJson('docs/reports/kessho-product-runtime-fall
 const dirtyDiffReport = readJson('docs/reports/kessho-product-dirty-diff-classification-latest.json');
 const hostReconciliationReport = readJson('docs/reports/kessho-product-host-reconciliation-latest.json');
 const patchBridgeReport = readJson('docs/reports/kessho-product-patch-bridges.json');
-const nativeReleaseReport = readJson('docs/reports/kessho-product-native-release-proof-latest.json');
 const assetManifestReport = readJson('docs/reports/kessho-product-asset-manifest-latest.json');
 
 const appRuntimeModeBody = sourceSlice(app, 'function getAudioEngineRuntimeMode()', 'function shouldShowAudioEngineSwitcher()');
@@ -159,6 +154,8 @@ assert(packageJson.scripts?.['core:product:ci:prereqs'] === 'node scripts/run-ke
 
 assert(productCiRunner.includes("'core:product:browser-runtime'"), 'Product Core CI runner must include browser-runtime proof');
 assert(!productCiRunner.includes("'core:readiness:browser'"), 'Product Core CI runner must not use the legacy Web-vs-Core readiness gate for product default promotion');
+const archivedNativeStepPrefix = "'core:product:" + "native";
+assert(!productCiRunner.includes(archivedNativeStepPrefix), 'Product Core CI runner must not depend on archived native Swift checks');
 assert(productCiRunner.includes("const finalGateStep = 'core:product:default-gate-v3'"), 'Product Core CI runner must keep v3 final gate');
 
 const workflowRunCommands = parseRunCommands(workflow);
@@ -211,12 +208,8 @@ const requiredPrerequisiteSteps = [
   'core:product:web-graph-parity:audit',
   'core:product:web-graph-capture-smoke:fast',
   'core:product:web-host',
-  'core:product:native',
-  'core:product:native-release',
   'core:product:cpu',
   'core:product:browser-runtime',
-  'core:product:native-build',
-  'core:product:native-release-smoke',
 ];
 
 assert(Array.isArray(productCiReport.prerequisiteSteps), 'Product Core CI report must list prerequisiteSteps');
@@ -232,7 +225,6 @@ requireFreshReport('docs/reports/kessho-product-ci-latest.json', productCiReport
   ...collectFiles('scripts'),
   ...collectFiles('src'),
   ...collectFiles('cpp/KesshoCore'),
-  ...collectFiles('KesshoNativeSwift'),
   ...collectFiles('public/worklets'),
   'docs/kessho-product-core-migration-status.md',
   'docs/kessho-product-default-gate-v3.md',
@@ -279,9 +271,7 @@ for (const [label, proofReport] of [
   assert(proofReport.status === 'pass', `${label} behavioral proof report must pass`);
 }
 assert(patchBridgeReport.status === 'pass', 'patch bridge report must pass');
-assert(nativeReleaseReport.status === 'deferred', 'native release report must remain explicitly deferred until live-device proof exists');
-assert(nativeReleaseReport.deferral?.signOffStatus === 'signed-for-deferral-only', 'native release deferral must stay explicit');
-assert(assetManifestReport.status === 'pass-with-native-release-blockers', 'asset manifest report must preserve native release blockers');
+assert(assetManifestReport.status === 'pass', 'asset manifest report must pass');
 
 const report = {
   schemaVersion: 1,
@@ -303,10 +293,6 @@ const report = {
     disabledFx: cpuReport.cpu?.scenarios?.disabledFx,
     activeFx: cpuReport.cpu?.scenarios?.activeFx,
     heap: cpuReport.heap,
-  },
-  native: {
-    defaultDisposition: 'native-default-deferred-web-default-not-blocked',
-    report: 'docs/reports/kessho-product-native-release-proof-latest.json',
   },
 };
 

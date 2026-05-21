@@ -1,12 +1,5 @@
 import type { CoreProductEvent } from './coreProductEvents';
-import {
-  CORE_PRODUCT_SOURCE_IDS,
-  coreProductPadRuntimeParamId,
-  createCoreProductJourneyStateEvent,
-  createCoreProductParamEvent,
-  createCoreProductSequencerLaneParamEvent,
-  createCoreProductSourcePresetEvent,
-} from './coreProductEvents';
+import { CORE_PRODUCT_SOURCE_IDS, coreProductPadRuntimeParamId, createCoreProductJourneyStateEvent, createCoreProductParamEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSourcePresetEvent } from './coreProductEvents';
 import { usesLegacyGranularRuntimeSeed, type CoreProductSnapshot } from './coreProductSnapshot';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
@@ -15,10 +8,7 @@ import { KESSHO_PRODUCT_PAD_PARAM_COUNT } from './generated/kesshoProductSchema'
 export const MAX_SNAPSHOT_DIFF_EVENTS = 384;
 
 export type SnapshotReloadReason =
-  | 'none' | 'initial-snapshot' | 'runtime-start' | 'runtime-bootstrap' | 'manual-piano-asset'
-  | 'explicit-reset-request' | 'asset-reference-change' | 'asset-reference-level-change' | 'harmony-mode-change'
-  | 'source-structure-change' | 'source-hold-change' | 'exact-patch-change' | 'sequencer-structure-change'
-  | 'dirty-diff-event-budget' | 'adapter-update';
+  | 'none' | 'initial-snapshot' | 'runtime-start' | 'runtime-bootstrap' | 'manual-piano-asset' | 'explicit-reset-request' | 'asset-reference-change' | 'asset-reference-level-change' | 'harmony-mode-change' | 'source-structure-change' | 'source-hold-change' | 'exact-patch-change' | 'sequencer-structure-change' | 'dirty-diff-event-budget' | 'adapter-update';
 
 type SequencerKind = 'synth' | 'drum';
 type ProductSourceSnapshot = CoreProductSnapshot['sources'][number];
@@ -29,10 +19,7 @@ type SnapshotScalar = number | boolean;
 
 export type CoreProductSnapshotDiffResult = { applied: true; events: CoreProductEvent[] } | { applied: false; reason: SnapshotReloadReason };
 
-export function shouldForwardCoreProductRngDiffs(
-  latestSliderState: Record<string, unknown> | null,
-  latestTelemetry: CoreProductTelemetrySnapshot | null,
-): boolean {
+export function shouldForwardCoreProductRngDiffs(latestSliderState: Record<string, unknown> | null, latestTelemetry: CoreProductTelemetrySnapshot | null): boolean {
   if (!latestSliderState) return false;
   if (Object.prototype.hasOwnProperty.call(latestSliderState, 'rngSeed')) return true;
   if (Object.prototype.hasOwnProperty.call(latestSliderState, 'rngState')) return true;
@@ -41,11 +28,7 @@ export function shouldForwardCoreProductRngDiffs(
 }
 
 class CoreProductRuntimeAdapter {
-  buildSnapshotDiff(
-    previous: CoreProductSnapshot,
-    next: CoreProductSnapshot,
-    options: { forwardRngDiffs?: boolean } = {},
-  ): CoreProductSnapshotDiffResult {
+  buildSnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot, options: { forwardRngDiffs?: boolean } = {}): CoreProductSnapshotDiffResult {
     if (!this.canApplySnapshotDiff(previous, next)) {
       return { applied: false, reason: this.classifySnapshotReloadReason(previous, next) };
     }
@@ -69,8 +52,9 @@ class CoreProductRuntimeAdapter {
   }
 
   private classifySnapshotReloadReason(previous: CoreProductSnapshot, next: CoreProductSnapshot): SnapshotReloadReason {
-    if (this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return 'asset-reference-change';
-    if (this.assetRefLevelsChanged(previous.assetRefLevels, next.assetRefLevels)) return 'asset-reference-level-change';
+    const soundscapeFadeCanCoverAssetRemoval = this.soundscapeFadeCanCoverAssetRemoval(previous, next);
+    if (!soundscapeFadeCanCoverAssetRemoval && this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return 'asset-reference-change';
+    if (!soundscapeFadeCanCoverAssetRemoval && this.assetRefLevelsChanged(previous.assetRefLevels, next.assetRefLevels)) return 'asset-reference-level-change';
     if (previous.harmony.chordMode !== next.harmony.chordMode) return 'harmony-mode-change';
     if (previous.harmony.voicingMode !== next.harmony.voicingMode) return 'harmony-mode-change';
     if (previous.sources.length !== next.sources.length) return 'source-structure-change';
@@ -81,9 +65,13 @@ class CoreProductRuntimeAdapter {
       if (previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change';
       if (previousSource.assetId !== nextSource.assetId) return 'source-structure-change';
       if (this.valuesDiffer(previousSource.holdSeconds, nextSource.holdSeconds)) return 'source-hold-change';
-      if (this.padPatchChanged(previousSource, nextSource) && !this.canApplyPadExactPatchDiff(previousSource, nextSource)) return 'exact-patch-change';
-      if (this.leadPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
-      if (this.drumPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
+      const soundscapeFadeCanCoverPatchRemoval =
+        soundscapeFadeCanCoverAssetRemoval && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape;
+      if (!soundscapeFadeCanCoverPatchRemoval) {
+        if (this.padPatchChanged(previousSource, nextSource) && !this.canApplyPadExactPatchDiff(previousSource, nextSource)) return 'exact-patch-change';
+        if (this.leadPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
+        if (this.drumPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
+      }
     }
     if (!this.canApplyLaneDiffs(previous.synthLanes, next.synthLanes)) return 'sequencer-structure-change';
     if (!this.canApplyLaneDiffs(previous.drumLanes, next.drumLanes)) return 'sequencer-structure-change';
@@ -91,8 +79,9 @@ class CoreProductRuntimeAdapter {
   }
 
   private canApplySnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean {
-    if (this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return false;
-    if (this.assetRefLevelsChanged(previous.assetRefLevels, next.assetRefLevels)) return false;
+    const soundscapeFadeCanCoverAssetRemoval = this.soundscapeFadeCanCoverAssetRemoval(previous, next);
+    if (!soundscapeFadeCanCoverAssetRemoval && this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return false;
+    if (!soundscapeFadeCanCoverAssetRemoval && this.assetRefLevelsChanged(previous.assetRefLevels, next.assetRefLevels)) return false;
     if (previous.harmony.chordMode !== next.harmony.chordMode) return false;
     if (previous.harmony.voicingMode !== next.harmony.voicingMode) return false;
     if (previous.sources.length !== next.sources.length) return false;
@@ -103,9 +92,13 @@ class CoreProductRuntimeAdapter {
       if (previousSource.sourceId !== nextSource.sourceId) return false;
       if (previousSource.assetId !== nextSource.assetId) return false;
       if (this.valuesDiffer(previousSource.holdSeconds, nextSource.holdSeconds)) return false;
-      if (this.padPatchChanged(previousSource, nextSource) && !this.canApplyPadExactPatchDiff(previousSource, nextSource)) return false;
-      if (this.leadPatchChanged(previousSource, nextSource)) return false;
-      if (this.drumPatchChanged(previousSource, nextSource)) return false;
+      const soundscapeFadeCanCoverPatchRemoval =
+        soundscapeFadeCanCoverAssetRemoval && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape;
+      if (!soundscapeFadeCanCoverPatchRemoval) {
+        if (this.padPatchChanged(previousSource, nextSource) && !this.canApplyPadExactPatchDiff(previousSource, nextSource)) return false;
+        if (this.leadPatchChanged(previousSource, nextSource)) return false;
+        if (this.drumPatchChanged(previousSource, nextSource)) return false;
+      }
     }
     return this.canApplyLaneDiffs(previous.synthLanes, next.synthLanes) &&
       this.canApplyLaneDiffs(previous.drumLanes, next.drumLanes);
@@ -133,6 +126,16 @@ class CoreProductRuntimeAdapter {
 
   private isPadSourceId(sourceId: number): boolean {
     return sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 || sourceId === CORE_PRODUCT_SOURCE_IDS.pad2;
+  }
+
+  private soundscapeFadeCanCoverAssetRemoval(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean {
+    if (!this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return false;
+    const previousSoundscape = previous.sources.find((source) => source.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape);
+    const nextSoundscape = next.sources.find((source) => source.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape);
+    if (!previousSoundscape?.enabled || nextSoundscape?.enabled) return false;
+    const previousRefs = new Set(previous.assetRefs.filter((assetId) => assetId > 0));
+    const nextRefs = new Set(next.assetRefs.filter((assetId) => assetId > 0));
+    return nextRefs.size === 0 || [...nextRefs].every((assetId) => previousRefs.has(assetId));
   }
 
   private leadPatchChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
@@ -163,12 +166,7 @@ class CoreProductRuntimeAdapter {
     return false;
   }
 
-  private requiredExactPatchParam(
-    params: readonly number[],
-    index: number,
-    patchKind: 'pad' | 'lead' | 'drum',
-    sourceId: number,
-  ): number {
+  private requiredExactPatchParam(params: readonly number[], index: number, patchKind: 'pad' | 'lead' | 'drum', sourceId: number): number {
     const value = params[index];
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       throw new Error(`Core Product ${patchKind} patch for source ${sourceId} is missing required param ${index}`);

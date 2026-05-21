@@ -6,8 +6,7 @@ Kessho Capacitor is the packaged webapp. It should use the same React UI,
 state model, presets, and audio engine lane as Kessho Webapp.
 
 Product Core enters Capacitor the same way it enters the webapp: through the
-Product Core WASM/AudioWorklet path, not through the paused SwiftUI native
-port.
+Product Core WASM/AudioWorklet path.
 
 ## Active Capacitor Pieces
 
@@ -45,10 +44,8 @@ longer bypasses the Product Core audio lane. Full audio parity work belongs in:
 - [public/worklets/kessho-core-product.worklet.js](/Users/panguroo/Documents/generativemusic/public/worklets/kessho-core-product.worklet.js)
 - [public/worklets/kessho_core.wasm](/Users/panguroo/Documents/generativemusic/public/worklets/kessho_core.wasm)
 
-The intended low-CPU iOS background-audio path is a thin native host that calls
-the same Product Core C++ library from an `AVAudioEngine` render path. That
-should be a thin host around the shared core, not a revival of the paused Swift
-audio engine.
+The intended low-CPU iOS background-audio path is a thin platform host around
+the same Product Core behavior, not a separate audio product.
 
 ## MIDI Ownership
 
@@ -56,12 +53,11 @@ CoreMIDI is an active Capacitor platform service. The MIDI routing plugin owns
 input discovery, input connections, and incoming message delivery; the webapp
 owns mapping, parameter targets, state persistence, and UI.
 
-## Paused Native Port
+## Historical SwiftUI Port
 
-[KesshoNativeSwift](/Users/panguroo/Documents/generativemusic/KesshoNativeSwift) is the paused
-native Swift port. It can still be useful as historical reference or fixture
-source, but it should not be extended for active Capacitor parity unless the
-product direction changes again.
+The standalone SwiftUI port is archived under
+[archive/native-swift](/Users/panguroo/Documents/generativemusic/archive/native-swift).
+Do not wire active Capacitor work through that archive.
 
 ## Device Test
 

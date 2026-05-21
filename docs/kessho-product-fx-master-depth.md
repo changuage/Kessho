@@ -7,7 +7,7 @@ This gate keeps the Product Core FX/master path from regressing into host-owned 
 - Dynamics modulation matrix: every generated modulation-matrix param ID is mapped to its C++ Product Core matrix cell and committed through the FX subsystem.
 - Sidechain: drum-key ducking is exercised directly, including target mapping, immediate gain reduction, and release back to unity.
 - Master gain staging: Product Core master gain scales dry output before limiter clamping.
-- limiter/saturation/loudness telemetry: C++, WASM, TypeScript, and native bridge telemetry expose master input peak, output peak, output RMS, true peak, true-peak dBTP, integrated LUFS, limiter gain reduction, master saturation drive, and dynamics saturation drive.
+- limiter/saturation/loudness telemetry: C++, WASM, and TypeScript telemetry expose master input peak, output peak, output RMS, true peak, true-peak dBTP, integrated LUFS, limiter gain reduction, master saturation drive, and dynamics saturation drive.
 - Per-FX reset/tail/bypass tests: Product reset clears Delay/Reverb wet tails, and disabled FX preserve dry signal while keeping the FX stem silent.
 - disabled-FX CPU: Product CPU smoke now separately measures a disabled-FX render budget and an active-FX stress budget.
 

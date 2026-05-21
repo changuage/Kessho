@@ -175,6 +175,48 @@ const ROUTING_MATRIX_INSECTS_KEYS = new Set<string>([
   'insDelayBSend',
   'granularInsectsSend',
 ]);
+
+type RoutingSourceFlagKey =
+  | 'padEnabled'
+  | 'pad2Enabled'
+  | 'leadEnabled'
+  | 'lead2Enabled'
+  | 'pianoEnabled'
+  | 'drumEnabled'
+  | 'granularEnabled'
+  | 'oceanSampleEnabled'
+  | 'waterEnabled'
+  | 'insectsEnabled'
+  | 'insects2Enabled'
+  | 'birdsEnabled'
+  | 'birds2Enabled'
+  | 'frogsEnabled'
+  | 'delayAEnabled'
+  | 'granularDelayEnabled'
+  | 'reverbEnabled';
+
+const ROUTING_SOURCE_SIMPLE_TOGGLES = {
+  pad1: 'padEnabled',
+  pad2: 'pad2Enabled',
+  lead1: 'leadEnabled',
+  lead2: 'lead2Enabled',
+  piano: 'pianoEnabled',
+  drums: 'drumEnabled',
+  granular: 'granularEnabled',
+  waves: 'oceanSampleEnabled',
+  water: 'waterEnabled',
+  delayAOut: 'delayAEnabled',
+  delayBOut: 'granularDelayEnabled',
+  reverb: 'reverbEnabled',
+} as const satisfies Record<string, RoutingSourceFlagKey>;
+
+const ROUTING_SOURCE_DISABLE_ONLY_FAMILIES = {
+  insects: ['insectsEnabled', 'insects2Enabled'],
+  nature: ['birdsEnabled', 'birds2Enabled', 'frogsEnabled'],
+} as const satisfies Record<string, readonly RoutingSourceFlagKey[]>;
+
+type RoutingSourceSimpleToggleId = keyof typeof ROUTING_SOURCE_SIMPLE_TOGGLES;
+type RoutingSourceDisableOnlyFamilyId = keyof typeof ROUTING_SOURCE_DISABLE_ONLY_FAMILIES;
 const GranularPage = React.lazy(() => import('./ui/granular/GranularPage'));
 const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
 const DynamicsPage = React.lazy(() => import('./ui/dynamics/DynamicsPage'));
@@ -4788,6 +4830,10 @@ const App: React.FC = () => {
     handleSliderChangeWithOptions(key, value, { preserveEnabledFlags: true });
   }, [handleSliderChangeWithOptions]);
 
+  const handleRoutingParamChange = useCallback((key: keyof SliderState, value: number) => {
+    handleSliderChangeWithOptions(key, value, { preserveEnabledFlags: true });
+  }, [handleSliderChangeWithOptions]);
+
   // Helper to create slider props with dual mode support
   const sliderProps = useCallback((paramKey: keyof SliderState): {
     mode: SliderMode;
@@ -7499,60 +7545,20 @@ const App: React.FC = () => {
         if (!nextState) nextState = { ...prev };
         return nextState;
       };
-      const setFlag = <K extends keyof SliderState>(key: K, value: SliderState[K]) => {
+      const setFlag = (key: RoutingSourceFlagKey, value: boolean) => {
         if (prev[key] === value) return;
         ensureNextState()[key] = value;
       };
 
-      switch (sourceId) {
-        case 'pad1':
-          setFlag('padEnabled', enabled);
-          break;
-        case 'pad2':
-          setFlag('pad2Enabled', enabled);
-          break;
-        case 'lead1':
-          setFlag('leadEnabled', enabled);
-          break;
-        case 'lead2':
-          setFlag('lead2Enabled', enabled);
-          break;
-        case 'piano':
-          setFlag('pianoEnabled', enabled);
-          break;
-        case 'drums':
-          setFlag('drumEnabled', enabled);
-          break;
-        case 'granular':
-          setFlag('granularEnabled', enabled);
-          break;
-        case 'waves':
-          setFlag('oceanSampleEnabled', enabled);
-          break;
-        case 'water':
-          setFlag('waterEnabled', enabled);
-          break;
-        case 'insects':
-          if (!enabled) {
-            setFlag('insectsEnabled', false);
-            setFlag('insects2Enabled', false);
-          }
-          break;
-        case 'nature':
-          if (!enabled) {
-            setFlag('birdsEnabled', false);
-            setFlag('birds2Enabled', false);
-            setFlag('frogsEnabled', false);
-          }
-          break;
-        case 'delayAOut':
-          setFlag('delayAEnabled', enabled);
-          break;
-        case 'delayBOut':
-          setFlag('granularDelayEnabled', enabled);
-          break;
-        default:
-          break;
+      const simpleToggleKey = ROUTING_SOURCE_SIMPLE_TOGGLES[sourceId as RoutingSourceSimpleToggleId];
+      if (simpleToggleKey) {
+        setFlag(simpleToggleKey, enabled);
+        return nextState ?? prev;
+      }
+
+      const familyKeys = ROUTING_SOURCE_DISABLE_ONLY_FAMILIES[sourceId as RoutingSourceDisableOnlyFamilyId];
+      if (familyKeys && !enabled) {
+        familyKeys.forEach((key) => setFlag(key, false));
       }
 
       return nextState ?? prev;
@@ -8330,7 +8336,7 @@ const App: React.FC = () => {
           <RoutingPage
             state={state}
             isMobile={isMobile}
-            onParamChange={handleSliderChange}
+            onParamChange={handleRoutingParamChange}
             onColumnParamChange={handleRoutingColumnChange}
             onToggleSource={handleRoutingSourceToggle}
             sliderProps={sliderProps}

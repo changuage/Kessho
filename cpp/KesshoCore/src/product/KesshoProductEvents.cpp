@@ -202,7 +202,7 @@ bool resolvePadRuntimeParamId(
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_ENABLED:
       if (event.target_id >= 1u && event.target_id <= kSourceCount) {
-        sources[event.target_id - 1u].enabled = event.value >= 0.5f;
+        setSourceEnabled(sources[event.target_id - 1u], event.value >= 0.5f, false);
       } else {
         telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
       }

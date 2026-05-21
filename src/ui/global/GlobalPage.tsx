@@ -470,11 +470,18 @@ function createSceneSource(
   id: string,
   label: string,
   kind: SceneSignalKind,
+  enabled: boolean,
   level: number,
   rgb: string,
   sends: SceneSourceSpec['sends'],
 ): SceneSourceSpec | null {
-  if (!hasSceneLevel(level)) return null;
+  const hasFxSend = (
+    hasSceneLevel(sends.delayA) ||
+    hasSceneLevel(sends.delayB) ||
+    hasSceneLevel(sends.granular) ||
+    hasSceneLevel(sends.reverb)
+  );
+  if (!enabled || (!hasSceneLevel(level) && !hasFxSend)) return null;
   return {
     ...createSceneNode(id, label, kind, 'sound', level, rgb),
     sends,
@@ -568,61 +575,61 @@ function buildSceneSignalModel(state: SliderState): SceneSignalModel {
   );
 
   const sources = [
-    createSceneSource('pad1', 'Pad 1', 'pad', state.padEnabled !== false ? state.synthLevel : 0, SCENE_SIGNAL_RGB.pad1, {
+    createSceneSource('pad1', 'Pad 1', 'pad', state.padEnabled !== false, state.synthLevel, SCENE_SIGNAL_RGB.pad1, {
       delayA: clamp01(state.pad1DelayASend),
       delayB: clamp01(state.pad1DelayBSend),
       granular: clamp01(state.granularPad1Send),
       reverb: clamp01(state.pad1ReverbSend),
     }),
-    createSceneSource('pad2', 'Pad 2', 'pad', state.pad2Enabled ? state.pad2Level : 0, SCENE_SIGNAL_RGB.pad2, {
+    createSceneSource('pad2', 'Pad 2', 'pad', state.pad2Enabled, state.pad2Level, SCENE_SIGNAL_RGB.pad2, {
       delayA: clamp01(state.pad2DelayASend),
       delayB: clamp01(state.pad2DelayBSend),
       granular: clamp01(state.granularPad2Send),
       reverb: clamp01(state.pad2ReverbSend),
     }),
-    createSceneSource('lead1', 'Lead 1', 'lead', state.leadEnabled ? state.lead1Level : 0, SCENE_SIGNAL_RGB.lead1, {
+    createSceneSource('lead1', 'Lead 1', 'lead', state.leadEnabled, state.lead1Level, SCENE_SIGNAL_RGB.lead1, {
       delayA: clamp01(state.lead1DelayASend),
       delayB: clamp01(state.lead1DelayBSend),
       granular: clamp01(state.granularLead1Send),
       reverb: clamp01(state.lead1ReverbSend),
     }),
-    createSceneSource('lead2', 'Lead 2', 'lead', state.lead2Enabled ? state.lead2Level : 0, SCENE_SIGNAL_RGB.lead2, {
+    createSceneSource('lead2', 'Lead 2', 'lead', state.lead2Enabled, state.lead2Level, SCENE_SIGNAL_RGB.lead2, {
       delayA: clamp01(state.lead2DelayASend),
       delayB: clamp01(state.lead2DelayBSend),
       granular: clamp01(state.granularLead2Send),
       reverb: clamp01(state.lead2ReverbSend),
     }),
-    createSceneSource('piano', 'Piano', 'piano', state.pianoEnabled ? state.pianoLevel : 0, SCENE_SIGNAL_RGB.piano, {
+    createSceneSource('piano', 'Piano', 'piano', state.pianoEnabled, state.pianoLevel, SCENE_SIGNAL_RGB.piano, {
       delayA: clamp01(state.pianoDelayASend),
       delayB: clamp01(state.pianoDelayBSend),
       granular: clamp01(state.granularPianoSend),
       reverb: clamp01(state.pianoReverbSend),
     }),
-    createSceneSource('drums', 'Drums', 'drum', (state.drumEnabled || state.drumEuclidMasterEnabled) ? state.drumLevel : 0, SCENE_SIGNAL_RGB.drums, {
+    createSceneSource('drums', 'Drums', 'drum', state.drumEnabled || state.drumEuclidMasterEnabled, state.drumLevel, SCENE_SIGNAL_RGB.drums, {
       delayA: clamp01(state.drumDelayASend),
       delayB: clamp01(state.drumDelayBSend),
       granular: clamp01(state.granularDrumSend),
       reverb: clamp01(state.drumReverbSend),
     }),
-    createSceneSource('waves', 'Waves', 'earth', state.oceanSampleEnabled ? earthMaster * clamp01(state.oceanSampleLevel) : 0, SCENE_SIGNAL_RGB.waves, {
+    createSceneSource('waves', 'Waves', 'earth', state.oceanSampleEnabled, earthMaster * clamp01(state.oceanSampleLevel), SCENE_SIGNAL_RGB.waves, {
       delayA: clamp01(state.oceanDelayASend),
       delayB: clamp01(state.oceanDelayBSend),
       granular: clamp01(state.granularWavesSend),
       reverb: clamp01(state.oceanReverbSend),
     }),
-    createSceneSource('water', 'Water', 'earth', state.waterEnabled ? earthMaster * clamp01(state.waterLevel) : 0, SCENE_SIGNAL_RGB.water, {
+    createSceneSource('water', 'Water', 'earth', state.waterEnabled, earthMaster * clamp01(state.waterLevel), SCENE_SIGNAL_RGB.water, {
       delayA: clamp01(state.waterDelayASend),
       delayB: clamp01(state.waterDelayBSend),
       granular: clamp01(state.granularWaterSend),
       reverb: clamp01(state.waterReverbSend),
     }),
-    createSceneSource('nature', 'Nature', 'earth', earthMaster * clamp01(state.natureLevel) * natureSourceLevel, SCENE_SIGNAL_RGB.nature, {
+    createSceneSource('nature', 'Nature', 'earth', state.birdsEnabled || state.birds2Enabled || state.frogsEnabled, earthMaster * clamp01(state.natureLevel) * natureSourceLevel, SCENE_SIGNAL_RGB.nature, {
       delayA: clamp01(state.natureDelayASend),
       delayB: clamp01(state.natureDelayBSend),
       granular: clamp01(state.granularNatureSend),
       reverb: clamp01(state.natureReverbSend),
     }),
-    createSceneSource('insects', 'Insects', 'earth', earthMaster * clamp01(state.insectsSharedLevel) * insectsSourceLevel, SCENE_SIGNAL_RGB.insects, {
+    createSceneSource('insects', 'Insects', 'earth', state.insectsEnabled || state.insects2Enabled, earthMaster * clamp01(state.insectsSharedLevel) * insectsSourceLevel, SCENE_SIGNAL_RGB.insects, {
       delayA: clamp01(state.insDelayASend),
       delayB: clamp01(state.insDelayBSend),
       granular: clamp01(state.granularInsectsSend),

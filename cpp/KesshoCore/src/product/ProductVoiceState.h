@@ -22,6 +22,11 @@ struct SourceState {
   float distance = 0.0f;
   float expression = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_EXPRESSION;
   float dry_gain = 1.0f;
+  float enabled_gain = 1.0f;
+  float enabled_gain_target = 1.0f;
+  float enabled_gain_delta = 0.0f;
+  uint32_t enabled_gain_ramp_remaining = 0u;
+  uint64_t enabled_gain_frame = 0u;
   float reverb_send = 0.12f;
   float delay_a_send = 0.0f;
   float delay_b_send = 0.0f;

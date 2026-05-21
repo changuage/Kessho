@@ -776,6 +776,7 @@ float maxGraphTapDiff(
 }
 
 void requirePadFxSendsFollowPostLpf(uint32_t source_id, uint32_t dry_tap_id, const uint32_t* send_tap_ids, const char* label) {
+  constexpr uint32_t kPadParamLevel = 52u;
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "pad post-LPF send engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
@@ -793,6 +794,7 @@ void requirePadFxSendsFollowPostLpf(uint32_t source_id, uint32_t dry_tap_id, con
       snapshot,
       source_id,
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_GLASS_SHIMMER);
+  source.exact_pad_params[kPadParamLevel] = 1.0f;
 
   require(
       kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,

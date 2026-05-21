@@ -134,7 +134,7 @@
 
   void KesshoProductEngine::ensureSoundscapeVoice() {
   SourceState& source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
-  if (!source.enabled) {
+  if (!sourceRenderActive(source)) {
     releaseSourceVoices(KESSHO_PRODUCT_SOURCE_SOUNDSCAPE);
     resetSoundscapeTextureRuntimes();
     return;

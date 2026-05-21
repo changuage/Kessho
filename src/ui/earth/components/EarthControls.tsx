@@ -50,6 +50,9 @@ export function EarthCard({
 }: EarthCardProps) {
   const expanded = expandedCards.has(cardId);
   const clickable = typeof onToggleCard === 'function';
+  const handleHeaderToggle = () => {
+    if (clickable) onToggleCard(cardId);
+  };
   return (
     <div
       className={`earth-card${expanded ? ' expanded' : ''}`}
@@ -57,7 +60,15 @@ export function EarthCard({
     >
       <div
         className={`earth-card-header${clickable ? ' clickable' : ''}`}
-        onClick={clickable ? () => onToggleCard(cardId) : undefined}
+        role={clickable ? 'button' : undefined}
+        tabIndex={clickable ? 0 : undefined}
+        aria-expanded={clickable ? expanded : undefined}
+        onClick={clickable ? handleHeaderToggle : undefined}
+        onKeyDown={clickable ? (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          handleHeaderToggle();
+        } : undefined}
       >
         <span className="ec-name">{title}</span>
         {subtitle && !expanded && (
@@ -72,6 +83,9 @@ export function EarthCard({
                 onClick={(event) => {
                   event.stopPropagation();
                   onToggleEnabled();
+                }}
+                onKeyDown={(event) => {
+                  event.stopPropagation();
                 }}
                 title={enableTitle}
                 aria-label={enableTitle}

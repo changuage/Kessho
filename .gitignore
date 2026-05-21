@@ -5,8 +5,8 @@ node_modules/
 # Build output
 dist/
 build/
-KesshoNativeSwift/.build/
-KesshoNativeSwift/.swiftpm/
+archive/native-swift/**/.build/
+archive/native-swift/**/.swiftpm/
 .swift-cache/
 **/.swiftpm-cache/
 CapacitorMac/.build/
@@ -24,7 +24,7 @@ plugins/*/.swiftpm/
 *.xcuserstate
 **/xcuserdata/
 **/*.xcuserdatad/
-KesshoNativeSwift/Kessho.xcodeproj/project.xcworkspace/
+archive/native-swift/**/Kessho.xcodeproj/project.xcworkspace/
 **/project.xcworkspace/xcshareddata/swiftpm/configuration/
 
 # OS

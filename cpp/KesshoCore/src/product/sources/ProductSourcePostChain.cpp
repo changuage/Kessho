@@ -1,11 +1,15 @@
 #include "../KesshoProductEngineInternal.h"
 
   void KesshoProductEngine::resetPadPostChains() {
-  for (PadPostChainState& chain : pad_post_chains) {
+  auto reset_chain = [this](PadPostChainState& chain) {
     chain = {};
     chain.post_lpf_hz = kDefaultPadPostLpfHz;
     chain.stereo_width = kDefaultPadStereoWidth;
     updatePadPostChainCoefficients(chain);
+  };
+  for (uint32_t pad = 0; pad < static_cast<uint32_t>(PAD_NUM_PADS); ++pad) {
+    reset_chain(pad_post_chains[pad]);
+    reset_chain(pad_send_post_chains[pad]);
   }
 }
 
@@ -104,11 +108,10 @@
   return state.y1;
 }
 
-  void KesshoProductEngine::processPadPostChain(uint32_t pad_index, uint32_t source_id, float* left, float* right, uint32_t frames) {
-  if (pad_index >= static_cast<uint32_t>(PAD_NUM_PADS) || left == nullptr || right == nullptr || frames == 0u) {
+  void KesshoProductEngine::processPadPostChain(PadPostChainState& chain, uint32_t source_id, float* left, float* right, uint32_t frames) {
+  if (left == nullptr || right == nullptr || frames == 0u) {
     return;
   }
-  PadPostChainState& chain = pad_post_chains[pad_index];
   chain.post_lpf_hz = resolveSourcePostLpfHz(source_id);
   chain.stereo_width = resolveSourceStereoWidth(source_id);
   updatePadPostChainCoefficients(chain);

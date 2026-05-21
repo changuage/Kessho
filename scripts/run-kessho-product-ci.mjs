@@ -37,12 +37,8 @@ const prerequisiteSteps = [
   'core:product:web-graph-parity:audit',
   'core:product:web-graph-capture-smoke:fast',
   'core:product:web-host',
-  'core:product:native',
-  'core:product:native-release',
   'core:product:cpu',
   'core:product:browser-runtime',
-  'core:product:native-build',
-  'core:product:native-release-smoke',
 ];
 
 const finalGateStep = 'core:product:default-gate-v3';

@@ -233,7 +233,7 @@
   voice.active = true;
   voice.source_id = source_id;
   voice.frequency = midiToFrequency(clampFloat(midi_note, 0.0f, 127.0f));
-  voice.amplitude = clampFloat(velocity * expression, 0.0f, 1.0f) * source.level;
+  voice.amplitude = clampFloat(velocity * expression, 0.0f, 1.0f);
   voice.remaining_frames = std::max<uint32_t>(1u, static_cast<uint32_t>(hold_seconds * sample_rate));
   voice.total_frames = voice.remaining_frames;
   voice.phase = hashUnit(rng_state ^ source_id ^ voice_index) * kTwoPi;

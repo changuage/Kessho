@@ -493,10 +493,14 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
   }, []);
 
   useEffect(() => {
+    if (!canAnimate) {
+      lastFrameRef.current = 0;
+      return undefined;
+    }
     let frameId = 0;
     const loop = (timeMs: number) => {
       const renderer = rendererRef.current;
-      if (renderer && canAnimate) {
+      if (renderer) {
         const controlState = controlsRef.current;
         const fps = isPlayingRef.current ? fpsFromControl(controlState.frameRate) : Math.min(24, fpsFromControl(controlState.frameRate));
         const frameInterval = 1000 / clamp(fps, 12, 60);

@@ -50,7 +50,7 @@ requireTokens('docs/kessho-product-deterministic-music-closure.md', [
   'Voicing depth',
   'Phrase mutation writes',
   'Journey morph ownership',
-  'Native-vs-WASM event timeline',
+  'C++/WASM event timeline',
 ]);
 
 execFileSync(process.execPath, ['scripts/run-kessho-product-cpp-test.mjs', 'ProductDeterminismTests'], {

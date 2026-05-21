@@ -32,7 +32,7 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 | `./coreProductEvents` | Generated Product event packing helpers | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product event dispatcher | Keep as thin ABI/event adapter | Required |
 | `./coreProductGraphTaps` | Product graph tap ID map for matched Web/Product capture names | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product graph tap enum/API | Keep as thin tap-name adapter | Required |
 | `./coreProductRuntime` | WASM/worklet runtime bridge | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product render/runtime API | Keep as thin runtime adapter | Required |
-| `./coreProductArrangementScheduler` | Product host live chord and random-note event scheduler that feeds Product Core manual-note events | Web Product host | TEMP_COMPAT_WEB_REFERENCE | C++ Product arrangement scheduler | Remove when native Product Core owns chord/lead arrangement scheduling with sample-accurate free timing | Arrangement scheduler closure |
+| `./coreProductArrangementScheduler` | Product host live chord and random-note event scheduler that feeds Product Core manual-note events | Web Product host | TEMP_COMPAT_WEB_REFERENCE | C++ Product arrangement scheduler | Remove when Product Core owns chord/lead arrangement scheduling with sample-accurate free timing | Arrangement scheduler closure |
 | `./harmony` | Canonical web harmony kernel used by Product arrangement scheduling and snapshot serialization to match chord/progression intent | Product arrangement/snapshot adapters | TEMP_COMPAT_WEB_REFERENCE | C++ Product harmony/progression scheduler | Remove when Product Core owns harmony/chord progression state and exposes it in the runtime API | Arrangement scheduler closure |
 | `./rng` | Canonical deterministic web RNG used by Product arrangement scheduling and snapshot serialization for seed-window behavior | Product arrangement/snapshot adapters | TEMP_COMPAT_WEB_REFERENCE | C++ Product deterministic music RNG | Remove when Product Core owns equivalent deterministic arrangement RNG | Arrangement scheduler closure |
 | `./scales` | Canonical scale note helper used only by `coreProductArrangementScheduler` for lead random note choices | Product arrangement scheduler | TEMP_COMPAT_WEB_REFERENCE | C++ Product scale/note resolver | Remove when Product Core owns scale range note selection | Arrangement scheduler closure |
@@ -64,11 +64,10 @@ Classification vocabulary:
 
 - `CANONICAL_GENERATED_SCHEMA_HELPER`: generated Product schema/ABI helper or thin Product host adapter.
 - `TEMP_COMPAT_WEB_REFERENCE`: temporary web compatibility bridge with a Product Core replacement owner and removal phase.
-- `TEMP_COMPAT_NATIVE_REFERENCE`: temporary native compatibility bridge; none are allowed in web Product host code without a table row.
 - `TEST_ONLY_REFERENCE`: reference import allowed only in tests/parity harnesses, never Product host runtime.
 - `DEPRECATED_BRIDGE_FIELD`: snapshot/ABI bridge field retained only until C++ can reconstruct state from generated IDs plus user overrides.
 - `FORBIDDEN_FOR_CORE_PRODUCT`: old musical-brain runtime dependency that must fail static audit.
 
 ## Retirement Rule
 
-Temporary reference imports must have a documented bridge policy and a static audit. When equivalent generated Product Core IDs plus user overrides can reconstruct the state in C++/native, the reference import must be removed.
+Temporary reference imports must have a documented bridge policy and a static audit. When equivalent generated Product Core IDs plus user overrides can reconstruct the state in C++, the reference import must be removed.

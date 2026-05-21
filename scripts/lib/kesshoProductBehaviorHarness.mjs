@@ -363,7 +363,18 @@ globalThis.__coreProductHostHarness = {
 
 export function loadRuntimeAdapterHarness() {
   const context = {
+    CORE_PRODUCT_SOURCE_IDS: {
+      pad1: 1,
+      pad2: 2,
+      lead1: 3,
+      lead2: 4,
+      drum: 5,
+      piano: 6,
+      soundscape: 7,
+    },
+    KESSHO_PRODUCT_PAD_PARAM_COUNT: 53,
     KESSHO_PRODUCT_PARAM_IDS: createParamIds(),
+    coreProductPadRuntimeParamId: (padIndex, paramIndex) => `Pad${padIndex + 1}Runtime${paramIndex}`,
     createCoreProductJourneyStateEvent: (enabled, morphPhase, morphRateBars) =>
       event('journey-state', { enabled, morphPhase, morphRateBars }),
     createCoreProductParamEvent: (paramId, value, targetId = 0, index = 0) =>

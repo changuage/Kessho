@@ -88,6 +88,33 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
   return false;
 }
 
+  void KesshoProductEngine::releaseSoundscapeTextureVoice(Voice& voice) {
+  if (!voice.soundscape_texture_voice) {
+    return;
+  }
+  if (voice.start_delay_frames > 0u) {
+    voice.active = false;
+    return;
+  }
+  const uint32_t release_frames = std::max<uint32_t>(
+      1u,
+      static_cast<uint32_t>(std::ceil(static_cast<double>(kSoundscapeSourceToggleFadeSeconds) * sample_rate)));
+  if (!voice.looping &&
+      voice.envelope_attack_frames == 0u &&
+      voice.envelope_release_frames == voice.total_frames &&
+      voice.envelope_release_frames > 1u) {
+    return;
+  }
+  const uint32_t remaining = std::min<uint32_t>(std::max(1u, voice.remaining_frames), release_frames);
+  voice.looping = false;
+  voice.start_delay_frames = 0u;
+  voice.age_frames = 0u;
+  voice.remaining_frames = remaining;
+  voice.total_frames = remaining;
+  voice.envelope_attack_frames = 0u;
+  voice.envelope_release_frames = remaining;
+}
+
   void KesshoProductEngine::releaseUnwantedSoundscapeVoices(const SourceState& source) {
   for (Voice& voice : voices) {
     if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE || !voice.sample_voice) {
@@ -97,6 +124,10 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
         ? assets[voice.asset_slot].asset_id
         : 0u;
     if (asset_id == 0u || !soundscapeWantsAsset(source, asset_id)) {
+      if (voice.soundscape_texture_voice) {
+        releaseSoundscapeTextureVoice(voice);
+        continue;
+      }
       voice.looping = false;
       voice.start_delay_frames = 0u;
       voice.remaining_frames = std::min<uint32_t>(voice.remaining_frames, static_cast<uint32_t>(0.02 * sample_rate));
@@ -149,7 +180,7 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
           1.0f);
       envelope = std::min(envelope, std::sin(t * static_cast<float>(kTwoPi * 0.25)));
     }
-    if (voice.envelope_release_frames > 1u && voice.total_frames > voice.envelope_release_frames) {
+    if (voice.envelope_release_frames > 1u && voice.total_frames >= voice.envelope_release_frames) {
       const uint32_t release_start = voice.total_frames - voice.envelope_release_frames;
       if (voice.age_frames >= release_start) {
         const float t = clampFloat(

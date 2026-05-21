@@ -145,7 +145,6 @@ for (const token of [
   '| Import path | Current reason | Owner | Classification | Replacement C++ Product Core owner | Retirement condition | Target removal phase |',
   'CANONICAL_GENERATED_SCHEMA_HELPER',
   'TEMP_COMPAT_WEB_REFERENCE',
-  'TEMP_COMPAT_NATIVE_REFERENCE',
   'TEST_ONLY_REFERENCE',
   'DEPRECATED_BRIDGE_FIELD',
   'FORBIDDEN_FOR_CORE_PRODUCT',

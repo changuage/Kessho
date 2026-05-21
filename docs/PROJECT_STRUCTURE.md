@@ -1,9 +1,8 @@
 # Kessho Project Structure
 
 This workspace carries the Product Core runtime, an explicit Web TS reference
-runtime, Capacitor shells, and a paused native Swift line. Keep their roles
-separate so cleanup does not blur product code, reference code, and packaging
-code.
+runtime, and Capacitor shells. The old standalone SwiftUI port lives under
+`archive/native-swift` and is not part of the active product lanes.
 
 ## Runtime Lanes
 
@@ -30,7 +29,7 @@ Rules:
 - Keep Product Core as the default browser runtime.
 - Keep musical behavior in Product Core, not in host-side fallback code.
 - Product checks should guard runtime ownership, CPU budget, generated schema,
-  assets, native bridge, and browser default behavior.
+  assets, browser default behavior, and CPU budget.
 
 ### `web-ts`
 
@@ -82,25 +81,22 @@ Rules:
 - CoreMIDI, audio-session metadata, remote controls, app identity, and packaging
   are Capacitor concerns.
 - Audio behavior should converge through Product Core. iOS background audio
-  should use a thin native host around the same C++ core, not the paused Swift
-  engine.
+  should be treated as Capacitor/platform-service work around the shared Product
+  Core, not a revival of the archived SwiftUI engine.
 
-### Paused Native iOS And macOS
+### Archive
 
-This is the stopped SwiftUI/native port. Keep it separate from active
-Capacitor work.
+Historical code that should not participate in active repo search or gates
+lives in:
 
-Ownership:
-
-- `KesshoNativeSwift/**`
-- `docs/kessho-native-swift/**`
-- `scripts/check-native-swift-*.mjs`
+- `archive/native-swift/**`
 
 Rules:
 
-- Treat `KesshoNativeSwift` as paused native Swift port/reference code.
-- Do not wire new Capacitor or C++ core work through `KesshoNativeSwift`.
-- If native Swift work resumes later, split it into its own named change set.
+- Do not add active npm scripts, Product Core gates, or Capacitor paths that
+  depend on archive contents.
+- If archived SwiftUI work resumes later, move it back into an explicit active
+  lane in its own change set.
 
 ### Dev Harnesses
 
@@ -125,7 +121,7 @@ Generated and ignored artifacts:
 - `dist/`
 - `docs/reports/`
 - `docs/ui-audit/`
-- `KesshoNativeSwift/.build/`
+- `archive/native-swift/**/.build/`
 - `CapacitorMac/.build/`
 - `CapacitorMac/.swiftpm/`
 - `ios/App/CapApp-SPM/.swiftpm/`
@@ -156,8 +152,7 @@ Use these boundaries when splitting large work:
 2. Product Core build and runtime contract scripts.
 3. Standalone WASM DSP source refactors.
 4. Capacitor iOS/macOS shell and native plugins.
-5. Paused native SwiftUI harness cleanup, only when intentionally touched.
-6. Docs, generated-output cleanup, and ignore rules.
+5. Docs, generated-output cleanup, and ignore rules.
 
 ## Verification Lanes
 

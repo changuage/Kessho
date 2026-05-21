@@ -39,6 +39,7 @@ struct KesshoProductEngine : ProductGraphState {
   QueuedProductEvent control_events[kessho::product::generated::KESSHO_PRODUCT_MAX_CONTROL_EVENTS]{};
   uint32_t control_event_count = 0;
   uint32_t next_control_sequence = 1;
+  bool snapshot_loaded_once = false;
   SequencerBuffer sequencer_events{};
   KesshoProductTelemetry telemetry{};
   float stem_l[kStemCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
@@ -127,6 +128,7 @@ struct KesshoProductEngine : ProductGraphState {
   uint32_t pad_voice_cursors[2]{};
   uint32_t pad_voice_release_frames[PAD_NUM_PADS][PAD_NUM_VOICES]{};
   PadPostChainState pad_post_chains[PAD_NUM_PADS]{};
+  PadPostChainState pad_send_post_chains[PAD_NUM_PADS]{};
   LeadPostChainState lead_post_chains[2]{};
 
   bool prepareProductModules();
@@ -268,6 +270,11 @@ struct KesshoProductEngine : ProductGraphState {
 
   bool isDrumRangeTarget(uint32_t target_id) const;
 
+  uint32_t sourceEnableFadeFrames(uint32_t source_id) const;
+  bool sourceRenderActive(const SourceState& source) const;
+  void setSourceEnabled(SourceState& source, bool enabled, bool immediate);
+  float sourceEnableGainForFrame(SourceState& source, uint64_t absolute_frame);
+
   ModulationRange* findModulationRange(uint32_t target_id, uint32_t param_id);
 
   const ModulationRange* findModulationRange(uint32_t target_id, uint32_t param_id) const;
@@ -339,31 +346,19 @@ struct KesshoProductEngine : ProductGraphState {
   void generateSequencerEvents(uint32_t frames);
 
   uint32_t findAssetSlot(uint32_t asset_id) const;
-
   bool pianoAssetRootMidi(uint32_t asset_id, float& out_midi, bool* out_short_variant = nullptr) const;
-
   uint32_t findPianoAssetSlot(float midi_note, float velocity, float& out_root_midi) const;
-
   uint32_t allocateVoice();
-
   bool hasActiveSourceVoice(uint32_t source_id) const;
-
   bool soundscapeWantsAsset(const SourceState& source, uint32_t asset_id) const;
-
   float soundscapeAssetRefLevel(const SourceState& source, uint32_t asset_id) const;
-
   bool soundscapeModuleParamsAvailable(const SourceState& source) const;
-
   bool soundscapeModuleShouldRun(const SourceState& source) const;
-
   bool soundscapeAssetUsesModule(const SourceState& source, uint32_t asset_id) const;
-
   bool hasActiveSoundscapeVoice(uint32_t asset_id) const;
-
   void releaseUnwantedSoundscapeVoices(const SourceState& source);
-
+  void releaseSoundscapeTextureVoice(Voice& voice);
   void reportMissingSourceAsset(SourceState& source);
-
   void reportMissingSourceAsset(SourceState& source, uint32_t asset_id);
 
   bool triggerModuleSource(
@@ -410,7 +405,7 @@ struct KesshoProductEngine : ProductGraphState {
 
   float processPadPostLpfSample(const PadPostChainState& chain, BiquadState& state, float input) const;
 
-  void processPadPostChain(uint32_t pad_index, uint32_t source_id, float* left, float* right, uint32_t frames);
+  void processPadPostChain(PadPostChainState& chain, uint32_t source_id, float* left, float* right, uint32_t frames);
 
   void resetLeadPostChains();
 
@@ -434,6 +429,8 @@ struct KesshoProductEngine : ProductGraphState {
       uint32_t source_id,
       const float* dry_l,
       const float* dry_r,
+      const float* send_l,
+      const float* send_r,
       float* out_l,
       float* out_r,
       uint32_t start,

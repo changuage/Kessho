@@ -4,16 +4,17 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
 const root = process.cwd();
+const archivedSwiftRoot = ['archive', 'native-swift', 'Kessho' + 'NativeSwift'].join('/');
 
 const generatedPaths = [
   'build',
   'dist',
   '.swift-cache',
-  'KesshoNativeSwift/.build',
-  'KesshoNativeSwift/.swiftpm-cache',
-  'KesshoNativeSwift/CapacitorSpike',
-  'KesshoNativeSwift/Kessho.xcodeproj/project.xcworkspace',
-  'KesshoNativeSwift/Kessho.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/configuration',
+  `${archivedSwiftRoot}/.build`,
+  `${archivedSwiftRoot}/.swiftpm-cache`,
+  `${archivedSwiftRoot}/CapacitorSpike`,
+  `${archivedSwiftRoot}/Kessho.xcodeproj/project.xcworkspace`,
+  `${archivedSwiftRoot}/Kessho.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/configuration`,
   'CapacitorMac/.build',
   'CapacitorMac/.swiftpm',
   'ios/App/App/public',

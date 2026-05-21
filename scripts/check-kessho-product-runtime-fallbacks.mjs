@@ -176,7 +176,7 @@ await runCheckWithReport({
     );
     assert(
       !app.includes('const dualModeSupported = coreProductRuntimeRangeSupported && !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);'),
-      'App sliderProps must not hide dual-slider UI state behind native Product Core range support',
+      'App sliderProps must not hide dual-slider UI state behind Product Core range support',
     );
 
     for (const section of [

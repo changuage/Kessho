@@ -20,8 +20,6 @@ const render = read('cpp/KesshoCore/src/product/KesshoProductRender.cpp');
 const telemetryHeader = read('cpp/KesshoCore/include/KesshoCore/KesshoProductTelemetry.h');
 const telemetryTs = read('src/audio/coreProductTelemetry.ts');
 const worklet = read('public/worklets/kessho-core-product.worklet.js');
-const nativeHeader = read('KesshoNativeSwift/CoreBridge/include/KesshoProductCoreBridge/KesshoProductCoreBridge.h');
-const nativeBridge = read('KesshoNativeSwift/CoreBridge/KesshoProductCoreBridge.mm');
 const abiTest = read('cpp/KesshoCore/tests/ProductAbiLayoutTests.cpp');
 const statusDoc = read('docs/kessho-product-core-migration-status.md');
 const depthDoc = read('docs/kessho-product-fx-master-depth.md');
@@ -82,7 +80,6 @@ for (const token of [
   'float dynamics_saturation_drive;',
 ]) {
   assert(telemetryHeader.includes(token), `C telemetry ABI is missing ${token}`);
-  assert(nativeHeader.includes(token), `native telemetry ABI is missing ${token}`);
 }
 
 for (const token of [
@@ -124,26 +121,6 @@ for (const token of [
   'pad2Lfo1Value: this.view.getFloat32(ptr + 1036, true)',
 ]) {
   assert(worklet.includes(token), `worklet telemetry reader is missing ${token}`);
-}
-
-for (const token of [
-  'native.master_input_peak = telemetry.master_input_peak;',
-  'native.master_output_peak = telemetry.master_output_peak;',
-  'native.master_output_rms = telemetry.master_output_rms;',
-  'native.master_limiter_gain_reduction_db = telemetry.master_limiter_gain_reduction_db;',
-  'native.master_saturation_drive = telemetry.master_saturation_drive;',
-  'native.dynamics_saturation_drive = telemetry.dynamics_saturation_drive;',
-  'native.master_true_peak = telemetry.master_true_peak;',
-  'native.master_true_peak_dbtp = telemetry.master_true_peak_dbtp;',
-  'native.master_integrated_lufs = telemetry.master_integrated_lufs;',
-  'native.granular_write_head = telemetry.granular_write_head;',
-  'native.granular_voice_positions[i] = telemetry.granular_voice_positions[i];',
-  'native.pad1_filter_freq = telemetry.pad1_filter_freq;',
-  'native.pad1_lfo1_value = telemetry.pad1_lfo1_value;',
-  'native.pad2_filter_freq = telemetry.pad2_filter_freq;',
-  'native.pad2_lfo1_value = telemetry.pad2_lfo1_value;',
-]) {
-  assert(nativeBridge.includes(token), `native telemetry bridge is missing ${token}`);
 }
 
 for (const token of [

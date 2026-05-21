@@ -1,20 +1,15 @@
 #include "../KesshoProductEngineInternal.h"
-
 namespace {
-void addStereo(float* left_bus, float* right_bus, uint32_t frame, float left, float right) {
-  left_bus[frame] += left;
-  right_bus[frame] += right;
-}
-
+void addStereo(float* left_bus, float* right_bus, uint32_t frame, float left, float right) { left_bus[frame] += left; right_bus[frame] += right; }
 } // namespace
 
 void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dry_l, const float* dry_r,
-      float* out_l, float* out_r, uint32_t start, uint32_t frames) {
+    const float* send_l, const float* send_r, float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (source_id < 1u || source_id > kSourceCount) {
     return;
   }
-  const SourceState& source = sources[source_id - 1u];
-  if (!source.enabled) {
+  SourceState& source = sources[source_id - 1u];
+  if (!sourceRenderActive(source)) {
     return;
   }
   const bool freeze_mutes_pad_dry =
@@ -28,10 +23,11 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
   if (!graph_taps_enabled && !fx.sidechain_enabled && source.diffuse_send <= 0.0f) {
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
-      const float dry_left = dry_l[i] * graph_dry_gain * freeze_dry_gain;
-      const float dry_right = dry_r[i] * graph_dry_gain * freeze_dry_gain;
-      const float send_left = dry_l[i];
-      const float send_right = dry_r[i];
+      const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
+      const float dry_left = dry_l[i] * graph_dry_gain * freeze_dry_gain * source_gate;
+      const float dry_right = dry_r[i] * graph_dry_gain * freeze_dry_gain * source_gate;
+      const float send_left = send_l[i] * source_gate;
+      const float send_right = send_r[i] * source_gate;
       out_l[frame] += dry_left;
       out_r[frame] += dry_right;
       addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
@@ -44,12 +40,13 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
   }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const float graph_dry_left = dry_l[i] * graph_dry_gain;
-    const float graph_dry_right = dry_r[i] * graph_dry_gain;
+    const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
+    const float graph_dry_left = dry_l[i] * graph_dry_gain * source_gate;
+    const float graph_dry_right = dry_r[i] * graph_dry_gain * source_gate;
     const float dry_left = graph_dry_left * freeze_dry_gain;
     const float dry_right = graph_dry_right * freeze_dry_gain;
-    const float send_left = dry_l[i];
-    const float send_right = dry_r[i];
+    const float send_left = send_l[i] * source_gate;
+    const float send_right = send_r[i] * source_gate;
     const float duck_gain = sidechainGain(source_id - 1u, frame);
     const float left = dry_left * duck_gain;
     const float right = dry_right * duck_gain;
@@ -64,13 +61,13 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
   }
 }
 
-  void KesshoProductEngine::mixSourceBuffer(uint32_t source_id, const float* in_l, const float* in_r,
-      float* out_l, float* out_r, uint32_t start, uint32_t frames) {
+  void KesshoProductEngine::mixSourceBuffer(
+      uint32_t source_id, const float* in_l, const float* in_r, float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (source_id < 1u || source_id > kSourceCount || source_id >= kStemCount) {
     return;
   }
-  const SourceState& source = sources[source_id - 1u];
-  if (!source.enabled) {
+  SourceState& source = sources[source_id - 1u];
+  if (!sourceRenderActive(source)) {
     return;
   }
   const float trim = moduleSourceOutputTrim(source_id);
@@ -82,10 +79,11 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
   if (!graph_taps_enabled && !fx.sidechain_enabled && source.diffuse_send <= 0.0f) {
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
-      const float dry_left = in_l[i] * dry_gain;
-      const float dry_right = in_r[i] * dry_gain;
-      const float send_left = in_l[i] * send_gain;
-      const float send_right = in_r[i] * send_gain;
+      const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
+      const float dry_left = in_l[i] * dry_gain * source_gate;
+      const float dry_right = in_r[i] * dry_gain * source_gate;
+      const float send_left = in_l[i] * send_gain * source_gate;
+      const float send_right = in_r[i] * send_gain * source_gate;
       out_l[frame] += dry_left;
       out_r[frame] += dry_right;
       addStereo(stem_l[source_id], stem_r[source_id], frame, dry_left, dry_right);
@@ -98,12 +96,13 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
   }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const float dry_left = in_l[i] * dry_gain;
-    const float dry_right = in_r[i] * dry_gain;
-    const float graph_dry_left = in_l[i] * graph_dry_gain;
-    const float graph_dry_right = in_r[i] * graph_dry_gain;
-    const float send_left = in_l[i] * send_gain;
-    const float send_right = in_r[i] * send_gain;
+    const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
+    const float dry_left = in_l[i] * dry_gain * source_gate;
+    const float dry_right = in_r[i] * dry_gain * source_gate;
+    const float graph_dry_left = in_l[i] * graph_dry_gain * source_gate;
+    const float graph_dry_right = in_r[i] * graph_dry_gain * source_gate;
+    const float send_left = in_l[i] * send_gain * source_gate;
+    const float send_right = in_r[i] * send_gain * source_gate;
     const float duck_gain = sidechainGain(sidechain_target, frame);
     const float left = dry_left * duck_gain;
     const float right = dry_right * duck_gain;

@@ -57,6 +57,11 @@ The web code treats macOS as a native Capacitor shell for MIDI routing, while au
 - The bundle is ad-hoc signed during packaging.
 - The generated `.app` includes a native macOS `.icns` app icon built from the existing Kessho icon asset.
 - The shell enables AirPlay media playback and WebKit inspection on supported macOS versions.
+- The macOS shell participates in the Supabase-backed shared state preset library. iOS keeps the device-local native preset path, but macOS initializes the same hybrid cloud preset store as the web app and uses it for state preset load/save/import/delete.
+- The shell exposes CoreAudio default-output diagnostics to the web UI, including output name, transport type, AirPlay detection, sample rate, and buffer frame size.
+- The web UI can open macOS Sound settings from the Mac audio status control.
+- When the current output is AirPlay, or when AirPlay performance mode is pinned on, the web runtime keeps the same Product Core audio state and parameter update cadence; the mode only pauses the visualizer and enables route-aware recovery behavior so AirPlay does not change the sound.
+- While playback is active in the macOS shell, a watchdog checks the Web Audio context and attempts to resume or restart the Product Core runtime after suspended, interrupted, or closed context states.
 - The app closes when its last window closes, matching expected small utility app behavior.
 
 ## Current caveats

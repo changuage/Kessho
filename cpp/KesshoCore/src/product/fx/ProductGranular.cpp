@@ -47,7 +47,7 @@ void KesshoProductEngine::advanceGranularPhraseReseed() {
   if (!input_armed) {
     for (uint32_t source_index = 0; source_index < kSourceCount; ++source_index) {
       const SourceState& source = sources[source_index];
-      if (source.enabled && source.granular_send > 0.0001f) {
+      if (sourceRenderActive(source) && source.granular_send > 0.0001f) {
         input_armed = true;
         break;
       }

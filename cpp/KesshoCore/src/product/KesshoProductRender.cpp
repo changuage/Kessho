@@ -147,7 +147,8 @@
       float value_l = 0.0f;
       float value_r = 0.0f;
       renderVoiceSample(voice, value_l, value_r);
-      const SourceState& source = sources[voice.source_id - 1u];
+      SourceState& source = sources[voice.source_id - 1u];
+      const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
       if (voice.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
           voice.sample_voice &&
           voice.soundscape_texture_voice &&
@@ -166,8 +167,8 @@
           voice.sample_voice &&
           voice.asset_slot < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS &&
           assets[voice.asset_slot].active;
-      float send_left = value_l * source.dry_gain * pan_l;
-      float send_right = value_r * source.dry_gain * pan_r;
+      float send_left = value_l * source.dry_gain * pan_l * source_gate;
+      float send_right = value_r * source.dry_gain * pan_r * source_gate;
       float dry_left = send_left;
       float dry_right = send_right;
       if (!soundscape_sample) {
@@ -177,6 +178,9 @@
           send_right = dry_right;
           dry_left *= source.level * kPianoSampleParityTrim;
           dry_right *= source.level * kPianoSampleParityTrim;
+        } else {
+          dry_left *= source.level;
+          dry_right *= source.level;
         }
       }
       uint32_t soundscape_layer = kSoundscapeLayerCount;

@@ -312,10 +312,11 @@
   resetGranularPhraseRuntime();
   configureFxModules();
 
+  const bool first_snapshot = !snapshot_loaded_once;
   for (uint32_t i = 0; i < kSourceCount; ++i) {
     const KesshoProductSourceSnapshot& source = snapshot.sources[i];
-    sources[i].enabled = source.enabled != 0u;
     sources[i].source_id = source.source_id;
+    setSourceEnabled(sources[i], source.enabled != 0u, first_snapshot);
     sources[i].preset_id = source.preset_id;
     sources[i].asset_id = source.asset_id;
     if (sources[i].last_missing_asset_id != source.asset_id) {
@@ -430,6 +431,7 @@
   loadLaneSnapshots(snapshot.drum_euclid, drum_lanes, KESSHO_PRODUCT_SOURCE_DRUM);
   markSequencerUiStateChanged(0u, 0xffffffffu, KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_SNAPSHOT);
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
+  snapshot_loaded_once = true;
   return KESSHO_PRODUCT_OK;
 }
 

@@ -10515,13 +10515,7 @@ export class AudioEngine {
     }
     this.emitOwnedSamplePositions(leadSHPositions);
 
-    const levelKey = useLead2 ? 'lead2Level' : 'lead1Level';
-    const baselineLeadLevel = Math.max(
-      0.0001,
-      applyDistanceValue(levelKey, this.sliderState, leadVoice, getVoiceDistanceValue(this.sliderState, leadVoice))
-    );
-    const triggeredLeadLevel = applyDistanceValue(levelKey, this.sliderState, leadVoice, leadDistance);
-    const effectiveVelocity = Math.max(0, Math.min(1.5, velocity * Math.max(0, triggeredLeadLevel / baselineLeadLevel)));
+    const effectiveVelocity = Math.max(0, Math.min(1.5, velocity));
 
     if (effectiveVelocity < 0.001) return;
 
@@ -10853,11 +10847,6 @@ export class AudioEngine {
     const sustain = Math.max(0, Math.min(1, pianoEnv.sustain));
     const hold = Math.max(0, pianoEnv.hold ?? 0);
     const release = Math.max(0.01, pianoEnv.release);
-    const baselinePianoLevel = Math.max(
-      0.0001,
-      applyDistanceValue('pianoLevel', this.sliderState, 'piano', baselinePianoDistance)
-    );
-    const triggeredPianoLevel = applyDistanceValue('pianoLevel', this.sliderState, 'piano', pianoDistance);
     const noteFilterCutoff = applyDistanceValue('pianoPostLPF', this.sliderState, 'piano', pianoDistance);
     let noteFilter: BiquadFilterNode | null = null;
     if (pianoDistance > 1e-4) {
@@ -10870,7 +10859,7 @@ export class AudioEngine {
     } else {
       gain.connect(this.pianoBus);
     }
-    const peak = Math.max(0.001, Math.min(1.25, velocity * Math.max(0, triggeredPianoLevel / baselinePianoLevel)));
+    const peak = Math.max(0, Math.min(1.25, velocity));
     const sustainLevel = peak * sustain;
     const attackEnd = now + attack;
     const decayEnd = attackEnd + decay;

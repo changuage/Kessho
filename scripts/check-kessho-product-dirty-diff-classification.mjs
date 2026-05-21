@@ -195,8 +195,9 @@ await runCheckWithReport({
       "previous.harmony.chordMode !== next.harmony.chordMode) return 'harmony-mode-change'",
       "previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change'",
       "previousSource.assetId !== nextSource.assetId) return 'source-structure-change'",
-      "this.padPatchChanged(previousSource, nextSource)) return 'exact-patch-change'",
-      "this.leadPatchChanged(previousSource, nextSource)) return 'exact-patch-change'",
+      'this.padPatchChanged(previousSource, nextSource)',
+      "return 'exact-patch-change'",
+      'this.leadPatchChanged(previousSource, nextSource)',
       "canApplyLaneDiffs(previous.synthLanes, next.synthLanes)) return 'sequencer-structure-change'",
     ]) {
       assert(classifyBody.includes(token), `snapshot reload reason classifier is missing ${token}`);
@@ -330,6 +331,26 @@ await runCheckWithReport({
     assetLevelNext.assetRefLevels = [0.75, 0.9];
     const assetLevelDiff = adapterHarness.buildCoreProductSnapshotDiff(base, assetLevelNext);
     assert(assetLevelDiff.applied === false && assetLevelDiff.reason === 'asset-reference-level-change', 'asset reference level changes must full-reload with classified reason');
+
+    const soundscapeOffBase = clone(base);
+    soundscapeOffBase.sources[1] = makeSource(7);
+    soundscapeOffBase.sources[1].assetId = 7001;
+    const soundscapeOffNext = clone(soundscapeOffBase);
+    soundscapeOffNext.sources[1].enabled = false;
+    soundscapeOffNext.sources[1].exactPadParams[0] = 0;
+    soundscapeOffNext.sources[1].exactDrumParams[0] = 0;
+    soundscapeOffNext.assetRefs = [];
+    soundscapeOffNext.assetRefLevels = [];
+    const soundscapeOffDiff = adapterHarness.buildCoreProductSnapshotDiff(soundscapeOffBase, soundscapeOffNext);
+    assert(
+      soundscapeOffDiff.applied === true &&
+        soundscapeOffDiff.events.some((event) =>
+          event.type === 'param' &&
+            event.paramId === 'SourceEnabled' &&
+            event.targetId === 7 &&
+            event.value === 0),
+      'soundscape source-off asset removal must dirty-diff so Product Core can fade it out',
+    );
 
     const patchNext = clone(base);
     patchNext.sources[0].exactPadParams[0] = 0.9;

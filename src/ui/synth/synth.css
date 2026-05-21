@@ -2841,6 +2841,15 @@
   border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
+.synth-root .synth-card-header.clickable {
+  cursor: pointer;
+}
+
+.synth-root .synth-card-header.clickable:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--sc, var(--accent-primary)) 55%, rgba(255,255,255,0.45));
+  outline-offset: -2px;
+}
+
 .synth-root .synth-card-header:hover {
   background: rgba(255,255,255,0.055);
 }
