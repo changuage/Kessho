@@ -13,7 +13,6 @@ const fastReportPath = resolve(root, 'docs/reports/kessho-product-web-graph-capt
 const selectedReportPath = resolve(root, 'docs/reports/kessho-product-web-graph-capture-smoke-selected-latest.json');
 const DEFAULT_PORT = 4195;
 const DEFAULT_CASE_ATTEMPTS = 2;
-const fastSmokeCaseIdSet = new Set(fastSmokeCaseIds);
 
 function parseArgs(argv) {
   const args = { url: '', port: DEFAULT_PORT, caseIds: [], tier: 'full' };
@@ -186,7 +185,7 @@ const args = parseArgs(process.argv.slice(2));
 const selectedCases = args.caseIds.length > 0
   ? cases.filter((caseDef) => args.caseIds.includes(caseDef.id))
   : args.tier === 'fast'
-    ? cases.filter((caseDef) => fastSmokeCaseIdSet.has(caseDef.id))
+    ? fastSmokeCaseIds.map((caseId) => cases.find((caseDef) => caseDef.id === caseId)).filter(Boolean)
     : cases;
 const selectedCaseIds = new Set(selectedCases.map((caseDef) => caseDef.id));
 const missingCaseIds = args.caseIds.filter((caseId) => !selectedCaseIds.has(caseId));
