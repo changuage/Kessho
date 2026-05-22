@@ -1,6 +1,6 @@
 ﻿/**
  * Main App Component
- * 
+ *
  * Complete UI with all sliders, selects, and debug panel.
  * Wires up to audio engine with deterministic state management.
  */
@@ -81,8 +81,7 @@ import { getVersionData } from './presets/codec';
 import type { IPresetStore } from './presets/PresetStore';
 import { extractPresetVersionMetadata } from './presets/presetUtils';
 import { SHARED_PRESET_TEST_MODE } from './presets/sharedMode';
-import { extractOptimizedStatePresetData } from './presets/statePresetOptimization';
-import type { PresetEntry } from './presets/types';
+import type { PresetEntry, PresetSummary } from './presets/types';
 import { buildPresetVersionMetadata } from './presets/versionMetadataHelpers';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
@@ -217,6 +216,17 @@ const ROUTING_SOURCE_DISABLE_ONLY_FAMILIES = {
 
 type RoutingSourceSimpleToggleId = keyof typeof ROUTING_SOURCE_SIMPLE_TOGGLES;
 type RoutingSourceDisableOnlyFamilyId = keyof typeof ROUTING_SOURCE_DISABLE_ONLY_FAMILIES;
+
+function collectChangedStatePatch(prev: SliderState, next: SliderState): Partial<SliderState> {
+  const patch: Partial<SliderState> = {};
+  for (const key of Object.keys(next) as Array<keyof SliderState>) {
+    if (!Object.is(prev[key], next[key])) {
+      (patch as Record<string, unknown>)[key as string] = next[key];
+    }
+  }
+  return patch;
+}
+
 const GranularPage = React.lazy(() => import('./ui/granular/GranularPage'));
 const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
 const DynamicsPage = React.lazy(() => import('./ui/dynamics/DynamicsPage'));
@@ -456,42 +466,39 @@ const LAZY_PAGE_FALLBACK = (
   </div>
 );
 
-// File input ref for loading presets
-const fileInputRef = { current: null as HTMLInputElement | null };
-
 // Global audio element for iOS media session (must persist and be played from user gesture)
 let mediaSessionAudio: HTMLAudioElement | null = null;
 
 // Setup iOS media session with audio element connected to Web Audio output
 const setupIOSMediaSession = async () => {
   if (!('mediaSession' in navigator)) return;
-  
+
   // Create audio element if it doesn't exist
   if (!mediaSessionAudio) {
     mediaSessionAudio = new Audio();
     mediaSessionAudio.loop = false; // We'll use MediaStream, not a file
     mediaSessionAudio.volume = 1.0; // Full volume since it carries actual audio on iOS
-    
+
     // Important for iOS
     (mediaSessionAudio as any).webkitPreservesPitch = false;
   }
-  
+
   // Set metadata first
   navigator.mediaSession.metadata = new MediaMetadata({
     title: 'Generative Ambient',
     artist: 'Kessho',
     album: 'Ambient Dreams',
   });
-  
+
   navigator.mediaSession.playbackState = 'playing';
-  
+
   // Handle controls
   navigator.mediaSession.setActionHandler('play', () => {
     mediaSessionAudio?.play();
     audioEngine.resume();
     navigator.mediaSession.playbackState = 'playing';
   });
-  
+
   navigator.mediaSession.setActionHandler('pause', () => {
     mediaSessionAudio?.pause();
     audioEngine.suspend();
@@ -508,16 +515,16 @@ const recorderTapWorkletUrl = new URL(
 // iOS-only: other mobile browsers are more stable via direct AudioContext output.
 const connectMediaSessionToWebAudio = () => {
   if (!mediaSessionAudio) return;
-  
+
   // Only connect on iOS - non-iOS browsers don't need MediaStream bridging
   // and can exhibit periodic output stutter through the extra stream path.
   const isIOS = isIOSLikeDevice();
-  
+
   if (!isIOS) {
     console.log('Skipping MediaStream audio element on non-iOS devices');
     return;
   }
-  
+
   const stream = audioEngine.getMediaStream();
   if (stream) {
     mediaSessionAudio.srcObject = stream;
@@ -545,6 +552,7 @@ interface SavedPreset {
   timestamp: string;
   state: SliderState;
   source?: SavedPresetSource;
+  deferred?: boolean;
   dualRanges?: Record<string, { min: number; max: number }>;  // Optional for backward compatibility
   sliderModes?: Record<string, SliderMode>;  // Mode per parameter key
   drumEvolveConfigs?: EvolveConfig[];
@@ -571,7 +579,7 @@ const DEFAULT_SYNTH_PITCH_BINDING_MODES: PitchBindingMode[] = ['polyrhythmic', '
 // iOS-only reverb types that won't work on web
 const IOS_ONLY_REVERB_TYPES = new Set([
   'smallRoom', 'mediumRoom', 'largeRoom', 'mediumHall', 'largeHall',
-  'mediumChamber', 'largeChamber', 'largeRoom2', 'mediumHall2', 
+  'mediumChamber', 'largeChamber', 'largeRoom2', 'mediumHall2',
   'mediumHall3', 'largeHall2'
 ]);
 
@@ -613,12 +621,12 @@ const SNOWFLAKE_WELCOME_STATE: SliderState = {
 // Check preset for iOS-only settings and return warnings
 const checkPresetCompatibility = (preset: SavedPreset): string[] => {
   const warnings: string[] = [];
-  
+
   // Check for iOS-only reverb type
   if (preset.state.reverbType && IOS_ONLY_REVERB_TYPES.has(preset.state.reverbType)) {
     warnings.push(`Reverb type "${preset.state.reverbType}" is iOS-only and will use "hall" instead.`);
   }
-  
+
   return warnings;
 };
 
@@ -626,7 +634,7 @@ const checkPresetCompatibility = (preset: SavedPreset): string[] => {
 const normalizePresetForWeb = (state: SliderState): SliderState => {
   const normalized = { ...state };
   const raw = state as Partial<SliderState> & Record<string, unknown>;
-  
+
   // Replace iOS-only reverb types with 'hall'
   if (normalized.reverbType && IOS_ONLY_REVERB_TYPES.has(normalized.reverbType)) {
     normalized.reverbType = 'hall';
@@ -851,6 +859,22 @@ function savedPresetSourceForEntry(entry: PresetEntry): SavedPresetSource {
   return 'device-local';
 }
 
+function savedPresetSourceForSummary(summary: PresetSummary): SavedPresetSource {
+  if (summary.remoteId || summary.library === 'cloud') return 'cloud';
+  if (summary.author === 'factory' || summary.library === 'stock') return 'bundled';
+  return 'device-local';
+}
+
+function savedPresetFromSummary(summary: PresetSummary): SavedPreset {
+  return {
+    name: summary.name,
+    timestamp: new Date(summary.updatedAt ?? Date.now()).toISOString(),
+    state: DEFAULT_STATE,
+    source: savedPresetSourceForSummary(summary),
+    deferred: true,
+  };
+}
+
 // Load presets by fetching the manifest from public/presets
 const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
   const presets: SavedPreset[] = [];
@@ -861,7 +885,7 @@ const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
       console.warn('No preset manifest found, trying known files...');
       return loadBundledPresetFiles(BUNDLED_PRESET_FALLBACK_FILES);
     }
-    
+
     const manifest = await manifestResponse.json();
     const files = Array.isArray(manifest.files) ? manifest.files : [];
     if (files.length === 0) {
@@ -932,179 +956,20 @@ async function loadActiveStatePresetStorePresets(): Promise<SavedPreset[]> {
   const { getPresetStore } = await import('./presets');
   const store = getPresetStore();
   const summaries = await store.list('state', CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
-  const entries: (PresetEntry | null)[] = new Array(summaries.length).fill(null);
-  let nextIndex = 0;
-  const workerCount = Math.min(6, summaries.length);
-  await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (nextIndex < summaries.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      const summary = summaries[index];
-      if (!summary) continue;
-      try {
-        entries[index] = await store.load('state', summary.name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
-      } catch (error) {
-        console.warn(`Failed to load Supabase preset ${summary.name}:`, error);
-      }
-    }
-  }));
-
-  return sortSavedStatePresetsByFreshness(entries
-    .map((entry) => (entry ? statePresetEntryToSavedPreset(entry) : null))
-    .filter((preset): preset is SavedPreset => !!preset));
+  return sortSavedStatePresetsByFreshness(summaries.map(savedPresetFromSummary));
 }
 
-async function saveCapacitorLocalStatePreset(preset: SavedPreset): Promise<void> {
-  const { LocalStoragePresetStore } = await import('./presets');
-  const store = new LocalStoragePresetStore();
-  const existing = await store.load('state', preset.name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
-  const parsedTimestamp = Date.parse(preset.timestamp);
-  const timestamp = Number.isFinite(parsedTimestamp) ? parsedTimestamp : Date.now();
-  const migratedPreset = migratePreset(preset);
-  const versionMetadata = buildPresetVersionMetadata(migratedPreset);
-  const optimizedState = extractOptimizedStatePresetData(migratedPreset.state);
-
-  if (existing && existing.author !== 'factory' && existing.library !== 'stock') {
-    const nextVersion = Math.max(...existing.versions.map((version) => version.v), 0) + 1;
-    existing.versions.push({
-      v: nextVersion,
-      note: 'Saved from Capacitor shell',
-      timestamp,
-      data: optimizedState,
-      ...versionMetadata,
-    });
-    existing.currentVersion = nextVersion;
-    existing.updatedAt = timestamp;
-    await store.save(existing);
-    return;
-  }
-
-  await store.save({
-    id: existing?.id,
-    type: 'state',
-    scope: CAPACITOR_LOCAL_STATE_PRESET_SCOPE,
-    name: preset.name,
-    author: 'user',
-    library: 'user',
-    visibility: existing?.visibility ?? 'private',
-    creator: existing?.creator,
-    description: existing?.description,
-    familyId: existing?.familyId,
-    familyName: existing?.familyName ?? preset.name,
-    variantId: existing?.variantId,
-    variantName: existing?.variantName ?? preset.name,
-    variantRank: existing?.variantRank,
-    tags: existing?.tags ?? [],
-    versions: [{
-      v: 1,
-      note: 'Saved from Capacitor shell',
-      timestamp,
-      data: optimizedState,
-      ...versionMetadata,
-    }],
-    currentVersion: 1,
-    createdAt: existing?.createdAt ?? timestamp,
-    updatedAt: timestamp,
-  });
-}
-
-async function saveActiveStatePresetStorePreset(preset: SavedPreset): Promise<void> {
+async function loadActiveStatePresetStorePresetByName(name: string): Promise<SavedPreset | null> {
   const { getPresetStore } = await import('./presets');
   const store = getPresetStore();
-  const existing = await store.load('state', preset.name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
-  const parsedTimestamp = Date.parse(preset.timestamp);
-  const timestamp = Number.isFinite(parsedTimestamp) ? parsedTimestamp : Date.now();
-  const migratedPreset = migratePreset(preset);
-  const versionMetadata = buildPresetVersionMetadata(migratedPreset);
-  const optimizedState = extractOptimizedStatePresetData(migratedPreset.state);
-
-  if (existing) {
-    const nextVersion = Math.max(...existing.versions.map((version) => version.v), 0) + 1;
-    existing.versions.push({
-      v: nextVersion,
-      note: 'Saved from macOS app',
-      timestamp,
-      data: optimizedState,
-      ...versionMetadata,
-    });
-    existing.currentVersion = nextVersion;
-    existing.updatedAt = timestamp;
-    if (SHARED_PRESET_TEST_MODE) existing.visibility = 'public';
-    await store.save(existing);
-    return;
-  }
-
-  await store.save({
-    type: 'state',
-    scope: CAPACITOR_LOCAL_STATE_PRESET_SCOPE,
-    name: preset.name,
-    author: 'user',
-    library: 'user',
-    visibility: SHARED_PRESET_TEST_MODE ? 'public' : 'private',
-    familyName: preset.name,
-    variantName: preset.name,
-    tags: [],
-    versions: [{
-      v: 1,
-      note: 'Saved from macOS app',
-      timestamp,
-      data: optimizedState,
-      ...versionMetadata,
-    }],
-    currentVersion: 1,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  });
+  const entry = await store.load('state', name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
+  return entry ? statePresetEntryToSavedPreset(entry) : null;
 }
 
 async function loadBundledPresetByName(name: string): Promise<SavedPreset | null> {
   const presets = await loadPresetsFromFolder();
   return presets.find((preset) => preset.name === name) ?? null;
 }
-
-async function deleteCapacitorLocalStatePreset(name: string): Promise<void> {
-  const { LocalStoragePresetStore } = await import('./presets');
-  const store = new LocalStoragePresetStore();
-  await store.delete('state', name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
-}
-
-// Save preset to file using File System Access API
-const savePresetToFile = async (preset: SavedPreset): Promise<boolean> => {
-  try {
-    // Check if File System Access API is available
-    if ('showSaveFilePicker' in window) {
-      const handle = await (window as any).showSaveFilePicker({
-        suggestedName: `${preset.name.replace(/[^a-z0-9]/gi, '_')}.json`,
-        startIn: 'downloads',
-        types: [{
-          description: 'JSON Preset',
-          accept: { 'application/json': ['.json'] },
-        }],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(JSON.stringify(preset, null, 2));
-      await writable.close();
-      return true;
-    } else {
-      // Fallback to download
-      const blob = new Blob([JSON.stringify(preset, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${preset.name.replace(/[^a-z0-9]/gi, '_')}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      return true;
-    }
-  } catch (e) {
-    if ((e as Error).name !== 'AbortError') {
-      console.error('Failed to save preset:', e);
-    }
-    return false;
-  }
-};
 
 // Styles
 const styles = {
@@ -1198,11 +1063,16 @@ const styles = {
     color: '#FF4444',
     animation: 'pulse 1s ease-in-out infinite',
   } as React.CSSProperties,
-  shareButton: {
+  visualizerButton: {
     color: 'rgba(255,255,255,0.7)',
+    fontSize: '0.92rem',
+    lineHeight: 1,
   } as React.CSSProperties,
-  presetButton: {
-    color: 'rgba(255,255,255,0.7)',
+  visualizerButtonActive: {
+    color: 'rgba(255,255,255,0.88)',
+    background: 'rgba(255, 255, 255, 0.08)',
+    border: '1px solid rgba(255, 255, 255, 0.18)',
+    boxShadow: '0 0 14px rgba(255, 255, 255, 0.08)',
   } as React.CSSProperties,
   mainEngineSwitch: {
     display: 'grid',
@@ -1284,38 +1154,6 @@ const styles = {
     borderColor: 'rgba(94, 234, 212, 0.45)',
     background: 'rgba(20, 184, 166, 0.18)',
     color: '#99f6e4',
-  } as React.CSSProperties,
-  presetListContainer: {
-    background: 'rgba(15, 25, 40, 0.95)',
-    borderRadius: '12px',
-    padding: '15px',
-    marginBottom: '20px',
-    border: '1px solid rgba(100, 150, 200, 0.3)',
-    maxHeight: '300px',
-    overflowY: 'auto' as const,
-    overflowX: 'hidden' as const,
-    maxWidth: '100%',
-  } as React.CSSProperties,
-  presetItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '8px',
-    background: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: '8px',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-  } as React.CSSProperties,
-  loadPresetBtn: {
-    padding: '5px 12px',
-    fontSize: '0.85rem',
-    background: 'linear-gradient(135deg, #2ecc71, #27ae60)',
-    color: '#fff',
-  } as React.CSSProperties,
-  deletePresetBtn: {
-    padding: '5px 10px',
-    fontSize: '0.85rem',
-    background: 'linear-gradient(135deg, #e74c3c, #c0392b)',
-    color: '#fff',
   } as React.CSSProperties,
   snowflakeControls: {
     position: 'fixed' as const,
@@ -1453,6 +1291,7 @@ function extractNativeDualRanges(ranges: DualSliderState): Record<string, { min:
 }
 
 type AdvancedTab = 'global' | 'visualizer' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing';
+type AdvancedEditorTab = Exclude<AdvancedTab, 'visualizer'>;
 
 const ADVANCED_TAB_COLORS: Record<AdvancedTab, string> = {
   global: SOURCE_COLORS.global,
@@ -1467,6 +1306,23 @@ const ADVANCED_TAB_COLORS: Record<AdvancedTab, string> = {
   routing: SOURCE_COLORS.routing,
 };
 
+const ADVANCED_EDITOR_TABS = [
+  { id: 'global', helpKey: 'tabGlobal', symbol: APP_TAB_SYMBOLS.global, label: 'Global' },
+  { id: 'synth', helpKey: 'tabSynth', symbol: APP_TAB_SYMBOLS.synth, label: 'Synth' },
+  { id: 'drums', helpKey: 'tabDrums', symbol: APP_TAB_SYMBOLS.drums, label: 'Drums' },
+  { id: 'earth', helpKey: 'tabEarth', symbol: APP_TAB_SYMBOLS.earth, label: 'Earth' },
+  { id: 'granular', helpKey: 'tabGranular', symbol: APP_TAB_SYMBOLS.granular, label: 'Granular' },
+  { id: 'delay', helpKey: 'tabDelay', symbol: APP_TAB_SYMBOLS.delay, label: 'Delay' },
+  { id: 'reverb', helpKey: 'tabReverb', symbol: APP_TAB_SYMBOLS.reverb, label: 'Reverb' },
+  { id: 'dynamics', helpKey: 'tabDynamics', symbol: APP_TAB_SYMBOLS.dynamics, label: 'Dynamics' },
+  { id: 'routing', helpKey: 'tabRouting', symbol: APP_TAB_SYMBOLS.routing, label: 'Routing' },
+] as const satisfies readonly {
+  id: AdvancedEditorTab;
+  helpKey: string;
+  symbol: string;
+  label: string;
+}[];
+
 const getAdvancedTabActiveStyle = (accent: string): React.CSSProperties => ({
   background: `color-mix(in srgb, ${accent} 15%, transparent)`,
   color: `color-mix(in srgb, ${accent} 88%, white 12%)`,
@@ -1476,15 +1332,27 @@ const getAdvancedTabActiveStyle = (accent: string): React.CSSProperties => ({
 
 const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
   '1': 'global',
-  '2': 'visualizer',
-  '3': 'synth',
-  '4': 'drums',
-  '5': 'earth',
-  '6': 'granular',
-  '7': 'delay',
-  '8': 'reverb',
-  '9': 'dynamics',
-  '0': 'routing',
+  '2': 'synth',
+  '3': 'drums',
+  '4': 'earth',
+  '5': 'granular',
+  '6': 'delay',
+  '7': 'reverb',
+  '8': 'dynamics',
+  '9': 'routing',
+};
+
+type TopLevelShortcutTarget = 'snowflake' | 'journey';
+
+const TOP_LEVEL_SHORTCUTS: Record<string, TopLevelShortcutTarget | AdvancedTab> = {
+  '0': 'snowflake',
+  Digit0: 'snowflake',
+  '-': 'journey',
+  Minus: 'journey',
+  '=': 'visualizer',
+  Equal: 'visualizer',
+  '`': 'routing',
+  Backquote: 'routing',
 };
 
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
@@ -1632,9 +1500,9 @@ function coreProductSupportsRuntimeRangeKey(key: string): boolean {
   return isCoreProductRangeKeySupported(key);
 }
 
-const Slider: React.FC<SliderProps> = ({ 
-  label, 
-  value, 
+const Slider: React.FC<SliderProps> = ({
+  label,
+  value,
   paramKey,
   ghostValue,
   format,
@@ -1698,7 +1566,7 @@ const Slider: React.FC<SliderProps> = ({
       />
     );
   }
-  
+
   // Fallback sliders still use the same primitive; they just do not expose dual-mode editing.
   const valueToPercent = (nextValue: number) => {
     const clampedValue = Math.max(info.min, Math.min(info.max, nextValue));
@@ -1850,7 +1718,7 @@ const App: React.FC = () => {
   // Splash screen state
   const [showSplash, setShowSplash] = useState(true);
   const [splashOpacity, setSplashOpacity] = useState(0);
-  
+
   // Splash gradient colors - procedurally generated from app's color palette
   const [splashGradient] = useState(() => {
     // App color palette (from SnowflakeUI prongs):
@@ -1859,30 +1727,30 @@ const App: React.FC = () => {
     // #3C7181 teal, #C1930A gold accent
     const palettes = [
       { baseHue: 25, name: 'orange' },   // Muted orange (#C4724E)
-      { baseHue: 95, name: 'sage' },     // Sage green (#7B9A6D)  
+      { baseHue: 95, name: 'sage' },     // Sage green (#7B9A6D)
       { baseHue: 45, name: 'gold' },     // Mustard gold (#D4A520)
       { baseHue: 265, name: 'purple' },  // Purple (#8B5CF6)
       { baseHue: 200, name: 'slate' },   // Slate blue (#5A7B8A)
       { baseHue: 190, name: 'teal' },    // Teal (#3C7181)
     ];
-    
+
     const palette = palettes[Math.floor(Math.random() * palettes.length)] ?? palettes[0]!;
     const hueVariation = (Math.random() - 0.5) * 20;
-    
+
     // Muted, desaturated colors to blend with dark theme
     const inner = `hsl(${palette.baseHue + hueVariation}, ${30 + Math.random() * 15}%, ${40 + Math.random() * 12}%)`;
     const mid = `hsl(${palette.baseHue}, ${35 + Math.random() * 12}%, ${30 + Math.random() * 8}%)`;
     const outer = `hsl(${palette.baseHue - 10}, ${25 + Math.random() * 10}%, ${15 + Math.random() * 6}%)`;
-    
+
     return { inner, mid, outer };
   });
-  
+
   // Window size for splash gradient circle sizing
-  const [windowSize, setWindowSize] = useState({ 
-    width: typeof window !== 'undefined' ? window.innerWidth : 800, 
-    height: typeof window !== 'undefined' ? window.innerHeight : 600 
+  const [windowSize, setWindowSize] = useState({
+    width: typeof window !== 'undefined' ? window.innerWidth : 800,
+    height: typeof window !== 'undefined' ? window.innerHeight : 600
   });
-  
+
   useEffect(() => {
     const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', handleResize);
@@ -1913,10 +1781,7 @@ const App: React.FC = () => {
           HybridPresetStore,
           setPresetStore,
         } = await import('./presets');
-        if (cancelled) {
-          markCloudPresetStoreReady();
-          return;
-        }
+        if (cancelled) return;
 
         const supabaseClient = getSupabase();
         if (!supabaseClient) {
@@ -1944,10 +1809,7 @@ const App: React.FC = () => {
           console.warn('Auth init failed:', e);
         }
 
-        if (cancelled) {
-          markCloudPresetStoreReady();
-          return;
-        }
+        if (cancelled) return;
 
         const hybrid = new HybridPresetStore(local, cloud);
         setPresetStore(hybrid);
@@ -1969,6 +1831,7 @@ const App: React.FC = () => {
           console.warn('Failed to preload cloud auto-start preset:', e);
         }
       } catch (e) {
+        if (cancelled) return;
         markCloudPresetStoreReady();
         console.warn('Cloud preset store initialization failed:', e);
       }
@@ -1976,7 +1839,6 @@ const App: React.FC = () => {
 
     return () => {
       cancelled = true;
-      markCloudPresetStoreReady();
     };
   }, []);
 
@@ -2073,20 +1935,20 @@ const App: React.FC = () => {
       cancelled = true;
     };
   }, []);
-  
+
   // Recording state
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingArmed, setIsRecordingArmed] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   // Format selection - can record both simultaneously
   const [recordFormats, setRecordFormats] = useState({ webm: true, wav: false });
-  
+
   // Playback timer state
   const [playbackTimerEnabled, setPlaybackTimerEnabled] = useState(false);
   const [playbackTimerMinutes, setPlaybackTimerMinutes] = useState(30); // Default 30 minutes
   const [playbackTimerRemaining, setPlaybackTimerRemaining] = useState<number | null>(null);
   const playbackTimerTargetTimeRef = useRef<number | null>(null);
-  
+
   // Track if user has loaded a preset (for auto-loading default on first play)
   const hasLoadedPresetRef = useRef(false);
   // Track if user has interacted with any UI element (sliders, buttons, etc.)
@@ -2130,14 +1992,14 @@ const App: React.FC = () => {
     const holdTimer = setTimeout(() => setSplashOpacity(0), 3750);
     // Hide splash
     const hideTimer = setTimeout(() => setShowSplash(false), 5250);
-    
+
     return () => {
       clearTimeout(fadeInTimer);
       clearTimeout(holdTimer);
       clearTimeout(hideTimer);
     };
   }, []);
-  
+
   // Load initial state from URL or defaults
   const [state, setState] = useState<SliderState>(() => {
     const urlState = readAudioEngineSwitchStateFromSession() ?? decodeStateFromUrl(window.location.search);
@@ -2265,11 +2127,9 @@ const App: React.FC = () => {
   const [capacitorAudioSessionDiagnosticActive, setCapacitorAudioSessionDiagnosticActive] = useState(false);
   const capacitorAudioSessionRemoteCommandCleanupRef = useRef<(() => Promise<void>) | null>(null);
   const capacitorAudioSessionRemoteCommandHandlerRef = useRef<(command: KesshoRemoteCommand) => void>(() => {});
-  
+
   // Saved presets list - start empty, load from folder on mount
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
-  const [showPresetList, setShowPresetList] = useState(false);
-  const [presetsLoading, setPresetsLoading] = useState(true);
 
   // L4 State preset name tracking
   const [statePresetName, setStatePresetName] = useState('');
@@ -2277,7 +2137,7 @@ const App: React.FC = () => {
   // Morph slot name tracking (for PresetDropdown display)
   const [morphSlotAName, setMorphSlotAName] = useState('');
   const [morphSlotBName, setMorphSlotBName] = useState('');
-  
+
   // Preset Morph state
   const [morphPresetA, setMorphPresetA] = useState<SavedPreset | null>(null);
   const [morphPresetB, setMorphPresetB] = useState<SavedPreset | null>(null);
@@ -2285,9 +2145,8 @@ const App: React.FC = () => {
   const [morphMode, setMorphMode] = useState<'manual' | 'auto'>('manual');
   const [morphPlayPhrases, setMorphPlayPhrases] = useState(16);
   const [morphTransitionPhrases, setMorphTransitionPhrases] = useState(4);
-  const [morphLoadTarget, setMorphLoadTarget] = useState<'a' | 'b' | null>(null); // For advanced UI load dialog
   const [morphCountdown, setMorphCountdown] = useState<{ phase: string; phrasesLeft: number } | null>(null);
-  
+
   // Refs for journey mode animation - updated synchronously to avoid stale closures
   const journeyPresetARef = useRef<SavedPreset | null>(null);
   const journeyPresetBRef = useRef<SavedPreset | null>(null);
@@ -2303,11 +2162,7 @@ const App: React.FC = () => {
     cofStep: number;
     totalSteps: number;
   } | null>(null);
-  
-  // Upload slot choice dialog
-  const [uploadSlotDialogOpen, setUploadSlotDialogOpen] = useState(false);
-  const [pendingUploadPreset, setPendingUploadPreset] = useState<SavedPreset | null>(null);
-  
+
   // Morph CoF visualization state
   const [morphCoFViz, setMorphCoFViz] = useState<{
     isMorphing: boolean;
@@ -2317,13 +2172,13 @@ const App: React.FC = () => {
     cofStep: number;
     totalSteps: number;
   } | null>(null);
-  
+
   // Refs for phrase settings - used in animation loop to avoid restarting effect
   const morphPlayPhrasesRef = useRef(morphPlayPhrases);
   const morphTransitionPhrasesRef = useRef(morphTransitionPhrases);
   useEffect(() => { morphPlayPhrasesRef.current = morphPlayPhrases; }, [morphPlayPhrases]);
   useEffect(() => { morphTransitionPhrasesRef.current = morphTransitionPhrases; }, [morphTransitionPhrases]);
-  
+
   const isSnowflakePrototypeRoute = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).get('snowflakePrototype') === '1'
     : false;
@@ -2344,18 +2199,18 @@ const App: React.FC = () => {
   const handleWelcomeSliderChange = useCallback((key: keyof SliderState, value: number) => {
     setWelcomeDisplayState(prev => ({ ...prev, [key]: value }));
   }, []);
-  
+
   // Journey mode playing state - when true, sliders should be read-only
   const [isJourneyPlaying, setIsJourneyPlaying] = useState(false);
-  
+
   // Journey morph direction tracking - alternates between toB (0→100) and toA (100→0)
   const journeyMorphDirectionRef = useRef<'toB' | 'toA'>('toB');
-  
+
   // Journey mode state - managed at App level so it persists across UI mode switches
   // Note: The callbacks are defined later in the file, so we use refs to avoid stale closures
   const journeyLoadPresetRef = useRef<(presetName: string) => void>(() => {});
   const journeyMorphToRef = useRef<(presetName: string, duration: number) => void>(() => {});
-  
+
   // Journey uses phrase-based timing (1 phrase = phraseLength seconds)
   const journey = useJourney(
     state.phraseLength ?? 16,
@@ -2411,7 +2266,6 @@ const App: React.FC = () => {
       tabIcon: { fontSize: '0.9rem' } as React.CSSProperties,
       iconButton: { width: '36px', height: '36px', fontSize: '1.2rem', padding: '4px' } as React.CSSProperties,
       debugPanel: { padding: '10px', fontSize: '0.75rem', wordBreak: 'break-all' as const, overflow: 'hidden' as const } as React.CSSProperties,
-      presetList: { padding: '10px', maxHeight: '200px' } as React.CSSProperties,
     };
   }, [isMobile]);
 
@@ -2446,19 +2300,33 @@ const App: React.FC = () => {
   }, [uiMode, snowflakeActivated]);
 
   useEffect(() => {
-    const handleAdvancedTabShortcut = (event: KeyboardEvent) => {
+    const handleAppShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
       if (isEditableShortcutTarget(event.target)) return;
 
-      const nextTab = ADVANCED_TAB_SHORTCUTS[event.key];
-      if (!nextTab) return;
+      const shortcutTarget =
+        TOP_LEVEL_SHORTCUTS[event.key] ??
+        (!event.shiftKey ? TOP_LEVEL_SHORTCUTS[event.code] : undefined) ??
+        ADVANCED_TAB_SHORTCUTS[event.key];
+
+      if (!shortcutTarget) return;
 
       event.preventDefault();
-      openAdvancedTab(nextTab);
+      if (shortcutTarget === 'snowflake') {
+        setUiMode('snowflake');
+        return;
+      }
+      if (shortcutTarget === 'journey') {
+        setSnowflakeActivated(true);
+        setUiMode('journey');
+        return;
+      }
+
+      openAdvancedTab(shortcutTarget);
     };
 
-    window.addEventListener('keydown', handleAdvancedTabShortcut);
-    return () => window.removeEventListener('keydown', handleAdvancedTabShortcut);
+    window.addEventListener('keydown', handleAppShortcut);
+    return () => window.removeEventListener('keydown', handleAppShortcut);
   }, [openAdvancedTab]);
 
   // Unified slider mode state: key → SliderMode ('single' | 'walk' | 'sampleHold')
@@ -2467,7 +2335,7 @@ const App: React.FC = () => {
   const [dualSliderRanges, setDualSliderRanges] = useState<DualSliderState>({});
   const usesSupabaseStatePresetLibrary = macShellAvailable && CLOUD_ENABLED && !isSonicParityMode();
   const usesCapacitorLocalPresetLibrary = isCapacitorNativeShell() && !usesSupabaseStatePresetLibrary;
-  const usesManagedStatePresetLibrary = usesSupabaseStatePresetLibrary || usesCapacitorLocalPresetLibrary;
+  const usesCloudBackedStatePresetLibrary = CLOUD_ENABLED && !isSonicParityMode() && !usesCapacitorLocalPresetLibrary;
   const playbackIsRunning = engineState.isRunning;
   const [macAudioOutputStatus, setMacAudioOutputStatus] = useState<KesshoMacAudioOutputStatus | null>(null);
   const [macAirPlayPerformancePinned, setMacAirPlayPerformancePinned] = useState(readMacAirPlayPerformancePinned);
@@ -2698,7 +2566,7 @@ const App: React.FC = () => {
     if (deviceLocalPreset) {
       autoStartPresetRef.current = deviceLocalPreset;
       autoStartPresetSourceRef.current = deviceLocalPreset.source ?? (
-        usesSupabaseStatePresetLibrary
+        usesCloudBackedStatePresetLibrary
           ? 'cloud'
           : usesCapacitorLocalPresetLibrary
             ? 'device-local'
@@ -2721,12 +2589,12 @@ const App: React.FC = () => {
     }
 
     return { preset: null, source: null };
-  }, [loadCloudAutoStartPreset, savedPresets, usesCapacitorLocalPresetLibrary, usesSupabaseStatePresetLibrary]);
+  }, [loadCloudAutoStartPreset, savedPresets, usesCapacitorLocalPresetLibrary, usesCloudBackedStatePresetLibrary]);
 
   useEffect(() => {
-    if (!(usesCapacitorLocalPresetLibrary || usesSupabaseStatePresetLibrary) || !CLOUD_ENABLED || autoStartPresetRef.current) return;
+    if (!(usesCapacitorLocalPresetLibrary || usesCloudBackedStatePresetLibrary) || !CLOUD_ENABLED || autoStartPresetRef.current) return;
     void loadCloudAutoStartPreset();
-  }, [loadCloudAutoStartPreset, usesCapacitorLocalPresetLibrary, usesSupabaseStatePresetLibrary]);
+  }, [loadCloudAutoStartPreset, usesCapacitorLocalPresetLibrary, usesCloudBackedStatePresetLibrary]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3021,7 +2889,7 @@ const App: React.FC = () => {
   const handleCycleSliderMode = useCallback((key: keyof SliderState) => {
     // Block changes when journey mode is playing
     if (isJourneyPlaying) return;
-    
+
     const keyStr = key as string;
     if (SINGLE_ONLY_SLIDER_KEYS.has(keyStr)) {
       setSliderModes(prev => {
@@ -3041,7 +2909,7 @@ const App: React.FC = () => {
       return;
     }
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
-    
+
     // Check if this is a drum synth param and get its voice/morph key
     let drumVoice: DrumPresetVoice | null = null;
     let drumMorphKey: keyof SliderState | null = null;
@@ -3210,14 +3078,14 @@ const App: React.FC = () => {
   const handleDualRangeChange = useCallback((key: keyof SliderState, min: number, max: number) => {
     // Block changes when journey mode is playing
     if (isJourneyPlaying) return;
-    
+
     const keyStr = key as string;
     if (SINGLE_ONLY_SLIDER_KEYS.has(keyStr)) return;
     // Product Core runtime forwarding still gates unsupported keys in the audio sync effects:
     // audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(keyStr)
 
     setDualSliderRanges(prev => ({ ...prev, [key]: { min, max } }));
-    
+
     // Update morph preset dualRanges at endpoints (Rule 2)
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
     if (isMorphActive) {
@@ -3233,7 +3101,7 @@ const App: React.FC = () => {
         } : null);
       }
     }
-    
+
     // Check if this is a drum synth param and update drum morph override
     let drumVoice: DrumPresetVoice | null = null;
     let drumMorphKey: keyof SliderState | null = null;
@@ -3252,7 +3120,7 @@ const App: React.FC = () => {
     } else if (keyStr.startsWith('drumMembrane') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
       drumVoice = 'membrane'; drumMorphKey = 'drumMembraneMorph';
     }
-    
+
     // Update drum morph dual range override at endpoints
     if (drumVoice && drumMorphKey) {
       const drumMorphPosition = state[drumMorphKey] as number;
@@ -3362,10 +3230,9 @@ const App: React.FC = () => {
   // Load presets from folder on mount
   useEffect(() => {
     let cancelled = false;
-    setPresetsLoading(true);
 
     const loadPresets = async () => {
-      if (usesSupabaseStatePresetLibrary) {
+      if (usesCloudBackedStatePresetLibrary) {
         await cloudPresetStoreReadyPromiseRef.current;
         return loadActiveStatePresetStorePresets();
       }
@@ -3383,9 +3250,6 @@ const App: React.FC = () => {
       .catch((error) => {
         console.warn('Failed to load presets:', error);
         if (!cancelled) setSavedPresets([]);
-      })
-      .finally(() => {
-        if (!cancelled) setPresetsLoading(false);
       });
 
     // Check for cloud preset in URL (?cloud=presetId)
@@ -3446,8 +3310,9 @@ const App: React.FC = () => {
     presetEngineUpdateOptions,
     restoreEvolveConfigs,
     syncCoreProductAppliedPreset,
+    uiMode,
     usesCapacitorLocalPresetLibrary,
-    usesSupabaseStatePresetLibrary,
+    usesCloudBackedStatePresetLibrary,
   ]);
 
   // Engine state callback
@@ -4047,6 +3912,22 @@ const App: React.FC = () => {
     preserveEnabledFlags?: boolean;
   };
 
+  const applyMorphEndpointStatePatch = useCallback((patch: Partial<SliderState>) => {
+    if (Object.keys(patch).length === 0) return;
+
+    if (isAtEndpoint0(morphPosition, true)) {
+      setMorphPresetA(prev => prev ? {
+        ...prev,
+        state: { ...prev.state, ...patch },
+      } : prev);
+    } else if (isAtEndpoint1(morphPosition, true)) {
+      setMorphPresetB(prev => prev ? {
+        ...prev,
+        state: { ...prev.state, ...patch },
+      } : prev);
+    }
+  }, [morphPosition]);
+
   const handleSliderChangeWithOptions = useCallback((
     key: keyof SliderState,
     value: number | string,
@@ -4054,13 +3935,13 @@ const App: React.FC = () => {
   ) => {
     // Mark that user has interacted with the UI
     hasUserInteractedRef.current = true;
-    
+
     // Block slider changes when journey mode is playing
     if (isJourneyPlaying) {
       console.log('[Journey] Slider change blocked - journey is playing');
       return;
     }
-    
+
     // Rule 1: Mid-morph changes are temporary overrides (numeric only)
     // Rule 2: Endpoint changes (0% or 100%) update the respective preset permanently (all types)
     const quantizedSliderValue = typeof value === 'number' ? quantize(key, value) : null;
@@ -4069,40 +3950,26 @@ const App: React.FC = () => {
       : value;
     const isStateNumericValue = typeof stateValue === 'number';
     const isMorphActive = morphPresetA !== null || morphPresetB !== null;
-    
-    if (isMorphActive) {
-      if (isAtEndpoint0(morphPosition, true) && morphPresetA) {
-        // At endpoint A: update preset A permanently (both numeric and string values)
-        setMorphPresetA(prev => prev ? {
-          ...prev,
-          state: { ...prev.state, [key]: stateValue }
-        } : null);
-      } else if (isAtEndpoint1(morphPosition, true) && morphPresetB) {
-        // At endpoint B: update preset B permanently (both numeric and string values)
-        setMorphPresetB(prev => prev ? {
-          ...prev,
-          state: { ...prev.state, [key]: stateValue }
-        } : null);
-      } else if (morphPosition > 0 && morphPosition < 100 && isStateNumericValue) {
-        // Mid-morph: store as temporary override (numeric only)
-        morphManualOverridesRef.current[key] = {
-          value: stateValue as number,
-          morphPosition
-        };
-      }
+
+    if (isMorphActive && isInMidMorph(morphPosition, true) && isStateNumericValue) {
+      // Mid-morph: store as temporary override (numeric only)
+      morphManualOverridesRef.current[key] = {
+        value: stateValue as number,
+        morphPosition
+      };
     }
-    
+
     // ═══════════════════════════════════════════════════════════════════════
     // DRUM SYNTH PARAMETER OVERRIDE SYSTEM
     // When a drum synth param (like drumSubFreq) is changed at a drum morph
     // endpoint (0 or 1), save as override so it persists during morph
     // ═══════════════════════════════════════════════════════════════════════
     const keyStr = key as string;
-    
+
     // Detect which voice this param belongs to based on prefix
     let drumVoice: DrumPresetVoice | null = null;
     let drumMorphKey: keyof SliderState | null = null;
-    
+
     if (keyStr.startsWith('drumSub') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
       drumVoice = 'sub';
       drumMorphKey = 'drumSubMorph';
@@ -4125,13 +3992,13 @@ const App: React.FC = () => {
       drumVoice = 'membrane';
       drumMorphKey = 'drumMembraneMorph';
     }
-    
+
     // If this is a drum synth param, check for drum morph endpoint and save override
     if (drumVoice && drumMorphKey && isStateNumericValue) {
       // Get current drum morph position for this voice from state
       // We need to read from the current state, so we'll do this inside setState
     }
-    
+
     setState((prev) => {
       const preservedEnabledFlags = options?.preserveEnabledFlags
         ? {
@@ -4168,7 +4035,7 @@ const App: React.FC = () => {
         newState.chordProgressionHits = Math.min(nextSteps, Math.max(0, prev.chordProgressionHits ?? nextSteps));
         newState.chordProgressionRotation = Math.min(Math.max(0, prev.chordProgressionRotation ?? 0), Math.max(0, nextSteps - 1));
       }
-      
+
       // Handle drum synth param override at any morph position
       // Works like the main morph system: endpoint changes are permanent,
       // mid-morph changes blend toward destination
@@ -4177,7 +4044,7 @@ const App: React.FC = () => {
         // Store override at current morph position (works for both endpoints and mid-morph)
         setDrumMorphOverride(drumVoice, keyStr, stateValue as number, drumMorphPosition);
       }
-      
+
       const routeKey = key as keyof SliderState;
       const positiveNumber = typeof stateValue === 'number' && stateValue > 0;
 
@@ -4594,7 +4461,7 @@ const App: React.FC = () => {
         drumNoiseMorph: 'noise', drumNoisePresetA: 'noise', drumNoisePresetB: 'noise',
         drumMembraneMorph: 'membrane', drumMembranePresetA: 'membrane', drumMembranePresetB: 'membrane',
       };
-      
+
       const voice = morphKeys[key];
       if (voice) {
         // Clear only the relevant endpoint's overrides when a preset changes
@@ -4604,7 +4471,7 @@ const App: React.FC = () => {
         } else if (keyStr.includes('PresetB')) {
           clearDrumMorphEndpointOverrides(voice, 1);
         }
-        
+
         // Clear mid-morph overrides when reaching an endpoint (keep endpoint edits)
         if (keyStr.includes('Morph') && !keyStr.includes('Auto') && !keyStr.includes('Speed') && !keyStr.includes('Mode')) {
           const morphValue = value as number;
@@ -4612,12 +4479,12 @@ const App: React.FC = () => {
             clearMidMorphOverrides(voice);
           }
         }
-        
+
         // Apply morphed preset values to the state
         const morphedParams = applyMorphToState(newState, voice);
         newState = { ...newState, ...morphedParams };
       }
-      
+
       // ═══════════════════════════════════════════════════════════════════════
       // PAD SYNTH PRESET MORPH SYSTEM
       // When padMorph slider changes, morph between padPresetA & padPresetB
@@ -4686,7 +4553,8 @@ const App: React.FC = () => {
           ...preservedEnabledFlags,
         };
       }
-      
+
+      applyMorphEndpointStatePatch(collectChangedStatePatch(prev, newState));
       return newState;
     });
 
@@ -4721,13 +4589,13 @@ const App: React.FC = () => {
         return prev; // no state change here
       });
     }
-    
+
     // Map of voice to its drum synth param prefixes
     const voiceParamPrefixes: Record<DrumPresetVoice, string> = {
       sub: 'drumSub', kick: 'drumKick', click: 'drumClick',
       beepHi: 'drumBeepHi', beepLo: 'drumBeepLo', noise: 'drumNoise', membrane: 'drumMembrane',
     };
-    
+
     // Map preset keys to their voice
     const presetVoiceMap: Record<string, DrumPresetVoice> = {
       drumSubPresetA: 'sub', drumSubPresetB: 'sub',
@@ -4738,13 +4606,13 @@ const App: React.FC = () => {
       drumNoisePresetA: 'noise', drumNoisePresetB: 'noise',
       drumMembranePresetA: 'membrane', drumMembranePresetB: 'membrane',
     };
-    
+
     // Map voice to its morph key to get current position
     const voiceMorphKeys: Record<DrumPresetVoice, keyof SliderState> = {
       sub: 'drumSubMorph', kick: 'drumKickMorph', click: 'drumClickMorph',
       beepHi: 'drumBeepHiMorph', beepLo: 'drumBeepLoMorph', noise: 'drumNoiseMorph', membrane: 'drumMembraneMorph',
     };
-    
+
     // When a preset changes, only reset dual slider modes/ranges if we're at that endpoint
     // If preset A changes and we're at endpoint 1 (B), preserve the current dual modes
     const presetVoice = presetVoiceMap[key];
@@ -4752,18 +4620,18 @@ const App: React.FC = () => {
       const prefix = voiceParamPrefixes[presetVoice];
       const morphKey = voiceMorphKeys[presetVoice];
       const currentMorph = state[morphKey] as number;
-      
+
       // Determine if we should reset dual modes
       // Only reset if we're at the endpoint matching the changed preset
       const isPresetA = keyStr.includes('PresetA');
       const atEndpoint0 = isAtEndpoint0(currentMorph);
       const atEndpoint1 = isAtEndpoint1(currentMorph);
-      
+
       // Reset dual modes only if:
       // - Preset A changed and we're at endpoint 0 (or mid-morph)
       // - Preset B changed and we're at endpoint 1 (or mid-morph)
       const shouldResetDualModes = (isPresetA && !atEndpoint1) || (!isPresetA && !atEndpoint0);
-      
+
       if (shouldResetDualModes) {
         // Reset all dual modes for params starting with this prefix (excluding Morph/Preset keys)
         setSliderModes(prev => {
@@ -4787,7 +4655,7 @@ const App: React.FC = () => {
         });
       }
     }
-    
+
     // Apply interpolated dual range overrides for drum morph
     // This happens at EVERY morph position, not just endpoints
     // Mimics lerpPresets behavior: ranges interpolate smoothly, mode only snaps when range collapses
@@ -4795,11 +4663,11 @@ const App: React.FC = () => {
       drumSubMorph: 'sub', drumKickMorph: 'kick', drumClickMorph: 'click',
       drumBeepHiMorph: 'beepHi', drumBeepLoMorph: 'beepLo', drumNoiseMorph: 'noise', drumMembraneMorph: 'membrane',
     };
-    
+
     const morphVoice = drumMorphVoiceKeys[key];
     if (morphVoice && keyStr.includes('Morph') && !keyStr.includes('Auto') && !keyStr.includes('Speed') && !keyStr.includes('Mode')) {
       const morphValue = value as number;
-      
+
       // Build current values map for fallback
       // We need to read current state values for the interpolation
       const currentValues: Record<string, number> = {};
@@ -4810,14 +4678,14 @@ const App: React.FC = () => {
           currentValues[param] = stateVal;
         }
       }
-      
+
       // Get interpolated dual ranges for all params
       const interpolatedRanges = interpolateDrumMorphDualRanges(morphVoice, morphValue, currentValues);
-      
+
       // Apply the interpolated states
       for (const [param, interpState] of Object.entries(interpolatedRanges)) {
         const paramKey = param as keyof SliderState;
-        
+
         if (interpState.isDualMode && interpState.range) {
           // Interpolated to dual mode - enable and set range
           setSliderModes(prev => ({...prev, [paramKey as string]: prev[paramKey as string] ?? 'sampleHold'}));
@@ -4837,7 +4705,7 @@ const App: React.FC = () => {
         }
       }
     }
-  }, [isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, setMorphPresetA, setMorphPresetB, state]);
+  }, [isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, state, applyMorphEndpointStatePatch]);
 
   // Handle slider change
   const handleSliderChange = useCallback((key: keyof SliderState, value: number | string) => {
@@ -4909,7 +4777,7 @@ const App: React.FC = () => {
         while (enabled.length < stepCount) enabled.push(true);
         newState.chordProgressionStepEnabled = enabled.slice(0, stepCount);
       }
-      
+
       // ═══ PAD PRESET MORPH: when preset A or B changes, re-morph and apply ═══
       if (key === 'padPresetA' || key === 'padPresetB') {
         const presetA = getPadPreset(newState.padPresetA as string, 'pad1');
@@ -5026,7 +4894,9 @@ const App: React.FC = () => {
         newState.leadRandomEnabled = false;
       }
 
-      return normalizePadFilterCutoffPairs(newState, key);
+      const normalizedState = normalizePadFilterCutoffPairs(newState, key);
+      applyMorphEndpointStatePatch(collectChangedStatePatch(prev, normalizedState));
+      return normalizedState;
     });
 
     // Apply granular preset slider modes (outside setState since sliderModes is separate state)
@@ -5079,7 +4949,7 @@ const App: React.FC = () => {
         mergeRuntimeWalkPositions(newWalkPositions);
       }
     }
-  }, [shouldDisableLeadRandomTiming]);
+  }, [shouldDisableLeadRandomTiming, applyMorphEndpointStatePatch]);
 
   useEffect(() => {
     if (!shouldDisableLeadRandomTiming(state)) return;
@@ -5095,6 +4965,16 @@ const App: React.FC = () => {
     state.leadRandomEnabled,
     state.leadRandomSource,
   ]);
+
+  const handleStateChange = useCallback<React.Dispatch<React.SetStateAction<SliderState>>>((nextStateOrUpdater) => {
+    setState(prev => {
+      const nextState = typeof nextStateOrUpdater === 'function'
+        ? (nextStateOrUpdater as (prevState: SliderState) => SliderState)(prev)
+        : nextStateOrUpdater;
+      applyMorphEndpointStatePatch(collectChangedStatePatch(prev, nextState));
+      return nextState;
+    });
+  }, [applyMorphEndpointStatePatch]);
 
   useEffect(() => {
     if (!isSonicParityMode()) return;
@@ -5118,7 +4998,7 @@ const App: React.FC = () => {
     try {
       // Activate snowflake on first play
       if (!snowflakeActivated) setSnowflakeActivated(true);
-      
+
       // Auto-load String Waves if user hasn't loaded any preset or interacted with UI
       let stateToStart = state;
       if (!hasLoadedPresetRef.current && !hasUserInteractedRef.current) {
@@ -5171,7 +5051,7 @@ const App: React.FC = () => {
           },
         );
       }
-      
+
       // If recording was armed, start recording now
       if (isRecordingArmed) {
         setIsRecordingArmed(false);
@@ -5198,7 +5078,7 @@ const App: React.FC = () => {
 
     // Master stop also turns off the drum sequencer and lead Euclidean sequencer
     setState(prev => ({ ...prev, drumEuclidMasterEnabled: false, synthEuclideanMasterEnabled: false }));
-    
+
     // Stop journey playback if running
     if (isJourneyPlaying) {
       journey.stop();
@@ -5284,7 +5164,7 @@ const App: React.FC = () => {
     enabled: playbackIsRunning && playbackTimerEnabled,
     immediate: false,
   });
-  
+
   // Arm recording - will start recording when playback starts
   const handleArmRecording = () => {
     setIsRecordingArmed(prev => !prev);
@@ -5509,7 +5389,7 @@ const App: React.FC = () => {
       console.error('Audio context not available for recording');
       return;
     }
-    
+
     // Must have at least one format selected
     if (!recordFormats.webm && !recordFormats.wav) {
       alert('Please select at least one recording format (WebM or WAV)');
@@ -5579,7 +5459,7 @@ const App: React.FC = () => {
           }
         }
       }
-      
+
       recordingStartTimeRef.current = Date.now();
       setIsRecording(true);
       setRecordingDuration(0);
@@ -5653,7 +5533,7 @@ const App: React.FC = () => {
       recordingExportWorkerRef.current?.terminate();
       recordingExportWorkerRef.current = null;
     }
-    
+
     setIsRecording(false);
     setRecordingDuration(0);
     console.log('Recording stopped');
@@ -5672,72 +5552,6 @@ const App: React.FC = () => {
     enabled: isRecording,
     immediate: false,
   });
-
-  // Save preset to file in presets folder
-  const handleSavePreset = async () => {
-    const name = prompt('Enter preset name:', `preset-${Date.now()}`);
-    if (!name) return;
-    
-    // Convert dual slider ranges to a serializable format
-    const dualRangesObj: Record<string, { min: number; max: number }> = {};
-    Object.keys(sliderModes).forEach(key => {
-      const range = dualSliderRanges[key as keyof SliderState];
-      if (range) {
-        dualRangesObj[key] = { min: range.min, max: range.max };
-      }
-    });
-    
-    // Build slider modes for serialization (only non-single modes)
-    const modesObj: Record<string, SliderMode> = {};
-    for (const [k, m] of Object.entries(sliderModes)) {
-      if (m !== 'single') modesObj[k] = m;
-    }
-
-    const preset: SavedPreset = {
-      name,
-      timestamp: new Date().toISOString(),
-      state: extractOptimizedStatePresetData(state) as unknown as SliderState,
-      dualRanges: Object.keys(dualRangesObj).length > 0 ? dualRangesObj : undefined,
-      sliderModes: Object.keys(modesObj).length > 0 ? modesObj : undefined,
-      drumEvolveConfigs: drumEvolveConfigsRef.current,
-      synthEvolveConfigs: synthEvolveConfigsRef.current,
-      drumStepOverrides: serializeStepOverrides(drumStepOverridesRef.current),
-      synthStepOverrides: serializeStepOverrides(synthStepOverridesRef.current),
-      drumClockDivs: drumClockDivsRef.current,
-      synthClockDivs: synthClockDivsRef.current,
-      drumSwings: drumSwingsRef.current,
-      synthSwings: synthSwingsRef.current,
-      drumLinked: drumLinkedRef.current,
-      synthLinked: synthLinkedRef.current,
-      drumSubLaneStates: drumSubLaneStatesRef.current,
-      synthSubLaneStates: synthSubLaneStatesRef.current,
-      synthPitchSettings: synthPitchSettingsRef.current,
-      synthPitchBindingModes: synthPitchBindingModesRef.current,
-    };
-
-    if (usesSupabaseStatePresetLibrary) {
-      await cloudPresetStoreReadyPromiseRef.current;
-      await saveActiveStatePresetStorePreset(preset);
-      setSavedPresets(await loadActiveStatePresetStorePresets());
-      setStatePresetName(name);
-      setShowPresetList(true);
-      return;
-    }
-
-    if (usesCapacitorLocalPresetLibrary) {
-      await saveCapacitorLocalStatePreset(preset);
-      setSavedPresets(await loadCapacitorLocalStatePresets());
-      setStatePresetName(name);
-      setShowPresetList(true);
-      return;
-    }
-
-    const success = await savePresetToFile(preset);
-    if (success) {
-      // Add to local list for immediate display
-      setSavedPresets([...savedPresets, preset]);
-    }
-  };
 
   // Result type for lerpPresets - includes both state and dual ranges
   interface LerpResult {
@@ -5764,7 +5578,7 @@ const App: React.FC = () => {
     const stateB = { ...DEFAULT_STATE, ...normalizePresetForWeb(presetB.state) };
     const result = { ...stateA };
     const tNorm = t / 100; // Normalize to 0-1
-    
+
     // Handle rootNote via Circle of Fifths path
     // Direction determines which preset we're morphing FROM and TO:
     // - 'toB': morph A → B (slider 0→100), capturedStartRoot is A's effective root
@@ -5772,12 +5586,12 @@ const App: React.FC = () => {
     let fromRoot: number;
     let toRoot: number;
     let cofMorphT: number; // The t value to use for CoF path progression
-    
+
     if (direction === 'toB') {
       // Morphing A → B: from A's root (or captured) to B's root
       fromRoot = capturedStartRoot !== undefined
         ? capturedStartRoot
-        : (stateA.cofDriftEnabled 
+        : (stateA.cofDriftEnabled
             ? calculateDriftedRoot(stateA.rootNote, currentCofStep)
             : stateA.rootNote);
       toRoot = stateB.rootNote;
@@ -5786,22 +5600,22 @@ const App: React.FC = () => {
       // Morphing B → A: from B's root (or captured) to A's root
       fromRoot = capturedStartRoot !== undefined
         ? capturedStartRoot
-        : (stateB.cofDriftEnabled 
+        : (stateB.cofDriftEnabled
             ? calculateDriftedRoot(stateB.rootNote, currentCofStep)
             : stateB.rootNote);
       toRoot = stateA.rootNote;
       cofMorphT = 100 - t; // 100→0 needs to become 0→100 for path progression
     }
-    
+
     // Get the morphed root note stepping through CoF
     const { currentRoot, cofStep, totalSteps } = getMorphedRootNote(fromRoot, toRoot, cofMorphT);
     result.rootNote = currentRoot;
-    
+
     // Scale transition: snap at 50% (or when we've completed the CoF journey)
     // For a musical feel, snap scale when we're halfway or past
     result.scaleMode = tNorm < 0.5 ? stateA.scaleMode : stateB.scaleMode;
     result.manualScale = tNorm < 0.5 ? stateA.manualScale : stateB.manualScale;
-    
+
     // Build morph CoF info for visualization
     const morphCoFInfo = (fromRoot !== toRoot) ? {
       isMorphing: true,
@@ -5811,7 +5625,7 @@ const App: React.FC = () => {
       cofStep,
       totalSteps
     } : undefined;
-    
+
     // ─── Router-matrix asymmetric morph ────────────────────────────────────
     // When one preset has an engine OFF and the other has it ON, the engine's
     // router-matrix values (level + delay/granular/reverb sends) should be
@@ -5821,6 +5635,20 @@ const App: React.FC = () => {
       isOn: (s: SliderState) => boolean;
       keys: (keyof SliderState)[];
     }> = [
+      {
+        isOn: (s) => !!s.padEnabled,
+        keys: [
+          'synthLevel', 'pad1ReverbSend', 'pad1DelayASend', 'pad1DelayBSend',
+          'granularPad1Send',
+        ],
+      },
+      {
+        isOn: (s) => !!s.pad2Enabled,
+        keys: [
+          'pad2Level', 'pad2ReverbSend', 'pad2DelayASend', 'pad2DelayBSend',
+          'granularPad2Send',
+        ],
+      },
       {
         isOn: (s) => !!s.granularEnabled,
         keys: [
@@ -5834,11 +5662,20 @@ const App: React.FC = () => {
       {
         isOn: (s) => !!s.leadEnabled,
         keys: [
-          'leadLevel', 'lead1Level', 'lead2Level',
-          'lead1ReverbSend', 'lead2ReverbSend',
-          'lead1DelayASend', 'lead1DelayBSend', 'lead2DelayASend', 'lead2DelayBSend',
+          'leadLevel', 'lead1Level',
+          'lead1ReverbSend',
+          'lead1DelayASend', 'lead1DelayBSend',
           'delayAReverbSend', 'delayAMix',
-          'granularLead1Send', 'granularLead2Send',
+          'granularLead1Send',
+        ],
+      },
+      {
+        isOn: (s) => !!s.lead2Enabled,
+        keys: [
+          'lead2Level',
+          'lead2ReverbSend',
+          'lead2DelayASend', 'lead2DelayBSend',
+          'granularLead2Send',
         ],
       },
       {
@@ -5872,10 +5709,31 @@ const App: React.FC = () => {
           'granularNatureSend',
         ],
       },
+      {
+        isOn: (s) => !!s.waterEnabled,
+        keys: [
+          'waterLevel', 'waterReverbSend', 'waterDelayASend', 'waterDelayBSend',
+          'granularWaterSend',
+        ],
+      },
+      // Insects share bus sends, but each layer has its own dry carrier level.
+      {
+        isOn: (s) => !!s.insectsEnabled || !!s.insects2Enabled,
+        keys: [
+          'insectsSharedLevel', 'insectsReverbSend',
+          'insDelayASend', 'insDelayBSend',
+          'granularInsectsSend',
+        ],
+      },
+      { isOn: (s) => !!s.insectsEnabled,  keys: ['insectsLevel'] },
+      { isOn: (s) => !!s.insects2Enabled, keys: ['insects2Level'] },
       // Per-sub-engine nature levels follow their own toggles.
       { isOn: (s) => !!s.birdsEnabled,  keys: ['birdsLevel'] },
       { isOn: (s) => !!s.birds2Enabled, keys: ['birds2Level'] },
       { isOn: (s) => !!s.frogsEnabled,  keys: ['frogsLevel'] },
+      { isOn: (s) => !!s.delayAEnabled, keys: ['delayAMix', 'delayAReverbSend'] },
+      { isOn: (s) => !!s.granularDelayEnabled, keys: ['granularDelayMix', 'granularDelayReverbSend'] },
+      { isOn: (s) => !!s.reverbEnabled, keys: ['reverbLevel'] },
     ];
 
     // For router-matrix keys with mismatched engine toggle: record which side is OFF.
@@ -5923,13 +5781,13 @@ const App: React.FC = () => {
     const rawModesB = presetB.sliderModes || {};
     const resultDualRanges: DualSliderState = {};
     const resultDualModes: Record<string, SliderMode> = {};
-    
+
     // Get all keys that have dual ranges in either preset
     const allDualKeys = new Set([
       ...Object.keys(dualRangesA),
       ...Object.keys(dualRangesB)
     ]);
-    
+
     for (const keyStr of allDualKeys) {
       const key = keyStr as keyof SliderState;
       let rangeA = dualRangesA[keyStr];
@@ -5956,10 +5814,10 @@ const App: React.FC = () => {
       // fallback chain to pick the OTHER preset's mode, defeating the midpoint snap.
       const modeA = normalizeDualSliderMode(keyStr, rawModesA[keyStr] || (rangeA ? 'walk' : undefined));
       const modeB = normalizeDualSliderMode(keyStr, rawModesB[keyStr] || (rangeB ? 'walk' : undefined));
-      
+
       let morphedMin: number;
       let morphedMax: number;
-      
+
       if (rangeA && rangeB) {
         // Dual A → Dual B: morph min→min, max→max
         morphedMin = rangeA.min + (rangeB.min - rangeA.min) * tNorm;
@@ -5976,12 +5834,12 @@ const App: React.FC = () => {
         // Neither has dual - shouldn't happen given allDualKeys
         continue;
       }
-      
+
       // Only add to dual ranges if min !== max (i.e., it's still a range)
       // At t=0 for Single→Dual, min===max (both at valA)
       // At t=100 for Dual→Single, min===max (both at valB)
       const isEffectivelyDual = Math.abs(morphedMax - morphedMin) > 0.001;
-      
+
       if (isEffectivelyDual) {
         // Midpoint snap for discrete mode handoff (same pattern used for other discrete morph keys)
         resultDualModes[key as string] = tNorm < 0.5
@@ -5994,7 +5852,7 @@ const App: React.FC = () => {
         resultDualModes[key as string] = 'single';
       }
     }
-    
+
     // Define parent-child relationships for conditional morphing
     // If parent boolean is OFF in the target preset, don't morph child sliders
     const parentChildMap: Record<string, (keyof SliderState)[]> = {
@@ -6057,7 +5915,7 @@ const App: React.FC = () => {
         }
       }
     }
-    
+
     // Interpolate all numeric values (except those that should snap)
     const numericKeys: (keyof SliderState)[] = [
       'masterVolume', 'synthLevel', 'pad2Level', 'granularLevel', 'pad1ReverbSend', 'pad2ReverbSend', 'granularReverbSend',
@@ -6067,7 +5925,8 @@ const App: React.FC = () => {
       'granularDelayASend', 'granularDelayBSend',
       'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send', 'granularPianoSend',
       'granularDrumSend', 'granularWavesSend', 'granularNatureSend', 'granularWaterSend', 'granularInsectsSend',
-      'drumReverbSend', 'oceanReverbSend', 'natureLevel', 'natureReverbSend', 'waterReverbSend', 'insectsSharedLevel', 'insectsReverbSend',
+      'drumReverbSend', 'oceanReverbSend', 'natureLevel', 'natureReverbSend', 'waterLevel', 'waterReverbSend',
+      'insectsLevel', 'insects2Level', 'insectsSharedLevel', 'insectsReverbSend',
       'oceanDelayASend', 'oceanDelayBSend', 'natureDelayASend', 'natureDelayBSend', 'waterDelayASend', 'waterDelayBSend', 'insDelayASend', 'insDelayBSend',
       'granularReverbLPF', 'granularOutputLPF',
       'lead1ReverbSend', 'lead2ReverbSend', 'delayAReverbSend', 'reverbLevel', 'randomness', 'tension',
@@ -6089,6 +5948,7 @@ const App: React.FC = () => {
       'lead1OctaveRange',
       'leadVibratoDepth', 'leadVibratoRate',
       'leadGlide', 'synthEuclideanTempo',
+      'granularDelayMix', 'granularDelayReverbSend',
       // Dynamics page
       'dynamicsSaturationDrive', 'dynamicsSaturationTone', 'dynamicsSaturationBias',
       'sidechainKeyAWeight', 'sidechainKeyBWeight', 'sidechainAmount', 'sidechainThreshold',
@@ -6144,7 +6004,7 @@ const App: React.FC = () => {
       'pad2ModEnvAttack', 'pad2ModEnvDecay', 'pad2ModEnvSustain', 'pad2ModEnvRelease', 'pad2ModEnvDepth',
       'pad2Morph', 'pad2MorphSpeed', 'pad2VoiceAssign',
     ];
-    
+
     for (const key of numericKeys) {
       const valA = stateA[key];
       const valB = stateB[key];
@@ -6166,7 +6026,7 @@ const App: React.FC = () => {
         }
       }
     }
-    
+
     // Snap discrete values at 50% (scaleMode and manualScale handled above with rootNote)
     // Note: reverbQuality is excluded - it's a user preference, not a musical parameter
     const discreteKeys: (keyof SliderState)[] = [
@@ -6189,7 +6049,7 @@ const App: React.FC = () => {
     for (const key of discreteKeys) {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
     }
-    
+
     // Snap boolean values at 50% (except engine toggles and cofDriftEnabled which have special handling)
     const boolKeys: (keyof SliderState)[] = [
       'lead1UseCustomAdsr', 'lead2UseCustomAdsr', 'synthEuclideanMasterEnabled', 'synthEuclid1Enabled', 'synthEuclid2Enabled',
@@ -6203,16 +6063,25 @@ const App: React.FC = () => {
     for (const key of boolKeys) {
       (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
     }
-    
+
     // Special handling for engine toggles and cofDriftEnabled:
     // - Off → On: Turn ON immediately when leaving the "off" endpoint (engine fades in via level morph from 0)
     // - On → Off: Keep ON until arriving at the "off" endpoint (engine fades out via level morph to 0)
     const atEndpointA = isAtEndpoint0(t, true);
     const atEndpointB = isAtEndpoint1(t, true);
-    
+
     const engineToggleKeys: (keyof SliderState)[] = [
-      'cofDriftEnabled', 'granularEnabled', 'leadEnabled', 'drumEnabled',
-      'oceanSampleEnabled', 'birdsEnabled', 'birds2Enabled', 'frogsEnabled'
+      'cofDriftEnabled',
+      'padEnabled', 'pad2Enabled',
+      'granularEnabled',
+      'leadEnabled', 'lead2Enabled',
+      'pianoEnabled',
+      'drumEnabled',
+      'oceanSampleEnabled',
+      'waterEnabled',
+      'insectsEnabled', 'insects2Enabled',
+      'birdsEnabled', 'birds2Enabled', 'frogsEnabled',
+      'delayAEnabled', 'granularDelayEnabled', 'reverbEnabled',
     ];
     for (const key of engineToggleKeys) {
       const onA = stateA[key] as boolean;
@@ -6256,7 +6125,16 @@ const App: React.FC = () => {
         (result as Record<string, unknown>)[entry.key] = atEndpointB ? rawB : true;
       }
     }
-    
+
+    // Endpoints must be exact preset states. The interpolation loops above only
+    // touch morph-managed keys, so overlay the full endpoint to avoid stale keys
+    // from the opposite slot surviving at Full A / Full B.
+    if (atEndpointA) {
+      Object.assign(result, stateA);
+    } else if (atEndpointB) {
+      Object.assign(result, stateB);
+    }
+
     return { state: result, dualRanges: resultDualRanges, dualModes: resultDualModes, morphCoFInfo };
   }, []);
 
@@ -6271,151 +6149,54 @@ const App: React.FC = () => {
   const morphDirectionRef = useRef<'toA' | 'toB' | null>(null);
   // Track last endpoint visited (0 or 100) to detect when morph starts
   const lastMorphEndpointRef = useRef<0 | 100>(0);
-  
+
   // Manual override tracking for mid-morph parameter changes
   // Stores { value, morphPosition } for each manually adjusted parameter
   // These are temporary - cleared when reaching an endpoint
   const morphManualOverridesRef = useRef<Record<string, { value: number; morphPosition: number }>>({});
-
-  // Load preset into morph slot (A or B)
-  const handleLoadPresetToSlot = useCallback((preset: SavedPreset, slot: 'a' | 'b') => {
-    // Mark that user has loaded a preset (disables auto-load on first play)
-    hasLoadedPresetRef.current = true;
-    
-    // Check for iOS-only settings and warn user
-    const warnings = checkPresetCompatibility(preset);
-    if (warnings.length > 0) {
-      console.warn('[Preset Compatibility]', warnings);
-      setTimeout(() => {
-          alert(`⚠️ Preset Compatibility Notice:\n\n${warnings.join('\n')}`);
-      }, 100);
-    }
-    
-    // Normalize iOS-only settings and migrate old *Min/*Max fields
-    const migrated = migratePreset(preset);
-    const normalizedPreset: SavedPreset = {
-      ...migrated,
-      state: normalizePresetForWeb(migrated.state)
-    };
-    
-    // Convert current dualSliderRanges to serializable format
-    const currentDualRanges: Record<string, { min: number; max: number }> = {};
-    Object.keys(sliderModes).forEach(key => {
-      const range = dualSliderRanges[key as keyof SliderState];
-      if (range) {
-        currentDualRanges[key as string] = { min: range.min, max: range.max };
-      }
-    });
-    const currentSliderModes: Record<string, SliderMode> = { ...sliderModes };
-    
-    if (slot === 'a') {
-      setMorphPresetA(normalizedPreset);
-      // When loading A, capture current state for B to use as fallback
-      // But only if B is not already loaded
-      if (!morphPresetB) {
-        morphCapturedStateRef.current = { ...state };
-        morphCapturedDualRangesRef.current = currentDualRanges;
-        morphCapturedSliderModesRef.current = currentSliderModes;
-      }
-      
-      // Check if we should apply preset A values directly:
-      // - Only apply if we're at endpoint 0 (near position 0)
-      // - OR if no preset B is loaded yet (not in morph mode)
-      // At endpoint 1 (position ~100), we should keep the current B values
-      const atEndpoint0 = isAtEndpoint0(morphPosition, true);
-      const shouldApplyPresetA = atEndpoint0 || !morphPresetB;
-      
-      if (shouldApplyPresetA) {
-        // Apply the preset immediately when loading to slot A (and at or near position 0)
-        const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s, ...presetEngineUpdateOptions });
-        syncCoreProductAppliedPreset(result.state);
-        setState(result.state);
-        applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
-        restoreEvolveConfigs(normalizedPreset);
-      }
-      // If in mid-morph, the useEffect will handle applying the interpolated state
-    } else {
-      setMorphPresetB(normalizedPreset);
-      // When loading B, capture current state for A to use as fallback
-      // But only if A is not already loaded
-      if (!morphPresetA) {
-        morphCapturedStateRef.current = { ...state };
-        morphCapturedDualRangesRef.current = currentDualRanges;
-        morphCapturedSliderModesRef.current = currentSliderModes;
-      }
-
-      // Check if we should apply preset B values directly:
-      // - Only apply if we're at endpoint 1 (near position 100)
-      // - OR if no preset A is loaded yet (not in morph mode)
-      // At endpoint 0 (position ~0), we should keep the current A values
-      const atEndpoint1 = isAtEndpoint1(morphPosition, true);
-      const shouldApplyPresetB = atEndpoint1 || !morphPresetA;
-
-      if (shouldApplyPresetB) {
-        // Apply the preset immediately when loading to slot B (and at or near position 100)
-        const result = applyPreset(normalizedPreset, { migrate: false, currentState: state, normalize: s => s, ...presetEngineUpdateOptions });
-        syncCoreProductAppliedPreset(result.state);
-        setState(result.state);
-        applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
-        restoreEvolveConfigs(normalizedPreset);
-      }
-    }
-    setMorphLoadTarget(null);
-  }, [
-    state,
-    morphPresetA,
-    morphPresetB,
-    sliderModes,
-    dualSliderRanges,
-    morphPosition,
-    applyDualRangesFromPreset,
-    presetEngineUpdateOptions,
-    restoreEvolveConfigs,
-    syncCoreProductAppliedPreset,
-  ]);
 
   // Reapply morph interpolation when a preset changes while in mid-morph
   // This ensures that if you're at position 50 and load a new preset A or B,
   // the state reflects the interpolated values, not just the raw preset
   const prevMorphPresetARef = useRef<SavedPreset | null>(null);
   const prevMorphPresetBRef = useRef<SavedPreset | null>(null);
-  
+
   useEffect(() => {
     const presetAChanged = morphPresetA !== prevMorphPresetARef.current;
     const presetBChanged = morphPresetB !== prevMorphPresetBRef.current;
-    
+
     prevMorphPresetARef.current = morphPresetA;
     prevMorphPresetBRef.current = morphPresetB;
-    
+
     // Only reapply if a preset changed and we're in mid-morph
     if (!presetAChanged && !presetBChanged) return;
     if (!morphPresetA && !morphPresetB) return;
-    
+
     // Check if we're in mid-morph (not at endpoints) using shared utility
     // Main morph uses 0-100 scale
     if (!isInMidMorph(morphPosition, true)) return;
-    
+
     // Reapply the morph at current position
     const fallbackState = morphCapturedStateRef.current || DEFAULT_STATE;
     const fallbackDualRanges = morphCapturedDualRangesRef.current || undefined;
     const fallbackSliderModes = morphCapturedSliderModesRef.current || undefined;
     const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges, sliderModes: fallbackSliderModes };
     const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges, sliderModes: fallbackSliderModes };
-    
+
     // Determine direction based on which preset changed
     const direction = morphDirectionRef.current || 'toB';
     const morphResult = lerpPresets(effectiveA, effectiveB, morphPosition, engineState.cofCurrentStep, morphCapturedStartRootRef.current ?? undefined, direction);
-    
+
     // Preserve user preference keys (like reverbQuality) that shouldn't change with morphing
     const stateWithPrefs = { ...morphResult.state };
     for (const key of USER_PREFERENCE_KEYS) {
       (stateWithPrefs as Record<string, unknown>)[key] = state[key];
     }
-    
+
     // Apply the interpolated state
     setState(prev => ({ ...prev, ...stateWithPrefs }));
     scheduleAudioEngineParamUpdate(stateWithPrefs);
-    
+
     // Apply interpolated dual ranges — merge (don't wipe modes unrelated to morph)
     setSliderModes(prev => {
       const next: Record<string, SliderMode> = {};
@@ -6447,16 +6228,16 @@ const App: React.FC = () => {
       }
       return next;
     });
-    
+
   }, [morphPresetA, morphPresetB, morphPosition, lerpPresets, engineState.cofCurrentStep]);
 
   // Reapply drum morph interpolation when a drum preset changes while in mid-morph
   // This mirrors the main morph system's behavior
   // Only re-runs when actual drum preset names change (not on every state change)
   const prevDrumPresetsRef = useRef<Record<string, string>>({});
-  
+
   const drumPresetFingerprint = `${state.drumSubPresetA}|${state.drumSubPresetB}|${state.drumKickPresetA}|${state.drumKickPresetB}|${state.drumClickPresetA}|${state.drumClickPresetB}|${state.drumBeepHiPresetA}|${state.drumBeepHiPresetB}|${state.drumBeepLoPresetA}|${state.drumBeepLoPresetB}|${state.drumNoisePresetA}|${state.drumNoisePresetB}|${state.drumMembranePresetA}|${state.drumMembranePresetB}`;
-  
+
   useEffect(() => {
     // Check each drum voice for preset changes
     const drumVoices: DrumPresetVoice[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
@@ -6469,36 +6250,36 @@ const App: React.FC = () => {
       noise: { a: 'drumNoisePresetA', b: 'drumNoisePresetB', morph: 'drumNoiseMorph' },
       membrane: { a: 'drumMembranePresetA', b: 'drumMembranePresetB', morph: 'drumMembraneMorph' },
     };
-    
+
     for (const voice of drumVoices) {
       const keys = presetKeys[voice];
       const currentState = stateRef.current; // Read current state from ref
       const presetA = currentState[keys.a] as string;
       const presetB = currentState[keys.b] as string;
       const morphValue = currentState[keys.morph] as number;
-      
+
       const prevA = prevDrumPresetsRef.current[keys.a];
       const prevB = prevDrumPresetsRef.current[keys.b];
-      
+
       const presetAChanged = presetA !== prevA;
       const presetBChanged = presetB !== prevB;
-      
+
       // Update refs
       prevDrumPresetsRef.current[keys.a] = presetA;
       prevDrumPresetsRef.current[keys.b] = presetB;
-      
+
       // Only reapply if a preset changed and we're in mid-morph
       if (!presetAChanged && !presetBChanged) continue;
-      
+
       // Check if we're in mid-morph (not at endpoints) using shared utility
       // Drum morph uses 0-1 scale
       if (!isInMidMorph(morphValue)) continue;
-      
+
       // Reapply the morphed values using applyMorphToState
       // This recalculates interpolation with the new preset
       const morphedParams = applyMorphToState(currentState, voice);
       setState(prev => ({ ...prev, ...morphedParams }));
-      
+
       // Also reapply dual range interpolation if there are overrides
       const currentValues: Record<string, number> = {};
       const overrides = getDrumMorphDualRangeOverrides(voice);
@@ -6508,12 +6289,12 @@ const App: React.FC = () => {
           currentValues[param] = stateVal;
         }
       }
-      
+
       const interpolatedRanges = interpolateDrumMorphDualRanges(voice, morphValue, currentValues);
-      
+
       for (const [param, interpState] of Object.entries(interpolatedRanges)) {
         const paramKey = param as keyof SliderState;
-        
+
         if (interpState.isDualMode && interpState.range) {
           setSliderModes(prev => ({...prev, [paramKey as string]: prev[paramKey as string] ?? 'sampleHold'}));
           setDualSliderRanges(prev => ({ ...prev, [paramKey]: interpState.range! }));
@@ -6536,24 +6317,24 @@ const App: React.FC = () => {
   // Handle morph slider change
   const handleMorphPositionChange = useCallback((newPosition: number) => {
     setMorphPosition(newPosition);
-    
+
     // Inline apply morph to ensure state updates correctly
     if (!morphPresetA && !morphPresetB) return;
-    
+
     const fallbackState = morphCapturedStateRef.current || DEFAULT_STATE;
     const fallbackDualRanges = morphCapturedDualRangesRef.current || undefined;
     const fallbackSliderModes = morphCapturedSliderModesRef.current || undefined;
     const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges, sliderModes: fallbackSliderModes };
     const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges, sliderModes: fallbackSliderModes };
-    
+
     if (morphPresetA && morphPresetB && morphPresetA.name === morphPresetB.name) return;
-    
+
     // Detect morph direction and capture starting root when leaving an endpoint
     const wasAtA = lastMorphEndpointRef.current === 0;
     const wasAtB = lastMorphEndpointRef.current === 100;
     const leavingA = wasAtA && newPosition > 0;
     const leavingB = wasAtB && newPosition < 100;
-    
+
     // Update endpoint tracking when reaching endpoints
     if (isAtEndpoint0(newPosition, true)) {
       lastMorphEndpointRef.current = 0;
@@ -6564,7 +6345,7 @@ const App: React.FC = () => {
       morphDirectionRef.current = null;
       morphCapturedStartRootRef.current = null;
     }
-    
+
     // Capture starting root when first leaving an endpoint
     if (leavingA && morphCapturedStartRootRef.current === null) {
       // Starting morph from A towards B
@@ -6581,43 +6362,43 @@ const App: React.FC = () => {
         ? calculateDriftedRoot(stateB.rootNote, engineState.cofCurrentStep)
         : stateB.rootNote;
     }
-    
+
     const direction = morphDirectionRef.current || 'toB';
     const morphResult = lerpPresets(effectiveA, effectiveB, newPosition, engineState.cofCurrentStep, morphCapturedStartRootRef.current ?? undefined, direction);
-    
+
     // Apply manual overrides with smooth blending toward destination
     // For each override, interpolate from override value to destination based on remaining morph distance
     const overrides = morphManualOverridesRef.current;
     const finalState = { ...morphResult.state };
-    
+
     // Preserve user preference keys (like reverbQuality) that shouldn't change with morphing
     for (const key of USER_PREFERENCE_KEYS) {
       (finalState as unknown as Record<string, unknown>)[key] = state[key];
     }
-    
+
     for (const [key, override] of Object.entries(overrides)) {
       const typedKey = key as keyof SliderState;
       const lerpedValue = morphResult.state[typedKey];
       if (typeof lerpedValue !== 'number') continue;
-      
+
       // Determine destination based on morph direction
       const stateA = { ...DEFAULT_STATE, ...effectiveA.state };
       const stateB = { ...DEFAULT_STATE, ...effectiveB.state };
-      const destValue = direction === 'toB' 
-        ? (stateB[typedKey] as number) 
+      const destValue = direction === 'toB'
+        ? (stateB[typedKey] as number)
         : (stateA[typedKey] as number);
       const destPosition = direction === 'toB' ? 100 : 0;
-      
+
       // Calculate blend factor: 0 at override position, 1 at destination
       const overridePos = override.morphPosition;
       const totalDistance = Math.abs(destPosition - overridePos);
       const currentDistance = Math.abs(newPosition - overridePos);
-      
+
       if (totalDistance > 0) {
         // Moving toward destination
         const progressTowardDest = (direction === 'toB' && newPosition >= overridePos) ||
                                    (direction === 'toA' && newPosition <= overridePos);
-        
+
         if (progressTowardDest) {
           // Blend from override value toward destination
           const blendFactor = Math.min(1, currentDistance / totalDistance);
@@ -6629,14 +6410,14 @@ const App: React.FC = () => {
         }
       }
     }
-    
+
     setState(finalState);
     scheduleAudioEngineParamUpdate(finalState);
-    
+
     // Update CoF morph visualization (clear at endpoints - we've arrived)
     const atEndpoint = isAtEndpoint0(newPosition, true) || isAtEndpoint1(newPosition, true);
     setMorphCoFViz(atEndpoint ? null : (morphResult.morphCoFInfo || null));
-    
+
     // Reset CoF drift and clear manual overrides when reaching an endpoint
     if (atEndpoint) {
       // Only reset CoF drift if the target preset doesn't use drift,
@@ -6648,7 +6429,7 @@ const App: React.FC = () => {
       }
       morphManualOverridesRef.current = {};  // Clear temporary overrides
     }
-    
+
     // Apply interpolated dual ranges — merge (don't wipe modes unrelated to morph)
     setSliderModes(prev => {
       const next: Record<string, SliderMode> = {};
@@ -6676,7 +6457,7 @@ const App: React.FC = () => {
       }
       return next;
     });
-    
+
     // Initialize indicator defaults for any new walk sliders while the engine syncs.
     const newWalkPositions: Record<string, number> = {};
     const morphWalkKeys = Object.keys(morphResult.dualModes);
@@ -6799,53 +6580,53 @@ const App: React.FC = () => {
   const manualPositionOnEnterRef = useRef<number>(0); // Track position when entering auto mode
   const cofCurrentStepRef = useRef<number>(0); // Current CoF step for morph calculations
   const morphPlayTimeoutRef = useRef<number | null>(null);
-  
+
   // Keep CoF step ref up to date
   useEffect(() => { cofCurrentStepRef.current = engineState.cofCurrentStep; }, [engineState.cofCurrentStep]);
-  
+
   // Phase tracking for auto-cycle (to avoid jumps when durations change)
   type MorphPhase = 'hold' | 'entry' | 'playA' | 'morphAB' | 'playB' | 'morphBA';
   const currentPhaseRef = useRef<MorphPhase>('hold');
   const phaseStartTimeRef = useRef<number>(Date.now());
   const phaseDurationRef = useRef<number>(0); // Duration locked at phase start
-  
+
   useEffect(() => {
     if (morphMode !== 'auto' || !engineState.isRunning || (!morphPresetA && !morphPresetB)) {
       setMorphCountdown(null);
       return;
     }
-    
+
     // Use state.phraseLength for harmony phrase duration
     // Use refs for phrase settings to avoid restarting effect when they change
     const pl = state.phraseLength ?? 16;
     const getPlayDuration = () => morphPlayPhrasesRef.current * pl * 1000;
     const getTransitionDuration = () => morphTransitionPhrasesRef.current * pl * 1000;
     const HOLD_DURATION = pl * 1000; // Hold current position for 1 phrase before transitioning
-    
+
     // Capture the current manual position when entering auto mode
     morphStartTimeRef.current = Date.now();
     manualPositionOnEnterRef.current = morphPosition;
     lastMorphPosRef.current = -1; // Force first update
     lastMorphUiPosRef.current = -1;
-    
+
     // Capture initial transition duration for the entry transition (won't change mid-transition)
     const initialTransitionDuration = getTransitionDuration();
-    
+
     const fallbackState = morphCapturedStateRef.current || DEFAULT_STATE;
     const fallbackDualRanges = morphCapturedDualRangesRef.current || undefined;
     const fallbackSliderModes = morphCapturedSliderModesRef.current || undefined;
     const effectiveA: SavedPreset = morphPresetA || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges, sliderModes: fallbackSliderModes };
     const effectiveB: SavedPreset = morphPresetB || { name: 'Current', timestamp: '', state: fallbackState, dualRanges: fallbackDualRanges, sliderModes: fallbackSliderModes };
     const samePreset = morphPresetA && morphPresetB && morphPresetA.name === morphPresetB.name;
-    
+
     // Calculate the target position to transition to after the hold period
     // If manual position is closer to A (0-50%), transition to A, else transition to B
     const startPos = manualPositionOnEnterRef.current;
     const targetAfterHold = startPos <= 50 ? 0 : 100;
-    
+
     // If already at the target (within 5%), skip hold and transition phases
     const alreadyAtTarget = (targetAfterHold === 0 && startPos <= 5) || (targetAfterHold === 100 && startPos >= 95);
-    
+
     // Initialize phase tracking
     if (alreadyAtTarget) {
       // Start directly in the appropriate play phase
@@ -6857,7 +6638,7 @@ const App: React.FC = () => {
       phaseStartTimeRef.current = Date.now();
       phaseDurationRef.current = HOLD_DURATION;
     }
-    
+
     // Helper to transition to next phase
     const transitionToPhase = (phase: MorphPhase) => {
       currentPhaseRef.current = phase;
@@ -6892,7 +6673,7 @@ const App: React.FC = () => {
           : sourceState.rootNote;
       }
     };
-    
+
     const cancelMorphPlayLoop = () => {
       if (morphPlayTimeoutRef.current !== null) {
         clearTimeout(morphPlayTimeoutRef.current);
@@ -6906,11 +6687,11 @@ const App: React.FC = () => {
       const phaseDuration = phaseDurationRef.current;
       const isVisible = document.visibilityState === 'visible';
       const currentState = stateRef.current;
-      
+
       let newPos: number;
       let phaseName: string;
       let timeLeftInPhase: number;
-      
+
       // Check for phase transitions and calculate position
       switch (currentPhaseRef.current) {
         case 'hold':
@@ -6921,7 +6702,7 @@ const App: React.FC = () => {
             transitionToPhase('entry');
           }
           break;
-          
+
         case 'entry':
           if (phaseDuration > 0) {
             const t = Math.min(1, phaseElapsed / phaseDuration);
@@ -6935,7 +6716,7 @@ const App: React.FC = () => {
             transitionToPhase(targetAfterHold === 0 ? 'playA' : 'playB');
           }
           break;
-          
+
         case 'playA':
           newPos = 0;
           phaseName = 'Playing A';
@@ -6944,7 +6725,7 @@ const App: React.FC = () => {
             transitionToPhase('morphAB');
           }
           break;
-          
+
         case 'morphAB':
           {
             const t = phaseDuration > 0 ? Math.min(1, phaseElapsed / phaseDuration) : 1;
@@ -6956,7 +6737,7 @@ const App: React.FC = () => {
             transitionToPhase('playB');
           }
           break;
-          
+
         case 'playB':
           newPos = 100;
           phaseName = 'Playing B';
@@ -6965,7 +6746,7 @@ const App: React.FC = () => {
             transitionToPhase('morphBA');
           }
           break;
-          
+
         case 'morphBA':
           {
             const t = phaseDuration > 0 ? Math.min(1, phaseElapsed / phaseDuration) : 1;
@@ -6977,13 +6758,13 @@ const App: React.FC = () => {
             transitionToPhase('playA');
           }
           break;
-          
+
         default:
           newPos = 0;
           phaseName = 'Unknown';
           timeLeftInPhase = 0;
       }
-      
+
       const positionChanged = lastMorphPosRef.current !== newPos;
       const shouldSyncUi = isVisible && lastMorphUiPosRef.current !== newPos;
 
@@ -7057,7 +6838,7 @@ const App: React.FC = () => {
           mergeRuntimeWalkPositions(newWalkPositions);
         }
       }
-      
+
       if (isVisible) {
         const phrasesLeft = Math.ceil(timeLeftInPhase / ((currentState.phraseLength ?? 16) * 1000));
         setMorphCountdown(prev => (
@@ -7095,20 +6876,61 @@ const App: React.FC = () => {
     };
   }, [morphMode, engineState.isRunning, morphPresetA, morphPresetB, lerpPresets, scheduleAudioEngineParamUpdate]);
 
-  // Load preset from list - modified to support morph slots in advanced mode
-  const handleLoadPresetFromList = useCallback((preset: SavedPreset) => {
+  const resolveSavedPresetForLoad = useCallback(async (preset: SavedPreset): Promise<SavedPreset | null> => {
+    if (!preset.deferred) return preset;
+
+    try {
+      const loadedPreset = await loadActiveStatePresetStorePresetByName(preset.name);
+      if (!loadedPreset) {
+        console.warn(`Failed to load preset "${preset.name}" from the preset store.`);
+        return null;
+      }
+
+      setSavedPresets(prev => sortSavedStatePresetsByFreshness(prev.map(item => (
+        item.name === preset.name ? loadedPreset : item
+      ))));
+      return loadedPreset;
+    } catch (error) {
+      console.warn(`Failed to load preset "${preset.name}" from the preset store:`, error);
+      return null;
+    }
+  }, []);
+
+  const resolveSavedPresetByName = useCallback(async (presetName: string): Promise<SavedPreset | null> => {
+    const preset = savedPresets.find(p => p.name === presetName);
+    if (preset) return resolveSavedPresetForLoad(preset);
+
+    if (!usesCloudBackedStatePresetLibrary) return null;
+
+    try {
+      const loadedPreset = await loadActiveStatePresetStorePresetByName(presetName);
+      if (loadedPreset) {
+        setSavedPresets(prev => sortSavedStatePresetsByFreshness(
+          prev.some(item => item.name === loadedPreset.name)
+            ? prev.map(item => (item.name === loadedPreset.name ? loadedPreset : item))
+            : [...prev, loadedPreset],
+        ));
+      }
+      return loadedPreset;
+    } catch (error) {
+      console.warn(`Failed to load preset "${presetName}" from the preset store:`, error);
+      return null;
+    }
+  }, [resolveSavedPresetForLoad, savedPresets, usesCloudBackedStatePresetLibrary]);
+
+  // Load preset from the saved preset list used by Snowflake and Journey.
+  const handleLoadPresetFromList = useCallback(async (
+    preset: SavedPreset,
+    options?: { forceApply?: boolean; morphPositionOverride?: number },
+  ) => {
+    const resolvedPreset = await resolveSavedPresetForLoad(preset);
+    if (!resolvedPreset) return;
+
     // Activate snowflake on preset load
     if (!snowflakeActivated) setSnowflakeActivated(true);
     // Mark that user has loaded a preset (disables auto-load on first play)
     hasLoadedPresetRef.current = true;
-    
-    // If in advanced mode and a morph target is set, load to that slot
-    if (uiMode === 'advanced' && morphLoadTarget) {
-      handleLoadPresetToSlot(preset, morphLoadTarget);
-      setShowPresetList(false);
-      return;
-    }
-    
+
     // Capture current state BEFORE loading, then load to slot A
     morphCapturedStateRef.current = { ...state };
     // Also capture current dual ranges
@@ -7121,12 +6943,13 @@ const App: React.FC = () => {
     });
     morphCapturedDualRangesRef.current = currentDualRanges;
     morphCapturedSliderModesRef.current = { ...sliderModes };
-    
-    setMorphPresetA(preset);
+
+    setMorphPresetA(resolvedPreset);
+    setMorphSlotAName(resolvedPreset.name);
     // Don't reset morph position - keep it where user had it
-    
+
     // Check for iOS-only settings and warn user
-    const warnings = checkPresetCompatibility(preset);
+    const warnings = checkPresetCompatibility(resolvedPreset);
     if (warnings.length > 0) {
       console.warn('[Preset Compatibility]', warnings);
       // Show non-blocking warning after a short delay
@@ -7134,191 +6957,66 @@ const App: React.FC = () => {
         alert(`⚠️ Preset Compatibility Notice:\n\n${warnings.join('\n')}`);
       }, 100);
     }
-    
+
     // Check if we should apply preset A values directly:
     // - Only apply if we're at endpoint 0 (near position 0)
     // - OR if no preset B is loaded yet (not in morph mode)
     // At endpoint 1 (position ~100), we should keep the current B values
-    const atEndpoint0 = isAtEndpoint0(morphPosition, true);
-    const shouldApplyPresetA = atEndpoint0 || !morphPresetB;
-    
+    const effectiveMorphPosition = options?.morphPositionOverride ?? morphPosition;
+    const atEndpoint0 = isAtEndpoint0(effectiveMorphPosition, true);
+    const shouldApplyPresetA = options?.forceApply || atEndpoint0 || !morphPresetB;
+
     if (shouldApplyPresetA) {
-      const result = applyPreset(preset, { currentState: state, normalize: normalizePresetForWeb, ...presetEngineUpdateOptions });
+      const result = applyPreset(resolvedPreset, { currentState: state, normalize: normalizePresetForWeb, ...presetEngineUpdateOptions });
       syncCoreProductAppliedPreset(result.state);
       setState(result.state);
-      setStatePresetName(preset.name);
+      setStatePresetName(resolvedPreset.name);
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
       restoreEvolveConfigs(result.preset);
     }
     // If in mid-morph, the useEffect will handle applying the interpolated state
-    
-    setShowPresetList(false);
   }, [
-    uiMode,
-    morphLoadTarget,
-    handleLoadPresetToSlot,
     state,
     sliderModes,
     dualSliderRanges,
     morphPresetB,
     morphPosition,
+    setMorphSlotAName,
     snowflakeActivated,
     applyDualRangesFromPreset,
     presetEngineUpdateOptions,
+    resolveSavedPresetForLoad,
     restoreEvolveConfigs,
     syncCoreProductAppliedPreset,
   ]);
 
-  // Delete preset - just removes from UI list (can't delete files from browser)
-  const handleDeletePreset = async (index: number) => {
-    if (usesSupabaseStatePresetLibrary) {
-      const preset = savedPresets[index];
-      if (!preset) return;
-      if (!confirm(`Delete Supabase preset "${preset.name}"?`)) return;
-      const { getPresetStore } = await import('./presets');
-      await cloudPresetStoreReadyPromiseRef.current;
-      await getPresetStore().delete('state', preset.name, CAPACITOR_LOCAL_STATE_PRESET_SCOPE);
-      setSavedPresets(await loadActiveStatePresetStorePresets());
-      return;
-    }
-
-    if (usesCapacitorLocalPresetLibrary) {
-      const preset = savedPresets[index];
-      if (!preset) return;
-      if (!confirm(`Delete local preset "${preset.name}" from this device?`)) return;
-      await deleteCapacitorLocalStatePreset(preset.name);
-      setSavedPresets(await loadCapacitorLocalStatePresets());
-      return;
-    }
-
-    const updatedPresets = savedPresets.filter((_, i) => i !== index);
-    setSavedPresets(updatedPresets);
-  };
-
-  // Load preset from file (for importing)
-  const handleLoadPreset = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      void (async () => {
-        try {
-        const parsed = JSON.parse(e.target?.result as string);
-        if (parsed.state) {
-          // Migrate, normalize, merge with defaults, and preserve user preferences
-          const result = applyPreset(parsed, { currentState: state, updateEngine: false, resetCofDrift: false, normalize: normalizePresetForWeb });
-          
-          // Create the preset object
-          const importedPreset: SavedPreset = {
-            name: parsed.name || file.name.replace('.json', ''),
-            timestamp: parsed.timestamp || new Date().toISOString(),
-            state: result.state,
-            dualRanges: result.preset.dualRanges,
-            sliderModes: result.preset.sliderModes,
-            drumEvolveConfigs: result.preset.drumEvolveConfigs,
-            synthEvolveConfigs: result.preset.synthEvolveConfigs,
-            drumStepOverrides: result.preset.drumStepOverrides,
-            synthStepOverrides: result.preset.synthStepOverrides,
-            drumClockDivs: result.preset.drumClockDivs,
-            synthClockDivs: result.preset.synthClockDivs,
-            drumSwings: result.preset.drumSwings,
-            synthSwings: result.preset.synthSwings,
-            drumLinked: result.preset.drumLinked,
-            synthLinked: result.preset.synthLinked,
-            drumSubLaneStates: result.preset.drumSubLaneStates,
-            synthSubLaneStates: result.preset.synthSubLaneStates,
-            synthPitchSettings: result.preset.synthPitchSettings,
-            synthPitchBindingModes: result.preset.synthPitchBindingModes,
-          };
-
-          if (usesSupabaseStatePresetLibrary) {
-            await cloudPresetStoreReadyPromiseRef.current;
-            await saveActiveStatePresetStorePreset(importedPreset);
-            setSavedPresets(await loadActiveStatePresetStorePresets());
-          } else if (usesCapacitorLocalPresetLibrary) {
-            await saveCapacitorLocalStatePreset(importedPreset);
-            setSavedPresets(await loadCapacitorLocalStatePresets());
-          } else {
-            // Add to preset list for display
-            setSavedPresets(prev => [...prev, importedPreset]);
-          }
-          
-          // In advanced mode, show dialog to choose slot A or B
-          if (uiMode === 'advanced') {
-            setPendingUploadPreset(importedPreset);
-            setUploadSlotDialogOpen(true);
-          } else {
-            // In snowflake mode, just apply directly
-            setState(result.state);
-            setStatePresetName(importedPreset.name);
-            scheduleAudioEngineParamUpdate(result.state, { immediate: true });
-            audioEngine.resetCofDrift();
-            
-            // Apply dual ranges and slider modes from migrated preset
-            applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
-            restoreEvolveConfigs(result.preset);
-          }
-        }
-        } catch (err) {
-          console.error('Failed to load preset:', err);
-          alert('Failed to load preset. Invalid file format.');
-        }
-      })();
-    };
-    reader.readAsText(file);
-    // Reset input so same file can be loaded again
-    event.target.value = '';
-  };
-
-  // Handle slot choice from upload dialog
-  const handleUploadSlotChoice = (slot: 'a' | 'b') => {
-    if (!pendingUploadPreset) return;
-    
-    // Capture current state before loading
-    morphCapturedStateRef.current = { ...state };
-    const currentDualRanges: Record<string, { min: number; max: number }> = {};
-    Object.keys(sliderModes).forEach(key => {
-      const range = dualSliderRanges[key as keyof SliderState];
-      if (range) {
-        currentDualRanges[key as string] = { min: range.min, max: range.max };
-      }
-    });
-    morphCapturedDualRangesRef.current = currentDualRanges;
-    morphCapturedSliderModesRef.current = { ...sliderModes };
-    
-    handleLoadPresetToSlot(pendingUploadPreset, slot);
-    
-    // Close dialog and clear pending preset
-    setUploadSlotDialogOpen(false);
-    setPendingUploadPreset(null);
-  };
-
   // ========================================================================
   // JOURNEY MODE CALLBACKS
   // ========================================================================
-  
+
   // Journey mode: load a preset by name (used at journey start)
   const handleJourneyLoadPreset = useCallback(async (presetName: string) => {
-    const preset = savedPresets.find(p => p.name === presetName);
+    const preset = await resolveSavedPresetByName(presetName);
     if (!preset) {
       console.warn('[Journey] Preset not found:', presetName);
       return;
     }
-    
+
     console.log('[Journey] Loading preset:', presetName);
-    
+
     // Mark journey as playing (locks sliders)
     setIsJourneyPlaying(true);
-    
-    // Load preset as preset A
-    handleLoadPresetFromList(preset);
-    
-    // Reset morph position and direction for new journey
+
+    // Reset stale morph state before loading the journey's starting preset.
     setMorphPosition(0);
     setMorphPresetB(null);
+    setMorphSlotBName('');
     journeyMorphDirectionRef.current = 'toB'; // First morph will go A→B (0→100)
-    
+
+    // Load preset as preset A and force it into the shared slider state.
+    await handleLoadPresetFromList(preset, { forceApply: true, morphPositionOverride: 0 });
+    setStatePresetName(preset.name);
+
     // Update refs synchronously for animation loop
     journeyPresetARef.current = preset;
     journeyPresetBRef.current = null;
@@ -7327,7 +7025,7 @@ const App: React.FC = () => {
     journeyLastDualRangesRef.current = {};
     journeyLastMorphPositionRef.current = 0;
     journeyLastMorphCoFVizRef.current = null;
-    
+
     // Start audio engine if not already running
     if (!playbackIsRunning) {
       console.log('[Journey] Starting audio engine');
@@ -7355,7 +7053,7 @@ const App: React.FC = () => {
         console.error('[Journey] Failed to start audio:', err);
       }
     }
-  }, [savedPresets, handleLoadPresetFromList, playbackIsRunning, capacitorAudioSessionDiagnosticActive, dualSliderRanges, audioEngine, setupIOSMediaSession, connectMediaSessionToWebAudio]);
+  }, [resolveSavedPresetByName, handleLoadPresetFromList, playbackIsRunning, capacitorAudioSessionDiagnosticActive, dualSliderRanges, audioEngine, setupIOSMediaSession, connectMediaSessionToWebAudio]);
 
   const getEarthTextureDebugState = useCallback(() => (
     audioEngineRuntimeMode === 'core-product'
@@ -7419,129 +7117,134 @@ const App: React.FC = () => {
 
   // Journey mode: morph to a target preset over specified duration
   const handleJourneyMorphTo = useCallback((targetPresetName: string, durationPhrases: number) => {
-    const preset = savedPresets.find(p => p.name === targetPresetName);
-    if (!preset) {
-      console.warn('[Journey] Target preset not found:', targetPresetName);
-      return;
-    }
-    
-    const direction = journeyMorphDirectionRef.current;
-    console.log('[Journey] Morphing to:', targetPresetName, 'over', durationPhrases, 'phrases', 'direction:', direction);
-
-    stopJourneyMorphPlayback(false);
-    
-    // Calculate duration in milliseconds using phrase-based timing
-    // 1 phrase = phraseLength seconds (default 16s)
-    const msPerPhrase = (state.phraseLength ?? 16) * 1000;
-    const durationMs = durationPhrases * msPerPhrase;
-    
-    console.log('[Journey] Morph duration:', durationMs, 'ms (', durationPhrases, 'phrases x', (state.phraseLength ?? 16), 's)');
-    
-    // Determine start and end positions based on direction
-    // toB: Load target into B, morph 0→100
-    // toA: Load target into A, morph 100→0
-    const startPosition = direction === 'toB' ? 0 : 100;
-    const endPosition = direction === 'toB' ? 100 : 0;
-    
-    // Update refs SYNCHRONOUSLY before animation starts to avoid stale closures
-    // The refs will be read by the animation loop
-    if (direction === 'toB') {
-      journeyPresetBRef.current = preset;
-      setMorphPresetB(preset);
-    } else {
-      journeyPresetARef.current = preset;
-      setMorphPresetA(preset);
-    }
-    
-    // Capture both presets for use in animation loop (using refs for current values)
-    const animPresetA = journeyPresetARef.current;
-    const animPresetB = journeyPresetBRef.current;
-    
-    if (!animPresetA || !animPresetB) {
-      console.warn('[Journey] Missing preset for morph. A:', animPresetA?.name, 'B:', animPresetB?.name);
-      return;
-    }
-    
-    // console.log('[Journey] Animation presets - A:', animPresetA.name, 'B:', animPresetB.name);
-    
-    const startTime = performance.now();
-    let lastUIUpdate = 0;
-    
-    const animateMorph = (now: number) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(1, elapsed / durationMs);
-      
-      // Ease-in-out curve for smoother morphing
-      const eased = progress < 0.5
-        ? 2 * progress * progress
-        : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-      
-      // Interpolate from start to end position
-      const rawPosition = startPosition + (endPosition - startPosition) * eased;
-      // Round to 1 decimal place to avoid long decimal percentages
-      const newPosition = Math.round(rawPosition * 10) / 10;
-      
-      // Apply lerp directly using captured presets (not stale closures)
-      const morphResult = lerpPresets(
-        animPresetA,
-        animPresetB,
-        newPosition,
-        engineState.cofCurrentStep,
-        undefined, // startRoot
-        direction
-      );
-      
-      // Preserve user preference keys (like reverbQuality) that shouldn't change with morphing
-      // Use ref to read current state — avoids stale closure from useCallback
-      const stateWithPrefs = { ...morphResult.state };
-      const currentState = stateRef.current;
-      for (const key of USER_PREFERENCE_KEYS) {
-        (stateWithPrefs as Record<string, unknown>)[key] = currentState[key];
+    void (async () => {
+      const preset = await resolveSavedPresetByName(targetPresetName);
+      if (!preset) {
+        console.warn('[Journey] Target preset not found:', targetPresetName);
+        return;
       }
 
-      const atEndpoint = isAtEndpoint0(newPosition, true) || isAtEndpoint1(newPosition, true);
-      const nextMorphCoFViz = atEndpoint ? null : (morphResult.morphCoFInfo || null);
-      journeyLastAppliedStateRef.current = stateWithPrefs;
-      journeyLastDualModesRef.current = morphResult.dualModes;
-      journeyLastDualRangesRef.current = morphResult.dualRanges;
-      journeyLastMorphPositionRef.current = newPosition;
-      journeyLastMorphCoFVizRef.current = nextMorphCoFViz;
+      const direction = journeyMorphDirectionRef.current;
+      console.log('[Journey] Morphing to:', targetPresetName, 'over', durationPhrases, 'phrases', 'direction:', direction);
 
-      scheduleAudioEngineParamUpdate(stateWithPrefs);
-      
-      // Throttle visible UI sync while the engine owns the actual morph clock.
-      const shouldUpdateUI = now - lastUIUpdate >= 66 || progress >= 1;
-      if (shouldUpdateUI) {
-        lastUIUpdate = now;
-        setMorphPosition(newPosition);
-        setMorphCoFViz(nextMorphCoFViz);
-        if (atEndpoint) {
-          audioEngine.resetCofDrift();
+      stopJourneyMorphPlayback(false);
+
+      // Calculate duration in milliseconds using phrase-based timing
+      // 1 phrase = phraseLength seconds (default 16s)
+      const msPerPhrase = (state.phraseLength ?? 16) * 1000;
+      const durationMs = durationPhrases * msPerPhrase;
+
+      console.log('[Journey] Morph duration:', durationMs, 'ms (', durationPhrases, 'phrases x', (state.phraseLength ?? 16), 's)');
+
+      // Determine start and end positions based on direction
+      // toB: Load target into B, morph 0→100
+      // toA: Load target into A, morph 100→0
+      const startPosition = direction === 'toB' ? 0 : 100;
+      const endPosition = direction === 'toB' ? 100 : 0;
+
+      // Update refs SYNCHRONOUSLY before animation starts to avoid stale closures
+      // The refs will be read by the animation loop
+      if (direction === 'toB') {
+        journeyPresetBRef.current = preset;
+        setMorphPresetB(preset);
+        setMorphSlotBName(preset.name);
+      } else {
+        journeyPresetARef.current = preset;
+        setMorphPresetA(preset);
+        setMorphSlotAName(preset.name);
+      }
+
+      // Capture both presets for use in animation loop (using refs for current values)
+      const animPresetA = journeyPresetARef.current;
+      const animPresetB = journeyPresetBRef.current;
+
+      if (!animPresetA || !animPresetB) {
+        console.warn('[Journey] Missing preset for morph. A:', animPresetA?.name, 'B:', animPresetB?.name);
+        return;
+      }
+
+      // console.log('[Journey] Animation presets - A:', animPresetA.name, 'B:', animPresetB.name);
+
+      const startTime = performance.now();
+      let lastUIUpdate = 0;
+
+      const animateMorph = (now: number) => {
+        const elapsed = now - startTime;
+        const progress = Math.min(1, elapsed / durationMs);
+
+        // Ease-in-out curve for smoother morphing
+        const eased = progress < 0.5
+          ? 2 * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+        // Interpolate from start to end position
+        const rawPosition = startPosition + (endPosition - startPosition) * eased;
+        // Round to 1 decimal place to avoid long decimal percentages
+        const newPosition = Math.round(rawPosition * 10) / 10;
+
+        // Apply lerp directly using captured presets (not stale closures)
+        const morphResult = lerpPresets(
+          animPresetA,
+          animPresetB,
+          newPosition,
+          engineState.cofCurrentStep,
+          undefined, // startRoot
+          direction
+        );
+
+        // Preserve user preference keys (like reverbQuality) that shouldn't change with morphing
+        // Use ref to read current state — avoids stale closure from useCallback
+        const stateWithPrefs = { ...morphResult.state };
+        const currentState = stateRef.current;
+        for (const key of USER_PREFERENCE_KEYS) {
+          (stateWithPrefs as Record<string, unknown>)[key] = currentState[key];
         }
-      }
-      
-      if (progress >= 1) {
-        commitJourneyRuntimeState();
-        // Morph complete - alternate direction for next morph
-        journeyMorphDirectionRef.current = direction === 'toB' ? 'toA' : 'toB';
-        stopJourneyMorphPlayback(false);
-      }
-    };
 
-    audioEngine.setJourneyMorphClockCallback(animateMorph);
-    audioEngine.startJourneyMorphClock();
-  }, [savedPresets, stopJourneyMorphPlayback, state.phraseLength, lerpPresets, engineState.cofCurrentStep, audioEngine, commitJourneyRuntimeState, scheduleAudioEngineParamUpdate]);
-  
+        const atEndpoint = isAtEndpoint0(newPosition, true) || isAtEndpoint1(newPosition, true);
+        const nextMorphCoFViz = atEndpoint ? null : (morphResult.morphCoFInfo || null);
+        journeyLastAppliedStateRef.current = stateWithPrefs;
+        journeyLastDualModesRef.current = morphResult.dualModes;
+        journeyLastDualRangesRef.current = morphResult.dualRanges;
+        journeyLastMorphPositionRef.current = newPosition;
+        journeyLastMorphCoFVizRef.current = nextMorphCoFViz;
+
+        scheduleAudioEngineParamUpdate(stateWithPrefs);
+
+        // Throttle visible UI sync while the engine owns the actual morph clock.
+        const shouldUpdateUI = now - lastUIUpdate >= 66 || progress >= 1;
+        if (shouldUpdateUI) {
+          lastUIUpdate = now;
+          setMorphPosition(newPosition);
+          setMorphCoFViz(nextMorphCoFViz);
+          if (atEndpoint) {
+            audioEngine.resetCofDrift();
+          }
+        }
+
+        if (progress >= 1) {
+          commitJourneyRuntimeState();
+          setStatePresetName(preset.name);
+          // Morph complete - alternate direction for next morph
+          journeyMorphDirectionRef.current = direction === 'toB' ? 'toA' : 'toB';
+          stopJourneyMorphPlayback(false);
+        }
+      };
+
+      audioEngine.setJourneyMorphClockCallback(animateMorph);
+      audioEngine.startJourneyMorphClock();
+    })();
+  }, [resolveSavedPresetByName, stopJourneyMorphPlayback, state.phraseLength, lerpPresets, engineState.cofCurrentStep, audioEngine, commitJourneyRuntimeState, scheduleAudioEngineParamUpdate]);
+
   // Journey mode: handle journey end
   const handleJourneyEnd = useCallback(() => {
     stopJourneyMorphPlayback(true);
     // Unlock sliders
     setIsJourneyPlaying(false);
-    
+
     // Keep the last preset playing - don't stop audio
     // User can manually stop if desired
   }, [stopJourneyMorphPlayback]);
-  
+
   // Update refs for journey hook callbacks
   useEffect(() => {
     journeyLoadPresetRef.current = handleJourneyLoadPreset;
@@ -7571,7 +7274,11 @@ const App: React.FC = () => {
       const simpleToggleKey = ROUTING_SOURCE_SIMPLE_TOGGLES[sourceId as RoutingSourceSimpleToggleId];
       if (simpleToggleKey) {
         setFlag(simpleToggleKey, enabled);
-        return nextState ?? prev;
+        const finalState = nextState ?? prev;
+        if (nextState) {
+          applyMorphEndpointStatePatch(collectChangedStatePatch(prev, finalState));
+        }
+        return finalState;
       }
 
       const familyKeys = ROUTING_SOURCE_DISABLE_ONLY_FAMILIES[sourceId as RoutingSourceDisableOnlyFamilyId];
@@ -7579,9 +7286,13 @@ const App: React.FC = () => {
         familyKeys.forEach((key) => setFlag(key, false));
       }
 
-      return nextState ?? prev;
+      const finalState = nextState ?? prev;
+      if (nextState) {
+        applyMorphEndpointStatePatch(collectChangedStatePatch(prev, finalState));
+      }
+      return finalState;
     });
-  }, []);
+  }, [applyMorphEndpointStatePatch]);
 
   if (isSnowflakeGeneratorRoute) {
     const clearGeneratorRoute = () => {
@@ -7641,6 +7352,7 @@ const App: React.FC = () => {
           onJourneyEnd={handleJourneyEnd}
           onStopAudio={handleStop}
           onShowSnowflake={() => setUiMode('snowflake')}
+          onShowVisualizer={() => openAdvancedTab('visualizer')}
           onShowAdvanced={() => setUiMode('advanced')}
           isPlaying={playbackIsRunning}
         />
@@ -7657,10 +7369,10 @@ const App: React.FC = () => {
           // Calculate circle size matching snowflake UI
           const smallerDimension = Math.min(windowSize.width, windowSize.height - 100);
           const isMobile = windowSize.width < 1024;
-          const circleSize = isMobile 
+          const circleSize = isMobile
             ? Math.max(250, Math.min(smallerDimension * 0.875, 650))
             : Math.max(200, Math.min(smallerDimension * 0.7, 550));
-          
+
           return (
           <div style={{
             position: 'fixed',
@@ -7683,9 +7395,9 @@ const App: React.FC = () => {
               width: circleSize * 1.5,
               height: circleSize * 1.5,
               borderRadius: '50%',
-              background: `radial-gradient(circle at center, 
-                ${splashGradient.inner} 0%, 
-                ${splashGradient.mid} 30%, 
+              background: `radial-gradient(circle at center,
+                ${splashGradient.inner} 0%,
+                ${splashGradient.mid} 30%,
                 ${splashGradient.outer} 50%,
                 rgba(16, 15, 14, 0.6) 65%,
                 rgba(13, 12, 11, 0.3) 75%,
@@ -7694,7 +7406,7 @@ const App: React.FC = () => {
               filter: 'blur(15px)',
               opacity: 0.85,
             }} />
-            
+
             <span style={{
               fontSize: 'min(20vw, 120px)',
               color: 'white',
@@ -7725,7 +7437,7 @@ const App: React.FC = () => {
           );
         })()}
         {/* Hide SnowflakeUI until splash is done */}
-        <div style={{ 
+        <div style={{
           opacity: showSplash ? 0 : 1,
           transition: 'opacity 0.5s ease-in-out',
           visibility: showSplash ? 'hidden' : 'visible',
@@ -7760,6 +7472,7 @@ const App: React.FC = () => {
             onChange={snowflakeActivated ? handleSliderChange : handleWelcomeSliderChange}
             onShowAdvanced={() => { if (!snowflakeActivated) setSnowflakeActivated(true); setUiMode('advanced'); }}
             onShowJourney={() => { if (!snowflakeActivated) setSnowflakeActivated(true); setUiMode('journey'); }}
+            onShowVisualizer={() => openAdvancedTab('visualizer')}
             onTogglePlay={(playbackIsRunning || isJourneyPlaying) ? handleStop : handleStart}
             onLoadPreset={handleLoadPresetFromList}
             presets={savedPresets}
@@ -7803,8 +7516,8 @@ const App: React.FC = () => {
         )}
         {/* Record button - can arm before playing */}
         <button
-          style={{ 
-            ...styles.iconButton, 
+          style={{
+            ...styles.iconButton,
             ...(isRecording ? styles.recordingButton : isRecordingArmed ? styles.recordArmedButton : styles.recordButton),
             ...m?.iconButton,
             position: 'relative',
@@ -7844,33 +7557,21 @@ const App: React.FC = () => {
             </span>
           )}
         </button>
-        {/* Save/Import preset buttons */}
-        <button
-          style={{ ...styles.iconButton, ...styles.presetButton, ...m?.iconButton }}
-          onClick={handleSavePreset}
-          title="Save Preset"
-        >
-          {TEXT_SYMBOLS.download}
-        </button>
-        <button
-          style={{ ...styles.iconButton, ...styles.presetButton, ...m?.iconButton }}
-          onClick={() => {
-            if (usesManagedStatePresetLibrary) {
-              setShowPresetList(prev => !prev);
-            } else {
-              fileInputRef.current?.click();
-            }
+        <HelpButton
+          helpKey="appVisualizerView"
+          style={{
+            ...styles.iconButton,
+            ...m?.iconButton,
+            ...styles.visualizerButton,
+            ...(activeTab === 'visualizer' ? styles.visualizerButtonActive : {}),
           }}
-          title={
-            usesSupabaseStatePresetLibrary
-              ? 'Load Supabase Preset'
-              : usesCapacitorLocalPresetLibrary
-                ? 'Load Local Preset'
-                : 'Import Preset'
-          }
+          onClick={() => setActiveTab('visualizer')}
+          title="Visualizer Mode"
+          aria-label="Visualizer Mode"
+          aria-pressed={activeTab === 'visualizer'}
         >
-          {TEXT_SYMBOLS.upload}
-        </button>
+          {TEXT_SYMBOLS.visualizer}
+        </HelpButton>
         <button
           style={{ ...styles.iconButton, ...styles.simpleButton, ...m?.iconButton }}
           onClick={() => setUiMode('journey')}
@@ -7904,193 +7605,25 @@ const App: React.FC = () => {
             </button>
           ))}
         </div>
-        <input
-          ref={(el) => (fileInputRef.current = el)}
-          type="file"
-          accept=".json"
-          style={{ display: 'none' }}
-          onChange={handleLoadPreset}
-        />
       </div>
-
-      {/* Preset List */}
-      {showPresetList && (
-        <div className="app-preset-list" style={{ ...styles.presetListContainer, ...m?.presetList }}>
-          <h4 style={{ margin: '0 0 10px', color: '#a855f7' }}>
-            {usesSupabaseStatePresetLibrary
-              ? 'Supabase Presets'
-              : usesCapacitorLocalPresetLibrary
-                ? 'Local Presets (saved on this device)'
-                : 'Presets (from /presets folder)'}
-          </h4>
-          {presetsLoading ? (
-            <p style={{ color: '#6b7280', fontStyle: 'italic' }}>Loading presets...</p>
-          ) : savedPresets.length === 0 ? (
-            <p style={{ color: '#6b7280', fontStyle: 'italic' }}>
-              {usesSupabaseStatePresetLibrary
-                ? 'No Supabase presets loaded. Check the network connection and Supabase configuration.'
-                : usesCapacitorLocalPresetLibrary
-                  ? 'No local presets saved on this device yet.'
-                  : 'No presets found. Save one to the presets folder.'}
-            </p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {savedPresets.map((preset, index) => (
-                <div key={index} style={styles.presetItem}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 'bold', color: '#e5e7eb' }}>{preset.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                      {new Date(preset.timestamp).toLocaleString()}
-                    </div>
-                  </div>
-                  <button
-                    style={{ ...styles.button, ...styles.loadPresetBtn }}
-                    onClick={() => handleLoadPresetFromList(preset)}
-                  >
-                    Load
-                  </button>
-                  <button
-                    style={{ ...styles.button, ...styles.deletePresetBtn }}
-                    onClick={() => handleDeletePreset(index)}
-                    title={
-                      usesSupabaseStatePresetLibrary
-                        ? 'Delete Supabase preset'
-                        : usesCapacitorLocalPresetLibrary
-                          ? 'Delete local preset from this device'
-                          : 'Remove from list (doesn\'t delete file)'
-                    }
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Tab Bar */}
       <div className="app-tab-bar" style={{ ...styles.tabBar, ...m?.tabBar }}>
-        <HelpButton
-          helpKey="tabGlobal"
-          style={{
-            ...styles.tab,
-            ...(activeTab === 'global' ? activeTabStyle : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('global')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.global}</span>
-          <span>Global</span>
-        </HelpButton>
-        <HelpButton
-          helpKey="tabGlobal"
-          style={{
-            ...styles.tab,
-            ...(activeTab === 'visualizer' ? activeTabStyle : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('visualizer')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.visualizer}</span>
-          <span>Visualizer</span>
-        </HelpButton>
-        <HelpButton
-          helpKey="tabSynth"
-          style={{
-            ...styles.tab,
-            ...(activeTab === 'synth' ? activeTabStyle : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('synth')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.synth}</span>
-          <span>Synth</span>
-        </HelpButton>
-        <HelpButton
-          helpKey="tabDrums"
-          style={{
-            ...styles.tab,
-            ...(activeTab === 'drums' ? activeTabStyle : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('drums')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.drums}</span>
-          <span>Drums</span>
-        </HelpButton>
-        <HelpButton
-          helpKey="tabEarth"
-          style={{
-            ...styles.tab,
-            ...(activeTab === 'earth' ? activeTabStyle : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('earth')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.earth}</span>
-          <span>Earth</span>
-        </HelpButton>
-        <HelpButton
-          helpKey="tabGranular"
-          style={{
-            ...styles.tab,
-            ...(activeTab === 'granular' ? activeTabStyle : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('granular')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.granular}</span>
-          <span>Granular</span>
-        </HelpButton>
-        <HelpButton
-          helpKey="tabDelay"
-          style={{
-            ...styles.tab,
-            ...(activeTab === 'delay' ? activeTabStyle : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('delay')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.delay}</span>
-          <span>Delay</span>
-        </HelpButton>
-        <HelpButton
-          helpKey="tabReverb"
-          style={{
-            ...styles.tab,
-            ...(activeTab === 'reverb' ? activeTabStyle : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('reverb')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.reverb}</span>
-          <span>Reverb</span>
-        </HelpButton>
-        <HelpButton
-          helpKey="tabDynamics"
-          style={{
-            ...styles.tab,
-            ...(activeTab === 'dynamics' ? activeTabStyle : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('dynamics')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.dynamics}</span>
-          <span>Dynamics</span>
-        </HelpButton>
-        <HelpButton
-          helpKey="tabRouting"
-          style={{
-            ...styles.tab,
-            ...(activeTab === 'routing' ? activeTabStyle : {}),
-            ...m?.tab,
-          }}
-          onClick={() => setActiveTab('routing')}
-        >
-          <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{APP_TAB_SYMBOLS.routing}</span>
-          <span>Routing</span>
-        </HelpButton>
+        {ADVANCED_EDITOR_TABS.map((tab) => (
+          <HelpButton
+            key={tab.id}
+            helpKey={tab.helpKey}
+            style={{
+              ...styles.tab,
+              ...(activeTab === tab.id ? activeTabStyle : {}),
+              ...m?.tab,
+            }}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            <span style={{ ...styles.tabIcon, ...m?.tabIcon }}>{tab.symbol}</span>
+            <span>{tab.label}</span>
+          </HelpButton>
+        ))}
       </div>
 
       {/* Parameter Grid */}
@@ -8153,7 +7686,7 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* === VISUALIZER TAB === */}
+        {/* === VISUALIZER MODE === */}
         {activeTab === 'visualizer' && (
           <ReactiveVisualizerPage
             state={state}
@@ -8172,7 +7705,7 @@ const App: React.FC = () => {
             expandedPanels={expandedPanels}
             onParamChange={handleSliderChange}
             onSelectChange={handleSelectChange}
-            onStateChange={setState}
+            onStateChange={handleStateChange}
             togglePanel={togglePanel}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
@@ -8247,7 +7780,7 @@ const App: React.FC = () => {
             isMobile={isMobile}
             onParamChange={handleSliderChange}
             onSelectChange={handleSelectChange}
-            onStateChange={setState}
+            onStateChange={handleStateChange}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
             SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
@@ -8262,7 +7795,7 @@ const App: React.FC = () => {
             expandedPanels={expandedPanels}
             onParamChange={handleSliderChange}
             onSelectChange={handleSelectChange}
-            onStateChange={setState}
+            onStateChange={handleStateChange}
             togglePanel={togglePanel}
             sliderProps={sliderProps}
             triggerVoice={(voice) => { void audioEngine.triggerDrumVoice(voice, 0.8, state); }}
@@ -8311,7 +7844,7 @@ const App: React.FC = () => {
             togglePanel={togglePanel}
             onParamChange={handleSliderChange}
             onSelectChange={handleSelectChange}
-            onStateChange={setState}
+            onStateChange={handleStateChange}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
             liveBufferTelemetryAvailable
@@ -8325,7 +7858,7 @@ const App: React.FC = () => {
             isMobile={isMobile}
             onParamChange={handleSliderChange}
             onSelectChange={handleSelectChange}
-            onStateChange={setState}
+            onStateChange={handleStateChange}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
             sliderModes={sliderModes}
@@ -8341,7 +7874,7 @@ const App: React.FC = () => {
             isMobile={isMobile}
             onParamChange={handleSliderChange}
             onSelectChange={handleSelectChange}
-            onStateChange={setState}
+            onStateChange={handleStateChange}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
             getDynamicsAnalyser={audioEngineRuntimeMode === 'core-product' ? undefined : (key) => audioEngine.getDynamicsAnalyser(key)}
@@ -8367,7 +7900,7 @@ const App: React.FC = () => {
             state={state}
             onParamChange={handleSliderChange}
             onSelectChange={handleSelectChange}
-            onStateChange={setState}
+            onStateChange={handleStateChange}
             sliderProps={sliderProps}
             isRunning={playbackIsRunning}
             getEarthTextureDebugState={getEarthTextureDebugState}
@@ -8395,7 +7928,7 @@ const App: React.FC = () => {
         <div style={styles.debugRow}>
           <span style={styles.debugLabel}>Scale Family:</span>
           <span style={styles.debugValue}>
-            {engineState.harmonyState?.scaleFamily.name 
+            {engineState.harmonyState?.scaleFamily.name
               ? `${NOTE_NAMES[state.cofDriftEnabled ? calculateDriftedRoot(state.rootNote, engineState.cofCurrentStep) : state.rootNote]} ${engineState.harmonyState.scaleFamily.name}`
               : '—'}
           </span>
@@ -8525,7 +8058,7 @@ const App: React.FC = () => {
             </div>
           </>
         )}
-        
+
         {/* Journey Debug Info */}
         {isJourneyPlaying && journey.config && (
           <>
@@ -8611,108 +8144,6 @@ const App: React.FC = () => {
         結晶
       </div>
 
-      {/* Upload Slot Choice Dialog */}
-      {uploadSlotDialogOpen && pendingUploadPreset && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10000,
-        }}>
-          <div style={{
-            background: 'linear-gradient(180deg, #171615, #100f0e)',
-            border: '1px solid #444',
-            borderRadius: '12px',
-            padding: '24px',
-            width: 'min(320px, calc(100vw - 24px))',
-            minWidth: 'min(280px, calc(100vw - 24px))',
-            textAlign: 'center',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-            boxSizing: 'border-box',
-          }}>
-            <div style={{ fontSize: '1rem', marginBottom: '8px', color: '#e0e0e0' }}>
-              Load to which slot?
-            </div>
-            <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '20px' }}>
-              "{pendingUploadPreset.name}"
-            </div>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-              <button
-                onClick={() => handleUploadSlotChoice('a')}
-                style={{
-                  padding: '12px 32px',
-                  fontSize: '1rem',
-                  fontWeight: 'bold',
-                  background: 'linear-gradient(135deg, #064e3b, #022c22)',
-                  border: '2px solid #10b981',
-                  borderRadius: '8px',
-                  color: '#6ee7b7',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'linear-gradient(135deg, #065f46, #064e3b)';
-                  e.currentTarget.style.transform = 'scale(1.05)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'linear-gradient(135deg, #064e3b, #022c22)';
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-              >
-                Slot A
-              </button>
-              <button
-                onClick={() => handleUploadSlotChoice('b')}
-                style={{
-                  padding: '12px 32px',
-                  fontSize: '1rem',
-                  fontWeight: 'bold',
-                  background: 'linear-gradient(135deg, #4c1d95, #2e1065)',
-                  border: '2px solid #8b5cf6',
-                  borderRadius: '8px',
-                  color: '#a78bfa',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'linear-gradient(135deg, #5b21b6, #4c1d95)';
-                  e.currentTarget.style.transform = 'scale(1.05)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'linear-gradient(135deg, #4c1d95, #2e1065)';
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-              >
-                Slot B
-              </button>
-            </div>
-            <button
-              onClick={() => {
-                setUploadSlotDialogOpen(false);
-                setPendingUploadPreset(null);
-              }}
-              style={{
-                marginTop: '16px',
-                padding: '8px 20px',
-                fontSize: '0.8rem',
-                background: 'transparent',
-                border: '1px solid #666',
-                borderRadius: '6px',
-                color: '#888',
-                cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
       </div>
     </SliderHelpProvider>
   );

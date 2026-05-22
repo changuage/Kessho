@@ -71,6 +71,11 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
     'Use this to move into the graph-based Journey editor and playback view. It is a navigation control, not a sound parameter by itself.',
     [app('Navigation', 'Journey')],
   ),
+  appVisualizerView: entry(
+    'Opens the reactive visualizer from the advanced editor.',
+    'This switches the visible advanced-mode surface to the audio-reactive visualizer. It is navigation only; it does not enable, disable, or reroute any sound engine.',
+    [app('Navigation', 'Visualizer')],
+  ),
   tabGlobal: entry(
     'Shows the Global page in the advanced editor.',
     'This switches the visible editor to the Global tab so you can work on harmony, presets, recording, and master routing. It does not change any engine state until you edit controls on that page.',

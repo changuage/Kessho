@@ -40,6 +40,11 @@ function formatCpuPercent(value: number | null | undefined): string {
   return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(1)}%` : '--';
 }
 
+function formatMorphPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
 const SCENE_SIGNAL_EPSILON = 0.001;
 const SCENE_SIGNAL_VIEWBOX_WIDTH = 760;
 const SCENE_SIGNAL_VIEWBOX_HEIGHT = 510;
@@ -974,6 +979,8 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
     });
   };
   const rootNoteLabel = NOTE_NAMES[state.rootNote] ?? 'C';
+  const displayMorphPosition = formatMorphPercent(morphPosition);
+  const displayMorphA = 100 - displayMorphPosition;
   const sceneHasRuntimeDualParams = React.useMemo(
     () => hasSceneRuntimeDualParams(sliderModes, dualSliderRanges),
     [dualSliderRanges, sliderModes],
@@ -1141,7 +1148,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                 <div className="morph-position">
                   <div className="morph-position-header">
                     <span className="morph-position-label">Morph Position</span>
-                    <span className="morph-position-value">{morphPosition}%</span>
+                    <span className="morph-position-value">{displayMorphPosition}%</span>
                   </div>
                   <div className="morph-position-track">
                     <span className="morph-endpoint a">A</span>
@@ -1156,7 +1163,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                   <div className="morph-position-hint">
                     {isAtEndpoint0(morphPosition, true) ? 'Full A' :
                      isAtEndpoint1(morphPosition, true) ? 'Full B' :
-                     `${100 - morphPosition}% A + ${morphPosition}% B`}
+                     `${displayMorphA}% A + ${displayMorphPosition}% B`}
                   </div>
                 </div>
 

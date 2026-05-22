@@ -5,8 +5,7 @@ export const TEXT_SYMBOLS = {
   record: '\u25CF\uFE0E',
   range: '\u27F7\uFE0E',
   random: '\u27F7\uFE0E',
-  download: '\u2B07\uFE0E',
-  upload: '\u2B06\uFE0E',
+  visualizer: '\u06DE',
   hexagon: '\u2B21\uFE0E',
   sparkle: '\u2732\uFE0E',
   target: '\u25CE\uFE0E',
@@ -31,5 +30,4 @@ export const APP_TAB_SYMBOLS = {
   reverb: '\u25C8\uFE0E',
   dynamics: '\u224B\uFE0E',
   routing: '\u25A6\uFE0E',
-  visualizer: TEXT_SYMBOLS.sparkle,
 } as const;

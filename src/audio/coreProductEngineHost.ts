@@ -77,6 +77,8 @@ class CoreProductEngineHost {
   private runtimeReady = false;
   private running = false;
   private journeyMorphClockRunning = false;
+  private journeyMorphClockRaf: number | null = null;
+  private journeyMorphClockTimeout: number | null = null;
   private runtimeWalkPositions: Record<string, number> = {};
   private readonly sampleHoldRanges = new Map<string, ProductRangeState>();
   private readonly drumSampleHoldRanges = new Map<string, ProductRangeState>();
@@ -707,7 +709,10 @@ class CoreProductEngineHost {
   setRuntimeWalkRanges(ranges: Partial<Record<string, { min: number; max: number }>>): void {
     this.syncRangeSet(this.runtimeWalkRanges, ranges, CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk);
   }
-  setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void { this.setDisplayCallback('journeyMorphClock', callback); }
+  setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void {
+    this.setDisplayCallback('journeyMorphClock', callback);
+    if (!callback) this.stopJourneyMorphClock();
+  }
   setLeadExpressionCallback(callback: ((expression: { lead1: number; lead2: number }) => void) | null): void { this.setDisplayCallback('leadExpression', callback); }
   setLeadMorphCallback(callback: ((morph: { lead1: number; lead2: number }) => void) | null): void { this.setDisplayCallback('leadMorph', callback); }
   setPadMorphTriggerCallback(callback: ((morphPosition: number) => void) | null): void { this.setDisplayCallback('padMorph', callback); }
@@ -772,6 +777,7 @@ class CoreProductEngineHost {
   }
 
   startJourneyMorphClock(): void {
+    if (this.journeyMorphClockRunning || !this.displayCallbacks.has('journeyMorphClock')) return;
     this.journeyMorphClockRunning = true;
     const phase = this.latestTelemetry?.journeyMorphPhase ?? 0;
     this.adapterState = {
@@ -781,10 +787,19 @@ class CoreProductEngineHost {
     };
     this.postSequencerControlEvent(createCoreProductJourneyEvent(true));
     this.postSequencerControlEvent(createCoreProductJourneyStateEvent(true, phase));
+    this.scheduleJourneyMorphClockTick();
   }
 
   stopJourneyMorphClock(): void {
     this.journeyMorphClockRunning = false;
+    if (this.journeyMorphClockRaf !== null) {
+      window.cancelAnimationFrame(this.journeyMorphClockRaf);
+      this.journeyMorphClockRaf = null;
+    }
+    if (this.journeyMorphClockTimeout !== null) {
+      window.clearTimeout(this.journeyMorphClockTimeout);
+      this.journeyMorphClockTimeout = null;
+    }
     this.adapterState = {
       ...this.adapterState,
       journeyEnabled: false,
@@ -1373,6 +1388,39 @@ class CoreProductEngineHost {
     if (typeof callback === 'function') {
       (callback as (...invokeArgs: unknown[]) => void)(...args);
     }
+  }
+
+  private scheduleJourneyMorphClockTick(): void {
+    if (!this.journeyMorphClockRunning || !this.displayCallbacks.has('journeyMorphClock')) return;
+
+    const tick = (now: number) => {
+      this.journeyMorphClockRaf = null;
+      this.journeyMorphClockTimeout = null;
+      if (!this.journeyMorphClockRunning || !this.displayCallbacks.has('journeyMorphClock')) return;
+
+      this.invokeDisplayCallback('journeyMorphClock', now);
+      if (!this.journeyMorphClockRunning || !this.displayCallbacks.has('journeyMorphClock')) return;
+
+      if (document.visibilityState === 'visible') {
+        this.journeyMorphClockRaf = window.requestAnimationFrame(tick);
+        return;
+      }
+      if (!this.running) {
+        this.stopJourneyMorphClock();
+        return;
+      }
+      this.journeyMorphClockTimeout = window.setTimeout(() => tick(performance.now()), 50);
+    };
+
+    if (document.visibilityState === 'visible') {
+      this.journeyMorphClockRaf = window.requestAnimationFrame(tick);
+      return;
+    }
+    if (!this.running) {
+      this.stopJourneyMorphClock();
+      return;
+    }
+    this.journeyMorphClockTimeout = window.setTimeout(() => tick(performance.now()), 50);
   }
 
   private syncSingleRange(

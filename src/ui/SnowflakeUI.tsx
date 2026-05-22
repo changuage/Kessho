@@ -18,8 +18,9 @@ const TEXT_SYMBOLS = {
   stop: '■\uFE0E',
   record: '●\uFE0E',
   hexagon: '⬡\uFE0E',
-  sparkle: '✲\uFE0E',
+  sparkle: '☳\uFE0E',
   diamond: '⟡\uFE0E',
+  visualizer: '\u06DE',
 } as const;
 
 // Format recording time as M:SS
@@ -37,8 +38,9 @@ interface SnowflakeUIProps {
   onChange: (key: keyof SliderState, value: number) => void;
   onShowAdvanced: () => void;
   onShowJourney?: () => void;
+  onShowVisualizer?: () => void;
   onTogglePlay: () => void;
-  onLoadPreset: (preset: SavedPreset) => void;
+  onLoadPreset: (preset: SavedPreset) => void | Promise<void>;
   presets: SavedPreset[];
   isPlaying: boolean;
   // Recording display (read-only - recording controlled from Advanced UI)
@@ -279,7 +281,7 @@ const STATUS_COLORS = {
   endConnection: 'rgba(220, 235, 255, 0.7)',
 };
 
-const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onTogglePlay, onLoadPreset, presets, isPlaying, isRecording, recordingDuration, onStopRecording, journeyState, journeyConfig, isJourneyPlaying }) => {
+const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onShowVisualizer, onTogglePlay, onLoadPreset, presets, isPlaying, isRecording, recordingDuration, onStopRecording, journeyState, journeyConfig, isJourneyPlaying }) => {
   const { announceHelp } = useSliderHelp();
   const bindHelp = useCallback((helpKey: string) => ({
     onMouseEnter: () => announceHelp(helpKey),
@@ -1376,7 +1378,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
         </div>
       )}
 
-      {/* Bottom buttons - Journey diamond and Advanced sparkle */}
+      {/* Bottom navigation buttons */}
       <div
         style={{
           position: 'absolute',
@@ -1389,15 +1391,33 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
         }}
       >
         {onShowJourney && (
-          <button 
-            style={styles.advancedButton} 
+          <button
+            style={styles.advancedButton}
             onClick={onShowJourney}
+            title="Journey Mode"
             {...bindHelp('appJourneyView')}
           >
             {TEXT_SYMBOLS.diamond}
           </button>
         )}
-        <button style={styles.advancedButton} onClick={onShowAdvanced} {...bindHelp('appAdvancedView')}>
+        {onShowVisualizer && (
+          <button
+            style={{ ...styles.advancedButton, ...styles.visualizerButton }}
+            onClick={onShowVisualizer}
+            title="Visualizer Mode"
+            aria-label="Visualizer Mode"
+            {...bindHelp('appVisualizerView')}
+          >
+            {TEXT_SYMBOLS.visualizer}
+          </button>
+        )}
+        <button
+          style={{ ...styles.advancedButton, ...styles.advancedModeButton }}
+          onClick={onShowAdvanced}
+          title="Advanced Mode"
+          aria-label="Advanced Mode"
+          {...bindHelp('appAdvancedView')}
+        >
           {TEXT_SYMBOLS.sparkle}
         </button>
       </div>
@@ -1504,6 +1524,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  visualizerButton: {
+    fontSize: '0.92rem',
+    lineHeight: 1,
+  },
+  advancedModeButton: {
+    fontSize: '1.38rem',
+    fontWeight: 300,
+    lineHeight: 1,
+    textShadow: '0 2px 6px rgba(0,0,0,0.45)',
   },
 };
 

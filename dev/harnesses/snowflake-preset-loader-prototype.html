@@ -1,0 +1,1100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Preset Loader Context Prototypes</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg0: #100f0e;
+      --bg1: #171615;
+      --bg2: #1c1b19;
+      --cream: #e8dcc4;
+      --muted: rgba(232, 220, 196, 0.55);
+      --line: rgba(232, 220, 196, 0.28);
+      --panel: rgba(22, 21, 19, 0.68);
+      --panel-strong: rgba(16, 15, 14, 0.82);
+      --ice: #b8e0ff;
+      --sage: #7b9a6d;
+      --orange: #c4724e;
+      --gold: #d4a520;
+      --purple: #8b5cf6;
+      --teal: #5a7b8a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      overflow: hidden;
+      background: linear-gradient(180deg, var(--bg0) 0%, var(--bg1) 42%, var(--bg2) 100%);
+      color: var(--cream);
+      font-family: Avenir, "Avenir Next", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .context-tabs {
+      position: fixed;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      width: min(92vw, 420px);
+      padding: 2px;
+      border: 1px solid rgba(232, 220, 196, 0.18);
+      border-radius: 10px;
+      background: rgba(16, 15, 14, 0.72);
+      backdrop-filter: blur(8px);
+    }
+
+    .context-tab {
+      min-height: 34px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .context-tab.active {
+      background: var(--cream);
+      color: #171615;
+    }
+
+    .context {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: 74px 20px 20px;
+    }
+
+    .context.active {
+      display: grid;
+    }
+
+    .backdrop-art {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      opacity: 0.58;
+    }
+
+    .snowflake-art {
+      width: min(76vmin, 580px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 0 58px rgba(184, 224, 255, 0.13), inset 0 0 42px rgba(184, 224, 255, 0.07);
+    }
+
+    .journey-art {
+      width: min(78vmin, 600px);
+      aspect-ratio: 1;
+      display: grid;
+      place-items: center;
+    }
+
+    .prototype-layout {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      gap: 18px;
+      align-items: start;
+      justify-items: center;
+      width: min(96vw, 910px);
+    }
+
+    .journey-layout {
+      grid-template-columns: minmax(280px, 390px) minmax(260px, 350px);
+      justify-content: center;
+    }
+
+    .popup {
+      width: min(92vw, 390px);
+      max-height: min(77vh, 660px);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 18px 54px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(232, 220, 196, 0.08);
+      backdrop-filter: blur(8px);
+      overflow: hidden;
+    }
+
+    .popup.compact {
+      width: min(92vw, 340px);
+    }
+
+    .popup-head {
+      padding: 14px 14px 12px;
+      border-bottom: 1px solid rgba(232, 220, 196, 0.13);
+      display: grid;
+      gap: 10px;
+    }
+
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .title {
+      color: var(--cream);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .mode-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+      padding: 2px;
+      border: 1px solid rgba(232, 220, 196, 0.16);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .mode-btn {
+      min-height: 31px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .mode-btn.active {
+      background: var(--cream);
+      color: #171615;
+    }
+
+    .search {
+      width: 100%;
+      height: 34px;
+      border: 1px solid rgba(232, 220, 196, 0.16);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.18);
+      color: var(--cream);
+      outline: 0;
+      padding: 0 10px;
+      font-size: 12px;
+    }
+
+    .search::placeholder {
+      color: rgba(232, 220, 196, 0.38);
+    }
+
+    .panel {
+      display: none;
+      max-height: calc(min(77vh, 660px) - 118px);
+      overflow: auto;
+      padding: 8px;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    .preset-block,
+    .journey-block {
+      margin-bottom: 7px;
+    }
+
+    .preset-row,
+    .journey-row {
+      width: 100%;
+      min-height: 62px;
+      border: 1px solid rgba(232, 220, 196, 0.12);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--cream);
+      display: grid;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 9px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .preset-row {
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+    }
+
+    .journey-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .preset-row:hover,
+    .journey-row:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(232, 220, 196, 0.24);
+    }
+
+    .preset-row.selected,
+    .journey-row.selected {
+      background: rgba(184, 224, 255, 0.09);
+      border-color: rgba(184, 224, 255, 0.34);
+    }
+
+    .glyph {
+      width: 42px;
+      height: 42px;
+      display: block;
+    }
+
+    .main-label {
+      display: block;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--cream);
+    }
+
+    .sub-label {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .tag {
+      border: 1px solid rgba(232, 220, 196, 0.16);
+      border-radius: 999px;
+      padding: 2px 6px;
+      line-height: 1.15;
+      color: var(--muted);
+      background: rgba(0, 0, 0, 0.1);
+      white-space: nowrap;
+    }
+
+    .tag.live {
+      border-color: rgba(184, 224, 255, 0.28);
+      color: var(--ice);
+    }
+
+    .action {
+      min-width: 56px;
+      min-height: 29px;
+      border: 1px solid rgba(232, 220, 196, 0.2);
+      border-radius: 7px;
+      background: rgba(232, 220, 196, 0.08);
+      color: var(--cream);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .action.load {
+      background: var(--ice);
+      border-color: transparent;
+      color: #171615;
+    }
+
+    .inline-children,
+    .journey-detail {
+      display: none;
+      margin: 0 0 8px 18px;
+      padding: 8px 0 0 12px;
+      border-left: 1px solid rgba(184, 224, 255, 0.22);
+    }
+
+    .preset-block.expanded .inline-children,
+    .journey-block.expanded .journey-detail {
+      display: grid;
+      gap: 6px;
+    }
+
+    .inline-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0 2px 2px;
+    }
+
+    .child-option {
+      display: grid;
+      grid-template-columns: 16px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 48px;
+      border: 1px solid rgba(232, 220, 196, 0.1);
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--cream);
+      text-align: left;
+      padding: 7px 8px;
+      cursor: pointer;
+    }
+
+    .child-option.selected {
+      border-color: rgba(184, 224, 255, 0.34);
+      background: rgba(184, 224, 255, 0.08);
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--color);
+      box-shadow: 0 0 8px color-mix(in srgb, var(--color) 60%, transparent);
+      justify-self: center;
+    }
+
+    .child-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      color: var(--cream);
+    }
+
+    .child-scope {
+      margin-top: 2px;
+      font-size: 9px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .child-state {
+      color: #171615;
+      background: var(--cream);
+      border: 0;
+      border-radius: 6px;
+      min-height: 26px;
+      min-width: 52px;
+      font-size: 10px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .load-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      margin-top: 2px;
+      padding: 7px 8px;
+      border-radius: 7px;
+      background: rgba(0, 0, 0, 0.14);
+    }
+
+    .load-row-copy {
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.35;
+    }
+
+    .journey-card {
+      border: 1px solid rgba(232, 220, 196, 0.13);
+      border-radius: 8px;
+      background: var(--panel-strong);
+      padding: 10px;
+    }
+
+    .journey-map {
+      width: 100%;
+      height: 150px;
+      display: grid;
+      place-items: center;
+      margin: 2px 0 8px;
+    }
+
+    .node-list {
+      display: grid;
+      gap: 5px;
+    }
+
+    .node-line {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .tiny-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--color);
+      flex: 0 0 auto;
+    }
+
+    .node-popup-note {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(184, 224, 255, 0.07);
+      border: 1px solid rgba(184, 224, 255, 0.18);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .node-compact-loader .preset-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+      min-height: 46px;
+    }
+
+    .node-compact-loader .child-option {
+      grid-template-columns: minmax(0, 1fr);
+      min-height: 40px;
+    }
+
+    .node-compact-loader .glyph,
+    .node-compact-loader .dot {
+      display: none;
+    }
+
+    .node-compact-loader .sub-label,
+    .node-compact-loader .child-scope,
+    .node-compact-loader .child-state,
+    .node-compact-loader .load-row-copy {
+      display: none;
+    }
+
+    .node-compact-loader .preset-row .main-label::after {
+      content: "+";
+      display: inline-grid;
+      place-items: center;
+      width: 17px;
+      height: 17px;
+      margin-left: 8px;
+      border: 1px solid rgba(232, 220, 196, 0.2);
+      border-radius: 50%;
+      color: var(--ice);
+      font-size: 13px;
+      font-weight: 800;
+      vertical-align: 1px;
+    }
+
+    .node-compact-loader .inline-head span + span {
+      display: none;
+    }
+
+    .node-compact-loader .load-row {
+      grid-template-columns: auto;
+      justify-content: end;
+      padding: 6px 7px;
+    }
+
+    @media (max-width: 760px) {
+      body {
+        overflow: auto;
+      }
+
+      .context {
+        position: relative;
+        min-height: 100dvh;
+        overflow: visible;
+      }
+
+      .journey-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .popup,
+      .popup.compact {
+        width: min(94vw, 390px);
+      }
+
+      .journey-state-loader {
+        width: min(94vw, 340px);
+      }
+
+      .journey-state-loader .popup-head {
+        padding: 12px;
+        gap: 8px;
+      }
+
+      .journey-state-loader .panel {
+        max-height: calc(min(77vh, 660px) - 106px);
+        padding: 6px;
+      }
+
+      .journey-state-loader .preset-block,
+      .journey-state-loader .journey-block {
+        margin-bottom: 5px;
+      }
+
+      .journey-state-loader .preset-row,
+      .journey-state-loader .journey-row {
+        min-height: 46px;
+        gap: 8px;
+        padding: 7px 8px;
+      }
+
+      .journey-state-loader .preset-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+
+      .journey-state-loader .glyph,
+      .journey-state-loader .journey-map,
+      .journey-state-loader .dot,
+      .journey-state-loader .tiny-dot {
+        display: none;
+      }
+
+      .journey-state-loader .sub-label,
+      .journey-state-loader .child-scope,
+      .journey-state-loader .child-state,
+      .journey-state-loader .load-row-copy {
+        display: none;
+      }
+
+      .journey-state-loader .preset-row .main-label::after,
+      .journey-state-loader .journey-row .main-label::after {
+        content: "+";
+        display: inline-grid;
+        place-items: center;
+        width: 17px;
+        height: 17px;
+        margin-left: 8px;
+        border: 1px solid rgba(232, 220, 196, 0.2);
+        border-radius: 50%;
+        color: var(--ice);
+        font-size: 13px;
+        font-weight: 800;
+        vertical-align: 1px;
+      }
+
+      .journey-state-loader .inline-head span + span {
+        display: none;
+      }
+
+      .journey-state-loader .action {
+        min-width: 50px;
+        min-height: 27px;
+      }
+
+      .journey-state-loader .inline-children,
+      .journey-state-loader .journey-detail {
+        margin-left: 8px;
+        padding: 6px 0 0 8px;
+      }
+
+      .journey-state-loader .journey-card {
+        padding: 8px;
+      }
+
+      .journey-state-loader .child-option {
+        grid-template-columns: minmax(0, 1fr);
+        min-height: 40px;
+        padding: 6px 7px;
+      }
+
+      .journey-state-loader .load-row {
+        grid-template-columns: auto;
+        justify-content: end;
+        padding: 6px 7px;
+      }
+
+      .journey-state-loader .node-line {
+        gap: 0;
+        font-size: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="context-tabs">
+    <button class="context-tab active" type="button" data-context-button="snowflake">Snowflake</button>
+    <button class="context-tab" type="button" data-context-button="journey">Journey Page</button>
+  </div>
+
+  <main class="context active" data-context="snowflake" aria-label="Snowflake loader prototype">
+    <div class="backdrop-art">
+      <div class="snowflake-art">
+        <svg width="82%" viewBox="-130 -130 260 260">
+          <g fill="none" stroke="#dcecff" stroke-linecap="round">
+            <circle r="18" stroke-width="2" opacity="0.32" />
+            <g stroke-width="2.6" opacity="0.82">
+              <path d="M0 0V-104" />
+              <path d="M0 0L90 -52" />
+              <path d="M0 0L90 52" />
+              <path d="M0 0V104" />
+              <path d="M0 0L-90 52" />
+              <path d="M0 0L-90 -52" />
+            </g>
+            <g stroke-width="1.4" opacity="0.68">
+              <path d="M0 -58l-22 -18M0 -58l22 -18M50 -29l29 -2M50 -29l12 -26M50 29l12 26M50 29l29 2M0 58l-22 18M0 58l22 18M-50 29l-29 2M-50 29l-12 26M-50 -29l-12 -26M-50 -29l-29 -2" />
+            </g>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <section class="prototype-layout">
+      <div class="popup" aria-label="Snowflake load popup">
+        <div class="popup-head">
+          <div class="title-row">
+            <div class="title">Snowflake Load</div>
+            <div class="note">L5 or L4</div>
+          </div>
+          <div class="mode-switch" role="tablist">
+            <button class="mode-btn active" type="button" data-mode="l5">L5</button>
+            <button class="mode-btn" type="button" data-mode="l4">L4</button>
+          </div>
+          <input class="search" placeholder="Filter L5 or L4 presets" aria-label="Filter presets" />
+        </div>
+
+        <div class="panel" data-panel="l4">
+          <div class="preset-block expanded" data-preset-block>
+            <div class="preset-row selected" data-preset-toggle>
+              <svg class="glyph" viewBox="-24 -24 48 48" aria-hidden="true">
+                <g fill="none" stroke="#b8e0ff" stroke-linecap="round">
+                  <path d="M0 0V-19M0 0L16 -9M0 0L16 9M0 0V19M0 0L-16 9M0 0L-16 -9" stroke-width="2" />
+                  <path d="M0 -12l-5 -4M0 -12l5 -4M10 -6l7 -1M10 6l7 1M0 12l-5 4M0 12l5 4M-10 6l-7 1M-10 -6l-7 -1" stroke-width="1.25" opacity="0.72" />
+                </g>
+              </svg>
+              <span>
+                <span class="main-label">String Waves</span>
+                <span class="sub-label"><span class="tag">L4</span><span class="tag live">v12</span><span class="tag child-count">7 children</span></span>
+              </span>
+              <button class="action load" type="button" data-load>Load</button>
+            </div>
+            <div class="inline-children">
+              <div class="inline-head"><span>Children</span><span>Latest selected</span></div>
+              <button class="child-option selected" type="button">
+                <span class="dot" style="--color: var(--orange)"></span>
+                <span><span class="child-name">String Waves Synth</span><span class="child-scope">L3 source, synth, v9</span></span>
+                <span class="child-state">Latest</span>
+              </button>
+              <button class="child-option selected" type="button">
+                <span class="dot" style="--color: var(--purple)"></span>
+                <span><span class="child-name">Deep Pulse Drums</span><span class="child-scope">L3 source, drums, v6</span></span>
+                <span class="child-state">Latest</span>
+              </button>
+              <button class="child-option selected" type="button">
+                <span class="dot" style="--color: var(--sage)"></span>
+                <span><span class="child-name">Glass Grain</span><span class="child-scope">L3 source, granular, v8</span></span>
+                <span class="child-state">Latest</span>
+              </button>
+              <div class="load-row">
+                <span class="load-row-copy">Parent click expands. Load applies this L4 with selected child refs.</span>
+                <button class="action load" type="button" data-load>Load All</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="preset-block" data-preset-block>
+            <div class="preset-row" data-preset-toggle>
+              <svg class="glyph" viewBox="-24 -24 48 48" aria-hidden="true">
+                <g fill="none" stroke="#7b9a6d" stroke-linecap="round">
+                  <path d="M0 0V-18M0 0L15 -8M0 0L15 8M0 0V18M0 0L-15 8M0 0L-15 -8" stroke-width="2" />
+                  <circle r="4" stroke-width="1.4" />
+                </g>
+              </svg>
+              <span>
+                <span class="main-label">Fern Drift</span>
+                <span class="sub-label"><span class="tag">L4</span><span class="tag live">v7</span><span class="tag child-count">5 children</span></span>
+              </span>
+              <button class="action load" type="button" data-load>Load</button>
+            </div>
+            <div class="inline-children">
+              <div class="inline-head"><span>Children</span><span>Latest selected</span></div>
+              <button class="child-option selected" type="button">
+                <span class="dot" style="--color: var(--orange)"></span>
+                <span><span class="child-name">Fern Pad Cluster</span><span class="child-scope">L3 source, synth, v4</span></span>
+                <span class="child-state">Latest</span>
+              </button>
+              <button class="child-option selected" type="button">
+                <span class="dot" style="--color: var(--sage)"></span>
+                <span><span class="child-name">Mist Granular</span><span class="child-scope">L3 source, granular, v5</span></span>
+                <span class="child-state">Latest</span>
+              </button>
+              <div class="load-row">
+                <span class="load-row-copy">Load this parent and selected child graph.</span>
+                <button class="action load" type="button" data-load>Load All</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel active" data-panel="l5">
+          <div class="journey-block expanded" data-journey-block>
+            <div class="journey-row selected" data-journey-toggle>
+              <span class="main-label">Northern Route</span>
+              <button class="action load" type="button" data-load>Load</button>
+            </div>
+            <div class="journey-detail">
+              <div class="journey-card">
+                <div class="inline-head"><span>Journey graph</span><span>L5 v3</span></div>
+                <div class="journey-map">
+                  <svg width="190" height="142" viewBox="0 0 190 142" aria-hidden="true">
+                    <g fill="none" stroke="rgba(232, 220, 196, 0.38)" stroke-width="1.5">
+                      <path d="M95 70L95 18L154 70L95 124L36 70L95 18" />
+                      <path d="M36 70Q95 14 154 70" stroke="#b8e0ff" opacity="0.55" />
+                    </g>
+                    <g>
+                      <circle cx="95" cy="70" r="13" fill="rgba(184, 224, 255, 0.18)" stroke="#b8e0ff" stroke-width="2" />
+                      <circle cx="36" cy="70" r="12" fill="rgba(196, 114, 78, 0.2)" stroke="#c4724e" stroke-width="2" />
+                      <circle cx="95" cy="18" r="12" fill="rgba(123, 154, 109, 0.2)" stroke="#7b9a6d" stroke-width="2" />
+                      <circle cx="154" cy="70" r="12" fill="rgba(212, 165, 32, 0.2)" stroke="#d4a520" stroke-width="2" />
+                      <circle cx="95" cy="124" r="12" fill="rgba(139, 92, 246, 0.18)" stroke="#8b5cf6" stroke-width="2" />
+                    </g>
+                  </svg>
+                </div>
+                <div class="node-list">
+                  <div class="node-line"><span class="tiny-dot" style="--color: var(--orange)"></span>String Waves, L4 v12, children latest</div>
+                  <div class="node-line"><span class="tiny-dot" style="--color: var(--sage)"></span>Fern Drift, L4 v7, children latest</div>
+                  <div class="node-line"><span class="tiny-dot" style="--color: var(--gold)"></span>Bell Tide, L4 v4, children latest</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="journey-block" data-journey-block>
+            <div class="journey-row" data-journey-toggle>
+              <span class="main-label">Slow Orbit</span>
+              <button class="action load" type="button" data-load>Load</button>
+            </div>
+            <div class="journey-detail">
+              <div class="journey-card">
+                <div class="inline-head"><span>Journey graph</span><span>L5 v2</span></div>
+                <div class="node-list">
+                  <div class="node-line"><span class="tiny-dot" style="--color: var(--sage)"></span>Fern Drift, L4 v7, children latest</div>
+                  <div class="node-line"><span class="tiny-dot" style="--color: var(--teal)"></span>Tide Wash, L4 v5, children latest</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <main class="context" data-context="journey" aria-label="Journey page loader prototype">
+    <div class="backdrop-art">
+      <div class="journey-art">
+        <svg width="76%" viewBox="0 0 300 300" aria-hidden="true">
+          <g fill="none" stroke="rgba(232, 220, 196, 0.23)" stroke-width="2">
+            <path d="M150 150L150 45L255 150L150 255L45 150L150 45" />
+            <path d="M45 150Q150 38 255 150" stroke="#b8e0ff" opacity="0.45" />
+            <path d="M255 150Q150 263 45 150" stroke="#7b9a6d" opacity="0.45" />
+          </g>
+          <g>
+            <circle cx="150" cy="150" r="28" fill="rgba(184, 224, 255, 0.12)" stroke="#b8e0ff" stroke-width="2" />
+            <circle cx="45" cy="150" r="24" fill="rgba(196, 114, 78, 0.16)" stroke="#c4724e" stroke-width="2" />
+            <circle cx="150" cy="45" r="24" fill="rgba(123, 154, 109, 0.16)" stroke="#7b9a6d" stroke-width="2" />
+            <circle cx="255" cy="150" r="24" fill="rgba(212, 165, 32, 0.16)" stroke="#d4a520" stroke-width="2" />
+            <circle cx="150" cy="255" r="24" fill="rgba(139, 92, 246, 0.14)" stroke="#8b5cf6" stroke-width="2" />
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <section class="prototype-layout journey-layout">
+      <div class="popup journey-state-loader" aria-label="Journey page global load popup">
+        <div class="popup-head">
+          <div class="title-row">
+            <div class="title">Journey Page Load</div>
+            <div class="note">L5 or L4</div>
+          </div>
+          <div class="mode-switch" role="tablist">
+            <button class="mode-btn active" type="button" data-mode="l5">L5</button>
+            <button class="mode-btn" type="button" data-mode="l4">L4</button>
+          </div>
+          <input class="search" placeholder="Filter L5 or L4 presets" aria-label="Filter journey page presets" />
+        </div>
+
+        <div class="panel active" data-panel="l5">
+          <div class="journey-block expanded" data-journey-block>
+            <div class="journey-row selected" data-journey-toggle>
+              <span class="main-label">Northern Route</span>
+              <button class="action load" type="button" data-load>Load</button>
+            </div>
+            <div class="journey-detail">
+              <div class="journey-card">
+                <div class="inline-head"><span>Journey graph</span><span>L5 v3</span></div>
+                <div class="journey-map">
+                  <svg width="190" height="142" viewBox="0 0 190 142" aria-hidden="true">
+                    <g fill="none" stroke="rgba(232, 220, 196, 0.38)" stroke-width="1.5">
+                      <path d="M95 70L95 18L154 70L95 124L36 70L95 18" />
+                      <path d="M36 70Q95 14 154 70" stroke="#b8e0ff" opacity="0.55" />
+                    </g>
+                    <g>
+                      <circle cx="95" cy="70" r="13" fill="rgba(184, 224, 255, 0.18)" stroke="#b8e0ff" stroke-width="2" />
+                      <circle cx="36" cy="70" r="12" fill="rgba(196, 114, 78, 0.2)" stroke="#c4724e" stroke-width="2" />
+                      <circle cx="95" cy="18" r="12" fill="rgba(123, 154, 109, 0.2)" stroke="#7b9a6d" stroke-width="2" />
+                      <circle cx="154" cy="70" r="12" fill="rgba(212, 165, 32, 0.2)" stroke="#d4a520" stroke-width="2" />
+                      <circle cx="95" cy="124" r="12" fill="rgba(139, 92, 246, 0.18)" stroke="#8b5cf6" stroke-width="2" />
+                    </g>
+                  </svg>
+                </div>
+                <div class="node-list">
+                  <div class="node-line"><span class="tiny-dot" style="--color: var(--orange)"></span>String Waves, L4 v12, children latest</div>
+                  <div class="node-line"><span class="tiny-dot" style="--color: var(--sage)"></span>Fern Drift, L4 v7, children latest</div>
+                  <div class="node-line"><span class="tiny-dot" style="--color: var(--gold)"></span>Bell Tide, L4 v4, children latest</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="journey-block" data-journey-block>
+            <div class="journey-row" data-journey-toggle>
+              <span class="main-label">Slow Orbit</span>
+              <button class="action load" type="button" data-load>Load</button>
+            </div>
+            <div class="journey-detail">
+              <div class="journey-card">
+                <div class="inline-head"><span>Journey graph</span><span>L5 v2</span></div>
+                <div class="node-list">
+                  <div class="node-line"><span class="tiny-dot" style="--color: var(--sage)"></span>Fern Drift, L4 v7, children latest</div>
+                  <div class="node-line"><span class="tiny-dot" style="--color: var(--teal)"></span>Tide Wash, L4 v5, children latest</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" data-panel="l4">
+          <div class="preset-block expanded" data-preset-block>
+            <div class="preset-row selected" data-preset-toggle>
+              <svg class="glyph" viewBox="-24 -24 48 48" aria-hidden="true">
+                <g fill="none" stroke="#b8e0ff" stroke-linecap="round">
+                  <path d="M0 0V-19M0 0L16 -9M0 0L16 9M0 0V19M0 0L-16 9M0 0L-16 -9" stroke-width="2" />
+                  <path d="M0 -12l-5 -4M0 -12l5 -4M10 -6l7 -1M10 6l7 1M0 12l-5 4M0 12l5 4M-10 6l-7 1M-10 -6l-7 -1" stroke-width="1.25" opacity="0.72" />
+                </g>
+              </svg>
+              <span>
+                <span class="main-label">String Waves</span>
+                <span class="sub-label"><span class="tag">L4</span><span class="tag live">v12</span><span class="tag child-count">7 children</span></span>
+              </span>
+              <button class="action load" type="button" data-load>Load</button>
+            </div>
+            <div class="inline-children">
+              <div class="inline-head"><span>Children</span><span>Latest selected</span></div>
+              <button class="child-option selected" type="button">
+                <span class="dot" style="--color: var(--orange)"></span>
+                <span><span class="child-name">String Waves Synth</span><span class="child-scope">L3 source, synth, v9</span></span>
+                <span class="child-state">Latest</span>
+              </button>
+              <button class="child-option selected" type="button">
+                <span class="dot" style="--color: var(--purple)"></span>
+                <span><span class="child-name">Deep Pulse Drums</span><span class="child-scope">L3 source, drums, v6</span></span>
+                <span class="child-state">Latest</span>
+              </button>
+              <button class="child-option selected" type="button">
+                <span class="dot" style="--color: var(--sage)"></span>
+                <span><span class="child-name">Glass Grain</span><span class="child-scope">L3 source, granular, v8</span></span>
+                <span class="child-state">Latest</span>
+              </button>
+              <div class="load-row">
+                <span class="load-row-copy">Parent click expands. Load applies this L4 with selected child refs.</span>
+                <button class="action load" type="button" data-load>Load All</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="preset-block" data-preset-block>
+            <div class="preset-row" data-preset-toggle>
+              <svg class="glyph" viewBox="-24 -24 48 48" aria-hidden="true">
+                <g fill="none" stroke="#7b9a6d" stroke-linecap="round">
+                  <path d="M0 0V-18M0 0L15 -8M0 0L15 8M0 0V18M0 0L-15 8M0 0L-15 -8" stroke-width="2" />
+                  <circle r="4" stroke-width="1.4" />
+                </g>
+              </svg>
+              <span>
+                <span class="main-label">Fern Drift</span>
+                <span class="sub-label"><span class="tag">L4</span><span class="tag live">v7</span><span class="tag child-count">5 children</span></span>
+              </span>
+              <button class="action load" type="button" data-load>Load</button>
+            </div>
+            <div class="inline-children">
+              <div class="inline-head"><span>Children</span><span>Latest selected</span></div>
+              <button class="child-option selected" type="button">
+                <span class="dot" style="--color: var(--orange)"></span>
+                <span><span class="child-name">Fern Pad Cluster</span><span class="child-scope">L3 source, synth, v4</span></span>
+                <span class="child-state">Latest</span>
+              </button>
+              <button class="child-option selected" type="button">
+                <span class="dot" style="--color: var(--sage)"></span>
+                <span><span class="child-name">Mist Granular</span><span class="child-scope">L3 source, granular, v5</span></span>
+                <span class="child-state">Latest</span>
+              </button>
+              <div class="load-row">
+                <span class="load-row-copy">Load this parent and selected child graph.</span>
+                <button class="action load" type="button" data-load>Load All</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="popup compact node-compact-loader" aria-label="Journey node L4-only load popup">
+        <div class="popup-head">
+          <div class="title-row">
+            <div class="title">Replace Node</div>
+            <div class="note">Preset</div>
+          </div>
+          <input class="search" placeholder="Filter presets" aria-label="Filter node presets" />
+          <div class="node-popup-note">Click a parent to show children.</div>
+        </div>
+
+        <div class="panel active" data-panel="l4">
+          <div class="preset-block expanded" data-preset-block>
+            <div class="preset-row selected" data-preset-toggle>
+              <svg class="glyph" viewBox="-24 -24 48 48" aria-hidden="true">
+                <g fill="none" stroke="#7b9a6d" stroke-linecap="round">
+                  <path d="M0 0V-18M0 0L15 -8M0 0L15 8M0 0V18M0 0L-15 8M0 0L-15 -8" stroke-width="2" />
+                </g>
+              </svg>
+              <span><span class="main-label">Fern Drift</span><span class="sub-label"><span class="tag">L4</span><span class="tag live">v7</span><span class="tag child-count">5 children</span></span></span>
+              <button class="action load" type="button" data-load>Load</button>
+            </div>
+            <div class="inline-children">
+              <div class="inline-head"><span>Children</span><span>Latest selected</span></div>
+              <button class="child-option selected" type="button">
+                <span class="dot" style="--color: var(--orange)"></span>
+                <span><span class="child-name">Fern Pad Cluster</span><span class="child-scope">L3 source, synth, v4</span></span>
+                <span class="child-state">Latest</span>
+              </button>
+              <button class="child-option selected" type="button">
+                <span class="dot" style="--color: var(--sage)"></span>
+                <span><span class="child-name">Mist Granular</span><span class="child-scope">L3 source, granular, v5</span></span>
+                <span class="child-state">Latest</span>
+              </button>
+              <div class="load-row">
+                <span class="load-row-copy">Use parent click to inspect children. Load replaces only this node.</span>
+                <button class="action load" type="button" data-load>Replace</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="preset-block" data-preset-block>
+            <div class="preset-row" data-preset-toggle>
+              <svg class="glyph" viewBox="-24 -24 48 48" aria-hidden="true">
+                <g fill="none" stroke="#c4724e" stroke-linecap="round">
+                  <path d="M0 0V-17M0 0L14 -8M0 0L14 8M0 0V17M0 0L-14 8M0 0L-14 -8" stroke-width="2" />
+                </g>
+              </svg>
+              <span><span class="main-label">Bell Tide</span><span class="sub-label"><span class="tag">L4</span><span class="tag live">v4</span><span class="tag child-count">6 children</span></span></span>
+              <button class="action load" type="button" data-load>Load</button>
+            </div>
+            <div class="inline-children">
+              <div class="inline-head"><span>Children</span><span>Latest selected</span></div>
+              <button class="child-option selected" type="button">
+                <span class="dot" style="--color: var(--gold)"></span>
+                <span><span class="child-name">Glass Lead Kit</span><span class="child-scope">L2 kit, lead1, v2</span></span>
+                <span class="child-state">Latest</span>
+              </button>
+              <div class="load-row">
+                <span class="load-row-copy">Replace selected journey node with this L4.</span>
+                <button class="action load" type="button" data-load>Replace</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    document.querySelectorAll('[data-context-button]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const target = button.dataset.contextButton;
+        document.querySelectorAll('[data-context-button]').forEach((candidate) => {
+          candidate.classList.toggle('active', candidate === button);
+        });
+        document.querySelectorAll('[data-context]').forEach((context) => {
+          context.classList.toggle('active', context.dataset.context === target);
+        });
+      });
+    });
+
+    document.querySelectorAll('.popup').forEach((popup) => {
+      popup.querySelectorAll('.mode-btn').forEach((button) => {
+        button.addEventListener('click', () => {
+          const mode = button.dataset.mode;
+          popup.querySelectorAll('.mode-btn').forEach((candidate) => {
+            candidate.classList.toggle('active', candidate === button);
+          });
+          popup.querySelectorAll('.panel').forEach((panel) => {
+            panel.classList.toggle('active', panel.dataset.panel === mode);
+          });
+        });
+      });
+    });
+
+    document.querySelectorAll('[data-preset-toggle]').forEach((toggle) => {
+      toggle.addEventListener('click', () => {
+        const block = toggle.closest('[data-preset-block]');
+        const scope = toggle.closest('.panel');
+        scope.querySelectorAll('[data-preset-block]').forEach((candidate) => {
+          const isActive = candidate === block;
+          candidate.classList.toggle('expanded', isActive);
+          const row = candidate.querySelector('.preset-row');
+          if (row) row.classList.toggle('selected', isActive);
+        });
+      });
+    });
+
+    document.querySelectorAll('[data-journey-toggle]').forEach((toggle) => {
+      toggle.addEventListener('click', () => {
+        const block = toggle.closest('[data-journey-block]');
+        const scope = toggle.closest('.panel');
+        scope.querySelectorAll('[data-journey-block]').forEach((candidate) => {
+          const isActive = candidate === block;
+          candidate.classList.toggle('expanded', isActive);
+          const row = candidate.querySelector('.journey-row');
+          if (row) row.classList.toggle('selected', isActive);
+        });
+      });
+    });
+
+    document.querySelectorAll('[data-load]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+      });
+    });
+
+    document.querySelectorAll('.child-option').forEach((option) => {
+      option.addEventListener('click', () => {
+        option.classList.toggle('selected');
+        const state = option.querySelector('.child-state');
+        if (state) state.textContent = option.classList.contains('selected') ? 'Latest' : 'Skip';
+      });
+    });
+  </script>
+</body>
+</html>

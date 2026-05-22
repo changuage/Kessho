@@ -18,8 +18,9 @@ import { SavedPreset } from './state';
 // Unicode symbols with text variation selector (U+FE0E) to prevent emoji rendering
 const TEXT_SYMBOLS = {
   snowflake: '❄\uFE0E',
-  sparkle: '✲\uFE0E',
+  sparkle: '☳\uFE0E',
   diamond: '◇\uFE0E',
+  visualizer: '\u06DE',
 } as const;
 
 interface JourneyModeViewProps {
@@ -35,6 +36,7 @@ interface JourneyModeViewProps {
   
   // Navigation
   onShowSnowflake: () => void;
+  onShowVisualizer: () => void;
   onShowAdvanced: () => void;
   
   // Audio state
@@ -47,6 +49,7 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
   onJourneyEnd,
   onStopAudio,
   onShowSnowflake,
+  onShowVisualizer,
   onShowAdvanced,
   isPlaying: _isPlaying, // Reserved for future use
 }) => {
@@ -138,7 +141,20 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
         <button style={styles.navButton} onClick={onShowSnowflake}>
           {TEXT_SYMBOLS.snowflake}
         </button>
-        <button style={styles.navButton} onClick={onShowAdvanced}>
+        <button
+          style={{ ...styles.navButton, ...styles.visualizerButton }}
+          onClick={onShowVisualizer}
+          title="Visualizer Mode"
+          aria-label="Visualizer Mode"
+        >
+          {TEXT_SYMBOLS.visualizer}
+        </button>
+        <button
+          style={{ ...styles.navButton, ...styles.advancedModeButton }}
+          onClick={onShowAdvanced}
+          title="Advanced Mode"
+          aria-label="Advanced Mode"
+        >
           {TEXT_SYMBOLS.sparkle}
         </button>
       </div>
@@ -202,6 +218,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  visualizerButton: {
+    fontSize: '0.92rem',
+    lineHeight: 1,
+  },
+  advancedModeButton: {
+    fontSize: '1.38rem',
+    fontWeight: 300,
+    lineHeight: 1,
+    textShadow: '0 2px 6px rgba(0, 0, 0, 0.45)',
   },
   diamondIndicator: {
     fontSize: '1.5rem',

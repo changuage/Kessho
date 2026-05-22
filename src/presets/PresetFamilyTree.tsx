@@ -2,7 +2,7 @@
 // Visualizer for a parent preset and its children (max 1 level, max 10 children).
 // Children share the parent's familyId but have distinct variantName + description.
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { PresetLevel, PresetEntry, PresetSummary, PresetSaveIdentity, PresetVersionMetadata } from './types';
 import { usePresets } from './usePresets';
 import { getVersionData } from './codec';
@@ -535,6 +535,23 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     return selectedFamily.variants.filter(v => v.name !== selectedParentName);
   }, [selectedFamily, selectedParentName]);
 
+  const currentPresetParentName = useMemo(() => {
+    if (!currentName) return '';
+
+    if (parentPresets.some(p => p.name === currentName)) {
+      return currentName;
+    }
+
+    const preset = presets.find(p => p.name === currentName);
+    if (!preset) return '';
+
+    const family = families.find(f => f.familyId === preset.familyId);
+    if (!family) return '';
+
+    const parent = family.variants.find(v => v.name === v.familyName || v.variantName === v.familyName);
+    return parent?.name ?? family.variants[0]?.name ?? '';
+  }, [currentName, parentPresets, presets, families]);
+
   // Filtered dropdown options based on filterMode
   const dropdownPresets = useMemo(() => {
     if (filterMode === 'parents') return parentPresets;
@@ -1029,33 +1046,16 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   }, []);
   const handleChildMouseLeave = useCallback(() => setTooltip(null), []);
 
-  // Auto-select parent if currentName matches
+  const lastSyncedCurrentNameRef = useRef<string | undefined>(undefined);
+
+  // Auto-select parent when the actually loaded preset changes.
   useEffect(() => {
-    if (!currentName || selectedParentName) return;
-    // Check if currentName is a parent
-    const isParent = parentPresets.some(p => p.name === currentName);
-    if (isParent) {
-      setSelectedParentName(currentName);
-      return;
+    if (!currentName || !currentPresetParentName || lastSyncedCurrentNameRef.current === currentName) return;
+    lastSyncedCurrentNameRef.current = currentName;
+    if (currentPresetParentName !== selectedParentName) {
+      setSelectedParentName(currentPresetParentName);
     }
-    // Check if currentName is a child — find its parent
-    const preset = presets.find(p => p.name === currentName);
-    if (preset) {
-      const family = families.find(f => f.familyId === preset.familyId);
-      if (family) {
-        const parent = family.variants.find(v => v.name === v.familyName || v.variantName === v.familyName);
-        if (parent) {
-          setSelectedParentName(parent.name);
-          return;
-        }
-        // fallback: first variant is parent
-        const first = family.variants[0];
-        if (first) {
-          setSelectedParentName(first.name);
-        }
-      }
-    }
-  }, [currentName, parentPresets, presets, families, selectedParentName]);
+  }, [currentName, currentPresetParentName, selectedParentName]);
 
   const handleConfirmOk = useCallback(() => {
     if (confirmAction) {
