@@ -143,6 +143,7 @@ double percentile(std::vector<double> values, double percentile_value) {
 RenderCpuStats renderCpuStats(const KesshoProductSnapshotV2& snapshot, uint32_t blocks) {
   constexpr uint32_t frames = 128;
   constexpr uint32_t warmup_blocks = 256;
+  constexpr uint32_t timed_blocks_per_sample = 5;
   KesshoProductEngine* engine = kessho_product_create(48000.0, frames, 0);
   require(engine != nullptr, "engine create failed");
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "snapshot load failed");
@@ -156,12 +157,20 @@ RenderCpuStats renderCpuStats(const KesshoProductSnapshotV2& snapshot, uint32_t 
   std::vector<double> block_ms;
   block_ms.reserve(blocks);
   const std::clock_t start_clock = std::clock();
-  for (uint32_t block = 0; block < blocks; ++block) {
-    const std::clock_t block_start_clock = std::clock();
-    kessho_product_render(engine, left.data(), right.data(), frames);
-    const std::clock_t block_end_clock = std::clock();
-    block_ms.push_back(
-        1000.0 * static_cast<double>(block_end_clock - block_start_clock) / static_cast<double>(CLOCKS_PER_SEC));
+  for (uint32_t block = 0; block < blocks;) {
+    const uint32_t sample_blocks = std::min(timed_blocks_per_sample, blocks - block);
+    const std::clock_t sample_start_clock = std::clock();
+    for (uint32_t sample_block = 0; sample_block < sample_blocks; ++sample_block) {
+      kessho_product_render(engine, left.data(), right.data(), frames);
+    }
+    const std::clock_t sample_end_clock = std::clock();
+    const double sample_ms = 1000.0 * static_cast<double>(sample_end_clock - sample_start_clock) /
+                             static_cast<double>(CLOCKS_PER_SEC);
+    const double per_block_ms = sample_ms / static_cast<double>(sample_blocks);
+    for (uint32_t sample_block = 0; sample_block < sample_blocks; ++sample_block) {
+      block_ms.push_back(per_block_ms);
+    }
+    block += sample_blocks;
   }
   const std::clock_t end_clock = std::clock();
   const double elapsed_ms = 1000.0 * static_cast<double>(end_clock - start_clock) / static_cast<double>(CLOCKS_PER_SEC);
