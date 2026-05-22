@@ -168,6 +168,7 @@ CREATE INDEX IF NOT EXISTS idx_preset_versions_v2_parent
 -- - drums source preset: drumKit, euclideanPattern
 -- - dynamics source preset: L1 sidechain, character, degrade, endChain engines
 -- - granular kit preset: voice1, voice2, voice3, voice4, legacy
+-- - journey preset: node:left, node:top, node:right, node:bottom state refs
 CREATE TABLE IF NOT EXISTS preset_version_refs_v2 (
   version_id UUID NOT NULL REFERENCES preset_versions_v2(id) ON DELETE CASCADE,
   ref_slot TEXT NOT NULL,

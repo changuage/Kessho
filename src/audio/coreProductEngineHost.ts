@@ -37,11 +37,12 @@ import { classifyCoreProductRuntimeFallback, runtimeFallbackIsDevelopmentError, 
 import { CoreProductArrangementScheduler } from './coreProductArrangementScheduler';
 import { buildCoreProductSnapshotDiff, shouldForwardCoreProductRngDiffs, type SnapshotReloadReason } from './CoreProductRuntimeAdapter';
 import { normalizeClockDivisionValue, normalizeEvolveConfigs, normalizeSequencerStepToggleOverrides, normalizeSequencerStepValueConfigs, normalizeSequencerStepValueOverrides, normalizeSubLaneEnabledStates, normalizedUnitValue, type SequencerKind, type SequencerStepToggleOverride, type SequencerStepValueConfig, type SequencerStepValueOverride } from './CoreProductHostSequencerAdapter';
-import { coreProductRangeValueContext, createCoreProductEngineState, drumVoiceIndex, gainToDb, manualAuditionState, mappedCoreProductRange, midiFromFrequency, requireFiniteRange, requireManualNote, requirePositive, runtimeWalkConfigChanged, runtimeWalkConfigFromState, runtimeWalkPositionsFromTelemetry, sourceId } from './CoreProductHostRuntimeGuards';
+import { coreProductRangeValueContext, createCoreProductEngineState, drumVoiceIndex, manualAuditionState, mappedCoreProductRange, midiFromFrequency, requireFiniteRange, requireManualNote, requirePositive, runtimeWalkConfigChanged, runtimeWalkConfigFromState, runtimeWalkPositionsFromTelemetry, sourceId } from './CoreProductHostRuntimeGuards';
 import { CORE_PRODUCT_GRAPH_TAP_IDS } from './coreProductGraphTaps';
 import { CoreProductRuntime, type CoreProductGraphTapCaptureChunk } from './coreProductRuntime';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import { loadProductLead4opFMPreset } from './CoreProductLegacyPresetCompat';
+import { createCoreProductDynamicsVisualTelemetry, createCoreProductTransportDebugState } from './CoreProductHostDebugTelemetry';
 const CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE = 3;
 const CORE_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME = 4;
 const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = 4;
@@ -78,7 +79,6 @@ class CoreProductEngineHost {
   private running = false;
   private journeyMorphClockRunning = false;
   private journeyMorphClockRaf: number | null = null;
-  private journeyMorphClockTimeout: number | null = null;
   private runtimeWalkPositions: Record<string, number> = {};
   private readonly sampleHoldRanges = new Map<string, ProductRangeState>();
   private readonly drumSampleHoldRanges = new Map<string, ProductRangeState>();
@@ -94,6 +94,7 @@ class CoreProductEngineHost {
   private lastUnsupportedMethodClass: RuntimeFallbackClassification | null = null;
   private runtimeFallbackDiagnosticCount = 0;
   private audioCriticalFallbackCount = 0;
+  private sequencerTransportStartInFlight = false;
   private snapshotReloadCpuMs = 0;
   private lastSnapshotReloadReason: SnapshotReloadReason = 'none';
   private pendingSnapshotReloadReason: SnapshotReloadReason | null = null;
@@ -120,49 +121,16 @@ class CoreProductEngineHost {
   getLimiterNode(): AudioNode | null {
     return this.runtime.outputNode;
   }
+
+  setOutputGain(target: number, durationSeconds = 0): void {
+    this.runtime.setOutputGain(target, durationSeconds);
+  }
   getDynamicsAnalyser(): AnalyserNode | null {
     return this.unsupportedGetter('getDynamicsAnalyser');
   }
 
   getDynamicsVisualTelemetry(): DynamicsVisualTelemetrySnapshot {
-    const telemetry = this.latestTelemetry;
-    const contextTime = this.runtime.audioContext?.currentTime ?? 0;
-    if (!telemetry) {
-      return {
-        contextTime,
-        endCompHandledByWorklet: false,
-        endCompReductionDb: 0,
-        worklet: null,
-        sidechainEvents: [],
-      };
-    }
-    const inputPeak = Math.max(0, telemetry.masterInputPeak ?? 0);
-    const outputPeak = Math.max(0, telemetry.masterTruePeak ?? telemetry.masterOutputPeak ?? 0);
-    const outputRms = Math.max(0, telemetry.masterOutputRms ?? 0);
-    const limiterReductionDb = Math.max(0, telemetry.masterLimiterGainReductionDb ?? 0);
-    const saturationDrive = Math.max(0, telemetry.dynamicsSaturationDrive ?? telemetry.masterSaturationDrive ?? 0);
-    const detectorDb = Number.isFinite(telemetry.masterIntegratedLufs ?? NaN)
-      ? telemetry.masterIntegratedLufs!
-      : gainToDb(inputPeak);
-    return {
-      contextTime,
-      endCompHandledByWorklet: true,
-      endCompReductionDb: limiterReductionDb,
-      worklet: {
-        inputPeak,
-        outputPeak,
-        wetPeak: outputPeak,
-        characterEnv: Math.max(outputRms, outputPeak * 0.5),
-        characterReductionDb: 0,
-        dropoutGain: saturationDrive > 0 ? Math.max(0.25, 1 - Math.min(0.75, saturationDrive * 0.25)) : 1,
-        endInputPeak: inputPeak,
-        endOutputPeak: outputPeak,
-        endReductionDb: limiterReductionDb,
-        endDetectorDb: detectorDb,
-        timestamp: contextTime,
-      },
-      sidechainEvents: [],
-    };
+    return createCoreProductDynamicsVisualTelemetry(this.latestTelemetry, this.runtime.audioContext?.currentTime ?? 0);
   }
   getDrumVoiceAnalyser(): undefined {
     return this.unsupportedGetter('getDrumVoiceAnalyser');
@@ -250,30 +218,7 @@ class CoreProductEngineHost {
   }
 
   getTransportDebugState(): TransportDebugSnapshot | null {
-    const telemetry = this.latestTelemetry;
-    const transport = this.latestProductSnapshot?.transport;
-    if (!telemetry || !transport) return null;
-
-    const effectiveBpm = Number.isFinite(transport.bpm) && transport.bpm > 0 ? transport.bpm : 120;
-    const beatsPerBar = Math.max(1, transport.beatsPerBar || 4);
-    const barsPerPhrase = Math.max(1, transport.barsPerPhrase || 4);
-    const beatDurationSec = 60 / effectiveBpm;
-    const effectivePhraseSeconds = beatDurationSec * beatsPerBar * barsPerPhrase;
-    const beatsPerPhrase = beatsPerBar * barsPerPhrase;
-    const beatPosition = Number.isFinite(telemetry.beatPosition ?? NaN) ? telemetry.beatPosition! : 0;
-    const beatInPhrase = ((beatPosition % beatsPerPhrase) + beatsPerPhrase) % beatsPerPhrase;
-    const remainingBeats = beatInPhrase === 0 && telemetry.transportRunning
-      ? beatsPerPhrase
-      : Math.max(0, beatsPerPhrase - beatInPhrase);
-    const nextPhraseBoundaryIn = telemetry.transportRunning ? remainingBeats * beatDurationSec : 0;
-
-    return {
-      effectiveBpm,
-      effectivePhraseSeconds,
-      nextPhraseBoundaryIn,
-      nextHarmonyEventIn: null,
-      nextProgressionStepIn: null,
-    };
+    return createCoreProductTransportDebugState(this.latestTelemetry, this.latestProductSnapshot?.transport);
   }
 
   getState(): EngineState {
@@ -356,6 +301,17 @@ class CoreProductEngineHost {
     this.latestSliderState = sliderState;
     const nextWalkConfig = runtimeWalkConfigFromState(this.latestSliderState);
     this.syncLeadPresetData(sliderState);
+    if (!this.running && !this.sequencerTransportStartInFlight && this.sequencerTransportRequested(sliderState)) {
+      this.sequencerTransportStartInFlight = true;
+      void this.start(sliderState)
+        .catch((error) => {
+          console.warn('Failed to start Product Core sequencer transport:', error);
+        })
+        .finally(() => {
+          this.sequencerTransportStartInFlight = false;
+        });
+      return;
+    }
     if (this.runtimeReady && this.assetAdapter.hasMissingDefaultAssetsForState()) {
       void this.assetAdapter.ensureDefaultAssetsForState().then(() => {
         this.applyLatestSnapshotUpdate('asset-reference-change');
@@ -367,6 +323,10 @@ class CoreProductEngineHost {
     this.applyLatestSnapshotUpdate();
     if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.flushRuntimeWalkRanges();
     if (this.running) this.arrangementScheduler.update(this.createLatestArrangementState());
+  }
+
+  private sequencerTransportRequested(sliderState: Record<string, unknown>): boolean {
+    return sliderState.drumEuclidMasterEnabled === true || sliderState.synthEuclideanMasterEnabled === true;
   }
 
   setSynthEuclidClockDivs(divs: unknown[]): void {
@@ -795,10 +755,6 @@ class CoreProductEngineHost {
     if (this.journeyMorphClockRaf !== null) {
       window.cancelAnimationFrame(this.journeyMorphClockRaf);
       this.journeyMorphClockRaf = null;
-    }
-    if (this.journeyMorphClockTimeout !== null) {
-      window.clearTimeout(this.journeyMorphClockTimeout);
-      this.journeyMorphClockTimeout = null;
     }
     this.adapterState = {
       ...this.adapterState,
@@ -1395,32 +1351,23 @@ class CoreProductEngineHost {
 
     const tick = (now: number) => {
       this.journeyMorphClockRaf = null;
-      this.journeyMorphClockTimeout = null;
       if (!this.journeyMorphClockRunning || !this.displayCallbacks.has('journeyMorphClock')) return;
 
       this.invokeDisplayCallback('journeyMorphClock', now);
       if (!this.journeyMorphClockRunning || !this.displayCallbacks.has('journeyMorphClock')) return;
 
-      if (document.visibilityState === 'visible') {
-        this.journeyMorphClockRaf = window.requestAnimationFrame(tick);
-        return;
-      }
-      if (!this.running) {
+      if (document.visibilityState !== 'visible' && !this.running) {
         this.stopJourneyMorphClock();
         return;
       }
-      this.journeyMorphClockTimeout = window.setTimeout(() => tick(performance.now()), 50);
+      this.journeyMorphClockRaf = window.requestAnimationFrame(tick);
     };
 
-    if (document.visibilityState === 'visible') {
-      this.journeyMorphClockRaf = window.requestAnimationFrame(tick);
-      return;
-    }
-    if (!this.running) {
+    if (document.visibilityState !== 'visible' && !this.running) {
       this.stopJourneyMorphClock();
       return;
     }
-    this.journeyMorphClockTimeout = window.setTimeout(() => tick(performance.now()), 50);
+    this.journeyMorphClockRaf = window.requestAnimationFrame(tick);
   }
 
   private syncSingleRange(

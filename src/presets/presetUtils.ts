@@ -11,6 +11,7 @@ import type {
   PresetVersion,
   PresetVersionMetadata,
 } from './types';
+import { normalizeJourneyPresetPreview } from './journeyPresetPreview';
 
 const PREFIX = 'preset:';
 const METADATA_FIELDS = [
@@ -30,6 +31,7 @@ const METADATA_FIELDS = [
   'synthSubLaneStates',
   'synthPitchSettings',
   'synthPitchBindingModes',
+  'journeyPreview',
 ] as const;
 
 const LEGACY_DELAY_A_KEY_ALIASES = {
@@ -285,7 +287,9 @@ export function normalizePresetVersion(input: unknown): PresetVersion | null {
   }
 
   for (const field of METADATA_FIELDS) {
-    const normalized = normalizeMetadataField(input[field]);
+    const normalized = field === 'journeyPreview'
+      ? normalizeJourneyPresetPreview(input[field])
+      : normalizeMetadataField(input[field]);
     if (normalized !== undefined) {
       if ((field === 'dualRanges' || field === 'sliderModes') && isPlainObject(normalized)) {
         migrateLegacyDelayAKeys(normalized as Record<string, unknown>);
@@ -403,6 +407,11 @@ export function normalizePresetSummary(entry: PresetEntry): PresetSummary {
   const variantName = entry.variantName ?? entry.name;
   const familyId = entry.familyId ?? makeDerivedFamilyId(entry.type, getPresetScope(entry, entry.type), familyName);
   const variantId = entry.variantId ?? makeDerivedVariantId(entry.type, getPresetScope(entry, entry.type), familyName, variantName);
+  const currentVersion = entry.versions.find(version => version.v === entry.currentVersion)
+    ?? entry.versions[entry.versions.length - 1];
+  const journeyPreview = entry.type === 'journey'
+    ? normalizeJourneyPresetPreview(currentVersion?.journeyPreview)
+    : undefined;
   return {
     id: entry.id,
     type: entry.type,
@@ -424,6 +433,7 @@ export function normalizePresetSummary(entry: PresetEntry): PresetSummary {
     playCount: entry.playCount,
     featured: entry.featured,
     rating: entry.rating,
+    journeyPreview,
     tags: entry.tags,
     versionCount: entry.versions.length,
     currentVersion: entry.currentVersion,

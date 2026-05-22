@@ -1,9 +1,9 @@
 import type { CoreProductEvent } from './coreProductEvents';
-import { CORE_PRODUCT_SOURCE_IDS, coreProductPadRuntimeParamId, createCoreProductJourneyStateEvent, createCoreProductParamEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSourcePresetEvent } from './coreProductEvents';
+import { CORE_PRODUCT_SOURCE_IDS, coreProductDrumRuntimeParamId, coreProductPadRuntimeParamId, createCoreProductJourneyStateEvent, createCoreProductParamEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSourcePresetEvent } from './coreProductEvents';
 import { usesLegacyGranularRuntimeSeed, type CoreProductSnapshot } from './coreProductSnapshot';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
-import { KESSHO_PRODUCT_PAD_PARAM_COUNT } from './generated/kesshoProductSchema';
+import { KESSHO_PRODUCT_DRUM_PARAM_COUNT, KESSHO_PRODUCT_PAD_PARAM_COUNT } from './generated/kesshoProductSchema';
 
 export const MAX_SNAPSHOT_DIFF_EVENTS = 384;
 
@@ -15,6 +15,7 @@ type ProductSourceSnapshot = CoreProductSnapshot['sources'][number];
 type ProductLaneSnapshot = CoreProductSnapshot['synthLanes'][number];
 type ProductGranularVoiceSnapshot = CoreProductSnapshot['fx']['granularVoices'][number];
 type ProductParamIdName = keyof typeof KESSHO_PRODUCT_PARAM_IDS;
+type ExactPatchKind = 'pad' | 'lead' | 'drum';
 type SnapshotScalar = number | boolean;
 
 export type CoreProductSnapshotDiffResult = { applied: true; events: CoreProductEvent[] } | { applied: false; reason: SnapshotReloadReason };
@@ -39,6 +40,7 @@ class CoreProductRuntimeAdapter {
     this.appendJourneyDiffs(events, previous, next);
     this.appendSourceParamDiffs(events, previous.sources, next.sources);
     this.appendPadExactPatchDiffs(events, previous.sources, next.sources);
+    this.appendDrumExactPatchDiffs(events, previous.sources, next.sources);
     this.appendSequencerLaneDiffs(events, 'synth', previous.synthLanes, next.synthLanes);
     this.appendSequencerLaneDiffs(events, 'drum', previous.drumLanes, next.drumLanes);
     this.appendFxRoutingMasterDiffs(events, previous, next);
@@ -69,7 +71,7 @@ class CoreProductRuntimeAdapter {
       if (!soundscapeFadeCanCoverPatchRemoval) {
         if (this.padPatchChanged(previousSource, nextSource) && !this.canApplyPadExactPatchDiff(previousSource, nextSource)) return 'exact-patch-change';
         if (this.leadPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
-        if (this.drumPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
+        if (this.drumPatchChanged(previousSource, nextSource) && !this.canApplyDrumExactPatchDiff(previousSource, nextSource)) return 'exact-patch-change';
       }
     }
     if (!this.canApplyLaneDiffs(previous.synthLanes, next.synthLanes)) return 'sequencer-structure-change';
@@ -95,7 +97,7 @@ class CoreProductRuntimeAdapter {
       if (!soundscapeFadeCanCoverPatchRemoval) {
         if (this.padPatchChanged(previousSource, nextSource) && !this.canApplyPadExactPatchDiff(previousSource, nextSource)) return false;
         if (this.leadPatchChanged(previousSource, nextSource)) return false;
-        if (this.drumPatchChanged(previousSource, nextSource)) return false;
+        if (this.drumPatchChanged(previousSource, nextSource) && !this.canApplyDrumExactPatchDiff(previousSource, nextSource)) return false;
       }
     }
     return this.canApplyLaneDiffs(previous.synthLanes, next.synthLanes) &&
@@ -103,23 +105,16 @@ class CoreProductRuntimeAdapter {
   }
 
   private padPatchChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
-    if (previous.exactPadParamCount !== next.exactPadParamCount) return true;
-    const count = Math.max(previous.exactPadParamCount, next.exactPadParamCount);
-    for (let index = 0; index < count; index += 1) {
-      if (this.valuesDiffer(
-        this.requiredExactPatchParam(previous.exactPadParams, index, 'pad', previous.sourceId),
-        this.requiredExactPatchParam(next.exactPadParams, index, 'pad', next.sourceId),
-      )) {
-        return true;
-      }
-    }
-    return false;
+    return this.patchChanged(previous.exactPadParamCount, next.exactPadParamCount, previous.exactPadParams, next.exactPadParams, 'pad', previous.sourceId, next.sourceId);
   }
 
   private canApplyPadExactPatchDiff(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
     if (!this.isPadSourceId(previous.sourceId) || previous.sourceId !== next.sourceId) return false;
-    return previous.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT &&
-      next.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT;
+    return previous.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT && next.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT;
+  }
+
+  private canApplyDrumExactPatchDiff(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
+    return previous.sourceId === CORE_PRODUCT_SOURCE_IDS.drum && previous.sourceId === next.sourceId && previous.exactDrumParamCount === KESSHO_PRODUCT_DRUM_PARAM_COUNT && next.exactDrumParamCount === KESSHO_PRODUCT_DRUM_PARAM_COUNT;
   }
 
   private isPadSourceId(sourceId: number): boolean {
@@ -137,26 +132,20 @@ class CoreProductRuntimeAdapter {
   }
 
   private leadPatchChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
-    if (previous.exactLeadParamCount !== next.exactLeadParamCount) return true;
-    const count = Math.max(previous.exactLeadParamCount, next.exactLeadParamCount);
-    for (let index = 0; index < count; index += 1) {
-      if (this.valuesDiffer(
-        this.requiredExactPatchParam(previous.exactLeadParams, index, 'lead', previous.sourceId),
-        this.requiredExactPatchParam(next.exactLeadParams, index, 'lead', next.sourceId),
-      )) {
-        return true;
-      }
-    }
-    return false;
+    return this.patchChanged(previous.exactLeadParamCount, next.exactLeadParamCount, previous.exactLeadParams, next.exactLeadParams, 'lead', previous.sourceId, next.sourceId);
   }
 
   private drumPatchChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
-    if (previous.exactDrumParamCount !== next.exactDrumParamCount) return true;
-    const count = Math.max(previous.exactDrumParamCount, next.exactDrumParamCount);
+    return this.patchChanged(previous.exactDrumParamCount, next.exactDrumParamCount, previous.exactDrumParams, next.exactDrumParams, 'drum', previous.sourceId, next.sourceId);
+  }
+
+  private patchChanged(previousCount: number, nextCount: number, previousParams: readonly number[], nextParams: readonly number[], patchKind: ExactPatchKind, previousSourceId: number, nextSourceId: number): boolean {
+    if (previousCount !== nextCount) return true;
+    const count = Math.max(previousCount, nextCount);
     for (let index = 0; index < count; index += 1) {
       if (this.valuesDiffer(
-        this.requiredExactPatchParam(previous.exactDrumParams, index, 'drum', previous.sourceId),
-        this.requiredExactPatchParam(next.exactDrumParams, index, 'drum', next.sourceId),
+        this.requiredExactPatchParam(previousParams, index, patchKind, previousSourceId),
+        this.requiredExactPatchParam(nextParams, index, patchKind, nextSourceId),
       )) {
         return true;
       }
@@ -164,7 +153,7 @@ class CoreProductRuntimeAdapter {
     return false;
   }
 
-  private requiredExactPatchParam(params: readonly number[], index: number, patchKind: 'pad' | 'lead' | 'drum', sourceId: number): number {
+  private requiredExactPatchParam(params: readonly number[], index: number, patchKind: ExactPatchKind, sourceId: number): number {
     const value = params[index];
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       throw new Error(`Core Product ${patchKind} patch for source ${sourceId} is missing required param ${index}`);
@@ -269,18 +258,26 @@ class CoreProductRuntimeAdapter {
     previousSources: ProductSourceSnapshot[],
     nextSources: ProductSourceSnapshot[],
   ): void {
+    this.appendExactPatchDiffs(events, previousSources, nextSources, 'pad', KESSHO_PRODUCT_PAD_PARAM_COUNT, (previous, next) => this.canApplyPadExactPatchDiff(previous, next), (next, paramIndex) => coreProductPadRuntimeParamId(next.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ? 1 : 0, paramIndex));
+  }
+
+  private appendDrumExactPatchDiffs(
+    events: CoreProductEvent[],
+    previousSources: ProductSourceSnapshot[],
+    nextSources: ProductSourceSnapshot[],
+  ): void {
+    this.appendExactPatchDiffs(events, previousSources, nextSources, 'drum', KESSHO_PRODUCT_DRUM_PARAM_COUNT, (previous, next) => this.canApplyDrumExactPatchDiff(previous, next), (_next, paramIndex) => coreProductDrumRuntimeParamId(paramIndex));
+  }
+
+  private appendExactPatchDiffs(events: CoreProductEvent[], previousSources: ProductSourceSnapshot[], nextSources: ProductSourceSnapshot[], patchKind: Exclude<ExactPatchKind, 'lead'>, paramCount: number, canApply: (previous: ProductSourceSnapshot, next: ProductSourceSnapshot) => boolean, paramId: (next: ProductSourceSnapshot, paramIndex: number) => number): void {
     for (let sourceIndex = 0; sourceIndex < nextSources.length; sourceIndex += 1) {
       const previous = previousSources[sourceIndex];
       const next = nextSources[sourceIndex];
-      if (!previous || !next || !this.canApplyPadExactPatchDiff(previous, next)) continue;
-      const padIndex = next.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ? 1 : 0;
-      for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_PAD_PARAM_COUNT; paramIndex += 1) {
-        this.appendParamDiff(
-          events,
-          coreProductPadRuntimeParamId(padIndex, paramIndex),
-          this.requiredExactPatchParam(previous.exactPadParams, paramIndex, 'pad', previous.sourceId),
-          this.requiredExactPatchParam(next.exactPadParams, paramIndex, 'pad', next.sourceId),
-        );
+      if (!previous || !next || !canApply(previous, next)) continue;
+      const previousParams = patchKind === 'pad' ? previous.exactPadParams : previous.exactDrumParams;
+      const nextParams = patchKind === 'pad' ? next.exactPadParams : next.exactDrumParams;
+      for (let paramIndex = 0; paramIndex < paramCount; paramIndex += 1) {
+        this.appendParamDiff(events, paramId(next, paramIndex), this.requiredExactPatchParam(previousParams, paramIndex, patchKind, previous.sourceId), this.requiredExactPatchParam(nextParams, paramIndex, patchKind, next.sourceId));
       }
     }
   }

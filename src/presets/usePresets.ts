@@ -18,6 +18,10 @@ import { buildPresetFamilies } from './catalog';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
+import {
+  cleanupJourneyRefsForDeletedStatePreset,
+  findJourneyPresetsReferencingStatePreset,
+} from './journeyPresetReferences';
 
 function levelToParamLevel(level: PresetLevel): ParamLevel {
   switch (level) {
@@ -256,6 +260,35 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     if (!entry) return false;
     if (!SHARED_PRESET_TEST_MODE && (entry.library === 'stock' || entry.author === 'factory')) return false;
     try {
+      if (type === 'state') {
+        const impacts = await findJourneyPresetsReferencingStatePreset(entry, activeStore);
+        if (impacts.length > 0) {
+          const blocked = impacts
+            .filter((impact) => impact.entry.library === 'stock' || impact.entry.author === 'factory')
+            .map((impact) => impact.journeyName);
+          if (blocked.length > 0) {
+            window.alert(
+              `Cannot delete "${name}" because it is used by read-only journey preset${blocked.length === 1 ? '' : 's'}:\n\n${blocked.join('\n')}`,
+            );
+            return false;
+          }
+          const journeyNames = impacts.map((impact) => impact.journeyName);
+          const confirmed = window.confirm(
+            `Delete "${name}"?\n\nThis state preset is used by ${journeyNames.length} journey preset${journeyNames.length === 1 ? '' : 's'}:\n\n${journeyNames.join('\n')}\n\nDeleting it will remove the referenced node from ${journeyNames.length === 1 ? 'that journey' : 'those journeys'}.`,
+          );
+          if (!confirmed) return false;
+        }
+        if (impacts.length > 0) {
+          const cleanup = await cleanupJourneyRefsForDeletedStatePreset(entry, activeStore);
+          if (cleanup.blocked.length > 0) {
+            window.alert(
+              `Cannot delete "${name}" because these journey presets could not be updated:\n\n${cleanup.blocked.join('\n')}`,
+            );
+            await refresh();
+            return false;
+          }
+        }
+      }
       await activeStore.delete(type, name, storeScope);
       await refresh();
       return true;

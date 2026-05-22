@@ -8,6 +8,7 @@
 
 import { SliderState, DEFAULT_STATE, migratePreset, SavedPreset } from './state';
 import { audioEngine } from '../audio/runtime';
+import { getAllMorphedDrumParams } from '../audio/drumMorph';
 
 // User preference keys — audio processing settings that should NOT change
 // when loading presets or morphing between them.
@@ -24,6 +25,8 @@ export interface ApplyPresetOptions {
   resetCofDrift?: boolean;
   /** Whether to run migratePreset() on the raw input. Default: true. */
   migrate?: boolean;
+  /** Whether to restore saved live sequencer transport flags. Default: false. */
+  preserveSequencerTransport?: boolean;
   /** The normalizePresetForWeb function (defined in App.tsx, passed in to avoid circular deps). */
   normalize: (state: SliderState) => SliderState;
 }
@@ -52,6 +55,7 @@ export function applyPreset(
     updateEngine = true,
     resetCofDrift = true,
     migrate = true,
+    preserveSequencerTransport = false,
     normalize,
   } = options;
 
@@ -69,6 +73,13 @@ export function applyPreset(
     for (const key of USER_PREFERENCE_KEYS) {
       (newState as unknown as Record<string, unknown>)[key] = currentState[key];
     }
+  }
+
+  Object.assign(newState, getAllMorphedDrumParams(newState));
+
+  if (!preserveSequencerTransport) {
+    newState.drumEuclidMasterEnabled = false;
+    newState.synthEuclideanMasterEnabled = false;
   }
 
   const presetState = migrated.state as Partial<SliderState>;

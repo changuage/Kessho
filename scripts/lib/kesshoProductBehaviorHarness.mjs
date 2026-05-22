@@ -372,8 +372,10 @@ export function loadRuntimeAdapterHarness() {
       piano: 6,
       soundscape: 7,
     },
+    KESSHO_PRODUCT_DRUM_PARAM_COUNT: 126,
     KESSHO_PRODUCT_PAD_PARAM_COUNT: 53,
     KESSHO_PRODUCT_PARAM_IDS: createParamIds(),
+    coreProductDrumRuntimeParamId: (paramIndex) => `DrumRuntime${paramIndex}`,
     coreProductPadRuntimeParamId: (padIndex, paramIndex) => `Pad${padIndex + 1}Runtime${paramIndex}`,
     createCoreProductJourneyStateEvent: (enabled, morphPhase, morphRateBars) =>
       event('journey-state', { enabled, morphPhase, morphRateBars }),

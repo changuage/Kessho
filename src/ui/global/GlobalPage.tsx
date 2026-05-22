@@ -834,10 +834,10 @@ export interface GlobalPageProps {
   morphPlayPhrases: number;
   morphTransitionPhrases: number;
   morphCountdown: { phase: string; phrasesLeft: number } | null;
-  onLoadMorphA: (entry: PresetEntry, data: Record<string, unknown>) => void;
+  onLoadMorphA: (entry: PresetEntry, data: Record<string, unknown>) => boolean | void | Promise<boolean | void>;
   morphSlotAName: string;
   onClearMorphA: () => void;
-  onLoadMorphB: (entry: PresetEntry, data: Record<string, unknown>) => void;
+  onLoadMorphB: (entry: PresetEntry, data: Record<string, unknown>) => boolean | void | Promise<boolean | void>;
   morphSlotBName: string;
   onClearMorphB: () => void;
   onMorphPositionChange: (value: number) => void;

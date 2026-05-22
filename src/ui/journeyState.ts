@@ -637,13 +637,14 @@ export function useJourney(
       }
     }
     
-    // Fallback: pick first preset node (not center, not empty)
+    // Fallback: if no START connection exists, start from a random filled node.
     if (!firstNode) {
-      firstNode = config.nodes.find(n => 
-        n.position !== 'center' && 
-        n.presetId && 
+      const filledNodes = config.nodes.filter(n =>
+        n.position !== 'center' &&
+        n.presetId &&
         n.presetId !== '__CENTER__'
       );
+      firstNode = filledNodes[Math.floor(Math.random() * filledNodes.length)];
     }
     
     if (!firstNode) {

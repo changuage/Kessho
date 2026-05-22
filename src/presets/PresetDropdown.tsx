@@ -15,6 +15,8 @@ import { PresetRatingStars } from './PresetRatingStars';
 import { DEFAULT_STATE, type SliderMode, type SliderState } from '../ui/state';
 import type { UsePresetsOptions } from './usePresets';
 
+type PresetLoadResult = boolean | void | Promise<boolean | void>;
+
 export interface PresetDropdownProps {
   /** Preset level */
   level: PresetLevel;
@@ -25,7 +27,7 @@ export interface PresetDropdownProps {
   /** Currently loaded preset name (for display) */
   currentName?: string;
   /** Called when a preset is loaded */
-  onLoad: (entry: PresetEntry, data: Record<string, unknown>) => void;
+  onLoad: (entry: PresetEntry, data: Record<string, unknown>) => PresetLoadResult;
   /** Called when state is updated after applying preset */
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
   /** Optional: accent color for focus ring */
@@ -276,10 +278,15 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     if (requestId !== loadRequestIdRef.current) return;
     if (!versionData) return;
 
+    const didLoad = await onLoad(entry, versionData);
+    if (requestId !== loadRequestIdRef.current) return;
+    if (didLoad === false) {
+      setSelectedName(currentName ?? '');
+      return;
+    }
+
     setLoadedEntry(entry);
     setLoadedData(canonicalizeLoadedData(versionData));
-    onLoad(entry, versionData);
-
     // Apply params to state and notify
     applyLoadedData(versionData);
     onDualStateChange?.(
@@ -287,7 +294,7 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
       version.dualRanges,
       version.sliderModes as Record<string, SliderMode> | undefined,
     );
-  }, [load, getSelectedVersion, onLoad, onDualStateChange, canonicalizeLoadedData, applyLoadedData]);
+  }, [load, getSelectedVersion, onLoad, onDualStateChange, canonicalizeLoadedData, applyLoadedData, currentName]);
 
   // Open save dialog
   const handleSaveClick = useCallback(() => {
@@ -377,17 +384,23 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     const versionData = getVersionData(selectedEntry);
     if (requestId !== loadRequestIdRef.current) return;
     if (!versionData) return;
+    const didLoad = await onLoad(selectedEntry, versionData);
+    if (requestId !== loadRequestIdRef.current) return;
+    if (didLoad === false) {
+      setSelectedName(currentName ?? '');
+      return;
+    }
+
     setSelectedName(entry.name);
     setLoadedEntry(selectedEntry);
     setLoadedData(canonicalizeLoadedData(versionData));
-    onLoad(selectedEntry, versionData);
     applyLoadedData(versionData);
     onDualStateChange?.(
       Object.keys(versionData),
       selectedVersion.dualRanges,
       selectedVersion.sliderModes as Record<string, SliderMode> | undefined,
     );
-  }, [refresh, load, getSelectedVersion, onLoad, onDualStateChange, canonicalizeLoadedData, applyLoadedData]);
+  }, [refresh, load, getSelectedVersion, onLoad, onDualStateChange, canonicalizeLoadedData, applyLoadedData, currentName]);
 
   // Delete selected preset
   const handleDelete = useCallback(async () => {

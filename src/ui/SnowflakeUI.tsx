@@ -6,11 +6,15 @@
  * Changes are immediate with no regeneration delay.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { SliderState, SavedPreset } from './state';
 import { JourneyState, JourneyConfig, JourneyNode } from '../audio/journeyTypes';
 import { PHRASE_LENGTH } from '../audio/harmony';
 import { useSliderHelp } from './SliderHelpOverlay';
+import type { PresetSummary } from '../presets/types';
+import type { JourneyValidationResult } from '../presets/journeyPresetCodec';
+import { isMobileDevice } from '../platform';
+import { JourneyPresetGlyph } from './JourneyPresetGlyph';
 
 // Unicode symbols with text variation selector (U+FE0E) to prevent emoji rendering on mobile
 const TEXT_SYMBOLS = {
@@ -40,7 +44,9 @@ interface SnowflakeUIProps {
   onShowJourney?: () => void;
   onShowVisualizer?: () => void;
   onTogglePlay: () => void;
-  onLoadPreset: (preset: SavedPreset) => void | Promise<void>;
+  onLoadPreset: (preset: SavedPreset) => boolean | void | Promise<boolean | void>;
+  journeyPresets?: PresetSummary[];
+  onLoadJourneyPreset?: (name: string) => void | Promise<void>;
   presets: SavedPreset[];
   isPlaying: boolean;
   // Recording display (read-only - recording controlled from Advanced UI)
@@ -51,6 +57,8 @@ interface SnowflakeUIProps {
   journeyState?: JourneyState;
   journeyConfig?: JourneyConfig | null;
   isJourneyPlaying?: boolean;
+  activeJourneyName?: string;
+  journeyValidation?: JourneyValidationResult;
 }
 
 // Macro slider configuration
@@ -281,7 +289,109 @@ const STATUS_COLORS = {
   endConnection: 'rgba(220, 235, 255, 0.7)',
 };
 
-const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onShowVisualizer, onTogglePlay, onLoadPreset, presets, isPlaying, isRecording, recordingDuration, onStopRecording, journeyState, journeyConfig, isJourneyPlaying }) => {
+type PresetPanelTab = 'state' | 'journey';
+type PresetSortMode = 'updated' | 'az' | 'children';
+
+type StatePresetFamily = {
+  familyId: string;
+  familyName: string;
+  updatedAt: number;
+  variants: SavedPreset[];
+};
+
+const PRESET_PANEL_SYMBOLS = {
+  state: TEXT_SYMBOLS.hexagon,
+  journey: TEXT_SYMBOLS.diamond,
+  search: '⌕',
+  updated: '◷\uFE0E',
+  az: 'A↧',
+  children: '⧉',
+  expand: '›',
+  collapse: '⌄',
+  load: '↗\uFE0E',
+  empty: '∅',
+} as const;
+
+const STATE_CHILD_COLORS = ['#C4724E', '#8B5CF6', '#7B9A6D', '#D4A520', '#5A7B8A', '#B8E0FF'];
+
+function presetAccentColor(seed: string): string {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = ((hash << 5) - hash + seed.charCodeAt(index)) | 0;
+  }
+  return STATE_CHILD_COLORS[Math.abs(hash) % STATE_CHILD_COLORS.length] ?? STATE_CHILD_COLORS[0]!;
+}
+
+function normalizePresetQuery(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function getStatePresetFamilyId(preset: SavedPreset): string {
+  const fallbackName = preset.familyName || preset.name;
+  return preset.familyId || `state:${fallbackName.toLocaleLowerCase()}`;
+}
+
+function getStatePresetFamilyName(preset: SavedPreset): string {
+  return preset.familyName || preset.name;
+}
+
+function getStatePresetVariantName(preset: SavedPreset): string {
+  return preset.variantName || preset.name;
+}
+
+function getStatePresetUpdatedAt(preset: SavedPreset): number {
+  const timestamp = new Date(preset.timestamp).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function presetSourceLabel(source: SavedPreset['source'] | PresetSummary['library'] | undefined): string {
+  if (source === 'cloud') return 'Cloud';
+  if (source === 'stock' || source === 'bundled') return 'Stock';
+  if (source === 'user' || source === 'device-local') return 'Local';
+  return 'Preset';
+}
+
+function formatPresetDate(timestamp: number): string {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return '';
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(timestamp));
+}
+
+function stateVariantMatchesQuery(preset: SavedPreset, query: string): boolean {
+  if (!query) return true;
+  const haystack = [
+    preset.name,
+    preset.familyName,
+    preset.variantName,
+    preset.source,
+  ].filter(Boolean).join(' ').toLocaleLowerCase();
+  return haystack.includes(query);
+}
+
+function journeyMatchesQuery(preset: PresetSummary, query: string): boolean {
+  if (!query) return true;
+  const haystack = [
+    preset.name,
+    preset.familyName,
+    preset.variantName,
+    preset.library,
+    preset.description,
+  ].filter(Boolean).join(' ').toLocaleLowerCase();
+  return haystack.includes(query);
+}
+
+function journeyPresetHoverTitle(preset: PresetSummary): string {
+  return preset.description
+    ? `Load journey: ${preset.name}\n${preset.description}`
+    : `Load journey: ${preset.name}`;
+}
+
+function compareStateVariants(left: SavedPreset, right: SavedPreset): number {
+  const rankDiff = (left.variantRank ?? Number.MAX_SAFE_INTEGER) - (right.variantRank ?? Number.MAX_SAFE_INTEGER);
+  if (rankDiff !== 0) return rankDiff;
+  return getStatePresetVariantName(left).localeCompare(getStatePresetVariantName(right));
+}
+
+const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onShowVisualizer, onTogglePlay, onLoadPreset, journeyPresets = [], onLoadJourneyPreset, presets, isPlaying, isRecording, recordingDuration, onStopRecording, journeyState, journeyConfig, isJourneyPlaying, activeJourneyName, journeyValidation }) => {
   const { announceHelp } = useSliderHelp();
   const bindHelp = useCallback((helpKey: string) => ({
     onMouseEnter: () => announceHelp(helpKey),
@@ -300,6 +410,10 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
   const [specialDrag, setSpecialDrag] = useState<'hexagon' | 'ring' | null>(null);
   const [specialHover, setSpecialHover] = useState<'hexagon' | 'ring' | null>(null);
   const [showPresets, setShowPresets] = useState(false);
+  const [presetTab, setPresetTab] = useState<PresetPanelTab>('state');
+  const [presetSort, setPresetSort] = useState<PresetSortMode>('updated');
+  const [presetSearch, setPresetSearch] = useState('');
+  const [expandedStateFamilies, setExpandedStateFamilies] = useState<Record<string, boolean>>({});
   const [showControls, setShowControls] = useState(true);
   const hideTimerRef = useRef<number | null>(null);
   
@@ -330,6 +444,61 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
   useEffect(() => {
     resetHideTimer();
   }, [resetHideTimer]);
+
+  const presetQuery = useMemo(() => normalizePresetQuery(presetSearch), [presetSearch]);
+
+  const statePresetFamilies = useMemo(() => {
+    const familyMap = new Map<string, StatePresetFamily>();
+    for (const preset of presets) {
+      const familyId = getStatePresetFamilyId(preset);
+      const familyName = getStatePresetFamilyName(preset);
+      const existing = familyMap.get(familyId);
+      const updatedAt = getStatePresetUpdatedAt(preset);
+      if (existing) {
+        existing.updatedAt = Math.max(existing.updatedAt, updatedAt);
+        existing.variants.push(preset);
+      } else {
+        familyMap.set(familyId, {
+          familyId,
+          familyName,
+          updatedAt,
+          variants: [preset],
+        });
+      }
+    }
+
+    const families = Array.from(familyMap.values()).map((family) => ({
+      ...family,
+      variants: [...family.variants].sort(compareStateVariants),
+    })).filter((family) => {
+      if (!presetQuery) return true;
+      const familyMatch = family.familyName.toLocaleLowerCase().includes(presetQuery);
+      return familyMatch || family.variants.some((variant) => stateVariantMatchesQuery(variant, presetQuery));
+    });
+
+    return families.sort((left, right) => {
+      if (presetSort === 'children') {
+        const childDiff = right.variants.length - left.variants.length;
+        if (childDiff !== 0) return childDiff;
+      }
+      if (presetSort === 'az') return left.familyName.localeCompare(right.familyName);
+      const updatedDiff = right.updatedAt - left.updatedAt;
+      if (updatedDiff !== 0) return updatedDiff;
+      return left.familyName.localeCompare(right.familyName);
+    });
+  }, [presetQuery, presetSort, presets]);
+
+  const sortedJourneyPresets = useMemo(() => {
+    const next = journeyPresets.filter((preset) => journeyMatchesQuery(preset, presetQuery));
+    return next.sort((left, right) => {
+      if (presetSort === 'children') {
+        const versionDiff = right.versionCount - left.versionCount;
+        if (versionDiff !== 0) return versionDiff;
+      }
+      if (presetSort === 'az') return left.name.localeCompare(right.name);
+      return right.updatedAt - left.updatedAt || left.name.localeCompare(right.name);
+    });
+  }, [journeyPresets, presetQuery, presetSort]);
   
   // Responsive canvas size - smaller on mobile
   const [windowSize, setWindowSize] = useState({ width: typeof window !== 'undefined' ? window.innerWidth : 800, height: typeof window !== 'undefined' ? window.innerHeight : 600 });
@@ -346,6 +515,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
   // Desktop: use original 70% of smaller dimension, capped at 550px
   const smallerDimension = Math.min(windowSize.width, windowSize.height - 100);
   const isMobile = windowSize.width < 1024;
+  const disablePresetPopupBlur = isMobile || isMobileDevice();
   const canvasSize = isMobile 
     ? Math.max(250, Math.min(smallerDimension * 0.875, 650))
     : Math.max(200, Math.min(smallerDimension * 0.7, 550));
@@ -582,6 +752,66 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
 
   return (
     <div style={styles.container}>
+      {/* Armed journey status bar */}
+      {!isJourneyPlaying && activeJourneyName && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            setStatusBarExpanded(!statusBarExpanded);
+          }}
+          style={{
+            position: 'fixed',
+            top: 8,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1000,
+            background: STATUS_COLORS.popup,
+            backdropFilter: 'blur(4px)',
+            WebkitBackdropFilter: 'blur(4px)',
+            border: `1px solid ${journeyValidation?.playable === false ? '#d8b36a' : STATUS_COLORS.popupBorder}`,
+            borderRadius: statusBarExpanded ? 12 : 20,
+            padding: statusBarExpanded ? '10px 14px' : '6px 14px',
+            display: 'flex',
+            flexDirection: statusBarExpanded ? 'column' : 'row',
+            alignItems: statusBarExpanded ? 'stretch' : 'center',
+            gap: statusBarExpanded ? 8 : 10,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            color: STATUS_COLORS.text,
+            pointerEvents: 'auto',
+            cursor: 'pointer',
+            minWidth: statusBarExpanded ? 180 : undefined,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: journeyValidation?.playable === false ? '#d8b36a' : STATUS_COLORS.filledNode,
+              boxShadow: `0 0 6px ${journeyValidation?.playable === false ? '#d8b36a' : STATUS_COLORS.filledNode}`,
+            }} />
+            <span style={{ fontSize: 10, fontWeight: 600, color: journeyValidation?.playable === false ? '#d8b36a' : STATUS_COLORS.filledNode }}>
+              {journeyValidation?.playable === false ? 'Journey needs edit' : 'Journey armed'}
+            </span>
+            {!statusBarExpanded && (
+              <span style={{ fontSize: 10, color: STATUS_COLORS.text, maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {activeJourneyName}
+              </span>
+            )}
+          </div>
+          {statusBarExpanded && (
+            <>
+              <div style={{ fontSize: 12, color: STATUS_COLORS.text }}>{activeJourneyName}</div>
+              {journeyValidation?.playable === false && (
+                <div style={{ fontSize: 10, color: '#d8b36a', lineHeight: 1.35 }}>
+                  {journeyValidation.issues.join(' · ')}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Journey status bar - expandable compact view */}
       {isJourneyPlaying && journeyState && journeyConfig && (() => {
         // Get current and next playing node info
@@ -1316,65 +1546,513 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
         <div
           style={{
             position: 'absolute',
-            top: Math.max(60, playButtonTop + 55),
+            top: Math.max(58, playButtonTop + 50),
             left: '50%',
             transform: 'translateX(-50%)',
-            background: 'rgba(10, 10, 24, 0.85)',
-            backdropFilter: 'blur(10px)',
-            borderRadius: '12px',
-            padding: '12px 16px',
-            minWidth: '160px',
-            maxWidth: '240px',
-            maxHeight: '200px',
-            overflowY: 'auto',
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            width: 'min(92vw, 420px)',
+            maxHeight: 'min(77vh, 660px)',
+            overflow: 'hidden',
+            background: disablePresetPopupBlur ? 'rgba(22,21,19,0.94)' : 'rgba(22,21,19,0.72)',
+            backdropFilter: disablePresetPopupBlur ? 'none' : 'blur(10px)',
+            WebkitBackdropFilter: disablePresetPopupBlur ? 'none' : 'blur(10px)',
+            borderRadius: 12,
+            padding: 0,
+            boxShadow: '0 18px 54px rgba(0,0,0,0.48), inset 0 1px 0 rgba(232,220,196,0.08)',
+            border: '1px solid rgba(232,220,196,0.28)',
+            zIndex: 30,
           }}
         >
-          {presets.length === 0 ? (
-            <p style={{ 
-              color: 'rgba(255,255,255,0.5)', 
-              margin: 0, 
-              fontSize: '0.9rem',
-              textAlign: 'center',
+          <div style={{
+            padding: '14px 14px 12px',
+            borderBottom: '1px solid rgba(232,220,196,0.13)',
+            display: 'grid',
+            gap: 10,
+          }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              color: '#E8DCC4',
+              fontSize: 12,
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
             }}>
-              No presets available
-            </p>
-          ) : (
-            presets.map((preset, index) => (
-              <button
-                key={index}
+              Snowflake Load
+            </div>
+            <div style={{
+              color: 'rgba(232,220,196,0.55)',
+              fontSize: 11,
+              whiteSpace: 'nowrap',
+            }}>
+              {presetTab === 'state' ? 'State' : 'Journey'}
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 2,
+              padding: 2,
+              borderRadius: 8,
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(232,220,196,0.16)',
+            }}>
+              {(['state', 'journey'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setPresetTab(tab)}
+                  title={tab === 'state' ? 'State presets' : 'Journey presets'}
+                  style={{
+                    minHeight: 34,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    borderRadius: 6,
+                    border: '1px solid transparent',
+                    background: presetTab === tab ? '#E8DCC4' : 'transparent',
+                    color: presetTab === tab ? '#171615' : 'rgba(232,220,196,0.55)',
+                    cursor: 'pointer',
+                    fontSize: '0.76rem',
+                    fontWeight: 760,
+                    letterSpacing: 0,
+                  }}
+                >
+                  <span style={{ fontSize: tab === 'state' ? '1rem' : '1.06rem', lineHeight: 1 }}>
+                    {tab === 'state' ? PRESET_PANEL_SYMBOLS.state : PRESET_PANEL_SYMBOLS.journey}
+                  </span>
+                  <span>{tab === 'state' ? 'State' : 'Journey'}</span>
+                </button>
+              ))}
+            </div>
+            <div
+              title={presetTab === 'state' ? 'Visible state families' : 'Visible journeys'}
+              style={{
+                minWidth: 50,
+                height: 34,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 8,
+                color: 'rgba(232,220,196,0.66)',
+                background: 'rgba(0,0,0,0.14)',
+                border: '1px solid rgba(232,220,196,0.12)',
+                fontSize: '0.72rem',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {presetTab === 'state' ? statePresetFamilies.length : sortedJourneyPresets.length}
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              height: 36,
+              padding: '0 10px',
+              borderRadius: 8,
+              background: 'rgba(0,0,0,0.18)',
+              border: '1px solid rgba(232,220,196,0.16)',
+              color: 'rgba(232,220,196,0.48)',
+            }}>
+              <span style={{ fontSize: '1.02rem' }}>{PRESET_PANEL_SYMBOLS.search}</span>
+              <input
+                value={presetSearch}
+                onChange={(event) => setPresetSearch(event.target.value)}
+                placeholder="Search"
                 style={{
-                  display: 'block',
                   width: '100%',
-                  padding: '8px 12px',
-                  marginBottom: index < presets.length - 1 ? '6px' : 0,
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '8px',
-                  color: 'rgba(255, 255, 255, 0.8)',
-                  fontSize: '0.9rem',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s',
+                  minWidth: 0,
+                  border: 'none',
+                  outline: 'none',
+                  background: 'transparent',
+                  color: '#F4EFE6',
+                  fontSize: '0.84rem',
+                  fontFamily: 'inherit',
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-                }}
+              />
+              {presetSearch && (
+                <button
+                  type="button"
+                  title="Clear search"
+                  onClick={() => setPresetSearch('')}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 5,
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'rgba(255,255,255,0.05)',
+                    color: 'rgba(232,220,196,0.72)',
+                    cursor: 'pointer',
+                    lineHeight: 1,
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </label>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 32px)',
+              gap: 4,
+              padding: 2,
+              borderRadius: 8,
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(232,220,196,0.14)',
+            }}>
+              {([
+                ['updated', PRESET_PANEL_SYMBOLS.updated, 'Sort by updated'],
+                ['az', PRESET_PANEL_SYMBOLS.az, 'Sort alphabetically'],
+                ['children', PRESET_PANEL_SYMBOLS.children, 'Sort by children'],
+              ] as const).map(([sort, symbol, title]) => (
+                <button
+                  key={sort}
+                  type="button"
+                  title={title}
+                  onClick={() => setPresetSort(sort)}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 6,
+                    border: '1px solid transparent',
+                    background: presetSort === sort ? 'rgba(159,194,143,0.18)' : 'transparent',
+                    color: presetSort === sort ? '#BFD8B5' : 'rgba(232,220,196,0.55)',
+                    cursor: 'pointer',
+                    fontSize: sort === 'az' ? '0.68rem' : '0.96rem',
+                    fontWeight: 760,
+                    lineHeight: 1,
+                  }}
+                >
+                  {symbol}
+                </button>
+              ))}
+            </div>
+          </div>
+          </div>
+
+          <div style={{
+            maxHeight: 'calc(min(77vh, 660px) - 132px)',
+            overflowY: 'auto',
+            padding: '8px 8px 8px',
+          }}>
+            {presetTab === 'state' && statePresetFamilies.length === 0 && (
+              <div style={{
+                height: 104,
+                display: 'grid',
+                placeItems: 'center',
+                color: 'rgba(232,220,196,0.46)',
+                border: '1px dashed rgba(232,220,196,0.16)',
+                borderRadius: 8,
+                fontSize: '0.82rem',
+              }}>
+                {PRESET_PANEL_SYMBOLS.empty}
+              </div>
+            )}
+            {presetTab === 'state' && statePresetFamilies.map((family) => {
+              const hasChildren = family.variants.length > 1;
+              const expanded = Boolean(expandedStateFamilies[family.familyId]) || Boolean(presetQuery && hasChildren);
+              const familyMatches = family.familyName.toLocaleLowerCase().includes(presetQuery);
+              const visibleVariants = presetQuery && !familyMatches
+                ? family.variants.filter((variant) => stateVariantMatchesQuery(variant, presetQuery))
+                : family.variants;
+              const primary = family.variants[0];
+              const childCount = Math.max(0, family.variants.length - 1);
+              const toggleFamily = () => {
+                setExpandedStateFamilies((prev) => ({
+                  ...prev,
+                  [family.familyId]: !prev[family.familyId],
+                }));
+              };
+              const loadPrimary = async () => {
+                if (!primary) return;
+                const didLoad = await onLoadPreset(primary);
+                if (didLoad !== false) setShowPresets(false);
+              };
+
+              return (
+                <div
+                  key={family.familyId}
+                  style={{
+                    marginBottom: 8,
+                    borderRadius: 8,
+                    overflow: 'hidden',
+                    background: 'rgba(255,255,255,0.045)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '100%',
+                      minHeight: 54,
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(0, 1fr) auto',
+                      gap: 10,
+                      alignItems: 'center',
+                      padding: '10px 11px',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      title={hasChildren ? 'Show child states' : 'Load state'}
+                      onClick={hasChildren ? toggleFamily : loadPrimary}
+                      style={{
+                        minWidth: 0,
+                        minHeight: 34,
+                        display: 'grid',
+                        gridTemplateColumns: '32px minmax(0, 1fr)',
+                        gap: 10,
+                        alignItems: 'center',
+                        padding: 0,
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#F2E7D1',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      <span style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 7,
+                        display: 'grid',
+                        placeItems: 'center',
+                        background: hasChildren ? 'rgba(232,220,196,0.12)' : 'rgba(184,224,255,0.10)',
+                        color: hasChildren ? '#E8DCC4' : '#B8E0FF',
+                        fontSize: '1.08rem',
+                      }}>
+                        {PRESET_PANEL_SYMBOLS.state}
+                      </span>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{
+                          display: 'block',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          fontSize: '0.9rem',
+                          fontWeight: 760,
+                        }}>
+                          {family.familyName}
+                        </span>
+                        <span style={{
+                          display: 'flex',
+                          gap: 8,
+                          marginTop: 4,
+                          color: 'rgba(232,220,196,0.48)',
+                          fontSize: '0.68rem',
+                        }}>
+                          <span>{presetSourceLabel(primary?.source)}</span>
+                          {childCount > 0 && <span>{PRESET_PANEL_SYMBOLS.children} {childCount}</span>}
+                          {family.updatedAt > 0 && <span>{formatPresetDate(family.updatedAt)}</span>}
+                        </span>
+                      </span>
+                    </button>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-end',
+                      gap: 5,
+                    }}>
+                      {hasChildren && (
+                        <button
+                          type="button"
+                          title={expanded ? 'Hide child states' : 'Show child states'}
+                          aria-label={expanded ? `Hide child states for ${family.familyName}` : `Show child states for ${family.familyName}`}
+                          onClick={toggleFamily}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            border: '1px solid rgba(232,220,196,0.12)',
+                            background: 'rgba(232,220,196,0.06)',
+                            color: 'rgba(232,220,196,0.62)',
+                            cursor: 'pointer',
+                            fontSize: '1rem',
+                            fontWeight: 760,
+                            lineHeight: 1,
+                          }}
+                        >
+                          {expanded ? PRESET_PANEL_SYMBOLS.collapse : PRESET_PANEL_SYMBOLS.expand}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        title={`Load ${family.familyName}`}
+                        aria-label={`Load ${family.familyName}`}
+                        disabled={!primary}
+                        onClick={loadPrimary}
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 6,
+                          border: '1px solid rgba(159,194,143,0.22)',
+                          background: 'rgba(159,194,143,0.10)',
+                          color: '#9fc28f',
+                          cursor: primary ? 'pointer' : 'default',
+                          fontSize: '1rem',
+                          fontWeight: 760,
+                          lineHeight: 1,
+                          opacity: primary ? 1 : 0.45,
+                        }}
+                      >
+                        {PRESET_PANEL_SYMBOLS.load}
+                      </button>
+                    </div>
+                  </div>
+
+                  {hasChildren && expanded && (
+                    <div style={{ padding: '0 8px 8px 50px' }}>
+                      {visibleVariants.map((variant) => (
+                        <button
+                          key={`${variant.name}:${variant.variantName ?? ''}`}
+                          type="button"
+	                          title="Load state"
+	                          onClick={() => {
+	                            void (async () => {
+	                              const didLoad = await onLoadPreset(variant);
+	                              if (didLoad !== false) setShowPresets(false);
+	                            })();
+	                          }}
+                          style={{
+                            width: '100%',
+                            minHeight: 40,
+                            display: 'grid',
+                            gridTemplateColumns: '16px 1fr auto',
+                            gap: 8,
+                            alignItems: 'center',
+                            marginTop: 5,
+                            padding: '8px 10px',
+                            borderRadius: 7,
+                            border: '1px solid rgba(255,255,255,0.07)',
+                            background: 'rgba(0,0,0,0.22)',
+                            color: 'rgba(242,231,209,0.86)',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          <span style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            justifySelf: 'center',
+                            background: presetAccentColor(variant.name),
+                            boxShadow: `0 0 8px ${presetAccentColor(variant.name)}99`,
+                          }} />
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{
+                              display: 'block',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              fontSize: '0.8rem',
+                              fontWeight: 700,
+                            }}>
+                              {getStatePresetVariantName(variant)}
+                            </span>
+                            <span style={{
+                              display: 'block',
+                              marginTop: 2,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              color: 'rgba(232,220,196,0.40)',
+                              fontSize: '0.64rem',
+                            }}>
+                              {variant.name}
+                            </span>
+                          </span>
+                          <span style={{ color: '#9fc28f', fontSize: '0.94rem' }}>{PRESET_PANEL_SYMBOLS.load}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {presetTab === 'journey' && sortedJourneyPresets.length === 0 && (
+              <div style={{
+                height: 104,
+                display: 'grid',
+                placeItems: 'center',
+                color: 'rgba(184,224,255,0.48)',
+                border: '1px dashed rgba(184,224,255,0.18)',
+                borderRadius: 8,
+                fontSize: '0.82rem',
+              }}>
+                {PRESET_PANEL_SYMBOLS.empty}
+              </div>
+            )}
+            {presetTab === 'journey' && sortedJourneyPresets.map((preset) => (
+              <button
+                key={`${preset.library}:${preset.name}`}
+                type="button"
+                title={journeyPresetHoverTitle(preset)}
                 onClick={() => {
-                  onLoadPreset(preset);
+                  void onLoadJourneyPreset?.(preset.name);
                   setShowPresets(false);
                 }}
+                style={{
+                  width: '100%',
+                  minHeight: 54,
+                  display: 'grid',
+                  gridTemplateColumns: '32px 1fr auto',
+                  gap: 10,
+                  alignItems: 'center',
+                  marginBottom: 8,
+                  padding: '10px 11px',
+                  borderRadius: 8,
+                  border: '1px solid rgba(184,224,255,0.14)',
+                  background: 'rgba(184,224,255,0.065)',
+                  color: '#E8F0FF',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  fontFamily: 'inherit',
+                }}
               >
-                {preset.name}
+                <span style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 7,
+                  display: 'grid',
+                  placeItems: 'center',
+                  background: 'rgba(184,224,255,0.12)',
+                  color: '#B8E0FF',
+                  fontSize: '1.08rem',
+                }}>
+                  <JourneyPresetGlyph preview={preset.journeyPreview} color="#B8E0FF" mutedColor="rgba(184,224,255,0.36)" />
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{
+                    display: 'block',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    fontSize: '0.9rem',
+                    fontWeight: 760,
+                  }}>
+                    {preset.name}
+                  </span>
+                  <span style={{
+                    display: 'flex',
+                    gap: 8,
+                    marginTop: 4,
+                    color: 'rgba(184,224,255,0.50)',
+                    fontSize: '0.68rem',
+                  }}>
+                    <span>{presetSourceLabel(preset.library)}</span>
+                    {preset.versionCount > 1 && <span>{PRESET_PANEL_SYMBOLS.children} {preset.versionCount}</span>}
+                    {preset.updatedAt > 0 && <span>{formatPresetDate(preset.updatedAt)}</span>}
+                  </span>
+                </span>
+                <span style={{ color: '#9fc28f', fontSize: '1rem' }}>{PRESET_PANEL_SYMBOLS.load}</span>
               </button>
-            ))
-          )}
+            ))}
+          </div>
         </div>
       )}
 

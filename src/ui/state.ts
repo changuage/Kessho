@@ -223,6 +223,15 @@ export interface SavedPreset {
   name: string;
   timestamp: string;
   state: SliderState;
+  source?: 'bundled' | 'device-local' | 'cloud';
+  deferred?: boolean;
+  familyId?: string;
+  familyName?: string;
+  variantId?: string;
+  variantName?: string;
+  variantRank?: number;
+  versionCount?: number;
+  currentVersion?: number;
   dualRanges?: Record<string, { min: number; max: number }>;  // Range values for walk/sampleHold sliders
   sliderModes?: Record<string, SliderMode>;  // Mode per parameter key
   drumEvolveConfigs?: SerializedEvolveConfig[];

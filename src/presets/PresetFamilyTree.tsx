@@ -19,6 +19,8 @@ import { buildPresetVersionMetadata, getPresetVersionSnapshot } from './versionM
 const MAX_CHILDREN = 10;
 const FAMILY_TREE_SELECTION_STORAGE_PREFIX = 'preset-family-tree:selected:';
 
+type SlotLoadResult = boolean | void | Promise<boolean | void>;
+
 function getFamilyTreeSelectionStorageKey(level: PresetLevel, scope?: string): string {
   return `${FAMILY_TREE_SELECTION_STORAGE_PREFIX}${level}:${scope ?? 'global'}`;
 }
@@ -48,9 +50,9 @@ export interface PresetFamilyTreeProps {
   /** Currently loaded preset name */
   currentName?: string;
   /** Load preset into morph Slot A */
-  onLoadSlotA: (entry: PresetEntry, data: Record<string, unknown>) => void;
+  onLoadSlotA: (entry: PresetEntry, data: Record<string, unknown>) => SlotLoadResult;
   /** Load preset into morph Slot B */
-  onLoadSlotB: (entry: PresetEntry, data: Record<string, unknown>) => void;
+  onLoadSlotB: (entry: PresetEntry, data: Record<string, unknown>) => SlotLoadResult;
   /** Current slider modes (which params are in walk/sampleHold) */
   sliderModes?: Record<string, SliderMode>;
   /** Current dual slider ranges for walk/sampleHold params */
@@ -609,7 +611,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
   const requestLoadToSlot = useCallback((
     name: string,
     slot: 'A' | 'B',
-    slotCb: (entry: PresetEntry, data: Record<string, unknown>) => void,
+    slotCb: (entry: PresetEntry, data: Record<string, unknown>) => SlotLoadResult,
   ) => {
     setConfirmAction({
       message: `Load "${name}" to Slot ${slot}?`,
@@ -618,7 +620,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
         if (!entry) return;
         const data = getVersionData(entry);
         if (!data) return;
-        slotCb(entry, data);
+        await slotCb(entry, data);
       },
     });
   }, [load]);
@@ -785,7 +787,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
     name: string,
     versionNum: number,
     slot: 'A' | 'B',
-    slotCb: (entry: PresetEntry, data: Record<string, unknown>) => void,
+    slotCb: (entry: PresetEntry, data: Record<string, unknown>) => SlotLoadResult,
   ) => {
     setConfirmAction({
       message: `Load "${name}" v${versionNum} to Slot ${slot}?`,
@@ -794,7 +796,7 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
         if (!entry) return;
         const data = getVersionData(entry, versionNum);
         if (!data) return;
-        slotCb({ ...entry, currentVersion: versionNum }, data);
+        await slotCb({ ...entry, currentVersion: versionNum }, data);
       },
     });
   }, [load, versionEntries]);

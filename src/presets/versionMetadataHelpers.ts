@@ -114,6 +114,11 @@ export function buildPresetVersionMetadata(
     hasMetadata = true;
   }
 
+  if (source.journeyPreview) {
+    metadata.journeyPreview = cloneJson(source.journeyPreview);
+    hasMetadata = true;
+  }
+
   return hasMetadata ? metadata : undefined;
 }
 

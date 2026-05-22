@@ -385,10 +385,27 @@ await runCheckWithReport({
       'source hold changes must dirty-diff through generated Product source-hold events',
     );
 
+    const productDrumBase = clone(base);
+    const drumParamCount = adapterHarness.context.KESSHO_PRODUCT_DRUM_PARAM_COUNT;
+    productDrumBase.sources[0] = makeSource(adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.drum);
+    productDrumBase.sources[0].exactDrumParamCount = drumParamCount;
+    productDrumBase.sources[0].exactDrumParams = Array.from({ length: drumParamCount }, (_, index) => index / drumParamCount);
+    const productDrumNext = clone(productDrumBase);
+    productDrumNext.sources[0].exactDrumParams[0] = 0.95;
+    const productDrumDiff = adapterHarness.buildCoreProductSnapshotDiff(productDrumBase, productDrumNext);
+    assert(
+      productDrumDiff.applied === true &&
+        productDrumDiff.events.some((event) =>
+          event.type === 'param' &&
+            event.paramId === 'DrumRuntime0' &&
+            Math.abs(event.value - 0.95) < 1.0e-6),
+      'Product Drum exact patch changes must dirty-diff through generated runtime params',
+    );
+
     const drumPatchNext = clone(base);
     drumPatchNext.sources[0].exactDrumParams[0] = 0.95;
     const drumPatchDiff = adapterHarness.buildCoreProductSnapshotDiff(base, drumPatchNext);
-    assert(drumPatchDiff.applied === false && drumPatchDiff.reason === 'exact-patch-change', 'exact drum patch changes must full-reload with classified reason');
+    assert(drumPatchDiff.applied === false && drumPatchDiff.reason === 'exact-patch-change', 'non-drum exact drum patch changes must full-reload with classified reason');
 
     const budgetBase = makeSnapshot({ laneCount: 24 });
     const budgetNext = clone(budgetBase);
@@ -407,6 +424,7 @@ await runCheckWithReport({
         evolutionDiffEvents: evolutionDiff.events.length,
         assetReloadReason: assetDiff.reason,
         exactPatchReloadReason: patchDiff.reason,
+        productDrumExactPatchEvents: productDrumDiff.events.length,
         budgetReloadReason: budgetDiff.reason,
         maxSnapshotDiffEvents: adapterHarness.MAX_SNAPSHOT_DIFF_EVENTS,
       },

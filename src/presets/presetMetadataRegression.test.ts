@@ -7,14 +7,27 @@ import {
   normalizeResolvedVersionData,
   type PresetVersionV2Row,
 } from './presetStorageV2';
+import { compressVersions, getVersionData } from './codec';
 import {
   buildDerivedStatePresetData,
   extractOptimizedStatePresetData,
 } from './statePresetOptimization';
 import { isStatePresetDiffKeyActive, normalizeStatePresetDiffData } from './statePresetDiffs';
 import { buildPresetVersionMetadata, getPresetVersionSnapshot } from './versionMetadataHelpers';
+import { buildJourneyPresetPreview } from './journeyPresetPreview';
+import { normalizePresetSummary } from './presetUtils';
 import type { PresetEntry } from './types';
 import { DEFAULT_STATE, migratePreset, type SavedPreset } from '../ui/state';
+import { createDiamondJourney, createJourneyConnection } from '../audio/journeyTypes';
+import {
+  decodeJourneyPresetData,
+  encodeJourneyPresetData,
+  getJourneyNodeRefSlot,
+  journeyDataReferencesStatePreset,
+  removeStatePresetRefFromJourneyData,
+  validateJourneyConfig,
+} from './journeyPresetCodec';
+import { coerceJourneyPresetEntry } from './useJourneyPresets';
 
 const SYNTH_BINDING_MODES = ['sequence', 'linked', 'polyrhythmic', 'polyrhythmic'] as const;
 
@@ -333,6 +346,163 @@ async function testMetadataOnlyChangeKeepsResolvedHashShared(): Promise<void> {
   );
 }
 
+function testJourneyPresetCodecUsesRefsWithoutStateBloat(): void {
+  const config = createDiamondJourney([]);
+  const left = config.nodes.find((node) => node.position === 'left')!;
+  const top = config.nodes.find((node) => node.position === 'top')!;
+  const center = config.nodes.find((node) => node.position === 'center')!;
+  left.presetId = 'state-left-id';
+  left.presetName = 'Left State';
+  left.phraseLength = 2;
+  left.phraseLengthMax = 4;
+  top.presetId = 'state-top-id';
+  top.presetName = 'Top State';
+  config.name = 'Ref Journey';
+  config.connections = [
+    createJourneyConnection(center.id, left.id),
+    createJourneyConnection(left.id, top.id),
+  ];
+
+  const data = encodeJourneyPresetData(config);
+  assert.equal('masterVolume' in (data as unknown as Record<string, unknown>), false, 'L5 data must not embed L4 state');
+  assert.equal(data.nodes.find((node) => node.position === 'left')?.refSlot, getJourneyNodeRefSlot('left'));
+  assert.equal(data.nodes.find((node) => node.position === 'left')?.presetName, 'Left State');
+
+  const decoded = decodeJourneyPresetData(data as unknown as Record<string, unknown>, {
+    [getJourneyNodeRefSlot('left')]: { id: 'state-left-id', name: 'Left State', version: 'latest', scope: 'global' },
+    [getJourneyNodeRefSlot('top')]: { id: 'state-top-id', name: 'Top State', version: 'latest', scope: 'global' },
+  }, 'Fallback');
+  const decodedLeft = decoded.nodes.find((node) => node.position === 'left')!;
+  assert.equal(decoded.name, 'Ref Journey');
+  assert.equal(decodedLeft.presetName, 'Left State');
+  assert.equal(decodedLeft.phraseLengthMax, 4);
+  assert.equal(decoded.connections.length, 2);
+  assert.equal(validateJourneyConfig(decoded).playable, true);
+
+  const decodedWithoutRefs = decodeJourneyPresetData(data as unknown as Record<string, unknown>, undefined, 'Fallback');
+  assert.equal(decodedWithoutRefs.nodes.find((node) => node.position === 'left')?.presetName, 'Left State');
+  assert.equal(validateJourneyConfig(decodedWithoutRefs).playable, true);
+}
+
+function testJourneyPresetL4DeleteCleanupRemovesNodeAndConnections(): void {
+  const config = createDiamondJourney([]);
+  const left = config.nodes.find((node) => node.position === 'left')!;
+  const top = config.nodes.find((node) => node.position === 'top')!;
+  left.presetId = 'state-left-id';
+  left.presetName = 'Left State';
+  top.presetId = 'state-top-id';
+  top.presetName = 'Top State';
+  config.connections = [createJourneyConnection(left.id, top.id)];
+
+  const data = encodeJourneyPresetData(config) as unknown as Record<string, unknown>;
+  assert.equal(journeyDataReferencesStatePreset(data, undefined, { id: 'state-left-id', name: 'Left State' }), true);
+  const cleanup = removeStatePresetRefFromJourneyData(data, {
+    [getJourneyNodeRefSlot('left')]: { id: 'state-left-id', name: 'Left State', version: 'latest', scope: 'global' },
+    [getJourneyNodeRefSlot('top')]: { id: 'state-top-id', name: 'Top State', version: 'latest', scope: 'global' },
+  }, { id: 'state-left-id', name: 'Left State' });
+
+  assert.equal(cleanup.changed, true);
+  const decoded = decodeJourneyPresetData(cleanup.data, cleanup.refs, 'Cleaned');
+  assert.equal(decoded.nodes.find((node) => node.position === 'left')?.presetName, '');
+  assert.equal(decoded.nodes.find((node) => node.position === 'top')?.presetName, 'Top State');
+  assert.equal(decoded.connections.length, 0);
+}
+
+function testJourneyPresetL4DeleteCleanupUsesNodeFallbackRefs(): void {
+  const config = createDiamondJourney([]);
+  const left = config.nodes.find((node) => node.position === 'left')!;
+  const top = config.nodes.find((node) => node.position === 'top')!;
+  left.presetId = 'Left State';
+  left.presetName = 'Left State';
+  top.presetId = 'Top State';
+  top.presetName = 'Top State';
+  config.connections = [createJourneyConnection(left.id, top.id)];
+
+  const data = encodeJourneyPresetData(config) as unknown as Record<string, unknown>;
+  const cleanup = removeStatePresetRefFromJourneyData(data, undefined, { name: 'Left State' });
+
+  assert.equal(cleanup.changed, true);
+  const decoded = decodeJourneyPresetData(cleanup.data, cleanup.refs, 'Cleaned');
+  assert.equal(decoded.nodes.find((node) => node.position === 'left')?.presetName, '');
+  assert.equal(decoded.nodes.find((node) => node.position === 'top')?.presetName, 'Top State');
+  assert.equal(decoded.connections.length, 0);
+}
+
+function testJourneyOverwriteBackupKeepsFullGraphBase(): void {
+  const makeData = (name: string, leftName: string, phraseLength: number): Record<string, unknown> => {
+    const config = createDiamondJourney([]);
+    const left = config.nodes.find((node) => node.position === 'left')!;
+    left.presetId = leftName;
+    left.presetName = leftName;
+    left.phraseLength = phraseLength;
+    config.name = name;
+    return encodeJourneyPresetData(config) as unknown as Record<string, unknown>;
+  };
+
+  let entry = coerceJourneyPresetEntry(null, 'Overwrite Journey', makeData('Overwrite Journey', 'Alpha State', 1), {
+    [getJourneyNodeRefSlot('left')]: { name: 'Alpha State', version: 'latest', scope: 'global' },
+  });
+  compressVersions(entry);
+
+  entry = coerceJourneyPresetEntry(entry, 'Overwrite Journey', makeData('Overwrite Journey', 'Beta State', 2), {
+    [getJourneyNodeRefSlot('left')]: { name: 'Beta State', version: 'latest', scope: 'global' },
+  });
+  compressVersions(entry);
+
+  entry = coerceJourneyPresetEntry(entry, 'Overwrite Journey', makeData('Overwrite Journey', 'Gamma State', 3), {
+    [getJourneyNodeRefSlot('left')]: { name: 'Gamma State', version: 'latest', scope: 'global' },
+  });
+  compressVersions(entry);
+
+  const currentData = getVersionData(entry, entry.currentVersion);
+  assert.ok(currentData);
+  const currentVersion = entry.versions.find((version) => version.v === entry.currentVersion);
+  const decoded = decodeJourneyPresetData(currentData, currentVersion?.refs, 'Fallback');
+  const decodedLeft = decoded.nodes.find((node) => node.position === 'left')!;
+  assert.equal(decodedLeft.presetName, 'Gamma State');
+  assert.equal(decodedLeft.phraseLength, 3);
+  assert.equal(entry.versions[0]?._isDelta, undefined);
+}
+
+function testJourneyPresetPreviewMetadataFeedsSummary(): void {
+  const config = createDiamondJourney([]);
+  const left = config.nodes.find((node) => node.position === 'left')!;
+  const top = config.nodes.find((node) => node.position === 'top')!;
+  left.presetId = 'Left State';
+  left.presetName = 'Left State';
+  top.presetId = 'Top State';
+  top.presetName = 'Top State';
+  config.connections = [
+    createJourneyConnection(left.id, top.id),
+    createJourneyConnection(top.id, left.id),
+  ];
+
+  const preview = buildJourneyPresetPreview(config);
+  assert.ok(preview);
+  assert.deepStrictEqual(preview.connections, [
+    { from: 'left', to: 'top' },
+    { from: 'top', to: 'left' },
+  ]);
+  const metadata = buildPresetVersionMetadata({ journeyPreview: preview });
+  assert.deepStrictEqual(metadata?.journeyPreview, preview);
+
+  const entry = coerceJourneyPresetEntry(
+    null,
+    'Preview Journey',
+    encodeJourneyPresetData(config) as unknown as Record<string, unknown>,
+    {
+      [getJourneyNodeRefSlot('left')]: { name: 'Left State', version: 'latest', scope: 'global' },
+      [getJourneyNodeRefSlot('top')]: { name: 'Top State', version: 'latest', scope: 'global' },
+    },
+  );
+  const current = entry.versions.find((version) => version.v === entry.currentVersion);
+  assert.ok(current);
+  current.journeyPreview = preview;
+
+  const summary = normalizePresetSummary(entry);
+  assert.deepStrictEqual(summary.journeyPreview, preview);
+}
+
 async function run(): Promise<void> {
   testMigratePresetPreservesSynthPitchBindingModes();
   testBuildPresetVersionMetadataIncludesAllSupportedFields();
@@ -341,6 +511,11 @@ async function run(): Promise<void> {
   testOptimizedStatePresetRoundTripKeepsOnlyOverrides();
   testStatePresetDiffIgnoresInactiveMixerValues();
   testMaterializedV2VersionPreservesAncillaryMetadata();
+  testJourneyPresetCodecUsesRefsWithoutStateBloat();
+  testJourneyPresetL4DeleteCleanupRemovesNodeAndConnections();
+  testJourneyPresetL4DeleteCleanupUsesNodeFallbackRefs();
+  testJourneyOverwriteBackupKeepsFullGraphBase();
+  testJourneyPresetPreviewMetadataFeedsSummary();
   await testMetadataOnlyChangeKeepsResolvedHashShared();
   console.log('preset metadata regression checks passed');
 }

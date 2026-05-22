@@ -51,6 +51,21 @@ export class CoreProductRuntime {
     return this.outputGain ?? this.node;
   }
 
+  setOutputGain(target: number, durationSeconds = 0): void {
+    const context = this.context;
+    const gain = this.outputGain?.gain;
+    if (!context || !gain) return;
+    const now = context.currentTime;
+    const value = Math.max(0, Math.min(1, Number.isFinite(target) ? target : 1));
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(gain.value, now);
+    if (durationSeconds > 0) {
+      gain.linearRampToValueAtTime(value, now + Math.max(0.01, durationSeconds));
+    } else {
+      gain.setValueAtTime(value, now);
+    }
+  }
+
   get error(): string | null {
     return this.lastError;
   }

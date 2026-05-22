@@ -15,7 +15,7 @@
  * - Visual feedback: node shrinking, morph dots, probability thickness
  */
 
-import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect, useLayoutEffect } from 'react';
 import {
   JourneyConfig,
   JourneyState,
@@ -333,7 +333,7 @@ const DiamondNode: React.FC<DiamondNodeProps> = ({
           strokeWidth={1.5}
           strokeDasharray="3,5"
           style={{
-            transition: 'all 0.2s ease-out',
+            transition: 'opacity 0.2s ease-out, fill 0.2s ease-out, stroke 0.2s ease-out',
             opacity: isDragSource ? 0.5 : 1,
           }}
         />
@@ -348,7 +348,7 @@ const DiamondNode: React.FC<DiamondNodeProps> = ({
           stroke={isPlaying ? COLORS.activeNode : node.color || COLORS.filledNode}
           strokeWidth={isPlaying ? 2 : 1.5}
           style={{
-            transition: 'all 0.2s ease-out',
+            transition: 'opacity 0.2s ease-out, fill 0.2s ease-out, stroke 0.2s ease-out, stroke-width 0.2s ease-out',
             opacity: isDragSource ? 0.5 : 1,
           }}
         />
@@ -839,7 +839,7 @@ const CenterNode: React.FC<CenterNodeProps> = ({
                 strokeWidth={1.5}
                 style={{ 
                   opacity: isDragSource ? 0.5 : 1,
-                  transition: isMorphing ? 'none' : 'all 0.3s ease-out, stroke 0.3s ease-out',
+                  transition: isMorphing ? 'none' : 'opacity 0.3s ease-out, stroke 0.3s ease-out',
                 }}
               />
             )}
@@ -2985,19 +2985,34 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
     return undefined;
   }, [config?.nodes, state.currentNodeId, state.nextNodeId, state.phase, state.morphProgress]);
   
-  // Measure container
-  useEffect(() => {
+  // Measure before first paint so SVG nodes do not animate from fallback coordinates.
+  useLayoutEffect(() => {
     const updateDimensions = () => {
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
         const size = Math.min(rect.width, rect.height);
-        setDimensions({ width: size, height: size });
+        if (size <= 0) return;
+        setDimensions((prev) => (
+          prev.width === size && prev.height === size
+            ? prev
+            : { width: size, height: size }
+        ));
       }
     };
-    
+
     updateDimensions();
+
+    const observedElement = containerRef.current;
+    const resizeObserver = typeof ResizeObserver !== 'undefined' && observedElement
+      ? new ResizeObserver(updateDimensions)
+      : null;
+    if (resizeObserver && observedElement) resizeObserver.observe(observedElement);
+
     window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateDimensions);
+    };
   }, []);
   
   // Calculate layout
@@ -4124,13 +4139,11 @@ export const DiamondJourneyUI: React.FC<DiamondJourneyUIProps> = ({
         />
         
         {/* Connection arcs */}
-        {config?.connections.map((conn, index) => {
+        {config?.connections.map((conn) => {
           const fromNode = config.nodes.find(n => n.id === conn.fromNodeId);
           const toNode = config.nodes.find(n => n.id === conn.toNodeId);
           if (!fromNode || !toNode) return null;
-          
-          console.log(`Rendering connection ${index}: ${fromNode.position} → ${toNode.position}`);
-          
+
           const isMorphing = state.phase === 'morphing' && 
             state.currentNodeId === conn.fromNodeId && 
             state.nextNodeId === conn.toNodeId;

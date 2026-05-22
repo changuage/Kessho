@@ -767,6 +767,7 @@ for (const specifier of importSpecifiers(snapshot)) {
 const hostImportAllowlist = new Set([
   '../native/capacitorMidiRouting',
   './CoreProductAssetAdapter',
+  './CoreProductHostDebugTelemetry',
   './CoreProductHostSequencerAdapter',
   './CoreProductHostRuntimeGuards',
   './CoreProductLegacyPresetCompat',

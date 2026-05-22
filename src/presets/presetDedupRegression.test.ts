@@ -367,6 +367,29 @@ function testVersionStorageSignatureTreatsMetadataAndRefsAsContent(): void {
   );
 }
 
+function testJourneyDedupKeepsGraphAsResolvedPayload(): void {
+  const journeyGraph: Record<string, unknown> = {
+    formatVersion: 1,
+    name: 'Dedup Journey',
+    autoAdvance: true,
+    loopEnabled: true,
+    nodes: [
+      { position: 'left', phraseLength: 2, color: '#8357ff', refSlot: 'node:left', presetName: 'State A' },
+      { position: 'center', phraseLength: 0, color: '#4fc3f7' },
+    ],
+    connections: [
+      { fromPosition: 'center', toPosition: 'left', morphDuration: 2, probability: 1 },
+    ],
+  };
+
+  assert.equal(getPresetChildSpecs('journey').length, 0, 'Journey should not enter the L1-L4 child dedup graph');
+  assert.deepStrictEqual(
+    stripReferencedChildData(normalizeResolvedVersionData('journey', undefined, journeyGraph), {}),
+    normalizeResolvedVersionData('journey', undefined, journeyGraph),
+    'Journey graph data should be stored as its own resolved payload without child stripping',
+  );
+}
+
 async function run(): Promise<void> {
   testGraphCoversAllCompositeLevels();
   testCascadeExtractionIsRecursive();
@@ -375,6 +398,7 @@ async function run(): Promise<void> {
   await testIdenticalUnsavedChildrenResolveToSameDerivedName();
   await testMissingDefaultKeysDoNotCreateFalseDifferences();
   testVersionStorageSignatureTreatsMetadataAndRefsAsContent();
+  testJourneyDedupKeepsGraphAsResolvedPayload();
   console.log('preset dedup regression checks passed');
 }
 

@@ -10,6 +10,7 @@ import type {
 } from '../ui/state';
 import type { ClockDivision } from '../audio/drumSeqTypes';
 import type { PitchBindingMode } from '../audio/drumSeqTypes';
+import type { DiamondPosition } from '../audio/journeyTypes';
 
 export type PresetLevel = 'engine' | 'kit' | 'source' | 'state' | 'journey';
 export type PresetLibrary = 'stock' | 'user' | 'cloud';
@@ -33,6 +34,21 @@ export interface PresetIdentityMetadata {
 
 export interface PresetSaveIdentity extends PresetIdentityMetadata {}
 
+export interface JourneyPresetPreviewNode {
+  position: DiamondPosition;
+  filled: boolean;
+}
+
+export interface JourneyPresetPreviewConnection {
+  from: DiamondPosition;
+  to: DiamondPosition;
+}
+
+export interface JourneyPresetPreview {
+  nodes: JourneyPresetPreviewNode[];
+  connections: JourneyPresetPreviewConnection[];
+}
+
 export interface PresetVersionMetadata {
   dualRanges?: Record<string, { min: number; max: number }>;
   sliderModes?: Record<string, SliderMode>;
@@ -50,6 +66,7 @@ export interface PresetVersionMetadata {
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
+  journeyPreview?: JourneyPresetPreview;
   refs?: Record<string, PresetRef>;
 }
 
@@ -122,6 +139,7 @@ export interface PresetSummary {
   playCount?: number;
   featured?: boolean;
   rating?: number;
+  journeyPreview?: JourneyPresetPreview;
   tags?: string[];
   versionCount: number;
   currentVersion: number;

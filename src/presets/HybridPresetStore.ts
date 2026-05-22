@@ -6,7 +6,7 @@
 // - list() merges local stock with cloud presets, deduplicating by name
 // - load() prefers cloud, then falls back to local stock
 
-import type { PresetEntry, PresetLevel, PresetLibrary, PresetSummary } from './types';
+import type { PresetEntry, PresetLevel, PresetSummary } from './types';
 import type { IPresetStore } from './PresetStore';
 import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 
@@ -56,6 +56,13 @@ export class HybridPresetStore implements IPresetStore {
     return !!this.cloud && entry.author !== 'factory' && entry.library !== 'stock';
   }
 
+  private cloudBackedSummary(summary: PresetSummary): PresetSummary {
+    return {
+      ...summary,
+      library: summary.library === 'stock' ? 'stock' : 'cloud',
+    };
+  }
+
   async save(entry: PresetEntry): Promise<void> {
     if (this.isCloudManagedEntry(entry)) {
       await this.cloud!.save(entry);
@@ -97,17 +104,12 @@ export class HybridPresetStore implements IPresetStore {
     }
 
     if (SHARED_PRESET_TEST_MODE) {
-      return dedupePresetSummariesByName(cloudList).sort((a, b) => a.name.localeCompare(b.name));
+      return dedupePresetSummariesByName(cloudList.map(summary => this.cloudBackedSummary(summary)))
+        .sort((a, b) => a.name.localeCompare(b.name));
     }
 
     const merged: PresetSummary[] = [
-      ...cloudList.map(cp => {
-        const library: PresetLibrary = cp.library === 'stock' ? 'stock' : 'cloud';
-        return {
-          ...cp,
-          library,
-        };
-      }),
+      ...cloudList.map(cp => this.cloudBackedSummary(cp)),
       ...localList.filter(p => p.library === 'stock'),
     ];
 

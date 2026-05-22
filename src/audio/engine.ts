@@ -831,6 +831,7 @@ export class AudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private limiter: DynamicsCompressorNode | null = null;
+  private outputGain: GainNode | null = null;
   private satPreGain: GainNode | null = null;
   private satWaveshaper: WaveShaperNode | null = null;
   private satPostTone: BiquadFilterNode | null = null;
@@ -5748,6 +5749,7 @@ export class AudioEngine {
       this.graphBootstrapped = false;
       this.masterGain = null;
       this.limiter = null;
+      this.outputGain = null;
       if (this.satPreGain) {
         try { this.satPreGain.disconnect(); } catch { /* */ }
         this.satPreGain = null;
@@ -6467,6 +6469,7 @@ export class AudioEngine {
     this.resetBootCapabilities();
     this.masterGain = null;
     this.limiter = null;
+    this.outputGain = null;
     this.reverbNode = null;
     this.reverbOutputGain = null;
     this.reverbPreCompressor = null;
@@ -6605,6 +6608,7 @@ export class AudioEngine {
         this.nextHarmonyEventWallSec = null;
         this.masterGain = null;
         this.limiter = null;
+        this.outputGain = null;
         this.satPreGain = null;
         this.satWaveshaper = null;
         this.satPostTone = null;
@@ -6791,6 +6795,8 @@ export class AudioEngine {
 
     // Limiter (dynamics compressor configured as limiter)
     this.limiter = this.createMasterLimiter(ctx);
+    this.outputGain = ctx.createGain();
+    this.outputGain.gain.value = 1;
     this.wireMasterOutputChain(ctx);
 
     // Synth bus (before granular)
@@ -7554,17 +7560,22 @@ export class AudioEngine {
     this.isMobile = isMobile || isIOS;
 
     try { this.limiter.disconnect(); } catch { /* */ }
+    try { this.outputGain?.disconnect(); } catch { /* */ }
+
+    if (this.outputGain) {
+      this.limiter.connect(this.outputGain);
+    }
 
     if (isIOS) {
       // On iOS: route through MediaStreamDestination only.
       // The HTML audio element will play this stream for lock-screen/background continuity.
       // Do NOT also connect to ctx.destination or you get double audio!
       this.mediaStreamDest = ctx.createMediaStreamDestination();
-      this.limiter.connect(this.mediaStreamDest);
+      (this.outputGain ?? this.limiter).connect(this.mediaStreamDest);
       console.log('iOS detected: Audio routed through MediaStream only (for media session continuity)');
     } else {
       // Non-iOS: connect directly to destination for lowest-latency/stable output.
-      this.limiter.connect(ctx.destination);
+      (this.outputGain ?? this.limiter).connect(ctx.destination);
       this.mediaStreamDest = null;
       console.log('Non-iOS detected: Audio routed directly to destination');
     }
@@ -9864,7 +9875,7 @@ export class AudioEngine {
       }
 
       // Water start/stop follows the shared water level so dry and wet scale together.
-      const waterShouldRun = this.isEarthFadeActive(this.waterFadeState, now) && waterSignalActive;
+      const waterShouldRun = this.isRunning && this.isEarthFadeActive(this.waterFadeState, now) && waterSignalActive;
       if (waterShouldRun && !this._scWaterStarted) {
         this.soundscapesNode.port.postMessage({ type: 'waterStart' });
         this._scWaterStarted = true;
@@ -10044,7 +10055,7 @@ export class AudioEngine {
           }
         },
       });
-      const insects1ShouldRun = this.isEarthFadeActive(this.insects1FadeState, now) && insects1EffectiveLevel > 0.0001;
+      const insects1ShouldRun = this.isRunning && this.isEarthFadeActive(this.insects1FadeState, now) && insects1EffectiveLevel > 0.0001;
       if (insects1ShouldRun && !this._scInsects1Started) {
         this.soundscapesNode.port.postMessage({ type: 'insectsStart' });
         this._scInsects1Started = true;
@@ -10110,7 +10121,7 @@ export class AudioEngine {
           }
         },
       });
-      const insects2ShouldRun = this.isEarthFadeActive(this.insects2FadeState, now) && insects2EffectiveLevel > 0.0001;
+      const insects2ShouldRun = this.isRunning && this.isEarthFadeActive(this.insects2FadeState, now) && insects2EffectiveLevel > 0.0001;
       if (insects2ShouldRun && !this._scInsects2Started) {
         this.soundscapesNode.port.postMessage({ type: 'insects2Start' });
         this._scInsects2Started = true;
@@ -10191,7 +10202,7 @@ export class AudioEngine {
     });
     this.oceanLevelGain?.gain.setTargetAtTime(oceanLevel, now, smoothTime);
     this.oceanReverbSendNode?.gain.setTargetAtTime(oceanReverb, now, smoothTime);
-    const oceanShouldRun = this.isEarthFadeActive(this.oceanFadeState, now) && (
+    const oceanShouldRun = this.isRunning && this.isEarthFadeActive(this.oceanFadeState, now) && (
       oceanLevel > 0.0001 ||
       oceanReverb > 0.0001 ||
       oceanDelayA > 0.0001 ||
@@ -10324,7 +10335,7 @@ export class AudioEngine {
       routedDelayBSend > 0.0001 ||
       routedGranularSend > 0.0001;
 
-    if (gateActive && wetActive) {
+    if (this.isRunning && gateActive && wetActive) {
       void runtime.player.start();
     } else {
       runtime.player.stop();
@@ -11917,6 +11928,21 @@ export class AudioEngine {
   // Recording support - get limiter node (final output before destination)
   getLimiterNode(): DynamicsCompressorNode | null {
     return this.limiter;
+  }
+
+  setOutputGain(target: number, durationSeconds = 0): void {
+    const ctx = this.ctx;
+    const gain = this.outputGain?.gain;
+    if (!ctx || !gain) return;
+    const now = ctx.currentTime;
+    const value = Math.max(0, Math.min(1, Number.isFinite(target) ? target : 1));
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(gain.value, now);
+    if (durationSeconds > 0) {
+      gain.linearRampToValueAtTime(value, now + Math.max(0.01, durationSeconds));
+    } else {
+      gain.setValueAtTime(value, now);
+    }
   }
 
   getDynamicsAnalyser(key: DynamicsAnalyserKey): AnalyserNode | null {

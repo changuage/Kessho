@@ -15,6 +15,9 @@ export type {
   PresetSummary,
   PresetVariantSummary,
   PresetFamilySummary,
+  JourneyPresetPreview,
+  JourneyPresetPreviewConnection,
+  JourneyPresetPreviewNode,
 } from './types';
 export { PARAM_REGISTRY, type ParamLevel } from './ParamRegistry';
 export { extractParams, applyParams, getKeysForScope, getScopesForLevel, validateRegistry, extractCascade, compressVersions, getVersionData } from './codec';
@@ -56,6 +59,33 @@ export type {
 } from './presetV2Migration';
 export { usePresets } from './usePresets';
 export type { UsePresetsOptions } from './usePresets';
+export { useJourneyPresets } from './useJourneyPresets';
+export type { LoadedJourneyPreset, UseJourneyPresetsResult } from './useJourneyPresets';
+export {
+  JOURNEY_PRESET_FORMAT_VERSION,
+  JOURNEY_STATE_PRESET_SCOPE,
+  decodeJourneyPresetData,
+  encodeJourneyPresetData,
+  getFilledJourneyPositions,
+  getJourneyNodeRefSlot,
+  getJourneyNodePositionFromRefSlot,
+  removeStatePresetRefFromJourneyData,
+  validateJourneyConfig,
+} from './journeyPresetCodec';
+export type {
+  JourneyValidationResult,
+  SerializedJourneyConnection,
+  SerializedJourneyNode,
+  SerializedJourneyPresetData,
+} from './journeyPresetCodec';
+export {
+  cleanupJourneyRefsForDeletedStatePreset,
+  findJourneyPresetsReferencingStatePreset,
+} from './journeyPresetReferences';
+export type {
+  CleanupJourneyReferencesResult,
+  JourneyReferenceImpact,
+} from './journeyPresetReferences';
 
 // Phase 2: File I/O
 export { exportPresetToFile, importPresetFromFile, quickExport } from './fileIO';

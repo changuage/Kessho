@@ -3844,6 +3844,7 @@ export class CoreEngineHost {
     frogs: null,
   };
   private limiter: DynamicsCompressorNode | null = null;
+  private outputGain: GainNode | null = null;
   private analyser: AnalyserNode | null = null;
   private isRunning = false;
   private isStarting = false;
@@ -4005,6 +4006,7 @@ export class CoreEngineHost {
         attack: 0.001,
         release: 0.1,
       });
+      this.outputGain = new GainNode(this.ctx, { gain: 1 });
       this.analyser = new AnalyserNode(this.ctx, { fftSize: 1024 });
       this.hostPianoReverbSend = new GainNode(this.ctx, { gain: 0 });
       this.hostPianoDelayASend = new GainNode(this.ctx, { gain: 0 });
@@ -4015,7 +4017,7 @@ export class CoreEngineHost {
       this.hostPianoOutput.connect(this.hostPianoDelayASend).connect(this.node, 0, 1);
       this.hostPianoOutput.connect(this.hostPianoDelayBSend).connect(this.node, 0, 2);
       this.hostPianoOutput.connect(this.hostPianoGranularSend).connect(this.node, 0, 3);
-      this.node.connect(this.masterGain).connect(this.limiter).connect(this.analyser).connect(this.ctx.destination);
+      this.node.connect(this.masterGain).connect(this.limiter).connect(this.analyser).connect(this.outputGain).connect(this.ctx.destination);
 
       await this.waitForReady();
       this.applyCoreState(sliderState, options);
@@ -4551,6 +4553,7 @@ export class CoreEngineHost {
       this.masterGain?.disconnect();
       this.limiter?.disconnect();
       this.analyser?.disconnect();
+      this.outputGain?.disconnect();
       void this.ctx?.close();
     } catch {
       // Best-effort shutdown; stale worklet ports are expected during teardown.
@@ -4566,6 +4569,7 @@ export class CoreEngineHost {
     this.hostPianoExternalInputs = createInactiveHostExternalInputActivity();
     this.hostEarthExternalInputs = createInactiveHostExternalInputActivity();
     this.limiter = null;
+    this.outputGain = null;
     this.analyser = null;
     this.ctx = null;
     this.isRunning = false;
@@ -5964,6 +5968,21 @@ export class CoreEngineHost {
 
   getLimiterNode(): DynamicsCompressorNode | null {
     return this.limiter;
+  }
+
+  setOutputGain(target: number, durationSeconds = 0): void {
+    const context = this.ctx;
+    const gain = this.outputGain?.gain;
+    if (!context || !gain) return;
+    const now = context.currentTime;
+    const value = Math.max(0, Math.min(1, Number.isFinite(target) ? target : 1));
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(gain.value, now);
+    if (durationSeconds > 0) {
+      gain.linearRampToValueAtTime(value, now + Math.max(0.01, durationSeconds));
+    } else {
+      gain.setValueAtTime(value, now);
+    }
   }
 
   getMediaStream(): MediaStream | null {

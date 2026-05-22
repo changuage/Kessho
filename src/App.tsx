@@ -78,6 +78,8 @@ import { SOURCE_COLORS } from './designSystem/colors';
 import { APP_TAB_SYMBOLS, TEXT_SYMBOLS } from './designSystem/textSymbols';
 import type { SeqSimpleState } from './ui/drums/SeqSimple';
 import { getVersionData } from './presets/codec';
+import { useJourneyPresets } from './presets/useJourneyPresets';
+import { validateJourneyConfig, type JourneyValidationResult } from './presets/journeyPresetCodec';
 import type { IPresetStore } from './presets/PresetStore';
 import { extractPresetVersionMetadata } from './presets/presetUtils';
 import { SHARED_PRESET_TEST_MODE } from './presets/sharedMode';
@@ -256,6 +258,11 @@ const EMPTY_EARTH_TEXTURE_DEBUG_STATE: EarthTextureDebugState = {
   birds: null,
   birds2: null,
   frogs: null,
+};
+
+type JourneyOverridePromptState = {
+  presetName: string;
+  journeyName: string;
 };
 
 type AudioEnginePerfMetric = {
@@ -553,6 +560,13 @@ interface SavedPreset {
   state: SliderState;
   source?: SavedPresetSource;
   deferred?: boolean;
+  familyId?: string;
+  familyName?: string;
+  variantId?: string;
+  variantName?: string;
+  variantRank?: number;
+  versionCount?: number;
+  currentVersion?: number;
   dualRanges?: Record<string, { min: number; max: number }>;  // Optional for backward compatibility
   sliderModes?: Record<string, SliderMode>;  // Mode per parameter key
   drumEvolveConfigs?: EvolveConfig[];
@@ -575,6 +589,7 @@ const DEFAULT_EUCLIDEAN_CLOCK_DIVS: ClockDivision[] = ['1/8', '1/16', '1/8T', '1
 const DEFAULT_EUCLIDEAN_SWINGS = [0, 0, 0, 0];
 const DEFAULT_EUCLIDEAN_LINKED = [false, false, false, false];
 const DEFAULT_SYNTH_PITCH_BINDING_MODES: PitchBindingMode[] = ['polyrhythmic', 'polyrhythmic', 'polyrhythmic', 'polyrhythmic'];
+const PRESET_LOAD_FADE_MS = 2000;
 
 // iOS-only reverb types that won't work on web
 const IOS_ONLY_REVERB_TYPES = new Set([
@@ -872,6 +887,13 @@ function savedPresetFromSummary(summary: PresetSummary): SavedPreset {
     state: DEFAULT_STATE,
     source: savedPresetSourceForSummary(summary),
     deferred: true,
+    familyId: summary.familyId,
+    familyName: summary.familyName,
+    variantId: summary.variantId,
+    variantName: summary.variantName,
+    variantRank: summary.variantRank,
+    versionCount: summary.versionCount,
+    currentVersion: summary.currentVersion,
   };
 }
 
@@ -934,6 +956,13 @@ function statePresetEntryToSavedPreset(
   return {
     ...migrated,
     source: savedPresetSourceForEntry(entry),
+    familyId: entry.familyId,
+    familyName: entry.familyName ?? entry.name,
+    variantId: entry.variantId,
+    variantName: entry.variantName ?? entry.name,
+    variantRank: entry.variantRank,
+    versionCount: entry.versions.length,
+    currentVersion: entry.currentVersion,
   };
 }
 
@@ -1111,6 +1140,86 @@ const styles = {
     background: 'rgba(103, 232, 249, 0.16)',
     color: '#67e8f9',
     boxShadow: 'inset 0 -2px 0 rgba(103, 232, 249, 0.55)',
+  } as React.CSSProperties,
+  journeyOverrideOverlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 10000,
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    padding: 'calc(76px + env(safe-area-inset-top)) 14px 14px',
+    background: 'rgba(0, 0, 0, 0.48)',
+    boxSizing: 'border-box',
+  } as React.CSSProperties,
+  journeyOverrideDialog: {
+    width: 'min(360px, 100%)',
+    borderRadius: '8px',
+    border: '1px solid rgba(232, 220, 196, 0.28)',
+    background: 'rgba(20, 20, 35, 0.92)',
+    boxShadow: '0 18px 52px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.08)',
+    padding: '16px',
+    color: '#f4ede4',
+  } as React.CSSProperties,
+  journeyOverrideHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    marginBottom: '10px',
+  } as React.CSSProperties,
+  journeyOverrideIcon: {
+    width: '30px',
+    height: '30px',
+    borderRadius: '7px',
+    display: 'grid',
+    placeItems: 'center',
+    background: 'rgba(184,224,255,0.12)',
+    color: '#B8E0FF',
+    fontSize: '1.05rem',
+    flexShrink: 0,
+  } as React.CSSProperties,
+  journeyOverrideTitle: {
+    color: '#B8E0FF',
+    fontSize: '0.9rem',
+    fontWeight: 800,
+    letterSpacing: 0,
+  } as React.CSSProperties,
+  journeyOverrideBody: {
+    color: 'rgba(244,237,228,0.76)',
+    fontSize: '0.82rem',
+    lineHeight: 1.45,
+    marginBottom: '14px',
+  } as React.CSSProperties,
+  journeyOverrideStrong: {
+    color: '#f4ede4',
+    fontWeight: 800,
+  } as React.CSSProperties,
+  journeyOverrideActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '8px',
+  } as React.CSSProperties,
+  journeyOverrideSecondaryButton: {
+    height: '34px',
+    padding: '0 12px',
+    borderRadius: '6px',
+    border: '1px solid rgba(255,255,255,0.14)',
+    background: 'rgba(255,255,255,0.06)',
+    color: '#f4ede4',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    fontWeight: 700,
+  } as React.CSSProperties,
+  journeyOverridePrimaryButton: {
+    height: '34px',
+    padding: '0 12px',
+    borderRadius: '6px',
+    border: '1px solid rgba(184,224,255,0.38)',
+    background: 'rgba(184,224,255,0.18)',
+    color: '#B8E0FF',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    fontWeight: 800,
   } as React.CSSProperties,
   macAudioStatus: {
     position: 'fixed',
@@ -1957,6 +2066,8 @@ const App: React.FC = () => {
   const autoStartPresetSourceRef = useRef<'cloud' | 'device-local' | 'bundled' | null>(null);
   const cloudPresetStoreRef = useRef<IPresetStore | null>(null);
   const cloudAutoStartStoreInitPromiseRef = useRef<Promise<IPresetStore | null> | null>(null);
+  const journeyOverridePromptResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
+  const [journeyOverridePrompt, setJourneyOverridePrompt] = useState<JourneyOverridePromptState | null>(null);
   const cloudPresetStoreReadyRef = useRef(!CLOUD_ENABLED || isSonicParityMode());
   const cloudPresetStoreReadyResolveRef = useRef<(() => void) | null>(null);
   const cloudPresetStoreReadyPromiseRef = useRef<Promise<void> | null>(null);
@@ -1973,6 +2084,44 @@ const App: React.FC = () => {
     cloudPresetStoreReadyResolveRef.current?.();
     cloudPresetStoreReadyResolveRef.current = null;
   };
+
+  const resolveJourneyOverridePrompt = useCallback((confirmed: boolean) => {
+    const resolve = journeyOverridePromptResolveRef.current;
+    journeyOverridePromptResolveRef.current = null;
+    setJourneyOverridePrompt(null);
+    resolve?.(confirmed);
+  }, []);
+
+  const requestJourneyOverrideConfirmation = useCallback((
+    presetName: string,
+    journeyName: string,
+  ): Promise<boolean> => {
+    journeyOverridePromptResolveRef.current?.(false);
+    return new Promise<boolean>((resolve) => {
+      journeyOverridePromptResolveRef.current = resolve;
+      setJourneyOverridePrompt({ presetName, journeyName });
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      journeyOverridePromptResolveRef.current?.(false);
+      journeyOverridePromptResolveRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!journeyOverridePrompt) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        resolveJourneyOverridePrompt(false);
+      } else if (event.key === 'Enter') {
+        resolveJourneyOverridePrompt(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [journeyOverridePrompt, resolveJourneyOverridePrompt]);
   type StemName = StemRecordTrackId;
   // Routing-level stem recording options.
   const [recordStems, setRecordStems] = useState<Record<StemName, boolean>>(STEM_RECORD_DEFAULTS);
@@ -2013,6 +2162,8 @@ const App: React.FC = () => {
   const macAudioRecoveryInFlightRef = useRef(false);
   const pendingAudioEngineStateRef = useRef<SliderState | null>(null);
   const immediatelyAppliedAudioEngineStateRef = useRef<SliderState | null>(null);
+  const skipNextPresetLoadEngineSyncRef = useRef(false);
+  const lastAppliedPresetLoadRef = useRef<{ preset: SavedPreset; state: SliderState } | null>(null);
   const audioEngineUpdateTimerRef = useRef<number | null>(null);
   const lastAudioEngineUpdateMsRef = useRef(0);
   const flushAudioEngineParamUpdate = useCallback(() => {
@@ -2054,6 +2205,7 @@ const App: React.FC = () => {
     }
     pendingAudioEngineStateRef.current = null;
     immediatelyAppliedAudioEngineStateRef.current = null;
+    skipNextPresetLoadEngineSyncRef.current = false;
   }, []);
 
   const presetEngineUpdateOptions = useMemo(() => ({
@@ -2217,6 +2369,10 @@ const App: React.FC = () => {
     (presetName, duration) => journeyMorphToRef.current(presetName, duration),
     (presetName) => journeyLoadPresetRef.current(presetName)
   );
+  const journeyPresets = useJourneyPresets();
+  const [activeJourneyPresetName, setActiveJourneyPresetName] = useState('');
+  const [activeJourneyValidation, setActiveJourneyValidation] = useState<JourneyValidationResult>(() => validateJourneyConfig(null));
+  const [activeJourneyHasBackup, setActiveJourneyHasBackup] = useState(false);
 
   // Mobile detection
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -3897,6 +4053,10 @@ const App: React.FC = () => {
       immediatelyAppliedAudioEngineStateRef.current = null;
       return;
     }
+    if (skipNextPresetLoadEngineSyncRef.current) {
+      skipNextPresetLoadEngineSyncRef.current = false;
+      return;
+    }
     scheduleAudioEngineParamUpdate(state);
   }, [scheduleAudioEngineParamUpdate, state]);
 
@@ -5089,6 +5249,19 @@ const App: React.FC = () => {
     playbackTimerTargetTimeRef.current = null;
     setPlaybackTimerRemaining(null);
   };
+
+  const fadeEngineOutput = useCallback(async (target: number, durationMs = PRESET_LOAD_FADE_MS) => {
+    audioEngine.setOutputGain(target, durationMs / 1000);
+    await new Promise(resolve => window.setTimeout(resolve, durationMs));
+  }, []);
+
+  const fadeOutAndStopForPresetLoad = useCallback(async () => {
+    if (!(playbackIsRunning || isJourneyPlaying)) return;
+    await fadeEngineOutput(0, PRESET_LOAD_FADE_MS);
+    handleStop();
+    await new Promise(resolve => window.setTimeout(resolve, 50));
+    void fadeEngineOutput(1, 10);
+  }, [fadeEngineOutput, isJourneyPlaying, playbackIsRunning]);
 
   capacitorAudioSessionRemoteCommandHandlerRef.current = (command) => {
     if (command === 'play') {
@@ -6481,6 +6654,17 @@ const App: React.FC = () => {
     setMorphPosition(0);
   }, []);
 
+  const confirmOverrideArmedJourneyForStatePreset = useCallback(async (presetName: string): Promise<boolean> => {
+    if (!activeJourneyPresetName) return true;
+    const confirmed = await requestJourneyOverrideConfirmation(presetName, activeJourneyPresetName);
+    if (!confirmed) return false;
+    journey.stop();
+    setIsJourneyPlaying(false);
+    setActiveJourneyPresetName('');
+    setActiveJourneyHasBackup(false);
+    return true;
+  }, [activeJourneyPresetName, journey, requestJourneyOverrideConfirmation]);
+
   // ── PresetEntry-based Morph Slot Load Handlers ──
   // Convert L4 PresetEntry data → SavedPreset and feed into morph system
   const presetEntryToSavedPreset = useCallback((entry: PresetEntry, data: Record<string, unknown>): SavedPreset => {
@@ -6493,7 +6677,8 @@ const App: React.FC = () => {
     });
   }, []);
 
-  const handleLoadMorphA = useCallback((entry: PresetEntry, data: Record<string, unknown>) => {
+  const handleLoadMorphA = useCallback(async (entry: PresetEntry, data: Record<string, unknown>) => {
+    if (!(await confirmOverrideArmedJourneyForStatePreset(entry.name))) return false;
     hasLoadedPresetRef.current = true;
     const preset = presetEntryToSavedPreset(entry, data);
     setMorphSlotAName(entry.name);
@@ -6511,12 +6696,14 @@ const App: React.FC = () => {
     const atEndpoint0 = isAtEndpoint0(morphPosition, true);
     if (atEndpoint0 || !morphPresetB) {
       const result = applyPreset(preset, { migrate: false, currentState: state, normalize: s => s, ...presetEngineUpdateOptions });
+      setMorphPresetA(result.preset);
       syncCoreProductAppliedPreset(result.state);
       setState(result.state);
       setStatePresetName(entry.name);
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
-      restoreEvolveConfigs(preset);
+      restoreEvolveConfigs(result.preset);
     }
+    return true;
   }, [
     presetEntryToSavedPreset,
     morphPresetB,
@@ -6528,9 +6715,11 @@ const App: React.FC = () => {
     presetEngineUpdateOptions,
     restoreEvolveConfigs,
     syncCoreProductAppliedPreset,
+    confirmOverrideArmedJourneyForStatePreset,
   ]);
 
-  const handleLoadMorphB = useCallback((entry: PresetEntry, data: Record<string, unknown>) => {
+  const handleLoadMorphB = useCallback(async (entry: PresetEntry, data: Record<string, unknown>) => {
+    if (!(await confirmOverrideArmedJourneyForStatePreset(entry.name))) return false;
     hasLoadedPresetRef.current = true;
     const preset = presetEntryToSavedPreset(entry, data);
     setMorphSlotBName(entry.name);
@@ -6548,12 +6737,14 @@ const App: React.FC = () => {
     const atEndpoint1 = isAtEndpoint1(morphPosition, true);
     if (atEndpoint1 || !morphPresetA) {
       const result = applyPreset(preset, { migrate: false, currentState: state, normalize: s => s, ...presetEngineUpdateOptions });
+      setMorphPresetB(result.preset);
       syncCoreProductAppliedPreset(result.state);
       setState(result.state);
       setStatePresetName(entry.name);
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
-      restoreEvolveConfigs(preset);
+      restoreEvolveConfigs(result.preset);
     }
+    return true;
   }, [
     presetEntryToSavedPreset,
     morphPresetA,
@@ -6565,6 +6756,7 @@ const App: React.FC = () => {
     presetEngineUpdateOptions,
     restoreEvolveConfigs,
     syncCoreProductAppliedPreset,
+    confirmOverrideArmedJourneyForStatePreset,
   ]);
 
   // ── Record Stems Toggle Callback (used by GlobalPage) ──
@@ -6921,10 +7113,19 @@ const App: React.FC = () => {
   // Load preset from the saved preset list used by Snowflake and Journey.
   const handleLoadPresetFromList = useCallback(async (
     preset: SavedPreset,
-    options?: { forceApply?: boolean; morphPositionOverride?: number },
-  ) => {
+    options?: { forceApply?: boolean; morphPositionOverride?: number; skipFade?: boolean; skipJourneyOverridePrompt?: boolean },
+  ): Promise<boolean> => {
+    if (!options?.skipJourneyOverridePrompt && !(await confirmOverrideArmedJourneyForStatePreset(preset.name))) {
+      return false;
+    }
+
+    if (!options?.skipFade) {
+      await fadeOutAndStopForPresetLoad();
+    }
+
+    lastAppliedPresetLoadRef.current = null;
     const resolvedPreset = await resolveSavedPresetForLoad(preset);
-    if (!resolvedPreset) return;
+    if (!resolvedPreset) return false;
 
     // Activate snowflake on preset load
     if (!snowflakeActivated) setSnowflakeActivated(true);
@@ -6967,14 +7168,23 @@ const App: React.FC = () => {
     const shouldApplyPresetA = options?.forceApply || atEndpoint0 || !morphPresetB;
 
     if (shouldApplyPresetA) {
-      const result = applyPreset(resolvedPreset, { currentState: state, normalize: normalizePresetForWeb, ...presetEngineUpdateOptions });
-      syncCoreProductAppliedPreset(result.state);
+      const result = applyPreset(resolvedPreset, {
+        currentState: state,
+        normalize: normalizePresetForWeb,
+        ...presetEngineUpdateOptions,
+        updateEngine: false,
+        resetCofDrift: false,
+      });
+      skipNextPresetLoadEngineSyncRef.current = true;
+      setMorphPresetA(result.preset);
+      lastAppliedPresetLoadRef.current = { preset: result.preset, state: result.state };
       setState(result.state);
       setStatePresetName(resolvedPreset.name);
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
       restoreEvolveConfigs(result.preset);
     }
     // If in mid-morph, the useEffect will handle applying the interpolated state
+    return true;
   }, [
     state,
     sliderModes,
@@ -6984,10 +7194,11 @@ const App: React.FC = () => {
     setMorphSlotAName,
     snowflakeActivated,
     applyDualRangesFromPreset,
+    fadeOutAndStopForPresetLoad,
     presetEngineUpdateOptions,
     resolveSavedPresetForLoad,
     restoreEvolveConfigs,
-    syncCoreProductAppliedPreset,
+    confirmOverrideArmedJourneyForStatePreset,
   ]);
 
   // ========================================================================
@@ -7014,44 +7225,53 @@ const App: React.FC = () => {
     journeyMorphDirectionRef.current = 'toB'; // First morph will go A→B (0→100)
 
     // Load preset as preset A and force it into the shared slider state.
-    await handleLoadPresetFromList(preset, { forceApply: true, morphPositionOverride: 0 });
-    setStatePresetName(preset.name);
+    const loaded = await handleLoadPresetFromList(preset, {
+      forceApply: true,
+      morphPositionOverride: 0,
+      skipJourneyOverridePrompt: true,
+    });
+    if (!loaded) {
+      setIsJourneyPlaying(false);
+      return;
+    }
+    const appliedPresetLoad = lastAppliedPresetLoadRef.current;
+    const startPreset = appliedPresetLoad?.preset ?? preset;
+    const startState = appliedPresetLoad?.state ?? stateRef.current;
+    setStatePresetName(startPreset.name);
 
     // Update refs synchronously for animation loop
-    journeyPresetARef.current = preset;
+    journeyPresetARef.current = startPreset;
     journeyPresetBRef.current = null;
-    journeyLastAppliedStateRef.current = preset.state;
+    journeyLastAppliedStateRef.current = startState;
     journeyLastDualModesRef.current = {};
     journeyLastDualRangesRef.current = {};
     journeyLastMorphPositionRef.current = 0;
     journeyLastMorphCoFVizRef.current = null;
 
-    // Start audio engine if not already running
-    if (!playbackIsRunning) {
-      console.log('[Journey] Starting audio engine');
-      try {
-        setupIOSMediaSession();
-        await audioEngine.start(preset.state);
-        connectMediaSessionToWebAudio();
+    // Start or restart audio after the journey's first preset is loaded.
+    console.log('[Journey] Starting audio engine');
+    try {
+      setupIOSMediaSession();
+      await audioEngine.start(startState);
+      connectMediaSessionToWebAudio();
 
-        if (capacitorAudioSessionDiagnosticActive) {
-          await startCapacitorAudioSessionPlayback(
-            {
-              state: preset.state,
-              dualRanges: extractNativeDualRanges(dualSliderRanges),
-            },
-            {
-              title: preset.name,
-              artist: 'Kessho',
-              album: 'Kessho Capacitor',
-              isLiveStream: true,
-              isPlaying: true,
-            },
-          );
-        }
-      } catch (err) {
-        console.error('[Journey] Failed to start audio:', err);
+      if (capacitorAudioSessionDiagnosticActive) {
+        await startCapacitorAudioSessionPlayback(
+          {
+            state: startState,
+            dualRanges: extractNativeDualRanges(dualSliderRanges),
+          },
+          {
+            title: startPreset.name,
+            artist: 'Kessho',
+            album: 'Kessho Capacitor',
+            isLiveStream: true,
+            isPlaying: true,
+          },
+        );
       }
+    } catch (err) {
+      console.error('[Journey] Failed to start audio:', err);
     }
   }, [resolveSavedPresetByName, handleLoadPresetFromList, playbackIsRunning, capacitorAudioSessionDiagnosticActive, dualSliderRanges, audioEngine, setupIOSMediaSession, connectMediaSessionToWebAudio]);
 
@@ -7251,12 +7471,133 @@ const App: React.FC = () => {
     journeyMorphToRef.current = handleJourneyMorphTo;
   }, [handleJourneyLoadPreset, handleJourneyMorphTo]);
 
+  useEffect(() => {
+    setActiveJourneyValidation(validateJourneyConfig(journey.config));
+  }, [journey.config]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeJourneyPresetName) {
+      setActiveJourneyHasBackup(false);
+      return;
+    }
+    journeyPresets.hasBackup(activeJourneyPresetName)
+      .then((hasBackup) => {
+        if (!cancelled) setActiveJourneyHasBackup(hasBackup);
+      })
+      .catch(() => {
+        if (!cancelled) setActiveJourneyHasBackup(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeJourneyPresetName, journeyPresets.hasBackup]);
+
+  const handleLoadJourneyPreset = useCallback(async (name: string) => {
+    if (!name) return;
+    await fadeOutAndStopForPresetLoad();
+    const loaded = await journeyPresets.load(name);
+    if (!loaded) return;
+    journey.stop();
+    stopJourneyMorphPlayback(true);
+    setIsJourneyPlaying(false);
+    journey.setConfig(loaded.config);
+    setActiveJourneyPresetName(loaded.entry.name);
+    setActiveJourneyValidation(loaded.validation);
+    setActiveJourneyHasBackup(await journeyPresets.hasBackup(loaded.entry.name));
+  }, [fadeOutAndStopForPresetLoad, journey, journeyPresets, stopJourneyMorphPlayback]);
+
+  const handleSaveJourneyPreset = useCallback(async (name: string, description?: string) => {
+    if (!journey.config) return null;
+    const entry = await journeyPresets.save(
+      name,
+      { ...journey.config, name },
+      description === undefined ? undefined : { description },
+    );
+    if (!entry) return null;
+    setActiveJourneyPresetName(entry.name);
+    setActiveJourneyValidation(validateJourneyConfig({ ...journey.config, name: entry.name }));
+    setActiveJourneyHasBackup(await journeyPresets.hasBackup(entry.name));
+    return entry;
+  }, [journey.config, journeyPresets]);
+
+  const handleDeleteJourneyPreset = useCallback(async (name: string) => {
+    const removed = await journeyPresets.remove(name);
+    if (!removed) return false;
+    if (activeJourneyPresetName === name) {
+      setActiveJourneyPresetName('');
+      setActiveJourneyHasBackup(false);
+    }
+    return true;
+  }, [activeJourneyPresetName, journeyPresets]);
+
+  const handleUndoJourneyPreset = useCallback(async () => {
+    if (!activeJourneyPresetName) return;
+    await fadeOutAndStopForPresetLoad();
+    const restored = await journeyPresets.restoreBackup(activeJourneyPresetName);
+    if (!restored) return;
+    journey.stop();
+    stopJourneyMorphPlayback(true);
+    setIsJourneyPlaying(false);
+    journey.setConfig(restored.config);
+    setActiveJourneyPresetName(restored.entry.name);
+    setActiveJourneyValidation(restored.validation);
+    setActiveJourneyHasBackup(await journeyPresets.hasBackup(restored.entry.name));
+  }, [activeJourneyPresetName, fadeOutAndStopForPresetLoad, journey, journeyPresets, stopJourneyMorphPlayback]);
+
   // Cleanup journey animation on unmount
   useEffect(() => {
     return () => {
       stopJourneyMorphPlayback(false);
     };
   }, [stopJourneyMorphPlayback]);
+
+  const renderJourneyOverridePrompt = () => {
+    if (!journeyOverridePrompt) return null;
+    return (
+      <div
+        style={styles.journeyOverrideOverlay}
+        role="presentation"
+        onClick={() => resolveJourneyOverridePrompt(false)}
+      >
+        <div
+          style={styles.journeyOverrideDialog}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="journey-override-title"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div style={styles.journeyOverrideHeader}>
+            <span style={styles.journeyOverrideIcon} aria-hidden="true">⟡</span>
+            <span id="journey-override-title" style={styles.journeyOverrideTitle}>
+              Override Journey?
+            </span>
+          </div>
+          <div style={styles.journeyOverrideBody}>
+            Loading <strong style={styles.journeyOverrideStrong}>{journeyOverridePrompt.presetName}</strong> will unarm{' '}
+            <strong style={styles.journeyOverrideStrong}>{journeyOverridePrompt.journeyName}</strong>.
+          </div>
+          <div style={styles.journeyOverrideActions}>
+            <button
+              type="button"
+              style={styles.journeyOverrideSecondaryButton}
+              onClick={() => resolveJourneyOverridePrompt(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              style={styles.journeyOverridePrimaryButton}
+              onClick={() => resolveJourneyOverridePrompt(true)}
+              autoFocus
+            >
+              Load State
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const handleRoutingSourceToggle = useCallback((sourceId: string, enabled: boolean) => {
     hasUserInteractedRef.current = true;
@@ -7345,18 +7686,30 @@ const App: React.FC = () => {
   // Render journey mode UI
   if (uiMode === 'journey') {
     return (
-      <React.Suspense fallback={LAZY_PAGE_FALLBACK}>
-        <JourneyModeView
-          presets={savedPresets}
-          journey={journey}
-          onJourneyEnd={handleJourneyEnd}
-          onStopAudio={handleStop}
-          onShowSnowflake={() => setUiMode('snowflake')}
-          onShowVisualizer={() => openAdvancedTab('visualizer')}
-          onShowAdvanced={() => setUiMode('advanced')}
-          isPlaying={playbackIsRunning}
-        />
-      </React.Suspense>
+      <>
+        <React.Suspense fallback={LAZY_PAGE_FALLBACK}>
+          <JourneyModeView
+            presets={savedPresets}
+            journey={journey}
+            journeyPresets={journeyPresets.presets}
+            activeJourneyPresetName={activeJourneyPresetName}
+            activeJourneyHasBackup={activeJourneyHasBackup}
+            journeyValidation={activeJourneyValidation}
+            onLoadJourneyPreset={handleLoadJourneyPreset}
+            onSaveJourneyPreset={handleSaveJourneyPreset}
+            onDeleteJourneyPreset={handleDeleteJourneyPreset}
+            onUndoJourneyPreset={handleUndoJourneyPreset}
+            onRateJourneyPreset={(name, rating) => journeyPresets.updateMetadata(name, { rating })}
+            onJourneyEnd={handleJourneyEnd}
+            onStopAudio={handleStop}
+            onShowSnowflake={() => setUiMode('snowflake')}
+            onShowVisualizer={() => openAdvancedTab('visualizer')}
+            onShowAdvanced={() => setUiMode('advanced')}
+            isPlaying={playbackIsRunning}
+          />
+        </React.Suspense>
+        {renderJourneyOverridePrompt()}
+      </>
     );
   }
 
@@ -7473,8 +7826,20 @@ const App: React.FC = () => {
             onShowAdvanced={() => { if (!snowflakeActivated) setSnowflakeActivated(true); setUiMode('advanced'); }}
             onShowJourney={() => { if (!snowflakeActivated) setSnowflakeActivated(true); setUiMode('journey'); }}
             onShowVisualizer={() => openAdvancedTab('visualizer')}
-            onTogglePlay={(playbackIsRunning || isJourneyPlaying) ? handleStop : handleStart}
+            onTogglePlay={(playbackIsRunning || isJourneyPlaying)
+              ? handleStop
+              : (activeJourneyPresetName && journey.config
+                ? () => {
+                  if (!activeJourneyValidation.playable) {
+                    alert(`Journey cannot play yet:\n\n${activeJourneyValidation.issues.join('\n')}`);
+                    return;
+                  }
+                  journey.play();
+                }
+                : handleStart)}
             onLoadPreset={handleLoadPresetFromList}
+            journeyPresets={journeyPresets.presets}
+            onLoadJourneyPreset={handleLoadJourneyPreset}
             presets={savedPresets}
             isPlaying={playbackIsRunning || isJourneyPlaying}
             isRecording={isRecording}
@@ -7483,8 +7848,11 @@ const App: React.FC = () => {
             journeyState={journey.state}
             journeyConfig={journey.config}
             isJourneyPlaying={isJourneyPlaying}
+            activeJourneyName={activeJourneyPresetName}
+            journeyValidation={activeJourneyValidation}
           />
         </div>
+        {renderJourneyOverridePrompt()}
       </>
     );
   }
@@ -7494,6 +7862,7 @@ const App: React.FC = () => {
     <SliderHelpProvider activePage={activeTab === 'visualizer' ? 'global' : activeTab}>
       <div className="app-container" style={{ ...activePageAccentStyle, ...styles.container, ...m?.container }}>
         <CpuOverlay />
+        {renderJourneyOverridePrompt()}
         {renderMacAudioStatusPill()}
         {/* Controls - centered */}
         <div className="app-controls" style={{ ...styles.controls, paddingTop: '12px', ...m?.controls }}>

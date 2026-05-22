@@ -7,6 +7,8 @@ import type { IPresetStore } from './PresetStore';
 import { SupabasePresetStore } from './SupabasePresetStore';
 import type { PresetEntry, PresetLevel, PresetSummary } from './types';
 import { DEFAULT_STATE } from '../ui/state';
+import { createDiamondJourney } from '../audio/journeyTypes';
+import { encodeJourneyPresetData, getJourneyNodeRefSlot } from './journeyPresetCodec';
 
 type Filter =
   | { kind: 'eq'; column: string; value: unknown }
@@ -494,7 +496,7 @@ function makePresetEntry(
 function findPresetRow(
   client: FakeSupabaseClient,
   type: PresetLevel,
-  scope: string,
+  scope: string | null,
   name: string,
 ): FakePresetV2Row {
   const row = client.tables.presets_v2.find(candidate => (
@@ -502,7 +504,7 @@ function findPresetRow(
     && candidate.scope === scope
     && candidate.name === name
   ));
-  assert.ok(row, `expected ${type}:${scope}:${name} to exist`);
+  assert.ok(row, `expected ${type}:${scope ?? ''}:${name} to exist`);
   return row;
 }
 
@@ -636,6 +638,77 @@ async function testActiveDependencyBlocksSoftDeleteAcrossL1ToL4(): Promise<void>
     'active L4 -> L3 refs should block deleting the L3 preset',
   );
   assert.equal(synth.deleted_at, null, 'blocked L3 delete should leave the row active');
+}
+
+async function testJourneyRefsPersistAsSupabaseV2GraphEdges(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '77777777-7777-4777-8777-777777777777';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const stateName = 'State Used By Journey';
+  const journeyName = 'Journey Active Dependency';
+  await store.save(makePresetEntry('state', 'global', stateName, DEFAULT_STATE as unknown as Record<string, unknown>));
+  const state = findPresetRow(client, 'state', 'global', stateName);
+
+  const config = createDiamondJourney([]);
+  const left = config.nodes.find((node) => node.position === 'left')!;
+  left.presetId = stateName;
+  left.presetName = stateName;
+  config.name = journeyName;
+  const slot = getJourneyNodeRefSlot('left');
+  const timestamp = Date.parse('2026-05-19T12:00:00.000Z');
+  const journeyEntry: PresetEntry = {
+    type: 'journey',
+    name: journeyName,
+    author: 'user',
+    library: 'cloud',
+    creator: 'Soft Delete Regression',
+    visibility: 'public',
+    familyName: journeyName,
+    variantName: journeyName,
+    tags: ['journey'],
+    versions: [{
+      v: 1,
+      note: 'state refs should persist as graph edges',
+      timestamp,
+      data: encodeJourneyPresetData(config) as unknown as Record<string, unknown>,
+      refs: {
+        [slot]: { name: stateName, version: 'latest', scope: 'global' },
+      },
+    }],
+    currentVersion: 1,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  await store.save(journeyEntry);
+
+  const journey = findPresetRow(client, 'journey', null, journeyName);
+  const ref = client.tables.preset_version_refs_v2.find(candidate => (
+    candidate.version_id === journey.latest_version_id
+    && candidate.ref_slot === slot
+  ));
+  assert.ok(ref, 'Journey latest version should store its state preset ref as a V2 graph edge');
+  assert.equal(ref.target_preset_id, state.id, 'Journey ref should target the saved state preset');
+  assert.equal(ref.follow_latest, true, 'Journey state refs should follow the latest state version');
+  assert.equal(ref.target_version_no, null, 'follow-latest refs should not store a fixed version number');
+
+  const loaded = await store.load('journey', journeyName);
+  const loadedVersion = loaded?.versions.find(version => version.v === loaded.currentVersion);
+  assert.ok(loadedVersion, 'Journey should load back from V2 storage');
+  assert.equal(loadedVersion.refs?.[slot]?.name, stateName, 'loaded Journey version should preserve ref names');
+  assert.equal(loadedVersion.refs?.[slot]?.version, 'latest', 'loaded Journey version should preserve follow-latest semantics');
+  assert.equal('masterVolume' in loadedVersion.data, false, 'Journey load must not merge L4 state payload data into graph data');
+  assert.deepStrictEqual(await store.findReferences('state', stateName), [journeyName], 'cross-scope ref lookup should report Journey users of the state');
+
+  await assert.rejects(
+    () => store.delete('state', stateName, 'global'),
+    /active latest presets still reference it/,
+    'active Journey -> State refs should participate in Supabase graph guards',
+  );
+  assert.equal(state.deleted_at, null, 'blocked state delete should leave the row active until Journey cleanup runs');
 }
 
 async function testHistoricalOnlyReferenceAllowsSoftDelete(): Promise<void> {
@@ -789,6 +862,7 @@ async function testSharedV2DoesNotLeakLegacyRows(): Promise<void> {
 
 await testSupabaseDeleteMovesPresetToRecycleBin();
 await testActiveDependencyBlocksSoftDeleteAcrossL1ToL4();
+await testJourneyRefsPersistAsSupabaseV2GraphEdges();
 await testHistoricalOnlyReferenceAllowsSoftDelete();
 await testLatestVersionRollupClearsStaleMetadata();
 testRecycleBinSqlContainsGraphGuards();

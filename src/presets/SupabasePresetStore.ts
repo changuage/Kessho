@@ -16,6 +16,7 @@ import {
   normalizePresetEntry,
   normalizePresetSummary,
 } from './presetUtils';
+import { normalizeJourneyPresetPreview } from './journeyPresetPreview';
 import {
   applyRecordPatch,
   canonicalizeRecord,
@@ -54,6 +55,14 @@ const AUTO_CHILD_TAG = 'auto-child';
 interface V2LookupOptions {
   includeDeleted?: boolean;
   deletedOnly?: boolean;
+}
+
+interface PendingVersionRefV2 {
+  slot: string;
+  target: PresetV2Row;
+  targetVersionNo: number | null;
+  followLatest: boolean;
+  overrideHash?: string | null;
 }
 
 /** Row shape returned from the legacy Supabase `presets` table */
@@ -299,13 +308,18 @@ function makeStoredRefKey(ref: PresetVersionRefV2Row): string {
   ].join(':');
 }
 
-function makePendingRefKey(ref: { slot: string; target: PresetV2Row }): string {
+function makePendingRefKey(ref: PendingVersionRefV2): string {
+  const versionLabel = ref.followLatest ? 'latest' : fixedRefVersionLabel(ref.targetVersionNo);
   return [
     ref.slot,
     ref.target.id,
-    fixedRefVersionLabel(ref.target.latest_version_no),
-    '',
+    versionLabel,
+    ref.overrideHash ?? '',
   ].join(':');
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 export class SupabasePresetStore implements IPresetStore {
@@ -551,6 +565,97 @@ export class SupabasePresetStore implements IPresetStore {
     }
 
     return dedupePreferredV2Rows((data ?? []) as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId);
+  }
+
+  private async queryPresetRowsByNameV2(
+    type: PresetLevel,
+    name: string,
+    options: V2LookupOptions = {},
+  ): Promise<PresetV2Row[]> {
+    let query = this.client
+      .from('presets_v2')
+      .select('*')
+      .eq('type', type)
+      .eq('name', name);
+
+    if (options.deletedOnly) query = query.not('deleted_at', 'is', null);
+    else if (!options.includeDeleted) query = query.is('deleted_at', null);
+
+    const { data, error } = await query
+      .order('updated_at', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      if (this.markV2UnavailableIfMissing(error)) return [];
+      throw new Error(`V2 preset lookup failed: ${error.message}`);
+    }
+
+    return dedupePreferredV2Rows((data ?? []) as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId);
+  }
+
+  private async findPresetRowByIdV2(id: string): Promise<PresetV2Row | null> {
+    if (!isUuid(id)) return null;
+
+    const { data, error } = await this.client
+      .from('presets_v2')
+      .select('*')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .limit(1);
+
+    if (error) {
+      if (this.markV2UnavailableIfMissing(error)) return null;
+      throw new Error(`V2 preset id lookup failed: ${error.message}`);
+    }
+
+    return ((data ?? []) as PresetV2Row[])[0] ?? null;
+  }
+
+  private getExplicitRefTargetType(parentType: PresetLevel): PresetLevel | null {
+    if (parentType === 'journey') return 'state';
+    return null;
+  }
+
+  private async resolveExplicitVersionRefsV2(
+    parentType: PresetLevel,
+    refs: Record<string, PresetRef> | undefined,
+    excludePresetId: string,
+  ): Promise<PendingVersionRefV2[]> {
+    const targetType = this.getExplicitRefTargetType(parentType);
+    if (!targetType || !refs) return [];
+
+    const resolvedRefs: PendingVersionRefV2[] = [];
+    for (const [slot, ref] of Object.entries(refs).sort(([left], [right]) => left.localeCompare(right))) {
+      let target: PresetV2Row | null = ref.id ? await this.findPresetRowByIdV2(ref.id) : null;
+      if (target?.type !== targetType) target = null;
+      if (target?.id === excludePresetId) target = null;
+
+      if (!target) {
+        const targetScope = ref.scope ?? (targetType === 'state' ? 'global' : undefined);
+        const targetRows = await this.queryPresetRowsV2(targetType, ref.name, targetScope);
+        target = targetRows.find(row => row.id !== excludePresetId) ?? null;
+        if (!target && targetScope) {
+          const fallbackRows = await this.queryPresetRowsV2(targetType, ref.name);
+          target = fallbackRows.find(row => row.id !== excludePresetId) ?? null;
+        }
+      }
+
+      if (!target) {
+        console.warn(`SupabasePresetStore.saveV2 could not resolve ${parentType} ref "${slot}" -> "${ref.name}"`);
+        continue;
+      }
+
+      const followLatest = ref.version === 'latest';
+      resolvedRefs.push({
+        slot,
+        target,
+        followLatest,
+        targetVersionNo: ref.version === 'latest' ? null : ref.version,
+        overrideHash: null,
+      });
+    }
+
+    return resolvedRefs;
   }
 
   private async findMatchingPresetV2(
@@ -860,8 +965,12 @@ export class SupabasePresetStore implements IPresetStore {
     }
 
     let mergedFromRefs: Record<string, unknown> = {};
+    const mergeableRefSlots = new Set(
+      getPresetChildSpecs(parentType, parentScope ?? undefined).map(spec => spec.slot),
+    );
     const refRows = refsByVersionId.get(row.id) ?? [];
     for (const refRow of refRows) {
+      if (!mergeableRefSlots.has(refRow.ref_slot)) continue;
       const targetPreset = targetPresetMap.get(refRow.target_preset_id);
       if (!targetPreset?.latest_resolved_hash) continue;
       const childData = payloadMap.get(targetPreset.latest_resolved_hash);
@@ -1056,6 +1165,12 @@ export class SupabasePresetStore implements IPresetStore {
     const rows = dedupePreferredV2Rows((data ?? []) as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId)
       .filter(isActivePresetV2Row)
       .filter(row => !isInternalDerivedRow(row));
+    const metadataHashes = type === 'journey'
+      ? [...new Set(rows.map(row => row.latest_metadata_hash).filter((hash): hash is string => Boolean(hash)))]
+      : [];
+    const metadataMap = type === 'journey'
+      ? await this.fetchPayloadMapV2(metadataHashes)
+      : new Map<string, unknown>();
     const summaries: PresetSummary[] = rows.map((row) => ({
       id: row.id,
       type: row.type,
@@ -1076,6 +1191,13 @@ export class SupabasePresetStore implements IPresetStore {
       remoteId: row.id,
       playCount: row.play_count ?? undefined,
       rating: row.rating ?? undefined,
+      journeyPreview: type === 'journey' && row.latest_metadata_hash
+        ? normalizeJourneyPresetPreview(
+          isPlainObject(metadataMap.get(row.latest_metadata_hash))
+            ? (metadataMap.get(row.latest_metadata_hash) as Record<string, unknown>).journeyPreview
+            : undefined,
+        )
+        : undefined,
       tags: row.tags ?? [],
       versionCount: row.latest_version_no,
       currentVersion: row.latest_version_no,
@@ -1083,37 +1205,44 @@ export class SupabasePresetStore implements IPresetStore {
     }));
 
     return summaries
-      .map(summary => normalizePresetSummary({
-        id: summary.id,
-        remoteId: summary.remoteId,
-        type: summary.type,
-        scope: summary.scope,
-        engine: summary.engine,
-        source: summary.source,
-        name: summary.name,
-        author: summary.author,
-        library: summary.library,
-        creator: summary.creator,
-        description: summary.description,
-        visibility: summary.visibility,
-        familyId: summary.familyId,
-        familyName: summary.familyName,
-        variantId: summary.variantId,
-        variantName: summary.variantName,
-        variantRank: summary.variantRank,
-        playCount: summary.playCount,
-        rating: summary.rating,
-        tags: summary.tags,
-        versions: Array.from({ length: summary.versionCount }, (_, index) => ({
+      .map(summary => {
+        const placeholderVersions: PresetEntry['versions'] = Array.from({ length: summary.versionCount }, (_, index) => ({
           v: index + 1,
           note: '',
           timestamp: summary.updatedAt,
           data: {},
-        })),
-        currentVersion: summary.currentVersion,
-        createdAt: summary.updatedAt,
-        updatedAt: summary.updatedAt,
-      })!)
+        }));
+        if (summary.journeyPreview && placeholderVersions.length > 0) {
+          placeholderVersions[placeholderVersions.length - 1]!.journeyPreview = summary.journeyPreview;
+        }
+
+        return normalizePresetSummary({
+          id: summary.id,
+          remoteId: summary.remoteId,
+          type: summary.type,
+          scope: summary.scope,
+          engine: summary.engine,
+          source: summary.source,
+          name: summary.name,
+          author: summary.author,
+          library: summary.library,
+          creator: summary.creator,
+          description: summary.description,
+          visibility: summary.visibility,
+          familyId: summary.familyId,
+          familyName: summary.familyName,
+          variantId: summary.variantId,
+          variantName: summary.variantName,
+          variantRank: summary.variantRank,
+          playCount: summary.playCount,
+          rating: summary.rating,
+          tags: summary.tags,
+          versions: placeholderVersions,
+          currentVersion: summary.currentVersion,
+          createdAt: summary.updatedAt,
+          updatedAt: summary.updatedAt,
+        })!;
+      })
       .filter(Boolean) as PresetSummary[];
   }
 
@@ -1158,7 +1287,9 @@ export class SupabasePresetStore implements IPresetStore {
       scope: scope ?? null,
       name: normalized.name,
       author: normalized.author || 'user',
-      library: normalized.library || 'cloud',
+      library: SHARED_PRESET_TEST_MODE && normalized.library !== 'stock'
+        ? 'cloud'
+        : normalized.library || 'cloud',
       creator: normalized.creator ?? 'Anonymous',
       description: normalized.description ?? null,
       tags: normalized.tags ?? [],
@@ -1248,10 +1379,7 @@ export class SupabasePresetStore implements IPresetStore {
 
       const childSpecs = getPresetChildSpecs(normalized.type, scope);
       const childRefData: Record<string, Record<string, unknown>> = {};
-      const refsToInsert: Array<{
-        slot: string;
-        target: PresetV2Row;
-      }> = [];
+      const refsToInsert: PendingVersionRefV2[] = [];
 
       for (const childSpec of childSpecs) {
         const childData = childSpec.extract(resolvedData as unknown as never, metadata);
@@ -1273,7 +1401,17 @@ export class SupabasePresetStore implements IPresetStore {
         refsToInsert.push({
           slot: childSpec.slot,
           target,
+          targetVersionNo: target.latest_version_no,
+          followLatest: false,
+          overrideHash: null,
         });
+      }
+
+      const existingRefSlots = new Set(refsToInsert.map(ref => ref.slot));
+      for (const explicitRef of await this.resolveExplicitVersionRefsV2(normalized.type, version.refs, presetRow.id)) {
+        if (existingRefSlots.has(explicitRef.slot)) continue;
+        refsToInsert.push(explicitRef);
+        existingRefSlots.add(explicitRef.slot);
       }
 
       const overrideData = stripReferencedChildData(resolvedData, childRefData);
@@ -1360,9 +1498,9 @@ export class SupabasePresetStore implements IPresetStore {
           version_id: versionRow.id,
           ref_slot: refInfo.slot,
           target_preset_id: refInfo.target.id,
-          target_version_no: refInfo.target.latest_version_no,
-          follow_latest: false,
-          override_hash: null,
+          target_version_no: refInfo.targetVersionNo,
+          follow_latest: refInfo.followLatest,
+          override_hash: refInfo.overrideHash ?? null,
           created_at: this.getVersionTimestamp(version),
         }));
 
@@ -1450,7 +1588,7 @@ export class SupabasePresetStore implements IPresetStore {
       return [];
     }
 
-    const rows = await this.queryPresetRowsV2(type, name);
+    const rows = await this.queryPresetRowsByNameV2(type, name);
     const targetIds = rows.map(row => row.id);
     if (!targetIds.length) return [];
 
