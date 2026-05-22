@@ -166,7 +166,7 @@ const CASCADE_CHILDREN: Record<string, { level: ParamLevel; scope: string }[]> =
 
 const SOURCE_EXTRA_KEYS: Partial<Record<string, string[]>> = {
   synth: ['drumDelayNoteL', 'drumDelayNoteR'],
-  delay: ['drumDelayNoteL', 'drumDelayNoteR'],
+  delay: ['drumDelayNoteL', 'drumDelayNoteR', 'granularSpaceMode'],
 };
 
 function collectCascadeKeys(

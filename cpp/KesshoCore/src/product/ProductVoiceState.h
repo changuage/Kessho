@@ -87,9 +87,9 @@ struct ProductBiquadFilterState {
   BiquadState right{};
 };
 
-struct PadPostChainState {
-  float post_lpf_hz = kDefaultPadPostLpfHz;
-  float stereo_width = kDefaultPadStereoWidth;
+struct SourcePostChainState {
+  float post_lpf_hz = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ;
+  float stereo_width = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH;
   float coeff_cutoff = -1.0f;
   float b0 = 1.0f;
   float b1 = 0.0f;
@@ -102,19 +102,12 @@ struct PadPostChainState {
   BiquadState stage2_right{};
 };
 
-struct LeadPostChainState {
-  float post_lpf_hz = kDefaultLeadPostLpfHz;
-  float stereo_width = kDefaultLeadStereoWidth;
-  float coeff_cutoff = -1.0f;
-  float b0 = 1.0f;
-  float b1 = 0.0f;
-  float b2 = 0.0f;
-  float a1 = 0.0f;
-  float a2 = 0.0f;
-  BiquadState stage1_left{};
-  BiquadState stage1_right{};
-  BiquadState stage2_left{};
-  BiquadState stage2_right{};
+struct PadPostChainState : SourcePostChainState {
+  PadPostChainState() { post_lpf_hz = kDefaultPadPostLpfHz; stereo_width = kDefaultPadStereoWidth; }
+};
+
+struct LeadPostChainState : SourcePostChainState {
+  LeadPostChainState() { post_lpf_hz = kDefaultLeadPostLpfHz; stereo_width = kDefaultLeadStereoWidth; }
 };
 
 struct AssetSlot {

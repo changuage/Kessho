@@ -249,7 +249,6 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     onParamChange('sequencerMasterBPM' as keyof SliderState, bpm);
     onParamChange('synthEuclidBaseBPM' as keyof SliderState, bpm);
     onParamChange('drumEuclidBaseBPM' as keyof SliderState, bpm);
-    onParamChange('granularEuclidBaseBPM' as keyof SliderState, bpm);
   }, [onParamChange]);
 
   // Notify parent when viewMode changes so it persists across tab switches

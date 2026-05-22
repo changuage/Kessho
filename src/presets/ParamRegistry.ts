@@ -137,6 +137,8 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   leadVibratoDepth:      { level: 3, scope: 'synth' },
   leadVibratoRate:       { level: 3, scope: 'synth' },
   leadGlide:             { level: 3, scope: 'synth' },
+  leadTensionMode:       { level: 3, scope: 'synth' },
+  leadTensionValue:      { level: 3, scope: 'synth' },
   pianoEnabled:          { level: 3, scope: 'synth' },
   pianoAttack:           { level: 3, scope: 'synth' },
   pianoDecay:            { level: 3, scope: 'synth' },
@@ -152,6 +154,8 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // L3: Drums Source
   // ═══════════════════════════════════════════════════════════════════════
   drumEnabled:           { level: 3, scope: 'drums' },
+  drumTensionMode:       { level: 3, scope: 'drums' },
+  drumTensionValue:      { level: 3, scope: 'drums' },
   drumMorphSliderAnimate:{ level: 3, scope: 'drums' },
   drumDelayEnabled:      { level: 3, scope: 'drums' },
   drumDelayNoteL:        { level: 3, scope: 'drums' },
@@ -171,6 +175,8 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // L3: Reverb Source
   // ═══════════════════════════════════════════════════════════════════════
   reverbEnabled:         { level: 3, scope: 'reverb' },
+  reverbTensionMode:     { level: 3, scope: 'reverb' },
+  reverbTensionValue:    { level: 3, scope: 'reverb' },
   reverbEngine:          { level: 3, scope: 'reverb' },
   reverbType:            { level: 3, scope: 'reverb' },
   reverbQuality:         { level: 3, scope: 'reverb' },
@@ -376,6 +382,8 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // L2: Pad 1 Kit Preset
   // ═══════════════════════════════════════════════════════════════════════
   padEnabled:            { level: 2, scope: 'pad1Kit' },
+  padTensionMode:        { level: 2, scope: 'pad1Kit' },
+  padTensionValue:       { level: 2, scope: 'pad1Kit' },
   padPresetA:            { level: 2, scope: 'pad1Kit' },
   padPresetB:            { level: 2, scope: 'pad1Kit' },
   padMorph:              { level: 2, scope: 'pad1Kit' },
@@ -693,6 +701,8 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthEuclidBaseBPM:          { level: 1, scope: 'synthEuclidean' },
   synthEuclideanMasterEnabled: { level: 1, scope: 'synthEuclidean' },
   synthEuclideanTempo:         { level: 1, scope: 'synthEuclidean' },
+  synthEuclidTensionMode:      { level: 1, scope: 'synthEuclidean' },
+  synthEuclidTensionValue:     { level: 1, scope: 'synthEuclidean' },
   synthChordSequencerEnabled:  { level: 1, scope: 'synthEuclidean' },
   // Lane 1 (10)
   synthEuclid1Enabled:     { level: 1, scope: 'synthEuclidean' },
@@ -1199,7 +1209,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 984) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 984`);
+  if (count !== 994) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 994`);
   }
 }

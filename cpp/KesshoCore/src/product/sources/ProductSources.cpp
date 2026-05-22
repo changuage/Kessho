@@ -27,13 +27,10 @@
   }
 }
 
-  bool KesshoProductEngine::isSourceTarget(uint32_t target_id) const {
-  return target_id >= 1u && target_id <= kSourceCount;
-}
+  bool KesshoProductEngine::isSourceTarget(uint32_t target_id) const { return target_id >= 1u && target_id <= kSourceCount; }
 
   bool KesshoProductEngine::isDrumRangeTarget(uint32_t target_id) const {
-  return target_id >= KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE &&
-      target_id < KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + DRUM_NUM_VOICE_TYPES;
+  return target_id >= KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE && target_id < KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + DRUM_NUM_VOICE_TYPES;
 }
 
   void KesshoProductEngine::applySourcePresetEvent(const KesshoProductEvent& event) {

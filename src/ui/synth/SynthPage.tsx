@@ -1763,7 +1763,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onParamChange('sequencerMasterBPM' as keyof SliderState, bpm);
     onParamChange('synthEuclidBaseBPM' as keyof SliderState, bpm);
     onParamChange('drumEuclidBaseBPM' as keyof SliderState, bpm);
-    onParamChange('granularEuclidBaseBPM' as keyof SliderState, bpm);
   }, [onParamChange]);
 
   // Notify parent when viewMode changes

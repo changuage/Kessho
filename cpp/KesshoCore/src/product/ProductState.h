@@ -385,6 +385,8 @@ struct KesshoProductEngine : ProductGraphState {
       uint32_t asset_id_override = 0u,
       bool scale_velocity_by_expression = true);
 
+  void configurePianoSampleVoiceEnvelope(Voice& voice, const SourceState& source, float velocity, float distance, uint32_t resolved_seed, uint32_t asset_slot);
+
   void ensureSoundscapeVoice();
 
   void releaseSourceVoices(uint32_t source_id);

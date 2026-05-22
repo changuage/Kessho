@@ -1089,7 +1089,7 @@
           ]
         },
         {
-          "file": "cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp",
+          "file": "cpp/KesshoCore/src/product/sources/SourcePianoEnvelope.cpp",
           "tokens": [
             "voice.piano_sample_voice = true",
             "voice.envelope_attack_frames = seconds_to_frames(attack_seconds)"
