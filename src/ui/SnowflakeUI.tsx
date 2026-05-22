@@ -2068,16 +2068,6 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
           alignItems: 'center',
         }}
       >
-        {onShowJourney && (
-          <button
-            style={styles.advancedButton}
-            onClick={onShowJourney}
-            title="Journey Mode"
-            {...bindHelp('appJourneyView')}
-          >
-            {TEXT_SYMBOLS.diamond}
-          </button>
-        )}
         {onShowVisualizer && (
           <button
             style={{ ...styles.advancedButton, ...styles.visualizerButton }}
@@ -2087,6 +2077,16 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
             {...bindHelp('appVisualizerView')}
           >
             {TEXT_SYMBOLS.visualizer}
+          </button>
+        )}
+        {onShowJourney && (
+          <button
+            style={styles.advancedButton}
+            onClick={onShowJourney}
+            title="Journey Mode"
+            {...bindHelp('appJourneyView')}
+          >
+            {TEXT_SYMBOLS.diamond}
           </button>
         )}
         <button

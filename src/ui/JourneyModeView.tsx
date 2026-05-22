@@ -27,7 +27,7 @@ const PANEL_SYMBOLS = {
   updated: '◷\uFE0E',
   az: 'A↧',
   load: '↗\uFE0E',
-  save: '⤓',
+  save: '💾\uFE0E',
   undo: '↺',
   delete: '×',
   empty: '∅',
@@ -282,11 +282,11 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
                     )}
                   </label>
                   <button type="button" style={styles.actionButton} title="Save journey" aria-label="Save journey" onClick={handleSave}>
-                    {PANEL_SYMBOLS.save}
+                    <span style={styles.saveActionIcon}>{PANEL_SYMBOLS.save}</span>
                   </button>
                   <button
                     type="button"
-                    style={{ ...styles.actionButton, opacity: (!activeJourneyPresetName || !activeJourneyHasBackup) ? 0.4 : 1 }}
+                    style={{ ...styles.actionButton, ...styles.undoActionButton, opacity: (!activeJourneyPresetName || !activeJourneyHasBackup) ? 0.4 : 1 }}
                     disabled={!activeJourneyPresetName || !activeJourneyHasBackup}
                     title="Undo last save"
                     aria-label="Undo last save"
@@ -308,9 +308,11 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
                           ...styles.sortButton,
                           background: presetSort === sort ? 'rgba(184,224,255,0.18)' : 'transparent',
                           color: presetSort === sort ? '#B8E0FF' : 'rgba(244,237,228,0.55)',
-                        }}
-                      >
-                        {symbol}
+                      }}
+                    >
+                        <span style={sort === 'updated' ? styles.timeSortIcon : undefined}>
+                          {symbol}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -401,11 +403,11 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
 
       {/* Bottom navigation */}
       <div style={{ ...styles.bottomNav, bottom: navBottom }}>
-        <button type="button" style={styles.navButton} onClick={onShowSnowflake} title="Snowflake" aria-label="Snowflake">
-          {TEXT_SYMBOLS.snowflake}
-        </button>
-        <button type="button" style={styles.navButton} onClick={onShowVisualizer} title="Visualizer Mode" aria-label="Visualizer Mode">
+        <button type="button" style={{ ...styles.navButton, ...styles.visualizerNavButton }} onClick={onShowVisualizer} title="Visualizer Mode" aria-label="Visualizer Mode">
           {TEXT_SYMBOLS.visualizer}
+        </button>
+        <button type="button" style={styles.navButton} onClick={onShowSnowflake} title="Snowflake" aria-label="Snowflake">
+          <span style={styles.snowflakeNavIcon}>{TEXT_SYMBOLS.snowflake}</span>
         </button>
         <button type="button" style={styles.navButton} onClick={onShowAdvanced} title="Advanced Mode" aria-label="Advanced Mode">
           {TEXT_SYMBOLS.sparkle}
@@ -637,6 +639,19 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 700,
     lineHeight: 1,
   },
+  saveActionIcon: {
+    display: 'block',
+    fontSize: '0.72rem',
+    lineHeight: 1,
+  },
+  undoActionButton: {
+    fontSize: '1.04rem',
+  },
+  timeSortIcon: {
+    display: 'block',
+    fontSize: '0.92rem',
+    lineHeight: 1,
+  },
   panelList: {
     maxHeight: 'calc(min(77vh, 660px) - 180px)',
     overflowY: 'auto' as const,
@@ -760,13 +775,27 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    borderRadius: 999,
-    background: 'rgba(15, 15, 15, 0.3)',
+    border: 'none',
+    borderRadius: 0,
+    background: 'transparent',
     color: 'rgba(244, 237, 228, 0.82)',
     fontSize: 20,
     cursor: 'pointer',
-    backdropFilter: 'blur(10px)',
+    textShadow: '0 2px 8px rgba(0,0,0,0.5)',
+  },
+  visualizerNavButton: {
+    fontSize: '0.92rem',
+    lineHeight: 1,
+  },
+  snowflakeNavIcon: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '1em',
+    height: '1em',
+    fontSize: 23,
+    lineHeight: 1,
+    transform: 'translateY(1px)',
   },
   dialogOverlay: {
     position: 'fixed',
