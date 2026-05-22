@@ -7,6 +7,7 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 - Generated Product schema/event/param files.
 - Product-specific host/runtime/event/snapshot/asset/telemetry modules.
 - `CoreProductAssetAdapter` for host-owned fetch/decode/register I/O only.
+- `CoreProductHostDebugTelemetry` for adapting Product Core telemetry into existing UI debug snapshot shapes only.
 - `CoreProductHostRuntimeGuards` for strict host-side validation and UI audition state normalization only.
 - Type-only app interfaces from `src/audio/engine.ts`.
 - Asset manifest helpers such as `pianoSamples` and the versioned `coreProductAssetManifest.json`.
@@ -27,6 +28,7 @@ Old TypeScript audio code remains available for `web-ts` reference mode, parity 
 | `./CoreProductHostSequencerAdapter` | Product host sequencer UI input normalization boundary | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product event dispatcher and sequencer UI state API | Keep as pure input adapter; no runtime scheduling or snapshot reload ownership allowed | Cleanup |
 | `./CoreProductHostRuntimeGuards` | Product host strict runtime validation and manual audition state normalization | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product event validators and source enablement state | Keep as pure host guard adapter; no rendering, scheduling, or fake defaults allowed | Cleanup |
 | `./CoreProductRuntimeAdapter` | Snapshot dirty-diff and reload classification boundary | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product event dispatcher and telemetry | Keep as thin generated-event adapter; no UI state ownership allowed | Cleanup |
+| `./CoreProductHostDebugTelemetry` | Product Core telemetry conversion into existing UI debug snapshot shapes | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product telemetry API and UI-facing debug projections | Keep as pure telemetry-shape adapter; no fake signal generation or audio scheduling allowed | Cleanup |
 | `./CoreProductLegacyPresetCompat` | Temporary exact patch and legacy preset conversion boundary | Snapshot adapter | TEMP_COMPAT_WEB_REFERENCE | C++ source preset/user override resolvers | Remove when Product Core reconstructs source patch state from generated IDs plus user overrides | Source parity closure |
 | `./coreProductAssetManifest.json` | Versioned Product asset manifest | Product asset gate | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product asset IDs and registry | Keep as host packaging manifest | Required |
 | `./coreProductEvents` | Generated Product event packing helpers | Web Product host | CANONICAL_GENERATED_SCHEMA_HELPER | C++ Product event dispatcher | Keep as thin ABI/event adapter | Required |
