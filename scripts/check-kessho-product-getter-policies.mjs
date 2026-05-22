@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 const root = process.cwd();
 const host = readFileSync(resolve(root, 'src/audio/coreProductEngineHost.ts'), 'utf8');
+const hostDebugTelemetry = readFileSync(resolve(root, 'src/audio/CoreProductHostDebugTelemetry.ts'), 'utf8');
 const fallbackDiagnostics = readFileSync(resolve(root, 'src/audio/CoreProductFallbackDiagnostics.ts'), 'utf8');
 const doc = readFileSync(resolve(root, 'docs/kessho-product-getter-policies.md'), 'utf8');
 const app = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
@@ -40,17 +41,27 @@ function methodBody(name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const definition = new RegExp(`(?:^|\\n)\\s*(?:private\\s+)?(?:async\\s+)?${escaped}(?:<[^>]+>)?\\s*\\(`).exec(host);
   assert(definition, `missing getter ${name}()`);
-  const open = host.indexOf('{', definition.index);
+  return balancedBody(host, host.indexOf('{', definition.index), `${name}()`);
+}
+
+function helperBody(name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const definition = new RegExp(`(?:^|\\n)\\s*export\\s+function\\s+${escaped}\\s*\\(`).exec(hostDebugTelemetry);
+  assert(definition, `missing helper ${name}()`);
+  return balancedBody(hostDebugTelemetry, hostDebugTelemetry.indexOf('{', definition.index), `${name}()`);
+}
+
+function balancedBody(source, open, label) {
   let depth = 0;
-  for (let index = open; index < host.length; index += 1) {
-    const char = host[index];
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
     if (char === '{') depth += 1;
     if (char === '}') {
       depth -= 1;
-      if (depth === 0) return host.slice(open + 1, index);
+      if (depth === 0) return source.slice(open + 1, index);
     }
   }
-  throw new Error(`${name}() body was not balanced`);
+  throw new Error(`${label} body was not balanced`);
 }
 
 for (const token of [
@@ -113,16 +124,20 @@ assert(
   'granular waveform getter must stay a cheap null surface until Product Core exposes an explicit debug waveform API',
 );
 assert(
-  methodBody('getDynamicsVisualTelemetry').includes('telemetry.masterInputPeak') &&
-    methodBody('getDynamicsVisualTelemetry').includes('telemetry.masterOutputPeak') &&
-    methodBody('getDynamicsVisualTelemetry').includes('telemetry.masterLimiterGainReductionDb') &&
-    methodBody('getDynamicsVisualTelemetry').includes('telemetry.dynamicsSaturationDrive'),
+  methodBody('getDynamicsVisualTelemetry').includes('this.latestTelemetry') &&
+    methodBody('getDynamicsVisualTelemetry').includes('createCoreProductDynamicsVisualTelemetry') &&
+    helperBody('createCoreProductDynamicsVisualTelemetry').includes('telemetry.masterInputPeak') &&
+    helperBody('createCoreProductDynamicsVisualTelemetry').includes('telemetry.masterOutputPeak') &&
+    helperBody('createCoreProductDynamicsVisualTelemetry').includes('telemetry.masterLimiterGainReductionDb') &&
+    helperBody('createCoreProductDynamicsVisualTelemetry').includes('telemetry.dynamicsSaturationDrive'),
   'dynamics visual telemetry must use Product Core master/dynamics telemetry instead of fixed placeholders',
 );
 assert(
-  methodBody('getTransportDebugState').includes('telemetry.beatPosition') &&
-    methodBody('getTransportDebugState').includes('telemetry.transportRunning') &&
-    methodBody('getTransportDebugState').includes('this.latestProductSnapshot?.transport'),
+  methodBody('getTransportDebugState').includes('this.latestTelemetry') &&
+    methodBody('getTransportDebugState').includes('this.latestProductSnapshot?.transport') &&
+    methodBody('getTransportDebugState').includes('createCoreProductTransportDebugState') &&
+    helperBody('createCoreProductTransportDebugState').includes('telemetry.beatPosition') &&
+    helperBody('createCoreProductTransportDebugState').includes('telemetry.transportRunning'),
   'transport debug state must use Product Core telemetry and generated transport state instead of a fixed placeholder',
 );
 assert(
