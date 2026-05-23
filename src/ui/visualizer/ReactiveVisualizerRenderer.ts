@@ -790,6 +790,10 @@ export class ReactiveVisualizerRenderer {
     ] as const;
 
     ctx.globalCompositeOperation = 'lighter';
+    // shape control affects polygon sides: -1=3 sides (tri), 0=4, +1=high (circle-like)
+    const shapeSides = Math.max(3, Math.round(4 + controls.shape * (controls.shape > 0 ? 20 : 1)));
+    const organicWarp = Math.max(0, controls.organic);
+    const blobWarp = Math.max(0, -controls.edges);
     for (let ring = 0; ring < engines.length; ring += 1) {
       const engine = engines[ring];
       if (!engine) continue;
@@ -799,15 +803,24 @@ export class ReactiveVisualizerRenderer {
       ctx.strokeStyle = color;
       ctx.lineWidth = 0.8 + amp * 2.4;
       ctx.beginPath();
-      // flowing noise-like wave through kaleidoscope fold
-      for (let i = 0; i <= symmetry * 40; i += 1) {
-        const unit = i / Math.max(1, symmetry * 40);
+      const sides = Math.max(3, shapeSides + Math.round((ring - 3) * 0.3));
+      const pointsPerSide = Math.max(6, Math.round(40 / sides * symmetry));
+      const totalPoints = sides * pointsPerSide;
+      for (let i = 0; i <= totalPoints; i += 1) {
+        const unit = i / Math.max(1, totalPoints);
         const angle = unit * Math.PI * 2;
-        // domain warping: multiple sine layers at different speeds
         const warp = Math.sin(unit * Math.PI * 2 * symmetry + this.fallbackPhase * (ring * 0.7 + 1))
           + Math.sin(unit * Math.PI * 4 * symmetry * 0.5 + this.fallbackPhase * 0.6 + ring) * 0.4;
         const breathe = Math.sin(this.fallbackPhase * 0.3 + ring * 0.9) * 0.02;
-        const r = radius * (0.18 + ring * 0.088 + warp * 0.02 * (1 + amp) + breathe);
+        // polygon shape: modulate radius by angular distance to nearest vertex
+        const sectorAngle = Math.PI * 2 / sides;
+        const withinSector = ((angle % sectorAngle) + sectorAngle) % sectorAngle;
+        const polyMod = Math.cos(withinSector - sectorAngle / 2);
+        const stretchMod = 1 + organicWarp * Math.sin(angle * 2 + ring * 1.3 + this.fallbackPhase * 0.2) * 0.15;
+        const blobMod = 1 + blobWarp * (Math.sin(angle * 3 + ring * 2.1 + this.fallbackPhase * 0.4) * 0.12
+          + Math.sin(angle * 5 + ring * 1.3 - this.fallbackPhase * 0.3) * 0.08);
+        const baseR = radius * (0.18 + ring * 0.088 + warp * 0.02 * (1 + amp) + breathe);
+        const r = baseR / Math.max(0.5, polyMod) * stretchMod * blobMod;
         const x = cx + Math.cos(angle) * r;
         const y = cy + Math.sin(angle) * r;
         if (i === 0) ctx.moveTo(x, y);
