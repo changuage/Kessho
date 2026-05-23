@@ -2,6 +2,7 @@ import { extractCascade, extractParams, getVersionData } from './codec';
 import {
   buildDrumEuclideanStateFromPatternData,
   buildSynthEuclideanStateFromPatternData,
+  EUCLIDEAN_PATTERN_SOURCE_SEQUENCE_STATE_KEY,
   EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY,
   extractEuclideanPatternDataFromDrumState,
   extractEuclideanPatternDataFromSynthState,
@@ -257,6 +258,57 @@ function withStepOverrides(
   });
 }
 
+function hasObjectContent(value: unknown): value is Record<string, unknown> {
+  return isPlainObject(value) && Object.keys(value).length > 0;
+}
+
+function hasArrayContent(value: unknown): value is unknown[] {
+  return Array.isArray(value) && value.length > 0;
+}
+
+function extractEuclideanSourceSequenceState(
+  metadata: PresetVersionMetadata | undefined,
+  source: 'drums' | 'synth',
+): Record<string, unknown> | undefined {
+  if (!metadata) return undefined;
+  const state: Record<string, unknown> = source === 'synth'
+    ? {
+        clockDivs: metadata.synthClockDivs,
+        swings: metadata.synthSwings,
+        linked: metadata.synthLinked,
+        evolveConfigs: metadata.synthEvolveConfigs,
+        subLaneStates: metadata.synthSubLaneStates,
+        pitchSettings: metadata.synthPitchSettings,
+        pitchBindingModes: metadata.synthPitchBindingModes,
+      }
+    : {
+        clockDivs: metadata.drumClockDivs,
+        swings: metadata.drumSwings,
+        linked: metadata.drumLinked,
+        evolveConfigs: metadata.drumEvolveConfigs,
+        subLaneStates: metadata.drumSubLaneStates,
+      };
+  const picked = Object.fromEntries(
+    Object.entries(state).filter(([, value]) => hasArrayContent(value) || hasObjectContent(value)),
+  );
+  return Object.keys(picked).length ? picked : undefined;
+}
+
+function withEuclideanSequencerMetadata(
+  data: Record<string, unknown>,
+  metadata: PresetVersionMetadata | undefined,
+  source: 'drums' | 'synth',
+): Record<string, unknown> {
+  const stepOverrides = source === 'synth' ? metadata?.synthStepOverrides : metadata?.drumStepOverrides;
+  const sourceSequenceState = extractEuclideanSourceSequenceState(metadata, source);
+  const next = withStepOverrides(data, stepOverrides);
+  if (!sourceSequenceState) return next;
+  return canonicalizeRecord({
+    ...next,
+    [EUCLIDEAN_PATTERN_SOURCE_SEQUENCE_STATE_KEY]: sourceSequenceState,
+  });
+}
+
 export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetChildSpec[] {
   if (type === 'state') {
     return [
@@ -276,9 +328,10 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
         slot: 'euclideanPattern',
         type: 'engine',
         scope: 'euclideanPattern',
-        extract: (state, metadata) => withStepOverrides(
+        extract: (state, metadata) => withEuclideanSequencerMetadata(
           canonicalizeRecord(extractEuclideanPatternDataFromSynthState(state)),
-          metadata?.synthStepOverrides,
+          metadata,
+          'synth',
         ),
         strip: (state) => canonicalizeRecord(buildSynthEuclideanStateFromPatternData(extractEuclideanPatternDataFromSynthState(state))),
       },
@@ -296,9 +349,10 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
         slot: 'euclideanPattern',
         type: 'engine',
         scope: 'euclideanPattern',
-        extract: (state, metadata) => withStepOverrides(
+        extract: (state, metadata) => withEuclideanSequencerMetadata(
           canonicalizeRecord(extractEuclideanPatternDataFromDrumState(state)),
-          metadata?.drumStepOverrides,
+          metadata,
+          'drums',
         ),
         strip: (state) => canonicalizeRecord(buildDrumEuclideanStateFromPatternData(extractEuclideanPatternDataFromDrumState(state))),
       },

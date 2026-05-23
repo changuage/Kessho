@@ -1,12 +1,12 @@
 .visualizer-root {
-  --page-accent: #9ccfbd;
-  --visualizer-panel: rgba(19, 18, 16, 0.84);
-  --visualizer-line: rgba(247, 250, 252, 0.13);
-  --visualizer-text: rgba(247, 250, 252, 0.92);
-  --visualizer-muted: rgba(247, 250, 252, 0.58);
+  --page-accent: var(--tab-visualizer, #9ccfbd);
+  --visualizer-panel: var(--k-bg-card, rgba(24, 23, 21, 0.85));
+  --visualizer-line: var(--k-border, rgba(247, 250, 252, 0.12));
+  --visualizer-text: var(--k-text, #F7FAFC);
+  --visualizer-muted: var(--k-text-soft, rgba(247, 250, 252, 0.7));
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
-  gap: 10px;
+  gap: var(--k-gap-container, 10px);
   width: 100%;
   height: min(78vh, 820px);
   min-height: 560px;
@@ -47,9 +47,9 @@
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--visualizer-line);
-  border-radius: 8px;
-  background: #100f0e;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 16px 44px rgba(0, 0, 0, 0.2);
+  border-radius: var(--k-radius-card, 8px);
+  background: var(--k-bg-deep, #100f0e);
+  box-shadow: var(--k-shadow-glass, inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 16px 44px rgba(0, 0, 0, 0.2));
 }
 
 .visualizer-canvas {
@@ -87,9 +87,9 @@
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--visualizer-line);
-  border-radius: 8px;
+  border-radius: var(--k-radius-card, 8px);
   background: var(--visualizer-panel);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: var(--k-shadow-glass, inset 0 1px 0 rgba(255, 255, 255, 0.05));
   overflow: auto;
 }
 

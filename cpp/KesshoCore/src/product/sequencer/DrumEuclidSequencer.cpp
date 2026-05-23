@@ -45,6 +45,9 @@
       }
       const uint32_t source_id = static_cast<uint32_t>(std::lround(event.value));
       lane.target_source_id = source_id;
+      if (source_id != KESSHO_PRODUCT_SOURCE_DRUM) {
+        lane.drum_voice_mask = 0u;
+      }
       break;
     }
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_STEP_COUNT_ID:
@@ -87,7 +90,13 @@
       break;
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_SEED_ID: {
       const uint32_t seed = static_cast<uint32_t>(std::lround(std::max(0.0f, event.value)));
-      lane.seed = seed == 0u ? rng_seed + event.index + 1u : seed;
+      if (lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+        lane.drum_voice_mask = drumVoiceMaskFromEncodedSeed(seed);
+      }
+      const uint32_t decoded_seed = lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM
+          ? laneSeedFromEncodedDrumVoiceMask(seed)
+          : seed;
+      lane.seed = decoded_seed == 0u ? rng_seed + event.index + 1u : decoded_seed;
       break;
     }
     default:

@@ -261,6 +261,10 @@ export function loadCoreProductHostHarness(options = {}) {
     encodeCoreProductSnapshot: () => new ArrayBuffer(8),
     usesLegacyGranularRuntimeSeed: () => false,
     loadProductLead4opFMPreset: async () => ({}),
+    publishCoreProductSequencerVisuals: (input) => {
+      input.publish('synthStepPosition', [0, 0, 0, 0], [0, 0, 0, 0]);
+      input.publish('drumStepPosition', [0, 0, 0, 0], [0, 0, 0, 0]);
+    },
     runtimeWalkConfigFromState,
     runtimeWalkConfigChanged: (left, right) => Math.abs(left.speed - right.speed) > 0.0005 || left.mode !== right.mode,
     coreProductRangeValueContext: (bpm, state) => ({
@@ -290,13 +294,15 @@ export function loadCoreProductHostHarness(options = {}) {
     CORE_PRODUCT_SEQUENCER_IDS: { synth: 1, drum: 2 },
     CORE_PRODUCT_SUBLANE_DIRECTIONS: { forward: 0, reverse: 1, pingpong: 2 },
     CORE_PRODUCT_STEP_VALUE_FIELDS: {
-      probability: 1,
-      ratchet: 2,
-      midiNote: 3,
-      expression: 4,
-      morph: 5,
-      distance: 6,
-      trigCondition: 7,
+      trigger: 0 << 8,
+      probability: 1 << 8,
+      ratchet: 2 << 8,
+      trigCondition: 3 << 8,
+      midiNote: 4 << 8,
+      expression: 5 << 8,
+      morph: 6 << 8,
+      distance: 7 << 8,
+      subLaneConfig: 8 << 8,
     },
     CORE_PRODUCT_SOURCE_IDS: {
       pad1: 1,
@@ -320,6 +326,7 @@ export function loadCoreProductHostHarness(options = {}) {
       event('sequencer-clear-steps', { sequencer, laneIndex }),
     createCoreProductSequencerDiceEvent: (sequencer, laneIndex, intensity) =>
       event('sequencer-dice', { sequencer, laneIndex, intensity }),
+    createCoreProductSequencerEvolveClock: () => ({ tick: () => {}, reset: () => {} }),
     createCoreProductSequencerLaneParamEvent: (sequencer, laneIndex, paramId, value) =>
       event('sequencer-lane-param', { sequencer, laneIndex, paramId, value }),
     createCoreProductSequencerResetHomeEvent: (sequencer, laneIndex) =>
@@ -332,11 +339,48 @@ export function loadCoreProductHostHarness(options = {}) {
       event('sequencer-step-value', { sequencer, laneIndex, step, field, value, value2 }),
     createCoreProductStartEvent: () => event('start'),
     createCoreProductStopEvent: () => event('stop'),
+    getCoreProductSequencerLaneSwing: (adapterState, latestSliderState, sequencer, laneIndex) => {
+      const source = latestSliderState ? { ...latestSliderState, ...adapterState } : adapterState;
+      const value = source[`${sequencer === 'synth' ? 'synthEuclid' : 'drumEuclid'}${laneIndex + 1}Swing`];
+      if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.min(0.75, value));
+      return sequencer === 'drum' && typeof source.drumEuclidSwing === 'number'
+        ? Math.max(0, Math.min(0.75, source.drumEuclidSwing / 100))
+        : 0;
+    },
+    patchCoreProductSequencerLaneSwing: (adapterState, sequencer, laneIndex, swing) => ({
+      adapterState: { ...adapterState, [`${sequencer === 'synth' ? 'synthEuclid' : 'drumEuclid'}${laneIndex + 1}Swing`]: Math.max(0, Math.min(0.75, swing)) },
+      swing: Math.max(0, Math.min(0.75, swing)),
+    }),
     resolveCoreProductDrumMorphRangeTarget: (voiceIndex, key) => ({ controlId: voiceIndex + 100, key }),
     resolveCoreProductDrumParamRangeTarget: (voiceIndex, key, displayKey) => ({ controlId: voiceIndex + 200, key, displayKey }),
     resolveCoreProductRangeTargets: (key) => (key === 'unsupported' ? [] : [{ controlId: 300, key }]),
   };
   Object.assign(context, options.globals ?? {});
+
+  const adapterPath = 'src/audio/CoreProductHostSequencerAdapter.ts';
+  const adapterSource = stripImportsAndExports(readProjectFile(adapterPath));
+  const adapterJs = transpileForVm(adapterSource, resolve(root, adapterPath));
+  vm.runInNewContext(`${adapterJs}
+Object.assign(globalThis, {
+  normalizeClockDivisionValue,
+  normalizeDrumSequencerStepValueOverrides,
+  normalizeSequencerStepToggleOverrides,
+  normalizeSequencerStepValueConfigs,
+  normalizeSequencerStepValueOverrides,
+  normalizeSubLaneEnabledStates,
+  normalizedUnitValue,
+});`, context, { filename: adapterPath });
+
+  const uiStatePath = 'src/audio/CoreProductHostSequencerUiState.ts';
+  const uiStateSource = stripImportsAndExports(readProjectFile(uiStatePath));
+  const uiStateJs = transpileForVm(uiStateSource, resolve(root, uiStatePath));
+  vm.runInNewContext(`${uiStateJs}
+Object.assign(globalThis, {
+  coreProductStepValueOverridesFromLane,
+  coreProductStepValueConfigsFromLane,
+  coreProductSynthEvolvePayloadFromLane,
+  coreProductDrumEvolvePayloadFromLane,
+});`, context, { filename: uiStatePath });
 
   const path = 'src/audio/coreProductEngineHost.ts';
   const source = stripImportsAndExports(readProjectFile(path)).replaceAll('import.meta.env', '__IMPORT_META_ENV__');

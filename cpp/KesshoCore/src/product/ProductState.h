@@ -210,6 +210,16 @@ struct KesshoProductEngine : ProductGraphState {
       uint32_t high,
       const float values[64],
       float fallback) const;
+  float stepFloatRangeValue(
+      uint32_t step,
+      uint32_t low,
+      uint32_t high,
+      const float values[64],
+      uint32_t range_low,
+      uint32_t range_high,
+      const float range_maxes[64],
+      float fallback,
+      uint32_t sample_seed) const;
 
   uint32_t stepU32Value(
       uint32_t step,
@@ -232,11 +242,14 @@ struct KesshoProductEngine : ProductGraphState {
       const LaneState& lane,
       uint32_t field,
       uint32_t trigger_step,
-      int64_t absolute_step) const;
+      int64_t absolute_step,
+      uint64_t hit_count_phase) const;
+
+  uint64_t hitCountBeforeAbsoluteStep(const LaneState& lane, int64_t absolute_step) const;
 
   void clearStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step);
 
-  void setStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step, float value, float value2);
+  void setStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step, float value, float value2, uint32_t flags = 0u);
 
   void applySequencerStepEvent(const KesshoProductEvent& event);
 
@@ -371,7 +384,10 @@ struct KesshoProductEngine : ProductGraphState {
       float expression,
       const kessho::core::KesshoSourcePresetPatch* preset_patch,
       float drum_delay_send,
-      bool scale_velocity_by_expression);
+      bool scale_velocity_by_expression,
+      float drum_pitch_offset,
+      float drum_ratchet_decay_cap,
+      float drum_ratchet_attack_cap);
 
   void triggerVoice(
       uint32_t source_id,
@@ -383,7 +399,10 @@ struct KesshoProductEngine : ProductGraphState {
       float event_expression = -1.0f,
       uint32_t sample_seed = 0u,
       uint32_t asset_id_override = 0u,
-      bool scale_velocity_by_expression = true);
+      bool scale_velocity_by_expression = true,
+      float drum_pitch_offset = 0.0f,
+      float drum_ratchet_decay_cap = 1.0e10f,
+      float drum_ratchet_attack_cap = 1.0e10f);
 
   void configurePianoSampleVoiceEnvelope(Voice& voice, const SourceState& source, float velocity, float distance, uint32_t resolved_seed, uint32_t asset_slot);
 

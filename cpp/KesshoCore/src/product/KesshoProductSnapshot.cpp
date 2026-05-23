@@ -468,12 +468,18 @@
     lanes[i].ratchet = clampU32(lane.ratchet, 1u, 8u);
     lanes[i].trig_condition = lane.trig_condition;
     lanes[i].midi_note = clampFloat(lane.midi_note, 0.0f, 127.0f);
+    lanes[i].drum_voice_mask = lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM
+        ? drumVoiceMaskFromEncodedSeed(lane.seed)
+        : 0u;
     lanes[i].velocity = clampFloat(lane.velocity, 0.0f, 1.0f);
     lanes[i].hold_seconds = clampFloat(lane.hold_seconds, 0.001f, 20.0f);
     lanes[i].morph = clampFloat(lane.morph, 0.0f, 1.0f);
     lanes[i].distance = clampFloat(lane.distance, 0.0f, 1.0f);
     lanes[i].expression = clampFloat(lane.expression, 0.0f, 1.0f);
-    lanes[i].seed = lane.seed == 0u ? rng_seed + i + 1u : lane.seed;
+    const uint32_t decoded_seed = lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM
+        ? laneSeedFromEncodedDrumVoiceMask(lane.seed)
+        : lane.seed;
+    lanes[i].seed = decoded_seed == 0u ? rng_seed + i + 1u : decoded_seed;
     lanes[i].bar_reset = lane.bar_reset != 0u;
     lanes[i].phrase_reset = lane.phrase_reset != 0u;
     lanes[i].manual_step_mask_low = lane.manual_step_mask_low;

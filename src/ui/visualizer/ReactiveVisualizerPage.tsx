@@ -54,6 +54,9 @@ const DEFAULT_CONTROLS: ReactiveVisualizerControls = {
   density: 0,
   background: 0,
   frameRate: 0,
+  shape: 0,
+  organic: 0,
+  edges: 0,
   focus: 'stringWaves',
 };
 
@@ -71,25 +74,28 @@ const CONTROL_GROUPS: Array<{ label: string; controls: ControlDefinition[] }> = 
   {
     label: 'Form',
     controls: [
-      { key: 'style', label: 'Form', left: 'Faceted light geometry', right: 'Soft light boxes' },
+      { key: 'style', label: 'Form', left: 'Noise fields', right: 'Gradient orbs' },
+      { key: 'shape', label: 'Shape', left: 'Triangles', right: 'Circles' },
+      { key: 'organic', label: 'Organic', left: 'Equal sided', right: 'Irregular angles' },
+      { key: 'edges', label: 'Edges', left: 'Amoeba blobs', right: 'Hard cut' },
       { key: 'kaleidoscope', label: 'Granular fold', left: 'Sharper mirror shards', right: 'Soft glass repeats' },
-      { key: 'density', label: 'Structure', left: 'Sparse geometry', right: 'Layered boxes' },
+      { key: 'density', label: 'Structure', left: 'Sparse layers', right: 'Dense layers' },
     ],
   },
   {
     label: 'Light',
     controls: [
       { key: 'background', label: 'Backdrop', left: 'Black gallery', right: 'Lit wall wash' },
-      { key: 'color', label: 'Palette', left: 'Primary pop', right: 'Kessho pastels' },
-      { key: 'diffusion', label: 'Edge', left: 'Glass cut', right: 'Frosted bloom' },
+      { key: 'color', label: 'Palette', left: 'Vivid accents', right: 'Kessho pastels' },
+      { key: 'diffusion', label: 'Edge', left: 'Hard edge', right: 'Soft halo' },
     ],
   },
   {
     label: 'Motion',
     controls: [
       { key: 'triggerResponse', label: 'Trigger feel', left: 'Short sparks', right: 'Long afterglow' },
-      { key: 'ripples', label: 'Water', left: 'Tiny drops', right: 'Pond ripples' },
-      { key: 'motion', label: 'Movement', left: 'Orbiting shapes', right: 'Breathing fades' },
+      { key: 'ripples', label: 'Water', left: 'Crisp rings', right: 'Soft pond' },
+      { key: 'motion', label: 'Movement', left: 'Fast orbit', right: 'Slow breathe' },
       { key: 'frameRate', label: 'Performance', left: 'Battery saver', right: 'Smooth' },
     ],
   },

@@ -16,6 +16,10 @@ namespace kessho::product::internal {
 constexpr double kTwoPi = 6.283185307179586476925286766559;
 constexpr float kProductTuningA4Hz = 432.0f;
 constexpr float kProductTelemetrySilenceDb = -100.0f;
+constexpr uint32_t kDrumVoiceMaskSeedFlag = 0x80000000u;
+constexpr uint32_t kDrumVoiceMaskSeedMask = 0x7f000000u;
+constexpr uint32_t kDrumVoiceMaskSeedShift = 24u;
+constexpr uint32_t kDrumVoiceMaskSeedPayloadMask = 0x00ffffffu;
 constexpr uint32_t kSourceCount = 7;
 constexpr uint32_t kStemCount = 9;
 constexpr uint32_t kMaxLaneCount = 16;

@@ -368,10 +368,29 @@ await runCheckWithReport({
       'soundscape source-off asset removal must dirty-diff so Product Core can fade it out',
     );
 
-    const patchNext = clone(base);
-    patchNext.sources[0].exactPadParams[0] = 0.9;
-    const patchDiff = adapterHarness.buildCoreProductSnapshotDiff(base, patchNext);
-    assert(patchDiff.applied === false && patchDiff.reason === 'exact-patch-change', 'exact patch changes must full-reload with classified reason');
+    const productPadBase = clone(base);
+    const padParamCount = adapterHarness.context.KESSHO_PRODUCT_PAD_PARAM_COUNT;
+    productPadBase.sources[0].exactPadParamCount = padParamCount;
+    productPadBase.sources[0].exactPadParams = Array.from({ length: padParamCount }, (_, index) => index / padParamCount);
+    const productPadNext = clone(productPadBase);
+    productPadNext.sources[0].exactPadParams[0] = 0.9;
+    const patchDiff = adapterHarness.buildCoreProductSnapshotDiff(productPadBase, productPadNext);
+    assert(
+      patchDiff.applied === true &&
+        patchDiff.events.some((event) =>
+          event.type === 'param' &&
+            event.paramId === 'Pad1Runtime0' &&
+            Math.abs(event.value - 0.9) < 1.0e-6),
+      'Product Pad exact patch changes must dirty-diff through generated runtime params',
+    );
+
+    const incompletePadPatchNext = clone(base);
+    incompletePadPatchNext.sources[0].exactPadParams[0] = 0.9;
+    const incompletePadPatchDiff = adapterHarness.buildCoreProductSnapshotDiff(base, incompletePadPatchNext);
+    assert(
+      incompletePadPatchDiff.applied === false && incompletePadPatchDiff.reason === 'exact-patch-change',
+      'non-runtime Pad exact patch changes must full-reload with classified reason',
+    );
 
     const holdNext = clone(base);
     holdNext.sources[0].holdSeconds = 0.95;

@@ -10,7 +10,10 @@
       float expression,
       const kessho::core::KesshoSourcePresetPatch* preset_patch,
       float drum_delay_send,
-      bool scale_velocity_by_expression) {
+      bool scale_velocity_by_expression,
+      float drum_pitch_offset,
+      float drum_ratchet_decay_cap,
+      float drum_ratchet_attack_cap) {
   if (!modules_ready) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_ALLOCATION_FAILURE;
     return true;
@@ -79,7 +82,13 @@
       if (std::isfinite(drum_delay_send) && drum_delay_send >= 0.0f) {
         drum_module->setVoiceSend(voice_type, drum_delay_send);
       }
-      drum_module->setTriggerMacros(morph, distance, expression);
+      drum_module->setTriggerControls(
+          morph,
+          distance,
+          expression,
+          drum_pitch_offset,
+          drum_ratchet_decay_cap,
+          drum_ratchet_attack_cap);
       drum_module->noteOn(0.0f, clamped_velocity, 0.0f, voice_type);
       return true;
     }
@@ -98,7 +107,10 @@
       float event_expression ,
       uint32_t sample_seed ,
       uint32_t asset_id_override ,
-      bool scale_velocity_by_expression ) {
+      bool scale_velocity_by_expression ,
+      float drum_pitch_offset ,
+      float drum_ratchet_decay_cap ,
+      float drum_ratchet_attack_cap ) {
   if (source_id < 1u || source_id > kSourceCount) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
     return;
@@ -223,7 +235,10 @@
           expression,
           preset_patch_ptr,
           drum_delay_send,
-          scale_velocity_by_expression)) {
+          scale_velocity_by_expression,
+          drum_pitch_offset,
+          drum_ratchet_decay_cap,
+          drum_ratchet_attack_cap)) {
     return;
   }
 

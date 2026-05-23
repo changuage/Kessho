@@ -434,12 +434,29 @@ public:
   }
 
   int setTriggerMacros(float morph, float distance, float expression) override {
+    return setTriggerControls(morph, distance, expression, 0.0f, 1.0e10f, 1.0e10f);
+  }
+
+  int setTriggerControls(
+      float morph,
+      float distance,
+      float expression,
+      float pitch,
+      float ratchet_decay_cap,
+      float ratchet_attack_cap) override {
     (void)expression;
     if (instance_ == nullptr) {
       return 0;
     }
     params_[kParamTrigger + 0] = std::isfinite(morph) && morph >= 0.0f ? std::clamp(morph, 0.0f, 1.0f) : -1.0f;
     params_[kParamTrigger + 1] = std::isfinite(distance) && distance >= 0.0f ? std::clamp(distance, 0.0f, 1.0f) : -1.0f;
+    params_[kParamTrigger + 2] = std::isfinite(pitch) ? std::clamp(pitch, -24.0f, 24.0f) : 0.0f;
+    params_[kParamTrigger + 3] = std::isfinite(ratchet_decay_cap) && ratchet_decay_cap >= 0.0f
+        ? ratchet_decay_cap
+        : 1.0e10f;
+    params_[kParamTrigger + 4] = std::isfinite(ratchet_attack_cap) && ratchet_attack_cap >= 0.0f
+        ? ratchet_attack_cap
+        : 1.0e10f;
     commitParams();
     return 1;
   }

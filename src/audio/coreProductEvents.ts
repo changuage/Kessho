@@ -62,6 +62,18 @@ export const CORE_PRODUCT_STEP_TOGGLE_FLAGS = Object.freeze({
   active: 1,
   clearLane: 2,
   clearField: 4,
+  rangeValue: 8,
+} as const);
+
+export const CORE_PRODUCT_DICE_FLAGS = Object.freeze({
+  trigger: 1 << 0,
+  probability: 1 << 1,
+  ratchet: 1 << 2,
+  midiNote: 1 << 3,
+  expression: 1 << 4,
+  morph: 1 << 5,
+  distance: 1 << 6,
+  swing: 1 << 7,
 } as const);
 
 export const CORE_PRODUCT_STEP_VALUE_FIELDS = Object.freeze({
@@ -1138,6 +1150,7 @@ export function createCoreProductSequencerStepValueEvent(
   field: CoreProductStepValueField,
   value: number,
   value2 = 0,
+  extraFlags = 0,
 ): CoreProductEvent {
   const validatedField = requireStepField(field);
   return {
@@ -1147,7 +1160,7 @@ export function createCoreProductSequencerStepValueEvent(
     paramId: requireIntegerInRange(stepIndex, 'stepIndex', 0, 63),
     value: requireFiniteNumber(value, 'value'),
     value2: requireFiniteNumber(value2, 'value2'),
-    flags: CORE_PRODUCT_STEP_TOGGLE_FLAGS.active | validatedField,
+    flags: CORE_PRODUCT_STEP_TOGGLE_FLAGS.active | validatedField | extraFlags,
   };
 }
 
@@ -1200,6 +1213,7 @@ export function createCoreProductSequencerDiceEvent(
   laneIndex: number,
   intensity = 1,
   seed = 0,
+  flags = 0,
 ): CoreProductEvent {
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane,
@@ -1207,6 +1221,7 @@ export function createCoreProductSequencerDiceEvent(
     index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
     value: requireUnitValue(intensity, 'intensity'),
     value2: requireIntegerInRange(seed, 'seed', 0, 0xffffffff),
+    flags: requireIntegerInRange(flags, 'flags', 0, 0xffffffff),
   };
 }
 

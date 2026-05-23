@@ -70,6 +70,18 @@ public:
     (void)expression;
     return 0;
   }
+  virtual int setTriggerControls(
+      float morph,
+      float distance,
+      float expression,
+      float pitch,
+      float ratchet_decay_cap,
+      float ratchet_attack_cap) {
+    (void)pitch;
+    (void)ratchet_decay_cap;
+    (void)ratchet_attack_cap;
+    return setTriggerMacros(morph, distance, expression);
+  }
   virtual int setSourceMacros(int source_index, float morph, float distance, float expression) {
     (void)source_index;
     return setTriggerMacros(morph, distance, expression);

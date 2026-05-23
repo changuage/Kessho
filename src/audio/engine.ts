@@ -234,6 +234,8 @@ type WebGraphRecordTrackId =
   | 'masterPostLimiter';
 
 type DiagnosticRecordTrackId = StemRecordTrackId | 'pad1Pre' | 'reverbFeed' | WebGraphRecordTrackId;
+type SynthEvolveOverridesPayload = Partial<SynthLaneOverrides> & { swing?: number };
+type DrumEvolveOverridesPayload = Partial<DrumStepOverrides> & { swing?: number };
 
 type StereoWidthProcessor = {
   input: GainNode;
@@ -673,7 +675,7 @@ const dynamicsCharacterWasmUrl = getWorkletUrl('kessho_dynamics_character.wasm')
 const GRANULAR_WORKLET_DISPATCH_INTERVAL_MS = 16;
 const RUNTIME_RANDOM_WALK_INTERVAL_MS = 100;
 const RANDOM_WALK_MAX_CATCHUP_STEPS = 600;
-const MAIN_THREAD_MODULATION_MAX_DELTA_MS = 250;
+const MAIN_THREAD_MODULATION_MAX_DELTA_MS = RUNTIME_RANDOM_WALK_INTERVAL_MS * RANDOM_WALK_MAX_CATCHUP_STEPS;
 const FOREGROUND_PARAM_RESYNC_WINDOW_MS = 1200;
 const FOREGROUND_PARAM_RESYNC_SMOOTH_TIME = 0.35;
 const PIANO_SAMPLE_CACHE_LIMIT_PER_VARIANT = 24;
@@ -934,7 +936,7 @@ export class AudioEngine {
   ];
   private synthEuclidTotalStepCounts: Quad<number> = [0, 0, 0, 0];
   private onSynthEvolveTrigger: ((laneIndex: number) => void) | null = null;
-  private onSynthEvolveOverridesChanged: ((laneIndex: number, overrides: Partial<SynthLaneOverrides>) => void) | null = null;
+  private onSynthEvolveOverridesChanged: ((laneIndex: number, overrides: SynthEvolveOverridesPayload) => void) | null = null;
   /** Per-lane pitch settings for MIDI↔offset conversion at evolve boundary */
   private synthPitchSettings: Quad<{ mode: PitchMode; root: number; scale: ScaleName }> = [
     { mode: 'semitones', root: 60, scale: 'Major' },
@@ -1056,8 +1058,6 @@ export class AudioEngine {
   private lastGranularRandomSeedMaterial = '';
   private lastGranularRandomSequencePreview: number[] = [];
   private foregroundParamResyncUntilMs = 0;
-  private hiddenWallClockStartedMs: number | null = null;
-  private hiddenWallClockOffsetSec = 0;
 
   // Granular multi-tap delay (Microcosm-style)
   private granularDelayInputNode: GainNode | null = null;
@@ -1365,21 +1365,21 @@ export class AudioEngine {
   private readonly handleDocumentVisibilityChange = () => {
     const nowMs = performance.now();
     if (this.isDocumentVisible()) {
-      if (this.hiddenWallClockStartedMs !== null) {
-        this.hiddenWallClockOffsetSec += Math.max(0, nowMs - this.hiddenWallClockStartedMs) / 1000;
-        this.hiddenWallClockStartedMs = null;
-      }
-      this.runtimeRandomWalkLastUpdateMs = nowMs;
       this.foregroundParamResyncUntilMs = nowMs + FOREGROUND_PARAM_RESYNC_WINDOW_MS;
       this.syncGranularUiActive();
       if (this.sliderState && (this.isRunning || this.synthEuclidScheduleTimer !== null)) {
         this.scheduleApplyParamsRefresh();
       }
+      if (
+        this.journeyMorphClockActive &&
+        this.journeyMorphClockRaf === null &&
+        this.journeyMorphClockTimeout === null
+      ) {
+        this.scheduleJourneyMorphClockTick();
+      }
       return;
     }
 
-    this.hiddenWallClockStartedMs = nowMs;
-    this.runtimeRandomWalkLastUpdateMs = nowMs;
     this.syncGranularUiActive();
   };
 
@@ -1394,7 +1394,7 @@ export class AudioEngine {
   }
 
   private shouldRunMainThreadModulation(): boolean {
-    return this.isDocumentVisible();
+    return true;
   }
 
   private capMainThreadModulationDelta(elapsedMs: number): number {
@@ -1402,7 +1402,7 @@ export class AudioEngine {
   }
 
   private getRuntimeWalkWallTimeSec(): number {
-    return Date.now() / 1000 - this.hiddenWallClockOffsetSec;
+    return Date.now() / 1000;
   }
 
   private getParamSmoothTime(defaultSmoothTime: number): number {
@@ -4744,6 +4744,10 @@ export class AudioEngine {
 
   stopJourneyMorphClock(): void {
     this.journeyMorphClockActive = false;
+    this.cancelJourneyMorphClockTick();
+  }
+
+  private cancelJourneyMorphClockTick(): void {
     if (this.journeyMorphClockRaf !== null) {
       cancelAnimationFrame(this.journeyMorphClockRaf);
       this.journeyMorphClockRaf = null;
@@ -4892,7 +4896,7 @@ export class AudioEngine {
   }
 
   /** Register callback for synth evolve overrides push-back to UI. */
-  setSynthEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: Partial<SynthLaneOverrides>) => void) {
+  setSynthEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: SynthEvolveOverridesPayload) => void) {
     this.onSynthEvolveOverridesChanged = callback;
   }
 
@@ -4912,14 +4916,14 @@ export class AudioEngine {
   }
 
   /** Register callback for drum evolve overrides push-back to UI. */
-  setDrumEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: Partial<DrumStepOverrides>) => void) {
+  setDrumEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: DrumEvolveOverridesPayload) => void) {
     if (this.drumSynth) {
       this.drumSynth.setEvolveOverridesChangedCallback(callback);
     }
     // Store for late-init
     this.pendingDrumEvolveOverridesCallback = callback;
   }
-  private pendingDrumEvolveOverridesCallback: ((laneIndex: number, overrides: Partial<DrumStepOverrides>) => void) | null = null;
+  private pendingDrumEvolveOverridesCallback: ((laneIndex: number, overrides: DrumEvolveOverridesPayload) => void) | null = null;
 
   /** Reset a single synth lane's overrides to its home snapshot. */
   resetSynthEuclidLaneHome(laneIndex: number) {
@@ -4935,7 +4939,7 @@ export class AudioEngine {
     }
     this.applySynthLaneOverrides(laneIndex, midiRestored);
     // Push offsets to UI (no conversion needed)
-    this.onSynthEvolveOverridesChanged?.(laneIndex, restored);
+    this.onSynthEvolveOverridesChanged?.(laneIndex, { ...restored, swing: state.homeSwing });
     if (state.homeSwing !== undefined) {
       this.synthEuclidSwings[laneIndex] = state.homeSwing;
     }
@@ -4996,7 +5000,7 @@ export class AudioEngine {
     }
     this.applySynthLaneOverrides(laneIndex, midiOv);
     // Push offsets to UI (no conversion needed)
-    this.onSynthEvolveOverridesChanged?.(laneIndex, newOv);
+    this.onSynthEvolveOverridesChanged?.(laneIndex, { ...newOv, swing: this.synthEuclidSwings[laneIndex] ?? 0 });
 
     // Capture offsets as new home
     const state = this.synthEvolveStates[laneIndex];
@@ -11545,7 +11549,7 @@ export class AudioEngine {
                   this.synthEuclidSwings[laneIndex] = result.swing;
                   this.onSynthEvolveTrigger?.(laneIndex);
                   // Push evolved overrides back to UI as offsets (no reverse conversion needed)
-                  this.onSynthEvolveOverridesChanged?.(laneIndex, offsetOverrides);
+                  this.onSynthEvolveOverridesChanged?.(laneIndex, { ...offsetOverrides, swing: result.swing });
                   // Handle noteRange evolution: store overrides and notify UI
                   if (result.noteRangeMin !== undefined && result.noteRangeMax !== undefined) {
                     this.synthNoteRangeOverrides[laneIndex] = { min: result.noteRangeMin, max: result.noteRangeMax };

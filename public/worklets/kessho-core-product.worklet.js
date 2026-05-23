@@ -798,6 +798,13 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     return (high & (1 << (step - 32))) !== 0;
   }
 
+  highestMaskStep(low, high) {
+    for (let step = SEQUENCER_UI_STATE_STEPS - 1; step >= 0; step -= 1) {
+      if (this.maskHas(low, high, step)) return step;
+    }
+    return -1;
+  }
+
   readToggleOverrides(ptr, setLow, setHigh, valueLow, valueHigh) {
     const toggles = [];
     for (let step = 0; step < SEQUENCER_UI_STATE_STEPS; step += 1) {
@@ -809,31 +816,42 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   }
 
   readFloatOverrides(ptr, setLow, setHigh, valuesOffset) {
-    if (setLow === 0 && setHigh === 0) return null;
+    const lastStep = this.highestMaskStep(setLow, setHigh);
+    if (lastStep < 0) return null;
     const values = [];
-    for (let step = 0; step < SEQUENCER_UI_STATE_STEPS; step += 1) {
+    for (let step = 0; step <= lastStep; step += 1) {
       values.push(this.view.getFloat32(ptr + valuesOffset + step * 4, true));
     }
     return values;
   }
 
   readUintOverrides(ptr, setLow, setHigh, valuesOffset) {
-    if (setLow === 0 && setHigh === 0) return null;
+    const lastStep = this.highestMaskStep(setLow, setHigh);
+    if (lastStep < 0) return null;
     const values = [];
-    for (let step = 0; step < SEQUENCER_UI_STATE_STEPS; step += 1) {
+    for (let step = 0; step <= lastStep; step += 1) {
       values.push(this.view.getUint32(ptr + valuesOffset + step * 4, true));
     }
     return values;
   }
 
   readTrigConditionOverrides(ptr, setLow, setHigh) {
-    if (setLow === 0 && setHigh === 0) return null;
+    const lastStep = this.highestMaskStep(setLow, setHigh);
+    if (lastStep < 0) return null;
     const values = [];
-    for (let step = 0; step < SEQUENCER_UI_STATE_STEPS; step += 1) {
+    for (let step = 0; step <= lastStep; step += 1) {
       values.push([
         this.view.getUint32(ptr + 680 + step * 4, true),
         this.view.getUint32(ptr + 936 + step * 4, true),
       ]);
+    }
+    return values;
+  }
+
+  readUint32Array(ptr, valuesOffset, count) {
+    const values = [];
+    for (let index = 0; index < count; index += 1) {
+      values.push(this.view.getUint32(ptr + valuesOffset + index * 4, true));
     }
     return values;
   }
@@ -856,6 +874,23 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         this.view.getUint32(ptr + 36, true),
         this.view.getUint32(ptr + 40, true),
       ),
+      probabilityOverrideSetLow: this.view.getUint32(ptr + 44, true),
+      probabilityOverrideSetHigh: this.view.getUint32(ptr + 48, true),
+      ratchetOverrideSetLow: this.view.getUint32(ptr + 52, true),
+      ratchetOverrideSetHigh: this.view.getUint32(ptr + 56, true),
+      trigConditionOverrideSetLow: this.view.getUint32(ptr + 60, true),
+      trigConditionOverrideSetHigh: this.view.getUint32(ptr + 64, true),
+      midiNoteOverrideSetLow: this.view.getUint32(ptr + 68, true),
+      midiNoteOverrideSetHigh: this.view.getUint32(ptr + 72, true),
+      expressionOverrideSetLow: this.view.getUint32(ptr + 76, true),
+      expressionOverrideSetHigh: this.view.getUint32(ptr + 80, true),
+      morphOverrideSetLow: this.view.getUint32(ptr + 84, true),
+      morphOverrideSetHigh: this.view.getUint32(ptr + 88, true),
+      distanceOverrideSetLow: this.view.getUint32(ptr + 92, true),
+      distanceOverrideSetHigh: this.view.getUint32(ptr + 96, true),
+      stepValueConfigEnabledMask: this.view.getUint32(ptr + 100, true),
+      stepValueConfigSteps: this.readUint32Array(ptr, 104, 8),
+      stepValueConfigDirections: this.readUint32Array(ptr, 136, 8),
       probability: this.readFloatOverrides(
         ptr,
         this.view.getUint32(ptr + 44, true),

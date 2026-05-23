@@ -6,10 +6,7 @@ import { CoreProductAssetAdapter } from './CoreProductAssetAdapter';
 import { midiSampleOffset } from './coreMidiEvents';
 import { createCoreProductSnapshot, encodeCoreProductSnapshot, usesLegacyGranularRuntimeSeed, type CoreProductSnapshot } from './coreProductSnapshot';
 import {
-  CORE_PRODUCT_MODULATION_RANGE_MODE,
-  CORE_PRODUCT_SEQUENCER_IDS,
-  CORE_PRODUCT_STEP_VALUE_FIELDS,
-  CORE_PRODUCT_SOURCE_IDS,
+  CORE_PRODUCT_MODULATION_RANGE_MODE, CORE_PRODUCT_SEQUENCER_IDS, CORE_PRODUCT_STEP_TOGGLE_FLAGS, CORE_PRODUCT_STEP_VALUE_FIELDS, CORE_PRODUCT_SOURCE_IDS,
   type CoreProductEvent,
   type CoreProductModulationRangeMode,
   type CoreProductRangeTarget,
@@ -36,16 +33,20 @@ import { type CoreProductSequencerLaneUiState, type CoreProductTelemetrySnapshot
 import { classifyCoreProductRuntimeFallback, runtimeFallbackIsDevelopmentError, type RuntimeFallbackClassification } from './CoreProductFallbackDiagnostics';
 import { CoreProductArrangementScheduler } from './coreProductArrangementScheduler';
 import { buildCoreProductSnapshotDiff, shouldForwardCoreProductRngDiffs, type SnapshotReloadReason } from './CoreProductRuntimeAdapter';
-import { normalizeClockDivisionValue, normalizeEvolveConfigs, normalizeSequencerStepToggleOverrides, normalizeSequencerStepValueConfigs, normalizeSequencerStepValueOverrides, normalizeSubLaneEnabledStates, normalizedUnitValue, type SequencerKind, type SequencerStepToggleOverride, type SequencerStepValueConfig, type SequencerStepValueOverride } from './CoreProductHostSequencerAdapter';
+import { normalizeClockDivisionValue, normalizeDrumSequencerStepValueOverrides, normalizeSequencerStepToggleOverrides, normalizeSequencerStepValueConfigs, normalizeSequencerStepValueOverrides, normalizeSubLaneEnabledStates, normalizedUnitValue, type SequencerKind, type SequencerStepToggleOverride, type SequencerStepValueConfig, type SequencerStepValueOverride } from './CoreProductHostSequencerAdapter';
+import { normalizeEvolveConfigs } from './CoreProductHostSequencerEvolveConfig';
 import { coreProductRangeValueContext, createCoreProductEngineState, drumVoiceIndex, manualAuditionState, mappedCoreProductRange, midiFromFrequency, requireFiniteRange, requireManualNote, requirePositive, runtimeWalkConfigChanged, runtimeWalkConfigFromState, runtimeWalkPositionsFromTelemetry, sourceId } from './CoreProductHostRuntimeGuards';
 import { CORE_PRODUCT_GRAPH_TAP_IDS } from './coreProductGraphTaps';
 import { CoreProductRuntime, type CoreProductGraphTapCaptureChunk } from './coreProductRuntime';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import { loadProductLead4opFMPreset } from './CoreProductLegacyPresetCompat';
 import { createCoreProductDynamicsVisualTelemetry, createCoreProductTransportDebugState } from './CoreProductHostDebugTelemetry';
-const CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE = 3;
-const CORE_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME = 4;
-const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = 4;
+import { publishCoreProductSequencerVisuals } from './CoreProductHostSequencerVisuals';
+import { createCoreProductSequencerEvolveClock } from './CoreProductHostSequencerEvolve';
+import { getCoreProductSequencerLaneSwing, patchCoreProductSequencerLaneSwing } from './CoreProductHostSequencerSwing';
+import { coreProductDrumEvolvePayloadFromLane, coreProductStepValueConfigsFromLane, coreProductStepValueOverridesFromLane, coreProductSynthEvolvePayloadFromLane } from './CoreProductHostSequencerUiState';
+import type { CoreProductSubLaneEvolveResult } from './CoreProductHostSequencerSubLaneEvolve';
+const CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE = 3; const CORE_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME = 4; const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = 4;
 type ProductRangeState = {
   range: { min: number; max: number };
   targets: CoreProductRangeTarget[];
@@ -106,8 +107,8 @@ class CoreProductEngineHost {
   private drumStepValueOverrides: SequencerStepValueOverride[][] = [[], [], [], []];
   private synthStepValueConfigs: SequencerStepValueConfig[][] = [[], [], [], []];
   private drumStepValueConfigs: SequencerStepValueConfig[][] = [[], [], [], []];
-  readonly engineMode = 'core-product';
-  readonly capabilityReport = initialCoreProductCapabilityReport;
+  private readonly sequencerEvolveClock = createCoreProductSequencerEvolveClock();
+  readonly engineMode = 'core-product'; readonly capabilityReport = initialCoreProductCapabilityReport;
   constructor() {
     this.runtime.setTelemetryCallback((telemetry) => this.handleTelemetry(telemetry));
     this.runtime.setVisualTelemetryCallback((telemetry) => this.handleVisualTelemetry(telemetry));
@@ -440,17 +441,22 @@ class CoreProductEngineHost {
       overrides,
       this.drumStepToggleOverrides,
     );
-    this.drumStepValueOverrides = normalizeSequencerStepValueOverrides(
+    this.drumStepValueOverrides = normalizeDrumSequencerStepValueOverrides(
       overrides,
       this.drumStepValueOverrides,
-      false,
+      (laneIndex) => this.drumLaneBaseMidi(laneIndex),
     );
     this.drumStepValueConfigs = normalizeSequencerStepValueConfigs(
       overrides,
       this.drumStepValueConfigs,
-      false,
+      true,
     );
     this.syncSequencerStepToggles('drum', true);
+  }
+
+  private drumLaneBaseMidi(laneIndex: number): number {
+    const value = this.latestProductSnapshot?.drumLanes[laneIndex]?.midiNote;
+    return typeof value === 'number' && Number.isFinite(value) ? value : 36 + laneIndex;
   }
 
   async start(sliderState?: Record<string, unknown>): Promise<void> {
@@ -482,6 +488,7 @@ class CoreProductEngineHost {
     this.runtime.postEvent(createCoreProductStopEvent());
     await this.runtime.suspend();
     this.running = false;
+    this.resetSequencerVisuals();
     this.stateChangeCallback?.(createCoreProductEngineState(false));
   }
 
@@ -492,6 +499,7 @@ class CoreProductEngineHost {
     }
     void this.runtime.suspend();
     this.running = false;
+    this.resetSequencerVisuals();
     this.stateChangeCallback?.(createCoreProductEngineState(false));
   }
 
@@ -505,7 +513,12 @@ class CoreProductEngineHost {
     this.running = false;
     this.latestProductSnapshot = null;
     this.assetAdapter.clear();
+    this.resetSequencerVisuals();
     this.stateChangeCallback?.(createCoreProductEngineState(false));
+  }
+
+  private isDocumentVisible(): boolean {
+    return typeof document === 'undefined' || document.visibilityState === 'visible';
   }
 
   ensureDrumSynth(sliderState?: Record<string, unknown>): void {
@@ -557,14 +570,14 @@ class CoreProductEngineHost {
       ));
     };
     if (this.runtimeReady) {
-      post();
+      void this.runtime.resume().then(post);
       return;
     }
     void this.runtime.ensureStarted().then(() => {
       this.runtimeReady = true;
       this.loadLatestSnapshot('runtime-bootstrap');
-      post();
-    });
+      return this.runtime.resume();
+    }).then(post);
   }
 
   async loadLeadPreset(slot: unknown, presetId: unknown): Promise<void> {
@@ -635,14 +648,14 @@ class CoreProductEngineHost {
       }));
     };
     if (this.runtimeReady) {
-      post();
+      void this.runtime.resume().then(post);
       return;
     }
     void this.runtime.ensureStarted().then(() => {
       this.runtimeReady = true;
       this.loadLatestSnapshot('runtime-bootstrap');
-      post();
-    });
+      return this.runtime.resume();
+    }).then(post);
   }
 
   setRuntimeWalkPositionsCallback(callback: ((positions: Record<string, number>) => void) | null): void {
@@ -713,6 +726,7 @@ class CoreProductEngineHost {
     }
     await this.runtime.ensureStarted();
     this.runtimeReady = true;
+    await this.runtime.resume();
     this.applyLatestSnapshotUpdate('runtime-bootstrap');
     this.runtime.postEvent(createCoreProductDrumTriggerEvent(voiceIndex, triggerVelocity));
     this.invokeDisplayCallback('drumTrigger', voice, triggerVelocity);
@@ -752,10 +766,7 @@ class CoreProductEngineHost {
 
   stopJourneyMorphClock(): void {
     this.journeyMorphClockRunning = false;
-    if (this.journeyMorphClockRaf !== null) {
-      window.cancelAnimationFrame(this.journeyMorphClockRaf);
-      this.journeyMorphClockRaf = null;
-    }
+    this.cancelJourneyMorphClockTick();
     this.adapterState = {
       ...this.adapterState,
       journeyEnabled: false,
@@ -773,6 +784,7 @@ class CoreProductEngineHost {
     this.latestSliderState = manualAuditionState(manualNote.source, externalState ?? this.latestSliderState ?? undefined);
     await this.runtime.ensureStarted();
     this.runtimeReady = true;
+    await this.runtime.resume();
     if (manualNote.source === 'piano') {
       await this.assetAdapter.ensurePianoAssetForNote(manualNote.midi, manualNote.velocity);
       this.applyLatestSnapshotUpdate('manual-piano-asset');
@@ -799,6 +811,7 @@ class CoreProductEngineHost {
     this.latestSliderState = nextState;
     await this.runtime.ensureStarted();
     this.runtimeReady = true;
+    await this.runtime.resume();
     if (manualNotes.some((note) => note.source === 'piano')) {
       await Promise.all(
         manualNotes
@@ -946,31 +959,76 @@ class CoreProductEngineHost {
         journeyMorphPhase: hostTelemetry.journeyMorphPhase,
       };
     }
+    if (this.journeyMorphClockRunning && this.displayCallbacks.has('journeyMorphClock')) {
+      if (this.isDocumentVisible()) {
+        if (this.journeyMorphClockRaf === null) this.scheduleJourneyMorphClockTick();
+      } else {
+        this.invokeDisplayCallback('journeyMorphClock', this.nowMs());
+      }
+    }
     this.updateRuntimeWalkPositions(hostTelemetry);
+    this.sequencerEvolveClock.tick({ telemetry: hostTelemetry, synthConfigs: this.adapterState.synthEuclidEvolveConfigs, drumConfigs: this.adapterState.drumEuclidEvolveConfigs, post: (event) => this.runtime.postEvent(event), publish: (name, laneIndex) => this.invokeDisplayCallback(name, laneIndex), getSwing: (sequencer, laneIndex) => getCoreProductSequencerLaneSwing(this.adapterState, this.latestSliderState, sequencer, laneIndex), setSwing: (sequencer, laneIndex, swing) => this.setEvolvedSequencerLaneSwing(sequencer, laneIndex, swing), getSubLaneConfigs: (sequencer, laneIndex) => this.getSequencerStepValueConfigs(sequencer, laneIndex), setSubLaneConfigs: (sequencer, laneIndex, result) => this.setEvolvedSequencerSubLaneConfigs(sequencer, laneIndex, result) });
     this.reconcileSequencerUiState(hostTelemetry);
-    if (this.perfMonitorEnabled) {
+    if (this.isDocumentVisible()) {
+      this.publishSequencerVisuals(hostTelemetry);
+    }
+    if (this.perfMonitorEnabled && this.isDocumentVisible()) {
       this.perfUpdateCallback?.(this.createPerfSnapshot(hostTelemetry));
     }
   }
 
   private handleVisualTelemetry(telemetry: CoreProductVisualTelemetrySnapshot): void {
+    if (!this.isDocumentVisible()) {
+      return;
+    }
     const previous = this.latestTelemetry;
     const merged: CoreProductTelemetrySnapshot = {
       ...(previous ?? {}),
       ...telemetry,
-      schemaHash: telemetry.schemaHash,
-      transportRunning: telemetry.transportRunning ?? this.running,
-      activeSources: previous?.activeSources ?? 0,
-      activeVoices: previous?.activeVoices ?? 0,
-      activeAssets: previous?.activeAssets ?? 0,
-      sequencerEventCount: previous?.sequencerEventCount ?? 0,
-      controlQueueDepth: previous?.controlQueueDepth ?? 0,
-      assetMissingCount: previous?.assetMissingCount ?? 0,
-      lastErrorCode: previous?.lastErrorCode ?? 0,
+      schemaHash: telemetry.schemaHash, transportRunning: telemetry.transportRunning ?? this.running,
+      activeSources: previous?.activeSources ?? 0, activeVoices: previous?.activeVoices ?? 0, activeAssets: previous?.activeAssets ?? 0,
+      sequencerEventCount: previous?.sequencerEventCount ?? 0, controlQueueDepth: previous?.controlQueueDepth ?? 0, assetMissingCount: previous?.assetMissingCount ?? 0, lastErrorCode: previous?.lastErrorCode ?? 0,
     };
     const hostTelemetry = this.withHostDiagnostics(merged);
     this.latestTelemetry = hostTelemetry;
     this.updateRuntimeWalkPositions(hostTelemetry);
+    this.publishSequencerVisuals(hostTelemetry);
+  }
+
+  private publishSequencerVisuals(telemetry: CoreProductTelemetrySnapshot | null): void {
+    publishCoreProductSequencerVisuals({ telemetry, snapshot: this.latestProductSnapshot, state: this.latestSliderState ? { ...this.latestSliderState, ...this.adapterState } : this.adapterState, synthToggles: this.synthStepToggleOverrides, drumToggles: this.drumStepToggleOverrides, sampleRate: telemetry?.sampleRate ?? this.runtime.audioContext?.sampleRate ?? 48000, publish: (name, steps, hitCounts) => this.invokeDisplayCallback(name, steps, hitCounts) });
+  }
+
+  private resetSequencerVisuals(): void { this.publishSequencerVisuals(null); }
+
+  private setEvolvedSequencerLaneSwing(sequencer: SequencerKind, laneIndex: number, swing: number): void {
+    const patched = patchCoreProductSequencerLaneSwing(this.adapterState, sequencer, laneIndex, swing); this.adapterState = patched.adapterState;
+    if (this.runtimeReady) this.runtime.postEvent(createCoreProductSequencerLaneParamEvent(sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing, patched.swing)); this.invokeDisplayCallback(sequencer === 'synth' ? 'synthEvolveOverrides' : 'drumEvolveOverrides', laneIndex, { swing: patched.swing });
+  }
+
+  private getSequencerStepValueConfigs(sequencer: SequencerKind, laneIndex: number): SequencerStepValueConfig[] {
+    this.ensureSequencerLaneCache(sequencer, laneIndex);
+    const configs = sequencer === 'synth' ? this.synthStepValueConfigs : this.drumStepValueConfigs;
+    return (configs[laneIndex] ?? []).map((entry) => ({ ...entry }));
+  }
+
+  private setEvolvedSequencerSubLaneConfigs(sequencer: SequencerKind, laneIndex: number, result: CoreProductSubLaneEvolveResult): void {
+    this.ensureSequencerLaneCache(sequencer, laneIndex);
+    const configs = sequencer === 'synth' ? this.synthStepValueConfigs : this.drumStepValueConfigs;
+    configs[laneIndex] = result.configs.map((entry) => ({ ...entry }));
+    if (this.runtimeReady) {
+      for (const config of configs[laneIndex] ?? []) this.runtime.postEvent(createCoreProductSequencerSubLaneConfigEvent(sequencer, laneIndex, config.field, config.steps, config.direction));
+    }
+    const payload: Record<string, unknown> = { subLaneStates: result.subLaneStates };
+    for (const [key, direction] of Object.entries(result.directionPayloads)) {
+      if (sequencer === 'synth') payload[key] = direction;
+      else {
+        const lanes: (string | null)[] = [null, null, null, null];
+        lanes[laneIndex] = direction;
+        payload[key] = lanes;
+      }
+    }
+    this.invokeDisplayCallback(sequencer === 'synth' ? 'synthEvolveOverrides' : 'drumEvolveOverrides', laneIndex, payload);
   }
 
   private reconcileSequencerUiState(telemetry: CoreProductTelemetrySnapshot): void {
@@ -1005,9 +1063,9 @@ class CoreProductEngineHost {
     this.ensureSequencerLaneCache('synth', laneIndex);
     const includeEmpty = lane.mutationFlags === 0;
     this.synthStepToggleOverrides[laneIndex] = lane.triggerToggles.map(([step, value]) => ({ step, value }));
-    this.synthStepValueOverrides[laneIndex] = this.stepValueOverridesFromLane(lane, true);
-    this.synthStepValueConfigs[laneIndex] = [];
-    const payload = this.synthEvolvePayloadFromLane(lane, laneIndex, includeEmpty);
+    this.synthStepValueOverrides[laneIndex] = coreProductStepValueOverridesFromLane(lane, true);
+    this.synthStepValueConfigs[laneIndex] = coreProductStepValueConfigsFromLane(lane, true);
+    const payload = coreProductSynthEvolvePayloadFromLane(lane, this.latestProductSnapshot?.synthLanes[laneIndex]?.midiNote ?? 60, includeEmpty);
     if (notify) {
       this.invokeDisplayCallback('synthEvolveOverrides', laneIndex, payload);
     }
@@ -1021,9 +1079,9 @@ class CoreProductEngineHost {
     this.ensureSequencerLaneCache('drum', laneIndex);
     const includeEmpty = lane.mutationFlags === 0;
     this.drumStepToggleOverrides[laneIndex] = lane.triggerToggles.map(([step, value]) => ({ step, value }));
-    this.drumStepValueOverrides[laneIndex] = this.stepValueOverridesFromLane(lane, false);
-    this.drumStepValueConfigs[laneIndex] = [];
-    const payload = this.drumEvolvePayloadFromLane(lane, laneIndex, includeEmpty);
+    this.drumStepValueOverrides[laneIndex] = coreProductStepValueOverridesFromLane(lane, true);
+    this.drumStepValueConfigs[laneIndex] = coreProductStepValueConfigsFromLane(lane, true);
+    const payload = coreProductDrumEvolvePayloadFromLane(lane, laneIndex, this.drumLaneBaseMidi(laneIndex), includeEmpty);
     if (notify) {
       this.invokeDisplayCallback('drumEvolveOverrides', laneIndex, payload);
     }
@@ -1036,100 +1094,6 @@ class CoreProductEngineHost {
     while (toggles.length <= laneIndex) toggles.push([]);
     while (values.length <= laneIndex) values.push([]);
     while (configs.length <= laneIndex) configs.push([]);
-  }
-
-  private stepValueOverridesFromLane(
-    lane: CoreProductSequencerLaneUiState,
-    includeMidiNote: boolean,
-  ): SequencerStepValueOverride[] {
-    const out: SequencerStepValueOverride[] = [];
-    const addValues = (field: CoreProductStepValueField, values: number[] | null | undefined, round = false) => {
-      if (!Array.isArray(values)) return;
-      for (let step = 0; step < Math.min(values.length, 64); step += 1) {
-        const value = values[step];
-        if (typeof value === 'number' && Number.isFinite(value)) {
-          out.push({ step, field, value: round ? Math.round(value) : value });
-        }
-      }
-    };
-    addValues(CORE_PRODUCT_STEP_VALUE_FIELDS.probability, lane.probability);
-    addValues(CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet, lane.ratchet, true);
-    if (includeMidiNote) {
-      addValues(CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote, lane.midiNote);
-    }
-    addValues(CORE_PRODUCT_STEP_VALUE_FIELDS.expression, lane.expression);
-    addValues(CORE_PRODUCT_STEP_VALUE_FIELDS.morph, lane.morph);
-    addValues(CORE_PRODUCT_STEP_VALUE_FIELDS.distance, lane.distance);
-    if (Array.isArray(lane.trigCondition)) {
-      for (let step = 0; step < Math.min(lane.trigCondition.length, 64); step += 1) {
-        const value = lane.trigCondition[step];
-        if (Array.isArray(value)) {
-          out.push({
-            step,
-            field: CORE_PRODUCT_STEP_VALUE_FIELDS.trigCondition,
-            value: value[0] ?? 1,
-            value2: value[1] ?? 1,
-          });
-        }
-      }
-    }
-    return out.sort((left, right) => left.step - right.step || left.field - right.field);
-  }
-
-  private synthEvolvePayloadFromLane(
-    lane: CoreProductSequencerLaneUiState,
-    laneIndex: number,
-    includeEmpty: boolean,
-  ): Record<string, unknown> {
-    const payload: Record<string, unknown> = {};
-    payload.triggerToggles = lane.triggerToggles;
-    const baseMidi = this.latestProductSnapshot?.synthLanes[laneIndex]?.midiNote ?? 60;
-    const pitch = Array.isArray(lane.midiNote)
-      ? lane.midiNote.map((value) => Math.round(value - baseMidi))
-      : null;
-    for (const [key, values] of Object.entries({
-      pitch,
-      expression: lane.expression,
-      morph: lane.morph,
-      distance: lane.distance,
-      probability: lane.probability,
-      ratchet: lane.ratchet,
-    })) {
-      if (Array.isArray(values) || includeEmpty) {
-        payload[key] = Array.isArray(values) ? values : [];
-      }
-    }
-    return payload;
-  }
-
-  private drumEvolvePayloadFromLane(
-    lane: CoreProductSequencerLaneUiState,
-    laneIndex: number,
-    includeEmpty: boolean,
-  ): Record<string, unknown> {
-    const laneArray = <T>(value: T[] | null | undefined): (T[] | null)[] => {
-      const lanes: (T[] | null)[] = [null, null, null, null];
-      if (laneIndex < lanes.length) {
-        lanes[laneIndex] = Array.isArray(value) ? value : includeEmpty ? [] : null;
-      }
-      return lanes;
-    };
-    const triggerToggles = [new Map<number, boolean>(), new Map<number, boolean>(), new Map<number, boolean>(), new Map<number, boolean>()];
-    if (laneIndex < triggerToggles.length) {
-      triggerToggles[laneIndex] = new Map(lane.triggerToggles);
-    }
-    return {
-      triggerToggles,
-      probability: laneArray(lane.probability),
-      ratchet: laneArray(lane.ratchet),
-      trigCondition: laneArray(lane.trigCondition),
-      expression: laneArray(lane.expression),
-      pitch: laneArray(lane.midiNote),
-      morph: laneArray(lane.morph),
-      distance: laneArray(lane.distance),
-      slice: laneArray(null),
-      reverse: laneArray(null),
-    };
   }
 
   private withHostDiagnostics(telemetry: CoreProductTelemetrySnapshot): CoreProductTelemetrySnapshot {
@@ -1326,6 +1290,7 @@ class CoreProductEngineHost {
           stepValue.field,
           stepValue.value,
           stepValue.value2 ?? 0,
+          stepValue.range ? CORE_PRODUCT_STEP_TOGGLE_FLAGS.rangeValue : 0,
         ));
       }
     }
@@ -1346,27 +1311,32 @@ class CoreProductEngineHost {
     }
   }
 
+  private cancelJourneyMorphClockTick(): void {
+    if (this.journeyMorphClockRaf !== null) {
+      window.cancelAnimationFrame(this.journeyMorphClockRaf);
+      this.journeyMorphClockRaf = null;
+    }
+  }
+
   private scheduleJourneyMorphClockTick(): void {
     if (!this.journeyMorphClockRunning || !this.displayCallbacks.has('journeyMorphClock')) return;
+    if (!this.isDocumentVisible()) {
+      this.cancelJourneyMorphClockTick();
+      return;
+    }
 
     const tick = (now: number) => {
       this.journeyMorphClockRaf = null;
       if (!this.journeyMorphClockRunning || !this.displayCallbacks.has('journeyMorphClock')) return;
+      if (!this.isDocumentVisible()) return;
 
       this.invokeDisplayCallback('journeyMorphClock', now);
       if (!this.journeyMorphClockRunning || !this.displayCallbacks.has('journeyMorphClock')) return;
+      if (!this.isDocumentVisible()) return;
 
-      if (document.visibilityState !== 'visible' && !this.running) {
-        this.stopJourneyMorphClock();
-        return;
-      }
       this.journeyMorphClockRaf = window.requestAnimationFrame(tick);
     };
 
-    if (document.visibilityState !== 'visible' && !this.running) {
-      this.stopJourneyMorphClock();
-      return;
-    }
     this.journeyMorphClockRaf = window.requestAnimationFrame(tick);
   }
 

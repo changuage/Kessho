@@ -142,10 +142,16 @@ bool laneHasGeneratedOverrides(const LaneState& lane) {
       lane.midi_note_override_set_high != 0u ||
       lane.expression_override_set_low != 0u ||
       lane.expression_override_set_high != 0u ||
+      lane.expression_range_set_low != 0u ||
+      lane.expression_range_set_high != 0u ||
       lane.morph_override_set_low != 0u ||
       lane.morph_override_set_high != 0u ||
+      lane.morph_range_set_low != 0u ||
+      lane.morph_range_set_high != 0u ||
       lane.distance_override_set_low != 0u ||
-      lane.distance_override_set_high != 0u;
+      lane.distance_override_set_high != 0u ||
+      lane.distance_range_set_low != 0u ||
+      lane.distance_range_set_high != 0u;
 }
 
 void requireLaneMutationStateEqual(const LaneState& actual, const LaneState& expected, const char* message) {
@@ -163,10 +169,16 @@ void requireLaneMutationStateEqual(const LaneState& actual, const LaneState& exp
   require(actual.midi_note_override_set_high == expected.midi_note_override_set_high, message);
   require(actual.expression_override_set_low == expected.expression_override_set_low, message);
   require(actual.expression_override_set_high == expected.expression_override_set_high, message);
+  require(actual.expression_range_set_low == expected.expression_range_set_low, message);
+  require(actual.expression_range_set_high == expected.expression_range_set_high, message);
   require(actual.morph_override_set_low == expected.morph_override_set_low, message);
   require(actual.morph_override_set_high == expected.morph_override_set_high, message);
+  require(actual.morph_range_set_low == expected.morph_range_set_low, message);
+  require(actual.morph_range_set_high == expected.morph_range_set_high, message);
   require(actual.distance_override_set_low == expected.distance_override_set_low, message);
   require(actual.distance_override_set_high == expected.distance_override_set_high, message);
+  require(actual.distance_range_set_low == expected.distance_range_set_low, message);
+  require(actual.distance_range_set_high == expected.distance_range_set_high, message);
   for (uint32_t i = 0; i < 64u; ++i) {
     require(std::fabs(actual.probability_overrides[i] - expected.probability_overrides[i]) < 0.000001f, message);
     require(actual.ratchet_overrides[i] == expected.ratchet_overrides[i], message);
@@ -174,8 +186,11 @@ void requireLaneMutationStateEqual(const LaneState& actual, const LaneState& exp
     require(actual.trig_condition_denominators[i] == expected.trig_condition_denominators[i], message);
     require(std::fabs(actual.midi_note_overrides[i] - expected.midi_note_overrides[i]) < 0.000001f, message);
     require(std::fabs(actual.expression_overrides[i] - expected.expression_overrides[i]) < 0.000001f, message);
+    require(std::fabs(actual.expression_range_maxes[i] - expected.expression_range_maxes[i]) < 0.000001f, message);
     require(std::fabs(actual.morph_overrides[i] - expected.morph_overrides[i]) < 0.000001f, message);
+    require(std::fabs(actual.morph_range_maxes[i] - expected.morph_range_maxes[i]) < 0.000001f, message);
     require(std::fabs(actual.distance_overrides[i] - expected.distance_overrides[i]) < 0.000001f, message);
+    require(std::fabs(actual.distance_range_maxes[i] - expected.distance_range_maxes[i]) < 0.000001f, message);
   }
   for (uint32_t i = 0; i < 8u; ++i) {
     require(actual.step_value_configs[i].enabled == expected.step_value_configs[i].enabled, message);
@@ -1018,6 +1033,10 @@ void requireLowRateGranularRuntimeWalkMovementAcrossEngineParams() {
 }
 
 void requireDirectSequencerCoverage() {
+  require(kessho::product::internal::euclidHit(3u, 16u, 4u, 0) == true, "direct Product Euclidean 16/4 should match web Bjorklund phase");
+  require(kessho::product::internal::euclidHit(0u, 16u, 4u, 0) == false, "direct Product Euclidean 16/4 should not use bucket phase");
+  require(kessho::product::internal::euclidHit(1u, 8u, 3u, 0) == true, "direct Product Euclidean 8/3 should match web Bjorklund phase");
+
   KesshoProductEngine direct(48000.0, 128, 0);
   direct.transport.running = true;
   direct.transport.bpm = 120.0f;
@@ -1044,8 +1063,25 @@ void requireDirectSequencerCoverage() {
   SequencerBuffer direct_events{};
   direct.generateLaneEvents(direct.synth_lanes, direct.synth_lane_count, 96000u, direct_events);
   require(direct_events.count == 4u, "direct sequencer generator should produce one bar of hits");
-  expectOffsets(direct_events.events, direct_events.count, {0, 24000, 48000, 72000});
+  expectOffsets(direct_events.events, direct_events.count, {18000, 42000, 66000, 90000});
 
+  lane.step_count = 8u;
+  lane.fill_count = 0u;
+  lane.clock_division = 8u;
+  lane.manual_step_mask_low = (1u << 1u) | (1u << 4u);
+  lane.manual_step_mask_high = 0u;
+  lane.step_value_configs[5].enabled = true;
+  lane.step_value_configs[5].steps = 2u;
+  lane.step_value_configs[5].direction = KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD;
+  direct.setStepFieldOverride(lane, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0u, 0.25f, 0.0f);
+  direct.setStepFieldOverride(lane, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 1u, 0.75f, 0.0f);
+  direct_events.clear();
+  direct.generateLaneEvents(direct.synth_lanes, direct.synth_lane_count, 60000u, direct_events);
+  require(direct_events.count == 2u, "manual masked sequencer should produce two hit-clocked sub-lane events");
+  require(std::fabs(direct_events.events[0].expression - 0.25f) < 0.001f, "first sub-lane event should use hit index zero");
+  require(std::fabs(direct_events.events[1].expression - 0.75f) < 0.001f, "second sub-lane event should use hit index one");
+
+  direct.clearLaneStepOverrides(lane);
   lane.seed = 4000u;
   lane.step_count = 64u;
   lane.fill_count = 1u;
@@ -1118,7 +1154,7 @@ int main() {
   KesshoSequencerEvent events[32]{};
   int32_t event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
   require(event_count == 8, "4-in-16 synth plus drum lanes should generate 8 events in one bar");
-  expectOffsets(events, static_cast<uint32_t>(event_count), {0, 24000, 48000, 72000});
+  expectOffsets(events, static_cast<uint32_t>(event_count), {18000, 42000, 66000, 90000});
   require(events[0].source_id == KESSHO_PRODUCT_SOURCE_PAD1, "synth event source mismatch");
   require(events[1].source_id == KESSHO_PRODUCT_SOURCE_DRUM, "drum event source mismatch");
   KesshoProductTelemetry loop_telemetry = kessho_product_get_telemetry(engine);
@@ -1132,7 +1168,7 @@ int main() {
   KesshoSequencerEvent loop_events[64]{};
   event_count = kessho_product_debug_render_events(engine, loop_events, 64, 384000);
   require(event_count == 32, "16-step synth plus drum pattern should loop for 64 steps");
-  expectOffsets(loop_events, static_cast<uint32_t>(event_count), {0, 24000, 48000, 72000, 96000, 120000, 144000, 168000});
+  expectOffsets(loop_events, static_cast<uint32_t>(event_count), {18000, 42000, 66000, 90000, 114000, 138000, 162000, 186000});
   loop_telemetry = kessho_product_get_telemetry(engine);
   require(loop_telemetry.transport_running == 1, "transport should keep running through a 64-step sequencer render");
 
@@ -1258,14 +1294,14 @@ int main() {
   mute_step.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP;
   mute_step.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
   mute_step.index = 0;
-  mute_step.param_id = 0;
+  mute_step.param_id = 3;
   mute_step.value = 0.0f;
   mute_step.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE;
   require(kessho_product_enqueue_event(engine, &mute_step) == KESSHO_PRODUCT_OK, "sequencer mute-step enqueue failed");
   event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
   require(event_count == 4, "step toggle overrides should add and mute C++ sequencer hits");
-  expectOffsets(events, static_cast<uint32_t>(event_count), {6000, 24000, 48000, 72000});
-  require(!hasOffset(events, static_cast<uint32_t>(event_count), 0), "muted step override should suppress the base Euclid hit");
+  expectOffsets(events, static_cast<uint32_t>(event_count), {6000, 42000, 66000, 90000});
+  require(!hasOffset(events, static_cast<uint32_t>(event_count), 18000), "muted step override should suppress the base Euclid hit");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
@@ -1273,7 +1309,7 @@ int main() {
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "dice snapshot load failed");
   event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
   require(event_count == 4, "home synth lane should generate one bar of base Euclid hits");
-  expectOffsets(events, static_cast<uint32_t>(event_count), {0, 24000, 48000, 72000});
+  expectOffsets(events, static_cast<uint32_t>(event_count), {18000, 42000, 66000, 90000});
   KesshoProductTelemetry dice_seed_telemetry = kessho_product_get_telemetry(engine);
   require(dice_seed_telemetry.rng_seed == 1234u, "telemetry should expose snapshot RNG seed");
   require(dice_seed_telemetry.rng_state == 1234u, "telemetry should expose snapshot RNG state");
@@ -1368,9 +1404,9 @@ int main() {
   require(kessho_product_enqueue_event(engine, &reset_lane_home) == KESSHO_PRODUCT_OK, "sequencer reset-home enqueue failed");
   event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
   require(event_count == 4, "sequencer reset-home should restore base event count");
-  expectOffsets(events, static_cast<uint32_t>(event_count), {0, 24000, 48000, 72000});
-  require(std::fabs(events[0].midi_note - 60.0f) < 0.001f, "sequencer reset-home should clear pitch dice overrides");
+  expectOffsets(events, static_cast<uint32_t>(event_count), {18000, 42000, 66000, 90000});
   const LaneState reset_home_lane_state = engine->synth_lanes[0];
+  require(reset_home_lane_state.midi_note_override_set_low == 0u && reset_home_lane_state.midi_note_override_set_high == 0u, "sequencer reset-home should clear pitch dice overrides");
   require(!laneHasGeneratedOverrides(reset_home_lane_state), "reset-home should clear Core-owned lane override state");
   const uint32_t reset_revision = kessho_product_get_telemetry(engine).sequencer_ui_state_revision;
   require(
@@ -1398,6 +1434,29 @@ int main() {
       engine->synth_lanes[0],
       reset_home_lane_state,
       "unrelated source-level diff must preserve reset-home lane state");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "method-filtered dice snapshot load failed");
+  KesshoProductEvent pitch_only_dice{};
+  pitch_only_dice.event_kind = KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE;
+  pitch_only_dice.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  pitch_only_dice.index = 0;
+  pitch_only_dice.value = 1.0f;
+  pitch_only_dice.value2 = 5151.0f;
+  pitch_only_dice.flags = KESSHO_PRODUCT_DICE_FIELD_MIDI_NOTE;
+  require(kessho_product_enqueue_event(engine, &pitch_only_dice) == KESSHO_PRODUCT_OK, "method-filtered dice enqueue failed");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
+  require(event_count == 4, "method-filtered pitch dice should preserve trigger event count");
+  const LaneState pitch_only_lane_state = engine->synth_lanes[0];
+  require(pitch_only_lane_state.midi_note_override_set_low != 0u, "method-filtered pitch dice should set MIDI overrides");
+  require(pitch_only_lane_state.step_override_set_low == 0u && pitch_only_lane_state.step_override_set_high == 0u, "method-filtered pitch dice should not alter trigger overrides");
+  require(pitch_only_lane_state.probability_override_set_low == 0u && pitch_only_lane_state.probability_override_set_high == 0u, "method-filtered pitch dice should not alter probability overrides");
+  require(pitch_only_lane_state.ratchet_override_set_low == 0u && pitch_only_lane_state.ratchet_override_set_high == 0u, "method-filtered pitch dice should not alter ratchet overrides");
+  require(pitch_only_lane_state.expression_override_set_low == 0u && pitch_only_lane_state.expression_override_set_high == 0u, "method-filtered pitch dice should not alter expression overrides");
+  require(pitch_only_lane_state.morph_override_set_low == 0u && pitch_only_lane_state.morph_override_set_high == 0u, "method-filtered pitch dice should not alter morph overrides");
+  require(pitch_only_lane_state.distance_override_set_low == 0u && pitch_only_lane_state.distance_override_set_high == 0u, "method-filtered pitch dice should not alter distance overrides");
 
   KesshoProductEvent evolution_amount{};
   evolution_amount.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
@@ -1453,7 +1512,7 @@ int main() {
   snapshot = makeSnapshot();
   snapshot.drum_euclid.lane_count = 0;
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "step value snapshot load failed");
-  auto enqueue_step_value = [&](uint32_t step, uint32_t field, float value, float value2 = 0.0f) {
+  auto enqueue_step_value = [&](uint32_t step, uint32_t field, float value, float value2 = 0.0f, uint32_t extra_flags = 0u) {
     KesshoProductEvent event{};
     event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP;
     event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
@@ -1461,25 +1520,100 @@ int main() {
     event.param_id = step;
     event.value = value;
     event.value2 = value2;
-    event.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE | field;
+    event.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE | field | extra_flags;
     require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "sequencer step-value enqueue failed");
   };
-  enqueue_step_value(0, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 72.0f);
-  enqueue_step_value(0, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.4f);
-  enqueue_step_value(0, KESSHO_PRODUCT_STEP_FIELD_MORPH, 0.6f);
-  enqueue_step_value(0, KESSHO_PRODUCT_STEP_FIELD_DISTANCE, 0.7f);
-  enqueue_step_value(4, KESSHO_PRODUCT_STEP_FIELD_RATCHET, 2.0f);
-  enqueue_step_value(8, KESSHO_PRODUCT_STEP_FIELD_TRIG_CONDITION, 2.0f, 2.0f);
-  enqueue_step_value(12, KESSHO_PRODUCT_STEP_FIELD_PROBABILITY, 0.0f);
+  enqueue_step_value(3, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 72.0f);
+  enqueue_step_value(3, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.4f);
+  enqueue_step_value(3, KESSHO_PRODUCT_STEP_FIELD_MORPH, 0.6f);
+  enqueue_step_value(3, KESSHO_PRODUCT_STEP_FIELD_DISTANCE, 0.7f);
+  enqueue_step_value(7, KESSHO_PRODUCT_STEP_FIELD_RATCHET, 2.0f);
+  enqueue_step_value(11, KESSHO_PRODUCT_STEP_FIELD_TRIG_CONDITION, 2.0f, 2.0f);
+  enqueue_step_value(15, KESSHO_PRODUCT_STEP_FIELD_PROBABILITY, 0.0f);
   event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
   require(event_count == 3, "step value overrides should affect probability, ratchet, and trig conditions");
-  expectOffsets(events, static_cast<uint32_t>(event_count), {0, 24000, 27000});
-  require(!hasOffset(events, static_cast<uint32_t>(event_count), 48000), "step trig condition should suppress first-bar 2:2 hit");
-  require(!hasOffset(events, static_cast<uint32_t>(event_count), 72000), "step probability should suppress probability-zero hit");
+  expectOffsets(events, static_cast<uint32_t>(event_count), {18000, 42000, 45000});
+  require(!hasOffset(events, static_cast<uint32_t>(event_count), 66000), "step trig condition should suppress first-bar 2:2 hit");
+  require(!hasOffset(events, static_cast<uint32_t>(event_count), 90000), "step probability should suppress probability-zero hit");
   require(std::fabs(events[0].midi_note - 72.0f) < 0.001f, "step MIDI override did not affect event pitch");
   require(events[0].expression >= 0.39f && events[0].expression <= 0.41f, "step expression override did not affect event expression");
   require(events[0].morph >= 0.59f && events[0].morph <= 0.61f, "step morph override did not affect event morph");
   require(events[0].distance >= 0.69f && events[0].distance <= 0.71f, "step distance override did not affect event distance");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lanes[0].step_count = 8;
+  snapshot.drum_euclid.lanes[0].fill_count = 8;
+  snapshot.drum_euclid.lanes[0].midi_note = 37.0f;
+  snapshot.drum_euclid.lanes[0].seed =
+      kDrumVoiceMaskSeedFlag |
+      (((1u << 1u) | (1u << 2u)) << kDrumVoiceMaskSeedShift) |
+      5151u;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum voice-mask snapshot load failed");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
+  require(event_count == 16, "multi-target drum lane should pick one voice per hit instead of layering voices");
+  bool saw_kick_voice = false;
+  bool saw_click_voice = false;
+  for (int32_t i = 0; i < event_count; ++i) {
+    saw_kick_voice = saw_kick_voice || std::fabs(events[i].midi_note - 37.0f) < 0.001f;
+    saw_click_voice = saw_click_voice || std::fabs(events[i].midi_note - 38.0f) < 0.001f;
+    require(
+        std::fabs(events[i].midi_note - 37.0f) < 0.001f ||
+            std::fabs(events[i].midi_note - 38.0f) < 0.001f,
+        "multi-target drum lane selected a voice outside its encoded voice mask");
+  }
+  require(saw_kick_voice && saw_click_voice, "multi-target drum lane should rotate through encoded target voices");
+
+  KesshoProductEvent voice_mask_seed_event{};
+  voice_mask_seed_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+  voice_mask_seed_event.target_id = KESSHO_PRODUCT_SEQUENCER_DRUM;
+  voice_mask_seed_event.index = 0;
+  voice_mask_seed_event.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_SEED_ID;
+  voice_mask_seed_event.value = static_cast<float>(
+      kDrumVoiceMaskSeedFlag |
+      (((1u << 0u) | (1u << 5u)) << kDrumVoiceMaskSeedShift) |
+      6161u);
+  require(kessho_product_enqueue_event(engine, &voice_mask_seed_event) == KESSHO_PRODUCT_OK, "drum voice-mask seed event enqueue failed");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
+  require(event_count == 16, "live voice-mask seed event should preserve one drum voice per hit");
+  bool saw_sub_voice = false;
+  bool saw_noise_voice = false;
+  for (int32_t i = 0; i < event_count; ++i) {
+    saw_sub_voice = saw_sub_voice || std::fabs(events[i].midi_note - 36.0f) < 0.001f;
+    saw_noise_voice = saw_noise_voice || std::fabs(events[i].midi_note - 41.0f) < 0.001f;
+    require(
+        std::fabs(events[i].midi_note - 36.0f) < 0.001f ||
+            std::fabs(events[i].midi_note - 41.0f) < 0.001f,
+        "live voice-mask seed event selected a voice outside its encoded mask");
+  }
+  require(saw_sub_voice && saw_noise_voice, "live voice-mask seed event should update the selected target set");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lanes[0].step_count = 4;
+  snapshot.drum_euclid.lanes[0].fill_count = 4;
+  snapshot.drum_euclid.lanes[0].midi_note = 37.0f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum pitch step-value snapshot load failed");
+  auto enqueue_drum_step_value = [&](uint32_t step, uint32_t field, float value) {
+    KesshoProductEvent event{};
+    event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP;
+    event.target_id = KESSHO_PRODUCT_SEQUENCER_DRUM;
+    event.index = 0;
+    event.param_id = step;
+    event.value = value;
+    event.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE | field;
+    require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "drum sequencer step-value enqueue failed");
+  };
+  enqueue_drum_step_value(0, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 44.0f);
+  enqueue_drum_step_value(0, KESSHO_PRODUCT_STEP_FIELD_RATCHET, 2.0f);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 24000);
+  require(event_count == 5, "drum ratchet step override should add one trigger inside the first step");
+  require(std::fabs(events[0].midi_note - 37.0f) < 0.001f, "drum MIDI step override must not change selected drum voice");
+  require(std::fabs(events[0].send_granular - 7.0f) < 0.001f, "drum MIDI step override should become per-trigger pitch offset");
+  require(events[0].send_delay_a > 0.049f && events[0].send_delay_a < 0.051f, "drum ratchet should pass decay cap in seconds");
+  require(events[0].send_delay_b > 0.009f && events[0].send_delay_b < 0.010f, "drum ratchet should pass attack cap in seconds");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
@@ -1506,6 +1640,19 @@ int main() {
   require(events[1].expression >= 0.49f && events[1].expression <= 0.51f, "reverse sub-lane step 1 should read expression index 1");
   require(events[2].expression >= 0.19f && events[2].expression <= 0.21f, "reverse sub-lane step 2 should read expression index 0");
   require(events[3].expression >= 0.89f && events[3].expression <= 0.91f, "reverse sub-lane step 3 should wrap to expression index 2");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].step_count = 4;
+  snapshot.synth_euclid.lanes[0].fill_count = 4;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "range sub-lane snapshot load failed");
+  enqueue_step_value(0, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.2f, 0.3f, KESSHO_PRODUCT_STEP_TOGGLE_RANGE_VALUE);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 24000);
+  require(event_count == 4, "expression range sub-lane should preserve trigger event count");
+  for (int32_t i = 0; i < event_count; ++i) {
+    require(events[i].expression >= 0.2f && events[i].expression <= 0.3f, "expression range sub-lane did not sample within range");
+  }
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
@@ -1680,9 +1827,9 @@ int main() {
   snapshot.synth_euclid.lanes[0].ratchet = 3;
   snapshot.drum_euclid.lane_count = 0;
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "ratchet snapshot load failed");
-  event_count = kessho_product_debug_render_events(engine, events, 32, 6000);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 24000);
   require(event_count == 3, "ratchet 3 should generate three events in one 16th step");
-  expectOffsets(events, static_cast<uint32_t>(event_count), {0, 2000, 4000});
+  expectOffsets(events, static_cast<uint32_t>(event_count), {18000, 20000, 22000});
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();

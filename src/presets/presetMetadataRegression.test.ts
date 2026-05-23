@@ -18,6 +18,26 @@ import { buildJourneyPresetPreview } from './journeyPresetPreview';
 import { normalizePresetSummary } from './presetUtils';
 import type { PresetEntry } from './types';
 import { DEFAULT_STATE, migratePreset, type SavedPreset } from '../ui/state';
+import { createEmptyStepOverrides, serializeStepOverrides } from '../ui/sequencer/stepOverrideSerialization';
+import {
+  applySequencePresetClockDivs,
+  applySequencePresetEvolveConfigs,
+  applySequencePresetLinked,
+  applySequencePresetOverrides,
+  applySequencePresetPitchBindingModes,
+  applySequencePresetPitchSettings,
+  applySequencePresetSubLaneStates,
+  applySequencePresetSwings,
+  copySequenceLaneForPreset,
+  copySequenceLaneStateForPreset,
+} from '../ui/sequencer/sequencePresetLane';
+import type {
+  EvolveConfig,
+  PitchSettings,
+  SubLaneKind,
+  SubLaneState,
+} from '../ui/sequencer/useEuclideanSequencer';
+import type { PitchBindingMode } from '../audio/drumSeqTypes';
 import { createDiamondJourney, createJourneyConnection } from '../audio/journeyTypes';
 import {
   decodeJourneyPresetData,
@@ -30,6 +50,17 @@ import {
 import { coerceJourneyPresetEntry } from './useJourneyPresets';
 
 const SYNTH_BINDING_MODES = ['sequence', 'linked', 'polyrhythmic', 'polyrhythmic'] as const;
+
+function makeSubLaneState(): Record<SubLaneKind, SubLaneState> {
+  return {
+    pitch: { enabled: false, steps: 5, direction: 'forward', scaleQuantize: false },
+    expression: { enabled: false, steps: 4, direction: 'forward', valueMode: 'sequence', rangeMin: 0.75, rangeMax: 1 },
+    morph: { enabled: false, steps: 4, direction: 'forward', valueMode: 'sequence', rangeMin: 0.25, rangeMax: 0.75 },
+    distance: { enabled: false, steps: 4, direction: 'forward', valueMode: 'sequence', rangeMin: 0, rangeMax: 1 },
+    slice: { enabled: false, steps: 4, direction: 'forward' },
+    reverse: { enabled: false, steps: 4, direction: 'forward' },
+  };
+}
 
 function testMigratePresetPreservesSynthPitchBindingModes(): void {
   const migrated = migratePreset({
@@ -168,6 +199,81 @@ function testLegacyImportPreservesSynthPitchBindingModes(): void {
     [...SYNTH_BINDING_MODES],
     'legacy import should preserve synthPitchBindingModes metadata',
   );
+}
+
+function testSequenceLanePresetRoundTripKeepsRuntimeLaneState(): void {
+  const sourceOverrides = createEmptyStepOverrides();
+  sourceOverrides.triggerToggles[2]!.set(3, false);
+  sourceOverrides.pitch[2] = [0, 2, 4];
+  sourceOverrides.expression[2] = [0.4, 0.8];
+  sourceOverrides.expressionDirection[2] = 'reverse';
+  sourceOverrides.expressionRanges![2] = { min: 0.2, max: 0.7 };
+
+  const serializedOverrides = serializeStepOverrides(copySequenceLaneForPreset(sourceOverrides, 2));
+  const appliedOverrides = applySequencePresetOverrides(createEmptyStepOverrides(), serializedOverrides, 1);
+
+  assert.equal(appliedOverrides.triggerToggles[1]?.get(3), false);
+  assert.deepStrictEqual(appliedOverrides.pitch[1], [0, 2, 4]);
+  assert.deepStrictEqual(appliedOverrides.expression[1], [0.4, 0.8]);
+  assert.equal(appliedOverrides.expressionDirection[1], 'reverse');
+  assert.deepStrictEqual(appliedOverrides.expressionRanges?.[1], { min: 0.2, max: 0.7 });
+
+  const sourceSubLaneStates = Array.from({ length: 4 }, makeSubLaneState);
+  sourceSubLaneStates[2] = {
+    ...makeSubLaneState(),
+    pitch: { enabled: true, steps: 7, direction: 'pingpong', scaleQuantize: true },
+    expression: { enabled: true, steps: 3, direction: 'reverse', valueMode: 'range', rangeMin: 0.3, rangeMax: 0.9 },
+  };
+  const evolveConfigs: EvolveConfig[] = Array.from({ length: 4 }, () => ({
+    enabled: false,
+    everyBars: 4,
+    evolution: 0.25,
+    writeOffset: 0,
+    mutationMode: 'biased',
+    methods: { swingDrift: true },
+  }));
+  evolveConfigs[2] = {
+    enabled: true,
+    everyBars: 8,
+    evolution: 0.65,
+    writeOffset: 'auto',
+    mutationMode: 'strict',
+    methods: { triggerToggle: true, valueDrift: true },
+    enabledSubLanes: ['pitch', 'expression'],
+  };
+  const pitchSettings: PitchSettings[] = Array.from({ length: 4 }, () => ({ mode: 'semitones', root: 60, scale: 'Major' }));
+  pitchSettings[2] = { mode: 'notes', root: 67, scale: 'Dorian' };
+  const pitchBindingModes: PitchBindingMode[] = ['polyrhythmic', 'polyrhythmic', 'sequence', 'linked'];
+
+  const serializedState = copySequenceLaneStateForPreset({
+    laneIdx: 2,
+    subLaneStates: sourceSubLaneStates,
+    clockDivs: ['1/8', '1/16', '1/4', '1/32'],
+    swings: [0, 0.1, 0.2, 0.3],
+    linked: [false, false, true, false],
+    evolveConfigs,
+    pitchSettings,
+    pitchBindingModes,
+  });
+
+  const targetSubLaneStates = Array.from({ length: 4 }, makeSubLaneState);
+  const appliedSubLaneStates = applySequencePresetSubLaneStates(targetSubLaneStates, serializedState, 1);
+  assert.deepStrictEqual(appliedSubLaneStates[1]?.pitch, sourceSubLaneStates[2]?.pitch);
+  assert.deepStrictEqual(appliedSubLaneStates[1]?.expression, sourceSubLaneStates[2]?.expression);
+  assert.deepStrictEqual(applySequencePresetClockDivs(['1/8', '1/8', '1/8', '1/8'], serializedState, 1), ['1/8', '1/4', '1/8', '1/8']);
+  assert.deepStrictEqual(applySequencePresetSwings([0, 0, 0, 0], serializedState, 1), [0, 0.2, 0, 0]);
+  assert.deepStrictEqual(applySequencePresetLinked([false, false, false, false], serializedState, 1), [false, true, false, false]);
+  assert.deepStrictEqual(applySequencePresetPitchSettings([
+    { mode: 'semitones', root: 60, scale: 'Major' },
+    { mode: 'semitones', root: 60, scale: 'Major' },
+    { mode: 'semitones', root: 60, scale: 'Major' },
+    { mode: 'semitones', root: 60, scale: 'Major' },
+  ], serializedState, 1)[1], pitchSettings[2]);
+  assert.deepStrictEqual(
+    applySequencePresetPitchBindingModes(['polyrhythmic', 'polyrhythmic', 'polyrhythmic', 'polyrhythmic'], serializedState, 1),
+    ['polyrhythmic', 'sequence', 'polyrhythmic', 'polyrhythmic'],
+  );
+  assert.deepStrictEqual(applySequencePresetEvolveConfigs(evolveConfigs.map((config) => ({ ...config, enabled: false })), serializedState, 1)[1], evolveConfigs[2]);
 }
 
 function testOptimizedStatePresetRoundTripKeepsOnlyOverrides(): void {
@@ -508,6 +614,7 @@ async function run(): Promise<void> {
   testBuildPresetVersionMetadataIncludesAllSupportedFields();
   testGetPresetVersionSnapshotReturnsSelectedVersionMetadata();
   testLegacyImportPreservesSynthPitchBindingModes();
+  testSequenceLanePresetRoundTripKeepsRuntimeLaneState();
   testOptimizedStatePresetRoundTripKeepsOnlyOverrides();
   testStatePresetDiffIgnoresInactiveMixerValues();
   testMaterializedV2VersionPreservesAncillaryMetadata();

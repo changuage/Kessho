@@ -172,7 +172,7 @@ export class DrumSynth {
   private onEuclidEvolveTrigger: ((laneIndex: number) => void) | null = null;
 
   // Callback for evolved overrides push-back to UI visualizer
-  private onEvolveOverridesChanged: ((laneIndex: number, overrides: Partial<DrumStepOverrides>) => void) | null = null;
+  private onEvolveOverridesChanged: ((laneIndex: number, overrides: Partial<DrumStepOverrides> & { swing?: number }) => void) | null = null;
 
   // Callback for step position updates (UI playhead)
   private onStepPositionChange: ((steps: number[], hitCounts: number[]) => void) | null = null;
@@ -713,7 +713,7 @@ export class DrumSynth {
     this.onEuclidEvolveTrigger = callback;
   }
 
-  setEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: Partial<DrumStepOverrides>) => void): void {
+  setEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: Partial<DrumStepOverrides> & { swing?: number }) => void): void {
     this.onEvolveOverridesChanged = callback;
   }
 
@@ -912,6 +912,7 @@ export class DrumSynth {
     const sequencer = this.euclidSequencers[laneIndex];
     if (!sequencer) return;
     this.euclidSequencers[laneIndex] = resetSequencerToHome(sequencer);
+    this.euclidSwings[laneIndex] = this.euclidSequencers[laneIndex]?.swing ?? this.euclidSwings[laneIndex] ?? 0;
     this.pushEvolvedOverridesToUI(laneIndex, this.euclidSequencers[laneIndex]);
   }
 
@@ -982,7 +983,7 @@ export class DrumSynth {
       fullPatternMap.set(i, !!s.trigger.pattern[i]);
     }
     triggerToggles[laneIndex] = fullPatternMap;
-    const partial: Partial<DrumStepOverrides> = {
+    const partial: Partial<DrumStepOverrides> & { swing?: number } = {
       triggerToggles,
       probability: [null, null, null, null] as (number[] | null)[],
       ratchet: [null, null, null, null] as (number[] | null)[],
@@ -992,6 +993,13 @@ export class DrumSynth {
       distance: [null, null, null, null] as (number[] | null)[],
       slice: [null, null, null, null] as (number[] | null)[],
       reverse: [null, null, null, null] as (number[] | null)[],
+      expressionDirection: [null, null, null, null],
+      pitchDirection: [null, null, null, null],
+      morphDirection: [null, null, null, null],
+      distanceDirection: [null, null, null, null],
+      sliceDirection: [null, null, null, null],
+      reverseDirection: [null, null, null, null],
+      swing: s.swing,
     };
     partial.probability![laneIndex] = [...s.trigger.probability];
     partial.ratchet![laneIndex] = [...s.trigger.ratchet];
@@ -1001,6 +1009,12 @@ export class DrumSynth {
     partial.distance![laneIndex] = [...s.distance.values];
     partial.slice![laneIndex] = [...s.slice.values];
     partial.reverse![laneIndex] = [...s.reverse.values];
+    partial.expressionDirection![laneIndex] = s.expression.direction;
+    partial.pitchDirection![laneIndex] = s.pitch.direction;
+    partial.morphDirection![laneIndex] = s.morph.direction;
+    partial.distanceDirection![laneIndex] = s.distance.direction;
+    partial.sliceDirection![laneIndex] = s.slice.direction;
+    partial.reverseDirection![laneIndex] = s.reverse.direction;
     this.onEvolveOverridesChanged(laneIndex, partial);
   }
 
@@ -3383,6 +3397,7 @@ export class DrumSynth {
             });
             if (evolved !== sequencer) {
               Object.assign(sequencer, evolved);
+              this.euclidSwings[laneIndex] = sequencer.swing;
               this.onEuclidEvolveTrigger?.(laneIndex);
               // Push evolved sub-lane values back to UI visualizer
               this.pushEvolvedOverridesToUI(laneIndex, sequencer);

@@ -32,6 +32,10 @@ function assertLiveSequencerMutation(methodName, eventCreator) {
 }
 
 function makeLane(overrides = {}) {
+  const configSteps = new Array(8).fill(0);
+  const configDirections = new Array(8).fill(0);
+  configSteps[5] = 7;
+  configDirections[5] = 1;
   return {
     enabled: true,
     targetSourceId: 1,
@@ -41,13 +45,30 @@ function makeLane(overrides = {}) {
     clockDivision: 16,
     mutationFlags: 1,
     triggerToggles: [[0, true], [3, false]],
+    probabilityOverrideSetLow: 0b11,
+    probabilityOverrideSetHigh: 0,
     probability: [0.25, 0.5],
+    ratchetOverrideSetLow: 0b11,
+    ratchetOverrideSetHigh: 0,
     ratchet: [1, 2],
+    trigConditionOverrideSetLow: 0b1,
+    trigConditionOverrideSetHigh: 0,
     trigCondition: [[1, 2]],
+    midiNoteOverrideSetLow: 0b11,
+    midiNoteOverrideSetHigh: 0,
     midiNote: [60, 64],
+    expressionOverrideSetLow: 0b11,
+    expressionOverrideSetHigh: 0,
     expression: [0.2, 0.8],
+    morphOverrideSetLow: 0b11,
+    morphOverrideSetHigh: 0,
     morph: [0.3, 0.7],
+    distanceOverrideSetLow: 0b11,
+    distanceOverrideSetHigh: 0,
     distance: [0.1, 0.9],
+    stepValueConfigEnabledMask: 1 << 5,
+    stepValueConfigSteps: configSteps,
+    stepValueConfigDirections: configDirections,
     ...overrides,
   };
 }
@@ -157,7 +178,8 @@ await runCheckWithReport({
     for (const methodName of ['reconcileSynthSequencerLane', 'reconcileDrumSequencerLane']) {
       const body = hostMethodBody(methodName);
       for (const token of [
-        'stepValueOverridesFromLane(lane',
+        'coreProductStepValueOverridesFromLane(lane',
+        'coreProductStepValueConfigsFromLane(lane',
         'lane.triggerToggles.map',
         'invokeDisplayCallback(',
       ]) {
@@ -230,6 +252,7 @@ await runCheckWithReport({
       'full snapshot reload plus reconciled UI replay must preserve Core-owned dice state',
       'full snapshot reload must preserve reconciled Core-owned RNG state',
       'full snapshot reload must preserve reconciled Core-owned evolution state',
+      'drum MIDI step override should become per-trigger pitch offset',
     ]) {
       assert(sequencerTests.includes(token), `Product sequencer tests are missing reconciliation assertion: ${token}`);
     }
@@ -243,7 +266,7 @@ await runCheckWithReport({
           'resetSynthEuclidLaneHome',
           'resetDrumEuclidLaneHome',
         ],
-        cppPreservationAssertions: 13,
+        cppPreservationAssertions: 14,
       },
     });
 
@@ -261,6 +284,32 @@ await runCheckWithReport({
     harness.host.setSynthEuclidEvolveTriggerCallback((laneIndex) => {
       synthEvolveTriggers.push(laneIndex);
     });
+
+    harness.host.latestProductSnapshot = { transport: { bpm: 120 }, synthLanes: [], drumLanes: [{ midiNote: 37 }] };
+    harness.host.setDrumStepOverrides({
+      pitch: [[-3, 7]],
+      pitchDirection: ['reverse'],
+    });
+    assert(
+      harness.runtime.events.some((event) =>
+        event.type === 'sequencer-step-value' &&
+          event.sequencer === 'drum' &&
+          event.laneIndex === 0 &&
+          event.field === harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote &&
+          event.step === 0 &&
+          event.value === 34),
+      'Product host must convert drum pitch offsets to absolute Core MIDI values',
+    );
+    assert(
+      harness.runtime.events.some((event) =>
+        event.type === 'sequencer-sublane-config' &&
+          event.sequencer === 'drum' &&
+          event.laneIndex === 0 &&
+          event.field === harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote &&
+          event.steps === 2 &&
+          event.direction === harness.context.CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse),
+      'Product host must replay drum pitch sub-lane direction/length into Core',
+    );
 
     harness.host.diceSynthEuclidLane(1, 0.42);
     harness.host.resetDrumEuclidLaneHome(2);
@@ -280,6 +329,53 @@ await runCheckWithReport({
       'resetDrumEuclidLaneHome() must post a live reset-home event',
     );
     assert(synthEvolveTriggers.includes(1), 'diceSynthEuclidLane() must preserve UI evolve trigger callback behavior');
+
+    harness.host.setEvolvedSequencerLaneSwing('drum', 2, 0.33);
+    assert(harness.host.adapterState.drumEuclid3Swing === 0.33, 'Product host swing evolve must update adapter state for preset/UI continuity');
+    assert(
+      harness.runtime.events.some((event) =>
+        event.type === 'sequencer-lane-param' &&
+          event.sequencer === 'drum' &&
+          event.laneIndex === 2 &&
+          event.paramId === 'SequencerLaneSwing' &&
+          event.value === 0.33),
+      'Product host swing evolve must post a live Product lane swing event',
+    );
+    assert(
+      drumOverridePayloads.some((entry) => entry.laneIndex === 2 && entry.payload.swing === 0.33),
+      'Product host swing evolve must notify UI/preset refs through the evolve override callback',
+    );
+    harness.host.setEvolvedSequencerSubLaneConfigs('synth', 1, {
+      configs: [{
+        field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression,
+        steps: 9,
+        direction: harness.context.CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse,
+      }],
+      subLaneStates: { expression: { steps: 9, direction: 'reverse' } },
+      directionPayloads: { expressionDirection: 'reverse' },
+    });
+    assert(
+      harness.host.synthStepValueConfigs[1].some((entry) =>
+        entry.field === harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression &&
+          entry.steps === 9 &&
+          entry.direction === harness.context.CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse),
+      'Product host sub-lane evolve must update host replay config cache',
+    );
+    assert(
+      harness.runtime.events.some((event) =>
+        event.type === 'sequencer-sublane-config' &&
+          event.sequencer === 'synth' &&
+          event.laneIndex === 1 &&
+          event.steps === 9),
+      'Product host sub-lane evolve must post live sub-lane config events',
+    );
+    assert(
+      synthOverridePayloads.some((entry) =>
+        entry.laneIndex === 1 &&
+          entry.payload.subLaneStates?.expression?.steps === 9 &&
+          entry.payload.expressionDirection === 'reverse'),
+      'Product host sub-lane evolve must notify UI/preset refs with length and direction metadata',
+    );
 
     const synthLane = makeLane();
     harness.host.reconcileSequencerUiState(makeSequencerUiTelemetry({
@@ -304,10 +400,22 @@ await runCheckWithReport({
       'synth reconciliation must copy Product Core step values into host cache',
     );
     assert(
-      synthOverridePayloads.length === 1 &&
-        synthOverridePayloads[0].laneIndex === 1 &&
-        Array.isArray(synthOverridePayloads[0].payload.pitch),
+      synthOverridePayloads.some((entry) => entry.laneIndex === 1 && Array.isArray(entry.payload.pitch)),
       'synth reconciliation must notify UI with detailed diced override payload',
+    );
+    assert(
+      harness.host.synthStepValueConfigs[1].some((entry) =>
+        entry.field === harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression &&
+          entry.steps === 7 &&
+          entry.direction === harness.context.CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse),
+      'synth reconciliation must copy Product Core sub-lane step config into host cache',
+    );
+    assert(
+      synthOverridePayloads.some((entry) =>
+        entry.laneIndex === 1 &&
+          entry.payload.subLaneStates?.expression?.steps === 7 &&
+          entry.payload.subLaneStates.expression.direction === 'reverse'),
+      'synth reconciliation must notify UI with Product Core sub-lane length/direction metadata',
     );
 
     const resetLane = makeLane({
@@ -332,9 +440,9 @@ await runCheckWithReport({
     assert(harness.host.lastSequencerUiStateRevision === 2, 'drum reset-home reconciliation must record Core UI revision');
     assert(harness.host.drumStepToggleOverrides[2].length === 0, 'reset-home reconciliation must clear drum trigger overrides');
     assert(
-      drumOverridePayloads.length === 1 &&
-        Array.isArray(drumOverridePayloads[0].payload.probability[2]) &&
-        drumOverridePayloads[0].payload.probability[2].length === 0,
+      drumOverridePayloads.some((entry) =>
+        Array.isArray(entry.payload.probability?.[2]) &&
+          entry.payload.probability[2].length === 0),
       'reset-home reconciliation must notify UI with explicit empty lane override payload',
     );
 
@@ -344,7 +452,8 @@ await runCheckWithReport({
     assert(harness.runtime.snapshots.length === 1, 'full snapshot reload must call runtime.loadSnapshot');
     assert(
       replayedEvents.some((event) => event.type === 'sequencer-clear-steps' && event.sequencer === 'synth' && event.laneIndex === 1) &&
-        replayedEvents.some((event) => event.type === 'sequencer-step' && event.sequencer === 'synth' && event.laneIndex === 1),
+        replayedEvents.some((event) => event.type === 'sequencer-step' && event.sequencer === 'synth' && event.laneIndex === 1) &&
+        replayedEvents.some((event) => event.type === 'sequencer-sublane-config' && event.sequencer === 'synth' && event.laneIndex === 1),
       'full snapshot reload must replay reconciled synth dice state from host cache',
     );
     addEvidence(report, {

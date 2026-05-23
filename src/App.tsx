@@ -92,7 +92,7 @@ import {
   deserializeStepOverrides,
   serializeStepOverrides,
 } from './ui/sequencer/stepOverrideSerialization';
-import type { ClockDivision, PitchBindingMode } from './audio/drumSeqTypes';
+import type { ClockDivision, LaneDirection, PitchBindingMode } from './audio/drumSeqTypes';
 import type { SliderPageId } from './ui/sliderHelpCatalog';
 import { isIOSLikeDevice, isMobileDevice } from './platform';
 import { useVisibleInterval } from './ui/hooks/useVisibleInterval';
@@ -590,6 +590,36 @@ const DEFAULT_EUCLIDEAN_SWINGS = [0, 0, 0, 0];
 const DEFAULT_EUCLIDEAN_LINKED = [false, false, false, false];
 const DEFAULT_SYNTH_PITCH_BINDING_MODES: PitchBindingMode[] = ['polyrhythmic', 'polyrhythmic', 'polyrhythmic', 'polyrhythmic'];
 const PRESET_LOAD_FADE_MS = 2000;
+type EvolvedSubLanePatch = Partial<Record<SubLaneKind, Partial<SubLaneState>>>;
+type EvolvedOverrideState = { laneIndex: number; version: number; data: Partial<StepOverrides>; swing?: number; subLaneStates?: EvolvedSubLanePatch };
+const EVOLVED_SUBLANE_KEYS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'slice', 'reverse'];
+
+function normalizeEvolvedSubLanePatch(value: unknown): EvolvedSubLanePatch | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const out: EvolvedSubLanePatch = {};
+  for (const lane of EVOLVED_SUBLANE_KEYS) {
+    const patch = (value as Record<string, unknown>)[lane];
+    if (patch && typeof patch === 'object' && !Array.isArray(patch)) out[lane] = patch as Partial<SubLaneState>;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function mergeEvolvedSubLanePatch(
+  current: Record<SubLaneKind, SubLaneState>[] | undefined,
+  laneIndex: number,
+  patch: EvolvedSubLanePatch | undefined,
+): Record<SubLaneKind, SubLaneState>[] | undefined {
+  if (!current || !patch) return current;
+  return current.map((laneState, index) => index === laneIndex
+    ? {
+        ...laneState,
+        ...Object.fromEntries(Object.entries(patch).map(([key, value]) => [
+          key,
+          { ...laneState[key as SubLaneKind], ...(value ?? {}) },
+        ])) as Record<SubLaneKind, SubLaneState>,
+      }
+    : laneState);
+}
 
 // iOS-only reverb types that won't work on web
 const IOS_ONLY_REVERB_TYPES = new Set([
@@ -2882,7 +2912,7 @@ const App: React.FC = () => {
   const drumSeqSimpleStateRef = useRef<SeqSimpleState | undefined>(undefined);
 
   // Evolved step overrides pushed from audio engine for visual sync
-  const [drumEvolvedOverrides, setDrumEvolvedOverrides] = useState<{ laneIndex: number; version: number; data: Partial<StepOverrides> } | undefined>(undefined);
+  const [drumEvolvedOverrides, setDrumEvolvedOverrides] = useState<EvolvedOverrideState | undefined>(undefined);
   const drumEvolvedVersionRef = useRef(0);
 
   // ── Lead/Synth Euclidean sequencer state ──
@@ -2897,7 +2927,7 @@ const App: React.FC = () => {
   const synthKeyboardUiStateRef = useRef<SynthKeyboardUiState | undefined>(undefined);
   const synthEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
   // Evolved step overrides pushed from audio engine for visual sync
-  const [synthEvolvedOverrides, setSynthEvolvedOverrides] = useState<{ laneIndex: number; version: number; data: Partial<StepOverrides> } | undefined>(undefined);
+  const [synthEvolvedOverrides, setSynthEvolvedOverrides] = useState<EvolvedOverrideState | undefined>(undefined);
   const synthEvolvedVersionRef = useRef(0);
 
   const [drumPresetVersion, setDrumPresetVersion] = useState(0);
@@ -3804,6 +3834,7 @@ const App: React.FC = () => {
     if (uiMode !== 'advanced' || activeTab !== 'visualizer') return;
 
     audioEngine.setDrumTriggerCallback((voice: unknown, velocity: number) => {
+      if (document.visibilityState !== 'visible') return;
       const amount = Math.max(0.08, Math.min(1, velocity || 0.4));
       emitVisualizerPulse('drums', amount);
       emitVisualizerPulse('dynamics', amount * 0.12);
@@ -3812,16 +3843,20 @@ const App: React.FC = () => {
       }
     });
     audioEngine.setDrumStepPositionCallback((steps: number[], hitCounts: number[]) => {
+      if (document.visibilityState !== 'visible') return;
       setVisualizerSequencerState('drum', steps, hitCounts);
     });
     audioEngine.setSynthStepPositionCallback((steps: number[], hitCounts: number[]) => {
+      if (document.visibilityState !== 'visible') return;
       setVisualizerSequencerState('synth', steps, hitCounts);
     });
     audioEngine.setDrumEuclidEvolveTriggerCallback((laneIndex: number) => {
+      if (document.visibilityState !== 'visible') return;
       emitVisualizerPulse('drums', 0.22 + Math.min(0.24, laneIndex * 0.04));
       emitVisualizerPulse('sequencer', 0.18);
     });
     audioEngine.setSynthEuclidEvolveTriggerCallback((laneIndex: number) => {
+      if (document.visibilityState !== 'visible') return;
       emitVisualizerPulse('synth', 0.2 + Math.min(0.24, laneIndex * 0.04));
       emitVisualizerPulse('sequencer', 0.18);
     });
@@ -3839,13 +3874,50 @@ const App: React.FC = () => {
   useEffect(() => {
     audioEngine.setDrumEvolveOverridesChangedCallback((laneIndex, overrides) => {
       drumEvolvedVersionRef.current += 1;
+      const payload = overrides as Partial<StepOverrides> & { swing?: unknown; subLaneStates?: unknown };
+      const swing = typeof payload.swing === 'number' && Number.isFinite(payload.swing)
+        ? Math.max(0, Math.min(0.75, payload.swing))
+        : undefined;
+      const subLaneStates = normalizeEvolvedSubLanePatch(payload.subLaneStates);
+      if (swing !== undefined) {
+        const nextSwings = [...(drumSwingsRef.current ?? DEFAULT_EUCLIDEAN_SWINGS)];
+        nextSwings[laneIndex] = swing;
+        drumSwingsRef.current = nextSwings;
+      }
+      drumSubLaneStatesRef.current = mergeEvolvedSubLanePatch(drumSubLaneStatesRef.current, laneIndex, subLaneStates);
+      if (drumStepOverridesRef.current) {
+        const prev = drumStepOverridesRef.current;
+        const next = { ...prev };
+        if (payload.triggerToggles?.[laneIndex] != null) {
+          const arr = [...prev.triggerToggles];
+          arr[laneIndex] = new Map(payload.triggerToggles[laneIndex]);
+          next.triggerToggles = arr;
+        }
+        const arrayKeys = ['probability', 'ratchet', 'trigCondition', 'expression', 'pitch', 'morph', 'distance', 'slice', 'reverse'] as const;
+        for (const key of arrayKeys) {
+          if (payload[key]?.[laneIndex] != null) {
+            const arr = [...prev[key]];
+            arr[laneIndex] = payload[key]![laneIndex] as never;
+            (next as Record<string, unknown>)[key] = arr;
+          }
+        }
+        const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection', 'sliceDirection', 'reverseDirection'] as const;
+        for (const key of directionKeys) {
+          if (payload[key]?.[laneIndex] != null) {
+            const arr = [...prev[key]];
+            arr[laneIndex] = payload[key]![laneIndex] ?? null;
+            (next as Record<string, unknown>)[key] = arr;
+          }
+        }
+        drumStepOverridesRef.current = next;
+      }
       if (activeTab === 'visualizer' && document.visibilityState === 'visible') {
         emitVisualizerPulse('drums', 0.2 + Math.min(0.24, laneIndex * 0.04));
         emitVisualizerPulse('sequencer', 0.16);
         return;
       }
       if (activeTab !== 'drums' || document.visibilityState !== 'visible') return;
-      setDrumEvolvedOverrides({ laneIndex, version: drumEvolvedVersionRef.current, data: overrides as Partial<StepOverrides> });
+      setDrumEvolvedOverrides({ laneIndex, version: drumEvolvedVersionRef.current, data: payload, ...(swing !== undefined ? { swing } : {}), ...(subLaneStates ? { subLaneStates } : {}) });
     });
     return () => {
       audioEngine.setDrumEvolveOverridesChangedCallback(() => {});
@@ -3856,25 +3928,58 @@ const App: React.FC = () => {
   useEffect(() => {
     audioEngine.setSynthEvolveOverridesChangedCallback((laneIndex, overrides) => {
       synthEvolvedVersionRef.current += 1;
+      const payload = overrides as {
+        triggerToggles?: Map<number, boolean>;
+        expression?: number[] | null;
+        morph?: number[] | null;
+        distance?: number[] | null;
+        probability?: number[] | null;
+        ratchet?: number[] | null;
+        pitch?: number[] | null;
+        expressionDirection?: LaneDirection | null;
+        pitchDirection?: LaneDirection | null;
+        morphDirection?: LaneDirection | null;
+        distanceDirection?: LaneDirection | null;
+        swing?: unknown;
+        subLaneStates?: unknown;
+      };
+      const swing = typeof payload.swing === 'number' && Number.isFinite(payload.swing)
+        ? Math.max(0, Math.min(0.75, payload.swing))
+        : undefined;
+      const subLaneStates = normalizeEvolvedSubLanePatch(payload.subLaneStates);
+      if (swing !== undefined) {
+        const nextSwings = [...(synthSwingsRef.current ?? DEFAULT_EUCLIDEAN_SWINGS)];
+        nextSwings[laneIndex] = swing;
+        synthSwingsRef.current = nextSwings;
+      }
+      synthSubLaneStatesRef.current = mergeEvolvedSubLanePatch(synthSubLaneStatesRef.current, laneIndex, subLaneStates);
       const data: Partial<StepOverrides> = {};
-        if (overrides.triggerToggles != null) {
+        if (payload.triggerToggles != null) {
           const arr = [new Map<number, boolean>(), new Map<number, boolean>(), new Map<number, boolean>(), new Map<number, boolean>()];
-          arr[laneIndex] = new Map(overrides.triggerToggles);
+          arr[laneIndex] = new Map(payload.triggerToggles);
           data.triggerToggles = arr;
         }
       const keys = ['expression', 'morph', 'distance', 'probability', 'ratchet'] as const;
       for (const key of keys) {
-        if (overrides[key] != null) {
+        if (payload[key] != null) {
           const arr: (number[] | null)[] = [null, null, null, null];
-          arr[laneIndex] = overrides[key]!;
+          arr[laneIndex] = payload[key]!;
           data[key] = arr;
         }
       }
       // Pitch arrives as relative offsets (engine converts MIDI→offsets at evolve boundary)
-      if (overrides.pitch != null) {
+      if (payload.pitch != null) {
         const arr: (number[] | null)[] = [null, null, null, null];
-        arr[laneIndex] = overrides.pitch;
+        arr[laneIndex] = payload.pitch;
         data.pitch = arr;
+      }
+      const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection'] as const;
+      for (const key of directionKeys) {
+        if (payload[key] != null) {
+          const arr = [null, null, null, null] as StepOverrides[typeof key];
+          arr[laneIndex] = payload[key]!;
+          data[key] = arr;
+        }
       }
       // Keep synthStepOverridesRef in sync so tab switches don't lose evolved state
       if (synthStepOverridesRef.current) {
@@ -3893,6 +3998,13 @@ const App: React.FC = () => {
             (next as Record<string, unknown>)[key] = arr;
           }
         }
+        for (const key of directionKeys) {
+          if (data[key]?.[laneIndex] != null) {
+            const arr = [...prev[key]];
+            arr[laneIndex] = data[key]![laneIndex] ?? null;
+            (next as Record<string, unknown>)[key] = arr;
+          }
+        }
         synthStepOverridesRef.current = next;
       }
       if (activeTab === 'visualizer' && document.visibilityState === 'visible') {
@@ -3901,7 +4013,7 @@ const App: React.FC = () => {
         return;
       }
       if (activeTab !== 'synth' || document.visibilityState !== 'visible') return;
-      setSynthEvolvedOverrides({ laneIndex, version: synthEvolvedVersionRef.current, data });
+      setSynthEvolvedOverrides({ laneIndex, version: synthEvolvedVersionRef.current, data, ...(swing !== undefined ? { swing } : {}), ...(subLaneStates ? { subLaneStates } : {}) });
     });
     return () => {
       audioEngine.setSynthEvolveOverridesChangedCallback(() => {});
@@ -7431,7 +7543,8 @@ const App: React.FC = () => {
         scheduleAudioEngineParamUpdate(stateWithPrefs);
 
         // Throttle visible UI sync while the engine owns the actual morph clock.
-        const shouldUpdateUI = now - lastUIUpdate >= 66 || progress >= 1;
+        const isVisible = document.visibilityState === 'visible';
+        const shouldUpdateUI = isVisible && (now - lastUIUpdate >= 66 || progress >= 1);
         if (shouldUpdateUI) {
           lastUIUpdate = now;
           setMorphPosition(newPosition);

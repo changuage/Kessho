@@ -172,6 +172,7 @@ export interface UseEuclideanSequencerResult {
   // ── Sub-Lane State ──
   /** Per-sequencer, per-sub-lane state (indexed [seqIdx][subLaneKind]) */
   subLaneStates: Record<SubLaneKind, SubLaneState>[];
+  setSubLaneStates: React.Dispatch<React.SetStateAction<Record<SubLaneKind, SubLaneState>[]>>;
   toggleSubLaneEnabled: (seqIdx: number, lane: SubLaneKind) => void;
   setSubLaneSteps: (seqIdx: number, lane: SubLaneKind, steps: number) => void;
   cycleSubLaneDirection: (seqIdx: number, lane: SubLaneKind) => void;
@@ -179,16 +180,20 @@ export interface UseEuclideanSequencerResult {
   setSubLaneRange: (seqIdx: number, lane: RangeSubLaneKind, min: number, max: number) => void;
   /** Per-sequencer linked state */
   linked: boolean[];
+  setLinked: React.Dispatch<React.SetStateAction<boolean[]>>;
   toggleLinked: (seqIdx: number) => void;
 
   // ── Per-Seq Clock/Swing ──
   clockDivs: ClockDivision[];
+  setClockDivs: React.Dispatch<React.SetStateAction<ClockDivision[]>>;
   setClockDiv: (seqIdx: number, div: ClockDivision) => void;
   swings: number[];
+  setSwings: React.Dispatch<React.SetStateAction<number[]>>;
   setSwing: (seqIdx: number, value: number) => void;
 
   // ── Per-Seq Pitch Settings ──
   pitchSettings: PitchSettings[];
+  setPitchSettings: React.Dispatch<React.SetStateAction<PitchSettings[]>>;
   setPitchMode: (seqIdx: number, mode: PitchMode) => void;
   setPitchRoot: (seqIdx: number, root: number) => void;
   setPitchScale: (seqIdx: number, scale: ScaleName) => void;
@@ -1093,18 +1098,23 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     toggleSolo,
     presetNames,
     subLaneStates,
+    setSubLaneStates,
     toggleSubLaneEnabled,
     setSubLaneSteps,
     cycleSubLaneDirection,
     setSubLaneValueMode,
     setSubLaneRange,
     linked,
+    setLinked,
     toggleLinked,
     clockDivs,
+    setClockDivs,
     setClockDiv,
     swings,
+    setSwings,
     setSwing: setSwingVal,
     pitchSettings,
+    setPitchSettings,
     setPitchMode,
     setPitchRoot,
     setPitchScale,

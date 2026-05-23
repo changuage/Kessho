@@ -7,23 +7,9 @@ import {
 
 export type SequencerKind = 'synth' | 'drum';
 
-export type SequencerStepToggleOverride = {
-  step: number;
-  value: boolean;
-};
-
-export type SequencerStepValueOverride = {
-  step: number;
-  field: CoreProductStepValueField;
-  value: number;
-  value2?: number;
-};
-
-export type SequencerStepValueConfig = {
-  field: CoreProductStepValueField;
-  steps: number;
-  direction: CoreProductSubLaneDirection;
-};
+export type SequencerStepToggleOverride = { step: number; value: boolean };
+export type SequencerStepValueOverride = { step: number; field: CoreProductStepValueField; value: number; value2?: number; range?: boolean };
+export type SequencerStepValueConfig = { field: CoreProductStepValueField; steps: number; direction: CoreProductSubLaneDirection };
 
 export function normalizedUnitValue(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value)
@@ -50,24 +36,6 @@ export function normalizeClockDivisionValue(value: unknown, fallback: number): n
     '1/64': 64,
   };
   return table[value] ?? fallback;
-}
-
-export function normalizeEvolveConfigs(configs: unknown): Array<{ enabled: boolean; evolution: number; everyBars: number }> {
-  const items = Array.isArray(configs) ? configs : [];
-  return items.slice(0, 4).map((config) => {
-    const source = config && typeof config === 'object' ? config as Record<string, unknown> : {};
-    const evolution = typeof source.evolution === 'number' && Number.isFinite(source.evolution)
-      ? source.evolution
-      : 0;
-    const everyBars = typeof source.everyBars === 'number' && Number.isFinite(source.everyBars)
-      ? source.everyBars
-      : 4;
-    return {
-      enabled: source.enabled !== false,
-      evolution: Math.max(0, Math.min(1, evolution)),
-      everyBars: Math.max(1, Math.round(everyBars)),
-    };
-  });
 }
 
 export function normalizeSubLaneEnabledStates(states: unknown): Record<string, boolean>[] {
@@ -162,6 +130,32 @@ export function normalizeSequencerStepValueOverrides(
   fallback: SequencerStepValueOverride[][],
   includeMidiNote: boolean,
 ): SequencerStepValueOverride[][] {
+  return normalizeSequencerStepValueOverridesInternal(overrides, fallback, includeMidiNote, 0, 127);
+}
+
+export function normalizeDrumSequencerStepValueOverrides(
+  overrides: unknown,
+  fallback: SequencerStepValueOverride[][],
+  baseMidiForLane: (laneIndex: number) => number,
+): SequencerStepValueOverride[][] {
+  return normalizeSequencerStepValueOverridesInternal(
+    overrides,
+    fallback,
+    true,
+    -24,
+    24,
+    (offset, laneIndex) => baseMidiForLane(laneIndex) + offset,
+  );
+}
+
+function normalizeSequencerStepValueOverridesInternal(
+  overrides: unknown,
+  fallback: SequencerStepValueOverride[][],
+  includeMidiNote: boolean,
+  midiNoteMin: number,
+  midiNoteMax: number,
+  midiNoteMap?: (value: number, laneIndex: number) => number,
+): SequencerStepValueOverride[][] {
   const source = overrides && typeof overrides === 'object' && !Array.isArray(overrides) && !(overrides instanceof Map)
     ? overrides as Record<string, unknown>
     : null;
@@ -184,18 +178,21 @@ export function normalizeSequencerStepValueOverrides(
     for (let laneIndex = 0; laneIndex < Math.min(value.length, lanes.length); laneIndex += 1) {
       const laneOut = lanes[laneIndex];
       if (!laneOut) continue;
-      collectNumericStepValues(value[laneIndex], field, min, max, round, laneOut);
+      collectNumericStepValues(value[laneIndex], field, min, max, round, laneOut, laneIndex, field === CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote ? midiNoteMap : undefined);
     }
   };
 
   addNumericField('probability', CORE_PRODUCT_STEP_VALUE_FIELDS.probability, 0, 1);
   addNumericField('ratchet', CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet, 1, 8, true);
   if (includeMidiNote) {
-    addNumericField('pitch', CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote, 0, 127);
+    addNumericField('pitch', CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote, midiNoteMin, midiNoteMax);
   }
   addNumericField('expression', CORE_PRODUCT_STEP_VALUE_FIELDS.expression, 0, 1);
   addNumericField('morph', CORE_PRODUCT_STEP_VALUE_FIELDS.morph, 0, 1);
   addNumericField('distance', CORE_PRODUCT_STEP_VALUE_FIELDS.distance, 0, 1);
+  addRangeField(source.expressionRanges, CORE_PRODUCT_STEP_VALUE_FIELDS.expression, lanes);
+  addRangeField(source.morphRanges, CORE_PRODUCT_STEP_VALUE_FIELDS.morph, lanes);
+  addRangeField(source.distanceRanges, CORE_PRODUCT_STEP_VALUE_FIELDS.distance, lanes);
 
   if (Array.isArray(source.trigCondition)) {
     for (let laneIndex = 0; laneIndex < Math.min(source.trigCondition.length, lanes.length); laneIndex += 1) {
@@ -268,13 +265,32 @@ function collectNumericStepValues(
   max: number,
   round: boolean,
   out: SequencerStepValueOverride[],
+  laneIndex: number,
+  mapValue?: (value: number, laneIndex: number) => number,
 ): void {
   if (!Array.isArray(lane)) return;
   for (let step = 0; step < Math.min(64, lane.length); step += 1) {
     const raw = lane[step];
     if (typeof raw !== 'number' || !Number.isFinite(raw)) continue;
-    const value = Math.max(min, Math.min(max, round ? Math.round(raw) : raw));
+    const normalized = Math.max(min, Math.min(max, round ? Math.round(raw) : raw));
+    const value = mapValue ? mapValue(normalized, laneIndex) : normalized;
     out.push({ step, field, value });
+  }
+}
+
+function addRangeField(
+  value: unknown,
+  field: CoreProductStepValueField,
+  lanes: SequencerStepValueOverride[][],
+): void {
+  if (!Array.isArray(value)) return;
+  while (lanes.length < Math.min(16, value.length)) lanes.push([]);
+  for (let laneIndex = 0; laneIndex < Math.min(value.length, lanes.length); laneIndex += 1) {
+    const range = value[laneIndex];
+    if (!range || typeof range !== 'object') continue;
+    const min = normalizedUnitValue((range as { min?: unknown }).min, Number.NaN);
+    const max = normalizedUnitValue((range as { max?: unknown }).max, Number.NaN);
+    if (Number.isFinite(min) && Number.isFinite(max)) lanes[laneIndex]?.push({ step: 0, field, value: Math.min(min, max), value2: Math.max(min, max), range: true });
   }
 }
 

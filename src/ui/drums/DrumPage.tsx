@@ -26,10 +26,21 @@ import SeqSparkline from './SeqSparkline';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { SliderPrimitive } from '../sliderSystem';
 import { serializeStepOverrides } from '../sequencer/stepOverrideSerialization';
-import { applySequencePresetOverrides, copySequenceLaneForPreset } from '../sequencer/sequencePresetLane';
+import {
+  applySequencePresetClockDivs,
+  applySequencePresetEvolveConfigs,
+  applySequencePresetLinked,
+  applySequencePresetOverrides,
+  applySequencePresetSubLaneStates,
+  applySequencePresetSwings,
+  copySequenceLaneForPreset,
+  copySequenceLaneStateForPreset,
+  type SerializedSequenceLanePresetState,
+} from '../sequencer/sequencePresetLane';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import { SEQUENCER_LANE_COLORS, SEQUENCER_SUB_LANE_COLORS } from '../../designSystem/colors';
 import {
+  EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY,
   EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY,
   applyEuclideanPatternToDrumLaneState,
   extractEuclideanPatternLaneDataFromDrumState,
@@ -43,6 +54,14 @@ const LANE_CONFIGS = [
   { color: SEQUENCER_LANE_COLORS[2], name: 'Seq 3' },
   { color: SEQUENCER_LANE_COLORS[3], name: 'Seq 4' },
 ];
+
+type EvolvedSequencerPatch = {
+  laneIndex: number;
+  version: number;
+  data: Partial<StepOverrides>;
+  swing?: number;
+  subLaneStates?: Partial<Record<SubLaneKind, Partial<SubLaneState>>>;
+};
 
 // ── Keyboard shortcuts: A S D F G H J → voice triggers ──
 const KEY_TO_VOICE: Record<string, DrumVoiceType> = {
@@ -103,7 +122,7 @@ export interface DrumPageProps {
   /** Called when view mode changes so parent can persist it */
   onViewModeChange?: (mode: 'simple' | 'detail' | 'overview') => void;
   /** Evolved step overrides pushed from audio engine (for visual sync) */
-  evolvedOverrides?: { laneIndex: number; version: number; data: Partial<StepOverrides> };
+  evolvedOverrides?: EvolvedSequencerPatch;
   /** Called when per-lane clock divisions change */
   onClockDivsChange?: (divs: ClockDivision[]) => void;
   initialClockDivs?: ClockDivision[];
@@ -208,18 +227,33 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   const drumEuclideanPatternOptions = React.useMemo<UsePresetsOptions[]>(() => LANE_CONFIGS.map((_, laneIdx) => ({
     customExtract: (currentState) => {
       const stepOverrides = serializeStepOverrides(copySequenceLaneForPreset(seq.stepOverrides, laneIdx));
+      const sequenceState = copySequenceLaneStateForPreset({
+        laneIdx,
+        subLaneStates: seq.subLaneStates,
+        clockDivs: seq.clockDivs,
+        swings: seq.swings,
+        linked: seq.linked,
+        evolveConfigs: seq.evolveConfigs,
+      });
       return {
         ...extractEuclideanPatternLaneDataFromDrumState(currentState, laneIdx),
         ...(stepOverrides ? { [EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY]: stepOverrides } : {}),
+        [EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY]: sequenceState,
       };
     },
     customApply: (currentState, data) => applyEuclideanPatternToDrumLaneState(currentState, data, laneIdx),
-  })), [seq.stepOverrides]);
+  })), [seq.clockDivs, seq.evolveConfigs, seq.linked, seq.stepOverrides, seq.subLaneStates, seq.swings]);
 
   const handleEuclidSequenceLoad = useCallback((laneIdx: number, entry: PresetEntry, data: Record<string, unknown>) => {
     setEuclidPresetNameForLane(laneIdx, entry.name);
     const stepOverrides = data[EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY] as SerializedStepOverrides | undefined;
+    const sequenceState = data[EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY] as SerializedSequenceLanePresetState | undefined;
     seq.setStepOverrides((current) => applySequencePresetOverrides(current, stepOverrides ?? {}, laneIdx));
+    seq.setSubLaneStates((current) => applySequencePresetSubLaneStates(current, sequenceState, laneIdx));
+    seq.setClockDivs((current) => applySequencePresetClockDivs(current, sequenceState, laneIdx));
+    seq.setSwings((current) => applySequencePresetSwings(current, sequenceState, laneIdx));
+    seq.setLinked((current) => applySequencePresetLinked(current, sequenceState, laneIdx));
+    seq.setEvolveConfigs((current) => applySequencePresetEvolveConfigs(current, sequenceState, laneIdx));
   }, [seq, setEuclidPresetNameForLane]);
 
   const renderSequencePresetControl = useCallback((laneIdx: number) => (
@@ -350,7 +384,23 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   useEffect(() => {
     if (!evolvedOverrides || evolvedOverrides.version === evolvedVersionRef.current) return;
     evolvedVersionRef.current = evolvedOverrides.version;
-    const { laneIndex, data } = evolvedOverrides;
+    const { laneIndex, data, swing, subLaneStates } = evolvedOverrides;
+    if (typeof swing === 'number' && Number.isFinite(swing)) {
+      seq.setSwings(prev => prev.map((value, index) => (index === laneIndex ? swing : value)));
+    }
+    if (subLaneStates && typeof subLaneStates === 'object') {
+      seq.setSubLaneStates(prev => prev.map((laneState, index) => (
+        index === laneIndex
+          ? {
+              ...laneState,
+              ...Object.fromEntries(Object.entries(subLaneStates).map(([key, patch]) => [
+                key,
+                { ...laneState[key as SubLaneKind], ...(patch ?? {}) },
+              ])) as Record<SubLaneKind, SubLaneState>,
+            }
+          : laneState
+      )));
+    }
     seq.setStepOverrides(prev => {
       const next = { ...prev };
       if (data.triggerToggles?.[laneIndex] != null) {
@@ -366,8 +416,47 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
           next[key] = arr;
         }
       }
+      const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection', 'sliceDirection', 'reverseDirection'] as const;
+      for (const key of directionKeys) {
+        if (data[key]?.[laneIndex] != null) {
+          const arr = [...prev[key]];
+          arr[laneIndex] = data[key]![laneIndex] ?? null;
+          next[key] = arr;
+        }
+      }
       return next;
     });
+    seq.setSubLaneStates(prev => prev.map((laneState, index) => {
+      if (index !== laneIndex) return laneState;
+      const nextLane = { ...laneState };
+      const lengthFields = {
+        expression: data.expression?.[laneIndex]?.length,
+        pitch: data.pitch?.[laneIndex]?.length,
+        morph: data.morph?.[laneIndex]?.length,
+        distance: data.distance?.[laneIndex]?.length,
+        slice: data.slice?.[laneIndex]?.length,
+        reverse: data.reverse?.[laneIndex]?.length,
+      } as const;
+      const directionFields = {
+        expression: data.expressionDirection?.[laneIndex],
+        pitch: data.pitchDirection?.[laneIndex],
+        morph: data.morphDirection?.[laneIndex],
+        distance: data.distanceDirection?.[laneIndex],
+        slice: data.sliceDirection?.[laneIndex],
+        reverse: data.reverseDirection?.[laneIndex],
+      } as const;
+      for (const lane of Object.keys(lengthFields) as SubLaneKind[]) {
+        const steps = lengthFields[lane];
+        const direction = directionFields[lane];
+        if (steps == null && direction == null) continue;
+        nextLane[lane] = {
+          ...nextLane[lane],
+          ...(typeof steps === 'number' ? { steps } : {}),
+          ...(direction ? { direction } : {}),
+        };
+      }
+      return nextLane;
+    }));
   }, [evolvedOverrides, seq]);
 
   // Sync step overrides (all sub-lane data) to audio engine when they change

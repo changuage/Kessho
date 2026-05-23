@@ -17,6 +17,12 @@ const host = read('src/audio/coreProductEngineHost.ts');
 const assetAdapter = read('src/audio/CoreProductAssetAdapter.ts');
 const fallbackDiagnostics = read('src/audio/CoreProductFallbackDiagnostics.ts');
 const hostSequencerAdapter = read('src/audio/CoreProductHostSequencerAdapter.ts');
+const hostSequencerEvolveConfig = read('src/audio/CoreProductHostSequencerEvolveConfig.ts');
+const hostSequencerEvolve = read('src/audio/CoreProductHostSequencerEvolve.ts');
+const hostSequencerSubLaneEvolve = read('src/audio/CoreProductHostSequencerSubLaneEvolve.ts');
+const hostSequencerSwing = read('src/audio/CoreProductHostSequencerSwing.ts');
+const hostSequencerUiState = read('src/audio/CoreProductHostSequencerUiState.ts');
+const hostSequencerVisuals = read('src/audio/CoreProductHostSequencerVisuals.ts');
 const hostRuntimeGuards = read('src/audio/CoreProductHostRuntimeGuards.ts');
 const runtimeAdapter = read('src/audio/CoreProductRuntimeAdapter.ts');
 const runtime = read('src/audio/coreProductRuntime.ts');
@@ -30,18 +36,26 @@ const snapshotEncoder = read('src/audio/coreProductSnapshotEncoder.ts');
 const legacyPresetCompat = read('src/audio/CoreProductLegacyPresetCompat.ts');
 const telemetryTypes = read('src/audio/coreProductTelemetry.ts');
 const synthPage = read('src/ui/synth/SynthPage.tsx');
+const synthPresetManager = read('src/ui/synth/SynthPresetManager.tsx');
+const padRandomize = read('src/audio/padRandomize.ts');
 const filterLfoViz = read('src/ui/synth/FilterLfoViz.tsx');
 const assets = `${read('src/audio/coreProductAssets.ts')}\n${read('src/audio/coreProductAssetManifest.json')}`;
 const generatedSchema = read('src/audio/generated/kesshoProductSchema.ts');
 const worklet = read('public/worklets/kessho-core-product.worklet.js');
 const manifest = read('scripts/kessho-core-build-manifest.mjs');
-const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostRuntimeGuards}`;
+const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostSequencerEvolveConfig}\n${hostSequencerUiState}\n${hostRuntimeGuards}`;
 const snapshotSurface = `${snapshotTypes}\n${snapshot}\n${snapshotEncoder}`;
 
 const lineCount = (source) => source.split('\n').length;
 assert(lineCount(host) <= 1550, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
 assert(lineCount(assetAdapter) <= 220, `CoreProductAssetAdapter.ts exceeds cleanup size cap (${lineCount(assetAdapter)} lines)`);
 assert(lineCount(hostSequencerAdapter) <= 320, `CoreProductHostSequencerAdapter.ts exceeds cleanup size cap (${lineCount(hostSequencerAdapter)} lines)`);
+assert(lineCount(hostSequencerEvolveConfig) <= 80, `CoreProductHostSequencerEvolveConfig.ts exceeds cleanup size cap (${lineCount(hostSequencerEvolveConfig)} lines)`);
+assert(lineCount(hostSequencerEvolve) <= 100, `CoreProductHostSequencerEvolve.ts exceeds cleanup size cap (${lineCount(hostSequencerEvolve)} lines)`);
+assert(lineCount(hostSequencerSubLaneEvolve) <= 120, `CoreProductHostSequencerSubLaneEvolve.ts exceeds cleanup size cap (${lineCount(hostSequencerSubLaneEvolve)} lines)`);
+assert(lineCount(hostSequencerSwing) <= 80, `CoreProductHostSequencerSwing.ts exceeds cleanup size cap (${lineCount(hostSequencerSwing)} lines)`);
+assert(lineCount(hostSequencerUiState) <= 220, `CoreProductHostSequencerUiState.ts exceeds cleanup size cap (${lineCount(hostSequencerUiState)} lines)`);
+assert(lineCount(hostSequencerVisuals) <= 180, `CoreProductHostSequencerVisuals.ts exceeds cleanup size cap (${lineCount(hostSequencerVisuals)} lines)`);
 assert(lineCount(hostRuntimeGuards) <= 180, `CoreProductHostRuntimeGuards.ts exceeds cleanup size cap (${lineCount(hostRuntimeGuards)} lines)`);
 assert(lineCount(runtimeAdapter) <= 650, `CoreProductRuntimeAdapter.ts exceeds cleanup size cap (${lineCount(runtimeAdapter)} lines)`);
 assert(lineCount(arrangementScheduler) <= 520, `coreProductArrangementScheduler.ts exceeds cleanup size cap (${lineCount(arrangementScheduler)} lines)`);
@@ -119,6 +133,7 @@ for (const token of [
   'setSynthStepOverrides(overrides: unknown): void',
   'setDrumStepOverrides(overrides: unknown): void',
   'normalizeSubLaneEnabledStates(states: unknown)',
+  'normalizeDrumSequencerStepValueOverrides(',
   'normalizeSequencerStepToggleOverrides(',
   'normalizeSequencerStepValueOverrides(',
   'normalizeSequencerStepValueConfigs(',
@@ -142,11 +157,13 @@ for (const token of [
   'resolveCoreProductRangeTargets(key)',
   'setDrumTriggerCallback(callback:',
   'setTelemetryCallback((telemetry) => this.handleTelemetry(telemetry));',
+  'publishCoreProductSequencerVisuals({ telemetry',
+  'this.publishSequencerVisuals(hostTelemetry)',
   'reconcileSequencerUiState(telemetry:',
   'reconcileSynthSequencerLane(',
   'reconcileDrumSequencerLane(',
-  'synthEvolvePayloadFromLane(',
-  'drumEvolvePayloadFromLane(',
+  'coreProductSynthEvolvePayloadFromLane(',
+  'coreProductDrumEvolvePayloadFromLane(',
   'createPerfSnapshot(telemetry:',
   'telemetryRngState',
   'rngSeed: this.latestTelemetry.rngSeed',
@@ -154,6 +171,35 @@ for (const token of [
   'coreProductRangeValueContext',
 ]) {
   assert(hostSurface.includes(token), `core-product host/sequencer adapter is missing ${token}`);
+}
+
+for (const token of [
+  'createCoreProductSequencerEvolveClock',
+  'tickConfigs(',
+  'createCoreProductSequencerDiceEvent(',
+  'evolveCoreProductSequencerSubLaneConfigs(',
+  'input.telemetry.transportRunning',
+]) {
+  assert(hostSequencerEvolve.includes(token), `Product sequencer evolve clock is missing ${token}`);
+}
+
+for (const token of [
+  'subLaneLengthDrift',
+  'subLaneDirectionFlip',
+  'createCoreProductSequencerSubLaneConfigEvent',
+]) {
+  assert(`${hostSequencerSubLaneEvolve}\n${host}`.includes(token), `Product sequencer sub-lane evolve wiring is missing ${token}`);
+}
+
+for (const token of [
+  'visualLaneFromState(',
+  'resolveEuclidPatternParams(',
+  'euclideanPatternMask(',
+  'hitCountThroughStep(',
+  "input.publish('synthStepPosition'",
+  "input.publish('drumStepPosition'",
+]) {
+  assert(hostSequencerVisuals.includes(token), `Product sequencer visuals bridge is missing ${token}`);
 }
 
 for (const token of [
@@ -564,6 +610,9 @@ assert(
 
 for (const token of [
   'applyPadDistanceToState',
+  'laneManualMaskFromPattern',
+  'resolveEuclidPatternParams(',
+  'euclideanPatternMask(steps, hits, rotation)',
   "exactPadParamsFromState(distanceAdjustedPadExactState(state, 'pad1'), 0)",
   "exactPadParamsFromState(distanceAdjustedPadExactState(state, 'pad2'), 1)",
 ]) {
@@ -579,12 +628,47 @@ for (const token of [
 }
 
 for (const token of [
+  "export type PadRandomStyle = 'target' | 'walk'",
+  'const WALK_LINEAR_RADIUS',
+  "const LFO_WAVES = ['sine', 'triangle', 'sawtooth', 'square', 'sampleHold', 'randomSmooth', 'randomWalk'] as const",
+  "const walkMode = style === 'walk'",
+  'return stabilizePadSnapshot(scope, next)',
+]) {
+  assert(padRandomize.includes(token), `Pad patch randomizer must keep the walk variant available: missing ${token}`);
+}
+
+for (const token of [
+  'const PAD_VARIANT_PROGRESS = [0.2, 0.4, 0.65, 0.85, 1] as const',
+  "const walkGoal = createPadRandomGoal(current, scope, 'walk', `walk|${variation.history.length}`)",
+  'const nextSnapshot = blendPadScopeState(scope, current, walkGoal, PAD_WALK_BLEND, PAD_WALK_DISCRETE_THRESHOLD)',
+  'applyPadVariationSnapshot(scope, nextSnapshot)',
+  'appliedSteps: prev.appliedSteps + 1',
+]) {
+  assert(synthPage.includes(token), `Synth Pad randomizer walk-step controls must stay wired: missing ${token}`);
+}
+assert(
+  synthPresetManager.includes('variationControls.progressText') &&
+    !synthPresetManager.includes("? 'Walk mode'\n              : (variationControls.progressText"),
+  'Synth Pad randomizer must display walk-step progress instead of hiding it behind static Walk mode text',
+);
+
+for (const token of [
+  'this.appendPadExactPatchDiffs(events, previous.sources, next.sources)',
+  'coreProductPadRuntimeParamId(next.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ? 1 : 0, paramIndex)',
+  'previous.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT && next.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT',
+]) {
+  assert(runtimeAdapter.includes(token), `Product TS Pad randomizer steps must dirty-diff exact patch params: missing ${token}`);
+}
+
+for (const token of [
   'wasmHeapBudgetBytes?: number',
   'decodedAssetBytes?: number',
   'decodedAssetBudgetBytes?: number',
   'assetAllocationBytes?: number',
   'workletLeadStemPeak?: number',
   'workletGraphTapPeaks?: number[]',
+  'stepValueConfigEnabledMask?: number',
+  'probabilityOverrideSetLow?: number',
 ]) {
   assert(telemetryTypes.includes(token), `core-product telemetry type is missing ${token}`);
 }
@@ -612,6 +696,10 @@ for (const token of [
   'workletPadStemPeak: this.lastStemPeaks[1] || 0',
   'workletLeadStemPeak: Math.max(this.lastStemPeaks[3] || 0, this.lastStemPeaks[4] || 0)',
   'runtimeWalkValues[controlId] = value;',
+  'highestMaskStep(setLow, setHigh)',
+  'stepValueConfigEnabledMask: this.view.getUint32(ptr + 100, true)',
+  'stepValueConfigSteps: this.readUint32Array(ptr, 104, 8)',
+  'stepValueConfigDirections: this.readUint32Array(ptr, 136, 8)',
   'const TELEMETRY_BYTES = 1040;',
   'rngSeed: this.view.getUint32(ptr + 928, true)',
   'rngState: this.view.getUint32(ptr + 932, true)',
@@ -750,6 +838,7 @@ const snapshotImportAllowlist = new Set([
   './coreProductSnapshotEncoder',
   './coreProductSnapshotTypes',
   './distanceMacro',
+  './euclideanPatterns',
   './generated/kesshoProductSchema',
   './granularMacroCore',
   './harmony',
@@ -769,7 +858,13 @@ const hostImportAllowlist = new Set([
   './CoreProductAssetAdapter',
   './CoreProductHostDebugTelemetry',
   './CoreProductHostSequencerAdapter',
+  './CoreProductHostSequencerEvolve',
+  './CoreProductHostSequencerEvolveConfig',
+  './CoreProductHostSequencerSubLaneEvolve',
+  './CoreProductHostSequencerSwing',
+  './CoreProductHostSequencerUiState',
   './CoreProductHostRuntimeGuards',
+  './CoreProductHostSequencerVisuals',
   './CoreProductLegacyPresetCompat',
   './CoreProductRuntimeAdapter',
   './coreMidiEvents',

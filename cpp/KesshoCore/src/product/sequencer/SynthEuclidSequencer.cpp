@@ -1,5 +1,38 @@
 #include "../KesshoProductEngineInternal.h"
 
+namespace {
+
+float selectedDrumVoiceMidi(const kessho::product::internal::LaneState& lane, uint64_t hit_count, uint32_t seed) {
+  const uint32_t mask = lane.drum_voice_mask;
+  if (mask == 0u) {
+    return lane.midi_note;
+  }
+  uint32_t enabled_count = 0u;
+  for (uint32_t voice = 0u; voice < DRUM_NUM_VOICE_TYPES; ++voice) {
+    if ((mask & (1u << voice)) != 0u) {
+      ++enabled_count;
+    }
+  }
+  if (enabled_count == 0u) {
+    return lane.midi_note;
+  }
+  const uint32_t selected = kessho::product::internal::hashU32(
+      seed ^ lane.seed ^ static_cast<uint32_t>(hit_count * 747796405ull) ^ 0x9e3779b9u) % enabled_count;
+  uint32_t seen = 0u;
+  for (uint32_t voice = 0u; voice < DRUM_NUM_VOICE_TYPES; ++voice) {
+    if ((mask & (1u << voice)) == 0u) {
+      continue;
+    }
+    if (seen == selected) {
+      return 36.0f + static_cast<float>(voice);
+    }
+    ++seen;
+  }
+  return lane.midi_note;
+}
+
+} // namespace
+
   void KesshoProductEngine::generateLaneEvents(
       const LaneState* lanes,
       uint32_t lane_count,
@@ -38,12 +71,18 @@
       if (!stepTrigConditionPass(lane, step_id, absolute_step)) {
         continue;
       }
+      const uint64_t hit_count_phase = hitCountBeforeAbsoluteStep(lane, absolute_step);
       const uint32_t probability_seed = lane.seed ^ static_cast<uint32_t>(absolute_step * 2654435761ull) ^ (lane_index * 16777619u);
+      const bool drum_lane = lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM;
+      const float drum_midi_note = drum_lane
+          ? selectedDrumVoiceMidi(lane, hit_count_phase, probability_seed)
+          : lane.midi_note;
       const uint32_t probability_step_id = subLaneStepForField(
           lane,
           KESSHO_PRODUCT_STEP_FIELD_PROBABILITY,
           step_id,
-          absolute_step);
+          absolute_step,
+          hit_count_phase);
       const float probability_base = stepFloatValue(
           probability_step_id,
           lane.probability_override_set_low,
@@ -67,7 +106,8 @@
           lane,
           KESSHO_PRODUCT_STEP_FIELD_RATCHET,
           step_id,
-          absolute_step);
+          absolute_step,
+          hit_count_phase);
       const uint32_t ratchet = clampU32(
           stepU32Value(
               ratchet_step_id,
@@ -93,13 +133,15 @@
             lane,
             KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE,
             step_id,
-            absolute_step);
-        event.midi_note = stepFloatValue(
+            absolute_step,
+            hit_count_phase);
+        const float sequenced_midi_note = stepFloatValue(
             midi_step_id,
             lane.midi_note_override_set_low,
             lane.midi_note_override_set_high,
             lane.midi_note_overrides,
             resolveHarmonyMidi(lane, lane_index, step_id, ratchet_sample));
+        event.midi_note = drum_lane ? drum_midi_note : sequenced_midi_note;
         event.frequency_hz = midiToFrequency(event.midi_note);
         event.velocity = evolvedLaneValue(
             lane,
@@ -113,40 +155,64 @@
             1.0f) /
             static_cast<float>(ratchet_index + 1u);
         event.hold_seconds = lane.hold_seconds;
+        if (drum_lane) {
+          event.send_delay_a = ratchet > 1u
+              ? static_cast<float>((ratchet_spacing / sample_rate) * 0.8)
+              : 1.0e10f;
+          event.send_delay_b = ratchet > 1u
+              ? static_cast<float>((ratchet_spacing / sample_rate) * 0.15)
+              : 1.0e10f;
+          event.send_granular = clampFloat(sequenced_midi_note - lane.midi_note, -24.0f, 24.0f);
+        }
         const uint32_t event_seed = probability_seed ^ (ratchet_index * 374761393u);
         const uint32_t morph_step_id = subLaneStepForField(
             lane,
             KESSHO_PRODUCT_STEP_FIELD_MORPH,
             step_id,
-            absolute_step);
+            absolute_step,
+            hit_count_phase);
         const uint32_t distance_step_id = subLaneStepForField(
             lane,
             KESSHO_PRODUCT_STEP_FIELD_DISTANCE,
             step_id,
-            absolute_step);
+            absolute_step,
+            hit_count_phase);
         const uint32_t expression_step_id = subLaneStepForField(
             lane,
             KESSHO_PRODUCT_STEP_FIELD_EXPRESSION,
             step_id,
-            absolute_step);
-        const float morph_base = stepFloatValue(
+            absolute_step,
+            hit_count_phase);
+        const float morph_base = stepFloatRangeValue(
             morph_step_id,
             lane.morph_override_set_low,
             lane.morph_override_set_high,
             lane.morph_overrides,
-            lane.morph);
-        const float distance_base = stepFloatValue(
+            lane.morph_range_set_low,
+            lane.morph_range_set_high,
+            lane.morph_range_maxes,
+            lane.morph,
+            event_seed ^ 0x2c1b3c6du);
+        const float distance_base = stepFloatRangeValue(
             distance_step_id,
             lane.distance_override_set_low,
             lane.distance_override_set_high,
             lane.distance_overrides,
-            lane.distance);
-        const float expression_base = stepFloatValue(
+            lane.distance_range_set_low,
+            lane.distance_range_set_high,
+            lane.distance_range_maxes,
+            lane.distance,
+            event_seed ^ 0x165667b1u);
+        const float expression_base = stepFloatRangeValue(
             expression_step_id,
             lane.expression_override_set_low,
             lane.expression_override_set_high,
             lane.expression_overrides,
-            lane.expression);
+            lane.expression_range_set_low,
+            lane.expression_range_set_high,
+            lane.expression_range_maxes,
+            lane.expression,
+            event_seed ^ 0x51f15ca9u);
         event.morph = resolveModulatedValue(lane.target_source_id, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, morph_base, event_seed);
         event.distance = resolveModulatedValue(lane.target_source_id, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance_base, event_seed);
         event.expression = resolveModulatedValue(lane.target_source_id, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression_base, event_seed);
@@ -195,5 +261,10 @@
       event.morph,
       event.distance,
       event.expression,
-      seed);
+      seed,
+      0u,
+      true,
+      event.source_id == KESSHO_PRODUCT_SOURCE_DRUM ? event.send_granular : 0.0f,
+      event.source_id == KESSHO_PRODUCT_SOURCE_DRUM ? event.send_delay_a : 1.0e10f,
+      event.source_id == KESSHO_PRODUCT_SOURCE_DRUM ? event.send_delay_b : 1.0e10f);
 }

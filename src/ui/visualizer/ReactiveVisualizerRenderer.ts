@@ -20,6 +20,9 @@ export interface ReactiveVisualizerControls {
   density: number;
   background: number;
   frameRate: number;
+  shape: number;
+  organic: number;
+  edges: number;
   focus: VisualizerFocus;
 }
 
@@ -61,6 +64,7 @@ type UniformName =
   | 'u_reactive'
   | 'u_controlA'
   | 'u_controlB'
+  | 'u_controlC'
   | 'u_environment'
   | 'u_pulseA'
   | 'u_pulseB';
@@ -89,6 +93,7 @@ uniform vec4 u_harmony;
 uniform vec4 u_reactive;
 uniform vec4 u_controlA;
 uniform vec4 u_controlB;
+uniform vec4 u_controlC;
 uniform vec4 u_environment;
 uniform vec4 u_pulseA;
 uniform vec4 u_pulseB;
@@ -96,6 +101,7 @@ uniform vec4 u_pulseB;
 const float PI = 3.141592653589793;
 const float TAU = 6.283185307179586;
 
+/* ─── Noise primitives ─── */
 float hash(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
   p += dot(p, p + 45.32);
@@ -107,43 +113,54 @@ float noise(vec2 p) {
   vec2 f = fract(p);
   vec2 u = f * f * (3.0 - 2.0 * f);
   return mix(
-    mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
+    mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
     mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
     u.y
   );
 }
 
-float fbm(vec2 p, float detail) {
-  float value = 0.0;
-  float amp = 0.5;
-  float freq = 1.0;
+float fbm(vec2 p, float octaves) {
+  float v = 0.0, a = 0.5, f = 1.0;
   for (int i = 0; i < 5; i++) {
-    if (float(i) > detail) break;
-    value += amp * noise(p * freq);
-    freq *= 2.04;
-    amp *= 0.52;
+    if (float(i) >= octaves) break;
+    v += a * noise(p * f);
+    f *= 2.03;
+    a *= 0.52;
   }
-  return value;
+  return v;
 }
 
-vec3 kesshoColor(float index) {
-  float i = mod(index, 8.0);
-  if (i < 1.0) return vec3(0.88, 0.48, 0.52);
-  if (i < 2.0) return vec3(0.49, 0.61, 0.43);
-  if (i < 3.0) return vec3(0.83, 0.65, 0.13);
-  if (i < 4.0) return vec3(0.55, 0.36, 0.96);
-  if (i < 5.0) return vec3(0.35, 0.48, 0.54);
-  if (i < 6.0) return vec3(0.23, 0.44, 0.51);
-  if (i < 7.0) return vec3(0.89, 0.78, 0.62);
-  return vec3(0.62, 0.81, 0.74);
+/* ─── Kessho palette ─── */
+vec3 kesshoWarm(float t) {
+  vec3 b = vec3(0.91, 0.86, 0.77);   // cream
+  vec3 c = vec3(0.48, 0.60, 0.43);   // sage
+  vec3 d = vec3(0.77, 0.45, 0.31);   // clay
+  vec3 e = vec3(0.83, 0.65, 0.13);   // gold
+  vec3 f = vec3(0.72, 0.88, 0.99);   // icy
+  vec3 g = vec3(0.55, 0.36, 0.96);   // violet
+  vec3 h = vec3(0.62, 0.81, 0.74);   // visualizer green
+
+  float s = fract(t) * 7.0;
+  if (s < 1.0) return mix(b, c, s);
+  if (s < 2.0) return mix(c, d, s - 1.0);
+  if (s < 3.0) return mix(d, e, s - 2.0);
+  if (s < 4.0) return mix(e, f, s - 3.0);
+  if (s < 5.0) return mix(f, g, s - 4.0);
+  if (s < 6.0) return mix(g, h, s - 5.0);
+  return mix(h, b, s - 6.0);
 }
 
-vec3 palette(float t, float colorBias) {
-  vec3 muted = mix(kesshoColor(floor(t * 8.0)), kesshoColor(floor(t * 8.0) + 1.0), smoothstep(0.0, 1.0, fract(t * 8.0)));
-  vec3 saturated = 0.5 + 0.5 * cos(TAU * (vec3(0.84, 0.62, 0.48) * t + vec3(0.02, 0.31, 0.56)));
-  vec3 pastel = mix(muted, vec3(0.96, 0.9, 0.84), 0.34);
-  vec3 color = mix(muted, saturated, max(-colorBias, 0.0) * 0.78);
-  return mix(color, pastel, max(colorBias, 0.0) * 0.66);
+vec3 palette(float t, float bias) {
+  vec3 base = kesshoWarm(t);
+  vec3 vivid = base * 1.3;
+  vec3 pastel = mix(base, vec3(0.94, 0.89, 0.82), 0.42);
+  vec3 color = mix(base, vivid, max(-bias, 0.0) * 0.7);
+  return mix(color, pastel, max(bias, 0.0) * 0.6);
+}
+
+/* ─── SDF primitives ─── */
+float sdCircle(vec2 p, float r) {
+  return length(p) - r;
 }
 
 float sdBox(vec2 p, vec2 b) {
@@ -151,65 +168,82 @@ float sdBox(vec2 p, vec2 b) {
   return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
 }
 
-float softBox(vec2 p, vec2 center, vec2 size, float blur) {
-  float d = sdBox(p - center, size);
-  return smoothstep(blur, -blur, d);
+float sdTriangle(vec2 p, float r) {
+  p.y += r * 0.2;
+  p.x = abs(p.x);
+  float d = max(p.x * 0.866 + p.y * 0.5, -p.y) - r * 0.5;
+  return d;
 }
 
-float softCircle(vec2 p, vec2 center, float radius, float blur) {
-  float d = length(p - center) - radius;
-  return smoothstep(blur, -blur, d);
+float sdPentagon(vec2 p, float r) {
+  p.x = abs(p.x);
+  float angle = TAU / 5.0;
+  vec2 n1 = vec2(cos(angle * 0.5), sin(angle * 0.5));
+  vec2 n2 = vec2(cos(angle), sin(angle));
+  float d = max(dot(p, n1), dot(p, vec2(n2.x, -n2.y)));
+  return d - r * 0.48;
 }
 
-float softDiamond(vec2 p, vec2 center, vec2 size, float blur) {
-  vec2 q = abs(p - center) / max(size, vec2(0.001));
-  float d = (q.x + q.y - 1.0) * min(size.x, size.y);
-  return smoothstep(blur, -blur, d);
+/* morphable shape SDF:
+   shapeSelector -1..1: -1=triangle, 0=square, +1=circle
+   organicAmount 0..1: deforms proportions / angles
+   p should be relative to shape center */
+float morphShape(vec2 p, float size, float shapeSelector, float organicAmount, float blobAmount, float noiseSeed, float time) {
+  // organic deformation: stretch axes unevenly
+  float stretchX = 1.0 + organicAmount * (sin(noiseSeed * 3.7 + time * 0.3) * 0.4);
+  float stretchY = 1.0 + organicAmount * (cos(noiseSeed * 5.1 + time * 0.25) * 0.35);
+  float skew = organicAmount * sin(noiseSeed * 7.3 + time * 0.18) * 0.3;
+  vec2 q = vec2(p.x * stretchX + p.y * skew, p.y * stretchY);
+
+  // blob/amoeba: add noise-based radial displacement
+  if (blobAmount > 0.01) {
+    float angle = atan(q.y, q.x);
+    float blobWarp = (
+      sin(angle * 3.0 + noiseSeed * 2.1 + time * 0.4) * 0.3 +
+      sin(angle * 5.0 + noiseSeed * 4.7 - time * 0.3) * 0.2 +
+      sin(angle * 7.0 + noiseSeed * 1.3 + time * 0.2) * 0.12
+    );
+    float r = length(q);
+    q = q * (1.0 + blobWarp * blobAmount * 0.35);
+  }
+
+  // SDF for each shape
+  float dTri = sdTriangle(q, size);
+  float dBox = sdBox(q, vec2(size * 0.7));
+  float dPent = sdPentagon(q, size);
+  float dCircle = sdCircle(q, size * 0.72);
+
+  // blend: -1 = triangle, -0.33 = square, +0.33 = pentagon, +1 = circle
+  float s = shapeSelector * 0.5 + 0.5; // remap to 0..1
+  float d;
+  if (s < 0.33) {
+    d = mix(dTri, dBox, s / 0.33);
+  } else if (s < 0.66) {
+    d = mix(dBox, dPent, (s - 0.33) / 0.33);
+  } else {
+    d = mix(dPent, dCircle, (s - 0.66) / 0.34);
+  }
+
+  return d;
 }
 
-float softTriangle(vec2 p, vec2 center, float size, float blur) {
-  vec2 q = p - center;
-  q.y += size * 0.28;
-  q.x = abs(q.x);
-  float d = max(q.x * 0.866 + q.y * 0.5, -q.y) - size * 0.5;
-  return smoothstep(blur, -blur, d);
-}
+/* shape to intensity: hard edge → soft halo → amoeba blob
+   edgesControl: -1 = amoeba blobs, +1 = hard cut */
+float shapeIntensity(float sdf, float size, float edgesControl) {
+  float hardCut = max(edgesControl, 0.0);    // 0..1
+  float amoebaBlob = max(-edgesControl, 0.0); // 0..1
 
-float shapeWeight(float selector, float target) {
-  float d = abs(fract(selector - target + 0.5) - 0.5);
-  return smoothstep(0.36, 0.0, d);
-}
+  // hard edge: sharp step
+  float hard = smoothstep(size * 0.02, -size * 0.01, sdf);
+  // neutral: smooth gradient falloff
+  float neutral = exp(-max(sdf, 0.0) * (3.0 / max(size, 0.01)));
+  // amoeba: very wide soft falloff
+  float amoeba = exp(-max(sdf, 0.0) * max(sdf, 0.0) / max(0.001, size * size * 0.8));
 
-float softPrimaryShape(vec2 p, vec2 center, vec2 size, float selector, float blur) {
-  float rectShape = softBox(p, center, size, blur);
-  float squareSize = max(size.x, size.y) * 0.72;
-  float squareShape = softBox(p, center, vec2(squareSize), blur);
-  float circleShape = softCircle(p, center, max(size.x, size.y) * 0.72, blur);
-  float diamondShape = softDiamond(p, center, size * 0.94, blur);
-  float triangleShape = softTriangle(p, center, max(size.x, size.y) * 1.25, blur);
-  float w0 = shapeWeight(selector, 0.0);
-  float w1 = shapeWeight(selector, 0.22);
-  float w2 = shapeWeight(selector, 0.45);
-  float w3 = shapeWeight(selector, 0.68);
-  float w4 = shapeWeight(selector, 0.88);
-  float total = max(0.001, w0 + w1 + w2 + w3 + w4);
-  return (rectShape * w0 + squareShape * w1 + circleShape * w2 + diamondShape * w3 + triangleShape * w4) / total;
-}
-
-float boxHalo(vec2 p, vec2 center, vec2 size, float radius) {
-  float d = max(0.0, sdBox(p - center, size));
-  return exp(-d * radius);
-}
-
-float lineField(float value, float width) {
-  return smoothstep(width, 0.0, abs(value));
-}
-
-float ripple(vec2 p, vec2 center, float phase, float sharpness, float softness) {
-  float d = length(p - center);
-  float wave = sin(d * (18.0 + sharpness * 44.0) - phase);
-  float ring = lineField(wave, mix(0.035, 0.16, softness));
-  return ring * exp(-d * (1.4 + softness * 2.4));
+  float result = neutral;
+  result = mix(result, hard, hardCut);
+  result = mix(result, amoeba, amoebaBlob);
+  return result;
 }
 
 void main() {
@@ -217,35 +251,41 @@ void main() {
   vec2 aspect = vec2(u_resolution.x / max(u_resolution.y, 1.0), 1.0);
   vec2 p = (uv - 0.5) * aspect * 2.0;
 
+  /* ─── Unpack engine levels ─── */
   float pad = clamp(u_engineA.x + u_pulseA.y * 0.35, 0.0, 1.0);
   float lead = clamp(u_engineA.y + u_pulseA.z * 0.5, 0.0, 1.0);
   float drums = clamp(u_engineA.z + u_pulseA.w * 0.7, 0.0, 1.0);
   float earth = clamp(u_engineA.w + u_pulseB.x * 0.45, 0.0, 1.0);
   float granular = clamp(u_engineB.x + u_pulseB.y * 0.48, 0.0, 1.0);
-  float delay = clamp(u_engineB.y + u_pulseB.z * 0.42, 0.0, 1.0);
+  float delaySig = clamp(u_engineB.y + u_pulseB.z * 0.42, 0.0, 1.0);
   float reverb = clamp(u_engineB.z + u_pulseB.w * 0.36, 0.0, 1.0);
   float dynamics = clamp(u_engineB.w, 0.0, 1.0);
 
-  float style = clamp(u_controlA.x, -1.0, 1.0);
-  float kaleidoControl = clamp(u_controlA.y, -1.0, 1.0);
-  float triggerControl = clamp(u_controlA.z, -1.0, 1.0);
-  float rippleControl = clamp(u_controlA.w, -1.0, 1.0);
-  float motionControl = clamp(u_controlB.x, -1.0, 1.0);
-  float colorControl = clamp(u_controlB.y, -1.0, 1.0);
-  float diffusionControl = clamp(u_controlB.z, -1.0, 1.0);
-  float densityControl = clamp(u_controlB.w, -1.0, 1.0);
+  /* ─── Unpack controls (all bipolar -1..1, center=neutral) ─── */
+  float styleControl = clamp(u_controlA.x, -1.0, 1.0);       // -1 noise fields, +1 gradient orbs
+  float kaleidoControl = clamp(u_controlA.y, -1.0, 1.0);     // -1 sharp shards, +1 soft glass
+  float triggerControl = clamp(u_controlA.z, -1.0, 1.0);     // -1 short sparks, +1 long afterglow
+  float rippleControl = clamp(u_controlA.w, -1.0, 1.0);      // -1 crisp rings, +1 soft pond
+  float motionControl = clamp(u_controlB.x, -1.0, 1.0);      // -1 fast orbit, +1 slow breathe
+  float colorControl = clamp(u_controlB.y, -1.0, 1.0);       // -1 vivid, +1 pastel
+  float diffusionControl = clamp(u_controlB.z, -1.0, 1.0);   // -1 hard edge, +1 soft halo
+  float densityControl = clamp(u_controlB.w, -1.0, 1.0);     // -1 sparse, +1 layered
   float seed = max(0.001, u_environment.x) * 104729.0;
   float backgroundControl = clamp(u_environment.y, -1.0, 1.0);
+  float shapeControl = clamp(u_controlC.x, -1.0, 1.0);       // -1 triangles, 0 squares, +1 circles
+  float organicControl = clamp(u_controlC.y, -1.0, 1.0);      // -1 equal sided, +1 irregular
+  float edgesControl = clamp(u_controlC.z, -1.0, 1.0);        // -1 amoeba blobs, +1 hard cut
 
-  float geometricStyle = max(-style, 0.0);
-  float lightBoxStyle = max(style, 0.0);
-  float crispRipple = max(-rippleControl, 0.0);
-  float softRipple = max(rippleControl, 0.0);
-  float sharpness = max(-diffusionControl, 0.0);
-  float diffusion = max(diffusionControl, 0.0);
-  float geometryDensity = max(-densityControl, 0.0);
-  float panelDensity = max(densityControl, 0.0);
+  /* ─── Derived ─── */
+  float hardEdge = max(-diffusionControl, 0.0);  // 0..1 how hard the edges are
+  float softHalo = max(diffusionControl, 0.0);   // 0..1 how soft/bloomy
+  float noiseBlend = max(-styleControl, 0.0);    // fade in noise fields
+  float orbBlend = max(styleControl, 0.0);       // fade in gradient orbs
+  float bothPresent = 1.0 - abs(styleControl);   // neutral = both layers visible
+  float sparse = max(-densityControl, 0.0);
+  float dense = max(densityControl, 0.0);
 
+  /* ─── Harmony & reactive ─── */
   float root = u_harmony.x;
   float tension = u_harmony.y;
   float spread = u_harmony.z;
@@ -256,137 +296,211 @@ void main() {
   float drumStepPhase = u_reactive.w;
 
   float hitEnergy = clamp(
-    globalPulse * 0.36 + u_pulseA.y * 0.2 + u_pulseA.z * 0.26 + u_pulseA.w * 0.32 +
-    u_pulseB.x * 0.24 + u_pulseB.y * 0.18 + seqPulse * 0.16,
-    0.0,
-    1.0
+    globalPulse * 0.36 + u_pulseA.y * 0.22 + u_pulseA.z * 0.26 + u_pulseA.w * 0.34 +
+    u_pulseB.x * 0.22 + u_pulseB.y * 0.18 + seqPulse * 0.14,
+    0.0, 1.0
   );
-  float severityWander = mix(0.62, 1.08, noise(vec2(seed * 0.007 + u_time * 0.035, root * 6.0 + tension)));
-  float triggerBloom = (
-    hitEnergy * mix(0.58, 1.18, max(triggerControl, 0.0)) +
-    hitEnergy * max(-triggerControl, 0.0) * 0.34
-  ) * severityWander;
-  float motionSpeed = 0.016 + max(motionControl, 0.0) * 0.045 + max(-motionControl, 0.0) * 0.13;
+  float triggerLift = hitEnergy * mix(0.5, 1.2, max(triggerControl, 0.0));
+  triggerLift += hitEnergy * max(-triggerControl, 0.0) * 0.3;
+
+  /* ─── Time & motion ─── */
+  float motionSpeed = 0.014 + max(motionControl, 0.0) * 0.035 + max(-motionControl, 0.0) * 0.1;
   float t = u_time * motionSpeed;
   float screenAngle = atan(p.y, p.x);
   float screenRadius = length(p);
-  float granularFold = clamp(granular * 0.78 + u_pulseB.y * 0.6 + abs(kaleidoControl) * 0.46, 0.0, 1.0);
-  float foldAmount = smoothstep(0.1, 0.78, granularFold);
-  float foldSegments = floor(mix(4.0, 14.0, clamp(granularFold + geometryDensity * 0.34 + max(-kaleidoControl, 0.0) * 0.44, 0.0, 1.0)));
+
+  /* ═══════════════════════════════════════════════════════════
+     KALEIDOSCOPE FOLD — applied on top of everything
+     kaleidoControl < 0 → more mirror segments (sharp shards)
+     kaleidoControl > 0 → fewer segments, soft radial warp (glass)
+     granular activity drives fold intensity
+     ═══════════════════════════════════════════════════════════ */
+  float granularFold = clamp(granular * 0.72 + u_pulseB.y * 0.55 + abs(kaleidoControl) * 0.5, 0.0, 1.0);
+  float foldAmount = smoothstep(0.08, 0.72, granularFold);
+  float foldSegments = floor(mix(4.0, 16.0, clamp(
+    granularFold * 0.6 + max(-kaleidoControl, 0.0) * 0.5 + sparse * 0.15,
+    0.0, 1.0
+  )));
   float foldSector = TAU / max(3.0, foldSegments);
-  float foldSpin = root * TAU * 0.08 + seed * 0.001 + t * (0.55 + max(-motionControl, 0.0) * 1.8);
+  float foldSpin = root * TAU * 0.1 + seed * 0.001 + t * (0.5 + max(-motionControl, 0.0) * 1.6);
   float foldedAngle = abs(mod(screenAngle + foldSpin + foldSector * 0.5, foldSector) - foldSector * 0.5);
-  float foldedRadius = screenRadius * (1.0 + sin(screenRadius * (9.0 + granularFold * 8.0) - u_time * 0.1) * max(kaleidoControl, 0.0) * 0.018);
-  vec2 foldedP = vec2(cos(foldedAngle - foldSpin * 0.35), sin(foldedAngle - foldSpin * 0.35)) * foldedRadius;
+  float radialWarp = sin(screenRadius * (8.0 + granularFold * 6.0) - u_time * 0.08) * max(kaleidoControl, 0.0) * 0.022;
+  float foldedRadius = screenRadius * (1.0 + radialWarp);
+  vec2 foldedP = vec2(cos(foldedAngle - foldSpin * 0.3), sin(foldedAngle - foldSpin * 0.3)) * foldedRadius;
   vec2 drawP = mix(p, foldedP, foldAmount);
-  vec2 drawUv = drawP / max(aspect * 2.0, vec2(0.001)) + 0.5;
-  float angle = atan(drawP.y, drawP.x);
-  float radius = length(drawP);
-  vec2 drift = vec2(sin(t * 0.73 + root * TAU + seed * 0.011), cos(t * 0.61 + tension * 2.0 + seed * 0.017)) * (0.012 + abs(motionControl) * 0.022);
-  float grainNoise = fbm(mix(uv, drawUv, foldAmount * 0.55) * (2.0 + panelDensity * 1.6) + vec2(t * 0.12 + seed * 0.003, -t * 0.08), 3.0);
 
-  vec3 bg = mix(vec3(0.054, 0.048, 0.042), vec3(0.025, 0.031, 0.032), smoothstep(-0.35, 0.9, p.y));
-  bg = mix(bg, vec3(0.063, 0.056, 0.048), grainNoise * 0.18);
-  vec3 litBg = mix(vec3(0.28, 0.24, 0.21), vec3(0.48, 0.56, 0.52), smoothstep(-0.42, 0.98, p.y));
-  litBg = mix(litBg, vec3(0.58, 0.5, 0.44), grainNoise * 0.12);
-  bg = mix(bg, bg * 0.38, max(-backgroundControl, 0.0) * 0.86);
-  bg = mix(bg, litBg, max(backgroundControl, 0.0) * 0.76);
-
+  /* ═══════════════════════════════════════════════════════════
+     BACKGROUND
+     ═══════════════════════════════════════════════════════════ */
+  vec3 darkBg = mix(vec3(0.047, 0.043, 0.038), vec3(0.028, 0.032, 0.034), smoothstep(-0.4, 0.8, p.y));
+  vec3 litBg = mix(vec3(0.12, 0.10, 0.09), vec3(0.07, 0.085, 0.09), smoothstep(-0.3, 0.9, p.y));
+  vec3 bg = mix(darkBg, darkBg * 0.4, max(-backgroundControl, 0.0) * 0.8);
+  bg = mix(bg, litBg, max(backgroundControl, 0.0) * 0.7);
   vec3 field = bg;
-  float panelBlur = 0.045 + diffusion * 0.12 + lightBoxStyle * 0.08 - geometricStyle * 0.016;
-  vec2 p1 = drawP + drift;
-  float facetSymmetry = mix(5.0, 15.0, clamp(geometryDensity * 0.48 + geometricStyle * 0.7 + granularFold * 0.26, 0.0, 1.0));
-  float facetPattern = lineField(
-    sin(angle * facetSymmetry + radius * (5.5 + geometryDensity * 8.0) - t * (5.0 + max(-motionControl, 0.0) * 8.0)),
-    0.08 + diffusion * 0.1
-  );
-  float geometricMod = mix(1.0, 0.78 + facetPattern * 0.42, geometricStyle);
-  vec3 panelField = vec3(0.0);
-  for (int i = 0; i < 7; i++) {
+
+  /* ═══════════════════════════════════════════════════════════
+     LAYER A: GRADIENT LIGHT SHAPES
+     Shape morphs between triangle/square/pentagon/circle.
+     Organic deforms proportions. Edges controls hard-cut vs amoeba-blob.
+     Fades in with styleControl > 0 (or always partially present at neutral)
+     ═══════════════════════════════════════════════════════════ */
+  float orbLayerMix = orbBlend + bothPresent * 0.55;
+  vec3 orbField = vec3(0.0);
+  float organicAmount = max(organicControl, 0.0);     // 0..1 irregular
+  float amoebaBlob = max(-edgesControl, 0.0);          // for shape SDF
+
+  for (int i = 0; i < 6; i++) {
     float fi = float(i);
     float id = fi + seed * 0.013;
-    float baseX = hash(vec2(id, 2.1)) * 1.82 - 0.91;
-    float baseY = hash(vec2(id, 7.4)) * 1.46 - 0.73;
-    float speedA = 0.04 + hash(vec2(id, 12.2)) * 0.1;
-    float speedB = 0.025 + hash(vec2(id, 14.9)) * 0.075;
-    float orbit = u_time * speedA + hash(vec2(id, 19.3)) * TAU + root * TAU * 0.12;
-    vec2 center = vec2(baseX, baseY);
-    center += vec2(
-      sin(orbit * (0.76 + hash(vec2(id, 21.1)) * 0.52) + fi),
-      cos(orbit * (0.58 + hash(vec2(id, 23.5)) * 0.42) + tension * TAU)
-    ) * (0.045 + abs(motionControl) * 0.12 + panelDensity * 0.055);
-    center.x += (spread - 0.5) * 0.14;
-    center.y += (detune - 0.5) * 0.08;
-    float radialSlot = fi / 7.0 * TAU + root * TAU * 0.2 + t * (0.42 + geometryDensity * 0.4);
-    float radialDistance = 0.22 + hash(vec2(id, 28.2)) * 0.54 + geometryDensity * 0.14;
-    vec2 geometricCenter = vec2(cos(radialSlot), sin(radialSlot)) * radialDistance;
-    geometricCenter += vec2(cos(radialSlot * 2.0 + tension * TAU), sin(radialSlot * 3.0 + detune * TAU)) * 0.035;
-    center = mix(center, geometricCenter, geometricStyle * (0.64 + geometryDensity * 0.26));
 
-    float wide = 0.11 + hash(vec2(id, 31.7)) * 0.32 + panelDensity * 0.1;
-    float tall = 0.1 + hash(vec2(id, 35.2)) * 0.38 + panelDensity * 0.08 + reverb * 0.04;
-    float squareBias = smoothstep(0.28, 0.92, hash(vec2(id, 38.4)));
-    vec2 size = mix(vec2(max(wide, tall) * 0.7), vec2(wide, tall), squareBias);
-    vec2 geometricSize = vec2(0.09 + geometryDensity * 0.05, 0.19 + hash(vec2(id, 39.6)) * 0.18);
-    size = mix(size, geometricSize, geometricStyle * 0.56);
-    float selector = fract(hash(vec2(id, 41.8)) + u_time * speedB + sin(u_time * (speedB * 0.9) + id) * 0.08);
-    selector = mix(selector, fract(0.64 + fi * 0.19 + sin(u_time * speedB + id) * 0.035), geometricStyle * 0.76);
-    float shape = softPrimaryShape(p1, center, size, selector, panelBlur * (0.8 + hash(vec2(id, 43.9)) * 0.55));
-    float halo = softPrimaryShape(p1, center, size + vec2(0.12 + diffusion * 0.1), selector, panelBlur * (3.2 + diffusion * 2.0));
+    // slow orbital drift
+    float orbitSpeed = 0.03 + hash(vec2(id, 11.3)) * 0.06;
+    float orbit = u_time * orbitSpeed + hash(vec2(id, 17.4)) * TAU + root * TAU * 0.15;
+    float baseDistance = 0.2 + hash(vec2(id, 22.1)) * 0.55 + dense * 0.12 - sparse * 0.1;
+    vec2 center = vec2(
+      cos(orbit * (0.7 + hash(vec2(id, 25.6)) * 0.4)),
+      sin(orbit * (0.55 + hash(vec2(id, 28.2)) * 0.35) + tension * TAU)
+    ) * baseDistance;
+    center.x += sin(u_time * 0.02 + fi * 2.1) * 0.06;
+    center.y += cos(u_time * 0.018 + fi * 1.7) * 0.05;
 
-    float fade = 0.5 + 0.5 * sin(u_time * (0.024 + speedB * 0.42) + seed * 0.002 + fi * 1.71);
-    fade = smoothstep(0.12, 0.94, fade);
-    float engineLift = (
-      pad * hash(vec2(id, 51.0)) +
-      lead * hash(vec2(id, 52.0)) +
-      drums * hash(vec2(id, 53.0)) +
-      earth * hash(vec2(id, 54.0)) +
-      granular * hash(vec2(id, 55.0)) +
-      delay * hash(vec2(id, 56.0)) +
-      reverb * hash(vec2(id, 57.0))
-    ) * 0.24;
-    float pulseLift = triggerBloom * (0.1 + hash(vec2(id, 58.0)) * 0.28);
-    float panelGate = smoothstep(fi - 0.8, fi + 1.4, 3.2 + panelDensity * 3.2 + geometricStyle * 2.1 - geometryDensity * 0.4);
-    float energy = panelGate * (0.05 + fade * (0.36 + lightBoxStyle * 0.3) + engineLift + pulseLift);
-    vec3 panelColor = palette(root + hash(vec2(id, 64.0)) + sin(u_time * (0.018 + speedB) + id) * 0.09, colorControl);
-    panelField += panelColor * (shape * energy * geometricMod + halo * energy * (0.14 + diffusion * 0.08 + lightBoxStyle * 0.12) * mix(1.0, 0.82, geometricStyle));
+    // per-shape rotation
+    float shapeAngle = u_time * (0.015 + hash(vec2(id, 29.5)) * 0.03) + hash(vec2(id, 30.1)) * TAU;
+    float ca = cos(shapeAngle), sa = sin(shapeAngle);
+    vec2 localP = drawP - center;
+    localP = vec2(localP.x * ca + localP.y * sa, -localP.x * sa + localP.y * ca);
+
+    // radius breathes with engine state
+    float engineAffinity = (
+      pad * hash(vec2(id, 31.0)) +
+      lead * hash(vec2(id, 32.0)) +
+      drums * hash(vec2(id, 33.0)) +
+      earth * hash(vec2(id, 34.0)) +
+      granular * hash(vec2(id, 35.0)) +
+      delaySig * hash(vec2(id, 36.0)) +
+      reverb * hash(vec2(id, 37.0))
+    );
+    float baseRadius = 0.18 + hash(vec2(id, 40.5)) * 0.28 + dense * 0.08;
+    float size = baseRadius + engineAffinity * 0.06 + triggerLift * 0.04;
+
+    // per-shape selector varies slightly around the global shapeControl
+    float perShapeOffset = (hash(vec2(id, 42.3)) - 0.5) * 0.3;
+    float shapeSel = clamp(shapeControl + perShapeOffset, -1.0, 1.0);
+
+    // SDF
+    float sdf = morphShape(localP, size, shapeSel, organicAmount, amoebaBlob, id, u_time);
+    float intensity = shapeIntensity(sdf, size, edgesControl);
+
+    // fade in/out over time
+    float fade = 0.5 + 0.5 * sin(u_time * (0.02 + orbitSpeed * 0.4) + seed * 0.002 + fi * 1.9);
+    fade = smoothstep(0.15 + sparse * 0.2, 0.85, fade);
+
+    // density gate
+    float densityGate = smoothstep(fi - 0.5, fi + 1.2, 3.0 + dense * 3.0 - sparse * 1.5);
+
+    float energy = fade * densityGate * (0.14 + engineAffinity * 0.16 + triggerLift * 0.12);
+
+    // color from palette, slowly cycling per shape
+    vec3 shapeColor = palette(
+      root + hash(vec2(id, 44.0)) + sin(u_time * (0.015 + orbitSpeed) + id) * 0.08,
+      colorControl
+    );
+
+    orbField += shapeColor * intensity * energy;
   }
-  field += panelField * (0.74 + lightBoxStyle * 0.36 - geometricStyle * 0.06);
+  field += orbField * orbLayerMix;
 
-  float innerGlow = softPrimaryShape(drawP, vec2(0.0, -0.04), vec2(0.16 + pad * 0.06, 0.14 + lead * 0.05), mix(0.18, 0.66, geometricStyle), panelBlur * 0.8);
-  field += palette(root + 0.18 + synthStepPhase * 0.2, colorControl) * innerGlow * (0.32 + triggerBloom * 0.22);
+  /* ═══════════════════════════════════════════════════════════
+     LAYER B: NOISE FIELDS (flowing aurora / domain-warped FBM)
+     Fades in with styleControl < 0 (or partially at neutral)
+     ═══════════════════════════════════════════════════════════ */
+  float noiseLayerMix = noiseBlend + bothPresent * 0.4;
+  float warpStrength = 0.24 + noiseBlend * 0.18 + reverb * 0.12;
+  vec2 warpedP = drawP * (1.3 + dense * 0.5);
+  float n1 = fbm(warpedP + vec2(t * 0.07, t * -0.05), 3.0);
+  float n2 = fbm(warpedP + vec2(t * -0.06, t * 0.08) + 4.2, 3.0);
+  vec2 wP = warpedP + vec2(n1, n2) * warpStrength;
 
-  float bloom = exp(-radius * radius * (2.4 - reverb * 0.8 - diffusion * 0.5)) * (0.09 + reverb * 0.18 + triggerBloom * 0.26);
-  field += palette(root + 0.62 + drumStepPhase * 0.2, colorControl) * bloom;
+  float noiseScale = 2.2 + dense * 1.0;
+  float flow1 = fbm(wP * noiseScale + vec2(seed * 0.004, 0.0), 3.0 + dense);
+  float flow2 = fbm(wP * noiseScale * 1.3 + vec2(flow1 * 0.5, n1 * 0.4), min(4.0, 3.0 + dense));
 
-  float rippleAmount = clamp((abs(rippleControl) * 0.62 + earth * 0.22 + u_pulseB.x * 0.34) * severityWander, 0.0, 1.18);
-  float rippleSoftness = clamp(0.38 + softRipple * 0.46 + diffusion * 0.16 - crispRipple * 0.28, 0.0, 1.0);
-  float rippleSharpness = crispRipple + max(-triggerControl, 0.0) * 0.3;
+  float engineGlow = pad * 0.16 + lead * 0.14 + earth * 0.1 + granular * 0.12 + delaySig * 0.09 + reverb * 0.11;
+  float colorPhase = root + t * 0.16 + flow1 * 0.3 + seed * 0.0001;
+  vec3 noiseColor = palette(colorPhase, colorControl);
+
+  // band structure: hard edge = sharp iso-lines, soft = smooth gradient
+  float rawBand = flow2;
+  float sharpBand = smoothstep(0.38, 0.42, rawBand) - smoothstep(0.58, 0.62, rawBand);
+  float softBand = smoothstep(0.2, 0.75, rawBand);
+  float band = mix(softBand, softBand + sharpBand * 0.6, hardEdge);
+  band = mix(band, sqrt(max(band, 0.0)), softHalo * 0.4);
+
+  float noiseIntensity = band * (0.1 + engineGlow * 0.55 + triggerLift * 0.25);
+  vec3 noiseField = noiseColor * noiseIntensity;
+
+  // second color layer for depth
+  float flow3 = fbm(wP * noiseScale * 0.5 + vec2(-t * 0.5, t * 0.35) + 9.1, 3.0);
+  vec3 noise2Color = palette(root + 0.4 + flow3 * 0.25 + tension * 0.3, colorControl);
+  float noise2Band = smoothstep(0.35, 0.65, flow3);
+  noiseField += noise2Color * noise2Band * (0.05 + pad * 0.06 + delaySig * 0.08 + triggerLift * 0.1);
+
+  field += noiseField * noiseLayerMix;
+
+  /* ═══════════════════════════════════════════════════════════
+     LAYER C: RIPPLES (water rings)
+     Always available, strength from rippleControl + earth activity
+     ═══════════════════════════════════════════════════════════ */
+  float crispRipple = max(-rippleControl, 0.0);
+  float softRipple = max(rippleControl, 0.0);
+  float rippleStrength = clamp(abs(rippleControl) * 0.5 + earth * 0.18 + u_pulseB.x * 0.28, 0.0, 1.0);
   float rip = 0.0;
-  for (int i = 0; i < 7; i++) {
+  for (int i = 0; i < 5; i++) {
     float fi = float(i);
-    float epoch = floor(u_time * (0.09 + earth * 0.07 + hash(vec2(seed, fi)) * 0.05) + fi * 17.0 + seed * 0.01);
-    vec2 center = vec2(hash(vec2(fi * 12.7 + seed * 0.003, epoch + 2.1)), hash(vec2(epoch + 5.4, fi * 9.3 + seed * 0.004)));
-    center = (center - 0.5) * aspect * 2.0;
-    float phase = fract(u_time * (0.075 + earth * 0.2 + hash(vec2(fi, seed)) * 0.08) + fi * 0.17) * TAU * (1.7 + crispRipple * 1.45);
-    rip += ripple(drawP, center, phase, rippleSharpness, rippleSoftness) * (0.18 + 0.12 * hash(vec2(fi + seed * 0.006, epoch)));
+    float epoch = floor(u_time * (0.07 + earth * 0.05 + hash(vec2(seed, fi)) * 0.04) + fi * 13.0 + seed * 0.01);
+    vec2 rc = vec2(hash(vec2(fi * 11.3 + seed * 0.003, epoch + 1.7)), hash(vec2(epoch + 4.2, fi * 8.1 + seed * 0.004)));
+    rc = (rc - 0.5) * aspect * 1.7;
+    float phase = fract(u_time * (0.06 + earth * 0.14 + hash(vec2(fi, seed)) * 0.05) + fi * 0.2) * TAU * (1.4 + crispRipple * 1.2);
+    float d = length(drawP - rc);
+    float sharpFactor = 16.0 + crispRipple * 38.0;
+    float softFactor = mix(0.04, 0.16, softRipple + softHalo * 0.25);
+    float wave = sin(d * sharpFactor - phase);
+    float ring = smoothstep(softFactor, 0.0, abs(wave));
+    rip += ring * exp(-d * (1.5 + softRipple * 2.0)) * (0.15 + 0.1 * hash(vec2(fi + seed * 0.005, epoch)));
   }
-  field += mix(vec3(0.42, 0.68, 0.62), vec3(0.82, 0.88, 0.78), softRipple) * rip * rippleAmount;
+  vec3 rippleColor = mix(vec3(0.37, 0.62, 0.57), vec3(0.72, 0.88, 0.99), softRipple);
+  field += rippleColor * rip * rippleStrength;
 
-  float waveform = sin((drawP.x * (4.0 + spread * 7.0) + drawP.y * (2.0 + detune * 5.0)) + t * 8.0 + root * TAU);
-  float sonicPresence = 0.34 + abs(triggerControl) * 0.36 + max(-kaleidoControl, 0.0) * 0.3 + geometricStyle * 0.18;
-  float sonicBand = lineField(waveform, 0.16 + diffusion * 0.19) * (pad * 0.026 + lead * 0.03 + granular * 0.022) * sonicPresence;
-  field += palette(root + 0.46, colorControl) * sonicBand;
+  /* ═══════════════════════════════════════════════════════════
+     LAYER D: CENTRAL BLOOM (reverb/delay atmosphere halo)
+     ═══════════════════════════════════════════════════════════ */
+  float bloomD = length(drawP);
+  float bloom = exp(-bloomD * bloomD * (2.6 - reverb * 0.8 - softHalo * 0.5));
+  bloom *= (0.06 + reverb * 0.14 + delaySig * 0.1 + triggerLift * 0.2);
+  field += palette(root + 0.55 + drumStepPhase * 0.14, colorControl) * bloom;
 
-  vec2 hitCenter = vec2(sin(root * TAU + t * 2.0 + seed * 0.009), cos(t * 1.4 + tension * 3.0 + seed * 0.006)) * 0.18;
-  float hitGlow = exp(-length(drawP - hitCenter) * (2.2 + max(-triggerControl, 0.0) * 5.0)) * triggerBloom;
-  field += palette(root + 0.7 + hitEnergy * 0.2, colorControl) * hitGlow * (0.24 + max(triggerControl, 0.0) * 0.28);
+  /* ─── Hit flash ─── */
+  vec2 hitDrift = vec2(
+    sin(root * TAU + t * 1.8 + seed * 0.008),
+    cos(t * 1.2 + tension * 2.8 + seed * 0.005)
+  ) * 0.15;
+  float hitGlow = exp(-length(drawP - hitDrift) * (2.4 + max(-triggerControl, 0.0) * 4.0));
+  hitGlow *= triggerLift * mix(0.18, 0.45, max(triggerControl, 0.0));
+  field += palette(root + 0.72 + hitEnergy * 0.16, colorControl) * hitGlow;
 
-  float vignette = smoothstep(1.56, 0.08, screenRadius);
+  /* ═══════════════════════════════════════════════════════════
+     POST-PROCESSING: vignette, edge/bloom contrast, film grain
+     ═══════════════════════════════════════════════════════════ */
+  float vignette = smoothstep(1.5, 0.1, screenRadius);
   vec3 finalColor = field * vignette;
-  finalColor = mix(finalColor, smoothstep(vec3(0.0), vec3(1.0), finalColor), sharpness * 0.32);
-  finalColor = mix(finalColor, sqrt(max(finalColor, vec3(0.0))), diffusion * 0.44 + lightBoxStyle * 0.18);
-  finalColor += grainNoise * 0.012;
+
+  // hard edge tightens contrast, soft halo lifts shadows
+  finalColor = mix(finalColor, smoothstep(vec3(0.0), vec3(1.0), finalColor), hardEdge * 0.3);
+  finalColor = mix(finalColor, sqrt(max(finalColor, vec3(0.0))), softHalo * 0.38);
+
+  // film grain
+  float grain = hash(uv * u_resolution + vec2(u_time * 61.0, u_time * 37.0)) * 0.013;
+  finalColor += grain;
 
   outColor = vec4(finalColor, 1.0);
 }
@@ -521,6 +635,7 @@ export class ReactiveVisualizerRenderer {
       'u_reactive',
       'u_controlA',
       'u_controlB',
+      'u_controlC',
       'u_environment',
       'u_pulseA',
       'u_pulseB',
@@ -607,6 +722,13 @@ export class ReactiveVisualizerRenderer {
       clamp(controls.density, -1, 1),
     );
     gl.uniform4f(
+      this.uniform('u_controlC'),
+      clamp(controls.shape, -1, 1),
+      clamp(controls.organic, -1, 1),
+      clamp(controls.edges, -1, 1),
+      0,
+    );
+    gl.uniform4f(
       this.uniform('u_environment'),
       clamp(frame.seed, 0.001, 0.999999),
       clamp(controls.background, -1, 1),
@@ -643,26 +765,28 @@ export class ReactiveVisualizerRenderer {
     const cx = width / 2;
     const cy = height / 2;
     const radius = Math.min(width, height) * 0.42;
-    this.fallbackPhase += 0.012 + Math.max(0, controls.motion) * 0.024 + Math.max(0, -controls.motion) * 0.045;
+    this.fallbackPhase += 0.008 + Math.max(0, controls.motion) * 0.018 + Math.max(0, -controls.motion) * 0.035;
 
     ctx.setTransform(frame.dpr, 0, 0, frame.dpr, 0, 0);
+    // atmospheric dark background with fade trail
     const litBackground = Math.max(0, controls.background);
     const darkBackground = Math.max(0, -controls.background);
-    const bgR = Math.round(13 + litBackground * 58);
-    const bgG = Math.round(12 + litBackground * 64);
-    const bgB = Math.round(11 + litBackground * 54);
-    ctx.fillStyle = `rgba(${bgR}, ${bgG}, ${bgB}, ${0.2 + darkBackground * 0.18 + litBackground * 0.12 + Math.max(0, controls.diffusion) * 0.16})`;
+    const bgR = Math.round(16 + litBackground * 30);
+    const bgG = Math.round(15 + litBackground * 28);
+    const bgB = Math.round(14 + litBackground * 24);
+    ctx.fillStyle = `rgba(${bgR}, ${bgG}, ${bgB}, ${0.12 + darkBackground * 0.14 + litBackground * 0.08 + Math.max(0, controls.diffusion) * 0.1})`;
     ctx.fillRect(0, 0, width, height);
 
-    const symmetry = Math.max(4, Math.round(8 + Math.max(0, -controls.density) * 8 + Math.abs(controls.kaleidoscope) * 4));
+    // kaleidoscope symmetry from control
+    const symmetry = Math.max(4, Math.round(6 + Math.max(0, -controls.kaleidoscope) * 10 + Math.abs(controls.kaleidoscope) * 4));
     const engines = [
-      ['rgba(224, 122, 132, 0.62)', snapshot.pad + pulses.pad],
-      ['rgba(212, 165, 32, 0.6)', snapshot.lead + pulses.lead],
-      ['rgba(168, 112, 232, 0.58)', snapshot.drums + pulses.drums],
-      ['rgba(106, 174, 130, 0.56)', snapshot.earth + pulses.earth],
-      ['rgba(232, 180, 74, 0.58)', snapshot.granular + pulses.granular],
-      ['rgba(94, 168, 166, 0.52)', snapshot.delay + pulses.delay],
-      ['rgba(176, 120, 90, 0.56)', snapshot.reverb + pulses.reverb],
+      ['rgba(232, 220, 196, 0.45)', snapshot.pad + pulses.pad],       // cream
+      ['rgba(212, 165, 32, 0.42)', snapshot.lead + pulses.lead],       // gold
+      ['rgba(139, 92, 246, 0.38)', snapshot.drums + pulses.drums],     // violet
+      ['rgba(123, 154, 109, 0.4)', snapshot.earth + pulses.earth],     // sage
+      ['rgba(232, 180, 74, 0.4)', snapshot.granular + pulses.granular],// granular
+      ['rgba(94, 168, 166, 0.36)', snapshot.delay + pulses.delay],     // teal
+      ['rgba(176, 120, 90, 0.38)', snapshot.reverb + pulses.reverb],   // clay
     ] as const;
 
     ctx.globalCompositeOperation = 'lighter';
@@ -670,15 +794,20 @@ export class ReactiveVisualizerRenderer {
       const engine = engines[ring];
       if (!engine) continue;
       const [color, amount] = engine;
-      const amp = clamp(amount + pulses.global * 0.3, 0, 1.4);
+      const amp = clamp(amount + pulses.global * 0.25, 0, 1.2);
+      if (amp < 0.02) continue;
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1 + amp * 3 * (1 + Math.abs(controls.triggerResponse));
+      ctx.lineWidth = 0.8 + amp * 2.4;
       ctx.beginPath();
-      for (let i = 0; i <= symmetry * 48; i += 1) {
-        const unit = i / Math.max(1, symmetry * 48);
+      // flowing noise-like wave through kaleidoscope fold
+      for (let i = 0; i <= symmetry * 40; i += 1) {
+        const unit = i / Math.max(1, symmetry * 40);
         const angle = unit * Math.PI * 2;
-        const wave = Math.sin(unit * Math.PI * 2 * symmetry + this.fallbackPhase * (ring + 1));
-        const r = radius * (0.16 + ring * 0.09 + wave * 0.024 * (1 + amp + Math.abs(controls.kaleidoscope)));
+        // domain warping: multiple sine layers at different speeds
+        const warp = Math.sin(unit * Math.PI * 2 * symmetry + this.fallbackPhase * (ring * 0.7 + 1))
+          + Math.sin(unit * Math.PI * 4 * symmetry * 0.5 + this.fallbackPhase * 0.6 + ring) * 0.4;
+        const breathe = Math.sin(this.fallbackPhase * 0.3 + ring * 0.9) * 0.02;
+        const r = radius * (0.18 + ring * 0.088 + warp * 0.02 * (1 + amp) + breathe);
         const x = cx + Math.cos(angle) * r;
         const y = cy + Math.sin(angle) * r;
         if (i === 0) ctx.moveTo(x, y);

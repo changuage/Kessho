@@ -24,6 +24,7 @@ struct LaneState {
   uint32_t ratchet = 1;
   uint32_t trig_condition = KESSHO_PRODUCT_TRIG_ALWAYS;
   float midi_note = 60.0f;
+  uint32_t drum_voice_mask = 0;
   float velocity = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SEQUENCER_VELOCITY;
   float hold_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SEQUENCER_HOLD_SECONDS;
   float morph = 0.0f;
@@ -53,13 +54,22 @@ struct LaneState {
   float midi_note_overrides[64]{};
   uint32_t expression_override_set_low = 0;
   uint32_t expression_override_set_high = 0;
+  uint32_t expression_range_set_low = 0;
+  uint32_t expression_range_set_high = 0;
   float expression_overrides[64]{};
+  float expression_range_maxes[64]{};
   uint32_t morph_override_set_low = 0;
   uint32_t morph_override_set_high = 0;
+  uint32_t morph_range_set_low = 0;
+  uint32_t morph_range_set_high = 0;
   float morph_overrides[64]{};
+  float morph_range_maxes[64]{};
   uint32_t distance_override_set_low = 0;
   uint32_t distance_override_set_high = 0;
+  uint32_t distance_range_set_low = 0;
+  uint32_t distance_range_set_high = 0;
   float distance_overrides[64]{};
+  float distance_range_maxes[64]{};
   StepValueSubLaneConfig step_value_configs[8]{};
 };
 

@@ -53,6 +53,7 @@ import { applyDistanceValue, applyLeadDistanceEnvelope, applyPadDistanceToState,
 import { createHarmonyState, getEffectiveTension } from './harmony';
 import { computeGranularRuntimeSeed, getUtcBucket } from './rng';
 import { isIOSLikeDevice, isMobileDevice } from '../platform';
+import { euclideanPatternMask, resolveEuclidPatternParams } from './euclideanPatterns';
 import {
   SOUNDSCAPE_PARITY_FIXTURE_PARAM,
   SOUNDSCAPE_ROUTE_FALLBACKS,
@@ -425,12 +426,19 @@ function synthSourceIdFromState(state: Record<string, unknown> | undefined, key:
   return CORE_PRODUCT_SOURCE_IDS.lead1;
 }
 
-function laneManualMaskFromState(state: Record<string, unknown> | undefined, prefix: string): {
+function laneManualMaskFromPattern(
+  state: Record<string, unknown> | undefined,
+  prefix: string,
+  steps: number,
+  hits: number,
+  rotation: number,
+): {
   manualStepMaskLow: number;
   manualStepMaskHigh: number;
 } {
-  const low = numberFromState(state, `${prefix}ManualStepMaskLow`, 0);
-  const high = numberFromState(state, `${prefix}ManualStepMaskHigh`, 0);
+  const patternMask = euclideanPatternMask(steps, hits, rotation);
+  const low = numberFromState(state, `${prefix}ManualStepMaskLow`, patternMask.low);
+  const high = numberFromState(state, `${prefix}ManualStepMaskHigh`, patternMask.high);
   return {
     manualStepMaskLow: low >>> 0,
     manualStepMaskHigh: high >>> 0,
@@ -687,16 +695,22 @@ function synthLaneFromState(
   lane.enabled =
     booleanFromState(state, 'synthEuclideanMasterEnabled', defaultEnabled) &&
     booleanFromState(state, `${prefix}Enabled`, laneNumber === 1);
-  lane.stepCount = numberFromState(state, `${prefix}Steps`, 16);
-  lane.fillCount = numberFromState(state, `${prefix}Hits`, laneNumber === 2 ? 3 : laneNumber === 3 ? 2 : laneNumber === 4 ? 6 : 4);
-  lane.rotation = numberFromState(state, `${prefix}Rotation`, laneNumber === 2 ? 1 : laneNumber === 4 ? 2 : 0);
+  const resolved = resolveEuclidPatternParams(
+    String(state?.[`${prefix}Preset`] ?? 'custom'),
+    numberFromState(state, `${prefix}Steps`, 16),
+    numberFromState(state, `${prefix}Hits`, laneNumber === 2 ? 3 : laneNumber === 3 ? 2 : laneNumber === 4 ? 6 : 4),
+    numberFromState(state, `${prefix}Rotation`, laneNumber === 2 ? 1 : laneNumber === 4 ? 2 : 0),
+  );
+  lane.stepCount = resolved.steps;
+  lane.fillCount = resolved.hits;
+  lane.rotation = resolved.rotation;
   lane.clockDivision = clockDivisionFromState(state, `${prefix}ClockDivision`, 16);
   lane.swing = numberFromState(state, `${prefix}Swing`, 0);
   lane.probability = numberFromState(state, `${prefix}Probability`, 1);
   lane.velocity = numberFromState(state, `${prefix}Level`, lane.velocity);
   lane.midiNote = midiCenterFromState(state, prefix, lane.midiNote);
   lane.seed = 1000 + laneNumber;
-  Object.assign(lane, laneManualMaskFromState(state, prefix));
+  Object.assign(lane, laneManualMaskFromPattern(state, prefix, resolved.steps, resolved.hits, resolved.rotation));
   return lane;
 }
 
@@ -709,6 +723,9 @@ const DRUM_TARGETS = [
   { suffix: 'Noise', voiceIndex: 5 },
   { suffix: 'Membrane', voiceIndex: 6 },
 ] as const;
+const DRUM_VOICE_MASK_SEED_FLAG = 0x80000000;
+const DRUM_VOICE_MASK_SEED_SHIFT = 24;
+const DRUM_VOICE_MASK_SEED_PAYLOAD_MASK = 0x00ffffff;
 
 function defaultDrumTargetSuffix(laneNumber: number): (typeof DRUM_TARGETS)[number]['suffix'] {
   if (laneNumber === 2) return 'BeepHi';
@@ -724,21 +741,33 @@ function drumTargetVoiceIndices(state: Record<string, unknown> | undefined, pref
   return selected.length > 0 ? selected : [1];
 }
 
+function encodedDrumLaneSeed(baseSeed: number, voiceIndices: readonly number[]): number {
+  const mask = voiceIndices.reduce((bits, voice) => bits | (1 << clamp(Math.round(voice), 0, 6)), 0) & 0x7f;
+  return (DRUM_VOICE_MASK_SEED_FLAG | (mask << DRUM_VOICE_MASK_SEED_SHIFT) | (baseSeed & DRUM_VOICE_MASK_SEED_PAYLOAD_MASK)) >>> 0;
+}
+
 function drumLaneBaseFromState(
   state: Record<string, unknown> | undefined,
   laneNumber: number,
-  voiceIndex: number,
+  voiceIndices: readonly number[],
   defaultEnabled: boolean,
 ): ProductLaneSnapshot {
   const prefix = `drumEuclid${laneNumber}`;
+  const voiceIndex = voiceIndices[0] ?? 1;
   const lane = laneDefaults(CORE_PRODUCT_SOURCE_IDS.drum, 36 + voiceIndex);
   lane.enabled =
     booleanFromState(state, 'drumEnabled', defaultEnabled) &&
     booleanFromState(state, 'drumEuclidMasterEnabled', defaultEnabled) &&
     booleanFromState(state, `${prefix}Enabled`, false);
-  lane.stepCount = numberFromState(state, `${prefix}Steps`, laneNumber === 3 ? 12 : laneNumber === 2 ? 16 : 8);
-  lane.fillCount = numberFromState(state, `${prefix}Hits`, laneNumber === 1 ? 5 : laneNumber === 3 ? 5 : 3);
-  lane.rotation = numberFromState(state, `${prefix}Rotation`, 0);
+  const resolved = resolveEuclidPatternParams(
+    String(state?.[`${prefix}Preset`] ?? 'custom'),
+    numberFromState(state, `${prefix}Steps`, laneNumber === 3 ? 12 : laneNumber === 2 ? 16 : 8),
+    numberFromState(state, `${prefix}Hits`, laneNumber === 1 ? 5 : laneNumber === 3 ? 5 : 3),
+    numberFromState(state, `${prefix}Rotation`, 0),
+  );
+  lane.stepCount = resolved.steps;
+  lane.fillCount = resolved.hits;
+  lane.rotation = resolved.rotation;
   lane.clockDivision = clockDivisionFromState(
     state,
     `${prefix}ClockDivision`,
@@ -748,8 +777,8 @@ function drumLaneBaseFromState(
   lane.probability = numberFromState(state, `${prefix}Probability`, 1);
   lane.velocity = numberFromState(state, `${prefix}Level`, numberFromState(state, 'drumLevel', 0.75));
   lane.holdSeconds = 0.08;
-  lane.seed = 2000 + laneNumber * 31 + voiceIndex;
-  Object.assign(lane, laneManualMaskFromState(state, prefix));
+  lane.seed = encodedDrumLaneSeed(2000 + laneNumber * 31 + voiceIndex, voiceIndices);
+  Object.assign(lane, laneManualMaskFromPattern(state, prefix, resolved.steps, resolved.hits, resolved.rotation));
   return lane;
 }
 
@@ -761,10 +790,8 @@ function drumLanesFromState(state: Record<string, unknown> | undefined, defaultE
   const lanes: ProductLaneSnapshot[] = [];
   for (const laneNumber of [1, 2, 3, 4]) {
     const prefix = `drumEuclid${laneNumber}`;
-    for (const voiceIndex of drumTargetVoiceIndices(state, prefix, laneNumber)) {
-      if (lanes.length >= 16) return lanes;
-      lanes.push(drumLaneBaseFromState(state, laneNumber, voiceIndex, defaultEnabled));
-    }
+    if (lanes.length >= 16) return lanes;
+    lanes.push(drumLaneBaseFromState(state, laneNumber, drumTargetVoiceIndices(state, prefix, laneNumber), defaultEnabled));
   }
   return lanes;
 }

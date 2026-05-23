@@ -88,6 +88,8 @@ const DYNAMICS_CHARACTER_DISABLED_CONFIG_KEY = 'dynamics-character:disabled-v1';
 const HOST_PIANO_SAMPLE_CACHE_LIMIT_PER_VARIANT = 16;
 const CORE_SOFT_STOP_SOURCE_FADE_SECONDS = 0.18;
 const CORE_SOFT_STOP_CLEANUP_DELAY_MS = Math.ceil(CORE_SOFT_STOP_SOURCE_FADE_SECONDS * 1000) + 120;
+type CoreSynthEvolveOverridesPayload = Partial<SynthLaneOverrides> & { swing?: number };
+type CoreDrumEvolveOverridesPayload = Partial<DrumStepOverrides> & { swing?: number };
 
 const resolvePublicSampleUrl = (relativePath: string): string => {
   const root = new URL(import.meta.env.BASE_URL, window.location.origin);
@@ -3886,7 +3888,7 @@ export class CoreEngineHost {
   private onDrumParamSHTrigger: ((voice: DrumVoiceType, key: string, position: number) => void) | null = null;
   private onDrumEvolveTrigger: ((laneIndex: number) => void) | null = null;
   private onDrumStepPositionChange: ((steps: number[], hitCounts: number[]) => void) | null = null;
-  private onDrumEvolveOverridesChanged: ((laneIndex: number, overrides: Partial<DrumStepOverrides>) => void) | null = null;
+  private onDrumEvolveOverridesChanged: ((laneIndex: number, overrides: CoreDrumEvolveOverridesPayload) => void) | null = null;
   private synthEuclidClockDivs: ClockDivision[] = [...CORE_SYNTH_EUCLID_CLOCK_DIVS];
   private synthEuclidSwings: number[] = [...CORE_SYNTH_EUCLID_SWINGS];
   private synthStepOverrides: CoreSynthEuclidStepOverrides = createEmptyCoreSynthStepOverrides();
@@ -3912,7 +3914,7 @@ export class CoreEngineHost {
   private synthNoteRangeOverrides: ({ min: number; max: number } | null)[] = [null, null, null, null];
   private synthSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
   private onSynthEvolveTrigger: ((laneIndex: number) => void) | null = null;
-  private onSynthEvolveOverridesChanged: ((laneIndex: number, overrides: Partial<SynthLaneOverrides>) => void) | null = null;
+  private onSynthEvolveOverridesChanged: ((laneIndex: number, overrides: CoreSynthEvolveOverridesPayload) => void) | null = null;
   private onSynthNoteRangeEvolved: ((laneIndex: number, noteMin: number, noteMax: number) => void) | null = null;
   private synthEuclidLiveEvolveTimer: number | null = null;
   private synthEuclidLiveEvolveKey: string | null = null;
@@ -4990,7 +4992,7 @@ export class CoreEngineHost {
     this.applySynthLaneOverrides(laneIndex, storedOverrides);
     this.synthEuclidSwings[laneIndex] = result.swing;
     this.onSynthEvolveTrigger?.(laneIndex);
-    this.onSynthEvolveOverridesChanged?.(laneIndex, offsetOverrides);
+    this.onSynthEvolveOverridesChanged?.(laneIndex, { ...offsetOverrides, swing: result.swing });
     if (result.noteRangeMin !== undefined && result.noteRangeMax !== undefined) {
       this.synthNoteRangeOverrides[laneIndex] = { min: result.noteRangeMin, max: result.noteRangeMax };
       this.onSynthNoteRangeEvolved?.(laneIndex, result.noteRangeMin, result.noteRangeMax);
@@ -5088,7 +5090,7 @@ export class CoreEngineHost {
     this.onDrumStepPositionChange?.([0, 0, 0, 0], [0, 0, 0, 0]);
   }
 
-  setDrumEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: Partial<DrumStepOverrides>) => void): void {
+  setDrumEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: CoreDrumEvolveOverridesPayload) => void): void {
     this.onDrumEvolveOverridesChanged = callback;
   }
 
@@ -5107,7 +5109,7 @@ export class CoreEngineHost {
     restored.slice[index] = home.slice[index] ? [...home.slice[index]!] : null;
     restored.reverse[index] = home.reverse[index] ? [...home.reverse[index]!] : null;
     this.drumStepOverrides = restored;
-    this.onDrumEvolveOverridesChanged?.(index, restored);
+    this.onDrumEvolveOverridesChanged?.(index, { ...restored, swing: this.drumEuclidSwings[index] ?? 0 });
     this.reapplyLastState();
   }
 
@@ -5135,7 +5137,7 @@ export class CoreEngineHost {
     this.drumStepOverrides = next;
     this.drumHomeStepOverrides = cloneCoreDrumStepOverrides(next);
     this.onDrumEvolveTrigger?.(index);
-    this.onDrumEvolveOverridesChanged?.(index, next);
+    this.onDrumEvolveOverridesChanged?.(index, { ...next, swing: this.drumEuclidSwings[index] ?? 0 });
     this.reapplyLastState();
   }
 
@@ -5310,6 +5312,10 @@ export class CoreEngineHost {
 
   stopJourneyMorphClock(): void {
     this.journeyMorphClockActive = false;
+    this.cancelJourneyMorphClockTick();
+  }
+
+  private cancelJourneyMorphClockTick(): void {
     if (this.journeyMorphClockRaf !== null) {
       window.cancelAnimationFrame(this.journeyMorphClockRaf);
       this.journeyMorphClockRaf = null;
@@ -5647,7 +5653,7 @@ export class CoreEngineHost {
     this.onSynthEvolveTrigger = callback;
   }
 
-  setSynthEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: Partial<SynthLaneOverrides>) => void): void {
+  setSynthEvolveOverridesChangedCallback(callback: (laneIndex: number, overrides: CoreSynthEvolveOverridesPayload) => void): void {
     this.onSynthEvolveOverridesChanged = callback;
   }
 
@@ -5681,7 +5687,7 @@ export class CoreEngineHost {
       stored.pitch = this.offsetsToMidi(restored.pitch, pitchSettings);
     }
     this.applySynthLaneOverrides(index, stored);
-    this.onSynthEvolveOverridesChanged?.(index, restored);
+    this.onSynthEvolveOverridesChanged?.(index, { ...restored, swing: state.homeSwing });
     this.synthEuclidSwings[index] = state.homeSwing ?? this.synthEuclidSwings[index] ?? 0;
     if (state.homeNoteRangeMin !== null && state.homeNoteRangeMax !== null) {
       this.synthNoteRangeOverrides[index] = null;
@@ -5727,7 +5733,7 @@ export class CoreEngineHost {
     }
     this.applySynthLaneOverrides(index, stored);
     this.onSynthEvolveTrigger?.(index);
-    this.onSynthEvolveOverridesChanged?.(index, next);
+    this.onSynthEvolveOverridesChanged?.(index, { ...next, swing: this.synthEuclidSwings[index] ?? 0 });
     const state = this.synthEvolveStates[index];
     if (state) {
       state.home = captureSynthHomeSnapshot(next);

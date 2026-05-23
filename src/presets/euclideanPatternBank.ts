@@ -51,6 +51,8 @@ type NormalizedEuclideanPatternData = {
 };
 
 export const EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY = 'euclideanPatternStepOverrides';
+export const EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY = 'euclideanPatternSequenceState';
+export const EUCLIDEAN_PATTERN_SOURCE_SEQUENCE_STATE_KEY = 'euclideanPatternSourceSequenceState';
 
 function coerceBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === 'boolean') return value;
@@ -231,7 +233,13 @@ function pickSpecificEuclideanData(data: Record<string, unknown>, prefix: 'drum'
       || key === 'synthEuclideanTempo'
       || key === 'synthChordSequencerEnabled'
     );
-    if (isDrumKey || isSynthKey || key === EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY) {
+    if (
+      isDrumKey
+      || isSynthKey
+      || key === EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY
+      || key === EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY
+      || key === EUCLIDEAN_PATTERN_SOURCE_SEQUENCE_STATE_KEY
+    ) {
       picked[key] = value;
     }
   }

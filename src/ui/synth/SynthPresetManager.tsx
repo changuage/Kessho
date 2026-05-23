@@ -701,10 +701,10 @@ const SynthPresetManager: React.FC<SynthPresetManagerProps> = ({
             Undo
           </button>
           <span style={s.variationStatus}>
-            {variationControls.walkEnabled
-              ? 'Walk mode'
-              : (variationControls.progressText
-                ?? (variationControls.endpointLabel ? `Base ${variationControls.endpointLabel}` : 'Endpoint only'))}
+            {variationControls.progressText
+              ?? (variationControls.walkEnabled
+                ? 'Walk mode'
+                : (variationControls.endpointLabel ? `Base ${variationControls.endpointLabel}` : 'Endpoint only'))}
           </span>
         </div>
       )}

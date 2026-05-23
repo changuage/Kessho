@@ -257,20 +257,65 @@ async function testEuclideanStepOverridesAffectOnlyEuclideanChildHash(): Promise
     synthStepOverrides: {
       triggerToggles: [[{ step: 5, value: true }], [], [], []],
     },
+    synthClockDivs: ['1/8', '1/16', '1/4', '1/32'],
+    synthSwings: [0, 0.1, 0.2, 0.3],
+    synthLinked: [false, true, false, false],
+    synthEvolveConfigs: [{
+      enabled: true,
+      everyBars: 8,
+      evolution: 0.65,
+      writeOffset: 'auto',
+      mutationMode: 'strict',
+      methods: { pitchWalk: true },
+      enabledSubLanes: ['pitch'],
+    }],
+    synthSubLaneStates: [{
+      pitch: { enabled: true, steps: 7, direction: 'reverse' },
+    }],
+    synthPitchSettings: [{ mode: 'notes', root: 62, scale: 'Dorian' }],
+    synthPitchBindingModes: ['sequence', 'polyrhythmic', 'linked', 'polyrhythmic'],
     drumStepOverrides: {
       triggerToggles: [[], [{ step: 7, value: true }], [], []],
     },
+    drumClockDivs: ['1/16', '1/8', '1/4', '1/32'],
+    drumSwings: [0, 0.2, 0, 0],
+    drumLinked: [false, false, true, false],
+    drumEvolveConfigs: [{
+      enabled: true,
+      everyBars: 4,
+      evolution: 0.5,
+      writeOffset: 2,
+      mutationMode: 'biased',
+      methods: { triggerToggle: true },
+    }],
+    drumSubLaneStates: [{
+      expression: { enabled: true, steps: 5, direction: 'pingpong', valueMode: 'range', rangeMin: 0.2, rangeMax: 0.8 },
+    }],
+  };
+  const synthClockOnly: PresetVersionMetadata = {
+    synthClockDivs: ['1/4', '1/16', '1/16', '1/16'],
+  };
+  const drumSubLaneOnly: PresetVersionMetadata = {
+    drumSubLaneStates: [{
+      expression: { enabled: true, steps: 11, direction: 'reverse' },
+    }],
   };
 
   const synthHash = await childHash('source', 'synth', 'euclideanPattern', DEFAULT_STATE);
   const synthHashWithOverrides = await childHash('source', 'synth', 'euclideanPattern', DEFAULT_STATE, metadata);
+  const synthHashWithClock = await childHash('source', 'synth', 'euclideanPattern', DEFAULT_STATE, synthClockOnly);
   const padHash = await childHash('kit', 'pad1Kit', 'pad1', DEFAULT_STATE);
   const padHashWithOverrides = await childHash('kit', 'pad1Kit', 'pad1', DEFAULT_STATE, metadata);
 
   assert.notEqual(
     synthHash,
     synthHashWithOverrides,
-    'custom synth trigger toggles should create a distinct Euclidean child hash',
+    'custom synth sequencer metadata should create a distinct Euclidean child hash',
+  );
+  assert.notEqual(
+    synthHash,
+    synthHashWithClock,
+    'custom synth clock divisions should create a distinct Euclidean child hash',
   );
   assert.equal(
     padHash,
@@ -280,10 +325,16 @@ async function testEuclideanStepOverridesAffectOnlyEuclideanChildHash(): Promise
 
   const drumHash = await childHash('source', 'drums', 'euclideanPattern', DEFAULT_STATE);
   const drumHashWithOverrides = await childHash('source', 'drums', 'euclideanPattern', DEFAULT_STATE, metadata);
+  const drumHashWithSubLane = await childHash('source', 'drums', 'euclideanPattern', DEFAULT_STATE, drumSubLaneOnly);
   assert.notEqual(
     drumHash,
     drumHashWithOverrides,
-    'custom drum trigger toggles should create a distinct Euclidean child hash',
+    'custom drum sequencer metadata should create a distinct Euclidean child hash',
+  );
+  assert.notEqual(
+    drumHash,
+    drumHashWithSubLane,
+    'custom drum sub-lane states should create a distinct Euclidean child hash',
   );
 }
 

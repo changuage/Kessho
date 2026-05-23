@@ -1,5 +1,48 @@
 #include "../KesshoProductEngineInternal.h"
 
+namespace {
+
+void clearDiceFieldOverrides(LaneState& lane, uint32_t flags) {
+  if ((flags & KESSHO_PRODUCT_DICE_FIELD_TRIGGER) != 0u) {
+    lane.step_override_set_low = 0u;
+    lane.step_override_set_high = 0u;
+    lane.step_override_value_low = 0u;
+    lane.step_override_value_high = 0u;
+  }
+  if ((flags & KESSHO_PRODUCT_DICE_FIELD_PROBABILITY) != 0u) {
+    lane.probability_override_set_low = 0u;
+    lane.probability_override_set_high = 0u;
+  }
+  if ((flags & KESSHO_PRODUCT_DICE_FIELD_RATCHET) != 0u) {
+    lane.ratchet_override_set_low = 0u;
+    lane.ratchet_override_set_high = 0u;
+  }
+  if ((flags & KESSHO_PRODUCT_DICE_FIELD_MIDI_NOTE) != 0u) {
+    lane.midi_note_override_set_low = 0u;
+    lane.midi_note_override_set_high = 0u;
+  }
+  if ((flags & KESSHO_PRODUCT_DICE_FIELD_EXPRESSION) != 0u) {
+    lane.expression_override_set_low = 0u;
+    lane.expression_override_set_high = 0u;
+    lane.expression_range_set_low = 0u;
+    lane.expression_range_set_high = 0u;
+  }
+  if ((flags & KESSHO_PRODUCT_DICE_FIELD_MORPH) != 0u) {
+    lane.morph_override_set_low = 0u;
+    lane.morph_override_set_high = 0u;
+    lane.morph_range_set_low = 0u;
+    lane.morph_range_set_high = 0u;
+  }
+  if ((flags & KESSHO_PRODUCT_DICE_FIELD_DISTANCE) != 0u) {
+    lane.distance_override_set_low = 0u;
+    lane.distance_override_set_high = 0u;
+    lane.distance_range_set_low = 0u;
+    lane.distance_range_set_high = 0u;
+  }
+}
+
+}
+
   bool KesshoProductEngine::dicePatternHit(uint32_t step, uint32_t steps, uint32_t fills, uint32_t rotation) const {
   return euclidHit(step, steps, fills, static_cast<int32_t>(rotation));
 }
@@ -25,11 +68,22 @@
   }
 
   LaneState& lane = lanes[event.index];
-  clearLaneStepOverrides(lane);
   const float intensity = clampFloat(event.value <= 0.0f ? 1.0f : event.value, 0.0f, 1.0f);
   if (intensity <= 0.0001f || lane.step_count == 0u) {
     telemetry.last_error_code = KESSHO_PRODUCT_OK;
     return;
+  }
+  const uint32_t dice_flags = event.flags == 0u
+      ? KESSHO_PRODUCT_DICE_FIELD_ALL
+      : (event.flags & KESSHO_PRODUCT_DICE_FIELD_ALL);
+  if (dice_flags == 0u) {
+    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    return;
+  }
+  if (event.flags == 0u) {
+    clearLaneStepOverrides(lane);
+  } else {
+    clearDiceFieldOverrides(lane, dice_flags);
   }
 
   const uint32_t event_seed = static_cast<uint32_t>(std::lround(std::max(0.0f, event.value2)));
@@ -42,7 +96,7 @@
       dice_nonce ^
       (event.target_id * 16777619u) ^
       (event.index * 2246822519u) ^
-      (event.flags * 3266489917u));
+      (dice_flags * 3266489917u));
   rng_state = hashU32(seed ^ rng_state ^ 0x9e3779b9u);
   if (rng_state == 0u) {
     rng_state = rng_seed == 0u ? 1u : rng_seed;
@@ -56,23 +110,39 @@
   }
 
   for (uint32_t step = 0; step < steps; ++step) {
-    const bool base_hit = manualMaskHit(lane, step);
-    const bool random_hit = dicePatternHit(step, steps, fills, rotation);
-    const bool use_random_hit = intensity >= 0.999f || hashUnit(seed ^ step ^ 0xb5297a4du) < intensity;
-    setStepOverride(lane, step, use_random_hit ? random_hit : base_hit);
+    if ((dice_flags & KESSHO_PRODUCT_DICE_FIELD_TRIGGER) != 0u) {
+      const bool base_hit = manualMaskHit(lane, step);
+      const bool random_hit = dicePatternHit(step, steps, fills, rotation);
+      const bool use_random_hit = intensity >= 0.999f || hashUnit(seed ^ step ^ 0xb5297a4du) < intensity;
+      setStepOverride(lane, step, use_random_hit ? random_hit : base_hit);
+    }
 
-    const float random_probability = 0.25f + hashUnit(seed ^ (step * 747796405u) ^ 0x7f4a7c15u) * 0.75f;
-    const float probability = clampFloat(lane.probability * (1.0f - intensity) + random_probability * intensity, 0.0f, 1.0f);
-    setStepFieldOverride(lane, KESSHO_PRODUCT_STEP_FIELD_PROBABILITY, step, probability, 0.0f);
+    if ((dice_flags & KESSHO_PRODUCT_DICE_FIELD_PROBABILITY) != 0u) {
+      const float random_probability = 0.25f + hashUnit(seed ^ (step * 747796405u) ^ 0x7f4a7c15u) * 0.75f;
+      const float probability = clampFloat(lane.probability * (1.0f - intensity) + random_probability * intensity, 0.0f, 1.0f);
+      setStepFieldOverride(lane, KESSHO_PRODUCT_STEP_FIELD_PROBABILITY, step, probability, 0.0f);
+    }
 
-    const float expression = clampFloat(lane.expression * (1.0f - intensity) + hashUnit(seed ^ (step * 1597334677u) ^ 0x94d049bbu) * intensity, 0.0f, 1.0f);
-    const float morph = clampFloat(lane.morph * (1.0f - intensity) + hashUnit(seed ^ (step * 3812015801u) ^ 0x2c1b3c6du) * intensity, 0.0f, 1.0f);
-    const float distance = clampFloat(lane.distance * (1.0f - intensity) + hashUnit(seed ^ (step * 1103515245u) ^ 0x165667b1u) * intensity, 0.0f, 1.0f);
-    setStepFieldOverride(lane, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, step, expression, 0.0f);
-    setStepFieldOverride(lane, KESSHO_PRODUCT_STEP_FIELD_MORPH, step, morph, 0.0f);
-    setStepFieldOverride(lane, KESSHO_PRODUCT_STEP_FIELD_DISTANCE, step, distance, 0.0f);
+    if ((dice_flags & KESSHO_PRODUCT_DICE_FIELD_RATCHET) != 0u) {
+      const float random_ratchet = static_cast<float>(1u + (hashU32(seed ^ (step * 2654435761u) ^ 0x5bd1e995u) % 4u));
+      const float ratchet = clampFloat(lane.ratchet * (1.0f - intensity) + random_ratchet * intensity, 1.0f, 8.0f);
+      setStepFieldOverride(lane, KESSHO_PRODUCT_STEP_FIELD_RATCHET, step, ratchet, 0.0f);
+    }
 
-    if (event.target_id == KESSHO_PRODUCT_SEQUENCER_SYNTH) {
+    if ((dice_flags & KESSHO_PRODUCT_DICE_FIELD_EXPRESSION) != 0u) {
+      const float expression = clampFloat(lane.expression * (1.0f - intensity) + hashUnit(seed ^ (step * 1597334677u) ^ 0x94d049bbu) * intensity, 0.0f, 1.0f);
+      setStepFieldOverride(lane, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, step, expression, 0.0f);
+    }
+    if ((dice_flags & KESSHO_PRODUCT_DICE_FIELD_MORPH) != 0u) {
+      const float morph = clampFloat(lane.morph * (1.0f - intensity) + hashUnit(seed ^ (step * 3812015801u) ^ 0x2c1b3c6du) * intensity, 0.0f, 1.0f);
+      setStepFieldOverride(lane, KESSHO_PRODUCT_STEP_FIELD_MORPH, step, morph, 0.0f);
+    }
+    if ((dice_flags & KESSHO_PRODUCT_DICE_FIELD_DISTANCE) != 0u) {
+      const float distance = clampFloat(lane.distance * (1.0f - intensity) + hashUnit(seed ^ (step * 1103515245u) ^ 0x165667b1u) * intensity, 0.0f, 1.0f);
+      setStepFieldOverride(lane, KESSHO_PRODUCT_STEP_FIELD_DISTANCE, step, distance, 0.0f);
+    }
+
+    if ((dice_flags & KESSHO_PRODUCT_DICE_FIELD_MIDI_NOTE) != 0u) {
       const int32_t offset = static_cast<int32_t>(hashU32(seed ^ (step * 668265263u) ^ 0x27d4eb2fu) % 25u) - 12;
       const float midi = clampFloat(lane.midi_note + static_cast<float>(std::lround(static_cast<float>(offset) * intensity)), 0.0f, 127.0f);
       setStepFieldOverride(lane, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, step, midi, 0.0f);
