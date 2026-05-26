@@ -328,7 +328,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
-                    <label className="seq-scale-quantize" title="Snap pitch offsets to current harmony scale">
+                    <label className="seq-scale-quantize" title="Snap pitch offsets to the selected scale">
                       <input
                         type="checkbox"
                         checked={sequencer.pitch.scaleQuantize ?? false}

@@ -1,11 +1,11 @@
 const EVENT_BYTES = 40;
-const TELEMETRY_BYTES = 1040;
+const TELEMETRY_BYTES = 1296;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
-const EXPECTED_PRODUCT_SCHEMA_HASH = 0xb34a8856;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0x2cbc4df1;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
-const SEQUENCER_UI_LANE_BYTES = 2216;
-const SEQUENCER_UI_STATE_BYTES = 70948;
+const SEQUENCER_UI_LANE_BYTES = 3008;
+const SEQUENCER_UI_STATE_BYTES = 96292;
 const SEQUENCER_UI_SYNTH_LANES_OFFSET = 36;
 const SEQUENCER_UI_DRUM_LANES_OFFSET =
   SEQUENCER_UI_SYNTH_LANES_OFFSET + SEQUENCER_UI_STATE_LANES * SEQUENCER_UI_LANE_BYTES;
@@ -36,6 +36,7 @@ const PRODUCT_EVENT_IDS = Object.freeze({
   SetModulationRange: 27,
   ResetSequencerLaneHome: 28,
   DiceSequencerLane: 29,
+  SetSourceOverride: 30,
 });
 const PRODUCT_EVENT_ID_SET = new Set(Object.values(PRODUCT_EVENT_IDS));
 const PRODUCT_SOURCE_IDS = new Set([1, 2, 3, 4, 5, 6, 7]);
@@ -44,7 +45,7 @@ const PRODUCT_DRUM_VOICE_COUNT = 7;
 const PRODUCT_GRAPH_TAP_COUNT = 110;
 const STEM_PEAK_COUNT = 9;
 const STEM_PEAK_PROBE_INTERVAL_BLOCKS = 64;
-const GRAPH_TAP_IDLE_DISABLE_SECONDS = 5;
+const GRAPH_TAP_IDLE_DISABLE_SECONDS = 0.05;
 const STEP_TOGGLE_CLEAR_LANE = 2;
 const STEP_FIELD_MASK = 15 << 8;
 const STEP_FIELD_SUBLANE_CONFIG = 8 << 8;
@@ -75,7 +76,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.stemPeakProbeCountdown = 0;
     this.lastGraphTapPeaks = new Array(PRODUCT_GRAPH_TAP_COUNT).fill(0);
     this.graphTapCaptures = new Map();
-    this.coreGraphTapsEnabled = true;
+    this.coreGraphTapsEnabled = null;
     this.graphTapDisableCountdownBlocks = 0;
     this.perfEnabled = false;
     this.perfTotalMs = 0;
@@ -196,8 +197,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         throw new Error('Kessho Product Core WASM telemetry schema probe failed');
       }
       this.assertSchemaHash('WASM telemetry', this.view.getUint32(this.telemetryPtr, true));
-      this.setCoreGraphTapsEnabled(true);
-      this.scheduleGraphTapIdleDisable();
+      this.setCoreGraphTapsEnabled(false);
       this.ready = true;
       this.port.postMessage({ type: 'ready' });
     } catch (error) {
@@ -558,7 +558,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     if (!event || typeof event !== 'object') {
       throw new Error('Kessho Product Core event must be an object');
     }
-    const eventKind = this.requireUint(event, 'eventKind', 1, 29);
+    const eventKind = this.requireUint(event, 'eventKind', 1, 30);
     if (!PRODUCT_EVENT_ID_SET.has(eventKind)) {
       throw new Error(`Unknown Kessho Product Core event kind: ${eventKind}`);
     }
@@ -594,7 +594,17 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         return normalized;
       case PRODUCT_EVENT_IDS.SetSourcePreset:
         normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, 7), 'targetId');
+        normalized.index = this.optionalUint(event, 'index', 0, 0xffffffff);
         normalized.value = this.requireFloat(event, 'value', Number.MIN_VALUE);
+        normalized.value2 = this.optionalFloat(event, 'value2', 0, 0, 1);
+        normalized.flags = this.optionalUint(event, 'flags', 0, 0xffffffff);
+        return normalized;
+      case PRODUCT_EVENT_IDS.SetSourceOverride:
+        normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, 7), 'targetId');
+        normalized.index = this.optionalUint(event, 'index', 0, 0xffffffff);
+        normalized.paramId = this.optionalUint(event, 'paramId', 0, 0xffffffff);
+        normalized.value = this.optionalFloat(event, 'value', 0);
+        normalized.flags = this.requireUint(event, 'flags', 1, 0xffffffff);
         return normalized;
       case PRODUCT_EVENT_IDS.ManualNoteOn:
         normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, 7), 'targetId');
@@ -602,6 +612,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         normalized.value2 = this.requireFloat(event, 'value2', Number.MIN_VALUE, 1);
         normalized.value3 = this.requireFloat(event, 'value3', Number.MIN_VALUE);
         normalized.value4 = this.optionalFloat(event, 'value4', 0);
+        normalized.flags = this.optionalUint(event, 'flags', 0, 0, 0xffffffff);
         return normalized;
       case PRODUCT_EVENT_IDS.ManualNoteOff:
         normalized.targetId = this.requireSourceId(this.requireUint(event, 'targetId', 1, 7), 'targetId');
@@ -665,11 +676,17 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         normalized.flags = this.requireUint(event, 'flags', 0, 0xffffffff);
         return normalized;
       case PRODUCT_EVENT_IDS.ResetSequencerLaneHome:
+        normalized.targetId = this.requireSequencerId(this.requireUint(event, 'targetId', 1, 2), 'targetId');
+        normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
+        return normalized;
       case PRODUCT_EVENT_IDS.DiceSequencerLane:
         normalized.targetId = this.requireSequencerId(this.requireUint(event, 'targetId', 1, 2), 'targetId');
         normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
         normalized.value = this.optionalFloat(event, 'value', 0);
         normalized.value2 = this.optionalFloat(event, 'value2', 0);
+        normalized.value3 = this.optionalFloat(event, 'value3', 0);
+        normalized.value4 = this.optionalFloat(event, 'value4', 0);
+        normalized.flags = this.requireUint(event, 'flags', 0, 0xffffffff);
         return normalized;
       default:
         throw new Error(`Unhandled Kessho Product Core event kind: ${eventKind}`);
@@ -891,6 +908,12 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       stepValueConfigEnabledMask: this.view.getUint32(ptr + 100, true),
       stepValueConfigSteps: this.readUint32Array(ptr, 104, 8),
       stepValueConfigDirections: this.readUint32Array(ptr, 136, 8),
+      expressionRangeSetLow: this.view.getUint32(ptr + 2216, true),
+      expressionRangeSetHigh: this.view.getUint32(ptr + 2220, true),
+      morphRangeSetLow: this.view.getUint32(ptr + 2224, true),
+      morphRangeSetHigh: this.view.getUint32(ptr + 2228, true),
+      distanceRangeSetLow: this.view.getUint32(ptr + 2232, true),
+      distanceRangeSetHigh: this.view.getUint32(ptr + 2236, true),
       probability: this.readFloatOverrides(
         ptr,
         this.view.getUint32(ptr + 44, true),
@@ -931,6 +954,24 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         this.view.getUint32(ptr + 92, true),
         this.view.getUint32(ptr + 96, true),
         1960,
+      ),
+      expressionRangeMaxes: this.readFloatOverrides(
+        ptr,
+        this.view.getUint32(ptr + 2216, true),
+        this.view.getUint32(ptr + 2220, true),
+        2240,
+      ),
+      morphRangeMaxes: this.readFloatOverrides(
+        ptr,
+        this.view.getUint32(ptr + 2224, true),
+        this.view.getUint32(ptr + 2228, true),
+        2496,
+      ),
+      distanceRangeMaxes: this.readFloatOverrides(
+        ptr,
+        this.view.getUint32(ptr + 2232, true),
+        this.view.getUint32(ptr + 2236, true),
+        2752,
       ),
     };
   }
@@ -984,7 +1025,17 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     for (let index = 0; index < 7; index += 1) {
       sourcePresetIds.push(this.view.getUint32(ptr + 936 + index * 4, true));
     }
-    const sequencerUiStateRevision = this.view.getUint32(ptr + 988, true);
+    const synthSequencerHitCounts = [];
+    const drumSequencerHitCounts = [];
+    const synthSequencerCurrentSteps = [];
+    const drumSequencerCurrentSteps = [];
+    for (let index = 0; index < 16; index += 1) {
+      synthSequencerHitCounts.push(this.view.getUint32(ptr + 1036 + index * 4, true));
+      drumSequencerHitCounts.push(this.view.getUint32(ptr + 1100 + index * 4, true));
+      synthSequencerCurrentSteps.push(this.view.getUint32(ptr + 1164 + index * 4, true));
+      drumSequencerCurrentSteps.push(this.view.getUint32(ptr + 1228 + index * 4, true));
+    }
+    const sequencerUiStateRevision = this.view.getUint32(ptr + 984, true);
     const sequencerUiState =
       sequencerUiStateRevision !== 0 && sequencerUiStateRevision !== this.lastSequencerUiStateRevision
         ? this.readSequencerUiState(sequencerUiStateRevision)
@@ -1036,23 +1087,26 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       masterOutputPeak: this.view.getFloat32(ptr + 968, true),
       masterOutputRms: this.view.getFloat32(ptr + 972, true),
       masterLimiterGainReductionDb: this.view.getFloat32(ptr + 976, true),
-      masterSaturationDrive: this.view.getFloat32(ptr + 980, true),
-      dynamicsSaturationDrive: this.view.getFloat32(ptr + 984, true),
+      dynamicsSaturationDrive: this.view.getFloat32(ptr + 980, true),
       sequencerUiStateRevision,
-      masterTruePeak: this.view.getFloat32(ptr + 992, true),
-      masterTruePeakDbtp: this.view.getFloat32(ptr + 996, true),
-      masterIntegratedLufs: this.view.getFloat32(ptr + 1000, true),
-      granularWriteHeadPosition: this.view.getFloat32(ptr + 1004, true),
+      masterTruePeak: this.view.getFloat32(ptr + 988, true),
+      masterTruePeakDbtp: this.view.getFloat32(ptr + 992, true),
+      masterIntegratedLufs: this.view.getFloat32(ptr + 996, true),
+      granularWriteHeadPosition: this.view.getFloat32(ptr + 1000, true),
       granularVoicePositions: [
+        this.view.getFloat32(ptr + 1004, true),
         this.view.getFloat32(ptr + 1008, true),
         this.view.getFloat32(ptr + 1012, true),
         this.view.getFloat32(ptr + 1016, true),
-        this.view.getFloat32(ptr + 1020, true),
       ],
-      pad1FilterFreq: this.view.getFloat32(ptr + 1024, true),
-      pad1Lfo1Value: this.view.getFloat32(ptr + 1028, true),
-      pad2FilterFreq: this.view.getFloat32(ptr + 1032, true),
-      pad2Lfo1Value: this.view.getFloat32(ptr + 1036, true),
+      pad1FilterFreq: this.view.getFloat32(ptr + 1020, true),
+      pad1Lfo1Value: this.view.getFloat32(ptr + 1024, true),
+      pad2FilterFreq: this.view.getFloat32(ptr + 1028, true),
+      pad2Lfo1Value: this.view.getFloat32(ptr + 1032, true),
+      synthSequencerHitCounts,
+      drumSequencerHitCounts,
+      synthSequencerCurrentSteps,
+      drumSequencerCurrentSteps,
       sequencerUiState,
       sequencerUiChangeDice: SEQUENCER_UI_CHANGE_DICE,
       sequencerUiChangeResetHome: SEQUENCER_UI_CHANGE_RESET_HOME,
@@ -1081,6 +1135,16 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         runtimeWalkValues[controlId] = value;
       }
     }
+    const synthSequencerHitCounts = [];
+    const drumSequencerHitCounts = [];
+    const synthSequencerCurrentSteps = [];
+    const drumSequencerCurrentSteps = [];
+    for (let index = 0; index < 16; index += 1) {
+      synthSequencerHitCounts.push(this.view.getUint32(ptr + 1036 + index * 4, true));
+      drumSequencerHitCounts.push(this.view.getUint32(ptr + 1100 + index * 4, true));
+      synthSequencerCurrentSteps.push(this.view.getUint32(ptr + 1164 + index * 4, true));
+      drumSequencerCurrentSteps.push(this.view.getUint32(ptr + 1228 + index * 4, true));
+    }
     return {
       schemaHash: this.view.getUint32(ptr, true),
       transportRunning: this.view.getUint32(ptr + 20, true) !== 0,
@@ -1091,19 +1155,23 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       masterInputPeak: this.view.getFloat32(ptr + 964, true),
       masterOutputPeak: this.view.getFloat32(ptr + 968, true),
       masterOutputRms: this.view.getFloat32(ptr + 972, true),
-      dynamicsSaturationDrive: this.view.getFloat32(ptr + 984, true),
-      masterTruePeak: this.view.getFloat32(ptr + 992, true),
-      granularWriteHeadPosition: this.view.getFloat32(ptr + 1004, true),
+      dynamicsSaturationDrive: this.view.getFloat32(ptr + 980, true),
+      masterTruePeak: this.view.getFloat32(ptr + 988, true),
+      granularWriteHeadPosition: this.view.getFloat32(ptr + 1000, true),
       granularVoicePositions: [
+        this.view.getFloat32(ptr + 1004, true),
         this.view.getFloat32(ptr + 1008, true),
         this.view.getFloat32(ptr + 1012, true),
         this.view.getFloat32(ptr + 1016, true),
-        this.view.getFloat32(ptr + 1020, true),
       ],
-      pad1FilterFreq: this.view.getFloat32(ptr + 1024, true),
-      pad1Lfo1Value: this.view.getFloat32(ptr + 1028, true),
-      pad2FilterFreq: this.view.getFloat32(ptr + 1032, true),
-      pad2Lfo1Value: this.view.getFloat32(ptr + 1036, true),
+      pad1FilterFreq: this.view.getFloat32(ptr + 1020, true),
+      pad1Lfo1Value: this.view.getFloat32(ptr + 1024, true),
+      pad2FilterFreq: this.view.getFloat32(ptr + 1028, true),
+      pad2Lfo1Value: this.view.getFloat32(ptr + 1032, true),
+      synthSequencerHitCounts,
+      drumSequencerHitCounts,
+      synthSequencerCurrentSteps,
+      drumSequencerCurrentSteps,
       workletOutputPeak: this.lastOutputPeak,
       workletStemPeaks: this.lastStemPeaks,
       workletMasterStemPeak: this.lastStemPeaks[0] || 0,

@@ -17,6 +17,7 @@ function read(path) {
 const runtime = read('src/audio/runtime.ts');
 const host = read('src/audio/coreEngineHost.ts');
 const engine = read('src/audio/engine.ts');
+const drumSynth = read('src/audio/drumSynth.ts');
 const outputTrims = read('src/audio/outputTrims.ts');
 const dynamicsParams = read('src/audio/dynamicsCharacterParams.ts');
 const presetUtils = read('src/ui/presetUtils.ts');
@@ -2011,6 +2012,68 @@ assert(
   JSON.stringify(readStringArray(dynamicsParams, 'DYNAMICS_CHARACTER_PARAM_ORDER')) ===
     JSON.stringify(readStringArray(dynamicsCharacterWorklet, 'PARAM_ORDER')),
   'Core/legacy dynamics-character param orders must stay identical',
+);
+
+const legacySynthEuclidScheduler = readBraceBody(engine, 'private startSynthEuclidScheduler()', 'AudioEngine synth Euclid scheduler');
+assert(
+  legacySynthEuclidScheduler.includes('const probArr = ov.probability[laneIndex];') &&
+    legacySynthEuclidScheduler.includes('const ratchetArr = ov.ratchet[laneIndex];'),
+  'Legacy synth Euclid scheduler must keep probability and ratchet trigger-lane overrides independent from expression sub-lane enable state',
+);
+assert(
+  !legacySynthEuclidScheduler.includes('const probArr = (slEnabled.expression') &&
+    !legacySynthEuclidScheduler.includes('const ratchetArr = (slEnabled.expression'),
+  'Legacy synth Euclid scheduler must not gate probability or ratchet trigger-lane overrides on expression',
+);
+assert(
+  legacySynthEuclidScheduler.includes('const scheduleTime = this.synthEuclidNextStepTime[laneIndex] + swingOffset;') &&
+    legacySynthEuclidScheduler.includes('this.synthEuclidNextStepTime[laneIndex] += laneStepDuration;') &&
+    !legacySynthEuclidScheduler.includes('this.synthEuclidNextStepTime[laneIndex] += laneStepDuration + swingOffset;'),
+  'Legacy synth Euclid scheduler must apply swing to the event time without drifting the lane clock grid',
+);
+
+const coreSynthEuclidPreview = readFunctionBody(host, 'createSynthEuclidPreview', 'Core/Web synth Euclid preview');
+assertOrdered(coreSynthEuclidPreview, 'Core/Web synth Euclid preview trig/sub-lane phase', [
+  'const cycleRepeats = getTrigConditionCycleRepeats(trigConditions);',
+  'const trigVisitCounts = new Array(pattern.length).fill(0);',
+  'for (let cycle = 0; cycle < cycleRepeats; cycle += 1) {',
+  'const hitPhase = hitCount;',
+  'hitCount += 1;',
+  'const trigPassed =',
+  'if (!trigPassed || rng() > clamp(laneProbability * stepProbability, 0, 1)) {',
+]);
+assert(
+  /pitchBindingMode === 'sequence'[\s\S]*?\?\s*seqLaneIndex\([\s\S]*?step,[\s\S]*?\)[\s\S]*?:\s*seqLaneIndex\([\s\S]*?hitPhase,[\s\S]*?\);/.test(coreSynthEuclidPreview) &&
+    /expressionValues\[seqLaneIndex\([\s\S]*?hitPhase,[\s\S]*?\)\]/.test(coreSynthEuclidPreview) &&
+    /ratchetValues\[seqLaneIndex\([\s\S]*?hitPhase,[\s\S]*?\)\]/.test(coreSynthEuclidPreview),
+  'Core/Web synth Euclid preview must phase polyrhythmic pitch, expression, and ratchet sub-lanes by emitted hits before trig/probability gates',
+);
+assert(
+  !coreSynthEuclidPreview.includes('hitCount - 1'),
+  'Core/Web synth Euclid preview must not phase sub-lanes from post-gate hitCount - 1',
+);
+assert(
+  coreSynthEuclidPreview.includes('delaySeconds: laneInitialStartDelaySeconds + stepTime + swingOffset +') &&
+    coreSynthEuclidPreview.includes('stepTime += stepSeconds;') &&
+    !coreSynthEuclidPreview.includes('stepTime += stepSeconds + swingOffset'),
+  'Core/Web synth Euclid preview must apply swing to note delay without lengthening the sequencer cycle',
+);
+
+const legacyDrumEuclidScheduler = readBraceBody(drumSynth, 'private startEuclidScheduler()', 'DrumSynth Euclid scheduler');
+const legacyDrumOverrideApply = readBraceBody(drumSynth, 'private applyEuclidOverridesToSequencer(', 'DrumSynth Euclid override application');
+assert(
+  legacyDrumEuclidScheduler.includes('this.applyEuclidOverridesToSequencer(sequencer, laneIndex);'),
+  'Legacy drum Euclid scheduler must apply the shared override helper before scheduling',
+);
+assert(
+  legacyDrumOverrideApply.includes('sequencer.trigger.probability = ov.probability[laneIndex] ??') &&
+    legacyDrumOverrideApply.includes('sequencer.trigger.ratchet = ov.ratchet[laneIndex] ??'),
+  'Legacy drum Euclid scheduler must apply probability and ratchet trigger-lane overrides even when expression is disabled',
+);
+assert(
+  !legacyDrumOverrideApply.includes('ov.probability[laneIndex] && expressionEnabled') &&
+    !legacyDrumOverrideApply.includes('ov.ratchet[laneIndex] && expressionEnabled'),
+  'Legacy drum Euclid scheduler must not gate probability or ratchet trigger-lane overrides on expression',
 );
 
 for (const token of [

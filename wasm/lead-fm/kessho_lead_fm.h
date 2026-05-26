@@ -82,10 +82,16 @@ void lead_fm_process_block(int block_size);
 // ═══════════════ Note Control ═══════════════
 
 /** Trigger a note. Params should already be set via setters. */
-void lead_fm_note_on(float frequency, float velocity, float hold_seconds);
+int lead_fm_note_on(float frequency, float velocity, float hold_seconds);
 
 /** Trigger a note with lead index (0=lead1, 1=lead2) for separate output routing. */
-void lead_fm_note_on_ex(float frequency, float velocity, float hold_seconds, int lead_index);
+int lead_fm_note_on_ex(float frequency, float velocity, float hold_seconds, int lead_index);
+
+/** Release one active note slot. */
+int lead_fm_note_off(int note_index);
+
+/** Retune an active note without retriggering envelopes. */
+int lead_fm_note_set_frequency(int note_index, float frequency);
 
 /** Release all active notes */
 void lead_fm_all_notes_off(void);
@@ -185,13 +191,15 @@ float* lead_fm_instance_get_output_ptr(KesshoLeadFmInstance* instance);
 float* lead_fm_instance_get_output2_ptr(KesshoLeadFmInstance* instance);
 void lead_fm_instance_process_block(KesshoLeadFmInstance* instance, int block_size);
 
-void lead_fm_instance_note_on(KesshoLeadFmInstance* instance, float frequency, float velocity, float hold_seconds);
-void lead_fm_instance_note_on_ex(
+int lead_fm_instance_note_on(KesshoLeadFmInstance* instance, float frequency, float velocity, float hold_seconds);
+int lead_fm_instance_note_on_ex(
     KesshoLeadFmInstance* instance,
     float frequency,
     float velocity,
     float hold_seconds,
     int lead_index);
+int lead_fm_instance_note_off(KesshoLeadFmInstance* instance, int note_index);
+int lead_fm_instance_note_set_frequency(KesshoLeadFmInstance* instance, int note_index, float frequency);
 void lead_fm_instance_all_notes_off(KesshoLeadFmInstance* instance);
 
 void lead_fm_instance_set_algorithm(KesshoLeadFmInstance* instance, int algo);

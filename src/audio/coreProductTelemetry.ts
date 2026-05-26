@@ -36,6 +36,12 @@ export type CoreProductSequencerLaneUiState = {
   morphOverrideSetHigh?: number;
   distanceOverrideSetLow?: number;
   distanceOverrideSetHigh?: number;
+  expressionRangeSetLow?: number;
+  expressionRangeSetHigh?: number;
+  morphRangeSetLow?: number;
+  morphRangeSetHigh?: number;
+  distanceRangeSetLow?: number;
+  distanceRangeSetHigh?: number;
   stepValueConfigEnabledMask?: number;
   stepValueConfigSteps?: number[];
   stepValueConfigDirections?: number[];
@@ -46,6 +52,9 @@ export type CoreProductSequencerLaneUiState = {
   expression: number[] | null;
   morph: number[] | null;
   distance: number[] | null;
+  expressionRangeMaxes?: number[] | null;
+  morphRangeMaxes?: number[] | null;
+  distanceRangeMaxes?: number[] | null;
 };
 
 export type CoreProductSequencerUiState = {
@@ -106,7 +115,6 @@ export type CoreProductTelemetrySnapshot = {
   masterOutputPeak?: number;
   masterOutputRms?: number;
   masterLimiterGainReductionDb?: number;
-  masterSaturationDrive?: number;
   dynamicsSaturationDrive?: number;
   masterTruePeak?: number;
   masterTruePeakDbtp?: number;
@@ -139,6 +147,10 @@ export type CoreProductTelemetrySnapshot = {
   pad1Lfo1Value?: number;
   pad2FilterFreq?: number;
   pad2Lfo1Value?: number;
+  synthSequencerHitCounts?: number[];
+  drumSequencerHitCounts?: number[];
+  synthSequencerCurrentSteps?: number[];
+  drumSequencerCurrentSteps?: number[];
 };
 
 export type CoreProductVisualTelemetrySnapshot = Pick<
@@ -160,6 +172,10 @@ export type CoreProductVisualTelemetrySnapshot = Pick<
   | 'pad1Lfo1Value'
   | 'pad2FilterFreq'
   | 'pad2Lfo1Value'
+  | 'synthSequencerHitCounts'
+  | 'drumSequencerHitCounts'
+  | 'synthSequencerCurrentSteps'
+  | 'drumSequencerCurrentSteps'
   | 'workletOutputPeak'
   | 'workletStemPeaks'
   | 'workletMasterStemPeak'

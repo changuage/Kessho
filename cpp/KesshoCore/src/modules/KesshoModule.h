@@ -64,6 +64,11 @@ public:
     (void)lead_index;
     return 0;
   }
+  virtual int setVoiceFrequency(int voice_index, float frequency) {
+    (void)voice_index;
+    (void)frequency;
+    return 0;
+  }
   virtual int setTriggerMacros(float morph, float distance, float expression) {
     (void)morph;
     (void)distance;
@@ -103,6 +108,9 @@ public:
   virtual int noteOff(int voice_index) {
     (void)voice_index;
     return 0;
+  }
+  virtual int lastTriggeredVoiceIndex() const {
+    return -1;
   }
   virtual int killVoice(int voice_index) {
     (void)voice_index;

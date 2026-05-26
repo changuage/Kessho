@@ -4,6 +4,7 @@ import {
   type CoreProductStepValueField,
   type CoreProductSubLaneDirection,
 } from './coreProductEvents';
+import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions';
 
 export type SequencerKind = 'synth' | 'drum';
 
@@ -18,24 +19,7 @@ export function normalizedUnitValue(value: unknown, fallback: number): number {
 }
 
 export function normalizeClockDivisionValue(value: unknown, fallback: number): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return Math.max(1, Math.min(128, Math.round(value)));
-  }
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-  const table: Record<string, number> = {
-    '1/4': 4,
-    '1/4T': 6,
-    '1/8': 8,
-    '1/8T': 12,
-    '1/16': 16,
-    '1/16T': 24,
-    '1/32': 32,
-    '1/32T': 48,
-    '1/64': 64,
-  };
-  return table[value] ?? fallback;
+  return sequencerClockDivisionToNumericValue(value, fallback);
 }
 
 export function normalizeSubLaneEnabledStates(states: unknown): Record<string, boolean>[] {

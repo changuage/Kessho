@@ -10,6 +10,7 @@
  */
 
 import type { PresetLibrary } from '../presets/types';
+import { clampMorphPosition } from './morphUtils';
 
 /** Keys that a pad preset controls (timbre + oscillator + filter + envelope) */
 export const PAD_PRESET_PARAM_KEYS = [
@@ -774,6 +775,7 @@ export function morphPadPresets(
   const normalizedA = normalizePadPreset(presetA);
   const normalizedB = normalizePadPreset(presetB);
   if (!normalizedA || !normalizedB) return {};
+  const morphPosition = clampMorphPosition(morph);
 
   const result: Record<string, number | string | boolean> = {};
   const allKeys = new Set([
@@ -790,12 +792,47 @@ export function morphPadPresets(
     } else if (b === undefined) {
       result[key] = a;
     } else if (typeof a === 'number' && typeof b === 'number') {
-      result[key] = a + (b - a) * morph;
+      result[key] = a + (b - a) * morphPosition;
     } else {
       // Discrete params: snap at 0.5
-      result[key] = morph < 0.5 ? a : b;
+      result[key] = morphPosition < 0.5 ? a : b;
     }
   }
 
   return result;
+}
+
+export function applyPadPresetMorphParamsToState<T extends Record<string, unknown>>(
+  state: T,
+  rawOverrides: Record<string, unknown> = state,
+): T {
+  const next = { ...state } as Record<string, unknown>;
+  const hasRawOverride = (key: string): boolean =>
+    Object.prototype.hasOwnProperty.call(rawOverrides, key);
+
+  const applyScope = (scope: 'pad1' | 'pad2'): void => {
+    const presetAKey = scope === 'pad2' ? 'pad2PresetA' : 'padPresetA';
+    const presetBKey = scope === 'pad2' ? 'pad2PresetB' : 'padPresetB';
+    const morphKey = scope === 'pad2' ? 'pad2Morph' : 'padMorph';
+    const presetAId = String(next[presetAKey] ?? 'init');
+    const presetBId = String(next[presetBKey] ?? next[presetAKey] ?? 'init');
+    const presetA = getPadPreset(presetAId, scope);
+    const presetB = getPadPreset(presetBId, scope);
+    if (!presetA || !presetB) return;
+
+    const morph = typeof next[morphKey] === 'number' && Number.isFinite(next[morphKey])
+      ? next[morphKey]
+      : 0;
+    const morphed = morphPadPresets(presetA, presetB, morph);
+    for (const key of PAD_PRESET_PARAM_KEYS) {
+      if (!(key in morphed)) continue;
+      const targetKey = scope === 'pad2' ? PAD1_TO_PAD2_KEY[key] : key;
+      if (!targetKey || hasRawOverride(targetKey)) continue;
+      next[targetKey] = morphed[key];
+    }
+  };
+
+  applyScope('pad1');
+  applyScope('pad2');
+  return next as T;
 }

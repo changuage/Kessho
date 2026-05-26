@@ -26,6 +26,7 @@ const prerequisiteSteps = [
   'core:product:wasm',
   'core:product:determinism',
   'core:product:sequencer',
+  'core:product:sequencer-evolve',
   'core:product:harmony',
   'core:product:graph',
   'core:product:fx',
@@ -37,6 +38,7 @@ const prerequisiteSteps = [
   'core:product:web-graph-parity:audit',
   'core:product:web-graph-capture-smoke:fast',
   'core:product:web-host',
+  'core:product:sequencer-ui',
   'core:product:cpu',
   'core:product:browser-runtime',
 ];

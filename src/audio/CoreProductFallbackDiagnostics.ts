@@ -1,5 +1,4 @@
 export type RuntimeFallbackClassification =
-  | 'safe-visual-fallback'
   | 'temporary-missing-product-telemetry'
   | 'reference-only-web-ts-behavior'
   | 'forbidden-production-fallback';
@@ -83,16 +82,32 @@ export const CORE_PRODUCT_GETTER_POLICIES = {
 
 export type ProductCoreGetterName = keyof typeof CORE_PRODUCT_GETTER_POLICIES;
 
+export const CORE_PRODUCT_REFERENCE_ONLY_METHODS = new Set<string>();
+
+function classifyProductCoreGetterPolicy(policy: ProductCoreGetterPolicy): RuntimeFallbackClassification {
+  switch (policy) {
+    case 'explicitly-unsupported-hidden':
+    case 'backed-by-product-core-api':
+      return 'forbidden-production-fallback';
+    case 'temporary-missing-product-telemetry':
+      return 'temporary-missing-product-telemetry';
+    case 'reference-only-web-ts-behavior':
+      return 'reference-only-web-ts-behavior';
+  }
+}
+
 export function classifyCoreProductRuntimeFallback(property: string): RuntimeFallbackClassification {
   if (property.startsWith('get')) {
-    return property.includes('Analyser') || property.includes('Telemetry') || property.includes('Debug')
-      ? 'temporary-missing-product-telemetry'
-      : 'safe-visual-fallback';
+    const policy = CORE_PRODUCT_GETTER_POLICIES[property as ProductCoreGetterName];
+    return policy ? classifyProductCoreGetterPolicy(policy.classification) : 'forbidden-production-fallback';
   }
   if (/^(set|update|reset|dice|start|stop|resume|suspend|trigger|push|load|register|ensure|audition)/.test(property)) {
     return 'forbidden-production-fallback';
   }
-  return 'reference-only-web-ts-behavior';
+  if (CORE_PRODUCT_REFERENCE_ONLY_METHODS.has(property)) {
+    return 'reference-only-web-ts-behavior';
+  }
+  return 'forbidden-production-fallback';
 }
 
 export function runtimeFallbackIsDevelopmentError(classification: RuntimeFallbackClassification): boolean {

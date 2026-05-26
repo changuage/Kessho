@@ -1,0 +1,404 @@
+import assert from 'node:assert/strict';
+import { createCoreProductHostHarmonySnapshot } from './CoreProductHostHarmonyState';
+import { createHarmonyState } from './harmony';
+import { createCoreProductSnapshot } from './coreProductSnapshot';
+import { createRng, getUtcBucket } from './rng';
+import { getScaleNotesInRange, SCALE_FAMILIES, selectScaleFamily } from './scales';
+import { KESSHO_PRODUCT_SOURCE_IDS, KESSHO_PRODUCT_SOURCE_PRESET_IDS } from './generated/kesshoProductSchema';
+import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES } from './lead4opfm';
+import { applyPadPresetMorphParamsToState } from './padPresets';
+import { drumPitchUiValuesToEngineOffsets, quantizeDrumPitchOffsetToScale } from '../ui/sequencer/drumPitchSequencer';
+import { DEFAULT_STATE } from '../ui/state';
+
+const PRODUCT_HARMONY_SCALE_IDS = new Map<string, number>([
+  ['Major (Ionian)', 1],
+  ['Aeolian', 2],
+  ['Major Pentatonic', 3],
+  ['Octatonic Half-Whole', 4],
+  ['Lydian', 5],
+  ['Mixolydian', 6],
+  ['Minor Pentatonic', 7],
+  ['Dorian', 8],
+  ['Harmonic Minor', 9],
+  ['Melodic Minor', 10],
+  ['Phrygian Dominant', 11],
+]);
+
+function pitchClass(midi: number): number {
+  return ((Math.round(midi) % 12) + 12) % 12;
+}
+
+for (const family of SCALE_FAMILIES) {
+  const expectedScaleId = PRODUCT_HARMONY_SCALE_IDS.get(family.name);
+  assert.equal(typeof expectedScaleId, 'number', `missing Product scale ID for ${family.name}`);
+  const snapshot = createCoreProductSnapshot({
+    scaleMode: 'manual',
+    manualScale: family.name,
+    tension: family.tensionValue,
+    rootNote: 4,
+  });
+  assert.equal(snapshot.harmony.scaleId, expectedScaleId, `manual ${family.name} Product scale ID mismatch`);
+
+  const webHarmony = createHarmonyState(
+    'manual-scale-parity',
+    family.tensionValue,
+    32,
+    0.5,
+    0,
+    'manual',
+    family.name,
+    4,
+  );
+  assert.equal(webHarmony.scaleFamily.name, family.name, `web manual ${family.name} scale mismatch`);
+  assert.equal(pitchClass(snapshot.harmony.rootMidi), webHarmony.effectiveRoot, `manual ${family.name} root pitch-class mismatch`);
+  const webScaleNotes = getScaleNotesInRange(webHarmony.scaleFamily, 48, 84, webHarmony.effectiveRoot);
+  assert(webScaleNotes.length > 0, `web manual ${family.name} should expose sequencer notes in range`);
+  for (const note of webHarmony.currentChord.midiNotes) {
+    assert(
+      family.intervals.includes((pitchClass(note) - webHarmony.effectiveRoot + 12) % 12),
+      `web manual ${family.name} chord note left selected scale`,
+    );
+  }
+}
+
+for (const tension of [0, 0.08, 0.18, 0.28, 0.38, 0.48, 0.55, 0.65, 0.75, 0.88, 0.95]) {
+  const seedWindow = 'hour';
+  const selected = selectScaleFamily(createRng(`${getUtcBucket(seedWindow)}|E_ROOT`), tension);
+  const expectedScaleId = PRODUCT_HARMONY_SCALE_IDS.get(selected.name);
+  const snapshot = createCoreProductSnapshot({
+    scaleMode: 'auto',
+    seedWindow,
+    tension,
+    rootNote: 4,
+  });
+  assert.equal(snapshot.harmony.scaleId, expectedScaleId, `auto ${selected.name} Product scale ID mismatch`);
+  const webHarmony = createHarmonyState(
+    `${getUtcBucket(seedWindow)}|E_ROOT`,
+    tension,
+    32,
+    0.5,
+    0,
+    'auto',
+    'Major (Ionian)',
+    4,
+  );
+  assert.equal(webHarmony.scaleFamily.name, selected.name, `auto ${selected.name} web/Product scale selection mismatch`);
+  assert.equal(pitchClass(snapshot.harmony.rootMidi), webHarmony.effectiveRoot, `auto ${selected.name} root pitch-class mismatch`);
+}
+
+const productHostManualHarmony = createCoreProductHostHarmonySnapshot({
+  scaleMode: 'manual',
+  manualScale: 'Lydian',
+  tension: 0.18,
+  rootNote: 5,
+  chordRate: 32,
+  voicingSpread: 0.5,
+  detune: 0,
+  seedWindow: 'hour',
+});
+assert.equal(productHostManualHarmony.harmonyState?.scaleFamily.name, 'Lydian', 'Product host UI harmony should expose manual web scale');
+assert.equal(productHostManualHarmony.harmonyState?.effectiveRoot, 5, 'Product host UI harmony should expose manual root');
+assert(productHostManualHarmony.currentBucket.length > 0, 'Product host UI harmony should expose seed bucket');
+assert(productHostManualHarmony.currentSeed > 0, 'Product host UI harmony should expose deterministic seed');
+
+const productHostTelemetryHarmony = createCoreProductHostHarmonySnapshot({
+  scaleMode: 'auto',
+  tension: 0.95,
+  rootNote: 4,
+  chordRate: 32,
+  voicingSpread: 0.5,
+  detune: 0,
+  seedWindow: 'hour',
+}, {
+  schemaHash: 1,
+  transportRunning: true,
+  activeSources: 0,
+  activeVoices: 0,
+  activeAssets: 0,
+  sequencerEventCount: 0,
+  controlQueueDepth: 0,
+  assetMissingCount: 0,
+  lastErrorCode: 0,
+  harmonyRootMidi: 67,
+  harmonyScaleId: 11,
+  harmonyTension: 0.95,
+  harmonyChordDegree: 3,
+  harmonyChordMidi: [67, 68, 71, 72],
+});
+assert.equal(productHostTelemetryHarmony.harmonyState?.scaleFamily.name, 'Phrygian Dominant', 'Product host UI harmony should follow Product telemetry scale');
+assert.equal(productHostTelemetryHarmony.harmonyState?.effectiveRoot, 7, 'Product host UI harmony should follow Product telemetry root');
+assert.deepEqual(productHostTelemetryHarmony.harmonyState?.currentChord.midiNotes, [67, 68, 71, 72], 'Product host UI harmony should expose Product telemetry chord notes');
+assert.equal(productHostTelemetryHarmony.harmonyState?.currentDegree, 3, 'Product host UI harmony should expose Product telemetry chord degree');
+
+const selectedScaleDrumPitch = drumPitchUiValuesToEngineOffsets(
+  [4, 6],
+  { mode: 'semitones', root: 60, scale: 'Major' },
+  37,
+  true,
+);
+assert.deepEqual(selectedScaleDrumPitch, [4, 5], 'drum pitch Q should quantize engine offsets to the selected pitch scale');
+assert.equal(
+  quantizeDrumPitchOffsetToScale(4, [0, 3, 5, 7, 10]),
+  3,
+  'regression fixture should detect an accidental second harmony-scale quantize',
+);
+
+const defaultSynthLaneCenters = [
+  (DEFAULT_STATE.synthEuclid1NoteMin + DEFAULT_STATE.synthEuclid1NoteMax) * 0.5,
+  (DEFAULT_STATE.synthEuclid2NoteMin + DEFAULT_STATE.synthEuclid2NoteMax) * 0.5,
+  (DEFAULT_STATE.synthEuclid3NoteMin + DEFAULT_STATE.synthEuclid3NoteMax) * 0.5,
+  (DEFAULT_STATE.synthEuclid4NoteMin + DEFAULT_STATE.synthEuclid4NoteMax) * 0.5,
+];
+const sparseSequencerSnapshot = createCoreProductSnapshot({});
+assert.equal(
+  sparseSequencerSnapshot.harmony.voicingMode,
+  1,
+  'Product synth sequencer should default to range-based voicing to match web pitch-off note selection',
+);
+assert.deepEqual(
+  sparseSequencerSnapshot.synthLanes.slice(0, 4).map((lane) => lane.midiNote),
+  defaultSynthLaneCenters,
+  'Product synth sequencer fallback MIDI centers should follow web note-range defaults',
+);
+const partialRangeSnapshot = createCoreProductSnapshot({ synthEuclid1NoteMin: 60 });
+assert.equal(
+  partialRangeSnapshot.synthLanes[0]?.midiNote,
+  (60 + DEFAULT_STATE.synthEuclid1NoteMax) * 0.5,
+  'Product synth sequencer should combine sparse note-range state with the web default range',
+);
+
+const sequencerMacroSnapshot = createCoreProductSnapshot({
+  synthEuclideanMasterEnabled: true,
+  synthEuclid1Enabled: true,
+  synthEuclid1Source: 'lead',
+  lead1Morph: 0.87,
+  lead1Distance: 0.34,
+  drumEnabled: true,
+  drumEuclidMasterEnabled: true,
+  drumEuclid1Enabled: true,
+  drumEuclid1TargetKick: true,
+  drumKickMorph: 0.91,
+  drumKickDistance: 0.62,
+});
+assert.equal(
+  sequencerMacroSnapshot.synthLanes[0]?.morph,
+  0.87,
+  'Product synth sequencer lane should inherit source morph at the preset B endpoint',
+);
+assert.equal(
+  sequencerMacroSnapshot.synthLanes[0]?.distance,
+  0.34,
+  'Product synth sequencer lane should inherit source distance unless a sub-lane overrides it',
+);
+assert.equal(
+  sequencerMacroSnapshot.drumLanes[0]?.morph,
+  0.91,
+  'Product drum sequencer lane should inherit selected voice morph at the preset B endpoint',
+);
+assert.equal(
+  sequencerMacroSnapshot.drumLanes[0]?.distance,
+  0.62,
+  'Product drum sequencer lane should inherit selected voice distance unless a sub-lane overrides it',
+);
+
+const hydratedLeadPresetSnapshot = createCoreProductSnapshot({
+  leadEnabled: true,
+  lead1PresetA: 'soft_rhodes',
+  lead1PresetB: 'gamelan',
+  lead1PresetAData: DEFAULT_SOFT_RHODES,
+  lead1PresetBData: DEFAULT_GAMELAN,
+  lead1Morph: 0.37,
+});
+const hydratedLeadSource = hydratedLeadPresetSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Lead1);
+assert.equal(
+  hydratedLeadSource?.sourcePresetAId,
+  KESSHO_PRODUCT_SOURCE_PRESET_IDS.LeadSoftRhodes,
+  'Product lead preset endpoint A should stay encoded when exact preset data is hydrated',
+);
+assert.equal(
+  hydratedLeadSource?.sourcePresetBId,
+  KESSHO_PRODUCT_SOURCE_PRESET_IDS.LeadGamelan,
+  'Product lead preset endpoint B should stay encoded when exact preset data is hydrated',
+);
+
+const customAdsrLeadSnapshot = createCoreProductSnapshot({
+  leadEnabled: true,
+  lead1PresetA: 'soft_rhodes',
+  lead1PresetB: 'gamelan',
+  lead1Morph: 0.37,
+  lead1UseCustomAdsr: true,
+  lead1Attack: 0.047,
+  lead1Decay: 0.91,
+  lead1Sustain: 0.42,
+  lead1Release: 3.25,
+  lead1Distance: 0,
+});
+const customAdsrLeadSource = customAdsrLeadSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Lead1);
+assert.equal(customAdsrLeadSource?.exactLeadParamCount, 0, 'Product lead custom ADSR should use structured override fields when preset endpoints reconstruct the patch');
+assert.equal(customAdsrLeadSource?.leadEnvelopeOverrideEnabled, true, 'Product lead custom ADSR should set the structured override flag');
+assert.equal(customAdsrLeadSource?.attackSeconds, 0.047, 'Product lead custom ADSR attack should use the source envelope field');
+assert.equal(customAdsrLeadSource?.decaySeconds, 0.91, 'Product lead custom ADSR decay should use the source envelope field');
+assert.equal(customAdsrLeadSource?.sustain, 0.42, 'Product lead custom ADSR sustain should use the source envelope field');
+assert.equal(customAdsrLeadSource?.releaseSeconds, 3.25, 'Product lead custom ADSR release should use the source envelope field');
+
+const algorithmOverrideLeadSnapshot = createCoreProductSnapshot({
+  leadEnabled: true,
+  lead1PresetA: 'soft_rhodes',
+  lead1PresetB: 'gamelan',
+  lead1Morph: 0.73,
+  lead1AlgorithmMode: 'presetA',
+  lead1Distance: 0,
+});
+const algorithmOverrideLeadSource = algorithmOverrideLeadSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Lead1);
+assert.equal(algorithmOverrideLeadSource?.exactLeadParamCount, 0, 'Product lead algorithm override should use structured fields when preset endpoints reconstruct the patch');
+assert.equal(algorithmOverrideLeadSource?.leadAlgorithmPresetAEnabled, true, 'Product lead algorithm override should set the structured preset-A flag');
+
+const customLeadPresetDataSnapshot = createCoreProductSnapshot({
+  leadEnabled: true,
+  lead1PresetA: 'soft_rhodes',
+  lead1PresetB: 'gamelan',
+  lead1PresetAData: {
+    ...DEFAULT_SOFT_RHODES,
+    params: { ...DEFAULT_SOFT_RHODES.params, gain: DEFAULT_SOFT_RHODES.params.gain + 0.11 },
+  },
+  lead1Morph: 0,
+  lead1Distance: 0,
+});
+const customLeadPresetDataSource = customLeadPresetDataSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Lead1);
+assert.equal(customLeadPresetDataSource?.exactLeadParamCount, 0, 'Product lead custom preset data should use bounded sparse overrides when generated preset endpoints reconstruct the patch');
+assert.ok((customLeadPresetDataSource?.leadOverrideCount ?? 0) > 0, 'Product lead custom preset data should serialize at least one sparse override');
+const customLeadGainOverrideSlot = customLeadPresetDataSource?.leadOverrideIndices
+  .slice(0, customLeadPresetDataSource.leadOverrideCount)
+  .indexOf(62) ?? -1;
+assert.ok(customLeadGainOverrideSlot >= 0, 'Product lead custom gain should target the generated gain param index');
+assert.ok(Number.isFinite(customLeadPresetDataSource?.leadOverrideValues[customLeadGainOverrideSlot]), 'Product lead sparse override should carry a finite value');
+
+const distanceLeadSnapshot = createCoreProductSnapshot({
+  leadEnabled: true,
+  lead1PresetA: 'soft_rhodes',
+  lead1PresetB: 'gamelan',
+  lead1Morph: 0.41,
+  lead1Distance: 0.67,
+});
+const distanceLeadSource = distanceLeadSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Lead1);
+assert.equal(distanceLeadSource?.exactLeadParamCount, 0, 'Product lead distance macro should use structured source distance when preset endpoints reconstruct the patch');
+
+const customAdsrDistanceLeadSnapshot = createCoreProductSnapshot({
+  leadEnabled: true,
+  lead1PresetA: 'soft_rhodes',
+  lead1PresetB: 'gamelan',
+  lead1Morph: 0.29,
+  lead1UseCustomAdsr: true,
+  lead1Attack: 0.023,
+  lead1Decay: 1.12,
+  lead1Sustain: 0.51,
+  lead1Release: 2.7,
+  lead1Distance: 0.58,
+});
+const customAdsrDistanceLeadSource = customAdsrDistanceLeadSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Lead1);
+assert.equal(customAdsrDistanceLeadSource?.exactLeadParamCount, 0, 'Product lead custom ADSR plus distance should stay structured when preset endpoints reconstruct the patch');
+assert.equal(customAdsrDistanceLeadSource?.leadEnvelopeOverrideEnabled, true, 'Product lead custom ADSR plus distance should keep the structured envelope flag');
+
+const distancePadSnapshot = createCoreProductSnapshot({
+  padEnabled: true,
+  padPresetA: 'soft_pluck',
+  padPresetB: 'buchla_pluck',
+  padMorph: 0.43,
+  padDistance: 0.72,
+});
+const distancePadSource = distancePadSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Pad1);
+assert.equal(distancePadSource?.exactPadParamCount, 0, 'Product pad distance macro should use structured source distance when preset endpoints reconstruct the patch');
+
+const fullDefaultPadPresetSnapshot = createCoreProductSnapshot({
+  ...DEFAULT_STATE,
+  padEnabled: true,
+  padPresetA: 'soft_pluck',
+  padPresetB: 'buchla_pluck',
+  padMorph: 0.43,
+});
+const fullDefaultPadPresetSource = fullDefaultPadPresetSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Pad1);
+assert.equal(fullDefaultPadPresetSource?.exactPadParamCount, 0, 'Product pad full default state cache should not force exact Pad arrays for generated preset endpoints');
+
+const staleSoftPluckCacheBuchlaSnapshot = createCoreProductSnapshot({
+  ...applyPadPresetMorphParamsToState({
+    ...DEFAULT_STATE,
+    padEnabled: true,
+    padPresetA: 'soft_pluck',
+    padPresetB: 'soft_pluck',
+    padMorph: 0,
+  }),
+  padPresetA: 'buchla_pluck',
+  padPresetB: 'buchla_pluck',
+  padMorph: 0,
+});
+const staleSoftPluckCacheBuchlaSource = staleSoftPluckCacheBuchlaSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Pad1);
+assert.equal(staleSoftPluckCacheBuchlaSource?.sourcePresetAId, KESSHO_PRODUCT_SOURCE_PRESET_IDS.PadBuchlaPluck, 'Product pad stale cache test should select the Buchla endpoint');
+assert.equal(staleSoftPluckCacheBuchlaSource?.exactPadParamCount, 0, 'Product pad stale generated preset cache should not force exact Pad arrays over Buchla');
+assert.equal(staleSoftPluckCacheBuchlaSource?.padOverrideCount, 0, 'Product pad stale generated preset cache should not become sparse overrides over Buchla');
+
+const customFullDefaultPadPatchSnapshot = createCoreProductSnapshot({
+  ...DEFAULT_STATE,
+  padEnabled: true,
+  padPresetA: 'soft_pluck',
+  padPresetB: 'buchla_pluck',
+  padMorph: 0.43,
+  hardness: DEFAULT_STATE.hardness + 0.11,
+});
+const customFullDefaultPadPatchSource = customFullDefaultPadPatchSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Pad1);
+assert.equal(customFullDefaultPadPatchSource?.exactPadParamCount, 0, 'Product pad non-default custom controls should use bounded sparse overrides when generated preset endpoints reconstruct the patch');
+assert.ok((customFullDefaultPadPatchSource?.padOverrideCount ?? 0) > 0, 'Product pad custom controls should serialize at least one sparse override');
+const customFullDefaultPadHardnessOverrideSlot = customFullDefaultPadPatchSource?.padOverrideIndices
+  .slice(0, customFullDefaultPadPatchSource.padOverrideCount)
+  .indexOf(15) ?? -1;
+assert.ok(customFullDefaultPadHardnessOverrideSlot >= 0, 'Product pad hardness custom control should target the generated hardness param index');
+assert.ok(Number.isFinite(customFullDefaultPadPatchSource?.padOverrideValues[customFullDefaultPadHardnessOverrideSlot]), 'Product pad sparse override should carry a finite value');
+
+const drumSourceFieldSnapshot = createCoreProductSnapshot({
+  drumEnabled: true,
+  drumLevel: 0.72,
+  drumReverbSend: 0.34,
+});
+const drumSourceFieldSource = drumSourceFieldSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Drum);
+assert.equal(drumSourceFieldSource?.exactDrumParamCount, 0, 'Product drum level and reverb send should use source fields when voice presets reconstruct the patch');
+assert.equal(drumSourceFieldSource?.level, 0.72, 'Product drum level should stay in the canonical source level field');
+assert.equal(drumSourceFieldSource?.reverbSend, 0.34, 'Product drum reverb should stay in the canonical source send field');
+
+const fullDefaultDrumSourceFieldSnapshot = createCoreProductSnapshot({
+  ...DEFAULT_STATE,
+  drumEnabled: true,
+  drumLevel: 0.72,
+  drumReverbSend: 0.34,
+});
+const fullDefaultDrumSourceFieldSource = fullDefaultDrumSourceFieldSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Drum);
+assert.equal(fullDefaultDrumSourceFieldSource?.exactDrumParamCount, 0, 'Product drum full default state should not force exact Drum arrays for generated voice presets');
+assert.equal(fullDefaultDrumSourceFieldSource?.level, 0.72, 'Product drum full default state should keep level in the canonical source field');
+assert.equal(fullDefaultDrumSourceFieldSource?.reverbSend, 0.34, 'Product drum full default state should keep reverb in the canonical source field');
+
+const fullDefaultDrumVoicePresetSnapshot = createCoreProductSnapshot({
+  ...DEFAULT_STATE,
+  drumEnabled: true,
+  drumSubPresetA: 'Classic Sub',
+  drumSubPresetB: 'Soft Touch',
+  drumSubMorph: 0.4,
+});
+const fullDefaultDrumVoicePresetSource = fullDefaultDrumVoicePresetSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Drum);
+assert.equal(fullDefaultDrumVoicePresetSource?.exactDrumParamCount, 0, 'Product drum full default state cache should not force exact Drum arrays for generated voice preset endpoints');
+
+const customFullDefaultDrumPatchSnapshot = createCoreProductSnapshot({
+  ...DEFAULT_STATE,
+  drumEnabled: true,
+  drumSubPresetA: 'Classic Sub',
+  drumSubPresetB: 'Soft Touch',
+  drumSubMorph: 0.4,
+  drumSubFreq: DEFAULT_STATE.drumSubFreq + 7,
+});
+const customFullDefaultDrumPatchSource = customFullDefaultDrumPatchSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Drum);
+assert.equal(customFullDefaultDrumPatchSource?.exactDrumParamCount, 0, 'Product drum non-default custom controls should use bounded sparse overrides when generated voice presets reconstruct the patch');
+assert.ok((customFullDefaultDrumPatchSource?.drumOverrideCount ?? 0) > 0, 'Product drum custom controls should serialize at least one sparse override');
+const customFullDefaultDrumFreqOverrideSlot = customFullDefaultDrumPatchSource?.drumOverrideIndices
+  .slice(0, customFullDefaultDrumPatchSource.drumOverrideCount)
+  .indexOf(0) ?? -1;
+assert.ok(customFullDefaultDrumFreqOverrideSlot >= 0, 'Product drum custom sub frequency control should target the generated Drum param index');
+assert.ok(Number.isFinite(customFullDefaultDrumPatchSource?.drumOverrideValues[customFullDefaultDrumFreqOverrideSlot]), 'Product drum sparse override should carry a finite value');
+
+console.log('Kessho Product harmony parity regression passed');

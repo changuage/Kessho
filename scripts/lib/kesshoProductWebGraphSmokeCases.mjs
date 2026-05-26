@@ -486,6 +486,48 @@ const lead1SourceSendStatePatch = {
   lead1Level: 0.5,
 };
 
+const createSequencedSynthEuclidStatePatch = (source, sourcePatch = {}) => ({
+  ...statePatch,
+  padEnabled: false,
+  leadEnabled: false,
+  lead2Enabled: false,
+  pianoEnabled: false,
+  synthLevel: 0.65,
+  lead1Level: 0.65,
+  lead2Level: 0.65,
+  pianoLevel: 0.65,
+  ...sourcePatch,
+  synthChordSequencerEnabled: false,
+  synthEuclideanMasterEnabled: false,
+  synthEuclidJoinPolicy: 'grid',
+  synthEuclidClockSource: 'localBeat',
+  sequencerMasterBPM: 120,
+  synthEuclidBaseBPM: 120,
+  synthEuclideanTempo: 1,
+  synthEuclid1Enabled: true,
+  synthEuclid1Preset: 'custom',
+  synthEuclid1Steps: 4,
+  synthEuclid1Hits: 4,
+  synthEuclid1Rotation: 0,
+  synthEuclid1NoteMin: 64,
+  synthEuclid1NoteMax: 64,
+  synthEuclid1Level: 0.8,
+  synthEuclid1Probability: 1,
+  synthEuclid1Source: source,
+  synthEuclid2Enabled: false,
+  synthEuclid3Enabled: false,
+  synthEuclid4Enabled: false,
+});
+
+const sequencedPad1EuclidStatePatch = createSequencedSynthEuclidStatePatch('synth1');
+const sequencedPad2EuclidStatePatch = createSequencedSynthEuclidStatePatch('synth2', {
+  pad2Enabled: true,
+  pad2VoiceAssign: 1 << 1,
+  pad2Level: 0.65,
+});
+
+const sequencedLead1EuclidStatePatch = createSequencedSynthEuclidStatePatch('lead');
+
 const lead2SourceSendStatePatch = {
   ...statePatch,
   padEnabled: false,
@@ -494,12 +536,56 @@ const lead2SourceSendStatePatch = {
   lead2Level: 0.5,
 };
 
+const sequencedLead2EuclidStatePatch = createSequencedSynthEuclidStatePatch('lead2');
+
 const pianoSourceSendStatePatch = {
   ...statePatch,
   padEnabled: false,
   pianoEnabled: true,
   pianoLevel: 0.5,
 };
+
+const sequencedPianoEuclidStatePatch = createSequencedSynthEuclidStatePatch('piano');
+
+const createSequencedDrumEuclidStatePatch = (target) => ({
+  ...drumSourceSendStatePatch,
+  drumLevel: 0.8,
+  drumEuclidMasterEnabled: false,
+  drumEuclidJoinPolicy: 'grid',
+  drumEuclidClockSource: 'localBeat',
+  sequencerMasterBPM: 120,
+  drumEuclidBaseBPM: 120,
+  drumEuclidTempo: 1,
+  drumEuclidSwing: 0,
+  drumEuclidDivision: 8,
+  drumEuclid1Enabled: true,
+  drumEuclid1Preset: 'custom',
+  drumEuclid1Steps: 4,
+  drumEuclid1Hits: 4,
+  drumEuclid1Rotation: 0,
+  drumEuclid1TargetSub: target === 'sub',
+  drumEuclid1TargetKick: target === 'kick',
+  drumEuclid1TargetClick: target === 'click',
+  drumEuclid1TargetBeepHi: target === 'beepHi',
+  drumEuclid1TargetBeepLo: target === 'beepLo',
+  drumEuclid1TargetNoise: target === 'noise',
+  drumEuclid1TargetMembrane: target === 'membrane',
+  drumEuclid1Probability: 1,
+  drumEuclid1VelocityMin: 1,
+  drumEuclid1VelocityMax: 1,
+  drumEuclid1Level: 0.8,
+  drumEuclid2Enabled: false,
+  drumEuclid3Enabled: false,
+  drumEuclid4Enabled: false,
+});
+
+const sequencedDrumEuclidStatePatch = createSequencedDrumEuclidStatePatch('kick');
+const sequencedDrumSubEuclidStatePatch = createSequencedDrumEuclidStatePatch('sub');
+const sequencedDrumClickEuclidStatePatch = createSequencedDrumEuclidStatePatch('click');
+const sequencedDrumBeepHiEuclidStatePatch = createSequencedDrumEuclidStatePatch('beepHi');
+const sequencedDrumBeepLoEuclidStatePatch = createSequencedDrumEuclidStatePatch('beepLo');
+const sequencedDrumNoiseEuclidStatePatch = createSequencedDrumEuclidStatePatch('noise');
+const sequencedDrumMembraneEuclidStatePatch = createSequencedDrumEuclidStatePatch('membrane');
 
 const diffusePad2DistanceStatePatch = {
   ...statePatch,
@@ -719,6 +805,90 @@ const fastSmokeCaseMetadata = new Map([
   }],
 ]);
 
+const sequencedSynthEuclidRoutingCase = (id, track, statePatch) => ({
+  id,
+  track,
+  durationMs: 1500,
+  settleMs: 50,
+  rmsTolerance: 5,
+  peakTolerance: 1,
+  maxLagMs: 120,
+  minLagCorrelation: 0,
+  alignmentGate: true,
+  statePatch,
+  stateEvents: [
+    { delayMs: 100, patch: { synthEuclideanMasterEnabled: true } },
+  ],
+  manualNotes: false,
+  routeSmokeOnly: true,
+});
+
+const sequencedDrumEuclidRoutingCase = (id, statePatch) => ({
+  id,
+  track: 'drumDry',
+  durationMs: 1500,
+  settleMs: 50,
+  rmsTolerance: 5,
+  peakTolerance: 1,
+  maxLagMs: 120,
+  minLagCorrelation: 0,
+  alignmentGate: true,
+  statePatch,
+  stateEvents: [
+    { delayMs: 100, patch: { drumEuclidMasterEnabled: true } },
+  ],
+  manualNotes: false,
+  routeSmokeOnly: true,
+});
+
+const sequencedSynthMorphSliderSmokeCase = (id, track, statePatch, morphKey) => ({
+  id,
+  track,
+  durationMs: 1700,
+  settleMs: 50,
+  rmsTolerance: 5,
+  peakTolerance: 1,
+  maxLagMs: 120,
+  minLagCorrelation: 0,
+  alignmentGate: true,
+  statePatch: {
+    ...statePatch,
+    [morphKey]: 0.12,
+  },
+  stateEvents: [
+    { delayMs: 100, patch: { synthEuclideanMasterEnabled: true } },
+    { delayMs: 350, patch: { [morphKey]: 0.82 } },
+    { delayMs: 700, patch: { [morphKey]: 0.28 } },
+    { delayMs: 1050, patch: { [morphKey]: 0.64 } },
+  ],
+  manualNotes: false,
+  routeSmokeOnly: true,
+});
+
+const sequencedDrumMorphSliderSmokeCase = (id, statePatch, morphKey) => ({
+  id,
+  track: 'drumDry',
+  durationMs: 1700,
+  settleMs: 50,
+  rmsTolerance: 5,
+  peakTolerance: 1,
+  maxLagMs: 120,
+  minLagCorrelation: 0,
+  alignmentGate: true,
+  statePatch: {
+    ...statePatch,
+    [morphKey]: 0.12,
+  },
+  stateEvents: [
+    { delayMs: 100, patch: { drumEuclidMasterEnabled: true } },
+    { delayMs: 350, patch: { [morphKey]: 0.82 } },
+    { delayMs: 700, patch: { [morphKey]: 0.28 } },
+    { delayMs: 1050, patch: { [morphKey]: 0.64 } },
+  ],
+  manualNotes: false,
+  routeSmokeOnly: true,
+});
+
 const rawCases = [
   {
     id: 'manual-pad-reverb-input',
@@ -875,6 +1045,17 @@ const rawCases = [
     minLagCorrelation: 0.99,
     statePatch,
   },
+  sequencedSynthEuclidRoutingCase(
+    'sequenced-synth-euclid-pad1-dry-routing',
+    'pad1Dry',
+    sequencedPad1EuclidStatePatch,
+  ),
+  sequencedSynthMorphSliderSmokeCase(
+    'active-morph-slider-sequenced-synth-pad1-route-smoke',
+    'pad1Dry',
+    sequencedPad1EuclidStatePatch,
+    'padMorph',
+  ),
   {
     id: 'manual-pad1-reverb-send',
     track: 'pad1ReverbSend',
@@ -1109,6 +1290,11 @@ const rawCases = [
     },
     manualNotes: ['pad2:64:0.75:700'],
   },
+  sequencedSynthEuclidRoutingCase(
+    'sequenced-synth-euclid-pad2-dry-routing',
+    'pad2Dry',
+    sequencedPad2EuclidStatePatch,
+  ),
   {
     id: 'manual-pad2-reverb-send',
     track: 'pad2ReverbSend',
@@ -1218,6 +1404,17 @@ const rawCases = [
     statePatch: lead1SourceSendStatePatch,
     manualNotes: ['lead1:64:0.75:700'],
   },
+  sequencedSynthEuclidRoutingCase(
+    'sequenced-synth-euclid-lead1-dry-routing',
+    'lead1Dry',
+    sequencedLead1EuclidStatePatch,
+  ),
+  sequencedSynthMorphSliderSmokeCase(
+    'active-morph-slider-sequenced-synth-lead1-route-smoke',
+    'lead1Dry',
+    sequencedLead1EuclidStatePatch,
+    'lead1Morph',
+  ),
   {
     id: 'manual-lead1-reverb-send',
     track: 'lead1ReverbSend',
@@ -1320,6 +1517,11 @@ const rawCases = [
     statePatch: lead2SourceSendStatePatch,
     manualNotes: ['lead2:67:0.75:700'],
   },
+  sequencedSynthEuclidRoutingCase(
+    'sequenced-synth-euclid-lead2-dry-routing',
+    'lead2Dry',
+    sequencedLead2EuclidStatePatch,
+  ),
   {
     id: 'manual-lead2-reverb-send',
     track: 'lead2ReverbSend',
@@ -1423,6 +1625,11 @@ const rawCases = [
     statePatch: pianoSourceSendStatePatch,
     manualNotes: ['piano:64:0.74:700'],
   },
+  sequencedSynthEuclidRoutingCase(
+    'sequenced-synth-euclid-piano-dry-routing',
+    'pianoDry',
+    sequencedPianoEuclidStatePatch,
+  ),
   {
     id: 'manual-piano-short-dry',
     track: 'pianoDry',
@@ -3072,6 +3279,14 @@ const rawCases = [
     manualNotes: false,
     manualDrums: ['kick:0.8:0'],
   },
+  sequencedDrumEuclidRoutingCase('sequenced-drum-euclid-kick-dry-routing', sequencedDrumEuclidStatePatch),
+  sequencedDrumMorphSliderSmokeCase('active-morph-slider-sequenced-drum-kick-route-smoke', sequencedDrumEuclidStatePatch, 'drumKickMorph'),
+  sequencedDrumEuclidRoutingCase('sequenced-drum-euclid-sub-dry-routing', sequencedDrumSubEuclidStatePatch),
+  sequencedDrumEuclidRoutingCase('sequenced-drum-euclid-click-dry-routing', sequencedDrumClickEuclidStatePatch),
+  sequencedDrumEuclidRoutingCase('sequenced-drum-euclid-beep-hi-dry-routing', sequencedDrumBeepHiEuclidStatePatch),
+  sequencedDrumEuclidRoutingCase('sequenced-drum-euclid-beep-lo-dry-routing', sequencedDrumBeepLoEuclidStatePatch),
+  sequencedDrumEuclidRoutingCase('sequenced-drum-euclid-noise-dry-routing', sequencedDrumNoiseEuclidStatePatch),
+  sequencedDrumEuclidRoutingCase('sequenced-drum-euclid-membrane-dry-routing', sequencedDrumMembraneEuclidStatePatch),
   {
     id: 'manual-drum-reverb-send',
     track: 'drumReverbSend',

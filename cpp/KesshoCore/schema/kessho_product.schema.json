@@ -1,6 +1,6 @@
 {
   "name": "kessho-product",
-  "version": 2,
+  "version": 6,
   "groups": [
     "transport",
     "harmony",
@@ -111,10 +111,7 @@
     },
     "master": {
       "gain": 0.85,
-      "limiterCeilingDb": -0.5,
-      "saturationMode": 0,
-      "saturationDrive": 0,
-      "saturationTone": 0.5
+      "limiterCeilingDb": -0.5
     },
     "rng": {
       "seed": 1,
@@ -146,10 +143,29 @@
       "releaseSeconds": 1.4,
       "exactPadParamCount": 0,
       "exactPadParams": [],
+      "padOverrideCount": 0,
+      "padOverrideIndices": [],
+      "padOverrideValues": [],
       "exactLeadParamCount": 0,
       "exactLeadParams": [],
+      "leadOverrideCount": 0,
+      "leadOverrideIndices": [],
+      "leadOverrideValues": [],
       "exactDrumParamCount": 0,
-      "exactDrumParams": []
+      "exactDrumParams": [],
+      "drumOverrideCount": 0,
+      "drumOverrideIndices": [],
+      "drumOverrideValues": [],
+      "sourcePresetAId": 0,
+      "sourcePresetBId": 0,
+      "leadEnvelopeOverrideEnabled": false,
+      "leadAlgorithmPresetAEnabled": false
+    },
+    "soundscape": {
+      "textureParamCount": 0,
+      "textureParams": [],
+      "moduleParamCount": 0,
+      "moduleParams": []
     },
     "sequencerLane": {
       "enabled": false,
@@ -170,7 +186,9 @@
       "expression": 0.75,
       "seed": 1,
       "barReset": true,
-      "phraseReset": false
+      "phraseReset": false,
+      "tempoMultiplier": 1,
+      "initialStartDelaySeconds": -1
     },
     "routing": {
       "delayAToDelayB": 0,
@@ -338,6 +356,9 @@
       "delayBWarp": 0,
       "delayBWarpIntensity": 0.5,
       "delayBSpread": 0.5,
+      "delayBTapeHeadMask": 15,
+      "delayBTapeHeadLevels": [0.72, 0.8, 0.88, 1],
+      "delayBTapeHeadPans": [0.28, 0.72, 0.38, 0.62],
       "reverbMix": 0.12,
       "reverbType": 2,
       "reverbQuality": 1,

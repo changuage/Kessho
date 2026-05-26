@@ -145,7 +145,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
   const endChainPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_END_CHAIN_PRESET_KEYS, { forceDynamicsEnabled: true }), []);
   const characterPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_CHARACTER_PRESET_KEYS, { forceDynamicsEnabled: true }), []);
   const degradePresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_DEGRADE_PRESET_KEYS, { forceDynamicsEnabled: true }), []);
-  const saturationPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_SATURATION_PRESET_KEYS, { forceDynamicsEnabled: true }), []);
+  const saturationPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_SATURATION_PRESET_KEYS), []);
 
   const handlePresetLoad = useCallback((entry: PresetEntry) => {
     setPresetName(entry.name);
@@ -169,11 +169,18 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
   }, []);
 
   const setModuleEnabled = useCallback((key: 'sidechainEnabled' | 'characterEnabled' | 'degradeEnabled' | 'dynamicsSaturationEnabled' | 'endCompEnabled', enabled: boolean) => {
+    const shouldEnableDynamics = key !== 'dynamicsSaturationEnabled';
     if (onStateChange) {
-      onStateChange((currentState) => ({ ...currentState, dynamicsEnabled: true, [key]: enabled }));
+      onStateChange((currentState) => ({
+        ...currentState,
+        ...(shouldEnableDynamics ? { dynamicsEnabled: true } : {}),
+        [key]: enabled,
+      }));
       return;
     }
-    onSelectChange('dynamicsEnabled', true);
+    if (shouldEnableDynamics) {
+      onSelectChange('dynamicsEnabled', true);
+    }
     onSelectChange(key, enabled);
   }, [onSelectChange, onStateChange]);
 

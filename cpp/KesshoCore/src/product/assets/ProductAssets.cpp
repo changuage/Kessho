@@ -23,15 +23,15 @@
 
   bool KesshoProductEngine::soundscapeModuleParamsAvailable(const SourceState& source) const {
   return source.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
-      source.exact_drum_param_count >= kSoundscapeProductModuleParamCount;
+      source.soundscape_module_param_count >= kSoundscapeProductModuleParamCount;
 }
 
   bool KesshoProductEngine::soundscapeModuleShouldRun(const SourceState& source) const {
   return sourceRenderActive(source) &&
       soundscapeModuleParamsAvailable(source) &&
-      (source.exact_drum_params[kSoundscapeModuleWaterActiveParam] > 0.5f ||
-       source.exact_drum_params[kSoundscapeModuleInsectsActiveParam] > 0.5f ||
-       source.exact_drum_params[kSoundscapeModuleInsects2ActiveParam] > 0.5f);
+      (source.soundscape_module_params[kSoundscapeModuleWaterActiveParam] > 0.5f ||
+       source.soundscape_module_params[kSoundscapeModuleInsectsActiveParam] > 0.5f ||
+       source.soundscape_module_params[kSoundscapeModuleInsects2ActiveParam] > 0.5f);
 }
 
   bool KesshoProductEngine::soundscapeAssetUsesModule(const SourceState& source, uint32_t asset_id) const {
@@ -136,16 +136,16 @@
 
   bool KesshoProductEngine::soundscapeParityFixtureEnabled(const SourceState& source) const {
   if (source.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
-      source.exact_pad_param_count < kSoundscapeParityParamCount) {
+      source.soundscape_texture_param_count < kSoundscapeParityParamCount) {
     return false;
   }
-  const float value = source.exact_pad_params[kSoundscapeParityFixtureParam];
+  const float value = source.soundscape_texture_params[kSoundscapeParityFixtureParam];
   return std::isfinite(value) && value >= 0.5f;
 }
 
   bool KesshoProductEngine::soundscapeTextureParamsAvailable(const SourceState& source) const {
   return source.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
-      source.exact_pad_param_count >= kSoundscapeTextureParamCount;
+      source.soundscape_texture_param_count >= kSoundscapeTextureParamCount;
 }
 
   float KesshoProductEngine::soundscapeTextureParam(
@@ -159,7 +159,7 @@
     return fallback;
   }
   const uint32_t param_index = kSoundscapeTextureParamStart + slot * kSoundscapeTextureParamStride + param;
-  const float value = source.exact_pad_params[param_index];
+  const float value = source.soundscape_texture_params[param_index];
   return std::isfinite(value) ? value : fallback;
 }
 
@@ -172,8 +172,8 @@
   }
   const uint32_t lo_param = kSoundscapeTextureParamStart + slot * kSoundscapeTextureParamStride + kSoundscapeTextureParamSeedLo;
   const uint32_t hi_param = kSoundscapeTextureParamStart + slot * kSoundscapeTextureParamStride + kSoundscapeTextureParamSeedHi;
-  const uint32_t lo = static_cast<uint32_t>(clampFloat(source.exact_pad_params[lo_param], 0.0f, 65535.0f)) & 0xffffu;
-  const uint32_t hi = static_cast<uint32_t>(clampFloat(source.exact_pad_params[hi_param], 0.0f, 65535.0f)) & 0xffffu;
+  const uint32_t lo = static_cast<uint32_t>(clampFloat(source.soundscape_texture_params[lo_param], 0.0f, 65535.0f)) & 0xffffu;
+  const uint32_t hi = static_cast<uint32_t>(clampFloat(source.soundscape_texture_params[hi_param], 0.0f, 65535.0f)) & 0xffffu;
   const uint32_t seed = lo | (hi << 16u);
   return seed == 0u ? (fallback == 0u ? 1u : fallback) : seed;
 }
@@ -270,6 +270,55 @@
   }
 }
 
+  void KesshoProductEngine::configureSoundscapeTextureSpatialRuntime(
+      uint32_t asset_id,
+      SoundscapeTextureRuntime& runtime) const {
+  runtime.spatial_enabled = true;
+  runtime.spatial_delay_frames = 1u;
+  runtime.spatial_center_gain = 1.0f;
+  runtime.spatial_side_gain = 0.0f;
+  runtime.spatial_left_branch_l = 1.0f;
+  runtime.spatial_left_branch_r = 0.0f;
+  runtime.spatial_right_branch_l = 0.0f;
+  runtime.spatial_right_branch_r = 1.0f;
+
+  double delay_ms = 0.0;
+  switch (asset_id) {
+    case kSoundscapeAssetOcean:
+      delay_ms = 10.0;
+      runtime.spatial_side_gain = 0.24f;
+      runtime.spatial_center_gain = 0.80f;
+      runtime.spatial_left_branch_l = 0.9930684569549263f;
+      runtime.spatial_left_branch_r = 0.11753739745783766f;
+      runtime.spatial_right_branch_l = 0.1175373974578377f;
+      runtime.spatial_right_branch_r = 0.9930684569549263f;
+      break;
+    case kSoundscapeAssetBirds:
+      delay_ms = 13.0;
+      runtime.spatial_side_gain = 0.42f;
+      runtime.spatial_center_gain = 0.56f;
+      break;
+    case kSoundscapeAssetBirds2:
+      delay_ms = 15.0;
+      runtime.spatial_side_gain = 0.45f;
+      runtime.spatial_center_gain = 0.50f;
+      break;
+    case kSoundscapeAssetFrogs:
+      delay_ms = 12.0;
+      runtime.spatial_side_gain = 0.36f;
+      runtime.spatial_center_gain = 0.68f;
+      break;
+    default:
+      runtime.spatial_enabled = false;
+      return;
+  }
+
+  runtime.spatial_delay_frames = clampU32(
+      static_cast<uint32_t>(std::lround(sample_rate * delay_ms * 0.001)),
+      1u,
+      kSoundscapeTextureHaasDelayMaxFrames - 1u);
+}
+
   void KesshoProductEngine::processSoundscapeTextureSpatial(
       uint32_t asset_id,
       float& left,
@@ -278,42 +327,12 @@
   if (slot >= kSoundscapeTextureSlotCount) {
     return;
   }
-
-  float delay_ms = 0.0f;
-  float side_gain = 0.0f;
-  float center_gain = 1.0f;
-  float pan = 1.0f;
-  switch (asset_id) {
-    case kSoundscapeAssetOcean:
-      delay_ms = 10.0f;
-      side_gain = 0.24f;
-      center_gain = 0.80f;
-      pan = 0.85f;
-      break;
-    case kSoundscapeAssetBirds:
-      delay_ms = 13.0f;
-      side_gain = 0.42f;
-      center_gain = 0.56f;
-      pan = 1.0f;
-      break;
-    case kSoundscapeAssetBirds2:
-      delay_ms = 15.0f;
-      side_gain = 0.45f;
-      center_gain = 0.50f;
-      pan = 1.0f;
-      break;
-    case kSoundscapeAssetFrogs:
-      delay_ms = 12.0f;
-      side_gain = 0.36f;
-      center_gain = 0.68f;
-      pan = 1.0f;
-      break;
-    default:
-      return;
+  const SoundscapeTextureRuntime& runtime = soundscape_texture_runtimes[slot];
+  if (!runtime.spatial_enabled) {
+    return;
   }
-
   const uint32_t delay_frames = clampU32(
-      static_cast<uint32_t>(std::lround(sample_rate * static_cast<double>(delay_ms) * 0.001)),
+      runtime.spatial_delay_frames,
       1u,
       kSoundscapeTextureHaasDelayMaxFrames - 1u);
   const uint32_t read_index =
@@ -325,15 +344,12 @@
   soundscape_texture_delay_index[slot] =
       (soundscape_texture_delay_index[slot] + 1u) % kSoundscapeTextureHaasDelayMaxFrames;
 
-  const float left_angle = (clampFloat(-pan, -1.0f, 1.0f) + 1.0f) * static_cast<float>(kTwoPi * 0.125);
-  const float right_angle = (clampFloat(pan, -1.0f, 1.0f) + 1.0f) * static_cast<float>(kTwoPi * 0.125);
-  const float left_branch_l = std::cos(left_angle);
-  const float left_branch_r = std::sin(left_angle);
-  const float right_branch_l = std::cos(right_angle);
-  const float right_branch_r = std::sin(right_angle);
-
-  left = mono * center_gain + mono * side_gain * left_branch_l + delayed * side_gain * right_branch_l;
-  right = mono * center_gain + mono * side_gain * left_branch_r + delayed * side_gain * right_branch_r;
+  left = mono * runtime.spatial_center_gain +
+      mono * runtime.spatial_side_gain * runtime.spatial_left_branch_l +
+      delayed * runtime.spatial_side_gain * runtime.spatial_right_branch_l;
+  right = mono * runtime.spatial_center_gain +
+      mono * runtime.spatial_side_gain * runtime.spatial_left_branch_r +
+      delayed * runtime.spatial_side_gain * runtime.spatial_right_branch_r;
 }
 
   float KesshoProductEngine::soundscapeLayerRouteSend(
@@ -344,10 +360,10 @@
   if (source.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
       layer >= kSoundscapeLayerCount ||
       route >= kSoundscapeLayerRouteStride ||
-      source.exact_pad_param_count < kSoundscapeLayerRouteParamCount) {
+      source.soundscape_texture_param_count < kSoundscapeLayerRouteParamCount) {
     return fallback;
   }
   const uint32_t param_index = layer * kSoundscapeLayerRouteStride + route;
-  const float value = source.exact_pad_params[param_index];
+  const float value = source.soundscape_texture_params[param_index];
   return std::isfinite(value) ? clampFloat(value, 0.0f, 2.0f) : fallback;
 }

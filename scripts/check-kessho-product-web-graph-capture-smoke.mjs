@@ -124,8 +124,9 @@ function runCaseAttempt(caseDef, args, attempt, captureUrl) {
   }
   if (captureUrl) command.push(`--url=${captureUrl}`);
   else command.push(`--port=${args.port}`);
-  if (caseDef.mobileDevice) command.push('--mobile-device');
-  if (caseDef.envelopeGate) command.push('--envelope-gate');
+	  if (caseDef.mobileDevice) command.push('--mobile-device');
+	  if (caseDef.routeSmokeOnly) command.push('--route-smoke');
+	  if (caseDef.envelopeGate) command.push('--envelope-gate');
   if (caseDef.alignmentGate) command.push('--alignment-gate');
   if (caseDef.envelopeWindowMs !== undefined) command.push(`--envelope-window-ms=${caseDef.envelopeWindowMs}`);
   if (caseDef.envelopeTimeToleranceMs !== undefined) command.push(`--envelope-time-tolerance-ms=${caseDef.envelopeTimeToleranceMs}`);

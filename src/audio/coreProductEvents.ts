@@ -4,6 +4,7 @@ import {
   KESSHO_PRODUCT_DRUM_PARAM_COUNT,
   KESSHO_PRODUCT_DRUM_PARAM_SPECS,
   KESSHO_PRODUCT_DRUM_VOICE_COUNT,
+  KESSHO_PRODUCT_LEAD_PARAM_COUNT,
   KESSHO_PRODUCT_PAD_PARAM_COUNT,
   KESSHO_PRODUCT_PAD_PARAM_SPECS,
 } from './generated/kesshoProductSchema';
@@ -97,6 +98,8 @@ export const CORE_PRODUCT_SUBLANE_DIRECTIONS = Object.freeze({
 export const CORE_PRODUCT_DRUM_RANGE_TARGET_BASE = 1000;
 export const CORE_PRODUCT_PAD_RUNTIME_PARAM_ID_BASE = 2000;
 export const CORE_PRODUCT_PAD2_RUNTIME_PARAM_ID_BASE = 2100;
+export const CORE_PRODUCT_LEAD_RUNTIME_PARAM_ID_BASE = 2200;
+export const CORE_PRODUCT_LEAD2_RUNTIME_PARAM_ID_BASE = 2300;
 export const CORE_PRODUCT_DRUM_RUNTIME_PARAM_ID_BASE = 3000;
 const CORE_PRODUCT_DRUM_MASTER_LEVEL_PARAM_INDEX = 122;
 const CORE_PRODUCT_DRUM_REVERB_SEND_PARAM_INDEX = 123;
@@ -115,13 +118,29 @@ const CORE_PRODUCT_DRUM_RUNTIME_PARAM_IDS = Array.from(
   { length: KESSHO_PRODUCT_DRUM_PARAM_COUNT },
   (_, index) => CORE_PRODUCT_DRUM_RUNTIME_PARAM_ID_BASE + index,
 );
+const CORE_PRODUCT_LEAD_RUNTIME_PARAM_IDS = Array.from(
+  { length: KESSHO_PRODUCT_LEAD_PARAM_COUNT * 2 },
+  (_, index) => (
+    index < KESSHO_PRODUCT_LEAD_PARAM_COUNT
+      ? CORE_PRODUCT_LEAD_RUNTIME_PARAM_ID_BASE + index
+      : CORE_PRODUCT_LEAD2_RUNTIME_PARAM_ID_BASE + index - KESSHO_PRODUCT_LEAD_PARAM_COUNT
+  ),
+);
 const VALID_PARAM_IDS = new Set<number>([
   ...Object.values(KESSHO_PRODUCT_PARAM_IDS),
   ...CORE_PRODUCT_PAD_RUNTIME_PARAM_IDS,
+  ...CORE_PRODUCT_LEAD_RUNTIME_PARAM_IDS,
   ...CORE_PRODUCT_DRUM_RUNTIME_PARAM_IDS,
 ]);
 const VALID_STEP_FIELDS = new Set<number>(Object.values(CORE_PRODUCT_STEP_VALUE_FIELDS));
 const VALID_SUBLANE_DIRECTIONS = new Set<number>(Object.values(CORE_PRODUCT_SUBLANE_DIRECTIONS));
+const CORE_PRODUCT_PAD_VOICE_EVENT_FLAG = 0x80000000;
+const CORE_PRODUCT_PAD_VOICE_EVENT_SHIFT = 24;
+const CORE_PRODUCT_SOURCE_PRESET_ENDPOINT_HAS_MORPH_FLAG = 1;
+export const CORE_PRODUCT_SOURCE_OVERRIDE_FLAGS = Object.freeze({
+  setSlot: 1 << 0,
+  commit: 1 << 1,
+} as const);
 
 function productBridgeError(message: string): Error {
   return new Error(`Invalid Core Product bridge event: ${message}`);
@@ -180,6 +199,27 @@ function requireSourceId(sourceId: unknown, label = 'sourceId'): number {
     throw productBridgeError(`${label} is not a known product source: ${String(sourceId)}`);
   }
   return value;
+}
+
+function coreProductSourceOverrideParamCount(sourceId: number): number {
+  switch (sourceId) {
+    case CORE_PRODUCT_SOURCE_IDS.pad1:
+    case CORE_PRODUCT_SOURCE_IDS.pad2:
+      return KESSHO_PRODUCT_PAD_PARAM_COUNT;
+    case CORE_PRODUCT_SOURCE_IDS.lead1:
+    case CORE_PRODUCT_SOURCE_IDS.lead2:
+      return KESSHO_PRODUCT_LEAD_PARAM_COUNT;
+    case CORE_PRODUCT_SOURCE_IDS.drum:
+      return KESSHO_PRODUCT_DRUM_PARAM_COUNT;
+    default:
+      return 0;
+  }
+}
+
+function coreProductPadVoiceEventFlags(voiceIndex: number | undefined): number {
+  if (voiceIndex === undefined) return 0;
+  const value = requireIntegerInRange(voiceIndex, 'padVoiceIndex', 0, 5);
+  return (CORE_PRODUCT_PAD_VOICE_EVENT_FLAG | ((value + 1) << CORE_PRODUCT_PAD_VOICE_EVENT_SHIFT)) >>> 0;
 }
 
 function requireDrumVoiceIndex(voiceIndex: unknown, label = 'voiceIndex'): number {
@@ -270,6 +310,11 @@ export function coreProductDrumRuntimeParamId(paramIndex: number): number {
     requireIntegerInRange(paramIndex, 'drum param index', 0, KESSHO_PRODUCT_DRUM_PARAM_COUNT - 1);
 }
 
+export function coreProductLeadRuntimeParamId(leadIndex: 0 | 1, paramIndex: number): number {
+  const base = leadIndex === 0 ? CORE_PRODUCT_LEAD_RUNTIME_PARAM_ID_BASE : CORE_PRODUCT_LEAD2_RUNTIME_PARAM_ID_BASE;
+  return base + requireIntegerInRange(paramIndex, 'lead param index', 0, KESSHO_PRODUCT_LEAD_PARAM_COUNT - 1);
+}
+
 function sourceTarget(
   sourceId: number,
   paramId: number,
@@ -302,6 +347,21 @@ function productParamTarget(
     controlId: stableControlId(key),
     sampleHoldTrigger: coreProductSampleHoldTriggerForKey(key),
     mapValue,
+  };
+}
+
+function delayBTapeHeadMaskMap(headIndex: number): (value: number, context: CoreProductRangeValueContext) => number {
+  return (value, context) => {
+    let mask = 0;
+    for (let index = 0; index < 4; index += 1) {
+      const stateKey = `delayBTapeHead${index + 1}Enabled`;
+      const stateValue = context.state?.[stateKey];
+      const active = index === headIndex
+        ? value >= 0.5
+        : typeof stateValue === 'boolean' ? stateValue : true;
+      if (active) mask |= 1 << index;
+    }
+    return mask;
   };
 }
 
@@ -491,8 +551,11 @@ function coreProductSampleHoldTriggerForKey(key: string): CoreProductSampleHoldT
   if (
     key === 'delayBGranularSend' ||
     key === 'delayBToASend' ||
+    key === 'delayBAlgorithm' ||
+    key === 'delayBTapeSpacing' ||
     key === 'delayBWarpIntensity' ||
-    key === 'delayBSpread'
+    key === 'delayBSpread' ||
+    key.startsWith('delayBTapeHead')
   ) {
     return 'delayB';
   }
@@ -705,8 +768,6 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   pianoDiffuseSend: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend, key)],
   masterVolume: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterGain, key)],
   masterLimiterCeilingDb: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterLimiterCeilingDb, key)],
-  masterSatDrive: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterSaturationDrive, key)],
-  masterSatTone: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.MasterSaturationTone, key)],
   granularLevel: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularMix, key, granularLevelMap(key))],
   granularFeedback: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularFeedback, key)],
   granularFeedbackLPF: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularFeedbackLpfHz, key)],
@@ -795,6 +856,18 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   granularDelayVibrato: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBVibrato, key)],
   delayBWarpIntensity: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBWarpIntensity, key)],
   delayBSpread: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBSpread, key)],
+  delayBTapeHead1Enabled: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBTapeHeadMask, key, delayBTapeHeadMaskMap(0))],
+  delayBTapeHead2Enabled: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBTapeHeadMask, key, delayBTapeHeadMaskMap(1))],
+  delayBTapeHead3Enabled: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBTapeHeadMask, key, delayBTapeHeadMaskMap(2))],
+  delayBTapeHead4Enabled: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBTapeHeadMask, key, delayBTapeHeadMaskMap(3))],
+  delayBTapeHead1Level: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBTapeHead1Level, key)],
+  delayBTapeHead2Level: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBTapeHead2Level, key)],
+  delayBTapeHead3Level: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBTapeHead3Level, key)],
+  delayBTapeHead4Level: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBTapeHead4Level, key)],
+  delayBTapeHead1Pan: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBTapeHead1Pan, key)],
+  delayBTapeHead2Pan: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBTapeHead2Pan, key)],
+  delayBTapeHead3Pan: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBTapeHead3Pan, key)],
+  delayBTapeHead4Pan: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBTapeHead4Pan, key)],
   delayAToBSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingDelayAToDelayB, key)],
   delayBToASend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToDelayA, key)],
   delayAReverbSend: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.RoutingDelayToReverb, key)],
@@ -1014,13 +1087,16 @@ export function createCoreProductManualNoteEvent(
   midi: number,
   velocity: number,
   durationMs: number,
+  padVoiceIndex?: number,
 ): CoreProductEvent {
+  const flags = coreProductPadVoiceEventFlags(padVoiceIndex);
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.ManualNoteOn,
     targetId: requireSourceId(sourceId),
     value: requireNumberInRange(midi, 'midi', 0, 127),
     value2: requirePositiveUnitValue(velocity, 'velocity'),
     value3: requirePositiveFinite(durationMs, 'durationMs') / 1000,
+    ...(flags ? { flags } : {}),
   };
 }
 
@@ -1037,6 +1113,59 @@ export function createCoreProductSourcePresetEvent(sourceId: number, presetId: n
     eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSourcePreset,
     targetId: requireSourceId(sourceId),
     value: requireIntegerInRange(presetId, 'presetId', 1, Number.MAX_SAFE_INTEGER),
+  };
+}
+
+export function createCoreProductSourcePresetEndpointEvent(sourceId: number, endpoint: 'A' | 'B', presetId: number, voiceIndex = 0, morph?: number): CoreProductEvent {
+  const targetId = requireSourceId(sourceId);
+  const endpointOffset = endpoint === 'B' ? 1 : 0;
+  const index = targetId === CORE_PRODUCT_SOURCE_IDS.drum
+    ? 1 + requireDrumVoiceIndex(voiceIndex) + endpointOffset * KESSHO_PRODUCT_DRUM_VOICE_COUNT
+    : 1 + endpointOffset;
+  const drumMorph = targetId === CORE_PRODUCT_SOURCE_IDS.drum && typeof morph === 'number' && Number.isFinite(morph)
+    ? requireUnitValue(morph, 'morph')
+    : undefined;
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSourcePreset,
+    targetId,
+    index,
+    value: requireIntegerInRange(presetId, 'presetId', 1, Number.MAX_SAFE_INTEGER),
+    ...(drumMorph !== undefined ? { value2: drumMorph, flags: CORE_PRODUCT_SOURCE_PRESET_ENDPOINT_HAS_MORPH_FLAG } : {}),
+  };
+}
+
+export function createCoreProductSourceOverrideSlotEvent(
+  sourceId: number,
+  slotIndex: number,
+  paramIndex: number,
+  value: number,
+): CoreProductEvent {
+  const targetId = requireSourceId(sourceId);
+  const paramCount = coreProductSourceOverrideParamCount(targetId);
+  if (paramCount <= 0) {
+    throw productBridgeError(`sourceId does not support sparse overrides: ${String(sourceId)}`);
+  }
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSourceOverride,
+    targetId,
+    index: requireIntegerInRange(slotIndex, 'slotIndex', 0, paramCount - 1),
+    paramId: requireIntegerInRange(paramIndex, 'paramIndex', 0, paramCount - 1),
+    value: requireFiniteNumber(value, 'value'),
+    flags: CORE_PRODUCT_SOURCE_OVERRIDE_FLAGS.setSlot,
+  };
+}
+
+export function createCoreProductSourceOverrideCommitEvent(sourceId: number, overrideCount: number): CoreProductEvent {
+  const targetId = requireSourceId(sourceId);
+  const paramCount = coreProductSourceOverrideParamCount(targetId);
+  if (paramCount <= 0) {
+    throw productBridgeError(`sourceId does not support sparse overrides: ${String(sourceId)}`);
+  }
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSourceOverride,
+    targetId,
+    index: requireIntegerInRange(overrideCount, 'overrideCount', 0, paramCount),
+    flags: CORE_PRODUCT_SOURCE_OVERRIDE_FLAGS.commit,
   };
 }
 
@@ -1214,6 +1343,8 @@ export function createCoreProductSequencerDiceEvent(
   intensity = 1,
   seed = 0,
   flags = 0,
+  writeOffset = 0,
+  barIndex = 0,
 ): CoreProductEvent {
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane,
@@ -1221,6 +1352,8 @@ export function createCoreProductSequencerDiceEvent(
     index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
     value: requireUnitValue(intensity, 'intensity'),
     value2: requireIntegerInRange(seed, 'seed', 0, 0xffffffff),
+    value3: requireIntegerInRange(writeOffset, 'writeOffset', -1, 64),
+    value4: requireIntegerInRange(barIndex, 'barIndex', 0, 0xffffffff),
     flags: requireIntegerInRange(flags, 'flags', 0, 0xffffffff),
   };
 }

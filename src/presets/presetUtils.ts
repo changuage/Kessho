@@ -29,6 +29,7 @@ const METADATA_FIELDS = [
   'synthLinked',
   'drumSubLaneStates',
   'synthSubLaneStates',
+  'drumPitchSettings',
   'synthPitchSettings',
   'synthPitchBindingModes',
   'journeyPreview',
@@ -312,6 +313,11 @@ export function extractPresetVersionMetadata(version: PresetVersion | null | und
       (metadata as Record<string, unknown>)[field] = cloneJson(value);
       hasMetadata = true;
     }
+  }
+
+  if (version.refs) {
+    metadata.refs = cloneJson(version.refs);
+    hasMetadata = true;
   }
 
   return hasMetadata ? metadata : undefined;

@@ -246,6 +246,7 @@ export interface SavedPreset {
   synthLinked?: boolean[];
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
+  drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
 }
@@ -281,17 +282,28 @@ export interface SliderState {
   delayADuck: number;         // 0..1 wet duck amount
   delayAFilterType: 'lowpass' | 'bandpass' | 'highpass'; // feedback filter mode
   delayAWidth: number;        // 0..1 width / Haas spread
+  delayBAlgorithm: 'clockedSpace' | 'tapeHeads'; // Delay B algorithm family
   delayBPattern: 'cascade' | 'golden' | 'mirror' | 'dotted'; // tap timing preset
   delayBWarp: 'clean' | 'filterSweep' | 'pitchDrift' | 'grainCrossfade'; // tap warp mode
   delayBWarpIntensity: number; // 0..1 warp dry/wet amount
   delayBSpread: number;       // 0..1 stereo spread scaling
+  delayBTapeSpacing: 'even' | 'triplet' | 'golden' | 'silver'; // four-head tape timing ratio
+  delayBTapeHead1Enabled: boolean;
+  delayBTapeHead2Enabled: boolean;
+  delayBTapeHead3Enabled: boolean;
+  delayBTapeHead4Enabled: boolean;
+  delayBTapeHead1Level: number;
+  delayBTapeHead2Level: number;
+  delayBTapeHead3Level: number;
+  delayBTapeHead4Level: number;
+  delayBTapeHead1Pan: number;
+  delayBTapeHead2Pan: number;
+  delayBTapeHead3Pan: number;
+  delayBTapeHead4Pan: number;
   delayBToASend: number;      // 0..1 shared Delay B output cross-feed into Delay A
   delayACrossFeedFilter: number; // 0..1 mapped to 200..8000 Hz LPF on A→B
   drumDelayBSend: number;     // 0..1 - whole drum bus send into shared Delay B
   reverbLevel: number;        // 0..1 step 0.01 - reverb output level
-  masterSatDrive: number;     // 0..1 input drive into master saturation
-  masterSatMode: 'clean' | 'tape' | 'tube'; // master saturation character
-  masterSatTone: number;      // 0..1 post-saturation tone tilt
   dynamicsEnabled: boolean;    // master enable for Dynamics page processing
   dynamicsSaturationEnabled: boolean; // dynamics-page master saturation on/off
   dynamicsSaturationMode: 'clean' | 'tape' | 'tube' | 'diode' | 'fold';
@@ -1454,18 +1466,29 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'delayADuck',
   'delayAFilterType',
   'delayAWidth',
+  'delayBAlgorithm',
   'delayBPattern',
   'delayBWarp',
   'delayBWarpIntensity',
   'delayBSpread',
+  'delayBTapeSpacing',
+  'delayBTapeHead1Enabled',
+  'delayBTapeHead2Enabled',
+  'delayBTapeHead3Enabled',
+  'delayBTapeHead4Enabled',
+  'delayBTapeHead1Level',
+  'delayBTapeHead2Level',
+  'delayBTapeHead3Level',
+  'delayBTapeHead4Level',
+  'delayBTapeHead1Pan',
+  'delayBTapeHead2Pan',
+  'delayBTapeHead3Pan',
+  'delayBTapeHead4Pan',
   'delayBToASend',
   'delayACrossFeedFilter',
   'drumDelayBSend',
   'granularDelayMix',
   'reverbLevel',
-  'masterSatDrive',
-  'masterSatMode',
-  'masterSatTone',
   'dynamicsEnabled',
   'dynamicsSaturationEnabled',
   'dynamicsSaturationMode',
@@ -2285,17 +2308,28 @@ export const DEFAULT_STATE: SliderState = {
   delayADuck: 0,
   delayAFilterType: 'lowpass' as const,
   delayAWidth: 0.5,
+  delayBAlgorithm: 'clockedSpace' as const,
   delayBPattern: 'cascade' as const,
   delayBWarp: 'clean' as const,
   delayBWarpIntensity: 0.5,
   delayBSpread: 0.5,
+  delayBTapeSpacing: 'even' as const,
+  delayBTapeHead1Enabled: true,
+  delayBTapeHead2Enabled: true,
+  delayBTapeHead3Enabled: true,
+  delayBTapeHead4Enabled: true,
+  delayBTapeHead1Level: 0.72,
+  delayBTapeHead2Level: 0.8,
+  delayBTapeHead3Level: 0.88,
+  delayBTapeHead4Level: 1,
+  delayBTapeHead1Pan: 0.28,
+  delayBTapeHead2Pan: 0.72,
+  delayBTapeHead3Pan: 0.38,
+  delayBTapeHead4Pan: 0.62,
   delayBToASend: 0,
   delayACrossFeedFilter: 1,
   drumDelayBSend: 0,
   reverbLevel: 0.5,
-  masterSatDrive: 0,
-  masterSatMode: 'clean' as const,
-  masterSatTone: 0.5,
   dynamicsEnabled: false,
   dynamicsSaturationEnabled: false,
   dynamicsSaturationMode: 'clean' as const,
@@ -2832,8 +2866,8 @@ export const DEFAULT_STATE: SliderState = {
   drumKickDecay: 200,
   drumKickLevel: 0.7,
   drumKickClick: 0.3,       // Subtle click transient
-  drumKickBody: 0.5,        // Medium body
-  drumKickPunch: 0.5,       // Medium punch
+  drumKickBody: 0.3,        // Ikeda Kick preset body
+  drumKickPunch: 0.8,       // Ikeda Kick preset punch
   drumKickTail: 0,          // No tail
   drumKickTone: 0,          // Pure sine
   drumKickAttack: 0,        // Instant attack
@@ -2922,15 +2956,15 @@ export const DEFAULT_STATE: SliderState = {
   drumNoiseDistance: 0.5,    // Neutral strike position
   // Voice 7: Membrane
   drumMembraneExciter: 'impulse' as const,
-  drumMembraneExcPos: 0.3,
+  drumMembraneExcPos: 0.35,
   drumMembraneExcBright: 0.5,
   drumMembraneExcDur: 3,
-  drumMembraneSize: 180,
-  drumMembraneStiffness: 0.5,
-  drumMembraneDamping: 0.3,
+  drumMembraneSize: 200,
+  drumMembraneStiffness: 0.6,
+  drumMembraneDamping: 0.4,
   drumMembraneMaterial: 'skin' as const,
   drumMembraneNonlin: 0,
-  drumMembraneWireMix: 0,
+  drumMembraneWireMix: 0.6,
   drumMembraneWireDensity: 0.5,
   drumMembraneWireTone: 0.5,
   drumMembraneWireDecay: 0.5,
@@ -2940,8 +2974,8 @@ export const DEFAULT_STATE: SliderState = {
   drumMembranePitchEnv: 3,
   drumMembranePitchDecay: 40,
   drumMembraneAttack: 0,
-  drumMembraneDecay: 250,
-  drumMembraneLevel: 0.6,
+  drumMembraneDecay: 200,
+  drumMembraneLevel: 0.65,
   drumMembraneVariation: 0,
   drumMembraneDistance: 0.5,
   drumMembraneScaleBlend: 0.3,
@@ -3419,11 +3453,17 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   delayAWidth: { min: 0, max: 1, step: 0.01 },
   delayBWarpIntensity: { min: 0, max: 1, step: 0.01 },
   delayBSpread: { min: 0, max: 1, step: 0.01 },
+  delayBTapeHead1Level: { min: 0, max: 1, step: 0.01 },
+  delayBTapeHead2Level: { min: 0, max: 1, step: 0.01 },
+  delayBTapeHead3Level: { min: 0, max: 1, step: 0.01 },
+  delayBTapeHead4Level: { min: 0, max: 1, step: 0.01 },
+  delayBTapeHead1Pan: { min: 0, max: 1, step: 0.01 },
+  delayBTapeHead2Pan: { min: 0, max: 1, step: 0.01 },
+  delayBTapeHead3Pan: { min: 0, max: 1, step: 0.01 },
+  delayBTapeHead4Pan: { min: 0, max: 1, step: 0.01 },
   delayBToASend: { min: 0, max: 1, step: 0.01 },
   delayACrossFeedFilter: { min: 0, max: 1, step: 0.01 },
   drumDelayBSend: { min: 0, max: 1, step: 0.01 },
-  masterSatDrive: { min: 0, max: 1, step: 0.01 },
-  masterSatTone: { min: 0, max: 1, step: 0.01 },
   dynamicsSaturationDrive: { min: 0, max: 1, step: 0.01 },
   dynamicsSaturationTone: { min: 0, max: 1, step: 0.01 },
   dynamicsSaturationBias: { min: 0, max: 1, step: 0.01 },
@@ -4316,6 +4356,12 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           (state as Record<string, unknown>)[key] = quantize(key, num);
         }
       } else {
+        const defaultValue = DEFAULT_STATE[key];
+        if (typeof defaultValue === 'boolean') {
+          (state as Record<string, unknown>)[key] = value === 'true';
+          continue;
+        }
+
         // String parameter - validate
         if (key === 'seedWindow' && (value === 'hour' || value === 'day')) {
           state.seedWindow = value;
@@ -4420,6 +4466,11 @@ export function decodeStateFromUrl(search: string): SliderState | null {
         ) {
           state.delayAFilterType = value as SliderState['delayAFilterType'];
         } else if (
+          key === 'delayBAlgorithm' &&
+          ['clockedSpace', 'tapeHeads'].includes(value)
+        ) {
+          state.delayBAlgorithm = value as SliderState['delayBAlgorithm'];
+        } else if (
           key === 'delayBPattern' &&
           ['cascade', 'golden', 'mirror', 'dotted'].includes(value)
         ) {
@@ -4430,17 +4481,24 @@ export function decodeStateFromUrl(search: string): SliderState | null {
         ) {
           state.delayBWarp = value as SliderState['delayBWarp'];
         } else if (
+          key === 'delayBTapeSpacing' &&
+          ['even', 'triplet', 'golden', 'silver'].includes(value)
+        ) {
+          state.delayBTapeSpacing = value as SliderState['delayBTapeSpacing'];
+        } else if (
+          key === 'delayBTapeHead1Enabled' ||
+          key === 'delayBTapeHead2Enabled' ||
+          key === 'delayBTapeHead3Enabled' ||
+          key === 'delayBTapeHead4Enabled'
+        ) {
+          state[key] = value === 'true';
+        } else if (
           key === 'granularPresetBehavior' &&
           (value === 'pure' || value === 'expressive')
         ) {
           state.granularPresetBehavior = value as SliderState['granularPresetBehavior'];
         } else if (key === 'delayBGranularLinked') {
           state.delayBGranularLinked = value === 'true';
-        } else if (
-          key === 'masterSatMode' &&
-          ['clean', 'tape', 'tube'].includes(value)
-        ) {
-          state.masterSatMode = value as SliderState['masterSatMode'];
         } else if (key === 'dynamicsEnabled') {
           state.dynamicsEnabled = value === 'true';
         } else if (key === 'dynamicsSaturationEnabled') {
@@ -4987,6 +5045,7 @@ export function migratePreset(preset: any): SavedPreset {
     synthLinked: preset.synthLinked,
     drumSubLaneStates: preset.drumSubLaneStates,
     synthSubLaneStates: preset.synthSubLaneStates,
+    drumPitchSettings: preset.drumPitchSettings,
     synthPitchSettings: preset.synthPitchSettings,
     synthPitchBindingModes: preset.synthPitchBindingModes,
   };

@@ -104,6 +104,11 @@ export function buildPresetVersionMetadata(
     hasMetadata = true;
   }
 
+  if (source.drumPitchSettings && source.drumPitchSettings.length > 0) {
+    metadata.drumPitchSettings = cloneJson(source.drumPitchSettings);
+    hasMetadata = true;
+  }
+
   if (source.synthPitchSettings && source.synthPitchSettings.length > 0) {
     metadata.synthPitchSettings = cloneJson(source.synthPitchSettings);
     hasMetadata = true;
@@ -116,6 +121,11 @@ export function buildPresetVersionMetadata(
 
   if (source.journeyPreview) {
     metadata.journeyPreview = cloneJson(source.journeyPreview);
+    hasMetadata = true;
+  }
+
+  if (source.refs && Object.keys(source.refs).length > 0) {
+    metadata.refs = cloneJson(source.refs);
     hasMetadata = true;
   }
 

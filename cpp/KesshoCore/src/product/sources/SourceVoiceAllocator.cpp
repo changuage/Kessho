@@ -1,103 +1,6 @@
 #include "../KesshoProductEngineInternal.h"
 
-  bool KesshoProductEngine::triggerModuleSource(
-      uint32_t source_id,
-      float midi_note,
-      float velocity,
-      float hold_seconds,
-      float morph,
-      float distance,
-      float expression,
-      const kessho::core::KesshoSourcePresetPatch* preset_patch,
-      float drum_delay_send,
-      bool scale_velocity_by_expression,
-      float drum_pitch_offset,
-      float drum_ratchet_decay_cap,
-      float drum_ratchet_attack_cap) {
-  if (!modules_ready) {
-    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_ALLOCATION_FAILURE;
-    return true;
-  }
-
-  const float frequency = midiToFrequency(clampFloat(midi_note, 0.0f, 127.0f));
-  const float clamped_velocity = clampFloat(
-      velocity * (scale_velocity_by_expression ? clampFloat(expression, 0.0f, 1.5f) : 1.0f),
-      0.0f,
-      1.0f);
-  switch (source_id) {
-    case KESSHO_PRODUCT_SOURCE_PAD1:
-    case KESSHO_PRODUCT_SOURCE_PAD2: {
-      if (!pad_module) {
-        telemetry.last_error_code = KESSHO_PRODUCT_ERROR_ALLOCATION_FAILURE;
-        return true;
-      }
-      const uint32_t pad_index = source_id == KESSHO_PRODUCT_SOURCE_PAD2 ? 1u : 0u;
-      const int route = static_cast<int>(pad_index * PAD_VOICES_PER_PAD + (pad_voice_cursors[pad_index]++ % PAD_VOICES_PER_PAD));
-      const bool exact_pad_patch =
-          preset_patch != nullptr &&
-          preset_patch->exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
-      if (exact_pad_patch) {
-        pad_module->setSourcePresetPatch(static_cast<int>(pad_index), *preset_patch);
-      } else if (preset_patch != nullptr) {
-        pad_module->setSourcePresetPatch(static_cast<int>(pad_index), *preset_patch);
-        pad_module->setSourceMacros(static_cast<int>(pad_index), morph, distance, expression);
-      } else {
-        pad_module->setSourceMacros(static_cast<int>(pad_index), morph, distance, expression);
-      }
-      const int voice_index = route % PAD_NUM_VOICES;
-      if (pad_module->noteOn(frequency, clamped_velocity, hold_seconds, route) != 0) {
-        schedulePadVoiceRelease(pad_index, static_cast<uint32_t>(voice_index), hold_seconds);
-      }
-      return true;
-    }
-    case KESSHO_PRODUCT_SOURCE_LEAD1:
-    case KESSHO_PRODUCT_SOURCE_LEAD2: {
-      const uint32_t lead_index = source_id == KESSHO_PRODUCT_SOURCE_LEAD2 ? 1u : 0u;
-      sources[source_id - 1u].post_lpf_tracking_midi = clampFloat(midi_note, 0.0f, 127.0f);
-      if (!lead_modules[lead_index]) {
-        telemetry.last_error_code = KESSHO_PRODUCT_ERROR_ALLOCATION_FAILURE;
-        return true;
-      }
-      if (preset_patch != nullptr) {
-        lead_modules[lead_index]->setSourcePresetPatch(static_cast<int>(lead_index), *preset_patch);
-      }
-      const bool exact_lead_patch =
-          preset_patch != nullptr &&
-          preset_patch->exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
-      if (!exact_lead_patch) {
-        lead_modules[lead_index]->setTriggerMacros(morph, distance, expression);
-      }
-      lead_modules[lead_index]->noteOn(frequency, clamped_velocity, std::max(0.001f, hold_seconds), 0);
-      return true;
-    }
-    case KESSHO_PRODUCT_SOURCE_DRUM: {
-      if (!drum_module) {
-        telemetry.last_error_code = KESSHO_PRODUCT_ERROR_ALLOCATION_FAILURE;
-        return true;
-      }
-      const int voice_type = std::clamp(roundedInt(midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1);
-      if (preset_patch != nullptr) {
-        drum_module->setSourcePresetPatch(0, *preset_patch);
-      }
-      if (std::isfinite(drum_delay_send) && drum_delay_send >= 0.0f) {
-        drum_module->setVoiceSend(voice_type, drum_delay_send);
-      }
-      drum_module->setTriggerControls(
-          morph,
-          distance,
-          expression,
-          drum_pitch_offset,
-          drum_ratchet_decay_cap,
-          drum_ratchet_attack_cap);
-      drum_module->noteOn(0.0f, clamped_velocity, 0.0f, voice_type);
-      return true;
-    }
-    default:
-      return false;
-  }
-}
-
-  void KesshoProductEngine::triggerVoice(
+  uint32_t KesshoProductEngine::triggerVoice(
       uint32_t source_id,
       float midi_note,
       float velocity,
@@ -110,16 +13,17 @@
       bool scale_velocity_by_expression ,
       float drum_pitch_offset ,
       float drum_ratchet_decay_cap ,
-      float drum_ratchet_attack_cap ) {
+      float drum_ratchet_attack_cap ,
+      uint32_t pad_voice_index ,
+      float synth_ratchet_factor ) {
   if (source_id < 1u || source_id > kSourceCount) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
-    return;
+    return kProductInvalidVoiceIndex;
   }
   SourceState& source = sources[source_id - 1u];
   if (!source.enabled) {
-    return;
+    return kProductInvalidVoiceIndex;
   }
-
   const uint32_t resolved_seed = sample_seed == 0u
       ? hashU32(rng_seed ^ source_id ^ static_cast<uint32_t>(std::max(0.0f, midi_note * 31.0f)) ^
                 static_cast<uint32_t>(transport.sample_frame))
@@ -130,7 +34,8 @@
   source.delay_b_send = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_BSEND_ID, source.delay_b_send, resolved_seed);
   source.granular_send = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID, source.granular_send, resolved_seed);
   const bool drum_source = source_id == KESSHO_PRODUCT_SOURCE_DRUM;
-  float morph = event_morph >= 0.0f ? event_morph : (drum_source ? -1.0f : source.morph);
+  const bool event_morph_override = event_morph >= 0.0f;
+  float morph = event_morph_override ? event_morph : (drum_source ? -1.0f : source.morph);
   float distance = event_distance >= 0.0f ? event_distance : (drum_source ? -1.0f : source.distance);
   float expression = event_expression >= 0.0f ? event_expression : (drum_source ? 1.0f : source.expression);
   if (!drum_source) {
@@ -138,7 +43,6 @@
     distance = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance, resolved_seed);
   }
   expression = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression, resolved_seed);
-
   float drum_delay_send = -1.0f;
   uint32_t drum_voice = 0u;
   if (drum_source) {
@@ -157,12 +61,34 @@
       fxSampleHoldSourceStrength(kProductSampleHoldTriggerGranular, source_id, drum_delay_send),
       fxSampleHoldSourceStrength(kProductSampleHoldTriggerReverb, source_id, drum_delay_send),
       resolved_seed);
-
-  const bool pad_source = source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2;
-  const bool lead_source = source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
+  const bool pad_source = isPadProductSource(source_id);
+  const bool lead_source = isLeadProductSource(source_id);
+  kessho::core::KesshoSourcePresetPatch endpoint_morph_patch{};
+  const kessho::core::KesshoSourcePresetPatch* endpoint_morph_patch_ptr = nullptr;
+  const bool prefer_pad_snapshot_exact =
+      pad_source &&
+      !event_morph_override &&
+      source.exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
+  const bool prefer_lead_snapshot_exact =
+      lead_source &&
+      !event_morph_override &&
+      source.exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
+  if ((pad_source || lead_source) &&
+      source.source_preset_endpoint_valid &&
+      !prefer_pad_snapshot_exact &&
+      !prefer_lead_snapshot_exact) {
+    endpoint_morph_patch_ptr = resolveSourcePresetEndpointPatch(
+        source,
+        source_id,
+        morph,
+        distance,
+        endpoint_morph_patch);
+  }
+  const bool endpoint_morph_patch_valid = endpoint_morph_patch_ptr != nullptr;
   kessho::core::KesshoSourcePresetPatch snapshot_patch{};
   const bool snapshot_exact_pad_patch =
       pad_source &&
+      !endpoint_morph_patch_valid &&
       source.exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
   if (snapshot_exact_pad_patch) {
     snapshot_patch.exact_pad_param_count = kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
@@ -172,6 +98,7 @@
   }
   const bool snapshot_exact_lead_patch =
       lead_source &&
+      !endpoint_morph_patch_valid &&
       source.exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
   if (snapshot_exact_lead_patch) {
     snapshot_patch.exact_lead_param_count = kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
@@ -182,7 +109,13 @@
   const bool snapshot_exact_drum_patch =
       drum_source &&
       source.exact_drum_param_count == kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
-  if (snapshot_exact_drum_patch) {
+  const bool drum_runtime_modulated =
+      drum_source &&
+      drumRuntimeModulationActive(drum_voice);
+  const bool drum_trigger_morph_patch_required =
+      drum_source &&
+      morph >= 0.0f;
+  if (snapshot_exact_drum_patch && (drum_runtime_modulated || drum_trigger_morph_patch_required)) {
     snapshot_patch.exact_drum_param_count = kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
     for (uint32_t param_index = 0; param_index < kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT; ++param_index) {
       snapshot_patch.exact_drum_params[param_index] = source.exact_drum_params[param_index];
@@ -190,13 +123,22 @@
   }
   const bool snapshot_generated_drum_patch = drum_source && !snapshot_exact_drum_patch;
   if (snapshot_generated_drum_patch) {
-    snapshot_patch = drumVoiceMorphPatch(source);
+    snapshot_patch = source.source_preset_patch;
+  }
+  if (drum_trigger_morph_patch_required) {
+    applyDrumVoiceMorphToPatch(snapshot_patch, source, drum_voice, morph);
+  }
+  if (drum_source) {
+    applyDrumSourceMixFieldsToPatch(snapshot_patch, source.level, source.reverb_send);
   }
   if (
       drum_source &&
       snapshot_patch.exact_drum_param_count == kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT) {
     const uint32_t drum_target = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + drum_voice;
     for (uint32_t param_index = 0u; param_index < kProductDrumRuntimeParamCount; ++param_index) {
+      if (!drumRuntimeParamModulated(drum_voice, param_index)) {
+        continue;
+      }
       snapshot_patch.exact_drum_params[param_index] = resolveModulatedValue(
           drum_target,
           kProductDrumRuntimeParamIdBase + param_index,
@@ -204,27 +146,40 @@
           resolved_seed);
     }
   }
-  const bool snapshot_exact_patch =
-      snapshot_exact_pad_patch || snapshot_exact_lead_patch || snapshot_exact_drum_patch || snapshot_generated_drum_patch;
-  const auto* preset = snapshot_exact_patch ? nullptr : findSourcePreset(source.preset_id);
-  const kessho::core::KesshoSourcePresetPatch preset_patch = snapshot_exact_patch
-      ? snapshot_patch
-      : sourcePresetPatch(preset);
+  const bool module_source = pad_source || lead_source || drum_source;
+  const bool use_snapshot_patch =
+      snapshot_exact_pad_patch ||
+      snapshot_exact_lead_patch ||
+      (drum_source && snapshot_patch.exact_drum_param_count == kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT);
+  kessho::core::KesshoSourcePresetPatch preset_patch{};
+  const kessho::core::KesshoSourcePresetPatch* preset_patch_ptr = nullptr;
+  if (endpoint_morph_patch_valid) {
+    preset_patch_ptr = endpoint_morph_patch_ptr;
+  } else if (use_snapshot_patch) {
+    preset_patch = snapshot_patch;
+    preset_patch_ptr = &preset_patch;
+  } else if (module_source && source.source_preset_patch_valid && !(drum_source && snapshot_exact_drum_patch)) {
+    preset_patch_ptr = &source.source_preset_patch;
+  }
   const bool exact_pad_patch =
-      pad_source &&
-      preset_patch.exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
+      snapshot_exact_pad_patch ||
+      (pad_source &&
+       preset_patch_ptr != nullptr &&
+       preset_patch_ptr->exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT);
   const bool exact_lead_patch =
-      lead_source &&
-      preset_patch.exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
+      snapshot_exact_lead_patch ||
+      (lead_source &&
+       preset_patch_ptr != nullptr &&
+       preset_patch_ptr->exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT);
   const bool exact_drum_patch =
-      drum_source &&
-      preset_patch.exact_drum_param_count == kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
+      snapshot_exact_drum_patch ||
+      (drum_source &&
+       preset_patch_ptr != nullptr &&
+       preset_patch_ptr->exact_drum_param_count == kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT);
   if (!exact_pad_patch && !exact_lead_patch && !exact_drum_patch) {
     applySourcePresetMacros(source, morph, distance, expression);
   }
-  const kessho::core::KesshoSourcePresetPatch* preset_patch_ptr =
-      (snapshot_exact_patch || preset != nullptr) ? &preset_patch : nullptr;
-
+  uint32_t module_voice_index = kProductInvalidVoiceIndex;
   if (triggerModuleSource(
           source_id,
           midi_note,
@@ -238,11 +193,14 @@
           scale_velocity_by_expression,
           drum_pitch_offset,
           drum_ratchet_decay_cap,
-          drum_ratchet_attack_cap)) {
-    return;
+          drum_ratchet_attack_cap,
+          synth_ratchet_factor,
+          pad_voice_index,
+          &module_voice_index)) {
+    return module_voice_index;
   }
-
   const uint32_t voice_index = allocateVoice();
+  clearMidiRuntimeForSampleVoice(voice_index);
   Voice& voice = voices[voice_index];
   voice = {};
   voice.active = true;
@@ -254,7 +212,6 @@
   voice.phase = hashUnit(rng_state ^ source_id ^ voice_index) * kTwoPi;
   voice.pan = ((hashUnit(rng_state + voice_index * 17u) * 2.0f) - 1.0f) * (0.25f + distance * 0.75f);
   voice.drum_voice = source_id == KESSHO_PRODUCT_SOURCE_DRUM;
-
   if (source_id == KESSHO_PRODUCT_SOURCE_PIANO || source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
     const float requested_midi = clampFloat(midi_note, 0.0f, 127.0f);
     float asset_root_midi = requested_midi;
@@ -264,7 +221,7 @@
     if (slot == kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS) {
       voice.active = false;
       reportMissingSourceAsset(source, asset_id_override != 0u ? asset_id_override : source.asset_id);
-      return;
+      return kProductInvalidVoiceIndex;
     }
     source.last_missing_asset_id = 0u;
     voice.sample_voice = true;
@@ -276,6 +233,7 @@
         : 1.0;
     voice.sample_step = base_step * pitch_step;
     voice.looping = (assets[slot].flags & KESSHO_PRODUCT_ASSET_LOOP) != 0u;
+    voice.loop_crossfade_frames = voice.looping ? loopCrossfadeFrames(assets[slot]) : 0u;
     voice.remaining_frames = assets[slot].frame_count;
     voice.total_frames = std::max(1u, voice.remaining_frames);
     if (source_id == KESSHO_PRODUCT_SOURCE_PIANO) {
@@ -287,7 +245,7 @@
         voice.amplitude = source.level;
         voice.pan = 0.0f;
         voice.sample_step = base_step;
-        return;
+        return voice_index;
       }
       voice.sample_position = soundscapeRandomStartFrame(assets[slot], resolved_seed);
       voice.amplitude *= soundscapeLayerLevel(assets[slot], resolved_seed);
@@ -295,4 +253,5 @@
       voice.sample_step *= soundscapeLayerPlaybackRate(assets[slot], resolved_seed);
     }
   }
+  return voice_index;
 }

@@ -17,12 +17,41 @@ export interface ReactiveVisualizerControls {
   motion: number;
   color: number;
   diffusion: number;
-  density: number;
   background: number;
   frameRate: number;
   shape: number;
   organic: number;
   edges: number;
+  backdropFade: number;
+  noiseTurbulence: number;
+  noiseFlow: number;
+  noiseSpeed: number;
+  noiseColor: number;
+  pulseSync: number;
+  shapeSize: number;
+  shapeCount: number;
+  noiseSize: number;
+  noiseDensity: number;
+  bloomSize: number;
+  kaleidoSize: number;
+  glitchIntensity: number;
+  glitchScale: number;
+  glitchChromatic: number;
+  glitchRate: number;
+  charAmount: number;
+  charStyle: number;
+  charGrain: number;
+  charDrift: number;
+  kaleidoSegments: number;
+  kaleidoSpin: number;
+  kaleidoType: number;
+  kaleidoReflections: number;
+  brightness: number;
+  vibrance: number;
+  saturation: number;
+  impactFlash: number;
+  visualLimiter: number;
+  layerOrder: number[];  // [shapesPos, atmosPos, glitchPos, kaleidoPos] each 0-3
   focus: VisualizerFocus;
 }
 
@@ -65,6 +94,13 @@ type UniformName =
   | 'u_controlA'
   | 'u_controlB'
   | 'u_controlC'
+  | 'u_controlD'
+  | 'u_controlE'
+  | 'u_controlF'
+  | 'u_controlG'
+  | 'u_controlH'
+  | 'u_post'
+  | 'u_layerOrder'
   | 'u_environment'
   | 'u_pulseA'
   | 'u_pulseB';
@@ -94,6 +130,13 @@ uniform vec4 u_reactive;
 uniform vec4 u_controlA;
 uniform vec4 u_controlB;
 uniform vec4 u_controlC;
+uniform vec4 u_controlD;
+uniform vec4 u_controlE;
+uniform vec4 u_controlF;
+uniform vec4 u_controlG;
+uniform vec4 u_controlH;
+uniform vec4 u_post;
+uniform vec4 u_layerOrder;
 uniform vec4 u_environment;
 uniform vec4 u_pulseA;
 uniform vec4 u_pulseB;
@@ -103,15 +146,16 @@ const float TAU = 6.283185307179586;
 
 /* ─── Noise primitives ─── */
 float hash(vec2 p) {
-  p = fract(p * vec2(123.34, 456.21));
-  p += dot(p, p + 45.32);
-  return fract(p.x * p.y);
+  vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
 }
 
 float noise(vec2 p) {
   vec2 i = floor(p);
   vec2 f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
+  // quintic interpolation — eliminates grid-line aliasing
+  vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
   return mix(
     mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
     mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
@@ -132,30 +176,42 @@ float fbm(vec2 p, float octaves) {
 
 /* ─── Kessho palette ─── */
 vec3 kesshoWarm(float t) {
-  vec3 b = vec3(0.91, 0.86, 0.77);   // cream
-  vec3 c = vec3(0.48, 0.60, 0.43);   // sage
-  vec3 d = vec3(0.77, 0.45, 0.31);   // clay
-  vec3 e = vec3(0.83, 0.65, 0.13);   // gold
-  vec3 f = vec3(0.72, 0.88, 0.99);   // icy
-  vec3 g = vec3(0.55, 0.36, 0.96);   // violet
-  vec3 h = vec3(0.62, 0.81, 0.74);   // visualizer green
+  // Bold brand colors matching the Kessho design system
+  vec3 icy = vec3(0.72, 0.88, 1.0);      // #B8E0FF
+  vec3 sage = vec3(0.48, 0.60, 0.43);    // #7B9A6D
+  vec3 clay = vec3(0.77, 0.45, 0.31);    // #C4724E
+  vec3 gold = vec3(0.83, 0.65, 0.13);    // #D4A520
+  vec3 violet = vec3(0.55, 0.36, 0.96);  // #8B5CF6
+  vec3 coral = vec3(0.93, 0.42, 0.34);   // warm red-orange
+  vec3 teal = vec3(0.22, 0.78, 0.72);    // vibrant teal
+  vec3 magenta = vec3(0.85, 0.28, 0.68); // hot pink
 
-  float s = fract(t) * 7.0;
-  if (s < 1.0) return mix(b, c, s);
-  if (s < 2.0) return mix(c, d, s - 1.0);
-  if (s < 3.0) return mix(d, e, s - 2.0);
-  if (s < 4.0) return mix(e, f, s - 3.0);
-  if (s < 5.0) return mix(f, g, s - 4.0);
-  if (s < 6.0) return mix(g, h, s - 5.0);
-  return mix(h, b, s - 6.0);
+  float s = fract(t) * 8.0;
+  if (s < 1.0) return mix(icy, violet, s);
+  if (s < 2.0) return mix(violet, coral, s - 1.0);
+  if (s < 3.0) return mix(coral, gold, s - 2.0);
+  if (s < 4.0) return mix(gold, teal, s - 3.0);
+  if (s < 5.0) return mix(teal, sage, s - 4.0);
+  if (s < 6.0) return mix(sage, magenta, s - 5.0);
+  if (s < 7.0) return mix(magenta, clay, s - 6.0);
+  return mix(clay, icy, s - 7.0);
 }
 
 vec3 palette(float t, float bias) {
   vec3 base = kesshoWarm(t);
-  vec3 vivid = base * 1.3;
-  vec3 pastel = mix(base, vec3(0.94, 0.89, 0.82), 0.42);
-  vec3 color = mix(base, vivid, max(-bias, 0.0) * 0.7);
-  return mix(color, pastel, max(bias, 0.0) * 0.6);
+  // brighter, poppier baseline
+  base = pow(base, vec3(0.7)) * 1.25;
+  float lum = dot(base, vec3(0.299, 0.587, 0.114));
+  // Left (-1): Vivid/electric — bright, high-luminance, neon push
+  vec3 saturated = clamp(lum + (base - lum) * 3.5, 0.0, 1.0);
+  vec3 vivid = saturated * 1.5;
+  // Right (+1): Jewel tones — deep, rich, low-luminance saturated
+  vec3 deepBase = pow(base, vec3(1.6)) * 1.1;  // darken but keep hue
+  float deepLum = dot(deepBase, vec3(0.299, 0.587, 0.114));
+  vec3 jewel = clamp(deepLum + (deepBase - deepLum) * 4.0, 0.0, 1.0) * 0.85; // high saturation, low brightness
+  // Blend: left = vivid, center = base, right = jewel
+  vec3 color = mix(base, vivid, max(-bias, 0.0));
+  return mix(color, jewel, max(bias, 0.0));
 }
 
 /* ─── SDF primitives ─── */
@@ -227,23 +283,282 @@ float morphShape(vec2 p, float size, float shapeSelector, float organicAmount, f
   return d;
 }
 
-/* shape to intensity: hard edge → soft halo → amoeba blob
-   edgesControl: -1 = amoeba blobs, +1 = hard cut */
+/* shape to intensity:
+   edgesControl: -1 = amoeba blobs, 0 = hard cut (new neutral), +1 = gradient wash (splash-style) */
 float shapeIntensity(float sdf, float size, float edgesControl) {
-  float hardCut = max(edgesControl, 0.0);    // 0..1
-  float amoebaBlob = max(-edgesControl, 0.0); // 0..1
+  float amoebaBlob = max(-edgesControl, 0.0); // 0..1 (left side)
+  float gradWash = max(edgesControl, 0.0);    // 0..1 (right side)
 
-  // hard edge: sharp step
+  // hard edge: sharp step (the new neutral at center)
   float hard = smoothstep(size * 0.02, -size * 0.01, sdf);
-  // neutral: smooth gradient falloff
-  float neutral = exp(-max(sdf, 0.0) * (3.0 / max(size, 0.01)));
-  // amoeba: very wide soft falloff
+  // amoeba: wide soft quadratic falloff
   float amoeba = exp(-max(sdf, 0.0) * max(sdf, 0.0) / max(0.001, size * size * 0.8));
+  // gradient wash: splash-page style — solid core with short tight fade at edge
+  // More core saturation retained, fade only at the very edge
+  float edgeDist = max(sdf, 0.0) / max(size, 0.01);  // normalized distance from edge
+  float fadeStart = 0.15 + gradWash * 0.1;  // solid core extends further
+  float fadeEnd = fadeStart + 0.2 + gradWash * 0.15;  // tight fade band after core
+  float gradient = 1.0 - smoothstep(fadeStart, fadeEnd, edgeDist);
 
-  float result = neutral;
-  result = mix(result, hard, hardCut);
+  float result = hard;
   result = mix(result, amoeba, amoebaBlob);
+  // gradWash replaces hard completely (not blend) — smoothstep ensures no hard edge visible
+  if (gradWash > 0.01) {
+    result = mix(hard, gradient, min(gradWash * 2.0, 1.0));
+  }
   return result;
+}
+
+vec2 kaleidoFoldCoord(vec2 point, float spin, float sector) {
+  float radius = length(point);
+  if (radius < 0.0001) return vec2(0.0);
+  float angle = atan(point.y, point.x) + spin;
+  float sectorAngle = mod(angle, sector);
+  float foldedAngle = min(sectorAngle, sector - sectorAngle);
+  return vec2(cos(foldedAngle - spin), sin(foldedAngle - spin)) * radius;
+}
+
+vec2 kaleidoChamberCoord(vec2 point, float spin, float sector, float depth) {
+  vec2 folded = kaleidoFoldCoord(point, spin, sector);
+  float radius = length(folded);
+  if (radius < 0.0001) return vec2(0.0);
+
+  float ringCount = mix(2.0, 7.0, depth);
+  float ringCoord = radius * ringCount;
+  float ringIndex = floor(ringCoord);
+  float ringPhase = fract(ringCoord);
+  float ringMirror = mix(ringPhase, 1.0 - ringPhase, mod(ringIndex, 2.0));
+  float ringRadius = (ringIndex + ringMirror) / ringCount;
+
+  float localSector = sector * mix(1.0, 0.48, depth);
+  float ringSpin = spin * mix(0.18, -0.34, depth) + ringIndex * sector * 0.5;
+  float angle = atan(folded.y, folded.x) + ringSpin;
+  float sectorAngle = mod(angle, localSector);
+  float foldedAngle = min(sectorAngle, localSector - sectorAngle);
+
+  return vec2(cos(foldedAngle - ringSpin), sin(foldedAngle - ringSpin)) * ringRadius;
+}
+
+vec2 kaleidoMandalaCoord(vec2 point, float spin, float sector, float amount) {
+  vec2 folded = kaleidoFoldCoord(point, spin, sector);
+  float radius = length(folded);
+  if (radius < 0.0001) return vec2(0.0);
+  float angle = atan(folded.y, folded.x);
+  float ringCount = mix(3.0, 9.0, amount);
+  float ringCoord = radius * ringCount;
+  float ringIndex = floor(ringCoord);
+  float ringPhase = fract(ringCoord);
+  float ringMirror = mix(ringPhase, 1.0 - ringPhase, mod(ringIndex, 2.0));
+  float ringRadius = (ringIndex + ringMirror) / ringCount;
+  float ringTurn = mod(ringIndex, 2.0) * sector * 0.5 * amount;
+  return kaleidoFoldCoord(vec2(cos(angle + ringTurn), sin(angle + ringTurn)) * ringRadius, spin * 0.2, sector);
+}
+
+vec2 kaleidoCrystalCoord(vec2 point, float spin, float sector, float amount) {
+  float crystalSector = sector * mix(1.0, 0.52, amount);
+  vec2 folded = kaleidoFoldCoord(point, spin + sector * 0.25 * amount, crystalSector);
+  float radius = length(folded);
+  if (radius < 0.0001) return vec2(0.0);
+  float angle = atan(folded.y, folded.x);
+  float facetCount = mix(3.0, 8.0, amount);
+  float bandCoord = radius * facetCount;
+  float bandIndex = floor(bandCoord);
+  float bandPhase = fract(bandCoord);
+  float bandMirror = mix(bandPhase, 1.0 - bandPhase, mod(bandIndex, 2.0));
+  float facetRadius = (bandIndex + bandMirror) / facetCount;
+  float angularFacet = abs(fract(angle / max(crystalSector, 0.001) * facetCount + bandIndex * 0.37) - 0.5);
+  facetRadius += (angularFacet - 0.25) * 0.12 * amount;
+  return vec2(cos(angle), sin(angle)) * facetRadius;
+}
+
+vec2 kaleidoOrganicCoord(vec2 point, float spin, float sector, float amount, float time, float seed) {
+  vec2 folded = kaleidoFoldCoord(point, spin, sector * mix(1.0, 1.18, amount));
+  float radius = length(folded);
+  vec2 noiseP = folded * mix(1.3, 2.8, amount) + vec2(seed * 0.002, -seed * 0.001);
+  float n1 = fbm(noiseP + vec2(time * 0.05, time * -0.035), 3.0);
+  float n2 = fbm(noiseP.yx + vec2(time * -0.04, time * 0.045) + 4.7, 3.0);
+  vec2 warp = (vec2(n1, n2) - 0.5) * amount * (0.18 + radius * 0.12);
+  return kaleidoFoldCoord(folded + warp, spin + (n1 - n2) * amount * 0.35, sector * mix(1.0, 1.12, amount));
+}
+
+vec2 kaleidoTypeCoord(vec2 point, float spin, float sector, float typeControl, float amount, float time, float seed) {
+  float track = clamp((typeControl + 1.0) * 1.5, 0.0, 3.0);
+  float classicW = max(1.0 - abs(track - 0.0), 0.0);
+  float mandalaW = max(1.0 - abs(track - 1.0), 0.0);
+  float crystalW = max(1.0 - abs(track - 2.0), 0.0);
+  float organicW = max(1.0 - abs(track - 3.0), 0.0);
+  float weightSum = max(classicW + mandalaW + crystalW + organicW, 0.001);
+
+  vec2 classicP = kaleidoFoldCoord(point, spin, sector);
+  vec2 mandalaP = kaleidoMandalaCoord(point, spin, sector, amount);
+  vec2 crystalP = kaleidoCrystalCoord(point, spin, sector, amount);
+  vec2 organicP = kaleidoOrganicCoord(point, spin, sector, amount, time, seed);
+
+  return (classicP * classicW + mandalaP * mandalaW + crystalP * crystalW + organicP * organicW) / weightSum;
+}
+
+vec2 pointToUv(vec2 point, vec2 aspect) {
+  return point / max(aspect * 2.0, vec2(0.0001)) + 0.5;
+}
+
+vec2 applyKaleidoLayerCoord(
+  vec2 point,
+  float foldSpin,
+  float foldSector,
+  float foldSegments,
+  float kaleidoTypeControl,
+  float foldAmount,
+  float kaleidoScale,
+  float kaleidoGate,
+  float sharpMirrorAmount,
+  float softGlassAmount,
+  float delayMod,
+  float reflectionSlider,
+  float time,
+  float seed
+) {
+  if (foldAmount <= 0.001) return point;
+
+  float pointAngle = atan(point.y, point.x);
+  float pointRadius = length(point);
+  float rotatedAngle = pointAngle + foldSpin;
+  float sectorAngle = mod(rotatedAngle, foldSector);
+  float foldedAngle = min(sectorAngle, foldSector - sectorAngle);
+  float prismAmount = sharpMirrorAmount * 0.9;
+  float liquidAmount = softGlassAmount * 0.9;
+
+  float prismWarp = sin(foldedAngle * foldSegments * 2.0) * prismAmount * 0.04
+    + sin(foldedAngle * foldSegments * 4.0 + time * 0.1) * prismAmount * 0.02;
+  float radialWarp = sin(pointRadius * (8.0 + delayMod * 8.0 + liquidAmount * 14.0) - time * (0.12 + liquidAmount * 0.2))
+    * liquidAmount * 0.1;
+  float radialWarp2 = sin(pointRadius * 3.5 + foldedAngle * 2.0 - time * 0.07) * liquidAmount * 0.04;
+  float flowWarp = sin(foldedAngle * 3.0 + time * 0.12 + pointRadius * 5.0) * liquidAmount * 0.06 * (0.4 + delayMod * 0.6)
+    + cos(foldedAngle * 5.0 - time * 0.09 + pointRadius * 3.0) * liquidAmount * 0.03;
+
+  float shardFacet = sharpMirrorAmount * foldAmount;
+  float angularFacet = abs(fract((foldedAngle / max(foldSector, 0.001)) * mix(2.0, 5.0, sharpMirrorAmount) + pointRadius * 0.35) - 0.5);
+  float radialFacet = abs(fract(pointRadius * (2.5 + foldSegments * 0.22)) - 0.5);
+  float shardWarp = ((angularFacet - 0.25) * 0.18 + (radialFacet - 0.25) * 0.1) * shardFacet;
+
+  float centerMask = smoothstep(kaleidoScale * 2.0, kaleidoScale * 0.1, pointRadius);
+  float fullFoldCoverage = smoothstep(0.55, 0.95, kaleidoGate);
+  float kaleidoMask = mix(centerMask, 1.0, fullFoldCoverage);
+  vec2 typedP = kaleidoTypeCoord(point, foldSpin, foldSector, kaleidoTypeControl, foldAmount * kaleidoMask, time, seed);
+  float typedRadius = length(typedP);
+  float typedAngle = atan(typedP.y, typedP.x);
+  float foldedRadius = typedRadius * (1.0 + radialWarp + radialWarp2 + prismWarp + shardWarp) + flowWarp;
+  vec2 foldedP = vec2(cos(typedAngle), sin(typedAngle)) * foldedRadius;
+
+  float reflectionDepth = clamp(reflectionSlider * foldAmount * kaleidoMask, 0.0, 1.0);
+  vec2 reflectedP = foldedP;
+  if (reflectionDepth > 0.001) {
+    float reflectionScale = mix(1.0, 1.24, reflectionDepth);
+    vec2 chamberP = kaleidoChamberCoord(
+      point * reflectionScale,
+      foldSpin + seed * 0.00013,
+      foldSector,
+      reflectionDepth
+    ) / reflectionScale;
+    reflectedP = mix(foldedP, chamberP, reflectionDepth);
+  }
+  return mix(point, reflectedP, foldAmount * kaleidoMask);
+}
+
+vec2 applyGlitchLayerCoord(
+  vec2 point,
+  vec2 aspect,
+  float seed,
+  float glitchTime,
+  float glitchActive,
+  float glitchDigital,
+  float glitchDisplaceAmount,
+  float glitchAnalog,
+  float glitchScale,
+  float glitchRate,
+  float time
+) {
+  if (glitchActive <= 0.001) return point;
+
+  vec2 coord = point;
+  float blockSize = mix(0.08, 0.02, (glitchScale + 1.0) * 0.5);
+  float displaceAmount = glitchDigital * glitchDisplaceAmount;
+
+  if (displaceAmount > 0.001) {
+    vec2 blockId = floor(coord / blockSize);
+    float blockRand = hash(blockId + vec2(glitchTime * 0.1, seed * 0.003));
+    float blockOn = step(1.0 - glitchActive * 0.6, blockRand);
+    float dx = (hash(blockId + vec2(glitchTime * 0.17, 43.7)) - 0.5) * 2.0;
+    float dy = (hash(blockId + vec2(glitchTime * 0.23, 67.3)) - 0.5) * 2.0;
+    coord += vec2(dx, dy) * displaceAmount * blockOn;
+  }
+
+  float scanActive = glitchAnalog * glitchActive;
+  if (scanActive > 0.01) {
+    vec2 coordUv = pointToUv(coord, aspect);
+    float bandHeight = mix(0.06, 0.012, (glitchScale + 1.0) * 0.5);
+    float scanSpeed = mix(0.4, 6.0, (glitchRate + 1.0) * 0.5);
+    float rollPhase = time * scanSpeed * 0.3 + seed * 0.01;
+    float rollY = fract(rollPhase) * 2.2 - 0.1;
+    float bandId = floor((coordUv.y + rollPhase * 0.1) / bandHeight);
+    float bandRand = hash(vec2(bandId, glitchTime * 0.13 + seed * 0.007));
+    float bandOn = step(1.0 - scanActive * 0.7, bandRand);
+    float hOffset = (hash(vec2(bandId + glitchTime * 0.09, 91.3)) - 0.5) * scanActive * 0.3;
+    float trackingDist = abs(coordUv.y - rollY);
+    float trackingBoost = exp(-trackingDist * 8.0) * scanActive * 0.15;
+    hOffset += trackingBoost * sign(hOffset + 0.001);
+    float vJitter = (hash(vec2(bandId + glitchTime * 0.21, 53.7)) - 0.5) * scanActive * 0.008;
+    coord += vec2(hOffset, vJitter) * bandOn;
+  }
+
+  return coord;
+}
+
+vec2 applyLayerEffectStack(
+  vec2 point,
+  int contentPos,
+  int glitchPos,
+  int kaleidoPos,
+  vec2 aspect,
+  float foldSpin,
+  float foldSector,
+  float foldSegments,
+  float kaleidoTypeControl,
+  float foldAmount,
+  float kaleidoScale,
+  float kaleidoGate,
+  float sharpMirrorAmount,
+  float softGlassAmount,
+  float delayMod,
+  float reflectionSlider,
+  float seed,
+  float glitchTime,
+  float glitchActive,
+  float glitchDigital,
+  float glitchDisplaceAmount,
+  float glitchAnalog,
+  float glitchScale,
+  float glitchRate,
+  float time
+) {
+  vec2 coord = point;
+  bool glitchAbove = contentPos < glitchPos;
+  bool kaleidoAbove = contentPos < kaleidoPos;
+
+  if (glitchAbove && kaleidoAbove) {
+    if (glitchPos > kaleidoPos) {
+      coord = applyGlitchLayerCoord(coord, aspect, seed, glitchTime, glitchActive, glitchDigital, glitchDisplaceAmount, glitchAnalog, glitchScale, glitchRate, time);
+      coord = applyKaleidoLayerCoord(coord, foldSpin, foldSector, foldSegments, kaleidoTypeControl, foldAmount, kaleidoScale, kaleidoGate, sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider, time, seed);
+    } else {
+      coord = applyKaleidoLayerCoord(coord, foldSpin, foldSector, foldSegments, kaleidoTypeControl, foldAmount, kaleidoScale, kaleidoGate, sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider, time, seed);
+      coord = applyGlitchLayerCoord(coord, aspect, seed, glitchTime, glitchActive, glitchDigital, glitchDisplaceAmount, glitchAnalog, glitchScale, glitchRate, time);
+    }
+  } else if (glitchAbove) {
+    coord = applyGlitchLayerCoord(coord, aspect, seed, glitchTime, glitchActive, glitchDigital, glitchDisplaceAmount, glitchAnalog, glitchScale, glitchRate, time);
+  } else if (kaleidoAbove) {
+    coord = applyKaleidoLayerCoord(coord, foldSpin, foldSector, foldSegments, kaleidoTypeControl, foldAmount, kaleidoScale, kaleidoGate, sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider, time, seed);
+  }
+
+  return coord;
 }
 
 void main() {
@@ -268,22 +583,60 @@ void main() {
   float rippleControl = clamp(u_controlA.w, -1.0, 1.0);      // -1 crisp rings, +1 soft pond
   float motionControl = clamp(u_controlB.x, -1.0, 1.0);      // -1 fast orbit, +1 slow breathe
   float colorControl = clamp(u_controlB.y, -1.0, 1.0);       // -1 vivid, +1 pastel
-  float diffusionControl = clamp(u_controlB.z, -1.0, 1.0);   // -1 hard edge, +1 soft halo
-  float densityControl = clamp(u_controlB.w, -1.0, 1.0);     // -1 sparse, +1 layered
+  float shapeOpacityCtrl = clamp(u_controlB.z, -1.0, 1.0);  // -1 fully opaque, 0 normal, +1 more transparent
+  float backdropFade = clamp(u_controlB.w, -1.0, 1.0);        // -1 invisible, 0 normal, +1 edge-affected
   float seed = max(0.001, u_environment.x) * 104729.0;
   float backgroundControl = clamp(u_environment.y, -1.0, 1.0);
+  float shapeCountControl = clamp(u_environment.z, -1.0, 1.0);  // -1 few, +1 many
+  float noiseDensityControl = clamp(u_environment.w, -1.0, 1.0); // -1 sparse, +1 dense
   float shapeControl = clamp(u_controlC.x, -1.0, 1.0);       // -1 triangles, 0 squares, +1 circles
   float organicControl = clamp(u_controlC.y, -1.0, 1.0);      // -1 equal sided, +1 irregular
   float edgesControl = clamp(u_controlC.z, -1.0, 1.0);        // -1 amoeba blobs, +1 hard cut
+  float pulseSyncControl = clamp(u_controlC.w, -1.0, 1.0);    // -1 free drift, +1 music-synced
+  float noiseTurbulence = clamp(u_controlD.x, -1.0, 1.0);     // -1 laminar, +1 chaotic swirl
+  float noiseFlowDir = clamp(u_controlD.y, -1.0, 1.0);        // -1 horizontal, +1 vertical
+  float noiseSpeedControl = clamp(u_controlD.z, -1.0, 1.0);   // -1 frozen, +1 fast streaming
+  float noiseColorControl = clamp(u_controlD.w, -1.0, 1.0);    // -1 random, 0 palette, +1 underlying
+  float shapeSizeControl = clamp(u_controlE.x, -1.0, 1.0);    // -1 small, +1 large
+  float noiseSizeControl = clamp(u_controlE.y, -1.0, 1.0);    // -1 tight, +1 broad
+  float bloomSizeControl = clamp(u_controlE.z, -1.0, 1.0);    // -1 tight, +1 wide
+  float kaleidoSizeControl = clamp(u_controlE.w, -1.0, 1.0);  // -1 center only, +1 full screen
+  float glitchIntensity = clamp(u_controlF.x, -1.0, 1.0);     // 0 off, -1 subtle, +1 heavy
+  float glitchScale = clamp(u_controlF.y, -1.0, 1.0);         // -1 big blocks, +1 tiny grains
+  float glitchChromatic = clamp(u_controlF.z, -1.0, 1.0);     // -1 clean displacement, +1 heavy RGB split
+  float glitchRate = clamp(u_controlF.w, -1.0, 1.0);          // -1 slow deliberate, +1 fast chaotic
+  float charAmount = clamp(u_controlG.x, -1.0, 1.0);          // 0 clean, +1 heavy character
+  float charStyle = clamp(u_controlG.y, -1.0, 1.0);           // -1 warm/tape, +1 digital/bitcrush
+  float charGrain = clamp(u_controlG.z, -1.0, 1.0);           // -1 smooth, +1 heavy grain
+  float charDrift = clamp(u_controlG.w, -1.0, 1.0);           // -1 stable, +1 wobbly
+  float kaleidoSegments = clamp(u_controlH.x, -1.0, 1.0);    // -1 few (3), +1 many (16)
+  float kaleidoSpin = clamp(u_controlH.y, -1.0, 1.0);        // -1 reverse fast, +1 forward fast
+  float kaleidoType = clamp(u_controlH.z, -1.0, 1.0);        // -1 classic, -0.33 mandala, +0.33 crystal, +1 organic
+  float kaleidoReflections = clamp(u_controlH.w, -1.0, 1.0); // -1 current, +1 nested mirror chamber
+  float brightnessControl = clamp(u_post.x, -1.0, 1.0);
+  float vibranceControl = clamp(u_post.y, -1.0, 1.0);
+  float saturationControl = clamp(u_post.z, -1.0, 1.0);
+  float limiterControl = clamp(u_post.w, -1.0, 1.0);
 
   /* ─── Derived ─── */
-  float hardEdge = max(-diffusionControl, 0.0);  // 0..1 how hard the edges are
-  float softHalo = max(diffusionControl, 0.0);   // 0..1 how soft/bloomy
-  float noiseBlend = max(-styleControl, 0.0);    // fade in noise fields
-  float orbBlend = max(styleControl, 0.0);       // fade in gradient orbs
-  float bothPresent = 1.0 - abs(styleControl);   // neutral = both layers visible
-  float sparse = max(-densityControl, 0.0);
-  float dense = max(densityControl, 0.0);
+  // shape opacity: -1 = full solid, 0 = normal, +1 = faded/transparent
+  float shapeOpacity = mix(1.0, 0.3, (shapeOpacityCtrl + 1.0) * 0.5);  // 1.0x at -1, 0.65x at 0, 0.3x at +1
+  // neutral (0) = shapes only; -1 nebula noise; +1 aurora noise
+  float noiseBlend = abs(styleControl);           // noise intensity (either direction)
+  float nebulaMix = max(-styleControl, 0.0);      // 0..1 how much nebula
+  float auroraMix = max(styleControl, 0.0);       // 0..1 how much aurora
+  float orbBlend = 1.0 - noiseBlend * 0.5;       // shapes always visible, dim slightly when noise dominates
+
+  // per-layer size: maps -1..+1 to a scale multiplier
+  float shapeScale = mix(0.5, 2.0, (shapeSizeControl + 1.0) * 0.5);   // 0.5x..2x
+  float noiseScale = mix(0.5, 2.0, (noiseSizeControl + 1.0) * 0.5);
+  float bloomScale = mix(0.5, 2.5, (bloomSizeControl + 1.0) * 0.5);
+  float kaleidoScale = mix(0.3, 1.0, (kaleidoSizeControl + 1.0) * 0.5);
+  // per-layer density
+  float shapeSparse = max(-shapeCountControl, 0.0);
+  float shapeDense = max(shapeCountControl, 0.0);
+  float noiseSparse = max(-noiseDensityControl, 0.0);
+  float noiseDense = max(noiseDensityControl, 0.0);
 
   /* ─── Harmony & reactive ─── */
   float root = u_harmony.x;
@@ -296,187 +649,378 @@ void main() {
   float drumStepPhase = u_reactive.w;
 
   float hitEnergy = clamp(
-    globalPulse * 0.36 + u_pulseA.y * 0.22 + u_pulseA.z * 0.26 + u_pulseA.w * 0.34 +
-    u_pulseB.x * 0.22 + u_pulseB.y * 0.18 + seqPulse * 0.14,
+    globalPulse * 0.48 + u_pulseA.y * 0.3 + u_pulseA.z * 0.34 + u_pulseA.w * 0.44 +
+    u_pulseB.x * 0.28 + u_pulseB.y * 0.24 + seqPulse * 0.2,
     0.0, 1.0
   );
-  float triggerLift = hitEnergy * mix(0.5, 1.2, max(triggerControl, 0.0));
-  triggerLift += hitEnergy * max(-triggerControl, 0.0) * 0.3;
+  float triggerLift = hitEnergy * mix(0.82, 1.4, max(triggerControl, 0.0));
+  triggerLift += hitEnergy * max(-triggerControl, 0.0) * 0.5;
 
   /* ─── Time & motion ─── */
   float motionSpeed = 0.014 + max(motionControl, 0.0) * 0.035 + max(-motionControl, 0.0) * 0.1;
   float t = u_time * motionSpeed;
-  float screenAngle = atan(p.y, p.x);
   float screenRadius = length(p);
 
   /* ═══════════════════════════════════════════════════════════
-     KALEIDOSCOPE FOLD — applied on top of everything
-     kaleidoControl < 0 → more mirror segments (sharp shards)
-     kaleidoControl > 0 → fewer segments, soft radial warp (glass)
-     granular activity drives fold intensity
+     KALEIDOSCOPE FOLD — intensity, type, reflections, and tube lens
+     Driven by delay engine signal + controls
      ═══════════════════════════════════════════════════════════ */
-  float granularFold = clamp(granular * 0.72 + u_pulseB.y * 0.55 + abs(kaleidoControl) * 0.5, 0.0, 1.0);
-  float foldAmount = smoothstep(0.08, 0.72, granularFold);
-  float foldSegments = floor(mix(4.0, 16.0, clamp(
-    granularFold * 0.6 + max(-kaleidoControl, 0.0) * 0.5 + sparse * 0.15,
-    0.0, 1.0
-  )));
-  float foldSector = TAU / max(3.0, foldSegments);
-  float foldSpin = root * TAU * 0.1 + seed * 0.001 + t * (0.5 + max(-motionControl, 0.0) * 1.6);
-  float foldedAngle = abs(mod(screenAngle + foldSpin + foldSector * 0.5, foldSector) - foldSector * 0.5);
-  float radialWarp = sin(screenRadius * (8.0 + granularFold * 6.0) - u_time * 0.08) * max(kaleidoControl, 0.0) * 0.022;
-  float foldedRadius = screenRadius * (1.0 + radialWarp);
-  vec2 foldedP = vec2(cos(foldedAngle - foldSpin * 0.3), sin(foldedAngle - foldSpin * 0.3)) * foldedRadius;
-  vec2 drawP = mix(p, foldedP, foldAmount);
+  float kaleidoGate = abs(kaleidoControl);
+  float sharpMirrorAmount = max(-kaleidoControl, 0.0);
+  float softGlassAmount = max(kaleidoControl, 0.0);
+  float delayMod = clamp(delaySig * 0.5 + u_pulseB.z * 0.4, 0.0, 1.0);
+  // Fold reaches 1.0 at full intensity; delay adds motion variation
+  float foldAmount = kaleidoGate * kaleidoGate + delayMod * kaleidoGate * (1.0 - kaleidoGate * kaleidoGate) * 0.5;
+  foldAmount = clamp(foldAmount, 0.0, 1.0);
+
+  // Segments: slider controls base count, delay signal modulates
+  float segBase = floor(mix(3.0, 16.0, (kaleidoSegments + 1.0) * 0.5));
+  float segMod = floor(delayMod * 4.0);  // delay adds up to 4 extra segments
+  float foldSegments = clamp(segBase + segMod, 3.0, 20.0);
+
+  float foldSector = TAU / foldSegments;
+
+  // Spin: dedicated control + motion influence
+  float spinSpeed = kaleidoSpin * 2.5 + max(-motionControl, 0.0) * 1.2;
+  float foldSpin = root * TAU * 0.1 + seed * 0.001 + t * spinSpeed;
+
+  float reflectionSlider = smoothstep(0.0, 1.0, (kaleidoReflections + 1.0) * 0.5);
 
   /* ═══════════════════════════════════════════════════════════
-     BACKGROUND
+     LAYER ORDER — bottom=0, top=3
+     u_layerOrder: (shapesPos, atmosPos, glitchPos, kaleidoPos) 0=bottom 3=top
+     Effect layers transform every source layer below them in stack order.
      ═══════════════════════════════════════════════════════════ */
-  vec3 darkBg = mix(vec3(0.047, 0.043, 0.038), vec3(0.028, 0.032, 0.034), smoothstep(-0.4, 0.8, p.y));
-  vec3 litBg = mix(vec3(0.12, 0.10, 0.09), vec3(0.07, 0.085, 0.09), smoothstep(-0.3, 0.9, p.y));
-  vec3 bg = mix(darkBg, darkBg * 0.4, max(-backgroundControl, 0.0) * 0.8);
-  bg = mix(bg, litBg, max(backgroundControl, 0.0) * 0.7);
+  int shapesPos = int(u_layerOrder.x);
+  int atmosPos = int(u_layerOrder.y);
+  int glitchPos = int(u_layerOrder.z);
+  int kaleidoPos = int(u_layerOrder.w);
+
+  /* ═══════════════════════════════════════════════════════════
+     GLITCH LAYER — two modes driven by granular engine
+     +intensity = BLOCK DISPLACEMENT (digital, rectangular chunks shift)
+     -intensity = SCAN LINE SLICE (analog, horizontal bands slide like VHS)
+     ═══════════════════════════════════════════════════════════ */
+  float glitchGate = abs(glitchIntensity);
+  float glitchGranularDrive = clamp(granular * 0.8 + u_pulseB.y * 0.6, 0.0, 1.0);
+  float glitchActive = glitchGate * (0.3 + glitchGranularDrive * 0.7);
+  float glitchDigital = max(glitchIntensity, 0.0);   // block mode amount
+  float glitchAnalog = max(-glitchIntensity, 0.0);   // scanline mode amount
+
+  float glitchTime = floor(u_time * mix(2.0, 24.0, (glitchRate + 1.0) * 0.5));
+  float glitchDisplaceAmount = glitchActive * 0.15 * (0.3 + glitchGranularDrive * 0.7);
+
+  vec2 shapesUV = applyLayerEffectStack(
+    p, shapesPos, glitchPos, kaleidoPos, aspect,
+    foldSpin, foldSector, foldSegments, kaleidoType, foldAmount, kaleidoScale, kaleidoGate,
+    sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider,
+    seed, glitchTime, glitchActive, glitchDigital, glitchDisplaceAmount, glitchAnalog, glitchScale, glitchRate, u_time
+  );
+  bool sameSourceEffectStack =
+    (shapesPos < glitchPos) == (atmosPos < glitchPos) &&
+    (shapesPos < kaleidoPos) == (atmosPos < kaleidoPos);
+  vec2 atmosUV = shapesUV;
+  if (!sameSourceEffectStack) {
+    atmosUV = applyLayerEffectStack(
+      p, atmosPos, glitchPos, kaleidoPos, aspect,
+      foldSpin, foldSector, foldSegments, kaleidoType, foldAmount, kaleidoScale, kaleidoGate,
+      sharpMirrorAmount, softGlassAmount, delayMod, reflectionSlider,
+      seed, glitchTime, glitchActive, glitchDigital, glitchDisplaceAmount, glitchAnalog, glitchScale, glitchRate, u_time
+    );
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     BACKGROUND — colored, not just grey
+     -1 = deep indigo/navy,  0 = near-black,  +1 = warm blush/cream
+     ═══════════════════════════════════════════════════════════ */
+  // Cool deep background (indigo/navy tones, tinted by harmony)
+  vec3 deepCool = mix(
+    vec3(0.02, 0.02, 0.07),  // deep indigo
+    vec3(0.04, 0.02, 0.06),  // deep purple
+    smoothstep(-0.3, 0.7, p.y)
+  );
+  deepCool += vec3(0.01, 0.005, 0.02) * sin(root * TAU + 1.0); // subtle hue shift with harmony
+  // Warm bright background (cream/blush/peach tones)
+  vec3 warmBright = mix(
+    vec3(0.14, 0.09, 0.08),  // warm dark blush
+    vec3(0.22, 0.17, 0.14),  // cream highlight
+    smoothstep(-0.2, 0.9, p.y)
+  );
+  warmBright += vec3(0.03, 0.01, 0.005) * cos(root * TAU * 0.5 + 0.5); // harmony tint
+  // Near-black center default
+  vec3 neutralBg = mix(vec3(0.035, 0.032, 0.03), vec3(0.025, 0.028, 0.03), smoothstep(-0.3, 0.8, p.y));
+  // Blend: left = deep cool, center = neutral dark, right = warm bright
+  vec3 bg = neutralBg;
+  bg = mix(bg, deepCool, max(-backgroundControl, 0.0));
+  bg = mix(bg, warmBright, max(backgroundControl, 0.0));
   vec3 field = bg;
 
   /* ═══════════════════════════════════════════════════════════
-     LAYER A: GRADIENT LIGHT SHAPES
-     Shape morphs between triangle/square/pentagon/circle.
-     Organic deforms proportions. Edges controls hard-cut vs amoeba-blob.
-     Fades in with styleControl > 0 (or always partially present at neutral)
+     SHAPES LAYER
      ═══════════════════════════════════════════════════════════ */
-  float orbLayerMix = orbBlend + bothPresent * 0.55;
-  vec3 orbField = vec3(0.0);
-  float organicAmount = max(organicControl, 0.0);     // 0..1 irregular
-  float amoebaBlob = max(-edgesControl, 0.0);          // for shape SDF
+  float crispRipple = max(-rippleControl, 0.0);
+  float softRipple = max(rippleControl, 0.0);
+  float rippleGate = abs(rippleControl);
+  float rippleStrength = clamp(rippleGate * (0.5 + earth * 0.3 + u_pulseB.x * 0.28), 0.0, 1.0);
 
-  for (int i = 0; i < 6; i++) {
+  float orbLayerMix = orbBlend;
+  vec3 orbField = vec3(0.0);
+  float organicAmount = max(organicControl, 0.0);
+  float amoebaBlob = max(-edgesControl, 0.0);
+
+  for (int i = 0; i < 12; i++) {
     float fi = float(i);
     float id = fi + seed * 0.013;
 
-    // slow orbital drift
     float orbitSpeed = 0.03 + hash(vec2(id, 11.3)) * 0.06;
     float orbit = u_time * orbitSpeed + hash(vec2(id, 17.4)) * TAU + root * TAU * 0.15;
-    float baseDistance = 0.2 + hash(vec2(id, 22.1)) * 0.55 + dense * 0.12 - sparse * 0.1;
+    // shapeSizeControl: -1 = tight cluster in center, +1 = fill entire screen
+    float spreadMul = mix(0.3, 1.2, (shapeSizeControl + 1.0) * 0.5);
+    float baseDistance = (0.25 + hash(vec2(id, 22.1)) * 0.75 + shapeDense * 0.15 - shapeSparse * 0.1) * spreadMul;
     vec2 center = vec2(
       cos(orbit * (0.7 + hash(vec2(id, 25.6)) * 0.4)),
       sin(orbit * (0.55 + hash(vec2(id, 28.2)) * 0.35) + tension * TAU)
-    ) * baseDistance;
-    center.x += sin(u_time * 0.02 + fi * 2.1) * 0.06;
-    center.y += cos(u_time * 0.018 + fi * 1.7) * 0.05;
+	    ) * baseDistance;
+	    center.x += sin(u_time * 0.02 + fi * 2.1) * 0.08;
+	    center.y += cos(u_time * 0.018 + fi * 1.7) * 0.07;
+	    if (shapesPos < kaleidoPos) {
+	      center = applyKaleidoLayerCoord(
+	        center,
+	        foldSpin,
+	        foldSector,
+	        foldSegments,
+	        kaleidoType,
+	        foldAmount,
+	        kaleidoScale,
+	        kaleidoGate,
+	        sharpMirrorAmount,
+	        softGlassAmount,
+	        delayMod,
+	        reflectionSlider,
+	        u_time,
+	        seed
+	      );
+	    }
 
-    // per-shape rotation
     float shapeAngle = u_time * (0.015 + hash(vec2(id, 29.5)) * 0.03) + hash(vec2(id, 30.1)) * TAU;
     float ca = cos(shapeAngle), sa = sin(shapeAngle);
-    vec2 localP = drawP - center;
+    vec2 localP = shapesUV - center;
     localP = vec2(localP.x * ca + localP.y * sa, -localP.x * sa + localP.y * ca);
 
-    // radius breathes with engine state
+    float pulseMod = mix(0.3, 1.0, max(pulseSyncControl, 0.0));
+    float freeDrift = max(-pulseSyncControl, 0.0);
+    // Shapes biased toward synth/lead engines
     float engineAffinity = (
-      pad * hash(vec2(id, 31.0)) +
-      lead * hash(vec2(id, 32.0)) +
-      drums * hash(vec2(id, 33.0)) +
-      earth * hash(vec2(id, 34.0)) +
-      granular * hash(vec2(id, 35.0)) +
-      delaySig * hash(vec2(id, 36.0)) +
-      reverb * hash(vec2(id, 37.0))
-    );
-    float baseRadius = 0.18 + hash(vec2(id, 40.5)) * 0.28 + dense * 0.08;
-    float size = baseRadius + engineAffinity * 0.06 + triggerLift * 0.04;
+      lead * 0.9 +
+      pad * 0.4 * hash(vec2(id, 31.0)) +
+      drums * 0.3 * hash(vec2(id, 33.0)) +
+      earth * 0.2 * hash(vec2(id, 34.0)) +
+      granular * 0.15 * hash(vec2(id, 35.0)) +
+      delaySig * 0.1 * hash(vec2(id, 36.0)) +
+      reverb * 0.1 * hash(vec2(id, 37.0))
+    ) * pulseMod;
+    engineAffinity += sin(u_time * (0.3 + hash(vec2(id, 38.0)) * 0.5) + id * 2.3) * 0.3 * freeDrift;
+    float baseRadius = (0.18 + hash(vec2(id, 40.5)) * 0.28 + shapeDense * 0.08) * shapeScale;
+    float size = baseRadius + engineAffinity * 0.06 + triggerLift * 0.04 * pulseMod;
 
-    // per-shape selector varies slightly around the global shapeControl
     float perShapeOffset = (hash(vec2(id, 42.3)) - 0.5) * 0.3;
     float shapeSel = clamp(shapeControl + perShapeOffset, -1.0, 1.0);
 
-    // SDF
-    float sdf = morphShape(localP, size, shapeSel, organicAmount, amoebaBlob, id, u_time);
+    vec2 rippleP = localP;
+    if (rippleStrength > 0.001) {
+      float ripD = length(localP);
+      float ripFreq = mix(8.0, 20.0, crispRipple);
+      float ripSpeed = u_time * (1.2 + earth * 2.0);
+      float ripPhase = ripD * ripFreq - ripSpeed + fi * 1.7;
+      float ripWave = sin(ripPhase) * exp(-ripD * mix(2.0, 0.8, softRipple));
+      float ripAmount = rippleStrength * mix(0.04, 0.09, crispRipple + softRipple * 0.5);
+      vec2 ripDir = ripD > 0.001 ? localP / ripD : vec2(0.0, 1.0);
+      rippleP += ripDir * ripWave * ripAmount;
+    }
+
+    float sdf = morphShape(rippleP, size, shapeSel, organicAmount, amoebaBlob, id, u_time);
     float intensity = shapeIntensity(sdf, size, edgesControl);
 
-    // fade in/out over time
     float fade = 0.5 + 0.5 * sin(u_time * (0.02 + orbitSpeed * 0.4) + seed * 0.002 + fi * 1.9);
-    fade = smoothstep(0.15 + sparse * 0.2, 0.85, fade);
+    fade = smoothstep(0.15 + shapeSparse * 0.2, 0.85, fade);
+    float densityGate = smoothstep(fi - 0.5, fi + 1.2, 4.0 + shapeDense * 8.0 - shapeSparse * 3.0);
+    float energy = fade * densityGate * (0.32 + engineAffinity * 0.55 + triggerLift * 0.4) * shapeOpacity;
+    energy = clamp(energy, 0.0, 1.0);
 
-    // density gate
-    float densityGate = smoothstep(fi - 0.5, fi + 1.2, 3.0 + dense * 3.0 - sparse * 1.5);
-
-    float energy = fade * densityGate * (0.14 + engineAffinity * 0.16 + triggerLift * 0.12);
-
-    // color from palette, slowly cycling per shape
     vec3 shapeColor = palette(
       root + hash(vec2(id, 44.0)) + sin(u_time * (0.015 + orbitSpeed) + id) * 0.08,
       colorControl
     );
-
-    orbField += shapeColor * intensity * energy;
+    // Alpha-over compositing: at high opacity shapes occlude rather than additive blow-out
+    float rawAlpha = intensity * energy;
+    // At full solid (-1), sharpen alpha so shapes are binary opaque/transparent
+    float solidify = clamp(-shapeOpacityCtrl, 0.0, 1.0);
+    // At full solid, desaturate and dim for matte opaque look; neutral keeps full vivid color
+    float luma = dot(shapeColor, vec3(0.299, 0.587, 0.114));
+    vec3 muted = mix(vec3(luma), shapeColor, 0.7) * 0.4;
+    shapeColor = mix(shapeColor, muted, solidify);
+    float alpha = clamp(mix(rawAlpha, step(0.02, rawAlpha), solidify), 0.0, 1.0);
+    orbField = mix(orbField, shapeColor, alpha);
   }
-  field += orbField * orbLayerMix;
 
-  /* ═══════════════════════════════════════════════════════════
-     LAYER B: NOISE FIELDS (flowing aurora / domain-warped FBM)
-     Fades in with styleControl < 0 (or partially at neutral)
-     ═══════════════════════════════════════════════════════════ */
-  float noiseLayerMix = noiseBlend + bothPresent * 0.4;
-  float warpStrength = 0.24 + noiseBlend * 0.18 + reverb * 0.12;
-  vec2 warpedP = drawP * (1.3 + dense * 0.5);
-  float n1 = fbm(warpedP + vec2(t * 0.07, t * -0.05), 3.0);
-  float n2 = fbm(warpedP + vec2(t * -0.06, t * 0.08) + 4.2, 3.0);
-  vec2 wP = warpedP + vec2(n1, n2) * warpStrength;
-
-  float noiseScale = 2.2 + dense * 1.0;
-  float flow1 = fbm(wP * noiseScale + vec2(seed * 0.004, 0.0), 3.0 + dense);
-  float flow2 = fbm(wP * noiseScale * 1.3 + vec2(flow1 * 0.5, n1 * 0.4), min(4.0, 3.0 + dense));
-
-  float engineGlow = pad * 0.16 + lead * 0.14 + earth * 0.1 + granular * 0.12 + delaySig * 0.09 + reverb * 0.11;
-  float colorPhase = root + t * 0.16 + flow1 * 0.3 + seed * 0.0001;
-  vec3 noiseColor = palette(colorPhase, colorControl);
-
-  // band structure: hard edge = sharp iso-lines, soft = smooth gradient
-  float rawBand = flow2;
-  float sharpBand = smoothstep(0.38, 0.42, rawBand) - smoothstep(0.58, 0.62, rawBand);
-  float softBand = smoothstep(0.2, 0.75, rawBand);
-  float band = mix(softBand, softBand + sharpBand * 0.6, hardEdge);
-  band = mix(band, sqrt(max(band, 0.0)), softHalo * 0.4);
-
-  float noiseIntensity = band * (0.1 + engineGlow * 0.55 + triggerLift * 0.25);
-  vec3 noiseField = noiseColor * noiseIntensity;
-
-  // second color layer for depth
-  float flow3 = fbm(wP * noiseScale * 0.5 + vec2(-t * 0.5, t * 0.35) + 9.1, 3.0);
-  vec3 noise2Color = palette(root + 0.4 + flow3 * 0.25 + tension * 0.3, colorControl);
-  float noise2Band = smoothstep(0.35, 0.65, flow3);
-  noiseField += noise2Color * noise2Band * (0.05 + pad * 0.06 + delaySig * 0.08 + triggerLift * 0.1);
-
-  field += noiseField * noiseLayerMix;
-
-  /* ═══════════════════════════════════════════════════════════
-     LAYER C: RIPPLES (water rings)
-     Always available, strength from rippleControl + earth activity
-     ═══════════════════════════════════════════════════════════ */
-  float crispRipple = max(-rippleControl, 0.0);
-  float softRipple = max(rippleControl, 0.0);
-  float rippleStrength = clamp(abs(rippleControl) * 0.5 + earth * 0.18 + u_pulseB.x * 0.28, 0.0, 1.0);
-  float rip = 0.0;
-  for (int i = 0; i < 5; i++) {
-    float fi = float(i);
-    float epoch = floor(u_time * (0.07 + earth * 0.05 + hash(vec2(seed, fi)) * 0.04) + fi * 13.0 + seed * 0.01);
-    vec2 rc = vec2(hash(vec2(fi * 11.3 + seed * 0.003, epoch + 1.7)), hash(vec2(epoch + 4.2, fi * 8.1 + seed * 0.004)));
-    rc = (rc - 0.5) * aspect * 1.7;
-    float phase = fract(u_time * (0.06 + earth * 0.14 + hash(vec2(fi, seed)) * 0.05) + fi * 0.2) * TAU * (1.4 + crispRipple * 1.2);
-    float d = length(drawP - rc);
-    float sharpFactor = 16.0 + crispRipple * 38.0;
-    float softFactor = mix(0.04, 0.16, softRipple + softHalo * 0.25);
-    float wave = sin(d * sharpFactor - phase);
-    float ring = smoothstep(softFactor, 0.0, abs(wave));
-    rip += ring * exp(-d * (1.5 + softRipple * 2.0)) * (0.15 + 0.1 * hash(vec2(fi + seed * 0.005, epoch)));
+  // Glitch RGB split on shapes if glitch is above shapes
+  if (shapesPos < glitchPos && glitchActive > 0.01) {
+    float chromatic = max(glitchChromatic, 0.0) * glitchActive * 0.04;
+    // Shift red and blue channels in opposite directions
+    orbField.r *= 1.0 + chromatic * sin(glitchTime * 3.7 + shapesUV.x * 40.0);
+    orbField.b *= 1.0 + chromatic * cos(glitchTime * 2.3 + shapesUV.y * 35.0);
   }
-  vec3 rippleColor = mix(vec3(0.37, 0.62, 0.57), vec3(0.72, 0.88, 0.99), softRipple);
-  field += rippleColor * rip * rippleStrength;
+  vec3 shapeLayerColor = orbField * orbLayerMix;
+  vec3 underlyingColor = bg + ((shapesPos < atmosPos) ? shapeLayerColor : vec3(0.0));
 
   /* ═══════════════════════════════════════════════════════════
-     LAYER D: CENTRAL BLOOM (reverb/delay atmosphere halo)
+     ATMOSPHERE LAYER (was Noise)
+     styleControl < 0 → Space nebula   styleControl > 0 → Northern lights
      ═══════════════════════════════════════════════════════════ */
-  float bloomD = length(drawP);
-  float bloom = exp(-bloomD * bloomD * (2.6 - reverb * 0.8 - softHalo * 0.5));
-  bloom *= (0.06 + reverb * 0.14 + delaySig * 0.1 + triggerLift * 0.2);
+  float atmosLayerMix = noiseBlend;
+  vec3 atmosField = vec3(0.0);
+
+  if (atmosLayerMix > 0.001) {
+    // Atmosphere biased toward pad/reverb engines
+    float engineGlow = pad * 0.48 + reverb * 0.38 + delaySig * 0.22 + earth * 0.16 + lead * 0.1 + granular * 0.06 + drums * 0.04;
+
+    float noiseSpeed = mix(0.002, 0.12, (noiseSpeedControl + 1.0) * 0.5);
+    float turbulenceAmt = max(noiseTurbulence, 0.0);
+    float laminarAmt = max(-noiseTurbulence, 0.0);
+    float flowH = max(-noiseFlowDir, 0.0);
+    float flowV = max(noiseFlowDir, 0.0);
+    float pulseReact = max(pulseSyncControl, 0.0);
+    float pulseFree = max(-pulseSyncControl, 0.0);
+
+    float musicPulse = engineGlow * pulseReact * 2.0;
+    float nt = u_time * noiseSpeed + musicPulse * 0.3;
+
+    vec2 flowDir = normalize(vec2(1.0 - flowV, 1.0 - flowH) + 0.01);
+    float warpStrength = mix(0.14, 0.55, turbulenceAmt) + reverb * 0.08;
+    warpStrength = mix(warpStrength, warpStrength * 0.4, laminarAmt);
+    vec2 warpedP = atmosUV * (1.3 + noiseDense * 0.5) / noiseScale;
+
+    float warpOctaves = 3.0 + turbulenceAmt * 2.0;
+    float n1 = fbm(warpedP + flowDir * nt * 1.4, warpOctaves);
+    float n2 = fbm(warpedP + flowDir.yx * nt * -1.1 + 4.2, warpOctaves);
+
+    float swirlAngle = (n1 - 0.5) * turbulenceAmt * 2.5;
+    float sc = sin(swirlAngle), cc = cos(swirlAngle);
+    vec2 swirlOffset = vec2(n1 * cc - n2 * sc, n1 * sc + n2 * cc) * warpStrength;
+    vec2 wP = warpedP + swirlOffset;
+
+    // NEBULA
+    vec3 nebulaField = vec3(0.0);
+    if (nebulaMix > 0.01) {
+      vec2 nebP = wP * (2.8 + noiseDense * 1.2);
+      float neb1 = fbm(nebP + flowDir * nt * 0.5 + vec2(seed * 0.003, 0.0), 4.0);
+      float neb2 = fbm(nebP * 0.6 + vec2(neb1 * 0.8, nt * -0.3) + 7.3, 3.0);
+
+      float gasDensity = neb1 * neb2;
+      float gasThreshold = mix(0.12, 0.06, turbulenceAmt);
+      float gasCloud = smoothstep(gasThreshold, 0.35, gasDensity);
+
+      vec3 nebColor1 = palette(root + neb1 * 0.5 + nt * 0.8, -1.0);
+      vec3 nebColor2 = palette(root + 0.45 + neb2 * 0.4 + tension * 0.2, -1.0);
+      float reactiveGlow = mix(0.18, 0.18 + engineGlow * 0.8, pulseReact) + triggerLift * 0.3;
+      vec3 darkGas = nebColor1 * gasCloud * reactiveGlow;
+      darkGas += nebColor2 * smoothstep(0.2, 0.55, neb2) * (0.1 + reverb * 0.14);
+
+      float starMix = smoothstep(0.5, 1.0, nebulaMix);
+      if (starMix > 0.01) {
+        vec2 starGrid = atmosUV * 45.0;
+        vec2 starCell = floor(starGrid);
+        vec2 starF = fract(starGrid) - 0.5;
+        float starId = hash(starCell + seed * 0.007);
+        float starPresent = step(0.82, starId);
+        vec2 starOffset = vec2(
+          hash(starCell + vec2(1.1, 2.3)) - 0.5,
+          hash(starCell + vec2(3.7, 5.1)) - 0.5
+        ) * 0.6;
+        vec2 starPos = starF - starOffset;
+        float starDist = length(starPos);
+        float starSize = 0.06 + hash(starCell + vec2(7.3, 11.2)) * 0.1;
+        float starShape = 1.0 - smoothstep(0.0, starSize, starDist);
+        float blinkPhase = hash(starCell + vec2(13.7, 17.9)) * TAU;
+        float blinkSpeed = 0.3 + hash(starCell + vec2(19.1, 23.3)) * 0.7;
+        float blink = sin(u_time * blinkSpeed + blinkPhase) * 0.5 + 0.5;
+        blink = smoothstep(0.2, 0.8, blink);
+        float starBrightness = starShape * starPresent * blink * 0.9;
+        vec3 starColor = mix(vec3(0.9, 0.92, 1.0), vec3(1.0, 0.85, 0.7), hash(starCell + vec2(29.0, 31.0)));
+        darkGas += starColor * starBrightness * starMix;
+      }
+      nebulaField = darkGas;
+    }
+
+    // AURORA
+    vec3 auroraField = vec3(0.0);
+    if (auroraMix > 0.01) {
+      vec2 aurStretch = mix(vec2(1.8, 0.5), vec2(0.5, 1.8), flowV);
+      vec2 aurP = atmosUV * aurStretch + flowDir * nt * 0.6;
+      float ribbonOctaves = 3.0 + turbulenceAmt * 1.5;
+      float ribbon1 = fbm(vec2(aurP.x * 3.0 + nt * 1.5, aurP.y * 0.8), ribbonOctaves);
+      float ribbon2 = fbm(vec2(aurP.x * 2.2 + ribbon1 * (0.6 + turbulenceAmt * 0.8), aurP.y * 1.2 + nt * 1.0) + 5.5, ribbonOctaves);
+      float curtainAxis = mix(atmosUV.y, atmosUV.x, flowH * 0.7);
+      float curtainFade = smoothstep(-0.8, 0.6, curtainAxis) * smoothstep(1.2, 0.3, curtainAxis);
+      float curtain = smoothstep(0.3, 0.7, ribbon2) * curtainFade;
+      float waveSpeed = mix(0.2, 1.4, (noiseSpeedControl + 1.0) * 0.5);
+      float wave = sin(aurP.x * 6.0 + ribbon1 * 4.0 + u_time * waveSpeed) * 0.5 + 0.5;
+      curtain *= 0.6 + wave * 0.4;
+      vec3 aurGreen = vec3(0.2, 0.9, 0.4);
+      vec3 aurTeal = vec3(0.15, 0.75, 0.7);
+      vec3 aurViolet = vec3(0.6, 0.2, 0.85);
+      vec3 aurColor = mix(aurGreen, aurTeal, smoothstep(0.3, 0.7, ribbon1));
+      aurColor = mix(aurColor, aurViolet, smoothstep(0.6, 0.9, ribbon2) * 0.4);
+      float aurReactive = mix(0.18, 0.18 + engineGlow * 0.8, pulseReact) + triggerLift * 0.35;
+      float aurGlow = smoothstep(0.15, 0.5, ribbon2) * curtainFade * 0.07;
+      auroraField = aurColor * curtain * aurReactive + aurColor * aurGlow;
+    }
+
+    atmosField = nebulaField * nebulaMix + auroraField * auroraMix;
+
+    // Color control
+    vec3 tint = max(underlyingColor, vec3(0.05));
+    float underlyBlend = max(noiseColorControl, 0.0);
+    float randomBlend = max(-noiseColorControl, 0.0);
+    vec3 randomColor = palette(hash(atmosUV * 3.7 + seed) + u_time * 0.03, -0.8);
+    vec3 tinted = atmosField * normalize(tint + 0.1) * 1.8;
+    vec3 randomized = atmosField * normalize(randomColor + 0.1) * 1.6;
+    atmosField = mix(atmosField, tinted, underlyBlend);
+    atmosField = mix(atmosField, randomized, randomBlend);
+  }
+
+  // Glitch RGB split on atmosphere if glitch is above atmosphere
+  if (atmosPos < glitchPos && glitchActive > 0.01) {
+    float chromatic = max(glitchChromatic, 0.0) * glitchActive * 0.04;
+    atmosField.r *= 1.0 + chromatic * sin(glitchTime * 2.9 + atmosUV.x * 30.0);
+    atmosField.b *= 1.0 + chromatic * cos(glitchTime * 1.7 + atmosUV.y * 25.0);
+  }
+  vec3 atmosLayerColor = atmosField * atmosLayerMix;
+  if (shapesPos < atmosPos) {
+    field += shapeLayerColor;
+    field += atmosLayerColor;
+  } else {
+    field += atmosLayerColor;
+    field += shapeLayerColor;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     BLOOM (always on top — subtle atmospheric halo)
+     backdropFade: -1 = invisible, 0 = normal, +1 = affected by edge setting
+     ═══════════════════════════════════════════════════════════ */
+  float bloomD = length(p) / bloomScale;
+  // At +1 backdropFade: widen/soften bloom based on edgesControl
+  float bloomFalloff = 2.6 - reverb * 0.8;
+  if (backdropFade > 0.0) {
+    // gradient wash (edgesControl > 0) makes bloom wider; amoeba makes it blobby
+    float washWiden = max(edgesControl, 0.0) * backdropFade * 1.8;
+    bloomFalloff = max(0.3, bloomFalloff - washWiden);
+  }
+  float bloom = exp(-bloomD * bloomD * bloomFalloff);
+  bloom *= (0.09 + drums * 0.28 + reverb * 0.14 + triggerLift * 0.32);
+  // backdropFade: -1 = hide completely, 0 = normal, +1 = full (edge-affected)
+  float bloomVisibility = clamp(1.0 + backdropFade, 0.0, 1.0);  // -1→0, 0→1, +1→1
+  bloom *= bloomVisibility;
   field += palette(root + 0.55 + drumStepPhase * 0.14, colorControl) * bloom;
 
   /* ─── Hit flash ─── */
@@ -484,25 +1028,87 @@ void main() {
     sin(root * TAU + t * 1.8 + seed * 0.008),
     cos(t * 1.2 + tension * 2.8 + seed * 0.005)
   ) * 0.15;
-  float hitGlow = exp(-length(drawP - hitDrift) * (2.4 + max(-triggerControl, 0.0) * 4.0));
-  hitGlow *= triggerLift * mix(0.18, 0.45, max(triggerControl, 0.0));
+  float hitGlow = exp(-length(p - hitDrift) * (2.4 + max(-triggerControl, 0.0) * 4.0));
+  hitGlow *= triggerLift * mix(0.25, 0.55, max(triggerControl, 0.0));
+  hitGlow *= bloomVisibility;  // also hide hit flash when backdrop is hidden
   field += palette(root + 0.72 + hitEnergy * 0.16, colorControl) * hitGlow;
 
   /* ═══════════════════════════════════════════════════════════
-     POST-PROCESSING: vignette, edge/bloom contrast, film grain
+     POST-PROCESSING: character + vignette + contrast + grain
      ═══════════════════════════════════════════════════════════ */
-  float vignette = smoothstep(1.5, 0.1, screenRadius);
+  float vignette = smoothstep(2.2, 0.4, screenRadius);  // much wider — fills the screen
   vec3 finalColor = field * vignette;
 
-  // hard edge tightens contrast, soft halo lifts shadows
-  finalColor = mix(finalColor, smoothstep(vec3(0.0), vec3(1.0), finalColor), hardEdge * 0.3);
-  finalColor = mix(finalColor, sqrt(max(finalColor, vec3(0.0))), softHalo * 0.38);
+  /* ─── Character post-process (driven by earth engine) ─── */
+  float charGate = abs(charAmount);
+  float charEarthDrive = clamp(earth * 0.5 + u_pulseB.x * 0.3, 0.0, 1.0);
+  float charActive = charGate * (0.4 + charEarthDrive * 0.6);
 
-  // film grain
-  float grain = hash(uv * u_resolution + vec2(u_time * 61.0, u_time * 37.0)) * 0.013;
+  if (charActive > 0.01) {
+    float warmth = max(-charStyle, 0.0);   // tape/warm direction
+    float digital = max(charStyle, 0.0);    // bitcrush/digital direction
+
+    // Tape warmth: amber shift + soft bloom bleed + saturation
+    if (warmth > 0.01) {
+      float tapeAmt = warmth * charActive;
+      // Warm color shift (toward amber)
+      vec3 warmTint = vec3(1.04, 0.97, 0.88);
+      finalColor *= mix(vec3(1.0), warmTint, tapeAmt * 0.6);
+      // Soft saturation boost (tube-like)
+      float lum = dot(finalColor, vec3(0.299, 0.587, 0.114));
+      finalColor = mix(finalColor, vec3(lum) + (finalColor - vec3(lum)) * 1.3, tapeAmt * 0.4);
+      // Gentle highlight bloom (soft clip like tape compression)
+      finalColor = mix(finalColor, 1.0 - exp(-finalColor * 2.0), tapeAmt * 0.3);
+    }
+
+    // Digital: pixel quantization + reduced color depth + harsh edges
+    if (digital > 0.01) {
+      float digiAmt = digital * charActive;
+      // Pixel quantization (reduce spatial resolution)
+      float pixelSize = mix(1.0, 6.0, digiAmt);
+      vec2 pixelUV = floor(uv * u_resolution / pixelSize) * pixelSize / u_resolution;
+      float pixelMix = smoothstep(0.0, 0.5, digiAmt);
+      // sample from quantized position (approximate by snapping color)
+      float snapLevels = mix(256.0, 8.0, digiAmt * 0.7);
+      vec3 quantized = floor(finalColor * snapLevels + 0.5) / snapLevels;
+      finalColor = mix(finalColor, quantized, pixelMix * 0.7);
+      // Harsh contrast (digital clipping)
+      finalColor = mix(finalColor, smoothstep(vec3(0.0), vec3(0.8), finalColor), digiAmt * 0.3);
+    }
+
+    // Wow/flutter drift (analog wobble)
+    float driftAmt = max(charDrift, 0.0) * charActive;
+    if (driftAmt > 0.01) {
+      float wobble = sin(u_time * 1.7 + uv.y * 12.0) * sin(u_time * 0.7 + 2.3) * driftAmt * 0.008;
+      float vertWob = sin(u_time * 0.9 + uv.x * 8.0) * cos(u_time * 1.3) * driftAmt * 0.004;
+      // chromatic aberration from drift
+      finalColor.r *= 1.0 + wobble * 3.0;
+      finalColor.b *= 1.0 - wobble * 2.5;
+      finalColor.g *= 1.0 + vertWob * 2.0;
+    }
+  }
+
+  // Film grain (enhanced by character grain control)
+  float grainAmt = max(charGrain, 0.0) * abs(charAmount);
+  float baseGrain = 0.013 + grainAmt * 0.04;
+  float grain = (hash(uv * u_resolution + vec2(u_time * 61.0, u_time * 37.0)) - 0.5) * baseGrain * 2.0;
   finalColor += grain;
 
-  outColor = vec4(finalColor, 1.0);
+  // User-facing post color controls. These are single-pass math only.
+  finalColor *= 1.0 + brightnessControl * 0.36;
+  float postLuma = dot(finalColor, vec3(0.299, 0.587, 0.114));
+  float saturationMul = max(0.0, 1.0 + saturationControl * 0.62);
+  finalColor = mix(vec3(postLuma), finalColor, saturationMul);
+  float chroma = clamp(max(max(finalColor.r, finalColor.g), finalColor.b) - min(min(finalColor.r, finalColor.g), finalColor.b), 0.0, 1.0);
+  float vibranceLift = vibranceControl >= 0.0
+    ? vibranceControl * (1.0 - chroma) * 0.82
+    : vibranceControl * 0.52;
+  finalColor = mix(vec3(postLuma), finalColor, max(0.0, 1.0 + vibranceLift));
+
+  float limiterCeiling = mix(2.8, 1.15, (limiterControl + 1.0) * 0.5);
+  finalColor = finalColor / (1.0 + finalColor / max(limiterCeiling, 0.001));
+
+  outColor = vec4(max(finalColor, vec3(0.0)), 1.0);
 }
 `;
 
@@ -554,6 +1160,8 @@ export class ReactiveVisualizerRenderer {
   private vertexArray: WebGLVertexArrayObject | null = null;
   private uniforms = new Map<UniformName, WebGLUniformLocation>();
   private fallbackPhase = 0;
+  private cssWidth = 0;
+  private cssHeight = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -583,13 +1191,22 @@ export class ReactiveVisualizerRenderer {
   resize(width: number, height: number, dpr: number): void {
     const safeWidth = Math.max(1, Math.floor(width * dpr));
     const safeHeight = Math.max(1, Math.floor(height * dpr));
-    if (this.canvas.width !== safeWidth || this.canvas.height !== safeHeight) {
+    const canvasSizeChanged = this.canvas.width !== safeWidth || this.canvas.height !== safeHeight;
+    if (canvasSizeChanged) {
       this.canvas.width = safeWidth;
       this.canvas.height = safeHeight;
     }
-    this.canvas.style.width = `${Math.max(1, Math.floor(width))}px`;
-    this.canvas.style.height = `${Math.max(1, Math.floor(height))}px`;
-    if (this.gl) {
+    const cssWidth = Math.max(1, Math.floor(width));
+    const cssHeight = Math.max(1, Math.floor(height));
+    if (this.cssWidth !== cssWidth) {
+      this.canvas.style.width = `${cssWidth}px`;
+      this.cssWidth = cssWidth;
+    }
+    if (this.cssHeight !== cssHeight) {
+      this.canvas.style.height = `${cssHeight}px`;
+      this.cssHeight = cssHeight;
+    }
+    if (this.gl && canvasSizeChanged) {
       this.gl.viewport(0, 0, safeWidth, safeHeight);
     }
   }
@@ -636,6 +1253,13 @@ export class ReactiveVisualizerRenderer {
       'u_controlA',
       'u_controlB',
       'u_controlC',
+      'u_controlD',
+      'u_controlE',
+      'u_controlF',
+      'u_controlG',
+      'u_controlH',
+      'u_post',
+      'u_layerOrder',
       'u_environment',
       'u_pulseA',
       'u_pulseB',
@@ -671,7 +1295,10 @@ export class ReactiveVisualizerRenderer {
     const pulses = snapshot.pulses;
     const width = Math.max(1, Math.floor(frame.width * frame.dpr));
     const height = Math.max(1, Math.floor(frame.height * frame.dpr));
-    const triggerGain = 1 + Math.max(0, controls.triggerResponse) * 0.72 + Math.max(0, -controls.triggerResponse) * 0.36;
+    const triggerGain = 1.3
+      + Math.max(0, controls.triggerResponse) * 0.72
+      + Math.max(0, -controls.triggerResponse) * 0.36
+      + Math.max(0, controls.impactFlash) * 0.66;
 
     gl.useProgram(this.program);
     gl.bindVertexArray(this.vertexArray);
@@ -719,21 +1346,71 @@ export class ReactiveVisualizerRenderer {
       clamp(controls.motion, -1, 1),
       clamp(controls.color + snapshot.brightness * 0.08, -1, 1),
       clamp(controls.diffusion, -1, 1),
-      clamp(controls.density, -1, 1),
+      clamp(controls.backdropFade, -1, 1),
     );
     gl.uniform4f(
       this.uniform('u_controlC'),
       clamp(controls.shape, -1, 1),
       clamp(controls.organic, -1, 1),
       clamp(controls.edges, -1, 1),
-      0,
+      clamp(controls.pulseSync, -1, 1),
+    );
+    gl.uniform4f(
+      this.uniform('u_controlD'),
+      clamp(controls.noiseTurbulence, -1, 1),
+      clamp(controls.noiseFlow, -1, 1),
+      clamp(controls.noiseSpeed, -1, 1),
+      clamp(controls.noiseColor, -1, 1),
+    );
+    gl.uniform4f(
+      this.uniform('u_controlE'),
+      clamp(controls.shapeSize, -1, 1),
+      clamp(controls.noiseSize, -1, 1),
+      clamp(controls.bloomSize, -1, 1),
+      clamp(controls.kaleidoSize, -1, 1),
+    );
+    gl.uniform4f(
+      this.uniform('u_controlF'),
+      clamp(controls.glitchIntensity, -1, 1),
+      clamp(controls.glitchScale, -1, 1),
+      clamp(controls.glitchChromatic, -1, 1),
+      clamp(controls.glitchRate, -1, 1),
+    );
+    gl.uniform4f(
+      this.uniform('u_controlG'),
+      clamp(controls.charAmount, -1, 1),
+      clamp(controls.charStyle, -1, 1),
+      clamp(controls.charGrain, -1, 1),
+      clamp(controls.charDrift, -1, 1),
+    );
+    gl.uniform4f(
+      this.uniform('u_controlH'),
+      clamp(controls.kaleidoSegments ?? 0, -1, 1),
+      clamp(controls.kaleidoSpin ?? 0, -1, 1),
+      clamp(controls.kaleidoType ?? -1, -1, 1),
+      clamp(controls.kaleidoReflections ?? -1, -1, 1),
+    );
+    gl.uniform4f(
+      this.uniform('u_post'),
+      clamp(controls.brightness ?? 0, -1, 1),
+      clamp(controls.vibrance ?? 0, -1, 1),
+      clamp(controls.saturation ?? 0, -1, 1),
+      clamp(controls.visualLimiter ?? 0, -1, 1),
+    );
+    const order = controls.layerOrder;
+    gl.uniform4f(
+      this.uniform('u_layerOrder'),
+      clamp(Math.round(order[0] ?? 0), 0, 3),
+      clamp(Math.round(order[1] ?? 1), 0, 3),
+      clamp(Math.round(order[2] ?? 2), 0, 3),
+      clamp(Math.round(order[3] ?? 3), 0, 3),
     );
     gl.uniform4f(
       this.uniform('u_environment'),
       clamp(frame.seed, 0.001, 0.999999),
       clamp(controls.background, -1, 1),
-      0,
-      0,
+      clamp(controls.shapeCount, -1, 1),
+      clamp(controls.noiseDensity, -1, 1),
     );
     gl.uniform4f(
       this.uniform('u_pulseA'),

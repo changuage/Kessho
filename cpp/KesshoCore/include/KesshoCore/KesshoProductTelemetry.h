@@ -66,6 +66,15 @@ typedef struct KesshoProductSequencerLaneUiState {
   float expression_overrides[KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS];
   float morph_overrides[KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS];
   float distance_overrides[KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS];
+  uint32_t expression_range_set_low;
+  uint32_t expression_range_set_high;
+  uint32_t morph_range_set_low;
+  uint32_t morph_range_set_high;
+  uint32_t distance_range_set_low;
+  uint32_t distance_range_set_high;
+  float expression_range_maxes[KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS];
+  float morph_range_maxes[KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS];
+  float distance_range_maxes[KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS];
 } KesshoProductSequencerLaneUiState;
 
 typedef struct KesshoProductSequencerUiState {
@@ -123,7 +132,6 @@ typedef struct KesshoProductTelemetry {
   float master_output_peak;
   float master_output_rms;
   float master_limiter_gain_reduction_db;
-  float master_saturation_drive;
   float dynamics_saturation_drive;
   uint32_t sequencer_ui_state_revision;
   float master_true_peak;
@@ -135,4 +143,8 @@ typedef struct KesshoProductTelemetry {
   float pad1_lfo1_value;
   float pad2_filter_freq;
   float pad2_lfo1_value;
+  uint32_t synth_sequencer_hit_counts[KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES];
+  uint32_t drum_sequencer_hit_counts[KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES];
+  uint32_t synth_sequencer_current_steps[KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES];
+  uint32_t drum_sequencer_current_steps[KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES];
 } KesshoProductTelemetry;

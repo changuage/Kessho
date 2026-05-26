@@ -121,7 +121,6 @@ function lowNoisePatch() {
     lead2Enabled: false,
     leadEnabled: false,
     leadRandomEnabled: false,
-    masterSatDrive: 0,
     oceanSampleEnabled: false,
     oceanWaveSynthEnabled: false,
     pad2Enabled: false,

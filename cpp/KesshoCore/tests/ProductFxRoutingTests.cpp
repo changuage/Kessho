@@ -43,7 +43,6 @@ KesshoProductSnapshotV2 makeSnapshot() {
   snapshot.harmony.tension = 0.3f;
   snapshot.master.gain = 1.0f;
   snapshot.master.limiter_ceiling_db = -0.5f;
-  snapshot.master.saturation_tone = 0.5f;
   snapshot.rng.seed = 123;
   snapshot.rng.state = 123;
   snapshot.fx.delay_a_enabled = 1;
@@ -510,22 +509,6 @@ void applyDynamicsParamToSnapshot(KesshoProductSnapshotV2& snapshot, uint32_t pa
   }
 }
 
-void applyMasterParamToSnapshot(KesshoProductSnapshotV2& snapshot, uint32_t param_id, float value) {
-  switch (param_id) {
-    case KESSHO_PRODUCT_PARAM_MASTER_SATURATION_MODE_ID:
-      snapshot.master.saturation_mode = static_cast<uint32_t>(value);
-      break;
-    case KESSHO_PRODUCT_PARAM_MASTER_SATURATION_DRIVE_ID:
-      snapshot.master.saturation_drive = value;
-      break;
-    case KESSHO_PRODUCT_PARAM_MASTER_SATURATION_TONE_ID:
-      snapshot.master.saturation_tone = value;
-      break;
-    default:
-      require(false, "unsupported master snapshot param test");
-  }
-}
-
 void configureDelayATestSnapshot(KesshoProductSnapshotV2& snapshot) {
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].delay_a_send = 1.0f;
   snapshot.fx.delay_a_enabled = 1;
@@ -797,45 +780,6 @@ void requireDynamicsParamChangesTrace(uint32_t param_id, float baseline, float v
   require(maxAbsDiff(baseline_trace, changed_trace) > 0.00001f, message);
 }
 
-std::vector<float> renderMasterParamTrace(uint32_t param_id, float value, bool as_event) {
-  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
-  require(engine != nullptr, "master param parity engine create failed");
-  KesshoProductSnapshotV2 snapshot = makeSnapshot();
-  snapshot.fx.reverb_mix = 0.0f;
-  snapshot.fx.dynamics_enabled = 0u;
-  snapshot.fx.dynamics_saturation_enabled = 0u;
-  snapshot.master.saturation_mode = 1u;
-  snapshot.master.saturation_drive = 0.55f;
-  snapshot.master.saturation_tone = 0.45f;
-  if (!as_event) {
-    applyMasterParamToSnapshot(snapshot, param_id, value);
-  }
-  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "master param parity load failed");
-  if (as_event) {
-    KesshoProductEvent event{};
-    event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
-    event.param_id = param_id;
-    event.value = value;
-    require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "master param event enqueue failed");
-  }
-  triggerPad(engine, 0.4f);
-  std::vector<float> trace = renderMasterTrace(engine, 48);
-  kessho_product_destroy(engine);
-  return trace;
-}
-
-void requireMasterParamSnapshotEventParity(uint32_t param_id, float value, const char* message) {
-  const std::vector<float> snapshot_trace = renderMasterParamTrace(param_id, value, false);
-  const std::vector<float> event_trace = renderMasterParamTrace(param_id, value, true);
-  require(maxAbsDiff(snapshot_trace, event_trace) < 0.00001f, message);
-}
-
-void requireMasterParamChangesTrace(uint32_t param_id, float baseline, float value, const char* message) {
-  const std::vector<float> baseline_trace = renderMasterParamTrace(param_id, baseline, false);
-  const std::vector<float> changed_trace = renderMasterParamTrace(param_id, value, false);
-  require(maxAbsDiff(baseline_trace, changed_trace) > 0.00001f, message);
-}
-
 float renderMasterGainSampleHoldRangePeak(float value) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "master sample-hold range engine create failed");
@@ -889,7 +833,6 @@ float renderDryMasterPeakWithGain(float master_gain) {
   snapshot.fx.spectral_freeze_enabled = 0u;
   snapshot.fx.dynamics_enabled = 0u;
   snapshot.fx.dynamics_drive = 0.0f;
-  snapshot.master.saturation_drive = 0.0f;
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].level = 0.25f;
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].dry_gain = 0.8f;
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].expression = 0.6f;
@@ -914,7 +857,6 @@ void requireMasterTelemetryReportsLimiterSaturationAndLoudness() {
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   snapshot.master.gain = 1.8f;
   snapshot.master.limiter_ceiling_db = -24.0f;
-  snapshot.master.saturation_drive = 0.63f;
   snapshot.fx.reverb_mix = 0.0f;
   snapshot.fx.delay_a_mix = 0.0f;
   snapshot.fx.delay_b_mix = 0.0f;
@@ -942,7 +884,6 @@ void requireMasterTelemetryReportsLimiterSaturationAndLoudness() {
   require(std::isfinite(telemetry.master_integrated_lufs), "telemetry master integrated LUFS missing");
   require(telemetry.master_integrated_lufs > -100.0f, "telemetry master integrated LUFS stayed at silence");
   require(telemetry.master_limiter_gain_reduction_db > 1.0f, "telemetry limiter gain reduction missing");
-  require(std::fabs(telemetry.master_saturation_drive - 0.63f) < 0.001f, "telemetry master saturation drive mismatch");
   require(std::fabs(telemetry.dynamics_saturation_drive - 0.42f) < 0.001f, "telemetry dynamics saturation drive mismatch");
   kessho_product_destroy(engine);
 }
@@ -1315,23 +1256,6 @@ int main() {
   requireProductResetClearsFxTails();
   requireModuleSourceFxSendsArePreFader();
 
-  requireMasterParamSnapshotEventParity(
-      KESSHO_PRODUCT_PARAM_MASTER_SATURATION_DRIVE_ID,
-      0.72f,
-      "master saturation drive SetParam did not match snapshot-configured render");
-  requireMasterParamSnapshotEventParity(
-      KESSHO_PRODUCT_PARAM_MASTER_SATURATION_MODE_ID,
-      2.0f,
-      "master saturation mode SetParam did not match snapshot-configured render");
-  requireMasterParamSnapshotEventParity(
-      KESSHO_PRODUCT_PARAM_MASTER_SATURATION_TONE_ID,
-      0.78f,
-      "master saturation tone SetParam did not match snapshot-configured render");
-  requireMasterParamChangesTrace(
-      KESSHO_PRODUCT_PARAM_MASTER_SATURATION_DRIVE_ID,
-      0.0f,
-      0.8f,
-      "master saturation drive parameter did not change C++ render");
   requireProductParamSampleHoldRangeChangesMaster();
 
   requireFxSnapshotEventParity(

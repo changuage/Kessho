@@ -89,7 +89,7 @@ function writeMachineReport({ reportName, status, command, evidence, blocker, de
 function stripImportsAndExports(source) {
   return source
     .replace(/^\s*import[\s\S]*?;\s*/gm, '')
-    .replace(/\bexport\s+(?=(?:const|function|class|type)\b)/g, '');
+    .replace(/\bexport\s+(?=(?:const|function|class|type|interface)\b)/g, '');
 }
 
 function transpileForVm(source, fileName) {
@@ -265,6 +265,19 @@ export function loadCoreProductHostHarness(options = {}) {
       input.publish('synthStepPosition', [0, 0, 0, 0], [0, 0, 0, 0]);
       input.publish('drumStepPosition', [0, 0, 0, 0], [0, 0, 0, 0]);
     },
+    createCoreProductHostHarmonySnapshot: (state, telemetry) => ({
+      harmonyState: null,
+      currentBucket: state ? 'harness' : '',
+      currentSeed: 0,
+      signature: state
+        ? [
+            'harness',
+            telemetry?.harmonyRootMidi ?? '',
+            telemetry?.harmonyScaleId ?? '',
+            telemetry?.harmonyChordDegree ?? '',
+          ].join('|')
+        : 'none',
+    }),
     runtimeWalkConfigFromState,
     runtimeWalkConfigChanged: (left, right) => Math.abs(left.speed - right.speed) > 0.0005 || left.mode !== right.mode,
     coreProductRangeValueContext: (bpm, state) => ({
@@ -293,6 +306,8 @@ export function loadCoreProductHostHarness(options = {}) {
     CORE_PRODUCT_MODULATION_RANGE_MODE: { sampleHold: 1, randomWalk: 2 },
     CORE_PRODUCT_SEQUENCER_IDS: { synth: 1, drum: 2 },
     CORE_PRODUCT_SUBLANE_DIRECTIONS: { forward: 0, reverse: 1, pingpong: 2 },
+    CORE_PRODUCT_STEP_TOGGLE_FLAGS: { active: 1, clearLane: 2, clearField: 4, rangeValue: 8 },
+    CORE_PRODUCT_DICE_FLAGS: { trigger: 1, probability: 2, ratchet: 4, midiNote: 8, expression: 16, morph: 32, distance: 64, swing: 128 },
     CORE_PRODUCT_STEP_VALUE_FIELDS: {
       trigger: 0 << 8,
       probability: 1 << 8,
@@ -335,8 +350,8 @@ export function loadCoreProductHostHarness(options = {}) {
       event('sequencer-sublane-config', { sequencer, laneIndex, field, steps, direction }),
     createCoreProductSequencerStepEvent: (sequencer, laneIndex, step, value) =>
       event('sequencer-step', { sequencer, laneIndex, step, value }),
-    createCoreProductSequencerStepValueEvent: (sequencer, laneIndex, step, field, value, value2) =>
-      event('sequencer-step-value', { sequencer, laneIndex, step, field, value, value2 }),
+    createCoreProductSequencerStepValueEvent: (sequencer, laneIndex, step, field, value, value2, flags = 0) =>
+      event('sequencer-step-value', { sequencer, laneIndex, step, field, value, value2, flags }),
     createCoreProductStartEvent: () => event('start'),
     createCoreProductStopEvent: () => event('stop'),
     getCoreProductSequencerLaneSwing: (adapterState, latestSliderState, sequencer, laneIndex) => {
@@ -357,6 +372,16 @@ export function loadCoreProductHostHarness(options = {}) {
   };
   Object.assign(context, options.globals ?? {});
 
+  const clockDivisionsPath = 'src/audio/sequencerClockDivisions.ts';
+  const clockDivisionsSource = stripImportsAndExports(readProjectFile(clockDivisionsPath));
+  const clockDivisionsJs = transpileForVm(clockDivisionsSource, resolve(root, clockDivisionsPath));
+  vm.runInNewContext(`${clockDivisionsJs}
+Object.assign(globalThis, {
+  sequencerClockDivisionToNumericValue,
+  sequencerClockDivisionToSeconds,
+  normalizeSequencerClockDivisions,
+});`, context, { filename: clockDivisionsPath });
+
   const adapterPath = 'src/audio/CoreProductHostSequencerAdapter.ts';
   const adapterSource = stripImportsAndExports(readProjectFile(adapterPath));
   const adapterJs = transpileForVm(adapterSource, resolve(root, adapterPath));
@@ -371,6 +396,61 @@ Object.assign(globalThis, {
   normalizedUnitValue,
 });`, context, { filename: adapterPath });
 
+  const drumSeqTypesPath = 'src/audio/drumSeqTypes.ts';
+  const drumSeqTypesSource = stripImportsAndExports(readProjectFile(drumSeqTypesPath));
+  const drumSeqTypesJs = transpileForVm(drumSeqTypesSource, resolve(root, drumSeqTypesPath));
+  vm.runInNewContext(`${drumSeqTypesJs}
+Object.assign(globalThis, {
+  SCALES,
+  scaleDegreeToSemitone,
+});`, context, { filename: drumSeqTypesPath });
+
+  const pitchSettingsPath = 'src/audio/sequencerPitchSettings.ts';
+  const pitchSettingsSource = stripImportsAndExports(readProjectFile(pitchSettingsPath));
+  const pitchSettingsJs = transpileForVm(pitchSettingsSource, resolve(root, pitchSettingsPath));
+  vm.runInNewContext(`${pitchSettingsJs}
+Object.assign(globalThis, {
+  normalizeSequencerPitchSettings,
+  normalizeSequencerPitchSettingsArray,
+});`, context, { filename: pitchSettingsPath });
+
+  const synthPitchPath = 'src/audio/CoreProductHostSynthPitch.ts';
+  const synthPitchSource = stripImportsAndExports(readProjectFile(synthPitchPath));
+  const synthPitchJs = transpileForVm(synthPitchSource, resolve(root, synthPitchPath));
+  vm.runInNewContext(`${synthPitchJs}
+Object.assign(globalThis, {
+  coreProductSynthMidiToUiPitch,
+});`, context, { filename: synthPitchPath });
+
+  const noteRangeEvolvePath = 'src/audio/CoreProductHostSynthNoteRangeEvolve.ts';
+  const noteRangeEvolveSource = stripImportsAndExports(readProjectFile(noteRangeEvolvePath));
+  const noteRangeEvolveJs = transpileForVm(noteRangeEvolveSource, resolve(root, noteRangeEvolvePath));
+  vm.runInNewContext(`${noteRangeEvolveJs}
+Object.assign(globalThis, {
+  coreProductSynthNoteRangeHome,
+  evolveCoreProductSynthNoteRange,
+});`, context, { filename: noteRangeEvolvePath });
+
+  const rangePayloadPath = 'src/audio/CoreProductHostSequencerRangePayload.ts';
+  const rangePayloadSource = stripImportsAndExports(readProjectFile(rangePayloadPath));
+  const rangePayloadJs = transpileForVm(rangePayloadSource, resolve(root, rangePayloadPath));
+  vm.runInNewContext(`${rangePayloadJs}
+Object.assign(globalThis, {
+  coreProductRangeForField,
+  addCoreProductRangePayload,
+  applyCoreProductRangeSubLanePatch,
+});`, context, { filename: rangePayloadPath });
+
+  const subLaneEvolvePath = 'src/audio/CoreProductHostSequencerSubLaneEvolve.ts';
+  const subLaneEvolveSource = stripImportsAndExports(readProjectFile(subLaneEvolvePath));
+  const subLaneEvolveJs = transpileForVm(subLaneEvolveSource, resolve(root, subLaneEvolvePath));
+  vm.runInNewContext(`{
+${subLaneEvolveJs}
+Object.assign(globalThis, {
+  evolveCoreProductSequencerSubLaneConfigs,
+});
+}`, context, { filename: subLaneEvolvePath });
+
   const uiStatePath = 'src/audio/CoreProductHostSequencerUiState.ts';
   const uiStateSource = stripImportsAndExports(readProjectFile(uiStatePath));
   const uiStateJs = transpileForVm(uiStateSource, resolve(root, uiStatePath));
@@ -381,6 +461,78 @@ Object.assign(globalThis, {
   coreProductSynthEvolvePayloadFromLane,
   coreProductDrumEvolvePayloadFromLane,
 });`, context, { filename: uiStatePath });
+
+  const homePath = 'src/audio/CoreProductHostSequencerHome.ts';
+  const homeSource = stripImportsAndExports(readProjectFile(homePath));
+  const homeJs = transpileForVm(homeSource, resolve(root, homePath));
+  vm.runInNewContext(`${homeJs}
+Object.assign(globalThis, {
+  createCoreProductSequencerHomeStore,
+  postCoreProductSequencerLaneStepState,
+  coreProductSequencerHomePayload,
+});`, context, { filename: homePath });
+
+  const clockPath = 'src/audio/CoreProductHostSequencerClock.ts';
+  const clockSource = stripImportsAndExports(readProjectFile(clockPath));
+  const clockJs = transpileForVm(clockSource, resolve(root, clockPath));
+  vm.runInNewContext(`${clockJs}
+Object.assign(globalThis, {
+  shouldRejoinCoreProductSequencerClocks,
+  withCoreProductClockStartDelayState,
+});`, context, { filename: clockPath });
+
+  const pitchBindingPath = 'src/audio/sequencerPitchBinding.ts';
+  const pitchBindingSource = stripImportsAndExports(readProjectFile(pitchBindingPath));
+  const pitchBindingJs = transpileForVm(pitchBindingSource, resolve(root, pitchBindingPath));
+  vm.runInNewContext(`${pitchBindingJs}
+Object.assign(globalThis, {
+  normalizeSequencerPitchBindingMode,
+  normalizeSequencerPitchBindingModes,
+  sequencerPitchBindingModeToProductId,
+});`, context, { filename: pitchBindingPath });
+
+  const sequencerSwingPath = 'src/audio/sequencerSwing.ts';
+  const sequencerSwingSource = stripImportsAndExports(readProjectFile(sequencerSwingPath));
+  const sequencerSwingJs = transpileForVm(sequencerSwingSource, resolve(root, sequencerSwingPath));
+  vm.runInNewContext(`${sequencerSwingJs}
+Object.assign(globalThis, {
+  normalizeSequencerSwing,
+});`, context, { filename: sequencerSwingPath });
+
+  const sequencerSwingEvolvePath = 'src/audio/CoreProductHostSequencerSwing.ts';
+  const sequencerSwingEvolveSource = stripImportsAndExports(readProjectFile(sequencerSwingEvolvePath));
+  const sequencerSwingEvolveJs = transpileForVm(sequencerSwingEvolveSource, resolve(root, sequencerSwingEvolvePath));
+  vm.runInNewContext(`{
+${sequencerSwingEvolveJs}
+Object.assign(globalThis, {
+  clampSequencerSwing,
+  evolveCoreProductSequencerSwing,
+  coreProductSequencerSwingKey,
+  getCoreProductSequencerLaneSwing,
+  patchCoreProductSequencerLaneSwing,
+});
+}`, context, { filename: sequencerSwingEvolvePath });
+
+  const sequencerEvolveConfigPath = 'src/audio/CoreProductHostSequencerEvolveConfig.ts';
+  const sequencerEvolveConfigSource = stripImportsAndExports(readProjectFile(sequencerEvolveConfigPath));
+  const sequencerEvolveConfigJs = transpileForVm(sequencerEvolveConfigSource, resolve(root, sequencerEvolveConfigPath));
+  vm.runInNewContext(`{
+${sequencerEvolveConfigJs}
+Object.assign(globalThis, {
+  diceFlagsForEvolveConfig,
+  normalizeEvolveConfigs,
+});
+}`, context, { filename: sequencerEvolveConfigPath });
+
+  const sequencerEvolvePath = 'src/audio/CoreProductHostSequencerEvolve.ts';
+  const sequencerEvolveSource = stripImportsAndExports(readProjectFile(sequencerEvolvePath));
+  const sequencerEvolveJs = transpileForVm(sequencerEvolveSource, resolve(root, sequencerEvolvePath));
+  vm.runInNewContext(`{
+${sequencerEvolveJs}
+Object.assign(globalThis, {
+  createCoreProductSequencerEvolveClock,
+});
+}`, context, { filename: sequencerEvolvePath });
 
   const path = 'src/audio/coreProductEngineHost.ts';
   const source = stripImportsAndExports(readProjectFile(path)).replaceAll('import.meta.env', '__IMPORT_META_ENV__');
@@ -406,6 +558,13 @@ globalThis.__coreProductHostHarness = {
 }
 
 export function loadRuntimeAdapterHarness() {
+  const generatedParamsPath = 'src/audio/generated/kesshoProductParams.ts';
+  const generatedParamsSource = stripImportsAndExports(readProjectFile(generatedParamsPath));
+  const generatedParamsJs = transpileForVm(generatedParamsSource, resolve(root, generatedParamsPath));
+  const generatedParamsContext = {};
+  vm.runInNewContext(`${generatedParamsJs}
+globalThis.__generatedProductParams = KESSHO_PRODUCT_PARAMS;`, generatedParamsContext, { filename: generatedParamsPath });
+
   const context = {
     CORE_PRODUCT_SOURCE_IDS: {
       pad1: 1,
@@ -416,20 +575,50 @@ export function loadRuntimeAdapterHarness() {
       piano: 6,
       soundscape: 7,
     },
-    KESSHO_PRODUCT_DRUM_PARAM_COUNT: 126,
-    KESSHO_PRODUCT_PAD_PARAM_COUNT: 53,
+	    KESSHO_PRODUCT_DRUM_PARAM_COUNT: 126,
+	    KESSHO_PRODUCT_DRUM_VOICE_COUNT: 7,
+    KESSHO_PRODUCT_DRUM_VOICES: [
+      { index: 0, paramStart: 0, paramCount: 12 },
+      { index: 1, paramStart: 12, paramCount: 13 },
+      { index: 2, paramStart: 25, paramCount: 15 },
+      { index: 3, paramStart: 40, paramCount: 19 },
+      { index: 4, paramStart: 59, paramCount: 19 },
+      { index: 5, paramStart: 78, paramCount: 14 },
+      { index: 6, paramStart: 92, paramCount: 12 },
+    ],
+	    KESSHO_PRODUCT_LEAD_PARAM_COUNT: 80,
+	    KESSHO_PRODUCT_PAD_PARAM_COUNT: 53,
     KESSHO_PRODUCT_PARAM_IDS: createParamIds(),
+    KESSHO_PRODUCT_PARAMS: generatedParamsContext.__generatedProductParams,
     coreProductDrumRuntimeParamId: (paramIndex) => `DrumRuntime${paramIndex}`,
+    coreProductLeadRuntimeParamId: (leadIndex, paramIndex) => `Lead${leadIndex + 1}Runtime${paramIndex}`,
     coreProductPadRuntimeParamId: (padIndex, paramIndex) => `Pad${padIndex + 1}Runtime${paramIndex}`,
     createCoreProductJourneyStateEvent: (enabled, morphPhase, morphRateBars) =>
       event('journey-state', { enabled, morphPhase, morphRateBars }),
     createCoreProductParamEvent: (paramId, value, targetId = 0, index = 0) =>
       event('param', { paramId, value, targetId, index }),
-    createCoreProductSequencerLaneParamEvent: (sequencer, laneIndex, paramId, value) =>
-      event('sequencer-lane-param', { sequencer, laneIndex, paramId, value }),
-    createCoreProductSourcePresetEvent: (targetId, presetId) =>
-      event('source-preset', { targetId, presetId }),
-  };
+	    createCoreProductSequencerLaneParamEvent: (sequencer, laneIndex, paramId, value) =>
+	      event('sequencer-lane-param', { sequencer, laneIndex, paramId, value }),
+	    createCoreProductSourcePresetEvent: (targetId, presetId) =>
+	      event('source-preset', { targetId, presetId }),
+	    createCoreProductSourcePresetEndpointEvent: (targetId, endpoint, presetId, voiceIndex = 0, morph) =>
+	      event('source-preset-endpoint', {
+	        targetId,
+	        endpoint,
+	        presetId,
+	        voiceIndex,
+	        ...(Number.isFinite(morph) ? { morph } : {}),
+	      }),
+	    createCoreProductSourceOverrideSlotEvent: (targetId, slotIndex, paramIndex, value) =>
+	      event('source-override-slot', { targetId, slotIndex, paramIndex, value }),
+	    createCoreProductSourceOverrideCommitEvent: (targetId, overrideCount) =>
+	      event('source-override-commit', { targetId, overrideCount }),
+	  };
+  const sourcePresetPath = 'src/audio/CoreProductRuntimeAdapterSourcePresets.ts';
+  const sourcePresetSource = stripImportsAndExports(readProjectFile(sourcePresetPath));
+  const sourcePresetJs = transpileForVm(sourcePresetSource, resolve(root, sourcePresetPath));
+  vm.runInNewContext(sourcePresetJs, context, { filename: sourcePresetPath });
+
   const path = 'src/audio/CoreProductRuntimeAdapter.ts';
   const source = stripImportsAndExports(readProjectFile(path));
   const js = transpileForVm(source, resolve(root, path));

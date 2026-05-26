@@ -148,11 +148,17 @@ assert(globalPage.includes("audioEngineMode = 'core-product'"), 'GlobalPage defa
 
 assert(packageJson.scripts?.build === 'npm run core:product:wasm && tsc && vite build', 'main build must rebuild/verify Product Core WASM before Vite build');
 assert(packageJson.scripts?.['core:product:browser-runtime'] === 'node scripts/check-kessho-product-browser-runtime.mjs', 'package.json must expose core:product:browser-runtime');
+assert(packageJson.scripts?.['core:product:sequencer-evolve'] === 'node scripts/run-kessho-product-sequencer-evolve-regression.mjs', 'package.json must expose core:product:sequencer-evolve');
+assert(packageJson.scripts?.['core:product:sequencer-ui'] === 'node scripts/check-kessho-product-sequencer-ui-parity.mjs', 'package.json must expose core:product:sequencer-ui');
 assert(packageJson.scripts?.['core:product:default-gate-v3'] === 'node scripts/check-kessho-product-default-gate-v3.mjs', 'package.json must expose core:product:default-gate-v3');
 assert(packageJson.scripts?.['core:product:ci'] === 'node scripts/run-kessho-product-ci.mjs', 'package.json must expose local Product Core CI');
 assert(packageJson.scripts?.['core:product:ci:prereqs'] === 'node scripts/run-kessho-product-ci.mjs --skip-final-gate', 'package.json must expose Product Core prerequisite CI');
 
 assert(productCiRunner.includes("'core:product:browser-runtime'"), 'Product Core CI runner must include browser-runtime proof');
+assert(productCiRunner.includes("'core:product:sequencer-evolve'"), 'Product Core CI runner must include Product sequencer evolve proof');
+assert(productCiRunner.includes("'core:product:harmony'"), 'Product Core CI runner must include harmony parity proof before sequencer UI parity');
+assert(productCiRunner.includes("'core:product:sequencer-ui'"), 'Product Core CI runner must include Product/Web sequencer UI parity proof');
+assert(productCiRunner.indexOf("'core:product:harmony'") < productCiRunner.indexOf("'core:product:sequencer-ui'"), 'Product Core CI runner must run harmony parity before Product/Web sequencer UI parity');
 assert(!productCiRunner.includes("'core:readiness:browser'"), 'Product Core CI runner must not use the legacy Web-vs-Core readiness gate for product default promotion');
 const archivedNativeStepPrefix = "'core:product:" + "native";
 assert(!productCiRunner.includes(archivedNativeStepPrefix), 'Product Core CI runner must not depend on archived native Swift checks');
@@ -197,6 +203,7 @@ const requiredPrerequisiteSteps = [
   'core:product:wasm',
   'core:product:determinism',
   'core:product:sequencer',
+  'core:product:sequencer-evolve',
   'core:product:harmony',
   'core:product:graph',
   'core:product:fx',
@@ -208,6 +215,7 @@ const requiredPrerequisiteSteps = [
   'core:product:web-graph-parity:audit',
   'core:product:web-graph-capture-smoke:fast',
   'core:product:web-host',
+  'core:product:sequencer-ui',
   'core:product:cpu',
   'core:product:browser-runtime',
 ];

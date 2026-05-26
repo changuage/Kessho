@@ -14,7 +14,11 @@ inline void applyGeneratedSourcePreset(KesshoProductSnapshotV2& snapshot, uint32
   KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
   source.source_id = source_id;
   source.preset_id = preset_id;
-  const auto patch = sourcePresetPatch(findSourcePreset(preset_id));
+  const auto* preset = findSourcePreset(preset_id);
+  if (!sourcePresetMatchesSource(source_id, preset)) {
+    return;
+  }
+  const auto patch = sourcePresetPatch(*preset);
   if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
     source.exact_pad_param_count = patch.exact_pad_param_count;
     for (uint32_t index = 0; index < source.exact_pad_param_count; ++index) {
@@ -25,6 +29,19 @@ inline void applyGeneratedSourcePreset(KesshoProductSnapshotV2& snapshot, uint32
     source.exact_lead_param_count = patch.exact_lead_param_count;
     for (uint32_t index = 0; index < source.exact_lead_param_count; ++index) {
       source.exact_lead_params[index] = patch.exact_lead_params[index];
+    }
+  }
+  if (source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+    for (const auto& voice : kessho::product::generated::KESSHO_PRODUCT_DRUM_VOICES) {
+      if (voice.index >= kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT) {
+        continue;
+      }
+      const auto* default_preset = defaultDrumVoicePreset(voice.index);
+      if (default_preset == nullptr) {
+        continue;
+      }
+      source.drum_voice_preset_a_ids[voice.index] = default_preset->id;
+      source.drum_voice_preset_b_ids[voice.index] = default_preset->id;
     }
   }
 }

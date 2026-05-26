@@ -51,6 +51,7 @@ const focusedHeaders = [
   ['cpp/KesshoCore/src/product/ProductGraphState.h', 180],
   ['cpp/KesshoCore/src/product/ProductTransportState.h', 80],
   ['cpp/KesshoCore/src/product/ProductVoiceState.h', 180],
+  ['cpp/KesshoCore/src/product/ProductMidiRuntimeState.h', 80],
   ['cpp/KesshoCore/src/product/ProductFxState.h', 260],
   ['cpp/KesshoCore/src/product/ProductModulationState.h', 80],
   ['cpp/KesshoCore/src/product/ProductPresetBridge.h', 140],
@@ -75,11 +76,14 @@ const secondStageCaps = [
   ['cpp/KesshoCore/src/product/sources/SourceGraphTaps.cpp', 140],
   ['cpp/KesshoCore/src/product/sources/SourceMix.cpp', 120],
   ['cpp/KesshoCore/src/product/sources/SourceModulation.cpp', 220],
+  ['cpp/KesshoCore/src/product/sources/SourceModulationRoutes.cpp', 220],
   ['cpp/KesshoCore/src/product/sources/SourceModulationRuntime.cpp', 160],
   ['cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp', 80],
   ['cpp/KesshoCore/src/product/sources/DrumSource.cpp', 80],
+  ['cpp/KesshoCore/src/product/sources/SourceModuleTrigger.cpp', 220],
   ['cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp', 340],
   ['cpp/KesshoCore/src/product/sources/SourcePianoEnvelope.cpp', 120],
+  ['cpp/KesshoCore/src/product/sources/SourceMidiRuntime.cpp', 340],
   ['cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp', 60],
   ['cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp', 200],
   ['cpp/KesshoCore/src/product/fx/ProductFx.cpp', 80],
@@ -94,6 +98,87 @@ const secondStageCaps = [
 ];
 for (const [path, maxLines] of secondStageCaps) {
   assert(lineCount(path) <= maxLines, `${path} is becoming a second-stage monolith (${lineCount(path)} > ${maxLines})`);
+}
+
+const allocationFreeHotPathFiles = [
+  'cpp/KesshoCore/src/product/KesshoProductEvents.cpp',
+  'cpp/KesshoCore/src/product/KesshoProductRender.cpp',
+  'cpp/KesshoCore/src/product/sources/ProductSources.cpp',
+  'cpp/KesshoCore/src/product/sources/ProductSourcePostChain.cpp',
+  'cpp/KesshoCore/src/product/sources/PadSource.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceEnable.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceGraphTaps.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceMix.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceModulation.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceModulationRoutes.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceModulationFx.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceModulationRuntime.cpp',
+  'cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp',
+  'cpp/KesshoCore/src/product/sources/DrumSource.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceModuleTrigger.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp',
+  'cpp/KesshoCore/src/product/sources/SourcePianoEnvelope.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceMidiRuntime.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp',
+  'cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp',
+  'cpp/KesshoCore/src/product/sequencer/SynthEuclidSequencer.cpp',
+  'cpp/KesshoCore/src/product/sequencer/DrumEuclidSequencer.cpp',
+  'cpp/KesshoCore/src/product/sequencer/SequencerClock.cpp',
+  'cpp/KesshoCore/src/product/sequencer/SequencerEventBuffer.cpp',
+  'cpp/KesshoCore/src/product/sequencer/RatchetEngine.cpp',
+  'cpp/KesshoCore/src/product/sequencer/TrigConditionEngine.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductDelay.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductReverb.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductGranular.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductGranularFilters.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductDynamics.cpp',
+  'cpp/KesshoCore/src/product/music/DeterministicRng.cpp',
+  'cpp/KesshoCore/src/product/music/ScaleEngine.cpp',
+  'cpp/KesshoCore/src/product/music/HarmonyEngine.cpp',
+  'cpp/KesshoCore/src/product/music/VoicingEngine.cpp',
+  'cpp/KesshoCore/src/product/music/EvolutionEngine.cpp',
+  'cpp/KesshoCore/src/product/music/JourneyMorphClock.cpp',
+];
+const hotPathAllocationPatterns = [
+  [/\bstd::vector\b/, 'std::vector'],
+  [/\bstd::string\b/, 'std::string'],
+  [/\bstd::unordered_/, 'std::unordered_*'],
+  [/\bstd::map\b/, 'std::map'],
+  [/\bstd::set\b/, 'std::set'],
+  [/\bnew\s/, 'new'],
+  [/\bmalloc\s*\(/, 'malloc'],
+  [/\bresize\s*\(/, 'resize'],
+  [/\breserve\s*\(/, 'reserve'],
+  [/\bpush_back\s*\(/, 'push_back'],
+];
+for (const path of allocationFreeHotPathFiles) {
+  const source = read(path);
+  for (const [pattern, label] of hotPathAllocationPatterns) {
+    assert(!pattern.test(source), `${path} must stay allocation-free on Product hot paths: found ${label}`);
+  }
+}
+
+{
+  const sourceVoiceAllocator = read('cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp');
+  for (const forbidden of ['findSourcePreset(', 'sourcePresetPatch(', 'drumVoiceMorphPatch(']) {
+    assert(!sourceVoiceAllocator.includes(forbidden), `Product trigger voice path must use precompiled preset state, not ${forbidden}`);
+  }
+  const sourceModulation = read('cpp/KesshoCore/src/product/sources/SourceModulation.cpp');
+  const sourceModulationRoutes = read('cpp/KesshoCore/src/product/sources/SourceModulationRoutes.cpp');
+  for (const token of [
+    'source_modulation_route_indices',
+    'drum_source_modulation_route_indices',
+    'drum_runtime_modulation_route_indices',
+    'route_required',
+    'return fallback;',
+  ]) {
+    assert(`${sourceModulation}\n${sourceModulationRoutes}`.includes(token), `Product trigger modulation must use compiled route indices: missing ${token}`);
+  }
+  assert(
+    sourceModulation.indexOf('source_modulation_route_indices') < sourceModulation.indexOf('findModulationRange(target_id, param_id)'),
+    'Product trigger modulation must consult compiled route indices before any fallback range scan',
+  );
 }
 
 for (const forbidden of [
@@ -153,12 +238,19 @@ const focusedSourceContracts = [
   [
     'cpp/KesshoCore/src/product/sources/SourceModulation.cpp',
     [
-      'KesshoProductEngine::findModulationRange(',
-      'KesshoProductEngine::findOrAllocateModulationRange(',
       'KesshoProductEngine::applyModulationRangeEvent(',
       'KesshoProductEngine::modulationRangeSample(',
       'KesshoProductEngine::resolveModulatedValue(',
       'KesshoProductEngine::applyRuntimeWalkValue(',
+    ],
+  ],
+  [
+    'cpp/KesshoCore/src/product/sources/SourceModulationRoutes.cpp',
+    [
+      'KesshoProductEngine::resetModulationRouteCache(',
+      'KesshoProductEngine::rebuildModulationRouteCache(',
+      'KesshoProductEngine::findModulationRange(',
+      'KesshoProductEngine::findOrAllocateModulationRange(',
     ],
   ],
   [
@@ -175,16 +267,25 @@ const focusedSourceContracts = [
     ],
   ],
   ['cpp/KesshoCore/src/product/sources/DrumSource.cpp', ['KesshoProductEngine::drumVoiceMorphPatch(']],
+  ['cpp/KesshoCore/src/product/sources/SourceModuleTrigger.cpp', ['KesshoProductEngine::triggerModuleSource(']],
   [
     'cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp',
     [
-      'KesshoProductEngine::triggerModuleSource(',
       'KesshoProductEngine::triggerVoice(',
     ],
   ],
   [
     'cpp/KesshoCore/src/product/sources/SourcePianoEnvelope.cpp',
     ['KesshoProductEngine::configurePianoSampleVoiceEnvelope('],
+  ],
+  [
+    'cpp/KesshoCore/src/product/sources/SourceMidiRuntime.cpp',
+    [
+      'KesshoProductEngine::resetMidiRuntimeState(',
+      'KesshoProductEngine::trackMidiNoteOn(',
+      'KesshoProductEngine::applyMidiPitchBendToActiveNotes(',
+      'KesshoProductEngine::midiControllerVelocityScale(',
+    ],
   ],
   ['cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp', ['KesshoProductEngine::releaseSourceVoices(']],
   ['cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp', ['KesshoProductEngine::ensureSoundscapeVoice(']],
@@ -326,12 +427,15 @@ const componentFiles = [
   'cpp/KesshoCore/src/product/sources/SourceGraphTaps.cpp',
   'cpp/KesshoCore/src/product/sources/SourceMix.cpp',
   'cpp/KesshoCore/src/product/sources/SourceModulation.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceModulationRoutes.cpp',
   'cpp/KesshoCore/src/product/sources/SourceModulationFx.cpp',
   'cpp/KesshoCore/src/product/sources/SourceModulationRuntime.cpp',
   'cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp',
   'cpp/KesshoCore/src/product/sources/DrumSource.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceModuleTrigger.cpp',
   'cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp',
   'cpp/KesshoCore/src/product/sources/SourcePianoEnvelope.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceMidiRuntime.cpp',
   'cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp',
   'cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp',
   'cpp/KesshoCore/src/product/transport/MusicalClock.cpp',

@@ -4,16 +4,12 @@ import {
   type CoreProductStepValueField,
   type CoreProductSubLaneDirection,
 } from './coreProductEvents';
-import type { SequencerKind, SequencerStepValueConfig } from './CoreProductHostSequencerAdapter';
+import type { SequencerKind, SequencerStepValueConfig, SequencerStepValueOverride } from './CoreProductHostSequencerAdapter';
 import type { NormalizedSequencerEvolveConfig } from './CoreProductHostSequencerEvolveConfig';
 
 type DirectionName = 'forward' | 'reverse' | 'pingpong';
 type SubLaneName = 'pitch' | 'expression' | 'morph' | 'distance';
-export type CoreProductSubLaneEvolveResult = {
-  configs: SequencerStepValueConfig[];
-  subLaneStates: Partial<Record<SubLaneName, { steps: number; direction: DirectionName }>>;
-  directionPayloads: Record<string, DirectionName>;
-};
+export type CoreProductSubLaneEvolveResult = { configs: SequencerStepValueConfig[]; valueOverrides?: SequencerStepValueOverride[]; changedValueFields?: CoreProductStepValueField[]; subLaneStates: Partial<Record<SubLaneName, { enabled: boolean; steps: number; direction: DirectionName }>>; directionPayloads: Record<string, DirectionName> };
 
 const SUB_LANE_FIELDS: Record<SubLaneName, { field: CoreProductStepValueField; directionKey: string }> = {
   pitch: { field: CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote, directionKey: 'pitchDirection' },
@@ -29,7 +25,7 @@ function hashUnit(seed: number): number {
   x ^= x >>> 15;
   x = Math.imul(x, 0x846ca68b) >>> 0;
   x ^= x >>> 16;
-  return x / 0xffffffff;
+  return (x >>> 0) / 0x1_0000_0000;
 }
 
 function chance(seed: number, probability: number): boolean {
@@ -64,16 +60,22 @@ function enabledConfigEntries(configs: SequencerStepValueConfig[], config: Norma
 
 function writePayload(result: CoreProductSubLaneEvolveResult, lane: SubLaneName, config: SequencerStepValueConfig): void {
   const direction = directionName(config.direction);
-  result.subLaneStates[lane] = { steps: config.steps, direction };
+  result.subLaneStates[lane] = { enabled: true, steps: config.steps, direction };
   result.directionPayloads[SUB_LANE_FIELDS[lane].directionKey] = direction;
 }
 
-export function evolveCoreProductSequencerSubLaneConfigs(
-  sequencer: SequencerKind,
-  configs: SequencerStepValueConfig[],
-  config: NormalizedSequencerEvolveConfig,
-  seed: number,
-): CoreProductSubLaneEvolveResult | null {
+function resizeFieldOverrides(overrides: SequencerStepValueOverride[], field: CoreProductStepValueField, nextSteps: number): SequencerStepValueOverride[] | null {
+  const fieldEntries = overrides
+    .filter((entry) => entry.field === field)
+    .sort((left, right) => left.step - right.step);
+  if (fieldEntries.length === 0 || fieldEntries.every((entry) => entry.range === true)) return null;
+  const byStep = new Map(fieldEntries.map((entry) => [entry.step, entry]));
+  const fallback = fieldEntries[fieldEntries.length - 1]!;
+  const resized = Array.from({ length: nextSteps }, (_, step) => ({ ...(byStep.get(step) ?? fallback), step }));
+  return [...overrides.filter((entry) => entry.field !== field), ...resized].sort((left, right) => left.step - right.step || left.field - right.field);
+}
+
+export function evolveCoreProductSequencerSubLaneConfigs(sequencer: SequencerKind, configs: SequencerStepValueConfig[], valueOverrides: SequencerStepValueOverride[], config: NormalizedSequencerEvolveConfig, seed: number): CoreProductSubLaneEvolveResult | null {
   const candidates = enabledConfigEntries(configs, config);
   if (candidates.length === 0) return null;
   const next = configs.map((entry) => ({ ...entry }));
@@ -83,11 +85,16 @@ export function evolveCoreProductSequencerSubLaneConfigs(
     const picked = candidates[Math.floor(hashUnit(seed ^ 0x2c1b3c6d) * candidates.length)]!;
     const laneConfig = next[picked.index]!;
     const minSteps = sequencer === 'synth' ? 2 : 1;
-    const maxSteps = sequencer === 'synth' ? 32 : 16;
+    const maxSteps = 16;
     const delta = hashUnit(seed ^ 0x51f15ca9) < 0.5 ? -1 : 1;
     const steps = Math.max(minSteps, Math.min(maxSteps, laneConfig.steps + delta));
     if (steps !== laneConfig.steps) {
       laneConfig.steps = steps;
+      const resized = resizeFieldOverrides(result.valueOverrides ?? valueOverrides, laneConfig.field, steps);
+      if (resized) {
+        result.valueOverrides = resized;
+        result.changedValueFields = [...(result.changedValueFields ?? []), laneConfig.field];
+      }
       writePayload(result, picked.lane, laneConfig);
       changed = true;
     }

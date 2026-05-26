@@ -161,7 +161,6 @@ function testCascadeExtractionIsRecursive(): void {
   assert.equal(dynamicsKeys.has('dynamicsSaturationDrive'), true, 'dynamics source should include L1 saturation params');
   assert.equal(dynamicsKeys.has('dynamicsSaturationEnabled'), true, 'dynamics source should include L1 saturation bypass params');
   assert.equal(dynamicsKeys.has('endCompThreshold'), true, 'dynamics source should include L1 end-chain params');
-  assert.equal(dynamicsKeys.has('masterSatDrive'), false, 'dynamics source should not include Delay-owned master saturation params');
 }
 
 function testOverlapIsStrippedAtEachLevel(): void {
@@ -291,6 +290,7 @@ async function testEuclideanStepOverridesAffectOnlyEuclideanChildHash(): Promise
     drumSubLaneStates: [{
       expression: { enabled: true, steps: 5, direction: 'pingpong', valueMode: 'range', rangeMin: 0.2, rangeMax: 0.8 },
     }],
+    drumPitchSettings: [{ mode: 'notes', root: 43, scale: 'Minor' }],
   };
   const synthClockOnly: PresetVersionMetadata = {
     synthClockDivs: ['1/4', '1/16', '1/16', '1/16'],
@@ -299,6 +299,9 @@ async function testEuclideanStepOverridesAffectOnlyEuclideanChildHash(): Promise
     drumSubLaneStates: [{
       expression: { enabled: true, steps: 11, direction: 'reverse' },
     }],
+  };
+  const drumPitchOnly: PresetVersionMetadata = {
+    drumPitchSettings: [{ mode: 'notes', root: 47, scale: 'Dorian' }],
   };
 
   const synthHash = await childHash('source', 'synth', 'euclideanPattern', DEFAULT_STATE);
@@ -326,6 +329,7 @@ async function testEuclideanStepOverridesAffectOnlyEuclideanChildHash(): Promise
   const drumHash = await childHash('source', 'drums', 'euclideanPattern', DEFAULT_STATE);
   const drumHashWithOverrides = await childHash('source', 'drums', 'euclideanPattern', DEFAULT_STATE, metadata);
   const drumHashWithSubLane = await childHash('source', 'drums', 'euclideanPattern', DEFAULT_STATE, drumSubLaneOnly);
+  const drumHashWithPitchSettings = await childHash('source', 'drums', 'euclideanPattern', DEFAULT_STATE, drumPitchOnly);
   assert.notEqual(
     drumHash,
     drumHashWithOverrides,
@@ -335,6 +339,11 @@ async function testEuclideanStepOverridesAffectOnlyEuclideanChildHash(): Promise
     drumHash,
     drumHashWithSubLane,
     'custom drum sub-lane states should create a distinct Euclidean child hash',
+  );
+  assert.notEqual(
+    drumHash,
+    drumHashWithPitchSettings,
+    'custom drum pitch settings should create a distinct Euclidean child hash',
   );
 }
 

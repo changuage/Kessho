@@ -99,8 +99,8 @@ for (const getter of getters) {
   assert(doc.includes(`\`${getter}\``), `Product Core getter ${getter} is not classified in docs`);
   if (unsupportedGetters.has(getter)) {
     assert(
-      methodBody(getter).includes(`return this.unsupportedGetter('${getter}')`),
-      `${getter}() must throw through unsupportedGetter() instead of returning a fake value`,
+      methodBody(getter).includes(`return this.explicitlyUnsupportedGetter('${getter}')`),
+      `${getter}() must throw through explicitlyUnsupportedGetter() instead of entering runtime fallback diagnostics`,
     );
   }
 }
@@ -151,9 +151,12 @@ assert(
   'Pad LFO getter must use Product Core Pad telemetry instead of a hidden fallback',
 );
 assert(
-  methodBody('unsupportedGetter').includes('this.reportRuntimeFallback(method, classification)') &&
-    methodBody('unsupportedGetter').includes('throw new Error(`AudioEngine.${method} is not implemented by core-product`)'),
-  'unsupportedGetter() must increment runtime diagnostics and throw instead of returning fake Product Core values',
+  methodBody('explicitlyUnsupportedGetter').includes('throw new Error(`AudioEngine.${method} is explicitly unavailable in core-product`)'),
+  'explicitlyUnsupportedGetter() must throw instead of returning fake Product Core values or reporting a runtime fallback',
+);
+assert(
+  !host.includes('unsupportedGetter<T>') && !host.includes('unsupportedGetter('),
+  'explicitly hidden Product Core getters must not use the old unsupportedGetter fallback helper',
 );
 assert(
   app.includes("const stemRecordingAvailable = audioEngineRuntimeMode !== 'core-product';") &&

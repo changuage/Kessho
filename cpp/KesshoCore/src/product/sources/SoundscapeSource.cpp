@@ -14,6 +14,7 @@
   }
 
   SoundscapeTextureRuntime& runtime = soundscape_texture_runtimes[texture_slot];
+  configureSoundscapeTextureSpatialRuntime(asset_id, runtime);
   const uint32_t seed = soundscapeTextureSeed(
       source,
       texture_slot,

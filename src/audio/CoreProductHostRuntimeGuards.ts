@@ -121,6 +121,8 @@ export function midiFromFrequency(frequency: number): number {
   return Math.max(0, Math.min(127, 69 + 12 * Math.log2(frequency / 440)));
 }
 
+export type RequiredManualSynthNote = Required<Omit<ManualSynthNoteOptions, 'voiceIndex'>> & Pick<ManualSynthNoteOptions, 'voiceIndex'>;
+
 export function requireFiniteRange(value: unknown, label: string, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
     throw new Error(`Core Product ${label} must be a finite number in [${min}, ${max}]`);
@@ -135,15 +137,14 @@ export function requirePositive(value: unknown, label: string): number {
   return value;
 }
 
-export function requireManualNote(note: ManualSynthNoteOptions): Required<ManualSynthNoteOptions> {
+export function requireManualNote(note: ManualSynthNoteOptions): RequiredManualSynthNote {
   const source = note.source;
   sourceId(source);
-  return {
-    source,
-    midi: requireFiniteRange(note.midi, 'manual note midi', 0, 127),
-    velocity: requireFiniteRange(note.velocity, 'manual note velocity', 0.000001, 1),
-    durationMs: requirePositive(note.durationMs, 'manual note durationMs'),
-  };
+  const voiceIndex = note.voiceIndex;
+  if (voiceIndex !== undefined && (!Number.isInteger(voiceIndex) || voiceIndex < 0 || voiceIndex > 5)) {
+    throw new Error(`Core Product manual note voiceIndex must be an integer in [0, 5]: ${String(voiceIndex)}`);
+  }
+  return { source, midi: requireFiniteRange(note.midi, 'manual note midi', 0, 127), velocity: requireFiniteRange(note.velocity, 'manual note velocity', 0.000001, 1), durationMs: requirePositive(note.durationMs, 'manual note durationMs'), ...(voiceIndex !== undefined ? { voiceIndex } : {}) };
 }
 
 export function manualAuditionState(
@@ -152,21 +153,11 @@ export function manualAuditionState(
 ): Record<string, unknown> {
   const next = { ...(state ?? {}) };
   switch (source) {
-    case 'pad1':
-      next.padEnabled = true;
-      break;
-    case 'pad2':
-      next.pad2Enabled = true;
-      break;
-    case 'lead1':
-      next.leadEnabled = true;
-      break;
-    case 'lead2':
-      next.lead2Enabled = true;
-      break;
-    case 'piano':
-      next.pianoEnabled = true;
-      break;
+    case 'pad1': next.padEnabled = true; break;
+    case 'pad2': next.pad2Enabled = true; break;
+    case 'lead1': next.leadEnabled = true; break;
+    case 'lead2': next.lead2Enabled = true; break;
+    case 'piano': next.pianoEnabled = true; break;
     default:
       sourceId(source);
   }

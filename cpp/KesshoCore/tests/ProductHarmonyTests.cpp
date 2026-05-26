@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <initializer_list>
 #include <iostream>
 
 #include "KesshoCore/KesshoProductCore.h"
@@ -32,6 +33,17 @@ bool midiMatchesScale(float midi, float root_midi, uint32_t scale_id) {
     }
   }
   return false;
+}
+
+void requireScaleIntervals(uint32_t scale_id, std::initializer_list<int> expected, const char* message) {
+  int intervals[kMaxScaleNotes]{};
+  const uint32_t count = scaleIntervals(scale_id, intervals);
+  require(count == expected.size(), message);
+  uint32_t index = 0u;
+  for (const int interval : expected) {
+    require(index < kMaxScaleNotes && intervals[index] == interval, message);
+    ++index;
+  }
 }
 
 KesshoProductSnapshotV2 makeSnapshot(float root_midi, uint32_t scale_id, float tension, uint32_t seed) {
@@ -86,7 +98,71 @@ int32_t renderEvents(const KesshoProductSnapshotV2& snapshot, KesshoSequencerEve
   return count;
 }
 
+int32_t renderEventsAfterParam(
+    const KesshoProductSnapshotV2& snapshot,
+    uint32_t param_id,
+    float value,
+    KesshoSequencerEvent* events,
+    uint32_t max_events,
+    KesshoProductTelemetry* telemetry = nullptr) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "param engine create failed");
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "param snapshot load failed");
+  KesshoProductEvent event{};
+  event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  event.param_id = param_id;
+  event.value = value;
+  require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "harmony param enqueue failed");
+  const int32_t count = kessho_product_debug_render_events(engine, events, max_events, 18001);
+  if (telemetry) {
+    *telemetry = kessho_product_get_telemetry(engine);
+  }
+  kessho_product_destroy(engine);
+  return count;
+}
+
+int32_t renderEventsAfterSynthPitchOverride(
+    const KesshoProductSnapshotV2& snapshot,
+    uint32_t param_id,
+    float value,
+    KesshoSequencerEvent* events,
+    uint32_t max_events) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "explicit pitch engine create failed");
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "explicit pitch snapshot load failed");
+  KesshoProductEvent pitch_event{};
+  pitch_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP;
+  pitch_event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  pitch_event.index = 0;
+  pitch_event.param_id = 0;
+  pitch_event.value = 71.0f;
+  pitch_event.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE | KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE;
+  require(kessho_product_enqueue_event(engine, &pitch_event) == KESSHO_PRODUCT_OK, "explicit pitch step enqueue failed");
+  if (param_id != 0u) {
+    KesshoProductEvent param_event{};
+    param_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+    param_event.param_id = param_id;
+    param_event.value = value;
+    require(kessho_product_enqueue_event(engine, &param_event) == KESSHO_PRODUCT_OK, "explicit pitch harmony param enqueue failed");
+  }
+  const int32_t count = kessho_product_debug_render_events(engine, events, max_events, 18001);
+  kessho_product_destroy(engine);
+  return count;
+}
+
 void requireDirectMusicCoverage() {
+  requireScaleIntervals(1u, {0, 2, 4, 5, 7, 9, 11}, "major scale interval mismatch");
+  requireScaleIntervals(2u, {0, 2, 3, 5, 7, 8, 10}, "aeolian scale interval mismatch");
+  requireScaleIntervals(3u, {0, 2, 4, 7, 9}, "major pentatonic scale interval mismatch");
+  requireScaleIntervals(4u, {0, 1, 3, 4, 6, 7, 9, 10}, "octatonic scale interval mismatch");
+  requireScaleIntervals(5u, {0, 2, 4, 6, 7, 9, 11}, "lydian scale interval mismatch");
+  requireScaleIntervals(6u, {0, 2, 4, 5, 7, 9, 10}, "mixolydian scale interval mismatch");
+  requireScaleIntervals(7u, {0, 3, 5, 7, 10}, "minor pentatonic scale interval mismatch");
+  requireScaleIntervals(8u, {0, 2, 3, 5, 7, 9, 10}, "dorian scale interval mismatch");
+  requireScaleIntervals(9u, {0, 2, 3, 5, 7, 8, 11}, "harmonic minor scale interval mismatch");
+  requireScaleIntervals(10u, {0, 2, 3, 5, 7, 9, 11}, "melodic minor scale interval mismatch");
+  requireScaleIntervals(11u, {0, 1, 4, 5, 7, 8, 10}, "phrygian dominant scale interval mismatch");
+
   KesshoProductEngine direct(48000.0, 128, 0);
   direct.transport.running = true;
   direct.transport.bpm = 120.0f;
@@ -153,6 +229,92 @@ int main() {
   count = renderEvents(makeSnapshot(62.0f, 1, 0.3f, 1), transposed_events, 16);
   require(count >= 1, "transposed event count too low");
   requireNear(transposed_events[0].midi_note, 62.0f, 0.001f, "root transpose mismatch");
+
+  KesshoSequencerEvent lydian_events[16]{};
+  count = renderEvents(makeSnapshot(60.0f, 5, 0.3f, 1), lydian_events, 16);
+  require(count >= 4, "lydian event count too low");
+  requireNear(lydian_events[3].midi_note, 66.0f, 0.001f, "lydian raised fourth event mismatch");
+
+  KesshoSequencerEvent phrygian_events[16]{};
+  count = renderEvents(makeSnapshot(60.0f, 11, 0.3f, 1), phrygian_events, 16);
+  require(count >= 2, "phrygian dominant event count too low");
+  requireNear(phrygian_events[1].midi_note, 61.0f, 0.001f, "phrygian dominant flat second event mismatch");
+
+  KesshoProductSnapshotV2 explicit_pitch_snapshot = makeSnapshot(60.0f, 1, 0.3f, 1);
+  KesshoSequencerEvent explicit_pitch_events[16]{};
+  count = renderEventsAfterSynthPitchOverride(explicit_pitch_snapshot, 0u, 0.0f, explicit_pitch_events, 16);
+  require(count >= 1, "explicit pitch override event count too low");
+  requireNear(explicit_pitch_events[0].midi_note, 71.0f, 0.001f, "explicit sequencer pitch override should bypass harmony voicing");
+  KesshoSequencerEvent explicit_pitch_root_events[16]{};
+  count = renderEventsAfterSynthPitchOverride(
+      explicit_pitch_snapshot,
+      KESSHO_PRODUCT_PARAM_HARMONY_ROOT_MIDI_ID,
+      67.0f,
+      explicit_pitch_root_events,
+      16);
+  require(count >= 1, "explicit pitch runtime root event count too low");
+  requireNear(explicit_pitch_root_events[0].midi_note, 71.0f, 0.001f, "explicit sequencer pitch override should survive runtime harmony root changes");
+  KesshoSequencerEvent explicit_pitch_scale_events[16]{};
+  count = renderEventsAfterSynthPitchOverride(
+      explicit_pitch_snapshot,
+      KESSHO_PRODUCT_PARAM_HARMONY_SCALE_ID_ID,
+      11.0f,
+      explicit_pitch_scale_events,
+      16);
+  require(count >= 1, "explicit pitch runtime scale event count too low");
+  requireNear(explicit_pitch_scale_events[0].midi_note, 71.0f, 0.001f, "explicit sequencer pitch override should survive runtime harmony scale changes");
+
+  KesshoProductTelemetry root_param_telemetry{};
+  KesshoSequencerEvent root_param_events[16]{};
+  count = renderEventsAfterParam(
+      makeSnapshot(60.0f, 1, 0.3f, 1),
+      KESSHO_PRODUCT_PARAM_HARMONY_ROOT_MIDI_ID,
+      62.0f,
+      root_param_events,
+      16,
+      &root_param_telemetry);
+  require(count >= 1, "runtime harmony root param event count too low");
+  requireNear(root_param_events[0].midi_note, 62.0f, 0.001f, "runtime harmony root param did not transpose sequencer event");
+  requireNear(root_param_telemetry.harmony_root_midi, 62.0f, 0.001f, "runtime harmony root param telemetry mismatch");
+
+  KesshoProductTelemetry scale_param_telemetry{};
+  KesshoSequencerEvent scale_param_events[16]{};
+  count = renderEventsAfterParam(
+      makeSnapshot(60.0f, 1, 0.3f, 1),
+      KESSHO_PRODUCT_PARAM_HARMONY_SCALE_ID_ID,
+      2.0f,
+      scale_param_events,
+      16,
+      &scale_param_telemetry);
+  require(count >= 3, "runtime harmony scale param event count too low");
+  requireNear(scale_param_events[2].midi_note, 63.0f, 0.001f, "runtime harmony scale param did not minorize sequencer event");
+  require(scale_param_telemetry.harmony_scale_id == 2u, "runtime harmony scale param telemetry mismatch");
+
+  bool tension_param_changed_notes = false;
+  for (uint32_t seed = 1u; seed < 96u && !tension_param_changed_notes; ++seed) {
+    KesshoProductSnapshotV2 low_tension_snapshot = makeSnapshot(60.0f, 1, 0.0f, seed);
+    low_tension_snapshot.harmony.voicing_mode = 1u;
+    KesshoSequencerEvent low_tension_events[16]{};
+    KesshoSequencerEvent high_tension_events[16]{};
+    const int32_t low_tension_count = renderEvents(low_tension_snapshot, low_tension_events, 16);
+    KesshoProductTelemetry tension_param_telemetry{};
+    const int32_t high_tension_count = renderEventsAfterParam(
+        low_tension_snapshot,
+        KESSHO_PRODUCT_PARAM_HARMONY_TENSION_ID,
+        0.95f,
+        high_tension_events,
+        16,
+        &tension_param_telemetry);
+    requireNear(tension_param_telemetry.harmony_tension, 0.95f, 0.001f, "runtime harmony tension param telemetry mismatch");
+    const int32_t compare_count = std::min(low_tension_count, high_tension_count);
+    for (int32_t i = 0; i < compare_count; ++i) {
+      if (std::fabs(low_tension_events[i].midi_note - high_tension_events[i].midi_note) > 0.001f) {
+        tension_param_changed_notes = true;
+        break;
+      }
+    }
+  }
+  require(tension_param_changed_notes, "runtime harmony tension param should alter generated sequencer notes");
 
   KesshoSequencerEvent seeded_a[16]{};
   KesshoSequencerEvent seeded_b[16]{};

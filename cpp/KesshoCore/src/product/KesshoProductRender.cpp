@@ -129,14 +129,25 @@
 
   void KesshoProductEngine::renderSampleVoices(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   bool has_active_voice = false;
+  bool source_has_active_voice[kSourceCount]{};
   for (const Voice& voice : voices) {
-    if (voice.active) {
+    if (voice.active && voice.source_id >= 1u && voice.source_id <= kSourceCount) {
       has_active_voice = true;
-      break;
+      source_has_active_voice[voice.source_id - 1u] = true;
     }
   }
   if (!has_active_voice) {
     return;
+  }
+  float source_gates[kSourceCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  for (uint32_t source_index = 0u; source_index < kSourceCount; ++source_index) {
+    if (!source_has_active_voice[source_index]) {
+      continue;
+    }
+    SourceState& source = sources[source_index];
+    for (uint32_t i = 0; i < frames; ++i) {
+      source_gates[source_index][i] = sourceEnableGainForFrame(source, transport.sample_frame + i);
+    }
   }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
@@ -144,11 +155,15 @@
       if (!voice.active) {
         continue;
       }
+      if (voice.source_id < 1u || voice.source_id > kSourceCount) {
+        voice.active = false;
+        continue;
+      }
       float value_l = 0.0f;
       float value_r = 0.0f;
       renderVoiceSample(voice, value_l, value_r);
       SourceState& source = sources[voice.source_id - 1u];
-      const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
+      const float source_gate = source_gates[voice.source_id - 1u][i];
       if (voice.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
           voice.sample_voice &&
           voice.soundscape_texture_voice &&
@@ -195,9 +210,9 @@
       if (soundscape_sample) {
         soundscape_layer = soundscapeLayerIndexForAsset(assets[voice.asset_slot].asset_id);
         soundscape_asset_level = soundscapeAssetRefLevel(source, assets[voice.asset_slot].asset_id);
-        if (source.exact_drum_param_count > kSoundscapeModuleEarthLevelParam) {
+        if (source.soundscape_module_param_count > kSoundscapeModuleEarthLevelParam) {
           soundscape_earth_level =
-              clampFloat(source.exact_drum_params[kSoundscapeModuleEarthLevelParam], 0.0f, 2.0f);
+              clampFloat(source.soundscape_module_params[kSoundscapeModuleEarthLevelParam], 0.0f, 2.0f);
         }
         graph_dry_left = dry_left * soundscape_asset_level;
         graph_dry_right = dry_right * soundscape_asset_level;
@@ -208,7 +223,18 @@
       }
       const float left = output_dry_left * duck_gain;
       const float right = output_dry_right * duck_gain;
-      recordSourceGraphTaps(voice.source_id, frame, source, graph_dry_left, graph_dry_right, left, right, send_left, send_right);
+      if (graph_taps_enabled || source.diffuse_send > 0.0f) {
+        recordSourceGraphTaps(
+            voice.source_id,
+            frame,
+            source,
+            graph_dry_left,
+            graph_dry_right,
+            left,
+            right,
+            send_left,
+            send_right);
+      }
       float reverb_send = source.reverb_send;
       float delay_a_send = source.delay_a_send;
       float delay_b_send = source.delay_b_send;
@@ -328,7 +354,6 @@
       ? 0.0f
       : static_cast<float>(std::sqrt(master_output_sum_squares / static_cast<double>(frames * 2u)));
   telemetry.master_limiter_gain_reduction_db = limiter_gain_reduction_db;
-  telemetry.master_saturation_drive = master_saturation_drive;
   telemetry.dynamics_saturation_drive = fx.dynamics_saturation_drive;
   telemetry.master_true_peak = master_true_peak;
   telemetry.master_true_peak_dbtp = gainToDb(master_true_peak);
@@ -509,7 +534,7 @@
   last_stem_frames = stem_frames;
 }
 
-  void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
+void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
   if (out_l == nullptr || out_r == nullptr || frames == 0u) {
     return;
   }
@@ -520,7 +545,6 @@
   }
 
   clearOutput(out_l, out_r, frames);
-  sortControlEvents();
 
   uint32_t control_index = 0;
   while (control_index < control_event_count && control_events[control_index].event.sample_offset == 0u) {

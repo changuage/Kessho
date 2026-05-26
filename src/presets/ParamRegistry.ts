@@ -1178,10 +1178,24 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Clocked Space Engine (Delay B voicing — new params from delay overhaul)
   // ═══════════════════════════════════════════════════════════════════════
+  delayBAlgorithm:        { level: 1, scope: 'clockedSpace' },
   delayBPattern:          { level: 1, scope: 'clockedSpace' },
   delayBWarp:             { level: 1, scope: 'clockedSpace' },
   delayBWarpIntensity:    { level: 1, scope: 'clockedSpace' },
   delayBSpread:           { level: 1, scope: 'clockedSpace' },
+  delayBTapeSpacing:      { level: 1, scope: 'clockedSpace' },
+  delayBTapeHead1Enabled: { level: 1, scope: 'clockedSpace' },
+  delayBTapeHead2Enabled: { level: 1, scope: 'clockedSpace' },
+  delayBTapeHead3Enabled: { level: 1, scope: 'clockedSpace' },
+  delayBTapeHead4Enabled: { level: 1, scope: 'clockedSpace' },
+  delayBTapeHead1Level:   { level: 1, scope: 'clockedSpace' },
+  delayBTapeHead2Level:   { level: 1, scope: 'clockedSpace' },
+  delayBTapeHead3Level:   { level: 1, scope: 'clockedSpace' },
+  delayBTapeHead4Level:   { level: 1, scope: 'clockedSpace' },
+  delayBTapeHead1Pan:     { level: 1, scope: 'clockedSpace' },
+  delayBTapeHead2Pan:     { level: 1, scope: 'clockedSpace' },
+  delayBTapeHead3Pan:     { level: 1, scope: 'clockedSpace' },
+  delayBTapeHead4Pan:     { level: 1, scope: 'clockedSpace' },
   granularDelayEnabled:   { level: 1, scope: 'clockedSpace' },
   granularDelayActivity:  { level: 1, scope: 'clockedSpace' },
   granularDelayRepeats:   { level: 1, scope: 'clockedSpace' },
@@ -1191,13 +1205,10 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularDelayMix:       { level: 1, scope: 'clockedSpace' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L2: Delay Kit (cross-feed routing + master saturation)
+  // L2: Delay Kit (cross-feed routing)
   // ═══════════════════════════════════════════════════════════════════════
   delayBToASend:          { level: 2, scope: 'delayKit' },
   delayACrossFeedFilter:  { level: 2, scope: 'delayKit' },
-  masterSatDrive:         { level: 2, scope: 'delayKit' },
-  masterSatMode:          { level: 2, scope: 'delayKit' },
-  masterSatTone:          { level: 2, scope: 'delayKit' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L3: Delay Source (page-level modes)
@@ -1209,7 +1220,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 994) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 994`);
+  if (count !== 1005) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1005`);
   }
 }

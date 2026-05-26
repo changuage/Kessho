@@ -21,7 +21,7 @@ export function createCoreProductDynamicsVisualTelemetry(
   const outputPeak = Math.max(0, telemetry.masterTruePeak ?? telemetry.masterOutputPeak ?? 0);
   const outputRms = Math.max(0, telemetry.masterOutputRms ?? 0);
   const limiterReductionDb = Math.max(0, telemetry.masterLimiterGainReductionDb ?? 0);
-  const saturationDrive = Math.max(0, telemetry.dynamicsSaturationDrive ?? telemetry.masterSaturationDrive ?? 0);
+  const saturationDrive = Math.max(0, telemetry.dynamicsSaturationDrive ?? 0);
   const detectorDb = Number.isFinite(telemetry.masterIntegratedLufs ?? NaN)
     ? telemetry.masterIntegratedLufs!
     : gainToDb(inputPeak);

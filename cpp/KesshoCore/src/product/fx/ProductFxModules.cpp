@@ -81,7 +81,7 @@ void KesshoProductEngine::configureFxModules() {
   }
   if (delay_b_module) {
     float* params = delay_b_module->params();
-    if (params != nullptr && delay_b_module->paramCount() >= 16) {
+    if (params != nullptr && delay_b_module->paramCount() >= 24) {
       const bool active =
           fx.delay_b_enabled &&
           (fx.delay_b_mix > 0.0001f ||
@@ -98,11 +98,16 @@ void KesshoProductEngine::configureFxModules() {
       params[7] = clampFloat(routing.delay_b_to_reverb, 0.0f, 1.0f);
       params[8] = clampFloat(routing.delay_b_to_granular, 0.0f, 1.0f);
       params[9] = clampFloat(routing.delay_b_to_delay_a, 0.0f, 1.0f);
-      params[10] = static_cast<float>(clampU32(fx.delay_b_space_mode, 0u, 1u));
+      params[10] = static_cast<float>(clampU32(fx.delay_b_space_mode, 0u, 2u));
       params[11] = static_cast<float>(clampU32(fx.delay_b_pattern, 0u, 3u));
       params[12] = static_cast<float>(clampU32(fx.delay_b_warp, 0u, 3u));
       params[13] = clampFloat(fx.delay_b_warp_intensity, 0.0f, 1.0f);
       params[14] = clampFloat(fx.delay_b_spread, 0.0f, 1.0f);
+      params[15] = static_cast<float>(clampU32(fx.delay_b_tape_head_mask, 0u, 15u));
+      for (size_t index = 0; index < fx.delay_b_tape_head_levels.size(); ++index) {
+        params[16 + index] = clampFloat(fx.delay_b_tape_head_levels[index], 0.0f, 1.0f);
+        params[20 + index] = clampFloat(fx.delay_b_tape_head_pans[index], 0.0f, 1.0f);
+      }
       delay_b_module->commitParams();
     }
   }

@@ -49,6 +49,12 @@
   out.morph_override_set_high = lane.morph_override_set_high;
   out.distance_override_set_low = lane.distance_override_set_low;
   out.distance_override_set_high = lane.distance_override_set_high;
+  out.expression_range_set_low = lane.expression_range_set_low;
+  out.expression_range_set_high = lane.expression_range_set_high;
+  out.morph_range_set_low = lane.morph_range_set_low;
+  out.morph_range_set_high = lane.morph_range_set_high;
+  out.distance_range_set_low = lane.distance_range_set_low;
+  out.distance_range_set_high = lane.distance_range_set_high;
   out.mutation_flags =
       (out.step_override_set_low != 0u || out.step_override_set_high != 0u ||
        out.probability_override_set_low != 0u || out.probability_override_set_high != 0u ||
@@ -57,7 +63,10 @@
        out.midi_note_override_set_low != 0u || out.midi_note_override_set_high != 0u ||
        out.expression_override_set_low != 0u || out.expression_override_set_high != 0u ||
        out.morph_override_set_low != 0u || out.morph_override_set_high != 0u ||
-       out.distance_override_set_low != 0u || out.distance_override_set_high != 0u)
+       out.distance_override_set_low != 0u || out.distance_override_set_high != 0u ||
+       out.expression_range_set_low != 0u || out.expression_range_set_high != 0u ||
+       out.morph_range_set_low != 0u || out.morph_range_set_high != 0u ||
+       out.distance_range_set_low != 0u || out.distance_range_set_high != 0u)
       ? KESSHO_PRODUCT_SEQUENCER_UI_MUTATION_HAS_OVERRIDES
       : 0u;
   for (uint32_t i = 0; i < KESSHO_PRODUCT_SEQUENCER_UI_STATE_SUBLANES; ++i) {
@@ -76,6 +85,9 @@
     out.expression_overrides[i] = lane.expression_overrides[i];
     out.morph_overrides[i] = lane.morph_overrides[i];
     out.distance_overrides[i] = lane.distance_overrides[i];
+    out.expression_range_maxes[i] = lane.expression_range_maxes[i];
+    out.morph_range_maxes[i] = lane.morph_range_maxes[i];
+    out.distance_range_maxes[i] = lane.distance_range_maxes[i];
   }
 }
 
@@ -166,6 +178,35 @@
   telemetry.pad1_lfo1_value = pad_module == nullptr ? 0.0f : pad_module->currentPadLfoValue(0);
   telemetry.pad2_filter_freq = pad_module == nullptr ? 0.0f : pad_module->currentPadFilterFrequency(1);
   telemetry.pad2_lfo1_value = pad_module == nullptr ? 0.0f : pad_module->currentPadLfoValue(1);
+  for (uint32_t i = 0; i < KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES; ++i) {
+    telemetry.synth_sequencer_hit_counts[i] = 0u;
+    telemetry.drum_sequencer_hit_counts[i] = 0u;
+    telemetry.synth_sequencer_current_steps[i] = 0u;
+    telemetry.drum_sequencer_current_steps[i] = 0u;
+  }
+  for (uint32_t i = 0; i < std::min<uint32_t>(synth_lane_count, KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES); ++i) {
+    const LaneState& lane = synth_lanes[i];
+    if (!lane.enabled || !lane.sequencer_runtime_initialized || lane.step_count == 0u || lane.clock_division == 0u) {
+      continue;
+    }
+    const double samples_per_step =
+        sequencerSamplesPerStep(transport, sample_rate, lane.clock_division) /
+        static_cast<double>(clampFloat(lane.tempo_multiplier, 0.25f, 12.0f));
+    telemetry.synth_sequencer_current_steps[i] = sequencerCurrentRelativeStep(lane, transport.sample_frame, samples_per_step);
+    telemetry.synth_sequencer_hit_counts[i] = static_cast<uint32_t>(
+        std::min<uint64_t>(lane.emitted_hit_count, 0xffffffffull));
+  }
+  for (uint32_t i = 0; i < std::min<uint32_t>(drum_lane_count, KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES); ++i) {
+    const LaneState& lane = drum_lanes[i];
+    if (lane.enabled && lane.sequencer_runtime_initialized && lane.step_count != 0u && lane.clock_division != 0u) {
+      const double samples_per_step =
+          sequencerSamplesPerStep(transport, sample_rate, lane.clock_division) /
+          static_cast<double>(clampFloat(lane.tempo_multiplier, 0.25f, 12.0f));
+      telemetry.drum_sequencer_current_steps[i] = sequencerCurrentRelativeStep(lane, transport.sample_frame, samples_per_step);
+    }
+    telemetry.drum_sequencer_hit_counts[i] = static_cast<uint32_t>(
+        std::min<uint64_t>(drum_lanes[i].emitted_hit_count, 0xffffffffull));
+  }
   telemetry.sequencer_event_count = sequencer_events.count;
   telemetry.control_queue_depth = control_event_count;
   telemetry.journey_morph_running = journey_running ? 1u : 0u;

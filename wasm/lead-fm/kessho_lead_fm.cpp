@@ -282,6 +282,22 @@ static int find_note_slot() {
     return oldest;
 }
 
+static int release_note_slot(int note_index) {
+    if (note_index < 0 || note_index >= LEAD_FM_MAX_POLYPHONY) {
+        return 0;
+    }
+    LeadNote& note = g_notes[note_index];
+    if (!note.active) {
+        return 0;
+    }
+    if (!note.released) {
+        note.amp_env.gate_off();
+        note.released = 1;
+        note.filt_env_stage = 3;
+    }
+    return 1;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Per-Sample Rendering
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -658,11 +674,11 @@ void lead_fm_process_block(int block_size) {
     }
 }
 
-void lead_fm_note_on(float frequency, float velocity, float hold_seconds) {
-    lead_fm_note_on_ex(frequency, velocity, hold_seconds, 0);
+int lead_fm_note_on(float frequency, float velocity, float hold_seconds) {
+    return lead_fm_note_on_ex(frequency, velocity, hold_seconds, 0);
 }
 
-void lead_fm_note_on_ex(float frequency, float velocity, float hold_seconds, int lead_index) {
+int lead_fm_note_on_ex(float frequency, float velocity, float hold_seconds, int lead_index) {
     int slot = find_note_slot();
     LeadNote& note = g_notes[slot];
     note.reset();
@@ -781,15 +797,42 @@ void lead_fm_note_on_ex(float frequency, float velocity, float hold_seconds, int
             os.mod_env_rate = fast_expf(-1.0f / decay_samples);
         }
     }
+    return slot;
+}
+
+int lead_fm_note_off(int note_index) {
+    return release_note_slot(note_index);
+}
+
+int lead_fm_note_set_frequency(int note_index, float frequency) {
+    if (note_index < 0 || note_index >= LEAD_FM_MAX_POLYPHONY || !std::isfinite(frequency) || frequency <= 0.0f) {
+        return 0;
+    }
+    LeadNote& note = g_notes[note_index];
+    if (!note.active || note.base_freq <= 0.0f) {
+        return 0;
+    }
+    const float ratio = frequency / note.base_freq;
+    note.base_freq = frequency;
+    for (int u = 0; u < note.num_unison; ++u) {
+        UnisonVoice& uv = note.unison[u];
+        uv.carrier1.freq *= ratio;
+        uv.carrier2.freq *= ratio;
+        for (int op = 0; op < 4; ++op) {
+            OperatorState& os = uv.ops[op];
+            os.osc.freq *= ratio;
+            os.peak_index *= ratio;
+            os.mod_env_target *= ratio;
+            os.mod_env_value *= ratio;
+            os.mod_env_attack_rate *= ratio;
+        }
+    }
+    return 1;
 }
 
 void lead_fm_all_notes_off(void) {
     for (int i = 0; i < LEAD_FM_MAX_POLYPHONY; i++) {
-        if (g_notes[i].active && !g_notes[i].released) {
-            g_notes[i].amp_env.gate_off();
-            g_notes[i].released = 1;
-            g_notes[i].filt_env_stage = 3;
-        }
+        release_note_slot(i);
     }
 }
 
@@ -919,19 +962,31 @@ void lead_fm_instance_process_block(KesshoLeadFmInstance* instance, int block_si
     lead_fm_process_block(block_size);
 }
 
-void lead_fm_instance_note_on(KesshoLeadFmInstance* instance, float frequency, float velocity, float hold_seconds) {
-    lead_fm_instance_note_on_ex(instance, frequency, velocity, hold_seconds, 0);
+int lead_fm_instance_note_on(KesshoLeadFmInstance* instance, float frequency, float velocity, float hold_seconds) {
+    return lead_fm_instance_note_on_ex(instance, frequency, velocity, hold_seconds, 0);
 }
 
-void lead_fm_instance_note_on_ex(
+int lead_fm_instance_note_on_ex(
     KesshoLeadFmInstance* instance,
     float frequency,
     float velocity,
     float hold_seconds,
     int lead_index) {
-    if (!instance) return;
+    if (!instance) return -1;
     ScopedLeadFmState scoped(&instance->state);
-    lead_fm_note_on_ex(frequency, velocity, hold_seconds, lead_index);
+    return lead_fm_note_on_ex(frequency, velocity, hold_seconds, lead_index);
+}
+
+int lead_fm_instance_note_off(KesshoLeadFmInstance* instance, int note_index) {
+    if (!instance) return 0;
+    ScopedLeadFmState scoped(&instance->state);
+    return lead_fm_note_off(note_index);
+}
+
+int lead_fm_instance_note_set_frequency(KesshoLeadFmInstance* instance, int note_index, float frequency) {
+    if (!instance) return 0;
+    ScopedLeadFmState scoped(&instance->state);
+    return lead_fm_note_set_frequency(note_index, frequency);
 }
 
 void lead_fm_instance_all_notes_off(KesshoLeadFmInstance* instance) {

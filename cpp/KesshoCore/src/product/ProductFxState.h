@@ -2,6 +2,7 @@
 
 #include "ProductConstants.h"
 
+#include <array>
 #include <cstdint>
 
 namespace kessho::product::internal {
@@ -80,6 +81,9 @@ struct FxState {
   uint32_t delay_b_warp = 0;
   float delay_b_warp_intensity = 0.5f;
   float delay_b_spread = 0.5f;
+  uint32_t delay_b_tape_head_mask = 15u;
+  std::array<float, 4> delay_b_tape_head_levels{{0.72f, 0.8f, 0.88f, 1.0f}};
+  std::array<float, 4> delay_b_tape_head_pans{{0.28f, 0.72f, 0.38f, 0.62f}};
   float reverb_mix = 0.12f;
   uint32_t reverb_type = 2;
   uint32_t reverb_quality = 1;

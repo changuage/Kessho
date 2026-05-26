@@ -16,6 +16,12 @@
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_VELOCITY_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_HOLD_SECONDS_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_SEED_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_INITIAL_START_DELAY_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_BINDING_MODE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TEMPO_MULTIPLIER_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MORPH_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_DISTANCE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_EXPRESSION_ID:
       return true;
     default:
       return false;
@@ -35,9 +41,14 @@
 
   LaneState& lane = lanes[event.index];
   switch (event.param_id) {
-    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_ENABLED_ID:
-      lane.enabled = event.value >= 0.5f;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_ENABLED_ID: {
+      const bool enabled = event.value >= 0.5f;
+      if (lane.enabled != enabled) {
+        resetSequencerLaneRuntime(lane);
+      }
+      lane.enabled = enabled;
       break;
+    }
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TARGET_SOURCE_ID: {
       if (event.value < 1.0f || event.value > static_cast<float>(kSourceCount)) {
         telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
@@ -47,6 +58,9 @@
       lane.target_source_id = source_id;
       if (source_id != KESSHO_PRODUCT_SOURCE_DRUM) {
         lane.drum_voice_mask = 0u;
+      }
+      if (source_id != KESSHO_PRODUCT_SOURCE_PAD1 && source_id != KESSHO_PRODUCT_SOURCE_PAD2) {
+        lane.target_pad_voice_index = kPadVoiceNoPreference;
       }
       break;
     }
@@ -93,12 +107,42 @@
       if (lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
         lane.drum_voice_mask = drumVoiceMaskFromEncodedSeed(seed);
       }
+      const bool pad_lane =
+          lane.target_source_id == KESSHO_PRODUCT_SOURCE_PAD1 ||
+          lane.target_source_id == KESSHO_PRODUCT_SOURCE_PAD2;
+      lane.target_pad_voice_index = pad_lane
+          ? padVoiceIndexFromEncodedSeed(seed)
+          : kPadVoiceNoPreference;
       const uint32_t decoded_seed = lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM
           ? laneSeedFromEncodedDrumVoiceMask(seed)
-          : seed;
+          : (pad_lane ? laneSeedFromEncodedPadVoice(seed) : seed);
       lane.seed = decoded_seed == 0u ? rng_seed + event.index + 1u : decoded_seed;
       break;
     }
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_INITIAL_START_DELAY_SECONDS_ID:
+      lane.initial_start_delay_seconds =
+          std::isfinite(event.value) && event.value >= 0.0f
+              ? clampFloat(event.value, 0.0f, 64.0f)
+              : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SEQUENCER_INITIAL_START_DELAY_SECONDS;
+      if (lane.enabled) {
+        resetSequencerLaneRuntime(lane);
+      }
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_BINDING_MODE_ID:
+      lane.midi_note_binding_mode = event.value >= 0.5f ? kSequencerPitchBindingStep : kSequencerPitchBindingHit;
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TEMPO_MULTIPLIER_ID:
+      lane.tempo_multiplier = clampFloat(event.value, 0.25f, 12.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MORPH_ID:
+      lane.morph = clampFloat(event.value, 0.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_DISTANCE_ID:
+      lane.distance = clampFloat(event.value, 0.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_EXPRESSION_ID:
+      lane.expression = clampFloat(event.value, 0.0f, 1.0f);
+      break;
     default:
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
       return;

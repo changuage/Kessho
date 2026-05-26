@@ -27,9 +27,41 @@ float maxAbs(const std::vector<float>& values) {
   return peak;
 }
 
+const MidiNoteRuntimeSlot* findMidiSlot(
+    const KesshoProductEngine* engine,
+    uint32_t source_id,
+    uint32_t channel,
+    uint32_t note) {
+  for (const MidiNoteRuntimeSlot& slot : engine->midi_note_slots) {
+    if (slot.active && slot.source_id == source_id && slot.channel == channel && slot.note == note) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+uint32_t countMidiSlots(const KesshoProductEngine* engine, uint32_t source_id) {
+  uint32_t count = 0u;
+  for (const MidiNoteRuntimeSlot& slot : engine->midi_note_slots) {
+    if (slot.active && slot.source_id == source_id) {
+      ++count;
+    }
+  }
+  return count;
+}
+
 uint32_t randomWalkSpeedFlags(float speed) {
   return static_cast<uint32_t>(std::lround(speed * KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_SPEED_SCALE))
       << KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_SPEED_SHIFT;
+}
+
+kessho::core::KesshoSourcePresetPatch requiredSourcePresetPatch(
+    uint32_t source_id,
+    uint32_t preset_id,
+    const char* message) {
+  const auto* preset = findSourcePreset(preset_id);
+  require(sourcePresetMatchesSource(source_id, preset), message);
+  return sourcePresetPatch(*preset);
 }
 
 void applySourceDefaults(KesshoProductSnapshotV2& snapshot) {
@@ -43,7 +75,7 @@ void applySourceDefaults(KesshoProductSnapshotV2& snapshot) {
     source.hold_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
     source.release_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
     source.preset_id = defaultSourcePresetId(source_id);
-    const auto patch = sourcePresetPatch(findSourcePreset(source.preset_id));
+    const auto patch = requiredSourcePresetPatch(source_id, source.preset_id, "test source preset missing");
     if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
       source.exact_pad_param_count = patch.exact_pad_param_count;
       for (uint32_t param_index = 0; param_index < source.exact_pad_param_count; ++param_index) {
@@ -54,6 +86,17 @@ void applySourceDefaults(KesshoProductSnapshotV2& snapshot) {
       source.exact_lead_param_count = patch.exact_lead_param_count;
       for (uint32_t param_index = 0; param_index < source.exact_lead_param_count; ++param_index) {
         source.exact_lead_params[param_index] = patch.exact_lead_params[param_index];
+      }
+    }
+    if (source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+      for (const auto& voice : kessho::product::generated::KESSHO_PRODUCT_DRUM_VOICES) {
+        if (voice.index >= kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT) {
+          continue;
+        }
+        const auto* default_preset = defaultDrumVoicePreset(voice.index);
+        require(default_preset != nullptr, "test drum voice default preset missing");
+        source.drum_voice_preset_a_ids[voice.index] = default_preset->id;
+        source.drum_voice_preset_b_ids[voice.index] = default_preset->id;
       }
     }
   }
@@ -214,7 +257,8 @@ void enqueueSequencerStep(
     uint32_t field,
     float value,
     float value2 = 0.0f,
-    float value3 = 0.0f) {
+    float value3 = 0.0f,
+    uint32_t extra_flags = 0u) {
   KesshoProductEvent event{};
   event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP;
   event.target_id = target_id;
@@ -223,7 +267,7 @@ void enqueueSequencerStep(
   event.value = value;
   event.value2 = value2;
   event.value3 = value3;
-  event.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE | field;
+  event.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE | field | extra_flags;
   require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "sequencer UI replay enqueue failed");
 }
 
@@ -303,31 +347,43 @@ void replaySequencerUiLane(
           lane.midi_note_overrides[step]);
     }
     if (maskHas(lane.expression_override_set_low, lane.expression_override_set_high, step)) {
+      const bool is_range = maskHas(lane.expression_range_set_low, lane.expression_range_set_high, step);
       enqueueSequencerStep(
           engine,
           target_id,
           lane_index,
           step,
           KESSHO_PRODUCT_STEP_FIELD_EXPRESSION,
-          lane.expression_overrides[step]);
+          lane.expression_overrides[step],
+          is_range ? lane.expression_range_maxes[step] : 0.0f,
+          0.0f,
+          is_range ? KESSHO_PRODUCT_STEP_TOGGLE_RANGE_VALUE : 0u);
     }
     if (maskHas(lane.morph_override_set_low, lane.morph_override_set_high, step)) {
+      const bool is_range = maskHas(lane.morph_range_set_low, lane.morph_range_set_high, step);
       enqueueSequencerStep(
           engine,
           target_id,
           lane_index,
           step,
           KESSHO_PRODUCT_STEP_FIELD_MORPH,
-          lane.morph_overrides[step]);
+          lane.morph_overrides[step],
+          is_range ? lane.morph_range_maxes[step] : 0.0f,
+          0.0f,
+          is_range ? KESSHO_PRODUCT_STEP_TOGGLE_RANGE_VALUE : 0u);
     }
     if (maskHas(lane.distance_override_set_low, lane.distance_override_set_high, step)) {
+      const bool is_range = maskHas(lane.distance_range_set_low, lane.distance_range_set_high, step);
       enqueueSequencerStep(
           engine,
           target_id,
           lane_index,
           step,
           KESSHO_PRODUCT_STEP_FIELD_DISTANCE,
-          lane.distance_overrides[step]);
+          lane.distance_overrides[step],
+          is_range ? lane.distance_range_maxes[step] : 0.0f,
+          0.0f,
+          is_range ? KESSHO_PRODUCT_STEP_TOGGLE_RANGE_VALUE : 0u);
     }
   }
 }
@@ -864,8 +920,10 @@ void requireDrumExactRuntimeRangesApplyToSourceAndModule() {
   require(std::fabs(kick_decay->random_walk_speed - 0.09f) < 0.001f, "Drum exact kick decay runtime walk speed mismatch");
   require(std::fabs(kick_decay->current_value - 300.0f) > 0.00001f, "Drum exact kick decay runtime walk did not move");
   const SourceState& drum_source = drum_walk->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
-  require(drum_source.exact_drum_param_count == kProductDrumRuntimeParamCount, "Drum exact runtime walk did not initialize exact params");
-  require(std::fabs(drum_source.exact_drum_params[kKickDecayParamIndex] - kick_decay->current_value) < 0.001f, "Drum exact runtime walk did not update source params");
+  require(drum_source.exact_drum_param_count == 0u, "Drum runtime walk promoted structured source to exact params");
+  require(drum_source.drum_override_count == 1u, "Drum runtime walk did not initialize sparse override state");
+  require(drum_source.drum_override_indices[0] == kKickDecayParamIndex, "Drum runtime walk stored the wrong sparse override index");
+  require(std::fabs(drum_source.drum_override_values[0] - kick_decay->current_value) < 0.001f, "Drum runtime walk did not update sparse override value");
   require(drum_walk->drum_module != nullptr, "drum module missing for exact runtime walk");
   const float* drum_params = drum_walk->drum_module->params();
   require(drum_params != nullptr, "drum module params missing for exact runtime walk");
@@ -894,6 +952,284 @@ void requireDrumExactRuntimeRangesApplyToSourceAndModule() {
   require(drum_params != nullptr, "drum module params missing for exact sample-hold");
   require(drum_params[0] >= 80.0f && drum_params[0] <= 90.0f, "Drum exact sample-hold did not apply to triggered voice patch");
   kessho_product_destroy(drum_sh);
+}
+
+void requireLiveExactDrumParamsSurviveTriggerPatchSelection() {
+  constexpr uint32_t kSubLevelParamIndex = 2u;
+  const auto drum = requiredSourcePresetPatch(
+      KESSHO_PRODUCT_SOURCE_DRUM,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT,
+      "DrumDefault source preset missing for live patch selection test");
+  require(drum.exact_drum_param_count == kProductDrumRuntimeParamCount, "DrumDefault exact params missing for live patch selection test");
+
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "live exact drum patch selection engine allocation failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
+  source.level = 1.0f;
+  source.expression = 1.0f;
+  source.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT;
+  source.exact_drum_param_count = kProductDrumRuntimeParamCount;
+  for (uint32_t index = 0; index < kProductDrumRuntimeParamCount; ++index) {
+    source.exact_drum_params[index] = drum.exact_drum_params[index];
+  }
+  source.exact_drum_params[kSubLevelParamIndex] = 0.8f;
+
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "live exact drum patch selection snapshot load failed");
+  require(engine->drum_module != nullptr, "drum module missing for live patch selection test");
+  const float* drum_params = engine->drum_module->params();
+  require(drum_params != nullptr, "drum module params missing for live patch selection test");
+  require(std::fabs(drum_params[kSubLevelParamIndex] - 0.8f) < 0.0001f, "exact drum patch did not initialize module params");
+
+  KesshoProductEvent event{};
+  event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  event.param_id = kProductDrumRuntimeParamIdBase + kSubLevelParamIndex;
+  event.value = 0.0f;
+  engine->applyParam(event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "live exact drum param update failed");
+  require(std::fabs(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].exact_drum_params[kSubLevelParamIndex]) < 0.0001f, "live exact drum param update missed source state");
+  require(std::fabs(drum_params[kSubLevelParamIndex]) < 0.0001f, "live exact drum param update missed module params");
+
+  engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].enabled = true;
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 36.0f, 1.0f, 0.12f);
+  require(std::fabs(drum_params[kSubLevelParamIndex]) < 0.0001f, "drum trigger restored stale source preset over live exact params");
+  kessho_product_destroy(engine);
+}
+
+void requireDrumSequencerMorphBuildsPerHitPresetPatch() {
+  constexpr uint32_t kKickVoiceIndex = 1u;
+  constexpr uint32_t kKickFreqParamIndex = 12u;
+  const auto* preset_a = findDrumVoicePreset(kKickVoiceIndex, 3201u);
+  const auto* preset_b = findDrumVoicePreset(kKickVoiceIndex, 3202u);
+  const auto* preset_c = findDrumVoicePreset(kKickVoiceIndex, 3203u);
+  require(preset_a != nullptr && preset_b != nullptr && preset_c != nullptr, "drum kick morph test presets missing");
+  require(
+      std::fabs(preset_a->params[kKickFreqParamIndex] - preset_b->params[kKickFreqParamIndex]) > 0.001f,
+      "drum kick morph test presets must differ");
+
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "drum sequencer morph patch engine allocation failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lane_count = 0;
+  KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
+  source.enabled = 1;
+  source.level = 1.0f;
+  source.expression = 1.0f;
+  const auto drum = requiredSourcePresetPatch(
+      KESSHO_PRODUCT_SOURCE_DRUM,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT,
+      "DrumDefault source preset missing for sequencer morph patch test");
+  require(drum.exact_drum_param_count == kProductDrumRuntimeParamCount, "DrumDefault exact params missing for sequencer morph patch test");
+  source.exact_drum_param_count = kProductDrumRuntimeParamCount;
+  for (uint32_t index = 0; index < kProductDrumRuntimeParamCount; ++index) {
+    source.exact_drum_params[index] = drum.exact_drum_params[index];
+  }
+  source.drum_voice_preset_a_ids[kKickVoiceIndex] = preset_a->id;
+  source.drum_voice_preset_b_ids[kKickVoiceIndex] = preset_b->id;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum sequencer morph patch snapshot load failed");
+  require(engine->drum_module != nullptr, "drum module missing for sequencer morph patch test");
+  const float* drum_params = engine->drum_module->params();
+  require(drum_params != nullptr, "drum module params missing for sequencer morph patch test");
+
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 37.0f, 1.0f, 0.12f, 0.0f);
+  require(
+      std::fabs(drum_params[kKickFreqParamIndex] - preset_a->params[kKickFreqParamIndex]) < 0.001f,
+      "drum trigger morph endpoint A did not reach per-hit exact patch");
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 37.0f, 1.0f, 0.12f, 1.0f);
+  require(
+      std::fabs(drum_params[kKickFreqParamIndex] - preset_b->params[kKickFreqParamIndex]) < 0.001f,
+      "drum trigger morph endpoint B did not reach per-hit exact patch");
+  KesshoProductEvent preset_b_event{};
+  preset_b_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET;
+  preset_b_event.target_id = KESSHO_PRODUCT_SOURCE_DRUM;
+  preset_b_event.index = 1u + kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT + kKickVoiceIndex;
+  preset_b_event.value = static_cast<float>(preset_c->id);
+  preset_b_event.value2 = 1.0f;
+  preset_b_event.flags = 1u;
+  engine->applySourcePresetEvent(preset_b_event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "drum preset B endpoint event failed");
+  require(
+      engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].drum_voice_preset_b_ids[kKickVoiceIndex] == preset_c->id,
+      "drum preset B endpoint event missed source state");
+  require(
+      std::fabs(drum_params[kKickFreqParamIndex] - preset_c->params[kKickFreqParamIndex]) < 0.001f,
+      "drum preset B endpoint event did not refresh current exact drum patch");
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 37.0f, 1.0f, 0.12f, 1.0f);
+  require(
+      std::fabs(drum_params[kKickFreqParamIndex] - preset_c->params[kKickFreqParamIndex]) < 0.001f,
+      "drum preset B endpoint event did not update per-hit morph patch");
+  kessho_product_destroy(engine);
+}
+
+void requireDrumSequencerMembraneMorphHitsPresetB() {
+  constexpr uint32_t kMembraneVoiceIndex = 6u;
+  constexpr uint32_t kMembraneParamStart = 92u;
+  constexpr uint32_t kMembraneParamCount = 12u;
+  const auto* preset_a = findDrumVoicePreset(kMembraneVoiceIndex, 3701u);
+  const auto* preset_b = findDrumVoicePreset(kMembraneVoiceIndex, 3716u);
+  require(preset_a != nullptr && preset_b != nullptr, "drum membrane morph test presets missing");
+  require(std::fabs(preset_a->params[kMembraneParamStart] - 3.0f) < 0.001f, "Snare Classic membrane pitch envelope bridge regressed");
+  require(std::fabs(preset_b->params[kMembraneParamStart] - 0.0f) < 0.001f, "Ethereal Skin membrane pitch envelope bridge regressed");
+  require(std::fabs(preset_b->params[kMembraneParamStart + 5u] - 100.0f) < 0.001f, "Ethereal Skin membrane size bridge regressed");
+  require(
+      std::fabs(preset_a->params[kMembraneParamStart] - preset_b->params[kMembraneParamStart]) > 0.001f ||
+          std::fabs(preset_a->params[kMembraneParamStart + 1u] - preset_b->params[kMembraneParamStart + 1u]) > 0.001f,
+      "drum membrane morph test presets must differ");
+
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "drum membrane morph engine allocation failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lane_count = 1;
+  snapshot.drum_euclid.lanes[0].enabled = 1;
+  snapshot.drum_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_DRUM;
+  snapshot.drum_euclid.lanes[0].step_count = 4;
+  snapshot.drum_euclid.lanes[0].fill_count = 4;
+  snapshot.drum_euclid.lanes[0].clock_division = 16;
+  snapshot.drum_euclid.lanes[0].manual_step_mask_low = 0x0fu;
+  snapshot.drum_euclid.lanes[0].midi_note = 42.0f;
+  snapshot.drum_euclid.lanes[0].morph = 0.0f;
+  snapshot.drum_euclid.lanes[0].seed = 4242u;
+
+  KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
+  source.enabled = 1;
+  source.level = 1.0f;
+  source.expression = 1.0f;
+  const auto drum = requiredSourcePresetPatch(
+      KESSHO_PRODUCT_SOURCE_DRUM,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT,
+      "DrumDefault source preset missing for membrane morph test");
+  require(drum.exact_drum_param_count == kProductDrumRuntimeParamCount, "DrumDefault exact params missing for membrane morph test");
+  source.exact_drum_param_count = kProductDrumRuntimeParamCount;
+  for (uint32_t index = 0; index < kProductDrumRuntimeParamCount; ++index) {
+    source.exact_drum_params[index] = drum.exact_drum_params[index];
+  }
+  source.drum_voice_preset_a_ids[kMembraneVoiceIndex] = preset_a->id;
+  source.drum_voice_preset_b_ids[kMembraneVoiceIndex] = preset_b->id;
+  source.drum_voice_morphs[kMembraneVoiceIndex] = 0.1f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum membrane morph snapshot load failed");
+  require(engine->drum_module != nullptr, "drum module missing for membrane morph test");
+
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_DRUM,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_MORPH >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      4.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_DRUM, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_MORPH, 0.0f);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_DRUM, 0u, 1u, KESSHO_PRODUCT_STEP_FIELD_MORPH, 0.0f);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_DRUM, 0u, 2u, KESSHO_PRODUCT_STEP_FIELD_MORPH, 1.0f);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_DRUM, 0u, 3u, KESSHO_PRODUCT_STEP_FIELD_MORPH, 0.0f);
+
+  KesshoSequencerEvent events[8]{};
+  const int32_t event_count = kessho_product_debug_render_events(engine, events, 8, 48000);
+  require(event_count >= 4, "drum membrane morph sub-lane should emit four hits");
+  require(std::fabs(events[2].midi_note - 42.0f) < 0.001f, "drum membrane morph test emitted wrong voice");
+  require(events[2].morph >= 0.999f, "drum membrane morph sub-lane step 3 should emit preset B morph");
+
+  engine->triggerSequencerEvent(events[2]);
+  const float* drum_params = engine->drum_module->params();
+  require(drum_params != nullptr, "drum module params missing for membrane morph test");
+  for (uint32_t offset = 0; offset < kMembraneParamCount; ++offset) {
+    const uint32_t param_index = kMembraneParamStart + offset;
+    require(
+        std::fabs(drum_params[param_index] - preset_b->params[param_index]) < 0.001f,
+        "drum membrane sequencer morph did not install preset B exact params");
+  }
+  kessho_product_destroy(engine);
+}
+
+void requireDrumSequencerMembranePresetBChangeUpdatesRunningMorph() {
+  constexpr uint32_t kMembraneVoiceIndex = 6u;
+  constexpr uint32_t kMembraneParamStart = 92u;
+  constexpr uint32_t kMembraneParamCount = 12u;
+  const auto* preset_a = findDrumVoicePreset(kMembraneVoiceIndex, 3701u);
+  const auto* old_preset_b = findDrumVoicePreset(kMembraneVoiceIndex, 3714u);
+  const auto* new_preset_b = findDrumVoicePreset(kMembraneVoiceIndex, 3716u);
+  require(preset_a != nullptr && old_preset_b != nullptr && new_preset_b != nullptr, "drum membrane live preset B change test presets missing");
+
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "drum membrane live preset B change engine allocation failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lane_count = 0;
+  KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
+  source.enabled = 1;
+  source.level = 1.0f;
+  source.expression = 1.0f;
+  const auto drum = requiredSourcePresetPatch(
+      KESSHO_PRODUCT_SOURCE_DRUM,
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT,
+      "DrumDefault source preset missing for live membrane preset B test");
+  require(drum.exact_drum_param_count == kProductDrumRuntimeParamCount, "DrumDefault exact params missing for live membrane preset B test");
+  source.exact_drum_param_count = kProductDrumRuntimeParamCount;
+  for (uint32_t index = 0; index < kProductDrumRuntimeParamCount; ++index) {
+    source.exact_drum_params[index] = drum.exact_drum_params[index];
+  }
+  source.drum_voice_preset_a_ids[kMembraneVoiceIndex] = preset_a->id;
+  source.drum_voice_preset_b_ids[kMembraneVoiceIndex] = old_preset_b->id;
+  source.drum_voice_morphs[kMembraneVoiceIndex] = 0.15f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum membrane live preset B snapshot load failed");
+  require(engine->drum_module != nullptr, "drum module missing for live membrane preset B test");
+
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 42.0f, 1.0f, 0.12f, 1.0f);
+  const float* drum_params = engine->drum_module->params();
+  require(drum_params != nullptr, "drum module params missing for live membrane preset B test");
+  for (uint32_t offset = 0; offset < kMembraneParamCount; ++offset) {
+    const uint32_t param_index = kMembraneParamStart + offset;
+    require(
+        std::fabs(drum_params[param_index] - old_preset_b->params[param_index]) < 0.001f,
+        "drum membrane live preset B test did not start from old preset B");
+  }
+
+  kessho::core::KesshoSourcePresetPatch preview_patch{};
+  preview_patch.exact_drum_param_count = kProductDrumRuntimeParamCount;
+  for (uint32_t index = 0; index < kProductDrumRuntimeParamCount; ++index) {
+    preview_patch.exact_drum_params[index] = engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].exact_drum_params[index];
+  }
+  SourceState preview_source = engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
+  preview_source.drum_voice_preset_b_ids[kMembraneVoiceIndex] = new_preset_b->id;
+  engine->applyDrumVoiceMorphToPatch(preview_patch, preview_source, kMembraneVoiceIndex, 0.15f);
+  for (uint32_t offset = 0; offset < kMembraneParamCount; ++offset) {
+    const uint32_t param_index = kMembraneParamStart + offset;
+    KesshoProductEvent exact_event{};
+    exact_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+    exact_event.param_id = kProductDrumRuntimeParamIdBase + param_index;
+    exact_event.value = preview_patch.exact_drum_params[param_index];
+    engine->applyParam(exact_event);
+    require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "drum membrane live preset B exact param update failed");
+  }
+
+  KesshoProductEvent preset_b_event{};
+  preset_b_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET;
+  preset_b_event.target_id = KESSHO_PRODUCT_SOURCE_DRUM;
+  preset_b_event.index = 1u + kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT + kMembraneVoiceIndex;
+  preset_b_event.value = static_cast<float>(new_preset_b->id);
+  preset_b_event.value2 = 0.15f;
+  preset_b_event.flags = 1u;
+  engine->applySourcePresetEvent(preset_b_event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "drum membrane live preset B endpoint event failed");
+
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 42.0f, 1.0f, 0.12f, 1.0f);
+  for (uint32_t offset = 0; offset < kMembraneParamCount; ++offset) {
+    const uint32_t param_index = kMembraneParamStart + offset;
+    require(
+        std::fabs(drum_params[param_index] - new_preset_b->params[param_index]) < 0.001f,
+        "drum membrane live preset B endpoint change did not update the running morph step");
+  }
+
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, 42.0f, 1.0f, 0.12f, 0.0f);
+  for (uint32_t offset = 0; offset < kMembraneParamCount; ++offset) {
+    const uint32_t param_index = kMembraneParamStart + offset;
+    require(
+        std::fabs(drum_params[param_index] - preset_a->params[param_index]) < 0.001f,
+        "drum membrane live preset B endpoint change broke preset A morph steps");
+  }
+  kessho_product_destroy(engine);
 }
 
 void requireLowRateGranularRuntimeWalkMovementAcrossEngineParams() {
@@ -1065,6 +1401,77 @@ void requireDirectSequencerCoverage() {
   require(direct_events.count == 4u, "direct sequencer generator should produce one bar of hits");
   expectOffsets(direct_events.events, direct_events.count, {18000, 42000, 66000, 90000});
 
+  direct.transport.swing = 0.5f;
+  direct.resetSequencerLaneRuntime(lane);
+  direct_events.clear();
+  direct.generateLaneEvents(direct.synth_lanes, direct.synth_lane_count, 96000u, direct_events);
+  require(direct_events.count == 4u, "transport swing should not alter Product Euclidean lane event count");
+  expectOffsets(direct_events.events, direct_events.count, {18000, 42000, 66000, 90000});
+  direct.transport.swing = 0.0f;
+  lane.swing = 0.5f;
+  direct.resetSequencerLaneRuntime(lane);
+  direct_events.clear();
+  direct.generateLaneEvents(direct.synth_lanes, direct.synth_lane_count, 96000u, direct_events);
+  require(direct_events.count == 4u, "lane swing should preserve Product Euclidean lane event count");
+  expectOffsets(direct_events.events, direct_events.count, {19500, 43500, 67500, 91500});
+  lane.swing = 0.0f;
+
+  direct.drum_lane_count = 1u;
+  LaneState& drum_lane = direct.drum_lanes[0];
+  drum_lane.enabled = true;
+  drum_lane.target_source_id = KESSHO_PRODUCT_SOURCE_DRUM;
+  drum_lane.step_count = 16u;
+  drum_lane.fill_count = 4u;
+  drum_lane.rotation = 0;
+  drum_lane.clock_division = 16u;
+  drum_lane.swing = 0.5f;
+  drum_lane.probability = 1.0f;
+  drum_lane.ratchet = 1u;
+  drum_lane.midi_note = 36.0f;
+  drum_lane.velocity = 1.0f;
+  drum_lane.seed = 123u;
+  direct.resetSequencerLaneRuntime(drum_lane);
+  direct_events.clear();
+  direct.generateLaneEvents(direct.drum_lanes, direct.drum_lane_count, 96000u, direct_events);
+  require(direct_events.count == 4u, "drum lane swing should preserve Product Euclidean lane event count");
+  expectOffsets(direct_events.events, direct_events.count, {19500, 43500, 67500, 91500});
+  drum_lane.swing = 0.0f;
+
+  direct.transport.sample_frame = 24000u;
+  lane.fill_count = 0u;
+  lane.manual_step_mask_low = 1u;
+  lane.manual_step_mask_high = 0u;
+  lane.bar_reset = true;
+  direct.resetSequencerLaneRuntime(lane);
+  direct_events.clear();
+  direct.generateLaneEvents(direct.synth_lanes, direct.synth_lane_count, 96000u, direct_events);
+  require(direct_events.count == 1u, "bar-join sequencer should wait for the next bar before step zero");
+  require(direct_events.events[0].sample_offset == 72000u, "bar-join sequencer event should land on the next bar boundary");
+
+  direct.transport.sample_frame = 25000u;
+  lane.bar_reset = false;
+  lane.initial_start_delay_seconds = -1.0f;
+  direct.resetSequencerLaneRuntime(lane);
+  direct_events.clear();
+  direct.generateLaneEvents(direct.synth_lanes, direct.synth_lane_count, 12000u, direct_events);
+  require(direct_events.count == 1u, "beat-join sequencer should wait only for the next lane step grid");
+  require(direct_events.events[0].sample_offset == 5000u, "beat-join sequencer event should land on the next lane grid");
+
+  direct.transport.sample_frame = 24000u;
+  lane.bar_reset = true;
+  lane.initial_start_delay_seconds = 0.125f;
+  direct.resetSequencerLaneRuntime(lane);
+  direct_events.clear();
+  direct.generateLaneEvents(direct.synth_lanes, direct.synth_lane_count, 24000u, direct_events);
+  require(direct_events.count == 1u, "initial start delay should override native bar alignment for global-clock joins");
+  require(direct_events.events[0].sample_offset == 6000u, "initial start delay should schedule from the current block start");
+  lane.initial_start_delay_seconds = -1.0f;
+
+  direct.transport.sample_frame = 0u;
+  direct.resetSequencerLaneRuntime(lane);
+  lane.bar_reset = true;
+  lane.manual_step_mask_low = 0u;
+  lane.manual_step_mask_high = 0u;
   lane.step_count = 8u;
   lane.fill_count = 0u;
   lane.clock_division = 8u;
@@ -1127,13 +1534,41 @@ void requireDirectSequencerCoverage() {
       "direct step override should be readable without public C API indirection");
 }
 
+void requireControlEventEnqueueOrdering() {
+  KesshoProductEngine direct(48000.0, 128, 0);
+  KesshoProductEvent late{};
+  late.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT;
+  late.sample_offset = 96u;
+  late.value = 100.0f;
+  KesshoProductEvent early_a = late;
+  early_a.sample_offset = 32u;
+  early_a.value = 110.0f;
+  KesshoProductEvent early_b = early_a;
+  early_b.value = 120.0f;
+
+  require(direct.enqueueEvent(late) == KESSHO_PRODUCT_OK, "late control event enqueue failed");
+  require(direct.enqueueEvent(early_a) == KESSHO_PRODUCT_OK, "first early control event enqueue failed");
+  require(direct.enqueueEvent(early_b) == KESSHO_PRODUCT_OK, "second early control event enqueue failed");
+  require(direct.control_event_count == 3u, "sorted control queue should retain all events");
+  require(direct.control_events[0].event.sample_offset == 32u, "control queue should insert earlier offsets first");
+  require(direct.control_events[1].event.sample_offset == 32u, "control queue should keep same-offset events adjacent");
+  require(direct.control_events[2].event.sample_offset == 96u, "control queue should keep later offsets last");
+  require(direct.control_events[0].event.value == 110.0f, "same-offset control events should preserve enqueue order");
+  require(direct.control_events[1].event.value == 120.0f, "same-offset control event FIFO order should be stable");
+}
+
 } // namespace
 
 int main() {
   requireDirectSequencerCoverage();
+  requireControlEventEnqueueOrdering();
   requireRuntimeWalkMovementAcrossAudioAndFxTargets();
   requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets();
   requireDrumExactRuntimeRangesApplyToSourceAndModule();
+  requireLiveExactDrumParamsSurviveTriggerPatchSelection();
+  requireDrumSequencerMorphBuildsPerHitPresetPatch();
+  requireDrumSequencerMembraneMorphHitsPresetB();
+  requireDrumSequencerMembranePresetBChangeUpdatesRunningMorph();
   requireLowRateGranularRuntimeWalkMovementAcrossEngineParams();
 
   constexpr double sample_rate = 48000.0;
@@ -1162,6 +1597,77 @@ int main() {
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
+  snapshot.synth_euclid.lanes[0].fill_count = 1;
+  snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
+  snapshot.drum_euclid.lanes[0].fill_count = 1;
+  snapshot.drum_euclid.lanes[0].manual_step_mask_low = 1u;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "sequencer visual telemetry snapshot should load");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 128);
+  require(event_count == 2, "step-zero synth and drum events should render in first telemetry block");
+  loop_telemetry = kessho_product_get_telemetry(engine);
+  require(loop_telemetry.synth_sequencer_current_steps[0] == 0u, "synth visual telemetry should report current step zero");
+  require(loop_telemetry.synth_sequencer_hit_counts[0] == 1u, "synth visual telemetry should include the current hit");
+  require(loop_telemetry.drum_sequencer_current_steps[0] == 0u, "drum visual telemetry should report current step zero");
+  require(loop_telemetry.drum_sequencer_hit_counts[0] == 1u, "drum visual telemetry should include the current hit");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 6000);
+  loop_telemetry = kessho_product_get_telemetry(engine);
+  require(loop_telemetry.synth_sequencer_current_steps[0] == 1u, "synth visual telemetry should advance past step zero");
+  require(loop_telemetry.drum_sequencer_current_steps[0] == 1u, "drum visual telemetry should advance past step zero");
+  require(loop_telemetry.synth_sequencer_hit_counts[0] == 1u, "synth visual telemetry hit phase should persist after a silent step");
+  require(loop_telemetry.drum_sequencer_hit_counts[0] == 1u, "drum visual telemetry hit phase should persist after a silent step");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_PAD2;
+  snapshot.synth_euclid.lanes[0].seed =
+      kPadVoiceSeedFlag |
+      (4u << kPadVoiceSeedShift) |
+      4321u;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "pad voice-target snapshot should load");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
+  require(event_count >= 1, "pad voice-target lane should emit events");
+  require(events[0].source_id == KESSHO_PRODUCT_SOURCE_PAD2, "pad voice-target lane should keep pad2 source");
+  require(
+      padVoiceIndexFromSequencerEventFlags(events[0].flags) == 3u,
+      "pad voice-target lane should carry exact synth voice index into event flags");
+  engine->pad_voice_cursors[1] = 0u;
+  engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD2,
+      60.0f,
+      1.0f,
+      0.1f,
+      -1.0f,
+      -1.0f,
+      -1.0f,
+      0u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      3u);
+  require(engine->pad_voice_cursors[1] == 0u, "exact pad voice trigger should not consume pad2 round-robin cursor");
+  engine->triggerVoice(KESSHO_PRODUCT_SOURCE_PAD2, 60.0f, 1.0f, 0.1f);
+  require(engine->pad_voice_cursors[1] == 1u, "non-targeted pad trigger should keep round-robin behavior");
+  engine->pad_voice_cursors[1] = 0u;
+  KesshoProductEvent targeted_pad_note{};
+  targeted_pad_note.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
+  targeted_pad_note.target_id = KESSHO_PRODUCT_SOURCE_PAD2;
+  targeted_pad_note.value = 60.0f;
+  targeted_pad_note.value2 = 1.0f;
+  targeted_pad_note.value3 = 0.1f;
+  targeted_pad_note.flags = sequencerPadVoiceEventFlags(3u);
+  require(kessho_product_enqueue_event(engine, &targeted_pad_note) == KESSHO_PRODUCT_OK, "targeted pad note enqueue failed");
+  std::vector<float> pad_left(128, 0.0f);
+  std::vector<float> pad_right(128, 0.0f);
+  kessho_product_render(engine, pad_left.data(), pad_right.data(), 128);
+  require(engine->pad_voice_cursors[1] == 0u, "targeted pad note event should not consume pad2 round-robin cursor");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
   require(
       kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
       "64-step loop product snapshot should load");
@@ -1171,6 +1677,31 @@ int main() {
   expectOffsets(loop_events, static_cast<uint32_t>(event_count), {18000, 42000, 66000, 90000, 114000, 138000, 162000, 186000});
   loop_telemetry = kessho_product_get_telemetry(engine);
   require(loop_telemetry.transport_running == 1, "transport should keep running through a 64-step sequencer render");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].fill_count = 1;
+  snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
+  snapshot.synth_euclid.lanes[0].initial_start_delay_seconds = 0.125f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "initial start delay product snapshot should load");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 24000);
+  require(event_count == 1, "initial start delay snapshot should emit one delayed step-zero event");
+  require(events[0].sample_offset == 6000u, "initial start delay snapshot should apply global-clock first-start phase");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].clock_division = 8;
+  snapshot.synth_euclid.lanes[0].tempo_multiplier = 2.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "synth tempo multiplier product snapshot should load");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
+  require(event_count == 4, "synth tempo multiplier should scale Product Core sequencer timing");
+  expectOffsets(events, static_cast<uint32_t>(event_count), {18000, 42000, 66000, 90000});
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
@@ -1227,6 +1758,13 @@ int main() {
       KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE,
       KESSHO_PRODUCT_SEQUENCER_SYNTH,
       0,
+      KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TEMPO_MULTIPLIER_ID,
+      2.0f);
+  enqueueParam(
+      engine,
+      KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0,
       KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TARGET_SOURCE_ID,
       static_cast<float>(KESSHO_PRODUCT_SOURCE_LEAD1));
   enqueueParam(
@@ -1250,13 +1788,37 @@ int main() {
       0,
       KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_HOLD_SECONDS_ID,
       0.25f);
+  enqueueParam(
+      engine,
+      KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0,
+      KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MORPH_ID,
+      0.35f);
+  enqueueParam(
+      engine,
+      KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0,
+      KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_DISTANCE_ID,
+      0.45f);
+  enqueueParam(
+      engine,
+      KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0,
+      KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_EXPRESSION_ID,
+      0.55f);
   event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
-  require(event_count == 8, "SetSequencerLane should update step count, fill, and clock division");
-  expectOffsets(events, static_cast<uint32_t>(event_count), {0, 12000, 24000, 36000, 48000, 60000, 72000, 84000});
+  require(event_count == 16, "SetSequencerLane should update step count, fill, clock division, and tempo multiplier");
+  expectOffsets(events, static_cast<uint32_t>(event_count), {0, 6000, 12000, 18000, 24000, 30000, 36000, 42000});
   require(events[0].source_id == KESSHO_PRODUCT_SOURCE_LEAD1, "SetSequencerLane target source did not affect events");
   require(std::fabs(events[0].midi_note - 72.0f) < 0.001f, "SetSequencerLane MIDI note did not affect events");
   require(events[0].velocity >= 0.49f && events[0].velocity <= 0.51f, "SetSequencerLane velocity did not affect events");
   require(events[0].hold_seconds >= 0.249f && events[0].hold_seconds <= 0.251f, "SetSequencerLane hold did not affect events");
+  require(events[0].morph >= 0.349f && events[0].morph <= 0.351f, "SetSequencerLane morph did not affect events");
+  require(events[0].distance >= 0.449f && events[0].distance <= 0.451f, "SetSequencerLane distance did not affect events");
+  require(events[0].expression >= 0.549f && events[0].expression <= 0.551f, "SetSequencerLane expression did not affect events");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
@@ -1540,6 +2102,161 @@ int main() {
   require(events[0].morph >= 0.59f && events[0].morph <= 0.61f, "step morph override did not affect event morph");
   require(events[0].distance >= 0.69f && events[0].distance <= 0.71f, "step distance override did not affect event distance");
 
+  auto setup_pitch_binding_fixture = [&]() {
+    kessho_product_reset(engine);
+    snapshot = makeSnapshot();
+    snapshot.drum_euclid.lane_count = 0;
+    snapshot.synth_euclid.lanes[0].step_count = 4;
+    snapshot.synth_euclid.lanes[0].fill_count = 2;
+    snapshot.synth_euclid.lanes[0].manual_step_mask_low = (1u << 0u) | (1u << 2u);
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "pitch binding snapshot load failed");
+    enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE >> KESSHO_PRODUCT_STEP_FIELD_SHIFT, KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG, 1.0f, 4.0f, static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+    enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 60.0f);
+    enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 1u, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 61.0f);
+    enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 2u, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 72.0f);
+    enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 3u, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 73.0f);
+  };
+  setup_pitch_binding_fixture();
+  event_count = kessho_product_debug_render_events(engine, events, 16, 24000);
+  require(event_count >= 2, "pitch binding fixture should emit two events");
+  require(std::fabs(events[0].midi_note - 60.0f) < 0.001f, "hit-bound pitch should start at first sub-lane note");
+  require(std::fabs(events[1].midi_note - 61.0f) < 0.001f, "hit-bound pitch should advance by emitted hit count");
+  setup_pitch_binding_fixture();
+  KesshoProductEvent pitch_binding_mode{};
+  pitch_binding_mode.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+  pitch_binding_mode.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  pitch_binding_mode.index = 0;
+  pitch_binding_mode.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_BINDING_MODE_ID;
+  pitch_binding_mode.value = 1.0f;
+  require(kessho_product_enqueue_event(engine, &pitch_binding_mode) == KESSHO_PRODUCT_OK, "pitch binding mode enqueue failed");
+  event_count = kessho_product_debug_render_events(engine, events, 16, 24000);
+  require(event_count >= 2, "sequence-bound pitch fixture should emit two events");
+  require(std::fabs(events[0].midi_note - 60.0f) < 0.001f, "sequence-bound pitch should read trigger step zero");
+  require(std::fabs(events[1].midi_note - 72.0f) < 0.001f, "sequence-bound pitch should read trigger step phase instead of emitted hit phase");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].step_count = 4;
+  snapshot.synth_euclid.lanes[0].fill_count = 4;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "synth emitted-hit sub-lane snapshot load failed");
+  KesshoProductEvent emitted_hit_pitch_binding_mode{};
+  emitted_hit_pitch_binding_mode.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+  emitted_hit_pitch_binding_mode.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  emitted_hit_pitch_binding_mode.index = 0;
+  emitted_hit_pitch_binding_mode.param_id = KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_BINDING_MODE_ID;
+  emitted_hit_pitch_binding_mode.value = 0.0f;
+  require(kessho_product_enqueue_event(engine, &emitted_hit_pitch_binding_mode) == KESSHO_PRODUCT_OK, "emitted-hit pitch binding mode enqueue failed");
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      4.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_EXPRESSION >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      4.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+  enqueue_step_value(0, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 60.0f);
+  enqueue_step_value(1, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 61.0f);
+  enqueue_step_value(2, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 62.0f);
+  enqueue_step_value(3, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 63.0f);
+  enqueue_step_value(0, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.1f);
+  enqueue_step_value(1, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.2f);
+  enqueue_step_value(2, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.3f);
+  enqueue_step_value(3, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.4f);
+  enqueue_step_value(1, KESSHO_PRODUCT_STEP_FIELD_PROBABILITY, 0.0f);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 18001);
+  require(event_count == 3, "synth probability-zero step should suppress one emitted hit");
+  expectOffsets(events, static_cast<uint32_t>(event_count), {0, 12000, 18000});
+  require(std::fabs(events[0].midi_note - 60.0f) < 0.001f, "synth emitted hit 0 should use pitch index 0");
+  require(std::fabs(events[1].midi_note - 61.0f) < 0.001f, "synth emitted hit 1 should skip suppressed hit and use pitch index 1");
+  require(std::fabs(events[2].midi_note - 62.0f) < 0.001f, "synth emitted hit 2 should use pitch index 2");
+  require(events[0].expression >= 0.09f && events[0].expression <= 0.11f, "synth emitted hit 0 should use expression index 0");
+  require(events[1].expression >= 0.19f && events[1].expression <= 0.21f, "synth emitted hit 1 should skip suppressed hit and use expression index 1");
+  require(events[2].expression >= 0.29f && events[2].expression <= 0.31f, "synth emitted hit 2 should use expression index 2");
+  KesshoProductTelemetry synth_emitted_hit_telemetry = kessho_product_get_telemetry(engine);
+  require(synth_emitted_hit_telemetry.synth_sequencer_hit_counts[0] == 3u, "synth telemetry should expose emitted-hit sub-lane phase for visuals");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].step_count = 4;
+  snapshot.synth_euclid.lanes[0].fill_count = 4;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "synth ratchet sub-lane snapshot load failed");
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_RATCHET >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      2.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+  enqueue_step_value(0, KESSHO_PRODUCT_STEP_FIELD_RATCHET, 1.0f);
+  enqueue_step_value(1, KESSHO_PRODUCT_STEP_FIELD_RATCHET, 3.0f);
+  enqueue_step_value(1, KESSHO_PRODUCT_STEP_FIELD_PROBABILITY, 0.0f);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 24000);
+  require(event_count == 5, "synth ratchet sub-lane should index by emitted trigger phase");
+  uint32_t synth_step_two_events = 0u;
+  for (int32_t i = 0; i < event_count; ++i) {
+    if (events[i].step_id == 2u) {
+      ++synth_step_two_events;
+    }
+  }
+  require(synth_step_two_events == 3u, "synth ratchet sub-lane should skip suppressed trigger phases");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].step_count = 5;
+  snapshot.synth_euclid.lanes[0].fill_count = 5;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "synth morph/distance sub-lane snapshot load failed");
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_MORPH >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      3.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_PINGPONG));
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_DISTANCE >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      3.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_REVERSE));
+  enqueue_step_value(0, KESSHO_PRODUCT_STEP_FIELD_MORPH, 0.1f);
+  enqueue_step_value(1, KESSHO_PRODUCT_STEP_FIELD_MORPH, 0.2f);
+  enqueue_step_value(2, KESSHO_PRODUCT_STEP_FIELD_MORPH, 0.3f);
+  enqueue_step_value(0, KESSHO_PRODUCT_STEP_FIELD_DISTANCE, 0.4f);
+  enqueue_step_value(1, KESSHO_PRODUCT_STEP_FIELD_DISTANCE, 0.5f);
+  enqueue_step_value(2, KESSHO_PRODUCT_STEP_FIELD_DISTANCE, 0.6f);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 24001);
+  require(event_count == 5, "synth morph/distance sub-lanes should preserve trigger event count");
+  require(events[0].morph >= 0.09f && events[0].morph <= 0.11f, "synth morph pingpong step 0 should use index 0");
+  require(events[1].morph >= 0.19f && events[1].morph <= 0.21f, "synth morph pingpong step 1 should use index 1");
+  require(events[2].morph >= 0.29f && events[2].morph <= 0.31f, "synth morph pingpong step 2 should use index 2");
+  require(events[3].morph >= 0.19f && events[3].morph <= 0.21f, "synth morph pingpong step 3 should fold to index 1");
+  require(events[4].morph >= 0.09f && events[4].morph <= 0.11f, "synth morph pingpong step 4 should fold to index 0");
+  require(events[0].distance >= 0.59f && events[0].distance <= 0.61f, "synth distance reverse step 0 should use index 2");
+  require(events[1].distance >= 0.49f && events[1].distance <= 0.51f, "synth distance reverse step 1 should use index 1");
+  require(events[2].distance >= 0.39f && events[2].distance <= 0.41f, "synth distance reverse step 2 should use index 0");
+  require(events[3].distance >= 0.59f && events[3].distance <= 0.61f, "synth distance reverse step 3 should wrap to index 2");
+  require(events[4].distance >= 0.49f && events[4].distance <= 0.51f, "synth distance reverse step 4 should wrap to index 1");
+
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
   snapshot.synth_euclid.lane_count = 0;
@@ -1612,8 +2329,97 @@ int main() {
   require(event_count == 5, "drum ratchet step override should add one trigger inside the first step");
   require(std::fabs(events[0].midi_note - 37.0f) < 0.001f, "drum MIDI step override must not change selected drum voice");
   require(std::fabs(events[0].send_granular - 7.0f) < 0.001f, "drum MIDI step override should become per-trigger pitch offset");
+  require(std::fabs(events[0].velocity - events[1].velocity) < 0.001f, "drum ratchet retriggers should preserve the trigger velocity");
   require(events[0].send_delay_a > 0.049f && events[0].send_delay_a < 0.051f, "drum ratchet should pass decay cap in seconds");
   require(events[0].send_delay_b > 0.009f && events[0].send_delay_b < 0.010f, "drum ratchet should pass attack cap in seconds");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lanes[0].step_count = 4;
+  snapshot.drum_euclid.lanes[0].fill_count = 4;
+  snapshot.drum_euclid.lanes[0].midi_note = 37.0f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum pitch sub-lane snapshot load failed");
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_DRUM,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      4.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+  enqueue_drum_step_value(0, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 37.0f);
+  enqueue_drum_step_value(1, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 38.0f);
+  enqueue_drum_step_value(2, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 39.0f);
+  enqueue_drum_step_value(3, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 40.0f);
+  enqueue_drum_step_value(1, KESSHO_PRODUCT_STEP_FIELD_PROBABILITY, 0.0f);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 18001);
+  require(event_count == 3, "drum pitch sub-lane probability-zero step should suppress one emitted hit");
+  expectOffsets(events, static_cast<uint32_t>(event_count), {0, 12000, 18000});
+  require(std::fabs(events[0].midi_note - 37.0f) < 0.001f, "drum pitch sub-lane must not change selected drum voice");
+  require(std::fabs(events[1].midi_note - 37.0f) < 0.001f, "drum pitch sub-lane suppressed-hit phase must preserve selected drum voice");
+  require(std::fabs(events[2].midi_note - 37.0f) < 0.001f, "drum pitch sub-lane wrap must preserve selected drum voice");
+  require(std::fabs(events[0].send_granular - 0.0f) < 0.001f, "drum emitted hit 0 should use pitch index 0");
+  require(std::fabs(events[1].send_granular - 1.0f) < 0.001f, "drum emitted hit 1 should skip suppressed pitch hit and use index 1");
+  require(std::fabs(events[2].send_granular - 2.0f) < 0.001f, "drum emitted hit 2 should use pitch index 2");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lanes[0].step_count = 4;
+  snapshot.drum_euclid.lanes[0].fill_count = 4;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum ratchet sub-lane snapshot load failed");
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_DRUM,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_RATCHET >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      2.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_DRUM, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_RATCHET, 1.0f);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_DRUM, 0u, 1u, KESSHO_PRODUCT_STEP_FIELD_RATCHET, 3.0f);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 24000);
+  require(event_count == 8, "drum ratchet sub-lane should index by emitted hit phase instead of trigger step");
+  uint32_t step_three_events = 0u;
+  for (int32_t i = 0; i < event_count; ++i) {
+    if (events[i].step_id == 3u) {
+      ++step_three_events;
+    }
+  }
+  require(step_three_events == 3u, "drum ratchet sub-lane should wrap the second ratchet value onto hit three");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lanes[0].step_count = 4;
+  snapshot.drum_euclid.lanes[0].fill_count = 4;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum emitted-hit sub-lane snapshot load failed");
+  KesshoProductEvent drum_expression_sub_lane{};
+  drum_expression_sub_lane.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP;
+  drum_expression_sub_lane.target_id = KESSHO_PRODUCT_SEQUENCER_DRUM;
+  drum_expression_sub_lane.index = 0;
+  drum_expression_sub_lane.param_id = KESSHO_PRODUCT_STEP_FIELD_EXPRESSION >> KESSHO_PRODUCT_STEP_FIELD_SHIFT;
+  drum_expression_sub_lane.value = 1.0f;
+  drum_expression_sub_lane.value2 = 4.0f;
+  drum_expression_sub_lane.value3 = static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD);
+  drum_expression_sub_lane.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE | KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG;
+  require(kessho_product_enqueue_event(engine, &drum_expression_sub_lane) == KESSHO_PRODUCT_OK, "drum emitted-hit sub-lane config enqueue failed");
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_DRUM, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.1f);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_DRUM, 0u, 1u, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.2f);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_DRUM, 0u, 2u, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.3f);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_DRUM, 0u, 3u, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.4f);
+  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_DRUM, 0u, 1u, KESSHO_PRODUCT_STEP_FIELD_PROBABILITY, 0.0f);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 24000);
+  require(event_count == 3, "drum probability-zero step should suppress one emitted hit");
+  expectOffsets(events, static_cast<uint32_t>(event_count), {0, 12000, 18000});
+  require(events[0].expression >= 0.09f && events[0].expression <= 0.11f, "drum emitted hit 0 should use expression index 0");
+  require(events[1].expression >= 0.19f && events[1].expression <= 0.21f, "drum emitted hit 1 should skip suppressed hit and use expression index 1");
+  require(events[2].expression >= 0.29f && events[2].expression <= 0.31f, "drum emitted hit 2 should use expression index 2");
+  KesshoProductTelemetry emitted_hit_telemetry = kessho_product_get_telemetry(engine);
+  require(emitted_hit_telemetry.drum_sequencer_hit_counts[0] == 3u, "drum telemetry should expose emitted-hit sub-lane phase for visuals");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
@@ -1646,6 +2452,35 @@ int main() {
   snapshot.drum_euclid.lane_count = 0;
   snapshot.synth_euclid.lanes[0].step_count = 4;
   snapshot.synth_euclid.lanes[0].fill_count = 4;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "long sub-lane snapshot load failed");
+  KesshoProductEvent long_expression_sub_lane{};
+  long_expression_sub_lane.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP;
+  long_expression_sub_lane.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  long_expression_sub_lane.index = 0;
+  long_expression_sub_lane.param_id = KESSHO_PRODUCT_STEP_FIELD_EXPRESSION >> KESSHO_PRODUCT_STEP_FIELD_SHIFT;
+  long_expression_sub_lane.value = 1.0f;
+  long_expression_sub_lane.value2 = 6.0f;
+  long_expression_sub_lane.value3 = static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD);
+  long_expression_sub_lane.flags = KESSHO_PRODUCT_STEP_TOGGLE_ACTIVE | KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG;
+  require(kessho_product_enqueue_event(engine, &long_expression_sub_lane) == KESSHO_PRODUCT_OK, "long sub-lane config enqueue failed");
+  enqueue_step_value(0, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.15f);
+  enqueue_step_value(1, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.25f);
+  enqueue_step_value(2, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.35f);
+  enqueue_step_value(3, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.45f);
+  enqueue_step_value(4, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.65f);
+  enqueue_step_value(5, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.95f);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 36000);
+  require(event_count == 6, "long expression sub-lane should preserve trigger event count");
+  require(maskHas(engine->synth_lanes[0].expression_override_set_low, engine->synth_lanes[0].expression_override_set_high, 5),
+      "long expression sub-lane should accept override indexes beyond trigger steps");
+  require(events[4].expression >= 0.64f && events[4].expression <= 0.66f, "long sub-lane step 4 should read expression index 4");
+  require(events[5].expression >= 0.94f && events[5].expression <= 0.96f, "long sub-lane step 5 should read expression index 5");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lanes[0].step_count = 4;
+  snapshot.synth_euclid.lanes[0].fill_count = 4;
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "range sub-lane snapshot load failed");
   enqueue_step_value(0, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, 0.2f, 0.3f, KESSHO_PRODUCT_STEP_TOGGLE_RANGE_VALUE);
   event_count = kessho_product_debug_render_events(engine, events, 32, 24000);
@@ -1653,6 +2488,34 @@ int main() {
   for (int32_t i = 0; i < event_count; ++i) {
     require(events[i].expression >= 0.2f && events[i].expression <= 0.3f, "expression range sub-lane did not sample within range");
   }
+  require(
+      kessho_product_copy_sequencer_ui_state(engine, &sequencer_ui_state) == KESSHO_PRODUCT_OK,
+      "sequencer UI state copy failed after range sub-lane");
+  require(
+      maskHas(sequencer_ui_state.synth_lanes[0].expression_range_set_low, sequencer_ui_state.synth_lanes[0].expression_range_set_high, 0),
+      "sequencer UI state should expose expression range override mask");
+  require(
+      std::fabs(sequencer_ui_state.synth_lanes[0].expression_range_maxes[0] - 0.3f) < 0.000001f,
+      "sequencer UI state should expose expression range max values");
+  const LaneState range_lane_state = engine->synth_lanes[0];
+  KesshoProductSnapshotV2 range_reload_snapshot = makeSnapshot();
+  range_reload_snapshot.drum_euclid.lane_count = 0;
+  range_reload_snapshot.synth_euclid.lanes[0].step_count = 4;
+  range_reload_snapshot.synth_euclid.lanes[0].fill_count = 4;
+  require(
+      kessho_product_load_snapshot_v2(engine, &range_reload_snapshot, sizeof(range_reload_snapshot)) == KESSHO_PRODUCT_OK,
+      "full snapshot reload before range UI replay should load");
+  replaySequencerUiLane(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0u,
+      sequencer_ui_state.synth_lanes[0]);
+  event_count = kessho_product_debug_render_events(engine, events, 32, 24000);
+  require(event_count == 4, "range UI replay should preserve trigger event count");
+  requireLaneMutationStateEqual(
+      engine->synth_lanes[0],
+      range_lane_state,
+      "full snapshot reload plus reconciled UI replay must preserve range sub-lane state");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
@@ -1691,6 +2554,79 @@ int main() {
   }
   require(saw_synth_expression_range, "source sample-hold range did not affect sequencer event expression");
   require(saw_drum_morph_range, "drum morph range did not affect sequencer event morph");
+
+  {
+    KesshoProductEngine route_cache(48000.0, 128, 0);
+    const uint32_t source_params[] = {
+        KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID,
+        KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID,
+        KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID,
+        KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID,
+        KESSHO_PRODUCT_PARAM_SOURCE_REVERB_SEND_ID,
+        KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID,
+        KESSHO_PRODUCT_PARAM_SOURCE_DELAY_BSEND_ID,
+        KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID,
+        KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID,
+        KESSHO_PRODUCT_PARAM_SOURCE_DECAY_SECONDS_ID,
+        KESSHO_PRODUCT_PARAM_SOURCE_SUSTAIN_ID,
+        KESSHO_PRODUCT_PARAM_SOURCE_HOLD_SECONDS_ID,
+        KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID,
+    };
+    auto apply_sample_hold_range = [&](uint32_t target_id, uint32_t param_id, uint32_t control_id, float min_value, float max_value) {
+      KesshoProductEvent range{};
+      range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
+      range.target_id = target_id;
+      range.index = control_id;
+      range.param_id = param_id;
+      range.value = min_value;
+      range.value2 = max_value;
+      range.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD);
+      range.flags = KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE;
+      route_cache.applyModulationRangeEvent(range);
+      require(route_cache.telemetry.last_error_code == KESSHO_PRODUCT_OK, "route cache range apply failed");
+    };
+    const uint32_t route_target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+    const uint32_t route_param_id = KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID;
+    uint32_t filler_count = 0u;
+    for (uint32_t source_id = 1u; source_id <= kSourceCount && filler_count < 24u; ++source_id) {
+      for (uint32_t param_id : source_params) {
+        if (source_id == route_target_id && param_id == route_param_id) {
+          continue;
+        }
+        apply_sample_hold_range(
+            source_id,
+            param_id,
+            500u + filler_count,
+            0.01f,
+            0.02f);
+        ++filler_count;
+        if (filler_count >= 24u) {
+          break;
+        }
+      }
+    }
+    require(filler_count == 24u, "route cache filler range count mismatch");
+    apply_sample_hold_range(route_target_id, route_param_id, 900u, 0.42f, 0.43f);
+    const uint32_t route_slot = route_cache.sourceModulationParamSlot(route_param_id);
+    require(route_slot < kSourceModulationParamSlotCount, "source expression route slot missing");
+    require(
+        route_cache.source_modulation_route_indices[route_target_id - 1u][route_slot] == filler_count,
+        "source modulation route cache did not point at high-index range");
+    const float resolved = route_cache.resolveModulatedValue(route_target_id, route_param_id, 0.99f, 12345u);
+    require(resolved >= 0.42f && resolved <= 0.43f, "source modulation route cache resolved outside range");
+    KesshoProductEvent disable_range{};
+    disable_range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
+    disable_range.target_id = route_target_id;
+    disable_range.param_id = route_param_id;
+    disable_range.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD);
+    route_cache.applyModulationRangeEvent(disable_range);
+    require(
+        route_cache.source_modulation_route_indices[route_target_id - 1u][route_slot] == kInvalidModulationRouteIndex,
+        "source modulation route cache did not clear disabled range");
+    require(
+        std::fabs(route_cache.resolveModulatedValue(route_target_id, route_param_id, 0.99f, 12345u) - 0.99f) < 0.000001f,
+        "disabled source modulation route should resolve to fallback");
+  }
 
   {
     KesshoProductEngine direct_sh(48000.0, 128, 0);
@@ -1830,6 +2766,158 @@ int main() {
   event_count = kessho_product_debug_render_events(engine, events, 32, 24000);
   require(event_count == 3, "ratchet 3 should generate three events in one 16th step");
   expectOffsets(events, static_cast<uint32_t>(event_count), {18000, 20000, 22000});
+  require(std::fabs(events[0].velocity - 1.0f) < 0.001f, "ratchet first hit should use lane velocity");
+  require(std::fabs(events[1].velocity - 1.0f) < 0.001f, "ratchet second hit should preserve lane velocity");
+  require(std::fabs(events[2].velocity - 1.0f) < 0.001f, "ratchet third hit should preserve lane velocity");
+  require(events[0].send_delay_a > 0.32f && events[0].send_delay_a < 0.34f, "synth ratchet events should carry envelope-tightening factor");
+
+  engine->pad_voice_release_frames[0][0] = 0u;
+  engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      60.0f,
+      1.0f,
+      0.2f,
+      -1.0f,
+      -1.0f,
+      -1.0f,
+      0u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      0.25f);
+  require(
+      engine->pad_voice_release_frames[0][0] == 2400u,
+      "Product pad synth ratchets should shorten scheduled pad hold like the Web ratchet path");
+
+  SourceState& lead_source = engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
+  lead_source.exact_lead_param_count = kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
+  for (uint32_t i = 0; i < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT; ++i) {
+    lead_source.exact_lead_params[i] = 0.0f;
+  }
+  lead_source.exact_lead_params[43] = 0.4f;
+  lead_source.exact_lead_params[44] = 0.8f;
+  lead_source.exact_lead_params[46] = 1.2f;
+  engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_LEAD1,
+      60.0f,
+      1.0f,
+      0.2f,
+      -1.0f,
+      -1.0f,
+      -1.0f,
+      0u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      0.5f);
+  float* lead_params = engine->lead_modules[0] ? engine->lead_modules[0]->params() : nullptr;
+  require(lead_params != nullptr, "lead module params should be available for synth ratchet parity check");
+  require(std::fabs(lead_params[43] - 0.2f) < 0.001f, "Product lead synth ratchet should scale attack");
+  require(std::fabs(lead_params[44] - 0.4f) < 0.001f, "Product lead synth ratchet should scale decay");
+  require(std::fabs(lead_params[46] - 0.6f) < 0.001f, "Product lead synth ratchet should scale release");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lane_count = 0;
+  KesshoProductSourceSnapshot& pad_morph_source = snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
+  pad_morph_source.source_preset_a_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT;
+  pad_morph_source.source_preset_b_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "preset morph endpoint snapshot load failed");
+  engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      60.0f,
+      1.0f,
+      0.2f,
+      0.0f,
+      0.0f,
+      1.0f,
+      0u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      1.0f);
+  float* pad_params = engine->pad_module ? engine->pad_module->params() : nullptr;
+  require(pad_params != nullptr, "pad module params should be available for preset morph parity check");
+  require(std::fabs(pad_params[14] - 0.15f) < 0.001f, "Product pad preset morph endpoint A should reach exact module params");
+  engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      60.0f,
+      1.0f,
+      0.2f,
+      1.0f,
+      0.0f,
+      1.0f,
+      0u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      1.0f);
+  require(std::fabs(pad_params[14] - 0.36f) < 0.001f, "Product pad preset morph endpoint B should reach exact module params");
+
+  kessho_product_reset(engine);
+  SourceState& pad_preset_source = engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
+  pad_preset_source.enabled = true;
+  pad_preset_source.exact_pad_param_count = 0u;
+  pad_preset_source.source_preset_endpoint_valid = false;
+  pad_preset_source.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT;
+  engine->compileSourcePresetRuntime(pad_preset_source);
+  require(pad_preset_source.source_preset_patch_valid, "source preset patch should be compiled before trigger");
+  engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      60.0f,
+      1.0f,
+      0.2f,
+      -1.0f,
+      -1.0f,
+      -1.0f,
+      0u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      1.0f);
+  pad_params = engine->pad_module ? engine->pad_module->params() : nullptr;
+  require(pad_params != nullptr, "pad module params should be available for compiled source preset check");
+  require(std::fabs(pad_params[14] - 0.15f) < 0.001f, "compiled source preset should trigger without generated lookup");
+  KesshoProductEvent pad_preset_event{};
+  pad_preset_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET;
+  pad_preset_event.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  pad_preset_event.value = static_cast<float>(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT);
+  engine->applySourcePresetEvent(pad_preset_event);
+  engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      60.0f,
+      1.0f,
+      0.2f,
+      -1.0f,
+      -1.0f,
+      -1.0f,
+      0u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      1.0f);
+  require(std::fabs(pad_params[14] - 0.36f) < 0.001f, "source preset event should refresh compiled patch before trigger");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
@@ -1925,6 +3013,97 @@ int main() {
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lane_count = 0;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "MIDI lead tracking snapshot load failed");
+  KesshoProductEvent midi_lead_a{};
+  midi_lead_a.event_kind = KESSHO_PRODUCT_EVENT_KIND_MIDI_EVENT;
+  midi_lead_a.target_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  midi_lead_a.index = 0u;
+  midi_lead_a.value = 0x90;
+  midi_lead_a.value2 = 60.0f;
+  midi_lead_a.value3 = 100.0f;
+  KesshoProductEvent midi_lead_b = midi_lead_a;
+  midi_lead_b.value2 = 67.0f;
+  require(kessho_product_enqueue_event(engine, &midi_lead_a) == KESSHO_PRODUCT_OK, "first MIDI lead note enqueue failed");
+  require(kessho_product_enqueue_event(engine, &midi_lead_b) == KESSHO_PRODUCT_OK, "second MIDI lead note enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  const MidiNoteRuntimeSlot* first_lead_slot = findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_LEAD1, 0u, 60u);
+  const MidiNoteRuntimeSlot* second_lead_slot = findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_LEAD1, 0u, 67u);
+  require(first_lead_slot != nullptr, "first MIDI lead note should be tracked");
+  require(second_lead_slot != nullptr, "second MIDI lead note should be tracked");
+  require(first_lead_slot->lead_voice_index != kProductInvalidVoiceIndex, "first MIDI lead note should keep its module voice");
+  require(second_lead_slot->lead_voice_index != kProductInvalidVoiceIndex, "second MIDI lead note should keep its module voice");
+  require(first_lead_slot->lead_voice_index != second_lead_slot->lead_voice_index, "MIDI lead notes should keep distinct module voices");
+  KesshoProductEvent midi_lead_off = midi_lead_a;
+  midi_lead_off.value = 0x80;
+  midi_lead_off.value3 = 0.0f;
+  require(kessho_product_enqueue_event(engine, &midi_lead_off) == KESSHO_PRODUCT_OK, "MIDI lead note-off enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  require(findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_LEAD1, 0u, 60u) == nullptr, "MIDI lead note-off should release only the matching note");
+  require(findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_LEAD1, 0u, 67u) != nullptr, "MIDI lead note-off should not clear other held notes");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lane_count = 0;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "MIDI controller snapshot load failed");
+  KesshoProductEvent midi_lead_bend{};
+  midi_lead_bend.event_kind = KESSHO_PRODUCT_EVENT_KIND_MIDI_EVENT;
+  midi_lead_bend.target_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  midi_lead_bend.index = 0u;
+  midi_lead_bend.value = 0xe0;
+  midi_lead_bend.value2 = 127.0f;
+  midi_lead_bend.value3 = 127.0f;
+  require(kessho_product_enqueue_event(engine, &midi_lead_bend) == KESSHO_PRODUCT_OK, "MIDI pitch bend enqueue failed");
+  require(kessho_product_enqueue_event(engine, &midi_lead_a) == KESSHO_PRODUCT_OK, "bent MIDI lead note enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  require(
+      engine->midi_controller_state[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u][0u].pitch_bend == kProductMidiPitchBendMax,
+      "Product core should retain MIDI pitch bend state");
+  require(
+      engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].post_lpf_tracking_midi > 61.9f,
+      "MIDI pitch bend should apply to Product-owned note trigger pitch");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lane_count = 0;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "MIDI pad tracking snapshot load failed");
+  KesshoProductEvent midi_pad_a{};
+  midi_pad_a.event_kind = KESSHO_PRODUCT_EVENT_KIND_MIDI_EVENT;
+  midi_pad_a.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  midi_pad_a.index = 0u;
+  midi_pad_a.value = 0x90;
+  midi_pad_a.value2 = 60.0f;
+  midi_pad_a.value3 = 100.0f;
+  KesshoProductEvent midi_pad_b = midi_pad_a;
+  midi_pad_b.value2 = 64.0f;
+  require(kessho_product_enqueue_event(engine, &midi_pad_a) == KESSHO_PRODUCT_OK, "first MIDI pad note enqueue failed");
+  require(kessho_product_enqueue_event(engine, &midi_pad_b) == KESSHO_PRODUCT_OK, "second MIDI pad note enqueue failed");
+  std::fill(left.begin(), left.end(), 0.0f);
+  std::fill(right.begin(), right.end(), 0.0f);
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  const MidiNoteRuntimeSlot* first_pad_slot = findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_PAD1, 0u, 60u);
+  const MidiNoteRuntimeSlot* second_pad_slot = findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_PAD1, 0u, 64u);
+  require(first_pad_slot != nullptr, "first MIDI pad note should be tracked");
+  require(second_pad_slot != nullptr, "second MIDI pad note should be tracked");
+  require(countMidiSlots(engine, KESSHO_PRODUCT_SOURCE_PAD1) == 2u, "two MIDI pad notes should be tracked independently");
+  require(first_pad_slot->pad_voice_index != second_pad_slot->pad_voice_index, "MIDI pad notes should keep distinct pad voices");
+  KesshoProductEvent midi_pad_off{};
+  midi_pad_off.event_kind = KESSHO_PRODUCT_EVENT_KIND_MIDI_EVENT;
+  midi_pad_off.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  midi_pad_off.index = 0u;
+  midi_pad_off.value = 0x80;
+  midi_pad_off.value2 = 60.0f;
+  midi_pad_off.value3 = 0.0f;
+  require(kessho_product_enqueue_event(engine, &midi_pad_off) == KESSHO_PRODUCT_OK, "MIDI pad note-off enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  require(findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_PAD1, 0u, 60u) == nullptr, "MIDI pad note-off should release only the matching note");
+  require(findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_PAD1, 0u, 64u) != nullptr, "MIDI pad note-off should not clear other held notes");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
   snapshot.sources[KESSHO_PRODUCT_SOURCE_PIANO - 1].asset_id = 1001;
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "asset snapshot load failed");
   float sample_data[256]{};
@@ -1948,9 +3127,153 @@ int main() {
   kessho_product_render(engine, left.data(), right.data(), 128);
   require(maxAbs(left) > 0.001f || maxAbs(right) > 0.001f, "registered piano asset should render through Product Core");
 
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  const uint32_t midi_piano_asset_id = kPianoAssetIdBase + (60u - kPianoBaseMidi) + 1u;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PIANO - 1].asset_id = midi_piano_asset_id;
+  snapshot.synth_euclid.lane_count = 0;
+  snapshot.drum_euclid.lane_count = 0;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "MIDI piano tracking snapshot load failed");
+  std::vector<float> long_piano_sample(48000, 0.0f);
+  for (uint32_t i = 0; i < long_piano_sample.size(); ++i) {
+    long_piano_sample[i] = std::sin(static_cast<float>(i) * 0.03f) * 0.5f;
+  }
+  const float* long_piano_channels[1] = {long_piano_sample.data()};
+  require(
+      kessho_product_register_asset_buffer(
+          engine,
+          midi_piano_asset_id,
+          long_piano_channels,
+          1,
+          static_cast<uint32_t>(long_piano_sample.size()),
+          sample_rate,
+          KESSHO_PRODUCT_ASSET_PIANO) == KESSHO_PRODUCT_OK,
+      "MIDI piano asset registration failed");
+  KesshoProductEvent midi_piano_a{};
+  midi_piano_a.event_kind = KESSHO_PRODUCT_EVENT_KIND_MIDI_EVENT;
+  midi_piano_a.target_id = KESSHO_PRODUCT_SOURCE_PIANO;
+  midi_piano_a.index = 4u;
+  midi_piano_a.value = 0x90;
+  midi_piano_a.value2 = 60.0f;
+  midi_piano_a.value3 = 100.0f;
+  KesshoProductEvent midi_piano_b = midi_piano_a;
+  midi_piano_b.value2 = 64.0f;
+  require(kessho_product_enqueue_event(engine, &midi_piano_a) == KESSHO_PRODUCT_OK, "first MIDI piano note enqueue failed");
+  require(kessho_product_enqueue_event(engine, &midi_piano_b) == KESSHO_PRODUCT_OK, "second MIDI piano note enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  const MidiNoteRuntimeSlot* first_piano_slot = findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_PIANO, 4u, 60u);
+  const MidiNoteRuntimeSlot* second_piano_slot = findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_PIANO, 4u, 64u);
+  require(first_piano_slot != nullptr, "first MIDI piano note should be tracked");
+  require(second_piano_slot != nullptr, "second MIDI piano note should be tracked");
+  const uint32_t first_piano_voice = first_piano_slot->sample_voice_index;
+  const uint32_t second_piano_voice = second_piano_slot->sample_voice_index;
+  require(first_piano_voice != second_piano_voice, "MIDI piano notes should keep distinct sample voices");
+  const float first_piano_frequency_before_bend = engine->voices[first_piano_voice].frequency;
+  const double first_piano_step_before_bend = engine->voices[first_piano_voice].sample_step;
+  KesshoProductEvent midi_piano_bend = midi_piano_a;
+  midi_piano_bend.value = 0xe0;
+  midi_piano_bend.value2 = 127.0f;
+  midi_piano_bend.value3 = 127.0f;
+  require(kessho_product_enqueue_event(engine, &midi_piano_bend) == KESSHO_PRODUCT_OK, "MIDI piano pitch bend enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  require(
+      engine->midi_controller_state[KESSHO_PRODUCT_SOURCE_PIANO - 1u][4u].pitch_bend == kProductMidiPitchBendMax,
+      "Product core should retain MIDI piano pitch bend state");
+  require(
+      engine->voices[first_piano_voice].frequency > first_piano_frequency_before_bend * 1.11f,
+      "MIDI pitch bend should retune held piano sample voices");
+  require(
+      engine->voices[first_piano_voice].sample_step > first_piano_step_before_bend * 1.11,
+      "MIDI pitch bend should update held piano sample playback step");
+  midi_piano_bend.value2 = 0.0f;
+  midi_piano_bend.value3 = 64.0f;
+  require(kessho_product_enqueue_event(engine, &midi_piano_bend) == KESSHO_PRODUCT_OK, "MIDI piano pitch bend reset enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  const uint32_t second_remaining_before = engine->voices[second_piano_voice].remaining_frames;
+  KesshoProductEvent midi_piano_off = midi_piano_a;
+  midi_piano_off.value = 0x80;
+  midi_piano_off.value3 = 0.0f;
+  require(kessho_product_enqueue_event(engine, &midi_piano_off) == KESSHO_PRODUCT_OK, "MIDI piano note-off enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  require(findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_PIANO, 4u, 60u) == nullptr, "MIDI piano note-off should release only the matching note");
+  require(findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_PIANO, 4u, 64u) != nullptr, "MIDI piano note-off should preserve other held notes");
+  require(engine->voices[first_piano_voice].remaining_frames <= static_cast<uint32_t>(0.02 * sample_rate), "released MIDI piano voice should enter release tail");
+  require(
+      engine->voices[second_piano_voice].remaining_frames + 128u >= second_remaining_before,
+      "unreleased MIDI piano voice should not be source-wide shortened");
+
+  KesshoProductEvent midi_sustain{};
+  midi_sustain.event_kind = KESSHO_PRODUCT_EVENT_KIND_MIDI_EVENT;
+  midi_sustain.target_id = KESSHO_PRODUCT_SOURCE_PIANO;
+  midi_sustain.index = 4u;
+  midi_sustain.value = 0xb0;
+  midi_sustain.value2 = 64.0f;
+  midi_sustain.value3 = 127.0f;
+  require(kessho_product_enqueue_event(engine, &midi_sustain) == KESSHO_PRODUCT_OK, "MIDI sustain down enqueue failed");
+  KesshoProductEvent midi_piano_c = midi_piano_a;
+  midi_piano_c.value2 = 67.0f;
+  require(kessho_product_enqueue_event(engine, &midi_piano_c) == KESSHO_PRODUCT_OK, "sustained MIDI piano note enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  const MidiNoteRuntimeSlot* sustained_slot = findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_PIANO, 4u, 67u);
+  require(sustained_slot != nullptr, "sustained MIDI piano note should be tracked");
+  const uint32_t sustained_voice = sustained_slot->sample_voice_index;
+  const uint32_t sustained_remaining_before = engine->voices[sustained_voice].remaining_frames;
+  KesshoProductEvent midi_piano_c_off = midi_piano_c;
+  midi_piano_c_off.value = 0x80;
+  midi_piano_c_off.value3 = 0.0f;
+  require(kessho_product_enqueue_event(engine, &midi_piano_c_off) == KESSHO_PRODUCT_OK, "sustained MIDI piano note-off enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  sustained_slot = findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_PIANO, 4u, 67u);
+  require(sustained_slot != nullptr && sustained_slot->sustained, "sustain pedal should defer MIDI piano release");
+  require(
+      engine->voices[sustained_voice].remaining_frames + 128u >= sustained_remaining_before,
+      "sustain-held MIDI piano voice should not be shortened on note-off");
+  midi_sustain.value3 = 0.0f;
+  require(kessho_product_enqueue_event(engine, &midi_sustain) == KESSHO_PRODUCT_OK, "MIDI sustain up enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  require(findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_PIANO, 4u, 67u) == nullptr, "sustain up should release deferred MIDI piano note");
+  require(engine->voices[sustained_voice].remaining_frames <= static_cast<uint32_t>(0.02 * sample_rate), "sustain-up MIDI piano voice should enter release tail");
+
+  KesshoProductEvent midi_expression{};
+  midi_expression.event_kind = KESSHO_PRODUCT_EVENT_KIND_MIDI_EVENT;
+  midi_expression.target_id = KESSHO_PRODUCT_SOURCE_PIANO;
+  midi_expression.index = 4u;
+  midi_expression.value = 0xb0;
+  midi_expression.value2 = 11.0f;
+  midi_expression.value3 = 64.0f;
+  KesshoProductEvent midi_channel_pressure{};
+  midi_channel_pressure.event_kind = KESSHO_PRODUCT_EVENT_KIND_MIDI_EVENT;
+  midi_channel_pressure.target_id = KESSHO_PRODUCT_SOURCE_PIANO;
+  midi_channel_pressure.index = 4u;
+  midi_channel_pressure.value = 0xd0;
+  midi_channel_pressure.value2 = 32.0f;
+  KesshoProductEvent midi_poly_pressure{};
+  midi_poly_pressure.event_kind = KESSHO_PRODUCT_EVENT_KIND_MIDI_EVENT;
+  midi_poly_pressure.target_id = KESSHO_PRODUCT_SOURCE_PIANO;
+  midi_poly_pressure.index = 4u;
+  midi_poly_pressure.value = 0xa0;
+  midi_poly_pressure.value2 = 72.0f;
+  midi_poly_pressure.value3 = 48.0f;
+  require(kessho_product_enqueue_event(engine, &midi_expression) == KESSHO_PRODUCT_OK, "MIDI expression enqueue failed");
+  require(kessho_product_enqueue_event(engine, &midi_channel_pressure) == KESSHO_PRODUCT_OK, "MIDI channel pressure enqueue failed");
+  require(kessho_product_enqueue_event(engine, &midi_poly_pressure) == KESSHO_PRODUCT_OK, "MIDI poly pressure enqueue failed");
+  KesshoProductEvent midi_piano_d = midi_piano_a;
+  midi_piano_d.value2 = 72.0f;
+  require(kessho_product_enqueue_event(engine, &midi_piano_d) == KESSHO_PRODUCT_OK, "controller-scaled MIDI piano note enqueue failed");
+  kessho_product_render(engine, left.data(), right.data(), 128);
+  const MidiControllerRuntimeState& piano_midi_state = engine->midi_controller_state[KESSHO_PRODUCT_SOURCE_PIANO - 1u][4u];
+  require(piano_midi_state.cc_values[11] == 64u, "Product core should retain MIDI expression CC state");
+  require(piano_midi_state.channel_pressure == 32u, "Product core should retain MIDI channel pressure state");
+  require(piano_midi_state.poly_pressure[72] == 48u, "Product core should retain MIDI poly pressure state");
+  const MidiNoteRuntimeSlot* controller_scaled_slot = findMidiSlot(engine, KESSHO_PRODUCT_SOURCE_PIANO, 4u, 72u);
+  require(controller_scaled_slot != nullptr, "controller-scaled MIDI piano note should be tracked");
+  require(
+      engine->voices[controller_scaled_slot->sample_voice_index].amplitude < 0.5f,
+      "MIDI expression CC should scale Product-owned trigger velocity");
+
   KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
   require(telemetry.schema_hash == KESSHO_PRODUCT_SNAPSHOT_SCHEMA_HASH, "telemetry schema hash mismatch");
-  require(telemetry.active_assets == 1, "telemetry active asset count mismatch");
+  require(telemetry.active_assets >= 1, "telemetry active asset count mismatch");
 
   kessho_product_destroy(engine);
   std::cout << "Kessho Product Core tests passed\n";

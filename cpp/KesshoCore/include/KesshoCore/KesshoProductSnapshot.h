@@ -4,6 +4,12 @@
 
 #include "KesshoCore/KesshoProductTypes.h"
 
+#define KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT 37u
+#define KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT 101u
+#define KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT 53u
+#define KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT 80u
+#define KESSHO_PRODUCT_DRUM_OVERRIDE_PARAM_COUNT 126u
+
 typedef struct KesshoProductTransportSnapshot {
   uint32_t running;
   float bpm;
@@ -26,6 +32,10 @@ typedef struct KesshoProductSourceSnapshot {
   uint32_t enabled;
   uint32_t source_id;
   uint32_t preset_id;
+  uint32_t source_preset_a_id;
+  uint32_t source_preset_b_id;
+  uint32_t lead_envelope_override_enabled;
+  uint32_t lead_algorithm_preset_a_enabled;
   uint32_t asset_id;
   float level;
   float morph;
@@ -42,10 +52,19 @@ typedef struct KesshoProductSourceSnapshot {
   float post_lpf_key_tracking;
   uint32_t exact_pad_param_count;
   float exact_pad_params[53];
+  uint32_t pad_override_count;
+  uint32_t pad_override_indices[KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT];
+  float pad_override_values[KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT];
   uint32_t exact_lead_param_count;
   float exact_lead_params[80];
+  uint32_t lead_override_count;
+  uint32_t lead_override_indices[KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT];
+  float lead_override_values[KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT];
   uint32_t exact_drum_param_count;
   float exact_drum_params[126];
+  uint32_t drum_override_count;
+  uint32_t drum_override_indices[KESSHO_PRODUCT_DRUM_OVERRIDE_PARAM_COUNT];
+  float drum_override_values[KESSHO_PRODUCT_DRUM_OVERRIDE_PARAM_COUNT];
   uint32_t drum_voice_preset_a_ids[7];
   uint32_t drum_voice_preset_b_ids[7];
   float drum_voice_morphs[7];
@@ -78,6 +97,8 @@ typedef struct KesshoProductSequencerLaneSnapshot {
   uint32_t phrase_reset;
   uint32_t manual_step_mask_low;
   uint32_t manual_step_mask_high;
+  float tempo_multiplier;
+  float initial_start_delay_seconds;
 } KesshoProductSequencerLaneSnapshot;
 
 typedef struct KesshoProductSequencerSnapshot {
@@ -166,6 +187,9 @@ typedef struct KesshoProductFxSnapshot {
   uint32_t delay_b_warp;
   float delay_b_warp_intensity;
   float delay_b_spread;
+  uint32_t delay_b_tape_head_mask;
+  float delay_b_tape_head_levels[4];
+  float delay_b_tape_head_pans[4];
   float reverb_mix;
   uint32_t reverb_type;
   uint32_t reverb_quality;
@@ -333,9 +357,6 @@ typedef struct KesshoProductRoutingSnapshot {
 typedef struct KesshoProductMasterSnapshot {
   float gain;
   float limiter_ceiling_db;
-  uint32_t saturation_mode;
-  float saturation_drive;
-  float saturation_tone;
 } KesshoProductMasterSnapshot;
 
 typedef struct KesshoProductRngSnapshot {
@@ -364,4 +385,8 @@ typedef struct KesshoProductSnapshotV2 {
   KesshoProductEvolutionSnapshot evolution;
   uint32_t asset_refs[32];
   float asset_ref_levels[32];
+  uint32_t soundscape_texture_param_count;
+  float soundscape_texture_params[KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT];
+  uint32_t soundscape_module_param_count;
+  float soundscape_module_params[KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT];
 } KesshoProductSnapshotV2;

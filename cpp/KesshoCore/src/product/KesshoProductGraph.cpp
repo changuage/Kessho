@@ -12,7 +12,7 @@ void KesshoProductEngine::renderPadModule(float* out_l, float* out_r, uint32_t s
   }
   float* tap_l[kModuleTapCount]{};
   float* tap_r[kModuleTapCount]{};
-  for (uint32_t bus = 0; bus < kModuleTapCount; ++bus) {
+  for (uint32_t bus = 0; bus < KESSHO_MODULE_PAD_OUTPUT_TAP_COUNT; ++bus) {
     tap_l[bus] = module_tap_l[bus];
     tap_r[bus] = module_tap_r[bus];
     std::fill(module_tap_l[bus], module_tap_l[bus] + frames, 0.0f);
@@ -99,7 +99,7 @@ void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t 
   }
   float* tap_l[kModuleTapCount]{};
   float* tap_r[kModuleTapCount]{};
-  for (uint32_t bus = 0; bus < kModuleTapCount; ++bus) {
+  for (uint32_t bus = 0; bus < 2u; ++bus) {
     tap_l[bus] = module_tap_l[bus];
     tap_r[bus] = module_tap_r[bus];
     std::fill(module_tap_l[bus], module_tap_l[bus] + frames, 0.0f);
@@ -171,7 +171,7 @@ void KesshoProductEngine::configureSoundscapesModuleFromSource() {
   }
   std::array<float, kSoundscapeModuleParamCount> desired{};
   for (uint32_t i = 0; i < kSoundscapeModuleParamCount; ++i) {
-    desired[i] = std::isfinite(source.exact_drum_params[i]) ? source.exact_drum_params[i] : 0.0f;
+    desired[i] = std::isfinite(source.soundscape_module_params[i]) ? source.soundscape_module_params[i] : 0.0f;
   }
   bool changed = !soundscapes_module_params_configured;
   if (!changed) {
@@ -214,11 +214,11 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
       3u,
       static_cast<int>(frames));
 
-  const float water_level = clampFloat(source.exact_drum_params[kSoundscapeModuleWaterLevelParam], 0.0f, 2.0f);
-  const float insects_level = clampFloat(source.exact_drum_params[kSoundscapeModuleInsectsLevelParam], 0.0f, 2.0f);
-  const float insects2_level = clampFloat(source.exact_drum_params[kSoundscapeModuleInsects2LevelParam], 0.0f, 2.0f);
-  const float insects_shared_level = clampFloat(source.exact_drum_params[kSoundscapeModuleInsectsSharedLevelParam], 0.0f, 2.0f);
-  const float earth_level = clampFloat(source.exact_drum_params[kSoundscapeModuleEarthLevelParam], 0.0f, 2.0f);
+  const float water_level = clampFloat(source.soundscape_module_params[kSoundscapeModuleWaterLevelParam], 0.0f, 2.0f);
+  const float insects_level = clampFloat(source.soundscape_module_params[kSoundscapeModuleInsectsLevelParam], 0.0f, 2.0f);
+  const float insects2_level = clampFloat(source.soundscape_module_params[kSoundscapeModuleInsects2LevelParam], 0.0f, 2.0f);
+  const float insects_shared_level = clampFloat(source.soundscape_module_params[kSoundscapeModuleInsectsSharedLevelParam], 0.0f, 2.0f);
+  const float earth_level = clampFloat(source.soundscape_module_params[kSoundscapeModuleEarthLevelParam], 0.0f, 2.0f);
   const float water_reverb_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteReverb, 0.0f);
   const float water_delay_a_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteDelayA, 0.0f);
   const float water_delay_b_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteDelayB, 0.0f);

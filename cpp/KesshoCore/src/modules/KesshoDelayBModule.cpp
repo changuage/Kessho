@@ -3,13 +3,14 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 namespace kessho::core {
 namespace {
 
-constexpr int kParamCount = 16;
+constexpr int kParamCount = 24;
 constexpr int kParamEnabled = 0;
 constexpr int kParamActivity = 1;
 constexpr int kParamRepeats = 2;
@@ -25,9 +26,12 @@ constexpr int kParamPattern = 11;
 constexpr int kParamWarp = 12;
 constexpr int kParamWarpIntensity = 13;
 constexpr int kParamSpread = 14;
-constexpr int kParamReserved = 15;
+constexpr int kParamTapeHeadMask = 15;
+constexpr int kParamTapeHeadLevelBase = 16;
+constexpr int kParamTapeHeadPanBase = 20;
 
 constexpr int kTapCount = 8;
+constexpr int kTapeHeadCount = 4;
 constexpr int kOutputTapCount = 4;
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kWebAudioCompressorLookaheadSeconds = 0.006f;
@@ -48,6 +52,8 @@ constexpr std::array<float, kTapCount> kWarpPitchTiltGains{
     0.0f, 0.0f, 0.0f, 0.0f, 3.5f, 3.5f, 8.0f, 8.0f};
 constexpr std::array<float, kTapCount> kWarpGrainCenterFreqs{
     650.0f, 900.0f, 1200.0f, 1600.0f, 2100.0f, 2800.0f, 3600.0f, 4600.0f};
+constexpr std::array<float, kTapeHeadCount> kTapeHeadDefaultLevels{{0.72f, 0.8f, 0.88f, 1.0f}};
+constexpr std::array<float, kTapeHeadCount> kTapeHeadDefaultPans{{0.28f, 0.72f, 0.38f, 0.62f}};
 
 float clamp(float value, float min_value, float max_value) {
   return std::max(min_value, std::min(max_value, value));
@@ -82,6 +88,15 @@ const PatternPreset& patternForIndex(int index) {
   };
   static const std::array<const PatternPreset*, 4> patterns{{&cascade, &golden, &mirror, &dotted}};
   return *patterns[static_cast<size_t>(clamp(static_cast<float>(index), 0.0f, 3.0f))];
+}
+
+const std::array<float, kTapeHeadCount>& tapeHeadRatiosForIndex(int index) {
+  static const std::array<float, kTapeHeadCount> even{{0.25f, 0.5f, 0.75f, 1.0f}};
+  static const std::array<float, kTapeHeadCount> triplet{{1.0f / 6.0f, 1.0f / 3.0f, 2.0f / 3.0f, 1.0f}};
+  static const std::array<float, kTapeHeadCount> golden{{0.2360679f, 0.381966f, 0.618034f, 1.0f}};
+  static const std::array<float, kTapeHeadCount> silver{{0.3535534f, 0.5f, 0.7071068f, 1.0f}};
+  static const std::array<const std::array<float, kTapeHeadCount>*, 4> ratios{{&even, &triplet, &golden, &silver}};
+  return *ratios[static_cast<size_t>(clamp(static_cast<float>(index), 0.0f, 3.0f))];
 }
 
 struct TapActivityConfig {
@@ -288,10 +303,14 @@ struct DelayBState {
   float granular_send = 0.0f;
   float to_delay_a = 0.0f;
   bool diffuse = false;
+  bool tape_heads = false;
   int pattern = 0;
   int warp = 0;
   float warp_intensity = 0.5f;
   float spread = 0.5f;
+  uint32_t tape_head_mask = 15u;
+  std::array<float, kTapeHeadCount> tape_head_levels = kTapeHeadDefaultLevels;
+  std::array<float, kTapeHeadCount> tape_head_pans = kTapeHeadDefaultPans;
 };
 
 class DelayBModule final : public IKesshoModule {
@@ -426,13 +445,21 @@ public:
     state_.reverb_send = state_.enabled ? clamp(params_[kParamReverbSend], 0.0f, 1.0f) : 0.0f;
     state_.granular_send = state_.enabled ? clamp(params_[kParamGranularSend], 0.0f, 1.0f) : 0.0f;
     state_.to_delay_a = state_.enabled ? clamp(params_[kParamToDelayA], 0.0f, 1.0f) : 0.0f;
-    state_.diffuse = params_[kParamSpaceMode] > 0.5f;
+    const int space_mode = static_cast<int>(clamp(std::round(params_[kParamSpaceMode]), 0.0f, 2.0f));
+    state_.diffuse = space_mode == 1;
+    state_.tape_heads = space_mode == 2;
     state_.pattern = static_cast<int>(clamp(std::round(params_[kParamPattern]), 0.0f, 3.0f));
     state_.warp = static_cast<int>(clamp(std::round(params_[kParamWarp]), 0.0f, 3.0f));
     state_.warp_intensity = clamp(params_[kParamWarpIntensity], 0.0f, 1.0f);
     state_.spread = clamp(params_[kParamSpread], 0.0f, 1.0f);
-    (void)params_[kParamReserved];
+    state_.tape_head_mask = static_cast<uint32_t>(clamp(std::round(params_[kParamTapeHeadMask]), 0.0f, 15.0f));
+    for (int i = 0; i < kTapeHeadCount; ++i) {
+      const size_t index = static_cast<size_t>(i);
+      state_.tape_head_levels[index] = clamp(params_[kParamTapeHeadLevelBase + i], 0.0f, 1.0f);
+      state_.tape_head_pans[index] = clamp(params_[kParamTapeHeadPanBase + i], 0.0f, 1.0f);
+    }
     configureFilters();
+    configureTapRuntime();
   }
 
   int outputTapCount() const override {
@@ -452,13 +479,23 @@ private:
     params_[kParamToDelayA] = 0.0f;
     params_[kParamWarpIntensity] = 0.5f;
     params_[kParamSpread] = 0.5f;
+    params_[kParamTapeHeadMask] = 15.0f;
+    for (int i = 0; i < kTapeHeadCount; ++i) {
+      const size_t index = static_cast<size_t>(i);
+      params_[kParamTapeHeadLevelBase + i] = kTapeHeadDefaultLevels[index];
+      params_[kParamTapeHeadPanBase + i] = kTapeHeadDefaultPans[index];
+    }
     commitParams();
   }
 
   void configureFilters() {
     const float tone = state_.tone;
-    const float high_cut_hz = 600.0f + tone * 11400.0f;
-    const float low_cut_hz = 60.0f + std::max(0.0f, tone - 0.5f) * 680.0f;
+    const float high_cut_hz = state_.tape_heads
+        ? clamp(11000.0f - tone * 7600.0f - state_.warp_intensity * 1400.0f, 1200.0f, 12000.0f)
+        : 600.0f + tone * 11400.0f;
+    const float low_cut_hz = state_.tape_heads
+        ? 45.0f + tone * 260.0f
+        : 60.0f + std::max(0.0f, tone - 0.5f) * 680.0f;
     high_cut_l_.configure(Biquad::Type::Lowpass, high_cut_hz, 0.7f, 0.0f, sample_rate_);
     high_cut_r_.configure(Biquad::Type::Lowpass, high_cut_hz, 0.7f, 0.0f, sample_rate_);
     low_cut_l_.configure(Biquad::Type::Highpass, low_cut_hz, 0.7f, 0.0f, sample_rate_);
@@ -469,7 +506,11 @@ private:
       float hz = kWarpFilterFreqs[static_cast<size_t>(i)];
       float q = 3.0f;
       float gain_db = 0.0f;
-      if (state_.warp == 2 && i >= 4) {
+      if (state_.tape_heads) {
+        type = Biquad::Type::Allpass;
+        hz = 520.0f + static_cast<float>(i) * 230.0f + state_.warp_intensity * 520.0f;
+        q = 0.55f + state_.warp_intensity * 1.6f;
+      } else if (state_.warp == 2 && i >= 4) {
         type = Biquad::Type::Highshelf;
         hz = kWarpPitchTiltFreqs[static_cast<size_t>(i)];
         q = 0.7f;
@@ -484,8 +525,56 @@ private:
     }
   }
 
+  void configureTapRuntime() {
+    float sum_gain = 0.0f;
+    for (int i = 0; i < kTapCount; ++i) {
+      const size_t index = static_cast<size_t>(i);
+      tap_gain_[index] = tapGain(i);
+      tap_time_samples_[index] = tapTimeSeconds(i) * sample_rate_;
+      sum_gain += tap_gain_[index];
+
+      const float pan = tapPan(i);
+      if (pan <= 0.0f) {
+        const float angle = (pan + 1.0f) * kPi * 0.5f;
+        tap_left_from_left_[index] = 1.0f;
+        tap_left_from_right_[index] = std::cos(angle);
+        tap_right_from_left_[index] = 0.0f;
+        tap_right_from_right_[index] = std::sin(angle);
+      } else {
+        const float angle = pan * kPi * 0.5f;
+        tap_left_from_left_[index] = std::cos(angle);
+        tap_left_from_right_[index] = 0.0f;
+        tap_right_from_left_[index] = std::sin(angle);
+        tap_right_from_right_[index] = 1.0f;
+      }
+
+      warp_wet_[index] = warpWet(i);
+      warp_offset_samples_[index] = warpOffsetSamples(i);
+      const float vibrato_multiplier =
+          state_.tape_heads
+              ? 0.45f + static_cast<float>(i) * 0.12f
+              : state_.warp == 2 && i >= 4
+              ? 1.0f + state_.warp_intensity * (i >= 6 ? 3.0f : 1.7f)
+              : state_.warp == 3 && i >= 4 ? 1.0f + state_.warp_intensity * 1.4f : 1.0f;
+      vibrato_depth_seconds_[index] = state_.tape_heads
+          ? (state_.vibrato * 0.004f + state_.warp_intensity * 0.0018f) * vibrato_multiplier
+          : state_.vibrato * 0.008f * (state_.diffuse ? 0.55f : 1.0f) * vibrato_multiplier;
+      vibrato_phase_increment_[index] = 2.0f * kPi * kTapVibratoRates[index] / sample_rate_;
+    }
+
+    const float raw_feedback =
+        state_.tape_heads ? state_.repeats * 0.84f : state_.diffuse ? state_.repeats * 0.9f : state_.repeats;
+    normalized_feedback_ = sum_gain > 1.0f ? raw_feedback / sum_gain : raw_feedback;
+  }
+
   float tapGain(int i) const {
     if (!state_.enabled) return 0.0f;
+    if (state_.tape_heads) {
+      if (i >= kTapeHeadCount) return 0.0f;
+      const size_t index = static_cast<size_t>(i);
+      if ((state_.tape_head_mask & (1u << index)) == 0u) return 0.0f;
+      return state_.tape_head_levels[index] * (0.75f + state_.activity * 0.25f);
+    }
     const PatternPreset& pattern = patternForIndex(state_.pattern);
     return state_.diffuse
         ? computeDiffuseTapGain(i, state_.activity)
@@ -493,6 +582,10 @@ private:
   }
 
   float tapTimeSeconds(int i) const {
+    if (state_.tape_heads && i < kTapeHeadCount) {
+      const auto& ratios = tapeHeadRatiosForIndex(state_.pattern);
+      return clamp(state_.base_time_sec * ratios[static_cast<size_t>(i)], 0.001f, 5.0f);
+    }
     const PatternPreset& pattern = patternForIndex(state_.pattern);
     const float base = state_.diffuse ? std::max(0.08f, state_.base_time_sec * 0.85f) : state_.base_time_sec;
     const float factor = state_.diffuse
@@ -502,6 +595,10 @@ private:
   }
 
   float tapPan(int i) const {
+    if (state_.tape_heads && i < kTapeHeadCount) {
+      const float base_pan = (state_.tape_head_pans[static_cast<size_t>(i)] - 0.5f) * 2.0f;
+      return clamp(base_pan * state_.spread * 2.0f, -1.0f, 1.0f);
+    }
     const PatternPreset& pattern = patternForIndex(state_.pattern);
     const float base_pan = state_.diffuse ? kTapPans[static_cast<size_t>(i)] : pattern.pans[static_cast<size_t>(i)];
     return clamp(base_pan * state_.spread * 2.0f, -1.0f, 1.0f);
@@ -509,12 +606,17 @@ private:
 
   float warpWet(int i) const {
     if (!state_.enabled) return 0.0f;
+    if (state_.tape_heads) return i < kTapeHeadCount ? state_.warp_intensity * 0.28f : 0.0f;
     if (state_.warp == 1) return state_.warp_intensity;
     if ((state_.warp == 2 || state_.warp == 3) && i >= 4) return state_.warp_intensity;
     return 0.0f;
   }
 
   float warpOffsetSamples(int i) const {
+    if (state_.tape_heads && i < kTapeHeadCount && state_.enabled) {
+      const float offset_sec = (0.0015f + static_cast<float>(i) * 0.0012f) * state_.warp_intensity;
+      return std::max(1.0f, offset_sec * sample_rate_);
+    }
     if (state_.warp != 3 || i < 4 || !state_.enabled) return 1.0f;
     const float normalized_index = static_cast<float>(i - 3) / 4.0f;
     const float offset_sec = (0.006f + normalized_index * 0.042f) * state_.warp_intensity;
@@ -532,52 +634,35 @@ private:
     const float input_feed_r = input_r + feedback_r_;
     float sum_l = 0.0f;
     float sum_r = 0.0f;
-    float sum_gain = 0.0f;
     for (int i = 0; i < kTapCount; ++i) {
       const size_t index = static_cast<size_t>(i);
-      const float gain = tapGain(i);
-      sum_gain += gain;
-      const float vibrato_multiplier =
-          state_.warp == 2 && i >= 4
-              ? 1.0f + state_.warp_intensity * (i >= 6 ? 3.0f : 1.7f)
-              : state_.warp == 3 && i >= 4 ? 1.0f + state_.warp_intensity * 1.4f : 1.0f;
-      const float vibrato_depth = state_.vibrato * 0.008f * (state_.diffuse ? 0.55f : 1.0f) * vibrato_multiplier;
-      const float vibrato = std::sin(vibrato_phase_[index]) * vibrato_depth;
-      vibrato_phase_[index] += 2.0f * kPi * kTapVibratoRates[index] / sample_rate_;
+      const float gain = tap_gain_[index];
+      const float vibrato = std::sin(vibrato_phase_[index]) * vibrato_depth_seconds_[index];
+      vibrato_phase_[index] += vibrato_phase_increment_[index];
       if (vibrato_phase_[index] >= 2.0f * kPi) vibrato_phase_[index] -= 2.0f * kPi;
 
-      const float delay_samples = std::max(1.0f, (tapTimeSeconds(i) + vibrato) * sample_rate_);
+      const float delay_samples = std::max(1.0f, tap_time_samples_[index] + vibrato * sample_rate_);
       const float delayed_l = tap_l_[index].read(delay_samples) * gain;
       const float delayed_r = tap_r_[index].read(delay_samples) * gain;
       tap_l_[index].write(input_feed_l);
       tap_r_[index].write(input_feed_r);
 
-      const float wet = warpWet(i);
+      const float wet = warp_wet_[index];
       const float dry = 1.0f - wet;
       const float filtered_l = warp_l_[index].process(delayed_l);
       const float filtered_r = warp_r_[index].process(delayed_r);
       offset_l_[index].write(filtered_l);
       offset_r_[index].write(filtered_r);
-      const float offset_l = offset_l_[index].read(warpOffsetSamples(i));
-      const float offset_r = offset_r_[index].read(warpOffsetSamples(i));
+      const float offset_l = offset_l_[index].read(warp_offset_samples_[index]);
+      const float offset_r = offset_r_[index].read(warp_offset_samples_[index]);
       const float warped_l = delayed_l * dry + offset_l * wet;
       const float warped_r = delayed_r * dry + offset_r * wet;
-      const float pan = tapPan(i);
-      if (pan <= 0.0f) {
-        const float angle = (pan + 1.0f) * kPi * 0.5f;
-        sum_l += warped_l + warped_r * std::cos(angle);
-        sum_r += warped_r * std::sin(angle);
-      } else {
-        const float angle = pan * kPi * 0.5f;
-        sum_l += warped_l * std::cos(angle);
-        sum_r += warped_r + warped_l * std::sin(angle);
-      }
+      sum_l += warped_l * tap_left_from_left_[index] + warped_r * tap_left_from_right_[index];
+      sum_r += warped_l * tap_right_from_left_[index] + warped_r * tap_right_from_right_[index];
     }
 
-    const float raw_feedback = state_.diffuse ? state_.repeats * 0.9f : state_.repeats;
-    const float normalized_feedback = sum_gain > 1.0f ? raw_feedback / sum_gain : raw_feedback;
-    feedback_l_ = low_cut_l_.process(high_cut_l_.process(sum_l)) * normalized_feedback;
-    feedback_r_ = low_cut_r_.process(high_cut_r_.process(sum_r)) * normalized_feedback;
+    feedback_l_ = low_cut_l_.process(high_cut_l_.process(sum_l)) * normalized_feedback_;
+    feedback_r_ = low_cut_r_.process(high_cut_r_.process(sum_r)) * normalized_feedback_;
 
     const float compressed_l = std::tanh(sum_l * 1.15f) * 0.8695652f * kWebAudioCompressorMakeupGain;
     const float compressed_r = std::tanh(sum_r * 1.15f) * 0.8695652f * kWebAudioCompressorMakeupGain;
@@ -609,7 +694,18 @@ private:
   Biquad low_cut_r_{};
   BlockDelay output_latency_l_;
   BlockDelay output_latency_r_;
+  std::array<float, kTapCount> tap_gain_{};
+  std::array<float, kTapCount> tap_time_samples_{};
+  std::array<float, kTapCount> tap_left_from_left_{};
+  std::array<float, kTapCount> tap_left_from_right_{};
+  std::array<float, kTapCount> tap_right_from_left_{};
+  std::array<float, kTapCount> tap_right_from_right_{};
+  std::array<float, kTapCount> warp_wet_{};
+  std::array<float, kTapCount> warp_offset_samples_{};
+  std::array<float, kTapCount> vibrato_depth_seconds_{};
+  std::array<float, kTapCount> vibrato_phase_increment_{};
   std::array<float, kTapCount> vibrato_phase_{};
+  float normalized_feedback_ = 0.0f;
   float feedback_l_ = 0.0f;
   float feedback_r_ = 0.0f;
 };

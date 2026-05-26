@@ -264,7 +264,6 @@ const SCENE_SIGNAL_RUNTIME_KEYS = [
   'degradeSaturation',
   'dynamicsSaturationDrive',
   'endCompMix',
-  'masterSatDrive',
 ] as const satisfies readonly (keyof SliderState)[];
 
 function hasSceneLevel(value: number): boolean {
@@ -671,10 +670,7 @@ function buildSceneSignalModel(state: SliderState): SceneSignalModel {
   const freezeActive = !!state.spectralFreezeEnabled && hasSceneLevel(state.spectralFreezeMix);
   const characterEnabled = !!state.dynamicsEnabled && !!state.characterEnabled;
   const degradeEnabled = !!state.dynamicsEnabled && !!state.degradeEnabled;
-  const saturationEnabled = (
-    (!!state.dynamicsEnabled && !!state.dynamicsSaturationEnabled) ||
-    (!state.dynamicsEnabled && hasSceneLevel(state.masterSatDrive))
-  );
+  const saturationEnabled = !!state.dynamicsSaturationEnabled;
   const endCompEnabled = !!state.dynamicsEnabled && !!state.endCompEnabled;
   const characterLevel = characterEnabled ? clamp01(state.characterMix) : 0;
   const degradeLevel = degradeEnabled
@@ -685,10 +681,7 @@ function buildSceneSignalModel(state: SliderState): SceneSignalModel {
         clamp01(state.degradeSaturation),
       )
     : 0;
-  const saturationLevel = Math.max(
-    state.dynamicsEnabled && state.dynamicsSaturationEnabled ? clamp01(state.dynamicsSaturationDrive) : 0,
-    !state.dynamicsEnabled ? clamp01(state.masterSatDrive) : 0,
-  );
+  const saturationLevel = saturationEnabled ? clamp01(state.dynamicsSaturationDrive) : 0;
   const endCompLevel = endCompEnabled ? clamp01(state.endCompMix ?? 1) : 0;
 
   const fxNodes = [

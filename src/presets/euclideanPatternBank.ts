@@ -63,6 +63,10 @@ function coerceNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+function coerceMidiNote(value: unknown, fallback: number): number {
+  return Math.max(0, Math.min(127, Math.round(coerceNumber(value, fallback))));
+}
+
 function coerceString(value: unknown, fallback: string): string {
   return typeof value === 'string' && value.trim() ? value : fallback;
 }
@@ -89,13 +93,18 @@ function extractLanePatternData(
 ): Record<string, unknown> {
   const lane = getLaneNumber(laneIndex);
   const stateRecord = state as unknown as Record<string, unknown>;
-  return {
+  const data: Record<string, unknown> = {
     euclideanPatternEnabled: stateRecord[`${prefix}Euclid${lane}Enabled`],
     euclideanPatternPreset: stateRecord[`${prefix}Euclid${lane}Preset`],
     euclideanPatternSteps: stateRecord[`${prefix}Euclid${lane}Steps`],
     euclideanPatternHits: stateRecord[`${prefix}Euclid${lane}Hits`],
     euclideanPatternRotation: stateRecord[`${prefix}Euclid${lane}Rotation`],
   };
+  if (prefix === 'synth') {
+    data.euclideanPatternNoteMin = stateRecord[`synthEuclid${lane}NoteMin`];
+    data.euclideanPatternNoteMax = stateRecord[`synthEuclid${lane}NoteMax`];
+  }
+  return data;
 }
 
 function normalizeSpecificLanePatternData(
@@ -130,13 +139,28 @@ function buildLaneStateFromPatternData(
     ?? normalizeSpecificLanePatternData(data, prefix, 0)
     ?? normalizeSpecificLanePatternData(data, alternatePrefix, 0)
     ?? normalizePatternData(data);
-  return {
+  const next: Record<string, unknown> = {
     [`${prefix}Euclid${lane}Enabled`]: pattern.enabled,
     [`${prefix}Euclid${lane}Preset`]: pattern.preset,
     [`${prefix}Euclid${lane}Steps`]: pattern.steps,
     [`${prefix}Euclid${lane}Hits`]: pattern.hits,
     [`${prefix}Euclid${lane}Rotation`]: pattern.rotation,
   };
+  if (prefix === 'synth') {
+    const sourceLane = getLaneNumber(laneIndex);
+    const sourcePrefix = `synthEuclid${sourceLane}`;
+    const lowFallback = lane === 1 ? 64 : lane === 2 ? 76 : lane === 3 ? 52 : 88;
+    const highFallback = lane === 1 ? 76 : lane === 2 ? 88 : lane === 3 ? 64 : 96;
+    const rawLow = data.euclideanPatternNoteMin ?? data[`${sourcePrefix}NoteMin`];
+    const rawHigh = data.euclideanPatternNoteMax ?? data[`${sourcePrefix}NoteMax`];
+    if (rawLow !== undefined || rawHigh !== undefined) {
+      const low = coerceMidiNote(rawLow, lowFallback);
+      const high = coerceMidiNote(rawHigh, highFallback);
+      next[`synthEuclid${lane}NoteMin`] = Math.min(low, high);
+      next[`synthEuclid${lane}NoteMax`] = Math.max(low, high);
+    }
+  }
+  return next;
 }
 
 function buildNeutralDrumLaneDefaults(lane: 2 | 3 | 4): Record<string, unknown> {
@@ -257,9 +281,9 @@ export function buildDrumEuclideanStateFromPatternData(
   return {
     drumEuclidMasterEnabled: true,
     drumEuclidBaseBPM: 120,
-    drumEuclidTempo: 120,
+    drumEuclidTempo: 1,
     drumEuclidSwing: 0,
-    drumEuclidDivision: '1/16',
+    drumEuclidDivision: 16,
     drumEuclid1Enabled: pattern.enabled,
     drumEuclid1Preset: pattern.preset,
     drumEuclid1Steps: pattern.steps,

@@ -35,6 +35,12 @@ export interface InterpolatedDualRange {
   range?: { min: number; max: number };
 }
 
+export function clampMorphPosition(position: number, scale100: boolean = false): number {
+  if (!Number.isFinite(position)) return 0;
+  const max = scale100 ? 100 : 1;
+  return Math.max(0, Math.min(max, position));
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ENDPOINT DETECTION
 // ═══════════════════════════════════════════════════════════════════════════
@@ -45,7 +51,7 @@ export interface InterpolatedDualRange {
  * @param scale100 - Whether position is on 0-100 scale (main morph) or 0-1 scale (drum morph)
  */
 export function isAtEndpoint0(position: number, _scale100: boolean = false): boolean {
-  return position === 0;
+  return clampMorphPosition(position, _scale100) === 0;
 }
 
 /**
@@ -54,7 +60,7 @@ export function isAtEndpoint0(position: number, _scale100: boolean = false): boo
  * @param scale100 - Whether position is on 0-100 scale (main morph) or 0-1 scale (drum morph)
  */
 export function isAtEndpoint1(position: number, scale100: boolean = false): boolean {
-  return position === (scale100 ? 100 : 1);
+  return clampMorphPosition(position, scale100) === (scale100 ? 100 : 1);
 }
 
 /**
@@ -100,6 +106,7 @@ export function interpolateDualRange(
   state1: EndpointState,
   morphPosition: number
 ): InterpolatedDualRange {
+  const position = clampMorphPosition(morphPosition);
   let morphedMin: number;
   let morphedMax: number;
   
@@ -107,20 +114,20 @@ export function interpolateDualRange(
     // Dual → Dual: morph min→min, max→max
     const range0 = state0.range!;
     const range1 = state1.range!;
-    morphedMin = range0.min + (range1.min - range0.min) * morphPosition;
-    morphedMax = range0.max + (range1.max - range0.max) * morphPosition;
+    morphedMin = range0.min + (range1.min - range0.min) * position;
+    morphedMax = range0.max + (range1.max - range0.max) * position;
   } else if (state0.isDualMode && !state1.isDualMode) {
     // Dual → Single: both min and max morph toward single value
     const range0 = state0.range!;
     const val1 = state1.value;
-    morphedMin = range0.min + (val1 - range0.min) * morphPosition;
-    morphedMax = range0.max + (val1 - range0.max) * morphPosition;
+    morphedMin = range0.min + (val1 - range0.min) * position;
+    morphedMax = range0.max + (val1 - range0.max) * position;
   } else if (!state0.isDualMode && state1.isDualMode) {
     // Single → Dual: start both at single value, morph to min/max
     const val0 = state0.value;
     const range1 = state1.range!;
-    morphedMin = val0 + (range1.min - val0) * morphPosition;
-    morphedMax = val0 + (range1.max - val0) * morphPosition;
+    morphedMin = val0 + (range1.min - val0) * position;
+    morphedMax = val0 + (range1.max - val0) * position;
   } else {
     // Single → Single: no dual mode involved
     return { isDualMode: false };

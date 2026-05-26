@@ -132,6 +132,8 @@ constexpr float kReverbBoostEpsilon = 0.001f;
   const float attack_coeff = std::exp(-1.0f / std::max(1.0f, attack_ms * 0.001f * static_cast<float>(sample_rate)));
   const float release_coeff = std::exp(-1.0f / std::max(1.0f, release_ms * 0.001f * static_cast<float>(sample_rate)));
   const float ratio = clampFloat(fx.reverb_pre_comp_ratio, 1.0f, 20.0f);
+  const float knee = clampFloat(fx.reverb_pre_comp_knee, 0.0f, 40.0f);
+  const float lower_gain = dbToGain(clampFloat(fx.reverb_pre_comp_threshold, -60.0f, 0.0f) - knee * 0.5f);
   const float ratio_depth = clampFloat((ratio - 1.0f) / 4.0f, 0.0f, 1.0f);
   const float native_auto_makeup = 1.0f + ratio_depth * 0.18f;
   const float input_makeup = clampFloat(fx.reverb_pre_comp_makeup, 0.5f, 4.0f);
@@ -141,8 +143,9 @@ constexpr float kReverbBoostEpsilon = 0.001f;
     const float left = reverb_bus_l[frame];
     const float right = reverb_bus_r[frame];
     const float detector = std::max(std::max(std::abs(left), std::abs(right)), 1.0e-9f);
-    const float level_db = 20.0f * std::log10(detector);
-    const float target_gain = std::pow(10.0f, reverbPreCompressorGainDbForLevel(level_db) / 20.0f);
+    const float target_gain = detector <= lower_gain
+        ? 1.0f
+        : std::pow(10.0f, reverbPreCompressorGainDbForLevel(20.0f * std::log10(detector)) / 20.0f);
     const float coeff = target_gain < reverb_pre_comp_gain ? attack_coeff : release_coeff;
     reverb_pre_comp_gain = target_gain + (reverb_pre_comp_gain - target_gain) * coeff;
     const float gain = reverb_pre_comp_gain * native_auto_makeup * input_makeup;

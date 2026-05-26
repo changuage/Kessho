@@ -28,6 +28,7 @@
     { "name": "ResetRng", "id": 26 },
     { "name": "SetModulationRange", "id": 27 },
     { "name": "ResetSequencerLaneHome", "id": 28 },
-    { "name": "DiceSequencerLane", "id": 29 }
+    { "name": "DiceSequencerLane", "id": 29 },
+    { "name": "SetSourceOverride", "id": 30 }
   ]
 }

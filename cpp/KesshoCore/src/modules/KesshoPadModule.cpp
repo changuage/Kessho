@@ -358,6 +358,18 @@ public:
     return 1;
   }
 
+  int setVoiceFrequency(int voice_index, float frequency) override {
+    if (instance_ == nullptr ||
+        voice_index < 0 ||
+        voice_index >= PAD_NUM_VOICES ||
+        !std::isfinite(frequency) ||
+        frequency <= 0.0f) {
+      return 0;
+    }
+    pad_instance_set_voice_frequency(instance_, voice_index, frequency);
+    return 1;
+  }
+
   int setSourceMacros(int source_index, float morph, float distance, float expression) override {
     if (instance_ == nullptr || source_index < 0 || source_index >= PAD_NUM_PADS) {
       return 0;

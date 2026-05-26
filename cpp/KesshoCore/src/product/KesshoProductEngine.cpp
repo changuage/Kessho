@@ -49,9 +49,6 @@
   harmony = {};
   master_gain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_GAIN;
   setMasterLimiterCeilingDb(kessho::product::generated::KESSHO_PRODUCT_DEFAULT_MASTER_LIMITER_CEILING_DB);
-  master_saturation_mode = 0u;
-  master_saturation_drive = 0.0f;
-  master_saturation_tone = 0.5f;
   fx = {};
   for (uint32_t i = 0; i < kGranularVoiceCount; ++i) {
     fx.granular_voices[i] = {};
@@ -70,6 +67,19 @@
     sources[i] = {};
     sources[i].source_id = i + 1;
     sources[i].preset_id = defaultSourcePresetId(sources[i].source_id);
+    if (sources[i].source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+      for (const auto& voice : kessho::product::generated::KESSHO_PRODUCT_DRUM_VOICES) {
+        if (voice.index >= kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT) {
+          continue;
+        }
+        const auto* default_preset = defaultDrumVoicePreset(voice.index);
+        if (default_preset != nullptr) {
+          sources[i].drum_voice_preset_a_ids[voice.index] = default_preset->id;
+          sources[i].drum_voice_preset_b_ids[voice.index] = default_preset->id;
+        }
+      }
+    }
+    compileSourcePresetRuntime(sources[i]);
   }
   for (uint32_t i = 0; i < kMaxLaneCount; ++i) {
     synth_lanes[i] = {};
@@ -87,6 +97,7 @@
   for (ModulationRange& range : modulation_ranges) {
     range = {};
   }
+  resetModulationRouteCache();
   resetFxSampleHoldOwners();
   resetSidechainRuntime();
   resetMasterTelemetryState();
@@ -107,6 +118,7 @@
   pad_voice_cursors[0] = 0;
   pad_voice_cursors[1] = 0;
   clearPadVoiceReleases(0u);
+  resetMidiRuntimeState();
   resetPadPostChains();
   resetLeadPostChains();
   configureFxModules();
@@ -117,12 +129,19 @@
   snapshot_loaded_once = false;
   control_event_count = 0;
   sequencer_events.clear();
+  for (LaneState& lane : synth_lanes) {
+    resetSequencerLaneRuntime(lane);
+  }
+  for (LaneState& lane : drum_lanes) {
+    resetSequencerLaneRuntime(lane);
+  }
   for (Voice& voice : voices) {
     voice = {};
   }
   for (ModulationRange& range : modulation_ranges) {
     range = {};
   }
+  resetModulationRouteCache();
   resetFxSampleHoldOwners();
   resetSidechainRuntime();
   resetMasterTelemetryState();
@@ -175,6 +194,7 @@
   pad_voice_cursors[0] = 0;
   pad_voice_cursors[1] = 0;
   clearPadVoiceReleases(0u);
+  resetMidiRuntimeState();
   resetPadPostChains();
   resetLeadPostChains();
   configureFxModules();

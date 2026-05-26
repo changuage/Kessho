@@ -23,6 +23,10 @@ float pickIndexedNote(const float* notes, int count, uint32_t seed) {
   return notes[index];
 }
 
+int nearestOctaveOffset(float center, float root_midi) {
+  return static_cast<int>(std::round((center - root_midi) / 12.0f));
+}
+
 } // namespace
 
   float KesshoProductEngine::resolveHarmonyMidi(
@@ -57,7 +61,7 @@ float pickIndexedNote(const float* notes, int count, uint32_t seed) {
   const uint32_t root_pitch_class = positiveModulo(roundedInt(harmony.root_midi), 12u);
   if (harmony.voicing_mode == 0u) {
     const uint32_t degree = (step_id + lane_index + progression_degree) % scale_count;
-    const int octave_offset = static_cast<int>(std::floor((clampFloat(lane.midi_note, 0.0f, 127.0f) - harmony.root_midi) / 12.0f));
+    const int octave_offset = nearestOctaveOffset(clampFloat(lane.midi_note, 0.0f, 127.0f), harmony.root_midi);
     const float resolved = harmony.root_midi + static_cast<float>(octave_offset * 12 + intervals[degree]);
     return clampFloat(resolved, 0.0f, 127.0f);
   }
@@ -90,7 +94,7 @@ float pickIndexedNote(const float* notes, int count, uint32_t seed) {
 
   if (chord_tone_count == 0 && passing_tone_count == 0) {
     const uint32_t degree = (step_id + lane_index + progression_degree) % scale_count;
-    const int octave_offset = static_cast<int>(std::floor((center - harmony.root_midi) / 12.0f));
+    const int octave_offset = nearestOctaveOffset(center, harmony.root_midi);
     const float resolved = harmony.root_midi + static_cast<float>(octave_offset * 12 + intervals[degree]);
     return clampFloat(resolved, 0.0f, 127.0f);
   }

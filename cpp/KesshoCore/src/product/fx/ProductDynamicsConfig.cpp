@@ -31,12 +31,9 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
         const float local = (t - kPedalZone) / (1.0f - kPedalZone);
         return pedal_max_hz * std::pow(creative_max_hz / pedal_max_hz, local);
       };
-      const float legacy_master_saturation_drive = clampFloat(master_saturation_drive, 0.0f, 1.0f);
-      const bool legacy_master_saturation_enabled =
-          !fx.dynamics_enabled && legacy_master_saturation_drive > 0.0001f;
-      const bool dynamics_enabled = fx.dynamics_enabled || legacy_master_saturation_enabled;
-      const bool character_enabled = dynamics_enabled && fx.dynamics_character_enabled;
-      const bool degrade_enabled = dynamics_enabled && fx.dynamics_degrade_enabled;
+      const bool saturation_enabled = fx.dynamics_saturation_enabled;
+      const bool character_enabled = fx.dynamics_enabled && fx.dynamics_character_enabled;
+      const bool degrade_enabled = fx.dynamics_enabled && fx.dynamics_degrade_enabled;
       const bool end_comp_enabled = fx.dynamics_enabled && fx.dynamics_end_comp_enabled;
       const uint32_t character_mode = character_enabled ? clampU32(fx.dynamics_character_mode, 0u, 2u) : 0u;
       const bool mode_active = character_mode != 0u;
@@ -366,12 +363,12 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
           : 0.018f + degrade_wobble_speed * 0.36f + drift * 0.12f + contribution_material_wear * 0.05f + mod_wow * 0.04f;
       const float wow_frequency =
           character_wow_frequency + (degrade_wow_frequency - character_wow_frequency) * degrade_motion_weight;
-      const bool master_sat_active = fx.dynamics_enabled && fx.dynamics_saturation_enabled;
+      const bool master_sat_active = saturation_enabled;
       const float master_sat_drive = master_sat_active ? unit(fx.dynamics_saturation_drive) : 0.0f;
       const float end_wet = end_comp_enabled ? unit(fx.dynamics_end_comp_mix) : 0.0f;
       const bool worklet_active = wet > 0.0001f || master_sat_drive > 0.0001f || (end_comp_enabled && end_wet > 0.0001f);
 
-      params[kDynActive] = worklet_active || legacy_master_saturation_enabled ? 1.0f : 0.0f;
+      params[kDynActive] = worklet_active ? 1.0f : 0.0f;
       params[kDynAllpassActive] = 0.0f;
       params[kDynDry] = dry;
       params[kDynWet] = wet;
@@ -490,18 +487,11 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
       params[kDynCompressorMakeup] = 1.0f + character_mix * (shallow_flavor * 0.05f + abyss_flavor * 0.16f);
       params[kDynSaturation] = saturation;
       params[kDynCorrosion] = corrosion;
-      params[kDynMasterSatActive] = (master_sat_drive > 0.0001f || legacy_master_saturation_enabled) ? 1.0f : 0.0f;
-      params[kDynMasterSatMode] = static_cast<float>(
-          legacy_master_saturation_enabled
-              ? clampU32(master_saturation_mode, 0u, 4u)
-              : (master_sat_active ? clampU32(fx.dynamics_saturation_mode, 0u, 4u) : 0u));
-      params[kDynMasterSatDrive] = legacy_master_saturation_enabled ? legacy_master_saturation_drive : master_sat_drive;
-      params[kDynMasterSatTone] = legacy_master_saturation_enabled
-          ? clampFloat(master_saturation_tone, 0.0f, 1.0f)
-          : (master_sat_active ? unit(fx.dynamics_saturation_tone) : 0.5f);
-      params[kDynMasterSatBias] = legacy_master_saturation_enabled
-          ? 0.5f
-          : (master_sat_active ? unit(fx.dynamics_saturation_bias) : 0.5f);
+      params[kDynMasterSatActive] = master_sat_drive > 0.0001f ? 1.0f : 0.0f;
+      params[kDynMasterSatMode] = static_cast<float>(master_sat_active ? clampU32(fx.dynamics_saturation_mode, 0u, 4u) : 0u);
+      params[kDynMasterSatDrive] = master_sat_drive;
+      params[kDynMasterSatTone] = master_sat_active ? unit(fx.dynamics_saturation_tone) : 0.5f;
+      params[kDynMasterSatBias] = master_sat_active ? unit(fx.dynamics_saturation_bias) : 0.5f;
       params[kDynEndCompActive] = end_comp_enabled && end_wet > 0.0001f ? 1.0f : 0.0f;
       params[kDynEndCompThreshold] = fx.dynamics_end_comp_threshold;
       params[kDynEndCompKnee] = std::max(0.0f, fx.dynamics_end_comp_knee);

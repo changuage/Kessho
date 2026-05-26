@@ -1,8 +1,4 @@
-import type {
-  AudioEngine,
-  DynamicsVisualTelemetrySnapshot,
-  EarthTextureDebugState,
-} from './engine';
+import type { AudioEngine } from './engine';
 
 export type {
   EarthTextureDebugState,
@@ -34,41 +30,10 @@ const eagerVoidMethods = new Set<EngineMethod>([
   'suspend',
 ]);
 
-const EMPTY_DYNAMICS_VISUAL_TELEMETRY: DynamicsVisualTelemetrySnapshot = {
-  contextTime: 0,
-  endCompHandledByWorklet: false,
-  endCompReductionDb: 0,
-  worklet: null,
-  sidechainEvents: [],
-};
-
-const EMPTY_EARTH_TEXTURE_DEBUG_STATE: EarthTextureDebugState = {
-  waves: null,
-  birds: null,
-  birds2: null,
-  frogs: null,
-};
-
-const preInitGetterFallbacks: Partial<Record<EngineMethod, () => unknown>> = {
+const preInitNullableLifecycleGetters: Partial<Record<EngineMethod, () => unknown>> = {
   getAudioContext: () => null,
-  getCurrentFilterFreq: () => 1000,
-  getCurrentLfo2Value: () => 0,
-  getCurrentLfoValue: () => 0,
-  getCurrentPadFilterFreq: () => 1000,
-  getCurrentPadLfoValue: () => 0,
-  getDrumVoiceAnalyser: () => undefined,
-  getDynamicsAnalyser: () => null,
-  getDynamicsVisualTelemetry: () => ({ ...EMPTY_DYNAMICS_VISUAL_TELEMETRY, sidechainEvents: [] }),
-  getEarthTextureDebugState: () => ({ ...EMPTY_EARTH_TEXTURE_DEBUG_STATE }),
-  getGranularActiveGrainCount: () => 0,
-  getGranularBufferWaveform: () => null,
-  getGranularVoicePositions: () => [0, 0, 0, 0],
-  getGranularWriteHeadPosition: () => 0,
-  getLeadMorphedParams: () => null,
   getLimiterNode: () => null,
   getMediaStream: () => null,
-  getRecordableBusNodes: () => ({}),
-  getTransportDebugState: () => null,
 };
 
 function normalizeEngineMode(mode: string | null): AudioEngineRuntimeMode | null {
@@ -103,6 +68,7 @@ function isQueueableMethod(method: EngineMethod): boolean {
   return (
     method.startsWith('set') ||
     method.startsWith('update') ||
+    method.startsWith('capture') ||
     method.startsWith('reset') ||
     method.startsWith('dice')
   );
@@ -196,10 +162,10 @@ function createMethodProxy(method: EngineMethod): (...args: unknown[]) => unknow
       return undefined;
     }
 
-    const fallback = preInitGetterFallbacks[method];
-    if (fallback) {
+    const nullableLifecycleGetter = preInitNullableLifecycleGetters[method];
+    if (nullableLifecycleGetter) {
       void loadAudioEngine();
-      return fallback();
+      return nullableLifecycleGetter();
     }
 
     throw new Error(`AudioEngine.${method} is unavailable before ${getAudioEngineRuntimeMode()} has initialized`);

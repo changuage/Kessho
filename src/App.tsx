@@ -41,7 +41,7 @@ import {
 } from './audio/waterPresets';
 import { applyMorphToState, setDrumMorphOverride, clearDrumMorphEndpointOverrides, clearMidMorphOverrides, setDrumMorphDualRangeOverride, getDrumMorphDualRangeOverrides, interpolateDrumMorphDualRanges } from './audio/drumMorph';
 
-import { isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from './audio/morphUtils';
+import { clampMorphPosition, isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from './audio/morphUtils';
 import { applyPreset, USER_PREFERENCE_KEYS } from './ui/presetUtils';
 import {
   clearRuntimeFlashKeys,
@@ -63,6 +63,7 @@ import {
   emitVisualizerPulses,
   setVisualizerSequencerState,
 } from './ui/visualizer/visualizerSignals';
+import { VISUALIZER_PRESET_SCOPE } from './ui/visualizer/visualizerPresetStore';
 import {
   getGranularPresetData,
   getGranularPresetSliderModes,
@@ -82,17 +83,33 @@ import { useJourneyPresets } from './presets/useJourneyPresets';
 import { validateJourneyConfig, type JourneyValidationResult } from './presets/journeyPresetCodec';
 import type { IPresetStore } from './presets/PresetStore';
 import { extractPresetVersionMetadata } from './presets/presetUtils';
-import { SHARED_PRESET_TEST_MODE } from './presets/sharedMode';
+import { SHARED_PRESET_TEST_MODE, isLocalPresetStoreOverride } from './presets/sharedMode';
 import type { PresetEntry, PresetSummary } from './presets/types';
 import { buildPresetVersionMetadata } from './presets/versionMetadataHelpers';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
+import { normalizeSequencerEvolveConfigs } from './ui/sequencer/useEuclideanSequencer';
+import { stepOverridesForEngineSubLaneState } from './ui/sequencer/engineStepOverrides';
+import { drumPitchBaseMidiFromState, drumPitchUiValuesToEngineOffsets } from './ui/sequencer/drumPitchSequencer';
 import {
   createEmptyStepOverrides as createSerializedEmptyStepOverrides,
   deserializeStepOverrides,
   serializeStepOverrides,
 } from './ui/sequencer/stepOverrideSerialization';
-import type { ClockDivision, LaneDirection, PitchBindingMode } from './audio/drumSeqTypes';
+import { inferLegacySequencerSubLaneStatesFromOverrides } from './ui/sequencer/sequencePresetLane';
+import {
+  SCALES,
+  scaleDegreeToSemitone,
+  type ClockDivision,
+  type LaneDirection,
+  type PitchBindingMode,
+  type TrigCondition,
+} from './audio/drumSeqTypes';
+import { normalizeSequencerClockDivisions } from './audio/sequencerClockDivisions';
+import { normalizeSequencerLaneDirection } from './audio/sequencerLaneDirection';
+import { normalizeSequencerPitchBindingModes } from './audio/sequencerPitchBinding';
+import { normalizeSequencerPitchSettingsArray } from './audio/sequencerPitchSettings';
+import { normalizeSequencerSwing, normalizeSequencerSwings } from './audio/sequencerSwing';
 import type { SliderPageId } from './ui/sliderHelpCatalog';
 import { isIOSLikeDevice, isMobileDevice } from './platform';
 import { useVisibleInterval } from './ui/hooks/useVisibleInterval';
@@ -242,6 +259,18 @@ const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 
 const DEFAULT_AUTO_START_PRESET_NAME = 'String Waves';
 const CLOUD_ENABLED = isCloudPresetConfigEnabled();
 const CAPACITOR_LOCAL_STATE_PRESET_SCOPE = 'global';
+const APP_SYNTH_LANE_ENABLED_KEYS = [
+  'synthEuclid1Enabled',
+  'synthEuclid2Enabled',
+  'synthEuclid3Enabled',
+  'synthEuclid4Enabled',
+] as const satisfies readonly (keyof SliderState)[];
+const APP_DRUM_LANE_ENABLED_KEYS = [
+  'drumEuclid1Enabled',
+  'drumEuclid2Enabled',
+  'drumEuclid3Enabled',
+  'drumEuclid4Enabled',
+] as const satisfies readonly (keyof SliderState)[];
 const isSonicParityMode = () =>
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1';
 type AudioEngineRuntimeMode = 'web-ts' | 'core-product' | 'core-smoke';
@@ -581,6 +610,7 @@ interface SavedPreset {
   synthLinked?: boolean[];
   drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
+  drumPitchSettings?: PitchSettings[];
   synthPitchSettings?: PitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
 }
@@ -591,8 +621,195 @@ const DEFAULT_EUCLIDEAN_LINKED = [false, false, false, false];
 const DEFAULT_SYNTH_PITCH_BINDING_MODES: PitchBindingMode[] = ['polyrhythmic', 'polyrhythmic', 'polyrhythmic', 'polyrhythmic'];
 const PRESET_LOAD_FADE_MS = 2000;
 type EvolvedSubLanePatch = Partial<Record<SubLaneKind, Partial<SubLaneState>>>;
-type EvolvedOverrideState = { laneIndex: number; version: number; data: Partial<StepOverrides>; swing?: number; subLaneStates?: EvolvedSubLanePatch };
-const EVOLVED_SUBLANE_KEYS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'slice', 'reverse'];
+type EvolvedRangeOverride = { min: number; max: number };
+type EvolvedOverrideState = { laneIndex: number; version: number; data: Partial<StepOverrides> & { pitchSettings?: (PitchSettings | null)[] }; swing?: number; subLaneStates?: EvolvedSubLanePatch };
+const EVOLVED_SUBLANE_KEYS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance'];
+const EVOLVED_SUBLANE_RANGE_DEFAULTS: Partial<Record<SubLaneKind, { min: number; max: number }>> = {
+  expression: { min: 0.75, max: 1 },
+  morph: { min: 0.25, max: 0.75 },
+  distance: { min: 0, max: 1 },
+};
+
+function defaultEvolvedSubLaneState(lane: SubLaneKind): SubLaneState {
+  const range = EVOLVED_SUBLANE_RANGE_DEFAULTS[lane];
+  return {
+    enabled: false,
+    steps: lane === 'pitch' ? 5 : 4,
+    direction: 'forward',
+    ...(lane === 'pitch' ? { scaleQuantize: false } : {}),
+    ...(range ? { valueMode: 'sequence' as const, rangeMin: range.min, rangeMax: range.max } : {}),
+  };
+}
+
+function defaultEvolvedSubLaneStates(laneCount: number): Record<SubLaneKind, SubLaneState>[] {
+  return Array.from({ length: laneCount }, () => ({
+    pitch: defaultEvolvedSubLaneState('pitch'),
+    expression: defaultEvolvedSubLaneState('expression'),
+    morph: defaultEvolvedSubLaneState('morph'),
+    distance: defaultEvolvedSubLaneState('distance'),
+    slice: defaultEvolvedSubLaneState('slice'),
+    reverse: defaultEvolvedSubLaneState('reverse'),
+  }));
+}
+
+function sanitizeSequencerSubLaneState(lane: SubLaneKind, state: Partial<SubLaneState> | undefined): SubLaneState {
+  const fallback = defaultEvolvedSubLaneState(lane);
+  const steps = typeof state?.steps === 'number' && Number.isFinite(state.steps)
+    ? Math.max(1, Math.min(16, Math.floor(state.steps)))
+    : fallback.steps;
+  const next: SubLaneState = {
+    ...fallback,
+    enabled: state?.enabled === true,
+    steps,
+    direction: normalizeSequencerLaneDirection(state?.direction, fallback.direction),
+  };
+  if (lane === 'pitch') {
+    next.scaleQuantize = state?.scaleQuantize === true;
+  }
+  const rangeFallback = EVOLVED_SUBLANE_RANGE_DEFAULTS[lane];
+  if (rangeFallback) {
+    const min = typeof state?.rangeMin === 'number' && Number.isFinite(state.rangeMin)
+      ? clampSequencerUnit(state.rangeMin)
+      : rangeFallback.min;
+    const max = typeof state?.rangeMax === 'number' && Number.isFinite(state.rangeMax)
+      ? clampSequencerUnit(state.rangeMax)
+      : rangeFallback.max;
+    next.valueMode = state?.valueMode === 'range' ? 'range' : 'sequence';
+    next.rangeMin = Math.min(min, max);
+    next.rangeMax = Math.max(min, max);
+  }
+  return next;
+}
+
+function sanitizeSequencerSubLaneStates(
+  states: Partial<Record<SubLaneKind, Partial<SubLaneState>>>[] | undefined,
+): Record<SubLaneKind, SubLaneState>[] | undefined {
+  if (!states) return undefined;
+  return states.map((state) => {
+    const partial = state && typeof state === 'object'
+      ? state as Partial<Record<SubLaneKind, Partial<SubLaneState>>>
+      : {};
+    return {
+      pitch: sanitizeSequencerSubLaneState('pitch', partial.pitch),
+      expression: sanitizeSequencerSubLaneState('expression', partial.expression),
+      morph: sanitizeSequencerSubLaneState('morph', partial.morph),
+      distance: sanitizeSequencerSubLaneState('distance', partial.distance),
+      slice: sanitizeSequencerSubLaneState('slice', partial.slice),
+      reverse: sanitizeSequencerSubLaneState('reverse', partial.reverse),
+    };
+  });
+}
+
+function restoreSequencerSubLaneStates(
+  states: Partial<Record<SubLaneKind, Partial<SubLaneState>>>[] | undefined,
+  overrides: SerializedStepOverrides | undefined,
+): Record<SubLaneKind, SubLaneState>[] | undefined {
+  const inferred = inferLegacySequencerSubLaneStatesFromOverrides(overrides);
+  if (!states || states.length === 0) {
+    return sanitizeSequencerSubLaneStates(inferred);
+  }
+  if (!inferred || inferred.length === 0) {
+    return sanitizeSequencerSubLaneStates(states);
+  }
+  const laneCount = Math.max(states.length, inferred.length);
+  return sanitizeSequencerSubLaneStates(Array.from({ length: laneCount }, (_, laneIndex) => ({
+    ...(inferred[laneIndex] ?? {}),
+    ...(states[laneIndex] ?? {}),
+  })));
+}
+
+function clampSequencerUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function rangeOverrideFromSubLaneState(
+  lane: SubLaneState | undefined,
+  fallbackMin: number,
+  fallbackMax: number,
+): { min: number; max: number } | null {
+  if (!lane?.enabled || lane.valueMode !== 'range') return null;
+  const min = clampSequencerUnit(typeof lane.rangeMin === 'number' ? lane.rangeMin : fallbackMin);
+  const max = clampSequencerUnit(typeof lane.rangeMax === 'number' ? lane.rangeMax : fallbackMax);
+  return { min: Math.min(min, max), max: Math.max(min, max) };
+}
+
+function rangeOverridesFromSubLaneStates(
+  states: Record<SubLaneKind, SubLaneState>[] | undefined,
+): Pick<StepOverrides, 'expressionRanges' | 'morphRanges' | 'distanceRanges'> {
+  return {
+    expressionRanges: Array.from({ length: 4 }, (_, index) =>
+      rangeOverrideFromSubLaneState(states?.[index]?.expression, 0.75, 1),
+    ),
+    morphRanges: Array.from({ length: 4 }, (_, index) =>
+      rangeOverrideFromSubLaneState(states?.[index]?.morph, 0, 1),
+    ),
+    distanceRanges: Array.from({ length: 4 }, (_, index) =>
+      rangeOverrideFromSubLaneState(states?.[index]?.distance, 0, 1),
+    ),
+  };
+}
+
+function stepOverridesWithRestoredRanges(
+  overrides: StepOverrides,
+  subLaneStates: Record<SubLaneKind, SubLaneState>[] | undefined,
+): StepOverrides {
+  return {
+    ...overrides,
+    ...rangeOverridesFromSubLaneStates(subLaneStates),
+  };
+}
+
+function drumStepOverridesForEngineRestore(
+  overrides: StepOverrides,
+  subLaneStates: Record<SubLaneKind, SubLaneState>[] | undefined,
+  pitchSettings: PitchSettings[],
+  state: SliderState,
+): StepOverrides {
+  const pitch = overrides.pitch.map((offsets, laneIdx) => {
+    if (!offsets) return null;
+    if (!subLaneStates?.[laneIdx]?.pitch?.enabled) return null;
+    return drumPitchUiValuesToEngineOffsets(
+      offsets,
+      pitchSettings[laneIdx],
+      drumPitchBaseMidiFromState(state, laneIdx),
+      subLaneStates[laneIdx]?.pitch?.scaleQuantize === true,
+    );
+  });
+  return stepOverridesForEngineSubLaneState({
+    ...stepOverridesWithRestoredRanges(overrides, subLaneStates),
+    pitch,
+  }, subLaneStates);
+}
+
+function synthPitchOverridesForEngine(
+  overrides: StepOverrides,
+  subLaneStates: Record<SubLaneKind, SubLaneState>[] | undefined,
+  pitchSettings: PitchSettings[],
+): StepOverrides['pitch'] {
+  return overrides.pitch.map((offsets, laneIdx) => {
+    if (!offsets) return null;
+    if (!subLaneStates?.[laneIdx]?.pitch?.enabled) return null;
+    const settings = pitchSettings[laneIdx];
+    if (!settings) return offsets;
+    if (settings.mode === 'noteRange') return null;
+    if (settings.mode === 'notes') {
+      const scaleIntervals = SCALES[settings.scale] || SCALES.Major || [0, 2, 4, 5, 7, 9, 11];
+      return offsets.map((degree) => settings.root + scaleDegreeToSemitone(degree, scaleIntervals));
+    }
+    return offsets.map((offset) => settings.root + offset);
+  });
+}
+
+function synthStepOverridesForEngineRestore(
+  overrides: StepOverrides,
+  subLaneStates: Record<SubLaneKind, SubLaneState>[] | undefined,
+  pitchSettings: PitchSettings[],
+): StepOverrides {
+  return stepOverridesForEngineSubLaneState({
+    ...stepOverridesWithRestoredRanges(overrides, subLaneStates),
+    pitch: synthPitchOverridesForEngine(overrides, subLaneStates, pitchSettings),
+  }, subLaneStates);
+}
 
 function normalizeEvolvedSubLanePatch(value: unknown): EvolvedSubLanePatch | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
@@ -604,13 +821,18 @@ function normalizeEvolvedSubLanePatch(value: unknown): EvolvedSubLanePatch | und
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+function emptyEvolvedRangeOverrides(): (EvolvedRangeOverride | null)[] {
+  return [null, null, null, null];
+}
+
 function mergeEvolvedSubLanePatch(
   current: Record<SubLaneKind, SubLaneState>[] | undefined,
   laneIndex: number,
   patch: EvolvedSubLanePatch | undefined,
 ): Record<SubLaneKind, SubLaneState>[] | undefined {
-  if (!current || !patch) return current;
-  return current.map((laneState, index) => index === laneIndex
+  if (!patch) return current;
+  const base = current ?? defaultEvolvedSubLaneStates(Math.max(4, laneIndex + 1));
+  return base.map((laneState, index) => index === laneIndex
     ? {
         ...laneState,
         ...Object.fromEntries(Object.entries(patch).map(([key, value]) => [
@@ -868,6 +1090,7 @@ function savedPresetFromFileData(
     synthLinked: data.synthLinked,
     drumSubLaneStates: data.drumSubLaneStates,
     synthSubLaneStates: data.synthSubLaneStates,
+    drumPitchSettings: data.drumPitchSettings,
     synthPitchSettings: data.synthPitchSettings,
     synthPitchBindingModes: data.synthPitchBindingModes,
   });
@@ -994,6 +1217,13 @@ function statePresetEntryToSavedPreset(
     versionCount: entry.versions.length,
     currentVersion: entry.currentVersion,
   };
+}
+
+function getLinkedVisualizerPresetName(entry: PresetEntry): string {
+  const version = entry.versions.find(candidate => candidate.v === entry.currentVersion)
+    ?? entry.versions[entry.versions.length - 1];
+  const ref = version?.refs?.visualizer;
+  return ref?.scope === VISUALIZER_PRESET_SCOPE || !ref?.scope ? ref?.name ?? '' : '';
 }
 
 async function loadCapacitorLocalStatePresets(): Promise<SavedPreset[]> {
@@ -1898,7 +2128,7 @@ const App: React.FC = () => {
 
   // Initialize cloud preset store if Supabase is configured
   useEffect(() => {
-    if (!CLOUD_ENABLED || isSonicParityMode()) {
+    if (!CLOUD_ENABLED || isSonicParityMode() || isLocalPresetStoreOverride()) {
       markCloudPresetStoreReady();
       return;
     }
@@ -1982,7 +2212,7 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!CLOUD_ENABLED || typeof window === 'undefined' || isSonicParityMode()) return;
+    if (!CLOUD_ENABLED || typeof window === 'undefined' || isSonicParityMode() || isLocalPresetStoreOverride()) return;
 
     const target = window as typeof window & {
       kesshoPresetV2Migration?: {
@@ -2098,7 +2328,7 @@ const App: React.FC = () => {
   const cloudAutoStartStoreInitPromiseRef = useRef<Promise<IPresetStore | null> | null>(null);
   const journeyOverridePromptResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
   const [journeyOverridePrompt, setJourneyOverridePrompt] = useState<JourneyOverridePromptState | null>(null);
-  const cloudPresetStoreReadyRef = useRef(!CLOUD_ENABLED || isSonicParityMode());
+  const cloudPresetStoreReadyRef = useRef(!CLOUD_ENABLED || isSonicParityMode() || isLocalPresetStoreOverride());
   const cloudPresetStoreReadyResolveRef = useRef<(() => void) | null>(null);
   const cloudPresetStoreReadyPromiseRef = useRef<Promise<void> | null>(null);
   if (cloudPresetStoreReadyPromiseRef.current === null) {
@@ -2315,6 +2545,8 @@ const App: React.FC = () => {
 
   // L4 State preset name tracking
   const [statePresetName, setStatePresetName] = useState('');
+  const [visualizerPresetName, setVisualizerPresetName] = useState('');
+  const [linkedVisualizerPresetRequest, setLinkedVisualizerPresetRequest] = useState<{ name: string; nonce: number } | null>(null);
 
   // Morph slot name tracking (for PresetDropdown display)
   const [morphSlotAName, setMorphSlotAName] = useState('');
@@ -2519,9 +2751,9 @@ const App: React.FC = () => {
   // Absent key means 'single'. dualSliderRanges stores ranges for walk/sampleHold modes.
   const [sliderModes, setSliderModes] = useState<Record<string, SliderMode>>({});
   const [dualSliderRanges, setDualSliderRanges] = useState<DualSliderState>({});
-  const usesSupabaseStatePresetLibrary = macShellAvailable && CLOUD_ENABLED && !isSonicParityMode();
+  const usesSupabaseStatePresetLibrary = macShellAvailable && CLOUD_ENABLED && !isSonicParityMode() && !isLocalPresetStoreOverride();
   const usesCapacitorLocalPresetLibrary = isCapacitorNativeShell() && !usesSupabaseStatePresetLibrary;
-  const usesCloudBackedStatePresetLibrary = CLOUD_ENABLED && !isSonicParityMode() && !usesCapacitorLocalPresetLibrary;
+  const usesCloudBackedStatePresetLibrary = CLOUD_ENABLED && !isSonicParityMode() && !isLocalPresetStoreOverride() && !usesCapacitorLocalPresetLibrary;
   const playbackIsRunning = engineState.isRunning;
   const [macAudioOutputStatus, setMacAudioOutputStatus] = useState<KesshoMacAudioOutputStatus | null>(null);
   const [macAirPlayPerformancePinned, setMacAirPlayPerformancePinned] = useState(readMacAirPlayPerformancePinned);
@@ -2659,7 +2891,7 @@ const App: React.FC = () => {
   }, []);
 
   const ensureCloudAutoStartPresetStore = useCallback(async (): Promise<IPresetStore | null> => {
-    if (!CLOUD_ENABLED || isSonicParityMode()) return null;
+    if (!CLOUD_ENABLED || isSonicParityMode() || isLocalPresetStoreOverride()) return null;
     if (cloudPresetStoreRef.current) return cloudPresetStoreRef.current;
     if (!cloudAutoStartStoreInitPromiseRef.current) {
       cloudAutoStartStoreInitPromiseRef.current = (async () => {
@@ -2735,7 +2967,7 @@ const App: React.FC = () => {
       };
     }
 
-    if (CLOUD_ENABLED && !isSonicParityMode()) {
+    if (CLOUD_ENABLED && !isSonicParityMode() && !isLocalPresetStoreOverride()) {
       const timeoutMs = 1500;
       const timedCloudPreset = await Promise.race<SavedPreset | null>([
         loadCloudAutoStartPreset(),
@@ -2909,6 +3141,7 @@ const App: React.FC = () => {
   const drumClockDivsRef = useRef<ClockDivision[] | undefined>(undefined);
   const drumSwingsRef = useRef<number[] | undefined>(undefined);
   const drumLinkedRef = useRef<boolean[] | undefined>(undefined);
+  const drumPitchSettingsRef = useRef<PitchSettings[] | undefined>(undefined);
   const drumSeqSimpleStateRef = useRef<SeqSimpleState | undefined>(undefined);
 
   // Evolved step overrides pushed from audio engine for visual sync
@@ -2960,68 +3193,77 @@ const App: React.FC = () => {
     }));
   }, [createDisabledSubLaneFlags]);
 
-  const createDefaultSynthPitchSettings = useCallback((): PitchSettings[] => (
+  const createDefaultPitchSettings = useCallback((): PitchSettings[] => (
     Array.from({ length: 4 }, () => ({ mode: 'semitones', root: 60, scale: 'Major' }))
   ), []);
 
   // Helper: restore evolve configs from a loaded preset into refs + engine
   const restoreEvolveConfigs = useCallback((preset: SavedPreset) => {
-    const defaultEvolve = (): EvolveConfig => ({
-      enabled: false, everyBars: 4, evolution: 0.5, writeOffset: 0,
-      mutationMode: 'biased', methods: {},
-    });
-    const defaultConfigs = () => Array.from({ length: 4 }, defaultEvolve);
-
-    const drumConfigs = preset.drumEvolveConfigs ?? defaultConfigs();
+    const drumConfigs = normalizeSequencerEvolveConfigs('drum', preset.drumEvolveConfigs, 4);
     drumEvolveConfigsRef.current = drumConfigs;
     audioEngine.setDrumEuclidEvolveConfigs(drumConfigs);
 
-    const synthConfigs = preset.synthEvolveConfigs ?? defaultConfigs();
+    const synthConfigs = normalizeSequencerEvolveConfigs('synth', preset.synthEvolveConfigs, 4);
     synthEvolveConfigsRef.current = synthConfigs;
     audioEngine.setSynthEuclidEvolveConfigs(synthConfigs);
 
-    const drumClockDivs = preset.drumClockDivs ?? [...DEFAULT_EUCLIDEAN_CLOCK_DIVS];
+    const drumClockDivs = normalizeSequencerClockDivisions(preset.drumClockDivs ?? DEFAULT_EUCLIDEAN_CLOCK_DIVS, 4);
     drumClockDivsRef.current = drumClockDivs;
     audioEngine.setDrumEuclidClockDivs(drumClockDivs);
-    const synthClockDivs = preset.synthClockDivs ?? [...DEFAULT_EUCLIDEAN_CLOCK_DIVS];
+    const synthClockDivs = normalizeSequencerClockDivisions(preset.synthClockDivs ?? DEFAULT_EUCLIDEAN_CLOCK_DIVS, 4);
     synthClockDivsRef.current = synthClockDivs;
     audioEngine.setSynthEuclidClockDivs(synthClockDivs);
 
-    const drumSwings = preset.drumSwings ?? [...DEFAULT_EUCLIDEAN_SWINGS];
+    const drumSwings = normalizeSequencerSwings(preset.drumSwings ?? DEFAULT_EUCLIDEAN_SWINGS, 4);
     drumSwingsRef.current = drumSwings;
     audioEngine.setDrumEuclidSwings(drumSwings);
-    const synthSwings = preset.synthSwings ?? [...DEFAULT_EUCLIDEAN_SWINGS];
+    const synthSwings = normalizeSequencerSwings(preset.synthSwings ?? DEFAULT_EUCLIDEAN_SWINGS, 4);
     synthSwingsRef.current = synthSwings;
     audioEngine.setSynthEuclidSwings(synthSwings);
 
     drumLinkedRef.current = preset.drumLinked ?? [...DEFAULT_EUCLIDEAN_LINKED];
     synthLinkedRef.current = preset.synthLinked ?? [...DEFAULT_EUCLIDEAN_LINKED];
 
-    const drumStepOverrides = deserializeStepOverrides(preset.drumStepOverrides) ?? createEmptyStepOverrides();
-    drumStepOverridesRef.current = drumStepOverrides;
-    audioEngine.setDrumStepOverrides(drumStepOverrides);
-    const synthStepOverrides = deserializeStepOverrides(preset.synthStepOverrides) ?? createEmptyStepOverrides();
-    synthStepOverridesRef.current = synthStepOverrides;
-    audioEngine.setSynthStepOverrides(synthStepOverrides);
-
     // Restore sub-lane states (backward-compatible: undefined if preset lacks them)
-    drumSubLaneStatesRef.current = preset.drumSubLaneStates;
-    synthSubLaneStatesRef.current = preset.synthSubLaneStates;
-    audioEngine.setDrumSubLaneEnabled(mapSubLaneStatesToEnabledFlags(preset.drumSubLaneStates));
-    audioEngine.setSynthSubLaneEnabled(mapSubLaneStatesToEnabledFlags(preset.synthSubLaneStates));
-
-    const synthPitchSettings = preset.synthPitchSettings ?? createDefaultSynthPitchSettings();
+    const drumSubLaneStates = restoreSequencerSubLaneStates(preset.drumSubLaneStates, preset.drumStepOverrides);
+    const synthSubLaneStates = restoreSequencerSubLaneStates(preset.synthSubLaneStates, preset.synthStepOverrides);
+    drumSubLaneStatesRef.current = drumSubLaneStates;
+    synthSubLaneStatesRef.current = synthSubLaneStates;
+    const drumPitchSettings = normalizeSequencerPitchSettingsArray(preset.drumPitchSettings ?? createDefaultPitchSettings(), 4) as PitchSettings[];
+    const synthPitchSettings = normalizeSequencerPitchSettingsArray(preset.synthPitchSettings ?? createDefaultPitchSettings(), 4) as PitchSettings[];
+    drumPitchSettingsRef.current = drumPitchSettings;
     synthPitchSettingsRef.current = synthPitchSettings;
+
+    audioEngine.setDrumSubLaneEnabled(mapSubLaneStatesToEnabledFlags(drumSubLaneStates));
+    audioEngine.setSynthSubLaneEnabled(mapSubLaneStatesToEnabledFlags(synthSubLaneStates));
     audioEngine.setSynthPitchSettings(synthPitchSettings);
 
-    synthPitchBindingModesRef.current = preset.synthPitchBindingModes;
-    audioEngine.setSynthPitchBindingModes(preset.synthPitchBindingModes ?? [...DEFAULT_SYNTH_PITCH_BINDING_MODES]);
+    const synthPitchBindingModes = normalizeSequencerPitchBindingModes(preset.synthPitchBindingModes ?? DEFAULT_SYNTH_PITCH_BINDING_MODES, 4);
+    synthPitchBindingModesRef.current = synthPitchBindingModes;
+    audioEngine.setSynthPitchBindingModes(synthPitchBindingModes);
+
+    const drumStepOverrides = deserializeStepOverrides(preset.drumStepOverrides) ?? createEmptyStepOverrides();
+    drumStepOverridesRef.current = drumStepOverrides;
+    audioEngine.setDrumStepOverrides(drumStepOverridesForEngineRestore(
+      drumStepOverrides,
+      drumSubLaneStates,
+      drumPitchSettings,
+      preset.state,
+    ));
+    const synthStepOverrides = deserializeStepOverrides(preset.synthStepOverrides) ?? createEmptyStepOverrides();
+    synthStepOverridesRef.current = synthStepOverrides;
+    audioEngine.setSynthStepOverrides(synthStepOverridesForEngineRestore(
+      synthStepOverrides,
+      synthSubLaneStates,
+      synthPitchSettings,
+    ));
+    audioEngine.setSequencerPresetHomeSnapshots();
 
     // Bump all version counters so mounted pages re-initialize from refs
     setDrumPresetVersion(v => v + 1);
     setSynthPresetVersion(v => v + 1);
   }, [
-    createDefaultSynthPitchSettings,
+    createDefaultPitchSettings,
     createDisabledSubLaneFlags,
     createEmptyStepOverrides,
     mapSubLaneStatesToEnabledFlags,
@@ -3040,11 +3282,21 @@ const App: React.FC = () => {
     synthSwings: synthSwingsRef.current,
     drumLinked: drumLinkedRef.current,
     synthLinked: synthLinkedRef.current,
-    drumSubLaneStates: drumSubLaneStatesRef.current,
-    synthSubLaneStates: synthSubLaneStatesRef.current,
-    synthPitchSettings: synthPitchSettingsRef.current,
+    drumSubLaneStates: sanitizeSequencerSubLaneStates(drumSubLaneStatesRef.current),
+    synthSubLaneStates: sanitizeSequencerSubLaneStates(synthSubLaneStatesRef.current),
+    drumPitchSettings: normalizeSequencerPitchSettingsArray(drumPitchSettingsRef.current, 4) as PitchSettings[],
+    synthPitchSettings: normalizeSequencerPitchSettingsArray(synthPitchSettingsRef.current, 4) as PitchSettings[],
     synthPitchBindingModes: synthPitchBindingModesRef.current,
-  }), [dualSliderRanges, sliderModes]);
+    refs: visualizerPresetName
+      ? {
+          visualizer: {
+            name: visualizerPresetName,
+            version: 'latest',
+            scope: VISUALIZER_PRESET_SCOPE,
+          },
+        }
+      : undefined,
+  }), [dualSliderRanges, sliderModes, visualizerPresetName]);
 
   // Drum morph keys - these use per-trigger randomization, not random walk
   const drumMorphKeys = useMemo(() => new Set<keyof SliderState>([
@@ -3441,7 +3693,7 @@ const App: React.FC = () => {
     // Check for cloud preset in URL (?cloud=presetId)
     const urlParams = new URLSearchParams(window.location.search);
     const cloudPresetId = urlParams.get('cloud');
-    if (cloudPresetId && CLOUD_ENABLED && !isSonicParityMode()) {
+    if (cloudPresetId && CLOUD_ENABLED && !isSonicParityMode() && !isLocalPresetStoreOverride()) {
       void import('./cloud/supabase').then(({ fetchPresetById }) => fetchPresetById(cloudPresetId)).then((preset) => {
         if (cancelled || !preset) return;
 
@@ -3476,6 +3728,7 @@ const App: React.FC = () => {
             synthLinked: wrappedData?.synthLinked,
             drumSubLaneStates: wrappedData?.drumSubLaneStates,
             synthSubLaneStates: wrappedData?.synthSubLaneStates,
+            drumPitchSettings: wrappedData?.drumPitchSettings,
             synthPitchSettings: wrappedData?.synthPitchSettings,
             synthPitchBindingModes: wrappedData?.synthPitchBindingModes,
           }, { currentState: state, normalize: normalizePresetForWeb, ...presetEngineUpdateOptions });
@@ -3874,9 +4127,9 @@ const App: React.FC = () => {
   useEffect(() => {
     audioEngine.setDrumEvolveOverridesChangedCallback((laneIndex, overrides) => {
       drumEvolvedVersionRef.current += 1;
-      const payload = overrides as Partial<StepOverrides> & { swing?: unknown; subLaneStates?: unknown };
+      const payload = overrides as Partial<StepOverrides> & { swing?: unknown; subLaneStates?: unknown; pitchSettings?: (PitchSettings | null)[] };
       const swing = typeof payload.swing === 'number' && Number.isFinite(payload.swing)
-        ? Math.max(0, Math.min(0.75, payload.swing))
+        ? normalizeSequencerSwing(payload.swing)
         : undefined;
       const subLaneStates = normalizeEvolvedSubLanePatch(payload.subLaneStates);
       if (swing !== undefined) {
@@ -3885,6 +4138,11 @@ const App: React.FC = () => {
         drumSwingsRef.current = nextSwings;
       }
       drumSubLaneStatesRef.current = mergeEvolvedSubLanePatch(drumSubLaneStatesRef.current, laneIndex, subLaneStates);
+      if (payload.pitchSettings?.[laneIndex]) {
+        const nextPitchSettings = [...(drumPitchSettingsRef.current ?? createDefaultPitchSettings())];
+        nextPitchSettings[laneIndex] = payload.pitchSettings[laneIndex]!;
+        drumPitchSettingsRef.current = nextPitchSettings;
+      }
       if (drumStepOverridesRef.current) {
         const prev = drumStepOverridesRef.current;
         const next = { ...prev };
@@ -3898,6 +4156,14 @@ const App: React.FC = () => {
           if (payload[key]?.[laneIndex] != null) {
             const arr = [...prev[key]];
             arr[laneIndex] = payload[key]![laneIndex] as never;
+            (next as Record<string, unknown>)[key] = arr;
+          }
+        }
+        const rangeKeys = ['expressionRanges', 'morphRanges', 'distanceRanges'] as const;
+        for (const key of rangeKeys) {
+          if (payload[key]?.[laneIndex] != null) {
+            const arr = [...((prev[key] as (EvolvedRangeOverride | null)[] | undefined) ?? emptyEvolvedRangeOverrides())];
+            arr[laneIndex] = payload[key]![laneIndex] as EvolvedRangeOverride;
             (next as Record<string, unknown>)[key] = arr;
           }
         }
@@ -3922,7 +4188,7 @@ const App: React.FC = () => {
     return () => {
       audioEngine.setDrumEvolveOverridesChangedCallback(() => {});
     };
-  }, [activeTab]);
+  }, [activeTab, createDefaultPitchSettings]);
 
   // Synth evolve overrides callback — push evolved values to UI for visual sync
   useEffect(() => {
@@ -3935,16 +4201,21 @@ const App: React.FC = () => {
         distance?: number[] | null;
         probability?: number[] | null;
         ratchet?: number[] | null;
+        trigCondition?: TrigCondition[] | null;
         pitch?: number[] | null;
+        expressionRanges?: EvolvedRangeOverride | null;
+        morphRanges?: EvolvedRangeOverride | null;
+        distanceRanges?: EvolvedRangeOverride | null;
         expressionDirection?: LaneDirection | null;
         pitchDirection?: LaneDirection | null;
         morphDirection?: LaneDirection | null;
         distanceDirection?: LaneDirection | null;
         swing?: unknown;
         subLaneStates?: unknown;
+        pitchSettings?: (PitchSettings | null)[];
       };
       const swing = typeof payload.swing === 'number' && Number.isFinite(payload.swing)
-        ? Math.max(0, Math.min(0.75, payload.swing))
+        ? normalizeSequencerSwing(payload.swing)
         : undefined;
       const subLaneStates = normalizeEvolvedSubLanePatch(payload.subLaneStates);
       if (swing !== undefined) {
@@ -3953,7 +4224,13 @@ const App: React.FC = () => {
         synthSwingsRef.current = nextSwings;
       }
       synthSubLaneStatesRef.current = mergeEvolvedSubLanePatch(synthSubLaneStatesRef.current, laneIndex, subLaneStates);
-      const data: Partial<StepOverrides> = {};
+      const data: Partial<StepOverrides> & { pitchSettings?: (PitchSettings | null)[] } = {};
+      if (payload.pitchSettings?.[laneIndex]) {
+        data.pitchSettings = payload.pitchSettings;
+        const nextPitchSettings = [...(synthPitchSettingsRef.current ?? createDefaultPitchSettings())];
+        nextPitchSettings[laneIndex] = payload.pitchSettings[laneIndex]!;
+        synthPitchSettingsRef.current = nextPitchSettings;
+      }
         if (payload.triggerToggles != null) {
           const arr = [new Map<number, boolean>(), new Map<number, boolean>(), new Map<number, boolean>(), new Map<number, boolean>()];
           arr[laneIndex] = new Map(payload.triggerToggles);
@@ -3967,11 +4244,24 @@ const App: React.FC = () => {
           data[key] = arr;
         }
       }
+      if (payload.trigCondition != null) {
+        const arr = [null, null, null, null] as StepOverrides['trigCondition'];
+        arr[laneIndex] = payload.trigCondition;
+        data.trigCondition = arr;
+      }
       // Pitch arrives as relative offsets (engine converts MIDI→offsets at evolve boundary)
       if (payload.pitch != null) {
         const arr: (number[] | null)[] = [null, null, null, null];
         arr[laneIndex] = payload.pitch;
         data.pitch = arr;
+      }
+      const rangeKeys = ['expressionRanges', 'morphRanges', 'distanceRanges'] as const;
+      for (const key of rangeKeys) {
+        if (payload[key] != null) {
+          const arr = emptyEvolvedRangeOverrides();
+          arr[laneIndex] = payload[key]!;
+          (data as Record<string, unknown>)[key] = arr;
+        }
       }
       const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection'] as const;
       for (const key of directionKeys) {
@@ -3990,11 +4280,18 @@ const App: React.FC = () => {
           arr[laneIndex] = new Map(data.triggerToggles[laneIndex]);
           next.triggerToggles = arr;
         }
-        const mergeKeys = ['expression', 'morph', 'distance', 'probability', 'ratchet', 'pitch'] as const;
+        const mergeKeys = ['expression', 'morph', 'distance', 'probability', 'ratchet', 'trigCondition', 'pitch'] as const;
         for (const key of mergeKeys) {
           if (data[key] && data[key]![laneIndex] != null) {
             const arr = [...prev[key]];
             arr[laneIndex] = data[key]![laneIndex];
+            (next as Record<string, unknown>)[key] = arr;
+          }
+        }
+        for (const key of rangeKeys) {
+          if (data[key]?.[laneIndex] != null) {
+            const arr = [...((prev[key] as (EvolvedRangeOverride | null)[] | undefined) ?? emptyEvolvedRangeOverrides())];
+            arr[laneIndex] = data[key]![laneIndex] as EvolvedRangeOverride;
             (next as Record<string, unknown>)[key] = arr;
           }
         }
@@ -4018,7 +4315,7 @@ const App: React.FC = () => {
     return () => {
       audioEngine.setSynthEvolveOverridesChangedCallback(() => {});
     };
-  }, [activeTab]);
+  }, [activeTab, createDefaultPitchSettings]);
 
   // Synth noteRange evolve callback — push evolved noteMin/noteMax to UI sliders
   useEffect(() => {
@@ -5266,19 +5563,19 @@ const App: React.FC = () => {
   }, []);
 
   // Start/Stop
-  const handleStart = async () => {
+  const handleStart = async (requestedState?: SliderState) => {
     try {
       // Activate snowflake on first play
       if (!snowflakeActivated) setSnowflakeActivated(true);
 
       // Auto-load String Waves if user hasn't loaded any preset or interacted with UI
-      let stateToStart = state;
+      let stateToStart = requestedState ?? stateRef.current;
       if (!hasLoadedPresetRef.current && !hasUserInteractedRef.current) {
         const { preset: defaultPreset, source: defaultPresetSource } = await resolveDefaultAutoStartPreset();
         if (defaultPreset) {
           console.log(`[App] Auto-loading default preset: ${defaultPreset.name}${defaultPresetSource ? ` (${defaultPresetSource})` : ''}`);
           hasLoadedPresetRef.current = true;
-          const result = applyPreset(defaultPreset, { currentState: state, updateEngine: false, resetCofDrift: false, normalize: normalizePresetForWeb });
+          const result = applyPreset(defaultPreset, { currentState: stateToStart, updateEngine: false, resetCofDrift: false, normalize: normalizePresetForWeb });
           setState(result.state);
           setStatePresetName(defaultPreset.name);
           setMorphPresetA(result.preset);
@@ -5361,6 +5658,59 @@ const App: React.FC = () => {
     playbackTimerTargetTimeRef.current = null;
     setPlaybackTimerRemaining(null);
   };
+
+  const requestSequencerPlaybackStart = (statePatch?: Partial<SliderState>) => {
+    if (playbackIsRunning || isJourneyPlaying) return;
+    const patchedState = statePatch && Object.keys(statePatch).length > 0
+      ? { ...stateRef.current, ...statePatch }
+      : undefined;
+    void handleStart(patchedState);
+  };
+
+  const toggleLazySequencerTransport = useCallback((target: 'synth' | 'drums') => {
+    const currentState = stateRef.current;
+    const patch: Partial<SliderState> = {};
+    const setPatchedSelect = <K extends keyof SliderState>(key: K, value: SliderState[K]) => {
+      handleSelectChange(key, value);
+      patch[key] = value;
+    };
+
+    if (target === 'synth') {
+      const next = !currentState.synthEuclideanMasterEnabled;
+      setPatchedSelect('synthEuclideanMasterEnabled', next);
+      if (next && !currentState.leadEnabled) setPatchedSelect('leadEnabled', true);
+      if (next && !currentState.padEnabled) setPatchedSelect('padEnabled', true);
+      if (next && !APP_SYNTH_LANE_ENABLED_KEYS.some((key) => Boolean(currentState[key]))) {
+        setPatchedSelect(APP_SYNTH_LANE_ENABLED_KEYS[0], true);
+      }
+      if (next && !playbackIsRunning) requestSequencerPlaybackStart(patch);
+      return;
+    }
+
+    const next = !currentState.drumEuclidMasterEnabled;
+    setPatchedSelect('drumEuclidMasterEnabled', next);
+    if (next && !currentState.drumEnabled) setPatchedSelect('drumEnabled', true);
+    if (next && !APP_DRUM_LANE_ENABLED_KEYS.some((key) => Boolean(currentState[key]))) {
+      setPatchedSelect(APP_DRUM_LANE_ENABLED_KEYS[0], true);
+    }
+    if (next && !playbackIsRunning) requestSequencerPlaybackStart(patch);
+  }, [handleSelectChange, playbackIsRunning, requestSequencerPlaybackStart]);
+
+  useEffect(() => {
+    const handleLazySequencerTransportShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.code !== 'Space') return;
+      if (uiMode !== 'advanced' || (activeTab !== 'synth' && activeTab !== 'drums')) return;
+      if (isEditableShortcutTarget(event.target)) return;
+      if (document.querySelector(`.seq-play-btn[data-sequencer-transport="${activeTab}"]`)) return;
+
+      event.preventDefault();
+      toggleLazySequencerTransport(activeTab);
+    };
+
+    window.addEventListener('keydown', handleLazySequencerTransportShortcut, true);
+    return () => window.removeEventListener('keydown', handleLazySequencerTransportShortcut, true);
+  }, [activeTab, toggleLazySequencerTransport, uiMode]);
 
   const fadeEngineOutput = useCallback(async (target: number, durationMs = PRESET_LOAD_FADE_MS) => {
     audioEngine.setOutputGain(target, durationMs / 1000);
@@ -5862,7 +6212,8 @@ const App: React.FC = () => {
     const stateA = { ...DEFAULT_STATE, ...normalizePresetForWeb(presetA.state) };
     const stateB = { ...DEFAULT_STATE, ...normalizePresetForWeb(presetB.state) };
     const result = { ...stateA };
-    const tNorm = t / 100; // Normalize to 0-1
+    const morphPosition = clampMorphPosition(t, true);
+    const tNorm = morphPosition / 100; // Normalize to 0-1
 
     // Handle rootNote via Circle of Fifths path
     // Direction determines which preset we're morphing FROM and TO:
@@ -5880,7 +6231,7 @@ const App: React.FC = () => {
             ? calculateDriftedRoot(stateA.rootNote, currentCofStep)
             : stateA.rootNote);
       toRoot = stateB.rootNote;
-      cofMorphT = t; // 0→100 maps directly
+      cofMorphT = morphPosition; // 0→100 maps directly
     } else {
       // Morphing B → A: from B's root (or captured) to A's root
       fromRoot = capturedStartRoot !== undefined
@@ -5889,7 +6240,7 @@ const App: React.FC = () => {
             ? calculateDriftedRoot(stateB.rootNote, currentCofStep)
             : stateB.rootNote);
       toRoot = stateA.rootNote;
-      cofMorphT = 100 - t; // 100→0 needs to become 0→100 for path progression
+      cofMorphT = 100 - morphPosition; // 100→0 needs to become 0→100 for path progression
     }
 
     // Get the morphed root note stepping through CoF
@@ -6352,8 +6703,8 @@ const App: React.FC = () => {
     // Special handling for engine toggles and cofDriftEnabled:
     // - Off → On: Turn ON immediately when leaving the "off" endpoint (engine fades in via level morph from 0)
     // - On → Off: Keep ON until arriving at the "off" endpoint (engine fades out via level morph to 0)
-    const atEndpointA = isAtEndpoint0(t, true);
-    const atEndpointB = isAtEndpoint1(t, true);
+    const atEndpointA = isAtEndpoint0(morphPosition, true);
+    const atEndpointB = isAtEndpoint1(morphPosition, true);
 
     const engineToggleKeys: (keyof SliderState)[] = [
       'cofDriftEnabled',
@@ -6601,7 +6952,8 @@ const App: React.FC = () => {
 
   // Handle morph slider change
   const handleMorphPositionChange = useCallback((newPosition: number) => {
-    setMorphPosition(newPosition);
+    const nextMorphPosition = clampMorphPosition(newPosition, true);
+    setMorphPosition(nextMorphPosition);
 
     // Inline apply morph to ensure state updates correctly
     if (!morphPresetA && !morphPresetB) return;
@@ -6617,15 +6969,15 @@ const App: React.FC = () => {
     // Detect morph direction and capture starting root when leaving an endpoint
     const wasAtA = lastMorphEndpointRef.current === 0;
     const wasAtB = lastMorphEndpointRef.current === 100;
-    const leavingA = wasAtA && newPosition > 0;
-    const leavingB = wasAtB && newPosition < 100;
+    const leavingA = wasAtA && nextMorphPosition > 0;
+    const leavingB = wasAtB && nextMorphPosition < 100;
 
     // Update endpoint tracking when reaching endpoints
-    if (isAtEndpoint0(newPosition, true)) {
+    if (isAtEndpoint0(nextMorphPosition, true)) {
       lastMorphEndpointRef.current = 0;
       morphDirectionRef.current = null;
       morphCapturedStartRootRef.current = null;
-    } else if (isAtEndpoint1(newPosition, true)) {
+    } else if (isAtEndpoint1(nextMorphPosition, true)) {
       lastMorphEndpointRef.current = 100;
       morphDirectionRef.current = null;
       morphCapturedStartRootRef.current = null;
@@ -6649,7 +7001,7 @@ const App: React.FC = () => {
     }
 
     const direction = morphDirectionRef.current || 'toB';
-    const morphResult = lerpPresets(effectiveA, effectiveB, newPosition, engineState.cofCurrentStep, morphCapturedStartRootRef.current ?? undefined, direction);
+    const morphResult = lerpPresets(effectiveA, effectiveB, nextMorphPosition, engineState.cofCurrentStep, morphCapturedStartRootRef.current ?? undefined, direction);
 
     // Apply manual overrides with smooth blending toward destination
     // For each override, interpolate from override value to destination based on remaining morph distance
@@ -6677,12 +7029,12 @@ const App: React.FC = () => {
       // Calculate blend factor: 0 at override position, 1 at destination
       const overridePos = override.morphPosition;
       const totalDistance = Math.abs(destPosition - overridePos);
-      const currentDistance = Math.abs(newPosition - overridePos);
+      const currentDistance = Math.abs(nextMorphPosition - overridePos);
 
       if (totalDistance > 0) {
         // Moving toward destination
-        const progressTowardDest = (direction === 'toB' && newPosition >= overridePos) ||
-                                   (direction === 'toA' && newPosition <= overridePos);
+        const progressTowardDest = (direction === 'toB' && nextMorphPosition >= overridePos) ||
+                                   (direction === 'toA' && nextMorphPosition <= overridePos);
 
         if (progressTowardDest) {
           // Blend from override value toward destination
@@ -6700,14 +7052,14 @@ const App: React.FC = () => {
     scheduleAudioEngineParamUpdate(finalState);
 
     // Update CoF morph visualization (clear at endpoints - we've arrived)
-    const atEndpoint = isAtEndpoint0(newPosition, true) || isAtEndpoint1(newPosition, true);
+    const atEndpoint = isAtEndpoint0(nextMorphPosition, true) || isAtEndpoint1(nextMorphPosition, true);
     setMorphCoFViz(atEndpoint ? null : (morphResult.morphCoFInfo || null));
 
     // Reset CoF drift and clear manual overrides when reaching an endpoint
     if (atEndpoint) {
       // Only reset CoF drift if the target preset doesn't use drift,
       // to avoid a sudden root note jump that retriggers synths.
-      const targetPreset = isAtEndpoint0(newPosition, true) ? effectiveA : effectiveB;
+      const targetPreset = isAtEndpoint0(nextMorphPosition, true) ? effectiveA : effectiveB;
       const targetState = { ...DEFAULT_STATE, ...targetPreset.state };
       if (!targetState.cofDriftEnabled) {
         audioEngine.resetCofDrift();
@@ -6812,6 +7164,11 @@ const App: React.FC = () => {
       syncCoreProductAppliedPreset(result.state);
       setState(result.state);
       setStatePresetName(entry.name);
+      const linkedVisualizerPreset = getLinkedVisualizerPresetName(entry);
+      if (linkedVisualizerPreset) {
+        setVisualizerPresetName(linkedVisualizerPreset);
+        setLinkedVisualizerPresetRequest({ name: linkedVisualizerPreset, nonce: Date.now() });
+      }
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
       restoreEvolveConfigs(result.preset);
     }
@@ -6853,6 +7210,11 @@ const App: React.FC = () => {
       syncCoreProductAppliedPreset(result.state);
       setState(result.state);
       setStatePresetName(entry.name);
+      const linkedVisualizerPreset = getLinkedVisualizerPresetName(entry);
+      if (linkedVisualizerPreset) {
+        setVisualizerPresetName(linkedVisualizerPreset);
+        setLinkedVisualizerPresetRequest({ name: linkedVisualizerPreset, nonce: Date.now() });
+      }
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);
       restoreEvolveConfigs(result.preset);
     }
@@ -7982,7 +8344,7 @@ const App: React.FC = () => {
         {!(playbackIsRunning || isJourneyPlaying) ? (
           <button
             style={{ ...styles.iconButton, ...styles.startButton, ...m?.iconButton }}
-            onClick={handleStart}
+            onClick={() => { void handleStart(); }}
             title="Start"
           >
             {TEXT_SYMBOLS.play}
@@ -8176,6 +8538,8 @@ const App: React.FC = () => {
             dualRanges={dualSliderRanges as Record<string, { min: number; max: number }>}
             engineState={engineState}
             isPlaying={(playbackIsRunning || isJourneyPlaying) && !macAirPlayPerformanceActive}
+            linkedPresetRequest={linkedVisualizerPresetRequest}
+            onVisualizerPresetChange={setVisualizerPresetName}
           />
         )}
 
@@ -8194,6 +8558,7 @@ const App: React.FC = () => {
             SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
             CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
             isRunning={playbackIsRunning}
+            onRequestPlaybackStart={requestSequencerPlaybackStart}
             getLeadMorphedParams={audioEngineRuntimeMode === 'core-product' ? () => null : (lead: 1 | 2) => audioEngine.getLeadMorphedParams(lead)}
             liveSourceTelemetryAvailable
             initialViewMode={synthViewModeRef.current}
@@ -8201,8 +8566,9 @@ const App: React.FC = () => {
             initialStepOverrides={synthStepOverridesRef.current}
             initialSubLaneStates={synthSubLaneStatesRef.current}
             onSubLaneStatesChange={(states) => {
-              synthSubLaneStatesRef.current = states;
-              audioEngine.setSynthSubLaneEnabled(states.map(s => {
+              const sanitized = sanitizeSequencerSubLaneStates(states) ?? states;
+              synthSubLaneStatesRef.current = sanitized;
+              audioEngine.setSynthSubLaneEnabled(sanitized.map(s => {
                 const out: Record<string, boolean> = {};
                 for (const [k, v] of Object.entries(s)) out[k] = v.enabled;
                 return out;
@@ -8246,6 +8612,7 @@ const App: React.FC = () => {
             initialEvolveConfigs={synthEvolveConfigsRef.current}
             presetVersion={synthPresetVersion}
             resetEvolveHome={(laneIdx) => audioEngine.resetSynthEuclidLaneHome(laneIdx)}
+            captureEvolveHome={(laneIdx) => audioEngine.captureSynthEuclidLaneHome(laneIdx, synthSubLaneStatesRef.current?.[laneIdx]?.pitch)}
             diceLane={(laneIdx, intensity) => audioEngine.diceSynthEuclidLane(laneIdx, intensity)}
             evolvedOverrides={synthEvolvedOverrides}
             onAuditionNote={(note) => {
@@ -8274,15 +8641,18 @@ const App: React.FC = () => {
           <DrumPage
             state={state}
             isMobile={isMobile}
+            isRunning={playbackIsRunning}
             expandedPanels={expandedPanels}
             onParamChange={handleSliderChange}
             onSelectChange={handleSelectChange}
             onStateChange={handleStateChange}
+            onRequestPlaybackStart={requestSequencerPlaybackStart}
             togglePanel={togglePanel}
             sliderProps={sliderProps}
             triggerVoice={(voice) => { void audioEngine.triggerDrumVoice(voice, 0.8, state); }}
             getAnalyserNode={audioEngineRuntimeMode === 'core-product' ? () => undefined : (v) => audioEngine.getDrumVoiceAnalyser(v)}
             resetEvolveHome={(laneIdx) => audioEngine.resetDrumEuclidLaneHome(laneIdx)}
+            captureEvolveHome={(laneIdx) => audioEngine.captureDrumEuclidLaneHome(laneIdx, drumPitchSettingsRef.current?.[laneIdx], drumSubLaneStatesRef.current?.[laneIdx]?.pitch)}
             diceLane={(laneIdx, intensity) => audioEngine.diceDrumEuclidLane(laneIdx, intensity)}
             evolvedOverrides={drumEvolvedOverrides}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
@@ -8292,12 +8662,16 @@ const App: React.FC = () => {
             onEvolveConfigsChange={(configs) => { drumEvolveConfigsRef.current = configs; audioEngine.setDrumEuclidEvolveConfigs(configs); }}
             initialEvolveConfigs={drumEvolveConfigsRef.current}
             presetVersion={drumPresetVersion}
-            onStepOverridesChange={(overrides) => { drumStepOverridesRef.current = overrides; audioEngine.setDrumStepOverrides(overrides); }}
+            onRawStepOverridesChange={(raw) => { drumStepOverridesRef.current = raw; }}
+            onStepOverridesChange={(overrides) => { audioEngine.setDrumStepOverrides(overrides); }}
             initialStepOverrides={drumStepOverridesRef.current}
             initialSubLaneStates={drumSubLaneStatesRef.current}
+            initialPitchSettings={drumPitchSettingsRef.current}
+            onPitchSettingsChange={(settings) => { drumPitchSettingsRef.current = settings; }}
             onSubLaneStatesChange={(states) => {
-              drumSubLaneStatesRef.current = states;
-              audioEngine.setDrumSubLaneEnabled(states.map(s => {
+              const sanitized = sanitizeSequencerSubLaneStates(states) ?? states;
+              drumSubLaneStatesRef.current = sanitized;
+              audioEngine.setDrumSubLaneEnabled(sanitized.map(s => {
                 const out: Record<string, boolean> = {};
                 for (const [k, v] of Object.entries(s)) out[k] = v.enabled;
                 return out;

@@ -4,6 +4,33 @@ export type EuclideanPatternParams = {
   rotation: number;
 };
 
+const SYNTH_EUCLID_DEFAULTS = [
+  { steps: 16, hits: 4, rotation: 0 },
+  { steps: 8, hits: 3, rotation: 1 },
+  { steps: 16, hits: 2, rotation: 0 },
+  { steps: 16, hits: 6, rotation: 2 },
+] as const satisfies readonly EuclideanPatternParams[];
+
+const DRUM_EUCLID_DEFAULTS = [
+  { steps: 8, hits: 5, rotation: 0 },
+  { steps: 16, hits: 3, rotation: 0 },
+  { steps: 12, hits: 5, rotation: 0 },
+  { steps: 8, hits: 3, rotation: 0 },
+] as const satisfies readonly EuclideanPatternParams[];
+
+function defaultLane(defaults: readonly EuclideanPatternParams[], laneIndex: number): EuclideanPatternParams {
+  const index = Math.max(0, Math.min(defaults.length - 1, Math.trunc(laneIndex)));
+  return defaults[index] ?? defaults[0]!;
+}
+
+export function defaultSynthEuclidPattern(laneIndex: number): EuclideanPatternParams {
+  return defaultLane(SYNTH_EUCLID_DEFAULTS, laneIndex);
+}
+
+export function defaultDrumEuclidPattern(laneIndex: number): EuclideanPatternParams {
+  return defaultLane(DRUM_EUCLID_DEFAULTS, laneIndex);
+}
+
 export const DRUM_EUCLID_PRESET_DATA: Record<string, EuclideanPatternParams> = {
   sparse: { steps: 16, hits: 1, rotation: 0 },
   dense: { steps: 8, hits: 7, rotation: 0 },

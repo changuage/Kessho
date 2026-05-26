@@ -8,6 +8,9 @@ const productFiles = [
   'src/audio/CoreProductHostSequencerAdapter.ts',
   'src/audio/CoreProductHostSequencerEvolve.ts',
   'src/audio/CoreProductHostSequencerSubLaneEvolve.ts',
+  'src/audio/CoreProductHostSequencerRangePayload.ts',
+  'src/audio/CoreProductHostSynthNoteRangeEvolve.ts',
+  'src/audio/CoreProductHostHarmonyState.ts',
   'src/audio/CoreProductHostRuntimeGuards.ts',
   'src/audio/CoreProductHostSequencerSwing.ts',
   'src/audio/CoreProductHostSequencerUiState.ts',
@@ -15,15 +18,25 @@ const productFiles = [
   'src/audio/coreProductAssets.ts',
   'src/audio/CoreProductFallbackDiagnostics.ts',
   'src/audio/CoreProductHostDebugTelemetry.ts',
-  'src/audio/CoreProductLegacyPresetCompat.ts',
+  'src/audio/CoreProductDrumPatch.ts',
+  'src/audio/CoreProductLeadPatch.ts',
+  'src/audio/CoreProductPadPatch.ts',
+  'src/audio/CoreProductSparseOverrides.ts',
+  'src/audio/CoreProductModeIds.ts',
+  'src/audio/CoreProductPresetIds.ts',
   'src/audio/CoreProductHostSequencerEvolveConfig.ts',
   'src/audio/CoreProductRuntimeAdapter.ts',
+  'src/audio/CoreProductRuntimeAdapterSourcePresets.ts',
   'src/audio/coreProductArrangementScheduler.ts',
   'src/audio/coreProductEngineHost.ts',
   'src/audio/coreProductEvents.ts',
   'src/audio/coreProductRuntime.ts',
+  'src/audio/coreProductDelaySnapshot.ts',
+  'src/audio/coreProductSequencerMacroDefaults.ts',
+  'src/audio/coreProductSequencerHold.ts',
   'src/audio/coreProductSnapshot.ts',
   'src/audio/coreProductSoundscapesSnapshot.ts',
+  'src/audio/coreProductSnapshotState.ts',
   'src/audio/coreProductSnapshotTypes.ts',
   'src/audio/coreProductSnapshotEncoder.ts',
   'src/audio/coreProductTelemetry.ts',
@@ -60,24 +73,40 @@ const classifiedRuntimeAllowlist = new Map([
   ['./CoreProductHostSequencerAdapter', 'product host sequencer input adapter'],
   ['./CoreProductHostSequencerEvolve', 'product host sequencer evolve clock adapter'],
   ['./CoreProductHostSequencerSubLaneEvolve', 'product host sequencer sub-lane evolve adapter'],
+  ['./CoreProductHostSequencerRangePayload', 'product host sequencer range payload adapter'],
+  ['./CoreProductHostSynthNoteRangeEvolve', 'product host synth note-range evolve adapter'],
+  ['./CoreProductHostHarmonyState', 'product host harmony UI state adapter'],
   ['./CoreProductHostSequencerEvolveConfig', 'product host sequencer evolve config adapter'],
   ['./CoreProductHostSequencerSwing', 'product host sequencer swing adapter'],
   ['./CoreProductHostSequencerUiState', 'product host sequencer UI state reconciliation adapter'],
+  ['./CoreProductHostSequencerClock', 'product host sequencer clock adapter'],
+  ['./CoreProductHostSequencerHome', 'product host sequencer home-state adapter'],
+  ['./CoreProductHostSynthPitch', 'product host synth pitch adapter'],
   ['./CoreProductHostRuntimeGuards', 'product host strict runtime guards'],
   ['./CoreProductHostSequencerVisuals', 'product host sequencer visual telemetry adapter'],
-  ['./CoreProductLegacyPresetCompat', 'temporary Product snapshot compatibility bridge'],
+  ['./CoreProductDrumPatch', 'Product Core Drum preset reconstruction, sparse override, and exact bridge shape'],
+  ['./CoreProductLeadPatch', 'Product Core Lead preset reconstruction, sparse override, and exact fallback bridge'],
+  ['./CoreProductModeIds', 'Product mode ID normalization helper'],
+  ['./CoreProductPresetIds', 'generated Product preset ID normalization helper'],
   ['./CoreProductRuntimeAdapter', 'product host snapshot dirty-diff adapter'],
+  ['./CoreProductRuntimeAdapterSourcePresets', 'product source preset dirty-diff helper'],
   ['./coreProductArrangementScheduler', 'product host live arrangement scheduler'],
   ['./coreProductEvents', 'product module'],
   ['./coreProductGraphTaps', 'product graph tap ID map'],
   ['./CoreProductFallbackDiagnostics', 'product runtime fallback diagnostics'],
   ['./CoreProductHostDebugTelemetry', 'product host debug telemetry adapter'],
   ['./coreProductRuntime', 'product module'],
+  ['./CoreProductPadPatch', 'Product Core Pad preset reconstruction, sparse override, and exact fallback bridge'],
+  ['./CoreProductSparseOverrides', 'Product Core sparse snapshot override helper'],
+  ['./coreProductDelaySnapshot', 'Product delay snapshot serialization helper'],
+  ['./coreProductSequencerMacroDefaults', 'Product sequencer macro default serializer helper'],
+  ['./coreProductSequencerHold', 'product sequencer hold-time helper'],
   ['./harmony', 'temporary canonical web harmony kernel for Product arrangement/snapshot serialization'],
   ['./rng', 'temporary canonical deterministic RNG for Product arrangement/snapshot serialization'],
   ['./scales', 'temporary canonical scale note helper for Product live arrangement scheduling'],
   ['./coreProductSnapshot', 'product module'],
   ['./coreProductSoundscapesSnapshot', 'product soundscape snapshot helper'],
+  ['./coreProductSnapshotState', 'Product snapshot primitive state readers'],
   ['./coreProductSnapshotTypes', 'product snapshot type surface'],
   ['./coreProductSnapshotEncoder', 'product snapshot byte encoder'],
   ['./coreProductTelemetry', 'product module'],
@@ -85,11 +114,16 @@ const classifiedRuntimeAllowlist = new Map([
   ['./delayBuses', 'unit conversion for generated Product params'],
   ['./distanceMacro', 'temporary distance macro serializer shaping'],
   ['./euclideanPatterns', 'shared Euclidean pattern constants and masks'],
+  ['./sequencerClockDivisions', 'shared sequencer clock division normalization'],
+  ['./sequencerLaneDirection', 'shared sequencer lane direction normalization'],
+  ['./sequencerPitchBinding', 'shared synth pitch-binding normalization'],
+  ['./sequencerPitchSettings', 'shared synth pitch settings normalization'],
+  ['./sequencerSwing', 'shared sequencer swing normalization'],
   ['./generated/kesshoProductEvents', 'generated Product ABI'],
   ['./generated/kesshoProductParams', 'generated Product ABI'],
   ['./generated/kesshoProductSchema', 'generated Product ABI'],
   ['./granularMacroCore', 'shared granular host macro serializer shaping'],
-  ['./lead4opfm', 'temporary Lead exact-patch compatibility bridge'],
+  ['./lead4opfm', 'Lead override bridge source until bounded Lead overrides retire exact arrays'],
   ['./outputTrims', 'serialization default/trim constants'],
   ['./pianoSamples', 'asset manifest helper'],
   ['./transport', 'transport serialization metrics'],
@@ -133,8 +167,12 @@ for (const file of productFiles) {
       );
       continue;
     }
-    if (specifier === './lead4opfm' && file === 'src/audio/CoreProductLegacyPresetCompat.ts') {
-      assert(source.includes('SNAPSHOT_AUTHORITY: TEMP_COMPAT_WEB_REFERENCE'), 'lead4opfm bridge import must stay labeled as TEMP_COMPAT_WEB_REFERENCE');
+    if (specifier === './lead4opfm' && file === 'src/audio/CoreProductLeadPatch.ts') {
+      assert(source.includes('SNAPSHOT_AUTHORITY: PRODUCT_CORE_LEAD_OVERRIDE_BRIDGE'), `${specifier} bridge import must stay labeled as PRODUCT_CORE_LEAD_OVERRIDE_BRIDGE`);
+      continue;
+    }
+    if (specifier === './padPresets' && file === 'src/audio/CoreProductPadPatch.ts') {
+      assert(source.includes('SNAPSHOT_AUTHORITY: PRODUCT_CORE_PAD_OVERRIDE_BRIDGE'), `${specifier} bridge import must stay labeled as PRODUCT_CORE_PAD_OVERRIDE_BRIDGE`);
       continue;
     }
     assert(
@@ -148,14 +186,20 @@ for (const file of productFiles) {
   }
 }
 
-const legacyCompat = readFileSync(resolve(root, 'src/audio/CoreProductLegacyPresetCompat.ts'), 'utf8');
 const bridgePolicy = readFileSync(resolve(root, 'docs/kessho-product-patch-bridge-policy.md'), 'utf8');
 const doc = readFileSync(resolve(root, 'docs/kessho-product-reference-isolation.md'), 'utf8');
 
-assert(legacyCompat.includes("from './lead4opfm'"), 'Lead exact patch bridge import must remain visible until retired');
+assert(
+  readFileSync(resolve(root, 'src/audio/CoreProductLeadPatch.ts'), 'utf8').includes("from './lead4opfm'"),
+  'Lead exact patch bridge import must remain visible in CoreProductLeadPatch until bounded Lead overrides retire it',
+);
+assert(
+  readFileSync(resolve(root, 'src/audio/CoreProductPadPatch.ts'), 'utf8').includes("from './padPresets'"),
+  'Pad override bridge import must remain visible in CoreProductPadPatch until generated/Product-native Pad overrides retire it',
+);
 assert(bridgePolicy.includes('TEMP_COMPAT_WEB_REFERENCE'), 'temporary web reference bridge must have a documented policy');
 assert(doc.includes('Forbidden Production Imports'), 'reference isolation doc must classify forbidden imports');
-assert(doc.includes('lead4opfm'), 'reference isolation doc must classify the temporary Lead bridge import');
+assert(doc.includes('lead4opfm'), 'reference isolation doc must classify the Lead override bridge import');
 for (const token of [
   '| Import path | Current reason | Owner | Classification | Replacement C++ Product Core owner | Retirement condition | Target removal phase |',
   'CANONICAL_GENERATED_SCHEMA_HELPER',

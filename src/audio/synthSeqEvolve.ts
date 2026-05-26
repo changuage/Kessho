@@ -3,7 +3,8 @@
  * Operates on the synth's native override arrays: (number[] | null)[] per lane.
  * Reuses shared mutation utilities from seqEvolveTypes.ts and seqEvolveCore.ts.
  */
-import type { LaneDirection } from './drumSeqTypes';
+import type { LaneDirection, TrigCondition } from './drumSeqTypes';
+import type { SequencerPitchSettings } from './sequencerPitchSettings';
 import {
   SUB_LANE_VALUE_CONFIGS,
   mutateValueDrift,
@@ -53,6 +54,7 @@ export interface SynthLaneOverrides {
   distanceDirection: LaneDirection | null;
   probability: number[] | null;
   ratchet: number[] | null;
+  trigCondition: TrigCondition[] | null;
 }
 
 /** Mutable per-lane evolve state stored in the engine */
@@ -62,6 +64,9 @@ export interface SynthEvolveState {
   homeSwing: number;
   homeNoteRangeMin: number | null;
   homeNoteRangeMax: number | null;
+  homePitchSettings: SequencerPitchSettings | null;
+  homePitchScaleQuantize: boolean | null;
+  homePitchSubLaneState: { steps?: number; direction?: LaneDirection; scaleQuantize?: boolean } | null;
 }
 
 /** Sub-lanes that participate in synth evolution */
@@ -80,6 +85,8 @@ const SYNTH_SUB_LANE_CONFIGS: Record<SynthSubLane, SubLaneValueConfig> = {
 };
 
 type SynthDirectionLane = 'pitch' | 'expression' | 'morph' | 'distance';
+const GENERIC_VALUE_SYNTH_SUB_LANES: SynthSubLane[] = ['expression', 'morph', 'distance'];
+const LENGTH_DRIFT_SYNTH_SUB_LANES: SynthSubLane[] = ['pitch', 'expression', 'morph', 'distance'];
 
 // ═══════════════════════════════════════════════════════════════════════
 // Sub-lane accessors
@@ -144,6 +151,7 @@ export function captureSynthHomeSnapshot(ov: SynthLaneOverrides): SynthLaneOverr
     distanceDirection: ov.distanceDirection,
     probability: ov.probability ? [...ov.probability] : null,
     ratchet: ov.ratchet ? [...ov.ratchet] : null,
+    trigCondition: ov.trigCondition ? ov.trigCondition.map((entry) => [entry[0], entry[1]] as TrigCondition) : null,
   };
 }
 
@@ -199,6 +207,7 @@ export function evolveSynthLane(
     distanceDirection: overrides.distanceDirection,
     probability: overrides.probability ? [...overrides.probability] : null,
     ratchet: overrides.ratchet ? [...overrides.ratchet] : null,
+    trigCondition: overrides.trigCondition ? overrides.trigCondition.map((entry) => [entry[0], entry[1]] as TrigCondition) : null,
   };
 
   // Capture home on first evolve pass
@@ -308,7 +317,7 @@ export function evolveSynthLane(
   // ═══════════════════════════════════════════════════════════════════
   let evolvedNoteRangeMin: number | undefined;
   let evolvedNoteRangeMax: number | undefined;
-  if (methods.pitchWalk && ctx.pitchMode === 'noteRange' && chance(rng, 0.6 * intensity)
+  if (methods.pitchWalk && enabledSubs.has('pitch') && ctx.pitchMode === 'noteRange' && chance(rng, 0.6 * intensity)
     && ctx.noteRangeMin !== undefined && ctx.noteRangeMax !== undefined) {
     const homeMin = state.homeNoteRangeMin ?? ctx.noteRangeMin;
     const homeMax = state.homeNoteRangeMax ?? ctx.noteRangeMax;
@@ -359,8 +368,7 @@ export function evolveSynthLane(
 
   // Value Drift — nudge values within their natural range
   if (methods.valueDrift && tGate('valueDrift', 1)) {
-    for (const lane of ALL_SYNTH_SUB_LANES) {
-      if (lane === 'pitch') continue; // pitch has pitchWalk
+    for (const lane of GENERIC_VALUE_SYNTH_SUB_LANES) {
       if (!enabledSubs.has(lane)) continue;
       const vals = getValues(next, lane);
       if (!vals) continue;
@@ -372,7 +380,7 @@ export function evolveSynthLane(
   // Value Scramble — reorder step values (Zone A/B, ~0.4+)
   if (methods.valueScramble && intensity > 0.4 && tGate('valueScramble', 0.3 * intensity)) {
     const swaps = Math.max(2, Math.floor(intensity * 6));
-    for (const lane of ALL_SYNTH_SUB_LANES) {
+    for (const lane of GENERIC_VALUE_SYNTH_SUB_LANES) {
       if (!enabledSubs.has(lane)) continue;
       const vals = getValues(next, lane);
       if (!vals || rng() < 0.5) continue;
@@ -382,8 +390,7 @@ export function evolveSynthLane(
 
   // Value Widen — expand range/contrast (Zone B, ~0.6+)
   if (methods.valueWiden && intensity > 0.6 && tGate('valueWiden', 0.15 * intensity)) {
-    for (const lane of ALL_SYNTH_SUB_LANES) {
-      if (lane === 'pitch') continue; // pitch range controlled by pitchWalk
+    for (const lane of GENERIC_VALUE_SYNTH_SUB_LANES) {
       if (!enabledSubs.has(lane)) continue;
       const vals = getValues(next, lane);
       if (!vals || rng() < 0.5) continue;
@@ -394,7 +401,7 @@ export function evolveSynthLane(
 
   // Sub-Lane Direction Flip (Zone B, ~0.8+)
   if (methods.subLaneDirectionFlip && intensity > 0.8 && tGate('subLaneDirectionFlip', 0.08 * intensity)) {
-    const activeDirLanes = DIRECTION_LANES.filter(l => getValues(next, l) !== null);
+    const activeDirLanes = DIRECTION_LANES.filter(l => enabledSubs.has(l) && getValues(next, l) !== null);
     if (activeDirLanes.length > 0) {
       const lane = pickSynthLane(activeDirLanes, rng);
       if (lane) {
@@ -406,14 +413,14 @@ export function evolveSynthLane(
 
   // Sub-Lane Length Drift — ±1 step on a random sub-lane for polyrhythm (Zone B, ~0.5+)
   if (methods.subLaneLengthDrift && intensity > 0.5 && chance(rng, 0.25 * intensity)) {
-    const activeLanes = ALL_SYNTH_SUB_LANES.filter(l => enabledSubs.has(l) && getValues(next, l) !== null);
+    const activeLanes = LENGTH_DRIFT_SYNTH_SUB_LANES.filter(l => enabledSubs.has(l) && getValues(next, l) !== null);
     if (activeLanes.length > 0) {
       const lane = pickSynthLane(activeLanes, rng);
       if (lane) {
         const vals = getValues(next, lane);
         if (vals) {
           const dir = rng() < 0.5 ? -1 : 1;
-          const newLen = clamp(vals.length + dir, 2, 32);
+          const newLen = clamp(vals.length + dir, 2, 16);
           if (newLen !== vals.length) {
             if (newLen > vals.length) {
               // Grow: duplicate last value
@@ -457,6 +464,7 @@ export function evolveSynthLane(
   // Write-offset masking: restrict mutations to a single step per cycle
   if (config.writeOffset !== 0) {
     for (const lane of ALL_SYNTH_SUB_LANES) {
+      if (!enabledSubs.has(lane)) continue;
       const orig = getValues(overrides, lane);
       const curr = getValues(next, lane);
       if (orig && curr && orig.length === curr.length) {
@@ -473,7 +481,8 @@ export function evolveSynthLane(
     nextSwing += (state.homeSwing - nextSwing) * 0.3;
 
     // Sub-lane value gravity
-    const lane = pickSynthLane(ALL_SYNTH_SUB_LANES, rng);
+    const gravityLanes = ALL_SYNTH_SUB_LANES.filter(l => enabledSubs.has(l) && getValues(next, l) !== null);
+    const lane = pickSynthLane(gravityLanes, rng);
     if (lane) {
       const currentVals = getValues(next, lane);
       const homeVals = getValues(home, lane);
@@ -503,7 +512,8 @@ export function evolveSynthLane(
 
   // Direction gravity
   if (home && chance(rng, 0.15 * (1.2 - intensity))) {
-    const lane = pickSynthLane(DIRECTION_LANES, rng);
+    const directionGravityLanes = DIRECTION_LANES.filter(l => enabledSubs.has(l) && getValues(next, l) !== null);
+    const lane = pickSynthLane(directionGravityLanes, rng);
     if (lane) {
       const homeDir = getDirection(home, lane);
       const currentDir = getDirection(next, lane);
@@ -556,7 +566,7 @@ export function defaultSynthEvolveConfig(): SynthEvolveConfig {
   return {
     enabled: false,
     everyBars: 4,
-    evolution: 0.5,
+    evolution: 0.25,
     writeOffset: 0,
     mutationMode: 'biased',
     methods: defaultSynthEvolveMethods(),
@@ -574,7 +584,7 @@ export function defaultSynthEvolveMethods(): Record<SynthEvolveMethod, boolean> 
     valueWiden: false,
     subLaneLengthDrift: false,
     subLaneDirectionFlip: false,
-    triggerToggle: true,
+    triggerToggle: false,
   };
 }
 
@@ -585,5 +595,8 @@ export function defaultSynthEvolveState(): SynthEvolveState {
     homeSwing: 0,
     homeNoteRangeMin: null,
     homeNoteRangeMax: null,
+    homePitchSettings: null,
+    homePitchScaleQuantize: null,
+    homePitchSubLaneState: null,
   };
 }

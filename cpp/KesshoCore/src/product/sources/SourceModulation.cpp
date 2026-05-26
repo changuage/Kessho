@@ -27,38 +27,6 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
 
 } // namespace
 
-  ModulationRange* KesshoProductEngine::findModulationRange(uint32_t target_id, uint32_t param_id) {
-  for (ModulationRange& range : modulation_ranges) {
-    if (range.active && range.target_id == target_id && range.param_id == param_id) {
-      return &range;
-    }
-  }
-  return nullptr;
-}
-
-  const ModulationRange* KesshoProductEngine::findModulationRange(uint32_t target_id, uint32_t param_id) const {
-  for (const ModulationRange& range : modulation_ranges) {
-    if (range.active && range.target_id == target_id && range.param_id == param_id) {
-      return &range;
-    }
-  }
-  return nullptr;
-}
-
-  ModulationRange* KesshoProductEngine::findOrAllocateModulationRange(uint32_t target_id, uint32_t param_id) {
-  for (ModulationRange& range : modulation_ranges) {
-    if (range.target_id == target_id && range.param_id == param_id) {
-      return &range;
-    }
-  }
-  for (ModulationRange& range : modulation_ranges) {
-    if (!range.active) {
-      return &range;
-    }
-  }
-  return nullptr;
-}
-
   void KesshoProductEngine::applyModulationRangeEvent(const KesshoProductEvent& event) {
   const uint32_t target_id = event.target_id;
   const uint32_t param_id = event.param_id;
@@ -82,6 +50,7 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
   }
   if (!active) {
     *range = {};
+    rebuildModulationRouteCache();
     telemetry.last_error_code = KESSHO_PRODUCT_OK;
     return;
   }
@@ -131,6 +100,7 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
     range->sample_hold_counter = 0u;
     range->sample_hold_trigger_bus = sampleHoldTriggerBusForEvent(event);
   }
+  rebuildModulationRouteCache();
   if (target_id == 0u && range->mode == KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD) {
     KesshoProductEvent param_event{};
     param_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
@@ -159,6 +129,47 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
 }
 
   float KesshoProductEngine::resolveModulatedValue(uint32_t target_id, uint32_t param_id, float fallback, uint32_t sample_seed) const {
+  if (active_modulation_range_count == 0u) {
+    return fallback;
+  }
+  const uint32_t source_param_slot = sourceModulationParamSlot(param_id);
+  const uint32_t source_param_bit = source_param_slot < kSourceModulationParamSlotCount
+      ? (1u << source_param_slot)
+      : 0u;
+  uint16_t route_index = kInvalidModulationRouteIndex;
+  bool route_required = false;
+  if (target_id >= 1u && target_id <= kSourceCount && source_param_bit != 0u) {
+    if ((source_modulation_param_masks[target_id - 1u] & source_param_bit) == 0u) {
+      return fallback;
+    }
+    route_index = source_modulation_route_indices[target_id - 1u][source_param_slot];
+    route_required = true;
+  } else if (isDrumRangeTarget(target_id)) {
+    const uint32_t drum_voice = target_id - KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE;
+    uint32_t drum_param_index = 0u;
+    if (productDrumRuntimeParamIndex(param_id, drum_param_index)) {
+      if (!drumRuntimeParamModulated(drum_voice, drum_param_index)) {
+        return fallback;
+      }
+      route_index = drum_runtime_modulation_route_indices[drum_voice][drum_param_index];
+      route_required = true;
+    } else if (source_param_bit != 0u &&
+        (drum_source_modulation_param_masks[drum_voice] & source_param_bit) == 0u) {
+      return fallback;
+    } else if (source_param_bit != 0u) {
+      route_index = drum_source_modulation_route_indices[drum_voice][source_param_slot];
+      route_required = true;
+    }
+  }
+  if (route_index != kInvalidModulationRouteIndex && route_index < kMaxModulationRanges) {
+    const ModulationRange& range = modulation_ranges[route_index];
+    if (range.active && range.target_id == target_id && range.param_id == param_id) {
+      return modulationRangeSample(range, fallback, sample_seed);
+    }
+  }
+  if (route_required) {
+    return fallback;
+  }
   const ModulationRange* range = findModulationRange(target_id, param_id);
   if (range == nullptr) {
     return fallback;

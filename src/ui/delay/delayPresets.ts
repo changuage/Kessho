@@ -128,9 +128,13 @@ export interface ClockedSpacePreset {
   name: string;
   description: string;
   tags: string[];
-  params: Pick<SliderState,
-    'delayBPattern' | 'delayBWarp' | 'delayBWarpIntensity' | 'delayBSpread'
-  >;
+  params: Partial<Pick<SliderState,
+    'delayBAlgorithm' | 'delayBPattern' | 'delayBWarp' | 'delayBWarpIntensity' | 'delayBSpread' |
+    'delayBTapeSpacing' |
+    'delayBTapeHead1Enabled' | 'delayBTapeHead2Enabled' | 'delayBTapeHead3Enabled' | 'delayBTapeHead4Enabled' |
+    'delayBTapeHead1Level' | 'delayBTapeHead2Level' | 'delayBTapeHead3Level' | 'delayBTapeHead4Level' |
+    'delayBTapeHead1Pan' | 'delayBTapeHead2Pan' | 'delayBTapeHead3Pan' | 'delayBTapeHead4Pan'
+  >>;
 }
 
 export const CLOCKED_SPACE_PRESETS: Record<string, ClockedSpacePreset> = {
@@ -139,10 +143,34 @@ export const CLOCKED_SPACE_PRESETS: Record<string, ClockedSpacePreset> = {
     description: 'Default Clocked Space — cascade pattern, clean, balanced spread.',
     tags: ['init', 'clean'],
     params: {
+      delayBAlgorithm: 'clockedSpace',
       delayBPattern: 'cascade',
       delayBWarp: 'clean',
       delayBWarpIntensity: 0.5,
       delayBSpread: 0.5,
+    },
+  },
+  fourHeadTape: {
+    name: 'Four Head Tape',
+    description: 'Even-spaced tape heads with Volante-style quarter-note head four timing.',
+    tags: ['tape', 'heads', 'even'],
+    params: {
+      delayBAlgorithm: 'tapeHeads',
+      delayBTapeSpacing: 'even',
+      delayBWarpIntensity: 0.35,
+      delayBSpread: 0.5,
+      delayBTapeHead1Enabled: true,
+      delayBTapeHead2Enabled: true,
+      delayBTapeHead3Enabled: true,
+      delayBTapeHead4Enabled: true,
+      delayBTapeHead1Level: 0.72,
+      delayBTapeHead2Level: 0.8,
+      delayBTapeHead3Level: 0.88,
+      delayBTapeHead4Level: 1,
+      delayBTapeHead1Pan: 0.28,
+      delayBTapeHead2Pan: 0.72,
+      delayBTapeHead3Pan: 0.38,
+      delayBTapeHead4Pan: 0.62,
     },
   },
   goldenClean: {
@@ -224,7 +252,7 @@ export const CLOCKED_SPACE_PRESETS: Record<string, ClockedSpacePreset> = {
   },
 };
 
-/* ── Delay Kit (L2, delayKit scope — cross-feed routing + master sat) ── */
+/* ── Delay Kit (L2, delayKit scope — cross-feed routing) ── */
 
 export interface DelayKitPreset {
   name: string;
@@ -232,15 +260,14 @@ export interface DelayKitPreset {
   tags: string[];
   params: Pick<SliderState,
     'delayAToBSend' | 'delayBToASend' | 'delayACrossFeedFilter' |
-    'delayAGranularSend' | 'delayBGranularSend' |
-    'masterSatDrive' | 'masterSatMode' | 'masterSatTone'
+    'delayAGranularSend' | 'delayBGranularSend'
   >;
 }
 
 export const DELAY_KIT_PRESETS: Record<string, DelayKitPreset> = {
   init: {
     name: 'Init',
-    description: 'No cross-feeds, no saturation — clean parallel delays.',
+    description: 'No cross-feeds — clean parallel delays.',
     tags: ['init', 'clean'],
     params: {
       delayAToBSend: 0,
@@ -248,9 +275,6 @@ export const DELAY_KIT_PRESETS: Record<string, DelayKitPreset> = {
       delayACrossFeedFilter: 1,
       delayAGranularSend: 0,
       delayBGranularSend: 0,
-      masterSatDrive: 0,
-      masterSatMode: 'clean',
-      masterSatTone: 0.5,
     },
   },
   aFeedsB: {
@@ -263,9 +287,6 @@ export const DELAY_KIT_PRESETS: Record<string, DelayKitPreset> = {
       delayACrossFeedFilter: 0.7,
       delayAGranularSend: 0,
       delayBGranularSend: 0,
-      masterSatDrive: 0,
-      masterSatMode: 'clean',
-      masterSatTone: 0.5,
     },
   },
   bFeedsA: {
@@ -278,9 +299,6 @@ export const DELAY_KIT_PRESETS: Record<string, DelayKitPreset> = {
       delayACrossFeedFilter: 0.6,
       delayAGranularSend: 0,
       delayBGranularSend: 0,
-      masterSatDrive: 0,
-      masterSatMode: 'clean',
-      masterSatTone: 0.5,
     },
   },
   dualFeedback: {
@@ -293,9 +311,6 @@ export const DELAY_KIT_PRESETS: Record<string, DelayKitPreset> = {
       delayACrossFeedFilter: 0.5,
       delayAGranularSend: 0,
       delayBGranularSend: 0,
-      masterSatDrive: 0.15,
-      masterSatMode: 'tape',
-      masterSatTone: 0.45,
     },
   },
   granularReturn: {
@@ -308,54 +323,18 @@ export const DELAY_KIT_PRESETS: Record<string, DelayKitPreset> = {
       delayACrossFeedFilter: 1,
       delayAGranularSend: 0.35,
       delayBGranularSend: 0.4,
-      masterSatDrive: 0,
-      masterSatMode: 'clean',
-      masterSatTone: 0.5,
-    },
-  },
-  tapeLoop: {
-    name: 'Tape Loop',
-    description: 'Warm tape saturation with gentle cross-feed — lo-fi character.',
-    tags: ['tape', 'warm', 'lo-fi'],
-    params: {
-      delayAToBSend: 0.2,
-      delayBToASend: 0.15,
-      delayACrossFeedFilter: 0.4,
-      delayAGranularSend: 0,
-      delayBGranularSend: 0,
-      masterSatDrive: 0.5,
-      masterSatMode: 'tape',
-      masterSatTone: 0.35,
-    },
-  },
-  tubeDrive: {
-    name: 'Tube Drive',
-    description: 'Hot tube saturation, cascading A→B — aggressive character.',
-    tags: ['tube', 'drive', 'aggressive'],
-    params: {
-      delayAToBSend: 0.5,
-      delayBToASend: 0,
-      delayACrossFeedFilter: 0.55,
-      delayAGranularSend: 0,
-      delayBGranularSend: 0,
-      masterSatDrive: 0.7,
-      masterSatMode: 'tube',
-      masterSatTone: 0.6,
     },
   },
   fullMatrix: {
     name: 'Full Matrix',
-    description: 'Everything connected — dense, saturated, granular-recycled.',
-    tags: ['matrix', 'dense', 'saturated', 'granular'],
+    description: 'Everything connected — dense, granular-recycled delay feedback.',
+    tags: ['matrix', 'dense', 'granular'],
     params: {
       delayAToBSend: 0.3,
       delayBToASend: 0.2,
       delayACrossFeedFilter: 0.45,
       delayAGranularSend: 0.25,
       delayBGranularSend: 0.3,
-      masterSatDrive: 0.4,
-      masterSatMode: 'tape',
-      masterSatTone: 0.4,
     },
   },
 };

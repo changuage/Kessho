@@ -1443,8 +1443,6 @@ const dynamicsEntries: Record<string, SliderHelpEntry> = {
   dynamicsSaturationDrive: lowHigh('Sets Dynamics master saturation drive.', 'leave the bus cleaner', 'push harder into the selected saturation color', [dn('Saturation', 'Drive')]),
   dynamicsSaturationTone: lowHigh('Sets Dynamics saturation tone.', 'tilt the saturated bus darker', 'tilt the saturated bus brighter', [dn('Saturation', 'Tone')]),
   dynamicsSaturationBias: lowHigh('Sets Dynamics saturation bias.', 'keep clipping more symmetrical', 'lean into asymmetrical even-harmonic color', [dn('Saturation', 'Bias')]),
-  masterSatDrive: lowHigh('Sets Delay-page master saturation drive.', 'keep the master saturation clean', 'push harder into the selected saturation shape', [dn('Delay', 'Drive')]),
-  masterSatTone: lowHigh('Sets Delay-page master saturation tone.', 'tilt the saturated path darker', 'tilt the saturated path brighter', [dn('Delay', 'Sat Tone')]),
 };
 
 const granularVoiceBase = {

@@ -16,9 +16,14 @@ import { isStatePresetDiffKeyActive, normalizeStatePresetDiffData } from './stat
 import { buildPresetVersionMetadata, getPresetVersionSnapshot } from './versionMetadataHelpers';
 import { buildJourneyPresetPreview } from './journeyPresetPreview';
 import { normalizePresetSummary } from './presetUtils';
+import {
+  applyEuclideanPatternToDrumState,
+  applyEuclideanPatternToSynthLaneState,
+  extractEuclideanPatternLaneDataFromSynthState,
+} from './euclideanPatternBank';
 import type { PresetEntry } from './types';
-import { DEFAULT_STATE, migratePreset, type SavedPreset } from '../ui/state';
-import { createEmptyStepOverrides, serializeStepOverrides } from '../ui/sequencer/stepOverrideSerialization';
+import { DEFAULT_STATE, decodeStateFromUrl, encodeStateToUrl, migratePreset, type SavedPreset } from '../ui/state';
+import { createEmptyStepOverrides, deserializeStepOverrides, serializeStepOverrides } from '../ui/sequencer/stepOverrideSerialization';
 import {
   applySequencePresetClockDivs,
   applySequencePresetEvolveConfigs,
@@ -30,6 +35,7 @@ import {
   applySequencePresetSwings,
   copySequenceLaneForPreset,
   copySequenceLaneStateForPreset,
+  inferLegacySequencerSubLaneStatesFromOverrides,
 } from '../ui/sequencer/sequencePresetLane';
 import type {
   EvolveConfig,
@@ -37,6 +43,12 @@ import type {
   SubLaneKind,
   SubLaneState,
 } from '../ui/sequencer/useEuclideanSequencer';
+import { stepOverridesForEngineSubLaneState } from '../ui/sequencer/engineStepOverrides';
+import {
+  drumPitchBaseMidiFromState,
+  drumPitchUiValuesToEngineOffsets,
+  evolvedDrumPitchOffsetToUiValue,
+} from '../ui/sequencer/drumPitchSequencer';
 import type { PitchBindingMode } from '../audio/drumSeqTypes';
 import { createDiamondJourney, createJourneyConnection } from '../audio/journeyTypes';
 import {
@@ -48,8 +60,108 @@ import {
   validateJourneyConfig,
 } from './journeyPresetCodec';
 import { coerceJourneyPresetEntry } from './useJourneyPresets';
+import { getPadPreset, morphPadPresets } from '../audio/padPresets';
+import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES, morphPresets } from '../audio/lead4opfm';
+import { getPreset as getDrumPreset } from '../audio/drumPresets';
+import { interpolatePresets as morphDrumPresets } from '../audio/drumMorph';
 
 const SYNTH_BINDING_MODES = ['sequence', 'linked', 'polyrhythmic', 'polyrhythmic'] as const;
+
+function testStateUrlRoundTripRestoresBooleanSequencerState(): void {
+  const source = {
+    ...DEFAULT_STATE,
+    drumEnabled: true,
+    drumDelayEnabled: true,
+    drumSubMorphAuto: true,
+    drumEuclidMasterEnabled: true,
+    drumEuclid1Enabled: true,
+    drumEuclid1TargetKick: false,
+    drumEuclid1TargetNoise: true,
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: false,
+    synthEuclid2Enabled: true,
+    synthChordSequencerEnabled: false,
+    granularV2TempoSync: true,
+    reverbEnabled: false,
+  };
+
+  const decoded = decodeStateFromUrl(`?${encodeStateToUrl(source)}`);
+  assert.ok(decoded, 'encoded state should decode');
+  assert.equal(decoded.drumEnabled, true);
+  assert.equal(decoded.drumDelayEnabled, true);
+  assert.equal(decoded.drumSubMorphAuto, true);
+  assert.equal(decoded.drumEuclidMasterEnabled, true);
+  assert.equal(decoded.drumEuclid1Enabled, true);
+  assert.equal(decoded.drumEuclid1TargetKick, false);
+  assert.equal(decoded.drumEuclid1TargetNoise, true);
+  assert.equal(decoded.synthEuclideanMasterEnabled, true);
+  assert.equal(decoded.synthEuclid1Enabled, false);
+  assert.equal(decoded.synthEuclid2Enabled, true);
+  assert.equal(decoded.synthChordSequencerEnabled, false);
+  assert.equal(decoded.granularV2TempoSync, true);
+  assert.equal(decoded.reverbEnabled, false);
+}
+
+function testSoundEnginePresetMorphClampsEndpointB(): void {
+  const padA = getPadPreset('init', 'pad1');
+  const padB = getPadPreset('harsh_pluck', 'pad1');
+  assert.ok(padA && padB, 'pad morph regression presets should exist');
+  assert.deepStrictEqual(
+    morphPadPresets(padA, padB, 100),
+    morphPadPresets(padA, padB, 1),
+    'pad preset morph should clamp normalized endpoint B instead of extrapolating',
+  );
+
+  assert.deepStrictEqual(
+    morphPresets(DEFAULT_SOFT_RHODES, DEFAULT_GAMELAN, 100),
+    morphPresets(DEFAULT_SOFT_RHODES, DEFAULT_GAMELAN, 1),
+    'lead preset morph should clamp normalized endpoint B instead of extrapolating',
+  );
+
+  const kickA = getDrumPreset('kick', 'Ikeda Kick');
+  const kickB = getDrumPreset('kick', 'Ambient Boom');
+  assert.ok(kickA && kickB, 'drum morph regression presets should exist');
+  assert.deepStrictEqual(
+    morphDrumPresets(kickA, kickB, 100),
+    morphDrumPresets(kickA, kickB, 1),
+    'drum preset morph should clamp normalized endpoint B instead of extrapolating',
+  );
+}
+
+function testGenericDrumEuclideanPatternKeepsTimingParamTypes(): void {
+  const loaded = applyEuclideanPatternToDrumState(
+    { ...DEFAULT_STATE, drumEuclidTempo: 0.5, drumEuclidDivision: 8 },
+    {
+      euclideanPatternEnabled: true,
+      euclideanPatternPreset: 'tresillo',
+      euclideanPatternSteps: 8,
+      euclideanPatternHits: 3,
+      euclideanPatternRotation: 0,
+    },
+  );
+
+  assert.equal(loaded.drumEuclidTempo, 1, 'generic drum pattern presets should load a tempo multiplier');
+  assert.equal(loaded.drumEuclidDivision, 16, 'generic drum pattern presets should load a numeric division');
+}
+
+function testSynthLanePatternRoundTripKeepsNoteRangeBounds(): void {
+  const saved = extractEuclideanPatternLaneDataFromSynthState({
+    ...DEFAULT_STATE,
+    synthEuclid1NoteMin: 48,
+    synthEuclid1NoteMax: 67,
+  }, 0);
+
+  const loaded = applyEuclideanPatternToSynthLaneState({
+    ...DEFAULT_STATE,
+    synthEuclid1NoteMin: 72,
+    synthEuclid1NoteMax: 84,
+  }, saved, 0);
+
+  assert.equal(saved.euclideanPatternNoteMin, 48, 'synth lane pattern extract should include noteRange low bound');
+  assert.equal(saved.euclideanPatternNoteMax, 67, 'synth lane pattern extract should include noteRange high bound');
+  assert.equal(loaded.synthEuclid1NoteMin, 48, 'synth lane pattern load should restore noteRange low bound');
+  assert.equal(loaded.synthEuclid1NoteMax, 67, 'synth lane pattern load should restore noteRange high bound');
+}
 
 function makeSubLaneState(): Record<SubLaneKind, SubLaneState> {
   return {
@@ -62,14 +174,51 @@ function makeSubLaneState(): Record<SubLaneKind, SubLaneState> {
   };
 }
 
+function testEngineStepOverridesTrimHiddenSubLaneValues(): void {
+  const overrides = createEmptyStepOverrides();
+  overrides.pitch[0] = [0, 2, 4, 7];
+  overrides.expression[0] = [0.4];
+  overrides.expressionRanges![0] = { min: 0.2, max: 0.8 };
+  overrides.morph[0] = [0.2, 0.6, 0.9];
+  overrides.morphRanges![0] = { min: 0.1, max: 0.7 };
+  overrides.slice[0] = [8, 12];
+  overrides.reverse[0] = [1, 0, 1, 0];
+
+  const states = Array.from({ length: 4 }, makeSubLaneState);
+  states[0] = {
+    ...makeSubLaneState(),
+    pitch: { enabled: true, steps: 2, direction: 'forward', scaleQuantize: false },
+    expression: { enabled: true, steps: 3, direction: 'forward', valueMode: 'range', rangeMin: 0.75, rangeMax: 1 },
+    morph: { enabled: false, steps: 2, direction: 'forward', valueMode: 'sequence', rangeMin: 0.25, rangeMax: 0.75 },
+    slice: { enabled: true, steps: 1, direction: 'forward' },
+    reverse: { enabled: true, steps: 3, direction: 'forward' },
+  };
+
+  const engineOverrides = stepOverridesForEngineSubLaneState(overrides, states);
+  assert.deepStrictEqual(engineOverrides.pitch[0], [0, 2]);
+  assert.deepStrictEqual(engineOverrides.expression[0], [0.4, 1, 1]);
+  assert.deepStrictEqual(engineOverrides.expressionRanges?.[0], { min: 0.2, max: 0.8 });
+  assert.equal(engineOverrides.morph[0], null);
+  assert.equal(engineOverrides.morphRanges?.[0], null);
+  assert.deepStrictEqual(engineOverrides.slice[0], [8]);
+  assert.deepStrictEqual(engineOverrides.reverse[0], [1, 0, 1]);
+  assert.deepStrictEqual(overrides.pitch[0], [0, 2, 4, 7], 'raw UI overrides should retain hidden values');
+}
+
 function testMigratePresetPreservesSynthPitchBindingModes(): void {
   const migrated = migratePreset({
     name: 'Binding Check',
     timestamp: '2026-04-21T00:00:00.000Z',
     state: { ...DEFAULT_STATE },
+    drumPitchSettings: [{ mode: 'notes', root: 48, scale: 'Minor' }],
     synthPitchBindingModes: [...SYNTH_BINDING_MODES],
   });
 
+  assert.deepStrictEqual(
+    migrated.drumPitchSettings,
+    [{ mode: 'notes', root: 48, scale: 'Minor' }],
+    'migratePreset should preserve drumPitchSettings',
+  );
   assert.deepStrictEqual(
     migrated.synthPitchBindingModes,
     [...SYNTH_BINDING_MODES],
@@ -103,6 +252,12 @@ function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
     synthLinked: [true, false, false, true],
     drumSubLaneStates: [{ trigger: { enabled: true, steps: 8, direction: 'forward' } }] as SavedPreset['drumSubLaneStates'],
     synthSubLaneStates: [{ trigger: { enabled: false, steps: 16, direction: 'reverse' } }] as SavedPreset['synthSubLaneStates'],
+    drumPitchSettings: [
+      { mode: 'notes', root: 48, scale: 'Minor' },
+      { mode: 'semitones', root: 60, scale: 'Major' },
+      { mode: 'notes', root: 43, scale: 'Dorian' },
+      { mode: 'semitones', root: 60, scale: 'Major' },
+    ],
     synthPitchSettings: [
       { mode: 'notes', root: 62, scale: 'Dorian' },
       { mode: 'semitones', root: 60, scale: 'Major' },
@@ -135,6 +290,12 @@ function testBuildPresetVersionMetadataIncludesAllSupportedFields(): void {
     synthLinked: [true, false, false, true],
     drumSubLaneStates: [{ trigger: { enabled: true, steps: 8, direction: 'forward' } }],
     synthSubLaneStates: [{ trigger: { enabled: false, steps: 16, direction: 'reverse' } }],
+    drumPitchSettings: [
+      { mode: 'notes', root: 48, scale: 'Minor' },
+      { mode: 'semitones', root: 60, scale: 'Major' },
+      { mode: 'notes', root: 43, scale: 'Dorian' },
+      { mode: 'semitones', root: 60, scale: 'Major' },
+    ],
     synthPitchSettings: [
       { mode: 'notes', root: 62, scale: 'Dorian' },
       { mode: 'semitones', root: 60, scale: 'Major' },
@@ -208,21 +369,50 @@ function testSequenceLanePresetRoundTripKeepsRuntimeLaneState(): void {
   sourceOverrides.expression[2] = [0.4, 0.8];
   sourceOverrides.expressionDirection[2] = 'reverse';
   sourceOverrides.expressionRanges![2] = { min: 0.2, max: 0.7 };
+  sourceOverrides.slice[2] = [3, 7, 11];
+  sourceOverrides.reverse[2] = [1, 0, 1];
+  sourceOverrides.sliceDirection[2] = 'pingpong';
+  sourceOverrides.reverseDirection[2] = 'reverse';
 
   const serializedOverrides = serializeStepOverrides(copySequenceLaneForPreset(sourceOverrides, 2));
+  const serializedStateOverrides = serializeStepOverrides(sourceOverrides);
   const appliedOverrides = applySequencePresetOverrides(createEmptyStepOverrides(), serializedOverrides, 1);
 
+  assert.deepStrictEqual(serializedOverrides?.slice?.[0], [3, 7, 11]);
+  assert.deepStrictEqual(serializedOverrides?.reverse?.[0], [1, 0, 1]);
+  assert.equal(serializedOverrides?.sliceDirection?.[0], 'pingpong');
+  assert.equal(serializedOverrides?.reverseDirection?.[0], 'reverse');
   assert.equal(appliedOverrides.triggerToggles[1]?.get(3), false);
   assert.deepStrictEqual(appliedOverrides.pitch[1], [0, 2, 4]);
   assert.deepStrictEqual(appliedOverrides.expression[1], [0.4, 0.8]);
   assert.equal(appliedOverrides.expressionDirection[1], 'reverse');
   assert.deepStrictEqual(appliedOverrides.expressionRanges?.[1], { min: 0.2, max: 0.7 });
+  assert.deepStrictEqual(appliedOverrides.slice[1], [3, 7, 11]);
+  assert.deepStrictEqual(appliedOverrides.reverse[1], [1, 0, 1]);
+  assert.equal(appliedOverrides.sliceDirection[1], 'pingpong');
+  assert.equal(appliedOverrides.reverseDirection[1], 'reverse');
+  const malformedDirections = deserializeStepOverrides({
+    expressionDirection: ['sideways', 'reverse', null, 'pingpong'],
+    sliceDirection: ['forward', 'bad', 'reverse', null],
+  } as any);
+  assert.equal(malformedDirections?.expressionDirection[0], null);
+  assert.equal(malformedDirections?.expressionDirection[1], 'reverse');
+  assert.equal(malformedDirections?.sliceDirection[1], null);
+  assert.equal(malformedDirections?.sliceDirection[2], 'reverse');
+  const malformedRanges = deserializeStepOverrides({
+    expressionRanges: [{ min: 1.2, max: -0.5 }, { min: 'bad', max: 1 }, null, { min: 0.2, max: 0.8 }],
+  } as any);
+  assert.deepStrictEqual(malformedRanges?.expressionRanges?.[0], { min: 0, max: 1 });
+  assert.equal(malformedRanges?.expressionRanges?.[1], null);
+  assert.deepStrictEqual(malformedRanges?.expressionRanges?.[3], { min: 0.2, max: 0.8 });
 
   const sourceSubLaneStates = Array.from({ length: 4 }, makeSubLaneState);
   sourceSubLaneStates[2] = {
     ...makeSubLaneState(),
     pitch: { enabled: true, steps: 7, direction: 'pingpong', scaleQuantize: true },
     expression: { enabled: true, steps: 3, direction: 'reverse', valueMode: 'range', rangeMin: 0.3, rangeMax: 0.9 },
+    slice: { enabled: true, steps: 6, direction: 'pingpong' },
+    reverse: { enabled: true, steps: 2, direction: 'reverse' },
   };
   const evolveConfigs: EvolveConfig[] = Array.from({ length: 4 }, () => ({
     enabled: false,
@@ -260,8 +450,71 @@ function testSequenceLanePresetRoundTripKeepsRuntimeLaneState(): void {
   const appliedSubLaneStates = applySequencePresetSubLaneStates(targetSubLaneStates, serializedState, 1);
   assert.deepStrictEqual(appliedSubLaneStates[1]?.pitch, sourceSubLaneStates[2]?.pitch);
   assert.deepStrictEqual(appliedSubLaneStates[1]?.expression, sourceSubLaneStates[2]?.expression);
+  assert.deepStrictEqual(appliedSubLaneStates[1]?.slice, sourceSubLaneStates[2]?.slice);
+  assert.deepStrictEqual(appliedSubLaneStates[1]?.reverse, sourceSubLaneStates[2]?.reverse);
+  const sanitizedSubLaneStates = applySequencePresetSubLaneStates(targetSubLaneStates, {
+    subLaneStates: {
+      pitch: { enabled: true, steps: 99, direction: 'sideways', scaleQuantize: true },
+      expression: { enabled: true, steps: Number.NaN, direction: 'also-bad', valueMode: 'range', rangeMin: 1.2, rangeMax: -0.2 },
+    },
+  } as any, 1);
+  assert.deepStrictEqual(sanitizedSubLaneStates[1]?.pitch, {
+    enabled: true,
+    steps: 16,
+    direction: 'forward',
+    scaleQuantize: true,
+  });
+  assert.deepStrictEqual(sanitizedSubLaneStates[1]?.expression, {
+    enabled: true,
+    steps: 1,
+    direction: 'forward',
+    valueMode: 'range',
+    rangeMin: 0,
+    rangeMax: 1,
+  });
+  const inferredLegacySubLaneStates = applySequencePresetSubLaneStates(targetSubLaneStates, undefined, 1, serializedOverrides);
+  assert.deepStrictEqual(inferredLegacySubLaneStates[1]?.pitch, {
+    enabled: true,
+    steps: 3,
+    direction: 'forward',
+    scaleQuantize: false,
+  });
+  assert.deepStrictEqual(inferredLegacySubLaneStates[1]?.expression, {
+    enabled: true,
+    steps: 2,
+    direction: 'reverse',
+    valueMode: 'range',
+    rangeMin: 0.2,
+    rangeMax: 0.7,
+  });
+  assert.deepStrictEqual(inferredLegacySubLaneStates[1]?.slice, {
+    enabled: true,
+    steps: 3,
+    direction: 'pingpong',
+  });
+  assert.deepStrictEqual(inferredLegacySubLaneStates[1]?.reverse, {
+    enabled: true,
+    steps: 3,
+    direction: 'reverse',
+  });
+  const inferredLegacyStateSubLanes = inferLegacySequencerSubLaneStatesFromOverrides(serializedStateOverrides);
+  assert.deepStrictEqual(inferredLegacyStateSubLanes?.[2]?.expression, {
+    enabled: true,
+    steps: 2,
+    direction: 'reverse',
+    valueMode: 'range',
+    rangeMin: 0.2,
+    rangeMax: 0.7,
+  });
+  assert.deepStrictEqual(inferredLegacyStateSubLanes?.[2]?.slice, {
+    enabled: true,
+    steps: 3,
+    direction: 'pingpong',
+  });
   assert.deepStrictEqual(applySequencePresetClockDivs(['1/8', '1/8', '1/8', '1/8'], serializedState, 1), ['1/8', '1/4', '1/8', '1/8']);
+  assert.deepStrictEqual(applySequencePresetClockDivs(['1/8', '1/8', '1/8', '1/8'], { ...serializedState, clockDiv: '1/8t' as any }, 1), ['1/8', '1/8T', '1/8', '1/8']);
   assert.deepStrictEqual(applySequencePresetSwings([0, 0, 0, 0], serializedState, 1), [0, 0.2, 0, 0]);
+  assert.deepStrictEqual(applySequencePresetSwings([0, 0, 0, 0], { ...serializedState, swing: 1.2 }, 1), [0, 0.75, 0, 0]);
   assert.deepStrictEqual(applySequencePresetLinked([false, false, false, false], serializedState, 1), [false, true, false, false]);
   assert.deepStrictEqual(applySequencePresetPitchSettings([
     { mode: 'semitones', root: 60, scale: 'Major' },
@@ -269,11 +522,132 @@ function testSequenceLanePresetRoundTripKeepsRuntimeLaneState(): void {
     { mode: 'semitones', root: 60, scale: 'Major' },
     { mode: 'semitones', root: 60, scale: 'Major' },
   ], serializedState, 1)[1], pitchSettings[2]);
+  assert.deepStrictEqual(applySequencePresetPitchSettings([
+    { mode: 'semitones', root: 60, scale: 'Major' },
+    { mode: 'notes', root: 55, scale: 'Minor' },
+    { mode: 'semitones', root: 60, scale: 'Major' },
+    { mode: 'semitones', root: 60, scale: 'Major' },
+  ], { pitchSettings: { mode: 'bad-mode', root: 999, scale: 'No Scale' } as any }, 1)[1], {
+    mode: 'notes',
+    root: 127,
+    scale: 'Minor',
+  });
   assert.deepStrictEqual(
     applySequencePresetPitchBindingModes(['polyrhythmic', 'polyrhythmic', 'polyrhythmic', 'polyrhythmic'], serializedState, 1),
     ['polyrhythmic', 'sequence', 'polyrhythmic', 'polyrhythmic'],
   );
-  assert.deepStrictEqual(applySequencePresetEvolveConfigs(evolveConfigs.map((config) => ({ ...config, enabled: false })), serializedState, 1)[1], evolveConfigs[2]);
+  assert.deepStrictEqual(
+    applySequencePresetPitchBindingModes(['linked', 'linked', 'linked', 'linked'], { ...serializedState, pitchBindingMode: 'bad-mode' as any }, 1),
+    ['linked', 'linked', 'linked', 'linked'],
+  );
+  assert.deepStrictEqual(applySequencePresetEvolveConfigs(evolveConfigs.map((config) => ({ ...config, enabled: false })), serializedState, 1, 'synth')[1], {
+    ...evolveConfigs[2],
+    methods: {
+      swingDrift: true,
+      probDrift: false,
+      ratchetSpray: false,
+      pitchWalk: false,
+      valueDrift: true,
+      valueScramble: false,
+      valueWiden: false,
+      subLaneLengthDrift: false,
+      subLaneDirectionFlip: false,
+      triggerToggle: true,
+    },
+  });
+  assert.equal(
+    applySequencePresetEvolveConfigs(evolveConfigs, {
+      evolveConfig: { enabled: true, everyBars: 4, evolution: 0.25, writeOffset: 0, mutationMode: 'biased', methods: {} },
+    }, 1, 'synth')[1]?.methods.triggerToggle,
+    false,
+    'sequence preset load should restore synth evolve method defaults when legacy data has an empty methods object',
+  );
+  assert.equal(
+    applySequencePresetEvolveConfigs(evolveConfigs, {
+      evolveConfig: { enabled: true, everyBars: 4, evolution: 0.25, writeOffset: 0, mutationMode: 'biased', methods: {} },
+    }, 1, 'drum')[1]?.methods.rotateDrift,
+    true,
+    'sequence preset load should restore drum evolve method defaults when legacy data has an empty methods object',
+  );
+  const sanitizedSynthEvolve = applySequencePresetEvolveConfigs(evolveConfigs, {
+    evolveConfig: {
+      enabled: true,
+      everyBars: 'bad',
+      evolution: 2,
+      writeOffset: 'bad',
+      mutationMode: 'strict',
+      methods: { pitchWalk: 'yes', valueDrift: true },
+      enabledSubLanes: ['pitch', 12, 'ratchet'],
+    } as any,
+  }, 1, 'synth')[1];
+  assert.equal(sanitizedSynthEvolve?.everyBars, 4);
+  assert.equal(sanitizedSynthEvolve?.evolution, 1);
+  assert.equal(sanitizedSynthEvolve?.writeOffset, 0);
+  assert.equal(sanitizedSynthEvolve?.methods.pitchWalk, false);
+  assert.equal(sanitizedSynthEvolve?.methods.valueDrift, true);
+  assert.deepStrictEqual(sanitizedSynthEvolve?.enabledSubLanes, ['pitch', 'ratchet']);
+
+  const sanitizedCopiedState = copySequenceLaneStateForPreset({
+    laneIdx: 1,
+    subLaneStates: sourceSubLaneStates,
+    clockDivs: ['1/8', '1/16', '1/4', '1/32'],
+    swings: [0, 0.1, 0.2, 0.3],
+    linked: [false, false, true, false],
+    evolveConfigs: [
+      evolveConfigs[0]!,
+      {
+        enabled: true,
+        everyBars: Number.NaN,
+        evolution: -1,
+        writeOffset: Number.NaN,
+        mutationMode: 'loose',
+        methods: { pitchWalk: 'yes', valueDrift: true },
+        enabledSubLanes: ['pitch', { bad: true }, 'expression'],
+      } as any,
+      evolveConfigs[2]!,
+      evolveConfigs[3]!,
+    ],
+    pitchSettings,
+    pitchBindingModes,
+  });
+  assert.equal(sanitizedCopiedState.evolveConfig?.everyBars, 1);
+  assert.equal(sanitizedCopiedState.evolveConfig?.evolution, 0);
+  assert.equal(sanitizedCopiedState.evolveConfig?.writeOffset, 0);
+  assert.equal(sanitizedCopiedState.evolveConfig?.mutationMode, 'biased');
+  assert.equal(sanitizedCopiedState.evolveConfig?.methods.pitchWalk, false);
+  assert.equal(sanitizedCopiedState.evolveConfig?.methods.valueDrift, true);
+  assert.deepStrictEqual(sanitizedCopiedState.evolveConfig?.enabledSubLanes, ['pitch', 'expression']);
+}
+
+function testDrumPitchPresetRestoreUsesEngineOffsets(): void {
+  const state = {
+    ...DEFAULT_STATE,
+    drumEuclid1TargetKick: false,
+    drumEuclid1TargetNoise: true,
+  };
+  const settings: PitchSettings = { mode: 'notes', root: 60, scale: 'Major' };
+  const baseMidi = drumPitchBaseMidiFromState(state, 0);
+  assert.equal(baseMidi, 41, 'drum pitch base should follow the loaded lane target');
+  assert.deepStrictEqual(
+    drumPitchUiValuesToEngineOffsets([0, 2], settings, baseMidi),
+    [19, 23],
+    'drum pitch preset restore must convert saved scale degrees to engine pitch offsets',
+  );
+  assert.deepStrictEqual(
+    drumPitchUiValuesToEngineOffsets([1], { mode: 'semitones', root: 60, scale: 'Major' }, baseMidi, true),
+    [0],
+    'drum semitone offsets should keep scale-quantize behavior during preset restore',
+  );
+  assert.equal(
+    drumPitchUiValuesToEngineOffsets([0], { mode: 'noteRange', root: 60, scale: 'Major' }, baseMidi),
+    null,
+    'drum note-range pitch mode should not send a stale pitch sequence to the engine',
+  );
+  assert.equal(
+    evolvedDrumPitchOffsetToUiValue(19, settings, baseMidi),
+    0,
+    'drum evolved pitch offsets should round-trip back to saved scale degrees',
+  );
 }
 
 function testOptimizedStatePresetRoundTripKeepsOnlyOverrides(): void {
@@ -373,6 +747,39 @@ function testMaterializedV2VersionPreservesAncillaryMetadata(): void {
     drumStepOverrides: {
       triggerToggles: [[{ step: 9, value: true }], [], [], []],
     },
+    synthStepOverrides: {
+      triggerToggles: [[], [{ step: 11, value: false }], [], []],
+      expression: [null, [0.25, 0.75], null, null],
+      expressionDirection: [null, 'reverse', null, null],
+      expressionRanges: [null, { min: 0.2, max: 0.9 }, null, null],
+    },
+    drumSubLaneStates: [{
+      expression: {
+        enabled: true,
+        steps: 5,
+        direction: 'pingpong',
+        valueMode: 'range',
+        rangeMin: 0.2,
+        rangeMax: 0.9,
+      },
+    }] as SavedPreset['drumSubLaneStates'],
+    synthSubLaneStates: [{
+      pitch: { enabled: true, steps: 7, direction: 'reverse', scaleQuantize: true },
+      expression: {
+        enabled: true,
+        steps: 2,
+        direction: 'reverse',
+        valueMode: 'range',
+        rangeMin: 0.2,
+        rangeMax: 0.9,
+      },
+    }] as SavedPreset['synthSubLaneStates'],
+    drumPitchSettings: [
+      { mode: 'notes', root: 45, scale: 'Minor' },
+      { mode: 'semitones', root: 60, scale: 'Major' },
+      { mode: 'notes', root: 41, scale: 'Dorian' },
+      { mode: 'semitones', root: 60, scale: 'Major' },
+    ],
     synthPitchSettings: [
       { mode: 'notes', root: 64, scale: 'Lydian' },
       { mode: 'semitones', root: 60, scale: 'Major' },
@@ -410,6 +817,10 @@ function testMaterializedV2VersionPreservesAncillaryMetadata(): void {
   assert.deepStrictEqual(version.drumEvolveConfigs, metadata.drumEvolveConfigs);
   assert.deepStrictEqual(version.synthEvolveConfigs, metadata.synthEvolveConfigs);
   assert.deepStrictEqual(version.drumStepOverrides, metadata.drumStepOverrides);
+  assert.deepStrictEqual(version.synthStepOverrides, metadata.synthStepOverrides);
+  assert.deepStrictEqual(version.drumSubLaneStates, metadata.drumSubLaneStates);
+  assert.deepStrictEqual(version.synthSubLaneStates, metadata.synthSubLaneStates);
+  assert.deepStrictEqual(version.drumPitchSettings, metadata.drumPitchSettings);
   assert.deepStrictEqual(version.synthPitchSettings, metadata.synthPitchSettings);
   assert.deepStrictEqual(version.synthPitchBindingModes, metadata.synthPitchBindingModes);
 }
@@ -610,11 +1021,17 @@ function testJourneyPresetPreviewMetadataFeedsSummary(): void {
 }
 
 async function run(): Promise<void> {
+  testStateUrlRoundTripRestoresBooleanSequencerState();
+  testSoundEnginePresetMorphClampsEndpointB();
+  testGenericDrumEuclideanPatternKeepsTimingParamTypes();
+  testSynthLanePatternRoundTripKeepsNoteRangeBounds();
+  testEngineStepOverridesTrimHiddenSubLaneValues();
   testMigratePresetPreservesSynthPitchBindingModes();
   testBuildPresetVersionMetadataIncludesAllSupportedFields();
   testGetPresetVersionSnapshotReturnsSelectedVersionMetadata();
   testLegacyImportPreservesSynthPitchBindingModes();
   testSequenceLanePresetRoundTripKeepsRuntimeLaneState();
+  testDrumPitchPresetRestoreUsesEngineOffsets();
   testOptimizedStatePresetRoundTripKeepsOnlyOverrides();
   testStatePresetDiffIgnoresInactiveMixerValues();
   testMaterializedV2VersionPreservesAncillaryMetadata();

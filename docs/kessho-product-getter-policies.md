@@ -1,6 +1,6 @@
 # Kessho Product Getter Policies
 
-Getter policies in `core-product` must be visible Product Core blockers. Unsupported Web Audio/reference-only surfaces must throw when called; UI code should hide or gate those paths before they are reached.
+Getter policies in `core-product` must be visible Product Core blockers. Unsupported Web Audio/reference-only surfaces must throw when called; UI code should hide or gate those paths before they are reached. Explicitly unsupported hidden getters throw through a host API-boundary method and are not runtime fallbacks. Missing getters that are not listed here are forbidden production fallbacks, even when their names look like telemetry, debug, analyser, or visual helpers.
 
 | Getter | Classification | Retirement condition |
 | --- | --- | --- |

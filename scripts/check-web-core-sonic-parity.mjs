@@ -68,6 +68,7 @@ function parseArgs(argv) {
     coreEngine: 'core-product',
     printDebug: false,
     mobileDevice: false,
+    routeSmoke: false,
   };
 
   for (const arg of argv) {
@@ -102,6 +103,7 @@ function parseArgs(argv) {
     else if (arg.startsWith('--core-engine=')) args.coreEngine = arg.slice('--core-engine='.length).trim();
     else if (arg === '--print-debug') args.printDebug = true;
     else if (arg === '--mobile-device') args.mobileDevice = true;
+    else if (arg === '--route-smoke') args.routeSmoke = true;
     else if (arg === '--no-fail') args.noFail = true;
     else if (arg === '--self-check') args.selfCheck = true;
     else if (arg === '--help' || arg === '-h') {
@@ -259,6 +261,7 @@ Options:
   --envelope-peak-ratio-tolerance=0.35  Maximum relative peak delta per active envelope window
   --core-engine=core-product      Core runtime to compare against Web: core-product or core-smoke
   --mobile-device              Emulate a mobile browser user agent for platform-dependent graph choices
+  --route-smoke                Only require Web and core to produce valid non-silent output on the selected route
   --rms-tolerance=0.04         Maximum normalized RMS difference
   --peak-tolerance=0.25        Maximum peak absolute sample difference
   --min-signal-rms=0.0001      Minimum reference Web RMS required to avoid silent false passes
@@ -972,6 +975,21 @@ function buildFailureReasons({ comparison, gateMetrics, args, manualMode, web, c
     });
   }
 
+  const pushBlockingLogs = () => {
+    const blockingLogs = collectBlockingBrowserLogs(web, core, coreLabel);
+    for (const entry of blockingLogs) {
+      reasons.push({
+        kind: 'setup',
+        message: `blocking browser log: ${entry}`,
+      });
+    }
+  };
+
+  if (args.routeSmoke) {
+    pushBlockingLogs();
+    return reasons;
+  }
+
   if (envelopeComparison) {
     if (!envelopeComparison.passed) {
       reasons.push({
@@ -1014,13 +1032,7 @@ function buildFailureReasons({ comparison, gateMetrics, args, manualMode, web, c
     });
   }
 
-  const blockingLogs = collectBlockingBrowserLogs(web, core, coreLabel);
-  for (const entry of blockingLogs) {
-    reasons.push({
-      kind: 'setup',
-      message: `blocking browser log: ${entry}`,
-    });
-  }
+  pushBlockingLogs();
 
   return reasons;
 }
@@ -1297,7 +1309,7 @@ async function main() {
     if (comparison.webFirstSignalMs !== null && comparison.coreFirstSignalMs !== null) {
       console.log(`  First-signal delta: ${formatNumber(comparison.coreFirstSignalMs - comparison.webFirstSignalMs, 2)}ms (core-web)`);
     }
-    console.log(`  Gate: ${args.envelopeGate ? 'envelope' : ((manualMode || args.alignmentGate) ? 'aligned' : 'raw')} RMS<=${formatNumber(args.rmsTolerance)} peak<=${formatNumber(args.peakTolerance)}${(manualMode || args.alignmentGate) && !args.envelopeGate ? ` lag-corr>=${formatNumber(args.minLagCorrelation)} maxLag<=${formatNumber(args.maxLagMs, 2)}ms` : ''}`);
+    console.log(`  Gate: ${args.routeSmoke ? 'route-smoke' : (args.envelopeGate ? 'envelope' : ((manualMode || args.alignmentGate) ? 'aligned' : 'raw'))} RMS${args.routeSmoke ? `>=${formatNumber(args.minSignalRms)} for Web and core` : `<=${formatNumber(args.rmsTolerance)} peak<=${formatNumber(args.peakTolerance)}${(manualMode || args.alignmentGate) && !args.envelopeGate ? ` lag-corr>=${formatNumber(args.minLagCorrelation)} maxLag<=${formatNumber(args.maxLagMs, 2)}ms` : ''}`}`);
     console.log(`  Min Web RMS: ${formatNumber(args.minSignalRms)} (${comparison.webStats.rms >= args.minSignalRms ? 'met' : 'not met'})`);
     if (args.envelopeGate) {
       const envelopeComparison = compareEnvelopeSummaries(web.capture, core.capture, comparison, args);

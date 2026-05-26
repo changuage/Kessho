@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { audioEngine } from '../../audio/runtime';
 import type { EngineState } from '../../audio/runtime';
 import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 import { getRuntimeSliderPosition } from '../runtimeSliderState';
 import { getRuntimeValue } from '../runtimeValueState';
+import { SliderPrimitive } from '../sliderSystem';
 import type { SliderMode, SliderState } from '../state';
 import {
   ReactiveVisualizerRenderer,
@@ -11,6 +12,23 @@ import {
   type ReactiveVisualizerSnapshot,
   type VisualizerFocus,
 } from './ReactiveVisualizerRenderer';
+import {
+  type VisualizerReactionSettings,
+  type VisualizerReactiveRanges,
+  type VisualizerNumericControlKey,
+  buildVisualBuses,
+  applyVisualizerModulation,
+  createDefaultReactiveRanges,
+  getDriversForTarget,
+  getEffectiveReactionDepth,
+} from './visualizerModulation';
+import {
+  type VisualizerPresetData,
+  listVisualizerPresets,
+  loadVisualizerPreset,
+  saveVisualizerPreset,
+} from './visualizerPresetStore';
+import type { PresetSummary } from '../../presets/types';
 import { getVisualizerPulseSnapshot } from './visualizerSignals';
 import './reactiveVisualizer.css';
 
@@ -22,6 +40,8 @@ interface ReactiveVisualizerPageProps {
   dualRanges: DualRanges;
   engineState: EngineState;
   isPlaying: boolean;
+  linkedPresetRequest: { name: string; nonce: number } | null;
+  onVisualizerPresetChange: React.Dispatch<React.SetStateAction<string>>;
 }
 
 type NumericControlKey = Exclude<keyof ReactiveVisualizerControls, 'focus'>;
@@ -51,13 +71,49 @@ const DEFAULT_CONTROLS: ReactiveVisualizerControls = {
   motion: 0,
   color: 0,
   diffusion: 0,
-  density: 0,
   background: 0,
   frameRate: 0,
   shape: 0,
   organic: 0,
   edges: 0,
+  backdropFade: 0,
+  noiseTurbulence: 0,
+  noiseFlow: 0,
+  noiseSpeed: 0,
+  noiseColor: 0,
+  pulseSync: 0,
+  shapeSize: 0,
+  shapeCount: 0,
+  noiseSize: 0,
+  noiseDensity: 0,
+  bloomSize: 0,
+  kaleidoSize: 0,
+  glitchIntensity: 0,
+  glitchScale: 0,
+  glitchChromatic: 0,
+  glitchRate: 0,
+  charAmount: 0,
+  charStyle: 0,
+  charGrain: 0,
+  charDrift: 0,
+  kaleidoSegments: 0,
+  kaleidoSpin: 0,
+  kaleidoType: 0,
+  kaleidoReflections: 0,
+  brightness: 0,
+  vibrance: 0,
+  saturation: 0,
+  impactFlash: 0,
+  visualLimiter: 0,
+  layerOrder: [0, 1, 2, 3],  // shapes, atmos, glitch, kaleido
   focus: 'stringWaves',
+};
+
+const DEFAULT_REACTION: VisualizerReactionSettings = {
+  reactionAmount: 0.72,
+  morphAroundPreset: 0.5,
+  afterglow: 0.4,
+  mode: 'auto',
 };
 
 const FOCUS_OPTIONS: Array<{ value: VisualizerFocus; label: string }> = [
@@ -70,33 +126,84 @@ const FOCUS_OPTIONS: Array<{ value: VisualizerFocus; label: string }> = [
   { value: 'fx', label: 'FX' },
 ];
 
-const CONTROL_GROUPS: Array<{ label: string; controls: ControlDefinition[] }> = [
+const CONTROL_GROUPS: Array<{ label: string; collapsed?: boolean; controls: ControlDefinition[] }> = [
   {
-    label: 'Form',
+    label: 'Shape',
     controls: [
-      { key: 'style', label: 'Form', left: 'Noise fields', right: 'Gradient orbs' },
-      { key: 'shape', label: 'Shape', left: 'Triangles', right: 'Circles' },
-      { key: 'organic', label: 'Organic', left: 'Equal sided', right: 'Irregular angles' },
-      { key: 'edges', label: 'Edges', left: 'Amoeba blobs', right: 'Hard cut' },
-      { key: 'kaleidoscope', label: 'Granular fold', left: 'Sharper mirror shards', right: 'Soft glass repeats' },
-      { key: 'density', label: 'Structure', left: 'Sparse layers', right: 'Dense layers' },
+      { key: 'shape', label: 'Geometry', left: 'Angular', right: 'Round' },
+      { key: 'shapeCount', label: 'Count', left: 'Few', right: 'Many' },
+      { key: 'shapeSize', label: 'Spread', left: 'Tight', right: 'Fill' },
+      { key: 'organic', label: 'Organic', left: 'Uniform', right: 'Irregular' },
+      { key: 'edges', label: 'Edges', left: 'Amoeba', right: 'Gradient' },
+      { key: 'diffusion', label: 'Opacity', left: 'Solid', right: 'Faded' },
     ],
   },
   {
-    label: 'Light',
+    label: 'Color',
     controls: [
-      { key: 'background', label: 'Backdrop', left: 'Black gallery', right: 'Lit wall wash' },
-      { key: 'color', label: 'Palette', left: 'Vivid accents', right: 'Kessho pastels' },
-      { key: 'diffusion', label: 'Edge', left: 'Hard edge', right: 'Soft halo' },
+      { key: 'color', label: 'Palette', left: 'Electric', right: 'Jewel' },
+      { key: 'background', label: 'Background', left: 'Indigo', right: 'Blush' },
+      { key: 'backdropFade', label: 'Backdrop', left: 'Hidden', right: 'Glow' },
     ],
   },
   {
     label: 'Motion',
     controls: [
-      { key: 'triggerResponse', label: 'Trigger feel', left: 'Short sparks', right: 'Long afterglow' },
-      { key: 'ripples', label: 'Water', left: 'Crisp rings', right: 'Soft pond' },
-      { key: 'motion', label: 'Movement', left: 'Fast orbit', right: 'Slow breathe' },
-      { key: 'frameRate', label: 'Performance', left: 'Battery saver', right: 'Smooth' },
+      { key: 'motion', label: 'Drift', left: 'Fast orbit', right: 'Slow breathe' },
+      { key: 'ripples', label: 'Ripple', left: 'Tight', right: 'Soft' },
+      { key: 'triggerResponse', label: 'Trigger', left: 'Sparks', right: 'Afterglow' },
+    ],
+  },
+  {
+    label: 'Atmosphere',
+    controls: [
+      { key: 'style', label: 'Type', left: 'Nebula', right: 'Aurora' },
+      { key: 'noiseTurbulence', label: 'Turbulence', left: 'Smooth', right: 'Chaotic' },
+      { key: 'noiseFlow', label: 'Flow', left: 'Horizontal', right: 'Vertical' },
+      { key: 'noiseSpeed', label: 'Speed', left: 'Frozen', right: 'Fast' },
+      { key: 'noiseColor', label: 'Color', left: 'Random', right: 'Shape sync' },
+      { key: 'noiseSize', label: 'Scale', left: 'Detail', right: 'Broad' },
+      { key: 'noiseDensity', label: 'Density', left: 'Sparse', right: 'Dense' },
+      { key: 'bloomSize', label: 'Bloom', left: 'Tight', right: 'Wide' },
+    ],
+  },
+  {
+    label: 'Glitch',
+    collapsed: true,
+    controls: [
+      { key: 'glitchIntensity', label: 'Mode', left: 'VHS', right: 'Digital' },
+      { key: 'glitchScale', label: 'Size', left: 'Large', right: 'Fine' },
+      { key: 'glitchChromatic', label: 'Chromatic', left: 'Clean', right: 'RGB split' },
+      { key: 'glitchRate', label: 'Rate', left: 'Slow', right: 'Chaotic' },
+    ],
+  },
+  {
+    label: 'Kaleidoscope',
+    collapsed: true,
+    controls: [
+      { key: 'kaleidoscope', label: 'Intensity', left: 'Shards', right: 'Glass' },
+      { key: 'kaleidoSegments', label: 'Segments', left: 'Few', right: 'Many' },
+      { key: 'kaleidoSpin', label: 'Spin', left: 'Reverse', right: 'Forward' },
+      { key: 'kaleidoType', label: 'Mode', left: 'Prism', right: 'Liquid' },
+      { key: 'kaleidoSize', label: 'Coverage', left: 'Center', right: 'Full' },
+    ],
+  },
+  {
+    label: 'Character',
+    collapsed: true,
+    controls: [
+      { key: 'charAmount', label: 'Amount', left: 'Clean', right: 'Heavy' },
+      { key: 'charStyle', label: 'Style', left: 'Tape', right: 'Digital' },
+      { key: 'charGrain', label: 'Grain', left: 'Smooth', right: 'Noisy' },
+      { key: 'charDrift', label: 'Drift', left: 'Stable', right: 'Wobbly' },
+    ],
+  },
+  {
+    label: 'System',
+    collapsed: true,
+    controls: [
+      { key: 'pulseSync', label: 'Pulse sync', left: 'Free', right: 'Locked' },
+      { key: 'frameRate', label: 'Performance', left: 'Battery', right: 'Smooth' },
     ],
   },
 ];
@@ -180,11 +287,6 @@ function runtimeValue(
   return readNumber(state, key, fallback);
 }
 
-function avg(values: number[]): number {
-  if (values.length === 0) return 0;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
 function getActiveGrains(): number {
   try {
     return audioEngine.getGranularActiveGrainCount();
@@ -265,22 +367,18 @@ function buildSnapshot(
 ): ReactiveVisualizerSnapshot {
   const value = (key: string, fallback = 0) => runtimeValue(state, sliderModes, dualRanges, key, fallback);
   const padLevel = Math.max(value('synthLevel'), value('pad2Level') * (readBoolean(state, 'pad2Enabled') ? 1 : 0.55));
-  const padMorph = avg([
-    value('padMorph'),
-    value('pad2Morph'),
-  ]);
-  const padMotion = avg([
+  const padMorph = Math.max(value('padMorph'), value('pad2Morph'));
+  const padMotion = Math.max(
     normalizedRange(value('padLfo1Rate', 0), 0.05, 20),
     normalizedRange(value('padLfo2Rate', 0), 0.05, 20),
     normalizedRange(value('filterModSpeed', 0), 0, 20),
-  ]);
-  const padTone = avg([
+  );
+  const padTone = Math.max(
     value('hardness'),
     value('warmth'),
     value('presence'),
     logNorm(value('filterCutoffMax', 1600), 40, 12000),
-    padMorph,
-  ]);
+  );
 
   const leadLevel = Math.max(
     value('leadLevel'),
@@ -288,23 +386,19 @@ function buildSnapshot(
     value('lead2Level') * (readBoolean(state, 'lead2Enabled') ? 1 : 0.5),
     value('pianoLevel') * (readBoolean(state, 'pianoEnabled') ? 0.82 : 0.35),
   );
-  const leadMorph = avg([
+  const leadMorph = Math.max(
     value('lead1Morph'),
     value('lead2Morph'),
     value('lead1Distance'),
     value('lead2Distance'),
-    value('pianoDistance'),
-  ]);
-  const leadRhythm = avg([
+  );
+  const leadRhythm = Math.max(
     value('lead1Density', value('leadDensity', 0.5)) / 2,
     value('synthEuclideanTempo', 1) / 12,
-    value('synthEuclid1Level'),
-    value('synthEuclid2Level'),
-    value('synthEuclid3Level'),
-    value('synthEuclid4Level'),
-  ]);
+    Math.max(value('synthEuclid1Level'), value('synthEuclid2Level'), value('synthEuclid3Level'), value('synthEuclid4Level')),
+  );
 
-  const drumVoiceLevel = avg([
+  const drumVoiceLevel = Math.max(
     value('drumSubLevel'),
     value('drumKickLevel'),
     value('drumClickLevel'),
@@ -312,30 +406,30 @@ function buildSnapshot(
     value('drumBeepLoLevel'),
     value('drumNoiseLevel'),
     value('drumMembraneLevel'),
-  ]);
-  const drumSeqLevel = avg([
+  );
+  const drumSeqLevel = Math.max(
     value('drumEuclid1Level'),
     value('drumEuclid2Level'),
     value('drumEuclid3Level'),
     value('drumEuclid4Level'),
-  ]);
+  );
 
   const earthLevel = value('earthLevel', 1);
-  const waves = value('oceanSampleLevel') + value('granularWavesSend') * 0.45;
-  const water = value('waterLevel') + value('granularWaterSend') * 0.38;
-  const insects = (
+  const earthSources = Math.max(
+    value('oceanSampleLevel') + value('granularWavesSend') * 0.45,
+    value('waterLevel') + value('granularWaterSend') * 0.38,
     (readBoolean(state, 'insectsEnabled') ? value('insectsLevel') : 0) +
-    (readBoolean(state, 'insects2Enabled') ? value('insects2Level') : 0)
-  ) * value('insectsSharedLevel', 1);
-  const nature = value('natureLevel') + value('granularNatureSend') * 0.34;
+      (readBoolean(state, 'insects2Enabled') ? value('insects2Level') : 0),
+    value('natureLevel') + value('granularNatureSend') * 0.34,
+  );
 
-  const granularDensities = avg([
+  const granularDensities = Math.max(
     normalizedRange(value('granularV1Density', value('density', 20)), 1, 64),
     normalizedRange(value('granularV2Density', 20), 1, 64),
     normalizedRange(value('granularV3Density', 20), 1, 64),
     normalizedRange(value('granularV4Density', 20), 1, 64),
-  ]);
-  const granularSends = avg([
+  );
+  const granularSends = Math.max(
     value('granularPad1Send'),
     value('granularPad2Send'),
     value('granularLead1Send'),
@@ -346,61 +440,55 @@ function buildSnapshot(
     value('granularNatureSend'),
     value('granularWaterSend'),
     value('granularInsectsSend'),
-  ]);
+  );
   const activeGrains = getActiveGrains();
 
-  const delayEnergy = avg([
+  const delayEnergy = Math.max(
     value('delayAMix'),
     value('delayAFeedback') / 0.8,
-    value('delayAReverbSend'),
-    value('delayAToBSend'),
-    value('delayBToASend'),
     value('granularDelayMix'),
-    value('delayAGranularSend'),
-    value('delayBGranularSend'),
-  ]);
-  const reverbEnergy = avg([
+    (value('delayAToBSend') + value('delayBToASend')) * 0.8,
+  );
+  const reverbEnergy = Math.max(
     value('reverbLevel'),
     value('reverbDecay'),
     normalizedRange(value('reverbSize', 2), 0.5, 10),
-    value('reverbDiffusion'),
     value('reverbModulation'),
-    value('width'),
     value('granularReverbSend'),
-  ]);
+  );
   const dynamicsEnergy = readBoolean(state, 'dynamicsEnabled') || readBoolean(state, 'dynamicsSaturationEnabled')
-    ? avg([
+    ? Math.max(
       value('dynamicsSaturationDrive'),
       value('sidechainAmount'),
       value('characterMix'),
       value('degradeMix'),
       value('endCompMix'),
-    ])
-    : avg([value('masterSatDrive'), value('hardness')]) * 0.35;
+    )
+    : Math.max(value('masterSatDrive'), value('hardness')) * 0.5;
 
   const modulationRangeEnergy = clamp01(Object.keys(dualRanges).length / 80);
   const transportPulse = engineState.isRunning ? 0.12 : 0;
   const pulses = getVisualizerPulseSnapshot(timeMs);
 
   const snapshot: ReactiveVisualizerSnapshot = {
-    pad: clamp01(padLevel * 0.62 + padTone * 0.28 + padMotion * 0.18),
-    lead: clamp01(leadLevel * 0.62 + leadMorph * 0.22 + leadRhythm * 0.24),
-    drums: clamp01(value('drumLevel') * 0.7 + drumVoiceLevel * drumSeqLevel * 0.35),
-    earth: clamp01(earthLevel * avg([waves, water, insects, nature])),
-    granular: clamp01(value('granularLevel') * 0.58 + granularDensities * 0.26 + granularSends * 0.3 + activeGrains / 96),
-    delay: clamp01(delayEnergy),
-    reverb: clamp01(reverbEnergy),
-    dynamics: clamp01(dynamicsEnergy),
+    pad: clamp01(padLevel * 0.72 + padTone * 0.32 + padMotion * 0.28 + padMorph * 0.2),
+    lead: clamp01(leadLevel * 0.72 + leadMorph * 0.32 + leadRhythm * 0.3),
+    drums: clamp01(value('drumLevel') * 0.75 + drumVoiceLevel * 0.3 + drumSeqLevel * 0.3),
+    earth: clamp01(earthLevel * 0.5 + earthSources * 0.7),
+    granular: clamp01(value('granularLevel') * 0.6 + granularDensities * 0.32 + granularSends * 0.28 + activeGrains / 36),
+    delay: clamp01(delayEnergy * 1.2),
+    reverb: clamp01(reverbEnergy * 1.15),
+    dynamics: clamp01(dynamicsEnergy * 1.1),
     root: clamp01(((value('rootNote') + 12 + value('cofCurrentStep') + engineState.cofCurrentStep) % 12) / 12),
     tension: clamp01(value('tension') * 0.8 + modulationRangeEnergy * 0.2),
     spread: clamp01(value('waveSpread') * 0.58 + value('voicingSpread') * 0.32 + transportPulse),
     detune: clamp01(value('detune') / 25),
-    morph: clamp01(avg([padMorph, leadMorph, pulses.sequencer])),
-    brightness: clamp01(avg([
+    morph: clamp01(Math.max(padMorph, leadMorph, pulses.sequencer)),
+    brightness: clamp01(Math.max(
       logNorm(value('filterCutoffMax', 1600), 40, 12000),
       value('presence'),
       value('reverbInputTone', 0) * 0.5 + 0.5,
-    ])),
+    )),
     activeGrains,
     pulses,
   };
@@ -413,18 +501,14 @@ function fpsFromControl(value: number): number {
   return Math.round(36 + value * 24);
 }
 
-function formatControlValue(def: ControlDefinition, value: number): string {
-  if (def.key === 'frameRate') return `${fpsFromControl(value)} fps`;
-  if (Math.abs(value) < 0.005) return 'neutral';
-  return `${value < 0 ? def.left : def.right} ${Math.round(Math.abs(value) * 100)}%`;
-}
-
 const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
   state,
   sliderModes,
   dualRanges,
   engineState,
   isPlaying,
+  linkedPresetRequest: _linkedPresetRequest,
+  onVisualizerPresetChange: _onVisualizerPresetChange,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
@@ -447,8 +531,25 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
   const [meterSnapshot, setMeterSnapshot] = useState<ReactiveVisualizerSnapshot>(() => (
     buildSnapshot(state, sliderModes, dualRanges, engineState, DEFAULT_CONTROLS, 0)
   ));
+  const [modulatedControlsState, setModulatedControlsState] = useState<ReactiveVisualizerControls>(DEFAULT_CONTROLS);
   const meterUpdateRef = useRef(0);
   const { canAnimate } = useAnimationVisibility(rootRef, { rootMargin: '80px' });
+
+  // --- Reaction / modulation state ---
+  const [reaction, setReaction] = useState<VisualizerReactionSettings>(DEFAULT_REACTION);
+  const [reactiveRanges, setReactiveRanges] = useState<VisualizerReactiveRanges>(() =>
+    createDefaultReactiveRanges(DEFAULT_CONTROLS),
+  );
+  const reactionRef = useRef(reaction);
+  const reactiveRangesRef = useRef(reactiveRanges);
+  reactionRef.current = reaction;
+  reactiveRangesRef.current = reactiveRanges;
+
+  // --- Preset state ---
+  const [presetList, setPresetList] = useState<PresetSummary[]>([]);
+  const [presetName, setPresetName] = useState('');
+  const [activePresetName, setActivePresetName] = useState<string | null>(null);
+  const [presetSaving, setPresetSaving] = useState(false);
 
   controlsRef.current = controls;
   seedRef.current = seed;
@@ -522,6 +623,15 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
             controlState,
             timeMs,
           );
+          // Apply modulation: visual buses → mod matrix → modulated controls
+          const currentReaction = reactionRef.current;
+          const buses = buildVisualBuses(snapshot, currentReaction);
+          const modulatedControls = applyVisualizerModulation(
+            controlState,
+            reactiveRangesRef.current,
+            buses,
+            currentReaction,
+          );
           renderer.resize(width, height, dpr);
           renderer.render({
             timeMs,
@@ -529,12 +639,13 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
             height,
             dpr,
             snapshot,
-            controls: controlState,
+            controls: modulatedControls,
             seed: seedRef.current,
           });
           if (timeMs - meterUpdateRef.current > 180) {
             meterUpdateRef.current = timeMs;
             setMeterSnapshot(snapshot);
+            setModulatedControlsState(modulatedControls);
           }
         }
       }
@@ -589,109 +700,337 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
 
   const resetControls = useCallback(() => {
     setControls(DEFAULT_CONTROLS);
+    setReactiveRanges(createDefaultReactiveRanges(DEFAULT_CONTROLS));
+    setReaction(DEFAULT_REACTION);
+    setActivePresetName(null);
   }, []);
 
   const reseedVisualizer = useCallback(() => {
     setSeed(createVisualizerSeed());
   }, []);
 
-  const controlRows = useMemo(() => CONTROL_GROUPS, []);
+  // --- Preset handlers ---
+  const refreshPresets = useCallback(() => {
+    void listVisualizerPresets().then(setPresetList);
+  }, []);
+
+  useEffect(() => { refreshPresets(); }, [refreshPresets]);
+
+  const handleSavePreset = useCallback(async () => {
+    const name = presetName.trim();
+    if (!name) return;
+    setPresetSaving(true);
+    const data: VisualizerPresetData = {
+      format: 'kessho-visualizer-preset',
+      formatVersion: 1,
+      mode: reaction.mode,
+      controls,
+      reactiveRanges,
+      reaction,
+      seed,
+    };
+    await saveVisualizerPreset(name, data);
+    setActivePresetName(name);
+    _onVisualizerPresetChange(name);
+    refreshPresets();
+    setPresetSaving(false);
+  }, [presetName, controls, reactiveRanges, reaction, seed, refreshPresets, _onVisualizerPresetChange]);
+
+  const handleLoadPreset = useCallback(async (name: string) => {
+    const result = await loadVisualizerPreset(name);
+    if (!result) return;
+    const { data } = result;
+    setControls(data.controls);
+    setReactiveRanges(data.reactiveRanges);
+    setReaction(data.reaction);
+    setSeed(data.seed);
+    setActivePresetName(name);
+    setPresetName(name);
+    _onVisualizerPresetChange(name);
+  }, [_onVisualizerPresetChange]);
+
+  // Handle linked preset requests from parent
+  useEffect(() => {
+    if (_linkedPresetRequest && _linkedPresetRequest.name) {
+      void handleLoadPreset(_linkedPresetRequest.name);
+    }
+  }, [_linkedPresetRequest, handleLoadPreset]);
+
+  // Update reactive ranges when controls change
+  const updateReactiveRanges = useCallback(() => {
+    setReactiveRanges(createDefaultReactiveRanges(controls));
+  }, [controls]);
+
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    for (const group of CONTROL_GROUPS) {
+      if (group.collapsed) initial[group.label] = true;
+    }
+    return initial;
+  });
+
+  const toggleGroup = useCallback((label: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  }, []);
+
+  const [metersOpen, setMetersOpen] = useState(false);
+
+  // Per-slider mode: single (value line) / walk (range band + indicator) / sampleHold
+  const [vizSliderModes, setVizSliderModes] = useState<Record<string, SliderMode>>({});
+  const cycleVizMode = useCallback((key: string) => {
+    setVizSliderModes((prev) => {
+      const current = prev[key] ?? 'walk';
+      const next: SliderMode = current === 'single' ? 'walk' : current === 'walk' ? 'sampleHold' : 'single';
+      return { ...prev, [key]: next };
+    });
+  }, []);
+
+  const formatBipolar = useCallback((percent: number) => {
+    const val = ((percent / 100) * 2 - 1);
+    if (Math.abs(val) < 0.01) return '0';
+    return val > 0 ? `+${Math.round(val * 100)}` : `${Math.round(val * 100)}`;
+  }, []);
 
   return (
     <div ref={rootRef} className={`visualizer-root${fullscreenFallback ? ' visualizer-root--fullscreen-fallback' : ''}`}>
       <div ref={canvasWrapRef} className="visualizer-canvas-wrap">
         <canvas ref={canvasRef} className="visualizer-canvas" aria-label="Reactive visualizer" />
         <div className="visualizer-status-row">
-          <span>{rendererMode === 'webgl2' ? 'WebGL2' : 'Canvas 2D'}</span>
+          <span>{rendererMode === 'webgl2' ? 'WebGL2' : '2D'}</span>
           <span>{isPlaying ? 'Live' : 'Idle'}</span>
-          <span>{fpsFromControl(controls.frameRate)} FPS cap</span>
-          <span>Seed {formatSeed(seed)}</span>
+          <span>{fpsFromControl(controls.frameRate)} FPS</span>
+          <span>{formatSeed(seed)}</span>
         </div>
       </div>
 
       <aside className="visualizer-controls" aria-label="Visualizer controls">
         <div className="visualizer-controls-head">
-          <div>
+          <div className="visualizer-head-title">
             <h2>Visualizer</h2>
-            <div className="visualizer-mode-label">{controls.focus}</div>
+            <select
+              className="visualizer-focus-select"
+              value={controls.focus}
+              onChange={(event) => updateFocus(event.target.value as VisualizerFocus)}
+            >
+              {FOCUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="visualizer-head-actions">
             <button type="button" onClick={toggleFullscreen} title={(isFullscreen || fullscreenFallback) ? 'Exit fullscreen' : 'Fullscreen'}>
-              {(isFullscreen || fullscreenFallback) ? '[]' : '[ ]'}
+              {(isFullscreen || fullscreenFallback) ? '⊡' : '⊞'}
             </button>
-            <button type="button" onClick={reseedVisualizer} title="New random seed">
-              S
-            </button>
-            <button type="button" onClick={resetControls} title="Reset">
-              R
-            </button>
+            <button type="button" onClick={reseedVisualizer} title="New seed">⟳</button>
+            <button type="button" onClick={resetControls} title="Reset all">↺</button>
           </div>
         </div>
 
-        <label className="visualizer-select-row">
-          <span>Focus</span>
-          <select
-            value={controls.focus}
-            onChange={(event) => updateFocus(event.target.value as VisualizerFocus)}
-          >
-            {FOCUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="visualizer-meter-grid">
-          {ENGINE_METERS.map((meter) => {
-            const value = clamp01(meterSnapshot[meter.key]);
-            return (
-              <div className="visualizer-meter" key={meter.key}>
-                <span>{meter.label}</span>
-                <div className="visualizer-meter-track">
-                  <div
-                    className="visualizer-meter-fill"
-                    style={{
-                      width: `${Math.round(value * 100)}%`,
-                      backgroundColor: meter.color,
-                    }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {controlRows.map((group) => (
-          <section className="visualizer-control-group" key={group.label}>
-            <h3>{group.label}</h3>
-            {group.controls.map((def) => {
-              const value = controls[def.key];
-              const numericValue = typeof value === 'number' ? value : 0;
+        <button
+          type="button"
+          className={`visualizer-meters-toggle${metersOpen ? ' open' : ''}`}
+          onClick={() => setMetersOpen((v) => !v)}
+        >
+          <span>Engine levels</span>
+          <span className="visualizer-meters-arrow">{metersOpen ? '▾' : '▸'}</span>
+        </button>
+        {metersOpen && (
+          <div className="visualizer-meter-grid">
+            {ENGINE_METERS.map((meter) => {
+              const value = clamp01(meterSnapshot[meter.key]);
               return (
-                <label className="visualizer-slider-row" key={def.key}>
-                  <span className="visualizer-slider-label">
-                    <span>{def.label}</span>
-                    <strong>{formatControlValue(def, numericValue)}</strong>
-                  </span>
-                  <input
-                    type="range"
-                    min={-1}
-                    max={1}
-                    step={def.step ?? 0.01}
-                    value={numericValue}
-                    onChange={(event) => updateControl(def.key, Number(event.target.value))}
-                  />
-                  <span className="visualizer-slider-directions">
-                    <span>{def.left}</span>
-                    <span>neutral</span>
-                    <span>{def.right}</span>
-                  </span>
-                </label>
+                <div className="visualizer-meter" key={meter.key}>
+                  <span>{meter.label}</span>
+                  <div className="visualizer-meter-track">
+                    <div
+                      className="visualizer-meter-fill"
+                      style={{ width: `${Math.round(value * 100)}%`, backgroundColor: meter.color }}
+                    />
+                  </div>
+                </div>
               );
             })}
-          </section>
-        ))}
+          </div>
+        )}
+
+        {/* ─── Macros: Reactivity & Intensity ─── */}
+        <section className="visualizer-macros">
+          <div className="visualizer-slider-wrap">
+            <SliderPrimitive
+              label="Reactivity"
+              mode="single"
+              value={reaction.reactionAmount * 100}
+              variant="full"
+              density="compact"
+              hero="#9ccfbd"
+              formatValue={(p) => `${Math.round(p)}%`}
+              displayValue={`${Math.round(reaction.reactionAmount * 100)}%`}
+              onValueChange={(p) => setReaction((prev) => ({ ...prev, reactionAmount: p / 100 }))}
+            />
+          </div>
+          <div className="visualizer-slider-wrap">
+            <SliderPrimitive
+              label="Afterglow"
+              mode="single"
+              value={reaction.afterglow * 100}
+              variant="full"
+              density="compact"
+              hero="#9ccfbd"
+              formatValue={(p) => `${Math.round(p)}%`}
+              displayValue={`${Math.round(reaction.afterglow * 100)}%`}
+              onValueChange={(p) => setReaction((prev) => ({ ...prev, afterglow: p / 100 }))}
+            />
+          </div>
+          <div className="visualizer-slider-wrap">
+            <SliderPrimitive
+              label="Morph Depth"
+              mode="single"
+              value={reaction.morphAroundPreset * 100}
+              variant="full"
+              density="compact"
+              hero="#9ccfbd"
+              formatValue={(p) => `${Math.round(p)}%`}
+              displayValue={`${Math.round(reaction.morphAroundPreset * 100)}%`}
+              onValueChange={(p) => setReaction((prev) => ({ ...prev, morphAroundPreset: p / 100 }))}
+            />
+          </div>
+        </section>
+
+        {/* ─── Preset save/load ─── */}
+        <section className="visualizer-presets">
+          <div className="visualizer-preset-save-row">
+            <input
+              type="text"
+              className="visualizer-preset-input"
+              placeholder={activePresetName ?? 'Preset name…'}
+              value={presetName}
+              onChange={(e) => setPresetName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleSavePreset(); }}
+            />
+            <button
+              type="button"
+              className="visualizer-preset-save-btn"
+              onClick={() => void handleSavePreset()}
+              disabled={!presetName.trim() || presetSaving}
+              title="Save preset"
+            >
+              {presetSaving ? '…' : '↓'}
+            </button>
+            <button
+              type="button"
+              className="visualizer-preset-save-btn"
+              onClick={updateReactiveRanges}
+              title="Recalculate reactive ranges from current controls"
+            >
+              ⟲
+            </button>
+          </div>
+          {presetList.length > 0 && (
+            <div className="visualizer-preset-list">
+              {presetList.map((p) => (
+                <button
+                  key={p.name}
+                  type="button"
+                  className={`visualizer-preset-chip${p.name === activePresetName ? ' active' : ''}`}
+                  onClick={() => void handleLoadPreset(p.name)}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {CONTROL_GROUPS.map((group) => {
+          const isCollapsed = collapsedGroups[group.label] ?? false;
+          return (
+            <section className="visualizer-control-group" key={group.label}>
+              <button
+                type="button"
+                className="visualizer-group-header"
+                onClick={() => toggleGroup(group.label)}
+              >
+                <h3>{group.label}</h3>
+                <span className="visualizer-group-arrow">{isCollapsed ? '▸' : '▾'}</span>
+              </button>
+              {!isCollapsed && group.controls.map((def) => {
+                const value = controls[def.key];
+                const numericValue = typeof value === 'number' ? value : 0;
+                // Map bipolar -1..+1 to 0..100 for SliderPrimitive
+                const percent = (numericValue + 1) * 50;
+                // Reactive range mapped to 0-100%
+                const rr = reactiveRanges[def.key as VisualizerNumericControlKey];
+                const sliderRange = rr
+                  ? { min: (rr.min + 1) * 50, max: (rr.max + 1) * 50 }
+                  : undefined;
+                // Modulated value mapped to 0-100%
+                const modVal = modulatedControlsState[def.key];
+                const modPercent = typeof modVal === 'number' ? (modVal + 1) * 50 : percent;
+                // Mod routes driving this param
+                const drivers = getDriversForTarget(def.key as VisualizerNumericControlKey);
+                const modActive = Math.abs(modPercent - percent) > 0.5;
+                // Per-slider mode (default walk if has range, else single)
+                const sliderMode = vizSliderModes[def.key] ?? (sliderRange ? 'walk' : 'single');
+                return (
+                  <div className="visualizer-slider-wrap" key={def.key}>
+                    <SliderPrimitive
+                      label={def.label}
+                      mode={sliderMode}
+                      value={percent}
+                      range={sliderMode !== 'single' ? sliderRange : undefined}
+                      indicatorValue={sliderMode !== 'single' ? modPercent : undefined}
+                      variant="full"
+                      density="compact"
+                      hero="#9ccfbd"
+                      formatValue={formatBipolar}
+                      displayValue={
+                        Math.abs(numericValue) < 0.01
+                          ? '—'
+                          : numericValue < 0
+                            ? `${def.left} ${Math.round(Math.abs(numericValue) * 100)}%`
+                            : `${def.right} ${Math.round(numericValue * 100)}%`
+                      }
+                      onValueChange={(nextPercent) => {
+                        const bipolar = (nextPercent / 50) - 1;
+                        updateControl(def.key, Math.round(bipolar * 100) / 100);
+                      }}
+                      onRangeChange={sliderMode !== 'single' ? (nextRange) => {
+                        const bipolarMin = (nextRange.min / 50) - 1;
+                        const bipolarMax = (nextRange.max / 50) - 1;
+                        setReactiveRanges((prev) => ({
+                          ...prev,
+                          [def.key]: { min: bipolarMin, max: bipolarMax },
+                        }));
+                      } : undefined}
+                      onModeCycle={() => cycleVizMode(def.key)}
+                    />
+                    {drivers.length > 0 && (
+                      <div className={`visualizer-mod-drivers${modActive ? ' active' : ''}`}>
+                        {drivers.map((route) => {
+                          const effectivePct = Math.round(route.amount * getEffectiveReactionDepth(reaction) * 100);
+                          return (
+                            <span
+                              key={route.label}
+                              className={`visualizer-mod-chip${route.eventDriven ? ' visualizer-mod-chip--event' : ' visualizer-mod-chip--engine'}`}
+                              title={`${route.label} — ${route.engines.join(', ')} → ${route.target} (${effectivePct}%)`}
+                            >
+                              <span className="visualizer-mod-chip-bar" style={{ width: `${effectivePct}%` }} />
+                              <span className="visualizer-mod-chip-text">
+                              {route.eventDriven ? '▲ ' : '∼ '}{route.label}
+                              </span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </section>
+          );
+        })}
       </aside>
     </div>
   );

@@ -29,7 +29,8 @@ export const KESSHO_PRODUCT_EVENT_IDS = Object.freeze({
   ResetRng: 26,
   SetModulationRange: 27,
   ResetSequencerLaneHome: 28,
-  DiceSequencerLane: 29
+  DiceSequencerLane: 29,
+  SetSourceOverride: 30
 } as const);
 
 export const KESSHO_PRODUCT_EVENTS = Object.freeze([
@@ -148,6 +149,10 @@ export const KESSHO_PRODUCT_EVENTS = Object.freeze([
   {
     "name": "DiceSequencerLane",
     "id": 29
+  },
+  {
+    "name": "SetSourceOverride",
+    "id": 30
   }
 ] as const);
 export type KesshoProductEventName = keyof typeof KESSHO_PRODUCT_EVENT_IDS;

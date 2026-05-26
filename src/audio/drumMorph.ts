@@ -21,6 +21,7 @@ import {
   setEndpointState,
   createSingleState,
   createDualState,
+  clampMorphPosition,
   lerp,
   expLerp,
   smoothstep,
@@ -322,7 +323,8 @@ export function interpolatePresets(
 ): Record<string, number | string> {
   const result: Record<string, number | string> = {};
   const keys = getParamKeys(presetA, presetB);
-  
+  const morphPosition = clampMorphPosition(morph);
+
   for (const key of keys) {
     let valueA: number | string | undefined = presetA.params[key];
     let valueB: number | string | undefined = presetB.params[key];
@@ -349,18 +351,18 @@ export function interpolatePresets(
           // Determine destination based on morph direction from override position
           // If morph > overridePos, we're moving toward B, so blend toward B
           // If morph < overridePos, we're moving toward A, so blend toward A
-          if (morph >= overridePos) {
+          if (morphPosition >= overridePos) {
             // Moving toward B: blend from override to valueB
             const destValue = valueB;
             const totalDistance = 1 - overridePos;
-            const currentDistance = morph - overridePos;
+            const currentDistance = morphPosition - overridePos;
             const blendFactor = totalDistance > 0 ? currentDistance / totalDistance : 1;
             result[key] = override.value + (destValue - override.value) * blendFactor;
           } else {
             // Moving toward A: blend from override to valueA
             const destValue = valueA;
             const totalDistance = overridePos;
-            const currentDistance = overridePos - morph;
+            const currentDistance = overridePos - morphPosition;
             const blendFactor = totalDistance > 0 ? currentDistance / totalDistance : 1;
             result[key] = override.value + (destValue - override.value) * blendFactor;
           }
@@ -375,7 +377,7 @@ export function interpolatePresets(
     } else if (valueB === undefined) {
       result[key] = valueA;
     } else {
-      result[key] = interpolateParam(key, valueA, valueB, morph);
+      result[key] = interpolateParam(key, valueA, valueB, morphPosition);
     }
   }
   

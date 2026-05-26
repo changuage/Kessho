@@ -1,7 +1,8 @@
 import type { CoreProductSnapshot } from './coreProductSnapshot';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import type { SequencerStepToggleOverride } from './CoreProductHostSequencerAdapter';
-import { euclideanMaskHit, euclideanPatternMask, resolveEuclidPatternParams } from './euclideanPatterns';
+import { defaultDrumEuclidPattern, defaultSynthEuclidPattern, euclideanMaskHit, euclideanPatternMask, resolveEuclidPatternParams } from './euclideanPatterns';
+import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions';
 
 type SequencerVisualKind = 'synth' | 'drum';
 
@@ -38,21 +39,11 @@ function booleanFromState(state: Record<string, unknown> | null, key: string, fa
 }
 
 function clockDivisionFromState(state: Record<string, unknown> | null, key: string, fallback: number): number {
-  const value = state?.[key];
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(1, Math.min(128, Math.round(value)));
-  if (typeof value !== 'string') return fallback;
-  const table: Record<string, number> = {
-    '1/4': 4,
-    '1/4T': 6,
-    '1/8': 8,
-    '1/8T': 12,
-    '1/16': 16,
-    '1/16T': 24,
-    '1/32': 32,
-    '1/32T': 48,
-    '1/64': 64,
-  };
-  return table[value] ?? fallback;
+  return sequencerClockDivisionToNumericValue(state?.[key], fallback);
+}
+
+function defaultClockDivision(laneNumber: number): number {
+  return laneNumber === 1 ? 8 : laneNumber === 2 ? 16 : laneNumber === 3 ? 12 : 4;
 }
 
 function visualLaneFromState(
@@ -63,20 +54,14 @@ function visualLaneFromState(
 ): SequencerVisualLane {
   const laneNumber = laneIndex + 1;
   const prefix = kind === 'synth' ? `synthEuclid${laneNumber}` : `drumEuclid${laneNumber}`;
-  const defaultSteps = kind === 'synth'
-    ? 16
-    : laneNumber === 3 ? 12 : laneNumber === 2 ? 16 : 8;
-  const defaultHits = kind === 'synth'
-    ? laneNumber === 2 ? 3 : laneNumber === 3 ? 2 : laneNumber === 4 ? 6 : 4
-    : laneNumber === 1 ? 5 : laneNumber === 3 ? 5 : 3;
-  const defaultRotation = kind === 'synth'
-    ? laneNumber === 2 ? 1 : laneNumber === 4 ? 2 : 0
-    : 0;
+  const defaults = kind === 'synth'
+    ? defaultSynthEuclidPattern(laneIndex)
+    : defaultDrumEuclidPattern(laneIndex);
   const resolved = resolveEuclidPatternParams(
     String(state?.[`${prefix}Preset`] ?? 'custom'),
-    numberFromState(state, `${prefix}Steps`, defaultSteps),
-    numberFromState(state, `${prefix}Hits`, defaultHits),
-    numberFromState(state, `${prefix}Rotation`, defaultRotation),
+    numberFromState(state, `${prefix}Steps`, defaults.steps),
+    numberFromState(state, `${prefix}Hits`, defaults.hits),
+    numberFromState(state, `${prefix}Rotation`, defaults.rotation),
   );
   const mask = euclideanPatternMask(resolved.steps, resolved.hits, resolved.rotation);
   const enabled = kind === 'synth'
@@ -85,7 +70,7 @@ function visualLaneFromState(
   return {
     enabled,
     stepCount: Math.max(1, Math.min(64, Math.round(resolved.steps))),
-    clockDivision: clockDivisionFromState(state, `${prefix}ClockDivision`, kind === 'synth' ? 16 : numberFromState(state, 'drumEuclidDivision', 16)),
+    clockDivision: clockDivisionFromState(state, `${prefix}ClockDivision`, defaultClockDivision(laneNumber)),
     manualStepMaskLow: numberFromState(state, `${prefix}ManualStepMaskLow`, mask.low) >>> 0,
     manualStepMaskHigh: numberFromState(state, `${prefix}ManualStepMaskHigh`, mask.high) >>> 0,
     toggles: toggles[laneIndex] ?? [],
@@ -99,8 +84,10 @@ function laneHitAtStep(lane: SequencerVisualLane, step: number): boolean {
 }
 
 function hitCountThroughStep(lane: SequencerVisualLane, absoluteStep: number, step: number): number {
-  const cycleHits = Array.from({ length: lane.stepCount }, (_, index) => laneHitAtStep(lane, index))
-    .filter(Boolean).length;
+  let cycleHits = 0;
+  for (let index = 0; index < lane.stepCount; index += 1) {
+    if (laneHitAtStep(lane, index)) cycleHits += 1;
+  }
   const cycles = Math.max(0, Math.floor(absoluteStep / lane.stepCount));
   let count = cycles * cycleHits;
   for (let index = 0; index <= step; index += 1) {
@@ -114,19 +101,41 @@ function visualPositionsFor(
   input: PublishSequencerVisualsInput,
 ): { steps: number[]; hitCounts: number[] } {
   const bpm = input.snapshot?.transport.bpm ?? 120;
+  const synthTempo = Math.max(0.25, Math.min(12, numberFromState(input.state, 'synthEuclideanTempo', 1)));
+  const drumTempo = Math.max(0.25, Math.min(4, numberFromState(input.state, 'drumEuclidTempo', 1)));
   const absoluteSampleTime = input.telemetry?.absoluteSampleTime ?? 0;
   const lanes = Array.from({ length: 4 }, (_, laneIndex) =>
     visualLaneFromState(kind, input.state, laneIndex, kind === 'synth' ? input.synthToggles : input.drumToggles),
   );
-  const steps = lanes.map((lane) => {
+  const steps = lanes.map((lane, laneIndex) => {
     if (!lane.enabled || bpm <= 0 || input.sampleRate <= 0) return 0;
-    const samplesPerStep = (60 / bpm) * input.sampleRate * 4 / Math.max(1, lane.clockDivision);
-    return Math.floor(absoluteSampleTime / samplesPerStep) % lane.stepCount;
+    const tempoMultiplier = kind === 'synth' ? synthTempo : drumTempo;
+    const samplesPerStep = (60 / bpm) * input.sampleRate * 4 / Math.max(1, lane.clockDivision) / tempoMultiplier;
+    const fallbackStep = samplesPerStep > 0
+      ? Math.floor(absoluteSampleTime / samplesPerStep) % lane.stepCount
+      : 0;
+    const nativeStep = kind === 'synth'
+      ? input.telemetry?.synthSequencerCurrentSteps?.[laneIndex]
+      : input.telemetry?.drumSequencerCurrentSteps?.[laneIndex];
+    if (typeof nativeStep === 'number' && Number.isFinite(nativeStep)) {
+      const normalizedNative = Math.max(0, Math.floor(nativeStep)) % lane.stepCount;
+      if (normalizedNative === 0 && fallbackStep !== 0) return fallbackStep;
+      return normalizedNative;
+    }
+    return fallbackStep;
   });
   const hitCounts = lanes.map((lane, laneIndex) => {
     if (!lane.enabled || bpm <= 0 || input.sampleRate <= 0) return 0;
-    const samplesPerStep = (60 / bpm) * input.sampleRate * 4 / Math.max(1, lane.clockDivision);
-    const absoluteStep = Math.floor(absoluteSampleTime / samplesPerStep);
+    const nativeHitCount = kind === 'synth'
+      ? input.telemetry?.synthSequencerHitCounts?.[laneIndex]
+      : input.telemetry?.drumSequencerHitCounts?.[laneIndex];
+    if (typeof nativeHitCount === 'number' && Number.isFinite(nativeHitCount)) {
+      const normalizedNative = Math.max(0, Math.floor(nativeHitCount));
+      return normalizedNative;
+    }
+    const tempoMultiplier = kind === 'synth' ? synthTempo : drumTempo;
+    const samplesPerStep = (60 / bpm) * input.sampleRate * 4 / Math.max(1, lane.clockDivision) / tempoMultiplier;
+    const absoluteStep = samplesPerStep > 0 ? Math.floor(absoluteSampleTime / samplesPerStep) : 0;
     return hitCountThroughStep(lane, absoluteStep, steps[laneIndex] ?? 0);
   });
   return { steps, hitCounts };

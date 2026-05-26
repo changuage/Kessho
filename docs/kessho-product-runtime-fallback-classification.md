@@ -1,18 +1,14 @@
 # Kessho Product Runtime Fallback Classification
 
-`core-product` runtime fallbacks are temporary diagnostics, not architecture. Unknown update/control methods must not silently disappear.
-
-## safe-visual-fallback
-
-Read-only visual getters may be classified here only when the UI can safely hide an optional visual surface without changing audio behavior. The missing `core-product` proxy method still throws; the classification is diagnostic evidence, not a runtime value.
+`core-product` runtime fallbacks are temporary diagnostics, not architecture. Unknown update/control methods must not silently disappear. No runtime fallback is classified as safe only because it is visual; explicitly hidden Product Core getters are implemented host methods that throw a hard API-boundary error before fallback diagnostics run.
 
 ## temporary-missing-product-telemetry
 
-Telemetry/debug getters may be classified here while a tracked Product Core telemetry/debug API is missing. Gate I must either back these with Product telemetry, hide the UI, or keep a tracked blocker. The missing `core-product` proxy method still throws.
+Telemetry/debug getters may be classified here only through `CORE_PRODUCT_GETTER_POLICIES` while a tracked Product Core telemetry/debug API is missing. Gate I must either back these with Product telemetry, hide the UI, or keep a tracked blocker. The missing `core-product` proxy method still throws.
 
 ## reference-only-web-ts-behavior
 
-Legacy behavior that is meaningful only in `web-ts` reference mode may be classified here. It must not become the production `core-product` path.
+Legacy behavior that is meaningful only in `web-ts` reference mode may be classified here only through `CORE_PRODUCT_REFERENCE_ONLY_METHODS`. Broad unknown legacy methods are `forbidden-production-fallback` by default.
 
 ## forbidden-production-fallback
 
@@ -31,6 +27,10 @@ Runtime fallback diagnostics exposed through Product Core host telemetry/perf sn
 
 - `RuntimeFallbackClassification` is the closed classification vocabulary.
 - `classifyCoreProductRuntimeFallback` owns the classification.
+- Getter fallbacks are closed-list through `CORE_PRODUCT_GETTER_POLICIES`; broad `get*`, `*Telemetry`, `*Debug`, and `*Analyser` substring fallback classification is forbidden.
+- Reference-only fallbacks are closed-list through `CORE_PRODUCT_REFERENCE_ONLY_METHODS`; broad non-critical legacy fallback classification is forbidden.
+- Explicitly hidden getters throw through `explicitlyUnsupportedGetter` and do not increment runtime fallback diagnostics.
+- The app runtime proxy may return `null` only for pre-init lifecycle getters (`getAudioContext`, `getLimiterNode`, `getMediaStream`); it must not synthesize telemetry, analyser, debug, stem-node, or preset-preview getter values before the selected engine is loaded.
 - `reportRuntimeFallback` increments diagnostics for every fallback use.
 - `reportedRuntimeFallbacks` guarantees production logging is once per missing method.
 - The `core-product` proxy throws for every missing method or getter.

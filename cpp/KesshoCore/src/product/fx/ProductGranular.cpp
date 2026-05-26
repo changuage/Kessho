@@ -3,6 +3,7 @@
 namespace {
 
 constexpr float kGranularReverbCompressorMakeupGain = 3.037f;
+constexpr float kGranularReverbCompressorLowerGain = 0.04466836f; // -27 dB
 
 } // namespace
 
@@ -79,7 +80,9 @@ void KesshoProductEngine::advanceGranularPhraseReseed() {
     const float reverb_filtered_l = processGranularLowpass(granular_reverb_lpf, granular_reverb_lpf.left, module_l[i]);
     const float reverb_filtered_r = processGranularLowpass(granular_reverb_lpf, granular_reverb_lpf.right, module_r[i]);
     const float detector = std::max(std::max(std::abs(reverb_filtered_l), std::abs(reverb_filtered_r)), 1.0e-9f);
-    const float target_gain = std::pow(10.0f, granularCompressorGainDbForLevel(20.0f * std::log10(detector)) / 20.0f);
+    const float target_gain = detector <= kGranularReverbCompressorLowerGain
+        ? 1.0f
+        : std::pow(10.0f, granularCompressorGainDbForLevel(20.0f * std::log10(detector)) / 20.0f);
     const float coeff = target_gain < granular_reverb_comp_gain ? attack_coeff : release_coeff;
     granular_reverb_comp_gain = target_gain + (granular_reverb_comp_gain - target_gain) * coeff;
     reverb_branch_l[i] = reverb_filtered_l * granular_reverb_comp_gain * kGranularReverbCompressorMakeupGain;

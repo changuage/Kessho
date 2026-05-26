@@ -24,6 +24,28 @@ bool resolvePadRuntimeParamId(
   return false;
 }
 
+bool resolveLeadRuntimeParamId(
+    uint32_t param_id,
+    uint32_t& source_id,
+    uint32_t& lead_index,
+    uint32_t& param_index) {
+  if (param_id >= kProductLeadRuntimeParamIdBase &&
+      param_id < kProductLeadRuntimeParamIdBase + kProductLeadRuntimeParamCount) {
+    source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+    lead_index = 0u;
+    param_index = param_id - kProductLeadRuntimeParamIdBase;
+    return true;
+  }
+  if (param_id >= kProductLead2RuntimeParamIdBase &&
+      param_id < kProductLead2RuntimeParamIdBase + kProductLeadRuntimeParamCount) {
+    source_id = KESSHO_PRODUCT_SOURCE_LEAD2;
+    lead_index = 1u;
+    param_index = param_id - kProductLead2RuntimeParamIdBase;
+    return true;
+  }
+  return false;
+}
+
 } // namespace
 
   int32_t KesshoProductEngine::validateEvent(const KesshoProductEvent& event) const {
@@ -58,6 +80,29 @@ bool resolvePadRuntimeParamId(
       return valid_source(event.target_id) && event.value > 0.0f
           ? KESSHO_PRODUCT_OK
           : KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_OVERRIDE: {
+      const uint32_t param_count = sourceOverrideParamCountForSource(event.target_id);
+      if (!valid_source(event.target_id) || param_count == 0u) {
+        return KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
+      }
+      constexpr uint32_t valid_flags = KESSHO_PRODUCT_SOURCE_OVERRIDE_SET_SLOT | KESSHO_PRODUCT_SOURCE_OVERRIDE_COMMIT;
+      if ((event.flags & ~valid_flags) != 0u) {
+        return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      }
+      const bool set_slot = (event.flags & KESSHO_PRODUCT_SOURCE_OVERRIDE_SET_SLOT) != 0u;
+      const bool commit = (event.flags & KESSHO_PRODUCT_SOURCE_OVERRIDE_COMMIT) != 0u;
+      if (set_slot == commit) {
+        return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      }
+      if (set_slot) {
+        return event.index < param_count && event.param_id < param_count
+            ? KESSHO_PRODUCT_OK
+            : KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+      }
+      return event.index <= param_count
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+    }
     case KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON:
       if (!valid_source(event.target_id)) {
         return KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
@@ -128,7 +173,7 @@ bool resolvePadRuntimeParamId(
   }
 }
 
-  int32_t KesshoProductEngine::enqueueEvent(const KesshoProductEvent& event) {
+int32_t KesshoProductEngine::enqueueEvent(const KesshoProductEvent& event) {
   if (control_event_count >= kessho::product::generated::KESSHO_PRODUCT_MAX_CONTROL_EVENTS) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_EVENT_QUEUE_FULL;
     return KESSHO_PRODUCT_ERROR_EVENT_QUEUE_FULL;
@@ -138,15 +183,26 @@ bool resolvePadRuntimeParamId(
     telemetry.last_error_code = validation_result;
     return validation_result;
   }
-  control_events[control_event_count].event = event;
-  control_events[control_event_count].sequence = next_control_sequence++;
+  QueuedProductEvent queued{};
+  queued.event = event;
+  queued.sequence = next_control_sequence++;
+  uint32_t insert_index = control_event_count;
+  while (
+      insert_index > 0u &&
+      (queued.event.sample_offset < control_events[insert_index - 1u].event.sample_offset ||
+       (queued.event.sample_offset == control_events[insert_index - 1u].event.sample_offset &&
+        queued.sequence < control_events[insert_index - 1u].sequence))) {
+    control_events[insert_index] = control_events[insert_index - 1u];
+    --insert_index;
+  }
+  control_events[insert_index] = queued;
   ++control_event_count;
   telemetry.control_queue_depth = control_event_count;
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
   return KESSHO_PRODUCT_OK;
 }
 
-  void KesshoProductEngine::sortControlEvents() {
+void KesshoProductEngine::sortControlEvents() {
   for (uint32_t i = 1; i < control_event_count; ++i) {
     QueuedProductEvent key = control_events[i];
     uint32_t j = i;
@@ -177,6 +233,14 @@ bool resolvePadRuntimeParamId(
   void KesshoProductEngine::applyControlEvent(const KesshoProductEvent& event) {
   switch (event.event_kind) {
     case KESSHO_PRODUCT_EVENT_KIND_START:
+      if (!transport.running) {
+        for (uint32_t i = 0; i < synth_lane_count; ++i) {
+          resetSequencerLaneRuntime(synth_lanes[i]);
+        }
+        for (uint32_t i = 0; i < drum_lane_count; ++i) {
+          resetSequencerLaneRuntime(drum_lanes[i]);
+        }
+      }
       transport.running = true;
       break;
     case KESSHO_PRODUCT_EVENT_KIND_STOP:
@@ -184,6 +248,12 @@ bool resolvePadRuntimeParamId(
       break;
     case KESSHO_PRODUCT_EVENT_KIND_RESET_TRANSPORT:
       transport.reset();
+      for (uint32_t i = 0; i < synth_lane_count; ++i) {
+        resetSequencerLaneRuntime(synth_lanes[i]);
+      }
+      for (uint32_t i = 0; i < drum_lane_count; ++i) {
+        resetSequencerLaneRuntime(drum_lanes[i]);
+      }
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT:
       transport.bpm = clampFloat(event.value, 1.0f, 400.0f);
@@ -210,6 +280,9 @@ bool resolvePadRuntimeParamId(
     case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET:
       applySourcePresetEvent(event);
       break;
+    case KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_OVERRIDE:
+      applySourceOverrideEvent(event);
+      break;
     case KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON: {
       const uint32_t source_id = event.target_id;
       triggerVoice(
@@ -222,7 +295,11 @@ bool resolvePadRuntimeParamId(
           event.value4 > 0.0f ? event.value4 : -1.0f,
           0u,
           0u,
-          false);
+          false,
+          0.0f,
+          1.0e10f,
+          1.0e10f,
+          padVoiceIndexFromSequencerEventFlags(event.flags));
       break;
     }
     case KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_OFF:
@@ -297,20 +374,82 @@ bool resolvePadRuntimeParamId(
   const uint32_t command = status & 0xf0u;
   const float data1 = clampFloat(event.value2, 0.0f, 127.0f);
   const float data2 = clampFloat(event.value3, 0.0f, 127.0f);
+  const uint32_t channel = event.index <= 15u ? event.index : (status & 0x0fu);
+  const uint32_t midi_note = clampU32(static_cast<uint32_t>(std::lround(data1)), 0u, 127u);
   const uint32_t source_id = resolveMidiTargetSource(event, status);
   if (command == 0x90u && data2 > 0.0f) {
-    triggerVoice(source_id, data1, clampFloat(data2 / 127.0f, 0.0f, 1.0f), 0.5f);
+    const float controller_velocity_scale = midiControllerVelocityScale(source_id, channel, midi_note);
+    const float trigger_midi_note = clampFloat(data1 + midiPitchBendSemitones(source_id, channel), 0.0f, 127.0f);
+    uint32_t pad_voice_index = kPadVoiceNoPreference;
+    uint32_t pad_route_voice_index = kProductInvalidVoiceIndex;
+    if ((source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) &&
+        source_id >= 1u && source_id <= kSourceCount &&
+        sources[source_id - 1u].enabled &&
+        pad_module) {
+      const uint32_t pad_index = source_id == KESSHO_PRODUCT_SOURCE_PAD2 ? 1u : 0u;
+      pad_voice_index = pad_voice_cursors[pad_index]++ % static_cast<uint32_t>(PAD_VOICES_PER_PAD);
+      pad_route_voice_index = pad_index * static_cast<uint32_t>(PAD_VOICES_PER_PAD) + pad_voice_index;
+    }
+    const float hold_seconds = pad_route_voice_index != kProductInvalidVoiceIndex ? 0.0f : 0.5f;
+    const uint32_t trigger_voice_index = triggerVoice(
+        source_id,
+        trigger_midi_note,
+        clampFloat((data2 / 127.0f) * controller_velocity_scale, 0.0f, 1.0f),
+        hold_seconds,
+        -1.0f,
+        -1.0f,
+        -1.0f,
+        0u,
+        0u,
+        true,
+        0.0f,
+        1.0e10f,
+        1.0e10f,
+        pad_voice_index);
+    uint32_t lead_voice_index = kProductInvalidVoiceIndex;
+    uint32_t sample_voice_index = kProductInvalidVoiceIndex;
+    if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
+      lead_voice_index = trigger_voice_index;
+    } else if (source_id == KESSHO_PRODUCT_SOURCE_PIANO || source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
+      sample_voice_index = trigger_voice_index;
+    }
+    if (source_id >= 1u && source_id <= kSourceCount && sources[source_id - 1u].enabled) {
+      trackMidiNoteOn(source_id, channel, midi_note, pad_route_voice_index, lead_voice_index, sample_voice_index);
+    }
     return;
   }
   if (command == 0x80u || (command == 0x90u && data2 <= 0.0f)) {
-    releaseSourceVoices(source_id);
+    applyMidiNoteOff(source_id, channel, midi_note);
     return;
+  }
+  if (command == 0xb0u) {
+    const uint32_t controller = midi_note;
+    applyMidiControlChange(source_id, channel, controller, clampU32(static_cast<uint32_t>(std::lround(data2)), 0u, 127u));
+    if (controller == 64u || controller == 120u || controller == 123u) {
+      return;
+    }
   }
   if (command == 0xb0u && event.param_id != 0u) {
     KesshoProductEvent param_event = event;
     param_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
     param_event.value = clampFloat(event.value4, 0.0f, 1.0f);
     applyParam(param_event);
+    return;
+  }
+  if (command == 0xe0u) {
+    applyMidiPitchBend(
+        source_id,
+        channel,
+        clampU32(static_cast<uint32_t>(std::lround(data1)), 0u, 127u),
+        clampU32(static_cast<uint32_t>(std::lround(data2)), 0u, 127u));
+    return;
+  }
+  if (command == 0xd0u) {
+    applyMidiChannelPressure(source_id, channel, clampU32(static_cast<uint32_t>(std::lround(data1)), 0u, 127u));
+    return;
+  }
+  if (command == 0xa0u) {
+    applyMidiPolyPressure(source_id, channel, midi_note, clampU32(static_cast<uint32_t>(std::lround(data2)), 0u, 127u));
     return;
   }
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
@@ -511,7 +650,14 @@ bool resolvePadRuntimeParamId(
   uint32_t pad_param_index = 0u;
   if (resolvePadRuntimeParamId(event.param_id, pad_source_id, pad_index, pad_param_index)) {
     SourceState& source = sources[pad_source_id - 1u];
-    source.exact_pad_param_count = kProductPadRuntimeParamCount;
+    if (applyRuntimeSourceOverrideParam(pad_source_id, pad_param_index, event.value)) {
+      telemetry.last_error_code = KESSHO_PRODUCT_OK;
+      return;
+    }
+    if (source.exact_pad_param_count != kProductPadRuntimeParamCount) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      return;
+    }
     source.exact_pad_params[pad_param_index] = event.value;
     if (pad_module) {
       pad_module->setIndexedParam(
@@ -521,17 +667,36 @@ bool resolvePadRuntimeParamId(
     telemetry.last_error_code = KESSHO_PRODUCT_OK;
     return;
   }
+  uint32_t lead_source_id = 0u;
+  uint32_t lead_index = 0u;
+  uint32_t lead_param_index = 0u;
+  if (resolveLeadRuntimeParamId(event.param_id, lead_source_id, lead_index, lead_param_index)) {
+    SourceState& source = sources[lead_source_id - 1u];
+    if (applyRuntimeSourceOverrideParam(lead_source_id, lead_param_index, event.value)) {
+      telemetry.last_error_code = KESSHO_PRODUCT_OK;
+      return;
+    }
+    if (source.exact_lead_param_count != kProductLeadRuntimeParamCount) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      return;
+    }
+    source.exact_lead_params[lead_param_index] = event.value;
+    if (lead_modules[lead_index]) {
+      lead_modules[lead_index]->setIndexedParam(static_cast<int>(lead_param_index), event.value);
+    }
+    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    return;
+  }
   uint32_t drum_param_index = 0u;
   if (productDrumRuntimeParamIndex(event.param_id, drum_param_index)) {
     SourceState& source = sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
+    if (applyRuntimeSourceOverrideParam(KESSHO_PRODUCT_SOURCE_DRUM, drum_param_index, event.value)) {
+      telemetry.last_error_code = KESSHO_PRODUCT_OK;
+      return;
+    }
     if (source.exact_drum_param_count != kProductDrumRuntimeParamCount) {
-      const auto patch = sourcePresetPatch(findSourcePreset(defaultSourcePresetId(KESSHO_PRODUCT_SOURCE_DRUM)));
-      source.exact_drum_param_count = kProductDrumRuntimeParamCount;
-      for (uint32_t param_index = 0u; param_index < kProductDrumRuntimeParamCount; ++param_index) {
-        source.exact_drum_params[param_index] = param_index < patch.exact_drum_param_count
-            ? patch.exact_drum_params[param_index]
-            : 0.0f;
-      }
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      return;
     }
     source.exact_drum_params[drum_param_index] = event.value;
     if (drum_module) {
@@ -585,6 +750,9 @@ bool resolvePadRuntimeParamId(
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_VELOCITY_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_HOLD_SECONDS_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_SEED_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_BINDING_MODE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_INITIAL_START_DELAY_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TEMPO_MULTIPLIER_ID:
       applySequencerLaneParamEvent(event);
       break;
     case KESSHO_PRODUCT_PARAM_TRANSPORT_BPM_ID:
@@ -604,18 +772,6 @@ bool resolvePadRuntimeParamId(
       break;
     case KESSHO_PRODUCT_PARAM_MASTER_LIMITER_CEILING_DB_ID:
       setMasterLimiterCeilingDb(event.value);
-      break;
-    case KESSHO_PRODUCT_PARAM_MASTER_SATURATION_MODE_ID:
-      master_saturation_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 4u);
-      configureFxModules();
-      break;
-    case KESSHO_PRODUCT_PARAM_MASTER_SATURATION_DRIVE_ID:
-      master_saturation_drive = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
-      break;
-    case KESSHO_PRODUCT_PARAM_MASTER_SATURATION_TONE_ID:
-      master_saturation_tone = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_HARMONY_ROOT_MIDI_ID:
       harmony.root_midi = clampFloat(event.value, 0.0f, 127.0f);
@@ -720,7 +876,7 @@ bool resolvePadRuntimeParamId(
       configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BSPACE_MODE_ID:
-      fx.delay_b_space_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 1u);
+      fx.delay_b_space_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
       configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BPATTERN_ID:
@@ -739,6 +895,32 @@ bool resolvePadRuntimeParamId(
       fx.delay_b_spread = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD_MASK_ID:
+      fx.delay_b_tape_head_mask = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 15u);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD1_LEVEL_ID:
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD2_LEVEL_ID:
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD3_LEVEL_ID:
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD4_LEVEL_ID: {
+      const uint32_t index = event.param_id - KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD1_LEVEL_ID;
+      if (index < fx.delay_b_tape_head_levels.size()) {
+        fx.delay_b_tape_head_levels[index] = clampFloat(event.value, 0.0f, 1.0f);
+      }
+      configureFxModules();
+      break;
+    }
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD1_PAN_ID:
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD2_PAN_ID:
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD3_PAN_ID:
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD4_PAN_ID: {
+      const uint32_t index = event.param_id - KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD1_PAN_ID;
+      if (index < fx.delay_b_tape_head_pans.size()) {
+        fx.delay_b_tape_head_pans[index] = clampFloat(event.value, 0.0f, 1.0f);
+      }
+      configureFxModules();
+      break;
+    }
     case KESSHO_PRODUCT_PARAM_FX_REVERB_MIX_ID:
       fx.reverb_mix = clampFloat(event.value, 0.0f, 1.0f);
       break;

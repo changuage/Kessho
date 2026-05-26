@@ -19,25 +19,43 @@ const soundscapesSnapshotPath = 'src/audio/coreProductSoundscapesSnapshot.ts';
 const soundscapesSnapshot = read(soundscapesSnapshotPath);
 const snapshotEncoderPath = 'src/audio/coreProductSnapshotEncoder.ts';
 const snapshotEncoder = read(snapshotEncoderPath);
-const legacyCompatPath = 'src/audio/CoreProductLegacyPresetCompat.ts';
-const legacyCompat = read(legacyCompatPath);
-const snapshotAuthoritySurface = `${snapshot}\n${soundscapesSnapshot}\n${snapshotEncoder}\n${legacyCompat}`;
+const presetIdsPath = 'src/audio/CoreProductPresetIds.ts';
+const presetIds = read(presetIdsPath);
+const leadPatchPath = 'src/audio/CoreProductLeadPatch.ts';
+const leadPatch = read(leadPatchPath);
+const padPatchPath = 'src/audio/CoreProductPadPatch.ts';
+const padPatch = read(padPatchPath);
+const drumPatchPath = 'src/audio/CoreProductDrumPatch.ts';
+const drumPatch = read(drumPatchPath);
+const snapshotAuthoritySurface = `${snapshot}\n${soundscapesSnapshot}\n${snapshotEncoder}\n${presetIds}\n${leadPatch}\n${padPatch}\n${drumPatch}`;
 
 const allowedImports = new Set([
   './generated/kesshoProductSchema',
   '../ui/state',
-  './CoreProductLegacyPresetCompat',
+  './CoreProductModeIds',
+  './CoreProductDrumPatch',
+  './CoreProductLeadPatch',
+  './CoreProductPadPatch',
+  './CoreProductPresetIds',
+  './coreProductDelaySnapshot',
   './coreProductEvents',
   './coreProductAssets',
+  './coreProductSequencerMacroDefaults',
+  './coreProductSequencerHold',
   './coreProductSoundscapesSnapshot',
   './coreProductSnapshotEncoder',
+  './coreProductSnapshotState',
   './coreProductSnapshotTypes',
   './distanceMacro',
+  './euclideanPatterns',
   './granularMacroCore',
   './harmony',
   './outputTrims',
   '../platform',
   './rng',
+  './scales',
+  './sequencerClockDivisions',
+  './sequencerSwing',
   './transport',
 ]);
 
@@ -65,7 +83,12 @@ for (const source of soundscapesAllowedImports) {
 const encoderAllowedImports = new Set([
   './generated/kesshoProductSchema',
   './coreProductEvents',
-  './CoreProductLegacyPresetCompat',
+  './CoreProductDrumPatch',
+  './CoreProductLeadPatch',
+  './CoreProductPadPatch',
+  './CoreProductModeIds',
+  './CoreProductPresetIds',
+  './coreProductSoundscapesSnapshot',
   './coreProductSnapshot',
 ]);
 const encoderImports = Array.from(snapshotEncoder.matchAll(/from '([^']+)'/g), (match) => match[1]);
@@ -76,15 +99,62 @@ for (const source of encoderAllowedImports) {
   assert(encoderImports.includes(source), `${snapshotEncoderPath} import allowlist drifted; missing expected dependency: ${source}`);
 }
 
+const drumPatchAllowedImports = new Set([
+  './generated/kesshoProductSchema',
+  './CoreProductPresetIds',
+  './CoreProductSparseOverrides',
+  './coreProductSnapshotState',
+]);
+const drumPatchImports = Array.from(drumPatch.matchAll(/from '([^']+)'/g), (match) => match[1]);
+for (const source of drumPatchImports) {
+  assert(drumPatchAllowedImports.has(source), `${drumPatchPath} imports unclassified dependency: ${source}`);
+}
+for (const source of drumPatchAllowedImports) {
+  assert(drumPatchImports.includes(source), `${drumPatchPath} import allowlist drifted; missing expected dependency: ${source}`);
+}
+
+const padPatchAllowedImports = new Set([
+  './generated/kesshoProductSchema',
+  './padPresets',
+  './coreProductSnapshotState',
+  './distanceMacro',
+  './CoreProductSparseOverrides',
+]);
+const padPatchImports = Array.from(padPatch.matchAll(/from '([^']+)'/g), (match) => match[1]);
+for (const source of padPatchImports) {
+  assert(padPatchAllowedImports.has(source), `${padPatchPath} imports unclassified dependency: ${source}`);
+}
+for (const source of padPatchAllowedImports) {
+  assert(padPatchImports.includes(source), `${padPatchPath} import allowlist drifted; missing expected dependency: ${source}`);
+}
+
+const leadPatchAllowedImports = new Set([
+  './generated/kesshoProductSchema',
+  './lead4opfm',
+  './distanceMacro',
+  './coreProductSnapshotState',
+  './CoreProductPresetIds',
+  './CoreProductSparseOverrides',
+]);
+const leadPatchImports = Array.from(leadPatch.matchAll(/from '([^']+)'/g), (match) => match[1]);
+for (const source of leadPatchImports) {
+  assert(leadPatchAllowedImports.has(source), `${leadPatchPath} imports unclassified dependency: ${source}`);
+}
+for (const source of leadPatchAllowedImports) {
+  assert(leadPatchImports.includes(source), `${leadPatchPath} import allowlist drifted; missing expected dependency: ${source}`);
+}
+
 for (const token of [
   'SNAPSHOT_AUTHORITY: GENERATED_SCHEMA_SERIALIZATION',
   'SNAPSHOT_AUTHORITY: LEGACY_PRESET_KEY_TO_GENERATED_ID',
-  'SNAPSHOT_AUTHORITY: TEMP_COMPAT_WEB_REFERENCE',
+  'SNAPSHOT_AUTHORITY: PRODUCT_CORE_LEAD_OVERRIDE_BRIDGE',
+  'SNAPSHOT_AUTHORITY: PRODUCT_CORE_PAD_OVERRIDE_BRIDGE',
+  'SNAPSHOT_AUTHORITY: PRODUCT_CORE_DRUM_OVERRIDE_BRIDGE',
   'SNAPSHOT_AUTHORITY: INITIAL_RNG_SEED_ONLY',
   'SNAPSHOT_AUTHORITY: SERIALIZE_PRODUCT_STATE',
   'SNAPSHOT_AUTHORITY: PACK_GENERATED_SNAPSHOT_BYTES',
 ]) {
-  assert(snapshotAuthoritySurface.includes(token), `${snapshotPath}/${legacyCompatPath} missing authority label: ${token}`);
+  assert(snapshotAuthoritySurface.includes(token), `${snapshotPath} snapshot authority surface missing authority label: ${token}`);
 }
 
 for (const forbidden of [
@@ -100,7 +170,89 @@ for (const forbidden of [
   'localStorage',
   'sessionStorage',
 ]) {
-  assert(!snapshotAuthoritySurface.includes(forbidden), `${snapshotPath}/${legacyCompatPath} must not own runtime or hidden state via ${forbidden}`);
+  assert(!snapshotAuthoritySurface.includes(forbidden), `${snapshotPath} snapshot authority surface must not own runtime or hidden state via ${forbidden}`);
+}
+
+assert(
+  snapshotEncoder.includes('validateExactBridge') &&
+    snapshotEncoder.includes('validateSparseOverride') &&
+    snapshotEncoder.includes('exactCount !== 0 && count !== 0') &&
+    !snapshotEncoder.includes('Math.min(source.exactPadParamCount') &&
+    !snapshotEncoder.includes('Math.min(source.padOverrideCount') &&
+    !snapshotEncoder.includes('Math.min(source.padOverrideIndices') &&
+    !snapshotEncoder.includes('Math.min(source.exactLeadParamCount') &&
+    !snapshotEncoder.includes('Math.min(source.leadOverrideCount') &&
+    !snapshotEncoder.includes('Math.min(source.leadOverrideIndices') &&
+    !snapshotEncoder.includes('Math.min(source.exactDrumParamCount') &&
+    !snapshotEncoder.includes('Math.min(source.drumOverrideCount') &&
+    !snapshotEncoder.includes('Math.min(source.drumOverrideIndices'),
+  `${snapshotEncoderPath} must reject invalid exact/sparse bridge fields instead of clamping them while packing bytes`,
+);
+
+function functionBody(source, functionToken) {
+  const startIndex = source.indexOf(functionToken);
+  if (startIndex < 0) return '';
+  const paramsOpenIndex = source.indexOf('(', startIndex);
+  if (paramsOpenIndex < 0) return '';
+  let paramsDepth = 0;
+  let paramsCloseIndex = -1;
+  for (let index = paramsOpenIndex; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '(') paramsDepth += 1;
+    if (char === ')') {
+      paramsDepth -= 1;
+      if (paramsDepth === 0) {
+        paramsCloseIndex = index;
+        break;
+      }
+    }
+  }
+  if (paramsCloseIndex < 0) return '';
+  let openIndex = -1;
+  let returnTypeBraceDepth = 0;
+  for (let index = paramsCloseIndex + 1; index < source.length; index += 1) {
+    const char = source[index];
+    if (returnTypeBraceDepth > 0) {
+      if (char === '{') returnTypeBraceDepth += 1;
+      if (char === '}') returnTypeBraceDepth -= 1;
+      continue;
+    }
+    if (char === '{') {
+      const prefix = source.slice(paramsCloseIndex + 1, index).trim();
+      if (prefix === ':') {
+        returnTypeBraceDepth = 1;
+        continue;
+      }
+      openIndex = index;
+      break;
+    }
+    if (char === ';') return '';
+  }
+  if (openIndex < 0) return '';
+  let depth = 0;
+  for (let index = openIndex; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '{') depth += 1;
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(openIndex + 1, index);
+    }
+  }
+  return '';
+}
+
+function assertCallInsideFunction(source, sourcePath, callToken, functionToken, message) {
+  const body = functionBody(source, functionToken);
+  assert(body.length > 0, `${sourcePath} missing bounded function for ${callToken}`);
+  assert(body.includes(callToken), message);
+}
+
+function assertCallOrderInsideFunction(source, sourcePath, firstToken, secondToken, functionToken, message) {
+  const body = functionBody(source, functionToken);
+  assert(body.length > 0, `${sourcePath} missing bounded function for ${firstToken}`);
+  const firstIndex = body.indexOf(firstToken);
+  const secondIndex = body.indexOf(secondToken);
+  assert(firstIndex >= 0 && secondIndex >= 0 && firstIndex < secondIndex, message);
 }
 
 function assertCallInside(source, sourcePath, callToken, startToken, endToken, message) {
@@ -112,29 +264,222 @@ function assertCallInside(source, sourcePath, callToken, startToken, endToken, m
   assert(callIndex > startIndex && callIndex < endIndex, message);
 }
 
+function assertCallOrderInside(source, sourcePath, firstToken, secondToken, startToken, endToken, message) {
+  const startIndex = source.indexOf(startToken);
+  const endIndex = source.indexOf(endToken);
+  assert(startIndex >= 0 && endIndex > startIndex, `${sourcePath} missing bounded region for ${firstToken}`);
+  const firstIndex = source.indexOf(firstToken, startIndex);
+  const secondIndex = source.indexOf(secondToken, startIndex);
+  assert(firstIndex >= 0 && secondIndex >= 0 && firstIndex < secondIndex && secondIndex < endIndex, message);
+}
+
 assertCallInside(
-  legacyCompat,
-  legacyCompatPath,
+  padPatch,
+  padPatchPath,
   'KESSHO_PRODUCT_PAD_PARAM_SPECS',
   'function exactPadParamsFromState',
-  'function leadPresetFromKey',
-  'Pad exact param specs must stay inside the labeled temporary Pad bridge',
+  'function reconstructedPadParamsFromPresetIds',
+  'Pad exact param specs must stay inside the Product Core Pad override bridge',
 );
-assertCallInside(
-  legacyCompat,
-  legacyCompatPath,
+assertCallInsideFunction(
+  padPatch,
+  padPatchPath,
+  'KESSHO_PRODUCT_PAD_PRESET_SNAP_PARAM_INDICES',
+  'function padParamUsesPresetSnap',
+  'Pad generated endpoint reconstruction must use generated Product Core snap-param metadata',
+);
+assertCallInsideFunction(
+  padPatch,
+  padPatchPath,
+  'presetA.exactPadParams[paramIndex]',
+  'function reconstructedPadParamsFromPresetIds',
+  'Pad endpoint reconstruction must read generated Product Core preset exact params',
+);
+assertCallInsideFunction(
+  padPatch,
+  padPatchPath,
+  'applyPadDistanceParams',
+  'function exactPadParamsFromState',
+  'Pad exact params must apply source distance shaping inside the Product Core Pad override bridge',
+);
+assertCallInsideFunction(
+  padPatch,
+  padPatchPath,
+  'applyPadDistanceParams',
+  'function reconstructedPadParamsFromPresetIds',
+  'Pad endpoint reconstruction must apply source distance shaping before falling back to exact Pad arrays',
+);
+assertCallInsideFunction(
+  padPatch,
+  padPatchPath,
+  'padOverrideCount',
+  'function exactPadPatchFromState',
+  'Pad generated-endpoint custom controls must use bounded sparse override fields before falling back to exact Pad arrays',
+);
+assertCallInsideFunction(
+  padPatch,
+  padPatchPath,
+  'matchesSelectedPadEndpointStateCacheParams',
+  'function exactPadPatchFromState',
+  'Pad cache suppression must stay bounded to selected generated endpoints instead of scanning every generated Pad preset',
+);
+assert(
+  !padPatch.includes('matchesGeneratedPadStateCacheParams'),
+  'Pad cache suppression must not use broad generated-preset matching',
+);
+assertCallInsideFunction(
+  leadPatch,
+  leadPatchPath,
   'morphPresets(',
   'function exactLeadParamsFromState',
-  'function exactDrumParamsFromState',
-  'Lead preset morphing must stay inside the labeled temporary Lead bridge',
+  'Lead preset morphing must stay inside the Product Core Lead override bridge',
+);
+assertCallInsideFunction(
+  leadPatch,
+  leadPatchPath,
+  'KESSHO_PRODUCT_LEAD_PRESET_SNAP_PARAM_INDICES',
+  'function leadParamUsesPresetSnap',
+  'Lead generated endpoint reconstruction must use generated Product Core snap-param metadata',
 );
 assertCallInside(
-  legacyCompat,
-  legacyCompatPath,
+  leadPatch,
+  leadPatchPath,
+  'applyLeadDistanceParams',
+  'function exactLeadPatchFromState',
+  'const sparseOverrides = sparseParamOverridesFromDiff',
+  'Lead endpoint reconstruction must apply source distance shaping before bounded sparse override handling',
+);
+assertCallOrderInside(
+  leadPatch,
+  leadPatchPath,
+  'applyLeadEnvelopeOverrideParams',
+  'applyLeadDistanceParams',
+  'function exactLeadPatchFromState',
+  'const sparseOverrides = sparseParamOverridesFromDiff',
+  'Lead exact-patch fallback comparison must apply structured envelope overrides before source distance shaping',
+);
+assertCallInsideFunction(
+  leadPatch,
+  leadPatchPath,
+  'leadOverrideCount',
+  'function exactLeadPatchFromState',
+  'Lead generated-endpoint and custom controls must use bounded sparse override fields without exact Lead compatibility fallback',
+);
+assert(
+  !leadPatch.includes('exactLeadParamCount: KESSHO_PRODUCT_LEAD_PARAM_COUNT'),
+  'Lead web patch builder must not emit exact Lead compatibility arrays for custom preset data',
+);
+assertCallInsideFunction(
+  leadPatch,
+  leadPatchPath,
+  'presetA.exactLeadParams[paramIndex]',
+  'function reconstructedLeadParamsFromPresetIds',
+  'Lead endpoint reconstruction must read generated Product Core preset exact params',
+);
+assertCallInsideFunction(
+  drumPatch,
+  drumPatchPath,
   'KESSHO_PRODUCT_DRUM_PARAM_SPECS',
   'function exactDrumParamsFromState',
-  'function drumVoicePresetId',
-  'Drum exact params must stay inside the labeled temporary Drum bridge',
+  'Drum exact params must stay inside the Product Core Drum sparse override bridge',
+);
+assertCallInsideFunction(
+  drumPatch,
+  drumPatchPath,
+  'reconstructedDrumParamsFromPresetIds',
+  'function exactDrumParamsFromState',
+  'Drum exact params must compare host-edited controls against generated voice-preset reconstruction',
+);
+assertCallInsideFunction(
+  drumPatch,
+  drumPatchPath,
+  'hasOwnProperty.call(state, spec.key)',
+  'function exactDrumParamsFromState',
+  'Drum exact params must only layer explicit host-edited controls over generated reconstruction',
+);
+assertCallInsideFunction(
+  drumPatch,
+  drumPatchPath,
+  'drumOverrideCount',
+  'function exactDrumPatchFromState',
+  'Drum generated voice-preset custom controls must use bounded sparse override fields without falling back to exact Drum arrays',
+);
+assertCallInsideFunction(
+  drumPatch,
+  drumPatchPath,
+  'if (!presetPairs)',
+  'function exactDrumPatchFromState',
+  'Drum invalid generated voice preset IDs must emit no exact or sparse web patch payload before Product Core rejects the IDs',
+);
+assertCallInsideFunction(
+  drumPatch,
+  drumPatchPath,
+  'KESSHO_PRODUCT_DRUM_VOICE_PRESETS',
+  'function findDrumVoicePreset',
+  'Drum voice preset lookup must use generated Product Core preset params',
+);
+assertCallInsideFunction(
+  drumPatch,
+  drumPatchPath,
+  'generatedDrumVoicePresetPairs(presetAIds, presetBIds)',
+  'function reconstructedDrumParamsFromPresetIds',
+  'Drum reconstruction must validate all generated voice preset IDs before computing params',
+);
+assertCallInsideFunction(
+  drumPatch,
+  drumPatchPath,
+  'presetA.params[paramIndex]',
+  'function reconstructedDrumParamsFromPresetPairs',
+  'Drum voice preset reconstruction must read generated Product Core preset params',
+);
+assertCallInsideFunction(
+  drumPatch,
+  drumPatchPath,
+  'DRUM_PARAM_MASTER_LEVEL',
+  'function reconstructedDrumParamsFromPresetPairs',
+  'Drum source level must stay in structured source state when generated voice presets reconstruct the patch',
+);
+assertCallInsideFunction(
+  drumPatch,
+  drumPatchPath,
+  'DRUM_PARAM_REVERB_SEND',
+  'function reconstructedDrumParamsFromPresetPairs',
+  'Drum source reverb send must stay in structured source state when generated voice presets reconstruct the patch',
+);
+assertCallInsideFunction(
+  snapshot,
+  snapshotPath,
+  'exactDrumPatchFromState(state)',
+  'function sourceFromState',
+  'Drum snapshot source mapping must use the conditional sparse-override/exact-fallback bridge',
+);
+assertCallInsideFunction(
+  snapshot,
+  snapshotPath,
+  'exactPadPatchFromState(',
+  'function sourceFromState',
+  'Pad snapshot source mapping must use the conditional sparse-override/exact-fallback bridge',
+);
+assertCallInsideFunction(
+  snapshot,
+  snapshotPath,
+  'assignLeadAlgorithmOverrideFields',
+  'function sourceFromState',
+  'Lead algorithm mode must use structured Product Core preset-A override fields before the exact Lead bridge is considered',
+);
+assertCallInsideFunction(
+  snapshot,
+  snapshotPath,
+  'assignLeadEnvelopeOverrideFields',
+  'function sourceFromState',
+  'Lead ADSR must use structured Product Core envelope override fields before the exact Lead bridge is considered',
+);
+assertCallInsideFunction(
+  snapshot,
+  snapshotPath,
+  'exactLeadPatchFromState(',
+  'function sourceFromState',
+  'Lead snapshot source mapping must use the conditional exact Lead patch bridge',
 );
 
 for (const forbiddenImportUsage of [
@@ -144,16 +489,23 @@ for (const forbiddenImportUsage of [
   'advanceCorePreviewHarmonyState',
   'getCoreHarmonyPreviewTickCount',
 ]) {
-  assert(!snapshotAuthoritySurface.includes(forbiddenImportUsage), `${snapshotPath}/${legacyCompatPath} contains musical-brain helper usage: ${forbiddenImportUsage}`);
+  assert(!snapshotAuthoritySurface.includes(forbiddenImportUsage), `${snapshotPath} snapshot authority surface contains musical-brain helper usage: ${forbiddenImportUsage}`);
 }
 
 assert(
-  snapshot.includes('source.presetId = endpointPresetId') &&
+    snapshot.includes('source.presetId = endpointPresetId') &&
     snapshot.includes('source.presetId = sourcePresetId') &&
+    snapshot.includes('sourcePresetAId') &&
+    snapshot.includes('sourcePresetBId') &&
+    snapshot.includes('leadEnvelopeOverrideEnabled') &&
+    snapshot.includes('leadAlgorithmPresetAEnabled') &&
     snapshot.includes('drumVoicePresetAIds') &&
     snapshot.includes('drumVoicePresetBIds') &&
-    snapshot.includes('drumVoiceMorphs'),
-  `${snapshotPath} must preserve canonical Product Core preset ID and Drum voice bridge fields`,
+    snapshot.includes('drumVoiceMorphs') &&
+    snapshot.includes('drumOverrideCount') &&
+    snapshot.includes('drumOverrideIndices') &&
+    snapshot.includes('drumOverrideValues'),
+  `${snapshotPath} must preserve canonical Product Core preset endpoint, source preset ID, and Drum voice bridge fields`,
 );
 
 console.log('Kessho Product snapshot authority checks passed');

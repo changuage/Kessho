@@ -238,12 +238,11 @@
   void KesshoProductEngine::renderDynamics(float* out_l, float* out_r, uint32_t frames) {
   const bool dynamics_active =
       fx.dynamics_drive > 0.0001f ||
-      (!fx.dynamics_enabled && master_saturation_drive > 0.0001f) ||
+      (fx.dynamics_saturation_enabled && fx.dynamics_saturation_drive > 0.0001f) ||
       (
           fx.dynamics_enabled &&
           ((fx.dynamics_character_enabled && fx.dynamics_character_mix > 0.0001f) ||
            (fx.dynamics_degrade_enabled && fx.dynamics_degrade_mix > 0.0001f) ||
-           (fx.dynamics_saturation_enabled && fx.dynamics_saturation_drive > 0.0001f) ||
            (fx.dynamics_end_comp_enabled && fx.dynamics_end_comp_mix > 0.0001f)));
   if (dynamics_character_module == nullptr || frames == 0u || !dynamics_active) {
     return;

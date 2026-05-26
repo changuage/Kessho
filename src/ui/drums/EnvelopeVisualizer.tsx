@@ -54,6 +54,54 @@ function spectColor(mag: number): string {
   return `rgb(255,${255 - (mag - 192) * 4},${(mag - 192) * 4})`;
 }
 
+function modeledVoiceShape(voice: DrumVoiceType): { center: number; width: number; noise: number } {
+  switch (voice) {
+    case 'sub': return { center: 0.08, width: 0.06, noise: 0.08 };
+    case 'kick': return { center: 0.12, width: 0.08, noise: 0.12 };
+    case 'click': return { center: 0.62, width: 0.22, noise: 0.55 };
+    case 'beepHi': return { center: 0.55, width: 0.08, noise: 0.1 };
+    case 'beepLo': return { center: 0.24, width: 0.08, noise: 0.08 };
+    case 'noise': return { center: 0.68, width: 0.32, noise: 0.85 };
+    case 'membrane': return { center: 0.28, width: 0.14, noise: 0.18 };
+    default: return { center: 0.35, width: 0.16, noise: 0.15 };
+  }
+}
+
+function modeledEnvelopeLevel(elapsedMs: number, attackMs: number, decayMs: number, level: number): number {
+  const attack = Math.max(1, attackMs);
+  const decay = Math.max(20, decayMs);
+  if (elapsedMs < attack) return Math.max(0, Math.min(1, level * elapsedMs / attack));
+  const decayPhase = Math.max(0, Math.min(1, (elapsedMs - attack) / decay));
+  return Math.max(0, Math.min(1, level * (1 - decayPhase) * (1 - decayPhase)));
+}
+
+function modeledSpectrumColumn(voice: DrumVoiceType, envelope: number, phase: number, bins = 256): Uint8Array {
+  const shape = modeledVoiceShape(voice);
+  const column = new Uint8Array(bins);
+  const drift = Math.sin(phase * Math.PI * 2) * shape.width * 0.2;
+  for (let index = 0; index < bins; index += 1) {
+    const position = index / Math.max(1, bins - 1);
+    const tonal = Math.exp(-Math.pow((position - shape.center - drift) / Math.max(0.01, shape.width), 2));
+    const airy = shape.noise * (0.35 + 0.65 * Math.sin((index + 1) * 12.9898 + phase * 78.233) ** 2);
+    column[index] = Math.max(0, Math.min(255, Math.round(envelope * (tonal * 220 + airy * 95))));
+  }
+  return column;
+}
+
+function modeledWaveform(voice: DrumVoiceType, envelope: number, phase: number, length = 512): Uint8Array {
+  const shape = modeledVoiceShape(voice);
+  const waveform = new Uint8Array(length);
+  const harmonic = voice === 'noise' || voice === 'click' ? 6 : voice === 'beepHi' ? 4 : 2;
+  for (let index = 0; index < length; index += 1) {
+    const t = index / Math.max(1, length - 1);
+    const carrier = Math.sin((t * harmonic + phase * (0.8 + shape.center)) * Math.PI * 2);
+    const overtone = Math.sin((t * harmonic * 2.7 + phase * 1.37) * Math.PI * 2) * shape.noise;
+    const sample = Math.max(-1, Math.min(1, (carrier + overtone) * envelope));
+    waveform[index] = Math.round(128 + sample * 92);
+  }
+  return waveform;
+}
+
 const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, analyserNode, isTriggered }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -355,7 +403,6 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
   useEffect(() => {
     if (!isTriggered || prevTriggeredRef.current === isTriggered) return;
     prevTriggeredRef.current = isTriggered;
-    if (!analyserNode) return;
 
     // Clean up previous capture
     if (captureTimerRef.current) clearInterval(captureTimerRef.current);
@@ -363,7 +410,7 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
 
     // Dynamic capture duration from envelope
-    const { attack, decay } = getEnvelopeParams();
+    const { attack, decay, level } = getEnvelopeParams();
     const maxTimeSec = (attack + decay) / 1000;
     const captureDurationMs = Math.max(1500, maxTimeSec * 1000 + 200);
     const maxCols = Math.max(SPECT_COLS_DEFAULT, Math.ceil(captureDurationMs / SPECT_CAPTURE_MS));
@@ -379,7 +426,7 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
       captureDurationMs,
     };
     spectRef.current = ss;
-    if (labelRef.current) labelRef.current.textContent = 'live';
+    if (labelRef.current) labelRef.current.textContent = analyserNode ? 'live' : 'modeled';
 
     // FFT capture interval
     captureTimerRef.current = setInterval(() => {
@@ -406,31 +453,38 @@ const EnvelopeVisualizer: React.FC<EnvelopeVisualizerProps> = ({ voice, state, a
         return;
       }
 
-      const bins = analyserNode.frequencyBinCount;
-      const col = new Uint8Array(bins);
-      analyserNode.getByteFrequencyData(col);
-      ss.columns.push(col);
-      if (ss.columns.length > ss.maxCols) ss.columns.shift();
+      if (analyserNode) {
+        const bins = analyserNode.frequencyBinCount;
+        const col = new Uint8Array(bins);
+        analyserNode.getByteFrequencyData(col);
+        ss.columns.push(col);
+        if (ss.columns.length > ss.maxCols) ss.columns.shift();
 
-      // Waveform
-      const wf = new Uint8Array(analyserNode.fftSize);
-      analyserNode.getByteTimeDomainData(wf);
-      ss.waveform = wf;
+        const wf = new Uint8Array(analyserNode.fftSize);
+        analyserNode.getByteTimeDomainData(wf);
+        ss.waveform = wf;
 
-      // Peak level
-      let mx = 0;
-      for (let i = 0; i < wf.length; i++) {
-        const v = Math.abs((wf[i] ?? 128) - 128) / 128;
-        if (v > mx) mx = v;
+        let mx = 0;
+        for (let i = 0; i < wf.length; i++) {
+          const v = Math.abs((wf[i] ?? 128) - 128) / 128;
+          if (v > mx) mx = v;
+        }
+        ss.peak = Math.max(ss.peak * 0.92, mx);
+      } else {
+        const envelope = modeledEnvelopeLevel(elapsed, attack, decay, level);
+        const phase = elapsed / Math.max(1, ss.captureDurationMs);
+        ss.columns.push(modeledSpectrumColumn(voice, envelope, phase));
+        if (ss.columns.length > ss.maxCols) ss.columns.shift();
+        ss.waveform = modeledWaveform(voice, envelope, phase);
+        ss.peak = Math.max(ss.peak * 0.9, envelope);
       }
-      ss.peak = Math.max(ss.peak * 0.92, mx);
     }, SPECT_CAPTURE_MS);
 
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (canAnimate) {
       rafRef.current = requestAnimationFrame(renderFrame);
     }
-  }, [isTriggered, analyserNode, getEnvelopeParams, drawCombinedViz, canAnimate, renderFrame]);
+  }, [isTriggered, analyserNode, getEnvelopeParams, drawCombinedViz, canAnimate, renderFrame, voice]);
 
   // Reset trigger tracking when trigger goes false
   useEffect(() => {

@@ -20,6 +20,20 @@ import {
   resolveDrumEuclidPatternParams,
   DRUM_EUCLID_PRESET_DATA,
 } from '../../audio/drumSequencer';
+import {
+  SEQUENCER_RATCHET_CONTROL_MAX,
+  clampSequencerRatchet,
+  ratchetSubLaneStepIndex,
+} from '../../audio/seqEvolveCore';
+import { normalizeSequencerClockDivisions } from '../../audio/sequencerClockDivisions';
+import { normalizeSequencerLaneDirection } from '../../audio/sequencerLaneDirection';
+import {
+  normalizeSequencerPitchMode,
+  normalizeSequencerPitchRoot,
+  normalizeSequencerPitchScale,
+  normalizeSequencerPitchSettingsArray,
+} from '../../audio/sequencerPitchSettings';
+import { normalizeSequencerSwing, normalizeSequencerSwings } from '../../audio/sequencerSwing';
 
 // ── Types ──
 
@@ -231,8 +245,65 @@ const SYNTH_GRANULAR_EVOLVE_METHODS: Record<string, boolean> = {
   triggerToggle: false,
 };
 
-function getDefaultEvolveMethods(prefix: string): Record<string, boolean> {
+export function getDefaultEvolveMethods(prefix: string): Record<string, boolean> {
   return prefix === 'drum' ? { ...DRUM_EVOLVE_METHODS } : { ...SYNTH_GRANULAR_EVOLVE_METHODS };
+}
+
+export function createDefaultEvolveConfig(prefix: string): EvolveConfig {
+  return {
+    enabled: false,
+    everyBars: 4,
+    evolution: 0.25,
+    writeOffset: 0,
+    mutationMode: 'biased',
+    methods: getDefaultEvolveMethods(prefix),
+  };
+}
+
+export function normalizeSequencerEvolveConfig(prefix: string, config?: Partial<EvolveConfig> | null): EvolveConfig {
+  const base = createDefaultEvolveConfig(prefix);
+  if (!config) return base;
+  const { enabledSubLanes: rawEnabledSubLanes, methods: rawMethods, ...rest } = config;
+  const everyBars = typeof config.everyBars === 'number' && Number.isFinite(config.everyBars)
+    ? Math.max(1, Math.round(config.everyBars))
+    : base.everyBars;
+  const evolution = typeof config.evolution === 'number' && Number.isFinite(config.evolution)
+    ? Math.max(0, Math.min(1, config.evolution))
+    : base.evolution;
+  const writeOffset = config.writeOffset === 'auto'
+    ? 'auto'
+    : typeof config.writeOffset === 'number' && Number.isFinite(config.writeOffset)
+      ? Math.max(0, Math.round(config.writeOffset))
+      : base.writeOffset;
+  const methods: Record<string, boolean> = { ...base.methods };
+  if (rawMethods && typeof rawMethods === 'object') {
+    for (const [key, value] of Object.entries(rawMethods)) {
+      methods[key] = value === true;
+    }
+  }
+  const enabledSubLanes = Array.isArray(rawEnabledSubLanes)
+    ? rawEnabledSubLanes.filter((lane): lane is string => typeof lane === 'string')
+    : undefined;
+
+  return {
+    ...base,
+    ...rest,
+    enabled: config.enabled === true,
+    everyBars,
+    evolution,
+    writeOffset,
+    mutationMode: config.mutationMode === 'strict' ? 'strict' : 'biased',
+    methods,
+    ...(enabledSubLanes ? { enabledSubLanes } : {}),
+  };
+}
+
+export function normalizeSequencerEvolveConfigs(
+  prefix: string,
+  configs: Partial<EvolveConfig>[] | undefined,
+  laneCount: number,
+): EvolveConfig[] {
+  return Array.from({ length: laneCount }, (_, index) => normalizeSequencerEvolveConfig(prefix, configs?.[index]));
 }
 
 function makeKey(prefix: string, laneNum: number, suffix: string): keyof SliderState {
@@ -262,8 +333,8 @@ function normalizeRangeState(
   state?: Partial<SubLaneState>,
 ): Pick<SubLaneState, 'valueMode' | 'rangeMin' | 'rangeMax'> {
   const defaults = RANGE_DEFAULTS[lane];
-  const rawMin = typeof state?.rangeMin === 'number' ? clampUnit(state.rangeMin) : defaults.min;
-  const rawMax = typeof state?.rangeMax === 'number' ? clampUnit(state.rangeMax) : defaults.max;
+  const rawMin = typeof state?.rangeMin === 'number' && Number.isFinite(state.rangeMin) ? clampUnit(state.rangeMin) : defaults.min;
+  const rawMax = typeof state?.rangeMax === 'number' && Number.isFinite(state.rangeMax) ? clampUnit(state.rangeMax) : defaults.max;
   return {
     valueMode: state?.valueMode === 'range' ? 'range' : 'sequence',
     rangeMin: Math.min(rawMin, rawMax),
@@ -289,12 +360,15 @@ function getDefaultSubLaneState(lane: SubLaneKind): SubLaneState {
 
 function normalizeSubLaneState(lane: SubLaneKind, state?: Partial<SubLaneState>): SubLaneState {
   const fallback = getDefaultSubLaneState(lane);
+  const steps = typeof state?.steps === 'number' && Number.isFinite(state.steps)
+    ? Math.max(1, Math.min(16, Math.floor(state.steps)))
+    : fallback.steps;
   const next: SubLaneState = {
     ...fallback,
     ...state,
-    enabled: state?.enabled ?? fallback.enabled,
-    steps: Math.max(1, Math.min(16, Math.floor(state?.steps ?? fallback.steps))),
-    direction: state?.direction ?? fallback.direction,
+    enabled: state?.enabled === true,
+    steps,
+    direction: normalizeSequencerLaneDirection(state?.direction, fallback.direction),
   };
   if (lane === 'pitch') {
     next.scaleQuantize = state?.scaleQuantize ?? fallback.scaleQuantize ?? false;
@@ -437,14 +511,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
 
   // ── Evolve ──
   const [evolveConfigs, setEvolveConfigs] = useState<EvolveConfig[]>(() =>
-    initialEvolveConfigs ?? Array.from({ length: laneCount }, () => ({
-      enabled: false,
-      everyBars: 4,
-      evolution: 0.25,
-      writeOffset: 0 as number | 'auto',
-      mutationMode: 'biased' as const,
-      methods: getDefaultEvolveMethods(prefix),
-    }))
+    normalizeSequencerEvolveConfigs(prefix, initialEvolveConfigs, laneCount)
   );
 
   // ── Sub-Lane State (per-sequencer, per-sub-lane) ──
@@ -461,12 +528,10 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
 
   // ── Per-Seq Clock/Swing ──
   const [clockDivs, setClockDivs] = useState<ClockDivision[]>(() =>
-    initialClockDivs ?? Array.from({ length: laneCount }, (_, i) =>
-      i === 0 ? '1/8' as ClockDivision : i === 1 ? '1/16' as ClockDivision : i === 2 ? '1/8T' as ClockDivision : '1/4' as ClockDivision
-    )
+    normalizeSequencerClockDivisions(initialClockDivs, laneCount)
   );
   const [swings, setSwings] = useState<number[]>(() =>
-    initialSwings ?? Array.from({ length: laneCount }, () => 0)
+    normalizeSequencerSwings(initialSwings, laneCount)
   );
 
   // ── Solo tracking (set of soloed lane indices; empty = no solo) ──
@@ -479,39 +544,30 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       prevResetKey.current = resetKey;
       setStepOverrides(normalizeStepOverrides(initialStepOverrides, laneCount));
       setSubLaneStates(normalizeSubLaneStates(initialSubLaneStates, laneCount));
-      setClockDivs(initialClockDivs ?? Array.from({ length: laneCount }, (_, i) =>
-        i === 0 ? '1/8' as ClockDivision : i === 1 ? '1/16' as ClockDivision : i === 2 ? '1/8T' as ClockDivision : '1/4' as ClockDivision
-      ));
-      setSwings(initialSwings ?? Array.from({ length: laneCount }, () => 0));
+      setClockDivs(normalizeSequencerClockDivisions(initialClockDivs, laneCount));
+      setSwings(normalizeSequencerSwings(initialSwings, laneCount));
       setLinked(initialLinked ?? Array.from({ length: laneCount }, () => false));
-      setPitchSettings(initialPitchSettings ?? Array.from({ length: laneCount }, () => ({ mode: 'semitones' as PitchMode, root: 60, scale: 'Major' as ScaleName })));
-      setEvolveConfigs(initialEvolveConfigs ?? Array.from({ length: laneCount }, () => ({
-        enabled: false,
-        everyBars: 4,
-        evolution: 0.25,
-        writeOffset: 0 as number | 'auto',
-        mutationMode: 'biased' as const,
-        methods: getDefaultEvolveMethods(prefix),
-      })));
+      setPitchSettings(normalizeSequencerPitchSettingsArray(initialPitchSettings, laneCount) as PitchSettings[]);
+      setEvolveConfigs(normalizeSequencerEvolveConfigs(prefix, initialEvolveConfigs, laneCount));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey]);
 
   // ── Per-Seq Pitch Settings ──
   const [pitchSettings, setPitchSettings] = useState<PitchSettings[]>(() =>
-    initialPitchSettings ?? Array.from({ length: laneCount }, () => ({ mode: 'semitones' as PitchMode, root: 60, scale: 'Major' as ScaleName }))
+    normalizeSequencerPitchSettingsArray(initialPitchSettings, laneCount) as PitchSettings[]
   );
 
   const setPitchMode = useCallback((seqIdx: number, mode: PitchMode) => {
-    setPitchSettings(prev => prev.map((s, i) => i === seqIdx ? { ...s, mode } : s));
+    setPitchSettings(prev => prev.map((s, i) => i === seqIdx ? { ...s, mode: normalizeSequencerPitchMode(mode, s.mode) } : s));
   }, []);
 
   const setPitchRoot = useCallback((seqIdx: number, root: number) => {
-    setPitchSettings(prev => prev.map((s, i) => i === seqIdx ? { ...s, root: Math.max(0, Math.min(127, root)) } : s));
+    setPitchSettings(prev => prev.map((s, i) => i === seqIdx ? { ...s, root: normalizeSequencerPitchRoot(root, s.root) } : s));
   }, []);
 
   const setPitchScale = useCallback((seqIdx: number, scale: ScaleName) => {
-    setPitchSettings(prev => prev.map((s, i) => i === seqIdx ? { ...s, scale } : s));
+    setPitchSettings(prev => prev.map((s, i) => i === seqIdx ? { ...s, scale: normalizeSequencerPitchScale(scale, s.scale) } : s));
   }, []);
 
   const toggleScaleQuantize = useCallback((seqIdx: number) => {
@@ -527,7 +583,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
   }, []);
 
   const setSwingVal = useCallback((seqIdx: number, value: number) => {
-    setSwings(prev => prev.map((s, i) => i === seqIdx ? value : s));
+    setSwings(prev => prev.map((s, i) => i === seqIdx ? normalizeSequencerSwing(value, s) : s));
   }, []);
 
   const toggleSubLaneEnabled = useCallback((seqIdx: number, lane: SubLaneKind) => {
@@ -582,6 +638,13 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
         resized.push(...new Array(newSteps - resized.length).fill(defaultVal));
       }
       (next[lane] as (number[] | null)[])[seqIdx] = resized;
+      if (lane === 'expression' && old.ratchet[seqIdx]) {
+        next.ratchet = [...old.ratchet];
+        const ratchets = [...(old.ratchet[seqIdx] as number[])];
+        while (ratchets.length < newSteps) ratchets.push(1);
+        if (ratchets.length > newSteps) ratchets.length = newSteps;
+        next.ratchet[seqIdx] = ratchets;
+      }
       return next;
     });
   }, []);
@@ -627,7 +690,8 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       const updated = prev.map((s, i) => {
         if (i !== seqIdx) return s;
         const cur = s[lane].direction;
-        const nextIdx = (DIRECTION_ORDER.indexOf(cur) + 1) % DIRECTION_ORDER.length;
+        const curIdx = DIRECTION_ORDER.indexOf(cur);
+        const nextIdx = ((curIdx >= 0 ? curIdx : 0) + 1) % DIRECTION_ORDER.length;
         return { ...s, [lane]: { ...s[lane], direction: DIRECTION_ORDER[nextIdx] } };
       });
       // Also sync direction into stepOverrides so it flows to audio engine
@@ -986,7 +1050,9 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
         // Resize if expression step count changed
         while (arr.length < exprSteps) arr.push(1);
         if (arr.length > exprSteps) arr.length = exprSteps;
-        arr[step] = arr[step] >= 4 ? 1 : arr[step] + 1;
+        const ratchetStep = ratchetSubLaneStepIndex(step, exprSteps);
+        const current = clampSequencerRatchet(arr[ratchetStep], 1, SEQUENCER_RATCHET_CONTROL_MAX);
+        arr[ratchetStep] = current >= SEQUENCER_RATCHET_CONTROL_MAX ? 1 : current + 1;
         next.ratchet[laneIdx] = arr;
         return next;
       });

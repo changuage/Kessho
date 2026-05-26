@@ -1,4 +1,5 @@
 import type { SequencerKind } from './CoreProductHostSequencerAdapter';
+import { normalizeSequencerSwing } from './sequencerSwing';
 
 function hashUnit(seed: number): number {
   let x = seed >>> 0;
@@ -11,7 +12,7 @@ function hashUnit(seed: number): number {
 }
 
 export function clampSequencerSwing(value: number): number {
-  return Math.max(0, Math.min(0.75, value));
+  return normalizeSequencerSwing(value);
 }
 
 export function evolveCoreProductSequencerSwing(current: number, evolution: number, seed: number): number {

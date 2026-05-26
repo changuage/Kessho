@@ -105,6 +105,9 @@ void pad_process_block(int block_size);
 /** Trigger a voice with the given frequency and velocity */
 void pad_note_on(int voice_idx, float frequency, float velocity);
 
+/** Retune an active voice without retriggering envelopes */
+void pad_set_voice_frequency(int voice_idx, float frequency);
+
 /** Release a voice */
 void pad_note_off(int voice_idx);
 
@@ -224,6 +227,7 @@ float* pad_instance_get_postfader_pad2_ptr(KesshoPadInstance* instance);
 void pad_instance_process_block(KesshoPadInstance* instance, int block_size);
 
 void pad_instance_note_on(KesshoPadInstance* instance, int voice_idx, float frequency, float velocity);
+void pad_instance_set_voice_frequency(KesshoPadInstance* instance, int voice_idx, float frequency);
 void pad_instance_note_off(KesshoPadInstance* instance, int voice_idx);
 void pad_instance_kill_voice(KesshoPadInstance* instance, int voice_idx);
 void pad_instance_set_voice_pad(KesshoPadInstance* instance, int voice_idx, int pad);

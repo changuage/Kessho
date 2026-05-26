@@ -26,9 +26,9 @@ function drumExactPatchPresetKeys() {
 }
 
 export const EXPECTED_APP_VISIBLE_STRUCTURAL_POLICY_BY_PATH = {
-  'soundscape-exact-patch-full-snapshot': {
+  'soundscape-structured-full-snapshot': {
     owner: 'Product Core soundscape source owner',
-    reason: 'Soundscape module/layer controls are still applied through exact patch snapshots while the texture modules retain patch-shaped state.',
+    reason: 'Soundscape module/layer controls are applied through dedicated Product snapshot fields and currently require a structured Soundscape snapshot reload.',
     keys: [
       'birds2Enabled',
       'birds2Level',
@@ -59,33 +59,6 @@ export const EXPECTED_APP_VISIBLE_STRUCTURAL_POLICY_BY_PATH = {
     owner: 'Product Core sequencer owner',
     reason: 'Drum target toggles can change Product drum lane topology, so they remain structural until lane-target diffs are shape-stable.',
     keys: drumEuclidTargetStructuralKeys(),
-  },
-  'lead-exact-patch-full-snapshot': {
-    owner: 'Product Core Lead source owner',
-    reason: 'Generated Lead preset endpoint, algorithm, and custom ADSR bridge fields are exact-patch debt until live Lead patch params replace the compatibility bridge.',
-    keys: [
-      'lead1AlgorithmMode',
-      'lead1PresetA',
-      'lead1PresetB',
-      'lead1UseCustomAdsr',
-      'lead1Attack',
-      'lead1Decay',
-      'lead1Sustain',
-      'lead1Release',
-      'lead2AlgorithmMode',
-      'lead2PresetC',
-      'lead2PresetD',
-      'lead2UseCustomAdsr',
-      'lead2Attack',
-      'lead2Decay',
-      'lead2Sustain',
-      'lead2Release',
-    ],
-  },
-  'drum-exact-patch-full-snapshot': {
-    owner: 'Product Core Drum source owner',
-    reason: 'Drum preset endpoint swaps are exact-patch debt until Product Drum exposes live generated params for preset endpoint changes.',
-    keys: drumExactPatchPresetKeys(),
   },
   'rng-seed-snapshot-policy': {
     owner: 'Product Core RNG/evolution owner',
@@ -185,7 +158,7 @@ export function controlDomain(key) {
   if (/^granular/.test(key) || /^(grainProbability|maxGrains|grainSize|density|spray|jitter|pitchSpread|wetHPF|wetLPF|feedback)$/.test(key)) return 'fx.granular';
   if (/^delay/.test(key)) return 'fx.delay';
   if (/^reverb/.test(key) || /^spectralFreeze/.test(key) || /^(damping|predelay|width)$/.test(key)) return 'fx.reverb';
-  if (/^(character|degrade|dynamics|endComp|sidechain|masterSat|masterLimiter)/.test(key)) return 'fx.dynamics';
+  if (/^(character|degrade|dynamics|endComp|sidechain|masterLimiter)/.test(key)) return 'fx.dynamics';
   if (/^(synthEuclid|drumEuclid|sequencer|transport|chordProgression|cof|harmony|randomWalk|rootNote|scaleMode|manualScale|tension|phraseLength|chordRate|voicingSpread|waveSpread|detune|seedWindow|synthChordSequencerEnabled|synthOctave|randomness)/.test(key)) return 'music.sequencer';
   if (/^master/.test(key)) return 'master';
   return 'misc';
@@ -193,8 +166,8 @@ export function controlDomain(key) {
 
 export const behaviorEvidenceByDomain = {
   'source.piano': ['core:product:assets', 'ProductAssetTests.cpp#renderPianoAttackProbe'],
-  'source.pad': ['core:product:sources', 'core:product:source-parity', 'ProductSourceWrapperTests.cpp'],
-  'source.lead': ['core:product:sources', 'core:product:source-parity', 'ProductSourceWrapperTests.cpp'],
+  'source.pad': ['core:product:sources', 'core:product:source-parity', 'ProductSourceWrapperTests.cpp', 'ProductPadExactPatchTests.cpp'],
+  'source.lead': ['core:product:sources', 'core:product:source-parity', 'ProductSourceWrapperTests.cpp', 'ProductLeadExactPatchTests.cpp'],
   'source.drum': ['core:product:sources', 'core:product:assets', 'ProductSourceWrapperTests.cpp'],
   'source.soundscape': ['core:product:asset-manifest', 'core:product:assets', 'core:product:source-parity'],
   'fx.granular': ['core:product:fx', 'core:product:fx-depth', 'ProductFxRoutingTests.cpp'],
@@ -255,7 +228,7 @@ export const behaviorEvidenceByAppVisibleGroup = {
   'master|range-event': {
     owner: 'Product Core master-chain owner',
     reason: 'Master range controls must apply before limiter/saturation and report master telemetry.',
-    evidence: ['core:product:fx-depth', 'ProductFxRoutingTests.cpp#requireMasterParamSnapshotEventParity', 'ProductFxRoutingTests.cpp#requireMasterParamChangesTrace', 'ProductFxRoutingTests.cpp#requireProductParamSampleHoldRangeChangesMaster'],
+    evidence: ['core:product:fx-depth', 'ProductFxRoutingTests.cpp#requireProductParamSampleHoldRangeChangesMaster'],
   },
   'music.sequencer|arrangement-scheduler-event': {
     owner: 'Product Core arrangement owner',
@@ -277,6 +250,11 @@ export const behaviorEvidenceByAppVisibleGroup = {
     reason: 'Synth lane controls must apply through generated lane params and alter generated event output.',
     evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#requireDirectSequencerCoverage', 'ProductSequencerTests.cpp#SetParam sequencer lane probability should update the C++ lane'],
   },
+  'music.sequencer|sequencer-clock-rejoin-policy': {
+    owner: 'Product Core sequencer owner',
+    reason: 'Synth sequencer clock source and join controls must rejoin Product clocks on the same boundaries as the Web scheduler.',
+    evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#bar-join sequencer should wait for the next bar before step zero', 'ProductSequencerTests.cpp#initial start delay should override native bar alignment for global-clock joins'],
+  },
   'music.sequencer|transport-param-diff': {
     owner: 'Product Core transport owner',
     reason: 'Transport controls must affect Product Core clocked event generation and telemetry.',
@@ -287,10 +265,10 @@ export const behaviorEvidenceByAppVisibleGroup = {
     reason: 'Drum sequencer enable policy must drive Product Core event generation and manual drum render coverage.',
     evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#manual drum trigger should render non-silence', 'ProductSequencerTests.cpp#kessho_product_debug_render_events'],
   },
-  'source.drum|drum-exact-patch-full-snapshot': {
+  'source.drum|drum-generated-preset-endpoint-diff': {
     owner: 'Product Core Drum source owner',
-    reason: 'Drum preset endpoint swaps must be covered by generated Drum preset render probes while exact patch bridges remain.',
-    evidence: ['core:product:sources', 'core:product:source-parity', 'ProductSourceWrapperTests.cpp#requireGeneratedDrumPresetRenders'],
+    reason: 'Drum preset endpoint swaps and morph-only changes must be covered by generated Drum preset render probes, bounded sparse override loading, and dirty-diff endpoint events.',
+    evidence: ['core:product:sources', 'core:product:source-parity', 'ProductSourceWrapperTests.cpp#requireGeneratedDrumPresetRenders', 'ProductSourceWrapperTests.cpp#requireDrumOverridesStayStructured'],
   },
   'source.drum|fx-param-diff': {
     owner: 'Product Core Drum/FX owner',
@@ -306,6 +284,11 @@ export const behaviorEvidenceByAppVisibleGroup = {
     owner: 'Product Core drum sequencer owner',
     reason: 'Drum lane scalar controls must apply through generated lane params and alter C++ sequencer state.',
     evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#requireDirectSequencerCoverage', 'ProductSequencerTests.cpp#SetParam sequencer lane probability should update the C++ lane'],
+  },
+  'source.drum|sequencer-clock-rejoin-policy': {
+    owner: 'Product Core drum sequencer owner',
+    reason: 'Drum sequencer clock source and join controls must rejoin Product clocks on the same boundaries as the Web scheduler.',
+    evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#bar-join sequencer should wait for the next bar before step zero', 'ProductSequencerTests.cpp#initial start delay should override native bar alignment for global-clock joins'],
   },
   'source.drum|sequencer-structure-full-snapshot': {
     owner: 'Product Core drum sequencer owner',
@@ -327,11 +310,6 @@ export const behaviorEvidenceByAppVisibleGroup = {
     reason: 'Lead random scheduler controls must produce Product Core generated note events.',
     evidence: ['core:product:harmony', 'ProductHarmonyTests.cpp#journey state event should alter generated sequencer event values', 'ProductSourceWrapperTests.cpp#requireBroadLeadPresetFamiliesRender'],
   },
-  'source.lead|lead-exact-patch-full-snapshot': {
-    owner: 'Product Core Lead source owner',
-    reason: 'Lead exact patch bridge controls must be covered by broad Lead preset render probes until bridge retirement.',
-    evidence: ['core:product:sources', 'core:product:source-parity', 'ProductSourceWrapperTests.cpp#requireBroadLeadPresetFamiliesRender'],
-  },
   'source.lead|range-event': {
     owner: 'Product Core Lead source owner',
     reason: 'Lead range controls must alter Product Core source output, post-chain, or FX send behavior.',
@@ -339,13 +317,18 @@ export const behaviorEvidenceByAppVisibleGroup = {
   },
   'source.lead|source-param-diff': {
     owner: 'Product Core Lead source owner',
-    reason: 'Lead enable and hold controls must drive Product Core source render behavior.',
+    reason: 'Lead enable, hold, and structured envelope/algorithm override controls must drive Product Core source render behavior.',
     evidence: ['core:product:sources', 'ProductSourceWrapperTests.cpp#requireSourceParamEventsAffectRender', 'ProductSourceWrapperTests.cpp#requireBroadLeadPresetFamiliesRender'],
   },
-  'source.pad|pad-exact-patch-diff': {
+  'source.lead|lead-generated-preset-endpoint-diff': {
+    owner: 'Product Core Lead source owner',
+    reason: 'Generated Lead preset endpoint controls must be covered by endpoint reconstruction, bounded sparse override loading, and broad Lead preset render probes until remaining exact fallback retirement.',
+    evidence: ['core:product:sources', 'ProductLeadExactPatchTests.cpp#requireGeneratedEndpointLeadSnapshotDoesNotNeedExactPatch', 'ProductLeadExactPatchTests.cpp#requireLeadSparseOverrideDoesNotNeedSnapshotExact', 'ProductSourceWrapperTests.cpp#requireLeadOverridesStayStructured', 'ProductSourceWrapperTests.cpp#requireBroadLeadPresetFamiliesRender'],
+  },
+  'source.pad|pad-generated-preset-endpoint-diff': {
     owner: 'Product Core Pad source owner',
-    reason: 'Pad exact patch bridge controls must be covered by broad Pad preset render probes until bridge retirement.',
-    evidence: ['core:product:sources', 'core:product:source-parity', 'ProductSourceWrapperTests.cpp#requireBroadPadPresetFamiliesRender'],
+    reason: 'Generated Pad preset endpoint controls must be covered by endpoint reconstruction, bounded sparse override loading, and broad Pad preset render probes until remaining exact fallback retirement.',
+    evidence: ['core:product:sources', 'core:product:source-parity', 'ProductPadExactPatchTests.cpp#requireGeneratedEndpointPadSnapshotDoesNotNeedExactPatch', 'ProductSourceWrapperTests.cpp#requirePadOverridesStayStructured', 'ProductSourceWrapperTests.cpp#requireBroadPadPresetFamiliesRender'],
   },
   'source.pad|range-event': {
     owner: 'Product Core Pad source owner',
@@ -372,9 +355,9 @@ export const behaviorEvidenceByAppVisibleGroup = {
     reason: 'Soundscape range controls must alter asset-backed source renders and graph-send coverage.',
     evidence: ['core:product:assets', 'ProductAssetTests.cpp#registered soundscape loop did not render', 'ProductGraphTests.cpp#requireSoundscapeLayerRouteGraphCoverage'],
   },
-  'source.soundscape|soundscape-exact-patch-full-snapshot': {
+  'source.soundscape|soundscape-structured-full-snapshot': {
     owner: 'Product Core soundscape source owner',
-    reason: 'Soundscape exact patch controls must remain paired with asset render and layer policy probes.',
+    reason: 'Soundscape structured snapshot controls must remain paired with asset render and layer policy probes.',
     evidence: ['core:product:assets', 'ProductAssetTests.cpp#layered soundscape assets did not mix', 'ProductAssetTests.cpp#birds soundscape policy should render wider C++-owned stereo spread than water'],
   },
 };
@@ -519,7 +502,7 @@ export const productDeferredClassifications = [
     reason:
       'Product host arrangement scheduling feeds Product Core manual/source events today; these policy and UI-state controls need native Product scheduler ownership before they become generated Product params.',
     patterns: [
-      /^(cofCurrentStep|harmonySyncPolicy|synthEuclidClockSource|synthEuclidJoinPolicy|drumEuclidClockSource|drumEuclidJoinPolicy)$/,
+      /^(cofCurrentStep|harmonySyncPolicy)$/,
       /^(chordProgressionHits|chordProgressionRotation)$/,
       /^(lead|drum|pad|reverb|granular|synthEuclid)Tension(Mode|Value)$/,
       /^drumTension(Mode|Value)$/,
@@ -582,9 +565,8 @@ export const productDeferredClassifications = [
     reason:
       'Product Core receives concrete lane steps, fills, rotations, divisions, swings, probability, level, source, and masks; web preset names and legacy velocity min/max helpers are template state.',
     patterns: [
-      /^synthEuclideanTempo$/,
       /^synthEuclid[1-4]Preset$/,
-      /^drumEuclidTempo$/,
+      /^drumEuclidDivision$/,
       /^drumEuclid[1-4]Preset$/,
       /^drumEuclid[1-4]Velocity(Min|Max)$/,
     ],
@@ -604,7 +586,7 @@ export const productDeferredClassifications = [
   {
     id: 'legacy-timbre-alias',
     owner: 'Legacy preset compatibility cleanup',
-    reason: '`leadTimbre` is documented as a legacy ignored key; Product Core uses generated Lead preset IDs and exact Lead patch fields.',
+    reason: '`leadTimbre` is documented as a legacy ignored key; Product Core uses generated Lead preset IDs plus bounded sparse Lead override fields for reconstructable sources.',
     patterns: [/^leadTimbre$/],
   },
 ];
@@ -642,15 +624,11 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
     'chordProgressionHits',
     'chordProgressionRotation',
     'cofCurrentStep',
-    'drumEuclidClockSource',
-    'drumEuclidJoinPolicy',
     'drumTensionMode',
     'drumTensionValue',
     'harmonySyncPolicy',
     'padTensionMode',
     'padTensionValue',
-    'synthEuclidClockSource',
-    'synthEuclidJoinPolicy',
     'synthEuclidTensionMode',
     'synthEuclidTensionValue',
   ],
@@ -741,12 +719,11 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
     'drumEuclid4Preset',
     'drumEuclid4VelocityMax',
     'drumEuclid4VelocityMin',
-    'drumEuclidTempo',
+    'drumEuclidDivision',
     'synthEuclid1Preset',
     'synthEuclid2Preset',
     'synthEuclid3Preset',
     'synthEuclid4Preset',
-    'synthEuclideanTempo',
   ],
   'drum-module-extra-deferred': [
     'drumBeepHiModPhase',
@@ -757,7 +734,6 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
     'drumMembraneNonlin',
     'drumMembraneOvertones',
     'drumMembranePitchDecay',
-    'drumMembranePitchEnv',
     'drumMembraneRing',
     'drumMembraneScaleBlend',
     'drumMembraneWireDecay',
@@ -829,7 +805,7 @@ export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
   },
   {
     key: 'leadTimbre',
-    reason: 'Legacy ignored Lead key; Product Core uses generated Lead preset IDs and exact Lead patch fields.',
+    reason: 'Legacy ignored Lead key; Product Core uses generated Lead preset IDs plus bounded sparse Lead override fields for reconstructable sources.',
   },
 ];
 

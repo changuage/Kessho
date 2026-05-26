@@ -20,16 +20,43 @@ constexpr uint32_t kDrumVoiceMaskSeedFlag = 0x80000000u;
 constexpr uint32_t kDrumVoiceMaskSeedMask = 0x7f000000u;
 constexpr uint32_t kDrumVoiceMaskSeedShift = 24u;
 constexpr uint32_t kDrumVoiceMaskSeedPayloadMask = 0x00ffffffu;
+constexpr uint32_t kPadVoiceSeedFlag = 0x40000000u;
+constexpr uint32_t kPadVoiceSeedMask = 0x07000000u;
+constexpr uint32_t kPadVoiceSeedShift = 24u;
+constexpr uint32_t kPadVoiceSeedPayloadMask = 0x00ffffffu;
+constexpr uint32_t kPadVoiceNoPreference = 0xffffffffu;
+constexpr uint32_t kSequencerEventPadVoiceFlag = 0x80000000u;
+constexpr uint32_t kSequencerEventPadVoiceMask = 0x07000000u;
+constexpr uint32_t kSequencerEventPadVoiceShift = 24u;
+constexpr uint32_t kProductPadVoiceCount = 6u;
+constexpr uint32_t kProductInvalidVoiceIndex = 0xffffffffu;
+constexpr uint32_t kProductMidiChannelCount = 16u;
+constexpr uint32_t kProductMidiControllerCount = 128u;
+constexpr uint32_t kProductMidiPitchBendCenter = 8192u;
+constexpr uint32_t kProductMidiPitchBendMax = 16383u;
+constexpr float kProductMidiPitchBendRangeSemitones = 2.0f;
+constexpr uint32_t kMaxProductMidiNoteSlots = 96u;
 constexpr uint32_t kSourceCount = 7;
 constexpr uint32_t kStemCount = 9;
 constexpr uint32_t kMaxLaneCount = 16;
 constexpr uint32_t kMaxScaleNotes = 8;
+constexpr uint32_t kSequencerPitchBindingHit = 0u;
+constexpr uint32_t kSequencerPitchBindingStep = 1u;
 constexpr uint32_t kModuleTapCount = KESSHO_MODULE_MAX_OUTPUT_TAPS;
 constexpr uint32_t kMaxModulationRanges = 96;
 constexpr uint32_t kMaxRuntimeWalkTelemetry = KESSHO_PRODUCT_RUNTIME_WALK_TELEMETRY_CAPACITY;
 constexpr uint32_t kProductPadRuntimeParamIdBase = 2000u;
 constexpr uint32_t kProductPad2RuntimeParamIdBase = 2100u;
 constexpr uint32_t kProductPadRuntimeParamCount = kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
+static_assert(
+    kProductPadRuntimeParamCount == KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT,
+    "Pad override snapshot ABI count must match module Pad param count");
+constexpr uint32_t kProductLeadRuntimeParamIdBase = 2200u;
+constexpr uint32_t kProductLead2RuntimeParamIdBase = 2300u;
+constexpr uint32_t kProductLeadRuntimeParamCount = kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
+static_assert(
+    kProductLeadRuntimeParamCount == KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT,
+    "Lead override snapshot ABI count must match module Lead param count");
 constexpr uint32_t kProductDrumRuntimeParamIdBase = 3000u;
 constexpr uint32_t kProductDrumRuntimeParamCount = kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
 constexpr uint32_t kProductDrumMasterLevelParam = 122u;
@@ -116,8 +143,8 @@ constexpr uint32_t kSoundscapeTextureParamSeedHi = 4u;
 constexpr uint32_t kSoundscapeTextureParamCount =
     kSoundscapeTextureParamStart + kSoundscapeTextureSlotCount * kSoundscapeTextureParamStride;
 static_assert(
-    kSoundscapeTextureParamCount <= kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT,
-    "Soundscape texture params must fit in Product source exact pad params");
+    kSoundscapeTextureParamCount == KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT,
+    "Soundscape texture snapshot ABI count must match Product Core texture params");
 constexpr uint32_t kSoundscapeTextureMinimumQueuedSlices = 4u;
 constexpr double kSoundscapeTextureInitialDelaySeconds = 0.158;
 constexpr double kSoundscapeTextureLookAheadSeconds = 0.5;
@@ -138,6 +165,9 @@ constexpr uint32_t kSoundscapeModuleInsects2LevelParam = kSoundscapeModuleInsect
 constexpr uint32_t kSoundscapeModuleInsectsSharedLevelParam = kSoundscapeModuleInsects2LevelParam + 1u;
 constexpr uint32_t kSoundscapeModuleEarthLevelParam = kSoundscapeModuleInsectsSharedLevelParam + 1u;
 constexpr uint32_t kSoundscapeProductModuleParamCount = kSoundscapeModuleEarthLevelParam + 1u;
+static_assert(
+    kSoundscapeProductModuleParamCount == KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT,
+    "Soundscape module snapshot ABI count must match Product Core module params");
 constexpr uint32_t kDynamicsCharacterParamCount = 82;
 
 enum SidechainTargetIndex : uint32_t {

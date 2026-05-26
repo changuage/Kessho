@@ -1,5 +1,10 @@
 import type { TrigCondition } from '../../audio/drumSeqTypes';
 import type { ClockDivision, PitchBindingMode } from '../../audio/drumSeqTypes';
+import { normalizeSequencerLaneDirection, normalizeOptionalSequencerLaneDirection } from '../../audio/sequencerLaneDirection';
+import { normalizeSequencerClockDivision } from '../../audio/sequencerClockDivisions';
+import { normalizeSequencerPitchBindingMode } from '../../audio/sequencerPitchBinding';
+import { normalizeSequencerPitchSettings } from '../../audio/sequencerPitchSettings';
+import { normalizeSequencerSwing } from '../../audio/sequencerSwing';
 import type {
   SerializedEvolveConfig,
   SerializedPitchSettings,
@@ -14,6 +19,7 @@ import type {
   SubLaneKind,
   SubLaneState,
 } from './useEuclideanSequencer';
+import { normalizeSequencerEvolveConfig } from './useEuclideanSequencer';
 
 const SEQUENCE_PRESET_SOURCE_LANE = 0;
 const SUB_LANE_KINDS: SubLaneKind[] = ['pitch', 'expression', 'morph', 'distance', 'slice', 'reverse'];
@@ -46,6 +52,27 @@ const STEP_OVERRIDE_RANGE_FIELDS = [
 ] as const;
 
 type StepOverrideArrayLane = number[] | TrigCondition[] | null;
+type StepOverrideDirectionField = typeof STEP_OVERRIDE_DIRECTION_FIELDS[number];
+type StepOverrideRangeField = typeof STEP_OVERRIDE_RANGE_FIELDS[number];
+
+const SUB_LANE_DIRECTION_FIELDS: Record<SubLaneKind, StepOverrideDirectionField> = {
+  expression: 'expressionDirection',
+  morph: 'morphDirection',
+  distance: 'distanceDirection',
+  pitch: 'pitchDirection',
+  slice: 'sliceDirection',
+  reverse: 'reverseDirection',
+};
+
+const SUB_LANE_RANGE_FIELDS: Partial<Record<SubLaneKind, StepOverrideRangeField>> = {
+  expression: 'expressionRanges',
+  morph: 'morphRanges',
+  distance: 'distanceRanges',
+};
+
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
 
 export interface SerializedSequenceLanePresetState {
   subLaneStates?: Partial<Record<SubLaneKind, SerializedSubLaneState>>;
@@ -64,39 +91,102 @@ function cloneSequenceLaneArray(lane: StepOverrideArrayLane | undefined): StepOv
 
 function cloneSubLaneState(state: SubLaneState | SerializedSubLaneState | undefined): SerializedSubLaneState | undefined {
   if (!state) return undefined;
+  const steps = typeof state.steps === 'number' && Number.isFinite(state.steps)
+    ? Math.max(1, Math.min(16, Math.floor(state.steps)))
+    : 1;
+  const rangeMin = typeof state.rangeMin === 'number' && Number.isFinite(state.rangeMin) ? clampUnit(state.rangeMin) : undefined;
+  const rangeMax = typeof state.rangeMax === 'number' && Number.isFinite(state.rangeMax) ? clampUnit(state.rangeMax) : undefined;
   return {
     enabled: Boolean(state.enabled),
-    steps: Math.max(1, Math.min(16, Math.floor(state.steps ?? 1))),
-    direction: state.direction ?? 'forward',
+    steps,
+    direction: normalizeSequencerLaneDirection(state.direction),
     ...(typeof state.scaleQuantize === 'boolean' ? { scaleQuantize: state.scaleQuantize } : {}),
     ...(state.valueMode === 'sequence' || state.valueMode === 'range' ? { valueMode: state.valueMode } : {}),
-    ...(typeof state.rangeMin === 'number' ? { rangeMin: state.rangeMin } : {}),
-    ...(typeof state.rangeMax === 'number' ? { rangeMax: state.rangeMax } : {}),
+    ...(rangeMin !== undefined ? { rangeMin: Math.min(rangeMin, rangeMax ?? rangeMin) } : {}),
+    ...(rangeMax !== undefined ? { rangeMax: Math.max(rangeMax, rangeMin ?? rangeMax) } : {}),
   };
 }
 
 function cloneEvolveConfig(config: EvolveConfig | SerializedEvolveConfig | undefined): SerializedEvolveConfig | undefined {
   if (!config) return undefined;
+  const everyBars = typeof config.everyBars === 'number' && Number.isFinite(config.everyBars)
+    ? Math.max(1, Math.floor(config.everyBars))
+    : 1;
+  const evolution = typeof config.evolution === 'number' && Number.isFinite(config.evolution)
+    ? clampUnit(config.evolution)
+    : 0;
+  const writeOffset = config.writeOffset === 'auto'
+    ? 'auto'
+    : typeof config.writeOffset === 'number' && Number.isFinite(config.writeOffset)
+      ? Math.max(0, Math.floor(config.writeOffset))
+      : 0;
+  const methods: Record<string, boolean> = {};
+  if (config.methods && typeof config.methods === 'object') {
+    for (const [key, value] of Object.entries(config.methods)) {
+      methods[key] = value === true;
+    }
+  }
+  const enabledSubLanes = Array.isArray(config.enabledSubLanes)
+    ? config.enabledSubLanes.filter((lane): lane is string => typeof lane === 'string')
+    : undefined;
   return {
     enabled: Boolean(config.enabled),
-    everyBars: Math.max(1, Math.floor(config.everyBars ?? 1)),
-    evolution: typeof config.evolution === 'number' ? config.evolution : 0,
-    writeOffset: config.writeOffset === 'auto'
-      ? 'auto'
-      : Math.max(0, Math.floor(Number(config.writeOffset ?? 0))),
+    everyBars,
+    evolution,
+    writeOffset,
     mutationMode: config.mutationMode === 'strict' ? 'strict' : 'biased',
-    methods: { ...(config.methods ?? {}) },
-    ...(Array.isArray(config.enabledSubLanes) ? { enabledSubLanes: [...config.enabledSubLanes] } : {}),
+    methods,
+    ...(enabledSubLanes ? { enabledSubLanes } : {}),
   };
 }
 
 function clonePitchSettings(settings: PitchSettings | SerializedPitchSettings | undefined): SerializedPitchSettings | undefined {
   if (!settings) return undefined;
-  return {
-    mode: settings.mode,
-    root: settings.root,
-    scale: settings.scale,
-  };
+  return normalizeSequencerPitchSettings(settings);
+}
+
+function inferLegacySubLaneStatesFromLoadedOverrides(
+  loaded: StepOverrides,
+  sourceLane: number,
+): Partial<Record<SubLaneKind, SerializedSubLaneState>> {
+  const inferred: Partial<Record<SubLaneKind, SerializedSubLaneState>> = {};
+  for (const lane of SUB_LANE_KINDS) {
+    const values = loaded[lane]?.[sourceLane];
+    if (!Array.isArray(values) || values.length === 0) continue;
+    const direction = normalizeSequencerLaneDirection(
+      loaded[SUB_LANE_DIRECTION_FIELDS[lane]]?.[sourceLane],
+    );
+    const rangeField = SUB_LANE_RANGE_FIELDS[lane];
+    const range = rangeField ? loaded[rangeField]?.[sourceLane] : null;
+    inferred[lane] = {
+      enabled: true,
+      steps: Math.max(1, Math.min(16, values.length)),
+      direction,
+      ...(range ? { valueMode: 'range', rangeMin: range.min, rangeMax: range.max } : {}),
+    };
+  }
+  return inferred;
+}
+
+export function inferLegacySubLaneStatesFromOverrides(
+  serialized: SerializedStepOverrides | undefined,
+): Partial<Record<SubLaneKind, SerializedSubLaneState>> {
+  const loaded = deserializeStepOverrides(serialized);
+  if (!loaded) return {};
+  return inferLegacySubLaneStatesFromLoadedOverrides(loaded, SEQUENCE_PRESET_SOURCE_LANE);
+}
+
+export function inferLegacySequencerSubLaneStatesFromOverrides(
+  serialized: SerializedStepOverrides | undefined,
+  laneCount = 4,
+): Partial<Record<SubLaneKind, SerializedSubLaneState>>[] | undefined {
+  const loaded = deserializeStepOverrides(serialized);
+  if (!loaded) return undefined;
+  const count = Math.max(1, Math.min(16, Math.floor(laneCount)));
+  const lanes = Array.from({ length: count }, (_, laneIndex) =>
+    inferLegacySubLaneStatesFromLoadedOverrides(loaded, laneIndex)
+  );
+  return lanes.some((lane) => Object.keys(lane).length > 0) ? lanes : undefined;
 }
 
 function replaceLane<T>(current: T[], laneIdx: number, value: T | undefined): T[] {
@@ -117,7 +207,7 @@ export function copySequenceLaneForPreset(overrides: StepOverrides, laneIdx: num
   }
 
   for (const field of STEP_OVERRIDE_DIRECTION_FIELDS) {
-    next[field][SEQUENCE_PRESET_SOURCE_LANE] = overrides[field]?.[laneIdx] ?? null;
+    next[field][SEQUENCE_PRESET_SOURCE_LANE] = normalizeOptionalSequencerLaneDirection(overrides[field]?.[laneIdx]);
   }
 
   for (const field of STEP_OVERRIDE_RANGE_FIELDS) {
@@ -151,11 +241,11 @@ export function copySequenceLaneStateForPreset(options: {
   return {
     ...(Object.keys(subLaneStates).length ? { subLaneStates } : {}),
     ...(options.clockDivs[laneIdx] ? { clockDiv: options.clockDivs[laneIdx] } : {}),
-    ...(typeof options.swings[laneIdx] === 'number' ? { swing: options.swings[laneIdx] } : {}),
+    ...(typeof options.swings[laneIdx] === 'number' ? { swing: normalizeSequencerSwing(options.swings[laneIdx]) } : {}),
     ...(typeof options.linked[laneIdx] === 'boolean' ? { linked: options.linked[laneIdx] } : {}),
     ...(options.evolveConfigs[laneIdx] ? { evolveConfig: cloneEvolveConfig(options.evolveConfigs[laneIdx]) } : {}),
     ...(options.pitchSettings?.[laneIdx] ? { pitchSettings: clonePitchSettings(options.pitchSettings[laneIdx]) } : {}),
-    ...(options.pitchBindingModes?.[laneIdx] ? { pitchBindingMode: options.pitchBindingModes[laneIdx] } : {}),
+    ...(options.pitchBindingModes?.[laneIdx] ? { pitchBindingMode: normalizeSequencerPitchBindingMode(options.pitchBindingModes[laneIdx]) } : {}),
   };
 }
 
@@ -214,18 +304,25 @@ export function applySequencePresetSubLaneStates(
   current: Record<SubLaneKind, SubLaneState>[],
   serialized: SerializedSequenceLanePresetState | undefined,
   laneIdx: number,
+  serializedOverrides?: SerializedStepOverrides,
 ): Record<SubLaneKind, SubLaneState>[] {
-  if (!serialized?.subLaneStates || laneIdx < 0 || laneIdx >= current.length) return current;
+  if (laneIdx < 0 || laneIdx >= current.length) return current;
   const currentLane = current[laneIdx];
   if (!currentLane) return current;
+  const savedSubLaneStates = {
+    ...inferLegacySubLaneStatesFromOverrides(serializedOverrides),
+    ...(serialized?.subLaneStates ?? {}),
+  };
+  if (Object.keys(savedSubLaneStates).length === 0) return current;
 
   const nextLane = { ...currentLane };
   for (const lane of SUB_LANE_KINDS) {
-    const saved = serialized.subLaneStates[lane];
-    if (saved) {
+    const saved = savedSubLaneStates[lane];
+    const sanitized = cloneSubLaneState(saved);
+    if (sanitized) {
       nextLane[lane] = {
         ...currentLane[lane],
-        ...saved,
+        ...sanitized,
       };
     }
   }
@@ -238,7 +335,8 @@ export function applySequencePresetClockDivs(
   serialized: SerializedSequenceLanePresetState | undefined,
   laneIdx: number,
 ): ClockDivision[] {
-  return replaceLane(current, laneIdx, serialized?.clockDiv);
+  if (!serialized?.clockDiv || laneIdx < 0 || laneIdx >= current.length) return current;
+  return replaceLane(current, laneIdx, normalizeSequencerClockDivision(serialized.clockDiv, current[laneIdx] ?? '1/8'));
 }
 
 export function applySequencePresetSwings(
@@ -246,7 +344,9 @@ export function applySequencePresetSwings(
   serialized: SerializedSequenceLanePresetState | undefined,
   laneIdx: number,
 ): number[] {
-  return replaceLane(current, laneIdx, serialized?.swing);
+  return replaceLane(current, laneIdx, serialized?.swing === undefined
+    ? undefined
+    : normalizeSequencerSwing(serialized.swing, current[laneIdx] ?? 0));
 }
 
 export function applySequencePresetLinked(
@@ -261,8 +361,18 @@ export function applySequencePresetEvolveConfigs(
   current: EvolveConfig[],
   serialized: SerializedSequenceLanePresetState | undefined,
   laneIdx: number,
+  prefix = 'synth',
 ): EvolveConfig[] {
-  return replaceLane(current, laneIdx, cloneEvolveConfig(serialized?.evolveConfig) as EvolveConfig | undefined);
+  if (!serialized?.evolveConfig || laneIdx < 0 || laneIdx >= current.length) return current;
+  const base = current[laneIdx];
+  const normalized = normalizeSequencerEvolveConfig(prefix, serialized.evolveConfig);
+  return replaceLane(current, laneIdx, {
+    ...normalized,
+    methods: {
+      ...(base?.methods ?? normalized.methods),
+      ...normalized.methods,
+    },
+  });
 }
 
 export function applySequencePresetPitchSettings(
@@ -270,7 +380,8 @@ export function applySequencePresetPitchSettings(
   serialized: SerializedSequenceLanePresetState | undefined,
   laneIdx: number,
 ): PitchSettings[] {
-  return replaceLane(current, laneIdx, clonePitchSettings(serialized?.pitchSettings) as PitchSettings | undefined);
+  if (!serialized?.pitchSettings || laneIdx < 0 || laneIdx >= current.length) return current;
+  return replaceLane(current, laneIdx, normalizeSequencerPitchSettings(serialized.pitchSettings, current[laneIdx]));
 }
 
 export function applySequencePresetPitchBindingModes(
@@ -278,5 +389,7 @@ export function applySequencePresetPitchBindingModes(
   serialized: SerializedSequenceLanePresetState | undefined,
   laneIdx: number,
 ): PitchBindingMode[] {
-  return replaceLane(current, laneIdx, serialized?.pitchBindingMode);
+  return replaceLane(current, laneIdx, serialized?.pitchBindingMode === undefined
+    ? undefined
+    : normalizeSequencerPitchBindingMode(serialized.pitchBindingMode, current[laneIdx] ?? 'polyrhythmic'));
 }

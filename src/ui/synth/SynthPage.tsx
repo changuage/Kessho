@@ -12,6 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatIndexedDelayDivision, getSliderNumericValue, type SerializedStepOverrides, type SliderMode, type SliderState } from '../state';
 import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState, type PitchSettings } from '../sequencer/useEuclideanSequencer';
+import { stepOverridesForEngineSubLaneState } from '../sequencer/engineStepOverrides';
 import { serializeStepOverrides } from '../sequencer/stepOverrideSerialization';
 import {
   applySequencePresetClockDivs,
@@ -33,6 +34,11 @@ import SeqSparkline from '../drums/SeqSparkline';
 import SeqMiniOverview from '../drums/SeqMiniOverview';
 import { SCALES, normalizeNoteDegreeOffset, scaleDegreeToSemitone } from '../../audio/drumSeqTypes';
 import type { ClockDivision, PitchBindingMode } from '../../audio/drumSeqTypes';
+import {
+  normalizeSequencerPitchBindingMode,
+  normalizeSequencerPitchBindingModes,
+} from '../../audio/sequencerPitchBinding';
+import { normalizeSequencerPitchSettings } from '../../audio/sequencerPitchSettings';
 import type { HarmonyState } from '../../audio/harmony';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { SliderPrimitive } from '../sliderSystem';
@@ -137,10 +143,17 @@ const LANE_CONFIGS = [
   { color: SEQUENCER_LANE_COLORS[3], name: 'Seq 4' },
 ];
 
+const SYNTH_LANE_ENABLED_KEYS = [
+  'synthEuclid1Enabled',
+  'synthEuclid2Enabled',
+  'synthEuclid3Enabled',
+  'synthEuclid4Enabled',
+] as const satisfies readonly (keyof SliderState)[];
+
 type EvolvedSequencerPatch = {
   laneIndex: number;
   version: number;
-  data: Partial<StepOverrides>;
+  data: Partial<StepOverrides> & { pitchSettings?: (PitchSettings | null)[] };
   swing?: number;
   subLaneStates?: Partial<Record<SubLaneKind, Partial<SubLaneState>>>;
 };
@@ -340,6 +353,22 @@ function pitchOffsetToMidi(offset: number, settings: PitchSettings): number | nu
   return settings.root + offset;
 }
 
+function quantizePitchOffsetToScale(offset: number, scaleIntervals: readonly number[]): number {
+  if (scaleIntervals.length === 0) return offset;
+  const octaves = Math.floor(offset / 12);
+  const remainder = ((offset % 12) + 12) % 12;
+  let bestInterval = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const interval of scaleIntervals) {
+    const distance = Math.min(Math.abs(interval - remainder), 12 - Math.abs(interval - remainder));
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestInterval = interval;
+    }
+  }
+  return octaves * 12 + bestInterval;
+}
+
 function isTextEntryTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
@@ -440,6 +469,7 @@ export interface SynthPageProps {
   CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
   /** Whether audio engine is running */
   isRunning: boolean;
+  onRequestPlaybackStart?: (statePatch?: Partial<SliderState>) => void;
   /** Get morphed lead params for ADSR preview */
   getLeadMorphedParams: (lead: 1 | 2) => { attack: number; decay: number; sustain: number; release: number } | null;
   /** Whether live source filter/LFO telemetry is available from the current audio runtime */
@@ -466,6 +496,8 @@ export interface SynthPageProps {
   onViewModeChange?: (mode: 'simple' | 'detail' | 'overview') => void;
   /** Reset evolve home */
   resetEvolveHome?: (laneIdx: number) => void;
+  /** Capture current lane state as evolve home */
+  captureEvolveHome?: (laneIdx: number) => void;
   /** Dice: regenerate lane with random values */
   diceLane?: (laneIdx: number, intensity: number) => void;
   /** Evolved step overrides pushed from audio engine (for visual sync) */
@@ -510,6 +542,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     SelectComponent,
     // CollapsiblePanelComponent — available via props if needed
     isRunning,
+    onRequestPlaybackStart,
     getLeadMorphedParams,
     liveSourceTelemetryAvailable = true,
     onEvolveConfigsChange,
@@ -521,6 +554,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     initialViewMode,
     onViewModeChange,
     resetEvolveHome,
+    captureEvolveHome,
     diceLane,
     onClockDivsChange,
     initialClockDivs,
@@ -551,7 +585,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [keyboardSource, setKeyboardSource] = useState<ManualSynthSource>(initialKeyboardUiState?.source ?? 'lead1');
   const [keyboardOctave, setKeyboardOctave] = useState(initialKeyboardUiState?.octave ?? 4);
   const [pitchBindingModes, setPitchBindingModes] = useState<PitchBindingMode[]>(() =>
-    initialPitchBindingModes ?? Array.from({ length: 4 }, () => 'polyrhythmic' as PitchBindingMode)
+    normalizeSequencerPitchBindingModes(initialPitchBindingModes, 4)
   );
   const [triggerKeyboardSteps, setTriggerKeyboardSteps] = useState<number[]>(() =>
     normalizeKeyboardStepArray(initialKeyboardUiState?.triggerSteps ?? initialKeyboardUiState?.sequenceSteps)
@@ -819,7 +853,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       audioEngine.setSynthStepPositionCallback(() => {});
     };
   }, []);
-
   useEffect(() => {
     const flashTimers: Array<number | null> = [null, null, null, null];
     audioEngine.setSynthEuclidEvolveTriggerCallback((laneIndex: number) => {
@@ -1756,18 +1789,35 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     seq.swings,
   ]);
 
+  const pendingSequenceHomeCaptureRef = useRef<number | null>(null);
+  const pendingSequenceResetHomeRef = useRef<number | null>(null);
+  const sequenceSubLaneHomeRef = useRef<(Record<SubLaneKind, SubLaneState> | null)[]>([null, null, null, null]);
+  const sequencePitchHomeRef = useRef<(SubLaneState | null)[]>([null, null, null, null]);
+  const sequencePitchBindingHomeRef = useRef<(PitchBindingMode | null)[]>([null, null, null, null]);
+  const [sequenceHomeCaptureVersion, setSequenceHomeCaptureVersion] = useState(0);
   const handleEuclidSequenceLoad = useCallback((laneIdx: number, entry: PresetEntry, data: Record<string, unknown>) => {
     setEuclidPresetNameForLane(laneIdx, entry.name);
     const stepOverrides = data[EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY] as SerializedStepOverrides | undefined;
     const sequenceState = data[EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY] as SerializedSequenceLanePresetState | undefined;
     seq.setStepOverrides((current) => applySequencePresetOverrides(current, stepOverrides ?? {}, laneIdx));
-    seq.setSubLaneStates((current) => applySequencePresetSubLaneStates(current, sequenceState, laneIdx));
+    seq.setSubLaneStates((current) => {
+      const next = applySequencePresetSubLaneStates(current, sequenceState, laneIdx, stepOverrides);
+      sequenceSubLaneHomeRef.current[laneIdx] = next[laneIdx] ?? null;
+      sequencePitchHomeRef.current[laneIdx] = next[laneIdx]?.pitch ?? null;
+      return next;
+    });
     seq.setClockDivs((current) => applySequencePresetClockDivs(current, sequenceState, laneIdx));
     seq.setSwings((current) => applySequencePresetSwings(current, sequenceState, laneIdx));
     seq.setLinked((current) => applySequencePresetLinked(current, sequenceState, laneIdx));
-    seq.setEvolveConfigs((current) => applySequencePresetEvolveConfigs(current, sequenceState, laneIdx));
+    seq.setEvolveConfigs((current) => applySequencePresetEvolveConfigs(current, sequenceState, laneIdx, 'synth'));
     seq.setPitchSettings((current) => applySequencePresetPitchSettings(current, sequenceState, laneIdx));
-    setPitchBindingModes((current) => applySequencePresetPitchBindingModes(current, sequenceState, laneIdx));
+    setPitchBindingModes((current) => {
+      const next = applySequencePresetPitchBindingModes(current, sequenceState, laneIdx);
+      sequencePitchBindingHomeRef.current[laneIdx] = next[laneIdx] ?? null;
+      return next;
+    });
+    pendingSequenceHomeCaptureRef.current = laneIdx;
+    setSequenceHomeCaptureVersion((version) => version + 1);
   }, [seq, setEuclidPresetNameForLane]);
 
   const renderSequencePresetControl = useCallback((laneIdx: number) => (
@@ -1793,16 +1843,25 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     </div>
   ), [euclidPresetNames, handleEuclidSequenceLoad, onStateChange, state, synthEuclideanPatternOptions]);
 
+  const handleResetEvolveHome = useCallback((laneIdx: number) => {
+    pendingSequenceResetHomeRef.current = laneIdx;
+    resetEvolveHome?.(laneIdx);
+  }, [resetEvolveHome]);
+
+  const previousPresetVersionRef = useRef(presetVersion);
   useEffect(() => {
-    if (presetVersion === undefined) return;
-    setPitchBindingModes(initialPitchBindingModes ?? Array.from({ length: 4 }, () => 'polyrhythmic' as PitchBindingMode));
+    if (presetVersion === undefined || presetVersion === previousPresetVersionRef.current) return;
+    previousPresetVersionRef.current = presetVersion;
+    setPitchBindingModes(normalizeSequencerPitchBindingModes(initialPitchBindingModes, 4));
     setTriggerKeyboardSteps(normalizeKeyboardStepArray());
     setPitchKeyboardSteps(normalizeKeyboardStepArray());
     setKeyboardSequenceCursorTarget('pitch');
   }, [initialPitchBindingModes, presetVersion]);
 
   const setPitchBindingMode = useCallback((laneIdx: number, mode: PitchBindingMode) => {
-    setPitchBindingModes((prev) => prev.map((current, index) => index === laneIdx ? mode : current));
+    setPitchBindingModes((prev) => prev.map((current, index) =>
+      index === laneIdx ? normalizeSequencerPitchBindingMode(mode, current) : current
+    ));
     if (mode === 'sequence' && seq.pitchSettings[laneIdx]?.mode === 'noteRange') {
       seq.setPitchMode(laneIdx, 'semitones');
     }
@@ -1881,15 +1940,35 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     if (!evolvedOverrides || evolvedOverrides.version === evolvedVersionRef.current) return;
     evolvedVersionRef.current = evolvedOverrides.version;
     const { laneIndex, data, swing, subLaneStates } = evolvedOverrides;
+    const restoredPitchSettings = data.pitchSettings?.[laneIndex]
+      ? normalizeSequencerPitchSettings(data.pitchSettings[laneIndex], seq.pitchSettings[laneIndex]) as PitchSettings
+      : null;
+    const restoreSequenceHome = pendingSequenceResetHomeRef.current === laneIndex;
+    if (restoreSequenceHome) pendingSequenceResetHomeRef.current = null;
+    const sequenceHome = restoreSequenceHome ? sequenceSubLaneHomeRef.current[laneIndex] : null;
+    const pitchHomeState = sequenceHome?.pitch ?? (restoredPitchSettings ? sequencePitchHomeRef.current[laneIndex] : null);
+    const effectiveSubLaneStates = sequenceHome
+      ? Object.fromEntries(Object.entries(sequenceHome).map(([key, value]) => [
+          key,
+          { ...value, ...((subLaneStates as Partial<Record<SubLaneKind, Partial<SubLaneState>>> | undefined)?.[key as SubLaneKind] ?? {}) },
+        ])) as Partial<Record<SubLaneKind, Partial<SubLaneState>>>
+      : pitchHomeState
+      ? { ...(subLaneStates ?? {}), pitch: { ...pitchHomeState, ...(subLaneStates?.pitch ?? {}) } }
+      : subLaneStates;
+    if (restoredPitchSettings) {
+      seq.setPitchSettings(prev => prev.map((settings, index) => (index === laneIndex ? restoredPitchSettings : settings)));
+    }
+    const restoredBindingMode = (restoreSequenceHome || restoredPitchSettings) ? sequencePitchBindingHomeRef.current[laneIndex] : null;
+    if (restoredBindingMode) setPitchBindingModes(prev => prev.map((mode, index) => (index === laneIndex ? restoredBindingMode : mode)));
     if (typeof swing === 'number' && Number.isFinite(swing)) {
       seq.setSwings(prev => prev.map((value, index) => (index === laneIndex ? swing : value)));
     }
-    if (subLaneStates && typeof subLaneStates === 'object') {
+    if (effectiveSubLaneStates && typeof effectiveSubLaneStates === 'object') {
       seq.setSubLaneStates(prev => prev.map((laneState, index) => (
         index === laneIndex
           ? {
               ...laneState,
-              ...Object.fromEntries(Object.entries(subLaneStates).map(([key, patch]) => [
+              ...Object.fromEntries(Object.entries(effectiveSubLaneStates).map(([key, patch]) => [
                 key,
                 { ...laneState[key as SubLaneKind], ...(patch ?? {}) },
               ])) as Record<SubLaneKind, SubLaneState>,
@@ -1904,15 +1983,23 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         arr[laneIndex] = new Map(data.triggerToggles[laneIndex]);
         next.triggerToggles = arr;
       }
-      const keys = ['expression', 'morph', 'distance', 'probability', 'ratchet', 'pitch', 'slice', 'reverse'] as const;
+      const keys = ['expression', 'morph', 'distance', 'probability', 'ratchet', 'trigCondition', 'pitch'] as const;
       for (const key of keys) {
         if (data[key] && data[key]![laneIndex] != null) {
           const arr = [...prev[key]];
           arr[laneIndex] = data[key]![laneIndex];
-          next[key] = arr;
+          (next as Record<string, unknown>)[key] = arr;
         }
       }
-      const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection', 'sliceDirection', 'reverseDirection'] as const;
+      const rangeKeys = ['expressionRanges', 'morphRanges', 'distanceRanges'] as const;
+      for (const key of rangeKeys) {
+        if (data[key]?.[laneIndex] != null) {
+          const arr = [...(prev[key] ?? [null, null, null, null])];
+          arr[laneIndex] = data[key]![laneIndex];
+          (next as Record<string, unknown>)[key] = arr;
+        }
+      }
+      const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection'] as const;
       for (const key of directionKeys) {
         if (data[key]?.[laneIndex] != null) {
           const arr = [...prev[key]];
@@ -1926,22 +2013,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       if (index !== laneIndex) return laneState;
       const nextLane = { ...laneState };
       const lengthFields = {
-        expression: data.expression?.[laneIndex]?.length,
-        pitch: data.pitch?.[laneIndex]?.length,
-        morph: data.morph?.[laneIndex]?.length,
-        distance: data.distance?.[laneIndex]?.length,
-        slice: data.slice?.[laneIndex]?.length,
-        reverse: data.reverse?.[laneIndex]?.length,
+        expression: effectiveSubLaneStates?.expression?.steps ?? data.expression?.[laneIndex]?.length,
+        pitch: effectiveSubLaneStates?.pitch?.steps ?? data.pitch?.[laneIndex]?.length,
+        morph: effectiveSubLaneStates?.morph?.steps ?? data.morph?.[laneIndex]?.length,
+        distance: effectiveSubLaneStates?.distance?.steps ?? data.distance?.[laneIndex]?.length,
       } as const;
       const directionFields = {
-        expression: data.expressionDirection?.[laneIndex],
-        pitch: data.pitchDirection?.[laneIndex],
-        morph: data.morphDirection?.[laneIndex],
-        distance: data.distanceDirection?.[laneIndex],
-        slice: data.sliceDirection?.[laneIndex],
-        reverse: data.reverseDirection?.[laneIndex],
+        expression: effectiveSubLaneStates?.expression?.direction ?? data.expressionDirection?.[laneIndex],
+        pitch: effectiveSubLaneStates?.pitch?.direction ?? data.pitchDirection?.[laneIndex],
+        morph: effectiveSubLaneStates?.morph?.direction ?? data.morphDirection?.[laneIndex],
+        distance: effectiveSubLaneStates?.distance?.direction ?? data.distanceDirection?.[laneIndex],
       } as const;
-      for (const lane of Object.keys(lengthFields) as SubLaneKind[]) {
+      for (const lane of ['expression', 'pitch', 'morph', 'distance'] as const) {
         const steps = lengthFields[lane];
         const direction = directionFields[lane];
         if (steps == null && direction == null) continue;
@@ -1957,9 +2040,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   // Sync step overrides to audio engine
   // Track both stepOverrides AND pitchSettings so conversion re-runs on either change
-  const stepOverridesRef = useRef(seq.stepOverrides);
-  const pitchSettingsRef = useRef(seq.pitchSettings);
-  const pitchSubLaneStatesRef = useRef(seq.subLaneStates);
+  const stepOverridesRef = useRef<StepOverrides | null>(null);
+  const pitchSettingsRef = useRef<PitchSettings[] | null>(null);
+  const pitchSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);
   useEffect(() => {
     const overridesChanged = stepOverridesRef.current !== seq.stepOverrides;
     const settingsChanged = pitchSettingsRef.current !== seq.pitchSettings;
@@ -1984,7 +2067,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           return offsets.map(deg => ps.root + scaleDegreeToSemitone(deg, scaleIntervals));
         }
         // Semitones mode: offset from root note
-        return offsets.map(off => ps.root + off);
+        const scaleIntervals = SCALES[ps.scale] || [0, 2, 4, 5, 7, 9, 11];
+        return offsets.map((offset) => ps.root + (
+          seq.subLaneStates[laneIdx]?.pitch?.scaleQuantize
+            ? quantizePitchOffsetToScale(offset, scaleIntervals)
+            : offset
+        ));
       });
       // Persist raw (unconverted) overrides for round-trip safety
       if (overridesChanged) {
@@ -2009,18 +2097,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           : null;
       });
       // Send MIDI-converted pitch to audio engine
-      onStepOverridesChange?.({
+      onStepOverridesChange?.(stepOverridesForEngineSubLaneState({
         ...seq.stepOverrides,
         pitch: convertedPitch,  // Send MIDI notes, not raw offsets
         expressionRanges,
         morphRanges,
         distanceRanges,
-      });
+      }, seq.subLaneStates));
     }
   }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, onStepOverridesChange, onRawStepOverridesChange]);
 
   // Persist sub-lane states (enabled/steps/direction) across tab switches
-  const subLaneStatesRef = useRef(seq.subLaneStates);
+  const subLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);
   useEffect(() => {
     if (subLaneStatesRef.current !== seq.subLaneStates) {
       subLaneStatesRef.current = seq.subLaneStates;
@@ -2062,6 +2150,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       onLinkedChange?.(seq.linked);
     }
   }, [seq.linked, onLinkedChange]);
+
+  useEffect(() => {
+    const laneIndex = pendingSequenceHomeCaptureRef.current;
+    if (laneIndex == null) return;
+    pendingSequenceHomeCaptureRef.current = null;
+    captureEvolveHome?.(laneIndex);
+  }, [sequenceHomeCaptureVersion, captureEvolveHome]);
 
   const activeSeq = seq.activeSeq;
 
@@ -2492,14 +2587,66 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   const toggleSynthSequencerTransport = useCallback(() => {
     const next = !state.synthEuclideanMasterEnabled;
-    if (next && !state.leadEnabled) {
-      onSelectChange('leadEnabled' as keyof SliderState, true);
+    const startPatch: Partial<SliderState> = next ? { synthEuclideanMasterEnabled: true } : {};
+    const activeLaneEnabledKey = SYNTH_LANE_ENABLED_KEYS[seq.activeTab] ?? SYNTH_LANE_ENABLED_KEYS[0];
+    const hasEnabledLane = SYNTH_LANE_ENABLED_KEYS.some((key) => Boolean(state[key]));
+    const requestedLaneEnabledKey = next && !hasEnabledLane ? activeLaneEnabledKey : null;
+    const enableSequencerSource = (source: ManualSynthSource) => {
+      if (source === 'pad1' && !state.padEnabled) {
+        onSelectChange('padEnabled' as keyof SliderState, true);
+        startPatch.padEnabled = true;
+      } else if (source === 'pad2' && !state.pad2Enabled) {
+        onSelectChange('pad2Enabled' as keyof SliderState, true);
+        startPatch.pad2Enabled = true;
+      } else if (source === 'lead1' && !state.leadEnabled) {
+        onSelectChange('leadEnabled' as keyof SliderState, true);
+        startPatch.leadEnabled = true;
+      } else if (source === 'lead2' && !state.lead2Enabled) {
+        onSelectChange('lead2Enabled' as keyof SliderState, true);
+        startPatch.lead2Enabled = true;
+      } else if (source === 'piano' && !state.pianoEnabled) {
+        onSelectChange('pianoEnabled' as keyof SliderState, true);
+        startPatch.pianoEnabled = true;
+      }
+    };
+    if (next) {
+      SYNTH_LANE_ENABLED_KEYS.forEach((key, laneIndex) => {
+        if (!Boolean(state[key]) && key !== requestedLaneEnabledKey) return;
+        enableSequencerSource(getManualSourceForLaneSource(
+          String(state[getSourceKey(laneIndex)] ?? 'lead1'),
+          state.pad2VoiceAssign,
+        ));
+      });
     }
-    if (next && !state.padEnabled) {
-      onSelectChange('padEnabled' as keyof SliderState, true);
+    if (requestedLaneEnabledKey != null) {
+      onSelectChange(requestedLaneEnabledKey, true);
+      startPatch[requestedLaneEnabledKey] = true;
     }
     onSelectChange('synthEuclideanMasterEnabled' as keyof SliderState, next);
-  }, [onSelectChange, state.leadEnabled, state.padEnabled, state.synthEuclideanMasterEnabled]);
+    if (next && !isRunning) {
+      onRequestPlaybackStart?.(startPatch);
+    }
+  }, [
+    isRunning,
+    onRequestPlaybackStart,
+    onSelectChange,
+    seq.activeTab,
+    state.leadEnabled,
+    state.lead2Enabled,
+    state.padEnabled,
+    state.pad2Enabled,
+    state.pad2VoiceAssign,
+    state.pianoEnabled,
+    state.synthEuclid1Enabled,
+    state.synthEuclid1Source,
+    state.synthEuclid2Enabled,
+    state.synthEuclid2Source,
+    state.synthEuclid3Enabled,
+    state.synthEuclid3Source,
+    state.synthEuclid4Enabled,
+    state.synthEuclid4Source,
+    state.synthEuclideanMasterEnabled,
+  ]);
 
   const enterKeyboardSequenceMode = useCallback(() => {
     setKeyboardInputMode('sequence');
@@ -2535,13 +2682,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       writeKeyboardSequenceNote(seq.activeTab, midi);
     }
     if (!onAuditionNote) return;
+    const parsedVoiceIndex = keyboardInputMode === 'sequence' && activeLaneSource.startsWith('synth')
+      ? Number.parseInt(activeLaneSource.replace('synth', ''), 10) - 1
+      : undefined;
+    const voiceIndex = Number.isInteger(parsedVoiceIndex) && parsedVoiceIndex! >= 0 && parsedVoiceIndex! < 6 ? parsedVoiceIndex : undefined;
     void onAuditionNote({
       source: effectiveKeyboardSource,
       midi,
       velocity: MANUAL_KEYBOARD_VELOCITY,
       durationMs: 180,
+      ...(voiceIndex !== undefined ? { voiceIndex } : {}),
     });
-  }, [canWriteSequenceNotes, effectiveKeyboardSource, keyboardBaseMidi, keyboardInputMode, onAuditionNote, seq.activeTab, writeKeyboardSequenceNote]);
+  }, [activeLaneSource, canWriteSequenceNotes, effectiveKeyboardSource, keyboardBaseMidi, keyboardInputMode, onAuditionNote, seq.activeTab, writeKeyboardSequenceNote]);
   const toggleKeyboardPanel = useCallback(() => {
     setShowKeyboard((prev) => {
       const next = !prev;
@@ -2633,7 +2785,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   useEffect(() => {
     const handlePageHotkeys = (event: KeyboardEvent) => {
-      if (event.repeat || isTextEntryTarget(event.target)) return;
+      if (event.defaultPrevented || event.repeat || isTextEntryTarget(event.target)) return;
       if (event.shiftKey && event.code === 'KeyZ') {
         event.preventDefault();
         seq.toggleMute(seq.activeTab);
@@ -4675,6 +4827,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           <div className="seq-transport">
             <button
               className={`seq-play-btn${state.synthEuclideanMasterEnabled ? ' playing' : ''}`}
+              data-sequencer-transport="synth"
               onClick={toggleSynthSequencerTransport}
               {...bindHelp('synthSeqPlayToggle')}
             >
@@ -5001,7 +5154,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 {seq.sequencerModels.map((seqModel, idx) => (
                   <div
                     key={seqModel.id}
-                    className={`seq-tab${idx === seq.activeTab ? ' active' : ''}${seqModel.muted ? ' muted' : ''}`}
+                    className={`seq-tab${idx === seq.activeTab ? ' active' : ''}${seqModel.muted ? ' muted' : ''}${seq.evolveFlashing[idx] ? ' seq-evolve-flash' : ''}`}
                     style={{ '--sc': seqModel.color } as React.CSSProperties}
                     onClick={() => seq.setActiveTab(idx)}
                     role="button"
@@ -5023,7 +5176,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               </div>
 
               {/* Seq body */}
-              <div className="seq-body" style={{ '--sc': activeSeq.color } as React.CSSProperties}>
+              <div className={`seq-body${seq.evolveFlashing[seq.activeTab] ? ' seq-evolve-flash' : ''}`} style={{ '--sc': activeSeq.color } as React.CSSProperties}>
 
                 {/* ── Source selector + per-seq controls ── */}
                 <div className="seq-sources">
@@ -5170,7 +5323,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         );
                       })()}
                     </div>
-                    <button className="seq-evolve-reset" onClick={() => resetEvolveHome?.(seq.activeTab)}>Reset</button>
+                    <button className="seq-evolve-reset" onClick={() => handleResetEvolveHome(seq.activeTab)}>Reset</button>
                     {diceLane && (
                       <span className="seq-dice-group">
                         <SliderPrimitive
@@ -5336,6 +5489,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   {(['pitch', 'expression', 'morph', 'distance'] as const).map((laneKind) => {
                     const subState = seq.subLaneStates[seq.activeTab]?.[laneKind];
                     const laneColor = SEQUENCER_SUB_LANE_COLORS[laneKind];
+                    const activePlayhead = seq.playheads[seq.activeTab] ?? 0;
+                    const sparkHitCount = seq.hitCounts[seq.activeTab] ?? 0;
 
                     const noteMinKey = `synthEuclid${seq.activeTab + 1}NoteMin` as keyof SliderState;
                     const noteMaxKey = `synthEuclid${seq.activeTab + 1}NoteMax` as keyof SliderState;
@@ -5367,8 +5522,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                         : activeSeq.distance.values
                           }
                           color={laneColor}
-                          playhead={seq.playheads[seq.activeTab]}
-                          hitCount={seq.hitCounts[seq.activeTab]}
+                          playhead={activePlayhead}
+                          hitCount={sparkHitCount}
                           playheadMode={laneKind === 'pitch' && activePitchBindingMode === 'sequence' ? 'step' : 'hit'}
                           direction={subState?.direction ?? 'forward'}
                           bipolar={
@@ -5452,6 +5607,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                 onChangePitchBindingMode: (mode: PitchBindingMode) => setPitchBindingMode(seq.activeTab, mode),
                                 onChangePitchRoot: (root) => seq.setPitchRoot(seq.activeTab, root),
                                 onChangePitchScale: (scale) => seq.setPitchScale(seq.activeTab, scale),
+                                onToggleScaleQuantize: () => seq.toggleScaleQuantize(seq.activeTab),
                                 hidePitchNoteRange: activePitchBindingMode === 'sequence',
                                 pitchNoteMin: liveSynthNoteMins[seq.activeTab] ?? (state[noteMinKey] as number),
                                 pitchNoteMax: liveSynthNoteMaxs[seq.activeTab] ?? (state[noteMaxKey] as number),

@@ -298,3 +298,51 @@ export function exactSoundscapesModuleParamsFromState(state: Record<string, unkn
   params[SOUNDSCAPES_PRODUCT_PARAM_INDEX.earthLevel] = numberFromState(state, 'earthLevel', 1);
   return params;
 }
+
+export type SoundscapeSnapshotPayload = {
+  enabled: boolean;
+  routePeaks: number[];
+  parityFixture: boolean;
+  textureParamCount: number;
+  textureParams: number[];
+  moduleParamCount: number;
+  moduleParams: number[];
+};
+
+export function soundscapeSnapshotPayloadFromState(state: Record<string, unknown> | undefined): SoundscapeSnapshotPayload {
+  const oceanActive = booleanFromState(state, 'oceanSampleEnabled', false);
+  const waterActive = booleanFromState(state, 'waterEnabled', false);
+  const insectsActive = booleanFromState(state, 'insectsEnabled', false) || booleanFromState(state, 'insects2Enabled', false);
+  const natureActive = booleanFromState(state, 'birdsEnabled', false) ||
+    booleanFromState(state, 'birds2Enabled', false) || booleanFromState(state, 'frogsEnabled', false);
+  const parityFixture = booleanFromState(state, 'soundscapeParityFixture', false);
+  const textureParams = Array.from({ length: SOUNDSCAPE_TEXTURE_PARAM_COUNT }, () => 0);
+  const moduleParams = exactSoundscapesModuleParamsFromState(state).slice(0, SOUNDSCAPES_PRODUCT_PARAM_COUNT);
+  const layerActive = [oceanActive, waterActive, insectsActive, natureActive];
+  const routePeaks = [0, 0, 0, 0];
+
+  if (parityFixture) textureParams[SOUNDSCAPE_PARITY_FIXTURE_PARAM] = 1;
+  writeSoundscapeTextureParamsFromState(textureParams, state);
+  for (let layer = 0; layer < SOUNDSCAPE_ROUTE_KEYS.length; layer += 1) {
+    const routeKeys = SOUNDSCAPE_ROUTE_KEYS[layer] ?? SOUNDSCAPE_ROUTE_KEYS[0];
+    const routeFallbacks = SOUNDSCAPE_ROUTE_FALLBACKS[layer] ?? SOUNDSCAPE_ROUTE_FALLBACKS[0];
+    for (let route = 0; route < routeKeys.length; route += 1) {
+      const key = routeKeys[route] ?? 'oceanReverbSend';
+      const value = layerActive[layer] === true
+        ? clamp(numberFromState(state, key, routeFallbacks[route] ?? 0), 0, 2)
+        : 0;
+      textureParams[layer * 4 + route] = value;
+      routePeaks[route] = Math.max(routePeaks[route] ?? 0, value);
+    }
+  }
+
+  return {
+    enabled: oceanActive || waterActive || insectsActive || natureActive,
+    routePeaks,
+    parityFixture,
+    textureParamCount: SOUNDSCAPE_TEXTURE_PARAM_COUNT,
+    textureParams,
+    moduleParamCount: SOUNDSCAPES_PRODUCT_PARAM_COUNT,
+    moduleParams,
+  };
+}

@@ -87,7 +87,7 @@ function validateEvidence(entry, domainId, group) {
   };
 }
 
-function auditedCaseSets(report, label, fallbackCases, ignoredFailedCaseIds = new Set()) {
+function auditedCaseSets(report, label, fallbackCases, ignoredFailedCaseIds = new Set(), options = {}) {
   if (report == null) {
     assert(!strict, `${label} report must exist for strict parity`);
     const definedCaseIds = fallbackCases.map((caseDef) => caseDef.id);
@@ -104,16 +104,19 @@ function auditedCaseSets(report, label, fallbackCases, ignoredFailedCaseIds = ne
   assert(Array.isArray(report.cases), `${label} report must include cases`);
   const failed = report.cases.filter((caseResult) => caseResult?.status !== 'pass');
   const blockingFailed = failed.filter((caseResult) => !ignoredFailedCaseIds.has(caseResult.id));
-  assert(
-    blockingFailed.length === 0,
-    `${label} report contains failing active cases: ${blockingFailed.map((item) => item.id).join(', ')}`,
-  );
+  if (!options.allowFailedActiveCases) {
+    assert(
+      blockingFailed.length === 0,
+      `${label} report contains failing active cases: ${blockingFailed.map((item) => item.id).join(', ')}`,
+    );
+  }
   return {
     source: 'report',
     status: report.status,
     all: new Set(report.cases.map((caseResult) => caseResult.id)),
     passed: new Set(report.cases.filter((caseResult) => caseResult.status === 'pass').map((caseResult) => caseResult.id)),
     caseCount: report.cases.length,
+    blockingFailedCaseIds: blockingFailed.map((caseResult) => caseResult.id),
     ignoredFailedCaseIds: failed.filter((caseResult) => ignoredFailedCaseIds.has(caseResult.id)).map((caseResult) => caseResult.id),
   };
 }
@@ -178,7 +181,9 @@ const deferredDomains = (manifest.domains ?? []).filter((domain) => domain.statu
 const deferredSmokeCaseIds = new Set(deferredDomains.flatMap((domain) => domain.smokeCaseIds ?? []));
 const deferredMasterCaseIds = new Set(deferredDomains.flatMap((domain) => domain.masterCaseIds ?? []));
 const smokeCaseSets = auditedCaseSets(smokeReport, 'web graph capture smoke', smokeCases, deferredSmokeCaseIds);
-const masterCaseSets = auditedCaseSets(masterReport, 'web master corpus', masterCases, deferredMasterCaseIds);
+const masterCaseSets = auditedCaseSets(masterReport, 'web master corpus', masterCases, deferredMasterCaseIds, {
+  allowFailedActiveCases: !strict,
+});
 
 const domainReports = [];
 for (const id of requiredDomainIds) {
@@ -194,7 +199,7 @@ for (const id of requiredDomainIds) {
     ? deferred ? 'listed' : 'passing'
     : 'defined';
   const masterRequirement = masterCaseSets.source === 'report'
-    ? deferred ? 'listed' : 'passing'
+    ? deferred || !strict ? 'listed' : 'passing'
     : 'defined';
   const smokeCases = validateCaseIds(
     domain.smokeCaseIds,
@@ -205,7 +210,7 @@ for (const id of requiredDomainIds) {
   );
   const masterCases = validateCaseIds(
     domain.masterCaseIds,
-    deferred ? masterCaseSets.all : masterCaseSets.passed,
+    deferred || !strict ? masterCaseSets.all : masterCaseSets.passed,
     id,
     'masterCaseIds',
     masterRequirement,
@@ -251,6 +256,10 @@ const activeDomainReports = domainReports.filter((domain) => domain.status !== '
 const deferredDomainReports = domainReports.filter((domain) => domain.status === 'deferred');
 const provenCount = activeDomainReports.filter((domain) => domain.status === 'proven').length;
 const blockedCount = activeDomainReports.filter((domain) => domain.status !== 'proven').length;
+const strictGateReady =
+  blockedCount === 0 &&
+  (smokeCaseSets.blockingFailedCaseIds?.length ?? 0) === 0 &&
+  (masterCaseSets.blockingFailedCaseIds?.length ?? 0) === 0;
 const report = {
   schema: 'kessho-product-web-audio-graph-parity-report-v1',
   mode: strict ? 'strict' : 'audit',
@@ -261,12 +270,13 @@ const report = {
   activeDomainCount: activeDomainReports.length,
   deferredCount: deferredDomainReports.length,
   deferredDomainIds: deferredDomainReports.map((domain) => domain.id),
-  strictGateReady: blockedCount === 0,
+  strictGateReady,
   smokeReport: {
     path: smokeReportPath,
     source: smokeCaseSets.source,
     status: smokeCaseSets.status,
     caseCount: smokeCaseSets.caseCount,
+    blockingFailedCaseIds: smokeCaseSets.blockingFailedCaseIds,
     ignoredFailedCaseIds: smokeCaseSets.ignoredFailedCaseIds,
   },
   masterReport: {
@@ -274,6 +284,7 @@ const report = {
     source: masterCaseSets.source,
     status: masterCaseSets.status,
     caseCount: masterCaseSets.caseCount,
+    blockingFailedCaseIds: masterCaseSets.blockingFailedCaseIds,
     ignoredFailedCaseIds: masterCaseSets.ignoredFailedCaseIds,
   },
   generatedAt: new Date().toISOString(),

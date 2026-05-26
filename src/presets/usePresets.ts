@@ -15,7 +15,7 @@ import { getPresetStore, subscribePresetStore } from './PresetStore';
 import { extractParams, applyParams, extractCascade, applyCascade, compressVersions, getVersionData } from './codec';
 import { extractPresetVersionMetadata, presetValuesEqual } from './presetUtils';
 import { buildPresetFamilies } from './catalog';
-import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
+import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE, isSharedPresetCloudOnlyMode } from './sharedMode';
 import type { ParamLevel } from './ParamRegistry';
 import type { SliderState } from '../ui/state';
 import {
@@ -98,12 +98,13 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     setLoading(true);
     try {
       const list = await getPresetStore().list(type, storeScope);
-      const visibleList = SHARED_PRESET_TEST_MODE
+      const sharedCloudOnly = isSharedPresetCloudOnlyMode();
+      const visibleList = sharedCloudOnly
         ? list.filter((preset) => !!preset.remoteId)
         : list;
       setPresets(visibleList);
       setFamilies(buildPresetFamilies(visibleList));
-      if (SHARED_PRESET_TEST_MODE && visibleList.length === 0 && emptySharedListRetryCountRef.current < 4) {
+      if (sharedCloudOnly && visibleList.length === 0 && emptySharedListRetryCountRef.current < 4) {
         const retryAttempt = ++emptySharedListRetryCountRef.current;
         window.setTimeout(() => {
           void refresh();
@@ -114,7 +115,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     } catch (e) {
       console.warn('Failed to load preset list:', e);
       setFamilies([]);
-      if (SHARED_PRESET_TEST_MODE && emptySharedListRetryCountRef.current < 4) {
+      if (isSharedPresetCloudOnlyMode() && emptySharedListRetryCountRef.current < 4) {
         const retryAttempt = ++emptySharedListRetryCountRef.current;
         window.setTimeout(() => {
           void refresh();

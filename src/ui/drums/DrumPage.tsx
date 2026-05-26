@@ -14,7 +14,14 @@ import { normalizeNoteDegreeOffset } from '../../audio/drumSeqTypes';
 import { audioEngine } from '../../audio/runtime';
 import { getPresetNames as getDrumPresetNames } from '../../audio/drumPresets';
 import { DRUM_VOICES as VOICE_CONFIG, DRUM_VOICE_ORDER } from '../../audio/drumVoiceConfig';
-import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
+import { useEuclideanSequencer, type EvolveConfig, type PitchSettings, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
+import { stepOverridesForEngineSubLaneState } from '../sequencer/engineStepOverrides';
+import {
+  drumPitchBaseMidiFromState,
+  drumPitchUiValuesToEngineOffsets,
+  evolvedDrumPitchOffsetToUiValue,
+} from '../sequencer/drumPitchSequencer';
+import { normalizeSequencerPitchSettings } from '../../audio/sequencerPitchSettings';
 import DrumPanel from './DrumPanel';
 import DragNumber from './DragNumber';
 import SeqOverview from './SeqOverview';
@@ -31,6 +38,7 @@ import {
   applySequencePresetEvolveConfigs,
   applySequencePresetLinked,
   applySequencePresetOverrides,
+  applySequencePresetPitchSettings,
   applySequencePresetSubLaneStates,
   applySequencePresetSwings,
   copySequenceLaneForPreset,
@@ -55,10 +63,17 @@ const LANE_CONFIGS = [
   { color: SEQUENCER_LANE_COLORS[3], name: 'Seq 4' },
 ];
 
+const DRUM_LANE_ENABLED_KEYS = [
+  'drumEuclid1Enabled',
+  'drumEuclid2Enabled',
+  'drumEuclid3Enabled',
+  'drumEuclid4Enabled',
+] as const satisfies readonly (keyof SliderState)[];
+
 type EvolvedSequencerPatch = {
   laneIndex: number;
   version: number;
-  data: Partial<StepOverrides>;
+  data: Partial<StepOverrides> & { pitchSettings?: (PitchSettings | null)[] };
   swing?: number;
   subLaneStates?: Partial<Record<SubLaneKind, Partial<SubLaneState>>>;
 };
@@ -89,15 +104,18 @@ function getDrumKeyboardLane(openLane: string): DrumKeyboardLane {
 export interface DrumPageProps {
   state: SliderState;
   isMobile: boolean;
+  isRunning: boolean;
   expandedPanels: Set<string>;
   onParamChange: (key: keyof SliderState, value: number) => void;
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
   onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
+  onRequestPlaybackStart?: (statePatch?: Partial<SliderState>) => void;
   togglePanel: (id: string) => void;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   triggerVoice: (voice: DrumVoiceType) => void;
   getAnalyserNode: (voice: DrumVoiceType) => AnalyserNode | undefined;
   resetEvolveHome: (laneIdx: number) => void;
+  captureEvolveHome?: (laneIdx: number) => void;
   diceLane?: (laneIdx: number, intensity: number) => void;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
   CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
@@ -111,12 +129,18 @@ export interface DrumPageProps {
   presetVersion?: number;
   /** Called when step overrides change, so parent can sync to audio engine */
   onStepOverridesChange?: (overrides: DrumStepOverrides) => void;
+  /** Called with unconverted UI step overrides for preset round trips */
+  onRawStepOverridesChange?: (overrides: StepOverrides) => void;
   /** Initial step overrides to restore across tab switches */
   initialStepOverrides?: StepOverrides;
   /** Initial sub-lane states to restore across tab switches */
   initialSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   /** Called when sub-lane states change, so parent can persist across tab switches */
   onSubLaneStatesChange?: (states: Record<SubLaneKind, SubLaneState>[]) => void;
+  /** Initial pitch mode/root/scale settings to restore across tab switches */
+  initialPitchSettings?: PitchSettings[];
+  /** Called when pitch settings change, so parent can persist across tab switches */
+  onPitchSettingsChange?: (settings: PitchSettings[]) => void;
   /** Initial view mode to restore across tab switches */
   initialViewMode?: 'simple' | 'detail' | 'overview';
   /** Called when view mode changes so parent can persist it */
@@ -142,14 +166,17 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
   const {
     state,
     isMobile,
+    isRunning,
     expandedPanels,
     onParamChange,
     onSelectChange,
+    onRequestPlaybackStart,
     togglePanel,
     sliderProps,
     triggerVoice,
     getAnalyserNode,
     resetEvolveHome,
+    captureEvolveHome,
     diceLane,
     SliderComponent,
     CollapsiblePanelComponent,
@@ -157,9 +184,12 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     onToggleEditing,
     onEvolveConfigsChange,
     onStepOverridesChange,
+    onRawStepOverridesChange,
     initialStepOverrides,
     initialSubLaneStates,
     onSubLaneStatesChange,
+    initialPitchSettings,
+    onPitchSettingsChange,
     initialViewMode,
     onViewModeChange,
     onClockDivsChange,
@@ -217,6 +247,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     initialViewMode,
     initialStepOverrides,
     initialSubLaneStates,
+    initialPitchSettings,
     initialClockDivs,
     initialSwings,
     initialLinked,
@@ -234,6 +265,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
         swings: seq.swings,
         linked: seq.linked,
         evolveConfigs: seq.evolveConfigs,
+        pitchSettings: seq.pitchSettings,
       });
       return {
         ...extractEuclideanPatternLaneDataFromDrumState(currentState, laneIdx),
@@ -242,18 +274,29 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       };
     },
     customApply: (currentState, data) => applyEuclideanPatternToDrumLaneState(currentState, data, laneIdx),
-  })), [seq.clockDivs, seq.evolveConfigs, seq.linked, seq.stepOverrides, seq.subLaneStates, seq.swings]);
+  })), [seq.clockDivs, seq.evolveConfigs, seq.linked, seq.pitchSettings, seq.stepOverrides, seq.subLaneStates, seq.swings]);
 
+  const pendingSequenceHomeCaptureRef = useRef<number | null>(null);
+  const pendingSequenceResetHomeRef = useRef<number | null>(null);
+  const sequenceSubLaneHomeRef = useRef<(Record<SubLaneKind, SubLaneState> | null)[]>([null, null, null, null]);
+  const [sequenceHomeCaptureVersion, setSequenceHomeCaptureVersion] = useState(0);
   const handleEuclidSequenceLoad = useCallback((laneIdx: number, entry: PresetEntry, data: Record<string, unknown>) => {
     setEuclidPresetNameForLane(laneIdx, entry.name);
     const stepOverrides = data[EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY] as SerializedStepOverrides | undefined;
     const sequenceState = data[EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY] as SerializedSequenceLanePresetState | undefined;
     seq.setStepOverrides((current) => applySequencePresetOverrides(current, stepOverrides ?? {}, laneIdx));
-    seq.setSubLaneStates((current) => applySequencePresetSubLaneStates(current, sequenceState, laneIdx));
+    seq.setSubLaneStates((current) => {
+      const next = applySequencePresetSubLaneStates(current, sequenceState, laneIdx, stepOverrides);
+      sequenceSubLaneHomeRef.current[laneIdx] = next[laneIdx] ?? null;
+      return next;
+    });
     seq.setClockDivs((current) => applySequencePresetClockDivs(current, sequenceState, laneIdx));
     seq.setSwings((current) => applySequencePresetSwings(current, sequenceState, laneIdx));
     seq.setLinked((current) => applySequencePresetLinked(current, sequenceState, laneIdx));
-    seq.setEvolveConfigs((current) => applySequencePresetEvolveConfigs(current, sequenceState, laneIdx));
+    seq.setEvolveConfigs((current) => applySequencePresetEvolveConfigs(current, sequenceState, laneIdx, 'drum'));
+    seq.setPitchSettings((current) => applySequencePresetPitchSettings(current, sequenceState, laneIdx));
+    pendingSequenceHomeCaptureRef.current = laneIdx;
+    setSequenceHomeCaptureVersion((version) => version + 1);
   }, [seq, setEuclidPresetNameForLane]);
 
   const renderSequencePresetControl = useCallback((laneIdx: number) => (
@@ -278,6 +321,11 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       />
     </div>
   ), [drumEuclideanPatternOptions, euclidPresetNames, handleEuclidSequenceLoad, onStateChange, state]);
+
+  const handleResetEvolveHome = useCallback((laneIdx: number) => {
+    pendingSequenceResetHomeRef.current = laneIdx;
+    resetEvolveHome(laneIdx);
+  }, [resetEvolveHome]);
 
   const setSharedSequencerBpm = useCallback((bpm: number) => {
     onParamChange('sequencerMasterBPM' as keyof SliderState, bpm);
@@ -385,15 +433,30 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     if (!evolvedOverrides || evolvedOverrides.version === evolvedVersionRef.current) return;
     evolvedVersionRef.current = evolvedOverrides.version;
     const { laneIndex, data, swing, subLaneStates } = evolvedOverrides;
+    const restoredPitchSettings = data.pitchSettings?.[laneIndex]
+      ? normalizeSequencerPitchSettings(data.pitchSettings[laneIndex], seq.pitchSettings[laneIndex]) as PitchSettings
+      : null;
+    const restoreSequenceHome = pendingSequenceResetHomeRef.current === laneIndex;
+    if (restoreSequenceHome) pendingSequenceResetHomeRef.current = null;
+    const sequenceHome = restoreSequenceHome ? sequenceSubLaneHomeRef.current[laneIndex] : null;
+    const effectiveSubLaneStates = sequenceHome
+      ? Object.fromEntries(Object.entries(sequenceHome).map(([key, value]) => [
+          key,
+          { ...value, ...((subLaneStates as Record<string, Partial<SubLaneState>> | undefined)?.[key] ?? {}) },
+        ])) as Partial<Record<SubLaneKind, Partial<SubLaneState>>>
+      : subLaneStates;
+    if (restoredPitchSettings) {
+      seq.setPitchSettings(prev => prev.map((settings, index) => (index === laneIndex ? restoredPitchSettings : settings)));
+    }
     if (typeof swing === 'number' && Number.isFinite(swing)) {
       seq.setSwings(prev => prev.map((value, index) => (index === laneIndex ? swing : value)));
     }
-    if (subLaneStates && typeof subLaneStates === 'object') {
+    if (effectiveSubLaneStates && typeof effectiveSubLaneStates === 'object') {
       seq.setSubLaneStates(prev => prev.map((laneState, index) => (
         index === laneIndex
           ? {
               ...laneState,
-              ...Object.fromEntries(Object.entries(subLaneStates).map(([key, patch]) => [
+              ...Object.fromEntries(Object.entries(effectiveSubLaneStates).map(([key, patch]) => [
                 key,
                 { ...laneState[key as SubLaneKind], ...(patch ?? {}) },
               ])) as Record<SubLaneKind, SubLaneState>,
@@ -408,12 +471,23 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
         arr[laneIndex] = new Map(data.triggerToggles[laneIndex]);
         next.triggerToggles = arr;
       }
-      const keys = ['probability', 'ratchet', 'expression', 'pitch', 'morph', 'distance', 'slice', 'reverse'] as const;
+      const keys = ['probability', 'ratchet', 'trigCondition', 'expression', 'pitch', 'morph', 'distance', 'slice', 'reverse'] as const;
       for (const key of keys) {
         if (data[key] && data[key]![laneIndex] != null) {
           const arr = [...prev[key]];
+          const values = data[key]![laneIndex];
+          arr[laneIndex] = key === 'pitch' && Array.isArray(values)
+            ? (values as number[]).map((value) => evolvedDrumPitchOffsetToUiValue(value, restoredPitchSettings ?? seq.pitchSettings[laneIndex], drumPitchBaseMidiFromState(state, laneIndex)))
+            : values;
+          (next as Record<string, unknown>)[key] = arr;
+        }
+      }
+      const rangeKeys = ['expressionRanges', 'morphRanges', 'distanceRanges'] as const;
+      for (const key of rangeKeys) {
+        if (data[key]?.[laneIndex] != null) {
+          const arr = [...(prev[key] ?? [null, null, null, null])];
           arr[laneIndex] = data[key]![laneIndex];
-          next[key] = arr;
+          (next as Record<string, unknown>)[key] = arr;
         }
       }
       const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection', 'sliceDirection', 'reverseDirection'] as const;
@@ -445,7 +519,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
         slice: data.sliceDirection?.[laneIndex],
         reverse: data.reverseDirection?.[laneIndex],
       } as const;
-      for (const lane of Object.keys(lengthFields) as SubLaneKind[]) {
+      for (const lane of ['expression', 'pitch', 'morph', 'distance', 'slice', 'reverse'] as const) {
         const steps = lengthFields[lane];
         const direction = directionFields[lane];
         if (steps == null && direction == null) continue;
@@ -457,10 +531,35 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       }
       return nextLane;
     }));
-  }, [evolvedOverrides, seq]);
+  }, [evolvedOverrides, seq, state]);
 
-  // Sync step overrides (all sub-lane data) to audio engine when they change
+  // Sync engine-ready step overrides while preserving raw UI pitch values for presets.
+  const engineStepOverridesRef = useRef<StepOverrides | null>(null);
+  const enginePitchSettingsRef = useRef<PitchSettings[] | null>(null);
+  const engineSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);
   useEffect(() => {
+    const overridesChanged = engineStepOverridesRef.current !== seq.stepOverrides;
+    const settingsChanged = enginePitchSettingsRef.current !== seq.pitchSettings;
+    const subLaneStatesChanged = engineSubLaneStatesRef.current !== seq.subLaneStates;
+    if (!overridesChanged && !settingsChanged && !subLaneStatesChanged) return;
+    engineStepOverridesRef.current = seq.stepOverrides;
+    enginePitchSettingsRef.current = seq.pitchSettings;
+    engineSubLaneStatesRef.current = seq.subLaneStates;
+    if (overridesChanged) {
+      onRawStepOverridesChange?.(seq.stepOverrides);
+    }
+
+    const convertedPitch = seq.stepOverrides.pitch.map((offsets, laneIdx) => {
+      if (!offsets || !seq.subLaneStates[laneIdx]?.pitch?.enabled) return null;
+      const settings = seq.pitchSettings[laneIdx];
+      const baseMidi = drumPitchBaseMidiFromState(state, laneIdx);
+      return drumPitchUiValuesToEngineOffsets(
+        offsets,
+        settings,
+        baseMidi,
+        seq.subLaneStates[laneIdx]?.pitch?.scaleQuantize === true,
+      );
+    });
     const expressionRanges = seq.subLaneStates.map((laneState) => {
       const lane = laneState.expression;
       return lane.enabled && lane.valueMode === 'range'
@@ -479,22 +578,31 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
         ? { min: Math.min(lane.rangeMin ?? 0, lane.rangeMax ?? 1), max: Math.max(lane.rangeMin ?? 0, lane.rangeMax ?? 1) }
         : null;
     });
-    onStepOverridesChange?.({
+    onStepOverridesChange?.(stepOverridesForEngineSubLaneState({
       ...seq.stepOverrides,
+      pitch: convertedPitch,
       expressionRanges,
       morphRanges,
       distanceRanges,
-    });
-  }, [seq.stepOverrides, seq.subLaneStates, onStepOverridesChange]);
+    }, seq.subLaneStates));
+  }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, state, onStepOverridesChange, onRawStepOverridesChange]);
 
   // Persist sub-lane states (enabled/steps/direction) across tab switches
-  const subLaneStatesRef = useRef(seq.subLaneStates);
+  const subLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);
   useEffect(() => {
     if (subLaneStatesRef.current !== seq.subLaneStates) {
       subLaneStatesRef.current = seq.subLaneStates;
       onSubLaneStatesChange?.(seq.subLaneStates);
     }
   }, [seq.subLaneStates, onSubLaneStatesChange]);
+
+  const pitchSettingsRef = useRef(seq.pitchSettings);
+  useEffect(() => {
+    if (pitchSettingsRef.current !== seq.pitchSettings) {
+      pitchSettingsRef.current = seq.pitchSettings;
+      onPitchSettingsChange?.(seq.pitchSettings);
+    }
+  }, [seq.pitchSettings, onPitchSettingsChange]);
 
   // Sync per-lane clock divisions to audio engine
   const clockDivsRef = useRef(seq.clockDivs);
@@ -521,6 +629,13 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       onLinkedChange?.(seq.linked);
     }
   }, [seq.linked, onLinkedChange]);
+
+  useEffect(() => {
+    const laneIndex = pendingSequenceHomeCaptureRef.current;
+    if (laneIndex == null) return;
+    pendingSequenceHomeCaptureRef.current = null;
+    captureEvolveHome?.(laneIndex);
+  }, [sequenceHomeCaptureVersion, captureEvolveHome]);
 
   const activeSeq = seq.activeSeq;
   const activeKeyboardLane = getDrumKeyboardLane(seq.openLane);
@@ -661,8 +776,38 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     seq.setViewMode(nextMode);
   }, [seq.viewMode, seq.setViewMode]);
 
+  const toggleDrumSequencerTransport = useCallback(() => {
+    const next = !state.drumEuclidMasterEnabled;
+    const startPatch: Partial<SliderState> = next ? { drumEuclidMasterEnabled: true } : {};
+    if (next && !state.drumEnabled) {
+      onSelectChange('drumEnabled', true);
+      startPatch.drumEnabled = true;
+    }
+    if (next && !DRUM_LANE_ENABLED_KEYS.some((key) => Boolean(state[key]))) {
+      const activeLaneEnabledKey = DRUM_LANE_ENABLED_KEYS[seq.activeTab] ?? DRUM_LANE_ENABLED_KEYS[0];
+      onSelectChange(activeLaneEnabledKey, true);
+      startPatch[activeLaneEnabledKey] = true;
+    }
+    onSelectChange('drumEuclidMasterEnabled', next);
+    if (next && !isRunning) {
+      onRequestPlaybackStart?.(startPatch);
+    }
+  }, [
+    isRunning,
+    onRequestPlaybackStart,
+    onSelectChange,
+    seq.activeTab,
+    state.drumEnabled,
+    state.drumEuclid1Enabled,
+    state.drumEuclid2Enabled,
+    state.drumEuclid3Enabled,
+    state.drumEuclid4Enabled,
+    state.drumEuclidMasterEnabled,
+  ]);
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const tag = (e.target as HTMLElement)?.tagName;
+    if (e.defaultPrevented) return;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.repeat) return;
 
@@ -757,7 +902,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     }
     if (e.code === 'Space') {
       e.preventDefault();
-      onSelectChange('drumEuclidMasterEnabled' as keyof SliderState, !(state.drumEuclidMasterEnabled as boolean));
+      toggleDrumSequencerTransport();
       return;
     }
 
@@ -776,8 +921,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     moveDrumKeyboardStep,
     onSelectChange,
     seq.activeTab,
-    state.drumEuclidMasterEnabled,
     toggleDrumKeyboardLane,
+    toggleDrumSequencerTransport,
   ]);
 
   const handleKeyUp = useCallback((e: KeyboardEvent) => {
@@ -893,13 +1038,8 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
           <div className="seq-transport">
             <button
               className={`seq-play-btn${state.drumEuclidMasterEnabled ? ' playing' : ''}`}
-              onClick={() => {
-                const next = !state.drumEuclidMasterEnabled;
-                if (next && !state.drumEnabled) {
-                  onSelectChange('drumEnabled', true);
-                }
-                onSelectChange('drumEuclidMasterEnabled', next);
-              }}
+              data-sequencer-transport="drums"
+              onClick={toggleDrumSequencerTransport}
               {...bindHelp('drumSeqPlayToggle')}
             >
               {state.drumEuclidMasterEnabled ? '■' : '▶'}
@@ -962,7 +1102,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                 {seq.sequencerModels.map((seqModel, idx) => (
                   <div
                     key={seqModel.id}
-                    className={`seq-tab${idx === seq.activeTab ? ' active' : ''}${seqModel.muted ? ' muted' : ''}`}
+                    className={`seq-tab${idx === seq.activeTab ? ' active' : ''}${seqModel.muted ? ' muted' : ''}${seq.evolveFlashing[idx] ? ' seq-evolve-flash' : ''}`}
                     style={{ '--sc': seqModel.color } as React.CSSProperties}
                     onClick={() => seq.setActiveTab(idx)}
                     role="button"
@@ -984,7 +1124,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               </div>
 
               {/* Seq body */}
-              <div className="seq-body" style={{ '--sc': activeSeq.color } as React.CSSProperties}>
+              <div className={`seq-body${seq.evolveFlashing[seq.activeTab] ? ' seq-evolve-flash' : ''}`} style={{ '--sc': activeSeq.color } as React.CSSProperties}>
 
                 {/* ── Source voice toggles + per-seq controls (inline) ── */}
                 <div className="seq-sources">
@@ -1129,7 +1269,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                         );
                       })()}
                     </div>
-                    <button className="seq-evolve-reset" onClick={() => resetEvolveHome(seq.activeTab)}>Reset</button>
+                    <button className="seq-evolve-reset" onClick={() => handleResetEvolveHome(seq.activeTab)}>Reset</button>
                     {diceLane && (
                       <span className="seq-dice-group">
                         <SliderPrimitive
@@ -1345,6 +1485,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
                                 onChangePitchRoot: (root) => seq.setPitchRoot(seq.activeTab, root),
                                 onChangePitchScale: (scale) => seq.setPitchScale(seq.activeTab, scale),
                                 onToggleScaleQuantize: () => seq.toggleScaleQuantize(seq.activeTab),
+                                hidePitchNoteRange: true,
                               } : {})}
                             />
                           </div>

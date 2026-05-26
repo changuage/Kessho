@@ -1,22 +1,23 @@
 import type { CoreProductEvent } from './coreProductEvents';
-import { CORE_PRODUCT_SOURCE_IDS, coreProductDrumRuntimeParamId, coreProductPadRuntimeParamId, createCoreProductJourneyStateEvent, createCoreProductParamEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSourcePresetEvent } from './coreProductEvents';
+import { CORE_PRODUCT_SOURCE_IDS, coreProductDrumRuntimeParamId, coreProductLeadRuntimeParamId, coreProductPadRuntimeParamId, createCoreProductJourneyStateEvent, createCoreProductParamEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSourceOverrideCommitEvent, createCoreProductSourceOverrideSlotEvent, createCoreProductSourcePresetEvent } from './coreProductEvents';
 import { usesLegacyGranularRuntimeSeed, type CoreProductSnapshot } from './coreProductSnapshot';
+import { appendCoreProductSourcePresetEndpointDiffs, canApplyCoreProductSourcePresetEndpointIdDiff, coreProductSourcePresetEndpointIdsChanged } from './CoreProductRuntimeAdapterSourcePresets';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
-import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
-import { KESSHO_PRODUCT_DRUM_PARAM_COUNT, KESSHO_PRODUCT_PAD_PARAM_COUNT } from './generated/kesshoProductSchema';
+import { KESSHO_PRODUCT_PARAM_IDS, KESSHO_PRODUCT_PARAMS } from './generated/kesshoProductParams';
+import { KESSHO_PRODUCT_DRUM_PARAM_COUNT, KESSHO_PRODUCT_DRUM_VOICES, KESSHO_PRODUCT_LEAD_PARAM_COUNT, KESSHO_PRODUCT_PAD_PARAM_COUNT } from './generated/kesshoProductSchema';
 
 export const MAX_SNAPSHOT_DIFF_EVENTS = 384;
 
 export type SnapshotReloadReason =
-  | 'none' | 'initial-snapshot' | 'runtime-start' | 'runtime-bootstrap' | 'manual-piano-asset' | 'explicit-reset-request' | 'asset-reference-change' | 'asset-reference-level-change' | 'harmony-mode-change' | 'source-structure-change' | 'exact-patch-change' | 'sequencer-structure-change' | 'dirty-diff-event-budget' | 'adapter-update';
+  | 'none' | 'initial-snapshot' | 'runtime-start' | 'runtime-bootstrap' | 'manual-piano-asset' | 'explicit-reset-request' | 'asset-reference-change' | 'asset-reference-level-change' | 'soundscape-param-change' | 'harmony-mode-change' | 'source-structure-change' | 'pad-override-change' | 'lead-override-change' | 'drum-override-change' | 'exact-patch-change' | 'sequencer-structure-change' | 'dirty-diff-event-budget' | 'adapter-update';
 
 type SequencerKind = 'synth' | 'drum';
 type ProductSourceSnapshot = CoreProductSnapshot['sources'][number];
 type ProductLaneSnapshot = CoreProductSnapshot['synthLanes'][number];
-type ProductGranularVoiceSnapshot = CoreProductSnapshot['fx']['granularVoices'][number];
-type ProductParamIdName = keyof typeof KESSHO_PRODUCT_PARAM_IDS;
 type ExactPatchKind = 'pad' | 'lead' | 'drum';
 type SnapshotScalar = number | boolean;
+
+export type CoreProductSnapshotDiffOptions = { forwardRngDiffs?: boolean; forceSequencerClockRejoin?: boolean };
 
 export type CoreProductSnapshotDiffResult = { applied: true; events: CoreProductEvent[] } | { applied: false; reason: SnapshotReloadReason };
 
@@ -29,7 +30,7 @@ export function shouldForwardCoreProductRngDiffs(latestSliderState: Record<strin
 }
 
 class CoreProductRuntimeAdapter {
-  buildSnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot, options: { forwardRngDiffs?: boolean } = {}): CoreProductSnapshotDiffResult {
+  buildSnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot, options: CoreProductSnapshotDiffOptions = {}): CoreProductSnapshotDiffResult {
     if (!this.canApplySnapshotDiff(previous, next)) {
       return { applied: false, reason: this.classifySnapshotReloadReason(previous, next) };
     }
@@ -39,10 +40,13 @@ class CoreProductRuntimeAdapter {
     this.appendHarmonyDiffs(events, previous, next);
     this.appendJourneyDiffs(events, previous, next);
     this.appendSourceParamDiffs(events, previous.sources, next.sources);
+    appendCoreProductSourcePresetEndpointDiffs(events, previous.sources, next.sources);
+    this.appendSourceOverrideDiffs(events, previous.sources, next.sources);
     this.appendPadExactPatchDiffs(events, previous.sources, next.sources);
+    this.appendLeadExactPatchDiffs(events, previous.sources, next.sources);
     this.appendDrumExactPatchDiffs(events, previous.sources, next.sources);
-    this.appendSequencerLaneDiffs(events, 'synth', previous.synthLanes, next.synthLanes);
-    this.appendSequencerLaneDiffs(events, 'drum', previous.drumLanes, next.drumLanes);
+    this.appendSequencerLaneDiffs(events, 'synth', previous.synthLanes, next.synthLanes, options.forceSequencerClockRejoin === true);
+    this.appendSequencerLaneDiffs(events, 'drum', previous.drumLanes, next.drumLanes, options.forceSequencerClockRejoin === true);
     this.appendFxRoutingMasterDiffs(events, previous, next);
     this.appendEvolutionDiffs(events, previous, next);
     this.appendRngDiffs(events, previous, next, options.forwardRngDiffs === true);
@@ -57,6 +61,7 @@ class CoreProductRuntimeAdapter {
     const soundscapeFadeCanCoverAssetRemoval = this.soundscapeFadeCanCoverAssetRemoval(previous, next);
     if (!soundscapeFadeCanCoverAssetRemoval && this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return 'asset-reference-change';
     if (!soundscapeFadeCanCoverAssetRemoval && this.assetRefLevelsChanged(previous.assetRefLevels, next.assetRefLevels)) return 'asset-reference-level-change';
+    if (!soundscapeFadeCanCoverAssetRemoval && this.soundscapeSnapshotChanged(previous, next)) return 'soundscape-param-change';
     if (previous.harmony.chordMode !== next.harmony.chordMode) return 'harmony-mode-change';
     if (previous.harmony.voicingMode !== next.harmony.voicingMode) return 'harmony-mode-change';
     if (previous.sources.length !== next.sources.length) return 'source-structure-change';
@@ -66,11 +71,15 @@ class CoreProductRuntimeAdapter {
       if (!previousSource || !nextSource) return 'source-structure-change';
       if (previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change';
       if (previousSource.assetId !== nextSource.assetId) return 'source-structure-change';
+      if (coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource) && !canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)) return 'source-structure-change';
       const soundscapeFadeCanCoverPatchRemoval =
         soundscapeFadeCanCoverAssetRemoval && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape;
       if (!soundscapeFadeCanCoverPatchRemoval) {
+        if (this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'pad-override-change';
+        if (this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'lead-override-change';
+        if (this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'drum-override-change';
         if (this.padPatchChanged(previousSource, nextSource) && !this.canApplyPadExactPatchDiff(previousSource, nextSource)) return 'exact-patch-change';
-        if (this.leadPatchChanged(previousSource, nextSource)) return 'exact-patch-change';
+        if (this.leadPatchChanged(previousSource, nextSource) && !this.canApplyLeadExactPatchDiff(previousSource, nextSource)) return 'exact-patch-change';
         if (this.drumPatchChanged(previousSource, nextSource) && !this.canApplyDrumExactPatchDiff(previousSource, nextSource)) return 'exact-patch-change';
       }
     }
@@ -83,6 +92,7 @@ class CoreProductRuntimeAdapter {
     const soundscapeFadeCanCoverAssetRemoval = this.soundscapeFadeCanCoverAssetRemoval(previous, next);
     if (!soundscapeFadeCanCoverAssetRemoval && this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return false;
     if (!soundscapeFadeCanCoverAssetRemoval && this.assetRefLevelsChanged(previous.assetRefLevels, next.assetRefLevels)) return false;
+    if (!soundscapeFadeCanCoverAssetRemoval && this.soundscapeSnapshotChanged(previous, next)) return false;
     if (previous.harmony.chordMode !== next.harmony.chordMode) return false;
     if (previous.harmony.voicingMode !== next.harmony.voicingMode) return false;
     if (previous.sources.length !== next.sources.length) return false;
@@ -92,11 +102,15 @@ class CoreProductRuntimeAdapter {
       if (!previousSource || !nextSource) return false;
       if (previousSource.sourceId !== nextSource.sourceId) return false;
       if (previousSource.assetId !== nextSource.assetId) return false;
+      if (coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource) && !canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)) return false;
       const soundscapeFadeCanCoverPatchRemoval =
         soundscapeFadeCanCoverAssetRemoval && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape;
       if (!soundscapeFadeCanCoverPatchRemoval) {
+        if (this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false;
+        if (this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false;
+        if (this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false;
         if (this.padPatchChanged(previousSource, nextSource) && !this.canApplyPadExactPatchDiff(previousSource, nextSource)) return false;
-        if (this.leadPatchChanged(previousSource, nextSource)) return false;
+        if (this.leadPatchChanged(previousSource, nextSource) && !this.canApplyLeadExactPatchDiff(previousSource, nextSource)) return false;
         if (this.drumPatchChanged(previousSource, nextSource) && !this.canApplyDrumExactPatchDiff(previousSource, nextSource)) return false;
       }
     }
@@ -108,17 +122,94 @@ class CoreProductRuntimeAdapter {
     return this.patchChanged(previous.exactPadParamCount, next.exactPadParamCount, previous.exactPadParams, next.exactPadParams, 'pad', previous.sourceId, next.sourceId);
   }
 
+  private padOverrideChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
+    const padSource =
+      previous.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 ||
+      previous.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ||
+      next.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 ||
+      next.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2;
+    if (!padSource) return false;
+    if (previous.padOverrideCount !== next.padOverrideCount) return true;
+    for (let slot = 0; slot < next.padOverrideCount; slot += 1) {
+      if ((previous.padOverrideIndices[slot] ?? 0) !== (next.padOverrideIndices[slot] ?? 0)) return true;
+      if (this.valuesDiffer(previous.padOverrideValues[slot] ?? 0, next.padOverrideValues[slot] ?? 0)) return true;
+    }
+    return false;
+  }
+
+  private leadOverrideChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
+    const leadSource =
+      previous.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 ||
+      previous.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2 ||
+      next.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 ||
+      next.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2;
+    if (!leadSource) return false;
+    if (previous.leadOverrideCount !== next.leadOverrideCount) return true;
+    for (let slot = 0; slot < next.leadOverrideCount; slot += 1) {
+      if ((previous.leadOverrideIndices[slot] ?? 0) !== (next.leadOverrideIndices[slot] ?? 0)) return true;
+      if (this.valuesDiffer(previous.leadOverrideValues[slot] ?? 0, next.leadOverrideValues[slot] ?? 0)) return true;
+    }
+    return false;
+  }
+
+  private drumOverrideChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
+    if (previous.sourceId !== CORE_PRODUCT_SOURCE_IDS.drum && next.sourceId !== CORE_PRODUCT_SOURCE_IDS.drum) return false;
+    if (previous.drumOverrideCount !== next.drumOverrideCount) return true;
+    for (let slot = 0; slot < next.drumOverrideCount; slot += 1) {
+      if ((previous.drumOverrideIndices[slot] ?? 0) !== (next.drumOverrideIndices[slot] ?? 0)) return true;
+      if (this.valuesDiffer(previous.drumOverrideValues[slot] ?? 0, next.drumOverrideValues[slot] ?? 0)) return true;
+    }
+    return false;
+  }
+
+  private canApplySourceOverrideDiff(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
+    if (previous.sourceId !== next.sourceId) return false;
+    switch (next.sourceId) {
+      case CORE_PRODUCT_SOURCE_IDS.pad1:
+      case CORE_PRODUCT_SOURCE_IDS.pad2:
+        return previous.exactPadParamCount === 0 &&
+          next.exactPadParamCount === 0 &&
+          next.sourcePresetAId > 0 &&
+          next.sourcePresetBId > 0 &&
+          this.overrideBlockValid(next.padOverrideCount, next.padOverrideIndices, next.padOverrideValues, KESSHO_PRODUCT_PAD_PARAM_COUNT);
+      case CORE_PRODUCT_SOURCE_IDS.lead1:
+      case CORE_PRODUCT_SOURCE_IDS.lead2:
+        return previous.exactLeadParamCount === 0 &&
+          next.exactLeadParamCount === 0 &&
+          next.sourcePresetAId > 0 &&
+          next.sourcePresetBId > 0 &&
+          this.overrideBlockValid(next.leadOverrideCount, next.leadOverrideIndices, next.leadOverrideValues, KESSHO_PRODUCT_LEAD_PARAM_COUNT);
+      case CORE_PRODUCT_SOURCE_IDS.drum:
+        return previous.exactDrumParamCount === 0 &&
+          next.exactDrumParamCount === 0 &&
+          next.presetId > 0 &&
+          this.overrideBlockValid(next.drumOverrideCount, next.drumOverrideIndices, next.drumOverrideValues, KESSHO_PRODUCT_DRUM_PARAM_COUNT);
+      default:
+        return false;
+    }
+  }
+
+  private overrideBlockValid(count: number, indices: readonly number[], values: readonly number[], paramCount: number): boolean {
+    if (!Number.isInteger(count) || count < 0 || count > paramCount) return false;
+    for (let slot = 0; slot < count; slot += 1) {
+      const paramIndex = indices[slot];
+      const value = values[slot];
+      if (typeof paramIndex !== 'number' || !Number.isInteger(paramIndex) || paramIndex < 0 || paramIndex >= paramCount) return false;
+      if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+    }
+    return true;
+  }
+
   private canApplyPadExactPatchDiff(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
-    if (!this.isPadSourceId(previous.sourceId) || previous.sourceId !== next.sourceId) return false;
-    return previous.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT && next.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT;
+    return (previous.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 || previous.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2) && previous.sourceId === next.sourceId && previous.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT && next.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT;
   }
 
   private canApplyDrumExactPatchDiff(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
     return previous.sourceId === CORE_PRODUCT_SOURCE_IDS.drum && previous.sourceId === next.sourceId && previous.exactDrumParamCount === KESSHO_PRODUCT_DRUM_PARAM_COUNT && next.exactDrumParamCount === KESSHO_PRODUCT_DRUM_PARAM_COUNT;
   }
 
-  private isPadSourceId(sourceId: number): boolean {
-    return sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 || sourceId === CORE_PRODUCT_SOURCE_IDS.pad2;
+  private canApplyLeadExactPatchDiff(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
+    return (previous.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 || previous.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2) && previous.sourceId === next.sourceId && previous.exactLeadParamCount === KESSHO_PRODUCT_LEAD_PARAM_COUNT && next.exactLeadParamCount === KESSHO_PRODUCT_LEAD_PARAM_COUNT;
   }
 
   private soundscapeFadeCanCoverAssetRemoval(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean {
@@ -167,9 +258,6 @@ class CoreProductRuntimeAdapter {
       const previousLane = previous[index];
       const nextLane = next[index];
       if (!previousLane || !nextLane) return false;
-      if (this.valuesDiffer(previousLane.morph, nextLane.morph)) return false;
-      if (this.valuesDiffer(previousLane.distance, nextLane.distance)) return false;
-      if (this.valuesDiffer(previousLane.expression, nextLane.expression)) return false;
       if (previousLane.barReset !== nextLane.barReset) return false;
       if (previousLane.phraseReset !== nextLane.phraseReset) return false;
       if (previousLane.manualStepMaskLow !== nextLane.manualStepMaskLow) return false;
@@ -245,6 +333,8 @@ class CoreProductRuntimeAdapter {
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, previous.postLpfHz, next.postLpfHz, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceStereoWidth, previous.stereoWidth, next.stereoWidth, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, previous.postLpfKeyTracking, next.postLpfKeyTracking, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceLeadEnvelopeOverrideEnabled, previous.leadEnvelopeOverrideEnabled, next.leadEnvelopeOverrideEnabled, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceLeadAlgorithmPresetAEnabled, previous.leadAlgorithmPresetAEnabled, next.leadAlgorithmPresetAEnabled, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds, previous.attackSeconds, next.attackSeconds, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds, previous.decaySeconds, next.decaySeconds, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceSustain, previous.sustain, next.sustain, targetId);
@@ -253,51 +343,109 @@ class CoreProductRuntimeAdapter {
     }
   }
 
-  private appendPadExactPatchDiffs(
+  private appendSourceOverrideDiffs(events: CoreProductEvent[], previousSources: ProductSourceSnapshot[], nextSources: ProductSourceSnapshot[]): void {
+    for (let sourceIndex = 0; sourceIndex < nextSources.length; sourceIndex += 1) {
+      const previous = previousSources[sourceIndex];
+      const next = nextSources[sourceIndex];
+      if (!previous || !next || !this.canApplySourceOverrideDiff(previous, next)) continue;
+      if (this.padOverrideChanged(previous, next)) {
+        this.appendOverrideBlockEvents(events, next.sourceId, next.padOverrideCount, next.padOverrideIndices, next.padOverrideValues);
+      }
+      if (this.leadOverrideChanged(previous, next)) {
+        this.appendOverrideBlockEvents(events, next.sourceId, next.leadOverrideCount, next.leadOverrideIndices, next.leadOverrideValues);
+      }
+      if (this.drumOverrideChanged(previous, next)) {
+        this.appendOverrideBlockEvents(events, next.sourceId, next.drumOverrideCount, next.drumOverrideIndices, next.drumOverrideValues);
+      }
+    }
+  }
+
+  private appendOverrideBlockEvents(
     events: CoreProductEvent[],
-    previousSources: ProductSourceSnapshot[],
-    nextSources: ProductSourceSnapshot[],
+    sourceId: number,
+    overrideCount: number,
+    overrideIndices: readonly number[],
+    overrideValues: readonly number[],
   ): void {
+    for (let slot = 0; slot < overrideCount; slot += 1) {
+      events.push(createCoreProductSourceOverrideSlotEvent(
+        sourceId,
+        slot,
+        overrideIndices[slot] ?? 0,
+        overrideValues[slot] ?? 0,
+      ));
+    }
+    events.push(createCoreProductSourceOverrideCommitEvent(sourceId, overrideCount));
+  }
+
+  private appendPadExactPatchDiffs(events: CoreProductEvent[], previousSources: ProductSourceSnapshot[], nextSources: ProductSourceSnapshot[]): void {
     this.appendExactPatchDiffs(events, previousSources, nextSources, 'pad', KESSHO_PRODUCT_PAD_PARAM_COUNT, (previous, next) => this.canApplyPadExactPatchDiff(previous, next), (next, paramIndex) => coreProductPadRuntimeParamId(next.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ? 1 : 0, paramIndex));
   }
 
-  private appendDrumExactPatchDiffs(
-    events: CoreProductEvent[],
-    previousSources: ProductSourceSnapshot[],
-    nextSources: ProductSourceSnapshot[],
-  ): void {
-    this.appendExactPatchDiffs(events, previousSources, nextSources, 'drum', KESSHO_PRODUCT_DRUM_PARAM_COUNT, (previous, next) => this.canApplyDrumExactPatchDiff(previous, next), (_next, paramIndex) => coreProductDrumRuntimeParamId(paramIndex));
+  private appendDrumExactPatchDiffs(events: CoreProductEvent[], previousSources: ProductSourceSnapshot[], nextSources: ProductSourceSnapshot[]): void {
+    for (let sourceIndex = 0; sourceIndex < nextSources.length; sourceIndex += 1) {
+      const previous = previousSources[sourceIndex];
+      const next = nextSources[sourceIndex];
+      if (!previous || !next || !this.canApplyDrumExactPatchDiff(previous, next)) continue;
+      const skippedParamRanges = this.drumPresetEndpointChangedParamRanges(previous, next);
+      for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_DRUM_PARAM_COUNT; paramIndex += 1) {
+        if (skippedParamRanges.some((range) => paramIndex >= range.start && paramIndex < range.end)) continue;
+        this.appendParamDiff(
+          events,
+          coreProductDrumRuntimeParamId(paramIndex),
+          this.requiredExactPatchParam(previous.exactDrumParams, paramIndex, 'drum', previous.sourceId),
+          this.requiredExactPatchParam(next.exactDrumParams, paramIndex, 'drum', next.sourceId),
+        );
+      }
+    }
   }
 
-  private appendExactPatchDiffs(events: CoreProductEvent[], previousSources: ProductSourceSnapshot[], nextSources: ProductSourceSnapshot[], patchKind: Exclude<ExactPatchKind, 'lead'>, paramCount: number, canApply: (previous: ProductSourceSnapshot, next: ProductSourceSnapshot) => boolean, paramId: (next: ProductSourceSnapshot, paramIndex: number) => number): void {
+  private appendLeadExactPatchDiffs(events: CoreProductEvent[], previousSources: ProductSourceSnapshot[], nextSources: ProductSourceSnapshot[]): void {
+    this.appendExactPatchDiffs(events, previousSources, nextSources, 'lead', KESSHO_PRODUCT_LEAD_PARAM_COUNT, (previous, next) => this.canApplyLeadExactPatchDiff(previous, next), (next, paramIndex) => coreProductLeadRuntimeParamId(next.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2 ? 1 : 0, paramIndex));
+  }
+
+  private drumPresetEndpointChangedParamRanges(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): Array<{ start: number; end: number }> {
+    if (previous.sourceId !== CORE_PRODUCT_SOURCE_IDS.drum || next.sourceId !== CORE_PRODUCT_SOURCE_IDS.drum) return [];
+    return KESSHO_PRODUCT_DRUM_VOICES.flatMap((voice) => {
+      const voiceIndex = voice.index;
+      const presetAChanged = (previous.drumVoicePresetAIds?.[voiceIndex] ?? 0) !== (next.drumVoicePresetAIds?.[voiceIndex] ?? 0);
+      const presetBChanged = (previous.drumVoicePresetBIds?.[voiceIndex] ?? 0) !== (next.drumVoicePresetBIds?.[voiceIndex] ?? 0);
+      return presetAChanged || presetBChanged
+        ? [{ start: voice.paramStart, end: voice.paramStart + voice.paramCount }]
+        : [];
+    });
+  }
+
+  private appendExactPatchDiffs(events: CoreProductEvent[], previousSources: ProductSourceSnapshot[], nextSources: ProductSourceSnapshot[], patchKind: ExactPatchKind, paramCount: number, canApply: (previous: ProductSourceSnapshot, next: ProductSourceSnapshot) => boolean, paramId: (next: ProductSourceSnapshot, paramIndex: number) => number): void {
     for (let sourceIndex = 0; sourceIndex < nextSources.length; sourceIndex += 1) {
       const previous = previousSources[sourceIndex];
       const next = nextSources[sourceIndex];
       if (!previous || !next || !canApply(previous, next)) continue;
-      const previousParams = patchKind === 'pad' ? previous.exactPadParams : previous.exactDrumParams;
-      const nextParams = patchKind === 'pad' ? next.exactPadParams : next.exactDrumParams;
+      const previousParams = patchKind === 'pad' ? previous.exactPadParams : patchKind === 'lead' ? previous.exactLeadParams : previous.exactDrumParams;
+      const nextParams = patchKind === 'pad' ? next.exactPadParams : patchKind === 'lead' ? next.exactLeadParams : next.exactDrumParams;
       for (let paramIndex = 0; paramIndex < paramCount; paramIndex += 1) {
         this.appendParamDiff(events, paramId(next, paramIndex), this.requiredExactPatchParam(previousParams, paramIndex, patchKind, previous.sourceId), this.requiredExactPatchParam(nextParams, paramIndex, patchKind, next.sourceId));
       }
     }
   }
 
-  private appendSequencerLaneDiffs(
-    events: CoreProductEvent[],
-    sequencer: SequencerKind,
-    previousLanes: ProductLaneSnapshot[],
-    nextLanes: ProductLaneSnapshot[],
-  ): void {
+  private appendSequencerLaneDiffs(events: CoreProductEvent[], sequencer: SequencerKind, previousLanes: ProductLaneSnapshot[], nextLanes: ProductLaneSnapshot[], forceClockRejoin: boolean): void {
     for (let laneIndex = 0; laneIndex < nextLanes.length; laneIndex += 1) {
       const previous = previousLanes[laneIndex];
       const next = nextLanes[laneIndex];
       if (!previous || !next) continue;
+      const nextInitialDelay = next.initialStartDelaySeconds ?? -1;
+      const previousInitialDelay = previous.initialStartDelaySeconds ?? -1;
+      if ((forceClockRejoin && next.enabled) || (nextInitialDelay >= 0 && this.valuesDiffer(previousInitialDelay, nextInitialDelay))) {
+        events.push(createCoreProductSequencerLaneParamEvent(sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneInitialStartDelaySeconds, nextInitialDelay));
+      }
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneEnabled, previous.enabled, next.enabled);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTargetSource, previous.targetSourceId, next.targetSourceId);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneStepCount, previous.stepCount, next.stepCount);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneFillCount, previous.fillCount, next.fillCount);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneRotation, previous.rotation, next.rotation);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision, previous.clockDivision, next.clockDivision);
+      this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTempoMultiplier, previous.tempoMultiplier, next.tempoMultiplier);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing, previous.swing, next.swing);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneProbability, previous.probability, next.probability);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneRatchet, previous.ratchet, next.ratchet);
@@ -305,50 +453,10 @@ class CoreProductRuntimeAdapter {
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMidiNote, previous.midiNote, next.midiNote);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneVelocity, previous.velocity, next.velocity);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneHoldSeconds, previous.holdSeconds, next.holdSeconds);
+      this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMorph, previous.morph, next.morph);
+      this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneDistance, previous.distance, next.distance);
+      this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneExpression, previous.expression, next.expression);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSeed, previous.seed, next.seed);
-    }
-  }
-
-  private appendGranularVoiceDiffs(
-    events: CoreProductEvent[],
-    previousVoices: ProductGranularVoiceSnapshot[],
-    nextVoices: ProductGranularVoiceSnapshot[],
-  ): void {
-    const fields: Array<[string, keyof ProductGranularVoiceSnapshot]> = [
-      ['Enabled', 'enabled'],
-      ['Mode', 'mode'],
-      ['Slice', 'slice'],
-      ['Speed', 'speed'],
-      ['ScanRate', 'scanRate'],
-      ['Reverse', 'reverse'],
-      ['Pitch', 'pitch'],
-      ['WriteFollow', 'writeFollow'],
-      ['Density', 'density'],
-      ['GrainSizeMs', 'grainSizeMs'],
-      ['Spray', 'spray'],
-      ['GrainOctaveProbability', 'grainOctaveProbability'],
-      ['AttackSeconds', 'attackSeconds'],
-      ['DecaySeconds', 'decaySeconds'],
-      ['Gain', 'gain'],
-      ['Pan', 'pan'],
-      ['Blur', 'blur'],
-      ['StereoSpread', 'stereoSpread'],
-      ['PositionLfoRate', 'positionLfoRate'],
-      ['PositionLfoDepth', 'positionLfoDepth'],
-      ['PanLfoRate', 'panLfoRate'],
-      ['ReverseLfoRate', 'reverseLfoRate'],
-      ['RecordLfoRate', 'recordLfoRate'],
-      ['EuclidGated', 'euclidGated'],
-      ['EuclidMuted', 'euclidMuted'],
-    ];
-    for (let voiceIndex = 0; voiceIndex < 4; voiceIndex += 1) {
-      const previous = previousVoices[voiceIndex];
-      const next = nextVoices[voiceIndex];
-      if (!previous || !next) continue;
-      for (const [suffix, key] of fields) {
-        const paramName = `FxGranularV${voiceIndex + 1}${suffix}` as ProductParamIdName;
-        this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS[paramName], previous[key] as SnapshotScalar, next[key] as SnapshotScalar);
-      }
     }
   }
 
@@ -357,215 +465,56 @@ class CoreProductRuntimeAdapter {
     previous: CoreProductSnapshot,
     next: CoreProductSnapshot,
   ): void {
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularMix, previous.fx.granularMix, next.fx.granularMix);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularEnabled, previous.fx.granularEnabled, next.fx.granularEnabled);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularFreeze, previous.fx.granularFreeze, next.fx.granularFreeze);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularFreezeWithFeedback, previous.fx.granularFreezeWithFeedback, next.fx.granularFreezeWithFeedback);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularFeedback, previous.fx.granularFeedback, next.fx.granularFeedback);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularFeedbackLpfHz, previous.fx.granularFeedbackLpfHz, next.fx.granularFeedbackLpfHz);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularReverbLpfHz, previous.fx.granularReverbLpfHz, next.fx.granularReverbLpfHz);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularOutputLpfHz, previous.fx.granularOutputLpfHz, next.fx.granularOutputLpfHz);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularBufferSeconds, previous.fx.granularBufferSeconds, next.fx.granularBufferSeconds);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularGrainShape, previous.fx.granularGrainShape, next.fx.granularGrainShape);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularBusDiffusion, previous.fx.granularBusDiffusion, next.fx.granularBusDiffusion);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularTimingRandomness, previous.fx.granularTimingRandomness, next.fx.granularTimingRandomness);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularChordBias, previous.fx.granularChordBias, next.fx.granularChordBias);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyJitterMs, previous.fx.granularLegacyJitterMs, next.fx.granularLegacyJitterMs);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyProbability, previous.fx.granularLegacyProbability, next.fx.granularLegacyProbability);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyPitchMode, previous.fx.granularLegacyPitchMode, next.fx.granularLegacyPitchMode);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyPitchSpread, previous.fx.granularLegacyPitchSpread, next.fx.granularLegacyPitchSpread);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyMaxGrains, previous.fx.granularLegacyMaxGrains, next.fx.granularLegacyMaxGrains);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxGranularLegacyFeedback, previous.fx.granularLegacyFeedback, next.fx.granularLegacyFeedback);
-    this.appendGranularVoiceDiffs(events, previous.fx.granularVoices, next.fx.granularVoices);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayAEnabled, previous.fx.delayAEnabled, next.fx.delayAEnabled);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeLeftMs, previous.fx.delayATimeLeftMs, next.fx.delayATimeLeftMs);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeRightMs, previous.fx.delayATimeRightMs, next.fx.delayATimeRightMs);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayAFeedback, previous.fx.delayAFeedback, next.fx.delayAFeedback);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayAMix, previous.fx.delayAMix, next.fx.delayAMix);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayAFilterHz, previous.fx.delayAFilterHz, next.fx.delayAFilterHz);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayAFilterType, previous.fx.delayAFilterType, next.fx.delayAFilterType);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayAModRateHz, previous.fx.delayAModRateHz, next.fx.delayAModRateHz);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayAModDepthMs, previous.fx.delayAModDepthMs, next.fx.delayAModDepthMs);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayAPingPong, previous.fx.delayAPingPong, next.fx.delayAPingPong);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayADuck, previous.fx.delayADuck, next.fx.delayADuck);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayAWidth, previous.fx.delayAWidth, next.fx.delayAWidth);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayACrossFeedFilterHz, previous.fx.delayACrossFeedFilterHz, next.fx.delayACrossFeedFilterHz);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayBEnabled, previous.fx.delayBEnabled, next.fx.delayBEnabled);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayBActivity, previous.fx.delayBActivity, next.fx.delayBActivity);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayBRepeats, previous.fx.delayBRepeats, next.fx.delayBRepeats);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayBBaseTimeMs, previous.fx.delayBBaseTimeMs, next.fx.delayBBaseTimeMs);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayBTone, previous.fx.delayBTone, next.fx.delayBTone);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayBVibrato, previous.fx.delayBVibrato, next.fx.delayBVibrato);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayBMix, previous.fx.delayBMix, next.fx.delayBMix);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayBSpaceMode, previous.fx.delayBSpaceMode, next.fx.delayBSpaceMode);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayBPattern, previous.fx.delayBPattern, next.fx.delayBPattern);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayBWarp, previous.fx.delayBWarp, next.fx.delayBWarp);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayBWarpIntensity, previous.fx.delayBWarpIntensity, next.fx.delayBWarpIntensity);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDelayBSpread, previous.fx.delayBSpread, next.fx.delayBSpread);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbMix, previous.fx.reverbMix, next.fx.reverbMix);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbType, previous.fx.reverbType, next.fx.reverbType);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbQuality, previous.fx.reverbQuality, next.fx.reverbQuality);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbDecay, previous.fx.reverbDecay, next.fx.reverbDecay);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbSize, previous.fx.reverbSize, next.fx.reverbSize);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbDamping, previous.fx.reverbDamping, next.fx.reverbDamping);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbDiffusion, previous.fx.reverbDiffusion, next.fx.reverbDiffusion);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbModulation, previous.fx.reverbModulation, next.fx.reverbModulation);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPredelayMs, previous.fx.reverbPredelayMs, next.fx.reverbPredelayMs);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbWidth, previous.fx.reverbWidth, next.fx.reverbWidth);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbShimmerAmount, previous.fx.reverbShimmerAmount, next.fx.reverbShimmerAmount);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbShimmerPitch, previous.fx.reverbShimmerPitch, next.fx.reverbShimmerPitch);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbSlowRateHz, previous.fx.reverbSlowRateHz, next.fx.reverbSlowRateHz);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbSlowDepth, previous.fx.reverbSlowDepth, next.fx.reverbSlowDepth);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbReverseAmount, previous.fx.reverbReverseAmount, next.fx.reverbReverseAmount);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbReverseLengthSec, previous.fx.reverbReverseLengthSec, next.fx.reverbReverseLengthSec);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbChorusRateHz, previous.fx.reverbChorusRateHz, next.fx.reverbChorusRateHz);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbChorusDepth, previous.fx.reverbChorusDepth, next.fx.reverbChorusDepth);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbModCharacter, previous.fx.reverbModCharacter, next.fx.reverbModCharacter);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbDampLow, previous.fx.reverbDampLow, next.fx.reverbDampLow);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbDampHigh, previous.fx.reverbDampHigh, next.fx.reverbDampHigh);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbCrossoverHz, previous.fx.reverbCrossoverHz, next.fx.reverbCrossoverHz);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbInputTone, previous.fx.reverbInputTone, next.fx.reverbInputTone);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbShimmerFeedback, previous.fx.reverbShimmerFeedback, next.fx.reverbShimmerFeedback);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbWarp, previous.fx.reverbWarp, next.fx.reverbWarp);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbCrossFeed, previous.fx.reverbCrossFeed, next.fx.reverbCrossFeed);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbEarlyReflections, previous.fx.reverbEarlyReflections, next.fx.reverbEarlyReflections);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbAirAbsorption, previous.fx.reverbAirAbsorption, next.fx.reverbAirAbsorption);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbSaturationMode, previous.fx.reverbSaturationMode, next.fx.reverbSaturationMode);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbTransientSmooth, previous.fx.reverbTransientSmooth, next.fx.reverbTransientSmooth);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbErLpFreq, previous.fx.reverbErLpFreq, next.fx.reverbErLpFreq);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompThreshold, previous.fx.reverbPreCompThreshold, next.fx.reverbPreCompThreshold);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompKnee, previous.fx.reverbPreCompKnee, next.fx.reverbPreCompKnee);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompRatio, previous.fx.reverbPreCompRatio, next.fx.reverbPreCompRatio);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompAttackMs, previous.fx.reverbPreCompAttackMs, next.fx.reverbPreCompAttackMs);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompReleaseMs, previous.fx.reverbPreCompReleaseMs, next.fx.reverbPreCompReleaseMs);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbPreCompMakeup, previous.fx.reverbPreCompMakeup, next.fx.reverbPreCompMakeup);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbChordWash, previous.fx.reverbChordWash, next.fx.reverbChordWash);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxReverbResolutionBloom, previous.fx.reverbResolutionBloom, next.fx.reverbResolutionBloom);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeMix, previous.fx.spectralFreezeMix, next.fx.spectralFreezeMix);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeEnabled, previous.fx.spectralFreezeEnabled, next.fx.spectralFreezeEnabled);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeActive, previous.fx.spectralFreezeActive, next.fx.spectralFreezeActive);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeSlushy, previous.fx.spectralFreezeSlushy, next.fx.spectralFreezeSlushy);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeSpeed, previous.fx.spectralFreezeSpeed, next.fx.spectralFreezeSpeed);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeDecay, previous.fx.spectralFreezeDecay, next.fx.spectralFreezeDecay);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezePhaseJitter, previous.fx.spectralFreezePhaseJitter, next.fx.spectralFreezePhaseJitter);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeRouting, previous.fx.spectralFreezeRouting, next.fx.spectralFreezeRouting);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeReverbCrossfade, previous.fx.spectralFreezeReverbCrossfade, next.fx.spectralFreezeReverbCrossfade);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDrive, previous.fx.dynamicsDrive, next.fx.dynamicsDrive);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEnabled, previous.fx.dynamicsEnabled, next.fx.dynamicsEnabled);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterEnabled, previous.fx.dynamicsCharacterEnabled, next.fx.dynamicsCharacterEnabled);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterMode, previous.fx.dynamicsCharacterMode, next.fx.dynamicsCharacterMode);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterMix, previous.fx.dynamicsCharacterMix, next.fx.dynamicsCharacterMix);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterAge, previous.fx.dynamicsCharacterAge, next.fx.dynamicsCharacterAge);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterBias, previous.fx.dynamicsCharacterBias, next.fx.dynamicsCharacterBias);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterLpgAmount, previous.fx.dynamicsCharacterLpgAmount, next.fx.dynamicsCharacterLpgAmount);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterResonance, previous.fx.dynamicsCharacterResonance, next.fx.dynamicsCharacterResonance);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterStereo, previous.fx.dynamicsCharacterStereo, next.fx.dynamicsCharacterStereo);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterEnvFollow, previous.fx.dynamicsCharacterEnvFollow, next.fx.dynamicsCharacterEnvFollow);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterDepth, previous.fx.dynamicsCharacterDepth, next.fx.dynamicsCharacterDepth);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterRate, previous.fx.dynamicsCharacterRate, next.fx.dynamicsCharacterRate);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterDamp, previous.fx.dynamicsCharacterDamp, next.fx.dynamicsCharacterDamp);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeEnabled, previous.fx.dynamicsDegradeEnabled, next.fx.dynamicsDegradeEnabled);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeMix, previous.fx.dynamicsDegradeMix, next.fx.dynamicsDegradeMix);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeAge, previous.fx.dynamicsDegradeAge, next.fx.dynamicsDegradeAge);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeGeneration, previous.fx.dynamicsDegradeGeneration, next.fx.dynamicsDegradeGeneration);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeAlias, previous.fx.dynamicsDegradeAlias, next.fx.dynamicsDegradeAlias);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeWow, previous.fx.dynamicsDegradeWow, next.fx.dynamicsDegradeWow);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeFlutter, previous.fx.dynamicsDegradeFlutter, next.fx.dynamicsDegradeFlutter);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeDrift, previous.fx.dynamicsDegradeDrift, next.fx.dynamicsDegradeDrift);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeWobbleSpeed, previous.fx.dynamicsDegradeWobbleSpeed, next.fx.dynamicsDegradeWobbleSpeed);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeTone, previous.fx.dynamicsDegradeTone, next.fx.dynamicsDegradeTone);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeHp, previous.fx.dynamicsDegradeHp, next.fx.dynamicsDegradeHp);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeLp, previous.fx.dynamicsDegradeLp, next.fx.dynamicsDegradeLp);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeNoise, previous.fx.dynamicsDegradeNoise, next.fx.dynamicsDegradeNoise);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeSaturation, previous.fx.dynamicsDegradeSaturation, next.fx.dynamicsDegradeSaturation);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeCorrosion, previous.fx.dynamicsDegradeCorrosion, next.fx.dynamicsDegradeCorrosion);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowWow, previous.fx.dynamicsModSlowWow, next.fx.dynamicsModSlowWow);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowFlutter, previous.fx.dynamicsModSlowFlutter, next.fx.dynamicsModSlowFlutter);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowLp, previous.fx.dynamicsModSlowLp, next.fx.dynamicsModSlowLp);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowWet, previous.fx.dynamicsModSlowWet, next.fx.dynamicsModSlowWet);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowDropout, previous.fx.dynamicsModSlowDropout, next.fx.dynamicsModSlowDropout);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModSlowAlias, previous.fx.dynamicsModSlowAlias, next.fx.dynamicsModSlowAlias);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterWow, previous.fx.dynamicsModFlutterWow, next.fx.dynamicsModFlutterWow);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterFlutter, previous.fx.dynamicsModFlutterFlutter, next.fx.dynamicsModFlutterFlutter);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterLp, previous.fx.dynamicsModFlutterLp, next.fx.dynamicsModFlutterLp);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterWet, previous.fx.dynamicsModFlutterWet, next.fx.dynamicsModFlutterWet);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterDropout, previous.fx.dynamicsModFlutterDropout, next.fx.dynamicsModFlutterDropout);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModFlutterAlias, previous.fx.dynamicsModFlutterAlias, next.fx.dynamicsModFlutterAlias);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomWow, previous.fx.dynamicsModRandomWow, next.fx.dynamicsModRandomWow);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomFlutter, previous.fx.dynamicsModRandomFlutter, next.fx.dynamicsModRandomFlutter);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomLp, previous.fx.dynamicsModRandomLp, next.fx.dynamicsModRandomLp);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomWet, previous.fx.dynamicsModRandomWet, next.fx.dynamicsModRandomWet);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomDropout, previous.fx.dynamicsModRandomDropout, next.fx.dynamicsModRandomDropout);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModRandomAlias, previous.fx.dynamicsModRandomAlias, next.fx.dynamicsModRandomAlias);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvWow, previous.fx.dynamicsModEnvWow, next.fx.dynamicsModEnvWow);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvFlutter, previous.fx.dynamicsModEnvFlutter, next.fx.dynamicsModEnvFlutter);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvLp, previous.fx.dynamicsModEnvLp, next.fx.dynamicsModEnvLp);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvWet, previous.fx.dynamicsModEnvWet, next.fx.dynamicsModEnvWet);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvDropout, previous.fx.dynamicsModEnvDropout, next.fx.dynamicsModEnvDropout);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModEnvAlias, previous.fx.dynamicsModEnvAlias, next.fx.dynamicsModEnvAlias);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseWow, previous.fx.dynamicsModNoiseWow, next.fx.dynamicsModNoiseWow);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseFlutter, previous.fx.dynamicsModNoiseFlutter, next.fx.dynamicsModNoiseFlutter);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseLp, previous.fx.dynamicsModNoiseLp, next.fx.dynamicsModNoiseLp);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseWet, previous.fx.dynamicsModNoiseWet, next.fx.dynamicsModNoiseWet);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseDropout, previous.fx.dynamicsModNoiseDropout, next.fx.dynamicsModNoiseDropout);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsModNoiseAlias, previous.fx.dynamicsModNoiseAlias, next.fx.dynamicsModNoiseAlias);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationEnabled, previous.fx.dynamicsSaturationEnabled, next.fx.dynamicsSaturationEnabled);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationMode, previous.fx.dynamicsSaturationMode, next.fx.dynamicsSaturationMode);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationDrive, previous.fx.dynamicsSaturationDrive, next.fx.dynamicsSaturationDrive);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationTone, previous.fx.dynamicsSaturationTone, next.fx.dynamicsSaturationTone);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationBias, previous.fx.dynamicsSaturationBias, next.fx.dynamicsSaturationBias);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompEnabled, previous.fx.dynamicsEndCompEnabled, next.fx.dynamicsEndCompEnabled);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompThreshold, previous.fx.dynamicsEndCompThreshold, next.fx.dynamicsEndCompThreshold);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompKnee, previous.fx.dynamicsEndCompKnee, next.fx.dynamicsEndCompKnee);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompRatio, previous.fx.dynamicsEndCompRatio, next.fx.dynamicsEndCompRatio);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompAttackMs, previous.fx.dynamicsEndCompAttackMs, next.fx.dynamicsEndCompAttackMs);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompReleaseMs, previous.fx.dynamicsEndCompReleaseMs, next.fx.dynamicsEndCompReleaseMs);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompMakeup, previous.fx.dynamicsEndCompMakeup, next.fx.dynamicsEndCompMakeup);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompMix, previous.fx.dynamicsEndCompMix, next.fx.dynamicsEndCompMix);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompDetectorHp, previous.fx.dynamicsEndCompDetectorHp, next.fx.dynamicsEndCompDetectorHp);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompDetectorTilt, previous.fx.dynamicsEndCompDetectorTilt, next.fx.dynamicsEndCompDetectorTilt);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompAutoMakeup, previous.fx.dynamicsEndCompAutoMakeup, next.fx.dynamicsEndCompAutoMakeup);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompProgramRelease, previous.fx.dynamicsEndCompProgramRelease, next.fx.dynamicsEndCompProgramRelease);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainEnabled, previous.fx.sidechainEnabled, next.fx.sidechainEnabled);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyA, previous.fx.sidechainKeyA, next.fx.sidechainKeyA);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyB, previous.fx.sidechainKeyB, next.fx.sidechainKeyB);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyAWeight, previous.fx.sidechainKeyAWeight, next.fx.sidechainKeyAWeight);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyBWeight, previous.fx.sidechainKeyBWeight, next.fx.sidechainKeyBWeight);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainAmount, previous.fx.sidechainAmount, next.fx.sidechainAmount);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainThreshold, previous.fx.sidechainThreshold, next.fx.sidechainThreshold);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainRatio, previous.fx.sidechainRatio, next.fx.sidechainRatio);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainKnee, previous.fx.sidechainKnee, next.fx.sidechainKnee);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainAttackMs, previous.fx.sidechainAttackMs, next.fx.sidechainAttackMs);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainHoldMs, previous.fx.sidechainHoldMs, next.fx.sidechainHoldMs);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainReleaseMs, previous.fx.sidechainReleaseMs, next.fx.sidechainReleaseMs);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainMakeup, previous.fx.sidechainMakeup, next.fx.sidechainMakeup);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainMix, previous.fx.sidechainMix, next.fx.sidechainMix);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainCurve, previous.fx.sidechainCurve, next.fx.sidechainCurve);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainDetectorHp, previous.fx.sidechainDetectorHp, next.fx.sidechainDetectorHp);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainDetectorLp, previous.fx.sidechainDetectorLp, next.fx.sidechainDetectorLp);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainPad1Target, previous.fx.sidechainPad1Target, next.fx.sidechainPad1Target);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainPad2Target, previous.fx.sidechainPad2Target, next.fx.sidechainPad2Target);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainLead1Target, previous.fx.sidechainLead1Target, next.fx.sidechainLead1Target);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainLead2Target, previous.fx.sidechainLead2Target, next.fx.sidechainLead2Target);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainPianoTarget, previous.fx.sidechainPianoTarget, next.fx.sidechainPianoTarget);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainGranularTarget, previous.fx.sidechainGranularTarget, next.fx.sidechainGranularTarget);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainDelayATarget, previous.fx.sidechainDelayATarget, next.fx.sidechainDelayATarget);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainDelayBTarget, previous.fx.sidechainDelayBTarget, next.fx.sidechainDelayBTarget);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.FxSidechainReverbTarget, previous.fx.sidechainReverbTarget, next.fx.sidechainReverbTarget);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingDelayAToDelayB, previous.routing.delayAToDelayB, next.routing.delayAToDelayB);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToDelayA, previous.routing.delayBToDelayA, next.routing.delayBToDelayA);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingDelayToReverb, previous.routing.delayToReverb, next.routing.delayToReverb);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToReverb, previous.routing.granularToReverb, next.routing.granularToReverb);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingDelayAToGranular, previous.routing.delayAToGranular, next.routing.delayAToGranular);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToGranular, previous.routing.delayBToGranular, next.routing.delayBToGranular);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToReverb, previous.routing.delayBToReverb, next.routing.delayBToReverb);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToDelayA, previous.routing.granularToDelayA, next.routing.granularToDelayA);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToDelayB, previous.routing.granularToDelayB, next.routing.granularToDelayB);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.MasterGain, previous.master.gain, next.master.gain);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.MasterLimiterCeilingDb, previous.master.limiterCeilingDb, next.master.limiterCeilingDb);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.MasterSaturationMode, previous.master.saturationMode, next.master.saturationMode);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.MasterSaturationDrive, previous.master.saturationDrive, next.master.saturationDrive);
-    this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.MasterSaturationTone, previous.master.saturationTone, next.master.saturationTone);
+    for (const param of KESSHO_PRODUCT_PARAMS) {
+      if (!param.path.startsWith('fx.') && !param.path.startsWith('routing.') && !param.path.startsWith('master.')) continue;
+      this.appendParamDiff(
+        events,
+        param.id,
+        this.snapshotRuntimeParamValue(previous, param.path),
+        this.snapshotRuntimeParamValue(next, param.path),
+      );
+    }
+  }
+
+  private snapshotRuntimeParamValue(snapshot: CoreProductSnapshot, path: string): SnapshotScalar {
+    if (path.startsWith('fx.')) return this.fxRuntimeParamValue(snapshot.fx, path.slice(3));
+    if (path.startsWith('routing.')) return this.requiredSnapshotScalar(snapshot.routing, path.slice(8), path);
+    if (path.startsWith('master.')) return this.requiredSnapshotScalar(snapshot.master, path.slice(7), path);
+    throw new Error(`Unsupported Product Core runtime diff path ${path}`);
+  }
+
+  private fxRuntimeParamValue(fx: CoreProductSnapshot['fx'], path: string): SnapshotScalar {
+    const voiceMatch = /^granular\.voices\.(\d+)\.(.+)$/.exec(path);
+    if (voiceMatch) {
+      return this.requiredSnapshotScalar(fx.granularVoices[Number(voiceMatch[1])], voiceMatch[2]!, `fx.${path}`);
+    }
+    const tapeHeadMatch = /^delayB\.tapeHead([1-4])(Level|Pan)$/.exec(path);
+    if (tapeHeadMatch) {
+      const index = Number(tapeHeadMatch[1]) - 1;
+      return tapeHeadMatch[2] === 'Level'
+        ? fx.delayBTapeHeadLevels[index] ?? 0
+        : fx.delayBTapeHeadPans[index] ?? 0.5;
+    }
+    const sidechainTargetMatch = /^sidechain\.targets\.(pad1|pad2|lead1|lead2|piano|granular|delayA|delayB|reverb)$/.exec(path);
+    if (sidechainTargetMatch) {
+      const key = `sidechain${this.capitalized(sidechainTargetMatch[1]!)}Target`;
+      return this.requiredSnapshotScalar(fx, key, `fx.${path}`);
+    }
+    return this.requiredSnapshotScalar(fx, this.flattenRuntimePath(path), `fx.${path}`);
+  }
+
+  private requiredSnapshotScalar(container: unknown, key: string, path: string): SnapshotScalar {
+    const value = (container as Record<string, unknown> | undefined)?.[key];
+    if (typeof value === 'number' || typeof value === 'boolean') return value;
+    throw new Error(`Core Product snapshot path ${path} is missing scalar field ${key}`);
+  }
+
+  private flattenRuntimePath(path: string): string {
+    return path.split('.').map((part, index) => index === 0 ? part : this.capitalized(part)).join('');
+  }
+
+  private capitalized(value: string): string {
+    return value.length > 0 ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : value;
   }
 
   private appendEvolutionDiffs(
@@ -623,6 +572,32 @@ class CoreProductRuntimeAdapter {
     return false;
   }
 
+  private soundscapeSnapshotChanged(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean {
+    const previousSoundscape = previous.soundscape;
+    const nextSoundscape = next.soundscape;
+    if (!previousSoundscape && !nextSoundscape) return false;
+    if (!previousSoundscape || !nextSoundscape) return true;
+    return this.paramBlockChanged(
+      previousSoundscape.textureParamCount,
+      nextSoundscape.textureParamCount,
+      previousSoundscape.textureParams,
+      nextSoundscape.textureParams,
+    ) || this.paramBlockChanged(
+      previousSoundscape.moduleParamCount,
+      nextSoundscape.moduleParamCount,
+      previousSoundscape.moduleParams,
+      nextSoundscape.moduleParams,
+    );
+  }
+
+  private paramBlockChanged(previousCount: number, nextCount: number, previousParams: readonly number[], nextParams: readonly number[]): boolean {
+    if (previousCount !== nextCount) return true;
+    for (let index = 0; index < nextCount; index += 1) {
+      if (this.valuesDiffer(previousParams[index] ?? 0, nextParams[index] ?? 0)) return true;
+    }
+    return false;
+  }
+
   private valuesDiffer(previous: SnapshotScalar, next: SnapshotScalar): boolean {
     if (typeof previous === 'boolean' || typeof next === 'boolean') {
       return previous !== next;
@@ -637,10 +612,6 @@ class CoreProductRuntimeAdapter {
 
 const runtimeAdapter = new CoreProductRuntimeAdapter();
 
-export function buildCoreProductSnapshotDiff(
-  previous: CoreProductSnapshot,
-  next: CoreProductSnapshot,
-  options: { forwardRngDiffs?: boolean } = {},
-): CoreProductSnapshotDiffResult {
+export function buildCoreProductSnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot, options: CoreProductSnapshotDiffOptions = {}): CoreProductSnapshotDiffResult {
   return runtimeAdapter.buildSnapshotDiff(previous, next, options);
 }

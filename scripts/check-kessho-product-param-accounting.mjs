@@ -172,7 +172,7 @@ function addDynamicAppVisibleReferences(references, sliderKeys) {
       references,
       sliderKeys,
       key,
-      'dynamic lead exact-patch ADSR slider',
+      'dynamic lead envelope override slider',
       true,
       'src/ui/synth/SynthPage.tsx',
     );
@@ -183,7 +183,7 @@ function addDynamicAppVisibleReferences(references, sliderKeys) {
       references,
       sliderKeys,
       key,
-      'dynamic lead exact-patch ADSR mode control',
+      'dynamic lead envelope override mode control',
       false,
       'src/ui/synth/SynthPage.tsx',
     );
@@ -408,6 +408,28 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
+  if (key === 'synthEuclideanTempo' || key === 'drumEuclidTempo') {
+    return {
+      path: 'sequencer-lane-diff',
+      evidence: ['src/audio/coreProductSnapshot.ts#synthLaneFromState', 'src/audio/CoreProductRuntimeAdapter.ts#appendSequencerLaneDiffs', 'cpp/KesshoCore/src/product/sequencer/DrumEuclidSequencer.cpp'],
+    };
+  }
+
+  if (['synthEuclidClockSource', 'synthEuclidJoinPolicy', 'drumEuclidClockSource', 'drumEuclidJoinPolicy'].includes(key)) {
+    return {
+      path: 'sequencer-clock-rejoin-policy',
+      evidence: ['src/audio/CoreProductHostSequencerClock.ts#shouldRejoinCoreProductSequencerClocks', 'src/audio/coreProductSnapshot.ts#initialStartDelaySecondsFromState', 'src/audio/CoreProductRuntimeAdapter.ts#SequencerLaneInitialStartDelaySeconds'],
+    };
+  }
+
+  if (key === 'drumEuclidDivision') {
+    return {
+      path: 'legacy-inert-state-key',
+      evidence: ['src/ui/state.ts#drumEuclidDivision', 'src/ui/sequencer/useEuclideanSequencer.ts#clockDivs'],
+      reason: 'Legacy global drum division is preserved for old preset/state compatibility; active Web and Product sequencers use per-lane drumEuclidNClockDivision values.',
+    };
+  }
+
   if (/^drumEuclid[1-4]Target(Sub|Kick|Click|BeepHi|BeepLo|Noise|Membrane)$/.test(key)) {
     return {
       path: 'sequencer-structure-full-snapshot',
@@ -441,25 +463,38 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
 
   if (/^pad2?Preset[AB]$/.test(key)) {
     return {
-      path: 'pad-exact-patch-diff',
-      evidence: ['src/audio/CoreProductRuntimeAdapter.ts#appendPadExactPatchDiffs', 'cpp/KesshoCore/src/product/KesshoProductEvents.cpp'],
-      reason: 'Pad preset endpoint changes carry a Product source-preset event plus generated exact-pad patch param diffs when the patch shape is stable.',
+      path: 'pad-generated-preset-endpoint-diff',
+      evidence: ['src/audio/CoreProductPadPatch.ts#exactPadPatchFromState', 'src/audio/CoreProductRuntimeAdapterSourcePresets.ts#appendCoreProductSourcePresetEndpointDiffs'],
+      reason: 'Generated Pad preset endpoint IDs, morphs, source distance, and sparse Pad overrides drive reconstructable patches; exact Pad params remain only for non-reconstructable Pad sources.',
     };
   }
 
-  if (/^lead[12](Preset[ABCD]|AlgorithmMode|UseCustomAdsr|Attack|Decay|Sustain|Release)$/.test(key)) {
+  if (/^(lead1Preset[AB]|lead2Preset[CD])$/.test(key)) {
     return {
-      path: 'lead-exact-patch-full-snapshot',
-      evidence: ['src/audio/CoreProductLegacyPresetCompat.ts#exactLeadParamsFromState', 'src/audio/CoreProductRuntimeAdapter.ts#leadPatchChanged'],
-      reason: 'Exact Lead patch changes are explicitly structural until generated live Lead patch params replace the compatibility bridge.',
+      path: 'lead-generated-preset-endpoint-diff',
+      evidence: ['src/audio/CoreProductLeadPatch.ts#exactLeadPatchFromState', 'src/audio/CoreProductRuntimeAdapterSourcePresets.ts#appendCoreProductSourcePresetEndpointDiffs'],
+      reason: 'Generated Lead preset endpoint IDs, morphs, source distance, structured Lead fields, and sparse Lead overrides drive reconstructable patches; exact Lead params remain only for non-reconstructable Lead sources.',
+    };
+  }
+
+  if (/^lead[12](AlgorithmMode|UseCustomAdsr|Attack|Decay|Sustain|Release)$/.test(key)) {
+    return {
+      path: 'source-param-diff',
+      evidence: [
+        'src/audio/CoreProductLeadPatch.ts#leadAlgorithmPresetAEnabledFromState',
+        'src/audio/CoreProductLeadPatch.ts#leadEnvelopeOverrideFromState',
+        'src/audio/CoreProductRuntimeAdapter.ts#appendSourceParamDiffs',
+        'cpp/KesshoCore/src/product/sources/ProductSources.cpp',
+      ],
+      reason: 'Custom Lead ADSR and algorithm mode use structured Product Core source override fields for generated endpoint snapshots.',
     };
   }
 
   if (/^drum(Sub|Kick|Click|BeepHi|BeepLo|Noise|Membrane)Preset[AB]$/.test(key)) {
     return {
-      path: 'drum-exact-patch-full-snapshot',
-      evidence: ['src/audio/CoreProductLegacyPresetCompat.ts#exactDrumParamsFromState', 'src/audio/CoreProductRuntimeAdapter.ts#drumPatchChanged'],
-      reason: 'Exact Drum patch changes are explicitly structural until the Product Drum module exposes live generated params for preset endpoint swaps.',
+      path: 'drum-generated-preset-endpoint-diff',
+      evidence: ['src/audio/CoreProductDrumPatch.ts#exactDrumPatchFromState', 'src/audio/CoreProductRuntimeAdapterSourcePresets.ts#appendCoreProductSourcePresetEndpointDiffs'],
+      reason: 'Generated Drum preset endpoint IDs, morphs, source level, source reverb send, and sparse Drum overrides drive reconstructable patches; exact Drum params remain only for legacy exact-param compatibility.',
     };
   }
 
@@ -527,9 +562,9 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     key === 'insects2Engine'
   ) {
     return {
-      path: 'soundscape-exact-patch-full-snapshot',
-      evidence: ['src/audio/coreProductSoundscapesSnapshot.ts#exactSoundscapesModuleParamsFromState', 'src/audio/CoreProductRuntimeAdapter.ts#drumPatchChanged'],
-      reason: 'Soundscape texture/module controls are carried in exact module patches; exact patch changes are explicitly structural today.',
+      path: 'soundscape-structured-full-snapshot',
+      evidence: ['src/audio/coreProductSoundscapesSnapshot.ts#soundscapeSnapshotPayloadFromState', 'src/audio/CoreProductRuntimeAdapter.ts#soundscapeSnapshotChanged'],
+      reason: 'Soundscape texture/module controls are carried in dedicated Soundscape snapshot fields; structured Soundscape param changes are explicitly structural today.',
     };
   }
 
@@ -542,7 +577,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
   }
 
   if (
-    /^(granular|delay|reverb|spectralFreeze|dynamics|character|degrade|sidechain|endComp|masterSat)/.test(key) ||
+    /^(granular|delay|reverb|spectralFreeze|dynamics|character|degrade|sidechain|endComp)/.test(key) ||
     ['density', 'grainSize', 'spray', 'drumDelayEnabled'].includes(key)
   ) {
     return {
@@ -807,7 +842,10 @@ const PRODUCT_STATE_GETTER_NAMES = new Set([
 const PRODUCT_SNAPSHOT_KEY_PATHS = [
   'src/audio/coreProductSnapshot.ts',
   'src/audio/coreProductSoundscapesSnapshot.ts',
-  'src/audio/CoreProductLegacyPresetCompat.ts',
+  'src/audio/CoreProductLeadPatch.ts',
+  'src/audio/CoreProductPadPatch.ts',
+  'src/audio/CoreProductDrumPatch.ts',
+  'src/audio/coreProductDelaySnapshot.ts',
   'src/audio/coreProductAssets.ts',
   'src/audio/coreProductArrangementScheduler.ts',
   'src/audio/granularMacroCore.ts',
@@ -847,7 +885,7 @@ function collectStateReferencedKeysInProductFiles(sliderKeys, paths) {
   return keys;
 }
 
-function addGeneratedPatchBridgeKeys(keys) {
+function addGeneratedProductSnapshotKeys(keys) {
   for (const key of collectGeneratedSpecKeys('KESSHO_PRODUCT_PAD_PARAM_SPECS', ['key', 'pad2Key'])) {
     keys.add(key);
   }
@@ -866,7 +904,7 @@ function addGeneratedPatchBridgeKeys(keys) {
 
 function collectProductSnapshotReferencedKeys(sliderKeys) {
   const keys = collectStateReferencedKeysInProductFiles(sliderKeys, PRODUCT_SNAPSHOT_KEY_PATHS);
-  addGeneratedPatchBridgeKeys(keys);
+  addGeneratedProductSnapshotKeys(keys);
   addDynamicSequencerKeys(keys);
   addDynamicGranularVoiceKeys(keys);
   return keys;
@@ -1416,8 +1454,11 @@ assert(
   'docs/kessho-product-control-classification.md must include Parameter Accounting policy',
 );
 assert(
-  read('src/audio/CoreProductLegacyPresetCompat.ts').includes('UseCustomAdsr'),
-  'Lead custom ADSR controls must stay wired through the labeled exact Lead bridge until structured Lead overrides replace it',
+  read('src/audio/CoreProductLeadPatch.ts').includes('leadEnvelopeOverrideFromState') &&
+    read('src/audio/CoreProductLeadPatch.ts').includes('leadAlgorithmPresetAEnabledFromState') &&
+    read('src/audio/CoreProductRuntimeAdapter.ts').includes('SourceLeadEnvelopeOverrideEnabled') &&
+    read('src/audio/CoreProductRuntimeAdapter.ts').includes('SourceLeadAlgorithmPresetAEnabled'),
+  'Lead custom ADSR and algorithm controls must stay wired through structured Lead override fields',
 );
 assert(
   unaccounted.length === 0,

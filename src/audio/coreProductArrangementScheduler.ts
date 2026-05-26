@@ -410,6 +410,7 @@ export class CoreProductArrangementScheduler {
           midi,
           1,
           holdSeconds * 1000,
+          voiceIndex,
         ), 'pad');
       }
       if ((pad2Mask & bit) !== 0) {
@@ -418,6 +419,7 @@ export class CoreProductArrangementScheduler {
           midi,
           1,
           holdSeconds * 1000,
+          voiceIndex,
         ), 'pad');
       }
     }

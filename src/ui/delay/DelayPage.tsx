@@ -3,14 +3,12 @@ import { formatIndexedDelayDivision, getSliderNumericValue, type SliderMode, typ
 import type { SliderPageId } from '../sliderHelpCatalog';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { getGranularPresetMeta, getGranularPresetSuggestedDelayBGranularSend } from '../granular/granularPresets';
-import { delayNoteToSeconds } from '../../audio/delayBuses';
+import { DELAY_B_TAPE_HEAD_SPACING_RATIOS, delayNoteToSeconds } from '../../audio/delayBuses';
 import { applyParams, extractParams } from '../../presets/codec';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
 import DelayRhythmMap from './DelayRhythmMap';
-import DelayAlgorithmCard from './DelayAlgorithmCard';
-import DelayThumbnail from './DelayThumbnail';
 import './delay.css';
 
 const FILTER_TYPE_OPTIONS = [
@@ -20,9 +18,9 @@ const FILTER_TYPE_OPTIONS = [
 ] as const;
 
 const PATTERN_OPTIONS = [
-  { value: 'cascade', label: 'Cascade' },
-  { value: 'golden', label: 'Golden' },
-  { value: 'mirror', label: 'Mirror' },
+  { value: 'cascade', label: 'Spread' },
+  { value: 'golden', label: 'Ratio' },
+  { value: 'mirror', label: 'Ping' },
   { value: 'dotted', label: 'Dotted' },
 ] as const;
 
@@ -30,13 +28,26 @@ const WARP_OPTIONS = [
   { value: 'clean', label: 'Clean' },
   { value: 'filterSweep', label: 'Filter' },
   { value: 'pitchDrift', label: 'Pitch' },
-  { value: 'grainCrossfade', label: 'Grain' },
+  { value: 'grainCrossfade', label: 'Smear' },
 ] as const;
 
-const SAT_MODE_OPTIONS = [
-  { value: 'clean', label: 'Clean' },
-  { value: 'tape', label: 'Tape' },
-  { value: 'tube', label: 'Tube' },
+const DELAY_B_ALGORITHM_OPTIONS = [
+  { value: 'clockedSpace', label: 'Clocked' },
+  { value: 'tapeHeads', label: 'Tape' },
+] as const;
+
+const TAPE_SPACING_OPTIONS = [
+  { value: 'even', label: 'Even' },
+  { value: 'triplet', label: 'Triplet' },
+  { value: 'golden', label: 'Golden' },
+  { value: 'silver', label: 'Silver' },
+] as const;
+
+const TAPE_HEADS = [
+  { index: 1, enabled: 'delayBTapeHead1Enabled', level: 'delayBTapeHead1Level', pan: 'delayBTapeHead1Pan' },
+  { index: 2, enabled: 'delayBTapeHead2Enabled', level: 'delayBTapeHead2Level', pan: 'delayBTapeHead2Pan' },
+  { index: 3, enabled: 'delayBTapeHead3Enabled', level: 'delayBTapeHead3Level', pan: 'delayBTapeHead3Pan' },
+  { index: 4, enabled: 'delayBTapeHead4Enabled', level: 'delayBTapeHead4Level', pan: 'delayBTapeHead4Pan' },
 ] as const;
 
 export interface DelayPageProps {
@@ -177,7 +188,9 @@ const DelayPage: React.FC<DelayPageProps> = ({
   const clockedExpanded = expandedCards.has('clocked-space');
   const crossExpanded = expandedCards.has('cross-feeds');
   const linkageExpanded = expandedCards.has('linkage');
-  const masterExpanded = expandedCards.has('master-sat');
+  const delayBAlgorithm = state.delayBAlgorithm ?? 'clockedSpace';
+  const delayBTapeMode = delayBAlgorithm === 'tapeHeads';
+  const delayBTapeSpacing = state.delayBTapeSpacing ?? 'even';
 
   const bpm = state.sequencerMasterBPM ?? 120;
   const echoTimeL = delayNoteToSeconds(state.drumDelayNoteL ?? '1/4', bpm);
@@ -304,115 +317,6 @@ const DelayPage: React.FC<DelayPageProps> = ({
           )}
         </div>
 
-        {/* ── Clocked Space ── */}
-        <div
-          className={`delay-card${clockedExpanded ? ' expanded' : ''}`}
-          style={{ '--sc': 'var(--accent-clocked)' } as React.CSSProperties}
-        >
-          <div className="delay-card-header" onClick={() => toggleCard('clocked-space')}>
-            <div className="delay-card-header-left">
-              <span className="delay-card-title">Clocked Space</span>
-              <span className="delay-card-subtitle">Delay B</span>
-            </div>
-            <div className="delay-card-header-right">
-              <FeedBadge feeds={delayBFeeds} />
-              <span className="delay-card-chevron">{clockedExpanded ? '▼' : '▶'}</span>
-            </div>
-          </div>
-
-          {clockedExpanded && (
-            <div className="delay-card-body">
-              {/* Preset selector */}
-              <PresetDropdown
-                level="engine"
-                scope="clockedSpace"
-                state={state}
-                currentName={clockedPresetName}
-                onLoad={handleClockedPresetLoad}
-                onStateChange={onStateChange}
-                sliderModes={sliderModes}
-                dualSliderRanges={dualSliderRanges}
-                onDualStateChange={onDualStateChange}
-                compact
-              />
-
-              {/* Mode */}
-              <div className="delay-section-label">Mode</div>
-              <div className="delay-mode-row">
-                <button
-                  className={`delay-mode-btn${state.granularSpaceMode === 'diffuse' ? ' active' : ''}`}
-                  onClick={() => onSelectChange('granularSpaceMode', 'diffuse')}
-                  {...bindHelp('granularSpaceModeDiffuse', { label: 'Diffuse', page: 'delay' })}
-                >
-                  Diffuse
-                </button>
-                <button
-                  className={`delay-mode-btn${state.granularSpaceMode === 'clocked' ? ' active' : ''}`}
-                  onClick={() => onSelectChange('granularSpaceMode', 'clocked')}
-                  {...bindHelp('granularSpaceModeClocked', { label: 'Clocked', page: 'delay' })}
-                >
-                  Clocked
-                </button>
-              </div>
-
-              {/* Pattern */}
-              <div className="delay-section-label">Pattern</div>
-              <div className="delay-mode-row">
-                {PATTERN_OPTIONS.map((p) => (
-                  <button
-                    key={p.value}
-                    className={`delay-mode-btn${state.delayBPattern === p.value ? ' active' : ''}`}
-                    onClick={() => onSelectChange('delayBPattern', p.value as SliderState['delayBPattern'])}
-                    {...bindHelp(`delayBPattern_${p.value}`, { label: p.label, page: 'delay' })}
-                  >
-                    <DelayThumbnail type="pattern" variant={p.value} accent="#9fe5f0" />
-                    <span>{p.label}</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Warp */}
-              <div className="delay-section-label">Warp</div>
-              <div className="delay-mode-row">
-                {WARP_OPTIONS.map((w) => (
-                  <button
-                    key={w.value}
-                    className={`delay-mode-btn${state.delayBWarp === w.value ? ' active' : ''}`}
-                    onClick={() => onSelectChange('delayBWarp', w.value as SliderState['delayBWarp'])}
-                    {...bindHelp(`delayBWarp_${w.value}`, { label: w.label, page: 'delay' })}
-                  >
-                    <DelayThumbnail type="warp" variant={w.value} accent="#9fe5f0" />
-                    <span>{w.label}</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Algorithm Card */}
-              <DelayAlgorithmCard pattern={state.delayBPattern} warp={state.delayBWarp} accent="#9fe5f0" />
-
-              {/* Time */}
-              <Slider
-                label="Time Division"
-                value={getSliderNumericValue('granularDelayTime', state.granularDelayTime) ?? 0}
-                paramKey="granularDelayTime"
-                onChange={onParamChange}
-                helpPage="delay"
-                format={(value: number) => formatIndexedDelayDivision('granularDelayTime', value)}
-                {...sliderProps('granularDelayTime')}
-              />
-
-              {/* Sliders */}
-              <Slider label="Activity" value={state.granularDelayActivity} paramKey="granularDelayActivity" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayActivity')} />
-              <Slider label="Repeats" value={state.granularDelayRepeats} paramKey="granularDelayRepeats" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayRepeats')} />
-              <Slider label="Level" value={state.granularDelayMix} paramKey="granularDelayMix" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayMix')} />
-              <Slider label="Filter" value={state.granularDelayFilter} paramKey="granularDelayFilter" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayFilter')} />
-              <Slider label="Intensity" value={state.delayBWarpIntensity} paramKey="delayBWarpIntensity" onChange={onParamChange} helpPage="delay" {...sliderProps('delayBWarpIntensity')} />
-              <Slider label="Spread" value={state.delayBSpread} paramKey="delayBSpread" onChange={onParamChange} helpPage="delay" {...sliderProps('delayBSpread')} />
-              <Slider label="Vibrato" value={state.granularDelayVibrato} paramKey="granularDelayVibrato" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayVibrato')} />
-              <Slider label="Reverb Send" value={state.granularDelayReverbSend} paramKey="granularDelayReverbSend" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayReverbSend')} />
-            </div>
-          )}
-        </div>
       </div>
 
       {/* ════ RIGHT PANEL ════ */}
@@ -433,10 +337,244 @@ const DelayPage: React.FC<DelayPageProps> = ({
               clockedActivity={state.granularDelayActivity ?? 0.5}
               clockedBaseTime={clockedBaseTime}
               clockedSpread={state.delayBSpread ?? 0.5}
+              delayBAlgorithm={delayBAlgorithm}
+              tapeSpacing={delayBTapeSpacing}
+              tapeHeadEnabled={[
+                state.delayBTapeHead1Enabled ?? true,
+                state.delayBTapeHead2Enabled ?? true,
+                state.delayBTapeHead3Enabled ?? true,
+                state.delayBTapeHead4Enabled ?? true,
+              ]}
+              tapeHeadLevels={[
+                state.delayBTapeHead1Level ?? 0.72,
+                state.delayBTapeHead2Level ?? 0.8,
+                state.delayBTapeHead3Level ?? 0.88,
+                state.delayBTapeHead4Level ?? 1,
+              ]}
+              tapeHeadPans={[
+                state.delayBTapeHead1Pan ?? 0.28,
+                state.delayBTapeHead2Pan ?? 0.72,
+                state.delayBTapeHead3Pan ?? 0.38,
+                state.delayBTapeHead4Pan ?? 0.62,
+              ]}
               aToBSend={state.delayAToBSend ?? 0}
               bToASend={state.delayBToASend ?? 0}
             />
           </div>
+        </div>
+
+        {/* ── Delay B ── */}
+        <div
+          className={`delay-card${clockedExpanded ? ' expanded' : ''}`}
+          style={{ '--sc': 'var(--accent-clocked)' } as React.CSSProperties}
+        >
+          <div className="delay-card-header" onClick={() => toggleCard('clocked-space')}>
+            <div className="delay-card-header-left">
+              <span className="delay-card-title">{delayBTapeMode ? 'Tape Heads' : 'Clocked Space'}</span>
+              <span className="delay-card-subtitle">Delay B</span>
+            </div>
+            <div className="delay-card-header-right">
+              <FeedBadge feeds={delayBFeeds} />
+              <span className="delay-card-chevron">{clockedExpanded ? '▼' : '▶'}</span>
+            </div>
+          </div>
+
+          {clockedExpanded && (
+            <div className="delay-card-body delay-b-editor">
+              <PresetDropdown
+                level="engine"
+                scope="clockedSpace"
+                state={state}
+                currentName={clockedPresetName}
+                onLoad={handleClockedPresetLoad}
+                onStateChange={onStateChange}
+                sliderModes={sliderModes}
+                dualSliderRanges={dualSliderRanges}
+                onDualStateChange={onDualStateChange}
+                compact
+              />
+
+              <div className="delay-control-strip">
+                <span className="delay-section-label">Algorithm</span>
+                <div className="delay-mode-row delay-mode-row--segmented">
+                  {DELAY_B_ALGORITHM_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      className={`delay-mode-btn${delayBAlgorithm === option.value ? ' active' : ''}`}
+                      onClick={() => onSelectChange('delayBAlgorithm', option.value as SliderState['delayBAlgorithm'])}
+                      {...bindHelp(`delayBAlgorithm_${option.value}`, { label: option.label, page: 'delay' })}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {!delayBTapeMode ? (
+                <>
+                  <div className="delay-control-grid delay-control-grid--three">
+                    <div>
+                      <div className="delay-section-label">Mode</div>
+                      <div className="delay-mode-row">
+                        <button
+                          className={`delay-mode-btn${state.granularSpaceMode === 'clocked' ? ' active' : ''}`}
+                          onClick={() => onSelectChange('granularSpaceMode', 'clocked')}
+                          {...bindHelp('granularSpaceModeClocked', { label: 'Clear', page: 'delay' })}
+                        >
+                          Clear
+                        </button>
+                        <button
+                          className={`delay-mode-btn${state.granularSpaceMode === 'diffuse' ? ' active' : ''}`}
+                          onClick={() => onSelectChange('granularSpaceMode', 'diffuse')}
+                          {...bindHelp('granularSpaceModeDiffuse', { label: 'Diffuse', page: 'delay' })}
+                        >
+                          Diffuse
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="delay-section-label">Rhythm</div>
+                      <div className="delay-mode-row">
+                        {PATTERN_OPTIONS.map((p) => (
+                          <button
+                            key={p.value}
+                            className={`delay-mode-btn${state.delayBPattern === p.value ? ' active' : ''}`}
+                            onClick={() => onSelectChange('delayBPattern', p.value as SliderState['delayBPattern'])}
+                            {...bindHelp(`delayBPattern_${p.value}`, { label: p.label, page: 'delay' })}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="delay-section-label">Style</div>
+                      <div className="delay-mode-row">
+                        {WARP_OPTIONS.map((w) => (
+                          <button
+                            key={w.value}
+                            className={`delay-mode-btn${state.delayBWarp === w.value ? ' active' : ''}`}
+                            onClick={() => onSelectChange('delayBWarp', w.value as SliderState['delayBWarp'])}
+                            {...bindHelp(`delayBWarp_${w.value}`, { label: w.label, page: 'delay' })}
+                          >
+                            {w.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Slider
+                    label="Delay"
+                    value={getSliderNumericValue('granularDelayTime', state.granularDelayTime) ?? 0}
+                    paramKey="granularDelayTime"
+                    onChange={onParamChange}
+                    helpPage="delay"
+                    format={(value: number) => formatIndexedDelayDivision('granularDelayTime', value)}
+                    {...sliderProps('granularDelayTime')}
+                  />
+
+                  <div className="delay-control-grid">
+                    <Slider label="Feedback" value={state.granularDelayRepeats} paramKey="granularDelayRepeats" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayRepeats')} />
+                    <Slider label="Mix" value={state.granularDelayMix} paramKey="granularDelayMix" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayMix')} />
+                    <Slider label="Tone" value={state.granularDelayFilter} paramKey="granularDelayFilter" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayFilter')} />
+                    <Slider label="Mod" value={state.granularDelayVibrato} paramKey="granularDelayVibrato" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayVibrato')} />
+                    <Slider label="Density" value={state.granularDelayActivity} paramKey="granularDelayActivity" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayActivity')} />
+                    <Slider label="Depth" value={state.delayBWarpIntensity} paramKey="delayBWarpIntensity" onChange={onParamChange} helpPage="delay" {...sliderProps('delayBWarpIntensity')} />
+                    <Slider label="Width" value={state.delayBSpread} paramKey="delayBSpread" onChange={onParamChange} helpPage="delay" {...sliderProps('delayBSpread')} />
+                    <Slider label="Reverb" value={state.granularDelayReverbSend} paramKey="granularDelayReverbSend" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayReverbSend')} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="delay-control-strip">
+                    <span className="delay-section-label">Spacing</span>
+                    <div className="delay-mode-row">
+                      {TAPE_SPACING_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          className={`delay-mode-btn${delayBTapeSpacing === option.value ? ' active' : ''}`}
+                          onClick={() => onSelectChange('delayBTapeSpacing', option.value as SliderState['delayBTapeSpacing'])}
+                          {...bindHelp(`delayBTapeSpacing_${option.value}`, { label: option.label, page: 'delay' })}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Slider
+                    label="Head 4 Time"
+                    value={getSliderNumericValue('granularDelayTime', state.granularDelayTime) ?? 0}
+                    paramKey="granularDelayTime"
+                    onChange={onParamChange}
+                    helpPage="delay"
+                    format={(value: number) => formatIndexedDelayDivision('granularDelayTime', value)}
+                    {...sliderProps('granularDelayTime')}
+                  />
+
+                  <div className="delay-tape-head-grid">
+                    {TAPE_HEADS.map((head, arrayIndex) => {
+                      const enabledKey = head.enabled as keyof SliderState;
+                      const levelKey = head.level as keyof SliderState;
+                      const panKey = head.pan as keyof SliderState;
+                      const enabled = state[enabledKey] !== false;
+                      const level = Number(state[levelKey] ?? 0);
+                      const pan = Number(state[panKey] ?? 0.5);
+                      const ratio = DELAY_B_TAPE_HEAD_SPACING_RATIOS[delayBTapeSpacing][arrayIndex] ?? 1;
+                      return (
+                        <div key={head.index} className={`delay-tape-head-row${enabled ? '' : ' off'}`}>
+                          <button
+                            className={`delay-tape-head-toggle${enabled ? ' on' : ''}`}
+                            onClick={() => onSelectChange(enabledKey, !enabled)}
+                            {...bindHelp(`delayBTapeHead${head.index}Enabled`, { label: `Head ${head.index}`, page: 'delay' })}
+                          >
+                            H{head.index}
+                          </button>
+                          <span className="delay-tape-head-ratio">{ratio.toFixed(3).replace(/^0/, '')}x</span>
+                          <label className="delay-mini-slider">
+                            <span>Level</span>
+                            <input
+                              type="range"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={level}
+                              onChange={(event) => onParamChange(levelKey, Number(event.currentTarget.value))}
+                              {...bindSliderHelp(levelKey, `Head ${head.index} Level`)}
+                            />
+                          </label>
+                          <label className="delay-mini-slider">
+                            <span>Pan</span>
+                            <input
+                              type="range"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={pan}
+                              onChange={(event) => onParamChange(panKey, Number(event.currentTarget.value))}
+                              {...bindSliderHelp(panKey, `Head ${head.index} Pan`)}
+                            />
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="delay-control-grid">
+                    <Slider label="Feedback" value={state.granularDelayRepeats} paramKey="granularDelayRepeats" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayRepeats')} />
+                    <Slider label="Output" value={state.granularDelayMix} paramKey="granularDelayMix" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayMix')} />
+                    <Slider label="Age" value={state.granularDelayFilter} paramKey="granularDelayFilter" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayFilter')} />
+                    <Slider label="Drive" value={state.granularDelayActivity} paramKey="granularDelayActivity" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayActivity')} />
+                    <Slider label="Mechanics" value={state.delayBWarpIntensity} paramKey="delayBWarpIntensity" onChange={onParamChange} helpPage="delay" {...sliderProps('delayBWarpIntensity')} />
+                    <Slider label="Flutter" value={state.granularDelayVibrato} paramKey="granularDelayVibrato" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayVibrato')} />
+                    <Slider label="Width" value={state.delayBSpread} paramKey="delayBSpread" onChange={onParamChange} helpPage="delay" {...sliderProps('delayBSpread')} />
+                    <Slider label="Reverb" value={state.granularDelayReverbSend} paramKey="granularDelayReverbSend" onChange={onParamChange} helpPage="delay" {...sliderProps('granularDelayReverbSend')} />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── Cross-Feeds ── */}
@@ -468,14 +606,14 @@ const DelayPage: React.FC<DelayPageProps> = ({
                 onDualStateChange={onDualStateChange}
                 compact
               />
-              <Slider label="Echo Line → Clocked Space" value={state.delayAToBSend} paramKey="delayAToBSend" onChange={onParamChange} helpPage="delay" {...sliderProps('delayAToBSend')} />
-              <Slider label="Clocked Space → Echo Line" value={state.delayBToASend} paramKey="delayBToASend" onChange={onParamChange} helpPage="delay" {...sliderProps('delayBToASend')} />
+              <Slider label="Echo Line → Delay B" value={state.delayAToBSend} paramKey="delayAToBSend" onChange={onParamChange} helpPage="delay" {...sliderProps('delayAToBSend')} />
+              <Slider label="Delay B → Echo Line" value={state.delayBToASend} paramKey="delayBToASend" onChange={onParamChange} helpPage="delay" {...sliderProps('delayBToASend')} />
               <Slider label="Cross-Feed Filter" value={state.delayACrossFeedFilter} paramKey="delayACrossFeedFilter" unit=" Hz" onChange={onParamChange} helpPage="delay" {...sliderProps('delayACrossFeedFilter')} />
               <Slider label="Echo Line → Granular" value={state.delayAGranularSend} paramKey="delayAGranularSend" onChange={onParamChange} helpPage="delay" {...sliderProps('delayAGranularSend')} />
               {(state.granularDelayBSend ?? 0) < 0.0001 && (
-                <Slider label="Clocked Space → Granular" value={state.delayBGranularSend} paramKey="delayBGranularSend" onChange={onParamChange} helpPage="delay" {...sliderProps('delayBGranularSend')} />
+                <Slider label="Delay B → Granular" value={state.delayBGranularSend} paramKey="delayBGranularSend" onChange={onParamChange} helpPage="delay" {...sliderProps('delayBGranularSend')} />
               )}
-              <Slider label="Drums → Clocked Space" value={state.drumDelayBSend} paramKey="drumDelayBSend" onChange={onParamChange} helpPage="delay" {...sliderProps('drumDelayBSend')} />
+              <Slider label="Drums → Delay B" value={state.drumDelayBSend} paramKey="drumDelayBSend" onChange={onParamChange} helpPage="delay" {...sliderProps('drumDelayBSend')} />
             </div>
           )}
         </div>
@@ -505,51 +643,16 @@ const DelayPage: React.FC<DelayPageProps> = ({
             <div className="delay-card-body">
               <p className="delay-linkage-note">
                 {state.delayBGranularLinked
-                  ? `${selectedGranularPreset?.name ?? 'The current granular preset'} currently carries Clocked Space voicing on preset load.`
-                  : 'Granular preset changes leave the current Clocked Space voicing untouched.'}
+                  ? `${selectedGranularPreset?.name ?? 'The current granular preset'} currently carries Delay B voicing on preset load.`
+                  : 'Granular preset changes leave the current Delay B voicing untouched.'}
                 {typeof linkedDelayBSendSuggestion === 'number'
-                  ? ` Suggested Clocked Space → Granular return: ${Math.round(linkedDelayBSendSuggestion * 100)}%.`
+                  ? ` Suggested Delay B → Granular return: ${Math.round(linkedDelayBSendSuggestion * 100)}%.`
                   : ''}
               </p>
             </div>
           )}
         </div>
 
-        {/* ── Master Saturation ── */}
-        <div
-          className={`delay-card${masterExpanded ? ' expanded' : ''}`}
-          style={{ '--sc': 'var(--accent-master)' } as React.CSSProperties}
-        >
-          <div className="delay-card-header" onClick={() => toggleCard('master-sat')}>
-            <div className="delay-card-header-left">
-              <span className="delay-card-title">Master Saturation</span>
-            </div>
-            <div className="delay-card-header-right">
-              <span className="delay-card-chevron">{masterExpanded ? '▼' : '▶'}</span>
-            </div>
-          </div>
-
-          {masterExpanded && (
-            <div className="delay-card-body">
-              {/* Character mode */}
-              <div className="delay-section-label">Character</div>
-              <div className="delay-mode-row">
-                {SAT_MODE_OPTIONS.map((m) => (
-                  <button
-                    key={m.value}
-                    className={`delay-mode-btn${state.masterSatMode === m.value ? ' active' : ''}`}
-                    onClick={() => onSelectChange('masterSatMode', m.value as SliderState['masterSatMode'])}
-                    {...bindHelp(`masterSatMode_${m.value}`, { label: m.label, page: 'delay' })}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-              <Slider label="Drive" value={state.masterSatDrive} paramKey="masterSatDrive" onChange={onParamChange} helpPage="delay" {...sliderProps('masterSatDrive')} />
-              <Slider label="Tone" value={state.masterSatTone} paramKey="masterSatTone" onChange={onParamChange} helpPage="delay" {...sliderProps('masterSatTone')} />
-            </div>
-          )}
-        </div>
       </div>
       </div>
     </div>

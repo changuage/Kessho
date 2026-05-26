@@ -284,6 +284,25 @@ export function generateDicePitchOffsets(count: number, range: number, rng: () =
   );
 }
 
+export const SEQUENCER_RATCHET_MIN = 1;
+export const SEQUENCER_RATCHET_MAX = 8;
+export const SEQUENCER_RATCHET_CONTROL_MAX = 4;
+
+export function clampSequencerRatchet(
+  value: number | null | undefined,
+  fallback = SEQUENCER_RATCHET_MIN,
+  max = SEQUENCER_RATCHET_MAX,
+): number {
+  const finite = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return Math.max(SEQUENCER_RATCHET_MIN, Math.min(max, Math.round(finite)));
+}
+
+export function ratchetSubLaneStepIndex(triggerStep: number, subLaneSteps: number): number {
+  const steps = Math.max(1, Math.min(64, Math.floor(subLaneSteps)));
+  const step = Math.floor(triggerStep);
+  return ((step % steps) + steps) % steps;
+}
+
 /**
  * Home-biased ratchet mutation.
  * At any intensity the distribution favours single hits (home=1).

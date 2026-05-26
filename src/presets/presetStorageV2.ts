@@ -287,6 +287,7 @@ function extractEuclideanSourceSequenceState(
         linked: metadata.drumLinked,
         evolveConfigs: metadata.drumEvolveConfigs,
         subLaneStates: metadata.drumSubLaneStates,
+        pitchSettings: metadata.drumPitchSettings,
       };
   const picked = Object.fromEntries(
     Object.entries(state).filter(([, value]) => hasArrayContent(value) || hasObjectContent(value)),

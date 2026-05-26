@@ -1,7 +1,9 @@
 import type { SliderState } from '../ui/state';
 
 type DelayAFilterType = SliderState['delayAFilterType'];
+type DelayBAlgorithm = SliderState['delayBAlgorithm'];
 type DelayBPattern = SliderState['delayBPattern'];
+type DelayBTapeSpacing = SliderState['delayBTapeSpacing'];
 type DelayBWarp = SliderState['delayBWarp'];
 
 export const DELAY_NOTE_DIVISIONS: Record<string, number> = {
@@ -40,6 +42,14 @@ const WARP_FILTER_FREQS = [200, 380, 720, 1360, 2580, 3800, 4900, 6000] as const
 const WARP_PITCH_TILT_FREQS = [1200, 1500, 1800, 2200, 2800, 3600, 4800, 6400] as const;
 const WARP_PITCH_TILT_GAINS = [0, 0, 0, 0, 3.5, 3.5, 8, 8] as const;
 const WARP_GRAIN_CENTER_FREQS = [650, 900, 1200, 1600, 2100, 2800, 3600, 4600] as const;
+const TAPE_HEAD_DEFAULT_LEVELS = [0.72, 0.8, 0.88, 1] as const;
+const TAPE_HEAD_DEFAULT_PANS = [0.28, 0.72, 0.38, 0.62] as const;
+export const DELAY_B_TAPE_HEAD_SPACING_RATIOS: Record<DelayBTapeSpacing, [number, number, number, number]> = {
+  even: [0.25, 0.5, 0.75, 1],
+  triplet: [1 / 6, 1 / 3, 2 / 3, 1],
+  golden: [0.2360679, 0.381966, 0.618034, 1],
+  silver: [0.3535534, 0.5, 0.7071068, 1],
+};
 
 const PATTERN_PRESETS: Record<DelayBPattern, PatternPreset> = {
   cascade: {
@@ -131,6 +141,7 @@ export interface DelayBusAParams {
 
 export interface DelayBusBParams {
   enabled: boolean;
+  algorithm: DelayBAlgorithm;
   activity: number;
   repeats: number;
   noteDiv: string;
@@ -146,6 +157,10 @@ export interface DelayBusBParams {
   warp: DelayBWarp;
   warpIntensity: number;
   spread: number;
+  tapeSpacing: DelayBTapeSpacing;
+  tapeHeadEnabled: readonly boolean[];
+  tapeHeadLevels: readonly number[];
+  tapeHeadPans: readonly number[];
 }
 
 export class SharedDelayBusA {
@@ -518,45 +533,63 @@ export class SharedDelayBusB {
   update(params: DelayBusBParams, now: number, smoothTime: number): void {
     const enabled = params.enabled;
     const activity = clamp(params.activity, 0, 1);
+    const tapeMode = params.algorithm === 'tapeHeads';
     const baseTimeSec = delayNoteToSeconds(params.noteDiv, clamp(params.bpm, 20, 400));
     const diffuseBaseTimeSec = Math.max(0.08, baseTimeSec * 0.85);
     const spread = clamp(params.spread, 0, 1);
     const warpIntensity = clamp(params.warpIntensity, 0, 1);
     const pattern = PATTERN_PRESETS[params.pattern] ?? PATTERN_PRESETS.cascade;
+    const tapeRatios = DELAY_B_TAPE_HEAD_SPACING_RATIOS[params.tapeSpacing] ?? DELAY_B_TAPE_HEAD_SPACING_RATIOS.even;
 
     let sumTapGains = 0;
     for (let i = 0; i < 8; i++) {
+      const tapeHeadIndex = i as 0 | 1 | 2 | 3;
+      const tapeHeadActive = tapeMode && i < 4 && (params.tapeHeadEnabled[tapeHeadIndex] ?? true);
       const patternGain = params.spaceMode === 'diffuse' ? 1 : pattern.gains[i]!;
       const gain = enabled
-        ? (params.spaceMode === 'diffuse'
+        ? (tapeMode
+            ? (tapeHeadActive
+                ? clamp(params.tapeHeadLevels[tapeHeadIndex] ?? TAPE_HEAD_DEFAULT_LEVELS[tapeHeadIndex]!, 0, 1) * (0.75 + activity * 0.25)
+                : 0)
+            : params.spaceMode === 'diffuse'
             ? computeDiffuseTapGain(i, activity)
             : computeTapGain(i, activity) * patternGain)
         : 0;
       sumTapGains += gain;
 
-      const timeFactor = params.spaceMode === 'diffuse'
+      const timeFactor = tapeMode && i < 4
+        ? tapeRatios[tapeHeadIndex]
+        : params.spaceMode === 'diffuse'
         ? DIFFUSE_TAP_FACTORS[i]!
         : pattern.subdivisions[i]!;
-      const baseTime = params.spaceMode === 'diffuse' ? diffuseBaseTimeSec : baseTimeSec;
+      const baseTime = tapeMode ? baseTimeSec : params.spaceMode === 'diffuse' ? diffuseBaseTimeSec : baseTimeSec;
 
       let warpOffset = 0;
-      if (params.warp === 'grainCrossfade' && i >= 4) {
+      if (tapeMode && i < 4) {
+        warpOffset = (0.0015 + i * 0.0012) * warpIntensity;
+      } else if (params.warp === 'grainCrossfade' && i >= 4) {
         const normalizedIndex = (i - 3) / 4;
         warpOffset = (0.006 + normalizedIndex * 0.042) * warpIntensity;
       }
 
       const delayTime = clamp(baseTime * timeFactor, 0.001, 5);
       const vibratoMultiplier =
-        params.warp === 'pitchDrift' && i >= 4
+        tapeMode
+          ? 0.45 + i * 0.12
+          : params.warp === 'pitchDrift' && i >= 4
           ? 1 + warpIntensity * (i >= 6 ? 3 : 1.7)
           : params.warp === 'grainCrossfade' && i >= 4
             ? 1 + warpIntensity * 1.4
             : 1;
       const vibratoDepth = enabled
-        ? clamp(params.vibrato, 0, 1) * MAX_VIBRATO_DEPTH * (params.spaceMode === 'diffuse' ? 0.55 : 1) * vibratoMultiplier
+        ? tapeMode
+          ? (clamp(params.vibrato, 0, 1) * 0.004 + warpIntensity * 0.0018) * vibratoMultiplier
+          : clamp(params.vibrato, 0, 1) * MAX_VIBRATO_DEPTH * (params.spaceMode === 'diffuse' ? 0.55 : 1) * vibratoMultiplier
         : 0;
 
-      const basePan = params.spaceMode === 'diffuse' ? TAP_PANS[i]! : pattern.pans[i]!;
+      const basePan = tapeMode && i < 4
+        ? (clamp(params.tapeHeadPans[tapeHeadIndex] ?? TAPE_HEAD_DEFAULT_PANS[tapeHeadIndex]!, 0, 1) - 0.5) * 2
+        : params.spaceMode === 'diffuse' ? TAP_PANS[i]! : pattern.pans[i]!;
       const spreadPan = clamp(basePan * spread * 2, -1, 1);
 
       let warpDry = 1;
@@ -565,6 +598,14 @@ export class SharedDelayBusB {
       const warpOffsetDelay = this.warpOffsetDelays[i]!;
 
       if (enabled) {
+        if (tapeMode) {
+          warpFilter.type = 'allpass';
+          warpFilter.frequency.setTargetAtTime(520 + i * 230 + warpIntensity * 520, now, 0.05);
+          warpFilter.Q.setTargetAtTime(0.55 + warpIntensity * 1.6, now, 0.05);
+          warpFilter.gain.setTargetAtTime(0, now, 0.05);
+          warpDry = 1 - (i < 4 ? warpIntensity * 0.28 : 0);
+          warpWet = i < 4 ? warpIntensity * 0.28 : 0;
+        } else {
         switch (params.warp) {
           case 'filterSweep':
             warpFilter.type = 'bandpass';
@@ -604,6 +645,7 @@ export class SharedDelayBusB {
             warpOffset = 0;
             break;
         }
+        }
       } else {
         warpOffset = 0;
         warpDry = 1;
@@ -620,11 +662,15 @@ export class SharedDelayBusB {
     }
 
     const rawRepeats = enabled ? clamp(params.repeats, 0, 0.85) : 0;
-    const feedbackTarget = params.spaceMode === 'diffuse' ? rawRepeats * 0.9 : rawRepeats;
+    const feedbackTarget = tapeMode ? rawRepeats * 0.84 : params.spaceMode === 'diffuse' ? rawRepeats * 0.9 : rawRepeats;
     const normalizedFeedback = sumTapGains > 1 ? feedbackTarget / sumTapGains : feedbackTarget;
     const tone = clamp(params.tone, 0, 1);
-    const highCutHz = 600 + tone * 11400;
-    const lowCutHz = 60 + Math.max(0, tone - 0.5) * 680;
+    const highCutHz = tapeMode
+      ? clamp(11000 - tone * 7600 - warpIntensity * 1400, 1200, 12000)
+      : 600 + tone * 11400;
+    const lowCutHz = tapeMode
+      ? 45 + tone * 260
+      : 60 + Math.max(0, tone - 0.5) * 680;
 
     this.feedbackGain.gain.setTargetAtTime(normalizedFeedback, now, smoothTime);
     this.highCutFilter.frequency.setTargetAtTime(highCutHz, now, 0.05);

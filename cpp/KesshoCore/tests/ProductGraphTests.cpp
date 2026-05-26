@@ -18,6 +18,10 @@ void require(bool condition, const char* message) {
   }
 }
 
+void enableGraphTaps(KesshoProductEngine* engine, const char* message) {
+  require(kessho_product_set_graph_taps_enabled(engine, 1u) == KESSHO_PRODUCT_OK, message);
+}
+
 float peak(const std::vector<float>& values) {
   float result = 0.0f;
   for (float value : values) {
@@ -31,7 +35,9 @@ void applySourcePreset(KesshoProductSnapshotV2& snapshot, uint32_t source_id, ui
   require(source_id >= 1u && source_id <= 7u, "test preset source id out of range");
   KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
   source.preset_id = preset_id;
-  const auto patch = sourcePresetPatch(findSourcePreset(preset_id));
+  const auto* preset = findSourcePreset(preset_id);
+  require(sourcePresetMatchesSource(source_id, preset), "test preset id does not match source");
+  const auto patch = sourcePresetPatch(*preset);
   if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
     require(
         patch.exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT,
@@ -48,6 +54,17 @@ void applySourcePreset(KesshoProductSnapshotV2& snapshot, uint32_t source_id, ui
     source.exact_lead_param_count = patch.exact_lead_param_count;
     for (uint32_t param_index = 0; param_index < source.exact_lead_param_count; ++param_index) {
       source.exact_lead_params[param_index] = patch.exact_lead_params[param_index];
+    }
+  }
+  if (source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+    for (const auto& voice : kessho::product::generated::KESSHO_PRODUCT_DRUM_VOICES) {
+      require(
+          voice.index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT,
+          "test drum voice index out of range");
+      const auto* default_preset = defaultDrumVoicePreset(voice.index);
+      require(default_preset != nullptr, "test drum voice default preset missing");
+      source.drum_voice_preset_a_ids[voice.index] = default_preset->id;
+      source.drum_voice_preset_b_ids[voice.index] = default_preset->id;
     }
   }
 }
@@ -110,6 +127,7 @@ KesshoProductSnapshotV2 makeSnapshot() {
 
 void requireDirectGraphCoverage() {
   KesshoProductEngine direct(48000.0, 128, 0);
+  direct.graph_taps_enabled = true;
   SourceState& pad = direct.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
   pad.enabled = true;
   pad.source_id = KESSHO_PRODUCT_SOURCE_PAD1;
@@ -146,6 +164,7 @@ void requireDirectGraphCoverage() {
 
 void requireFxSidechainGraphCapture() {
   KesshoProductEngine direct(48000.0, 128, 0);
+  direct.graph_taps_enabled = true;
   direct.resetSidechainRuntime();
   const uint32_t targets[] = {
       kSidechainGranular,
@@ -169,6 +188,7 @@ void requireFxSidechainGraphCapture() {
 
 void requireSoundscapeLayerRouteGraphCoverage() {
   KesshoProductEngine direct(48000.0, 128, 0);
+  direct.graph_taps_enabled = true;
   SourceState& source = direct.sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
   source.enabled = true;
   source.source_id = KESSHO_PRODUCT_SOURCE_SOUNDSCAPE;
@@ -178,15 +198,15 @@ void requireSoundscapeLayerRouteGraphCoverage() {
   source.delay_a_send = 0.8f;
   source.delay_b_send = 0.7f;
   source.granular_send = 0.6f;
-  source.exact_pad_param_count = kSoundscapeLayerRouteParamCount;
-  source.exact_pad_params[kSoundscapeLayerOcean * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteReverb] = 0.25f;
-  source.exact_pad_params[kSoundscapeLayerOcean * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteDelayA] = 0.10f;
-  source.exact_pad_params[kSoundscapeLayerOcean * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteDelayB] = 0.15f;
-  source.exact_pad_params[kSoundscapeLayerOcean * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteGranular] = 0.20f;
-  source.exact_pad_params[kSoundscapeLayerWater * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteReverb] = 0.75f;
-  source.exact_pad_params[kSoundscapeLayerWater * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteDelayA] = 0.30f;
-  source.exact_pad_params[kSoundscapeLayerWater * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteDelayB] = 0.35f;
-  source.exact_pad_params[kSoundscapeLayerWater * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteGranular] = 0.40f;
+  source.soundscape_texture_param_count = kSoundscapeLayerRouteParamCount;
+  source.soundscape_texture_params[kSoundscapeLayerOcean * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteReverb] = 0.25f;
+  source.soundscape_texture_params[kSoundscapeLayerOcean * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteDelayA] = 0.10f;
+  source.soundscape_texture_params[kSoundscapeLayerOcean * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteDelayB] = 0.15f;
+  source.soundscape_texture_params[kSoundscapeLayerOcean * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteGranular] = 0.20f;
+  source.soundscape_texture_params[kSoundscapeLayerWater * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteReverb] = 0.75f;
+  source.soundscape_texture_params[kSoundscapeLayerWater * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteDelayA] = 0.30f;
+  source.soundscape_texture_params[kSoundscapeLayerWater * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteDelayB] = 0.35f;
+  source.soundscape_texture_params[kSoundscapeLayerWater * kSoundscapeLayerRouteStride + kSoundscapeLayerRouteGranular] = 0.40f;
   source.asset_ref_count = 2u;
   source.asset_refs[0] = kSoundscapeAssetOcean;
   source.asset_ref_levels[0] = 0.2f;
@@ -264,6 +284,7 @@ int main() {
 
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "engine create failed");
+  enableGraphTaps(engine, "graph tap enable failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   applySourcePreset(
       snapshot,

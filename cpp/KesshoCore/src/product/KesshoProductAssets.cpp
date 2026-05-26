@@ -137,12 +137,7 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
 }
 
   void KesshoProductEngine::reportMissingSourceAsset(SourceState& source) {
-  if (source.asset_id == 0u || source.last_missing_asset_id == source.asset_id) {
-    return;
-  }
-  source.last_missing_asset_id = source.asset_id;
-  ++telemetry.asset_missing_count;
-  telemetry.last_error_code = KESSHO_PRODUCT_ERROR_MISSING_ASSET;
+  reportMissingSourceAsset(source, source.asset_id);
 }
 
   void KesshoProductEngine::reportMissingSourceAsset(SourceState& source, uint32_t asset_id) {
@@ -255,7 +250,8 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
   if (frame_position < 0.0) {
     frame_position = 0.0;
   }
-  uint32_t frame0 = static_cast<uint32_t>(frame_position);
+  const double base_position = std::floor(frame_position);
+  uint32_t frame0 = static_cast<uint32_t>(base_position);
   if (frame0 >= asset.frame_count) {
     if (!looping) {
       return 0.0f;
@@ -266,7 +262,10 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
   if (frame1 >= asset.frame_count) {
     frame1 = looping ? 0u : frame0;
   }
-  const float frac = clampFloat(static_cast<float>(frame_position - std::floor(frame_position)), 0.0f, 1.0f);
+  const float frac = clampFloat(static_cast<float>(frame_position - base_position), 0.0f, 1.0f);
+  if (frac <= 1.0e-7f) {
+    return assetSample(asset, channel, frame0);
+  }
   if (asset.frame_count < 4u) {
     const float sample0 = assetSample(asset, channel, frame0);
     const float sample1 = assetSample(asset, channel, frame1);
@@ -338,7 +337,7 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
     }
     sample_l = assetSampleInterpolated(asset, 0u, voice.sample_position, voice.looping);
     sample_r = asset.channel_count > 1u ? assetSampleInterpolated(asset, 1u, voice.sample_position, voice.looping) : sample_l;
-    const uint32_t crossfade_frames = loopCrossfadeFrames(asset);
+    const uint32_t crossfade_frames = voice.loop_crossfade_frames;
     if (voice.looping && crossfade_frames > 1u && asset.frame_count > crossfade_frames) {
       const uint32_t crossfade_start = asset.frame_count - crossfade_frames;
       if (frame >= crossfade_start) {

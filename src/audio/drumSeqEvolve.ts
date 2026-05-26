@@ -24,6 +24,16 @@ function randomActiveStep(s: SequencerState): number | null {
 // Sub-lane accessor helpers (type-safe access to the differently-named values arrays)
 // ═══════════════════════════════════════════════════════════════════════
 export type SubLaneName = 'expression' | 'morph' | 'distance' | 'pitch' | 'slice' | 'reverse';
+const DRUM_AUDIO_SUB_LANES: SubLaneName[] = ['expression', 'morph', 'distance', 'pitch'];
+const DRUM_AUDIO_SUB_LANE_SET = new Set<SubLaneName>(DRUM_AUDIO_SUB_LANES);
+const DRUM_SUB_LANE_DEFAULT_VALUES: Record<SubLaneName, number> = {
+  expression: 1,
+  morph: 0,
+  distance: 0,
+  pitch: 0,
+  slice: 0,
+  reverse: 0,
+};
 
 function getSubLaneValues(s: SequencerState, lane: SubLaneName): number[] {
   if (lane === 'expression') return s.expression.velocities;
@@ -37,13 +47,23 @@ function setSubLaneValues(s: SequencerState, lane: SubLaneName, values: number[]
   s[lane].values = values;
 }
 
+function resizeSubLaneValuesForSteps(lane: SubLaneName, values: number[], steps: number): number[] {
+  if (values.length === steps) return values;
+  const next = values.slice(0, steps);
+  const fallback = values[values.length - 1] ?? DRUM_SUB_LANE_DEFAULT_VALUES[lane];
+  while (next.length < steps) next.push(fallback);
+  return next;
+}
+
 function getSnapshotValues(snap: SequencerSnapshot, lane: SubLaneName): number[] {
   if (lane === 'expression') return snap.expression.velocities;
   if (lane === 'pitch') return snap.pitch.offsets;
   return snap[lane].values;
 }
 
-const ALL_SUB_LANES: SubLaneName[] = ['expression', 'morph', 'distance', 'pitch', 'slice', 'reverse'];
+function filterAudioSubLanes(lanes: readonly SubLaneName[]): SubLaneName[] {
+  return lanes.filter((lane) => DRUM_AUDIO_SUB_LANE_SET.has(lane));
+}
 
 function getSubLaneConfig(lane: SubLaneName): SubLaneValueConfig {
   const config = SUB_LANE_VALUE_CONFIGS[lane];
@@ -81,6 +101,8 @@ function getSubLaneDirection(source: SequencerState | SequencerSnapshot, lane: S
 
 /** Type-safe sub-lane steps update (avoids TS union narrowing issue with indexed access) */
 function setSubLaneSteps(s: SequencerState, lane: SubLaneName, steps: number): void {
+  const nextValues = resizeSubLaneValuesForSteps(lane, getSubLaneValues(s, lane), steps);
+  setSubLaneValues(s, lane, nextValues);
   switch (lane) {
     case 'expression': s.expression = { ...s.expression, steps }; break;
     case 'morph':      s.morph = { ...s.morph, steps }; break;
@@ -111,12 +133,15 @@ export function captureHomeSnapshot(s: SequencerState): SequencerSnapshot {
       rotation: s.trigger.rotation,
       probability: [...s.trigger.probability],
       ratchet: [...s.trigger.ratchet],
+      trigCondition: s.trigger.trigCondition.map((entry) => [entry[0], entry[1]]),
       pattern: [...s.trigger.pattern],
     },
     pitch: {
       offsets: [...s.pitch.offsets],
+      mode: s.pitch.mode,
       root: s.pitch.root,
       scale: s.pitch.scale,
+      scaleQuantize: s.pitch.scaleQuantize,
       steps: s.pitch.steps,
       direction: s.pitch.direction,
     },
@@ -150,7 +175,7 @@ export function captureHomeSnapshot(s: SequencerState): SequencerSnapshot {
 }
 
 export interface EvolveContext {
-  /** Which sub-lanes participate (defaults to ALL_SUB_LANES for drums) */
+  /** Which audio-backed sub-lanes participate. Slice/reverse are retained only for preset compatibility. */
   enabledSubLanes?: SubLaneName[];
   /** Per-engine effective tension (0-1), used for method probability bias */
   effectiveTension?: number;
@@ -191,7 +216,7 @@ export function evolveSequencer(
   const home = next.evolve.home;
   const mode: MutationMode = next.evolve.mutationMode ?? 'biased';
 
-  const activeLanes: SubLaneName[] = ctx.enabledSubLanes ?? ALL_SUB_LANES;
+  const activeLanes: SubLaneName[] = filterAudioSubLanes(ctx.enabledSubLanes ?? DRUM_AUDIO_SUB_LANES);
   const tension = ctx.effectiveTension;
 
   /** Local shorthand: delegates to shared tensionGate with captured rng/tension */
@@ -281,7 +306,7 @@ export function evolveSequencer(
   //    Bypasses tension gate so pitch always evolves at full probability.
   //    When scaleQuantize is enabled and scaleIntervals are available,
   //    walk by scale degrees (interval jumps) instead of chromatic ±1 semitones.
-  if (methods.pitchWalk && chance(next.rng, 0.55 * intensity)) {
+  if (methods.pitchWalk && activeLanes.includes('pitch') && chance(next.rng, 0.55 * intensity)) {
     // Walk multiple steps at high intensity
     const walkStepCount = intensity > 0.8 ? (next.rng() < 0.5 ? 2 : 1) : 1;
     for (let w = 0; w < walkStepCount; w++) {
@@ -463,14 +488,17 @@ export function resetSequencerToHome(s: SequencerState): SequencerState {
       rotation: home.trigger.rotation,
       probability: [...home.trigger.probability],
       ratchet: [...home.trigger.ratchet],
+      trigCondition: home.trigger.trigCondition.map((entry) => [entry[0], entry[1]]),
       pattern: [...home.trigger.pattern],
       overrides: new Set<number>(),
     },
     pitch: {
       ...s.pitch,
       offsets: [...home.pitch.offsets],
+      mode: home.pitch.mode,
       root: home.pitch.root,
       scale: home.pitch.scale,
+      scaleQuantize: home.pitch.scaleQuantize,
       steps: home.pitch.steps,
       direction: home.pitch.direction,
     },

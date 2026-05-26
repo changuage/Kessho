@@ -4,6 +4,7 @@
 
 #include <cstdint>
 
+#include "../modules/KesshoModule.h"
 #include "kessho_pad.h"
 
 namespace kessho::product::internal {
@@ -41,12 +42,20 @@ struct SourceState {
   float sustain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN;
   float hold_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
   float release_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
-  uint32_t exact_pad_param_count = 0u;
-  float exact_pad_params[kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT]{};
-  uint32_t exact_lead_param_count = 0u;
-  float exact_lead_params[kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT]{};
-  uint32_t exact_drum_param_count = 0u;
-  float exact_drum_params[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT]{};
+  uint32_t exact_pad_param_count = 0u; float exact_pad_params[kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT]{};
+  uint32_t pad_override_count = 0u; uint32_t pad_override_indices[kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT]{}; float pad_override_values[kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT]{};
+  uint32_t exact_lead_param_count = 0u; float exact_lead_params[kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT]{};
+  uint32_t lead_override_count = 0u; uint32_t lead_override_indices[kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT]{}; float lead_override_values[kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT]{};
+  uint32_t exact_drum_param_count = 0u; float exact_drum_params[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT]{};
+  uint32_t drum_override_count = 0u; uint32_t drum_override_indices[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT]{}; float drum_override_values[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT]{};
+  uint32_t soundscape_texture_param_count = 0u; float soundscape_texture_params[kSoundscapeTextureParamCount]{};
+  uint32_t soundscape_module_param_count = 0u; float soundscape_module_params[kSoundscapeProductModuleParamCount]{};
+  uint32_t source_preset_a_id = 0u, source_preset_b_id = 0u;
+  bool lead_envelope_override_enabled = false;
+  bool lead_algorithm_preset_a_enabled = false;
+  bool source_preset_patch_valid = false, source_preset_endpoint_valid = false;
+  float source_preset_macro_morph = 0.0f, source_preset_macro_distance = 0.0f, source_preset_macro_expression = 1.0f;
+  kessho::core::KesshoSourcePresetPatch source_preset_patch{}, source_preset_endpoint_a{}, source_preset_endpoint_b{};
   uint32_t drum_voice_preset_a_ids[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT]{};
   uint32_t drum_voice_preset_b_ids[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT]{};
   float drum_voice_morphs[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT]{};
@@ -150,6 +159,7 @@ struct Voice {
   uint32_t envelope_decay_frames = 1;
   uint32_t envelope_hold_frames = 0;
   uint32_t envelope_release_frames = 1;
+  uint32_t loop_crossfade_frames = 0;
   float envelope_sustain = 1.0f;
   float post_coeff_cutoff = -1.0f;
   float post_b0 = 1.0f;
@@ -171,6 +181,14 @@ struct SoundscapeTextureRuntime {
   uint64_t next_start_frame = 0u;
   float recent_offsets[6]{};
   uint32_t recent_offset_count = 0u;
+  bool spatial_enabled = false;
+  uint32_t spatial_delay_frames = 0u;
+  float spatial_center_gain = 1.0f;
+  float spatial_side_gain = 0.0f;
+  float spatial_left_branch_l = 1.0f;
+  float spatial_left_branch_r = 0.0f;
+  float spatial_right_branch_l = 0.0f;
+  float spatial_right_branch_r = 1.0f;
 };
 
 } // namespace kessho::product::internal

@@ -31,6 +31,8 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SourceSustain: 116,
   SourceHoldSeconds: 117,
   SourceReleaseSeconds: 118,
+  SourceLeadEnvelopeOverrideEnabled: 119,
+  SourceLeadAlgorithmPresetAEnabled: 120,
   SequencerLaneEnabled: 200,
   SequencerLaneTargetSource: 201,
   SequencerLaneStepCount: 202,
@@ -45,6 +47,12 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SequencerLaneVelocity: 211,
   SequencerLaneHoldSeconds: 212,
   SequencerLaneSeed: 213,
+  SequencerLanePitchBindingMode: 214,
+  SequencerLaneInitialStartDelaySeconds: 215,
+  SequencerLaneTempoMultiplier: 216,
+  SequencerLaneMorph: 217,
+  SequencerLaneDistance: 218,
+  SequencerLaneExpression: 219,
   FxGranularMix: 300,
   FxGranularEnabled: 800,
   FxGranularFreeze: 801,
@@ -192,6 +200,15 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   FxDelayBWarp: 338,
   FxDelayBWarpIntensity: 339,
   FxDelayBSpread: 340,
+  FxDelayBTapeHeadMask: 341,
+  FxDelayBTapeHead1Level: 342,
+  FxDelayBTapeHead2Level: 343,
+  FxDelayBTapeHead3Level: 344,
+  FxDelayBTapeHead4Level: 345,
+  FxDelayBTapeHead1Pan: 346,
+  FxDelayBTapeHead2Pan: 347,
+  FxDelayBTapeHead3Pan: 348,
+  FxDelayBTapeHead4Pan: 349,
   FxReverbType: 350,
   FxReverbQuality: 351,
   FxReverbDecay: 352,
@@ -350,9 +367,6 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   RoutingGranularToDelayB: 408,
   MasterGain: 500,
   MasterLimiterCeilingDb: 501,
-  MasterSaturationMode: 502,
-  MasterSaturationDrive: 503,
-  MasterSaturationTone: 504,
   RngSeed: 600,
   RngState: 601,
   EvolutionAmount: 700,
@@ -593,6 +607,18 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "max": 8
   },
   {
+    "name": "SourceLeadEnvelopeOverrideEnabled",
+    "path": "sources.*.leadEnvelopeOverrideEnabled",
+    "type": "bool",
+    "id": 119
+  },
+  {
+    "name": "SourceLeadAlgorithmPresetAEnabled",
+    "path": "sources.*.leadAlgorithmPresetAEnabled",
+    "type": "bool",
+    "id": 120
+  },
+  {
     "name": "SequencerLaneEnabled",
     "path": "sequencers.*.lanes.*.enabled",
     "type": "bool",
@@ -695,6 +721,54 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "path": "sequencers.*.lanes.*.seed",
     "type": "uint",
     "id": 213
+  },
+  {
+    "name": "SequencerLanePitchBindingMode",
+    "path": "sequencers.*.lanes.*.pitchBindingMode",
+    "type": "uint",
+    "id": 214,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SequencerLaneInitialStartDelaySeconds",
+    "path": "sequencers.*.lanes.*.initialStartDelaySeconds",
+    "type": "float",
+    "id": 215,
+    "min": -1,
+    "max": 64
+  },
+  {
+    "name": "SequencerLaneTempoMultiplier",
+    "path": "sequencers.*.lanes.*.tempoMultiplier",
+    "type": "float",
+    "id": 216,
+    "min": 0.25,
+    "max": 12
+  },
+  {
+    "name": "SequencerLaneMorph",
+    "path": "sequencers.*.lanes.*.morph",
+    "type": "float",
+    "id": 217,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SequencerLaneDistance",
+    "path": "sequencers.*.lanes.*.distance",
+    "type": "float",
+    "id": 218,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SequencerLaneExpression",
+    "path": "sequencers.*.lanes.*.expression",
+    "type": "float",
+    "id": 219,
+    "min": 0,
+    "max": 1
   },
   {
     "name": "FxGranularMix",
@@ -1794,7 +1868,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "uint",
     "id": 336,
     "min": 0,
-    "max": 1
+    "max": 2
   },
   {
     "name": "FxDelayBPattern",
@@ -1825,6 +1899,78 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "path": "fx.delayB.spread",
     "type": "float",
     "id": 340,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDelayBTapeHeadMask",
+    "path": "fx.delayB.tapeHeadMask",
+    "type": "uint",
+    "id": 341,
+    "min": 0,
+    "max": 15
+  },
+  {
+    "name": "FxDelayBTapeHead1Level",
+    "path": "fx.delayB.tapeHead1Level",
+    "type": "float",
+    "id": 342,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDelayBTapeHead2Level",
+    "path": "fx.delayB.tapeHead2Level",
+    "type": "float",
+    "id": 343,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDelayBTapeHead3Level",
+    "path": "fx.delayB.tapeHead3Level",
+    "type": "float",
+    "id": 344,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDelayBTapeHead4Level",
+    "path": "fx.delayB.tapeHead4Level",
+    "type": "float",
+    "id": 345,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDelayBTapeHead1Pan",
+    "path": "fx.delayB.tapeHead1Pan",
+    "type": "float",
+    "id": 346,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDelayBTapeHead2Pan",
+    "path": "fx.delayB.tapeHead2Pan",
+    "type": "float",
+    "id": 347,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDelayBTapeHead3Pan",
+    "path": "fx.delayB.tapeHead3Pan",
+    "type": "float",
+    "id": 348,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDelayBTapeHead4Pan",
+    "path": "fx.delayB.tapeHead4Pan",
+    "type": "float",
+    "id": 349,
     "min": 0,
     "max": 1
   },
@@ -3069,30 +3215,6 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 501,
     "min": -24,
     "max": 0
-  },
-  {
-    "name": "MasterSaturationMode",
-    "path": "master.saturationMode",
-    "type": "uint",
-    "id": 502,
-    "min": 0,
-    "max": 4
-  },
-  {
-    "name": "MasterSaturationDrive",
-    "path": "master.saturationDrive",
-    "type": "float",
-    "id": 503,
-    "min": 0,
-    "max": 1
-  },
-  {
-    "name": "MasterSaturationTone",
-    "path": "master.saturationTone",
-    "type": "float",
-    "id": 504,
-    "min": 0,
-    "max": 1
   },
   {
     "name": "RngSeed",

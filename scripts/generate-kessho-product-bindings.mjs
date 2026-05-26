@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { transform } from 'esbuild';
+import { build } from 'esbuild';
 
 const root = process.cwd();
 const schemaDir = resolve(root, 'cpp/KesshoCore/schema');
@@ -150,6 +150,7 @@ const padParamSpecs = [
   ['padModEnvDepth', 50, null, 0.5],
   ['padModEnvDest', 51, padDestValues, 1],
 ];
+const padPresetSnapParamIndices = [0, 4, 9, 11, 13, 20, 27, 28, 32, 39, 40, 43, 44, 45, 51];
 const leadAlgorithmValues = { parallel: 0, stack: 1, split: 2, cross: 3, dx17: 4 };
 const leadFilterValues = { lowpass: 0, highpass: 1, bandpass: 2, notch: 3, peaking: 4 };
 const leadTransientValues = { white: 0, pink: 1, brown: 2, filtered: 3 };
@@ -246,6 +247,8 @@ const leadParamSpecs = [
   ['delaySend', 78, null, 0.3],
   ['outputSelect', 79, null, 0],
 ];
+const leadPresetSnapParamIndices = [0, 49, 61, 69];
+const leadPresetRoundParamIndices = [70];
 
 const drumClickModeValues = { impulse: 0, noise: 1, tonal: 2, granular: 3, continuous: 4 };
 const drumNoiseFilterValues = { lowpass: 0, highpass: 1, bandpass: 2, notch: 3 };
@@ -483,7 +486,7 @@ const drumParamSpecs = [
   ['drumNoiseColorLFO', drumParamIndex.noise + 11, null, 0],
   ['drumNoiseVariation', drumParamIndex.noise + 12, null, 0],
   ['drumNoiseDistance', drumParamIndex.noise + 13, null, 0.5],
-  ['drumMembraneSize', drumParamIndex.membrane + 0, null, 150],
+  ['drumMembranePitchEnv', drumParamIndex.membrane + 0, null, 3],
   ['drumMembraneDecay', drumParamIndex.membrane + 1, null, 500],
   ['drumMembraneLevel', drumParamIndex.membrane + 2, null, 0.7],
   ['drumMembraneStiffness', drumParamIndex.membrane + 3, null, 0.5],
@@ -496,6 +499,7 @@ const drumParamSpecs = [
   ['drumMembraneVariation', drumParamIndex.membrane + 10, null, 0],
   ['drumMembraneDistance', drumParamIndex.membrane + 11, null, 0.5],
 ];
+const drumPresetSnapParamIndices = [32, 82, 96];
 const drumVoiceParamRanges = {
   sub: [drumParamIndex.sub, 12],
   kick: [drumParamIndex.kick, 13],
@@ -649,23 +653,25 @@ function leadParamValue(value, map, fallback) {
 }
 
 async function loadPadPresetModule() {
-  const source = readFileSync(resolve(root, 'src/audio/padPresets.ts'), 'utf8');
-  const output = await transform(source, {
-    loader: 'ts',
-    format: 'esm',
-    platform: 'node',
-  });
-  return import(`data:text/javascript;base64,${Buffer.from(output.code).toString('base64')}`);
+  return loadBundledTsModule('src/audio/padPresets.ts');
 }
 
 async function loadDrumPresetModule() {
-  const source = readFileSync(resolve(root, 'src/audio/drumPresets.ts'), 'utf8');
-  const output = await transform(source, {
-    loader: 'ts',
+  return loadBundledTsModule('src/audio/drumPresets.ts');
+}
+
+async function loadBundledTsModule(relativePath) {
+  const absolutePath = resolve(root, relativePath);
+  const output = await build({
+    absWorkingDir: root,
+    entryPoints: [absolutePath],
+    bundle: true,
     format: 'esm',
     platform: 'node',
+    write: false,
+    logLevel: 'silent',
   });
-  return import(`data:text/javascript;base64,${Buffer.from(output.code).toString('base64')}`);
+  return import(`data:text/javascript;base64,${Buffer.from(output.outputFiles[0].text).toString('base64')}`);
 }
 
 function exactPadParamsForPreset(preset, padPresetModule) {
@@ -823,6 +829,10 @@ const canonical = stableStringify({
   padOutputTrim,
   leadOutputTrim,
   reverbOutputTrim,
+  padPresetSnapParamIndices,
+  leadPresetSnapParamIndices,
+  leadPresetRoundParamIndices,
+  drumPresetSnapParamIndices,
 });
 const hashHex = createHash('sha256').update(canonical).digest('hex');
 const schemaHash = Number.parseInt(hashHex.slice(0, 8), 16) >>> 0;
@@ -859,6 +869,10 @@ inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT = ${drumPara
 inline constexpr float KESSHO_PRODUCT_GENERATED_PAD_OUTPUT_TRIM = ${numberLiteral(padOutputTrim, 0.5)}f;
 inline constexpr float KESSHO_PRODUCT_GENERATED_LEAD_OUTPUT_TRIM = ${numberLiteral(leadOutputTrim, 0.5)}f;
 inline constexpr float KESSHO_PRODUCT_GENERATED_REVERB_OUTPUT_TRIM = ${numberLiteral(reverbOutputTrim, 2)}f;
+inline constexpr uint32_t KESSHO_PRODUCT_PAD_PRESET_SNAP_PARAM_INDICES[] = {${padPresetSnapParamIndices.map((index) => `${index}u`).join(', ')}};
+inline constexpr uint32_t KESSHO_PRODUCT_LEAD_PRESET_SNAP_PARAM_INDICES[] = {${leadPresetSnapParamIndices.map((index) => `${index}u`).join(', ')}};
+inline constexpr uint32_t KESSHO_PRODUCT_LEAD_PRESET_ROUND_PARAM_INDICES[] = {${leadPresetRoundParamIndices.map((index) => `${index}u`).join(', ')}};
+inline constexpr uint32_t KESSHO_PRODUCT_DRUM_PRESET_SNAP_PARAM_INDICES[] = {${drumPresetSnapParamIndices.map((index) => `${index}u`).join(', ')}};
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_BLOCK_SIZE = ${limits.maxBlockSize}u;
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_CONTROL_EVENTS = ${limits.maxControlEvents}u;
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_SEQUENCER_EVENTS = ${limits.maxSequencerEvents}u;
@@ -974,6 +988,7 @@ inline constexpr uint32_t KESSHO_PRODUCT_DEFAULT_SEQUENCER_CLOCK_DIVISION = ${sc
 inline constexpr float KESSHO_PRODUCT_DEFAULT_SEQUENCER_PROBABILITY = ${schema.defaults.sequencerLane.probability}.0f;
 inline constexpr float KESSHO_PRODUCT_DEFAULT_SEQUENCER_VELOCITY = ${schema.defaults.sequencerLane.velocity}f;
 inline constexpr float KESSHO_PRODUCT_DEFAULT_SEQUENCER_HOLD_SECONDS = ${schema.defaults.sequencerLane.holdSeconds}f;
+inline constexpr float KESSHO_PRODUCT_DEFAULT_SEQUENCER_INITIAL_START_DELAY_SECONDS = ${numberLiteral(schema.defaults.sequencerLane.initialStartDelaySeconds, -1)}f;
 ${cppPostamble}`);
 
 writeGenerated(resolve(root, 'cpp/KesshoCore/generated/KesshoProductParamIds.h'), `// Generated by scripts/generate-kessho-product-bindings.mjs. Do not edit by hand.
@@ -1032,8 +1047,12 @@ export const KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS = ${numberLiteral(schema
 export const KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS = ${numberLiteral(schema.defaults.source.releaseSeconds, 1.4)} as const;
 export const KESSHO_PRODUCT_PAD_PARAM_SPECS = Object.freeze(${JSON.stringify(padParamSpecRows, null, 2)} as const);
 export const KESSHO_PRODUCT_LEAD_PARAM_SPECS = Object.freeze(${JSON.stringify(leadParamSpecRows, null, 2)} as const);
+export const KESSHO_PRODUCT_PAD_PRESET_SNAP_PARAM_INDICES = Object.freeze(${JSON.stringify(padPresetSnapParamIndices)} as const);
+export const KESSHO_PRODUCT_LEAD_PRESET_SNAP_PARAM_INDICES = Object.freeze(${JSON.stringify(leadPresetSnapParamIndices)} as const);
+export const KESSHO_PRODUCT_LEAD_PRESET_ROUND_PARAM_INDICES = Object.freeze(${JSON.stringify(leadPresetRoundParamIndices)} as const);
 export const KESSHO_PRODUCT_DRUM_DEFAULT_PARAMS = Object.freeze(${JSON.stringify(drumDefaultParams, null, 2)} as const);
 export const KESSHO_PRODUCT_DRUM_PARAM_SPECS = Object.freeze(${JSON.stringify(drumParamSpecRows, null, 2)} as const);
+export const KESSHO_PRODUCT_DRUM_PRESET_SNAP_PARAM_INDICES = Object.freeze(${JSON.stringify(drumPresetSnapParamIndices)} as const);
 export const KESSHO_PRODUCT_DRUM_VOICES = Object.freeze(${JSON.stringify(drumVoiceRows, null, 2)} as const);
 export const KESSHO_PRODUCT_DRUM_VOICE_PRESETS = Object.freeze(${JSON.stringify(drumVoicePresetRows.map((preset) => ({
   id: preset.id,
@@ -1043,6 +1062,7 @@ export const KESSHO_PRODUCT_DRUM_VOICE_PRESETS = Object.freeze(${JSON.stringify(
   defaultForVoice: preset.defaultForVoice,
   paramStart: preset.paramStart,
   paramCount: preset.paramCount,
+  params: preset.params,
 })), null, 2)} as const);
 export const KESSHO_PRODUCT_SOURCE_IDS = Object.freeze({
 ${sourceIds.map((source) => `  ${source.name}: ${source.id}`).join(',\n')}

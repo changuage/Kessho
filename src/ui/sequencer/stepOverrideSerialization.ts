@@ -1,4 +1,5 @@
 import type { LaneDirection, TrigCondition } from '../../audio/drumSeqTypes';
+import { normalizeOptionalSequencerLaneDirection } from '../../audio/sequencerLaneDirection';
 import type { SerializedStepOverrides, SerializedStepToggle } from '../state';
 import type { StepOverrides } from './useEuclideanSequencer';
 
@@ -38,6 +39,20 @@ function cloneArrayLane(value: number[] | TrigCondition[] | null | undefined): n
 
 function normalizeLaneArray<T>(lanes: (T | null)[] | undefined, fallback: T | null = null): (T | null)[] {
   return Array.from({ length: LANE_COUNT }, (_, index) => lanes?.[index] ?? fallback);
+}
+
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function normalizeRange(value: unknown): { min: number; max: number } | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const range = value as Partial<{ min: number; max: number }>;
+  if (typeof range.min !== 'number' || typeof range.max !== 'number') return null;
+  if (!Number.isFinite(range.min) || !Number.isFinite(range.max)) return null;
+  const min = clampUnit(range.min);
+  const max = clampUnit(range.max);
+  return { min: Math.min(min, max), max: Math.max(min, max) };
 }
 
 function hasLaneArrayContent(lanes: (unknown[] | null)[] | undefined): boolean {
@@ -125,7 +140,9 @@ export function serializeStepOverrides(overrides: StepOverrides | undefined): Se
   }
 
   for (const field of DIRECTION_FIELDS) {
-    const lanes = normalizeLaneArray(overrides[field] as (LaneDirection | null)[]);
+    const lanes = normalizeLaneArray(
+      (overrides[field] as (LaneDirection | null)[] | undefined)?.map(normalizeOptionalSequencerLaneDirection),
+    );
     if (hasDirectionContent(lanes)) {
       (serialized as Record<string, unknown>)[field] = lanes;
     }
@@ -133,7 +150,7 @@ export function serializeStepOverrides(overrides: StepOverrides | undefined): Se
 
   for (const field of RANGE_FIELDS) {
     const lanes = normalizeLaneArray(overrides[field]?.map((range) => (
-      range ? { min: range.min, max: range.max } : null
+      normalizeRange(range)
     )));
     if (hasRangeContent(lanes)) {
       (serialized as Record<string, unknown>)[field] = lanes;
@@ -159,12 +176,14 @@ export function deserializeStepOverrides(serialized: SerializedStepOverrides | u
   }
 
   for (const field of DIRECTION_FIELDS) {
-    overrides[field] = normalizeLaneArray(serialized[field] as (LaneDirection | null)[]) as never;
+    overrides[field] = normalizeLaneArray(
+      (serialized[field] as unknown[] | undefined)?.map(normalizeOptionalSequencerLaneDirection),
+    ) as never;
   }
 
   for (const field of RANGE_FIELDS) {
     const lanes = normalizeLaneArray(
-      serialized[field]?.map((range) => (range ? { min: range.min, max: range.max } : null)),
+      (serialized[field] as unknown[] | undefined)?.map(normalizeRange),
     );
     if (lanes.some(Boolean)) {
       overrides[field] = lanes;

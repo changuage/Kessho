@@ -2,6 +2,10 @@ export type ProductSourceSnapshot = {
   enabled: boolean;
   sourceId: number;
   presetId: number;
+  sourcePresetAId: number;
+  sourcePresetBId: number;
+  leadEnvelopeOverrideEnabled: boolean;
+  leadAlgorithmPresetAEnabled: boolean;
   assetId: number;
   level: number;
   morph: number;
@@ -23,10 +27,19 @@ export type ProductSourceSnapshot = {
   releaseSeconds: number;
   exactPadParamCount: number;
   exactPadParams: number[];
+  padOverrideCount: number;
+  padOverrideIndices: number[];
+  padOverrideValues: number[];
   exactLeadParamCount: number;
   exactLeadParams: number[];
+  leadOverrideCount: number;
+  leadOverrideIndices: number[];
+  leadOverrideValues: number[];
   exactDrumParamCount: number;
   exactDrumParams: number[];
+  drumOverrideCount: number;
+  drumOverrideIndices: number[];
+  drumOverrideValues: number[];
   drumVoicePresetAIds: number[];
   drumVoicePresetBIds: number[];
   drumVoiceMorphs: number[];
@@ -54,6 +67,8 @@ export type ProductLaneSnapshot = {
   phraseReset: boolean;
   manualStepMaskLow: number;
   manualStepMaskHigh: number;
+  tempoMultiplier: number;
+  initialStartDelaySeconds: number;
 };
 
 export type ProductHarmonySnapshot = {
@@ -90,6 +105,13 @@ export type ProductGranularVoiceSnapshot = {
   recordLfoRate: number;
   euclidGated: boolean;
   euclidMuted: boolean;
+};
+
+export type ProductSoundscapeSnapshot = {
+  textureParamCount: number;
+  textureParams: number[];
+  moduleParamCount: number;
+  moduleParams: number[];
 };
 
 export type CoreProductSnapshot = {
@@ -155,6 +177,9 @@ export type CoreProductSnapshot = {
     delayBWarp: number;
     delayBWarpIntensity: number;
     delayBSpread: number;
+    delayBTapeHeadMask: number;
+    delayBTapeHeadLevels: number[];
+    delayBTapeHeadPans: number[];
     reverbMix: number;
     reverbType: number;
     reverbQuality: number;
@@ -320,9 +345,6 @@ export type CoreProductSnapshot = {
   master: {
     gain: number;
     limiterCeilingDb: number;
-    saturationMode: number;
-    saturationDrive: number;
-    saturationTone: number;
   };
   rng: {
     seed: number;
@@ -334,4 +356,5 @@ export type CoreProductSnapshot = {
   };
   assetRefs: number[];
   assetRefLevels: number[];
+  soundscape: ProductSoundscapeSnapshot;
 };

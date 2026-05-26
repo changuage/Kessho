@@ -34,7 +34,8 @@ const SeqSparkline: React.FC<SeqSparklineProps> = ({ values, color, label, steps
   const subPlayhead = (() => {
     if (playhead < 0 || steps <= 0) return -1;
     const basis = playheadMode === 'step' ? Math.max(0, playhead) : Math.max(0, hitCount - 1);
-    return seqLaneIndex({ enabled: true, steps, direction, _ppForward: true }, basis);
+    const cursorSteps = playheadMode === 'step' ? Math.max(2, steps) : steps;
+    return seqLaneIndex({ enabled: true, steps: cursorSteps, direction, _ppForward: true }, basis);
   })();
 
   return (

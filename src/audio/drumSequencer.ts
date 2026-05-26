@@ -7,6 +7,7 @@ import type {
 } from './drumSeqTypes';
 import {
   DRUM_EUCLID_PRESET_DATA,
+  defaultDrumEuclidPattern,
   resolveEuclidPatternParams,
   seqEuclidean,
 } from './euclideanPatterns';
@@ -71,10 +72,8 @@ function defaultClockDiv(id: number): ClockDivision {
 }
 
 function defaultStepsHits(id: number): { steps: number; hits: number } {
-  if (id === 0) return { steps: 8, hits: 5 };
-  if (id === 1) return { steps: 16, hits: 3 };
-  if (id === 2) return { steps: 12, hits: 5 };
-  return { steps: 8, hits: 3 };
+  const defaults = defaultDrumEuclidPattern(id);
+  return { steps: defaults.steps, hits: defaults.hits };
 }
 
 function defaultDirection(): LaneDirection {
@@ -163,7 +162,7 @@ export function createSequencer(id: number, seed = 'drum-seq'): SequencerState {
     evolve: {
       enabled: false,
       everyBars: 4,
-      evolution: 0.5,
+      evolution: 0.25,
       writeOffset: 0 as number | 'auto',
       mutationMode: 'biased' as const,
       lastEvolveBar: 0,

@@ -64,6 +64,7 @@ export interface PresetVersionMetadata {
   synthLinked?: boolean[];
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
+  drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
   journeyPreview?: JourneyPresetPreview;

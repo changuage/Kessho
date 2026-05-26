@@ -37,6 +37,13 @@ function generatedConstNumber(name) {
   return Number(match[1]);
 }
 
+const snapshotEncoderSource = read('src/audio/coreProductSnapshotEncoder.ts');
+function snapshotConstNumber(name) {
+  const match = snapshotEncoderSource.match(new RegExp(`const ${name} = ([0-9]+);`));
+  assert(match, `snapshot encoder is missing ${name}`);
+  return Number(match[1]);
+}
+
 requireTokens('cpp/KesshoCore/tests/ProductDeterminismTests.cpp', [
   'requireRngCallOrderIsolation',
   'requireRngTransactionTrace',
@@ -85,12 +92,12 @@ const destroy = resolveExport(wasm, 'kessho_product_destroy');
 const loadSnapshot = resolveExport(wasm, 'kessho_product_load_snapshot_v2');
 const debugRenderEvents = resolveExport(wasm, 'kessho_product_debug_render_events');
 
-const SNAPSHOT_SIZE = 12812;
-const SOURCE_SIZE = 1220;
+const SNAPSHOT_SIZE = snapshotConstNumber('SNAPSHOT_BYTES');
+const SOURCE_SIZE = snapshotConstNumber('SOURCE_BYTES');
 const SOURCE_COUNT = 7;
 const SOURCE_OFFSET = 56;
 const SYNTH_OFFSET = SOURCE_OFFSET + SOURCE_SIZE * SOURCE_COUNT;
-const LANE_SIZE = 84;
+const LANE_SIZE = snapshotConstNumber('LANE_BYTES');
 const LANE0_OFFSET = SYNTH_OFFSET + 4;
 const SEQUENCER_EVENT_SIZE = 60;
 const SCHEMA_HASH = generatedConstNumber('KESSHO_PRODUCT_SCHEMA_HASH');

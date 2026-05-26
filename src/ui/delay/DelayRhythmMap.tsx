@@ -25,6 +25,13 @@ const PATTERN_PRESETS: Record<string, { subdivisions: number[]; gains: number[];
   },
 };
 
+const TAPE_HEAD_RATIOS: Record<string, [number, number, number, number]> = {
+  even: [0.25, 0.5, 0.75, 1],
+  triplet: [1 / 6, 1 / 3, 2 / 3, 1],
+  golden: [0.2360679, 0.381966, 0.618034, 1],
+  silver: [0.3535534, 0.5, 0.7071068, 1],
+};
+
 function computeTapGain(tapIndex: number, activity: number): number {
   const configs = [
     { rampStart: 0.0, threshold: 0.0, maxGain: 1.0 },
@@ -71,6 +78,11 @@ export interface DelayRhythmMapProps {
   clockedActivity: number;
   clockedBaseTime: number;
   clockedSpread: number;
+  delayBAlgorithm: string;
+  tapeSpacing: string;
+  tapeHeadEnabled: readonly boolean[];
+  tapeHeadLevels: readonly number[];
+  tapeHeadPans: readonly number[];
   aToBSend: number;
   bToASend: number;
 }
@@ -158,41 +170,86 @@ const DelayRhythmMap: React.FC<DelayRhythmMapProps> = (props) => {
       }
     }
 
-    // ── Clocked Space (bottom half) ──
-    const pattern = PATTERN_PRESETS[props.clockedPattern] ?? PATTERN_PRESETS.cascade!;
-    const maxSub = Math.max(...pattern.subdivisions);
-    const tapBarW = 2 + props.clockedSpread * 4;
-    const tapMaxH = halfH * 0.6;
-    const bottomCenter = halfH + halfH * 0.45;
-    const panScaleY = halfH * 0.25;
+    // ── Delay B (bottom half) ──
+    const bottomTop = halfH;
+    const bottomCenter = halfH + halfH * 0.48;
+    const panScaleY = halfH * 0.24;
+    ctx.fillStyle = 'rgba(159, 229, 240, 0.55)';
+    ctx.fillText(props.delayBAlgorithm === 'tapeHeads' ? 'TAPE HEADS' : 'CLOCKED SPACE', 6, bottomTop + 4);
 
-    // Label
-    ctx.fillStyle = 'rgba(159, 229, 240, 0.5)';
-    ctx.fillText('CLOCKED SPACE', 6, halfH + 4);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    for (let beat = 1; beat <= 3; beat++) {
+      const x = (w / 4) * beat;
+      ctx.beginPath();
+      ctx.moveTo(x, bottomTop + 18);
+      ctx.lineTo(x, h - 6);
+      ctx.stroke();
+    }
 
-    for (let i = 0; i < 8; i++) {
-      const gain = computeTapGain(i, props.clockedActivity) * pattern.gains[i]!;
-      if (gain < 0.01) continue;
-      const timeSec = (pattern.subdivisions[i]! / maxSub) * props.clockedBaseTime * 4;
-      const x = timeSec * pxPerSec;
-      if (x > w) continue;
-      const barH = tapMaxH * gain;
-      const panY = pattern.pans[i]! * panScaleY;
-      let yOffset = 0;
-      if (props.clockedWarp === 'pitchDrift' && i >= 4) yOffset = -8;
+    if (props.delayBAlgorithm === 'tapeHeads') {
+      const ratios = TAPE_HEAD_RATIOS[props.tapeSpacing] ?? TAPE_HEAD_RATIOS.even!;
+      const padX = 18;
+      const usableW = Math.max(1, w - padX * 2);
+      ctx.strokeStyle = 'rgba(159, 229, 240, 0.18)';
+      ctx.beginPath();
+      ctx.moveTo(padX, bottomCenter);
+      ctx.lineTo(w - padX, bottomCenter);
+      ctx.stroke();
 
-      const y = bottomCenter - barH / 2 + panY + yOffset;
-      const alpha = 0.3 + gain * 0.7;
-      ctx.fillStyle = warpColor(props.clockedWarp, i, CLOCKED_COLOR, alpha);
+      for (let repeat = 0; repeat < 3; repeat++) {
+        for (let i = 0; i < 4; i++) {
+          if (props.tapeHeadEnabled[i] === false) continue;
+          const level = Math.max(0, Math.min(1, props.tapeHeadLevels[i] ?? 1));
+          const pan = ((props.tapeHeadPans[i] ?? 0.5) - 0.5) * 2;
+          const phase = (repeat + ratios[i]!) / 3;
+          const x = padX + phase * usableW;
+          const gain = level * Math.pow(Math.max(0.08, props.echoFeedback || props.clockedActivity || 0.35), repeat * 0.7);
+          const barH = halfH * 0.52 * gain;
+          const y = bottomCenter - barH / 2 + pan * panScaleY * props.clockedSpread * 2;
+          const alpha = Math.max(0.12, 0.85 - repeat * 0.25) * (0.45 + level * 0.55);
+          ctx.fillStyle = `rgba(159, 229, 240, ${alpha})`;
+          ctx.fillRect(x - 2.5, y, 5, barH);
+          if (repeat === 0) {
+            ctx.fillStyle = `rgba(185, 201, 255, ${0.45 + level * 0.45})`;
+            ctx.beginPath();
+            ctx.arc(x, bottomCenter - halfH * 0.34, 3 + level * 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.42)';
+            ctx.fillText(`H${i + 1}`, x - 6, h - 16);
+          }
+        }
+      }
+    } else {
+      const pattern = PATTERN_PRESETS[props.clockedPattern] ?? PATTERN_PRESETS.cascade!;
+      const maxSub = Math.max(...pattern.subdivisions);
+      const tapBarW = 2 + props.clockedSpread * 4;
+      const tapMaxH = halfH * 0.6;
 
-      if (props.clockedWarp === 'grainCrossfade' && i >= 4) {
-        ctx.setLineDash([2, 2]);
-        ctx.strokeStyle = warpColor(props.clockedWarp, i, CLOCKED_COLOR, alpha);
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x - tapBarW / 2, y, tapBarW, barH);
-        ctx.setLineDash([]);
-      } else {
-        ctx.fillRect(x - tapBarW / 2, y, tapBarW, barH);
+      for (let i = 0; i < 8; i++) {
+        const gain = computeTapGain(i, props.clockedActivity) * pattern.gains[i]!;
+        if (gain < 0.01) continue;
+        const timeSec = (pattern.subdivisions[i]! / maxSub) * props.clockedBaseTime * 4;
+        const x = timeSec * pxPerSec;
+        if (x > w) continue;
+        const barH = tapMaxH * gain;
+        const panY = pattern.pans[i]! * panScaleY;
+        let yOffset = 0;
+        if (props.clockedWarp === 'pitchDrift' && i >= 4) yOffset = -8;
+
+        const y = bottomCenter - barH / 2 + panY + yOffset;
+        const alpha = 0.3 + gain * 0.7;
+        ctx.fillStyle = warpColor(props.clockedWarp, i, CLOCKED_COLOR, alpha);
+
+        if (props.clockedWarp === 'grainCrossfade' && i >= 4) {
+          ctx.setLineDash([2, 2]);
+          ctx.strokeStyle = warpColor(props.clockedWarp, i, CLOCKED_COLOR, alpha);
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x - tapBarW / 2, y, tapBarW, barH);
+          ctx.setLineDash([]);
+        } else {
+          ctx.fillRect(x - tapBarW / 2, y, tapBarW, barH);
+        }
       }
     }
 

@@ -1,6 +1,6 @@
 #include "../KesshoProductEngineInternal.h"
 
-  void KesshoProductEngine::releaseSourceVoices(uint32_t source_id) {
+void KesshoProductEngine::releaseSourceVoices(uint32_t source_id) {
   if ((source_id == 0u || source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) && pad_module) {
     pad_module->allNotesOff();
     clearPadVoiceReleases(0u);
@@ -25,4 +25,5 @@
       voice.total_frames = std::max<uint32_t>(1u, voice.remaining_frames);
     }
   }
+  clearMidiRuntimeForSource(source_id);
 }

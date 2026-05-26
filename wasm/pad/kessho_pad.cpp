@@ -770,6 +770,13 @@ void pad_note_on(int voice_idx, float frequency, float velocity) {
     }
 }
 
+void pad_set_voice_frequency(int voice_idx, float frequency) {
+    if (voice_idx < 0 || voice_idx >= PAD_NUM_VOICES || !std::isfinite(frequency) || frequency <= 0.0f) return;
+    PadVoice& v = g_voices[voice_idx];
+    if (!v.active) return;
+    v.base_freq = frequency;
+}
+
 void pad_note_off(int voice_idx) {
     if (voice_idx < 0 || voice_idx >= PAD_NUM_VOICES) return;
     PadVoice& v = g_voices[voice_idx];
@@ -966,6 +973,12 @@ void pad_instance_note_on(KesshoPadInstance* instance, int voice_idx, float freq
     if (!instance) return;
     ScopedPadState scoped(&instance->state);
     pad_note_on(voice_idx, frequency, velocity);
+}
+
+void pad_instance_set_voice_frequency(KesshoPadInstance* instance, int voice_idx, float frequency) {
+    if (!instance) return;
+    ScopedPadState scoped(&instance->state);
+    pad_set_voice_frequency(voice_idx, frequency);
 }
 
 void pad_instance_note_off(KesshoPadInstance* instance, int voice_idx) {

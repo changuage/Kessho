@@ -125,12 +125,15 @@ export interface SequencerSnapshot {
     rotation: number;
     probability: number[];
     ratchet: number[];
+    trigCondition: TrigCondition[];
     pattern: boolean[];
   };
   pitch: {
     offsets: number[];
+    mode: PitchMode;
     root: number;
     scale: ScaleName;
+    scaleQuantize: boolean;
     steps: number;
     direction: LaneDirection;
   };

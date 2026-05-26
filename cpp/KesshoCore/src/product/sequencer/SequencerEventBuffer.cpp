@@ -12,6 +12,14 @@
   lane.step_override_value_high &= ~bit;
 }
 
+  void KesshoProductEngine::resetSequencerLaneRuntime(LaneState& lane, bool wait_for_join_boundary) {
+  lane.emitted_hit_count = 0u;
+  lane.sequencer_runtime_sample_frame = 0u;
+  lane.sequencer_start_sample_frame = 0u;
+  lane.sequencer_runtime_initialized = false;
+  lane.sequencer_join_pending = wait_for_join_boundary;
+}
+
   bool KesshoProductEngine::stepMaskHas(uint32_t low, uint32_t high, uint32_t step) const {
   if (step < 32u) {
     return (low & (1u << step)) != 0u;
@@ -172,7 +180,9 @@
   }
 
   const uint32_t steps = clampU32(config.steps, 1u, 64u);
-  const uint64_t phase = hit_count_phase;
+  const uint64_t phase = field == KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE && lane.midi_note_binding_mode == kSequencerPitchBindingStep
+      ? trigger_step
+      : hit_count_phase;
   if (config.direction == KESSHO_PRODUCT_SUBLANE_DIRECTION_REVERSE) {
     return steps - 1u - static_cast<uint32_t>(phase % steps);
   }
@@ -182,30 +192,6 @@
     return position < steps ? position : period - position;
   }
   return static_cast<uint32_t>(phase % steps);
-}
-
-  uint64_t KesshoProductEngine::hitCountBeforeAbsoluteStep(const LaneState& lane, int64_t absolute_step) const {
-  if (absolute_step <= 0 || lane.step_count == 0u) {
-    return 0u;
-  }
-
-  const uint32_t steps = clampU32(lane.step_count, 1u, 64u);
-  uint32_t hits_per_cycle = 0u;
-  for (uint32_t step = 0; step < steps; ++step) {
-    if (manualMaskHit(lane, step)) {
-      hits_per_cycle += 1u;
-    }
-  }
-
-  const uint64_t safe_step = static_cast<uint64_t>(absolute_step);
-  uint64_t count = (safe_step / steps) * hits_per_cycle;
-  const uint32_t partial_steps = static_cast<uint32_t>(safe_step % steps);
-  for (uint32_t step = 0; step < partial_steps; ++step) {
-    if (manualMaskHit(lane, step)) {
-      count += 1u;
-    }
-  }
-  return count;
 }
 
   void KesshoProductEngine::clearStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step) {
@@ -327,7 +313,15 @@
     return;
   }
 
-  if (lane.step_count == 0u || event.param_id >= lane.step_count) {
+  uint32_t allowed_steps = lane.step_count;
+  const uint32_t field_id = stepFieldId(field);
+  if (field != KESSHO_PRODUCT_STEP_FIELD_TRIGGER && validStepFieldId(field_id)) {
+    const StepValueSubLaneConfig& config = lane.step_value_configs[field_id];
+    if (config.enabled && config.steps > 0u) {
+      allowed_steps = config.steps;
+    }
+  }
+  if (allowed_steps == 0u || event.param_id >= allowed_steps) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     return;
   }

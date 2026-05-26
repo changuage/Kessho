@@ -14,6 +14,9 @@ enum ProductSampleHoldTriggerBus : uint32_t {
   kProductSampleHoldTriggerReverb = 4,
 };
 
+constexpr uint32_t kSourceModulationParamSlotCount = 13u;
+constexpr uint16_t kInvalidModulationRouteIndex = 0xffffu;
+
 struct ModulationRange {
   bool active = false;
   uint32_t control_id = 0;

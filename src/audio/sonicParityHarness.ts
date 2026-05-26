@@ -5,6 +5,7 @@ import {
   type ManualSynthNoteOptions,
   type RecordableTrackSource,
 } from './runtime';
+import { applyPadPresetMorphParamsToState } from './padPresets';
 import type { SliderState } from '../ui/state';
 
 type CaptureOptions = {
@@ -329,10 +330,10 @@ function createCaptureState(
   statePatch: Partial<SliderState> | undefined,
   manualMode: boolean,
 ): SliderState {
-  const patchedState = {
+  const patchedState = applyPadPresetMorphParamsToState({
     ...currentState,
     ...(statePatch ?? {}),
-  };
+  }, statePatch ?? {});
 
   if (!manualMode) return patchedState;
 

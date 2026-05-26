@@ -152,12 +152,14 @@ public:
     if (instance_ == nullptr) {
       return false;
     }
+    last_triggered_voice_index_ = -1;
     commitParams();
     return true;
   }
 
   void reset() override {
     if (instance_ != nullptr && lead_fm_instance_reset(instance_, sample_rate_) == 1) {
+      last_triggered_voice_index_ = -1;
       commitParams();
     }
   }
@@ -279,13 +281,24 @@ public:
       return 0;
     }
 
-    lead_fm_instance_note_on_ex(
+    last_triggered_voice_index_ = lead_fm_instance_note_on_ex(
         instance_,
         frequency,
         velocity,
         hold_seconds,
         lead_index > 0 ? 1 : 0);
-    return 1;
+    return last_triggered_voice_index_ >= 0 ? 1 : 0;
+  }
+
+  int setVoiceFrequency(int voice_index, float frequency) override {
+    if (instance_ == nullptr ||
+        voice_index < 0 ||
+        voice_index >= LEAD_FM_MAX_POLYPHONY ||
+        !std::isfinite(frequency) ||
+        frequency <= 0.0f) {
+      return 0;
+    }
+    return lead_fm_instance_note_set_frequency(instance_, voice_index, frequency);
   }
 
   int setTriggerMacros(float morph, float distance, float expression) override {
@@ -379,10 +392,31 @@ public:
     return 1;
   }
 
+  int setIndexedParam(int param_index, float value) override {
+    if (instance_ == nullptr || param_index < 0 || param_index >= static_cast<int>(KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT)) {
+      return 0;
+    }
+    if (!std::isfinite(value)) {
+      return 0;
+    }
+    params_[static_cast<uint32_t>(param_index)] = value;
+    commitParams();
+    return 1;
+  }
+
   void allNotesOff() override {
     if (instance_ != nullptr) {
       lead_fm_instance_all_notes_off(instance_);
     }
+    last_triggered_voice_index_ = -1;
+  }
+
+  int noteOff(int voice_index) override {
+    return instance_ != nullptr ? lead_fm_instance_note_off(instance_, voice_index) : 0;
+  }
+
+  int lastTriggeredVoiceIndex() const override {
+    return last_triggered_voice_index_;
   }
 
   int activeVoiceCount() override {
@@ -435,6 +469,7 @@ private:
   KesshoLeadFmInstance* instance_ = nullptr;
   float sample_rate_ = 48000.0f;
   int max_block_size_ = kLeadFmBlockSize;
+  int last_triggered_voice_index_ = -1;
   std::array<float, kParamCount> params_ = makeDefaultParams();
 };
 

@@ -56,7 +56,6 @@ for (const token of [
   'telemetry.master_true_peak_dbtp = gainToDb(master_true_peak);',
   'telemetry.master_integrated_lufs =',
   'telemetry.master_limiter_gain_reduction_db = limiter_gain_reduction_db;',
-  'telemetry.master_saturation_drive = master_saturation_drive;',
   'telemetry.dynamics_saturation_drive = fx.dynamics_saturation_drive;',
 ]) {
   assert(render.includes(token), `Product render telemetry is missing ${token}`);
@@ -76,7 +75,6 @@ for (const token of [
   'float pad2_filter_freq;',
   'float pad2_lfo1_value;',
   'float master_limiter_gain_reduction_db;',
-  'float master_saturation_drive;',
   'float dynamics_saturation_drive;',
 ]) {
   assert(telemetryHeader.includes(token), `C telemetry ABI is missing ${token}`);
@@ -96,45 +94,51 @@ for (const token of [
   'pad2FilterFreq?: number;',
   'pad2Lfo1Value?: number;',
   'masterLimiterGainReductionDb?: number;',
-  'masterSaturationDrive?: number;',
   'dynamicsSaturationDrive?: number;',
 ]) {
   assert(telemetryTs.includes(token), `TS telemetry type is missing ${token}`);
 }
 
 for (const token of [
-  'const TELEMETRY_BYTES = 1040;',
+  'const TELEMETRY_BYTES = 1296;',
   'masterInputPeak: this.view.getFloat32(ptr + 964, true)',
   'masterOutputPeak: this.view.getFloat32(ptr + 968, true)',
   'masterOutputRms: this.view.getFloat32(ptr + 972, true)',
   'masterLimiterGainReductionDb: this.view.getFloat32(ptr + 976, true)',
-  'masterSaturationDrive: this.view.getFloat32(ptr + 980, true)',
-  'dynamicsSaturationDrive: this.view.getFloat32(ptr + 984, true)',
-  'masterTruePeak: this.view.getFloat32(ptr + 992, true)',
-  'masterTruePeakDbtp: this.view.getFloat32(ptr + 996, true)',
-  'masterIntegratedLufs: this.view.getFloat32(ptr + 1000, true)',
-  'granularWriteHeadPosition: this.view.getFloat32(ptr + 1004, true)',
+  'dynamicsSaturationDrive: this.view.getFloat32(ptr + 980, true)',
+  'masterTruePeak: this.view.getFloat32(ptr + 988, true)',
+  'masterTruePeakDbtp: this.view.getFloat32(ptr + 992, true)',
+  'masterIntegratedLufs: this.view.getFloat32(ptr + 996, true)',
+  'granularWriteHeadPosition: this.view.getFloat32(ptr + 1000, true)',
   'granularVoicePositions: [',
-  'pad1FilterFreq: this.view.getFloat32(ptr + 1024, true)',
-  'pad1Lfo1Value: this.view.getFloat32(ptr + 1028, true)',
-  'pad2FilterFreq: this.view.getFloat32(ptr + 1032, true)',
-  'pad2Lfo1Value: this.view.getFloat32(ptr + 1036, true)',
+  'pad1FilterFreq: this.view.getFloat32(ptr + 1020, true)',
+  'pad1Lfo1Value: this.view.getFloat32(ptr + 1024, true)',
+  'pad2FilterFreq: this.view.getFloat32(ptr + 1028, true)',
+  'pad2Lfo1Value: this.view.getFloat32(ptr + 1032, true)',
+  'synthSequencerHitCounts.push(this.view.getUint32(ptr + 1036 + index * 4, true));',
+  'drumSequencerHitCounts.push(this.view.getUint32(ptr + 1100 + index * 4, true));',
+  'synthSequencerCurrentSteps.push(this.view.getUint32(ptr + 1164 + index * 4, true));',
+  'drumSequencerCurrentSteps.push(this.view.getUint32(ptr + 1228 + index * 4, true));',
 ]) {
   assert(worklet.includes(token), `worklet telemetry reader is missing ${token}`);
 }
 
 for (const token of [
-  'sizeof(KesshoProductTelemetry) == 1040',
+  'sizeof(KesshoProductTelemetry) == 1296',
   'offsetof(KesshoProductTelemetry, master_input_peak) == 964',
-  'offsetof(KesshoProductTelemetry, dynamics_saturation_drive) == 984',
-  'offsetof(KesshoProductTelemetry, master_true_peak) == 992',
-  'offsetof(KesshoProductTelemetry, master_integrated_lufs) == 1000',
-  'offsetof(KesshoProductTelemetry, granular_write_head) == 1004',
-  'offsetof(KesshoProductTelemetry, granular_voice_positions) == 1008',
-  'offsetof(KesshoProductTelemetry, pad1_filter_freq) == 1024',
-  'offsetof(KesshoProductTelemetry, pad1_lfo1_value) == 1028',
-  'offsetof(KesshoProductTelemetry, pad2_filter_freq) == 1032',
-  'offsetof(KesshoProductTelemetry, pad2_lfo1_value) == 1036',
+  'offsetof(KesshoProductTelemetry, dynamics_saturation_drive) == 980',
+  'offsetof(KesshoProductTelemetry, master_true_peak) == 988',
+  'offsetof(KesshoProductTelemetry, master_integrated_lufs) == 996',
+  'offsetof(KesshoProductTelemetry, granular_write_head) == 1000',
+  'offsetof(KesshoProductTelemetry, granular_voice_positions) == 1004',
+  'offsetof(KesshoProductTelemetry, pad1_filter_freq) == 1020',
+  'offsetof(KesshoProductTelemetry, pad1_lfo1_value) == 1024',
+  'offsetof(KesshoProductTelemetry, pad2_filter_freq) == 1028',
+  'offsetof(KesshoProductTelemetry, pad2_lfo1_value) == 1032',
+  'offsetof(KesshoProductTelemetry, synth_sequencer_hit_counts) == 1036',
+  'offsetof(KesshoProductTelemetry, drum_sequencer_hit_counts) == 1100',
+  'offsetof(KesshoProductTelemetry, synth_sequencer_current_steps) == 1164',
+  'offsetof(KesshoProductTelemetry, drum_sequencer_current_steps) == 1228',
 ]) {
   assert(abiTest.includes(token), `ABI layout test is missing ${token}`);
 }

@@ -30,5 +30,6 @@ inline constexpr uint32_t KESSHO_PRODUCT_DEFAULT_SEQUENCER_CLOCK_DIVISION = 16u;
 inline constexpr float KESSHO_PRODUCT_DEFAULT_SEQUENCER_PROBABILITY = 1.0f;
 inline constexpr float KESSHO_PRODUCT_DEFAULT_SEQUENCER_VELOCITY = 0.75f;
 inline constexpr float KESSHO_PRODUCT_DEFAULT_SEQUENCER_HOLD_SECONDS = 0.18f;
+inline constexpr float KESSHO_PRODUCT_DEFAULT_SEQUENCER_INITIAL_START_DELAY_SECONDS = -1.0f;
 
 } // namespace kessho::product::generated

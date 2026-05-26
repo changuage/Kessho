@@ -35,6 +35,11 @@ import {
   seqEuclidean,
   seqLaneIndex,
 } from './drumSequencer';
+import { defaultDrumEuclidPattern, defaultSynthEuclidPattern } from './euclideanPatterns';
+import { sequencerClockDivisionToSeconds } from './sequencerClockDivisions';
+import { normalizeSequencerPitchBindingMode } from './sequencerPitchBinding';
+import { normalizeSequencerPitchSettings, type SequencerPitchSettings } from './sequencerPitchSettings';
+import { normalizeSequencerSwing } from './sequencerSwing';
 import {
   SCALES,
   type ClockDivision,
@@ -81,6 +86,7 @@ import {
   type SynthEvolveState,
   type SynthLaneOverrides,
 } from './synthSeqEvolve';
+import { clampSequencerRatchet } from './seqEvolveCore';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import { DEFAULT_REVERB_PRE_COMP, getStateValueFromSliderNumber, quantize, type SliderState } from '../ui/state';
 
@@ -88,8 +94,60 @@ const DYNAMICS_CHARACTER_DISABLED_CONFIG_KEY = 'dynamics-character:disabled-v1';
 const HOST_PIANO_SAMPLE_CACHE_LIMIT_PER_VARIANT = 16;
 const CORE_SOFT_STOP_SOURCE_FADE_SECONDS = 0.18;
 const CORE_SOFT_STOP_CLEANUP_DELAY_MS = Math.ceil(CORE_SOFT_STOP_SOURCE_FADE_SECONDS * 1000) + 120;
-type CoreSynthEvolveOverridesPayload = Partial<SynthLaneOverrides> & { swing?: number };
-type CoreDrumEvolveOverridesPayload = Partial<DrumStepOverrides> & { swing?: number };
+type CoreEvolvedAudioSubLane = 'pitch' | 'expression' | 'morph' | 'distance';
+type CoreEvolvedSubLanePatch = Partial<Record<CoreEvolvedAudioSubLane, { enabled: boolean; steps: number; direction: LaneDirection; scaleQuantize?: boolean }>>;
+type CoreDrumEvolvedSubLane = CoreEvolvedAudioSubLane | 'slice' | 'reverse';
+type CoreDrumEvolvedSubLanePatch = Partial<Record<CoreDrumEvolvedSubLane, { enabled: boolean; steps: number; direction: LaneDirection; scaleQuantize?: boolean }>>;
+type CoreSynthEvolveOverridesPayload = Partial<SynthLaneOverrides> & { swing?: number; subLaneStates?: CoreEvolvedSubLanePatch; pitchSettings?: (SequencerPitchSettings | null)[] };
+type CoreDrumEvolveOverridesPayload = Partial<DrumStepOverrides> & { swing?: number; subLaneStates?: CoreDrumEvolvedSubLanePatch; pitchSettings?: (SequencerPitchSettings | null)[] };
+
+function synthEvolvedSubLaneStatePatch(overrides: SynthLaneOverrides): CoreEvolvedSubLanePatch {
+  const patch: CoreEvolvedSubLanePatch = {};
+  const add = (lane: CoreEvolvedAudioSubLane, values: number[] | null, direction: LaneDirection | null): void => {
+    if (!Array.isArray(values)) return;
+    patch[lane] = {
+      enabled: true,
+      steps: Math.max(1, Math.min(16, values.length)),
+      direction: direction ?? 'forward',
+    };
+  };
+  add('pitch', overrides.pitch, overrides.pitchDirection);
+  add('expression', overrides.expression, overrides.expressionDirection);
+  add('morph', overrides.morph, overrides.morphDirection);
+  add('distance', overrides.distance, overrides.distanceDirection);
+  return patch;
+}
+
+function drumStepOverrideSubLaneStatePatch(
+  overrides: DrumStepOverrides,
+  laneIndex: number,
+  fallback?: DrumStepOverrides,
+): CoreDrumEvolvedSubLanePatch {
+  const patch: CoreDrumEvolvedSubLanePatch = {};
+  const add = (
+    lane: CoreDrumEvolvedSubLane,
+    valueKey: 'pitch' | 'expression' | 'morph' | 'distance' | 'slice' | 'reverse',
+    directionKey: 'pitchDirection' | 'expressionDirection' | 'morphDirection' | 'distanceDirection' | 'sliceDirection' | 'reverseDirection',
+  ): void => {
+    const values = overrides[valueKey]?.[laneIndex] ?? null;
+    const fallbackValues = fallback?.[valueKey]?.[laneIndex] ?? null;
+    const direction = overrides[directionKey]?.[laneIndex] ?? fallback?.[directionKey]?.[laneIndex] ?? 'forward';
+    patch[lane] = {
+      enabled: Array.isArray(values),
+      steps: Math.max(1, Math.min(16, Array.isArray(values)
+        ? values.length
+        : Array.isArray(fallbackValues) ? fallbackValues.length : 1)),
+      direction,
+    };
+  };
+  add('pitch', 'pitch', 'pitchDirection');
+  add('expression', 'expression', 'expressionDirection');
+  add('morph', 'morph', 'morphDirection');
+  add('distance', 'distance', 'distanceDirection');
+  add('slice', 'slice', 'sliceDirection');
+  add('reverse', 'reverse', 'reverseDirection');
+  return patch;
+}
 
 const resolvePublicSampleUrl = (relativePath: string): string => {
   const root = new URL(import.meta.env.BASE_URL, window.location.origin);
@@ -268,6 +326,7 @@ type CoreSynthEuclidGeneratedNote = PreviewNote & {
   source: string;
   midi: number;
   laneIndex: number;
+  ratchetFactor?: number;
 };
 
 type CoreLeadRandomPreview = {
@@ -449,6 +508,27 @@ function booleanValue(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;
 }
 
+function normalizeEvolveWriteOffset(value: unknown, fallback: number | 'auto'): number | 'auto' {
+  if (value === 'auto') return 'auto';
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.round(value));
+  return fallback;
+}
+
+function mergeEvolveMethods<T extends string>(current: Record<T, boolean>, incoming: unknown): Record<T, boolean> {
+  const methods: Record<string, boolean> = { ...current };
+  if (incoming && typeof incoming === 'object' && !Array.isArray(incoming)) {
+    for (const [key, value] of Object.entries(incoming)) {
+      methods[key] = value === true;
+    }
+  }
+  return methods as Record<T, boolean>;
+}
+
+function mergeEvolveEnabledSubLanes(incoming: unknown, current: string[] | undefined): string[] | undefined {
+  if (Array.isArray(incoming)) return incoming.filter((lane): lane is string => typeof lane === 'string');
+  return current ? [...current] : undefined;
+}
+
 function paramConfigKey(params: readonly number[]): string {
   return params.map((value) => (Number.isFinite(value) ? Math.round(value * 1_000_000) / 1_000_000 : 0)).join(',');
 }
@@ -493,7 +573,7 @@ const PAD_VOICE_COUNT = 6;
 const PAD_PREVIEW_FALLBACK_PRESET = 'saturated_drift';
 const REVERB_MODULE_PARAM_COUNT = 30;
 const DELAY_A_MODULE_PARAM_COUNT = 16;
-const DELAY_B_MODULE_PARAM_COUNT = 16;
+const DELAY_B_MODULE_PARAM_COUNT = 24;
 const GRANULAR_MODULE_PARAM_COUNT = 143;
 const SPECTRAL_FREEZE_MODULE_PARAM_COUNT = 6;
 const LEAD_FM_MODULE_PARAM_COUNT = 80;
@@ -524,6 +604,7 @@ const GRANULAR_LEGACY_PITCH_VALUES: Record<string, number> = { random: 0, harmon
 const DELAY_B_SPACE_MODE_VALUES: Record<string, number> = { clocked: 0, diffuse: 1 };
 const DELAY_B_PATTERN_VALUES: Record<string, number> = { cascade: 0, golden: 1, mirror: 2, dotted: 3 };
 const DELAY_B_WARP_VALUES: Record<string, number> = { clean: 0, filterSweep: 1, pitchDrift: 2, grainCrossfade: 3 };
+const DELAY_B_TAPE_SPACING_VALUES: Record<string, number> = { even: 0, triplet: 1, golden: 2, silver: 3 };
 const DRUM_VOICE_TYPES = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'] as const;
 type CoreDrumVoice = typeof DRUM_VOICE_TYPES[number];
 const DRUM_VOICE_INDEX: Record<CoreDrumVoice, number> = {
@@ -837,7 +918,7 @@ const DRUM_PARAM_SPECS = [
   ['drumNoiseColorLFO', DRUM_PARAM_INDEX.noise + 11, null, 0],
   ['drumNoiseVariation', DRUM_PARAM_INDEX.noise + 12, null, 0],
   ['drumNoiseDistance', DRUM_PARAM_INDEX.noise + 13, null, 0.5],
-  ['drumMembraneSize', DRUM_PARAM_INDEX.membrane + 0, null, 150],
+  ['drumMembranePitchEnv', DRUM_PARAM_INDEX.membrane + 0, null, 3],
   ['drumMembraneDecay', DRUM_PARAM_INDEX.membrane + 1, null, 500],
   ['drumMembraneLevel', DRUM_PARAM_INDEX.membrane + 2, null, 0.7],
   ['drumMembraneStiffness', DRUM_PARAM_INDEX.membrane + 3, null, 0.5],
@@ -1002,18 +1083,7 @@ function padStateKey(baseKey: string, padIndex: number): string {
 }
 
 function clockDivToSeconds(clockDiv: ClockDivision, beatDuration: number): number {
-  switch (clockDiv) {
-    case '1/4': return beatDuration;
-    case '1/4T': return beatDuration * (2 / 3);
-    case '1/8': return beatDuration / 2;
-    case '1/8T': return beatDuration / 3;
-    case '1/16': return beatDuration / 4;
-    case '1/16T': return beatDuration / 6;
-    case '1/32': return beatDuration / 8;
-    case '1/32T': return beatDuration / 12;
-    case '1/64': return beatDuration / 16;
-    default: return beatDuration / 2;
-  }
+  return sequencerClockDivisionToSeconds(clockDiv, beatDuration);
 }
 
 function clonePreviewNotes(notes: readonly PreviewNote[]): PreviewNote[] {
@@ -1069,7 +1139,7 @@ function cloneCoreDrumStepOverrides(overrides: DrumStepOverrides): DrumStepOverr
     triggerToggles: CORE_DRUM_LANE_INDICES.map((index) => new Map(overrides.triggerToggles[index] ?? [])),
     probability: CORE_DRUM_LANE_INDICES.map((index) => overrides.probability[index] ? [...overrides.probability[index]!] : null),
     ratchet: CORE_DRUM_LANE_INDICES.map((index) => overrides.ratchet[index] ? [...overrides.ratchet[index]!] : null),
-    trigCondition: CORE_DRUM_LANE_INDICES.map((index) => overrides.trigCondition?.[index] ? [...overrides.trigCondition[index]!] : null),
+    trigCondition: CORE_DRUM_LANE_INDICES.map((index) => overrides.trigCondition?.[index] ? overrides.trigCondition[index]!.map((entry) => [entry[0], entry[1]] as TrigCondition) : null),
     expression: CORE_DRUM_LANE_INDICES.map((index) => overrides.expression[index] ? [...overrides.expression[index]!] : null),
     pitch: CORE_DRUM_LANE_INDICES.map((index) => overrides.pitch?.[index] ? [...overrides.pitch[index]!] : null),
     morph: CORE_DRUM_LANE_INDICES.map((index) => overrides.morph[index] ? [...overrides.morph[index]!] : null),
@@ -1092,7 +1162,7 @@ function defaultCoreDrumEuclidEvolveConfig(): DrumEuclidEvolveConfig {
   return {
     enabled: false,
     everyBars: 4,
-    evolution: 0.5,
+    evolution: 0.25,
     writeOffset: 0,
     mutationMode: 'biased',
     methods: {
@@ -1613,11 +1683,12 @@ function createSynthEuclidPreview(
     const source = coreSynthEuclidSource(state, lane);
     if (!isCoreSynthPadSource(source) && source !== 'lead' && source !== 'lead1' && source !== 'lead2' && source !== 'piano') continue;
 
+    const defaultPattern = defaultSynthEuclidPattern(laneIndex);
     const patternParams = resolveDrumEuclidPatternParams(
       typeof state[`synthEuclid${lane}Preset`] === 'string' ? String(state[`synthEuclid${lane}Preset`]) : 'custom',
-      boundedInteger(state[`synthEuclid${lane}Steps`], laneIndex === 0 ? 16 : 8, 1, 64),
-      boundedInteger(state[`synthEuclid${lane}Hits`], laneIndex === 0 ? 4 : laneIndex === 1 ? 3 : laneIndex === 2 ? 2 : 6, 0, 64),
-      boundedInteger(state[`synthEuclid${lane}Rotation`], 0, 0, 63),
+      boundedInteger(state[`synthEuclid${lane}Steps`], defaultPattern.steps, 1, 64),
+      boundedInteger(state[`synthEuclid${lane}Hits`], defaultPattern.hits, 0, 64),
+      boundedInteger(state[`synthEuclid${lane}Rotation`], defaultPattern.rotation, 0, 63),
     );
     const basePattern = seqEuclidean(patternParams.steps, patternParams.hits, patternParams.rotation);
     const triggerToggles = stepOverrides.triggerToggles[laneIndex];
@@ -1628,191 +1699,196 @@ function createSynthEuclidPreview(
     const stepSeconds = clockDivToSeconds(clockDiv, beatSeconds);
     const laneInitialStartDelaySeconds = coreSynthEuclidInitialStartDelaySeconds(state, bpm, stepSeconds);
     initialStartDelaySeconds = Math.min(initialStartDelaySeconds, laneInitialStartDelaySeconds);
-    const swing = clamp(finiteNumber(runtime.swings[laneIndex], 0), 0, 1);
+    const swing = normalizeSequencerSwing(runtime.swings[laneIndex]);
     const laneLevel = boundedNumber(state[`synthEuclid${lane}Level`], laneIndex === 1 ? 0.6 : laneIndex === 3 ? 0.5 : 0.8, 0, 1);
     const laneProbability = boundedNumber(state[`synthEuclid${lane}Probability`], 1, 0, 1);
     const laneSubLanes = runtime.subLaneEnabled[laneIndex] ?? {};
-    const pitchValues = laneSubLanes.pitch !== false ? stepOverrides.pitch[laneIndex] : null;
+    const pitchValues = laneSubLanes.pitch === true ? stepOverrides.pitch[laneIndex] : null;
     const pitchDirection = stepOverrides.pitchDirection[laneIndex] ?? 'forward';
     const pitchBindingMode = runtime.pitchBindingModes[laneIndex] ?? 'polyrhythmic';
-    const expressionValues = laneSubLanes.expression !== false ? stepOverrides.expression[laneIndex] : null;
+    const expressionValues = laneSubLanes.expression === true ? stepOverrides.expression[laneIndex] : null;
     const expressionDirection = stepOverrides.expressionDirection[laneIndex] ?? 'forward';
-    const expressionRange = laneSubLanes.expression !== false ? stepOverrides.expressionRanges[laneIndex] : null;
-    const morphValues = laneSubLanes.morph !== false ? stepOverrides.morph[laneIndex] : null;
+    const expressionRange = laneSubLanes.expression === true ? stepOverrides.expressionRanges[laneIndex] : null;
+    const morphValues = laneSubLanes.morph === true ? stepOverrides.morph[laneIndex] : null;
     const morphDirection = stepOverrides.morphDirection[laneIndex] ?? 'forward';
-    const morphRange = laneSubLanes.morph !== false ? stepOverrides.morphRanges[laneIndex] : null;
-    const distanceValues = laneSubLanes.distance !== false ? stepOverrides.distance[laneIndex] : null;
+    const morphRange = laneSubLanes.morph === true ? stepOverrides.morphRanges[laneIndex] : null;
+    const distanceValues = laneSubLanes.distance === true ? stepOverrides.distance[laneIndex] : null;
     const distanceDirection = stepOverrides.distanceDirection[laneIndex] ?? 'forward';
-    const distanceRange = laneSubLanes.distance !== false ? stepOverrides.distanceRanges[laneIndex] : null;
+    const distanceRange = laneSubLanes.distance === true ? stepOverrides.distanceRanges[laneIndex] : null;
     const probabilityValues = laneSubLanes.probability !== false ? stepOverrides.probability[laneIndex] : null;
     const ratchetValues = laneSubLanes.ratchet !== false ? stepOverrides.ratchet[laneIndex] : null;
     const trigConditions = stepOverrides.trigCondition[laneIndex];
+    const cycleRepeats = getTrigConditionCycleRepeats(trigConditions);
     const noteRangeOverride = runtime.noteRangeOverrides[laneIndex];
     const trigVisitCounts = new Array(pattern.length).fill(0);
     let stepTime = 0;
     let hitCount = 0;
 
-    for (let step = 0; step < pattern.length; step += 1) {
-      if (pattern[step]) {
-        trigVisitCounts[step] = (trigVisitCounts[step] ?? 0) + 1;
-        const condition = trigConditions?.[step] ?? [1, 1];
-        const visit = trigVisitCounts[step] ?? 1;
-        const trigPassed = condition[1] <= 1 || (((visit - 1) % condition[1]) + 1 === condition[0]);
-        const stepProbability = probabilityValues
-          ? boundedNumber(probabilityValues[step], 1, 0, 1)
-          : 1;
-        if (!trigPassed || rng() > clamp(laneProbability * stepProbability, 0, 1)) {
-          const swingOffset = step % 2 === 1 ? stepSeconds * swing * 0.5 : 0;
-          stepTime += stepSeconds + swingOffset;
-          continue;
-        }
-
-        hitCount += 1;
-        let midi: number | null = null;
-        if (pitchValues && pitchValues.length > 0) {
-          const pitchIndex = pitchBindingMode === 'sequence'
-            ? seqLaneIndex(
-              { enabled: true, steps: pitchValues.length, direction: pitchDirection, _ppForward: true },
-              step,
-            )
-            : seqLaneIndex(
-              { enabled: true, steps: pitchValues.length, direction: pitchDirection, _ppForward: true },
-              hitCount - 1,
-            );
-          const pitch = pitchValues[pitchIndex];
-          if (typeof pitch === 'number' && Number.isFinite(pitch)) {
-            midi = clamp(Math.round(pitch), 24, 108);
-          }
-        }
-        if (midi === null) {
-          midi = chooseCoreSynthEuclidMidi(sliderState, harmonyState, rng, laneIndex, noteRangeOverride);
-        }
-
-        const expressionValue = expressionRange
-          ? expressionRange.min + rng() * (expressionRange.max - expressionRange.min)
-          : expressionValues && expressionValues.length > 0
-            ? finiteNumber(
-              expressionValues[seqLaneIndex(
-                { enabled: true, steps: expressionValues.length, direction: expressionDirection, _ppForward: true },
-                hitCount - 1,
-              )],
-              1,
-            )
+    for (let cycle = 0; cycle < cycleRepeats; cycle += 1) {
+      for (let step = 0; step < pattern.length; step += 1) {
+        const swingOffset = step % 2 === 1 ? stepSeconds * swing * 0.5 : 0;
+        if (pattern[step]) {
+          const hitPhase = hitCount;
+          hitCount += 1;
+          trigVisitCounts[step] = (trigVisitCounts[step] ?? 0) + 1;
+          const condition = trigConditions?.[step] ?? [1, 1];
+          const visit = trigVisitCounts[step] ?? 1;
+          const trigPassed = condition[1] <= 1 || (((visit - 1) % condition[1]) + 1 === condition[0]);
+          const stepProbability = probabilityValues
+            ? boundedNumber(probabilityValues[step], 1, 0, 1)
             : 1;
-        const velocity = clamp(expressionValue, 0, 1) * laneLevel;
-        const morphOverride = morphRange
-          ? clamp(morphRange.min + rng() * (morphRange.max - morphRange.min), 0, 1)
-          : morphValues && morphValues.length > 0
-            ? clamp(
-              finiteNumber(
-                morphValues[seqLaneIndex(
-                  { enabled: true, steps: morphValues.length, direction: morphDirection, _ppForward: true },
-                  hitCount - 1,
-                )],
-                0,
-              ),
-              0,
-              1,
-            )
-            : null;
-        const distanceOverride = distanceRange
-          ? clamp(distanceRange.min + rng() * (distanceRange.max - distanceRange.min), 0, 1)
-          : distanceValues && distanceValues.length > 0
-            ? clamp(
-              finiteNumber(
-                distanceValues[seqLaneIndex(
-                  { enabled: true, steps: distanceValues.length, direction: distanceDirection, _ppForward: true },
-                  hitCount - 1,
-                )],
-                0,
-              ),
-              0,
-              1,
-            )
-            : null;
-        const ratchet = Math.max(1, Math.round(
-          ratchetValues && ratchetValues.length > 0
-            ? finiteNumber(
-              ratchetValues[seqLaneIndex(
-                { enabled: true, steps: ratchetValues.length, direction: expressionDirection, _ppForward: true },
-                hitCount - 1,
-              )],
-              1,
-            )
-            : 1,
-        ));
+          if (!trigPassed || rng() > clamp(laneProbability * stepProbability, 0, 1)) {
+            stepTime += stepSeconds;
+            continue;
+          }
 
-        if (isCoreSynthPadSource(source)) {
-          const voiceIndex = boundedInteger(Number.parseInt(source.replace('synth', ''), 10), 1, 1, PAD_VOICE_COUNT) - 1;
-          const isPad2 = (pad2Assign & (1 << voiceIndex)) !== 0;
-          const attack = boundedNumber(isPad2 ? state.pad2Attack : state.synthAttack, 0.1, 0, 10);
-          const decay = boundedNumber(isPad2 ? state.pad2Decay : state.synthDecay, 0.3, 0, 10);
-          const holdSeconds = attack + decay + Math.max(0.1, (attack + decay) * 0.5);
-          for (let repeat = 0; repeat < ratchet; repeat += 1) {
-            padNotes.push({
-              source,
-              midi,
-              laneIndex,
-              frequency: midiToFreq(midi),
-              velocity: clamp(velocity, 0.05, 1),
-              route: voiceIndex + (isPad2 ? PAD_VOICE_COUNT : 0),
-              delaySeconds: laneInitialStartDelaySeconds + stepTime + (repeat * stepSeconds / ratchet),
-              holdSeconds,
-              distanceOverride,
-              morphOverride,
-            });
+          let midi: number | null = null;
+          if (pitchValues && pitchValues.length > 0) {
+            const pitchIndex = pitchBindingMode === 'sequence'
+              ? seqLaneIndex(
+                { enabled: true, steps: pitchValues.length, direction: pitchDirection, _ppForward: true },
+                step,
+              )
+              : seqLaneIndex(
+                { enabled: true, steps: pitchValues.length, direction: pitchDirection, _ppForward: true },
+                hitPhase,
+              );
+            const pitch = pitchValues[pitchIndex];
+            if (typeof pitch === 'number' && Number.isFinite(pitch)) {
+              midi = clamp(Math.round(pitch), 24, 108);
+            }
           }
-        } else if (source === 'piano') {
-          const pianoDistance = distanceOverride ?? getVoiceDistanceValue(sliderState, 'piano');
-          const pianoEnv = applyPianoDistanceEnvelope({
-            attack: boundedNumber(state.pianoAttack, 0.005, 0.001, 2),
-            decay: boundedNumber(state.pianoDecay, 0.65, 0.01, 4),
-            sustain: boundedNumber(state.pianoSustain, 0.72, 0, 1),
-            hold: boundedNumber(state.pianoHold, 0.2, 0, 4),
-            release: boundedNumber(state.pianoRelease, 1.4, 0.01, 8),
-          }, pianoDistance);
-          for (let repeat = 0; repeat < ratchet; repeat += 1) {
-            pianoNotes.push({
-              source,
-              midi,
-              laneIndex,
-              frequency: midiToFreq(midi),
-              velocity: clamp(velocity, 0.05, 1),
-              route: 0,
-              delaySeconds: laneInitialStartDelaySeconds + stepTime + (repeat * stepSeconds / ratchet),
-              holdSeconds: pianoEnv.hold ?? boundedNumber(state.pianoHold, 0.2, 0, 4),
-              distanceOverride,
-              morphOverride,
-            });
+          if (midi === null) {
+            midi = chooseCoreSynthEuclidMidi(sliderState, harmonyState, rng, laneIndex, noteRangeOverride);
           }
-        } else {
-          const leadSource = source === 'lead2' ? 'lead2' : 'lead1';
-          const leadState = morphOverride === null
-            ? sliderState
-            : {
-              ...sliderState,
-              [leadSource === 'lead2' ? 'lead2Morph' : 'lead1Morph']: morphOverride,
-            } as SliderState;
-          const { holdSeconds } = createLeadMorphedParams(leadState, leadSource, morphOverride, distanceOverride);
-          for (let repeat = 0; repeat < ratchet; repeat += 1) {
-            leadNotes.push({
-              source,
-              midi,
-              laneIndex,
-              frequency: midiToFreq(midi),
-              velocity: clamp(velocity, 0.05, 1),
-              route: leadSource === 'lead2' ? 1 : 0,
-              delaySeconds: laneInitialStartDelaySeconds + stepTime + (repeat * stepSeconds / ratchet),
-              holdSeconds,
-              distanceOverride,
-              morphOverride,
-            });
+
+          const expressionValue = expressionRange
+            ? expressionRange.min + rng() * (expressionRange.max - expressionRange.min)
+            : expressionValues && expressionValues.length > 0
+              ? finiteNumber(
+                expressionValues[seqLaneIndex(
+                  { enabled: true, steps: expressionValues.length, direction: expressionDirection, _ppForward: true },
+                  hitPhase,
+                )],
+                1,
+              )
+              : 1;
+          const velocity = clamp(expressionValue, 0, 1) * laneLevel;
+          const morphOverride = morphRange
+            ? clamp(morphRange.min + rng() * (morphRange.max - morphRange.min), 0, 1)
+            : morphValues && morphValues.length > 0
+              ? clamp(
+                finiteNumber(
+                  morphValues[seqLaneIndex(
+                    { enabled: true, steps: morphValues.length, direction: morphDirection, _ppForward: true },
+                    hitPhase,
+                  )],
+                  0,
+                ),
+                0,
+                1,
+              )
+              : null;
+          const distanceOverride = distanceRange
+            ? clamp(distanceRange.min + rng() * (distanceRange.max - distanceRange.min), 0, 1)
+            : distanceValues && distanceValues.length > 0
+              ? clamp(
+                finiteNumber(
+                  distanceValues[seqLaneIndex(
+                    { enabled: true, steps: distanceValues.length, direction: distanceDirection, _ppForward: true },
+                    hitPhase,
+                  )],
+                  0,
+                ),
+                0,
+                1,
+              )
+              : null;
+          const ratchet = clampSequencerRatchet(
+            ratchetValues && ratchetValues.length > 0
+              ? finiteNumber(
+                ratchetValues[seqLaneIndex(
+                  { enabled: true, steps: ratchetValues.length, direction: expressionDirection, _ppForward: true },
+                  hitPhase,
+                )],
+                1,
+              )
+              : 1,
+          );
+
+          if (isCoreSynthPadSource(source)) {
+            const voiceIndex = boundedInteger(Number.parseInt(source.replace('synth', ''), 10), 1, 1, PAD_VOICE_COUNT) - 1;
+            const isPad2 = (pad2Assign & (1 << voiceIndex)) !== 0;
+            const attack = boundedNumber(isPad2 ? state.pad2Attack : state.synthAttack, 0.1, 0, 10);
+            const decay = boundedNumber(isPad2 ? state.pad2Decay : state.synthDecay, 0.3, 0, 10);
+            const holdSeconds = attack + decay + Math.max(0.1, (attack + decay) * 0.5);
+            for (let repeat = 0; repeat < ratchet; repeat += 1) {
+              padNotes.push({
+                source,
+                midi,
+                laneIndex,
+                frequency: midiToFreq(midi),
+                velocity: clamp(velocity, 0.05, 1),
+                route: voiceIndex + (isPad2 ? PAD_VOICE_COUNT : 0),
+                delaySeconds: laneInitialStartDelaySeconds + stepTime + swingOffset + (repeat * stepSeconds / ratchet),
+                holdSeconds,
+                distanceOverride,
+                morphOverride,
+              });
+            }
+          } else if (source === 'piano') {
+            const pianoDistance = distanceOverride ?? getVoiceDistanceValue(sliderState, 'piano');
+            const pianoEnv = applyPianoDistanceEnvelope({
+              attack: boundedNumber(state.pianoAttack, 0.005, 0.001, 2),
+              decay: boundedNumber(state.pianoDecay, 0.65, 0.01, 4),
+              sustain: boundedNumber(state.pianoSustain, 0.72, 0, 1),
+              hold: boundedNumber(state.pianoHold, 0.2, 0, 4),
+              release: boundedNumber(state.pianoRelease, 1.4, 0.01, 8),
+            }, pianoDistance);
+            for (let repeat = 0; repeat < ratchet; repeat += 1) {
+              pianoNotes.push({
+                source,
+                midi,
+                laneIndex,
+                frequency: midiToFreq(midi),
+                velocity: clamp(velocity, 0.05, 1),
+                route: 0,
+                delaySeconds: laneInitialStartDelaySeconds + stepTime + swingOffset + (repeat * stepSeconds / ratchet),
+                holdSeconds: pianoEnv.hold ?? boundedNumber(state.pianoHold, 0.2, 0, 4),
+                distanceOverride,
+                morphOverride,
+              });
+            }
+          } else {
+            const leadSource = source === 'lead2' ? 'lead2' : 'lead1';
+            const leadState = morphOverride === null
+              ? sliderState
+              : {
+                ...sliderState,
+                [leadSource === 'lead2' ? 'lead2Morph' : 'lead1Morph']: morphOverride,
+              } as SliderState;
+            const { holdSeconds } = createLeadMorphedParams(leadState, leadSource, morphOverride, distanceOverride);
+            const ratchetFactor = ratchet > 1 ? 1 / ratchet : 1;
+            for (let repeat = 0; repeat < ratchet; repeat += 1) {
+              leadNotes.push({
+                source,
+                midi,
+                laneIndex,
+                frequency: midiToFreq(midi),
+                velocity: clamp(velocity, 0.05, 1),
+                route: leadSource === 'lead2' ? 1 : 0,
+                delaySeconds: laneInitialStartDelaySeconds + stepTime + swingOffset + (repeat * stepSeconds / ratchet),
+                holdSeconds,
+                distanceOverride,
+                morphOverride,
+                ratchetFactor,
+              });
+            }
           }
         }
-      }
 
-      const swingOffset = step % 2 === 1 ? stepSeconds * swing * 0.5 : 0;
-      stepTime += stepSeconds + swingOffset;
+        stepTime += stepSeconds;
+      }
     }
 
     laneCycleEndSeconds.push(laneInitialStartDelaySeconds + stepTime);
@@ -2429,15 +2505,25 @@ function createLeadParamsOverride(
   outputSelect: 0 | 1 | 2,
   morphOverride: number | null | undefined,
   distanceOverride: number | null | undefined,
+  ratchetFactor: number = 1,
 ): number[] | undefined {
-  if (morphOverride == null && distanceOverride == null) return undefined;
+  const factor = Number.isFinite(ratchetFactor) ? clamp(ratchetFactor, 0.02, 1) : 1;
+  if (morphOverride == null && distanceOverride == null && factor >= 0.999) return undefined;
   const { morphed } = createLeadMorphedParams(
     sliderState,
     source,
     morphOverride ?? null,
     distanceOverride ?? null,
   );
-  return createLeadFmParams(morphed, outputSelect);
+  const ratchetMorphed = factor >= 0.999
+    ? morphed
+    : {
+      ...morphed,
+      attack: (morphed.attack ?? 0.01) * factor,
+      decay: (morphed.decay ?? 0.3) * factor,
+      release: (morphed.release ?? 0.5) * factor,
+    };
+  return createLeadFmParams(ratchetMorphed, outputSelect);
 }
 
 function writeLeadFmOperatorParams(
@@ -2605,7 +2691,7 @@ function createLeadEuclidPreviewSource(
   const outputSelect: 0 | 1 | 2 = usesLead1 && usesLead2 ? 2 : usesLead2 ? 1 : 0;
   const params = createLeadFmParams(morphed, outputSelect);
   const postChain = createLeadPostChainConfig(sliderState, leadSource, firstFrequency);
-  const toLeadPreviewNote = ({ source, ...note }: typeof allRawLeadNotes[number]): PreviewNote => ({
+  const toLeadPreviewNote = ({ source, ratchetFactor, ...note }: typeof allRawLeadNotes[number]): PreviewNote => ({
     ...note,
     paramsOverride: createLeadParamsOverride(
       sliderState,
@@ -2613,6 +2699,7 @@ function createLeadEuclidPreviewSource(
       outputSelect,
       note.morphOverride,
       note.distanceOverride,
+      ratchetFactor,
     ),
   });
   const leadNotes = rawEuclidLeadNotes.map(toLeadPreviewNote);
@@ -2760,7 +2847,7 @@ function getCoreDrumParamSHRange(
   return runtime.paramSHRanges.get(`${DRUM_VOICE_STATE_PREFIX[voice]}${suffix}`) ?? null;
 }
 
-function getCoreDrumTrigCycleRepeats(
+function getTrigConditionCycleRepeats(
   trigCondition: TrigCondition[] | null | undefined,
 ): number {
   if (!trigCondition) return 1;
@@ -2792,11 +2879,12 @@ function createDrumPreviewNotes(
     const voices = getCoreDrumLaneVoices(state, lane);
     if (voices.length === 0) continue;
 
+    const defaultPattern = defaultDrumEuclidPattern(laneIndex);
     const patternParams = resolveDrumEuclidPatternParams(
       typeof state[`drumEuclid${lane}Preset`] === 'string' ? String(state[`drumEuclid${lane}Preset`]) : 'custom',
-      boundedInteger(state[`drumEuclid${lane}Steps`], laneIndex === 2 ? 12 : laneIndex === 1 ? 16 : 8, 1, 64),
-      boundedInteger(state[`drumEuclid${lane}Hits`], laneIndex === 0 ? 3 : laneIndex === 1 ? 5 : 4, 0, 64),
-      boundedInteger(state[`drumEuclid${lane}Rotation`], 0, 0, 63),
+      boundedInteger(state[`drumEuclid${lane}Steps`], defaultPattern.steps, 1, 64),
+      boundedInteger(state[`drumEuclid${lane}Hits`], defaultPattern.hits, 0, 64),
+      boundedInteger(state[`drumEuclid${lane}Rotation`], defaultPattern.rotation, 0, 63),
     );
     const stepSeconds = getCoreDrumLaneStepSeconds(laneIndex, beatSeconds, runtime);
     const basePattern = seqEuclidean(patternParams.steps, patternParams.hits, patternParams.rotation);
@@ -2806,23 +2894,23 @@ function createDrumPreviewNotes(
       : basePattern;
     const laneLevel = boundedNumber(state[`drumEuclid${lane}Level`], 1, 0, 1);
     const laneProbability = boundedNumber(state[`drumEuclid${lane}Probability`], 1, 0, 1);
-    const laneSwing = clamp(finiteNumber(runtime.swings[laneIndex], 0), 0, 1);
+    const laneSwing = normalizeSequencerSwing(runtime.swings[laneIndex]);
     const laneSubLanes = runtime.subLaneEnabled[laneIndex] ?? {};
-    const expressionValues = laneSubLanes.expression !== false ? runtime.stepOverrides.expression[laneIndex] : null;
+    const expressionValues = laneSubLanes.expression === true ? runtime.stepOverrides.expression[laneIndex] : null;
     const expressionDirection = runtime.stepOverrides.expressionDirection[laneIndex] ?? 'forward';
-    const expressionRange = laneSubLanes.expression !== false ? runtime.stepOverrides.expressionRanges?.[laneIndex] ?? null : null;
-    const morphValues = laneSubLanes.morph !== false ? runtime.stepOverrides.morph[laneIndex] : null;
+    const expressionRange = laneSubLanes.expression === true ? runtime.stepOverrides.expressionRanges?.[laneIndex] ?? null : null;
+    const morphValues = laneSubLanes.morph === true ? runtime.stepOverrides.morph[laneIndex] : null;
     const morphDirection = runtime.stepOverrides.morphDirection[laneIndex] ?? 'forward';
-    const morphRange = laneSubLanes.morph !== false ? runtime.stepOverrides.morphRanges?.[laneIndex] ?? null : null;
-    const distanceValues = laneSubLanes.distance !== false ? runtime.stepOverrides.distance[laneIndex] : null;
+    const morphRange = laneSubLanes.morph === true ? runtime.stepOverrides.morphRanges?.[laneIndex] ?? null : null;
+    const distanceValues = laneSubLanes.distance === true ? runtime.stepOverrides.distance[laneIndex] : null;
     const distanceDirection = runtime.stepOverrides.distanceDirection[laneIndex] ?? 'forward';
-    const distanceRange = laneSubLanes.distance !== false ? runtime.stepOverrides.distanceRanges?.[laneIndex] ?? null : null;
-    const pitchValues = laneSubLanes.pitch !== false ? runtime.stepOverrides.pitch[laneIndex] : null;
+    const distanceRange = laneSubLanes.distance === true ? runtime.stepOverrides.distanceRanges?.[laneIndex] ?? null : null;
+    const pitchValues = laneSubLanes.pitch === true ? runtime.stepOverrides.pitch[laneIndex] : null;
     const pitchDirection = runtime.stepOverrides.pitchDirection[laneIndex] ?? 'forward';
     const probabilityValues = laneSubLanes.probability !== false ? runtime.stepOverrides.probability[laneIndex] : null;
     const ratchetValues = laneSubLanes.ratchet !== false ? runtime.stepOverrides.ratchet[laneIndex] : null;
     const trigCondition = laneSubLanes.trigCondition !== false ? runtime.stepOverrides.trigCondition[laneIndex] : null;
-    const cycleRepeats = getCoreDrumTrigCycleRepeats(trigCondition);
+    const cycleRepeats = getTrigConditionCycleRepeats(trigCondition);
     let hitCount = 0;
 
     loopSeconds = Math.max(loopSeconds, patternParams.steps * stepSeconds * cycleRepeats);
@@ -2872,7 +2960,7 @@ function createDrumPreviewNotes(
         const ratchetIndex = ratchetValues && ratchetValues.length > 0
           ? directedStepIndex(ratchetValues.length, expressionDirection, hitCount)
           : 0;
-        const ratchet = Math.max(1, Math.min(16, Math.round(ratchetValues?.[ratchetIndex] ?? 1)));
+        const ratchet = clampSequencerRatchet(ratchetValues?.[ratchetIndex]);
         const ratchetWindow = stepSeconds / ratchet;
         const swingOffset = step % 2 === 1 ? stepSeconds * laneSwing * 0.5 : 0;
 
@@ -3778,6 +3866,25 @@ function createDelayBModuleConfig(sliderState: SliderState): DelayBModuleConfig 
   const spread = boundedNumber(state.delayBSpread, 0.5, 0, 1);
   const tone = boundedNumber(state.granularDelayFilter, 0.5, 0, 1);
   const vibrato = boundedNumber(state.granularDelayVibrato, 0, 0, 1);
+  const tapeMode = state.delayBAlgorithm === 'tapeHeads';
+  const tapeHeadEnabled = [
+    booleanValue(state.delayBTapeHead1Enabled, true),
+    booleanValue(state.delayBTapeHead2Enabled, true),
+    booleanValue(state.delayBTapeHead3Enabled, true),
+    booleanValue(state.delayBTapeHead4Enabled, true),
+  ];
+  const tapeHeadLevels = [
+    boundedNumber(state.delayBTapeHead1Level, 0.72, 0, 1),
+    boundedNumber(state.delayBTapeHead2Level, 0.8, 0, 1),
+    boundedNumber(state.delayBTapeHead3Level, 0.88, 0, 1),
+    boundedNumber(state.delayBTapeHead4Level, 1, 0, 1),
+  ];
+  const tapeHeadPans = [
+    boundedNumber(state.delayBTapeHead1Pan, 0.28, 0, 1),
+    boundedNumber(state.delayBTapeHead2Pan, 0.72, 0, 1),
+    boundedNumber(state.delayBTapeHead3Pan, 0.38, 0, 1),
+    boundedNumber(state.delayBTapeHead4Pan, 0.62, 0, 1),
+  ];
   const macroModel = computeGranularMacroModel(sliderState, (key, fallback) =>
     boundedNumber(state[key], fallback, 0, 1),
   );
@@ -3794,12 +3901,20 @@ function createDelayBModuleConfig(sliderState: SliderState): DelayBModuleConfig 
     : 0;
   params[8] = enabled && granularInputGain < 0.0001 ? delayBGranularSend : 0;
   params[9] = safeBToA;
-  params[10] = enumParam(macroModel.spaceMode, DELAY_B_SPACE_MODE_VALUES, 0);
-  params[11] = enumParam(state.delayBPattern, DELAY_B_PATTERN_VALUES, 0);
+  params[10] = tapeMode ? 2 : enumParam(macroModel.spaceMode, DELAY_B_SPACE_MODE_VALUES, 0);
+  params[11] = tapeMode
+    ? enumParam(state.delayBTapeSpacing, DELAY_B_TAPE_SPACING_VALUES, 0)
+    : enumParam(state.delayBPattern, DELAY_B_PATTERN_VALUES, 0);
   params[12] = enumParam(state.delayBWarp, DELAY_B_WARP_VALUES, 0);
   params[13] = boundedNumber(state.delayBWarpIntensity, 0.5, 0, 1);
   params[14] = spread;
-  params[15] = 0;
+  params[15] = tapeHeadEnabled.reduce((mask, active, index) => active ? mask | (1 << index) : mask, 0);
+  tapeHeadLevels.forEach((value, index) => {
+    params[16 + index] = value;
+  });
+  tapeHeadPans.forEach((value, index) => {
+    params[20 + index] = value;
+  });
 
   const gainKey = [
     pad1SendGain,
@@ -3874,6 +3989,9 @@ export class CoreEngineHost {
   private drumEuclidSwings: number[] = [...CORE_DRUM_EUCLID_SWINGS];
   private drumStepOverrides: DrumStepOverrides = createEmptyCoreDrumStepOverrides();
   private drumHomeStepOverrides: DrumStepOverrides = createEmptyCoreDrumStepOverrides();
+  private drumHomePitchSettings: (SequencerPitchSettings | null)[] = [null, null, null, null];
+  private drumHomePitchScaleQuantize: (boolean | null)[] = [null, null, null, null];
+  private drumHomePitchSubLaneStates: ({ steps?: number; direction?: LaneDirection; scaleQuantize?: boolean } | null)[] = [null, null, null, null];
   private drumSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
   private drumEvolveConfigs: DrumEuclidEvolveConfig[] = [
     defaultCoreDrumEuclidEvolveConfig(),
@@ -4051,6 +4169,7 @@ export class CoreEngineHost {
     try {
       this.clearHostPianoEuclidTimers();
       this.stopSynthEuclidLiveEvolve();
+      this.synthNoteRangeOverrides = [null, null, null, null];
       this.softStopActiveHostPianoVoices(CORE_SOFT_STOP_SOURCE_FADE_SECONDS);
       this.softStopHostPianoFxSends(CORE_SOFT_STOP_SOURCE_FADE_SECONDS);
       this.stopHostEarthTextures();
@@ -4540,6 +4659,7 @@ export class CoreEngineHost {
       this.clearHostPianoEuclidTimers();
       this.clearSoftStopCleanupTimers();
       this.stopSynthEuclidLiveEvolve();
+      this.synthNoteRangeOverrides = [null, null, null, null];
       this.stopActiveHostPianoVoices();
       this.disconnectHostEarthTextures();
       this.stopRuntimeRandomWalk();
@@ -4813,6 +4933,13 @@ export class CoreEngineHost {
     this.synthEuclidLiveEvolveKey = null;
     this.synthEuclidLiveEvolveNextAtMs = [0, 0, 0, 0];
     this.synthEuclidLiveEvolveBars = [0, 0, 0, 0];
+    this.resetSynthEuclidEvolveBarCounters();
+  }
+
+  private resetSynthEuclidEvolveBarCounters(): void {
+    for (const state of this.synthEvolveStates) {
+      state.lastEvolveBar = 0;
+    }
   }
 
   private getSynthLiveEvolveLaneCycleMs(sliderState: SliderState): (number | null)[] {
@@ -4825,15 +4952,16 @@ export class CoreEngineHost {
       const lane = (laneIndex + 1) as 1 | 2 | 3 | 4;
       const config = this.synthEvolveConfigs[laneIndex];
       if (!config?.enabled || !booleanValue(state[`synthEuclid${lane}Enabled`], laneIndex === 0)) return null;
+      const defaultPattern = defaultSynthEuclidPattern(laneIndex);
       const patternParams = resolveDrumEuclidPatternParams(
         typeof state[`synthEuclid${lane}Preset`] === 'string' ? String(state[`synthEuclid${lane}Preset`]) : 'custom',
-        boundedInteger(state[`synthEuclid${lane}Steps`], laneIndex === 0 ? 16 : 8, 1, 64),
-        boundedInteger(state[`synthEuclid${lane}Hits`], laneIndex === 0 ? 4 : laneIndex === 1 ? 3 : laneIndex === 2 ? 2 : 6, 0, 64),
-        boundedInteger(state[`synthEuclid${lane}Rotation`], 0, 0, 63),
+        boundedInteger(state[`synthEuclid${lane}Steps`], defaultPattern.steps, 1, 64),
+        boundedInteger(state[`synthEuclid${lane}Hits`], defaultPattern.hits, 0, 64),
+        boundedInteger(state[`synthEuclid${lane}Rotation`], defaultPattern.rotation, 0, 63),
       );
       const clockDiv = this.synthEuclidClockDivs[laneIndex] ?? CORE_SYNTH_EUCLID_CLOCK_DIVS[laneIndex] ?? '1/8';
       const stepSeconds = clockDivToSeconds(clockDiv, beatSeconds);
-      const swing = clamp(finiteNumber(this.synthEuclidSwings[laneIndex], 0), 0, 1);
+      const swing = normalizeSequencerSwing(this.synthEuclidSwings[laneIndex]);
       const swingSteps = Math.floor(patternParams.steps / 2);
       const cycleSeconds = patternParams.steps * stepSeconds + swingSteps * stepSeconds * swing * 0.5;
       return Math.max(250, cycleSeconds * 1000);
@@ -4848,12 +4976,13 @@ export class CoreEngineHost {
     const laneKey = CORE_SYNTH_LANE_INDICES
       .map((laneIndex) => {
         const lane = (laneIndex + 1) as 1 | 2 | 3 | 4;
+        const defaultPattern = defaultSynthEuclidPattern(laneIndex);
         return [
           booleanValue(state[`synthEuclid${lane}Enabled`], laneIndex === 0) ? 1 : 0,
           state[`synthEuclid${lane}Preset`] ?? 'custom',
-          state[`synthEuclid${lane}Steps`] ?? '',
-          state[`synthEuclid${lane}Hits`] ?? '',
-          state[`synthEuclid${lane}Rotation`] ?? '',
+          state[`synthEuclid${lane}Steps`] ?? defaultPattern.steps,
+          state[`synthEuclid${lane}Hits`] ?? defaultPattern.hits,
+          state[`synthEuclid${lane}Rotation`] ?? defaultPattern.rotation,
           this.synthEuclidClockDivs[laneIndex] ?? '',
           Math.round((this.synthEuclidSwings[laneIndex] ?? 0) * 1000),
           Math.round((cycleMs[laneIndex] ?? 0) * 1000) / 1000,
@@ -4883,6 +5012,7 @@ export class CoreEngineHost {
       this.synthEuclidLiveEvolveKey = key;
       this.synthEuclidLiveEvolveBars = [0, 0, 0, 0];
       this.synthEuclidLiveEvolveNextAtMs = cycleMs.map((value) => value == null ? 0 : nowMs + value);
+      this.resetSynthEuclidEvolveBarCounters();
     }
     this.armSynthEuclidLiveEvolveTimer(cycleMs);
   }
@@ -4952,21 +5082,24 @@ export class CoreEngineHost {
     if (laneOverrides.pitch && pitchSettings && pitchSettings.mode !== 'noteRange') {
       laneOverrides.pitch = this.midiToOffsets(laneOverrides.pitch, pitchSettings);
     }
+    const defaultPattern = defaultSynthEuclidPattern(laneIndex);
     const patternParams = resolveDrumEuclidPatternParams(
       typeof state[`synthEuclid${lane}Preset`] === 'string' ? String(state[`synthEuclid${lane}Preset`]) : 'custom',
-      boundedInteger(state[`synthEuclid${lane}Steps`], laneIndex === 0 ? 16 : 8, 1, 64),
-      boundedInteger(state[`synthEuclid${lane}Hits`], laneIndex === 0 ? 4 : laneIndex === 1 ? 3 : laneIndex === 2 ? 2 : 6, 0, 64),
-      boundedInteger(state[`synthEuclid${lane}Rotation`], 0, 0, 63),
+      boundedInteger(state[`synthEuclid${lane}Steps`], defaultPattern.steps, 1, 64),
+      boundedInteger(state[`synthEuclid${lane}Hits`], defaultPattern.hits, 0, 64),
+      boundedInteger(state[`synthEuclid${lane}Rotation`], defaultPattern.rotation, 0, 63),
     );
     const noteRangeOverride = this.synthNoteRangeOverrides[laneIndex];
     const noteMin = noteRangeOverride?.min ?? boundedInteger(state[`synthEuclid${lane}NoteMin`], laneIndex === 1 ? 76 : laneIndex === 2 ? 52 : laneIndex === 3 ? 88 : 64, 24, 108);
     const noteMax = noteRangeOverride?.max ?? boundedInteger(state[`synthEuclid${lane}NoteMax`], laneIndex === 1 ? 88 : laneIndex === 2 ? 64 : laneIndex === 3 ? 96 : 76, 24, 108);
+    const uiEnabledSubLanes = this.synthSubLaneEnabled[laneIndex] ?? {};
     const enabledSubLanes = (config.enabledSubLanes ?? ['pitch', 'expression', 'morph', 'distance', 'probability', 'ratchet'])
-      .filter((subLane) => (this.synthSubLaneEnabled[laneIndex] ?? {})[subLane] !== false);
+      .filter((subLane) => subLane === 'probability' || subLane === 'ratchet' || uiEnabledSubLanes[subLane] === true);
     const seedWindow = sliderState.seedWindow === 'day' ? 'day' : 'hour';
     this.synthEuclidLiveEvolveRng ??= createRng(`${getUtcBucket(seedWindow)}|E_ROOT|core-synth-euclid-live-evolve`);
     const evolveState = this.synthEvolveStates[laneIndex] ?? defaultSynthEvolveState();
     this.synthEvolveStates[laneIndex] = evolveState;
+    if (!evolveState.homePitchSettings && pitchSettings) evolveState.homePitchSettings = { ...pitchSettings };
     const result = evolveSynthLane(
       laneOverrides,
       { ...config, enabledSubLanes },
@@ -4992,7 +5125,12 @@ export class CoreEngineHost {
     this.applySynthLaneOverrides(laneIndex, storedOverrides);
     this.synthEuclidSwings[laneIndex] = result.swing;
     this.onSynthEvolveTrigger?.(laneIndex);
-    this.onSynthEvolveOverridesChanged?.(laneIndex, { ...offsetOverrides, swing: result.swing });
+    const subLaneStates = synthEvolvedSubLaneStatePatch(offsetOverrides);
+    this.onSynthEvolveOverridesChanged?.(laneIndex, {
+      ...offsetOverrides,
+      swing: result.swing,
+      ...(Object.keys(subLaneStates).length > 0 ? { subLaneStates } : {}),
+    });
     if (result.noteRangeMin !== undefined && result.noteRangeMax !== undefined) {
       this.synthNoteRangeOverrides[laneIndex] = { min: result.noteRangeMin, max: result.noteRangeMax };
       this.onSynthNoteRangeEvolved?.(laneIndex, result.noteRangeMin, result.noteRangeMax);
@@ -5016,7 +5154,7 @@ export class CoreEngineHost {
 
   setDrumEuclidSwings(swings: number[]): void {
     const next = CORE_DRUM_LANE_INDICES.map((index) =>
-      clamp(finiteNumber(swings[index], this.drumEuclidSwings[index] ?? 0), 0, 1),
+      normalizeSequencerSwing(swings[index], this.drumEuclidSwings[index] ?? 0),
     );
     if (next.every((value, index) => value === this.drumEuclidSwings[index])) return;
     this.drumEuclidSwings = next;
@@ -5036,20 +5174,57 @@ export class CoreEngineHost {
     this.reapplyLastState();
   }
 
+  setSequencerPresetHomeSnapshots(): void {
+    this.drumHomeStepOverrides = cloneCoreDrumStepOverrides(this.drumStepOverrides);
+    for (const index of CORE_SYNTH_LANE_INDICES) this.captureCurrentSynthLaneHome(index);
+  }
+
+  captureSynthEuclidLaneHome(laneIndex: number, pitchState?: { steps?: number; direction?: LaneDirection; scaleQuantize?: boolean } | null): void {
+    this.captureCurrentSynthLaneHome(Math.max(0, Math.min(CORE_SYNTH_LANE_INDICES.length - 1, Math.trunc(laneIndex))), pitchState);
+  }
+
+  captureDrumEuclidLaneHome(laneIndex: number, pitchSettings?: SequencerPitchSettings | null, pitchState?: { steps?: number; direction?: LaneDirection; scaleQuantize?: boolean } | null): void {
+    const index = Math.max(0, Math.min(CORE_DRUM_LANE_INDICES.length - 1, Math.trunc(laneIndex)));
+    const current = cloneCoreDrumStepOverrides(this.drumHomeStepOverrides);
+    const source = cloneCoreDrumStepOverrides(this.drumStepOverrides);
+    for (const key of Object.keys(current) as (keyof DrumStepOverrides)[]) {
+      (current[key] as unknown[])[index] = source[key]?.[index] ?? null;
+    }
+    this.drumHomeStepOverrides = current;
+    if (pitchSettings) {
+      this.drumHomePitchSettings[index] = normalizeSequencerPitchSettings(pitchSettings, this.drumHomePitchSettings[index] ?? undefined);
+    }
+    if (pitchState) {
+      this.drumHomePitchSubLaneStates[index] = { steps: pitchState.steps, direction: pitchState.direction, scaleQuantize: pitchState.scaleQuantize };
+      if (typeof pitchState.scaleQuantize === 'boolean') this.drumHomePitchScaleQuantize[index] = pitchState.scaleQuantize;
+    }
+  }
+
   setDrumSubLaneEnabled(states: Record<string, boolean>[]): void {
     this.drumSubLaneEnabled = CORE_DRUM_LANE_INDICES.map((index) => ({ ...(states[index] ?? {}) }));
     this.reapplyLastState();
   }
 
   setDrumEuclidEvolveConfigs(configs: Partial<DrumEuclidEvolveConfig>[]): void {
-    this.drumEvolveConfigs = CORE_DRUM_LANE_INDICES.map((index) => ({
-      ...(this.drumEvolveConfigs[index] ?? defaultCoreDrumEuclidEvolveConfig()),
-      ...(configs[index] ?? {}),
-      methods: {
-        ...(this.drumEvolveConfigs[index]?.methods ?? defaultCoreDrumEuclidEvolveConfig().methods),
-        ...(configs[index]?.methods ?? {}),
-      },
-    }));
+    this.drumEvolveConfigs = CORE_DRUM_LANE_INDICES.map((index) => {
+      const current = this.drumEvolveConfigs[index] ?? defaultCoreDrumEuclidEvolveConfig();
+      const incoming = configs[index] ?? {};
+      const enabledSubLanes = mergeEvolveEnabledSubLanes(incoming.enabledSubLanes, current.enabledSubLanes);
+      return {
+        ...current,
+        enabled: incoming.enabled === undefined ? current.enabled : incoming.enabled === true,
+        everyBars: typeof incoming.everyBars === 'number' && Number.isFinite(incoming.everyBars)
+          ? Math.max(1, Math.round(incoming.everyBars))
+          : current.everyBars,
+        evolution: typeof incoming.evolution === 'number' && Number.isFinite(incoming.evolution)
+          ? Math.max(0, Math.min(1, incoming.evolution))
+          : current.evolution,
+        writeOffset: normalizeEvolveWriteOffset(incoming.writeOffset, current.writeOffset),
+        mutationMode: incoming.mutationMode === 'strict' ? 'strict' : incoming.mutationMode === 'biased' ? 'biased' : current.mutationMode,
+        methods: mergeEvolveMethods(current.methods, incoming.methods),
+        ...(enabledSubLanes ? { enabledSubLanes } : {}),
+      };
+    });
     this.reapplyLastState();
   }
 
@@ -5096,20 +5271,42 @@ export class CoreEngineHost {
 
   resetDrumEuclidLaneHome(laneIndex: number): void {
     const index = Math.max(0, Math.min(CORE_DRUM_LANE_INDICES.length - 1, Math.trunc(laneIndex)));
+    const previous = this.drumStepOverrides;
     const restored = cloneCoreDrumStepOverrides(this.drumStepOverrides);
     const home = this.drumHomeStepOverrides;
     restored.triggerToggles[index] = new Map(home.triggerToggles[index] ?? []);
     restored.probability[index] = home.probability[index] ? [...home.probability[index]!] : null;
     restored.ratchet[index] = home.ratchet[index] ? [...home.ratchet[index]!] : null;
-    restored.trigCondition[index] = home.trigCondition[index] ? [...home.trigCondition[index]!] : null;
+    restored.trigCondition[index] = home.trigCondition[index] ? home.trigCondition[index]!.map((entry) => [entry[0], entry[1]] as TrigCondition) : null;
     restored.expression[index] = home.expression[index] ? [...home.expression[index]!] : null;
     restored.pitch[index] = home.pitch[index] ? [...home.pitch[index]!] : null;
     restored.morph[index] = home.morph[index] ? [...home.morph[index]!] : null;
     restored.distance[index] = home.distance[index] ? [...home.distance[index]!] : null;
     restored.slice[index] = home.slice[index] ? [...home.slice[index]!] : null;
     restored.reverse[index] = home.reverse[index] ? [...home.reverse[index]!] : null;
+    restored.expressionDirection[index] = home.expressionDirection?.[index] ?? null;
+    restored.pitchDirection[index] = home.pitchDirection?.[index] ?? null;
+    restored.morphDirection[index] = home.morphDirection?.[index] ?? null;
+    restored.distanceDirection[index] = home.distanceDirection?.[index] ?? null;
+    restored.sliceDirection[index] = home.sliceDirection?.[index] ?? null;
+    restored.reverseDirection[index] = home.reverseDirection?.[index] ?? null;
+    restored.expressionRanges![index] = home.expressionRanges?.[index] ?? null;
+    restored.morphRanges![index] = home.morphRanges?.[index] ?? null;
+    restored.distanceRanges![index] = home.distanceRanges?.[index] ?? null;
     this.drumStepOverrides = restored;
-    this.onDrumEvolveOverridesChanged?.(index, { ...restored, swing: this.drumEuclidSwings[index] ?? 0 });
+    const pitchSettings = this.drumHomePitchSettings[index]
+      ? [null, null, null, null].map((_, lane) => lane === index ? { ...this.drumHomePitchSettings[index]! } : null)
+      : null;
+    const subLaneStates = drumStepOverrideSubLaneStatePatch(restored, index, previous);
+    if (this.drumHomePitchSubLaneStates[index]) {
+      subLaneStates.pitch = { ...(subLaneStates.pitch ?? { enabled: false, steps: 1, direction: 'forward' }), ...this.drumHomePitchSubLaneStates[index]! };
+    }
+    this.onDrumEvolveOverridesChanged?.(index, {
+      ...restored,
+      swing: this.drumEuclidSwings[index] ?? 0,
+      subLaneStates,
+      ...(pitchSettings ? { pitchSettings } : {}),
+    });
     this.reapplyLastState();
   }
 
@@ -5132,12 +5329,14 @@ export class CoreEngineHost {
     next.pitch[index] = Array.from({ length: steps }, () => Math.round((rng() - 0.5) * 14 * amount));
     next.morph[index] = Array.from({ length: steps }, () => clamp(rng(), 0, 1));
     next.distance[index] = Array.from({ length: steps }, () => clamp(rng(), 0, 1));
-    next.slice[index] = Array.from({ length: steps }, () => Math.floor(rng() * 16));
-    next.reverse[index] = Array.from({ length: steps }, () => rng() < 0.3 ? 1 : 0);
     this.drumStepOverrides = next;
     this.drumHomeStepOverrides = cloneCoreDrumStepOverrides(next);
     this.onDrumEvolveTrigger?.(index);
-    this.onDrumEvolveOverridesChanged?.(index, { ...next, swing: this.drumEuclidSwings[index] ?? 0 });
+    this.onDrumEvolveOverridesChanged?.(index, {
+      ...next,
+      swing: this.drumEuclidSwings[index] ?? 0,
+      subLaneStates: drumStepOverrideSubLaneStatePatch(next, index),
+    });
     this.reapplyLastState();
   }
 
@@ -5565,11 +5764,12 @@ export class CoreEngineHost {
     const state = this.lastSliderState as unknown as Record<string, unknown> | null;
     if (!state) return this.drumStepOverrides.expression[laneIndex]?.length ?? 16;
     const lane = (laneIndex + 1) as 1 | 2 | 3 | 4;
+    const defaultPattern = defaultDrumEuclidPattern(laneIndex);
     const params = resolveDrumEuclidPatternParams(
       typeof state[`drumEuclid${lane}Preset`] === 'string' ? String(state[`drumEuclid${lane}Preset`]) : 'custom',
-      boundedInteger(state[`drumEuclid${lane}Steps`], laneIndex === 2 ? 12 : laneIndex === 1 ? 16 : 8, 1, 64),
-      boundedInteger(state[`drumEuclid${lane}Hits`], laneIndex === 0 ? 3 : laneIndex === 1 ? 5 : 4, 0, 64),
-      boundedInteger(state[`drumEuclid${lane}Rotation`], 0, 0, 63),
+      boundedInteger(state[`drumEuclid${lane}Steps`], defaultPattern.steps, 1, 64),
+      boundedInteger(state[`drumEuclid${lane}Hits`], defaultPattern.hits, 0, 64),
+      boundedInteger(state[`drumEuclid${lane}Rotation`], defaultPattern.rotation, 0, 63),
     );
     return Math.max(1, params.steps);
   }
@@ -5585,7 +5785,7 @@ export class CoreEngineHost {
 
   setSynthEuclidSwings(swings: number[]): void {
     const next = CORE_SYNTH_LANE_INDICES.map((index) =>
-      clamp(finiteNumber(swings[index], this.synthEuclidSwings[index] ?? 0), 0, 1),
+      normalizeSequencerSwing(swings[index], this.synthEuclidSwings[index] ?? 0),
     );
     if (next.every((value, index) => value === this.synthEuclidSwings[index])) return;
     this.synthEuclidSwings = next;
@@ -5630,14 +5830,25 @@ export class CoreEngineHost {
   }
 
   setSynthEuclidEvolveConfigs(configs: Partial<SynthEvolveConfig>[]): void {
-    this.synthEvolveConfigs = CORE_SYNTH_LANE_INDICES.map((index) => ({
-      ...(this.synthEvolveConfigs[index] ?? defaultSynthEvolveConfig()),
-      ...(configs[index] ?? {}),
-      methods: {
-        ...(this.synthEvolveConfigs[index]?.methods ?? defaultSynthEvolveConfig().methods),
-        ...(configs[index]?.methods ?? {}),
-      },
-    }));
+    this.synthEvolveConfigs = CORE_SYNTH_LANE_INDICES.map((index) => {
+      const current = this.synthEvolveConfigs[index] ?? defaultSynthEvolveConfig();
+      const incoming = configs[index] ?? {};
+      const enabledSubLanes = mergeEvolveEnabledSubLanes(incoming.enabledSubLanes, current.enabledSubLanes);
+      return {
+        ...current,
+        enabled: incoming.enabled === undefined ? current.enabled : incoming.enabled === true,
+        everyBars: typeof incoming.everyBars === 'number' && Number.isFinite(incoming.everyBars)
+          ? Math.max(1, Math.round(incoming.everyBars))
+          : current.everyBars,
+        evolution: typeof incoming.evolution === 'number' && Number.isFinite(incoming.evolution)
+          ? Math.max(0, Math.min(1, incoming.evolution))
+          : current.evolution,
+        writeOffset: normalizeEvolveWriteOffset(incoming.writeOffset, current.writeOffset),
+        mutationMode: incoming.mutationMode === 'strict' ? 'strict' : incoming.mutationMode === 'biased' ? 'biased' : current.mutationMode,
+        methods: mergeEvolveMethods(current.methods, incoming.methods),
+        ...(enabledSubLanes ? { enabledSubLanes } : {}),
+      };
+    });
     // Re-sync the live evolve timer so a disabled config stops the timer immediately
     if (this.lastSliderState) {
       this.syncSynthEuclidLiveEvolve(this.lastSliderState);
@@ -5658,15 +5869,15 @@ export class CoreEngineHost {
   }
 
   setSynthPitchSettings(settings: { mode: PitchMode; root: number; scale: ScaleName }[]): void {
-    this.synthPitchSettings = CORE_SYNTH_LANE_INDICES.map((index) => ({
-      ...(settings[index] ?? this.synthPitchSettings[index] ?? { mode: 'semitones', root: 60, scale: 'Major' }),
-    }));
+    this.synthPitchSettings = CORE_SYNTH_LANE_INDICES.map((index) =>
+      normalizeSequencerPitchSettings(settings[index], this.synthPitchSettings[index]),
+    );
     this.reapplyLastState();
   }
 
   setSynthPitchBindingModes(modes: PitchBindingMode[]): void {
     this.synthPitchBindingModes = CORE_SYNTH_LANE_INDICES.map((index) =>
-      modes[index] ?? this.synthPitchBindingModes[index] ?? 'polyrhythmic',
+      normalizeSequencerPitchBindingMode(modes[index], this.synthPitchBindingModes[index] ?? 'polyrhythmic'),
     );
     this.reapplyLastState();
   }
@@ -5681,19 +5892,51 @@ export class CoreEngineHost {
     if (!state?.home) return;
 
     const restored = resetSynthLaneToHome(this.extractSynthLaneOverrides(index), state);
-    const pitchSettings = this.synthPitchSettings[index];
+    const pitchSettings = state.homePitchSettings ?? this.synthPitchSettings[index];
     const stored: SynthLaneOverrides = { ...restored };
     if (restored.pitch && pitchSettings && pitchSettings.mode !== 'noteRange') {
       stored.pitch = this.offsetsToMidi(restored.pitch, pitchSettings);
     }
     this.applySynthLaneOverrides(index, stored);
-    this.onSynthEvolveOverridesChanged?.(index, { ...restored, swing: state.homeSwing });
     this.synthEuclidSwings[index] = state.homeSwing ?? this.synthEuclidSwings[index] ?? 0;
+    const subLaneStates = synthEvolvedSubLaneStatePatch(restored);
+    if (state.homePitchSubLaneState) {
+      subLaneStates.pitch = { ...(subLaneStates.pitch ?? { enabled: false, steps: 1, direction: 'forward' }), ...state.homePitchSubLaneState };
+    }
+    this.onSynthEvolveOverridesChanged?.(index, {
+      ...restored,
+      swing: state.homeSwing,
+      ...(pitchSettings ? { pitchSettings: [null, null, null, null].map((_, lane) => lane === index ? { ...pitchSettings } : null) } : {}),
+      ...(Object.keys(subLaneStates).length > 0 ? { subLaneStates } : {}),
+    });
     if (state.homeNoteRangeMin !== null && state.homeNoteRangeMax !== null) {
       this.synthNoteRangeOverrides[index] = null;
       this.onSynthNoteRangeEvolved?.(index, state.homeNoteRangeMin, state.homeNoteRangeMax);
     }
     this.reapplyLastState();
+  }
+
+  private captureCurrentSynthLaneHome(index: number, pitchState?: { steps?: number; direction?: LaneDirection; scaleQuantize?: boolean } | null): void {
+    const state = this.synthEvolveStates[index] ?? defaultSynthEvolveState();
+    this.synthEvolveStates[index] = state;
+    const current = this.extractSynthLaneOverrides(index);
+    const pitchSettings = this.synthPitchSettings[index];
+    if (current.pitch && pitchSettings && pitchSettings.mode !== 'noteRange') current.pitch = this.midiToOffsets(current.pitch, pitchSettings);
+    state.home = captureSynthHomeSnapshot(current);
+    state.homeSwing = this.synthEuclidSwings[index] ?? 0;
+    state.homePitchSettings = pitchSettings ? { ...pitchSettings } : null;
+    state.homePitchScaleQuantize = typeof pitchState?.scaleQuantize === 'boolean' ? pitchState.scaleQuantize : null;
+    state.homePitchSubLaneState = pitchState ? { steps: pitchState.steps, direction: pitchState.direction, scaleQuantize: pitchState.scaleQuantize } : null;
+    const lane = (index + 1) as 1 | 2 | 3 | 4;
+    const sliderState = this.lastSliderState as Record<string, unknown> | null;
+    if (pitchSettings?.mode === 'noteRange' && sliderState) {
+      const override = this.synthNoteRangeOverrides[index];
+      state.homeNoteRangeMin = override?.min ?? boundedInteger(sliderState[`synthEuclid${lane}NoteMin`], index === 1 ? 76 : index === 2 ? 52 : index === 3 ? 88 : 64, 24, 108);
+      state.homeNoteRangeMax = override?.max ?? boundedInteger(sliderState[`synthEuclid${lane}NoteMax`], index === 1 ? 88 : index === 2 ? 64 : index === 3 ? 96 : 76, 24, 108);
+    } else {
+      state.homeNoteRangeMin = null;
+      state.homeNoteRangeMax = null;
+    }
   }
 
   diceSynthEuclidLane(laneIndex: number, intensity: number = 1): void {
@@ -5722,6 +5965,7 @@ export class CoreEngineHost {
       distanceDirection: null,
       probability: Array.from({ length: steps }, () => clamp(0.55 + rng() * 0.45, 0, 1)),
       ratchet: Array.from({ length: steps }, () => rng() < 0.2 * amount ? 2 + Math.floor(rng() * 3) : 1),
+      trigCondition: current.trigCondition ? current.trigCondition.map((entry) => [entry[0], entry[1]]) : null,
     };
     for (let step = 0; step < steps; step += 1) {
       if (rng() < 0.25 * amount) next.triggerToggles.set(step, rng() > 0.35);
@@ -5733,7 +5977,12 @@ export class CoreEngineHost {
     }
     this.applySynthLaneOverrides(index, stored);
     this.onSynthEvolveTrigger?.(index);
-    this.onSynthEvolveOverridesChanged?.(index, { ...next, swing: this.synthEuclidSwings[index] ?? 0 });
+    const subLaneStates = synthEvolvedSubLaneStatePatch(next);
+    this.onSynthEvolveOverridesChanged?.(index, {
+      ...next,
+      swing: this.synthEuclidSwings[index] ?? 0,
+      ...(Object.keys(subLaneStates).length > 0 ? { subLaneStates } : {}),
+    });
     const state = this.synthEvolveStates[index];
     if (state) {
       state.home = captureSynthHomeSnapshot(next);
@@ -5746,11 +5995,12 @@ export class CoreEngineHost {
     const state = this.lastSliderState as unknown as Record<string, unknown> | null;
     if (!state) return this.synthStepOverrides.pitch[laneIndex]?.length ?? 16;
     const lane = (laneIndex + 1) as 1 | 2 | 3 | 4;
+    const defaultPattern = defaultSynthEuclidPattern(laneIndex);
     const params = resolveDrumEuclidPatternParams(
       typeof state[`synthEuclid${lane}Preset`] === 'string' ? String(state[`synthEuclid${lane}Preset`]) : 'custom',
-      boundedInteger(state[`synthEuclid${lane}Steps`], laneIndex === 0 ? 16 : 8, 1, 64),
-      boundedInteger(state[`synthEuclid${lane}Hits`], laneIndex === 0 ? 4 : laneIndex === 1 ? 3 : laneIndex === 2 ? 2 : 6, 0, 64),
-      boundedInteger(state[`synthEuclid${lane}Rotation`], 0, 0, 63),
+      boundedInteger(state[`synthEuclid${lane}Steps`], defaultPattern.steps, 1, 64),
+      boundedInteger(state[`synthEuclid${lane}Hits`], defaultPattern.hits, 0, 64),
+      boundedInteger(state[`synthEuclid${lane}Rotation`], defaultPattern.rotation, 0, 63),
     );
     return Math.max(1, params.steps);
   }
@@ -5769,6 +6019,7 @@ export class CoreEngineHost {
       distanceDirection: ov.distanceDirection[laneIndex] ?? null,
       probability: ov.probability[laneIndex] ? [...ov.probability[laneIndex]!] : null,
       ratchet: ov.ratchet[laneIndex] ? [...ov.ratchet[laneIndex]!] : null,
+      trigCondition: ov.trigCondition[laneIndex] ? ov.trigCondition[laneIndex]!.map((entry) => [entry[0], entry[1]]) : null,
     };
   }
 
@@ -5784,6 +6035,7 @@ export class CoreEngineHost {
     this.synthStepOverrides.distanceDirection[laneIndex] = ov.distanceDirection;
     this.synthStepOverrides.probability[laneIndex] = ov.probability ? [...ov.probability] : null;
     this.synthStepOverrides.ratchet[laneIndex] = ov.ratchet ? [...ov.ratchet] : null;
+    this.synthStepOverrides.trigCondition[laneIndex] = ov.trigCondition ? ov.trigCondition.map((entry) => [entry[0], entry[1]]) : null;
   }
 
   private midiToOffsets(midi: number[], settings: { mode: PitchMode; root: number; scale: ScaleName }): number[] {

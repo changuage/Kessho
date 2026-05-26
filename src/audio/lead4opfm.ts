@@ -15,6 +15,7 @@
 import { getPresetStore } from '../presets/PresetStore';
 import type { PresetEntry, PresetLibrary } from '../presets/types';
 import { SHARED_PRESET_TEST_MODE } from '../presets/sharedMode';
+import { clampMorphPosition } from './morphUtils';
 
 // ─── Active note tracking for CPU overlay ───
 let activeLeadNoteCount = 0;
@@ -231,6 +232,7 @@ export function morphPresets(
   t: number,
   algorithmMode: 'snap' | 'presetA' = 'snap'
 ): Lead4opFMMorphedParams {
+  const morphPosition = clampMorphPosition(t);
   const a = presetA.params;
   const b = presetB.params;
   const aXY = presetA.xy;
@@ -241,102 +243,102 @@ export function morphPresets(
   if (algorithmMode === 'presetA') {
     algorithm = presetA.algorithm;
   } else {
-    algorithm = t < 0.5 ? presetA.algorithm : presetB.algorithm;
+    algorithm = morphPosition < 0.5 ? presetA.algorithm : presetB.algorithm;
   }
 
   // Transient type: snap at 50% (discrete, can't interpolate)
-  const transientType = t < 0.5
+  const transientType = morphPosition < 0.5
     ? (a.transient?.type ?? 'white')
     : (b.transient?.type ?? 'white');
 
   // LFO target: snap at 50% (discrete)
   const lfoTargetA = a.lfo?.target ?? 'all';
   const lfoTargetB = b.lfo?.target ?? 'all';
-  const lfoTarget = t < 0.5 ? lfoTargetA : lfoTargetB;
+  const lfoTarget = morphPosition < 0.5 ? lfoTargetA : lfoTargetB;
 
   return {
     algorithm,
-    beatDetune: lerp(a.beatDetune, b.beatDetune, t),
-    carrier2Mix: lerp(a.carrier2Mix, b.carrier2Mix, t),
+    beatDetune: lerp(a.beatDetune, b.beatDetune, morphPosition),
+    carrier2Mix: lerp(a.carrier2Mix, b.carrier2Mix, morphPosition),
 
-    mod1Ratio: lerp(a.mod1.ratio, b.mod1.ratio, t),
-    mod1Index: lerp(a.mod1.index, b.mod1.index, t),
-    mod1Decay: lerp(a.mod1.decay, b.mod1.decay, t),
-    mod1Sustain: lerp(a.mod1.sustain ?? 0.1, b.mod1.sustain ?? 0.1, t),
-    mod1Level: lerp(a.mod1.level ?? 1, b.mod1.level ?? 1, t),
-    mod1Feedback: lerp(a.mod1.feedback ?? 0, b.mod1.feedback ?? 0, t),
-    mod1Detune: lerp(a.mod1.detune ?? 0, b.mod1.detune ?? 0, t),
-    mod1EnvRate: lerp(a.mod1.envRate ?? 1, b.mod1.envRate ?? 1, t),
-    mod1ModAttack: lerp(a.mod1.modAttack ?? 0, b.mod1.modAttack ?? 0, t),
-    mod1ModDelay: lerp(a.mod1.modDelay ?? 0, b.mod1.modDelay ?? 0, t),
+    mod1Ratio: lerp(a.mod1.ratio, b.mod1.ratio, morphPosition),
+    mod1Index: lerp(a.mod1.index, b.mod1.index, morphPosition),
+    mod1Decay: lerp(a.mod1.decay, b.mod1.decay, morphPosition),
+    mod1Sustain: lerp(a.mod1.sustain ?? 0.1, b.mod1.sustain ?? 0.1, morphPosition),
+    mod1Level: lerp(a.mod1.level ?? 1, b.mod1.level ?? 1, morphPosition),
+    mod1Feedback: lerp(a.mod1.feedback ?? 0, b.mod1.feedback ?? 0, morphPosition),
+    mod1Detune: lerp(a.mod1.detune ?? 0, b.mod1.detune ?? 0, morphPosition),
+    mod1EnvRate: lerp(a.mod1.envRate ?? 1, b.mod1.envRate ?? 1, morphPosition),
+    mod1ModAttack: lerp(a.mod1.modAttack ?? 0, b.mod1.modAttack ?? 0, morphPosition),
+    mod1ModDelay: lerp(a.mod1.modDelay ?? 0, b.mod1.modDelay ?? 0, morphPosition),
 
-    mod2Ratio: lerp(a.mod2.ratio, b.mod2.ratio, t),
-    mod2Index: lerp(a.mod2.index, b.mod2.index, t),
-    mod2Decay: lerp(a.mod2.decay, b.mod2.decay, t),
-    mod2Sustain: lerp(a.mod2.sustain ?? 0.05, b.mod2.sustain ?? 0.05, t),
-    mod2Level: lerp(a.mod2.level ?? 1, b.mod2.level ?? 1, t),
-    mod2Feedback: lerp(a.mod2.feedback ?? 0, b.mod2.feedback ?? 0, t),
-    mod2Detune: lerp(a.mod2.detune ?? 0, b.mod2.detune ?? 0, t),
-    mod2EnvRate: lerp(a.mod2.envRate ?? 1, b.mod2.envRate ?? 1, t),
-    mod2ModAttack: lerp(a.mod2.modAttack ?? 0, b.mod2.modAttack ?? 0, t),
-    mod2ModDelay: lerp(a.mod2.modDelay ?? 0, b.mod2.modDelay ?? 0, t),
+    mod2Ratio: lerp(a.mod2.ratio, b.mod2.ratio, morphPosition),
+    mod2Index: lerp(a.mod2.index, b.mod2.index, morphPosition),
+    mod2Decay: lerp(a.mod2.decay, b.mod2.decay, morphPosition),
+    mod2Sustain: lerp(a.mod2.sustain ?? 0.05, b.mod2.sustain ?? 0.05, morphPosition),
+    mod2Level: lerp(a.mod2.level ?? 1, b.mod2.level ?? 1, morphPosition),
+    mod2Feedback: lerp(a.mod2.feedback ?? 0, b.mod2.feedback ?? 0, morphPosition),
+    mod2Detune: lerp(a.mod2.detune ?? 0, b.mod2.detune ?? 0, morphPosition),
+    mod2EnvRate: lerp(a.mod2.envRate ?? 1, b.mod2.envRate ?? 1, morphPosition),
+    mod2ModAttack: lerp(a.mod2.modAttack ?? 0, b.mod2.modAttack ?? 0, morphPosition),
+    mod2ModDelay: lerp(a.mod2.modDelay ?? 0, b.mod2.modDelay ?? 0, morphPosition),
 
-    mod3Ratio: lerp(a.mod3.ratio, b.mod3.ratio, t),
-    mod3Index: lerp(a.mod3.index, b.mod3.index, t),
-    mod3Decay: lerp(a.mod3.decay, b.mod3.decay, t),
-    mod3Sustain: lerp(a.mod3.sustain ?? 0.02, b.mod3.sustain ?? 0.02, t),
-    mod3Level: lerp(a.mod3.level ?? 1, b.mod3.level ?? 1, t),
-    mod3Feedback: lerp(a.mod3.feedback ?? 0, b.mod3.feedback ?? 0, t),
-    mod3Detune: lerp(a.mod3.detune ?? 0, b.mod3.detune ?? 0, t),
-    mod3EnvRate: lerp(a.mod3.envRate ?? 1, b.mod3.envRate ?? 1, t),
-    mod3ModAttack: lerp(a.mod3.modAttack ?? 0, b.mod3.modAttack ?? 0, t),
-    mod3ModDelay: lerp(a.mod3.modDelay ?? 0, b.mod3.modDelay ?? 0, t),
+    mod3Ratio: lerp(a.mod3.ratio, b.mod3.ratio, morphPosition),
+    mod3Index: lerp(a.mod3.index, b.mod3.index, morphPosition),
+    mod3Decay: lerp(a.mod3.decay, b.mod3.decay, morphPosition),
+    mod3Sustain: lerp(a.mod3.sustain ?? 0.02, b.mod3.sustain ?? 0.02, morphPosition),
+    mod3Level: lerp(a.mod3.level ?? 1, b.mod3.level ?? 1, morphPosition),
+    mod3Feedback: lerp(a.mod3.feedback ?? 0, b.mod3.feedback ?? 0, morphPosition),
+    mod3Detune: lerp(a.mod3.detune ?? 0, b.mod3.detune ?? 0, morphPosition),
+    mod3EnvRate: lerp(a.mod3.envRate ?? 1, b.mod3.envRate ?? 1, morphPosition),
+    mod3ModAttack: lerp(a.mod3.modAttack ?? 0, b.mod3.modAttack ?? 0, morphPosition),
+    mod3ModDelay: lerp(a.mod3.modDelay ?? 0, b.mod3.modDelay ?? 0, morphPosition),
 
-    mod4Ratio: lerp(a.mod4.ratio, b.mod4.ratio, t),
-    mod4Index: lerp(a.mod4.index, b.mod4.index, t),
-    mod4Decay: lerp(a.mod4.decay, b.mod4.decay, t),
-    mod4Sustain: lerp(a.mod4.sustain ?? 0.1, b.mod4.sustain ?? 0.1, t),
-    mod4Level: lerp(a.mod4.level ?? 1, b.mod4.level ?? 1, t),
-    mod4Feedback: lerp(a.mod4.feedback ?? 0, b.mod4.feedback ?? 0, t),
-    mod4Detune: lerp(a.mod4.detune ?? 0, b.mod4.detune ?? 0, t),
-    mod4EnvRate: lerp(a.mod4.envRate ?? 1, b.mod4.envRate ?? 1, t),
-    mod4ModAttack: lerp(a.mod4.modAttack ?? 0, b.mod4.modAttack ?? 0, t),
-    mod4ModDelay: lerp(a.mod4.modDelay ?? 0, b.mod4.modDelay ?? 0, t),
+    mod4Ratio: lerp(a.mod4.ratio, b.mod4.ratio, morphPosition),
+    mod4Index: lerp(a.mod4.index, b.mod4.index, morphPosition),
+    mod4Decay: lerp(a.mod4.decay, b.mod4.decay, morphPosition),
+    mod4Sustain: lerp(a.mod4.sustain ?? 0.1, b.mod4.sustain ?? 0.1, morphPosition),
+    mod4Level: lerp(a.mod4.level ?? 1, b.mod4.level ?? 1, morphPosition),
+    mod4Feedback: lerp(a.mod4.feedback ?? 0, b.mod4.feedback ?? 0, morphPosition),
+    mod4Detune: lerp(a.mod4.detune ?? 0, b.mod4.detune ?? 0, morphPosition),
+    mod4EnvRate: lerp(a.mod4.envRate ?? 1, b.mod4.envRate ?? 1, morphPosition),
+    mod4ModAttack: lerp(a.mod4.modAttack ?? 0, b.mod4.modAttack ?? 0, morphPosition),
+    mod4ModDelay: lerp(a.mod4.modDelay ?? 0, b.mod4.modDelay ?? 0, morphPosition),
 
-    attack: lerp(a.envelope.attack, b.envelope.attack, t),
-    decay: lerp(a.envelope.decay, b.envelope.decay, t),
-    sustain: lerp(a.envelope.sustain, b.envelope.sustain, t),
-    release: lerp(a.envelope.release, b.envelope.release, t),
+    attack: lerp(a.envelope.attack, b.envelope.attack, morphPosition),
+    decay: lerp(a.envelope.decay, b.envelope.decay, morphPosition),
+    sustain: lerp(a.envelope.sustain, b.envelope.sustain, morphPosition),
+    release: lerp(a.envelope.release, b.envelope.release, morphPosition),
 
-    filterFreq: lerp(a.filter.freq, b.filter.freq, t),
-    filterQ: lerp(a.filter.q, b.filter.q, t),
-    filterType: t < 0.5 ? (a.filter.type ?? 'lowpass') : (b.filter.type ?? 'lowpass'),
-    filterEnvAttack: lerp(a.filter.envAttack ?? 0, b.filter.envAttack ?? 0, t),
-    filterEnvDecay: lerp(a.filter.envDecay ?? 0, b.filter.envDecay ?? 0, t),
-    filterEnvSustain: lerp(a.filter.envSustain ?? 1, b.filter.envSustain ?? 1, t),
-    filterEnvRelease: lerp(a.filter.envRelease ?? 0, b.filter.envRelease ?? 0, t),
-    filterEnvDepth: lerp(a.filter.envDepth ?? 0, b.filter.envDepth ?? 0, t),
-    drive: lerp(a.drive ?? 0, b.drive ?? 0, t),
+    filterFreq: lerp(a.filter.freq, b.filter.freq, morphPosition),
+    filterQ: lerp(a.filter.q, b.filter.q, morphPosition),
+    filterType: morphPosition < 0.5 ? (a.filter.type ?? 'lowpass') : (b.filter.type ?? 'lowpass'),
+    filterEnvAttack: lerp(a.filter.envAttack ?? 0, b.filter.envAttack ?? 0, morphPosition),
+    filterEnvDecay: lerp(a.filter.envDecay ?? 0, b.filter.envDecay ?? 0, morphPosition),
+    filterEnvSustain: lerp(a.filter.envSustain ?? 1, b.filter.envSustain ?? 1, morphPosition),
+    filterEnvRelease: lerp(a.filter.envRelease ?? 0, b.filter.envRelease ?? 0, morphPosition),
+    filterEnvDepth: lerp(a.filter.envDepth ?? 0, b.filter.envDepth ?? 0, morphPosition),
+    drive: lerp(a.drive ?? 0, b.drive ?? 0, morphPosition),
 
-    transientClick: lerp(a.transient?.click ?? 0, b.transient?.click ?? 0, t),
-    transientNoise: lerp(a.transient?.noise ?? 0, b.transient?.noise ?? 0, t),
-    transientDuration: lerp(a.transient?.duration ?? 20, b.transient?.duration ?? 20, t),
-    transientDecay: lerp(a.transient?.decay ?? 50, b.transient?.decay ?? 50, t),
-    transientFilter: lerp(a.transient?.filter ?? 4000, b.transient?.filter ?? 4000, t),
+    transientClick: lerp(a.transient?.click ?? 0, b.transient?.click ?? 0, morphPosition),
+    transientNoise: lerp(a.transient?.noise ?? 0, b.transient?.noise ?? 0, morphPosition),
+    transientDuration: lerp(a.transient?.duration ?? 20, b.transient?.duration ?? 20, morphPosition),
+    transientDecay: lerp(a.transient?.decay ?? 50, b.transient?.decay ?? 50, morphPosition),
+    transientFilter: lerp(a.transient?.filter ?? 4000, b.transient?.filter ?? 4000, morphPosition),
     transientType,
 
-    gain: lerp(a.gain, b.gain, t),
+    gain: lerp(a.gain, b.gain, morphPosition),
 
-    xLevel: lerp(aXY.xLevel, bXY.xLevel, t),
-    xPan: lerp(aXY.xPan, bXY.xPan, t),
-    yLevel: lerp(aXY.yLevel, bXY.yLevel, t),
-    yPan: lerp(aXY.yPan, bXY.yPan, t),
+    xLevel: lerp(aXY.xLevel, bXY.xLevel, morphPosition),
+    xPan: lerp(aXY.xPan, bXY.xPan, morphPosition),
+    yLevel: lerp(aXY.yLevel, bXY.yLevel, morphPosition),
+    yPan: lerp(aXY.yPan, bXY.yPan, morphPosition),
 
-    lfoRate: lerp(a.lfo?.rate ?? 0, b.lfo?.rate ?? 0, t),
-    lfoDepth: lerp(a.lfo?.depth ?? 0, b.lfo?.depth ?? 0, t),
+    lfoRate: lerp(a.lfo?.rate ?? 0, b.lfo?.rate ?? 0, morphPosition),
+    lfoDepth: lerp(a.lfo?.depth ?? 0, b.lfo?.depth ?? 0, morphPosition),
     lfoTarget,
-    unisonVoices: Math.round(lerp(a.unisonVoices ?? 1, b.unisonVoices ?? 1, t)),
-    unisonDetune: lerp(a.unisonDetune ?? 0, b.unisonDetune ?? 0, t),
+    unisonVoices: Math.round(lerp(a.unisonVoices ?? 1, b.unisonVoices ?? 1, morphPosition)),
+    unisonDetune: lerp(a.unisonDetune ?? 0, b.unisonDetune ?? 0, morphPosition),
   };
 }
 
