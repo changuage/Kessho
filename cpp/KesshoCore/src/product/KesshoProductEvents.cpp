@@ -649,60 +649,33 @@ void KesshoProductEngine::sortControlEvents() {
   uint32_t pad_index = 0u;
   uint32_t pad_param_index = 0u;
   if (resolvePadRuntimeParamId(event.param_id, pad_source_id, pad_index, pad_param_index)) {
-    SourceState& source = sources[pad_source_id - 1u];
     if (applyRuntimeSourceOverrideParam(pad_source_id, pad_param_index, event.value)) {
       telemetry.last_error_code = KESSHO_PRODUCT_OK;
       return;
     }
-    if (source.exact_pad_param_count != kProductPadRuntimeParamCount) {
-      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
-      return;
-    }
-    source.exact_pad_params[pad_param_index] = event.value;
-    if (pad_module) {
-      pad_module->setIndexedParam(
-          static_cast<int>(pad_index * kProductPadRuntimeParamCount + pad_param_index),
-          event.value);
-    }
-    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    (void) pad_index;
+    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     return;
   }
   uint32_t lead_source_id = 0u;
   uint32_t lead_index = 0u;
   uint32_t lead_param_index = 0u;
   if (resolveLeadRuntimeParamId(event.param_id, lead_source_id, lead_index, lead_param_index)) {
-    SourceState& source = sources[lead_source_id - 1u];
     if (applyRuntimeSourceOverrideParam(lead_source_id, lead_param_index, event.value)) {
       telemetry.last_error_code = KESSHO_PRODUCT_OK;
       return;
     }
-    if (source.exact_lead_param_count != kProductLeadRuntimeParamCount) {
-      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
-      return;
-    }
-    source.exact_lead_params[lead_param_index] = event.value;
-    if (lead_modules[lead_index]) {
-      lead_modules[lead_index]->setIndexedParam(static_cast<int>(lead_param_index), event.value);
-    }
-    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    (void) lead_index;
+    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     return;
   }
   uint32_t drum_param_index = 0u;
   if (productDrumRuntimeParamIndex(event.param_id, drum_param_index)) {
-    SourceState& source = sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
     if (applyRuntimeSourceOverrideParam(KESSHO_PRODUCT_SOURCE_DRUM, drum_param_index, event.value)) {
       telemetry.last_error_code = KESSHO_PRODUCT_OK;
       return;
     }
-    if (source.exact_drum_param_count != kProductDrumRuntimeParamCount) {
-      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
-      return;
-    }
-    source.exact_drum_params[drum_param_index] = event.value;
-    if (drum_module) {
-      drum_module->setIndexedParam(static_cast<int>(drum_param_index), event.value);
-    }
-    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     return;
   }
   if (applyGranularParamEvent(event)) {

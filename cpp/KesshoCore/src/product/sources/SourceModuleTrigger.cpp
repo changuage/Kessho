@@ -19,8 +19,6 @@ void scaleLeadRatchetPatch(kessho::core::KesshoSourcePresetPatch& patch, float f
   if (factor >= 0.999f) {
     return;
   }
-  patch.attack = kessho::product::internal::clampFloat(patch.attack * factor, 0.0f, 1.0f);
-  patch.release = kessho::product::internal::clampFloat(patch.release * factor, 0.0f, 1.0f);
   if (patch.exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT) {
     patch.exact_lead_params[kLeadAttackParamIndex] = scaledEnvelopeSeconds(patch.exact_lead_params[kLeadAttackParamIndex], factor);
     patch.exact_lead_params[kLeadDecayParamIndex] = scaledEnvelopeSeconds(patch.exact_lead_params[kLeadDecayParamIndex], factor);
@@ -106,12 +104,9 @@ static_assert(kLeadAttackParamIndex < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PA
     case KESSHO_PRODUCT_SOURCE_LEAD1:
     case KESSHO_PRODUCT_SOURCE_LEAD2: {
       const uint32_t lead_index = source_id == KESSHO_PRODUCT_SOURCE_LEAD2 ? 1u : 0u;
-      const bool exact_lead_source =
-          sources[source_id - 1u].exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
       const bool exact_lead_patch =
-          exact_lead_source ||
-          (preset_patch != nullptr &&
-           preset_patch->exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT);
+          preset_patch != nullptr &&
+          preset_patch->exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
       sources[source_id - 1u].post_lpf_tracking_midi = clampFloat(midi_note, 0.0f, 127.0f);
       if (!lead_modules[lead_index]) {
         telemetry.last_error_code = KESSHO_PRODUCT_ERROR_ALLOCATION_FAILURE;

@@ -84,8 +84,8 @@ const classifiedRuntimeAllowlist = new Map([
   ['./CoreProductHostSynthPitch', 'product host synth pitch adapter'],
   ['./CoreProductHostRuntimeGuards', 'product host strict runtime guards'],
   ['./CoreProductHostSequencerVisuals', 'product host sequencer visual telemetry adapter'],
-  ['./CoreProductDrumPatch', 'Product Core Drum preset reconstruction, sparse override, and exact bridge shape'],
-  ['./CoreProductLeadPatch', 'Product Core Lead preset reconstruction, sparse override, and exact fallback bridge'],
+  ['./CoreProductDrumPatch', 'Product Core Drum preset reconstruction and sparse override bridge'],
+  ['./CoreProductLeadPatch', 'Product Core Lead preset reconstruction and sparse override bridge'],
   ['./CoreProductModeIds', 'Product mode ID normalization helper'],
   ['./CoreProductPresetIds', 'generated Product preset ID normalization helper'],
   ['./CoreProductRuntimeAdapter', 'product host snapshot dirty-diff adapter'],
@@ -96,7 +96,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['./CoreProductFallbackDiagnostics', 'product runtime fallback diagnostics'],
   ['./CoreProductHostDebugTelemetry', 'product host debug telemetry adapter'],
   ['./coreProductRuntime', 'product module'],
-  ['./CoreProductPadPatch', 'Product Core Pad preset reconstruction, sparse override, and exact fallback bridge'],
+  ['./CoreProductPadPatch', 'Product Core Pad preset reconstruction and sparse override bridge'],
   ['./CoreProductSparseOverrides', 'Product Core sparse snapshot override helper'],
   ['./coreProductDelaySnapshot', 'Product delay snapshot serialization helper'],
   ['./coreProductSequencerMacroDefaults', 'Product sequencer macro default serializer helper'],
@@ -191,7 +191,7 @@ const doc = readFileSync(resolve(root, 'docs/kessho-product-reference-isolation.
 
 assert(
   readFileSync(resolve(root, 'src/audio/CoreProductLeadPatch.ts'), 'utf8').includes("from './lead4opfm'"),
-  'Lead exact patch bridge import must remain visible in CoreProductLeadPatch until bounded Lead overrides retire it',
+  'Lead preset-data bridge import must remain visible in CoreProductLeadPatch until bounded Lead overrides retire it',
 );
 assert(
   readFileSync(resolve(root, 'src/audio/CoreProductPadPatch.ts'), 'utf8').includes("from './padPresets'"),

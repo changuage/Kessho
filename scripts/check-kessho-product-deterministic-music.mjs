@@ -90,6 +90,7 @@ const free = resolveExport(wasm, 'free');
 const create = resolveExport(wasm, 'kessho_product_create');
 const destroy = resolveExport(wasm, 'kessho_product_destroy');
 const loadSnapshot = resolveExport(wasm, 'kessho_product_load_snapshot_v2');
+const copyTelemetry = resolveExport(wasm, 'kessho_product_copy_telemetry');
 const debugRenderEvents = resolveExport(wasm, 'kessho_product_debug_render_events');
 
 const SNAPSHOT_SIZE = snapshotConstNumber('SNAPSHOT_BYTES');
@@ -100,15 +101,25 @@ const SYNTH_OFFSET = SOURCE_OFFSET + SOURCE_SIZE * SOURCE_COUNT;
 const LANE_SIZE = snapshotConstNumber('LANE_BYTES');
 const LANE0_OFFSET = SYNTH_OFFSET + 4;
 const SEQUENCER_EVENT_SIZE = 60;
+const SCHEMA_VERSION = generatedConstNumber('KESSHO_PRODUCT_SCHEMA_VERSION');
 const SCHEMA_HASH = generatedConstNumber('KESSHO_PRODUCT_SCHEMA_HASH');
 const DEFAULT_SOURCE_PRESET_IDS = [1001, 1001, 2001, 2001, 3001, 4001, 5001];
-const PAD_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_PAD_PARAM_COUNT');
-const LEAD_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_LEAD_PARAM_COUNT');
+const DEFAULT_DRUM_VOICE_PRESET_IDS = [3101, 3201, 3301, 3401, 3501, 3601, 3701];
+const SOURCE_PRESET_A_OFFSET = 12;
+const SOURCE_PRESET_B_OFFSET = 16;
+const SOURCE_LEVEL_OFFSET = 32;
+const SOURCE_EXPRESSION_OFFSET = 44;
+const SOURCE_DRY_GAIN_OFFSET = 48;
+const SOURCE_POST_LPF_HZ_OFFSET = 72;
+const SOURCE_STEREO_WIDTH_OFFSET = 76;
+const SOURCE_DRUM_VOICE_PRESET_A_OFFSET = 3216;
+const SOURCE_DRUM_VOICE_PRESET_B_OFFSET = 3244;
 
 const snapshotPtr = malloc(SNAPSHOT_SIZE);
 const eventsPtr = malloc(SEQUENCER_EVENT_SIZE * 8);
+const telemetryPtr = malloc(1296);
 const engine = create(48000, 128, 0);
-assert(snapshotPtr && eventsPtr && engine, 'WASM deterministic timeline allocation failed');
+assert(snapshotPtr && eventsPtr && telemetryPtr && engine, 'WASM deterministic timeline allocation failed');
 
 const bytes = new Uint8Array(wasm.memory.buffer, snapshotPtr, SNAPSHOT_SIZE);
 bytes.fill(0);
@@ -116,7 +127,7 @@ let view = new DataView(wasm.memory.buffer);
 const setU32 = (offset, value) => view.setUint32(snapshotPtr + offset, value, true);
 const setF32 = (offset, value) => view.setFloat32(snapshotPtr + offset, value, true);
 
-setU32(0, 2);
+setU32(0, SCHEMA_VERSION);
 setU32(4, SCHEMA_HASH);
 setU32(8, 1);
 setF32(12, 120.0);
@@ -131,17 +142,25 @@ for (let index = 0; index < SOURCE_COUNT; index += 1) {
   setU32(source, 1);
   setU32(source + 4, index + 1);
   setU32(source + 8, DEFAULT_SOURCE_PRESET_IDS[index]);
-  setF32(source + 16, 0.8);
-  setF32(source + 28, 0.8);
-  setF32(source + 32, 1.0);
-  setF32(source + 56, 18000.0);
-  setF32(source + 60, 1.0);
   if (index === 0 || index === 1) {
-    setU32(source + 68, PAD_PARAM_COUNT);
+    setU32(source + SOURCE_PRESET_A_OFFSET, DEFAULT_SOURCE_PRESET_IDS[index]);
+    setU32(source + SOURCE_PRESET_B_OFFSET, DEFAULT_SOURCE_PRESET_IDS[index]);
   }
   if (index === 2 || index === 3) {
-    setU32(source + 284, LEAD_PARAM_COUNT);
+    setU32(source + SOURCE_PRESET_A_OFFSET, DEFAULT_SOURCE_PRESET_IDS[index]);
+    setU32(source + SOURCE_PRESET_B_OFFSET, DEFAULT_SOURCE_PRESET_IDS[index]);
   }
+  if (index === 4) {
+    for (let voiceIndex = 0; voiceIndex < DEFAULT_DRUM_VOICE_PRESET_IDS.length; voiceIndex += 1) {
+      setU32(source + SOURCE_DRUM_VOICE_PRESET_A_OFFSET + voiceIndex * 4, DEFAULT_DRUM_VOICE_PRESET_IDS[voiceIndex]);
+      setU32(source + SOURCE_DRUM_VOICE_PRESET_B_OFFSET + voiceIndex * 4, DEFAULT_DRUM_VOICE_PRESET_IDS[voiceIndex]);
+    }
+  }
+  setF32(source + SOURCE_LEVEL_OFFSET, 0.8);
+  setF32(source + SOURCE_EXPRESSION_OFFSET, 1.0);
+  setF32(source + SOURCE_DRY_GAIN_OFFSET, 0.8);
+  setF32(source + SOURCE_POST_LPF_HZ_OFFSET, 18000.0);
+  setF32(source + SOURCE_STEREO_WIDTH_OFFSET, 1.0);
 }
 
 setU32(SYNTH_OFFSET, 1);
@@ -161,7 +180,11 @@ setF32(LANE0_OFFSET + 60, 0.75);
 setU32(LANE0_OFFSET + 64, 120);
 setU32(LANE0_OFFSET + 76, 0x0f);
 
-assert(loadSnapshot(engine, snapshotPtr, SNAPSHOT_SIZE) === 1, 'WASM deterministic timeline snapshot load failed');
+const loadResult = loadSnapshot(engine, snapshotPtr, SNAPSHOT_SIZE);
+copyTelemetry(engine, telemetryPtr);
+view = new DataView(wasm.memory.buffer);
+const lastErrorCode = view.getInt32(telemetryPtr + 108, true);
+assert(loadResult === 1, `WASM deterministic timeline snapshot load failed: result ${loadResult}, last_error_code ${lastErrorCode}`);
 const count = debugRenderEvents(engine, eventsPtr, 8, 18001);
 assert(count === 4, `WASM deterministic timeline event count mismatch: ${count}`);
 
@@ -189,5 +212,6 @@ for (let index = 0; index < expected.length; index += 1) {
 destroy(engine);
 free(snapshotPtr);
 free(eventsPtr);
+free(telemetryPtr);
 
 console.log('Kessho Product deterministic music checks passed');

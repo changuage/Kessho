@@ -65,18 +65,7 @@
   const bool lead_source = isLeadProductSource(source_id);
   kessho::core::KesshoSourcePresetPatch endpoint_morph_patch{};
   const kessho::core::KesshoSourcePresetPatch* endpoint_morph_patch_ptr = nullptr;
-  const bool prefer_pad_snapshot_exact =
-      pad_source &&
-      !event_morph_override &&
-      source.exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
-  const bool prefer_lead_snapshot_exact =
-      lead_source &&
-      !event_morph_override &&
-      source.exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
-  if ((pad_source || lead_source) &&
-      source.source_preset_endpoint_valid &&
-      !prefer_pad_snapshot_exact &&
-      !prefer_lead_snapshot_exact) {
+  if ((pad_source || lead_source) && source.source_preset_endpoint_valid) {
     endpoint_morph_patch_ptr = resolveSourcePresetEndpointPatch(
         source,
         source_id,
@@ -86,43 +75,10 @@
   }
   const bool endpoint_morph_patch_valid = endpoint_morph_patch_ptr != nullptr;
   kessho::core::KesshoSourcePresetPatch snapshot_patch{};
-  const bool snapshot_exact_pad_patch =
-      pad_source &&
-      !endpoint_morph_patch_valid &&
-      source.exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
-  if (snapshot_exact_pad_patch) {
-    snapshot_patch.exact_pad_param_count = kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
-    for (uint32_t param_index = 0; param_index < kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT; ++param_index) {
-      snapshot_patch.exact_pad_params[param_index] = source.exact_pad_params[param_index];
-    }
-  }
-  const bool snapshot_exact_lead_patch =
-      lead_source &&
-      !endpoint_morph_patch_valid &&
-      source.exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
-  if (snapshot_exact_lead_patch) {
-    snapshot_patch.exact_lead_param_count = kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
-    for (uint32_t param_index = 0; param_index < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT; ++param_index) {
-      snapshot_patch.exact_lead_params[param_index] = source.exact_lead_params[param_index];
-    }
-  }
-  const bool snapshot_exact_drum_patch =
-      drum_source &&
-      source.exact_drum_param_count == kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
-  const bool drum_runtime_modulated =
-      drum_source &&
-      drumRuntimeModulationActive(drum_voice);
   const bool drum_trigger_morph_patch_required =
       drum_source &&
       morph >= 0.0f;
-  if (snapshot_exact_drum_patch && (drum_runtime_modulated || drum_trigger_morph_patch_required)) {
-    snapshot_patch.exact_drum_param_count = kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
-    for (uint32_t param_index = 0; param_index < kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT; ++param_index) {
-      snapshot_patch.exact_drum_params[param_index] = source.exact_drum_params[param_index];
-    }
-  }
-  const bool snapshot_generated_drum_patch = drum_source && !snapshot_exact_drum_patch;
-  if (snapshot_generated_drum_patch) {
+  if (drum_source) {
     snapshot_patch = source.source_preset_patch;
   }
   if (drum_trigger_morph_patch_required) {
@@ -148,8 +104,6 @@
   }
   const bool module_source = pad_source || lead_source || drum_source;
   const bool use_snapshot_patch =
-      snapshot_exact_pad_patch ||
-      snapshot_exact_lead_patch ||
       (drum_source && snapshot_patch.exact_drum_param_count == kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT);
   kessho::core::KesshoSourcePresetPatch preset_patch{};
   const kessho::core::KesshoSourcePresetPatch* preset_patch_ptr = nullptr;
@@ -158,21 +112,18 @@
   } else if (use_snapshot_patch) {
     preset_patch = snapshot_patch;
     preset_patch_ptr = &preset_patch;
-  } else if (module_source && source.source_preset_patch_valid && !(drum_source && snapshot_exact_drum_patch)) {
+  } else if (module_source && source.source_preset_patch_valid) {
     preset_patch_ptr = &source.source_preset_patch;
   }
   const bool exact_pad_patch =
-      snapshot_exact_pad_patch ||
       (pad_source &&
        preset_patch_ptr != nullptr &&
        preset_patch_ptr->exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT);
   const bool exact_lead_patch =
-      snapshot_exact_lead_patch ||
       (lead_source &&
        preset_patch_ptr != nullptr &&
        preset_patch_ptr->exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT);
   const bool exact_drum_patch =
-      snapshot_exact_drum_patch ||
       (drum_source &&
        preset_patch_ptr != nullptr &&
        preset_patch_ptr->exact_drum_param_count == kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT);

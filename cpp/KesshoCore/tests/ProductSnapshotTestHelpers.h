@@ -18,18 +18,13 @@ inline void applyGeneratedSourcePreset(KesshoProductSnapshotV2& snapshot, uint32
   if (!sourcePresetMatchesSource(source_id, preset)) {
     return;
   }
-  const auto patch = sourcePresetPatch(*preset);
   if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
-    source.exact_pad_param_count = patch.exact_pad_param_count;
-    for (uint32_t index = 0; index < source.exact_pad_param_count; ++index) {
-      source.exact_pad_params[index] = patch.exact_pad_params[index];
-    }
+    source.source_preset_a_id = preset_id;
+    source.source_preset_b_id = preset_id;
   }
   if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
-    source.exact_lead_param_count = patch.exact_lead_param_count;
-    for (uint32_t index = 0; index < source.exact_lead_param_count; ++index) {
-      source.exact_lead_params[index] = patch.exact_lead_params[index];
-    }
+    source.source_preset_a_id = preset_id;
+    source.source_preset_b_id = preset_id;
   }
   if (source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
     for (const auto& voice : kessho::product::generated::KESSHO_PRODUCT_DRUM_VOICES) {

@@ -46,18 +46,12 @@ function makeSource(sourceId = 1) {
     sustain: 0.72,
     holdSeconds: 0.5,
     releaseSeconds: 1.4,
-    exactPadParamCount: 2,
-    exactPadParams: [0.1, 0.2],
     padOverrideCount: 0,
     padOverrideIndices: [],
     padOverrideValues: [],
-    exactLeadParamCount: 2,
-    exactLeadParams: [0.3, 0.4],
     leadOverrideCount: 0,
     leadOverrideIndices: [],
     leadOverrideValues: [],
-    exactDrumParamCount: 2,
-    exactDrumParams: [0.5, 0.6],
     drumOverrideCount: 0,
     drumOverrideIndices: [],
     drumOverrideValues: [],
@@ -238,7 +232,6 @@ await runCheckWithReport({
       "'pad-override-change'",
       "'lead-override-change'",
       "'drum-override-change'",
-      "'exact-patch-change'",
       "'sequencer-structure-change'",
       "'dirty-diff-event-budget'",
       "'adapter-update'",
@@ -275,16 +268,28 @@ await runCheckWithReport({
       "previous.harmony.chordMode !== next.harmony.chordMode) return 'harmony-mode-change'",
       "previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change'",
       "previousSource.assetId !== nextSource.assetId) return 'source-structure-change'",
+      "this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return 'source-structure-change'",
       "this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'pad-override-change'",
       "this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'lead-override-change'",
       "this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'drum-override-change'",
-      'this.padPatchChanged(previousSource, nextSource)',
-      "return 'exact-patch-change'",
-      'this.leadPatchChanged(previousSource, nextSource) && !this.canApplyLeadExactPatchDiff(previousSource, nextSource)',
       'coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource) && !canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)',
       "canApplyLaneDiffs(previous.synthLanes, next.synthLanes)) return 'sequencer-structure-change'",
     ]) {
       assert(classifyBody.includes(token), `snapshot reload reason classifier is missing ${token}`);
+    }
+    for (const forbidden of [
+      'exact-patch-change',
+      'padPatchChanged',
+      'leadPatchChanged',
+      'drumPatchChanged',
+      'canApplyPadExactPatchDiff',
+      'canApplyLeadExactPatchDiff',
+      'canApplyDrumExactPatchDiff',
+      'appendPadExactPatchDiffs',
+      'appendLeadExactPatchDiffs',
+      'appendDrumExactPatchDiffs',
+    ]) {
+      assert(!runtimeAdapter.includes(forbidden), `runtime adapter must not retain legacy exact patch dirty-diff path: ${forbidden}`);
     }
 
     const canDiffBody = methodBody(runtimeAdapter, 'canApplySnapshotDiff');
@@ -518,33 +523,19 @@ await runCheckWithReport({
       'soundscape source-off asset removal must dirty-diff so Product Core can fade it out',
     );
 
-    const productPadBase = clone(base);
-    const padParamCount = adapterHarness.context.KESSHO_PRODUCT_PAD_PARAM_COUNT;
-    productPadBase.sources[0].exactPadParamCount = padParamCount;
-    productPadBase.sources[0].exactPadParams = Array.from({ length: padParamCount }, (_, index) => index / padParamCount);
-    const productPadNext = clone(productPadBase);
-    productPadNext.sources[0].exactPadParams[0] = 0.9;
-    const patchDiff = adapterHarness.buildCoreProductSnapshotDiff(productPadBase, productPadNext);
-    assert(
-      patchDiff.applied === true &&
-        patchDiff.events.some((event) =>
-          event.type === 'param' &&
-            event.paramId === 'Pad1Runtime0' &&
-            Math.abs(event.value - 0.9) < 1.0e-6),
-      'Product Pad exact patch changes must dirty-diff through generated runtime params',
+    const legacyPadExactNext = clone(base);
+    legacyPadExactNext.sources[0].exactPadParamCount = adapterHarness.context.KESSHO_PRODUCT_PAD_PARAM_COUNT;
+    legacyPadExactNext.sources[0].exactPadParams = Array.from(
+      { length: adapterHarness.context.KESSHO_PRODUCT_PAD_PARAM_COUNT },
+      (_, index) => index / adapterHarness.context.KESSHO_PRODUCT_PAD_PARAM_COUNT,
     );
-
-    const incompletePadPatchNext = clone(base);
-    incompletePadPatchNext.sources[0].exactPadParams[0] = 0.9;
-    const incompletePadPatchDiff = adapterHarness.buildCoreProductSnapshotDiff(base, incompletePadPatchNext);
+    const legacyPadExactDiff = adapterHarness.buildCoreProductSnapshotDiff(base, legacyPadExactNext);
     assert(
-      incompletePadPatchDiff.applied === false && incompletePadPatchDiff.reason === 'exact-patch-change',
-      'non-runtime Pad exact patch changes must full-reload with classified reason',
+      legacyPadExactDiff.applied === false && legacyPadExactDiff.reason === 'source-structure-change',
+      'legacy Pad exact patch fields must be rejected as source structure changes instead of dirty-diffed',
     );
 
     const padOverrideBase = clone(base);
-    padOverrideBase.sources[0].exactPadParamCount = 0;
-    padOverrideBase.sources[0].exactPadParams = [];
     padOverrideBase.sources[0].sourcePresetAId = 1001;
     padOverrideBase.sources[0].sourcePresetBId = 1002;
     const padOverrideNext = clone(padOverrideBase);
@@ -569,8 +560,6 @@ await runCheckWithReport({
 
     const leadOverrideBase = clone(base);
     leadOverrideBase.sources[0] = makeSource(adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1);
-    leadOverrideBase.sources[0].exactLeadParamCount = 0;
-    leadOverrideBase.sources[0].exactLeadParams = [];
     leadOverrideBase.sources[0].sourcePresetAId = 2001;
     leadOverrideBase.sources[0].sourcePresetBId = 2002;
     const leadOverrideNext = clone(leadOverrideBase);
@@ -595,8 +584,6 @@ await runCheckWithReport({
 
     const drumOverrideBase = clone(base);
     drumOverrideBase.sources[0] = makeSource(adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.drum);
-    drumOverrideBase.sources[0].exactDrumParamCount = 0;
-    drumOverrideBase.sources[0].exactDrumParams = [];
     const drumOverrideNext = clone(drumOverrideBase);
     drumOverrideNext.sources[0].drumOverrideCount = 1;
     drumOverrideNext.sources[0].drumOverrideIndices = [0];
@@ -617,21 +604,18 @@ await runCheckWithReport({
       'Product Drum sparse override changes must dirty-diff through source override events',
     );
 
-    const productLeadBase = clone(base);
-    const leadParamCount = adapterHarness.context.KESSHO_PRODUCT_LEAD_PARAM_COUNT;
-    productLeadBase.sources[0] = makeSource(adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1);
-    productLeadBase.sources[0].exactLeadParamCount = leadParamCount;
-    productLeadBase.sources[0].exactLeadParams = Array.from({ length: leadParamCount }, (_, index) => index / leadParamCount);
-    const productLeadNext = clone(productLeadBase);
-    productLeadNext.sources[0].exactLeadParams[0] = 0.85;
-    const productLeadDiff = adapterHarness.buildCoreProductSnapshotDiff(productLeadBase, productLeadNext);
+    const legacyLeadExactBase = clone(base);
+    legacyLeadExactBase.sources[0] = makeSource(adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1);
+    const legacyLeadExactNext = clone(legacyLeadExactBase);
+    legacyLeadExactNext.sources[0].exactLeadParamCount = adapterHarness.context.KESSHO_PRODUCT_LEAD_PARAM_COUNT;
+    legacyLeadExactNext.sources[0].exactLeadParams = Array.from(
+      { length: adapterHarness.context.KESSHO_PRODUCT_LEAD_PARAM_COUNT },
+      (_, index) => index / adapterHarness.context.KESSHO_PRODUCT_LEAD_PARAM_COUNT,
+    );
+    const legacyLeadExactDiff = adapterHarness.buildCoreProductSnapshotDiff(legacyLeadExactBase, legacyLeadExactNext);
     assert(
-      productLeadDiff.applied === true &&
-        productLeadDiff.events.some((event) =>
-          event.type === 'param' &&
-            event.paramId === 'Lead1Runtime0' &&
-            Math.abs(event.value - 0.85) < 1.0e-6),
-      'Product Lead exact patch changes must dirty-diff through generated runtime params',
+      legacyLeadExactDiff.applied === false && legacyLeadExactDiff.reason === 'source-structure-change',
+      'legacy Lead exact patch fields must be rejected as source structure changes instead of dirty-diffed',
     );
 
     const holdNext = clone(base);
@@ -646,24 +630,22 @@ await runCheckWithReport({
       'source hold changes must dirty-diff through generated Product source-hold events',
     );
 
-    const productDrumBase = clone(base);
-    const drumParamCount = adapterHarness.context.KESSHO_PRODUCT_DRUM_PARAM_COUNT;
-    productDrumBase.sources[0] = makeSource(adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.drum);
-    productDrumBase.sources[0].exactDrumParamCount = drumParamCount;
-    productDrumBase.sources[0].exactDrumParams = Array.from({ length: drumParamCount }, (_, index) => index / drumParamCount);
-    const productDrumNext = clone(productDrumBase);
-    productDrumNext.sources[0].exactDrumParams[0] = 0.95;
-    const productDrumDiff = adapterHarness.buildCoreProductSnapshotDiff(productDrumBase, productDrumNext);
+    const legacyDrumExactBase = clone(base);
+    legacyDrumExactBase.sources[0] = makeSource(adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.drum);
+    const legacyDrumExactNext = clone(legacyDrumExactBase);
+    legacyDrumExactNext.sources[0].exactDrumParamCount = adapterHarness.context.KESSHO_PRODUCT_DRUM_PARAM_COUNT;
+    legacyDrumExactNext.sources[0].exactDrumParams = Array.from(
+      { length: adapterHarness.context.KESSHO_PRODUCT_DRUM_PARAM_COUNT },
+      (_, index) => index / adapterHarness.context.KESSHO_PRODUCT_DRUM_PARAM_COUNT,
+    );
+    const legacyDrumExactDiff = adapterHarness.buildCoreProductSnapshotDiff(legacyDrumExactBase, legacyDrumExactNext);
     assert(
-      productDrumDiff.applied === true &&
-        productDrumDiff.events.some((event) =>
-          event.type === 'param' &&
-            event.paramId === 'DrumRuntime0' &&
-            Math.abs(event.value - 0.95) < 1.0e-6),
-      'Product Drum exact patch changes must dirty-diff through generated runtime params',
+      legacyDrumExactDiff.applied === false && legacyDrumExactDiff.reason === 'source-structure-change',
+      'legacy Drum exact patch fields must be rejected as source structure changes instead of dirty-diffed',
     );
 
-    const endpointBase = clone(productLeadBase);
+    const endpointBase = clone(base);
+    endpointBase.sources[0] = makeSource(adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1);
     endpointBase.sources[0].sourcePresetAId = 2001;
     endpointBase.sources[0].sourcePresetBId = 2002;
     const endpointNext = clone(endpointBase);
@@ -680,7 +662,8 @@ await runCheckWithReport({
       'source preset endpoint ID changes must dirty-diff so Product Core sequencer playheads stay running',
     );
 
-    const drumEndpointBase = clone(productDrumBase);
+    const drumEndpointBase = clone(base);
+    drumEndpointBase.sources[0] = makeSource(adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.drum);
     drumEndpointBase.sources[0].drumVoicePresetAIds = [3101, 3201, 3301, 3401, 3501, 3601, 3701];
     drumEndpointBase.sources[0].drumVoicePresetBIds = [3101, 3202, 3301, 3401, 3501, 3601, 3714];
     drumEndpointBase.sources[0].drumVoiceMorphs = [0, 0.75, 0, 0, 0, 0, 1];
@@ -722,38 +705,19 @@ await runCheckWithReport({
       'Product Drum morph-only changes must dirty-diff through a generated source preset endpoint event',
     );
 
-    const drumEndpointOrderingBase = clone(drumEndpointBase);
-    const drumEndpointOrderingNext = clone(drumEndpointOrderingBase);
-    drumEndpointOrderingNext.sources[0].exactDrumParams[92] = 0.123;
-    drumEndpointOrderingNext.sources[0].exactDrumParams[104] = 0.456;
-    drumEndpointOrderingNext.sources[0].drumVoicePresetAIds[6] = 3716;
-    const drumEndpointOrderingDiff = adapterHarness.buildCoreProductSnapshotDiff(drumEndpointOrderingBase, drumEndpointOrderingNext);
-    const skippedDrumVoiceParamEventIndex = drumEndpointOrderingDiff.applied
-      ? drumEndpointOrderingDiff.events.findIndex((event) => event.type === 'param' && event.paramId === 'DrumRuntime92')
-      : -1;
-    const unrelatedDrumParamEventIndex = drumEndpointOrderingDiff.applied
-      ? drumEndpointOrderingDiff.events.findIndex((event) => event.type === 'param' && event.paramId === 'DrumRuntime104')
-      : -1;
-    const drumEndpointEventIndex = drumEndpointOrderingDiff.applied
-      ? drumEndpointOrderingDiff.events.findIndex((event) =>
-        event.type === 'source-preset-endpoint' &&
-          event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.drum &&
-          event.endpoint === 'A' &&
-          event.presetId === 3716 &&
-          event.voiceIndex === 6)
-      : -1;
-    assert(
-      drumEndpointOrderingDiff.applied === true &&
-        skippedDrumVoiceParamEventIndex === -1 &&
-        unrelatedDrumParamEventIndex >= 0 &&
-        drumEndpointEventIndex >= 0,
-      'Product Drum preset endpoint dirty-diffs must own the changed voice range so exact patch params cannot overwrite the live A/B preset',
+    const drumEndpointWithLegacyExactNext = clone(drumEndpointBase);
+    drumEndpointWithLegacyExactNext.sources[0].exactDrumParamCount = adapterHarness.context.KESSHO_PRODUCT_DRUM_PARAM_COUNT;
+    drumEndpointWithLegacyExactNext.sources[0].exactDrumParams = Array.from(
+      { length: adapterHarness.context.KESSHO_PRODUCT_DRUM_PARAM_COUNT },
+      () => 0,
     );
-
-    const drumPatchNext = clone(base);
-    drumPatchNext.sources[0].exactDrumParams[0] = 0.95;
-    const drumPatchDiff = adapterHarness.buildCoreProductSnapshotDiff(base, drumPatchNext);
-    assert(drumPatchDiff.applied === false && drumPatchDiff.reason === 'exact-patch-change', 'non-drum exact drum patch changes must full-reload with classified reason');
+    drumEndpointWithLegacyExactNext.sources[0].drumVoicePresetAIds[6] = 3716;
+    const drumEndpointWithLegacyExactDiff = adapterHarness.buildCoreProductSnapshotDiff(drumEndpointBase, drumEndpointWithLegacyExactNext);
+    assert(
+      drumEndpointWithLegacyExactDiff.applied === false &&
+        drumEndpointWithLegacyExactDiff.reason === 'source-structure-change',
+      'Product Drum preset endpoint dirty-diffs must reject legacy exact patch fields instead of letting them overwrite live A/B preset state',
+    );
 
     const budgetBase = makeHydratedSnapshot({ laneCount: 24 });
     const budgetNext = clone(budgetBase);
@@ -771,11 +735,13 @@ await runCheckWithReport({
         sourceDiffEvents: sourceDiff.events.length,
         evolutionDiffEvents: evolutionDiff.events.length,
         assetReloadReason: assetDiff.reason,
-        exactPatchReloadReason: patchDiff.reason,
+        legacyPadExactReloadReason: legacyPadExactDiff.reason,
+        legacyLeadExactReloadReason: legacyLeadExactDiff.reason,
+        legacyDrumExactReloadReason: legacyDrumExactDiff.reason,
         padOverrideReloadReason: padOverrideDiff.reason,
         leadOverrideReloadReason: leadOverrideDiff.reason,
         drumOverrideReloadReason: drumOverrideDiff.reason,
-        productDrumExactPatchEvents: productDrumDiff.events.length,
+        drumEndpointLegacyExactReloadReason: drumEndpointWithLegacyExactDiff.reason,
         budgetReloadReason: budgetDiff.reason,
         maxSnapshotDiffEvents: adapterHarness.MAX_SNAPSHOT_DIFF_EVENTS,
       },

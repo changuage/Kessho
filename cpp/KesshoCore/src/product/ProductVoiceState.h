@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ProductConstants.h"
+#include "ProductFilterState.h"
 
 #include <cstdint>
 
@@ -42,11 +43,8 @@ struct SourceState {
   float sustain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN;
   float hold_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
   float release_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
-  uint32_t exact_pad_param_count = 0u; float exact_pad_params[kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT]{};
   uint32_t pad_override_count = 0u; uint32_t pad_override_indices[kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT]{}; float pad_override_values[kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT]{};
-  uint32_t exact_lead_param_count = 0u; float exact_lead_params[kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT]{};
   uint32_t lead_override_count = 0u; uint32_t lead_override_indices[kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT]{}; float lead_override_values[kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT]{};
-  uint32_t exact_drum_param_count = 0u; float exact_drum_params[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT]{};
   uint32_t drum_override_count = 0u; uint32_t drum_override_indices[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT]{}; float drum_override_values[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT]{};
   uint32_t soundscape_texture_param_count = 0u; float soundscape_texture_params[kSoundscapeTextureParamCount]{};
   uint32_t soundscape_module_param_count = 0u; float soundscape_module_params[kSoundscapeProductModuleParamCount]{};
@@ -59,64 +57,6 @@ struct SourceState {
   uint32_t drum_voice_preset_a_ids[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT]{};
   uint32_t drum_voice_preset_b_ids[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT]{};
   float drum_voice_morphs[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT]{};
-};
-
-struct BiquadState {
-  float x1 = 0.0f;
-  float x2 = 0.0f;
-  float y1 = 0.0f;
-  float y2 = 0.0f;
-};
-
-struct ProductBiquadLowpassState {
-  float coeff_cutoff = -1.0f;
-  float b0 = 1.0f;
-  float b1 = 0.0f;
-  float b2 = 0.0f;
-  float a1 = 0.0f;
-  float a2 = 0.0f;
-  BiquadState left{};
-  BiquadState right{};
-};
-
-enum ProductBiquadFilterType : uint32_t {
-  kProductBiquadLowpass = 0u,
-  kProductBiquadHighpass = 1u,
-};
-
-struct ProductBiquadFilterState {
-  float coeff_cutoff = -1.0f;
-  uint32_t coeff_type = kProductBiquadLowpass;
-  float b0 = 1.0f;
-  float b1 = 0.0f;
-  float b2 = 0.0f;
-  float a1 = 0.0f;
-  float a2 = 0.0f;
-  BiquadState left{};
-  BiquadState right{};
-};
-
-struct SourcePostChainState {
-  float post_lpf_hz = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ;
-  float stereo_width = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH;
-  float coeff_cutoff = -1.0f;
-  float b0 = 1.0f;
-  float b1 = 0.0f;
-  float b2 = 0.0f;
-  float a1 = 0.0f;
-  float a2 = 0.0f;
-  BiquadState stage1_left{};
-  BiquadState stage1_right{};
-  BiquadState stage2_left{};
-  BiquadState stage2_right{};
-};
-
-struct PadPostChainState : SourcePostChainState {
-  PadPostChainState() { post_lpf_hz = kDefaultPadPostLpfHz; stereo_width = kDefaultPadStereoWidth; }
-};
-
-struct LeadPostChainState : SourcePostChainState {
-  LeadPostChainState() { post_lpf_hz = kDefaultLeadPostLpfHz; stereo_width = kDefaultLeadStereoWidth; }
 };
 
 struct AssetSlot {

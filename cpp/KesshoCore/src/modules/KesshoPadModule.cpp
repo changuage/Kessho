@@ -402,66 +402,20 @@ public:
   }
 
   int setSourcePresetPatch(int source_index, const KesshoSourcePresetPatch& patch) override {
-    if (instance_ == nullptr || source_index < 0 || source_index >= PAD_NUM_PADS) {
+    if (instance_ == nullptr || source_index < 0 || source_index >= PAD_NUM_PADS ||
+        patch.exact_pad_param_count != KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT) {
       return 0;
     }
 
     const int base = source_index * kPadParamCount;
-    if (patch.exact_pad_param_count == KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT) {
-      for (int i = 0; i < kPadParamCount; ++i) {
-        params_[base + i] = patch.exact_pad_params[i];
+    for (int i = 0; i < kPadParamCount; ++i) {
+      if (!std::isfinite(patch.exact_pad_params[i])) {
+        return 0;
       }
-      commitParams();
-      return 1;
     }
-
-    const float tone = clampUnit(patch.tone);
-    const float brightness = clampUnit(patch.brightness);
-    const float texture = clampUnit(patch.texture);
-    const float motion = clampUnit(patch.motion);
-    const float attack = clampUnit(patch.attack);
-    const float release = clampUnit(patch.release);
-    const float body = clampUnit(patch.body);
-    const float transient = clampUnit(patch.transient);
-
-    params_[base + kOscAWave] =
-        tone > 0.72f ? PAD_WAVE_SAWTOOTH : tone < 0.22f ? PAD_WAVE_SINE : PAD_WAVE_TRIANGLE;
-    params_[base + kOscBWave] =
-        texture > 0.72f ? PAD_WAVE_SQUARE : brightness > 0.68f ? PAD_WAVE_SINE : PAD_WAVE_TRIANGLE;
-    params_[base + kOscBDetune] = 2.0f + texture * 22.0f;
-    params_[base + kOscALevel] = std::clamp(0.42f + body * 0.42f + brightness * 0.16f, 0.0f, 1.0f);
-    params_[base + kOscBLevel] = std::clamp(0.18f + texture * 0.42f + brightness * 0.18f, 0.0f, 1.0f);
-    params_[base + kSubEnabled] = body > 0.64f ? 1.0f : 0.0f;
-    params_[base + kSubLevel] = std::clamp(0.08f + body * 0.55f, 0.0f, 1.0f);
-    params_[base + kNoiseType] = texture > 0.55f ? 1.0f : 0.0f;
-    params_[base + kNoiseLevel] = std::clamp(0.02f + texture * 0.18f + transient * 0.08f, 0.0f, 0.6f);
-    params_[base + kHardness] = std::clamp(tone * 0.54f + transient * 0.2f, 0.0f, 1.0f);
-    params_[base + kWarmth] = std::clamp(0.22f + body * 0.62f - brightness * 0.18f, 0.0f, 1.0f);
-    params_[base + kPresence] = std::clamp(0.18f + brightness * 0.62f + transient * 0.16f, 0.0f, 1.0f);
-    params_[base + kFoldAmount] = std::clamp(texture * transient * 0.55f, 0.0f, 1.0f);
-    params_[base + kFoldMode] =
-        texture > 0.72f ? PAD_FOLD_SERGE : texture > 0.42f ? PAD_FOLD_SINE : PAD_FOLD_BUCHLA;
-    params_[base + kFilterType] =
-        brightness > 0.78f ? PAD_FILTER_HP : tone > 0.65f ? PAD_FILTER_BP : PAD_FILTER_LP;
-    params_[base + kFilterCutoffMin] = std::clamp(80.0f + body * 460.0f + brightness * 220.0f, 20.0f, 20000.0f);
-    params_[base + kFilterCutoffMax] =
-        std::clamp(850.0f + brightness * 8400.0f + tone * 1800.0f, 80.0f, 20000.0f);
-    params_[base + kFilterResonance] = std::clamp(0.04f + texture * 0.32f + transient * 0.18f, 0.0f, 0.95f);
-    params_[base + kFilterQ] = std::clamp(0.55f + texture * 2.4f, 0.1f, 8.0f);
-    params_[base + kAttack] = 0.01f + attack * 0.8f;
-    params_[base + kDecay] = 0.25f + (1.0f - transient) * 2.8f;
-    params_[base + kSustain] = std::clamp(0.42f + body * 0.42f, 0.0f, 1.0f);
-    params_[base + kRelease] = 0.35f + release * 15.0f;
-    params_[base + kLfo1Rate] = 0.03f + motion * 1.1f;
-    params_[base + kLfo1Depth] = motion * (0.04f + texture * 0.16f);
-    params_[base + kLfo1Wave] = motion > 0.66f ? PAD_LFO_RANDOM_WALK : PAD_LFO_TRIANGLE;
-    params_[base + kLfo1Dest] = texture > 0.55f ? PAD_DEST_FOLD_AMOUNT : PAD_DEST_FILTER_CUTOFF;
-    params_[base + kModEnvEnabled] = transient > 0.18f ? 1.0f : 0.0f;
-    params_[base + kModEnvAttack] = 0.02f + attack * 0.45f;
-    params_[base + kModEnvDecay] = 0.35f + transient * 1.6f;
-    params_[base + kModEnvDepth] = transient * 0.75f;
-    params_[base + kModEnvDest] = PAD_DEST_FILTER_CUTOFF;
-
+    for (int i = 0; i < kPadParamCount; ++i) {
+      params_[base + i] = patch.exact_pad_params[i];
+    }
     commitParams();
     return 1;
   }

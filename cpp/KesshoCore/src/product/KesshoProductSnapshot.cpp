@@ -6,8 +6,8 @@ bool generatedPadEndpointPatchValid(const KesshoProductSourceSnapshot& source) {
   const auto* endpoint_b = kessho::product::internal::findSourcePreset(source.source_preset_b_id);
   return kessho::product::internal::sourcePresetMatchesSource(source.source_id, endpoint_a) &&
          kessho::product::internal::sourcePresetMatchesSource(source.source_id, endpoint_b) &&
-         endpoint_a->exact_pad_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT &&
-         endpoint_b->exact_pad_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT;
+         kessho::product::internal::findPadSourcePresetPatch(endpoint_a->id) != nullptr &&
+         kessho::product::internal::findPadSourcePresetPatch(endpoint_b->id) != nullptr;
 }
 
 bool generatedLeadEndpointPatchValid(const KesshoProductSourceSnapshot& source) {
@@ -15,35 +15,8 @@ bool generatedLeadEndpointPatchValid(const KesshoProductSourceSnapshot& source) 
   const auto* endpoint_b = kessho::product::internal::findSourcePreset(source.source_preset_b_id);
   return kessho::product::internal::sourcePresetMatchesSource(source.source_id, endpoint_a) &&
          kessho::product::internal::sourcePresetMatchesSource(source.source_id, endpoint_b) &&
-         endpoint_a->exact_lead_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT &&
-         endpoint_b->exact_lead_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT;
-}
-
-bool generatedEndpointIdsAbsent(const KesshoProductSourceSnapshot& source) {
-  return source.source_preset_a_id == 0u && source.source_preset_b_id == 0u;
-}
-
-bool generatedPadEndpointIdsValidIfPresent(const KesshoProductSourceSnapshot& source) {
-  return generatedEndpointIdsAbsent(source) || generatedPadEndpointPatchValid(source);
-}
-
-bool generatedLeadEndpointIdsValidIfPresent(const KesshoProductSourceSnapshot& source) {
-  return generatedEndpointIdsAbsent(source) || generatedLeadEndpointPatchValid(source);
-}
-
-bool validPadExactParamCount(const KesshoProductSourceSnapshot& source) {
-  return source.exact_pad_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT ||
-         (source.exact_pad_param_count == 0u && generatedPadEndpointPatchValid(source));
-}
-
-bool validLeadExactParamCount(const KesshoProductSourceSnapshot& source) {
-  return source.exact_lead_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT ||
-         (source.exact_lead_param_count == 0u && generatedLeadEndpointPatchValid(source));
-}
-
-bool validDrumExactParamCount(const KesshoProductSourceSnapshot& source) {
-  return source.exact_drum_param_count == 0u ||
-         source.exact_drum_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT;
+         kessho::product::internal::findLeadSourcePresetPatch(endpoint_a->id) != nullptr &&
+         kessho::product::internal::findLeadSourcePresetPatch(endpoint_b->id) != nullptr;
 }
 
 bool validGeneratedDrumVoicePresetIds(const KesshoProductSourceSnapshot& source) {
@@ -71,15 +44,12 @@ bool validSparseOverrideBlock(uint32_t count, const uint32_t* indices, const flo
   return true;
 }
 
-bool validExactParamBlock(uint32_t count, const float* values, uint32_t param_count) {
-  if (count == 0u) {
-    return true;
-  }
-  if (count != param_count) {
+bool exactParamBlockEmpty(uint32_t count, const float* values, uint32_t param_count) {
+  if (count != 0u) {
     return false;
   }
-  for (uint32_t slot = 0u; slot < count; ++slot) {
-    if (!std::isfinite(values[slot])) {
+  for (uint32_t slot = 0u; slot < param_count; ++slot) {
+    if (!std::isfinite(values[slot]) || values[slot] != 0.0f) {
       return false;
     }
   }
@@ -114,50 +84,37 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
         source.source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
     const bool drum_source = source.source_id == KESSHO_PRODUCT_SOURCE_DRUM;
     if (
-        (!pad_source && source.exact_pad_param_count != 0u) ||
-        (pad_source && (
-            !generatedPadEndpointIdsValidIfPresent(source) ||
-            !validPadExactParamCount(source) ||
-            !validExactParamBlock(
-                source.exact_pad_param_count,
-                source.exact_pad_params,
-                kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT)))) {
+        !exactParamBlockEmpty(
+            source.exact_pad_param_count,
+            source.exact_pad_params,
+            kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT) ||
+        (pad_source && !generatedPadEndpointPatchValid(source))) {
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
       return KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
     }
     if (
-        (!lead_source && source.exact_lead_param_count != 0u) ||
-        (lead_source && (
-            !generatedLeadEndpointIdsValidIfPresent(source) ||
-            !validLeadExactParamCount(source) ||
-            !validExactParamBlock(
-                source.exact_lead_param_count,
-                source.exact_lead_params,
-                kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT)))) {
+        !exactParamBlockEmpty(
+            source.exact_lead_param_count,
+            source.exact_lead_params,
+            kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT) ||
+        (lead_source && !generatedLeadEndpointPatchValid(source))) {
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
       return KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
     }
     if (
-        (!drum_source && source.exact_drum_param_count != 0u) ||
-        (drum_source && (
-            !validDrumExactParamCount(source) ||
-            !validExactParamBlock(
-                source.exact_drum_param_count,
-                source.exact_drum_params,
-                kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT)))) {
+        !exactParamBlockEmpty(
+            source.exact_drum_param_count,
+            source.exact_drum_params,
+            kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT)) {
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
       return KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
     }
-    if (
-        drum_source &&
-        source.exact_drum_param_count == 0u &&
-        !validGeneratedDrumVoicePresetIds(source)) {
+    if (drum_source && !validGeneratedDrumVoicePresetIds(source)) {
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
       return KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
     }
     if (
         (!pad_source && source.pad_override_count != 0u) ||
-        (pad_source && source.exact_pad_param_count != 0u && source.pad_override_count != 0u) ||
         (pad_source && !validSparseOverrideBlock(
             source.pad_override_count,
             source.pad_override_indices,
@@ -168,7 +125,6 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     }
     if (
         (!lead_source && source.lead_override_count != 0u) ||
-        (lead_source && source.exact_lead_param_count != 0u && source.lead_override_count != 0u) ||
         (lead_source && !validSparseOverrideBlock(
             source.lead_override_count,
             source.lead_override_indices,
@@ -179,7 +135,6 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     }
     if (
         (!drum_source && source.drum_override_count != 0u) ||
-        (drum_source && source.exact_drum_param_count != 0u && source.drum_override_count != 0u) ||
         (drum_source && !validSparseOverrideBlock(
             source.drum_override_count,
             source.drum_override_indices,
@@ -522,13 +477,6 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     const bool pad_source =
         source.source_id == KESSHO_PRODUCT_SOURCE_PAD1 ||
         source.source_id == KESSHO_PRODUCT_SOURCE_PAD2;
-    sources[i].exact_pad_param_count = pad_source ? source.exact_pad_param_count : 0u;
-    for (uint32_t param_index = 0; param_index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT; ++param_index) {
-      sources[i].exact_pad_params[param_index] =
-          param_index < sources[i].exact_pad_param_count
-              ? source.exact_pad_params[param_index]
-              : 0.0f;
-    }
     sources[i].pad_override_count = pad_source ? source.pad_override_count : 0u;
     for (uint32_t param_index = 0; param_index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT; ++param_index) {
       const uint32_t override_index = source.pad_override_indices[param_index];
@@ -544,13 +492,6 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     const bool lead_source =
         source.source_id == KESSHO_PRODUCT_SOURCE_LEAD1 ||
         source.source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
-    sources[i].exact_lead_param_count = lead_source ? source.exact_lead_param_count : 0u;
-    for (uint32_t param_index = 0; param_index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT; ++param_index) {
-      sources[i].exact_lead_params[param_index] =
-          param_index < sources[i].exact_lead_param_count
-              ? source.exact_lead_params[param_index]
-              : 0.0f;
-    }
     sources[i].lead_override_count = lead_source ? source.lead_override_count : 0u;
     for (uint32_t param_index = 0; param_index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT; ++param_index) {
       const uint32_t override_index = source.lead_override_indices[param_index];
@@ -564,13 +505,6 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
               : 0.0f;
     }
     const bool drum_source = source.source_id == KESSHO_PRODUCT_SOURCE_DRUM;
-    sources[i].exact_drum_param_count = drum_source ? source.exact_drum_param_count : 0u;
-    for (uint32_t param_index = 0; param_index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT; ++param_index) {
-      sources[i].exact_drum_params[param_index] =
-          param_index < sources[i].exact_drum_param_count
-              ? source.exact_drum_params[param_index]
-              : 0.0f;
-    }
     sources[i].drum_override_count = drum_source ? source.drum_override_count : 0u;
     for (uint32_t param_index = 0; param_index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT; ++param_index) {
       const uint32_t override_index = source.drum_override_indices[param_index];
@@ -604,16 +538,6 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
                       : 0.0f)
                 : 0.0f;
       }
-      sources[i].exact_pad_param_count = 0u;
-      std::fill(
-          sources[i].exact_pad_params,
-          sources[i].exact_pad_params + kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT,
-          0.0f);
-      sources[i].exact_drum_param_count = 0u;
-      std::fill(
-          sources[i].exact_drum_params,
-          sources[i].exact_drum_params + kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT,
-          0.0f);
     }
     for (uint32_t voice_index = 0; voice_index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT; ++voice_index) {
       sources[i].drum_voice_preset_a_ids[voice_index] = source.drum_voice_preset_a_ids[voice_index];
@@ -628,47 +552,11 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     sources[i].lead_algorithm_preset_a_enabled = source.lead_algorithm_preset_a_enabled != 0u;
     compileSourcePresetRuntime(sources[i]);
     compileSourcePresetEndpoints(sources[i]);
-  }
-  if (pad_module) {
-    for (uint32_t pad_index = 0; pad_index < static_cast<uint32_t>(PAD_NUM_PADS); ++pad_index) {
-      const uint32_t source_id = pad_index == 0u ? KESSHO_PRODUCT_SOURCE_PAD1 : KESSHO_PRODUCT_SOURCE_PAD2;
-      const SourceState& source = sources[source_id - 1u];
-      if (source.exact_pad_param_count != kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT) {
-        continue;
+    if (pad_source || lead_source || drum_source) {
+      if (!applyStructuredSourceOverridesToModule(source.source_id)) {
+        telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
+        return KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT;
       }
-      kessho::core::KesshoSourcePresetPatch patch{};
-      patch.exact_pad_param_count = kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
-      for (uint32_t param_index = 0; param_index < kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT; ++param_index) {
-        patch.exact_pad_params[param_index] = source.exact_pad_params[param_index];
-      }
-      pad_module->setSourcePresetPatch(static_cast<int>(pad_index), patch);
-    }
-  }
-  for (uint32_t lead_index = 0u; lead_index < 2u; ++lead_index) {
-    const uint32_t source_id = lead_index == 0u ? KESSHO_PRODUCT_SOURCE_LEAD1 : KESSHO_PRODUCT_SOURCE_LEAD2;
-    const SourceState& source = sources[source_id - 1u];
-    if (!lead_modules[lead_index] ||
-        source.exact_lead_param_count != kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT) {
-      continue;
-    }
-    kessho::core::KesshoSourcePresetPatch patch{};
-    patch.exact_lead_param_count = kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
-    for (uint32_t param_index = 0; param_index < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT; ++param_index) {
-      patch.exact_lead_params[param_index] = source.exact_lead_params[param_index];
-    }
-    lead_modules[lead_index]->setSourcePresetPatch(static_cast<int>(lead_index), patch);
-  }
-  {
-    const SourceState& source = sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
-    if (drum_module &&
-        source.exact_drum_param_count == kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT) {
-      kessho::core::KesshoSourcePresetPatch patch{};
-      patch.exact_drum_param_count = kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT;
-      for (uint32_t param_index = 0; param_index < kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT; ++param_index) {
-        patch.exact_drum_params[param_index] = source.exact_drum_params[param_index];
-      }
-      applyDrumSourceMixFieldsToPatch(patch, source.level, source.reverb_send);
-      drum_module->setSourcePresetPatch(0, patch);
     }
   }
   SourceState& soundscape_source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];

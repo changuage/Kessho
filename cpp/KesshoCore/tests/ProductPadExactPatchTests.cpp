@@ -73,13 +73,14 @@ KesshoProductSnapshotV2 makeSnapshot() {
 PadParams exactPadParamsFromPreset(uint32_t preset_id) {
   const auto* preset = kessho::product::internal::findSourcePreset(preset_id);
   require(preset != nullptr, "generated pad preset missing");
+  const auto patch = kessho::product::internal::sourcePresetPatch(*preset);
   require(
-      preset->exact_pad_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT,
+      patch.exact_pad_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT,
       "generated pad preset lacks exact params");
 
   PadParams params{};
   for (uint32_t index = 0; index < params.size(); ++index) {
-    params[index] = preset->exact_pad_params[index];
+    params[index] = patch.exact_pad_params[index];
   }
   return params;
 }
@@ -142,10 +143,11 @@ PadParams makeSentinelPadParams() {
   return params;
 }
 
-void writePadExactParams(KesshoProductSourceSnapshot& source, const PadParams& params) {
-  source.exact_pad_param_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT;
+void writePadSparseOverrides(KesshoProductSourceSnapshot& source, const PadParams& params) {
+  source.pad_override_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT;
   for (uint32_t index = 0; index < params.size(); ++index) {
-    source.exact_pad_params[index] = params[index];
+    source.pad_override_indices[index] = index;
+    source.pad_override_values[index] = params[index];
   }
 }
 
@@ -161,7 +163,7 @@ void configureStressPadSource(KesshoProductSourceSnapshot& source, uint32_t sour
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SOFT_PLUCK;
   source.source_preset_b_id =
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_BUCHLA_PLUCK;
-  writePadExactParams(source, params);
+  writePadSparseOverrides(source, params);
 }
 
 void configureGeneratedEndpointPadSourceWithoutSnapshotExact(
@@ -181,10 +183,6 @@ void configureGeneratedEndpointPadSourceWithoutSnapshotExact(
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SOFT_PLUCK;
   source.source_preset_b_id =
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_BUCHLA_PLUCK;
-  source.exact_pad_param_count = 0u;
-  for (float& value : source.exact_pad_params) {
-    value = 0.0f;
-  }
 }
 
 void requirePadModuleParamsEqual(
@@ -233,16 +231,16 @@ void triggerPadAndExpectParams(
   requirePadModuleParamsEqual(engine, source_id == KESSHO_PRODUCT_SOURCE_PAD2 ? 1u : 0u, expected, context);
 }
 
-void requireSnapshotExactPadParamsSurviveTrigger(uint32_t source_id) {
+void requireAllParamPadSparseOverridesSurviveTrigger(uint32_t source_id) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
-  require(engine != nullptr, "all-param exact pad engine create failed");
+  require(engine != nullptr, "all-param sparse Pad engine create failed");
 
   const PadParams expected = makeSentinelPadParams();
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   configureStressPadSource(snapshot.sources[source_id - 1u], source_id, expected);
-  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "all-param exact pad snapshot load failed");
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "all-param sparse Pad snapshot load failed");
 
-  triggerPadAndExpectParams(engine, source_id, -1.0f, -1.0f, -1.0f, expected, "snapshot exact pad params");
+  triggerPadAndExpectParams(engine, source_id, -1.0f, -1.0f, -1.0f, expected, "all-param sparse Pad params");
   kessho_product_destroy(engine);
 }
 
@@ -319,7 +317,10 @@ void requireEndpointPadMorphMatchesWebPolicy(float morph) {
   require(engine != nullptr, "endpoint exact pad engine create failed");
 
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
-  configureStressPadSource(snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u], KESSHO_PRODUCT_SOURCE_PAD1, makeSentinelPadParams());
+  configureGeneratedEndpointPadSourceWithoutSnapshotExact(
+      snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u],
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      morph);
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "endpoint exact pad snapshot load failed");
 
   const PadParams expected = expectedEndpointMorphParams(morph, 1.0f);
@@ -372,8 +373,8 @@ void requireNamedPluckPresetParams() {
 
 int main() {
   requireNamedPluckPresetParams();
-  requireSnapshotExactPadParamsSurviveTrigger(KESSHO_PRODUCT_SOURCE_PAD1);
-  requireSnapshotExactPadParamsSurviveTrigger(KESSHO_PRODUCT_SOURCE_PAD2);
+  requireAllParamPadSparseOverridesSurviveTrigger(KESSHO_PRODUCT_SOURCE_PAD1);
+  requireAllParamPadSparseOverridesSurviveTrigger(KESSHO_PRODUCT_SOURCE_PAD2);
   requireEndpointPadMorphMatchesWebPolicy(0.35f);
   requireEndpointPadMorphMatchesWebPolicy(0.65f);
   requireGeneratedEndpointPadSnapshotDoesNotNeedExactPatch(KESSHO_PRODUCT_SOURCE_PAD1, 0.35f);

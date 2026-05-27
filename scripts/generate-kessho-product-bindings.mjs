@@ -63,10 +63,6 @@ function numberLiteral(value, fallback) {
   return Number.isInteger(numeric) ? `${numeric}.0` : String(numeric);
 }
 
-function clamp01(value) {
-  return Math.max(0, Math.min(1, value));
-}
-
 const padParamCount = 53;
 const leadParamCount = 80;
 const drumParamCount = 126;
@@ -754,24 +750,6 @@ function makeDrumVoicePresetRows(drumVoiceIds, drumPresetModule) {
   return rows;
 }
 
-function sourcePresetProfile(preset) {
-  const morph = Number.isFinite(preset.macroMorph) ? preset.macroMorph : 0;
-  const distance = Number.isFinite(preset.macroDistance) ? preset.macroDistance : 0;
-  const expression = Number.isFinite(preset.macroExpression) ? preset.macroExpression : 1;
-  const brightBias = preset.source === 'lead' ? 0.08 : preset.source === 'pad' ? 0 : -0.04;
-  const transientBias = preset.source === 'lead' ? 0.18 : preset.source === 'drum' ? 0.3 : 0.04;
-  return {
-    tone: clamp01(0.5 + morph * 1.35 + (expression - 1) * 0.25),
-    brightness: clamp01(0.48 + morph * 1.1 + (expression - 1) * 0.7 - distance * 0.18 + brightBias),
-    texture: clamp01(0.28 + Math.abs(morph) * 1.4 + distance * 0.8),
-    motion: clamp01(0.16 + distance * 1.5 + Math.abs(morph) * 0.45),
-    attack: clamp01(0.52 - morph * 1.15 + distance * 0.25),
-    release: clamp01(0.48 + distance * 1.2 - Math.max(0, morph) * 0.35),
-    body: clamp01(0.52 - morph * 0.85 + (expression - 1) * 0.45 - distance * 0.22),
-    transient: clamp01(transientBias + Math.max(0, morph) * 1.15 + (expression - 1) * 0.55),
-  };
-}
-
 const schema = readJson(schemaPath);
 const params = readJson(paramsPath).params;
 const events = readJson(eventsPath).events;
@@ -806,13 +784,28 @@ const drumVoiceRows = drumVoiceIds.map((voice) => ({
   paramCount: drumVoiceParamRanges[voice.name]?.[1] ?? 0,
 }));
 const drumVoicePresetRows = makeDrumVoicePresetRows(drumVoiceRows, drumPresetModule);
-const sourcePresetRows = sourcePresetIds.map((preset) => ({
-  ...preset,
-  profile: sourcePresetProfile(preset),
-  ...exactPadParamsForPreset(preset, padPresetModule),
-  ...exactLeadParamsForPreset(preset),
-  ...exactDrumParamsForPreset(preset),
-}));
+const sourcePresetRows = sourcePresetIds.map((preset) => ({ ...preset }));
+const padSourcePresetRows = sourcePresetIds
+  .filter((preset) => preset.source === 'pad')
+  .map((preset) => ({
+    id: preset.id,
+    key: preset.key,
+    params: exactPadParamsForPreset(preset, padPresetModule).exactPadParams,
+  }));
+const leadSourcePresetRows = sourcePresetIds
+  .filter((preset) => preset.source === 'lead')
+  .map((preset) => ({
+    id: preset.id,
+    key: preset.key,
+    params: exactLeadParamsForPreset(preset).exactLeadParams,
+  }));
+const drumSourcePresetRows = sourcePresetIds
+  .filter((preset) => preset.source === 'drum')
+  .map((preset) => ({
+    id: preset.id,
+    key: preset.key,
+    params: exactDrumParamsForPreset(preset).exactDrumParams,
+  }));
 const groups = schema.groups;
 const limits = schema.limits;
 const canonical = stableStringify({
@@ -820,6 +813,9 @@ const canonical = stableStringify({
   params,
   events,
   sourcePresetRows,
+  padSourcePresetRows,
+  leadSourcePresetRows,
+  drumSourcePresetRows,
   drumVoiceRows,
   drumVoicePresetRows,
   padParamSpecRows,
@@ -861,6 +857,9 @@ writeGenerated(resolve(root, 'cpp/KesshoCore/generated/KesshoProductSchema.h'), 
 inline constexpr uint32_t KESSHO_PRODUCT_GROUP_COUNT = ${groups.length}u;
 inline constexpr uint32_t KESSHO_PRODUCT_SOURCE_COUNT = ${sourceIds.length}u;
 inline constexpr uint32_t KESSHO_PRODUCT_SOURCE_PRESET_COUNT = ${sourcePresetIds.length}u;
+inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_PAD_SOURCE_PRESET_COUNT = ${padSourcePresetRows.length}u;
+inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_LEAD_SOURCE_PRESET_COUNT = ${leadSourcePresetRows.length}u;
+inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_DRUM_SOURCE_PRESET_COUNT = ${drumSourcePresetRows.length}u;
 inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT = ${drumVoiceRows.length}u;
 inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_DRUM_VOICE_PRESET_COUNT = ${drumVoicePresetRows.length}u;
 inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT = ${padParamCount}u;
@@ -935,29 +934,50 @@ struct KesshoProductGeneratedSourcePreset {
   float macro_morph;
   float macro_distance;
   float macro_expression;
-  float profile_tone;
-  float profile_brightness;
-  float profile_texture;
-  float profile_motion;
-  float profile_attack;
-  float profile_release;
-  float profile_body;
-  float profile_transient;
-  uint32_t exact_pad_param_count;
-  float exact_pad_params[KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT];
-  uint32_t exact_lead_param_count;
-  float exact_lead_params[KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT];
-  uint32_t exact_drum_param_count;
-  float exact_drum_params[KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT];
 };
 
 inline constexpr KesshoProductGeneratedSourcePreset KESSHO_PRODUCT_SOURCE_PRESETS[] = {
 ${sourcePresetRows.map((preset) => {
-  const profile = preset.profile;
-  const exactPadParams = preset.exactPadParams.map((value) => `${numberLiteral(value, 0)}f`).join(', ');
-  const exactLeadParams = preset.exactLeadParams.map((value) => `${numberLiteral(value, 0)}f`).join(', ');
-  const exactDrumParams = preset.exactDrumParams.map((value) => `${numberLiteral(value, 0)}f`).join(', ');
-  return `  {"${preset.name}", "${preset.source}", "${preset.key}", ${preset.id}u, ${numberLiteral(preset.macroMorph, 0)}f, ${numberLiteral(preset.macroDistance, 0)}f, ${numberLiteral(preset.macroExpression, 1)}f, ${numberLiteral(profile.tone, 0.5)}f, ${numberLiteral(profile.brightness, 0.5)}f, ${numberLiteral(profile.texture, 0.5)}f, ${numberLiteral(profile.motion, 0)}f, ${numberLiteral(profile.attack, 0.5)}f, ${numberLiteral(profile.release, 0.5)}f, ${numberLiteral(profile.body, 0.5)}f, ${numberLiteral(profile.transient, 0)}f, ${preset.exactPadParamCount}u, {${exactPadParams}}, ${preset.exactLeadParamCount}u, {${exactLeadParams}}, ${preset.exactDrumParamCount}u, {${exactDrumParams}}}`;
+  return `  {"${preset.name}", "${preset.source}", "${preset.key}", ${preset.id}u, ${numberLiteral(preset.macroMorph, 0)}f, ${numberLiteral(preset.macroDistance, 0)}f, ${numberLiteral(preset.macroExpression, 1)}f}`;
+}).join(',\n')}
+};
+
+struct KesshoProductGeneratedPadSourcePreset {
+  const char* key;
+  uint32_t id;
+  float params[KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT];
+};
+
+inline constexpr KesshoProductGeneratedPadSourcePreset KESSHO_PRODUCT_PAD_SOURCE_PRESETS[] = {
+${padSourcePresetRows.map((preset) => {
+  const params = preset.params.map((value) => `${numberLiteral(value, 0)}f`).join(', ');
+  return `  {"${preset.key}", ${preset.id}u, {${params}}}`;
+}).join(',\n')}
+};
+
+struct KesshoProductGeneratedLeadSourcePreset {
+  const char* key;
+  uint32_t id;
+  float params[KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT];
+};
+
+inline constexpr KesshoProductGeneratedLeadSourcePreset KESSHO_PRODUCT_LEAD_SOURCE_PRESETS[] = {
+${leadSourcePresetRows.map((preset) => {
+  const params = preset.params.map((value) => `${numberLiteral(value, 0)}f`).join(', ');
+  return `  {"${preset.key}", ${preset.id}u, {${params}}}`;
+}).join(',\n')}
+};
+
+struct KesshoProductGeneratedDrumSourcePreset {
+  const char* key;
+  uint32_t id;
+  float params[KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT];
+};
+
+inline constexpr KesshoProductGeneratedDrumSourcePreset KESSHO_PRODUCT_DRUM_SOURCE_PRESETS[] = {
+${drumSourcePresetRows.map((preset) => {
+  const params = preset.params.map((value) => `${numberLiteral(value, 0)}f`).join(', ');
+  return `  {"${preset.key}", ${preset.id}u, {${params}}}`;
 }).join(',\n')}
 };
 ${cppPostamble}`);

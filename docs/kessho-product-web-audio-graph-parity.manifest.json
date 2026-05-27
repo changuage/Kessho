@@ -595,18 +595,14 @@
             "stem_l[KESSHO_PRODUCT_STEM_SOUNDSCAPE][frame] += water_out_l + insects_out_l"
           ]
         },
-        {
-          "file": "src/audio/coreProductSnapshot.ts",
-          "tokens": [
-            "CORE_PRODUCT_SOURCE_IDS.soundscape",
-            "SOUNDSCAPE_TEXTURE_PARAM_COUNT",
-            "SOUNDSCAPE_PARITY_FIXTURE_PARAM",
-            "SOUNDSCAPE_ROUTE_KEYS",
-            "soundscapeParityFixture",
-            "writeSoundscapeTextureParamsFromState",
-            "getCoreProductSoundscapeAssetDescriptorsForState",
-            "getPrimaryCoreProductSoundscapeAssetIdForState"
-          ]
+      {
+        "file": "src/audio/coreProductSnapshot.ts",
+        "tokens": [
+          "CORE_PRODUCT_SOURCE_IDS.soundscape",
+          "soundscapeSnapshotPayloadFromState",
+          "getCoreProductSoundscapeAssetDescriptorsForState",
+          "getPrimaryCoreProductSoundscapeAssetIdForState"
+        ]
         },
         {
           "file": "src/audio/coreProductAssets.ts",
@@ -617,13 +613,17 @@
           ]
         },
         {
-          "file": "src/audio/coreProductSoundscapesSnapshot.ts",
-          "tokens": [
-            "SOUNDSCAPE_TEXTURE_PARAM_START",
-            "writeSoundscapeTextureParamsFromState",
-            "earthTextureSeed",
-            "xmur3"
-          ]
+        "file": "src/audio/coreProductSoundscapesSnapshot.ts",
+        "tokens": [
+          "SOUNDSCAPE_TEXTURE_PARAM_COUNT",
+          "SOUNDSCAPE_PARITY_FIXTURE_PARAM",
+          "SOUNDSCAPE_ROUTE_KEYS",
+          "SOUNDSCAPE_TEXTURE_PARAM_START",
+          "writeSoundscapeTextureParamsFromState",
+          "soundscapeParityFixture",
+          "earthTextureSeed",
+          "xmur3"
+        ]
         },
         {
           "file": "cpp/KesshoCore/src/product/sources/SoundscapeSource.cpp",

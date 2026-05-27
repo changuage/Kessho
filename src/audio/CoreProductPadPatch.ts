@@ -35,13 +35,15 @@ function findGeneratedPadPreset(presetId: number): SourcePreset | undefined {
   return KESSHO_PRODUCT_SOURCE_PRESETS.find(
     (preset) =>
       preset.source === 'pad' &&
-      preset.id === presetId &&
-      preset.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT,
+      preset.id === presetId,
   );
 }
 
 function canReconstructGeneratedPadParams(presetAId: number, presetBId: number): boolean {
-  return Boolean(findGeneratedPadPreset(presetAId) && findGeneratedPadPreset(presetBId));
+  return Boolean(
+    generatedPadParamsFromPresetId(presetAId) &&
+      generatedPadParamsFromPresetId(presetBId),
+  );
 }
 
 function generatedPadPresetId(key: string): number {
@@ -89,8 +91,24 @@ function applyPadDistanceParams(params: number[], distance: number): void {
   params[PAD_FILTER_CUTOFF_MAX_PARAM_INDEX] = padDistanceMultiply(params[PAD_FILTER_CUTOFF_MAX_PARAM_INDEX] ?? 0, distance, 0.92, 0.55, 40, 8000);
 }
 
-export function emptyPadParams(): number[] {
+function emptyPadParams(): number[] {
   return emptyParamArray(KESSHO_PRODUCT_PAD_PARAM_COUNT);
+}
+
+function generatedPadParamsFromPreset(preset: SourcePreset): number[] | undefined {
+  const padPreset = getPadPreset(preset.key);
+  if (!padPreset) return undefined;
+  const params = emptyPadParams();
+  for (const spec of KESSHO_PRODUCT_PAD_PARAM_SPECS) {
+    params[spec.index] = coreProductParamValue(padPreset.params[spec.key], spec.enumMap, spec.fallback);
+  }
+  params[52] = KESSHO_PRODUCT_PAD_OUTPUT_TRIM;
+  return params;
+}
+
+function generatedPadParamsFromPresetId(presetId: number): number[] | undefined {
+  const preset = findGeneratedPadPreset(presetId);
+  return preset ? generatedPadParamsFromPreset(preset) : undefined;
 }
 
 export function emptyPadOverrideIndices(): number[] {
@@ -131,17 +149,17 @@ function exactPadParamsFromState(state: Record<string, unknown> | undefined, pad
 
 function reconstructedPadParamsFromPresetIds(presetAId: number, presetBId: number, morph: number, distance = 0): number[] {
   const params = emptyPadParams();
-  const presetA = findGeneratedPadPreset(presetAId);
-  const presetB = findGeneratedPadPreset(presetBId);
-  if (!presetA || !presetB) {
+  const presetAParams = generatedPadParamsFromPresetId(presetAId);
+  const presetBParams = generatedPadParamsFromPresetId(presetBId);
+  if (!presetAParams || !presetBParams) {
     params[52] = KESSHO_PRODUCT_PAD_OUTPUT_TRIM;
     return params;
   }
 
   const t = clamp(morph, 0, 1);
   for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_PAD_PARAM_COUNT; paramIndex += 1) {
-    const a = presetA.exactPadParams[paramIndex] ?? 0;
-    const b = presetB.exactPadParams[paramIndex] ?? 0;
+    const a = presetAParams[paramIndex] ?? 0;
+    const b = presetBParams[paramIndex] ?? 0;
     params[paramIndex] = padParamUsesPresetSnap(paramIndex) ? (t < 0.5 ? a : b) : a + (b - a) * t;
   }
   applyPadDistanceParams(params, distance);
@@ -188,16 +206,12 @@ export function exactPadPatchFromState(
   presetBId: number,
   morph: number,
 ): {
-  exactPadParamCount: number;
-  exactPadParams: number[];
   padOverrideCount: number;
   padOverrideIndices: number[];
   padOverrideValues: number[];
 } {
   if (!canReconstructGeneratedPadParams(presetAId, presetBId)) {
     return {
-      exactPadParamCount: 0,
-      exactPadParams: emptyPadParams(),
       padOverrideCount: 0,
       padOverrideIndices: emptyPadOverrideIndices(),
       padOverrideValues: emptyPadOverrideValues(),
@@ -212,8 +226,6 @@ export function exactPadPatchFromState(
   );
   if (paramsMatch(exactPadParams, reconstructedParams, KESSHO_PRODUCT_PAD_PARAM_COUNT, PAD_PATCH_EPSILON)) {
     return {
-      exactPadParamCount: 0,
-      exactPadParams: emptyPadParams(),
       padOverrideCount: 0,
       padOverrideIndices: emptyPadOverrideIndices(),
       padOverrideValues: emptyPadOverrideValues(),
@@ -221,8 +233,6 @@ export function exactPadPatchFromState(
   }
   if (paramsMatch(exactPadParams, defaultPadStateCacheParams(state, padIndex), KESSHO_PRODUCT_PAD_PARAM_COUNT, PAD_PATCH_EPSILON)) {
     return {
-      exactPadParamCount: 0,
-      exactPadParams: emptyPadParams(),
       padOverrideCount: 0,
       padOverrideIndices: emptyPadOverrideIndices(),
       padOverrideValues: emptyPadOverrideValues(),
@@ -230,8 +240,6 @@ export function exactPadPatchFromState(
   }
   if (matchesSelectedPadEndpointStateCacheParams(exactPadParams, state, padIndex, presetAId, presetBId)) {
     return {
-      exactPadParamCount: 0,
-      exactPadParams: emptyPadParams(),
       padOverrideCount: 0,
       padOverrideIndices: emptyPadOverrideIndices(),
       padOverrideValues: emptyPadOverrideValues(),
@@ -244,8 +252,6 @@ export function exactPadPatchFromState(
     PAD_PATCH_EPSILON,
   );
   return {
-    exactPadParamCount: 0,
-    exactPadParams: emptyPadParams(),
     padOverrideCount: sparseOverrides.overrideCount,
     padOverrideIndices: sparseOverrides.overrideIndices,
     padOverrideValues: sparseOverrides.overrideValues,

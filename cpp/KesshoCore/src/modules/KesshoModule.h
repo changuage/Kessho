@@ -12,14 +12,6 @@ constexpr uint32_t KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT = 80u;
 constexpr uint32_t KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT = 126u;
 
 struct KesshoSourcePresetPatch {
-  float tone = 0.5f;
-  float brightness = 0.5f;
-  float texture = 0.5f;
-  float motion = 0.0f;
-  float attack = 0.5f;
-  float release = 0.5f;
-  float body = 0.5f;
-  float transient = 0.0f;
   uint32_t exact_pad_param_count = 0u;
   float exact_pad_params[KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT]{};
   uint32_t exact_lead_param_count = 0u;

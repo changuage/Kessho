@@ -33,9 +33,9 @@ import {
   reverbTypeId,
   sidechainKeyId,
 } from './CoreProductModeIds';
-import { assignLeadAlgorithmOverrideFields, assignLeadEnvelopeOverrideFields, emptyLeadOverrideIndices, emptyLeadOverrideValues, emptyLeadParams, exactLeadPatchFromState, hasLeadCustomPresetData, hasLeadCustomPresetEndpointData, leadAlgorithmPresetAEnabledFromState, leadEnvelopeOverrideFromState } from './CoreProductLeadPatch';
-import { emptyPadOverrideIndices, emptyPadOverrideValues, emptyPadParams, exactPadPatchFromState } from './CoreProductPadPatch';
-import { emptyDrumOverrideIndices, emptyDrumOverrideValues, emptyDrumParams, exactDrumPatchFromState } from './CoreProductDrumPatch';
+import { assignLeadAlgorithmOverrideFields, assignLeadEnvelopeOverrideFields, assignLeadPresetIds, emptyLeadOverrideIndices, emptyLeadOverrideValues, exactLeadPatchFromState, leadAlgorithmPresetAEnabledFromState, leadEnvelopeOverrideFromState } from './CoreProductLeadPatch';
+import { emptyPadOverrideIndices, emptyPadOverrideValues, exactPadPatchFromState } from './CoreProductPadPatch';
+import { emptyDrumOverrideIndices, emptyDrumOverrideValues, exactDrumPatchFromState } from './CoreProductDrumPatch';
 import {
   defaultPresetId,
   drumVoiceMorphsFromState,
@@ -487,18 +487,12 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     sustain: KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN,
     holdSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS,
     releaseSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS,
-    exactPadParamCount: 0,
-    exactPadParams: emptyPadParams(),
     padOverrideCount: 0,
     padOverrideIndices: emptyPadOverrideIndices(),
     padOverrideValues: emptyPadOverrideValues(),
-    exactLeadParamCount: 0,
-    exactLeadParams: emptyLeadParams(),
     leadOverrideCount: 0,
     leadOverrideIndices: emptyLeadOverrideIndices(),
     leadOverrideValues: emptyLeadOverrideValues(),
-    exactDrumParamCount: 0,
-    exactDrumParams: emptyDrumParams(),
     drumOverrideCount: 0,
     drumOverrideIndices: emptyDrumOverrideIndices(),
     drumOverrideValues: emptyDrumOverrideValues(),
@@ -510,37 +504,6 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
 function assignSourcePresetEndpoints(source: ProductSourceSnapshot, sourceFamily: 'pad' | 'lead', morph: number, keyA: unknown, keyB: unknown, fallbackKey: string): void {
   const presetA = sourcePresetId(sourceFamily, keyA, fallbackKey), presetB = sourcePresetId(sourceFamily, keyB, fallbackKey);
   source.sourcePresetAId = presetA; source.sourcePresetBId = presetB; source.morph = clamp(morph, 0, 1);
-}
-
-function generatedLeadAnchorPresetId(key: unknown, defaultKey: 'soft_rhodes' | 'gamelan'): number {
-  const presetId = sourcePresetId('lead', key, '');
-  return presetId !== 0 ? presetId : sourcePresetId('lead', defaultKey, defaultKey);
-}
-
-function assignLeadPresetIds(source: ProductSourceSnapshot, state: Record<string, unknown> | undefined, leadIndex: 0 | 1): void {
-  const keyA = leadIndex === 0 ? state?.lead1PresetA : state?.lead2PresetC;
-  const keyB = leadIndex === 0 ? state?.lead1PresetB : state?.lead2PresetD;
-  const defaultA = 'soft_rhodes';
-  const defaultB = 'gamelan';
-  if (hasLeadCustomPresetData(state, leadIndex)) {
-    const presetA = hasLeadCustomPresetEndpointData(state, leadIndex, 'a')
-      ? generatedLeadAnchorPresetId(keyA, defaultA)
-      : sourcePresetId('lead', keyA, defaultA);
-    const presetB = hasLeadCustomPresetEndpointData(state, leadIndex, 'b')
-      ? generatedLeadAnchorPresetId(keyB, defaultB)
-      : sourcePresetId('lead', keyB, defaultB);
-    source.sourcePresetAId = presetA;
-    source.sourcePresetBId = presetB;
-    source.presetId = clamp(source.morph, 0, 1) >= 0.5 ? presetB : presetA;
-    source.morph = clamp(source.morph, 0, 1);
-    return;
-  }
-  const presetA = sourcePresetId('lead', keyA, defaultA);
-  const presetB = sourcePresetId('lead', keyB, defaultB);
-  source.sourcePresetAId = presetA;
-  source.sourcePresetBId = presetB;
-  source.presetId = clamp(source.morph, 0, 1) >= 0.5 ? presetB : presetA;
-  source.morph = clamp(source.morph, 0, 1);
 }
 
 function sourceFromState(

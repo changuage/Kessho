@@ -54,7 +54,7 @@ function generatedDrumVoicePresetPairs(
   return pairs;
 }
 
-export function emptyDrumParams(): number[] {
+function emptyDrumParams(): number[] {
   return emptyParamArray(KESSHO_PRODUCT_DRUM_PARAM_COUNT);
 }
 
@@ -145,8 +145,6 @@ function defaultDrumStateCacheParams(state: Record<string, unknown> | undefined)
 }
 
 export function exactDrumPatchFromState(state: Record<string, unknown> | undefined): {
-  exactDrumParamCount: number;
-  exactDrumParams: number[];
   drumOverrideCount: number;
   drumOverrideIndices: number[];
   drumOverrideValues: number[];
@@ -156,8 +154,6 @@ export function exactDrumPatchFromState(state: Record<string, unknown> | undefin
   const presetPairs = generatedDrumVoicePresetPairs(presetAIds, presetBIds);
   if (!presetPairs) {
     return {
-      exactDrumParamCount: 0,
-      exactDrumParams: emptyDrumParams(),
       drumOverrideCount: 0,
       drumOverrideIndices: emptyDrumOverrideIndices(),
       drumOverrideValues: emptyDrumOverrideValues(),
@@ -175,8 +171,6 @@ export function exactDrumPatchFromState(state: Record<string, unknown> | undefin
     paramsMatch(exactDrumParams, defaultDrumStateCacheParams(state), KESSHO_PRODUCT_DRUM_PARAM_COUNT, DRUM_PATCH_EPSILON)
   ) {
     return {
-      exactDrumParamCount: 0,
-      exactDrumParams: emptyDrumParams(),
       drumOverrideCount: 0,
       drumOverrideIndices: emptyDrumOverrideIndices(),
       drumOverrideValues: emptyDrumOverrideValues(),
@@ -189,8 +183,6 @@ export function exactDrumPatchFromState(state: Record<string, unknown> | undefin
     DRUM_PATCH_EPSILON,
   );
   return {
-    exactDrumParamCount: 0,
-    exactDrumParams: emptyDrumParams(),
     drumOverrideCount: sparseOverrides.overrideCount,
     drumOverrideIndices: sparseOverrides.overrideIndices,
     drumOverrideValues: sparseOverrides.overrideValues,

@@ -1,6 +1,6 @@
 #include "../KesshoProductEngineInternal.h"
 
-  void KesshoProductEngine::compileSourcePresetRuntime(SourceState& source) {
+void KesshoProductEngine::compileSourcePresetRuntime(SourceState& source) {
   source.source_preset_patch_valid = false;
   source.source_preset_patch = {};
   source.source_preset_macro_morph = 0.0f;
@@ -15,9 +15,7 @@
   source.source_preset_macro_morph = preset->macro_morph;
   source.source_preset_macro_distance = preset->macro_distance;
   source.source_preset_macro_expression = preset->macro_expression;
-  if (
-      source.source_id == KESSHO_PRODUCT_SOURCE_DRUM &&
-      source.exact_drum_param_count != kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT) {
+  if (source.source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
     source.source_preset_patch = drumVoiceMorphPatch(source);
     applyDrumStructuredOverridesToPatch(
         source.source_preset_patch,
@@ -38,8 +36,7 @@ void KesshoProductEngine::compileSourcePresetEndpoints(SourceState& source) {
       source.source_id == KESSHO_PRODUCT_SOURCE_PAD2 ||
       source.source_id == KESSHO_PRODUCT_SOURCE_LEAD1 ||
       source.source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
-  if (!source_endpoint_target ||
-      source.source_preset_a_id == 0u ||
+  if (!source_endpoint_target || source.source_preset_a_id == 0u ||
       source.source_preset_b_id == 0u) {
     return;
   }
@@ -66,7 +63,7 @@ void KesshoProductEngine::compileSourcePresetEndpoints(SourceState& source) {
   }
 }
 
-  void KesshoProductEngine::applySourcePresetMacros(const SourceState& source, float& morph, float& distance, float& expression) const {
+void KesshoProductEngine::applySourcePresetMacros(const SourceState& source, float& morph, float& distance, float& expression) const {
   if (!source.source_preset_patch_valid) {
     return;
   }
@@ -75,7 +72,7 @@ void KesshoProductEngine::compileSourcePresetEndpoints(SourceState& source) {
   expression = clampFloat(expression * source.source_preset_macro_expression, 0.0f, 1.0f);
 }
 
-  bool KesshoProductEngine::sourceMacrosDifferFromDefaults(float morph, float distance, float expression) const {
+bool KesshoProductEngine::sourceMacrosDifferFromDefaults(float morph, float distance, float expression) const {
   return std::abs(morph) > 0.0001f ||
          std::abs(distance) > 0.0001f ||
          std::abs(expression - kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_EXPRESSION) > 0.0001f;

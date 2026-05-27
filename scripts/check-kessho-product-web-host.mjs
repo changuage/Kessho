@@ -105,7 +105,7 @@ const productSequencerState = read('cpp/KesshoCore/src/product/ProductSequencerS
 const productEvents = read('cpp/KesshoCore/src/product/KesshoProductEvents.cpp');
 const productSnapshotCpp = read('cpp/KesshoCore/src/product/KesshoProductSnapshot.cpp');
 const productSynthSequencer = read('cpp/KesshoCore/src/product/sequencer/SynthEuclidSequencer.cpp');
-const productPresetBridge = read('cpp/KesshoCore/src/product/ProductPresetBridge.h');
+const productPresetBridge = `${read('cpp/KesshoCore/src/product/ProductPresetBridge.h')}\n${read('cpp/KesshoCore/src/product/ProductSourcePresetPatch.h')}`;
 const productSourcePresetBridge = read('cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp');
 const productSourceModuleTrigger = read('cpp/KesshoCore/src/product/sources/SourceModuleTrigger.cpp');
 const productSourceVoiceAllocator = read('cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp');
@@ -1379,8 +1379,6 @@ for (const token of [
   'leadOverrideCount: number',
   'leadOverrideIndices: number[]',
   'leadOverrideValues: number[]',
-  'exactDrumParamCount: number',
-  'exactDrumParams: number[]',
   'drumOverrideCount: number',
   'drumOverrideIndices: number[]',
   'drumOverrideValues: number[]',
@@ -1394,7 +1392,8 @@ for (const token of [
   'u32(snapshot.assetRefs[i] ?? 0)',
   'u32(Math.min(soundscape.textureParamCount, SOUNDSCAPE_TEXTURE_PARAM_COUNT))',
   'f32(soundscape.moduleParams[paramIndex] ?? 0)',
-  'validateExactBridge',
+  'rejectLegacyExactBridge',
+  'exact patch fields are no longer accepted by web snapshot encoding',
   'validateSparseOverride',
   'u32(padOverrideCount)',
   'source.padOverrideIndices[paramIndex]',
@@ -1511,15 +1510,6 @@ for (const token of [
   'macroMorph',
   'macroDistance',
   'macroExpression',
-  '"profile"',
-  '"tone"',
-  '"brightness"',
-  '"texture"',
-  '"motion"',
-  '"attack"',
-  '"release"',
-  '"body"',
-  '"transient"',
   'KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ',
   'KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH',
   'KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING',
@@ -1529,6 +1519,7 @@ for (const token of [
 ]) {
   assert(generatedSchema.includes(token), `generated Product Core source preset schema is missing ${token}`);
 }
+assert(!generatedSchema.includes('"profile"'), 'generated Product Core source preset schema must not carry profile fallback metadata');
 
 for (const token of [
   'createCoreProductStartEvent',
@@ -1874,11 +1865,11 @@ assert(
 );
 
 for (const token of [
-  'this.appendPadExactPatchDiffs(events, previous.sources, next.sources)',
-  'this.appendLeadExactPatchDiffs(events, previous.sources, next.sources)',
   'this.appendSourceOverrideDiffs(events, previous.sources, next.sources)',
   'createCoreProductSourceOverrideSlotEvent',
   'createCoreProductSourceOverrideCommitEvent',
+  'legacyExactBridgeFieldsPresent',
+  "this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return 'source-structure-change'",
   "this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'pad-override-change'",
   "this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'lead-override-change'",
   "this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'drum-override-change'",
@@ -1886,12 +1877,19 @@ for (const token of [
   'private leadOverrideChanged',
   'private drumOverrideChanged',
   'private canApplySourceOverrideDiff',
-  'coreProductPadRuntimeParamId(next.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ? 1 : 0, paramIndex)',
-  'coreProductLeadRuntimeParamId(next.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2 ? 1 : 0, paramIndex)',
-  'previous.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT && next.exactPadParamCount === KESSHO_PRODUCT_PAD_PARAM_COUNT',
-  'previous.exactLeadParamCount === KESSHO_PRODUCT_LEAD_PARAM_COUNT && next.exactLeadParamCount === KESSHO_PRODUCT_LEAD_PARAM_COUNT',
 ]) {
-  assert(runtimeAdapter.includes(token), `Product TS Pad randomizer steps must dirty-diff exact patch params: missing ${token}`);
+  assert(runtimeAdapter.includes(token), `Product TS sparse override dirty diff must reject legacy exact bridge fields and keep override events wired: missing ${token}`);
+}
+for (const forbidden of [
+  'appendPadExactPatchDiffs',
+  'appendLeadExactPatchDiffs',
+  'appendDrumExactPatchDiffs',
+  'canApplyPadExactPatchDiff',
+  'canApplyLeadExactPatchDiff',
+  'canApplyDrumExactPatchDiff',
+  'exact-patch-change',
+]) {
+  assert(!runtimeAdapter.includes(forbidden), `Product runtime adapter must not retain legacy exact patch dirty-diff path: ${forbidden}`);
 }
 
 for (const token of [

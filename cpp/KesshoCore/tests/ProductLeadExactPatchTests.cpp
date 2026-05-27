@@ -85,14 +85,7 @@ float renderPeakBlocks(KesshoProductEngine* engine, uint32_t blocks = 64u) {
   return peak;
 }
 
-float renderGamelanPeakWithExactGain(float gain) {
-  const auto* gamelan = kessho::product::internal::findSourcePreset(
-      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN);
-  require(gamelan != nullptr, "generated LeadGamelan preset missing");
-  require(
-      gamelan->exact_lead_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT,
-      "generated LeadGamelan exact params missing");
-
+float renderGamelanPeakWithSparseGain(float gain) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "engine create failed");
 
@@ -108,12 +101,11 @@ float renderGamelanPeakWithExactGain(float gain) {
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
   source.source_preset_b_id =
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN;
-  source.exact_lead_param_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT;
-  for (uint32_t index = 0; index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT; ++index) {
-    source.exact_lead_params[index] = gamelan->exact_lead_params[index];
-  }
-  source.exact_lead_params[55] = 0.0f;
-  source.exact_lead_params[62] = gain;
+  source.lead_override_count = 2u;
+  source.lead_override_indices[0] = 55u;
+  source.lead_override_values[0] = 0.0f;
+  source.lead_override_indices[1] = 62u;
+  source.lead_override_values[1] = gain;
 
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "snapshot load failed");
 
@@ -133,13 +125,14 @@ float renderGamelanPeakWithExactGain(float gain) {
 LeadParams exactLeadParamsFromPreset(uint32_t preset_id) {
   const auto* preset = kessho::product::internal::findSourcePreset(preset_id);
   require(preset != nullptr, "generated lead preset missing");
+  const auto patch = kessho::product::internal::sourcePresetPatch(*preset);
   require(
-      preset->exact_lead_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT,
+      patch.exact_lead_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT,
       "generated lead preset lacks exact params");
 
   LeadParams params{};
   for (uint32_t index = 0; index < params.size(); ++index) {
-    params[index] = preset->exact_lead_params[index];
+    params[index] = patch.exact_lead_params[index];
   }
   return params;
 }
@@ -202,10 +195,11 @@ LeadParams makeSentinelLeadParams() {
   return params;
 }
 
-void writeLeadExactParams(KesshoProductSourceSnapshot& source, const LeadParams& params) {
-  source.exact_lead_param_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT;
+void writeLeadSparseOverrides(KesshoProductSourceSnapshot& source, const LeadParams& params) {
+  source.lead_override_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT;
   for (uint32_t index = 0; index < params.size(); ++index) {
-    source.exact_lead_params[index] = params[index];
+    source.lead_override_indices[index] = index;
+    source.lead_override_values[index] = params[index];
   }
 }
 
@@ -221,7 +215,7 @@ void configureStressLeadSource(KesshoProductSourceSnapshot& source, uint32_t sou
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
   source.source_preset_b_id =
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN;
-  writeLeadExactParams(source, params);
+  writeLeadSparseOverrides(source, params);
 }
 
 void configureGeneratedEndpointLeadSourceWithoutSnapshotExact(
@@ -241,10 +235,6 @@ void configureGeneratedEndpointLeadSourceWithoutSnapshotExact(
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
   source.source_preset_b_id =
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN;
-  source.exact_lead_param_count = 0u;
-  for (float& value : source.exact_lead_params) {
-    value = 0.0f;
-  }
 }
 
 void requireLeadModuleParamsEqual(
@@ -295,16 +285,16 @@ void triggerLeadAndExpectParams(
   requireLeadModuleParamsEqual(engine, source_id == KESSHO_PRODUCT_SOURCE_LEAD2 ? 1u : 0u, expected, context);
 }
 
-void requireSnapshotExactLeadParamsSurviveTrigger(uint32_t source_id) {
+void requireAllParamLeadSparseOverridesSurviveTrigger(uint32_t source_id) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
-  require(engine != nullptr, "all-param exact lead engine create failed");
+  require(engine != nullptr, "all-param sparse Lead engine create failed");
 
   const LeadParams expected = makeSentinelLeadParams();
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   configureStressLeadSource(snapshot.sources[source_id - 1u], source_id, expected);
-  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "all-param exact lead snapshot load failed");
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "all-param sparse Lead snapshot load failed");
 
-  triggerLeadAndExpectParams(engine, source_id, -1.0f, -1.0f, -1.0f, 1.0f, expected, "snapshot exact lead params");
+  triggerLeadAndExpectParams(engine, source_id, -1.0f, -1.0f, -1.0f, 1.0f, expected, "all-param sparse Lead params");
   kessho_product_destroy(engine);
 }
 
@@ -386,7 +376,10 @@ void requireEndpointLeadMorphMatchesWebPolicy(float morph) {
   require(engine != nullptr, "endpoint exact lead engine create failed");
 
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
-  configureStressLeadSource(snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u], KESSHO_PRODUCT_SOURCE_LEAD1, makeSentinelLeadParams());
+  configureGeneratedEndpointLeadSourceWithoutSnapshotExact(
+      snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u],
+      KESSHO_PRODUCT_SOURCE_LEAD1,
+      morph);
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "endpoint exact lead snapshot load failed");
 
   const LeadParams expected = expectedEndpointMorphParams(morph, KESSHO_PRODUCT_SOURCE_LEAD1, 1.0f);
@@ -510,7 +503,6 @@ void requireLeadSparseOverrideDoesNotNeedSnapshotExact(uint32_t source_id, float
 
   const auto& loaded = engine->sources[source_id - 1u];
   require(loaded.source_preset_endpoint_valid, "lead sparse override snapshot did not compile generated endpoints");
-  require(loaded.exact_lead_param_count == 0u, "lead sparse override snapshot promoted to exact Lead patch state");
   require(loaded.lead_override_count == 2u, "lead sparse override count did not load to structured SourceState");
   require(loaded.lead_override_indices[0] == kLeadDriveParamIndex, "lead sparse override drive index did not load");
   require(std::fabs(loaded.lead_override_values[0] - kDriveOverride) < 0.00001f, "lead sparse override drive value did not load");
@@ -530,8 +522,8 @@ void requireLeadSparseOverrideDoesNotNeedSnapshotExact(uint32_t source_id, float
       expected,
       "lead sparse override without snapshot exact patch");
   require(
-      engine->sources[source_id - 1u].exact_lead_param_count == 0u,
-      "lead sparse override trigger promoted source fields to exact Lead patch state");
+      engine->sources[source_id - 1u].lead_override_count == 2u,
+      "lead sparse override trigger lost structured Lead override state");
   kessho_product_destroy(engine);
 }
 
@@ -564,8 +556,8 @@ void requireLeadRatchetScalesOnlyEnvelopeParams() {
 } // namespace
 
 int main() {
-  requireSnapshotExactLeadParamsSurviveTrigger(KESSHO_PRODUCT_SOURCE_LEAD1);
-  requireSnapshotExactLeadParamsSurviveTrigger(KESSHO_PRODUCT_SOURCE_LEAD2);
+  requireAllParamLeadSparseOverridesSurviveTrigger(KESSHO_PRODUCT_SOURCE_LEAD1);
+  requireAllParamLeadSparseOverridesSurviveTrigger(KESSHO_PRODUCT_SOURCE_LEAD2);
   requireEndpointLeadMorphMatchesWebPolicy(0.35f);
   requireEndpointLeadMorphMatchesWebPolicy(0.65f);
   requireGeneratedEndpointLeadSnapshotDoesNotNeedExactPatch(KESSHO_PRODUCT_SOURCE_LEAD1, 0.35f);
@@ -578,9 +570,9 @@ int main() {
   requireLeadSparseOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD2, 0.65f);
   requireLeadRatchetScalesOnlyEnvelopeParams();
 
-  const float low_gain_peak = renderGamelanPeakWithExactGain(0.05f);
-  const float high_gain_peak = renderGamelanPeakWithExactGain(0.8f);
-  require(high_gain_peak > low_gain_peak * 4.0f, "exact LeadGamelan gain was overwritten by trigger macros");
+  const float low_gain_peak = renderGamelanPeakWithSparseGain(0.05f);
+  const float high_gain_peak = renderGamelanPeakWithSparseGain(0.8f);
+  require(high_gain_peak > low_gain_peak * 4.0f, "sparse LeadGamelan gain was overwritten by trigger macros");
 
   std::cout << "Kessho Product Lead Exact Patch tests passed\n";
   return 0;

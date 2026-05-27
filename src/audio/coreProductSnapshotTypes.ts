@@ -25,18 +25,12 @@ export type ProductSourceSnapshot = {
   sustain: number;
   holdSeconds: number;
   releaseSeconds: number;
-  exactPadParamCount: number;
-  exactPadParams: number[];
   padOverrideCount: number;
   padOverrideIndices: number[];
   padOverrideValues: number[];
-  exactLeadParamCount: number;
-  exactLeadParams: number[];
   leadOverrideCount: number;
   leadOverrideIndices: number[];
   leadOverrideValues: number[];
-  exactDrumParamCount: number;
-  exactDrumParams: number[];
   drumOverrideCount: number;
   drumOverrideIndices: number[];
   drumOverrideValues: number[];

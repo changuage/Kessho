@@ -1501,9 +1501,17 @@ async function readLinkedBadgeSteps(page, count) {
 }
 
 async function assertLinkedBadgeSteps(page, count, expectedHits, engineMode, tab, phase) {
-  const badgeSteps = await readLinkedBadgeSteps(page, count);
+  const expectedText = String(expectedHits);
+  let badgeSteps = [];
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    badgeSteps = await readLinkedBadgeSteps(page, count);
+    if (badgeSteps.every((text) => text === expectedText)) {
+      return badgeSteps;
+    }
+    await page.waitForTimeout(100);
+  }
   assert(
-    badgeSteps.every((text) => text === String(expectedHits)),
+    badgeSteps.every((text) => text === expectedText),
     `${engineMode}/${tab}: ${phase} linked badge steps did not match ${expectedHits} active hits: ${badgeSteps.join(',')}`,
   );
   return badgeSteps;

@@ -8,6 +8,7 @@
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductSchema.h"
 #include "../src/product/KesshoProductEngineInternal.h"
+#include "ProductSnapshotTestHelpers.h"
 
 namespace {
 
@@ -33,40 +34,9 @@ float peak(const std::vector<float>& values) {
 
 void applySourcePreset(KesshoProductSnapshotV2& snapshot, uint32_t source_id, uint32_t preset_id) {
   require(source_id >= 1u && source_id <= 7u, "test preset source id out of range");
-  KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
-  source.preset_id = preset_id;
   const auto* preset = findSourcePreset(preset_id);
   require(sourcePresetMatchesSource(source_id, preset), "test preset id does not match source");
-  const auto patch = sourcePresetPatch(*preset);
-  if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
-    require(
-        patch.exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT,
-        "test pad preset missing exact params");
-    source.exact_pad_param_count = patch.exact_pad_param_count;
-    for (uint32_t param_index = 0; param_index < source.exact_pad_param_count; ++param_index) {
-      source.exact_pad_params[param_index] = patch.exact_pad_params[param_index];
-    }
-  }
-  if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
-    require(
-        patch.exact_lead_param_count == kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT,
-        "test lead preset missing exact params");
-    source.exact_lead_param_count = patch.exact_lead_param_count;
-    for (uint32_t param_index = 0; param_index < source.exact_lead_param_count; ++param_index) {
-      source.exact_lead_params[param_index] = patch.exact_lead_params[param_index];
-    }
-  }
-  if (source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
-    for (const auto& voice : kessho::product::generated::KESSHO_PRODUCT_DRUM_VOICES) {
-      require(
-          voice.index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT,
-          "test drum voice index out of range");
-      const auto* default_preset = defaultDrumVoicePreset(voice.index);
-      require(default_preset != nullptr, "test drum voice default preset missing");
-      source.drum_voice_preset_a_ids[voice.index] = default_preset->id;
-      source.drum_voice_preset_b_ids[voice.index] = default_preset->id;
-    }
-  }
+  kessho::product::tests::applyGeneratedSourcePreset(snapshot, source_id, preset_id);
 }
 
 void applySourceDefaults(KesshoProductSnapshotV2& snapshot) {

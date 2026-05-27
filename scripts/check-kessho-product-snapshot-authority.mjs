@@ -174,9 +174,12 @@ for (const forbidden of [
 }
 
 assert(
-  snapshotEncoder.includes('validateExactBridge') &&
+  snapshotEncoder.includes('rejectLegacyExactBridge') &&
+    snapshotEncoder.includes('exact patch fields are no longer accepted by web snapshot encoding') &&
     snapshotEncoder.includes('validateSparseOverride') &&
-    snapshotEncoder.includes('exactCount !== 0 && count !== 0') &&
+    snapshotEncoder.includes("rejectLegacyExactBridge('Pad', source, 'exactPadParamCount', 'exactPadParams')") &&
+    snapshotEncoder.includes("rejectLegacyExactBridge('Lead', source, 'exactLeadParamCount', 'exactLeadParams')") &&
+    snapshotEncoder.includes("rejectLegacyExactBridge('Drum', source, 'exactDrumParamCount', 'exactDrumParams')") &&
     !snapshotEncoder.includes('Math.min(source.exactPadParamCount') &&
     !snapshotEncoder.includes('Math.min(source.padOverrideCount') &&
     !snapshotEncoder.includes('Math.min(source.padOverrideIndices') &&
@@ -291,9 +294,9 @@ assertCallInsideFunction(
 assertCallInsideFunction(
   padPatch,
   padPatchPath,
-  'presetA.exactPadParams[paramIndex]',
+  'generatedPadParamsFromPresetId(presetAId)',
   'function reconstructedPadParamsFromPresetIds',
-  'Pad endpoint reconstruction must read generated Product Core preset exact params',
+  'Pad endpoint reconstruction must derive generated Product Core preset params without TypeScript exact preset tables',
 );
 assertCallInsideFunction(
   padPatch,
@@ -307,14 +310,14 @@ assertCallInsideFunction(
   padPatchPath,
   'applyPadDistanceParams',
   'function reconstructedPadParamsFromPresetIds',
-  'Pad endpoint reconstruction must apply source distance shaping before falling back to exact Pad arrays',
+  'Pad endpoint reconstruction must apply source distance shaping before bounded sparse override comparison',
 );
 assertCallInsideFunction(
   padPatch,
   padPatchPath,
   'padOverrideCount',
   'function exactPadPatchFromState',
-  'Pad generated-endpoint custom controls must use bounded sparse override fields before falling back to exact Pad arrays',
+  'Pad generated-endpoint custom controls must use bounded sparse override fields without exact snapshot fallback arrays',
 );
 assertCallInsideFunction(
   padPatch,
@@ -372,9 +375,9 @@ assert(
 assertCallInsideFunction(
   leadPatch,
   leadPatchPath,
-  'presetA.exactLeadParams[paramIndex]',
+  'generatedLeadParamsFromPresetId(presetAId)',
   'function reconstructedLeadParamsFromPresetIds',
-  'Lead endpoint reconstruction must read generated Product Core preset exact params',
+  'Lead endpoint reconstruction must derive generated Product Core preset params without TypeScript exact preset tables',
 );
 assertCallInsideFunction(
   drumPatch,

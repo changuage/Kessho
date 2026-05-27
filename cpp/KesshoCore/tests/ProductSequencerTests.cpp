@@ -8,6 +8,7 @@
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoProductParamIds.h"
 #include "../src/product/KesshoProductEngineInternal.h"
+#include "ProductSnapshotTestHelpers.h"
 
 namespace {
 
@@ -55,15 +56,6 @@ uint32_t randomWalkSpeedFlags(float speed) {
       << KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK_SPEED_SHIFT;
 }
 
-kessho::core::KesshoSourcePresetPatch requiredSourcePresetPatch(
-    uint32_t source_id,
-    uint32_t preset_id,
-    const char* message) {
-  const auto* preset = findSourcePreset(preset_id);
-  require(sourcePresetMatchesSource(source_id, preset), message);
-  return sourcePresetPatch(*preset);
-}
-
 void applySourceDefaults(KesshoProductSnapshotV2& snapshot) {
   for (uint32_t i = 0; i < 7; ++i) {
     const uint32_t source_id = i + 1u;
@@ -74,32 +66,33 @@ void applySourceDefaults(KesshoProductSnapshotV2& snapshot) {
     source.sustain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN;
     source.hold_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
     source.release_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
-    source.preset_id = defaultSourcePresetId(source_id);
-    const auto patch = requiredSourcePresetPatch(source_id, source.preset_id, "test source preset missing");
-    if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
-      source.exact_pad_param_count = patch.exact_pad_param_count;
-      for (uint32_t param_index = 0; param_index < source.exact_pad_param_count; ++param_index) {
-        source.exact_pad_params[param_index] = patch.exact_pad_params[param_index];
-      }
-    }
-    if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
-      source.exact_lead_param_count = patch.exact_lead_param_count;
-      for (uint32_t param_index = 0; param_index < source.exact_lead_param_count; ++param_index) {
-        source.exact_lead_params[param_index] = patch.exact_lead_params[param_index];
-      }
-    }
-    if (source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
-      for (const auto& voice : kessho::product::generated::KESSHO_PRODUCT_DRUM_VOICES) {
-        if (voice.index >= kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT) {
-          continue;
-        }
-        const auto* default_preset = defaultDrumVoicePreset(voice.index);
-        require(default_preset != nullptr, "test drum voice default preset missing");
-        source.drum_voice_preset_a_ids[voice.index] = default_preset->id;
-        source.drum_voice_preset_b_ids[voice.index] = default_preset->id;
-      }
+    kessho::product::tests::applyGeneratedSourcePreset(snapshot, source_id, defaultSourcePresetId(source_id));
+  }
+}
+
+void appendDrumOverride(KesshoProductSourceSnapshot& source, uint32_t param_index, float value) {
+  require(source.drum_override_count < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT, "too many Drum overrides");
+  const uint32_t slot = source.drum_override_count++;
+  source.drum_override_indices[slot] = param_index;
+  source.drum_override_values[slot] = value;
+}
+
+float sourcePadOverrideValue(const SourceState& source, uint32_t param_index) {
+  for (uint32_t slot = 0u; slot < source.pad_override_count; ++slot) {
+    if (source.pad_override_indices[slot] == param_index) {
+      return source.pad_override_values[slot];
     }
   }
+  require(false, "Pad runtime override value missing");
+  return 0.0f;
+}
+
+void compileDefaultPadEndpoints(KesshoProductEngine* engine, uint32_t source_id) {
+  SourceState& source = engine->sources[source_id - 1u];
+  source.source_preset_a_id = defaultSourcePresetId(source_id);
+  source.source_preset_b_id = defaultSourcePresetId(source_id);
+  engine->compileSourcePresetEndpoints(source);
+  require(source.source_preset_endpoint_valid, "default Pad endpoint compile failed");
 }
 
 KesshoProductSnapshotV2 makeSnapshot() {
@@ -608,9 +601,9 @@ float productRuntimeFieldValue(const KesshoProductEngine& engine, uint32_t param
     case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_AMOUNT_ID:
       return engine.fx.sidechain_amount;
     case kProductPadRuntimeParamIdBase + 21u:
-      return engine.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].exact_pad_params[21];
+      return sourcePadOverrideValue(engine.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u], 21u);
     case kProductPad2RuntimeParamIdBase + 21u:
-      return engine.sources[KESSHO_PRODUCT_SOURCE_PAD2 - 1u].exact_pad_params[21];
+      return sourcePadOverrideValue(engine.sources[KESSHO_PRODUCT_SOURCE_PAD2 - 1u], 21u);
     default:
       uint32_t voice_index = 0u;
       uint32_t offset = 0u;
@@ -728,8 +721,8 @@ void requireRuntimeWalkMovementAcrossAudioAndFxTargets() {
 
   KesshoProductEngine* product_walk = kessho_product_create(48000.0, 128, 0);
   require(product_walk != nullptr, "runtime walk product engine allocation failed");
-  product_walk->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].exact_pad_param_count = kProductPadRuntimeParamCount;
-  product_walk->sources[KESSHO_PRODUCT_SOURCE_PAD2 - 1u].exact_pad_param_count = kProductPadRuntimeParamCount;
+  compileDefaultPadEndpoints(product_walk, KESSHO_PRODUCT_SOURCE_PAD1);
+  compileDefaultPadEndpoints(product_walk, KESSHO_PRODUCT_SOURCE_PAD2);
   uint32_t control_id = 410u;
   for (const ProductProbe& probe : product_probes) {
     enqueueRuntimeWalkRange(product_walk, 0u, probe.param_id, control_id++, probe.min_value, probe.max_value, probe.current_value);
@@ -811,8 +804,8 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
 
   KesshoProductEngine* product_walk = kessho_product_create(48000.0, 128, 0);
   require(product_walk != nullptr, "low-rate runtime walk product engine allocation failed");
-  product_walk->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].exact_pad_param_count = kProductPadRuntimeParamCount;
-  product_walk->sources[KESSHO_PRODUCT_SOURCE_PAD2 - 1u].exact_pad_param_count = kProductPadRuntimeParamCount;
+  compileDefaultPadEndpoints(product_walk, KESSHO_PRODUCT_SOURCE_PAD1);
+  compileDefaultPadEndpoints(product_walk, KESSHO_PRODUCT_SOURCE_PAD2);
   uint32_t control_id = 810u;
   for (const ProductProbe& probe : product_probes) {
     enqueueRuntimeWalkRange(product_walk, 0u, probe.param_id, control_id++, probe.min_value, probe.max_value, probe.current_value, low_rate_flags);
@@ -920,7 +913,6 @@ void requireDrumExactRuntimeRangesApplyToSourceAndModule() {
   require(std::fabs(kick_decay->random_walk_speed - 0.09f) < 0.001f, "Drum exact kick decay runtime walk speed mismatch");
   require(std::fabs(kick_decay->current_value - 300.0f) > 0.00001f, "Drum exact kick decay runtime walk did not move");
   const SourceState& drum_source = drum_walk->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
-  require(drum_source.exact_drum_param_count == 0u, "Drum runtime walk promoted structured source to exact params");
   require(drum_source.drum_override_count == 1u, "Drum runtime walk did not initialize sparse override state");
   require(drum_source.drum_override_indices[0] == kKickDecayParamIndex, "Drum runtime walk stored the wrong sparse override index");
   require(std::fabs(drum_source.drum_override_values[0] - kick_decay->current_value) < 0.001f, "Drum runtime walk did not update sparse override value");
@@ -956,11 +948,6 @@ void requireDrumExactRuntimeRangesApplyToSourceAndModule() {
 
 void requireLiveExactDrumParamsSurviveTriggerPatchSelection() {
   constexpr uint32_t kSubLevelParamIndex = 2u;
-  const auto drum = requiredSourcePresetPatch(
-      KESSHO_PRODUCT_SOURCE_DRUM,
-      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT,
-      "DrumDefault source preset missing for live patch selection test");
-  require(drum.exact_drum_param_count == kProductDrumRuntimeParamCount, "DrumDefault exact params missing for live patch selection test");
 
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "live exact drum patch selection engine allocation failed");
@@ -969,11 +956,7 @@ void requireLiveExactDrumParamsSurviveTriggerPatchSelection() {
   source.level = 1.0f;
   source.expression = 1.0f;
   source.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT;
-  source.exact_drum_param_count = kProductDrumRuntimeParamCount;
-  for (uint32_t index = 0; index < kProductDrumRuntimeParamCount; ++index) {
-    source.exact_drum_params[index] = drum.exact_drum_params[index];
-  }
-  source.exact_drum_params[kSubLevelParamIndex] = 0.8f;
+  appendDrumOverride(source, kSubLevelParamIndex, 0.8f);
 
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "live exact drum patch selection snapshot load failed");
   require(engine->drum_module != nullptr, "drum module missing for live patch selection test");
@@ -987,7 +970,10 @@ void requireLiveExactDrumParamsSurviveTriggerPatchSelection() {
   event.value = 0.0f;
   engine->applyParam(event);
   require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "live exact drum param update failed");
-  require(std::fabs(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].exact_drum_params[kSubLevelParamIndex]) < 0.0001f, "live exact drum param update missed source state");
+  const SourceState& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
+  require(loaded.drum_override_count == 1u, "live exact drum param update missed source override count");
+  require(loaded.drum_override_indices[0] == kSubLevelParamIndex, "live exact drum param update missed source override index");
+  require(std::fabs(loaded.drum_override_values[0]) < 0.0001f, "live exact drum param update missed source state");
   require(std::fabs(drum_params[kSubLevelParamIndex]) < 0.0001f, "live exact drum param update missed module params");
 
   engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].enabled = true;
@@ -1016,15 +1002,6 @@ void requireDrumSequencerMorphBuildsPerHitPresetPatch() {
   source.enabled = 1;
   source.level = 1.0f;
   source.expression = 1.0f;
-  const auto drum = requiredSourcePresetPatch(
-      KESSHO_PRODUCT_SOURCE_DRUM,
-      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT,
-      "DrumDefault source preset missing for sequencer morph patch test");
-  require(drum.exact_drum_param_count == kProductDrumRuntimeParamCount, "DrumDefault exact params missing for sequencer morph patch test");
-  source.exact_drum_param_count = kProductDrumRuntimeParamCount;
-  for (uint32_t index = 0; index < kProductDrumRuntimeParamCount; ++index) {
-    source.exact_drum_params[index] = drum.exact_drum_params[index];
-  }
   source.drum_voice_preset_a_ids[kKickVoiceIndex] = preset_a->id;
   source.drum_voice_preset_b_ids[kKickVoiceIndex] = preset_b->id;
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum sequencer morph patch snapshot load failed");
@@ -1096,15 +1073,6 @@ void requireDrumSequencerMembraneMorphHitsPresetB() {
   source.enabled = 1;
   source.level = 1.0f;
   source.expression = 1.0f;
-  const auto drum = requiredSourcePresetPatch(
-      KESSHO_PRODUCT_SOURCE_DRUM,
-      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT,
-      "DrumDefault source preset missing for membrane morph test");
-  require(drum.exact_drum_param_count == kProductDrumRuntimeParamCount, "DrumDefault exact params missing for membrane morph test");
-  source.exact_drum_param_count = kProductDrumRuntimeParamCount;
-  for (uint32_t index = 0; index < kProductDrumRuntimeParamCount; ++index) {
-    source.exact_drum_params[index] = drum.exact_drum_params[index];
-  }
   source.drum_voice_preset_a_ids[kMembraneVoiceIndex] = preset_a->id;
   source.drum_voice_preset_b_ids[kMembraneVoiceIndex] = preset_b->id;
   source.drum_voice_morphs[kMembraneVoiceIndex] = 0.1f;
@@ -1161,15 +1129,6 @@ void requireDrumSequencerMembranePresetBChangeUpdatesRunningMorph() {
   source.enabled = 1;
   source.level = 1.0f;
   source.expression = 1.0f;
-  const auto drum = requiredSourcePresetPatch(
-      KESSHO_PRODUCT_SOURCE_DRUM,
-      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT,
-      "DrumDefault source preset missing for live membrane preset B test");
-  require(drum.exact_drum_param_count == kProductDrumRuntimeParamCount, "DrumDefault exact params missing for live membrane preset B test");
-  source.exact_drum_param_count = kProductDrumRuntimeParamCount;
-  for (uint32_t index = 0; index < kProductDrumRuntimeParamCount; ++index) {
-    source.exact_drum_params[index] = drum.exact_drum_params[index];
-  }
   source.drum_voice_preset_a_ids[kMembraneVoiceIndex] = preset_a->id;
   source.drum_voice_preset_b_ids[kMembraneVoiceIndex] = old_preset_b->id;
   source.drum_voice_morphs[kMembraneVoiceIndex] = 0.15f;
@@ -1184,24 +1143,6 @@ void requireDrumSequencerMembranePresetBChangeUpdatesRunningMorph() {
     require(
         std::fabs(drum_params[param_index] - old_preset_b->params[param_index]) < 0.001f,
         "drum membrane live preset B test did not start from old preset B");
-  }
-
-  kessho::core::KesshoSourcePresetPatch preview_patch{};
-  preview_patch.exact_drum_param_count = kProductDrumRuntimeParamCount;
-  for (uint32_t index = 0; index < kProductDrumRuntimeParamCount; ++index) {
-    preview_patch.exact_drum_params[index] = engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].exact_drum_params[index];
-  }
-  SourceState preview_source = engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
-  preview_source.drum_voice_preset_b_ids[kMembraneVoiceIndex] = new_preset_b->id;
-  engine->applyDrumVoiceMorphToPatch(preview_patch, preview_source, kMembraneVoiceIndex, 0.15f);
-  for (uint32_t offset = 0; offset < kMembraneParamCount; ++offset) {
-    const uint32_t param_index = kMembraneParamStart + offset;
-    KesshoProductEvent exact_event{};
-    exact_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
-    exact_event.param_id = kProductDrumRuntimeParamIdBase + param_index;
-    exact_event.value = preview_patch.exact_drum_params[param_index];
-    engine->applyParam(exact_event);
-    require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "drum membrane live preset B exact param update failed");
   }
 
   KesshoProductEvent preset_b_event{};
@@ -2793,13 +2734,11 @@ int main() {
       "Product pad synth ratchets should shorten scheduled pad hold like the Web ratchet path");
 
   SourceState& lead_source = engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
-  lead_source.exact_lead_param_count = kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
-  for (uint32_t i = 0; i < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT; ++i) {
-    lead_source.exact_lead_params[i] = 0.0f;
-  }
-  lead_source.exact_lead_params[43] = 0.4f;
-  lead_source.exact_lead_params[44] = 0.8f;
-  lead_source.exact_lead_params[46] = 1.2f;
+  lead_source.lead_envelope_override_enabled = true;
+  lead_source.attack_seconds = 0.4f;
+  lead_source.decay_seconds = 0.8f;
+  lead_source.sustain = 1.0f;
+  lead_source.release_seconds = 1.2f;
   engine->triggerVoice(
       KESSHO_PRODUCT_SOURCE_LEAD1,
       60.0f,
@@ -2872,7 +2811,6 @@ int main() {
   kessho_product_reset(engine);
   SourceState& pad_preset_source = engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
   pad_preset_source.enabled = true;
-  pad_preset_source.exact_pad_param_count = 0u;
   pad_preset_source.source_preset_endpoint_valid = false;
   pad_preset_source.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT;
   engine->compileSourcePresetRuntime(pad_preset_source);

@@ -475,9 +475,13 @@ public:
     if (instance_ == nullptr || patch.exact_drum_param_count != KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT) {
       return 0;
     }
-    const auto defaults = makeDefaultParams();
     for (uint32_t index = 0; index < KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT && index < params_.size(); ++index) {
-      params_[index] = std::isfinite(patch.exact_drum_params[index]) ? patch.exact_drum_params[index] : defaults[index];
+      if (!std::isfinite(patch.exact_drum_params[index])) {
+        return 0;
+      }
+    }
+    for (uint32_t index = 0; index < KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT && index < params_.size(); ++index) {
+      params_[index] = patch.exact_drum_params[index];
     }
     commitParams();
     return 1;

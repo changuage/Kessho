@@ -8,7 +8,7 @@ import {
 import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES, loadLead4opFMPreset, morphPresets, type Lead4opFMPreset } from './lead4opfm';
 import { getVoiceDistanceKey } from './distanceMacro';
 import { booleanFromState, clamp, coreProductParamValue, numberFromState } from './coreProductSnapshotState';
-import { normalizePresetKey } from './CoreProductPresetIds';
+import { normalizePresetKey, sourcePresetId } from './CoreProductPresetIds';
 import { emptyParamArray, paramsMatch, sparseParamOverridesFromDiff } from './CoreProductSparseOverrides';
 
 const LEAD_PATCH_EPSILON = 0.000001;
@@ -57,13 +57,15 @@ function findGeneratedLeadPreset(presetId: number): SourcePreset | undefined {
   return KESSHO_PRODUCT_SOURCE_PRESETS.find(
     (preset) =>
       preset.source === 'lead' &&
-      preset.id === presetId &&
-      preset.exactLeadParamCount === KESSHO_PRODUCT_LEAD_PARAM_COUNT,
+      preset.id === presetId,
   );
 }
 
 function canReconstructGeneratedLeadParams(presetAId: number, presetBId: number): boolean {
-  return Boolean(findGeneratedLeadPreset(presetAId) && findGeneratedLeadPreset(presetBId));
+  return Boolean(
+    generatedLeadParamsFromPresetId(presetAId) &&
+      generatedLeadParamsFromPresetId(presetBId),
+  );
 }
 
 function isLeadPresetObject(key: unknown): key is Lead4opFMPreset {
@@ -100,6 +102,41 @@ function leadPresetFromKey(key: unknown, fallbackKey: 'soft_rhodes' | 'gamelan')
   if (isLeadPresetObject(key)) return key;
   const normalized = normalizePresetKey(key, fallbackKey);
   return normalized === 'gamelan' ? DEFAULT_GAMELAN : DEFAULT_SOFT_RHODES;
+}
+
+function generatedLeadAnchorPresetId(key: unknown, defaultKey: 'soft_rhodes' | 'gamelan'): number {
+  const presetId = sourcePresetId('lead', key, '');
+  return presetId !== 0 ? presetId : sourcePresetId('lead', defaultKey, defaultKey);
+}
+
+export function assignLeadPresetIds(
+  source: { sourcePresetAId: number; sourcePresetBId: number; presetId: number; morph: number },
+  state: Record<string, unknown> | undefined,
+  leadIndex: 0 | 1,
+): void {
+  const keyA = leadIndex === 0 ? state?.lead1PresetA : state?.lead2PresetC;
+  const keyB = leadIndex === 0 ? state?.lead1PresetB : state?.lead2PresetD;
+  const defaultA = 'soft_rhodes';
+  const defaultB = 'gamelan';
+  if (hasLeadCustomPresetData(state, leadIndex)) {
+    const presetA = hasLeadCustomPresetEndpointData(state, leadIndex, 'a')
+      ? generatedLeadAnchorPresetId(keyA, defaultA)
+      : sourcePresetId('lead', keyA, defaultA);
+    const presetB = hasLeadCustomPresetEndpointData(state, leadIndex, 'b')
+      ? generatedLeadAnchorPresetId(keyB, defaultB)
+      : sourcePresetId('lead', keyB, defaultB);
+    source.sourcePresetAId = presetA;
+    source.sourcePresetBId = presetB;
+    source.presetId = clamp(source.morph, 0, 1) >= 0.5 ? presetB : presetA;
+    source.morph = clamp(source.morph, 0, 1);
+    return;
+  }
+  const presetA = sourcePresetId('lead', keyA, defaultA);
+  const presetB = sourcePresetId('lead', keyB, defaultB);
+  source.sourcePresetAId = presetA;
+  source.sourcePresetBId = presetB;
+  source.presetId = clamp(source.morph, 0, 1) >= 0.5 ? presetB : presetA;
+  source.morph = clamp(source.morph, 0, 1);
 }
 
 function leadAlgorithmMode(value: unknown): 'snap' | 'presetA' {
@@ -204,8 +241,30 @@ export function assignLeadAlgorithmOverrideFields(
   source.leadAlgorithmPresetAEnabled = presetAEnabled;
 }
 
-export function emptyLeadParams(): number[] {
+function emptyLeadParams(): number[] {
   return emptyParamArray(KESSHO_PRODUCT_LEAD_PARAM_COUNT);
+}
+
+function generatedLeadPresetFromKey(key: string): Lead4opFMPreset | undefined {
+  if (key === 'soft_rhodes') return DEFAULT_SOFT_RHODES;
+  if (key === 'gamelan') return DEFAULT_GAMELAN;
+  return undefined;
+}
+
+function generatedLeadParamsFromPreset(preset: SourcePreset): number[] | undefined {
+  const leadPreset = generatedLeadPresetFromKey(preset.key);
+  if (!leadPreset) return undefined;
+  const morphed = morphPresets(leadPreset, leadPreset, 0) as unknown as Record<string, unknown>;
+  const params = emptyLeadParams();
+  for (const spec of KESSHO_PRODUCT_LEAD_PARAM_SPECS) {
+    params[spec.index] = coreProductParamValue(morphed[spec.key], spec.enumMap, spec.fallback);
+  }
+  return params;
+}
+
+function generatedLeadParamsFromPresetId(presetId: number): number[] | undefined {
+  const preset = findGeneratedLeadPreset(presetId);
+  return preset ? generatedLeadParamsFromPreset(preset) : undefined;
 }
 
 export function emptyLeadOverrideIndices(): number[] {
@@ -256,14 +315,14 @@ function reconstructedLeadParamsFromPresetIds(
   algorithmPresetAEnabled = false,
 ): number[] {
   const params = emptyLeadParams();
-  const presetA = findGeneratedLeadPreset(presetAId);
-  const presetB = findGeneratedLeadPreset(presetBId);
-  if (!presetA || !presetB) return params;
+  const presetAParams = generatedLeadParamsFromPresetId(presetAId);
+  const presetBParams = generatedLeadParamsFromPresetId(presetBId);
+  if (!presetAParams || !presetBParams) return params;
 
   const t = clamp(morph, 0, 1);
   for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_LEAD_PARAM_COUNT; paramIndex += 1) {
-    const a = presetA.exactLeadParams[paramIndex] ?? 0;
-    const b = presetB.exactLeadParams[paramIndex] ?? 0;
+    const a = presetAParams[paramIndex] ?? 0;
+    const b = presetBParams[paramIndex] ?? 0;
     if (paramIndex === LEAD_ALGORITHM_PARAM_INDEX && algorithmPresetAEnabled) {
       params[paramIndex] = a;
     } else if (leadParamUsesPresetSnap(paramIndex)) {
@@ -283,8 +342,6 @@ export function exactLeadPatchFromState(
   presetBId: number,
   morph: number,
 ): {
-  exactLeadParamCount: number;
-  exactLeadParams: number[];
   leadOverrideCount: number;
   leadOverrideIndices: number[];
   leadOverrideValues: number[];
@@ -292,8 +349,6 @@ export function exactLeadPatchFromState(
   const canReconstruct = canReconstructGeneratedLeadParams(presetAId, presetBId);
   if (!canReconstruct) {
     return {
-      exactLeadParamCount: 0,
-      exactLeadParams: emptyLeadParams(),
       leadOverrideCount: 0,
       leadOverrideIndices: emptyLeadOverrideIndices(),
       leadOverrideValues: emptyLeadOverrideValues(),
@@ -305,8 +360,6 @@ export function exactLeadPatchFromState(
   applyLeadDistanceParams(reconstructedParams, leadIndex, clamp(numberFromState(state, getVoiceDistanceKey(leadIndex === 0 ? 'lead1' : 'lead2'), 0), 0, 1));
   if (paramsMatch(exactLeadParams, reconstructedParams, KESSHO_PRODUCT_LEAD_PARAM_COUNT, LEAD_PATCH_EPSILON)) {
     return {
-      exactLeadParamCount: 0,
-      exactLeadParams: emptyLeadParams(),
       leadOverrideCount: 0,
       leadOverrideIndices: emptyLeadOverrideIndices(),
       leadOverrideValues: emptyLeadOverrideValues(),
@@ -319,8 +372,6 @@ export function exactLeadPatchFromState(
     LEAD_PATCH_EPSILON,
   );
   return {
-    exactLeadParamCount: 0,
-    exactLeadParams: emptyLeadParams(),
     leadOverrideCount: sparseOverrides.overrideCount,
     leadOverrideIndices: sparseOverrides.overrideIndices,
     leadOverrideValues: sparseOverrides.overrideValues,

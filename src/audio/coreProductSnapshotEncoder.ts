@@ -16,9 +16,9 @@ import {
 } from './generated/kesshoProductSchema';
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import { granularVoiceModeId } from './CoreProductModeIds';
-import { emptyLeadOverrideIndices, emptyLeadOverrideValues, emptyLeadParams } from './CoreProductLeadPatch';
-import { emptyPadOverrideIndices, emptyPadOverrideValues, emptyPadParams } from './CoreProductPadPatch';
-import { emptyDrumOverrideIndices, emptyDrumOverrideValues, emptyDrumParams } from './CoreProductDrumPatch';
+import { emptyLeadOverrideIndices, emptyLeadOverrideValues } from './CoreProductLeadPatch';
+import { emptyPadOverrideIndices, emptyPadOverrideValues } from './CoreProductPadPatch';
+import { emptyDrumOverrideIndices, emptyDrumOverrideValues } from './CoreProductDrumPatch';
 import { defaultPresetId } from './CoreProductPresetIds';
 import { SOUNDSCAPE_TEXTURE_PARAM_COUNT, SOUNDSCAPES_PRODUCT_PARAM_COUNT } from './coreProductSoundscapesSnapshot';
 import type { CoreProductSnapshot } from './coreProductSnapshot';
@@ -26,6 +26,14 @@ import type { CoreProductSnapshot } from './coreProductSnapshot';
 type ProductSourceSnapshot = CoreProductSnapshot['sources'][number];
 type ProductLaneSnapshot = CoreProductSnapshot['synthLanes'][number];
 type ProductGranularVoiceSnapshot = CoreProductSnapshot['fx']['granularVoices'][number];
+type LegacyExactBridgeSource = ProductSourceSnapshot & {
+  exactPadParamCount?: unknown;
+  exactPadParams?: unknown;
+  exactLeadParamCount?: unknown;
+  exactLeadParams?: unknown;
+  exactDrumParamCount?: unknown;
+  exactDrumParams?: unknown;
+};
 
 const SOURCE_ORDER = [CORE_PRODUCT_SOURCE_IDS.pad1, CORE_PRODUCT_SOURCE_IDS.pad2, CORE_PRODUCT_SOURCE_IDS.lead1, CORE_PRODUCT_SOURCE_IDS.lead2, CORE_PRODUCT_SOURCE_IDS.drum, CORE_PRODUCT_SOURCE_IDS.piano, CORE_PRODUCT_SOURCE_IDS.soundscape] as const;
 
@@ -42,18 +50,16 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function validateExactBridge(label: string, enabled: boolean, count: number, params: readonly number[], max: number): number {
-  if (!Number.isInteger(count) || count < 0 || (!enabled && count !== 0) || (enabled && count !== 0 && count !== max)) {
-    throw new RangeError(`${label} exact patch count is invalid: ${count}`);
+function rejectLegacyExactBridge(label: string, source: ProductSourceSnapshot, countKey: keyof LegacyExactBridgeSource, paramsKey: keyof LegacyExactBridgeSource): 0 {
+  const legacySource = source as LegacyExactBridgeSource;
+  if (Object.prototype.hasOwnProperty.call(legacySource, countKey) || Object.prototype.hasOwnProperty.call(legacySource, paramsKey)) {
+    throw new RangeError(`${label} exact patch fields are no longer accepted by web snapshot encoding`);
   }
-  for (let index = 0; index < count; index += 1) {
-    if (!Number.isFinite(params[index])) throw new RangeError(`${label} exact patch value is invalid at ${index}`);
-  }
-  return count >>> 0;
+  return 0;
 }
 
-function validateSparseOverride(label: string, enabled: boolean, exactCount: number, count: number, indices: readonly number[], values: readonly number[], max: number): number {
-  if (!Number.isInteger(count) || count < 0 || count > max || (!enabled && count !== 0) || (exactCount !== 0 && count !== 0)) {
+function validateSparseOverride(label: string, enabled: boolean, count: number, indices: readonly number[], values: readonly number[], max: number): number {
+  if (!Number.isInteger(count) || count < 0 || count > max || (!enabled && count !== 0)) {
     throw new RangeError(`${label} sparse override count is invalid: ${count}`);
   }
   for (let index = 0; index < count; index += 1) {
@@ -90,14 +96,8 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     sustain: KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN,
     holdSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS,
     releaseSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS,
-    exactPadParamCount: 0,
-    exactPadParams: emptyPadParams(),
     padOverrideCount: 0, padOverrideIndices: emptyPadOverrideIndices(), padOverrideValues: emptyPadOverrideValues(),
-    exactLeadParamCount: 0,
-    exactLeadParams: emptyLeadParams(),
     leadOverrideCount: 0, leadOverrideIndices: emptyLeadOverrideIndices(), leadOverrideValues: emptyLeadOverrideValues(),
-    exactDrumParamCount: 0,
-    exactDrumParams: emptyDrumParams(),
     drumOverrideCount: 0, drumOverrideIndices: emptyDrumOverrideIndices(), drumOverrideValues: emptyDrumOverrideValues(),
     drumVoicePresetAIds: Array.from({ length: KESSHO_PRODUCT_DRUM_VOICE_COUNT }, () => 0),
     drumVoicePresetBIds: Array.from({ length: KESSHO_PRODUCT_DRUM_VOICE_COUNT }, () => 0),
@@ -201,12 +201,12 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
     const isPadSource = source.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 || source.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2;
     const isLeadSource = source.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 || source.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2;
     const isDrumSource = source.sourceId === CORE_PRODUCT_SOURCE_IDS.drum;
-    const exactPadParamCount = validateExactBridge('Pad', isPadSource, source.exactPadParamCount, source.exactPadParams, KESSHO_PRODUCT_PAD_PARAM_COUNT);
-    const padOverrideCount = validateSparseOverride('Pad', isPadSource, exactPadParamCount, source.padOverrideCount, source.padOverrideIndices, source.padOverrideValues, KESSHO_PRODUCT_PAD_PARAM_COUNT);
-    const exactLeadParamCount = validateExactBridge('Lead', isLeadSource, source.exactLeadParamCount, source.exactLeadParams, KESSHO_PRODUCT_LEAD_PARAM_COUNT);
-    const leadOverrideCount = validateSparseOverride('Lead', isLeadSource, exactLeadParamCount, source.leadOverrideCount, source.leadOverrideIndices, source.leadOverrideValues, KESSHO_PRODUCT_LEAD_PARAM_COUNT);
-    const exactDrumParamCount = validateExactBridge('Drum', isDrumSource, source.exactDrumParamCount, source.exactDrumParams, KESSHO_PRODUCT_DRUM_PARAM_COUNT);
-    const drumOverrideCount = validateSparseOverride('Drum', isDrumSource, exactDrumParamCount, source.drumOverrideCount, source.drumOverrideIndices, source.drumOverrideValues, KESSHO_PRODUCT_DRUM_PARAM_COUNT);
+    const exactPadParamCount = rejectLegacyExactBridge('Pad', source, 'exactPadParamCount', 'exactPadParams');
+    const padOverrideCount = validateSparseOverride('Pad', isPadSource, source.padOverrideCount, source.padOverrideIndices, source.padOverrideValues, KESSHO_PRODUCT_PAD_PARAM_COUNT);
+    const exactLeadParamCount = rejectLegacyExactBridge('Lead', source, 'exactLeadParamCount', 'exactLeadParams');
+    const leadOverrideCount = validateSparseOverride('Lead', isLeadSource, source.leadOverrideCount, source.leadOverrideIndices, source.leadOverrideValues, KESSHO_PRODUCT_LEAD_PARAM_COUNT);
+    const exactDrumParamCount = rejectLegacyExactBridge('Drum', source, 'exactDrumParamCount', 'exactDrumParams');
+    const drumOverrideCount = validateSparseOverride('Drum', isDrumSource, source.drumOverrideCount, source.drumOverrideIndices, source.drumOverrideValues, KESSHO_PRODUCT_DRUM_PARAM_COUNT);
     u32(bool(source.enabled));
     u32(source.sourceId);
     u32(source.presetId);
@@ -226,17 +226,17 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
     f32(source.stereoWidth);
     f32(source.postLpfKeyTracking);
     u32(exactPadParamCount);
-    for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_PAD_PARAM_COUNT; paramIndex += 1) f32(paramIndex < exactPadParamCount ? (source.exactPadParams[paramIndex] ?? 0) : 0);
+    for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_PAD_PARAM_COUNT; paramIndex += 1) f32(0);
     u32(padOverrideCount);
     for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_PAD_PARAM_COUNT; paramIndex += 1) u32(paramIndex < padOverrideCount ? (source.padOverrideIndices[paramIndex] ?? 0) : 0);
     for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_PAD_PARAM_COUNT; paramIndex += 1) f32(paramIndex < padOverrideCount ? (source.padOverrideValues[paramIndex] ?? 0) : 0);
     u32(exactLeadParamCount);
-    for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_LEAD_PARAM_COUNT; paramIndex += 1) f32(paramIndex < exactLeadParamCount ? (source.exactLeadParams[paramIndex] ?? 0) : 0);
+    for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_LEAD_PARAM_COUNT; paramIndex += 1) f32(0);
     u32(leadOverrideCount);
     for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_LEAD_PARAM_COUNT; paramIndex += 1) u32(paramIndex < leadOverrideCount ? (source.leadOverrideIndices[paramIndex] ?? 0) : 0);
     for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_LEAD_PARAM_COUNT; paramIndex += 1) f32(paramIndex < leadOverrideCount ? (source.leadOverrideValues[paramIndex] ?? 0) : 0);
     u32(exactDrumParamCount);
-    for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_DRUM_PARAM_COUNT; paramIndex += 1) f32(paramIndex < exactDrumParamCount ? (source.exactDrumParams[paramIndex] ?? 0) : 0);
+    for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_DRUM_PARAM_COUNT; paramIndex += 1) f32(0);
     u32(drumOverrideCount);
     for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_DRUM_PARAM_COUNT; paramIndex += 1) u32(paramIndex < drumOverrideCount ? (source.drumOverrideIndices[paramIndex] ?? 0) : 0);
     for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_DRUM_PARAM_COUNT; paramIndex += 1) f32(paramIndex < drumOverrideCount ? (source.drumOverrideValues[paramIndex] ?? 0) : 0);

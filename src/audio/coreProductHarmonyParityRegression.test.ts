@@ -10,6 +10,21 @@ import { applyPadPresetMorphParamsToState } from './padPresets';
 import { drumPitchUiValuesToEngineOffsets, quantizeDrumPitchOffsetToScale } from '../ui/sequencer/drumPitchSequencer';
 import { DEFAULT_STATE } from '../ui/state';
 
+function assertNoWebExactPatchFields(source: unknown, label: string): void {
+  assert(source && typeof source === 'object', `${label} source should exist`);
+  const shape = source as Record<string, unknown>;
+  for (const key of [
+    'exactPadParamCount',
+    'exactPadParams',
+    'exactLeadParamCount',
+    'exactLeadParams',
+    'exactDrumParamCount',
+    'exactDrumParams',
+  ]) {
+    assert.equal(Object.prototype.hasOwnProperty.call(shape, key), false, `${label} should not expose ${key}`);
+  }
+}
+
 const PRODUCT_HARMONY_SCALE_IDS = new Map<string, number>([
   ['Major (Ionian)', 1],
   ['Aeolian', 2],
@@ -234,7 +249,7 @@ const customAdsrLeadSnapshot = createCoreProductSnapshot({
   lead1Distance: 0,
 });
 const customAdsrLeadSource = customAdsrLeadSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Lead1);
-assert.equal(customAdsrLeadSource?.exactLeadParamCount, 0, 'Product lead custom ADSR should use structured override fields when preset endpoints reconstruct the patch');
+assertNoWebExactPatchFields(customAdsrLeadSource, 'Product lead custom ADSR');
 assert.equal(customAdsrLeadSource?.leadEnvelopeOverrideEnabled, true, 'Product lead custom ADSR should set the structured override flag');
 assert.equal(customAdsrLeadSource?.attackSeconds, 0.047, 'Product lead custom ADSR attack should use the source envelope field');
 assert.equal(customAdsrLeadSource?.decaySeconds, 0.91, 'Product lead custom ADSR decay should use the source envelope field');
@@ -250,7 +265,7 @@ const algorithmOverrideLeadSnapshot = createCoreProductSnapshot({
   lead1Distance: 0,
 });
 const algorithmOverrideLeadSource = algorithmOverrideLeadSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Lead1);
-assert.equal(algorithmOverrideLeadSource?.exactLeadParamCount, 0, 'Product lead algorithm override should use structured fields when preset endpoints reconstruct the patch');
+assertNoWebExactPatchFields(algorithmOverrideLeadSource, 'Product lead algorithm override');
 assert.equal(algorithmOverrideLeadSource?.leadAlgorithmPresetAEnabled, true, 'Product lead algorithm override should set the structured preset-A flag');
 
 const customLeadPresetDataSnapshot = createCoreProductSnapshot({
@@ -265,13 +280,44 @@ const customLeadPresetDataSnapshot = createCoreProductSnapshot({
   lead1Distance: 0,
 });
 const customLeadPresetDataSource = customLeadPresetDataSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Lead1);
-assert.equal(customLeadPresetDataSource?.exactLeadParamCount, 0, 'Product lead custom preset data should use bounded sparse overrides when generated preset endpoints reconstruct the patch');
+assertNoWebExactPatchFields(customLeadPresetDataSource, 'Product lead custom preset data');
+assert.equal(customLeadPresetDataSource?.sourcePresetAId, KESSHO_PRODUCT_SOURCE_PRESET_IDS.LeadSoftRhodes, 'Product lead custom preset data should keep a generated endpoint A anchor');
+assert.equal(customLeadPresetDataSource?.sourcePresetBId, KESSHO_PRODUCT_SOURCE_PRESET_IDS.LeadGamelan, 'Product lead custom preset data should keep a generated endpoint B anchor');
 assert.ok((customLeadPresetDataSource?.leadOverrideCount ?? 0) > 0, 'Product lead custom preset data should serialize at least one sparse override');
 const customLeadGainOverrideSlot = customLeadPresetDataSource?.leadOverrideIndices
   .slice(0, customLeadPresetDataSource.leadOverrideCount)
   .indexOf(62) ?? -1;
 assert.ok(customLeadGainOverrideSlot >= 0, 'Product lead custom gain should target the generated gain param index');
 assert.ok(Number.isFinite(customLeadPresetDataSource?.leadOverrideValues[customLeadGainOverrideSlot]), 'Product lead sparse override should carry a finite value');
+
+const customLeadUnknownKeySnapshot = createCoreProductSnapshot({
+  leadEnabled: true,
+  lead1PresetA: 'runtime-user-lead',
+  lead1PresetAData: {
+    ...DEFAULT_SOFT_RHODES,
+    id: 'runtime-user-lead',
+    params: { ...DEFAULT_SOFT_RHODES.params, gain: DEFAULT_SOFT_RHODES.params.gain + 0.17 },
+  },
+  lead1Morph: 0,
+  lead1Distance: 0,
+});
+const customLeadUnknownKeySource = customLeadUnknownKeySnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Lead1);
+assertNoWebExactPatchFields(customLeadUnknownKeySource, 'Product lead custom preset data with a user key');
+assert.equal(customLeadUnknownKeySource?.sourcePresetAId, KESSHO_PRODUCT_SOURCE_PRESET_IDS.LeadSoftRhodes, 'Product lead custom preset data with a user key should anchor endpoint A to the slot default');
+assert.equal(customLeadUnknownKeySource?.sourcePresetBId, KESSHO_PRODUCT_SOURCE_PRESET_IDS.LeadGamelan, 'Product lead custom preset data with a missing B key should use the slot default endpoint');
+assert.ok((customLeadUnknownKeySource?.leadOverrideCount ?? 0) > 0, 'Product lead custom preset data with a user key should serialize sparse overrides');
+
+const invalidLeadEndpointSnapshot = createCoreProductSnapshot({
+  leadEnabled: true,
+  lead1PresetA: 'runtime-user-lead',
+  lead1PresetB: 'gamelan',
+  lead1Morph: 0,
+  lead1Distance: 0,
+});
+const invalidLeadEndpointSource = invalidLeadEndpointSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Lead1);
+assert.equal(invalidLeadEndpointSource?.sourcePresetAId, 0, 'Product lead explicit unknown endpoint without custom data should serialize as invalid');
+assertNoWebExactPatchFields(invalidLeadEndpointSource, 'Product lead explicit unknown endpoint');
+assert.equal(invalidLeadEndpointSource?.leadOverrideCount, 0, 'Product lead explicit unknown endpoint should not be masked by sparse Lead overrides');
 
 const distanceLeadSnapshot = createCoreProductSnapshot({
   leadEnabled: true,
@@ -281,7 +327,7 @@ const distanceLeadSnapshot = createCoreProductSnapshot({
   lead1Distance: 0.67,
 });
 const distanceLeadSource = distanceLeadSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Lead1);
-assert.equal(distanceLeadSource?.exactLeadParamCount, 0, 'Product lead distance macro should use structured source distance when preset endpoints reconstruct the patch');
+assertNoWebExactPatchFields(distanceLeadSource, 'Product lead distance macro');
 
 const customAdsrDistanceLeadSnapshot = createCoreProductSnapshot({
   leadEnabled: true,
@@ -296,7 +342,7 @@ const customAdsrDistanceLeadSnapshot = createCoreProductSnapshot({
   lead1Distance: 0.58,
 });
 const customAdsrDistanceLeadSource = customAdsrDistanceLeadSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Lead1);
-assert.equal(customAdsrDistanceLeadSource?.exactLeadParamCount, 0, 'Product lead custom ADSR plus distance should stay structured when preset endpoints reconstruct the patch');
+assertNoWebExactPatchFields(customAdsrDistanceLeadSource, 'Product lead custom ADSR plus distance');
 assert.equal(customAdsrDistanceLeadSource?.leadEnvelopeOverrideEnabled, true, 'Product lead custom ADSR plus distance should keep the structured envelope flag');
 
 const distancePadSnapshot = createCoreProductSnapshot({
@@ -307,7 +353,7 @@ const distancePadSnapshot = createCoreProductSnapshot({
   padDistance: 0.72,
 });
 const distancePadSource = distancePadSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Pad1);
-assert.equal(distancePadSource?.exactPadParamCount, 0, 'Product pad distance macro should use structured source distance when preset endpoints reconstruct the patch');
+assertNoWebExactPatchFields(distancePadSource, 'Product pad distance macro');
 
 const fullDefaultPadPresetSnapshot = createCoreProductSnapshot({
   ...DEFAULT_STATE,
@@ -317,7 +363,7 @@ const fullDefaultPadPresetSnapshot = createCoreProductSnapshot({
   padMorph: 0.43,
 });
 const fullDefaultPadPresetSource = fullDefaultPadPresetSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Pad1);
-assert.equal(fullDefaultPadPresetSource?.exactPadParamCount, 0, 'Product pad full default state cache should not force exact Pad arrays for generated preset endpoints');
+assertNoWebExactPatchFields(fullDefaultPadPresetSource, 'Product pad full default state cache');
 
 const staleSoftPluckCacheBuchlaSnapshot = createCoreProductSnapshot({
   ...applyPadPresetMorphParamsToState({
@@ -333,7 +379,7 @@ const staleSoftPluckCacheBuchlaSnapshot = createCoreProductSnapshot({
 });
 const staleSoftPluckCacheBuchlaSource = staleSoftPluckCacheBuchlaSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Pad1);
 assert.equal(staleSoftPluckCacheBuchlaSource?.sourcePresetAId, KESSHO_PRODUCT_SOURCE_PRESET_IDS.PadBuchlaPluck, 'Product pad stale cache test should select the Buchla endpoint');
-assert.equal(staleSoftPluckCacheBuchlaSource?.exactPadParamCount, 0, 'Product pad stale generated preset cache should not force exact Pad arrays over Buchla');
+assertNoWebExactPatchFields(staleSoftPluckCacheBuchlaSource, 'Product pad stale generated preset cache');
 assert.equal(staleSoftPluckCacheBuchlaSource?.padOverrideCount, 0, 'Product pad stale generated preset cache should not become sparse overrides over Buchla');
 
 const customFullDefaultPadPatchSnapshot = createCoreProductSnapshot({
@@ -345,7 +391,7 @@ const customFullDefaultPadPatchSnapshot = createCoreProductSnapshot({
   hardness: DEFAULT_STATE.hardness + 0.11,
 });
 const customFullDefaultPadPatchSource = customFullDefaultPadPatchSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Pad1);
-assert.equal(customFullDefaultPadPatchSource?.exactPadParamCount, 0, 'Product pad non-default custom controls should use bounded sparse overrides when generated preset endpoints reconstruct the patch');
+assertNoWebExactPatchFields(customFullDefaultPadPatchSource, 'Product pad non-default custom controls');
 assert.ok((customFullDefaultPadPatchSource?.padOverrideCount ?? 0) > 0, 'Product pad custom controls should serialize at least one sparse override');
 const customFullDefaultPadHardnessOverrideSlot = customFullDefaultPadPatchSource?.padOverrideIndices
   .slice(0, customFullDefaultPadPatchSource.padOverrideCount)
@@ -359,7 +405,7 @@ const drumSourceFieldSnapshot = createCoreProductSnapshot({
   drumReverbSend: 0.34,
 });
 const drumSourceFieldSource = drumSourceFieldSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Drum);
-assert.equal(drumSourceFieldSource?.exactDrumParamCount, 0, 'Product drum level and reverb send should use source fields when voice presets reconstruct the patch');
+assertNoWebExactPatchFields(drumSourceFieldSource, 'Product drum level and reverb send');
 assert.equal(drumSourceFieldSource?.level, 0.72, 'Product drum level should stay in the canonical source level field');
 assert.equal(drumSourceFieldSource?.reverbSend, 0.34, 'Product drum reverb should stay in the canonical source send field');
 
@@ -370,7 +416,7 @@ const fullDefaultDrumSourceFieldSnapshot = createCoreProductSnapshot({
   drumReverbSend: 0.34,
 });
 const fullDefaultDrumSourceFieldSource = fullDefaultDrumSourceFieldSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Drum);
-assert.equal(fullDefaultDrumSourceFieldSource?.exactDrumParamCount, 0, 'Product drum full default state should not force exact Drum arrays for generated voice presets');
+assertNoWebExactPatchFields(fullDefaultDrumSourceFieldSource, 'Product drum full default state');
 assert.equal(fullDefaultDrumSourceFieldSource?.level, 0.72, 'Product drum full default state should keep level in the canonical source field');
 assert.equal(fullDefaultDrumSourceFieldSource?.reverbSend, 0.34, 'Product drum full default state should keep reverb in the canonical source field');
 
@@ -382,7 +428,7 @@ const fullDefaultDrumVoicePresetSnapshot = createCoreProductSnapshot({
   drumSubMorph: 0.4,
 });
 const fullDefaultDrumVoicePresetSource = fullDefaultDrumVoicePresetSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Drum);
-assert.equal(fullDefaultDrumVoicePresetSource?.exactDrumParamCount, 0, 'Product drum full default state cache should not force exact Drum arrays for generated voice preset endpoints');
+assertNoWebExactPatchFields(fullDefaultDrumVoicePresetSource, 'Product drum full default state cache');
 
 const customFullDefaultDrumPatchSnapshot = createCoreProductSnapshot({
   ...DEFAULT_STATE,
@@ -393,7 +439,7 @@ const customFullDefaultDrumPatchSnapshot = createCoreProductSnapshot({
   drumSubFreq: DEFAULT_STATE.drumSubFreq + 7,
 });
 const customFullDefaultDrumPatchSource = customFullDefaultDrumPatchSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Drum);
-assert.equal(customFullDefaultDrumPatchSource?.exactDrumParamCount, 0, 'Product drum non-default custom controls should use bounded sparse overrides when generated voice presets reconstruct the patch');
+assertNoWebExactPatchFields(customFullDefaultDrumPatchSource, 'Product drum non-default custom controls');
 assert.ok((customFullDefaultDrumPatchSource?.drumOverrideCount ?? 0) > 0, 'Product drum custom controls should serialize at least one sparse override');
 const customFullDefaultDrumFreqOverrideSlot = customFullDefaultDrumPatchSource?.drumOverrideIndices
   .slice(0, customFullDefaultDrumPatchSource.drumOverrideCount)

@@ -224,13 +224,9 @@ bool generatedSourceMatches(
   return std::strcmp(preset.source, source) == 0;
 }
 
-bool generatedProfileIsFinite(const kessho::product::generated::KesshoProductGeneratedSourcePreset& preset) {
+bool generatedMacrosAreFinite(const kessho::product::generated::KesshoProductGeneratedSourcePreset& preset) {
   return std::isfinite(preset.macro_morph) && std::isfinite(preset.macro_distance) &&
-      std::isfinite(preset.macro_expression) && std::isfinite(preset.profile_tone) &&
-      std::isfinite(preset.profile_brightness) && std::isfinite(preset.profile_texture) &&
-      std::isfinite(preset.profile_motion) && std::isfinite(preset.profile_attack) &&
-      std::isfinite(preset.profile_release) && std::isfinite(preset.profile_body) &&
-      std::isfinite(preset.profile_transient);
+      std::isfinite(preset.macro_expression);
 }
 
 const kessho::product::generated::KesshoProductGeneratedDrumVoicePreset* generatedDrumVoicePreset(
@@ -271,6 +267,27 @@ KesshoProductSnapshotV2 makeSnapshot() {
   return snapshot;
 }
 
+void appendPadOverride(KesshoProductSourceSnapshot& source, uint32_t param_index, float value) {
+  require(source.pad_override_count < kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT, "too many Pad overrides");
+  const uint32_t slot = source.pad_override_count++;
+  source.pad_override_indices[slot] = param_index;
+  source.pad_override_values[slot] = value;
+}
+
+void appendLeadOverride(KesshoProductSourceSnapshot& source, uint32_t param_index, float value) {
+  require(source.lead_override_count < kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT, "too many Lead overrides");
+  const uint32_t slot = source.lead_override_count++;
+  source.lead_override_indices[slot] = param_index;
+  source.lead_override_values[slot] = value;
+}
+
+void appendDrumOverride(KesshoProductSourceSnapshot& source, uint32_t param_index, float value) {
+  require(source.drum_override_count < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT, "too many Drum overrides");
+  const uint32_t slot = source.drum_override_count++;
+  source.drum_override_indices[slot] = param_index;
+  source.drum_override_values[slot] = value;
+}
+
 void requireGeneratedSourcePresetFamilyCoverage() {
   using namespace kessho::product::generated;
 
@@ -289,15 +306,12 @@ void requireGeneratedSourcePresetFamilyCoverage() {
     require(preset.name != nullptr && std::strlen(preset.name) > 0, "generated source preset name missing");
     require(preset.source != nullptr && std::strlen(preset.source) > 0, "generated source preset source missing");
     require(preset.key != nullptr && std::strlen(preset.key) > 0, "generated source preset key missing");
-    require(generatedProfileIsFinite(preset), "generated source preset profile contains non-finite value");
+    require(generatedMacrosAreFinite(preset), "generated source preset macros contain non-finite value");
 
     if (generatedSourceMatches(preset, "pad")) {
       ++pad_count;
       require(preset.id >= KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT, "generated pad preset id below pad range");
       require(preset.id <= KESSHO_PRODUCT_SOURCE_PRESET_PAD_SERGE_SWARM, "generated pad preset id above pad range");
-      require(preset.exact_pad_param_count == KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT, "generated pad preset lacks exact pad patch");
-      require(preset.exact_lead_param_count == 0u, "generated pad preset unexpectedly owns lead patch");
-      require(preset.exact_drum_param_count == 0u, "generated pad preset unexpectedly owns drum patch");
       continue;
     }
 
@@ -305,27 +319,18 @@ void requireGeneratedSourcePresetFamilyCoverage() {
       ++lead_count;
       require(preset.id >= KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES, "generated lead preset id below lead range");
       require(preset.id <= KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN, "generated lead preset id above lead range");
-      require(preset.exact_pad_param_count == 0u, "generated lead preset unexpectedly owns pad patch");
-      require(preset.exact_lead_param_count == KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT, "generated lead preset lacks exact lead patch");
-      require(preset.exact_drum_param_count == 0u, "generated lead preset unexpectedly owns drum patch");
       continue;
     }
 
     if (generatedSourceMatches(preset, "drum")) {
       ++drum_count;
       require(preset.id == KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT, "generated drum preset id mismatch");
-      require(preset.exact_pad_param_count == 0u, "generated drum preset unexpectedly owns pad patch");
-      require(preset.exact_lead_param_count == 0u, "generated drum preset unexpectedly owns lead patch");
-      require(preset.exact_drum_param_count == KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT, "generated drum preset lacks exact drum patch");
       continue;
     }
 
     if (generatedSourceMatches(preset, "piano")) {
       ++piano_count;
       require(preset.id == KESSHO_PRODUCT_SOURCE_PRESET_PIANO_DEFAULT, "generated piano preset id mismatch");
-      require(preset.exact_pad_param_count == 0u, "generated piano preset unexpectedly owns pad patch");
-      require(preset.exact_lead_param_count == 0u, "generated piano preset unexpectedly owns lead patch");
-      require(preset.exact_drum_param_count == 0u, "generated piano preset unexpectedly owns drum patch");
       continue;
     }
 
@@ -333,9 +338,6 @@ void requireGeneratedSourcePresetFamilyCoverage() {
       ++soundscape_count;
       require(preset.id >= KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_OCEAN_SAMPLE, "generated soundscape preset id below range");
       require(preset.id <= KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_INSECTS2, "generated soundscape preset id above range");
-      require(preset.exact_pad_param_count == 0u, "generated soundscape preset unexpectedly owns pad patch");
-      require(preset.exact_lead_param_count == 0u, "generated soundscape preset unexpectedly owns lead patch");
-      require(preset.exact_drum_param_count == 0u, "generated soundscape preset unexpectedly owns drum patch");
       if (preset.id >= KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER0 &&
           preset.id <= KESSHO_PRODUCT_SOURCE_PRESET_SOUNDSCAPE_WATER7) {
         ++water_soundscape_count;
@@ -352,26 +354,31 @@ void requireGeneratedSourcePresetFamilyCoverage() {
   require(piano_count == 1u, "generated piano preset family count mismatch");
   require(soundscape_count == 14u, "generated soundscape preset family count mismatch");
   require(water_soundscape_count == 8u, "generated water soundscape preset count mismatch");
+  require(KESSHO_PRODUCT_GENERATED_PAD_SOURCE_PRESET_COUNT == pad_count, "generated pad source patch table count mismatch");
+  require(KESSHO_PRODUCT_GENERATED_LEAD_SOURCE_PRESET_COUNT == lead_count, "generated lead source patch table count mismatch");
+  require(KESSHO_PRODUCT_GENERATED_DRUM_SOURCE_PRESET_COUNT == drum_count, "generated drum source patch table count mismatch");
 }
 
 void requireExactSourcePresetMetadata() {
   const auto* init = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT);
   require(init != nullptr, "generated PadInit preset missing");
+  const auto init_patch = kessho::product::internal::sourcePresetPatch(*init);
   require(
-      init->exact_pad_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT,
+      init_patch.exact_pad_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT,
       "generated PadInit exact pad param count missing");
   require(
       kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT == 53u,
       "generated pad param count must match module layout");
-  require(std::fabs(init->exact_pad_params[33] - 6.0f) < 0.00001f, "PadInit exact attack did not match web preset");
-  require(std::fabs(init->exact_pad_params[36] - 12.0f) < 0.00001f, "PadInit exact release did not match web preset");
-  require(std::fabs(init->exact_pad_params[52] - 0.5f) < 0.00001f, "PadInit exact output trim did not match web pad trim");
+  require(std::fabs(init_patch.exact_pad_params[33] - 6.0f) < 0.00001f, "PadInit exact attack did not match web preset");
+  require(std::fabs(init_patch.exact_pad_params[36] - 12.0f) < 0.00001f, "PadInit exact release did not match web preset");
+  require(std::fabs(init_patch.exact_pad_params[52] - 0.5f) < 0.00001f, "PadInit exact output trim did not match web pad trim");
 
   const auto* lead = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES);
   require(lead != nullptr, "generated lead preset missing");
-  require(lead->exact_pad_param_count == 0u, "non-pad preset unexpectedly carried exact pad params");
+  const auto lead_patch = kessho::product::internal::sourcePresetPatch(*lead);
+  require(lead_patch.exact_pad_param_count == 0u, "non-pad preset unexpectedly compiled pad params");
   require(
-      lead->exact_lead_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT,
+      lead_patch.exact_lead_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT,
       "generated LeadSoftRhodes exact lead param count missing");
   require(
       kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT == 80u,
@@ -379,22 +386,24 @@ void requireExactSourcePresetMetadata() {
   require(
       std::fabs(kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_OUTPUT_TRIM - 0.59f) < 0.00001f,
       "generated lead output trim must match Product Core parity trim");
-  require(std::fabs(lead->exact_lead_params[0] - 0.0f) < 0.00001f, "LeadSoftRhodes exact algorithm did not match web preset");
-  require(std::fabs(lead->exact_lead_params[3] - 1.0f) < 0.00001f, "LeadSoftRhodes exact operator ratio did not match web preset");
-  require(std::fabs(lead->exact_lead_params[62] - 0.34f) < 0.00001f, "LeadSoftRhodes exact gain did not match web preset");
+  require(std::fabs(lead_patch.exact_lead_params[0] - 0.0f) < 0.00001f, "LeadSoftRhodes exact algorithm did not match web preset");
+  require(std::fabs(lead_patch.exact_lead_params[3] - 1.0f) < 0.00001f, "LeadSoftRhodes exact operator ratio did not match web preset");
+  require(std::fabs(lead_patch.exact_lead_params[62] - 0.34f) < 0.00001f, "LeadSoftRhodes exact gain did not match web preset");
 
   const auto* gamelan = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN);
   require(gamelan != nullptr, "generated LeadGamelan preset missing");
+  const auto gamelan_patch = kessho::product::internal::sourcePresetPatch(*gamelan);
   require(
-      gamelan->exact_lead_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT,
+      gamelan_patch.exact_lead_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT,
       "generated LeadGamelan exact lead param count missing");
-  require(std::fabs(gamelan->exact_lead_params[0] - 3.0f) < 0.00001f, "LeadGamelan exact algorithm did not match web preset");
-  require(std::fabs(gamelan->exact_lead_params[62] - 0.7f) < 0.00001f, "LeadGamelan exact gain did not match web preset");
+  require(std::fabs(gamelan_patch.exact_lead_params[0] - 3.0f) < 0.00001f, "LeadGamelan exact algorithm did not match web preset");
+  require(std::fabs(gamelan_patch.exact_lead_params[62] - 0.7f) < 0.00001f, "LeadGamelan exact gain did not match web preset");
 
   const auto* drum = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT);
   require(drum != nullptr, "generated DrumDefault preset missing");
+  const auto drum_patch = kessho::product::internal::sourcePresetPatch(*drum);
   require(
-      drum->exact_drum_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT,
+      drum_patch.exact_drum_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT,
       "generated DrumDefault exact drum param count missing");
   require(
       kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT == 126u,
@@ -405,8 +414,8 @@ void requireExactSourcePresetMetadata() {
   require(
       kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_PRESET_COUNT > 60u,
       "generated drum voice preset table must include factory drum presets");
-  require(std::fabs(drum->exact_drum_params[12] - 55.0f) < 0.00001f, "DrumDefault exact kick frequency did not match module layout");
-  require(std::fabs(drum->exact_drum_params[122] - 0.8f) < 0.00001f, "DrumDefault exact master level did not match module layout");
+  require(std::fabs(drum_patch.exact_drum_params[12] - 55.0f) < 0.00001f, "DrumDefault exact kick frequency did not match module layout");
+  require(std::fabs(drum_patch.exact_drum_params[122] - 0.8f) < 0.00001f, "DrumDefault exact master level did not match module layout");
 
   const auto* classic_sub = generatedDrumVoicePreset(0u, "Classic Sub");
   const auto* soft_touch = generatedDrumVoicePreset(0u, "Soft Touch");
@@ -486,15 +495,14 @@ void configurePadFilterLfoTelemetryPatch(KesshoProductSourceSnapshot& source, fl
   constexpr uint32_t kPadParamLfo1Wave = 39u;
   constexpr uint32_t kPadParamLfo1Dest = 40u;
   constexpr uint32_t kPadParamLevel = 52u;
-  require(source.exact_pad_param_count == 53u, "Pad source telemetry test requires exact Pad params");
-  source.exact_pad_params[kPadParamFilterCutoffMin] = cutoff_min;
-  source.exact_pad_params[kPadParamFilterCutoffMax] = cutoff_max;
-  source.exact_pad_params[kPadParamFilterKeyTracking] = 0.0f;
-  source.exact_pad_params[kPadParamLfo1Rate] = 64.0f;
-  source.exact_pad_params[kPadParamLfo1Depth] = 0.85f;
-  source.exact_pad_params[kPadParamLfo1Wave] = 6.0f;
-  source.exact_pad_params[kPadParamLfo1Dest] = 1.0f;
-  source.exact_pad_params[kPadParamLevel] = 1.0f;
+  appendPadOverride(source, kPadParamFilterCutoffMin, cutoff_min);
+  appendPadOverride(source, kPadParamFilterCutoffMax, cutoff_max);
+  appendPadOverride(source, kPadParamFilterKeyTracking, 0.0f);
+  appendPadOverride(source, kPadParamLfo1Rate, 64.0f);
+  appendPadOverride(source, kPadParamLfo1Depth, 0.85f);
+  appendPadOverride(source, kPadParamLfo1Wave, 6.0f);
+  appendPadOverride(source, kPadParamLfo1Dest, 1.0f);
+  appendPadOverride(source, kPadParamLevel, 1.0f);
 }
 
 void configurePadLowRateRandomWalkTelemetryPatch(KesshoProductSourceSnapshot& source, float cutoff_min, float cutoff_max) {
@@ -508,17 +516,16 @@ void configurePadLowRateRandomWalkTelemetryPatch(KesshoProductSourceSnapshot& so
   constexpr uint32_t kPadParamLfo2Depth = 42u;
   constexpr uint32_t kPadParamModEnvEnabled = 45u;
   constexpr uint32_t kPadParamLevel = 52u;
-  require(source.exact_pad_param_count == 53u, "Pad idle random-walk telemetry test requires exact Pad params");
-  source.exact_pad_params[kPadParamFilterCutoffMin] = cutoff_min;
-  source.exact_pad_params[kPadParamFilterCutoffMax] = cutoff_max;
-  source.exact_pad_params[kPadParamFilterKeyTracking] = 0.0f;
-  source.exact_pad_params[kPadParamLfo1Rate] = 0.09f;
-  source.exact_pad_params[kPadParamLfo1Depth] = 1.0f;
-  source.exact_pad_params[kPadParamLfo1Wave] = 6.0f;
-  source.exact_pad_params[kPadParamLfo1Dest] = 1.0f;
-  source.exact_pad_params[kPadParamLfo2Depth] = 0.0f;
-  source.exact_pad_params[kPadParamModEnvEnabled] = 0.0f;
-  source.exact_pad_params[kPadParamLevel] = 1.0f;
+  appendPadOverride(source, kPadParamFilterCutoffMin, cutoff_min);
+  appendPadOverride(source, kPadParamFilterCutoffMax, cutoff_max);
+  appendPadOverride(source, kPadParamFilterKeyTracking, 0.0f);
+  appendPadOverride(source, kPadParamLfo1Rate, 0.09f);
+  appendPadOverride(source, kPadParamLfo1Depth, 1.0f);
+  appendPadOverride(source, kPadParamLfo1Wave, 6.0f);
+  appendPadOverride(source, kPadParamLfo1Dest, 1.0f);
+  appendPadOverride(source, kPadParamLfo2Depth, 0.0f);
+  appendPadOverride(source, kPadParamModEnvEnabled, 0.0f);
+  appendPadOverride(source, kPadParamLevel, 1.0f);
 }
 
 void configurePadModEnvelopeTelemetryPatch(KesshoProductSourceSnapshot& source, float cutoff_min, float cutoff_max) {
@@ -539,24 +546,23 @@ void configurePadModEnvelopeTelemetryPatch(KesshoProductSourceSnapshot& source, 
   constexpr uint32_t kPadParamModEnvDepth = 50u;
   constexpr uint32_t kPadParamModEnvDest = 51u;
   constexpr uint32_t kPadParamLevel = 52u;
-  require(source.exact_pad_param_count == 53u, "Pad source mod-envelope test requires exact Pad params");
-  source.exact_pad_params[kPadParamFilterCutoffMin] = cutoff_min;
-  source.exact_pad_params[kPadParamFilterCutoffMax] = cutoff_max;
-  source.exact_pad_params[kPadParamFilterKeyTracking] = 0.0f;
-  source.exact_pad_params[kPadParamAttack] = 0.001f;
-  source.exact_pad_params[kPadParamDecay] = 0.05f;
-  source.exact_pad_params[kPadParamSustain] = 1.0f;
-  source.exact_pad_params[kPadParamRelease] = 0.5f;
-  source.exact_pad_params[kPadParamLfo1Depth] = 0.0f;
-  source.exact_pad_params[kPadParamLfo2Depth] = 0.0f;
-  source.exact_pad_params[kPadParamModEnvEnabled] = 1.0f;
-  source.exact_pad_params[kPadParamModEnvAttack] = 0.001f;
-  source.exact_pad_params[kPadParamModEnvDecay] = 0.05f;
-  source.exact_pad_params[kPadParamModEnvSustain] = 1.0f;
-  source.exact_pad_params[kPadParamModEnvRelease] = 0.25f;
-  source.exact_pad_params[kPadParamModEnvDepth] = 1.0f;
-  source.exact_pad_params[kPadParamModEnvDest] = 1.0f;
-  source.exact_pad_params[kPadParamLevel] = 1.0f;
+  appendPadOverride(source, kPadParamFilterCutoffMin, cutoff_min);
+  appendPadOverride(source, kPadParamFilterCutoffMax, cutoff_max);
+  appendPadOverride(source, kPadParamFilterKeyTracking, 0.0f);
+  appendPadOverride(source, kPadParamAttack, 0.001f);
+  appendPadOverride(source, kPadParamDecay, 0.05f);
+  appendPadOverride(source, kPadParamSustain, 1.0f);
+  appendPadOverride(source, kPadParamRelease, 0.5f);
+  appendPadOverride(source, kPadParamLfo1Depth, 0.0f);
+  appendPadOverride(source, kPadParamLfo2Depth, 0.0f);
+  appendPadOverride(source, kPadParamModEnvEnabled, 1.0f);
+  appendPadOverride(source, kPadParamModEnvAttack, 0.001f);
+  appendPadOverride(source, kPadParamModEnvDecay, 0.05f);
+  appendPadOverride(source, kPadParamModEnvSustain, 1.0f);
+  appendPadOverride(source, kPadParamModEnvRelease, 0.25f);
+  appendPadOverride(source, kPadParamModEnvDepth, 1.0f);
+  appendPadOverride(source, kPadParamModEnvDest, 1.0f);
+  appendPadOverride(source, kPadParamLevel, 1.0f);
 }
 
 void requirePadFilterLfoTelemetryTracksBothPads() {
@@ -773,17 +779,14 @@ void requireDrumSourceParamsStayStructured() {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "drum structured source param engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
-  snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].exact_drum_param_count = 0u;
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum structured source param snapshot load failed");
   setSourceParam(engine, KESSHO_PRODUCT_SOURCE_DRUM, KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID, 0.64f);
   setSourceParam(engine, KESSHO_PRODUCT_SOURCE_DRUM, KESSHO_PRODUCT_PARAM_SOURCE_REVERB_SEND_ID, 0.22f);
-  require(
-      engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].exact_drum_param_count == 0u,
-      "drum source level/reverb events promoted source fields to exact drum patch state");
+  require(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].source_preset_patch_valid, "drum source level/reverb events lost structured source patch");
+  require(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].drum_override_count == 0u, "drum source level/reverb events created sparse Drum overrides");
   triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
-  require(
-      engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].exact_drum_param_count == 0u,
-      "drum trigger promoted structured source fields to exact drum patch state");
+  require(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].source_preset_patch_valid, "drum trigger lost structured source patch");
+  require(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].drum_override_count == 0u, "drum trigger created sparse Drum overrides");
   kessho_product_destroy(engine);
 }
 
@@ -794,7 +797,6 @@ void requirePadOverridesStayStructured() {
   require(engine != nullptr, "pad structured override engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
-  source.exact_pad_param_count = 0u;
   source.source_preset_a_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SOFT_PLUCK;
   source.source_preset_b_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_BUCHLA_PLUCK;
   source.morph = 0.43f;
@@ -805,16 +807,14 @@ void requirePadOverridesStayStructured() {
 
   const auto& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
   require(loaded.source_preset_endpoint_valid, "pad structured override snapshot did not compile generated endpoints");
-  require(loaded.exact_pad_param_count == 0u, "pad sparse override snapshot promoted to exact Pad patch state");
   require(loaded.pad_override_count == 1u, "pad sparse override count did not load to structured SourceState");
   require(loaded.pad_override_indices[0] == kPadHardnessParamIndex, "pad sparse override index did not load to structured SourceState");
   require(std::fabs(loaded.pad_override_values[0] - kHardnessOverride) < 0.00001f, "pad sparse override value did not load to structured SourceState");
 
   triggerManual(engine, KESSHO_PRODUCT_SOURCE_PAD1, 60.0f);
   require(renderPeakBlocks(engine, 8u) > 0.0001f, "pad sparse override source did not render");
-  require(
-      engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].exact_pad_param_count == 0u,
-      "pad sparse override trigger promoted source fields to exact Pad patch state");
+  require(engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].source_preset_endpoint_valid, "pad sparse override trigger lost generated endpoints");
+  require(engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].pad_override_count == 1u, "pad sparse override trigger lost structured override state");
   kessho_product_destroy(engine);
 }
 
@@ -825,7 +825,6 @@ void requireLeadOverridesStayStructured() {
   require(engine != nullptr, "lead structured override engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
-  source.exact_lead_param_count = 0u;
   source.source_preset_a_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
   source.source_preset_b_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN;
   source.morph = 0.43f;
@@ -837,16 +836,14 @@ void requireLeadOverridesStayStructured() {
 
   const auto& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
   require(loaded.source_preset_endpoint_valid, "lead structured override snapshot did not compile generated endpoints");
-  require(loaded.exact_lead_param_count == 0u, "lead sparse override snapshot promoted to exact Lead patch state");
   require(loaded.lead_override_count == 1u, "lead sparse override count did not load to structured SourceState");
   require(loaded.lead_override_indices[0] == kLeadGainParamIndex, "lead sparse override index did not load to structured SourceState");
   require(std::fabs(loaded.lead_override_values[0] - kGainOverride) < 0.00001f, "lead sparse override value did not load to structured SourceState");
 
   triggerManual(engine, KESSHO_PRODUCT_SOURCE_LEAD1, 64.0f);
   require(renderPeakBlocks(engine, 8u) > 0.0001f, "lead sparse override source did not render");
-  require(
-      engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].exact_lead_param_count == 0u,
-      "lead sparse override trigger promoted source fields to exact Lead patch state");
+  require(engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].source_preset_endpoint_valid, "lead sparse override trigger lost generated endpoints");
+  require(engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].lead_override_count == 1u, "lead sparse override trigger lost structured override state");
   kessho_product_destroy(engine);
 }
 
@@ -858,7 +855,6 @@ void requireDrumOverridesStayStructured() {
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
   source.enabled = 1u;
-  source.exact_drum_param_count = 0u;
   source.drum_override_count = 1u;
   source.drum_override_indices[0] = kDrumSubFreqParamIndex;
   source.drum_override_values[0] = kSubFreqOverride;
@@ -866,7 +862,6 @@ void requireDrumOverridesStayStructured() {
 
   const auto& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
   require(loaded.source_preset_patch_valid, "drum structured override snapshot did not compile generated voice patch");
-  require(loaded.exact_drum_param_count == 0u, "drum sparse override snapshot promoted to exact Drum patch state");
   require(loaded.drum_override_count == 1u, "drum sparse override count did not load to structured SourceState");
   require(loaded.drum_override_indices[0] == kDrumSubFreqParamIndex, "drum sparse override index did not load to structured SourceState");
   require(std::fabs(loaded.drum_override_values[0] - kSubFreqOverride) < 0.00001f, "drum sparse override value did not load to structured SourceState");
@@ -876,9 +871,8 @@ void requireDrumOverridesStayStructured() {
 
   triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
   require(renderPeakBlocks(engine, 8u) > 0.0001f, "drum sparse override source did not render");
-  require(
-      engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].exact_drum_param_count == 0u,
-      "drum sparse override trigger promoted source fields to exact Drum patch state");
+  require(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].source_preset_patch_valid, "drum sparse override trigger lost generated source patch");
+  require(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].drum_override_count == 1u, "drum sparse override trigger lost structured override state");
   kessho_product_destroy(engine);
 }
 
@@ -889,7 +883,6 @@ void requirePadLiveOverrideEventStaysStructured() {
   require(engine != nullptr, "pad live override engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
-  source.exact_pad_param_count = 0u;
   source.source_preset_a_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SOFT_PLUCK;
   source.source_preset_b_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_BUCHLA_PLUCK;
   source.morph = 0.25f;
@@ -899,7 +892,6 @@ void requirePadLiveOverrideEventStaysStructured() {
   applySourceOverrideSlot(engine, KESSHO_PRODUCT_SOURCE_PAD1, 0u, kPadHardnessParamIndex, kHardnessOverride);
   applySourceOverrideCommit(engine, KESSHO_PRODUCT_SOURCE_PAD1, 1u);
   const SourceState& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
-  require(loaded.exact_pad_param_count == 0u, "pad live override event promoted source to exact Pad patch state");
   require(loaded.pad_override_count == 1u, "pad live override count did not update SourceState");
   require(loaded.pad_override_indices[0] == kPadHardnessParamIndex, "pad live override index did not update SourceState");
   require(std::fabs(loaded.pad_override_values[0] - kHardnessOverride) < 0.00001f, "pad live override value did not update SourceState");
@@ -909,9 +901,7 @@ void requirePadLiveOverrideEventStaysStructured() {
       "pad live override event did not update module patch");
   triggerManual(engine, KESSHO_PRODUCT_SOURCE_PAD1, 60.0f);
   require(renderPeakBlocks(engine, 8u) > 0.0001f, "pad live override source did not render");
-  require(
-      engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].exact_pad_param_count == 0u,
-      "pad live override trigger promoted source to exact Pad patch state");
+  require(engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].pad_override_count == 1u, "pad live override trigger lost structured override state");
   kessho_product_destroy(engine);
 }
 
@@ -922,7 +912,6 @@ void requireLeadLiveOverrideEventStaysStructured() {
   require(engine != nullptr, "lead live override engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
-  source.exact_lead_param_count = 0u;
   source.source_preset_a_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
   source.source_preset_b_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN;
   source.morph = 0.25f;
@@ -932,7 +921,6 @@ void requireLeadLiveOverrideEventStaysStructured() {
   applySourceOverrideSlot(engine, KESSHO_PRODUCT_SOURCE_LEAD1, 0u, kLeadGainParamIndex, kGainOverride);
   applySourceOverrideCommit(engine, KESSHO_PRODUCT_SOURCE_LEAD1, 1u);
   const SourceState& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
-  require(loaded.exact_lead_param_count == 0u, "lead live override event promoted source to exact Lead patch state");
   require(loaded.lead_override_count == 1u, "lead live override count did not update SourceState");
   require(loaded.lead_override_indices[0] == kLeadGainParamIndex, "lead live override index did not update SourceState");
   require(std::fabs(loaded.lead_override_values[0] - kGainOverride) < 0.00001f, "lead live override value did not update SourceState");
@@ -942,9 +930,7 @@ void requireLeadLiveOverrideEventStaysStructured() {
       "lead live override event did not update module patch");
   triggerManual(engine, KESSHO_PRODUCT_SOURCE_LEAD1, 64.0f);
   require(renderPeakBlocks(engine, 8u) > 0.0001f, "lead live override source did not render");
-  require(
-      engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].exact_lead_param_count == 0u,
-      "lead live override trigger promoted source to exact Lead patch state");
+  require(engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].lead_override_count == 1u, "lead live override trigger lost structured override state");
   kessho_product_destroy(engine);
 }
 
@@ -956,13 +942,11 @@ void requireDrumLiveOverrideEventStaysStructured() {
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
   source.enabled = 1u;
-  source.exact_drum_param_count = 0u;
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum live override snapshot load failed");
 
   applySourceOverrideSlot(engine, KESSHO_PRODUCT_SOURCE_DRUM, 0u, kDrumSubFreqParamIndex, kSubFreqOverride);
   applySourceOverrideCommit(engine, KESSHO_PRODUCT_SOURCE_DRUM, 1u);
   const SourceState& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
-  require(loaded.exact_drum_param_count == 0u, "drum live override event promoted source to exact Drum patch state");
   require(loaded.drum_override_count == 1u, "drum live override count did not update SourceState");
   require(loaded.drum_override_indices[0] == kDrumSubFreqParamIndex, "drum live override index did not update SourceState");
   require(std::fabs(loaded.drum_override_values[0] - kSubFreqOverride) < 0.00001f, "drum live override value did not update SourceState");
@@ -975,9 +959,7 @@ void requireDrumLiveOverrideEventStaysStructured() {
       "drum live override event did not update module patch");
   triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
   require(renderPeakBlocks(engine, 8u) > 0.0001f, "drum live override source did not render");
-  require(
-      engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].exact_drum_param_count == 0u,
-      "drum live override trigger promoted source to exact Drum patch state");
+  require(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].drum_override_count == 1u, "drum live override trigger lost structured override state");
   kessho_product_destroy(engine);
 }
 
@@ -989,7 +971,6 @@ void requireRuntimeParamEventsUseStructuredOverrides() {
     require(engine != nullptr, "pad runtime-param override engine create failed");
     KesshoProductSnapshotV2 snapshot = makeSnapshot();
     KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
-    source.exact_pad_param_count = 0u;
     source.source_preset_a_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SOFT_PLUCK;
     source.source_preset_b_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_BUCHLA_PLUCK;
     source.morph = 0.25f;
@@ -1003,7 +984,6 @@ void requireRuntimeParamEventsUseStructuredOverrides() {
     engine->applyParam(event);
     const auto& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
     require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "pad runtime-param override event failed");
-    require(loaded.exact_pad_param_count == 0u, "pad runtime param promoted structured source to exact Pad patch");
     require(loaded.pad_override_count == 1u && loaded.pad_override_indices[0] == kPadHardnessParamIndex, "pad runtime param missed sparse override state");
     require(std::fabs(loaded.pad_override_values[0] - kHardnessOverride) < 0.00001f, "pad runtime param missed sparse override value");
     require(
@@ -1021,7 +1001,6 @@ void requireRuntimeParamEventsUseStructuredOverrides() {
     require(engine != nullptr, "lead runtime-param override engine create failed");
     KesshoProductSnapshotV2 snapshot = makeSnapshot();
     KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
-    source.exact_lead_param_count = 0u;
     source.source_preset_a_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
     source.source_preset_b_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN;
     source.morph = 0.25f;
@@ -1035,7 +1014,6 @@ void requireRuntimeParamEventsUseStructuredOverrides() {
     engine->applyParam(event);
     const auto& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
     require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "lead runtime-param override event failed");
-    require(loaded.exact_lead_param_count == 0u, "lead runtime param promoted structured source to exact Lead patch");
     require(loaded.lead_override_count == 1u && loaded.lead_override_indices[0] == kLeadGainParamIndex, "lead runtime param missed sparse override state");
     require(std::fabs(loaded.lead_override_values[0] - kGainOverride) < 0.00001f, "lead runtime param missed sparse override value");
     require(
@@ -1054,7 +1032,6 @@ void requireRuntimeParamEventsUseStructuredOverrides() {
     KesshoProductSnapshotV2 snapshot = makeSnapshot();
     KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
     source.enabled = 1u;
-    source.exact_drum_param_count = 0u;
     require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "drum runtime-param override snapshot load failed");
 
     KesshoProductEvent event{};
@@ -1064,7 +1041,6 @@ void requireRuntimeParamEventsUseStructuredOverrides() {
     engine->applyParam(event);
     const auto& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
     require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "drum runtime-param override event failed");
-    require(loaded.exact_drum_param_count == 0u, "drum runtime param promoted structured source to exact Drum patch");
     require(loaded.drum_override_count == 1u && loaded.drum_override_indices[0] == kDrumSubFreqParamIndex, "drum runtime param missed sparse override state");
     require(std::fabs(loaded.drum_override_values[0] - kSubFreqOverride) < 0.00001f, "drum runtime param missed sparse override value");
     require(
@@ -1087,41 +1063,6 @@ void requirePartialExactPatchFallbacksAreRejected() {
     require(
         kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT,
         "partial Drum exact snapshot should be rejected instead of retained as fallback state");
-    kessho_product_destroy(engine);
-  }
-
-  {
-    KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
-    require(engine != nullptr, "partial runtime exact fallback engine create failed");
-    KesshoProductSnapshotV2 snapshot = makeSnapshot();
-    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "partial runtime exact fallback base snapshot load failed");
-
-    engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].exact_pad_param_count = 1u;
-    KesshoProductEvent pad_event{};
-    pad_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
-    pad_event.param_id = kProductPadRuntimeParamIdBase + 15u;
-    pad_event.value = 0.5f;
-    engine->applyParam(pad_event);
-    require(engine->telemetry.last_error_code == KESSHO_PRODUCT_ERROR_INVALID_EVENT, "partial Pad exact runtime state should not promote to fallback exact patch");
-    require(engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].exact_pad_param_count == 1u, "partial Pad exact runtime state was promoted");
-
-    engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].exact_lead_param_count = 1u;
-    KesshoProductEvent lead_event{};
-    lead_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
-    lead_event.param_id = kProductLeadRuntimeParamIdBase + 62u;
-    lead_event.value = 0.5f;
-    engine->applyParam(lead_event);
-    require(engine->telemetry.last_error_code == KESSHO_PRODUCT_ERROR_INVALID_EVENT, "partial Lead exact runtime state should not promote to fallback exact patch");
-    require(engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].exact_lead_param_count == 1u, "partial Lead exact runtime state was promoted");
-
-    engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].exact_drum_param_count = 1u;
-    KesshoProductEvent drum_event{};
-    drum_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
-    drum_event.param_id = kProductDrumRuntimeParamIdBase + 2u;
-    drum_event.value = 0.5f;
-    engine->applyParam(drum_event);
-    require(engine->telemetry.last_error_code == KESSHO_PRODUCT_ERROR_INVALID_EVENT, "partial Drum exact runtime state should not promote to fallback exact patch");
-    require(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].exact_drum_param_count == 1u, "partial Drum exact runtime state was promoted");
     kessho_product_destroy(engine);
   }
 }
@@ -1167,7 +1108,6 @@ void requireInvalidSourcePresetFallbacksAreRejected() {
     require(engine != nullptr, "invalid Drum voice preset snapshot engine create failed");
     KesshoProductSnapshotV2 snapshot = makeSnapshot();
     KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
-    source.exact_drum_param_count = 0u;
     source.drum_voice_preset_a_ids[0] = 999999u;
     require(
         kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_ERROR_INVALID_SNAPSHOT,
@@ -1226,7 +1166,6 @@ void requireInvalidSparseOverrideFallbacksAreRejected() {
     require(engine != nullptr, "invalid sparse Pad override engine create failed");
     KesshoProductSnapshotV2 snapshot = makeSnapshot();
     KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
-    source.exact_pad_param_count = 0u;
     source.source_preset_a_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT;
     source.source_preset_b_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT;
     source.pad_override_count = 1u;
@@ -1242,6 +1181,8 @@ void requireInvalidSparseOverrideFallbacksAreRejected() {
     require(engine != nullptr, "mixed exact/sparse Lead override engine create failed");
     KesshoProductSnapshotV2 snapshot = makeSnapshot();
     KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
+    source.exact_lead_param_count = 1u;
+    source.exact_lead_params[0] = 3.0f;
     source.lead_override_count = 1u;
     source.lead_override_indices[0] = 62u;
     source.lead_override_values[0] = 0.1f;
@@ -1335,8 +1276,6 @@ void requireSoundscapeSnapshotOwnsStructuredFields() {
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "soundscape structured snapshot load failed");
 
   const auto& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
-  require(loaded.exact_pad_param_count == 0u, "soundscape loader kept overloaded exact Pad params in SourceState");
-  require(loaded.exact_drum_param_count == 0u, "soundscape loader kept overloaded exact Drum params in SourceState");
   require(
       loaded.soundscape_texture_param_count == kessho::product::internal::kSoundscapeTextureParamCount,
       "soundscape texture params were not loaded to structured SourceState");
@@ -1403,7 +1342,7 @@ void requirePadFxSendsFollowPostLpf(uint32_t source_id, uint32_t dry_tap_id, con
       snapshot,
       source_id,
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_GLASS_SHIMMER);
-  source.exact_pad_params[kPadParamLevel] = 1.0f;
+  appendPadOverride(source, kPadParamLevel, 1.0f);
 
   require(
       kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
@@ -1568,11 +1507,9 @@ float renderRmsWithLeadPostLpf(float snapshot_cutoff_hz, bool send_param_event) 
   source.expression = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_EXPRESSION;
   source.post_lpf_hz = send_param_event ? 18000.0f : snapshot_cutoff_hz;
   source.stereo_width = 1.0f;
-  source.exact_lead_param_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT;
-  for (uint32_t index = 0; index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT; ++index) {
-    source.exact_lead_params[index] = rhodes->exact_lead_params[index];
-  }
-  source.exact_lead_params[62] = 0.8f;
+  source.source_preset_a_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  source.source_preset_b_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  appendLeadOverride(source, 62u, 0.8f);
 
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "source post-chain snapshot load failed");
   if (send_param_event) {
@@ -1642,12 +1579,12 @@ float renderDeltaRmsWithOpenPadFilterAndPostLpf(uint32_t source_id, float intern
   source.post_lpf_hz = post_lpf_hz;
   source.stereo_width = 1.0f;
   kessho::product::tests::applyGeneratedSourcePreset(snapshot, source_id, preset_id);
-  source.exact_pad_params[kPadParamFilterCutoffMin] = internal_filter_hz;
-  source.exact_pad_params[kPadParamFilterCutoffMax] = internal_filter_hz;
-  source.exact_pad_params[kPadParamLfo1Depth] = 0.0f;
-  source.exact_pad_params[kPadParamLfo2Depth] = 0.0f;
-  source.exact_pad_params[kPadParamModEnvEnabled] = 0.0f;
-  source.exact_pad_params[kPadParamLevel] = 1.0f;
+  appendPadOverride(source, kPadParamFilterCutoffMin, internal_filter_hz);
+  appendPadOverride(source, kPadParamFilterCutoffMax, internal_filter_hz);
+  appendPadOverride(source, kPadParamLfo1Depth, 0.0f);
+  appendPadOverride(source, kPadParamLfo2Depth, 0.0f);
+  appendPadOverride(source, kPadParamModEnvEnabled, 0.0f);
+  appendPadOverride(source, kPadParamLevel, 1.0f);
 
   require(
       kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
@@ -1688,12 +1625,12 @@ float renderHighBandRmsWithOpenPadFilterAndPostLpf(
   source.post_lpf_hz = post_lpf_hz;
   source.stereo_width = 1.0f;
   kessho::product::tests::applyGeneratedSourcePreset(snapshot, source_id, preset_id);
-  source.exact_pad_params[kPadParamFilterCutoffMin] = internal_filter_hz;
-  source.exact_pad_params[kPadParamFilterCutoffMax] = internal_filter_hz;
-  source.exact_pad_params[kPadParamLfo1Depth] = 0.0f;
-  source.exact_pad_params[kPadParamLfo2Depth] = 0.0f;
-  source.exact_pad_params[kPadParamModEnvEnabled] = 0.0f;
-  source.exact_pad_params[kPadParamLevel] = 1.0f;
+  appendPadOverride(source, kPadParamFilterCutoffMin, internal_filter_hz);
+  appendPadOverride(source, kPadParamFilterCutoffMax, internal_filter_hz);
+  appendPadOverride(source, kPadParamLfo1Depth, 0.0f);
+  appendPadOverride(source, kPadParamLfo2Depth, 0.0f);
+  appendPadOverride(source, kPadParamModEnvEnabled, 0.0f);
+  appendPadOverride(source, kPadParamLevel, 1.0f);
 
   require(
       kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
@@ -1718,11 +1655,9 @@ float renderDeltaRmsWithLeadPostLpfTracking(float tracking, bool send_param_even
   source.post_lpf_hz = 400.0f;
   source.stereo_width = 1.0f;
   source.post_lpf_key_tracking = send_param_event ? 0.0f : tracking;
-  source.exact_lead_param_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT;
-  for (uint32_t index = 0; index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT; ++index) {
-    source.exact_lead_params[index] = rhodes->exact_lead_params[index];
-  }
-  source.exact_lead_params[62] = 0.8f;
+  source.source_preset_a_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  source.source_preset_b_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  appendLeadOverride(source, 62u, 0.8f);
 
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "source post-LPF tracking snapshot load failed");
   if (send_param_event) {
@@ -1788,7 +1723,6 @@ float renderRmsWithSourceMacros(uint32_t source_id, float morph, float distance,
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
     KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
-    source.exact_pad_param_count = 0u;
     source.source_preset_a_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SOFT_PLUCK;
     source.source_preset_b_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_BUCHLA_PLUCK;
   }
@@ -1834,9 +1768,6 @@ void requireSourcePresetMacrosAffectRender() {
   static_assert(
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESETS[0].macro_expression > 0.0f,
       "generated source presets must expose macro fields");
-  static_assert(
-      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESETS[0].profile_tone >= 0.0f,
-      "generated source presets must expose module profile fields");
   const float init_peak = renderPeakWithSourcePreset(
       KESSHO_PRODUCT_SOURCE_PAD1,
       kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT);
@@ -1953,13 +1884,10 @@ void requireGeneratedAssetPresetTelemetryCoverage() {
 
 float renderPeakWithLeadSnapshotGain(float gain) {
   const auto* rhodes = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES);
-  require(rhodes != nullptr, "LeadSoftRhodes preset missing for exact snapshot test");
-  require(
-      rhodes->exact_lead_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT,
-      "LeadSoftRhodes exact params missing for exact snapshot test");
+  require(rhodes != nullptr, "LeadSoftRhodes preset missing for sparse override snapshot test");
 
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
-  require(engine != nullptr, "exact lead snapshot engine create failed");
+  require(engine != nullptr, "sparse Lead snapshot engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
   source.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
@@ -1967,91 +1895,84 @@ float renderPeakWithLeadSnapshotGain(float gain) {
   source.morph = 0.0f;
   source.distance = 0.0f;
   source.expression = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_EXPRESSION;
-  source.exact_lead_param_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT;
-  for (uint32_t index = 0; index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT; ++index) {
-    source.exact_lead_params[index] = rhodes->exact_lead_params[index];
-  }
-  source.exact_lead_params[62] = gain;
+  source.source_preset_a_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  source.source_preset_b_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  appendLeadOverride(source, 62u, gain);
 
-  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "exact lead snapshot load failed");
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "sparse Lead snapshot load failed");
   triggerManual(engine, KESSHO_PRODUCT_SOURCE_LEAD1, 64.0f);
   const float result = renderPeakBlocks(engine);
   kessho_product_destroy(engine);
   return result;
 }
 
-void requireSnapshotExactLeadParamsAffectRender() {
+void requireSnapshotSparseLeadParamsAffectRender() {
   const float low_gain_peak = renderPeakWithLeadSnapshotGain(0.05f);
   const float high_gain_peak = renderPeakWithLeadSnapshotGain(0.8f);
-  require(high_gain_peak > low_gain_peak * 3.0f, "snapshot exact lead params did not affect render gain");
+  require(high_gain_peak > low_gain_peak * 3.0f, "snapshot sparse Lead params did not affect render gain");
 }
 
-float renderDrumSubWithExactLevel(float sub_level) {
+float renderDrumSubWithSparseLevel(float sub_level) {
   const auto* drum = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT);
-  require(drum != nullptr, "DrumDefault preset missing for exact drum patch test");
+  require(drum != nullptr, "DrumDefault preset missing for sparse Drum override test");
 
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
-  require(engine != nullptr, "exact drum patch engine create failed");
+  require(engine != nullptr, "sparse Drum override engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
   source.level = 1.0f;
   source.expression = 1.0f;
   source.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT;
-  source.exact_drum_param_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT;
-  for (uint32_t index = 0; index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT; ++index) {
-    source.exact_drum_params[index] = drum->exact_drum_params[index];
-  }
-  source.exact_drum_params[2] = sub_level;
+  appendDrumOverride(source, 2u, sub_level);
 
-  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "exact drum patch snapshot load failed");
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "sparse Drum override snapshot load failed");
   triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
   const float result = renderPeakBlocks(engine);
   kessho_product_destroy(engine);
   return result;
 }
 
-void requireSnapshotExactDrumParamsAffectRender() {
-  const float normal = renderDrumSubWithExactLevel(0.8f);
-  const float muted = renderDrumSubWithExactLevel(0.0f);
-  require(normal > 0.0001f, "exact drum default patch did not render");
-  require(muted < normal * 0.1f, "exact drum snapshot patch did not change rendered sub level");
+void requireSnapshotSparseDrumParamsAffectRender() {
+  const float normal = renderDrumSubWithSparseLevel(0.8f);
+  const float muted = renderDrumSubWithSparseLevel(0.0f);
+  require(normal > 0.0001f, "sparse Drum default patch did not render");
+  require(muted < normal * 0.1f, "sparse Drum snapshot override did not change rendered sub level");
 }
 
-void requireLiveExactDrumParamsSurviveTrigger() {
+void requireLiveSparseDrumParamsSurviveTrigger() {
   constexpr uint32_t kSubLevelParamIndex = 2u;
   const auto* drum = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT);
-  require(drum != nullptr, "DrumDefault preset missing for live exact drum patch test");
+  require(drum != nullptr, "DrumDefault preset missing for live sparse Drum override test");
 
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
-  require(engine != nullptr, "live exact drum patch engine create failed");
+  require(engine != nullptr, "live sparse Drum override engine create failed");
   KesshoProductSnapshotV2 snapshot = makeSnapshot();
   KesshoProductSourceSnapshot& source = snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
   source.level = 1.0f;
   source.expression = 1.0f;
   source.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT;
-  source.exact_drum_param_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT;
-  for (uint32_t index = 0; index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT; ++index) {
-    source.exact_drum_params[index] = drum->exact_drum_params[index];
-  }
-  source.exact_drum_params[kSubLevelParamIndex] = 0.8f;
+  appendDrumOverride(source, kSubLevelParamIndex, 0.8f);
 
-  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "live exact drum patch snapshot load failed");
-  require(engine->drum_module != nullptr, "drum module missing for live exact patch test");
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "live sparse Drum override snapshot load failed");
+  require(engine->drum_module != nullptr, "drum module missing for live sparse override test");
   const float* drum_params = engine->drum_module->params();
-  require(drum_params != nullptr, "drum module params missing for live exact patch test");
-  require(std::fabs(drum_params[kSubLevelParamIndex] - 0.8f) < 0.0001f, "exact drum snapshot did not initialize module params");
+  require(drum_params != nullptr, "drum module params missing for live sparse override test");
+  require(std::fabs(drum_params[kSubLevelParamIndex] - 0.8f) < 0.0001f, "sparse Drum snapshot did not initialize module params");
 
   KesshoProductEvent event{};
   event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
   event.param_id = kProductDrumRuntimeParamIdBase + kSubLevelParamIndex;
   event.value = 0.0f;
   engine->applyParam(event);
-  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "live exact drum param event failed");
-  require(std::fabs(engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].exact_drum_params[kSubLevelParamIndex]) < 0.0001f, "live exact drum param missed source state");
-  require(std::fabs(drum_params[kSubLevelParamIndex]) < 0.0001f, "live exact drum param missed module params");
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "live sparse Drum param event failed");
+  const SourceState& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u];
+  require(loaded.drum_override_count == 1u, "live sparse Drum param missed source state count");
+  require(loaded.drum_override_indices[0] == kSubLevelParamIndex, "live sparse Drum param missed source state index");
+  require(std::fabs(loaded.drum_override_values[0]) < 0.0001f, "live sparse Drum param missed source state value");
+  require(std::fabs(drum_params[kSubLevelParamIndex]) < 0.0001f, "live sparse Drum param missed module params");
 
   triggerManual(engine, KESSHO_PRODUCT_SOURCE_DRUM, 36.0f);
-  require(std::fabs(drum_params[kSubLevelParamIndex]) < 0.0001f, "drum trigger restored stale source preset over live exact params");
+  require(std::fabs(drum_params[kSubLevelParamIndex]) < 0.0001f, "drum trigger restored stale source preset over live sparse params");
   kessho_product_destroy(engine);
 }
 
@@ -2066,7 +1987,6 @@ float renderDrumSubWithGeneratedVoicePreset(const char* preset_name) {
   source.level = 1.0f;
   source.expression = 1.0f;
   source.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT;
-  source.exact_drum_param_count = 0u;
   source.drum_voice_preset_a_ids[0] = preset->id;
   source.drum_voice_preset_b_ids[0] = preset->id;
   source.drum_voice_morphs[0] = 0.0f;
@@ -2086,13 +2006,8 @@ void requireGeneratedDrumVoicePresetsAffectRender() {
 }
 
 std::vector<float> renderDrumSubReconstructionProof(const char* preset_name, bool use_voice_preset_ids) {
-  const auto* drum = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT);
   const auto* preset = generatedDrumVoicePreset(0u, preset_name);
-  require(drum != nullptr, "DrumDefault preset missing for reconstruction proof");
   require(preset != nullptr, "generated drum voice preset missing for reconstruction proof");
-  require(
-      drum->exact_drum_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT,
-      "DrumDefault exact params missing for reconstruction proof");
 
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "drum reconstruction proof engine create failed");
@@ -2103,20 +2018,15 @@ std::vector<float> renderDrumSubReconstructionProof(const char* preset_name, boo
   source.preset_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_DRUM_DEFAULT;
 
   if (use_voice_preset_ids) {
-    source.exact_drum_param_count = 0u;
     source.drum_voice_preset_a_ids[preset->voice_index] = preset->id;
     source.drum_voice_preset_b_ids[preset->voice_index] = preset->id;
     source.drum_voice_morphs[preset->voice_index] = 0.0f;
   } else {
-    source.exact_drum_param_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT;
-    for (uint32_t index = 0; index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT; ++index) {
-      source.exact_drum_params[index] = drum->exact_drum_params[index];
-    }
     const uint32_t end = std::min<uint32_t>(
         preset->param_start + preset->param_count,
         kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT);
     for (uint32_t index = preset->param_start; index < end; ++index) {
-      source.exact_drum_params[index] = preset->params[index];
+      appendDrumOverride(source, index, preset->params[index]);
     }
   }
 
@@ -2142,13 +2052,13 @@ std::vector<float> renderDrumSubReconstructionProof(const char* preset_name, boo
   return samples;
 }
 
-void requireDrumVoicePresetIdsReconstructExactDrumPatch() {
+void requireDrumVoicePresetIdsReconstructSparseDrumOverrides() {
   const std::vector<float> from_voice_ids = renderDrumSubReconstructionProof("Soft Touch", true);
-  const std::vector<float> from_exact_patch = renderDrumSubReconstructionProof("Soft Touch", false);
+  const std::vector<float> from_sparse_overrides = renderDrumSubReconstructionProof("Soft Touch", false);
   require(peakSamples(from_voice_ids) > 0.0001f, "drum voice preset ID reconstruction did not render");
   require(
-      maxAbsDiff(from_voice_ids, from_exact_patch) < 0.000001f,
-      "drum voice preset IDs did not reconstruct the equivalent exact drum patch");
+      maxAbsDiff(from_voice_ids, from_sparse_overrides) < 0.000001f,
+      "drum voice preset IDs did not reconstruct the equivalent sparse Drum overrides");
 }
 
 float renderDelayedLeadPeakWithSourceHold(float source_hold_seconds, float event_hold_seconds) {
@@ -2163,14 +2073,12 @@ float renderDelayedLeadPeakWithSourceHold(float source_hold_seconds, float event
   source.level = 1.0f;
   source.expression = 1.0f;
   source.hold_seconds = source_hold_seconds;
-  source.exact_lead_param_count = kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT;
-  for (uint32_t index = 0; index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT; ++index) {
-    source.exact_lead_params[index] = rhodes->exact_lead_params[index];
-  }
-  source.exact_lead_params[44] = 0.03f;
-  source.exact_lead_params[45] = 1.0f;
-  source.exact_lead_params[46] = 0.02f;
-  source.exact_lead_params[62] = 0.8f;
+  source.source_preset_a_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  source.source_preset_b_id = kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  appendLeadOverride(source, 44u, 0.03f);
+  appendLeadOverride(source, 45u, 1.0f);
+  appendLeadOverride(source, 46u, 0.02f);
+  appendLeadOverride(source, 62u, 0.8f);
 
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "source hold snapshot load failed");
 
@@ -2415,11 +2323,11 @@ int main() {
   requireBroadLeadPresetFamiliesRender();
   requireGeneratedDrumPresetRenders();
   requireGeneratedAssetPresetTelemetryCoverage();
-  requireSnapshotExactLeadParamsAffectRender();
-  requireSnapshotExactDrumParamsAffectRender();
-  requireLiveExactDrumParamsSurviveTrigger();
+  requireSnapshotSparseLeadParamsAffectRender();
+  requireSnapshotSparseDrumParamsAffectRender();
+  requireLiveSparseDrumParamsSurviveTrigger();
   requireGeneratedDrumVoicePresetsAffectRender();
-  requireDrumVoicePresetIdsReconstructExactDrumPatch();
+  requireDrumVoicePresetIdsReconstructSparseDrumOverrides();
   requireSourcePostChainAffectsRender();
   requirePadFxSendsFollowPostLpfForBothPads();
   requirePianoFxSendsFollowPostLpf();
