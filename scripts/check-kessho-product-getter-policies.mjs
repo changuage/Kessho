@@ -17,6 +17,8 @@ const getters = [
   'getDynamicsAnalyser',
   'getDynamicsVisualTelemetry',
   'getDrumVoiceAnalyser',
+  'getMediaStream',
+  'getLimiterNode',
   'getGranularActiveGrainCount',
   'getGranularBufferWaveform',
   'getGranularVoicePositions',
@@ -69,8 +71,6 @@ for (const token of [
   'CORE_PRODUCT_GETTER_POLICIES',
   "'backed-by-product-core-api'",
   "'explicitly-unsupported-hidden'",
-  "'reference-only-web-ts-behavior'",
-  "'temporary-missing-product-telemetry'",
 ]) {
   assert(fallbackDiagnostics.includes(token), `Product Core getter policy code is missing ${token}`);
 }
@@ -83,6 +83,9 @@ for (const forbidden of ['classifiedPlaceholderGetter', 'PlaceholderGetterClassi
 const unsupportedGetters = new Set([
   'getDynamicsAnalyser',
   'getDrumVoiceAnalyser',
+  'getMediaStream',
+  'getLimiterNode',
+  'getGranularBufferWaveform',
   'getLeadMorphedParams',
   'getCurrentFilterFreq',
   'getCurrentLfoValue',
@@ -120,8 +123,8 @@ assert(
   'granular write head must use Product Core granular telemetry instead of a hidden fallback',
 );
 assert(
-  methodBody('getGranularBufferWaveform').includes('return null;'),
-  'granular waveform getter must stay a cheap null surface until Product Core exposes an explicit debug waveform API',
+  methodBody('getGranularBufferWaveform').includes("return this.explicitlyUnsupportedGetter('getGranularBufferWaveform')"),
+  'granular waveform getter must throw until Product Core exposes an explicit debug waveform API',
 );
 assert(
   methodBody('getDynamicsVisualTelemetry').includes('this.latestTelemetry') &&
@@ -159,29 +162,37 @@ assert(
   'explicitly hidden Product Core getters must not use the old unsupportedGetter fallback helper',
 );
 assert(
-  app.includes("const stemRecordingAvailable = audioEngineRuntimeMode !== 'core-product';") &&
-    app.includes('const enabledStemIds = stemRecordingAvailable') &&
+  app.includes("throw new Error('Recording is explicitly unavailable in core-product until a Product recording bridge exists')") &&
+    app.includes("{audioEngineRuntimeMode !== 'core-product' && (") &&
+    app.includes('const enabledStemIds = STEM_RECORD_TRACK_IDS.filter((trackId) => recordStems[trackId]);') &&
     app.includes("if (audioEngineRuntimeMode === 'core-product') return;"),
-  'core-product must block stem recording calls that require Web Audio bus nodes',
+  'core-product must hide recording controls and block recording calls that require Web Audio nodes',
 );
 assert(
-  globalPage.includes("const stemRecordingAvailable = audioEngineMode !== 'core-product';") &&
+  globalPage.includes("const recordingAvailable = audioEngineMode !== 'core-product';") &&
+    globalPage.includes('const stemRecordingAvailable = recordingAvailable;') &&
+    globalPage.includes('{recordingAvailable && (') &&
     globalPage.includes('{stemRecordingAvailable && (') &&
     globalPage.includes('STEM_RECORD_TRACK_IDS.map'),
-  'core-product UI must hide stem recording controls when stem nodes are unsupported',
+  'core-product UI must hide recording controls when Product recording bridge support is unavailable',
 );
 assert(
   app.includes('liveBufferTelemetryAvailable') &&
     !app.includes("liveBufferTelemetryAvailable={audioEngineRuntimeMode !== 'core-product'}") &&
+    app.includes("liveWaveformTelemetryAvailable={audioEngineRuntimeMode !== 'core-product'}") &&
+    app.includes("throw new Error('Granular waveform samples are explicitly unavailable in core-product')") &&
     granularPage.includes('liveBufferTelemetryAvailable?: boolean;') &&
+    granularPage.includes('liveWaveformTelemetryAvailable?: boolean;') &&
     granularPage.includes('if (!liveBufferTelemetryAvailable) return;') &&
+    granularPage.includes('if (liveWaveformTelemetryAvailable) {') &&
     granularPage.includes('{liveBufferTelemetryAvailable && ('),
-  'core-product UI must enable granular live head/voice telemetry while preserving the telemetry availability guard',
+  'core-product UI must enable granular live head/voice telemetry while hiding the unsupported waveform surface',
 );
 assert(
   app.includes("getDynamicsAnalyser={audioEngineRuntimeMode === 'core-product' ? undefined") &&
-    app.includes("getAnalyserNode={audioEngineRuntimeMode === 'core-product' ? () => undefined"),
-  'core-product UI must not request Web Audio analyser nodes for dynamics or drum visuals',
+    app.includes('getAnalyserNode={(v) => audioEngine.getDrumVoiceAnalyser(v)}') &&
+    !app.includes("getAnalyserNode={audioEngineRuntimeMode === 'core-product' ? () => undefined"),
+  'core-product UI must not silently fake drum analyser nodes; requests must hit the explicit unsupported host boundary',
 );
 assert(
   app.includes('liveSourceTelemetryAvailable') &&
@@ -193,8 +204,9 @@ assert(
   'core-product Synth UI must enable Pad filter/LFO polling while preserving the telemetry availability guard',
 );
 assert(
-  app.includes("getLeadMorphedParams={audioEngineRuntimeMode === 'core-product' ? () => null"),
-  'core-product Synth UI must not request host-owned Lead morphed preview params until Product Core exposes resolved Lead telemetry',
+  app.includes('getLeadMorphedParams={(lead: 1 | 2) => audioEngine.getLeadMorphedParams(lead)}') &&
+    !app.includes("getLeadMorphedParams={audioEngineRuntimeMode === 'core-product' ? () => null"),
+  'core-product Synth UI must not silently fake Lead morphed preview params; requests must hit the explicit unsupported host boundary',
 );
 assert(
   app.includes("audioEngineRuntimeMode === 'core-product'") &&
@@ -210,8 +222,6 @@ assert(
 for (const classification of [
   '`backed-by-product-core-api`',
   '`explicitly-unsupported-hidden`',
-  '`reference-only-web-ts-behavior`',
-  '`temporary-missing-product-telemetry`',
 ]) {
   assert(doc.includes(classification), `Product Core getter policy docs are missing classification ${classification}`);
 }

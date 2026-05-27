@@ -19,6 +19,7 @@ interface DrumPanelProps {
   onToggleEditing?: (voice: string) => void;
   triggeredVoices?: Record<string, boolean>;
   getAnalyserNode?: (voice: DrumVoiceType) => AnalyserNode | undefined;
+  preloadAudioEngine?: () => Promise<unknown>;
 }
 
 const VOICE_PANEL_IDS: Record<DrumVoiceType, string> = {
@@ -46,6 +47,7 @@ const DrumPanel: React.FC<DrumPanelProps> = ({
   onToggleEditing,
   triggeredVoices,
   getAnalyserNode,
+  preloadAudioEngine,
 }) => {
   return (
     <>
@@ -69,6 +71,7 @@ const DrumPanel: React.FC<DrumPanelProps> = ({
           onToggleEditing={onToggleEditing}
           isTriggered={triggeredVoices?.[voice] ?? false}
           getAnalyserNode={getAnalyserNode}
+          preloadAudioEngine={preloadAudioEngine}
         />
       ))}
     </>

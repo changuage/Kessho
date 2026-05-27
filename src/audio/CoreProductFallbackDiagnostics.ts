@@ -1,13 +1,8 @@
-export type RuntimeFallbackClassification =
-  | 'temporary-missing-product-telemetry'
-  | 'reference-only-web-ts-behavior'
-  | 'forbidden-production-fallback';
+export type RuntimeFallbackClassification = 'forbidden-production-fallback';
 
 export type ProductCoreGetterPolicy =
   | 'backed-by-product-core-api'
-  | 'explicitly-unsupported-hidden'
-  | 'reference-only-web-ts-behavior'
-  | 'temporary-missing-product-telemetry';
+  | 'explicitly-unsupported-hidden';
 
 export const CORE_PRODUCT_GETTER_POLICIES = {
   getDynamicsAnalyser: {
@@ -22,13 +17,21 @@ export const CORE_PRODUCT_GETTER_POLICIES = {
     classification: 'explicitly-unsupported-hidden',
     blocker: 'Web Audio drum analyser nodes are not exposed in core-product; drum live analyser callbacks are disabled for that runtime.',
   },
+  getMediaStream: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'MediaStream output is a Web Audio/browser bridge surface; core-product requires an explicit Product recording or platform-output bridge before exposing it.',
+  },
+  getLimiterNode: {
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Limiter/output nodes are not exposed in core-product; recording/export must use a Product recording bridge instead of raw Web Audio nodes.',
+  },
   getGranularActiveGrainCount: {
     classification: 'backed-by-product-core-api',
     blocker: 'Backed by activeGrains Product telemetry.',
   },
   getGranularBufferWaveform: {
-    classification: 'backed-by-product-core-api',
-    blocker: 'Core-product uses low-cost granular head/voice telemetry; waveform samples intentionally stay null to avoid realtime buffer copies.',
+    classification: 'explicitly-unsupported-hidden',
+    blocker: 'Core-product uses low-cost granular head/voice telemetry; waveform samples are hidden until Product Core exposes an explicit debug waveform API.',
   },
   getGranularVoicePositions: {
     classification: 'backed-by-product-core-api',
@@ -82,34 +85,12 @@ export const CORE_PRODUCT_GETTER_POLICIES = {
 
 export type ProductCoreGetterName = keyof typeof CORE_PRODUCT_GETTER_POLICIES;
 
-export const CORE_PRODUCT_REFERENCE_ONLY_METHODS = new Set<string>();
-
-function classifyProductCoreGetterPolicy(policy: ProductCoreGetterPolicy): RuntimeFallbackClassification {
-  switch (policy) {
-    case 'explicitly-unsupported-hidden':
-    case 'backed-by-product-core-api':
-      return 'forbidden-production-fallback';
-    case 'temporary-missing-product-telemetry':
-      return 'temporary-missing-product-telemetry';
-    case 'reference-only-web-ts-behavior':
-      return 'reference-only-web-ts-behavior';
-  }
-}
-
 export function classifyCoreProductRuntimeFallback(property: string): RuntimeFallbackClassification {
   if (property.startsWith('get')) {
-    const policy = CORE_PRODUCT_GETTER_POLICIES[property as ProductCoreGetterName];
-    return policy ? classifyProductCoreGetterPolicy(policy.classification) : 'forbidden-production-fallback';
+    return 'forbidden-production-fallback';
   }
   if (/^(set|update|reset|dice|start|stop|resume|suspend|trigger|push|load|register|ensure|audition)/.test(property)) {
     return 'forbidden-production-fallback';
   }
-  if (CORE_PRODUCT_REFERENCE_ONLY_METHODS.has(property)) {
-    return 'reference-only-web-ts-behavior';
-  }
   return 'forbidden-production-fallback';
-}
-
-export function runtimeFallbackIsDevelopmentError(classification: RuntimeFallbackClassification): boolean {
-  return classification === 'forbidden-production-fallback';
 }

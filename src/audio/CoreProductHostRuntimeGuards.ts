@@ -1,4 +1,4 @@
-import type { EngineState, ManualSynthNoteOptions } from './engine';
+import type { EngineState, ManualSynthNoteOptions } from './engineSharedTypes';
 import { CORE_PRODUCT_SOURCE_IDS, type CoreProductRangeTarget, type CoreProductRangeValueContext } from './coreProductEvents';
 import { KESSHO_PRODUCT_DRUM_VOICE_COUNT } from './generated/kesshoProductSchema';
 

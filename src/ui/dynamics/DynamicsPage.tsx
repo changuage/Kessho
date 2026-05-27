@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { DEFAULT_STATE, type SliderState } from '../state';
-import type { DynamicsAnalyserKey, DynamicsVisualTelemetrySnapshot } from '../../audio/engine';
+import type { DynamicsAnalyserKey, DynamicsVisualTelemetrySnapshot } from '../../audio/engineSharedTypes';
 import type { SliderPageId } from '../sliderHelpCatalog';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { PresetDropdown } from '../../presets/PresetDropdown';

@@ -7,8 +7,10 @@ Getter policies in `core-product` must be visible Product Core blockers. Unsuppo
 | `getDynamicsAnalyser` | `explicitly-unsupported-hidden` | Web Audio dynamics analyser nodes are not passed to `core-product`; Product Core telemetry backs dynamics visuals instead. |
 | `getDynamicsVisualTelemetry` | `backed-by-product-core-api` | Backed by Product Core master/dynamics telemetry; analyser nodes remain unavailable in `core-product`. |
 | `getDrumVoiceAnalyser` | `explicitly-unsupported-hidden` | Web Audio drum analyser nodes are not passed to `core-product`; drum envelope visuals remain state-based without live analyser input. |
+| `getMediaStream` | `explicitly-unsupported-hidden` | MediaStream output is hidden in `core-product` until a Product recording or platform-output bridge exists. |
+| `getLimiterNode` | `explicitly-unsupported-hidden` | Raw Web Audio output nodes are hidden in `core-product`; recording/export must use a Product recording bridge instead. |
 | `getGranularActiveGrainCount` | `backed-by-product-core-api` | Backed by Product Core `activeGrains` telemetry. |
-| `getGranularBufferWaveform` | `backed-by-product-core-api` | Core-product uses low-cost granular head/voice telemetry; waveform samples intentionally stay null to avoid realtime buffer copies. |
+| `getGranularBufferWaveform` | `explicitly-unsupported-hidden` | Core-product uses low-cost granular head/voice telemetry; waveform samples are hidden until Product Core exposes an explicit debug waveform API. |
 | `getGranularVoicePositions` | `backed-by-product-core-api` | Backed by Product Core granular voice position telemetry. |
 | `getGranularWriteHeadPosition` | `backed-by-product-core-api` | Backed by Product Core granular write-head telemetry. |
 | `getLeadMorphedParams` | `explicitly-unsupported-hidden` | Lead morphed-parameter preview is disabled in `core-product` until Product Core exposes resolved Lead source telemetry. |
@@ -26,5 +28,3 @@ Allowed classifications are:
 
 - `backed-by-product-core-api`
 - `explicitly-unsupported-hidden`
-- `reference-only-web-ts-behavior`
-- `temporary-missing-product-telemetry`

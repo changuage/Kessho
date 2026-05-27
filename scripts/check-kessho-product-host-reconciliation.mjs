@@ -9,7 +9,8 @@ import {
 
 const host = readProjectFile('src/audio/coreProductEngineHost.ts');
 const runtimeAdapter = readProjectFile('src/audio/CoreProductRuntimeAdapter.ts');
-const hostRuntimeSurface = `${host}\n${runtimeAdapter}`;
+const snapshotCoordinator = readProjectFile('src/audio/product/host/CoreProductSnapshotCoordinator.ts');
+const hostRuntimeSurface = `${host}\n${runtimeAdapter}\n${snapshotCoordinator}`;
 const sequencerTests = readProjectFile('cpp/KesshoCore/tests/ProductSequencerTests.cpp');
 
 function hostMethodBody(name) {
@@ -151,15 +152,17 @@ await runCheckWithReport({
     );
 
     const updateBody = hostMethodBody('applyLatestSnapshotUpdate');
-    assert(updateBody.includes('const previousSnapshot = this.latestProductSnapshot'), 'snapshot update must compare against last host snapshot');
-    assert(updateBody.includes('this.applySnapshotDiff(previousSnapshot, nextSnapshot, forceSequencerClockRejoin)'), 'snapshot update must try dirty diff first');
+    const coordinatorBody = methodBody(snapshotCoordinator, 'applyCoreProductSnapshotUpdate');
+    assert(updateBody.includes('previousSnapshot: this.latestProductSnapshot'), 'snapshot update must compare against last host snapshot');
+    assert(updateBody.includes('applyCoreProductSnapshotUpdate'), 'snapshot update must delegate through the dirty-diff coordinator');
+    assert(coordinatorBody.includes('buildCoreProductSnapshotDiff(options.previousSnapshot, options.nextSnapshot'), 'snapshot coordinator must try dirty diff first');
     assert(
-      updateBody.indexOf('this.applySnapshotDiff(previousSnapshot, nextSnapshot, forceSequencerClockRejoin)') <
-        updateBody.indexOf('this.loadProductSnapshot(nextSnapshot, reloadReason)'),
+      coordinatorBody.indexOf('buildCoreProductSnapshotDiff(options.previousSnapshot, options.nextSnapshot') <
+        coordinatorBody.indexOf('return loadCoreProductSnapshot({'),
       'snapshot update must only full-reload after dirty diff rejection',
     );
 
-    const loadSnapshotBody = hostMethodBody('loadProductSnapshot');
+    const loadSnapshotBody = hostMethodBody('afterProductSnapshotLoad');
     assert(
       loadSnapshotBody.includes('this.flushSequencerStepToggles();'),
       'full snapshot reloads must replay reconciled sequencer UI caches after load',
@@ -975,7 +978,8 @@ await runCheckWithReport({
     );
 
     const eventCountBeforeReload = harness.runtime.events.length;
-    harness.host.loadProductSnapshot({ transport: { bpm: 120 } }, 'adapter-update');
+    harness.host.runtimeReady = true;
+    harness.host.loadLatestSnapshot('adapter-update');
     const replayedEvents = harness.runtime.events.slice(eventCountBeforeReload);
     assert(harness.runtime.snapshots.length === 1, 'full snapshot reload must call runtime.loadSnapshot');
     assert(

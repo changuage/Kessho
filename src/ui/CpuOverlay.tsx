@@ -4,7 +4,6 @@
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { audioEngine } from '../audio/runtime';
 import { useVisibleInterval } from './hooks/useVisibleInterval';
 
 type PerfMetrics = {
@@ -12,6 +11,13 @@ type PerfMetrics = {
   peakPercent: number;
   missPercent: number | null;
   scope?: 'worklet' | 'source';
+};
+
+export type CpuOverlayPerfCallback = (data: Record<string, PerfMetrics>) => void;
+
+export type CpuOverlayProps = {
+  setPerfMonitorEnabled: (enabled: boolean) => void;
+  setPerfUpdateCallback: (callback: CpuOverlayPerfCallback | null) => void;
 };
 
 const WORKLET_LABELS: Record<string, string> = {
@@ -47,7 +53,10 @@ function cpuColor(pct: number): string {
   return '#f44';               // red
 }
 
-export const CpuOverlay: React.FC = () => {
+export const CpuOverlay: React.FC<CpuOverlayProps> = ({
+  setPerfMonitorEnabled,
+  setPerfUpdateCallback,
+}) => {
   const [visible, setVisible] = useState(false);
   const [displayPerfData, setDisplayPerfData] = useState<Record<string, PerfMetrics>>({});
   const tapRef = useRef<number[]>([]);
@@ -57,14 +66,15 @@ export const CpuOverlay: React.FC = () => {
   const toggle = useCallback(() => {
     setVisible(prev => {
       const next = !prev;
-      audioEngine.setPerfMonitorEnabled(next);
+      setPerfMonitorEnabled(next);
       if (!next) {
+        setPerfUpdateCallback(null);
         latestPerfRef.current = {};
         setDisplayPerfData({});
       }
       return next;
     });
-  }, []);
+  }, [setPerfMonitorEnabled, setPerfUpdateCallback]);
 
   // Triple-tap detector for top-left corner
   const handleCornerClick = useCallback(() => {
@@ -82,13 +92,13 @@ export const CpuOverlay: React.FC = () => {
   // Collect latest perf data from worklets and publish to state once per second.
   useEffect(() => {
     if (!visible) return;
-    audioEngine.setPerfUpdateCallback((data) => {
+    setPerfUpdateCallback((data) => {
       latestPerfRef.current = data;
     });
     return () => {
-      audioEngine.setPerfUpdateCallback(null);
+      setPerfUpdateCallback(null);
     };
-  }, [visible]);
+  }, [setPerfUpdateCallback, visible]);
 
   useVisibleInterval(() => {
     const snap = latestPerfRef.current;

@@ -2,9 +2,12 @@ import type { AudioEngine } from './engine';
 
 export type {
   EarthTextureDebugState,
-  EngineState,
   ManualSynthNoteOptions,
   ManualSynthSource,
+} from './engineSharedTypes';
+
+export type {
+  EngineState,
   RecordableTrackSource,
 } from './engine';
 
@@ -32,8 +35,6 @@ const eagerVoidMethods = new Set<EngineMethod>([
 
 const preInitNullableLifecycleGetters: Partial<Record<EngineMethod, () => unknown>> = {
   getAudioContext: () => null,
-  getLimiterNode: () => null,
-  getMediaStream: () => null,
 };
 
 function normalizeEngineMode(mode: string | null): AudioEngineRuntimeMode | null {

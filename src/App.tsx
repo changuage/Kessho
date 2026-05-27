@@ -23,10 +23,16 @@ import {
 } from './ui/state';
 import { DualSlider, DualSliderRange } from './ui/DualSlider';
 import { SliderPrimitive } from './ui/sliderSystem';
-import { audioEngine, preloadAudioEngine } from './audio/runtime';
-import type { EngineState } from './audio/runtime';
-import type { EarthTextureDebugState } from './audio/engine';
+import type { EarthTextureDebugState } from './audio/engineSharedTypes';
+import { coreProductEngineHost } from './audio/coreProductEngineHost';
+import {
+  loadReferenceAudioRuntime,
+  type ReferenceAudioRuntimeModule,
+} from './audio/referenceAudioRuntime';
+import { productEngine } from './audio/product/ProductEngineProxy';
+import type { ProductTelemetrySnapshot } from './audio/product/ProductEngineTypes';
 import { isCoreProductRangeKeySupported } from './audio/coreProductEvents';
+import type { KesshoMidiMessage } from './native/capacitorMidiRouting';
 import { normalizeDynamicsDegradeAliases } from './audio/dynamicsModel';
 import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
 import { formatChordDegrees, calculateDriftedRoot } from './audio/harmony';
@@ -71,7 +77,7 @@ import {
 } from './ui/granular/granularPresets';
 import SnowflakeUI from './ui/SnowflakeUI';
 import SnowflakePrototypePage from './ui/SnowflakePrototypePage';
-import { CpuOverlay } from './ui/CpuOverlay';
+import { CpuOverlay, type CpuOverlayPerfCallback } from './ui/CpuOverlay';
 import { SliderHelpProvider, useSliderHelp } from './ui/SliderHelpOverlay';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import { useJourney } from './ui/journeyState';
@@ -140,6 +146,15 @@ import {
   type RecordTrackId,
   type StemRecordTrackId,
 } from './audio/recordingTracks';
+import {
+  attachRecorderTap,
+  createEmptyRecorderTapSessions,
+  disposeRecorderTapSessions,
+  flushAndDetachRecorderTapSessions,
+  type RecorderTapSessions,
+  type RecorderWorkerFinalizedMessage,
+  type RecordingStreamDestination,
+} from './audio/recording/recorderTap';
 import SnowflakeGeneratorPage from './ui/snowflakeGenerator/SnowflakeGeneratorPage';
 
 const JourneyModeView = React.lazy(() => import('./ui/JourneyModeView'));
@@ -275,6 +290,10 @@ const isSonicParityMode = () =>
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1';
 type AudioEngineRuntimeMode = 'web-ts' | 'core-product' | 'core-smoke';
 const AUDIO_ENGINE_RUNTIME_MODES = ['core-product', 'web-ts', 'core-smoke'] as const satisfies readonly AudioEngineRuntimeMode[];
+type EngineState = ReturnType<typeof coreProductEngineHost.getState>;
+type SelectedAudioEngineTarget = Record<string, unknown>;
+let referenceAudioRuntimePromise: Promise<ReferenceAudioRuntimeModule> | null = null;
+let loadedReferenceAudioRuntime: ReferenceAudioRuntimeModule | null = null;
 const AUDIO_ENGINE_SWITCHER_PARAM = 'engineAB';
 const AUDIO_ENGINE_PARAM = 'engine';
 const AUDIO_ENGINE_SWITCH_STATE_PARAM = 'engineState';
@@ -345,6 +364,7 @@ function isDevRuntime(): boolean {
 
 function getAudioEngineRuntimeMode(): AudioEngineRuntimeMode {
   if (typeof window === 'undefined') return 'core-product';
+  if (!isDevRuntime()) return 'core-product';
   try {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get(AUDIO_ENGINE_PARAM);
@@ -355,6 +375,69 @@ function getAudioEngineRuntimeMode(): AudioEngineRuntimeMode {
   } catch {
     return 'core-product';
   }
+}
+
+function getAudioEngineRuntimeModes(): readonly AudioEngineRuntimeMode[] {
+  return isDevRuntime() ? AUDIO_ENGINE_RUNTIME_MODES : ['core-product'];
+}
+
+function ensureReferenceAudioRuntime(): Promise<ReferenceAudioRuntimeModule> {
+  if (loadedReferenceAudioRuntime) return Promise.resolve(loadedReferenceAudioRuntime);
+  if (!referenceAudioRuntimePromise) {
+    referenceAudioRuntimePromise = loadReferenceAudioRuntime().then((runtime) => {
+      loadedReferenceAudioRuntime = runtime;
+      return runtime;
+    });
+  }
+  return referenceAudioRuntimePromise;
+}
+
+function getLoadedSelectedAudioEngineTarget(): SelectedAudioEngineTarget | null {
+  if (getAudioEngineRuntimeMode() === 'core-product') {
+    return coreProductEngineHost as unknown as SelectedAudioEngineTarget;
+  }
+  return loadedReferenceAudioRuntime?.audioEngine ?? null;
+}
+
+function invokeSelectedAudioEngineMethod(method: string, args: readonly unknown[]): unknown {
+  const loadedTarget = getLoadedSelectedAudioEngineTarget();
+  if (loadedTarget) {
+    const value = loadedTarget[method];
+    if (typeof value !== 'function') {
+      throw new Error(`AudioEngine.${method} is not implemented by ${getAudioEngineRuntimeMode()}`);
+    }
+    return (value as (...invokeArgs: unknown[]) => unknown).apply(loadedTarget, [...args]);
+  }
+
+  if (getAudioEngineRuntimeMode() === 'core-product') {
+    throw new Error(`AudioEngine.${method} is unavailable before core-product has initialized`);
+  }
+
+  return ensureReferenceAudioRuntime().then((runtime) => {
+    const value = runtime.audioEngine[method];
+    if (typeof value !== 'function') {
+      throw new Error(`AudioEngine.${method} is not implemented by ${getAudioEngineRuntimeMode()}`);
+    }
+    return (value as (...invokeArgs: unknown[]) => unknown).apply(runtime.audioEngine, [...args]);
+  });
+}
+
+const audioEngine = new Proxy({} as SelectedAudioEngineTarget, {
+  get(_target, property) {
+    if (property === 'then') return undefined;
+    if (typeof property !== 'string') return undefined;
+    const loadedTarget = getLoadedSelectedAudioEngineTarget();
+    if (loadedTarget) {
+      const value = loadedTarget[property];
+      return typeof value === 'function' ? value.bind(loadedTarget) : value;
+    }
+    return (...args: readonly unknown[]) => invokeSelectedAudioEngineMethod(property, args);
+  },
+}) as unknown as typeof coreProductEngineHost;
+
+function preloadAudioEngine(): Promise<unknown> {
+  if (getAudioEngineRuntimeMode() === 'core-product') return productEngine.preload();
+  return ensureReferenceAudioRuntime().then((runtime) => runtime.preloadAudioEngine());
 }
 
 function shouldShowAudioEngineSwitcher(): boolean {
@@ -474,6 +557,17 @@ function summarizeAudioEngineCpu(data: Record<string, AudioEnginePerfMetric>): A
   };
 }
 
+function createProductPerfData(telemetry: ProductTelemetrySnapshot): Record<string, AudioEnginePerfMetric> {
+  return {
+    product: {
+      avgPercent: telemetry.renderCpuPercent ?? 0,
+      peakPercent: telemetry.renderCpuPeakPercent ?? 0,
+      missPercent: telemetry.missedQuantumCount ?? null,
+      scope: 'worklet',
+    },
+  };
+}
+
 function readAudioEngineCpuSummaries(): AudioEngineCpuSummaries {
   if (typeof window === 'undefined') return {};
   try {
@@ -531,13 +625,15 @@ const setupIOSMediaSession = async () => {
   // Handle controls
   navigator.mediaSession.setActionHandler('play', () => {
     mediaSessionAudio?.play();
-    audioEngine.resume();
+    if (getAudioEngineRuntimeMode() === 'core-product') productEngine.resume();
+    else audioEngine.resume();
     navigator.mediaSession.playbackState = 'playing';
   });
 
   navigator.mediaSession.setActionHandler('pause', () => {
     mediaSessionAudio?.pause();
-    audioEngine.suspend();
+    if (getAudioEngineRuntimeMode() === 'core-product') productEngine.suspend();
+    else audioEngine.suspend();
     navigator.mediaSession.playbackState = 'paused';
   });
 };
@@ -551,6 +647,7 @@ const recorderTapWorkletUrl = new URL(
 // iOS-only: other mobile browsers are more stable via direct AudioContext output.
 const connectMediaSessionToWebAudio = () => {
   if (!mediaSessionAudio) return;
+  if (getAudioEngineRuntimeMode() === 'core-product') return;
 
   // Only connect on iOS - non-iOS browsers don't need MediaStream bridging
   // and can exhibit periodic output stutter through the extra stream path.
@@ -2055,32 +2152,6 @@ function Select<T extends string>({ label, value, options, onChange, onMouseEnte
   );
 }
 
-// CollapsiblePanel imported from ./ui/CollapsiblePanel
-
-type RecorderTapSession = {
-  trackId: RecordTrackId;
-  sourceNode: AudioNode;
-  tapNode: AudioWorkletNode;
-  sinkNode: GainNode;
-  flushPromise: Promise<void>;
-  resolveFlush: () => void;
-  handleMessage: (event: MessageEvent<unknown>) => void;
-};
-
-type RecorderWorkerFinalizedMessage = {
-  type: 'finalized';
-  files: Array<{
-    trackId: RecordTrackId;
-    totalFrames: number;
-    blob: Blob;
-  }>;
-};
-
-const createEmptyRecorderTapSessions = (): Record<RecordTrackId, RecorderTapSession | null> => ({
-  mix: null,
-  ...Object.fromEntries(STEM_RECORD_TRACK_IDS.map((trackId) => [trackId, null])) as Record<StemRecordTrackId, null>,
-});
-
 // Main App
 
 const App: React.FC = () => {
@@ -2388,10 +2459,10 @@ const App: React.FC = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordingStartTimeRef = useRef<number>(0);
-  const recordingStreamDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const recordingStreamDestRef = useRef<RecordingStreamDestination | null>(null);
   const recordingExportWorkerRef = useRef<Worker | null>(null);
   const recorderWorkletContextRef = useRef<AudioContext | null>(null);
-  const recorderTapSessionsRef = useRef<Record<RecordTrackId, RecorderTapSession | null>>(createEmptyRecorderTapSessions());
+  const recorderTapSessionsRef = useRef<RecorderTapSessions>(createEmptyRecorderTapSessions());
 
   // Splash screen animation
   useEffect(() => {
@@ -2426,14 +2497,21 @@ const App: React.FC = () => {
   const lastAppliedPresetLoadRef = useRef<{ preset: SavedPreset; state: SliderState } | null>(null);
   const audioEngineUpdateTimerRef = useRef<number | null>(null);
   const lastAudioEngineUpdateMsRef = useRef(0);
+  const applyAudioEngineStateUpdate = useCallback((nextState: SliderState) => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      productEngine.updateSnapshotPatch('legacy-adapter-update', { ...nextState });
+      return;
+    }
+    audioEngine.updateParams(nextState);
+  }, [audioEngineRuntimeMode]);
   const flushAudioEngineParamUpdate = useCallback(() => {
     audioEngineUpdateTimerRef.current = null;
     const nextState = pendingAudioEngineStateRef.current;
     pendingAudioEngineStateRef.current = null;
     if (!nextState) return;
     lastAudioEngineUpdateMsRef.current = performance.now();
-    audioEngine.updateParams(nextState);
-  }, []);
+    applyAudioEngineStateUpdate(nextState);
+  }, [applyAudioEngineStateUpdate]);
   const scheduleAudioEngineParamUpdate = useCallback((
     nextState: SliderState,
     options?: { immediate?: boolean },
@@ -2445,7 +2523,7 @@ const App: React.FC = () => {
         audioEngineUpdateTimerRef.current = null;
       }
       lastAudioEngineUpdateMsRef.current = performance.now();
-      audioEngine.updateParams(nextState);
+      applyAudioEngineStateUpdate(nextState);
       return;
     }
 
@@ -2456,7 +2534,126 @@ const App: React.FC = () => {
     const elapsedMs = now - lastAudioEngineUpdateMsRef.current;
     const delayMs = Math.max(0, CORE_PRODUCT_PARAM_UPDATE_INTERVAL_MS - elapsedMs);
     audioEngineUpdateTimerRef.current = window.setTimeout(flushAudioEngineParamUpdate, delayMs);
-  }, [audioEngineRuntimeMode, flushAudioEngineParamUpdate]);
+  }, [audioEngineRuntimeMode, applyAudioEngineStateUpdate, flushAudioEngineParamUpdate]);
+
+  const startSelectedAudioEngine = useCallback((stateToStart: SliderState): Promise<void> => (
+    audioEngineRuntimeMode === 'core-product'
+      ? productEngine.start({ initialState: { ...stateToStart } })
+      : audioEngine.start(stateToStart)
+  ), [audioEngineRuntimeMode]);
+
+  const resumeSelectedAudioEngine = useCallback((): Promise<void> => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      productEngine.resume();
+      return Promise.resolve();
+    }
+    return Promise.resolve(audioEngine.resume());
+  }, [audioEngineRuntimeMode]);
+
+  const preloadSelectedAudioEngine = useCallback((): Promise<unknown> => (
+    audioEngineRuntimeMode === 'core-product'
+      ? productEngine.preload()
+      : preloadAudioEngine()
+  ), [audioEngineRuntimeMode]);
+
+  const getSelectedGranularActiveGrainCount = useCallback((): number => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      return productEngine.getTelemetry()?.activeGrains ?? 0;
+    }
+    return audioEngine.getGranularActiveGrainCount();
+  }, [audioEngineRuntimeMode]);
+
+  const getSelectedGranularWriteHeadPosition = useCallback((): number => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      return productEngine.getTelemetry()?.granularWriteHeadPosition ?? 0;
+    }
+    return audioEngine.getGranularWriteHeadPosition();
+  }, [audioEngineRuntimeMode]);
+
+  const getSelectedGranularVoicePositions = useCallback((): readonly number[] => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      return productEngine.getTelemetry()?.granularVoicePositions ?? [0, 0, 0, 0];
+    }
+    return audioEngine.getGranularVoicePositions();
+  }, [audioEngineRuntimeMode]);
+
+  const getSelectedGranularBufferWaveform = useCallback((): Float32Array | null => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      throw new Error('Granular waveform samples are explicitly unavailable in core-product');
+    }
+    return audioEngine.getGranularBufferWaveform();
+  }, [audioEngineRuntimeMode]);
+
+  const setSelectedGranularUiActive = useCallback((active: boolean): void => {
+    if (audioEngineRuntimeMode === 'core-product') return;
+    audioEngine.setGranularUiActive(active);
+  }, [audioEngineRuntimeMode]);
+
+  const pushSelectedMidiMessage = useCallback((message: KesshoMidiMessage): void => {
+    audioEngine.pushMidiMessage(message);
+  }, []);
+
+  const setSelectedDrumStepPositionCallback = useCallback((
+    callback: ((steps: number[], hitCounts: number[]) => void) | null,
+  ): void => {
+    audioEngine.setDrumStepPositionCallback(callback ?? (() => {}));
+  }, []);
+
+  const setSelectedDrumEvolveTriggerCallback = useCallback((
+    callback: ((laneIndex: number) => void) | null,
+  ): void => {
+    audioEngine.setDrumEuclidEvolveTriggerCallback(callback ?? (() => {}));
+  }, []);
+
+  const setSelectedDrumTriggerCallback = useCallback((
+    callback: ((voice: string, velocity: number) => void) | null,
+  ): void => {
+    audioEngine.setDrumTriggerCallback(callback ?? (() => {}));
+  }, []);
+
+  const getSelectedPadFilterFreq = useCallback((pad: 'pad1' | 'pad2'): number => {
+    try {
+      if (audioEngineRuntimeMode === 'core-product') {
+        const telemetry = productEngine.getTelemetry();
+        return pad === 'pad2' ? telemetry?.pad2FilterFreq ?? 0 : telemetry?.pad1FilterFreq ?? 0;
+      }
+      return audioEngine.getCurrentPadFilterFreq(pad);
+    } catch {
+      return 0;
+    }
+  }, [audioEngineRuntimeMode]);
+
+  const getSelectedPadLfoValue = useCallback((pad: 'pad1' | 'pad2'): number => {
+    try {
+      if (audioEngineRuntimeMode === 'core-product') {
+        const telemetry = productEngine.getTelemetry();
+        return pad === 'pad2' ? telemetry?.pad2Lfo1Value ?? 0 : telemetry?.pad1Lfo1Value ?? 0;
+      }
+      return audioEngine.getCurrentPadLfoValue(pad);
+    } catch {
+      return 0;
+    }
+  }, [audioEngineRuntimeMode]);
+
+  const setSelectedSynthStepPositionCallback = useCallback((
+    callback: ((steps: number[], hitCounts: number[]) => void) | null,
+  ): void => {
+    audioEngine.setSynthStepPositionCallback(callback ?? (() => {}));
+  }, []);
+
+  const setSelectedSynthEvolveTriggerCallback = useCallback((
+    callback: ((laneIndex: number) => void) | null,
+  ): void => {
+    audioEngine.setSynthEuclidEvolveTriggerCallback(callback ?? (() => {}));
+  }, []);
+
+  const stopSelectedAudioEngine = useCallback(() => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      void productEngine.stop();
+      return;
+    }
+    audioEngine.stop();
+  }, [audioEngineRuntimeMode]);
 
   useEffect(() => () => {
     if (audioEngineUpdateTimerRef.current !== null) {
@@ -2471,6 +2668,15 @@ const App: React.FC = () => {
   const presetEngineUpdateOptions = useMemo(() => ({
     updateEngine: audioEngineRuntimeMode !== 'core-product',
     resetCofDrift: audioEngineRuntimeMode !== 'core-product',
+    onUpdateEngine: (
+      nextState: SliderState,
+      metadata: { presetId: string; presetName: string },
+    ) => {
+      audioEngine.updateParams(nextState, metadata);
+    },
+    onResetCofDrift: () => {
+      audioEngine.resetCofDrift();
+    },
   }), [audioEngineRuntimeMode]);
 
   const syncCoreProductAppliedPreset = useCallback((nextState: SliderState) => {
@@ -2482,15 +2688,16 @@ const App: React.FC = () => {
 
   const coreSmokeModeAvailable = true;
   const showAudioEngineSwitcher = useMemo(() => shouldShowAudioEngineSwitcher(), []);
+  const audioEngineRuntimeModes = useMemo(() => getAudioEngineRuntimeModes(), []);
   const handleAudioEngineRuntimeModeChange = useCallback((mode: AudioEngineRuntimeMode) => {
     if (mode === audioEngineRuntimeMode) return;
     try {
-      void audioEngine.stop();
+      stopSelectedAudioEngine();
     } catch {
       // The page reload is the actual switch boundary.
     }
     window.location.assign(buildAudioEngineSwitchUrl(mode, stateRef.current));
-  }, [audioEngineRuntimeMode]);
+  }, [audioEngineRuntimeMode, stopSelectedAudioEngine]);
   const [audioEngineCpuSummaries, setAudioEngineCpuSummaries] = useState<AudioEngineCpuSummaries>(() => readAudioEngineCpuSummaries());
 
   const [engineState, setEngineState] = useState<EngineState>({
@@ -2511,16 +2718,33 @@ const App: React.FC = () => {
     transportDebug: null,
   });
 
+  const setSelectedPerfMonitorEnabled = useCallback((enabled: boolean) => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      productEngine.setPerfMonitorEnabled(enabled);
+      return;
+    }
+    (audioEngine as unknown as {
+      setPerfMonitorEnabled?: (nextEnabled: boolean) => void;
+    }).setPerfMonitorEnabled?.(enabled);
+  }, [audioEngineRuntimeMode]);
+
+  const setSelectedPerfUpdateCallback = useCallback((callback: CpuOverlayPerfCallback | null) => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      productEngine.setTelemetryCallback(callback ? (telemetry) => {
+        callback(createProductPerfData(telemetry));
+      } : null);
+      return;
+    }
+    (audioEngine as unknown as {
+      setPerfUpdateCallback?: (nextCallback: CpuOverlayPerfCallback | null) => void;
+    }).setPerfUpdateCallback?.(callback);
+  }, [audioEngineRuntimeMode]);
+
   useEffect(() => {
     if (!showAudioEngineSwitcher) return;
 
-    const perfHost = audioEngine as unknown as {
-      setPerfMonitorEnabled?: (enabled: boolean) => void;
-      setPerfUpdateCallback?: (callback: ((data: Record<string, AudioEnginePerfMetric>) => void) | null) => void;
-    };
-
-    perfHost.setPerfMonitorEnabled?.(true);
-    perfHost.setPerfUpdateCallback?.((data) => {
+    setSelectedPerfMonitorEnabled(true);
+    setSelectedPerfUpdateCallback((data) => {
       const summary = summarizeAudioEngineCpu(data);
       if (!summary) return;
       setAudioEngineCpuSummaries((prev) => {
@@ -2531,10 +2755,10 @@ const App: React.FC = () => {
     });
 
     return () => {
-      perfHost.setPerfUpdateCallback?.(null);
-      perfHost.setPerfMonitorEnabled?.(false);
+      setSelectedPerfUpdateCallback(null);
+      setSelectedPerfMonitorEnabled(false);
     };
-  }, [audioEngineRuntimeMode, showAudioEngineSwitcher]);
+  }, [audioEngineRuntimeMode, setSelectedPerfMonitorEnabled, setSelectedPerfUpdateCallback, showAudioEngineSwitcher]);
 
   const [capacitorAudioSessionDiagnosticActive, setCapacitorAudioSessionDiagnosticActive] = useState(false);
   const capacitorAudioSessionRemoteCommandCleanupRef = useRef<(() => Promise<void>) | null>(null);
@@ -2792,9 +3016,9 @@ const App: React.FC = () => {
       try {
         if (contextState === 'closed') {
           (audioEngine as unknown as { dispose?: () => void }).dispose?.();
-          await audioEngine.start(stateRef.current);
+          await startSelectedAudioEngine(stateRef.current);
         } else {
-          await Promise.resolve(audioEngine.resume());
+          await resumeSelectedAudioEngine();
         }
       } catch (error) {
         console.warn('macOS audio context recovery failed:', error);
@@ -5600,7 +5824,7 @@ const App: React.FC = () => {
       setupIOSMediaSession();
 
       // Then start the audio engine
-      await audioEngine.start(stateToStart);
+      await startSelectedAudioEngine(stateToStart);
 
       // Connect the MediaStream to the audio element for iOS background playback
       connectMediaSessionToWebAudio();
@@ -5643,7 +5867,7 @@ const App: React.FC = () => {
     // Don't stop recording when stopping playback - let tails continue
     // Recording must be stopped manually
     stopIOSMediaSession();
-    audioEngine.stop();
+    stopSelectedAudioEngine();
 
     // Master stop also turns off the drum sequencer and lead Euclidean sequencer
     setState(prev => ({ ...prev, drumEuclidMasterEnabled: false, synthEuclideanMasterEnabled: false }));
@@ -5756,7 +5980,7 @@ const App: React.FC = () => {
         if (capacitorAudioSessionDiagnosticActive) {
           void stopCapacitorAudioSessionPlayback();
         }
-        audioEngine.stop();
+        stopSelectedAudioEngine();
         stopIOSMediaSession();
       }, 0);
       return;
@@ -5764,7 +5988,7 @@ const App: React.FC = () => {
 
     const nextRemaining = Math.ceil(remainingMs / 1000);
     setPlaybackTimerRemaining(prev => (prev === nextRemaining ? prev : nextRemaining));
-  }, [playbackIsRunning, playbackTimerEnabled, capacitorAudioSessionDiagnosticActive]);
+  }, [playbackIsRunning, playbackTimerEnabled, capacitorAudioSessionDiagnosticActive, stopSelectedAudioEngine]);
 
   // Playback timer effect - keeps countdown based on absolute time so hidden tabs do not drift.
   useEffect(() => {
@@ -5802,6 +6026,9 @@ const App: React.FC = () => {
 
   // Arm recording - will start recording when playback starts
   const handleArmRecording = () => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      throw new Error('Recording is explicitly unavailable in core-product until a Product recording bridge exists');
+    }
     setIsRecordingArmed(prev => !prev);
   };
 
@@ -5864,102 +6091,10 @@ const App: React.FC = () => {
     return worker;
   }, []);
 
-  const attachRecorderTap = useCallback((
-    ctx: AudioContext,
-    trackId: RecordTrackId,
-    sourceNode: AudioNode,
-    worker: Worker,
-    outputIndex = 0,
-  ) => {
-    let resolveFlush = () => {};
-    const flushPromise = new Promise<void>((resolve) => {
-      resolveFlush = resolve;
-    });
-
-    const tapNode = new AudioWorkletNode(ctx, 'kessho-recorder-tap', {
-      numberOfInputs: 1,
-      numberOfOutputs: 1,
-      outputChannelCount: [2],
-      channelCount: 2,
-      channelCountMode: 'explicit',
-      processorOptions: {
-        trackId,
-        chunkFrames: 4096,
-      },
-    });
-    const sinkNode = ctx.createGain();
-    sinkNode.gain.value = 0;
-
-    const handleMessage = (event: MessageEvent<unknown>) => {
-      const message = event.data as {
-        type?: string;
-        trackId?: RecordTrackId;
-        frameCount?: number;
-        left?: Float32Array;
-        right?: Float32Array;
-      };
-      if (message.type === 'chunk' && message.left && message.right && typeof message.frameCount === 'number') {
-        worker.postMessage(
-          {
-            type: 'chunk',
-            trackId,
-            frameCount: message.frameCount,
-            left: message.left,
-            right: message.right,
-          },
-          [message.left.buffer, message.right.buffer],
-        );
-        return;
-      }
-      if (message.type === 'flushed') {
-        resolveFlush();
-      }
-    };
-
-    tapNode.port.addEventListener('message', handleMessage as EventListener);
-    tapNode.port.start?.();
-    sourceNode.connect(tapNode, outputIndex);
-    tapNode.connect(sinkNode);
-    sinkNode.connect(ctx.destination);
-
-    recorderTapSessionsRef.current[trackId] = {
-      trackId,
-      sourceNode,
-      tapNode,
-      sinkNode,
-      flushPromise,
-      resolveFlush,
-      handleMessage,
-    };
-  }, []);
-
-  const flushAndDetachRecorderTapSessions = useCallback(async () => {
-    const sessions = Object.values(recorderTapSessionsRef.current).filter((session): session is RecorderTapSession => Boolean(session));
-    if (sessions.length === 0) return;
-
-    for (const session of sessions) {
-      session.tapNode.port.postMessage({ type: 'flush' });
-    }
-
-    await Promise.all(sessions.map((session) => session.flushPromise));
-
-    for (const session of sessions) {
-      try {
-        session.sourceNode.disconnect(session.tapNode);
-      } catch { /* noop */ }
-      session.tapNode.port.removeEventListener('message', session.handleMessage as EventListener);
-      try {
-        session.tapNode.port.postMessage({ type: 'destroy' });
-      } catch { /* noop */ }
-      try {
-        session.tapNode.disconnect();
-      } catch { /* noop */ }
-      try {
-        session.sinkNode.disconnect();
-      } catch { /* noop */ }
-      recorderTapSessionsRef.current[session.trackId] = null;
-    }
-  }, []);
+  const flushRecordingTapSessions = useCallback(
+    () => flushAndDetachRecorderTapSessions(recorderTapSessionsRef.current),
+    [],
+  );
 
   const finalizeRecordingWorkerFiles = useCallback((timestamp: string) => {
     const worker = recordingExportWorkerRef.current;
@@ -5999,18 +6134,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     return () => {
-      for (const session of Object.values(recorderTapSessionsRef.current)) {
-        if (!session) continue;
-        try {
-          session.sourceNode.disconnect(session.tapNode);
-        } catch { /* noop */ }
-        try {
-          session.tapNode.disconnect();
-        } catch { /* noop */ }
-        try {
-          session.sinkNode.disconnect();
-        } catch { /* noop */ }
-      }
+      disposeRecorderTapSessions(recorderTapSessionsRef.current);
       recordingExportWorkerRef.current?.terminate();
       recordingExportWorkerRef.current = null;
     };
@@ -6018,6 +6142,9 @@ const App: React.FC = () => {
 
   // Recording functions
   const handleStartRecording = async () => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      throw new Error('Recording is explicitly unavailable in core-product until a Product recording bridge exists');
+    }
     const ctx = audioEngine.getAudioContext();
     const limiterNode = audioEngine.getLimiterNode();
     if (!ctx || !limiterNode) {
@@ -6031,10 +6158,7 @@ const App: React.FC = () => {
       return;
     }
 
-    const stemRecordingAvailable = audioEngineRuntimeMode !== 'core-product';
-    const enabledStemIds = stemRecordingAvailable
-      ? STEM_RECORD_TRACK_IDS.filter((trackId) => recordStems[trackId])
-      : [];
+    const enabledStemIds = STEM_RECORD_TRACK_IDS.filter((trackId) => recordStems[trackId]);
     if (isMobileDevice() && (recordFormats.wav || enabledStemIds.length > 0)) {
       alert('Mobile recording is limited to the stereo WebM mix to avoid high CPU and memory use. Disable WAV and stem capture, or record on desktop.');
       return;
@@ -6078,7 +6202,7 @@ const App: React.FC = () => {
         });
 
         if (recordFormats.wav) {
-          attachRecorderTap(ctx, 'mix', limiterNode, worker);
+          attachRecorderTap({ ctx, trackId: 'mix', sourceNode: limiterNode, worker, sessions: recorderTapSessionsRef.current });
         }
 
         if (enabledStemIds.length > 0) {
@@ -6089,7 +6213,14 @@ const App: React.FC = () => {
               console.warn(`Stem node not available for ${stemName}`);
               continue;
             }
-            attachRecorderTap(ctx, stemName, stemSource.node, worker, stemSource.outputIndex ?? 0);
+            attachRecorderTap({
+              ctx,
+              trackId: stemName,
+              sourceNode: stemSource.node,
+              worker,
+              sessions: recorderTapSessionsRef.current,
+              outputIndex: stemSource.outputIndex ?? 0,
+            });
             console.log(`Stem recording started for: ${stemName}`);
           }
         }
@@ -6105,7 +6236,7 @@ const App: React.FC = () => {
       console.log(`Recording started: ${formats}${stemInfo}`);
     } catch (err) {
       console.error('Failed to start recording:', err);
-      await flushAndDetachRecorderTapSessions();
+      await flushRecordingTapSessions();
       recordingExportWorkerRef.current?.terminate();
       recordingExportWorkerRef.current = null;
       if (recordingStreamDestRef.current && limiterNode) {
@@ -6154,7 +6285,7 @@ const App: React.FC = () => {
     }
 
     try {
-      await flushAndDetachRecorderTapSessions();
+      await flushRecordingTapSessions();
       const [webmFile, wavFiles] = await Promise.all([
         webmFilePromise,
         finalizeRecordingWorkerFiles(timestamp),
@@ -7726,7 +7857,7 @@ const App: React.FC = () => {
     console.log('[Journey] Starting audio engine');
     try {
       setupIOSMediaSession();
-      await audioEngine.start(startState);
+      await startSelectedAudioEngine(startState);
       connectMediaSessionToWebAudio();
 
       if (capacitorAudioSessionDiagnosticActive) {
@@ -7747,7 +7878,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error('[Journey] Failed to start audio:', err);
     }
-  }, [resolveSavedPresetByName, handleLoadPresetFromList, playbackIsRunning, capacitorAudioSessionDiagnosticActive, dualSliderRanges, audioEngine, setupIOSMediaSession, connectMediaSessionToWebAudio]);
+  }, [resolveSavedPresetByName, handleLoadPresetFromList, playbackIsRunning, capacitorAudioSessionDiagnosticActive, dualSliderRanges, startSelectedAudioEngine, setupIOSMediaSession, connectMediaSessionToWebAudio]);
 
   const getEarthTextureDebugState = useCallback(() => (
     audioEngineRuntimeMode === 'core-product'
@@ -8271,20 +8402,21 @@ const App: React.FC = () => {
           visibility: showSplash ? 'hidden' : 'visible',
         }}>
           {renderMacAudioStatusPill()}
-          <div
-            style={{ ...styles.mainEngineSwitch, ...styles.mainEngineSwitchFloating }}
-            role="group"
-            aria-label="Audio engine"
-            data-testid="main-audio-engine-switch"
-          >
-            {AUDIO_ENGINE_RUNTIME_MODES.map((mode, index) => (
+          {showAudioEngineSwitcher && audioEngineRuntimeModes.length > 1 && (
+            <div
+              style={{ ...styles.mainEngineSwitch, ...styles.mainEngineSwitchFloating }}
+              role="group"
+              aria-label="Audio engine"
+              data-testid="main-audio-engine-switch"
+            >
+              {audioEngineRuntimeModes.map((mode, index) => (
               <button
                 key={mode}
                 type="button"
                 data-testid={`main-audio-engine-switch-${mode}`}
                 style={{
                   ...styles.mainEngineSwitchButton,
-                  ...(index === AUDIO_ENGINE_RUNTIME_MODES.length - 1 ? { borderRight: 'none' } : {}),
+                  ...(index === audioEngineRuntimeModes.length - 1 ? { borderRight: 'none' } : {}),
                   ...(audioEngineRuntimeMode === mode ? styles.mainEngineSwitchButtonActive : {}),
                 }}
                 aria-pressed={audioEngineRuntimeMode === mode}
@@ -8293,8 +8425,9 @@ const App: React.FC = () => {
               >
                 {audioEngineRuntimeModeLabel(mode)}
               </button>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
           <SnowflakeUI
             state={snowflakeActivated ? state : welcomeDisplayState}
             onChange={snowflakeActivated ? handleSliderChange : handleWelcomeSliderChange}
@@ -8336,7 +8469,10 @@ const App: React.FC = () => {
   return (
     <SliderHelpProvider activePage={activeTab === 'visualizer' ? 'global' : activeTab}>
       <div className="app-container" style={{ ...activePageAccentStyle, ...styles.container, ...m?.container }}>
-        <CpuOverlay />
+        <CpuOverlay
+          setPerfMonitorEnabled={setSelectedPerfMonitorEnabled}
+          setPerfUpdateCallback={setSelectedPerfUpdateCallback}
+        />
         {renderJourneyOverridePrompt()}
         {renderMacAudioStatusPill()}
         {/* Controls - centered */}
@@ -8358,49 +8494,50 @@ const App: React.FC = () => {
             {TEXT_SYMBOLS.stop}
           </button>
         )}
-        {/* Record button - can arm before playing */}
-        <button
-          style={{
-            ...styles.iconButton,
-            ...(isRecording ? styles.recordingButton : isRecordingArmed ? styles.recordArmedButton : styles.recordButton),
-            ...m?.iconButton,
-            position: 'relative',
-            opacity: 1,
-          }}
-          onClick={() => {
-            if (isRecording) {
-              void handleStopRecording();
-            } else if (playbackIsRunning) {
-              void handleStartRecording();
-            } else {
-              handleArmRecording();
+        {audioEngineRuntimeMode !== 'core-product' && (
+          <button
+            style={{
+              ...styles.iconButton,
+              ...(isRecording ? styles.recordingButton : isRecordingArmed ? styles.recordArmedButton : styles.recordButton),
+              ...m?.iconButton,
+              position: 'relative',
+              opacity: 1,
+            }}
+            onClick={() => {
+              if (isRecording) {
+                void handleStopRecording();
+              } else if (playbackIsRunning) {
+                void handleStartRecording();
+              } else {
+                handleArmRecording();
+              }
+            }}
+            title={
+              isRecording
+                ? `Recording ${formatRecordingTime(recordingDuration)} - Click to stop`
+                : isRecordingArmed
+                  ? 'Recording armed - will start with playback (click to disarm)'
+                  : (playbackIsRunning ? 'Start Recording' : 'Arm Recording (will start with playback)')
             }
-          }}
-          title={
-            isRecording
-              ? `Recording ${formatRecordingTime(recordingDuration)} - Click to stop`
-              : isRecordingArmed
-                ? 'Recording armed - will start with playback (click to disarm)'
-                : (playbackIsRunning ? 'Start Recording' : 'Arm Recording (will start with playback)')
-          }
-        >
-          {TEXT_SYMBOLS.record}
-          {isRecording && (
-            <span style={{
-              position: 'absolute',
-              top: '-6px',
-              right: '-6px',
-              fontSize: '0.55rem',
-              background: '#FF4444',
-              color: 'white',
-              padding: '1px 4px',
-              borderRadius: '8px',
-              fontWeight: 'bold',
-            }}>
-              {formatRecordingTime(recordingDuration)}
-            </span>
-          )}
-        </button>
+          >
+            {TEXT_SYMBOLS.record}
+            {isRecording && (
+              <span style={{
+                position: 'absolute',
+                top: '-6px',
+                right: '-6px',
+                fontSize: '0.55rem',
+                background: '#FF4444',
+                color: 'white',
+                padding: '1px 4px',
+                borderRadius: '8px',
+                fontWeight: 'bold',
+              }}>
+                {formatRecordingTime(recordingDuration)}
+              </span>
+            )}
+          </button>
+        )}
         <HelpButton
           helpKey="appVisualizerView"
           style={{
@@ -8430,15 +8567,16 @@ const App: React.FC = () => {
         >
           ❄
         </button>
+        {showAudioEngineSwitcher && audioEngineRuntimeModes.length > 1 && (
         <div style={styles.mainEngineSwitch} role="group" aria-label="Audio engine" data-testid="main-audio-engine-switch">
-          {AUDIO_ENGINE_RUNTIME_MODES.map((mode, index) => (
+          {audioEngineRuntimeModes.map((mode, index) => (
             <button
               key={mode}
               type="button"
               data-testid={`main-audio-engine-switch-${mode}`}
               style={{
                 ...styles.mainEngineSwitchButton,
-                ...(index === AUDIO_ENGINE_RUNTIME_MODES.length - 1 ? { borderRight: 'none' } : {}),
+                ...(index === audioEngineRuntimeModes.length - 1 ? { borderRight: 'none' } : {}),
                 ...(audioEngineRuntimeMode === mode ? styles.mainEngineSwitchButtonActive : {}),
               }}
               aria-pressed={audioEngineRuntimeMode === mode}
@@ -8449,6 +8587,7 @@ const App: React.FC = () => {
             </button>
           ))}
         </div>
+        )}
       </div>
 
       {/* Tab Bar */}
@@ -8538,6 +8677,7 @@ const App: React.FC = () => {
             dualRanges={dualSliderRanges as Record<string, { min: number; max: number }>}
             engineState={engineState}
             isPlaying={(playbackIsRunning || isJourneyPlaying) && !macAirPlayPerformanceActive}
+            getActiveGrains={getSelectedGranularActiveGrainCount}
             linkedPresetRequest={linkedVisualizerPresetRequest}
             onVisualizerPresetChange={setVisualizerPresetName}
           />
@@ -8559,8 +8699,13 @@ const App: React.FC = () => {
             CollapsiblePanelComponent={CollapsiblePanel as unknown as React.ComponentType<Record<string, unknown>>}
             isRunning={playbackIsRunning}
             onRequestPlaybackStart={requestSequencerPlaybackStart}
-            getLeadMorphedParams={audioEngineRuntimeMode === 'core-product' ? () => null : (lead: 1 | 2) => audioEngine.getLeadMorphedParams(lead)}
+            getLeadMorphedParams={(lead: 1 | 2) => audioEngine.getLeadMorphedParams(lead)}
+            liveLeadMorphedParamsAvailable={audioEngineRuntimeMode !== 'core-product'}
             liveSourceTelemetryAvailable
+            getPadFilterFreq={getSelectedPadFilterFreq}
+            getPadLfoValue={getSelectedPadLfoValue}
+            setStepPositionCallback={setSelectedSynthStepPositionCallback}
+            setEvolveTriggerCallback={setSelectedSynthEvolveTriggerCallback}
             initialViewMode={synthViewModeRef.current}
             onViewModeChange={(mode) => { synthViewModeRef.current = mode; }}
             initialStepOverrides={synthStepOverridesRef.current}
@@ -8650,7 +8795,11 @@ const App: React.FC = () => {
             togglePanel={togglePanel}
             sliderProps={sliderProps}
             triggerVoice={(voice) => { void audioEngine.triggerDrumVoice(voice, 0.8, state); }}
-            getAnalyserNode={audioEngineRuntimeMode === 'core-product' ? () => undefined : (v) => audioEngine.getDrumVoiceAnalyser(v)}
+            getAnalyserNode={(v) => audioEngine.getDrumVoiceAnalyser(v)}
+            preloadAudioEngine={preloadSelectedAudioEngine}
+            setStepPositionCallback={setSelectedDrumStepPositionCallback}
+            setEvolveTriggerCallback={setSelectedDrumEvolveTriggerCallback}
+            setTriggerCallback={setSelectedDrumTriggerCallback}
             resetEvolveHome={(laneIdx) => audioEngine.resetDrumEuclidLaneHome(laneIdx)}
             captureEvolveHome={(laneIdx) => audioEngine.captureDrumEuclidLaneHome(laneIdx, drumPitchSettingsRef.current?.[laneIdx], drumSubLaneStatesRef.current?.[laneIdx]?.pitch)}
             diceLane={(laneIdx, intensity) => audioEngine.diceDrumEuclidLane(laneIdx, intensity)}
@@ -8703,7 +8852,13 @@ const App: React.FC = () => {
             onStateChange={handleStateChange}
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
+            getActiveGrainCount={getSelectedGranularActiveGrainCount}
+            getWriteHeadPosition={getSelectedGranularWriteHeadPosition}
+            getVoicePositions={getSelectedGranularVoicePositions}
+            getBufferWaveform={getSelectedGranularBufferWaveform}
+            setGranularUiActive={setSelectedGranularUiActive}
             liveBufferTelemetryAvailable
+            liveWaveformTelemetryAvailable={audioEngineRuntimeMode !== 'core-product'}
           />
         )}
 
@@ -8734,7 +8889,7 @@ const App: React.FC = () => {
             sliderProps={sliderProps}
             SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
             getDynamicsAnalyser={audioEngineRuntimeMode === 'core-product' ? undefined : (key) => audioEngine.getDynamicsAnalyser(key)}
-            getDynamicsTelemetry={() => { try { return audioEngine.getDynamicsVisualTelemetry(); } catch { return undefined as never; } }}
+            getDynamicsTelemetry={() => audioEngine.getDynamicsVisualTelemetry()}
           />
         )}
 
@@ -8746,6 +8901,7 @@ const App: React.FC = () => {
             onParamChange={handleRoutingParamChange}
             onColumnParamChange={handleRoutingColumnChange}
             onToggleSource={handleRoutingSourceToggle}
+            onMidiMessage={pushSelectedMidiMessage}
             sliderProps={sliderProps}
           />
         )}

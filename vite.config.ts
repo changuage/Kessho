@@ -1,8 +1,23 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
+  resolve: {
+    alias: mode === 'production'
+      ? [
+        {
+          find: /^\.\/audio\/referenceAudioRuntime$/,
+          replacement: fileURLToPath(new URL('./src/audio/referenceAudioRuntime.unavailable.ts', import.meta.url)),
+        },
+        {
+          find: /^\.\/referenceAudioRuntime$/,
+          replacement: fileURLToPath(new URL('./src/audio/referenceAudioRuntime.unavailable.ts', import.meta.url)),
+        },
+      ]
+      : [],
+  },
   build: {
     target: 'esnext',
     sourcemap: mode !== 'production',

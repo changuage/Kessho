@@ -116,7 +116,6 @@ export function loadFallbackDiagnosticsHarness() {
 globalThis.__fallbackDiagnosticsHarness = {
   CORE_PRODUCT_GETTER_POLICIES,
   classifyCoreProductRuntimeFallback,
-  runtimeFallbackIsDevelopmentError,
 };`, context, { filename: path });
   fallbackDiagnosticsHarness = context.__fallbackDiagnosticsHarness;
   return fallbackDiagnosticsHarness;
@@ -249,7 +248,6 @@ export function loadCoreProductHostHarness(options = {}) {
       legacyFallbacks: [],
     },
     classifyCoreProductRuntimeFallback: diagnostics.classifyCoreProductRuntimeFallback,
-    runtimeFallbackIsDevelopmentError: diagnostics.runtimeFallbackIsDevelopmentError,
     buildCoreProductSnapshotDiff: () => ({ applied: true, events: [] }),
     shouldForwardCoreProductRngDiffs: () => false,
     CoreProductArrangementScheduler: class {
@@ -533,6 +531,23 @@ Object.assign(globalThis, {
   createCoreProductSequencerEvolveClock,
 });
 }`, context, { filename: sequencerEvolvePath });
+
+  const hostDiagnosticsPath = 'src/audio/product/host/CoreProductHostDiagnostics.ts';
+  const hostDiagnosticsSource = stripImportsAndExports(readProjectFile(hostDiagnosticsPath)).replaceAll('import.meta.env', '__IMPORT_META_ENV__');
+  const hostDiagnosticsJs = transpileForVm(hostDiagnosticsSource, resolve(root, hostDiagnosticsPath));
+  vm.runInNewContext(`${hostDiagnosticsJs}
+Object.assign(globalThis, {
+  CoreProductHostDiagnostics,
+});`, context, { filename: hostDiagnosticsPath });
+
+  const snapshotCoordinatorPath = 'src/audio/product/host/CoreProductSnapshotCoordinator.ts';
+  const snapshotCoordinatorSource = stripImportsAndExports(readProjectFile(snapshotCoordinatorPath));
+  const snapshotCoordinatorJs = transpileForVm(snapshotCoordinatorSource, resolve(root, snapshotCoordinatorPath));
+  vm.runInNewContext(`${snapshotCoordinatorJs}
+Object.assign(globalThis, {
+  loadCoreProductSnapshot,
+  applyCoreProductSnapshotUpdate,
+});`, context, { filename: snapshotCoordinatorPath });
 
   const path = 'src/audio/coreProductEngineHost.ts';
   const source = stripImportsAndExports(readProjectFile(path)).replaceAll('import.meta.env', '__IMPORT_META_ENV__');

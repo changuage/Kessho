@@ -46,6 +46,9 @@ const hostSynthNoteRangeEvolve = read('src/audio/CoreProductHostSynthNoteRangeEv
 const hostSequencerUiState = read('src/audio/CoreProductHostSequencerUiState.ts');
 const hostSequencerVisuals = read('src/audio/CoreProductHostSequencerVisuals.ts');
 const hostRuntimeGuards = read('src/audio/CoreProductHostRuntimeGuards.ts');
+const hostMidi = read('src/audio/CoreProductHostMidi.ts');
+const hostDiagnostics = read('src/audio/product/host/CoreProductHostDiagnostics.ts');
+const hostSnapshotCoordinator = read('src/audio/product/host/CoreProductSnapshotCoordinator.ts');
 const runtimeAdapter = read('src/audio/CoreProductRuntimeAdapter.ts');
 const runtime = read('src/audio/coreProductRuntime.ts');
 const appRuntime = read('src/audio/runtime.ts');
@@ -110,7 +113,7 @@ const productSourcePresetBridge = read('cpp/KesshoCore/src/product/sources/Sourc
 const productSourceModuleTrigger = read('cpp/KesshoCore/src/product/sources/SourceModuleTrigger.cpp');
 const productSourceVoiceAllocator = read('cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp');
 const productSequencerTests = read('cpp/KesshoCore/tests/ProductSequencerTests.cpp');
-const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostSequencerEvolveConfig}\n${hostSequencerHome}\n${hostSequencerRangePayload}\n${hostSynthPitch}\n${hostSequencerUiState}\n${hostRuntimeGuards}`;
+const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostSequencerEvolveConfig}\n${hostSequencerHome}\n${hostSequencerRangePayload}\n${hostSynthPitch}\n${hostSequencerUiState}\n${hostRuntimeGuards}\n${hostMidi}\n${hostDiagnostics}\n${hostSnapshotCoordinator}`;
 const snapshotSurface = `${snapshotTypes}\n${snapshot}\n${snapshotEncoder}\n${productLeadPatch}\n${productPadPatch}\n${productDrumPatch}`;
 
 const lineCount = (source) => source.split('\n').length;
@@ -127,6 +130,8 @@ assert(lineCount(hostSequencerRangePayload) <= 100, `CoreProductHostSequencerRan
 assert(lineCount(hostSequencerUiState) <= 220, `CoreProductHostSequencerUiState.ts exceeds cleanup size cap (${lineCount(hostSequencerUiState)} lines)`);
 assert(lineCount(hostSequencerVisuals) <= 180, `CoreProductHostSequencerVisuals.ts exceeds cleanup size cap (${lineCount(hostSequencerVisuals)} lines)`);
 assert(lineCount(hostRuntimeGuards) <= 180, `CoreProductHostRuntimeGuards.ts exceeds cleanup size cap (${lineCount(hostRuntimeGuards)} lines)`);
+assert(lineCount(hostDiagnostics) <= 120, `CoreProductHostDiagnostics.ts exceeds cleanup size cap (${lineCount(hostDiagnostics)} lines)`);
+assert(lineCount(hostSnapshotCoordinator) <= 120, `CoreProductSnapshotCoordinator.ts exceeds cleanup size cap (${lineCount(hostSnapshotCoordinator)} lines)`);
 assert(lineCount(runtimeAdapter) <= 650, `CoreProductRuntimeAdapter.ts exceeds cleanup size cap (${lineCount(runtimeAdapter)} lines)`);
 assert(lineCount(arrangementScheduler) <= 520, `coreProductArrangementScheduler.ts exceeds cleanup size cap (${lineCount(arrangementScheduler)} lines)`);
 assert(lineCount(snapshot) <= 1240, `coreProductSnapshot.ts exceeds cleanup size cap (${lineCount(snapshot)} lines)`);
@@ -657,17 +662,17 @@ assert(
 
 for (const token of [
   'updateParams(sliderState: Record<string, unknown>): void',
-  'this.runtime.loadSnapshot(encodeCoreProductSnapshot(snapshot));',
+  'options.runtime.loadSnapshot(encodeCoreProductSnapshot(options.snapshot));',
   'latestProductSnapshot: CoreProductSnapshot | null',
   'applyLatestSnapshotUpdate(reason: SnapshotReloadReason = \'adapter-update\', forceSequencerClockRejoin = false): void',
-  'applySnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot, forceSequencerClockRejoin = false): boolean',
+  'applyCoreProductSnapshotUpdate',
   'dirtyDiffCount',
   'fullSnapshotReloadCount',
   'unsupportedControlCount',
   'snapshotReloadCpuMs',
   'lastSnapshotReloadReason',
   'private readonly assetAdapter = new CoreProductAssetAdapter',
-  'buildCoreProductSnapshotDiff(previous, next',
+  'buildCoreProductSnapshotDiff(options.previousSnapshot, options.nextSnapshot',
   'shouldForwardCoreProductRngDiffs(this.latestSliderState, this.latestTelemetry)',
   'registerAsset(asset: DecodedCoreProductAsset): void',
   'this.assetAdapter.registerAsset(asset)',
@@ -691,9 +696,11 @@ for (const token of [
   'timestampOriginSeconds: this.midiTimestampOriginSeconds ?? undefined',
   "this.runtime.audioContext?.state === 'running'",
   'getState(): EngineState',
-  'getAllStemNodes(): Record<string, RecordableTrackSource>',
-  'getLimiterNode(): AudioNode | null',
-  'return this.runtime.outputNode;',
+  'getAllStemNodes(): never',
+  'getLimiterNode(): never',
+  'getMediaStream(): never',
+  "return this.explicitlyUnsupportedGetter('getLimiterNode');",
+  "return this.explicitlyUnsupportedGetter('getMediaStream');",
   'getSonicParityDebugState(): Record<string, unknown>',
   'stop(): void',
   'dispose(): void',
@@ -2150,6 +2157,9 @@ const hostImportAllowlist = new Set([
   './CoreProductHostSequencerSwing',
   './CoreProductHostSequencerUiState',
   './CoreProductHostHarmonyState',
+  './CoreProductHostMidi',
+  './product/host/CoreProductHostDiagnostics',
+  './product/host/CoreProductSnapshotCoordinator',
   './CoreProductHostSynthNoteRangeEvolve',
   './CoreProductHostSynthPitch',
   './CoreProductHostRuntimeGuards',
@@ -2167,7 +2177,9 @@ const hostImportAllowlist = new Set([
   './coreProductTelemetry',
   './drumSeqTypes',
   './engine',
+  './engineSharedTypes',
   './generated/kesshoProductParams',
+  './product/ProductRuntimeDiagnostics',
   './sequencerLaneDirection',
   './sequencerPitchBinding',
   './sequencerPitchSettings',

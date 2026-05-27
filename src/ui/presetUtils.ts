@@ -7,7 +7,6 @@
  */
 
 import { SliderState, DEFAULT_STATE, migratePreset, SavedPreset } from './state';
-import { audioEngine } from '../audio/runtime';
 import { getAllMorphedDrumParams } from '../audio/drumMorph';
 
 // User preference keys — audio processing settings that should NOT change
@@ -19,10 +18,12 @@ export const USER_PREFERENCE_KEYS: (keyof SliderState)[] = [
 export interface ApplyPresetOptions {
   /** Current state, used to read USER_PREFERENCE_KEYS values. If omitted, preferences are not preserved. */
   currentState?: SliderState;
-  /** Whether to call audioEngine.updateParams() after applying. Default: true. */
+  /** Whether to call onUpdateEngine() after applying. Default: true. */
   updateEngine?: boolean;
-  /** Whether to call audioEngine.resetCofDrift(). Default: true. */
+  /** Whether to call onResetCofDrift() after applying. Default: true. */
   resetCofDrift?: boolean;
+  onUpdateEngine?: (state: SliderState, metadata: { presetId: string; presetName: string }) => void;
+  onResetCofDrift?: () => void;
   /** Whether to run migratePreset() on the raw input. Default: true. */
   migrate?: boolean;
   /** Whether to restore saved live sequencer transport flags. Default: false. */
@@ -54,6 +55,8 @@ export function applyPreset(
     currentState,
     updateEngine = true,
     resetCofDrift = true,
+    onUpdateEngine,
+    onResetCofDrift,
     migrate = true,
     preserveSequencerTransport = false,
     normalize,
@@ -231,13 +234,13 @@ export function applyPreset(
 
   // 6. Update audio engine
   if (updateEngine) {
-    audioEngine.updateParams(newState, {
+    onUpdateEngine?.(newState, {
       presetId: migrated.name,
       presetName: migrated.name,
     });
   }
   if (resetCofDrift) {
-    audioEngine.resetCofDrift();
+    onResetCofDrift?.();
   }
 
   return {

@@ -9,6 +9,7 @@ import {
 } from './lib/kesshoProductBehaviorHarness.mjs';
 
 const host = readProjectFile('src/audio/coreProductEngineHost.ts');
+const hostDiagnostics = readProjectFile('src/audio/product/host/CoreProductHostDiagnostics.ts');
 const fallbackDiagnostics = readProjectFile('src/audio/CoreProductFallbackDiagnostics.ts');
 const appRuntime = readProjectFile('src/audio/runtime.ts');
 const app = readProjectFile('src/App.tsx');
@@ -96,14 +97,7 @@ function assertThrowsExplicitlyUnsupportedGetter(harness, method) {
 }
 
 function fallbackDiagnosticDetails(hostInstance) {
-  return {
-    unsupportedControlCount: hostInstance.unsupportedControlCount,
-    unsupportedGetterCount: hostInstance.unsupportedGetterCount,
-    lastUnsupportedMethod: hostInstance.lastUnsupportedMethod,
-    lastUnsupportedMethodClass: hostInstance.lastUnsupportedMethodClass,
-    runtimeFallbackDiagnosticCount: hostInstance.runtimeFallbackDiagnosticCount,
-    audioCriticalFallbackCount: hostInstance.audioCriticalFallbackCount,
-  };
+  return hostInstance.getProductRuntimeDiagnostics();
 }
 
 await runCheckWithReport({
@@ -112,22 +106,17 @@ await runCheckWithReport({
   run: async (report) => {
     for (const token of [
       'type RuntimeFallbackClassification',
-      "'temporary-missing-product-telemetry'",
-      "'reference-only-web-ts-behavior'",
       "'forbidden-production-fallback'",
-      'CORE_PRODUCT_REFERENCE_ONLY_METHODS',
       'reportedRuntimeFallbacks',
       'classifyCoreProductRuntimeFallback(property',
-      'runtimeFallbackIsDevelopmentError(classification',
       'reportRuntimeFallback(method:',
     ]) {
-      assert(`${host}\n${fallbackDiagnostics}`.includes(token), `runtime fallback classifier is missing ${token}`);
+      assert(`${host}\n${hostDiagnostics}\n${fallbackDiagnostics}`.includes(token), `runtime fallback classifier is missing ${token}`);
     }
 
     const classifyBody = methodBody(fallbackDiagnostics, 'classifyCoreProductRuntimeFallback');
     assert(classifyBody.includes("property.startsWith('get')"), 'getter fallbacks must be explicitly classified');
-    assert(classifyBody.includes('CORE_PRODUCT_GETTER_POLICIES[property as ProductCoreGetterName]'), 'getter fallbacks must use the closed Product Core getter policy map');
-    assert(classifyBody.includes("'forbidden-production-fallback'"), 'unknown getter fallbacks must be forbidden');
+    assert(classifyBody.includes("'forbidden-production-fallback'"), 'all missing getter fallbacks must be forbidden');
     assert(
       !classifyBody.includes("property.includes('Analyser')") &&
         !classifyBody.includes("property.includes('Telemetry')") &&
@@ -135,13 +124,17 @@ await runCheckWithReport({
       'getter fallbacks must not be classified by broad substring matching',
     );
     assert(classifyBody.includes('/^(set|update|reset|dice|start|stop|resume|suspend|trigger|push|load|register|ensure|audition)/'), 'audio-critical method prefixes must be forbidden');
-    assert(classifyBody.includes("'reference-only-web-ts-behavior'"), 'non-critical legacy fallback classification must exist');
-    assert(classifyBody.includes('CORE_PRODUCT_REFERENCE_ONLY_METHODS.has(property)'), 'reference-only fallbacks must be closed-list');
 
-    const devErrorBody = methodBody(fallbackDiagnostics, 'runtimeFallbackIsDevelopmentError');
-    assert(devErrorBody.includes("classification === 'forbidden-production-fallback'"), 'only forbidden production fallbacks should throw in development');
-
-    const reportBody = methodBody(host, 'reportRuntimeFallback');
+    const reportBody = methodBody(hostDiagnostics, 'reportRuntimeFallback');
+    for (const token of [
+      'this.reportedRuntimeFallbacks.has(method)',
+      'this.reportedRuntimeFallbacks.add(method)',
+      'dev || firstReport',
+      'throw new Error(`Missing audio-critical core-product method: AudioEngine.${method}`)',
+    ]) {
+      assert(reportBody.includes(token), `reportRuntimeFallback() is missing ${token}`);
+    }
+    const recordBody = methodBody(hostDiagnostics, 'recordUnsupportedMethod');
     for (const token of [
       'this.unsupportedControlCount += 1',
       'this.unsupportedGetterCount += 1',
@@ -149,13 +142,8 @@ await runCheckWithReport({
       'this.lastUnsupportedMethodClass = classification',
       'this.runtimeFallbackDiagnosticCount += 1',
       'this.audioCriticalFallbackCount += 1',
-      'this.reportedRuntimeFallbacks.has(method)',
-      'this.reportedRuntimeFallbacks.add(method)',
-      'dev || firstReport',
-      'runtimeFallbackIsDevelopmentError(classification)',
-      'throw new Error(`Missing audio-critical core-product method: AudioEngine.${method}`)',
     ]) {
-      assert(reportBody.includes(token), `reportRuntimeFallback() is missing ${token}`);
+      assert(recordBody.includes(token), `recordUnsupportedMethod() is missing ${token}`);
     }
 
     const proxyBody = host.slice(host.indexOf('export const coreProductEngineHost = new Proxy'));
@@ -168,11 +156,9 @@ await runCheckWithReport({
       assert(proxyBody.includes(token), `core-product proxy fallback is missing ${token}`);
     }
 
-    const rangeBody = methodBody(host, 'reportUnsupportedRangeKey');
+    const rangeBody = methodBody(hostDiagnostics, 'reportUnsupportedRangeKey');
     assert(rangeBody.includes('forbidden-production-fallback'), 'unmapped modulation range keys must be classified as forbidden production fallbacks');
-    assert(rangeBody.includes('this.unsupportedControlCount += 1'), 'unmapped modulation range keys must increment diagnostics');
-    assert(rangeBody.includes('this.runtimeFallbackDiagnosticCount += 1'), 'unmapped modulation range keys must increment runtime fallback diagnostics');
-    assert(rangeBody.includes('this.audioCriticalFallbackCount += 1'), 'unmapped modulation range keys must increment audio-critical diagnostics');
+    assert(rangeBody.includes('recordUnsupportedMethod'), 'unmapped modulation range keys must increment diagnostics through the host diagnostics adapter');
 
     const missingRequiredMethods = [...usedAudioEngineMethods()]
       .filter((name) => !hostMethodNames().has(name))
@@ -201,8 +187,6 @@ await runCheckWithReport({
     );
 
     for (const section of [
-      '## temporary-missing-product-telemetry',
-      '## reference-only-web-ts-behavior',
       '## forbidden-production-fallback',
       'No runtime fallback is classified as safe only because it is visual',
       'All missing `core-product` proxy methods throw',
@@ -244,10 +228,14 @@ await runCheckWithReport({
     }
     for (const lifecycleGetter of [
       'getAudioContext: () => null',
+    ]) {
+      assert(appRuntime.includes(lifecycleGetter), `runtime nullable lifecycle getter is missing ${lifecycleGetter}`);
+    }
+    for (const forbiddenLifecycleGetter of [
       'getLimiterNode: () => null',
       'getMediaStream: () => null',
     ]) {
-      assert(appRuntime.includes(lifecycleGetter), `runtime nullable lifecycle getter is missing ${lifecycleGetter}`);
+      assert(!appRuntime.includes(forbiddenLifecycleGetter), `runtime must not fake ${forbiddenLifecycleGetter} before engine init`);
     }
     addEvidence(report, {
       id: 'static-runtime-fallback-contract',
@@ -373,10 +361,8 @@ await runCheckWithReport({
       assert(actual === expected, `${method} classified as ${actual}, expected ${expected}`);
     }
     assert(
-      diagnostics.runtimeFallbackIsDevelopmentError('forbidden-production-fallback') === true &&
-        diagnostics.runtimeFallbackIsDevelopmentError('temporary-missing-product-telemetry') === false &&
-        diagnostics.runtimeFallbackIsDevelopmentError('reference-only-web-ts-behavior') === false,
-      'development error behavior must be limited to forbidden production fallbacks',
+      diagnostics.classifyCoreProductRuntimeFallback('legacyWebTsOnlyBehavior') === 'forbidden-production-fallback',
+      'development error behavior must treat legacy web-ts fallback attempts as forbidden',
     );
     addEvidence(report, {
       id: 'classifier-behavior',
@@ -392,12 +378,13 @@ await runCheckWithReport({
       'diceUnknownAudioCriticalLane',
     ];
     const thrownMessages = devThrowMethods.map((method) => assertThrowsMissingMethod(devHarness, method));
-    assert(devHarness.host.unsupportedControlCount === devThrowMethods.length, 'development fallback throws must still increment unsupportedControlCount');
-    assert(devHarness.host.unsupportedGetterCount === 0, 'development audio-critical fallbacks must not increment getter count');
-    assert(devHarness.host.runtimeFallbackDiagnosticCount === devThrowMethods.length, 'development fallback throws must increment runtimeFallbackDiagnosticCount');
-    assert(devHarness.host.audioCriticalFallbackCount === devThrowMethods.length, 'development fallback throws must increment audioCriticalFallbackCount');
-    assert(devHarness.host.lastUnsupportedMethod === devThrowMethods.at(-1), 'development fallback throws must record lastUnsupportedMethod');
-    assert(devHarness.host.lastUnsupportedMethodClass === 'forbidden-production-fallback', 'development fallback throws must record lastUnsupportedMethodClass');
+    const devFallbackDiagnostics = fallbackDiagnosticDetails(devHarness.host);
+    assert(devFallbackDiagnostics.unsupportedControlCount === devThrowMethods.length, 'development fallback throws must still increment unsupportedControlCount');
+    assert(devFallbackDiagnostics.unsupportedGetterCount === 0, 'development audio-critical fallbacks must not increment getter count');
+    assert(devFallbackDiagnostics.runtimeFallbackDiagnosticCount === devThrowMethods.length, 'development fallback throws must increment runtimeFallbackDiagnosticCount');
+    assert(devFallbackDiagnostics.audioCriticalFallbackCount === devThrowMethods.length, 'development fallback throws must increment audioCriticalFallbackCount');
+    assert(devFallbackDiagnostics.lastUnsupportedMethod === devThrowMethods.at(-1), 'development fallback throws must record lastUnsupportedMethod');
+    assert(devFallbackDiagnostics.lastUnsupportedMethodClass === 'forbidden-production-fallback', 'development fallback throws must record lastUnsupportedMethodClass');
     assert(
       devHarness.consoleErrors.length === devThrowMethods.length &&
         devHarness.consoleErrors.every((line) => line.includes('forbidden-production-fallback')),
@@ -409,7 +396,7 @@ await runCheckWithReport({
       details: {
         methods: devThrowMethods,
         thrownMessages,
-        ...fallbackDiagnosticDetails(devHarness.host),
+        ...devFallbackDiagnostics,
       },
     });
 
@@ -421,20 +408,21 @@ await runCheckWithReport({
     ];
     const setLogs = prodHarness.consoleErrors.filter((line) => line.includes('AudioEngine.setUnknownProductionParam'));
     const updateLogs = prodHarness.consoleErrors.filter((line) => line.includes('AudioEngine.updateUnknownProductionState'));
+    const prodFallbackDiagnostics = fallbackDiagnosticDetails(prodHarness.host);
     assert(setLogs.length === 1, 'production missing method diagnostics must log once per method');
     assert(updateLogs.length === 1, 'production missing method diagnostics must log first use of each method');
-    assert(prodHarness.host.unsupportedControlCount === 3, 'production fallback must increment unsupportedControlCount for every use');
-    assert(prodHarness.host.unsupportedGetterCount === 0, 'production setter/update fallbacks must not increment getter count');
-    assert(prodHarness.host.runtimeFallbackDiagnosticCount === 3, 'production fallback must increment runtimeFallbackDiagnosticCount for every use');
-    assert(prodHarness.host.audioCriticalFallbackCount === 3, 'production fallback must increment audioCriticalFallbackCount for every use');
-    assert(prodHarness.host.lastUnsupportedMethod === 'updateUnknownProductionState', 'production fallback must record lastUnsupportedMethod');
-    assert(prodHarness.host.lastUnsupportedMethodClass === 'forbidden-production-fallback', 'production fallback must record lastUnsupportedMethodClass');
+    assert(prodFallbackDiagnostics.unsupportedControlCount === 3, 'production fallback must increment unsupportedControlCount for every use');
+    assert(prodFallbackDiagnostics.unsupportedGetterCount === 0, 'production setter/update fallbacks must not increment getter count');
+    assert(prodFallbackDiagnostics.runtimeFallbackDiagnosticCount === 3, 'production fallback must increment runtimeFallbackDiagnosticCount for every use');
+    assert(prodFallbackDiagnostics.audioCriticalFallbackCount === 3, 'production fallback must increment audioCriticalFallbackCount for every use');
+    assert(prodFallbackDiagnostics.lastUnsupportedMethod === 'updateUnknownProductionState', 'production fallback must record lastUnsupportedMethod');
+    assert(prodFallbackDiagnostics.lastUnsupportedMethodClass === 'forbidden-production-fallback', 'production fallback must record lastUnsupportedMethodClass');
     addEvidence(report, {
       id: 'production-diagnostics-throw-log-once',
       summary: 'Production unknown methods throw, increment every use, and log only once per missing method.',
       details: {
         thrownMessages: prodThrownMessages,
-        ...fallbackDiagnosticDetails(prodHarness.host),
+        ...prodFallbackDiagnostics,
         consoleErrors: prodHarness.consoleErrors,
       },
     });
@@ -444,31 +432,33 @@ await runCheckWithReport({
       assertThrowsExplicitlyUnsupportedGetter(getterHarness, 'getDynamicsAnalyser'),
       assertThrowsExplicitlyUnsupportedGetter(getterHarness, 'getLeadMorphedParams'),
     ];
-    assert(getterHarness.host.unsupportedControlCount === 0, 'explicitly hidden getters must not be reported as runtime fallbacks');
-    assert(getterHarness.host.unsupportedGetterCount === 0, 'explicitly hidden getters must not increment unsupportedGetterCount');
-    assert(getterHarness.host.runtimeFallbackDiagnosticCount === 0, 'explicitly hidden getters must not increment runtimeFallbackDiagnosticCount');
-    assert(getterHarness.host.audioCriticalFallbackCount === 0, 'explicitly hidden getters must not increment audioCriticalFallbackCount');
-    assert(getterHarness.host.lastUnsupportedMethod === null, 'explicitly hidden getters must not record lastUnsupportedMethod');
-    assert(getterHarness.host.lastUnsupportedMethodClass === null, 'explicitly hidden getters must not record lastUnsupportedMethodClass');
+    const getterFallbackDiagnostics = fallbackDiagnosticDetails(getterHarness.host);
+    assert(getterFallbackDiagnostics.unsupportedControlCount === 0, 'explicitly hidden getters must not be reported as runtime fallbacks');
+    assert(getterFallbackDiagnostics.unsupportedGetterCount === 0, 'explicitly hidden getters must not increment unsupportedGetterCount');
+    assert(getterFallbackDiagnostics.runtimeFallbackDiagnosticCount === 0, 'explicitly hidden getters must not increment runtimeFallbackDiagnosticCount');
+    assert(getterFallbackDiagnostics.audioCriticalFallbackCount === 0, 'explicitly hidden getters must not increment audioCriticalFallbackCount');
+    assert(getterFallbackDiagnostics.lastUnsupportedMethod === null, 'explicitly hidden getters must not record lastUnsupportedMethod');
+    assert(getterFallbackDiagnostics.lastUnsupportedMethodClass === null, 'explicitly hidden getters must not record lastUnsupportedMethodClass');
     assert(getterHarness.consoleErrors.length === 0, 'explicitly hidden getters must not emit runtime fallback diagnostics');
     addEvidence(report, {
       id: 'explicit-hidden-getters-not-fallbacks',
       summary: 'Explicitly hidden getters throw as Product Core API boundaries without entering runtime fallback diagnostics.',
       details: {
         thrownMessages: getterThrownMessages,
-        ...fallbackDiagnosticDetails(getterHarness.host),
+        ...getterFallbackDiagnostics,
         consoleErrors: getterHarness.consoleErrors,
       },
     });
 
     const unknownGetterHarness = loadCoreProductHostHarness({ dev: true });
     const unknownGetterThrownMessage = assertThrowsMissingMethod(unknownGetterHarness, 'getUnknownProductTelemetry');
-    assert(unknownGetterHarness.host.unsupportedControlCount === 1, 'unknown getter fallbacks must be surfaced in unsupportedControlCount');
-    assert(unknownGetterHarness.host.unsupportedGetterCount === 1, 'unknown getter fallbacks must still increment unsupportedGetterCount');
-    assert(unknownGetterHarness.host.runtimeFallbackDiagnosticCount === 1, 'unknown getter fallbacks must increment runtimeFallbackDiagnosticCount');
-    assert(unknownGetterHarness.host.audioCriticalFallbackCount === 1, 'unknown getter fallbacks must increment audioCriticalFallbackCount');
-    assert(unknownGetterHarness.host.lastUnsupportedMethod === 'getUnknownProductTelemetry', 'unknown getter fallbacks must record lastUnsupportedMethod');
-    assert(unknownGetterHarness.host.lastUnsupportedMethodClass === 'forbidden-production-fallback', 'unknown getter fallbacks must record forbidden classification');
+    const unknownGetterFallbackDiagnostics = fallbackDiagnosticDetails(unknownGetterHarness.host);
+    assert(unknownGetterFallbackDiagnostics.unsupportedControlCount === 1, 'unknown getter fallbacks must be surfaced in unsupportedControlCount');
+    assert(unknownGetterFallbackDiagnostics.unsupportedGetterCount === 1, 'unknown getter fallbacks must still increment unsupportedGetterCount');
+    assert(unknownGetterFallbackDiagnostics.runtimeFallbackDiagnosticCount === 1, 'unknown getter fallbacks must increment runtimeFallbackDiagnosticCount');
+    assert(unknownGetterFallbackDiagnostics.audioCriticalFallbackCount === 1, 'unknown getter fallbacks must increment audioCriticalFallbackCount');
+    assert(unknownGetterFallbackDiagnostics.lastUnsupportedMethod === 'getUnknownProductTelemetry', 'unknown getter fallbacks must record lastUnsupportedMethod');
+    assert(unknownGetterFallbackDiagnostics.lastUnsupportedMethodClass === 'forbidden-production-fallback', 'unknown getter fallbacks must record forbidden classification');
     assert(
       unknownGetterHarness.consoleErrors.length === 1 &&
         unknownGetterHarness.consoleErrors[0].includes('forbidden-production-fallback'),
@@ -480,7 +470,7 @@ await runCheckWithReport({
       details: {
         method: 'getUnknownProductTelemetry',
         thrownMessage: unknownGetterThrownMessage,
-        ...fallbackDiagnosticDetails(unknownGetterHarness.host),
+        ...unknownGetterFallbackDiagnostics,
         consoleErrors: unknownGetterHarness.consoleErrors,
       },
     });
@@ -504,12 +494,13 @@ await runCheckWithReport({
 
     const referenceHarness = loadCoreProductHostHarness({ dev: true });
     const referenceThrownMessage = assertThrowsMissingMethod(referenceHarness, 'legacyWebTsOnlyBehavior');
-    assert(referenceHarness.host.unsupportedControlCount === 1, 'unknown legacy methods must not be treated as supported');
-    assert(referenceHarness.host.unsupportedGetterCount === 0, 'unknown legacy non-getter fallback must not increment unsupportedGetterCount');
-    assert(referenceHarness.host.runtimeFallbackDiagnosticCount === 1, 'unknown legacy fallback must increment runtimeFallbackDiagnosticCount');
-    assert(referenceHarness.host.audioCriticalFallbackCount === 1, 'unknown legacy fallback must increment audioCriticalFallbackCount');
-    assert(referenceHarness.host.lastUnsupportedMethod === 'legacyWebTsOnlyBehavior', 'unknown legacy fallback must record lastUnsupportedMethod');
-    assert(referenceHarness.host.lastUnsupportedMethodClass === 'forbidden-production-fallback', 'unknown legacy fallback must record forbidden classification');
+    const referenceFallbackDiagnostics = fallbackDiagnosticDetails(referenceHarness.host);
+    assert(referenceFallbackDiagnostics.unsupportedControlCount === 1, 'unknown legacy methods must not be treated as supported');
+    assert(referenceFallbackDiagnostics.unsupportedGetterCount === 0, 'unknown legacy non-getter fallback must not increment unsupportedGetterCount');
+    assert(referenceFallbackDiagnostics.runtimeFallbackDiagnosticCount === 1, 'unknown legacy fallback must increment runtimeFallbackDiagnosticCount');
+    assert(referenceFallbackDiagnostics.audioCriticalFallbackCount === 1, 'unknown legacy fallback must increment audioCriticalFallbackCount');
+    assert(referenceFallbackDiagnostics.lastUnsupportedMethod === 'legacyWebTsOnlyBehavior', 'unknown legacy fallback must record lastUnsupportedMethod');
+    assert(referenceFallbackDiagnostics.lastUnsupportedMethodClass === 'forbidden-production-fallback', 'unknown legacy fallback must record forbidden classification');
     assert(
       referenceHarness.consoleErrors.length === 1 &&
         referenceHarness.consoleErrors[0].includes('forbidden-production-fallback'),
@@ -522,7 +513,7 @@ await runCheckWithReport({
       details: {
         method: 'legacyWebTsOnlyBehavior',
         thrownMessage: referenceThrownMessage,
-        ...fallbackDiagnosticDetails(referenceHarness.host),
+        ...referenceFallbackDiagnostics,
         consoleErrors: referenceHarness.consoleErrors,
       },
     });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { MutableRefObject, PointerEvent as ReactPointerEvent } from 'react';
-import type { DynamicsAnalyserKey, DynamicsVisualTelemetrySnapshot } from '../../audio/engine';
+import type { DynamicsAnalyserKey, DynamicsVisualTelemetrySnapshot } from '../../audio/engineSharedTypes';
 import { resolveDynamicsTargets } from '../../audio/dynamicsModel';
 import { DYNAMICS_ENGINE_COLORS } from '../../designSystem/colors';
 import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';

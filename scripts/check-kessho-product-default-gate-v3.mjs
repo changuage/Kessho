@@ -133,6 +133,7 @@ const productCiReport = readJson('docs/reports/kessho-product-ci-latest.json');
 const browserRuntimeReport = readJson('docs/reports/kessho-product-browser-runtime-latest.json');
 const cpuReport = readJson('docs/reports/kessho-product-cpu-budget-latest.json');
 const runtimeFallbackReport = readJson('docs/reports/kessho-product-runtime-fallbacks-latest.json');
+const unsupportedSurfaceReport = readJson('docs/reports/kessho-product-unsupported-surface-latest.json');
 const dirtyDiffReport = readJson('docs/reports/kessho-product-dirty-diff-classification-latest.json');
 const hostReconciliationReport = readJson('docs/reports/kessho-product-host-reconciliation-latest.json');
 const patchBridgeReport = readJson('docs/reports/kessho-product-patch-bridges.json');
@@ -150,11 +151,17 @@ assert(packageJson.scripts?.build === 'npm run core:product:wasm && tsc && vite 
 assert(packageJson.scripts?.['core:product:browser-runtime'] === 'node scripts/check-kessho-product-browser-runtime.mjs', 'package.json must expose core:product:browser-runtime');
 assert(packageJson.scripts?.['core:product:sequencer-evolve'] === 'node scripts/run-kessho-product-sequencer-evolve-regression.mjs', 'package.json must expose core:product:sequencer-evolve');
 assert(packageJson.scripts?.['core:product:sequencer-ui'] === 'node scripts/check-kessho-product-sequencer-ui-parity.mjs', 'package.json must expose core:product:sequencer-ui');
+assert(packageJson.scripts?.['migration:docs'] === 'node scripts/check-product-docs-freshness.mjs', 'package.json must expose migration:docs');
+assert(packageJson.scripts?.['migration:no-web-ts-bundle'] === 'node scripts/check-no-web-ts-production-bundle.mjs', 'package.json must expose migration:no-web-ts-bundle');
+assert(packageJson.scripts?.['migration:unsupported-surface:gate'] === 'node scripts/audit-product-host-unsupported-surface.mjs --write-json --gate', 'package.json must expose migration:unsupported-surface:gate');
 assert(packageJson.scripts?.['core:product:default-gate-v3'] === 'node scripts/check-kessho-product-default-gate-v3.mjs', 'package.json must expose core:product:default-gate-v3');
 assert(packageJson.scripts?.['core:product:ci'] === 'node scripts/run-kessho-product-ci.mjs', 'package.json must expose local Product Core CI');
 assert(packageJson.scripts?.['core:product:ci:prereqs'] === 'node scripts/run-kessho-product-ci.mjs --skip-final-gate', 'package.json must expose Product Core prerequisite CI');
 
 assert(productCiRunner.includes("'core:product:browser-runtime'"), 'Product Core CI runner must include browser-runtime proof');
+assert(productCiRunner.includes("'migration:docs'"), 'Product Core CI runner must include docs freshness gate');
+assert(productCiRunner.includes("'migration:no-web-ts-bundle'"), 'Product Core CI runner must include no-web-ts production bundle gate');
+assert(productCiRunner.includes("'migration:unsupported-surface:gate'"), 'Product Core CI runner must include unsupported-surface gate');
 assert(productCiRunner.includes("'core:product:sequencer-evolve'"), 'Product Core CI runner must include Product sequencer evolve proof');
 assert(productCiRunner.includes("'core:product:harmony'"), 'Product Core CI runner must include harmony parity proof before sequencer UI parity');
 assert(productCiRunner.includes("'core:product:sequencer-ui'"), 'Product Core CI runner must include Product/Web sequencer UI parity proof');
@@ -190,12 +197,16 @@ const requiredPrerequisiteSteps = [
   'core:product:schema',
   'core:product:workflow',
   'core:product:architecture',
+  'migration:product-boundary',
+  'migration:docs',
+  'migration:no-web-ts-bundle',
   'core:product:patch-bridges',
   'core:product:snapshot-authority',
   'core:product:host-reconciliation',
   'core:product:dirty-diff',
   'core:product:runtime-fallbacks',
   'core:product:getter-policies',
+  'migration:unsupported-surface:gate',
   'core:product:reference-isolation',
   'core:product:param-accounting',
   'core:product:abi',
@@ -249,6 +260,15 @@ requireFreshReport('docs/reports/kessho-product-cpu-budget-latest.json', cpuRepo
   'scripts/check-kessho-product-cpu-budget.mjs',
   'cpp/KesshoCore/tests/ProductCpuBudgetTests.cpp',
 ]);
+requireFreshReport('docs/reports/kessho-product-unsupported-surface-latest.json', unsupportedSurfaceReport.generatedAt, [
+  'scripts/audit-product-host-unsupported-surface.mjs',
+  'src/audio/coreProductEngineHost.ts',
+  'src/audio/CoreProductFallbackDiagnostics.ts',
+  'src/App.tsx',
+  'src/audio/product/host/CoreProductHostDiagnostics.ts',
+  'src/audio/product/WebProductEngine.ts',
+  'docs/product-core/unsupported-surface.md',
+]);
 
 assert(browserRuntimeReport.status === 'pass', 'Product browser-runtime report must pass');
 assert(browserRuntimeReport.defaultRuntime === 'core-product', 'Product browser-runtime report must prove core-product default');
@@ -271,6 +291,11 @@ assert((stringWavesCase?.workletPadStemPeak ?? 0) > 0.00001, 'String Waves brows
 assert((stringWavesCase?.workletLeadStemPeak ?? 0) > 0.000001, 'String Waves browser-runtime case did not report Lead stem output');
 
 assert(cpuReport.status === 'pass' && cpuReport.cpu?.status === 'pass' && cpuReport.heap?.status === 'pass', 'CPU/heap report must pass');
+assert(unsupportedSurfaceReport.gateMode === true, 'unsupported-surface report must be generated in gate mode');
+assert(unsupportedSurfaceReport.gateViolationCount === 0, 'unsupported-surface gate report must have zero gate violations');
+for (const finding of unsupportedSurfaceReport.findings ?? []) {
+  assert(finding.kind === 'explicitlyUnsupportedGetter', `unsupported-surface gate allows only explicit unsupported getter findings, saw ${finding.kind}`);
+}
 for (const [label, proofReport] of [
   ['runtime fallback', runtimeFallbackReport],
   ['dirty diff', dirtyDiffReport],
@@ -301,6 +326,11 @@ const report = {
     disabledFx: cpuReport.cpu?.scenarios?.disabledFx,
     activeFx: cpuReport.cpu?.scenarios?.activeFx,
     heap: cpuReport.heap,
+  },
+  unsupportedSurface: {
+    report: 'docs/reports/kessho-product-unsupported-surface-latest.json',
+    findingCount: unsupportedSurfaceReport.findingCount,
+    gateViolationCount: unsupportedSurfaceReport.gateViolationCount,
   },
 };
 

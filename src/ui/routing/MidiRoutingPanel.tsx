@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { audioEngine } from '../../audio/runtime';
 import {
   addCapacitorMidiInputsChangedListener,
   addCapacitorMidiMessageListener,
@@ -30,6 +29,7 @@ import type { SliderState } from '../state';
 
 interface MidiRoutingPanelProps {
   onParamChange: (key: keyof SliderState, value: number) => void;
+  onMidiMessage: (message: KesshoMidiMessage) => void;
 }
 
 const MIDI_CURVES: readonly KesshoMidiValueCurve[] = ['linear', 'exponential', 'logarithmic', 'stepped'];
@@ -54,7 +54,7 @@ function clampToRange(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-export default function MidiRoutingPanel({ onParamChange }: MidiRoutingPanelProps) {
+export default function MidiRoutingPanel({ onParamChange, onMidiMessage }: MidiRoutingPanelProps) {
   const routeTargets = useMemo(() => getAvailableMidiRouteTargets(), []);
   const initialProfile = useMemo(() => loadKesshoMidiRoutingProfile(), []);
   const fallbackTarget = routeTargets[0]?.key ?? 'masterVolume';
@@ -75,6 +75,7 @@ export default function MidiRoutingPanel({ onParamChange }: MidiRoutingPanelProp
   const bindingsRef = useRef(bindings);
   const learnTargetRef = useRef<keyof SliderState | null>(learnTarget);
   const onParamChangeRef = useRef(onParamChange);
+  const onMidiMessageRef = useRef(onMidiMessage);
 
   useEffect(() => {
     bindingsRef.current = bindings;
@@ -87,6 +88,10 @@ export default function MidiRoutingPanel({ onParamChange }: MidiRoutingPanelProp
   useEffect(() => {
     onParamChangeRef.current = onParamChange;
   }, [onParamChange]);
+
+  useEffect(() => {
+    onMidiMessageRef.current = onMidiMessage;
+  }, [onMidiMessage]);
 
   useEffect(() => {
     saveKesshoMidiRoutingProfile({
@@ -145,7 +150,7 @@ export default function MidiRoutingPanel({ onParamChange }: MidiRoutingPanelProp
 
         removeMessageListener = await addCapacitorMidiMessageListener((message) => {
           setLatestMessage(message);
-          audioEngine.pushMidiMessage(message);
+          onMidiMessageRef.current(message);
 
           const target = learnTargetRef.current;
           if (target) {

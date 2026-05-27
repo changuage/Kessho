@@ -1,4 +1,4 @@
-import type { DynamicsVisualTelemetrySnapshot } from './engine';
+import type { DynamicsVisualTelemetrySnapshot } from './engineSharedTypes';
 import type { TransportDebugSnapshot } from './transport';
 import type { CoreProductSnapshot } from './coreProductSnapshot';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';

@@ -9,6 +9,8 @@ import {
 } from './lib/kesshoProductBehaviorHarness.mjs';
 
 const host = readProjectFile('src/audio/coreProductEngineHost.ts');
+const hostDiagnostics = readProjectFile('src/audio/product/host/CoreProductHostDiagnostics.ts');
+const snapshotCoordinator = readProjectFile('src/audio/product/host/CoreProductSnapshotCoordinator.ts');
 const runtimeAdapter = readProjectFile('src/audio/CoreProductRuntimeAdapter.ts');
 const telemetry = readProjectFile('src/audio/coreProductTelemetry.ts');
 const doc = readProjectFile('docs/kessho-product-control-classification.md');
@@ -211,11 +213,20 @@ await runCheckWithReport({
       'fullSnapshotReloadCount = 0',
       'unsupportedControlCount = 0',
       'snapshotReloadCpuMs = 0',
-      "lastSnapshotReloadReason: SnapshotReloadReason = 'none'",
-      'pendingSnapshotReloadReason',
+      "lastSnapshotReloadReason: string | null = 'none'",
       'type SnapshotReloadReason',
     ]) {
-      assert(host.includes(token), `core-product host is missing dirty-diff diagnostic token: ${token}`);
+      assert(`${hostDiagnostics}\n${runtimeAdapter}`.includes(token), `core-product diagnostics are missing dirty-diff diagnostic token: ${token}`);
+    }
+
+    for (const token of [
+      'pendingSnapshotReloadReason',
+      'this.diagnostics.recordDirtyDiff()',
+      'this.diagnostics.recordFullSnapshotReload(result.reason, result.cpuMs)',
+      'loadCoreProductSnapshot({',
+      'applyCoreProductSnapshotUpdate({',
+    ]) {
+      assert(host.includes(token), `core-product host is missing snapshot coordinator token: ${token}`);
     }
 
     for (const reason of [
@@ -240,24 +251,23 @@ await runCheckWithReport({
     }
 
     const updateBody = methodBody(host, 'applyLatestSnapshotUpdate');
-    assert(updateBody.includes('this.dirtyDiffCount += 1'), 'dirty diff applications must increment dirtyDiffCount');
-    assert(updateBody.includes('this.pendingSnapshotReloadReason ?? reason'), 'full reloads must preserve classified fallback reason');
-    assert(updateBody.includes("previousSnapshot ? (this.pendingSnapshotReloadReason ?? reason) : 'initial-snapshot'"), 'initial snapshots must be classified separately');
+    assert(updateBody.includes('this.diagnostics.recordDirtyDiff()'), 'dirty diff applications must increment diagnostics dirtyDiffCount');
+    assert(updateBody.includes('pendingReloadReason: this.pendingSnapshotReloadReason'), 'full reloads must preserve classified fallback reason');
+    assert(updateBody.includes('this.pendingSnapshotReloadReason = null'), 'pending reload reason must clear after snapshot update');
 
-    const loadBody = methodBody(host, 'loadProductSnapshot');
+    const loadBody = methodBody(snapshotCoordinator, 'loadCoreProductSnapshot');
     for (const token of [
-      'const startMs = this.nowMs()',
-      'this.runtime.loadSnapshot(encodeCoreProductSnapshot(snapshot));',
-      'this.fullSnapshotReloadCount += 1',
-      'this.snapshotReloadCpuMs +=',
-      'this.lastSnapshotReloadReason = reason',
+      'const startMs = options.nowMs()',
+      'options.runtime.loadSnapshot(encodeCoreProductSnapshot(options.snapshot));',
+      'cpuMs: Math.max(0, options.nowMs() - startMs)',
     ]) {
       assert(loadBody.includes(token), `full snapshot reload telemetry is missing ${token}`);
     }
 
-    const diffBody = methodBody(host, 'applySnapshotDiff');
-    assert(diffBody.includes('buildCoreProductSnapshotDiff(previous, next'), 'host dirty diff must delegate to the focused runtime adapter');
-    assert(diffBody.includes('this.pendingSnapshotReloadReason = diff.reason'), 'dirty diff fallback reason must be preserved from the runtime adapter');
+    const diffBody = methodBody(snapshotCoordinator, 'applyCoreProductSnapshotUpdate');
+    assert(diffBody.includes('buildCoreProductSnapshotDiff(options.previousSnapshot, options.nextSnapshot'), 'host dirty diff must delegate to the focused runtime adapter');
+    assert(diffBody.includes('options.pendingReloadReason ?? diff.reason ?? options.fallbackReloadReason'), 'dirty diff fallback reason must be preserved from the runtime adapter');
+    assert(diffBody.includes("reason: 'initial-snapshot'"), 'initial snapshots must be classified separately');
     assert(runtimeAdapter.includes("reason: 'dirty-diff-event-budget'"), 'dirty diff event budget fallback must be classified');
     assert(runtimeAdapter.includes('events.length > MAX_SNAPSHOT_DIFF_EVENTS'), 'dirty diff must remain bounded by MAX_SNAPSHOT_DIFF_EVENTS');
 
@@ -371,6 +381,8 @@ await runCheckWithReport({
 
     const hostTelemetryBody = methodBody(host, 'withHostDiagnostics');
     const perfBody = methodBody(host, 'createPerfSnapshot');
+    const diagnosticsSnapshotBody = methodBody(hostDiagnostics, 'snapshot');
+    const diagnosticsEnrichBody = methodBody(hostDiagnostics, 'enrichTelemetry');
     for (const token of [
       'dirtyDiffCount',
       'fullSnapshotReloadCount',
@@ -379,10 +391,12 @@ await runCheckWithReport({
       'lastSnapshotReloadReason',
     ]) {
       assert(telemetry.includes(`${token}?:`), `telemetry type is missing ${token}`);
-      assert(hostTelemetryBody.includes(token), `host telemetry enrichment is missing ${token}`);
+      assert(diagnosticsSnapshotBody.includes(token), `host diagnostics snapshot is missing ${token}`);
       assert(perfBody.includes(token), `perf snapshot is missing ${token}`);
       assert(doc.includes(`\`${token}\``), `control classification doc is missing ${token}`);
     }
+    assert(hostTelemetryBody.includes('this.diagnostics.enrichTelemetry'), 'host telemetry enrichment must delegate to CoreProductHostDiagnostics');
+    assert(diagnosticsEnrichBody.includes('...this.snapshot()'), 'host diagnostics telemetry enrichment must include diagnostics snapshot fields');
 
     for (const token of [
       '## Live Product Core Events',
@@ -409,9 +423,11 @@ await runCheckWithReport({
     }
 
     const unsupportedControlBody = methodBody(host, 'reportRuntimeFallback');
-    assert(unsupportedControlBody.includes('this.unsupportedControlCount += 1'), 'missing method fallback must increment unsupportedControlCount');
+    assert(unsupportedControlBody.includes('this.diagnostics.reportRuntimeFallback(method, classification)'), 'missing method fallback must delegate to diagnostics');
     const unsupportedRangeBody = methodBody(host, 'reportUnsupportedRangeKey');
-    assert(unsupportedRangeBody.includes('this.unsupportedControlCount += 1'), 'unsupported range fallback must increment unsupportedControlCount');
+    assert(unsupportedRangeBody.includes('this.diagnostics.reportUnsupportedRangeKey(key)'), 'unsupported range fallback must delegate to diagnostics');
+    const unsupportedRecordBody = methodBody(hostDiagnostics, 'recordUnsupportedMethod');
+    assert(unsupportedRecordBody.includes('this.unsupportedControlCount += 1'), 'diagnostics must increment unsupportedControlCount');
 
     const processBody = methodBody(worklet, 'process');
     assert(!processBody.includes("type: 'snapshot'"), 'audio render callback must not request full snapshots');
@@ -767,26 +783,29 @@ await runCheckWithReport({
     });
     hostHarness.host.runtimeReady = true;
     hostHarness.host.applyLatestSnapshotUpdate();
-    assert(hostHarness.host.fullSnapshotReloadCount === 1, 'initial update must load a full snapshot');
-    assert(hostHarness.host.lastSnapshotReloadReason === 'initial-snapshot', 'initial update must classify as initial-snapshot');
+    let hostDiagnosticsSnapshot = hostHarness.host.getProductRuntimeDiagnostics();
+    assert(hostDiagnosticsSnapshot.fullSnapshotReloadCount === 1, 'initial update must load a full snapshot');
+    assert(hostDiagnosticsSnapshot.lastSnapshotReloadReason === 'initial-snapshot', 'initial update must classify as initial-snapshot');
     assert(hostHarness.runtime.snapshots.length === 1, 'initial update must call runtime.loadSnapshot');
 
     hostHarness.host.applyLatestSnapshotUpdate();
-    assert(hostHarness.host.dirtyDiffCount === 1, 'applied dirty diff must increment dirtyDiffCount');
-    assert(hostHarness.host.fullSnapshotReloadCount === 1, 'applied dirty diff must not load a full snapshot');
+    hostDiagnosticsSnapshot = hostHarness.host.getProductRuntimeDiagnostics();
+    assert(hostDiagnosticsSnapshot.dirtyDiffCount === 1, 'applied dirty diff must increment dirtyDiffCount');
+    assert(hostDiagnosticsSnapshot.fullSnapshotReloadCount === 1, 'applied dirty diff must not load a full snapshot');
     assert(hostHarness.runtime.events.some((event) => event.type === 'dirty-param'), 'applied dirty diff must post runtime events');
 
     hostHarness.host.applyLatestSnapshotUpdate();
-    assert(hostHarness.host.fullSnapshotReloadCount === 2, 'rejected dirty diff must load a full snapshot');
-    assert(hostHarness.host.lastSnapshotReloadReason === 'asset-reference-change', 'rejected dirty diff must preserve adapter reload reason');
+    hostDiagnosticsSnapshot = hostHarness.host.getProductRuntimeDiagnostics();
+    assert(hostDiagnosticsSnapshot.fullSnapshotReloadCount === 2, 'rejected dirty diff must load a full snapshot');
+    assert(hostDiagnosticsSnapshot.lastSnapshotReloadReason === 'asset-reference-change', 'rejected dirty diff must preserve adapter reload reason');
     assert(hostHarness.host.pendingSnapshotReloadReason === null, 'pending reload reason must clear after full snapshot reload');
     addEvidence(report, {
       id: 'host-dirty-diff-vs-full-snapshot-behavior',
       summary: 'Host snapshot updates use initial full load, then dirty diff, then classified structural reload.',
       details: {
-        dirtyDiffCount: hostHarness.host.dirtyDiffCount,
-        fullSnapshotReloadCount: hostHarness.host.fullSnapshotReloadCount,
-        lastSnapshotReloadReason: hostHarness.host.lastSnapshotReloadReason,
+        dirtyDiffCount: hostDiagnosticsSnapshot.dirtyDiffCount,
+        fullSnapshotReloadCount: hostDiagnosticsSnapshot.fullSnapshotReloadCount,
+        lastSnapshotReloadReason: hostDiagnosticsSnapshot.lastSnapshotReloadReason,
         postedEvents: hostHarness.runtime.events,
         loadedSnapshots: hostHarness.runtime.snapshots,
       },

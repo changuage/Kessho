@@ -3,6 +3,7 @@ import RoutingMatrix from '../global/RoutingMatrix';
 import type { DualSliderRange } from '../DualSlider';
 import type { SliderMode, SliderState } from '../state';
 import MidiRoutingPanel from './MidiRoutingPanel';
+import type { KesshoMidiMessage } from '../../native/capacitorMidiRouting';
 import './routing.css';
 
 export interface RoutingPageProps {
@@ -11,6 +12,7 @@ export interface RoutingPageProps {
   onParamChange: (key: keyof SliderState, value: number) => void;
   onColumnParamChange: (key: keyof SliderState, value: number) => void;
   onToggleSource: (sourceId: string, enabled: boolean) => void;
+  onMidiMessage: (message: KesshoMidiMessage) => void;
   sliderProps: (paramKey: keyof SliderState) => {
     mode: SliderMode;
     dualRange?: DualSliderRange;
@@ -27,6 +29,7 @@ export default function RoutingPage({
   onParamChange,
   onColumnParamChange,
   onToggleSource,
+  onMidiMessage,
   sliderProps,
 }: RoutingPageProps) {
   return (
@@ -53,7 +56,7 @@ export default function RoutingPage({
           </div>
         </section>
 
-        <MidiRoutingPanel onParamChange={onParamChange} />
+        <MidiRoutingPanel onParamChange={onParamChange} onMidiMessage={onMidiMessage} />
       </div>
     </div>
   );

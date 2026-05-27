@@ -11,7 +11,6 @@ import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumStepOverrides } from '../../audio/drumSeqTypes';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
 import { normalizeNoteDegreeOffset } from '../../audio/drumSeqTypes';
-import { audioEngine } from '../../audio/runtime';
 import { getPresetNames as getDrumPresetNames } from '../../audio/drumPresets';
 import { DRUM_VOICES as VOICE_CONFIG, DRUM_VOICE_ORDER } from '../../audio/drumVoiceConfig';
 import { useEuclideanSequencer, type EvolveConfig, type PitchSettings, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
@@ -114,6 +113,10 @@ export interface DrumPageProps {
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   triggerVoice: (voice: DrumVoiceType) => void;
   getAnalyserNode: (voice: DrumVoiceType) => AnalyserNode | undefined;
+  preloadAudioEngine?: () => Promise<unknown>;
+  setStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
+  setEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
+  setTriggerCallback: (callback: ((voice: string, velocity: number) => void) | null) => void;
   resetEvolveHome: (laneIdx: number) => void;
   captureEvolveHome?: (laneIdx: number) => void;
   diceLane?: (laneIdx: number, intensity: number) => void;
@@ -175,6 +178,10 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     sliderProps,
     triggerVoice,
     getAnalyserNode,
+    preloadAudioEngine,
+    setStepPositionCallback,
+    setEvolveTriggerCallback,
+    setTriggerCallback,
     resetEvolveHome,
     captureEvolveHome,
     diceLane,
@@ -342,7 +349,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     let rafId: number | null = null;
     let pendingSteps: number[] = [0, 0, 0, 0];
     let pendingHitCounts: number[] = [0, 0, 0, 0];
-    audioEngine.setDrumStepPositionCallback((nextSteps: number[], nextHitCounts: number[]) => {
+    setStepPositionCallback((nextSteps: number[], nextHitCounts: number[]) => {
       if (document.visibilityState !== 'visible') return;
       pendingSteps = [...nextSteps];
       pendingHitCounts = [...nextHitCounts];
@@ -357,12 +364,12 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       if (rafId !== null) {
         window.cancelAnimationFrame(rafId);
       }
-      audioEngine.setDrumStepPositionCallback(() => {});
+      setStepPositionCallback(null);
     };
-  }, []);
+  }, [setStepPositionCallback]);
 
   useEffect(() => {
-    audioEngine.setDrumEuclidEvolveTriggerCallback((laneIndex: number) => {
+    setEvolveTriggerCallback((laneIndex: number) => {
       if (document.visibilityState !== 'visible') return;
       if (laneIndex < 0 || laneIndex > 3) return;
       setEvolveFlashing(prev => prev.map((value, index) => (index === laneIndex ? true : value)));
@@ -379,7 +386,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     });
 
     return () => {
-      audioEngine.setDrumEuclidEvolveTriggerCallback(() => {});
+      setEvolveTriggerCallback(null);
       evolveFlashTimersRef.current.forEach((timer, laneIndex) => {
         if (timer) {
           window.clearTimeout(timer);
@@ -387,11 +394,11 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
         }
       });
     };
-  }, []);
+  }, [setEvolveTriggerCallback]);
 
   useEffect(() => {
     const lastTriggerTime: Record<string, number> = {};
-    audioEngine.setDrumTriggerCallback((voice: string, _velocity: number) => {
+    setTriggerCallback((voice: string, _velocity: number) => {
       if (document.visibilityState !== 'visible') return;
       const now = performance.now();
       if (now - (lastTriggerTime[voice] || 0) < 80) return;
@@ -408,7 +415,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     });
 
     return () => {
-      audioEngine.setDrumTriggerCallback(() => {});
+      setTriggerCallback(null);
       Object.values(drumTriggerTimersRef.current).forEach((timer) => {
         if (timer) {
           window.clearTimeout(timer);
@@ -416,7 +423,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       });
       drumTriggerTimersRef.current = {};
     };
-  }, []);
+  }, [setTriggerCallback]);
 
   // Sync evolve configs to audio engine when they change
   const evolveConfigsRef = useRef(seq.evolveConfigs);
@@ -1023,6 +1030,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               onToggleEditing={onToggleEditing}
               triggeredVoices={triggeredVoices}
               getAnalyserNode={getAnalyserNode}
+              preloadAudioEngine={preloadAudioEngine}
             />
           </div>
 

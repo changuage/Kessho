@@ -14,9 +14,8 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { SliderState, formatIndexedDelayDivision, getParamInfo, getSliderNumericValue } from '../state';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
-import type { DynamicsAnalyserKey, DynamicsVisualTelemetrySnapshot } from '../../audio/engine';
+import type { DynamicsAnalyserKey, DynamicsVisualTelemetrySnapshot } from '../../audio/engineSharedTypes';
 import { computeGranularMacroModel } from '../../audio/granularMacroModel';
-import { audioEngine } from '../../audio/runtime';
 import GranularBufferCanvas from './GranularBufferCanvas';
 import type { CanvasVoiceVisual } from './GranularBufferCanvas';
 import { useSliderHelp } from '../SliderHelpOverlay';
@@ -136,7 +135,13 @@ export interface GranularPageProps {
   SliderComponent: React.ComponentType<Record<string, unknown>>;
   getDynamicsAnalyser?: (key: DynamicsAnalyserKey) => AnalyserNode | null;
   getDynamicsTelemetry?: () => DynamicsVisualTelemetrySnapshot;
+  getActiveGrainCount: () => number;
+  getWriteHeadPosition: () => number;
+  getVoicePositions: () => readonly number[];
+  getBufferWaveform: () => Float32Array | null;
+  setGranularUiActive: (active: boolean) => void;
   liveBufferTelemetryAvailable?: boolean;
+  liveWaveformTelemetryAvailable?: boolean;
 }
 
 interface BufferRangeSegment {
@@ -197,7 +202,7 @@ const makeWrappedRangeSegments = (start: number, width: number): BufferRangeSegm
   return segments;
 };
 
-function positionsEqual(left: number[], right: number[], epsilon = 0.002): boolean {
+function positionsEqual(left: readonly number[], right: readonly number[], epsilon = 0.002): boolean {
   if (left === right) return true;
   if (left.length !== right.length) return false;
   for (let index = 0; index < left.length; index += 1) {
@@ -219,7 +224,13 @@ const GranularPage: React.FC<GranularPageProps> = ({
   onStateChange,
   sliderProps,
   SliderComponent,
+  getActiveGrainCount,
+  getWriteHeadPosition,
+  getVoicePositions,
+  getBufferWaveform,
+  setGranularUiActive,
   liveBufferTelemetryAvailable = true,
+  liveWaveformTelemetryAvailable = liveBufferTelemetryAvailable,
 }) => {
   const { announceHelp } = useSliderHelp();
   const spaceMode = state.granularSpaceMode ?? 'clocked';
@@ -231,22 +242,31 @@ const GranularPage: React.FC<GranularPageProps> = ({
   const [visualizerEnabled, setVisualizerEnabled] = useState(() => liveBufferTelemetryAvailable && !isMobile);
 
   const syncGranularUi = useCallback(() => {
-    const nextActiveGrains = audioEngine.getGranularActiveGrainCount();
+    const nextActiveGrains = getActiveGrainCount();
     setActiveGrainCount(prev => (prev === nextActiveGrains ? prev : nextActiveGrains));
 
     if (!liveBufferTelemetryAvailable) return;
 
-    const nextWriteHead = audioEngine.getGranularWriteHeadPosition();
-    const nextVoicePositions = audioEngine.getGranularVoicePositions();
+    const nextWriteHead = getWriteHeadPosition();
+    const nextVoicePositions = getVoicePositions();
 
     setWriteHeadPosition(prev => (Math.abs(prev - nextWriteHead) > 0.002 ? nextWriteHead : prev));
-    setVoicePositions(prev => (positionsEqual(prev, nextVoicePositions) ? prev : nextVoicePositions));
+    setVoicePositions(prev => (positionsEqual(prev, nextVoicePositions) ? prev : [...nextVoicePositions]));
 
-    const waveform = audioEngine.getGranularBufferWaveform();
-    if (waveform) {
-      setBufferWaveform(prev => (prev === waveform ? prev : waveform));
+    if (liveWaveformTelemetryAvailable) {
+      const waveform = getBufferWaveform();
+      if (waveform) {
+        setBufferWaveform(prev => (prev === waveform ? prev : waveform));
+      }
     }
-  }, [liveBufferTelemetryAvailable]);
+  }, [
+    getActiveGrainCount,
+    getBufferWaveform,
+    getVoicePositions,
+    getWriteHeadPosition,
+    liveBufferTelemetryAvailable,
+    liveWaveformTelemetryAvailable,
+  ]);
 
   const granularUiPollMs = useMemo(() => {
     if (activeGrainCount > 0 || state.granularFreeze) return 90;
@@ -259,7 +279,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
   });
 
   useEffect(() => {
-    audioEngine.setGranularUiActive(isRunning && visualizerEnabled && liveBufferTelemetryAvailable);
+    setGranularUiActive(isRunning && visualizerEnabled && liveBufferTelemetryAvailable);
 
     if (!isRunning || !visualizerEnabled || !liveBufferTelemetryAvailable) {
       setWriteHeadPosition(prev => (prev === 0 ? prev : 0));
@@ -269,13 +289,13 @@ const GranularPage: React.FC<GranularPageProps> = ({
       }
       setBufferWaveform(prev => (prev === null ? prev : null));
       return () => {
-        audioEngine.setGranularUiActive(false);
+        setGranularUiActive(false);
       };
     }
     return () => {
-      audioEngine.setGranularUiActive(false);
+      setGranularUiActive(false);
     };
-  }, [isRunning, liveBufferTelemetryAvailable, visualizerEnabled]);
+  }, [isRunning, liveBufferTelemetryAvailable, setGranularUiActive, visualizerEnabled]);
 
   useEffect(() => {
     if (!liveBufferTelemetryAvailable) {

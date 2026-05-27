@@ -7,6 +7,7 @@ export const CORE_PRODUCT_GRAPH_TAP_IDS: Readonly<Record<string, number>> = Obje
   dynamicsOutput: 5,
   masterPreLimiter: 6,
   masterPostLimiter: 7,
+  mix: 7,
   delayAOutput: 8,
   delayADirectOut: 8,
   delayAOut: 8,

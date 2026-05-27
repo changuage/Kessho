@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import type { DrumVoiceConfig } from '../../audio/drumVoiceConfig';
-import { preloadAudioEngine } from '../../audio/runtime';
 import MorphSlider from './MorphSlider';
 import VoiceCardAdvanced from './VoiceCardAdvanced';
 import DrumPresetManager from './DrumPresetManager';
@@ -26,6 +25,7 @@ interface VoiceCardProps {
   onToggleEditing?: (voice: string) => void;
   isTriggered?: boolean;
   getAnalyserNode?: (voice: DrumVoiceType) => AnalyserNode | undefined;
+  preloadAudioEngine?: () => Promise<unknown>;
 }
 
 const DELAY_SEND_KEYS: Partial<Record<DrumVoiceType, keyof SliderState>> = {
@@ -61,6 +61,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
   onToggleEditing,
   isTriggered = false,
   getAnalyserNode,
+  preloadAudioEngine,
 }) => {
   const isEditing = editingVoice === voice;
   const macros = VARIATION_KEYS[voice];
@@ -85,7 +86,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
 
     const resolveAnalyserNode = async () => {
       try {
-        await preloadAudioEngine();
+        await preloadAudioEngine?.();
         if (cancelled) return;
         const nextAnalyserNode = getAnalyserNode(voice);
         setAnalyserNode((prev) => (prev === nextAnalyserNode ? prev : nextAnalyserNode));
@@ -101,7 +102,7 @@ const VoiceCard: React.FC<VoiceCardProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [getAnalyserNode, isEditing, isTriggered, voice]);
+  }, [getAnalyserNode, isEditing, isTriggered, preloadAudioEngine, voice]);
 
   return (
     <div

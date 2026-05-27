@@ -1,6 +1,6 @@
 import React from 'react';
 import type { SliderState, SavedPreset } from '../state';
-import type { EngineState } from '../../audio/engine';
+import type { EngineState } from '../../audio/engineSharedTypes';
 import type { TensionArcType } from '../../audio/harmony';
 import type { PresetEntry, PresetVersionMetadata } from '../../presets/types';
 import { PresetDropdown, PresetFamilyTree } from '../../presets';
@@ -920,7 +920,8 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   const audioEngineModes = coreSmokeModeAvailable
     ? (['core-product', 'web-ts', 'core-smoke'] as const)
     : (['core-product', 'web-ts'] as const);
-  const stemRecordingAvailable = audioEngineMode !== 'core-product';
+  const recordingAvailable = audioEngineMode !== 'core-product';
+  const stemRecordingAvailable = recordingAvailable;
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(
     () => {
       if (typeof window === 'undefined') return new Set(DEFAULT_GLOBAL_EXPANDED_SECTIONS);
@@ -2104,59 +2105,61 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
           <h3 className="utility-card-title">Recording & Timer</h3>
 
           {/* Recording Section */}
-          <div className="harmony-section">
-            <div className="harmony-section-header" onClick={() => toggleSection('recording')}>
-              <span className={`harmony-section-chevron ${expandedSections.has('recording') ? 'expanded' : ''}`}>▶</span>
-              <span className="harmony-section-name">Recording</span>
-            </div>
-            {expandedSections.has('recording') && (
-              <div className="harmony-section-body">
-                <div className="utility-sub-label">Output Format</div>
-                <div className="utility-hint">Select one or both formats</div>
-                <div className="utility-btn-row">
-                  <button
-                    onClick={() => onRecordFormatsChange(prev => ({ ...prev, webm: !prev.webm }))}
-                    disabled={isRecording}
-                    className={`utility-toggle-btn ${recordFormats.webm ? 'active' : ''}`}
-                  >
-                    <span className="utility-toggle-dot">{recordFormats.webm ? '●' : '○'}</span> WebM
-                    <span className="utility-toggle-hint">Opus · ~2 MB/min</span>
-                  </button>
-                  <button
-                    onClick={() => onRecordFormatsChange(prev => ({ ...prev, wav: !prev.wav }))}
-                    disabled={isRecording}
-                    className={`utility-toggle-btn ${recordFormats.wav ? 'active' : ''}`}
-                  >
-                    <span className="utility-toggle-dot">{recordFormats.wav ? '●' : '○'}</span> WAV
-                    <span className="utility-toggle-hint">24-bit 48kHz · ~17 MB/min</span>
-                  </button>
-                </div>
-                {stemRecordingAvailable && (
-                  <>
-                    <div className="utility-sub-label" style={{ marginTop: '6px' }}>Stem Recording (Pre-Reverb)</div>
-                    <div className="utility-stem-grid">
-                      {STEM_RECORD_TRACK_IDS.map((key) => (
-                        <button
-                          key={key}
-                          onClick={() => onRecordStemsChange(key)}
-                          disabled={isRecording}
-                          className={`utility-stem-btn ${recordStems[key] ? 'active' : ''}`}
-                        >
-                          {recordStems[key] ? '●' : '○'} {STEM_RECORD_TRACK_LABELS[key]}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-                {isRecording && (
-                  <div className="utility-status recording-status">
-                    <div className="utility-status-value recording-pulse">● {formatRecordingTime(recordingDuration)}</div>
-                    <div className="utility-status-hint">Recording in progress...</div>
-                  </div>
-                )}
+          {recordingAvailable && (
+            <div className="harmony-section">
+              <div className="harmony-section-header" onClick={() => toggleSection('recording')}>
+                <span className={`harmony-section-chevron ${expandedSections.has('recording') ? 'expanded' : ''}`}>▶</span>
+                <span className="harmony-section-name">Recording</span>
               </div>
-            )}
-          </div>
+              {expandedSections.has('recording') && (
+                <div className="harmony-section-body">
+                  <div className="utility-sub-label">Output Format</div>
+                  <div className="utility-hint">Select one or both formats</div>
+                  <div className="utility-btn-row">
+                    <button
+                      onClick={() => onRecordFormatsChange(prev => ({ ...prev, webm: !prev.webm }))}
+                      disabled={isRecording}
+                      className={`utility-toggle-btn ${recordFormats.webm ? 'active' : ''}`}
+                    >
+                      <span className="utility-toggle-dot">{recordFormats.webm ? '●' : '○'}</span> WebM
+                      <span className="utility-toggle-hint">Opus · ~2 MB/min</span>
+                    </button>
+                    <button
+                      onClick={() => onRecordFormatsChange(prev => ({ ...prev, wav: !prev.wav }))}
+                      disabled={isRecording}
+                      className={`utility-toggle-btn ${recordFormats.wav ? 'active' : ''}`}
+                    >
+                      <span className="utility-toggle-dot">{recordFormats.wav ? '●' : '○'}</span> WAV
+                      <span className="utility-toggle-hint">24-bit 48kHz · ~17 MB/min</span>
+                    </button>
+                  </div>
+                  {stemRecordingAvailable && (
+                    <>
+                      <div className="utility-sub-label" style={{ marginTop: '6px' }}>Stem Recording (Pre-Reverb)</div>
+                      <div className="utility-stem-grid">
+                        {STEM_RECORD_TRACK_IDS.map((key) => (
+                          <button
+                            key={key}
+                            onClick={() => onRecordStemsChange(key)}
+                            disabled={isRecording}
+                            className={`utility-stem-btn ${recordStems[key] ? 'active' : ''}`}
+                          >
+                            {recordStems[key] ? '●' : '○'} {STEM_RECORD_TRACK_LABELS[key]}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {isRecording && (
+                    <div className="utility-status recording-status">
+                      <div className="utility-status-value recording-pulse">● {formatRecordingTime(recordingDuration)}</div>
+                      <div className="utility-status-hint">Recording in progress...</div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Playback Timer Section */}
           <div className="harmony-section">

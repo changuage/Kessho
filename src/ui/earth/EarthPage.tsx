@@ -13,7 +13,7 @@ import './earth.css';
 import { DualSlider, type DualSliderRange } from '../DualSlider';
 import type { SliderMode, SliderState } from '../state';
 import { QUANTIZATION } from '../state';
-import type { EarthTextureDebugState } from '../../audio/engine';
+import type { EarthTextureDebugState } from '../../audio/engineSharedTypes';
 import { usePresets } from '../../presets/usePresets';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { audioEngine } from '../../audio/runtime';
-import type { EngineState } from '../../audio/runtime';
+import type { EngineState } from '../../audio/engineSharedTypes';
 import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 import { getRuntimeSliderPosition } from '../runtimeSliderState';
 import { getRuntimeValue } from '../runtimeValueState';
@@ -40,6 +39,7 @@ interface ReactiveVisualizerPageProps {
   dualRanges: DualRanges;
   engineState: EngineState;
   isPlaying: boolean;
+  getActiveGrains: () => number;
   linkedPresetRequest: { name: string; nonce: number } | null;
   onVisualizerPresetChange: React.Dispatch<React.SetStateAction<string>>;
 }
@@ -287,14 +287,6 @@ function runtimeValue(
   return readNumber(state, key, fallback);
 }
 
-function getActiveGrains(): number {
-  try {
-    return audioEngine.getGranularActiveGrainCount();
-  } catch {
-    return 0;
-  }
-}
-
 function focusSnapshot(snapshot: ReactiveVisualizerSnapshot, focus: VisualizerFocus): ReactiveVisualizerSnapshot {
   const next = { ...snapshot };
   const apply = (key: keyof ReactiveVisualizerSnapshot, multiplier: number) => {
@@ -362,6 +354,7 @@ function buildSnapshot(
   sliderModes: Record<string, SliderMode>,
   dualRanges: DualRanges,
   engineState: EngineState,
+  activeGrains: number,
   controls: ReactiveVisualizerControls,
   timeMs: number,
 ): ReactiveVisualizerSnapshot {
@@ -441,8 +434,6 @@ function buildSnapshot(
     value('granularWaterSend'),
     value('granularInsectsSend'),
   );
-  const activeGrains = getActiveGrains();
-
   const delayEnergy = Math.max(
     value('delayAMix'),
     value('delayAFeedback') / 0.8,
@@ -507,6 +498,7 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
   dualRanges,
   engineState,
   isPlaying,
+  getActiveGrains,
   linkedPresetRequest: _linkedPresetRequest,
   onVisualizerPresetChange: _onVisualizerPresetChange,
 }) => {
@@ -520,6 +512,7 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
   const dualRangesRef = useRef(dualRanges);
   const engineStateRef = useRef(engineState);
   const isPlayingRef = useRef(isPlaying);
+  const getActiveGrainsRef = useRef(getActiveGrains);
   const sizeRef = useRef({ width: 960, height: 640 });
   const lastFrameRef = useRef(0);
   const [controls, setControls] = useState<ReactiveVisualizerControls>(DEFAULT_CONTROLS);
@@ -529,7 +522,7 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenFallback, setFullscreenFallback] = useState(false);
   const [meterSnapshot, setMeterSnapshot] = useState<ReactiveVisualizerSnapshot>(() => (
-    buildSnapshot(state, sliderModes, dualRanges, engineState, DEFAULT_CONTROLS, 0)
+    buildSnapshot(state, sliderModes, dualRanges, engineState, getActiveGrains(), DEFAULT_CONTROLS, 0)
   ));
   const [modulatedControlsState, setModulatedControlsState] = useState<ReactiveVisualizerControls>(DEFAULT_CONTROLS);
   const meterUpdateRef = useRef(0);
@@ -558,6 +551,7 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
   dualRangesRef.current = dualRanges;
   engineStateRef.current = engineState;
   isPlayingRef.current = isPlaying;
+  getActiveGrainsRef.current = getActiveGrains;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -620,6 +614,7 @@ const ReactiveVisualizerPage: React.FC<ReactiveVisualizerPageProps> = ({
             sliderModesRef.current,
             dualRangesRef.current,
             engineStateRef.current,
+            getActiveGrainsRef.current(),
             controlState,
             timeMs,
           );

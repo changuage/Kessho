@@ -77,14 +77,13 @@ import {
 import {
   getLead4opFMPresetList,
   loadLead4opFMPreset,
-  morphPresets,
   overwriteLead4opFMPreset,
   saveUserLead4opFMPreset,
   setUserLead4opFMPresets,
   upsertUserLead4opFMPreset,
   type Lead4opFMPreset,
 } from '../../audio/lead4opfm';
-import { audioEngine, type ManualSynthNoteOptions, type ManualSynthSource } from '../../audio/runtime';
+import type { ManualSynthNoteOptions, ManualSynthSource } from '../../audio/engineSharedTypes';
 import {
   applyLeadDistanceEnvelope,
   applyPadDistanceToState,
@@ -472,8 +471,14 @@ export interface SynthPageProps {
   onRequestPlaybackStart?: (statePatch?: Partial<SliderState>) => void;
   /** Get morphed lead params for ADSR preview */
   getLeadMorphedParams: (lead: 1 | 2) => { attack: number; decay: number; sustain: number; release: number } | null;
+  /** Whether live lead morphed params are available from the current audio runtime */
+  liveLeadMorphedParamsAvailable?: boolean;
   /** Whether live source filter/LFO telemetry is available from the current audio runtime */
   liveSourceTelemetryAvailable?: boolean;
+  getPadFilterFreq: (pad: 'pad1' | 'pad2') => number;
+  getPadLfoValue: (pad: 'pad1' | 'pad2') => number;
+  setStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
+  setEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
   /** Evolve configs change callback */
   onEvolveConfigsChange?: (configs: EvolveConfig[]) => void;
   /** Initial evolve configs to restore across tab switches / preset loads */
@@ -544,7 +549,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     isRunning,
     onRequestPlaybackStart,
     getLeadMorphedParams,
+    liveLeadMorphedParamsAvailable = true,
     liveSourceTelemetryAvailable = true,
+    getPadFilterFreq,
+    getPadLfoValue,
+    setStepPositionCallback,
+    setEvolveTriggerCallback,
     onEvolveConfigsChange,
     onStepOverridesChange,
     onRawStepOverridesChange,
@@ -610,7 +620,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [dragPopup, setDragPopup] = useState<{ x: number; y: number; text: string } | null>(null);
   const [activeKeyboardCodes, setActiveKeyboardCodes] = useState<string[]>([]);
   const [lead4opPresets, setLead4opPresets] = useState<Array<{ id: string; name: string }>>([]);
-  const [leadPresetPreviewCache, setLeadPresetPreviewCache] = useState<Record<string, Lead4opFMPreset>>({});
   const [leadEditorSlot, setLeadEditorSlot] = useState<LeadEditorSession | null>(null);
   const [leadEditorRuntimeOptions, setLeadEditorRuntimeOptions] = useState<LeadPresetOption[]>([]);
   const [lead1LoaderPresetId, setLead1LoaderPresetId] = useState(() => String(state.lead1PresetA ?? ''));
@@ -762,66 +771,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     });
   }, []);
 
-  const leadPresetPreviewIds = useMemo(() => (
-    Array.from(new Set([
-      state.lead1PresetA,
-      state.lead1PresetB,
-      state.lead2PresetC,
-      state.lead2PresetD,
-    ].map((value) => String(value ?? '').trim()).filter(Boolean)))
-  ), [state.lead1PresetA, state.lead1PresetB, state.lead2PresetC, state.lead2PresetD]);
-  const leadPresetPreviewSignature = leadPresetPreviewIds.join('\t');
-
-  useEffect(() => {
-    const missingIds = leadPresetPreviewIds.filter((id) => !leadPresetPreviewCache[id]);
-    if (missingIds.length === 0) return undefined;
-
-    let cancelled = false;
-    Promise.all(
-      missingIds.map(async (id) => [id, await loadLead4opFMPreset(id)] as const),
-    )
-      .then((entries) => {
-        if (cancelled) return;
-        setLeadPresetPreviewCache((previous) => {
-          const next = { ...previous };
-          for (const [id, preset] of entries) next[id] = preset;
-          return next;
-        });
-      })
-      .catch((error) => {
-        console.warn('Failed to load lead preset preview:', error);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [leadPresetPreviewCache, leadPresetPreviewIds, leadPresetPreviewSignature]);
-
   const getLeadPreviewMorphedParams = useCallback((leadNum: 1 | 2) => {
-    const engineParams = getLeadMorphedParams(leadNum);
-    if (engineParams) return engineParams;
-
-    const presetAId = String(leadNum === 2 ? state.lead2PresetC : state.lead1PresetA);
-    const presetBId = String(leadNum === 2 ? state.lead2PresetD : state.lead1PresetB);
-    const presetA = leadPresetPreviewCache[presetAId];
-    const presetB = leadPresetPreviewCache[presetBId];
-    if (!presetA || !presetB) return null;
-
-    const morph = leadNum === 2 ? state.lead2Morph : state.lead1Morph;
-    const algorithmMode = leadNum === 2 ? state.lead2AlgorithmMode : state.lead1AlgorithmMode;
-    return morphPresets(presetA, presetB, morph, algorithmMode);
-  }, [
-    getLeadMorphedParams,
-    leadPresetPreviewCache,
-    state.lead1AlgorithmMode,
-    state.lead1Morph,
-    state.lead1PresetA,
-    state.lead1PresetB,
-    state.lead2AlgorithmMode,
-    state.lead2Morph,
-    state.lead2PresetC,
-    state.lead2PresetD,
-  ]);
+    return liveLeadMorphedParamsAvailable ? getLeadMorphedParams(leadNum) : null;
+  }, [getLeadMorphedParams, liveLeadMorphedParamsAvailable]);
 
   useEffect(() => {
     setLead1LoaderPresetId(String(state.lead1PresetA ?? ''));
@@ -835,7 +787,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     let rafId: number | null = null;
     let pendingSteps: number[] = [0, 0, 0, 0];
     let pendingHitCounts: number[] = [0, 0, 0, 0];
-    audioEngine.setSynthStepPositionCallback((nextSteps: number[], nextHitCounts: number[]) => {
+    setStepPositionCallback((nextSteps: number[], nextHitCounts: number[]) => {
       if (document.visibilityState !== 'visible') return;
       pendingSteps = [...nextSteps];
       pendingHitCounts = [...nextHitCounts];
@@ -850,12 +802,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       if (rafId !== null) {
         window.cancelAnimationFrame(rafId);
       }
-      audioEngine.setSynthStepPositionCallback(() => {});
+      setStepPositionCallback(null);
     };
-  }, []);
+  }, [setStepPositionCallback]);
   useEffect(() => {
     const flashTimers: Array<number | null> = [null, null, null, null];
-    audioEngine.setSynthEuclidEvolveTriggerCallback((laneIndex: number) => {
+    setEvolveTriggerCallback((laneIndex: number) => {
       if (document.visibilityState !== 'visible') return;
       if (laneIndex < 0 || laneIndex > 3) return;
       setEvolveFlashing(prev => prev.map((value, index) => (index === laneIndex ? true : value)));
@@ -872,22 +824,22 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     });
 
     return () => {
-      audioEngine.setSynthEuclidEvolveTriggerCallback(() => {});
+      setEvolveTriggerCallback(null);
       flashTimers.forEach((timer) => {
         if (timer) {
           window.clearTimeout(timer);
         }
       });
     };
-  }, []);
+  }, [setEvolveTriggerCallback]);
 
   const updateLiveFilterViz = useCallback(() => {
     if (!liveSourceTelemetryAvailable) return;
     const next = {
-      pad1FilterFreq: audioEngine.getCurrentPadFilterFreq('pad1'),
-      pad1LfoValue: audioEngine.getCurrentPadLfoValue('pad1'),
-      pad2FilterFreq: audioEngine.getCurrentPadFilterFreq('pad2'),
-      pad2LfoValue: audioEngine.getCurrentPadLfoValue('pad2'),
+      pad1FilterFreq: getPadFilterFreq('pad1'),
+      pad1LfoValue: getPadLfoValue('pad1'),
+      pad2FilterFreq: getPadFilterFreq('pad2'),
+      pad2LfoValue: getPadLfoValue('pad2'),
     };
     setLivePadViz((prev) => {
       if (
@@ -900,7 +852,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       }
       return next;
     });
-  }, [liveSourceTelemetryAvailable]);
+  }, [getPadFilterFreq, getPadLfoValue, liveSourceTelemetryAvailable]);
 
   const livePad1Morph = useRuntimeValue('padMorph', state.padMorph ?? 0) ?? (state.padMorph ?? 0);
   const livePad2Morph = useRuntimeValue('pad2Morph', state.pad2Morph ?? 0) ?? (state.pad2Morph ?? 0);
@@ -2972,10 +2924,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   // ── ADSR renderer (per-lead: Lead 1 uses lead1* params, Lead 2 uses lead2* params) ──
   const renderLeadAdsr = (leadNum: 1 | 2) => {
-    const mp = getLeadPreviewMorphedParams(leadNum);
-    const env = mp
-      ? { attack: mp.attack, decay: mp.decay, sustain: mp.sustain, release: mp.release }
-      : null;
     const voice = leadNum === 2 ? 'lead2' : 'lead1';
     const distance = voice === 'lead2' ? liveLead2Distance : liveLead1Distance;
     const distancePreview = voice === 'lead2' ? lead2DistancePreview : lead1DistancePreview;
@@ -2986,6 +2934,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const sustainKey = leadNum === 2 ? 'lead2Sustain' : 'lead1Sustain';
     const holdKey = leadNum === 2 ? 'lead2Hold' : 'lead1Hold';
     const releaseKey = leadNum === 2 ? 'lead2Release' : 'lead1Release';
+    const customEnv = {
+      attack: state[attackKey], decay: state[decayKey],
+      sustain: state[sustainKey], release: state[releaseKey],
+    };
+    const mp = useCustomAdsr ? null : getLeadPreviewMorphedParams(leadNum);
+    const env = mp
+      ? { attack: mp.attack, decay: mp.decay, sustain: mp.sustain, release: mp.release }
+      : null;
     const hasPresetEnv = (
       !!env &&
       typeof env.attack === 'number' && typeof env.decay === 'number' &&
@@ -2993,11 +2949,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       Number.isFinite(env.attack) && Number.isFinite(env.decay) &&
       Number.isFinite(env.sustain) && Number.isFinite(env.release)
     );
-    const customEnv = {
-      attack: state[attackKey], decay: state[decayKey],
-      sustain: state[sustainKey], release: state[releaseKey],
-    };
-    const safeEnv = useCustomAdsr ? customEnv : hasPresetEnv ? env! : customEnv;
+    if (!useCustomAdsr && !hasPresetEnv) return null;
+    const safeEnv = useCustomAdsr ? customEnv : env!;
 
     if (
       typeof safeEnv.attack !== 'number' || typeof safeEnv.decay !== 'number' ||
@@ -3008,7 +2961,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       return null;
     }
 
-    const sourceLabel = useCustomAdsr ? 'custom' : (hasPresetEnv ? 'from preset' : 'fallback');
+    const sourceLabel = useCustomAdsr ? 'custom' : 'from runtime';
     const distanceEnv = applyLeadDistanceEnvelope(voice, {
       attack: safeEnv.attack,
       decay: safeEnv.decay,

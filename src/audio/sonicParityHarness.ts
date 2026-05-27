@@ -1,11 +1,7 @@
-import {
-  audioEngine,
-  ensureAudioEngineLoaded,
-  getAudioEngineRuntimeMode,
-  type ManualSynthNoteOptions,
-  type RecordableTrackSource,
-} from './runtime';
+import { coreProductEngineHost } from './coreProductEngineHost';
+import type { ManualSynthNoteOptions } from './engineSharedTypes';
 import { applyPadPresetMorphParamsToState } from './padPresets';
+import { loadReferenceAudioRuntime } from './referenceAudioRuntime';
 import type { SliderState } from '../ui/state';
 
 type CaptureOptions = {
@@ -79,6 +75,13 @@ type TapSession = {
   destroy: () => void;
 };
 
+type AudioEngineRuntimeMode = 'web-ts' | 'core-product' | 'core-smoke';
+
+type RecordableTrackSource = {
+  node: AudioNode;
+  outputIndex?: number;
+};
+
 type ProductGraphCaptureHost = {
   getSonicParityGraphTapId?: (trackId: string) => number | null;
   startSonicParityGraphCapture?: (trackId: string, chunkFrames: number) => number;
@@ -89,6 +92,29 @@ type ProductGraphCaptureHost = {
 type ModulationRangeHost = {
   setDualRanges?: (ranges: Partial<Record<string, { min: number; max: number }>>) => void;
   setRuntimeWalkRanges?: (ranges: Partial<Record<string, { min: number; max: number }>>) => void;
+};
+
+type HarnessEngine = ProductGraphCaptureHost & ModulationRangeHost & {
+  start: (state: SliderState) => Promise<void> | void;
+  stop: () => void;
+  getAudioContext: () => AudioContext | null;
+  getLimiterNode?: () => AudioNode | null;
+  getRecordableBusNodes?: () => Record<string, RecordableTrackSource>;
+  getSonicParityDebugState?: () => unknown;
+  resetSonicParityFx?: () => void;
+  auditionSynthNote: (note: ManualSynthNoteOptions, externalState?: SliderState) => Promise<void> | void;
+  auditionSynthNotes?: (notes: ManualSynthNoteOptions[], externalState?: SliderState) => Promise<void> | void;
+  triggerDrumVoice?: (voice: string | number, velocity: number, externalState?: SliderState) => Promise<void> | void;
+  updateParams?: (state: SliderState) => void;
+  applyParams?: (state: SliderState) => void;
+  sourceSliderState?: SliderState;
+  sliderState?: SliderState;
+  _sliderStateJsonDirty?: boolean;
+};
+
+type HarnessRuntime = {
+  engine: HarnessEngine;
+  mode: AudioEngineRuntimeMode;
 };
 
 declare global {
@@ -107,13 +133,59 @@ const DEFAULT_MANUAL_TRIGGER_DELAY_MS = 0;
 let installed = false;
 let recorderWorkletContext: AudioContext | null = null;
 let activeSession: TapSession | null = null;
+let loadedHarnessRuntime: HarnessRuntime | null = null;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function getEngineName(): string {
-  return getAudioEngineRuntimeMode();
+function normalizeEngineMode(mode: string | null): AudioEngineRuntimeMode | null {
+  switch (mode) {
+    case 'web':
+    case 'web-ts':
+    case 'web-audio':
+      return 'web-ts';
+    case 'core-product':
+      return 'core-product';
+    case 'core-smoke':
+      return 'core-smoke';
+    default:
+      return null;
+  }
+}
+
+function isDevRuntime(): boolean {
+  return Boolean((import.meta.env as unknown as { DEV?: boolean }).DEV);
+}
+
+function getEngineName(): AudioEngineRuntimeMode {
+  if (!isDevRuntime()) return 'core-product';
+  try {
+    return normalizeEngineMode(new URLSearchParams(window.location.search).get('engine')) ?? 'core-product';
+  } catch {
+    return 'core-product';
+  }
+}
+
+async function loadHarnessRuntime(): Promise<HarnessRuntime> {
+  if (loadedHarnessRuntime) return loadedHarnessRuntime;
+  const mode = getEngineName();
+  if (mode === 'core-product') {
+    loadedHarnessRuntime = {
+      engine: coreProductEngineHost as unknown as HarnessEngine,
+      mode,
+    };
+    return loadedHarnessRuntime;
+  }
+  if (!isDevRuntime()) {
+    throw new Error(`Sonic parity reference runtime "${mode}" is unavailable in production builds.`);
+  }
+  const runtime = await loadReferenceAudioRuntime();
+  loadedHarnessRuntime = {
+    engine: await runtime.ensureAudioEngineLoaded() as unknown as HarnessEngine,
+    mode,
+  };
+  return loadedHarnessRuntime;
 }
 
 function normalizeTrackId(trackId: string): string {
@@ -378,13 +450,13 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
       const manualTriggerDelayMs = Math.max(0, options.manualTriggerDelayMs ?? DEFAULT_MANUAL_TRIGGER_DELAY_MS);
       const manualMode = manualNotes.length > 0 || manualDrumTriggers.length > 0;
       const manualWarmup = manualMode && options.manualWarmup === true;
-      const engine = await ensureAudioEngineLoaded();
+      const runtime = await loadHarnessRuntime();
+      const { engine } = runtime;
       isolateModulationRanges(engine);
       const state = createCaptureState(getState(), options.statePatch, manualMode);
-      const getDebugState =
-        typeof (engine as unknown as { getSonicParityDebugState?: () => unknown }).getSonicParityDebugState === 'function'
-          ? () => (engine as unknown as { getSonicParityDebugState: () => unknown }).getSonicParityDebugState()
-          : null;
+      const getDebugState = typeof engine.getSonicParityDebugState === 'function'
+        ? () => engine.getSonicParityDebugState!()
+        : null;
       const telemetryPeaks: Record<string, number> = {};
       let latestDebugState: unknown;
       const collectTelemetryPeaks = (): void => {
@@ -400,10 +472,9 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
       };
 
       await engine.start(state);
-      const engineContext = audioEngine.getAudioContext();
-      const limiter = audioEngine.getLimiterNode();
       const productGraphCaptureHost = getProductGraphCaptureHost(engine, trackId);
-      if (!engineContext || (!limiter && !productGraphCaptureHost)) {
+      const engineContext = engine.getAudioContext();
+      if (!engineContext) {
         throw new Error(`Sonic parity capture could not find an AudioContext and "${trackId}" source node.`);
       }
       if (engineContext.state !== 'running') {
@@ -411,9 +482,9 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
       }
       const recordableSource = trackId === 'mix' || productGraphCaptureHost
         ? null
-        : ((audioEngine.getRecordableBusNodes?.() ?? {}) as Record<string, RecordableTrackSource>)[trackId];
+        : (engine.getRecordableBusNodes?.() ?? {})[trackId];
       const captureSource = productGraphCaptureHost ? null : trackId === 'mix'
-        ? limiter
+        ? engine.getLimiterNode?.() ?? null
         : recordableSource?.node ?? null;
       if (!captureSource && !productGraphCaptureHost) {
         throw new Error(`Sonic parity capture could not find an AudioContext and "${trackId}" source node.`);
@@ -425,7 +496,9 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
       if (ctx.state !== 'running') {
         await ctx.resume();
       }
-      await ensureRecorderTapWorklet(ctx);
+      if (!productGraphCaptureHost) {
+        await ensureRecorderTapWorklet(ctx);
+      }
       let warmupStartContextTime: number | null = null;
       let warmupEndContextTime: number | null = null;
       if (manualWarmup) {
@@ -475,7 +548,7 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
         for (const event of stateEvents) {
           const timer = window.setTimeout(() => {
             eventState = { ...eventState, ...event.patch };
-            if (manualMode && getEngineName() === 'web-ts' && typeof paramTarget.applyParams === 'function') {
+            if (manualMode && runtime.mode === 'web-ts' && typeof paramTarget.applyParams === 'function') {
               paramTarget.sourceSliderState = eventState;
               paramTarget.sliderState = eventState;
               paramTarget._sliderStateJsonDirty = true;
@@ -507,21 +580,21 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
             session.chunks.length = 0;
           }
           triggerStartContextTime = ctx.currentTime;
-          if (typeof engine.auditionSynthNotes === 'function') {
-            await engine.auditionSynthNotes(manualNotes, state);
-          } else {
-            for (const note of manualNotes) {
-              await engine.auditionSynthNote(note, state);
+          if (manualNotes.length > 0) {
+            if (typeof engine.auditionSynthNotes !== 'function') {
+              throw new Error(`Sonic parity runtime "${runtime.mode}" does not implement auditionSynthNotes.`);
             }
+            await engine.auditionSynthNotes(manualNotes, state);
           }
           for (const trigger of manualDrumTriggers) {
             const delayMs = Math.max(0, trigger.delayMs ?? 0);
             if (delayMs > 0) {
               await delay(delayMs);
             }
-            await (engine as unknown as {
-              triggerDrumVoice: (voice: string | number, velocity: number, externalState?: SliderState) => Promise<void>;
-            }).triggerDrumVoice(
+            if (typeof engine.triggerDrumVoice !== 'function') {
+              throw new Error(`Sonic parity runtime "${runtime.mode}" does not implement triggerDrumVoice.`);
+            }
+            await engine.triggerDrumVoice(
               trigger.voice,
               Math.max(0.000001, Math.min(1, trigger.velocity ?? 0.8)),
               state,
@@ -593,7 +666,7 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
     teardown() {
       stopActiveSession();
       try {
-        audioEngine.stop();
+        loadedHarnessRuntime?.engine.stop();
       } catch { /* noop */ }
     },
   };

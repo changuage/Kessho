@@ -27,7 +27,7 @@ import {
 } from '../../sliderSystem';
 import '../../sliderSystem/matrixSurface.css';
 import { INSECT_ENGINES } from '../../../audio/waterPresets';
-import type { EarthTextureDebugState } from '../../../audio/engine';
+import type { EarthTextureDebugState } from '../../../audio/engineSharedTypes';
 import { EARTH_ENGINE_COLORS, SOURCE_COLORS } from '../../../designSystem/colors';
 import { NatureSliceViz } from './NatureSliceViz';
 
