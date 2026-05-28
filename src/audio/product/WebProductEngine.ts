@@ -1,4 +1,5 @@
-import { coreProductEngineHost } from '../coreProductEngineHost';
+import { coreProductRuntimeHostPort } from './host/CoreProductRuntimeHostPort';
+import type { ProductRuntimeCapabilityReport } from './ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from './ProductRuntimeDiagnostics';
 import type { ProductEnginePort } from './ProductEnginePort';
 import type {
@@ -8,26 +9,24 @@ import type {
   ProductEngineStartOptions,
   ProductEngineState,
   ProductEvent,
+  ProductSequencerUiPatch,
   ProductSequencerUiState,
   ProductSnapshotPatch,
   ProductSnapshotPatchReason,
   ProductTelemetrySnapshot,
 } from './ProductEngineTypes';
 
-type ProductHost = Record<string, unknown>;
-
-function host(): ProductHost {
-  return coreProductEngineHost as unknown as ProductHost;
-}
-
-function callHost<T>(method: string, ...args: unknown[]): T {
-  const candidate = host()[method];
-  if (typeof candidate !== 'function') {
-    throw new Error(`core-product host does not implement ${method}`);
-  }
-  return (candidate as (...invokeArgs: unknown[]) => T)(...args);
-}
-
+/**
+ * Temporary web adapter over the Product Core host.
+ *
+ * TODO(product-core-burn-down): keep reducing this compatibility layer until
+ * production code talks to generated ProductEvents, dirty Product patches,
+ * telemetry, stems, and product-shaped asset APIs only. Do not reintroduce
+ * legacy updateParams(), legacy-adapter-update patch reasons, ignored patch
+ * reasons, raw Web Audio getters, or broad unsupported methods here to paper
+ * over missing Product Core coverage. unregisterAsset is intentionally routed
+ * through the product host and should remain product-shaped.
+ */
 export class WebProductEngine implements ProductEnginePort {
   readonly mode = 'core-product' as const;
   private lifecycleState: ProductEngineLifecycleState = 'cold';
@@ -40,7 +39,7 @@ export class WebProductEngine implements ProductEnginePort {
   async start(options?: ProductEngineStartOptions): Promise<void> {
     this.lifecycleState = 'loading';
     try {
-      await callHost<Promise<void>>('start', options?.initialState);
+      await coreProductRuntimeHostPort.start(options?.initialState);
       this.lifecycleState = 'running';
       this.publishDiagnostics();
     } catch (error) {
@@ -50,14 +49,14 @@ export class WebProductEngine implements ProductEnginePort {
   }
 
   stop(): Promise<void> {
-    callHost<void>('stop');
+    coreProductRuntimeHostPort.stop();
     this.lifecycleState = 'stopped';
     this.publishDiagnostics();
     return Promise.resolve();
   }
 
   suspend(): void {
-    void callHost<Promise<void>>('suspend').then(() => {
+    void coreProductRuntimeHostPort.suspend().then(() => {
       this.lifecycleState = 'suspended';
       this.publishDiagnostics();
     });
@@ -65,7 +64,7 @@ export class WebProductEngine implements ProductEnginePort {
 
   resume(): void {
     this.lifecycleState = 'loading';
-    void callHost<Promise<void>>('resume').then(() => {
+    void coreProductRuntimeHostPort.resume().then(() => {
       this.lifecycleState = 'running';
       this.publishDiagnostics();
     }).catch((error: unknown) => {
@@ -74,13 +73,25 @@ export class WebProductEngine implements ProductEnginePort {
     });
   }
 
-  updateSnapshotPatch(_reason: ProductSnapshotPatchReason, patch: ProductSnapshotPatch): void {
-    callHost<void>('updateParams', patch);
+  setOutputGain(target: number, durationSeconds: number = 0): void {
+    coreProductRuntimeHostPort.setOutputGain(target, durationSeconds);
+  }
+
+  resetCofDrift(): void {
+    coreProductRuntimeHostPort.resetCofDrift();
+  }
+
+  updateSnapshotPatch(reason: ProductSnapshotPatchReason, patch: ProductSnapshotPatch): void {
+    // TODO(product-core-burn-down): keep this on explicit Product patch reasons;
+    // common controls should move to generated ProductEvents or dirty-diff paths.
+    coreProductRuntimeHostPort.updateSnapshotPatch(reason, patch);
     this.publishDiagnostics();
   }
 
   enqueueEvent(event: ProductEvent): void {
-    callHost<void>('postProductEvent', event);
+    // TODO(product-core-burn-down): this is the preferred compatibility path;
+    // do not replace generated events with legacy parameter-update snapshots.
+    coreProductRuntimeHostPort.postEvent(event);
     this.publishDiagnostics();
   }
 
@@ -90,14 +101,29 @@ export class WebProductEngine implements ProductEnginePort {
     }
   }
 
-  registerAsset(asset: ProductAssetRegistration): Promise<ProductAssetHandle> {
-    callHost<void>('registerAsset', asset);
-    this.publishDiagnostics();
-    return Promise.resolve({ assetId: asset.assetId });
+  pushMidiMessage(message: unknown): void {
+    coreProductRuntimeHostPort.pushMidiMessage(message);
   }
 
-  unregisterAsset(_assetId: number): void {
-    throw new Error('core-product host does not yet expose asset unregistration');
+  registerAsset(asset: ProductAssetRegistration): Promise<ProductAssetHandle> {
+    const handle = coreProductRuntimeHostPort.registerAsset(asset);
+    this.publishDiagnostics();
+    return Promise.resolve(handle);
+  }
+
+  unregisterAsset(assetId: number): void {
+    // TODO(product-core-burn-down): asset lifecycle stays product-shaped here;
+    // do not paper over missing host support with broad unsupported-method throws.
+    coreProductRuntimeHostPort.unregisterAsset(assetId);
+    this.publishDiagnostics();
+  }
+
+  auditionSynthNote(note: unknown, externalState?: unknown): Promise<void> {
+    return coreProductRuntimeHostPort.auditionSynthNote(note, externalState);
+  }
+
+  triggerDrumVoice(voice: unknown, velocity: number = 0.8, externalState?: unknown): Promise<void> {
+    return coreProductRuntimeHostPort.triggerDrumVoice(voice, velocity, externalState);
   }
 
   getLifecycleState(): ProductEngineLifecycleState {
@@ -105,34 +131,162 @@ export class WebProductEngine implements ProductEnginePort {
   }
 
   getProductState(): ProductEngineState {
-    return callHost<ProductEngineState>('getState');
+    return coreProductRuntimeHostPort.readState();
   }
 
   getTelemetry(): ProductTelemetrySnapshot | null {
-    return callHost<ProductTelemetrySnapshot | null>('getProductTelemetry');
+    return coreProductRuntimeHostPort.readTelemetry();
   }
 
   getSequencerUiState(): ProductSequencerUiState | null {
     return this.getTelemetry()?.sequencerUiState ?? null;
   }
 
+  getDynamicsVisualTelemetry(): unknown {
+    return coreProductRuntimeHostPort.readDynamicsVisualTelemetry();
+  }
+
   getDiagnostics(): ProductRuntimeDiagnostics {
-    return callHost<ProductRuntimeDiagnostics>('getProductRuntimeDiagnostics');
+    return coreProductRuntimeHostPort.readDiagnostics();
+  }
+
+  getCapabilityReport(): ProductRuntimeCapabilityReport {
+    return coreProductRuntimeHostPort.readCapabilityReport();
   }
 
   setStateChangeCallback(callback: ((state: ProductEngineState) => void) | null): void {
-    callHost<void>('setStateChangeCallback', callback);
+    coreProductRuntimeHostPort.setStateChangeCallback(callback);
   }
 
   setTelemetryCallback(callback: ((telemetry: ProductTelemetrySnapshot) => void) | null): void {
-    callHost<void>('setProductTelemetryCallback', callback ? (telemetry: ProductTelemetrySnapshot) => {
-      callback(telemetry);
-      this.publishDiagnostics();
-    } : null);
+    coreProductRuntimeHostPort.setTelemetryCallback(callback, () => this.publishDiagnostics());
+  }
+
+  setDrumTriggerCallback(callback: ((voice: unknown, velocity: number) => void) | null): void {
+    coreProductRuntimeHostPort.setDrumTriggerCallback(callback);
+  }
+
+  setDrumStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
+    coreProductRuntimeHostPort.setDrumStepPositionCallback(callback);
+  }
+
+  setSynthStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
+    coreProductRuntimeHostPort.setSynthStepPositionCallback(callback);
+  }
+
+  setDrumEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void {
+    coreProductRuntimeHostPort.setDrumEuclidEvolveTriggerCallback(callback);
+  }
+
+  setSynthEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void {
+    coreProductRuntimeHostPort.setSynthEuclidEvolveTriggerCallback(callback);
+  }
+
+  setRuntimeWalkPositionsCallback(callback: ((positions: Record<string, number>) => void) | null): void {
+    coreProductRuntimeHostPort.setRuntimeWalkPositionsCallback(callback);
+  }
+
+  setDrumMorphRange(voice: unknown, range: { min: number; max: number } | null): void {
+    coreProductRuntimeHostPort.setDrumMorphRange(voice, range);
+  }
+
+  setDrumParamSHRange(key: string, range: { min: number; max: number } | null): void {
+    coreProductRuntimeHostPort.setDrumParamSHRange(key, range);
+  }
+
+  setDualRanges(ranges: Partial<Record<string, { min: number; max: number }>>): void {
+    coreProductRuntimeHostPort.setDualRanges(ranges);
+  }
+
+  setRuntimeWalkRanges(ranges: Partial<Record<string, { min: number; max: number }>>): void {
+    coreProductRuntimeHostPort.setRuntimeWalkRanges(ranges);
+  }
+
+  setLeadExpressionCallback(callback: ((expression: Record<string, number>) => void) | null): void {
+    coreProductRuntimeHostPort.setLiveTriggerCallback('leadExpression', callback);
+  }
+
+  setLeadMorphCallback(callback: ((morph: { lead1: number; lead2: number }) => void) | null): void {
+    coreProductRuntimeHostPort.setLiveTriggerCallback('leadMorph', callback);
+  }
+
+  setPadMorphTriggerCallback(callback: ((morphPosition: number) => void) | null): void {
+    coreProductRuntimeHostPort.setLiveTriggerCallback('padMorph', callback);
+  }
+
+  setPad2MorphTriggerCallback(callback: ((morphPosition: number) => void) | null): void {
+    coreProductRuntimeHostPort.setLiveTriggerCallback('pad2Morph', callback);
+  }
+
+  setLeadDistanceCallback(callback: ((distance: { lead1: number; lead2: number }) => void) | null): void {
+    coreProductRuntimeHostPort.setLiveTriggerCallback('leadDistance', callback);
+  }
+
+  setPadDistanceTriggerCallback(callback: ((distance: number) => void) | null): void {
+    coreProductRuntimeHostPort.setLiveTriggerCallback('padDistance', callback);
+  }
+
+  setPad2DistanceTriggerCallback(callback: ((distance: number) => void) | null): void {
+    coreProductRuntimeHostPort.setLiveTriggerCallback('pad2Distance', callback);
+  }
+
+  setPianoDistanceTriggerCallback(callback: ((distance: number) => void) | null): void {
+    coreProductRuntimeHostPort.setLiveTriggerCallback('pianoDistance', callback);
+  }
+
+  setLeadDelayCallback(callback: ((delay: Record<string, number | string>) => void) | null): void {
+    coreProductRuntimeHostPort.setLiveTriggerCallback('leadDelay', callback);
+  }
+
+  setDrumMorphTriggerCallback(callback: ((voice: unknown, morphPosition: number) => void) | null): void {
+    coreProductRuntimeHostPort.setLiveTriggerCallback('drumMorph', callback);
+  }
+
+  setDrumParamSHTriggerCallback(callback: ((voice: unknown, key: string, position: number) => void) | null): void {
+    coreProductRuntimeHostPort.setLiveTriggerCallback('drumParamSH', callback);
+  }
+
+  setGranularSHTriggerCallback(callback: ((positions: Record<string, number>) => void) | null): void {
+    coreProductRuntimeHostPort.setLiveTriggerCallback('granularSH', callback);
+  }
+
+  setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void {
+    coreProductRuntimeHostPort.setJourneyMorphClockCallback(callback);
+  }
+
+  startJourneyMorphClock(): void {
+    coreProductRuntimeHostPort.startJourneyMorphClock();
+  }
+
+  stopJourneyMorphClock(): void {
+    coreProductRuntimeHostPort.stopJourneyMorphClock();
+  }
+
+  setDrumEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void {
+    coreProductRuntimeHostPort.setDrumEvolveOverridesChangedCallback(callback);
+  }
+
+  setSynthEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void {
+    coreProductRuntimeHostPort.setSynthEvolveOverridesChangedCallback(callback);
+  }
+
+  setSynthNoteRangeEvolvedCallback(callback: ((laneIndex: number, noteMin: number, noteMax: number) => void) | null): void {
+    coreProductRuntimeHostPort.setSynthNoteRangeEvolvedCallback(callback);
+  }
+
+  applySequencerUiPatch(patch: ProductSequencerUiPatch): void {
+    // TODO(product-core-burn-down): sequencer UI edits should continue through
+    // Product patch/event bridges, not full snapshot reloads or legacy setters.
+    coreProductRuntimeHostPort.applySequencerUiPatch(patch);
+    this.publishDiagnostics();
   }
 
   setPerfMonitorEnabled(enabled: boolean): void {
-    callHost<void>('setPerfMonitorEnabled', enabled);
+    coreProductRuntimeHostPort.setPerfMonitorEnabled(enabled);
+  }
+
+  setVisualTelemetryActive(active: boolean): void {
+    coreProductRuntimeHostPort.setVisualTelemetryActive(active);
   }
 
   setDiagnosticsCallback(callback: ((diagnostics: ProductRuntimeDiagnostics) => void) | null): void {

@@ -33,6 +33,47 @@ function levelToParamLevel(level: PresetLevel): ParamLevel {
   }
 }
 
+function normalizePresetNameKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function findActiveNameConflict(presets: PresetSummary[], name: string): PresetSummary | null {
+  const nameKey = normalizePresetNameKey(name);
+  return presets.find((preset) => normalizePresetNameKey(preset.name) === nameKey) ?? null;
+}
+
+function chooseDuplicatePresetNameAction(
+  requestedName: string,
+  existingName: string,
+  presets: PresetSummary[],
+): string | null {
+  if (requestedName === existingName) return existingName;
+  if (typeof window === 'undefined' || typeof window.prompt !== 'function') {
+    return existingName;
+  }
+
+  const choice = window.prompt(
+    `A preset with this name already exists.\n\nExisting preset: "${existingName}"\nRequested name: "${requestedName}"\n\nChoose one:\n1. Update existing preset as a new version\n2. Save with a different name\n3. Cancel`,
+    '1',
+  );
+
+  if (choice === null || choice.trim() === '3') return null;
+  if (choice.trim() === '1') return existingName;
+  if (choice.trim() !== '2') return null;
+
+  const nextName = window.prompt('Save with a different preset name:', requestedName);
+  const trimmed = nextName?.trim();
+  if (!trimmed) return null;
+
+  const nextConflict = findActiveNameConflict(presets, trimmed);
+  if (nextConflict) {
+    window.alert(`A preset named "${nextConflict.name}" already exists. Save canceled.`);
+    return null;
+  }
+
+  return trimmed;
+}
+
 export interface UsePresetsResult {
   /** List of preset summaries for the current level/engine */
   presets: PresetSummary[];
@@ -142,6 +183,14 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     metadata?: PresetVersionMetadata,
     identity?: PresetSaveIdentity,
   ) => {
+    const requestedName = name.trim();
+    if (!requestedName) return;
+    const nameConflict = findActiveNameConflict(presets, requestedName);
+    const targetName = nameConflict
+      ? chooseDuplicatePresetNameAction(requestedName, nameConflict.name, presets)
+      : requestedName;
+    if (!targetName) return;
+
     const data = options?.customExtract
       ? options.customExtract(state)
       : (paramLevel >= 3 ? extractCascade(state, paramLevel, scope) : extractParams(state, paramLevel, scope));
@@ -149,7 +198,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
 
     // Check if preset already exists → push new version
     const activeStore = getPresetStore();
-    const existing = await activeStore.load(type, name, storeScope);
+    const existing = await activeStore.load(type, targetName, storeScope);
     const shouldForkExisting = !SHARED_PRESET_TEST_MODE && !!existing && (existing.author === 'factory' || existing.library === 'stock');
     const existingVersion = existing?.versions.find(v => v.v === existing.currentVersion)
       || existing?.versions[existing.versions.length - 1];
@@ -209,16 +258,16 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
         scope: storeScope,
         engine: type === 'engine' ? storeScope : undefined,
         source: type !== 'engine' ? storeScope : undefined,
-        name,
+        name: targetName,
         author: 'user',
         library: 'user',
         creator: identity?.creator ?? existing?.creator,
         description: identity?.description ?? existing?.description,
         visibility: identity?.visibility ?? (SHARED_PRESET_TEST_MODE ? 'public' : (shouldForkExisting ? 'private' : existing?.visibility) ?? 'private'),
         familyId: identity?.familyId ?? existing?.familyId,
-        familyName: identity?.familyName ?? existing?.familyName ?? name,
+        familyName: identity?.familyName ?? existing?.familyName ?? targetName,
         variantId: identity?.variantId ?? existing?.variantId,
-        variantName: identity?.variantName ?? existing?.variantName ?? name,
+        variantName: identity?.variantName ?? existing?.variantName ?? targetName,
         variantRank: identity?.variantRank ?? existing?.variantRank,
         tags: tags || existing?.tags || [],
         versions: [{
@@ -236,7 +285,7 @@ export function usePresets(type: PresetLevel, scope?: string, options?: UsePrese
     }
 
     await refresh();
-  }, [type, scope, storeScope, paramLevel, store, refresh, options]);
+  }, [type, scope, storeScope, paramLevel, store, refresh, options, presets]);
 
   const load = useCallback(async (name: string, version?: number): Promise<PresetEntry | null> => {
     const activeStore = getPresetStore();

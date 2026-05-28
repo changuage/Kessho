@@ -23,6 +23,7 @@ const files = new Map([
   ['docs/product-core/product-engine-port.md', read('docs/product-core/product-engine-port.md')],
   ['docs/product-core/schema-and-codegen.md', read('docs/product-core/schema-and-codegen.md')],
   ['docs/product-core/host-diagnostics.md', read('docs/product-core/host-diagnostics.md')],
+  ['docs/product-core/native-bridge.md', read('docs/product-core/native-bridge.md')],
   ['docs/product-core/reference-web-ts.md', read('docs/product-core/reference-web-ts.md')],
   ['docs/product-core/unsupported-surface.md', read('docs/product-core/unsupported-surface.md')],
   ['package.json', read('package.json')],
@@ -39,6 +40,7 @@ for (const path of [
   'README.md',
   'docs/kessho-product-core-migration-status.md',
   'docs/product-core/architecture.md',
+  'docs/product-core/native-bridge.md',
   'docs/product-core/reference-web-ts.md',
 ]) {
   const source = files.get(path);
@@ -79,8 +81,24 @@ for (const counter of [
 assertIncludes(files.get('README.md'), 'Product Core', 'README.md', failures);
 assertIncludes(files.get('README.md'), 'reference-only', 'README.md', failures);
 assertIncludes(files.get('README.md'), 'npm run core:product:ci', 'README.md', failures);
+assertIncludes(files.get('docs/product-core/reference-web-ts.md'), 'src/audio/reference/webTs/engine.ts', 'docs/product-core/reference-web-ts.md', failures);
+assertIncludes(files.get('docs/product-core/reference-web-ts.md'), 'src/audio/reference/ReferenceSelectedRuntime.ts', 'docs/product-core/reference-web-ts.md', failures);
+assertIncludes(files.get('docs/product-core/architecture.md'), 'src/audio/reference/webTs/engine.ts', 'docs/product-core/architecture.md', failures);
+assertIncludes(files.get('docs/kessho-product-core-migration-status.md'), 'src/audio/reference/webTs/engine.ts', 'docs/kessho-product-core-migration-status.md', failures);
 assertIncludes(files.get('docs/kessho-product-core-migration-status.md'), 'Web runtime default | `core-product`', 'docs/kessho-product-core-migration-status.md', failures);
-assertIncludes(files.get('docs/product-core/unsupported-surface.md'), 'explicit crash boundaries', 'docs/product-core/unsupported-surface.md', failures);
+assertIncludes(files.get('docs/kessho-product-core-migration-status.md'), 'Native bridge | Deferred for web default', 'docs/kessho-product-core-migration-status.md', failures);
+assertIncludes(files.get('docs/product-core/native-bridge.md'), 'Native Product runtime is out of active web-default release scope', 'docs/product-core/native-bridge.md', failures);
+assertIncludes(files.get('docs/product-core/native-bridge.md'), 'supports_native_bridge', 'docs/product-core/native-bridge.md', failures);
+assertIncludes(files.get('docs/product-core/native-bridge.md'), 'native-product', 'docs/product-core/native-bridge.md', failures);
+assertIncludes(files.get('docs/product-core/unsupported-surface.md'), 'zero production findings', 'docs/product-core/unsupported-surface.md', failures);
+assertIncludes(files.get('docs/product-core/product-engine-port.md'), '## Sequencer UI Patch Burn-down', 'docs/product-core/product-engine-port.md', failures);
+assertIncludes(files.get('docs/product-core/product-engine-port.md'), '`product-core-sequencer-evolve-config-events`', 'docs/product-core/product-engine-port.md', failures);
+assertIncludes(files.get('docs/product-core/product-engine-port.md'), '`product-core-sequencer-sub-lane-config-events`', 'docs/product-core/product-engine-port.md', failures);
+assertIncludes(files.get('docs/product-core/product-engine-port.md'), '`product-core-sequencer-step-override-events`', 'docs/product-core/product-engine-port.md', failures);
+assertIncludes(files.get('docs/product-core/product-engine-port.md'), '`product-core-sequencer-pitch-settings-events`', 'docs/product-core/product-engine-port.md', failures);
+assertIncludes(files.get('docs/product-core/product-engine-port.md'), '`product-core-sequencer-home-capture-events`', 'docs/product-core/product-engine-port.md', failures);
+assertIncludes(files.get('docs/product-core/architecture.md'), 'The remaining `applySequencerUiPatch` lane is an explicit temporary bridge', 'docs/product-core/architecture.md', failures);
+assertIncludes(files.get('docs/product-core/unsupported-surface.md'), '`applySequencerUiPatch` is not an unsupported production getter or fallback', 'docs/product-core/unsupported-surface.md', failures);
 assertIncludes(files.get('package.json'), '"migration:docs": "node scripts/check-product-docs-freshness.mjs"', 'package.json', failures);
 assertIncludes(files.get('scripts/run-kessho-product-ci.mjs'), "'migration:docs'", 'scripts/run-kessho-product-ci.mjs', failures);
 

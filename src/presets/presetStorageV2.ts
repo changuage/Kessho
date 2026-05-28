@@ -464,6 +464,200 @@ function getDefaultPresetData(type: PresetLevel, scope?: string): Record<string,
   return extractCascade(DEFAULT_STATE, level, scope);
 }
 
+function withGenericSilentFallbacks(data: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...data };
+
+  for (const [key, value] of Object.entries(next)) {
+    if (
+      /(?:Enabled|Active|Auto|Freeze)$/.test(key)
+    ) {
+      next[key] = false;
+      continue;
+    }
+    if (
+      typeof value === 'number'
+      && /(?:Level|Gain|Mix|Send|Feedback|Probability|Density|Activity|Intensity|Drive|Depth|Amount|Repeats)$/.test(key)
+    ) {
+      next[key] = 0;
+      continue;
+    }
+    if (key.endsWith('TensionMode')) {
+      next[key] = 'bypass';
+    }
+  }
+
+  return next;
+}
+
+function sourceSlotFallbackOverrides(slot: string): Record<string, unknown> {
+  switch (slot) {
+    case 'synth':
+      return {
+        synthLevel: 0,
+        pad2Level: 0,
+        leadLevel: 0,
+        lead1Level: 0,
+        lead2Level: 0,
+        pianoLevel: 0,
+        leadEnabled: false,
+        leadRandomEnabled: false,
+        pianoEnabled: false,
+        synthEuclideanMasterEnabled: false,
+        synthChordSequencerEnabled: false,
+        padEnabled: false,
+        pad2Enabled: false,
+        lead2Enabled: false,
+      };
+    case 'drums':
+      return {
+        drumLevel: 0,
+        drumEnabled: false,
+        drumDelayEnabled: false,
+        drumEuclidMasterEnabled: false,
+      };
+    case 'granular':
+      return {
+        granularLevel: 0,
+        granularEnabled: false,
+        granularFreeze: false,
+        granularV1Enabled: false,
+        granularV2Enabled: false,
+        granularV3Enabled: false,
+        granularV4Enabled: false,
+      };
+    case 'delay':
+      return {
+        delayAEnabled: false,
+        delayAMix: 0,
+        delayAFeedback: 0,
+        drumDelayEnabled: false,
+        drumDelayMix: 0,
+        drumDelayFeedback: 0,
+        granularDelayEnabled: false,
+        granularDelayMix: 0,
+        granularDelayRepeats: 0,
+      };
+    case 'reverb':
+      return {
+        reverbLevel: 0,
+        reverbEnabled: false,
+        spectralFreezeEnabled: false,
+        spectralFreezeActive: false,
+        spectralFreezeMix: 0,
+      };
+    case 'dynamics':
+      return {
+        dynamicsEnabled: false,
+        sidechainEnabled: false,
+        characterEnabled: false,
+        degradeEnabled: false,
+        dynamicsSaturationEnabled: false,
+        endCompEnabled: false,
+      };
+    case 'earth':
+      return {
+        earthLevel: 0,
+        natureLevel: 0,
+        waterLevel: 0,
+        insectsLevel: 0,
+        insectsSharedLevel: 0,
+        insects2Level: 0,
+        oceanSampleLevel: 0,
+        birdsLevel: 0,
+        birds2Level: 0,
+        frogsLevel: 0,
+        waterEnabled: false,
+        insectsEnabled: false,
+        insects2Enabled: false,
+        oceanSampleEnabled: false,
+        birdsEnabled: false,
+        birds2Enabled: false,
+        frogsEnabled: false,
+      };
+    default:
+      return {};
+  }
+}
+
+function kitOrEngineSlotFallbackOverrides(slot: string): Record<string, unknown> {
+  switch (slot) {
+    case 'pad1':
+    case 'pad1Kit':
+      return { padEnabled: false, synthLevel: 0 };
+    case 'pad2':
+    case 'pad2Kit':
+      return { pad2Enabled: false, pad2Level: 0 };
+    case 'lead1':
+    case 'lead1Kit':
+      return { leadEnabled: false, lead1Level: 0, leadLevel: 0 };
+    case 'lead2':
+    case 'lead2Kit':
+      return { lead2Enabled: false, lead2Level: 0 };
+    case 'leadDelay':
+    case 'delayKit':
+      return { delayAEnabled: false, delayAMix: 0, delayAFeedback: 0 };
+    case 'drumKit':
+      return { drumEnabled: false, drumLevel: 0 };
+    case 'drumSub':
+    case 'drumKick':
+    case 'drumClick':
+    case 'drumBeepHi':
+    case 'drumBeepLo':
+    case 'drumNoise':
+    case 'drumMembrane':
+      return { [`${slot}Level`]: 0 };
+    case 'euclideanPattern':
+      return {
+        synthEuclideanMasterEnabled: false,
+        drumEuclidMasterEnabled: false,
+        euclideanPatternEnabled: false,
+      };
+    case 'granularKit':
+      return {
+        granularEnabled: false,
+        granularLevel: 0,
+        granularV1Enabled: false,
+        granularV2Enabled: false,
+        granularV3Enabled: false,
+        granularV4Enabled: false,
+      };
+    case 'earthKit':
+      return sourceSlotFallbackOverrides('earth');
+    case 'sidechain':
+      return { sidechainEnabled: false, sidechainMix: 0, sidechainAmount: 0 };
+    case 'character':
+      return { characterEnabled: false, characterMix: 0 };
+    case 'degrade':
+      return { degradeEnabled: false, degradeMix: 0 };
+    case 'saturation':
+      return { dynamicsSaturationEnabled: false, dynamicsSaturationDrive: 0 };
+    case 'endChain':
+      return { endCompEnabled: false, endCompMix: 0 };
+    default:
+      return {};
+  }
+}
+
+export function buildMissingChildFallbackData(
+  parentType: PresetLevel,
+  parentScope: string | undefined,
+  slot: string,
+): Record<string, unknown> {
+  const childSpec = getPresetChildSpecs(parentType, parentScope).find(spec => spec.slot === slot);
+  if (!childSpec) return {};
+
+  const defaultChildData = childSpec.extract(DEFAULT_STATE);
+  const silentData = withGenericSilentFallbacks(defaultChildData);
+  const slotOverrides = parentType === 'state'
+    ? sourceSlotFallbackOverrides(slot)
+    : kitOrEngineSlotFallbackOverrides(slot);
+
+  return canonicalizeRecord({
+    ...silentData,
+    ...slotOverrides,
+  });
+}
+
 export function normalizeResolvedVersionData(
   type: PresetLevel,
   scope: string | undefined,

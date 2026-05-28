@@ -1,30 +1,17 @@
 # Kessho Product Getter Policies
 
-Getter policies in `core-product` must be visible Product Core blockers. Unsupported Web Audio/reference-only surfaces must throw when called; UI code should hide or gate those paths before they are reached. Explicitly unsupported hidden getters throw through a host API-boundary method and are not runtime fallbacks. Missing getters that are not listed here are forbidden production fallbacks, even when their names look like telemetry, debug, analyser, or visual helpers.
+Getter policies in `core-product` must be visible Product Core blockers. Supported getters are backed by Product Core telemetry or generated Product state. Unsupported Web Audio/reference-only surfaces are retired from the Product Core host surface and must be hidden or gated before they are reached. Missing getters that are not listed here are forbidden production fallbacks, even when their names look like telemetry, debug, analyser, or visual helpers.
 
 | Getter | Classification | Retirement condition |
 | --- | --- | --- |
-| `getDynamicsAnalyser` | `explicitly-unsupported-hidden` | Web Audio dynamics analyser nodes are not passed to `core-product`; Product Core telemetry backs dynamics visuals instead. |
 | `getDynamicsVisualTelemetry` | `backed-by-product-core-api` | Backed by Product Core master/dynamics telemetry; analyser nodes remain unavailable in `core-product`. |
-| `getDrumVoiceAnalyser` | `explicitly-unsupported-hidden` | Web Audio drum analyser nodes are not passed to `core-product`; drum envelope visuals remain state-based without live analyser input. |
-| `getMediaStream` | `explicitly-unsupported-hidden` | MediaStream output is hidden in `core-product` until a Product recording or platform-output bridge exists. |
-| `getLimiterNode` | `explicitly-unsupported-hidden` | Raw Web Audio output nodes are hidden in `core-product`; recording/export must use a Product recording bridge instead. |
 | `getGranularActiveGrainCount` | `backed-by-product-core-api` | Backed by Product Core `activeGrains` telemetry. |
-| `getGranularBufferWaveform` | `explicitly-unsupported-hidden` | Core-product uses low-cost granular head/voice telemetry; waveform samples are hidden until Product Core exposes an explicit debug waveform API. |
 | `getGranularVoicePositions` | `backed-by-product-core-api` | Backed by Product Core granular voice position telemetry. |
 | `getGranularWriteHeadPosition` | `backed-by-product-core-api` | Backed by Product Core granular write-head telemetry. |
-| `getLeadMorphedParams` | `explicitly-unsupported-hidden` | Lead morphed-parameter preview is disabled in `core-product` until Product Core exposes resolved Lead source telemetry. |
-| `getCurrentFilterFreq` | `explicitly-unsupported-hidden` | Live source filter telemetry polling is disabled in `core-product` until Product Core exposes source debug telemetry. |
-| `getCurrentLfoValue` | `explicitly-unsupported-hidden` | Live source LFO telemetry polling is disabled in `core-product` until Product Core exposes source debug telemetry. |
-| `getCurrentLfo2Value` | `explicitly-unsupported-hidden` | Live secondary LFO telemetry polling is disabled in `core-product` until Product Core exposes source debug telemetry. |
 | `getCurrentPadFilterFreq` | `backed-by-product-core-api` | Backed by Product Core Pad source filter telemetry. |
 | `getCurrentPadLfoValue` | `backed-by-product-core-api` | Backed by Product Core Pad source LFO telemetry. |
-| `getRecordableBusNodes` | `explicitly-unsupported-hidden` | Stem recording UI is hidden in `core-product`; Product Core exposes stem buffers/peaks rather than Web Audio bus nodes. |
-| `getAllStemNodes` | `explicitly-unsupported-hidden` | Stem recording UI is hidden in `core-product`; Product Core exposes stem buffers/peaks rather than Web Audio bus nodes. |
-| `getEarthTextureDebugState` | `explicitly-unsupported-hidden` | Earth texture debug polling is disabled in `core-product` until Product Core exposes soundscape layer debug telemetry. |
 | `getTransportDebugState` | `backed-by-product-core-api` | Backed by Product Core transport telemetry and generated transport snapshot state. |
 
 Allowed classifications are:
 
 - `backed-by-product-core-api`
-- `explicitly-unsupported-hidden`

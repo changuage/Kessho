@@ -7,7 +7,7 @@
  */
 
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { SliderState, SavedPreset } from './state';
+import { SliderState, SavedPreset, type SliderMode } from './state';
 import { JourneyState, JourneyConfig, JourneyNode } from '../audio/journeyTypes';
 import { PHRASE_LENGTH } from '../audio/harmony';
 import { useSliderHelp } from './SliderHelpOverlay';
@@ -15,6 +15,18 @@ import type { PresetSummary } from '../presets/types';
 import type { JourneyValidationResult } from '../presets/journeyPresetCodec';
 import { isMobileDevice } from '../platform';
 import { JourneyPresetGlyph } from './JourneyPresetGlyph';
+import { useSnowflakeV2, FX_COLORS, ENGINE_GROUPS, type EngineGroupDef } from './snowflakeV2';
+import { generateSnowflake } from '../snowflake/SnowflakeGenerator';
+import type { SnowflakeParams, SnowflakeRingStyle } from '../snowflake/types';
+import { getRuntimeSliderPosition, useRuntimeSliderVersion } from './runtimeSliderState';
+import { getRuntimeValue, useRuntimeValueVersion } from './runtimeValueState';
+
+/** Set to true to enable V2 snowflake rendering. Flip to false to revert to V1. */
+const SNOWFLAKE_V2_ENABLED = true;
+const SNOWFLAKE_V2_MIN_ARM_LENGTH_RATIO = 0.8;
+const SNOWFLAKE_V2_ORNAMENT_SCALE = 0.9;
+const SNOWFLAKE_V2_STROKE_SCALE = 1.15;
+const SNOWFLAKE_V2_CONTROL_FADE_MS = 450;
 
 // Unicode symbols with text variation selector (U+FE0E) to prevent emoji rendering on mobile
 const TEXT_SYMBOLS = {
@@ -59,6 +71,10 @@ interface SnowflakeUIProps {
   isJourneyPlaying?: boolean;
   activeJourneyName?: string;
   journeyValidation?: JourneyValidationResult;
+  sliderModes?: Record<string, SliderMode>;
+  dualSliderRanges?: Partial<Record<keyof SliderState, { min: number; max: number } | undefined>>;
+  onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
+  forceFullArmOpacity?: boolean;
 }
 
 // Macro slider configuration
@@ -82,6 +98,101 @@ const MACRO_SLIDERS: MacroSlider[] = [
   { key: 'oceanSampleLevel', reverbSendKey: 'oceanFilterCutoff', label: 'Wave', min: 0, max: 1, color: '#5A7B8A' }, // Slate blue - width = filter cutoff
 ];
 
+const SNOWFLAKE_RUNTIME_KEYS: readonly (keyof SliderState)[] = Array.from(new Set<keyof SliderState>([
+  'masterVolume',
+  'tension',
+  'reverbLevel',
+  'reverbDecay',
+  'reverbDiffusion',
+  ...MACRO_SLIDERS.flatMap((slider) => [slider.key, slider.reverbSendKey]),
+  ...ENGINE_GROUPS.flatMap((engine) => [
+    engine.levelKey,
+    engine.sends.delayA,
+    engine.sends.delayB,
+    engine.sends.granular,
+    engine.sends.reverb,
+  ]),
+].filter((key): key is keyof SliderState => key !== null && key !== undefined)));
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function getSnowflakeRuntimeNumber(
+  state: SliderState,
+  key: keyof SliderState,
+  sliderModes?: Record<string, SliderMode>,
+  dualSliderRanges?: Partial<Record<keyof SliderState, { min: number; max: number } | undefined>>,
+): number | null {
+  const authored = state[key];
+  if (typeof authored !== 'number' || !Number.isFinite(authored)) return null;
+
+  const keyString = String(key);
+  const liveValue = getRuntimeValue(keyString);
+  if (typeof liveValue === 'number' && Number.isFinite(liveValue)) return liveValue;
+
+  const mode = sliderModes?.[keyString] ?? 'single';
+  if (mode === 'single') return authored;
+
+  const runtimePosition = getRuntimeSliderPosition(keyString, mode);
+  if (typeof runtimePosition !== 'number' || !Number.isFinite(runtimePosition)) return authored;
+
+  const range = (dualSliderRanges as Partial<Record<string, { min: number; max: number } | undefined>> | undefined)?.[keyString];
+  if (!range || !Number.isFinite(range.min) || !Number.isFinite(range.max)) return runtimePosition;
+
+  const min = Math.min(range.min, range.max);
+  const max = Math.max(range.min, range.max);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || Math.abs(max - min) < 0.000001) return authored;
+
+  return min + clamp01(runtimePosition) * (max - min);
+}
+
+function resolveSnowflakeRuntimeState(
+  state: SliderState,
+  sliderModes?: Record<string, SliderMode>,
+  dualSliderRanges?: Partial<Record<keyof SliderState, { min: number; max: number } | undefined>>,
+): SliderState {
+  if (!sliderModes && !dualSliderRanges) return state;
+
+  let nextState: SliderState | null = null;
+  for (const key of SNOWFLAKE_RUNTIME_KEYS) {
+    const value = getSnowflakeRuntimeNumber(state, key, sliderModes, dualSliderRanges);
+    if (value === null) continue;
+    if (Math.abs(value - (state[key] as number)) <= 0.0005) continue;
+    nextState ??= { ...state };
+    (nextState as unknown as Record<string, number>)[String(key)] = value;
+  }
+
+  return nextState ?? state;
+}
+
+function normalizeEngineLevel(engine: EngineGroupDef, value: number): number {
+  const range = engine.levelMax - engine.levelMin;
+  if (range <= 0) return 0;
+  return clamp01((value - engine.levelMin) / range);
+}
+
+function getSnowflakeDualLevelRange(
+  engine: EngineGroupDef,
+  sliderModes?: Record<string, SliderMode>,
+  dualSliderRanges?: Partial<Record<keyof SliderState, { min: number; max: number } | undefined>>,
+): { minNorm: number; maxNorm: number; midNorm: number } | null {
+  const keyString = String(engine.levelKey);
+  const mode = sliderModes?.[keyString] ?? 'single';
+  if (mode === 'single') return null;
+
+  const range = dualSliderRanges?.[engine.levelKey];
+  if (!range || !Number.isFinite(range.min) || !Number.isFinite(range.max)) return null;
+
+  const min = Math.min(range.min, range.max);
+  const max = Math.max(range.min, range.max);
+  return {
+    minNorm: normalizeEngineLevel(engine, min),
+    maxNorm: normalizeEngineLevel(engine, max),
+    midNorm: normalizeEngineLevel(engine, (min + max) * 0.5),
+  };
+}
+
 // Logarithmic scaling: lower values get more slider space
 // Uses power curve: slider position = value^(1/curve), value = slider^curve
 const LOG_CURVE = 2.5; // Higher = more space for lower values
@@ -96,6 +207,12 @@ function valueToSliderPosition(value: number, min: number, max: number): number 
 function sliderPositionToValue(position: number, min: number, max: number): number {
   const curved = Math.pow(position, LOG_CURVE);
   return min + curved * (max - min);
+}
+
+function getSendValue(state: SliderState, key: keyof SliderState | null): number {
+  if (!key) return 0;
+  const value = state[key];
+  return typeof value === 'number' ? value : 0;
 }
 
 // Get normalized arm values (0-1) from current state - with log scaling for display
@@ -391,7 +508,7 @@ function compareStateVariants(left: SavedPreset, right: SavedPreset): number {
   return getStatePresetVariantName(left).localeCompare(getStatePresetVariantName(right));
 }
 
-const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onShowVisualizer, onTogglePlay, onLoadPreset, journeyPresets = [], onLoadJourneyPreset, presets, isPlaying, isRecording, recordingDuration, onStopRecording, journeyState, journeyConfig, isJourneyPlaying, activeJourneyName, journeyValidation }) => {
+const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanced, onShowJourney, onShowVisualizer, onTogglePlay, onLoadPreset, journeyPresets = [], onLoadJourneyPreset, presets, isPlaying, isRecording, recordingDuration, onStopRecording, journeyState, journeyConfig, isJourneyPlaying, activeJourneyName, journeyValidation, sliderModes, dualSliderRanges, onDualRangeChange, forceFullArmOpacity = false }) => {
   const { announceHelp } = useSliderHelp();
   const bindHelp = useCallback((helpKey: string) => ({
     onMouseEnter: () => announceHelp(helpKey),
@@ -406,9 +523,11 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
   const dragStartXRef = useRef<number>(0);  // Track start X position for tangential drag
   const dragStartYRef = useRef<number>(0);  // Track start Y position for tangential drag
   const dragStartValueRef = useRef<number>(0);  // Track initial reverb send value
-  // Special drag states: 'hexagon' for tension, 'ring' for master volume
-  const [specialDrag, setSpecialDrag] = useState<'hexagon' | 'ring' | null>(null);
-  const [specialHover, setSpecialHover] = useState<'hexagon' | 'ring' | null>(null);
+  const specialDragStartValueRef = useRef<number>(0);
+  const specialDragStartYRef = useRef<number>(0);
+  // Special drag states: 'hexagon' for tension, 'ring' for master volume, 'reverb' for global ornament.
+  const [specialDrag, setSpecialDrag] = useState<'hexagon' | 'ring' | 'reverb' | null>(null);
+  const [specialHover, setSpecialHover] = useState<'hexagon' | 'ring' | 'reverb' | null>(null);
   const [showPresets, setShowPresets] = useState(false);
   const [presetTab, setPresetTab] = useState<PresetPanelTab>('state');
   const [presetSort, setPresetSort] = useState<PresetSortMode>('updated');
@@ -509,6 +628,20 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  const runtimeSliderVersion = useRuntimeSliderVersion();
+  const runtimeValueVersion = useRuntimeValueVersion();
+  const snowflakeState = useMemo(
+    () => resolveSnowflakeRuntimeState(state, sliderModes, dualSliderRanges),
+    [dualSliderRanges, runtimeSliderVersion, runtimeValueVersion, sliderModes, state],
+  );
+
+  // --- Snowflake V2 hook (no-op when disabled, zero cost) ---
+  const v2 = useSnowflakeV2(snowflakeState, onChange, {
+    sliderModes,
+    dualSliderRanges,
+    onDualRangeChange,
+  });
   
   // Calculate canvas size based on viewport - fully responsive
   // Mobile (width < 1024px): use 87.5% (25% larger for better touch targets)
@@ -528,18 +661,56 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
   // Fixed base values for reference (scaled)
   const baseHexRadius = 35 * scaleFactor;
   const outerRingRadius = 250 * scaleFactor;
-  // Master volume controls overall snowflake scale (0% = just hexagon, 100% = full size)
-  const masterScale = state.masterVolume;
+  // In V2, master volume controls visual brightness/presence, not snowflake size.
+  const masterPresence = clamp01(snowflakeState.masterVolume);
+  const masterScale = SNOWFLAKE_V2_ENABLED ? 1 : masterPresence;
+  const v2MasterBrightness = 0.28 + masterPresence * 0.72;
   
   // Tension controls inner hexagon size (0% = normal, 100% = 3x)
-  const hexagonScale = 1 + state.tension * 2;  // 1x to 3x
+  const hexagonScale = 1 + snowflakeState.tension * 2;  // 1x to 3x
   
   const baseRadius = 35 * scaleFactor * hexagonScale;
   const maxProngLength = 160 * scaleFactor * masterScale;
-  const maxArmLength = 140 * scaleFactor * masterScale;
+  const maxArmLength = 220 * scaleFactor * masterScale;
+  const v2ReverbLevel = clamp01(snowflakeState.reverbLevel);
+  const v2ReverbNodeRadius = Math.max(14, (14 + v2ReverbLevel * 24) * scaleFactor);
+  const v2ReverbHitRadius = Math.max(38, (44 + v2ReverbLevel * 56) * scaleFactor);
+  const v2ReverbLabelOffset = Math.max(34 * scaleFactor, v2ReverbNodeRadius + 14 * scaleFactor);
+  const showV2Controls = showControls || v2.draggingArm !== null || specialDrag !== null || v2.stars.some((star) => star.activePoint !== null);
+  const v2GlobalOrnament = useMemo(() => {
+    if (!SNOWFLAKE_V2_ENABLED) return null;
+    const sourceArm = v2.arms.find((arm) => !arm.isMirror && Math.abs(arm.macros.ornament) > 0.001);
+    if (!sourceArm) return null;
+
+    const hexRingStyle: SnowflakeRingStyle = sourceArm.params.motifs.rings > 1
+      ? 'doubleHexRing'
+      : (sourceArm.params.motifs.rings > 0 ? 'innerHexRing' : 'none');
+    const params: SnowflakeParams = {
+      ...sourceArm.params,
+      symmetry: {
+        ...sourceArm.params.symmetry,
+        arms: 6,
+        rotationOffset: 0,
+      },
+      motifs: {
+        ...sourceArm.params.motifs,
+        ringStyle: hexRingStyle,
+      },
+    };
+    const generated = generateSnowflake(params);
+    const shapePaths = generated.shapePaths.filter((shape) => (
+      shape.id.startsWith('ring-')
+      || shape.id.startsWith('plate-')
+      || shape.id.startsWith('center-')
+      || shape.id === 'spoke-connectors'
+    ));
+
+    return shapePaths.length > 0 ? { generated, shapePaths } : null;
+  }, [v2.arms]);
 
   // Draw snowflake - runs on every state change, but it's fast!
   useEffect(() => {
+    if (SNOWFLAKE_V2_ENABLED) return; // V2 uses its own render path below
     const canvas = canvasRef.current;
     if (!canvas) return;
     
@@ -565,7 +736,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     ctx.arc(centerX, centerY, canvasSize / 2, 0, Math.PI * 2);
     ctx.fill();
 
-    const { lengths: armLengths, widths: armWidths } = getArmValues(state);
+    const { lengths: armLengths, widths: armWidths } = getArmValues(snowflakeState);
 
     // Only draw arms if master volume > 0
     if (masterScale > 0.01) {
@@ -628,7 +799,9 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     
     ctx.restore();
 
-  }, [state, isPlaying, centerX, centerY, canvasSize, scaleFactor, baseRadius, maxProngLength, maxArmLength, hexagonScale, draggingWidth, hoveringWidth]);
+  }, [snowflakeState, isPlaying, centerX, centerY, canvasSize, scaleFactor, baseRadius, maxProngLength, maxArmLength, hexagonScale, draggingWidth, hoveringWidth]);
+
+  // --- Snowflake V2: no canvas render needed (SVG-based) ---
 
   // Handle pointer events for prong dragging
   const handlePointerDown = useCallback((index: number, e: React.PointerEvent) => {
@@ -646,6 +819,14 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
     const dx = x - centerX;
     const dy = y - centerY;
     const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Handle center reverb drag (global ornament/reverb level)
+    if (specialDrag === 'reverb') {
+      const sensitivity = Math.max(90, 190 * scaleFactor);
+      const normalizedReverb = Math.max(0, Math.min(1, specialDragStartValueRef.current - (e.clientY - specialDragStartYRef.current) / sensitivity));
+      onChange('reverbLevel', normalizedReverb);
+      return;
+    }
     
     // Handle hexagon drag (tension)
     if (specialDrag === 'hexagon') {
@@ -1219,10 +1400,23 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
       <div 
         style={styles.canvasContainer}
         onPointerMove={(e) => {
-          handlePointerMove(e);
+          if (SNOWFLAKE_V2_ENABLED) {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            v2.onStarDrag(e.clientX, e.clientY, scaleFactor);
+            v2.onLevelDrag(e.clientX - rect.left, e.clientY - rect.top, centerX, centerY, maxArmLength, scaleFactor);
+          }
+          if (!SNOWFLAKE_V2_ENABLED || v2.draggingArm === null) {
+            handlePointerMove(e);
+          }
           resetHideTimer();
         }}
-        onPointerUp={handlePointerUp}
+        onPointerUp={(e) => {
+          if (SNOWFLAKE_V2_ENABLED) {
+            v2.onStarDragEnd();
+            v2.onLevelDragEnd();
+          }
+          handlePointerUp(e);
+        }}
         onPointerEnter={resetHideTimer}
         onPointerDown={resetHideTimer}
       >
@@ -1233,8 +1427,459 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
           style={styles.canvas}
         />
         
-        {/* Interactive prong handles */}
-        <svg 
+        {/* V2 SVG Snowflake Rendering (macro-driven, per-arm) */}
+        {SNOWFLAKE_V2_ENABLED && (
+          <svg
+            width={canvasSize}
+            height={canvasSize}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              overflow: 'visible',
+            }}
+          >
+            {/* Background gradient */}
+            <defs>
+              <radialGradient id="snowflake-v2-bg">
+                <stop offset="0%" stopColor="#100f0e" />
+                <stop offset="70%" stopColor="#100f0e" />
+                <stop offset="85%" stopColor="#100f0e" stopOpacity="0.7" />
+                <stop offset="92%" stopColor="#100f0e" stopOpacity="0.3" />
+                <stop offset="100%" stopColor="#100f0e" stopOpacity="0" />
+              </radialGradient>
+              <filter id="snowflake-v2-ring-halo-blur" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="12" />
+              </filter>
+            </defs>
+            <circle cx={centerX} cy={centerY} r={canvasSize / 2} fill="url(#snowflake-v2-bg)" />
+
+            {/* Generator ornament layer: global rings/plates/center motifs driven by Reverb Level */}
+            {v2GlobalOrnament && (
+              <g
+                transform={`translate(${centerX}, ${centerY}) scale(${(maxArmLength / 220) * SNOWFLAKE_V2_ORNAMENT_SCALE}) translate(${-v2GlobalOrnament.generated.size / 2}, ${-v2GlobalOrnament.generated.size / 2})`}
+                opacity={v2MasterBrightness}
+                style={{ pointerEvents: 'none' }}
+              >
+                {v2GlobalOrnament.shapePaths.map((shape) => (
+                  <path
+                    key={`global-ornament-${shape.id}`}
+                    d={shape.d}
+                    fill={shape.fill === '#ffffff' || shape.fill === 'white' ? 'none' : shape.fill}
+                    stroke={shape.stroke === '#009ee3' ? 'rgba(210, 230, 255, 0.8)' : shape.stroke}
+                    strokeWidth={shape.strokeWidth * SNOWFLAKE_V2_STROKE_SCALE}
+                    opacity={shape.opacity}
+                    fillRule={shape.fillRule}
+                  />
+                ))}
+              </g>
+            )}
+
+            {/* Render each arm's generated snowflake paths, rotated into position */}
+            {v2.arms.map((arm) => {
+              const { generated, normalizedLevel, engine, slot, isMirror } = arm;
+              const rotation = slot * 60; // 60° per slot
+              const armScale = maxArmLength / 220;
+              const opacity = forceFullArmOpacity && !isMirror
+                ? 1
+                : (isMirror ? 0.2 : (normalizedLevel < 0.01 ? 0.2 : 1));
+              const localShapePaths = generated.shapePaths.filter((shape) => (
+                !shape.id.startsWith('ring-')
+                && !shape.id.startsWith('center-')
+                && !shape.id.startsWith('plate-')
+                && shape.id !== 'spoke-connectors'
+              ));
+
+              return (
+                <g
+                  key={`arm-${slot}-${engine.id}`}
+                  transform={`translate(${centerX}, ${centerY}) rotate(${rotation}) scale(${armScale}) translate(${-generated.size / 2}, ${-generated.size / 2})`}
+                  opacity={opacity * v2MasterBrightness}
+                >
+                  {/* Path layers (arm segments by depth) */}
+                  {generated.pathLayers.map((layer) => (
+                    <path
+                      key={layer.id}
+                      d={layer.d}
+                      fill="none"
+                      stroke="rgba(210, 230, 255, 0.95)"
+                      strokeWidth={layer.strokeWidth * SNOWFLAKE_V2_STROKE_SCALE}
+                      strokeOpacity={forceFullArmOpacity && !isMirror ? Math.max(layer.strokeOpacity, 0.92) : layer.strokeOpacity}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  ))}
+                  {/* Shape paths (rings, center, nodes) */}
+                  {localShapePaths.map((shape) => (
+                    <path
+                      key={shape.id}
+                      d={shape.d}
+                      fill={shape.fill === '#ffffff' || shape.fill === 'white' ? 'none' : shape.fill}
+                      stroke={shape.stroke === '#009ee3' ? 'rgba(210, 230, 255, 0.8)' : shape.stroke}
+                      strokeWidth={shape.strokeWidth * SNOWFLAKE_V2_STROKE_SCALE}
+                      opacity={forceFullArmOpacity && !isMirror ? Math.max(shape.opacity, 0.86) : shape.opacity}
+                      fillRule={shape.fillRule}
+                    />
+                  ))}
+                </g>
+              );
+            })}
+
+            <g
+              opacity={showV2Controls ? 1 : 0}
+              style={{
+                pointerEvents: showV2Controls ? 'auto' : 'none',
+                transition: `opacity ${SNOWFLAKE_V2_CONTROL_FADE_MS}ms ease-out`,
+              }}
+            >
+            {/* Master volume outer ring */}
+            <circle
+              cx={centerX}
+              cy={centerY}
+              r={outerRingRadius}
+              fill="none"
+              stroke={`rgba(60,113,129,${0.06 + masterPresence * 0.28})`}
+              strokeWidth={8 + masterPresence * 18}
+              style={{
+                filter: 'url(#snowflake-v2-ring-halo-blur)',
+                pointerEvents: 'none',
+              }}
+            />
+            <circle
+              cx={centerX}
+              cy={centerY}
+              r={outerRingRadius}
+              fill="none"
+              stroke={specialHover === 'ring' || specialDrag === 'ring' ? '#3C7181' : `rgba(60,113,129,${0.18 + masterPresence * 0.42})`}
+              strokeWidth={specialHover === 'ring' || specialDrag === 'ring' ? 8 : 4}
+              style={{
+                cursor: 'crosshair',
+                filter: specialHover === 'ring' || specialDrag === 'ring' ? 'drop-shadow(0 0 12px rgba(60,113,129,0.7))' : undefined,
+                pointerEvents: 'stroke',
+                transition: 'stroke-width 0.15s ease-out, stroke 0.15s ease-out',
+              }}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setSpecialDrag('ring');
+                (e.target as Element).setPointerCapture(e.pointerId);
+                resetHideTimer();
+              }}
+              onPointerEnter={() => {
+                setSpecialHover('ring');
+                resetHideTimer();
+              }}
+              onPointerLeave={() => setSpecialHover(null)}
+            />
+            {(specialHover === 'ring' || specialDrag === 'ring') && (
+              <g style={{ pointerEvents: 'none' }}>
+                <rect
+                  x={centerX - 50 * scaleFactor}
+                  y={30 * scaleFactor}
+                  width={100 * scaleFactor}
+                  height={22 * scaleFactor}
+                  rx={4}
+                  fill="rgba(0,0,0,0.85)"
+                  stroke="#3C7181"
+                />
+                <text x={centerX} y={45 * scaleFactor} textAnchor="middle" fill="white" fontSize={11 * scaleFactor} fontWeight="bold">
+                  Volume: {Math.round(snowflakeState.masterVolume * 100)}%
+                </text>
+              </g>
+            )}
+
+            {/* Center reverb node controls global reverb level / ornament magnitude */}
+            <g>
+              <circle
+                cx={centerX}
+                cy={centerY}
+                r={v2ReverbHitRadius}
+                fill="transparent"
+                style={{ cursor: 'ns-resize', pointerEvents: 'auto' }}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  specialDragStartValueRef.current = v2ReverbLevel;
+                  specialDragStartYRef.current = e.clientY;
+                  setSpecialDrag('reverb');
+                  (e.target as Element).setPointerCapture(e.pointerId);
+                  resetHideTimer();
+                }}
+                onPointerEnter={() => {
+                  setSpecialHover('reverb');
+                  resetHideTimer();
+                }}
+                onPointerMove={() => resetHideTimer()}
+                onPointerLeave={() => setSpecialHover(null)}
+              />
+              <circle
+                cx={centerX}
+                cy={centerY}
+                r={v2ReverbNodeRadius}
+                fill={FX_COLORS.reverb}
+                fillOpacity={0.22 + v2ReverbLevel * 0.5}
+                stroke={specialHover === 'reverb' || specialDrag === 'reverb' ? 'white' : FX_COLORS.reverb}
+                strokeWidth={specialHover === 'reverb' || specialDrag === 'reverb' ? 2.4 : 1.4}
+                strokeOpacity={0.86}
+                style={{
+                  filter: specialHover === 'reverb' || specialDrag === 'reverb' ? `drop-shadow(0 0 10px ${FX_COLORS.reverb})` : undefined,
+                  pointerEvents: 'none',
+                  transition: 'r 0.12s ease-out, stroke-width 0.12s ease-out',
+                }}
+              />
+              <text
+                x={centerX}
+                y={centerY + v2ReverbLabelOffset}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill={specialHover === 'reverb' || specialDrag === 'reverb' ? 'white' : FX_COLORS.reverb}
+                stroke="rgba(12,14,18,0.86)"
+                strokeWidth={2.2 * scaleFactor}
+                paintOrder="stroke"
+                fontSize={8.5 * scaleFactor}
+                fontWeight="600"
+                opacity={specialHover === 'reverb' || specialDrag === 'reverb' ? 1 : 0.68}
+                style={{ pointerEvents: 'none' }}
+              >
+                {specialDrag === 'reverb' ? `${Math.round(v2ReverbLevel * 100)}%` : 'Reverb'}
+              </text>
+            </g>
+
+            {/* Hold-to-reveal FX star — Journey-style diamond ring */}
+            {v2.arms.map((arm) => {
+              if (arm.isMirror) return null;
+              const starState = v2.stars[arm.slot];
+              if (!starState || !starState.isOpen) return null;
+
+              const { engine, normalizedLevel, slot } = arm;
+              const angle = (slot * 60 - 90) * (Math.PI / 180);
+              const innerGap = 30 * scaleFactor;
+              const armReach = SNOWFLAKE_V2_MIN_ARM_LENGTH_RATIO + normalizedLevel * (1 - SNOWFLAKE_V2_MIN_ARM_LENGTH_RATIO);
+              const handleDist = innerGap + armReach * maxArmLength;
+              const hx = centerX + Math.cos(angle) * handleDist;
+              const hy = centerY + Math.sin(angle) * handleDist;
+
+              // Larger ring for mobile friendliness
+              const ringR = 34 * scaleFactor;
+              const nodeR = 8 * scaleFactor; // large tap target
+              const hitR = 16 * scaleFactor; // invisible hit area even larger
+
+              const starPoints = [
+                { key: 'reverb' as const, label: 'Rev', startAngle: -Math.PI / 2, dx: 0, dy: -1, color: FX_COLORS.reverb, value: getSendValue(snowflakeState, engine.sends.reverb) },
+                { key: 'delayB' as const, label: 'DlyB', startAngle: 0, dx: 1, dy: 0, color: FX_COLORS.delayB, value: getSendValue(snowflakeState, engine.sends.delayB) },
+                { key: 'granular' as const, label: 'Gran', startAngle: Math.PI / 2, dx: 0, dy: 1, color: FX_COLORS.granular, value: getSendValue(snowflakeState, engine.sends.granular) },
+                { key: 'delayA' as const, label: 'DlyA', startAngle: Math.PI, dx: -1, dy: 0, color: FX_COLORS.delayA, value: getSendValue(snowflakeState, engine.sends.delayA) },
+              ];
+
+              const availablePoints = starPoints.filter((p) => engine.sends[p.key] !== null);
+
+              return (
+                <g key={`star-${slot}`}>
+                  {/* Background ring */}
+                  <circle
+                    cx={hx} cy={hy} r={ringR}
+                    fill="none"
+                    stroke="rgba(184,224,255,0.12)"
+                    strokeWidth={1.5}
+                    style={{ pointerEvents: 'none' }}
+                  />
+
+                  {availablePoints.map((point) => {
+                    const isActive = starState.activePoint === point.key;
+                    const nodeX = hx + point.dx * ringR;
+                    const nodeY = hy + point.dy * ringR;
+
+                    // Arc segment: thickness based on value
+                    const arcThickness = (3 + point.value * 5) * scaleFactor;
+                    const sweepAngle = Math.PI / 2 * 0.7;
+                    const halfSweep = sweepAngle / 2;
+                    const arcStartAngle = point.startAngle - halfSweep;
+                    const arcEndAngle = point.startAngle + halfSweep;
+                    const arcX1 = hx + Math.cos(arcStartAngle) * ringR;
+                    const arcY1 = hy + Math.sin(arcStartAngle) * ringR;
+                    const arcX2 = hx + Math.cos(arcEndAngle) * ringR;
+                    const arcY2 = hy + Math.sin(arcEndAngle) * ringR;
+                    const arcPath = `M ${arcX1} ${arcY1} A ${ringR} ${ringR} 0 0 1 ${arcX2} ${arcY2}`;
+
+                    // Label outside the ring
+                    const labelDist = ringR + 14 * scaleFactor;
+                    const labelX = hx + point.dx * labelDist;
+                    const labelY = hy + point.dy * labelDist;
+
+                    return (
+                      <g key={point.key}>
+                        {/* Arc segment showing value level */}
+                        <path
+                          d={arcPath}
+                          fill="none"
+                          stroke={point.color}
+                          strokeWidth={arcThickness}
+                          strokeOpacity={point.value > 0 ? 0.55 + point.value * 0.35 : 0.12}
+                          strokeLinecap="round"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                        {/* Invisible enlarged hit target */}
+                        <circle
+                          cx={nodeX} cy={nodeY} r={hitR}
+                          fill="transparent"
+                          style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            (e.target as Element).setPointerCapture(e.pointerId);
+                            v2.onStarPointPointerDown(slot, point.key, e.clientX, e.clientY);
+                          }}
+                        />
+                        {/* Visible node */}
+                        <circle
+                          cx={nodeX} cy={nodeY}
+                          r={isActive ? nodeR * 1.3 : nodeR}
+                          fill={point.value > 0 ? point.color : 'rgba(40,40,40,0.6)'}
+                          fillOpacity={point.value > 0 ? 0.85 : 0.5}
+                          stroke={isActive ? 'white' : point.color}
+                          strokeWidth={isActive ? 2.5 : 1.2}
+                          strokeOpacity={point.value > 0 ? 0.9 : 0.4}
+                          style={{
+                            pointerEvents: 'none',
+                            filter: isActive ? `drop-shadow(0 0 8px ${point.color})` : undefined,
+                            transition: 'r 0.12s ease-out',
+                          }}
+                        />
+                        {/* FX label */}
+                        <text
+                          x={labelX} y={labelY}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fill={isActive ? 'white' : point.color}
+                          fontSize={8.5 * scaleFactor}
+                          fontWeight="600"
+                          opacity={isActive ? 1 : 0.6}
+                          style={{ pointerEvents: 'none' }}
+                        >
+                          {isActive ? `${Math.round(point.value * 100)}%` : point.label}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            })}
+
+            {/* Interactive handle circles + labels for level drag */}
+            {v2.arms.map((arm) => {
+              if (arm.isMirror) return null;
+              const { engine, normalizedLevel, slot } = arm;
+              const angle = (slot * 60 - 90) * (Math.PI / 180);
+              const innerGap = 30 * scaleFactor;
+              const armReach = SNOWFLAKE_V2_MIN_ARM_LENGTH_RATIO + normalizedLevel * (1 - SNOWFLAKE_V2_MIN_ARM_LENGTH_RATIO);
+              const handleDist = innerGap + armReach * maxArmLength;
+              const hx = centerX + Math.cos(angle) * handleDist;
+              const hy = centerY + Math.sin(angle) * handleDist;
+              const isActive = v2.draggingArm === slot;
+              const handleR = (isActive ? 16 : 12) * scaleFactor;
+              const dualLevelRange = getSnowflakeDualLevelRange(engine, sliderModes, dualSliderRanges);
+              const rangePoint = (levelNorm: number) => {
+                const reach = SNOWFLAKE_V2_MIN_ARM_LENGTH_RATIO + levelNorm * (1 - SNOWFLAKE_V2_MIN_ARM_LENGTH_RATIO);
+                const dist = innerGap + reach * maxArmLength;
+                return {
+                  x: centerX + Math.cos(angle) * dist,
+                  y: centerY + Math.sin(angle) * dist,
+                };
+              };
+              const rangeMinPoint = dualLevelRange ? rangePoint(dualLevelRange.minNorm) : null;
+              const rangeMaxPoint = dualLevelRange ? rangePoint(dualLevelRange.maxNorm) : null;
+              const rangeMidPoint = dualLevelRange ? rangePoint(dualLevelRange.midNorm) : null;
+
+              // Label position: slightly beyond the handle along the arm axis
+              const labelDist = handleDist + handleR + 26 * scaleFactor;
+              const lx = centerX + Math.cos(angle) * labelDist;
+              const ly = centerY + Math.sin(angle) * labelDist;
+
+              return (
+                <g key={`handle-group-${slot}`}>
+                  {dualLevelRange && rangeMinPoint && rangeMaxPoint && rangeMidPoint && (
+                    <g style={{ pointerEvents: 'none' }}>
+                      <line
+                        x1={rangeMinPoint.x}
+                        y1={rangeMinPoint.y}
+                        x2={rangeMaxPoint.x}
+                        y2={rangeMaxPoint.y}
+                        stroke={engine.color}
+                        strokeWidth={Math.max(2, 4 * scaleFactor)}
+                        strokeLinecap="round"
+                        opacity={isActive ? 0.54 : 0.28}
+                      />
+                      <circle
+                        cx={rangeMidPoint.x}
+                        cy={rangeMidPoint.y}
+                        r={Math.max(3, 4.5 * scaleFactor)}
+                        fill="rgba(10,14,20,0.82)"
+                        stroke="rgba(255,255,255,0.78)"
+                        strokeWidth={1.4}
+                        opacity={isActive ? 0.95 : 0.68}
+                      />
+                    </g>
+                  )}
+                  <circle
+                    cx={hx}
+                    cy={hy}
+                    r={handleR}
+                    fill={engine.color}
+                    stroke="white"
+                    strokeWidth={2}
+                    style={{
+                      cursor: 'grab',
+                      filter: isActive
+                        ? `drop-shadow(0 0 12px ${engine.color})`
+                        : 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
+                      pointerEvents: 'auto',
+                      transition: 'r 0.15s ease-out',
+                    }}
+                    onPointerEnter={() => {
+                      v2.onLevelNodePointerEnter(slot);
+                      resetHideTimer();
+                    }}
+                    onPointerMove={() => {
+                      v2.onLevelNodePointerEnter(slot);
+                      resetHideTimer();
+                    }}
+                    onPointerLeave={() => {
+                      v2.onLevelNodePointerLeave(slot);
+                    }}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      (e.target as Element).setPointerCapture(e.pointerId);
+                      v2.onLevelDragStart(slot, e);
+                      resetHideTimer();
+                    }}
+                  />
+                  {/* Engine name label */}
+                  <text
+                    x={lx}
+                    y={ly}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill="white"
+                    stroke="rgba(12,14,18,0.86)"
+                    strokeWidth={2.4 * scaleFactor}
+                    paintOrder="stroke"
+                    fontSize={9 * scaleFactor}
+                    fontWeight="500"
+                    opacity={0.8}
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    {engine.label}
+                  </text>
+                </g>
+              );
+            })}
+            </g>
+          </svg>
+        )}
+
+        {/* V1 Interactive prong handles (legacy, disabled when V2 active) */}
+        {!SNOWFLAKE_V2_ENABLED && <svg 
           width={canvasSize} 
           height={canvasSize} 
           style={{
@@ -1291,7 +1936,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
             <g style={{ pointerEvents: 'none' }}>
               <rect x={centerX - 50 * scaleFactor} y={30 * scaleFactor} width={100 * scaleFactor} height={22 * scaleFactor} rx={4} fill="rgba(0,0,0,0.85)" stroke="#3C7181" />
               <text x={centerX} y={45 * scaleFactor} textAnchor="middle" fill="white" fontSize={11 * scaleFactor} fontWeight="bold">
-                Volume: {Math.round(state.masterVolume * 100)}%
+                Volume: {Math.round(snowflakeState.masterVolume * 100)}%
               </text>
             </g>
           )}
@@ -1327,18 +1972,18 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
             <g style={{ pointerEvents: 'none' }}>
               <rect x={centerX - 45 * scaleFactor} y={centerY + baseRadius + 8 * scaleFactor} width={90 * scaleFactor} height={22 * scaleFactor} rx={4} fill="rgba(0,0,0,0.85)" stroke="#C1930A" />
               <text x={centerX} y={centerY + baseRadius + 22 * scaleFactor} textAnchor="middle" fill="white" fontSize={11 * scaleFactor} fontWeight="bold">
-                Tension: {Math.round(state.tension * 100)}%
+                Tension: {Math.round(snowflakeState.tension * 100)}%
               </text>
             </g>
           )}
           
           {MACRO_SLIDERS.map((slider, index) => {
-            const value = state[slider.key] as number;
+            const value = snowflakeState[slider.key] as number;
             const pos = getProngPosition(index, value);
             const isActive = dragging === index || hovering === index;
             const isWidthActive = draggingWidth === index || hoveringWidth === index;
             const hasReverbSend = !!slider.reverbSendKey;
-            const reverbSendValue = hasReverbSend ? (state[slider.reverbSendKey!] as number) : 0;
+            const reverbSendValue = hasReverbSend ? (snowflakeState[slider.reverbSendKey!] as number) : 0;
             // Normalize for drag calculation - oceanFilterCutoff is 40-12000Hz, others are 0-1
             const normalizedSendValue = slider.reverbSendKey === 'oceanFilterCutoff' 
               ? (reverbSendValue - 40) / (12000 - 40)
@@ -1537,7 +2182,7 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
               </g>
             );
           })}
-        </svg>
+        </svg>}
       </div>
       </div>
 

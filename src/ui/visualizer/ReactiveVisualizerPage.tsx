@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import type { EngineState } from '../../audio/engineSharedTypes';
+import type { ProductEngineState } from '../../audio/product/ProductEngineTypes';
 import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 import { getRuntimeSliderPosition } from '../runtimeSliderState';
 import { getRuntimeValue } from '../runtimeValueState';
@@ -37,7 +37,7 @@ interface ReactiveVisualizerPageProps {
   state: SliderState;
   sliderModes: Record<string, SliderMode>;
   dualRanges: DualRanges;
-  engineState: EngineState;
+  engineState: ProductEngineState;
   isPlaying: boolean;
   getActiveGrains: () => number;
   linkedPresetRequest: { name: string; nonce: number } | null;
@@ -353,7 +353,7 @@ function buildSnapshot(
   state: SliderState,
   sliderModes: Record<string, SliderMode>,
   dualRanges: DualRanges,
-  engineState: EngineState,
+  engineState: ProductEngineState,
   activeGrains: number,
   controls: ReactiveVisualizerControls,
   timeMs: number,

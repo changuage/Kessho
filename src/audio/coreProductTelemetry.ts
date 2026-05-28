@@ -1,18 +1,3 @@
-export type CoreProductCapabilityReport = {
-  engineMode: 'core-product';
-  supportsFullProductGraph: boolean;
-  supportsSynthSequencer: boolean;
-  supportsDrumSequencer: boolean;
-  supportsJourneyMorphClock: boolean;
-  supportsHarmonyCore: boolean;
-  supportsCoreAssetRendering: boolean;
-  supportsNativeBridge: boolean;
-  supportsRecordableStems: boolean;
-  supportsCpuTelemetry: boolean;
-  unsupportedMethods: string[];
-  legacyFallbacks: string[];
-};
-
 export type CoreProductSequencerLaneUiState = {
   enabled: boolean;
   targetSourceId: number;
@@ -183,18 +168,3 @@ export type CoreProductVisualTelemetrySnapshot = Pick<
   | 'workletLeadStemPeak'
   | 'workletFxStemPeak'
 >;
-
-export const initialCoreProductCapabilityReport: CoreProductCapabilityReport = {
-  engineMode: 'core-product',
-  supportsFullProductGraph: true,
-  supportsSynthSequencer: true,
-  supportsDrumSequencer: true,
-  supportsJourneyMorphClock: true,
-  supportsHarmonyCore: true,
-  supportsCoreAssetRendering: true,
-  supportsNativeBridge: false,
-  supportsRecordableStems: true,
-  supportsCpuTelemetry: true,
-  unsupportedMethods: ['native-bridge'],
-  legacyFallbacks: [],
-};

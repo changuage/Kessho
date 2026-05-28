@@ -1,6 +1,7 @@
-import type { EngineState, ManualSynthNoteOptions } from './engineSharedTypes';
+import type { ManualSynthNoteOptions } from './engineSharedTypes';
 import { CORE_PRODUCT_SOURCE_IDS, type CoreProductRangeTarget, type CoreProductRangeValueContext } from './coreProductEvents';
 import { KESSHO_PRODUCT_DRUM_VOICE_COUNT } from './generated/kesshoProductSchema';
+import type { ProductEngineState } from './product/ProductEngineTypes';
 
 export type RuntimeWalkConfig = { speed: number; mode: 'localBrownian' | 'globalWalk' };
 
@@ -59,7 +60,7 @@ export function runtimeWalkPositionsFromTelemetry(
   return next;
 }
 
-export function createCoreProductEngineState(isRunning: boolean): EngineState {
+export function createCoreProductEngineState(isRunning: boolean): ProductEngineState {
   return {
     isRunning,
     harmonyState: null,

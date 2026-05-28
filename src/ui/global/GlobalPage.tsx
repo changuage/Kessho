@@ -1,6 +1,6 @@
 import React from 'react';
 import type { SliderState, SavedPreset } from '../state';
-import type { EngineState } from '../../audio/engineSharedTypes';
+import type { ProductEngineState } from '../../audio/product/ProductEngineTypes';
 import type { TensionArcType } from '../../audio/harmony';
 import type { PresetEntry, PresetVersionMetadata } from '../../presets/types';
 import { PresetDropdown, PresetFamilyTree } from '../../presets';
@@ -15,6 +15,7 @@ import { APP_TAB_SYMBOLS, TEXT_SYMBOLS } from '../../designSystem/textSymbols';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { getRuntimeSliderPosition } from '../runtimeSliderState';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
+import { GlobalRuntimeComparisonPanel, type GlobalRuntimeComparisonPanelProps } from './GlobalRuntimeComparisonPanel';
 import './global.css';
 
 // Note names for display
@@ -22,22 +23,10 @@ const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 
 const DEGREE_LABELS = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'];
 const GLOBAL_EXPANDED_SECTIONS_STORAGE_KEY = 'global:expanded-sections:v1';
 const DEFAULT_GLOBAL_EXPANDED_SECTIONS = ['morph', 'state-presets', 'root-cof', 'chord-progression', 'scale-tension', 'transport-sync'];
-type AudioEngineMode = 'web-ts' | 'core-product' | 'core-smoke';
-type AudioEngineCpuSummary = {
-  avgPercent: number;
-  peakPercent: number;
-  missPercent: number | null;
-  moduleCount: number;
-  updatedAt: number;
-};
-type SceneHarmonyState = NonNullable<EngineState['harmonyState']>;
+type SceneHarmonyState = NonNullable<ProductEngineState['harmonyState']>;
 
 function clamp01(value: number | undefined): number {
   return Math.max(0, Math.min(1, typeof value === 'number' && Number.isFinite(value) ? value : 0));
-}
-
-function formatCpuPercent(value: number | null | undefined): string {
-  return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(1)}%` : '--';
 }
 
 function formatMorphPercent(value: number): number {
@@ -804,12 +793,8 @@ export interface GlobalPageProps {
   CircleOfFifthsComponent: React.ComponentType<any>;
 
   // Engine state
-  engineState: EngineState;
-  audioEngineMode?: AudioEngineMode;
-  audioEngineCpuSummaries?: Partial<Record<AudioEngineMode, AudioEngineCpuSummary>>;
-  showAudioEngineSwitcher?: boolean;
-  coreSmokeModeAvailable?: boolean;
-  onAudioEngineModeChange?: (mode: AudioEngineMode) => void;
+  engineState: ProductEngineState;
+  runtimeComparison?: GlobalRuntimeComparisonPanelProps;
   onResetCofDrift: () => void;
 
   // Morph CoF visualization
@@ -845,7 +830,9 @@ export interface GlobalPageProps {
   isRecording: boolean;
   recordFormats: { webm: boolean; wav: boolean };
   recordStems: Record<string, boolean>;
+  recordingAvailable: boolean;
   recordingDuration: number;
+  stemRecordingAvailable: boolean;
   formatRecordingTime: (seconds: number) => string;
   onRecordFormatsChange: (updater: (prev: { webm: boolean; wav: boolean }) => { webm: boolean; wav: boolean }) => void;
   onRecordStemsChange: (key: string) => void;
@@ -875,11 +862,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   SelectComponent: Select,
   CircleOfFifthsComponent: CircleOfFifths,
   engineState,
-  audioEngineMode = 'core-product',
-  audioEngineCpuSummaries,
-  showAudioEngineSwitcher = false,
-  coreSmokeModeAvailable = true,
-  onAudioEngineModeChange,
+  runtimeComparison,
   onResetCofDrift,
   morphCoFViz,
   morphPresetA,
@@ -903,7 +886,9 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   isRecording,
   recordFormats,
   recordStems,
+  recordingAvailable,
   recordingDuration,
+  stemRecordingAvailable,
   formatRecordingTime,
   onRecordFormatsChange,
   onRecordStemsChange,
@@ -917,11 +902,6 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   dualSliderRanges,
   getStatePresetSaveMetadata,
 }) => {
-  const audioEngineModes = coreSmokeModeAvailable
-    ? (['core-product', 'web-ts', 'core-smoke'] as const)
-    : (['core-product', 'web-ts'] as const);
-  const recordingAvailable = audioEngineMode !== 'core-product';
-  const stemRecordingAvailable = recordingAvailable;
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(
     () => {
       if (typeof window === 'undefined') return new Set(DEFAULT_GLOBAL_EXPANDED_SECTIONS);
@@ -1416,53 +1396,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
           </div>
         </div>
 
-        {showAudioEngineSwitcher && onAudioEngineModeChange && (
-          <div className="scene-card scene-engine-card">
-            <div className="scene-card-header">
-              <h3 className="scene-card-title">Audio Engine Test</h3>
-              <span className={`scene-run-pill ${audioEngineMode === 'core-product' ? 'running' : 'stopped'}`}>
-                {audioEngineMode === 'core-product' ? 'Product Core' : audioEngineMode === 'core-smoke' ? 'Smoke' : 'Web'}
-              </span>
-            </div>
-            <div className="scene-engine-switch">
-              <span className="scene-status-label">Runtime</span>
-              <div className="scene-engine-switch-stack">
-                <div className="scene-engine-switch-buttons" role="group" aria-label="Audio engine">
-                  {audioEngineModes.map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      className={`scene-engine-switch-btn${audioEngineMode === mode ? ' active' : ''}`}
-                      aria-pressed={audioEngineMode === mode}
-                      onClick={() => onAudioEngineModeChange(mode)}
-                      title={
-                        mode === 'web-ts'
-                          ? 'Switch to Web TS reference'
-                          : mode === 'core-smoke'
-                          ? 'Switch to Core smoke renderer'
-                          : 'Switch to Product Core'
-                      }
-                    >
-                      {mode === 'web-ts' ? 'Web TS' : mode === 'core-smoke' ? 'Smoke' : 'Product'}
-                    </button>
-                  ))}
-                </div>
-                <div className="scene-engine-cpu-compare" aria-label="Audio engine CPU comparison">
-                  {audioEngineModes.map((mode) => {
-                    const summary = audioEngineCpuSummaries?.[mode];
-                    return (
-                      <div key={mode} className={`scene-engine-cpu-row${audioEngineMode === mode ? ' active' : ''}`}>
-                        <span>{mode === 'web-ts' ? 'Web TS' : mode === 'core-smoke' ? 'Smoke' : 'Product'}</span>
-                        <span>avg {formatCpuPercent(summary?.avgPercent)}</span>
-                        <span>peak {formatCpuPercent(summary?.peakPercent)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {runtimeComparison && <GlobalRuntimeComparisonPanel {...runtimeComparison} />}
       </div>
 
       {/* Harmony Engine */}

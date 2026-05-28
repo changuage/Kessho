@@ -14,7 +14,10 @@ query parameter explicitly selects another runtime.
 Ownership:
 
 - `src/App.tsx`
-- `src/audio/runtime.ts`
+- `src/audio/product/ProductEngineProxy.ts`
+- `src/audio/product/ProductAudioRuntimeSelection.ts`
+- `src/audio/product/SelectedProductRuntime.ts`
+- `src/audio/product/ProductAudioEngineCompat.ts` (deprecated alias)
 - `src/audio/coreProduct*.ts`
 - `src/audio/CoreProduct*.ts`
 - `src/audio/generated/**`
@@ -39,7 +42,8 @@ default product path.
 
 Ownership:
 
-- `src/audio/engine.ts`
+- `src/audio/referenceAudioRuntime.ts`
+- `src/audio/reference/webTs/engine.ts`
 - `src/audio/drumSynth.ts`
 - `src/audio/lead4opfm.ts`
 - `src/audio/drumSequencer.ts`

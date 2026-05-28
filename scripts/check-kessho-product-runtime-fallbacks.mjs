@@ -11,8 +11,24 @@ import {
 const host = readProjectFile('src/audio/coreProductEngineHost.ts');
 const hostDiagnostics = readProjectFile('src/audio/product/host/CoreProductHostDiagnostics.ts');
 const fallbackDiagnostics = readProjectFile('src/audio/CoreProductFallbackDiagnostics.ts');
-const appRuntime = readProjectFile('src/audio/runtime.ts');
+const referenceRuntime = readProjectFile('src/audio/referenceAudioRuntime.ts');
 const app = readProjectFile('src/App.tsx');
+const audioEngineMediaSession = readProjectFile('src/ui/audioEngineMediaSession.ts');
+const selectedAudioEngineMediaSession = readProjectFile('src/ui/useSelectedAudioEngineMediaSession.ts');
+const selectedAudioEnginePlaybackControls = readProjectFile('src/ui/useSelectedAudioEnginePlaybackControls.ts');
+const selectedAudioEnginePlaybackRuntime = readProjectFile('src/ui/useSelectedAudioEnginePlaybackRuntime.ts');
+const selectedAudioEngineRuntimeShell = readProjectFile('src/ui/useSelectedAudioEngineRuntimeShell.ts');
+const productRuntimeSession = readProjectFile('src/ui/useProductRuntimeSession.ts');
+const productRuntimePlaybackRuntime = readProjectFile('src/ui/useProductRuntimePlaybackRuntime.ts');
+const productRuntimePlaybackAdapter = readProjectFile('src/ui/useProductRuntimePlaybackAdapter.ts');
+const productRuntimeUi = readProjectFile('src/ui/useProductRuntimeUi.ts');
+const selectedAudioEngineRecordingRuntime = readProjectFile('src/ui/useSelectedAudioEngineRecordingRuntime.ts');
+const audioRecordingHook = readProjectFile('src/ui/useAudioRecording.ts');
+const selectedRuntimeCapabilities = readProjectFile('src/ui/useSelectedAudioEngineRuntimeCapabilities.ts');
+const selectedRuntimeTelemetry = readProjectFile('src/ui/useSelectedAudioEngineRuntimeTelemetry.ts');
+const productRuntimeLifecycleSurface = readProjectFile('src/ui/useProductRuntimeLifecycleSurface.ts');
+const productRuntimeRecordingRuntime = readProjectFile('src/ui/useProductRuntimeRecordingRuntime.ts');
+const productRuntimeTelemetry = readProjectFile('src/ui/useProductRuntimeTelemetry.ts');
 const doc = readProjectFile('docs/kessho-product-runtime-fallback-classification.md');
 const getterPolicyDoc = readProjectFile('docs/kessho-product-getter-policies.md');
 const uiCallsiteFiles = [
@@ -76,20 +92,6 @@ function assertThrowsUnimplemented(harness, method) {
     assert(
       message === `AudioEngine.${method} is not implemented by core-product`,
       `${method} threw the wrong strict proxy error`,
-    );
-    return message;
-  }
-  throw new Error(`${method} did not throw`);
-}
-
-function assertThrowsExplicitlyUnsupportedGetter(harness, method) {
-  try {
-    harness.coreProductEngineHost[method](0.5);
-  } catch (error) {
-    const message = error && typeof error === 'object' && 'message' in error ? String(error.message) : String(error);
-    assert(
-      message === `AudioEngine.${method} is explicitly unavailable in core-product`,
-      `${method} threw the wrong explicit getter boundary error`,
     );
     return message;
   }
@@ -160,23 +162,122 @@ await runCheckWithReport({
     assert(rangeBody.includes('forbidden-production-fallback'), 'unmapped modulation range keys must be classified as forbidden production fallbacks');
     assert(rangeBody.includes('recordUnsupportedMethod'), 'unmapped modulation range keys must increment diagnostics through the host diagnostics adapter');
 
+    const retiredGuardedAppMethods = new Set([
+      'getDynamicsAnalyser',
+      'getDrumVoiceAnalyser',
+      'getGranularBufferWaveform',
+      'getLeadMorphedParams',
+      'getEarthTextureDebugState',
+      'getMediaStream',
+      'getLimiterNode',
+      'getRecordableBusNodes',
+      'getAllStemNodes',
+    ]);
     const missingRequiredMethods = [...usedAudioEngineMethods()]
+      .filter((name) => !retiredGuardedAppMethods.has(name))
       .filter((name) => !hostMethodNames().has(name))
       .sort();
     assert(
       missingRequiredMethods.length === 0,
       `core-product host is missing required app-facing AudioEngine methods: ${missingRequiredMethods.join(', ')}`,
     );
+    assert(
+      app.includes("from './ui/useProductRuntimeLifecycleSurface'") &&
+        app.includes('useProductRuntimeLifecycleSurface({') &&
+        !app.includes("from './ui/useSelectedAudioEngineRuntimeLifecycleSurface'") &&
+        !app.includes('useSelectedAudioEngineRuntimeLifecycleSurface({') &&
+        productRuntimeLifecycleSurface.includes("import { useProductRuntimeRecordingRuntime } from './useProductRuntimeRecordingRuntime'") &&
+        productRuntimeLifecycleSurface.includes("import { useProductRuntimeTelemetry } from './useProductRuntimeTelemetry'") &&
+        productRuntimeLifecycleSurface.includes("import { useProductRuntimeStateRuntime } from './useProductRuntimeStateRuntime'") &&
+        productRuntimeLifecycleSurface.includes("import { useProductRuntimeMacRecovery } from './useProductRuntimeMacRecovery'") &&
+        productRuntimeLifecycleSurface.includes('useProductRuntimeRecordingRuntime(options.audioEngineRuntimeMode)') &&
+        productRuntimeLifecycleSurface.includes('useProductRuntimeTelemetry({') &&
+        productRuntimeLifecycleSurface.includes('useProductRuntimeStateRuntime({') &&
+        productRuntimeLifecycleSurface.includes('useProductRuntimeMacRecovery({') &&
+        !productRuntimeLifecycleSurface.includes('useSelectedAudioEngineRuntimeLifecycleSurface') &&
+        !productRuntimeLifecycleSurface.includes('productEngine') &&
+        !productRuntimeLifecycleSurface.includes('selectedProductRuntime') &&
+        !productRuntimeLifecycleSurface.includes('referenceAudioEngineDebug'),
+      'App must consume runtime lifecycle through the product-named facade while the facade composes product lifecycle wrappers',
+    );
+    assert(
+      audioEngineMediaSession.includes("if (audioEngineRuntimeMode === 'core-product') return;") &&
+        selectedAudioEngineMediaSession.includes("from './audioEngineMediaSession'") &&
+        selectedAudioEngineMediaSession.includes('connectMediaSessionToWebAudio(audioEngineRuntimeMode)') &&
+    selectedAudioEnginePlaybackControls.includes('connectSelectedMediaSessionToAudio();') &&
+    selectedAudioEnginePlaybackControls.includes('await startSelectedAudioEngine(state);') &&
+    selectedAudioEnginePlaybackRuntime.includes("import { useProductRuntimePlaybackAdapter } from './useProductRuntimePlaybackAdapter'") &&
+    selectedAudioEnginePlaybackRuntime.includes('const playbackAdapter = useProductRuntimePlaybackAdapter({') &&
+    selectedAudioEnginePlaybackRuntime.includes('startSelectedPlayback: playbackAdapter.startProductPlayback') &&
+    selectedAudioEnginePlaybackRuntime.includes('preloadSelectedAudioEngine: playbackAdapter.preloadProductRuntime') &&
+    productRuntimePlaybackAdapter.includes("import { useSelectedAudioEngineMediaSession } from './useSelectedAudioEngineMediaSession'") &&
+    productRuntimePlaybackAdapter.includes("import { useSelectedAudioEnginePlaybackControls } from './useSelectedAudioEnginePlaybackControls'") &&
+    productRuntimePlaybackAdapter.includes('useSelectedAudioEngineMediaSession({') &&
+    productRuntimePlaybackAdapter.includes('useSelectedAudioEnginePlaybackControls({') &&
+    productRuntimePlaybackAdapter.includes('startProductPlayback') &&
+    productRuntimePlaybackAdapter.includes('preloadProductRuntime') &&
+        app.includes("from './ui/useProductRuntimeSession'") &&
+        app.includes('useProductRuntimeShell({') &&
+        !app.includes("from './ui/useSelectedAudioEngineRuntimeShell'") &&
+        !app.includes('useSelectedAudioEngineRuntimeShell({') &&
+        productRuntimeSession.includes("import { useProductRuntimePlaybackRuntime } from './useProductRuntimePlaybackRuntime'") &&
+        productRuntimeSession.includes("import { useProductRuntimeUi } from './useProductRuntimeUi'") &&
+        productRuntimeSession.includes('useProductRuntimePlaybackRuntime({') &&
+        productRuntimeSession.includes('useProductRuntimeUi({') &&
+        productRuntimeSession.includes('preloadProductRuntime: playbackRuntime.preloadProductRuntime') &&
+        productRuntimeSession.includes('stopProductRuntime: playbackRuntime.stopProductRuntime') &&
+        !productRuntimeSession.includes('useSelectedAudioEngineRuntimeShell') &&
+        !app.includes("from './ui/useSelectedAudioEnginePlaybackRuntime'") &&
+        !app.includes("from './ui/useSelectedAudioEngineRuntimeUi'") &&
+        productRuntimePlaybackRuntime.includes('useProductRuntimePlaybackAdapter(options)') &&
+        productRuntimeUi.includes("import { useProductRuntimeNavigation } from './useProductRuntimeNavigation'") &&
+        productRuntimeUi.includes("import { useProductRuntimePerf } from './useProductRuntimePerf'") &&
+        productRuntimeUi.includes('useProductRuntimeNavigation({') &&
+        productRuntimeUi.includes('useProductRuntimePerf(audioEngineRuntimeMode, runtimeNavigation.showAudioEngineSwitcher)') &&
+        !productRuntimeUi.includes('useSelectedAudioEngineRuntimeUi') &&
+        selectedAudioEngineRuntimeShell.includes("import { useSelectedAudioEnginePlaybackRuntime } from './useSelectedAudioEnginePlaybackRuntime'") &&
+        selectedAudioEngineRuntimeShell.includes("import { useSelectedAudioEngineRuntimeUi } from './useSelectedAudioEngineRuntimeUi'") &&
+        selectedAudioEngineRuntimeShell.includes('useSelectedAudioEnginePlaybackRuntime({') &&
+        selectedAudioEngineRuntimeShell.includes('useSelectedAudioEngineRuntimeUi({') &&
+        selectedAudioEngineRuntimeShell.includes('preloadSelectedAudioEngine: playbackRuntime.preloadSelectedAudioEngine') &&
+        selectedAudioEngineRuntimeShell.includes('stopSelectedAudioEngine: playbackRuntime.stopSelectedAudioEngine') &&
+        !app.includes("from './ui/useSelectedAudioEngineMediaSession'") &&
+        !app.includes("from './ui/useSelectedAudioEnginePlaybackControls'") &&
+        !app.includes("from './ui/audioEngineMediaSession'") &&
+        !app.includes('connectSelectedMediaSessionToAudio();') &&
+        app.includes('useProductRuntimeLifecycleSurface({') &&
+        !app.includes('useSelectedAudioEngineRecordingRuntime(audioEngineRuntimeMode)') &&
+        !app.includes("from './ui/useAudioRecording'") &&
+        productRuntimeLifecycleSurface.includes('useProductRuntimeRecordingRuntime(options.audioEngineRuntimeMode)') &&
+        productRuntimeRecordingRuntime.includes('useSelectedAudioEngineRecordingRuntime(audioEngineRuntimeMode)') &&
+        selectedAudioEngineRecordingRuntime.includes('useAudioRecording(audioEngineRuntimeMode)') &&
+        selectedAudioEngineRecordingRuntime.includes('startArmedRecordingAfterPlaybackStart') &&
+        selectedAudioEngineRecordingRuntime.includes('globalRecordingProps') &&
+        audioRecordingHook.includes("throw new Error('Recording is explicitly unavailable in core-product until a Product recording bridge exists')") &&
+        audioRecordingHook.includes("if (audioEngineRuntimeMode === 'core-product') {") &&
+        audioRecordingHook.includes('setRecordingDuration(0);'),
+      'retired recording/platform node getters must remain guarded away from core-product App paths',
+    );
 
-    for (const token of [
-      'import { isCoreProductRangeKeySupported }',
-      'coreProductSupportsRuntimeRangeKey(key',
-      "audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(keyStr)",
-      "audioEngineRuntimeMode === 'core-product' && !coreProductSupportsRuntimeRangeKey(key)",
-      'dualModeSupported',
-    ]) {
-      assert(app.includes(token), `App core-product unsupported-control gating is missing ${token}`);
-    }
+    assert(
+      app.includes("from './ui/useProductRuntimeLifecycleSurface'") &&
+        app.includes('useProductRuntimeLifecycleSurface({') &&
+        !app.includes("from './ui/useSelectedAudioEngineRuntimeTelemetry'") &&
+        !app.includes('useSelectedAudioEngineRuntimeTelemetry({') &&
+        app.includes('selectedRuntimeSupportsRangeKey') &&
+        !app.includes("from './ui/useSelectedAudioEngineRuntimeCapabilities'") &&
+        !app.includes("from './ui/useSelectedAudioEngineTelemetrySurface'") &&
+        app.includes('const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);') &&
+        selectedRuntimeTelemetry.includes('useSelectedAudioEngineTelemetrySurface(audioEngineRuntimeMode)') &&
+        productRuntimeLifecycleSurface.includes('useProductRuntimeTelemetry({') &&
+        productRuntimeTelemetry.includes('useSelectedAudioEngineRuntimeTelemetry(options)') &&
+        selectedRuntimeTelemetry.includes('useSelectedAudioEngineRuntimeCapabilities({') &&
+        selectedRuntimeTelemetry.includes('setSelectedVisualTelemetryActive: telemetrySurface.setSelectedVisualTelemetryActive') &&
+        selectedRuntimeCapabilities.includes('import { isCoreProductRangeKeySupported }') &&
+        selectedRuntimeCapabilities.includes("audioEngineRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key)") &&
+        selectedRuntimeCapabilities.includes("const active = audioEngineRuntimeMode === 'core-product' && uiMode === 'advanced'"),
+      'selected runtime capabilities must own Product Core unsupported-control and visual telemetry gating',
+    );
     assert(
       app.includes('const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);'),
       'App sliderProps must keep dual-slider UI state available for every non-single-only key',
@@ -202,10 +303,10 @@ await runCheckWithReport({
       assert(doc.includes(section), `runtime fallback documentation is missing ${section}`);
     }
 
-    assert(!appRuntime.includes('missingNoopMethods'), 'runtime must not keep missing-method no-op fallbacks');
-    assert(!appRuntime.includes('methodCache'), 'runtime proxy must not cache generated method wrappers');
-    assert(!appRuntime.includes('preInitGetterFallbacks'), 'runtime must not keep broad pre-init getter fallbacks');
-    assert(appRuntime.includes('preInitNullableLifecycleGetters'), 'runtime must keep only explicit nullable lifecycle getters before engine init');
+    assert(!referenceRuntime.includes('missingNoopMethods'), 'reference runtime must not keep missing-method no-op fallbacks');
+    assert(!referenceRuntime.includes('methodCache'), 'reference runtime proxy must not cache generated method wrappers');
+    assert(!referenceRuntime.includes('preInitGetterFallbacks'), 'reference runtime must not keep broad pre-init getter fallbacks');
+    assert(referenceRuntime.includes('preInitNullableLifecycleGetters'), 'reference runtime must keep only explicit nullable lifecycle getters before engine init');
     for (const forbiddenPreInitGetter of [
       'getCurrentFilterFreq:',
       'getCurrentLfo2Value:',
@@ -224,18 +325,18 @@ await runCheckWithReport({
       'getRecordableBusNodes:',
       'getTransportDebugState:',
     ]) {
-      assert(!appRuntime.includes(forbiddenPreInitGetter), `runtime must not fake ${forbiddenPreInitGetter} before engine init`);
+      assert(!referenceRuntime.includes(forbiddenPreInitGetter), `reference runtime must not fake ${forbiddenPreInitGetter} before engine init`);
     }
     for (const lifecycleGetter of [
       'getAudioContext: () => null',
     ]) {
-      assert(appRuntime.includes(lifecycleGetter), `runtime nullable lifecycle getter is missing ${lifecycleGetter}`);
+      assert(referenceRuntime.includes(lifecycleGetter), `reference runtime nullable lifecycle getter is missing ${lifecycleGetter}`);
     }
     for (const forbiddenLifecycleGetter of [
       'getLimiterNode: () => null',
       'getMediaStream: () => null',
     ]) {
-      assert(!appRuntime.includes(forbiddenLifecycleGetter), `runtime must not fake ${forbiddenLifecycleGetter} before engine init`);
+      assert(!referenceRuntime.includes(forbiddenLifecycleGetter), `reference runtime must not fake ${forbiddenLifecycleGetter} before engine init`);
     }
     addEvidence(report, {
       id: 'static-runtime-fallback-contract',
@@ -427,26 +528,32 @@ await runCheckWithReport({
       },
     });
 
-    const getterHarness = loadCoreProductHostHarness({ dev: true });
-    const getterThrownMessages = [
-      assertThrowsExplicitlyUnsupportedGetter(getterHarness, 'getDynamicsAnalyser'),
-      assertThrowsExplicitlyUnsupportedGetter(getterHarness, 'getLeadMorphedParams'),
+    const retiredGetterNames = [
+      'getDynamicsAnalyser',
+      'getDrumVoiceAnalyser',
+      'getGranularBufferWaveform',
+      'getLeadMorphedParams',
+      'getEarthTextureDebugState',
     ];
-    const getterFallbackDiagnostics = fallbackDiagnosticDetails(getterHarness.host);
-    assert(getterFallbackDiagnostics.unsupportedControlCount === 0, 'explicitly hidden getters must not be reported as runtime fallbacks');
-    assert(getterFallbackDiagnostics.unsupportedGetterCount === 0, 'explicitly hidden getters must not increment unsupportedGetterCount');
-    assert(getterFallbackDiagnostics.runtimeFallbackDiagnosticCount === 0, 'explicitly hidden getters must not increment runtimeFallbackDiagnosticCount');
-    assert(getterFallbackDiagnostics.audioCriticalFallbackCount === 0, 'explicitly hidden getters must not increment audioCriticalFallbackCount');
-    assert(getterFallbackDiagnostics.lastUnsupportedMethod === null, 'explicitly hidden getters must not record lastUnsupportedMethod');
-    assert(getterFallbackDiagnostics.lastUnsupportedMethodClass === null, 'explicitly hidden getters must not record lastUnsupportedMethodClass');
-    assert(getterHarness.consoleErrors.length === 0, 'explicitly hidden getters must not emit runtime fallback diagnostics');
+    for (const method of retiredGetterNames) {
+      assert(!hostMethodNames().has(method), `${method} must stay retired from the Product Core host surface`);
+    }
+    const guardedGetterHarness = loadCoreProductHostHarness({ dev: true });
+    const guardedGetterDiagnostics = fallbackDiagnosticDetails(guardedGetterHarness.host);
+    assert(guardedGetterDiagnostics.unsupportedControlCount === 0, 'guarded retired getters must not be reported as runtime fallbacks');
+    assert(guardedGetterDiagnostics.unsupportedGetterCount === 0, 'guarded retired getters must not increment unsupportedGetterCount');
+    assert(guardedGetterDiagnostics.runtimeFallbackDiagnosticCount === 0, 'guarded retired getters must not increment runtimeFallbackDiagnosticCount');
+    assert(guardedGetterDiagnostics.audioCriticalFallbackCount === 0, 'guarded retired getters must not increment audioCriticalFallbackCount');
+    assert(guardedGetterDiagnostics.lastUnsupportedMethod === null, 'guarded retired getters must not record lastUnsupportedMethod');
+    assert(guardedGetterDiagnostics.lastUnsupportedMethodClass === null, 'guarded retired getters must not record lastUnsupportedMethodClass');
+    assert(guardedGetterHarness.consoleErrors.length === 0, 'guarded retired getters must not emit runtime fallback diagnostics');
     addEvidence(report, {
-      id: 'explicit-hidden-getters-not-fallbacks',
-      summary: 'Explicitly hidden getters throw as Product Core API boundaries without entering runtime fallback diagnostics.',
+      id: 'guarded-retired-getters-not-fallbacks',
+      summary: 'Retired visual/debug getters are absent from the Product Core host and guarded away from core-product UI paths.',
       details: {
-        thrownMessages: getterThrownMessages,
-        ...getterFallbackDiagnostics,
-        consoleErrors: getterHarness.consoleErrors,
+        methods: retiredGetterNames,
+        ...guardedGetterDiagnostics,
+        consoleErrors: guardedGetterHarness.consoleErrors,
       },
     });
 
@@ -479,14 +586,14 @@ await runCheckWithReport({
     const surfacedTelemetryBlockers = Object.entries(getterPolicies)
       .filter(([, entry]) => /telemetry|debug|exposes/i.test(entry.blocker))
       .map(([getter, entry]) => ({ getter, classification: entry.classification, blocker: entry.blocker }));
-    assert(surfacedTelemetryBlockers.length >= 8, 'missing telemetry/debug getters must be surfaced with tracked blockers');
+    assert(surfacedTelemetryBlockers.length >= 7, 'Product Core telemetry-backed getters must be surfaced with tracked blockers');
     for (const { getter, classification } of surfacedTelemetryBlockers) {
       assert(getterPolicyDoc.includes(`\`${getter}\``), `${getter} is missing from Product Core getter policy docs`);
       assert(getterPolicyDoc.includes(`\`${classification}\``), `${getter} classification ${classification} is missing from Product Core getter policy docs`);
     }
     addEvidence(report, {
       id: 'documented-telemetry-getter-blockers',
-      summary: 'Product Core getter policies surface missing telemetry/debug APIs with documented blockers.',
+      summary: 'Product Core getter policies surface telemetry-backed APIs with documented blockers.',
       details: {
         surfacedTelemetryBlockers,
       },

@@ -1,5 +1,4 @@
 import type { RuntimeFallbackClassification } from '../../CoreProductFallbackDiagnostics';
-import type { CoreProductTelemetrySnapshot } from '../../coreProductTelemetry';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
 
 export class CoreProductHostDiagnostics {
@@ -28,14 +27,6 @@ export class CoreProductHostDiagnostics {
       lastUnsupportedMethodClass: this.lastUnsupportedMethodClass,
       lastSnapshotReloadReason: this.lastSnapshotReloadReason,
       snapshotReloadCpuMs: this.snapshotReloadCpuMs,
-    };
-  }
-
-  enrichTelemetry(telemetry: CoreProductTelemetrySnapshot): CoreProductTelemetrySnapshot {
-    return {
-      ...telemetry,
-      ...this.snapshot(),
-      lastSnapshotReloadReason: this.lastSnapshotReloadReason ?? undefined,
     };
   }
 

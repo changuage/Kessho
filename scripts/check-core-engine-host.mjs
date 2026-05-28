@@ -14,9 +14,10 @@ function read(path) {
   return readFileSync(resolve(root, path), 'utf8');
 }
 
-const runtime = read('src/audio/runtime.ts');
+const referenceRuntime = read('src/audio/referenceAudioRuntime.ts');
+const productAudioRuntimeSelection = read('src/audio/product/ProductAudioRuntimeSelection.ts');
 const host = read('src/audio/coreEngineHost.ts');
-const engine = read('src/audio/engine.ts');
+const engine = read('src/audio/reference/webTs/engine.ts');
 const drumSynth = read('src/audio/drumSynth.ts');
 const outputTrims = read('src/audio/outputTrims.ts');
 const dynamicsParams = read('src/audio/dynamicsCharacterParams.ts');
@@ -1791,16 +1792,26 @@ function assertWorkletMixerContract(source, label) {
   assertWorkletDelayADeferredInputBehavior(source, label);
 }
 
-assert(runtime.includes("case 'core-smoke':"), 'runtime must expose the Core smoke renderer behind ?engine=core-smoke');
-assert(!runtime.includes('isLegacyCoreBridgeOptInEnabled'), 'runtime must not hide the verified Core bridge behind a transitional opt-in');
-assert(!runtime.includes('legacyCoreBridge'), 'runtime must not require a legacy bridge query/storage escape hatch');
-assert(runtime.includes("if (typeof window === 'undefined') return 'core-product';"), 'runtime must default SSR to Product Core');
-assert(runtime.includes("'core-product'"), 'runtime must default browsers to Product Core');
-assert(runtime.includes("engineMode === 'core-smoke'"), 'runtime must gate the smoke host behind core-smoke mode');
-assert(runtime.includes("engineMode === 'core-product'"), 'runtime must keep core-product separate from the transitional core host');
-assert(runtime.includes("import('./coreEngineHost')"), 'runtime must dynamically load CoreEngineHost');
-assert(runtime.includes("import('./coreProductEngineHost')"), 'runtime must dynamically load CoreProductEngineHost');
-assert(runtime.includes("import('./engine')"), 'runtime must keep the existing web engine fallback');
+assert(referenceRuntime.includes("case 'core-smoke':"), 'reference runtime must expose the Core smoke renderer behind ?engine=core-smoke');
+assert(!referenceRuntime.includes('isLegacyCoreBridgeOptInEnabled'), 'reference runtime must not hide the verified Core bridge behind a transitional opt-in');
+assert(!referenceRuntime.includes('legacyCoreBridge'), 'reference runtime must not require a legacy bridge query/storage escape hatch');
+const runtimeSelectionBody = readFunctionBody(productAudioRuntimeSelection, 'getAudioEngineRuntimeMode', 'ProductAudioRuntimeSelection');
+assert(
+  runtimeSelectionBody.includes("if (typeof window === 'undefined') return getProductionAudioEngineRuntimeMode();") &&
+    productAudioRuntimeSelection.includes('getProductEngineRuntimeMode()'),
+  'product runtime selection must default SSR to Product Core through the ProductEngineProxy decision point',
+);
+assert(
+  runtimeSelectionBody.includes("if (!isDevRuntime()) return getProductionAudioEngineRuntimeMode();") &&
+    productAudioRuntimeSelection.includes('getProductEngineRuntimeMode()'),
+  'product runtime selection must force Product Core outside dev/reference builds through the ProductEngineProxy decision point',
+);
+assert(productAudioRuntimeSelection.includes("'core-product'"), 'product runtime selection must default browsers to Product Core');
+assert(referenceRuntime.includes("engineMode === 'core-smoke'"), 'reference runtime must gate the smoke host behind core-smoke mode');
+assert(!referenceRuntime.includes("engineMode === 'core-product'"), 'reference runtime must not load Product Core');
+assert(referenceRuntime.includes("import('./coreEngineHost')"), 'reference runtime must dynamically load CoreEngineHost');
+assert(!referenceRuntime.includes("import('./coreProductEngineHost')"), 'reference runtime must not dynamically load CoreProductEngineHost');
+assert(referenceRuntime.includes("import('./reference/webTs/engine')"), 'reference runtime must keep the existing web engine fallback behind the reference namespace');
 
 for (const token of [
   'class CoreEngineHost',
@@ -1948,7 +1959,7 @@ for (const token of [
   'morphWaterPresets',
   'REVERB_MODULE_PARAM_COUNT = 30',
   'DELAY_A_MODULE_PARAM_COUNT = 16',
-  'DELAY_B_MODULE_PARAM_COUNT = 16',
+  'DELAY_B_MODULE_PARAM_COUNT = 24',
   'DELAY_A_FILTER_TYPE_VALUES',
   '* ENGINE_TRIMS.reverb',
   'delayNoteToSeconds(delayNoteL, bpm) * 1000',
@@ -1979,7 +1990,7 @@ for (const token of [
 }
 
 for (const token of [
-  'audioEngine.updateParams(newState, {',
+  'onUpdateEngine?.(newState, {',
   'presetId: migrated.name',
   'presetName: migrated.name',
 ]) {
@@ -1987,9 +1998,9 @@ for (const token of [
 }
 
 assert(
-  runtime.includes('if (candidate !== undefined) return candidate;') &&
-    runtime.includes('return createMethodProxy(property as EngineMethod);'),
-  'runtime proxy must keep getter/no-op fallbacks after an engine is loaded',
+  referenceRuntime.includes('if (candidate !== undefined) return candidate;') &&
+    referenceRuntime.includes('return createMethodProxy(property as EngineMethod);'),
+  'reference runtime proxy must keep getter/no-op fallbacks after an engine is loaded',
 );
 
 for (const token of [
@@ -2002,7 +2013,7 @@ for (const token of [
 }
 
 for (const token of [
-  "import { toDynamicsCharacterParamObject } from './dynamicsCharacterParams'",
+  "import { toDynamicsCharacterParamObject } from '../../dynamicsCharacterParams'",
   'const params = toDynamicsCharacterParamObject(targets);',
 ]) {
   assert(engine.includes(token), `AudioEngine dynamics worklet mapping is missing ${token}`);

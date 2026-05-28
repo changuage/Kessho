@@ -76,6 +76,14 @@ export class CoreProductRuntime {
       return;
     }
 
+    this.readyPromise = this.initializeRuntime().catch((error: unknown) => {
+      this.readyPromise = null;
+      throw error;
+    });
+    await this.readyPromise;
+  }
+
+  private async initializeRuntime(): Promise<void> {
     const context = new AudioContext();
     this.context = context;
     const base = new URL(import.meta.env.BASE_URL, window.location.origin);
@@ -87,7 +95,7 @@ export class CoreProductRuntime {
       return response.arrayBuffer();
     });
 
-    this.readyPromise = new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const node = new AudioWorkletNode(context, 'kessho-core-product', {
         numberOfInputs: 0,
         numberOfOutputs: 1,
@@ -155,8 +163,6 @@ export class CoreProductRuntime {
       this.startTelemetryLoop();
       this.syncVisualTelemetryLoop();
     });
-
-    await this.readyPromise;
   }
 
   async resume(): Promise<void> {
@@ -256,6 +262,17 @@ export class CoreProductRuntime {
       flags: asset.flags,
       channels: asset.channels,
     }, asset.channels.map((channel) => channel.buffer));
+  }
+
+  unregisterAsset(assetId: number): void {
+    const normalizedAssetId = Math.trunc(Number(assetId));
+    if (!Number.isFinite(normalizedAssetId) || normalizedAssetId <= 0) {
+      throw new Error(`Core Product asset id is invalid: ${String(assetId)}`);
+    }
+    this.requireNode('unregisterAsset').port.postMessage({
+      type: 'unregister-asset',
+      assetId: normalizedAssetId,
+    });
   }
 
   private requireNode(operation: string): AudioWorkletNode {

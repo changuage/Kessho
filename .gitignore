@@ -77,6 +77,7 @@ Digitone/
 libdigitone/
 
 # Backup files
+backups/
 src/audio/*_backup_*.ts
 public/*_backup_*.html
 
@@ -84,6 +85,7 @@ public/*_backup_*.html
 .venv/
 .venv312/
 .python312/
+.local/
 .local/python-build/
 __pycache__/
 *.pyc

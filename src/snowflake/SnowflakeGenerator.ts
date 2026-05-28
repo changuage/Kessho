@@ -142,8 +142,8 @@ function normalizeParams(params: SnowflakeParams): SnowflakeParams {
     family: params.family ?? 'classicDendrite',
     symmetry: {
       ...params.symmetry,
-      arms: 6,
-      rotationOffset: 0,
+      arms: clamp(Math.round(params.symmetry.arms), 1, 12),
+      rotationOffset: Number.isFinite(params.symmetry.rotationOffset) ? params.symmetry.rotationOffset : 0,
     },
     geometry: {
       ...params.geometry,

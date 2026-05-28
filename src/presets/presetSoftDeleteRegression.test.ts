@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-import { extractCascade, extractParams } from './codec';
+import { extractCascade, extractParams, getVersionData } from './codec';
 import { HybridPresetStore } from './HybridPresetStore';
 import type { IPresetStore } from './PresetStore';
 import { SupabasePresetStore } from './SupabasePresetStore';
@@ -250,6 +250,7 @@ class FakeSupabaseClient {
     presets: [] as FakeRow[],
   };
   presetsV2HardDeleteAttempts = 0;
+  failNextAtomicRefInsert = false;
   authUserId: string | null = null;
   private nextId = 1;
   private clock = Date.parse('2026-05-19T12:00:00.000Z');
@@ -261,6 +262,18 @@ class FakeSupabaseClient {
   async rpc(functionName: string, args: Record<string, unknown>): Promise<{ data: unknown; error: { message: string } | null }> {
     if (functionName === 'kessho_soft_delete_preset_v2') {
       return this.softDeletePreset(String(args.target_preset_id));
+    }
+
+    if (functionName === 'kessho_soft_delete_legacy_preset') {
+      return this.softDeleteLegacyPreset(
+        String(args.target_type),
+        String(args.target_name),
+        (args.target_scope as string | null | undefined) ?? null,
+      );
+    }
+
+    if (functionName === 'kessho_save_preset_v2') {
+      return this.atomicSavePresetV2(args);
     }
 
     return {
@@ -415,6 +428,135 @@ class FakeSupabaseClient {
     return { data: true, error: null };
   }
 
+  private softDeleteLegacyPreset(
+    targetType: string,
+    targetName: string,
+    targetScope: string | null,
+  ): { data: boolean | null; error: { message: string } | null } {
+    const normalizedName = targetName.trim().toLowerCase();
+    const target = this.tables.presets.find(row => (
+      row.type === targetType
+      && String(row.name).trim().toLowerCase() === normalizedName
+      && (row.scope ?? null) === targetScope
+      && row.deleted_at == null
+      && (row.user_id === this.authUserId || row.user_id == null)
+    ));
+    if (!target || !this.authUserId) return { data: false, error: null };
+
+    target.deleted_at = this.now();
+    target.deleted_by = this.authUserId;
+    target.archived = true;
+    target.updated_at = this.now();
+    return { data: true, error: null };
+  }
+
+  private atomicSavePresetV2(args: Record<string, unknown>): { data: unknown; error: { message: string } | null } {
+    const snapshot = {
+      presets_v2: structuredClone(this.tables.presets_v2),
+      preset_versions_v2: structuredClone(this.tables.preset_versions_v2),
+      preset_version_refs_v2: structuredClone(this.tables.preset_version_refs_v2),
+      preset_payloads_v2: structuredClone(this.tables.preset_payloads_v2),
+      nextId: this.nextId,
+      clock: this.clock,
+      failNextAtomicRefInsert: this.failNextAtomicRefInsert,
+    };
+
+    try {
+      const identity = args.identity_payload as FakeRow;
+      const version = args.version_payload as FakeRow;
+      const payloads = (args.payloads_payload as FakeRow[] | undefined) ?? [];
+      const refs = (args.refs_payload as FakeRow[] | undefined) ?? [];
+
+      for (const payload of payloads) {
+        this.upsert('preset_payloads_v2', {
+          hash: payload.hash,
+          payload_kind: payload.payload_kind,
+          payload: payload.payload,
+        });
+      }
+
+      const scope = (identity.scope as string | null | undefined) ?? null;
+      const nameKey = String(identity.name).trim().toLowerCase();
+      let preset = identity.id
+        ? this.tables.presets_v2.find(row => row.id === identity.id && !row.deleted_at)
+        : this.tables.presets_v2.find(row => (
+          !row.deleted_at
+          && row.owner_key === identity.owner_key
+          && row.type === identity.type
+          && (row.scope ?? null) === scope
+          && row.name.trim().toLowerCase() === nameKey
+        ));
+
+      if (preset) {
+        Object.assign(preset, {
+          owner_key: identity.owner_key,
+          owner_user_id: identity.owner_user_id ?? preset.owner_user_id,
+          type: identity.type,
+          scope,
+          name: identity.name,
+          author: identity.author,
+          library: identity.library,
+          creator: identity.creator,
+          description: identity.description,
+          tags: identity.tags ?? [],
+          visibility: identity.visibility,
+          family_name: identity.family_name,
+          variant_name: identity.variant_name,
+          variant_rank: identity.variant_rank,
+          forked_from: identity.forked_from,
+          rating: identity.rating,
+          updated_at: this.now(),
+        });
+      } else {
+        preset = this.insertPreset(identity) as unknown as FakePresetV2Row;
+      }
+
+      const versionRow = this.insertPresetVersion({
+        ...version,
+        preset_id: preset.id,
+      }) as unknown as FakePresetVersionV2Row;
+
+      if (this.failNextAtomicRefInsert) {
+        this.failNextAtomicRefInsert = false;
+        throw new Error('simulated atomic ref insert failure');
+      }
+
+      for (const ref of refs) {
+        const target = this.tables.presets_v2.find(row => row.id === ref.target_preset_id && !row.deleted_at);
+        if (!target) throw new Error(`missing ref target ${String(ref.target_preset_id)}`);
+        this.tables.preset_version_refs_v2.push({
+          version_id: versionRow.id,
+          ref_slot: ref.ref_slot,
+          target_preset_id: ref.target_preset_id,
+          target_version_no: null,
+          follow_latest: true,
+          override_hash: ref.override_hash ?? null,
+          created_at: ref.created_at ?? versionRow.created_at,
+        });
+      }
+
+      return {
+        data: {
+          preset,
+          version: versionRow,
+        },
+        error: null,
+      };
+    } catch (error) {
+      this.tables.presets_v2.splice(0, this.tables.presets_v2.length, ...snapshot.presets_v2);
+      this.tables.preset_versions_v2.splice(0, this.tables.preset_versions_v2.length, ...snapshot.preset_versions_v2);
+      this.tables.preset_version_refs_v2.splice(0, this.tables.preset_version_refs_v2.length, ...snapshot.preset_version_refs_v2);
+      this.tables.preset_payloads_v2.splice(0, this.tables.preset_payloads_v2.length, ...snapshot.preset_payloads_v2);
+      this.nextId = snapshot.nextId;
+      this.clock = snapshot.clock;
+      this.failNextAtomicRefInsert = false;
+      return {
+        data: null,
+        error: { message: error instanceof Error ? error.message : String(error) },
+      };
+    }
+  }
+
   private activeRootsReferencing(targetPresetId: string): FakePresetV2Row[] {
     const roots = this.tables.presets_v2.filter(row => !row.deleted_at && row.latest_version_id);
     const blockers: FakePresetV2Row[] = [];
@@ -440,7 +582,9 @@ class FakeSupabaseClient {
 }
 
 function matchesFilter(row: FakeRow, filter: Filter): boolean {
-  const value = row[filter.column];
+  const value = filter.column === 'name_key'
+    ? String(row.name ?? '').trim().toLowerCase()
+    : row[filter.column];
   switch (filter.kind) {
     case 'eq':
       return value === filter.value;
@@ -711,6 +855,121 @@ async function testJourneyRefsPersistAsSupabaseV2GraphEdges(): Promise<void> {
   assert.equal(state.deleted_at, null, 'blocked state delete should leave the row active until Journey cleanup runs');
 }
 
+async function testUnresolvedJourneyRefFailsClosed(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '88888888-8888-4888-8888-888888888888';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const journeyName = 'Journey Missing State';
+  const config = createDiamondJourney([]);
+  const left = config.nodes.find((node) => node.position === 'left')!;
+  left.presetId = 'Missing State Ref';
+  left.presetName = 'Missing State Ref';
+  config.name = journeyName;
+  const slot = getJourneyNodeRefSlot('left');
+  const timestamp = Date.parse('2026-05-19T12:00:00.000Z');
+
+  await assert.rejects(
+    () => store.save({
+      type: 'journey',
+      name: journeyName,
+      author: 'user',
+      library: 'cloud',
+      creator: 'Soft Delete Regression',
+      visibility: 'public',
+      familyName: journeyName,
+      variantName: journeyName,
+      tags: ['journey'],
+      versions: [{
+        v: 1,
+        note: 'missing explicit ref should fail',
+        timestamp,
+        data: encodeJourneyPresetData(config) as unknown as Record<string, unknown>,
+        refs: {
+          [slot]: { name: 'Missing State Ref', version: 'latest', scope: 'global' },
+        },
+      }],
+      currentVersion: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }),
+    /unresolved journey ref/,
+    'journey saves must fail closed when an explicit state ref cannot be resolved',
+  );
+
+  const journey = client.tables.presets_v2.find(row => row.type === 'journey' && row.name === journeyName);
+  assert.equal(journey, undefined, 'failed explicit ref save must not create a logical row');
+  assert.equal(
+    client.tables.preset_versions_v2.length,
+    0,
+    'failed explicit ref save must not commit a version row',
+  );
+}
+
+async function testAtomicSaveRollsBackWhenRefInsertFails(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '13131313-1313-4131-8131-131313131313';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const stateName = 'Atomic State Target';
+  const journeyName = 'Atomic Journey Rollback';
+  await store.save(makePresetEntry('state', 'global', stateName, DEFAULT_STATE as unknown as Record<string, unknown>));
+
+  const config = createDiamondJourney([]);
+  const left = config.nodes.find((node) => node.position === 'left')!;
+  left.presetId = stateName;
+  left.presetName = stateName;
+  config.name = journeyName;
+  const slot = getJourneyNodeRefSlot('left');
+  const timestamp = Date.parse('2026-05-19T12:00:00.000Z');
+
+  const presetCountBefore = client.tables.presets_v2.length;
+  const versionCountBefore = client.tables.preset_versions_v2.length;
+  const refCountBefore = client.tables.preset_version_refs_v2.length;
+  client.failNextAtomicRefInsert = true;
+
+  await assert.rejects(
+    () => store.save({
+      type: 'journey',
+      name: journeyName,
+      author: 'user',
+      library: 'cloud',
+      creator: 'Soft Delete Regression',
+      visibility: 'public',
+      familyName: journeyName,
+      variantName: journeyName,
+      tags: ['journey'],
+      versions: [{
+        v: 1,
+        note: 'atomic ref insert failure',
+        timestamp,
+        data: encodeJourneyPresetData(config) as unknown as Record<string, unknown>,
+        refs: {
+          [slot]: { name: stateName, version: 'latest', scope: 'global' },
+        },
+      }],
+      currentVersion: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }),
+    /simulated atomic ref insert failure/,
+    'atomic V2 save should surface ref insert failures',
+  );
+
+  assert.equal(client.tables.presets_v2.length, presetCountBefore, 'atomic ref failure must roll back the logical preset row');
+  assert.equal(client.tables.preset_versions_v2.length, versionCountBefore, 'atomic ref failure must roll back the version row');
+  assert.equal(client.tables.preset_version_refs_v2.length, refCountBefore, 'atomic ref failure must not leave partial refs');
+  assert.equal(
+    client.tables.presets_v2.some(row => row.type === 'journey' && row.name === journeyName),
+    false,
+    'failed atomic save must not publish the journey preset',
+  );
+}
+
 async function testHistoricalOnlyReferenceAllowsSoftDelete(): Promise<void> {
   const client = new FakeSupabaseClient();
   const store = new SupabasePresetStore(client as never);
@@ -792,6 +1051,117 @@ async function testLatestVersionRollupClearsStaleMetadata(): Promise<void> {
   assert.equal(row.latest_metadata_hash, v2.metadata_hash, 'preset metadata rollup should exactly match latest version metadata');
 }
 
+async function testLoadReportsRecoveryWarningForMissingSelectedCache(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '12121212-1212-4121-8121-121212121212';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const padData = extractParams(DEFAULT_STATE, 1, 'pad1');
+  await store.save(makePresetEntry('engine', 'pad1', 'Recovered Missing Cache', padData));
+
+  const row = findPresetRow(client, 'engine', 'pad1', 'Recovered Missing Cache');
+  const latest = client.tables.preset_versions_v2.find(version => version.id === row.latest_version_id);
+  assert.ok(latest, 'expected latest version to exist');
+  latest.resolved_hash = null;
+
+  const loaded = await store.load('engine', 'Recovered Missing Cache', 'pad1');
+  assert.ok(loaded, 'preset with a missing selected resolved cache should still load');
+  assert.equal(
+    loaded.recoveryWarnings?.some(warning => (
+      warning.slot === 'resolved'
+      && warning.reason === 'missing_payload'
+      && warning.version === latest.version_no
+    )),
+    true,
+    'load should report a recovery warning for the missing selected resolved cache',
+  );
+}
+
+async function testMissingChildPayloadLoadsSilentFallback(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '34343434-3434-4343-8343-343434343434';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const stateData = extractCascade({
+    ...DEFAULT_STATE,
+    reverbEnabled: true,
+    reverbLevel: 0.8,
+  }, 4, 'global');
+  await store.save(makePresetEntry('state', 'global', 'Recovered Missing Reverb', stateData));
+
+  const stateRow = findPresetRow(client, 'state', 'global', 'Recovered Missing Reverb');
+  const version = client.tables.preset_versions_v2.find(candidate => candidate.id === stateRow.latest_version_id);
+  assert.ok(version, 'expected saved state version');
+  version.resolved_hash = null;
+
+  const reverbTarget = latestRefTarget(client, stateRow, 'reverb');
+  assert.ok(reverbTarget, 'expected state preset to reference a reverb child');
+  reverbTarget.latest_resolved_hash = null;
+
+  const loaded = await store.load('state', 'Recovered Missing Reverb', 'global');
+  assert.ok(loaded, 'state with missing reverb child payload should still load');
+  const loadedData = getVersionData(loaded);
+  assert.ok(loadedData, 'loaded state should expose materialized data');
+  assert.equal(loadedData.reverbEnabled, false, 'missing reverb should load disabled');
+  assert.equal(loadedData.reverbLevel, 0, 'missing reverb should not keep an audible output level');
+  assert.equal(
+    loaded.recoveryWarnings?.some(warning => warning.slot === 'reverb' && warning.fallback === 'off'),
+    true,
+    'missing reverb child should report an off fallback warning',
+  );
+}
+
+async function testLegacyDeleteUsesSoftDeleteRpc(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '99999999-9999-4999-8999-999999999999';
+  client.authUserId = userId;
+  store.setUserId(userId);
+  store['v2SchemaAvailable'] = false;
+
+  client.insert('presets', {
+    user_id: userId,
+    type: 'engine',
+    scope: 'pad1',
+    name: 'Legacy Soft Delete',
+    author: 'user',
+    library: 'cloud',
+    creator: 'Legacy',
+    description: null,
+    tags: [],
+    visibility: 'public',
+    family_name: 'Legacy Soft Delete',
+    variant_name: 'Legacy Soft Delete',
+    variant_rank: null,
+    versions: [{
+      v: 1,
+      note: 'legacy row should soft delete',
+      timestamp: Date.parse('2026-05-19T12:00:00.000Z'),
+      data: extractParams(DEFAULT_STATE, 1, 'pad1'),
+    }],
+    current_version: 1,
+    rating: null,
+    plays: 0,
+    created_at: client.now(),
+    updated_at: client.now(),
+    deleted_at: null,
+    deleted_by: null,
+    archived: false,
+  });
+
+  await store.delete('engine', 'Legacy Soft Delete', 'pad1');
+
+  const row = client.tables.presets.find(candidate => candidate.name === 'Legacy Soft Delete');
+  assert.ok(row, 'legacy soft delete should keep the legacy row');
+  assert.equal(typeof row.deleted_at, 'string', 'legacy soft delete should set deleted_at');
+  assert.equal(row.deleted_by, userId, 'legacy soft delete should set deleted_by');
+  assert.equal(row.archived, true, 'legacy soft delete should archive the row');
+}
+
 function testRecycleBinSqlContainsGraphGuards(): void {
   const sql = fs.readFileSync('docs/preset_storage_v2_recycle_bin.sql', 'utf8');
   assert.match(sql, /kessho_guard_preset_recycle_update_v2/, 'SQL patch should guard direct deleted_at edits');
@@ -863,8 +1233,13 @@ async function testSharedV2DoesNotLeakLegacyRows(): Promise<void> {
 await testSupabaseDeleteMovesPresetToRecycleBin();
 await testActiveDependencyBlocksSoftDeleteAcrossL1ToL4();
 await testJourneyRefsPersistAsSupabaseV2GraphEdges();
+await testUnresolvedJourneyRefFailsClosed();
+await testAtomicSaveRollsBackWhenRefInsertFails();
 await testHistoricalOnlyReferenceAllowsSoftDelete();
 await testLatestVersionRollupClearsStaleMetadata();
+await testLoadReportsRecoveryWarningForMissingSelectedCache();
+await testMissingChildPayloadLoadsSilentFallback();
+await testLegacyDeleteUsesSoftDeleteRpc();
 testRecycleBinSqlContainsGraphGuards();
 await testHybridSharedDeletePropagatesCloudFailure();
 await testSharedV2DoesNotLeakLegacyRows();

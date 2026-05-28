@@ -279,7 +279,6 @@ BEGIN
            AND target.deleted_at <= now() - retention
            AND protected_target.preset_id IS NULL
            AND protected_owner_version.version_id IS NULL
-           AND owner_version.resolved_hash IS NOT NULL
            AND (
              owner.deleted_at IS NULL
              OR owner.deleted_at <= now() - retention

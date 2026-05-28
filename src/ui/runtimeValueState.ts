@@ -1,12 +1,14 @@
 import { useSyncExternalStore } from 'react';
 
 type RuntimeValueStoreState = {
+  version: number;
   values: Record<string, number>;
 };
 
 const listeners = new Set<() => void>();
 
 let storeState: RuntimeValueStoreState = {
+  version: 0,
   values: {},
 };
 
@@ -29,6 +31,7 @@ function recordsEqual(left: Record<string, number>, right: Record<string, number
 
 function emit(nextValues: Record<string, number>): void {
   storeState = {
+    version: storeState.version + 1,
     values: nextValues,
   };
   listeners.forEach((listener) => listener());
@@ -82,5 +85,13 @@ export function useRuntimeValue(
     subscribe,
     () => getRuntimeValue(key) ?? fallback,
     () => fallback,
+  );
+}
+
+export function useRuntimeValueVersion(): number {
+  return useSyncExternalStore(
+    subscribe,
+    () => storeState.version,
+    () => 0,
   );
 }

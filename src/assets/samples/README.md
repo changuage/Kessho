@@ -10,7 +10,7 @@ This ensures deterministic output without requiring external audio files.
 To use a custom audio file as the Paulstretch source:
 
 1. Add a short WAV file (2-10 seconds recommended)
-2. Modify `src/audio/engine.ts` to load the file:
+2. Modify `src/audio/reference/webTs/engine.ts` to load the file:
 
 ```typescript
 // In triggerPaulstretchRender():

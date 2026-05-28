@@ -122,8 +122,111 @@ function writeGateReport(report) {
 }
 
 const app = read('src/App.tsx');
-const runtime = read('src/audio/runtime.ts');
+const audioEngineRuntimeUi = read('src/ui/audioEngineRuntimeUi.ts');
+const audioEngineRuntimeSwitch = read('src/ui/AudioEngineRuntimeSwitch.tsx');
+const selectedAudioEngineRuntimeSwitch = read('src/ui/SelectedAudioEngineRuntimeSwitch.tsx');
+const productRuntimeSwitch = read('src/ui/ProductRuntimeSwitch.tsx');
+const audioEngineRuntimeNavigation = read('src/ui/useAudioEngineRuntimeNavigation.ts');
+const productRuntimeNavigationCore = read('src/ui/useProductRuntimeNavigationCore.ts');
+const productRuntimeSession = read('src/ui/useProductRuntimeSession.ts');
+const productRuntimeModeSession = read('src/ui/useProductRuntimeModeSession.ts');
+const productRuntimePlaybackRuntime = read('src/ui/useProductRuntimePlaybackRuntime.ts');
+const productRuntimePlaybackAdapter = read('src/ui/useProductRuntimePlaybackAdapter.ts');
+const productRuntimeUi = read('src/ui/useProductRuntimeUi.ts');
+const selectedAudioEngineRuntimeSession = read('src/ui/useSelectedAudioEngineRuntimeSession.ts');
+const selectedAudioEngineRuntimeUi = read('src/ui/useSelectedAudioEngineRuntimeUi.ts');
+const selectedAudioEngineGlobalRuntimeProps = read('src/ui/useSelectedAudioEngineGlobalRuntimeProps.ts');
+const productRuntimeGlobalSurface = read('src/ui/useProductRuntimeGlobalSurface.ts');
+const selectedAudioEngineGlobalRuntimeSurface = read('src/ui/useSelectedAudioEngineGlobalRuntimeSurface.ts');
+const productEngineProxy = read('src/audio/product/ProductEngineProxy.ts');
+const productAudioEngineCompat = read('src/audio/product/ProductAudioEngineCompat.ts');
+const selectedProductRuntime = read('src/audio/product/SelectedProductRuntime.ts');
+const productAudioRuntimeSelection = read('src/audio/product/ProductAudioRuntimeSelection.ts');
+const productRuntimeCapabilityReport = read('src/audio/product/ProductRuntimeCapabilityReport.ts');
 const globalPage = read('src/ui/global/GlobalPage.tsx');
+const globalRuntimeComparisonPanel = read('src/ui/global/GlobalRuntimeComparisonPanel.tsx');
+const audioRecording = read('src/ui/useAudioRecording.ts');
+const selectedAudioEngineMacRecovery = read('src/ui/useSelectedAudioEngineMacRecovery.ts');
+const selectedAudioEngineLiveTriggerCallbacks = read('src/ui/useSelectedAudioEngineLiveTriggerCallbacks.ts');
+const selectedAudioEngineEvolveOverrideCallbacks = read('src/ui/useSelectedAudioEngineEvolveOverrideCallbacks.ts');
+const selectedAudioEngineRuntimeValueCleanup = read('src/ui/useSelectedAudioEngineRuntimeValueCleanup.ts');
+const selectedAudioEngineRuntimeWalkSync = read('src/ui/useSelectedAudioEngineRuntimeWalkSync.ts');
+const selectedAudioEngineRangeSync = read('src/ui/useSelectedAudioEngineRangeSync.ts');
+const productRuntimeCoordination = read('src/ui/useProductRuntimeCoordination.ts');
+const productRuntimeEvolveOverrideCallbacks = read('src/ui/useProductRuntimeEvolveOverrideCallbacks.ts');
+const productRuntimeRangeSync = read('src/ui/useProductRuntimeRangeSync.ts');
+const productRuntimeValueCleanup = read('src/ui/useProductRuntimeValueCleanup.ts');
+const productRuntimeWalkSync = read('src/ui/useProductRuntimeWalkSync.ts');
+const selectedAudioEngineRuntimeCoordination = read('src/ui/useSelectedAudioEngineRuntimeCoordination.ts');
+const runtimeWalkPositionSync = read('src/ui/runtimeWalkPositionSync.ts');
+const selectedAudioEngineRuntimeCapabilities = read('src/ui/useSelectedAudioEngineRuntimeCapabilities.ts');
+const selectedAudioEngineRuntimeTelemetry = read('src/ui/useSelectedAudioEngineRuntimeTelemetry.ts');
+const productRuntimeLifecycleSurface = read('src/ui/useProductRuntimeLifecycleSurface.ts');
+const productRuntimeMacRecovery = read('src/ui/useProductRuntimeMacRecovery.ts');
+const productRuntimeRecordingRuntime = read('src/ui/useProductRuntimeRecordingRuntime.ts');
+const productRuntimeStateRuntime = read('src/ui/useProductRuntimeStateRuntime.ts');
+const productRuntimeTelemetry = read('src/ui/useProductRuntimeTelemetry.ts');
+const selectedAudioEngineRuntimeLifecycleSurface = read('src/ui/useSelectedAudioEngineRuntimeLifecycleSurface.ts');
+const selectedAudioEngineStateReconciliation = read('src/ui/useSelectedAudioEngineStateReconciliation.ts');
+const selectedAudioEngineTransportDebug = read('src/ui/useSelectedAudioEngineTransportDebug.ts');
+const selectedAudioEngineStateRuntime = read('src/ui/useSelectedAudioEngineStateRuntime.ts');
+const selectedAudioEngineMediaSession = read('src/ui/useSelectedAudioEngineMediaSession.ts');
+const selectedAudioEnginePlaybackControls = read('src/ui/useSelectedAudioEnginePlaybackControls.ts');
+const selectedAudioEnginePlaybackRuntime = read('src/ui/useSelectedAudioEnginePlaybackRuntime.ts');
+const selectedAudioEngineRuntimeShell = read('src/ui/useSelectedAudioEngineRuntimeShell.ts');
+const selectedAudioEngineStartAction = read('src/ui/useSelectedAudioEngineStartAction.ts');
+const selectedAudioEnginePlaybackStartState = read('src/ui/useSelectedAudioEnginePlaybackStartState.ts');
+const selectedAudioEngineJourneyPlaybackAction = read('src/ui/useSelectedAudioEngineJourneyPlaybackAction.ts');
+const selectedAudioEngineStopAction = read('src/ui/useSelectedAudioEngineStopAction.ts');
+const selectedAudioEnginePresetLoadFade = read('src/ui/useSelectedAudioEnginePresetLoadFade.ts');
+const selectedAudioEnginePlaybackUiProps = read('src/ui/useSelectedAudioEnginePlaybackUiProps.ts');
+const productRuntimePlaybackSurface = read('src/ui/useProductRuntimePlaybackSurface.ts');
+const productRuntimeJourneyPlaybackAction = read('src/ui/useProductRuntimeJourneyPlaybackAction.ts');
+const productRuntimePlaybackStartState = read('src/ui/useProductRuntimePlaybackStartState.ts');
+const productRuntimePlaybackUiProps = read('src/ui/useProductRuntimePlaybackUiProps.ts');
+const productRuntimePresetLoadFade = read('src/ui/useProductRuntimePresetLoadFade.ts');
+const productRuntimeStartAction = read('src/ui/useProductRuntimeStartAction.ts');
+const productRuntimeStopAction = read('src/ui/useProductRuntimeStopAction.ts');
+const selectedAudioEnginePlaybackSurface = read('src/ui/useSelectedAudioEnginePlaybackSurface.ts');
+const selectedAudioEnginePlaybackTimer = read('src/ui/useSelectedAudioEnginePlaybackTimer.ts');
+const capacitorAudioSessionDiagnostics = read('src/ui/useCapacitorAudioSessionDiagnostics.ts');
+const selectedAudioEngineCapacitorAudioSession = read('src/ui/useSelectedAudioEngineCapacitorAudioSession.ts');
+const selectedAudioEngineRemoteCommandPlayback = read('src/ui/useSelectedAudioEngineRemoteCommandPlayback.ts');
+const capacitorMacAudioStatus = read('src/ui/useCapacitorMacAudioStatus.ts');
+const productRuntimePlatformSurface = read('src/ui/useProductRuntimePlatformSurface.ts');
+const productRuntimeCapacitorAudioSession = read('src/ui/useProductRuntimeCapacitorAudioSession.ts');
+const productRuntimeMacAudioStatus = read('src/ui/useProductRuntimeMacAudioStatus.ts');
+const selectedAudioEnginePlatformRuntimeSurface = read('src/ui/useSelectedAudioEnginePlatformRuntimeSurface.ts');
+const platformRuntimeCapabilities = read('src/ui/usePlatformRuntimeCapabilities.ts');
+const presetBootstrapRuntimeSurface = read('src/ui/usePresetBootstrapRuntimeSurface.ts');
+const cloudPresetStoreBootstrap = read('src/ui/useCloudPresetStoreBootstrap.ts');
+const presetLibraryLoader = read('src/ui/usePresetLibraryLoader.ts');
+const presetLibraryRuntimeSurface = read('src/ui/usePresetLibraryRuntimeSurface.ts');
+const savedPresetResolver = read('src/ui/useSavedPresetResolver.ts');
+const autoStartPresetResolver = read('src/ui/useAutoStartPresetResolver.ts');
+const presetPlatformMaintenance = read('src/ui/usePresetPlatformMaintenance.ts');
+const presetSequencerRestore = read('src/ui/usePresetSequencerRestore.ts');
+const presetRestoreRuntimeSurface = read('src/ui/usePresetRestoreRuntimeSurface.ts');
+const synthPageSequencerBridge = read('src/ui/useSynthPageSequencerBridge.ts');
+const drumPageSequencerBridge = read('src/ui/useDrumPageSequencerBridge.ts');
+const selectedPageRuntimeBridges = read('src/ui/useSelectedAudioEnginePageRuntimeBridges.ts');
+const productRuntimePageSurface = read('src/ui/useProductRuntimePageSurface.ts');
+const productRuntimePageBridgeOptions = read('src/ui/useProductRuntimePageBridgeOptions.ts');
+const productRuntimePageTelemetryProps = read('src/ui/useProductRuntimePageTelemetryProps.ts');
+const productRuntimePageSequencerProps = read('src/ui/useProductRuntimePageSequencerProps.ts');
+const productRuntimePageControlProps = read('src/ui/useProductRuntimePageControlProps.ts');
+const selectedPageRuntimeSurface = read('src/ui/useSelectedAudioEnginePageRuntimeSurface.ts');
+const selectedPageRuntimeBridgeOptions = read('src/ui/useSelectedAudioEnginePageRuntimeBridgeOptions.ts');
+const selectedPageTelemetryRuntimeProps = read('src/ui/useSelectedAudioEnginePageTelemetryRuntimeProps.ts');
+const selectedPageSequencerRuntimeProps = read('src/ui/useSelectedAudioEnginePageSequencerRuntimeProps.ts');
+const selectedPageControlRuntimeProps = read('src/ui/useSelectedAudioEnginePageControlRuntimeProps.ts');
+const productRuntimeCallbackRegistrations = read('src/ui/useProductRuntimeCallbackRegistrations.ts');
+const productRuntimeLiveTriggerCallbacks = read('src/ui/useProductRuntimeLiveTriggerCallbacks.ts');
+const productRuntimeVisualizerCallbacks = read('src/ui/useProductRuntimeVisualizerCallbacks.ts');
+const selectedAudioEngineRuntimeCallbackRegistrations = read('src/ui/useSelectedAudioEngineRuntimeCallbackRegistrations.ts');
+const selectedAudioEngineVisualizerCallbacks = read('src/ui/useSelectedAudioEngineVisualizerCallbacks.ts');
+const productApi = read('cpp/KesshoCore/src/product/KesshoProductApi.cpp');
+const productTypesHeader = read('cpp/KesshoCore/include/KesshoCore/KesshoProductTypes.h');
 const packageJson = readJson('package.json');
 const workflow = read('.github/workflows/product-core-ci.yml');
 const productCiRunner = read('scripts/run-kessho-product-ci.mjs');
@@ -139,21 +242,1006 @@ const hostReconciliationReport = readJson('docs/reports/kessho-product-host-reco
 const patchBridgeReport = readJson('docs/reports/kessho-product-patch-bridges.json');
 const assetManifestReport = readJson('docs/reports/kessho-product-asset-manifest-latest.json');
 
-const appRuntimeModeBody = sourceSlice(app, 'function getAudioEngineRuntimeMode()', 'function shouldShowAudioEngineSwitcher()');
-const runtimeModeBody = sourceSlice(runtime, 'export function getAudioEngineRuntimeMode()', 'function isQueueableMethod');
-for (const [label, body] of [['App', appRuntimeModeBody], ['runtime', runtimeModeBody]]) {
-  assert(body.includes("return 'core-product';"), `${label} runtime selection must default to core-product`);
-  assert(!body.includes("return 'core-bridge';"), `${label} runtime selection must not default to the old bridge`);
+const appRuntimeModeBody = sourceSlice(productAudioRuntimeSelection, 'export function getAudioEngineRuntimeMode()', 'export function getAudioEngineRuntimeModes()');
+assert(
+  appRuntimeModeBody.includes('getProductionAudioEngineRuntimeMode()') && productAudioRuntimeSelection.includes('getProductEngineRuntimeMode()'),
+  'ProductAudioRuntimeSelection runtime selection must default to core-product through ProductEngineProxy',
+);
+assert(
+  appRuntimeModeBody.includes('if (!isDevRuntime()) return getProductionAudioEngineRuntimeMode();') && productAudioRuntimeSelection.includes('getProductEngineRuntimeMode()'),
+  'ProductAudioRuntimeSelection runtime selection must force core-product outside dev builds through ProductEngineProxy',
+);
+assert(!appRuntimeModeBody.includes("return 'core-bridge';"), 'ProductAudioRuntimeSelection runtime selection must not default to the old bridge');
+assert(
+  app.includes("from './ui/useProductRuntimeLifecycleSurface'") &&
+    app.includes('useProductRuntimeLifecycleSurface({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeLifecycleSurface'") &&
+    !app.includes('useSelectedAudioEngineRuntimeLifecycleSurface({') &&
+    productRuntimeLifecycleSurface.includes("import { useProductRuntimeRecordingRuntime } from './useProductRuntimeRecordingRuntime'") &&
+    productRuntimeLifecycleSurface.includes("import { useProductRuntimeTelemetry } from './useProductRuntimeTelemetry'") &&
+    productRuntimeLifecycleSurface.includes("import { useProductRuntimeStateRuntime } from './useProductRuntimeStateRuntime'") &&
+    productRuntimeLifecycleSurface.includes("import { useProductRuntimeMacRecovery } from './useProductRuntimeMacRecovery'") &&
+    productRuntimeLifecycleSurface.includes('useProductRuntimeRecordingRuntime(options.audioEngineRuntimeMode)') &&
+    productRuntimeLifecycleSurface.includes('useProductRuntimeTelemetry({') &&
+    productRuntimeLifecycleSurface.includes('useProductRuntimeStateRuntime({') &&
+    productRuntimeLifecycleSurface.includes('useProductRuntimeMacRecovery({') &&
+    !productRuntimeLifecycleSurface.includes('useSelectedAudioEngineRuntimeLifecycleSurface') &&
+    !productRuntimeLifecycleSurface.includes('productEngine') &&
+    !productRuntimeLifecycleSurface.includes('selectedProductRuntime') &&
+    !productRuntimeLifecycleSurface.includes('referenceAudioEngineDebug'),
+  'App must consume runtime lifecycle through the product-named facade while the facade composes product lifecycle wrappers',
+);
+assert(
+  app.includes("from './ui/useProductRuntimeLifecycleSurface'") &&
+    app.includes('useProductRuntimeLifecycleSurface({') &&
+    !app.includes("from './ui/useSelectedAudioEngineMacRecovery'") &&
+    !app.includes('useSelectedAudioEngineMacRecovery({') &&
+    !app.includes('getSelectedReferenceAudioContextState') &&
+    !app.includes('disposeSelectedReferenceEngine') &&
+    productRuntimeLifecycleSurface.includes('useProductRuntimeMacRecovery({') &&
+    productRuntimeMacRecovery.includes('useSelectedAudioEngineMacRecovery(options)') &&
+    selectedAudioEngineMacRecovery.includes('getSelectedReferenceAudioContextState') &&
+    selectedAudioEngineMacRecovery.includes('disposeSelectedReferenceEngine') &&
+    selectedAudioEngineMacRecovery.includes('startSelectedAudioEngine(stateRef.current)'),
+  'App must delegate macOS reference audio-context recovery to the selected runtime recovery hook',
+);
+assert(
+  app.includes("from './ui/useProductRuntimeLifecycleSurface'") &&
+    app.includes('useProductRuntimeLifecycleSurface({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeTelemetry'") &&
+    !app.includes('useSelectedAudioEngineRuntimeTelemetry({') &&
+    app.includes('selectedRuntimeSupportsRangeKey') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeCapabilities'") &&
+    !app.includes("from './ui/useSelectedAudioEngineTelemetrySurface'") &&
+    !app.includes('isCoreProductRangeKeySupported') &&
+    !app.includes('coreProductSupportsRuntimeRangeKey') &&
+    productRuntimeLifecycleSurface.includes('useProductRuntimeTelemetry({') &&
+    productRuntimeTelemetry.includes('useSelectedAudioEngineRuntimeTelemetry(options)') &&
+    selectedAudioEngineRuntimeTelemetry.includes('useSelectedAudioEngineTelemetrySurface(audioEngineRuntimeMode)') &&
+    selectedAudioEngineRuntimeTelemetry.includes('useSelectedAudioEngineRuntimeCapabilities({') &&
+    selectedAudioEngineRuntimeTelemetry.includes('setSelectedVisualTelemetryActive: telemetrySurface.setSelectedVisualTelemetryActive') &&
+    selectedAudioEngineRuntimeCapabilities.includes("import { isCoreProductRangeKeySupported } from '../audio/coreProductEvents'") &&
+    selectedAudioEngineRuntimeCapabilities.includes("audioEngineRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key)") &&
+    selectedAudioEngineRuntimeCapabilities.includes("const active = audioEngineRuntimeMode === 'core-product' && uiMode === 'advanced'"),
+  'App must delegate Product Core range and visual telemetry support decisions to selected runtime telemetry',
+);
+assert(
+  app.includes("from './ui/useProductRuntimeCallbackRegistrations'") &&
+    app.includes('useProductRuntimeCallbackRegistrations({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeCallbackRegistrations'") &&
+    !app.includes('useSelectedAudioEngineRuntimeCallbackRegistrations({') &&
+    productRuntimeCallbackRegistrations.includes("import { useProductRuntimeVisualizerCallbacks } from './useProductRuntimeVisualizerCallbacks'") &&
+    productRuntimeCallbackRegistrations.includes('useProductRuntimeVisualizerCallbacks(options)') &&
+    productRuntimeCallbackRegistrations.includes('useProductRuntimeLiveTriggerCallbacks(options)') &&
+    !productRuntimeCallbackRegistrations.includes('productEngine') &&
+    !productRuntimeCallbackRegistrations.includes('selectedProductRuntime') &&
+    !productRuntimeCallbackRegistrations.includes('referenceAudioEngineDebug') &&
+    !productRuntimeCallbackRegistrations.includes('useSelectedAudioEngineRuntimeCallbackRegistrations') &&
+    !app.includes("from './ui/useSelectedAudioEngineVisualizerCallbacks'") &&
+    !app.includes('useSelectedAudioEngineVisualizerCallbacks({') &&
+    !app.includes('setVisualizerSequencerState') &&
+    productRuntimeVisualizerCallbacks.includes('useSelectedAudioEngineVisualizerCallbacks(options)') &&
+    selectedAudioEngineVisualizerCallbacks.includes('setVisualizerSequencerState') &&
+    selectedAudioEngineVisualizerCallbacks.includes("if (uiMode !== 'advanced' || activeTab !== 'visualizer') return") &&
+    selectedAudioEngineVisualizerCallbacks.includes('setSelectedDrumTriggerCallback((voice: string, velocity: number) =>'),
+  'App must delegate visualizer selected-runtime callback registration to the visualizer callback hook',
+);
+assert(
+  app.includes("from './ui/useProductRuntimeCallbackRegistrations'") &&
+    app.includes('useProductRuntimeCallbackRegistrations({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeCallbackRegistrations'") &&
+    !app.includes('useSelectedAudioEngineRuntimeCallbackRegistrations({') &&
+    productRuntimeCallbackRegistrations.includes("import { useProductRuntimeLiveTriggerCallbacks } from './useProductRuntimeLiveTriggerCallbacks'") &&
+    productRuntimeCallbackRegistrations.includes('useProductRuntimeVisualizerCallbacks(options)') &&
+    productRuntimeCallbackRegistrations.includes('useProductRuntimeLiveTriggerCallbacks(options)') &&
+    !productRuntimeCallbackRegistrations.includes('productEngine') &&
+    !productRuntimeCallbackRegistrations.includes('selectedProductRuntime') &&
+    !productRuntimeCallbackRegistrations.includes('referenceAudioEngineDebug') &&
+    !productRuntimeCallbackRegistrations.includes('useSelectedAudioEngineRuntimeCallbackRegistrations') &&
+    !app.includes("from './ui/useSelectedAudioEngineLiveTriggerCallbacks'") &&
+    !app.includes('useSelectedAudioEngineLiveTriggerCallbacks({') &&
+    !app.includes('setSelectedLeadExpressionCallback((expression) =>') &&
+    !app.includes('setSelectedGranularSHTriggerCallback((positions: Record<string, number>) =>') &&
+    productRuntimeLiveTriggerCallbacks.includes('useSelectedAudioEngineLiveTriggerCallbacks(options)') &&
+    selectedAudioEngineLiveTriggerCallbacks.includes('setSelectedLeadExpressionCallback((expression) =>') &&
+    selectedAudioEngineLiveTriggerCallbacks.includes('setSelectedGranularSHTriggerCallback((positions: Record<string, number>) =>') &&
+    selectedAudioEngineLiveTriggerCallbacks.includes('emitVisualizerPulses({') &&
+    selectedAudioEngineLiveTriggerCallbacks.includes('setRuntimeFlashKeys(Object.keys(positions))'),
+  'App must delegate live source/FX selected-runtime callback registration to the live trigger callback hook',
+);
+assert(
+  app.includes("from './ui/useProductRuntimeCoordination'") &&
+    app.includes('useProductRuntimeCoordination({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeCoordination'") &&
+    !app.includes('useSelectedAudioEngineRuntimeCoordination({') &&
+    productRuntimeCoordination.includes('useProductRuntimeEvolveOverrideCallbacks,') &&
+    productRuntimeCoordination.includes('useProductRuntimeEvolveOverrideCallbacks(options)') &&
+    productRuntimeCoordination.includes('useProductRuntimeRangeSync(options)') &&
+    productRuntimeCoordination.includes('useProductRuntimeWalkSync(options)') &&
+    productRuntimeCoordination.includes('useProductRuntimeValueCleanup(options.playbackIsRunning)') &&
+    !productRuntimeCoordination.includes('productEngine') &&
+    !productRuntimeCoordination.includes('selectedProductRuntime') &&
+    !productRuntimeCoordination.includes('referenceAudioEngineDebug') &&
+    !productRuntimeCoordination.includes('useSelectedAudioEngineRuntimeCoordination') &&
+    !app.includes("from './ui/useSelectedAudioEngineEvolveOverrideCallbacks'") &&
+    !app.includes('useSelectedAudioEngineEvolveOverrideCallbacks({') &&
+    app.includes('drumEvolvedOverrides') &&
+    app.includes('synthEvolvedOverrides') &&
+    !app.includes('setSelectedDrumEvolveOverridesChangedCallback((laneIndex, overrides) =>') &&
+    !app.includes('setSelectedSynthEvolveOverridesChangedCallback((laneIndex, overrides) =>') &&
+    !app.includes('setSelectedSynthNoteRangeEvolvedCallback((laneIndex, noteMin, noteMax) =>') &&
+    !app.includes('drumEvolvedVersionRef') &&
+    !app.includes('synthEvolvedVersionRef') &&
+    !app.includes('normalizeEvolvedSubLanePatch') &&
+    !app.includes('mergeEvolvedSubLanePatch') &&
+    productRuntimeEvolveOverrideCallbacks.includes('useSelectedAudioEngineEvolveOverrideCallbacks(options)') &&
+    selectedAudioEngineEvolveOverrideCallbacks.includes('setSelectedDrumEvolveOverridesChangedCallback((laneIndex, overrides) =>') &&
+    selectedAudioEngineEvolveOverrideCallbacks.includes('setSelectedSynthEvolveOverridesChangedCallback((laneIndex, overrides) =>') &&
+    selectedAudioEngineEvolveOverrideCallbacks.includes('setSelectedSynthNoteRangeEvolvedCallback((laneIndex, noteMin, noteMax) =>') &&
+    selectedAudioEngineEvolveOverrideCallbacks.includes('normalizeEvolvedSubLanePatch(payload.subLaneStates)') &&
+    selectedAudioEngineEvolveOverrideCallbacks.includes('mergeEvolvedSubLanePatch(') &&
+    selectedAudioEngineEvolveOverrideCallbacks.includes('emitVisualizerPulse(') &&
+    selectedAudioEngineEvolveOverrideCallbacks.includes('mergeRuntimeValues({'),
+  'App must delegate evolved sequencer selected-runtime callback registration to useProductRuntimeCoordination',
+);
+assert(
+  app.includes("from './ui/useProductRuntimeCoordination'") &&
+    app.includes('useProductRuntimeCoordination({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeCoordination'") &&
+    !app.includes('useSelectedAudioEngineRuntimeCoordination({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeValueCleanup'") &&
+    !app.includes('useSelectedAudioEngineRuntimeValueCleanup(playbackIsRunning);') &&
+    !app.includes('removeRuntimeValues([') &&
+    productRuntimeCoordination.includes('useProductRuntimeValueCleanup(options.playbackIsRunning)') &&
+    productRuntimeValueCleanup.includes('useSelectedAudioEngineRuntimeValueCleanup(playbackIsRunning)') &&
+    selectedAudioEngineRuntimeValueCleanup.includes('const STOPPED_RUNTIME_VALUE_KEYS = [') &&
+    selectedAudioEngineRuntimeValueCleanup.includes("'synthEuclid4NoteMax'") &&
+    selectedAudioEngineRuntimeValueCleanup.includes('const STOPPED_TRIGGER_POSITION_KEYS = [') &&
+    selectedAudioEngineRuntimeValueCleanup.includes("'pianoDistance'") &&
+    selectedAudioEngineRuntimeValueCleanup.includes('removeRuntimeValues(STOPPED_RUNTIME_VALUE_KEYS)') &&
+    selectedAudioEngineRuntimeValueCleanup.includes('removeRuntimeTriggerPositions(STOPPED_TRIGGER_POSITION_KEYS)'),
+  'App must delegate stopped-playback runtime value cleanup to useProductRuntimeCoordination',
+);
+assert(
+  app.includes("from './ui/useProductRuntimeCoordination'") &&
+    app.includes('useProductRuntimeCoordination({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeCoordination'") &&
+    !app.includes('useSelectedAudioEngineRuntimeCoordination({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeWalkSync'") &&
+    !app.includes('useSelectedAudioEngineRuntimeWalkSync({') &&
+    !app.includes('setSelectedRuntimeWalkRanges(walkRanges)') &&
+    !app.includes('setSelectedRuntimeWalkPositionsCallback((positions) =>') &&
+    productRuntimeCoordination.includes('useProductRuntimeWalkSync(options)') &&
+    productRuntimeWalkSync.includes('useSelectedAudioEngineRuntimeWalkSync(options)') &&
+    selectedAudioEngineRuntimeWalkSync.includes('setSelectedRuntimeWalkRanges(walkRanges)') &&
+    selectedAudioEngineRuntimeWalkSync.includes('setSelectedRuntimeWalkPositionsCallback((positions) =>') &&
+    selectedAudioEngineRuntimeWalkSync.includes('replaceRuntimeWalkPositions(positions)') &&
+    selectedAudioEngineRuntimeWalkSync.includes("mode !== 'walk'") &&
+    selectedAudioEngineRuntimeWalkSync.includes('selectedRuntimeSupportsRangeKey(key)'),
+  'App must delegate selected-runtime random-walk range sync and position mirroring to useProductRuntimeCoordination',
+);
+assert(
+  app.includes("from './ui/useProductRuntimeCoordination'") &&
+    app.includes('useProductRuntimeCoordination({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeCoordination'") &&
+    !app.includes('useSelectedAudioEngineRuntimeCoordination({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRangeSync'") &&
+    !app.includes('useSelectedAudioEngineRangeSync({') &&
+    !app.includes('setSelectedDrumMorphRange(voice, range)') &&
+    !app.includes('setSelectedDrumParamSHRange(key, range)') &&
+    !app.includes('setSelectedDualRanges(engineRanges)') &&
+    productRuntimeCoordination.includes('useProductRuntimeRangeSync(options)') &&
+    productRuntimeRangeSync.includes('useSelectedAudioEngineRangeSync(options)') &&
+    selectedAudioEngineRangeSync.includes('setSelectedDrumMorphRange(voice, range)') &&
+    selectedAudioEngineRangeSync.includes('setSelectedDrumParamSHRange(key, range)') &&
+    selectedAudioEngineRangeSync.includes('setSelectedDualRanges(engineRanges)') &&
+    selectedAudioEngineRangeSync.includes('DRUM_MORPH_KEYS.has(key as keyof SliderState)') &&
+    selectedAudioEngineRangeSync.includes('selectedRuntimeSupportsRangeKey(key)'),
+  'App must delegate selected-runtime sample-hold range sync to useProductRuntimeCoordination',
+);
+assert(
+    app.includes("from './ui/runtimeWalkPositionSync'") &&
+    !app.includes('mergeRuntimeWalkPositions') &&
+    !app.includes('removeRuntimeWalkPositions') &&
+    !app.includes('replaceRuntimeWalkPositions') &&
+    !app.includes('replaceRuntimeWalkPositionSnapshot(newWalkPositions)') &&
+    !app.includes('replaceRuntimeWalkPositionSnapshot({})') &&
+    app.includes('usePresetRestoreRuntimeSurface({') &&
+    app.includes('clearRuntimeWalkPositions([keyStr])') &&
+    app.includes('seedRuntimeWalkPosition(keyStr)') &&
+    app.includes('resetRuntimeWalkPositionsForKeys(') &&
+    app.includes('resetRuntimeWalkPositionsForModes(morphResult.dualModes)') &&
+    !app.includes('removeRuntimeWalkPositions(morphWalkKeys)') &&
+    !app.includes('mergeRuntimeWalkPositions(newWalkPositions)') &&
+    runtimeWalkPositionSync.includes('replaceRuntimeWalkPositionSnapshot(nextPositions:') &&
+    runtimeWalkPositionSync.includes('clearRuntimeWalkPositions(keys:') &&
+    runtimeWalkPositionSync.includes('seedRuntimeWalkPosition(key: string') &&
+    runtimeWalkPositionSync.includes('resetRuntimeWalkPositionsForKeys(Object.keys(modes), nextPositions)') &&
+    runtimeWalkPositionSync.includes("if (mode === 'single') continue"),
+  'App must delegate granular/morph runtime walk indicator resets to runtimeWalkPositionSync helpers',
+);
+assert(
+  app.includes("from './ui/useProductRuntimeLifecycleSurface'") &&
+    app.includes('useProductRuntimeLifecycleSurface({') &&
+    !app.includes("from './ui/useSelectedAudioEngineStateRuntime'") &&
+    !app.includes('useSelectedAudioEngineStateRuntime({') &&
+    !app.includes("from './ui/useSelectedAudioEngineStateReconciliation'") &&
+    !app.includes("from './ui/useSelectedAudioEngineStateReconciliationSurface'") &&
+    !app.includes("from './ui/useSelectedAudioEngineTransportDebug'") &&
+    !app.includes('setSelectedEngineStateChangeCallback((nextState) =>') &&
+    !app.includes('const fxOwnersChanged') &&
+    productRuntimeLifecycleSurface.includes('useProductRuntimeStateRuntime({') &&
+    productRuntimeStateRuntime.includes('useSelectedAudioEngineStateRuntime(options)') &&
+    selectedAudioEngineStateRuntime.includes('useSelectedAudioEngineStateReconciliationSurface(audioEngineRuntimeMode)') &&
+    selectedAudioEngineStateRuntime.includes('useSelectedAudioEngineStateReconciliation({') &&
+    selectedAudioEngineStateRuntime.includes('useSelectedAudioEngineTransportDebug({') &&
+    selectedAudioEngineStateRuntime.includes('setSelectedEngineStateChangeCallback,') &&
+    selectedAudioEngineStateReconciliation.includes('setSelectedEngineStateChangeCallback((nextState) =>') &&
+    selectedAudioEngineStateReconciliation.includes('const fxOwnersChanged') &&
+    selectedAudioEngineStateReconciliation.includes('fxOwners: fxOwnersChanged ? nextState.fxOwners : prev.fxOwners'),
+  'App must delegate selected engine-state callback reconciliation to the state runtime hook',
+);
+assert(
+  app.includes("from './ui/useProductRuntimeLifecycleSurface'") &&
+    app.includes('useProductRuntimeLifecycleSurface({') &&
+    !app.includes("from './ui/useSelectedAudioEngineStateRuntime'") &&
+    !app.includes('useSelectedAudioEngineStateRuntime({') &&
+    !app.includes('useVisibleInterval(updateTransportDebug') &&
+    !app.includes('const updateTransportDebug = useCallback(') &&
+    productRuntimeLifecycleSurface.includes('getSelectedTransportDebugState: options.getSelectedTransportDebugState') &&
+    selectedAudioEngineStateRuntime.includes('getSelectedTransportDebugState,') &&
+    selectedAudioEngineTransportDebug.includes('getSelectedTransportDebugState()') &&
+    selectedAudioEngineTransportDebug.includes('Math.abs(current.effectiveBpm - transportDebug.effectiveBpm) < 0.05') &&
+    selectedAudioEngineTransportDebug.includes('useVisibleInterval(updateTransportDebug, 1000'),
+  'App must delegate selected transport debug polling to the state runtime hook',
+);
+assert(
+  app.includes("from './ui/useProductRuntimeSession'") &&
+    app.includes('useProductRuntimeShell({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeShell'") &&
+    !app.includes('useSelectedAudioEngineRuntimeShell({') &&
+    !app.includes("from './ui/useSelectedAudioEnginePlaybackRuntime'") &&
+    !app.includes('useSelectedAudioEnginePlaybackRuntime({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeUi'") &&
+    !app.includes('useSelectedAudioEngineRuntimeUi({') &&
+    !app.includes("from './ui/useSelectedAudioEngineMediaSession'") &&
+    !app.includes("from './ui/useSelectedAudioEnginePlaybackControls'") &&
+    !app.includes("from './ui/useSelectedAudioEngineLifecycle'") &&
+    !app.includes("from './ui/audioEngineMediaSession'") &&
+    !app.includes('connectMediaSessionToWebAudio(audioEngineRuntimeMode)') &&
+    productRuntimeSession.includes("import { useProductRuntimePlaybackRuntime } from './useProductRuntimePlaybackRuntime'") &&
+    productRuntimeSession.includes("import { useProductRuntimeUi } from './useProductRuntimeUi'") &&
+    productRuntimeSession.includes('useProductRuntimePlaybackRuntime({') &&
+    productRuntimeSession.includes('useProductRuntimeUi({') &&
+    productRuntimeSession.includes('preloadProductRuntime: playbackRuntime.preloadProductRuntime') &&
+    productRuntimeSession.includes('stopProductRuntime: playbackRuntime.stopProductRuntime') &&
+    !productRuntimeSession.includes('useSelectedAudioEngineRuntimeShell') &&
+    productRuntimePlaybackRuntime.includes('useProductRuntimePlaybackAdapter(options)') &&
+    productRuntimeUi.includes("import { useProductRuntimeNavigation } from './useProductRuntimeNavigation'") &&
+    productRuntimeUi.includes("import { useProductRuntimePerf } from './useProductRuntimePerf'") &&
+    productRuntimeUi.includes('useProductRuntimeNavigation({') &&
+    productRuntimeUi.includes('useProductRuntimePerf(audioEngineRuntimeMode, runtimeNavigation.showAudioEngineSwitcher)') &&
+    !productRuntimeUi.includes('useSelectedAudioEngineRuntimeUi') &&
+    selectedAudioEnginePlaybackRuntime.includes("import { useProductRuntimePlaybackAdapter } from './useProductRuntimePlaybackAdapter'") &&
+    selectedAudioEnginePlaybackRuntime.includes('const playbackAdapter = useProductRuntimePlaybackAdapter({') &&
+    selectedAudioEnginePlaybackRuntime.includes('startSelectedPlayback: playbackAdapter.startProductPlayback') &&
+    selectedAudioEnginePlaybackRuntime.includes('stopSelectedPlayback: playbackAdapter.stopProductPlayback') &&
+    selectedAudioEnginePlaybackRuntime.includes('preloadSelectedAudioEngine: playbackAdapter.preloadProductRuntime') &&
+    selectedAudioEnginePlaybackRuntime.includes('stopSelectedAudioEngine: playbackAdapter.stopProductRuntime') &&
+    selectedAudioEnginePlaybackRuntime.includes('fadeSelectedAudioEngineOutput: playbackAdapter.fadeProductRuntimeOutput') &&
+    productRuntimePlaybackAdapter.includes("import { useSelectedAudioEngineLifecycle } from './useSelectedAudioEngineLifecycle'") &&
+    productRuntimePlaybackAdapter.includes("import { useSelectedAudioEngineMediaSession } from './useSelectedAudioEngineMediaSession'") &&
+    productRuntimePlaybackAdapter.includes("import { useSelectedAudioEnginePlaybackControls } from './useSelectedAudioEnginePlaybackControls'") &&
+    productRuntimePlaybackAdapter.includes('useSelectedAudioEngineLifecycle(audioEngineRuntimeMode)') &&
+    productRuntimePlaybackAdapter.includes('useSelectedAudioEngineMediaSession({') &&
+    productRuntimePlaybackAdapter.includes('useSelectedAudioEnginePlaybackControls({') &&
+    productRuntimePlaybackAdapter.includes('startProductPlayback') &&
+    productRuntimePlaybackAdapter.includes('stopProductPlayback') &&
+    productRuntimePlaybackAdapter.includes('preloadProductRuntime') &&
+    selectedAudioEngineRuntimeShell.includes("import { useSelectedAudioEnginePlaybackRuntime } from './useSelectedAudioEnginePlaybackRuntime'") &&
+    selectedAudioEngineRuntimeShell.includes("import { useSelectedAudioEngineRuntimeUi } from './useSelectedAudioEngineRuntimeUi'") &&
+    selectedAudioEngineRuntimeShell.includes('useSelectedAudioEnginePlaybackRuntime({') &&
+    selectedAudioEngineRuntimeShell.includes('useSelectedAudioEngineRuntimeUi({') &&
+    selectedAudioEngineRuntimeShell.includes('preloadSelectedAudioEngine: playbackRuntime.preloadSelectedAudioEngine') &&
+    selectedAudioEngineRuntimeShell.includes('stopSelectedAudioEngine: playbackRuntime.stopSelectedAudioEngine') &&
+    selectedAudioEngineMediaSession.includes("from './audioEngineMediaSession'") &&
+    selectedAudioEngineMediaSession.includes('connectMediaSessionToWebAudio(audioEngineRuntimeMode)'),
+  'App must delegate selected lifecycle/media/playback composition to the playback runtime hook',
+);
+assert(
+  app.includes("from './ui/useProductRuntimeSession'") &&
+    app.includes('useProductRuntimeShell({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeShell'") &&
+    !app.includes('useSelectedAudioEngineRuntimeShell({') &&
+    !app.includes("from './ui/useSelectedAudioEnginePlaybackRuntime'") &&
+    !app.includes('useSelectedAudioEnginePlaybackRuntime({') &&
+    app.includes("from './ui/useProductRuntimePlaybackSurface'") &&
+    app.includes('useProductRuntimePlaybackSurface({') &&
+    !app.includes("from './ui/useSelectedAudioEnginePlaybackSurface'") &&
+    !app.includes('useSelectedAudioEnginePlaybackSurface({') &&
+    productRuntimePlaybackSurface.includes("import { useProductRuntimePlaybackStartState } from './useProductRuntimePlaybackStartState'") &&
+    productRuntimePlaybackSurface.includes("import { useProductRuntimeStartAction } from './useProductRuntimeStartAction'") &&
+    productRuntimePlaybackSurface.includes("import { useProductRuntimeJourneyPlaybackAction } from './useProductRuntimeJourneyPlaybackAction'") &&
+    productRuntimePlaybackSurface.includes("import { useProductRuntimeStopAction } from './useProductRuntimeStopAction'") &&
+    productRuntimePlaybackSurface.includes("import { useProductRuntimePlaybackUiProps } from './useProductRuntimePlaybackUiProps'") &&
+    productRuntimePlaybackSurface.includes("import { useProductRuntimePresetLoadFade } from './useProductRuntimePresetLoadFade'") &&
+    productRuntimePlaybackSurface.includes('useProductRuntimePlaybackStartState(options)') &&
+    productRuntimePlaybackSurface.includes('useProductRuntimeStartAction({') &&
+    productRuntimePlaybackSurface.includes('preparePlaybackStartState: prepareProductPlaybackStartState') &&
+    productRuntimePlaybackSurface.includes('useProductRuntimeJourneyPlaybackAction({') &&
+    productRuntimePlaybackSurface.includes('useProductRuntimeStopAction({') &&
+    productRuntimePlaybackSurface.includes('useProductRuntimePresetLoadFade({') &&
+    productRuntimePlaybackSurface.includes('useProductRuntimePlaybackUiProps({') &&
+    !productRuntimePlaybackSurface.includes('useSelectedAudioEnginePlaybackSurface') &&
+    !productRuntimePlaybackSurface.includes('productEngine') &&
+    !productRuntimePlaybackSurface.includes('selectedProductRuntime') &&
+    !productRuntimePlaybackSurface.includes('referenceAudioEngineDebug') &&
+    !app.includes("from './ui/useSelectedAudioEngineStartAction'") &&
+    !app.includes('useSelectedAudioEngineStartAction({') &&
+    !app.includes('prepareSelectedPlaybackStartState') &&
+    !app.includes("from './ui/useSelectedAudioEnginePlaybackStartState'") &&
+    !app.includes('useSelectedAudioEnginePlaybackStartState({') &&
+    !app.includes('const prepareSelectedPlaybackStartState = useCallback(async') &&
+    !app.includes("from './ui/useSelectedAudioEngineJourneyPlaybackAction'") &&
+    !app.includes('useSelectedAudioEngineJourneyPlaybackAction({') &&
+    app.includes('startJourneyPlayback(startState, startPreset.name)') &&
+    !app.includes("from './ui/useSelectedAudioEngineStopAction'") &&
+    !app.includes('useSelectedAudioEngineStopAction({') &&
+    app.includes('stopJourney: journey.stop') &&
+    !app.includes("from './ui/useSelectedAudioEnginePresetLoadFade'") &&
+    !app.includes('useSelectedAudioEnginePresetLoadFade({') &&
+    app.includes('fadeSelectedAudioEngineOutput,') &&
+    !app.includes('const fadeEngineOutput = useCallback(') &&
+    !app.includes("from './ui/useSelectedAudioEnginePlaybackUiProps'") &&
+    !app.includes('useSelectedAudioEnginePlaybackUiProps({') &&
+    app.includes('{...snowflakePrototypePlaybackProps}') &&
+    app.includes('{...journeyPlaybackProps}') &&
+    app.includes('{...snowflakePlaybackProps}') &&
+    app.includes('!advancedTransportButton.isPlaying') &&
+    !app.includes('onTogglePlay={playbackIsRunning || isJourneyPlaying ? handleStop : handleStart}') &&
+    !app.includes('onStopAudio={handleStop}') &&
+    productRuntimePlaybackStartState.includes('useSelectedAudioEnginePlaybackStartState(options)') &&
+    productRuntimeStartAction.includes('useSelectedAudioEngineStartAction(options)') &&
+    productRuntimeJourneyPlaybackAction.includes('useSelectedAudioEngineJourneyPlaybackAction(options)') &&
+    productRuntimeStopAction.includes('useSelectedAudioEngineStopAction(options)') &&
+    productRuntimePresetLoadFade.includes('useSelectedAudioEnginePresetLoadFade(options)') &&
+    productRuntimePlaybackUiProps.includes('useSelectedAudioEnginePlaybackUiProps(options)') &&
+    productRuntimePlaybackSurface.includes('stopJourneyMorphPlaybackRef') &&
+    selectedAudioEngineStartAction.includes('preparePlaybackStartState') &&
+    selectedAudioEngineStartAction.includes('startSelectedPlayback') &&
+    selectedAudioEngineStartAction.includes('startArmedRecordingAfterPlaybackStart') &&
+    selectedAudioEngineStartAction.includes('Failed to start audio') &&
+    selectedAudioEngineStartAction.includes('Audio failed to start') &&
+    selectedAudioEnginePlaybackStartState.includes('resolveDefaultAutoStartPreset') &&
+    selectedAudioEnginePlaybackStartState.includes('let stateToStart = requestedState ?? stateRef.current;') &&
+    selectedAudioEnginePlaybackStartState.includes('applyPreset(defaultPreset, {') &&
+    selectedAudioEnginePlaybackStartState.includes('updateEngine: false') &&
+    selectedAudioEnginePlaybackStartState.includes('resetCofDrift: false') &&
+    selectedAudioEnginePlaybackStartState.includes('applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes);') &&
+    selectedAudioEnginePlaybackStartState.includes('restoreEvolveConfigs(result.preset);') &&
+    selectedAudioEngineJourneyPlaybackAction.includes('startSelectedPlayback') &&
+    selectedAudioEngineJourneyPlaybackAction.includes('dualRanges') &&
+    selectedAudioEngineJourneyPlaybackAction.includes("console.log('[Journey] Starting audio engine')") &&
+    selectedAudioEngineJourneyPlaybackAction.includes("console.error('[Journey] Failed to start audio:', err)") &&
+    selectedAudioEngineStopAction.includes('stopSelectedPlayback();') &&
+    selectedAudioEngineStopAction.includes('drumEuclidMasterEnabled: false') &&
+    selectedAudioEngineStopAction.includes('synthEuclideanMasterEnabled: false') &&
+    selectedAudioEngineStopAction.includes('stopJourneyMorphPlayback(true);') &&
+    selectedAudioEngineStopAction.includes('resetPlaybackTimer();') &&
+    selectedAudioEnginePresetLoadFade.includes('const PRESET_LOAD_FADE_MS = 2000') &&
+    selectedAudioEnginePresetLoadFade.includes('fadeSelectedAudioEngineOutput(0, PRESET_LOAD_FADE_MS)') &&
+    selectedAudioEnginePresetLoadFade.includes('stopPlayback();') &&
+    selectedAudioEnginePresetLoadFade.includes('window.setTimeout(resolve, PRESET_LOAD_STOP_SETTLE_MS)') &&
+    selectedAudioEnginePresetLoadFade.includes('fadeSelectedAudioEngineOutput(1, PRESET_LOAD_RESTORE_FADE_MS)') &&
+    selectedAudioEnginePlaybackUiProps.includes('advancedTransportButton') &&
+    selectedAudioEnginePlaybackUiProps.includes('journeyPlaybackProps') &&
+    selectedAudioEnginePlaybackUiProps.includes('snowflakePlaybackProps') &&
+    selectedAudioEnginePlaybackUiProps.includes('snowflakePrototypePlaybackProps') &&
+    selectedAudioEnginePlaybackUiProps.includes('toggleSnowflakePlayback') &&
+    selectedAudioEnginePlaybackUiProps.includes('Journey cannot play yet') &&
+    !app.includes('startCapacitorAudioSessionPlayback(') &&
+    !app.includes('stopCapacitorAudioSessionPlayback();') &&
+    !app.includes('await startSelectedAudioEngine(') &&
+    !app.includes('setupSelectedIOSMediaSession();') &&
+    !app.includes('connectSelectedMediaSessionToAudio();') &&
+    !app.includes('stopSelectedIOSMediaSession();') &&
+    selectedAudioEnginePlaybackControls.includes('const audioSessionDiagnosticEnabled =') &&
+    selectedAudioEnginePlaybackControls.includes('await startSelectedAudioEngine(state);') &&
+    selectedAudioEnginePlaybackControls.includes('await startCapacitorAudioSessionPlayback(') &&
+    selectedAudioEnginePlaybackControls.includes('void stopCapacitorAudioSessionPlayback();') &&
+    selectedAudioEnginePlaybackControls.includes('stopSelectedAudioEngine();'),
+  'App must delegate selected playback start/stop orchestration to the playback runtime hook',
+);
+assert(
+  app.includes("from './ui/useProductRuntimePlatformSurface'") &&
+    app.includes('useProductRuntimePlatformSurface({') &&
+    !app.includes("from './ui/useSelectedAudioEnginePlatformRuntimeSurface'") &&
+    !app.includes('useSelectedAudioEnginePlatformRuntimeSurface({') &&
+    productRuntimePlatformSurface.includes("import { useProductRuntimeCapacitorAudioSession } from './useProductRuntimeCapacitorAudioSession'") &&
+    productRuntimePlatformSurface.includes("import { useProductRuntimeMacAudioStatus } from './useProductRuntimeMacAudioStatus'") &&
+    productRuntimePlatformSurface.includes('useProductRuntimeMacAudioStatus(options)') &&
+    productRuntimePlatformSurface.includes('useProductRuntimeCapacitorAudioSession(options)') &&
+    productRuntimePlatformSurface.includes('return macAudioStatus') &&
+    !productRuntimePlatformSurface.includes('useSelectedAudioEnginePlatformRuntimeSurface') &&
+    !productRuntimePlatformSurface.includes('productEngine') &&
+    !productRuntimePlatformSurface.includes('selectedProductRuntime') &&
+    !productRuntimePlatformSurface.includes('referenceAudioEngineDebug') &&
+    !app.includes("from './ui/useSelectedAudioEngineCapacitorAudioSession'") &&
+    !app.includes('useSelectedAudioEngineCapacitorAudioSession({') &&
+    !app.includes("from './ui/useCapacitorAudioSessionDiagnostics'") &&
+    !app.includes("from './ui/useSelectedAudioEngineRemoteCommandPlayback'") &&
+    !app.includes('handleCapacitorAudioSessionRemoteCommand') &&
+    !app.includes('onRemoteCommand: handleCapacitorAudioSessionRemoteCommand') &&
+    !app.includes("command === 'play'") &&
+    !app.includes("command === 'pause'") &&
+    !app.includes('addCapacitorAudioSessionRemoteCommandListener') &&
+    !app.includes('getCapacitorAudioSessionStatus') &&
+    !app.includes('setCapacitorAudioSessionNowPlaying') &&
+    !app.includes('syncCapacitorAudioSessionState') &&
+    !app.includes('capacitorAudioSessionRemoteCommandCleanupRef') &&
+    capacitorAudioSessionDiagnostics.includes('addCapacitorAudioSessionRemoteCommandListener') &&
+    capacitorAudioSessionDiagnostics.includes('remoteCommandHandlerRef.current(command)') &&
+    capacitorAudioSessionDiagnostics.includes('setCapacitorAudioSessionNowPlaying({') &&
+    capacitorAudioSessionDiagnostics.includes('syncCapacitorAudioSessionState({') &&
+    productRuntimeCapacitorAudioSession.includes('useSelectedAudioEngineCapacitorAudioSession(options)') &&
+    selectedAudioEngineCapacitorAudioSession.includes('useSelectedAudioEngineRemoteCommandPlayback({') &&
+    selectedAudioEngineCapacitorAudioSession.includes('useCapacitorAudioSessionDiagnostics({') &&
+    selectedAudioEngineCapacitorAudioSession.includes('isPlaying: playbackIsRunning || isJourneyPlaying') &&
+    selectedAudioEngineCapacitorAudioSession.includes('onRemoteCommand: handleCapacitorAudioSessionRemoteCommand') &&
+    productRuntimePlatformSurface.includes('useProductRuntimeCapacitorAudioSession(options)') &&
+    selectedAudioEngineRemoteCommandPlayback.includes("command === 'play'") &&
+    selectedAudioEngineRemoteCommandPlayback.includes("command === 'pause'") &&
+    selectedAudioEngineRemoteCommandPlayback.includes('if (!playbackIsRunning) void startPlayback();') &&
+    selectedAudioEngineRemoteCommandPlayback.includes('if (playbackIsRunning) stopPlayback();'),
+  'App must delegate Capacitor audio-session diagnostics/listener/state sync and remote-command playback routing to selected runtime hooks',
+);
+assert(
+  app.includes("from './ui/useProductRuntimePlatformSurface'") &&
+    app.includes('useProductRuntimePlatformSurface({') &&
+    !app.includes("from './ui/useSelectedAudioEnginePlatformRuntimeSurface'") &&
+    !app.includes('useSelectedAudioEnginePlatformRuntimeSurface({') &&
+    !app.includes("from './ui/useCapacitorMacAudioStatus'") &&
+    !app.includes('useCapacitorMacAudioStatus({') &&
+    app.includes('openMacSoundSettings') &&
+    app.includes('macAirPlayPerformanceActive') &&
+    !app.includes('getCapacitorMacAudioOutputStatus') &&
+    !app.includes('openCapacitorMacSoundSettings') &&
+    !app.includes('setCapacitorMacPlaybackState') &&
+    !app.includes('readMacAirPlayPerformancePinned') &&
+    !app.includes('writeMacAirPlayPerformancePinned') &&
+    capacitorMacAudioStatus.includes('getCapacitorMacAudioOutputStatus') &&
+    capacitorMacAudioStatus.includes('openCapacitorMacSoundSettings') &&
+    capacitorMacAudioStatus.includes('setCapacitorMacPlaybackState') &&
+    capacitorMacAudioStatus.includes('useVisibleInterval(refreshMacAudioOutputStatus, playbackIsRunning ? 1500 : 5000') &&
+    productRuntimeMacAudioStatus.includes('useCapacitorMacAudioStatus(options)') &&
+    productRuntimePlatformSurface.includes('useProductRuntimeMacAudioStatus(options)') &&
+    productRuntimePlatformSurface.includes('return macAudioStatus'),
+  'App must delegate macOS native output polling/playback sync to the selected platform runtime surface',
+);
+assert(
+  app.includes("from './ui/usePlatformRuntimeCapabilities'") &&
+    app.includes('usePlatformRuntimeCapabilities({') &&
+    app.includes('shouldInitializeCloudPresetStore') &&
+    !app.includes("from './native/capacitorAudioSession'") &&
+    !app.includes("from './native/capacitorMacShell'") &&
+    !app.includes('isCapacitorNativeShell()') &&
+    !app.includes('isCapacitorMacShell()') &&
+    !app.includes('const usesSupabaseStatePresetLibrary =') &&
+    !app.includes('const usesCapacitorLocalPresetLibrary =') &&
+    !app.includes('const usesCloudBackedStatePresetLibrary =') &&
+    platformRuntimeCapabilities.includes('const nativeShellAvailable = isCapacitorNativeShell();') &&
+    platformRuntimeCapabilities.includes('const macShellAvailable = isCapacitorMacShell();') &&
+    platformRuntimeCapabilities.includes('const usesCloudBackedStatePresetLibrary = cloudPresetAllowed && !usesCapacitorLocalPresetLibrary;') &&
+    platformRuntimeCapabilities.includes('const shouldInitializeCloudPresetStore = cloudPresetAllowed && (!nativeShellAvailable || macShellAvailable);'),
+  'App must delegate native/mac shell classification and preset-library routing to the platform capabilities hook',
+);
+assert(
+  app.includes("from './ui/usePresetBootstrapRuntimeSurface'") &&
+    app.includes('usePresetBootstrapRuntimeSurface<SavedPreset>({') &&
+    !app.includes("from './ui/useCloudPresetStoreBootstrap'") &&
+    !app.includes('useCloudPresetStoreBootstrap<SavedPreset>({') &&
+    app.includes('cloudPresetStoreReadyPromiseRef') &&
+    app.includes('resolveDefaultAutoStartPreset') &&
+    !app.includes('loadCloudAutoStartPresetRef') &&
+    !app.includes('loadCloudAutoStartPresetFromBootstrap') &&
+    !app.includes('const cloudPresetStoreRef = useRef(') &&
+    !app.includes('const cloudAutoStartStoreInitPromiseRef = useRef(') &&
+    !app.includes('const cloudPresetStoreReadyRef = useRef(') &&
+    !app.includes('const markCloudPresetStoreReady =') &&
+    !app.includes('const ensureCloudAutoStartPresetStore = useCallback(') &&
+    !app.includes('new SupabasePresetStore(supabaseClient)') &&
+    !app.includes('new HybridPresetStore(local, cloud)') &&
+    cloudPresetStoreBootstrap.includes("const { getSupabase } = await import('../cloud/supabase')") &&
+    cloudPresetStoreBootstrap.includes('new SupabasePresetStore(supabaseClient)') &&
+    cloudPresetStoreBootstrap.includes('new HybridPresetStore(local, cloud)') &&
+    cloudPresetStoreBootstrap.includes('setPresetStore(hybrid)') &&
+    cloudPresetStoreBootstrap.includes('cloudAutoStartStoreInitPromiseRef.current = (async () =>') &&
+    presetBootstrapRuntimeSurface.includes('useCloudPresetStoreBootstrap<TSavedPreset>({') &&
+    presetBootstrapRuntimeSurface.includes('loadCloudAutoStartPresetRef.current = loadCloudAutoStartPreset'),
+  'App must delegate cloud preset store bootstrap/readiness to usePresetBootstrapRuntimeSurface',
+);
+assert(
+  app.includes("from './ui/usePresetLibraryRuntimeSurface'") &&
+    app.includes('usePresetLibraryRuntimeSurface<SavedPreset>({') &&
+    !app.includes("from './ui/usePresetLibraryLoader'") &&
+    !app.includes('usePresetLibraryLoader<SavedPreset>({') &&
+    app.includes('loadCloudBackedPresets: loadActiveStatePresetStorePresets') &&
+    app.includes('onCloudSharedPresetLoaded: applyCloudSharedPreset') &&
+    !app.includes('const loadPresets = async () =>') &&
+    !app.includes('fetchPresetById(cloudPresetId)') &&
+    !app.includes("urlParams.get('cloud')") &&
+    presetLibraryLoader.includes('cloudPresetStoreReadyPromiseRef.current') &&
+    presetLibraryLoader.includes('return loadCloudBackedPresets();') &&
+    presetLibraryLoader.includes('return loadCapacitorLocalPresets();') &&
+    presetLibraryLoader.includes('return loadBundledPresets();') &&
+    presetLibraryLoader.includes("const cloudPresetId = urlParams.get('cloud');") &&
+    presetLibraryLoader.includes("void import('../cloud/supabase')") &&
+    presetLibraryLoader.includes('fetchPresetById(cloudPresetId)') &&
+    presetLibraryLoader.includes('onCloudSharedPresetLoaded(') &&
+    presetLibraryRuntimeSurface.includes('usePresetLibraryLoader<TSavedPreset>({') &&
+    presetLibraryRuntimeSurface.includes('onPresetsLoaded: setSavedPresets') &&
+    presetLibraryRuntimeSurface.includes('onPresetsLoadFailed: () => setSavedPresets([])'),
+  'App must delegate preset library source selection and cloud share fetches to usePresetLibraryRuntimeSurface',
+);
+assert(
+  app.includes("from './ui/usePresetLibraryRuntimeSurface'") &&
+    app.includes('usePresetLibraryRuntimeSurface<SavedPreset>({') &&
+    !app.includes("from './ui/useSavedPresetResolver'") &&
+    !app.includes('useSavedPresetResolver<SavedPreset>({') &&
+    app.includes('loadPresetByName: loadActiveStatePresetStorePresetByName') &&
+    app.includes('sortPresets: sortSavedStatePresetsByFreshness') &&
+    !app.includes('const resolveSavedPresetForLoad = useCallback(') &&
+    !app.includes('const resolveSavedPresetByName = useCallback(') &&
+    !app.includes('loadActiveStatePresetStorePresetByName(preset.name)') &&
+    !app.includes('loadActiveStatePresetStorePresetByName(presetName)') &&
+    savedPresetResolver.includes('if (!preset.deferred) return preset;') &&
+    savedPresetResolver.includes('const loadedPreset = await loadPresetByName(preset.name);') &&
+    savedPresetResolver.includes('setSavedPresets(prev => sortPresets(prev.map(item => (') &&
+    savedPresetResolver.includes('const preset = savedPresets.find(item => item.name === presetName);') &&
+    savedPresetResolver.includes('if (!usesCloudBackedStatePresetLibrary) return null;') &&
+    savedPresetResolver.includes('const loadedPreset = await loadPresetByName(presetName);') &&
+    presetLibraryRuntimeSurface.includes('return useSavedPresetResolver<TSavedPreset>({') &&
+    presetLibraryRuntimeSurface.includes('loadPresetByName') &&
+    presetLibraryRuntimeSurface.includes('sortPresets'),
+  'App must delegate deferred/cloud saved-preset resolution to usePresetLibraryRuntimeSurface',
+);
+assert(
+  app.includes("from './ui/usePresetBootstrapRuntimeSurface'") &&
+    app.includes('usePresetBootstrapRuntimeSurface<SavedPreset>({') &&
+    !app.includes("from './ui/useAutoStartPresetResolver'") &&
+    !app.includes('useAutoStartPresetResolver<SavedPreset>({') &&
+    !app.includes('setCloudAutoStartPreset') &&
+    app.includes('resolveDefaultAutoStartPreset') &&
+    app.includes('loadBundledPresetByName') &&
+    !app.includes('const autoStartPresetRef = useRef(') &&
+    !app.includes('const autoStartPresetSourceRef = useRef(') &&
+    !app.includes('const resolveDefaultAutoStartPreset = useCallback(') &&
+    !app.includes('const timedCloudPreset = await Promise.race') &&
+    !app.includes('const deviceLocalPreset = savedPresets.find((preset) => preset.name === DEFAULT_AUTO_START_PRESET_NAME)') &&
+    !app.includes('const bundledPreset = await loadBundledPresetByName(DEFAULT_AUTO_START_PRESET_NAME)') &&
+    autoStartPresetResolver.includes('const autoStartPresetRef = useRef') &&
+    autoStartPresetResolver.includes('const autoStartPresetSourceRef = useRef') &&
+    autoStartPresetResolver.includes('const timedCloudPreset = await Promise.race') &&
+    autoStartPresetResolver.includes('window.setTimeout(() => resolve(null), timeoutMs);') &&
+    autoStartPresetResolver.includes('const deviceLocalPreset = savedPresets.find((preset) => preset.name === defaultAutoStartPresetName)') &&
+    autoStartPresetResolver.includes('const bundledPreset = await loadBundledPresetByName(defaultAutoStartPresetName);') &&
+    autoStartPresetResolver.includes('void loadCloudAutoStartPreset();') &&
+    presetBootstrapRuntimeSurface.includes('useAutoStartPresetResolver<TSavedPreset>({') &&
+    presetBootstrapRuntimeSurface.includes('loadCloudAutoStartPreset: loadCloudAutoStartPresetFromBootstrap') &&
+    presetBootstrapRuntimeSurface.includes('resolveDefaultAutoStartPreset'),
+  'App must delegate default auto-start preset resolution to usePresetBootstrapRuntimeSurface',
+);
+assert(
+  app.includes("from './ui/usePresetBootstrapRuntimeSurface'") &&
+    app.includes('usePresetBootstrapRuntimeSurface<SavedPreset>({') &&
+    !app.includes("from './ui/usePresetPlatformMaintenance'") &&
+    !app.includes('usePresetPlatformMaintenance({') &&
+    app.includes('cloudPresetStoreReadyPromiseRef') &&
+    !app.includes('kesshoPresetV2Migration') &&
+    !app.includes('runPresetV2Migration') &&
+    !app.includes('optimizeStringWavesV2') &&
+    !app.includes('repairPresetChildGraphsV2') &&
+    !app.includes('repairStringWavesGraphV2') &&
+    !app.includes('verifyPresetV2Migration') &&
+    !app.includes('loadFactoryPresets') &&
+    presetPlatformMaintenance.includes('target.kesshoPresetV2Migration = {') &&
+    presetPlatformMaintenance.includes("const { runPresetV2Migration } = await import('../presets')") &&
+    presetPlatformMaintenance.includes("const { optimizeStringWavesV2 } = await import('../presets')") &&
+    presetPlatformMaintenance.includes("const { repairPresetChildGraphsV2 } = await import('../presets')") &&
+    presetPlatformMaintenance.includes("const { repairStringWavesGraphV2 } = await import('../presets')") &&
+    presetPlatformMaintenance.includes("const { verifyPresetV2Migration } = await import('../presets')") &&
+    presetPlatformMaintenance.includes('await cloudPresetStoreReadyPromiseRef.current;') &&
+    presetPlatformMaintenance.includes("const { loadFactoryPresets } = await import('../presets')") &&
+    presetBootstrapRuntimeSurface.includes('usePresetPlatformMaintenance({') &&
+    presetBootstrapRuntimeSurface.includes('cloudPresetStoreReadyPromiseRef'),
+  'App must delegate preset migration dev tools and factory seeding to usePresetBootstrapRuntimeSurface',
+);
+assert(
+  app.includes("from './ui/usePresetRestoreRuntimeSurface'") &&
+    app.includes('usePresetRestoreRuntimeSurface({') &&
+    !app.includes("import { usePresetSequencerRestore") &&
+    !app.includes('usePresetSequencerRestore({') &&
+    !app.includes('replaceRuntimeWalkPositionSnapshot(newWalkPositions)') &&
+    !app.includes('replaceRuntimeWalkPositionSnapshot({})') &&
+    !app.includes('setSelectedSequencerPresetHomeSnapshots();') &&
+    !app.includes('function drumStepOverridesForEngineRestore(') &&
+    !app.includes('function synthStepOverridesForEngineRestore(') &&
+    app.includes('setProductDrumEuclidClockDivs,') &&
+    app.includes('setProductSequencerPresetHomeSnapshots,') &&
+    !app.includes('setSelectedDrumEuclidClockDivs: setProductDrumEuclidClockDivs') &&
+    presetRestoreRuntimeSurface.includes('type ProductPresetSequencerRestoreOptions = Omit<PresetSequencerRestoreOptions, SelectedPresetSequencerSetterKey>') &&
+    presetRestoreRuntimeSurface.includes('const restoreEvolveConfigs = usePresetSequencerRestore({') &&
+    presetRestoreRuntimeSurface.includes('setSelectedDrumEuclidClockDivs: setProductDrumEuclidClockDivs') &&
+    presetRestoreRuntimeSurface.includes('setSelectedSequencerPresetHomeSnapshots: setProductSequencerPresetHomeSnapshots') &&
+    presetRestoreRuntimeSurface.includes('const applyDualRangesFromPreset = useCallback(') &&
+    presetRestoreRuntimeSurface.includes('replaceRuntimeWalkPositionSnapshot(newWalkPositions)') &&
+    presetRestoreRuntimeSurface.includes('replaceRuntimeWalkPositionSnapshot({})') &&
+    presetSequencerRestore.includes('setSelectedSequencerPresetHomeSnapshots();') &&
+    presetSequencerRestore.includes('drumStepOverridesForEngineRestore(') &&
+    presetSequencerRestore.includes('synthStepOverridesForEngineRestore(') &&
+    presetSequencerRestore.includes('normalizeSequencerEvolveConfigs(') &&
+    presetSequencerRestore.includes('restoreSequencerSubLaneStates(preset.synthSubLaneStates, preset.synthStepOverrides)'),
+  'App must delegate preset dual-range and sequencer selected-runtime restore sync to usePresetRestoreRuntimeSurface',
+);
+assert(
+  app.includes("from './ui/useProductRuntimePageSurface'") &&
+    app.includes('useProductRuntimePageSurface({') &&
+    !app.includes("from './ui/useSelectedAudioEnginePageRuntimeSurface'") &&
+    !app.includes('useSelectedAudioEnginePageRuntimeSurface({') &&
+    productRuntimePageSurface.includes('useProductRuntimePageBridgeOptions,') &&
+    productRuntimePageSurface.includes('return useSelectedAudioEnginePageRuntimeBridges(pageRuntimeBridgeOptions)') &&
+    productRuntimePageBridgeOptions.includes('useProductRuntimePageTelemetryProps(telemetry)') &&
+    productRuntimePageBridgeOptions.includes('useProductRuntimePageSequencerProps(sequencer)') &&
+    productRuntimePageBridgeOptions.includes('useProductRuntimePageControlProps(control)') &&
+    productRuntimePageBridgeOptions.includes('telemetry: ProductRuntimePageTelemetryProps') &&
+    !productRuntimePageBridgeOptions.includes('useSelectedAudioEnginePageRuntimeBridgeOptions') &&
+    productRuntimePageTelemetryProps.includes('export type ProductRuntimePageTelemetryProps = {') &&
+    productRuntimePageTelemetryProps.includes('productRuntimeDebugAnalysers: ProductRuntimePageDebugAnalysers') &&
+    !productRuntimePageTelemetryProps.includes('ProductRuntimePageTelemetryProps = SelectedAudioEnginePageTelemetryRuntimeProps') &&
+    productRuntimePageTelemetryProps.includes('return useSelectedAudioEnginePageTelemetryRuntimeProps(options)') &&
+    productRuntimePageSequencerProps.includes('export type ProductRuntimePageSequencerProps = {') &&
+    productRuntimePageSequencerProps.includes('captureProductSynthEuclidLaneHome: (laneIdx: number, pitchState?: SubLaneState) => void') &&
+    productRuntimePageSequencerProps.includes('drumClockDivsRef: MutableRefObject<ClockDivision[] | undefined>') &&
+    productRuntimePageSequencerProps.includes('setProductSynthPitchBindingModes: (modes: PitchBindingMode[]) => void') &&
+    productRuntimePageSequencerProps.includes('captureSelectedSynthEuclidLaneHome: captureProductSynthEuclidLaneHome') &&
+    productRuntimePageSequencerProps.includes('setSelectedDrumStepOverrides: setProductDrumStepOverrides') &&
+    !productRuntimePageSequencerProps.includes('ProductRuntimePageSequencerProps = SelectedAudioEnginePageSequencerRuntimeProps') &&
+    app.includes('captureProductSynthEuclidLaneHome,') &&
+    app.includes('setProductSynthPitchBindingModes,') &&
+    !app.includes('captureProductSynthEuclidLaneHome: captureSelectedSynthEuclidLaneHome') &&
+    !app.includes('setProductSynthPitchBindingModes: setSelectedSynthPitchBindingModes') &&
+    productRuntimePageControlProps.includes('export type ProductRuntimePageControlProps = {') &&
+    productRuntimePageControlProps.includes('preloadProductRuntime: () => Promise<unknown>') &&
+    productRuntimePageControlProps.includes('productRuntimeManualTriggers: ProductRuntimeManualTriggers') &&
+    !productRuntimePageControlProps.includes('ProductRuntimePageControlProps = Omit<') &&
+    productRuntimePageControlProps.includes('preloadSelectedAudioEngine: preloadProductRuntime') &&
+    !productRuntimePageSurface.includes('productEngine') &&
+    !productRuntimePageSurface.includes('selectedProductRuntime') &&
+    !productRuntimePageSurface.includes('referenceAudioEngineDebug') &&
+    !productRuntimePageSurface.includes("from './useSelectedAudioEnginePageRuntimeSurface'") &&
+    app.includes('telemetry: {') &&
+    app.includes('sequencer: {') &&
+    app.includes('control: {') &&
+    !app.includes("from './ui/useSelectedAudioEnginePageRuntimeBridges'") &&
+    !app.includes("from './ui/useSelectedAudioEnginePageRuntimeBridgeOptions'") &&
+    !app.includes("from './ui/useSelectedAudioEnginePageTelemetryRuntimeProps'") &&
+    !app.includes("from './ui/useSelectedAudioEnginePageSequencerRuntimeProps'") &&
+    !app.includes("from './ui/useSelectedAudioEnginePageControlRuntimeProps'") &&
+    !app.includes('...pageTelemetryRuntimeProps') &&
+    !app.includes('...pageSequencerRuntimeProps') &&
+    !app.includes('...pageControlRuntimeProps') &&
+    app.includes('onSubLaneStatesChange={productPageRuntimeSurface.synthPageSequencerBridge.onSubLaneStatesChange}') &&
+    app.includes('captureEvolveHome={productPageRuntimeSurface.synthPageSequencerBridge.captureEvolveHome}') &&
+    app.includes('{...productPageRuntimeSurface.synthPageRuntimeProps}') &&
+    app.includes('productRuntimeManualTriggers,') &&
+    app.includes('productRuntimeDebugAnalysers,') &&
+    !app.includes('onAuditionNote={productRuntimeManualTriggers.auditionSynthNote}') &&
+    !app.includes("from './ui/useSynthPageSequencerBridge'") &&
+    !app.includes('useSynthPageSequencerBridge({') &&
+    !app.includes('setSelectedSynthStepOverrides({') &&
+    !app.includes('captureEvolveHome={(laneIdx) => captureSelectedSynthEuclidLaneHome(') &&
+    selectedPageRuntimeBridges.includes('useSynthPageSequencerBridge(options)') &&
+    selectedPageRuntimeBridges.includes('useDrumPageSequencerBridge(options)') &&
+    selectedPageRuntimeBridges.includes('useDrumPageRuntimeBridge(options)') &&
+    selectedPageRuntimeBridges.includes('export type SelectedAudioEnginePageRuntimeBridgeOptions') &&
+    selectedPageTelemetryRuntimeProps.includes('SelectedAudioEnginePageRuntimeBridgeOptions') &&
+    selectedPageTelemetryRuntimeProps.includes('getSelectedGranularBufferWaveform') &&
+    selectedPageTelemetryRuntimeProps.includes('setSelectedGranularUiActive') &&
+    selectedPageSequencerRuntimeProps.includes('SelectedAudioEnginePageRuntimeBridgeOptions') &&
+    selectedPageSequencerRuntimeProps.includes('captureSelectedSynthEuclidLaneHome') &&
+    selectedPageSequencerRuntimeProps.includes('setSelectedSynthPitchSettings') &&
+    selectedPageSequencerRuntimeProps.includes('synthStepOverridesRef') &&
+    selectedPageControlRuntimeProps.includes('SelectedAudioEnginePageRuntimeBridgeOptions') &&
+    selectedPageControlRuntimeProps.includes('onRequestPlaybackStart') &&
+    selectedPageControlRuntimeProps.includes('productRuntimeManualTriggers') &&
+    selectedPageControlRuntimeProps.includes('setSelectedSynthStepPositionCallback') &&
+    selectedPageRuntimeBridgeOptions.includes('SelectedAudioEnginePageRuntimeBridgeOptionGroups') &&
+    selectedPageRuntimeBridgeOptions.includes('telemetry: SelectedAudioEnginePageTelemetryRuntimeProps') &&
+    selectedPageRuntimeBridgeOptions.includes('sequencer: SelectedAudioEnginePageSequencerRuntimeProps') &&
+    selectedPageRuntimeBridgeOptions.includes('control: SelectedAudioEnginePageControlRuntimeProps') &&
+    selectedPageRuntimeBridgeOptions.includes('useSelectedAudioEnginePageTelemetryRuntimeProps(telemetry)') &&
+    selectedPageRuntimeBridgeOptions.includes('useSelectedAudioEnginePageSequencerRuntimeProps(sequencer)') &&
+    selectedPageRuntimeBridgeOptions.includes('useSelectedAudioEnginePageControlRuntimeProps(control)') &&
+    selectedPageRuntimeBridgeOptions.includes('...pageTelemetryRuntimeProps') &&
+    selectedPageRuntimeBridgeOptions.includes('...pageSequencerRuntimeProps') &&
+    selectedPageRuntimeBridgeOptions.includes('...pageControlRuntimeProps') &&
+    selectedPageRuntimeSurface.includes('useSelectedAudioEnginePageRuntimeBridgeOptions(options)') &&
+    selectedPageRuntimeSurface.includes('useSelectedAudioEnginePageRuntimeBridges(selectedPageRuntimeBridgeOptions)') &&
+    selectedPageRuntimeBridges.includes('const synthPageRuntimeProps = useMemo(() => ({') &&
+    selectedPageRuntimeBridges.includes('getLeadMorphedParams: options.getSelectedLeadMorphedParams') &&
+    selectedPageRuntimeBridges.includes('liveLeadMorphedParamsAvailable: options.liveLeadMorphedParamsAvailable') &&
+    selectedPageRuntimeBridges.includes('liveSourceTelemetryAvailable: true') &&
+    selectedPageRuntimeBridges.includes('onRequestPlaybackStart: options.onRequestPlaybackStart') &&
+    selectedPageRuntimeBridges.includes('onAuditionNote: options.productRuntimeManualTriggers.auditionSynthNote') &&
+    selectedPageRuntimeBridges.includes('getPadFilterFreq: options.getSelectedPadFilterFreq') &&
+    selectedPageRuntimeBridges.includes('getPadLfoValue: options.getSelectedPadLfoValue') &&
+    selectedPageRuntimeBridges.includes('setStepPositionCallback: options.setSelectedSynthStepPositionCallback') &&
+    selectedPageRuntimeBridges.includes('setEvolveTriggerCallback: options.setSelectedSynthEvolveTriggerCallback') &&
+    !app.includes('getLeadMorphedParams={getSelectedLeadMorphedParams}') &&
+    !app.includes('onRequestPlaybackStart={requestSequencerPlaybackStart}') &&
+    !app.includes('setStepPositionCallback={setSelectedSynthStepPositionCallback}') &&
+    synthPageSequencerBridge.includes('setSelectedSynthStepOverrides(synthEngineStepOverrides(overrides))') &&
+    synthPageSequencerBridge.includes('setSelectedSynthEuclidEvolveConfigs(configs)') &&
+    synthPageSequencerBridge.includes('captureSelectedSynthEuclidLaneHome(laneIdx, synthSubLaneStatesRef.current?.[laneIdx]?.pitch)'),
+  'App must delegate Synth page selected-runtime sequencer bridge wiring through useSelectedAudioEnginePageRuntimeBridges',
+);
+assert(
+    app.includes("from './ui/useProductRuntimePageSurface'") &&
+    app.includes('useProductRuntimePageSurface({') &&
+    !app.includes("from './ui/useSelectedAudioEnginePageRuntimeSurface'") &&
+    !app.includes('useSelectedAudioEnginePageRuntimeSurface({') &&
+    app.includes('sequencer: {') &&
+    app.includes('control: {') &&
+    !app.includes("from './ui/useSelectedAudioEnginePageRuntimeBridges'") &&
+    !app.includes("from './ui/useSelectedAudioEnginePageRuntimeBridgeOptions'") &&
+    !app.includes("from './ui/useSelectedAudioEnginePageSequencerRuntimeProps'") &&
+    !app.includes("from './ui/useSelectedAudioEnginePageControlRuntimeProps'") &&
+    !app.includes('...pageSequencerRuntimeProps') &&
+    !app.includes('...pageControlRuntimeProps') &&
+    app.includes('onSubLaneStatesChange={productPageRuntimeSurface.drumPageSequencerBridge.onSubLaneStatesChange}') &&
+    app.includes('captureEvolveHome={productPageRuntimeSurface.drumPageSequencerBridge.captureEvolveHome}') &&
+    app.includes('{...productPageRuntimeSurface.drumPageRuntimeProps}') &&
+    app.includes('{...productPageRuntimeSurface.dynamicsPageRuntimeProps}') &&
+    !app.includes('triggerVoice={productRuntimeManualTriggers.triggerDrumVoice}') &&
+    !app.includes('getAnalyserNode={productRuntimeDebugAnalysers.drumVoiceAnalyser}') &&
+    !app.includes('getDynamicsAnalyser={productRuntimeDebugAnalysers.dynamicsAnalyser}') &&
+    !app.includes("from './ui/useDrumPageSequencerBridge'") &&
+    !app.includes('useDrumPageSequencerBridge({') &&
+    !app.includes("from './ui/useDrumPageRuntimeBridge'") &&
+    !app.includes('useDrumPageRuntimeBridge({') &&
+    !app.includes('setSelectedDrumStepOverrides(overrides);') &&
+    !app.includes('captureEvolveHome={(laneIdx) => captureSelectedDrumEuclidLaneHome(') &&
+    selectedPageRuntimeBridges.includes('const drumPageRuntimeProps = useMemo(() => ({') &&
+    selectedPageRuntimeBridges.includes('triggerVoice: options.productRuntimeManualTriggers.triggerDrumVoice') &&
+    selectedPageRuntimeBridges.includes('getAnalyserNode: options.productRuntimeDebugAnalysers.drumVoiceAnalyser') &&
+    selectedPageRuntimeBridges.includes('preloadAudioEngine: drumPageRuntimeBridge.preloadAudioEngine') &&
+    selectedPageRuntimeBridges.includes('onRequestPlaybackStart: options.onRequestPlaybackStart') &&
+    selectedPageRuntimeBridges.includes('setStepPositionCallback: options.setSelectedDrumStepPositionCallback') &&
+    selectedPageRuntimeBridges.includes('setEvolveTriggerCallback: options.setSelectedDrumEvolveTriggerCallback') &&
+    selectedPageRuntimeBridges.includes('setTriggerCallback: options.setSelectedDrumTriggerCallback') &&
+    selectedPageSequencerRuntimeProps.includes('captureSelectedDrumEuclidLaneHome') &&
+    selectedPageSequencerRuntimeProps.includes('setSelectedDrumStepOverrides') &&
+    selectedPageSequencerRuntimeProps.includes('drumPitchSettingsRef') &&
+    selectedPageControlRuntimeProps.includes('preloadSelectedAudioEngine') && productRuntimePageControlProps.includes('preloadProductRuntime') &&
+    selectedPageControlRuntimeProps.includes('setSelectedDrumTriggerCallback') &&
+    selectedPageControlRuntimeProps.includes('setSelectedDrumStepPositionCallback') &&
+    !app.includes('setStepPositionCallback={setSelectedDrumStepPositionCallback}') &&
+    !app.includes('onRequestPlaybackStart={requestSequencerPlaybackStart}') &&
+    !app.includes('setTriggerCallback={setSelectedDrumTriggerCallback}') &&
+    selectedPageRuntimeBridges.includes('const dynamicsPageRuntimeProps = useMemo(() => ({') &&
+    selectedPageRuntimeBridges.includes('getDynamicsAnalyser: options.productRuntimeDebugAnalysers.dynamicsAnalyser') &&
+    drumPageSequencerBridge.includes('setSelectedDrumStepOverrides(overrides)') &&
+    drumPageSequencerBridge.includes('setSelectedDrumEuclidEvolveConfigs(configs)') &&
+    drumPageSequencerBridge.includes('captureSelectedDrumEuclidLaneHome('),
+  'App must delegate Drum page selected-runtime sequencer bridge wiring through useSelectedAudioEnginePageRuntimeBridges',
+);
+assert(
+  app.includes("from './ui/useProductRuntimeGlobalSurface'") &&
+    app.includes('useProductRuntimeGlobalSurface({') &&
+    !app.includes("from './ui/useSelectedAudioEngineGlobalRuntimeSurface'") &&
+    !app.includes('useSelectedAudioEngineGlobalRuntimeSurface({') &&
+    productRuntimeGlobalSurface.includes("import { useSelectedAudioEngineGlobalRuntimeSurface } from './useSelectedAudioEngineGlobalRuntimeSurface'") &&
+    productRuntimeGlobalSurface.includes('return useSelectedAudioEngineGlobalRuntimeSurface(options)') &&
+    !productRuntimeGlobalSurface.includes('productEngine') &&
+    !productRuntimeGlobalSurface.includes('selectedProductRuntime') &&
+    !productRuntimeGlobalSurface.includes('referenceAudioEngineDebug') &&
+    !app.includes("from './ui/useSelectedAudioEnginePlaybackTimer'") &&
+    !app.includes('useSelectedAudioEnginePlaybackTimer({') &&
+    !app.includes("from './ui/useSelectedAudioEngineGlobalRuntimeProps'") &&
+    !app.includes('useSelectedAudioEngineGlobalRuntimeProps({') &&
+    app.includes('resetPlaybackTimer,') &&
+    app.includes('useProductRuntimePlaybackSurface({') &&
+    !app.includes('playbackTimerTargetTimeRef') &&
+    !app.includes('const updatePlaybackTimerCountdown = useCallback(') &&
+    !app.includes('useVisibleInterval(updatePlaybackTimerCountdown') &&
+    selectedAudioEngineGlobalRuntimeSurface.includes('useSelectedAudioEnginePlaybackTimer({') &&
+    selectedAudioEngineGlobalRuntimeSurface.includes('useSelectedAudioEngineGlobalRuntimeProps({') &&
+    selectedAudioEngineGlobalRuntimeSurface.includes('playbackTimerProps: {') &&
+    selectedAudioEngineGlobalRuntimeSurface.includes('onTimerEnabledChange: setPlaybackTimerEnabled') &&
+    selectedAudioEngineGlobalRuntimeSurface.includes('globalRuntimeProps') &&
+    selectedAudioEngineGlobalRuntimeSurface.includes('resetPlaybackTimer') &&
+    selectedAudioEnginePlaybackTimer.includes('const playbackTimerTargetTimeRef = useRef<number | null>(null)') &&
+    selectedAudioEnginePlaybackTimer.includes('const updatePlaybackTimerCountdown = useCallback(() =>') &&
+    selectedAudioEnginePlaybackTimer.includes('stopSelectedPlayback();') &&
+    selectedAudioEnginePlaybackTimer.includes('useVisibleInterval(updatePlaybackTimerCountdown, 1000'),
+  'App must delegate playback timer countdown and expiry stop handling to the playback timer hook',
+);
+assert(
+  productAudioRuntimeSelection.includes("const PRODUCT_AUDIO_ENGINE_RUNTIME_MODES = ['core-product']"),
+  'ProductAudioRuntimeSelection must expose only core-product for the normal product UI mode list',
+);
+assert(
+  productAudioRuntimeSelection.includes('return isReferenceRuntimeEnabled(params) ? REFERENCE_AUDIO_ENGINE_RUNTIME_MODES : PRODUCT_AUDIO_ENGINE_RUNTIME_MODES;'),
+  'ProductAudioRuntimeSelection must expose web-ts/core-smoke only for explicit dev/reference contexts',
+);
+assert(
+  productAudioRuntimeSelection.includes("export const AUDIO_ENGINE_SWITCHER_PARAM = 'engineAB';"),
+  'ProductAudioRuntimeSelection must own the reference runtime switcher query key',
+);
+assert(!existsSync(resolve(root, 'src/audio/runtime.ts')), 'temporary src/audio/runtime.ts facade must be deleted');
+assert(!existsSync(resolve(root, 'src/audio/engine.ts')), 'legacy web-ts engine must live under src/audio/reference/webTs/engine.ts, not the production audio root');
+assert(
+    app.includes("from './ui/useProductRuntimeSession'") &&
+    app.includes('resolveProductRuntimeInitialState({ normalizeState: normalizePresetForWeb })') &&
+    app.includes('useProductRuntimeSession()') &&
+    app.includes('useProductRuntimeShell({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeSession'") &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeShell'") &&
+    !app.includes('resolveSelectedAudioEngineInitialState({ normalizeState: normalizePresetForWeb })') &&
+    !app.includes('useSelectedAudioEngineRuntimeSession()') &&
+    !app.includes('useSelectedAudioEngineRuntimeShell({') &&
+    !app.includes("from './ui/useSelectedAudioEngineRuntimeUi'") &&
+    !app.includes('useSelectedAudioEngineRuntimeUi({') &&
+    !app.includes("from './ui/useAudioEngineRuntimeNavigation'") &&
+    !app.includes("from './ui/useSelectedAudioEnginePerf'") &&
+    !app.includes('useSelectedAudioEngineRuntimeSessionNavigation({') &&
+    selectedAudioEngineRuntimeSession.includes("from './useAudioEngineRuntimeNavigation'") &&
+    selectedAudioEngineRuntimeSession.includes('readAudioEngineRuntimeSwitchState()') &&
+    selectedAudioEngineRuntimeSession.includes('useSelectedAudioEngineRuntimeMode()') &&
+    selectedAudioEngineRuntimeSession.includes('useAudioEngineRuntimeNavigation({') &&
+    productRuntimeSession.includes("from './useProductRuntimeModeSession'") &&
+    productRuntimeSession.includes("import { useProductRuntimePlaybackRuntime } from './useProductRuntimePlaybackRuntime'") &&
+    productRuntimeSession.includes("import { useProductRuntimeUi } from './useProductRuntimeUi'") &&
+    productRuntimeSession.includes('export function resolveProductRuntimeInitialState') &&
+    productRuntimeSession.includes('return resolveProductRuntimeModeInitialState(options)') &&
+    productRuntimeSession.includes('return useProductRuntimeModeSession()') &&
+    productRuntimeSession.includes('useProductRuntimePlaybackRuntime({') &&
+    productRuntimeSession.includes('useProductRuntimeUi({') &&
+    productRuntimeModeSession.includes("from './useProductRuntimeNavigationCore'") &&
+    productRuntimeModeSession.includes('readProductRuntimeSwitchState()') &&
+    productRuntimeModeSession.includes('useProductRuntimeMode()') &&
+    productRuntimeModeSession.includes('decodeStateFromUrl(window.location.search)') &&
+    !productRuntimeModeSession.includes('useSelectedAudioEngineRuntimeSession') &&
+    productRuntimePlaybackRuntime.includes('useProductRuntimePlaybackAdapter(options)') &&
+    productRuntimeUi.includes('useProductRuntimeNavigation({') &&
+    productRuntimeUi.includes('useProductRuntimePerf(audioEngineRuntimeMode, runtimeNavigation.showAudioEngineSwitcher)') &&
+    !productRuntimeUi.includes('useSelectedAudioEngineRuntimeUi') &&
+    selectedAudioEngineRuntimeUi.includes("import { useSelectedAudioEnginePerf } from './useSelectedAudioEnginePerf'") &&
+    selectedAudioEngineRuntimeUi.includes("import { useSelectedAudioEngineRuntimeSessionNavigation } from './useSelectedAudioEngineRuntimeSession'") &&
+    selectedAudioEngineRuntimeUi.includes('useSelectedAudioEngineRuntimeSessionNavigation({') &&
+    selectedAudioEngineRuntimeUi.includes('useSelectedAudioEnginePerf(audioEngineRuntimeMode, runtimeNavigation.showAudioEngineSwitcher)') &&
+    selectedAudioEngineRuntimeShell.includes("import { useSelectedAudioEngineRuntimeUi } from './useSelectedAudioEngineRuntimeUi'") &&
+    selectedAudioEngineRuntimeShell.includes('useSelectedAudioEngineRuntimeUi({') &&
+    audioEngineRuntimeNavigation.includes("from './useProductRuntimeNavigationCore'") &&
+    audioEngineRuntimeNavigation.includes('useProductRuntimeNavigationCore({') &&
+    productRuntimeNavigationCore.includes("from '../audio/product/ProductAudioRuntimeSelection'"),
+  'App runtime-mode selection, switch-state restore, navigation, and perf UI must route through selected runtime session/UI hooks and the product-owned runtime selection module',
+);
+assert(
+  app.includes("from './ui/ProductRuntimeSwitch'") &&
+    app.includes('<ProductRuntimeSwitch') &&
+    !app.includes("from './ui/SelectedAudioEngineRuntimeSwitch'") &&
+    !app.includes('<SelectedAudioEngineRuntimeSwitch') &&
+    !app.includes("from './ui/AudioEngineRuntimeSwitch'") &&
+    !app.includes('<AudioEngineRuntimeSwitch') &&
+    app.includes('{...globalRuntimeProps}') &&
+    app.includes('useProductRuntimeGlobalSurface({') &&
+    !app.includes('useSelectedAudioEngineGlobalRuntimeProps({') &&
+    !app.includes('runtimeComparison={{') &&
+    globalPage.includes("import { GlobalRuntimeComparisonPanel, type GlobalRuntimeComparisonPanelProps } from './GlobalRuntimeComparisonPanel'") &&
+    globalPage.includes('runtimeComparison?: GlobalRuntimeComparisonPanelProps') &&
+    globalPage.includes('<GlobalRuntimeComparisonPanel {...runtimeComparison} />') &&
+    globalPage.includes('recordingAvailable: boolean') &&
+    globalPage.includes('stemRecordingAvailable: boolean') &&
+    !globalPage.includes("['core-product', 'web-ts'") &&
+    !globalPage.includes('coreSmokeModeAvailable') &&
+    !globalPage.includes("import { AudioEngineRuntimeSwitch } from '../AudioEngineRuntimeSwitch'") &&
+    !globalPage.includes('audioEngineModes?: readonly AudioEngineRuntimeMode[]') &&
+    !globalPage.includes('audioEngineRuntimeModeLabel') &&
+    !globalPage.includes("const recordingAvailable = audioEngineMode !== 'core-product'") &&
+    globalRuntimeComparisonPanel.includes("import { AudioEngineRuntimeSwitch } from '../AudioEngineRuntimeSwitch'") &&
+    globalRuntimeComparisonPanel.includes('export type GlobalRuntimeComparisonPanelProps') &&
+    globalRuntimeComparisonPanel.includes('if (!visible || !onModeChange) return null;') &&
+    globalRuntimeComparisonPanel.includes('testId="global-audio-engine-switch"') &&
+    globalRuntimeComparisonPanel.includes('variant="scene"') &&
+    globalRuntimeComparisonPanel.includes('audioEngineRuntimeModeLabel(mode)') &&
+    selectedAudioEngineRuntimeUi.includes("import type { GlobalRuntimeComparisonPanelProps } from './global/GlobalRuntimeComparisonPanel'") &&
+    selectedAudioEngineRuntimeUi.includes('const globalRuntimeComparison = useMemo<GlobalRuntimeComparisonPanelProps>(() => ({') &&
+    selectedAudioEngineRuntimeUi.includes('modes: runtimeNavigation.audioEngineRuntimeModes') &&
+    selectedAudioEngineRuntimeUi.includes('cpuSummaries: perf.audioEngineCpuSummaries') &&
+    selectedAudioEngineRuntimeUi.includes('onModeChange: runtimeNavigation.handleAudioEngineRuntimeModeChange') &&
+    selectedAudioEngineRuntimeUi.includes('globalRuntimeComparison') &&
+    selectedAudioEngineGlobalRuntimeProps.includes('runtimeComparison') &&
+    selectedAudioEngineGlobalRuntimeProps.includes('onResetCofDrift') &&
+    selectedAudioEngineGlobalRuntimeProps.includes('recordingProps: GlobalRecordingProps') &&
+    selectedAudioEngineGlobalRuntimeProps.includes('playbackTimerProps: GlobalPlaybackTimerProps') &&
+    selectedAudioEngineGlobalRuntimeProps.includes('...recordingProps') &&
+    selectedAudioEngineGlobalRuntimeProps.includes('...playbackTimerProps') &&
+    audioRecording.includes("const recordingAvailable = audioEngineRuntimeMode !== 'core-product'") &&
+    audioRecording.includes('stemRecordingAvailable,') &&
+    audioEngineRuntimeUi.includes('AUDIO_ENGINE_PARAM') &&
+    audioEngineRuntimeUi.includes('AUDIO_ENGINE_SWITCHER_PARAM') &&
+    audioEngineRuntimeSwitch.includes('AUDIO_ENGINE_SWITCH_COLUMN_COUNT') &&
+    audioEngineRuntimeSwitch.includes('audioEngineRuntimeModeLabel(mode)') &&
+    audioEngineRuntimeSwitch.includes('audioEngineRuntimeModeTitle(mode)') &&
+    audioEngineRuntimeSwitch.includes("testId = 'main-audio-engine-switch'") &&
+    audioEngineRuntimeSwitch.includes('data-testid={testId}') &&
+    selectedAudioEngineRuntimeSwitch.includes("import { AudioEngineRuntimeSwitch } from './AudioEngineRuntimeSwitch'") &&
+    selectedAudioEngineRuntimeSwitch.includes('visible: boolean') &&
+    selectedAudioEngineRuntimeSwitch.includes('if (!visible) return null;') &&
+    selectedAudioEngineRuntimeSwitch.includes('<AudioEngineRuntimeSwitch') &&
+    productRuntimeSwitch.includes("import { SelectedAudioEngineRuntimeSwitch } from './SelectedAudioEngineRuntimeSwitch'") &&
+    productRuntimeSwitch.includes('export type ProductRuntimeMode = AudioEngineRuntimeMode') &&
+    productRuntimeSwitch.includes('<SelectedAudioEngineRuntimeSwitch') &&
+    productRuntimeNavigationCore.includes('buildAudioEngineSwitchUrl(mode, stateRef.current)') &&
+    selectedAudioEngineRuntimeUi.includes('preloadSelectedAudioEngine,') &&
+    selectedAudioEngineRuntimeUi.includes('stopSelectedAudioEngine,'),
+  'App runtime switch UI must stay behind AudioEngineRuntimeSwitch/navigation modules that consume product-owned query constants',
+);
+assert(
+  !app.includes('getAudioEngineRuntimeMode,\n  getAudioEngineRuntimeModes,\n  preloadAudioEngine'),
+  'App must not import runtime-mode selection from ProductAudioEngineCompat',
+);
+assert(
+  !selectedProductRuntime.includes('coreProductEngineHost') && !productAudioEngineCompat.includes('coreProductEngineHost'),
+  'SelectedProductRuntime/ProductAudioEngineCompat must route core-product through ProductEnginePort instead of importing coreProductEngineHost',
+);
+assert(selectedProductRuntime.includes('return productEngine.preload().then(() => productEngine);'), 'SelectedProductRuntime must preload core-product through ProductEngineProxy');
+assert(
+  productAudioEngineCompat.includes('TODO(product-core-runtime-closure)') &&
+    productAudioEngineCompat.includes("from './SelectedProductRuntime'") &&
+    !productAudioEngineCompat.includes("import('../referenceAudioRuntime')"),
+  'ProductAudioEngineCompat must remain a deprecated alias, not a runtime owner',
+);
+assert(globalRuntimeComparisonPanel.includes("currentMode === 'core-product' ? 'running' : 'stopped'"), 'Global runtime comparison panel must highlight Product Core as the running product mode');
+for (const token of [
+  'KESSHO_PRODUCT_SCHEMA_HASH',
+  'KESSHO_PRODUCT_SCHEMA_HASH_HEX',
+  'KESSHO_PRODUCT_ABI_VERSION',
+  "runtimeKind: 'web-worklet'",
+  'supportsNativeBridge: false',
+  "nativeBridge: 'deferred-for-web-default'",
+  'nativeProductRuntimeGuarded: true',
+  'testProductRuntimeGuarded: true',
+]) {
+  assert(productRuntimeCapabilityReport.includes(token), `Product runtime capability report is missing ${token}`);
 }
-assert(globalPage.includes("audioEngineMode = 'core-product'"), 'GlobalPage default audioEngineMode must be Product Core');
+assert(
+  productRuntimeCapabilityReport.includes('export const KESSHO_PRODUCT_ABI_VERSION = 5 as const') && productTypesHeader.includes('#define KESSHO_PRODUCT_ABI_VERSION 5'),
+  'Product runtime capability report ABI version must match the C++ Product ABI',
+);
+assert(
+  productApi.includes('report.supports_native_bridge = 0;') && productRuntimeCapabilityReport.includes('supportsNativeBridge: false'),
+  'Product runtime capability report must agree that native bridge is not implemented',
+);
+assert(
+  productApi.includes('report.schema_hash = KESSHO_PRODUCT_SNAPSHOT_SCHEMA_HASH;') && productRuntimeCapabilityReport.includes('KESSHO_PRODUCT_SCHEMA_HASH'),
+  'Product runtime capability report must expose the generated Product schema hash',
+);
 
 assert(packageJson.scripts?.build === 'npm run core:product:wasm && tsc && vite build', 'main build must rebuild/verify Product Core WASM before Vite build');
 assert(packageJson.scripts?.['core:product:browser-runtime'] === 'node scripts/check-kessho-product-browser-runtime.mjs', 'package.json must expose core:product:browser-runtime');
-assert(packageJson.scripts?.['core:product:sequencer-evolve'] === 'node scripts/run-kessho-product-sequencer-evolve-regression.mjs', 'package.json must expose core:product:sequencer-evolve');
+assert(
+  packageJson.scripts?.['core:product:sequencer-evolve'] === 'node scripts/run-kessho-product-sequencer-evolve-regression.mjs',
+  'package.json must expose core:product:sequencer-evolve',
+);
 assert(packageJson.scripts?.['core:product:sequencer-ui'] === 'node scripts/check-kessho-product-sequencer-ui-parity.mjs', 'package.json must expose core:product:sequencer-ui');
 assert(packageJson.scripts?.['migration:docs'] === 'node scripts/check-product-docs-freshness.mjs', 'package.json must expose migration:docs');
 assert(packageJson.scripts?.['migration:no-web-ts-bundle'] === 'node scripts/check-no-web-ts-production-bundle.mjs', 'package.json must expose migration:no-web-ts-bundle');
-assert(packageJson.scripts?.['migration:unsupported-surface:gate'] === 'node scripts/audit-product-host-unsupported-surface.mjs --write-json --gate', 'package.json must expose migration:unsupported-surface:gate');
+assert(
+  packageJson.scripts?.['migration:unsupported-surface:gate'] === 'node scripts/audit-product-host-unsupported-surface.mjs --write-json --gate',
+  'package.json must expose migration:unsupported-surface:gate',
+);
 assert(packageJson.scripts?.['core:product:default-gate-v3'] === 'node scripts/check-kessho-product-default-gate-v3.mjs', 'package.json must expose core:product:default-gate-v3');
 assert(packageJson.scripts?.['core:product:ci'] === 'node scripts/run-kessho-product-ci.mjs', 'package.json must expose local Product Core CI');
 assert(packageJson.scripts?.['core:product:ci:prereqs'] === 'node scripts/run-kessho-product-ci.mjs --skip-final-gate', 'package.json must expose Product Core prerequisite CI');
@@ -165,9 +1253,12 @@ assert(productCiRunner.includes("'migration:unsupported-surface:gate'"), 'Produc
 assert(productCiRunner.includes("'core:product:sequencer-evolve'"), 'Product Core CI runner must include Product sequencer evolve proof');
 assert(productCiRunner.includes("'core:product:harmony'"), 'Product Core CI runner must include harmony parity proof before sequencer UI parity');
 assert(productCiRunner.includes("'core:product:sequencer-ui'"), 'Product Core CI runner must include Product/Web sequencer UI parity proof');
-assert(productCiRunner.indexOf("'core:product:harmony'") < productCiRunner.indexOf("'core:product:sequencer-ui'"), 'Product Core CI runner must run harmony parity before Product/Web sequencer UI parity');
+assert(
+  productCiRunner.indexOf("'core:product:harmony'") < productCiRunner.indexOf("'core:product:sequencer-ui'"),
+  'Product Core CI runner must run harmony parity before Product/Web sequencer UI parity',
+);
 assert(!productCiRunner.includes("'core:readiness:browser'"), 'Product Core CI runner must not use the legacy Web-vs-Core readiness gate for product default promotion');
-const archivedNativeStepPrefix = "'core:product:" + "native";
+const archivedNativeStepPrefix = "'core:product:" + 'native';
 assert(!productCiRunner.includes(archivedNativeStepPrefix), 'Product Core CI runner must not depend on archived native Swift checks');
 assert(productCiRunner.includes("const finalGateStep = 'core:product:default-gate-v3'"), 'Product Core CI runner must keep v3 final gate');
 
@@ -176,13 +1267,7 @@ assert(workflowRunCommands.at(-1) === 'npm run core:product:default-gate-v3', 'P
 assert(workflowRunCommands.includes('npm run core:product:ci:prereqs'), 'GitHub Product Core CI must run prerequisite Product Core CI first');
 assert(!workflow.includes('KESSHO_BROWSER_CORPUS_SONIC_RETRIES'), 'Product workflow must not carry the legacy browser parity retry knob');
 
-for (const token of [
-  'Status: PASS',
-  'Decision: web-default-core-product',
-  'Default Rule',
-  'core-product is the web default',
-  'core:product:browser-runtime',
-]) {
+for (const token of ['Status: PASS', 'Decision: web-default-core-product', 'Default Rule', 'core-product is the web default', 'core:product:browser-runtime']) {
   assert(defaultGateDoc.includes(token), `Product Default Gate v3 doc is missing ${token}`);
 }
 for (const forbidden of ['web-default-deferred', 'verified web default remains `core-bridge`', 'must remain selectable but not default']) {
@@ -232,7 +1317,10 @@ const requiredPrerequisiteSteps = [
 ];
 
 assert(Array.isArray(productCiReport.prerequisiteSteps), 'Product Core CI report must list prerequisiteSteps');
-assert(JSON.stringify(productCiReport.prerequisiteSteps) === JSON.stringify(requiredPrerequisiteSteps), 'Product Core CI prerequisite step list is stale; rerun local CI with the v3 runner');
+assert(
+  JSON.stringify(productCiReport.prerequisiteSteps) === JSON.stringify(requiredPrerequisiteSteps),
+  'Product Core CI prerequisite step list is stale; rerun local CI with the v3 runner',
+);
 for (const stepName of requiredPrerequisiteSteps) assertStepPassed(productCiReport, stepName);
 assert(!stepByName(productCiReport, 'core:readiness:browser'), 'Product Core CI report must not include legacy browser readiness');
 assert(!stepByName(productCiReport, 'core:product:default-gate-v2'), 'Product Core CI report must not include v2 default gate');
@@ -250,7 +1338,9 @@ requireFreshReport('docs/reports/kessho-product-ci-latest.json', productCiReport
 ]);
 requireFreshReport('docs/reports/kessho-product-browser-runtime-latest.json', browserRuntimeReport.generatedAt, [
   'scripts/check-kessho-product-browser-runtime.mjs',
-  'src/audio/runtime.ts',
+  'src/audio/product/ProductAudioRuntimeSelection.ts',
+  'src/audio/product/ProductAudioEngineCompat.ts',
+  'src/audio/referenceAudioRuntime.ts',
   'src/audio/sonicParityHarness.ts',
   'src/audio/coreProductEngineHost.ts',
   'public/worklets/kessho-core-product.worklet.js',
@@ -292,10 +1382,8 @@ assert((stringWavesCase?.workletLeadStemPeak ?? 0) > 0.000001, 'String Waves bro
 
 assert(cpuReport.status === 'pass' && cpuReport.cpu?.status === 'pass' && cpuReport.heap?.status === 'pass', 'CPU/heap report must pass');
 assert(unsupportedSurfaceReport.gateMode === true, 'unsupported-surface report must be generated in gate mode');
+assert(unsupportedSurfaceReport.findingCount === 0, 'unsupported-surface gate report must have zero findings');
 assert(unsupportedSurfaceReport.gateViolationCount === 0, 'unsupported-surface gate report must have zero gate violations');
-for (const finding of unsupportedSurfaceReport.findings ?? []) {
-  assert(finding.kind === 'explicitlyUnsupportedGetter', `unsupported-surface gate allows only explicit unsupported getter findings, saw ${finding.kind}`);
-}
 for (const [label, proofReport] of [
   ['runtime fallback', runtimeFallbackReport],
   ['dirty diff', dirtyDiffReport],

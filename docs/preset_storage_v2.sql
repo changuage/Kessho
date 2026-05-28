@@ -174,18 +174,16 @@ CREATE TABLE IF NOT EXISTS preset_version_refs_v2 (
   ref_slot TEXT NOT NULL,
   target_preset_id UUID NOT NULL REFERENCES presets_v2(id) ON DELETE RESTRICT,
   target_version_no INTEGER,
-  follow_latest BOOLEAN NOT NULL DEFAULT FALSE,
+  follow_latest BOOLEAN NOT NULL DEFAULT TRUE,
   override_hash TEXT REFERENCES preset_payloads_v2(hash) ON DELETE RESTRICT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (version_id, ref_slot),
-  CHECK (
-    (follow_latest = TRUE AND target_version_no IS NULL)
-    OR (follow_latest = FALSE AND target_version_no IS NOT NULL)
-  )
+  CONSTRAINT preset_version_refs_v2_latest_only_chk
+    CHECK (follow_latest = TRUE AND target_version_no IS NULL)
 );
 
 CREATE INDEX IF NOT EXISTS idx_preset_version_refs_v2_target
-  ON preset_version_refs_v2(target_preset_id, target_version_no);
+  ON preset_version_refs_v2(target_preset_id);
 
 ALTER TABLE presets_v2
   ADD CONSTRAINT presets_v2_latest_version_fk
@@ -252,21 +250,24 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Hash helper for deduped JSON blobs.
--- JSONB text output is canonical enough for this use because Postgres stores
--- object keys in normalized order.
-CREATE OR REPLACE FUNCTION kessho_put_payload_v2(kind TEXT, body JSONB)
+-- Hash helper for deduped JSON blobs. New app writes pass hashes computed by
+-- the TypeScript canonicalizer; SQL stores the supplied hash instead of
+-- independently hashing jsonb text.
+CREATE OR REPLACE FUNCTION kessho_put_payload_v2(kind TEXT, supplied_hash TEXT, body JSONB)
 RETURNS TEXT AS $$
 DECLARE
   normalized JSONB := COALESCE(body, '{}'::jsonb);
-  payload_hash TEXT := encode(digest(normalized::TEXT, 'sha256'), 'hex');
 BEGIN
+  IF supplied_hash IS NULL OR supplied_hash !~ '^[0-9a-f]{64}$' THEN
+    RAISE EXCEPTION 'Invalid preset payload hash';
+  END IF;
+
   INSERT INTO preset_payloads_v2(hash, payload_kind, payload)
-  VALUES (payload_hash, kind, normalized)
+  VALUES (supplied_hash, kind, normalized)
   ON CONFLICT (hash) DO UPDATE
     SET last_seen_at = now();
 
-  RETURN payload_hash;
+  RETURN supplied_hash;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -461,7 +462,6 @@ BEGIN
            AND target.deleted_at <= now() - retention
            AND protected_target.preset_id IS NULL
            AND protected_owner_version.version_id IS NULL
-           AND owner_version.resolved_hash IS NOT NULL
            AND (
              owner.deleted_at IS NULL
              OR owner.deleted_at <= now() - retention

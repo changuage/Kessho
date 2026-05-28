@@ -15,6 +15,10 @@ export default defineConfig(({ mode }) => ({
           find: /^\.\/referenceAudioRuntime$/,
           replacement: fileURLToPath(new URL('./src/audio/referenceAudioRuntime.unavailable.ts', import.meta.url)),
         },
+        {
+          find: /^\.\.\/referenceAudioRuntime$/,
+          replacement: fileURLToPath(new URL('./src/audio/referenceAudioRuntime.unavailable.ts', import.meta.url)),
+        },
       ]
       : [],
   },
@@ -32,7 +36,7 @@ export default defineConfig(({ mode }) => ({
           if (id.includes('/src/audio/drumPresets.ts')) return 'audio-drum-presets';
           if (id.includes('/src/audio/padPresets.ts')) return 'audio-pad-presets';
           if (id.includes('/src/audio/waterPresets.ts')) return 'audio-water-presets';
-          if (id.includes('/src/audio/engine.ts')) return 'audio-engine';
+          if (id.includes('/src/audio/reference/webTs/engine.ts')) return 'reference-web-ts-engine';
           return undefined;
         },
       },

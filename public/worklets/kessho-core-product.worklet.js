@@ -233,6 +233,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         this.registerAsset(message);
         return;
       }
+      if (message.type === 'unregister-asset') {
+        this.unregisterAsset(message.assetId);
+        return;
+      }
       if (message.type === 'request-telemetry') {
         this.postTelemetry();
         return;
@@ -802,6 +806,20 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.api.free(ptrArray);
       throw new Error(`Kessho Product Core asset registration failed for asset ${message.assetId}: ${result}`);
     }
+  }
+
+  unregisterAsset(assetId) {
+    if (!Number.isInteger(assetId) || assetId <= 0) {
+      throw new Error('Kessho Product Core asset unregistration missing required assetId');
+    }
+    const old = this.assetAllocations.get(assetId);
+    if (!old) return;
+    this.api.unregisterAsset(this.engine, assetId);
+    old.ptrs.forEach((ptr) => this.api.free(ptr));
+    this.api.free(old.ptrArray);
+    this.assetAllocations.delete(assetId);
+    this.assetDecodedBytes -= old.decodedBytes || 0;
+    this.assetAllocationBytes -= old.allocationBytes || 0;
   }
 
   readUint64Number(byteOffset) {

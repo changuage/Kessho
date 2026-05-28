@@ -119,7 +119,7 @@ if (!skipAuth) {
 }
 
 const [presets, versions, refs, payloads] = await Promise.all([
-  fetchAll('presets_v2', 'id,type,scope,name,latest_version_no,latest_version_id,latest_resolved_hash,latest_metadata_hash,updated_at,archived,deleted_at,tags'),
+  fetchAll('presets_v2', 'id,owner_key,type,scope,name,latest_version_no,latest_version_id,latest_resolved_hash,latest_metadata_hash,updated_at,archived,deleted_at,tags'),
   fetchAll('preset_versions_v2', 'id,preset_id,version_no,parent_version_id,storage_mode,override_hash,metadata_hash,patch_from_prev_hash,resolved_hash,is_checkpoint,created_at'),
   fetchAll('preset_version_refs_v2', 'version_id,ref_slot,target_preset_id,target_version_no,follow_latest,override_hash,created_at'),
   fetchAll('preset_payloads_v2', 'hash,payload_kind,payload,payload_bytes,created_at,last_seen_at'),
@@ -233,6 +233,7 @@ for (const version of versions) {
 }
 
 const refIssues = [];
+const fixedRefPolicyIssues = [];
 const activeLatestRefsToRecycled = [];
 for (const ref of refs) {
   const owner = versionById.get(ref.version_id);
@@ -246,6 +247,14 @@ for (const ref of refs) {
   }
   if (ref.follow_latest && ref.target_version_no != null) refIssues.push({ context, issue: 'follow_latest ref has target_version_no' });
   if (!ref.follow_latest && ref.target_version_no == null) refIssues.push({ context, issue: 'fixed ref missing target_version_no' });
+  if (!ref.follow_latest || ref.target_version_no != null) {
+    fixedRefPolicyIssues.push({
+      context,
+      issue: 'ref violates latest-only policy',
+      followLatest: ref.follow_latest,
+      targetVersionNo: ref.target_version_no,
+    });
+  }
   if (!ref.follow_latest && !versionByPresetAndNo.has(key(ref.target_preset_id, ref.target_version_no))) {
     refIssues.push({
       context,
@@ -305,6 +314,53 @@ const logicalReferencedBytes = uses.reduce((sum, use) => sum + payloadBytes(use.
 const uniqueReferencedBytes = [...referencedHashes].reduce((sum, payloadHash) => sum + payloadBytes(payloadHash, payloadByHash), 0);
 const allPayloadBytes = payloads.reduce((sum, row) => sum + (row.payload_bytes ?? 0), 0);
 
+const activePresets = presets.filter((preset) => preset.deleted_at == null);
+const latestVersionIds = new Set(activePresets.map((preset) => preset.latest_version_id).filter(Boolean));
+const latestResolvedCacheByType = {};
+for (const preset of activePresets) {
+  if (!preset.latest_resolved_hash) continue;
+  const bucket = latestResolvedCacheByType[preset.type] ?? {
+    activePresets: 0,
+    uniqueLatestResolvedPayloads: new Set(),
+    latestResolvedCacheBytes: 0,
+  };
+  bucket.activePresets += 1;
+  bucket.uniqueLatestResolvedPayloads.add(preset.latest_resolved_hash);
+  bucket.latestResolvedCacheBytes += payloadBytes(preset.latest_resolved_hash, payloadByHash);
+  latestResolvedCacheByType[preset.type] = bucket;
+}
+
+const latestResolvedCacheMetrics = Object.fromEntries(
+  Object.entries(latestResolvedCacheByType).map(([type, bucket]) => [type, {
+    activePresets: bucket.activePresets,
+    uniqueLatestResolvedPayloads: bucket.uniqueLatestResolvedPayloads.size,
+    latestResolvedCacheBytes: bucket.latestResolvedCacheBytes,
+  }]),
+);
+
+const nonHistoricalRefs = new Set();
+for (const preset of presets) {
+  if (preset.latest_resolved_hash) nonHistoricalRefs.add(preset.latest_resolved_hash);
+  if (preset.latest_metadata_hash) nonHistoricalRefs.add(preset.latest_metadata_hash);
+}
+for (const version of versions) {
+  if (version.override_hash) nonHistoricalRefs.add(version.override_hash);
+  if (version.metadata_hash) nonHistoricalRefs.add(version.metadata_hash);
+  if (version.patch_from_prev_hash) nonHistoricalRefs.add(version.patch_from_prev_hash);
+}
+for (const ref of refs) {
+  if (ref.override_hash) nonHistoricalRefs.add(ref.override_hash);
+}
+const removableHistoricalResolvedHashes = new Set();
+for (const version of versions) {
+  if (!version.resolved_hash || latestVersionIds.has(version.id)) continue;
+  if (!nonHistoricalRefs.has(version.resolved_hash)) {
+    removableHistoricalResolvedHashes.add(version.resolved_hash);
+  }
+}
+const removableHistoricalResolvedBytes = [...removableHistoricalResolvedHashes]
+  .reduce((sum, payloadHash) => sum + payloadBytes(payloadHash, payloadByHash), 0);
+
 const useCountsByRole = {};
 const uniqueCountsByRole = {};
 for (const role of ['override', 'metadata', 'patch', 'resolved', 'refs_override']) {
@@ -333,6 +389,27 @@ const topPayloadReuse = [...roleByHash.entries()]
 
 const groupsByResolved = new Map();
 const groupsByResolvedMetadata = new Map();
+const groupsByActiveLogicalIdentity = new Map();
+for (const preset of activePresets) {
+  const logicalKey = key(preset.owner_key, preset.type, preset.scope, String(preset.name ?? '').trim().toLowerCase());
+  if (!groupsByActiveLogicalIdentity.has(logicalKey)) groupsByActiveLogicalIdentity.set(logicalKey, []);
+  groupsByActiveLogicalIdentity.get(logicalKey).push(preset);
+}
+
+const duplicateActiveLogicalIdentities = [...groupsByActiveLogicalIdentity.values()]
+  .filter((group) => group.length > 1)
+  .map((group) => ({
+    ownerKey: group[0].owner_key,
+    type: group[0].type,
+    scope: group[0].scope,
+    nameKey: String(group[0].name ?? '').trim().toLowerCase(),
+    activeRows: group.length,
+    ids: group.map((row) => row.id),
+    names: group.map((row) => row.name),
+  }))
+  .sort((left, right) => right.activeRows - left.activeRows || left.type.localeCompare(right.type))
+  .slice(0, 20);
+
 for (const preset of presets.filter((row) => row.latest_resolved_hash && !row.archived)) {
   const resolvedKey = key(preset.type, preset.scope, preset.latest_resolved_hash);
   if (!groupsByResolved.has(resolvedKey)) groupsByResolved.set(resolvedKey, []);
@@ -376,6 +453,8 @@ const report = {
     versionStorageIssues: versionStorageIssues.slice(0, 20),
     refIssueCount: refIssues.length,
     refIssues: refIssues.slice(0, 20),
+    fixedRefPolicyIssueCount: fixedRefPolicyIssues.length,
+    fixedRefPolicyIssues: fixedRefPolicyIssues.slice(0, 20),
     activeLatestRefToRecycledCount: activeLatestRefsToRecycled.length,
     activeLatestRefsToRecycled: activeLatestRefsToRecycled.slice(0, 20),
     activeUnreferencedInternalDerivedCount: activeUnreferencedInternalDerived.length,
@@ -391,6 +470,9 @@ const report = {
     logicalReferencedBytes,
     uniqueReferencedBytes,
     allPayloadBytes,
+    latestResolvedCacheByType: latestResolvedCacheMetrics,
+    removableHistoricalResolvedPayloads: removableHistoricalResolvedHashes.size,
+    removableHistoricalResolvedBytes,
     estimatedSavingsPercent: logicalReferencedBytes
       ? Math.round((1 - uniqueReferencedBytes / logicalReferencedBytes) * 1000) / 10
       : 0,
@@ -402,6 +484,7 @@ const report = {
     sameResolvedHash: duplicateGroupsFrom(groupsByResolved, false),
     sameResolvedAndMetadataHash: duplicateGroupsFrom(groupsByResolvedMetadata, true),
   },
+  duplicateActiveLogicalIdentities,
 };
 
 const blockingIssueCount =
@@ -409,8 +492,9 @@ const blockingIssueCount =
   + report.integrity.hashMismatchCount
   + report.integrity.latestRollupIssueCount
   + report.integrity.refIssueCount
+  + report.integrity.fixedRefPolicyIssueCount
   + report.integrity.activeLatestRefToRecycledCount
-  + report.integrity.kindMismatchCount;
+  + report.duplicateActiveLogicalIdentities.length;
 
 if (outputJson) {
   console.log(JSON.stringify(report, null, 2));
@@ -419,9 +503,13 @@ if (outputJson) {
   console.log(`Rows: ${report.counts.presets} presets, ${report.counts.versions} versions, ${report.counts.refs} refs, ${report.counts.payloads} payloads`);
   console.log(`Dedupe: ${formatBytes(logicalReferencedBytes)} logical -> ${formatBytes(uniqueReferencedBytes)} unique referenced (${report.dedupe.estimatedSavingsPercent}% saved)`);
   console.log(`Payload storage: ${formatBytes(allPayloadBytes)} total, ${formatBytes(report.integrity.unreferencedPayloadBytes)} unreferenced`);
+  console.log(`Removable historical resolved cache: ${formatBytes(report.dedupe.removableHistoricalResolvedBytes)} across ${report.dedupe.removableHistoricalResolvedPayloads} payloads`);
   console.log('');
   console.log(`Blocking integrity issues: ${blockingIssueCount}`);
+  console.log(`Fixed ref policy issues: ${report.integrity.fixedRefPolicyIssueCount}`);
+  console.log(`Duplicate active logical identities: ${report.duplicateActiveLogicalIdentities.length}`);
   console.log(`Version storage warnings: ${report.integrity.versionStorageIssueCount}`);
+  console.log(`Payload kind warnings: ${report.integrity.kindMismatchCount}`);
   if (report.integrity.versionStorageIssueCount > 0) {
     for (const issue of report.integrity.versionStorageIssues.slice(0, 5)) {
       console.log(`- ${issue.context}: ${issue.issue}`);

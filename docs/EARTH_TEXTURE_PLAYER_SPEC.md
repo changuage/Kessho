@@ -70,7 +70,7 @@ Each slice:
 
 `fadeTime` should always be less than `sliceDuration / 2` to ensure there's always a sustain section.
 
-### Implementation skeleton (in engine.ts)
+### Implementation skeleton (in src/audio/reference/webTs/engine.ts)
 
 ```typescript
 interface TextureSlot {
@@ -90,7 +90,7 @@ interface TextureSlot {
 
 #### Loading
 
-Follow the existing `loadOceanSample()` pattern at engine.ts line ~6100:
+Follow the existing `loadOceanSample()` pattern at src/audio/reference/webTs/engine.ts line ~6100:
 
 ```typescript
 private async loadTextureSlot(slot: TextureSlot): Promise<void> {
@@ -179,7 +179,7 @@ private stopTextureSlot(slot: TextureSlot): void {
 
 ### Where to put this
 
-Add the `TextureSlot` type and these 4 methods (`loadTextureSlot`, `scheduleTextureSlice`, `startTextureSlot`, `stopTextureSlot`) as private members/methods of the existing `KesshoEngine` class in `src/audio/engine.ts`.
+Add the `TextureSlot` type and these 4 methods (`loadTextureSlot`, `scheduleTextureSlice`, `startTextureSlot`, `stopTextureSlot`) as private members/methods of the existing `KesshoEngine` class in `src/audio/reference/webTs/engine.ts`.
 
 Add private slot instances near line 560 (where existing ocean members live):
 
@@ -316,7 +316,7 @@ Add the new level/send keys so the dual slider renderer knows about them:
 
 ---
 
-## 5. Engine Routing (src/audio/engine.ts — applyParams)
+## 5. Engine Routing (src/audio/reference/webTs/engine.ts — applyParams)
 
 Wire the new texture slots the same way ocean is wired. Look at how `oceanSampleEnabled` / `oceanSampleLevel` is handled in `applyParams()` and follow the same pattern:
 
@@ -552,7 +552,7 @@ npm run dev
 | File | What to change |
 |------|----------------|
 | `src/ui/state.ts` | Add 15 new params to `SliderState`, `DEFAULT_STATE`, `QUANTIZATION`, `STATE_KEYS` |
-| `src/audio/engine.ts` | Add `TextureSlot` type, 4 methods, 3 slot instances, Haas nodes, routing, applyParams wiring, update ocean sample path |
+| `src/audio/reference/webTs/engine.ts` | Add `TextureSlot` type, 4 methods, 3 slot instances, Haas nodes, routing, applyParams wiring, update ocean sample path |
 | `src/ui/earth/components/NatureCard.tsx` | **New file** — reusable card for birds/birds2/frogs |
 | `src/ui/earth/components/EarthMixerSection.tsx` | Add level rows + send sliders for 3 new slots |
 | `src/ui/earth/EarthPage.tsx` | Import NatureCard, add 3 instances, add keys to `EARTH_DUAL_KEYS` |

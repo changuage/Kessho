@@ -28,4 +28,4 @@ Decision: web-default-core-product
 
 ## Default Rule
 
-core-product is the web default. `web-ts` remains an explicit reference/runtime comparison mode, and `core-smoke` remains an explicit dev smoke mode. Neither legacy path may silently replace `core-product` in the product app.
+core-product is the web default. The normal product mode list exposes only `core-product`; `web-ts` remains an explicit reference/runtime comparison mode, and `core-smoke` remains an explicit dev smoke mode. Neither legacy path may silently replace `core-product` in the product app.

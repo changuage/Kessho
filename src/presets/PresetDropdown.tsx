@@ -3,7 +3,7 @@
 // Matches existing app styling (native <select>, dark theme, CSS custom properties).
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import type { PresetLevel, PresetEntry, PresetSummary } from './types';
+import type { PresetLevel, PresetEntry, PresetRecoveryWarning, PresetSummary } from './types';
 import { usePresets } from './usePresets';
 import { exportPresetToFile, importPresetFromFile } from './fileIO';
 import { getPresetStore } from './PresetStore';
@@ -160,6 +160,13 @@ function dedupePresetSummaries(presets: PresetSummary[]): PresetSummary[] {
   return Array.from(byKey.values());
 }
 
+function formatRecoveryWarning(warnings: PresetRecoveryWarning[]): string {
+  if (warnings.length === 0) return '';
+  const slots = [...new Set(warnings.map(warning => warning.slot).filter(Boolean))].slice(0, 4);
+  const slotText = slots.length > 0 ? ` (${slots.join(', ')}${warnings.length > slots.length ? ', ...' : ''})` : '';
+  return `This preset was partially recovered${slotText}. Missing parts loaded OFF or bypassed; save a new version to repair it.`;
+}
+
 export const PresetDropdown: React.FC<PresetDropdownProps> = ({
   level,
   scope,
@@ -199,6 +206,10 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
     if (!selectedName) return null;
     return sortedPresets.find(p => p.name === selectedName) ?? null;
   }, [sortedPresets, selectedName]);
+  const recoveryMessage = useMemo(
+    () => formatRecoveryWarning(loadedEntry?.recoveryWarnings ?? []),
+    [loadedEntry],
+  );
   const canChangeVisibility = !SHARED_PRESET_TEST_MODE && selectedPresetSummary?.library !== 'stock';
   const isSelectedPresetPublic = selectedPresetSummary?.visibility === 'public';
 
@@ -464,6 +475,21 @@ export const PresetDropdown: React.FC<PresetDropdownProps> = ({
             }}
             title="Modified — params differ from loaded preset"
           />
+        )}
+        {recoveryMessage && (
+          <span
+            style={{
+              color: '#d5a642',
+              fontSize: compact ? '0.64rem' : '0.68rem',
+              fontWeight: 700,
+              lineHeight: 1,
+              flexShrink: 0,
+            }}
+            title={recoveryMessage}
+            aria-label={recoveryMessage}
+          >
+            Recovered
+          </span>
         )}
         <select
           value={selectedName}

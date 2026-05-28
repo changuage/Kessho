@@ -12,6 +12,9 @@ import { delayNoteToSeconds } from './delayBuses';
 import { computeGranularMacroModel, type GranularMacroModel } from './granularMacroCore';
 import { ENGINE_TRIMS } from './outputTrims';
 import { applyPadDistanceToState } from './distanceMacro';
+import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions';
+import { normalizeSequencerPitchBindingMode, sequencerPitchBindingModeToEventId, sequencerPitchBindingModeToProductId } from './sequencerPitchBinding';
+import { normalizeSequencerSwing } from './sequencerSwing';
 import { DEFAULT_STATE, getIndexedDelayDivisionValue, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
 
 export type CoreProductEvent = {
@@ -1270,6 +1273,47 @@ export function createCoreProductSequencerLaneParamEvent(
     paramId: requireParamId(paramId),
     value: requireFiniteNumber(value, 'value'),
   };
+}
+
+export function createCoreProductSequencerClockDivisionEvents(
+  sequencer: keyof typeof CORE_PRODUCT_SEQUENCER_IDS,
+  divs: readonly unknown[],
+): CoreProductEvent[] {
+  return Array.from({ length: Math.min(divs.length, 16) }, (_, laneIndex) =>
+    createCoreProductSequencerLaneParamEvent(
+      sequencer,
+      laneIndex,
+      KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision,
+      sequencerClockDivisionToNumericValue(divs[laneIndex], 16),
+    ));
+}
+
+export function createCoreProductSequencerSwingEvents(
+  sequencer: keyof typeof CORE_PRODUCT_SEQUENCER_IDS,
+  swings: readonly unknown[],
+): CoreProductEvent[] {
+  return Array.from({ length: Math.min(swings.length, 16) }, (_, laneIndex) =>
+    createCoreProductSequencerLaneParamEvent(
+      sequencer,
+      laneIndex,
+      KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing,
+      normalizeSequencerSwing(swings[laneIndex], 0),
+    ));
+}
+
+export function createCoreProductSequencerPitchBindingModeEvents(modes: readonly unknown[]): CoreProductEvent[] {
+  return Array.from({ length: Math.min(modes.length, 16) }, (_, laneIndex) => {
+    const mode = normalizeSequencerPitchBindingMode(modes[laneIndex]);
+    return {
+      ...createCoreProductSequencerLaneParamEvent(
+        'synth',
+        laneIndex,
+        KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchBindingMode,
+        sequencerPitchBindingModeToProductId(mode),
+      ),
+      value2: sequencerPitchBindingModeToEventId(mode),
+    };
+  });
 }
 
 export function createCoreProductSequencerStepValueEvent(

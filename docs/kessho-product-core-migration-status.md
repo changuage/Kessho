@@ -1,5 +1,7 @@
 # Kessho Product Core Migration Status
 
+Migration mode: fast behavioral product-core port. Current work prioritizes user-visible web-ts behavior through product-shaped C++ runtime APIs, generated events, dirty diffs, snapshots, telemetry, stems, and platform-neutral boundaries; it is not a 1:1 port of web-ts internals.
+
 ## Current Architecture State
 
 The repository now has explicit runtime modes:
@@ -10,7 +12,9 @@ The repository now has explicit runtime modes:
 
 `core-product` loads a dedicated C++ Product Core API through `public/worklets/kessho-core-product.worklet.js` and renders with `kessho_product_render`.
 
-The web runtime now defaults to `core-product`. `web-ts` remains selectable for reference/comparison, and `core-smoke` remains selectable only as a development smoke path.
+The web runtime now defaults to `core-product`. The normal product mode list exposes only `core-product`; `web-ts` and `core-smoke` stay behind explicit dev/reference query contexts for parity, comparison, and smoke tooling.
+
+The legacy TypeScript/Web Audio implementation is isolated at `src/audio/reference/webTs/engine.ts`; there is no production-root `src/audio/engine.ts` shim.
 
 ## Implemented
 
@@ -103,8 +107,9 @@ The web runtime now defaults to `core-product`. `web-ts` remains selectable for 
 - Reference isolation is classified in `docs/kessho-product-reference-isolation.md` and enforced by `core:product:reference-isolation`; `core-product` modules may not import old TypeScript musical-brain modules except for explicitly labeled Product Core override bridges such as `CoreProductLeadPatch.ts`, `CoreProductPadPatch.ts`, and `CoreProductDrumPatch.ts`.
 - Product parameter accounting is classified in `docs/kessho-product-control-classification.md` and enforced by `core:product:param-accounting`; every `SliderState` key must be wired through generated Product snapshots/events or explicitly classified as deferred, legacy, or UI policy with an owner and reason.
 - Web `core-product` host now has explicit lifecycle/state/manual-trigger methods for disposal, state reads, stem-node queries, drum prewarm, CoF reset requests, sonic-parity reset requests, seed-lock bookkeeping, direct pad voice triggers, and lead preset bookkeeping instead of relying on the unsupported-method proxy for those app-facing calls.
-- Runtime mode switcher for `core-product`, `web-ts`, and `core-smoke`.
-- Web runtime now defaults to `core-product`; `web-ts` remains selectable for reference, and `core-smoke` remains selectable only as a development smoke path.
+- Runtime mode switcher for `core-product`, `web-ts`, and `core-smoke` is restricted to explicit dev/reference query contexts.
+- Web runtime now defaults to `core-product`; the normal product mode list exposes only `core-product`, while `web-ts` remains selectable for reference and `core-smoke` remains selectable only as a development smoke path.
+- Legacy `web-ts` engine code has moved under `src/audio/reference/webTs/engine.ts` so production audio root imports cannot accidentally target the reference engine.
 - Web `core-product` host decodes and registers default/on-demand piano PCM assets plus texture-selected soundscape PCM assets with WASM Product Core when those sources are active, and product snapshots reference product asset IDs for C++ rendering.
 - Web Product Core asset manifests now cover a representative piano preload range plus available water/ocean/birds/birds2/frogs/insects texture files as host-decoded, C++-rendered buffers.
 - Product snapshots now populate the existing asset-ref table for active soundscape layers, and C++ Product Core schedules one looping soundscape voice per active registered layer.
@@ -117,9 +122,21 @@ The web runtime now defaults to `core-product`. `web-ts` remains selectable for 
 - Product source runtime code is split out of the second-stage `ProductSources.cpp` catch-all into focused param, preset event, override event, pad, source mix, source modulation, preset bridge, drum, voice allocator, and soundscape files with per-file Product Core architecture caps.
 - Asset manifest/decode matrix now has a Product Core gate in `docs/kessho-product-asset-manifest-decode-matrix.md`, `src/audio/coreProductAssetManifest.json`, and `core:product:asset-manifest`; the web asset helper derives piano/soundscape paths from the versioned Product Core asset manifest, the gate checks all committed piano/soundscape sample files, piano preload/on-demand policy, nature scene layer policy, missing-asset telemetry coverage, web/iOS/macOS decode matrix entries, hard decoded-byte accounting, measured WASM heap allocation, and asset memory budgets.
 - `core:product:cpu` now measures average/peak render cost, p95/p99 per-block render latency, and bounded simulated missed render quanta for disabled-FX and active-FX Product Core snapshots.
-- Product Default Gate v3 now enforces `core-product` as the web default in `docs/kessho-product-default-gate-v3.md`, `core:product:workflow`, and `core:product:default-gate-v3`; the workflow path triggers and required commands are statically enforced, Product host asset fetch/decode/register logic is isolated in `CoreProductAssetAdapter.ts`, dirty-diff/reload classification is isolated in `CoreProductRuntimeAdapter.ts`, source patch override compatibility is split by family in Product Core patch modules, and Product Core CI records prerequisite reports before v3 runs as the final aggregator.
+- Product Default Gate v3 now enforces `core-product` as the web default in `docs/kessho-product-default-gate-v3.md`, `core:product:workflow`, and `core:product:default-gate-v3`; the workflow path triggers and required commands are statically enforced, Product host asset fetch/decode/register logic is isolated in `CoreProductAssetRegistrar.ts`, dirty-diff/reload classification is isolated in `CoreProductRuntimeAdapter.ts`, source patch override compatibility is split by family in Product Core patch modules, and Product Core CI records prerequisite reports before v3 runs as the final aggregator.
 - Product Core behavioral cleanup proof now covers stale WASM/schema mismatch in the Product worklet, and C++ sequencer tests cover full snapshot reload followed by reconciled sequencer UI replay plus preserved RNG/evolution state.
 - Product browser-runtime proof now starts a Vite preview server in CI, opens the app without an `engine` query, and captures audible Pad, Lead, and sample+synth Product Core output through the default browser path.
+- Product audio compatibility now routes the normal `core-product` target through `ProductEnginePort`/`ProductEngineProxy`; legacy `web-ts` and `core-smoke` loading remains dynamic and limited to explicit dev/reference query contexts. The Product Core host export no longer casts itself to the legacy `AudioEngine` type, and the Product Core host, app state, and product-facing UI state props use `ProductEngineState` instead of legacy `EngineState`. `ProductEngineTypes.ts` now owns the Product FX ownership debug state instead of importing it from `engineSharedTypes`.
+- Runtime switch state, runtime switch labels, and cross-engine CPU summary storage now live in `src/ui/audioEngineRuntimeUi.ts`, keeping this pure runtime-switching bookkeeping out of the main app root while broader App runtime decomposition continues.
+- Product patch diff construction now lives in `src/ui/audioEngineStatePatch.ts`, so the app root reuses a focused helper for changed-state Product updates instead of owning that patch-building utility inline.
+- Throttled audio engine parameter sync now lives in `src/ui/useAudioEngineParamSync.ts`, moving the Product Core dirty-patch/update cadence and legacy `updateParams` fallback path out of the app root.
+- Selected audio engine lifecycle routing now lives in `src/ui/useSelectedAudioEngineLifecycle.ts`, moving start/resume/suspend/preload/stop/output-gain selection out of the app root while preserving Product Core and reference-runtime behavior.
+- Selected audio engine perf routing now lives in `src/ui/useSelectedAudioEnginePerf.ts`, moving Product telemetry-to-overlay adaptation, legacy perf callback fallback wiring, and cross-engine CPU summary persistence out of the app root.
+- iOS media-session setup/connect/stop ownership now lives in `src/ui/audioEngineMediaSession.ts`, so the app root passes selected engine callbacks instead of branching on Product Core versus reference-runtime media controls inline.
+- The legacy WebM/WAV/stem recording controller now lives in `src/ui/useAudioRecording.ts`, keeping recording state, worker/tap cleanup, export finalization, and the explicit Product Core recording-bridge guard out of the app root.
+- Product host Lead preset data hydration now lives in `src/audio/product/host/CoreProductLeadPresetDataLoader.ts`, so the main host no longer owns slot mapping or stale async preset-load protection inline.
+- Product host sample-hold/runtime-walk modulation range bridging now lives in `src/audio/product/host/CoreProductModulationRangeBridge.ts`, so the main host no longer owns modulation range stores or runtime-walk position publication inline.
+- `ProductEnginePort.unregisterAsset` is now wired through `WebProductEngine`, the Product host, `CoreProductAssetRegistrar`, `CoreProductRuntime`, and the Product worklet message loop so registered decoded buffers can be released instead of leaving a throwing adapter method.
+- Product runtime capability reporting now lives behind `ProductEnginePort.getCapabilityReport()` and combines generated schema/version/hash facts, the C++ Product ABI/capability contract, host diagnostics, build mode, and the explicit web-default native bridge deferral state.
 - Product schema, sequencer, harmony, source-wrapper, FX routing, graph, asset, WASM, web-host, telemetry-copy, and CPU smoke tests.
 
 ## Known Incomplete Areas
@@ -152,6 +169,8 @@ The web runtime now defaults to `core-product`. `web-ts` remains selectable for 
 | MIDI note input | Initial Product Core `MidiEvent` path implemented for note-on/note-off and CC-to-param event handling |
 | Core asset rendering | Implemented host-decoded buffer registration, C++ sample playback, Product Core-owned nearest registered piano-sample selection, representative piano preloads, sample attack/release envelopes, sample source post-LPF/stereo width, and C++-scheduled crossfaded/randomized looped soundscape layers with per-texture policy for available water/ocean/birds/birds2/frogs/insects assets |
 | CPU telemetry | Initial C++/WASM telemetry copy path plus CPU smoke test |
+| Runtime capability report | Product-owned report combines C++ capability facts, generated schema hash/version, host diagnostics, build mode, and native bridge deferral |
+| Native bridge | Deferred for web default; `native-product` and `test-product` remain guarded placeholders until native render, asset, telemetry, and CI coverage lands |
 
 ## Validation Commands
 

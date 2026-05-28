@@ -7,13 +7,13 @@ import {
   getCoreProductPianoAssetUrlForMidiVariant,
   getCoreProductSoundscapeAssetDescriptorsForState,
   type DecodedCoreProductAsset,
-} from './coreProductAssets';
-import type { CoreProductRuntime } from './coreProductRuntime';
-import { choosePianoSampleVariant, type PianoSampleVariant } from './pianoSamples';
+} from '../../coreProductAssets';
+import type { CoreProductRuntime } from '../../coreProductRuntime';
+import { choosePianoSampleVariant, type PianoSampleVariant } from '../../pianoSamples';
 
 type SliderStateReader = () => Record<string, unknown> | null;
 
-export class CoreProductAssetAdapter {
+export class CoreProductAssetRegistrar {
   private readonly registeredAssetIds = new Set<number>();
   private readonly pianoAssetPromises = new Map<number, Promise<void>>();
   private readonly defaultSoundscapeAssetPromises = new Map<number, Promise<void>>();
@@ -36,6 +36,14 @@ export class CoreProductAssetAdapter {
     this.runtime.registerAsset(asset);
     this.registeredAssetIds.add(asset.assetId);
     this.registeredAssetDecodedBytes.set(asset.assetId, decodedBytes);
+  }
+
+  unregisterAsset(assetId: number): void {
+    this.runtime.unregisterAsset(assetId);
+    this.registeredAssetIds.delete(assetId);
+    this.registeredAssetDecodedBytes.delete(assetId);
+    this.pianoAssetPromises.delete(assetId);
+    this.defaultSoundscapeAssetPromises.delete(assetId);
   }
 
   registeredDecodedAssetByteLength(): number {

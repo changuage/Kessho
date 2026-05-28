@@ -10,7 +10,8 @@ import {
 const host = readProjectFile('src/audio/coreProductEngineHost.ts');
 const runtimeAdapter = readProjectFile('src/audio/CoreProductRuntimeAdapter.ts');
 const snapshotCoordinator = readProjectFile('src/audio/product/host/CoreProductSnapshotCoordinator.ts');
-const hostRuntimeSurface = `${host}\n${runtimeAdapter}\n${snapshotCoordinator}`;
+const sequencerUiAdapter = readProjectFile('src/audio/product/host/CoreProductSequencerUiAdapter.ts');
+const hostRuntimeSurface = `${host}\n${runtimeAdapter}\n${snapshotCoordinator}\n${sequencerUiAdapter}`;
 const sequencerTests = readProjectFile('cpp/KesshoCore/tests/ProductSequencerTests.cpp');
 
 function hostMethodBody(name) {
@@ -19,7 +20,7 @@ function hostMethodBody(name) {
 
 function assertLiveSequencerMutation(methodName, eventCreator) {
   const body = hostMethodBody(methodName);
-  assert(body.includes(`this.postSequencerControlEvent(${eventCreator}`), `${methodName}() must post a live Product Core event`);
+  assert(body.includes(`this.postProductEvent(${eventCreator}`), `${methodName}() must delegate to the ProductEvent queue path`);
   for (const forbidden of [
     'this.patchAdapterState(',
     'this.applyLatestSnapshotUpdate(',
@@ -118,13 +119,8 @@ await runCheckWithReport({
   run: async (report) => {
     assertLiveSequencerMutation('diceSynthEuclidLane', 'createCoreProductSequencerDiceEvent(');
     assertLiveSequencerMutation('diceDrumEuclidLane', 'createCoreProductSequencerDiceEvent(');
+    assertLiveSequencerMutation('resetSynthEuclidLaneHome', 'createCoreProductSequencerResetHomeEvent(');
     assertLiveSequencerMutation('resetDrumEuclidLaneHome', 'createCoreProductSequencerResetHomeEvent(');
-    const resetSynthBody = hostMethodBody('resetSynthEuclidLaneHome');
-    assert(
-      resetSynthBody.includes("this.restoreSequencerLaneHome('synth', laneIndex)") &&
-        !resetSynthBody.includes('createCoreProductSequencerResetHomeEvent('),
-      'resetSynthEuclidLaneHome() must mirror Web synth reset by no-oping until a home snapshot exists',
-    );
     const presetHomeBody = hostMethodBody('setSequencerPresetHomeSnapshots');
     assert(
       presetHomeBody.includes("this.captureSequencerHomeLanes('synth', false, true)") &&
@@ -150,6 +146,48 @@ await runCheckWithReport({
         postSequencerBody.includes('const post = () => this.runtime.postEvent(event);'),
       'runtime-ready sequencer control events must post before any snapshot bootstrap path',
     );
+    const postProductEventBody = hostMethodBody('postProductEvent');
+    assert(
+      postProductEventBody.includes('if (this.handleSequencerUiProductEvent(event)) return;') &&
+        postProductEventBody.indexOf('this.handleSequencerUiProductEvent(event)') < postProductEventBody.indexOf('Core Product runtime cannot enqueue product events'),
+      'postProductEvent() must handle Product sequencer UI events before the generic runtime-ready guard',
+    );
+    const sequencerEventBody = hostMethodBody('handleSequencerUiProductEvent');
+    for (const token of [
+      'KESSHO_PRODUCT_EVENT_IDS.SetSequencerLane',
+      'KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision',
+      'KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing',
+      'KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchBindingMode',
+      "this.patchSequencerLaneAdapterParam(sequencer, laneIndex, 'ClockDivision', normalizeClockDivisionValue(event.value, 16))",
+      "this.patchSequencerLaneAdapterParam(sequencer, laneIndex, 'Swing', normalizeSequencerSwing(event.value, 0))",
+      'this.patchSynthPitchBindingModeFromEvent(laneIndex, event)',
+      'if (this.runtimeReady) this.runtime.postEvent(event)',
+      'KESSHO_PRODUCT_EVENT_IDS.ResetSequencerLaneHome',
+      'KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane',
+      'this.restoreSequencerLaneHome(sequencer, laneIndex)',
+      "if (sequencer === 'synth') return true",
+      'this.sequencerHome.armManualDice(sequencer, laneIndex)',
+      'this.postSequencerControlEvent(event)',
+      "this.invokeDisplayCallback(sequencer === 'synth' ? 'synthEuclidEvolve' : 'drumEuclidEvolve', laneIndex)",
+    ]) {
+      assert(sequencerEventBody.includes(token), `ProductEvent sequencer UI handler is missing ${token}`);
+    }
+    const laneParamEventBody = hostMethodBody('patchSequencerLaneAdapterParam');
+    for (const token of [
+      "const prefix = sequencer === 'synth' ? 'synthEuclid' : 'drumEuclid'",
+      "`${prefix}${laneIndex + 1}${suffix}`",
+      'this.adapterState = { ...this.adapterState',
+    ]) {
+      assert(laneParamEventBody.includes(token), `ProductEvent sequencer lane-param adapter patch is missing ${token}`);
+    }
+    const pitchBindingPatchBody = hostMethodBody('patchSynthPitchBindingModeFromEvent');
+    for (const token of [
+      'sequencerPitchBindingModeFromEventId',
+      "event.value === 1 ? 'sequence' : 'polyrhythmic'",
+      'synthPitchBindingModes: modes',
+    ]) {
+      assert(pitchBindingPatchBody.includes(token), `ProductEvent synth pitch-binding cache patch is missing ${token}`);
+    }
 
     const updateBody = hostMethodBody('applyLatestSnapshotUpdate');
     const coordinatorBody = methodBody(snapshotCoordinator, 'applyCoreProductSnapshotUpdate');
@@ -185,30 +223,39 @@ await runCheckWithReport({
     const telemetryBody = hostMethodBody('handleTelemetry');
     for (const token of [
       'this.reconcileSequencerUiState(hostTelemetry)',
-      'this.updateRuntimeWalkPositions(hostTelemetry)',
+      'this.modulationRangeBridge.updateRuntimeWalkPositions(hostTelemetry)',
     ]) {
       assert(telemetryBody.includes(token), `handleTelemetry() must reconcile Core-owned state from telemetry: ${token}`);
     }
 
     const sequencerUiBody = hostMethodBody('reconcileSequencerUiState');
     for (const token of [
-      'telemetry.sequencerUiState',
+      'reconcileCoreProductSequencerUiState({',
       'this.lastSequencerUiStateRevision',
+      'setSynthLaneState:',
+      'setDrumLaneState:',
+    ]) {
+      assert(sequencerUiBody.includes(token), `reconcileSequencerUiState() must preserve Core-owned mutation state: ${token}`);
+    }
+
+    const sequencerUiAdapterBody = methodBody(sequencerUiAdapter, 'reconcileCoreProductSequencerUiState');
+    for (const token of [
+      'options.telemetry.sequencerUiState',
       'state.lastChangedTargetId === CORE_PRODUCT_SEQUENCER_IDS.synth',
       'state.lastChangedTargetId === CORE_PRODUCT_SEQUENCER_IDS.drum',
       'CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE',
       'CORE_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME',
     ]) {
-      assert(sequencerUiBody.includes(token), `reconcileSequencerUiState() must preserve Core-owned mutation state: ${token}`);
+      assert(sequencerUiAdapterBody.includes(token), `CoreProductSequencerUiAdapter must preserve Core-owned mutation state: ${token}`);
     }
 
     for (const methodName of ['reconcileSynthSequencerLane', 'reconcileDrumSequencerLane']) {
-      const body = hostMethodBody(methodName);
+      const body = methodBody(sequencerUiAdapter, `function ${methodName}`);
       for (const token of [
         'coreProductStepValueOverridesFromLane(lane',
         'coreProductStepValueConfigsFromLane(lane',
         'lane.triggerToggles.map',
-        'invokeDisplayCallback(',
+        'options.publish(',
       ]) {
         assert(body.includes(token), `${methodName}() must update host caches and UI callbacks from Product Core state: ${token}`);
       }
@@ -302,6 +349,48 @@ await runCheckWithReport({
           'resetDrumEuclidLaneHome',
         ],
         cppPreservationAssertions: 19,
+      },
+    });
+
+    const laneParamHarness = loadCoreProductHostHarness();
+    const clockDivisionParamId = laneParamHarness.context.KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision;
+    const swingParamId = laneParamHarness.context.KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing;
+    laneParamHarness.host.postProductEvent({
+      eventKind: laneParamHarness.context.KESSHO_PRODUCT_EVENT_IDS.SetSequencerLane,
+      targetId: laneParamHarness.context.CORE_PRODUCT_SEQUENCER_IDS.synth,
+      index: 2,
+      paramId: clockDivisionParamId,
+      value: 8,
+    });
+    assert(
+      laneParamHarness.host.adapterState.synthEuclid3ClockDivision === 8 &&
+        laneParamHarness.runtime.events.length === 0,
+      'pre-runtime Product clock-division events must update host adapter state without bootstrapping audio',
+    );
+    laneParamHarness.host.runtimeReady = true;
+    laneParamHarness.host.postProductEvent({
+      eventKind: laneParamHarness.context.KESSHO_PRODUCT_EVENT_IDS.SetSequencerLane,
+      targetId: laneParamHarness.context.CORE_PRODUCT_SEQUENCER_IDS.drum,
+      index: 1,
+      paramId: swingParamId,
+      value: 0.27,
+    });
+    assert(
+      Math.abs(laneParamHarness.host.adapterState.drumEuclid2Swing - 0.27) < 1.0e-6 &&
+        laneParamHarness.runtime.events.some((event) =>
+          event.eventKind === laneParamHarness.context.KESSHO_PRODUCT_EVENT_IDS.SetSequencerLane &&
+            event.targetId === laneParamHarness.context.CORE_PRODUCT_SEQUENCER_IDS.drum &&
+            event.index === 1 &&
+            event.paramId === swingParamId),
+      'live Product swing events must update host adapter state and post to the runtime',
+    );
+    addEvidence(report, {
+      id: 'sequencer-lane-param-product-event-routing',
+      summary: 'Clock division and swing ProductEvents update host adapter state without forcing pre-runtime audio bootstrap.',
+      details: {
+        synthClockDivision: laneParamHarness.host.adapterState.synthEuclid3ClockDivision,
+        drumSwing: laneParamHarness.host.adapterState.drumEuclid2Swing,
+        runtimeEvents: laneParamHarness.runtime.events,
       },
     });
 
@@ -405,6 +494,26 @@ await runCheckWithReport({
           event.value === 0),
       'Product host must reset omitted synth pitch binding modes to polyrhythmic',
     );
+    const eventCountBeforePitchBindingEvent = harness.runtime.events.length;
+    const runtimeReadyBeforePitchBindingEvent = harness.host.runtimeReady;
+    harness.host.runtimeReady = false;
+    harness.host.postProductEvent({
+      eventKind: 8,
+      targetId: 1,
+      index: 1,
+      paramId: 'SequencerLanePitchBindingMode',
+      value: 0,
+      value2: 1,
+    });
+    assert(
+      harness.host.adapterState.synthPitchBindingModes[1] === 'linked',
+      'ProductEvent synth pitch binding mode route must preserve linked UI cache state',
+    );
+    assert(
+      harness.runtime.events.length === eventCountBeforePitchBindingEvent,
+      'pre-runtime ProductEvent synth pitch binding mode route must update host cache without bootstrapping audio',
+    );
+    harness.host.runtimeReady = runtimeReadyBeforePitchBindingEvent;
     harness.host.synthNoteRangeOverrides = [{ min: 40, max: 52 }, null, null, null];
     harness.host.running = true;
     harness.host.stop();

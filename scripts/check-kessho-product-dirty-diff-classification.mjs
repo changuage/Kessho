@@ -10,9 +10,15 @@ import {
 
 const host = readProjectFile('src/audio/coreProductEngineHost.ts');
 const hostDiagnostics = readProjectFile('src/audio/product/host/CoreProductHostDiagnostics.ts');
+const hostTelemetryAdapter = readProjectFile('src/audio/product/host/CoreProductTelemetryAdapter.ts');
+const modulationRangeBridge = readProjectFile('src/audio/product/host/CoreProductModulationRangeBridge.ts');
 const snapshotCoordinator = readProjectFile('src/audio/product/host/CoreProductSnapshotCoordinator.ts');
 const runtimeAdapter = readProjectFile('src/audio/CoreProductRuntimeAdapter.ts');
 const telemetry = readProjectFile('src/audio/coreProductTelemetry.ts');
+const app = readProjectFile('src/App.tsx');
+const audioEngineParamSync = readProjectFile('src/ui/useAudioEngineParamSync.ts');
+const morphEndpointStatePatchHook = readProjectFile('src/ui/useMorphEndpointStatePatch.ts');
+const presetEngineSyncHook = readProjectFile('src/ui/usePresetEngineSync.ts');
 const doc = readProjectFile('docs/kessho-product-control-classification.md');
 const worklet = readProjectFile('public/worklets/kessho-core-product.worklet.js');
 
@@ -378,11 +384,41 @@ await runCheckWithReport({
     ]) {
       assert(laneDiffBody.includes(token), `high-frequency lane control must be dirty diff event: ${token}`);
     }
+    assert(
+      audioEngineParamSync.includes('previousState && !options?.forceFullSnapshot') &&
+        audioEngineParamSync.includes('collectChangedStatePatch(previousState, nextState)') &&
+        audioEngineParamSync.includes("productEngine.updateSnapshotPatch(options?.reason ?? 'ui-control-change', patch);"),
+      'Product Core UI updates must send changed-key patches instead of cloning the full slider state each tick',
+    );
+    assert(
+      !audioEngineParamSync.includes("productEngine.updateSnapshotPatch('ui-control-change', { ...nextState });"),
+      'Product Core UI updates must not send a full cloned slider state for every control tick',
+    );
+    assert(
+      !app.includes('collectChangedStatePatch(') &&
+        morphEndpointStatePatchHook.includes('collectChangedStatePatch(prevState, nextState)') &&
+        morphEndpointStatePatchHook.includes('isAtEndpoint0(morphPosition, true)') &&
+        morphEndpointStatePatchHook.includes('isAtEndpoint1(morphPosition, true)'),
+      'App must keep morph endpoint dirty-diff mechanics inside useMorphEndpointStatePatch',
+    );
+    assert(
+      !audioEngineParamSync.includes('selectedProductRuntime.updateParams') &&
+        audioEngineParamSync.includes('referenceAudioEngineDebug.updateParams(nextState);'),
+      'legacy updateParams must stay on the reference runtime facade, not the product selected-runtime facade',
+    );
+    assert(
+      !app.includes('immediatelyAppliedAudioEngineStateRef') &&
+        !app.includes('skipNextPresetLoadEngineSyncRef') &&
+        presetEngineSyncHook.includes("reason: 'preset-load'") &&
+        presetEngineSyncHook.includes('forceFullSnapshot: true') &&
+        presetEngineSyncHook.includes("updateEngine: audioEngineRuntimeMode !== 'core-product'"),
+      'App must keep preset engine sync branching inside usePresetEngineSync',
+    );
 
     const hostTelemetryBody = methodBody(host, 'withHostDiagnostics');
-    const perfBody = methodBody(host, 'createPerfSnapshot');
+    const perfBody = methodBody(hostTelemetryAdapter, 'createCoreProductPerfSnapshot');
     const diagnosticsSnapshotBody = methodBody(hostDiagnostics, 'snapshot');
-    const diagnosticsEnrichBody = methodBody(hostDiagnostics, 'enrichTelemetry');
+    const telemetryEnrichBody = methodBody(hostTelemetryAdapter, 'enrichCoreProductHostTelemetry');
     for (const token of [
       'dirtyDiffCount',
       'fullSnapshotReloadCount',
@@ -395,8 +431,8 @@ await runCheckWithReport({
       assert(perfBody.includes(token), `perf snapshot is missing ${token}`);
       assert(doc.includes(`\`${token}\``), `control classification doc is missing ${token}`);
     }
-    assert(hostTelemetryBody.includes('this.diagnostics.enrichTelemetry'), 'host telemetry enrichment must delegate to CoreProductHostDiagnostics');
-    assert(diagnosticsEnrichBody.includes('...this.snapshot()'), 'host diagnostics telemetry enrichment must include diagnostics snapshot fields');
+    assert(hostTelemetryBody.includes('enrichCoreProductHostTelemetry'), 'host telemetry enrichment must delegate to CoreProductTelemetryAdapter');
+    assert(telemetryEnrichBody.includes('...diagnostics'), 'host telemetry enrichment must include diagnostics snapshot fields');
 
     for (const token of [
       '## Live Product Core Events',
@@ -424,8 +460,11 @@ await runCheckWithReport({
 
     const unsupportedControlBody = methodBody(host, 'reportRuntimeFallback');
     assert(unsupportedControlBody.includes('this.diagnostics.reportRuntimeFallback(method, classification)'), 'missing method fallback must delegate to diagnostics');
-    const unsupportedRangeBody = methodBody(host, 'reportUnsupportedRangeKey');
-    assert(unsupportedRangeBody.includes('this.diagnostics.reportUnsupportedRangeKey(key)'), 'unsupported range fallback must delegate to diagnostics');
+    assert(
+      modulationRangeBridge.includes('reportUnsupportedRangeKey: (key: string) => void') &&
+        modulationRangeBridge.includes('this.options.reportUnsupportedRangeKey(key)'),
+      'unsupported range fallback must delegate through CoreProductModulationRangeBridge diagnostics callback',
+    );
     const unsupportedRecordBody = methodBody(hostDiagnostics, 'recordUnsupportedMethod');
     assert(unsupportedRecordBody.includes('this.unsupportedControlCount += 1'), 'diagnostics must increment unsupportedControlCount');
 

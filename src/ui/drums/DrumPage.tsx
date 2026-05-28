@@ -112,7 +112,7 @@ export interface DrumPageProps {
   togglePanel: (id: string) => void;
   sliderProps: (paramKey: keyof SliderState) => Record<string, unknown>;
   triggerVoice: (voice: DrumVoiceType) => void;
-  getAnalyserNode: (voice: DrumVoiceType) => AnalyserNode | undefined;
+  getAnalyserNode?: (voice: DrumVoiceType) => AnalyserNode | undefined;
   preloadAudioEngine?: () => Promise<unknown>;
   setStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
   setEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;

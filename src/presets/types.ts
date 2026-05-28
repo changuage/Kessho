@@ -88,6 +88,27 @@ export interface PresetRef {
   scope?: string;
 }
 
+export type PresetRecoveryWarningReason =
+  | 'missing_child_preset'
+  | 'missing_payload'
+  | 'missing_ref'
+  | 'hash_mismatch'
+  | 'invalid_payload_shape';
+
+export type PresetRecoveryFallback = 'off' | 'bypass' | 'empty' | 'default';
+
+export interface PresetRecoveryWarning {
+  slot: string;
+  reason: PresetRecoveryWarningReason;
+  fallback: PresetRecoveryFallback;
+  version?: number;
+}
+
+export interface PresetLoadResult {
+  entry: PresetEntry;
+  recoveryWarnings: PresetRecoveryWarning[];
+}
+
 export interface PresetEntry extends PresetIdentityMetadata {
   id?: string;         // Normalized on save/load; stable across versions
   type: PresetLevel;
@@ -101,6 +122,7 @@ export interface PresetEntry extends PresetIdentityMetadata {
   currentVersion: number;
   createdAt: number;
   updatedAt: number;
+  recoveryWarnings?: PresetRecoveryWarning[];
 }
 
 /** File export/import envelope */

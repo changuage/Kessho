@@ -63,7 +63,7 @@
       ],
       "webEvidence": [
         {
-          "file": "src/audio/engine.ts",
+          "file": "src/audio/reference/webTs/engine.ts",
           "tokens": [
             "computeGranularMacroModel(state",
             "this.granularFxReverbLPF",
@@ -153,7 +153,7 @@
       ],
       "webEvidence": [
         {
-          "file": "src/audio/engine.ts",
+          "file": "src/audio/reference/webTs/engine.ts",
           "tokens": [
             "applySpectralFreezeRouting",
             "spectralFreezeRouting",
@@ -271,7 +271,7 @@
       ],
       "webEvidence": [
         {
-          "file": "src/audio/engine.ts",
+          "file": "src/audio/reference/webTs/engine.ts",
           "tokens": [
             "ensureDiffuseBus",
             "this.diffuseHighpass",
@@ -435,7 +435,7 @@
       ],
       "webEvidence": [
         {
-          "file": "src/audio/engine.ts",
+          "file": "src/audio/reference/webTs/engine.ts",
           "tokens": [
             "granularWavesSend",
             "granularWaterSend",
@@ -700,7 +700,7 @@
           ]
         },
         {
-          "file": "src/audio/engine.ts",
+          "file": "src/audio/reference/webTs/engine.ts",
           "tokens": [
             "getSharedDelayBState",
             "granularDelaySourceLevel",
@@ -822,7 +822,7 @@
       ],
       "webEvidence": [
         {
-          "file": "src/audio/engine.ts",
+          "file": "src/audio/reference/webTs/engine.ts",
           "tokens": [
             "reverbTensionMode",
             "reverbWashBoost",
@@ -982,7 +982,7 @@
       ],
       "webEvidence": [
         {
-          "file": "src/audio/engine.ts",
+          "file": "src/audio/reference/webTs/engine.ts",
           "tokens": [
             "Drum Synth WASM node outputs",
             "post-fader; JS drums use pre-fader",
@@ -1096,7 +1096,7 @@
           ]
         },
         {
-          "file": "src/audio/CoreProductAssetAdapter.ts",
+          "file": "src/audio/product/host/CoreProductAssetRegistrar.ts",
           "tokens": [
             "ensurePianoAssetForMidi(midiNote: number, variant",
             "ensurePianoAssetForNote",
@@ -1208,7 +1208,7 @@
       ],
       "webEvidence": [
         {
-          "file": "src/audio/engine.ts",
+          "file": "src/audio/reference/webTs/engine.ts",
           "tokens": [
             "getSidechainTargetInput",
             "triggerSidechainDuck",

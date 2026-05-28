@@ -19,8 +19,8 @@ import {
   CircleOfFifthsConfig,
   HarmonyParams,
   getEffectiveTension,
-} from './harmony';
-import { getScaleNotesInRange, midiToFreq } from './scales';
+} from '../../harmony';
+import { getScaleNotesInRange, midiToFreq } from '../../scales';
 import {
   createRng,
   generateRandomSequence,
@@ -29,34 +29,34 @@ import {
   computeGranularRuntimeSeed,
   granularRuntimeSeedMaterial,
   rngFloat,
-} from './rng';
-import { DrumSynth, DrumVoiceType } from './drumSynth';
-import type { DrumStepOverrides, LaneDirection, TrigCondition, ClockDivision, PitchMode, ScaleName, PitchBindingMode } from './drumSeqTypes';
-import { SCALES } from './drumSeqTypes';
-import { seqLaneIndex, seqEuclidean } from './drumSequencer';
-import { sequencerClockDivisionToSeconds } from './sequencerClockDivisions';
-import { normalizeSequencerPitchBindingMode } from './sequencerPitchBinding';
-import { normalizeSequencerPitchSettings, type SequencerPitchSettings } from './sequencerPitchSettings';
-import { normalizeSequencerSwing } from './sequencerSwing';
-import { generateDiceValues, generateDicePitchOffsets, blendDiceValues, clamp as clampVal, clampSequencerRatchet } from './seqEvolveCore';
+} from '../../rng';
+import { DrumSynth, DrumVoiceType } from '../../drumSynth';
+import type { DrumStepOverrides, LaneDirection, TrigCondition, ClockDivision, PitchMode, ScaleName, PitchBindingMode } from '../../drumSeqTypes';
+import { SCALES } from '../../drumSeqTypes';
+import { seqLaneIndex, seqEuclidean } from '../../drumSequencer';
+import { sequencerClockDivisionToSeconds } from '../../sequencerClockDivisions';
+import { normalizeSequencerPitchBindingMode } from '../../sequencerPitchBinding';
+import { normalizeSequencerPitchSettings, type SequencerPitchSettings } from '../../sequencerPitchSettings';
+import { normalizeSequencerSwing } from '../../sequencerSwing';
+import { generateDiceValues, generateDicePitchOffsets, blendDiceValues, clamp as clampVal, clampSequencerRatchet } from '../../seqEvolveCore';
 import {
   evolveSynthLane,
   resetSynthLaneToHome,
   captureSynthHomeSnapshot,
   defaultSynthEvolveConfig,
   defaultSynthEvolveState,
-} from './synthSeqEvolve';
-import type { SynthEvolveConfig, SynthEvolveState, SynthLaneOverrides } from './synthSeqEvolve';
-import { computeGranularMacroModel } from './granularMacroModel';
-import { SharedDelayBusA, SharedDelayBusB, delayNoteToSeconds } from './delayBuses';
-import { resolveDynamicsTargets, type DynamicsRoutingTargets, type DynamicsTargets } from './dynamicsModel';
-import { toDynamicsCharacterParamObject } from './dynamicsCharacterParams';
-import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from './outputTrims';
-import { isIOSLikeDevice, isMobileDevice } from '../platform';
+} from '../../synthSeqEvolve';
+import type { SynthEvolveConfig, SynthEvolveState, SynthLaneOverrides } from '../../synthSeqEvolve';
+import { computeGranularMacroModel } from '../../granularMacroModel';
+import { SharedDelayBusA, SharedDelayBusB, delayNoteToSeconds } from '../../delayBuses';
+import { resolveDynamicsTargets, type DynamicsRoutingTargets, type DynamicsTargets } from '../../dynamicsModel';
+import { toDynamicsCharacterParamObject } from '../../dynamicsCharacterParams';
+import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from '../../outputTrims';
+import { isIOSLikeDevice, isMobileDevice } from '../../../platform';
 import {
   EarthTexturePlayer,
   type EarthTexturePlayerDebugSnapshot,
-} from './earthTexturePlayer';
+} from '../../earthTexturePlayer';
 import {
   type PianoSampleVariant,
   choosePianoSampleVariant,
@@ -66,8 +66,8 @@ import {
   getPianoSamplePath,
   getPianoSampleMidi,
   PIANO_SAMPLE_COUNT,
-} from './pianoSamples';
-import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
+} from '../../pianoSamples';
+import type { KesshoMidiMessage } from '../../../native/capacitorMidiRouting';
 import {
   type TransportAnchors,
   type TransportDebugSnapshot,
@@ -80,17 +80,17 @@ import {
   getTimeUntilNextBoundaryWall,
   getTransportMetrics,
   resolveProgressionPhraseClockSource,
-} from './transport';
-import { SEQUENCER_VISUAL_SYNC_OFFSET_MS } from './sequencerVisualSync';
-import type { StemRecordTrackId } from './recordingTracks';
-import { DEFAULT_REVERB_PRE_COMP, getIndexedDelayDivisionValue, getStateValueFromSliderNumber, quantize, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
+} from '../../transport';
+import { SEQUENCER_VISUAL_SYNC_OFFSET_MS } from '../../sequencerVisualSync';
+import type { StemRecordTrackId } from '../../recordingTracks';
+import { DEFAULT_REVERB_PRE_COMP, getIndexedDelayDivisionValue, getStateValueFromSliderNumber, quantize, type IndexedDelayDivisionKey, type SliderState } from '../../../ui/state';
 import {
   applyDistanceValue,
   applyLeadDistanceEnvelope,
   applyPadDistanceToState,
   applyPianoDistanceEnvelope,
   getVoiceDistanceValue,
-} from './distanceMacro';
+} from '../../distanceMacro';
 export interface RecordableTrackSource {
   node: AudioNode | null;
   outputIndex?: number;
@@ -620,8 +620,8 @@ function pickChordWeightedNote(
   if (rng() < chordBias) return chordTones[Math.floor(rng() * chordTones.length)]!;
   return passingTones[Math.floor(rng() * passingTones.length)]!;
 }
-import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS } from './padPresets';
-import { applyMorphToState, DrumMorphManager, updateAutoMorph, VOICE_MORPH_KEYS } from './drumMorph';
+import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS } from '../../padPresets';
+import { applyMorphToState, DrumMorphManager, updateAutoMorph, VOICE_MORPH_KEYS } from '../../drumMorph';
 import {
   type Lead4opFMPreset,
   type Lead4opFMMorphedParams,
@@ -630,8 +630,8 @@ import {
   playLead4opFMNote,
   DEFAULT_SOFT_RHODES,
   DEFAULT_GAMELAN,
-} from './lead4opfm';
-import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, type WaterPresetState } from './waterPresets';
+} from '../../lead4opfm';
+import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, type WaterPresetState } from '../../waterPresets';
 
 type GranularVoiceMode = SliderState['granularV1Mode'];
 type GranularGrainShape = NonNullable<SliderState['granularShape']>;
@@ -907,8 +907,8 @@ export interface EngineState {
   transportDebug: TransportDebugSnapshot | null;
 }
 
-import type { DrumEuclidEvolveConfig } from './drumSynth';
-import { defaultEvolveConfig as defaultDrumEuclidEvolveConfig } from './drumSynth';
+import type { DrumEuclidEvolveConfig } from '../../drumSynth';
+import { defaultEvolveConfig as defaultDrumEuclidEvolveConfig } from '../../drumSynth';
 
 /** Shared clock-division-to-seconds helper (used by synth + granular schedulers). */
 function clockDivToSeconds(clockDiv: ClockDivision, beatDuration: number): number {

@@ -6,7 +6,7 @@ import type {
   FxOwnershipDebugState,
   ManualSynthNoteOptions,
   RecordableTrackSource,
-} from './engine';
+} from './reference/webTs/engine';
 import {
   createKesshoEngineSnapshot,
   toKesshoCorePresetPreviewScalarsV1,

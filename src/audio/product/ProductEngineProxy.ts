@@ -3,8 +3,11 @@ import type { ProductEngineRuntimeMode } from './ProductRuntimeMode';
 import { WebProductEngine } from './WebProductEngine';
 
 let loadedProductEngine: ProductEnginePort | null = null;
-let loadPromise: Promise<ProductEnginePort> | null = null;
 let resolvedRuntimeMode: ProductEngineRuntimeMode | null = null;
+
+function isDevRuntime(): boolean {
+  return Boolean((import.meta.env as unknown as { DEV?: boolean }).DEV);
+}
 
 export function getProductEngineRuntimeMode(): ProductEngineRuntimeMode {
   if (resolvedRuntimeMode) return resolvedRuntimeMode;
@@ -15,8 +18,15 @@ export function getProductEngineRuntimeMode(): ProductEngineRuntimeMode {
 
   const params = new URLSearchParams(window.location.search);
   const requested = params.get('engine');
+  if (requested === 'web-ts' || requested === 'web-audio' || requested === 'core-smoke') {
+    resolvedRuntimeMode = 'core-product';
+    return resolvedRuntimeMode;
+  }
   if (requested === 'native-product' || requested === 'test-product') {
-    resolvedRuntimeMode = requested;
+    if (isDevRuntime()) {
+      throw new Error(`${requested} runtime is not implemented in this build`);
+    }
+    resolvedRuntimeMode = 'core-product';
     return resolvedRuntimeMode;
   }
 
@@ -25,19 +35,17 @@ export function getProductEngineRuntimeMode(): ProductEngineRuntimeMode {
 }
 
 export async function loadProductEngine(): Promise<ProductEnginePort> {
+  return getOrCreateProductEngine();
+}
+
+function getOrCreateProductEngine(): ProductEnginePort {
   if (loadedProductEngine) return loadedProductEngine;
-  if (!loadPromise) {
-    loadPromise = Promise.resolve().then(() => {
-      const mode = getProductEngineRuntimeMode();
-      if (mode !== 'core-product') {
-        throw new Error(`${mode} runtime is not implemented in this build`);
-      }
-      const engine = new WebProductEngine();
-      loadedProductEngine = engine;
-      return engine;
-    });
+  const mode = getProductEngineRuntimeMode();
+  if (mode !== 'core-product') {
+    throw new Error(`${mode} runtime is not implemented in this build`);
   }
-  return loadPromise;
+  loadedProductEngine = new WebProductEngine();
+  return loadedProductEngine;
 }
 
 export const productEngine = new Proxy({} as ProductEnginePort, {
@@ -45,18 +53,8 @@ export const productEngine = new Proxy({} as ProductEnginePort, {
     if (property === 'then') return undefined;
     if (typeof property !== 'string') return undefined;
 
-    if (loadedProductEngine) {
-      const value = (loadedProductEngine as unknown as Record<string, unknown>)[property];
-      return typeof value === 'function' ? value.bind(loadedProductEngine) : value;
-    }
-
-    return (...args: unknown[]) =>
-      loadProductEngine().then((engine) => {
-        const value = (engine as unknown as Record<string, unknown>)[property];
-        if (typeof value !== 'function') {
-          throw new Error(`ProductEngine.${property} is not a function`);
-        }
-        return (value as (...invokeArgs: unknown[]) => unknown).apply(engine, args);
-      });
+    const engine = getOrCreateProductEngine();
+    const value = (engine as unknown as Record<string, unknown>)[property];
+    return typeof value === 'function' ? value.bind(engine) : value;
   },
 });

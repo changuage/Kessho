@@ -1,6 +1,6 @@
 # Kessho Product Runtime Fallback Classification
 
-`core-product` runtime fallbacks are temporary diagnostics, not architecture. Unknown update/control methods must not silently disappear. No runtime fallback is classified as safe only because it is visual; explicitly hidden Product Core getters are implemented host methods that throw a hard API-boundary error before fallback diagnostics run.
+`core-product` runtime fallbacks are temporary diagnostics, not architecture. Unknown update/control methods must not silently disappear. No runtime fallback is classified as safe only because it is visual; unsupported visual/debug getters are retired from the Product Core host and guarded away from `core-product` UI paths.
 
 ## forbidden-production-fallback
 
@@ -24,7 +24,7 @@ Runtime fallback diagnostics exposed through Product Core host telemetry/perf sn
 - `classifyCoreProductRuntimeFallback` owns the classification.
 - Getter fallback policy documentation remains closed-list through `CORE_PRODUCT_GETTER_POLICIES`, but every missing getter still classifies as `forbidden-production-fallback`.
 - Reference-only fallback classification is not allowed in `core-product`; legacy `web-ts` behavior must live in explicit reference harnesses.
-- Explicitly hidden getters throw through `explicitlyUnsupportedGetter` and do not increment runtime fallback diagnostics.
+- Retired visual/debug getters remain absent from the Product Core host and guarded away from `core-product` UI paths so they do not increment runtime fallback diagnostics during normal product use.
 - The app runtime proxy may return `null` only for the pre-init `getAudioContext` lifecycle probe; limiter and media-stream getters must reach an initialized engine or throw.
 - `reportRuntimeFallback` increments diagnostics for every fallback use.
 - `reportedRuntimeFallbacks` guarantees production logging is once per missing method.

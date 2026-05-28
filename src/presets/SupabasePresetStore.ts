@@ -19,6 +19,7 @@ import {
 import { normalizeJourneyPresetPreview } from './journeyPresetPreview';
 import {
   applyRecordPatch,
+  buildMissingChildFallbackData,
   canonicalizeRecord,
   computeRecordPatch,
   getPresetChildSpecs,
@@ -40,6 +41,7 @@ import { PRESET_DELETE_ENABLED, SHARED_PRESET_TEST_MODE } from './sharedMode';
 import type {
   PresetEntry,
   PresetLevel,
+  PresetRecoveryWarning,
   PresetRef,
   PresetSummary,
   PresetVersionMetadata,
@@ -60,9 +62,13 @@ interface V2LookupOptions {
 interface PendingVersionRefV2 {
   slot: string;
   target: PresetV2Row;
-  targetVersionNo: number | null;
-  followLatest: boolean;
   overrideHash?: string | null;
+}
+
+interface StorablePayloadV2 {
+  hash: string;
+  payloadKind: PresetPayloadKind;
+  payload: Record<string, unknown>;
 }
 
 /** Row shape returned from the legacy Supabase `presets` table */
@@ -309,11 +315,10 @@ function makeStoredRefKey(ref: PresetVersionRefV2Row): string {
 }
 
 function makePendingRefKey(ref: PendingVersionRefV2): string {
-  const versionLabel = ref.followLatest ? 'latest' : fixedRefVersionLabel(ref.targetVersionNo);
   return [
     ref.slot,
     ref.target.id,
-    versionLabel,
+    'latest',
     ref.overrideHash ?? '',
   ].join(':');
 }
@@ -521,7 +526,19 @@ export class SupabasePresetStore implements IPresetStore {
       return;
     }
 
-    console.warn('Legacy Supabase preset hard delete is disabled; apply preset_storage_v2_recycle_bin.sql to enable recycle-bin deletes.', type, scope ?? '', name);
+    const { data, error } = await this.client.rpc('kessho_soft_delete_legacy_preset', {
+      target_type: type,
+      target_name: name,
+      target_scope: scope ?? null,
+    });
+
+    if (error) {
+      throw new Error(`Legacy cloud preset delete failed: ${error.message}`);
+    }
+
+    if (data === false) {
+      throw new Error(`Legacy cloud preset delete failed: "${name}" is not deletable or is already archived.`);
+    }
   }
 
   private async existsLegacy(type: PresetLevel, name: string, scope?: string): Promise<boolean> {
@@ -548,7 +565,7 @@ export class SupabasePresetStore implements IPresetStore {
       .from('presets_v2')
       .select('*')
       .eq('type', type)
-      .eq('name', name);
+      .eq('name_key', normalizeNameKey(name));
 
     if (scope) query = query.eq('scope', scope);
     else query = query.is('scope', null);
@@ -576,7 +593,7 @@ export class SupabasePresetStore implements IPresetStore {
       .from('presets_v2')
       .select('*')
       .eq('type', type)
-      .eq('name', name);
+      .eq('name_key', normalizeNameKey(name));
 
     if (options.deletedOnly) query = query.not('deleted_at', 'is', null);
     else if (!options.includeDeleted) query = query.is('deleted_at', null);
@@ -619,7 +636,7 @@ export class SupabasePresetStore implements IPresetStore {
   private async resolveExplicitVersionRefsV2(
     parentType: PresetLevel,
     refs: Record<string, PresetRef> | undefined,
-    excludePresetId: string,
+    excludePresetId?: string | null,
   ): Promise<PendingVersionRefV2[]> {
     const targetType = this.getExplicitRefTargetType(parentType);
     if (!targetType || !refs) return [];
@@ -628,7 +645,7 @@ export class SupabasePresetStore implements IPresetStore {
     for (const [slot, ref] of Object.entries(refs).sort(([left], [right]) => left.localeCompare(right))) {
       let target: PresetV2Row | null = ref.id ? await this.findPresetRowByIdV2(ref.id) : null;
       if (target?.type !== targetType) target = null;
-      if (target?.id === excludePresetId) target = null;
+      if (excludePresetId && target?.id === excludePresetId) target = null;
 
       if (!target) {
         const targetScope = ref.scope ?? (targetType === 'state' ? 'global' : undefined);
@@ -641,16 +658,12 @@ export class SupabasePresetStore implements IPresetStore {
       }
 
       if (!target) {
-        console.warn(`SupabasePresetStore.saveV2 could not resolve ${parentType} ref "${slot}" -> "${ref.name}"`);
-        continue;
+        throw new Error(`V2 preset save failed: unresolved ${parentType} ref "${slot}" -> "${ref.name}". Preset refs must resolve before save.`);
       }
 
-      const followLatest = ref.version === 'latest';
       resolvedRefs.push({
         slot,
         target,
-        followLatest,
-        targetVersionNo: ref.version === 'latest' ? null : ref.version,
         overrideHash: null,
       });
     }
@@ -846,40 +859,27 @@ export class SupabasePresetStore implements IPresetStore {
     return this.findMatchingPresetV2(row.type, row.scope ?? '', row.latest_resolved_hash ?? '');
   }
 
-  private async ensurePayloadV2(kind: PresetPayloadKind, payload: unknown): Promise<string | null> {
-    if (payload === undefined || payload === null) return null;
-    if (Array.isArray(payload) && payload.length === 0) return null;
-    if (isPlainObject(payload) && Object.keys(payload).length === 0) return null;
-
-    const normalized = canonicalizeRecord(payload as Record<string, unknown>);
-    const hash = await hashCanonicalJson(normalized);
-    if (this.knownPayloadHashesV2.has(hash)) return hash;
-
-    const { error: upsertError } = await this.client
-      .from('preset_payloads_v2')
-      .upsert({
-        hash,
-        payload_kind: kind,
-        payload: normalized,
-      }, {
-        onConflict: 'hash',
-        ignoreDuplicates: true,
-      });
-
-    if (upsertError && !isConflictError(upsertError)) {
-      if (this.markV2UnavailableIfMissing(upsertError)) return null;
-      throw new Error(`V2 payload upsert failed: ${upsertError.message}`);
-    }
-
-    this.knownPayloadHashesV2.add(hash);
-    return hash;
-  }
-
   private async hashStorablePayloadV2(payload: unknown): Promise<string | null> {
     if (payload === undefined || payload === null) return null;
     if (Array.isArray(payload) && payload.length === 0) return null;
     if (isPlainObject(payload) && Object.keys(payload).length === 0) return null;
     return hashCanonicalJson(canonicalizeRecord(payload as Record<string, unknown>));
+  }
+
+  private async makeStorablePayloadV2(
+    kind: PresetPayloadKind,
+    payload: unknown,
+  ): Promise<StorablePayloadV2 | null> {
+    if (payload === undefined || payload === null) return null;
+    if (Array.isArray(payload) && payload.length === 0) return null;
+    if (isPlainObject(payload) && Object.keys(payload).length === 0) return null;
+
+    const normalized = canonicalizeRecord(payload as Record<string, unknown>);
+    return {
+      hash: await hashCanonicalJson(normalized),
+      payloadKind: kind,
+      payload: normalized,
+    };
   }
 
   private async fetchVersionRefKeysV2(versionId: string | null | undefined): Promise<string[]> {
@@ -928,6 +928,50 @@ export class SupabasePresetStore implements IPresetStore {
     }
   }
 
+  private async savePresetVersionAtomicallyV2(
+    identityPayload: Record<string, unknown>,
+    versionPayload: Record<string, unknown>,
+    payloads: StorablePayloadV2[],
+    refsToInsert: PendingVersionRefV2[],
+  ): Promise<{ preset: PresetV2Row; version: PresetVersionV2Row }> {
+    const { data, error } = await this.client.rpc('kessho_save_preset_v2', {
+      identity_payload: identityPayload,
+      version_payload: versionPayload,
+      payloads_payload: payloads.map((payload) => ({
+        hash: payload.hash,
+        payload_kind: payload.payloadKind,
+        payload: payload.payload,
+      })),
+      refs_payload: refsToInsert.map((ref) => ({
+        ref_slot: ref.slot,
+        target_preset_id: ref.target.id,
+        override_hash: ref.overrideHash ?? null,
+        created_at: versionPayload.created_at,
+      })),
+    });
+
+    if (error) {
+      if (this.markV2UnavailableIfMissing(error)) {
+        throw error;
+      }
+      throw new Error(`V2 atomic save failed: ${error.message}`);
+    }
+
+    const result = data as { preset?: PresetV2Row; version?: PresetVersionV2Row } | null;
+    if (!result?.preset || !result.version) {
+      throw new Error('V2 atomic save failed: RPC returned no preset/version rows.');
+    }
+
+    for (const payload of payloads) {
+      this.knownPayloadHashesV2.add(payload.hash);
+    }
+
+    return {
+      preset: result.preset,
+      version: result.version,
+    };
+  }
+
   private async fetchPayloadMapV2(hashes: string[]): Promise<Map<string, unknown>> {
     const uniqueHashes = [...new Set(hashes.filter(Boolean))];
     const payloadMap = new Map<string, unknown>();
@@ -958,13 +1002,28 @@ export class SupabasePresetStore implements IPresetStore {
     refsByVersionId: Map<string, PresetVersionRefV2Row[]>,
     targetPresetMap: Map<string, PresetV2Row>,
     previousResolved: Record<string, unknown> | null,
+    recoveryWarnings?: PresetRecoveryWarning[],
   ): Promise<Record<string, unknown>> {
     if (row.resolved_hash) {
       const cached = payloadMap.get(row.resolved_hash);
       if (isPlainObject(cached)) return canonicalizeRecord(cached);
+      recoveryWarnings?.push({
+        slot: 'resolved',
+        reason: cached === undefined ? 'missing_payload' : 'invalid_payload_shape',
+        fallback: 'default',
+        version: row.version_no,
+      });
+    } else {
+      recoveryWarnings?.push({
+        slot: 'resolved',
+        reason: 'missing_payload',
+        fallback: 'default',
+        version: row.version_no,
+      });
     }
 
     let mergedFromRefs: Record<string, unknown> = {};
+    let recoveryFallbackData: Record<string, unknown> = {};
     const mergeableRefSlots = new Set(
       getPresetChildSpecs(parentType, parentScope ?? undefined).map(spec => spec.slot),
     );
@@ -972,9 +1031,46 @@ export class SupabasePresetStore implements IPresetStore {
     for (const refRow of refRows) {
       if (!mergeableRefSlots.has(refRow.ref_slot)) continue;
       const targetPreset = targetPresetMap.get(refRow.target_preset_id);
-      if (!targetPreset?.latest_resolved_hash) continue;
+      if (!targetPreset) {
+        recoveryWarnings?.push({
+          slot: refRow.ref_slot,
+          reason: 'missing_child_preset',
+          fallback: parentType === 'state' || parentType === 'source' ? 'off' : 'empty',
+          version: row.version_no,
+        });
+        recoveryFallbackData = canonicalizeRecord({
+          ...recoveryFallbackData,
+          ...buildMissingChildFallbackData(parentType, parentScope ?? undefined, refRow.ref_slot),
+        });
+        continue;
+      }
+      if (!targetPreset.latest_resolved_hash) {
+        recoveryWarnings?.push({
+          slot: refRow.ref_slot,
+          reason: 'missing_payload',
+          fallback: parentType === 'state' || parentType === 'source' ? 'off' : 'empty',
+          version: row.version_no,
+        });
+        recoveryFallbackData = canonicalizeRecord({
+          ...recoveryFallbackData,
+          ...buildMissingChildFallbackData(parentType, parentScope ?? undefined, refRow.ref_slot),
+        });
+        continue;
+      }
       const childData = payloadMap.get(targetPreset.latest_resolved_hash);
-      if (!isPlainObject(childData)) continue;
+      if (!isPlainObject(childData)) {
+        recoveryWarnings?.push({
+          slot: refRow.ref_slot,
+          reason: childData === undefined ? 'missing_payload' : 'invalid_payload_shape',
+          fallback: parentType === 'state' || parentType === 'source' ? 'off' : 'empty',
+          version: row.version_no,
+        });
+        recoveryFallbackData = canonicalizeRecord({
+          ...recoveryFallbackData,
+          ...buildMissingChildFallbackData(parentType, parentScope ?? undefined, refRow.ref_slot),
+        });
+        continue;
+      }
       let mergedChild = canonicalizeRecord(childData);
       if (targetPreset.scope === 'euclideanPattern' && refRow.ref_slot === 'euclideanPattern') {
         if (parentType === 'source' && parentScope === 'synth') {
@@ -987,6 +1083,13 @@ export class SupabasePresetStore implements IPresetStore {
         const childOverride = payloadMap.get(refRow.override_hash);
         if (isPlainObject(childOverride)) {
           mergedChild = canonicalizeRecord({ ...mergedChild, ...childOverride });
+        } else {
+          recoveryWarnings?.push({
+            slot: refRow.ref_slot,
+            reason: childOverride === undefined ? 'missing_payload' : 'invalid_payload_shape',
+            fallback: parentType === 'state' || parentType === 'source' ? 'off' : 'empty',
+            version: row.version_no,
+          });
         }
       }
       mergedFromRefs = canonicalizeRecord({ ...mergedFromRefs, ...mergedChild });
@@ -998,10 +1101,10 @@ export class SupabasePresetStore implements IPresetStore {
     if (row.storage_mode === 'patch' && row.patch_from_prev_hash && previousResolved) {
       const patchPayload = payloadMap.get(row.patch_from_prev_hash);
       const patched = applyRecordPatch(previousResolved, isPlainObject(patchPayload) ? patchPayload as never : null);
-      return canonicalizeRecord({ ...mergedFromRefs, ...patched, ...override });
+      return canonicalizeRecord({ ...mergedFromRefs, ...patched, ...override, ...recoveryFallbackData });
     }
 
-    return canonicalizeRecord({ ...mergedFromRefs, ...override });
+    return canonicalizeRecord({ ...mergedFromRefs, ...override, ...recoveryFallbackData });
   }
 
   private async loadV2ByRow(row: PresetV2Row, version?: number): Promise<PresetEntry | null> {
@@ -1070,6 +1173,8 @@ export class SupabasePresetStore implements IPresetStore {
     }
 
     const materializedVersions: PresetEntry['versions'] = [];
+    const targetVersionNo = version ?? row.latest_version_no;
+    const recoveryWarnings: PresetRecoveryWarning[] = [];
     let previousResolved: Record<string, unknown> | null = null;
     for (const versionRow of versionRows) {
       const versionRefs = refsByVersionId.get(versionRow.id) ?? [];
@@ -1093,6 +1198,7 @@ export class SupabasePresetStore implements IPresetStore {
         refsByVersionId,
         targetPresetMap,
         previousResolved,
+        versionRow.version_no === targetVersionNo ? recoveryWarnings : undefined,
       );
       previousResolved = resolvedData;
 
@@ -1132,6 +1238,10 @@ export class SupabasePresetStore implements IPresetStore {
       createdAt: new Date(row.created_at).getTime(),
       updatedAt: new Date(row.updated_at).getTime(),
     });
+
+    if (entry && recoveryWarnings.length > 0) {
+      entry.recoveryWarnings = recoveryWarnings;
+    }
 
     return entry;
   }
@@ -1308,56 +1418,24 @@ export class SupabasePresetStore implements IPresetStore {
     const existingRows = await this.queryPresetRowsV2(normalized.type, normalized.name, scope);
     let presetRow = existingRows[0] ?? null;
 
-    if (!presetRow) {
-      const { data, error } = await this.client
-        .from('presets_v2')
-        .insert(identityPayload)
+    let storedVersionRows: PresetVersionV2Row[] = [];
+    if (presetRow) {
+      const { data: storedVersionData, error: storedVersionError } = await this.client
+        .from('preset_versions_v2')
         .select('*')
-        .single();
+        .eq('preset_id', presetRow.id)
+        .order('version_no', { ascending: true });
 
-      if (error) {
-        if (this.markV2UnavailableIfMissing(error)) {
+      if (storedVersionError) {
+        if (this.markV2UnavailableIfMissing(storedVersionError)) {
           await this.saveLegacy(normalized);
           return;
         }
-        throw new Error(`V2 preset insert failed: ${error.message}`);
+        throw new Error(`V2 stored version lookup failed: ${storedVersionError.message}`);
       }
 
-      presetRow = data as PresetV2Row;
-    } else {
-      const { data, error } = await this.client
-        .from('presets_v2')
-        .update(identityPayload)
-        .eq('id', presetRow.id)
-        .select('*')
-        .single();
-
-      if (error) {
-        if (this.markV2UnavailableIfMissing(error)) {
-          await this.saveLegacy(normalized);
-          return;
-        }
-        throw new Error(`V2 preset update failed: ${error.message}`);
-      }
-
-      presetRow = data as PresetV2Row;
+      storedVersionRows = (storedVersionData ?? []) as PresetVersionV2Row[];
     }
-
-    const { data: storedVersionData, error: storedVersionError } = await this.client
-      .from('preset_versions_v2')
-      .select('*')
-      .eq('preset_id', presetRow.id)
-      .order('version_no', { ascending: true });
-
-    if (storedVersionError) {
-      if (this.markV2UnavailableIfMissing(storedVersionError)) {
-        await this.saveLegacy(normalized);
-        return;
-      }
-      throw new Error(`V2 stored version lookup failed: ${storedVersionError.message}`);
-    }
-
-    const storedVersionRows = (storedVersionData ?? []) as PresetVersionV2Row[];
     const storedVersionMap = new Map(storedVersionRows.map(candidate => [candidate.version_no, candidate]));
     let previousStoredVersionRow = storedVersionRows[storedVersionRows.length - 1] ?? null;
 
@@ -1386,7 +1464,7 @@ export class SupabasePresetStore implements IPresetStore {
         if (!Object.keys(childData).length) continue;
 
         const childHash = await hashCanonicalJson(childData);
-        let target = await this.findMatchingPresetV2(childSpec.type, childSpec.scope, childHash, presetRow.id);
+        let target = await this.findMatchingPresetV2(childSpec.type, childSpec.scope, childHash, presetRow?.id);
         if (target && isInternalDerivedRow(target) && !(await this.isPresetGraphCompleteV2(target, childData))) {
           target = await this.rewriteDerivedChildPresetV2(target, childData);
         }
@@ -1401,14 +1479,12 @@ export class SupabasePresetStore implements IPresetStore {
         refsToInsert.push({
           slot: childSpec.slot,
           target,
-          targetVersionNo: target.latest_version_no,
-          followLatest: false,
           overrideHash: null,
         });
       }
 
       const existingRefSlots = new Set(refsToInsert.map(ref => ref.slot));
-      for (const explicitRef of await this.resolveExplicitVersionRefsV2(normalized.type, version.refs, presetRow.id)) {
+      for (const explicitRef of await this.resolveExplicitVersionRefsV2(normalized.type, version.refs, presetRow?.id)) {
         if (existingRefSlots.has(explicitRef.slot)) continue;
         refsToInsert.push(explicitRef);
         existingRefSlots.add(explicitRef.slot);
@@ -1454,67 +1530,44 @@ export class SupabasePresetStore implements IPresetStore {
         continue;
       }
 
-      const [overrideHash, metadataHash, patchHash, resolvedHash] = await Promise.all([
-        this.ensurePayloadV2('override', overrideData),
-        metadata ? this.ensurePayloadV2('metadata', metadata) : Promise.resolve(null),
-        storageMode === 'patch' && patch ? this.ensurePayloadV2('patch', patch) : Promise.resolve(null),
-        this.ensurePayloadV2('resolved', resolvedData),
+      const [overridePayload, metadataPayload, patchPayload, resolvedPayload] = await Promise.all([
+        this.makeStorablePayloadV2('override', overrideData),
+        metadata ? this.makeStorablePayloadV2('metadata', metadata) : Promise.resolve(null),
+        storageMode === 'patch' && patch ? this.makeStorablePayloadV2('patch', patch) : Promise.resolve(null),
+        this.makeStorablePayloadV2('resolved', resolvedData),
       ]);
 
-      const { data: insertedVersion, error: insertVersionError } = await this.client
-        .from('preset_versions_v2')
-        .insert({
-          preset_id: presetRow.id,
+      const { preset, version: versionRow } = await this.savePresetVersionAtomicallyV2(
+        {
+          ...identityPayload,
+          id: presetRow?.id ?? null,
+        },
+        {
           version_no: version.v,
           created_by: this.userId,
           parent_version_id: previousStoredVersionRow?.id ?? null,
           storage_mode: storageMode,
           note: version.note ?? '',
-          override_hash: overrideHash,
-          metadata_hash: metadataHash,
-          patch_from_prev_hash: storageMode === 'patch' ? patchHash : null,
-          resolved_hash: resolvedHash,
+          override_hash: overridePayload?.hash ?? null,
+          metadata_hash: metadataPayload?.hash ?? null,
+          patch_from_prev_hash: storageMode === 'patch' ? patchPayload?.hash ?? null : null,
+          resolved_hash: resolvedPayload?.hash ?? null,
           is_checkpoint: storageMode !== 'patch',
           created_at: this.getVersionTimestamp(version),
-        })
-        .select('*')
-        .single();
-
-      if (insertVersionError) {
-        if (this.markV2UnavailableIfMissing(insertVersionError)) {
-          await this.saveLegacy(normalized);
-          return;
-        }
-        throw new Error(`V2 version insert failed: ${insertVersionError.message}`);
-      }
-
-      const versionRow = insertedVersion as PresetVersionV2Row;
+        },
+        [overridePayload, metadataPayload, patchPayload, resolvedPayload]
+          .filter((payload): payload is StorablePayloadV2 => Boolean(payload)),
+        refsToInsert,
+      );
+      presetRow = preset;
       previousStoredVersionRow = versionRow;
       previousResolvedRecord = resolvedData;
       previousRefKeys = pendingRefKeys;
-
-      if (refsToInsert.length > 0) {
-        const refRows = refsToInsert.map((refInfo) => ({
-          version_id: versionRow.id,
-          ref_slot: refInfo.slot,
-          target_preset_id: refInfo.target.id,
-          target_version_no: refInfo.targetVersionNo,
-          follow_latest: refInfo.followLatest,
-          override_hash: refInfo.overrideHash ?? null,
-          created_at: this.getVersionTimestamp(version),
-        }));
-
-        const { error: refInsertError } = await this.client
-          .from('preset_version_refs_v2')
-          .insert(refRows);
-
-        if (refInsertError && !this.markV2UnavailableIfMissing(refInsertError)) {
-          throw new Error(`V2 ref insert failed: ${refInsertError.message}`);
-        }
-      }
     }
 
-    await this.pruneStoredVersionsV2(presetRow.id);
+    if (presetRow) {
+      await this.pruneStoredVersionsV2(presetRow.id);
+    }
   }
 
   async save(entry: PresetEntry): Promise<void> {
