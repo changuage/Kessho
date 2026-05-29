@@ -2,7 +2,7 @@
  * Main App Component
  *
  * Complete UI with all sliders, selects, and debug panel.
- * Wires up to audio engine with deterministic state management.
+ * Wires up to the product runtime with deterministic state management.
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -201,7 +201,10 @@ const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 
 const DEFAULT_AUTO_START_PRESET_NAME = 'String Waves';
 const CLOUD_ENABLED = isCloudPresetConfigEnabled();
 const CAPACITOR_LOCAL_STATE_PRESET_SCOPE = 'global';
-const isSonicParityMode = () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1';
+const isSonicParityMode = () => (
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('parity') === '1'
+);
 const LAZY_PAGE_FALLBACK = <div style={{ padding: '24px', color: '#9ca3af', textAlign: 'center' }}>Loading...</div>;
 
 type SavedPresetSource = 'bundled' | 'device-local' | 'cloud';
@@ -255,7 +258,7 @@ const IOS_ONLY_REVERB_TYPES = new Set([
 ]);
 
 // Base for the decorative snowflake shown before activation. This state is
-// local to SnowflakeUI and is not pushed into the audio engine.
+// local to SnowflakeUI and is not pushed into the product runtime.
 const SNOWFLAKE_WELCOME_STATE: SliderState = {
   ...DEFAULT_STATE,
   masterVolume: 0.85,
@@ -1588,7 +1591,7 @@ const App: React.FC = () => {
   const [capacitorAudioSessionDiagnosticActive, setCapacitorAudioSessionDiagnosticActive] = useState(false);
   const {
     productRuntimeModes,
-    showAudioEngineSwitcher,
+    showProductRuntimeSwitcher,
     startInAdvancedEditor,
     handleProductRuntimeModeChange,
     preloadAdvancedEditorRuntime,
@@ -1623,14 +1626,14 @@ const App: React.FC = () => {
     setProductDrumMorphTriggerCallback,
     setProductDrumParamSHTriggerCallback,
     setProductGranularSHTriggerCallback,
-    setSelectedDrumEvolveOverridesChangedCallback,
-    setSelectedSynthEvolveOverridesChangedCallback,
-    setSelectedSynthNoteRangeEvolvedCallback,
-    setSelectedRuntimeWalkPositionsCallback,
-    setSelectedDrumMorphRange,
-    setSelectedDrumParamSHRange,
-    setSelectedDualRanges,
-    setSelectedRuntimeWalkRanges,
+    setProductDrumEvolveOverridesChangedCallback,
+    setProductSynthEvolveOverridesChangedCallback,
+    setProductSynthNoteRangeEvolvedCallback,
+    setProductRuntimeWalkPositionsCallback,
+    setProductDrumMorphRange,
+    setProductDrumParamSHRange,
+    setProductDualRanges,
+    setProductRuntimeWalkRanges,
     setProductJourneyMorphClockCallback: setProductJourneyMorphClockCallbackRuntime,
     startProductJourneyMorphClock: startProductJourneyMorphClockRuntime,
     stopProductJourneyMorphClock: stopProductJourneyMorphClockRuntime,
@@ -1654,15 +1657,15 @@ const App: React.FC = () => {
     resetProductDrumEuclidLaneHome,
     captureProductDrumEuclidLaneHome,
     diceProductDrumEuclidLane,
-    getSelectedGranularBufferWaveform,
-    getSelectedTransportDebugState,
+    getProductGranularBufferWaveform,
+    getProductTransportDebugState,
     getEarthTextureDebugState,
-    getSelectedLeadMorphedParams,
+    getProductLeadMorphedParams,
     productRuntimeDebugAnalysers,
     liveLeadMorphedParamsAvailable,
     liveWaveformTelemetryAvailable,
     textureDebugAvailable,
-    updateSelectedReferenceParams,
+    updateProductReferenceParams,
   } = useProductRuntimeSurfaces(productRuntimeMode);
 
   const [engineState, setEngineState] = useState<ProductEngineState>({
@@ -1691,15 +1694,15 @@ const App: React.FC = () => {
     stopProductJourneyMorphClock: stopProductJourneyMorphClockRuntime,
   });
   const {
-    scheduleAudioEngineParamUpdate,
-    presetEngineUpdateOptions,
+    scheduleProductRuntimeParamUpdate,
+    presetProductRuntimeUpdateOptions,
     syncCoreProductAppliedPreset,
-    syncScheduledAudioEngineState,
+    syncScheduledProductRuntimeState,
     skipNextPresetLoadEngineSync,
   } = useProductRuntimePresetSurface({
     productRuntimeMode,
     resetProductCofDrift: resetCofDrift,
-    updateSelectedReferenceParams,
+    updateSelectedReferenceParams: updateProductReferenceParams,
   });
 
   const productRuntimeManualTriggers = useProductRuntimeManualTriggers({
@@ -1774,18 +1777,18 @@ const App: React.FC = () => {
     globalRecordingProps,
     snowflakeRecordingProps,
     startArmedRecordingAfterPlaybackStart,
-    getSelectedGranularActiveGrainCount,
-    getSelectedGranularWriteHeadPosition,
-    getSelectedGranularVoicePositions,
-    getSelectedDynamicsVisualTelemetry,
-    setSelectedGranularUiActive,
-    pushSelectedMidiMessage,
-    getSelectedPadFilterFreq,
-    getSelectedPadLfoValue,
-    selectedRuntimeSupportsRangeKey,
+    getProductGranularActiveGrainCount,
+    getProductGranularWriteHeadPosition,
+    getProductGranularVoicePositions,
+    getProductDynamicsVisualTelemetry,
+    setProductGranularUiActive,
+    pushProductMidiMessage,
+    getProductPadFilterFreq,
+    getProductPadLfoValue,
+    productRuntimeSupportsRangeKey,
   } = useProductRuntimeLifecycleSurface({
     productRuntimeMode,
-    getSelectedTransportDebugState,
+    getProductTransportDebugState,
     macShellAvailable,
     playbackIsRunning,
     setEngineState,
@@ -2502,7 +2505,7 @@ const App: React.FC = () => {
   const { cloudSharedPresetToSavedPreset, applyCloudSharedPreset } = useCloudSharedPresetRuntimeSurface({
     stateRef,
     setState,
-    presetEngineUpdateOptions,
+    presetEngineUpdateOptions: presetProductRuntimeUpdateOptions,
     syncCoreProductAppliedPreset,
     normalizeState: normalizePresetForWeb,
     applyDualRangesFromPreset,
@@ -2541,15 +2544,15 @@ const App: React.FC = () => {
     playbackIsRunning,
     randomWalkMode: state.randomWalkMode,
     randomWalkSpeed: state.randomWalkSpeed,
-    selectedRuntimeSupportsRangeKey,
-    setSelectedDrumEvolveOverridesChangedCallback,
-    setSelectedDrumMorphRange,
-    setSelectedDrumParamSHRange,
-    setSelectedDualRanges,
-    setSelectedRuntimeWalkPositionsCallback,
-    setSelectedRuntimeWalkRanges,
-    setSelectedSynthEvolveOverridesChangedCallback,
-    setSelectedSynthNoteRangeEvolvedCallback,
+    productRuntimeSupportsRangeKey,
+    setProductDrumEvolveOverridesChangedCallback,
+    setProductDrumMorphRange,
+    setProductDrumParamSHRange,
+    setProductDualRanges,
+    setProductRuntimeWalkPositionsCallback,
+    setProductRuntimeWalkRanges,
+    setProductSynthEvolveOverridesChangedCallback,
+    setProductSynthNoteRangeEvolvedCallback,
     shouldMirrorRuntimeWalkPositions: uiMode === 'snowflake' || uiMode === 'advanced' || isSnowflakePrototypeRoute,
     sliderModes,
     synthPitchSettingsRef,
@@ -2619,8 +2622,8 @@ const App: React.FC = () => {
   // Web audio does not consume dual-slider ranges, so avoid re-sending params when
   // only the UI runtime range model changes.
   useEffect(() => {
-    syncScheduledAudioEngineState(state);
-  }, [state, syncScheduledAudioEngineState]);
+    syncScheduledProductRuntimeState(state);
+  }, [state, syncScheduledProductRuntimeState]);
 
   type SliderChangeOptions = {
     preserveEnabledFlags?: boolean;
@@ -3463,7 +3466,7 @@ const App: React.FC = () => {
       onDualRangeChange?: (key: keyof SliderState, min: number, max: number) => void;
     } => {
       const keyStr = paramKey as string;
-      const selectedRuntimeRangeSupported = selectedRuntimeSupportsRangeKey(keyStr);
+      const productRuntimeRangeSupported = productRuntimeSupportsRangeKey(keyStr);
       const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);
       const mode: SliderMode = dualModeSupported ? (normalizeDualSliderMode(keyStr, sliderModes[keyStr]) ?? 'single') : 'single';
       const walkPos = getRuntimeSliderPosition(keyStr, mode);
@@ -3473,12 +3476,12 @@ const App: React.FC = () => {
         mode,
         dualRange: dualModeSupported ? dualSliderRanges[paramKey] : undefined,
         walkPosition: dualModeSupported ? walkPos : undefined,
-        isFlashing: dualModeSupported && selectedRuntimeRangeSupported ? isFlashing : false,
+        isFlashing: dualModeSupported && productRuntimeRangeSupported ? isFlashing : false,
         onCycleMode: dualModeSupported ? handleCycleSliderMode : undefined,
         onDualRangeChange: dualModeSupported ? handleDualRangeChange : undefined,
       };
     },
-    [selectedRuntimeSupportsRangeKey, sliderModes, dualSliderRanges, handleCycleSliderMode, handleDualRangeChange],
+    [productRuntimeSupportsRangeKey, sliderModes, dualSliderRanges, handleCycleSliderMode, handleDualRangeChange],
   );
 
   const shouldDisableLeadRandomTiming = useCallback((nextState: SliderState): boolean => {
@@ -3783,8 +3786,8 @@ const App: React.FC = () => {
     state,
     dualRanges: nativeDualRanges,
     preloadProductRuntime,
-    startPlayback: handleStart,
-    stopPlayback: handleStop,
+    startProductPlayback: handleStart,
+    stopProductPlayback: handleStop,
   });
 
   const renderMacAudioStatusPill = useCallback(() => {
@@ -3821,18 +3824,18 @@ const App: React.FC = () => {
   const productPageRuntimeSurface = useProductRuntimePageSurface({
     telemetry: {
       getEarthTextureDebugState,
-      getSelectedDynamicsVisualTelemetry,
-      getSelectedGranularActiveGrainCount,
-      getSelectedGranularBufferWaveform,
-      getSelectedGranularVoicePositions,
-      getSelectedGranularWriteHeadPosition,
-      getSelectedLeadMorphedParams,
-      getSelectedPadFilterFreq,
-      getSelectedPadLfoValue,
+      getProductDynamicsVisualTelemetry,
+      getProductGranularActiveGrainCount,
+      getProductGranularBufferWaveform,
+      getProductGranularVoicePositions,
+      getProductGranularWriteHeadPosition,
+      getProductLeadMorphedParams,
+      getProductPadFilterFreq,
+      getProductPadLfoValue,
       liveLeadMorphedParamsAvailable,
       liveWaveformTelemetryAvailable,
       productRuntimeDebugAnalysers,
-      setSelectedGranularUiActive,
+      setProductGranularUiActive,
       textureDebugAvailable,
     },
     sequencer: {
@@ -4961,7 +4964,7 @@ const App: React.FC = () => {
     lerpPresets,
     resetCofDrift,
     resetRuntimeWalkPositionsForModes,
-    scheduleAudioEngineParamUpdate,
+    scheduleProductRuntimeParamUpdate,
     isEngineRunning: engineState.isRunning,
   });
 
@@ -4996,7 +4999,7 @@ const App: React.FC = () => {
     setStatePresetName,
     setVisualizerPresetName,
     setLinkedVisualizerPresetRequest,
-    presetEngineUpdateOptions,
+    presetEngineUpdateOptions: presetProductRuntimeUpdateOptions,
     syncCoreProductAppliedPreset,
     normalizeState: normalizePresetForWeb,
     applyDualRangesFromPreset,
@@ -5025,7 +5028,7 @@ const App: React.FC = () => {
     fadeOutAndStopForPresetLoad,
     confirmOverrideArmedJourneyForStatePreset,
     checkPresetCompatibility,
-    presetEngineUpdateOptions,
+    presetEngineUpdateOptions: presetProductRuntimeUpdateOptions,
     skipNextPresetLoadEngineSync,
     normalizeState: normalizePresetForWeb,
     applyDualRangesFromPreset,
@@ -5065,7 +5068,7 @@ const App: React.FC = () => {
     startJourneyPlayback,
     lerpPresets,
     resetCofDrift,
-    scheduleAudioEngineParamUpdate,
+    scheduleProductRuntimeParamUpdate,
     startJourneyMorphClock,
     stopJourneyMorphClock,
     setIsJourneyPlaying,
@@ -5344,7 +5347,7 @@ const App: React.FC = () => {
             currentMode={productRuntimeMode}
             modes={productRuntimeModes}
             onModeChange={handleProductRuntimeModeChange}
-            visible={showAudioEngineSwitcher}
+            visible={showProductRuntimeSwitcher}
             floating
           />
           <SnowflakeUI
@@ -5499,7 +5502,7 @@ const App: React.FC = () => {
             currentMode={productRuntimeMode}
             modes={productRuntimeModes}
             onModeChange={handleProductRuntimeModeChange}
-            visible={showAudioEngineSwitcher}
+            visible={showProductRuntimeSwitcher}
           />
         </div>
 
@@ -5745,7 +5748,7 @@ const App: React.FC = () => {
                 onParamChange={handleRoutingParamChange}
                 onColumnParamChange={handleRoutingColumnChange}
                 onToggleSource={handleRoutingSourceToggle}
-                onMidiMessage={pushSelectedMidiMessage}
+                onMidiMessage={pushProductMidiMessage}
                 sliderProps={sliderProps}
               />
             )}

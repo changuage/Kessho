@@ -1461,6 +1461,104 @@ assert(
   'Lead custom ADSR and algorithm controls must stay wired through structured Lead override fields',
 );
 assert(
+  read('src/audio/coreProductEvents.ts').includes('KESSHO_PRODUCT_SOURCE_IDS as GENERATED_PRODUCT_SOURCE_IDS') &&
+    read('src/audio/coreProductEvents.ts').includes('pad1: GENERATED_PRODUCT_SOURCE_IDS.Pad1') &&
+    read('src/audio/coreProductEvents.ts').includes('soundscape: GENERATED_PRODUCT_SOURCE_IDS.Soundscape'),
+  'Product source IDs must be derived from generated schema metadata, not hand-numbered in coreProductEvents.ts',
+);
+assert(
+  !/const\s+PAD_[A-Z0-9_]+_PARAM_INDEX\s*=\s*\d+/.test(read('src/audio/CoreProductPadPatch.ts')) &&
+    read('src/audio/CoreProductPadPatch.ts').includes('generatedProductParamIndex(KESSHO_PRODUCT_PAD_PARAM_SPECS'),
+  'Pad patch param indexes must be derived from generated Product param specs',
+);
+assert(
+  !/const\s+LEAD_[A-Z0-9_]+_PARAM_INDEX\s*=\s*\d+/.test(read('src/audio/CoreProductLeadPatch.ts')) &&
+    read('src/audio/CoreProductLeadPatch.ts').includes('generatedProductParamIndex(KESSHO_PRODUCT_LEAD_PARAM_SPECS'),
+  'Lead patch param indexes must be derived from generated Product param specs',
+);
+assert(
+  !/const\s+DRUM_[A-Z0-9_]+_PARAM(?:_ID)?(?:_INDEX)?\s*=\s*\d+/.test(read('src/audio/CoreProductDrumPatch.ts')) &&
+    read('src/audio/CoreProductDrumPatch.ts').includes("generatedProductParamIndex(KESSHO_PRODUCT_DRUM_PARAM_SPECS, 'drumLevel')") &&
+    read('src/audio/CoreProductDrumPatch.ts').includes("generatedProductParamIndex(KESSHO_PRODUCT_DRUM_PARAM_SPECS, 'drumReverbSend')"),
+  'Drum patch source-level param indexes must be derived from generated Product drum param specs',
+);
+assert(
+  !/CORE_PRODUCT_DRUM_[A-Z0-9_]+_PARAM_INDEX\s*=\s*\d+/.test(read('src/audio/coreProductEvents.ts')) &&
+    read('src/audio/coreProductEvents.ts').includes("generatedProductParamIndex(KESSHO_PRODUCT_DRUM_PARAM_SPECS, 'drumLevel')") &&
+    read('src/audio/coreProductEvents.ts').includes("generatedProductParamIndex(KESSHO_PRODUCT_DRUM_PARAM_SPECS, 'drumReverbSend')"),
+  'Drum runtime range target indexes must be derived from generated Product drum param specs',
+);
+assert(
+  read('cpp/KesshoCore/schema/kessho_product.schema.json').includes('"soundscapeParamLayout"') &&
+    read('src/audio/coreProductSoundscapesSnapshot.ts').includes('KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_PARAM_COUNT') &&
+    read('src/audio/coreProductSoundscapesSnapshot.ts').includes('KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT') &&
+	    !read('src/audio/coreProductSoundscapesSnapshot.ts').includes('SOUNDSCAPE_ROUTE_PARAM_COUNT = 16') &&
+	    !read('src/audio/coreProductSoundscapesSnapshot.ts').includes('SOUNDSCAPES_MODULE_PARAM_COUNT = 96') &&
+	    read('cpp/KesshoCore/src/product/ProductConstants.h').includes('KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_PARAM_COUNT') &&
+	    read('cpp/KesshoCore/src/product/ProductConstants.h').includes('KESSHO_PRODUCT_GENERATED_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT'),
+  'Soundscape Product param layout counts must derive from generated Product schema metadata in TS and C++',
+);
+assert(
+  read('cpp/KesshoCore/schema/kessho_product.schema.json').includes('"sourceParamLayout"') &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes("requiredSourceParamLayout('pad')") &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes("requiredSourceParamLayout('lead')") &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes("requiredSourceParamLayout('drum')") &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes("requiredIndexArray(padParamLayout, 'presetSnapParamIndices', 'pad')") &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes("requiredIndexArray(leadParamLayout, 'presetRoundParamIndices', 'lead')") &&
+    !/const\s+(padParamCount|leadParamCount|drumParamCount)\s*=\s*\d+/.test(read('scripts/generate-kessho-product-bindings.mjs')) &&
+    !/const\s+(padPresetSnapParamIndices|leadPresetSnapParamIndices|leadPresetRoundParamIndices|drumPresetSnapParamIndices)\s*=\s*\[/.test(read('scripts/generate-kessho-product-bindings.mjs')),
+  'Pad/Lead/Drum source param counts and preset snap/round index metadata must derive from schema.sourceParamLayout',
+);
+assert(
+  read('cpp/KesshoCore/schema/kessho_product.schema.json').includes('"sourceParamSpecs"') &&
+    read('cpp/KesshoCore/schema/kessho_product.schema.json').includes('"padOscAWave"') &&
+    read('cpp/KesshoCore/schema/kessho_product.schema.json').includes('"padModEnvDest"') &&
+    read('cpp/KesshoCore/schema/kessho_product.schema.json').includes('"algorithm"') &&
+    read('cpp/KesshoCore/schema/kessho_product.schema.json').includes('"lfoTarget"') &&
+    read('cpp/KesshoCore/schema/kessho_product_drum_params.schema.json').includes('"drumClickMode"') &&
+    read('cpp/KesshoCore/schema/kessho_product_drum_params.schema.json').includes('"defaultParamValues"') &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes("const padParamSpecs = requiredSourceParamSpecs('pad', padParamCount)") &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes("const leadParamSpecs = requiredSourceParamSpecs('lead', leadParamCount)") &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes("const drumParamSpecs = normalizeSourceParamSpecs('drum', drumParamCount, drumParamManifest.paramSpecs)") &&
+    !/const\s+padParamSpecs\s*=\s*\[/.test(read('scripts/generate-kessho-product-bindings.mjs')) &&
+    !/const\s+leadParamSpecs\s*=\s*\[/.test(read('scripts/generate-kessho-product-bindings.mjs')) &&
+    !/const\s+drumParamSpecs\s*=\s*\[/.test(read('scripts/generate-kessho-product-bindings.mjs')) &&
+    !read('scripts/generate-kessho-product-bindings.mjs').includes('padWaveValues') &&
+    !read('scripts/generate-kessho-product-bindings.mjs').includes('padDestValues') &&
+    !read('scripts/generate-kessho-product-bindings.mjs').includes('leadAlgorithmValues') &&
+    !read('scripts/generate-kessho-product-bindings.mjs').includes('leadLfoTargetValues') &&
+    !read('scripts/generate-kessho-product-bindings.mjs').includes('drumClickModeValues') &&
+    !read('scripts/generate-kessho-product-bindings.mjs').includes('drumMembraneMaterialValues'),
+  'Pad/Lead/Drum param specs, enum maps, indexes, and fallbacks must derive from schema manifests',
+);
+assert(
+  read('cpp/KesshoCore/schema/kessho_product.schema.json').includes('"outputTrims"') &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes("const padOutputTrim = requiredProductOutputTrim('pad')") &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes("const leadOutputTrim = requiredProductOutputTrim('lead')") &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes("const reverbOutputTrim = requiredProductOutputTrim('reverb')") &&
+    !/const\s+(padOutputTrim|leadOutputTrim|reverbOutputTrim)\s*=\s*\d/.test(read('scripts/generate-kessho-product-bindings.mjs')),
+  'Product output trims must derive from schema.outputTrims instead of generator-local constants',
+);
+assert(
+  read('cpp/KesshoCore/schema/kessho_product_drum_params.schema.json').includes('"voiceParamRanges"') &&
+    read('cpp/KesshoCore/schema/kessho_product_drum_params.schema.json').includes('"voicePresetExportNames"') &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes('requiredDrumVoiceParamRanges(drumParamManifest)') &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes('requiredDrumVoicePresetExportNames(drumParamManifest)') &&
+    !read('scripts/generate-kessho-product-bindings.mjs').includes('const drumParamIndex =') &&
+    !/const\s+drumVoiceParamRanges\s*=\s*\{/.test(read('scripts/generate-kessho-product-bindings.mjs')) &&
+    !/const\s+drumVoicePresetExportNames\s*=\s*\{/.test(read('scripts/generate-kessho-product-bindings.mjs')),
+  'Drum voice param ranges and preset export names must derive from the Drum schema manifest',
+);
+assert(
+    read('scripts/generate-kessho-product-bindings.mjs').includes("loadBundledTsModule('src/audio/lead4opfm.ts')") &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes('leadPresetModule.DEFAULT_SOFT_RHODES') &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes('leadPresetModule.DEFAULT_GAMELAN') &&
+    read('scripts/generate-kessho-product-bindings.mjs').includes('leadPresetModule.morphPresets(leadPreset, leadPreset, 0)') &&
+    !read('scripts/generate-kessho-product-bindings.mjs').includes('const defaultLeadPresets =') &&
+    !read('scripts/generate-kessho-product-bindings.mjs').includes('function morphedLeadParams'),
+  'Lead source preset exact patch material and morph logic must come from the Lead4opFM preset module, not generator-local copies',
+);
+assert(
   unaccounted.length === 0,
   `Unaccounted Product Core parameter keys: ${unaccounted.map((entry) => entry.key).join(', ')}`,
 );

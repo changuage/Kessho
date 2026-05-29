@@ -1,8 +1,8 @@
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type { SliderState } from './state';
-import { useSelectedAudioEngineLifecycle } from './useSelectedAudioEngineLifecycle';
-import { useSelectedAudioEngineMediaSession } from './useSelectedAudioEngineMediaSession';
-import { useSelectedAudioEnginePlaybackControls } from './useSelectedAudioEnginePlaybackControls';
+import { useProductRuntimeLifecycle } from './useProductRuntimeLifecycle';
+import { useProductRuntimeMediaSession } from './useProductRuntimeMediaSession';
+import { useProductRuntimePlaybackControls } from './useProductRuntimePlaybackControls';
 
 type NativeDualRanges = Record<string, { min: number; max: number }>;
 
@@ -32,35 +32,35 @@ export function useProductRuntimePlaybackAdapter({
   setCapacitorAudioSessionDiagnosticActive,
 }: UseProductRuntimePlaybackAdapterOptions): ProductRuntimePlaybackAdapter {
   const {
-    startSelectedAudioEngine: startProductRuntime,
-    resumeSelectedAudioEngine: resumeProductRuntime,
-    suspendSelectedAudioEngine: suspendProductRuntime,
-    preloadSelectedAudioEngine: preloadProductRuntime,
-    stopSelectedAudioEngine: stopProductRuntime,
-    fadeSelectedAudioEngineOutput: fadeProductRuntimeOutput,
-  } = useSelectedAudioEngineLifecycle(productRuntimeMode);
+    startProductRuntime,
+    resumeProductRuntime,
+    suspendProductRuntime,
+    preloadProductRuntime,
+    stopProductRuntime,
+    fadeProductRuntimeOutput,
+  } = useProductRuntimeLifecycle(productRuntimeMode);
 
   const {
-    connectSelectedMediaSessionToAudio,
-    setupSelectedIOSMediaSession,
-    stopSelectedIOSMediaSession,
-  } = useSelectedAudioEngineMediaSession({
-    audioEngineRuntimeMode: productRuntimeMode,
-    resumeSelectedAudioEngine: resumeProductRuntime,
-    suspendSelectedAudioEngine: suspendProductRuntime,
+    connectProductMediaSessionToAudio,
+    setupProductIOSMediaSession,
+    stopProductIOSMediaSession,
+  } = useProductRuntimeMediaSession({
+    productRuntimeMode,
+    resumeProductRuntime,
+    suspendProductRuntime,
   });
 
   const {
-    startSelectedPlayback: startProductPlayback,
-    stopSelectedPlayback: stopProductPlayback,
-  } = useSelectedAudioEnginePlaybackControls({
+    startProductPlayback,
+    stopProductPlayback,
+  } = useProductRuntimePlaybackControls({
     capacitorAudioSessionDiagnosticActive,
     setCapacitorAudioSessionDiagnosticActive,
-    startSelectedAudioEngine: startProductRuntime,
-    stopSelectedAudioEngine: stopProductRuntime,
-    setupSelectedIOSMediaSession,
-    connectSelectedMediaSessionToAudio,
-    stopSelectedIOSMediaSession,
+    startProductRuntime,
+    stopProductRuntime,
+    setupProductIOSMediaSession,
+    connectProductMediaSessionToAudio,
+    stopProductIOSMediaSession,
   });
 
   return {

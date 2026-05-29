@@ -1,23 +1,48 @@
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { EarthTextureDebugState } from '../audio/engineSharedTypes';
+import type { TransportDebugSnapshot } from '../audio/transport';
 import { useSelectedAudioEngineDebugRuntime } from './useSelectedAudioEngineDebugRuntime';
+import type { SliderState } from './state';
 
-type ProductRuntimeDebugRuntime = Omit<
-  ReturnType<typeof useSelectedAudioEngineDebugRuntime>,
-  'selectedAudioEngineDebugAnalysers'
-> & {
-  productRuntimeDebugAnalysers: ReturnType<
-    typeof useSelectedAudioEngineDebugRuntime
-  >['selectedAudioEngineDebugAnalysers'];
+type ProductLeadMorphedParams = { attack: number; decay: number; sustain: number; release: number } | null;
+
+type ProductRuntimeDebugAnalysers = {
+  drumVoiceAnalyser: ((voice: unknown) => AnalyserNode | undefined) | undefined;
+  dynamicsAnalyser: ((key: unknown) => AnalyserNode | null) | undefined;
+};
+
+type ProductRuntimeDebugRuntime = {
+  getProductGranularBufferWaveform: () => Float32Array | null;
+  getProductTransportDebugState: () => TransportDebugSnapshot | null;
+  getEarthTextureDebugState: () => EarthTextureDebugState;
+  getProductLeadMorphedParams: (lead: 1 | 2) => ProductLeadMorphedParams;
+  productRuntimeDebugAnalysers: ProductRuntimeDebugAnalysers;
+  liveLeadMorphedParamsAvailable: boolean;
+  liveWaveformTelemetryAvailable: boolean;
+  textureDebugAvailable: boolean;
+  updateProductReferenceParams: (nextState: SliderState, metadata: { presetId: string; presetName: string }) => void;
 };
 
 export function useProductRuntimeDebugRuntime(
   productRuntimeMode: ProductRuntimeSelectionMode,
 ): ProductRuntimeDebugRuntime {
-  const debugRuntime = useSelectedAudioEngineDebugRuntime(productRuntimeMode);
-  const { selectedAudioEngineDebugAnalysers, ...productDebugRuntime } = debugRuntime;
+  // TODO(product-runtime-compat-10A): keep selected debug/runtime names isolated here until
+  // the debug surface itself is product-owned.
+  const {
+    getSelectedGranularBufferWaveform: getProductGranularBufferWaveform,
+    getSelectedTransportDebugState: getProductTransportDebugState,
+    getSelectedLeadMorphedParams: getProductLeadMorphedParams,
+    selectedAudioEngineDebugAnalysers: productRuntimeDebugAnalysers,
+    updateSelectedReferenceParams: updateProductReferenceParams,
+    ...productDebugRuntime
+  } = useSelectedAudioEngineDebugRuntime(productRuntimeMode);
 
   return {
     ...productDebugRuntime,
-    productRuntimeDebugAnalysers: selectedAudioEngineDebugAnalysers,
+    getProductGranularBufferWaveform,
+    getProductTransportDebugState,
+    getProductLeadMorphedParams,
+    productRuntimeDebugAnalysers,
+    updateProductReferenceParams,
   };
 }

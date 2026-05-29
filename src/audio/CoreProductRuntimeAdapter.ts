@@ -9,7 +9,7 @@ import { KESSHO_PRODUCT_DRUM_PARAM_COUNT, KESSHO_PRODUCT_LEAD_PARAM_COUNT, KESSH
 export const MAX_SNAPSHOT_DIFF_EVENTS = 384;
 
 export type SnapshotReloadReason =
-  | 'none' | 'initial-snapshot' | 'runtime-start' | 'runtime-bootstrap' | 'manual-piano-asset' | 'explicit-reset-request' | 'asset-reference-change' | 'asset-reference-level-change' | 'soundscape-param-change' | 'harmony-mode-change' | 'source-structure-change' | 'pad-override-change' | 'lead-override-change' | 'drum-override-change' | 'sequencer-structure-change' | 'dirty-diff-event-budget' | 'adapter-update';
+  | 'none' | 'initial-snapshot' | 'runtime-start' | 'runtime-bootstrap' | 'manual-piano-asset' | 'explicit-reset-request' | 'asset-reference-change' | 'asset-reference-level-change' | 'soundscape-param-change' | 'harmony-mode-change' | 'source-structure-change' | 'pad-override-change' | 'lead-override-change' | 'drum-override-change' | 'sequencer-structure-change' | 'dirty-diff-event-budget' | 'product-patch';
 
 type SequencerKind = 'synth' | 'drum';
 type ProductSourceSnapshot = CoreProductSnapshot['sources'][number];
@@ -79,7 +79,7 @@ class CoreProductRuntimeAdapter {
     }
     if (!this.canApplyLaneDiffs(previous.synthLanes, next.synthLanes)) return 'sequencer-structure-change';
     if (!this.canApplyLaneDiffs(previous.drumLanes, next.drumLanes)) return 'sequencer-structure-change';
-    return 'adapter-update';
+    return 'product-patch';
   }
 
   private canApplySnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean {

@@ -57,3 +57,4 @@ The web host attaches these diagnostics to Product telemetry/perf snapshots:
 - `unsupportedControlCount`
 - `snapshotReloadCpuMs`
 - `lastSnapshotReloadReason`
+- `snapshotReloadReasons`

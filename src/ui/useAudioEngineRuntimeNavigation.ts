@@ -47,7 +47,7 @@ export function useAudioEngineRuntimeNavigation({
 
   return {
     audioEngineRuntimeModes: productNavigation.productRuntimeModes,
-    showAudioEngineSwitcher: productNavigation.showAudioEngineSwitcher,
+    showAudioEngineSwitcher: productNavigation.showProductRuntimeSwitcher,
     startInAdvancedEditor: productNavigation.startInAdvancedEditor,
     handleAudioEngineRuntimeModeChange: productNavigation.handleProductRuntimeModeChange,
     preloadAdvancedEditorRuntime: productNavigation.preloadAdvancedEditorRuntime,

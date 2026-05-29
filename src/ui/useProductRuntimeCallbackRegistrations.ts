@@ -1,22 +1,13 @@
 import { useProductRuntimeLiveTriggerCallbacks } from './useProductRuntimeLiveTriggerCallbacks';
-import { useProductRuntimeVisualizerCallbacks } from './useProductRuntimeVisualizerCallbacks';
+import type { ProductRuntimeLiveTriggerCallbacksOptions } from './useProductRuntimeLiveTriggerCallbacks';
+import {
+  useProductRuntimeVisualizerCallbacks,
+  type ProductRuntimeVisualizerCallbacksOptions,
+} from './useProductRuntimeVisualizerCallbacks';
 
-type ProductRuntimeVisualizerCallbackOptions = Parameters<typeof useProductRuntimeVisualizerCallbacks>[0];
-type SelectedSequencerCallbackKey =
-  | 'setSelectedDrumEvolveTriggerCallback'
-  | 'setSelectedDrumStepPositionCallback'
-  | 'setSelectedDrumTriggerCallback'
-  | 'setSelectedSynthEvolveTriggerCallback'
-  | 'setSelectedSynthStepPositionCallback';
 type ProductRuntimeCallbackRegistrationsOptions =
-  Omit<ProductRuntimeVisualizerCallbackOptions, SelectedSequencerCallbackKey> &
-  Parameters<typeof useProductRuntimeLiveTriggerCallbacks>[0] & {
-    setProductDrumEvolveTriggerCallback: ProductRuntimeVisualizerCallbackOptions['setSelectedDrumEvolveTriggerCallback'];
-    setProductDrumStepPositionCallback: ProductRuntimeVisualizerCallbackOptions['setSelectedDrumStepPositionCallback'];
-    setProductDrumTriggerCallback: ProductRuntimeVisualizerCallbackOptions['setSelectedDrumTriggerCallback'];
-    setProductSynthEvolveTriggerCallback: ProductRuntimeVisualizerCallbackOptions['setSelectedSynthEvolveTriggerCallback'];
-    setProductSynthStepPositionCallback: ProductRuntimeVisualizerCallbackOptions['setSelectedSynthStepPositionCallback'];
-  };
+  ProductRuntimeLiveTriggerCallbacksOptions &
+  ProductRuntimeVisualizerCallbacksOptions;
 
 export function useProductRuntimeCallbackRegistrations({
   setProductDrumEvolveTriggerCallback,
@@ -28,11 +19,11 @@ export function useProductRuntimeCallbackRegistrations({
 }: ProductRuntimeCallbackRegistrationsOptions): void {
   useProductRuntimeVisualizerCallbacks({
     ...options,
-    setSelectedDrumEvolveTriggerCallback: setProductDrumEvolveTriggerCallback,
-    setSelectedDrumStepPositionCallback: setProductDrumStepPositionCallback,
-    setSelectedDrumTriggerCallback: setProductDrumTriggerCallback,
-    setSelectedSynthEvolveTriggerCallback: setProductSynthEvolveTriggerCallback,
-    setSelectedSynthStepPositionCallback: setProductSynthStepPositionCallback,
+    setProductDrumEvolveTriggerCallback,
+    setProductDrumStepPositionCallback,
+    setProductDrumTriggerCallback,
+    setProductSynthEvolveTriggerCallback,
+    setProductSynthStepPositionCallback,
   });
   useProductRuntimeLiveTriggerCallbacks(options);
 }

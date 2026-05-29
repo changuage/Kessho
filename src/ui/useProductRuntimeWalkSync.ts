@@ -1,7 +1,31 @@
 import { useSelectedAudioEngineRuntimeWalkSync } from './useSelectedAudioEngineRuntimeWalkSync';
+import type { SliderMode, SliderState } from './state';
 
-type ProductRuntimeWalkSyncOptions = Parameters<typeof useSelectedAudioEngineRuntimeWalkSync>[0];
+type ProductRuntimeWalkRange = { min: number; max: number };
 
-export function useProductRuntimeWalkSync(options: ProductRuntimeWalkSyncOptions): void {
-  useSelectedAudioEngineRuntimeWalkSync(options);
+export type ProductRuntimeWalkSyncOptions = {
+  dualSliderRanges: Partial<Record<keyof SliderState, ProductRuntimeWalkRange | undefined>>;
+  productRuntimeSupportsRangeKey: (key: string) => boolean;
+  randomWalkMode: SliderState['randomWalkMode'];
+  randomWalkSpeed: SliderState['randomWalkSpeed'];
+  setProductRuntimeWalkPositionsCallback: (callback: ((positions: Record<string, number>) => void) | null) => void;
+  setProductRuntimeWalkRanges: (ranges: Partial<Record<string, ProductRuntimeWalkRange>>) => void;
+  shouldMirrorRuntimeWalkPositions: boolean;
+  sliderModes: Record<string, SliderMode>;
+};
+
+export function useProductRuntimeWalkSync({
+  productRuntimeSupportsRangeKey,
+  setProductRuntimeWalkPositionsCallback,
+  setProductRuntimeWalkRanges,
+  ...options
+}: ProductRuntimeWalkSyncOptions): void {
+  // TODO(product-runtime-compat-10E): selected runtime walk sync remains the compatibility
+  // implementation while product range support is exposed through product-named props.
+  useSelectedAudioEngineRuntimeWalkSync({
+    ...options,
+    selectedRuntimeSupportsRangeKey: productRuntimeSupportsRangeKey,
+    setSelectedRuntimeWalkPositionsCallback: setProductRuntimeWalkPositionsCallback,
+    setSelectedRuntimeWalkRanges: setProductRuntimeWalkRanges,
+  });
 }

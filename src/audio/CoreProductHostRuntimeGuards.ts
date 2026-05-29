@@ -1,6 +1,6 @@
 import type { ManualSynthNoteOptions } from './engineSharedTypes';
 import { CORE_PRODUCT_SOURCE_IDS, type CoreProductRangeTarget, type CoreProductRangeValueContext } from './coreProductEvents';
-import { KESSHO_PRODUCT_DRUM_VOICE_COUNT } from './generated/kesshoProductSchema';
+import { KESSHO_PRODUCT_DRUM_VOICE_COUNT, KESSHO_PRODUCT_DRUM_VOICES } from './generated/kesshoProductSchema';
 import type { ProductEngineState } from './product/ProductEngineTypes';
 
 export type RuntimeWalkConfig = { speed: number; mode: 'localBrownian' | 'globalWalk' };
@@ -85,22 +85,19 @@ export function drumVoiceIndex(voice: unknown): number {
     return voice;
   }
   const text = typeof voice === 'string' ? voice.toLowerCase() : '';
-  const known: Record<string, number> = {
-    sub: 0,
-    kick: 1,
+  const generatedVoice = KESSHO_PRODUCT_DRUM_VOICES.find((candidate) => candidate.name.toLowerCase() === text);
+  if (generatedVoice) {
+    return generatedVoice.index;
+  }
+  const legacyAliases: Record<string, number> = {
     snare: 2,
-    click: 2,
     clap: 2,
-    beephi: 3,
-    beeplo: 4,
-    noise: 5,
     hat: 5,
     hihat: 5,
-    membrane: 6,
     perc: 6,
     tom: 6,
   };
-  const index = known[text];
+  const index = legacyAliases[text];
   if (index === undefined) {
     throw new Error(`Unknown Core Product drum voice: ${String(voice)}`);
   }

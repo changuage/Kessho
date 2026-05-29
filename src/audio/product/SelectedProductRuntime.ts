@@ -8,8 +8,14 @@ import {
   preloadReferenceSelectedRuntime,
 } from '../reference/ReferenceSelectedRuntime';
 import type {
-  DynamicsVisualTelemetrySnapshot,
-} from '../engineSharedTypes';
+  ProductDrumVoice,
+  ProductDynamicsVisualTelemetry,
+  ProductExternalState,
+  ProductManualSynthNote,
+  ProductMidiMessage,
+  ProductRange,
+  ProductRangeMap,
+} from './ProductEngineTypes';
 
 type SelectedRuntimeTarget = Record<string, unknown>;
 
@@ -20,10 +26,10 @@ export type SelectedProductRuntime = SelectedRuntimeTarget & {
   resume(): void | Promise<void>;
   setOutputGain(target: number, durationSeconds?: number): void;
   resetCofDrift(): void;
-  pushMidiMessage(message: unknown): void;
-  auditionSynthNote(note: unknown, externalState?: unknown): Promise<void>;
-  triggerDrumVoice(voice: unknown, velocity?: number, externalState?: unknown): Promise<void>;
-  getDynamicsVisualTelemetry(): DynamicsVisualTelemetrySnapshot;
+  pushMidiMessage(message: ProductMidiMessage): void;
+  auditionSynthNote(note: ProductManualSynthNote, externalState?: ProductExternalState): Promise<void>;
+  triggerDrumVoice(voice: ProductDrumVoice, velocity?: number, externalState?: ProductExternalState): Promise<void>;
+  getDynamicsVisualTelemetry(): ProductDynamicsVisualTelemetry;
   getCurrentPadFilterFreq(pad: 'pad1' | 'pad2'): number;
   getCurrentPadLfoValue(pad: 'pad1' | 'pad2'): number;
   getGranularActiveGrainCount(): number;
@@ -38,10 +44,10 @@ export type SelectedProductRuntime = SelectedRuntimeTarget & {
   setDrumEuclidEvolveTriggerCallback(callback: unknown): void;
   setSynthEuclidEvolveTriggerCallback(callback: unknown): void;
   setRuntimeWalkPositionsCallback(callback: unknown): void;
-  setDrumMorphRange(voice: unknown, range: unknown): void;
-  setDrumParamSHRange(key: string, range: unknown): void;
-  setDualRanges(ranges: unknown): void;
-  setRuntimeWalkRanges(ranges: unknown): void;
+  setDrumMorphRange(voice: ProductDrumVoice, range: ProductRange | null): void;
+  setDrumParamSHRange(key: string, range: ProductRange | null): void;
+  setDualRanges(ranges: ProductRangeMap): void;
+  setRuntimeWalkRanges(ranges: ProductRangeMap): void;
   setLeadExpressionCallback(callback: unknown): void;
   setLeadMorphCallback(callback: unknown): void;
   setPadMorphTriggerCallback(callback: unknown): void;

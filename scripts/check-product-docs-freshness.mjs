@@ -18,13 +18,17 @@ function assertExcludes(source, token, label, failures) {
 
 const files = new Map([
   ['README.md', read('README.md')],
+  ['MIGRATION_STATUS.md', read('MIGRATION_STATUS.md')],
   ['docs/kessho-product-core-migration-status.md', read('docs/kessho-product-core-migration-status.md')],
   ['docs/product-core/architecture.md', read('docs/product-core/architecture.md')],
+  ['docs/product-core/runtime-boundary.md', read('docs/product-core/runtime-boundary.md')],
+  ['docs/product-core/testing-release-gates.md', read('docs/product-core/testing-release-gates.md')],
   ['docs/product-core/product-engine-port.md', read('docs/product-core/product-engine-port.md')],
   ['docs/product-core/schema-and-codegen.md', read('docs/product-core/schema-and-codegen.md')],
   ['docs/product-core/host-diagnostics.md', read('docs/product-core/host-diagnostics.md')],
   ['docs/product-core/native-bridge.md', read('docs/product-core/native-bridge.md')],
   ['docs/product-core/reference-web-ts.md', read('docs/product-core/reference-web-ts.md')],
+  ['docs/product-core/common-control-routing.md', read('docs/product-core/common-control-routing.md')],
   ['docs/product-core/unsupported-surface.md', read('docs/product-core/unsupported-surface.md')],
   ['package.json', read('package.json')],
   ['scripts/run-kessho-product-ci.mjs', read('scripts/run-kessho-product-ci.mjs')],
@@ -38,8 +42,11 @@ for (const [path, source] of files) {
 
 for (const path of [
   'README.md',
+  'MIGRATION_STATUS.md',
   'docs/kessho-product-core-migration-status.md',
   'docs/product-core/architecture.md',
+  'docs/product-core/runtime-boundary.md',
+  'docs/product-core/testing-release-gates.md',
   'docs/product-core/native-bridge.md',
   'docs/product-core/reference-web-ts.md',
 ]) {
@@ -51,6 +58,7 @@ for (const path of [
 for (const path of [
   'README.md',
   'docs/product-core/architecture.md',
+  'docs/product-core/runtime-boundary.md',
   'docs/product-core/product-engine-port.md',
 ]) {
   const source = files.get(path);
@@ -81,9 +89,17 @@ for (const counter of [
 assertIncludes(files.get('README.md'), 'Product Core', 'README.md', failures);
 assertIncludes(files.get('README.md'), 'reference-only', 'README.md', failures);
 assertIncludes(files.get('README.md'), 'npm run core:product:ci', 'README.md', failures);
+assertIncludes(files.get('README.md'), 'src/audio/reference/webTs/engine.ts', 'README.md', failures);
+assertIncludes(files.get('MIGRATION_STATUS.md'), 'fast behavioral port mode', 'MIGRATION_STATUS.md', failures);
+assertIncludes(files.get('MIGRATION_STATUS.md'), 'Batch 13', 'MIGRATION_STATUS.md', failures);
 assertIncludes(files.get('docs/product-core/reference-web-ts.md'), 'src/audio/reference/webTs/engine.ts', 'docs/product-core/reference-web-ts.md', failures);
 assertIncludes(files.get('docs/product-core/reference-web-ts.md'), 'src/audio/reference/ReferenceSelectedRuntime.ts', 'docs/product-core/reference-web-ts.md', failures);
 assertIncludes(files.get('docs/product-core/architecture.md'), 'src/audio/reference/webTs/engine.ts', 'docs/product-core/architecture.md', failures);
+assertIncludes(files.get('docs/product-core/runtime-boundary.md'), 'Do not reintroduce root `src/audio/engine.ts`', 'docs/product-core/runtime-boundary.md', failures);
+assertIncludes(files.get('docs/product-core/runtime-boundary.md'), 'Do not reintroduce root `src/audio/runtime.ts`', 'docs/product-core/runtime-boundary.md', failures);
+assertIncludes(files.get('docs/product-core/runtime-boundary.md'), 'Routine sliders, toggles, sequencer edits, transport changes, journey macro moves, FX sends, and mute/solo changes', 'docs/product-core/runtime-boundary.md', failures);
+assertIncludes(files.get('docs/product-core/testing-release-gates.md'), 'Batch 13 Web-Default Release Proof', 'docs/product-core/testing-release-gates.md', failures);
+assertIncludes(files.get('docs/product-core/testing-release-gates.md'), 'npm run core:product:ci', 'docs/product-core/testing-release-gates.md', failures);
 assertIncludes(files.get('docs/kessho-product-core-migration-status.md'), 'src/audio/reference/webTs/engine.ts', 'docs/kessho-product-core-migration-status.md', failures);
 assertIncludes(files.get('docs/kessho-product-core-migration-status.md'), 'Web runtime default | `core-product`', 'docs/kessho-product-core-migration-status.md', failures);
 assertIncludes(files.get('docs/kessho-product-core-migration-status.md'), 'Native bridge | Deferred for web default', 'docs/kessho-product-core-migration-status.md', failures);
@@ -98,12 +114,19 @@ assertIncludes(files.get('docs/product-core/product-engine-port.md'), '`product-
 assertIncludes(files.get('docs/product-core/product-engine-port.md'), '`product-core-sequencer-pitch-settings-events`', 'docs/product-core/product-engine-port.md', failures);
 assertIncludes(files.get('docs/product-core/product-engine-port.md'), '`product-core-sequencer-home-capture-events`', 'docs/product-core/product-engine-port.md', failures);
 assertIncludes(files.get('docs/product-core/architecture.md'), 'The remaining `applySequencerUiPatch` lane is an explicit temporary bridge', 'docs/product-core/architecture.md', failures);
+assertIncludes(files.get('docs/product-core/common-control-routing.md'), 'Common live controls should use Product events, explicit product patches, or dirty-diff paths', 'docs/product-core/common-control-routing.md', failures);
+assertIncludes(files.get('docs/product-core/common-control-routing.md'), 'Allowed full snapshot reasons', 'docs/product-core/common-control-routing.md', failures);
 assertIncludes(files.get('docs/product-core/unsupported-surface.md'), '`applySequencerUiPatch` is not an unsupported production getter or fallback', 'docs/product-core/unsupported-surface.md', failures);
 assertIncludes(files.get('package.json'), '"migration:docs": "node scripts/check-product-docs-freshness.mjs"', 'package.json', failures);
 assertIncludes(files.get('scripts/run-kessho-product-ci.mjs'), "'migration:docs'", 'scripts/run-kessho-product-ci.mjs', failures);
 
 assertExcludes(files.get('README.md'), 'Modify `src/audio/engine.ts` to load and use ConvolverNode', 'README.md', failures);
 assertExcludes(files.get('README.md'), 'engine.ts           # Audio graph, voice management, scheduling', 'README.md', failures);
+assertExcludes(files.get('README.md'), '├── engine.ts', 'README.md', failures);
+assertExcludes(files.get('README.md'), 'src/audio/runtime.ts           #', 'README.md', failures);
+assertExcludes(files.get('docs/product-core/runtime-boundary.md'), 'select web-ts in production', 'docs/product-core/runtime-boundary.md', failures);
+assertExcludes(files.get('docs/product-core/runtime-boundary.md'), 'ProductEnginePort may expose AudioNode', 'docs/product-core/runtime-boundary.md', failures);
+assertExcludes(files.get('docs/product-core/native-bridge.md'), 'native-product is available when unsupported', 'docs/product-core/native-bridge.md', failures);
 
 const report = {
   schemaVersion: 1,

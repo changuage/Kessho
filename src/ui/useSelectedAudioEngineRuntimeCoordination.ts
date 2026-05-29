@@ -1,4 +1,5 @@
 import type { MutableRefObject } from 'react';
+import type { ProductDrumVoice } from '../audio/product/ProductEngineTypes';
 import type { DualSliderRange } from './DualSlider';
 import type { SliderMode, SliderState } from './state';
 import type { PitchSettings, StepOverrides, SubLaneKind, SubLaneState } from './sequencer/useEuclideanSequencer';
@@ -15,7 +16,7 @@ type ProductRange = { min: number; max: number };
 type SelectedAudioEngineRuntimeCoordinationOptions = {
   activeTab: string;
   createDefaultPitchSettings: () => PitchSettings[];
-  drumMorphKeyToVoice: Record<string, unknown>;
+  drumMorphKeyToVoice: Record<string, ProductDrumVoice>;
   drumMorphKeys: Set<keyof SliderState>;
   drumPitchSettingsRef: MutableRefObject<PitchSettings[] | undefined>;
   drumSHParamKeys: Set<string>;
@@ -28,7 +29,7 @@ type SelectedAudioEngineRuntimeCoordinationOptions = {
   randomWalkSpeed: SliderState['randomWalkSpeed'];
   selectedRuntimeSupportsRangeKey: (key: string) => boolean;
   setSelectedDrumEvolveOverridesChangedCallback: (callback: ((laneIndex: number, overrides: unknown) => void) | null) => void;
-  setSelectedDrumMorphRange: (voice: unknown, range: ProductRange | null) => void;
+  setSelectedDrumMorphRange: (voice: ProductDrumVoice, range: ProductRange | null) => void;
   setSelectedDrumParamSHRange: (key: string, range: ProductRange | null) => void;
   setSelectedDualRanges: (ranges: Partial<Record<string, ProductRange>>) => void;
   setSelectedRuntimeWalkPositionsCallback: (callback: ((positions: Record<string, number>) => void) | null) => void;

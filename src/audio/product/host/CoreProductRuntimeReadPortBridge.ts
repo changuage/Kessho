@@ -1,6 +1,10 @@
 import type { ProductRuntimeCapabilityReport } from '../ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
-import type { ProductEngineState, ProductTelemetrySnapshot } from '../ProductEngineTypes';
+import type {
+  ProductDynamicsVisualTelemetry,
+  ProductEngineState,
+  ProductTelemetrySnapshot,
+} from '../ProductEngineTypes';
 import type { CoreProductHostMethodCall } from './CoreProductHostInvoker';
 
 // TODO(product-core-burn-down): replace this read bridge with product-owned
@@ -14,8 +18,8 @@ export function readCoreProductTelemetry(callHost: CoreProductHostMethodCall): P
   return callHost<ProductTelemetrySnapshot | null>('getProductTelemetry');
 }
 
-export function readCoreProductDynamicsVisualTelemetry(callHost: CoreProductHostMethodCall): unknown {
-  return callHost<unknown>('getDynamicsVisualTelemetry');
+export function readCoreProductDynamicsVisualTelemetry(callHost: CoreProductHostMethodCall): ProductDynamicsVisualTelemetry {
+  return callHost<ProductDynamicsVisualTelemetry>('getDynamicsVisualTelemetry');
 }
 
 export function readCoreProductRuntimeDiagnostics(callHost: CoreProductHostMethodCall): ProductRuntimeDiagnostics {

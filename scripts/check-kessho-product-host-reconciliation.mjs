@@ -11,7 +11,9 @@ const host = readProjectFile('src/audio/coreProductEngineHost.ts');
 const runtimeAdapter = readProjectFile('src/audio/CoreProductRuntimeAdapter.ts');
 const snapshotCoordinator = readProjectFile('src/audio/product/host/CoreProductSnapshotCoordinator.ts');
 const sequencerUiAdapter = readProjectFile('src/audio/product/host/CoreProductSequencerUiAdapter.ts');
-const hostRuntimeSurface = `${host}\n${runtimeAdapter}\n${snapshotCoordinator}\n${sequencerUiAdapter}`;
+const sequencerLaneParamBridge = readProjectFile('src/audio/product/host/CoreProductSequencerLaneParamBridge.ts');
+const sequencerControlEventBridge = readProjectFile('src/audio/product/host/CoreProductSequencerControlEventBridge.ts');
+const hostRuntimeSurface = `${host}\n${runtimeAdapter}\n${snapshotCoordinator}\n${sequencerUiAdapter}\n${sequencerLaneParamBridge}\n${sequencerControlEventBridge}`;
 const sequencerTests = readProjectFile('cpp/KesshoCore/tests/ProductSequencerTests.cpp');
 
 function hostMethodBody(name) {
@@ -133,7 +135,7 @@ await runCheckWithReport({
     );
     for (const methodName of ['start', 'resume', 'suspend', 'stop', 'dispose']) {
       assert(
-        hostMethodBody(methodName).includes('this.sequencerEvolveClock.reset();'),
+        hostMethodBody(methodName).includes('this.sequencerEvolveBridge.reset();'),
         `${methodName}() must reset Product sequencer evolve clock state at transport lifecycle boundaries`,
       );
     }
@@ -158,29 +160,39 @@ await runCheckWithReport({
       'KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision',
       'KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing',
       'KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchBindingMode',
-      "this.patchSequencerLaneAdapterParam(sequencer, laneIndex, 'ClockDivision', normalizeClockDivisionValue(event.value, 16))",
-      "this.patchSequencerLaneAdapterParam(sequencer, laneIndex, 'Swing', normalizeSequencerSwing(event.value, 0))",
-      'this.patchSynthPitchBindingModeFromEvent(laneIndex, event)',
+      "patchCoreProductSequencerLaneAdapterParam(this.adapterState, sequencer, laneIndex, 'ClockDivision', normalizeClockDivisionValue(event.value, 16))",
+      "patchCoreProductSequencerLaneAdapterParam(this.adapterState, sequencer, laneIndex, 'Swing', normalizeSequencerSwing(event.value, 0))",
+      'patchCoreProductSynthPitchBindingModeFromEvent(this.adapterState, laneIndex, event)',
       'if (this.runtimeReady) this.runtime.postEvent(event)',
-      'KESSHO_PRODUCT_EVENT_IDS.ResetSequencerLaneHome',
-      'KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane',
-      'this.restoreSequencerLaneHome(sequencer, laneIndex)',
-      "if (sequencer === 'synth') return true",
-      'this.sequencerHome.armManualDice(sequencer, laneIndex)',
-      'this.postSequencerControlEvent(event)',
-      "this.invokeDisplayCallback(sequencer === 'synth' ? 'synthEuclidEvolve' : 'drumEuclidEvolve', laneIndex)",
+      'handleCoreProductSequencerControlEvent({',
+      'restoreLaneHome: (restoreSequencer, restoreLaneIndex) => this.restoreSequencerLaneHome(restoreSequencer, restoreLaneIndex)',
+      'armManualDice: (diceSequencer, diceLaneIndex) => this.sequencerHome.armManualDice(diceSequencer, diceLaneIndex)',
+      'postControlEvent: (controlEvent) => this.postSequencerControlEvent(controlEvent)',
+      'publish: (name, publishLaneIndex) => this.invokeDisplayCallback(name, publishLaneIndex)',
     ]) {
       assert(sequencerEventBody.includes(token), `ProductEvent sequencer UI handler is missing ${token}`);
     }
-    const laneParamEventBody = hostMethodBody('patchSequencerLaneAdapterParam');
+    const controlEventBody = hostMethodBody('handleCoreProductSequencerControlEvent');
+    for (const token of [
+      'KESSHO_PRODUCT_EVENT_IDS.ResetSequencerLaneHome',
+      'KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane',
+      'options.restoreLaneHome(options.sequencer, options.laneIndex)',
+      "if (options.sequencer === 'synth') return true",
+      'options.armManualDice(options.sequencer, options.laneIndex)',
+      'options.postControlEvent(options.event)',
+      "options.publish(options.sequencer === 'synth' ? 'synthEuclidEvolve' : 'drumEuclidEvolve', options.laneIndex)",
+    ]) {
+      assert(controlEventBody.includes(token), `ProductEvent sequencer control bridge is missing ${token}`);
+    }
+    const laneParamEventBody = hostMethodBody('patchCoreProductSequencerLaneAdapterParam');
     for (const token of [
       "const prefix = sequencer === 'synth' ? 'synthEuclid' : 'drumEuclid'",
       "`${prefix}${laneIndex + 1}${suffix}`",
-      'this.adapterState = { ...this.adapterState',
+      'return { ...adapterState',
     ]) {
       assert(laneParamEventBody.includes(token), `ProductEvent sequencer lane-param adapter patch is missing ${token}`);
     }
-    const pitchBindingPatchBody = hostMethodBody('patchSynthPitchBindingModeFromEvent');
+    const pitchBindingPatchBody = hostMethodBody('patchCoreProductSynthPitchBindingModeFromEvent');
     for (const token of [
       'sequencerPitchBindingModeFromEventId',
       "event.value === 1 ? 'sequence' : 'polyrhythmic'",
@@ -211,13 +223,21 @@ await runCheckWithReport({
     assert(!patchBody.includes('this.loadProductSnapshot('), 'adapter state patches must not bypass dirty diff with direct snapshot loads');
 
     const createSnapshotBody = hostMethodBody('createLatestSnapshot');
+    const createHostSnapshotBody = methodBody(snapshotCoordinator, 'createCoreProductHostSnapshot');
+    assert(
+      createSnapshotBody.includes('createCoreProductHostSnapshot({') &&
+        createSnapshotBody.includes('latestSliderState: this.latestSliderState') &&
+        createSnapshotBody.includes('adapterState: this.adapterState') &&
+        createSnapshotBody.includes('latestTelemetry: this.latestTelemetry'),
+      'host createLatestSnapshot() must delegate snapshot state reconciliation to CoreProductSnapshotCoordinator',
+    );
     for (const token of [
       'telemetryRngState',
-      'rngSeed: this.latestTelemetry.rngSeed',
-      'rngState: this.latestTelemetry.rngState',
-      '...this.latestSliderState, ...this.adapterState',
+      'rngSeed: state.latestTelemetry.rngSeed',
+      'rngState: state.latestTelemetry.rngState',
+      '...state.latestSliderState, ...state.adapterState',
     ]) {
-      assert(createSnapshotBody.includes(token), `createLatestSnapshot() must reconcile ${token}`);
+      assert(createHostSnapshotBody.includes(token), `createCoreProductHostSnapshot() must reconcile ${token}`);
     }
 
     const telemetryBody = hostMethodBody('handleTelemetry');

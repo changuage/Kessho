@@ -1,6 +1,26 @@
 import { CORE_PRODUCT_MEMORY_BUDGETS } from '../../coreProductAssets';
-import type { CoreProductTelemetrySnapshot } from '../../coreProductTelemetry';
+import type { CoreProductTelemetrySnapshot, CoreProductVisualTelemetrySnapshot } from '../../coreProductTelemetry';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
+
+export function mergeCoreProductVisualTelemetry(
+  previous: CoreProductTelemetrySnapshot | null,
+  telemetry: CoreProductVisualTelemetrySnapshot,
+  running: boolean,
+): CoreProductTelemetrySnapshot {
+  return {
+    ...(previous ?? {}),
+    ...telemetry,
+    schemaHash: telemetry.schemaHash,
+    transportRunning: telemetry.transportRunning ?? running,
+    activeSources: previous?.activeSources ?? 0,
+    activeVoices: previous?.activeVoices ?? 0,
+    activeAssets: previous?.activeAssets ?? 0,
+    sequencerEventCount: previous?.sequencerEventCount ?? 0,
+    controlQueueDepth: previous?.controlQueueDepth ?? 0,
+    assetMissingCount: previous?.assetMissingCount ?? 0,
+    lastErrorCode: previous?.lastErrorCode ?? 0,
+  };
+}
 
 export function enrichCoreProductHostTelemetry(
   telemetry: CoreProductTelemetrySnapshot,
@@ -59,5 +79,6 @@ export function createCoreProductPerfSnapshot(
     audioCriticalFallbackCount: telemetry.audioCriticalFallbackCount ?? diagnostics.audioCriticalFallbackCount,
     snapshotReloadCpuMs: telemetry.snapshotReloadCpuMs ?? diagnostics.snapshotReloadCpuMs,
     lastSnapshotReloadReason: telemetry.lastSnapshotReloadReason ?? diagnostics.lastSnapshotReloadReason,
+    snapshotReloadReasons: telemetry.snapshotReloadReasons ?? diagnostics.snapshotReloadReasons,
   };
 }

@@ -1,16 +1,17 @@
 import { useEffect } from 'react';
 
 import { DRUM_MORPH_KEYS, type SliderMode, type SliderState } from './state';
+import type { ProductDrumVoice } from '../audio/product/ProductEngineTypes';
 
 type ProductRange = { min: number; max: number };
 
 type SelectedAudioEngineRangeSyncOptions = {
-  drumMorphKeyToVoice: Record<string, unknown>;
+  drumMorphKeyToVoice: Record<string, ProductDrumVoice>;
   drumMorphKeys: Set<keyof SliderState>;
   drumSHParamKeys: Set<string>;
   dualSliderRanges: Partial<Record<keyof SliderState, ProductRange | undefined>>;
   selectedRuntimeSupportsRangeKey: (key: string) => boolean;
-  setSelectedDrumMorphRange: (voice: unknown, range: ProductRange | null) => void;
+  setSelectedDrumMorphRange: (voice: ProductDrumVoice, range: ProductRange | null) => void;
   setSelectedDrumParamSHRange: (key: string, range: ProductRange | null) => void;
   setSelectedDualRanges: (ranges: Partial<Record<string, ProductRange>>) => void;
   sliderModes: Record<string, SliderMode>;

@@ -17,19 +17,19 @@ export function useProductRuntimeUi({
     stateRef,
     stopProductRuntime,
   });
-  const perf = useProductRuntimePerf(productRuntimeMode, runtimeNavigation.showAudioEngineSwitcher);
+  const perf = useProductRuntimePerf(productRuntimeMode, runtimeNavigation.showProductRuntimeSwitcher);
   const globalRuntimeComparison = useMemo<GlobalRuntimeComparisonPanelProps>(() => ({
     currentMode: productRuntimeMode,
     modes: runtimeNavigation.productRuntimeModes,
-    cpuSummaries: perf.audioEngineCpuSummaries,
-    visible: runtimeNavigation.showAudioEngineSwitcher,
+    cpuSummaries: perf.productRuntimeCpuSummaries,
+    visible: runtimeNavigation.showProductRuntimeSwitcher,
     onModeChange: runtimeNavigation.handleProductRuntimeModeChange,
   }), [
-    perf.audioEngineCpuSummaries,
+    perf.productRuntimeCpuSummaries,
     productRuntimeMode,
     runtimeNavigation.handleProductRuntimeModeChange,
     runtimeNavigation.productRuntimeModes,
-    runtimeNavigation.showAudioEngineSwitcher,
+    runtimeNavigation.showProductRuntimeSwitcher,
   ]);
 
   return {

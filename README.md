@@ -206,7 +206,7 @@ src/
 │   ├── product/            # ProductEnginePort and web Product runtime adapter
 │   ├── coreProductEngineHost.ts # Web host for Product Core AudioWorklet/WASM
 │   ├── generated/          # Schema-generated Product constants and event IDs
-│   ├── engine.ts           # web-ts reference implementation
+│   ├── reference/webTs/    # web-ts reference implementation, not production runtime
 │   ├── rng.ts              # Seeded PRNG (xmur3 + mulberry32)
 │   ├── scales.ts           # E-root scale families
 │   ├── harmony.ts          # Chord generation, phrase timing
@@ -226,6 +226,8 @@ cpp/
 docs/
 └── product-core/            # Product architecture, diagnostics, schema, and reference docs
 ```
+
+Production code must not add a root `src/audio/engine.ts` or `src/audio/runtime.ts` path. Reference and parity code should import the legacy implementation from `src/audio/reference/webTs/engine.ts`.
 
 ## ⚙️ Technical Details
 

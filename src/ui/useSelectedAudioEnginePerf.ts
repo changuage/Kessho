@@ -16,7 +16,7 @@ export function useSelectedAudioEnginePerf(
   const perfAdapter = useProductRuntimePerfAdapter(audioEngineRuntimeMode, showAudioEngineSwitcher);
 
   return {
-    audioEngineCpuSummaries: perfAdapter.audioEngineCpuSummaries,
+    audioEngineCpuSummaries: perfAdapter.productRuntimeCpuSummaries,
     setSelectedPerfMonitorEnabled: perfAdapter.setProductPerfMonitorEnabled,
     setSelectedPerfUpdateCallback: perfAdapter.setProductPerfUpdateCallback,
   };

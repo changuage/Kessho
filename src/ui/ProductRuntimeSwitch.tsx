@@ -19,7 +19,7 @@ export function ProductRuntimeSwitch({
   onModeChange,
   visible,
   floating = false,
-  testId = 'main-audio-engine-switch',
+  testId = 'main-product-runtime-switch',
   variant = 'main',
 }: ProductRuntimeSwitchProps): JSX.Element | null {
   if (!visible) return null;

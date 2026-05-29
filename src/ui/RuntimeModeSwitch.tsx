@@ -63,7 +63,7 @@ export function RuntimeModeSwitch({
   onModeChange,
   floating = false,
   labelVariant = 'short',
-  testId = 'main-audio-engine-switch',
+  testId = 'main-product-runtime-switch',
   variant = 'main',
 }: RuntimeModeSwitchProps): JSX.Element | null {
   if (modes.length <= 1) return null;
@@ -77,7 +77,7 @@ export function RuntimeModeSwitch({
 
   return (
     <div
-      className={sceneVariant ? 'scene-engine-switch-buttons' : undefined}
+      className={sceneVariant ? 'scene-runtime-switch-buttons' : undefined}
       style={sceneVariant ? undefined : { ...styles.root, ...(floating ? styles.floating : {}) }}
       role="group"
       aria-label="Product runtime"
@@ -88,7 +88,7 @@ export function RuntimeModeSwitch({
           key={mode}
           type="button"
           data-testid={`${testId}-${mode}`}
-          className={sceneVariant ? `scene-engine-switch-btn${currentMode === mode ? ' active' : ''}` : undefined}
+          className={sceneVariant ? `scene-runtime-switch-btn${currentMode === mode ? ' active' : ''}` : undefined}
           style={sceneVariant ? undefined : {
             ...styles.button,
             ...(index === modes.length - 1 ? { borderRight: 'none' } : {}),

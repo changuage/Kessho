@@ -105,6 +105,7 @@ type HarnessEngine = ProductGraphCaptureHost & ModulationRangeHost & {
   auditionSynthNote: (note: ManualSynthNoteOptions, externalState?: SliderState) => Promise<void> | void;
   auditionSynthNotes?: (notes: ManualSynthNoteOptions[], externalState?: SliderState) => Promise<void> | void;
   triggerDrumVoice?: (voice: string | number, velocity: number, externalState?: SliderState) => Promise<void> | void;
+  updateSnapshotPatch?: (reason: string, patch: Partial<SliderState>) => void;
   updateParams?: (state: SliderState) => void;
   applyParams?: (state: SliderState) => void;
   sourceSliderState?: SliderState;
@@ -538,26 +539,31 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
       let eventState = state;
       const stateEventTimers: number[] = [];
       const scheduleStateEvents = (): void => {
-        const paramTarget = engine as unknown as {
-          updateParams?: (state: SliderState) => void;
-          applyParams?: (state: SliderState) => void;
-          sourceSliderState?: SliderState;
+	        const paramTarget = engine as unknown as {
+	          updateSnapshotPatch?: (reason: string, patch: Partial<SliderState>) => void;
+	          updateParams?: (state: SliderState) => void;
+	          applyParams?: (state: SliderState) => void;
+	          sourceSliderState?: SliderState;
           sliderState?: SliderState;
           _sliderStateJsonDirty?: boolean;
         };
         for (const event of stateEvents) {
           const timer = window.setTimeout(() => {
             eventState = { ...eventState, ...event.patch };
-            if (manualMode && runtime.mode === 'web-ts' && typeof paramTarget.applyParams === 'function') {
-              paramTarget.sourceSliderState = eventState;
-              paramTarget.sliderState = eventState;
-              paramTarget._sliderStateJsonDirty = true;
-              paramTarget.applyParams.call(engine, eventState);
-              return;
-            }
-            if (typeof paramTarget.updateParams === 'function') {
-              paramTarget.updateParams.call(engine, eventState);
-            }
+	            if (manualMode && runtime.mode === 'web-ts' && typeof paramTarget.applyParams === 'function') {
+	              paramTarget.sourceSliderState = eventState;
+	              paramTarget.sliderState = eventState;
+	              paramTarget._sliderStateJsonDirty = true;
+	              paramTarget.applyParams.call(engine, eventState);
+	              return;
+	            }
+	            if (runtime.mode === 'core-product' && typeof paramTarget.updateSnapshotPatch === 'function') {
+	              paramTarget.updateSnapshotPatch.call(engine, 'fx-control-change', event.patch);
+	              return;
+	            }
+	            if (typeof paramTarget.updateParams === 'function') {
+	              paramTarget.updateParams.call(engine, eventState);
+	            }
           }, event.delayMs);
           stateEventTimers.push(timer);
         }

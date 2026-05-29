@@ -1,11 +1,12 @@
 import { useSelectedAudioEngineMorphRuntime } from './useSelectedAudioEngineMorphRuntime';
 
-type SelectedRuntimeMorphOptions = Parameters<typeof useSelectedAudioEngineMorphRuntime>[0];
-type ProductRuntimeMorphSurfaceOptions = {
-  resetProductCofDrift: SelectedRuntimeMorphOptions['resetSelectedCofDrift'];
-  setProductJourneyMorphClockCallback: SelectedRuntimeMorphOptions['setSelectedJourneyMorphClockCallback'];
-  startProductJourneyMorphClock: SelectedRuntimeMorphOptions['startSelectedJourneyMorphClock'];
-  stopProductJourneyMorphClock: SelectedRuntimeMorphOptions['stopSelectedJourneyMorphClock'];
+type ProductJourneyMorphClockCallback = (now: number) => void;
+
+export type ProductRuntimeMorphSurfaceOptions = {
+  resetProductCofDrift: () => void;
+  setProductJourneyMorphClockCallback: (callback: ProductJourneyMorphClockCallback | null) => void;
+  startProductJourneyMorphClock: () => void;
+  stopProductJourneyMorphClock: () => void;
 };
 
 export function useProductRuntimeMorphSurface({
@@ -14,6 +15,8 @@ export function useProductRuntimeMorphSurface({
   startProductJourneyMorphClock,
   stopProductJourneyMorphClock,
 }: ProductRuntimeMorphSurfaceOptions) {
+  // TODO(product-runtime-compat-10E): CoF drift and journey morph clock ownership still
+  // delegates through the selected-runtime compatibility hook until morph runtime is product-owned.
   return useSelectedAudioEngineMorphRuntime({
     resetSelectedCofDrift: resetProductCofDrift,
     setSelectedJourneyMorphClockCallback: setProductJourneyMorphClockCallback,

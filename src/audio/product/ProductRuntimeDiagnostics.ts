@@ -10,6 +10,7 @@ export type ProductRuntimeDiagnostics = {
   lastUnsupportedMethod: string | null;
   lastUnsupportedMethodClass: RuntimeFallbackClassification | null;
   lastSnapshotReloadReason: string | null;
+  snapshotReloadReasons: readonly string[];
   snapshotReloadCpuMs: number;
 };
 
@@ -23,5 +24,6 @@ export const EMPTY_PRODUCT_RUNTIME_DIAGNOSTICS: ProductRuntimeDiagnostics = {
   lastUnsupportedMethod: null,
   lastUnsupportedMethodClass: null,
   lastSnapshotReloadReason: null,
+  snapshotReloadReasons: [],
   snapshotReloadCpuMs: 0,
 };

@@ -154,6 +154,7 @@ function withEngine(baseUrl, engineMode) {
   url.searchParams.set('engine', engineMode);
   url.searchParams.set('engineAB', '1');
   url.searchParams.set('localPresets', '1');
+  url.searchParams.set('advanced', '1');
   return url.toString();
 }
 

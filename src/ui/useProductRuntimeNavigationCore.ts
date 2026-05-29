@@ -21,7 +21,7 @@ type ProductRuntimeNavigationCoreOptions = {
 
 type ProductRuntimeNavigationCore = {
   productRuntimeModes: readonly ProductRuntimeNavigationMode[];
-  showAudioEngineSwitcher: boolean;
+  showProductRuntimeSwitcher: boolean;
   startInAdvancedEditor: boolean;
   handleProductRuntimeModeChange: (mode: ProductRuntimeNavigationMode) => void;
   preloadAdvancedEditorRuntime: () => void;
@@ -43,7 +43,7 @@ export function useProductRuntimeNavigationCore({
   stateRef,
   stopProductRuntime,
 }: ProductRuntimeNavigationCoreOptions): ProductRuntimeNavigationCore {
-  const showAudioEngineSwitcher = useMemo(() => shouldShowProductRuntimeSwitcher(), []);
+  const showProductRuntimeSwitcher = useMemo(() => shouldShowProductRuntimeSwitcher(), []);
   const startInAdvancedEditor = useMemo(() => shouldStartInAdvancedEditor(), []);
   const productRuntimeModes = useMemo(() => getProductRuntimeModes(), []);
 
@@ -63,7 +63,7 @@ export function useProductRuntimeNavigationCore({
 
   return {
     productRuntimeModes,
-    showAudioEngineSwitcher,
+    showProductRuntimeSwitcher,
     startInAdvancedEditor,
     handleProductRuntimeModeChange,
     preloadAdvancedEditorRuntime,

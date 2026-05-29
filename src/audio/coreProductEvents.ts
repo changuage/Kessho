@@ -7,6 +7,7 @@ import {
   KESSHO_PRODUCT_LEAD_PARAM_COUNT,
   KESSHO_PRODUCT_PAD_PARAM_COUNT,
   KESSHO_PRODUCT_PAD_PARAM_SPECS,
+  KESSHO_PRODUCT_SOURCE_IDS as GENERATED_PRODUCT_SOURCE_IDS,
 } from './generated/kesshoProductSchema';
 import { delayNoteToSeconds } from './delayBuses';
 import { computeGranularMacroModel, type GranularMacroModel } from './granularMacroCore';
@@ -16,6 +17,7 @@ import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions'
 import { normalizeSequencerPitchBindingMode, sequencerPitchBindingModeToEventId, sequencerPitchBindingModeToProductId } from './sequencerPitchBinding';
 import { normalizeSequencerSwing } from './sequencerSwing';
 import { DEFAULT_STATE, getIndexedDelayDivisionValue, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
+import { generatedProductParamIndex } from './CoreProductGeneratedParamMetadata';
 
 export type CoreProductEvent = {
   sampleOffset?: number;
@@ -31,13 +33,13 @@ export type CoreProductEvent = {
 };
 
 export const CORE_PRODUCT_SOURCE_IDS = Object.freeze({
-  pad1: 1,
-  pad2: 2,
-  lead1: 3,
-  lead2: 4,
-  drum: 5,
-  piano: 6,
-  soundscape: 7,
+  pad1: GENERATED_PRODUCT_SOURCE_IDS.Pad1,
+  pad2: GENERATED_PRODUCT_SOURCE_IDS.Pad2,
+  lead1: GENERATED_PRODUCT_SOURCE_IDS.Lead1,
+  lead2: GENERATED_PRODUCT_SOURCE_IDS.Lead2,
+  drum: GENERATED_PRODUCT_SOURCE_IDS.Drum,
+  piano: GENERATED_PRODUCT_SOURCE_IDS.Piano,
+  soundscape: GENERATED_PRODUCT_SOURCE_IDS.Soundscape,
 } as const);
 
 export const CORE_PRODUCT_MODULATION_RANGE_MODE = Object.freeze({
@@ -104,8 +106,8 @@ export const CORE_PRODUCT_PAD2_RUNTIME_PARAM_ID_BASE = 2100;
 export const CORE_PRODUCT_LEAD_RUNTIME_PARAM_ID_BASE = 2200;
 export const CORE_PRODUCT_LEAD2_RUNTIME_PARAM_ID_BASE = 2300;
 export const CORE_PRODUCT_DRUM_RUNTIME_PARAM_ID_BASE = 3000;
-const CORE_PRODUCT_DRUM_MASTER_LEVEL_PARAM_INDEX = 122;
-const CORE_PRODUCT_DRUM_REVERB_SEND_PARAM_INDEX = 123;
+const CORE_PRODUCT_DRUM_MASTER_LEVEL_PARAM_INDEX = generatedProductParamIndex(KESSHO_PRODUCT_DRUM_PARAM_SPECS, 'drumLevel');
+const CORE_PRODUCT_DRUM_REVERB_SEND_PARAM_INDEX = generatedProductParamIndex(KESSHO_PRODUCT_DRUM_PARAM_SPECS, 'drumReverbSend');
 
 const VALID_SOURCE_IDS = new Set<number>(Object.values(CORE_PRODUCT_SOURCE_IDS));
 const VALID_SEQUENCER_IDS = new Set<number>(Object.values(CORE_PRODUCT_SEQUENCER_IDS));

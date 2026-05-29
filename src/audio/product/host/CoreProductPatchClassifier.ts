@@ -16,7 +16,11 @@ export function snapshotReloadReasonForProductPatch(reason: ProductSnapshotPatch
     case 'sequencer-edit':
       return 'sequencer-structure-change';
     case 'transport-change':
+    case 'sequencer-control-change':
+    case 'journey-morph-change':
+    case 'morph-control-change':
+    case 'fx-control-change':
     case 'ui-control-change':
-      return 'adapter-update';
+      return 'product-patch';
   }
 }

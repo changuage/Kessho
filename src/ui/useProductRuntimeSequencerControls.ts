@@ -1,28 +1,28 @@
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { useSelectedAudioEngineSequencerControls } from './useSelectedAudioEngineSequencerControls';
 
-type SelectedRuntimeSequencerControls = ReturnType<typeof useSelectedAudioEngineSequencerControls>;
+type ProductRuntimeSequencerPitchState = { steps?: number; direction?: string; scaleQuantize?: boolean } | null;
 
 type ProductRuntimeSequencerControls = {
-  setProductDrumEuclidEvolveConfigs: SelectedRuntimeSequencerControls['setSelectedDrumEuclidEvolveConfigs'];
-  setProductSynthEuclidEvolveConfigs: SelectedRuntimeSequencerControls['setSelectedSynthEuclidEvolveConfigs'];
-  setProductDrumEuclidClockDivs: SelectedRuntimeSequencerControls['setSelectedDrumEuclidClockDivs'];
-  setProductSynthEuclidClockDivs: SelectedRuntimeSequencerControls['setSelectedSynthEuclidClockDivs'];
-  setProductDrumEuclidSwings: SelectedRuntimeSequencerControls['setSelectedDrumEuclidSwings'];
-  setProductSynthEuclidSwings: SelectedRuntimeSequencerControls['setSelectedSynthEuclidSwings'];
-  setProductDrumSubLaneEnabled: SelectedRuntimeSequencerControls['setSelectedDrumSubLaneEnabled'];
-  setProductSynthSubLaneEnabled: SelectedRuntimeSequencerControls['setSelectedSynthSubLaneEnabled'];
-  setProductSynthPitchSettings: SelectedRuntimeSequencerControls['setSelectedSynthPitchSettings'];
-  setProductSynthPitchBindingModes: SelectedRuntimeSequencerControls['setSelectedSynthPitchBindingModes'];
-  setProductDrumStepOverrides: SelectedRuntimeSequencerControls['setSelectedDrumStepOverrides'];
-  setProductSynthStepOverrides: SelectedRuntimeSequencerControls['setSelectedSynthStepOverrides'];
-  setProductSequencerPresetHomeSnapshots: SelectedRuntimeSequencerControls['setSelectedSequencerPresetHomeSnapshots'];
-  resetProductSynthEuclidLaneHome: SelectedRuntimeSequencerControls['resetSelectedSynthEuclidLaneHome'];
-  captureProductSynthEuclidLaneHome: SelectedRuntimeSequencerControls['captureSelectedSynthEuclidLaneHome'];
-  diceProductSynthEuclidLane: SelectedRuntimeSequencerControls['diceSelectedSynthEuclidLane'];
-  resetProductDrumEuclidLaneHome: SelectedRuntimeSequencerControls['resetSelectedDrumEuclidLaneHome'];
-  captureProductDrumEuclidLaneHome: SelectedRuntimeSequencerControls['captureSelectedDrumEuclidLaneHome'];
-  diceProductDrumEuclidLane: SelectedRuntimeSequencerControls['diceSelectedDrumEuclidLane'];
+  setProductDrumEuclidEvolveConfigs: (configs: readonly unknown[]) => void;
+  setProductSynthEuclidEvolveConfigs: (configs: readonly unknown[]) => void;
+  setProductDrumEuclidClockDivs: (divs: readonly unknown[]) => void;
+  setProductSynthEuclidClockDivs: (divs: readonly unknown[]) => void;
+  setProductDrumEuclidSwings: (swings: readonly unknown[]) => void;
+  setProductSynthEuclidSwings: (swings: readonly unknown[]) => void;
+  setProductDrumSubLaneEnabled: (states: Record<string, boolean>[]) => void;
+  setProductSynthSubLaneEnabled: (states: Record<string, boolean>[]) => void;
+  setProductSynthPitchSettings: (settings: readonly unknown[]) => void;
+  setProductSynthPitchBindingModes: (modes: readonly unknown[]) => void;
+  setProductDrumStepOverrides: (overrides: unknown) => void;
+  setProductSynthStepOverrides: (overrides: unknown) => void;
+  setProductSequencerPresetHomeSnapshots: () => void;
+  resetProductSynthEuclidLaneHome: (laneIndex: number) => void;
+  captureProductSynthEuclidLaneHome: (laneIndex: number, pitchState?: ProductRuntimeSequencerPitchState) => void;
+  diceProductSynthEuclidLane: (laneIndex: number, intensity?: number) => void;
+  resetProductDrumEuclidLaneHome: (laneIndex: number) => void;
+  captureProductDrumEuclidLaneHome: (laneIndex: number, pitchSettings?: unknown, pitchState?: ProductRuntimeSequencerPitchState) => void;
+  diceProductDrumEuclidLane: (laneIndex: number, intensity?: number) => void;
 };
 
 export function useProductRuntimeSequencerControls(

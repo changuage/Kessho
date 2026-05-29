@@ -1,13 +1,23 @@
-import { useMemo } from 'react';
+import { useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { ProductEngineState } from '../audio/product/ProductEngineTypes';
+import type { SliderState } from './state';
 import { useProductRuntimeMacRecovery } from './useProductRuntimeMacRecovery';
 import { useProductRuntimeRecordingRuntime } from './useProductRuntimeRecordingRuntime';
 import { useProductRuntimeStateRuntime } from './useProductRuntimeStateRuntime';
 import { useProductRuntimeTelemetry } from './useProductRuntimeTelemetry';
 
-type ProductRuntimeLifecycleSurfaceOptions =
-  Parameters<typeof useProductRuntimeTelemetry>[0] &
-  Omit<Parameters<typeof useProductRuntimeStateRuntime>[0], 'enabled'> &
-  Parameters<typeof useProductRuntimeMacRecovery>[0];
+type ProductRuntimeLifecycleUiMode = 'snowflake' | 'advanced' | 'journey';
+
+type ProductRuntimeLifecycleSurfaceOptions = {
+  productRuntimeMode: ProductRuntimeSelectionMode;
+  uiMode: ProductRuntimeLifecycleUiMode;
+  playbackIsRunning: boolean;
+  getProductTransportDebugState: () => ProductEngineState['transportDebug'];
+  setEngineState: Dispatch<SetStateAction<ProductEngineState>>;
+  macShellAvailable: boolean;
+  stateRef: MutableRefObject<SliderState>;
+};
 
 export function useProductRuntimeLifecycleSurface(options: ProductRuntimeLifecycleSurfaceOptions) {
   const recordingRuntime = useProductRuntimeRecordingRuntime(options.productRuntimeMode);
@@ -19,7 +29,7 @@ export function useProductRuntimeLifecycleSurface(options: ProductRuntimeLifecyc
   useProductRuntimeStateRuntime({
     productRuntimeMode: options.productRuntimeMode,
     enabled: options.playbackIsRunning,
-    getSelectedTransportDebugState: options.getSelectedTransportDebugState,
+    getProductTransportDebugState: options.getProductTransportDebugState,
     setEngineState: options.setEngineState,
   });
 

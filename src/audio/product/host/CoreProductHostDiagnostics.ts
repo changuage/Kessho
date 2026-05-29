@@ -14,6 +14,7 @@ export class CoreProductHostDiagnostics {
   private audioCriticalFallbackCount = 0;
   private snapshotReloadCpuMs = 0;
   private lastSnapshotReloadReason: string | null = 'none';
+  private snapshotReloadReasons: string[] = [];
 
   snapshot(): ProductRuntimeDiagnostics {
     return {
@@ -26,6 +27,7 @@ export class CoreProductHostDiagnostics {
       lastUnsupportedMethod: this.lastUnsupportedMethod,
       lastUnsupportedMethodClass: this.lastUnsupportedMethodClass,
       lastSnapshotReloadReason: this.lastSnapshotReloadReason,
+      snapshotReloadReasons: [...this.snapshotReloadReasons],
       snapshotReloadCpuMs: this.snapshotReloadCpuMs,
     };
   }
@@ -38,6 +40,7 @@ export class CoreProductHostDiagnostics {
     this.fullSnapshotReloadCount += 1;
     this.snapshotReloadCpuMs += Math.max(0, cpuMs);
     this.lastSnapshotReloadReason = reason;
+    this.snapshotReloadReasons = [...this.snapshotReloadReasons.slice(-15), reason];
   }
 
   reportRuntimeFallback(method: string, classification: RuntimeFallbackClassification): void {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, t
 import { calculateDriftedRoot } from '../audio/harmony';
 import { clampMorphPosition, isAtEndpoint0, isAtEndpoint1, isInMidMorph } from '../audio/morphUtils';
 import type { DualSliderRange } from './DualSlider';
+import type { ProductRuntimeParamUpdateOptions } from './useProductRuntimePresetSurface';
 import { USER_PREFERENCE_KEYS } from './presetUtils';
 import { DEFAULT_STATE, type SliderMode, type SliderState } from './state';
 
@@ -67,7 +68,7 @@ type UseMorphPositionRuntimeSurfaceOptions<TPreset extends MorphRuntimePreset> =
   ) => MorphRuntimeResult;
   resetCofDrift: () => void;
   resetRuntimeWalkPositionsForModes: (modes: Record<string, SliderMode>) => void;
-  scheduleAudioEngineParamUpdate: (nextState: SliderState) => void;
+  scheduleProductRuntimeParamUpdate: (nextState: SliderState, options?: ProductRuntimeParamUpdateOptions) => void;
   isEngineRunning: boolean;
 };
 
@@ -101,7 +102,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
   lerpPresets,
   resetCofDrift,
   resetRuntimeWalkPositionsForModes,
-  scheduleAudioEngineParamUpdate,
+  scheduleProductRuntimeParamUpdate,
   isEngineRunning,
 }: UseMorphPositionRuntimeSurfaceOptions<TPreset>): MorphPositionRuntimeSurface {
   const prevMorphPresetARef = useRef<TPreset | null>(null);
@@ -184,7 +185,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     }
 
     setState((prev) => ({ ...prev, ...stateWithPrefs }));
-    scheduleAudioEngineParamUpdate(stateWithPrefs);
+    scheduleProductRuntimeParamUpdate(stateWithPrefs, { reason: 'morph-control-change' });
     mergeMorphDualRuntime(morphResult);
   }, [
     buildFallbackPreset,
@@ -196,7 +197,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     morphPosition,
     morphPresetA,
     morphPresetB,
-    scheduleAudioEngineParamUpdate,
+    scheduleProductRuntimeParamUpdate,
     setState,
     state,
   ]);
@@ -277,7 +278,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       }
 
       setState(finalState);
-      scheduleAudioEngineParamUpdate(finalState);
+      scheduleProductRuntimeParamUpdate(finalState, { reason: 'morph-control-change' });
 
       const atEndpoint = isAtEndpoint0(nextMorphPosition, true) || isAtEndpoint1(nextMorphPosition, true);
       setMorphCoFViz(atEndpoint ? null : morphResult.morphCoFInfo || null);
@@ -307,7 +308,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       morphPresetB,
       resetCofDrift,
       resetRuntimeWalkPositionsForModes,
-      scheduleAudioEngineParamUpdate,
+      scheduleProductRuntimeParamUpdate,
       setMorphCoFViz,
       setMorphPosition,
       setState,
@@ -476,7 +477,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       }
 
       if (positionChanged && stateWithPrefs) {
-        scheduleAudioEngineParamUpdate(stateWithPrefs);
+        scheduleProductRuntimeParamUpdate(stateWithPrefs, { reason: 'morph-control-change' });
         if (isAtEndpoint0(newPos, true) || isAtEndpoint1(newPos, true)) {
           resetCofDrift();
         }
@@ -542,7 +543,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     morphTransitionPhrasesRef,
     resetCofDrift,
     resetRuntimeWalkPositionsForModes,
-    scheduleAudioEngineParamUpdate,
+    scheduleProductRuntimeParamUpdate,
     setMorphCoFViz,
     setMorphCountdown,
     setMorphPosition,

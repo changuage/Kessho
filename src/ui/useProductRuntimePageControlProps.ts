@@ -1,11 +1,10 @@
-import {
-  useSelectedAudioEnginePageControlRuntimeProps,
-} from './useSelectedAudioEnginePageControlRuntimeProps';
+import { useMemo } from 'react';
+import type { ProductDrumVoice, ProductManualSynthNote } from '../audio/product/ProductEngineTypes';
 import type { SliderState } from './state';
 
 export type ProductRuntimeManualTriggers = {
-  auditionSynthNote: (note: unknown) => void;
-  triggerDrumVoice: (voice: unknown) => void;
+  auditionSynthNote: (note: ProductManualSynthNote) => void;
+  triggerDrumVoice: (voice: ProductDrumVoice) => void;
 };
 
 export type ProductRuntimePageControlProps = {
@@ -20,21 +19,32 @@ export type ProductRuntimePageControlProps = {
 };
 
 export function useProductRuntimePageControlProps({
+  onRequestPlaybackStart,
   preloadProductRuntime,
+  productRuntimeManualTriggers,
   setProductDrumEvolveTriggerCallback,
   setProductDrumStepPositionCallback,
   setProductDrumTriggerCallback,
   setProductSynthEvolveTriggerCallback,
   setProductSynthStepPositionCallback,
-  ...options
-}: ProductRuntimePageControlProps) {
-  return useSelectedAudioEnginePageControlRuntimeProps({
-    ...options,
-    preloadSelectedAudioEngine: preloadProductRuntime,
-    setSelectedDrumEvolveTriggerCallback: setProductDrumEvolveTriggerCallback,
-    setSelectedDrumStepPositionCallback: setProductDrumStepPositionCallback,
-    setSelectedDrumTriggerCallback: setProductDrumTriggerCallback,
-    setSelectedSynthEvolveTriggerCallback: setProductSynthEvolveTriggerCallback,
-    setSelectedSynthStepPositionCallback: setProductSynthStepPositionCallback,
-  });
+}: ProductRuntimePageControlProps): ProductRuntimePageControlProps {
+  return useMemo(() => ({
+    onRequestPlaybackStart,
+    preloadProductRuntime,
+    productRuntimeManualTriggers,
+    setProductDrumEvolveTriggerCallback,
+    setProductDrumStepPositionCallback,
+    setProductDrumTriggerCallback,
+    setProductSynthEvolveTriggerCallback,
+    setProductSynthStepPositionCallback,
+  }), [
+    onRequestPlaybackStart,
+    preloadProductRuntime,
+    productRuntimeManualTriggers,
+    setProductDrumEvolveTriggerCallback,
+    setProductDrumStepPositionCallback,
+    setProductDrumTriggerCallback,
+    setProductSynthEvolveTriggerCallback,
+    setProductSynthStepPositionCallback,
+  ]);
 }

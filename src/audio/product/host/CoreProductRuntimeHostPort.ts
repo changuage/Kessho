@@ -60,12 +60,25 @@ import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
 import type {
   ProductAssetHandle,
   ProductAssetRegistration,
+  ProductDrumTriggerCallback,
+  ProductDrumVoice,
+  ProductDynamicsVisualTelemetry,
   ProductEngineStartOptions,
   ProductEngineState,
   ProductEvent,
+  ProductEvolveOverridesCallback,
+  ProductExternalState,
+  ProductManualSynthNote,
+  ProductMidiMessage,
+  ProductRange,
+  ProductRangeMap,
+  ProductRuntimeWalkPositionsCallback,
+  ProductSequencerEvolveTriggerCallback,
+  ProductSequencerStepPositionCallback,
   ProductSequencerUiPatch,
   ProductSnapshotPatch,
   ProductSnapshotPatchReason,
+  ProductSynthNoteRangeEvolvedCallback,
   ProductTelemetrySnapshot,
 } from '../ProductEngineTypes';
 
@@ -105,7 +118,7 @@ export const coreProductRuntimeHostPort = {
     postCoreProductEvent(callCoreProductHost, event);
   },
 
-  pushMidiMessage(message: unknown): void {
+  pushMidiMessage(message: ProductMidiMessage): void {
     pushCoreProductMidiMessage(callCoreProductHost, message);
   },
 
@@ -117,11 +130,11 @@ export const coreProductRuntimeHostPort = {
     unregisterCoreProductAsset(callCoreProductHost, assetId);
   },
 
-  auditionSynthNote(note: unknown, externalState?: unknown): Promise<void> {
+  auditionSynthNote(note: ProductManualSynthNote, externalState?: ProductExternalState): Promise<void> {
     return auditionCoreProductSynthNote(callCoreProductHost, note, externalState);
   },
 
-  triggerDrumVoice(voice: unknown, velocity: number, externalState?: unknown): Promise<void> {
+  triggerDrumVoice(voice: ProductDrumVoice, velocity: number, externalState?: ProductExternalState): Promise<void> {
     return triggerCoreProductDrumVoice(callCoreProductHost, voice, velocity, externalState);
   },
 
@@ -133,7 +146,7 @@ export const coreProductRuntimeHostPort = {
     return readCoreProductTelemetry(callCoreProductHost);
   },
 
-  readDynamicsVisualTelemetry(): unknown {
+  readDynamicsVisualTelemetry(): ProductDynamicsVisualTelemetry {
     return readCoreProductDynamicsVisualTelemetry(callCoreProductHost);
   },
 
@@ -156,43 +169,43 @@ export const coreProductRuntimeHostPort = {
     setCoreProductTelemetryCallback(callCoreProductHost, callback, publishDiagnostics);
   },
 
-  setDrumTriggerCallback(callback: ((voice: unknown, velocity: number) => void) | null): void {
+  setDrumTriggerCallback(callback: ProductDrumTriggerCallback | null): void {
     setCoreProductDrumTriggerCallback(callCoreProductHost, callback);
   },
 
-  setDrumStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
+  setDrumStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void {
     setCoreProductDrumStepPositionCallback(callCoreProductHost, callback);
   },
 
-  setSynthStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
+  setSynthStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void {
     setCoreProductSynthStepPositionCallback(callCoreProductHost, callback);
   },
 
-  setDrumEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void {
+  setDrumEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void {
     setCoreProductDrumEuclidEvolveTriggerCallback(callCoreProductHost, callback);
   },
 
-  setSynthEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void {
+  setSynthEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void {
     setCoreProductSynthEuclidEvolveTriggerCallback(callCoreProductHost, callback);
   },
 
-  setRuntimeWalkPositionsCallback(callback: ((positions: Record<string, number>) => void) | null): void {
+  setRuntimeWalkPositionsCallback(callback: ProductRuntimeWalkPositionsCallback | null): void {
     setCoreProductRuntimeWalkPositionsCallback(callCoreProductHost, callback);
   },
 
-  setDrumMorphRange(voice: unknown, range: { min: number; max: number } | null): void {
+  setDrumMorphRange(voice: ProductDrumVoice, range: ProductRange | null): void {
     setCoreProductDrumMorphRange(callCoreProductHost, voice, range);
   },
 
-  setDrumParamSHRange(key: string, range: { min: number; max: number } | null): void {
+  setDrumParamSHRange(key: string, range: ProductRange | null): void {
     setCoreProductDrumParamSampleHoldRange(callCoreProductHost, key, range);
   },
 
-  setDualRanges(ranges: Partial<Record<string, { min: number; max: number }>>): void {
+  setDualRanges(ranges: ProductRangeMap): void {
     setCoreProductSampleHoldRanges(callCoreProductHost, ranges);
   },
 
-  setRuntimeWalkRanges(ranges: Partial<Record<string, { min: number; max: number }>>): void {
+  setRuntimeWalkRanges(ranges: ProductRangeMap): void {
     setCoreProductRuntimeWalkRanges(callCoreProductHost, ranges);
   },
 
@@ -215,15 +228,15 @@ export const coreProductRuntimeHostPort = {
     stopCoreProductJourneyMorphClock(callCoreProductHost);
   },
 
-  setDrumEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void {
+  setDrumEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void {
     setCoreProductDrumEvolveOverridesChangedCallback(callCoreProductHost, callback);
   },
 
-  setSynthEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void {
+  setSynthEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void {
     setCoreProductSynthEvolveOverridesChangedCallback(callCoreProductHost, callback);
   },
 
-  setSynthNoteRangeEvolvedCallback(callback: ((laneIndex: number, noteMin: number, noteMax: number) => void) | null): void {
+  setSynthNoteRangeEvolvedCallback(callback: ProductSynthNoteRangeEvolvedCallback | null): void {
     setCoreProductSynthNoteRangeEvolvedCallback(callCoreProductHost, callback);
   },
 

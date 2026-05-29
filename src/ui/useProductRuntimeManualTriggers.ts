@@ -1,6 +1,7 @@
 import type { MutableRefObject } from 'react';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { useSelectedAudioEngineManualTriggers } from './useSelectedAudioEngineManualTriggers';
+import type { ProductDrumVoice, ProductManualSynthNote } from '../audio/product/ProductEngineTypes';
 import type { SliderState } from './state';
 
 type ProductRuntimeManualTriggersOptions = {
@@ -9,8 +10,8 @@ type ProductRuntimeManualTriggersOptions = {
 };
 
 type ProductRuntimeManualTriggers = {
-  auditionSynthNote: (note: unknown) => void;
-  triggerDrumVoice: (voice: unknown) => void;
+  auditionSynthNote: (note: ProductManualSynthNote) => void;
+  triggerDrumVoice: (voice: ProductDrumVoice) => void;
 };
 
 export function useProductRuntimeManualTriggers(

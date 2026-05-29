@@ -1,13 +1,13 @@
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { useSelectedAudioEngineMorphRuntimeSurface } from './useSelectedAudioEngineMorphRuntimeSurface';
 
-type SelectedRuntimeMorphSurface = ReturnType<typeof useSelectedAudioEngineMorphRuntimeSurface>;
+type ProductJourneyMorphClockCallback = (now: number) => void;
 
 type ProductRuntimeMorphRuntimeSurface = {
-  resetProductCofDrift: SelectedRuntimeMorphSurface['resetSelectedCofDrift'];
-  setProductJourneyMorphClockCallback: SelectedRuntimeMorphSurface['setSelectedJourneyMorphClockCallback'];
-  startProductJourneyMorphClock: SelectedRuntimeMorphSurface['startSelectedJourneyMorphClock'];
-  stopProductJourneyMorphClock: SelectedRuntimeMorphSurface['stopSelectedJourneyMorphClock'];
+  resetProductCofDrift: () => void;
+  setProductJourneyMorphClockCallback: (callback: ProductJourneyMorphClockCallback | null) => void;
+  startProductJourneyMorphClock: () => void;
+  stopProductJourneyMorphClock: () => void;
 };
 
 export function useProductRuntimeMorphRuntimeSurface(

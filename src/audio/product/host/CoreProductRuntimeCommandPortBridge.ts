@@ -2,7 +2,11 @@ import type { CoreProductHostMethodCall } from './CoreProductHostInvoker';
 import type {
   ProductAssetHandle,
   ProductAssetRegistration,
+  ProductDrumVoice,
   ProductEvent,
+  ProductExternalState,
+  ProductManualSynthNote,
+  ProductMidiMessage,
   ProductSnapshotPatch,
   ProductSnapshotPatchReason,
 } from '../ProductEngineTypes';
@@ -30,7 +34,7 @@ export function postCoreProductEvent(callHost: CoreProductHostMethodCall, event:
   callHost<void>('postProductEvent', event);
 }
 
-export function pushCoreProductMidiMessage(callHost: CoreProductHostMethodCall, message: unknown): void {
+export function pushCoreProductMidiMessage(callHost: CoreProductHostMethodCall, message: ProductMidiMessage): void {
   callHost<void>('pushMidiMessage', message);
 }
 
@@ -48,17 +52,17 @@ export function unregisterCoreProductAsset(callHost: CoreProductHostMethodCall, 
 
 export function auditionCoreProductSynthNote(
   callHost: CoreProductHostMethodCall,
-  note: unknown,
-  externalState?: unknown,
+  note: ProductManualSynthNote,
+  externalState?: ProductExternalState,
 ): Promise<void> {
   return callHost<Promise<void>>('auditionSynthNote', note, externalState);
 }
 
 export function triggerCoreProductDrumVoice(
   callHost: CoreProductHostMethodCall,
-  voice: unknown,
+  voice: ProductDrumVoice,
   velocity: number,
-  externalState?: unknown,
+  externalState?: ProductExternalState,
 ): Promise<void> {
   return callHost<Promise<void>>('triggerDrumVoice', voice, velocity, externalState);
 }

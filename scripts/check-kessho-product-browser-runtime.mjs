@@ -207,6 +207,7 @@ function assertFiniteCapture(capture, label) {
   assert(capture.stats.rms > 0.0005, `${label}: capture RMS stayed silent (${capture.stats.rms})`);
   assert(capture.stats.peak > 0.001, `${label}: capture peak stayed silent (${capture.stats.peak})`);
   const telemetry = capture.debug?.latestTelemetry ?? {};
+  assert(telemetry.unsupportedControlCount === 0, `${label}: unsupported control diagnostics were reported`);
   assert(telemetry.runtimeFallbackDiagnosticCount === 0, `${label}: runtime fallback diagnostics were reported`);
   assert(telemetry.audioCriticalFallbackCount === 0, `${label}: audio-critical fallback diagnostics were reported`);
   assert(telemetry.workletMasterStemPeak > 0 || telemetry.masterOutputPeak > 0, `${label}: Product telemetry did not report master output`);

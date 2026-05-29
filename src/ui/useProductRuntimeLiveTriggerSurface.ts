@@ -1,21 +1,22 @@
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { useSelectedAudioEngineLiveTriggerSurface } from './useSelectedAudioEngineLiveTriggerSurface';
 
-type SelectedRuntimeLiveTriggerSurface = ReturnType<typeof useSelectedAudioEngineLiveTriggerSurface>;
+type ProductLeadMorph = { lead1: number; lead2: number };
+type ProductLeadDistance = { lead1: number; lead2: number };
 
 type ProductRuntimeLiveTriggerSurface = {
-  setProductLeadExpressionCallback: SelectedRuntimeLiveTriggerSurface['setSelectedLeadExpressionCallback'];
-  setProductLeadMorphCallback: SelectedRuntimeLiveTriggerSurface['setSelectedLeadMorphCallback'];
-  setProductPadMorphTriggerCallback: SelectedRuntimeLiveTriggerSurface['setSelectedPadMorphTriggerCallback'];
-  setProductPad2MorphTriggerCallback: SelectedRuntimeLiveTriggerSurface['setSelectedPad2MorphTriggerCallback'];
-  setProductLeadDistanceCallback: SelectedRuntimeLiveTriggerSurface['setSelectedLeadDistanceCallback'];
-  setProductPadDistanceTriggerCallback: SelectedRuntimeLiveTriggerSurface['setSelectedPadDistanceTriggerCallback'];
-  setProductPad2DistanceTriggerCallback: SelectedRuntimeLiveTriggerSurface['setSelectedPad2DistanceTriggerCallback'];
-  setProductPianoDistanceTriggerCallback: SelectedRuntimeLiveTriggerSurface['setSelectedPianoDistanceTriggerCallback'];
-  setProductLeadDelayCallback: SelectedRuntimeLiveTriggerSurface['setSelectedLeadDelayCallback'];
-  setProductDrumMorphTriggerCallback: SelectedRuntimeLiveTriggerSurface['setSelectedDrumMorphTriggerCallback'];
-  setProductDrumParamSHTriggerCallback: SelectedRuntimeLiveTriggerSurface['setSelectedDrumParamSHTriggerCallback'];
-  setProductGranularSHTriggerCallback: SelectedRuntimeLiveTriggerSurface['setSelectedGranularSHTriggerCallback'];
+  setProductLeadExpressionCallback: (callback: ((expression: Record<string, number>) => void) | null) => void;
+  setProductLeadMorphCallback: (callback: ((morph: ProductLeadMorph) => void) | null) => void;
+  setProductPadMorphTriggerCallback: (callback: ((morphPosition: number) => void) | null) => void;
+  setProductPad2MorphTriggerCallback: (callback: ((morphPosition: number) => void) | null) => void;
+  setProductLeadDistanceCallback: (callback: ((distance: ProductLeadDistance) => void) | null) => void;
+  setProductPadDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
+  setProductPad2DistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
+  setProductPianoDistanceTriggerCallback: (callback: ((distance: number) => void) | null) => void;
+  setProductLeadDelayCallback: (callback: ((delay: Record<string, number | string>) => void) | null) => void;
+  setProductDrumMorphTriggerCallback: (callback: ((voice: unknown, morphPosition: number) => void) | null) => void;
+  setProductDrumParamSHTriggerCallback: (callback: ((voice: unknown, key: string, position: number) => void) | null) => void;
+  setProductGranularSHTriggerCallback: (callback: ((positions: Record<string, number>) => void) | null) => void;
 };
 
 export function useProductRuntimeLiveTriggerSurface(

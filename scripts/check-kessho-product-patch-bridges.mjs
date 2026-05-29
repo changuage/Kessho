@@ -686,8 +686,8 @@ assert(
     webDrumPatch.includes('function generatedDrumVoicePresetPairs') &&
     webDrumPatch.includes('const presetPairs = generatedDrumVoicePresetPairs(presetAIds, presetBIds)') &&
     webDrumPatch.includes('if (!presetPairs)') &&
-    webDrumPatch.includes('DRUM_PARAM_MASTER_LEVEL') &&
-    webDrumPatch.includes('DRUM_PARAM_REVERB_SEND') &&
+    webDrumPatch.includes("generatedProductParamIndex(KESSHO_PRODUCT_DRUM_PARAM_SPECS, 'drumLevel')") &&
+    webDrumPatch.includes("generatedProductParamIndex(KESSHO_PRODUCT_DRUM_PARAM_SPECS, 'drumReverbSend')") &&
     webDrumPatch.includes('drumOverrideCount') &&
     webDrumPatch.includes('drumOverrideIndices') &&
     webDrumPatch.includes('drumOverrideValues') &&

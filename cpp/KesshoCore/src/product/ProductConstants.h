@@ -119,29 +119,28 @@ constexpr uint32_t kSoundscapeLayerOcean = 0u;
 constexpr uint32_t kSoundscapeLayerWater = 1u;
 constexpr uint32_t kSoundscapeLayerInsects = 2u;
 constexpr uint32_t kSoundscapeLayerNature = 3u;
-constexpr uint32_t kSoundscapeLayerCount = 4u;
+constexpr uint32_t kSoundscapeLayerCount = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_LAYER_COUNT;
 constexpr uint32_t kSoundscapeLayerRouteReverb = 0u;
 constexpr uint32_t kSoundscapeLayerRouteDelayA = 1u;
 constexpr uint32_t kSoundscapeLayerRouteDelayB = 2u;
 constexpr uint32_t kSoundscapeLayerRouteGranular = 3u;
-constexpr uint32_t kSoundscapeLayerRouteStride = 4u;
-constexpr uint32_t kSoundscapeLayerRouteParamCount = kSoundscapeLayerCount * kSoundscapeLayerRouteStride;
-constexpr uint32_t kSoundscapeParityFixtureParam = kSoundscapeLayerRouteParamCount;
-constexpr uint32_t kSoundscapeParityParamCount = kSoundscapeParityFixtureParam + 1u;
-constexpr uint32_t kSoundscapeTextureParamStart = kSoundscapeParityParamCount;
+constexpr uint32_t kSoundscapeLayerRouteStride = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_STRIDE;
+constexpr uint32_t kSoundscapeLayerRouteParamCount = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_PARAM_COUNT;
+constexpr uint32_t kSoundscapeParityFixtureParam = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_PARITY_FIXTURE_PARAM;
+constexpr uint32_t kSoundscapeParityParamCount = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_PARITY_PARAM_COUNT;
+constexpr uint32_t kSoundscapeTextureParamStart = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_START;
 constexpr uint32_t kSoundscapeTextureSlotOcean = 0u;
 constexpr uint32_t kSoundscapeTextureSlotBirds = 1u;
 constexpr uint32_t kSoundscapeTextureSlotBirds2 = 2u;
 constexpr uint32_t kSoundscapeTextureSlotFrogs = 3u;
-constexpr uint32_t kSoundscapeTextureSlotCount = 4u;
-constexpr uint32_t kSoundscapeTextureParamStride = 5u;
+constexpr uint32_t kSoundscapeTextureSlotCount = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_SLOT_COUNT;
+constexpr uint32_t kSoundscapeTextureParamStride = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_STRIDE;
 constexpr uint32_t kSoundscapeTextureParamSliceDuration = 0u;
 constexpr uint32_t kSoundscapeTextureParamDensity = 1u;
 constexpr uint32_t kSoundscapeTextureParamFadeTime = 2u;
 constexpr uint32_t kSoundscapeTextureParamSeedLo = 3u;
 constexpr uint32_t kSoundscapeTextureParamSeedHi = 4u;
-constexpr uint32_t kSoundscapeTextureParamCount =
-    kSoundscapeTextureParamStart + kSoundscapeTextureSlotCount * kSoundscapeTextureParamStride;
+constexpr uint32_t kSoundscapeTextureParamCount = kessho::product::generated::KESSHO_PRODUCT_GENERATED_SOUNDSCAPE_TEXTURE_PARAM_COUNT;
 static_assert(
     kSoundscapeTextureParamCount == KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT,
     "Soundscape texture snapshot ABI count must match Product Core texture params");
@@ -151,7 +150,7 @@ constexpr double kSoundscapeTextureLookAheadSeconds = 0.5;
 constexpr float kSoundscapeTexturePitchRangeCents = 200.0f;
 constexpr float kSoundscapeTextureSpeedVariation = 0.2f;
 constexpr uint32_t kSoundscapeTextureHaasDelayMaxFrames = 2400u;
-constexpr uint32_t kSoundscapeModuleParamCount = 96u;
+constexpr uint32_t kSoundscapeModuleParamCount = kessho::product::generated::KESSHO_PRODUCT_GENERATED_SOUNDSCAPE_MODULE_PARAM_COUNT;
 constexpr uint32_t kSoundscapeModuleWaterActiveParam = 0u;
 constexpr uint32_t kSoundscapeModuleWaterSeedParam = 60u;
 constexpr uint32_t kSoundscapeModuleInsectsActiveParam = 61u;
@@ -164,7 +163,7 @@ constexpr uint32_t kSoundscapeModuleInsectsLevelParam = kSoundscapeModuleWaterLe
 constexpr uint32_t kSoundscapeModuleInsects2LevelParam = kSoundscapeModuleInsectsLevelParam + 1u;
 constexpr uint32_t kSoundscapeModuleInsectsSharedLevelParam = kSoundscapeModuleInsects2LevelParam + 1u;
 constexpr uint32_t kSoundscapeModuleEarthLevelParam = kSoundscapeModuleInsectsSharedLevelParam + 1u;
-constexpr uint32_t kSoundscapeProductModuleParamCount = kSoundscapeModuleEarthLevelParam + 1u;
+constexpr uint32_t kSoundscapeProductModuleParamCount = kessho::product::generated::KESSHO_PRODUCT_GENERATED_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT;
 static_assert(
     kSoundscapeProductModuleParamCount == KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT,
     "Soundscape module snapshot ABI count must match Product Core module params");

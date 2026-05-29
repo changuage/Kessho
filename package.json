@@ -41,6 +41,8 @@
     "core:product:getter-policies": "node scripts/check-kessho-product-getter-policies.mjs",
     "migration:unsupported-surface:audit": "node scripts/audit-product-host-unsupported-surface.mjs --write-json",
     "migration:unsupported-surface:gate": "node scripts/audit-product-host-unsupported-surface.mjs --write-json --gate",
+    "migration:no-unsupported-product-surface": "npm run migration:unsupported-surface:gate",
+    "migration:runtime-production-gates": "node scripts/check-product-runtime-production-gates.mjs",
     "core:product:reference-isolation": "node scripts/check-kessho-product-reference-isolation.mjs",
     "core:product:param-accounting": "node scripts/check-kessho-product-param-accounting.mjs",
     "core:product:sequencer": "node scripts/check-kessho-product-sequencer-events.mjs",

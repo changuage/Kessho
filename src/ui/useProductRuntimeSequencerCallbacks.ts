@@ -1,14 +1,12 @@
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { useSelectedAudioEngineSequencerCallbacks } from './useSelectedAudioEngineSequencerCallbacks';
 
-type SelectedRuntimeSequencerCallbacks = ReturnType<typeof useSelectedAudioEngineSequencerCallbacks>;
-
 type ProductRuntimeSequencerCallbacks = {
-  setProductDrumStepPositionCallback: SelectedRuntimeSequencerCallbacks['setSelectedDrumStepPositionCallback'];
-  setProductDrumEvolveTriggerCallback: SelectedRuntimeSequencerCallbacks['setSelectedDrumEvolveTriggerCallback'];
-  setProductDrumTriggerCallback: SelectedRuntimeSequencerCallbacks['setSelectedDrumTriggerCallback'];
-  setProductSynthStepPositionCallback: SelectedRuntimeSequencerCallbacks['setSelectedSynthStepPositionCallback'];
-  setProductSynthEvolveTriggerCallback: SelectedRuntimeSequencerCallbacks['setSelectedSynthEvolveTriggerCallback'];
+  setProductDrumStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
+  setProductDrumEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
+  setProductDrumTriggerCallback: (callback: ((voice: string, velocity: number) => void) | null) => void;
+  setProductSynthStepPositionCallback: (callback: ((steps: number[], hitCounts: number[]) => void) | null) => void;
+  setProductSynthEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
 };
 
 export function useProductRuntimeSequencerCallbacks(

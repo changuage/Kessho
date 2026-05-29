@@ -3,6 +3,7 @@ import type { DynamicsVisualTelemetrySnapshot, EarthTextureDebugState } from '..
 import { useDrumPageRuntimeBridge } from './useDrumPageRuntimeBridge';
 import { useDrumPageSequencerBridge } from './useDrumPageSequencerBridge';
 import { useSynthPageSequencerBridge } from './useSynthPageSequencerBridge';
+import type { ProductDrumVoice, ProductManualSynthNote } from '../audio/product/ProductEngineTypes';
 import type { SliderState } from './state';
 
 export type SelectedAudioEnginePageRuntimeBridgeOptions =
@@ -14,8 +15,8 @@ export type SelectedAudioEnginePageRuntimeBridgeOptions =
       dynamicsAnalyser?: ((key: unknown) => AnalyserNode | null) | undefined;
     };
     productRuntimeManualTriggers: {
-      auditionSynthNote: (note: unknown) => void;
-      triggerDrumVoice: (voice: unknown) => void;
+      auditionSynthNote: (note: ProductManualSynthNote) => void;
+      triggerDrumVoice: (voice: ProductDrumVoice) => void;
     };
     getEarthTextureDebugState: () => EarthTextureDebugState;
     getSelectedLeadMorphedParams: (lead: 1 | 2) => { attack: number; decay: number; sustain: number; release: number } | null;

@@ -220,6 +220,7 @@ await runCheckWithReport({
       'unsupportedControlCount = 0',
       'snapshotReloadCpuMs = 0',
       "lastSnapshotReloadReason: string | null = 'none'",
+      'snapshotReloadReasons: string[] = []',
       'type SnapshotReloadReason',
     ]) {
       assert(`${hostDiagnostics}\n${runtimeAdapter}`.includes(token), `core-product diagnostics are missing dirty-diff diagnostic token: ${token}`);
@@ -251,7 +252,7 @@ await runCheckWithReport({
       "'drum-override-change'",
       "'sequencer-structure-change'",
       "'dirty-diff-event-budget'",
-      "'adapter-update'",
+      "'product-patch'",
     ]) {
       assert(`${host}\n${runtimeAdapter}`.includes(reason), `SnapshotReloadReason is missing ${reason}`);
     }
@@ -387,8 +388,29 @@ await runCheckWithReport({
     assert(
       audioEngineParamSync.includes('previousState && !options?.forceFullSnapshot') &&
         audioEngineParamSync.includes('collectChangedStatePatch(previousState, nextState)') &&
-        audioEngineParamSync.includes("productEngine.updateSnapshotPatch(options?.reason ?? 'ui-control-change', patch);"),
+        audioEngineParamSync.includes('inferProductPatchReason(patch, options?.reason)') &&
+        audioEngineParamSync.includes('productEngine.updateSnapshotPatch(inferProductPatchReason(patch, options?.reason), patch);'),
       'Product Core UI updates must send changed-key patches instead of cloning the full slider state each tick',
+    );
+    assert(
+      audioEngineParamSync.includes("'fx-control-change'") &&
+        audioEngineParamSync.includes('isFxControlPatchKey'),
+      'FX and routing controls must use an explicit product patch reason before host classification',
+    );
+    assert(
+      audioEngineParamSync.includes("'morph-control-change'") &&
+        audioEngineParamSync.includes('isMorphControlPatchKey'),
+      'morph, distance, and expression controls must use an explicit product patch reason before host classification',
+    );
+    assert(
+      audioEngineParamSync.includes("'transport-change'") &&
+        audioEngineParamSync.includes('isTransportControlPatchKey'),
+      'transport tempo and clock controls must use an explicit product patch reason before host classification',
+    );
+    assert(
+      audioEngineParamSync.includes("'sequencer-control-change'") &&
+        audioEngineParamSync.includes('isSequencerControlPatchKey'),
+      'sequencer state controls must use an explicit product patch reason before host classification',
     );
     assert(
       !audioEngineParamSync.includes("productEngine.updateSnapshotPatch('ui-control-change', { ...nextState });"),
@@ -425,6 +447,7 @@ await runCheckWithReport({
       'unsupportedControlCount',
       'snapshotReloadCpuMs',
       'lastSnapshotReloadReason',
+      'snapshotReloadReasons',
     ]) {
       assert(telemetry.includes(`${token}?:`), `telemetry type is missing ${token}`);
       assert(diagnosticsSnapshotBody.includes(token), `host diagnostics snapshot is missing ${token}`);
@@ -862,7 +885,7 @@ await runCheckWithReport({
       },
     });
     await liveReloadHarness.host.start({ sequencerMasterBPM: 120 });
-    liveReloadHarness.host.updateParams({ sequencerMasterBPM: 121 });
+    liveReloadHarness.host.updateSnapshotPatch('transport-change', { sequencerMasterBPM: 121 });
     const reloadedSnapshot = liveReloadHarness.runtime.snapshots[liveReloadHarness.runtime.snapshots.length - 1];
     assert(
       reloadedSnapshot.transport.running === true &&

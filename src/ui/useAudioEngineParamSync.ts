@@ -8,11 +8,68 @@ import type { SliderState } from './state';
 
 const CORE_PRODUCT_PARAM_UPDATE_INTERVAL_MS = 33;
 
-type AudioEngineParamUpdateOptions = {
+export type AudioEngineParamUpdateOptions = {
   immediate?: boolean;
   reason?: ProductSnapshotPatchReason;
   forceFullSnapshot?: boolean;
 };
+
+const FX_CONTROL_KEY_PATTERNS: readonly RegExp[] = [
+  /^(reverb|delayA|delayB)([A-Z]|$)/,
+  /^granular(?!Level$)([A-Z]|$)/,
+  /^(dynamics|sidechain|character|degrade|spectralFreeze|endComp)([A-Z]|$)/,
+  /(ReverbSend|DelayASend|DelayBSend|GranularSend)$/,
+];
+
+const MORPH_CONTROL_KEY_PATTERNS: readonly RegExp[] = [
+  /(Morph|Distance|Expression)$/,
+  /(MorphAuto|MorphSpeed|MorphMode)$/,
+  /^waterMorph[AB]?$/,
+  /^waterChannelsMorph$/,
+  /^insects2?Distance$/,
+];
+
+const TRANSPORT_CONTROL_KEY_PATTERNS: readonly RegExp[] = [
+  /^transport(PrimaryClock|BarsPerPhrase|BeatsPerBar)$/,
+  /^sequencerMasterBPM$/,
+  /^(synth|drum)EuclidBaseBPM$/,
+  /(ClockSource|JoinPolicy|SyncPolicy)$/,
+];
+
+const SEQUENCER_CONTROL_KEY_PATTERNS: readonly RegExp[] = [
+  /^synthEuclidean/,
+  /^synthEuclid[1-4]/,
+  /^drumEuclid/,
+  /^chordProgression/,
+];
+
+function isFxControlPatchKey(key: string): boolean {
+  return FX_CONTROL_KEY_PATTERNS.some((pattern) => pattern.test(key));
+}
+
+function isMorphControlPatchKey(key: string): boolean {
+  return MORPH_CONTROL_KEY_PATTERNS.some((pattern) => pattern.test(key));
+}
+
+function isTransportControlPatchKey(key: string): boolean {
+  return TRANSPORT_CONTROL_KEY_PATTERNS.some((pattern) => pattern.test(key));
+}
+
+function isSequencerControlPatchKey(key: string): boolean {
+  return SEQUENCER_CONTROL_KEY_PATTERNS.some((pattern) => pattern.test(key));
+}
+
+function inferProductPatchReason(
+  patch: Partial<SliderState>,
+  explicitReason?: ProductSnapshotPatchReason,
+): ProductSnapshotPatchReason {
+  if (explicitReason) return explicitReason;
+  const keys = Object.keys(patch);
+  if (keys.length > 0 && keys.some(isMorphControlPatchKey)) return 'morph-control-change';
+  if (keys.length > 0 && keys.some(isTransportControlPatchKey)) return 'transport-change';
+  if (keys.length > 0 && keys.some(isSequencerControlPatchKey)) return 'sequencer-control-change';
+  return keys.length > 0 && keys.some(isFxControlPatchKey) ? 'fx-control-change' : 'ui-control-change';
+}
 
 export function useAudioEngineParamSync(audioEngineRuntimeMode: AudioEngineRuntimeMode): ((
   nextState: SliderState,
@@ -32,7 +89,7 @@ export function useAudioEngineParamSync(audioEngineRuntimeMode: AudioEngineRunti
         : { ...nextState };
       lastAppliedAudioEngineStateRef.current = nextState;
       if (previousState && Object.keys(patch).length === 0) return;
-      productEngine.updateSnapshotPatch(options?.reason ?? 'ui-control-change', patch);
+      productEngine.updateSnapshotPatch(inferProductPatchReason(patch, options?.reason), patch);
       return;
     }
     lastAppliedAudioEngineStateRef.current = nextState;

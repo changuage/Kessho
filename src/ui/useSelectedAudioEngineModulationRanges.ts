@@ -2,12 +2,13 @@ import { useCallback } from 'react';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime';
+import type { ProductDrumVoice } from '../audio/product/ProductEngineTypes';
 
 type ProductRange = { min: number; max: number };
 
 type SelectedAudioEngineModulationRanges = {
   setSelectedRuntimeWalkPositionsCallback: (callback: ((positions: Record<string, number>) => void) | null) => void;
-  setSelectedDrumMorphRange: (voice: unknown, range: ProductRange | null) => void;
+  setSelectedDrumMorphRange: (voice: ProductDrumVoice, range: ProductRange | null) => void;
   setSelectedDrumParamSHRange: (key: string, range: ProductRange | null) => void;
   setSelectedDualRanges: (ranges: Partial<Record<string, ProductRange>>) => void;
   setSelectedRuntimeWalkRanges: (ranges: Partial<Record<string, ProductRange>>) => void;
@@ -24,7 +25,7 @@ export function useSelectedAudioEngineModulationRanges(
     selectedProductRuntime.setRuntimeWalkPositionsCallback(callback);
   }, [audioEngineRuntimeMode]);
 
-  const setSelectedDrumMorphRange = useCallback((voice: unknown, range: ProductRange | null): void => {
+  const setSelectedDrumMorphRange = useCallback((voice: ProductDrumVoice, range: ProductRange | null): void => {
     if (audioEngineRuntimeMode === 'core-product') {
       productEngine.setDrumMorphRange(voice, range);
       return;

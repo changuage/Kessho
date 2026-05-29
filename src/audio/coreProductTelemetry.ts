@@ -119,6 +119,7 @@ export type CoreProductTelemetrySnapshot = {
   audioCriticalFallbackCount?: number;
   snapshotReloadCpuMs?: number;
   lastSnapshotReloadReason?: string;
+  snapshotReloadReasons?: readonly string[];
   workletOutputPeak?: number;
   workletStemPeaks?: number[];
   workletGraphTapPeaks?: number[];

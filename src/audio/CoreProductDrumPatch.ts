@@ -6,12 +6,13 @@ import {
   KESSHO_PRODUCT_DRUM_VOICES,
   KESSHO_PRODUCT_DRUM_VOICE_PRESETS,
 } from './generated/kesshoProductSchema';
+import { generatedProductParamIndex } from './CoreProductGeneratedParamMetadata';
 import { drumVoiceMorphsFromState, drumVoicePresetIdsFromState } from './CoreProductPresetIds';
 import { emptyParamArray, paramsMatch, sparseParamOverridesFromDiff } from './CoreProductSparseOverrides';
 import { clamp, coreProductParamValue, numberFromState } from './coreProductSnapshotState';
 
-const DRUM_PARAM_MASTER_LEVEL = 122;
-const DRUM_PARAM_REVERB_SEND = 123;
+const DRUM_PARAM_MASTER_LEVEL = generatedProductParamIndex(KESSHO_PRODUCT_DRUM_PARAM_SPECS, 'drumLevel');
+const DRUM_PARAM_REVERB_SEND = generatedProductParamIndex(KESSHO_PRODUCT_DRUM_PARAM_SPECS, 'drumReverbSend');
 const DRUM_PATCH_EPSILON = 0.000001;
 
 type DrumVoicePreset = (typeof KESSHO_PRODUCT_DRUM_VOICE_PRESETS)[number];

@@ -10,6 +10,7 @@ import {
 
 const host = readProjectFile('src/audio/coreProductEngineHost.ts');
 const hostDiagnostics = readProjectFile('src/audio/product/host/CoreProductHostDiagnostics.ts');
+const hostProxy = readProjectFile('src/audio/product/host/CoreProductHostProxy.ts');
 const fallbackDiagnostics = readProjectFile('src/audio/CoreProductFallbackDiagnostics.ts');
 const referenceRuntime = readProjectFile('src/audio/referenceAudioRuntime.ts');
 const app = readProjectFile('src/App.tsx');
@@ -113,7 +114,7 @@ await runCheckWithReport({
       'classifyCoreProductRuntimeFallback(property',
       'reportRuntimeFallback(method:',
     ]) {
-      assert(`${host}\n${hostDiagnostics}\n${fallbackDiagnostics}`.includes(token), `runtime fallback classifier is missing ${token}`);
+      assert(`${host}\n${hostDiagnostics}\n${hostProxy}\n${fallbackDiagnostics}`.includes(token), `runtime fallback classifier is missing ${token}`);
     }
 
     const classifyBody = methodBody(fallbackDiagnostics, 'classifyCoreProductRuntimeFallback');
@@ -148,7 +149,11 @@ await runCheckWithReport({
       assert(recordBody.includes(token), `recordUnsupportedMethod() is missing ${token}`);
     }
 
-    const proxyBody = host.slice(host.indexOf('export const coreProductEngineHost = new Proxy'));
+    assert(
+      host.includes('export const coreProductEngineHost = createCoreProductEngineHostProxy(host)'),
+      'core-product host must delegate fallback proxy construction to CoreProductHostProxy',
+    );
+    const proxyBody = methodBody(hostProxy, 'createCoreProductEngineHostProxy');
     for (const token of [
       'const classification = classifyCoreProductRuntimeFallback(property);',
       'host.reportRuntimeFallback(property, classification);',
@@ -210,10 +215,12 @@ await runCheckWithReport({
     selectedAudioEnginePlaybackRuntime.includes('const playbackAdapter = useProductRuntimePlaybackAdapter({') &&
     selectedAudioEnginePlaybackRuntime.includes('startSelectedPlayback: playbackAdapter.startProductPlayback') &&
     selectedAudioEnginePlaybackRuntime.includes('preloadSelectedAudioEngine: playbackAdapter.preloadProductRuntime') &&
-    productRuntimePlaybackAdapter.includes("import { useSelectedAudioEngineMediaSession } from './useSelectedAudioEngineMediaSession'") &&
-    productRuntimePlaybackAdapter.includes("import { useSelectedAudioEnginePlaybackControls } from './useSelectedAudioEnginePlaybackControls'") &&
-    productRuntimePlaybackAdapter.includes('useSelectedAudioEngineMediaSession({') &&
-    productRuntimePlaybackAdapter.includes('useSelectedAudioEnginePlaybackControls({') &&
+    productRuntimePlaybackAdapter.includes("import { useProductRuntimeLifecycle } from './useProductRuntimeLifecycle'") &&
+    productRuntimePlaybackAdapter.includes("import { useProductRuntimeMediaSession } from './useProductRuntimeMediaSession'") &&
+    productRuntimePlaybackAdapter.includes("import { useProductRuntimePlaybackControls } from './useProductRuntimePlaybackControls'") &&
+    productRuntimePlaybackAdapter.includes('useProductRuntimeLifecycle(productRuntimeMode)') &&
+    productRuntimePlaybackAdapter.includes('useProductRuntimeMediaSession({') &&
+    productRuntimePlaybackAdapter.includes('useProductRuntimePlaybackControls({') &&
     productRuntimePlaybackAdapter.includes('startProductPlayback') &&
     productRuntimePlaybackAdapter.includes('preloadProductRuntime') &&
         app.includes("from './ui/useProductRuntimeSession'") &&
@@ -233,7 +240,7 @@ await runCheckWithReport({
         productRuntimeUi.includes("import { useProductRuntimeNavigation } from './useProductRuntimeNavigation'") &&
         productRuntimeUi.includes("import { useProductRuntimePerf } from './useProductRuntimePerf'") &&
         productRuntimeUi.includes('useProductRuntimeNavigation({') &&
-        productRuntimeUi.includes('useProductRuntimePerf(productRuntimeMode, runtimeNavigation.showAudioEngineSwitcher)') &&
+        productRuntimeUi.includes('useProductRuntimePerf(productRuntimeMode, runtimeNavigation.showProductRuntimeSwitcher)') &&
         !productRuntimeUi.includes('useSelectedAudioEngineRuntimeUi') &&
         selectedAudioEngineRuntimeShell.includes("import { useSelectedAudioEnginePlaybackRuntime } from './useSelectedAudioEnginePlaybackRuntime'") &&
         selectedAudioEngineRuntimeShell.includes("import { useSelectedAudioEngineRuntimeUi } from './useSelectedAudioEngineRuntimeUi'") &&
@@ -264,7 +271,7 @@ await runCheckWithReport({
         app.includes('useProductRuntimeLifecycleSurface({') &&
         !app.includes("from './ui/useSelectedAudioEngineRuntimeTelemetry'") &&
         !app.includes('useSelectedAudioEngineRuntimeTelemetry({') &&
-        app.includes('selectedRuntimeSupportsRangeKey') &&
+        app.includes('productRuntimeSupportsRangeKey') &&
         !app.includes("from './ui/useSelectedAudioEngineRuntimeCapabilities'") &&
         !app.includes("from './ui/useSelectedAudioEngineTelemetrySurface'") &&
         app.includes('const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);') &&

@@ -1,14 +1,33 @@
 import type {
   ProductAssetHandle,
   ProductAssetRegistration,
+  ProductDrumMorphCallback,
+  ProductDrumParamSampleHoldCallback,
+  ProductDrumTriggerCallback,
+  ProductDrumVoice,
+  ProductDynamicsVisualTelemetry,
   ProductEngineLifecycleState,
   ProductEngineStartOptions,
   ProductEngineState,
   ProductEvent,
+  ProductEvolveOverridesCallback,
+  ProductExternalState,
+  ProductLeadDelayCallback,
+  ProductLeadExpressionCallback,
+  ProductLeadPairCallback,
+  ProductManualSynthNote,
+  ProductMidiMessage,
+  ProductRange,
+  ProductRangeMap,
+  ProductRuntimeWalkPositionsCallback,
+  ProductScalarCallback,
+  ProductSequencerEvolveTriggerCallback,
+  ProductSequencerStepPositionCallback,
   ProductSequencerUiPatch,
   ProductSequencerUiState,
   ProductSnapshotPatch,
   ProductSnapshotPatchReason,
+  ProductSynthNoteRangeEvolvedCallback,
   ProductTelemetrySnapshot,
 } from './ProductEngineTypes';
 import type { ProductEngineRuntimeMode } from './ProductRuntimeMode';
@@ -33,51 +52,51 @@ export type ProductEnginePort = {
   updateSnapshotPatch(reason: ProductSnapshotPatchReason, patch: ProductSnapshotPatch): void;
   enqueueEvent(event: ProductEvent): void;
   enqueueEvents(events: readonly ProductEvent[]): void;
-  pushMidiMessage(message: unknown): void;
+  pushMidiMessage(message: ProductMidiMessage): void;
 
   registerAsset(asset: ProductAssetRegistration): Promise<ProductAssetHandle>;
   unregisterAsset(assetId: number): void;
-  auditionSynthNote(note: unknown, externalState?: unknown): Promise<void>;
-  triggerDrumVoice(voice: unknown, velocity?: number, externalState?: unknown): Promise<void>;
+  auditionSynthNote(note: ProductManualSynthNote, externalState?: ProductExternalState): Promise<void>;
+  triggerDrumVoice(voice: ProductDrumVoice, velocity?: number, externalState?: ProductExternalState): Promise<void>;
 
   getLifecycleState(): ProductEngineLifecycleState;
   getProductState(): ProductEngineState;
   getTelemetry(): ProductTelemetrySnapshot | null;
   getSequencerUiState(): ProductSequencerUiState | null;
-  getDynamicsVisualTelemetry(): unknown;
+  getDynamicsVisualTelemetry(): ProductDynamicsVisualTelemetry;
   getDiagnostics(): ProductRuntimeDiagnostics;
   getCapabilityReport(): ProductRuntimeCapabilityReport;
 
   setStateChangeCallback(callback: ((state: ProductEngineState) => void) | null): void;
   setTelemetryCallback(callback: ((telemetry: ProductTelemetrySnapshot) => void) | null): void;
-  setDrumTriggerCallback(callback: ((voice: unknown, velocity: number) => void) | null): void;
-  setDrumStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void;
-  setSynthStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void;
-  setDrumEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void;
-  setSynthEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void;
-  setRuntimeWalkPositionsCallback(callback: ((positions: Record<string, number>) => void) | null): void;
-  setDrumMorphRange(voice: unknown, range: { min: number; max: number } | null): void;
-  setDrumParamSHRange(key: string, range: { min: number; max: number } | null): void;
-  setDualRanges(ranges: Partial<Record<string, { min: number; max: number }>>): void;
-  setRuntimeWalkRanges(ranges: Partial<Record<string, { min: number; max: number }>>): void;
-  setLeadExpressionCallback(callback: ((expression: Record<string, number>) => void) | null): void;
-  setLeadMorphCallback(callback: ((morph: { lead1: number; lead2: number }) => void) | null): void;
-  setPadMorphTriggerCallback(callback: ((morphPosition: number) => void) | null): void;
-  setPad2MorphTriggerCallback(callback: ((morphPosition: number) => void) | null): void;
-  setLeadDistanceCallback(callback: ((distance: { lead1: number; lead2: number }) => void) | null): void;
-  setPadDistanceTriggerCallback(callback: ((distance: number) => void) | null): void;
-  setPad2DistanceTriggerCallback(callback: ((distance: number) => void) | null): void;
-  setPianoDistanceTriggerCallback(callback: ((distance: number) => void) | null): void;
-  setLeadDelayCallback(callback: ((delay: Record<string, number | string>) => void) | null): void;
-  setDrumMorphTriggerCallback(callback: ((voice: unknown, morphPosition: number) => void) | null): void;
-  setDrumParamSHTriggerCallback(callback: ((voice: unknown, key: string, position: number) => void) | null): void;
-  setGranularSHTriggerCallback(callback: ((positions: Record<string, number>) => void) | null): void;
+  setDrumTriggerCallback(callback: ProductDrumTriggerCallback | null): void;
+  setDrumStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void;
+  setSynthStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void;
+  setDrumEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void;
+  setSynthEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void;
+  setRuntimeWalkPositionsCallback(callback: ProductRuntimeWalkPositionsCallback | null): void;
+  setDrumMorphRange(voice: ProductDrumVoice, range: ProductRange | null): void;
+  setDrumParamSHRange(key: string, range: ProductRange | null): void;
+  setDualRanges(ranges: ProductRangeMap): void;
+  setRuntimeWalkRanges(ranges: ProductRangeMap): void;
+  setLeadExpressionCallback(callback: ProductLeadExpressionCallback | null): void;
+  setLeadMorphCallback(callback: ProductLeadPairCallback | null): void;
+  setPadMorphTriggerCallback(callback: ProductScalarCallback | null): void;
+  setPad2MorphTriggerCallback(callback: ProductScalarCallback | null): void;
+  setLeadDistanceCallback(callback: ProductLeadPairCallback | null): void;
+  setPadDistanceTriggerCallback(callback: ProductScalarCallback | null): void;
+  setPad2DistanceTriggerCallback(callback: ProductScalarCallback | null): void;
+  setPianoDistanceTriggerCallback(callback: ProductScalarCallback | null): void;
+  setLeadDelayCallback(callback: ProductLeadDelayCallback | null): void;
+  setDrumMorphTriggerCallback(callback: ProductDrumMorphCallback | null): void;
+  setDrumParamSHTriggerCallback(callback: ProductDrumParamSampleHoldCallback | null): void;
+  setGranularSHTriggerCallback(callback: ProductRuntimeWalkPositionsCallback | null): void;
   setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void;
   startJourneyMorphClock(): void;
   stopJourneyMorphClock(): void;
-  setDrumEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void;
-  setSynthEvolveOverridesChangedCallback(callback: ((laneIndex: number, overrides: unknown) => void) | null): void;
-  setSynthNoteRangeEvolvedCallback(callback: ((laneIndex: number, noteMin: number, noteMax: number) => void) | null): void;
+  setDrumEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void;
+  setSynthEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void;
+  setSynthNoteRangeEvolvedCallback(callback: ProductSynthNoteRangeEvolvedCallback | null): void;
   applySequencerUiPatch(patch: ProductSequencerUiPatch): void;
   setPerfMonitorEnabled(enabled: boolean): void;
   setVisualTelemetryActive(active: boolean): void;

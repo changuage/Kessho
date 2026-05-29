@@ -1,10 +1,20 @@
-import { KESSHO_PRODUCT_DRUM_PARAM_COUNT } from './generated/kesshoProductSchema';
+import {
+  KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_PARAM_COUNT,
+  KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT,
+  KESSHO_PRODUCT_SOUNDSCAPE_PARITY_FIXTURE_PARAM,
+  KESSHO_PRODUCT_SOUNDSCAPE_PARITY_PARAM_COUNT,
+  KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT,
+  KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT,
+  KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_START,
+  KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_STRIDE,
+  KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_SLOT_COUNT,
+} from './generated/kesshoProductSchema';
 import { getUtcBucket, xmur3 } from './rng';
 import { morphWaterPresets, type WaterPresetState } from './waterPresets';
 
 // SNAPSHOT_AUTHORITY: GENERATED_SCHEMA_SERIALIZATION - soundscape module params and layer route slots.
 
-export const SOUNDSCAPE_ROUTE_PARAM_COUNT = 16;
+export const SOUNDSCAPE_ROUTE_PARAM_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_PARAM_COUNT;
 export const SOUNDSCAPE_ROUTE_KEYS = [
   ['oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend'],
   ['waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'granularWaterSend'],
@@ -17,13 +27,12 @@ export const SOUNDSCAPE_ROUTE_FALLBACKS = [
   [0.15, 0, 0, 0],
   [0.18, 0, 0, 0],
 ] as const;
-export const SOUNDSCAPE_PARITY_FIXTURE_PARAM = SOUNDSCAPE_ROUTE_PARAM_COUNT;
-export const SOUNDSCAPE_PARITY_PARAM_COUNT = SOUNDSCAPE_PARITY_FIXTURE_PARAM + 1;
-export const SOUNDSCAPE_TEXTURE_PARAM_START = SOUNDSCAPE_PARITY_PARAM_COUNT;
-export const SOUNDSCAPE_TEXTURE_PARAM_STRIDE = 5;
-export const SOUNDSCAPE_TEXTURE_SLOT_COUNT = 4;
-export const SOUNDSCAPE_TEXTURE_PARAM_COUNT =
-  SOUNDSCAPE_TEXTURE_PARAM_START + SOUNDSCAPE_TEXTURE_PARAM_STRIDE * SOUNDSCAPE_TEXTURE_SLOT_COUNT;
+export const SOUNDSCAPE_PARITY_FIXTURE_PARAM = KESSHO_PRODUCT_SOUNDSCAPE_PARITY_FIXTURE_PARAM;
+export const SOUNDSCAPE_PARITY_PARAM_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_PARITY_PARAM_COUNT;
+export const SOUNDSCAPE_TEXTURE_PARAM_START = KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_START;
+export const SOUNDSCAPE_TEXTURE_PARAM_STRIDE = KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_STRIDE;
+export const SOUNDSCAPE_TEXTURE_SLOT_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_SLOT_COUNT;
+export const SOUNDSCAPE_TEXTURE_PARAM_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT;
 
 const SOUNDSCAPE_TEXTURE_SLOT_CONFIG = [
   { layer: 'ocean', sliceKey: 'oceanSliceDuration', densityKey: 'oceanSliceDensity', sliceDuration: 22, density: 0.38, fadeTime: 5.5 },
@@ -32,8 +41,8 @@ const SOUNDSCAPE_TEXTURE_SLOT_CONFIG = [
   { layer: 'frogs', sliceKey: 'frogsSliceDuration', densityKey: 'frogsSliceDensity', sliceDuration: 18, density: 0.52, fadeTime: 2.6 },
 ] as const;
 
-const SOUNDSCAPES_MODULE_PARAM_COUNT = 96;
-export const SOUNDSCAPES_PRODUCT_PARAM_COUNT = SOUNDSCAPES_MODULE_PARAM_COUNT + 5;
+const SOUNDSCAPES_MODULE_PARAM_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT;
+export const SOUNDSCAPES_PRODUCT_PARAM_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT;
 const SOUNDSCAPES_SEED_NO_CHANGE = -1;
 const SOUNDSCAPES_PARAM_INDEX = {
   waterActive: 0,
@@ -137,7 +146,7 @@ function earthLayerActive(
 }
 
 export function exactSoundscapesModuleParamsFromState(state: Record<string, unknown> | undefined): number[] {
-  const params = Array.from({ length: KESSHO_PRODUCT_DRUM_PARAM_COUNT }, () => 0);
+  const params = Array.from({ length: SOUNDSCAPES_PRODUCT_PARAM_COUNT }, () => 0);
   const water = resolveWaterState(state);
   const waterActive = earthLayerActive(state, 'waterEnabled', 'waterLevel', 0.8);
   const insectsActive = earthLayerActive(state, 'insectsEnabled', 'insectsLevel', 0.7);

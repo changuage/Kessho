@@ -603,7 +603,7 @@
   font-weight: 650;
 }
 
-.global-root .scene-engine-switch {
+.global-root .scene-runtime-switch {
   display: grid;
   grid-template-columns: auto minmax(148px, 1fr);
   align-items: start;
@@ -612,13 +612,13 @@
   padding: 0 0 9px;
 }
 
-.global-root .scene-engine-switch-stack {
+.global-root .scene-runtime-switch-stack {
   min-width: 0;
   display: grid;
   gap: 5px;
 }
 
-.global-root .scene-engine-switch-buttons {
+.global-root .scene-runtime-switch-buttons {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   min-height: 30px;
@@ -628,7 +628,7 @@
   background: rgba(0,0,0,0.22);
 }
 
-.global-root .scene-engine-switch-btn {
+.global-root .scene-runtime-switch-btn {
   min-width: 0;
   border: 0;
   border-right: 1px solid rgba(255,255,255,0.08);
@@ -642,25 +642,25 @@
   transition: background 0.15s, color 0.15s;
 }
 
-.global-root .scene-engine-switch-btn:last-child {
+.global-root .scene-runtime-switch-btn:last-child {
   border-right: 0;
 }
 
-.global-root .scene-engine-switch-btn:hover {
+.global-root .scene-runtime-switch-btn:hover {
   background: rgba(255,255,255,0.05);
 }
 
-.global-root .scene-engine-switch-btn.active {
+.global-root .scene-runtime-switch-btn.active {
   background: rgba(103,232,249,0.14);
   color: #67e8f9;
 }
 
-.global-root .scene-engine-cpu-compare {
+.global-root .scene-runtime-cpu-compare {
   display: grid;
   gap: 3px;
 }
 
-.global-root .scene-engine-cpu-row {
+.global-root .scene-runtime-cpu-row {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1fr);
   gap: 6px;
@@ -671,18 +671,18 @@
   line-height: 1.25;
 }
 
-.global-root .scene-engine-cpu-row.active {
+.global-root .scene-runtime-cpu-row.active {
   color: var(--text-secondary);
 }
 
-.global-root .scene-engine-cpu-row span {
+.global-root .scene-runtime-cpu-row span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.global-root .scene-engine-card .scene-engine-switch {
+.global-root .scene-runtime-card .scene-runtime-switch {
   margin-top: 10px;
   padding-bottom: 10px;
 }
@@ -736,7 +736,7 @@
     padding-right: 7px;
   }
 
-  .global-root .scene-engine-switch {
+  .global-root .scene-runtime-switch {
     grid-template-columns: 1fr;
     align-items: stretch;
   }

@@ -1,6 +1,8 @@
 import type { CoreProductEvent } from '../../coreProductEvents';
-import { encodeCoreProductSnapshot, type CoreProductSnapshot } from '../../coreProductSnapshot';
+import { createCoreProductSnapshot, encodeCoreProductSnapshot, usesLegacyGranularRuntimeSeed, type CoreProductSnapshot } from '../../coreProductSnapshot';
 import { buildCoreProductSnapshotDiff, type SnapshotReloadReason } from '../../CoreProductRuntimeAdapter';
+import type { CoreProductTelemetrySnapshot } from '../../coreProductTelemetry';
+import { withCoreProductClockStartDelayState } from '../../CoreProductHostSequencerClock';
 
 type CoreProductSnapshotRuntime = {
   postEvent(event: CoreProductEvent): void;
@@ -37,6 +39,42 @@ export type CoreProductSnapshotUpdateOptions = {
   nowMs: () => number;
   afterFullSnapshotLoad?: () => void;
 };
+
+export type CoreProductHostSnapshotState = {
+  latestSliderState: Record<string, unknown> | null;
+  adapterState: Record<string, unknown>;
+  journeyMorphClockRunning: boolean;
+  latestTelemetry: CoreProductTelemetrySnapshot | null;
+  running: boolean;
+};
+
+export function createCoreProductHostSnapshot(
+  state: CoreProductHostSnapshotState,
+  includeClockStartDelay = false,
+): CoreProductSnapshot {
+  const hasAdapterState = Object.keys(state.adapterState).length > 0;
+  const baseSnapshotState = state.latestSliderState
+    ? { ...state.latestSliderState, ...state.adapterState, journeyEnabled: state.journeyMorphClockRunning }
+    : hasAdapterState
+    ? { ...state.adapterState, journeyEnabled: state.journeyMorphClockRunning }
+    : state.journeyMorphClockRunning
+    ? { journeyEnabled: true }
+    : undefined;
+  const telemetryRngState = !usesLegacyGranularRuntimeSeed(baseSnapshotState) && (state.latestTelemetry?.rngSeed || state.latestTelemetry?.rngState)
+    ? {
+      rngSeed: state.latestTelemetry.rngSeed,
+      rngState: state.latestTelemetry.rngState,
+    }
+    : {};
+  const snapshotState = baseSnapshotState
+    ? { ...telemetryRngState, ...baseSnapshotState }
+    : Object.keys(telemetryRngState).length > 0
+    ? telemetryRngState
+    : undefined;
+  const snapshot = createCoreProductSnapshot(includeClockStartDelay ? withCoreProductClockStartDelayState(snapshotState) : snapshotState);
+  snapshot.transport.running = state.running;
+  return snapshot;
+}
 
 export function loadCoreProductSnapshot(options: CoreProductSnapshotLoadOptions): CoreProductFullSnapshotResult {
   const startMs = options.nowMs();

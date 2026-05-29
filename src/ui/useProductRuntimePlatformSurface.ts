@@ -2,8 +2,12 @@ import { useProductRuntimeCapacitorAudioSession } from './useProductRuntimeCapac
 import { useProductRuntimeMacAudioStatus } from './useProductRuntimeMacAudioStatus';
 
 type ProductRuntimePlatformSurfaceOptions =
-  Parameters<typeof useProductRuntimeMacAudioStatus>[0] &
-  Parameters<typeof useProductRuntimeCapacitorAudioSession>[0];
+  Omit<Parameters<typeof useProductRuntimeMacAudioStatus>[0], 'preloadProductRuntime'> &
+  Omit<Parameters<typeof useProductRuntimeCapacitorAudioSession>[0], 'startProductPlayback' | 'stopProductPlayback'> & {
+    preloadProductRuntime: Parameters<typeof useProductRuntimeMacAudioStatus>[0]['preloadProductRuntime'];
+    startProductPlayback: Parameters<typeof useProductRuntimeCapacitorAudioSession>[0]['startProductPlayback'];
+    stopProductPlayback: Parameters<typeof useProductRuntimeCapacitorAudioSession>[0]['stopProductPlayback'];
+  };
 
 export function useProductRuntimePlatformSurface(options: ProductRuntimePlatformSurfaceOptions) {
   const macAudioStatus = useProductRuntimeMacAudioStatus(options);

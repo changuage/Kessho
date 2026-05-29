@@ -203,6 +203,20 @@ export function loadCoreProductHostHarness(options = {}) {
       this.resetCount += 1;
     }
 
+    startGraphTapCapture(tapId, chunkFrames) {
+      this.lastStartedGraphTap = { tapId, chunkFrames };
+    }
+
+    flushGraphTapCapture(tapId) {
+      this.lastFlushedGraphTap = tapId;
+      return Promise.resolve([]);
+    }
+
+    stopGraphTapCapture(tapId) {
+      this.lastStoppedGraphTap = tapId;
+      return Promise.resolve([]);
+    }
+
     registerAsset(asset) {
       this.lastRegisteredAsset = asset;
     }
@@ -330,6 +344,13 @@ export function loadCoreProductHostHarness(options = {}) {
       lead2: 4,
       piano: 5,
       granular: 6,
+    },
+    CORE_PRODUCT_GRAPH_TAP_IDS: {
+      master: 1,
+      pad: 2,
+      lead: 3,
+      piano: 4,
+      granular: 5,
     },
     midiSampleOffset: () => 0,
     createCoreProductDrumTriggerEvent: (voiceIndex, velocity) => event('drum-trigger', { voiceIndex, velocity }),
@@ -570,6 +591,98 @@ Object.assign(globalThis, {
 });
 }`, context, { filename: sequencerEvolvePath });
 
+  const sequencerControlEventBridgePath = 'src/audio/product/host/CoreProductSequencerControlEventBridge.ts';
+  const sequencerControlEventBridgeSource = stripImportsAndExports(readProjectFile(sequencerControlEventBridgePath));
+  const sequencerControlEventBridgeJs = transpileForVm(sequencerControlEventBridgeSource, resolve(root, sequencerControlEventBridgePath));
+  vm.runInNewContext(`${sequencerControlEventBridgeJs}
+Object.assign(globalThis, {
+  handleCoreProductSequencerControlEvent,
+});`, context, { filename: sequencerControlEventBridgePath });
+
+  const sequencerEvolveBridgePath = 'src/audio/product/host/CoreProductSequencerEvolveBridge.ts';
+  const sequencerEvolveBridgeSource = stripImportsAndExports(readProjectFile(sequencerEvolveBridgePath));
+  const sequencerEvolveBridgeJs = transpileForVm(sequencerEvolveBridgeSource, resolve(root, sequencerEvolveBridgePath));
+  vm.runInNewContext(`${sequencerEvolveBridgeJs}
+Object.assign(globalThis, {
+  CoreProductSequencerEvolveBridge,
+});`, context, { filename: sequencerEvolveBridgePath });
+
+  const sequencerCacheBridgePath = 'src/audio/product/host/CoreProductSequencerCacheBridge.ts';
+  const sequencerCacheBridgeSource = stripImportsAndExports(readProjectFile(sequencerCacheBridgePath));
+  const sequencerCacheBridgeJs = transpileForVm(sequencerCacheBridgeSource, resolve(root, sequencerCacheBridgePath));
+  vm.runInNewContext(`${sequencerCacheBridgeJs}
+Object.assign(globalThis, {
+  selectCoreProductSequencerCache,
+  ensureCoreProductSequencerLaneCache,
+  coreProductSequencerLaneCacheCount,
+  cloneCoreProductSequencerStepValueConfigs,
+  cloneCoreProductSequencerStepValueOverrides,
+  enabledCoreProductSequencerSubLanes,
+});`, context, { filename: sequencerCacheBridgePath });
+
+  const sequencerEvolvePayloadBridgePath = 'src/audio/product/host/CoreProductSequencerEvolvePayloadBridge.ts';
+  const sequencerEvolvePayloadBridgeSource = stripImportsAndExports(readProjectFile(sequencerEvolvePayloadBridgePath));
+  const sequencerEvolvePayloadBridgeJs = transpileForVm(sequencerEvolvePayloadBridgeSource, resolve(root, sequencerEvolvePayloadBridgePath));
+  vm.runInNewContext(`${sequencerEvolvePayloadBridgeJs}
+Object.assign(globalThis, {
+  createCoreProductEvolvedSubLanePayload,
+});`, context, { filename: sequencerEvolvePayloadBridgePath });
+
+  const sequencerHomeCaptureBridgePath = 'src/audio/product/host/CoreProductSequencerHomeCaptureBridge.ts';
+  const sequencerHomeCaptureBridgeSource = stripImportsAndExports(readProjectFile(sequencerHomeCaptureBridgePath));
+  const sequencerHomeCaptureBridgeJs = transpileForVm(sequencerHomeCaptureBridgeSource, resolve(root, sequencerHomeCaptureBridgePath));
+  vm.runInNewContext(`${sequencerHomeCaptureBridgeJs}
+Object.assign(globalThis, {
+  captureCoreProductSequencerHomeLane,
+});`, context, { filename: sequencerHomeCaptureBridgePath });
+
+  const sequencerHomeRestoreBridgePath = 'src/audio/product/host/CoreProductSequencerHomeRestoreBridge.ts';
+  const sequencerHomeRestoreBridgeSource = stripImportsAndExports(readProjectFile(sequencerHomeRestoreBridgePath));
+  const sequencerHomeRestoreBridgeJs = transpileForVm(sequencerHomeRestoreBridgeSource, resolve(root, sequencerHomeRestoreBridgePath));
+  vm.runInNewContext(`${sequencerHomeRestoreBridgeJs}
+Object.assign(globalThis, {
+  restoreCoreProductSequencerLaneHome,
+});`, context, { filename: sequencerHomeRestoreBridgePath });
+
+  const sequencerLaneParamBridgePath = 'src/audio/product/host/CoreProductSequencerLaneParamBridge.ts';
+  const sequencerLaneParamBridgeSource = stripImportsAndExports(readProjectFile(sequencerLaneParamBridgePath));
+  const sequencerLaneParamBridgeJs = transpileForVm(sequencerLaneParamBridgeSource, resolve(root, sequencerLaneParamBridgePath));
+  vm.runInNewContext(`${sequencerLaneParamBridgeJs}
+Object.assign(globalThis, {
+  applyCoreProductSequencerLaneParamSet,
+  patchCoreProductSequencerLaneAdapterParam,
+  patchCoreProductSynthPitchBindingModeFromEvent,
+});`, context, { filename: sequencerLaneParamBridgePath });
+
+  const sequencerNoteRangeEvolveBridgePath = 'src/audio/product/host/CoreProductSequencerNoteRangeEvolveBridge.ts';
+  const sequencerNoteRangeEvolveBridgeSource = stripImportsAndExports(readProjectFile(sequencerNoteRangeEvolveBridgePath));
+  const sequencerNoteRangeEvolveBridgeJs = transpileForVm(sequencerNoteRangeEvolveBridgeSource, resolve(root, sequencerNoteRangeEvolveBridgePath));
+  vm.runInNewContext(`${sequencerNoteRangeEvolveBridgeJs}
+Object.assign(globalThis, {
+  evolveCoreProductSequencerSynthNoteRange,
+});`, context, { filename: sequencerNoteRangeEvolveBridgePath });
+
+  const sequencerStepOverrideBridgePath = 'src/audio/product/host/CoreProductSequencerStepOverrideBridge.ts';
+  const sequencerStepOverrideBridgeSource = stripImportsAndExports(readProjectFile(sequencerStepOverrideBridgePath));
+  const sequencerStepOverrideBridgeJs = transpileForVm(sequencerStepOverrideBridgeSource, resolve(root, sequencerStepOverrideBridgePath));
+  vm.runInNewContext(`${sequencerStepOverrideBridgeJs}
+Object.assign(globalThis, {
+  applyCoreProductSynthStepOverrides,
+  applyCoreProductDrumStepOverrides,
+});`, context, { filename: sequencerStepOverrideBridgePath });
+
+  const sequencerStepPostingBridgePath = 'src/audio/product/host/CoreProductSequencerStepPostingBridge.ts';
+  const sequencerStepPostingBridgeSource = stripImportsAndExports(readProjectFile(sequencerStepPostingBridgePath));
+  const sequencerStepPostingBridgeJs = transpileForVm(sequencerStepPostingBridgeSource, resolve(root, sequencerStepPostingBridgePath));
+  vm.runInNewContext(`${sequencerStepPostingBridgeJs}
+Object.assign(globalThis, {
+  coreProductStepValueFieldSubLaneKey,
+  coreProductStepValueFieldEnabled,
+  createCoreProductEvolvedStepValuePayload,
+  postCoreProductSequencerStepValueOverrides,
+  syncCoreProductSequencerStepState,
+});`, context, { filename: sequencerStepPostingBridgePath });
+
   const hostDiagnosticsPath = 'src/audio/product/host/CoreProductHostDiagnostics.ts';
   const hostDiagnosticsSource = stripImportsAndExports(readProjectFile(hostDiagnosticsPath)).replaceAll('import.meta.env', '__IMPORT_META_ENV__');
   const hostDiagnosticsJs = transpileForVm(hostDiagnosticsSource, resolve(root, hostDiagnosticsPath));
@@ -577,6 +690,54 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   CoreProductHostDiagnostics,
 });`, context, { filename: hostDiagnosticsPath });
+
+  const arrangementBridgePath = 'src/audio/product/host/CoreProductArrangementBridge.ts';
+  const arrangementBridgeSource = stripImportsAndExports(readProjectFile(arrangementBridgePath));
+  const arrangementBridgeJs = transpileForVm(arrangementBridgeSource, resolve(root, arrangementBridgePath));
+  vm.runInNewContext(`${arrangementBridgeJs}
+Object.assign(globalThis, {
+  CoreProductArrangementBridge,
+});`, context, { filename: arrangementBridgePath });
+
+  const displayCallbackRegistryPath = 'src/audio/product/host/CoreProductDisplayCallbackRegistry.ts';
+  const displayCallbackRegistrySource = stripImportsAndExports(readProjectFile(displayCallbackRegistryPath));
+  const displayCallbackRegistryJs = transpileForVm(displayCallbackRegistrySource, resolve(root, displayCallbackRegistryPath));
+  vm.runInNewContext(`${displayCallbackRegistryJs}
+Object.assign(globalThis, {
+  CoreProductDisplayCallbackRegistry,
+});`, context, { filename: displayCallbackRegistryPath });
+
+  const hostProxyPath = 'src/audio/product/host/CoreProductHostProxy.ts';
+  const hostProxySource = stripImportsAndExports(readProjectFile(hostProxyPath));
+  const hostProxyJs = transpileForVm(hostProxySource, resolve(root, hostProxyPath));
+  vm.runInNewContext(`${hostProxyJs}
+Object.assign(globalThis, {
+  createCoreProductEngineHostProxy,
+});`, context, { filename: hostProxyPath });
+
+  const graphTapBridgePath = 'src/audio/product/host/CoreProductGraphTapBridge.ts';
+  const graphTapBridgeSource = stripImportsAndExports(readProjectFile(graphTapBridgePath));
+  const graphTapBridgeJs = transpileForVm(graphTapBridgeSource, resolve(root, graphTapBridgePath));
+  vm.runInNewContext(`${graphTapBridgeJs}
+Object.assign(globalThis, {
+  CoreProductGraphTapBridge,
+});`, context, { filename: graphTapBridgePath });
+
+  const journeyMorphClockPath = 'src/audio/product/host/CoreProductJourneyMorphClock.ts';
+  const journeyMorphClockSource = stripImportsAndExports(readProjectFile(journeyMorphClockPath));
+  const journeyMorphClockJs = transpileForVm(journeyMorphClockSource, resolve(root, journeyMorphClockPath));
+  vm.runInNewContext(`${journeyMorphClockJs}
+Object.assign(globalThis, {
+  CoreProductJourneyMorphClock,
+});`, context, { filename: journeyMorphClockPath });
+
+  const harmonyStateBridgePath = 'src/audio/product/host/CoreProductHarmonyStateBridge.ts';
+  const harmonyStateBridgeSource = stripImportsAndExports(readProjectFile(harmonyStateBridgePath));
+  const harmonyStateBridgeJs = transpileForVm(harmonyStateBridgeSource, resolve(root, harmonyStateBridgePath));
+  vm.runInNewContext(`${harmonyStateBridgeJs}
+Object.assign(globalThis, {
+  CoreProductHarmonyStateBridge,
+});`, context, { filename: harmonyStateBridgePath });
 
   const patchClassifierPath = 'src/audio/product/host/CoreProductPatchClassifier.ts';
   const patchClassifierSource = stripImportsAndExports(readProjectFile(patchClassifierPath));
@@ -618,6 +779,7 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   enrichCoreProductHostTelemetry,
   createCoreProductPerfSnapshot,
+  mergeCoreProductVisualTelemetry,
 });`, context, { filename: telemetryAdapterPath });
 
   const path = 'src/audio/coreProductEngineHost.ts';

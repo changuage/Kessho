@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { SelectedAudioEnginePageRuntimeBridgeOptions } from './useSelectedAudioEnginePageRuntimeBridges';
+import type { ProductRuntimePageRuntimeBridgeOptions } from './useProductRuntimePageRuntimeBridges';
 import {
   useProductRuntimePageControlProps,
   type ProductRuntimePageControlProps,
@@ -21,7 +21,7 @@ export type ProductRuntimePageBridgeOptionGroups = {
 
 export function useProductRuntimePageBridgeOptions(
   { telemetry, sequencer, control }: ProductRuntimePageBridgeOptionGroups,
-): SelectedAudioEnginePageRuntimeBridgeOptions {
+): ProductRuntimePageRuntimeBridgeOptions {
   const pageTelemetryRuntimeProps = useProductRuntimePageTelemetryProps(telemetry);
   const pageSequencerRuntimeProps = useProductRuntimePageSequencerProps(sequencer);
   const pageControlRuntimeProps = useProductRuntimePageControlProps(control);

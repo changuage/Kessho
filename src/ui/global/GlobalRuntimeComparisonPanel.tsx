@@ -38,29 +38,29 @@ export function GlobalRuntimeComparisonPanel({
   if (!visible || !onModeChange) return null;
 
   return (
-    <div className="scene-card scene-engine-card">
+    <div className="scene-card scene-runtime-card">
       <div className="scene-card-header">
-        <h3 className="scene-card-title">Audio Engine Test</h3>
+        <h3 className="scene-card-title">Product Runtime Test</h3>
         <span className={`scene-run-pill ${currentMode === 'core-product' ? 'running' : 'stopped'}`}>
           {runtimePillLabel(currentMode)}
         </span>
       </div>
-      <div className="scene-engine-switch">
+      <div className="scene-runtime-switch">
         <span className="scene-status-label">Runtime</span>
-        <div className="scene-engine-switch-stack">
+        <div className="scene-runtime-switch-stack">
           <ProductRuntimeSwitch
             currentMode={currentMode}
             modes={modes}
             onModeChange={onModeChange}
             visible
-            testId="global-audio-engine-switch"
+            testId="global-product-runtime-switch"
             variant="scene"
           />
-          <div className="scene-engine-cpu-compare" aria-label="Audio engine CPU comparison">
+          <div className="scene-runtime-cpu-compare" aria-label="Product runtime CPU comparison">
             {modes.map((mode) => {
               const summary = cpuSummaries?.[mode];
               return (
-                <div key={mode} className={`scene-engine-cpu-row${currentMode === mode ? ' active' : ''}`}>
+                <div key={mode} className={`scene-runtime-cpu-row${currentMode === mode ? ' active' : ''}`}>
                   <span>{mode === 'web-ts' ? 'Web TS' : productRuntimeModeLabel(mode)}</span>
                   <span>avg {formatCpuPercent(summary?.avgPercent)}</span>
                   <span>peak {formatCpuPercent(summary?.peakPercent)}</span>

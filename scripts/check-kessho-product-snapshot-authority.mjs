@@ -101,6 +101,7 @@ for (const source of encoderAllowedImports) {
 
 const drumPatchAllowedImports = new Set([
   './generated/kesshoProductSchema',
+  './CoreProductGeneratedParamMetadata',
   './CoreProductPresetIds',
   './CoreProductSparseOverrides',
   './coreProductSnapshotState',
@@ -119,6 +120,7 @@ const padPatchAllowedImports = new Set([
   './coreProductSnapshotState',
   './distanceMacro',
   './CoreProductSparseOverrides',
+  './CoreProductGeneratedParamMetadata',
 ]);
 const padPatchImports = Array.from(padPatch.matchAll(/from '([^']+)'/g), (match) => match[1]);
 for (const source of padPatchImports) {
@@ -135,6 +137,7 @@ const leadPatchAllowedImports = new Set([
   './coreProductSnapshotState',
   './CoreProductPresetIds',
   './CoreProductSparseOverrides',
+  './CoreProductGeneratedParamMetadata',
 ]);
 const leadPatchImports = Array.from(leadPatch.matchAll(/from '([^']+)'/g), (match) => match[1]);
 for (const source of leadPatchImports) {

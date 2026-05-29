@@ -12,16 +12,16 @@ import {
 } from './productRuntimeUi';
 
 type ProductRuntimePerfAdapter = {
-  audioEngineCpuSummaries: ProductRuntimeCpuSummaries;
+  productRuntimeCpuSummaries: ProductRuntimeCpuSummaries;
   setProductPerfMonitorEnabled: (enabled: boolean) => void;
   setProductPerfUpdateCallback: (callback: CpuOverlayPerfCallback | null) => void;
 };
 
 export function useProductRuntimePerfAdapter(
   productRuntimeMode: ProductRuntimeSelectionMode,
-  showAudioEngineSwitcher: boolean,
+  showProductRuntimeSwitcher: boolean,
 ): ProductRuntimePerfAdapter {
-  const [audioEngineCpuSummaries, setAudioEngineCpuSummaries] = useState<ProductRuntimeCpuSummaries>(
+  const [productRuntimeCpuSummaries, setProductRuntimeCpuSummaries] = useState<ProductRuntimeCpuSummaries>(
     () => readProductRuntimeCpuSummaries(),
   );
 
@@ -48,13 +48,13 @@ export function useProductRuntimePerfAdapter(
   }, [productRuntimeMode]);
 
   useEffect(() => {
-    if (!showAudioEngineSwitcher) return;
+    if (!showProductRuntimeSwitcher) return;
 
     setProductPerfMonitorEnabled(true);
     setProductPerfUpdateCallback((data) => {
       const summary = summarizeProductRuntimeCpu(data);
       if (!summary) return;
-      setAudioEngineCpuSummaries((prev) => {
+      setProductRuntimeCpuSummaries((prev) => {
         const next = { ...prev, [productRuntimeMode]: summary };
         writeProductRuntimeCpuSummaries(next);
         return next;
@@ -65,10 +65,10 @@ export function useProductRuntimePerfAdapter(
       setProductPerfUpdateCallback(null);
       setProductPerfMonitorEnabled(false);
     };
-  }, [productRuntimeMode, setProductPerfMonitorEnabled, setProductPerfUpdateCallback, showAudioEngineSwitcher]);
+  }, [productRuntimeMode, setProductPerfMonitorEnabled, setProductPerfUpdateCallback, showProductRuntimeSwitcher]);
 
   return {
-    audioEngineCpuSummaries,
+    productRuntimeCpuSummaries,
     setProductPerfMonitorEnabled,
     setProductPerfUpdateCallback,
   };

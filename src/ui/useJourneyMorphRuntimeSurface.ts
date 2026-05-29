@@ -1,6 +1,7 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { isAtEndpoint0, isAtEndpoint1 } from '../audio/morphUtils';
 import type { DualSliderRange } from './DualSlider';
+import type { ProductRuntimeParamUpdateOptions } from './useProductRuntimePresetSurface';
 import type { SliderMode, SliderState } from './state';
 import { USER_PREFERENCE_KEYS } from './presetUtils';
 
@@ -70,7 +71,7 @@ type UseJourneyMorphRuntimeSurfaceOptions<TPreset extends JourneyMorphPreset> = 
     direction?: 'toA' | 'toB',
   ) => JourneyMorphResult;
   resetCofDrift: () => void;
-  scheduleAudioEngineParamUpdate: (nextState: SliderState) => void;
+  scheduleProductRuntimeParamUpdate: (nextState: SliderState, options?: ProductRuntimeParamUpdateOptions) => void;
   startJourneyMorphClock: (callback: (now: number) => void) => void;
   stopJourneyMorphClock: () => void;
   setIsJourneyPlaying: Dispatch<SetStateAction<boolean>>;
@@ -115,7 +116,7 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
   startJourneyPlayback,
   lerpPresets,
   resetCofDrift,
-  scheduleAudioEngineParamUpdate,
+  scheduleProductRuntimeParamUpdate,
   startJourneyMorphClock,
   stopJourneyMorphClock,
   setIsJourneyPlaying,
@@ -322,7 +323,7 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
           journeyLastMorphPositionRef.current = newPosition;
           journeyLastMorphCoFVizRef.current = nextMorphCoFViz;
 
-          scheduleAudioEngineParamUpdate(stateWithPrefs);
+          scheduleProductRuntimeParamUpdate(stateWithPrefs, { reason: 'journey-morph-change' });
 
           const isVisible = document.visibilityState === 'visible';
           const shouldUpdateUI = isVisible && (now - lastUIUpdate >= 66 || progress >= 1);
@@ -361,7 +362,7 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
       phraseLength,
       resetCofDrift,
       resolveSavedPresetByName,
-      scheduleAudioEngineParamUpdate,
+      scheduleProductRuntimeParamUpdate,
       setMorphCoFViz,
       setMorphPosition,
       setMorphPresetA,
