@@ -1,7 +1,16 @@
 import { useSelectedAudioEngineMacRecovery } from './useSelectedAudioEngineMacRecovery';
 
-type ProductRuntimeMacRecoveryOptions = Parameters<typeof useSelectedAudioEngineMacRecovery>[0];
+type SelectedRuntimeMacRecoveryOptions = Parameters<typeof useSelectedAudioEngineMacRecovery>[0];
+type ProductRuntimeMacRecoveryOptions = Omit<SelectedRuntimeMacRecoveryOptions, 'audioEngineRuntimeMode'> & {
+  productRuntimeMode: SelectedRuntimeMacRecoveryOptions['audioEngineRuntimeMode'];
+};
 
-export function useProductRuntimeMacRecovery(options: ProductRuntimeMacRecoveryOptions): void {
-  useSelectedAudioEngineMacRecovery(options);
+export function useProductRuntimeMacRecovery({
+  productRuntimeMode,
+  ...options
+}: ProductRuntimeMacRecoveryOptions): void {
+  useSelectedAudioEngineMacRecovery({
+    ...options,
+    audioEngineRuntimeMode: productRuntimeMode,
+  });
 }

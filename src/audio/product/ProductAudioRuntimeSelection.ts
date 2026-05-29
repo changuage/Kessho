@@ -1,9 +1,11 @@
 import { getProductEngineRuntimeMode } from './ProductEngineProxy';
 
-export type AudioEngineRuntimeMode = 'web-ts' | 'core-product' | 'core-smoke';
+export type ProductRuntimeMode = 'core-product';
+export type ProductReferenceRuntimeMode = 'web-ts' | 'core-smoke';
+export type ProductRuntimeSelectionMode = ProductRuntimeMode | ProductReferenceRuntimeMode;
 
-const PRODUCT_AUDIO_ENGINE_RUNTIME_MODES = ['core-product'] as const satisfies readonly AudioEngineRuntimeMode[];
-const REFERENCE_AUDIO_ENGINE_RUNTIME_MODES = ['core-product', 'web-ts', 'core-smoke'] as const satisfies readonly AudioEngineRuntimeMode[];
+const PRODUCT_RUNTIME_MODES = ['core-product'] as const satisfies readonly ProductRuntimeSelectionMode[];
+const REFERENCE_RUNTIME_MODES = ['core-product', 'web-ts', 'core-smoke'] as const satisfies readonly ProductRuntimeSelectionMode[];
 export const AUDIO_ENGINE_PARAM = 'engine';
 export const AUDIO_ENGINE_SWITCHER_PARAM = 'engineAB';
 
@@ -11,8 +13,8 @@ function isDevRuntime(): boolean {
   return Boolean((import.meta.env as unknown as { DEV?: boolean }).DEV);
 }
 
-function normalizeReferenceRuntimeMode(mode: string | null): AudioEngineRuntimeMode | null {
-  if (mode === 'web-ts' || mode === 'web-audio') return 'web-ts';
+function normalizeReferenceRuntimeMode(mode: string | null): ProductReferenceRuntimeMode | null {
+  if (mode === 'web-ts') return 'web-ts';
   if (mode === 'core-smoke') return 'core-smoke';
   return null;
 }
@@ -32,7 +34,7 @@ function isReferenceRuntimeEnabled(params: URLSearchParams): boolean {
   );
 }
 
-function getProductionAudioEngineRuntimeMode(): Extract<AudioEngineRuntimeMode, 'core-product'> {
+function getProductionProductRuntimeMode(): ProductRuntimeMode {
   const mode = getProductEngineRuntimeMode();
   if (mode !== 'core-product') {
     throw new Error(`${mode} runtime is not implemented as a production audio engine mode`);
@@ -40,29 +42,29 @@ function getProductionAudioEngineRuntimeMode(): Extract<AudioEngineRuntimeMode, 
   return mode;
 }
 
-export function getAudioEngineRuntimeMode(): AudioEngineRuntimeMode {
-  if (typeof window === 'undefined') return getProductionAudioEngineRuntimeMode();
-  if (!isDevRuntime()) return getProductionAudioEngineRuntimeMode();
+export function getProductRuntimeMode(): ProductRuntimeSelectionMode {
+  if (typeof window === 'undefined') return getProductionProductRuntimeMode();
+  if (!isDevRuntime()) return getProductionProductRuntimeMode();
   try {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get(AUDIO_ENGINE_PARAM);
-    if (mode === 'core-product') return getProductionAudioEngineRuntimeMode();
-    if (mode === 'native-product' || mode === 'test-product') return getProductionAudioEngineRuntimeMode();
+    if (mode === 'core-product') return getProductionProductRuntimeMode();
+    if (mode === 'native-product' || mode === 'test-product') return getProductionProductRuntimeMode();
     const referenceMode = normalizeReferenceRuntimeMode(mode);
     if (referenceMode && isReferenceRuntimeEnabled(params)) return referenceMode;
-    return getProductionAudioEngineRuntimeMode();
+    return getProductionProductRuntimeMode();
   } catch {
-    return getProductionAudioEngineRuntimeMode();
+    return getProductionProductRuntimeMode();
   }
 }
 
-export function getAudioEngineRuntimeModes(): readonly AudioEngineRuntimeMode[] {
-  if (typeof window === 'undefined') return PRODUCT_AUDIO_ENGINE_RUNTIME_MODES;
-  if (!isDevRuntime()) return PRODUCT_AUDIO_ENGINE_RUNTIME_MODES;
+export function getProductRuntimeModes(): readonly ProductRuntimeSelectionMode[] {
+  if (typeof window === 'undefined') return PRODUCT_RUNTIME_MODES;
+  if (!isDevRuntime()) return PRODUCT_RUNTIME_MODES;
   try {
     const params = new URLSearchParams(window.location.search);
-    return isReferenceRuntimeEnabled(params) ? REFERENCE_AUDIO_ENGINE_RUNTIME_MODES : PRODUCT_AUDIO_ENGINE_RUNTIME_MODES;
+    return isReferenceRuntimeEnabled(params) ? REFERENCE_RUNTIME_MODES : PRODUCT_RUNTIME_MODES;
   } catch {
-    return PRODUCT_AUDIO_ENGINE_RUNTIME_MODES;
+    return PRODUCT_RUNTIME_MODES;
   }
 }

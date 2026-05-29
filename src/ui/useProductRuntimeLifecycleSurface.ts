@@ -10,21 +10,21 @@ type ProductRuntimeLifecycleSurfaceOptions =
   Parameters<typeof useProductRuntimeMacRecovery>[0];
 
 export function useProductRuntimeLifecycleSurface(options: ProductRuntimeLifecycleSurfaceOptions) {
-  const recordingRuntime = useProductRuntimeRecordingRuntime(options.audioEngineRuntimeMode);
+  const recordingRuntime = useProductRuntimeRecordingRuntime(options.productRuntimeMode);
   const runtimeTelemetry = useProductRuntimeTelemetry({
-    audioEngineRuntimeMode: options.audioEngineRuntimeMode,
+    productRuntimeMode: options.productRuntimeMode,
     uiMode: options.uiMode,
   });
 
   useProductRuntimeStateRuntime({
-    audioEngineRuntimeMode: options.audioEngineRuntimeMode,
+    productRuntimeMode: options.productRuntimeMode,
     enabled: options.playbackIsRunning,
     getSelectedTransportDebugState: options.getSelectedTransportDebugState,
     setEngineState: options.setEngineState,
   });
 
   useProductRuntimeMacRecovery({
-    audioEngineRuntimeMode: options.audioEngineRuntimeMode,
+    productRuntimeMode: options.productRuntimeMode,
     macShellAvailable: options.macShellAvailable,
     playbackIsRunning: options.playbackIsRunning,
     stateRef: options.stateRef,

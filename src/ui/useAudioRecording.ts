@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { referenceAudioEngineDebug } from '../audio/reference/ReferenceAudioEngineDebugCompat';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import {
   RECORD_TRACK_FILENAME_SUFFIX,
   STEM_RECORD_DEFAULTS,

@@ -1,5 +1,5 @@
 import { useMemo, type MutableRefObject } from 'react';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import type { SliderState } from './state';
 import { useSelectedAudioEnginePlaybackRuntime } from './useSelectedAudioEnginePlaybackRuntime';
 import { useSelectedAudioEngineRuntimeUi } from './useSelectedAudioEngineRuntimeUi';

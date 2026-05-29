@@ -1795,14 +1795,14 @@ function assertWorkletMixerContract(source, label) {
 assert(referenceRuntime.includes("case 'core-smoke':"), 'reference runtime must expose the Core smoke renderer behind ?engine=core-smoke');
 assert(!referenceRuntime.includes('isLegacyCoreBridgeOptInEnabled'), 'reference runtime must not hide the verified Core bridge behind a transitional opt-in');
 assert(!referenceRuntime.includes('legacyCoreBridge'), 'reference runtime must not require a legacy bridge query/storage escape hatch');
-const runtimeSelectionBody = readFunctionBody(productAudioRuntimeSelection, 'getAudioEngineRuntimeMode', 'ProductAudioRuntimeSelection');
+const runtimeSelectionBody = readFunctionBody(productAudioRuntimeSelection, 'getProductRuntimeMode', 'ProductAudioRuntimeSelection');
 assert(
-  runtimeSelectionBody.includes("if (typeof window === 'undefined') return getProductionAudioEngineRuntimeMode();") &&
+  runtimeSelectionBody.includes("if (typeof window === 'undefined') return getProductionProductRuntimeMode();") &&
     productAudioRuntimeSelection.includes('getProductEngineRuntimeMode()'),
   'product runtime selection must default SSR to Product Core through the ProductEngineProxy decision point',
 );
 assert(
-  runtimeSelectionBody.includes("if (!isDevRuntime()) return getProductionAudioEngineRuntimeMode();") &&
+  runtimeSelectionBody.includes("if (!isDevRuntime()) return getProductionProductRuntimeMode();") &&
     productAudioRuntimeSelection.includes('getProductEngineRuntimeMode()'),
   'product runtime selection must force Product Core outside dev/reference builds through the ProductEngineProxy decision point',
 );

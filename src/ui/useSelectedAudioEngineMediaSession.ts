@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import {
   connectMediaSessionToWebAudio,
   setupIOSMediaSession,

@@ -6,29 +6,29 @@ import { useProductRuntimePerf } from './useProductRuntimePerf';
 type ProductRuntimeUiOptions = Parameters<typeof useProductRuntimeNavigation>[0];
 
 export function useProductRuntimeUi({
-  audioEngineRuntimeMode,
+  productRuntimeMode,
   preloadProductRuntime,
   stateRef,
   stopProductRuntime,
 }: ProductRuntimeUiOptions) {
   const runtimeNavigation = useProductRuntimeNavigation({
-    audioEngineRuntimeMode,
+    productRuntimeMode,
     preloadProductRuntime,
     stateRef,
     stopProductRuntime,
   });
-  const perf = useProductRuntimePerf(audioEngineRuntimeMode, runtimeNavigation.showAudioEngineSwitcher);
+  const perf = useProductRuntimePerf(productRuntimeMode, runtimeNavigation.showAudioEngineSwitcher);
   const globalRuntimeComparison = useMemo<GlobalRuntimeComparisonPanelProps>(() => ({
-    currentMode: audioEngineRuntimeMode,
-    modes: runtimeNavigation.audioEngineRuntimeModes,
+    currentMode: productRuntimeMode,
+    modes: runtimeNavigation.productRuntimeModes,
     cpuSummaries: perf.audioEngineCpuSummaries,
     visible: runtimeNavigation.showAudioEngineSwitcher,
-    onModeChange: runtimeNavigation.handleAudioEngineRuntimeModeChange,
+    onModeChange: runtimeNavigation.handleProductRuntimeModeChange,
   }), [
-    audioEngineRuntimeMode,
     perf.audioEngineCpuSummaries,
-    runtimeNavigation.audioEngineRuntimeModes,
-    runtimeNavigation.handleAudioEngineRuntimeModeChange,
+    productRuntimeMode,
+    runtimeNavigation.handleProductRuntimeModeChange,
+    runtimeNavigation.productRuntimeModes,
     runtimeNavigation.showAudioEngineSwitcher,
   ]);
 

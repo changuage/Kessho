@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { isCoreProductRangeKeySupported } from '../audio/coreProductEvents';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 
 type UiMode = 'snowflake' | 'advanced' | 'journey';
 

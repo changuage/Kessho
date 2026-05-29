@@ -1,6 +1,6 @@
 import { productEngine } from './ProductEngineProxy';
 import {
-  getAudioEngineRuntimeMode,
+  getProductRuntimeMode,
 } from './ProductAudioRuntimeSelection';
 import {
   getLoadedReferenceSelectedRuntimeTarget,
@@ -86,27 +86,28 @@ export type SelectedProductRuntime = SelectedRuntimeTarget & {
 };
 
 function getLoadedSelectedRuntimeTarget(): SelectedRuntimeTarget | null {
-  if (getAudioEngineRuntimeMode() === 'core-product') {
+  if (getProductRuntimeMode() === 'core-product') {
     return productEngine as unknown as SelectedRuntimeTarget;
   }
   return getLoadedReferenceSelectedRuntimeTarget();
 }
 
 function invokeSelectedRuntimeMethod(method: string, args: readonly unknown[]): unknown {
+  const runtimeMode = getProductRuntimeMode();
   const loadedTarget = getLoadedSelectedRuntimeTarget();
   if (loadedTarget) {
     const value = loadedTarget[method];
     if (typeof value !== 'function') {
-      throw new Error(`Selected runtime ${method} is not implemented by ${getAudioEngineRuntimeMode()}`);
+      throw new Error(`Selected runtime ${method} is not implemented by ${runtimeMode}`);
     }
     return (value as (...invokeArgs: unknown[]) => unknown).apply(loadedTarget, [...args]);
   }
 
-  if (getAudioEngineRuntimeMode() === 'core-product') {
+  if (runtimeMode === 'core-product') {
     throw new Error(`Selected runtime ${method} is unavailable before core-product has initialized`);
   }
 
-  return invokeReferenceSelectedRuntimeMethod(getAudioEngineRuntimeMode(), method, args);
+  return invokeReferenceSelectedRuntimeMethod(runtimeMode, method, args);
 }
 
 export const selectedProductRuntime = new Proxy({} as SelectedRuntimeTarget, {
@@ -123,7 +124,7 @@ export const selectedProductRuntime = new Proxy({} as SelectedRuntimeTarget, {
 }) as unknown as SelectedProductRuntime;
 
 export function preloadSelectedProductRuntime(): Promise<SelectedProductRuntime | unknown> {
-  if (getAudioEngineRuntimeMode() === 'core-product') {
+  if (getProductRuntimeMode() === 'core-product') {
     return productEngine.preload().then(() => productEngine);
   }
   return preloadReferenceSelectedRuntime();

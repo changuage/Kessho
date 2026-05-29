@@ -1,5 +1,5 @@
 import { referenceAudioEngineDebug } from '../audio/reference/ReferenceAudioEngineDebugCompat';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { isIOSLikeDevice } from '../platform';
 
 type IOSMediaSessionEngineControls = {

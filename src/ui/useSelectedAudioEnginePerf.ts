@@ -1,4 +1,4 @@
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import type { CpuOverlayPerfCallback } from './CpuOverlay';
 import type { AudioEngineCpuSummaries } from './audioEngineRuntimeUi';
 import { useProductRuntimePerfAdapter } from './useProductRuntimePerfAdapter';

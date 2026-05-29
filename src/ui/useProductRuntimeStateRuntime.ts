@@ -1,7 +1,16 @@
 import { useSelectedAudioEngineStateRuntime } from './useSelectedAudioEngineStateRuntime';
 
-type ProductRuntimeStateRuntimeOptions = Parameters<typeof useSelectedAudioEngineStateRuntime>[0];
+type SelectedRuntimeStateRuntimeOptions = Parameters<typeof useSelectedAudioEngineStateRuntime>[0];
+type ProductRuntimeStateRuntimeOptions = Omit<SelectedRuntimeStateRuntimeOptions, 'audioEngineRuntimeMode'> & {
+  productRuntimeMode: SelectedRuntimeStateRuntimeOptions['audioEngineRuntimeMode'];
+};
 
-export function useProductRuntimeStateRuntime(options: ProductRuntimeStateRuntimeOptions): void {
-  useSelectedAudioEngineStateRuntime(options);
+export function useProductRuntimeStateRuntime({
+  productRuntimeMode,
+  ...options
+}: ProductRuntimeStateRuntimeOptions): void {
+  useSelectedAudioEngineStateRuntime({
+    ...options,
+    audioEngineRuntimeMode: productRuntimeMode,
+  });
 }

@@ -1,4 +1,4 @@
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { useAudioEngineParamSync } from './useAudioEngineParamSync';
 import { usePresetEngineSync } from './usePresetEngineSync';
 import type { SliderState } from './state';

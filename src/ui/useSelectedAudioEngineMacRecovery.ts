@@ -1,5 +1,5 @@
 import { useRef, type MutableRefObject } from 'react';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { useVisibleInterval } from './hooks/useVisibleInterval';
 import type { SliderState } from './state';
 import { useSelectedAudioEngineDebugSurface } from './useSelectedAudioEngineDebugSurface';

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import type { ProductSnapshotPatchReason } from '../audio/product/ProductEngineTypes';
 import type { ApplyPresetOptions } from './presetUtils';
 import type { SliderState } from './state';

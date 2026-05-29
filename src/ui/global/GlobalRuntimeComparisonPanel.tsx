@@ -1,6 +1,6 @@
-import { AudioEngineRuntimeSwitch } from '../AudioEngineRuntimeSwitch';
-import type { AudioEngineRuntimeMode } from '../useAudioEngineRuntimeNavigation';
-import { audioEngineRuntimeModeLabel } from '../audioEngineRuntimeUi';
+import type { ProductRuntimeSelectionMode } from '../../audio/product/ProductAudioRuntimeSelection';
+import { ProductRuntimeSwitch } from '../ProductRuntimeSwitch';
+import { productRuntimeModeLabel } from '../productRuntimeUi';
 
 export type GlobalRuntimeCpuSummary = {
   avgPercent: number;
@@ -11,18 +11,18 @@ export type GlobalRuntimeCpuSummary = {
 };
 
 export type GlobalRuntimeComparisonPanelProps = {
-  currentMode: AudioEngineRuntimeMode;
-  modes: readonly AudioEngineRuntimeMode[];
-  cpuSummaries?: Partial<Record<AudioEngineRuntimeMode, GlobalRuntimeCpuSummary>>;
+  currentMode: ProductRuntimeSelectionMode;
+  modes: readonly ProductRuntimeSelectionMode[];
+  cpuSummaries?: Partial<Record<ProductRuntimeSelectionMode, GlobalRuntimeCpuSummary>>;
   visible: boolean;
-  onModeChange?: (mode: AudioEngineRuntimeMode) => void;
+  onModeChange?: (mode: ProductRuntimeSelectionMode) => void;
 };
 
 function formatCpuPercent(value: number | null | undefined): string {
   return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(1)}%` : '--';
 }
 
-function runtimePillLabel(mode: AudioEngineRuntimeMode): string {
+function runtimePillLabel(mode: ProductRuntimeSelectionMode): string {
   if (mode === 'core-product') return 'Product Core';
   if (mode === 'core-smoke') return 'Smoke';
   return 'Web';
@@ -48,11 +48,11 @@ export function GlobalRuntimeComparisonPanel({
       <div className="scene-engine-switch">
         <span className="scene-status-label">Runtime</span>
         <div className="scene-engine-switch-stack">
-          <AudioEngineRuntimeSwitch
+          <ProductRuntimeSwitch
             currentMode={currentMode}
             modes={modes}
             onModeChange={onModeChange}
-            labelVariant="reference"
+            visible
             testId="global-audio-engine-switch"
             variant="scene"
           />
@@ -61,7 +61,7 @@ export function GlobalRuntimeComparisonPanel({
               const summary = cpuSummaries?.[mode];
               return (
                 <div key={mode} className={`scene-engine-cpu-row${currentMode === mode ? ' active' : ''}`}>
-                  <span>{mode === 'web-ts' ? 'Web TS' : audioEngineRuntimeModeLabel(mode)}</span>
+                  <span>{mode === 'web-ts' ? 'Web TS' : productRuntimeModeLabel(mode)}</span>
                   <span>avg {formatCpuPercent(summary?.avgPercent)}</span>
                   <span>peak {formatCpuPercent(summary?.peakPercent)}</span>
                 </div>

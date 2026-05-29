@@ -1,13 +1,13 @@
 import { useMemo } from 'react';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { useProductRuntimeCallbackSurfaces } from './useProductRuntimeCallbackSurfaces';
 import { useProductRuntimeControlSurfaces } from './useProductRuntimeControlSurfaces';
 import { useProductRuntimeDebugRuntime } from './useProductRuntimeDebugRuntime';
 
-export function useProductRuntimeSurfaces(audioEngineRuntimeMode: AudioEngineRuntimeMode) {
-  const callbackSurfaces = useProductRuntimeCallbackSurfaces(audioEngineRuntimeMode);
-  const controlSurfaces = useProductRuntimeControlSurfaces(audioEngineRuntimeMode);
-  const debugRuntime = useProductRuntimeDebugRuntime(audioEngineRuntimeMode);
+export function useProductRuntimeSurfaces(productRuntimeMode: ProductRuntimeSelectionMode) {
+  const callbackSurfaces = useProductRuntimeCallbackSurfaces(productRuntimeMode);
+  const controlSurfaces = useProductRuntimeControlSurfaces(productRuntimeMode);
+  const debugRuntime = useProductRuntimeDebugRuntime(productRuntimeMode);
 
   return useMemo(() => ({
     ...callbackSurfaces,

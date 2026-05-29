@@ -1,5 +1,5 @@
 import { useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import type { ProductEngineState } from '../audio/product/ProductEngineTypes';
 import type { SliderState } from './state';
 import { useSelectedAudioEngineMacRecovery } from './useSelectedAudioEngineMacRecovery';

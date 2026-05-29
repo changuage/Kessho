@@ -1,4 +1,4 @@
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type { SliderState } from './state';
 import { useSelectedAudioEngineLifecycle } from './useSelectedAudioEngineLifecycle';
 import { useSelectedAudioEngineMediaSession } from './useSelectedAudioEngineMediaSession';
@@ -7,7 +7,7 @@ import { useSelectedAudioEnginePlaybackControls } from './useSelectedAudioEngine
 type NativeDualRanges = Record<string, { min: number; max: number }>;
 
 type UseProductRuntimePlaybackAdapterOptions = {
-  audioEngineRuntimeMode: AudioEngineRuntimeMode;
+  productRuntimeMode: ProductRuntimeSelectionMode;
   capacitorAudioSessionDiagnosticActive: boolean;
   setCapacitorAudioSessionDiagnosticActive: (active: boolean) => void;
 };
@@ -27,7 +27,7 @@ type ProductRuntimePlaybackAdapter = {
 };
 
 export function useProductRuntimePlaybackAdapter({
-  audioEngineRuntimeMode,
+  productRuntimeMode,
   capacitorAudioSessionDiagnosticActive,
   setCapacitorAudioSessionDiagnosticActive,
 }: UseProductRuntimePlaybackAdapterOptions): ProductRuntimePlaybackAdapter {
@@ -38,14 +38,14 @@ export function useProductRuntimePlaybackAdapter({
     preloadSelectedAudioEngine: preloadProductRuntime,
     stopSelectedAudioEngine: stopProductRuntime,
     fadeSelectedAudioEngineOutput: fadeProductRuntimeOutput,
-  } = useSelectedAudioEngineLifecycle(audioEngineRuntimeMode);
+  } = useSelectedAudioEngineLifecycle(productRuntimeMode);
 
   const {
     connectSelectedMediaSessionToAudio,
     setupSelectedIOSMediaSession,
     stopSelectedIOSMediaSession,
   } = useSelectedAudioEngineMediaSession({
-    audioEngineRuntimeMode,
+    audioEngineRuntimeMode: productRuntimeMode,
     resumeSelectedAudioEngine: resumeProductRuntime,
     suspendSelectedAudioEngine: suspendProductRuntime,
   });

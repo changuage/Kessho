@@ -7,7 +7,7 @@ import {
   createCoreProductSequencerSwingEvents,
 } from '../audio/coreProductEvents';
 import { productEngine } from '../audio/product/ProductEngineProxy';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime';
 
 type SequencerPitchState = { steps?: number; direction?: string; scaleQuantize?: boolean } | null;

@@ -1,7 +1,16 @@
 import { useSelectedAudioEngineRuntimeTelemetry } from './useSelectedAudioEngineRuntimeTelemetry';
 
-type ProductRuntimeTelemetryOptions = Parameters<typeof useSelectedAudioEngineRuntimeTelemetry>[0];
+type SelectedRuntimeTelemetryOptions = Parameters<typeof useSelectedAudioEngineRuntimeTelemetry>[0];
+type ProductRuntimeTelemetryOptions = Omit<SelectedRuntimeTelemetryOptions, 'audioEngineRuntimeMode'> & {
+  productRuntimeMode: SelectedRuntimeTelemetryOptions['audioEngineRuntimeMode'];
+};
 
-export function useProductRuntimeTelemetry(options: ProductRuntimeTelemetryOptions) {
-  return useSelectedAudioEngineRuntimeTelemetry(options);
+export function useProductRuntimeTelemetry({
+  productRuntimeMode,
+  ...options
+}: ProductRuntimeTelemetryOptions) {
+  return useSelectedAudioEngineRuntimeTelemetry({
+    ...options,
+    audioEngineRuntimeMode: productRuntimeMode,
+  });
 }

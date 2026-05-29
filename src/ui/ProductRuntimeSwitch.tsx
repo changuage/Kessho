@@ -1,14 +1,16 @@
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
-import { SelectedAudioEngineRuntimeSwitch } from './SelectedAudioEngineRuntimeSwitch';
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
+import { RuntimeModeSwitch } from './RuntimeModeSwitch';
 
-export type ProductRuntimeMode = AudioEngineRuntimeMode;
+export type ProductRuntimeSwitchMode = ProductRuntimeSelectionMode;
 
 type ProductRuntimeSwitchProps = {
-  currentMode: ProductRuntimeMode;
-  modes: readonly ProductRuntimeMode[];
-  onModeChange: (mode: ProductRuntimeMode) => void;
+  currentMode: ProductRuntimeSwitchMode;
+  modes: readonly ProductRuntimeSwitchMode[];
+  onModeChange: (mode: ProductRuntimeSwitchMode) => void;
   visible: boolean;
   floating?: boolean;
+  testId?: string;
+  variant?: 'main' | 'scene';
 };
 
 export function ProductRuntimeSwitch({
@@ -17,14 +19,19 @@ export function ProductRuntimeSwitch({
   onModeChange,
   visible,
   floating = false,
+  testId = 'main-audio-engine-switch',
+  variant = 'main',
 }: ProductRuntimeSwitchProps): JSX.Element | null {
+  if (!visible) return null;
   return (
-    <SelectedAudioEngineRuntimeSwitch
+    <RuntimeModeSwitch
       currentMode={currentMode}
       modes={modes}
       onModeChange={onModeChange}
-      visible={visible}
       floating={floating}
+      labelVariant="reference"
+      testId={testId}
+      variant={variant}
     />
   );
 }

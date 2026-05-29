@@ -22,13 +22,13 @@ export function useProductRuntimeSession() {
 
 export function useProductRuntimeShell(options: ProductRuntimeShellOptions) {
   const playbackRuntime = useProductRuntimePlaybackRuntime({
-    audioEngineRuntimeMode: options.audioEngineRuntimeMode,
+    productRuntimeMode: options.productRuntimeMode,
     capacitorAudioSessionDiagnosticActive: options.capacitorAudioSessionDiagnosticActive,
     setCapacitorAudioSessionDiagnosticActive: options.setCapacitorAudioSessionDiagnosticActive,
   });
 
   const runtimeUi = useProductRuntimeUi({
-    audioEngineRuntimeMode: options.audioEngineRuntimeMode,
+    productRuntimeMode: options.productRuntimeMode,
     preloadProductRuntime: playbackRuntime.preloadProductRuntime,
     stateRef: options.stateRef,
     stopProductRuntime: playbackRuntime.stopProductRuntime,

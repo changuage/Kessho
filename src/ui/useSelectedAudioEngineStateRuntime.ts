@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import type { ProductEngineState } from '../audio/product/ProductEngineTypes';
 import { useSelectedAudioEngineStateReconciliation } from './useSelectedAudioEngineStateReconciliation';
 import { useSelectedAudioEngineStateReconciliationSurface } from './useSelectedAudioEngineStateReconciliationSurface';

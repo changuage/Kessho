@@ -1,7 +1,6 @@
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { useSelectedAudioEngineRecordingRuntime } from './useSelectedAudioEngineRecordingRuntime';
 
-type ProductRuntimeRecordingRuntimeMode = Parameters<typeof useSelectedAudioEngineRecordingRuntime>[0];
-
-export function useProductRuntimeRecordingRuntime(audioEngineRuntimeMode: ProductRuntimeRecordingRuntimeMode) {
-  return useSelectedAudioEngineRecordingRuntime(audioEngineRuntimeMode);
+export function useProductRuntimeRecordingRuntime(productRuntimeMode: ProductRuntimeSelectionMode) {
+  return useSelectedAudioEngineRecordingRuntime(productRuntimeMode);
 }

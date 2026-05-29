@@ -1,6 +1,11 @@
 import { useProductRuntimePlaybackAdapter } from './useProductRuntimePlaybackAdapter';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 
-type UseSelectedAudioEnginePlaybackRuntimeOptions = Parameters<typeof useProductRuntimePlaybackAdapter>[0];
+type UseSelectedAudioEnginePlaybackRuntimeOptions = {
+  audioEngineRuntimeMode: AudioEngineRuntimeMode;
+  capacitorAudioSessionDiagnosticActive: boolean;
+  setCapacitorAudioSessionDiagnosticActive: (active: boolean) => void;
+};
 type ProductRuntimePlaybackAdapter = ReturnType<typeof useProductRuntimePlaybackAdapter>;
 type SelectedAudioEnginePlaybackRuntime = {
   startSelectedPlayback: ProductRuntimePlaybackAdapter['startProductPlayback'];
@@ -16,7 +21,7 @@ export function useSelectedAudioEnginePlaybackRuntime({
   setCapacitorAudioSessionDiagnosticActive,
 }: UseSelectedAudioEnginePlaybackRuntimeOptions): SelectedAudioEnginePlaybackRuntime {
   const playbackAdapter = useProductRuntimePlaybackAdapter({
-    audioEngineRuntimeMode,
+    productRuntimeMode: audioEngineRuntimeMode,
     capacitorAudioSessionDiagnosticActive,
     setCapacitorAudioSessionDiagnosticActive,
   });

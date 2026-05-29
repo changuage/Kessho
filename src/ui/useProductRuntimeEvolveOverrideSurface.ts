@@ -1,7 +1,6 @@
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { useSelectedAudioEngineEvolveOverrideSurface } from './useSelectedAudioEngineEvolveOverrideSurface';
 
-type ProductRuntimeEvolveOverrideSurfaceMode = Parameters<typeof useSelectedAudioEngineEvolveOverrideSurface>[0];
-
-export function useProductRuntimeEvolveOverrideSurface(audioEngineRuntimeMode: ProductRuntimeEvolveOverrideSurfaceMode) {
-  return useSelectedAudioEngineEvolveOverrideSurface(audioEngineRuntimeMode);
+export function useProductRuntimeEvolveOverrideSurface(productRuntimeMode: ProductRuntimeSelectionMode) {
+  return useSelectedAudioEngineEvolveOverrideSurface(productRuntimeMode);
 }

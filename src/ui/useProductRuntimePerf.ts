@@ -4,8 +4,8 @@ type ProductRuntimePerfMode = Parameters<typeof useProductRuntimePerfAdapter>[0]
 type ProductRuntimePerfVisible = Parameters<typeof useProductRuntimePerfAdapter>[1];
 
 export function useProductRuntimePerf(
-  audioEngineRuntimeMode: ProductRuntimePerfMode,
+  productRuntimeMode: ProductRuntimePerfMode,
   showAudioEngineSwitcher: ProductRuntimePerfVisible,
 ) {
-  return useProductRuntimePerfAdapter(audioEngineRuntimeMode, showAudioEngineSwitcher);
+  return useProductRuntimePerfAdapter(productRuntimeMode, showAudioEngineSwitcher);
 }

@@ -1580,17 +1580,17 @@ const App: React.FC = () => {
   const [state, setState] = useState<SliderState>(() => resolveProductRuntimeInitialState({ normalizeState: normalizePresetForWeb }));
   const stateRef = useRef(state);
   stateRef.current = state;
-  const { audioEngineRuntimeMode } = useProductRuntimeSession();
+  const { productRuntimeMode } = useProductRuntimeSession();
   const lastAppliedPresetLoadRef = useRef<{
     preset: SavedPreset;
     state: SliderState;
   } | null>(null);
   const [capacitorAudioSessionDiagnosticActive, setCapacitorAudioSessionDiagnosticActive] = useState(false);
   const {
-    audioEngineRuntimeModes,
+    productRuntimeModes,
     showAudioEngineSwitcher,
     startInAdvancedEditor,
-    handleAudioEngineRuntimeModeChange,
+    handleProductRuntimeModeChange,
     preloadAdvancedEditorRuntime,
     setProductPerfMonitorEnabled,
     setProductPerfUpdateCallback,
@@ -1600,29 +1600,29 @@ const App: React.FC = () => {
     preloadProductRuntime,
     fadeProductRuntimeOutput,
   } = useProductRuntimeShell({
-    audioEngineRuntimeMode,
+    productRuntimeMode,
     capacitorAudioSessionDiagnosticActive,
     setCapacitorAudioSessionDiagnosticActive,
     stateRef,
   });
   const {
-    setSelectedDrumStepPositionCallback,
-    setSelectedDrumEvolveTriggerCallback,
-    setSelectedDrumTriggerCallback,
-    setSelectedSynthStepPositionCallback,
-    setSelectedSynthEvolveTriggerCallback,
-    setSelectedLeadExpressionCallback,
-    setSelectedLeadMorphCallback,
-    setSelectedPadMorphTriggerCallback,
-    setSelectedPad2MorphTriggerCallback,
-    setSelectedLeadDistanceCallback,
-    setSelectedPadDistanceTriggerCallback,
-    setSelectedPad2DistanceTriggerCallback,
-    setSelectedPianoDistanceTriggerCallback,
-    setSelectedLeadDelayCallback,
-    setSelectedDrumMorphTriggerCallback,
-    setSelectedDrumParamSHTriggerCallback,
-    setSelectedGranularSHTriggerCallback,
+    setProductDrumStepPositionCallback,
+    setProductDrumEvolveTriggerCallback,
+    setProductDrumTriggerCallback,
+    setProductSynthStepPositionCallback,
+    setProductSynthEvolveTriggerCallback,
+    setProductLeadExpressionCallback,
+    setProductLeadMorphCallback,
+    setProductPadMorphTriggerCallback,
+    setProductPad2MorphTriggerCallback,
+    setProductLeadDistanceCallback,
+    setProductPadDistanceTriggerCallback,
+    setProductPad2DistanceTriggerCallback,
+    setProductPianoDistanceTriggerCallback,
+    setProductLeadDelayCallback,
+    setProductDrumMorphTriggerCallback,
+    setProductDrumParamSHTriggerCallback,
+    setProductGranularSHTriggerCallback,
     setSelectedDrumEvolveOverridesChangedCallback,
     setSelectedSynthEvolveOverridesChangedCallback,
     setSelectedSynthNoteRangeEvolvedCallback,
@@ -1631,10 +1631,10 @@ const App: React.FC = () => {
     setSelectedDrumParamSHRange,
     setSelectedDualRanges,
     setSelectedRuntimeWalkRanges,
-    setSelectedJourneyMorphClockCallback: setSelectedJourneyMorphClockCallbackRuntime,
-    startSelectedJourneyMorphClock: startSelectedJourneyMorphClockRuntime,
-    stopSelectedJourneyMorphClock: stopSelectedJourneyMorphClockRuntime,
-    resetSelectedCofDrift: resetSelectedCofDriftRuntime,
+    setProductJourneyMorphClockCallback: setProductJourneyMorphClockCallbackRuntime,
+    startProductJourneyMorphClock: startProductJourneyMorphClockRuntime,
+    stopProductJourneyMorphClock: stopProductJourneyMorphClockRuntime,
+    resetProductCofDrift: resetProductCofDriftRuntime,
     setProductDrumEuclidEvolveConfigs,
     setProductSynthEuclidEvolveConfigs,
     setProductDrumEuclidClockDivs,
@@ -1663,7 +1663,7 @@ const App: React.FC = () => {
     liveWaveformTelemetryAvailable,
     textureDebugAvailable,
     updateSelectedReferenceParams,
-  } = useProductRuntimeSurfaces(audioEngineRuntimeMode);
+  } = useProductRuntimeSurfaces(productRuntimeMode);
 
   const [engineState, setEngineState] = useState<ProductEngineState>({
     isRunning: false,
@@ -1685,10 +1685,10 @@ const App: React.FC = () => {
   const playbackIsRunning = engineState.isRunning;
 
   const { resetCofDrift, startJourneyMorphClock, stopJourneyMorphClock } = useProductRuntimeMorphSurface({
-    resetSelectedCofDrift: resetSelectedCofDriftRuntime,
-    setSelectedJourneyMorphClockCallback: setSelectedJourneyMorphClockCallbackRuntime,
-    startSelectedJourneyMorphClock: startSelectedJourneyMorphClockRuntime,
-    stopSelectedJourneyMorphClock: stopSelectedJourneyMorphClockRuntime,
+    resetProductCofDrift: resetProductCofDriftRuntime,
+    setProductJourneyMorphClockCallback: setProductJourneyMorphClockCallbackRuntime,
+    startProductJourneyMorphClock: startProductJourneyMorphClockRuntime,
+    stopProductJourneyMorphClock: stopProductJourneyMorphClockRuntime,
   });
   const {
     scheduleAudioEngineParamUpdate,
@@ -1697,13 +1697,13 @@ const App: React.FC = () => {
     syncScheduledAudioEngineState,
     skipNextPresetLoadEngineSync,
   } = useProductRuntimePresetSurface({
-    audioEngineRuntimeMode,
-    resetSelectedCofDrift: resetCofDrift,
+    productRuntimeMode,
+    resetProductCofDrift: resetCofDrift,
     updateSelectedReferenceParams,
   });
 
   const productRuntimeManualTriggers = useProductRuntimeManualTriggers({
-    audioEngineRuntimeMode,
+    productRuntimeMode,
     stateRef,
   });
 
@@ -1784,7 +1784,7 @@ const App: React.FC = () => {
     getSelectedPadLfoValue,
     selectedRuntimeSupportsRangeKey,
   } = useProductRuntimeLifecycleSurface({
-    audioEngineRuntimeMode,
+    productRuntimeMode,
     getSelectedTransportDebugState,
     macShellAvailable,
     playbackIsRunning,
@@ -1956,23 +1956,23 @@ const App: React.FC = () => {
   );
   useProductRuntimeCallbackRegistrations({
     activeTab,
-    setSelectedDrumEvolveTriggerCallback,
-    setSelectedDrumMorphTriggerCallback,
-    setSelectedDrumParamSHTriggerCallback,
-    setSelectedDrumStepPositionCallback,
-    setSelectedDrumTriggerCallback,
-    setSelectedGranularSHTriggerCallback,
-    setSelectedLeadDelayCallback,
-    setSelectedLeadDistanceCallback,
-    setSelectedLeadExpressionCallback,
-    setSelectedLeadMorphCallback,
-    setSelectedPad2DistanceTriggerCallback,
-    setSelectedPad2MorphTriggerCallback,
-    setSelectedPadDistanceTriggerCallback,
-    setSelectedPadMorphTriggerCallback,
-    setSelectedPianoDistanceTriggerCallback,
-    setSelectedSynthEvolveTriggerCallback,
-    setSelectedSynthStepPositionCallback,
+    setProductDrumEvolveTriggerCallback,
+    setProductDrumMorphTriggerCallback,
+    setProductDrumParamSHTriggerCallback,
+    setProductDrumStepPositionCallback,
+    setProductDrumTriggerCallback,
+    setProductGranularSHTriggerCallback,
+    setProductLeadDelayCallback,
+    setProductLeadDistanceCallback,
+    setProductLeadExpressionCallback,
+    setProductLeadMorphCallback,
+    setProductPad2DistanceTriggerCallback,
+    setProductPad2MorphTriggerCallback,
+    setProductPadDistanceTriggerCallback,
+    setProductPadMorphTriggerCallback,
+    setProductPianoDistanceTriggerCallback,
+    setProductSynthEvolveTriggerCallback,
+    setProductSynthStepPositionCallback,
     stateRef,
     uiMode,
   });
@@ -3874,11 +3874,11 @@ const App: React.FC = () => {
       onRequestPlaybackStart: requestSequencerPlaybackStart,
       preloadProductRuntime,
       productRuntimeManualTriggers,
-      setSelectedDrumEvolveTriggerCallback,
-      setSelectedDrumStepPositionCallback,
-      setSelectedDrumTriggerCallback,
-      setSelectedSynthEvolveTriggerCallback,
-      setSelectedSynthStepPositionCallback,
+      setProductDrumEvolveTriggerCallback,
+      setProductDrumStepPositionCallback,
+      setProductDrumTriggerCallback,
+      setProductSynthEvolveTriggerCallback,
+      setProductSynthStepPositionCallback,
     },
   });
 
@@ -5341,9 +5341,9 @@ const App: React.FC = () => {
         >
           {renderMacAudioStatusPill()}
           <ProductRuntimeSwitch
-            currentMode={audioEngineRuntimeMode}
-            modes={audioEngineRuntimeModes}
-            onModeChange={handleAudioEngineRuntimeModeChange}
+            currentMode={productRuntimeMode}
+            modes={productRuntimeModes}
+            onModeChange={handleProductRuntimeModeChange}
             visible={showAudioEngineSwitcher}
             floating
           />
@@ -5496,9 +5496,9 @@ const App: React.FC = () => {
             ❄
           </button>
           <ProductRuntimeSwitch
-            currentMode={audioEngineRuntimeMode}
-            modes={audioEngineRuntimeModes}
-            onModeChange={handleAudioEngineRuntimeModeChange}
+            currentMode={productRuntimeMode}
+            modes={productRuntimeModes}
+            onModeChange={handleProductRuntimeModeChange}
             visible={showAudioEngineSwitcher}
           />
         </div>

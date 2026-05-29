@@ -1,15 +1,23 @@
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { useSelectedAudioEngineDebugRuntime } from './useSelectedAudioEngineDebugRuntime';
 
-type ProductRuntimeDebugRuntimeMode = Parameters<typeof useSelectedAudioEngineDebugRuntime>[0];
+type ProductRuntimeDebugRuntime = Omit<
+  ReturnType<typeof useSelectedAudioEngineDebugRuntime>,
+  'selectedAudioEngineDebugAnalysers'
+> & {
+  productRuntimeDebugAnalysers: ReturnType<
+    typeof useSelectedAudioEngineDebugRuntime
+  >['selectedAudioEngineDebugAnalysers'];
+};
 
-export function useProductRuntimeDebugRuntime(audioEngineRuntimeMode: ProductRuntimeDebugRuntimeMode) {
-  const {
-    selectedAudioEngineDebugAnalysers,
-    ...debugRuntime
-  } = useSelectedAudioEngineDebugRuntime(audioEngineRuntimeMode);
+export function useProductRuntimeDebugRuntime(
+  productRuntimeMode: ProductRuntimeSelectionMode,
+): ProductRuntimeDebugRuntime {
+  const debugRuntime = useSelectedAudioEngineDebugRuntime(productRuntimeMode);
+  const { selectedAudioEngineDebugAnalysers, ...productDebugRuntime } = debugRuntime;
 
   return {
-    ...debugRuntime,
+    ...productDebugRuntime,
     productRuntimeDebugAnalysers: selectedAudioEngineDebugAnalysers,
   };
 }

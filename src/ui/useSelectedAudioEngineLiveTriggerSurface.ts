@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { productEngine } from '../audio/product/ProductEngineProxy';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime';
 
 type LeadMorph = { lead1: number; lead2: number };

@@ -1,6 +1,6 @@
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { useSelectedAudioEngineSequencerControls } from './useSelectedAudioEngineSequencerControls';
 
-type ProductRuntimeSequencerControlsMode = Parameters<typeof useSelectedAudioEngineSequencerControls>[0];
 type SelectedRuntimeSequencerControls = ReturnType<typeof useSelectedAudioEngineSequencerControls>;
 
 type ProductRuntimeSequencerControls = {
@@ -26,9 +26,9 @@ type ProductRuntimeSequencerControls = {
 };
 
 export function useProductRuntimeSequencerControls(
-  audioEngineRuntimeMode: ProductRuntimeSequencerControlsMode,
+  productRuntimeMode: ProductRuntimeSelectionMode,
 ): ProductRuntimeSequencerControls {
-  const sequencerControls = useSelectedAudioEngineSequencerControls(audioEngineRuntimeMode);
+  const sequencerControls = useSelectedAudioEngineSequencerControls(productRuntimeMode);
 
   return {
     setProductDrumEuclidEvolveConfigs: sequencerControls.setSelectedDrumEuclidEvolveConfigs,

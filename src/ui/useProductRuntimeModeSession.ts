@@ -24,6 +24,6 @@ export function resolveProductRuntimeModeInitialState({
 
 export function useProductRuntimeModeSession() {
   return {
-    audioEngineRuntimeMode: useProductRuntimeMode(),
+    productRuntimeMode: useProductRuntimeMode(),
   };
 }

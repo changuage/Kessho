@@ -459,7 +459,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(audioEngineRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineCallbackSurfaces'") ||
@@ -475,7 +475,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(audioEngineRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         !source.includes('productRuntimeDebugAnalysers,') ||
@@ -575,7 +575,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(audioEngineRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineCallbackSurfaces'") ||
@@ -597,7 +597,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(audioEngineRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineControlSurfaces'") ||
@@ -629,7 +629,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(audioEngineRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineCallbackSurfaces'") ||
@@ -642,7 +642,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(audioEngineRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineControlSurfaces'") ||
@@ -692,7 +692,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(audioEngineRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineControlSurfaces'") ||
@@ -826,7 +826,7 @@ for (const rootDir of sourceRoots) {
         !source.includes('sequencer: {') ||
         !source.includes('control: {') ||
         !source.includes('productPageRuntimeSurface') ||
-        !source.includes('audioEngineRuntimeMode,') ||
+        !source.includes('productRuntimeMode,') ||
         !source.includes('productRuntimeManualTriggers,') ||
         !source.includes('{...productPageRuntimeSurface.synthPageRuntimeProps}') ||
         !source.includes('{...productPageRuntimeSurface.drumPageRuntimeProps}') ||
@@ -842,9 +842,21 @@ for (const rootDir of sourceRoots) {
       }
       if (
         source.includes("from './ui/useSelectedAudioEngineMorphRuntime'") ||
-        source.includes('useSelectedAudioEngineMorphRuntime({')
+        source.includes('useSelectedAudioEngineMorphRuntime({') ||
+        source.includes('setSelectedJourneyMorphClockCallback: setSelectedJourneyMorphClockCallbackRuntime') ||
+        source.includes('startSelectedJourneyMorphClock: startSelectedJourneyMorphClockRuntime') ||
+        source.includes('stopSelectedJourneyMorphClock: stopSelectedJourneyMorphClockRuntime') ||
+        source.includes('resetSelectedCofDrift: resetSelectedCofDriftRuntime')
       ) {
         failures.push(`${relative}: App must reach CoF drift and journey morph clock runtime ownership through useProductRuntimeMorphSurface instead of selected AudioEngine imports`);
+      }
+      if (
+        !source.includes('setProductJourneyMorphClockCallback: setProductJourneyMorphClockCallbackRuntime') ||
+        !source.includes('startProductJourneyMorphClock: startProductJourneyMorphClockRuntime') ||
+        !source.includes('stopProductJourneyMorphClock: stopProductJourneyMorphClockRuntime') ||
+        !source.includes('resetProductCofDrift: resetProductCofDriftRuntime')
+      ) {
+        failures.push(`${relative}: App must pass product-named journey morph runtime controls into useProductRuntimeMorphSurface`);
       }
       if (
         !source.includes("from './ui/useProductRuntimeMorphSurface'") ||
@@ -1224,7 +1236,7 @@ for (const rootDir of sourceRoots) {
         "Omit<Parameters<typeof useProductRuntimeStateRuntime>[0], 'enabled'>",
         'Parameters<typeof useProductRuntimeMacRecovery>[0]',
         'export function useProductRuntimeLifecycleSurface(options: ProductRuntimeLifecycleSurfaceOptions)',
-        'useProductRuntimeRecordingRuntime(options.audioEngineRuntimeMode)',
+        'useProductRuntimeRecordingRuntime(options.productRuntimeMode)',
         'useProductRuntimeTelemetry({',
         'useProductRuntimeStateRuntime({',
         'useProductRuntimeMacRecovery({',
@@ -1248,15 +1260,15 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeRecordingRuntime.ts') {
       for (const requiredSnippet of [
         "import { useSelectedAudioEngineRecordingRuntime } from './useSelectedAudioEngineRecordingRuntime'",
-        'type ProductRuntimeRecordingRuntimeMode = Parameters<typeof useSelectedAudioEngineRecordingRuntime>[0]',
-        'export function useProductRuntimeRecordingRuntime(audioEngineRuntimeMode: ProductRuntimeRecordingRuntimeMode)',
-        'return useSelectedAudioEngineRecordingRuntime(audioEngineRuntimeMode)',
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        'export function useProductRuntimeRecordingRuntime(productRuntimeMode: ProductRuntimeSelectionMode)',
+        'return useSelectedAudioEngineRecordingRuntime(productRuntimeMode)',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product runtime recording runtime must delegate through selected-runtime compatibility hook; missing ${requiredSnippet}`);
         }
       }
-      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug') || source.includes("from '../audio/product/")) {
+      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug')) {
         failures.push(`${relative}: product runtime recording runtime must not touch runtime implementations directly`);
       }
     }
@@ -1264,9 +1276,10 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeTelemetry.ts') {
       for (const requiredSnippet of [
         "import { useSelectedAudioEngineRuntimeTelemetry } from './useSelectedAudioEngineRuntimeTelemetry'",
-        'type ProductRuntimeTelemetryOptions = Parameters<typeof useSelectedAudioEngineRuntimeTelemetry>[0]',
-        'export function useProductRuntimeTelemetry(options: ProductRuntimeTelemetryOptions)',
-        'return useSelectedAudioEngineRuntimeTelemetry(options)',
+        'type ProductRuntimeTelemetryOptions = Omit<SelectedRuntimeTelemetryOptions',
+        'productRuntimeMode: SelectedRuntimeTelemetryOptions',
+        'export function useProductRuntimeTelemetry({',
+        'audioEngineRuntimeMode: productRuntimeMode',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product runtime telemetry must delegate through selected-runtime compatibility hook; missing ${requiredSnippet}`);
@@ -1280,9 +1293,10 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeStateRuntime.ts') {
       for (const requiredSnippet of [
         "import { useSelectedAudioEngineStateRuntime } from './useSelectedAudioEngineStateRuntime'",
-        'type ProductRuntimeStateRuntimeOptions = Parameters<typeof useSelectedAudioEngineStateRuntime>[0]',
-        'export function useProductRuntimeStateRuntime(options: ProductRuntimeStateRuntimeOptions): void',
-        'useSelectedAudioEngineStateRuntime(options)',
+        'type ProductRuntimeStateRuntimeOptions = Omit<SelectedRuntimeStateRuntimeOptions',
+        'productRuntimeMode: SelectedRuntimeStateRuntimeOptions',
+        'export function useProductRuntimeStateRuntime({',
+        'audioEngineRuntimeMode: productRuntimeMode',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product runtime state runtime must delegate through selected-runtime compatibility hook; missing ${requiredSnippet}`);
@@ -1296,9 +1310,10 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeMacRecovery.ts') {
       for (const requiredSnippet of [
         "import { useSelectedAudioEngineMacRecovery } from './useSelectedAudioEngineMacRecovery'",
-        'type ProductRuntimeMacRecoveryOptions = Parameters<typeof useSelectedAudioEngineMacRecovery>[0]',
-        'export function useProductRuntimeMacRecovery(options: ProductRuntimeMacRecoveryOptions): void',
-        'useSelectedAudioEngineMacRecovery(options)',
+        'type ProductRuntimeMacRecoveryOptions = Omit<SelectedRuntimeMacRecoveryOptions',
+        'productRuntimeMode: SelectedRuntimeMacRecoveryOptions',
+        'export function useProductRuntimeMacRecovery({',
+        'audioEngineRuntimeMode: productRuntimeMode',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product runtime Mac recovery must delegate through selected-runtime compatibility hook; missing ${requiredSnippet}`);
@@ -1343,7 +1358,7 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useSelectedAudioEnginePlaybackRuntime.ts') {
       for (const requiredSnippet of [
         "import { useProductRuntimePlaybackAdapter } from './useProductRuntimePlaybackAdapter'",
-        'type UseSelectedAudioEnginePlaybackRuntimeOptions = Parameters<typeof useProductRuntimePlaybackAdapter>[0]',
+        'type UseSelectedAudioEnginePlaybackRuntimeOptions = {',
         'type ProductRuntimePlaybackAdapter = ReturnType<typeof useProductRuntimePlaybackAdapter>',
         'startSelectedPlayback: ProductRuntimePlaybackAdapter',
         'const playbackAdapter = useProductRuntimePlaybackAdapter({',
@@ -1352,7 +1367,7 @@ for (const rootDir of sourceRoots) {
         'preloadSelectedAudioEngine: playbackAdapter.preloadProductRuntime',
         'stopSelectedAudioEngine: playbackAdapter.stopProductRuntime',
         'fadeSelectedAudioEngineOutput: playbackAdapter.fadeProductRuntimeOutput',
-        'audioEngineRuntimeMode,',
+        'productRuntimeMode: audioEngineRuntimeMode',
         'capacitorAudioSessionDiagnosticActive,',
         'setCapacitorAudioSessionDiagnosticActive,',
       ]) {
@@ -1370,8 +1385,11 @@ for (const rootDir of sourceRoots) {
         "import { useSelectedAudioEngineLifecycle } from './useSelectedAudioEngineLifecycle'",
         "import { useSelectedAudioEngineMediaSession } from './useSelectedAudioEngineMediaSession'",
         "import { useSelectedAudioEnginePlaybackControls } from './useSelectedAudioEnginePlaybackControls'",
-        'useSelectedAudioEngineLifecycle(audioEngineRuntimeMode)',
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        'productRuntimeMode: ProductRuntimeSelectionMode',
+        'useSelectedAudioEngineLifecycle(productRuntimeMode)',
         'useSelectedAudioEngineMediaSession({',
+        'audioEngineRuntimeMode: productRuntimeMode',
         'useSelectedAudioEnginePlaybackControls({',
         'resumeSelectedAudioEngine: resumeProductRuntime',
         'suspendSelectedAudioEngine: suspendProductRuntime',
@@ -1740,16 +1758,19 @@ for (const rootDir of sourceRoots) {
 
     if (relative === 'src/ui/useProductRuntimeManualTriggers.ts') {
       for (const requiredSnippet of [
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
         "import { useSelectedAudioEngineManualTriggers } from './useSelectedAudioEngineManualTriggers'",
-        'type ProductRuntimeManualTriggersOptions = Parameters<typeof useSelectedAudioEngineManualTriggers>[0]',
-        'export function useProductRuntimeManualTriggers(options: ProductRuntimeManualTriggersOptions)',
-        'return useSelectedAudioEngineManualTriggers(options)',
+        'type ProductRuntimeManualTriggersOptions = {',
+        'productRuntimeMode: ProductRuntimeSelectionMode',
+        'type ProductRuntimeManualTriggers = {',
+        'export function useProductRuntimeManualTriggers(',
+        'audioEngineRuntimeMode: productRuntimeMode',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product manual trigger surface must delegate through the selected-runtime compatibility hook; missing ${requiredSnippet}`);
         }
       }
-      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug') || source.includes("from '../audio/product/")) {
+      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug')) {
         failures.push(`${relative}: product manual trigger surface must not touch runtime implementations directly`);
       }
     }
@@ -2045,19 +2066,25 @@ for (const rootDir of sourceRoots) {
         'export type ProductRuntimePageControlProps = {',
         'preloadProductRuntime: () => Promise<unknown>',
         'productRuntimeManualTriggers: ProductRuntimeManualTriggers',
+        'setProductDrumStepPositionCallback',
+        'setProductSynthEvolveTriggerCallback',
         'onRequestPlaybackStart: (statePatch?: Partial<SliderState>) => void',
         'export function useProductRuntimePageControlProps({',
         'preloadSelectedAudioEngine: preloadProductRuntime',
+        'setSelectedDrumStepPositionCallback: setProductDrumStepPositionCallback',
+        'setSelectedSynthEvolveTriggerCallback: setProductSynthEvolveTriggerCallback',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product page control props must delegate through the selected-runtime compatibility hook; missing ${requiredSnippet}`);
         }
       }
+      const productPageControlType = source.match(/export type ProductRuntimePageControlProps = \{[\s\S]*?\};/)?.[0] ?? '';
       if (
         source.includes('type SelectedAudioEnginePageControlRuntimeProps') ||
-        source.includes('ProductRuntimePageControlProps = Omit<')
+        source.includes('ProductRuntimePageControlProps = Omit<') ||
+        /^\s*setSelected/m.test(productPageControlType)
       ) {
-        failures.push(`${relative}: product page control props must define an App-facing product contract instead of deriving from selected runtime prop types`);
+        failures.push(`${relative}: product page control props must define an App-facing product contract instead of deriving from or exposing selected runtime prop types`);
       }
       if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug') || source.includes("from '../audio/product/")) {
         failures.push(`${relative}: product page control props must not touch runtime implementations directly`);
@@ -2127,13 +2154,21 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeMorphSurface.ts') {
       for (const requiredSnippet of [
         "import { useSelectedAudioEngineMorphRuntime } from './useSelectedAudioEngineMorphRuntime'",
-        'type ProductRuntimeMorphSurfaceOptions = Parameters<typeof useSelectedAudioEngineMorphRuntime>[0]',
-        'export function useProductRuntimeMorphSurface(options: ProductRuntimeMorphSurfaceOptions)',
-        'return useSelectedAudioEngineMorphRuntime(options)',
+        'type SelectedRuntimeMorphOptions = Parameters<typeof useSelectedAudioEngineMorphRuntime>[0]',
+        'type ProductRuntimeMorphSurfaceOptions = {',
+        'resetProductCofDrift: SelectedRuntimeMorphOptions',
+        'setProductJourneyMorphClockCallback: SelectedRuntimeMorphOptions',
+        'export function useProductRuntimeMorphSurface({',
+        'resetSelectedCofDrift: resetProductCofDrift',
+        'setSelectedJourneyMorphClockCallback: setProductJourneyMorphClockCallback',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product morph runtime surface must delegate through the selected-runtime compatibility hook; missing ${requiredSnippet}`);
         }
+      }
+      const productMorphSurfaceType = source.match(/type ProductRuntimeMorphSurfaceOptions = \{[\s\S]*?\};/)?.[0] ?? '';
+      if (/^\s*(resetSelected|setSelected|startSelected|stopSelected)/m.test(productMorphSurfaceType)) {
+        failures.push(`${relative}: product morph runtime surface must expose product-named options only`);
       }
       if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug') || source.includes("from '../audio/product/")) {
         failures.push(`${relative}: product morph runtime surface must not touch runtime implementations directly`);
@@ -2712,13 +2747,21 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimePresetSurface.ts') {
       for (const requiredSnippet of [
         "import { useSelectedAudioEnginePresetRuntimeSurface } from './useSelectedAudioEnginePresetRuntimeSurface'",
-        'type ProductRuntimePresetSurfaceOptions = Parameters<typeof useSelectedAudioEnginePresetRuntimeSurface>[0]',
-        'export function useProductRuntimePresetSurface(options: ProductRuntimePresetSurfaceOptions)',
-        'return useSelectedAudioEnginePresetRuntimeSurface(options)',
+        'type SelectedPresetRuntimeSurfaceOptions = Parameters<typeof useSelectedAudioEnginePresetRuntimeSurface>[0]',
+        'type ProductRuntimePresetSurfaceOptions = Omit<',
+        "'resetSelectedCofDrift'",
+        'resetProductCofDrift: SelectedPresetRuntimeSurfaceOptions',
+        'export function useProductRuntimePresetSurface({',
+        'resetProductCofDrift,',
+        'resetSelectedCofDrift: resetProductCofDrift',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product runtime preset surface must remain a product-named facade over the selected preset runtime composer; missing ${requiredSnippet}`);
         }
+      }
+      const productPresetSurfaceType = source.match(/type ProductRuntimePresetSurfaceOptions = [\s\S]*?\};/)?.[0] ?? '';
+      if (/^\s*resetSelected/m.test(productPresetSurfaceType)) {
+        failures.push(`${relative}: product runtime preset surface must expose product-named options only`);
       }
       if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug') || source.includes("from '../audio/product/")) {
         failures.push(`${relative}: product runtime preset surface must not touch runtime implementations directly`);
@@ -3074,10 +3117,11 @@ for (const rootDir of sourceRoots) {
         "import { useProductRuntimeCallbackSurfaces } from './useProductRuntimeCallbackSurfaces'",
         "import { useProductRuntimeControlSurfaces } from './useProductRuntimeControlSurfaces'",
         "import { useProductRuntimeDebugRuntime } from './useProductRuntimeDebugRuntime'",
-        'export function useProductRuntimeSurfaces(audioEngineRuntimeMode: AudioEngineRuntimeMode)',
-        'useProductRuntimeCallbackSurfaces(audioEngineRuntimeMode)',
-        'useProductRuntimeControlSurfaces(audioEngineRuntimeMode)',
-        'useProductRuntimeDebugRuntime(audioEngineRuntimeMode)',
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        'export function useProductRuntimeSurfaces(productRuntimeMode: ProductRuntimeSelectionMode)',
+        'useProductRuntimeCallbackSurfaces(productRuntimeMode)',
+        'useProductRuntimeControlSurfaces(productRuntimeMode)',
+        'useProductRuntimeDebugRuntime(productRuntimeMode)',
         '...callbackSurfaces',
         '...controlSurfaces',
         '...debugRuntime',
@@ -3101,11 +3145,11 @@ for (const rootDir of sourceRoots) {
         "import { useProductRuntimeEvolveOverrideSurface } from './useProductRuntimeEvolveOverrideSurface'",
         "import { useProductRuntimeLiveTriggerSurface } from './useProductRuntimeLiveTriggerSurface'",
         "import { useProductRuntimeSequencerCallbacks } from './useProductRuntimeSequencerCallbacks'",
-        'type ProductRuntimeCallbackSurfacesMode = Parameters<typeof useProductRuntimeSequencerCallbacks>[0]',
-        'export function useProductRuntimeCallbackSurfaces(audioEngineRuntimeMode: ProductRuntimeCallbackSurfacesMode)',
-        'useProductRuntimeSequencerCallbacks(audioEngineRuntimeMode)',
-        'useProductRuntimeLiveTriggerSurface(audioEngineRuntimeMode)',
-        'useProductRuntimeEvolveOverrideSurface(audioEngineRuntimeMode)',
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        'export function useProductRuntimeCallbackSurfaces(productRuntimeMode: ProductRuntimeSelectionMode)',
+        'useProductRuntimeSequencerCallbacks(productRuntimeMode)',
+        'useProductRuntimeLiveTriggerSurface(productRuntimeMode)',
+        'useProductRuntimeEvolveOverrideSurface(productRuntimeMode)',
         '...sequencerCallbacks',
         '...liveTriggerSurface',
         '...evolveOverrideSurface',
@@ -3118,7 +3162,6 @@ for (const rootDir of sourceRoots) {
         source.includes('productEngine') ||
         source.includes('selectedProductRuntime') ||
         source.includes('referenceAudioEngineDebug') ||
-        source.includes("from '../audio/product/") ||
         source.includes('useSelectedAudioEngineCallbackSurfaces')
       ) {
         failures.push(`${relative}: product runtime callback surfaces must not touch runtime implementations directly`);
@@ -3130,11 +3173,11 @@ for (const rootDir of sourceRoots) {
         "import { useProductRuntimeModulationRanges } from './useProductRuntimeModulationRanges'",
         "import { useProductRuntimeMorphRuntimeSurface } from './useProductRuntimeMorphRuntimeSurface'",
         "import { useProductRuntimeSequencerControls } from './useProductRuntimeSequencerControls'",
-        'type ProductRuntimeControlSurfacesMode = Parameters<typeof useProductRuntimeModulationRanges>[0]',
-        'export function useProductRuntimeControlSurfaces(audioEngineRuntimeMode: ProductRuntimeControlSurfacesMode)',
-        'useProductRuntimeModulationRanges(audioEngineRuntimeMode)',
-        'useProductRuntimeMorphRuntimeSurface(audioEngineRuntimeMode)',
-        'useProductRuntimeSequencerControls(audioEngineRuntimeMode)',
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        'export function useProductRuntimeControlSurfaces(productRuntimeMode: ProductRuntimeSelectionMode)',
+        'useProductRuntimeModulationRanges(productRuntimeMode)',
+        'useProductRuntimeMorphRuntimeSurface(productRuntimeMode)',
+        'useProductRuntimeSequencerControls(productRuntimeMode)',
         '...modulationRanges',
         '...morphRuntimeSurface',
         '...sequencerControls',
@@ -3147,7 +3190,6 @@ for (const rootDir of sourceRoots) {
         source.includes('productEngine') ||
         source.includes('selectedProductRuntime') ||
         source.includes('referenceAudioEngineDebug') ||
-        source.includes("from '../audio/product/") ||
         source.includes('useSelectedAudioEngineControlSurfaces')
       ) {
         failures.push(`${relative}: product runtime control surfaces must not touch runtime implementations directly`);
@@ -3157,15 +3199,24 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeSequencerCallbacks.ts') {
       for (const requiredSnippet of [
         "import { useSelectedAudioEngineSequencerCallbacks } from './useSelectedAudioEngineSequencerCallbacks'",
-        'type ProductRuntimeSequencerCallbacksMode = Parameters<typeof useSelectedAudioEngineSequencerCallbacks>[0]',
-        'export function useProductRuntimeSequencerCallbacks(audioEngineRuntimeMode: ProductRuntimeSequencerCallbacksMode)',
-        'return useSelectedAudioEngineSequencerCallbacks(audioEngineRuntimeMode)',
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        'type SelectedRuntimeSequencerCallbacks = ReturnType<typeof useSelectedAudioEngineSequencerCallbacks>',
+        'type ProductRuntimeSequencerCallbacks = {',
+        'setProductDrumStepPositionCallback: SelectedRuntimeSequencerCallbacks',
+        'setProductSynthEvolveTriggerCallback: SelectedRuntimeSequencerCallbacks',
+        'const sequencerCallbacks = useSelectedAudioEngineSequencerCallbacks(productRuntimeMode)',
+        'setProductDrumStepPositionCallback: sequencerCallbacks.setSelectedDrumStepPositionCallback',
+        'setProductSynthEvolveTriggerCallback: sequencerCallbacks.setSelectedSynthEvolveTriggerCallback',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product runtime sequencer callbacks must delegate through selected-runtime compatibility hook; missing ${requiredSnippet}`);
         }
       }
-      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug') || source.includes("from '../audio/product/")) {
+      const productSequencerCallbacksType = source.match(/type ProductRuntimeSequencerCallbacks = \{[\s\S]*?\};/)?.[0] ?? '';
+      if (/^\s*setSelected/m.test(productSequencerCallbacksType)) {
+        failures.push(`${relative}: product runtime sequencer callbacks must expose product-named fields only`);
+      }
+      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug')) {
         failures.push(`${relative}: product runtime sequencer callbacks must not touch runtime implementations directly`);
       }
     }
@@ -3173,15 +3224,24 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeLiveTriggerSurface.ts') {
       for (const requiredSnippet of [
         "import { useSelectedAudioEngineLiveTriggerSurface } from './useSelectedAudioEngineLiveTriggerSurface'",
-        'type ProductRuntimeLiveTriggerSurfaceMode = Parameters<typeof useSelectedAudioEngineLiveTriggerSurface>[0]',
-        'export function useProductRuntimeLiveTriggerSurface(audioEngineRuntimeMode: ProductRuntimeLiveTriggerSurfaceMode)',
-        'return useSelectedAudioEngineLiveTriggerSurface(audioEngineRuntimeMode)',
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        'type SelectedRuntimeLiveTriggerSurface = ReturnType<typeof useSelectedAudioEngineLiveTriggerSurface>',
+        'type ProductRuntimeLiveTriggerSurface = {',
+        'setProductLeadExpressionCallback: SelectedRuntimeLiveTriggerSurface',
+        'setProductGranularSHTriggerCallback: SelectedRuntimeLiveTriggerSurface',
+        'const liveTriggerSurface = useSelectedAudioEngineLiveTriggerSurface(productRuntimeMode)',
+        'setProductLeadExpressionCallback: liveTriggerSurface.setSelectedLeadExpressionCallback',
+        'setProductGranularSHTriggerCallback: liveTriggerSurface.setSelectedGranularSHTriggerCallback',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product runtime live trigger surface must delegate through selected-runtime compatibility hook; missing ${requiredSnippet}`);
         }
       }
-      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug') || source.includes("from '../audio/product/")) {
+      const productLiveTriggerSurfaceType = source.match(/type ProductRuntimeLiveTriggerSurface = \{[\s\S]*?\};/)?.[0] ?? '';
+      if (/^\s*setSelected/m.test(productLiveTriggerSurfaceType)) {
+        failures.push(`${relative}: product runtime live trigger surface must expose product-named fields only`);
+      }
+      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug')) {
         failures.push(`${relative}: product runtime live trigger surface must not touch runtime implementations directly`);
       }
     }
@@ -3189,15 +3249,15 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeEvolveOverrideSurface.ts') {
       for (const requiredSnippet of [
         "import { useSelectedAudioEngineEvolveOverrideSurface } from './useSelectedAudioEngineEvolveOverrideSurface'",
-        'type ProductRuntimeEvolveOverrideSurfaceMode = Parameters<typeof useSelectedAudioEngineEvolveOverrideSurface>[0]',
-        'export function useProductRuntimeEvolveOverrideSurface(audioEngineRuntimeMode: ProductRuntimeEvolveOverrideSurfaceMode)',
-        'return useSelectedAudioEngineEvolveOverrideSurface(audioEngineRuntimeMode)',
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        'export function useProductRuntimeEvolveOverrideSurface(productRuntimeMode: ProductRuntimeSelectionMode)',
+        'return useSelectedAudioEngineEvolveOverrideSurface(productRuntimeMode)',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product runtime evolve override surface must delegate through selected-runtime compatibility hook; missing ${requiredSnippet}`);
         }
       }
-      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug') || source.includes("from '../audio/product/")) {
+      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug')) {
         failures.push(`${relative}: product runtime evolve override surface must not touch runtime implementations directly`);
       }
     }
@@ -3205,15 +3265,15 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeModulationRanges.ts') {
       for (const requiredSnippet of [
         "import { useSelectedAudioEngineModulationRanges } from './useSelectedAudioEngineModulationRanges'",
-        'type ProductRuntimeModulationRangesMode = Parameters<typeof useSelectedAudioEngineModulationRanges>[0]',
-        'export function useProductRuntimeModulationRanges(audioEngineRuntimeMode: ProductRuntimeModulationRangesMode)',
-        'return useSelectedAudioEngineModulationRanges(audioEngineRuntimeMode)',
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        'export function useProductRuntimeModulationRanges(productRuntimeMode: ProductRuntimeSelectionMode)',
+        'return useSelectedAudioEngineModulationRanges(productRuntimeMode)',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product runtime modulation ranges must delegate through selected-runtime compatibility hook; missing ${requiredSnippet}`);
         }
       }
-      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug') || source.includes("from '../audio/product/")) {
+      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug')) {
         failures.push(`${relative}: product runtime modulation ranges must not touch runtime implementations directly`);
       }
     }
@@ -3221,15 +3281,24 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeMorphRuntimeSurface.ts') {
       for (const requiredSnippet of [
         "import { useSelectedAudioEngineMorphRuntimeSurface } from './useSelectedAudioEngineMorphRuntimeSurface'",
-        'type ProductRuntimeMorphRuntimeSurfaceMode = Parameters<typeof useSelectedAudioEngineMorphRuntimeSurface>[0]',
-        'export function useProductRuntimeMorphRuntimeSurface(audioEngineRuntimeMode: ProductRuntimeMorphRuntimeSurfaceMode)',
-        'return useSelectedAudioEngineMorphRuntimeSurface(audioEngineRuntimeMode)',
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        'type SelectedRuntimeMorphSurface = ReturnType<typeof useSelectedAudioEngineMorphRuntimeSurface>',
+        'type ProductRuntimeMorphRuntimeSurface = {',
+        'resetProductCofDrift: SelectedRuntimeMorphSurface',
+        'setProductJourneyMorphClockCallback: SelectedRuntimeMorphSurface',
+        'const morphRuntimeSurface = useSelectedAudioEngineMorphRuntimeSurface(productRuntimeMode)',
+        'resetProductCofDrift: morphRuntimeSurface.resetSelectedCofDrift',
+        'setProductJourneyMorphClockCallback: morphRuntimeSurface.setSelectedJourneyMorphClockCallback',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product runtime morph runtime surface must delegate through selected-runtime compatibility hook; missing ${requiredSnippet}`);
         }
       }
-      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug') || source.includes("from '../audio/product/")) {
+      const productMorphRuntimeSurfaceType = source.match(/type ProductRuntimeMorphRuntimeSurface = \{[\s\S]*?\};/)?.[0] ?? '';
+      if (/^\s*(resetSelected|setSelected|startSelected|stopSelected)/m.test(productMorphRuntimeSurfaceType)) {
+        failures.push(`${relative}: product runtime morph runtime surface must expose product-named fields only`);
+      }
+      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug')) {
         failures.push(`${relative}: product runtime morph runtime surface must not touch runtime implementations directly`);
       }
     }
@@ -3237,12 +3306,12 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeSequencerControls.ts') {
       for (const requiredSnippet of [
         "import { useSelectedAudioEngineSequencerControls } from './useSelectedAudioEngineSequencerControls'",
-        'type ProductRuntimeSequencerControlsMode = Parameters<typeof useSelectedAudioEngineSequencerControls>[0]',
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
         'type SelectedRuntimeSequencerControls = ReturnType<typeof useSelectedAudioEngineSequencerControls>',
         'type ProductRuntimeSequencerControls = {',
         'setProductDrumEuclidEvolveConfigs: SelectedRuntimeSequencerControls',
         'captureProductSynthEuclidLaneHome: SelectedRuntimeSequencerControls',
-        'const sequencerControls = useSelectedAudioEngineSequencerControls(audioEngineRuntimeMode)',
+        'const sequencerControls = useSelectedAudioEngineSequencerControls(productRuntimeMode)',
         'setProductDrumEuclidEvolveConfigs: sequencerControls.setSelectedDrumEuclidEvolveConfigs',
         'captureProductSynthEuclidLaneHome: sequencerControls.captureSelectedSynthEuclidLaneHome',
       ]) {
@@ -3256,17 +3325,22 @@ for (const rootDir of sourceRoots) {
       ) {
         failures.push(`${relative}: product runtime sequencer controls must expose product-named fields only`);
       }
-      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug') || source.includes("from '../audio/product/")) {
+      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug')) {
         failures.push(`${relative}: product runtime sequencer controls must not touch runtime implementations directly`);
       }
     }
 
     if (relative === 'src/ui/useProductRuntimeDebugRuntime.ts') {
       for (const requiredSnippet of [
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
         "import { useSelectedAudioEngineDebugRuntime } from './useSelectedAudioEngineDebugRuntime'",
-        'type ProductRuntimeDebugRuntimeMode = Parameters<typeof useSelectedAudioEngineDebugRuntime>[0]',
-        'export function useProductRuntimeDebugRuntime(audioEngineRuntimeMode: ProductRuntimeDebugRuntimeMode)',
-        'useSelectedAudioEngineDebugRuntime(audioEngineRuntimeMode)',
+        'type ProductRuntimeDebugRuntime = Omit<',
+        "'selectedAudioEngineDebugAnalysers'",
+        'productRuntimeDebugAnalysers: ReturnType<',
+        'export function useProductRuntimeDebugRuntime(',
+        'productRuntimeMode: ProductRuntimeSelectionMode',
+        'const debugRuntime = useSelectedAudioEngineDebugRuntime(productRuntimeMode)',
+        'const { selectedAudioEngineDebugAnalysers, ...productDebugRuntime } = debugRuntime',
         'selectedAudioEngineDebugAnalysers,',
         'productRuntimeDebugAnalysers: selectedAudioEngineDebugAnalysers',
       ]) {
@@ -3274,7 +3348,11 @@ for (const rootDir of sourceRoots) {
           failures.push(`${relative}: product runtime debug runtime must delegate through selected-runtime compatibility hook; missing ${requiredSnippet}`);
         }
       }
-      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug') || source.includes("from '../audio/product/")) {
+      const productDebugRuntimeType = source.match(/type ProductRuntimeDebugRuntime = [\s\S]*?\};/)?.[0] ?? '';
+      if (/^\s*selectedAudioEngineDebugAnalysers/m.test(productDebugRuntimeType)) {
+        failures.push(`${relative}: product runtime debug runtime must expose product-named debug analyser fields only`);
+      }
+      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug')) {
         failures.push(`${relative}: product runtime debug runtime must not touch runtime implementations directly`);
       }
     }
@@ -3835,15 +3913,30 @@ for (const rootDir of sourceRoots) {
 
     if (relative === 'src/audio/product/ProductAudioRuntimeSelection.ts') {
       for (const token of [
-        "const PRODUCT_AUDIO_ENGINE_RUNTIME_MODES = ['core-product']",
-        "const REFERENCE_AUDIO_ENGINE_RUNTIME_MODES = ['core-product', 'web-ts', 'core-smoke']",
-        "if (!isDevRuntime()) return getProductionAudioEngineRuntimeMode()",
-        "if (!isDevRuntime()) return PRODUCT_AUDIO_ENGINE_RUNTIME_MODES",
-        "if (mode === 'native-product' || mode === 'test-product') return getProductionAudioEngineRuntimeMode()",
-        'return isReferenceRuntimeEnabled(params) ? REFERENCE_AUDIO_ENGINE_RUNTIME_MODES : PRODUCT_AUDIO_ENGINE_RUNTIME_MODES',
+        "export type ProductRuntimeMode = 'core-product'",
+        "export type ProductReferenceRuntimeMode = 'web-ts' | 'core-smoke'",
+        'export type ProductRuntimeSelectionMode = ProductRuntimeMode | ProductReferenceRuntimeMode',
+        "const PRODUCT_RUNTIME_MODES = ['core-product']",
+        "const REFERENCE_RUNTIME_MODES = ['core-product', 'web-ts', 'core-smoke']",
+        "if (!isDevRuntime()) return getProductionProductRuntimeMode()",
+        "if (!isDevRuntime()) return PRODUCT_RUNTIME_MODES",
+        "if (mode === 'native-product' || mode === 'test-product') return getProductionProductRuntimeMode()",
+        'return isReferenceRuntimeEnabled(params) ? REFERENCE_RUNTIME_MODES : PRODUCT_RUNTIME_MODES',
+        'export function getProductRuntimeMode(): ProductRuntimeSelectionMode',
+        'export function getProductRuntimeModes(): readonly ProductRuntimeSelectionMode[]',
       ]) {
         if (!source.includes(token)) {
           failures.push(`${relative}: runtime selection must keep web-ts/core-smoke reference-only and expose only core-product in production; missing ${token}`);
+        }
+      }
+      for (const forbiddenToken of [
+        'AudioEngineRuntimeMode',
+        'getAudioEngineRuntimeMode',
+        'getAudioEngineRuntimeModes',
+        'web-audio',
+      ]) {
+        if (source.includes(forbiddenToken)) {
+          failures.push(`${relative}: product runtime selection must not export selected-audio-engine compatibility token ${forbiddenToken}`);
         }
       }
     }
@@ -3862,8 +3955,9 @@ for (const rootDir of sourceRoots) {
       }
       for (const token of [
         "from '../reference/ReferenceSelectedRuntime'",
+        "getProductRuntimeMode",
         'getLoadedReferenceSelectedRuntimeTarget()',
-        'invokeReferenceSelectedRuntimeMethod(getAudioEngineRuntimeMode(), method, args)',
+        'invokeReferenceSelectedRuntimeMethod(runtimeMode, method, args)',
         'return preloadReferenceSelectedRuntime();',
       ]) {
         if (!source.includes(token)) {
@@ -4006,13 +4100,15 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeNavigationCore.ts') {
       for (const token of [
         "from '../audio/product/ProductAudioRuntimeSelection'",
-        'getAudioEngineRuntimeMode()',
-        'getAudioEngineRuntimeModes()',
+        'getProductRuntimeMode()',
+        'getProductRuntimeModes()',
+        'type ProductRuntimeSelectionMode',
+        "from './productRuntimeUi'",
         'readProductRuntimeSwitchState',
         'useProductRuntimeMode',
-        'shouldShowAudioEngineSwitcher()',
+        'shouldShowProductRuntimeSwitcher()',
         'shouldStartInAdvancedEditor()',
-        'buildAudioEngineSwitchUrl(mode, stateRef.current)',
+        'buildProductRuntimeSwitchUrl(mode, stateRef.current)',
         'preloadProductRuntime',
         'stopProductRuntime()',
         'window.location.assign',
@@ -4092,7 +4188,7 @@ for (const rootDir of sourceRoots) {
         'decodeStateFromUrl(window.location.search)',
         'isMobileDevice() || window.innerWidth < 768',
         'export function useProductRuntimeModeSession()',
-        'audioEngineRuntimeMode: useProductRuntimeMode()',
+        'productRuntimeMode: useProductRuntimeMode()',
       ]) {
         if (!source.includes(token)) {
           failures.push(`${relative}: product runtime mode session must own product-named initial state and mode selection; missing ${token}`);
@@ -4106,9 +4202,10 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimePlaybackRuntime.ts') {
       for (const token of [
         "import { useProductRuntimePlaybackAdapter } from './useProductRuntimePlaybackAdapter'",
-        'type ProductRuntimePlaybackRuntimeOptions = Parameters<typeof useProductRuntimePlaybackAdapter>[0]',
-        'export function useProductRuntimePlaybackRuntime(options: ProductRuntimePlaybackRuntimeOptions)',
-        'return useProductRuntimePlaybackAdapter(options)',
+        'type ProductRuntimePlaybackAdapterOptions = Parameters<typeof useProductRuntimePlaybackAdapter>[0]',
+        'type ProductRuntimePlaybackRuntimeOptions = ProductRuntimePlaybackAdapterOptions',
+        'export function useProductRuntimePlaybackRuntime({',
+        'productRuntimeMode,',
       ]) {
         if (!source.includes(token)) {
           failures.push(`${relative}: product runtime playback runtime must delegate through the product playback adapter; missing ${token}`);
@@ -4127,17 +4224,17 @@ for (const rootDir of sourceRoots) {
         "import { useProductRuntimePerf } from './useProductRuntimePerf'",
         'type ProductRuntimeUiOptions = Parameters<typeof useProductRuntimeNavigation>[0]',
         'useProductRuntimeNavigation({',
-        'audioEngineRuntimeMode,',
+        'productRuntimeMode,',
         'preloadProductRuntime,',
         'stateRef,',
         'stopProductRuntime,',
-        'useProductRuntimePerf(audioEngineRuntimeMode, runtimeNavigation.showAudioEngineSwitcher)',
+        'useProductRuntimePerf(productRuntimeMode, runtimeNavigation.showAudioEngineSwitcher)',
         'const globalRuntimeComparison = useMemo<GlobalRuntimeComparisonPanelProps>(() => ({',
-        'currentMode: audioEngineRuntimeMode',
-        'modes: runtimeNavigation.audioEngineRuntimeModes',
+        'currentMode: productRuntimeMode',
+        'modes: runtimeNavigation.productRuntimeModes',
         'cpuSummaries: perf.audioEngineCpuSummaries',
         'visible: runtimeNavigation.showAudioEngineSwitcher',
-        'onModeChange: runtimeNavigation.handleAudioEngineRuntimeModeChange',
+        'onModeChange: runtimeNavigation.handleProductRuntimeModeChange',
         '...runtimeNavigation',
         '...perf',
         'globalRuntimeComparison',
@@ -4187,7 +4284,7 @@ for (const rootDir of sourceRoots) {
         'type ProductRuntimePerfMode = Parameters<typeof useProductRuntimePerfAdapter>[0]',
         'type ProductRuntimePerfVisible = Parameters<typeof useProductRuntimePerfAdapter>[1]',
         'export function useProductRuntimePerf(',
-        'return useProductRuntimePerfAdapter(audioEngineRuntimeMode, showAudioEngineSwitcher)',
+        'return useProductRuntimePerfAdapter(productRuntimeMode, showAudioEngineSwitcher)',
       ]) {
         if (!source.includes(token)) {
           failures.push(`${relative}: product runtime perf must delegate through the product perf adapter; missing ${token}`);
@@ -4202,10 +4299,11 @@ for (const rootDir of sourceRoots) {
       for (const token of [
         "import { productEngine } from '../audio/product/ProductEngineProxy'",
         "import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime'",
+        "from './productRuntimeUi'",
         'createProductPerfData',
-        'readAudioEngineCpuSummaries',
-        'summarizeAudioEngineCpu',
-        'writeAudioEngineCpuSummaries',
+        'readProductRuntimeCpuSummaries',
+        'summarizeProductRuntimeCpu',
+        'writeProductRuntimeCpuSummaries',
         'productEngine.setPerfMonitorEnabled(enabled)',
         'productEngine.setTelemetryCallback(callback ? (telemetry) => {',
         'setPerfMonitorEnabled?.(enabled)',
@@ -4353,15 +4451,23 @@ for (const rootDir of sourceRoots) {
       for (const token of [
         "import { useProductRuntimeLiveTriggerCallbacks } from './useProductRuntimeLiveTriggerCallbacks'",
         "import { useProductRuntimeVisualizerCallbacks } from './useProductRuntimeVisualizerCallbacks'",
-        'Parameters<typeof useProductRuntimeVisualizerCallbacks>[0]',
+        'type ProductRuntimeVisualizerCallbackOptions = Parameters<typeof useProductRuntimeVisualizerCallbacks>[0]',
+        'type SelectedSequencerCallbackKey =',
         'Parameters<typeof useProductRuntimeLiveTriggerCallbacks>[0]',
-        'export function useProductRuntimeCallbackRegistrations(options: ProductRuntimeCallbackRegistrationsOptions): void',
-        'useProductRuntimeVisualizerCallbacks(options)',
+        'setProductDrumStepPositionCallback: ProductRuntimeVisualizerCallbackOptions',
+        'setProductSynthEvolveTriggerCallback: ProductRuntimeVisualizerCallbackOptions',
+        'export function useProductRuntimeCallbackRegistrations({',
+        'setSelectedDrumStepPositionCallback: setProductDrumStepPositionCallback',
+        'setSelectedSynthEvolveTriggerCallback: setProductSynthEvolveTriggerCallback',
         'useProductRuntimeLiveTriggerCallbacks(options)',
       ]) {
         if (!source.includes(token)) {
           failures.push(`${relative}: product runtime callback registration surface must compose product-named callback registration wrappers; missing ${token}`);
         }
+      }
+      const productCallbackOptionsType = source.match(/type ProductRuntimeCallbackRegistrationsOptions =[\s\S]*?;\n/)?.[0] ?? '';
+      if (/setSelected(Drum|Synth)\w+Callback\s*:/.test(productCallbackOptionsType)) {
+        failures.push(`${relative}: product runtime callback registration options must expose product-named sequencer callbacks`);
       }
       if (
         source.includes('productEngine') ||
@@ -4392,13 +4498,22 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeLiveTriggerCallbacks.ts') {
       for (const token of [
         "import { useSelectedAudioEngineLiveTriggerCallbacks } from './useSelectedAudioEngineLiveTriggerCallbacks'",
-        'type ProductRuntimeLiveTriggerCallbacksOptions = Parameters<typeof useSelectedAudioEngineLiveTriggerCallbacks>[0]',
-        'export function useProductRuntimeLiveTriggerCallbacks(options: ProductRuntimeLiveTriggerCallbacksOptions): void',
-        'useSelectedAudioEngineLiveTriggerCallbacks(options)',
+        'type SelectedRuntimeLiveTriggerCallbacksOptions = Parameters<typeof useSelectedAudioEngineLiveTriggerCallbacks>[0]',
+        'type SelectedLiveTriggerCallbackKey =',
+        'type ProductRuntimeLiveTriggerCallbacksOptions =',
+        'setProductLeadExpressionCallback: SelectedRuntimeLiveTriggerCallbacksOptions',
+        'setProductGranularSHTriggerCallback: SelectedRuntimeLiveTriggerCallbacksOptions',
+        'export function useProductRuntimeLiveTriggerCallbacks({',
+        'setSelectedLeadExpressionCallback: setProductLeadExpressionCallback',
+        'setSelectedGranularSHTriggerCallback: setProductGranularSHTriggerCallback',
       ]) {
         if (!source.includes(token)) {
           failures.push(`${relative}: product runtime live trigger callbacks must delegate through selected-runtime compatibility hook; missing ${token}`);
         }
+      }
+      const productLiveTriggerCallbackOptions = source.match(/type ProductRuntimeLiveTriggerCallbacksOptions =[\s\S]*?;\n/)?.[0] ?? '';
+      if (/setSelected\w+Callback\s*:/.test(productLiveTriggerCallbackOptions)) {
+        failures.push(`${relative}: product runtime live trigger callback options must expose product-named fields only`);
       }
       if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug') || source.includes("from '../audio/product/")) {
         failures.push(`${relative}: product runtime live trigger callbacks must not touch runtime implementations directly`);
@@ -4735,20 +4850,20 @@ for (const rootDir of sourceRoots) {
 
     if (relative === 'src/ui/global/GlobalRuntimeComparisonPanel.tsx') {
       for (const token of [
-        "import { AudioEngineRuntimeSwitch } from '../AudioEngineRuntimeSwitch'",
-        'import type { AudioEngineRuntimeMode } from',
-        'import { audioEngineRuntimeModeLabel }',
+        "import type { ProductRuntimeSelectionMode } from '../../audio/product/ProductAudioRuntimeSelection'",
+        "import { ProductRuntimeSwitch } from '../ProductRuntimeSwitch'",
+        "import { productRuntimeModeLabel } from '../productRuntimeUi'",
         'export type GlobalRuntimeComparisonPanelProps',
-        'currentMode: AudioEngineRuntimeMode',
-        'modes: readonly AudioEngineRuntimeMode[]',
+        'currentMode: ProductRuntimeSelectionMode',
+        'modes: readonly ProductRuntimeSelectionMode[]',
         'visible: boolean',
-        'onModeChange?: (mode: AudioEngineRuntimeMode) => void',
+        'onModeChange?: (mode: ProductRuntimeSelectionMode) => void',
         'if (!visible || !onModeChange) return null;',
-        '<AudioEngineRuntimeSwitch',
-        'labelVariant="reference"',
+        '<ProductRuntimeSwitch',
+        'visible',
         'testId="global-audio-engine-switch"',
         'variant="scene"',
-        'audioEngineRuntimeModeLabel(mode)',
+        'productRuntimeModeLabel(mode)',
         'formatCpuPercent(summary?.avgPercent)',
         'formatCpuPercent(summary?.peakPercent)',
       ]) {
@@ -4760,9 +4875,29 @@ for (const rootDir of sourceRoots) {
 
     if (relative === 'src/ui/AudioEngineRuntimeSwitch.tsx') {
       for (const token of [
-        'AUDIO_ENGINE_SWITCH_COLUMN_COUNT',
-        'audioEngineRuntimeModeLabel(mode)',
-        'audioEngineRuntimeModeTitle(mode)',
+        "import { RuntimeModeSwitch } from './RuntimeModeSwitch'",
+        'type AudioEngineRuntimeSwitchProps = {',
+        "testId = 'main-audio-engine-switch'",
+        '<RuntimeModeSwitch',
+        'currentMode={currentMode}',
+        'onModeChange={onModeChange}',
+        "variant?: 'main' | 'scene'",
+        "labelVariant?: 'short' | 'reference'",
+        'testId?: string',
+      ]) {
+        if (!source.includes(token)) {
+          failures.push(`${relative}: audio-engine runtime switch must stay a compatibility wrapper over RuntimeModeSwitch; missing ${token}`);
+        }
+      }
+    }
+
+    if (relative === 'src/ui/RuntimeModeSwitch.tsx') {
+      for (const token of [
+        'ProductRuntimeSelectionMode',
+        "from './productRuntimeUi'",
+        'PRODUCT_RUNTIME_SWITCH_COLUMN_COUNT',
+        'productRuntimeModeLabel(mode)',
+        'productRuntimeModeTitle(mode)',
         "testId = 'main-audio-engine-switch'",
         'data-testid={testId}',
         'onModeChange(mode)',
@@ -4772,7 +4907,7 @@ for (const rootDir of sourceRoots) {
         "className={sceneVariant ? 'scene-engine-switch-buttons' : undefined}",
       ]) {
         if (!source.includes(token)) {
-          failures.push(`${relative}: runtime switch component is missing ${token}`);
+          failures.push(`${relative}: generic runtime switch component is missing ${token}`);
         }
       }
     }
@@ -4796,18 +4931,24 @@ for (const rootDir of sourceRoots) {
 
     if (relative === 'src/ui/ProductRuntimeSwitch.tsx') {
       for (const token of [
-        "import { SelectedAudioEngineRuntimeSwitch } from './SelectedAudioEngineRuntimeSwitch'",
-        'export type ProductRuntimeMode = AudioEngineRuntimeMode',
+        "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
+        "import { RuntimeModeSwitch } from './RuntimeModeSwitch'",
+        'export type ProductRuntimeSwitchMode = ProductRuntimeSelectionMode',
         'visible: boolean',
-        '<SelectedAudioEngineRuntimeSwitch',
+        'if (!visible) return null;',
+        '<RuntimeModeSwitch',
         'currentMode={currentMode}',
         'modes={modes}',
         'onModeChange={onModeChange}',
         'floating={floating}',
+        'labelVariant="reference"',
       ]) {
         if (!source.includes(token)) {
-          failures.push(`${relative}: product runtime switch facade must own App-facing switch props and delegate to selected runtime compatibility switch; missing ${token}`);
+          failures.push(`${relative}: product runtime switch facade must own App-facing switch props and avoid selected-audio-engine compatibility delegation; missing ${token}`);
         }
+      }
+      if (source.includes('SelectedAudioEngineRuntimeSwitch') || source.includes('AudioEngineRuntimeMode')) {
+        failures.push(`${relative}: product runtime switch must use product runtime types and RuntimeModeSwitch, not selected/audio-engine compatibility names`);
       }
     }
 

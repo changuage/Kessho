@@ -3,7 +3,7 @@ import {
   preloadSelectedProductRuntime,
   selectedProductRuntime,
 } from '../audio/product/SelectedProductRuntime';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { SliderState } from './state';
 

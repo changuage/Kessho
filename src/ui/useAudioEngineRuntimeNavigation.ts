@@ -38,10 +38,18 @@ export function useAudioEngineRuntimeNavigation({
   stateRef,
   stopSelectedAudioEngine,
 }: UseAudioEngineRuntimeNavigationOptions): AudioEngineRuntimeNavigation {
-  return useProductRuntimeNavigationCore({
-    audioEngineRuntimeMode,
+  const productNavigation = useProductRuntimeNavigationCore({
+    productRuntimeMode: audioEngineRuntimeMode,
     preloadProductRuntime: preloadSelectedAudioEngine,
     stateRef,
     stopProductRuntime: stopSelectedAudioEngine,
   });
+
+  return {
+    audioEngineRuntimeModes: productNavigation.productRuntimeModes,
+    showAudioEngineSwitcher: productNavigation.showAudioEngineSwitcher,
+    startInAdvancedEditor: productNavigation.startInAdvancedEditor,
+    handleAudioEngineRuntimeModeChange: productNavigation.handleProductRuntimeModeChange,
+    preloadAdvancedEditorRuntime: productNavigation.preloadAdvancedEditorRuntime,
+  };
 }

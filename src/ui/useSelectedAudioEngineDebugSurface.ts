@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { referenceAudioEngineDebug } from '../audio/reference/ReferenceAudioEngineDebugCompat';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { EarthTextureDebugState } from '../audio/engineSharedTypes';
 import type { TransportDebugSnapshot } from '../audio/transport';

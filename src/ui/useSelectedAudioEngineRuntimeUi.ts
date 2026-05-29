@@ -1,5 +1,5 @@
 import { useMemo, type MutableRefObject } from 'react';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import type { GlobalRuntimeComparisonPanelProps } from './global/GlobalRuntimeComparisonPanel';
 import type { SliderState } from './state';
 import { useSelectedAudioEnginePerf } from './useSelectedAudioEnginePerf';

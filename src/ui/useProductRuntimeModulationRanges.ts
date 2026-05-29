@@ -1,7 +1,6 @@
+import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { useSelectedAudioEngineModulationRanges } from './useSelectedAudioEngineModulationRanges';
 
-type ProductRuntimeModulationRangesMode = Parameters<typeof useSelectedAudioEngineModulationRanges>[0];
-
-export function useProductRuntimeModulationRanges(audioEngineRuntimeMode: ProductRuntimeModulationRangesMode) {
-  return useSelectedAudioEngineModulationRanges(audioEngineRuntimeMode);
+export function useProductRuntimeModulationRanges(productRuntimeMode: ProductRuntimeSelectionMode) {
+  return useSelectedAudioEngineModulationRanges(productRuntimeMode);
 }

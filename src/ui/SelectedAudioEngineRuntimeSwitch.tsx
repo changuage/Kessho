@@ -1,4 +1,4 @@
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { AudioEngineRuntimeSwitch } from './AudioEngineRuntimeSwitch';
 
 type SelectedAudioEngineRuntimeSwitchProps = {

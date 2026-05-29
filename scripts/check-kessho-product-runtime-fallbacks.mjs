@@ -190,7 +190,7 @@ await runCheckWithReport({
         productRuntimeLifecycleSurface.includes("import { useProductRuntimeTelemetry } from './useProductRuntimeTelemetry'") &&
         productRuntimeLifecycleSurface.includes("import { useProductRuntimeStateRuntime } from './useProductRuntimeStateRuntime'") &&
         productRuntimeLifecycleSurface.includes("import { useProductRuntimeMacRecovery } from './useProductRuntimeMacRecovery'") &&
-        productRuntimeLifecycleSurface.includes('useProductRuntimeRecordingRuntime(options.audioEngineRuntimeMode)') &&
+        productRuntimeLifecycleSurface.includes('useProductRuntimeRecordingRuntime(options.productRuntimeMode)') &&
         productRuntimeLifecycleSurface.includes('useProductRuntimeTelemetry({') &&
         productRuntimeLifecycleSurface.includes('useProductRuntimeStateRuntime({') &&
         productRuntimeLifecycleSurface.includes('useProductRuntimeMacRecovery({') &&
@@ -229,11 +229,11 @@ await runCheckWithReport({
         !productRuntimeSession.includes('useSelectedAudioEngineRuntimeShell') &&
         !app.includes("from './ui/useSelectedAudioEnginePlaybackRuntime'") &&
         !app.includes("from './ui/useSelectedAudioEngineRuntimeUi'") &&
-        productRuntimePlaybackRuntime.includes('useProductRuntimePlaybackAdapter(options)') &&
+        productRuntimePlaybackRuntime.includes('productRuntimeMode,') &&
         productRuntimeUi.includes("import { useProductRuntimeNavigation } from './useProductRuntimeNavigation'") &&
         productRuntimeUi.includes("import { useProductRuntimePerf } from './useProductRuntimePerf'") &&
         productRuntimeUi.includes('useProductRuntimeNavigation({') &&
-        productRuntimeUi.includes('useProductRuntimePerf(audioEngineRuntimeMode, runtimeNavigation.showAudioEngineSwitcher)') &&
+        productRuntimeUi.includes('useProductRuntimePerf(productRuntimeMode, runtimeNavigation.showAudioEngineSwitcher)') &&
         !productRuntimeUi.includes('useSelectedAudioEngineRuntimeUi') &&
         selectedAudioEngineRuntimeShell.includes("import { useSelectedAudioEnginePlaybackRuntime } from './useSelectedAudioEnginePlaybackRuntime'") &&
         selectedAudioEngineRuntimeShell.includes("import { useSelectedAudioEngineRuntimeUi } from './useSelectedAudioEngineRuntimeUi'") &&
@@ -248,8 +248,8 @@ await runCheckWithReport({
         app.includes('useProductRuntimeLifecycleSurface({') &&
         !app.includes('useSelectedAudioEngineRecordingRuntime(audioEngineRuntimeMode)') &&
         !app.includes("from './ui/useAudioRecording'") &&
-        productRuntimeLifecycleSurface.includes('useProductRuntimeRecordingRuntime(options.audioEngineRuntimeMode)') &&
-        productRuntimeRecordingRuntime.includes('useSelectedAudioEngineRecordingRuntime(audioEngineRuntimeMode)') &&
+        productRuntimeLifecycleSurface.includes('useProductRuntimeRecordingRuntime(options.productRuntimeMode)') &&
+        productRuntimeRecordingRuntime.includes('useSelectedAudioEngineRecordingRuntime(productRuntimeMode)') &&
         selectedAudioEngineRecordingRuntime.includes('useAudioRecording(audioEngineRuntimeMode)') &&
         selectedAudioEngineRecordingRuntime.includes('startArmedRecordingAfterPlaybackStart') &&
         selectedAudioEngineRecordingRuntime.includes('globalRecordingProps') &&
@@ -270,7 +270,7 @@ await runCheckWithReport({
         app.includes('const dualModeSupported = !SINGLE_ONLY_SLIDER_KEYS.has(keyStr);') &&
         selectedRuntimeTelemetry.includes('useSelectedAudioEngineTelemetrySurface(audioEngineRuntimeMode)') &&
         productRuntimeLifecycleSurface.includes('useProductRuntimeTelemetry({') &&
-        productRuntimeTelemetry.includes('useSelectedAudioEngineRuntimeTelemetry(options)') &&
+        productRuntimeTelemetry.includes('audioEngineRuntimeMode: productRuntimeMode') &&
         selectedRuntimeTelemetry.includes('useSelectedAudioEngineRuntimeCapabilities({') &&
         selectedRuntimeTelemetry.includes('setSelectedVisualTelemetryActive: telemetrySurface.setSelectedVisualTelemetryActive') &&
         selectedRuntimeCapabilities.includes('import { isCoreProductRangeKeySupported }') &&

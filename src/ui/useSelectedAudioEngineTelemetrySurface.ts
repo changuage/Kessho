@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime';
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { DynamicsVisualTelemetrySnapshot } from '../audio/engineSharedTypes';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';

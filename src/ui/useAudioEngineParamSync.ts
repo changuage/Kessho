@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { referenceAudioEngineDebug } from '../audio/reference/ReferenceAudioEngineDebugCompat';
-import {
-  type AudioEngineRuntimeMode,
-} from '../audio/product/ProductAudioRuntimeSelection';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { ProductSnapshotPatchReason } from '../audio/product/ProductEngineTypes';
 import { collectChangedStatePatch } from './audioEngineStatePatch';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import type { SliderState } from './state';
 
 const CORE_PRODUCT_PARAM_UPDATE_INTERVAL_MS = 33;

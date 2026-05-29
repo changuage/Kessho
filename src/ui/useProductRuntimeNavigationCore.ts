@@ -1,71 +1,71 @@
 import { useCallback, useMemo, type MutableRefObject } from 'react';
 import {
-  getAudioEngineRuntimeMode,
-  getAudioEngineRuntimeModes,
-  type AudioEngineRuntimeMode,
+  getProductRuntimeMode,
+  getProductRuntimeModes,
+  type ProductRuntimeSelectionMode,
 } from '../audio/product/ProductAudioRuntimeSelection';
 import {
-  buildAudioEngineSwitchUrl,
-  readAudioEngineSwitchStateFromSession,
-  shouldShowAudioEngineSwitcher,
+  buildProductRuntimeSwitchUrl,
+  readProductRuntimeSwitchStateFromSession,
+  shouldShowProductRuntimeSwitcher,
   shouldStartInAdvancedEditor,
-} from './audioEngineRuntimeUi';
+} from './productRuntimeUi';
 import type { SliderState } from './state';
 
 type ProductRuntimeNavigationCoreOptions = {
-  audioEngineRuntimeMode: ProductRuntimeNavigationMode;
+  productRuntimeMode: ProductRuntimeNavigationMode;
   preloadProductRuntime: () => Promise<unknown>;
   stateRef: MutableRefObject<SliderState>;
   stopProductRuntime: () => void;
 };
 
 type ProductRuntimeNavigationCore = {
-  audioEngineRuntimeModes: readonly ProductRuntimeNavigationMode[];
+  productRuntimeModes: readonly ProductRuntimeNavigationMode[];
   showAudioEngineSwitcher: boolean;
   startInAdvancedEditor: boolean;
-  handleAudioEngineRuntimeModeChange: (mode: ProductRuntimeNavigationMode) => void;
+  handleProductRuntimeModeChange: (mode: ProductRuntimeNavigationMode) => void;
   preloadAdvancedEditorRuntime: () => void;
 };
 
-export type ProductRuntimeNavigationMode = AudioEngineRuntimeMode;
+export type ProductRuntimeNavigationMode = ProductRuntimeSelectionMode;
 
 export function readProductRuntimeSwitchState(): SliderState | null {
-  return readAudioEngineSwitchStateFromSession();
+  return readProductRuntimeSwitchStateFromSession();
 }
 
 export function useProductRuntimeMode(): ProductRuntimeNavigationMode {
-  return useMemo(() => getAudioEngineRuntimeMode(), []);
+  return useMemo(() => getProductRuntimeMode(), []);
 }
 
 export function useProductRuntimeNavigationCore({
-  audioEngineRuntimeMode,
+  productRuntimeMode,
   preloadProductRuntime,
   stateRef,
   stopProductRuntime,
 }: ProductRuntimeNavigationCoreOptions): ProductRuntimeNavigationCore {
-  const showAudioEngineSwitcher = useMemo(() => shouldShowAudioEngineSwitcher(), []);
+  const showAudioEngineSwitcher = useMemo(() => shouldShowProductRuntimeSwitcher(), []);
   const startInAdvancedEditor = useMemo(() => shouldStartInAdvancedEditor(), []);
-  const audioEngineRuntimeModes = useMemo(() => getAudioEngineRuntimeModes(), []);
+  const productRuntimeModes = useMemo(() => getProductRuntimeModes(), []);
 
-  const handleAudioEngineRuntimeModeChange = useCallback((mode: ProductRuntimeNavigationMode): void => {
-    if (mode === audioEngineRuntimeMode) return;
+  const handleProductRuntimeModeChange = useCallback((mode: ProductRuntimeNavigationMode): void => {
+    if (mode === productRuntimeMode) return;
     try {
       stopProductRuntime();
     } catch {
       // The page reload is the actual switch boundary.
     }
-    window.location.assign(buildAudioEngineSwitchUrl(mode, stateRef.current));
-  }, [audioEngineRuntimeMode, stateRef, stopProductRuntime]);
+    window.location.assign(buildProductRuntimeSwitchUrl(mode, stateRef.current));
+  }, [productRuntimeMode, stateRef, stopProductRuntime]);
 
   const preloadAdvancedEditorRuntime = useCallback((): void => {
     void preloadProductRuntime();
   }, [preloadProductRuntime]);
 
   return {
-    audioEngineRuntimeModes,
+    productRuntimeModes,
     showAudioEngineSwitcher,
     startInAdvancedEditor,
-    handleAudioEngineRuntimeModeChange,
+    handleProductRuntimeModeChange,
     preloadAdvancedEditorRuntime,
   };
 }

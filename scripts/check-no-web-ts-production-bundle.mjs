@@ -52,8 +52,12 @@ const drumPageSequencerBridge = read('src/ui/useDrumPageSequencerBridge.ts');
 const selectedPageRuntimeBridges = read('src/ui/useSelectedAudioEnginePageRuntimeBridges.ts');
 const selectedAudioEngineVisualizerCallbacks = read('src/ui/useSelectedAudioEngineVisualizerCallbacks.ts');
 const audioEngineRuntimeUi = read('src/ui/audioEngineRuntimeUi.ts');
+const productRuntimeUi = read('src/ui/productRuntimeUi.ts');
 const audioEngineRuntimeSwitch = read('src/ui/AudioEngineRuntimeSwitch.tsx');
+const productRuntimeSwitch = read('src/ui/ProductRuntimeSwitch.tsx');
+const runtimeModeSwitch = read('src/ui/RuntimeModeSwitch.tsx');
 const audioEngineRuntimeNavigation = read('src/ui/useAudioEngineRuntimeNavigation.ts');
+const productRuntimeNavigationCore = read('src/ui/useProductRuntimeNavigationCore.ts');
 const productEngineProxy = read('src/audio/product/ProductEngineProxy.ts');
 const productAudioEngineCompat = read('src/audio/product/ProductAudioEngineCompat.ts');
 const selectedProductRuntime = read('src/audio/product/SelectedProductRuntime.ts');
@@ -62,8 +66,8 @@ const productAudioRuntimeSelection = read('src/audio/product/ProductAudioRuntime
 const viteConfig = read('vite.config.ts');
 const unavailableRuntime = read('src/audio/referenceAudioRuntime.unavailable.ts');
 const runtimeModeBody = productAudioRuntimeSelection.slice(
-  productAudioRuntimeSelection.indexOf('export function getAudioEngineRuntimeMode()'),
-  productAudioRuntimeSelection.indexOf('export function getAudioEngineRuntimeModes()'),
+  productAudioRuntimeSelection.indexOf('export function getProductRuntimeMode()'),
+  productAudioRuntimeSelection.indexOf('export function getProductRuntimeModes()'),
 );
 assert(!app.includes("from './audio/runtime'"), 'App production shell must not statically import src/audio/runtime.ts', failures);
 assert(!app.includes("from './audio/coreProductEngineHost'"), 'App production shell must not import coreProductEngineHost directly', failures);
@@ -484,17 +488,19 @@ assert(
   failures,
 );
 assert(
-  runtimeModeBody.includes('if (!isDevRuntime()) return getProductionAudioEngineRuntimeMode();') && productAudioRuntimeSelection.includes('getProductEngineRuntimeMode()'),
+  runtimeModeBody.includes('if (!isDevRuntime()) return getProductionProductRuntimeMode();') &&
+    productAudioRuntimeSelection.includes('getProductEngineRuntimeMode()') &&
+    !productAudioRuntimeSelection.includes('AudioEngineRuntimeMode'),
   'ProductAudioRuntimeSelection must force core-product outside dev builds through ProductEngineProxy',
   failures,
 );
 assert(
-  productAudioRuntimeSelection.includes("const PRODUCT_AUDIO_ENGINE_RUNTIME_MODES = ['core-product']"),
+  productAudioRuntimeSelection.includes("const PRODUCT_RUNTIME_MODES = ['core-product']"),
   'ProductAudioRuntimeSelection must expose only core-product in the normal product UI mode list',
   failures,
 );
 assert(
-  productAudioRuntimeSelection.includes('return isReferenceRuntimeEnabled(params) ? REFERENCE_AUDIO_ENGINE_RUNTIME_MODES : PRODUCT_AUDIO_ENGINE_RUNTIME_MODES;'),
+  productAudioRuntimeSelection.includes('return isReferenceRuntimeEnabled(params) ? REFERENCE_RUNTIME_MODES : PRODUCT_RUNTIME_MODES;'),
   'ProductAudioRuntimeSelection must keep web-ts/core-smoke behind explicit dev/reference contexts',
   failures,
 );
@@ -504,16 +510,16 @@ assert(
   failures,
 );
 assert(
-  app.includes("from './ui/useAudioEngineRuntimeNavigation'") && audioEngineRuntimeNavigation.includes("from '../audio/product/ProductAudioRuntimeSelection'"),
-  'App runtime-mode selection must route through useAudioEngineRuntimeNavigation and the product-owned runtime selection module',
+  app.includes("from './ui/useProductRuntimeSession'") &&
+    productRuntimeNavigationCore.includes("from '../audio/product/ProductAudioRuntimeSelection'") &&
+    audioEngineRuntimeNavigation.includes('useProductRuntimeNavigationCore({'),
+  'App runtime-mode selection must route through product runtime navigation and keep selected audio-engine navigation as compatibility',
   failures,
 );
 assert(
-  app.includes("from './ui/AudioEngineRuntimeSwitch'") &&
-    app.includes('<AudioEngineRuntimeSwitch') &&
-    app.includes('audioEngineModes={audioEngineRuntimeModes}') &&
-    globalPage.includes("import { AudioEngineRuntimeSwitch } from '../AudioEngineRuntimeSwitch'") &&
-    globalPage.includes('audioEngineModes?: readonly AudioEngineRuntimeMode[]') &&
+  app.includes("from './ui/ProductRuntimeSwitch'") &&
+    app.includes('<ProductRuntimeSwitch') &&
+    app.includes('modes={productRuntimeModes}') &&
     globalPage.includes('recordingAvailable: boolean') &&
     globalPage.includes('stemRecordingAvailable: boolean') &&
     !globalPage.includes("['core-product', 'web-ts'") &&
@@ -521,23 +527,26 @@ assert(
     !globalPage.includes("const recordingAvailable = audioEngineMode !== 'core-product'") &&
     audioRecording.includes("const recordingAvailable = audioEngineRuntimeMode !== 'core-product'") &&
     audioRecording.includes('stemRecordingAvailable,') &&
-    audioEngineRuntimeUi.includes('AUDIO_ENGINE_PARAM') &&
-    audioEngineRuntimeUi.includes('AUDIO_ENGINE_SWITCHER_PARAM') &&
-    audioEngineRuntimeSwitch.includes('AUDIO_ENGINE_SWITCH_COLUMN_COUNT') &&
-    audioEngineRuntimeSwitch.includes('audioEngineRuntimeModeLabel(mode)') &&
-    audioEngineRuntimeSwitch.includes('audioEngineRuntimeModeTitle(mode)') &&
+    productRuntimeUi.includes('PRODUCT_RUNTIME_PARAM') &&
+    productRuntimeUi.includes('PRODUCT_RUNTIME_SWITCHER_PARAM') &&
+    audioEngineRuntimeUi.includes('buildAudioEngineSwitchUrl') &&
+    audioEngineRuntimeSwitch.includes("import { RuntimeModeSwitch } from './RuntimeModeSwitch'") &&
+    productRuntimeSwitch.includes("import { RuntimeModeSwitch } from './RuntimeModeSwitch'") &&
+    runtimeModeSwitch.includes('PRODUCT_RUNTIME_SWITCH_COLUMN_COUNT') &&
+    runtimeModeSwitch.includes('productRuntimeModeLabel(mode)') &&
+    runtimeModeSwitch.includes('productRuntimeModeTitle(mode)') &&
     audioEngineRuntimeSwitch.includes("testId = 'main-audio-engine-switch'") &&
-    audioEngineRuntimeSwitch.includes('data-testid={testId}') &&
-    audioEngineRuntimeNavigation.includes('buildAudioEngineSwitchUrl(mode, stateRef.current)'),
-  'App runtime switch UI must stay behind AudioEngineRuntimeSwitch/navigation modules that consume product-owned query constants',
+    runtimeModeSwitch.includes('data-testid={testId}') &&
+    productRuntimeNavigationCore.includes('buildProductRuntimeSwitchUrl(mode, stateRef.current)'),
+  'App runtime switch UI must stay behind ProductRuntimeSwitch/navigation modules that consume product-owned query constants',
   failures,
 );
 assert(!productEngineProxy.includes('referenceAudioRuntime'), 'ProductEngineProxy must not load the web-ts reference runtime', failures);
 assert(
-  !selectedProductRuntime.includes("import('../referenceAudioRuntime')") &&
+    !selectedProductRuntime.includes("import('../referenceAudioRuntime')") &&
     !selectedProductRuntime.includes('loadReferenceAudioRuntime') &&
     selectedProductRuntime.includes("from '../reference/ReferenceSelectedRuntime'") &&
-    selectedProductRuntime.includes('invokeReferenceSelectedRuntimeMethod(getAudioEngineRuntimeMode(), method, args)') &&
+    selectedProductRuntime.includes('invokeReferenceSelectedRuntimeMethod(runtimeMode, method, args)') &&
     referenceSelectedRuntime.includes("import('../referenceAudioRuntime')") &&
     referenceSelectedRuntime.includes('loadReferenceAudioRuntime()'),
   'SelectedProductRuntime must delegate reference runtime loading to ReferenceSelectedRuntime',

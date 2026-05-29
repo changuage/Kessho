@@ -1,4 +1,4 @@
-import type { AudioEngineRuntimeMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { useSelectedAudioEngineModulationRanges } from './useSelectedAudioEngineModulationRanges';
 import { useSelectedAudioEngineMorphRuntimeSurface } from './useSelectedAudioEngineMorphRuntimeSurface';
 import { useSelectedAudioEngineSequencerControls } from './useSelectedAudioEngineSequencerControls';

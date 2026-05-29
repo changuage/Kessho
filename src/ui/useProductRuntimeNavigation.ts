@@ -10,13 +10,13 @@ type ProductRuntimeNavigationOptions = Omit<
 };
 
 export function useProductRuntimeNavigation({
-  audioEngineRuntimeMode,
+  productRuntimeMode,
   preloadProductRuntime,
   stateRef,
   stopProductRuntime,
 }: ProductRuntimeNavigationOptions) {
   return useProductRuntimeNavigationCore({
-    audioEngineRuntimeMode,
+    productRuntimeMode,
     preloadProductRuntime,
     stateRef,
     stopProductRuntime,

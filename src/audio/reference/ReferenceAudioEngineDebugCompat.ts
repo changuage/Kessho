@@ -1,5 +1,5 @@
 import {
-  getAudioEngineRuntimeMode,
+  getProductRuntimeMode,
 } from '../product/ProductAudioRuntimeSelection';
 import type {
   DynamicsVisualTelemetrySnapshot,
@@ -52,7 +52,7 @@ function ensureReferenceAudioRuntime(): Promise<ReferenceAudioRuntimeModule> {
 }
 
 function assertReferenceRuntime(method: string): void {
-  if (getAudioEngineRuntimeMode() === 'core-product') {
+  if (getProductRuntimeMode() === 'core-product') {
     throw new Error(`Reference AudioEngine.${method} is unavailable in core-product`);
   }
 }
@@ -72,7 +72,7 @@ function invokeReferenceAudioEngineMethod(
   if (loadedTarget) {
     const value = loadedTarget[method];
     if (typeof value !== 'function') {
-      throw new Error(`Reference AudioEngine.${method} is not implemented by ${getAudioEngineRuntimeMode()}`);
+      throw new Error(`Reference AudioEngine.${method} is not implemented by ${getProductRuntimeMode()}`);
     }
     return (value as (...invokeArgs: unknown[]) => unknown).apply(loadedTarget, [...args]);
   }
@@ -86,7 +86,7 @@ function invokeReferenceAudioEngineMethod(
     const target = runtime.audioEngine as unknown as ReferenceAudioEngineTarget;
     const value = target[method];
     if (typeof value !== 'function') {
-      throw new Error(`Reference AudioEngine.${method} is not implemented by ${getAudioEngineRuntimeMode()}`);
+      throw new Error(`Reference AudioEngine.${method} is not implemented by ${getProductRuntimeMode()}`);
     }
     return (value as (...invokeArgs: unknown[]) => unknown).apply(target, [...args]);
   });
