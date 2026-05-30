@@ -65,12 +65,27 @@ export type ProductLaneSnapshot = {
   initialStartDelaySeconds: number;
 };
 
-export type ProductHarmonySnapshot = {
+import type { L4HarmonyStateExtension } from './CoreProductHarmonyControl';
+
+export type ProductHarmonySnapshot = L4HarmonyStateExtension & {
   rootMidi: number;
   scaleId: number;
   tension: number;
   chordMode: number;
   voicingMode: number;
+  controlMode: number;
+  controlStrength: number;
+  activeSource: number;
+  activeSlotId: number;
+  activeStepIndex: number;
+  manualControlAvailable: boolean;
+  notePoolCount: number;
+  notePoolMidi: number[];
+  bassMidi: number;
+  nextNotePoolCount: number;
+  nextNotePoolMidi: number[];
+  nextSource: number;
+  nextStepIndex: number;
 };
 
 export type ProductGranularVoiceSnapshot = {

@@ -64,6 +64,12 @@ import {
   soundscapeSnapshotPayloadFromState,
   type SoundscapeSnapshotPayload,
 } from './coreProductSoundscapesSnapshot';
+import {
+  HARMONY_POOL_MAX_NOTES,
+  HARMONY_SOURCE_IDS,
+  HARMONY_STRENGTH_IDS,
+  resolveProductHarmonyState,
+} from './CoreProductHarmonyControl';
 import { coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
 import type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 export type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductHarmonySnapshot, ProductLaneSnapshot, ProductSoundscapeSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
@@ -166,6 +172,13 @@ function rngSeedFromState(state: Record<string, unknown> | undefined): number {
 
 function rngStateFromState(state: Record<string, unknown> | undefined, seed: number): number {
   return positiveU32(numberFromState(state, 'rngState', Number.NaN), seed);
+}
+
+function fixedHarmonyPool(notes: readonly number[]): number[] {
+  return Array.from({ length: HARMONY_POOL_MAX_NOTES }, (_, index) => {
+    const note = notes[index];
+    return typeof note === 'number' && Number.isFinite(note) ? clamp(Math.round(note), 0, 127) : 0;
+  });
 }
 
 function granularRuntimeSeedFromState(state: Record<string, unknown> | undefined): number {
@@ -903,6 +916,22 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     : [];
   const rngSeed = rngSeedFromState(sliderState);
   const rngState = rngStateFromState(sliderState, rngSeed);
+  const rootMidi = rootMidiFromState(sliderState);
+  const scaleId = scaleIdFromState(sliderState, tension);
+  const journey = {
+    enabled: booleanFromState(sliderState, 'journeyEnabled', false),
+    morphPhase: clamp(numberFromState(sliderState, 'journeyMorphPhase', 0), 0, 1),
+    morphRateBars: clamp(numberFromState(sliderState, 'journeyMorphRateBars', 8), 0.25, 128),
+  };
+  const harmonyControl = resolveProductHarmonyState({
+    state: sliderState,
+    rootMidi,
+    scaleId,
+    tension,
+    seed: rngSeed,
+    morphPercent: journey.morphPhase * 100,
+  });
+  const harmonyFrame = harmonyControl.resolvedHarmonyFrame;
   const granularEnabled = booleanFromState(sliderState, 'granularEnabled', false);
   const granularToDelayA = clamp(numberFromState(sliderState, 'granularDelayASend', 0), 0, 1);
   const granularToDelayB = clamp(numberFromState(sliderState, 'granularDelayBSend', 0), 0, 1);
@@ -932,20 +961,36 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   return {
     transport,
     harmony: {
-      rootMidi: rootMidiFromState(sliderState),
-      scaleId: scaleIdFromState(sliderState, tension),
+      rootMidi,
+      scaleId,
       tension,
       chordMode: numberFromState(sliderState, 'chordMode', 0),
       voicingMode: numberFromState(sliderState, 'voicingMode', 1),
+      ...harmonyControl,
+      controlMode: harmonyFrame.activeSource === 'sequence'
+        ? 1
+        : harmonyFrame.activeSource === 'manualControl'
+          ? 2
+          : harmonyFrame.activeSource === 'slot'
+            ? 3
+            : 0,
+      controlStrength: HARMONY_STRENGTH_IDS[harmonyControl.manualControl.strength],
+      activeSource: HARMONY_SOURCE_IDS[harmonyFrame.activeSource],
+      activeSlotId: harmonyFrame.activeSlotId ?? -1,
+      activeStepIndex: harmonyFrame.activeStepIndex ?? -1,
+      manualControlAvailable: harmonyFrame.manualControlAvailable,
+      notePoolCount: Math.min(harmonyFrame.currentNotePool.length, HARMONY_POOL_MAX_NOTES),
+      notePoolMidi: fixedHarmonyPool(harmonyFrame.currentNotePool),
+      bassMidi: harmonyFrame.bassNote ?? -1,
+      nextNotePoolCount: Math.min(harmonyFrame.nextNotePool.length, HARMONY_POOL_MAX_NOTES),
+      nextNotePoolMidi: fixedHarmonyPool(harmonyFrame.nextNotePool),
+      nextSource: harmonyFrame.nextSource ? HARMONY_SOURCE_IDS[harmonyFrame.nextSource] : -1,
+      nextStepIndex: harmonyFrame.nextStepIndex ?? -1,
     },
     sources,
     synthLanes,
     drumLanes,
-    journey: {
-      enabled: booleanFromState(sliderState, 'journeyEnabled', false),
-      morphPhase: clamp(numberFromState(sliderState, 'journeyMorphPhase', 0), 0, 1),
-      morphRateBars: clamp(numberFromState(sliderState, 'journeyMorphRateBars', 8), 0.25, 128),
-    },
+    journey,
     fx: {
       granularMix: granularEnabled
         ? clamp(numberFromState(sliderState, 'granularLevel', 0) * ENGINE_TRIMS.granular * granularMacroModel.directLevelScale, 0, 4)

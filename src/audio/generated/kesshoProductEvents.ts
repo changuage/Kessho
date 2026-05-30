@@ -30,7 +30,22 @@ export const KESSHO_PRODUCT_EVENT_IDS = Object.freeze({
   SetModulationRange: 27,
   ResetSequencerLaneHome: 28,
   DiceSequencerLane: 29,
-  SetSourceOverride: 30
+  SetSourceOverride: 30,
+  HarmonyControlSetMode: 31,
+  HarmonyControlSetStrength: 32,
+  HarmonyControlSetManualIntent: 33,
+  HarmonyControlClearManualIntent: 34,
+  HarmonySlotSet: 35,
+  HarmonySlotTrigger: 36,
+  HarmonySlotClear: 37,
+  HarmonySequenceSetStep: 38,
+  HarmonySequenceSetEnabled: 39,
+  HarmonySequenceSetActiveStep: 40,
+  HarmonyGenerateSlots: 41,
+  HarmonyGenerateSequence: 42,
+  HarmonyGenerateBoth: 43,
+  HarmonyRegenerateUnlocked: 44,
+  HarmonyCommitBaselineMap: 45
 } as const);
 
 export const KESSHO_PRODUCT_EVENTS = Object.freeze([
@@ -153,6 +168,66 @@ export const KESSHO_PRODUCT_EVENTS = Object.freeze([
   {
     "name": "SetSourceOverride",
     "id": 30
+  },
+  {
+    "name": "HarmonyControlSetMode",
+    "id": 31
+  },
+  {
+    "name": "HarmonyControlSetStrength",
+    "id": 32
+  },
+  {
+    "name": "HarmonyControlSetManualIntent",
+    "id": 33
+  },
+  {
+    "name": "HarmonyControlClearManualIntent",
+    "id": 34
+  },
+  {
+    "name": "HarmonySlotSet",
+    "id": 35
+  },
+  {
+    "name": "HarmonySlotTrigger",
+    "id": 36
+  },
+  {
+    "name": "HarmonySlotClear",
+    "id": 37
+  },
+  {
+    "name": "HarmonySequenceSetStep",
+    "id": 38
+  },
+  {
+    "name": "HarmonySequenceSetEnabled",
+    "id": 39
+  },
+  {
+    "name": "HarmonySequenceSetActiveStep",
+    "id": 40
+  },
+  {
+    "name": "HarmonyGenerateSlots",
+    "id": 41
+  },
+  {
+    "name": "HarmonyGenerateSequence",
+    "id": 42
+  },
+  {
+    "name": "HarmonyGenerateBoth",
+    "id": 43
+  },
+  {
+    "name": "HarmonyRegenerateUnlocked",
+    "id": 44
+  },
+  {
+    "name": "HarmonyCommitBaselineMap",
+    "id": 45
   }
 ] as const);
 export type KesshoProductEventName = keyof typeof KESSHO_PRODUCT_EVENT_IDS;

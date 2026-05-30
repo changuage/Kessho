@@ -18,6 +18,14 @@ import { normalizeSequencerPitchBindingMode, sequencerPitchBindingModeToEventId,
 import { normalizeSequencerSwing } from './sequencerSwing';
 import { DEFAULT_STATE, getIndexedDelayDivisionValue, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
 import { generatedProductParamIndex } from './CoreProductGeneratedParamMetadata';
+import {
+  HARMONY_QUALITY_IDS,
+  HARMONY_SLOT_COUNT,
+  HARMONY_SEQUENCE_STEP_COUNT,
+  HARMONY_STRENGTH_IDS,
+  type HarmonyChordQuality,
+  type HarmonyControlStrength,
+} from './CoreProductHarmonyControl';
 
 export type CoreProductEvent = {
   sampleOffset?: number;
@@ -1234,6 +1242,99 @@ export function createCoreProductJourneyStateEvent(
     value: enabled ? 1 : 0,
     value2: requireUnitValue(phase, 'phase'),
     value3: requirePositiveFinite(rateBars, 'rateBars'),
+  };
+}
+
+export function createCoreProductHarmonyControlSetModeEvent(mode: 0 | 1 | 2): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyControlSetMode,
+    value: requireIntegerInRange(mode, 'mode', 0, 2),
+  };
+}
+
+export function createCoreProductHarmonyControlSetStrengthEvent(strength: HarmonyControlStrength): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyControlSetStrength,
+    value: HARMONY_STRENGTH_IDS[strength],
+  };
+}
+
+export function createCoreProductHarmonyControlSetManualIntentEvent(args: {
+  degree: number;
+  quality?: HarmonyChordQuality;
+  rootNote?: number;
+  strength?: HarmonyControlStrength;
+}): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyControlSetManualIntent,
+    value: requireIntegerInRange(args.degree, 'degree', 0, 6),
+    value2: HARMONY_QUALITY_IDS[args.quality ?? 'auto'],
+    value3: requireIntegerInRange(args.rootNote ?? 0, 'rootNote', 0, 11),
+    value4: HARMONY_STRENGTH_IDS[args.strength ?? 'bias'],
+  };
+}
+
+export function createCoreProductHarmonyControlClearManualIntentEvent(): CoreProductEvent {
+  return { eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyControlClearManualIntent };
+}
+
+export function createCoreProductHarmonySlotSetEvent(slotId: number, args: {
+  degree: number;
+  quality?: HarmonyChordQuality;
+  rootNote?: number;
+  strength?: HarmonyControlStrength;
+}): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonySlotSet,
+    index: requireIntegerInRange(slotId, 'slotId', 0, HARMONY_SLOT_COUNT - 1),
+    value: requireIntegerInRange(args.degree, 'degree', 0, 6),
+    value2: HARMONY_QUALITY_IDS[args.quality ?? 'auto'],
+    value3: requireIntegerInRange(args.rootNote ?? 0, 'rootNote', 0, 11),
+    value4: HARMONY_STRENGTH_IDS[args.strength ?? 'bias'],
+  };
+}
+
+export function createCoreProductHarmonySlotTriggerEvent(slotId: number): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonySlotTrigger,
+    index: requireIntegerInRange(slotId, 'slotId', 0, HARMONY_SLOT_COUNT - 1),
+  };
+}
+
+export function createCoreProductHarmonySlotClearEvent(slotId: number): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonySlotClear,
+    index: requireIntegerInRange(slotId, 'slotId', 0, HARMONY_SLOT_COUNT - 1),
+  };
+}
+
+export function createCoreProductHarmonySequenceSetStepEvent(stepId: number, args: {
+  degree: number;
+  quality?: HarmonyChordQuality;
+  rootNote?: number;
+  strength?: HarmonyControlStrength;
+}): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonySequenceSetStep,
+    index: requireIntegerInRange(stepId, 'stepId', 0, HARMONY_SEQUENCE_STEP_COUNT - 1),
+    value: requireIntegerInRange(args.degree, 'degree', 0, 6),
+    value2: HARMONY_QUALITY_IDS[args.quality ?? 'auto'],
+    value3: requireIntegerInRange(args.rootNote ?? 0, 'rootNote', 0, 11),
+    value4: HARMONY_STRENGTH_IDS[args.strength ?? 'bias'],
+  };
+}
+
+export function createCoreProductHarmonySequenceSetEnabledEvent(enabled: boolean): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonySequenceSetEnabled,
+    value: enabled ? 1 : 0,
+  };
+}
+
+export function createCoreProductHarmonySequenceSetActiveStepEvent(stepId: number): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonySequenceSetActiveStep,
+    index: requireIntegerInRange(stepId, 'stepId', 0, HARMONY_SEQUENCE_STEP_COUNT - 1),
   };
 }
 

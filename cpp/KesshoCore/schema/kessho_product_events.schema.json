@@ -29,6 +29,21 @@
     { "name": "SetModulationRange", "id": 27 },
     { "name": "ResetSequencerLaneHome", "id": 28 },
     { "name": "DiceSequencerLane", "id": 29 },
-    { "name": "SetSourceOverride", "id": 30 }
+    { "name": "SetSourceOverride", "id": 30 },
+    { "name": "HarmonyControlSetMode", "id": 31 },
+    { "name": "HarmonyControlSetStrength", "id": 32 },
+    { "name": "HarmonyControlSetManualIntent", "id": 33 },
+    { "name": "HarmonyControlClearManualIntent", "id": 34 },
+    { "name": "HarmonySlotSet", "id": 35 },
+    { "name": "HarmonySlotTrigger", "id": 36 },
+    { "name": "HarmonySlotClear", "id": 37 },
+    { "name": "HarmonySequenceSetStep", "id": 38 },
+    { "name": "HarmonySequenceSetEnabled", "id": 39 },
+    { "name": "HarmonySequenceSetActiveStep", "id": 40 },
+    { "name": "HarmonyGenerateSlots", "id": 41 },
+    { "name": "HarmonyGenerateSequence", "id": 42 },
+    { "name": "HarmonyGenerateBoth", "id": 43 },
+    { "name": "HarmonyRegenerateUnlocked", "id": 44 },
+    { "name": "HarmonyCommitBaselineMap", "id": 45 }
   ]
 }

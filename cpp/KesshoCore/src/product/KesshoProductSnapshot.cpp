@@ -179,6 +179,27 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   harmony.tension = clampFloat(snapshot.harmony.tension, 0.0f, 1.0f);
   harmony.chord_mode = snapshot.harmony.chord_mode;
   harmony.voicing_mode = snapshot.harmony.voicing_mode;
+  harmony.control_mode = snapshot.harmony.control_mode;
+  harmony.control_strength = snapshot.harmony.control_strength;
+  harmony.active_source = snapshot.harmony.active_source;
+  harmony.active_slot_id = snapshot.harmony.active_slot_id;
+  harmony.active_step_index = snapshot.harmony.active_step_index;
+  harmony.manual_control_available = snapshot.harmony.manual_control_available != 0u;
+  harmony.note_pool_count = std::min<uint32_t>(snapshot.harmony.note_pool_count, 8u);
+  for (uint32_t i = 0; i < 8u; ++i) {
+    harmony.note_pool_midi[i] = i < harmony.note_pool_count
+        ? clampFloat(snapshot.harmony.note_pool_midi[i], 0.0f, 127.0f)
+        : 0.0f;
+  }
+  harmony.bass_midi = snapshot.harmony.bass_midi < 0.0f ? -1.0f : clampFloat(snapshot.harmony.bass_midi, 0.0f, 127.0f);
+  harmony.next_note_pool_count = std::min<uint32_t>(snapshot.harmony.next_note_pool_count, 8u);
+  for (uint32_t i = 0; i < 8u; ++i) {
+    harmony.next_note_pool_midi[i] = i < harmony.next_note_pool_count
+        ? clampFloat(snapshot.harmony.next_note_pool_midi[i], 0.0f, 127.0f)
+        : 0.0f;
+  }
+  harmony.next_source = snapshot.harmony.next_source;
+  harmony.next_step_index = snapshot.harmony.next_step_index;
   master_gain = clampFloat(snapshot.master.gain, 0.0f, 1.5f);
   setMasterLimiterCeilingDb(snapshot.master.limiter_ceiling_db);
   rng_seed = snapshot.rng.seed == 0u ? 1u : snapshot.rng.seed;

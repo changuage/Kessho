@@ -1,10 +1,11 @@
 import type { CoreProductEvent } from './coreProductEvents';
-import { CORE_PRODUCT_SOURCE_IDS, createCoreProductJourneyStateEvent, createCoreProductParamEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSourceOverrideCommitEvent, createCoreProductSourceOverrideSlotEvent, createCoreProductSourcePresetEvent } from './coreProductEvents';
+import { CORE_PRODUCT_SOURCE_IDS, createCoreProductHarmonyControlClearManualIntentEvent, createCoreProductHarmonyControlSetManualIntentEvent, createCoreProductHarmonySequenceSetEnabledEvent, createCoreProductHarmonySequenceSetStepEvent, createCoreProductHarmonySlotSetEvent, createCoreProductJourneyStateEvent, createCoreProductParamEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSourceOverrideCommitEvent, createCoreProductSourceOverrideSlotEvent, createCoreProductSourcePresetEvent } from './coreProductEvents';
 import { usesLegacyGranularRuntimeSeed, type CoreProductSnapshot } from './coreProductSnapshot';
 import { appendCoreProductSourcePresetEndpointDiffs, canApplyCoreProductSourcePresetEndpointIdDiff, coreProductSourcePresetEndpointIdsChanged } from './CoreProductRuntimeAdapterSourcePresets';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import { KESSHO_PRODUCT_PARAM_IDS, KESSHO_PRODUCT_PARAMS } from './generated/kesshoProductParams';
 import { KESSHO_PRODUCT_DRUM_PARAM_COUNT, KESSHO_PRODUCT_LEAD_PARAM_COUNT, KESSHO_PRODUCT_PAD_PARAM_COUNT } from './generated/kesshoProductSchema';
+import { HARMONY_QUALITY_IDS, type HarmonyChordQuality } from './CoreProductHarmonyControl';
 
 export const MAX_SNAPSHOT_DIFF_EVENTS = 384;
 
@@ -236,6 +237,49 @@ class CoreProductRuntimeAdapter {
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.HarmonyRootMidi, previous.harmony.rootMidi, next.harmony.rootMidi);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.HarmonyScaleId, previous.harmony.scaleId, next.harmony.scaleId);
     this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.HarmonyTension, previous.harmony.tension, next.harmony.tension);
+    if (this.harmonyPoolFrameChanged(previous.harmony, next.harmony)) {
+      if (next.harmony.activeSource === 3) {
+        events.push(createCoreProductHarmonyControlSetManualIntentEvent({
+          degree: next.harmony.resolvedHarmonyFrame.degree,
+          quality: this.harmonyQuality(next.harmony.resolvedHarmonyFrame.quality),
+          strength: next.harmony.manualControl.strength,
+        }));
+      } else if (next.harmony.activeSource === 2 && next.harmony.activeSlotId >= 0) {
+        events.push(createCoreProductHarmonySlotSetEvent(next.harmony.activeSlotId, {
+          degree: next.harmony.resolvedHarmonyFrame.degree,
+          quality: this.harmonyQuality(next.harmony.resolvedHarmonyFrame.quality),
+          strength: next.harmony.manualControl.strength,
+        }));
+      } else if (next.harmony.activeSource === 1 && next.harmony.activeStepIndex >= 0) {
+        events.push(createCoreProductHarmonySequenceSetEnabledEvent(next.harmony.chordSequenceEnabled));
+        events.push(createCoreProductHarmonySequenceSetStepEvent(next.harmony.activeStepIndex, {
+          degree: next.harmony.resolvedHarmonyFrame.degree,
+          quality: this.harmonyQuality(next.harmony.resolvedHarmonyFrame.quality),
+          strength: next.harmony.manualControl.strength,
+        }));
+      } else if (previous.harmony.activeSource !== 0) {
+        events.push(createCoreProductHarmonyControlClearManualIntentEvent());
+      }
+    }
+  }
+
+  private harmonyPoolFrameChanged(previous: CoreProductSnapshot['harmony'], next: CoreProductSnapshot['harmony']): boolean {
+    if (previous.activeSource !== next.activeSource) return true;
+    if (previous.activeSlotId !== next.activeSlotId) return true;
+    if (previous.activeStepIndex !== next.activeStepIndex) return true;
+    if (previous.notePoolCount !== next.notePoolCount) return true;
+    if (previous.nextNotePoolCount !== next.nextNotePoolCount) return true;
+    for (let index = 0; index < 8; index += 1) {
+      if ((previous.notePoolMidi[index] ?? 0) !== (next.notePoolMidi[index] ?? 0)) return true;
+      if ((previous.nextNotePoolMidi[index] ?? 0) !== (next.nextNotePoolMidi[index] ?? 0)) return true;
+    }
+    return false;
+  }
+
+  private harmonyQuality(quality: string): HarmonyChordQuality {
+    return Object.prototype.hasOwnProperty.call(HARMONY_QUALITY_IDS, quality)
+      ? quality as HarmonyChordQuality
+      : 'auto';
   }
 
   private appendJourneyDiffs(

@@ -1,5 +1,7 @@
 #include "KesshoProductEngineInternal.h"
 
+#include <initializer_list>
+
 namespace {
 
 bool resolvePadRuntimeParamId(
@@ -46,6 +48,74 @@ bool resolveLeadRuntimeParamId(
   return false;
 }
 
+bool manualHarmonyAllowed(float morph_phase) {
+  return morph_phase <= 0.0f || morph_phase >= 1.0f;
+}
+
+void writeHarmonyPoolFromIntent(
+    HarmonyState& harmony,
+    uint32_t source,
+    uint32_t degree,
+    uint32_t quality,
+    uint32_t strength,
+    uint32_t root_note,
+    int32_t slot_id,
+    int32_t step_index) {
+  int intervals[kMaxScaleNotes]{};
+  const uint32_t scale_count = std::max(1u, scaleIntervals(harmony.scale_id, intervals));
+  const uint32_t safe_degree = scale_count == 0u ? 0u : degree % scale_count;
+  const float degree_root = clampFloat(harmony.root_midi + static_cast<float>(intervals[safe_degree]), 0.0f, 127.0f);
+  float quality_intervals[8]{};
+  uint32_t quality_count = 0u;
+  const auto set_quality = [&](std::initializer_list<float> values) {
+    quality_count = 0u;
+    for (const float value : values) {
+      if (quality_count < 8u) {
+        quality_intervals[quality_count++] = value;
+      }
+    }
+  };
+  switch (quality) {
+    case 1u: set_quality({0.0f, 3.0f, 6.0f}); break;
+    case 2u: set_quality({0.0f, 3.0f, 7.0f}); break;
+    case 3u: set_quality({0.0f, 4.0f, 7.0f}); break;
+    case 4u: set_quality({0.0f, 5.0f, 7.0f}); break;
+    case 5u: set_quality({0.0f, 4.0f, 7.0f, 11.0f}); break;
+    case 6u: set_quality({0.0f, 3.0f, 7.0f, 10.0f}); break;
+    case 7u: set_quality({0.0f, 4.0f, 7.0f, 10.0f}); break;
+    case 8u: set_quality({0.0f, 4.0f, 7.0f, 14.0f}); break;
+    case 9u: set_quality({0.0f, 4.0f, 7.0f, 9.0f}); break;
+    case 10u: set_quality({0.0f, 4.0f, 7.0f, 9.0f, 14.0f}); break;
+    case 11u: set_quality({0.0f, 4.0f, 7.0f, 10.0f, 14.0f}); break;
+    case 12u: set_quality({0.0f, 5.0f, 10.0f, 15.0f}); break;
+    case 13u: set_quality({0.0f, 1.0f, 2.0f, 4.0f}); break;
+    case 0u:
+    default:
+      quality_count = std::min<uint32_t>(4u, scale_count);
+      for (uint32_t i = 0u; i < quality_count; ++i) {
+        const uint32_t degree_index = (safe_degree + i * 2u) % scale_count;
+        const int octave = safe_degree + i * 2u >= scale_count ? 12 : 0;
+        quality_intervals[i] = static_cast<float>(intervals[degree_index] - intervals[safe_degree] + octave);
+      }
+      break;
+  }
+  harmony.control_mode = source == 1u ? 1u : source == 3u ? 2u : source == 2u ? 3u : 0u;
+  harmony.control_strength = strength > 0u ? 1u : 0u;
+  harmony.active_source = source;
+  harmony.active_slot_id = slot_id;
+  harmony.active_step_index = step_index;
+  harmony.note_pool_count = std::min<uint32_t>(quality_count, 8u);
+  for (uint32_t i = 0u; i < 8u; ++i) {
+    harmony.note_pool_midi[i] = i < harmony.note_pool_count
+        ? clampFloat(degree_root + quality_intervals[i], 0.0f, 127.0f)
+        : 0.0f;
+  }
+  harmony.bass_midi = -1.0f;
+  harmony.manual_control_available = true;
+  harmony.next_source = harmony.next_source == 0u ? source : harmony.next_source;
+  (void)root_note;
+}
+
 } // namespace
 
   int32_t KesshoProductEngine::validateEvent(const KesshoProductEvent& event) const {
@@ -69,6 +139,12 @@ bool resolveLeadRuntimeParamId(
     case KESSHO_PRODUCT_EVENT_KIND_RESET_RNG:
     case KESSHO_PRODUCT_EVENT_KIND_START_JOURNEY_MORPH_CLOCK:
     case KESSHO_PRODUCT_EVENT_KIND_STOP_JOURNEY_MORPH_CLOCK:
+    case KESSHO_PRODUCT_EVENT_HARMONY_CONTROL_CLEAR_MANUAL_INTENT_ID:
+    case KESSHO_PRODUCT_EVENT_HARMONY_GENERATE_SLOTS_ID:
+    case KESSHO_PRODUCT_EVENT_HARMONY_GENERATE_SEQUENCE_ID:
+    case KESSHO_PRODUCT_EVENT_HARMONY_GENERATE_BOTH_ID:
+    case KESSHO_PRODUCT_EVENT_HARMONY_REGENERATE_UNLOCKED_ID:
+    case KESSHO_PRODUCT_EVENT_HARMONY_COMMIT_BASELINE_MAP_ID:
       return KESSHO_PRODUCT_OK;
     case KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT:
       return event.value > 0.0f ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
@@ -135,6 +211,36 @@ bool resolveLeadRuntimeParamId(
       return event.value2 >= 0.0f && event.value2 <= 1.0f && event.value3 > 0.0f
           ? KESSHO_PRODUCT_OK
           : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_HARMONY_CONTROL_SET_MODE_ID:
+      return event.value >= 0.0f && event.value <= 2.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_HARMONY_CONTROL_SET_STRENGTH_ID:
+      return event.value >= 0.0f && event.value <= 1.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_HARMONY_CONTROL_SET_MANUAL_INTENT_ID:
+      return event.value >= 0.0f && event.value <= 6.0f &&
+              event.value2 >= 0.0f && event.value2 <= 14.0f &&
+              event.value3 >= 0.0f && event.value3 <= 11.0f &&
+              event.value4 >= 0.0f && event.value4 <= 1.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_SET_ID:
+      return event.index < 8u && event.value >= 0.0f && event.value <= 6.0f && event.value2 >= 0.0f && event.value2 <= 14.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_TRIGGER_ID:
+    case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_CLEAR_ID:
+      return event.index < 8u ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_HARMONY_SEQUENCE_SET_STEP_ID:
+      return event.index < 8u && event.value >= 0.0f && event.value <= 6.0f && event.value2 >= 0.0f && event.value2 <= 14.0f
+          ? KESSHO_PRODUCT_OK
+          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_HARMONY_SEQUENCE_SET_ENABLED_ID:
+      return event.value >= 0.0f && event.value <= 1.0f ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+    case KESSHO_PRODUCT_EVENT_HARMONY_SEQUENCE_SET_ACTIVE_STEP_ID:
+      return event.index < 8u ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE:
       if (event.param_id == 0u || event.index == 0u) {
         return KESSHO_PRODUCT_ERROR_INVALID_PARAM;
@@ -333,6 +439,95 @@ void KesshoProductEngine::sortControlEvents() {
       break;
     case KESSHO_PRODUCT_EVENT_KIND_RESET_RNG:
       rng_state = rng_seed;
+      break;
+    case KESSHO_PRODUCT_EVENT_HARMONY_CONTROL_SET_MODE_ID:
+      harmony.control_mode = static_cast<uint32_t>(std::lround(event.value));
+      break;
+    case KESSHO_PRODUCT_EVENT_HARMONY_CONTROL_SET_STRENGTH_ID:
+      harmony.control_strength = event.value >= 0.5f ? 1u : 0u;
+      break;
+    case KESSHO_PRODUCT_EVENT_HARMONY_CONTROL_SET_MANUAL_INTENT_ID:
+      harmony.manual_control_available = manualHarmonyAllowed(journey_phase);
+      if (harmony.manual_control_available) {
+        writeHarmonyPoolFromIntent(
+            harmony,
+            3u,
+            static_cast<uint32_t>(std::lround(event.value)),
+            static_cast<uint32_t>(std::lround(event.value2)),
+            event.value4 >= 0.5f ? 1u : 0u,
+            static_cast<uint32_t>(std::lround(event.value3)),
+            -1,
+            -1);
+      }
+      break;
+    case KESSHO_PRODUCT_EVENT_HARMONY_CONTROL_CLEAR_MANUAL_INTENT_ID:
+      harmony.note_pool_count = 0u;
+      harmony.active_source = 0u;
+      harmony.control_mode = 0u;
+      harmony.active_slot_id = -1;
+      harmony.active_step_index = -1;
+      break;
+    case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_SET_ID:
+      if (manualHarmonyAllowed(journey_phase)) {
+        writeHarmonyPoolFromIntent(
+            harmony,
+            2u,
+            static_cast<uint32_t>(std::lround(event.value)),
+            static_cast<uint32_t>(std::lround(event.value2)),
+            event.value4 >= 0.5f ? 1u : 0u,
+            static_cast<uint32_t>(std::lround(event.value3)),
+            static_cast<int32_t>(event.index),
+            -1);
+      }
+      break;
+    case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_TRIGGER_ID:
+      harmony.manual_control_available = manualHarmonyAllowed(journey_phase);
+      if (harmony.manual_control_available) {
+        harmony.active_source = 2u;
+        harmony.control_mode = 3u;
+        harmony.active_slot_id = static_cast<int32_t>(event.index);
+      }
+      break;
+    case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_CLEAR_ID:
+      if (harmony.active_slot_id == static_cast<int32_t>(event.index)) {
+        harmony.note_pool_count = 0u;
+        harmony.active_source = 0u;
+        harmony.control_mode = 0u;
+        harmony.active_slot_id = -1;
+      }
+      break;
+    case KESSHO_PRODUCT_EVENT_HARMONY_SEQUENCE_SET_STEP_ID:
+      writeHarmonyPoolFromIntent(
+          harmony,
+          1u,
+          static_cast<uint32_t>(std::lround(event.value)),
+          static_cast<uint32_t>(std::lround(event.value2)),
+          event.value4 >= 0.5f ? 1u : 0u,
+          static_cast<uint32_t>(std::lround(event.value3)),
+          -1,
+          static_cast<int32_t>(event.index));
+      break;
+    case KESSHO_PRODUCT_EVENT_HARMONY_SEQUENCE_SET_ENABLED_ID:
+      if (event.value < 0.5f && harmony.active_source == 1u) {
+        harmony.note_pool_count = 0u;
+        harmony.active_source = 0u;
+        harmony.control_mode = 0u;
+        harmony.active_step_index = -1;
+      }
+      break;
+    case KESSHO_PRODUCT_EVENT_HARMONY_SEQUENCE_SET_ACTIVE_STEP_ID:
+      harmony.active_step_index = static_cast<int32_t>(event.index);
+      if (harmony.active_source == 0u) {
+        harmony.active_source = 1u;
+        harmony.control_mode = 1u;
+      }
+      break;
+    case KESSHO_PRODUCT_EVENT_HARMONY_GENERATE_SLOTS_ID:
+    case KESSHO_PRODUCT_EVENT_HARMONY_GENERATE_SEQUENCE_ID:
+    case KESSHO_PRODUCT_EVENT_HARMONY_GENERATE_BOTH_ID:
+    case KESSHO_PRODUCT_EVENT_HARMONY_REGENERATE_UNLOCKED_ID:
+    case KESSHO_PRODUCT_EVENT_HARMONY_COMMIT_BASELINE_MAP_ID:
+      rng_state = hashU32(rng_state ^ event.event_kind ^ event.index);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE:
       applyModulationRangeEvent(event);

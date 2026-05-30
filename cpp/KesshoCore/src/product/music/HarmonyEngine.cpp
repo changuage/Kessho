@@ -1,6 +1,15 @@
 #include "../KesshoProductEngineInternal.h"
 
   void KesshoProductEngine::updateHarmonyTelemetry(uint64_t absolute_sample) {
+  if (harmony.note_pool_count > 0u) {
+    harmony.chord_degree = harmony.active_step_index >= 0 ? static_cast<uint32_t>(harmony.active_step_index) : 0u;
+    for (uint32_t i = 0; i < 4u; ++i) {
+      harmony.chord_midi[i] = i < harmony.note_pool_count
+          ? harmony.note_pool_midi[i]
+          : harmony.note_pool_midi[harmony.note_pool_count - 1u];
+    }
+    return;
+  }
   int intervals[kMaxScaleNotes]{};
   const uint32_t scale_count = scaleIntervals(harmony.scale_id, intervals);
   const uint64_t bar = transport.barIndexAt(sample_rate, absolute_sample);

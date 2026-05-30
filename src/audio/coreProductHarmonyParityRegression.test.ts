@@ -9,6 +9,13 @@ import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES } from './lead4opfm';
 import { applyPadPresetMorphParamsToState } from './padPresets';
 import { drumPitchUiValuesToEngineOffsets, quantizeDrumPitchOffsetToScale } from '../ui/sequencer/drumPitchSequencer';
 import { DEFAULT_STATE } from '../ui/state';
+import {
+  HARMONY_SEQUENCE_STEP_COUNT,
+  HARMONY_SLOT_COUNT,
+  commitBaselineMap,
+  generateHarmonySlotsAndSequence,
+  resolveProductHarmonyState,
+} from './CoreProductHarmonyControl';
 
 function assertNoWebExactPatchFields(source: unknown, label: string): void {
   assert(source && typeof source === 'object', `${label} source should exist`);
@@ -446,5 +453,126 @@ const customFullDefaultDrumFreqOverrideSlot = customFullDefaultDrumPatchSource?.
   .indexOf(0) ?? -1;
 assert.ok(customFullDefaultDrumFreqOverrideSlot >= 0, 'Product drum custom sub frequency control should target the generated Drum param index');
 assert.ok(Number.isFinite(customFullDefaultDrumPatchSource?.drumOverrideValues[customFullDefaultDrumFreqOverrideSlot]), 'Product drum sparse override should carry a finite value');
+
+const harmonyDefaultsSnapshot = createCoreProductSnapshot({ rootMidi: 60, tension: 0.35 });
+assert.equal(harmonyDefaultsSnapshot.harmony.chordSlots.length, HARMONY_SLOT_COUNT, 'Product harmony should initialize 8 chord slots');
+assert.equal(harmonyDefaultsSnapshot.harmony.chordSequence.length, HARMONY_SEQUENCE_STEP_COUNT, 'Product harmony should initialize 8 sequence steps');
+assert.equal(harmonyDefaultsSnapshot.harmony.resolvedHarmonyFrame.activeSource, 'baseline', 'Product harmony baseline should remain default authority');
+assert.equal(harmonyDefaultsSnapshot.harmony.manualControlAvailable, true, 'manual harmony control should be available at endpoint morph');
+assert.ok(harmonyDefaultsSnapshot.harmony.notePoolCount > 0, 'Product harmony should expose a current note pool');
+assert.ok(harmonyDefaultsSnapshot.harmony.nextNotePoolCount > 0, 'Product harmony should expose a next note pool');
+
+const harmonyManualAtEndpoint = createCoreProductSnapshot({
+  rootMidi: 60,
+  tension: 0.35,
+  manualHarmonyControl: {
+    enabled: true,
+    mode: 'control',
+    strength: 'force',
+    activeIntent: {
+      source: 'manualControl',
+      strength: 'force',
+      rootMode: 'degree',
+      degree: 3,
+      rootNote: 0,
+      quality: 'min7',
+      extensions: [],
+      inversion: 0,
+      spread: 0.5,
+      octave: 4,
+      bassMode: 'off',
+      bassNote: null,
+      capturedMidiNotes: [],
+      preserveCapturedVoicing: false,
+    },
+  },
+});
+assert.equal(harmonyManualAtEndpoint.harmony.resolvedHarmonyFrame.activeSource, 'manualControl', 'manual harmony control should win at endpoint morph');
+assert.equal(harmonyManualAtEndpoint.harmony.controlStrength, 1, 'manual harmony force should pack as numeric strength');
+
+const harmonyManualDuringMorph = createCoreProductSnapshot({
+  rootMidi: 60,
+  journeyEnabled: true,
+  journeyMorphPhase: 0.42,
+  manualHarmonyControl: {
+    enabled: true,
+    mode: 'control',
+    activeIntent: {
+      source: 'manualControl',
+      strength: 'force',
+      rootMode: 'degree',
+      degree: 3,
+      rootNote: 0,
+      quality: 'min7',
+      extensions: [],
+      inversion: 0,
+      spread: 0.5,
+      octave: 4,
+      bassMode: 'off',
+      bassNote: null,
+      capturedMidiNotes: [],
+      preserveCapturedVoicing: false,
+    },
+  },
+});
+assert.equal(harmonyManualDuringMorph.harmony.manualControlAvailable, false, 'manual harmony control should be locked during morph');
+assert.equal(harmonyManualDuringMorph.harmony.resolvedHarmonyFrame.activeSource, 'baseline', 'manual harmony control should not mutate active harmony during morph');
+
+const morphBankState = resolveProductHarmonyState({
+  state: {
+    harmonyMorphPercent: 50,
+    harmonyChordSequenceEnabled: true,
+    harmonyChordSequenceA: [{ id: 0, enabled: true, locked: false, mode: 'auto', degree: 1, quality: 'auto', intent: null, slotId: null, probability: 1 }],
+    harmonyChordSequenceB: [{ id: 0, enabled: true, locked: false, mode: 'auto', degree: 5, quality: 'auto', intent: null, slotId: null, probability: 1 }],
+  },
+  rootMidi: 60,
+  scaleId: 1,
+  tension: 0.35,
+  seed: 1,
+});
+assert.equal(morphBankState.chordSequence[0]?.degree, 5, 'Product harmony should select the Preset B sequence bank at 50% morph');
+
+const generatedA = generateHarmonySlotsAndSequence(1234);
+const generatedB = generateHarmonySlotsAndSequence(1234);
+assert.deepEqual(generatedA, generatedB, 'harmony slot/sequence generation should be deterministic from seed');
+const lockedSlot = { ...generatedA.slots[0]!, locked: true };
+const lockedStep = { ...generatedA.sequence[0]!, locked: true };
+const lockedGenerated = generateHarmonySlotsAndSequence(2222, {}, [lockedSlot], [lockedStep]);
+assert.deepEqual(lockedGenerated.slots[0], lockedSlot, 'locked harmony slots should survive regeneration');
+assert.deepEqual(lockedGenerated.sequence[0], lockedStep, 'locked harmony sequence steps should survive regeneration');
+
+const committedBaseline = commitBaselineMap({ seed: 99, rootMidi: 60, scaleId: 1, tension: 0.9 });
+assert.equal(committedBaseline.length, HARMONY_SEQUENCE_STEP_COUNT, 'Commit Baseline Map should write exactly 8 harmony steps');
+assert.equal(committedBaseline.every((step) => step.quality === 'auto'), true, 'Commit Baseline Map should preserve tension-engine quality:auto steps');
+
+const auditionState = resolveProductHarmonyState({
+  state: {
+    manualHarmonyControl: {
+      enabled: true,
+      mode: 'audition',
+      auditionIntent: {
+        source: 'audition',
+        strength: 'force',
+        rootMode: 'degree',
+        degree: 4,
+        rootNote: 0,
+        quality: 'dom7',
+        extensions: [],
+        inversion: 0,
+        spread: 0.5,
+        octave: 4,
+        bassMode: 'off',
+        bassNote: null,
+        capturedMidiNotes: [],
+        preserveCapturedVoicing: false,
+      },
+    },
+  },
+  rootMidi: 60,
+  scaleId: 1,
+  tension: 0.35,
+  seed: 1,
+});
+assert.equal(auditionState.resolvedHarmonyFrame.activeSource, 'baseline', 'audition should not mutate active resolved harmony');
 
 console.log('Kessho Product harmony parity regression passed');

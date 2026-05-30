@@ -90,6 +90,14 @@ export type CoreProductTelemetrySnapshot = {
   harmonyTension?: number;
   harmonyChordDegree?: number;
   harmonyChordMidi?: number[];
+  harmonyActiveSource?: number;
+  harmonyActiveSlotId?: number;
+  harmonyActiveStepIndex?: number;
+  harmonyManualControlAvailable?: boolean;
+  harmonyNotePoolMidi?: number[];
+  harmonyNextNotePoolMidi?: number[];
+  harmonyNextSource?: number;
+  harmonyNextStepIndex?: number;
   modulationRangeCount?: number;
   runtimeWalkCount?: number;
   runtimeWalkValues?: Record<number, number>;

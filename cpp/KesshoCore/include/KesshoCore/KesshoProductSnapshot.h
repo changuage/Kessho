@@ -25,6 +25,19 @@ typedef struct KesshoProductHarmonySnapshot {
   float tension;
   uint32_t chord_mode;
   uint32_t voicing_mode;
+  uint32_t control_mode;
+  uint32_t control_strength;
+  uint32_t active_source;
+  int32_t active_slot_id;
+  int32_t active_step_index;
+  uint32_t manual_control_available;
+  uint32_t note_pool_count;
+  float note_pool_midi[8];
+  float bass_midi;
+  uint32_t next_note_pool_count;
+  float next_note_pool_midi[8];
+  uint32_t next_source;
+  int32_t next_step_index;
   uint32_t reserved0;
 } KesshoProductHarmonySnapshot;
 

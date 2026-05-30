@@ -37,7 +37,7 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
 
 const SOURCE_ORDER = [CORE_PRODUCT_SOURCE_IDS.pad1, CORE_PRODUCT_SOURCE_IDS.pad2, CORE_PRODUCT_SOURCE_IDS.lead1, CORE_PRODUCT_SOURCE_IDS.lead2, CORE_PRODUCT_SOURCE_IDS.drum, CORE_PRODUCT_SOURCE_IDS.piano, CORE_PRODUCT_SOURCE_IDS.soundscape] as const;
 
-const SNAPSHOT_BYTES = 28352;
+const SNAPSHOT_BYTES = 28460;
 const SOURCE_BYTES = 3320;
 const LANE_BYTES = 92;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES;
@@ -194,6 +194,19 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.harmony.tension);
   u32(snapshot.harmony.chordMode);
   u32(snapshot.harmony.voicingMode);
+  u32(snapshot.harmony.controlMode);
+  u32(snapshot.harmony.controlStrength);
+  u32(snapshot.harmony.activeSource);
+  i32(snapshot.harmony.activeSlotId);
+  i32(snapshot.harmony.activeStepIndex);
+  u32(bool(snapshot.harmony.manualControlAvailable));
+  u32(snapshot.harmony.notePoolCount);
+  for (let index = 0; index < 8; index += 1) f32(snapshot.harmony.notePoolMidi[index] ?? 0);
+  f32(snapshot.harmony.bassMidi);
+  u32(snapshot.harmony.nextNotePoolCount);
+  for (let index = 0; index < 8; index += 1) f32(snapshot.harmony.nextNotePoolMidi[index] ?? 0);
+  u32(snapshot.harmony.nextSource);
+  i32(snapshot.harmony.nextStepIndex);
   u32(0);
 
   for (let index = 0; index < 7; index += 1) {

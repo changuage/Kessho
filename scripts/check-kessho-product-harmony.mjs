@@ -46,6 +46,8 @@ requireTokens('cpp/KesshoCore/tests/ProductHarmonyTests.cpp', [
   'same seed harmony event mismatch',
   'high-tension harmony should be seed-sensitive',
   'journey state event should alter generated sequencer event values',
+  'manual harmony intent should be ignored during morph',
+  'manual harmony pool should feed sequencer voicing',
 ]);
 
 requireTokens('cpp/KesshoCore/src/product/music/ScaleEngine.cpp', [
@@ -65,10 +67,12 @@ requireTokens('src/audio/coreProductSnapshot.ts', [
   'PRODUCT_HARMONY_SCALE_IDS',
   'resolveHarmonyScaleName',
   'selectScaleFamily(createRng',
-  'rootMidi: rootMidiFromState(sliderState)',
-  'scaleId: scaleIdFromState(sliderState, tension)',
+  'const rootMidi = rootMidiFromState(sliderState)',
+  'const scaleId = scaleIdFromState(sliderState, tension)',
   'tension,',
   "voicingMode: numberFromState(sliderState, 'voicingMode', 1)",
+  'resolveProductHarmonyState',
+  'notePoolMidi: fixedHarmonyPool',
 ]);
 
 requireTokens('src/audio/coreProductArrangementScheduler.ts', [

@@ -40,6 +40,18 @@ int nearestOctaveOffset(float center, float root_midi) {
   if (lane.seed >= 3000u && lane.seed < 5000u) {
     return clampFloat(lane.midi_note, 0.0f, 127.0f);
   }
+  if (harmony.note_pool_count > 0u) {
+    const uint32_t pool_count = std::min<uint32_t>(harmony.note_pool_count, 8u);
+    const uint32_t event_seed = hashU32(
+        rng_seed ^
+        lane.seed ^
+        static_cast<uint32_t>(step_id * 2654435761u) ^
+        static_cast<uint32_t>(lane_index * 16777619u) ^
+        static_cast<uint32_t>(absolute_sample) ^
+        static_cast<uint32_t>(absolute_sample >> 32));
+    const uint32_t index = static_cast<uint32_t>(hashUnit(event_seed) * static_cast<float>(pool_count)) % pool_count;
+    return clampFloat(harmony.note_pool_midi[index], 0.0f, 127.0f);
+  }
 
   int intervals[kMaxScaleNotes]{};
   const uint32_t scale_count = scaleIntervals(harmony.scale_id, intervals);

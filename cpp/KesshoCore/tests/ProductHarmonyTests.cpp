@@ -481,6 +481,65 @@ int main() {
   require(telemetry.harmony_chord_midi[0] >= 65.0f, "telemetry chord should be populated");
   kessho_product_destroy(engine);
 
+  KesshoProductSnapshotV2 pool_snapshot = makeSnapshot(60.0f, 1, 0.3f, 77);
+  pool_snapshot.harmony.active_source = 3u;
+  pool_snapshot.harmony.control_mode = 2u;
+  pool_snapshot.harmony.control_strength = 1u;
+  pool_snapshot.harmony.manual_control_available = 1u;
+  pool_snapshot.harmony.note_pool_count = 4u;
+  pool_snapshot.harmony.note_pool_midi[0] = 60.0f;
+  pool_snapshot.harmony.note_pool_midi[1] = 63.0f;
+  pool_snapshot.harmony.note_pool_midi[2] = 67.0f;
+  pool_snapshot.harmony.note_pool_midi[3] = 70.0f;
+  KesshoSequencerEvent pool_events[16]{};
+  count = renderEvents(pool_snapshot, pool_events, 16);
+  require(count >= 1, "manual harmony pool event count too low");
+  bool pool_event_in_manual_pool = false;
+  for (float note : {60.0f, 63.0f, 67.0f, 70.0f}) {
+    if (std::fabs(pool_events[0].midi_note - note) <= 0.001f) {
+      pool_event_in_manual_pool = true;
+    }
+  }
+  require(pool_event_in_manual_pool, "manual harmony pool should feed sequencer voicing");
+
+  KesshoProductEngine* manual_engine = kessho_product_create(48000.0, 128, 0);
+  require(manual_engine != nullptr, "manual harmony engine create failed");
+  KesshoProductSnapshotV2 manual_snapshot = makeSnapshot(60.0f, 1, 0.3f, 81);
+  manual_snapshot.journey.enabled = 1u;
+  manual_snapshot.journey.morph_phase = 0.4f;
+  require(kessho_product_load_snapshot_v2(manual_engine, &manual_snapshot, sizeof(manual_snapshot)) == KESSHO_PRODUCT_OK, "manual harmony snapshot load failed");
+  KesshoProductEvent manual_intent_event{};
+  manual_intent_event.event_kind = KESSHO_PRODUCT_EVENT_HARMONY_CONTROL_SET_MANUAL_INTENT_ID;
+  manual_intent_event.value = 3.0f;
+  manual_intent_event.value2 = 6.0f;
+  manual_intent_event.value3 = 0.0f;
+  manual_intent_event.value4 = 1.0f;
+  require(kessho_product_enqueue_event(manual_engine, &manual_intent_event) == KESSHO_PRODUCT_OK, "manual harmony intent enqueue failed");
+  KesshoSequencerEvent locked_manual_events[16]{};
+  count = kessho_product_debug_render_events(manual_engine, locked_manual_events, 16, 18001);
+  KesshoProductTelemetry locked_manual_telemetry = kessho_product_get_telemetry(manual_engine);
+  require(count >= 1, "locked manual harmony event count too low");
+  requireNear(locked_manual_events[0].midi_note, 60.0f, 0.001f, "manual harmony intent should be ignored during morph");
+  require(locked_manual_telemetry.harmony_chord_degree == 0u, "manual harmony should stay baseline during morph");
+  kessho_product_destroy(manual_engine);
+
+  KesshoProductEngine* endpoint_manual_engine = kessho_product_create(48000.0, 128, 0);
+  require(endpoint_manual_engine != nullptr, "endpoint manual harmony engine create failed");
+  KesshoProductSnapshotV2 endpoint_manual_snapshot = makeSnapshot(60.0f, 1, 0.3f, 82);
+  require(kessho_product_load_snapshot_v2(endpoint_manual_engine, &endpoint_manual_snapshot, sizeof(endpoint_manual_snapshot)) == KESSHO_PRODUCT_OK, "endpoint manual harmony snapshot load failed");
+  require(kessho_product_enqueue_event(endpoint_manual_engine, &manual_intent_event) == KESSHO_PRODUCT_OK, "endpoint manual harmony intent enqueue failed");
+  KesshoSequencerEvent endpoint_manual_events[16]{};
+  count = kessho_product_debug_render_events(endpoint_manual_engine, endpoint_manual_events, 16, 18001);
+  require(count >= 1, "endpoint manual harmony event count too low");
+  bool endpoint_event_in_manual_pool = false;
+  for (float note : {65.0f, 68.0f, 72.0f, 75.0f}) {
+    if (std::fabs(endpoint_manual_events[0].midi_note - note) <= 0.001f) {
+      endpoint_event_in_manual_pool = true;
+    }
+  }
+  require(endpoint_event_in_manual_pool, "manual harmony intent should control pool at morph endpoint");
+  kessho_product_destroy(endpoint_manual_engine);
+
   std::cout << "Kessho Product Harmony tests passed\n";
   return 0;
 }
