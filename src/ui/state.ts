@@ -10,6 +10,15 @@
 
 import { SCALE_FAMILIES } from '../audio/scales';
 import type { ClockDivision, LaneDirection, PitchBindingMode, PitchMode, ScaleName, TrigCondition } from '../audio/drumSeqTypes';
+import {
+  defaultManualHarmonyControlState,
+  sanitizeHarmonyChordSlots,
+  sanitizeHarmonySequence,
+  sanitizeManualHarmonyControl,
+  type HarmonyChordSlot,
+  type HarmonySequenceStep,
+  type ManualHarmonyControlState,
+} from '../audio/CoreProductHarmonyControl';
 import { hydrateOptimizedStatePresetData } from '../presets/statePresetOptimization';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
@@ -461,6 +470,17 @@ export interface SliderState {
   voicingSpread: number;      // 0..1 step 0.01
   waveSpread: number;         // 0..1 fraction of chordRate - stagger time between voice entries
   detune: number;             // 0..25 cents step 1
+  harmonyMorphPercent: number; // 0..100 preset morph position used by product harmony endpoint selection
+  harmonyGenerationSeed: number; // deterministic UI salt for regenerating unlocked harmony material
+  manualHarmonyControl: ManualHarmonyControlState;
+  harmonyChordSlots: HarmonyChordSlot[];
+  harmonyChordSlotsA: HarmonyChordSlot[] | undefined;
+  harmonyChordSlotsB: HarmonyChordSlot[] | undefined;
+  harmonyChordSequence: HarmonySequenceStep[];
+  harmonyChordSequenceA: HarmonySequenceStep[] | undefined;
+  harmonyChordSequenceB: HarmonySequenceStep[] | undefined;
+  harmonyChordSequenceEnabled: boolean;
+  harmonyChordSequenceStepIndex: number;
   // Synth voice ADSR
   synthAttack: number;        // 0.001..16 seconds
   synthDecay: number;         // 0.01..8 seconds
@@ -1625,6 +1645,17 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'voicingSpread',
   'waveSpread',
   'detune',
+  'harmonyMorphPercent',
+  'harmonyGenerationSeed',
+  'manualHarmonyControl',
+  'harmonyChordSlots',
+  'harmonyChordSlotsA',
+  'harmonyChordSlotsB',
+  'harmonyChordSequence',
+  'harmonyChordSequenceA',
+  'harmonyChordSequenceB',
+  'harmonyChordSequenceEnabled',
+  'harmonyChordSequenceStepIndex',
   'synthAttack',
   'synthDecay',
   'synthSustain',
@@ -2274,6 +2305,16 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'granularMacroActivity', 'granularMacroTexture', 'granularMacroComplexity', 'granularMacroDarkness', 'granularMacroChaos',
 ];
 
+const HARMONY_JSON_STATE_KEYS = new Set<keyof SliderState>([
+  'manualHarmonyControl',
+  'harmonyChordSlots',
+  'harmonyChordSlotsA',
+  'harmonyChordSlotsB',
+  'harmonyChordSequence',
+  'harmonyChordSequenceA',
+  'harmonyChordSequenceB',
+]);
+
 /**
  * Default slider state with conservative values for performance
  */
@@ -2487,6 +2528,17 @@ export const DEFAULT_STATE: SliderState = {
   voicingSpread: 0.5,
   waveSpread: 0.125,
   detune: 8,
+  harmonyMorphPercent: 0,
+  harmonyGenerationSeed: 0,
+  manualHarmonyControl: defaultManualHarmonyControlState(),
+  harmonyChordSlots: sanitizeHarmonyChordSlots(undefined),
+  harmonyChordSlotsA: undefined,
+  harmonyChordSlotsB: undefined,
+  harmonyChordSequence: sanitizeHarmonySequence(undefined),
+  harmonyChordSequenceA: undefined,
+  harmonyChordSequenceB: undefined,
+  harmonyChordSequenceEnabled: false,
+  harmonyChordSequenceStepIndex: 0,
   synthAttack: 6.0,
   synthDecay: 1.0,
   synthSustain: 0.8,
@@ -3563,6 +3615,9 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   voicingSpread: { min: 0, max: 1, step: 0.01 },
   waveSpread: { min: 0, max: 1, step: 0.01 },
   detune: { min: 0, max: 25, step: 1 },
+  harmonyMorphPercent: { min: 0, max: 100, step: 1 },
+  harmonyGenerationSeed: { min: 0, max: 2147483647, step: 1 },
+  harmonyChordSequenceStepIndex: { min: 0, max: 7, step: 1 },
   synthAttack: { min: 0.001, max: 16, step: 0.001 },
   synthDecay: { min: 0.01, max: 8, step: 0.01 },
   synthSustain: { min: 0, max: 1, step: 0.01 },
@@ -4312,6 +4367,55 @@ export function serializeState(state: SliderState): string {
   return JSON.stringify(ordered);
 }
 
+function encodeStateValueForUrl(key: keyof SliderState, value: SliderState[keyof SliderState]): string {
+  if (HARMONY_JSON_STATE_KEYS.has(key)) {
+    return JSON.stringify(value) ?? '';
+  }
+  return String(value);
+}
+
+function parseJsonStateValue(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function decodeHarmonyJsonStateValue(state: SliderState, key: keyof SliderState, value: string): boolean {
+  if (!HARMONY_JSON_STATE_KEYS.has(key)) return false;
+  const parsed = parseJsonStateValue(value);
+  if (key === 'manualHarmonyControl') {
+    state.manualHarmonyControl = sanitizeManualHarmonyControl(parsed);
+    return true;
+  }
+  if (key === 'harmonyChordSlots') {
+    state.harmonyChordSlots = sanitizeHarmonyChordSlots(parsed);
+    return true;
+  }
+  if (key === 'harmonyChordSlotsA') {
+    state.harmonyChordSlotsA = sanitizeHarmonyChordSlots(parsed);
+    return true;
+  }
+  if (key === 'harmonyChordSlotsB') {
+    state.harmonyChordSlotsB = sanitizeHarmonyChordSlots(parsed);
+    return true;
+  }
+  if (key === 'harmonyChordSequence') {
+    state.harmonyChordSequence = sanitizeHarmonySequence(parsed);
+    return true;
+  }
+  if (key === 'harmonyChordSequenceA') {
+    state.harmonyChordSequenceA = sanitizeHarmonySequence(parsed);
+    return true;
+  }
+  if (key === 'harmonyChordSequenceB') {
+    state.harmonyChordSequenceB = sanitizeHarmonySequence(parsed);
+    return true;
+  }
+  return false;
+}
+
 /**
  * Encode state to URL query string
  */
@@ -4320,7 +4424,8 @@ export function encodeStateToUrl(state: SliderState): string {
 
   for (const key of STATE_KEYS) {
     const value = state[key];
-    params.set(key, String(value));
+    if (value === undefined) continue;
+    params.set(key, encodeStateValueForUrl(key, value));
   }
 
   return params.toString();
@@ -4339,6 +4444,10 @@ export function decodeStateFromUrl(search: string): SliderState | null {
     for (const key of STATE_KEYS) {
       const value = params.get(key) ?? params.get(LEGACY_STATE_KEY_FALLBACKS[key] ?? '');
       if (value === null) continue;
+
+      if (decodeHarmonyJsonStateValue(state, key, value)) {
+        continue;
+      }
 
       if (isIndexedDelayDivisionKey(key)) {
         const normalized = normalizeIndexedDelayDivisionValue(value);

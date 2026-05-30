@@ -100,6 +100,7 @@ import {
   Lead4opFMEditorOverlay,
   type Lead4opFMEditorApplyRequest,
 } from './Lead4opFMEditorOverlay';
+import { HarmonyEnginePanel } from './HarmonyEnginePanel';
 import { SEQUENCER_LANE_COLORS, SEQUENCER_SUB_LANE_COLORS, SOURCE_COLORS } from '../../designSystem/colors';
 
 const OV_PROB_DRAG_PX = 80;
@@ -4827,6 +4828,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               </button>
             </div>
           </div>
+
+          <HarmonyEnginePanel
+            state={state}
+            harmonyState={harmonyState}
+            onStateChange={onStateChange}
+          />
 
           {!isMobile && showKeyboard && (
             <div className="synth-keyboard-panel" style={{ '--kb-accent': keyboardSourceInfo.color } as React.CSSProperties}>
