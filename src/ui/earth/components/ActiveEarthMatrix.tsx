@@ -1221,6 +1221,10 @@ function snapshotsEqual(
   if (!a || !b) return !a && !b;
   if (
     a.fileName !== b.fileName ||
+    a.active !== b.active ||
+    a.inactiveReason !== b.inactiveReason ||
+    a.assetId !== b.assetId ||
+    a.seed !== b.seed ||
     a.sliceDuration !== b.sliceDuration ||
     a.fadeTime !== b.fadeTime ||
     a.density !== b.density ||

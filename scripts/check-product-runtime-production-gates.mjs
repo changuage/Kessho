@@ -26,6 +26,7 @@ const unsupportedSurfaceDoc = read('docs/product-core/unsupported-surface.md');
 const unsupportedAudit = read('scripts/audit-product-host-unsupported-surface.mjs');
 const runtimeFallbackGate = read('scripts/check-kessho-product-runtime-fallbacks.mjs');
 const browserRuntimeGate = read('scripts/check-kessho-product-browser-runtime.mjs');
+const productionInteractionGate = read('scripts/check-kessho-product-production-interactions.mjs');
 const reportPath = 'docs/reports/kessho-product-unsupported-surface-latest.json';
 
 for (const field of [
@@ -129,16 +130,39 @@ assert(
   packageJson.scripts?.['migration:runtime-production-gates'] === 'node scripts/check-product-runtime-production-gates.mjs',
   'package.json must expose migration:runtime-production-gates',
 );
+assert(
+  packageJson.scripts?.['core:product:production-interactions'] === 'node scripts/check-kessho-product-production-interactions.mjs',
+  'package.json must expose core:product:production-interactions',
+);
 assert(unsupportedAudit.includes('gateViolationCount'), 'unsupported-surface audit must report gateViolationCount');
 assert(unsupportedAudit.includes('Product Core audited files must not expose Web Audio node/browser node types'), 'unsupported-surface audit must reject raw Web Audio node surfaces');
 assert(unsupportedAudit.includes('Product Core audited files must not enter runtime fallback reporting paths'), 'unsupported-surface audit must reject runtime fallback reports');
 
 for (const token of [
   'unsupportedControlCount === 0',
+  'unsupportedGetterCount === 0',
   'runtimeFallbackDiagnosticCount === 0',
   'audioCriticalFallbackCount === 0',
+  'assertCleanProbeDiagnostics',
+  'captureEarthTextureProbe',
+  'assertEarthTextureProbe',
+  'runtime-walk-ui',
+  'sample-hold-ui',
 ]) {
   assert(browserRuntimeGate.includes(token), `browser runtime gate must assert ${token}`);
+}
+
+for (const token of [
+  'earth-texture-ui',
+  "const requiredKeys = ['waves', 'birds', 'birds2', 'frogs']",
+  'slice.offset > 0',
+  'slice.detuneCents',
+  'slice.speedMultiplier',
+  'distinctPositions.length >= 3',
+  'triggerFlashUpdateCount',
+  'KESSHO_PRODUCT_MODULATION_RANGE_TRIGGER_REVERB',
+]) {
+  assert(productionInteractionGate.includes(token), `production interaction gate must cover ${token}`);
 }
 
 for (const token of [

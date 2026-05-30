@@ -7,6 +7,16 @@ export type NativeDualRange = {
 
 export type KesshoRemoteCommand = 'play' | 'pause' | 'togglePlayPause';
 
+export type KesshoAudioSessionEventPayload = {
+  type: 'routeChange' | 'interruption' | 'mediaServicesReset';
+  reason?: string;
+  interruptionType?: string;
+  routeChangeCount?: number;
+  interruptionBeginCount?: number;
+  interruptionEndCount?: number;
+  mediaServicesResetCount?: number;
+};
+
 export type KesshoNowPlayingPayload = {
   title: string;
   artist?: string;
@@ -32,6 +42,40 @@ type KesshoAudioSessionStatus = {
   mode: 'capacitor-platform-session';
   isPlaying: boolean;
   supportsBackgroundAudio: boolean;
+  nativeProductRendererPrepared?: boolean;
+  nativeProductRendererRunning?: boolean;
+  nativeProductRendererStartCount?: number;
+  nativeProductRendererStopCount?: number;
+  nativeProductRendererProbePeak?: number;
+  nativeProductRendererProbeRms?: number;
+  nativeProductRendererProbeRenderedFrames?: number;
+  lastNativeProductRendererError?: string;
+  routeChangeCount?: number;
+  interruptionBeginCount?: number;
+  interruptionEndCount?: number;
+  mediaServicesResetCount?: number;
+  lastRouteChangeReason?: string;
+  lastInterruptionType?: string;
+};
+
+export type KesshoNativeProductRendererProbeStatus = {
+  nativeProductRendererPrepared: boolean;
+  nativeProductRendererRunning: boolean;
+  nativeProductRendererProbePeak: number;
+  nativeProductRendererProbeRms: number;
+  nativeProductRendererProbeRenderedFrames: number;
+  nativeProductRendererProbeSampleRate: number;
+};
+
+export type KesshoNativeProductRendererStartStatus = {
+  nativeProductRendererPrepared: boolean;
+  nativeProductRendererRunning: boolean;
+  nativeProductRendererStartCount: number;
+};
+
+export type KesshoNativeProductRendererStopStatus = {
+  nativeProductRendererRunning: boolean;
+  nativeProductRendererStopCount: number;
 };
 
 type KesshoAudioSessionPlugin = {
@@ -39,12 +83,21 @@ type KesshoAudioSessionPlugin = {
   syncState: (options: { stateJson: string; dualRangesJson?: string }) => Promise<void>;
   startPlayback: (options: { stateJson: string; dualRangesJson?: string; title?: string; artist?: string; album?: string }) => Promise<void>;
   stopPlayback: () => Promise<void>;
+  startNativeRendererForDiagnostics?: () => Promise<KesshoNativeProductRendererStartStatus>;
+  stopNativeRendererForDiagnostics?: () => Promise<KesshoNativeProductRendererStopStatus>;
+  probeNativeRendererForDiagnostics?: () => Promise<KesshoNativeProductRendererProbeStatus>;
   setNowPlaying: (options: KesshoNowPlayingPayload) => Promise<void>;
   setPlaybackState: (options: { isPlaying: boolean }) => Promise<void>;
-  addListener: (
-    eventName: 'remoteCommand',
-    listener: (event: { command: KesshoRemoteCommand }) => void,
-  ) => Promise<CapacitorListenerHandle>;
+  addListener: {
+    (
+      eventName: 'remoteCommand',
+      listener: (event: { command: KesshoRemoteCommand }) => void,
+    ): Promise<CapacitorListenerHandle>;
+    (
+      eventName: 'audioSessionEvent',
+      listener: (event: KesshoAudioSessionEventPayload) => void,
+    ): Promise<CapacitorListenerHandle>;
+  };
 };
 
 type CapacitorRuntime = {
@@ -61,6 +114,7 @@ declare global {
 
 const PLUGIN_NAME = 'KesshoAudioSession';
 const CAPACITOR_AUDIO_SESSION_DIAGNOSTICS_STORAGE_KEY = 'kessho.capacitorAudioSessionDiagnostics';
+const CAPACITOR_NATIVE_PRODUCT_DIAGNOSTICS_STORAGE_KEY = 'kessho.nativeProductRendererDiagnostics';
 const CAPACITOR_AUDIO_SESSION_STATE_DEFAULTS = {
   oscBrightness: 2,
   filterModSpeed: 2.0,
@@ -252,10 +306,48 @@ export function shouldUseCapacitorAudioSessionDiagnostics(): boolean {
   return false;
 }
 
+export function shouldUseNativeProductRendererDiagnostics(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!isCapacitorNativeShell()) return false;
+  if (!isCapacitorAudioSessionAvailable()) return false;
+  const params = new URLSearchParams(window.location.search);
+  const nativeProductMode = params.get('nativeProduct');
+  if (nativeProductMode === 'diagnostic' || nativeProductMode === 'on') {
+    try {
+      window.localStorage.setItem(CAPACITOR_NATIVE_PRODUCT_DIAGNOSTICS_STORAGE_KEY, 'diagnostic');
+    } catch {
+      // Ignore storage failures and keep using runtime detection.
+    }
+    return true;
+  }
+  if (nativeProductMode === 'off') {
+    try {
+      window.localStorage.setItem(CAPACITOR_NATIVE_PRODUCT_DIAGNOSTICS_STORAGE_KEY, 'off');
+    } catch {
+      // Ignore storage failures and keep using runtime detection.
+    }
+    return false;
+  }
+  try {
+    const storedMode = window.localStorage.getItem(CAPACITOR_NATIVE_PRODUCT_DIAGNOSTICS_STORAGE_KEY);
+    if (storedMode === 'diagnostic' || storedMode === 'on') return true;
+    if (storedMode === 'off') return false;
+  } catch {
+    // Ignore storage failures and keep runtime detection as the default.
+  }
+  return false;
+}
+
 export async function getCapacitorAudioSessionStatus(): Promise<KesshoAudioSessionStatus | null> {
   const plugin = getCapacitorAudioSessionPlugin();
   if (!plugin) return null;
   return plugin.getStatus();
+}
+
+export async function probeNativeProductRendererForDiagnostics(): Promise<KesshoNativeProductRendererProbeStatus | null> {
+  const plugin = getCapacitorAudioSessionPlugin();
+  if (!plugin?.probeNativeRendererForDiagnostics) return null;
+  return plugin.probeNativeRendererForDiagnostics();
 }
 
 export async function syncCapacitorAudioSessionState(payload: KesshoAudioSessionStatePayload): Promise<void> {
@@ -280,11 +372,15 @@ export async function startCapacitorAudioSessionPlayback(
     artist: nowPlaying?.artist,
     album: nowPlaying?.album,
   });
+  if (shouldUseNativeProductRendererDiagnostics()) {
+    await plugin.startNativeRendererForDiagnostics?.();
+  }
 }
 
 export async function stopCapacitorAudioSessionPlayback(): Promise<void> {
   const plugin = getCapacitorAudioSessionPlugin();
   if (!plugin) return;
+  await plugin.stopNativeRendererForDiagnostics?.();
   await plugin.stopPlayback();
 }
 
@@ -308,6 +404,17 @@ export async function addCapacitorAudioSessionRemoteCommandListener(
   const handle = await plugin.addListener('remoteCommand', (event) => {
     listener(event.command);
   });
+  return async () => {
+    await handle.remove();
+  };
+}
+
+export async function addCapacitorAudioSessionEventListener(
+  listener: (event: KesshoAudioSessionEventPayload) => void,
+): Promise<(() => Promise<void>) | null> {
+  const plugin = getCapacitorAudioSessionPlugin();
+  if (!plugin) return null;
+  const handle = await plugin.addListener('audioSessionEvent', listener);
   return async () => {
     await handle.remove();
   };

@@ -45,6 +45,10 @@ assert(
   workletSource.includes(`EXPECTED_PRODUCT_SCHEMA_HASH = ${expectedSchemaHashHex}`),
   'Product worklet expected schema hash is stale relative to generated TypeScript schema',
 );
+assert(
+  workletSource.includes('const base = ptr + TELEMETRY_EARTH_OFFSET;'),
+  'Product worklet must read Earth texture telemetry relative to the telemetry pointer',
+);
 
 const module = await WebAssembly.compile(wasmBinary);
 const instance = await WebAssembly.instantiate(module, {
@@ -84,7 +88,7 @@ const frames = 128;
 const leftPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
 const rightPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
 const eventPtr = malloc(40);
-const telemetryPtr = malloc(1296);
+const telemetryPtr = malloc(7728);
 const sequencerUiStatePtr = malloc(96292);
 const engine = create(48000, frames, 0);
 assert(leftPtr && rightPtr && eventPtr && telemetryPtr && sequencerUiStatePtr && engine, 'WASM product smoke allocation failed');

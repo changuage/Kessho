@@ -6,6 +6,7 @@
 #define KESSHO_PRODUCT_GENERATED_SCHEMA_VERSION 6u
 #define KESSHO_PRODUCT_GENERATED_SCHEMA_HASH 0x68de8868u
 
+#ifdef __cplusplus
 namespace kessho::product::generated {
 
 inline constexpr uint32_t KESSHO_PRODUCT_SCHEMA_VERSION = 6u;
@@ -13,3 +14,4 @@ inline constexpr uint32_t KESSHO_PRODUCT_SCHEMA_HASH = 0x68de8868u;
 inline constexpr const char* KESSHO_PRODUCT_SCHEMA_HASH_HEX = "68de88685627f17a7d1f5f1b7851034a915506d6d134966b69bb3e9fbae9802e";
 
 } // namespace kessho::product::generated
+#endif

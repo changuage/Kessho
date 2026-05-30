@@ -97,6 +97,51 @@ KesshoProductSnapshotV2 makeSoundscapeSnapshot(uint32_t asset_id) {
   return snapshot;
 }
 
+KesshoProductSnapshotV2 makeTextureSoundscapeSnapshot(
+    uint32_t asset_id,
+    bool parity_fixture = false,
+    float slice_duration = 1.5f,
+    float density = 1.0f,
+    float fade_time = 0.1f) {
+  using namespace kessho::product::internal;
+  KesshoProductSnapshotV2 snapshot = makeSoundscapeSnapshot(asset_id);
+  snapshot.asset_refs[0] = asset_id;
+  snapshot.asset_ref_levels[0] = 1.0f;
+  snapshot.soundscape_texture_param_count = kSoundscapeTextureParamCount;
+  snapshot.soundscape_texture_params[kSoundscapeParityFixtureParam] = parity_fixture ? 1.0f : 0.0f;
+  for (uint32_t slot = 0; slot < kSoundscapeTextureSlotCount; ++slot) {
+    const uint32_t offset = kSoundscapeTextureParamStart + slot * kSoundscapeTextureParamStride;
+    const uint32_t seed = 0x13572468u + slot * 0x10203u;
+    snapshot.soundscape_texture_params[offset + kSoundscapeTextureParamSliceDuration] = slice_duration;
+    snapshot.soundscape_texture_params[offset + kSoundscapeTextureParamDensity] = density;
+    snapshot.soundscape_texture_params[offset + kSoundscapeTextureParamFadeTime] = fade_time;
+    snapshot.soundscape_texture_params[offset + kSoundscapeTextureParamSeedLo] =
+        static_cast<float>(seed & 0xffffu);
+    snapshot.soundscape_texture_params[offset + kSoundscapeTextureParamSeedHi] =
+        static_cast<float>((seed >> 16u) & 0xffffu);
+  }
+  return snapshot;
+}
+
+uint32_t distinctRecentSoundscapeOffsets(
+    const kessho::product::internal::SoundscapeTextureRuntime& runtime,
+    float threshold = 0.25f) {
+  uint32_t distinct = 0u;
+  for (uint32_t i = 0; i < runtime.recent_offset_count; ++i) {
+    bool already_counted = false;
+    for (uint32_t j = 0; j < i; ++j) {
+      if (std::fabs(runtime.recent_offsets[i] - runtime.recent_offsets[j]) <= threshold) {
+        already_counted = true;
+        break;
+      }
+    }
+    if (!already_counted) {
+      ++distinct;
+    }
+  }
+  return distinct;
+}
+
 void triggerPianoNoteWithVelocity(KesshoProductEngine* engine, float midi_note, float velocity) {
   KesshoProductEvent event{};
   event.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
@@ -498,6 +543,165 @@ int main() {
       std::max(std::fabs(left[0]), std::fabs(right[0])) > 0.001f,
       "soundscape layer did not start at the deterministic randomized asset offset");
   kessho_product_destroy(soundscape_random_engine);
+
+  constexpr uint32_t soundscape_texture_id = 7101;
+  KesshoProductEngine* texture_engine = kessho_product_create(48000.0, 128, 0);
+  require(texture_engine != nullptr, "soundscape texture engine create failed");
+  KesshoProductSnapshotV2 texture_snapshot = makeTextureSoundscapeSnapshot(soundscape_texture_id);
+  require(
+      kessho_product_load_snapshot_v2(texture_engine, &texture_snapshot, sizeof(texture_snapshot)) ==
+          KESSHO_PRODUCT_OK,
+      "soundscape texture snapshot load failed");
+  std::vector<float> texture_data(48000u * 36u);
+  for (uint32_t i = 0; i < texture_data.size(); ++i) {
+    texture_data[i] = 0.32f * std::sin(static_cast<float>(i) * 0.017f);
+  }
+  const float* texture_channels[1] = {texture_data.data()};
+  require(
+      kessho_product_register_asset_buffer(
+          texture_engine,
+          soundscape_texture_id,
+          texture_channels,
+          1,
+          static_cast<uint32_t>(texture_data.size()),
+          48000.0,
+          KESSHO_PRODUCT_ASSET_LOOP | KESSHO_PRODUCT_ASSET_SOUNDSCAPE) == KESSHO_PRODUCT_OK,
+      "soundscape texture asset registration failed");
+  using namespace kessho::product::internal;
+  bool texture_detune_varied = false;
+  bool texture_speed_varied = false;
+  for (uint32_t block = 0u; block < 14000u; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(texture_engine, left.data(), right.data(), 128);
+    const SoundscapeTextureRuntime& runtime =
+        texture_engine->soundscape_texture_runtimes[kSoundscapeTextureSlotOcean];
+    texture_detune_varied = texture_detune_varied || std::fabs(runtime.last_detune_cents) > 0.001f;
+    texture_speed_varied = texture_speed_varied || std::fabs(runtime.last_speed_multiplier - 1.0f) > 0.001f;
+    if (runtime.last_slice_id >= 20u) {
+      break;
+    }
+  }
+  const SoundscapeTextureRuntime& texture_runtime =
+      texture_engine->soundscape_texture_runtimes[kSoundscapeTextureSlotOcean];
+  require(texture_runtime.initialized, "normal soundscape texture mode did not initialize texture slices");
+  require(texture_runtime.last_slice_id >= 20u, "normal soundscape texture mode did not schedule 20 slices");
+  require(texture_runtime.last_max_offset > 10.0f, "soundscape texture max offset was too small for anti-repeat coverage");
+  require(
+      distinctRecentSoundscapeOffsets(texture_runtime) >= 4u,
+      "soundscape texture recent-offset avoidance did not keep distinct offsets");
+  require(texture_detune_varied, "soundscape texture detune variation stayed neutral in normal mode");
+  require(texture_speed_varied, "soundscape texture speed variation stayed neutral in normal mode");
+  telemetry = kessho_product_get_telemetry(texture_engine);
+  require(
+      telemetry.earth_texture_inactive_reasons[kSoundscapeTextureSlotOcean] ==
+          KESSHO_PRODUCT_EARTH_TEXTURE_REASON_NONE,
+      "normal soundscape texture telemetry did not report active texture mode");
+  require(
+      (telemetry.earth_texture_flags[kSoundscapeTextureSlotOcean] & KESSHO_PRODUCT_EARTH_TEXTURE_ACTIVE) != 0u,
+      "normal soundscape texture telemetry did not set active flag");
+  require(
+      (telemetry.earth_texture_flags[kSoundscapeTextureSlotOcean] &
+       KESSHO_PRODUCT_EARTH_TEXTURE_PARITY_FIXTURE) == 0u,
+      "normal soundscape texture telemetry accidentally reported parity fixture mode");
+
+  const uint32_t texture_seed_before_patch = texture_runtime.seed;
+  const uint32_t texture_slice_before_patch = texture_runtime.last_slice_id;
+  KesshoProductEvent texture_gain_event{};
+  texture_gain_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  texture_gain_event.param_id = KESSHO_PRODUCT_PARAM_MASTER_GAIN_ID;
+  texture_gain_event.value = 0.92f;
+  require(
+      kessho_product_enqueue_event(texture_engine, &texture_gain_event) == KESSHO_PRODUCT_OK,
+      "soundscape texture unrelated param enqueue failed");
+  for (uint32_t block = 0u; block < 2500u; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(texture_engine, left.data(), right.data(), 128);
+    if (texture_engine->soundscape_texture_runtimes[kSoundscapeTextureSlotOcean].last_slice_id >
+        texture_slice_before_patch) {
+      break;
+    }
+  }
+  const SoundscapeTextureRuntime& texture_runtime_after_patch =
+      texture_engine->soundscape_texture_runtimes[kSoundscapeTextureSlotOcean];
+  require(
+      texture_runtime_after_patch.seed == texture_seed_before_patch,
+      "soundscape texture seed reset after unrelated param patch");
+  require(
+      texture_runtime_after_patch.last_slice_id > texture_slice_before_patch,
+      "soundscape texture sequence did not continue after unrelated param patch");
+  kessho_product_destroy(texture_engine);
+
+  KesshoProductEngine* parity_texture_engine = kessho_product_create(48000.0, 128, 0);
+  require(parity_texture_engine != nullptr, "soundscape parity fixture engine create failed");
+  KesshoProductSnapshotV2 parity_texture_snapshot = makeTextureSoundscapeSnapshot(soundscape_texture_id, true);
+  require(
+      kessho_product_load_snapshot_v2(
+          parity_texture_engine,
+          &parity_texture_snapshot,
+          sizeof(parity_texture_snapshot)) == KESSHO_PRODUCT_OK,
+      "soundscape parity fixture snapshot load failed");
+  require(
+      kessho_product_register_asset_buffer(
+          parity_texture_engine,
+          soundscape_texture_id,
+          texture_channels,
+          1,
+          static_cast<uint32_t>(texture_data.size()),
+          48000.0,
+          KESSHO_PRODUCT_ASSET_LOOP | KESSHO_PRODUCT_ASSET_SOUNDSCAPE) == KESSHO_PRODUCT_OK,
+      "soundscape parity fixture asset registration failed");
+  std::fill(left.begin(), left.end(), 0.0f);
+  std::fill(right.begin(), right.end(), 0.0f);
+  kessho_product_render(parity_texture_engine, left.data(), right.data(), 128);
+  telemetry = kessho_product_get_telemetry(parity_texture_engine);
+  require(
+      !parity_texture_engine->soundscape_texture_runtimes[kSoundscapeTextureSlotOcean].initialized,
+      "soundscape parity fixture should stay on deterministic one-shot mode");
+  require(
+      telemetry.earth_texture_inactive_reasons[kSoundscapeTextureSlotOcean] ==
+          KESSHO_PRODUCT_EARTH_TEXTURE_REASON_PARITY_FIXTURE_ENABLED,
+      "soundscape parity fixture telemetry did not label parity mode");
+  require(
+      (telemetry.earth_texture_flags[kSoundscapeTextureSlotOcean] &
+       KESSHO_PRODUCT_EARTH_TEXTURE_PARITY_FIXTURE) != 0u,
+      "soundscape parity fixture telemetry did not set parity flag");
+  kessho_product_destroy(parity_texture_engine);
+
+  KesshoProductEngine* short_texture_engine = kessho_product_create(48000.0, 128, 0);
+  require(short_texture_engine != nullptr, "short soundscape texture engine create failed");
+  KesshoProductSnapshotV2 short_texture_snapshot = makeTextureSoundscapeSnapshot(soundscape_texture_id);
+  require(
+      kessho_product_load_snapshot_v2(
+          short_texture_engine,
+          &short_texture_snapshot,
+          sizeof(short_texture_snapshot)) == KESSHO_PRODUCT_OK,
+      "short soundscape texture snapshot load failed");
+  std::vector<float> short_texture_data(4096u, 0.25f);
+  const float* short_texture_channels[1] = {short_texture_data.data()};
+  require(
+      kessho_product_register_asset_buffer(
+          short_texture_engine,
+          soundscape_texture_id,
+          short_texture_channels,
+          1,
+          static_cast<uint32_t>(short_texture_data.size()),
+          48000.0,
+          KESSHO_PRODUCT_ASSET_LOOP | KESSHO_PRODUCT_ASSET_SOUNDSCAPE) == KESSHO_PRODUCT_OK,
+      "short soundscape texture asset registration failed");
+  std::fill(left.begin(), left.end(), 0.0f);
+  std::fill(right.begin(), right.end(), 0.0f);
+  kessho_product_render(short_texture_engine, left.data(), right.data(), 128);
+  telemetry = kessho_product_get_telemetry(short_texture_engine);
+  require(
+      telemetry.earth_texture_inactive_reasons[kSoundscapeTextureSlotOcean] ==
+          KESSHO_PRODUCT_EARTH_TEXTURE_REASON_ASSET_TOO_SHORT,
+      "short soundscape texture telemetry did not report no-offset-variation reason");
+  require(
+      telemetry.earth_texture_max_offsets[kSoundscapeTextureSlotOcean] <= 0.0001f,
+      "short soundscape texture telemetry reported usable max offset");
+  kessho_product_destroy(short_texture_engine);
 
   constexpr uint32_t soundscape_water_policy_id = 7104;
   constexpr uint32_t soundscape_birds_policy_id = 7102;

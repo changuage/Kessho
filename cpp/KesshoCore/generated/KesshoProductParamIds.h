@@ -374,6 +374,7 @@
 #define KESSHO_PRODUCT_PARAM_EVOLUTION_AMOUNT_ID 700u
 #define KESSHO_PRODUCT_PARAM_EVOLUTION_STATE_ID 701u
 
+#ifdef __cplusplus
 namespace kessho::product::generated {
 
 enum KesshoProductGeneratedParamId : uint32_t {
@@ -752,3 +753,4 @@ enum KesshoProductGeneratedParamId : uint32_t {
 inline constexpr uint32_t KESSHO_PRODUCT_PARAM_COUNT = 370u;
 
 } // namespace kessho::product::generated
+#endif

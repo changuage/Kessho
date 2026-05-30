@@ -3,19 +3,24 @@ import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { isIOSLikeDevice } from '../platform';
 
 type IOSMediaSessionEngineControls = {
+  audioEngineRuntimeMode: AudioEngineRuntimeMode;
   resumeSelectedAudioEngine: () => void | Promise<void>;
   suspendSelectedAudioEngine: () => void | Promise<void>;
+  stopSelectedAudioEngine: () => void | Promise<void>;
 };
 
 let mediaSessionAudio: HTMLAudioElement | null = null;
 
 export function setupIOSMediaSession({
+  audioEngineRuntimeMode,
   resumeSelectedAudioEngine,
   suspendSelectedAudioEngine,
+  stopSelectedAudioEngine,
 }: IOSMediaSessionEngineControls): void {
   if (!('mediaSession' in navigator)) return;
 
-  if (!mediaSessionAudio) {
+  const useMediaStreamCarrier = audioEngineRuntimeMode !== 'core-product' && isIOSLikeDevice();
+  if (useMediaStreamCarrier && !mediaSessionAudio) {
     mediaSessionAudio = new Audio();
     mediaSessionAudio.loop = false;
     mediaSessionAudio.volume = 1.0;
@@ -31,15 +36,21 @@ export function setupIOSMediaSession({
   navigator.mediaSession.playbackState = 'playing';
 
   navigator.mediaSession.setActionHandler('play', () => {
-    void mediaSessionAudio?.play();
+    if (useMediaStreamCarrier) void mediaSessionAudio?.play();
     void resumeSelectedAudioEngine();
     navigator.mediaSession.playbackState = 'playing';
   });
 
   navigator.mediaSession.setActionHandler('pause', () => {
-    mediaSessionAudio?.pause();
+    if (useMediaStreamCarrier) mediaSessionAudio?.pause();
     void suspendSelectedAudioEngine();
     navigator.mediaSession.playbackState = 'paused';
+  });
+
+  navigator.mediaSession.setActionHandler('stop', () => {
+    if (useMediaStreamCarrier) mediaSessionAudio?.pause();
+    void stopSelectedAudioEngine();
+    navigator.mediaSession.playbackState = 'none';
   });
 }
 

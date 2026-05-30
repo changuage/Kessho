@@ -10,6 +10,7 @@ type UseSelectedAudioEngineMediaSessionOptions = {
   audioEngineRuntimeMode: AudioEngineRuntimeMode;
   resumeSelectedAudioEngine: () => void | Promise<void>;
   suspendSelectedAudioEngine: () => void | Promise<void>;
+  stopSelectedAudioEngine: () => void | Promise<void>;
 };
 
 type SelectedAudioEngineMediaSession = {
@@ -22,13 +23,16 @@ export function useSelectedAudioEngineMediaSession({
   audioEngineRuntimeMode,
   resumeSelectedAudioEngine,
   suspendSelectedAudioEngine,
+  stopSelectedAudioEngine,
 }: UseSelectedAudioEngineMediaSessionOptions): SelectedAudioEngineMediaSession {
   const setupSelectedIOSMediaSession = useCallback((): void => {
     setupIOSMediaSession({
+      audioEngineRuntimeMode,
       resumeSelectedAudioEngine,
       suspendSelectedAudioEngine,
+      stopSelectedAudioEngine,
     });
-  }, [resumeSelectedAudioEngine, suspendSelectedAudioEngine]);
+  }, [audioEngineRuntimeMode, resumeSelectedAudioEngine, stopSelectedAudioEngine, suspendSelectedAudioEngine]);
 
   const connectSelectedMediaSessionToAudio = useCallback((): void => {
     connectMediaSessionToWebAudio(audioEngineRuntimeMode);

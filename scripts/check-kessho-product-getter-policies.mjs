@@ -293,13 +293,14 @@ assert(
     !app.includes('textureDebugAvailable={textureDebugAvailable}') &&
     selectedAudioEnginePageRuntimeBridges.includes('textureDebugAvailable: options.textureDebugAvailable') &&
     selectedAudioEnginePageRuntimeBridges.includes('getEarthTextureDebugState: options.getEarthTextureDebugState') &&
-    selectedAudioEngineDebugSurface.includes('textureDebugAvailable: referenceRuntimeActive') &&
+    selectedAudioEngineDebugSurface.includes("productEngine.getTelemetry()?.earthTextureDebugState ?? EMPTY_EARTH_TEXTURE_DEBUG_STATE") &&
+    selectedAudioEngineDebugSurface.includes("textureDebugAvailable: referenceRuntimeActive || audioEngineRuntimeMode === 'core-product'") &&
     !host.includes('getEarthTextureDebugState(') &&
     earthPage.includes('textureDebugAvailable?: boolean;') &&
     activeEarthMatrix.includes('textureDebugAvailable?: boolean;') &&
     activeEarthMatrix.includes('enabled: textureDebugAvailable && activeTextureDebugKeys.length > 0') &&
     activeEarthMatrix.includes('row.textureDebugKey && textureDebugAvailable'),
-  'core-product Earth UI must disable soundscape texture debug polling until Product Core exposes soundscape layer telemetry',
+  'core-product Earth UI must poll Product Core soundscape texture telemetry through the selected debug surface',
 );
 
 for (const classification of ['`backed-by-product-core-api`']) {

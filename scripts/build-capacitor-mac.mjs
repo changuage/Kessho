@@ -63,6 +63,7 @@ if (!existsSync(distDir)) {
 mkdirSync(dirname(swiftScratch), { recursive: true });
 run('swift', [
   'build',
+  '--disable-build-manifest-caching',
   '--package-path',
   packageDir,
   '--scratch-path',

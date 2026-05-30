@@ -40,6 +40,7 @@ constexpr uint32_t kSourceCount = 7;
 constexpr uint32_t kStemCount = 9;
 constexpr uint32_t kMaxLaneCount = 16;
 constexpr uint32_t kMaxScaleNotes = 8;
+constexpr uint32_t kProductControlOnlyModulationTarget = 0x7ffffff0u;
 constexpr uint32_t kSequencerPitchBindingHit = 0u;
 constexpr uint32_t kSequencerPitchBindingStep = 1u;
 constexpr uint32_t kModuleTapCount = KESSHO_MODULE_MAX_OUTPUT_TAPS;

@@ -208,9 +208,25 @@ function assertFiniteCapture(capture, label) {
   assert(capture.stats.peak > 0.001, `${label}: capture peak stayed silent (${capture.stats.peak})`);
   const telemetry = capture.debug?.latestTelemetry ?? {};
   assert(telemetry.unsupportedControlCount === 0, `${label}: unsupported control diagnostics were reported`);
+  assert(telemetry.unsupportedGetterCount === 0, `${label}: unsupported getter diagnostics were reported`);
   assert(telemetry.runtimeFallbackDiagnosticCount === 0, `${label}: runtime fallback diagnostics were reported`);
   assert(telemetry.audioCriticalFallbackCount === 0, `${label}: audio-critical fallback diagnostics were reported`);
   assert(telemetry.workletMasterStemPeak > 0 || telemetry.masterOutputPeak > 0, `${label}: Product telemetry did not report master output`);
+}
+
+function assertCleanProbeDiagnostics(latest, label) {
+  const diagnostics = latest?.diagnostics ?? {};
+  assert(diagnostics.unsupportedControlCount === 0, `${label}: unsupported controls were reported`);
+  assert(diagnostics.unsupportedGetterCount === 0, `${label}: unsupported getters were reported`);
+  assert(diagnostics.runtimeFallbackDiagnosticCount === 0, `${label}: runtime fallback diagnostics were reported`);
+  assert(diagnostics.audioCriticalFallbackCount === 0, `${label}: audio-critical fallback diagnostics were reported`);
+  const reasons = Array.isArray(diagnostics.snapshotReloadReasons) ? diagnostics.snapshotReloadReasons : [];
+  const disallowed = reasons.filter((reason) => (
+    reason === 'ui-control-change' ||
+    reason === 'fx-control-change' ||
+    reason === 'morph-control-change'
+  ));
+  assert(disallowed.length === 0, `${label}: live interaction caused disallowed full snapshot reloads (${disallowed.join(', ')})`);
 }
 
 function summarizeCapture(id, capture) {
@@ -228,6 +244,223 @@ function summarizeCapture(id, capture) {
     workletLeadStemPeak: telemetry.workletLeadStemPeak ?? null,
     workletMasterStemPeak: telemetry.workletMasterStemPeak ?? null,
     decodedAssetBytes: telemetry.decodedAssetBytes ?? null,
+  };
+}
+
+async function captureRuntimeWalkProbe(page, baseUrl) {
+  await page.goto(withQuery(baseUrl, { parity: '1' }), { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => Boolean(window.__kesshoProductRuntimeProbe?.configureRuntimeWalk), null, { timeout: 15000 });
+  return page.evaluate(async () => {
+    const probe = window.__kesshoProductRuntimeProbe;
+    const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+    const key = 'lead1Density';
+    await probe.configureRuntimeWalk({
+      key,
+      range: { min: 0.1, max: 4.5 },
+      activeTab: 'synth',
+      statePatch: {
+        leadEnabled: false,
+        lead2Enabled: false,
+        pianoEnabled: true,
+        leadRandomEnabled: true,
+        leadRandomSource: 'piano',
+        leadRandomClockSource: 'localPhrase',
+        leadRandomSyncPolicy: 'restartNow',
+        lead1Density: 4.5,
+        lead1Octave: 0,
+        lead1OctaveRange: 2,
+        phraseLength: 1.5,
+        transportPrimaryClock: 'seconds',
+        pianoDistance: 0.72,
+        masterVolume: 0.7,
+        padEnabled: false,
+        synthChordSequencerEnabled: false,
+        synthLevel: 0,
+        randomWalkMode: 'globalWalk',
+        randomWalkSpeed: 4.5,
+      },
+    });
+    const samples = [];
+    const deadline = Date.now() + 4500;
+    while (Date.now() < deadline) {
+      await wait(250);
+      samples.push(probe.readRuntimeWalkProbe(key));
+    }
+    return samples;
+  });
+}
+
+async function captureEarthTextureProbe(page, baseUrl) {
+  await page.goto(withQuery(baseUrl, { parity: '1' }), { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => Boolean(window.__kesshoSonicParity?.capture), null, { timeout: 15000 });
+  const capture = await page.evaluate(
+    async (options) => window.__kesshoSonicParity.capture(options),
+    {
+      durationMs: 9000,
+      settleMs: 1200,
+      statePatch: {
+        ...lowNoisePatch(),
+        masterVolume: 0.72,
+        oceanSampleEnabled: true,
+        oceanSampleLevel: 0.42,
+        waterEnabled: true,
+        waterLevel: 0.34,
+        birdsEnabled: true,
+        birds2Enabled: true,
+        frogsEnabled: true,
+        natureLevel: 0.48,
+        birdsSliceDuration: 2.2,
+        birds2SliceDuration: 2.4,
+        frogsSliceDuration: 2.1,
+        oceanSliceDuration: 2.6,
+        birdsSliceDensity: 0.9,
+        birds2SliceDensity: 0.9,
+        frogsSliceDensity: 0.9,
+        oceanSliceDensity: 0.9,
+        soundscapeParityFixture: false,
+      },
+      manualNotes: [],
+      manualWarmup: false,
+    },
+  );
+  await page.evaluate(() => window.__kesshoSonicParity?.teardown());
+  return capture;
+}
+
+async function captureSampleHoldProbe(page, baseUrl) {
+  await page.goto(withQuery(baseUrl, { parity: '1' }), { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => Boolean(window.__kesshoProductRuntimeProbe?.configureSampleHold), null, { timeout: 15000 });
+  return page.evaluate(async () => {
+    const probe = window.__kesshoProductRuntimeProbe;
+    const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+    await probe.configureSampleHold({
+      key: 'masterVolume',
+      range: { min: 0.18, max: 0.82 },
+      activeTab: 'global',
+      statePatch: {
+        masterVolume: 0.5,
+        padEnabled: true,
+        synthLevel: 0.3,
+      },
+    });
+    const samples = [];
+    const deadline = Date.now() + 2200;
+    while (Date.now() < deadline) {
+      await wait(125);
+      samples.push(probe.readSampleHoldProbe('masterVolume'));
+    }
+    return samples;
+  });
+}
+
+function assertRuntimeWalkProbe(samples) {
+  assert(Array.isArray(samples) && samples.length > 2, 'runtime-walk probe did not return enough samples');
+  const positions = samples
+    .map((sample) => sample?.position)
+    .filter((value) => typeof value === 'number' && Number.isFinite(value));
+  const distinctPositions = [];
+  for (const position of positions) {
+    if (!distinctPositions.some((existing) => Math.abs(existing - position) < 0.0025)) {
+      distinctPositions.push(position);
+    }
+  }
+  assert(distinctPositions.length >= 3, `runtime-walk UI position did not change at least twice: ${positions.join(', ')}`);
+  const latest = samples.at(-1) ?? {};
+  const debug = latest.telemetry?.productModulationDebug?.randomWalk ?? [];
+  assert(
+    debug.some((entry) => entry.controlName === 'lead1Density' && entry.normalizedPosition >= 0 && entry.normalizedPosition <= 1),
+    'runtime-walk telemetry did not expose active lead1Density random-walk debug',
+  );
+  const walkDebug = latest.telemetry?.runtimeWalkValues ?? {};
+  assert(Object.keys(walkDebug).length > 0, 'runtime-walk telemetry values were empty');
+  const bridgeDebug = latest.telemetry?.runtimeWalkDebug ?? {};
+  const runtimeSliderDebug = latest.runtimeSliderDebug ?? {};
+  assert((bridgeDebug.rangeSetCallCount ?? 0) > 0, 'runtime-walk bridge did not receive UI range-set calls');
+  assert((bridgeDebug.postedEventCount ?? 0) > 0, 'runtime-walk bridge did not post ProductEvents');
+  assert((bridgeDebug.telemetryValueCount ?? 0) > 0, 'runtime-walk bridge did not receive telemetry values');
+  assert((bridgeDebug.publishedPositionCount ?? 0) > 0, 'runtime-walk bridge did not publish positions');
+  assert((runtimeSliderDebug.walkStoreUpdateCount ?? 0) > 0, 'runtime-walk UI store did not receive position updates');
+  assert((runtimeSliderDebug.walkIndicatorConsumeCount ?? 0) > 0, 'runtime-walk DualSlider indicator did not consume positions');
+  assert(
+    (runtimeSliderDebug.triggerStoreUpdateCount ?? 0) > 0 && (runtimeSliderDebug.lastTriggerKeys ?? []).includes('pianoDistance'),
+    'runtime-walk piano random timing did not publish pianoDistance trigger animation',
+  );
+  assertCleanProbeDiagnostics(latest, 'runtime-walk probe');
+  return {
+    id: 'runtime-walk-ui',
+    positionSamples: positions,
+    distinctPositionCount: distinctPositions.length,
+    walkStoreUpdateCount: runtimeSliderDebug.walkStoreUpdateCount ?? 0,
+    walkIndicatorConsumeCount: runtimeSliderDebug.walkIndicatorConsumeCount ?? 0,
+    pianoTriggerStoreUpdateCount: runtimeSliderDebug.triggerStoreUpdateCount ?? 0,
+    bridgeDebug,
+  };
+}
+
+function assertEarthTextureProbe(capture) {
+  assertFiniteCapture(capture, 'earth-texture probe');
+  const telemetry = capture.debug?.latestTelemetry ?? {};
+  const earth = telemetry.earthTextureDebugState ?? {};
+  const requiredKeys = ['waves', 'birds', 'birds2', 'frogs'];
+  const summaries = requiredKeys.map((key) => {
+    const row = earth[key] ?? null;
+    assert(row, `earth-texture probe missing ${key} debug row`);
+    assert(row.active === true, `earth-texture ${key} was not active`);
+    assert(row.textureParamsAvailable === true, `earth-texture ${key} did not report texture params`);
+    assert(row.parityFixture === false, `earth-texture ${key} unexpectedly used parity fixture`);
+    assert((row.maxOffset ?? 0) > 0, `earth-texture ${key} did not expose positive maxOffset`);
+    assert((row.activeSliceCount ?? 0) > 0, `earth-texture ${key} did not schedule active slices`);
+    const slice = row.activeSlices?.[0];
+    assert(slice, `earth-texture ${key} did not expose last slice`);
+    assert(slice.offset > 0, `earth-texture ${key} repeated the first slice offset`);
+    assert(Math.abs(slice.detuneCents) > 0.01 || Math.abs(slice.speedMultiplier - 1) > 0.0001, `earth-texture ${key} did not vary detune or speed`);
+    return {
+      key,
+      assetId: row.assetId ?? null,
+      activeSliceCount: row.activeSliceCount ?? 0,
+      offset: slice.offset,
+      detuneCents: slice.detuneCents,
+      speedMultiplier: slice.speedMultiplier,
+      maxOffset: row.maxOffset ?? null,
+    };
+  });
+  return { id: 'earth-texture-ui', summaries };
+}
+
+function assertSampleHoldProbe(samples) {
+  assert(Array.isArray(samples) && samples.length > 2, 'sample-hold probe did not return enough samples');
+  const positions = samples
+    .map((sample) => sample?.position)
+    .filter((value) => typeof value === 'number' && Number.isFinite(value));
+  const distinctPositions = [];
+  for (const position of positions) {
+    if (!distinctPositions.some((existing) => Math.abs(existing - position) < 0.0025)) {
+      distinctPositions.push(position);
+    }
+  }
+  assert(distinctPositions.length >= 2, `sample-hold UI trigger position did not change: ${positions.join(', ')}`);
+  const latest = samples.at(-1) ?? {};
+  const debug = latest.telemetry?.productModulationDebug?.sampleHold ?? [];
+  assert(
+    debug.some((entry) => entry.controlName === 'masterVolume' && entry.triggerCounter > 0 && entry.normalizedPosition >= 0 && entry.normalizedPosition <= 1),
+    'sample-hold telemetry did not expose active masterVolume trigger debug',
+  );
+  const sampleHoldDebug = latest.telemetry?.sampleHoldDebug ?? {};
+  const runtimeSliderDebug = latest.runtimeSliderDebug ?? {};
+  assert((sampleHoldDebug.changedTriggerCount ?? 0) > 0, 'sample-hold bridge did not observe trigger changes');
+  assert((sampleHoldDebug.publishedGenericCount ?? 0) > 0, 'sample-hold bridge did not publish UI trigger positions');
+  assert((runtimeSliderDebug.triggerStoreUpdateCount ?? 0) > 0, 'sample-hold UI store did not receive trigger position updates');
+  assert((runtimeSliderDebug.triggerFlashUpdateCount ?? 0) > 0, 'sample-hold UI store did not receive flash updates');
+  assert((runtimeSliderDebug.triggerIndicatorConsumeCount ?? 0) > 0, 'sample-hold DualSlider indicator did not consume positions');
+  assertCleanProbeDiagnostics(latest, 'sample-hold probe');
+  return {
+    id: 'sample-hold-ui',
+    positionSamples: positions,
+    distinctPositionCount: distinctPositions.length,
+    triggerStoreUpdateCount: runtimeSliderDebug.triggerStoreUpdateCount ?? 0,
+    triggerFlashUpdateCount: runtimeSliderDebug.triggerFlashUpdateCount ?? 0,
+    triggerIndicatorConsumeCount: runtimeSliderDebug.triggerIndicatorConsumeCount ?? 0,
+    sampleHoldDebug,
   };
 }
 
@@ -249,6 +482,24 @@ function writeReport(report) {
     '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |',
     ...report.cases.map((entry) => `| ${entry.id} | ${entry.engine} | ${entry.rms.toFixed(6)} | ${entry.peak.toFixed(6)} | ${entry.activeVoices ?? '-'} | ${entry.activeAssets ?? '-'} | ${entry.workletPadStemPeak ?? '-'} | ${entry.workletLeadStemPeak ?? '-'} |`),
     '',
+    '## Runtime Walk',
+    '',
+    report.runtimeWalkProbe
+      ? `Distinct UI positions: ${report.runtimeWalkProbe.distinctPositionCount}; store updates: ${report.runtimeWalkProbe.walkStoreUpdateCount}; indicator reads: ${report.runtimeWalkProbe.walkIndicatorConsumeCount}; piano trigger updates: ${report.runtimeWalkProbe.pianoTriggerStoreUpdateCount}`
+      : 'Not run',
+    '',
+    '## Earth Texture',
+    '',
+    report.earthTextureProbe
+      ? report.earthTextureProbe.summaries.map((entry) => `${entry.key}: offset=${entry.offset.toFixed(3)}, detune=${entry.detuneCents.toFixed(2)}, speed=${entry.speedMultiplier.toFixed(3)}`).join('\n')
+      : 'Not run',
+    '',
+    '## Sample Hold',
+    '',
+    report.sampleHoldProbe
+      ? `Distinct UI positions: ${report.sampleHoldProbe.distinctPositionCount}; store updates: ${report.sampleHoldProbe.triggerStoreUpdateCount}; flash updates: ${report.sampleHoldProbe.triggerFlashUpdateCount}; indicator reads: ${report.sampleHoldProbe.triggerIndicatorConsumeCount}`
+      : 'Not run',
+    '',
   ];
   writeFileSync(reportMarkdownPath, `${lines.join('\n')}\n`);
 }
@@ -268,6 +519,9 @@ const report = {
   defaultRuntime: 'unknown',
   url: vite.url,
   cases: [],
+  earthTextureProbe: null,
+  runtimeWalkProbe: null,
+  sampleHoldProbe: null,
 };
 
 try {
@@ -347,6 +601,12 @@ try {
     report.defaultRuntime = capture.engine;
     report.cases.push(summary);
   }
+  const earthTextureCapture = await captureEarthTextureProbe(page, vite.url);
+  report.earthTextureProbe = assertEarthTextureProbe(earthTextureCapture);
+  const runtimeWalkSamples = await captureRuntimeWalkProbe(page, vite.url);
+  report.runtimeWalkProbe = assertRuntimeWalkProbe(runtimeWalkSamples);
+  const sampleHoldSamples = await captureSampleHoldProbe(page, vite.url);
+  report.sampleHoldProbe = assertSampleHoldProbe(sampleHoldSamples);
   await page.close();
   report.status = 'pass';
   writeReport(report);

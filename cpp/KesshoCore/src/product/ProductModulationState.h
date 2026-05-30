@@ -36,6 +36,8 @@ struct ModulationRange {
   uint32_t sample_hold_frames_until_next = 0;
   uint32_t sample_hold_counter = 0;
   uint32_t sample_hold_trigger_bus = kProductSampleHoldTriggerTimed;
+  uint64_t last_trigger_frame = 0;
+  uint32_t last_trigger_source = 0;
 };
 
 struct ProductFxSampleHoldOwner {

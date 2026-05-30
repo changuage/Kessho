@@ -29,6 +29,14 @@ export type EarthTextureSliceDebug = {
 
 export type EarthTexturePlayerDebugSnapshot = {
   fileName: string;
+  assetId?: number;
+  active?: boolean;
+  inactiveReason?: string | null;
+  parityFixture?: boolean;
+  textureParamsAvailable?: boolean;
+  assetDuration?: number;
+  maxOffset?: number;
+  seed?: number;
   sliceDuration: number;
   fadeTime: number;
   density: number;

@@ -3,12 +3,18 @@ import type { CoreProductEvent } from '../../coreProductEvents';
 
 type CoreProductArrangementAudioContextProvider = () => AudioContext | null;
 type CoreProductArrangementPostEvent = (event: CoreProductEvent) => void;
+type CoreProductArrangementPublishTrigger = (name: string, ...payload: unknown[]) => void;
 
 export class CoreProductArrangementBridge {
   private readonly scheduler: CoreProductArrangementScheduler;
+  private runtimeWalkStatePatch: Record<string, number> = {};
 
-  constructor(postEvent: CoreProductArrangementPostEvent, audioContext: CoreProductArrangementAudioContextProvider) {
-    this.scheduler = new CoreProductArrangementScheduler(postEvent, audioContext);
+  constructor(
+    postEvent: CoreProductArrangementPostEvent,
+    audioContext: CoreProductArrangementAudioContextProvider,
+    publishTrigger?: CoreProductArrangementPublishTrigger,
+  ) {
+    this.scheduler = new CoreProductArrangementScheduler(postEvent, audioContext, publishTrigger);
   }
 
   createState(
@@ -19,7 +25,12 @@ export class CoreProductArrangementBridge {
     return {
       ...(latestSliderState ?? {}),
       ...adapterState,
+      ...this.runtimeWalkStatePatch,
     };
+  }
+
+  setRuntimeWalkStatePatch(patch: Record<string, number>): void {
+    this.runtimeWalkStatePatch = { ...patch };
   }
 
   start(latestSliderState: Record<string, unknown> | null, adapterState: Record<string, unknown>): void {

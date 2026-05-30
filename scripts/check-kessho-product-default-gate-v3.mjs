@@ -759,8 +759,8 @@ assert(
     productRuntimePlatformSurface.includes("import { useProductRuntimeMacAudioStatus } from './useProductRuntimeMacAudioStatus'") &&
     productRuntimePlatformSurface.includes("'startProductPlayback' | 'stopProductPlayback'") &&
     productRuntimePlatformSurface.includes('useProductRuntimeMacAudioStatus(options)') &&
-    productRuntimePlatformSurface.includes('useProductRuntimeCapacitorAudioSession(options)') &&
-    productRuntimePlatformSurface.includes('return macAudioStatus') &&
+    productRuntimePlatformSurface.includes('const nativeProductRendererDiagnosticStatus = useProductRuntimeCapacitorAudioSession(options)') &&
+    productRuntimePlatformSurface.includes('nativeProductRendererDiagnosticStatus') &&
     !productRuntimePlatformSurface.includes('useSelectedAudioEnginePlatformRuntimeSurface') &&
     !productRuntimePlatformSurface.includes('productEngine') &&
     !productRuntimePlatformSurface.includes('selectedProductRuntime') &&
@@ -782,6 +782,8 @@ assert(
     capacitorAudioSessionDiagnostics.includes('remoteCommandHandlerRef.current(command)') &&
     capacitorAudioSessionDiagnostics.includes('setCapacitorAudioSessionNowPlaying({') &&
     capacitorAudioSessionDiagnostics.includes('syncCapacitorAudioSessionState({') &&
+    capacitorAudioSessionDiagnostics.includes('NativeProductRendererDiagnosticStatus') &&
+    capacitorAudioSessionDiagnostics.includes('return nativeDiagnosticStatus') &&
     productRuntimeCapacitorAudioSession.includes('type ProductRuntimeCapacitorAudioSessionOptions = {') &&
     productRuntimeCapacitorAudioSession.includes('startProductPlayback: () => void | Promise<void>') &&
     productRuntimeCapacitorAudioSession.includes('stopProductPlayback: () => void') &&
@@ -793,7 +795,7 @@ assert(
     selectedAudioEngineCapacitorAudioSession.includes('useCapacitorAudioSessionDiagnostics({') &&
     selectedAudioEngineCapacitorAudioSession.includes('isPlaying: playbackIsRunning || isJourneyPlaying') &&
     selectedAudioEngineCapacitorAudioSession.includes('onRemoteCommand: handleCapacitorAudioSessionRemoteCommand') &&
-    productRuntimePlatformSurface.includes('useProductRuntimeCapacitorAudioSession(options)') &&
+    productRuntimePlatformSurface.includes('const nativeProductRendererDiagnosticStatus = useProductRuntimeCapacitorAudioSession(options)') &&
     selectedAudioEngineRemoteCommandPlayback.includes("command === 'play'") &&
     selectedAudioEngineRemoteCommandPlayback.includes("command === 'pause'") &&
     selectedAudioEngineRemoteCommandPlayback.includes('if (!playbackIsRunning) void startPlayback();') &&
@@ -821,7 +823,7 @@ assert(
     productRuntimeMacAudioStatus.includes('return useCapacitorMacAudioStatus({') &&
     productRuntimeMacAudioStatus.includes('preloadSelectedAudioEngine: preloadProductRuntime') &&
     productRuntimePlatformSurface.includes('useProductRuntimeMacAudioStatus(options)') &&
-    productRuntimePlatformSurface.includes('return macAudioStatus'),
+    productRuntimePlatformSurface.includes('...macAudioStatus'),
   'App must delegate macOS native output polling/playback sync to the selected platform runtime surface',
 );
 assert(

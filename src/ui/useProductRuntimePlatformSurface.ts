@@ -12,7 +12,10 @@ type ProductRuntimePlatformSurfaceOptions =
 export function useProductRuntimePlatformSurface(options: ProductRuntimePlatformSurfaceOptions) {
   const macAudioStatus = useProductRuntimeMacAudioStatus(options);
 
-  useProductRuntimeCapacitorAudioSession(options);
+  const nativeProductRendererDiagnosticStatus = useProductRuntimeCapacitorAudioSession(options);
 
-  return macAudioStatus;
+  return {
+    ...macAudioStatus,
+    nativeProductRendererDiagnosticStatus,
+  };
 }

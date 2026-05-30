@@ -96,6 +96,7 @@ const secondStageCaps = [
   ['cpp/KesshoCore/src/product/fx/ProductDelay.cpp', 120],
   ['cpp/KesshoCore/src/product/fx/ProductReverb.cpp', 220],
   ['cpp/KesshoCore/src/product/fx/ProductGranular.cpp', 120],
+  ['cpp/KesshoCore/src/product/fx/ProductGranularRuntime.cpp', 120],
   ['cpp/KesshoCore/src/product/fx/ProductGranularFilters.cpp', 80],
   ['cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp', 80],
   ['cpp/KesshoCore/src/product/fx/ProductDynamics.cpp', 260],
@@ -136,6 +137,7 @@ const allocationFreeHotPathFiles = [
   'cpp/KesshoCore/src/product/fx/ProductDelay.cpp',
   'cpp/KesshoCore/src/product/fx/ProductReverb.cpp',
   'cpp/KesshoCore/src/product/fx/ProductGranular.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductGranularRuntime.cpp',
   'cpp/KesshoCore/src/product/fx/ProductGranularFilters.cpp',
   'cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp',
   'cpp/KesshoCore/src/product/fx/ProductDynamics.cpp',
@@ -172,6 +174,8 @@ for (const path of allocationFreeHotPathFiles) {
   }
   const sourceModulation = read('cpp/KesshoCore/src/product/sources/SourceModulation.cpp');
   const sourceModulationRoutes = read('cpp/KesshoCore/src/product/sources/SourceModulationRoutes.cpp');
+  const sourceModulationResolve = read('cpp/KesshoCore/src/product/sources/SourceModulationResolve.cpp');
+  const sourceModulationCombined = `${sourceModulation}\n${sourceModulationRoutes}\n${sourceModulationResolve}`;
   for (const token of [
     'source_modulation_route_indices',
     'drum_source_modulation_route_indices',
@@ -179,10 +183,10 @@ for (const path of allocationFreeHotPathFiles) {
     'route_required',
     'return fallback;',
   ]) {
-    assert(`${sourceModulation}\n${sourceModulationRoutes}`.includes(token), `Product trigger modulation must use compiled route indices: missing ${token}`);
+    assert(sourceModulationCombined.includes(token), `Product trigger modulation must use compiled route indices: missing ${token}`);
   }
   assert(
-    sourceModulation.indexOf('source_modulation_route_indices') < sourceModulation.indexOf('findModulationRange(target_id, param_id)'),
+    sourceModulationResolve.indexOf('source_modulation_route_indices') < sourceModulationResolve.indexOf('findModulationRange(target_id, param_id)'),
     'Product trigger modulation must consult compiled route indices before any fallback range scan',
   );
 }
@@ -258,7 +262,6 @@ const focusedSourceContracts = [
     [
       'KesshoProductEngine::applyModulationRangeEvent(',
       'KesshoProductEngine::modulationRangeSample(',
-      'KesshoProductEngine::resolveModulatedValue(',
       'KesshoProductEngine::applyRuntimeWalkValue(',
     ],
   ],
@@ -270,6 +273,10 @@ const focusedSourceContracts = [
       'KesshoProductEngine::findModulationRange(',
       'KesshoProductEngine::findOrAllocateModulationRange(',
     ],
+  ],
+  [
+    'cpp/KesshoCore/src/product/sources/SourceModulationResolve.cpp',
+    ['KesshoProductEngine::resolveModulatedValue('],
   ],
   [
     'cpp/KesshoCore/src/product/sources/SourceModulationRuntime.cpp',
@@ -356,6 +363,15 @@ const focusedFxContracts = [
     ],
   ],
   ['cpp/KesshoCore/src/product/fx/ProductGranular.cpp', ['KesshoProductEngine::renderGranular(']],
+  [
+    'cpp/KesshoCore/src/product/fx/ProductGranularRuntime.cpp',
+    [
+      'KesshoProductEngine::resetGranularPhraseRuntime(',
+      'KesshoProductEngine::granularSendGainForFrame(',
+      'KesshoProductEngine::advanceGranularReturnGains(',
+      'KesshoProductEngine::advanceGranularPhraseReseed(',
+    ],
+  ],
   [
     'cpp/KesshoCore/src/product/fx/ProductGranularFilters.cpp',
     [

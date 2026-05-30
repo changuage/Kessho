@@ -315,6 +315,16 @@ export function loadCoreProductHostHarness(options = {}) {
       }
       return next;
     },
+    isCoreProductRuntimeWalkStatePatchKey: (key) => [
+      'lead1Density',
+      'lead1Octave',
+      'lead1OctaveRange',
+      'lead1Distance',
+      'lead2Distance',
+      'padDistance',
+      'pad2Distance',
+      'pianoDistance',
+    ].includes(key),
     KESSHO_PRODUCT_PARAM_IDS: createParamIds(),
     KESSHO_PRODUCT_EVENT_IDS: {
       SetSequencerLane: 8,
@@ -754,6 +764,33 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   CoreProductLeadPresetDataLoader,
 });`, context, { filename: leadPresetDataLoaderPath });
+
+  const modulationDebugEnricherPath = 'src/audio/product/host/CoreProductModulationDebugEnricher.ts';
+  const modulationDebugEnricherSource = stripImportsAndExports(readProjectFile(modulationDebugEnricherPath));
+  const modulationDebugEnricherJs = transpileForVm(modulationDebugEnricherSource, resolve(root, modulationDebugEnricherPath));
+  vm.runInNewContext(`${modulationDebugEnricherJs}
+Object.assign(globalThis, {
+  enrichCoreProductModulationDebug,
+});`, context, { filename: modulationDebugEnricherPath });
+
+  const runtimeWalkDebugPath = 'src/audio/product/host/CoreProductRuntimeWalkDebug.ts';
+  const runtimeWalkDebugSource = stripImportsAndExports(readProjectFile(runtimeWalkDebugPath));
+  const runtimeWalkDebugJs = transpileForVm(runtimeWalkDebugSource, resolve(root, runtimeWalkDebugPath));
+  vm.runInNewContext(`${runtimeWalkDebugJs}
+Object.assign(globalThis, {
+  createCoreProductRuntimeWalkDebugState,
+  snapshotCoreProductRuntimeWalkDebugState,
+});`, context, { filename: runtimeWalkDebugPath });
+
+  const sampleHoldFeedbackPath = 'src/audio/product/host/CoreProductSampleHoldFeedbackBridge.ts';
+  const sampleHoldFeedbackSource = stripImportsAndExports(readProjectFile(sampleHoldFeedbackPath));
+  const sampleHoldFeedbackJs = transpileForVm(sampleHoldFeedbackSource, resolve(root, sampleHoldFeedbackPath));
+  vm.runInNewContext(`${sampleHoldFeedbackJs}
+Object.assign(globalThis, {
+  createCoreProductSampleHoldDebugState,
+  snapshotCoreProductSampleHoldDebugState,
+  updateCoreProductSampleHoldTriggerFeedback,
+});`, context, { filename: sampleHoldFeedbackPath });
 
   const modulationRangeBridgePath = 'src/audio/product/host/CoreProductModulationRangeBridge.ts';
   const modulationRangeBridgeSource = stripImportsAndExports(readProjectFile(modulationRangeBridgePath));

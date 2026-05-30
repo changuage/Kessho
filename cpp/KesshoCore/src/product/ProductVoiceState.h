@@ -33,6 +33,8 @@ struct SourceState {
   float delay_a_send = 0.0f;
   float delay_b_send = 0.0f;
   float granular_send = 0.0f;
+  float granular_send_gain = 0.0f;
+  uint64_t granular_send_gain_frame = UINT64_MAX;
   float diffuse_send = 0.0f;
   float post_lpf_hz = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ;
   float stereo_width = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH;
@@ -119,6 +121,19 @@ struct SoundscapeTextureRuntime {
   uint32_t seed = 0u;
   uint32_t rng_state = 0u;
   uint64_t next_start_frame = 0u;
+  uint32_t next_slice_id = 1u;
+  uint32_t last_slice_id = 0u;
+  uint64_t last_start_frame = 0u;
+  float last_offset_seconds = 0.0f;
+  float last_slice_duration = 0.0f;
+  float last_output_duration = 0.0f;
+  float last_detune_cents = 0.0f;
+  float last_speed_multiplier = 1.0f;
+  float last_total_rate = 1.0f;
+  float last_density = 0.0f;
+  float last_fade_time = 0.0f;
+  float last_asset_duration = 0.0f;
+  float last_max_offset = 0.0f;
   float recent_offsets[6]{};
   uint32_t recent_offset_count = 0u;
   bool spatial_enabled = false;

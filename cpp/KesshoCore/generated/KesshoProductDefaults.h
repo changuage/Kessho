@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
 namespace kessho::product::generated {
 
 inline constexpr float KESSHO_PRODUCT_DEFAULT_BPM = 120.0f;
@@ -33,3 +34,4 @@ inline constexpr float KESSHO_PRODUCT_DEFAULT_SEQUENCER_HOLD_SECONDS = 0.18f;
 inline constexpr float KESSHO_PRODUCT_DEFAULT_SEQUENCER_INITIAL_START_DELAY_SECONDS = -1.0f;
 
 } // namespace kessho::product::generated
+#endif

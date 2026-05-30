@@ -1,4 +1,5 @@
 import { useCapacitorAudioSessionDiagnostics } from './useCapacitorAudioSessionDiagnostics';
+import type { NativeProductRendererDiagnosticStatus } from './useCapacitorAudioSessionDiagnostics';
 import { useSelectedAudioEngineRemoteCommandPlayback } from './useSelectedAudioEngineRemoteCommandPlayback';
 import type { SliderState } from './state';
 
@@ -26,14 +27,14 @@ export function useSelectedAudioEngineCapacitorAudioSession({
   dualRanges,
   startPlayback,
   stopPlayback,
-}: SelectedAudioEngineCapacitorAudioSessionOptions): void {
+}: SelectedAudioEngineCapacitorAudioSessionOptions): NativeProductRendererDiagnosticStatus {
   const handleCapacitorAudioSessionRemoteCommand = useSelectedAudioEngineRemoteCommandPlayback({
     playbackIsRunning,
     startPlayback,
     stopPlayback,
   });
 
-  useCapacitorAudioSessionDiagnostics({
+  return useCapacitorAudioSessionDiagnostics({
     active,
     setActive,
     title,

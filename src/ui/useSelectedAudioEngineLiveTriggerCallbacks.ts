@@ -54,6 +54,13 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
   uiMode,
 }: SelectedAudioEngineLiveTriggerCallbacksOptions): void {
   const shFlashTimerRef = useRef<number | null>(null);
+  const activeTabRef = useRef(activeTab);
+  const uiModeRef = useRef(uiMode);
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+    uiModeRef.current = uiMode;
+  }, [activeTab, uiMode]);
 
   useEffect(() => {
     setSelectedLeadExpressionCallback((expression) => {
@@ -163,16 +170,18 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
       pianoDistance: 0,
     } as Record<typeof distanceKeys[number], number>;
     const commitDistance = (key: typeof distanceKeys[number], value: number) => {
-      if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
+      const currentUiMode = uiModeRef.current;
+      const currentActiveTab = activeTabRef.current;
+      if (currentUiMode !== 'advanced' || document.visibilityState !== 'visible') return;
       const now = performance.now();
       if (now - lastDistanceUpdate[key] < 66) return;
       lastDistanceUpdate[key] = now;
-      if (activeTab === 'visualizer') {
+      if (currentActiveTab === 'visualizer') {
         emitVisualizerPulse(key.startsWith('lead') || key === 'pianoDistance' ? 'lead' : 'pad', value * 0.36 + 0.08, now);
         emitVisualizerPulse('synth', 0.06, now);
         return;
       }
-      if (activeTab !== 'synth') return;
+      if (currentActiveTab !== 'synth') return;
       mergeRuntimeTriggerPositions({ [key]: value });
       mergeRuntimeValues({ [key]: value });
     };
@@ -198,12 +207,10 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
       removeRuntimeValues(distanceKeys);
     };
   }, [
-    activeTab,
     setSelectedLeadDistanceCallback,
     setSelectedPad2DistanceTriggerCallback,
     setSelectedPadDistanceTriggerCallback,
     setSelectedPianoDistanceTriggerCallback,
-    uiMode,
   ]);
 
   useEffect(() => {

@@ -10,9 +10,15 @@ let package = Package(
             targets: ["KesshoCapacitorMac"]
         )
     ],
+    dependencies: [
+        .package(name: "KesshoProductCore", path: "..")
+    ],
     targets: [
         .executableTarget(
             name: "KesshoCapacitorMac",
+            dependencies: [
+                .product(name: "KesshoProductCore", package: "KesshoProductCore")
+            ],
             path: "Sources/KesshoCapacitorMac"
         )
     ]

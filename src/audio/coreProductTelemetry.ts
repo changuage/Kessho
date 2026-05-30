@@ -93,6 +93,10 @@ export type CoreProductTelemetrySnapshot = {
   modulationRangeCount?: number;
   runtimeWalkCount?: number;
   runtimeWalkValues?: Record<number, number>;
+  earthTextureDebugState?: import('./engineSharedTypes').EarthTextureDebugState;
+  productModulationDebug?: CoreProductModulationDebugSnapshot;
+  runtimeWalkDebug?: import('./product/host/CoreProductRuntimeWalkDebug').CoreProductRuntimeWalkDebugState;
+  sampleHoldDebug?: import('./product/host/CoreProductSampleHoldFeedbackBridge').CoreProductSampleHoldDebugState;
   rngSeed?: number;
   rngState?: number;
   sourcePresetIds?: number[];
@@ -139,6 +143,30 @@ export type CoreProductTelemetrySnapshot = {
   drumSequencerCurrentSteps?: number[];
 };
 
+export type CoreProductModulationDebugEntry = {
+  controlId: number;
+  controlName?: string;
+  targetId: number;
+  paramId: number;
+  mode: 'randomWalk' | 'sampleHold' | 'off' | `mode:${number}`;
+  min: number;
+  max: number;
+  currentValue: number;
+  normalizedPosition: number;
+  speed: number;
+  randomWalkGlobal: boolean;
+  triggerBus: number;
+  triggerCounter: number;
+  lastTriggerFrame: number;
+  lastTriggerSource: number;
+  seed: number;
+};
+
+export type CoreProductModulationDebugSnapshot = {
+  randomWalk: CoreProductModulationDebugEntry[];
+  sampleHold: CoreProductModulationDebugEntry[];
+};
+
 export type CoreProductVisualTelemetrySnapshot = Pick<
   CoreProductTelemetrySnapshot,
   | 'schemaHash'
@@ -147,6 +175,7 @@ export type CoreProductVisualTelemetrySnapshot = Pick<
   | 'activeGrains'
   | 'runtimeWalkCount'
   | 'runtimeWalkValues'
+  | 'productModulationDebug'
   | 'masterInputPeak'
   | 'masterOutputPeak'
   | 'masterOutputRms'

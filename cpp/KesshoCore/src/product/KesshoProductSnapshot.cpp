@@ -431,6 +431,13 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   configureFxModules();
 
   const bool first_snapshot = !snapshot_loaded_once;
+  if (first_snapshot) {
+    granular_mix_gain = fx.granular_mix;
+    granular_reverb_send_gain = routing.granular_to_reverb;
+    granular_delay_a_send_gain = routing.granular_to_delay_a;
+    granular_delay_b_send_gain = routing.granular_to_delay_b;
+    granular_return_gain_frame = UINT64_MAX;
+  }
   for (uint32_t i = 0; i < kSourceCount; ++i) {
     const KesshoProductSourceSnapshot& source = snapshot.sources[i];
     sources[i].source_id = source.source_id;
@@ -449,6 +456,10 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     sources[i].delay_a_send = clampFloat(source.delay_a_send, 0.0f, 2.0f);
     sources[i].delay_b_send = clampFloat(source.delay_b_send, 0.0f, 2.0f);
     sources[i].granular_send = clampFloat(source.granular_send, 0.0f, 2.0f);
+    if (first_snapshot) {
+      sources[i].granular_send_gain = sources[i].granular_send;
+      sources[i].granular_send_gain_frame = UINT64_MAX;
+    }
     sources[i].diffuse_send = clampFloat(source.diffuse_send, 0.0f, 2.0f);
     sources[i].post_lpf_hz = source.post_lpf_hz > 0.0f && std::isfinite(source.post_lpf_hz)
         ? clampFloat(source.post_lpf_hz, 20.0f, 20000.0f)

@@ -259,6 +259,9 @@
           }
         }
       }
+      const float effective_granular_send = soundscape_sample
+          ? granular_send
+          : granularSendGainForFrame(source.source_id, granular_send, transport.sample_frame + i);
       out_l[frame] += left;
       out_r[frame] += right;
       if (voice.source_id < kStemCount) {
@@ -273,8 +276,8 @@
       delay_a_bus_r[frame] += bus_send_right * delay_a_send;
       delay_b_bus_l[frame] += bus_send_left * delay_b_send;
       delay_b_bus_r[frame] += bus_send_right * delay_b_send;
-      granular_bus_l[frame] += bus_send_left * granular_send;
-      granular_bus_r[frame] += bus_send_right * granular_send;
+      granular_bus_l[frame] += bus_send_left * effective_granular_send;
+      granular_bus_r[frame] += bus_send_right * effective_granular_send;
     }
   }
 }

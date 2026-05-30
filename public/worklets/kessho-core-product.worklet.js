@@ -1,5 +1,5 @@
 const EVENT_BYTES = 40;
-const TELEMETRY_BYTES = 1296;
+const TELEMETRY_BYTES = 7728;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
 const EXPECTED_PRODUCT_SCHEMA_HASH = 0x68de8868;
 const SEQUENCER_UI_STATE_LANES = 16;
@@ -44,6 +44,12 @@ const PRODUCT_SEQUENCER_IDS = new Set([1, 2]);
 const PRODUCT_DRUM_VOICE_COUNT = 7;
 const PRODUCT_GRAPH_TAP_COUNT = 110;
 const STEM_PEAK_COUNT = 9;
+const EARTH_TEXTURE_CAPACITY = 4;
+const MODULATION_DEBUG_CAPACITY = 96;
+const TELEMETRY_EARTH_OFFSET = 1292;
+const TELEMETRY_MODULATION_DEBUG_COUNT_OFFSET = 1580;
+const TELEMETRY_MODULATION_DEBUG_OFFSET = 1584;
+const TELEMETRY_MODULATION_DEBUG_LAST_TRIGGER_FRAME_OFFSET = 6960;
 const STEM_PEAK_PROBE_INTERVAL_BLOCKS = 64;
 const GRAPH_TAP_IDLE_DISABLE_SECONDS = 0.05;
 const STEP_TOGGLE_CLEAR_LANE = 2;
@@ -1058,6 +1064,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       sequencerUiStateRevision !== 0 && sequencerUiStateRevision !== this.lastSequencerUiStateRevision
         ? this.readSequencerUiState(sequencerUiStateRevision)
         : null;
+    const earthTextureDebugState = this.readEarthTextureDebugState(ptr);
+    const productModulationDebug = this.readProductModulationDebug(ptr);
     return {
       schemaHash: this.view.getUint32(ptr, true),
       sampleRate: this.view.getFloat64(ptr + 8, true),
@@ -1098,6 +1106,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       modulationRangeCount: this.view.getUint32(ptr + 152, true),
       runtimeWalkCount,
       runtimeWalkValues,
+      earthTextureDebugState,
+      productModulationDebug,
       rngSeed: this.view.getUint32(ptr + 928, true),
       rngState: this.view.getUint32(ptr + 932, true),
       sourcePresetIds,
@@ -1137,6 +1147,125 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       workletLeadStemPeak: Math.max(this.lastStemPeaks[3] || 0, this.lastStemPeaks[4] || 0),
       workletFxStemPeak: this.lastStemPeaks[8] || 0,
     };
+  }
+
+  readEarthTextureDebugState(ptr) {
+    const keys = ['waves', 'birds', 'birds2', 'frogs'];
+    const state = {};
+    for (let index = 0; index < EARTH_TEXTURE_CAPACITY; index += 1) {
+      const base = ptr + TELEMETRY_EARTH_OFFSET;
+      const assetId = this.view.getUint32(base + index * 4, true);
+      const flags = this.view.getUint32(base + 16 + index * 4, true);
+      const inactiveReasonCode = this.view.getUint32(base + 32 + index * 4, true);
+      const activeSliceCount = this.view.getUint32(base + 48 + index * 4, true);
+      const playingSliceCount = this.view.getUint32(base + 64 + index * 4, true);
+      const lastSliceId = this.view.getUint32(base + 80 + index * 4, true);
+      const seed = this.view.getUint32(base + 96 + index * 4, true);
+      const offset = this.view.getFloat32(base + 112 + index * 4, true);
+      const startTime = this.view.getFloat32(base + 128 + index * 4, true);
+      const sliceDuration = this.view.getFloat32(base + 144 + index * 4, true);
+      const outputDuration = this.view.getFloat32(base + 160 + index * 4, true);
+      const detuneCents = this.view.getFloat32(base + 176 + index * 4, true);
+      const speedMultiplier = this.view.getFloat32(base + 192 + index * 4, true);
+      const totalRate = this.view.getFloat32(base + 208 + index * 4, true);
+      const density = this.view.getFloat32(base + 224 + index * 4, true);
+      const fadeTime = this.view.getFloat32(base + 240 + index * 4, true);
+      const assetDuration = this.view.getFloat32(base + 256 + index * 4, true);
+      const maxOffset = this.view.getFloat32(base + 272 + index * 4, true);
+      const active = (flags & 1) !== 0;
+      const key = keys[index];
+      state[key] = {
+        fileName: this.earthTextureAssetLabel(assetId),
+        assetId,
+        active,
+        inactiveReason: active ? null : this.earthTextureInactiveReason(inactiveReasonCode),
+        parityFixture: (flags & 2) !== 0,
+        textureParamsAvailable: (flags & 4) !== 0,
+        assetDuration,
+        maxOffset,
+        seed,
+        sliceDuration,
+        fadeTime,
+        density,
+        strideSeconds: 0,
+        nowTime: this.view.getFloat64(ptr + 8, true) > 0
+          ? this.readUint64Number(ptr + 24) / this.view.getFloat64(ptr + 8, true)
+          : 0,
+        activeSliceCount,
+        playingSliceCount,
+        activeSlices: lastSliceId === 0 ? [] : [{
+          id: lastSliceId,
+          startTime,
+          endTime: startTime + Math.max(0, outputDuration),
+          offset,
+          bufferDuration: assetDuration,
+          outputDuration,
+          detuneCents,
+          speedMultiplier,
+          totalRate,
+          isPlaying: playingSliceCount > 0,
+        }],
+      };
+    }
+    return state;
+  }
+
+  earthTextureAssetLabel(assetId) {
+    switch (assetId) {
+      case 7101: return 'Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg';
+      case 7102: return 'Alps Birds_441_m_normalized.ogg';
+      case 7105: return 'Fujian Birds 2_441_m_normalized.ogg';
+      case 7103: return 'Fujian_Frogs_m_441_normalized.ogg';
+      default: return assetId ? `asset:${assetId}` : 'unassigned';
+    }
+  }
+
+  earthTextureInactiveReason(code) {
+    switch (code) {
+      case 0: return null;
+      case 1: return 'texture params missing';
+      case 2: return 'parity fixture enabled';
+      case 3: return 'asset not registered';
+      case 4: return 'asset not found';
+      case 5: return 'asset too short for offset variation';
+      case 6: return 'source disabled';
+      case 7: return 'slot muted';
+      case 8: return 'density zero';
+      case 9: return 'voice budget exceeded';
+      default: return `inactive reason ${code}`;
+    }
+  }
+
+  readProductModulationDebug(ptr) {
+    const count = Math.min(this.view.getUint32(ptr + TELEMETRY_MODULATION_DEBUG_COUNT_OFFSET, true), MODULATION_DEBUG_CAPACITY);
+    const randomWalk = [];
+    const sampleHold = [];
+    const uintBase = ptr + TELEMETRY_MODULATION_DEBUG_OFFSET;
+    const floatBase = uintBase + MODULATION_DEBUG_CAPACITY * 9 * 4;
+    const triggerFrameBase = ptr + TELEMETRY_MODULATION_DEBUG_LAST_TRIGGER_FRAME_OFFSET;
+    for (let index = 0; index < count; index += 1) {
+      const modeId = this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 3 * 4 + index * 4, true);
+      const entry = {
+        controlId: this.view.getUint32(uintBase + index * 4, true),
+        targetId: this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 4 + index * 4, true),
+        paramId: this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 2 * 4 + index * 4, true),
+        mode: modeId === 2 ? 'randomWalk' : modeId === 1 ? 'sampleHold' : modeId === 0 ? 'off' : `mode:${modeId}`,
+        triggerBus: this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 4 * 4 + index * 4, true),
+        triggerCounter: this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 5 * 4 + index * 4, true),
+        seed: this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 6 * 4 + index * 4, true),
+        randomWalkGlobal: this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 7 * 4 + index * 4, true) !== 0,
+        lastTriggerSource: this.view.getUint32(uintBase + MODULATION_DEBUG_CAPACITY * 8 * 4 + index * 4, true),
+        min: this.view.getFloat32(floatBase + index * 4, true),
+        max: this.view.getFloat32(floatBase + MODULATION_DEBUG_CAPACITY * 4 + index * 4, true),
+        currentValue: this.view.getFloat32(floatBase + MODULATION_DEBUG_CAPACITY * 2 * 4 + index * 4, true),
+        normalizedPosition: this.view.getFloat32(floatBase + MODULATION_DEBUG_CAPACITY * 3 * 4 + index * 4, true),
+        speed: this.view.getFloat32(floatBase + MODULATION_DEBUG_CAPACITY * 4 * 4 + index * 4, true),
+        lastTriggerFrame: this.readUint64Number(triggerFrameBase + index * 8),
+      };
+      if (entry.mode === 'randomWalk') randomWalk.push(entry);
+      if (entry.mode === 'sampleHold') sampleHold.push(entry);
+    }
+    return { randomWalk, sampleHold };
   }
 
   readVisualTelemetry() {

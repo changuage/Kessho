@@ -1,7 +1,10 @@
 import AppKit
+import AVFoundation
 import CoreMIDI
 import CoreAudio
+import Darwin
 import Foundation
+import KesshoProductCore
 import Network
 import SwiftUI
 import WebKit
@@ -10,6 +13,15 @@ import WebKit
 struct KesshoCapacitorMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var runtime = KesshoMacRuntime()
+
+    init() {
+        if CommandLine.arguments.contains("--native-product-diagnostics-smoke") {
+            KesshoMacNativeDiagnosticsSmoke.runAndExit()
+        }
+        if CommandLine.arguments.contains("--native-product-background-smoke") {
+            KesshoMacNativeDiagnosticsSmoke.runBackgroundAndExit()
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -40,6 +52,7 @@ final class KesshoMacRuntime: ObservableObject {
     private let server: StaticWebServer
     private let midiRouter = MacMidiRouter()
     private let performanceActivity = MacPerformanceActivity()
+    private let audioSessionHost = KesshoMacAudioSessionHost()
     private weak var webView: WKWebView?
 
     init() {
@@ -56,6 +69,11 @@ final class KesshoMacRuntime: ObservableObject {
                     eventName: "inputsChanged",
                     data: self?.inputSnapshot(inputs: inputs) ?? [:]
                 )
+            }
+        }
+        audioSessionHost.onAudioSessionEvent = { [weak self] event in
+            Task { @MainActor in
+                self?.dispatchEvent(plugin: "KesshoAudioSession", eventName: "audioSessionEvent", data: event)
             }
         }
     }
@@ -102,6 +120,9 @@ final class KesshoMacRuntime: ObservableObject {
             case "KesshoMidiRouting":
                 let result = try handleMidiMethod(method, options: options)
                 resolveBridgeCall(id: id, value: result)
+            case "KesshoAudioSession":
+                let result = try handleAudioSessionMethod(method, options: options)
+                resolveBridgeCall(id: id, value: result)
             case "KesshoMacShell":
                 let result = try handleShellMethod(method, options: options)
                 resolveBridgeCall(id: id, value: result)
@@ -110,6 +131,44 @@ final class KesshoMacRuntime: ObservableObject {
             }
         } catch {
             rejectBridgeCall(id: id, message: error.localizedDescription)
+        }
+    }
+
+    private func handleAudioSessionMethod(_ method: String, options: [String: Any]) throws -> [String: Any] {
+        switch method {
+        case "getStatus":
+            return audioSessionHost.statusPayload()
+        case "syncState":
+            return audioSessionHost.statusPayload()
+        case "startPlayback":
+            audioSessionHost.start()
+            if let title = options["title"] as? String {
+                performanceActivity.setPlaybackActive(true, title: title)
+            }
+            return audioSessionHost.statusPayload()
+        case "stopPlayback":
+            audioSessionHost.stop()
+            performanceActivity.setPlaybackActive(false, title: nil)
+            return audioSessionHost.statusPayload()
+        case "startNativeRendererForDiagnostics":
+            return try audioSessionHost.startNativeProductRendererForDiagnostics()
+        case "stopNativeRendererForDiagnostics":
+            return audioSessionHost.stopNativeProductRendererForDiagnostics()
+        case "probeNativeRendererForDiagnostics":
+            return try audioSessionHost.probeNativeProductRendererForDiagnostics()
+        case "setNowPlaying":
+            return audioSessionHost.statusPayload()
+        case "setPlaybackState":
+            let isPlaying = options["isPlaying"] as? Bool ?? false
+            if isPlaying {
+                audioSessionHost.start()
+            } else {
+                audioSessionHost.stop()
+            }
+            performanceActivity.setPlaybackActive(isPlaying, title: options["title"] as? String)
+            return audioSessionHost.statusPayload()
+        default:
+            throw BridgeError.unknownMethod(method)
         }
     }
 
@@ -181,6 +240,7 @@ final class KesshoMacRuntime: ObservableObject {
                 "webViewShell": true,
                 "loopbackStaticServer": true,
                 "coreMidiRouting": true,
+                "nativeProductCoreDiagnostics": true,
                 "appNapSuppressionWhilePlaying": true,
                 "idleSystemSleepPreventionWhilePlaying": true,
                 "assetMemoryCache": true,
@@ -410,16 +470,328 @@ struct KesshoWebView: NSViewRepresentable {
         setPlaybackState: (options) => call('KesshoMacShell', 'setPlaybackState', options),
       };
 
+      const KesshoAudioSession = {
+        getStatus: () => call('KesshoAudioSession', 'getStatus'),
+        syncState: (options) => call('KesshoAudioSession', 'syncState', options),
+        startPlayback: (options) => call('KesshoAudioSession', 'startPlayback', options),
+        stopPlayback: () => call('KesshoAudioSession', 'stopPlayback'),
+        startNativeRendererForDiagnostics: () => call('KesshoAudioSession', 'startNativeRendererForDiagnostics'),
+        stopNativeRendererForDiagnostics: () => call('KesshoAudioSession', 'stopNativeRendererForDiagnostics'),
+        probeNativeRendererForDiagnostics: () => call('KesshoAudioSession', 'probeNativeRendererForDiagnostics'),
+        setNowPlaying: (options) => call('KesshoAudioSession', 'setNowPlaying', options),
+        setPlaybackState: (options) => call('KesshoAudioSession', 'setPlaybackState', options),
+        addListener: (eventName, callback) => addListener('KesshoAudioSession', eventName, callback),
+      };
+
       window.Capacitor = {
         isNativePlatform: () => true,
         getPlatform: () => 'macos',
         Plugins: {
+          KesshoAudioSession,
           KesshoMidiRouting,
           KesshoMacShell,
         },
       };
     })();
     """
+}
+
+enum KesshoMacNativeDiagnosticsSmoke {
+    static func runAndExit() -> Never {
+        do {
+            let engine = KesshoAppleProductAudioEngine(sampleRate: 48_000, maxBlockSize: 256)
+            guard engine.renderer().isValid() else {
+                throw BridgeError.runtime("macOS app native Product Core renderer is invalid")
+            }
+            let probe = try engine.runOfflineOutputProbe()
+            let peak = probe["peak"]?.doubleValue ?? 0
+            let rms = probe["rms"]?.doubleValue ?? 0
+            guard peak > 0.00001, rms > 0.000001 else {
+                throw BridgeError.runtime("macOS app native Product Core probe stayed silent")
+            }
+            try engine.primeDiagnosticOutput()
+            try engine.start()
+            guard engine.isRunning() else {
+                throw BridgeError.runtime("macOS app native Product Core engine did not start")
+            }
+            engine.stop()
+            print("Kessho Capacitor macOS native Product Core diagnostics smoke passed peak=\(peak) rms=\(rms)")
+            Darwin.exit(0)
+        } catch {
+            fputs("Kessho Capacitor macOS native Product Core diagnostics smoke failed: \(error.localizedDescription)\n", stderr)
+            Darwin.exit(1)
+        }
+    }
+
+    @MainActor
+    static func runBackgroundAndExit() -> Never {
+        do {
+            let host = KesshoMacAudioSessionHost(observeNotifications: false)
+            _ = try host.startNativeProductRendererForDiagnostics()
+            try assertStatus(host, key: "nativeProductRendererRunning", equals: true)
+            host.recordAppHiddenForDiagnostics()
+            try assertStatus(host, key: "routeChangeCount", equals: 1)
+            try assertStatus(host, key: "lastRouteChangeReason", equals: "appHidden")
+            host.recordSleepBeganForDiagnostics()
+            try assertStatus(host, key: "interruptionBeginCount", equals: 1)
+            try assertStatus(host, key: "lastInterruptionType", equals: "began")
+            host.recordWakeEndedForDiagnostics()
+            try assertStatus(host, key: "interruptionEndCount", equals: 1)
+            try assertStatus(host, key: "mediaServicesResetCount", equals: 1)
+            try assertStatus(host, key: "lastNativeProductRendererError", equals: "none")
+            try assertStatus(host, key: "nativeProductRendererRunning", equals: true)
+            _ = host.stopNativeProductRendererForDiagnostics()
+            let probe = try host.probeNativeProductRendererForDiagnostics()
+            let peak = probe["nativeProductRendererProbePeak"] as? Double ?? 0
+            let rms = probe["nativeProductRendererProbeRms"] as? Double ?? 0
+            guard peak > 0.00001, rms > 0.000001 else {
+                throw BridgeError.runtime("macOS app native Product Core background probe stayed silent")
+            }
+            print("Kessho Capacitor macOS native Product Core background smoke passed peak=\(peak) rms=\(rms)")
+            Darwin.exit(0)
+        } catch {
+            fputs("Kessho Capacitor macOS native Product Core background smoke failed: \(error.localizedDescription)\n", stderr)
+            Darwin.exit(1)
+        }
+    }
+
+    @MainActor
+    private static func assertStatus(_ host: KesshoMacAudioSessionHost, key: String, equals expected: Bool) throws {
+        guard let actual = host.statusPayload()[key] as? Bool, actual == expected else {
+            throw BridgeError.runtime("expected \(key)=\(expected)")
+        }
+    }
+
+    @MainActor
+    private static func assertStatus(_ host: KesshoMacAudioSessionHost, key: String, equals expected: Int) throws {
+        guard let actual = host.statusPayload()[key] as? Int, actual == expected else {
+            throw BridgeError.runtime("expected \(key)=\(expected)")
+        }
+    }
+
+    @MainActor
+    private static func assertStatus(_ host: KesshoMacAudioSessionHost, key: String, equals expected: String) throws {
+        guard let actual = host.statusPayload()[key] as? String, actual == expected else {
+            throw BridgeError.runtime("expected \(key)=\(expected)")
+        }
+    }
+}
+
+@MainActor
+final class KesshoMacAudioSessionHost {
+    private var nativeProductEngine: KesshoAppleProductAudioEngine?
+    private var notificationObservers: [NSObjectProtocol] = []
+
+    private(set) var isPlaying = false
+    private(set) var nativeProductRendererPrepared = false
+    private(set) var nativeProductRendererRunning = false
+    private(set) var nativeProductRendererStartCount = 0
+    private(set) var nativeProductRendererStopCount = 0
+    private(set) var nativeProductRendererProbePeak = 0.0
+    private(set) var nativeProductRendererProbeRms = 0.0
+    private(set) var nativeProductRendererProbeRenderedFrames = 0
+    private(set) var nativeProductRendererProbeSampleRate = 0.0
+    private(set) var lastNativeProductRendererError = "none"
+    private(set) var routeChangeCount = 0
+    private(set) var interruptionBeginCount = 0
+    private(set) var interruptionEndCount = 0
+    private(set) var mediaServicesResetCount = 0
+    private(set) var lastRouteChangeReason = "none"
+    private(set) var lastInterruptionType = "none"
+
+    var onAudioSessionEvent: (([String: Any]) -> Void)?
+
+    init(observeNotifications: Bool = true) {
+        if observeNotifications {
+            observeSystemNotifications()
+        }
+    }
+
+    deinit {
+        for observer in notificationObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    func start() {
+        isPlaying = true
+    }
+
+    func stop() {
+        isPlaying = false
+        _ = stopNativeProductRendererForDiagnostics()
+    }
+
+    func statusPayload() -> [String: Any] {
+        [
+            "available": true,
+            "mode": "capacitor-macos-product-core",
+            "isPlaying": isPlaying,
+            "supportsBackgroundAudio": true,
+            "nativeProductRendererPrepared": nativeProductRendererPrepared,
+            "nativeProductRendererRunning": nativeProductRendererRunning,
+            "nativeProductRendererStartCount": nativeProductRendererStartCount,
+            "nativeProductRendererStopCount": nativeProductRendererStopCount,
+            "nativeProductRendererProbePeak": nativeProductRendererProbePeak,
+            "nativeProductRendererProbeRms": nativeProductRendererProbeRms,
+            "nativeProductRendererProbeRenderedFrames": nativeProductRendererProbeRenderedFrames,
+            "nativeProductRendererProbeSampleRate": nativeProductRendererProbeSampleRate,
+            "lastNativeProductRendererError": lastNativeProductRendererError,
+            "routeChangeCount": routeChangeCount,
+            "interruptionBeginCount": interruptionBeginCount,
+            "interruptionEndCount": interruptionEndCount,
+            "mediaServicesResetCount": mediaServicesResetCount,
+            "lastRouteChangeReason": lastRouteChangeReason,
+            "lastInterruptionType": lastInterruptionType,
+        ]
+    }
+
+    func startNativeProductRendererForDiagnostics() throws -> [String: Any] {
+        prepareNativeProductRenderer()
+        guard let nativeProductEngine else {
+            lastNativeProductRendererError = "native Product Core engine unavailable"
+            throw BridgeError.runtime(lastNativeProductRendererError)
+        }
+        do {
+            try nativeProductEngine.primeDiagnosticOutput()
+            try nativeProductEngine.start()
+            nativeProductRendererRunning = nativeProductEngine.isRunning()
+            nativeProductRendererStartCount += 1
+            isPlaying = true
+            lastNativeProductRendererError = "none"
+            return statusPayload()
+        } catch {
+            nativeProductRendererRunning = false
+            lastNativeProductRendererError = "\(error)"
+            throw error
+        }
+    }
+
+    func stopNativeProductRendererForDiagnostics() -> [String: Any] {
+        nativeProductEngine?.stop()
+        nativeProductRendererRunning = false
+        nativeProductRendererStopCount += 1
+        return statusPayload()
+    }
+
+    func probeNativeProductRendererForDiagnostics() throws -> [String: Any] {
+        if nativeProductRendererRunning {
+            lastNativeProductRendererError = "stop native Product Core renderer before offline probe"
+            throw BridgeError.runtime(lastNativeProductRendererError)
+        }
+        prepareNativeProductRenderer()
+        guard let nativeProductEngine else {
+            lastNativeProductRendererError = "native Product Core engine unavailable"
+            throw BridgeError.runtime(lastNativeProductRendererError)
+        }
+        do {
+            let result = try nativeProductEngine.runOfflineOutputProbe()
+            nativeProductRendererProbePeak = result["peak"]?.doubleValue ?? 0
+            nativeProductRendererProbeRms = result["rms"]?.doubleValue ?? 0
+            nativeProductRendererProbeRenderedFrames = result["renderedFrames"]?.intValue ?? 0
+            nativeProductRendererProbeSampleRate = result["sampleRate"]?.doubleValue ?? 0
+            lastNativeProductRendererError = "none"
+            return statusPayload()
+        } catch {
+            lastNativeProductRendererError = "\(error)"
+            throw error
+        }
+    }
+
+    private func prepareNativeProductRenderer(sampleRate: Double = 48_000, maxBlockSize: UInt32 = 256) {
+        if nativeProductEngine == nil {
+            nativeProductEngine = KesshoAppleProductAudioEngine(sampleRate: sampleRate, maxBlockSize: maxBlockSize)
+        }
+        nativeProductRendererPrepared = nativeProductEngine != nil
+    }
+
+    private func observeSystemNotifications() {
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        notificationObservers.append(workspaceCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleInterruptionBegan()
+            }
+        })
+        notificationObservers.append(workspaceCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleInterruptionEnded()
+            }
+        })
+        notificationObservers.append(NotificationCenter.default.addObserver(
+            forName: NSApplication.didHideNotification,
+            object: NSApp,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleRouteChange(reason: "appHidden")
+            }
+        })
+    }
+
+    func recordAppHiddenForDiagnostics() {
+        handleRouteChange(reason: "appHidden")
+    }
+
+    func recordSleepBeganForDiagnostics() {
+        handleInterruptionBegan()
+    }
+
+    func recordWakeEndedForDiagnostics() {
+        handleInterruptionEnded()
+    }
+
+    private func handleRouteChange(reason: String) {
+        routeChangeCount += 1
+        lastRouteChangeReason = reason
+        nativeProductEngine?.handleRouteChange()
+        onAudioSessionEvent?([
+            "type": "routeChange",
+            "reason": lastRouteChangeReason,
+            "routeChangeCount": routeChangeCount,
+        ])
+    }
+
+    private func handleInterruptionBegan() {
+        interruptionBeginCount += 1
+        lastInterruptionType = "began"
+        nativeProductEngine?.handleInterruptionBegan()
+        nativeProductRendererRunning = nativeProductEngine?.isRunning() ?? false
+        onAudioSessionEvent?([
+            "type": "interruption",
+            "interruptionType": lastInterruptionType,
+            "interruptionBeginCount": interruptionBeginCount,
+            "interruptionEndCount": interruptionEndCount,
+        ])
+    }
+
+    private func handleInterruptionEnded() {
+        interruptionEndCount += 1
+        lastInterruptionType = "ended"
+        do {
+            try nativeProductEngine?.handleInterruptionEndedShouldResume(isPlaying)
+            mediaServicesResetCount += 1
+            try nativeProductEngine?.handleMediaServicesReset()
+            nativeProductRendererRunning = nativeProductEngine?.isRunning() ?? false
+            lastNativeProductRendererError = "none"
+        } catch {
+            lastNativeProductRendererError = "\(error)"
+        }
+        onAudioSessionEvent?([
+            "type": "interruption",
+            "interruptionType": lastInterruptionType,
+            "interruptionBeginCount": interruptionBeginCount,
+            "interruptionEndCount": interruptionEndCount,
+            "mediaServicesResetCount": mediaServicesResetCount,
+        ])
+    }
 }
 
 @MainActor
@@ -899,6 +1271,7 @@ enum BridgeError: LocalizedError {
     case unknownPlugin(String)
     case unknownMethod(String)
     case missingArgument(String)
+    case runtime(String)
     case midiClientCreationFailed(OSStatus)
     case midiInputPortCreationFailed(OSStatus)
     case midiSourceNotFound(Int32)
@@ -913,6 +1286,8 @@ enum BridgeError: LocalizedError {
             return "Unknown native method \(method)."
         case .missingArgument(let argument):
             return "Missing argument \(argument)."
+        case .runtime(let message):
+            return message
         case .midiClientCreationFailed(let status):
             return "Failed to create MIDI client (\(status))."
         case .midiInputPortCreationFailed(let status):

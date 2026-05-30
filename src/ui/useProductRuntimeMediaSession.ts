@@ -5,6 +5,7 @@ type UseProductRuntimeMediaSessionOptions = {
   productRuntimeMode: ProductRuntimeSelectionMode;
   resumeProductRuntime: () => void | Promise<void>;
   suspendProductRuntime: () => void | Promise<void>;
+  stopProductRuntime: () => void | Promise<void>;
 };
 
 type ProductRuntimeMediaSession = {
@@ -17,6 +18,7 @@ export function useProductRuntimeMediaSession({
   productRuntimeMode,
   resumeProductRuntime,
   suspendProductRuntime,
+  stopProductRuntime,
 }: UseProductRuntimeMediaSessionOptions): ProductRuntimeMediaSession {
   // TODO(product-runtime-compat-10C): keep media-session reference runtime behavior behind this
   // compatibility facade until the underlying helpers use product runtime naming directly.
@@ -24,6 +26,7 @@ export function useProductRuntimeMediaSession({
     audioEngineRuntimeMode: productRuntimeMode,
     resumeSelectedAudioEngine: resumeProductRuntime,
     suspendSelectedAudioEngine: suspendProductRuntime,
+    stopSelectedAudioEngine: stopProductRuntime,
   });
 
   return {

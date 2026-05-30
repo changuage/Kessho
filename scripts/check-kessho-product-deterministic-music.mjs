@@ -117,7 +117,7 @@ const SOURCE_DRUM_VOICE_PRESET_B_OFFSET = 3244;
 
 const snapshotPtr = malloc(SNAPSHOT_SIZE);
 const eventsPtr = malloc(SEQUENCER_EVENT_SIZE * 8);
-const telemetryPtr = malloc(1296);
+const telemetryPtr = malloc(7728);
 const engine = create(48000, 128, 0);
 assert(snapshotPtr && eventsPtr && telemetryPtr && engine, 'WASM deterministic timeline allocation failed');
 

@@ -68,6 +68,8 @@ float smoothRandomWalkPosition(const ModulationRange& range, double seconds) {
       const uint32_t remainder = elapsed_after_first % interval;
       range.sample_hold_counter += samples_due;
       range.current_value = modulationRangeSample(range, range.current_value, range.sample_hold_counter);
+      range.last_trigger_frame = product_render_frame + frames;
+      range.last_trigger_source = 0u;
       range.sample_hold_frames_until_next = interval - remainder;
       if (range.sample_hold_frames_until_next == 0u) {
         range.sample_hold_frames_until_next = interval;

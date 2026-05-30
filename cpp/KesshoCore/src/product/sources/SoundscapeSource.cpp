@@ -25,6 +25,7 @@
     runtime.initialized = true;
     runtime.seed = seed;
     runtime.rng_state = seed;
+    runtime.next_slice_id = 1u;
     runtime.next_start_frame = product_render_frame +
         static_cast<uint64_t>(std::max(1.0, std::round(kSoundscapeTextureInitialDelaySeconds * sample_rate)));
   }
@@ -119,6 +120,22 @@
         ? 0u
         : static_cast<uint32_t>(std::ceil(fade * sample_rate));
     voice.envelope_release_frames = voice.envelope_attack_frames;
+
+    runtime.last_slice_id = runtime.next_slice_id++;
+    if (runtime.next_slice_id == 0u) {
+      runtime.next_slice_id = 1u;
+    }
+    runtime.last_start_frame = runtime.next_start_frame;
+    runtime.last_offset_seconds = static_cast<float>(offset);
+    runtime.last_slice_duration = static_cast<float>(slice_duration);
+    runtime.last_output_duration = static_cast<float>(output_duration);
+    runtime.last_detune_cents = detune_cents;
+    runtime.last_speed_multiplier = speed_multiplier;
+    runtime.last_total_rate = static_cast<float>(total_rate);
+    runtime.last_density = density;
+    runtime.last_fade_time = static_cast<float>(fade);
+    runtime.last_asset_duration = static_cast<float>(asset_duration);
+    runtime.last_max_offset = static_cast<float>(max_offset);
 
     latest_end_frame = std::max<uint64_t>(
         latest_end_frame,

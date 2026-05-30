@@ -69,7 +69,19 @@ requireTokens('cpp/KesshoCore/tests/ProductAssetTests.cpp', [
   'layered soundscape assets did not mix',
   'soundscape loop seam was not crossfaded toward loop start',
   'soundscape layer did not start at the deterministic randomized asset offset',
+  'normal soundscape texture mode did not schedule 20 slices',
+  'soundscape texture recent-offset avoidance did not keep distinct offsets',
+  'soundscape texture sequence did not continue after unrelated param patch',
+  'soundscape parity fixture telemetry did not label parity mode',
+  'short soundscape texture telemetry did not report no-offset-variation reason',
   'birds soundscape policy should render wider C++-owned stereo spread than water',
+]);
+
+requireTokens('src/audio/coreProductSoundscapesSnapshot.ts', [
+  "booleanFromState(state, 'soundscapeParityFixture', false)",
+  'soundscapeParityFixture === true ? 0 : config.fadeTime',
+  'SOUNDSCAPE_TEXTURE_PARAM_COUNT',
+  'SOUNDSCAPE_PARITY_FIXTURE_PARAM',
 ]);
 
 requireTokens('docs/kessho-product-source-parity-broadening.md', [

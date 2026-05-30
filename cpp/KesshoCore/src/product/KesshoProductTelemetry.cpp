@@ -1,5 +1,32 @@
 #include "KesshoProductEngineInternal.h"
 
+namespace {
+
+uint32_t earthTextureAssetIdForSlot(uint32_t slot) {
+  switch (slot) {
+    case kessho::product::internal::kSoundscapeTextureSlotOcean:
+      return kessho::product::internal::kSoundscapeAssetOcean;
+    case kessho::product::internal::kSoundscapeTextureSlotBirds:
+      return kessho::product::internal::kSoundscapeAssetBirds;
+    case kessho::product::internal::kSoundscapeTextureSlotBirds2:
+      return kessho::product::internal::kSoundscapeAssetBirds2;
+    case kessho::product::internal::kSoundscapeTextureSlotFrogs:
+      return kessho::product::internal::kSoundscapeAssetFrogs;
+    default:
+      return 0u;
+  }
+}
+
+float normalizedModulationPosition(const kessho::product::internal::ModulationRange& range) {
+  const float span = range.max_value - range.min_value;
+  if (span <= 0.0f) {
+    return 0.0f;
+  }
+  return kessho::product::internal::clampFloat((range.current_value - range.min_value) / span, 0.0f, 1.0f);
+}
+
+} // namespace
+
   void KesshoProductEngine::resetMasterTelemetryState() {
   master_true_peak_prev_l = 0.0f;
   master_true_peak_prev_r = 0.0f;
@@ -237,6 +264,169 @@
   }
   telemetry.modulation_range_count = active_range_count;
   telemetry.runtime_walk_count = walk_count;
+  for (uint32_t slot = 0; slot < KESSHO_PRODUCT_EARTH_TEXTURE_TELEMETRY_CAPACITY; ++slot) {
+    telemetry.earth_texture_asset_ids[slot] = 0u;
+    telemetry.earth_texture_flags[slot] = 0u;
+    telemetry.earth_texture_inactive_reasons[slot] = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_ASSET_NOT_REGISTERED;
+    telemetry.earth_texture_active_slice_counts[slot] = 0u;
+    telemetry.earth_texture_playing_slice_counts[slot] = 0u;
+    telemetry.earth_texture_last_slice_ids[slot] = 0u;
+    telemetry.earth_texture_seeds[slot] = 0u;
+    telemetry.earth_texture_last_offsets[slot] = 0.0f;
+    telemetry.earth_texture_last_start_times[slot] = 0.0f;
+    telemetry.earth_texture_slice_durations[slot] = 0.0f;
+    telemetry.earth_texture_output_durations[slot] = 0.0f;
+    telemetry.earth_texture_detune_cents[slot] = 0.0f;
+    telemetry.earth_texture_speed_multipliers[slot] = 1.0f;
+    telemetry.earth_texture_total_rates[slot] = 1.0f;
+    telemetry.earth_texture_densities[slot] = 0.0f;
+    telemetry.earth_texture_fade_times[slot] = 0.0f;
+    telemetry.earth_texture_asset_durations[slot] = 0.0f;
+    telemetry.earth_texture_max_offsets[slot] = 0.0f;
+  }
+  const SourceState& soundscape = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
+  const bool soundscape_active = sourceRenderActive(soundscape);
+  const bool texture_params_available = soundscapeTextureParamsAvailable(soundscape);
+  const bool parity_fixture = soundscapeParityFixtureEnabled(soundscape);
+  for (uint32_t slot = 0; slot < std::min<uint32_t>(KESSHO_PRODUCT_EARTH_TEXTURE_TELEMETRY_CAPACITY, kSoundscapeTextureSlotCount); ++slot) {
+    const uint32_t asset_id = earthTextureAssetIdForSlot(slot);
+    SoundscapeTextureRuntime& runtime = soundscape_texture_runtimes[slot];
+    telemetry.earth_texture_asset_ids[slot] = asset_id;
+    telemetry.earth_texture_seeds[slot] = runtime.seed != 0u
+        ? runtime.seed
+        : soundscapeTextureSeed(soundscape, slot, hashU32(rng_seed ^ asset_id ^ 0x51f15ca9u));
+    if (soundscape_active) telemetry.earth_texture_flags[slot] |= KESSHO_PRODUCT_EARTH_TEXTURE_SOURCE_ENABLED;
+    if (texture_params_available) telemetry.earth_texture_flags[slot] |= KESSHO_PRODUCT_EARTH_TEXTURE_PARAMS_AVAILABLE;
+    if (parity_fixture) telemetry.earth_texture_flags[slot] |= KESSHO_PRODUCT_EARTH_TEXTURE_PARITY_FIXTURE;
+    const float density = clampFloat(soundscapeTextureParam(
+        soundscape,
+        slot,
+        kSoundscapeTextureParamDensity,
+        slot == kSoundscapeTextureSlotOcean ? 0.38f : 0.48f), 0.0f, 1.0f);
+    telemetry.earth_texture_densities[slot] = runtime.last_slice_id == 0u ? density : runtime.last_density;
+    telemetry.earth_texture_fade_times[slot] = runtime.last_fade_time;
+    telemetry.earth_texture_last_slice_ids[slot] = runtime.last_slice_id;
+    telemetry.earth_texture_last_offsets[slot] = runtime.last_offset_seconds;
+    telemetry.earth_texture_last_start_times[slot] = sample_rate > 0.0
+        ? static_cast<float>(static_cast<double>(runtime.last_start_frame) / sample_rate)
+        : 0.0f;
+    telemetry.earth_texture_slice_durations[slot] = runtime.last_slice_duration;
+    telemetry.earth_texture_output_durations[slot] = runtime.last_output_duration;
+    telemetry.earth_texture_detune_cents[slot] = runtime.last_detune_cents;
+    telemetry.earth_texture_speed_multipliers[slot] = runtime.last_speed_multiplier;
+    telemetry.earth_texture_total_rates[slot] = runtime.last_total_rate;
+    telemetry.earth_texture_asset_durations[slot] = runtime.last_asset_duration;
+    telemetry.earth_texture_max_offsets[slot] = runtime.last_max_offset;
+
+    uint32_t active_slice_count = 0u;
+    uint32_t playing_slice_count = 0u;
+    for (const Voice& voice : voices) {
+      if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
+          !voice.sample_voice || !voice.soundscape_texture_voice ||
+          voice.asset_slot >= kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS ||
+          !assets[voice.asset_slot].active ||
+          assets[voice.asset_slot].asset_id != asset_id) {
+        continue;
+      }
+      ++active_slice_count;
+      if (voice.start_delay_frames == 0u) {
+        ++playing_slice_count;
+      }
+    }
+    telemetry.earth_texture_active_slice_counts[slot] = active_slice_count;
+    telemetry.earth_texture_playing_slice_counts[slot] = playing_slice_count;
+
+    uint32_t reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_NONE;
+    const uint32_t asset_slot = findAssetSlot(asset_id);
+    if (!soundscape_active) {
+      reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_SOURCE_DISABLED;
+    } else if (!texture_params_available) {
+      reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_TEXTURE_PARAMS_MISSING;
+    } else if (parity_fixture) {
+      reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_PARITY_FIXTURE_ENABLED;
+    } else if (!soundscapeWantsAsset(soundscape, asset_id)) {
+      reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_ASSET_NOT_REGISTERED;
+    } else if (soundscapeAssetRefLevel(soundscape, asset_id) <= 0.0001f) {
+      reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_SLOT_MUTED;
+    } else if (asset_slot == kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS ||
+        !assets[asset_slot].active ||
+        assets[asset_slot].frame_count == 0u ||
+        assets[asset_slot].sample_rate <= 0.0f) {
+      reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_ASSET_NOT_FOUND;
+    } else {
+      const double asset_duration = static_cast<double>(assets[asset_slot].frame_count) /
+          std::max(1.0, static_cast<double>(assets[asset_slot].sample_rate));
+      const double slice_duration = std::min(
+          std::max(
+              static_cast<double>(soundscapeTextureParam(
+                  soundscape,
+                  slot,
+                  kSoundscapeTextureParamSliceDuration,
+                  slot == kSoundscapeTextureSlotFrogs ? 18.0f : 20.0f)),
+              1.5),
+          std::max(1.5, asset_duration - 0.05));
+      const double max_offset = std::max(0.0, asset_duration - slice_duration - 0.02);
+      if (runtime.last_asset_duration <= 0.0f) {
+        telemetry.earth_texture_asset_durations[slot] = static_cast<float>(asset_duration);
+        telemetry.earth_texture_slice_durations[slot] = static_cast<float>(slice_duration);
+        telemetry.earth_texture_max_offsets[slot] = static_cast<float>(max_offset);
+      }
+      if (density <= 0.0001f) {
+        reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_DENSITY_ZERO;
+      } else if (max_offset <= 0.0001) {
+        reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_ASSET_TOO_SHORT;
+      }
+    }
+    telemetry.earth_texture_inactive_reasons[slot] = reason;
+    if (reason == KESSHO_PRODUCT_EARTH_TEXTURE_REASON_NONE) {
+      telemetry.earth_texture_flags[slot] |= KESSHO_PRODUCT_EARTH_TEXTURE_ACTIVE;
+    }
+  }
+
+  uint32_t modulation_debug_count = 0u;
+  for (uint32_t i = 0; i < KESSHO_PRODUCT_MODULATION_DEBUG_TELEMETRY_CAPACITY; ++i) {
+    telemetry.modulation_debug_control_ids[i] = 0u;
+    telemetry.modulation_debug_target_ids[i] = 0u;
+    telemetry.modulation_debug_param_ids[i] = 0u;
+    telemetry.modulation_debug_modes[i] = 0u;
+    telemetry.modulation_debug_trigger_buses[i] = 0u;
+    telemetry.modulation_debug_trigger_counters[i] = 0u;
+    telemetry.modulation_debug_seeds[i] = 0u;
+    telemetry.modulation_debug_random_walk_global[i] = 0u;
+    telemetry.modulation_debug_last_trigger_sources[i] = 0u;
+    telemetry.modulation_debug_min_values[i] = 0.0f;
+    telemetry.modulation_debug_max_values[i] = 0.0f;
+    telemetry.modulation_debug_current_values[i] = 0.0f;
+    telemetry.modulation_debug_normalized_positions[i] = 0.0f;
+    telemetry.modulation_debug_speeds[i] = 0.0f;
+    telemetry.modulation_debug_last_trigger_frames[i] = 0u;
+  }
+  for (const ModulationRange& range : modulation_ranges) {
+    if (!range.active || modulation_debug_count >= KESSHO_PRODUCT_MODULATION_DEBUG_TELEMETRY_CAPACITY) {
+      continue;
+    }
+    const uint32_t index = modulation_debug_count++;
+    telemetry.modulation_debug_control_ids[index] = range.control_id;
+    telemetry.modulation_debug_target_ids[index] = range.target_id;
+    telemetry.modulation_debug_param_ids[index] = range.param_id;
+    telemetry.modulation_debug_modes[index] = range.mode;
+    telemetry.modulation_debug_trigger_buses[index] = range.sample_hold_trigger_bus;
+    telemetry.modulation_debug_trigger_counters[index] = range.mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK
+        ? range.random_walk_counter
+        : range.sample_hold_counter;
+    telemetry.modulation_debug_seeds[index] = range.seed;
+    telemetry.modulation_debug_random_walk_global[index] = range.random_walk_global ? 1u : 0u;
+    telemetry.modulation_debug_last_trigger_sources[index] = range.last_trigger_source;
+    telemetry.modulation_debug_min_values[index] = range.min_value;
+    telemetry.modulation_debug_max_values[index] = range.max_value;
+    telemetry.modulation_debug_current_values[index] = range.current_value;
+    telemetry.modulation_debug_normalized_positions[index] = normalizedModulationPosition(range);
+    telemetry.modulation_debug_speeds[index] = range.mode == KESSHO_PRODUCT_MODULATION_RANGE_RANDOM_WALK
+        ? range.random_walk_speed
+        : 0.0f;
+    telemetry.modulation_debug_last_trigger_frames[index] = range.last_trigger_frame;
+  }
+  telemetry.modulation_debug_count = modulation_debug_count;
   telemetry.rng_seed = rng_seed;
   telemetry.rng_state = rng_state;
   for (uint32_t i = 0; i < kSourceCount; ++i) {

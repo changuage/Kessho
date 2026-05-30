@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import type { SliderMode } from './state';
 
 type RuntimeSliderStoreState = {
@@ -17,6 +17,38 @@ let storeState: RuntimeSliderStoreState = {
   walkPositions: {},
   triggerPositions: {},
   flashKeys: new Set<string>(),
+};
+
+type RuntimeSliderDebugState = {
+  walkStoreUpdateCount: number;
+  walkIndicatorConsumeCount: number;
+  triggerStoreUpdateCount: number;
+  triggerFlashUpdateCount: number;
+  triggerIndicatorConsumeCount: number;
+  lastWalkKeys: string[];
+  lastWalkIndicatorKey: string | null;
+  lastWalkIndicatorPosition: number | null;
+  lastTriggerKeys: string[];
+  lastFlashKeys: string[];
+  lastTriggerIndicatorKey: string | null;
+  lastTriggerIndicatorPosition: number | null;
+  lastTriggerIndicatorFlashing: boolean;
+};
+
+const runtimeSliderDebugState: RuntimeSliderDebugState = {
+  walkStoreUpdateCount: 0,
+  walkIndicatorConsumeCount: 0,
+  triggerStoreUpdateCount: 0,
+  triggerFlashUpdateCount: 0,
+  triggerIndicatorConsumeCount: 0,
+  lastWalkKeys: [],
+  lastWalkIndicatorKey: null,
+  lastWalkIndicatorPosition: null,
+  lastTriggerKeys: [],
+  lastFlashKeys: [],
+  lastTriggerIndicatorKey: null,
+  lastTriggerIndicatorPosition: null,
+  lastTriggerIndicatorFlashing: false,
 };
 
 function emit(next: RuntimeSliderStoreSnapshot): void {
@@ -100,6 +132,8 @@ function mergePositions(
 export function replaceRuntimeWalkPositions(nextPositions: Record<string, number>): void {
   updateStore((current) => {
     if (recordsEqual(current.walkPositions, nextPositions)) return current;
+    runtimeSliderDebugState.walkStoreUpdateCount += 1;
+    runtimeSliderDebugState.lastWalkKeys = Object.keys(nextPositions).sort();
     return {
       ...current,
       walkPositions: { ...nextPositions },
@@ -128,10 +162,17 @@ export function removeRuntimeWalkPositions(keys: Iterable<string>): void {
 }
 
 export function mergeRuntimeTriggerPositions(partial: Record<string, number>): void {
-  updateStore((current) => ({
-    ...current,
-    triggerPositions: mergePositions(current.triggerPositions, partial),
-  }));
+  updateStore((current) => {
+    const triggerPositions = mergePositions(current.triggerPositions, partial);
+    if (triggerPositions !== current.triggerPositions) {
+      runtimeSliderDebugState.triggerStoreUpdateCount += 1;
+      runtimeSliderDebugState.lastTriggerKeys = Object.keys(partial).sort();
+    }
+    return {
+      ...current,
+      triggerPositions,
+    };
+  });
 }
 
 export function removeRuntimeTriggerPositions(keys: Iterable<string>): void {
@@ -152,7 +193,11 @@ export function setRuntimeFlashKeys(keys: Iterable<string>): void {
   updateStore((current) => (
     setsEqual(current.flashKeys, nextKeys)
       ? current
-      : { ...current, flashKeys: nextKeys }
+      : (() => {
+          runtimeSliderDebugState.triggerFlashUpdateCount += 1;
+          runtimeSliderDebugState.lastFlashKeys = Array.from(nextKeys).sort();
+          return { ...current, flashKeys: nextKeys };
+        })()
   ));
 }
 
@@ -208,6 +253,20 @@ export function useRuntimeSliderIndicator(
 ): { walkPosition?: number; isFlashing: boolean } {
   const walkPosition = useRuntimeSliderPosition(key, mode, fallbackPosition);
   const isFlashing = useRuntimeSliderFlashing(key, mode, fallbackFlashing);
+  useEffect(() => {
+    if (mode !== 'walk' || typeof walkPosition !== 'number' || !Number.isFinite(walkPosition)) return;
+    runtimeSliderDebugState.walkIndicatorConsumeCount += 1;
+    runtimeSliderDebugState.lastWalkIndicatorKey = key;
+    runtimeSliderDebugState.lastWalkIndicatorPosition = walkPosition;
+  }, [key, mode, walkPosition]);
+  useEffect(() => {
+    if (mode !== 'sampleHold') return;
+    if (typeof walkPosition !== 'number' || !Number.isFinite(walkPosition)) return;
+    runtimeSliderDebugState.triggerIndicatorConsumeCount += 1;
+    runtimeSliderDebugState.lastTriggerIndicatorKey = key;
+    runtimeSliderDebugState.lastTriggerIndicatorPosition = walkPosition;
+    runtimeSliderDebugState.lastTriggerIndicatorFlashing = isFlashing;
+  }, [isFlashing, key, mode, walkPosition]);
   return { walkPosition, isFlashing };
 }
 
@@ -217,4 +276,13 @@ export function useRuntimeSliderVersion(): number {
     () => storeState.version,
     () => 0,
   );
+}
+
+export function getRuntimeSliderDebugState(): RuntimeSliderDebugState {
+  return {
+    ...runtimeSliderDebugState,
+    lastWalkKeys: [...runtimeSliderDebugState.lastWalkKeys],
+    lastTriggerKeys: [...runtimeSliderDebugState.lastTriggerKeys],
+    lastFlashKeys: [...runtimeSliderDebugState.lastFlashKeys],
+  };
 }

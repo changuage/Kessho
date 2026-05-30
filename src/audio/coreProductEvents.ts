@@ -42,6 +42,8 @@ export const CORE_PRODUCT_SOURCE_IDS = Object.freeze({
   soundscape: GENERATED_PRODUCT_SOURCE_IDS.Soundscape,
 } as const);
 
+export const CORE_PRODUCT_CONTROL_ONLY_MODULATION_TARGET_ID = 0x7ffffff0;
+
 export const CORE_PRODUCT_MODULATION_RANGE_MODE = Object.freeze({
   off: 0,
   sampleHold: 1,
@@ -296,6 +298,29 @@ type CoreProductSampleHoldTriggerBus = 'delayA' | 'delayB' | 'granular' | 'rever
 type CoreProductRangeTargetResolver = (key: string) => CoreProductRangeTarget[];
 type ProductParamIdName = keyof typeof KESSHO_PRODUCT_PARAM_IDS;
 
+export const CORE_PRODUCT_ARRANGEMENT_RUNTIME_WALK_KEYS = [
+  'lead1Density',
+  'lead1Octave',
+  'lead1OctaveRange',
+] as const;
+
+export const CORE_PRODUCT_LIVE_TRIGGER_RUNTIME_WALK_KEYS = [
+  'lead1Distance',
+  'lead2Distance',
+  'padDistance',
+  'pad2Distance',
+  'pianoDistance',
+] as const;
+
+export function isCoreProductArrangementRuntimeWalkKey(key: string): key is typeof CORE_PRODUCT_ARRANGEMENT_RUNTIME_WALK_KEYS[number] {
+  return (CORE_PRODUCT_ARRANGEMENT_RUNTIME_WALK_KEYS as readonly string[]).includes(key);
+}
+
+export function isCoreProductRuntimeWalkStatePatchKey(key: string): boolean {
+  return isCoreProductArrangementRuntimeWalkKey(key) ||
+    (CORE_PRODUCT_LIVE_TRIGGER_RUNTIME_WALK_KEYS as readonly string[]).includes(key);
+}
+
 function stableControlId(key: string): number {
   let hash = 2166136261;
   for (let index = 0; index < key.length; index += 1) {
@@ -352,6 +377,14 @@ function productParamTarget(
     controlId: stableControlId(key),
     sampleHoldTrigger: coreProductSampleHoldTriggerForKey(key),
     mapValue,
+  };
+}
+
+function controlOnlyRangeTarget(paramId: number, key: string): CoreProductRangeTarget {
+  return {
+    targetId: CORE_PRODUCT_CONTROL_ONLY_MODULATION_TARGET_ID,
+    paramId: requireParamId(paramId),
+    controlId: stableControlId(key),
   };
 }
 
@@ -824,6 +857,15 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   granularMacroDarkness: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularReverbLpfHz, key, granularMacroMap(key, (model) => model.finalReverbLPF)),
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularOutputLpfHz, key, granularMacroMap(key, (model) => model.finalOutputLPF)),
+  ],
+  lead1Density: (key) => [
+    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneProbability, key),
+  ],
+  lead1Octave: (key) => [
+    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMidiNote, key),
+  ],
+  lead1OctaveRange: (key) => [
+    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneHoldSeconds, key),
   ],
   granularMacroChaos: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularTimingRandomness, key, granularMacroMap(key, (model) => model.timingRandomness)),

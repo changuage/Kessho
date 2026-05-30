@@ -37,6 +37,7 @@ import { formatChordDegrees, calculateDriftedRoot } from './audio/harmony';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
 import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS, PAD1_TO_PAD2_KEY } from './audio/padPresets';
 import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS, getWaterPresetDualRanges, getWaterPresetSliderModes } from './audio/waterPresets';
+import { productEngine as productRuntimePort } from './audio/product/ProductEngineProxy';
 import {
   applyMorphToState,
   setDrumMorphOverride,
@@ -53,6 +54,8 @@ import {
   getRuntimeSliderPosition,
   removeRuntimeTriggerPositions,
 } from './ui/runtimeSliderState';
+import { useProductCoreDebugSummary } from './ui/useProductCoreDebugSummary';
+import { useProductRuntimeParityProbe } from './ui/useProductRuntimeParityProbe';
 import {
   clearRuntimeWalkPositions,
   resetRuntimeWalkPositionsForKeys,
@@ -894,6 +897,22 @@ const styles = {
     boxShadow: '0 10px 24px rgba(0, 0, 0, 0.22)',
     backdropFilter: 'blur(12px)',
   } as React.CSSProperties,
+  backgroundAudioStatus: {
+    position: 'fixed',
+    right: '14px',
+    bottom: 'calc(14px + env(safe-area-inset-bottom))',
+    zIndex: 1300,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    maxWidth: 'min(620px, calc(100vw - 28px))',
+    padding: '8px 10px',
+    border: '1px solid rgba(184, 224, 255, 0.16)',
+    borderRadius: '8px',
+    background: 'rgba(6, 10, 14, 0.82)',
+    boxShadow: '0 10px 24px rgba(0, 0, 0, 0.22)',
+    backdropFilter: 'blur(12px)',
+  } as React.CSSProperties,
   macAudioStatusText: {
     minWidth: 0,
     overflow: 'hidden',
@@ -920,6 +939,10 @@ const styles = {
     borderColor: 'rgba(94, 234, 212, 0.45)',
     background: 'rgba(20, 184, 166, 0.18)',
     color: '#99f6e4',
+  } as React.CSSProperties,
+  statusButtonDisabled: {
+    opacity: 0.45,
+    cursor: 'not-allowed',
   } as React.CSSProperties,
   snowflakeControls: {
     position: 'fixed' as const,
@@ -1602,6 +1625,9 @@ const App: React.FC = () => {
     stopProductPlayback,
     preloadProductRuntime,
     fadeProductRuntimeOutput,
+    backgroundAudioStatus,
+    requestVisiblePageWakeLock,
+    releaseVisiblePageWakeLock,
   } = useProductRuntimeShell({
     productRuntimeMode,
     capacitorAudioSessionDiagnosticActive,
@@ -1795,6 +1821,7 @@ const App: React.FC = () => {
     stateRef,
     uiMode,
   });
+  const productCoreDebugSummary = useProductCoreDebugSummary(productRuntimeMode, productRuntimePort);
   // Snowflake welcome state: local-only six-arm macro seed until playback, preset load, or advanced mode activation.
   const [snowflakeActivated, setSnowflakeActivated] = useState(startInAdvancedEditor);
   const [welcomeDisplayState, setWelcomeDisplayState] = useState<SliderState>(() => createSignedSnowflakeWelcomeState());
@@ -2529,6 +2556,10 @@ const App: React.FC = () => {
     usesCapacitorLocalPresetLibrary,
     usesCloudBackedStatePresetLibrary,
   });
+  const shouldMirrorRuntimeWalkPositions = productRuntimeMode === 'core-product'
+    || uiMode === 'snowflake'
+    || uiMode === 'advanced'
+    || isSnowflakePrototypeRoute;
 
   const { drumEvolvedOverrides, synthEvolvedOverrides } = useProductRuntimeCoordination({
     activeTab,
@@ -2553,12 +2584,24 @@ const App: React.FC = () => {
     setProductRuntimeWalkRanges,
     setProductSynthEvolveOverridesChangedCallback,
     setProductSynthNoteRangeEvolvedCallback,
-    shouldMirrorRuntimeWalkPositions: uiMode === 'snowflake' || uiMode === 'advanced' || isSnowflakePrototypeRoute,
+    shouldMirrorRuntimeWalkPositions,
     sliderModes,
     synthPitchSettingsRef,
     synthStepOverridesRef,
     synthSubLaneStatesRef,
     synthSwingsRef,
+  });
+
+  useProductRuntimeParityProbe({
+    enabled: isSonicParityMode(),
+    runtime: productRuntimePort,
+    productRuntimeSupportsRangeKey,
+    setActiveTab,
+    setDualSliderRanges,
+    setSliderModes,
+    setState,
+    setUiMode,
+    stateRef,
   });
 
   useEffect(() => {
@@ -3776,7 +3819,13 @@ const App: React.FC = () => {
     isEditableShortcutTarget,
   });
 
-  const { macAudioOutputStatus, macAirPlayPerformanceActive, handleMacAirPlayPerformanceToggle, openMacSoundSettings } = useProductRuntimePlatformSurface({
+  const {
+    macAudioOutputStatus,
+    macAirPlayPerformanceActive,
+    handleMacAirPlayPerformanceToggle,
+    openMacSoundSettings,
+    nativeProductRendererDiagnosticStatus,
+  } = useProductRuntimePlatformSurface({
     active: capacitorAudioSessionDiagnosticActive,
     setActive: setCapacitorAudioSessionDiagnosticActive,
     macShellAvailable,
@@ -3820,6 +3869,56 @@ const App: React.FC = () => {
       </div>
     );
   }, [handleMacAirPlayPerformanceToggle, macAirPlayPerformanceActive, macAudioOutputStatus, macShellAvailable, openMacSoundSettings]);
+
+  const renderBackgroundAudioStatusPill = useCallback(() => {
+    if (productRuntimeMode !== 'core-product') return null;
+    const wakeLockAction = backgroundAudioStatus.wakeLockStatus === 'active'
+      ? releaseVisiblePageWakeLock
+      : requestVisiblePageWakeLock;
+    const wakeLockDisabled = backgroundAudioStatus.wakeLockStatus === 'unsupported' || backgroundAudioStatus.pageStatus !== 'foreground';
+    const wakeLockLabel = backgroundAudioStatus.wakeLockStatus === 'active' ? 'Release' : 'Wake';
+    const nativeProbeLabel = nativeProductRendererDiagnosticStatus.active
+      ? nativeProductRendererDiagnosticStatus.probePeak !== null
+        ? ` · Native ${nativeProductRendererDiagnosticStatus.probePeak.toFixed(3)}`
+        : nativeProductRendererDiagnosticStatus.bridgeAvailable
+          ? ' · Native ready'
+          : ' · Native waiting'
+      : '';
+
+    return (
+      <div style={styles.backgroundAudioStatus} aria-label="Browser background audio status" title={backgroundAudioStatus.limitation}>
+        <span style={styles.macAudioStatusText}>
+          {backgroundAudioStatus.pageStatus === 'foreground' ? 'Foreground' : 'Hidden'}
+          {' · '}
+          {backgroundAudioStatus.productLifecycleState}
+          {' · Media '}
+          {backgroundAudioStatus.mediaSessionStatus}
+          {' · Wake '}
+          {backgroundAudioStatus.wakeLockStatus}
+          {nativeProbeLabel}
+        </span>
+        <button
+          type="button"
+          style={{
+            ...styles.macAudioStatusButton,
+            ...(backgroundAudioStatus.wakeLockStatus === 'active' ? styles.macAudioStatusButtonActive : {}),
+            ...(wakeLockDisabled ? styles.statusButtonDisabled : {}),
+          }}
+          onClick={() => void wakeLockAction()}
+          disabled={wakeLockDisabled}
+          title="Visible-page Wake Lock. Browser/mobile lock-screen and app-background playback remain best-effort."
+        >
+          {wakeLockLabel}
+        </button>
+      </div>
+    );
+  }, [
+    backgroundAudioStatus,
+    nativeProductRendererDiagnosticStatus,
+    productRuntimeMode,
+    releaseVisiblePageWakeLock,
+    requestVisiblePageWakeLock,
+  ]);
 
   const productPageRuntimeSurface = useProductRuntimePageSurface({
     telemetry: {
@@ -5247,6 +5346,8 @@ const App: React.FC = () => {
           />
         </React.Suspense>
         {renderJourneyOverridePrompt()}
+        {renderMacAudioStatusPill()}
+        {renderBackgroundAudioStatusPill()}
       </>
     );
   }
@@ -5343,6 +5444,7 @@ const App: React.FC = () => {
           }}
         >
           {renderMacAudioStatusPill()}
+          {renderBackgroundAudioStatusPill()}
           <ProductRuntimeSwitch
             currentMode={productRuntimeMode}
             modes={productRuntimeModes}
@@ -5398,6 +5500,7 @@ const App: React.FC = () => {
         <CpuOverlay setPerfMonitorEnabled={setProductPerfMonitorEnabled} setPerfUpdateCallback={setProductPerfUpdateCallback} />
         {renderJourneyOverridePrompt()}
         {renderMacAudioStatusPill()}
+        {renderBackgroundAudioStatusPill()}
         {/* Controls - centered */}
         <div className="app-controls" style={{ ...styles.controls, paddingTop: '12px', ...m?.controls }}>
           {!advancedTransportButton.isPlaying ? (
@@ -5828,6 +5931,81 @@ const App: React.FC = () => {
             <span style={styles.debugLabel}>Beat BPM:</span>
             <span style={styles.debugValue}>{engineState.transportDebug ? `${engineState.transportDebug.effectiveBpm.toFixed(1)}` : '—'}</span>
           </div>
+          {productRuntimeMode === 'core-product' && (
+            <>
+              <div
+                style={{
+                  borderTop: '1px solid #333',
+                  margin: '8px 0',
+                  paddingTop: '8px',
+                }}
+              >
+                <span
+                  style={{
+                    color: '#a855f7',
+                    fontSize: '0.7rem',
+                    fontWeight: 'bold',
+                  }}
+                >
+                  Product Core
+                </span>
+              </div>
+              <div style={styles.debugRow}>
+                <span style={styles.debugLabel}>Earth:</span>
+                <span style={styles.debugValue}>{productCoreDebugSummary?.earth ?? '—'}</span>
+              </div>
+              <div style={styles.debugRow}>
+                <span style={styles.debugLabel}>Walk:</span>
+                <span style={styles.debugValue}>{productCoreDebugSummary?.randomWalk ?? '—'}</span>
+              </div>
+              <div style={styles.debugRow}>
+                <span style={styles.debugLabel}>S&amp;H:</span>
+                <span style={styles.debugValue}>{productCoreDebugSummary?.sampleHold ?? '—'}</span>
+              </div>
+              <div style={styles.debugRow}>
+                <span style={styles.debugLabel}>BG:</span>
+                <span style={styles.debugValue}>{backgroundAudioStatus.pageStatus} · {backgroundAudioStatus.lifecycleEvent} · {backgroundAudioStatus.productLifecycleState}</span>
+              </div>
+              <div style={styles.debugRow}>
+                <span style={styles.debugLabel}>Wake:</span>
+                <span style={styles.debugValue}>{backgroundAudioStatus.wakeLockStatus}</span>
+              </div>
+              <div style={styles.debugRow}>
+                <span style={styles.debugLabel}>Media:</span>
+                <span style={styles.debugValue}>{backgroundAudioStatus.mediaSessionStatus}</span>
+              </div>
+              <div style={styles.debugRow}>
+                <span style={styles.debugLabel}>Native:</span>
+                <span style={styles.debugValue}>
+                  {nativeProductRendererDiagnosticStatus.active
+                    ? [
+                      nativeProductRendererDiagnosticStatus.bridgeAvailable ? 'bridge' : 'waiting',
+                      nativeProductRendererDiagnosticStatus.rendererRunning ? 'running' : 'idle',
+                      nativeProductRendererDiagnosticStatus.probePeak !== null
+                        ? `peak ${nativeProductRendererDiagnosticStatus.probePeak.toFixed(3)}`
+                        : null,
+                      nativeProductRendererDiagnosticStatus.probeRms !== null
+                        ? `rms ${nativeProductRendererDiagnosticStatus.probeRms.toFixed(3)}`
+                        : null,
+                      nativeProductRendererDiagnosticStatus.routeChangeCount > 0
+                        ? `route ${nativeProductRendererDiagnosticStatus.routeChangeCount}`
+                        : null,
+                      nativeProductRendererDiagnosticStatus.interruptionBeginCount + nativeProductRendererDiagnosticStatus.interruptionEndCount > 0
+                        ? `int ${nativeProductRendererDiagnosticStatus.interruptionBeginCount}/${nativeProductRendererDiagnosticStatus.interruptionEndCount}`
+                        : null,
+                      nativeProductRendererDiagnosticStatus.mediaServicesResetCount > 0
+                        ? `reset ${nativeProductRendererDiagnosticStatus.mediaServicesResetCount}`
+                        : null,
+                      nativeProductRendererDiagnosticStatus.remoteCommandCount > 0
+                        ? `cmd ${nativeProductRendererDiagnosticStatus.lastRemoteCommand ?? nativeProductRendererDiagnosticStatus.remoteCommandCount}`
+                        : null,
+                      nativeProductRendererDiagnosticStatus.lastAudioSessionEvent,
+                    ].filter(Boolean).join(' · ')
+                    : '—'}
+                </span>
+              </div>
+            </>
+          )}
           <div
             style={{
               borderTop: '1px solid #333',

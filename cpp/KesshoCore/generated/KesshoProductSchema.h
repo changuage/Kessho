@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
 namespace kessho::product::generated {
 
 inline constexpr uint32_t KESSHO_PRODUCT_GROUP_COUNT = 24u;
@@ -439,3 +440,4 @@ inline constexpr KesshoProductGeneratedDrumSourcePreset KESSHO_PRODUCT_DRUM_SOUR
 };
 
 } // namespace kessho::product::generated
+#endif

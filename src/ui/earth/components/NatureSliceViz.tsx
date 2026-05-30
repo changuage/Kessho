@@ -155,7 +155,7 @@ export function NatureSliceViz({ snapshot, accent, label = 'Texture' }: NatureSl
     if (!snapshot || layout.slices.length === 0) {
       ctx.font = '9px monospace';
       ctx.fillStyle = 'rgba(245,249,255,0.42)';
-      ctx.fillText('Waiting for texture slices…', padX, height * 0.62);
+      ctx.fillText(snapshot?.inactiveReason ?? 'Waiting for texture slices...', padX, height * 0.62);
       return;
     }
 
@@ -208,6 +208,7 @@ export function NatureSliceViz({ snapshot, accent, label = 'Texture' }: NatureSl
 
   const liveCount = snapshot?.playingSliceCount ?? 0;
   const stagedCount = snapshot?.activeSliceCount ?? 0;
+  const statusText = snapshot?.inactiveReason ?? (snapshot?.active ? 'active' : 'idle');
 
   return (
     <div
@@ -219,7 +220,7 @@ export function NatureSliceViz({ snapshot, accent, label = 'Texture' }: NatureSl
         <span>{snapshot ? `${snapshot.sliceDuration.toFixed(1)}s` : '—'}</span>
         <span>{snapshot ? `dens ${Math.round(snapshot.density * 100)}%` : 'dens —'}</span>
         <span>{liveCount} live</span>
-        <span>{stagedCount > 0 ? `x${layout.peakOverlap} peak` : 'idle'}</span>
+        <span>{stagedCount > 0 ? `x${layout.peakOverlap} peak` : statusText}</span>
       </div>
       <canvas
         ref={canvasRef}

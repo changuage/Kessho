@@ -1,6 +1,7 @@
 import AVFoundation
 import Capacitor
 import Foundation
+import KesshoProductCore
 import MediaPlayer
 import UIKit
 
@@ -24,24 +25,52 @@ private final class KesshoCapacitorAudioSessionHost {
     private let session = AVAudioSession.sharedInstance()
     private let commandCenter = MPRemoteCommandCenter.shared()
     private var remoteTargets: [(command: MPRemoteCommand, target: Any)] = []
+    private var notificationObservers: [NSObjectProtocol] = []
     private var nowPlaying = KesshoNowPlayingMetadata.default
+    private var nativeProductEngine: KesshoAppleProductAudioEngine?
 
     private(set) var isPlaying = false
+    private(set) var nativeProductRendererPrepared = false
+    private(set) var nativeProductRendererRunning = false
+    private(set) var nativeProductRendererStartCount = 0
+    private(set) var nativeProductRendererStopCount = 0
+    private(set) var nativeProductRendererProbePeak = 0.0
+    private(set) var nativeProductRendererProbeRms = 0.0
+    private(set) var nativeProductRendererProbeRenderedFrames = 0
+    private(set) var lastNativeProductRendererError = "none"
+    private(set) var routeChangeCount = 0
+    private(set) var interruptionBeginCount = 0
+    private(set) var interruptionEndCount = 0
+    private(set) var mediaServicesResetCount = 0
+    private(set) var lastRouteChangeReason = "none"
+    private(set) var lastInterruptionType = "none"
 
     var onRemoteCommand: ((String) -> Void)?
+    var onAudioSessionEvent: (([String: Any]) -> Void)?
 
     init() {
         configureRemoteCommands()
+        observeAudioSessionNotifications()
     }
 
     deinit {
         for remoteTarget in remoteTargets {
             remoteTarget.command.removeTarget(remoteTarget.target)
         }
+        for observer in notificationObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     func syncWebState() {
         // The React/WebAudio engine owns sound generation; this bridge owns platform session state only.
+    }
+
+    func prepareNativeProductRenderer(sampleRate: Double = 44_100, maxBlockSize: UInt32 = 256) {
+        if nativeProductEngine == nil {
+            nativeProductEngine = KesshoAppleProductAudioEngine(sampleRate: sampleRate, maxBlockSize: maxBlockSize)
+        }
+        nativeProductRendererPrepared = nativeProductEngine != nil
     }
 
     func start(nowPlaying: KesshoNowPlayingMetadata?) throws {
@@ -54,14 +83,83 @@ private final class KesshoCapacitorAudioSessionHost {
         updateNowPlaying(isPlaying: true)
     }
 
+    func startNativeProductRendererForDiagnostics() throws {
+        prepareNativeProductRenderer(sampleRate: session.sampleRate > 0 ? session.sampleRate : 44_100, maxBlockSize: 256)
+        guard let nativeProductEngine else {
+            lastNativeProductRendererError = "native Product Core engine unavailable"
+            throw NSError(
+                domain: "KesshoCapacitorAudioSessionHost",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: lastNativeProductRendererError]
+            )
+        }
+        try ensureSessionActive()
+        do {
+            try nativeProductEngine.primeDiagnosticOutput()
+            try nativeProductEngine.start()
+            nativeProductRendererRunning = nativeProductEngine.isRunning()
+            nativeProductRendererStartCount += 1
+            lastNativeProductRendererError = "none"
+        } catch {
+            nativeProductRendererRunning = false
+            lastNativeProductRendererError = "\(error)"
+            throw error
+        }
+    }
+
     func stop() {
         isPlaying = false
+        stopNativeProductRendererForDiagnostics()
         updateNowPlaying(isPlaying: false)
 
         do {
             try session.setActive(false, options: [.notifyOthersOnDeactivation])
         } catch {
             print("KesshoCapacitorAudioSessionHost: failed to deactivate audio session: \(error)")
+        }
+    }
+
+    func stopNativeProductRendererForDiagnostics() {
+        nativeProductEngine?.stop()
+        nativeProductRendererRunning = false
+        nativeProductRendererStopCount += 1
+    }
+
+    func probeNativeProductRendererForDiagnostics() throws -> [String: Any] {
+        if nativeProductRendererRunning {
+            lastNativeProductRendererError = "stop native Product Core renderer before offline probe"
+            throw NSError(
+                domain: "KesshoCapacitorAudioSessionHost",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: lastNativeProductRendererError]
+            )
+        }
+        prepareNativeProductRenderer(sampleRate: session.sampleRate > 0 ? session.sampleRate : 44_100, maxBlockSize: 256)
+        guard let nativeProductEngine else {
+            lastNativeProductRendererError = "native Product Core engine unavailable"
+            throw NSError(
+                domain: "KesshoCapacitorAudioSessionHost",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: lastNativeProductRendererError]
+            )
+        }
+        do {
+            let result = try nativeProductEngine.runOfflineOutputProbe()
+            nativeProductRendererProbePeak = result["peak"]?.doubleValue ?? 0
+            nativeProductRendererProbeRms = result["rms"]?.doubleValue ?? 0
+            nativeProductRendererProbeRenderedFrames = result["renderedFrames"]?.intValue ?? 0
+            lastNativeProductRendererError = "none"
+            return [
+                "nativeProductRendererPrepared": nativeProductRendererPrepared,
+                "nativeProductRendererRunning": nativeProductRendererRunning,
+                "nativeProductRendererProbePeak": nativeProductRendererProbePeak,
+                "nativeProductRendererProbeRms": nativeProductRendererProbeRms,
+                "nativeProductRendererProbeRenderedFrames": nativeProductRendererProbeRenderedFrames,
+                "nativeProductRendererProbeSampleRate": result["sampleRate"]?.doubleValue ?? 0
+            ]
+        } catch {
+            lastNativeProductRendererError = "\(error)"
+            throw error
         }
     }
 
@@ -141,6 +239,122 @@ private final class KesshoCapacitorAudioSessionHost {
             handleRemotePlay()
         }
     }
+
+    private func observeAudioSessionNotifications() {
+        let center = NotificationCenter.default
+        notificationObservers.append(center.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: session,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleRouteChange(notification)
+        })
+        notificationObservers.append(center.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: session,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleInterruption(notification)
+        })
+        notificationObservers.append(center.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification,
+            object: session,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleMediaServicesReset()
+        })
+    }
+
+    private func handleRouteChange(_ notification: Notification) {
+        routeChangeCount += 1
+        let rawReason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt ?? 0
+        lastRouteChangeReason = routeChangeReasonName(rawReason)
+        nativeProductEngine?.handleRouteChange()
+        onAudioSessionEvent?([
+            "type": "routeChange",
+            "reason": lastRouteChangeReason,
+            "routeChangeCount": routeChangeCount
+        ])
+    }
+
+    private func handleInterruption(_ notification: Notification) {
+        guard let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: rawType) else {
+            return
+        }
+        switch type {
+        case .began:
+            interruptionBeginCount += 1
+            lastInterruptionType = "began"
+            nativeProductEngine?.handleInterruptionBegan()
+            nativeProductRendererRunning = nativeProductEngine?.isRunning() ?? false
+            setPlaybackState(isPlaying: false)
+        case .ended:
+            interruptionEndCount += 1
+            lastInterruptionType = "ended"
+            var shouldResume = false
+            if let optionsRaw = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt {
+                let options = AVAudioSession.InterruptionOptions(rawValue: optionsRaw)
+                if options.contains(.shouldResume) {
+                    shouldResume = true
+                    do {
+                        try ensureSessionActive()
+                    } catch {
+                        print("KesshoCapacitorAudioSessionHost: failed to reactivate after interruption: \(error)")
+                    }
+                }
+            }
+            do {
+                try nativeProductEngine?.handleInterruptionEndedShouldResume(shouldResume)
+                nativeProductRendererRunning = nativeProductEngine?.isRunning() ?? false
+            } catch {
+                lastNativeProductRendererError = "\(error)"
+            }
+        @unknown default:
+            lastInterruptionType = "unknown"
+        }
+        onAudioSessionEvent?([
+            "type": "interruption",
+            "interruptionType": lastInterruptionType,
+            "interruptionBeginCount": interruptionBeginCount,
+            "interruptionEndCount": interruptionEndCount
+        ])
+    }
+
+    private func handleMediaServicesReset() {
+        mediaServicesResetCount += 1
+        do {
+            if isPlaying {
+                try ensureSessionActive()
+            }
+            try nativeProductEngine?.handleMediaServicesReset()
+            nativeProductRendererRunning = nativeProductEngine?.isRunning() ?? false
+        } catch {
+            print("KesshoCapacitorAudioSessionHost: failed to recover after media services reset: \(error)")
+            lastNativeProductRendererError = "\(error)"
+        }
+        updateNowPlaying(isPlaying: isPlaying)
+        onAudioSessionEvent?([
+            "type": "mediaServicesReset",
+            "mediaServicesResetCount": mediaServicesResetCount
+        ])
+    }
+
+    private func routeChangeReasonName(_ rawValue: UInt) -> String {
+        guard let reason = AVAudioSession.RouteChangeReason(rawValue: rawValue) else {
+            return "unknown"
+        }
+        switch reason {
+        case .newDeviceAvailable: return "newDeviceAvailable"
+        case .oldDeviceUnavailable: return "oldDeviceUnavailable"
+        case .categoryChange: return "categoryChange"
+        case .override: return "override"
+        case .wakeFromSleep: return "wakeFromSleep"
+        case .noSuitableRouteForCategory: return "noSuitableRouteForCategory"
+        case .routeConfigurationChange: return "routeConfigurationChange"
+        @unknown default: return "unknown"
+        }
+    }
 }
 
 @objc(KesshoAudioSessionPlugin)
@@ -152,6 +366,9 @@ public final class KesshoAudioSessionPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "syncState", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startPlayback", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopPlayback", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "startNativeRendererForDiagnostics", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "stopNativeRendererForDiagnostics", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "probeNativeRendererForDiagnostics", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setNowPlaying", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setPlaybackState", returnType: CAPPluginReturnPromise)
     ]
@@ -168,6 +385,9 @@ public final class KesshoAudioSessionPlugin: CAPPlugin, CAPBridgedPlugin {
         host.onRemoteCommand = { [weak self] command in
             self?.notifyListeners("remoteCommand", data: ["command": command])
         }
+        host.onAudioSessionEvent = { [weak self] event in
+            self?.notifyListeners("audioSessionEvent", data: event)
+        }
     }
 
     @objc func getStatus(_ call: CAPPluginCall) {
@@ -175,7 +395,21 @@ public final class KesshoAudioSessionPlugin: CAPPlugin, CAPBridgedPlugin {
             "available": true,
             "mode": "capacitor-platform-session",
             "isPlaying": host.isPlaying,
-            "supportsBackgroundAudio": true
+            "supportsBackgroundAudio": true,
+            "nativeProductRendererPrepared": host.nativeProductRendererPrepared,
+            "nativeProductRendererRunning": host.nativeProductRendererRunning,
+            "nativeProductRendererStartCount": host.nativeProductRendererStartCount,
+            "nativeProductRendererStopCount": host.nativeProductRendererStopCount,
+            "nativeProductRendererProbePeak": host.nativeProductRendererProbePeak,
+            "nativeProductRendererProbeRms": host.nativeProductRendererProbeRms,
+            "nativeProductRendererProbeRenderedFrames": host.nativeProductRendererProbeRenderedFrames,
+            "lastNativeProductRendererError": host.lastNativeProductRendererError,
+            "routeChangeCount": host.routeChangeCount,
+            "interruptionBeginCount": host.interruptionBeginCount,
+            "interruptionEndCount": host.interruptionEndCount,
+            "mediaServicesResetCount": host.mediaServicesResetCount,
+            "lastRouteChangeReason": host.lastRouteChangeReason,
+            "lastInterruptionType": host.lastInterruptionType
         ])
     }
 
@@ -196,6 +430,35 @@ public final class KesshoAudioSessionPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func stopPlayback(_ call: CAPPluginCall) {
         host.stop()
         call.resolve()
+    }
+
+    @objc func startNativeRendererForDiagnostics(_ call: CAPPluginCall) {
+        do {
+            try host.startNativeProductRendererForDiagnostics()
+            call.resolve([
+                "nativeProductRendererPrepared": host.nativeProductRendererPrepared,
+                "nativeProductRendererRunning": host.nativeProductRendererRunning,
+                "nativeProductRendererStartCount": host.nativeProductRendererStartCount
+            ])
+        } catch {
+            call.reject("Failed to start native Product Core renderer", nil, error)
+        }
+    }
+
+    @objc func stopNativeRendererForDiagnostics(_ call: CAPPluginCall) {
+        host.stopNativeProductRendererForDiagnostics()
+        call.resolve([
+            "nativeProductRendererRunning": host.nativeProductRendererRunning,
+            "nativeProductRendererStopCount": host.nativeProductRendererStopCount
+        ])
+    }
+
+    @objc func probeNativeRendererForDiagnostics(_ call: CAPPluginCall) {
+        do {
+            call.resolve(try host.probeNativeProductRendererForDiagnostics())
+        } catch {
+            call.reject("Failed to probe native Product Core renderer output", nil, error)
+        }
     }
 
     @objc func setNowPlaying(_ call: CAPPluginCall) {

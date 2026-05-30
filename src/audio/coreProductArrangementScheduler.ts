@@ -60,39 +60,31 @@ const ARRANGEMENT_RESTART_KEYS = [
   'lead2Enabled',
   'pianoEnabled',
 ] as const;
-
 type PostEvent = (event: CoreProductEvent) => void;
-
+type PublishTrigger = (name: string, ...payload: unknown[]) => void;
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
-
 function numberFromState(state: Record<string, unknown>, key: string, fallback: number): number {
   const value = state[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
-
 function boundedNumber(state: Record<string, unknown>, key: string, fallback: number, min: number, max: number): number {
   return clamp(numberFromState(state, key, fallback), min, max);
 }
-
 function boundedInteger(state: Record<string, unknown>, key: string, fallback: number, min: number, max: number): number {
   return clamp(Math.round(numberFromState(state, key, fallback)), min, max);
 }
-
 function booleanFromState(state: Record<string, unknown>, key: string, fallback: boolean): boolean {
   const value = state[key];
   return typeof value === 'boolean' ? value : fallback;
 }
-
 function sliderStateFromRecord(state: Record<string, unknown>): SliderState {
   return state as unknown as SliderState;
 }
-
 function arrangementRestartKey(state: Record<string, unknown>): string {
   return JSON.stringify(ARRANGEMENT_RESTART_KEYS.map((key) => [key, state[key]]));
 }
-
 function harmonyParamsFromState(state: SliderState): Partial<HarmonyParams> {
   return {
     cofDriftEnabled: state.cofDriftEnabled ?? false,
@@ -182,6 +174,10 @@ function leadRandomSourceId(source: 'lead1' | 'lead2' | 'piano'): number {
   return CORE_PRODUCT_SOURCE_IDS.lead1;
 }
 
+function sourceDistanceValue(state: Record<string, unknown>, key: string): number {
+  return boundedNumber(state, key, 0, 0, 1);
+}
+
 function leadRandomSourceEnabled(state: Record<string, unknown>, source: 'lead1' | 'lead2' | 'piano'): boolean {
   if (!booleanFromState(state, 'leadRandomEnabled', false)) return false;
   if (source === 'lead2') return booleanFromState(state, 'lead2Enabled', false);
@@ -205,6 +201,7 @@ export class CoreProductArrangementScheduler {
   constructor(
     private readonly postEvent: PostEvent,
     private readonly getContext: () => AudioContext | null,
+    private readonly publishTrigger?: PublishTrigger,
   ) {}
 
   start(state: Record<string, unknown> | null | undefined): void {
@@ -278,17 +275,44 @@ export class CoreProductArrangementScheduler {
   }
 
   private scheduleNote(delaySeconds: number, event: CoreProductEvent, owner: 'pad' | 'lead'): void {
+    const post = () => {
+      this.postEvent(event);
+      this.publishManualNoteTrigger(event);
+    };
     const delayMs = Math.max(0, delaySeconds * 1000);
     if (delayMs <= 1) {
-      this.postEvent(event);
+      post();
       return;
     }
     const timers = owner === 'pad' ? this.padNoteTimers : this.leadNoteTimers;
     const timer = window.setTimeout(() => {
       timers.delete(timer);
-      if (this.running) this.postEvent(event);
+      if (this.running) post();
     }, delayMs);
     timers.add(timer);
+  }
+
+  private publishManualNoteTrigger(event: CoreProductEvent): void {
+    if (!this.publishTrigger || !this.state) return;
+    switch (event.targetId) {
+      case CORE_PRODUCT_SOURCE_IDS.pad1:
+        this.publishTrigger('padDistance', sourceDistanceValue(this.state, 'padDistance'));
+        break;
+      case CORE_PRODUCT_SOURCE_IDS.pad2:
+        this.publishTrigger('pad2Distance', sourceDistanceValue(this.state, 'pad2Distance'));
+        break;
+      case CORE_PRODUCT_SOURCE_IDS.lead1:
+        this.publishTrigger('leadDistance', { lead1: sourceDistanceValue(this.state, 'lead1Distance'), lead2: -1 });
+        break;
+      case CORE_PRODUCT_SOURCE_IDS.lead2:
+        this.publishTrigger('leadDistance', { lead1: -1, lead2: sourceDistanceValue(this.state, 'lead2Distance') });
+        break;
+      case CORE_PRODUCT_SOURCE_IDS.piano:
+        this.publishTrigger('pianoDistance', sourceDistanceValue(this.state, 'pianoDistance'));
+        break;
+      default:
+        break;
+    }
   }
 
   private scheduleHarmonyTicks(): void {

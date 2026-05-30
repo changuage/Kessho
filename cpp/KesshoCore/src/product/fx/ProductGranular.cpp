@@ -1,5 +1,7 @@
 #include "../KesshoProductEngineInternal.h"
 
+#include <cmath>
+
 namespace {
 
 constexpr float kGranularReverbCompressorMakeupGain = 3.037f;
@@ -7,29 +9,7 @@ constexpr float kGranularReverbCompressorLowerGain = 0.04466836f; // -27 dB
 
 } // namespace
 
-void KesshoProductEngine::resetGranularPhraseRuntime() {
-  granular_last_phrase_index = 0u;
-  granular_phrase_runtime_initialized = false;
-}
-
-void KesshoProductEngine::advanceGranularPhraseReseed() {
-  if (granular_module == nullptr || !transport.running || sample_rate <= 0.0) {
-    return;
-  }
-  const uint64_t phrase = transport.phraseIndex(sample_rate);
-  if (!granular_phrase_runtime_initialized) {
-    granular_phrase_runtime_initialized = true;
-    granular_last_phrase_index = phrase;
-    return;
-  }
-  if (phrase == granular_last_phrase_index) {
-    return;
-  }
-  granular_last_phrase_index = phrase;
-  granular_module->setRandomSeed(rng_state);
-}
-
-  void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
+void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (graph_taps_enabled) {
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
@@ -88,17 +68,20 @@ void KesshoProductEngine::advanceGranularPhraseReseed() {
     reverb_branch_l[i] = reverb_filtered_l * granular_reverb_comp_gain * kGranularReverbCompressorMakeupGain;
     reverb_branch_r[i] = reverb_filtered_r * granular_reverb_comp_gain * kGranularReverbCompressorMakeupGain;
   }
-  mixFxBuffer(output_lpf_l, output_lpf_r, out_l, out_r, start, frames, fx.granular_mix, kSidechainGranular);
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
-    const float direct_l = output_lpf_l[i] * fx.granular_mix;
-    const float direct_r = output_lpf_r[i] * fx.granular_mix;
-    const float reverb_l = reverb_branch_l[i] * routing.granular_to_reverb;
-    const float reverb_r = reverb_branch_r[i] * routing.granular_to_reverb;
-    const float delay_a_l = output_lpf_l[i] * routing.granular_to_delay_a;
-    const float delay_a_r = output_lpf_r[i] * routing.granular_to_delay_a;
-    const float delay_b_l = output_lpf_l[i] * routing.granular_to_delay_b;
-    const float delay_b_r = output_lpf_r[i] * routing.granular_to_delay_b;
+    advanceGranularReturnGains(transport.sample_frame + i);
+    const float direct_l = output_lpf_l[i] * granular_mix_gain;
+    const float direct_r = output_lpf_r[i] * granular_mix_gain;
+    const float reverb_l = reverb_branch_l[i] * granular_reverb_send_gain;
+    const float reverb_r = reverb_branch_r[i] * granular_reverb_send_gain;
+    const float delay_a_l = output_lpf_l[i] * granular_delay_a_send_gain;
+    const float delay_a_r = output_lpf_r[i] * granular_delay_a_send_gain;
+    const float delay_b_l = output_lpf_l[i] * granular_delay_b_send_gain;
+    const float delay_b_r = output_lpf_r[i] * granular_delay_b_send_gain;
+    const float duck_gain = sidechainGain(kSidechainGranular, frame);
+    const float direct_ducked_l = direct_l * duck_gain;
+    const float direct_ducked_r = direct_r * duck_gain;
     if (graph_taps_enabled) {
       graph_granular_output_l[frame] = direct_l;
       graph_granular_output_r[frame] = direct_r;
@@ -108,7 +91,15 @@ void KesshoProductEngine::advanceGranularPhraseReseed() {
       graph_granular_to_delay_a_send_r[frame] = delay_a_r;
       graph_granular_to_delay_b_send_l[frame] = delay_b_l;
       graph_granular_to_delay_b_send_r[frame] = delay_b_r;
+      graph_sidechain_input_l[kSidechainGranular][frame] += direct_l;
+      graph_sidechain_input_r[kSidechainGranular][frame] += direct_r;
+      graph_sidechain_output_l[kSidechainGranular][frame] += direct_ducked_l;
+      graph_sidechain_output_r[kSidechainGranular][frame] += direct_ducked_r;
     }
+    out_l[frame] += direct_ducked_l;
+    out_r[frame] += direct_ducked_r;
+    stem_l[KESSHO_PRODUCT_STEM_FX][frame] += direct_ducked_l;
+    stem_r[KESSHO_PRODUCT_STEM_FX][frame] += direct_ducked_r;
     reverb_bus_l[frame] += reverb_l;
     reverb_bus_r[frame] += reverb_r;
     delay_a_bus_l[frame] += delay_a_l;

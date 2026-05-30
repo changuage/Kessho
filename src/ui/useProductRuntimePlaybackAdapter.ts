@@ -1,5 +1,7 @@
+import { useCallback, useMemo, useState } from 'react';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type { SliderState } from './state';
+import { useProductRuntimeBackgroundAudioSupport, type ProductRuntimeBackgroundAudioStatus } from './useProductRuntimeBackgroundAudioSupport';
 import { useProductRuntimeLifecycle } from './useProductRuntimeLifecycle';
 import { useProductRuntimeMediaSession } from './useProductRuntimeMediaSession';
 import { useProductRuntimePlaybackControls } from './useProductRuntimePlaybackControls';
@@ -24,6 +26,9 @@ type ProductRuntimePlaybackAdapter = {
   preloadProductRuntime: () => Promise<unknown>;
   stopProductRuntime: () => void;
   fadeProductRuntimeOutput: (target: number, durationMs: number) => Promise<void>;
+  backgroundAudioStatus: ProductRuntimeBackgroundAudioStatus;
+  requestVisiblePageWakeLock: () => Promise<void>;
+  releaseVisiblePageWakeLock: () => Promise<void>;
 };
 
 export function useProductRuntimePlaybackAdapter({
@@ -39,6 +44,16 @@ export function useProductRuntimePlaybackAdapter({
     stopProductRuntime,
     fadeProductRuntimeOutput,
   } = useProductRuntimeLifecycle(productRuntimeMode);
+  const [browserPlaybackActive, setBrowserPlaybackActive] = useState(false);
+  const {
+    backgroundAudioStatus,
+    requestVisiblePageWakeLock,
+    releaseVisiblePageWakeLock,
+  } = useProductRuntimeBackgroundAudioSupport({
+    productRuntimeMode,
+    playbackActive: browserPlaybackActive,
+    resumeProductRuntime,
+  });
 
   const {
     connectProductMediaSessionToAudio,
@@ -48,11 +63,12 @@ export function useProductRuntimePlaybackAdapter({
     productRuntimeMode,
     resumeProductRuntime,
     suspendProductRuntime,
+    stopProductRuntime,
   });
 
   const {
-    startProductPlayback,
-    stopProductPlayback,
+    startProductPlayback: startProductPlaybackBase,
+    stopProductPlayback: stopProductPlaybackBase,
   } = useProductRuntimePlaybackControls({
     capacitorAudioSessionDiagnosticActive,
     setCapacitorAudioSessionDiagnosticActive,
@@ -63,11 +79,33 @@ export function useProductRuntimePlaybackAdapter({
     stopProductIOSMediaSession,
   });
 
-  return {
+  const startProductPlayback = useCallback(async (options: StartProductPlaybackOptions): Promise<void> => {
+    await startProductPlaybackBase(options);
+    setBrowserPlaybackActive(true);
+  }, [startProductPlaybackBase]);
+
+  const stopProductPlayback = useCallback((): void => {
+    stopProductPlaybackBase();
+    setBrowserPlaybackActive(false);
+  }, [stopProductPlaybackBase]);
+
+  return useMemo(() => ({
     startProductPlayback,
     stopProductPlayback,
     preloadProductRuntime,
     stopProductRuntime,
     fadeProductRuntimeOutput,
-  };
+    backgroundAudioStatus,
+    requestVisiblePageWakeLock,
+    releaseVisiblePageWakeLock,
+  }), [
+    backgroundAudioStatus,
+    fadeProductRuntimeOutput,
+    preloadProductRuntime,
+    releaseVisiblePageWakeLock,
+    requestVisiblePageWakeLock,
+    startProductPlayback,
+    stopProductPlayback,
+    stopProductRuntime,
+  ]);
 }

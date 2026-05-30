@@ -2695,7 +2695,7 @@ for (const token of [
   'stepValueConfigDirections: this.readUint32Array(ptr, 136, 8)',
   'expressionRangeSetLow: this.view.getUint32(ptr + 2216, true)',
   'expressionRangeMaxes: this.readFloatOverrides(',
-  'const TELEMETRY_BYTES = 1296;',
+  'const TELEMETRY_BYTES = 7728;',
   'rngSeed: this.view.getUint32(ptr + 928, true)',
   'rngState: this.view.getUint32(ptr + 932, true)',
   'sourcePresetIds.push(this.view.getUint32(ptr + 936 + index * 4, true));',
@@ -2982,7 +2982,7 @@ assert(
     !app.includes('textureDebugAvailable={textureDebugAvailable}') &&
     selectedPageRuntimeBridges.includes('textureDebugAvailable: options.textureDebugAvailable') &&
     selectedPageTelemetryRuntimeProps.includes('textureDebugAvailable') &&
-    selectedAudioEngineDebugSurface.includes('EMPTY_EARTH_TEXTURE_DEBUG_STATE'),
+    selectedAudioEngineDebugSurface.includes("productEngine.getTelemetry()?.earthTextureDebugState ?? EMPTY_EARTH_TEXTURE_DEBUG_STATE"),
   'retired visual/debug getters must remain guarded away from core-product App paths',
 );
 

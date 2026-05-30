@@ -82,6 +82,7 @@ class CoreProductEngineHost {
   private readonly arrangementBridge = new CoreProductArrangementBridge(
     (event) => this.runtime.postEvent(event),
     () => this.runtime.audioContext,
+    (name, ...payload) => this.invokeDisplayCallback(name, ...payload),
   );
   private latestSliderState: Record<string, unknown> | null = null;
   private readonly assetRegistrar = new CoreProductAssetRegistrar(this.runtime, () => this.latestSliderState);
@@ -98,8 +99,12 @@ class CoreProductEngineHost {
     latestProductSnapshot: () => this.latestProductSnapshot,
     latestSliderState: () => this.latestSliderState,
     post: (event) => this.runtime.postEvent(event),
-    publish: (name, payload) => this.invokeDisplayCallback(name, payload),
+    publish: (name, ...payload) => this.invokeDisplayCallback(name, ...payload),
     reportUnsupportedRangeKey: (key) => this.diagnostics.reportUnsupportedRangeKey(key),
+    applyRuntimeWalkStatePatch: (patch) => {
+      this.arrangementBridge.setRuntimeWalkStatePatch(patch);
+      if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState);
+    },
   });
   private synthSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
   private drumSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
@@ -144,7 +149,6 @@ class CoreProductEngineHost {
   getGranularActiveGrainCount(): number {
     return this.latestTelemetry?.activeGrains ?? 0;
   }
-
   getGranularVoicePositions(): [number, number, number, number] {
     const positions = this.latestTelemetry?.granularVoicePositions;
     if (!positions) return [0, 0, 0, 0];
@@ -155,19 +159,15 @@ class CoreProductEngineHost {
       this.normalizedPosition(positions[3]),
     ];
   }
-
   getGranularWriteHeadPosition(): number {
     return this.normalizedPosition(this.latestTelemetry?.granularWriteHeadPosition);
   }
-
   getCurrentPadFilterFreq(pad: 'pad1' | 'pad2' = 'pad1'): number { return pad === 'pad2' ? this.latestTelemetry?.pad2FilterFreq ?? 0 : this.latestTelemetry?.pad1FilterFreq ?? 0; }
   getCurrentPadLfoValue(pad: 'pad1' | 'pad2' = 'pad1'): number { return pad === 'pad2' ? this.latestTelemetry?.pad2Lfo1Value ?? 0 : this.latestTelemetry?.pad1Lfo1Value ?? 0; }
-
   getSonicParityGraphTapId(trackId: string): number | null { return this.graphTapBridge.getTapId(trackId); }
   startSonicParityGraphCapture(trackId: string, chunkFrames: number): number { return this.graphTapBridge.startCapture(trackId, chunkFrames); }
   flushSonicParityGraphCapture(tapId: number): Promise<CoreProductGraphTapCaptureChunk[]> { return this.graphTapBridge.flushCapture(tapId); }
   stopSonicParityGraphCapture(tapId: number): Promise<CoreProductGraphTapCaptureChunk[]> { return this.graphTapBridge.stopCapture(tapId); }
-
   getSonicParityDebugState(): Record<string, unknown> {
     const snapshot = createCoreProductSnapshot(this.latestSliderState ?? undefined);
     return {
@@ -207,9 +207,9 @@ class CoreProductEngineHost {
         })),
       },
       latestTelemetry: this.latestTelemetry,
+      runtimeWalkDebug: this.modulationRangeBridge.getRuntimeWalkDebugState(),
     };
   }
-
   getTransportDebugState(): TransportDebugSnapshot | null { return createCoreProductTransportDebugState(this.latestTelemetry, this.latestProductSnapshot?.transport); }
   private refreshUiHarmonySnapshot(): boolean { return this.harmonyStateBridge.refresh(this.createLatestArrangementState(), this.latestTelemetry); }
   private createEngineState(isRunning = this.running || this.latestTelemetry?.transportRunning === true): ProductEngineState {
@@ -222,7 +222,6 @@ class CoreProductEngineHost {
   }
   private publishStateIfHarmonyChanged(): void { if (this.refreshUiHarmonySnapshot()) this.stateChangeCallback?.(this.createEngineState()); }
   getState(): ProductEngineState { return this.createEngineState(); }
-
   private normalizedPosition(value: unknown): number {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return 0;
@@ -230,7 +229,6 @@ class CoreProductEngineHost {
     if (numeric >= 1) return 1;
     return numeric;
   }
-
   setStateChangeCallback(callback: ((state: ProductEngineState) => void) | null): void {
     this.stateChangeCallback = callback;
   }
@@ -787,6 +785,8 @@ class CoreProductEngineHost {
     }
     this.journeyMorphClock.syncAfterTelemetry();
     this.modulationRangeBridge.updateRuntimeWalkPositions(hostTelemetry);
+    this.modulationRangeBridge.updateSampleHoldTriggerFeedback(hostTelemetry);
+    hostTelemetry.sampleHoldDebug = this.modulationRangeBridge.getSampleHoldDebugState();
     this.tickSequencerEvolveClock(hostTelemetry); this.reconcileSequencerUiState(hostTelemetry); this.publishStateIfHarmonyChanged();
     this.productTelemetryCallback?.(hostTelemetry);
     if (this.isDocumentVisible()) {
@@ -807,6 +807,8 @@ class CoreProductEngineHost {
     const hostTelemetry = this.withHostDiagnostics(merged);
     this.latestTelemetry = hostTelemetry;
     this.modulationRangeBridge.updateRuntimeWalkPositions(hostTelemetry);
+    this.modulationRangeBridge.updateSampleHoldTriggerFeedback(hostTelemetry);
+    hostTelemetry.sampleHoldDebug = this.modulationRangeBridge.getSampleHoldDebugState();
     this.tickSequencerEvolveClock(hostTelemetry); this.publishStateIfHarmonyChanged();
     this.publishSequencerVisuals(hostTelemetry);
   }
@@ -933,11 +935,14 @@ class CoreProductEngineHost {
   }
 
   private withHostDiagnostics(telemetry: CoreProductTelemetrySnapshot): CoreProductTelemetrySnapshot {
-    return enrichCoreProductHostTelemetry(
-      telemetry,
-      this.diagnostics.snapshot(),
-      this.assetRegistrar.registeredDecodedAssetByteLength(),
-    );
+    return {
+      ...this.modulationRangeBridge.enrichModulationDebug(enrichCoreProductHostTelemetry(
+        telemetry,
+        this.diagnostics.snapshot(),
+        this.assetRegistrar.registeredDecodedAssetByteLength(),
+      )),
+      runtimeWalkDebug: this.modulationRangeBridge.getRuntimeWalkDebugState(),
+    };
   }
 
   private patchAdapterState(patch: Record<string, unknown>, loadSnapshot = true): void {

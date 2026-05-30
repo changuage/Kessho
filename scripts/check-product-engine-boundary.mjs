@@ -2402,7 +2402,8 @@ for (const rootDir of sourceRoots) {
         'export function useProductRuntimePlatformSurface(options: ProductRuntimePlatformSurfaceOptions)',
         'useProductRuntimeMacAudioStatus(options)',
         'useProductRuntimeCapacitorAudioSession(options)',
-        'return macAudioStatus',
+        '...macAudioStatus',
+        'nativeProductRendererDiagnosticStatus',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: product runtime platform surface must compose product-named platform wrappers; missing ${requiredSnippet}`);
@@ -4257,7 +4258,7 @@ for (const rootDir of sourceRoots) {
         'referenceDynamicsAnalyser: referenceRuntimeActive ? getSelectedDynamicsAnalyser : undefined',
         'liveLeadMorphedParamsAvailable: referenceRuntimeActive',
         'liveWaveformTelemetryAvailable: referenceRuntimeActive',
-        'textureDebugAvailable: referenceRuntimeActive',
+        "textureDebugAvailable: referenceRuntimeActive || audioEngineRuntimeMode === 'core-product'",
       ]) {
         if (!source.includes(token)) {
           failures.push(`${relative}: reference/debug Web Audio getters must be hidden for core-product; missing ${token}`);

@@ -26,6 +26,7 @@ export const kesshoCoreSourceFiles = Object.freeze([
   'cpp/KesshoCore/src/product/sources/SourceMix.cpp',
   'cpp/KesshoCore/src/product/sources/SourceModulation.cpp',
   'cpp/KesshoCore/src/product/sources/SourceModulationRoutes.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceModulationResolve.cpp',
   'cpp/KesshoCore/src/product/sources/SourceModulationFx.cpp',
   'cpp/KesshoCore/src/product/sources/SourceModulationRuntime.cpp',
   'cpp/KesshoCore/src/product/sources/SourcePresetBridge.cpp',
@@ -43,6 +44,7 @@ export const kesshoCoreSourceFiles = Object.freeze([
   'cpp/KesshoCore/src/product/fx/ProductDelay.cpp',
   'cpp/KesshoCore/src/product/fx/ProductReverb.cpp',
   'cpp/KesshoCore/src/product/fx/ProductGranular.cpp',
+  'cpp/KesshoCore/src/product/fx/ProductGranularRuntime.cpp',
   'cpp/KesshoCore/src/product/fx/ProductGranularFilters.cpp',
   'cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp',
   'cpp/KesshoCore/src/product/fx/ProductDynamics.cpp',
@@ -87,6 +89,7 @@ export const kesshoCoreSourceFiles = Object.freeze([
 export const kesshoCoreIncludeDirs = Object.freeze([
   'cpp/KesshoCore/include',
   'cpp/KesshoCore/generated',
+  'cpp/KesshoCore/src/product/native',
   'wasm/dynamics-character',
   'wasm/dynamics-degrade',
   'wasm/reverb',

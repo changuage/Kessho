@@ -84,6 +84,11 @@ struct KesshoProductEngine : ProductGraphState {
   ProductBiquadLowpassState granular_output_lpf{};
   ProductBiquadLowpassState granular_reverb_lpf{};
   float granular_reverb_comp_gain = 1.0f;
+  float granular_mix_gain = 0.0f;
+  float granular_reverb_send_gain = 0.0f;
+  float granular_delay_a_send_gain = 0.0f;
+  float granular_delay_b_send_gain = 0.0f;
+  uint64_t granular_return_gain_frame = UINT64_MAX;
   ProductBiquadFilterState diffuse_highpass{};
   ProductBiquadFilterState diffuse_lowpass{};
   float diffuse_delay_l[kDiffuseDelayMaxFrames]{};
@@ -149,6 +154,8 @@ struct KesshoProductEngine : ProductGraphState {
   void advanceReverbHarmonyCoupling(uint32_t frames);
   void resetGranularPhraseRuntime();
   void advanceGranularPhraseReseed();
+  float granularSendGainForFrame(uint32_t source_id, float target, uint64_t absolute_frame);
+  void advanceGranularReturnGains(uint64_t absolute_frame);
   void setMasterLimiterCeilingDb(float value);
   void resetMasterTelemetryState();
   void resetSidechainRuntime();
@@ -259,7 +266,7 @@ struct KesshoProductEngine : ProductGraphState {
       float morph) const;
   bool sourceMacrosDifferFromDefaults(float morph, float distance, float expression) const;
   float modulationRangeSample(const ModulationRange& range, float fallback, uint32_t sample_seed) const;
-  float resolveModulatedValue(uint32_t target_id, uint32_t param_id, float fallback, uint32_t sample_seed) const;
+  float resolveModulatedValue(uint32_t target_id, uint32_t param_id, float fallback, uint32_t sample_seed);
   void applyModulationRangeValue(const ModulationRange& range);
   void applyRuntimeWalkValue(const ModulationRange& range);
   uint32_t sampleHoldTriggerBusForParam(uint32_t param_id) const;

@@ -61,7 +61,7 @@ export function useSelectedAudioEngineDebugSurface(
 
   const getEarthTextureDebugState = useCallback((): EarthTextureDebugState => (
     audioEngineRuntimeMode === 'core-product'
-      ? EMPTY_EARTH_TEXTURE_DEBUG_STATE
+      ? productEngine.getTelemetry()?.earthTextureDebugState ?? EMPTY_EARTH_TEXTURE_DEBUG_STATE
       : referenceAudioEngineDebug.getEarthTextureDebugState()
   ), [audioEngineRuntimeMode]);
 
@@ -97,7 +97,7 @@ export function useSelectedAudioEngineDebugSurface(
     referenceDynamicsAnalyser: referenceRuntimeActive ? getSelectedDynamicsAnalyser : undefined,
     liveLeadMorphedParamsAvailable: referenceRuntimeActive,
     liveWaveformTelemetryAvailable: referenceRuntimeActive,
-    textureDebugAvailable: referenceRuntimeActive,
+    textureDebugAvailable: referenceRuntimeActive || audioEngineRuntimeMode === 'core-product',
     updateSelectedReferenceParams,
   };
 }

@@ -139,7 +139,11 @@ bool resolveLeadRuntimeParamId(
       if (event.param_id == 0u || event.index == 0u) {
         return KESSHO_PRODUCT_ERROR_INVALID_PARAM;
       }
-      if (event.target_id != 0u && !valid_source(event.target_id) && !isDrumRangeTarget(event.target_id)) {
+      if (
+          event.target_id != 0u &&
+          event.target_id != kProductControlOnlyModulationTarget &&
+          !valid_source(event.target_id) &&
+          !isDrumRangeTarget(event.target_id)) {
         return KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
       }
       return KESSHO_PRODUCT_OK;

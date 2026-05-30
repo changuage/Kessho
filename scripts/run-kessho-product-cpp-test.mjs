@@ -11,6 +11,7 @@ const testName = process.argv[2];
 if (!testName) {
   throw new Error('Usage: node scripts/run-kessho-product-cpp-test.mjs <TestName>');
 }
+const extraSources = process.argv.slice(3);
 
 const buildDir = resolve(root, 'build/kessho-core/product-tests');
 const testSource = resolve(root, `cpp/KesshoCore/tests/${testName}.cpp`);
@@ -30,6 +31,7 @@ run('/usr/bin/clang++', [
   '-Werror',
   ...kesshoCoreIncludeArgs(root),
   ...resolveKesshoCoreSources(root),
+  ...extraSources.map((source) => resolve(root, source)),
   testSource,
   '-o',
   testBinary,

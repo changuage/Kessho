@@ -34,6 +34,7 @@
 #define KESSHO_PRODUCT_EVENT_DICE_SEQUENCER_LANE_ID 29u
 #define KESSHO_PRODUCT_EVENT_SET_SOURCE_OVERRIDE_ID 30u
 
+#ifdef __cplusplus
 namespace kessho::product::generated {
 
 enum KesshoProductGeneratedEventId : uint32_t {
@@ -72,3 +73,4 @@ enum KesshoProductGeneratedEventId : uint32_t {
 inline constexpr uint32_t KESSHO_PRODUCT_EVENT_ID_COUNT = 30u;
 
 } // namespace kessho::product::generated
+#endif

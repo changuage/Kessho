@@ -197,6 +197,8 @@ uint64_t fxSampleHoldOwnershipWindowFrames(double sample_rate) {
         (range.sample_hold_trigger_bus * 0x9e3779b9u) ^
         (range.sample_hold_counter * 0x85ebca6bu);
     range.current_value = modulationRangeSample(range, range.current_value, trigger_seed);
+    range.last_trigger_frame = transport.sample_frame;
+    range.last_trigger_source = source_id;
     applyModulationRangeValue(range);
   }
 }
