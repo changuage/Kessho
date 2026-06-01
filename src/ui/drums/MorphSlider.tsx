@@ -1,8 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import type { SliderState } from '../state';
 import type { DrumVoiceType } from '../../audio/drumSynth';
 import { usePresets } from '../../presets/usePresets';
-import { useRuntimeValue } from '../runtimeValueState';
+import { removeRuntimeValues, useRuntimeValue } from '../runtimeValueState';
 import {
   getFactoryPresetNames,
   setUserPresets,
@@ -25,16 +25,6 @@ const MORPH_KEYS: Record<DrumVoiceType, { a: keyof SliderState; b: keyof SliderS
   beepLo: { a: 'drumBeepLoPresetA', b: 'drumBeepLoPresetB', morph: 'drumBeepLoMorph' },
   noise: { a: 'drumNoisePresetA', b: 'drumNoisePresetB', morph: 'drumNoiseMorph' },
   membrane: { a: 'drumMembranePresetA', b: 'drumMembranePresetB', morph: 'drumMembraneMorph' },
-};
-
-const AUTO_KEYS: Record<DrumVoiceType, keyof SliderState> = {
-  sub: 'drumSubMorphAuto',
-  kick: 'drumKickMorphAuto',
-  click: 'drumClickMorphAuto',
-  beepHi: 'drumBeepHiMorphAuto',
-  beepLo: 'drumBeepLoMorphAuto',
-  noise: 'drumNoiseMorphAuto',
-  membrane: 'drumMembraneMorphAuto',
 };
 
 const DRUM_ENGINE_SCOPES: Record<DrumVoiceType, string> = {
@@ -78,18 +68,28 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
   const morph = MORPH_KEYS[voice];
   const engineScope = DRUM_ENGINE_SCOPES[voice];
   const { presets: enginePresets, load } = usePresets('engine', engineScope);
-  const liveMorphValue = useRuntimeValue(String(morph.morph), state[morph.morph] as number);
-
-  const autoEnabled = Boolean(state[AUTO_KEYS[voice]]);
-  const animateMorphValue = autoEnabled && Boolean(state.drumMorphSliderAnimate);
-  const morphValue = animateMorphValue
-    ? (liveMorphValue ?? (state[morph.morph] as number))
-    : (state[morph.morph] as number);
+  const liveMorphValue = useRuntimeValue(String(morph.morph));
+  const morphValue = liveMorphValue ?? (state[morph.morph] as number);
   const factoryPresetNames = getFactoryPresetNames(voice);
   const knownPresetNames = getPresetNames(voice);
   const summaryByName = new Map(enginePresets.map(preset => [preset.name, preset]));
   const userPresetNames: string[] = [];
   const cloudPresetNames: string[] = [];
+  const clearLiveMorphValue = useCallback(() => {
+    removeRuntimeValues([String(morph.morph)]);
+  }, [morph.morph]);
+  const handleMorphChange = useCallback((key: keyof SliderState, value: number) => {
+    clearLiveMorphValue();
+    onParamChange(key, value as SliderState[keyof SliderState]);
+  }, [clearLiveMorphValue, onParamChange]);
+  const handlePresetAChange = useCallback((value: string) => {
+    clearLiveMorphValue();
+    onParamChange(morph.a, value as SliderState[keyof SliderState]);
+  }, [clearLiveMorphValue, morph.a, onParamChange]);
+  const handlePresetBChange = useCallback((value: string) => {
+    clearLiveMorphValue();
+    onParamChange(morph.b, value as SliderState[keyof SliderState]);
+  }, [clearLiveMorphValue, morph.b, onParamChange]);
 
   for (const name of knownPresetNames) {
     if (factoryPresetNames.includes(name)) continue;
@@ -142,7 +142,7 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
       <div className="morph-slot-wrap">
         <select
           value={String(state[morph.a])}
-          onChange={(e) => onParamChange(morph.a, e.target.value as SliderState[keyof SliderState])}
+          onChange={(e) => handlePresetAChange(e.target.value)}
           data-voice={voice}
           data-slot="A"
           title="Preset A"
@@ -168,7 +168,7 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
           label="Morph"
           value={morphValue}
           paramKey={morph.morph}
-          onChange={onParamChange as (key: keyof SliderState, value: number) => void}
+          onChange={handleMorphChange}
           format={(value: number) => String(Math.round(value * 100))}
           unit="%"
           {...getSliderProps(morph.morph)}
@@ -178,7 +178,7 @@ const MorphSlider: React.FC<MorphSliderProps> = ({
       <div className="morph-slot-wrap">
         <select
           value={String(state[morph.b])}
-          onChange={(e) => onParamChange(morph.b, e.target.value as SliderState[keyof SliderState])}
+          onChange={(e) => handlePresetBChange(e.target.value)}
           data-voice={voice}
           data-slot="B"
           title="Preset B"

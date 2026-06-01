@@ -39,8 +39,8 @@ export function useSelectedAudioEngineMediaSession({
   }, [audioEngineRuntimeMode]);
 
   const stopSelectedIOSMediaSession = useCallback((): void => {
-    stopIOSMediaSession();
-  }, []);
+    stopIOSMediaSession(audioEngineRuntimeMode);
+  }, [audioEngineRuntimeMode]);
 
   return {
     setupSelectedIOSMediaSession,

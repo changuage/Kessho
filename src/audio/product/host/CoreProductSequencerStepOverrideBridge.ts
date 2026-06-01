@@ -37,14 +37,20 @@ export function applyCoreProductDrumStepOverrides(options: {
   previousValues: SequencerStepValueOverride[][];
   previousConfigs: SequencerStepValueConfig[][];
   drumBaseMidi: (laneIndex: number) => number;
+  visibleLaneCount: number;
+  consumeManualDice: (laneIndex: number) => boolean;
 }): {
   toggles: SequencerStepToggleOverride[][];
   values: SequencerStepValueOverride[][];
   configs: SequencerStepValueConfig[][];
+  manualDiceCaptureLanes: number[];
 } {
-  return {
-    toggles: normalizeSequencerStepToggleOverrides(options.overrides, options.previousToggles),
-    values: normalizeDrumSequencerStepValueOverrides(options.overrides, options.previousValues, options.drumBaseMidi),
-    configs: normalizeSequencerStepValueConfigs(options.overrides, options.previousConfigs, true),
-  };
+  const toggles = normalizeSequencerStepToggleOverrides(options.overrides, options.previousToggles);
+  const values = normalizeDrumSequencerStepValueOverrides(options.overrides, options.previousValues, options.drumBaseMidi);
+  const configs = normalizeSequencerStepValueConfigs(options.overrides, options.previousConfigs, true);
+  const manualDiceCaptureLanes: number[] = [];
+  for (let laneIndex = 0; laneIndex < options.visibleLaneCount; laneIndex += 1) {
+    if (options.consumeManualDice(laneIndex)) manualDiceCaptureLanes.push(laneIndex);
+  }
+  return { toggles, values, configs, manualDiceCaptureLanes };
 }

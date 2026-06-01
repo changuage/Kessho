@@ -62,7 +62,7 @@ async function waitForHttp(url, timeoutMs, outputProvider = () => '') {
 
 async function startPreview(port) {
   const url = `http://127.0.0.1:${port}/`;
-  const child = spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+  const child = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
     cwd: root,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, BROWSER: 'none' },
@@ -329,15 +329,17 @@ function writeReport(report) {
     '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
     ...['core-product', 'web-ts'].map((mode) => {
       const entry = report.engines[mode];
+      if (!entry) return `| ${mode} | - | - | - | - | - | - | - | - |`;
       const internal = entry.internalOverlayCpu ?? {};
       return `| ${mode} | ${entry.browserProcessCpuPercent.toFixed(3)} | ${entry.processCpuSeconds.toFixed(3)} | ${entry.wallSeconds.toFixed(3)} | ${internal.avgPercent ?? '-'} | ${internal.peakPercent ?? '-'} | ${internal.moduleCount ?? '-'} | ${entry.capture.rms?.toFixed(6) ?? '-'} | ${entry.capture.peak?.toFixed(6) ?? '-'} |`;
     }),
     '',
-    `Browser-process CPU saved by Product Core vs Web TS: ${report.comparison.browserProcessCpuSavedPercent === null ? 'n/a' : `${report.comparison.browserProcessCpuSavedPercent.toFixed(2)}%`}`,
+    `Browser-process CPU saved by Product Core vs Web TS: ${Number.isFinite(report.comparison.browserProcessCpuSavedPercent) ? `${report.comparison.browserProcessCpuSavedPercent.toFixed(2)}%` : 'n/a'}`,
     '',
     '## Notes',
     '',
     '- Browser-process CPU uses Chrome process CPU deltas around the same parity capture scenario for each runtime. This includes renderer/audio-thread/browser process work and is more comparable than summing only Web TS worklet telemetry.',
+    '- Web TS is measured only through the local dev/reference runtime path; production preview/build requests for Web TS continue to resolve to Product Core.',
     '- Internal avg/peak keeps the old overlay-style metric visible. For Web TS, that is still worklet-reported CPU only and excludes native WebAudio node DSP; for Product Core, the single worklet contains the Product renderer.',
     '',
   ];
@@ -358,6 +360,7 @@ const report = {
     durationMs: args.durationMs,
     settleMs: args.settleMs,
     warmupMs: args.warmupMs,
+    serverMode: args.url ? 'external' : 'vite-dev-reference',
   },
   engines: {},
   comparison: {},

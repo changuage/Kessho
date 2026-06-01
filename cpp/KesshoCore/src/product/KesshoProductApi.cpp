@@ -312,6 +312,25 @@ int32_t kessho_product_copy_telemetry(
   return KESSHO_PRODUCT_OK;
 }
 
+int32_t kessho_product_copy_granular_waveform(
+    KesshoProductEngine* engine,
+    float* out_peaks,
+    uint32_t bin_count) {
+  if (engine == nullptr) {
+    return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
+  }
+  if (out_peaks == nullptr || bin_count == 0u) {
+    return KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+  }
+  if (engine->granular_module == nullptr) {
+    std::fill(out_peaks, out_peaks + bin_count, 0.0f);
+    return KESSHO_PRODUCT_OK;
+  }
+  return engine->granular_module->copyGranularWaveform(out_peaks, bin_count) == 1
+      ? KESSHO_PRODUCT_OK
+      : KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+}
+
 int32_t kessho_product_copy_sequencer_ui_state(
     KesshoProductEngine* engine,
     KesshoProductSequencerUiState* out_state) {
@@ -377,38 +396,6 @@ int32_t kessho_product_unregister_asset_buffer(KesshoProductEngine* engine, uint
   engine->assets[slot] = {};
   engine->updateTelemetry(0);
   return KESSHO_PRODUCT_OK;
-}
-
-int32_t kessho_product_debug_render_events(
-    KesshoProductEngine* engine,
-    KesshoSequencerEvent* out_events,
-    uint32_t max_event_count,
-    uint32_t frames) {
-  if (engine == nullptr) {
-    return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
-  }
-  if (out_events == nullptr && max_event_count > 0u) {
-    return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
-  }
-  engine->sortControlEvents();
-  uint32_t control_index = 0;
-  while (control_index < engine->control_event_count &&
-         engine->control_events[control_index].event.sample_offset == 0u) {
-    engine->applyControlEvent(engine->control_events[control_index].event);
-    ++control_index;
-  }
-  engine->advanceModulationRanges(frames);
-  engine->generateSequencerEvents(frames);
-  const uint32_t count = std::min<uint32_t>(engine->sequencer_events.count, max_event_count);
-  for (uint32_t i = 0; i < count; ++i) {
-    out_events[i] = engine->sequencer_events.events[i];
-  }
-  if (engine->transport.running) {
-    engine->transport.sample_frame += frames;
-  }
-  engine->compactControlEvents(frames, control_index);
-  engine->updateTelemetry(frames);
-  return static_cast<int32_t>(count);
 }
 
 } // extern "C"

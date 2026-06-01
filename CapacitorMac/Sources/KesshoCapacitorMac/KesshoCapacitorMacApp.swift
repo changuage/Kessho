@@ -1335,6 +1335,7 @@ struct MacMIDIEndpointInfo {
 
 struct MacMIDIMessage {
     let timestamp: TimeInterval
+    let timestampHostTime: UInt64
     let kind: MacMIDIMessageKind
     let status: UInt8
     let channel: UInt8?
@@ -1347,6 +1348,7 @@ struct MacMIDIMessage {
     var dictionary: [String: Any] {
         var output: [String: Any] = [
             "timestamp": timestamp,
+            "timestampHostTime": Double(timestampHostTime),
             "kind": kind.rawValue,
             "status": Int(status),
             "rawBytes": rawBytes.map(Int.init),
@@ -1385,6 +1387,7 @@ final class MacMidiRouter {
     private var inputPort = MIDIPortRef()
     private var sourceRefsByID: [Int32: MIDIEndpointRef] = [:]
     private var endpointNamesByID: [Int32: String] = [:]
+    private var rememberedInputIDs = Set<Int32>()
     private var connectionRefsByID: [Int32: MacMIDIConnection] = [:]
 
     private(set) var availableInputs: [MacMIDIEndpointInfo] = []
@@ -1463,6 +1466,7 @@ final class MacMidiRouter {
         availableInputs = []
         sourceRefsByID.removeAll()
         endpointNamesByID.removeAll()
+        rememberedInputIDs.removeAll()
         connectionRefsByID.removeAll()
         isStarted = false
     }
@@ -1507,6 +1511,7 @@ final class MacMidiRouter {
         availableInputs = discovered.sorted { left, right in
             left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
         }
+        reconnectRememberedInputs()
         onInputsChanged?(availableInputs)
     }
 
@@ -1536,6 +1541,7 @@ final class MacMidiRouter {
         if let source = sourceRefsByID[uniqueID], inputPort != 0 {
             MIDIPortDisconnectSource(inputPort, source)
         }
+        rememberedInputIDs.remove(uniqueID)
         connectionRefsByID.removeValue(forKey: uniqueID)
         refreshAvailableInputs()
     }
@@ -1554,6 +1560,7 @@ final class MacMidiRouter {
         }
 
         connectionRefsByID.removeAll()
+        rememberedInputIDs.removeAll()
         refreshAvailableInputs()
     }
 
@@ -1566,6 +1573,7 @@ final class MacMidiRouter {
             try connectInput(uniqueID: uniqueID)
         }
 
+        rememberedInputIDs = uniqueIDs
         refreshAvailableInputs()
     }
 
@@ -1586,7 +1594,20 @@ final class MacMidiRouter {
         }
 
         lastErrorMessage = nil
+        rememberedInputIDs.insert(uniqueID)
         refreshAvailableInputs()
+    }
+
+    private func reconnectRememberedInputs() {
+        guard isStarted, inputPort != 0 else { return }
+        for uniqueID in rememberedInputIDs.sorted() where connectionRefsByID[uniqueID] == nil {
+            guard let source = sourceRefsByID[uniqueID] else { continue }
+            do {
+                try connect(source: source, uniqueID: uniqueID)
+            } catch {
+                lastErrorMessage = error.localizedDescription
+            }
+        }
     }
 
     private func receive(packetList: UnsafePointer<MIDIPacketList>, sourceConnection: MacMIDIConnection?) {
@@ -1597,7 +1618,8 @@ final class MacMidiRouter {
 
         for _ in 0..<packetCount {
             if let message = Self.message(
-                timestamp: Double(packet.timeStamp) / 1_000_000_000.0,
+                timestamp: Self.hostTimeSeconds(packet.timeStamp),
+                timestampHostTime: packet.timeStamp,
                 rawBytes: Self.packetBytes(packet),
                 endpointUniqueID: sourceConnection?.uniqueID,
                 endpointName: sourceConnection?.name
@@ -1617,6 +1639,7 @@ final class MacMidiRouter {
 
     private static func message(
         timestamp: TimeInterval,
+        timestampHostTime: UInt64,
         rawBytes: [UInt8],
         endpointUniqueID: Int32?,
         endpointName: String?
@@ -1651,6 +1674,7 @@ final class MacMidiRouter {
 
         return MacMIDIMessage(
             timestamp: timestamp,
+            timestampHostTime: timestampHostTime,
             kind: kind,
             status: status,
             channel: channel,
@@ -1687,6 +1711,14 @@ final class MacMidiRouter {
         let status = MIDIObjectGetStringProperty(endpoint, kMIDIPropertyManufacturer, &manufacturer)
         guard status == noErr, let cfManufacturer = manufacturer?.takeRetainedValue() else { return nil }
         return cfManufacturer as String
+    }
+
+    private static func hostTimeSeconds(_ hostTime: MIDITimeStamp) -> TimeInterval {
+        guard hostTime > 0 else { return Date().timeIntervalSince1970 }
+        var info = mach_timebase_info_data_t()
+        mach_timebase_info(&info)
+        let nanos = Double(hostTime) * Double(info.numer) / Double(info.denom)
+        return nanos / 1_000_000_000.0
     }
 
     private static let readProc: MIDIReadProc = { packetList, refCon, sourceConnectionRefCon in

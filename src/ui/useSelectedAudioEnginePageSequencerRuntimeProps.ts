@@ -21,6 +21,7 @@ export type SelectedAudioEnginePageSequencerRuntimeProps = Pick<
   | 'setSelectedDrumEuclidSwings'
   | 'setSelectedDrumStepOverrides'
   | 'setSelectedDrumSubLaneEnabled'
+  | 'setSelectedDrumPitchSettings'
   | 'setSelectedSynthEuclidClockDivs'
   | 'setSelectedSynthEuclidEvolveConfigs'
   | 'setSelectedSynthEuclidSwings'
@@ -33,6 +34,7 @@ export type SelectedAudioEnginePageSequencerRuntimeProps = Pick<
   | 'synthLinkedRef'
   | 'synthPitchBindingModesRef'
   | 'synthPitchSettingsRef'
+  | 'synthArpConfigsRef'
   | 'synthStepOverridesRef'
   | 'synthSubLaneStatesRef'
   | 'synthSwingsRef'
@@ -57,6 +59,7 @@ export function useSelectedAudioEnginePageSequencerRuntimeProps({
   setSelectedDrumEuclidSwings,
   setSelectedDrumStepOverrides,
   setSelectedDrumSubLaneEnabled,
+  setSelectedDrumPitchSettings,
   setSelectedSynthEuclidClockDivs,
   setSelectedSynthEuclidEvolveConfigs,
   setSelectedSynthEuclidSwings,
@@ -69,6 +72,7 @@ export function useSelectedAudioEnginePageSequencerRuntimeProps({
   synthLinkedRef,
   synthPitchBindingModesRef,
   synthPitchSettingsRef,
+  synthArpConfigsRef,
   synthStepOverridesRef,
   synthSubLaneStatesRef,
   synthSwingsRef,
@@ -92,6 +96,7 @@ export function useSelectedAudioEnginePageSequencerRuntimeProps({
     setSelectedDrumEuclidSwings,
     setSelectedDrumStepOverrides,
     setSelectedDrumSubLaneEnabled,
+    setSelectedDrumPitchSettings,
     setSelectedSynthEuclidClockDivs,
     setSelectedSynthEuclidEvolveConfigs,
     setSelectedSynthEuclidSwings,
@@ -104,6 +109,7 @@ export function useSelectedAudioEnginePageSequencerRuntimeProps({
     synthLinkedRef,
     synthPitchBindingModesRef,
     synthPitchSettingsRef,
+    synthArpConfigsRef,
     synthStepOverridesRef,
     synthSubLaneStatesRef,
     synthSwingsRef,
@@ -126,6 +132,7 @@ export function useSelectedAudioEnginePageSequencerRuntimeProps({
     setSelectedDrumEuclidSwings,
     setSelectedDrumStepOverrides,
     setSelectedDrumSubLaneEnabled,
+    setSelectedDrumPitchSettings,
     setSelectedSynthEuclidClockDivs,
     setSelectedSynthEuclidEvolveConfigs,
     setSelectedSynthEuclidSwings,
@@ -138,6 +145,7 @@ export function useSelectedAudioEnginePageSequencerRuntimeProps({
     synthLinkedRef,
     synthPitchBindingModesRef,
     synthPitchSettingsRef,
+    synthArpConfigsRef,
     synthStepOverridesRef,
     synthSubLaneStatesRef,
     synthSwingsRef,

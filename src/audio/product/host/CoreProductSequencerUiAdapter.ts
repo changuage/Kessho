@@ -15,6 +15,7 @@ import {
   coreProductStepValueOverridesFromLane,
   coreProductSynthEvolvePayloadFromLane,
 } from '../../CoreProductHostSequencerUiState';
+import { reconcileCoreProductSequencerSynthNoteRange } from './CoreProductSequencerNoteRangeEvolveBridge';
 
 const CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE = 3;
 const CORE_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME = 4;
@@ -23,6 +24,7 @@ type SequencerLaneState = {
   toggles: SequencerStepToggleOverride[];
   values: SequencerStepValueOverride[];
   configs: SequencerStepValueConfig[];
+  swing: number;
 };
 
 type CoreProductSequencerUiAdapterOptions = {
@@ -33,12 +35,17 @@ type CoreProductSequencerUiAdapterOptions = {
   synthBaseMidi: (laneIndex: number) => number;
   drumBaseMidi: (laneIndex: number) => number;
   hasManualSynthDice: (laneIndex: number) => boolean;
+  manualSynthDiceChanged: (laneIndex: number, lane: CoreProductSequencerLaneUiState) => boolean;
+  completeManualSynthDice: (laneIndex: number) => void;
   consumeManualDrumDice: (laneIndex: number) => boolean;
   ensureLaneCache: (sequencer: SequencerKind, laneIndex: number) => void;
   captureLaneHome: (sequencer: SequencerKind, laneIndex: number) => void;
   setSynthLaneState: (laneIndex: number, state: SequencerLaneState) => void;
   setDrumLaneState: (laneIndex: number, state: SequencerLaneState) => void;
-  publish: (name: 'synthEvolveOverrides' | 'drumEvolveOverrides', laneIndex: number, payload: Record<string, unknown>) => void;
+  setLaneSwing: (sequencer: SequencerKind, laneIndex: number, swing: number) => void;
+  setSynthNoteRangeOverride: (laneIndex: number, range: { min: number; max: number } | null) => void;
+  publishNoteRange: (laneIndex: number, noteMin: number, noteMax: number) => void;
+  publish: (name: string, laneIndex: number, payload?: Record<string, unknown>) => void;
 };
 
 export function reconcileCoreProductSequencerUiState(options: CoreProductSequencerUiAdapterOptions): number {
@@ -57,24 +64,25 @@ export function reconcileCoreProductSequencerUiState(options: CoreProductSequenc
     if (laneIndex >= options.visibleSynthLaneCount) return revision;
     const lane = state.synthLanes[laneIndex];
     if (!lane) return revision;
-    const manualDice =
-      state.lastChangeKind === CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE &&
-      options.hasManualSynthDice(laneIndex);
-    reconcileSynthSequencerLane(options, laneIndex, lane, shouldNotify, manualDice);
-    if (manualDice) options.captureLaneHome('synth', laneIndex);
+    const diceChange = state.lastChangeKind === CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE;
+    const manualDice = options.hasManualSynthDice(laneIndex) && (diceChange || options.manualSynthDiceChanged(laneIndex, lane));
+    reconcileSynthSequencerLane(options, laneIndex, lane, shouldNotify || manualDice, manualDice, state.lastChangeKind);
+    if (manualDice || diceChange) {
+      options.captureLaneHome('synth', laneIndex);
+    }
+    if (manualDice) {
+      options.completeManualSynthDice(laneIndex);
+    }
     return revision;
   }
 
   if (state.lastChangedTargetId === CORE_PRODUCT_SEQUENCER_IDS.drum) {
     const lane = state.drumLanes[laneIndex];
     if (!lane) return revision;
-    reconcileDrumSequencerLane(options, laneIndex, lane, shouldNotify);
-    if (
-      state.lastChangeKind === CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE &&
-      options.consumeManualDrumDice(laneIndex)
-    ) {
-      options.captureLaneHome('drum', laneIndex);
-    }
+    const diceChange = state.lastChangeKind === CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE;
+    // Keep the manual-dice marker armed until the UI step-override patch has
+    // repopulated the host cache; that cache snapshot is the reset home.
+    reconcileDrumSequencerLane(options, laneIndex, lane, shouldNotify, diceChange);
   }
 
   return revision;
@@ -86,6 +94,7 @@ function reconcileSynthSequencerLane(
   lane: CoreProductSequencerLaneUiState,
   notify: boolean,
   denseStepValues = false,
+  changeKind = 0,
 ): void {
   options.ensureLaneCache('synth', laneIndex);
   const includeEmpty = lane.mutationFlags === 0;
@@ -94,16 +103,21 @@ function reconcileSynthSequencerLane(
     toggles: lane.triggerToggles.map(([step, value]) => ({ step, value })),
     values,
     configs: coreProductStepValueConfigsFromLane(lane, true),
+    swing: lane.swing,
   });
+  options.setLaneSwing('synth', laneIndex, lane.swing);
+  const baseMidi = laneBaseMidi(lane, options.synthBaseMidi(laneIndex));
   const payload = coreProductSynthEvolvePayloadFromLane(
     lane,
-    options.synthBaseMidi(laneIndex),
+    baseMidi,
     includeEmpty,
     options.synthPitchSettings,
     laneIndex,
   );
   if (notify) {
+    if (denseStepValues) payload.manualDiceHome = true;
     options.publish('synthEvolveOverrides', laneIndex, payload);
+    reconcileCoreProductSequencerSynthNoteRange({ laneIndex, lane, synthPitchSettings: options.synthPitchSettings, clearOverride: changeKind === CORE_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME, setSynthNoteRangeOverride: options.setSynthNoteRangeOverride, publishNoteRange: options.publishNoteRange });
   }
 }
 
@@ -112,21 +126,31 @@ function reconcileDrumSequencerLane(
   laneIndex: number,
   lane: CoreProductSequencerLaneUiState,
   notify: boolean,
+  denseStepValues = false,
 ): void {
   options.ensureLaneCache('drum', laneIndex);
   const includeEmpty = lane.mutationFlags === 0;
   options.setDrumLaneState(laneIndex, {
     toggles: lane.triggerToggles.map(([step, value]) => ({ step, value })),
-    values: coreProductStepValueOverridesFromLane(lane, true),
+    values: coreProductStepValueOverridesFromLane(lane, true, denseStepValues),
     configs: coreProductStepValueConfigsFromLane(lane, true),
+    swing: lane.swing,
   });
+  options.setLaneSwing('drum', laneIndex, lane.swing);
+  const baseMidi = laneBaseMidi(lane, options.drumBaseMidi(laneIndex));
   const payload = coreProductDrumEvolvePayloadFromLane(
     lane,
     laneIndex,
-    options.drumBaseMidi(laneIndex),
+    baseMidi,
     includeEmpty,
   );
   if (notify) {
     options.publish('drumEvolveOverrides', laneIndex, payload);
   }
+}
+
+function laneBaseMidi(lane: CoreProductSequencerLaneUiState, fallback: number): number {
+  return typeof lane.baseMidiNote === 'number' && Number.isFinite(lane.baseMidiNote)
+    ? lane.baseMidiNote
+    : fallback;
 }

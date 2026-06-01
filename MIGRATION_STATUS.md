@@ -19,7 +19,7 @@ Current web-default scope:
 
 Completion status:
 
-- Batches 0-11 in `docs/product-core/migration-batch-ledger.md` are closed locally.
-- Batch 12 is the current docs/status and stale-doc gate batch.
-- Batch 13 must still pass before the web-default migration can be called complete.
-- Batch 14 is required only for full native/cross-platform completion.
+- Batches 0-13 in `docs/product-core/migration-batch-ledger.md` are closed locally.
+- Batch 13 is the completed web-default release proof. The local proof covers type-check, Product boundary/reference isolation, no-web-ts production bundle, runtime fallback/getter/dirty-diff/patch/snapshot/web-host/browser/CPU gates, docs freshness, and `core:product:ci`.
+- Batch 14 remains deferred and is required only for full native/cross-platform completion.
+- Current production-readiness work continues in `docs/product-core/product-core-production-evidence-batch-plan.md` and records per-batch evidence in `docs/product-core/product-core-production-evidence-ledger.md`.

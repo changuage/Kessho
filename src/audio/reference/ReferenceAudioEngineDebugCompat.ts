@@ -1,3 +1,12 @@
+/**
+ * REFERENCE / A-B TESTING PATH
+ *
+ * This debug compatibility surface exposes reference-only Web Audio inspection
+ * methods for parity, smoke tests, product-test, and A/B comparison.
+ *
+ * Status: Keep Active — Archive Later
+ */
+
 import {
   getProductRuntimeMode,
 } from '../product/ProductAudioRuntimeSelection';

@@ -1158,6 +1158,18 @@ int main() {
   require(kessho_product_load_snapshot_v2(granular_engine, &granular_snapshot, sizeof(granular_snapshot)) == KESSHO_PRODUCT_OK, "granular snapshot load failed");
   triggerPad(granular_engine, 0.4f);
   require(renderFxPeak(granular_engine, 32) > 0.00001f, "granular send did not reach FX stem");
+  std::vector<float> granular_waveform(512u, 0.0f);
+  require(
+      kessho_product_copy_granular_waveform(
+          granular_engine,
+          granular_waveform.data(),
+          static_cast<uint32_t>(granular_waveform.size())) == KESSHO_PRODUCT_OK,
+      "granular waveform copy failed");
+  require(
+      std::any_of(granular_waveform.begin(), granular_waveform.end(), [](float value) {
+        return value > 0.000001f;
+      }),
+      "granular waveform copy did not expose recorded buffer peaks");
   const KesshoProductTelemetry granular_telemetry = kessho_product_get_telemetry(granular_engine);
   require(granular_telemetry.active_grains > 0u, "granular telemetry did not report active grains");
   require(

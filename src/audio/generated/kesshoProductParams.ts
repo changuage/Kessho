@@ -53,6 +53,11 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SequencerLaneMorph: 217,
   SequencerLaneDistance: 218,
   SequencerLaneExpression: 219,
+  SequencerLanePitchMode: 220,
+  SequencerLanePitchRoot: 221,
+  SequencerLanePitchScale: 222,
+  SequencerLaneNoteRangeMin: 223,
+  SequencerLaneNoteRangeMax: 224,
   FxGranularMix: 300,
   FxGranularEnabled: 800,
   FxGranularFreeze: 801,
@@ -769,6 +774,46 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 219,
     "min": 0,
     "max": 1
+  },
+  {
+    "name": "SequencerLanePitchMode",
+    "path": "sequencers.*.lanes.*.pitchMode",
+    "type": "uint",
+    "id": 220,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SequencerLanePitchRoot",
+    "path": "sequencers.*.lanes.*.pitchRoot",
+    "type": "float",
+    "id": 221,
+    "min": 0,
+    "max": 127
+  },
+  {
+    "name": "SequencerLanePitchScale",
+    "path": "sequencers.*.lanes.*.pitchScale",
+    "type": "uint",
+    "id": 222,
+    "min": 0,
+    "max": 18
+  },
+  {
+    "name": "SequencerLaneNoteRangeMin",
+    "path": "sequencers.*.lanes.*.noteRangeMin",
+    "type": "float",
+    "id": 223,
+    "min": 24,
+    "max": 108
+  },
+  {
+    "name": "SequencerLaneNoteRangeMax",
+    "path": "sequencers.*.lanes.*.noteRangeMax",
+    "type": "float",
+    "id": 224,
+    "min": 24,
+    "max": 108
   },
   {
     "name": "FxGranularMix",

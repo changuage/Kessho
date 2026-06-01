@@ -1,16 +1,13 @@
 #pragma once
 
 #include "ProductConstants.h"
+#include "ProductSequencerPitchConstants.h"
+#include "ProductSequencerEvolveState.h"
+#include "kessho_drum.h"
 
 #include <cstdint>
 
 namespace kessho::product::internal {
-
-struct StepValueSubLaneConfig {
-  bool enabled = false;
-  uint32_t steps = 0;
-  uint32_t direction = KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD;
-};
 
 struct LaneState {
   bool enabled = false;
@@ -33,6 +30,11 @@ struct LaneState {
   float expression = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_EXPRESSION;
   uint32_t seed = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
   uint32_t midi_note_binding_mode = kSequencerPitchBindingHit;
+  uint32_t pitch_mode = kSequencerPitchModeSemitones;
+  float pitch_root = 60.0f;
+  uint32_t pitch_scale_id = kSequencerPitchScaleMajor;
+  float note_range_min = 64.0f;
+  float note_range_max = 76.0f;
   bool bar_reset = true;
   bool phrase_reset = false;
   float tempo_multiplier = 1.0f;
@@ -76,7 +78,12 @@ struct LaneState {
   float distance_overrides[64]{};
   float distance_range_maxes[64]{};
   StepValueSubLaneConfig step_value_configs[8]{};
+  LaneEvolveHomeState evolve_home{};
   uint64_t emitted_hit_count = 0;
+  bool last_emitted_morph_valid = false;
+  float last_emitted_morph = 0.0f;
+  uint32_t last_emitted_drum_voice = DRUM_NUM_VOICE_TYPES;
+  uint64_t last_emitted_sample_frame = 0;
   uint64_t sequencer_runtime_sample_frame = 0;
   uint64_t sequencer_start_sample_frame = 0;
   bool sequencer_runtime_initialized = false;

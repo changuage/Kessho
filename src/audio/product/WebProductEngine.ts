@@ -1,4 +1,5 @@
 import { coreProductRuntimeHostPort } from './host/CoreProductRuntimeHostPort';
+import type { DawOutputRoutingConfig } from '../dawOutputRouting';
 import type { ProductRuntimeCapabilityReport } from './ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from './ProductRuntimeDiagnostics';
 import type { ProductEnginePort } from './ProductEnginePort';
@@ -94,6 +95,14 @@ export class WebProductEngine implements ProductEnginePort {
 
   setOutputGain(target: number, durationSeconds: number = 0): void {
     coreProductRuntimeHostPort.setOutputGain(target, durationSeconds);
+  }
+
+  setDawOutputRouting(config: DawOutputRoutingConfig): void {
+    coreProductRuntimeHostPort.setDawOutputRouting(config);
+  }
+
+  setDawOutputDeviceId(deviceId: string | null): Promise<boolean> {
+    return coreProductRuntimeHostPort.setDawOutputDeviceId(deviceId);
   }
 
   resetCofDrift(): void {
@@ -264,6 +273,10 @@ export class WebProductEngine implements ProductEnginePort {
 
   setGranularSHTriggerCallback(callback: ProductRuntimeWalkPositionsCallback | null): void {
     coreProductRuntimeHostPort.setLiveTriggerCallback('granularSH', callback);
+  }
+
+  setGranularUiActive(active: boolean): void {
+    coreProductRuntimeHostPort.setGranularUiActive(active);
   }
 
   setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void {

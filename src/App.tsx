@@ -39,6 +39,18 @@ import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS, PAD1_TO_PAD2_KEY 
 import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS, getWaterPresetDualRanges, getWaterPresetSliderModes } from './audio/waterPresets';
 import { productEngine as productRuntimePort } from './audio/product/ProductEngineProxy';
 import {
+  filterDawOutputRoutingConfigForSources,
+  loadDawOutputDeviceSelection,
+  loadDawOutputRoutingConfig,
+  saveDawOutputDeviceSelection,
+  saveDawOutputRoutingConfig,
+  sanitizeDawOutputDeviceSelection,
+  sanitizeDawOutputRoutingConfig,
+  type DawOutputDeviceSelection,
+  type DawOutputRoutingConfig,
+  type DawOutputSourceId,
+} from './audio/dawOutputRouting';
+import {
   applyMorphToState,
   setDrumMorphOverride,
   clearDrumMorphEndpointOverrides,
@@ -68,6 +80,9 @@ import SnowflakeUI from './ui/SnowflakeUI';
 import SnowflakePrototypePage from './ui/SnowflakePrototypePage';
 import { CpuOverlay } from './ui/CpuOverlay';
 import { SliderHelpProvider, useSliderHelp } from './ui/SliderHelpOverlay';
+import { MidiLearnProvider } from './ui/midiLearn/MidiLearnProvider';
+import { MidiLearnSliderAdornment } from './ui/midiLearn/MidiLearnSliderAdornment';
+import { useMidiLearn } from './ui/midiLearn/useMidiLearn';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import { useJourney } from './ui/journeyState';
 import { ENGINE_GROUPS as SNOWFLAKE_ENGINE_GROUPS } from './ui/snowflakeV2';
@@ -84,6 +99,7 @@ import { CollapsiblePanel } from './ui/CollapsiblePanel';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './ui/sequencer/useEuclideanSequencer';
 import { serializeStepOverrides } from './ui/sequencer/stepOverrideSerialization';
 import { type ClockDivision, type PitchBindingMode } from './audio/drumSeqTypes';
+import { sanitizeProductArpConfigs, type ProductArpConfig } from './audio/productArpeggiator';
 import { normalizeSequencerPitchSettingsArray } from './audio/sequencerPitchSettings';
 import type { SliderPageId } from './ui/sliderHelpCatalog';
 import type { SynthKeyboardUiState } from './ui/synth/SynthPage';
@@ -191,6 +207,26 @@ const ROUTING_SOURCE_DISABLE_ONLY_FAMILIES = {
 type RoutingSourceSimpleToggleId = keyof typeof ROUTING_SOURCE_SIMPLE_TOGGLES;
 type RoutingSourceDisableOnlyFamilyId = keyof typeof ROUTING_SOURCE_DISABLE_ONLY_FAMILIES;
 
+function activeDawOutputSourceIds(state: SliderState): DawOutputSourceId[] {
+  const ids: DawOutputSourceId[] = [];
+  if (state.padEnabled) ids.push('pad1');
+  if (state.pad2Enabled) ids.push('pad2');
+  if (state.leadEnabled) ids.push('lead1');
+  if (state.lead2Enabled) ids.push('lead2');
+  if (state.pianoEnabled) ids.push('piano');
+  if (state.drumEnabled) ids.push('drums');
+  if (state.granularEnabled) ids.push('granular');
+  if (state.oceanSampleEnabled) ids.push('waves');
+  if (state.waterEnabled) ids.push('water');
+  if (state.insectsEnabled || state.insects2Enabled) ids.push('insects');
+  if (state.birdsEnabled || state.birds2Enabled || state.frogsEnabled) ids.push('nature');
+  if (state.delayAEnabled) ids.push('delayAOut');
+  if (state.granularDelayEnabled) ids.push('delayBOut');
+  if (state.reverbEnabled) ids.push('reverb');
+  if (state.dynamicsEnabled) ids.push('dynamics');
+  return ids;
+}
+
 const GranularPage = React.lazy(() => import('./ui/granular/GranularPage'));
 const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
 const DynamicsPage = React.lazy(() => import('./ui/dynamics/DynamicsPage'));
@@ -240,6 +276,7 @@ interface SavedPreset {
   synthLinked?: boolean[];
   drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
+  synthArpConfigs?: ProductArpConfig[];
   drumPitchSettings?: PitchSettings[];
   synthPitchSettings?: PitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
@@ -539,6 +576,7 @@ function savedPresetFromFileData(data: Partial<SavedPreset> & Record<string, unk
     synthLinked: data.synthLinked,
     drumSubLaneStates: data.drumSubLaneStates,
     synthSubLaneStates: data.synthSubLaneStates,
+    synthArpConfigs: data.synthArpConfigs as ProductArpConfig[] | undefined,
     drumPitchSettings: data.drumPitchSettings,
     synthPitchSettings: data.synthPitchSettings,
     synthPitchBindingModes: data.synthPitchBindingModes,
@@ -1363,6 +1401,7 @@ const Slider: React.FC<SliderProps> = ({
   onDualRangeChange,
 }) => {
   const { announceSlider } = useSliderHelp();
+  const midiLearn = useMidiLearn();
   const announceHelp = () => announceSlider(String(paramKey), { label, page: helpPage });
   const baseInfo = getParamInfo(paramKey);
   if (!baseInfo) return null;
@@ -1444,6 +1483,10 @@ const Slider: React.FC<SliderProps> = ({
       ghostValue={ghostPercent ?? undefined}
       disabled={disabled}
       onAnnounce={announceHelp}
+      onValueGestureStart={() => {
+        midiLearn.notifySliderDrag(paramKey, label);
+      }}
+      headAdornment={<MidiLearnSliderAdornment paramKey={paramKey} label={label} />}
       onValueChange={(nextPercent) => {
         if (disabled) return;
         onChange(paramKey, percentToValue(nextPercent));
@@ -1604,6 +1647,8 @@ const App: React.FC = () => {
 
   // Load initial state from URL or defaults
   const [state, setState] = useState<SliderState>(() => resolveProductRuntimeInitialState({ normalizeState: normalizePresetForWeb }));
+  const [dawOutputRouting, setDawOutputRouting] = useState<DawOutputRoutingConfig>(() => loadDawOutputRoutingConfig());
+  const [dawOutputDevice, setDawOutputDevice] = useState<DawOutputDeviceSelection>(() => loadDawOutputDeviceSelection());
   const stateRef = useRef(state);
   stateRef.current = state;
   const { productRuntimeMode } = useProductRuntimeSession();
@@ -1634,6 +1679,43 @@ const App: React.FC = () => {
     setCapacitorAudioSessionDiagnosticActive,
     stateRef,
   });
+  const activeDawOutputSources = useMemo(
+    () => activeDawOutputSourceIds(state),
+    [
+      state.padEnabled,
+      state.pad2Enabled,
+      state.leadEnabled,
+      state.lead2Enabled,
+      state.pianoEnabled,
+      state.drumEnabled,
+      state.granularEnabled,
+      state.oceanSampleEnabled,
+      state.waterEnabled,
+      state.insectsEnabled,
+      state.insects2Enabled,
+      state.birdsEnabled,
+      state.birds2Enabled,
+      state.frogsEnabled,
+      state.delayAEnabled,
+      state.granularDelayEnabled,
+      state.reverbEnabled,
+      state.dynamicsEnabled,
+    ],
+  );
+
+  useEffect(() => {
+    const config = sanitizeDawOutputRoutingConfig(dawOutputRouting);
+    saveDawOutputRoutingConfig(config);
+    productRuntimePort.setDawOutputRouting(filterDawOutputRoutingConfigForSources(config, activeDawOutputSources));
+  }, [activeDawOutputSources, dawOutputRouting]);
+
+  useEffect(() => {
+    const selection = sanitizeDawOutputDeviceSelection(dawOutputDevice);
+    saveDawOutputDeviceSelection(selection);
+    void productRuntimePort.setDawOutputDeviceId(selection.deviceId || null).catch((error: unknown) => {
+      console.warn('DAW output device selection failed:', error);
+    });
+  }, [dawOutputDevice]);
   const {
     setProductDrumStepPositionCallback,
     setProductDrumEvolveTriggerCallback,
@@ -1672,6 +1754,7 @@ const App: React.FC = () => {
     setProductSynthEuclidSwings,
     setProductDrumSubLaneEnabled,
     setProductSynthSubLaneEnabled,
+    setProductDrumPitchSettings,
     setProductSynthPitchSettings,
     setProductSynthPitchBindingModes,
     setProductDrumStepOverrides,
@@ -2122,6 +2205,7 @@ const App: React.FC = () => {
   const synthPitchSettingsRef = useRef<PitchSettings[] | undefined>(undefined);
   const synthPitchBindingModesRef = useRef<PitchBindingMode[] | undefined>(undefined);
   const synthKeyboardUiStateRef = useRef<SynthKeyboardUiState | undefined>(undefined);
+  const synthArpConfigsRef = useRef<ProductArpConfig[] | undefined>(undefined);
   const synthEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
 
   const [drumPresetVersion, setDrumPresetVersion] = useState(0);
@@ -2141,6 +2225,7 @@ const App: React.FC = () => {
     setProductDrumEuclidSwings,
     setProductDrumStepOverrides,
     setProductDrumSubLaneEnabled,
+    setProductDrumPitchSettings,
     setProductSequencerPresetHomeSnapshots,
     setProductSynthEuclidClockDivs,
     setProductSynthEuclidEvolveConfigs,
@@ -2155,6 +2240,7 @@ const App: React.FC = () => {
     synthLinkedRef,
     synthPitchBindingModesRef,
     synthPitchSettingsRef,
+    synthArpConfigsRef,
     synthStepOverridesRef,
     synthSubLaneStatesRef,
     synthSwingsRef,
@@ -2180,6 +2266,7 @@ const App: React.FC = () => {
         synthLinked: synthLinkedRef.current,
         drumSubLaneStates: sanitizeSequencerSubLaneStates(drumSubLaneStatesRef.current),
         synthSubLaneStates: sanitizeSequencerSubLaneStates(synthSubLaneStatesRef.current),
+        synthArpConfigs: sanitizeProductArpConfigs(synthArpConfigsRef.current),
         drumPitchSettings: normalizeSequencerPitchSettingsArray(drumPitchSettingsRef.current, 4) as PitchSettings[],
         synthPitchSettings: normalizeSequencerPitchSettingsArray(synthPitchSettingsRef.current, 4) as PitchSettings[],
         synthPitchBindingModes: synthPitchBindingModesRef.current,
@@ -3956,6 +4043,7 @@ const App: React.FC = () => {
       setProductDrumEuclidSwings,
       setProductDrumStepOverrides,
       setProductDrumSubLaneEnabled,
+      setProductDrumPitchSettings,
       setProductSynthEuclidClockDivs,
       setProductSynthEuclidEvolveConfigs,
       setProductSynthEuclidSwings,
@@ -3968,6 +4056,7 @@ const App: React.FC = () => {
       synthLinkedRef,
       synthPitchBindingModesRef,
       synthPitchSettingsRef,
+      synthArpConfigsRef,
       synthStepOverridesRef,
       synthSubLaneStatesRef,
       synthSwingsRef,
@@ -5489,6 +5578,14 @@ const App: React.FC = () => {
   // Render advanced UI
   return (
     <SliderHelpProvider activePage={activeTab === 'visualizer' ? 'global' : activeTab}>
+      <MidiLearnProvider
+        onParamChange={handleRoutingParamChange}
+        onMidiMessage={pushProductMidiMessage}
+        onOpenMidiPage={() => {
+          setUiMode('advanced');
+          setActiveTab('routing');
+        }}
+      >
       <div
         className="app-container"
         style={{
@@ -5639,6 +5736,8 @@ const App: React.FC = () => {
                 togglePanel={togglePanel}
                 onParamChange={handleSliderChange}
                 onSelectChange={handleSelectChange}
+                onStateChange={handleStateChange}
+                onAuditionHarmonyNote={productRuntimeManualTriggers.auditionSynthNote}
                 sliderProps={sliderProps}
                 SliderComponent={Slider as unknown as React.ComponentType<Record<string, unknown>>}
                 SelectComponent={Select as unknown as React.ComponentType<Record<string, unknown>>}
@@ -5714,6 +5813,8 @@ const App: React.FC = () => {
                 onKeyboardUiStateChange={(keyboardState) => {
                   synthKeyboardUiStateRef.current = keyboardState;
                 }}
+                initialArpConfigs={synthArpConfigsRef.current}
+                onArpConfigsChange={productPageRuntimeSurface.synthPageSequencerBridge.onArpConfigsChange}
                 onRawStepOverridesChange={productPageRuntimeSurface.synthPageSequencerBridge.onRawStepOverridesChange}
                 onStepOverridesChange={productPageRuntimeSurface.synthPageSequencerBridge.onStepOverridesChange}
                 initialClockDivs={synthClockDivsRef.current}
@@ -5852,6 +5953,10 @@ const App: React.FC = () => {
                 onColumnParamChange={handleRoutingColumnChange}
                 onToggleSource={handleRoutingSourceToggle}
                 onMidiMessage={pushProductMidiMessage}
+                dawOutputRouting={dawOutputRouting}
+                dawOutputDeviceSelection={dawOutputDevice}
+                onDawOutputRoutingChange={setDawOutputRouting}
+                onDawOutputDeviceSelectionChange={setDawOutputDevice}
                 sliderProps={sliderProps}
               />
             )}
@@ -6181,6 +6286,7 @@ const App: React.FC = () => {
           結晶
         </div>
       </div>
+      </MidiLearnProvider>
     </SliderHelpProvider>
   );
 };

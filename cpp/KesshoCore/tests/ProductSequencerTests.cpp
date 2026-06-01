@@ -536,10 +536,54 @@ float productRuntimeFieldValue(const KesshoProductEngine& engine, uint32_t param
   switch (param_id) {
     case KESSHO_PRODUCT_PARAM_MASTER_GAIN_ID:
       return engine.master_gain;
+    case KESSHO_PRODUCT_PARAM_MASTER_LIMITER_CEILING_DB_ID:
+      return engine.master_limiter_ceiling_db;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_ATIME_LEFT_MS_ID:
+      return engine.fx.delay_a_time_left_ms;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_ATIME_RIGHT_MS_ID:
+      return engine.fx.delay_a_time_right_ms;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_AFEEDBACK_ID:
       return engine.fx.delay_a_feedback;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_AMIX_ID:
+      return engine.fx.delay_a_mix;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_AFILTER_HZ_ID:
+      return engine.fx.delay_a_filter_hz;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_AMOD_RATE_HZ_ID:
+      return engine.fx.delay_a_mod_rate_hz;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_AMOD_DEPTH_MS_ID:
+      return engine.fx.delay_a_mod_depth_ms;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_ADUCK_ID:
+      return engine.fx.delay_a_duck;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_AWIDTH_ID:
+      return engine.fx.delay_a_width;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_ACROSS_FEED_FILTER_HZ_ID:
+      return engine.fx.delay_a_cross_feed_filter_hz;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BACTIVITY_ID:
+      return engine.fx.delay_b_activity;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BREPEATS_ID:
+      return engine.fx.delay_b_repeats;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BBASE_TIME_MS_ID:
+      return engine.fx.delay_b_base_time_ms;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTONE_ID:
+      return engine.fx.delay_b_tone;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BVIBRATO_ID:
+      return engine.fx.delay_b_vibrato;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BMIX_ID:
       return engine.fx.delay_b_mix;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BWARP_INTENSITY_ID:
+      return engine.fx.delay_b_warp_intensity;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BSPREAD_ID:
+      return engine.fx.delay_b_spread;
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD1_LEVEL_ID:
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD2_LEVEL_ID:
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD3_LEVEL_ID:
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD4_LEVEL_ID:
+      return engine.fx.delay_b_tape_head_levels[param_id - KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD1_LEVEL_ID];
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD1_PAN_ID:
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD2_PAN_ID:
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD3_PAN_ID:
+    case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD4_PAN_ID:
+      return engine.fx.delay_b_tape_head_pans[param_id - KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD1_PAN_ID];
     case KESSHO_PRODUCT_PARAM_FX_GRANULAR_MIX_ID:
       return engine.fx.granular_mix;
     case KESSHO_PRODUCT_PARAM_FX_GRANULAR_FEEDBACK_ID:
@@ -576,30 +620,208 @@ float productRuntimeFieldValue(const KesshoProductEngine& engine, uint32_t param
       return engine.fx.reverb_size;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_DAMPING_ID:
       return engine.fx.reverb_damping;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_DIFFUSION_ID:
+      return engine.fx.reverb_diffusion;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_MODULATION_ID:
       return engine.fx.reverb_modulation;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_PREDELAY_MS_ID:
+      return engine.fx.reverb_predelay_ms;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_WIDTH_ID:
       return engine.fx.reverb_width;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_SHIMMER_AMOUNT_ID:
+      return engine.fx.reverb_shimmer_amount;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_SHIMMER_PITCH_ID:
+      return engine.fx.reverb_shimmer_pitch;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_SLOW_RATE_HZ_ID:
+      return engine.fx.reverb_slow_rate_hz;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_SLOW_DEPTH_ID:
+      return engine.fx.reverb_slow_depth;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_REVERSE_AMOUNT_ID:
+      return engine.fx.reverb_reverse_amount;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_REVERSE_LENGTH_SEC_ID:
+      return engine.fx.reverb_reverse_length_sec;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_CHORUS_RATE_HZ_ID:
+      return engine.fx.reverb_chorus_rate_hz;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_CHORUS_DEPTH_ID:
+      return engine.fx.reverb_chorus_depth;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_DAMP_LOW_ID:
+      return engine.fx.reverb_damp_low;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_DAMP_HIGH_ID:
+      return engine.fx.reverb_damp_high;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_CROSSOVER_HZ_ID:
+      return engine.fx.reverb_crossover_hz;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_INPUT_TONE_ID:
+      return engine.fx.reverb_input_tone;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_SHIMMER_FEEDBACK_ID:
+      return engine.fx.reverb_shimmer_feedback;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_WARP_ID:
+      return engine.fx.reverb_warp;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_CROSS_FEED_ID:
       return engine.fx.reverb_cross_feed;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_EARLY_REFLECTIONS_ID:
+      return engine.fx.reverb_early_reflections;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_AIR_ABSORPTION_ID:
+      return engine.fx.reverb_air_absorption;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_TRANSIENT_SMOOTH_ID:
+      return engine.fx.reverb_transient_smooth;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_ER_LP_FREQ_ID:
+      return engine.fx.reverb_er_lp_freq;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_THRESHOLD_ID:
+      return engine.fx.reverb_pre_comp_threshold;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_KNEE_ID:
+      return engine.fx.reverb_pre_comp_knee;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_RATIO_ID:
+      return engine.fx.reverb_pre_comp_ratio;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_ATTACK_MS_ID:
+      return engine.fx.reverb_pre_comp_attack_ms;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_RELEASE_MS_ID:
+      return engine.fx.reverb_pre_comp_release_ms;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_MAKEUP_ID:
+      return engine.fx.reverb_pre_comp_makeup;
     case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID:
       return engine.fx.spectral_freeze_mix;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SPEED_ID:
+      return engine.fx.spectral_freeze_speed;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DECAY_ID:
+      return engine.fx.spectral_freeze_decay;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_PHASE_JITTER_ID:
+      return engine.fx.spectral_freeze_phase_jitter;
+    case KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_REVERB_CROSSFADE_ID:
+      return engine.fx.spectral_freeze_reverb_crossfade;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID:
       return engine.fx.dynamics_drive;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MIX_ID:
+      return engine.fx.dynamics_character_mix;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_AGE_ID:
+      return engine.fx.dynamics_character_age;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_BIAS_ID:
+      return engine.fx.dynamics_character_bias;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_LPG_AMOUNT_ID:
+      return engine.fx.dynamics_character_lpg_amount;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_RESONANCE_ID:
+      return engine.fx.dynamics_character_resonance;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_STEREO_ID:
+      return engine.fx.dynamics_character_stereo;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_ENV_FOLLOW_ID:
+      return engine.fx.dynamics_character_env_follow;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_DEPTH_ID:
+      return engine.fx.dynamics_character_depth;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_RATE_ID:
       return engine.fx.dynamics_character_rate;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_DAMP_ID:
+      return engine.fx.dynamics_character_damp;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_MIX_ID:
+      return engine.fx.dynamics_degrade_mix;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_AGE_ID:
+      return engine.fx.dynamics_degrade_age;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_GENERATION_ID:
+      return engine.fx.dynamics_degrade_generation;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_ALIAS_ID:
+      return engine.fx.dynamics_degrade_alias;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOW_ID:
+      return engine.fx.dynamics_degrade_wow;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_FLUTTER_ID:
+      return engine.fx.dynamics_degrade_flutter;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_DRIFT_ID:
+      return engine.fx.dynamics_degrade_drift;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOBBLE_SPEED_ID:
       return engine.fx.dynamics_degrade_wobble_speed;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_TONE_ID:
+      return engine.fx.dynamics_degrade_tone;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_HP_ID:
+      return engine.fx.dynamics_degrade_hp;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_LP_ID:
+      return engine.fx.dynamics_degrade_lp;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_NOISE_ID:
       return engine.fx.dynamics_degrade_noise;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_SATURATION_ID:
+      return engine.fx.dynamics_degrade_saturation;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_CORROSION_ID:
+      return engine.fx.dynamics_degrade_corrosion;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID:
       return engine.fx.dynamics_saturation_drive;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_TONE_ID:
       return engine.fx.dynamics_saturation_tone;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_BIAS_ID:
+      return engine.fx.dynamics_saturation_bias;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_THRESHOLD_ID:
+      return engine.fx.dynamics_end_comp_threshold;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_KNEE_ID:
+      return engine.fx.dynamics_end_comp_knee;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_RATIO_ID:
+      return engine.fx.dynamics_end_comp_ratio;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_ATTACK_MS_ID:
       return engine.fx.dynamics_end_comp_attack_ms;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_RELEASE_MS_ID:
+      return engine.fx.dynamics_end_comp_release_ms;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_MAKEUP_ID:
+      return engine.fx.dynamics_end_comp_makeup;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_MIX_ID:
+      return engine.fx.dynamics_end_comp_mix;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_DETECTOR_HP_ID:
+      return engine.fx.dynamics_end_comp_detector_hp;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_DETECTOR_TILT_ID:
+      return engine.fx.dynamics_end_comp_detector_tilt;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_AUTO_MAKEUP_ID:
+      return engine.fx.dynamics_end_comp_auto_makeup;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_PROGRAM_RELEASE_ID:
+      return engine.fx.dynamics_end_comp_program_release;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_KEY_AWEIGHT_ID:
+      return engine.fx.sidechain_key_a_weight;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_KEY_BWEIGHT_ID:
+      return engine.fx.sidechain_key_b_weight;
     case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_AMOUNT_ID:
       return engine.fx.sidechain_amount;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_THRESHOLD_ID:
+      return engine.fx.sidechain_threshold;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_RATIO_ID:
+      return engine.fx.sidechain_ratio;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_KNEE_ID:
+      return engine.fx.sidechain_knee;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_ATTACK_MS_ID:
+      return engine.fx.sidechain_attack_ms;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_HOLD_MS_ID:
+      return engine.fx.sidechain_hold_ms;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_RELEASE_MS_ID:
+      return engine.fx.sidechain_release_ms;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_MAKEUP_ID:
+      return engine.fx.sidechain_makeup;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_MIX_ID:
+      return engine.fx.sidechain_mix;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_CURVE_ID:
+      return engine.fx.sidechain_curve;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_DETECTOR_HP_ID:
+      return engine.fx.sidechain_detector_hp;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_DETECTOR_LP_ID:
+      return engine.fx.sidechain_detector_lp;
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_PAD1_TARGET_ID:
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_PAD2_TARGET_ID:
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_LEAD1_TARGET_ID:
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_LEAD2_TARGET_ID:
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_PIANO_TARGET_ID:
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_GRANULAR_TARGET_ID:
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_DELAY_ATARGET_ID:
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_DELAY_BTARGET_ID:
+    case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_REVERB_TARGET_ID:
+      return engine.fx.sidechain_targets[param_id - KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_PAD1_TARGET_ID];
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_DELAY_B_ID:
+      return engine.routing.delay_a_to_delay_b;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_DELAY_A_ID:
+      return engine.routing.delay_b_to_delay_a;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_TO_REVERB_ID:
+      return engine.routing.delay_to_reverb;
+    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_REVERB_ID:
+      return engine.routing.granular_to_reverb;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_GRANULAR_ID:
+      return engine.routing.delay_a_to_granular;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_GRANULAR_ID:
+      return engine.routing.delay_b_to_granular;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_REVERB_ID:
+      return engine.routing.delay_b_to_reverb;
+    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_DELAY_A_ID:
+      return engine.routing.granular_to_delay_a;
+    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_DELAY_B_ID:
+      return engine.routing.granular_to_delay_b;
     case kProductPadRuntimeParamIdBase + 21u:
       return sourcePadOverrideValue(engine.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u], 21u);
     case kProductPad2RuntimeParamIdBase + 21u:
@@ -611,6 +833,50 @@ float productRuntimeFieldValue(const KesshoProductEngine& engine, uint32_t param
         return granularVoiceRuntimeFieldValue(engine.fx.granular_voices[voice_index], offset);
       }
       require(false, "runtime walk product probe missing field reader");
+      return 0.0f;
+  }
+}
+
+float sourceRuntimeFieldValue(const SourceState& source, uint32_t param_id) {
+  switch (param_id) {
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID:
+      return source.level;
+    case KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID:
+      return source.morph;
+    case KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID:
+      return source.distance;
+    case KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID:
+      return source.expression;
+    case KESSHO_PRODUCT_PARAM_SOURCE_DRY_GAIN_ID:
+      return source.dry_gain;
+    case KESSHO_PRODUCT_PARAM_SOURCE_REVERB_SEND_ID:
+      return source.reverb_send;
+    case KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID:
+      return source.delay_a_send;
+    case KESSHO_PRODUCT_PARAM_SOURCE_DELAY_BSEND_ID:
+      return source.delay_b_send;
+    case KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID:
+      return source.granular_send;
+    case KESSHO_PRODUCT_PARAM_SOURCE_DIFFUSE_SEND_ID:
+      return source.diffuse_send;
+    case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_HZ_ID:
+      return source.post_lpf_hz;
+    case KESSHO_PRODUCT_PARAM_SOURCE_STEREO_WIDTH_ID:
+      return source.stereo_width;
+    case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_KEY_TRACKING_ID:
+      return source.post_lpf_key_tracking;
+    case KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID:
+      return source.attack_seconds;
+    case KESSHO_PRODUCT_PARAM_SOURCE_DECAY_SECONDS_ID:
+      return source.decay_seconds;
+    case KESSHO_PRODUCT_PARAM_SOURCE_SUSTAIN_ID:
+      return source.sustain;
+    case KESSHO_PRODUCT_PARAM_SOURCE_HOLD_SECONDS_ID:
+      return source.hold_seconds;
+    case KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID:
+      return source.release_seconds;
+    default:
+      require(false, "runtime walk source probe missing field reader");
       return 0.0f;
   }
 }
@@ -784,17 +1050,67 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
   };
   const ProductProbe product_probes[] = {
       {KESSHO_PRODUCT_PARAM_MASTER_GAIN_ID, 0.15f, 0.95f, 0.35f, "low-rate master gain runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_MASTER_LIMITER_CEILING_DB_ID, -18.0f, -0.1f, -6.0f, "low-rate master limiter ceiling runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_ATIME_LEFT_MS_ID, 40.0f, 900.0f, 240.0f, "low-rate Delay A left time runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_ATIME_RIGHT_MS_ID, 40.0f, 900.0f, 180.0f, "low-rate Delay A right time runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DELAY_AFEEDBACK_ID, 0.05f, 0.85f, 0.22f, "low-rate Delay A feedback runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_AMIX_ID, 0.05f, 0.85f, 0.25f, "low-rate Delay A mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_AFILTER_HZ_ID, 400.0f, 8000.0f, 2400.0f, "low-rate Delay A filter runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_AMOD_RATE_HZ_ID, 0.05f, 4.5f, 1.2f, "low-rate Delay A mod-rate runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_AMOD_DEPTH_MS_ID, 1.0f, 45.0f, 12.0f, "low-rate Delay A mod-depth runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_ADUCK_ID, 0.05f, 0.95f, 0.33f, "low-rate Delay A duck runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_AWIDTH_ID, 0.05f, 0.95f, 0.52f, "low-rate Delay A width runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_ACROSS_FEED_FILTER_HZ_ID, 400.0f, 9000.0f, 2800.0f, "low-rate Delay A cross-feed filter runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_BACTIVITY_ID, 0.05f, 0.95f, 0.24f, "low-rate Delay B activity runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_BREPEATS_ID, 0.05f, 0.8f, 0.26f, "low-rate Delay B repeats runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_BBASE_TIME_MS_ID, 40.0f, 1600.0f, 360.0f, "low-rate Delay B base-time runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_BTONE_ID, 0.05f, 0.95f, 0.44f, "low-rate Delay B tone runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_BVIBRATO_ID, 0.05f, 0.95f, 0.18f, "low-rate Delay B vibrato runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DELAY_BMIX_ID, 0.05f, 0.95f, 0.24f, "low-rate Delay B mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_BWARP_INTENSITY_ID, 0.05f, 0.95f, 0.38f, "low-rate Delay B warp-intensity runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_BSPREAD_ID, 0.05f, 0.95f, 0.42f, "low-rate Delay B spread runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD1_LEVEL_ID, 0.05f, 0.95f, 0.45f, "low-rate Delay B head level runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD3_PAN_ID, 0.05f, 0.95f, 0.55f, "low-rate Delay B head pan runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_GRANULAR_MIX_ID, 0.05f, 0.95f, 0.26f, "low-rate granular mix runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_REVERB_MIX_ID, 0.05f, 0.95f, 0.28f, "low-rate reverb mix runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_REVERB_DECAY_ID, 0.1f, 0.9f, 0.45f, "low-rate reverb decay runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_SIZE_ID, 0.6f, 9.0f, 3.5f, "low-rate reverb size runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_DAMPING_ID, 0.05f, 0.95f, 0.36f, "low-rate reverb damping runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_DIFFUSION_ID, 0.05f, 0.95f, 0.66f, "low-rate reverb diffusion runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_MODULATION_ID, 0.05f, 0.95f, 0.41f, "low-rate reverb modulation runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_PREDELAY_MS_ID, 1.0f, 90.0f, 28.0f, "low-rate reverb predelay runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_REVERB_WIDTH_ID, 0.2f, 1.0f, 0.6f, "low-rate reverb width runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_SHIMMER_AMOUNT_ID, 0.05f, 0.95f, 0.24f, "low-rate reverb shimmer runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_SLOW_DEPTH_ID, 0.05f, 0.95f, 0.18f, "low-rate reverb slow-depth runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_CHORUS_DEPTH_ID, 1.0f, 36.0f, 14.0f, "low-rate reverb chorus-depth runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_CROSS_FEED_ID, 0.05f, 0.95f, 0.22f, "low-rate reverb cross-feed runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_THRESHOLD_ID, -48.0f, -3.0f, -24.0f, "low-rate reverb pre-comp threshold runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_RATIO_ID, 1.2f, 12.0f, 4.0f, "low-rate reverb pre-comp ratio runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID, 0.05f, 0.95f, 0.30f, "low-rate spectral freeze mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_SPEED_ID, 0.05f, 0.95f, 0.31f, "low-rate spectral freeze speed runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DECAY_ID, 0.05f, 0.95f, 0.32f, "low-rate spectral freeze decay runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_PHASE_JITTER_ID, 0.05f, 0.95f, 0.21f, "low-rate spectral freeze phase-jitter runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID, 0.05f, 0.95f, 0.31f, "low-rate dynamics drive runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MIX_ID, 0.05f, 0.95f, 0.29f, "low-rate dynamics character mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_RATE_ID, 0.05f, 0.95f, 0.34f, "low-rate dynamics character rate runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_MIX_ID, 0.05f, 0.95f, 0.27f, "low-rate dynamics degrade mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_AGE_ID, 0.05f, 0.95f, 0.36f, "low-rate dynamics degrade age runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID, 0.05f, 0.95f, 0.32f, "low-rate dynamics saturation drive runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_TONE_ID, 0.05f, 0.95f, 0.43f, "low-rate dynamics saturation tone runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOBBLE_SPEED_ID, 0.05f, 0.95f, 0.35f, "low-rate dynamics degrade wobble-speed runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_THRESHOLD_ID, -48.0f, -3.0f, -18.0f, "low-rate dynamics end-comp threshold runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_ATTACK_MS_ID, 0.2f, 90.0f, 12.0f, "low-rate dynamics end-comp attack runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_MIX_ID, 0.05f, 0.95f, 0.62f, "low-rate dynamics end-comp mix runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_AMOUNT_ID, 0.05f, 0.95f, 0.34f, "low-rate sidechain amount runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_THRESHOLD_ID, -48.0f, -3.0f, -22.0f, "low-rate sidechain threshold runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_RATIO_ID, 1.2f, 12.0f, 4.5f, "low-rate sidechain ratio runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_PAD1_TARGET_ID, 0.05f, 0.95f, 0.58f, "low-rate sidechain target runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_DELAY_B_ID, 0.05f, 0.95f, 0.37f, "low-rate Delay A to Delay B routing runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_DELAY_A_ID, 0.05f, 0.95f, 0.26f, "low-rate Delay B to Delay A routing runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_ROUTING_DELAY_TO_REVERB_ID, 0.05f, 0.95f, 0.48f, "low-rate Delay to Reverb routing runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_GRANULAR_ID, 0.05f, 0.95f, 0.33f, "low-rate Delay A to Granular routing runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_GRANULAR_ID, 0.05f, 0.95f, 0.35f, "low-rate Delay B to Granular routing runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_REVERB_ID, 0.05f, 1.5f, 0.4f, "low-rate Granular to Reverb routing runtime walk did not move"},
       {kProductPadRuntimeParamIdBase + 21u, 250.0f, 3200.0f, 900.0f, "low-rate Pad 1 exact cutoff runtime walk did not move"},
       {kProductPad2RuntimeParamIdBase + 21u, 450.0f, 6200.0f, 1600.0f, "low-rate Pad 2 exact cutoff runtime walk did not move"},
   };
@@ -831,31 +1147,49 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
 
   struct SourceProbe {
     uint32_t target_id;
+    uint32_t param_id;
+    float min_value;
+    float max_value;
     float current_value;
     const char* label;
   };
   const SourceProbe source_probes[] = {
-      {KESSHO_PRODUCT_SOURCE_PAD1, 0.31f, "low-rate Pad 1 source level runtime walk did not move"},
-      {KESSHO_PRODUCT_SOURCE_PAD2, 0.32f, "low-rate Pad 2 source level runtime walk did not move"},
-      {KESSHO_PRODUCT_SOURCE_LEAD1, 0.33f, "low-rate Lead 1 source level runtime walk did not move"},
-      {KESSHO_PRODUCT_SOURCE_LEAD2, 0.34f, "low-rate Lead 2 source level runtime walk did not move"},
-      {KESSHO_PRODUCT_SOURCE_DRUM, 0.35f, "low-rate Drum source level runtime walk did not move"},
-      {KESSHO_PRODUCT_SOURCE_PIANO, 0.36f, "low-rate Piano source level runtime walk did not move"},
-      {KESSHO_PRODUCT_SOURCE_SOUNDSCAPE, 0.37f, "low-rate Soundscape source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID, 0.1f, 0.9f, 0.31f, "low-rate Pad 1 source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD2, KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID, 0.1f, 0.9f, 0.32f, "low-rate Pad 2 source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_LEAD1, KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID, 0.1f, 0.9f, 0.33f, "low-rate Lead 1 source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_LEAD2, KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID, 0.1f, 0.9f, 0.34f, "low-rate Lead 2 source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_DRUM, KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID, 0.1f, 0.9f, 0.35f, "low-rate Drum source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PIANO, KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID, 0.1f, 0.9f, 0.36f, "low-rate Piano source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_SOUNDSCAPE, KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID, 0.1f, 0.9f, 0.37f, "low-rate Soundscape source level runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, 0.1f, 0.9f, 0.38f, "low-rate source morph runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, 0.1f, 0.9f, 0.39f, "low-rate source distance runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, 0.1f, 0.9f, 0.40f, "low-rate source expression runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_REVERB_SEND_ID, 0.1f, 0.9f, 0.41f, "low-rate source reverb-send runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID, 0.1f, 0.9f, 0.42f, "low-rate source Delay A send runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_BSEND_ID, 0.1f, 0.9f, 0.43f, "low-rate source Delay B send runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID, 0.1f, 0.9f, 0.44f, "low-rate source granular send runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_DIFFUSE_SEND_ID, 0.1f, 0.9f, 0.45f, "low-rate source diffuse send runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_HZ_ID, 400.0f, 12000.0f, 3200.0f, "low-rate source post-LPF runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_STEREO_WIDTH_ID, 0.1f, 0.9f, 0.46f, "low-rate source stereo-width runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_KEY_TRACKING_ID, 0.1f, 0.9f, 0.47f, "low-rate source LPF key-tracking runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID, 0.01f, 1.5f, 0.22f, "low-rate source attack runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_DECAY_SECONDS_ID, 0.02f, 3.0f, 0.54f, "low-rate source decay runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_SUSTAIN_ID, 0.1f, 0.9f, 0.48f, "low-rate source sustain runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_HOLD_SECONDS_ID, 0.05f, 4.0f, 0.9f, "low-rate source hold runtime walk did not move"},
+      {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID, 0.02f, 4.0f, 0.7f, "low-rate source release runtime walk did not move"},
   };
 
   KesshoProductEngine* source_walk = kessho_product_create(48000.0, 128, 0);
   require(source_walk != nullptr, "low-rate runtime walk source engine allocation failed");
   control_id = 910u;
   for (const SourceProbe& probe : source_probes) {
-    source_walk->sources[probe.target_id - 1u].level = probe.current_value;
     enqueueRuntimeWalkRange(
         source_walk,
         probe.target_id,
-        KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID,
+        probe.param_id,
         control_id++,
-        0.1f,
-        0.9f,
+        probe.min_value,
+        probe.max_value,
         probe.current_value,
         low_rate_flags);
   }
@@ -874,12 +1208,14 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
   require(source_walk->telemetry.runtime_walk_count == source_probe_count + 1u, "low-rate runtime walk telemetry missed source/drum targets");
   control_id = 910u;
   for (const SourceProbe& probe : source_probes) {
-    const ModulationRange* range = source_walk->findModulationRange(probe.target_id, KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID);
+    const ModulationRange* range = source_walk->findModulationRange(probe.target_id, probe.param_id);
     require(range != nullptr, probe.label);
     require(std::fabs(range->random_walk_speed - 0.09f) < 0.001f, probe.label);
     require(std::fabs(range->current_value - probe.current_value) > 0.00001f, probe.label);
-    require(std::fabs(source_walk->sources[probe.target_id - 1u].level - range->current_value) < 0.0001f, probe.label);
-    requireTelemetryContainsRuntimeWalk(source_walk->telemetry, control_id++, 0.1f, 0.9f, probe.label);
+    require(
+        std::fabs(sourceRuntimeFieldValue(source_walk->sources[probe.target_id - 1u], probe.param_id) - range->current_value) < 0.0001f,
+        probe.label);
+    requireTelemetryContainsRuntimeWalk(source_walk->telemetry, control_id++, probe.min_value, probe.max_value, probe.label);
   }
   const ModulationRange* drum_delay = source_walk->findModulationRange(KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID);
   require(drum_delay != nullptr, "low-rate Drum voice delay-send runtime walk missing");
@@ -887,6 +1223,53 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
   require(std::fabs(drum_delay->current_value - 0.38f) > 0.00001f, "low-rate Drum voice delay-send runtime walk did not move");
   requireTelemetryContainsRuntimeWalk(source_walk->telemetry, control_id++, 0.1f, 0.9f, "low-rate Drum voice runtime walk telemetry missing");
   kessho_product_destroy(source_walk);
+
+  KesshoProductEngine* soundscape_asset_walk = kessho_product_create(48000.0, 128, 0);
+  require(soundscape_asset_walk != nullptr, "low-rate soundscape asset runtime walk engine allocation failed");
+  SourceState& soundscape_source = soundscape_asset_walk->sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
+  soundscape_source.enabled = true;
+  struct SoundscapeAssetProbe {
+    uint32_t asset_id;
+    float current_value;
+    const char* label;
+  };
+  const SoundscapeAssetProbe soundscape_asset_probes[] = {
+      {kSoundscapeAssetBirds, 0.16f, "low-rate Birds soundscape asset runtime walk"},
+      {kSoundscapeAssetBirds2, 0.12f, "low-rate Birds Fujian soundscape asset runtime walk"},
+      {kSoundscapeAssetFrogs, 0.10f, "low-rate Frogs soundscape asset runtime walk"},
+  };
+  const uint32_t soundscape_asset_probe_count = static_cast<uint32_t>(sizeof(soundscape_asset_probes) / sizeof(soundscape_asset_probes[0]));
+  soundscape_source.asset_ref_count = soundscape_asset_probe_count;
+  for (uint32_t index = 0u; index < soundscape_asset_probe_count; ++index) {
+    soundscape_source.asset_refs[index] = soundscape_asset_probes[index].asset_id;
+    soundscape_source.asset_ref_levels[index] = soundscape_asset_probes[index].current_value;
+    enqueueRuntimeWalkRange(
+        soundscape_asset_walk,
+        kSoundscapeAssetLevelRangeTargetBase + soundscape_asset_probes[index].asset_id,
+        KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID,
+        1020u + index,
+        0.0f,
+        0.32f,
+        soundscape_asset_probes[index].current_value,
+        low_rate_flags);
+  }
+  renderSilentBlocks(soundscape_asset_walk, kLowRateRenderBlocks);
+  require(
+      soundscape_asset_walk->telemetry.runtime_walk_count == soundscape_asset_probe_count,
+      "low-rate soundscape asset runtime walk telemetry missed asset-ref targets");
+  for (uint32_t index = 0u; index < soundscape_asset_probe_count; ++index) {
+    const SoundscapeAssetProbe& probe = soundscape_asset_probes[index];
+    const uint32_t target_id = kSoundscapeAssetLevelRangeTargetBase + probe.asset_id;
+    const ModulationRange* asset_level = soundscape_asset_walk->findModulationRange(
+        target_id,
+        KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID);
+    require(asset_level != nullptr, probe.label);
+    require(std::fabs(asset_level->current_value - probe.current_value) > 0.00001f, probe.label);
+    require(std::fabs(soundscape_source.asset_ref_levels[index] - asset_level->current_value) < 0.0001f,
+        probe.label);
+    requireTelemetryContainsRuntimeWalk(soundscape_asset_walk->telemetry, 1020u + index, 0.0f, 0.32f, probe.label);
+  }
+  kessho_product_destroy(soundscape_asset_walk);
 }
 
 void requireDrumExactRuntimeRangesApplyToSourceAndModule() {
@@ -1961,6 +2344,309 @@ int main() {
   require(pitch_only_lane_state.morph_override_set_low == 0u && pitch_only_lane_state.morph_override_set_high == 0u, "method-filtered pitch dice should not alter morph overrides");
   require(pitch_only_lane_state.distance_override_set_low == 0u && pitch_only_lane_state.distance_override_set_high == 0u, "method-filtered pitch dice should not alter distance overrides");
 
+  bool native_synth_notes_pitch_walk_used_scale = false;
+  for (uint32_t attempt = 0u; attempt < 96u && !native_synth_notes_pitch_walk_used_scale; ++attempt) {
+    kessho_product_reset(engine);
+    snapshot = makeSnapshot();
+    snapshot.drum_euclid.lane_count = 0;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "native synth notes pitch evolve snapshot load failed");
+    LaneState& notes_lane = engine->synth_lanes[0];
+    notes_lane.step_count = 1u;
+    notes_lane.fill_count = 1u;
+    notes_lane.midi_note = 60.0f;
+    notes_lane.pitch_mode = kSequencerPitchModeNotes;
+    notes_lane.pitch_root = 60.0f;
+    notes_lane.pitch_scale_id = kSequencerPitchScaleMajor;
+    engine->clearLaneStepOverrides(notes_lane);
+    engine->setStepFieldOverride(notes_lane, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 0u, 62.0f, 0.0f);
+    KesshoProductEvent notes_pitch_walk{};
+    notes_pitch_walk.event_kind = KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE;
+    notes_pitch_walk.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    notes_pitch_walk.index = 0u;
+    notes_pitch_walk.value = 0.6f;
+    notes_pitch_walk.value2 = static_cast<float>(5300u + attempt);
+    notes_pitch_walk.flags =
+        KESSHO_PRODUCT_EVOLVE_MODE_PARITY |
+        KESSHO_PRODUCT_EVOLVE_METHOD_PITCH_WALK |
+        KESSHO_PRODUCT_DICE_FIELD_MIDI_NOTE;
+    engine->applyParityEvolveSequencerLaneEvent(notes_pitch_walk);
+    if (notes_lane.midi_note_override_set_low != 0u && std::fabs(notes_lane.midi_note_overrides[0] - 62.0f) > 0.001f) {
+      native_synth_notes_pitch_walk_used_scale =
+          std::fabs(notes_lane.midi_note_overrides[0] - 60.0f) < 0.001f ||
+          std::fabs(notes_lane.midi_note_overrides[0] - 64.0f) < 0.001f;
+      require(native_synth_notes_pitch_walk_used_scale, "native synth notes pitch walk must move by scale degrees instead of chromatic semitones");
+    }
+  }
+  require(native_synth_notes_pitch_walk_used_scale, "native synth notes pitch walk should mutate scale-degree pitch within bounded attempts");
+
+  bool native_drum_notes_pitch_walk_used_scale = false;
+  for (uint32_t attempt = 0u; attempt < 96u && !native_drum_notes_pitch_walk_used_scale; ++attempt) {
+    kessho_product_reset(engine);
+    snapshot = makeSnapshot();
+    snapshot.synth_euclid.lane_count = 0;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "native drum notes pitch evolve snapshot load failed");
+    LaneState& notes_drum_lane = engine->drum_lanes[0];
+    notes_drum_lane.step_count = 1u;
+    notes_drum_lane.fill_count = 1u;
+    notes_drum_lane.midi_note = 36.0f;
+    notes_drum_lane.pitch_mode = kSequencerPitchModeNotes;
+    notes_drum_lane.pitch_scale_id = kSequencerPitchScaleMajor;
+    engine->clearLaneStepOverrides(notes_drum_lane);
+    engine->setStepFieldOverride(notes_drum_lane, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 0u, 38.0f, 0.0f);
+    KesshoProductEvent drum_notes_pitch_walk{};
+    drum_notes_pitch_walk.event_kind = KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE;
+    drum_notes_pitch_walk.target_id = KESSHO_PRODUCT_SEQUENCER_DRUM;
+    drum_notes_pitch_walk.index = 0u;
+    drum_notes_pitch_walk.value = 0.6f;
+    drum_notes_pitch_walk.value2 = static_cast<float>(5400u + attempt);
+    drum_notes_pitch_walk.flags =
+        KESSHO_PRODUCT_EVOLVE_MODE_PARITY |
+        KESSHO_PRODUCT_EVOLVE_METHOD_PITCH_WALK |
+        KESSHO_PRODUCT_DICE_FIELD_MIDI_NOTE;
+    engine->applyParityEvolveSequencerLaneEvent(drum_notes_pitch_walk);
+    if (notes_drum_lane.midi_note_override_set_low != 0u && std::fabs(notes_drum_lane.midi_note_overrides[0] - 38.0f) > 0.001f) {
+      native_drum_notes_pitch_walk_used_scale =
+          std::fabs(notes_drum_lane.midi_note_overrides[0] - 36.0f) < 0.001f ||
+          std::fabs(notes_drum_lane.midi_note_overrides[0] - 40.0f) < 0.001f;
+      require(native_drum_notes_pitch_walk_used_scale, "native drum notes pitch walk must move by scale degrees instead of chromatic semitones");
+    }
+  }
+  require(native_drum_notes_pitch_walk_used_scale, "native drum notes pitch walk should mutate scale-degree pitch within bounded attempts");
+
+  bool native_synth_note_range_pitch_walk_changed = false;
+  for (uint32_t attempt = 0u; attempt < 96u && !native_synth_note_range_pitch_walk_changed; ++attempt) {
+    kessho_product_reset(engine);
+    snapshot = makeSnapshot();
+    snapshot.drum_euclid.lane_count = 0;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "native synth noteRange pitch evolve snapshot load failed");
+    LaneState& note_range_lane = engine->synth_lanes[0];
+    note_range_lane.step_count = 1u;
+    note_range_lane.fill_count = 1u;
+    note_range_lane.midi_note = 70.0f;
+    note_range_lane.pitch_mode = kSequencerPitchModeNoteRange;
+    note_range_lane.note_range_min = 64.0f;
+    note_range_lane.note_range_max = 76.0f;
+    engine->clearSequencerEvolveHome(note_range_lane);
+    engine->captureSequencerEvolveHome(note_range_lane);
+    note_range_lane.note_range_min = 90.0f;
+    note_range_lane.note_range_max = 96.0f;
+    note_range_lane.midi_note = 93.0f;
+    KesshoProductEvent note_range_pitch_walk{};
+    note_range_pitch_walk.event_kind = KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE;
+    note_range_pitch_walk.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    note_range_pitch_walk.index = 0u;
+    note_range_pitch_walk.value = 1.0f;
+    note_range_pitch_walk.value2 = static_cast<float>(5500u + attempt);
+    note_range_pitch_walk.flags =
+        KESSHO_PRODUCT_EVOLVE_MODE_PARITY |
+        KESSHO_PRODUCT_EVOLVE_METHOD_PITCH_WALK |
+        KESSHO_PRODUCT_DICE_FIELD_MIDI_NOTE;
+    engine->applyParityEvolveSequencerLaneEvent(note_range_pitch_walk);
+    native_synth_note_range_pitch_walk_changed =
+        std::fabs(note_range_lane.note_range_min - 90.0f) > 0.001f ||
+        std::fabs(note_range_lane.note_range_max - 96.0f) > 0.001f;
+    if (native_synth_note_range_pitch_walk_changed) {
+      const float midpoint = (note_range_lane.note_range_min + note_range_lane.note_range_max) * 0.5f;
+      const float home_midpoint = (note_range_lane.evolve_home.note_range_min + note_range_lane.evolve_home.note_range_max) * 0.5f;
+      require(note_range_lane.note_range_min >= 36.0f, "native synth noteRange evolve must clamp low bound");
+      require(note_range_lane.note_range_max <= 96.0f, "native synth noteRange evolve must clamp high bound");
+      require(note_range_lane.note_range_max - note_range_lane.note_range_min >= 2.0f, "native synth noteRange evolve must preserve minimum range gap");
+      require(std::fabs(midpoint - home_midpoint) <= 12.0f, "native synth noteRange evolve must keep midpoint anchored near home");
+      require(std::fabs(note_range_lane.midi_note - midpoint) < 0.001f, "native synth noteRange evolve must update lane MIDI midpoint");
+      require(note_range_lane.midi_note_override_set_low == 0u, "native synth noteRange evolve must not write MIDI step overrides");
+      require(
+          kessho_product_copy_sequencer_ui_state(engine, &sequencer_ui_state) == KESSHO_PRODUCT_OK,
+          "native synth noteRange UI state copy failed");
+      const KesshoProductSequencerLaneUiState& ui_note_range_lane = sequencer_ui_state.synth_lanes[0];
+      require(
+          std::fabs(ui_note_range_lane.note_range_min - note_range_lane.note_range_min) < 0.001f &&
+              std::fabs(ui_note_range_lane.note_range_max - note_range_lane.note_range_max) < 0.001f,
+          "native synth noteRange evolve must expose evolved bounds through sequencer UI state");
+    }
+  }
+  require(native_synth_note_range_pitch_walk_changed, "native synth noteRange pitch walk should mutate bounds within bounded attempts");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.harmony.tension = 0.3f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "native parity evolve snapshot load failed");
+  KesshoProductEvent native_synth_evolve{};
+  native_synth_evolve.event_kind = KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE;
+  native_synth_evolve.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  native_synth_evolve.index = 0;
+  native_synth_evolve.value = 1.0f;
+  native_synth_evolve.value2 = 6161.0f;
+  native_synth_evolve.value3 = 3.0f;
+  native_synth_evolve.value4 = 3.0f;
+  native_synth_evolve.flags =
+      KESSHO_PRODUCT_EVOLVE_MODE_PARITY |
+      KESSHO_PRODUCT_EVOLVE_METHOD_VALUE_DRIFT |
+      KESSHO_PRODUCT_DICE_FIELD_EXPRESSION;
+  require(kessho_product_enqueue_event(engine, &native_synth_evolve) == KESSHO_PRODUCT_OK, "native parity synth evolve enqueue failed");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
+  require(event_count == 4, "native parity synth value evolve should preserve trigger event count");
+  require(engine->synth_lanes[0].evolve_home.captured, "native parity synth evolve should capture Core-owned home state");
+  require(
+      engine->synth_lanes[0].expression_override_set_low == (1u << 3u) &&
+          engine->synth_lanes[0].expression_override_set_high == 0u,
+      "native parity synth value evolve should honor write-offset masking");
+  require(
+      kessho_product_copy_sequencer_ui_state(engine, &sequencer_ui_state) == KESSHO_PRODUCT_OK,
+      "native parity synth UI state copy failed");
+  require(
+      sequencer_ui_state.last_changed_target_id == KESSHO_PRODUCT_SEQUENCER_SYNTH &&
+          sequencer_ui_state.last_changed_lane_index == 0u &&
+          sequencer_ui_state.last_change_kind == KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_DICE,
+      "native parity synth evolve should publish a Core-owned dice UI revision");
+  reset_lane_home = {};
+  reset_lane_home.event_kind = KESSHO_PRODUCT_EVENT_KIND_RESET_SEQUENCER_LANE_HOME;
+  reset_lane_home.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  reset_lane_home.index = 0;
+  require(kessho_product_enqueue_event(engine, &reset_lane_home) == KESSHO_PRODUCT_OK, "native parity reset-home enqueue failed");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
+  require(!engine->synth_lanes[0].evolve_home.captured, "reset-home should clear native parity evolve home state");
+
+  KesshoProductEvent strict_synth_evolve{};
+  strict_synth_evolve.event_kind = KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE;
+  strict_synth_evolve.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  strict_synth_evolve.index = 0;
+  strict_synth_evolve.value = 1.0f;
+  strict_synth_evolve.value3 = 0.0f;
+  strict_synth_evolve.value4 = 1.0f;
+  strict_synth_evolve.flags =
+      KESSHO_PRODUCT_EVOLVE_MODE_PARITY |
+      KESSHO_PRODUCT_EVOLVE_MUTATION_STRICT |
+      KESSHO_PRODUCT_EVOLVE_METHOD_VALUE_DRIFT |
+      KESSHO_PRODUCT_DICE_FIELD_EXPRESSION;
+  bool strict_sampled_beyond_biased_drift = false;
+  for (uint32_t attempt = 0u; attempt < 48u && !strict_sampled_beyond_biased_drift; ++attempt) {
+    kessho_product_reset(engine);
+    snapshot = makeSnapshot();
+    snapshot.drum_euclid.lane_count = 0;
+    snapshot.harmony.tension = 0.3f;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "native strict evolve snapshot load failed");
+    strict_synth_evolve.value2 = static_cast<float>(8100u + attempt);
+    engine->applyParityEvolveSequencerLaneEvent(strict_synth_evolve);
+    for (uint32_t step = 0u; step < 16u; ++step) {
+      if (maskHas(engine->synth_lanes[0].expression_override_set_low, engine->synth_lanes[0].expression_override_set_high, step)) {
+        const float value = engine->synth_lanes[0].expression_overrides[step];
+        if (value < 0.719f || value > 0.881f) {
+          strict_sampled_beyond_biased_drift = true;
+          break;
+        }
+      }
+    }
+  }
+  require(
+      strict_sampled_beyond_biased_drift,
+      "native parity strict value drift should preserve web-ts random-resample semantics");
+
+  KesshoProductEvent tension_synth_evolve{};
+  tension_synth_evolve.event_kind = KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE;
+  tension_synth_evolve.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  tension_synth_evolve.index = 0;
+  tension_synth_evolve.value = 1.0f;
+  tension_synth_evolve.value3 = 0.0f;
+  tension_synth_evolve.value4 = 1.0f;
+  tension_synth_evolve.flags =
+      KESSHO_PRODUCT_EVOLVE_MODE_PARITY |
+      KESSHO_PRODUCT_EVOLVE_METHOD_VALUE_DRIFT |
+      KESSHO_PRODUCT_DICE_FIELD_EXPRESSION;
+  bool encoded_tension_overrode_fallback = false;
+  for (uint32_t attempt = 0u; attempt < 128u && !encoded_tension_overrode_fallback; ++attempt) {
+    kessho_product_reset(engine);
+    snapshot = makeSnapshot();
+    snapshot.drum_euclid.lane_count = 0;
+    snapshot.harmony.tension = 1.0f;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "native tension fallback snapshot load failed");
+    tension_synth_evolve.param_id = 0u;
+    tension_synth_evolve.value2 = static_cast<float>(9100u + attempt);
+    engine->applyParityEvolveSequencerLaneEvent(tension_synth_evolve);
+    const bool fallback_mutated =
+        engine->synth_lanes[0].expression_override_set_low != 0u ||
+        engine->synth_lanes[0].expression_override_set_high != 0u;
+
+    kessho_product_reset(engine);
+    snapshot = makeSnapshot();
+    snapshot.drum_euclid.lane_count = 0;
+    snapshot.harmony.tension = 1.0f;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "native encoded tension snapshot load failed");
+    tension_synth_evolve.param_id = 1u + (KESSHO_PRODUCT_EVOLVE_TENSION_PARAM_SCALE * 3u) / 10u;
+    engine->applyParityEvolveSequencerLaneEvent(tension_synth_evolve);
+    const bool encoded_mutated =
+        engine->synth_lanes[0].expression_override_set_low != 0u ||
+        engine->synth_lanes[0].expression_override_set_high != 0u;
+    encoded_tension_overrode_fallback = !fallback_mutated && encoded_mutated;
+  }
+  require(
+      encoded_tension_overrode_fallback,
+      "native parity evolve should use event-encoded effective tension before Product harmony fallback");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.harmony.tension = 0.3f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "native RNG-stream evolve snapshot load failed");
+  engine->synth_lanes[0].swing = 0.25f;
+  KesshoProductEvent stream_rng_swing{};
+  stream_rng_swing.event_kind = KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE;
+  stream_rng_swing.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  stream_rng_swing.index = 0;
+  stream_rng_swing.param_id = 123456789u;
+  stream_rng_swing.value = 1.0f;
+  stream_rng_swing.value2 = 0.0f;
+  stream_rng_swing.value3 = 0.0f;
+  stream_rng_swing.value4 = 1.0f;
+  stream_rng_swing.flags =
+      KESSHO_PRODUCT_EVOLVE_MODE_PARITY |
+      KESSHO_PRODUCT_EVOLVE_RNG_STREAM |
+      KESSHO_PRODUCT_EVOLVE_METHOD_SWING_DRIFT;
+  engine->applyParityEvolveSequencerLaneEvent(stream_rng_swing);
+  require(
+      std::fabs(engine->synth_lanes[0].swing - 0.27824633f) < 0.000001f,
+      "native parity evolve should consume the web-ts mulberry32 stream for first swing drift");
+  engine->applyParityEvolveSequencerLaneEvent(stream_rng_swing);
+  require(
+      std::fabs(engine->synth_lanes[0].swing - 0.29497035f) < 0.000001f,
+      "native parity evolve should preserve the web-ts RNG stream between native evolve events");
+  require(
+      kessho_product_copy_sequencer_ui_state(engine, &sequencer_ui_state) == KESSHO_PRODUCT_OK,
+      "native parity swing evolve UI state copy failed");
+  require(
+      std::fabs(sequencer_ui_state.synth_lanes[0].swing - engine->synth_lanes[0].swing) < 0.000001f,
+      "native parity swing evolve should expose lane swing through sequencer UI state");
+  require(
+      std::fabs(sequencer_ui_state.synth_lanes[0].midi_note - engine->synth_lanes[0].midi_note) < 0.000001f,
+      "sequencer UI state should expose the Product-owned base MIDI note for host pitch parity");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 0;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "native parity drum evolve snapshot load failed");
+  KesshoProductEvent native_drum_evolve{};
+  native_drum_evolve.event_kind = KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE;
+  native_drum_evolve.target_id = KESSHO_PRODUCT_SEQUENCER_DRUM;
+  native_drum_evolve.index = 0;
+  native_drum_evolve.value = 1.0f;
+  native_drum_evolve.flags =
+      KESSHO_PRODUCT_EVOLVE_MODE_PARITY |
+      KESSHO_PRODUCT_EVOLVE_METHOD_ROTATE_DRIFT |
+      KESSHO_PRODUCT_EVOLVE_METHOD_HIT_DRIFT |
+      KESSHO_PRODUCT_DICE_FIELD_TRIGGER;
+  const uint32_t start_hits = engine->drum_lanes[0].fill_count;
+  const int32_t start_rotation = engine->drum_lanes[0].rotation;
+  bool drum_native_changed = false;
+  for (uint32_t attempt = 0u; attempt < 48u && !drum_native_changed; ++attempt) {
+    native_drum_evolve.value2 = static_cast<float>(7000u + attempt);
+    engine->applyParityEvolveSequencerLaneEvent(native_drum_evolve);
+    drum_native_changed =
+        engine->drum_lanes[0].fill_count != start_hits ||
+        engine->drum_lanes[0].rotation != start_rotation;
+  }
+  require(drum_native_changed, "native parity drum evolve should own rotate/hit mutations in Product Core");
+  require(engine->drum_lanes[0].evolve_home.captured, "native parity drum evolve should capture Core-owned home state");
+
   KesshoProductEvent evolution_amount{};
   evolution_amount.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
   evolution_amount.param_id = KESSHO_PRODUCT_PARAM_EVOLUTION_AMOUNT_ID;
@@ -2790,6 +3476,16 @@ int main() {
   float* pad_params = engine->pad_module ? engine->pad_module->params() : nullptr;
   require(pad_params != nullptr, "pad module params should be available for preset morph parity check");
   require(std::fabs(pad_params[14] - 0.15f) < 0.001f, "Product pad preset morph endpoint A should reach exact module params");
+  KesshoProductEvent pad_endpoint_preset_event{};
+  pad_endpoint_preset_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET;
+  pad_endpoint_preset_event.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  pad_endpoint_preset_event.index = 1u;
+  pad_endpoint_preset_event.value =
+      static_cast<float>(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT);
+  engine->applySourcePresetEvent(pad_endpoint_preset_event);
+  require(
+      std::fabs(pad_params[14] - 0.36f) < 0.001f,
+      "pad preset endpoint change should refresh live module before retrigger");
   engine->triggerVoice(
       KESSHO_PRODUCT_SOURCE_PAD1,
       60.0f,
@@ -2807,6 +3503,51 @@ int main() {
       0u,
       1.0f);
   require(std::fabs(pad_params[14] - 0.36f) < 0.001f, "Product pad preset morph endpoint B should reach exact module params");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 1;
+  snapshot.drum_euclid.lane_count = 0;
+  KesshoProductSourceSnapshot& pad_live_morph_source = snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
+  pad_live_morph_source.source_preset_a_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT;
+  pad_live_morph_source.source_preset_b_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "live morph endpoint snapshot load failed");
+  engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      60.0f,
+      1.0f,
+      0.2f,
+      0.0f,
+      0.0f,
+      1.0f,
+      0u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      1.0f);
+  pad_params = engine->pad_module ? engine->pad_module->params() : nullptr;
+  require(pad_params != nullptr, "pad module params should be available for live morph preset change check");
+  require(std::fabs(pad_params[14] - 0.15f) < 0.001f, "live morph preset change setup should start on endpoint A");
+  engine->transport.running = true;
+  LaneState& live_morph_lane = engine->synth_lanes[0];
+  live_morph_lane.enabled = true;
+  live_morph_lane.target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  live_morph_lane.last_emitted_morph_valid = true;
+  live_morph_lane.last_emitted_morph = 1.0f;
+  live_morph_lane.last_emitted_sample_frame = 100u;
+  live_morph_lane.step_value_configs[engine->stepFieldId(KESSHO_PRODUCT_STEP_FIELD_MORPH)].enabled = true;
+  pad_endpoint_preset_event.index = 2u;
+  pad_endpoint_preset_event.value =
+      static_cast<float>(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT);
+  engine->applySourcePresetEvent(pad_endpoint_preset_event);
+  require(
+      std::fabs(pad_params[14] - 0.36f) < 0.001f,
+      "preset endpoint change should refresh live module at active sequencer morph");
 
   kessho_product_reset(engine);
   SourceState& pad_preset_source = engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
@@ -2929,6 +3670,35 @@ int main() {
   require(kessho_product_enqueue_event(engine, &drum_event) == KESSHO_PRODUCT_OK, "drum trigger event enqueue failed");
   kessho_product_render(engine, left.data(), right.data(), 128);
   require(maxAbs(left) > 0.001f || maxAbs(right) > 0.001f, "manual drum trigger should render non-silence");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.transport.running = 0;
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.synth_euclid.lane_count = 1;
+  snapshot.synth_euclid.lanes[0].enabled = 1;
+  snapshot.synth_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  snapshot.synth_euclid.lanes[0].step_count = 16;
+  snapshot.synth_euclid.lanes[0].fill_count = 1;
+  snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
+  snapshot.synth_euclid.lanes[0].clock_division = 16;
+  snapshot.synth_euclid.lanes[0].bar_reset = 1;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "scheduled sequencer start snapshot load failed");
+  KesshoProductEvent scheduled_start{};
+  scheduled_start.event_kind = KESSHO_PRODUCT_EVENT_KIND_START;
+  scheduled_start.sample_offset = 64u;
+  require(
+      kessho_product_enqueue_event(engine, &scheduled_start) == KESSHO_PRODUCT_OK,
+      "scheduled sequencer start enqueue failed");
+  KesshoSequencerEvent scheduled_start_events[4]{};
+  const int32_t scheduled_start_count =
+      kessho_product_debug_render_events(engine, scheduled_start_events, 4, 128);
+  require(scheduled_start_count > 0, "scheduled sequencer start should emit inside the current block");
+  require(
+      scheduled_start_events[0].sample_offset == scheduled_start.sample_offset,
+      "scheduled sequencer start should preserve sample offset");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();

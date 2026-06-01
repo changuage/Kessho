@@ -984,7 +984,9 @@ assert(
     presetRestoreRuntimeSurface.includes('const applyDualRangesFromPreset = useCallback(') &&
     presetRestoreRuntimeSurface.includes('replaceRuntimeWalkPositionSnapshot(newWalkPositions)') &&
     presetRestoreRuntimeSurface.includes('replaceRuntimeWalkPositionSnapshot({})') &&
-    presetSequencerRestore.includes('setSelectedSequencerPresetHomeSnapshots();') &&
+    presetSequencerRestore.includes('setSelectedSequencerPresetHomeSnapshots(') &&
+    presetSequencerRestore.includes('drumSubLaneStates?.map((state) => state.pitch)') &&
+    presetSequencerRestore.includes('synthSubLaneStates?.map((state) => state.pitch)') &&
     presetSequencerRestore.includes('drumStepOverridesForEngineRestore(') &&
     presetSequencerRestore.includes('synthStepOverridesForEngineRestore(') &&
     presetSequencerRestore.includes('normalizeSequencerEvolveConfigs(') &&
@@ -1011,7 +1013,7 @@ assert(
     productRuntimePageTelemetryProps.includes('getProductGranularBufferWaveform,') &&
     productRuntimePageTelemetryProps.includes('setProductGranularUiActive,') &&
     productRuntimePageSequencerProps.includes('export type ProductRuntimePageSequencerProps = {') &&
-    productRuntimePageSequencerProps.includes('captureProductSynthEuclidLaneHome: (laneIdx: number, pitchState?: SubLaneState) => void') &&
+    productRuntimePageSequencerProps.includes('captureProductSynthEuclidLaneHome: (laneIdx: number, pitchState?: ProductRuntimePitchHomeState | null) => void') &&
     productRuntimePageSequencerProps.includes('drumClockDivsRef: MutableRefObject<ClockDivision[] | undefined>') &&
     productRuntimePageSequencerProps.includes('setProductSynthPitchBindingModes: (modes: PitchBindingMode[]) => void') &&
     productRuntimePageSequencerProps.includes('return useMemo(() => ({') &&
@@ -1077,6 +1079,7 @@ assert(
     selectedPageTelemetryRuntimeProps.includes('setSelectedGranularUiActive') &&
     selectedPageSequencerRuntimeProps.includes('SelectedAudioEnginePageRuntimeBridgeOptions') &&
     selectedPageSequencerRuntimeProps.includes('captureSelectedSynthEuclidLaneHome') &&
+    selectedPageSequencerRuntimeProps.includes('setSelectedDrumPitchSettings') &&
     selectedPageSequencerRuntimeProps.includes('setSelectedSynthPitchSettings') &&
     selectedPageSequencerRuntimeProps.includes('synthStepOverridesRef') &&
     selectedPageControlRuntimeProps.includes('SelectedAudioEnginePageRuntimeBridgeOptions') &&
@@ -1110,7 +1113,7 @@ assert(
     !app.includes('setStepPositionCallback={setSelectedSynthStepPositionCallback}') &&
     synthPageSequencerBridge.includes('setSelectedSynthStepOverrides(synthEngineStepOverrides(overrides))') &&
     synthPageSequencerBridge.includes('setSelectedSynthEuclidEvolveConfigs(configs)') &&
-    synthPageSequencerBridge.includes('captureSelectedSynthEuclidLaneHome(laneIdx, synthSubLaneStatesRef.current?.[laneIdx]?.pitch)'),
+    synthPageSequencerBridge.includes('captureSelectedSynthEuclidLaneHome(laneIdx, pitchState ?? synthSubLaneStatesRef.current?.[laneIdx]?.pitch)'),
   'App must delegate Synth page selected-runtime sequencer bridge wiring through useSelectedAudioEnginePageRuntimeBridges',
 );
 assert(
@@ -1451,6 +1454,7 @@ const requiredPrerequisiteSteps = [
   'core:product:sources',
   'core:product:assets',
   'core:product:source-parity',
+  'core:product:nature-runtime',
   'core:product:web-graph-parity:audit',
   'core:product:web-graph-capture-smoke:fast',
   'core:product:web-host',

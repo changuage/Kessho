@@ -1,10 +1,9 @@
-import {
-  createCoreProductSequencerLaneParamEvent,
-  type CoreProductEvent,
-} from '../../coreProductEvents';
+import { createCoreProductSequencerLaneParamEvent, type CoreProductEvent } from '../../coreProductEvents';
 import type { NormalizedSequencerEvolveConfig } from '../../CoreProductHostSequencerEvolveConfig';
 import { evolveCoreProductSynthNoteRange } from '../../CoreProductHostSynthNoteRangeEvolve';
+import type { CoreProductSequencerLaneUiState } from '../../coreProductTelemetry';
 import { KESSHO_PRODUCT_PARAM_IDS } from '../../generated/kesshoProductParams';
+import type { SequencerPitchSettings } from '../../sequencerPitchSettings';
 
 type NoteRange = { min: number; max: number };
 
@@ -39,4 +38,30 @@ export function evolveCoreProductSequencerSynthNoteRange(options: {
     options.publish(options.laneIndex, evolved.range.min, evolved.range.max);
   }
   return { handled: evolved.handled, changed: !!evolved.range };
+}
+
+export function reconcileCoreProductSequencerSynthNoteRange(options: {
+  laneIndex: number;
+  lane: CoreProductSequencerLaneUiState;
+  synthPitchSettings: unknown;
+  clearOverride: boolean;
+  setSynthNoteRangeOverride: (laneIndex: number, range: NoteRange | null) => void;
+  publishNoteRange: (laneIndex: number, noteMin: number, noteMax: number) => void;
+}): void {
+  const range = laneNoteRange(options.lane);
+  if (!range || !laneUsesNoteRangePitch(options.synthPitchSettings, options.laneIndex)) return;
+  options.setSynthNoteRangeOverride(options.laneIndex, options.clearOverride ? null : range);
+  options.publishNoteRange(options.laneIndex, range.min, range.max);
+}
+
+function laneNoteRange(lane: CoreProductSequencerLaneUiState): NoteRange | null {
+  const min = lane.noteRangeMin;
+  const max = lane.noteRangeMax;
+  return Number.isFinite(min) && Number.isFinite(max) && max >= min ? { min, max } : null;
+}
+
+function laneUsesNoteRangePitch(settings: unknown, laneIndex: number): boolean {
+  if (!Array.isArray(settings)) return false;
+  const setting = settings[laneIndex] as Partial<SequencerPitchSettings> | null | undefined;
+  return setting?.mode === 'noteRange';
 }

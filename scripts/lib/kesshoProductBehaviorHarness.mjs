@@ -150,9 +150,93 @@ function event(type, fields = {}) {
   return { type, ...fields };
 }
 
+const HARNESS_PITCH_MODE_IDS = Object.freeze({
+  semitones: 0,
+  notes: 1,
+  noteRange: 2,
+});
+
+const HARNESS_PITCH_SCALE_IDS = Object.freeze({
+  Chromatic: 0,
+  Major: 1,
+  Minor: 2,
+  Dorian: 3,
+  Phrygian: 4,
+  Lydian: 5,
+  Mixolydian: 6,
+  Locrian: 7,
+  Pentatonic: 8,
+  MinPenta: 9,
+  Blues: 10,
+  HarmonicMinor: 11,
+  MelodicMinor: 12,
+  WholeTone: 13,
+  Diminished: 14,
+  Augmented: 15,
+  HungarianMinor: 16,
+  Japanese: 17,
+  Arabic: 18,
+});
+
+function normalizeHarnessPitchSetting(value) {
+  const setting = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const mode = Object.hasOwn(HARNESS_PITCH_MODE_IDS, setting.mode) ? setting.mode : 'semitones';
+  const root = typeof setting.root === 'number' && Number.isFinite(setting.root)
+    ? Math.max(0, Math.min(127, setting.root))
+    : 60;
+  const scale = Object.hasOwn(HARNESS_PITCH_SCALE_IDS, setting.scale) ? setting.scale : 'Major';
+  return { mode, root, scale };
+}
+
+function createHarnessSequencerPitchSettingEvents(sequencer, settings) {
+  if (!Array.isArray(settings)) return [];
+  return settings.flatMap((setting, laneIndex) => {
+    const pitch = normalizeHarnessPitchSetting(setting);
+    return [
+      event('sequencer-lane-param', {
+        sequencer,
+        laneIndex,
+        paramId: 'SequencerLanePitchMode',
+        value: HARNESS_PITCH_MODE_IDS[pitch.mode],
+        eventKind: 8,
+        targetId: sequencer === 'synth' ? 1 : 2,
+        index: laneIndex,
+      }),
+      event('sequencer-lane-param', {
+        sequencer,
+        laneIndex,
+        paramId: 'SequencerLanePitchRoot',
+        value: pitch.root,
+        eventKind: 8,
+        targetId: sequencer === 'synth' ? 1 : 2,
+        index: laneIndex,
+      }),
+      event('sequencer-lane-param', {
+        sequencer,
+        laneIndex,
+        paramId: 'SequencerLanePitchScale',
+        value: HARNESS_PITCH_SCALE_IDS[pitch.scale],
+        eventKind: 8,
+        targetId: sequencer === 'synth' ? 1 : 2,
+        index: laneIndex,
+      }),
+    ];
+  });
+}
+
 export function loadCoreProductHostHarness(options = {}) {
   const diagnostics = loadFallbackDiagnosticsHarness();
   const consoleCapture = createConsoleCapture();
+  const assetManifest = JSON.parse(readProjectFile('src/audio/coreProductAssetManifest.json'));
+  const soundscapeAssets = Object.freeze(Object.fromEntries(assetManifest.soundscapes.map((asset) => [
+    asset.key,
+    {
+      assetId: asset.assetId,
+      path: asset.path,
+      layer: asset.layer,
+      startupPreload: asset.startupPreload,
+    },
+  ])));
   const runtimeInstances = [];
   let nowMs = 1000;
   const runtimeWalkConfigFromState = (state) => ({
@@ -256,6 +340,7 @@ export function loadCoreProductHostHarness(options = {}) {
       webWorkletHeapBytes: 1,
       totalRegisteredDecodedBytes: 1,
     },
+    CORE_PRODUCT_SOUNDSCAPE_ASSETS: soundscapeAssets,
     initialCoreProductCapabilityReport: {
       engineMode: 'core-product',
       unsupportedMethods: [],
@@ -291,6 +376,27 @@ export function loadCoreProductHostHarness(options = {}) {
           ].join('|')
         : 'none',
     }),
+    getUtcBucket: (seedWindow) => {
+      const now = new Date();
+      const year = now.getUTCFullYear();
+      const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(now.getUTCDate()).padStart(2, '0');
+      if (seedWindow === 'day') return `${year}-${month}-${day}`;
+      const hour = String(now.getUTCHours()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hour}`;
+    },
+    xmur3: (str) => {
+      let h = 1779033703 ^ str.length;
+      for (let index = 0; index < str.length; index += 1) {
+        h = Math.imul(h ^ str.charCodeAt(index), 3432918353);
+        h = (h << 13) | (h >>> 19);
+      }
+      return () => {
+        h = Math.imul(h ^ (h >>> 16), 2246822507);
+        h = Math.imul(h ^ (h >>> 13), 3266489909);
+        return (h ^= h >>> 16) >>> 0;
+      };
+    },
     runtimeWalkConfigFromState,
     runtimeWalkConfigChanged: (left, right) => Math.abs(left.speed - right.speed) > 0.0005 || left.mode !== right.mode,
     coreProductRangeValueContext: (bpm, state) => ({
@@ -336,6 +442,24 @@ export function loadCoreProductHostHarness(options = {}) {
     CORE_PRODUCT_SUBLANE_DIRECTIONS: { forward: 0, reverse: 1, pingpong: 2 },
     CORE_PRODUCT_STEP_TOGGLE_FLAGS: { active: 1, clearLane: 2, clearField: 4, rangeValue: 8 },
     CORE_PRODUCT_DICE_FLAGS: { trigger: 1, probability: 2, ratchet: 4, midiNote: 8, expression: 16, morph: 32, distance: 64, swing: 128 },
+    CORE_PRODUCT_EVOLVE_FLAGS: {
+      rotateDrift: 1 << 8,
+      swingDrift: 1 << 9,
+      probDrift: 1 << 10,
+      ghostNotes: 1 << 11,
+      ratchetSpray: 1 << 12,
+      hitDrift: 1 << 13,
+      pitchWalk: 1 << 14,
+      valueDrift: 1 << 15,
+      valueScramble: 1 << 16,
+      valueWiden: 1 << 17,
+      subLaneLengthDrift: 1 << 18,
+      subLaneDirectionFlip: 1 << 19,
+      triggerToggle: 1 << 20,
+      mutationStrict: 1 << 29,
+      rngStream: 1 << 30,
+      modeParity: 0x80000000,
+    },
     CORE_PRODUCT_STEP_VALUE_FIELDS: {
       trigger: 0 << 8,
       probability: 1 << 8,
@@ -352,8 +476,9 @@ export function loadCoreProductHostHarness(options = {}) {
       pad2: 2,
       lead1: 3,
       lead2: 4,
-      piano: 5,
-      granular: 6,
+      drum: 5,
+      piano: 6,
+      soundscape: 7,
     },
     CORE_PRODUCT_GRAPH_TAP_IDS: {
       master: 1,
@@ -361,6 +486,11 @@ export function loadCoreProductHostHarness(options = {}) {
       lead: 3,
       piano: 4,
       granular: 5,
+    },
+    getEffectiveTension: (globalTension, mode, value) => {
+      if (mode === 'bypass') return -1;
+      if (mode === 'locked') return Math.max(0, Math.min(1, value));
+      return Math.max(0, Math.min(1, globalTension + value));
     },
     midiSampleOffset: () => 0,
     createCoreProductDrumTriggerEvent: (voiceIndex, velocity) => event('drum-trigger', { voiceIndex, velocity }),
@@ -374,7 +504,16 @@ export function loadCoreProductHostHarness(options = {}) {
       event('modulation-range', { target, range, mode, currentValue, valueContext }),
     createCoreProductSequencerClearStepsEvent: (sequencer, laneIndex) =>
       event('sequencer-clear-steps', { sequencer, laneIndex }),
-    createCoreProductSequencerDiceEvent: (sequencer, laneIndex, intensity) =>
+    createCoreProductSequencerDiceEvent: (
+      sequencer,
+      laneIndex,
+      intensity = 1,
+      seed = 0,
+      flags = 0,
+      writeOffset = 0,
+      barIndex = 0,
+      effectiveTension,
+    ) =>
       event('sequencer-dice', {
         sequencer,
         laneIndex,
@@ -382,8 +521,73 @@ export function loadCoreProductHostHarness(options = {}) {
         eventKind: 29,
         targetId: sequencer === 'synth' ? 1 : 2,
         index: laneIndex,
+        value: intensity,
+        value2: seed,
+        value3: writeOffset,
+        value4: barIndex,
+        flags,
+        effectiveTension,
       }),
+    createCoreProductSequencerParityEvolveState: () => ({
+      synthStates: [],
+      drumHomes: [],
+      drumLastEvolveBars: [],
+      rngKey: null,
+      rng: null,
+    }),
+    evolveCoreProductSequencerLaneWithSharedModel: (input) => {
+      input.publishOverrides(input.sequencer === 'synth' ? 'synthEvolveOverrides' : 'drumEvolveOverrides', input.laneIndex, {
+        manualDiceHome: input.sequencer === 'synth',
+        harnessEvolution: input.config.evolution,
+      });
+      if (input.runtimeReady) {
+        input.post(event('sequencer-step', {
+          sequencer: input.sequencer,
+          laneIndex: input.laneIndex,
+          step: 0,
+          value: true,
+        }));
+      }
+      return {
+        handled: true,
+        changed: true,
+        adapterState: {
+          ...input.adapterState,
+          [`${input.sequencer === 'synth' ? 'synthEuclid' : 'drumEuclid'}${input.laneIndex + 1}ManualDiceHarness`]: input.config.evolution,
+        },
+      };
+    },
     createCoreProductSequencerEvolveClock: () => ({ tick: () => {}, reset: () => {} }),
+    CoreProductSequencerEvolveRuntimeBridge: class {
+      constructor(options) {
+        this.options = options;
+        this.resetCount = 0;
+        this.tickTelemetry = [];
+      }
+      reset() {
+        this.resetCount += 1;
+      }
+      tick(hostTelemetry) {
+        this.tickTelemetry.push(hostTelemetry);
+      }
+      setEvolvedSequencerLaneSwing(sequencer, laneIndex, swing) {
+        this.options.captureLaneHome(sequencer, laneIndex);
+        const normalizedSwing = Math.max(0, Math.min(0.75, swing));
+        this.options.setAdapterState({
+          ...this.options.adapterState(),
+          [`${sequencer === 'synth' ? 'synthEuclid' : 'drumEuclid'}${laneIndex + 1}Swing`]: normalizedSwing,
+        });
+        if (this.options.runtimeReady()) {
+          this.options.post(event('sequencer-lane-param', {
+            sequencer,
+            laneIndex,
+            paramId: 'SequencerLaneSwing',
+            value: normalizedSwing,
+          }));
+        }
+        this.options.publish(sequencer === 'synth' ? 'synthEvolveOverrides' : 'drumEvolveOverrides', laneIndex, { swing: normalizedSwing });
+      }
+    },
     createCoreProductSequencerLaneParamEvent: (sequencer, laneIndex, paramId, value) =>
       event('sequencer-lane-param', {
         sequencer,
@@ -394,6 +598,7 @@ export function loadCoreProductHostHarness(options = {}) {
         targetId: sequencer === 'synth' ? 1 : 2,
         index: laneIndex,
       }),
+    createCoreProductSequencerPitchSettingEvents: createHarnessSequencerPitchSettingEvents,
     createCoreProductSequencerResetHomeEvent: (sequencer, laneIndex) =>
       event('sequencer-reset-home', {
         sequencer,
@@ -587,9 +792,22 @@ Object.assign(globalThis, {
 ${sequencerEvolveConfigJs}
 Object.assign(globalThis, {
   diceFlagsForEvolveConfig,
+  evolveMethodFlagsForEvolveConfig,
   normalizeEvolveConfigs,
 });
 }`, context, { filename: sequencerEvolveConfigPath });
+
+  const sequencerEvolveTensionPath = 'src/audio/CoreProductHostSequencerEvolveTension.ts';
+  const sequencerEvolveTensionSource = stripImportsAndExports(readProjectFile(sequencerEvolveTensionPath));
+  const sequencerEvolveTensionJs = transpileForVm(sequencerEvolveTensionSource, resolve(root, sequencerEvolveTensionPath));
+  vm.runInNewContext(`{
+${sequencerEvolveTensionJs}
+Object.assign(globalThis, {
+  coreProductSynthSequencerEffectiveEvolveTension,
+  coreProductDrumSequencerEffectiveEvolveTension,
+  coreProductSequencerEffectiveEvolveTension,
+});
+}`, context, { filename: sequencerEvolveTensionPath });
 
   const sequencerEvolvePath = 'src/audio/CoreProductHostSequencerEvolve.ts';
   const sequencerEvolveSource = stripImportsAndExports(readProjectFile(sequencerEvolvePath));
@@ -622,6 +840,7 @@ Object.assign(globalThis, {
   const sequencerCacheBridgeJs = transpileForVm(sequencerCacheBridgeSource, resolve(root, sequencerCacheBridgePath));
   vm.runInNewContext(`${sequencerCacheBridgeJs}
 Object.assign(globalThis, {
+  createCoreProductSequencerCacheState,
   selectCoreProductSequencerCache,
   ensureCoreProductSequencerLaneCache,
   coreProductSequencerLaneCacheCount,
@@ -629,6 +848,36 @@ Object.assign(globalThis, {
   cloneCoreProductSequencerStepValueOverrides,
   enabledCoreProductSequencerSubLanes,
 });`, context, { filename: sequencerCacheBridgePath });
+
+  const sequencerNativeEvolveFlagsPath = 'src/audio/product/host/CoreProductSequencerNativeEvolveFlags.ts';
+  const sequencerNativeEvolveFlagsSource = stripImportsAndExports(readProjectFile(sequencerNativeEvolveFlagsPath));
+  const sequencerNativeEvolveFlagsJs = transpileForVm(sequencerNativeEvolveFlagsSource, resolve(root, sequencerNativeEvolveFlagsPath));
+  vm.runInNewContext(`{
+${sequencerNativeEvolveFlagsJs}
+Object.assign(globalThis, {
+  nativeEvolveFlagsForEvolveConfig,
+});
+}`, context, { filename: sequencerNativeEvolveFlagsPath });
+
+  const manualSynthDiceBridgePath = 'src/audio/product/host/CoreProductManualSynthDiceBridge.ts';
+  const manualSynthDiceBridgeSource = stripImportsAndExports(readProjectFile(manualSynthDiceBridgePath));
+  const manualSynthDiceBridgeJs = transpileForVm(manualSynthDiceBridgeSource, resolve(root, manualSynthDiceBridgePath));
+  vm.runInNewContext(`${manualSynthDiceBridgeJs}
+Object.assign(globalThis, {
+  createCoreProductManualSynthDiceState,
+  armCoreProductSequencerManualDice,
+  coreProductManualSynthDiceChanged,
+  markCoreProductManualSynthDiceReady,
+  applyCoreProductManualSynthDice,
+});`, context, { filename: manualSynthDiceBridgePath });
+
+  const sequencerMorphFeedbackBridgePath = 'src/audio/product/host/CoreProductSequencerMorphFeedbackBridge.ts';
+  const sequencerMorphFeedbackBridgeSource = stripImportsAndExports(readProjectFile(sequencerMorphFeedbackBridgePath));
+  const sequencerMorphFeedbackBridgeJs = transpileForVm(sequencerMorphFeedbackBridgeSource, resolve(root, sequencerMorphFeedbackBridgePath));
+  vm.runInNewContext(`${sequencerMorphFeedbackBridgeJs}
+Object.assign(globalThis, {
+  CoreProductSequencerMorphFeedbackBridge,
+});`, context, { filename: sequencerMorphFeedbackBridgePath });
 
   const sequencerEvolvePayloadBridgePath = 'src/audio/product/host/CoreProductSequencerEvolvePayloadBridge.ts';
   const sequencerEvolvePayloadBridgeSource = stripImportsAndExports(readProjectFile(sequencerEvolvePayloadBridgePath));
@@ -772,6 +1021,16 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   enrichCoreProductModulationDebug,
 });`, context, { filename: modulationDebugEnricherPath });
+
+  const earthTextureDebugPath = 'src/audio/product/host/CoreProductEarthTextureDebug.ts';
+  const earthTextureDebugSource = stripImportsAndExports(readProjectFile(earthTextureDebugPath));
+  const earthTextureDebugJs = transpileForVm(earthTextureDebugSource, resolve(root, earthTextureDebugPath));
+  vm.runInNewContext(`(() => {
+${earthTextureDebugJs}
+Object.assign(globalThis, {
+  createCoreProductEarthTextureDebugState,
+});
+})();`, context, { filename: earthTextureDebugPath });
 
   const runtimeWalkDebugPath = 'src/audio/product/host/CoreProductRuntimeWalkDebug.ts';
   const runtimeWalkDebugSource = stripImportsAndExports(readProjectFile(runtimeWalkDebugPath));

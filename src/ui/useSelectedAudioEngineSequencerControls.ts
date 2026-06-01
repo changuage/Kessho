@@ -21,11 +21,16 @@ type SelectedAudioEngineSequencerControls = {
   setSelectedSynthEuclidSwings: (swings: readonly unknown[]) => void;
   setSelectedDrumSubLaneEnabled: (states: Record<string, boolean>[]) => void;
   setSelectedSynthSubLaneEnabled: (states: Record<string, boolean>[]) => void;
+  setSelectedDrumPitchSettings: (settings: readonly unknown[]) => void;
   setSelectedSynthPitchSettings: (settings: readonly unknown[]) => void;
   setSelectedSynthPitchBindingModes: (modes: readonly unknown[]) => void;
   setSelectedDrumStepOverrides: (overrides: unknown) => void;
   setSelectedSynthStepOverrides: (overrides: unknown) => void;
-  setSelectedSequencerPresetHomeSnapshots: () => void;
+  setSelectedSequencerPresetHomeSnapshots: (
+    drumPitchSettings?: readonly unknown[],
+    drumPitchStates?: readonly (SequencerPitchState | undefined)[],
+    synthPitchStates?: readonly (SequencerPitchState | undefined)[],
+  ) => void;
   resetSelectedSynthEuclidLaneHome: (laneIndex: number) => void;
   captureSelectedSynthEuclidLaneHome: (laneIndex: number, pitchState?: SequencerPitchState) => void;
   diceSelectedSynthEuclidLane: (laneIndex: number, intensity?: number) => void;
@@ -102,6 +107,13 @@ export function useSelectedAudioEngineSequencerControls(
     selectedProductRuntime.setSynthSubLaneEnabled(states);
   }, [audioEngineRuntimeMode]);
 
+  const setSelectedDrumPitchSettings = useCallback((settings: readonly unknown[]): void => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      productEngine.applySequencerUiPatch({ kind: 'drum-pitch-settings', settings });
+      return;
+    }
+  }, [audioEngineRuntimeMode]);
+
   const setSelectedSynthPitchSettings = useCallback((settings: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
       productEngine.applySequencerUiPatch({ kind: 'synth-pitch-settings', settings });
@@ -134,9 +146,13 @@ export function useSelectedAudioEngineSequencerControls(
     selectedProductRuntime.setSynthStepOverrides(overrides);
   }, [audioEngineRuntimeMode]);
 
-  const setSelectedSequencerPresetHomeSnapshots = useCallback((): void => {
+  const setSelectedSequencerPresetHomeSnapshots = useCallback((
+    drumPitchSettings?: readonly unknown[],
+    drumPitchStates?: readonly (SequencerPitchState | undefined)[],
+    synthPitchStates?: readonly (SequencerPitchState | undefined)[],
+  ): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.applySequencerUiPatch({ kind: 'preset-home-snapshots' });
+      productEngine.applySequencerUiPatch({ kind: 'preset-home-snapshots', drumPitchSettings, drumPitchStates, synthPitchStates });
       return;
     }
     selectedProductRuntime.setSequencerPresetHomeSnapshots();
@@ -199,6 +215,7 @@ export function useSelectedAudioEngineSequencerControls(
     setSelectedSynthEuclidSwings,
     setSelectedDrumSubLaneEnabled,
     setSelectedSynthSubLaneEnabled,
+    setSelectedDrumPitchSettings,
     setSelectedSynthPitchSettings,
     setSelectedSynthPitchBindingModes,
     setSelectedDrumStepOverrides,

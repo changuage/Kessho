@@ -35,6 +35,11 @@ import SeqMiniOverview from '../drums/SeqMiniOverview';
 import { SCALES, normalizeNoteDegreeOffset, scaleDegreeToSemitone } from '../../audio/drumSeqTypes';
 import type { ClockDivision, PitchBindingMode } from '../../audio/drumSeqTypes';
 import {
+  resolveHarmonyIntentToNotePool,
+  type HarmonyChordSlot,
+  type HarmonyIntent,
+} from '../../audio/CoreProductHarmonyControl';
+import {
   normalizeSequencerPitchBindingMode,
   normalizeSequencerPitchBindingModes,
 } from '../../audio/sequencerPitchBinding';
@@ -43,7 +48,7 @@ import type { HarmonyState } from '../../audio/harmony';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { SliderPrimitive } from '../sliderSystem';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
-import { useRuntimeValue } from '../runtimeValueState';
+import { removeRuntimeValues, useRuntimeValue } from '../runtimeValueState';
 import { useRuntimeSliderPosition } from '../runtimeSliderState';
 import './synth.css';
 import SynthPresetManager from './SynthPresetManager';
@@ -100,8 +105,20 @@ import {
   Lead4opFMEditorOverlay,
   type Lead4opFMEditorApplyRequest,
 } from './Lead4opFMEditorOverlay';
-import { HarmonyEnginePanel } from './HarmonyEnginePanel';
 import { SEQUENCER_LANE_COLORS, SEQUENCER_SUB_LANE_COLORS, SOURCE_COLORS } from '../../designSystem/colors';
+import {
+  createProductArpHarmonyContext,
+  defaultProductArpConfig,
+  normalizeProductArpConfig,
+  normalizeProductArpConfigs,
+  productArpPulseValues,
+  resolveProductArpMidiPattern,
+  type ProductArpConfig,
+  type ProductArpDirection,
+  type ProductArpPulseCount,
+  type ProductArpSlotChoice,
+  type ProductArpSourceMode,
+} from '../../audio/productArpeggiator';
 
 const OV_PROB_DRAG_PX = 80;
 
@@ -153,10 +170,74 @@ const SYNTH_LANE_ENABLED_KEYS = [
 type EvolvedSequencerPatch = {
   laneIndex: number;
   version: number;
-  data: Partial<StepOverrides> & { pitchSettings?: (PitchSettings | null)[] };
+  data: Partial<StepOverrides> & { pitchSettings?: (PitchSettings | null)[]; manualDiceHome?: boolean };
   swing?: number;
   subLaneStates?: Partial<Record<SubLaneKind, Partial<SubLaneState>>>;
 };
+
+const STEP_OVERRIDE_VALUE_KEYS = ['expression', 'morph', 'distance', 'probability', 'ratchet', 'trigCondition', 'pitch'] as const;
+const STEP_OVERRIDE_RANGE_KEYS = ['expressionRanges', 'morphRanges', 'distanceRanges'] as const;
+const STEP_OVERRIDE_DIRECTION_KEYS = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection'] as const;
+const SYNTH_DICE_SYNC_SUPPRESSION_MS = 4000;
+
+function sortedToggleEntries(value: Map<number, boolean> | null | undefined): [number, boolean][] {
+  return Array.from(value?.entries() ?? []).sort(([left], [right]) => left - right);
+}
+
+function stepOverrideLaneSignature(overrides: StepOverrides, laneIndex: number): string {
+  return JSON.stringify({
+    triggerToggles: sortedToggleEntries(overrides.triggerToggles[laneIndex]),
+    expression: overrides.expression[laneIndex] ?? null,
+    morph: overrides.morph[laneIndex] ?? null,
+    distance: overrides.distance[laneIndex] ?? null,
+    probability: overrides.probability[laneIndex] ?? null,
+    ratchet: overrides.ratchet[laneIndex] ?? null,
+    trigCondition: overrides.trigCondition[laneIndex] ?? null,
+    pitch: overrides.pitch[laneIndex] ?? null,
+    expressionRanges: overrides.expressionRanges?.[laneIndex] ?? null,
+    morphRanges: overrides.morphRanges?.[laneIndex] ?? null,
+    distanceRanges: overrides.distanceRanges?.[laneIndex] ?? null,
+    expressionDirection: overrides.expressionDirection[laneIndex] ?? null,
+    pitchDirection: overrides.pitchDirection[laneIndex] ?? null,
+    morphDirection: overrides.morphDirection[laneIndex] ?? null,
+    distanceDirection: overrides.distanceDirection[laneIndex] ?? null,
+  });
+}
+
+function applyEvolvedStepOverridePatch(
+  previous: StepOverrides,
+  laneIndex: number,
+  data: EvolvedSequencerPatch['data'],
+): StepOverrides {
+  const next = { ...previous };
+  if (data.triggerToggles?.[laneIndex] != null) {
+    const arr = [...previous.triggerToggles];
+    arr[laneIndex] = new Map(data.triggerToggles[laneIndex]);
+    next.triggerToggles = arr;
+  }
+  for (const key of STEP_OVERRIDE_VALUE_KEYS) {
+    if (data[key] && data[key]![laneIndex] != null) {
+      const arr = [...previous[key]];
+      arr[laneIndex] = data[key]![laneIndex];
+      (next as Record<string, unknown>)[key] = arr;
+    }
+  }
+  for (const key of STEP_OVERRIDE_RANGE_KEYS) {
+    if (data[key]?.[laneIndex] != null) {
+      const arr = [...(previous[key] ?? [null, null, null, null])];
+      arr[laneIndex] = data[key]![laneIndex];
+      (next as Record<string, unknown>)[key] = arr;
+    }
+  }
+  for (const key of STEP_OVERRIDE_DIRECTION_KEYS) {
+    if (data[key]?.[laneIndex] != null) {
+      const arr = [...previous[key]];
+      arr[laneIndex] = data[key]![laneIndex] ?? null;
+      next[key] = arr;
+    }
+  }
+  return next;
+}
 
 const SYNTH_SOURCES = [
   { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
@@ -250,7 +331,18 @@ type KeyboardInputMode = 'play' | 'sequence';
 type KeyboardHarmonyStatus = 'root' | 'chord' | 'scale' | 'outside';
 type KeyboardSequenceCursorTarget = 'trigger' | 'pitch';
 type SynthKeyboardEditLane = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance';
+type SynthDetailOpenLane = SubLaneKind | 'trigger' | 'arp';
 type LeadPresetSlotKey = 'lead1PresetA' | 'lead1PresetB' | 'lead2PresetC' | 'lead2PresetD';
+const PRESET_ENDPOINT_RUNTIME_MORPH_KEY: Partial<Record<keyof SliderState, keyof SliderState>> = {
+  padPresetA: 'padMorph',
+  padPresetB: 'padMorph',
+  pad2PresetA: 'pad2Morph',
+  pad2PresetB: 'pad2Morph',
+  lead1PresetA: 'lead1Morph',
+  lead1PresetB: 'lead1Morph',
+  lead2PresetC: 'lead2Morph',
+  lead2PresetD: 'lead2Morph',
+};
 type LeadPresetOption = {
   id: string;
   name: string;
@@ -285,12 +377,108 @@ export interface SynthKeyboardUiState {
 }
 
 const SYNTH_KEYBOARD_EDIT_LANES: readonly SynthKeyboardEditLane[] = ['trigger', 'pitch', 'expression', 'morph', 'distance'] as const;
+const ARP_DIRECTION_OPTIONS: Array<{ value: ProductArpDirection; label: string }> = [
+  { value: 'up', label: 'Up' },
+  { value: 'down', label: 'Down' },
+  { value: 'upDown', label: 'Up/Down' },
+  { value: 'downUp', label: 'Down/Up' },
+  { value: 'randomLiveTone', label: 'Random Live' },
+  { value: 'diceHold', label: 'Dice Hold' },
+];
+const ARP_SOURCE_OPTIONS: Array<{ value: ProductArpSourceMode; label: string }> = [
+  { value: 'followHarmony', label: 'Follow' },
+  { value: 'slotLane', label: 'Slot Lane' },
+];
+const ARP_SLOT_CHOICES: Array<{ value: ProductArpSlotChoice; label: string }> = [
+  { value: -1, label: 'F' },
+  { value: 0, label: 'S1' },
+  { value: 1, label: 'S2' },
+  { value: 2, label: 'S3' },
+  { value: 3, label: 'S4' },
+  { value: 4, label: 'S5' },
+  { value: 5, label: 'S6' },
+  { value: 6, label: 'S7' },
+  { value: 7, label: 'S8' },
+];
+const ARP_ROMAN_DEGREES = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'] as const;
+const ARP_QUALITY_LABELS = {
+  auto: 'Auto',
+  dim: 'Dim',
+  min: 'Min',
+  maj: 'Maj',
+  sus: 'Sus',
+  maj7: 'M7',
+  min7: 'm7',
+  dom7: '7',
+  add9: 'add9',
+  six: '6',
+  sixNine: '6/9',
+  nine: '9',
+  quartal: 'Quartal',
+  cluster: 'Cluster',
+  custom: 'Custom',
+} as const;
+const ARP_EXTENSION_LABELS: Readonly<Record<string, string>> = {
+  six: '6',
+  min7: 'm7',
+  maj7: 'M7',
+  dom7: '7',
+  add9: '9',
+  nine: '9',
+  sixNine: '6/9',
+};
 
 function normalizeKeyboardStepArray(steps?: number[]): number[] {
   return Array.from({ length: 4 }, (_, index) => {
     const value = steps?.[index];
     return Number.isFinite(value) ? Math.max(0, Math.floor(value as number)) : 0;
   });
+}
+
+function formatArpPitchClass(value: number): string {
+  return CHROMATIC_NOTE_NAMES[((Math.round(value) % 12) + 12) % 12] ?? 'C';
+}
+
+function formatArpIntentTitle(intent: HarmonyIntent | null | undefined): string {
+  if (!intent) return 'Empty';
+  const root = intent.rootMode === 'degree'
+    ? ARP_ROMAN_DEGREES[Math.max(0, Math.min(6, Math.round(intent.degree)))] ?? 'I'
+    : formatArpPitchClass(intent.rootNote);
+  const quality = ARP_QUALITY_LABELS[intent.quality] ?? intent.quality;
+  const extensions = intent.extensions
+    .map((extension) => ARP_EXTENSION_LABELS[extension] ?? extension)
+    .filter((extension) => extension !== quality);
+  return [root, quality, ...extensions].join(' ');
+}
+
+function formatArpSlotChoiceLabel(slots: readonly HarmonyChordSlot[], choice: ProductArpSlotChoice): string {
+  if (choice < 0) return 'F';
+  const slot = slots[choice];
+  return slot ? `S${choice + 1} ${formatArpIntentTitle(slot.intent)}` : `S${choice + 1}`;
+}
+
+function formatArpSlotChoiceTitle(
+  slots: readonly HarmonyChordSlot[],
+  choice: ProductArpSlotChoice,
+  harmony: ReturnType<typeof createProductArpHarmonyContext>,
+): string {
+  if (choice < 0) return 'Follow current harmony';
+  const slot = slots[choice];
+  if (!slot) return `Slot ${choice + 1}`;
+  const notes = resolveHarmonyIntentToNotePool({
+    intent: { ...slot.intent, source: 'slot' },
+    rootMidi: harmony.rootMidi,
+    scaleId: harmony.scaleId,
+    tension: harmony.tension,
+  }).map(formatMidiNoteName);
+  return `S${choice + 1} ${formatArpIntentTitle(slot.intent)}${notes.length ? ` · ${notes.join(' ')}` : ''}`;
+}
+
+function nextArpSlotChoice(choice: ProductArpSlotChoice, delta: 1 | -1): ProductArpSlotChoice {
+  const values = ARP_SLOT_CHOICES.map((item) => item.value);
+  const index = values.indexOf(choice);
+  const nextIndex = ((index >= 0 ? index : 0) + delta + values.length) % values.length;
+  return values[nextIndex] ?? -1;
 }
 
 function getSynthKeyboardEditLane(openLane: string): SynthKeyboardEditLane {
@@ -503,7 +691,7 @@ export interface SynthPageProps {
   /** Reset evolve home */
   resetEvolveHome?: (laneIdx: number) => void;
   /** Capture current lane state as evolve home */
-  captureEvolveHome?: (laneIdx: number) => void;
+  captureEvolveHome?: (laneIdx: number, pitchState?: SubLaneState | null) => void;
   /** Dice: regenerate lane with random values */
   diceLane?: (laneIdx: number, intensity: number) => void;
   /** Evolved step overrides pushed from audio engine (for visual sync) */
@@ -528,6 +716,10 @@ export interface SynthPageProps {
   initialKeyboardUiState?: SynthKeyboardUiState;
   /** Called when synth keyboard popup state changes */
   onKeyboardUiStateChange?: (state: SynthKeyboardUiState) => void;
+  /** Initial per-lane ARP configs to restore across tab switches / preset loads */
+  initialArpConfigs?: ProductArpConfig[];
+  /** Called when ARP configs change, so parent can persist and bridge engine lane flags */
+  onArpConfigsChange?: (configs: ProductArpConfig[]) => void;
   /** Fire a one-shot manual audition note from the synth keyboard */
   onAuditionNote?: (note: ManualSynthNoteOptions) => void | Promise<void>;
   /** Current harmony snapshot for keyboard note coloring */
@@ -579,6 +771,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onPitchBindingModesChange,
     initialKeyboardUiState,
     onKeyboardUiStateChange,
+    initialArpConfigs,
+    onArpConfigsChange,
     onAuditionNote,
     harmonyState,
   } = props;
@@ -590,6 +784,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [diceIntensity, setDiceIntensity] = useState(0.5);
+  const pendingDiceSyncUntilRef = useRef<number[]>(Array.from({ length: LANE_CONFIGS.length }, () => 0));
+  const pendingDiceExpectedSignatureRef = useRef<(string | null)[]>(Array.from({ length: LANE_CONFIGS.length }, () => null));
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(initialKeyboardUiState?.open ?? false);
   const [keyboardInputMode, setKeyboardInputMode] = useState<KeyboardInputMode>(initialKeyboardUiState?.inputMode ?? 'play');
@@ -855,10 +1051,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     });
   }, [getPadFilterFreq, getPadLfoValue, liveSourceTelemetryAvailable]);
 
-  const livePad1Morph = useRuntimeValue('padMorph', state.padMorph ?? 0) ?? (state.padMorph ?? 0);
-  const livePad2Morph = useRuntimeValue('pad2Morph', state.pad2Morph ?? 0) ?? (state.pad2Morph ?? 0);
-  const liveLead1Morph = useRuntimeValue('lead1Morph', state.lead1Morph ?? 0) ?? (state.lead1Morph ?? 0);
-  const liveLead2Morph = useRuntimeValue('lead2Morph', state.lead2Morph ?? 0) ?? (state.lead2Morph ?? 0);
+  const livePad1Morph = useRuntimeValue('padMorph');
+  const livePad2Morph = useRuntimeValue('pad2Morph');
+  const liveLead1Morph = useRuntimeValue('lead1Morph');
+  const liveLead2Morph = useRuntimeValue('lead2Morph');
   const livePad1Distance = useRuntimeValue('padDistance', state.padDistance ?? 0) ?? (state.padDistance ?? 0);
   const livePad2Distance = useRuntimeValue('pad2Distance', state.pad2Distance ?? 0) ?? (state.pad2Distance ?? 0);
   const liveLead1Distance = useRuntimeValue('lead1Distance', state.lead1Distance ?? 0) ?? (state.lead1Distance ?? 0);
@@ -920,10 +1116,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const liveSynthNoteMax3 = useRuntimeValue('synthEuclid3NoteMax', state.synthEuclid3NoteMax ?? 72) ?? (state.synthEuclid3NoteMax ?? 72);
   const liveSynthNoteMin4 = useRuntimeValue('synthEuclid4NoteMin', state.synthEuclid4NoteMin ?? 48) ?? (state.synthEuclid4NoteMin ?? 48);
   const liveSynthNoteMax4 = useRuntimeValue('synthEuclid4NoteMax', state.synthEuclid4NoteMax ?? 72) ?? (state.synthEuclid4NoteMax ?? 72);
-  const pad1MorphValue = state.padMorphAuto ? livePad1Morph : (state.padMorph ?? 0);
-  const pad2MorphValue = state.pad2MorphAuto ? livePad2Morph : (state.pad2Morph ?? 0);
-  const lead1MorphValue = state.lead1MorphAuto ? liveLead1Morph : (state.lead1Morph ?? 0);
-  const lead2MorphValue = state.lead2MorphAuto ? liveLead2Morph : (state.lead2Morph ?? 0);
+  const pad1MorphValue = livePad1Morph ?? (state.padMorph ?? 0);
+  const pad2MorphValue = livePad2Morph ?? (state.pad2Morph ?? 0);
+  const lead1MorphValue = liveLead1Morph ?? (state.lead1Morph ?? 0);
+  const lead2MorphValue = liveLead2Morph ?? (state.lead2Morph ?? 0);
   const pad1DistancePreview = useMemo(() => getPadDistancePreview(state, 'pad1', livePad1Distance), [livePad1Distance, state]);
   const pad2DistancePreview = useMemo(() => getPadDistancePreview(state, 'pad2', livePad2Distance), [livePad2Distance, state]);
   const lead1DistancePreview = useMemo(() => getLeadDistancePreview(state, 'lead1', liveLead1Distance), [liveLead1Distance, state]);
@@ -963,6 +1159,20 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     }
     return Math.abs(baseValue - liveValue) > 1e-6 ? liveValue : undefined;
   }, [sliderProps, state]);
+
+  const handlePresetMorphSliderChange = useCallback((key: keyof SliderState, value: number) => {
+    removeRuntimeValues([String(key)]);
+    onParamChange(key, value);
+  }, [onParamChange]);
+
+  const handlePresetEndpointSelectChange = useCallback((
+    key: keyof SliderState,
+    value: SliderState[keyof SliderState],
+  ) => {
+    const morphKey = PRESET_ENDPOINT_RUNTIME_MORPH_KEY[key];
+    if (morphKey) removeRuntimeValues([String(morphKey)]);
+    onSelectChange(key, value);
+  }, [onSelectChange]);
 
   const synthLivePollMs = useMemo(() => {
     const pad1FilterModEnvActive =
@@ -1414,7 +1624,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             className="sc-preset-loader-slot"
             type="button"
             style={{ '--slot-color': slot.accentColor } as React.CSSProperties}
-            onClick={() => onSelectChange(slot.slotKey, resolvedPresetId as SliderState[typeof slot.slotKey])}
+            onClick={() => handlePresetEndpointSelectChange(slot.slotKey, resolvedPresetId as SliderState[typeof slot.slotKey])}
             title={`Load into ${slot.slotLabel}`}
           >
             {slot.slotLabel.replace('Slot ', '')}
@@ -1483,7 +1693,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         },
       ]);
 
-      onSelectChange(activeSlot.slotKey, runtimeId as SliderState[typeof activeSlot.slotKey]);
+      handlePresetEndpointSelectChange(activeSlot.slotKey, runtimeId as SliderState[typeof activeSlot.slotKey]);
       return;
     }
 
@@ -1526,7 +1736,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         },
       ]);
 
-      onSelectChange(activeSlot.slotKey, runtimeId as SliderState[typeof activeSlot.slotKey]);
+      handlePresetEndpointSelectChange(activeSlot.slotKey, runtimeId as SliderState[typeof activeSlot.slotKey]);
       return;
     }
 
@@ -1550,11 +1760,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       },
     });
 
-    onSelectChange(activeSlot.slotKey, savedId as SliderState[typeof activeSlot.slotKey]);
+    handlePresetEndpointSelectChange(activeSlot.slotKey, savedId as SliderState[typeof activeSlot.slotKey]);
   }, [
     leadEditorSlot,
     leadPresetOptionById,
-    onSelectChange,
+    handlePresetEndpointSelectChange,
     refreshLeadFmPresets,
     state,
   ]);
@@ -1628,12 +1838,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     });
 
     if (String(state[slotKey] ?? '') !== savedId) {
-      onSelectChange(slotKey, savedId as SliderState[keyof SliderState]);
+      handlePresetEndpointSelectChange(slotKey, savedId as SliderState[keyof SliderState]);
     }
   }, [
     loadPad1Preset,
     loadPad2Preset,
-    onSelectChange,
+    handlePresetEndpointSelectChange,
     pad1OptionById,
     pad2OptionById,
     refreshPad1Presets,
@@ -1684,9 +1894,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     });
 
     if (String(state[slotKey] ?? '') !== runtimeId) {
-      onSelectChange(slotKey, runtimeId as SliderState[typeof slotKey]);
+      handlePresetEndpointSelectChange(slotKey, runtimeId as SliderState[typeof slotKey]);
     }
-  }, [leadPresetOptionById, onSelectChange, refreshLeadFmPresets, resolveLeadPresetRuntimeId, state]);
+  }, [handlePresetEndpointSelectChange, leadPresetOptionById, refreshLeadFmPresets, resolveLeadPresetRuntimeId, state]);
   void handleLeadSlotSave;
 
   // ── Euclidean Sequencer Hook (reuses same hook as DrumPage) ──
@@ -1711,6 +1921,56 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     resetKey: presetVersion,
   });
 
+  const [arpConfigs, setArpConfigs] = useState<ProductArpConfig[]>(() => normalizeProductArpConfigs(initialArpConfigs, 4));
+  const [arpRuntimeTick, setArpRuntimeTick] = useState(0);
+  const arpHarmonyContext = useMemo(() => createProductArpHarmonyContext(state as unknown as Record<string, unknown>), [state]);
+  const updateArpConfig = useCallback((laneIdx: number, patch: Partial<ProductArpConfig>) => {
+    setArpConfigs((current) => current.map((config, index) => (
+      index === laneIdx ? normalizeProductArpConfig({ ...config, ...patch }) : config
+    )));
+  }, []);
+  const setArpTone = useCallback((laneIdx: number, step: number, value: number) => {
+    setArpConfigs((current) => current.map((config, index) => {
+      if (index !== laneIdx) return config;
+      const tonePattern = [...config.tonePattern];
+      tonePattern[step] = Math.max(0, Math.min(7, Math.round(value)));
+      return normalizeProductArpConfig({ ...config, tonePattern });
+    }));
+  }, []);
+  const setArpSlotChoice = useCallback((laneIdx: number, step: number, value: ProductArpSlotChoice) => {
+    setArpConfigs((current) => current.map((config, index) => {
+      if (index !== laneIdx) return config;
+      const slotLane = [...config.slotLane];
+      slotLane[step] = value;
+      return normalizeProductArpConfig({ ...config, slotLane });
+    }));
+  }, []);
+  const toggleArpPulse = useCallback((laneIdx: number, step: number) => {
+    setArpConfigs((current) => current.map((config, index) => (
+      index === laneIdx
+        ? normalizeProductArpConfig({ ...config, pulseMask: config.pulseMask ^ (1 << step) })
+        : config
+    )));
+  }, []);
+
+  useEffect(() => {
+    setArpConfigs(normalizeProductArpConfigs(initialArpConfigs, 4));
+  }, [initialArpConfigs, presetVersion]);
+
+  const arpConfigsRef = useRef<ProductArpConfig[] | null>(null);
+  useEffect(() => {
+    if (arpConfigsRef.current !== arpConfigs) {
+      arpConfigsRef.current = arpConfigs;
+      onArpConfigsChange?.(arpConfigs);
+    }
+  }, [arpConfigs, onArpConfigsChange]);
+
+  useEffect(() => {
+    if (!isRunning || !arpConfigs.some((config) => config.enabled && config.direction === 'randomLiveTone')) return;
+    const intervalId = window.setInterval(() => setArpRuntimeTick((tick) => tick + 1), 250);
+    return () => window.clearInterval(intervalId);
+  }, [arpConfigs, isRunning]);
+
   const synthEuclideanPatternOptions = React.useMemo<UsePresetsOptions[]>(() => LANE_CONFIGS.map((_, laneIdx) => ({
     customExtract: (currentState) => {
       const stepOverrides = serializeStepOverrides(copySequenceLaneForPreset(seq.stepOverrides, laneIdx));
@@ -1724,15 +1984,19 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         pitchSettings: seq.pitchSettings,
         pitchBindingModes,
       });
+      const arpConfig = arpConfigs[laneIdx];
       return {
         ...extractEuclideanPatternLaneDataFromSynthState(currentState, laneIdx),
         ...(stepOverrides ? { [EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY]: stepOverrides } : {}),
-        [EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY]: sequenceState,
+        [EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY]: arpConfig?.enabled
+          ? { ...sequenceState, arpConfig }
+          : sequenceState,
       };
     },
     customApply: (currentState, data) => applyEuclideanPatternToSynthLaneState(currentState, data, laneIdx),
   })), [
     pitchBindingModes,
+    arpConfigs,
     seq.clockDivs,
     seq.evolveConfigs,
     seq.linked,
@@ -1752,6 +2016,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     setEuclidPresetNameForLane(laneIdx, entry.name);
     const stepOverrides = data[EUCLIDEAN_PATTERN_STEP_OVERRIDES_KEY] as SerializedStepOverrides | undefined;
     const sequenceState = data[EUCLIDEAN_PATTERN_SEQUENCE_STATE_KEY] as SerializedSequenceLanePresetState | undefined;
+    const arpConfig = (sequenceState as SerializedSequenceLanePresetState & { arpConfig?: ProductArpConfig } | undefined)?.arpConfig;
     seq.setStepOverrides((current) => applySequencePresetOverrides(current, stepOverrides ?? {}, laneIdx));
     seq.setSubLaneStates((current) => {
       const next = applySequencePresetSubLaneStates(current, sequenceState, laneIdx, stepOverrides);
@@ -1764,6 +2029,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     seq.setLinked((current) => applySequencePresetLinked(current, sequenceState, laneIdx));
     seq.setEvolveConfigs((current) => applySequencePresetEvolveConfigs(current, sequenceState, laneIdx, 'synth'));
     seq.setPitchSettings((current) => applySequencePresetPitchSettings(current, sequenceState, laneIdx));
+    if (arpConfig) {
+      setArpConfigs((current) => current.map((config, index) => (
+        index === laneIdx ? normalizeProductArpConfig(arpConfig) : config
+      )));
+    }
     setPitchBindingModes((current) => {
       const next = applySequencePresetPitchBindingModes(current, sequenceState, laneIdx);
       sequencePitchBindingHomeRef.current[laneIdx] = next[laneIdx] ?? null;
@@ -1800,6 +2070,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     pendingSequenceResetHomeRef.current = laneIdx;
     resetEvolveHome?.(laneIdx);
   }, [resetEvolveHome]);
+  const handleDiceLane = useCallback((laneIdx: number, intensity: number) => {
+    const index = Math.max(0, Math.min(LANE_CONFIGS.length - 1, Math.trunc(laneIdx)));
+    pendingDiceSyncUntilRef.current[index] = Date.now() + SYNTH_DICE_SYNC_SUPPRESSION_MS;
+    pendingDiceExpectedSignatureRef.current[index] = null;
+    diceLane?.(laneIdx, intensity);
+  }, [diceLane]);
 
   const previousPresetVersionRef = useRef(presetVersion);
   useEffect(() => {
@@ -1929,39 +2205,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           : laneState
       )));
     }
-    seq.setStepOverrides(prev => {
-      const next = { ...prev };
-      if (data.triggerToggles?.[laneIndex] != null) {
-        const arr = [...prev.triggerToggles];
-        arr[laneIndex] = new Map(data.triggerToggles[laneIndex]);
-        next.triggerToggles = arr;
-      }
-      const keys = ['expression', 'morph', 'distance', 'probability', 'ratchet', 'trigCondition', 'pitch'] as const;
-      for (const key of keys) {
-        if (data[key] && data[key]![laneIndex] != null) {
-          const arr = [...prev[key]];
-          arr[laneIndex] = data[key]![laneIndex];
-          (next as Record<string, unknown>)[key] = arr;
-        }
-      }
-      const rangeKeys = ['expressionRanges', 'morphRanges', 'distanceRanges'] as const;
-      for (const key of rangeKeys) {
-        if (data[key]?.[laneIndex] != null) {
-          const arr = [...(prev[key] ?? [null, null, null, null])];
-          arr[laneIndex] = data[key]![laneIndex];
-          (next as Record<string, unknown>)[key] = arr;
-        }
-      }
-      const directionKeys = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection'] as const;
-      for (const key of directionKeys) {
-        if (data[key]?.[laneIndex] != null) {
-          const arr = [...prev[key]];
-          arr[laneIndex] = data[key]![laneIndex] ?? null;
-          next[key] = arr;
-        }
-      }
-      return next;
-    });
+    if (data.manualDiceHome === true) {
+      const expected = applyEvolvedStepOverridePatch(seq.stepOverrides, laneIndex, data);
+      pendingDiceExpectedSignatureRef.current[laneIndex] = stepOverrideLaneSignature(expected, laneIndex);
+      pendingDiceSyncUntilRef.current[laneIndex] = Date.now() + SYNTH_DICE_SYNC_SUPPRESSION_MS;
+    }
+    seq.setStepOverrides(prev => applyEvolvedStepOverridePatch(prev, laneIndex, data));
     seq.setSubLaneStates(prev => prev.map((laneState, index) => {
       if (index !== laneIndex) return laneState;
       const nextLane = { ...laneState };
@@ -1996,17 +2245,47 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const stepOverridesRef = useRef<StepOverrides | null>(null);
   const pitchSettingsRef = useRef<PitchSettings[] | null>(null);
   const pitchSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);
+  const engineArpConfigsRef = useRef<ProductArpConfig[] | null>(null);
+  const engineArpRuntimeTickRef = useRef(arpRuntimeTick);
   useEffect(() => {
     const overridesChanged = stepOverridesRef.current !== seq.stepOverrides;
     const settingsChanged = pitchSettingsRef.current !== seq.pitchSettings;
     const subLaneStatesChanged = pitchSubLaneStatesRef.current !== seq.subLaneStates;
-    if (overridesChanged || settingsChanged || subLaneStatesChanged) {
+    const arpConfigsChanged = engineArpConfigsRef.current !== arpConfigs;
+    const arpRuntimeTickChanged = engineArpRuntimeTickRef.current !== arpRuntimeTick;
+    if (overridesChanged || settingsChanged || subLaneStatesChanged || arpConfigsChanged || arpRuntimeTickChanged) {
+      const now = Date.now();
+      const blockedByPendingDice = pendingDiceSyncUntilRef.current.some((until, laneIndex) => {
+        if (until <= 0) return false;
+        const expected = pendingDiceExpectedSignatureRef.current[laneIndex];
+        if (expected && stepOverrideLaneSignature(seq.stepOverrides, laneIndex) === expected) {
+          pendingDiceSyncUntilRef.current[laneIndex] = 0;
+          pendingDiceExpectedSignatureRef.current[laneIndex] = null;
+          return false;
+        }
+        if (now >= until) {
+          pendingDiceSyncUntilRef.current[laneIndex] = 0;
+          pendingDiceExpectedSignatureRef.current[laneIndex] = null;
+          return false;
+        }
+        return true;
+      });
+      if (blockedByPendingDice) return;
       stepOverridesRef.current = seq.stepOverrides;
       pitchSettingsRef.current = seq.pitchSettings;
       pitchSubLaneStatesRef.current = seq.subLaneStates;
+      engineArpConfigsRef.current = arpConfigs;
+      engineArpRuntimeTickRef.current = arpRuntimeTick;
       // Convert pitch offsets to absolute MIDI notes before sending to engine
       // (engine doesn't know pitch mode/root/scale — we convert here)
       const convertedPitch = seq.stepOverrides.pitch.map((offsets, laneIdx) => {
+        const arpPattern = resolveProductArpMidiPattern({
+          config: arpConfigs[laneIdx] ?? defaultProductArpConfig(),
+          harmony: arpHarmonyContext,
+          laneIndex: laneIdx,
+          runtimeTick: arpRuntimeTick,
+        });
+        if (arpPattern) return arpPattern;
         if (!offsets) return null;
         // When pitch sub-lane is disabled, return null so engine uses noteMin/noteMax range
         if (!seq.subLaneStates[laneIdx]?.pitch?.enabled) return null;
@@ -2027,6 +2306,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             : offset
         ));
       });
+      const engineSubLaneStates = seq.subLaneStates.map((laneState, laneIdx) => (
+        arpConfigs[laneIdx]?.enabled
+          ? { ...laneState, pitch: { ...laneState.pitch, enabled: true, steps: arpConfigs[laneIdx]?.pulseCount ?? 8, direction: 'forward' as const } }
+          : laneState
+      ));
+      const pitchDirection = seq.stepOverrides.pitchDirection.map((direction, laneIdx) => (
+        arpConfigs[laneIdx]?.enabled ? 'forward' as const : direction
+      ));
       // Persist raw (unconverted) overrides for round-trip safety
       if (overridesChanged) {
         onRawStepOverridesChange?.(seq.stepOverrides);
@@ -2053,12 +2340,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       onStepOverridesChange?.(stepOverridesForEngineSubLaneState({
         ...seq.stepOverrides,
         pitch: convertedPitch,  // Send MIDI notes, not raw offsets
+        pitchDirection,
         expressionRanges,
         morphRanges,
         distanceRanges,
-      }, seq.subLaneStates));
+      }, engineSubLaneStates));
     }
-  }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, onStepOverridesChange, onRawStepOverridesChange]);
+  }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, arpConfigs, arpHarmonyContext, arpRuntimeTick, onStepOverridesChange, onRawStepOverridesChange]);
 
   // Persist sub-lane states (enabled/steps/direction) across tab switches
   const subLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);
@@ -2108,7 +2396,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const laneIndex = pendingSequenceHomeCaptureRef.current;
     if (laneIndex == null) return;
     pendingSequenceHomeCaptureRef.current = null;
-    captureEvolveHome?.(laneIndex);
+    captureEvolveHome?.(laneIndex, sequencePitchHomeRef.current[laneIndex] ?? null);
   }, [sequenceHomeCaptureVersion, captureEvolveHome]);
 
   const activeSeq = seq.activeSeq;
@@ -3108,7 +3396,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 slotAKey={'padPresetA' as keyof SliderState}
                 slotBKey={'padPresetB' as keyof SliderState}
                 state={state}
-                onSelectChange={onSelectChange}
+                onSelectChange={handlePresetEndpointSelectChange}
                 color="#4a9eff"
                 variationControls={buildPadVariationControls('pad1')}
               />
@@ -3118,7 +3406,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-preset-slot">
                   <select
                     value={state.padPresetA}
-                    onChange={(e) => onSelectChange('padPresetA' as keyof SliderState, e.target.value)}
+                    onChange={(e) => handlePresetEndpointSelectChange('padPresetA' as keyof SliderState, e.target.value)}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(74,158,255,0.3)' }}
                   >
@@ -3126,12 +3414,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </select>
                 </div>
                 <div className="sc-morph-slider">
-                  <Slider label="" value={pad1MorphValue} paramKey="padMorph" onChange={onParamChange} {...sliderProps('padMorph')} />
+                  <Slider label="" value={pad1MorphValue} paramKey="padMorph" onChange={handlePresetMorphSliderChange} {...sliderProps('padMorph')} />
                 </div>
                 <div className="sc-preset-slot">
                   <select
                     value={state.padPresetB}
-                    onChange={(e) => onSelectChange('padPresetB' as keyof SliderState, e.target.value)}
+                    onChange={(e) => handlePresetEndpointSelectChange('padPresetB' as keyof SliderState, e.target.value)}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(139,92,246,0.3)' }}
                   >
@@ -3760,7 +4048,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 slotAKey={'pad2PresetA' as keyof SliderState}
                 slotBKey={'pad2PresetB' as keyof SliderState}
                 state={state}
-                onSelectChange={onSelectChange}
+                onSelectChange={handlePresetEndpointSelectChange}
                 color="#8b5cf6"
                 variationControls={buildPadVariationControls('pad2')}
               />
@@ -3771,7 +4059,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-preset-slot">
                   <select
                     value={state.pad2PresetA}
-                    onChange={(e) => onSelectChange('pad2PresetA' as keyof SliderState, e.target.value)}
+                    onChange={(e) => handlePresetEndpointSelectChange('pad2PresetA' as keyof SliderState, e.target.value)}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(139,92,246,0.3)' }}
                   >
@@ -3779,12 +4067,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </select>
                 </div>
                 <div className="sc-morph-slider">
-                  <Slider label="" value={pad2MorphValue} paramKey="pad2Morph" onChange={onParamChange} {...sliderProps('pad2Morph')} />
+                  <Slider label="" value={pad2MorphValue} paramKey="pad2Morph" onChange={handlePresetMorphSliderChange} {...sliderProps('pad2Morph')} />
                 </div>
                 <div className="sc-preset-slot">
                   <select
                     value={state.pad2PresetB}
-                    onChange={(e) => onSelectChange('pad2PresetB' as keyof SliderState, e.target.value)}
+                    onChange={(e) => handlePresetEndpointSelectChange('pad2PresetB' as keyof SliderState, e.target.value)}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(236,72,153,0.3)' }}
                   >
@@ -4414,7 +4702,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-preset-slot">
                   <select
                     value={state.lead1PresetA}
-                    onChange={(e) => onSelectChange('lead1PresetA' as keyof SliderState, e.target.value)}
+                    onChange={(e) => handlePresetEndpointSelectChange('lead1PresetA' as keyof SliderState, e.target.value)}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(245,158,11,0.3)' }}
                   >
@@ -4422,12 +4710,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </select>
                 </div>
                 <div className="sc-morph-slider">
-                  <Slider label="" value={lead1MorphValue} paramKey="lead1Morph" onChange={onParamChange} {...sliderProps('lead1Morph')} />
+                  <Slider label="" value={lead1MorphValue} paramKey="lead1Morph" onChange={handlePresetMorphSliderChange} {...sliderProps('lead1Morph')} />
                 </div>
                 <div className="sc-preset-slot">
                   <select
                     value={state.lead1PresetB}
-                    onChange={(e) => onSelectChange('lead1PresetB' as keyof SliderState, e.target.value)}
+                    onChange={(e) => handlePresetEndpointSelectChange('lead1PresetB' as keyof SliderState, e.target.value)}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(139,92,246,0.3)' }}
                   >
@@ -4582,7 +4870,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <div className="sc-preset-slot">
                     <select
                       value={state.lead2PresetC}
-                      onChange={(e) => onSelectChange('lead2PresetC' as keyof SliderState, e.target.value)}
+                      onChange={(e) => handlePresetEndpointSelectChange('lead2PresetC' as keyof SliderState, e.target.value)}
                       className="sc-preset-select"
                       style={{ borderColor: 'rgba(6,182,212,0.3)' }}
                     >
@@ -4590,12 +4878,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     </select>
                   </div>
                   <div className="sc-morph-slider">
-                    <Slider label="" value={lead2MorphValue} paramKey="lead2Morph" onChange={onParamChange} {...sliderProps('lead2Morph')} />
+                    <Slider label="" value={lead2MorphValue} paramKey="lead2Morph" onChange={handlePresetMorphSliderChange} {...sliderProps('lead2Morph')} />
                   </div>
                   <div className="sc-preset-slot">
                     <select
                       value={state.lead2PresetD}
-                      onChange={(e) => onSelectChange('lead2PresetD' as keyof SliderState, e.target.value)}
+                      onChange={(e) => handlePresetEndpointSelectChange('lead2PresetD' as keyof SliderState, e.target.value)}
                       className="sc-preset-select"
                       style={{ borderColor: 'rgba(167,139,250,0.3)' }}
                     >
@@ -4829,12 +5117,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             </div>
           </div>
 
-          <HarmonyEnginePanel
-            state={state}
-            harmonyState={harmonyState}
-            onStateChange={onStateChange}
-          />
-
           {!isMobile && showKeyboard && (
             <div className="synth-keyboard-panel" style={{ '--kb-accent': keyboardSourceInfo.color } as React.CSSProperties}>
               <div className="synth-keyboard-header">
@@ -4990,10 +5272,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="synth-simple-header">
                   <span>Pad — Chord Sequencer</span>
                   <button
-                    className={`synth-simple-enable${state.synthChordSequencerEnabled !== false ? ' on' : ''}`}
-                    onClick={() => onSelectChange('synthChordSequencerEnabled' as keyof SliderState, !state.synthChordSequencerEnabled)}
+                    className={`synth-simple-enable${state.synthChordSequencerEnabled === true ? ' on' : ''}`}
+                    onClick={() => onSelectChange('synthChordSequencerEnabled' as keyof SliderState, !(state.synthChordSequencerEnabled === true))}
                   >
-                    {state.synthChordSequencerEnabled !== false ? 'ON' : 'OFF'}
+                    {state.synthChordSequencerEnabled === true ? 'ON' : 'OFF'}
                   </button>
                 </div>
                 <Slider label="Chord Rate" value={state.chordRate} paramKey="chordRate" unit="s" onChange={onParamChange} {...sliderProps('chordRate')} />
@@ -5299,7 +5581,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           onValueChange={(value) => setDiceIntensity(Math.round(value / 5) * 5 / 100)}
                           title={`Dice intensity: ${Math.round(diceIntensity * 100)}%`}
                         />
-                        <button className="seq-evolve-dice" onClick={() => diceLane(seq.activeTab, diceIntensity)} title="Randomize lane">&#x1F3B2;</button>
+                        <button className="seq-evolve-dice" onClick={() => handleDiceLane(seq.activeTab, diceIntensity)} title="Randomize lane">&#x1F3B2;</button>
                       </span>
                     )}
                   </div>
@@ -5446,6 +5728,119 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
                 {/* ── Sub-lane sparklines: pitch, expression, morph, distance ── */}
                 <div className="seq-spark-container">
+                  {(() => {
+                    const arpConfig = arpConfigs[seq.activeTab] ?? defaultProductArpConfig();
+                    const laneColor = '#7dd3fc';
+                    const openLane = seq.openLane as SynthDetailOpenLane;
+                    return (
+                      <React.Fragment key="arp">
+                        <SeqSparkline
+                          label="Arp:"
+                          steps={arpConfig.pulseCount}
+                          values={productArpPulseValues(arpConfig)}
+                          color={laneColor}
+                          playhead={seq.playheads[seq.activeTab] ?? 0}
+                          hitCount={seq.hitCounts[seq.activeTab] ?? 0}
+                          playheadMode="hit"
+                          direction="forward"
+                          bipolar={false}
+                          enabled={arpConfig.enabled}
+                          expanded={openLane === 'arp'}
+                          onClick={() => seq.setOpenLane((openLane === 'arp' ? 'trigger' : 'arp') as never)}
+                          onToggleEnabled={() => updateArpConfig(seq.activeTab, { enabled: !arpConfig.enabled })}
+                        />
+                        {openLane === 'arp' && (
+                          <div className="seq-lane-editor-wrap">
+                            <div className="seq-arp-editor" style={{ '--seq-arp-color': laneColor } as React.CSSProperties}>
+                              <div className="seq-arp-toolbar">
+                                <button
+                                  type="button"
+                                  className={`seq-lane-enable-btn${arpConfig.enabled ? ' on' : ''}`}
+                                  onClick={() => updateArpConfig(seq.activeTab, { enabled: !arpConfig.enabled })}
+                                >
+                                  {arpConfig.enabled ? 'On' : 'Off'}
+                                </button>
+                                <div className="seq-arp-segment" aria-label="ARP source mode">
+                                  {ARP_SOURCE_OPTIONS.map((option) => (
+                                    <button
+                                      key={option.value}
+                                      type="button"
+                                      className={arpConfig.sourceMode === option.value ? 'active' : ''}
+                                      onClick={() => updateArpConfig(seq.activeTab, { sourceMode: option.value })}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  ))}
+                                </div>
+                                <select
+                                  className="seq-arp-select"
+                                  value={arpConfig.direction}
+                                  onChange={(event) => updateArpConfig(seq.activeTab, { direction: event.target.value as ProductArpDirection })}
+                                >
+                                  {ARP_DIRECTION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                </select>
+                                <div className="seq-arp-pulse-count">
+                                  {([4, 8, 16] as ProductArpPulseCount[]).map((count) => (
+                                    <button
+                                      key={count}
+                                      type="button"
+                                      className={arpConfig.pulseCount === count ? 'active' : ''}
+                                      onClick={() => updateArpConfig(seq.activeTab, { pulseCount: count })}
+                                    >
+                                      {count}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="seq-arp-grid">
+                                {Array.from({ length: arpConfig.pulseCount }, (_, step) => {
+                                  const pulseOn = (arpConfig.pulseMask & (1 << step)) !== 0;
+                                  return (
+                                    <div key={step} className={`seq-arp-step${pulseOn ? ' on' : ''}`}>
+                                      <button
+                                        type="button"
+                                        className="seq-arp-pulse"
+                                        onClick={() => toggleArpPulse(seq.activeTab, step)}
+                                        aria-label={`Toggle arp pulse ${step + 1}`}
+                                      >
+                                        {pulseOn ? '●' : '—'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="seq-arp-tone"
+                                        onClick={() => setArpTone(seq.activeTab, step, (arpConfig.tonePattern[step] ?? 0) + 1)}
+                                        onContextMenu={(event) => {
+                                          event.preventDefault();
+                                          setArpTone(seq.activeTab, step, (arpConfig.tonePattern[step] ?? 0) - 1);
+                                        }}
+                                        title="Chord tone. Click to raise, right-click to lower."
+                                      >
+                                        {(arpConfig.tonePattern[step] ?? 0) + 1}
+                                      </button>
+                                      {arpConfig.sourceMode === 'slotLane' && (
+                                        <button
+                                          type="button"
+                                          className="seq-arp-slot"
+                                          title={formatArpSlotChoiceTitle(arpHarmonyContext.chordSlots, arpConfig.slotLane[step] ?? -1, arpHarmonyContext)}
+                                          onClick={() => setArpSlotChoice(seq.activeTab, step, nextArpSlotChoice(arpConfig.slotLane[step] ?? -1, 1))}
+                                          onContextMenu={(event) => {
+                                            event.preventDefault();
+                                            setArpSlotChoice(seq.activeTab, step, nextArpSlotChoice(arpConfig.slotLane[step] ?? -1, -1));
+                                          }}
+                                        >
+                                          {formatArpSlotChoiceLabel(arpHarmonyContext.chordSlots, arpConfig.slotLane[step] ?? -1)}
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </React.Fragment>
+                    );
+                  })()}
                   {(['pitch', 'expression', 'morph', 'distance'] as const).map((laneKind) => {
                     const subState = seq.subLaneStates[seq.activeTab]?.[laneKind];
                     const laneColor = SEQUENCER_SUB_LANE_COLORS[laneKind];

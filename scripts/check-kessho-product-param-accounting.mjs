@@ -520,6 +520,24 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
+  if (
+    /^harmonyChord(Slots|SlotsA|SlotsB|Sequence|SequenceA|SequenceB)$/.test(key) ||
+    key === 'manualHarmonyControl' ||
+    key === 'harmonyMorphPercent' ||
+    key === 'harmonyChordSequenceEnabled' ||
+    key === 'harmonyChordSequenceStepIndex'
+  ) {
+    return {
+      path: 'harmony-param-diff',
+      evidence: [
+        'src/audio/CoreProductHarmonyControl.ts#resolveProductHarmonyState',
+        'src/audio/coreProductSnapshot.ts#createCoreProductSnapshot',
+        'src/audio/CoreProductRuntimeAdapter.ts#appendHarmonyDiffs',
+      ],
+      reason: 'Structured harmony state resolves to Product harmony frame fields and generated harmony control/slot/sequence events.',
+    };
+  }
+
   if ([
     'chordProgressionSteps',
     'chordProgressionClockSource',
@@ -841,6 +859,7 @@ const PRODUCT_STATE_GETTER_NAMES = new Set([
 
 const PRODUCT_SNAPSHOT_KEY_PATHS = [
   'src/audio/coreProductSnapshot.ts',
+  'src/audio/CoreProductHarmonyControl.ts',
   'src/audio/coreProductSoundscapesSnapshot.ts',
   'src/audio/CoreProductLeadPatch.ts',
   'src/audio/CoreProductPadPatch.ts',

@@ -1,12 +1,11 @@
-import { createCoreProductSequencerDiceEvent, type CoreProductEvent } from './coreProductEvents';
+import { CORE_PRODUCT_EVOLVE_FLAGS, createCoreProductSequencerDiceEvent, type CoreProductEvent } from './coreProductEvents';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
-import { diceFlagsForEvolveConfig, type NormalizedSequencerEvolveConfig } from './CoreProductHostSequencerEvolveConfig';
+import { diceFlagsForEvolveConfig, evolveMethodFlagsForEvolveConfig, type NormalizedSequencerEvolveConfig } from './CoreProductHostSequencerEvolveConfig';
 import { clampSequencerSwing, evolveCoreProductSequencerSwing } from './CoreProductHostSequencerSwing';
 import { evolveCoreProductSequencerSubLaneConfigs, type CoreProductSubLaneEvolveResult } from './CoreProductHostSequencerSubLaneEvolve';
 import type { SequencerKind, SequencerStepValueConfig, SequencerStepValueOverride } from './CoreProductHostSequencerAdapter';
 type EvolveName = 'synthEuclidEvolve' | 'drumEuclidEvolve';
-type LaneCycleState = { previousStep: number; cycle: number }; type SynthNoteRangeEvolveResult = { handled: boolean; changed: boolean };
-
+type LaneCycleState = { previousStep: number; cycle: number }; type SynthNoteRangeEvolveResult = { handled: boolean; changed: boolean }; type SequencerEvolveResult = { handled: boolean; changed: boolean };
 type EvolveTickInput = {
   telemetry: CoreProductTelemetrySnapshot;
   synthConfigs?: unknown;
@@ -19,17 +18,14 @@ type EvolveTickInput = {
   getSubLaneConfigs?: (sequencer: SequencerKind, laneIndex: number) => SequencerStepValueConfig[];
   getStepValueOverrides?: (sequencer: SequencerKind, laneIndex: number) => SequencerStepValueOverride[];
   setSubLaneConfigs?: (sequencer: SequencerKind, laneIndex: number, result: CoreProductSubLaneEvolveResult) => void;
-  evolveSynthNoteRange?: (laneIndex: number, config: NormalizedSequencerEvolveConfig, seed: number, bar: number) => SynthNoteRangeEvolveResult;
+  evolveSynthNoteRange?: (laneIndex: number, config: NormalizedSequencerEvolveConfig, seed: number, bar: number) => SynthNoteRangeEvolveResult; evolveLane?: (sequencer: SequencerKind, laneIndex: number, config: NormalizedSequencerEvolveConfig, seed: number, bar: number) => SequencerEvolveResult; getEffectiveTension?: (sequencer: SequencerKind, laneIndex: number) => number | undefined; getRngSeed?: (sequencer: SequencerKind, laneIndex: number, fallbackSeed: number) => number | undefined;
 };
-
 function evolveSeed(kind: EvolveName, laneIndex: number, bar: number): number {
   const kindSeed = kind === 'synthEuclidEvolve' ? 0x51f15ca9 : 0x2c1b3c6d;
   return (Math.imul(bar + 1, 0x9e3779b1) ^ Math.imul(laneIndex + 1, 0x85ebca6b) ^ kindSeed) >>> 0;
 }
-
 function diceWriteOffset(config: NormalizedSequencerEvolveConfig): number { return config.writeOffset === 'auto' ? -1 : typeof config.writeOffset === 'number' && config.writeOffset > 0 ? Math.round(config.writeOffset) : 0; }
 function configAllowsSubLane(config: NormalizedSequencerEvolveConfig, lane: string): boolean { return !config.enabledSubLanes || config.enabledSubLanes.includes(lane); }
-
 function tickConfigs(name: EvolveName, configs: unknown, lastBars: number[], cycles: LaneCycleState[], input: EvolveTickInput): void {
   const lanes = (Array.isArray(configs) ? configs : []).slice(0, 4) as NormalizedSequencerEvolveConfig[];
   const currentSteps = name === 'synthEuclidEvolve' ? input.telemetry.synthSequencerCurrentSteps : input.telemetry.drumSequencerCurrentSteps;
@@ -54,6 +50,11 @@ function tickConfigs(name: EvolveName, configs: unknown, lastBars: number[], cyc
     if (bar - lastBars[laneIndex]! < everyBars) continue;
     lastBars[laneIndex] = bar;
     const seed = evolveSeed(name, laneIndex, bar);
+    const laneResult = input.evolveLane?.(sequencer, laneIndex, effectiveConfig, seed, bar);
+    if (laneResult?.handled) {
+      if (laneResult.changed) input.publish(name, laneIndex);
+      continue;
+    }
     let hostMutated = false;
     const noteRangeResult = sequencer === 'synth' && effectiveConfig.methods?.pitchWalk && input.evolveSynthNoteRange ? input.evolveSynthNoteRange(laneIndex, effectiveConfig, seed, bar) : null;
     if (noteRangeResult?.changed) hostMutated = true;
@@ -75,14 +76,15 @@ function tickConfigs(name: EvolveName, configs: unknown, lastBars: number[], cyc
         hostMutated = true;
       }
     }
-    if (flags !== 0) input.post(createCoreProductSequencerDiceEvent(sequencer, laneIndex, config.evolution, seed, flags, diceWriteOffset(config), bar));
+    if (flags !== 0) {
+      const streamSeed = input.getRngSeed?.(sequencer, laneIndex, seed), parityFlags = flags + evolveMethodFlagsForEvolveConfig(effectiveConfig) + CORE_PRODUCT_EVOLVE_FLAGS.modeParity + (streamSeed !== undefined ? CORE_PRODUCT_EVOLVE_FLAGS.rngStream : 0);
+      input.post(createCoreProductSequencerDiceEvent(sequencer, laneIndex, config.evolution, streamSeed ?? seed, parityFlags, diceWriteOffset(config), bar, input.getEffectiveTension?.(sequencer, laneIndex)));
+    }
     if (hostMutated || flags !== 0 || canHostMutate) input.publish(name, laneIndex);
   }
 }
-
 export function createCoreProductSequencerEvolveClock() {
-  const synthLastBars = [0, 0, 0, 0];
-  const drumLastBars = [0, 0, 0, 0];
+  const synthLastBars = [0, 0, 0, 0], drumLastBars = [0, 0, 0, 0];
   const synthCycles = Array.from({ length: 4 }, () => ({ previousStep: -1, cycle: 0 }));
   const drumCycles = Array.from({ length: 4 }, () => ({ previousStep: -1, cycle: 0 }));
   const reset = () => { synthLastBars.fill(0); drumLastBars.fill(0); for (const cycle of [...synthCycles, ...drumCycles]) { cycle.previousStep = -1; cycle.cycle = 0; } };

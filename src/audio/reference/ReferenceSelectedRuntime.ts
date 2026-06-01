@@ -1,3 +1,12 @@
+/**
+ * REFERENCE / A-B TESTING PATH
+ *
+ * This bridge centralizes explicit reference runtime loading for web-ts/core-smoke
+ * selection, parity checks, product-test, smoke tests, and A/B comparison.
+ *
+ * Status: Keep Active — Archive Later
+ */
+
 type ReferenceAudioRuntimeModule = Awaited<ReturnType<typeof import('../referenceAudioRuntime').loadReferenceAudioRuntime>>;
 type ReferenceSelectedRuntimeTarget = Record<string, unknown>;
 

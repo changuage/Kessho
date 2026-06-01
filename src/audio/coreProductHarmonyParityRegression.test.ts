@@ -14,6 +14,7 @@ import {
   HARMONY_SLOT_COUNT,
   commitBaselineMap,
   generateHarmonySlotsAndSequence,
+  resolveHarmonyIntentToNotePool,
   resolveProductHarmonyState,
 } from './CoreProductHarmonyControl';
 
@@ -454,6 +455,19 @@ const customFullDefaultDrumFreqOverrideSlot = customFullDefaultDrumPatchSource?.
 assert.ok(customFullDefaultDrumFreqOverrideSlot >= 0, 'Product drum custom sub frequency control should target the generated Drum param index');
 assert.ok(Number.isFinite(customFullDefaultDrumPatchSource?.drumOverrideValues[customFullDefaultDrumFreqOverrideSlot]), 'Product drum sparse override should carry a finite value');
 
+const customUnknownDrumVoicePresetSnapshot = createCoreProductSnapshot({
+  ...DEFAULT_STATE,
+  drumEnabled: true,
+  drumSubPresetA: 'My Custom Sub',
+  drumSubPresetB: 'Soft Touch',
+  drumSubMorph: 0,
+  drumSubFreq: DEFAULT_STATE.drumSubFreq + 11,
+});
+const customUnknownDrumVoicePresetSource = customUnknownDrumVoicePresetSnapshot.sources.find((source) => source.sourceId === KESSHO_PRODUCT_SOURCE_IDS.Drum);
+assertNoWebExactPatchFields(customUnknownDrumVoicePresetSource, 'Product drum unknown voice preset');
+assert.ok((customUnknownDrumVoicePresetSource?.drumVoicePresetAIds[0] ?? 0) > 0, 'Product drum unknown voice preset should fall back to a valid generated endpoint ID');
+assert.ok((customUnknownDrumVoicePresetSource?.drumOverrideCount ?? 0) > 0, 'Product drum unknown voice preset should carry slider-derived sparse overrides');
+
 const harmonyDefaultsSnapshot = createCoreProductSnapshot({ rootMidi: 60, tension: 0.35 });
 assert.equal(harmonyDefaultsSnapshot.harmony.chordSlots.length, HARMONY_SLOT_COUNT, 'Product harmony should initialize 8 chord slots');
 assert.equal(harmonyDefaultsSnapshot.harmony.chordSequence.length, HARMONY_SEQUENCE_STEP_COUNT, 'Product harmony should initialize 8 sequence steps');
@@ -544,6 +558,29 @@ assert.deepEqual(lockedGenerated.sequence[0], lockedStep, 'locked harmony sequen
 const committedBaseline = commitBaselineMap({ seed: 99, rootMidi: 60, scaleId: 1, tension: 0.9 });
 assert.equal(committedBaseline.length, HARMONY_SEQUENCE_STEP_COUNT, 'Commit Baseline Map should write exactly 8 harmony steps');
 assert.equal(committedBaseline.every((step) => step.quality === 'auto'), true, 'Commit Baseline Map should preserve tension-engine quality:auto steps');
+
+const extendedHarmonyPool = resolveHarmonyIntentToNotePool({
+  intent: {
+    source: 'audition',
+    strength: 'bias',
+    rootMode: 'degree',
+    degree: 0,
+    rootNote: 0,
+    quality: 'maj',
+    extensions: ['six', 'nine'],
+    inversion: 0,
+    spread: 0.5,
+    octave: 4,
+    bassMode: 'off',
+    bassNote: null,
+    capturedMidiNotes: [],
+    preserveCapturedVoicing: false,
+  },
+  rootMidi: 60,
+  scaleId: 1,
+  tension: 0.35,
+});
+assert.deepEqual(extendedHarmonyPool, [60, 64, 67, 69, 74], 'harmony extensions should appear in the resolved preview note pool');
 
 const auditionState = resolveProductHarmonyState({
   state: {

@@ -1,4 +1,12 @@
 ﻿/**
+ * REFERENCE / A-B TESTING PATH
+ *
+ * This file is required for web-ts, product-test, parity checks, and A/B comparison.
+ * Do not delete or simplify in a way that changes behavior unless the corresponding
+ * Product Core replacement and A/B validation have landed.
+ *
+ * Status: Keep Active — Archive Later
+ *
  * Audio Engine
  *
  * Main audio graph management with:
@@ -7118,7 +7126,7 @@ export class AudioEngine {
 
     // If synth chord sequencer was just disabled, silence all synth voices
     // BUT only if no Euclidean lanes are using synth sources
-    if (effectiveState.synthChordSequencerEnabled === false) {
+    if (effectiveState.synthChordSequencerEnabled !== true) {
       this.clearPadChordTriggerTimers();
       const isLeadSrc = (s: string) => this.isNonPadMelodicSource(s);
       const euclideanUsesSynth = [
@@ -8070,7 +8078,7 @@ export class AudioEngine {
     // Sync effective root
     this.effectiveRoot = this.harmonyState.effectiveRoot;
 
-    if (this.sliderState.synthChordSequencerEnabled !== false) {
+    if (this.sliderState.synthChordSequencerEnabled === true) {
       this.applyChord(this.harmonyState.currentChord.frequencies);
     }
 
@@ -8695,7 +8703,7 @@ export class AudioEngine {
     this.cofConfig.phraseCounter = this.harmonyState.cof.phraseCounter;
 
     // Apply new chord with crossfade (if synth chord sequencer is enabled)
-    if (this.sliderState.synthChordSequencerEnabled !== false) {
+    if (this.sliderState.synthChordSequencerEnabled === true) {
       // Only crossfade if chord actually changed
       const chordChanged = prevChord.midiNotes.join(',') !== this.harmonyState.currentChord.midiNotes.join(',');
       this.applyChord(this.harmonyState.currentChord.frequencies, chordChanged);
@@ -8806,7 +8814,7 @@ export class AudioEngine {
       padChordTriggered = true;
       const padNode = this.padWasmNode;
       const trigger = () => {
-        if (!this.isRunning || this.sliderState?.synthChordSequencerEnabled === false || this.padWasmNode !== padNode) {
+        if (!this.isRunning || this.sliderState?.synthChordSequencerEnabled !== true || this.padWasmNode !== padNode) {
           return;
         }
         padNode?.port.postMessage({

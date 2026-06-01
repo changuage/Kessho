@@ -1,60 +1,7 @@
-import {
-  setCoreProductDrumEvolveOverridesChangedCallback,
-  setCoreProductSynthEvolveOverridesChangedCallback,
-  setCoreProductSynthNoteRangeEvolvedCallback,
-} from './CoreProductEvolveOverrideCallbackPortBridge';
 import { callCoreProductHost } from './CoreProductHostInvoker';
-import {
-  resetCoreProductCofDrift,
-  setCoreProductJourneyMorphClockCallback,
-  startCoreProductJourneyMorphClock,
-  stopCoreProductJourneyMorphClock,
-} from './CoreProductJourneyMorphPortBridge';
 import { setCoreProductLiveTriggerCallback } from './CoreProductLiveTriggerCallbackBridge';
-import {
-  setCoreProductDrumMorphRange,
-  setCoreProductDrumParamSampleHoldRange,
-  setCoreProductRuntimeWalkPositionsCallback,
-  setCoreProductRuntimeWalkRanges,
-  setCoreProductSampleHoldRanges,
-} from './CoreProductModulationRangePortBridge';
-import {
-  auditionCoreProductSynthNote,
-  postCoreProductEvent,
-  pushCoreProductMidiMessage,
-  registerCoreProductAsset,
-  setCoreProductOutputGain,
-  triggerCoreProductDrumVoice,
-  unregisterCoreProductAsset,
-  updateCoreProductSnapshotPatch,
-} from './CoreProductRuntimeCommandPortBridge';
-import {
-  resumeCoreProductRuntime,
-  startCoreProductRuntime,
-  stopCoreProductRuntime,
-  suspendCoreProductRuntime,
-} from './CoreProductRuntimeLifecyclePortBridge';
-import {
-  readCoreProductCapabilityReport,
-  readCoreProductDynamicsVisualTelemetry,
-  readCoreProductRuntimeDiagnostics,
-  readCoreProductState,
-  readCoreProductTelemetry,
-} from './CoreProductRuntimeReadPortBridge';
-import {
-  setCoreProductPerfMonitorEnabled,
-  setCoreProductStateChangeCallback,
-  setCoreProductTelemetryCallback,
-  setCoreProductVisualTelemetryActive,
-} from './CoreProductRuntimeTelemetryPortBridge';
-import {
-  setCoreProductDrumEuclidEvolveTriggerCallback,
-  setCoreProductDrumStepPositionCallback,
-  setCoreProductDrumTriggerCallback,
-  setCoreProductSynthEuclidEvolveTriggerCallback,
-  setCoreProductSynthStepPositionCallback,
-} from './CoreProductSequencerCallbackPortBridge';
 import { applyCoreProductSequencerUiPatch } from './CoreProductSequencerUiPatchBridge';
+import type { DawOutputRoutingConfig } from '../../dawOutputRouting';
 import type { ProductRuntimeCapabilityReport } from '../ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
 import type {
@@ -83,130 +30,143 @@ import type {
 } from '../ProductEngineTypes';
 
 // TODO(product-core-burn-down): replace this bound WebProductEngine host port
-// with product-owned runtime APIs once the web adapter no longer binds Product
-// host method bridges itself.
+// with product-owned generated runtime APIs once the web adapter no longer binds
+// Product host method names itself. Pure runtime forwarding stays inline here so
+// production does not maintain duplicate one-method bridge modules.
 export const coreProductRuntimeHostPort = {
   start(initialState?: ProductEngineStartOptions['initialState']): Promise<void> {
-    return startCoreProductRuntime(callCoreProductHost, initialState);
+    return callCoreProductHost<Promise<void>>('start', initialState);
   },
 
   stop(): void {
-    stopCoreProductRuntime(callCoreProductHost);
+    callCoreProductHost<void>('stop');
   },
 
   suspend(): Promise<void> {
-    return suspendCoreProductRuntime(callCoreProductHost);
+    return callCoreProductHost<Promise<void>>('suspend');
   },
 
   resume(): Promise<void> {
-    return resumeCoreProductRuntime(callCoreProductHost);
+    return callCoreProductHost<Promise<void>>('resume');
   },
 
   setOutputGain(target: number, durationSeconds: number): void {
-    setCoreProductOutputGain(callCoreProductHost, target, durationSeconds);
+    callCoreProductHost<void>('setOutputGain', target, durationSeconds);
+  },
+
+  setDawOutputRouting(config: DawOutputRoutingConfig): void {
+    callCoreProductHost<void>('setDawOutputRouting', config);
+  },
+
+  setDawOutputDeviceId(deviceId: string | null): Promise<boolean> {
+    return callCoreProductHost<Promise<boolean>>('setDawOutputDeviceId', deviceId);
   },
 
   resetCofDrift(): void {
-    resetCoreProductCofDrift(callCoreProductHost);
+    callCoreProductHost<void>('resetCofDrift');
   },
 
   updateSnapshotPatch(reason: ProductSnapshotPatchReason, patch: ProductSnapshotPatch): void {
-    updateCoreProductSnapshotPatch(callCoreProductHost, reason, patch);
+    callCoreProductHost<void>('updateSnapshotPatch', reason, patch);
   },
 
   postEvent(event: ProductEvent): void {
-    postCoreProductEvent(callCoreProductHost, event);
+    callCoreProductHost<void>('postProductEvent', event);
   },
 
   pushMidiMessage(message: ProductMidiMessage): void {
-    pushCoreProductMidiMessage(callCoreProductHost, message);
+    callCoreProductHost<void>('pushMidiMessage', message);
   },
 
   registerAsset(asset: ProductAssetRegistration): ProductAssetHandle {
-    return registerCoreProductAsset(callCoreProductHost, asset);
+    callCoreProductHost<void>('registerAsset', asset);
+    return { assetId: asset.assetId };
   },
 
   unregisterAsset(assetId: number): void {
-    unregisterCoreProductAsset(callCoreProductHost, assetId);
+    callCoreProductHost<void>('unregisterAsset', assetId);
   },
 
   auditionSynthNote(note: ProductManualSynthNote, externalState?: ProductExternalState): Promise<void> {
-    return auditionCoreProductSynthNote(callCoreProductHost, note, externalState);
+    return callCoreProductHost<Promise<void>>('auditionSynthNote', note, externalState);
   },
 
   triggerDrumVoice(voice: ProductDrumVoice, velocity: number, externalState?: ProductExternalState): Promise<void> {
-    return triggerCoreProductDrumVoice(callCoreProductHost, voice, velocity, externalState);
+    return callCoreProductHost<Promise<void>>('triggerDrumVoice', voice, velocity, externalState);
   },
 
   readState(): ProductEngineState {
-    return readCoreProductState(callCoreProductHost);
+    return callCoreProductHost<ProductEngineState>('getState');
   },
 
   readTelemetry(): ProductTelemetrySnapshot | null {
-    return readCoreProductTelemetry(callCoreProductHost);
+    return callCoreProductHost<ProductTelemetrySnapshot | null>('getProductTelemetry');
   },
 
   readDynamicsVisualTelemetry(): ProductDynamicsVisualTelemetry {
-    return readCoreProductDynamicsVisualTelemetry(callCoreProductHost);
+    return callCoreProductHost<ProductDynamicsVisualTelemetry>('getDynamicsVisualTelemetry');
   },
 
   readDiagnostics(): ProductRuntimeDiagnostics {
-    return readCoreProductRuntimeDiagnostics(callCoreProductHost);
+    return callCoreProductHost<ProductRuntimeDiagnostics>('getProductRuntimeDiagnostics');
   },
 
   readCapabilityReport(): ProductRuntimeCapabilityReport {
-    return readCoreProductCapabilityReport(callCoreProductHost);
+    return callCoreProductHost<ProductRuntimeCapabilityReport>('getCapabilityReport');
   },
 
   setStateChangeCallback(callback: ((state: ProductEngineState) => void) | null): void {
-    setCoreProductStateChangeCallback(callCoreProductHost, callback);
+    callCoreProductHost<void>('setStateChangeCallback', callback);
   },
 
   setTelemetryCallback(
     callback: ((telemetry: ProductTelemetrySnapshot) => void) | null,
     publishDiagnostics: () => void,
   ): void {
-    setCoreProductTelemetryCallback(callCoreProductHost, callback, publishDiagnostics);
+    callCoreProductHost<void>('setProductTelemetryCallback', callback ? (telemetry: ProductTelemetrySnapshot) => {
+      callback(telemetry);
+      publishDiagnostics();
+    } : null);
   },
 
   setDrumTriggerCallback(callback: ProductDrumTriggerCallback | null): void {
-    setCoreProductDrumTriggerCallback(callCoreProductHost, callback);
+    callCoreProductHost<void>('setDrumTriggerCallback', callback);
   },
 
   setDrumStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void {
-    setCoreProductDrumStepPositionCallback(callCoreProductHost, callback);
+    callCoreProductHost<void>('setDrumStepPositionCallback', callback);
   },
 
   setSynthStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void {
-    setCoreProductSynthStepPositionCallback(callCoreProductHost, callback);
+    callCoreProductHost<void>('setSynthStepPositionCallback', callback);
   },
 
   setDrumEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void {
-    setCoreProductDrumEuclidEvolveTriggerCallback(callCoreProductHost, callback);
+    callCoreProductHost<void>('setDrumEuclidEvolveTriggerCallback', callback);
   },
 
   setSynthEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void {
-    setCoreProductSynthEuclidEvolveTriggerCallback(callCoreProductHost, callback);
+    callCoreProductHost<void>('setSynthEuclidEvolveTriggerCallback', callback);
   },
 
   setRuntimeWalkPositionsCallback(callback: ProductRuntimeWalkPositionsCallback | null): void {
-    setCoreProductRuntimeWalkPositionsCallback(callCoreProductHost, callback);
+    callCoreProductHost<void>('setRuntimeWalkPositionsCallback', callback);
   },
 
   setDrumMorphRange(voice: ProductDrumVoice, range: ProductRange | null): void {
-    setCoreProductDrumMorphRange(callCoreProductHost, voice, range);
+    callCoreProductHost<void>('setDrumMorphRange', voice, range);
   },
 
   setDrumParamSHRange(key: string, range: ProductRange | null): void {
-    setCoreProductDrumParamSampleHoldRange(callCoreProductHost, key, range);
+    callCoreProductHost<void>('setDrumParamSHRange', key, range);
   },
 
   setDualRanges(ranges: ProductRangeMap): void {
-    setCoreProductSampleHoldRanges(callCoreProductHost, ranges);
+    callCoreProductHost<void>('setDualRanges', ranges);
   },
 
   setRuntimeWalkRanges(ranges: ProductRangeMap): void {
-    setCoreProductRuntimeWalkRanges(callCoreProductHost, ranges);
+    callCoreProductHost<void>('setRuntimeWalkRanges', ranges);
   },
 
   setLiveTriggerCallback(
@@ -216,28 +176,32 @@ export const coreProductRuntimeHostPort = {
     setCoreProductLiveTriggerCallback(callCoreProductHost, name, callback);
   },
 
+  setGranularUiActive(active: boolean): void {
+    callCoreProductHost<void>('setGranularUiActive', active);
+  },
+
   setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void {
-    setCoreProductJourneyMorphClockCallback(callCoreProductHost, callback);
+    callCoreProductHost<void>('setJourneyMorphClockCallback', callback);
   },
 
   startJourneyMorphClock(): void {
-    startCoreProductJourneyMorphClock(callCoreProductHost);
+    callCoreProductHost<void>('startJourneyMorphClock');
   },
 
   stopJourneyMorphClock(): void {
-    stopCoreProductJourneyMorphClock(callCoreProductHost);
+    callCoreProductHost<void>('stopJourneyMorphClock');
   },
 
   setDrumEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void {
-    setCoreProductDrumEvolveOverridesChangedCallback(callCoreProductHost, callback);
+    callCoreProductHost<void>('setDrumEvolveOverridesChangedCallback', callback);
   },
 
   setSynthEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void {
-    setCoreProductSynthEvolveOverridesChangedCallback(callCoreProductHost, callback);
+    callCoreProductHost<void>('setSynthEvolveOverridesChangedCallback', callback);
   },
 
   setSynthNoteRangeEvolvedCallback(callback: ProductSynthNoteRangeEvolvedCallback | null): void {
-    setCoreProductSynthNoteRangeEvolvedCallback(callCoreProductHost, callback);
+    callCoreProductHost<void>('setSynthNoteRangeEvolvedCallback', callback);
   },
 
   applySequencerUiPatch(patch: ProductSequencerUiPatch): void {
@@ -245,10 +209,10 @@ export const coreProductRuntimeHostPort = {
   },
 
   setPerfMonitorEnabled(enabled: boolean): void {
-    setCoreProductPerfMonitorEnabled(callCoreProductHost, enabled);
+    callCoreProductHost<void>('setPerfMonitorEnabled', enabled);
   },
 
   setVisualTelemetryActive(active: boolean): void {
-    setCoreProductVisualTelemetryActive(callCoreProductHost, active);
+    callCoreProductHost<void>('setVisualTelemetryActive', active);
   },
 };

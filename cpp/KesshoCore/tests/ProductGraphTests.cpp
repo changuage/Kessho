@@ -156,6 +156,54 @@ void requireFxSidechainGraphCapture() {
   }
 }
 
+void requireGranularPrimedOnSourceStart() {
+  KesshoProductEngine direct(48000.0, 128, 0);
+  direct.graph_taps_enabled = true;
+  SourceState& piano = direct.sources[KESSHO_PRODUCT_SOURCE_PIANO - 1u];
+  piano.enabled = true;
+  piano.source_id = KESSHO_PRODUCT_SOURCE_PIANO;
+  piano.level = 1.0f;
+  piano.dry_gain = 1.0f;
+  piano.expression = 1.0f;
+  piano.granular_send = 1.0f;
+  piano.granular_send_gain = 0.0f;
+  piano.attack_seconds = 0.001f;
+  piano.decay_seconds = 0.02f;
+  piano.sustain = 1.0f;
+  piano.hold_seconds = 0.1f;
+  piano.release_seconds = 0.1f;
+  piano.post_lpf_hz = 20000.0f;
+  piano.stereo_width = 1.0f;
+  direct.fx.granular_enabled = true;
+  direct.fx.granular_mix = 0.75f;
+  direct.granular_mix_gain = 0.0f;
+  direct.routing.granular_to_reverb = 0.25f;
+  direct.granular_reverb_send_gain = 0.0f;
+
+  float piano_samples[256];
+  std::fill(piano_samples, piano_samples + 256, 1.0f);
+  direct.assets[0].active = true;
+  direct.assets[0].asset_id = 9000u;
+  direct.assets[0].channels[0] = piano_samples;
+  direct.assets[0].channel_count = 1u;
+  direct.assets[0].frame_count = 256u;
+  direct.assets[0].sample_rate = 48000.0;
+  direct.assets[0].flags = KESSHO_PRODUCT_ASSET_PIANO;
+
+  require(
+      direct.triggerVoice(KESSHO_PRODUCT_SOURCE_PIANO, 60.0f, 1.0f, 0.2f) != kProductInvalidVoiceIndex,
+      "granular prime piano trigger failed");
+  require(std::fabs(piano.granular_send_gain - 1.0f) < 0.00001f, "source-start granular send was not primed");
+  require(std::fabs(direct.granular_mix_gain - 0.75f) < 0.00001f, "source-start granular return was not primed");
+  require(std::fabs(direct.granular_reverb_send_gain - 0.25f) < 0.00001f, "source-start granular reverb return was not primed");
+
+  float out_l[8]{};
+  float out_r[8]{};
+  direct.renderSampleVoices(out_l, out_r, 0u, 8u);
+  require(direct.graph_piano_granular_send_l[0] > 0.001f, "effective piano granular send missed the transient");
+  require(direct.granular_bus_l[0] > 0.001f, "granular bus missed the primed piano transient");
+}
+
 void requireSoundscapeLayerRouteGraphCoverage() {
   KesshoProductEngine direct(48000.0, 128, 0);
   direct.graph_taps_enabled = true;
@@ -250,6 +298,7 @@ void requireSoundscapeLayerRouteGraphCoverage() {
 int main() {
   requireDirectGraphCoverage();
   requireFxSidechainGraphCapture();
+  requireGranularPrimedOnSourceStart();
   requireSoundscapeLayerRouteGraphCoverage();
 
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);

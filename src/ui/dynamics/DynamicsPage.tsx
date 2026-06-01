@@ -23,6 +23,17 @@ import {
   DynamicsSaturationVisualizer,
   DynamicsSidechainVisualizer,
 } from './DynamicsVisualizers';
+import {
+  DYNAMICS_CHARACTER_CONTROLS,
+  DYNAMICS_DEGRADE_CONTROLS,
+  DYNAMICS_END_CHAIN_CONTROLS,
+  DYNAMICS_SATURATION_CONTROLS,
+  DYNAMICS_SIDECHAIN_MIX_CONTROLS,
+  DYNAMICS_SIDECHAIN_SHAPE_CONTROLS,
+  DYNAMICS_SIDECHAIN_TARGET_CONTROLS,
+  type DynamicsSliderControlDefinition,
+} from './dynamicsControlSchema';
+import { getProductSliderValue } from '../controls/productControlSchema';
 import './dynamics.css';
 
 const DRUM_KEY_OPTIONS: Array<{ value: SliderState['sidechainKeyA']; label: string }> = [
@@ -48,18 +59,6 @@ const SAT_MODE_OPTIONS: Array<{ value: SliderState['dynamicsSaturationMode']; la
   { value: 'tube', label: 'Tube' },
   { value: 'diode', label: 'Diode' },
   { value: 'fold', label: 'Fold' },
-];
-
-const TARGET_CONTROLS: Array<{ key: keyof SliderState; label: string }> = [
-  { key: 'sidechainPad1Target', label: 'Pad 1' },
-  { key: 'sidechainPad2Target', label: 'Pad 2' },
-  { key: 'sidechainLead1Target', label: 'Lead 1' },
-  { key: 'sidechainLead2Target', label: 'Lead 2' },
-  { key: 'sidechainPianoTarget', label: 'Piano' },
-  { key: 'sidechainGranularTarget', label: 'Granular' },
-  { key: 'sidechainDelayATarget', label: 'Delay A' },
-  { key: 'sidechainDelayBTarget', label: 'Delay B' },
-  { key: 'sidechainReverbTarget', label: 'Reverb' },
 ];
 
 function makeSubsetPresetOptions(
@@ -137,7 +136,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
   }), [announceHelp]);
 
   const activeTargets = useMemo(
-    () => TARGET_CONTROLS.filter(({ key }) => Number(state[key] ?? 0) > 0.001).length,
+    () => DYNAMICS_SIDECHAIN_TARGET_CONTROLS.filter(({ key }) => Number(state[key] ?? 0) > 0.001).length,
     [state],
   );
   const activeCharacter = CHARACTER_MODE_OPTIONS.find((mode) => mode.value === state.characterMode)?.label ?? 'Clean';
@@ -167,6 +166,21 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
   const handleSaturationPresetLoad = useCallback((entry: PresetEntry) => {
     setSaturationPresetName(entry.name);
   }, []);
+
+  const renderDynamicsSlider = useCallback((control: DynamicsSliderControlDefinition) => (
+    <Slider
+      key={String(control.key)}
+      label={control.label}
+      value={getProductSliderValue(state, control)}
+      paramKey={control.key}
+      onChange={onParamChange}
+      helpPage={control.helpPage}
+      unit={control.unit}
+      logarithmic={control.logarithmic}
+      {...sliderProps(control.key)}
+      {...(control.announceHelp ? bindSliderHelp(control.key, control.label) : {})}
+    />
+  ), [Slider, bindSliderHelp, onParamChange, sliderProps, state]);
 
   const setModuleEnabled = useCallback((key: 'sidechainEnabled' | 'characterEnabled' | 'degradeEnabled' | 'dynamicsSaturationEnabled' | 'endCompEnabled', enabled: boolean) => {
     const shouldEnableDynamics = key !== 'dynamicsSaturationEnabled';
@@ -271,18 +285,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                 />
               </div>
               <div className="dynamics-grid-2">
-                <Slider label="Mix" value={state.characterMix} paramKey="characterMix" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterMix')} />
-                <Slider label="Age" value={state.characterAge} paramKey="characterAge" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterAge')} />
-                <Slider label="Bias" value={state.characterBias} paramKey="characterBias" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterBias')} />
-                <Slider label="LPG Open" value={state.characterLpgAmount} paramKey="characterLpgAmount" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterLpgAmount')} />
-                <Slider label="Depth" value={state.characterDepth} paramKey="characterDepth" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterDepth')} />
-                <Slider label="Rate" value={state.characterRate} paramKey="characterRate" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterRate')} />
-                <Slider label="Damp" value={state.characterDamp} paramKey="characterDamp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterDamp')} />
-                <Slider label="Env Follow" value={state.characterEnvFollow} paramKey="characterEnvFollow" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterEnvFollow')} />
-                <Slider label="HP" value={state.degradeHp} paramKey="degradeHp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeHp')} />
-                <Slider label="LP" value={state.degradeLp} paramKey="degradeLp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeLp')} />
-                <Slider label="Stereo" value={state.characterStereo} paramKey="characterStereo" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterStereo')} />
-                <Slider label="Resonance" value={state.characterResonance} paramKey="characterResonance" onChange={onParamChange} helpPage="dynamics" {...sliderProps('characterResonance')} />
+                {DYNAMICS_CHARACTER_CONTROLS.map(renderDynamicsSlider)}
               </div>
             </div>
             )}
@@ -327,20 +330,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   getDynamicsTelemetry={getDynamicsTelemetry}
                 />
                 <div className="dynamics-grid-2">
-                  <Slider label="Mix" value={state.degradeMix} paramKey="degradeMix" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeMix')} />
-                  <Slider label="Wear" value={state.degradeAge} paramKey="degradeAge" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeAge')} />
-                  <Slider label="Generation" value={state.degradeGeneration} paramKey="degradeGeneration" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeGeneration')} />
-                  <Slider label="Alias" value={state.degradeAlias} paramKey="degradeAlias" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeAlias')} />
-                  <Slider label="Wow" value={state.degradeWow} paramKey="degradeWow" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeWow')} />
-                  <Slider label="Flutter" value={state.degradeFlutter} paramKey="degradeFlutter" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeFlutter')} />
-                  <Slider label="Drift" value={state.degradeDrift} paramKey="degradeDrift" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeDrift')} />
-                  <Slider label="Wobble Speed" value={state.degradeWobbleSpeed} paramKey="degradeWobbleSpeed" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeWobbleSpeed')} />
-                  <Slider label="Noise" value={state.degradeNoise} paramKey="degradeNoise" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeNoise')} />
-                  <Slider label="HP" value={state.degradeHp} paramKey="degradeHp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeHp')} />
-                  <Slider label="LP" value={state.degradeLp} paramKey="degradeLp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeLp')} />
-                  <Slider label="Tone" value={state.degradeTone} paramKey="degradeTone" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeTone')} />
-                  <Slider label="Clip" value={state.degradeSaturation} paramKey="degradeSaturation" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeSaturation')} />
-                  <Slider label="Corrosion" value={state.degradeCorrosion} paramKey="degradeCorrosion" onChange={onParamChange} helpPage="dynamics" {...sliderProps('degradeCorrosion')} />
+                  {DYNAMICS_DEGRADE_CONTROLS.map(renderDynamicsSlider)}
                 </div>
                 <div className="dynamics-mod-panel">
                   <button
@@ -441,9 +431,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                 />
               </div>
               <div className="dynamics-grid-2">
-                <Slider label="Drive" value={state.dynamicsSaturationDrive} paramKey="dynamicsSaturationDrive" onChange={onParamChange} helpPage="dynamics" {...sliderProps('dynamicsSaturationDrive')} />
-                <Slider label="Tone" value={state.dynamicsSaturationTone} paramKey="dynamicsSaturationTone" onChange={onParamChange} helpPage="dynamics" {...sliderProps('dynamicsSaturationTone')} />
-                <Slider label="Bias" value={state.dynamicsSaturationBias} paramKey="dynamicsSaturationBias" onChange={onParamChange} helpPage="dynamics" {...sliderProps('dynamicsSaturationBias')} />
+                {DYNAMICS_SATURATION_CONTROLS.map(renderDynamicsSlider)}
               </div>
             </div>
             )}
@@ -488,17 +476,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                 />
               </div>
               <div className="dynamics-grid-2">
-                <Slider label="Threshold" value={state.endCompThreshold} paramKey="endCompThreshold" unit=" dB" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompThreshold')} />
-                <Slider label="Knee" value={state.endCompKnee} paramKey="endCompKnee" unit=" dB" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompKnee')} />
-                <Slider label="Ratio" value={state.endCompRatio} paramKey="endCompRatio" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompRatio')} />
-                <Slider label="Attack" value={state.endCompAttackMs} paramKey="endCompAttackMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompAttackMs')} />
-                <Slider label="Release" value={state.endCompReleaseMs} paramKey="endCompReleaseMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompReleaseMs')} />
-                <Slider label="Makeup" value={state.endCompMakeup} paramKey="endCompMakeup" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompMakeup')} />
-                <Slider label="Mix" value={state.endCompMix} paramKey="endCompMix" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompMix')} />
-                <Slider label="Detector HP" value={state.endCompDetectorHp} paramKey="endCompDetectorHp" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompDetectorHp')} />
-                <Slider label="SC Tilt" value={state.endCompDetectorTilt} paramKey="endCompDetectorTilt" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompDetectorTilt')} />
-                <Slider label="Auto Makeup" value={state.endCompAutoMakeup} paramKey="endCompAutoMakeup" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompAutoMakeup')} />
-                <Slider label="Program Rel" value={state.endCompProgramRelease} paramKey="endCompProgramRelease" onChange={onParamChange} helpPage="dynamics" {...sliderProps('endCompProgramRelease')} />
+                {DYNAMICS_END_CHAIN_CONTROLS.map(renderDynamicsSlider)}
               </div>
             </div>
             )}
@@ -566,37 +544,17 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
               </div>
 
               <div className="dynamics-grid-2">
-                <Slider label="Key A Weight" value={state.sidechainKeyAWeight} paramKey="sidechainKeyAWeight" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainKeyAWeight')} {...bindSliderHelp('sidechainKeyAWeight', 'Key A Weight')} />
-                <Slider label="Key B Weight" value={state.sidechainKeyBWeight} paramKey="sidechainKeyBWeight" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainKeyBWeight')} {...bindSliderHelp('sidechainKeyBWeight', 'Key B Weight')} />
-                <Slider label="Amount" value={state.sidechainAmount} paramKey="sidechainAmount" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainAmount')} {...bindSliderHelp('sidechainAmount', 'Amount')} />
-                <Slider label="Mix" value={state.sidechainMix} paramKey="sidechainMix" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainMix')} {...bindSliderHelp('sidechainMix', 'Mix')} />
+                {DYNAMICS_SIDECHAIN_MIX_CONTROLS.map(renderDynamicsSlider)}
               </div>
 
               <div className="dynamics-subsection">Shape</div>
               <div className="dynamics-grid-2">
-                <Slider label="Threshold" value={state.sidechainThreshold} paramKey="sidechainThreshold" unit=" dB" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainThreshold')} />
-                <Slider label="Ratio" value={state.sidechainRatio} paramKey="sidechainRatio" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainRatio')} />
-                <Slider label="Knee" value={state.sidechainKnee} paramKey="sidechainKnee" unit=" dB" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainKnee')} />
-                <Slider label="Curve" value={state.sidechainCurve} paramKey="sidechainCurve" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainCurve')} />
-                <Slider label="Attack" value={state.sidechainAttackMs} paramKey="sidechainAttackMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainAttackMs')} />
-                <Slider label="Hold" value={state.sidechainHoldMs} paramKey="sidechainHoldMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainHoldMs')} />
-                <Slider label="Release" value={state.sidechainReleaseMs} paramKey="sidechainReleaseMs" unit=" ms" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainReleaseMs')} />
-                <Slider label="Makeup" value={state.sidechainMakeup} paramKey="sidechainMakeup" onChange={onParamChange} helpPage="dynamics" {...sliderProps('sidechainMakeup')} />
+                {DYNAMICS_SIDECHAIN_SHAPE_CONTROLS.map(renderDynamicsSlider)}
               </div>
 
               <div className="dynamics-subsection">Targets</div>
               <div className="dynamics-grid-2">
-                {TARGET_CONTROLS.map(({ key, label }) => (
-                  <Slider
-                    key={String(key)}
-                    label={label}
-                    value={Number(state[key] ?? 0)}
-                    paramKey={key}
-                    onChange={onParamChange}
-                    helpPage="dynamics"
-                    {...sliderProps(key)}
-                  />
-                ))}
+                {DYNAMICS_SIDECHAIN_TARGET_CONTROLS.map(renderDynamicsSlider)}
               </div>
             </div>
             )}

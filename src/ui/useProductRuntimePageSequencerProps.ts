@@ -1,10 +1,13 @@
 import { useMemo, type MutableRefObject } from 'react';
 import type { ClockDivision, DrumStepOverrides, PitchBindingMode } from '../audio/drumSeqTypes';
+import type { ProductArpConfig } from '../audio/productArpeggiator';
 import type { EvolveConfig, PitchSettings, StepOverrides, SubLaneKind, SubLaneState } from './sequencer/useEuclideanSequencer';
 
+type ProductRuntimePitchHomeState = { steps?: number; direction?: string; scaleQuantize?: boolean };
+
 export type ProductRuntimePageSequencerProps = {
-  captureProductSynthEuclidLaneHome: (laneIdx: number, pitchState?: SubLaneState) => void;
-  captureProductDrumEuclidLaneHome: (laneIdx: number, pitchSettings?: PitchSettings, pitchState?: SubLaneState) => void;
+  captureProductSynthEuclidLaneHome: (laneIdx: number, pitchState?: ProductRuntimePitchHomeState | null) => void;
+  captureProductDrumEuclidLaneHome: (laneIdx: number, pitchSettings?: PitchSettings, pitchState?: SubLaneState | null) => void;
   diceProductSynthEuclidLane: (laneIdx: number, intensity: number) => void;
   diceProductDrumEuclidLane: (laneIdx: number, intensity: number) => void;
   drumClockDivsRef: MutableRefObject<ClockDivision[] | undefined>;
@@ -19,6 +22,7 @@ export type ProductRuntimePageSequencerProps = {
   setProductDrumEuclidClockDivs: (divs: ClockDivision[]) => void;
   setProductDrumEuclidEvolveConfigs: (configs: EvolveConfig[]) => void;
   setProductDrumEuclidSwings: (swings: number[]) => void;
+  setProductDrumPitchSettings: (settings: PitchSettings[]) => void;
   setProductDrumStepOverrides: (overrides: DrumStepOverrides) => void;
   setProductDrumSubLaneEnabled: (enabled: Record<string, boolean>[]) => void;
   setProductSynthEuclidClockDivs: (divs: ClockDivision[]) => void;
@@ -33,6 +37,7 @@ export type ProductRuntimePageSequencerProps = {
   synthLinkedRef: MutableRefObject<boolean[] | undefined>;
   synthPitchBindingModesRef: MutableRefObject<PitchBindingMode[] | undefined>;
   synthPitchSettingsRef: MutableRefObject<PitchSettings[] | undefined>;
+  synthArpConfigsRef: MutableRefObject<ProductArpConfig[] | undefined>;
   synthStepOverridesRef: MutableRefObject<StepOverrides | undefined>;
   synthSubLaneStatesRef: MutableRefObject<Record<SubLaneKind, SubLaneState>[] | undefined>;
   synthSwingsRef: MutableRefObject<number[] | undefined>;
@@ -48,6 +53,7 @@ export function useProductRuntimePageSequencerProps({
   setProductDrumEuclidClockDivs,
   setProductDrumEuclidEvolveConfigs,
   setProductDrumEuclidSwings,
+  setProductDrumPitchSettings,
   setProductDrumStepOverrides,
   setProductDrumSubLaneEnabled,
   setProductSynthEuclidClockDivs,
@@ -69,6 +75,7 @@ export function useProductRuntimePageSequencerProps({
   synthLinkedRef,
   synthPitchBindingModesRef,
   synthPitchSettingsRef,
+  synthArpConfigsRef,
   synthStepOverridesRef,
   synthSubLaneStatesRef,
   synthSwingsRef,
@@ -90,6 +97,7 @@ export function useProductRuntimePageSequencerProps({
     setProductDrumEuclidClockDivs,
     setProductDrumEuclidEvolveConfigs,
     setProductDrumEuclidSwings,
+    setProductDrumPitchSettings,
     setProductDrumStepOverrides,
     setProductDrumSubLaneEnabled,
     setProductSynthEuclidClockDivs,
@@ -104,6 +112,7 @@ export function useProductRuntimePageSequencerProps({
     synthLinkedRef,
     synthPitchBindingModesRef,
     synthPitchSettingsRef,
+    synthArpConfigsRef,
     synthStepOverridesRef,
     synthSubLaneStatesRef,
     synthSwingsRef,
@@ -124,6 +133,7 @@ export function useProductRuntimePageSequencerProps({
     setProductDrumEuclidClockDivs,
     setProductDrumEuclidEvolveConfigs,
     setProductDrumEuclidSwings,
+    setProductDrumPitchSettings,
     setProductDrumStepOverrides,
     setProductDrumSubLaneEnabled,
     setProductSynthEuclidClockDivs,
@@ -138,6 +148,7 @@ export function useProductRuntimePageSequencerProps({
     synthLinkedRef,
     synthPitchBindingModesRef,
     synthPitchSettingsRef,
+    synthArpConfigsRef,
     synthStepOverridesRef,
     synthSubLaneStatesRef,
     synthSwingsRef,

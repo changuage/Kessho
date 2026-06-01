@@ -7,11 +7,13 @@
  */
 
 import React from 'react';
-import type { SliderMode } from './state';
+import type { SliderMode, SliderState } from './state';
 import { useSliderHelp } from './SliderHelpOverlay';
 import type { SliderPageId } from './sliderHelpCatalog';
 import { useRuntimeSliderIndicator } from './runtimeSliderState';
 import { SliderPrimitive, type SliderPrimitiveRange } from './sliderSystem';
+import { MidiLearnSliderAdornment } from './midiLearn/MidiLearnSliderAdornment';
+import { useMidiLearn } from './midiLearn/useMidiLearn';
 
 export interface DualSliderRange {
   min: number;
@@ -103,6 +105,7 @@ export function DualSlider<K extends string = string>({
   fillColor = '#a5c4d4',
 }: DualSliderProps<K>) {
   const { announceSlider } = useSliderHelp();
+  const midiLearn = useMidiLearn();
   const runtimeIndicator = useRuntimeSliderIndicator(String(paramKey), mode, walkPosition, isFlashing);
   const isDualMode = mode !== 'single';
   const lastSubmittedValueRef = React.useRef<number | null>(null);
@@ -238,6 +241,15 @@ export function DualSlider<K extends string = string>({
         ? `${label}: ${displayValue} active ${formatValue(currentValue)}${unit || ''}. Click the mode symbol to cycle.`
         : `${label}: ${displayValue}. Click the mode symbol to cycle.`}
       onAnnounce={announceHelp}
+      onValueGestureStart={() => {
+        midiLearn.notifySliderDrag(paramKey as keyof SliderState, label);
+      }}
+      headAdornment={
+        <MidiLearnSliderAdornment
+          paramKey={paramKey as keyof SliderState}
+          label={label}
+        />
+      }
       onModeCycle={() => {
         if (!disabled) onCycleMode(paramKey);
       }}

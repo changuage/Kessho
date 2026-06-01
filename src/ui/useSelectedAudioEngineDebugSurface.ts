@@ -38,7 +38,7 @@ export function useSelectedAudioEngineDebugSurface(
 ): SelectedAudioEngineDebugSurface {
   const getSelectedGranularBufferWaveform = useCallback((): Float32Array | null => {
     if (audioEngineRuntimeMode === 'core-product') {
-      throw new Error('Granular waveform samples are explicitly unavailable in core-product');
+      return productEngine.getTelemetry()?.granularBufferWaveform ?? null;
     }
     return referenceAudioEngineDebug.getGranularBufferWaveform();
   }, [audioEngineRuntimeMode]);
@@ -96,7 +96,7 @@ export function useSelectedAudioEngineDebugSurface(
     referenceDrumVoiceAnalyser: referenceRuntimeActive ? getSelectedDrumVoiceAnalyser : undefined,
     referenceDynamicsAnalyser: referenceRuntimeActive ? getSelectedDynamicsAnalyser : undefined,
     liveLeadMorphedParamsAvailable: referenceRuntimeActive,
-    liveWaveformTelemetryAvailable: referenceRuntimeActive,
+    liveWaveformTelemetryAvailable: referenceRuntimeActive || audioEngineRuntimeMode === 'core-product',
     textureDebugAvailable: referenceRuntimeActive || audioEngineRuntimeMode === 'core-product',
     updateSelectedReferenceParams,
   };

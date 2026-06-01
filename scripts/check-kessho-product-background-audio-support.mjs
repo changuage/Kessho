@@ -19,6 +19,7 @@ function assertIncludes(source, token, label) {
 
 const supportHookPath = 'src/ui/useProductRuntimeBackgroundAudioSupport.ts';
 const mediaSessionPath = 'src/ui/audioEngineMediaSession.ts';
+const coreProductRuntimePath = 'src/audio/coreProductRuntime.ts';
 const playbackAdapterPath = 'src/ui/useProductRuntimePlaybackAdapter.ts';
 const capacitorAudioSessionPath = 'src/native/capacitorAudioSession.ts';
 const capacitorDiagnosticsPath = 'src/ui/useCapacitorAudioSessionDiagnostics.ts';
@@ -33,6 +34,7 @@ const packagePath = 'package.json';
 
 const supportHook = read(supportHookPath);
 const mediaSession = read(mediaSessionPath);
+const coreProductRuntime = read(coreProductRuntimePath);
 const playbackAdapter = read(playbackAdapterPath);
 const capacitorAudioSession = read(capacitorAudioSessionPath);
 const capacitorDiagnostics = read(capacitorDiagnosticsPath);
@@ -78,6 +80,22 @@ assert(
   !mediaSession.includes('if (!mediaSessionAudio) {\n    mediaSessionAudio = new Audio();'),
   `${mediaSessionPath} must not create the reference MediaStream carrier for core-product`,
 );
+
+for (const token of [
+  'createProductAudioContext',
+  'webkitAudioContext',
+  "latencyHint: 'playback'",
+  'prepareMediaSessionPlayback',
+  'connectMediaSessionPlayback',
+  'disconnectMediaSessionPlayback',
+  'context.createMediaStreamDestination()',
+  'connectOutputToBrowserSink',
+  'output.connect(destination)',
+  'audio.play().catch',
+  'isIOSLikeDevice()',
+]) {
+  assertIncludes(coreProductRuntime, token, coreProductRuntimePath);
+}
 
 for (const token of [
   'useProductRuntimeBackgroundAudioSupport',
@@ -220,6 +238,10 @@ assert(
 assert(
   packageJson.scripts?.['core:product:macos-app-background-smoke'] === 'swift run --package-path CapacitorMac KesshoCapacitorMac --native-product-background-smoke',
   'package.json must expose core:product:macos-app-background-smoke',
+);
+assert(
+  packageJson.scripts?.['core:product:native-background-smoke'] === 'npm run core:product:macos-app-background-smoke',
+  'package.json must expose core:product:native-background-smoke as the plan-level native background alias',
 );
 
 console.log('Kessho Product background audio support checks passed');

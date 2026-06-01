@@ -223,6 +223,9 @@
       }
       const float left = output_dry_left * duck_gain;
       const float right = output_dry_right * duck_gain;
+      const float graph_granular_send = soundscape_sample
+          ? source.granular_send
+          : granularSendGainForFrame(source.source_id, source.granular_send, transport.sample_frame + i);
       if (graph_taps_enabled || source.diffuse_send > 0.0f) {
         recordSourceGraphTaps(
             voice.source_id,
@@ -233,7 +236,8 @@
             left,
             right,
             send_left,
-            send_right);
+            send_right,
+            graph_granular_send);
       }
       float reverb_send = source.reverb_send;
       float delay_a_send = source.delay_a_send;
@@ -559,38 +563,55 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
   advanceGranularPhraseReseed();
   advanceReverbHarmonyCoupling(frames);
   ensureSoundscapeVoice();
-  generateSequencerEvents(frames);
-  uint32_t sequencer_index = 0;
-
+  uint32_t sequencer_event_total = 0u;
   uint32_t cursor = 0;
   while (cursor < frames) {
     while (control_index < control_event_count && control_events[control_index].event.sample_offset == cursor) {
       applyControlEvent(control_events[control_index].event);
       ++control_index;
     }
-    while (sequencer_index < sequencer_events.count && sequencer_events.events[sequencer_index].sample_offset == cursor) {
-      triggerSequencerEvent(sequencer_events.events[sequencer_index]);
-      ++sequencer_index;
-    }
 
-    uint32_t next_event_offset = frames;
+    uint32_t control_segment_end = frames;
     if (control_index < control_event_count) {
-      next_event_offset = std::min(next_event_offset, control_events[control_index].event.sample_offset);
+      control_segment_end = std::min(control_segment_end, control_events[control_index].event.sample_offset);
     }
-    if (sequencer_index < sequencer_events.count) {
-      next_event_offset = std::min(next_event_offset, sequencer_events.events[sequencer_index].sample_offset);
+    if (control_segment_end <= cursor) {
+      control_segment_end = cursor + 1u;
     }
-    if (next_event_offset <= cursor) {
-      next_event_offset = cursor + 1u;
+    const uint32_t control_segment_frames = control_segment_end - cursor;
+    generateSequencerEvents(control_segment_frames);
+    sequencer_event_total += sequencer_events.count;
+
+    uint32_t sequencer_index = 0;
+    uint32_t local_cursor = 0;
+    while (local_cursor < control_segment_frames) {
+      while (
+          sequencer_index < sequencer_events.count &&
+          sequencer_events.events[sequencer_index].sample_offset == local_cursor) {
+        triggerSequencerEvent(sequencer_events.events[sequencer_index]);
+        ++sequencer_index;
+      }
+
+      uint32_t next_event_offset = control_segment_frames;
+      if (sequencer_index < sequencer_events.count) {
+        next_event_offset = std::min(next_event_offset, sequencer_events.events[sequencer_index].sample_offset);
+      }
+      if (next_event_offset <= local_cursor) {
+        next_event_offset = local_cursor + 1u;
+      }
+      const uint32_t segment_frames = next_event_offset - local_cursor;
+      renderSegment(out_l, out_r, cursor + local_cursor, segment_frames);
+      if (transport.running) {
+        transport.sample_frame += segment_frames;
+      }
+      local_cursor = next_event_offset;
     }
-    const uint32_t segment_frames = next_event_offset - cursor;
-    renderSegment(out_l, out_r, cursor, segment_frames);
-    if (transport.running) {
-      transport.sample_frame += segment_frames;
-    }
-    cursor = next_event_offset;
+    cursor = control_segment_end;
   }
 
+  sequencer_events.count = std::min<uint32_t>(
+      sequencer_event_total,
+      kessho::product::generated::KESSHO_PRODUCT_MAX_SEQUENCER_EVENTS);
   renderDiffuseBus(out_l, out_r, frames);
   renderFx(out_l, out_r, 0u, frames);
   applyMaster(out_l, out_r, frames);

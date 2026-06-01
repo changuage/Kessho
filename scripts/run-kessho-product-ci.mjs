@@ -39,6 +39,7 @@ const prerequisiteSteps = [
   'core:product:sources',
   'core:product:assets',
   'core:product:source-parity',
+  'core:product:nature-runtime',
   'core:product:web-graph-parity:audit',
   'core:product:web-graph-capture-smoke:fast',
   'core:product:web-host',

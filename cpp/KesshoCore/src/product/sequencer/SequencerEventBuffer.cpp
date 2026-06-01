@@ -14,6 +14,10 @@
 
   void KesshoProductEngine::resetSequencerLaneRuntime(LaneState& lane, bool wait_for_join_boundary) {
   lane.emitted_hit_count = 0u;
+  lane.last_emitted_morph_valid = false;
+  lane.last_emitted_morph = 0.0f;
+  lane.last_emitted_drum_voice = DRUM_NUM_VOICE_TYPES;
+  lane.last_emitted_sample_frame = 0u;
   lane.sequencer_runtime_sample_frame = 0u;
   lane.sequencer_start_sample_frame = 0u;
   lane.sequencer_runtime_initialized = false;

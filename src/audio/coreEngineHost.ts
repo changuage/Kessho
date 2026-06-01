@@ -1,3 +1,14 @@
+/**
+ * REFERENCE HOST / A-B TESTING PATH
+ *
+ * This file is not the preferred Product Core production host.
+ * It remains active for core-smoke, web-ts comparison, product-test,
+ * parity validation, smoke tests, and other A/B workflows.
+ *
+ * Do not add new production dependencies here.
+ * Status: Keep Active — Archive Later
+ */
+
 import type {
   DynamicsAnalyserKey,
   DynamicsVisualTelemetrySnapshot,
@@ -2123,7 +2134,7 @@ function createPadPreviewSource(
   anchors: TransportAnchors | null = null,
 ): PreviewSourceConfig | null {
   const state = sliderState as unknown as Record<string, unknown>;
-  const chordSequencerEnabled = state.synthChordSequencerEnabled !== false;
+  const chordSequencerEnabled = state.synthChordSequencerEnabled === true;
   const rawPadEuclidNotes = synthEuclid.padNotes.map(({ source: _source, midi: _midi, laneIndex: _laneIndex, ...note }) => note);
 
   const pad1Enabled = booleanValue(state.padEnabled, true);

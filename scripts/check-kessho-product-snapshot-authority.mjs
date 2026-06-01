@@ -34,6 +34,7 @@ const allowedImports = new Set([
   '../ui/state',
   './CoreProductModeIds',
   './CoreProductDrumPatch',
+  './CoreProductHarmonyControl',
   './CoreProductLeadPatch',
   './CoreProductPadPatch',
   './CoreProductPresetIds',

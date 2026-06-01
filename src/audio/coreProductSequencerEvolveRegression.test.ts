@@ -4,7 +4,15 @@ import { coreProductStepValueOverridesFromLane } from './CoreProductHostSequence
 import { createCoreProductSequencerEvolveClock } from './CoreProductHostSequencerEvolve';
 import type { SequencerStepValueConfig } from './CoreProductHostSequencerAdapter';
 import { coreProductSequencerHomePayload } from './CoreProductHostSequencerHome';
-import { CORE_PRODUCT_DICE_FLAGS, CORE_PRODUCT_SEQUENCER_IDS, CORE_PRODUCT_STEP_VALUE_FIELDS, CORE_PRODUCT_SUBLANE_DIRECTIONS, type CoreProductEvent } from './coreProductEvents';
+import { createCoreProductSequencerCacheState, selectCoreProductSequencerCache } from './product/host/CoreProductSequencerCacheBridge';
+import {
+  createCoreProductSequencerParityEvolveState,
+  evolveCoreProductSequencerLaneWithSharedModel,
+} from './product/host/CoreProductSequencerParityEvolveBridge';
+import { applyCoreProductManualSynthDice, createCoreProductManualSynthDiceState } from './product/host/CoreProductManualSynthDiceBridge';
+import { reconcileCoreProductSequencerUiState } from './product/host/CoreProductSequencerUiAdapter';
+import { CoreProductSequencerEvolveRuntimeBridge } from './product/host/CoreProductSequencerEvolveRuntimeBridge';
+import { CORE_PRODUCT_DICE_FLAGS, CORE_PRODUCT_EVOLVE_FLAGS, CORE_PRODUCT_SEQUENCER_IDS, CORE_PRODUCT_STEP_VALUE_FIELDS, CORE_PRODUCT_SUBLANE_DIRECTIONS, encodeCoreProductSequencerEvolveTension, type CoreProductEvent } from './coreProductEvents';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 
@@ -52,6 +60,242 @@ function runWrap(clock: ReturnType<typeof createCoreProductSequencerEvolveClock>
   clock.tick({ ...input, telemetry: telemetry(0, 0) as typeof input.telemetry });
 }
 
+function runBridgeWrap(bridge: CoreProductSequencerEvolveRuntimeBridge): void {
+  bridge.tick(telemetry(0, 0));
+  bridge.tick(telemetry(1, 1));
+  bridge.tick(telemetry(0, 0));
+}
+
+function hasUnsignedFlag(flags: number | undefined, flag: number): boolean {
+  return Math.floor(((flags ?? 0) >>> 0) / flag) % 2 === 1;
+}
+
+{
+  const cache = createCoreProductSequencerCacheState();
+  const state = createCoreProductManualSynthDiceState();
+  const posted: CoreProductEvent[] = [];
+  const published: Array<{ name: string; payload: unknown[] }> = [];
+  let armed = 0;
+  let captured = 0;
+
+  const handled = applyCoreProductManualSynthDice({
+    state,
+    laneIndex: 0,
+    intensity: 0.61,
+    cache,
+    adapterState: {
+      synthEuclidEvolveConfigs: [{ ...baseConfig, enabledSubLanes: ['expression', 'morph'] }],
+    },
+    latestSliderState: { tension: 0.4, padTensionMode: 'follow', padTensionValue: 0.1 },
+    latestProductSnapshot: null,
+    latestTelemetry: { ...telemetry(0, 0), barIndex: 6 },
+    runtimeReady: true,
+    armManualDice: () => { armed += 1; },
+    post: (event) => { posted.push(event); },
+    publish: (name, ...payload) => { published.push({ name, payload }); },
+    captureHome: () => { captured += 1; },
+  });
+
+  assert.equal(handled, true, 'native manual synth dice bridge should handle synth dice');
+  assert.equal(captured, 1, 'native manual synth dice should capture the pre-dice home once');
+  assert.equal(armed, 1, 'native manual synth dice should arm UI-state manual dice reconciliation');
+  assert.equal(posted.length, 1, 'native manual synth dice should post one Product Core dice event');
+  const event = posted[0];
+  assert(event, 'native manual synth dice should provide a posted event for assertions');
+  assert.equal(event.eventKind, KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane, 'native manual synth dice should use Product Core dice event kind');
+  assert.equal(event.targetId, CORE_PRODUCT_SEQUENCER_IDS.synth, 'native manual synth dice should target the synth sequencer');
+  assert.equal(event.index, 0, 'native manual synth dice should preserve the lane index');
+  assert.equal(event.value, 0.61, 'native manual synth dice should preserve requested intensity');
+  assert.equal(event.value3, 0, 'native manual synth dice should write immediately by default');
+  assert.equal(event.value4, 7, 'native manual synth dice should target the next Product Core bar');
+  assert(hasUnsignedFlag(event.flags, CORE_PRODUCT_EVOLVE_FLAGS.modeParity), 'native manual synth dice should request parity evolve mode');
+  assert(hasUnsignedFlag(event.flags, CORE_PRODUCT_EVOLVE_FLAGS.valueDrift), 'native manual synth dice should enable value drift');
+  assert(hasUnsignedFlag(event.flags, CORE_PRODUCT_EVOLVE_FLAGS.valueScramble), 'native manual synth dice should enable value scramble');
+  assert(hasUnsignedFlag(event.flags, CORE_PRODUCT_EVOLVE_FLAGS.mutationStrict), 'native manual synth dice should preserve strict mutation mode');
+  assert(hasUnsignedFlag(event.flags, CORE_PRODUCT_DICE_FLAGS.expression), 'native manual synth dice should include enabled expression field');
+  assert(hasUnsignedFlag(event.flags, CORE_PRODUCT_DICE_FLAGS.morph), 'native manual synth dice should include enabled morph field');
+  assert(!hasUnsignedFlag(event.flags, CORE_PRODUCT_DICE_FLAGS.distance), 'native manual synth dice should not evolve disabled distance field');
+  assert(typeof state.baselineSignatures[0] === 'string', 'native manual synth dice should keep a baseline signature for UI-state change detection');
+  assert(
+    published.some((entry) => entry.name === 'synthEuclidEvolve' && entry.payload[0] === 0),
+    'native manual synth dice should preserve the UI evolve trigger callback',
+  );
+}
+
+{
+  const state = createCoreProductManualSynthDiceState();
+  const posted: CoreProductEvent[] = [];
+  const published: Array<{ name: string; payload: unknown[] }> = [];
+  let armed = 0;
+
+  applyCoreProductManualSynthDice({
+    state,
+    laneIndex: 1,
+    intensity: 0.5,
+    cache: createCoreProductSequencerCacheState(),
+    adapterState: {},
+    latestSliderState: null,
+    latestProductSnapshot: null,
+    latestTelemetry: null,
+    runtimeReady: false,
+    armManualDice: () => { armed += 1; },
+    post: (event) => { posted.push(event); },
+    publish: (name, ...payload) => { published.push({ name, payload }); },
+    captureHome: () => {},
+  });
+
+  assert.equal(posted.length, 0, 'native manual synth dice should not post while runtime is not ready');
+  assert.equal(armed, 1, 'native manual synth dice should still arm UI reconciliation while runtime is cold');
+  assert(
+    published.some((entry) => entry.name === 'synthEuclidEvolve' && entry.payload[0] === 1),
+    'native manual synth dice should preserve UI callback behavior while runtime is cold',
+  );
+}
+
+{
+  const posted: CoreProductEvent[] = [];
+  const published: Array<{ name: string; payload: unknown[] }> = [];
+  const captured: Array<{ sequencer: string; laneIndex: number }> = [];
+  const bridge = new CoreProductSequencerEvolveRuntimeBridge({
+    adapterState: () => ({
+      synthEuclidEvolveConfigs: [{ ...baseConfig, methods: { swingDrift: true } }],
+      drumEuclidEvolveConfigs: [],
+    }),
+    latestSliderState: () => null,
+    latestProductSnapshot: () => null,
+    runtimeReady: () => true,
+    captureLaneHome: (sequencer, laneIndex) => captured.push({ sequencer, laneIndex }),
+    getEnabledSubLanes: () => ['pitch', 'expression', 'morph', 'distance', 'probability', 'ratchet'],
+    postWithHomeCapture: (event) => posted.push(event),
+    publish: (name, ...payload) => published.push({ name, payload }),
+  });
+
+  runBridgeWrap(bridge);
+  assert.equal(posted.length, 1, 'Product runtime scheduled evolve should use native Product Core for swing-only evolve methods');
+  assert.equal(posted[0]?.eventKind, KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane);
+  assert.equal(posted[0]?.targetId, CORE_PRODUCT_SEQUENCER_IDS.synth);
+  assert(hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_EVOLVE_FLAGS.modeParity), 'native scheduled evolve must request Product Core parity mode');
+  assert(hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_EVOLVE_FLAGS.swingDrift), 'native scheduled evolve must carry swingDrift into Product Core');
+  assert(hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_EVOLVE_FLAGS.rngStream), 'native scheduled evolve must use the shared web-ts RNG stream seed');
+  assert(hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_EVOLVE_FLAGS.mutationStrict), 'native scheduled evolve must preserve strict mutation mode');
+  assert.deepEqual(captured, [{ sequencer: 'synth', laneIndex: 0 }], 'native scheduled evolve should capture Product home before posting the native event');
+  assert.deepEqual(published, [{ name: 'synthEuclidEvolve', payload: [0] }], 'native scheduled evolve should publish only trigger feedback before UI-state reconciliation');
+}
+
+{
+  const posted: CoreProductEvent[] = [];
+  const published: Array<{ name: string; payload: unknown[] }> = [];
+  const bridge = new CoreProductSequencerEvolveRuntimeBridge({
+    adapterState: () => ({
+      synthEuclidEvolveConfigs: [{ ...baseConfig, evolution: 1, methods: { subLaneDirectionFlip: true }, enabledSubLanes: ['morph'] }],
+      drumEuclidEvolveConfigs: [],
+    }),
+    latestSliderState: () => null,
+    latestProductSnapshot: () => null,
+    runtimeReady: () => true,
+    captureLaneHome: () => {},
+    getEnabledSubLanes: () => ['morph'],
+    postWithHomeCapture: (event) => posted.push(event),
+    publish: (name, ...payload) => published.push({ name, payload }),
+  });
+
+  runBridgeWrap(bridge);
+  assert.equal(posted.length, 1, 'Product runtime scheduled evolve should route sub-lane config drift to native Product Core');
+  assert(hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_EVOLVE_FLAGS.subLaneDirectionFlip), 'native scheduled evolve must carry subLaneDirectionFlip into Product Core');
+  assert(hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_DICE_FLAGS.morph), 'native sub-lane drift must include the selected sub-lane field mask');
+  assert(!hasUnsignedFlag(posted[0]?.flags, CORE_PRODUCT_DICE_FLAGS.expression), 'native sub-lane drift must not widen to disabled sub-lanes');
+  assert.deepEqual(published, [{ name: 'synthEuclidEvolve', payload: [0] }]);
+}
+
+{
+  const posted: CoreProductEvent[] = [];
+  const published: Array<{ name: string; payload: unknown[] }> = [];
+  const bridge = new CoreProductSequencerEvolveRuntimeBridge({
+    adapterState: () => ({
+      synthEuclidEvolveConfigs: [{ ...baseConfig, methods: { pitchWalk: true }, enabledSubLanes: ['pitch'] }],
+      drumEuclidEvolveConfigs: [],
+    }),
+    latestSliderState: () => null,
+    latestProductSnapshot: () => null,
+    runtimeReady: () => true,
+    captureLaneHome: () => {},
+    getEnabledSubLanes: () => ['expression'],
+    postWithHomeCapture: (event) => posted.push(event),
+    publish: (name, ...payload) => published.push({ name, payload }),
+  });
+
+  runBridgeWrap(bridge);
+  assert.deepEqual(posted, [], 'native scheduled evolve should suppress disabled pitchWalk instead of posting a no-op Product Core mutation');
+  assert.deepEqual(published, [], 'native scheduled evolve should not flash when the effective config has no native mutation');
+}
+
+{
+  const rangeOverrides: Array<{ min: number; max: number } | null> = [null, null, null, null];
+  const noteRangePubs: Array<{ laneIndex: number; noteMin: number; noteMax: number }> = [];
+  const overridePubs: Array<{ name: string; laneIndex: number; payload?: Record<string, unknown> }> = [];
+  const lane = {
+    enabled: true,
+    targetSourceId: 1,
+    stepCount: 16,
+    fillCount: 4,
+    rotation: 0,
+    clockDivision: 16,
+    mutationFlags: 0,
+    swing: 0.2,
+    baseMidiNote: 71,
+    noteRangeMin: 65,
+    noteRangeMax: 77,
+    triggerToggles: [],
+    probability: null,
+    ratchet: null,
+    trigCondition: null,
+    midiNote: null,
+    expression: null,
+    morph: null,
+    distance: null,
+  };
+  const revision = reconcileCoreProductSequencerUiState({
+    telemetry: {
+      ...telemetry(0, 0),
+      sequencerUiStateRevision: 7,
+      sequencerUiState: {
+        schemaHash: 1,
+        revision: 7,
+        synthLaneCount: 4,
+        drumLaneCount: 4,
+        evolutionAmount: 0,
+        evolutionState: 0,
+        lastChangedTargetId: CORE_PRODUCT_SEQUENCER_IDS.synth,
+        lastChangedLaneIndex: 0,
+        lastChangeKind: 3,
+        synthLanes: [lane],
+        drumLanes: [],
+      },
+    },
+    lastRevision: 0,
+    visibleSynthLaneCount: 4,
+    synthPitchSettings: [{ mode: 'noteRange', root: 60, scale: 'Major' }],
+    synthBaseMidi: () => 60,
+    drumBaseMidi: () => 36,
+    hasManualSynthDice: () => false,
+    manualSynthDiceChanged: () => false,
+    completeManualSynthDice: () => {},
+    consumeManualDrumDice: () => false,
+    ensureLaneCache: () => {},
+    captureLaneHome: () => {},
+    setSynthLaneState: () => {},
+    setDrumLaneState: () => {},
+    setLaneSwing: () => {},
+    setSynthNoteRangeOverride: (laneIndex, range) => { rangeOverrides[laneIndex] = range; },
+    publishNoteRange: (laneIndex, noteMin, noteMax) => noteRangePubs.push({ laneIndex, noteMin, noteMax }),
+    publish: (name, laneIndex, payload) => overridePubs.push({ name, laneIndex, payload }),
+  });
+  assert.equal(revision, 7, 'Product Core UI reconciliation should consume native noteRange evolve revisions');
+  assert.deepEqual(rangeOverrides[0], { min: 65, max: 77 }, 'native noteRange evolve should refresh the host note-range override cache');
+  assert.deepEqual(noteRangePubs, [{ laneIndex: 0, noteMin: 65, noteMax: 77 }], 'native noteRange evolve should publish the web-ts note-range callback payload');
+  assert.equal(overridePubs[0]?.name, 'synthEvolveOverrides', 'native noteRange evolve should still publish synth evolve overrides');
+}
+
 {
   const clock = createCoreProductSequencerEvolveClock();
   const posted: CoreProductEvent[] = [];
@@ -67,6 +311,8 @@ function runWrap(clock: ReturnType<typeof createCoreProductSequencerEvolveClock>
     drumConfigs: [],
     post: (event: CoreProductEvent) => posted.push(event),
     publish: (name: string, laneIndex: number) => published.push({ name, laneIndex }),
+    getEffectiveTension: () => 0.72,
+    getRngSeed: () => 123456789,
   };
 
   runWrap(clock, input);
@@ -77,8 +323,11 @@ function runWrap(clock: ReturnType<typeof createCoreProductSequencerEvolveClock>
   assert.equal(posted[0]?.targetId, CORE_PRODUCT_SEQUENCER_IDS.synth);
   assert.equal(posted[0]?.index, 0);
   assert.equal(posted[0]?.value, 0.75);
+  assert.equal(posted[0]?.paramId, 123456789, 'scheduled native parity evolve should carry the shared web-ts RNG stream seed in the exact integer event field');
+  assert.equal(posted[0]?.value2, encodeCoreProductSequencerEvolveTension(0.72), 'scheduled native parity evolve should retain encoded effective tension when paramId carries the RNG stream seed');
   assert.equal(posted[0]?.value3, 2);
   assert.equal(posted[0]?.value4, 2);
+  assert.equal((posted[0]?.flags ?? 0) & CORE_PRODUCT_EVOLVE_FLAGS.rngStream, CORE_PRODUCT_EVOLVE_FLAGS.rngStream);
   assert.equal((posted[0]?.flags ?? 0) & CORE_PRODUCT_DICE_FLAGS.probability, CORE_PRODUCT_DICE_FLAGS.probability);
   assert.equal((posted[0]?.flags ?? 0) & CORE_PRODUCT_DICE_FLAGS.expression, CORE_PRODUCT_DICE_FLAGS.expression);
   assert.equal((posted[0]?.flags ?? 0) & CORE_PRODUCT_DICE_FLAGS.midiNote, 0, 'enabledSubLanes should suppress disabled pitch dice');
@@ -326,6 +575,336 @@ function runWrap(clock: ReturnType<typeof createCoreProductSequencerEvolveClock>
     );
   }
   assert(published.some((entry) => entry.name === 'synthEuclidEvolve' && entry.laneIndex === 0), 'host-side sub-lane evolve should publish visible feedback');
+}
+
+{
+  const clock = createCoreProductSequencerEvolveClock();
+  const posted: CoreProductEvent[] = [];
+  const published: Array<{ name: string; laneIndex: number }> = [];
+  const handled: Array<{ laneIndex: number; bar: number }> = [];
+  const input = {
+    telemetry: telemetry(0, 0),
+    synthConfigs: [{
+      ...baseConfig,
+      methods: { probDrift: true },
+      enabledSubLanes: ['probability'],
+    }],
+    drumConfigs: [],
+    post: (event: CoreProductEvent) => posted.push(event),
+    publish: (name: string, laneIndex: number) => published.push({ name, laneIndex }),
+    evolveLane: (_sequencer: string, laneIndex: number, _config: any, _seed: number, bar: number) => {
+      handled.push({ laneIndex, bar });
+      return { handled: true, changed: true };
+    },
+  };
+
+  runWrap(clock, input);
+  assert.equal(posted.length, 0, 'shared-model evolve handler should suppress legacy dice events');
+  assert.deepEqual(handled, [{ laneIndex: 0, bar: 1 }], 'shared-model evolve handler should receive the wrapped bar');
+  assert.deepEqual(published, [{ name: 'synthEuclidEvolve', laneIndex: 0 }], 'shared-model evolve handler should still publish evolve trigger feedback');
+}
+
+{
+  const cache = createCoreProductSequencerCacheState();
+  const state = createCoreProductSequencerParityEvolveState();
+  const published: Array<{ name: string; laneIndex: number; payload: Record<string, unknown> }> = [];
+  const uiLane = (swing: number, baseMidiNote = 60) => ({
+    enabled: true,
+    targetSourceId: 1,
+    stepCount: 16,
+    fillCount: 4,
+    rotation: 0,
+    clockDivision: 16,
+    mutationFlags: 0,
+    swing,
+    baseMidiNote,
+    noteRangeMin: baseMidiNote - 12,
+    noteRangeMax: baseMidiNote + 12,
+    triggerToggles: [],
+    probability: null,
+    ratchet: null,
+    trigCondition: null,
+    midiNote: null,
+    expression: null,
+    morph: null,
+    distance: null,
+  });
+  const telemetryWithSequencerUi = {
+    ...telemetry(0, 0),
+    sequencerUiState: {
+      schemaHash: 1,
+      revision: 1,
+      synthLaneCount: 4,
+      drumLaneCount: 4,
+      evolutionAmount: 0,
+      evolutionState: 0,
+      lastChangedTargetId: 0,
+      lastChangedLaneIndex: 0,
+      lastChangeKind: 0,
+      synthLanes: [uiLane(0.41)],
+      drumLanes: [uiLane(0.52)],
+    },
+  } as CoreProductTelemetrySnapshot;
+  const baseOptions = {
+    state,
+    cache,
+    adapterState: {},
+    latestSliderState: null,
+    latestProductSnapshot: { synthLanes: [{ swing: 0.1 }], drumLanes: [{ swing: 0.2 }] } as any,
+    telemetry: telemetryWithSequencerUi,
+    synthSubLaneEnabled: [{ expression: true }, {}, {}, {}] as Record<string, boolean>[],
+    drumSubLaneEnabled: [{ expression: true, distance: true }, {}, {}, {}] as Record<string, boolean>[],
+    synthNoteRangeOverrides: [null, null, null, null],
+    restoreHomeNoteRange: () => null,
+    setSynthNoteRangeOverride: () => {},
+    runtimeReady: false,
+    fieldEnabled: () => true,
+    post: () => {},
+    publishOverrides: (name: 'synthEvolveOverrides' | 'drumEvolveOverrides', laneIndex: number, payload: Record<string, unknown>) => {
+      published.push({ name, laneIndex, payload });
+    },
+    publishNoteRange: () => {},
+  };
+  const noDrumMethods = {
+    rotateDrift: false,
+    swingDrift: false,
+    probDrift: false,
+    ghostNotes: false,
+    ratchetSpray: false,
+    hitDrift: false,
+    pitchWalk: false,
+    valueDrift: false,
+    valueScramble: false,
+    valueWiden: false,
+    subLaneLengthDrift: false,
+    subLaneDirectionFlip: false,
+  };
+
+  const synthResult = evolveCoreProductSequencerLaneWithSharedModel({
+    ...baseOptions,
+    sequencer: 'synth',
+    laneIndex: 0,
+    config: { ...baseConfig, methods: {}, enabledSubLanes: ['expression'] },
+    bar: 1,
+    seed: 123,
+  });
+  const synthValues = selectCoreProductSequencerCache(cache, 'synth').values[0] ?? [];
+  assert.equal(synthResult.handled, true, 'shared-model synth evolve should handle product-core synth lanes');
+  assert.equal(synthResult.changed, true, 'shared-model synth evolve should apply web-ts auto-init semantics');
+  assert(synthValues.some((entry) => entry.field === CORE_PRODUCT_STEP_VALUE_FIELDS.expression), 'shared-model synth evolve should write evolved expression values into product cache');
+  assert.equal(
+    published.find((entry) => entry.name === 'synthEvolveOverrides')?.payload.swing,
+    0.41,
+    'shared-model synth evolve should start from Product Core telemetry swing instead of stale snapshot swing',
+  );
+  assert.equal(
+    (synthResult.adapterState as any)?.synthEuclid1Swing,
+    0.41,
+    'shared-model synth evolve should patch the host adapter with Product Core telemetry swing',
+  );
+
+  const drumResult = evolveCoreProductSequencerLaneWithSharedModel({
+    ...baseOptions,
+    sequencer: 'drum',
+    laneIndex: 0,
+    config: { ...baseConfig, methods: noDrumMethods, enabledSubLanes: ['expression', 'distance'] },
+    bar: 1,
+    seed: 456,
+  });
+  const drumCache = selectCoreProductSequencerCache(cache, 'drum');
+  assert.equal(drumResult.handled, true, 'shared-model drum evolve should handle product-core drum lanes');
+  assert.equal(drumResult.changed, true, 'shared-model drum evolve should mirror web-ts drum evolve object-update semantics');
+  assert((drumCache.toggles[0] ?? []).length > 0, 'shared-model drum evolve should write the evolved trigger pattern into product cache');
+  assert.equal(
+    published.find((entry) => entry.name === 'drumEvolveOverrides')?.payload.swing,
+    0.52,
+    'shared-model drum evolve should start from Product Core telemetry swing instead of stale snapshot swing',
+  );
+  assert.equal(
+    (drumResult.adapterState as any)?.drumEuclid1Swing,
+    0.52,
+    'shared-model drum evolve should patch the host adapter with Product Core telemetry swing',
+  );
+  assert(published.some((entry) => entry.name === 'synthEvolveOverrides'), 'shared-model synth evolve should publish web-ts-shaped override payloads');
+  assert(published.some((entry) => entry.name === 'drumEvolveOverrides'), 'shared-model drum evolve should publish web-ts-shaped override payloads');
+}
+
+{
+  const cache = createCoreProductSequencerCacheState();
+  const state = createCoreProductSequencerParityEvolveState();
+  const published: Array<{ name: string; laneIndex: number; payload: Record<string, unknown> }> = [];
+  const drumLane = {
+    enabled: true,
+    targetSourceId: 5,
+    stepCount: 16,
+    fillCount: 4,
+    rotation: 0,
+    clockDivision: 16,
+    mutationFlags: 0,
+    swing: 0,
+    baseMidiNote: 37,
+    noteRangeMin: 25,
+    noteRangeMax: 49,
+    triggerToggles: [],
+    probability: null,
+    ratchet: null,
+    trigCondition: null,
+    midiNote: null,
+    expression: null,
+    morph: null,
+    distance: null,
+  };
+  const noDrumMethods = {
+    rotateDrift: false,
+    swingDrift: false,
+    probDrift: false,
+    ghostNotes: false,
+    ratchetSpray: false,
+    hitDrift: false,
+    pitchWalk: false,
+    valueDrift: false,
+    valueScramble: false,
+    valueWiden: false,
+    subLaneLengthDrift: false,
+    subLaneDirectionFlip: false,
+  };
+  const result = evolveCoreProductSequencerLaneWithSharedModel({
+    state,
+    cache,
+    adapterState: {
+      drumPitchSettings: [{ mode: 'notes', root: 57, scale: 'Minor' }],
+    },
+    latestSliderState: {
+      drumEuclid1PitchMode: 'semitones',
+      drumEuclid1PitchRoot: 60,
+      drumEuclid1PitchScale: 'Major',
+    },
+    latestProductSnapshot: { synthLanes: [], drumLanes: [{ midiNote: 36, swing: 0 }] } as any,
+    telemetry: {
+      ...telemetry(0, 0),
+      sequencerUiState: {
+        schemaHash: 1,
+        revision: 1,
+        synthLaneCount: 4,
+        drumLaneCount: 4,
+        evolutionAmount: 0,
+        evolutionState: 0,
+        lastChangedTargetId: 0,
+        lastChangedLaneIndex: 0,
+        lastChangeKind: 0,
+        synthLanes: [],
+        drumLanes: [drumLane],
+      },
+    } as CoreProductTelemetrySnapshot,
+    synthSubLaneEnabled: [{}, {}, {}, {}] as Record<string, boolean>[],
+    drumSubLaneEnabled: [{ pitch: true }, {}, {}, {}] as Record<string, boolean>[],
+    synthNoteRangeOverrides: [null, null, null, null],
+    restoreHomeNoteRange: () => null,
+    restoreHomePitchSettings: () => null,
+    setSynthNoteRangeOverride: () => {},
+    runtimeReady: false,
+    fieldEnabled: () => true,
+    post: () => {},
+    publishOverrides: (name: 'synthEvolveOverrides' | 'drumEvolveOverrides', laneIndex: number, payload: Record<string, unknown>) => {
+      published.push({ name, laneIndex, payload });
+    },
+    publishNoteRange: () => {},
+    sequencer: 'drum',
+    laneIndex: 0,
+    config: { ...baseConfig, methods: noDrumMethods, enabledSubLanes: ['pitch'] },
+    bar: 1,
+    seed: 2468,
+  });
+
+  assert.equal(result.handled, true, 'shared-model drum evolve should handle explicit Product drum pitch settings');
+  assert.deepEqual(
+    (published.find((entry) => entry.name === 'drumEvolveOverrides')?.payload.pitchSettings as unknown[] | undefined)?.[0],
+    { mode: 'notes', root: 57, scale: 'Minor' },
+    'shared-model drum evolve should prefer explicit Product adapter pitch settings over stale slider-state pitch settings',
+  );
+}
+
+{
+  const cache = createCoreProductSequencerCacheState();
+  const state = createCoreProductSequencerParityEvolveState();
+  const published: Array<{ name: string; laneIndex: number; payload: Record<string, unknown> }> = [];
+  const lane = {
+    enabled: true,
+    targetSourceId: 1,
+    stepCount: 16,
+    fillCount: 4,
+    rotation: 0,
+    clockDivision: 16,
+    mutationFlags: 0,
+    swing: 0,
+    baseMidiNote: 72,
+    noteRangeMin: 60,
+    noteRangeMax: 84,
+    triggerToggles: [],
+    probability: null,
+    ratchet: null,
+    trigCondition: null,
+    midiNote: null,
+    expression: null,
+    morph: null,
+    distance: null,
+  };
+  const synthCache = selectCoreProductSequencerCache(cache, 'synth');
+  synthCache.values[0] = [{ field: CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote, step: 0, value: 74 }];
+  synthCache.configs[0] = [{ field: CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote, steps: 1, direction: CORE_PRODUCT_SUBLANE_DIRECTIONS.forward }];
+
+  const result = evolveCoreProductSequencerLaneWithSharedModel({
+    state,
+    cache,
+    adapterState: {},
+    latestSliderState: null,
+    latestProductSnapshot: { synthLanes: [{ midiNote: 60, swing: 0 }], drumLanes: [] } as any,
+    telemetry: {
+      ...telemetry(0, 0),
+      sequencerUiState: {
+        schemaHash: 1,
+        revision: 1,
+        synthLaneCount: 4,
+        drumLaneCount: 4,
+        evolutionAmount: 0,
+        evolutionState: 0,
+        lastChangedTargetId: 0,
+        lastChangedLaneIndex: 0,
+        lastChangeKind: 0,
+        synthLanes: [lane],
+        drumLanes: [],
+      },
+    } as CoreProductTelemetrySnapshot,
+    synthSubLaneEnabled: [{ pitch: true }, {}, {}, {}] as Record<string, boolean>[],
+    drumSubLaneEnabled: [{}, {}, {}, {}] as Record<string, boolean>[],
+    synthNoteRangeOverrides: [null, null, null, null],
+    restoreHomeNoteRange: () => null,
+    setSynthNoteRangeOverride: () => {},
+    runtimeReady: false,
+    fieldEnabled: () => true,
+    post: () => {},
+    publishOverrides: (name: 'synthEvolveOverrides' | 'drumEvolveOverrides', laneIndex: number, payload: Record<string, unknown>) => {
+      published.push({ name, laneIndex, payload });
+    },
+    publishNoteRange: () => {},
+    sequencer: 'synth',
+    laneIndex: 0,
+    config: { ...baseConfig, methods: {}, enabledSubLanes: ['pitch'] },
+    bar: 1,
+    seed: 789,
+  });
+
+  assert.equal(result.handled, true, 'shared-model synth evolve should handle telemetry-backed base MIDI parity cases');
+  assert.deepEqual(
+    published.find((entry) => entry.name === 'synthEvolveOverrides')?.payload.pitch,
+    [2],
+    'shared-model synth evolve should convert MIDI overrides against live Product Core base MIDI, not stale snapshot MIDI',
+  );
+  assert.deepEqual(
+    selectCoreProductSequencerCache(cache, 'synth').values[0]?.filter((entry) => entry.field === CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote).map((entry) => entry.value),
+    [74],
+    'shared-model synth evolve should store absolute MIDI back into Product cache after live-base conversion',
+  );
 }
 
 {

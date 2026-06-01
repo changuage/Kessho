@@ -9,6 +9,7 @@
  */
 
 import { SCALE_FAMILIES } from '../audio/scales';
+import type { ProductArpConfig } from '../audio/productArpeggiator';
 import type { ClockDivision, LaneDirection, PitchBindingMode, PitchMode, ScaleName, TrigCondition } from '../audio/drumSeqTypes';
 import {
   defaultManualHarmonyControlState,
@@ -255,6 +256,7 @@ export interface SavedPreset {
   synthLinked?: boolean[];
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
+  synthArpConfigs?: ProductArpConfig[];
   drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
@@ -2890,7 +2892,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid4Source: 'lead' as const,
   
   // Synth chord sequencer toggle
-  synthChordSequencerEnabled: true,
+  synthChordSequencerEnabled: false,
 
   // ─── Ikeda-Style Drum Synth ───
   drumEnabled: false,
@@ -5154,6 +5156,7 @@ export function migratePreset(preset: any): SavedPreset {
     synthLinked: preset.synthLinked,
     drumSubLaneStates: preset.drumSubLaneStates,
     synthSubLaneStates: preset.synthSubLaneStates,
+    synthArpConfigs: preset.synthArpConfigs,
     drumPitchSettings: preset.drumPitchSettings,
     synthPitchSettings: preset.synthPitchSettings,
     synthPitchBindingModes: preset.synthPitchBindingModes,

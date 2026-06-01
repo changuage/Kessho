@@ -17,6 +17,7 @@ export function snapshotReloadReasonForProductPatch(reason: ProductSnapshotPatch
       return 'sequencer-structure-change';
     case 'transport-change':
     case 'sequencer-control-change':
+    case 'midi-cc-control-change':
     case 'journey-morph-change':
     case 'morph-control-change':
     case 'fx-control-change':

@@ -12,11 +12,16 @@ type ProductRuntimeSequencerControls = {
   setProductSynthEuclidSwings: (swings: readonly unknown[]) => void;
   setProductDrumSubLaneEnabled: (states: Record<string, boolean>[]) => void;
   setProductSynthSubLaneEnabled: (states: Record<string, boolean>[]) => void;
+  setProductDrumPitchSettings: (settings: readonly unknown[]) => void;
   setProductSynthPitchSettings: (settings: readonly unknown[]) => void;
   setProductSynthPitchBindingModes: (modes: readonly unknown[]) => void;
   setProductDrumStepOverrides: (overrides: unknown) => void;
   setProductSynthStepOverrides: (overrides: unknown) => void;
-  setProductSequencerPresetHomeSnapshots: () => void;
+  setProductSequencerPresetHomeSnapshots: (
+    drumPitchSettings?: readonly unknown[],
+    drumPitchStates?: readonly (ProductRuntimeSequencerPitchState | undefined)[],
+    synthPitchStates?: readonly (ProductRuntimeSequencerPitchState | undefined)[],
+  ) => void;
   resetProductSynthEuclidLaneHome: (laneIndex: number) => void;
   captureProductSynthEuclidLaneHome: (laneIndex: number, pitchState?: ProductRuntimeSequencerPitchState) => void;
   diceProductSynthEuclidLane: (laneIndex: number, intensity?: number) => void;
@@ -39,6 +44,7 @@ export function useProductRuntimeSequencerControls(
     setProductSynthEuclidSwings: sequencerControls.setSelectedSynthEuclidSwings,
     setProductDrumSubLaneEnabled: sequencerControls.setSelectedDrumSubLaneEnabled,
     setProductSynthSubLaneEnabled: sequencerControls.setSelectedSynthSubLaneEnabled,
+    setProductDrumPitchSettings: sequencerControls.setSelectedDrumPitchSettings,
     setProductSynthPitchSettings: sequencerControls.setSelectedSynthPitchSettings,
     setProductSynthPitchBindingModes: sequencerControls.setSelectedSynthPitchBindingModes,
     setProductDrumStepOverrides: sequencerControls.setSelectedDrumStepOverrides,

@@ -41,15 +41,25 @@ test ! -f src/audio/runtime.ts
 Expected:
 
 ```text
-[ ] src/audio/engine.ts is gone.
-[ ] src/audio/runtime.ts is gone.
-[ ] App.tsx has no direct import of root audio runtime, root audio engine, coreProductEngineHost, or reference runtime.
-[ ] ProductEngineProxy is the production runtime decision point.
-[ ] web-ts/core-smoke are dev/reference/parity-only.
-[ ] native bridge remains deferred unless Batch BG-NATIVE is completed.
+[x] src/audio/engine.ts is gone.
+[x] src/audio/runtime.ts is gone.
+[x] App.tsx has no direct import of root audio runtime, root audio engine, coreProductEngineHost, or reference runtime.
+[x] ProductEngineProxy is the production runtime decision point.
+[x] web-ts/core-smoke are dev/reference/parity-only.
+[x] native bridge capability remains disabled until BG3 physical-device evidence passes.
 ```
 
 If any of the above are false, stop and repair the runtime/reference quarantine before continuing.
+
+Latest source-of-truth reconciliation:
+
+```text
+[x] git baseline a71f6534 was checked for this production evidence pass.
+[x] src/audio/engine.ts and src/audio/runtime.ts are absent from the tracked source tree.
+[x] ProductEngineProxy resolves web-ts/web-audio/core-smoke production requests to core-product.
+[x] normal product runtime selection exposes only core-product; web-ts/core-smoke remain explicit dev/reference contexts.
+[x] supports_native_bridge remains 0 and Product runtime capability reports supportsNativeBridge: false while device evidence is pending.
+```
 
 ---
 
@@ -973,14 +983,14 @@ Do not start native background rendering until P0–P4 are complete. The product
 The **product-core production stabilization goal** is complete when:
 
 ```text
-[ ] Earth texture slices vary correctly in product-core normal mode.
-[ ] Earth/info visualizer shows product-core texture status.
+[x] Earth texture slices vary correctly in product-core normal mode by scripted telemetry gates; final manual audible confirmation remains separate device evidence.
+[x] Earth/info visualizer shows product-core texture status.
 [x] Random-walk dual-slider indicators move from product-core runtime telemetry.
-[ ] Sample-and-hold parity matrix passes or documents intentional differences.
-[ ] Production interaction gates cover Earth, random walk, and sample-hold.
-[ ] Diagnostics show zero unsupported/fallback/audio-critical failures.
-[ ] Browser/mobile background audio is implemented as best-effort and documented honestly.
-[ ] Native iOS/macOS product-core renderer exists and passes background audio tests, or native remains explicitly deferred and the product does not claim reliable native background audio.
+[x] Sample-and-hold parity matrix passes or documents intentional differences.
+[x] Production interaction gates cover Earth, random walk, and sample-hold.
+[x] Diagnostics show zero unsupported/fallback/audio-critical failures.
+[x] Browser/mobile background audio is implemented as best-effort and documented honestly.
+[x] Native iOS/macOS reliable background audio remains gated by physical-device evidence, supports_native_bridge stays 0, and the product does not claim reliable native background audio while BG3 is pending.
 ```
 
 The **full background-audio product goal** is complete only when:

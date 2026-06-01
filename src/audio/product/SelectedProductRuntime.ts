@@ -7,6 +7,7 @@ import {
   invokeReferenceSelectedRuntimeMethod,
   preloadReferenceSelectedRuntime,
 } from '../reference/ReferenceSelectedRuntime';
+import type { DawOutputRoutingConfig } from '../dawOutputRouting';
 import type {
   ProductDrumVoice,
   ProductDynamicsVisualTelemetry,
@@ -25,6 +26,8 @@ export type SelectedProductRuntime = SelectedRuntimeTarget & {
   suspend(): void | Promise<void>;
   resume(): void | Promise<void>;
   setOutputGain(target: number, durationSeconds?: number): void;
+  setDawOutputRouting(config: DawOutputRoutingConfig): void;
+  setDawOutputDeviceId?(deviceId: string | null): Promise<boolean>;
   resetCofDrift(): void;
   pushMidiMessage(message: ProductMidiMessage): void;
   auditionSynthNote(note: ProductManualSynthNote, externalState?: ProductExternalState): Promise<void>;

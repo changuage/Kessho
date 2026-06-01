@@ -20,6 +20,17 @@ React UI
 
 The legacy TypeScript/Web Audio engine lives at `src/audio/reference/webTs/engine.ts`. It may be used only by explicit dev, reference, parity, or smoke harnesses. Production UI and product runtime modules must not import it directly.
 
+Status for active reference paths: **Keep Active — Archive Later**. This includes `web-ts`, `core-smoke`, product-test, A/B comparison, parity/debug workflows, smoke tests, and reference runtime validation. These paths should stay functional until the matching Product Core replacement and A/B validation have landed.
+
+Reference / A-B runtime:
+
+```text
+src/audio/reference/webTs/engine.ts
+src/audio/referenceAudioRuntime.ts
+src/audio/reference/ReferenceSelectedRuntime.ts
+core-smoke / parity paths as needed
+```
+
 ## Forbidden Production Paths
 
 - Do not reintroduce root `src/audio/engine.ts`.
@@ -31,3 +42,5 @@ The legacy TypeScript/Web Audio engine lives at `src/audio/reference/webTs/engin
 ## Control Routing
 
 Routine sliders, toggles, sequencer edits, transport changes, journey macro moves, FX sends, and mute/solo changes should use generated Product events, explicit product patches, or dirty-diff paths. Full snapshots are allowed for initial load, preset load, session restore, deterministic fixtures, schema/ABI validation, and classified structural changes only.
+
+Compatibility exceptions are tracked in `docs/product-core/web-ts-ab-compatibility-burn-down.md`.

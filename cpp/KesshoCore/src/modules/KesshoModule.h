@@ -138,6 +138,12 @@ public:
       out_positions[index] = 0.0f;
     }
   }
+  virtual int copyGranularWaveform(float* out_peaks, uint32_t bin_count) {
+    if (out_peaks != nullptr) {
+      std::fill(out_peaks, out_peaks + bin_count, 0.0f);
+    }
+    return 0;
+  }
   virtual int outputTapCount() const {
     return 1;
   }

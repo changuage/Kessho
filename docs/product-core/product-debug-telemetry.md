@@ -31,3 +31,9 @@ Random-walk rows include control name/id, target id, param id, min, max, current
 Sample-and-hold rows include control name/id, target id, param id, min, max, current value, normalized position, trigger bus, trigger counter, last trigger frame, last trigger source, and seed.
 
 The data is copied from product-core telemetry and does not use `web-ts` or a reference runtime fallback.
+
+## Granular And Reverb Stability
+
+Granular runtime inspection is split between product telemetry and offline gates. Telemetry exposes `activeGrains`, `granularWriteHeadPosition`, and per-voice granular positions for UI/debug surfaces. `core:product:granular-artifacts` verifies the production C++ path keeps granular send/return controls smoothed, clamps granular voice attack/release/buffer/density ranges, guards lowpass output against non-finite values, covers freeze/buffer/feedback graph cases, and keeps CPU scenarios for the granular-heavy page path.
+
+Reverb runtime inspection is covered by product graph taps, WASM module probes, and CPU scenario gates. `core:product:reverb-tail-quality` verifies the product reverb path keeps quality/type/decay/size/damping/modulation/shimmer/reverse parameters clamped, runs preconditioner soft limiting, supports spectral-freeze crossfade routing, and keeps page CPU coverage for long-tail reverb scenes.

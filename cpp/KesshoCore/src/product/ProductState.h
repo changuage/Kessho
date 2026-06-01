@@ -109,6 +109,9 @@ struct KesshoProductEngine : ProductGraphState {
   RoutingState routing{};
   uint32_t rng_seed = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
   uint32_t rng_state = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
+  uint32_t sequencer_evolve_rng_stream_seed = 0u;
+  uint32_t sequencer_evolve_rng_stream_state = 0u;
+  bool sequencer_evolve_rng_stream_initialized = false;
   uint32_t sequencer_ui_state_revision = 1u;
   uint32_t sequencer_ui_last_changed_target_id = 0u;
   uint32_t sequencer_ui_last_changed_lane_index = 0xffffffffu;
@@ -154,6 +157,9 @@ struct KesshoProductEngine : ProductGraphState {
   void advanceReverbHarmonyCoupling(uint32_t frames);
   void resetGranularPhraseRuntime();
   void advanceGranularPhraseReseed();
+  bool sourceRuntimeActive(uint32_t source_id) const;
+  void snapGranularReturnGainsToTargets();
+  void primeGranularControlsForSourceStart(uint32_t source_id);
   float granularSendGainForFrame(uint32_t source_id, float target, uint64_t absolute_frame);
   void advanceGranularReturnGains(uint64_t absolute_frame);
   void setMasterLimiterCeilingDb(float value);
@@ -228,6 +234,9 @@ struct KesshoProductEngine : ProductGraphState {
   void applyResetSequencerLaneHomeEvent(const KesshoProductEvent& event);
   bool dicePatternHit(uint32_t step, uint32_t steps, uint32_t fills, uint32_t rotation) const;
   bool dicePatternMatchesBase(const LaneState& lane, uint32_t rotation, uint32_t fills) const;
+  void captureSequencerEvolveHome(LaneState& lane);
+  void clearSequencerEvolveHome(LaneState& lane);
+  void applyParityEvolveSequencerLaneEvent(const KesshoProductEvent& event);
   void applyDiceSequencerLaneEvent(const KesshoProductEvent& event);
   void applyJourneyStateEvent(const KesshoProductEvent& event);
   bool applyGranularVoiceParamEvent(const KesshoProductEvent& event);
@@ -237,6 +246,8 @@ struct KesshoProductEngine : ProductGraphState {
   bool isSourceParam(uint32_t param_id) const;
   bool isSourceTarget(uint32_t target_id) const;
   bool isDrumRangeTarget(uint32_t target_id) const;
+  bool isSoundscapeAssetLevelRangeTarget(uint32_t target_id) const;
+  uint32_t soundscapeAssetIdForLevelRangeTarget(uint32_t target_id) const;
   uint32_t sourceEnableFadeFrames(uint32_t source_id) const;
   bool sourceRenderActive(const SourceState& source) const;
   void setSourceEnabled(SourceState& source, bool enabled, bool immediate);
@@ -252,9 +263,11 @@ struct KesshoProductEngine : ProductGraphState {
   bool drumRuntimeParamModulated(uint32_t drum_voice, uint32_t param_index) const;
   void applyModulationRangeEvent(const KesshoProductEvent& event);
   void applySourcePresetEvent(const KesshoProductEvent& event);
+  bool activeSequencerMorphForPresetSource(uint32_t source_id, uint32_t drum_voice, float& morph) const;
   void applySourceOverrideEvent(const KesshoProductEvent& event);
   bool applyRuntimeSourceOverrideParam(uint32_t source_id, uint32_t param_index, float value);
   bool applyStructuredSourceOverridesToModule(uint32_t source_id);
+  bool applyStructuredSourceOverridesToModuleAtMorph(uint32_t source_id, float morph);
   void compileSourcePresetRuntime(SourceState& source);
   void compileSourcePresetEndpoints(SourceState& source);
   void applySourcePresetMacros(const SourceState& source, float& morph, float& distance, float& expression) const;
@@ -314,11 +327,14 @@ struct KesshoProductEngine : ProductGraphState {
   bool hasActiveSourceVoice(uint32_t source_id) const;
   bool soundscapeWantsAsset(const SourceState& source, uint32_t asset_id) const;
   float soundscapeAssetRefLevel(const SourceState& source, uint32_t asset_id) const;
+  void applySoundscapeAssetLevelValue(uint32_t asset_id, float value);
   bool soundscapeModuleParamsAvailable(const SourceState& source) const;
   bool soundscapeModuleShouldRun(const SourceState& source) const;
   bool soundscapeAssetUsesModule(const SourceState& source, uint32_t asset_id) const;
   bool hasActiveSoundscapeVoice(uint32_t asset_id) const;
+  bool hasActiveLegacySoundscapeVoice(uint32_t asset_id) const;
   void releaseUnwantedSoundscapeVoices(const SourceState& source);
+  void releaseLegacySoundscapeVoices(uint32_t asset_id);
   void releaseSoundscapeTextureVoice(Voice& voice);
   void reportMissingSourceAsset(SourceState& source);
   void reportMissingSourceAsset(SourceState& source, uint32_t asset_id);
@@ -415,7 +431,8 @@ struct KesshoProductEngine : ProductGraphState {
       float ducked_left,
       float ducked_right,
       float send_left,
-      float send_right);
+      float send_right,
+      float effective_granular_send);
   void triggerSequencerEvent(const KesshoSequencerEvent& event);
   uint32_t sampleFadeFrames(double seconds, uint32_t limit_frames) const;
   uint32_t loopCrossfadeFrames(const AssetSlot& asset) const;

@@ -20,12 +20,19 @@ export type KesshoMidiMessageKind =
 export type KesshoMidiEndpointInfo = {
   uniqueID: number;
   name: string;
+  displayName?: string;
   manufacturer?: string;
+  transport?: 'usb' | 'bluetooth' | 'network' | 'virtual' | 'other' | 'unknown';
+  isBluetooth?: boolean;
+  isNetworkSession?: boolean;
+  persistentIdentity?: string;
   isConnected: boolean;
 };
 
 export type KesshoMidiMessage = {
   timestamp: number;
+  timestampMs?: number;
+  timestampHostTime?: number;
   kind: KesshoMidiMessageKind;
   status: number;
   channel?: number;
@@ -41,6 +48,11 @@ export type KesshoMidiStatus = {
   isStarted: boolean;
   inputCount: number;
   connectedInputIDs: number[];
+  hotplugEventCount?: number;
+  reconnectAttemptCount?: number;
+  reconnectSuccessCount?: number;
+  receivedMessageCount?: number;
+  droppedActivityEventCount?: number;
   lastErrorMessage?: string | null;
 };
 
@@ -92,6 +104,10 @@ type KesshoMidiRoutingPlugin = {
   setConnectedInputs: (options: { uniqueIDsJson: string }) => Promise<KesshoMidiInputSnapshot>;
   addListener(
     eventName: 'midiMessage',
+    listener: (event: KesshoMidiMessage) => void,
+  ): Promise<CapacitorListenerHandle>;
+  addListener(
+    eventName: 'midiActivity',
     listener: (event: KesshoMidiMessage) => void,
   ): Promise<CapacitorListenerHandle>;
   addListener(
@@ -187,6 +203,12 @@ export async function startCapacitorMidiRouting(): Promise<KesshoMidiStatus | nu
   return plugin.start();
 }
 
+export async function stopCapacitorMidiRouting(): Promise<KesshoMidiStatus | null> {
+  const plugin = getCapacitorMidiRoutingPlugin();
+  if (!plugin) return null;
+  return plugin.stop();
+}
+
 export async function refreshCapacitorMidiInputs(): Promise<KesshoMidiInputSnapshot | null> {
   const plugin = getCapacitorMidiRoutingPlugin();
   if (!plugin) return null;
@@ -223,6 +245,17 @@ export async function addCapacitorMidiMessageListener(
   const plugin = getCapacitorMidiRoutingPlugin();
   if (!plugin) return null;
   const handle = await plugin.addListener('midiMessage', listener);
+  return async () => {
+    await handle.remove();
+  };
+}
+
+export async function addCapacitorMidiActivityListener(
+  listener: (message: KesshoMidiMessage) => void,
+): Promise<(() => Promise<void>) | null> {
+  const plugin = getCapacitorMidiRoutingPlugin();
+  if (!plugin) return null;
+  const handle = await plugin.addListener('midiActivity', listener);
   return async () => {
     await handle.remove();
   };

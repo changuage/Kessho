@@ -22,6 +22,52 @@ void KesshoProductEngine::resetGranularPhraseRuntime() {
   granular_phrase_runtime_initialized = false;
 }
 
+bool KesshoProductEngine::sourceRuntimeActive(uint32_t source_id) const {
+  if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
+    return pad_module != nullptr && pad_module->activeVoiceCount() > 0;
+  }
+  if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1) {
+    return lead_modules[0] != nullptr && lead_modules[0]->activeVoiceCount() > 0;
+  }
+  if (source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
+    return lead_modules[1] != nullptr && lead_modules[1]->activeVoiceCount() > 0;
+  }
+  if (source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+    return drum_module != nullptr && drum_module->activeVoiceCount() > 0;
+  }
+  return hasActiveSourceVoice(source_id);
+}
+
+void KesshoProductEngine::snapGranularReturnGainsToTargets() {
+  granular_mix_gain = clampFloat(fx.granular_mix, 0.0f, 4.0f);
+  granular_reverb_send_gain = clampFloat(routing.granular_to_reverb, 0.0f, 4.0f);
+  granular_delay_a_send_gain = clampFloat(routing.granular_to_delay_a, 0.0f, 1.0f);
+  granular_delay_b_send_gain = clampFloat(routing.granular_to_delay_b, 0.0f, 1.0f);
+  granular_return_gain_frame = UINT64_MAX;
+}
+
+void KesshoProductEngine::primeGranularControlsForSourceStart(uint32_t source_id) {
+  if (source_id < 1u || source_id > kSourceCount) return;
+  SourceState& source = sources[source_id - 1u];
+  const float send_target = clampFloat(source.granular_send, 0.0f, 2.0f);
+  if (send_target <= 0.0001f) return;
+  if (source.granular_send_gain < send_target) {
+    source.granular_send_gain = send_target;
+    source.granular_send_gain_frame = UINT64_MAX;
+  }
+
+  const bool output_armed =
+      fx.granular_mix > 0.0001f ||
+      routing.granular_to_reverb > 0.0001f ||
+      routing.granular_to_delay_a > 0.0001f ||
+      routing.granular_to_delay_b > 0.0001f;
+  if (!output_armed) return;
+  const bool granular_idle = granular_module == nullptr || granular_module->activeGrainCount() <= 0;
+  if (granular_idle) {
+    snapGranularReturnGainsToTargets();
+  }
+}
+
 float KesshoProductEngine::granularSendGainForFrame(uint32_t source_id, float target, uint64_t absolute_frame) {
   if (source_id < 1u || source_id > kSourceCount) return clampFloat(target, 0.0f, 2.0f);
   SourceState& source = sources[source_id - 1u];

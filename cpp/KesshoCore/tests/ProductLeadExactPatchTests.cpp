@@ -553,6 +553,79 @@ void requireLeadRatchetScalesOnlyEnvelopeParams() {
   kessho_product_destroy(engine);
 }
 
+void requireStableEndpointLeadPatchIsCachedUntilRatchetScratchPatch() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "stable endpoint lead cache engine create failed");
+
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configureGeneratedEndpointLeadSourceWithoutSnapshotExact(
+      snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u],
+      KESSHO_PRODUCT_SOURCE_LEAD1,
+      1.0f);
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].distance = 0.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "stable endpoint lead cache snapshot load failed");
+
+  auto& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
+  require(loaded.source_preset_endpoint_valid, "stable endpoint lead cache did not compile endpoints");
+  require(loaded.applied_module_patch_ptr == nullptr, "stable endpoint lead cache started dirty");
+  const uint32_t revision = loaded.source_preset_runtime_revision;
+  const LeadParams expected = expectedEndpointMorphParams(1.0f, KESSHO_PRODUCT_SOURCE_LEAD1, 0.0f);
+
+  triggerLeadAndExpectParams(
+      engine,
+      KESSHO_PRODUCT_SOURCE_LEAD1,
+      1.0f,
+      0.0f,
+      1.0f,
+      1.0f,
+      expected,
+      "stable endpoint lead cache first trigger");
+  require(
+      loaded.applied_module_patch_ptr == &loaded.source_preset_endpoint_b,
+      "stable endpoint lead cache did not record endpoint B patch");
+  require(
+      loaded.applied_module_patch_revision == revision,
+      "stable endpoint lead cache recorded wrong revision");
+  const auto* cached_patch = loaded.applied_module_patch_ptr;
+
+  triggerLeadAndExpectParams(
+      engine,
+      KESSHO_PRODUCT_SOURCE_LEAD1,
+      1.0f,
+      0.0f,
+      1.0f,
+      1.0f,
+      expected,
+      "stable endpoint lead cache repeated trigger");
+  require(
+      loaded.applied_module_patch_ptr == cached_patch,
+      "stable endpoint lead cache lost cached patch on repeated trigger");
+  require(
+      loaded.applied_module_patch_revision == revision,
+      "stable endpoint lead cache changed revision on repeated trigger");
+
+  LeadParams ratcheted = expected;
+  ratcheted[43] = std::max(0.001f, ratcheted[43] * 0.5f);
+  ratcheted[44] = std::max(0.001f, ratcheted[44] * 0.5f);
+  ratcheted[46] = std::max(0.001f, ratcheted[46] * 0.5f);
+  triggerLeadAndExpectParams(
+      engine,
+      KESSHO_PRODUCT_SOURCE_LEAD1,
+      1.0f,
+      0.0f,
+      1.0f,
+      0.5f,
+      ratcheted,
+      "stable endpoint lead ratchet scratch trigger");
+  require(
+      loaded.applied_module_patch_ptr == nullptr && loaded.applied_module_patch_revision == 0u,
+      "stable endpoint lead cache did not invalidate after ratchet scratch patch");
+
+  kessho_product_destroy(engine);
+}
+
 } // namespace
 
 int main() {
@@ -569,6 +642,7 @@ int main() {
   requireLeadSparseOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD1, 0.35f);
   requireLeadSparseOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD2, 0.65f);
   requireLeadRatchetScalesOnlyEnvelopeParams();
+  requireStableEndpointLeadPatchIsCachedUntilRatchetScratchPatch();
 
   const float low_gain_peak = renderGamelanPeakWithSparseGain(0.05f);
   const float high_gain_peak = renderGamelanPeakWithSparseGain(0.8f);

@@ -23,6 +23,8 @@ type SliceLayout = {
   timeEnd: number;
 };
 
+const MAX_VISIBLE_SLICES = 3;
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -67,7 +69,35 @@ function assignSliceLanes(snapshot: EarthTexturePlayerDebugSnapshot | null | und
     };
   }
 
-  const sorted = [...snapshot.activeSlices].sort((a, b) => a.startTime - b.startTime);
+  const allSlices = [...snapshot.activeSlices].sort((a, b) => a.startTime - b.startTime);
+  const lookBack = clamp(snapshot.sliceDuration * 0.12, 0.75, 2.5);
+  const stride = Number.isFinite(snapshot.strideSeconds) && snapshot.strideSeconds > 0
+    ? snapshot.strideSeconds
+    : snapshot.sliceDuration;
+  const lookAhead = clamp(Math.max(5, Math.min(stride, snapshot.sliceDuration) * 0.65), 5, 16);
+  const timeStart = snapshot.nowTime - lookBack;
+  const timeEnd = snapshot.nowTime + lookAhead;
+  const overlapping = allSlices.filter((slice) => slice.endTime >= timeStart && slice.startTime <= timeEnd);
+  const playing = overlapping.filter((slice) => slice.startTime <= snapshot.nowTime && slice.endTime >= snapshot.nowTime);
+  const upcoming = overlapping.filter((slice) => slice.startTime > snapshot.nowTime);
+  const previous = [...allSlices].reverse().find((slice) => slice.endTime < snapshot.nowTime && slice.endTime >= timeStart);
+  const selected = new Map<number, EarthTextureSliceDebug>();
+
+  if (playing.length === 0 && previous) {
+    selected.set(previous.id, previous);
+  }
+  for (const slice of playing.slice(0, 2)) {
+    selected.set(slice.id, slice);
+  }
+  for (const slice of upcoming) {
+    if (selected.size >= MAX_VISIBLE_SLICES) break;
+    selected.set(slice.id, slice);
+  }
+  if (selected.size === 0 && overlapping[0]) {
+    selected.set(overlapping[0].id, overlapping[0]);
+  }
+
+  const sorted = [...selected.values()].sort((a, b) => a.startTime - b.startTime);
   const laneEnds: number[] = [];
   const slices: LaneSlice[] = [];
 
@@ -81,10 +111,6 @@ function assignSliceLanes(snapshot: EarthTexturePlayerDebugSnapshot | null | und
     }
     slices.push({ ...slice, lane });
   }
-
-  const lookBack = Math.min(1.2, Math.max(0.35, snapshot.sliceDuration * 0.12));
-  const timeStart = Math.min(snapshot.nowTime - lookBack, ...sorted.map((slice) => slice.startTime));
-  const timeEnd = Math.max(snapshot.nowTime + 0.45, ...sorted.map((slice) => slice.endTime));
 
   return {
     slices,
@@ -163,8 +189,13 @@ export function NatureSliceViz({ snapshot, accent, label = 'Texture' }: NatureSl
     ctx.textBaseline = 'middle';
 
     for (const slice of layout.slices) {
-      const x = padX + ((slice.startTime - layout.timeStart) / windowDuration) * innerWidth;
-      const endX = padX + ((slice.endTime - layout.timeStart) / windowDuration) * innerWidth;
+      const rawX = padX + ((slice.startTime - layout.timeStart) / windowDuration) * innerWidth;
+      const rawEndX = padX + ((slice.endTime - layout.timeStart) / windowDuration) * innerWidth;
+      if (rawEndX <= padX || rawX >= width - padX) {
+        continue;
+      }
+      const x = clamp(rawX, padX, width - padX);
+      const endX = clamp(rawEndX, padX, width - padX);
       const barWidth = Math.max(6, endX - x);
       const y = padY + slice.lane * (laneHeight + laneGap);
       const centerY = y + laneHeight * 0.5;

@@ -40,7 +40,9 @@ void KesshoProductEngine::applySourcePresetEvent(const KesshoProductEvent& event
       compileSourcePresetRuntime(source);
       if (drum_module && source.source_preset_patch_valid) {
         auto patch = source.source_preset_patch;
-        applyDrumVoiceMorphToPatch(patch, source, voice_index, source.drum_voice_morphs[voice_index]);
+        float live_morph = source.drum_voice_morphs[voice_index];
+        activeSequencerMorphForPresetSource(KESSHO_PRODUCT_SOURCE_DRUM, voice_index, live_morph);
+        applyDrumVoiceMorphToPatch(patch, source, voice_index, live_morph);
         applyDrumSourceMixFieldsToPatch(patch, source.level, source.reverb_send);
         drum_module->setSourcePresetPatch(0, patch);
       }
@@ -76,6 +78,18 @@ void KesshoProductEngine::applySourcePresetEvent(const KesshoProductEvent& event
         return;
       }
       compileSourcePresetEndpoints(source);
+      float live_morph = source.morph;
+      const bool has_live_sequencer_morph = activeSequencerMorphForPresetSource(
+          event.target_id,
+          DRUM_NUM_VOICE_TYPES,
+          live_morph);
+      const bool applied = has_live_sequencer_morph
+          ? applyStructuredSourceOverridesToModuleAtMorph(event.target_id, live_morph)
+          : applyStructuredSourceOverridesToModule(event.target_id);
+      if (!applied) {
+        telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+        return;
+      }
       telemetry.last_error_code = KESSHO_PRODUCT_OK;
       return;
     }

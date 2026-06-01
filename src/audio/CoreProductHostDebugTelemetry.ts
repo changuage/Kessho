@@ -1,6 +1,7 @@
 import type { DynamicsVisualTelemetrySnapshot } from './engineSharedTypes';
 import type { TransportDebugSnapshot } from './transport';
-import type { CoreProductSnapshot } from './coreProductSnapshot';
+import { createCoreProductSnapshot, type CoreProductSnapshot } from './coreProductSnapshot';
+import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import { gainToDb } from './CoreProductHostRuntimeGuards';
 
@@ -68,5 +69,78 @@ export function createCoreProductTransportDebugState(
     nextPhraseBoundaryIn: telemetry.transportRunning ? remainingBeats * beatDurationSec : 0,
     nextHarmonyEventIn: null,
     nextProgressionStepIn: null,
+  };
+}
+
+export type CoreProductSonicParityDebugStateOptions = {
+  engineMode: string;
+  running: boolean;
+  runtimeReady: boolean;
+  runtimeError: unknown;
+  hasOutputNode: boolean;
+  latestProductSnapshot: CoreProductSnapshot | null;
+  latestSliderState: Record<string, unknown> | null;
+  latestTelemetry: CoreProductTelemetrySnapshot | null;
+  runtimeWalkDebug: unknown;
+};
+
+/**
+ * REFERENCE / A-B TESTING PATH
+ *
+ * This debug shape is required for sonic parity, smoke tests, product-test,
+ * and A/B comparison. It remains active while reference validation exists.
+ *
+ * Status: Keep Active — Archive Later
+ */
+export function createCoreProductSonicParityDebugState({
+  engineMode,
+  running,
+  runtimeReady,
+  runtimeError,
+  hasOutputNode,
+  latestProductSnapshot,
+  latestSliderState,
+  latestTelemetry,
+  runtimeWalkDebug,
+}: CoreProductSonicParityDebugStateOptions): Record<string, unknown> {
+  const snapshot = latestProductSnapshot ?? createCoreProductSnapshot(latestSliderState ?? undefined);
+  return {
+    engineMode,
+    running,
+    runtimeReady,
+    runtimeError,
+    hasOutputNode,
+    snapshot: {
+      master: snapshot.master,
+      sources: snapshot.sources.map((source) => ({
+        sourceId: source.sourceId,
+        enabled: source.enabled,
+        level: source.level,
+        dryGain: source.dryGain,
+        reverbSend: source.reverbSend,
+        delayASend: source.delayASend,
+        delayBSend: source.delayBSend,
+        granularSend: source.granularSend,
+        diffuseSend: source.diffuseSend,
+        distance: source.distance,
+        postLpfHz: source.postLpfHz,
+        stereoWidth: source.stereoWidth,
+        presetId: source.presetId,
+        expression: source.expression,
+        soundscapes: source.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape ? {
+          textureParamCount: snapshot.soundscape.textureParamCount,
+          routeParams: snapshot.soundscape.textureParams.slice(0, 16),
+          textureParams: snapshot.soundscape.textureParams.slice(17, 37),
+          waterActive: snapshot.soundscape.moduleParams[0],
+          waterSeed: snapshot.soundscape.moduleParams[60],
+          insectsActive: snapshot.soundscape.moduleParams[61],
+          insectsSeed: snapshot.soundscape.moduleParams[77],
+          insects2Active: snapshot.soundscape.moduleParams[78],
+          insects2Seed: snapshot.soundscape.moduleParams[94],
+        } : undefined,
+      })),
+    },
+    latestTelemetry,
+    runtimeWalkDebug,
   };
 }

@@ -17,6 +17,7 @@ export function setupIOSMediaSession({
   suspendSelectedAudioEngine,
   stopSelectedAudioEngine,
 }: IOSMediaSessionEngineControls): void {
+  if (typeof navigator === 'undefined') return;
   if (!('mediaSession' in navigator)) return;
 
   const useMediaStreamCarrier = audioEngineRuntimeMode !== 'core-product' && isIOSLikeDevice();
@@ -24,14 +25,17 @@ export function setupIOSMediaSession({
     mediaSessionAudio = new Audio();
     mediaSessionAudio.loop = false;
     mediaSessionAudio.volume = 1.0;
-    (mediaSessionAudio as any).webkitPreservesPitch = false;
+    mediaSessionAudio.setAttribute('playsinline', 'true');
+    (mediaSessionAudio as HTMLAudioElement & { webkitPreservesPitch?: boolean }).webkitPreservesPitch = false;
   }
 
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: 'Generative Ambient',
-    artist: 'Kessho',
-    album: 'Ambient Dreams',
-  });
+  if (typeof MediaMetadata !== 'undefined') {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: 'Generative Ambient',
+      artist: 'Kessho',
+      album: 'Ambient Dreams',
+    });
+  }
 
   navigator.mediaSession.playbackState = 'playing';
 
@@ -71,8 +75,8 @@ export function connectMediaSessionToWebAudio(audioEngineRuntimeMode: AudioEngin
   }
 }
 
-export function stopIOSMediaSession(): void {
-  if (mediaSessionAudio) {
+export function stopIOSMediaSession(audioEngineRuntimeMode: AudioEngineRuntimeMode): void {
+  if (audioEngineRuntimeMode !== 'core-product' && mediaSessionAudio) {
     mediaSessionAudio.pause();
     mediaSessionAudio.srcObject = null;
   }

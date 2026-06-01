@@ -11,6 +11,7 @@ type SelectedPresetSequencerSetterKey =
   | 'setSelectedDrumEuclidClockDivs'
   | 'setSelectedDrumEuclidEvolveConfigs'
   | 'setSelectedDrumEuclidSwings'
+  | 'setSelectedDrumPitchSettings'
   | 'setSelectedDrumStepOverrides'
   | 'setSelectedDrumSubLaneEnabled'
   | 'setSelectedSequencerPresetHomeSnapshots'
@@ -25,6 +26,7 @@ type ProductPresetSequencerRestoreOptions = Omit<PresetSequencerRestoreOptions, 
   setProductDrumEuclidClockDivs: PresetSequencerRestoreOptions['setSelectedDrumEuclidClockDivs'];
   setProductDrumEuclidEvolveConfigs: PresetSequencerRestoreOptions['setSelectedDrumEuclidEvolveConfigs'];
   setProductDrumEuclidSwings: PresetSequencerRestoreOptions['setSelectedDrumEuclidSwings'];
+  setProductDrumPitchSettings: PresetSequencerRestoreOptions['setSelectedDrumPitchSettings'];
   setProductDrumStepOverrides: PresetSequencerRestoreOptions['setSelectedDrumStepOverrides'];
   setProductDrumSubLaneEnabled: PresetSequencerRestoreOptions['setSelectedDrumSubLaneEnabled'];
   setProductSequencerPresetHomeSnapshots: PresetSequencerRestoreOptions['setSelectedSequencerPresetHomeSnapshots'];
@@ -50,6 +52,7 @@ export function usePresetRestoreRuntimeSurface({
   setProductDrumEuclidClockDivs,
   setProductDrumEuclidEvolveConfigs,
   setProductDrumEuclidSwings,
+  setProductDrumPitchSettings,
   setProductDrumStepOverrides,
   setProductDrumSubLaneEnabled,
   setProductSequencerPresetHomeSnapshots,
@@ -67,6 +70,7 @@ export function usePresetRestoreRuntimeSurface({
     setSelectedDrumEuclidClockDivs: setProductDrumEuclidClockDivs,
     setSelectedDrumEuclidEvolveConfigs: setProductDrumEuclidEvolveConfigs,
     setSelectedDrumEuclidSwings: setProductDrumEuclidSwings,
+    setSelectedDrumPitchSettings: setProductDrumPitchSettings,
     setSelectedDrumStepOverrides: setProductDrumStepOverrides,
     setSelectedDrumSubLaneEnabled: setProductDrumSubLaneEnabled,
     setSelectedSequencerPresetHomeSnapshots: setProductSequencerPresetHomeSnapshots,

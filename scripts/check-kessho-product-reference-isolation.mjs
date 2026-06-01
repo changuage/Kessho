@@ -9,6 +9,7 @@ const productFiles = [
   'src/audio/CoreProductHostSequencerSubLaneEvolve.ts',
   'src/audio/CoreProductHostSequencerRangePayload.ts',
   'src/audio/CoreProductHostSynthNoteRangeEvolve.ts',
+  'src/audio/CoreProductHarmonyControl.ts',
   'src/audio/CoreProductHostHarmonyState.ts',
   'src/audio/CoreProductHostRuntimeGuards.ts',
   'src/audio/CoreProductHostMidi.ts',
@@ -82,6 +83,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['./CoreProductHostSequencerSubLaneEvolve', 'product host sequencer sub-lane evolve adapter'],
   ['./CoreProductHostSequencerRangePayload', 'product host sequencer range payload adapter'],
   ['./CoreProductHostSynthNoteRangeEvolve', 'product host synth note-range evolve adapter'],
+  ['./CoreProductHarmonyControl', 'product harmony control event and UI state adapter'],
   ['./CoreProductHostHarmonyState', 'product host harmony UI state adapter'],
   ['./CoreProductHostSequencerEvolveConfig', 'product host sequencer evolve config adapter'],
   ['./CoreProductHostSequencerSwing', 'product host sequencer swing adapter'],
@@ -94,6 +96,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['./product/host/CoreProductArrangementBridge', 'product host arrangement bridge'],
   ['./product/host/CoreProductAssetRegistrar', 'product host asset fetch/decode/register adapter'],
   ['./product/host/CoreProductDisplayCallbackRegistry', 'product host display callback registry'],
+  ['./product/host/CoreProductEarthTextureDebug', 'product host Earth texture debug telemetry adapter'],
   ['./product/host/CoreProductGraphTapBridge', 'product host graph tap bridge'],
   ['./product/host/CoreProductHarmonyStateBridge', 'product host harmony state bridge'],
   ['./product/host/CoreProductHostDiagnostics', 'product host diagnostics counter/timing adapter'],
@@ -106,12 +109,18 @@ const classifiedRuntimeAllowlist = new Map([
   ['./product/host/CoreProductTelemetryAdapter', 'product host telemetry enrichment and perf snapshot adapter'],
   ['./product/host/CoreProductSequencerCacheBridge', 'product host sequencer cache bridge'],
   ['./product/host/CoreProductSequencerControlEventBridge', 'product host sequencer control event bridge'],
+  ['./product/host/CoreProductManualSynthDiceBridge', 'product host manual synth dice bridge'],
   ['./product/host/CoreProductSequencerEvolveBridge', 'product host sequencer evolve bridge'],
+  ['./product/host/CoreProductSequencerEvolveRuntimeBridge', 'product host sequencer evolve runtime bridge'],
+  ['./CoreProductSequencerNativeEvolveFlags', 'same-directory product host native sequencer evolve flag mapper'],
+  ['./product/host/CoreProductSequencerParityEvolveBridge', 'temporary shared-model sequencer evolve parity bridge'],
   ['./product/host/CoreProductSequencerEvolvePayloadBridge', 'product host sequencer evolve payload bridge'],
   ['./product/host/CoreProductSequencerHomeCaptureBridge', 'product host sequencer home capture bridge'],
   ['./product/host/CoreProductSequencerHomeRestoreBridge', 'product host sequencer home restore bridge'],
   ['./product/host/CoreProductSequencerLaneParamBridge', 'product host sequencer lane param bridge'],
+  ['./product/host/CoreProductSequencerMorphFeedbackBridge', 'product host sequencer morph feedback bridge'],
   ['./product/host/CoreProductSequencerNoteRangeEvolveBridge', 'product host sequencer note-range evolve bridge'],
+  ['./CoreProductSequencerNoteRangeEvolveBridge', 'same-directory product host sequencer note-range evolve bridge'],
   ['./product/host/CoreProductSequencerStepOverrideBridge', 'product host sequencer step override bridge'],
   ['./product/host/CoreProductSequencerStepPostingBridge', 'product host sequencer step posting bridge'],
   ['./product/host/CoreProductSequencerUiAdapter', 'product host sequencer UI telemetry reconciliation adapter'],
@@ -125,6 +134,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['./CoreProductRuntimeAdapterSourcePresets', 'product source preset dirty-diff helper'],
   ['./coreProductArrangementScheduler', 'product host live arrangement scheduler'],
   ['./coreProductEvents', 'product module'],
+  ['./dawOutputRouting', 'Product runtime DAW output routing config'],
   ['./coreProductGraphTaps', 'product graph tap ID map'],
   ['./CoreProductFallbackDiagnostics', 'product runtime fallback diagnostics'],
   ['./CoreProductHostDebugTelemetry', 'product host debug telemetry adapter'],
@@ -270,6 +280,18 @@ for (const token of [
 }
 for (const specifier of classifiedRuntimeAllowlist.keys()) {
   assert(doc.includes(`\`${specifier}\``), `reference isolation doc does not classify allowlisted import ${specifier}`);
+}
+
+for (const file of [
+  'src/audio/reference/webTs/engine.ts',
+  'src/audio/coreEngineHost.ts',
+  'src/audio/referenceAudioRuntime.ts',
+  'src/audio/reference/ReferenceSelectedRuntime.ts',
+  'src/audio/reference/ReferenceAudioEngineDebugCompat.ts',
+  'src/audio/sonicParityHarness.ts',
+]) {
+  const source = readFileSync(resolve(root, file), 'utf8');
+  assert(source.includes('Status: Keep Active — Archive Later'), `${file} must be labeled Keep Active — Archive Later`);
 }
 
 console.log('Kessho Product reference isolation checks passed');

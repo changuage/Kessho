@@ -48,7 +48,7 @@ void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dr
     const float duck_gain = sidechainGain(source_id - 1u, frame);
     const float left = dry_left * duck_gain;
     const float right = dry_right * duck_gain;
-    recordSourceGraphTaps(source_id, frame, source, graph_dry_left, graph_dry_right, left, right, send_left, send_right);
+    recordSourceGraphTaps(source_id, frame, source, graph_dry_left, graph_dry_right, left, right, send_left, send_right, granular_send);
     out_l[frame] += left;
     out_r[frame] += right;
     addStereo(stem_l[source_id], stem_r[source_id], frame, left, right);
@@ -102,7 +102,7 @@ void KesshoProductEngine::mixSourceBuffer(
     const float duck_gain = sidechainGain(sidechain_target, frame);
     const float left = dry_left * duck_gain;
     const float right = dry_right * duck_gain;
-    recordSourceGraphTaps(source_id, frame, source, graph_dry_left, graph_dry_right, left, right, send_left, send_right);
+    recordSourceGraphTaps(source_id, frame, source, graph_dry_left, graph_dry_right, left, right, send_left, send_right, granular_send);
     out_l[frame] += left;
     out_r[frame] += right;
     addStereo(stem_l[source_id], stem_r[source_id], frame, left, right);

@@ -65,7 +65,7 @@ async function waitForHttp(url, timeoutMs, outputProvider = () => '') {
 
 async function startPreview(port) {
   const url = `http://127.0.0.1:${port}/`;
-  const child = spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+  const child = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
     cwd: root,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, BROWSER: 'none' },
@@ -891,6 +891,7 @@ async function captureScenario(page, scenario, durationMs, settleMs) {
 async function openScenarioTab(page, scenario) {
   if (!scenario.tabLabel) return;
   const tab = page.locator('.app-tab-bar button').filter({ hasText: scenario.tabLabel }).first();
+  if (await tab.count() === 0) return;
   await tab.click({ timeout: 10000 });
   await page.waitForTimeout(250);
 }
@@ -1068,6 +1069,7 @@ function writeReport(report) {
     '',
     '- Browser-process CPU uses Chrome process CPU deltas around each page scenario. This includes renderer/audio-thread/browser process work while the matching app tab is visible.',
     '- Each scenario preloads the page state through the app engine-state loader, then the sonic parity harness captures the same state for Product Core and Web TS.',
+    '- Web TS is measured only through the local dev/reference runtime path; production preview/build requests for Web TS continue to resolve to Product Core.',
     '- Internal avg/peak keeps the overlay-style metric visible. For Web TS, that is still worklet-reported CPU only and excludes native WebAudio node DSP.',
     '',
   );
@@ -1089,6 +1091,7 @@ const report = {
     durationMs: args.durationMs,
     settleMs: args.settleMs,
     warmupMs: args.warmupMs,
+    serverMode: args.url ? 'external' : 'vite-dev-reference',
   },
   scenarios: [],
   summary: {},

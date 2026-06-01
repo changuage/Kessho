@@ -61,7 +61,9 @@ export function drumVoicePresetId(voiceIndex: number, presetName: unknown): numb
   const voice = KESSHO_PRODUCT_DRUM_VOICES[voiceIndex];
   if (!voice) return 0;
   const name = presetKeyIsExplicit(presetName) ? String(presetName) : voice.defaultPreset;
-  return KESSHO_PRODUCT_DRUM_VOICE_PRESETS.find((candidate) => candidate.voiceIndex === voiceIndex && candidate.name === name)?.id ?? 0;
+  const preset = KESSHO_PRODUCT_DRUM_VOICE_PRESETS.find((candidate) => candidate.voiceIndex === voiceIndex && candidate.name === name);
+  if (preset) return preset.id;
+  return KESSHO_PRODUCT_DRUM_VOICE_PRESETS.find((candidate) => candidate.voiceIndex === voiceIndex && candidate.name === voice.defaultPreset)?.id ?? 0;
 }
 
 export function drumVoicePresetIdsFromState(state: Record<string, unknown> | undefined, endpoint: 'a' | 'b'): number[] {

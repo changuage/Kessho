@@ -2,6 +2,7 @@ import { useSelectedAudioEnginePageRuntimeBridges } from './useSelectedAudioEngi
 import type { ProductRuntimePageControlProps } from './useProductRuntimePageControlProps';
 import type { ProductRuntimePageSequencerProps } from './useProductRuntimePageSequencerProps';
 import type { ProductRuntimePageTelemetryProps } from './useProductRuntimePageTelemetryProps';
+import type { PitchSettings, SubLaneState } from './sequencer/useEuclideanSequencer';
 
 export type ProductRuntimePageRuntimeBridgeOptions =
   ProductRuntimePageTelemetryProps &
@@ -27,6 +28,7 @@ export function useProductRuntimePageRuntimeBridges({
   setProductDrumEuclidClockDivs,
   setProductDrumEuclidEvolveConfigs,
   setProductDrumEuclidSwings,
+  setProductDrumPitchSettings,
   setProductDrumStepOverrides,
   setProductDrumSubLaneEnabled,
   setProductSynthEuclidClockDivs,
@@ -58,7 +60,8 @@ export function useProductRuntimePageRuntimeBridges({
     getSelectedPadLfoValue: getProductPadLfoValue,
     setSelectedGranularUiActive: setProductGranularUiActive,
     captureSelectedSynthEuclidLaneHome: captureProductSynthEuclidLaneHome,
-    captureSelectedDrumEuclidLaneHome: captureProductDrumEuclidLaneHome,
+    captureSelectedDrumEuclidLaneHome: (laneIdx: number, pitchSettings?: PitchSettings, pitchState?: SubLaneState | null) =>
+      captureProductDrumEuclidLaneHome(laneIdx, pitchSettings, pitchState ?? undefined),
     diceSelectedSynthEuclidLane: diceProductSynthEuclidLane,
     diceSelectedDrumEuclidLane: diceProductDrumEuclidLane,
     resetSelectedDrumEuclidLaneHome: resetProductDrumEuclidLaneHome,
@@ -66,6 +69,7 @@ export function useProductRuntimePageRuntimeBridges({
     setSelectedDrumEuclidClockDivs: setProductDrumEuclidClockDivs,
     setSelectedDrumEuclidEvolveConfigs: setProductDrumEuclidEvolveConfigs,
     setSelectedDrumEuclidSwings: setProductDrumEuclidSwings,
+    setSelectedDrumPitchSettings: setProductDrumPitchSettings,
     setSelectedDrumStepOverrides: setProductDrumStepOverrides,
     setSelectedDrumSubLaneEnabled: setProductDrumSubLaneEnabled,
     setSelectedSynthEuclidClockDivs: setProductSynthEuclidClockDivs,

@@ -109,6 +109,10 @@ bool diceWriteOffsetAllowsStep(
   }
 
   LaneState& lane = lanes[event.index];
+  if ((event.flags & KESSHO_PRODUCT_EVOLVE_MODE_PARITY) != 0u) {
+    applyParityEvolveSequencerLaneEvent(event);
+    return;
+  }
   const float intensity = clampFloat(event.value <= 0.0f ? 1.0f : event.value, 0.0f, 1.0f);
   if (intensity <= 0.0001f || lane.step_count == 0u) {
     telemetry.last_error_code = KESSHO_PRODUCT_OK;

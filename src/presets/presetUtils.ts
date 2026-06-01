@@ -29,6 +29,7 @@ const METADATA_FIELDS = [
   'synthLinked',
   'drumSubLaneStates',
   'synthSubLaneStates',
+  'synthArpConfigs',
   'drumPitchSettings',
   'synthPitchSettings',
   'synthPitchBindingModes',

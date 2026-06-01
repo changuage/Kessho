@@ -30,9 +30,11 @@ import type {
   ProductSynthNoteRangeEvolvedCallback,
   ProductTelemetrySnapshot,
 } from './ProductEngineTypes';
+import type { ProductLiveNoteEvent } from './liveNoteEvents';
 import type { ProductEngineRuntimeMode } from './ProductRuntimeMode';
 import type { ProductRuntimeCapabilityReport } from './ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from './ProductRuntimeDiagnostics';
+import type { DawOutputRoutingConfig } from '../dawOutputRouting';
 
 /**
  * Product runtime boundary.
@@ -47,12 +49,15 @@ export type ProductEnginePort = {
   suspend(): void;
   resume(): void;
   setOutputGain(target: number, durationSeconds?: number): void;
+  setDawOutputRouting(config: DawOutputRoutingConfig): void;
+  setDawOutputDeviceId(deviceId: string | null): Promise<boolean>;
   resetCofDrift(): void;
 
   updateSnapshotPatch(reason: ProductSnapshotPatchReason, patch: ProductSnapshotPatch): void;
   enqueueEvent(event: ProductEvent): void;
   enqueueEvents(events: readonly ProductEvent[]): void;
   pushMidiMessage(message: ProductMidiMessage): void;
+  enqueueLiveNoteEvent?(event: ProductLiveNoteEvent): Promise<void> | void;
 
   registerAsset(asset: ProductAssetRegistration): Promise<ProductAssetHandle>;
   unregisterAsset(assetId: number): void;
@@ -91,6 +96,7 @@ export type ProductEnginePort = {
   setDrumMorphTriggerCallback(callback: ProductDrumMorphCallback | null): void;
   setDrumParamSHTriggerCallback(callback: ProductDrumParamSampleHoldCallback | null): void;
   setGranularSHTriggerCallback(callback: ProductRuntimeWalkPositionsCallback | null): void;
+  setGranularUiActive(active: boolean): void;
   setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void;
   startJourneyMorphClock(): void;
   stopJourneyMorphClock(): void;

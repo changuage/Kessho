@@ -1,0 +1,182 @@
+.midi-learn-global-button {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 80;
+  min-height: 34px;
+  max-width: min(320px, calc(100vw - 28px));
+  border: 1px solid rgba(165, 196, 212, 0.45);
+  border-radius: 6px;
+  background: rgba(7, 12, 15, 0.9);
+  color: #d8eef6;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  padding: 0 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+
+.midi-learn-global-button--listening,
+.midi-learn-global-button--captured,
+.midi-learn-global-button--assigning {
+  background: #d8eef6;
+  color: #071014;
+}
+
+.midi-learn-global-button--error {
+  border-color: rgba(255, 120, 120, 0.7);
+  color: #ffc4c4;
+}
+
+.midi-learn-bar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 79;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 38px;
+  border: 1px solid rgba(165, 196, 212, 0.35);
+  border-radius: 8px;
+  background: rgba(7, 12, 15, 0.94);
+  color: #e8f7fb;
+  padding: 8px 10px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.3);
+}
+
+.midi-learn-bar-title {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.midi-learn-bar-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  color: rgba(232, 247, 251, 0.84);
+}
+
+.midi-learn-bar-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.midi-learn-bar-actions button,
+.midi-mapping-actions button,
+.midi-mapping-popover-head button {
+  border: 1px solid rgba(165, 196, 212, 0.35);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-size: 0.68rem;
+  padding: 6px 8px;
+}
+
+.midi-slider-adornment {
+  position: relative;
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.midi-slider-chip {
+  border: 1px solid rgba(165, 196, 212, 0.45);
+  border-radius: 999px;
+  background: rgba(165, 196, 212, 0.1);
+  color: #d8eef6;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+  padding: 4px 6px;
+}
+
+.midi-slider-chip.mapped {
+  background: rgba(126, 210, 159, 0.13);
+  border-color: rgba(126, 210, 159, 0.5);
+  color: #c5f3d8;
+}
+
+.midi-slider-chip.conflict {
+  background: rgba(255, 198, 92, 0.14);
+  border-color: rgba(255, 198, 92, 0.6);
+  color: #ffe2a7;
+}
+
+.midi-mapping-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 90;
+  width: 260px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(165, 196, 212, 0.35);
+  border-radius: 8px;
+  background: #071014;
+  color: #e8f7fb;
+  padding: 10px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.42);
+}
+
+.midi-mapping-popover-head,
+.midi-mapping-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.midi-mapping-popover label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.68rem;
+  color: rgba(232, 247, 251, 0.72);
+}
+
+.midi-mapping-popover input,
+.midi-mapping-popover select {
+  width: 100%;
+  border: 1px solid rgba(165, 196, 212, 0.3);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8f7fb;
+  padding: 6px;
+}
+
+.midi-mapping-inline {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.midi-mapping-inline input {
+  width: auto;
+}
+
+.midi-mapping-actions .danger {
+  border-color: rgba(255, 120, 120, 0.55);
+  color: #ffc4c4;
+}
+
+@media (max-width: 720px) {
+  .midi-learn-global-button {
+    top: auto;
+    bottom: 62px;
+  }
+
+  .midi-learn-bar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .midi-learn-bar-copy {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+}

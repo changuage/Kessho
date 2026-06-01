@@ -13,7 +13,9 @@ const snapshotCoordinator = readProjectFile('src/audio/product/host/CoreProductS
 const sequencerUiAdapter = readProjectFile('src/audio/product/host/CoreProductSequencerUiAdapter.ts');
 const sequencerLaneParamBridge = readProjectFile('src/audio/product/host/CoreProductSequencerLaneParamBridge.ts');
 const sequencerControlEventBridge = readProjectFile('src/audio/product/host/CoreProductSequencerControlEventBridge.ts');
-const hostRuntimeSurface = `${host}\n${runtimeAdapter}\n${snapshotCoordinator}\n${sequencerUiAdapter}\n${sequencerLaneParamBridge}\n${sequencerControlEventBridge}`;
+const sequencerMorphFeedbackBridge = readProjectFile('src/audio/product/host/CoreProductSequencerMorphFeedbackBridge.ts');
+const manualSynthDiceBridge = readProjectFile('src/audio/product/host/CoreProductManualSynthDiceBridge.ts');
+const hostRuntimeSurface = `${host}\n${runtimeAdapter}\n${snapshotCoordinator}\n${sequencerUiAdapter}\n${sequencerLaneParamBridge}\n${sequencerControlEventBridge}\n${sequencerMorphFeedbackBridge}\n${manualSynthDiceBridge}`;
 const sequencerTests = readProjectFile('cpp/KesshoCore/tests/ProductSequencerTests.cpp');
 
 function hostMethodBody(name) {
@@ -47,6 +49,8 @@ function makeLane(overrides = {}) {
     fillCount: 4,
     rotation: 0,
     clockDivision: 16,
+    swing: 0.27,
+    baseMidiNote: 60,
     mutationFlags: 1,
     triggerToggles: [[0, true], [3, false]],
     probabilityOverrideSetLow: 0b11,
@@ -76,6 +80,35 @@ function makeLane(overrides = {}) {
     stepValueConfigEnabledMask: 1 << 5,
     stepValueConfigSteps: configSteps,
     stepValueConfigDirections: configDirections,
+    ...overrides,
+  };
+}
+
+function makeProductLane(overrides = {}) {
+  return {
+    enabled: true,
+    targetSourceId: 1,
+    stepCount: 16,
+    fillCount: 4,
+    rotation: 0,
+    clockDivision: 16,
+    swing: 0,
+    probability: 1,
+    ratchet: 1,
+    trigCondition: 0,
+    midiNote: 60,
+    velocity: 1,
+    holdSeconds: 0.25,
+    morph: 0.5,
+    distance: 0.5,
+    expression: 0.5,
+    seed: 1234,
+    barReset: false,
+    phraseReset: false,
+    manualStepMaskLow: 0,
+    manualStepMaskHigh: 0,
+    tempoMultiplier: 1,
+    initialStartDelaySeconds: 0,
     ...overrides,
   };
 }
@@ -125,17 +158,22 @@ await runCheckWithReport({
     assertLiveSequencerMutation('resetDrumEuclidLaneHome', 'createCoreProductSequencerResetHomeEvent(');
     const presetHomeBody = hostMethodBody('setSequencerPresetHomeSnapshots');
     assert(
-      presetHomeBody.includes("this.captureSequencerHomeLanes('synth', false, true)") &&
-        presetHomeBody.includes("this.captureSequencerHomeLanes('drum', false, true)"),
-      'preset restore must force-replace Product synth/drum home snapshots',
+      presetHomeBody.includes("this.captureSequencerHomeLanes('synth', false, true, undefined, synthPitchStates)") &&
+        presetHomeBody.includes("this.captureSequencerHomeLanes('drum', false, true, drumPitchSettings, drumPitchStates)"),
+      'preset restore must force-replace Product synth/drum home snapshots with loaded pitch metadata',
     );
     assert(
-      hostMethodBody('captureSequencerHomeLanes').includes('this.captureSequencerHomeLane(sequencer, laneIndex, force, requireContent)'),
+      hostMethodBody('captureSequencerHomeLanes').includes('this.captureSequencerHomeLane(sequencer, laneIndex, force, requireContent'),
       'bulk Product home capture must forward the force flag to per-lane capture',
+    );
+    const resetSequencerEvolveStateBody = hostMethodBody('resetSequencerEvolveState');
+    assert(
+      resetSequencerEvolveStateBody.includes('this.sequencerEvolveBridge.reset();'),
+      'resetSequencerEvolveState() must reset Product sequencer evolve clock state',
     );
     for (const methodName of ['start', 'resume', 'suspend', 'stop', 'dispose']) {
       assert(
-        hostMethodBody(methodName).includes('this.sequencerEvolveBridge.reset();'),
+        hostMethodBody(methodName).includes('this.resetSequencerEvolveState();'),
         `${methodName}() must reset Product sequencer evolve clock state at transport lifecycle boundaries`,
       );
     }
@@ -166,11 +204,34 @@ await runCheckWithReport({
       'if (this.runtimeReady) this.runtime.postEvent(event)',
       'handleCoreProductSequencerControlEvent({',
       'restoreLaneHome: (restoreSequencer, restoreLaneIndex) => this.restoreSequencerLaneHome(restoreSequencer, restoreLaneIndex)',
-      'armManualDice: (diceSequencer, diceLaneIndex) => this.sequencerHome.armManualDice(diceSequencer, diceLaneIndex)',
+      "if (event.eventKind === KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane && sequencer === 'synth')",
+      "this.applyManualSynthDice(laneIndex, typeof event.value === 'number' ? event.value : 1)",
+      'armManualDice: (diceSequencer, diceLaneIndex) => this.armSequencerManualDice(diceSequencer, diceLaneIndex)',
       'postControlEvent: (controlEvent) => this.postSequencerControlEvent(controlEvent)',
       'publish: (name, publishLaneIndex) => this.invokeDisplayCallback(name, publishLaneIndex)',
     ]) {
       assert(sequencerEventBody.includes(token), `ProductEvent sequencer UI handler is missing ${token}`);
+    }
+    const armManualDiceBody = manualSynthDiceBridge;
+    for (const token of [
+      "if (options.sequencer === 'synth')",
+      "laneStepStateSignature(options.cache, 'synth', options.laneIndex)",
+      'options.arm(options.sequencer, options.laneIndex)',
+    ]) {
+      assert(armManualDiceBody.includes(token), `ProductEvent manual dice arming helper is missing ${token}`);
+    }
+    const manualSynthDiceBody = manualSynthDiceBridge;
+    for (const token of [
+      'options.captureHome()',
+      'options.armManualDice()',
+      "sequencer: 'synth'",
+      'const config = manualSynthDiceConfig(options.adapterState, options.laneIndex, options.intensity)',
+      "nativeEvolveFlagsForEvolveConfig(config, 'synth')",
+      'createCoreProductSequencerDiceEvent(',
+      'CORE_PRODUCT_EVOLVE_FLAGS.modeParity',
+      "options.publish('synthEuclidEvolve', options.laneIndex)",
+    ]) {
+      assert(manualSynthDiceBody.includes(token), `ProductEvent manual synth dice path is missing ${token}`);
     }
     const controlEventBody = hostMethodBody('handleCoreProductSequencerControlEvent');
     for (const token of [
@@ -244,9 +305,15 @@ await runCheckWithReport({
     for (const token of [
       'this.reconcileSequencerUiState(hostTelemetry)',
       'this.modulationRangeBridge.updateRuntimeWalkPositions(hostTelemetry)',
+      'this.updateSequencerMorphFeedback(hostTelemetry)',
     ]) {
       assert(telemetryBody.includes(token), `handleTelemetry() must reconcile Core-owned state from telemetry: ${token}`);
     }
+    assert(
+      telemetryBody.indexOf('this.reconcileSequencerUiState(hostTelemetry)') <
+        telemetryBody.indexOf('this.tickSequencerEvolveClock(hostTelemetry)'),
+      'handleTelemetry() must reconcile Core-owned sequencer UI state before the evolve tick reads the host cache',
+    );
 
     const sequencerUiBody = hostMethodBody('reconcileSequencerUiState');
     for (const token of [
@@ -254,6 +321,9 @@ await runCheckWithReport({
       'this.lastSequencerUiStateRevision',
       'setSynthLaneState:',
       'setDrumLaneState:',
+      'setLaneSwing:',
+      'setSynthNoteRangeOverride:',
+      'publishNoteRange:',
     ]) {
       assert(sequencerUiBody.includes(token), `reconcileSequencerUiState() must preserve Core-owned mutation state: ${token}`);
     }
@@ -275,11 +345,16 @@ await runCheckWithReport({
         'coreProductStepValueOverridesFromLane(lane',
         'coreProductStepValueConfigsFromLane(lane',
         'lane.triggerToggles.map',
+        'options.setLaneSwing(',
         'options.publish(',
       ]) {
         assert(body.includes(token), `${methodName}() must update host caches and UI callbacks from Product Core state: ${token}`);
       }
     }
+    assert(
+      methodBody(sequencerUiAdapter, 'function reconcileSynthSequencerLane').includes('reconcileCoreProductSequencerSynthNoteRange('),
+      'reconcileSynthSequencerLane() must publish native note-range evolve bounds from Product Core state',
+    );
 
     const canDiffBody = hostMethodBody('canApplySnapshotDiff');
     for (const field of [
@@ -411,6 +486,219 @@ await runCheckWithReport({
         synthClockDivision: laneParamHarness.host.adapterState.synthEuclid3ClockDivision,
         drumSwing: laneParamHarness.host.adapterState.drumEuclid2Swing,
         runtimeEvents: laneParamHarness.runtime.events,
+      },
+    });
+
+    const stepValueHarness = loadCoreProductHostHarness();
+    stepValueHarness.host.runtimeReady = true;
+    const { CORE_PRODUCT_STEP_VALUE_FIELDS, CORE_PRODUCT_SUBLANE_DIRECTIONS } = stepValueHarness.context;
+    stepValueHarness.host.setSynthSubLaneEnabled([{ expression: true, morph: true }]);
+    const beforeSynthStepValueEvents = stepValueHarness.runtime.events.length;
+    stepValueHarness.host.setSynthStepOverrides({
+      expression: [[0.55, 0.65]],
+      expressionDirection: ['forward'],
+      morph: [[0.2, 0.8]],
+      morphDirection: ['reverse'],
+      ratchet: [[1, 3]],
+    });
+    const synthStepValueEvents = stepValueHarness.runtime.events.slice(beforeSynthStepValueEvents);
+    assert(
+      synthStepValueEvents.some((event) =>
+        event.type === 'sequencer-sublane-config' &&
+          event.sequencer === 'synth' &&
+          event.laneIndex === 0 &&
+          event.field === CORE_PRODUCT_STEP_VALUE_FIELDS.morph &&
+          event.steps === 2 &&
+          event.direction === CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse),
+      'Product host must post live synth preset-morph sub-lane direction/length into Core',
+    );
+    assert(
+      synthStepValueEvents.some((event) =>
+        event.type === 'sequencer-step-value' &&
+          event.sequencer === 'synth' &&
+          event.laneIndex === 0 &&
+          event.step === 1 &&
+          event.field === CORE_PRODUCT_STEP_VALUE_FIELDS.morph &&
+          event.value === 0.8),
+      'Product host must post live synth preset-morph step values into Core',
+    );
+    assert(
+      synthStepValueEvents.some((event) =>
+        event.type === 'sequencer-sublane-config' &&
+          event.sequencer === 'synth' &&
+          event.laneIndex === 0 &&
+          event.field === CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet &&
+          event.steps === 2),
+      'Product host must post live synth ratchet sub-lane length into Core',
+    );
+    assert(
+      synthStepValueEvents.some((event) =>
+        event.type === 'sequencer-step-value' &&
+          event.sequencer === 'synth' &&
+          event.laneIndex === 0 &&
+          event.step === 1 &&
+          event.field === CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet &&
+          event.value === 3),
+      'Product host must post live synth ratchet step values into Core',
+    );
+
+    stepValueHarness.host.setDrumSubLaneEnabled([{ expression: true, morph: true }]);
+    const beforeDrumStepValueEvents = stepValueHarness.runtime.events.length;
+    stepValueHarness.host.setDrumStepOverrides({
+      expressionDirection: ['reverse'],
+      morph: [[0.1, 0.6]],
+      morphDirection: ['pingpong'],
+      ratchet: [[2, 4]],
+    });
+    const drumStepValueEvents = stepValueHarness.runtime.events.slice(beforeDrumStepValueEvents);
+    assert(
+      drumStepValueEvents.some((event) =>
+        event.type === 'sequencer-sublane-config' &&
+          event.sequencer === 'drum' &&
+          event.laneIndex === 0 &&
+          event.field === CORE_PRODUCT_STEP_VALUE_FIELDS.morph &&
+          event.steps === 2 &&
+          event.direction === CORE_PRODUCT_SUBLANE_DIRECTIONS.pingpong),
+      'Product host must post live drum preset-morph sub-lane direction/length into Core',
+    );
+    assert(
+      drumStepValueEvents.some((event) =>
+        event.type === 'sequencer-step-value' &&
+          event.sequencer === 'drum' &&
+          event.laneIndex === 0 &&
+          event.step === 1 &&
+          event.field === CORE_PRODUCT_STEP_VALUE_FIELDS.morph &&
+          event.value === 0.6),
+      'Product host must post live drum preset-morph step values into Core',
+    );
+    assert(
+      drumStepValueEvents.some((event) =>
+        event.type === 'sequencer-sublane-config' &&
+          event.sequencer === 'drum' &&
+          event.laneIndex === 0 &&
+          event.field === CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet &&
+          event.steps === 2 &&
+          event.direction === CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse),
+      'Product host must post live drum ratchet sub-lane direction/length into Core',
+    );
+    assert(
+      drumStepValueEvents.some((event) =>
+        event.type === 'sequencer-step-value' &&
+          event.sequencer === 'drum' &&
+          event.laneIndex === 0 &&
+          event.step === 1 &&
+          event.field === CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet &&
+          event.value === 4),
+      'Product host must post live drum ratchet step values into Core',
+    );
+    addEvidence(report, {
+      id: 'sequencer-morph-ratchet-live-routing',
+      summary: 'UI-style synth/drum preset-morph and ratchet overrides post live Core step-value/config events.',
+      details: {
+        synthStepValueEvents,
+        drumStepValueEvents,
+      },
+    });
+
+    const morphFeedbackHarness = loadCoreProductHostHarness();
+    morphFeedbackHarness.host.runtimeReady = true;
+    const morphFeedbackPadValues = [];
+    const morphFeedbackLeadValues = [];
+    const morphFeedbackDrumValues = [];
+    morphFeedbackHarness.host.setPadMorphTriggerCallback((value) => morphFeedbackPadValues.push(value));
+    morphFeedbackHarness.host.setLeadMorphCallback((value) => morphFeedbackLeadValues.push(value));
+    morphFeedbackHarness.host.setDrumMorphTriggerCallback((voice, value) => morphFeedbackDrumValues.push({ voice, value }));
+    morphFeedbackHarness.host.latestProductSnapshot = {
+      transport: { bpm: 120 },
+      synthLanes: [
+        makeProductLane({ targetSourceId: morphFeedbackHarness.context.CORE_PRODUCT_SOURCE_IDS.pad1, morph: 0.11 }),
+        makeProductLane({ targetSourceId: morphFeedbackHarness.context.CORE_PRODUCT_SOURCE_IDS.lead2, morph: 0.22, seed: 5678 }),
+      ],
+      drumLanes: [
+        makeProductLane({
+          targetSourceId: morphFeedbackHarness.context.CORE_PRODUCT_SOURCE_IDS.drum,
+          midiNote: 37,
+          morph: 0.33,
+          seed: (0x80000000 | (1 << 25) | 4321) >>> 0,
+        }),
+      ],
+    };
+    morphFeedbackHarness.host.setSynthSubLaneEnabled([{ morph: true }, { morph: true }]);
+    morphFeedbackHarness.host.setSynthStepOverrides({
+      morph: [[0.2, 0.8], [0.35, 0.65]],
+      morphDirection: ['forward', 'reverse'],
+    });
+    morphFeedbackHarness.host.setDrumSubLaneEnabled([{ morph: true }]);
+    morphFeedbackHarness.host.setDrumStepOverrides({
+      morph: [[0.1, 0.6]],
+      morphDirection: ['pingpong'],
+    });
+    morphFeedbackPadValues.length = 0;
+    morphFeedbackLeadValues.length = 0;
+    morphFeedbackDrumValues.length = 0;
+    const morphFeedbackTelemetryBase = {
+      schemaHash: 0,
+      sampleRate: 48000,
+      transportRunning: true,
+      activeSources: 0,
+      activeVoices: 0,
+      activeAssets: 0,
+      sequencerEventCount: 0,
+      controlQueueDepth: 0,
+      assetMissingCount: 0,
+      lastErrorCode: 0,
+    };
+    morphFeedbackHarness.runtime.telemetryCallback({
+      ...morphFeedbackTelemetryBase,
+      synthSequencerHitCounts: [1, 1, 0, 0],
+      drumSequencerHitCounts: [1, 0, 0, 0],
+      synthSequencerCurrentSteps: [0, 0, 0, 0],
+      drumSequencerCurrentSteps: [0, 0, 0, 0],
+    });
+    morphFeedbackHarness.runtime.telemetryCallback({
+      ...morphFeedbackTelemetryBase,
+      synthSequencerHitCounts: [2, 2, 0, 0],
+      drumSequencerHitCounts: [2, 0, 0, 0],
+      synthSequencerCurrentSteps: [1, 1, 0, 0],
+      drumSequencerCurrentSteps: [1, 0, 0, 0],
+    });
+    const activeMorphFeedbackPadValues = morphFeedbackPadValues.filter((value) => value >= 0);
+    const activeMorphFeedbackDrumValues = morphFeedbackDrumValues.filter((entry) => entry.value >= 0);
+    assert(
+      activeMorphFeedbackPadValues[0] === 0.2 && activeMorphFeedbackPadValues[1] === 0.8,
+      'Product sequencer morph hits must publish pad morph values for live slider override',
+    );
+    assert(
+      morphFeedbackLeadValues.some((value) => value.lead1 === -1 && value.lead2 === 0.65) &&
+        morphFeedbackLeadValues.some((value) => value.lead1 === -1 && value.lead2 === 0.35),
+      'Product sequencer morph hits must publish lead target morph values for live slider override',
+    );
+    assert(
+      activeMorphFeedbackDrumValues.some((entry) => entry.voice === 'kick' && entry.value === 0.1) &&
+        activeMorphFeedbackDrumValues.some((entry) => entry.voice === 'kick' && entry.value === 0.6),
+      'Product sequencer morph hits must publish drum voice morph values for live slider override',
+    );
+    morphFeedbackHarness.runtime.telemetryCallback({
+      ...morphFeedbackTelemetryBase,
+      transportRunning: false,
+      synthSequencerHitCounts: [2, 2, 0, 0],
+      drumSequencerHitCounts: [2, 0, 0, 0],
+      synthSequencerCurrentSteps: [1, 1, 0, 0],
+      drumSequencerCurrentSteps: [1, 0, 0, 0],
+    });
+    assert(
+      morphFeedbackPadValues.includes(-2) &&
+        morphFeedbackLeadValues.some((value) => value.lead1 === -2 && value.lead2 === -2) &&
+        morphFeedbackDrumValues.some((entry) => entry.voice === 'kick' && entry.value === -2),
+      'Product sequencer morph feedback must clear live slider overrides when transport is stopped',
+    );
+    addEvidence(report, {
+      id: 'sequencer-morph-live-slider-feedback',
+      summary: 'Product Core sequencer preset-morph hits publish synth/drum UI callbacks so active engine morph sliders follow the sounding value.',
+      details: {
+        pad: morphFeedbackPadValues,
+        lead: morphFeedbackLeadValues,
+        drum: morphFeedbackDrumValues,
       },
     });
 
@@ -589,16 +877,42 @@ await runCheckWithReport({
       emptyContentStore.restore('drum', 0) === null,
       'Product preset/step home capture must still ignore empty lanes when requireContent is requested',
     );
+    const beforeManualSynthPayloads = synthOverridePayloads.length;
     harness.host.diceSynthEuclidLane(1, 0.42);
     harness.host.diceDrumEuclidLane(3, 0.73);
     harness.host.resetDrumEuclidLaneHome(2);
+    const manualSynthDiceEvent = harness.runtime.events.find((event) =>
+      event.type === 'sequencer-dice' &&
+        event.sequencer === 'synth' &&
+        event.laneIndex === 1);
+    assert(manualSynthDiceEvent, 'diceSynthEuclidLane() must route synth manual dice through native Product Core dice');
     assert(
-      harness.runtime.events.some((event) =>
-        event.type === 'sequencer-dice' &&
-          event.sequencer === 'synth' &&
-          event.laneIndex === 1 &&
-          Math.abs(event.intensity - 0.42) < 1.0e-6),
-      'diceSynthEuclidLane() must post a live dice event',
+      Math.abs((manualSynthDiceEvent.value ?? manualSynthDiceEvent.intensity) - 0.42) < 1.0e-6,
+      'diceSynthEuclidLane() must preserve the requested manual dice intensity in the native event',
+    );
+    const manualSynthDiceFlags = (manualSynthDiceEvent.flags ?? 0) >>> 0;
+    assert(
+      (manualSynthDiceFlags & (harness.context.CORE_PRODUCT_EVOLVE_FLAGS.modeParity >>> 0)) !== 0 &&
+        (manualSynthDiceFlags & (harness.context.CORE_PRODUCT_EVOLVE_FLAGS.valueDrift >>> 0)) !== 0 &&
+        (manualSynthDiceFlags & (harness.context.CORE_PRODUCT_EVOLVE_FLAGS.valueScramble >>> 0)) !== 0 &&
+        (manualSynthDiceFlags & (harness.context.CORE_PRODUCT_DICE_FLAGS.expression >>> 0)) !== 0 &&
+        (manualSynthDiceFlags & (harness.context.CORE_PRODUCT_DICE_FLAGS.morph >>> 0)) !== 0 &&
+        (manualSynthDiceFlags & (harness.context.CORE_PRODUCT_DICE_FLAGS.distance >>> 0)) !== 0,
+      'diceSynthEuclidLane() must post native parity evolve flags for synth value sub-lanes',
+    );
+    harness.host.reconcileSequencerUiState(makeSequencerUiTelemetry({
+      revision: 40,
+      targetId: harness.context.CORE_PRODUCT_SEQUENCER_IDS.synth,
+      laneIndex: 1,
+      changeKind: 3,
+      lane: makeLane({ swing: 0.31 }),
+      sequencer: 'synth',
+    }));
+    assert(
+      synthOverridePayloads.slice(beforeManualSynthPayloads).some((entry) =>
+        entry.laneIndex === 1 &&
+          entry.payload.manualDiceHome === true),
+      'diceSynthEuclidLane() must tag the following synth UI-state reconciliation as manual dice home for UI/preset refs',
     );
     assert(
       harness.runtime.events.some((event) =>
@@ -685,20 +999,19 @@ await runCheckWithReport({
       'Product synth reset-home must restore the Product lane MIDI note to the captured note-range center',
     );
 
-    harness.host.setEvolvedSequencerLaneSwing('drum', 2, 0.33);
-    assert(harness.host.adapterState.drumEuclid3Swing === 0.33, 'Product host swing evolve must update adapter state for preset/UI continuity');
-    assert(
-      harness.runtime.events.some((event) =>
-        event.type === 'sequencer-lane-param' &&
-          event.sequencer === 'drum' &&
-          event.laneIndex === 2 &&
-          event.paramId === 'SequencerLaneSwing' &&
-          event.value === 0.33),
-      'Product host swing evolve must post a live Product lane swing event',
-    );
+    harness.host.captureSequencerHomeLane('drum', 2, true);
+    harness.host.reconcileSequencerUiState(makeSequencerUiTelemetry({
+      revision: 50,
+      targetId: harness.context.CORE_PRODUCT_SEQUENCER_IDS.drum,
+      laneIndex: 2,
+      changeKind: 3,
+      lane: makeLane({ swing: 0.33, baseMidiNote: 38 }),
+      sequencer: 'drum',
+    }));
+    assert(harness.host.adapterState.drumEuclid3Swing === 0.33, 'Product native swing evolve UI state must update adapter state for preset/UI continuity');
     assert(
       drumOverridePayloads.some((entry) => entry.laneIndex === 2 && entry.payload.swing === 0.33),
-      'Product host swing evolve must notify UI/preset refs through the evolve override callback',
+      'Product native swing evolve UI state must notify UI/preset refs through the evolve override callback',
     );
     const beforeDrumSwingResetEvents = harness.runtime.events.length;
     harness.host.resetDrumEuclidLaneHome(2);
@@ -923,93 +1236,6 @@ await runCheckWithReport({
       'Product drum reset-home must restore range-mode sub-lane state and sequencing metadata',
     );
 
-    harness.host.setSynthSubLaneEnabled([{}, { expression: true }]);
-    harness.host.setEvolvedSequencerSubLaneConfigs('synth', 1, {
-      configs: [{
-        field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression,
-        steps: 9,
-        direction: harness.context.CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse,
-      }],
-      valueOverrides: [
-        { step: 0, field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression, value: 0.25 },
-        { step: 1, field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression, value: 0.5 },
-        { step: 2, field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression, value: 0.5 },
-        { step: 3, field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression, value: 0.5 },
-        { step: 4, field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression, value: 0.5 },
-        { step: 5, field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression, value: 0.5 },
-        { step: 6, field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression, value: 0.5 },
-        { step: 7, field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression, value: 0.5 },
-        { step: 8, field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression, value: 0.5 },
-      ],
-      changedValueFields: [harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression],
-      subLaneStates: { expression: { steps: 9, direction: 'reverse' } },
-      directionPayloads: { expressionDirection: 'reverse' },
-    });
-    assert(
-      harness.host.synthStepValueConfigs[1].some((entry) =>
-        entry.field === harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression &&
-          entry.steps === 9 &&
-          entry.direction === harness.context.CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse),
-      'Product host sub-lane evolve must update host replay config cache',
-    );
-    assert(
-      harness.host.synthStepValueOverrides[1].some((entry) =>
-        entry.field === harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression &&
-          entry.step === 8 &&
-          entry.value === 0.5),
-      'Product host sub-lane length evolve must update duplicated step-value cache entries',
-    );
-    assert(
-      harness.runtime.events.some((event) =>
-        event.type === 'sequencer-sublane-config' &&
-          event.sequencer === 'synth' &&
-          event.laneIndex === 1 &&
-          event.steps === 9),
-      'Product host sub-lane evolve must post live sub-lane config events',
-    );
-    assert(
-      harness.runtime.events.some((event) =>
-        event.type === 'sequencer-step-value' &&
-          event.sequencer === 'synth' &&
-          event.laneIndex === 1 &&
-          event.step === 8 &&
-          event.field === harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression &&
-          event.value === 0.5),
-      'Product host sub-lane length evolve must post live duplicated step-value events',
-    );
-    assert(
-      synthOverridePayloads.some((entry) =>
-        entry.laneIndex === 1 &&
-          entry.payload.subLaneStates?.expression?.steps === 9 &&
-          entry.payload.expressionDirection === 'reverse' &&
-          Array.isArray(entry.payload.expression) &&
-          entry.payload.expression.length === 9 &&
-          entry.payload.expression[8] === 0.5),
-      'Product host sub-lane evolve must notify UI/preset refs with length, direction, and resized values',
-    );
-    harness.host.setSynthPitchSettings([null, { mode: 'semitones', root: 48, scale: 'Major' }]);
-    harness.host.setEvolvedSequencerSubLaneConfigs('synth', 1, {
-      configs: [{
-        field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote,
-        steps: 2,
-        direction: harness.context.CORE_PRODUCT_SUBLANE_DIRECTIONS.forward,
-      }],
-      valueOverrides: [
-        { step: 0, field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote, value: 60 },
-        { step: 1, field: harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote, value: 64 },
-      ],
-      changedValueFields: [harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote],
-      subLaneStates: { pitch: { steps: 2, direction: 'forward' } },
-      directionPayloads: { pitchDirection: 'forward' },
-    });
-    const synthPitchEvolvePayload = synthOverridePayloads.at(-1)?.payload ?? {};
-    assert(
-      Array.isArray(synthPitchEvolvePayload.pitch) &&
-        synthPitchEvolvePayload.pitch[0] === 12 &&
-        synthPitchEvolvePayload.pitch[1] === 16,
-      'Product synth sub-lane evolve must convert Core MIDI pitch payloads through the current pitch root',
-    );
-
     const synthLane = makeLane();
     harness.host.reconcileSequencerUiState(makeSequencerUiTelemetry({
       revision: 1,
@@ -1021,19 +1247,19 @@ await runCheckWithReport({
     }));
     assert(harness.host.lastSequencerUiStateRevision === 1, 'synth reconciliation must record Core UI revision');
     assert(
-      JSON.stringify(harness.host.synthStepToggleOverrides[1]) === JSON.stringify([
+      JSON.stringify(harness.host.sequencerCache.synth.toggles[1]) === JSON.stringify([
         { step: 0, value: true },
         { step: 3, value: false },
       ]),
       'synth reconciliation must copy trigger toggle overrides into host cache',
     );
     assert(
-      harness.host.synthStepValueOverrides[1].some((entry) =>
+      harness.host.sequencerCache.synth.values[1].some((entry) =>
         entry.field === harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote && entry.value === 60),
       'synth reconciliation must copy Product Core step values into host cache',
     );
     assert(
-      harness.host.synthStepValueOverrides[1].some((entry) =>
+      harness.host.sequencerCache.synth.values[1].some((entry) =>
         entry.field === harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression &&
           entry.step === 1 &&
           entry.range === true &&
@@ -1054,18 +1280,23 @@ await runCheckWithReport({
       'synth reconciliation must notify UI with Product Core trig-condition payloads',
     );
     assert(
-      harness.host.synthStepValueConfigs[1].some((entry) =>
+      harness.host.sequencerCache.synth.configs[1].some((entry) =>
         entry.field === harness.context.CORE_PRODUCT_STEP_VALUE_FIELDS.expression &&
           entry.steps === 7 &&
           entry.direction === harness.context.CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse),
       'synth reconciliation must copy Product Core sub-lane step config into host cache',
     );
     assert(
+      Math.abs(harness.host.adapterState.synthEuclid2Swing - 0.27) < 1.0e-6,
+      'synth reconciliation must copy Product Core lane swing into host adapter state',
+    );
+    assert(
       synthOverridePayloads.some((entry) =>
         entry.laneIndex === 1 &&
+          entry.payload.swing === 0.27 &&
           entry.payload.subLaneStates?.expression?.steps === 7 &&
           entry.payload.subLaneStates.expression.direction === 'reverse'),
-      'synth reconciliation must notify UI with Product Core sub-lane length/direction metadata',
+      'synth reconciliation must notify UI with Product Core swing and sub-lane length/direction metadata',
     );
 
     const resetLane = makeLane({
@@ -1089,7 +1320,11 @@ await runCheckWithReport({
       sequencer: 'drum',
     }));
     assert(harness.host.lastSequencerUiStateRevision === 2, 'drum reset-home reconciliation must record Core UI revision');
-    assert(harness.host.drumStepToggleOverrides[2].length === 0, 'reset-home reconciliation must clear drum trigger overrides');
+    assert(harness.host.sequencerCache.drum.toggles[2].length === 0, 'reset-home reconciliation must clear drum trigger overrides');
+    assert(
+      Math.abs(harness.host.adapterState.drumEuclid3Swing - 0.27) < 1.0e-6,
+      'drum reset-home reconciliation must copy Product Core lane swing into host adapter state',
+    );
     assert(
       drumOverridePayloads.some((entry) =>
         Array.isArray(entry.payload.probability?.[2]) &&
@@ -1114,9 +1349,8 @@ await runCheckWithReport({
     assert(
       replayedEvents.some((event) => event.type === 'sequencer-clear-steps' && event.sequencer === 'synth' && event.laneIndex === 1) &&
         replayedEvents.some((event) => event.type === 'sequencer-step' && event.sequencer === 'synth' && event.laneIndex === 1) &&
-        replayedEvents.some((event) => event.type === 'sequencer-sublane-config' && event.sequencer === 'synth' && event.laneIndex === 1) &&
         replayedEvents.some((event) => event.type === 'sequencer-lane-param' && event.paramId === 'SequencerLanePitchBindingMode'),
-      'full snapshot reload must replay reconciled synth dice state and pitch binding from host cache',
+      'full snapshot reload must replay reconciled synth dice step state and pitch binding from host cache',
     );
     addEvidence(report, {
       id: 'host-reconciliation-behavior',

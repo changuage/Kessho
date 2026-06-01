@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 
@@ -336,6 +337,46 @@ public:
     for (uint32_t index = copy_count; index < position_count; ++index) {
       out_positions[index] = 0.0f;
     }
+  }
+
+  int copyGranularWaveform(float* out_peaks, uint32_t bin_count) override {
+    if (out_peaks == nullptr || bin_count == 0u) {
+      return 0;
+    }
+    std::fill(out_peaks, out_peaks + bin_count, 0.0f);
+    if (instance_ == nullptr) {
+      return 0;
+    }
+
+    const float* buffer = granular_instance_get_buffer_ptr_l(instance_);
+    const int buffer_size_i = granular_instance_get_buffer_size(instance_);
+    if (buffer == nullptr || buffer_size_i <= 0) {
+      return 0;
+    }
+
+    constexpr uint32_t kSamplesPerBin = 8u;
+    const uint32_t buffer_size = static_cast<uint32_t>(buffer_size_i);
+    for (uint32_t bin = 0u; bin < bin_count; ++bin) {
+      const uint32_t start = static_cast<uint32_t>(
+          (static_cast<uint64_t>(bin) * buffer_size) / bin_count);
+      uint32_t end = static_cast<uint32_t>(
+          (static_cast<uint64_t>(bin + 1u) * buffer_size) / bin_count);
+      if (end <= start) {
+        end = std::min<uint32_t>(start + 1u, buffer_size);
+      }
+      const uint32_t span = std::max<uint32_t>(1u, end - start);
+      float peak = 0.0f;
+      for (uint32_t sample_index = 0u; sample_index < kSamplesPerBin; ++sample_index) {
+        uint32_t pos = start + static_cast<uint32_t>(
+            ((static_cast<uint64_t>(sample_index) * 2u + 1u) * span) / (kSamplesPerBin * 2u));
+        if (pos >= end) {
+          pos = end - 1u;
+        }
+        peak = std::max(peak, std::fabs(buffer[pos]));
+      }
+      out_peaks[bin] = peak;
+    }
+    return 1;
   }
 
 private:

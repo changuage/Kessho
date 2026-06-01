@@ -41,11 +41,12 @@ const migratedSequencerCompatMethodSignatures = [
   'setSynthEuclidSwings(swings:',
   'setDrumSubLaneEnabled(states:',
   'setSynthSubLaneEnabled(states:',
+  'setDrumPitchSettings(settings:',
   'setSynthPitchSettings(settings:',
   'setSynthPitchBindingModes(modes:',
   'setDrumStepOverrides(overrides:',
   'setSynthStepOverrides(overrides:',
-  'setSequencerPresetHomeSnapshots():',
+  'setSequencerPresetHomeSnapshots(',
   'resetSynthEuclidLaneHome(laneIndex:',
   'captureSynthEuclidLaneHome(laneIndex:',
   'diceSynthEuclidLane(laneIndex:',
@@ -657,6 +658,7 @@ for (const rootDir of sourceRoots) {
         source.includes('productEngine.setSynthEuclidSwings(') ||
         source.includes('productEngine.setDrumSubLaneEnabled(') ||
         source.includes('productEngine.setSynthSubLaneEnabled(') ||
+        source.includes('productEngine.setDrumPitchSettings(') ||
         source.includes('productEngine.setSynthPitchSettings(') ||
         source.includes('productEngine.setSynthPitchBindingModes(') ||
         source.includes('productEngine.setDrumStepOverrides(') ||
@@ -1386,7 +1388,7 @@ for (const rootDir of sourceRoots) {
         "from './audioEngineMediaSession'",
         'setupIOSMediaSession({',
         'connectMediaSessionToWebAudio(audioEngineRuntimeMode)',
-        'stopIOSMediaSession()',
+        'stopIOSMediaSession(audioEngineRuntimeMode)',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: selected media-session hook must own iOS/reference media-session setup/connect/stop delegation`);
@@ -2172,7 +2174,7 @@ for (const rootDir of sourceRoots) {
       for (const requiredSnippet of [
         'useMemo, type MutableRefObject',
         'export type ProductRuntimePageSequencerProps = {',
-        'captureProductSynthEuclidLaneHome: (laneIdx: number, pitchState?: SubLaneState) => void',
+        'captureProductSynthEuclidLaneHome: (laneIdx: number, pitchState?: ProductRuntimePitchHomeState | null) => void',
         'drumClockDivsRef: MutableRefObject<ClockDivision[] | undefined>',
         'setProductDrumStepOverrides: (overrides: DrumStepOverrides) => void',
         'setProductSynthPitchBindingModes: (modes: PitchBindingMode[]) => void',
@@ -2269,6 +2271,7 @@ for (const rootDir of sourceRoots) {
         'setSelectedDrumEuclidSwings',
         'setSelectedDrumStepOverrides',
         'setSelectedDrumSubLaneEnabled',
+        'setSelectedDrumPitchSettings',
         'setSelectedSynthEuclidClockDivs',
         'setSelectedSynthEuclidEvolveConfigs',
         'setSelectedSynthEuclidSwings',
@@ -3030,7 +3033,9 @@ for (const rootDir of sourceRoots) {
 
     if (relative === 'src/ui/usePresetSequencerRestore.ts') {
       for (const requiredSnippet of [
-        'setSelectedSequencerPresetHomeSnapshots();',
+        'setSelectedSequencerPresetHomeSnapshots(',
+        'drumSubLaneStates?.map((state) => state.pitch)',
+        'synthSubLaneStates?.map((state) => state.pitch)',
         'drumStepOverridesForEngineRestore(',
         'synthStepOverridesForEngineRestore(',
         'normalizeSequencerEvolveConfigs(',
@@ -3048,10 +3053,10 @@ for (const rootDir of sourceRoots) {
       for (const requiredSnippet of [
         'setSelectedSynthStepOverrides(synthEngineStepOverrides(overrides))',
         'setSelectedSynthEuclidEvolveConfigs(configs)',
-        'setSelectedSynthSubLaneEnabled(subLaneEnabledFlags(sanitized))',
+        'setSelectedSynthSubLaneEnabled(subLaneEnabledFlags(sanitized',
         'setSelectedSynthPitchSettings(settings)',
         'setSelectedSynthPitchBindingModes(modes)',
-        'captureSelectedSynthEuclidLaneHome(laneIdx, synthSubLaneStatesRef.current?.[laneIdx]?.pitch)',
+        'captureSelectedSynthEuclidLaneHome(laneIdx, pitchState ?? synthSubLaneStatesRef.current?.[laneIdx]?.pitch)',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(`${relative}: Synth page sequencer bridge hook must own selected-runtime Synth page sequencer wiring; missing ${requiredSnippet}`);
@@ -3108,11 +3113,12 @@ for (const rootDir of sourceRoots) {
         ['setSynthEuclidSwings', "productEngine.enqueueEvents(createCoreProductSequencerSwingEvents('synth', swings))"],
         ['setDrumSubLaneEnabled', "productEngine.applySequencerUiPatch({ kind: 'drum-sub-lane-enabled', states })"],
         ['setSynthSubLaneEnabled', "productEngine.applySequencerUiPatch({ kind: 'synth-sub-lane-enabled', states })"],
+        ['setDrumPitchSettings', "productEngine.applySequencerUiPatch({ kind: 'drum-pitch-settings', settings })"],
         ['setSynthPitchSettings', "productEngine.applySequencerUiPatch({ kind: 'synth-pitch-settings', settings })"],
         ['setSynthPitchBindingModes', 'productEngine.enqueueEvents(createCoreProductSequencerPitchBindingModeEvents(modes))'],
         ['setDrumStepOverrides', "productEngine.applySequencerUiPatch({ kind: 'drum-step-overrides', overrides })"],
         ['setSynthStepOverrides', "productEngine.applySequencerUiPatch({ kind: 'synth-step-overrides', overrides })"],
-        ['setSequencerPresetHomeSnapshots', "productEngine.applySequencerUiPatch({ kind: 'preset-home-snapshots' })"],
+        ['setSequencerPresetHomeSnapshots', "productEngine.applySequencerUiPatch({ kind: 'preset-home-snapshots', drumPitchSettings, drumPitchStates, synthPitchStates })"],
         ['resetSynthEuclidLaneHome', "productEngine.enqueueEvent(createCoreProductSequencerResetHomeEvent('synth', laneIndex))"],
         ['captureSynthEuclidLaneHome', "productEngine.applySequencerUiPatch({ kind: 'capture-synth-lane-home', laneIndex, pitchState })"],
         ['diceSynthEuclidLane', "productEngine.enqueueEvent(createCoreProductSequencerDiceEvent('synth', laneIndex, intensity))"],
@@ -3703,14 +3709,14 @@ for (const rootDir of sourceRoots) {
       }
       for (const hostMethod of webProductRuntimeLifecycleHostMethods) {
         const pattern = new RegExp(`callCoreProductHost<[^>]+>\\('${hostMethod}'`);
-        if (pattern.test(source)) {
-          failures.push(`${relative}: runtime lifecycle host method ${hostMethod} must stay in CoreProductRuntimeLifecyclePortBridge`);
+        if (relative !== 'src/audio/product/host/CoreProductRuntimeHostPort.ts' && pattern.test(source)) {
+          failures.push(`${relative}: runtime lifecycle host method ${hostMethod} must stay in CoreProductRuntimeHostPort`);
         }
       }
       for (const hostMethod of webProductRuntimeReadHostMethods) {
         const pattern = new RegExp(`callCoreProductHost<[^>]+>\\('${hostMethod}'`);
-        if (pattern.test(source)) {
-          failures.push(`${relative}: runtime read host method ${hostMethod} must stay in CoreProductRuntimeReadPortBridge`);
+        if (relative !== 'src/audio/product/host/CoreProductRuntimeHostPort.ts' && pattern.test(source)) {
+          failures.push(`${relative}: runtime read host method ${hostMethod} must stay in CoreProductRuntimeHostPort`);
         }
       }
       for (const hostMethod of webProductLiveTriggerHostMethods) {
@@ -3719,34 +3725,49 @@ for (const rootDir of sourceRoots) {
         }
       }
       for (const hostMethod of webProductModulationRangeHostMethods) {
-        if (source.includes(`callCoreProductHost<void>('${hostMethod}'`)) {
-          failures.push(`${relative}: modulation/range host method ${hostMethod} must stay in CoreProductModulationRangePortBridge`);
+        if (
+          relative !== 'src/audio/product/host/CoreProductRuntimeHostPort.ts' &&
+          source.includes(`callCoreProductHost<void>('${hostMethod}'`)
+        ) {
+          failures.push(`${relative}: modulation/range host method ${hostMethod} must stay in CoreProductRuntimeHostPort`);
         }
       }
       for (const hostMethod of webProductJourneyMorphHostMethods) {
-        if (source.includes(`callCoreProductHost<void>('${hostMethod}'`)) {
-          failures.push(`${relative}: journey morph host method ${hostMethod} must stay in CoreProductJourneyMorphPortBridge`);
+        if (
+          relative !== 'src/audio/product/host/CoreProductRuntimeHostPort.ts' &&
+          source.includes(`callCoreProductHost<void>('${hostMethod}'`)
+        ) {
+          failures.push(`${relative}: journey morph host method ${hostMethod} must stay in CoreProductRuntimeHostPort`);
         }
       }
       for (const hostMethod of webProductSequencerCallbackHostMethods) {
-        if (source.includes(`callCoreProductHost<void>('${hostMethod}'`)) {
-          failures.push(`${relative}: sequencer callback host method ${hostMethod} must stay in CoreProductSequencerCallbackPortBridge`);
+        if (
+          relative !== 'src/audio/product/host/CoreProductRuntimeHostPort.ts' &&
+          source.includes(`callCoreProductHost<void>('${hostMethod}'`)
+        ) {
+          failures.push(`${relative}: sequencer callback host method ${hostMethod} must stay in CoreProductRuntimeHostPort`);
         }
       }
       for (const hostMethod of webProductEvolveOverrideCallbackHostMethods) {
-        if (source.includes(`callCoreProductHost<void>('${hostMethod}'`)) {
-          failures.push(`${relative}: evolved override callback host method ${hostMethod} must stay in CoreProductEvolveOverrideCallbackPortBridge`);
+        if (
+          relative !== 'src/audio/product/host/CoreProductRuntimeHostPort.ts' &&
+          source.includes(`callCoreProductHost<void>('${hostMethod}'`)
+        ) {
+          failures.push(`${relative}: evolved override callback host method ${hostMethod} must stay in CoreProductRuntimeHostPort`);
         }
       }
       for (const hostMethod of webProductRuntimeTelemetryHostMethods) {
-        if (source.includes(`callCoreProductHost<void>('${hostMethod}'`)) {
-          failures.push(`${relative}: runtime telemetry host method ${hostMethod} must stay in CoreProductRuntimeTelemetryPortBridge`);
+        if (
+          relative !== 'src/audio/product/host/CoreProductRuntimeHostPort.ts' &&
+          source.includes(`callCoreProductHost<void>('${hostMethod}'`)
+        ) {
+          failures.push(`${relative}: runtime telemetry host method ${hostMethod} must stay in CoreProductRuntimeHostPort`);
         }
       }
       for (const hostMethod of webProductRuntimeCommandHostMethods) {
         const pattern = new RegExp(`callCoreProductHost<[^>]+>\\('${hostMethod}'`);
-        if (pattern.test(source)) {
-          failures.push(`${relative}: routine runtime host method ${hostMethod} must stay in CoreProductRuntimeCommandPortBridge`);
+        if (relative !== 'src/audio/product/host/CoreProductRuntimeHostPort.ts' && pattern.test(source)) {
+          failures.push(`${relative}: routine runtime host method ${hostMethod} must stay in CoreProductRuntimeHostPort`);
         }
       }
       for (const signature of migratedSequencerCompatMethodSignatures) {
@@ -3792,49 +3813,35 @@ for (const rootDir of sourceRoots) {
         "import { callCoreProductHost } from './CoreProductHostInvoker'",
         'export const coreProductRuntimeHostPort',
         'start(initialState?: ProductEngineStartOptions',
-        'return startCoreProductRuntime(callCoreProductHost, initialState)',
-        'stopCoreProductRuntime(callCoreProductHost)',
-        'return suspendCoreProductRuntime(callCoreProductHost)',
-        'return resumeCoreProductRuntime(callCoreProductHost)',
-        'setCoreProductOutputGain(callCoreProductHost, target, durationSeconds)',
-        'updateCoreProductSnapshotPatch(callCoreProductHost, reason, patch)',
-        'postCoreProductEvent(callCoreProductHost, event)',
-        'pushCoreProductMidiMessage(callCoreProductHost, message)',
-        'return registerCoreProductAsset(callCoreProductHost, asset)',
-        'unregisterCoreProductAsset(callCoreProductHost, assetId)',
-        'return auditionCoreProductSynthNote(callCoreProductHost, note, externalState)',
-        'return triggerCoreProductDrumVoice(callCoreProductHost, voice, velocity, externalState)',
-        'return readCoreProductState(callCoreProductHost)',
-        'return readCoreProductTelemetry(callCoreProductHost)',
-        'return readCoreProductDynamicsVisualTelemetry(callCoreProductHost)',
-        'return readCoreProductRuntimeDiagnostics(callCoreProductHost)',
-        'return readCoreProductCapabilityReport(callCoreProductHost)',
-        'setCoreProductStateChangeCallback(callCoreProductHost, callback)',
-        'setCoreProductTelemetryCallback(callCoreProductHost, callback, publishDiagnostics)',
-        'setCoreProductDrumTriggerCallback(callCoreProductHost, callback)',
-        'setCoreProductRuntimeWalkRanges(callCoreProductHost, ranges)',
+        "return callCoreProductHost<Promise<void>>('start', initialState)",
+        "callCoreProductHost<void>('stop')",
+        "return callCoreProductHost<Promise<void>>('suspend')",
+        "return callCoreProductHost<Promise<void>>('resume')",
+        "callCoreProductHost<void>('setOutputGain', target, durationSeconds)",
+        "callCoreProductHost<void>('updateSnapshotPatch', reason, patch)",
+        "callCoreProductHost<void>('postProductEvent', event)",
+        "callCoreProductHost<void>('pushMidiMessage', message)",
+        "callCoreProductHost<void>('registerAsset', asset)",
+        'return { assetId: asset.assetId }',
+        "callCoreProductHost<void>('unregisterAsset', assetId)",
+        "return callCoreProductHost<Promise<void>>('auditionSynthNote', note, externalState)",
+        "return callCoreProductHost<Promise<void>>('triggerDrumVoice', voice, velocity, externalState)",
+        "return callCoreProductHost<ProductEngineState>('getState')",
+        "return callCoreProductHost<ProductTelemetrySnapshot | null>('getProductTelemetry')",
+        "return callCoreProductHost<ProductDynamicsVisualTelemetry>('getDynamicsVisualTelemetry')",
+        "return callCoreProductHost<ProductRuntimeDiagnostics>('getProductRuntimeDiagnostics')",
+        "return callCoreProductHost<ProductRuntimeCapabilityReport>('getCapabilityReport')",
+        "callCoreProductHost<void>('setStateChangeCallback', callback)",
+        "callCoreProductHost<void>('setProductTelemetryCallback', callback ?",
+        'publishDiagnostics();',
+        "callCoreProductHost<void>('setDrumTriggerCallback', callback)",
+        "callCoreProductHost<void>('setRuntimeWalkRanges', ranges)",
         'setCoreProductLiveTriggerCallback(callCoreProductHost, name, callback)',
         'applyCoreProductSequencerUiPatch(callCoreProductHost, patch)',
-        'setCoreProductVisualTelemetryActive(callCoreProductHost, active)',
+        "callCoreProductHost<void>('setVisualTelemetryActive', active)",
       ]) {
         if (!source.includes(token)) {
           failures.push(`${relative}: Product runtime host port missing ${token}`);
-        }
-      }
-    }
-    if (relative === 'src/audio/product/host/CoreProductEvolveOverrideCallbackPortBridge.ts') {
-      for (const token of [
-        'TODO(product-core-burn-down)',
-        "import type { CoreProductHostMethodCall } from './CoreProductHostInvoker'",
-        'setCoreProductDrumEvolveOverridesChangedCallback',
-        'setCoreProductSynthEvolveOverridesChangedCallback',
-        'setCoreProductSynthNoteRangeEvolvedCallback',
-        "callHost<void>('setDrumEvolveOverridesChangedCallback', callback)",
-        "callHost<void>('setSynthEvolveOverridesChangedCallback', callback)",
-        "callHost<void>('setSynthNoteRangeEvolvedCallback', callback)",
-      ]) {
-        if (!source.includes(token)) {
-          failures.push(`${relative}: Product evolved override callback port bridge missing ${token}`);
         }
       }
     }
@@ -3862,156 +3869,6 @@ for (const rootDir of sourceRoots) {
         }
       }
     }
-    if (relative === 'src/audio/product/host/CoreProductJourneyMorphPortBridge.ts') {
-      for (const token of [
-        'TODO(product-core-burn-down)',
-        "import type { CoreProductHostMethodCall } from './CoreProductHostInvoker'",
-        'resetCoreProductCofDrift',
-        'setCoreProductJourneyMorphClockCallback',
-        'startCoreProductJourneyMorphClock',
-        'stopCoreProductJourneyMorphClock',
-        "callHost<void>('resetCofDrift')",
-        "callHost<void>('setJourneyMorphClockCallback', callback)",
-        "callHost<void>('startJourneyMorphClock')",
-        "callHost<void>('stopJourneyMorphClock')",
-      ]) {
-        if (!source.includes(token)) {
-          failures.push(`${relative}: Product journey morph port bridge missing ${token}`);
-        }
-      }
-    }
-    if (relative === 'src/audio/product/host/CoreProductModulationRangePortBridge.ts') {
-      for (const token of [
-        'TODO(product-core-burn-down)',
-        "import type { CoreProductHostMethodCall } from './CoreProductHostInvoker'",
-        'setCoreProductRuntimeWalkPositionsCallback',
-        'setCoreProductDrumMorphRange',
-        'setCoreProductDrumParamSampleHoldRange',
-        'setCoreProductSampleHoldRanges',
-        'setCoreProductRuntimeWalkRanges',
-        "callHost<void>('setRuntimeWalkPositionsCallback', callback)",
-        "callHost<void>('setDrumMorphRange', voice, range)",
-        "callHost<void>('setDrumParamSHRange', key, range)",
-        "callHost<void>('setDualRanges', ranges)",
-        "callHost<void>('setRuntimeWalkRanges', ranges)",
-      ]) {
-        if (!source.includes(token)) {
-          failures.push(`${relative}: Product modulation/range port bridge missing ${token}`);
-        }
-      }
-    }
-    if (relative === 'src/audio/product/host/CoreProductRuntimeTelemetryPortBridge.ts') {
-      for (const token of [
-        'TODO(product-core-burn-down)',
-        "import type { CoreProductHostMethodCall } from './CoreProductHostInvoker'",
-        "import type { ProductEngineState, ProductTelemetrySnapshot } from '../ProductEngineTypes'",
-        'setCoreProductStateChangeCallback',
-        'setCoreProductTelemetryCallback',
-        'setCoreProductPerfMonitorEnabled',
-        'setCoreProductVisualTelemetryActive',
-        "callHost<void>('setStateChangeCallback', callback)",
-        "callHost<void>('setProductTelemetryCallback', callback ?",
-        'publishDiagnostics();',
-        "callHost<void>('setPerfMonitorEnabled', enabled)",
-        "callHost<void>('setVisualTelemetryActive', active)",
-      ]) {
-        if (!source.includes(token)) {
-          failures.push(`${relative}: Product runtime telemetry port bridge missing ${token}`);
-        }
-      }
-    }
-    if (relative === 'src/audio/product/host/CoreProductRuntimeCommandPortBridge.ts') {
-      for (const token of [
-        'TODO(product-core-burn-down)',
-        "import type { CoreProductHostMethodCall } from './CoreProductHostInvoker'",
-        'ProductAssetHandle',
-        'ProductSnapshotPatchReason',
-        'setCoreProductOutputGain',
-        'updateCoreProductSnapshotPatch',
-        'postCoreProductEvent',
-        'pushCoreProductMidiMessage',
-        'registerCoreProductAsset',
-        'unregisterCoreProductAsset',
-        'auditionCoreProductSynthNote',
-        'triggerCoreProductDrumVoice',
-        "callHost<void>('setOutputGain', target, durationSeconds)",
-        "callHost<void>('updateSnapshotPatch', reason, patch)",
-        "callHost<void>('postProductEvent', event)",
-        "callHost<void>('pushMidiMessage', message)",
-        "callHost<void>('registerAsset', asset)",
-        "return { assetId: asset.assetId };",
-        "callHost<void>('unregisterAsset', assetId)",
-        "return callHost<Promise<void>>('auditionSynthNote', note, externalState)",
-        "return callHost<Promise<void>>('triggerDrumVoice', voice, velocity, externalState)",
-      ]) {
-        if (!source.includes(token)) {
-          failures.push(`${relative}: Product runtime command port bridge missing ${token}`);
-        }
-      }
-    }
-    if (relative === 'src/audio/product/host/CoreProductRuntimeLifecyclePortBridge.ts') {
-      for (const token of [
-        'TODO(product-core-burn-down)',
-        "import type { CoreProductHostMethodCall } from './CoreProductHostInvoker'",
-        'ProductEngineStartOptions',
-        'startCoreProductRuntime',
-        'stopCoreProductRuntime',
-        'suspendCoreProductRuntime',
-        'resumeCoreProductRuntime',
-        "return callHost<Promise<void>>('start', initialState)",
-        "callHost<void>('stop')",
-        "return callHost<Promise<void>>('suspend')",
-        "return callHost<Promise<void>>('resume')",
-      ]) {
-        if (!source.includes(token)) {
-          failures.push(`${relative}: Product runtime lifecycle port bridge missing ${token}`);
-        }
-      }
-    }
-    if (relative === 'src/audio/product/host/CoreProductRuntimeReadPortBridge.ts') {
-      for (const token of [
-        'TODO(product-core-burn-down)',
-        "import type { CoreProductHostMethodCall } from './CoreProductHostInvoker'",
-        'ProductRuntimeCapabilityReport',
-        'ProductRuntimeDiagnostics',
-        'ProductEngineState',
-        'ProductTelemetrySnapshot',
-        'readCoreProductState',
-        'readCoreProductTelemetry',
-        'readCoreProductDynamicsVisualTelemetry',
-        'readCoreProductRuntimeDiagnostics',
-        'readCoreProductCapabilityReport',
-        "return callHost<ProductEngineState>('getState')",
-        "return callHost<ProductTelemetrySnapshot | null>('getProductTelemetry')",
-        "return callHost<ProductDynamicsVisualTelemetry>('getDynamicsVisualTelemetry')",
-        "return callHost<ProductRuntimeDiagnostics>('getProductRuntimeDiagnostics')",
-        "return callHost<ProductRuntimeCapabilityReport>('getCapabilityReport')",
-      ]) {
-        if (!source.includes(token)) {
-          failures.push(`${relative}: Product runtime read port bridge missing ${token}`);
-        }
-      }
-    }
-    if (relative === 'src/audio/product/host/CoreProductSequencerCallbackPortBridge.ts') {
-      for (const token of [
-        'TODO(product-core-burn-down)',
-        "import type { CoreProductHostMethodCall } from './CoreProductHostInvoker'",
-        'setCoreProductDrumTriggerCallback',
-        'setCoreProductDrumStepPositionCallback',
-        'setCoreProductSynthStepPositionCallback',
-        'setCoreProductDrumEuclidEvolveTriggerCallback',
-        'setCoreProductSynthEuclidEvolveTriggerCallback',
-        "callHost<void>('setDrumTriggerCallback', callback)",
-        "callHost<void>('setDrumStepPositionCallback', callback)",
-        "callHost<void>('setSynthStepPositionCallback', callback)",
-        "callHost<void>('setDrumEuclidEvolveTriggerCallback', callback)",
-        "callHost<void>('setSynthEuclidEvolveTriggerCallback', callback)",
-      ]) {
-        if (!source.includes(token)) {
-          failures.push(`${relative}: Product sequencer callback port bridge missing ${token}`);
-        }
-      }
-    }
     if (relative === 'src/audio/product/host/CoreProductSequencerUiPatchBridge.ts') {
       for (const token of [
         'TODO(product-core-burn-down)',
@@ -4026,10 +3883,11 @@ for (const rootDir of sourceRoots) {
         "callHost<void>('setSynthEuclidEvolveConfigs', patch.configs)",
         "callHost<void>('setDrumSubLaneEnabled', patch.states)",
         "callHost<void>('setSynthSubLaneEnabled', patch.states)",
+        "callHost<void>('setDrumPitchSettings', patch.settings)",
         "callHost<void>('setSynthPitchSettings', patch.settings)",
         "callHost<void>('setDrumStepOverrides', patch.overrides)",
         "callHost<void>('setSynthStepOverrides', patch.overrides)",
-        "callHost<void>('setSequencerPresetHomeSnapshots')",
+        "callHost<void>('setSequencerPresetHomeSnapshots', patch.drumPitchSettings, patch.drumPitchStates, patch.synthPitchStates)",
         "callHost<void>('captureSynthEuclidLaneHome', patch.laneIndex, patch.pitchState)",
         "callHost<void>('captureDrumEuclidLaneHome', patch.laneIndex, patch.pitchSettings, patch.pitchState)",
       ]) {
@@ -4257,7 +4115,7 @@ for (const rootDir of sourceRoots) {
         'referenceDrumVoiceAnalyser: referenceRuntimeActive ? getSelectedDrumVoiceAnalyser : undefined',
         'referenceDynamicsAnalyser: referenceRuntimeActive ? getSelectedDynamicsAnalyser : undefined',
         'liveLeadMorphedParamsAvailable: referenceRuntimeActive',
-        'liveWaveformTelemetryAvailable: referenceRuntimeActive',
+        "liveWaveformTelemetryAvailable: referenceRuntimeActive || audioEngineRuntimeMode === 'core-product'",
         "textureDebugAvailable: referenceRuntimeActive || audioEngineRuntimeMode === 'core-product'",
       ]) {
         if (!source.includes(token)) {

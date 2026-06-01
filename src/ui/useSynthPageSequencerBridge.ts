@@ -1,11 +1,14 @@
 import { useCallback, useMemo, type MutableRefObject } from 'react';
 
 import type { ClockDivision, PitchBindingMode } from '../audio/drumSeqTypes';
+import type { ProductArpConfig } from '../audio/productArpeggiator';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './sequencer/useEuclideanSequencer';
 import { sanitizeSequencerSubLaneStates } from './usePresetSequencerRestore';
 
+type SynthPitchHomeState = { steps?: number; direction?: string; scaleQuantize?: boolean };
+
 type SynthPageSequencerBridgeOptions = {
-  captureSelectedSynthEuclidLaneHome: (laneIdx: number, pitchState?: SubLaneState) => void;
+  captureSelectedSynthEuclidLaneHome: (laneIdx: number, pitchState?: SynthPitchHomeState | null) => void;
   diceSelectedSynthEuclidLane: (laneIdx: number, intensity: number) => void;
   resetSelectedSynthEuclidLaneHome: (laneIdx: number) => void;
   setSelectedSynthEuclidClockDivs: (divs: ClockDivision[]) => void;
@@ -20,16 +23,25 @@ type SynthPageSequencerBridgeOptions = {
   synthLinkedRef: MutableRefObject<boolean[] | undefined>;
   synthPitchBindingModesRef: MutableRefObject<PitchBindingMode[] | undefined>;
   synthPitchSettingsRef: MutableRefObject<PitchSettings[] | undefined>;
+  synthArpConfigsRef: MutableRefObject<ProductArpConfig[] | undefined>;
   synthStepOverridesRef: MutableRefObject<StepOverrides | undefined>;
   synthSubLaneStatesRef: MutableRefObject<Record<SubLaneKind, SubLaneState>[] | undefined>;
   synthSwingsRef: MutableRefObject<number[] | undefined>;
 };
 
-function subLaneEnabledFlags(states: Record<SubLaneKind, SubLaneState>[]): Record<string, boolean>[] {
-  return states.map((state) => {
+function subLaneEnabledFlags(
+  states: Record<SubLaneKind, SubLaneState>[] | undefined,
+  arpConfigs: ProductArpConfig[] | undefined,
+): Record<string, boolean>[] {
+  return Array.from({ length: 4 }, (_, laneIndex) => {
+    const state = states?.[laneIndex];
     const out: Record<string, boolean> = {};
-    for (const [key, value] of Object.entries(state)) {
+    for (const [key, value] of Object.entries(state ?? {})) {
       out[key] = value.enabled;
+    }
+    if (arpConfigs?.[laneIndex]?.enabled) {
+      out.arp = true;
+      out.pitch = true;
     }
     return out;
   });
@@ -71,6 +83,7 @@ export function useSynthPageSequencerBridge({
   synthLinkedRef,
   synthPitchBindingModesRef,
   synthPitchSettingsRef,
+  synthArpConfigsRef,
   synthStepOverridesRef,
   synthSubLaneStatesRef,
   synthSwingsRef,
@@ -78,8 +91,13 @@ export function useSynthPageSequencerBridge({
   const onSubLaneStatesChange = useCallback((states: Record<SubLaneKind, SubLaneState>[]) => {
     const sanitized = sanitizeSequencerSubLaneStates(states) ?? states;
     synthSubLaneStatesRef.current = sanitized;
-    setSelectedSynthSubLaneEnabled(subLaneEnabledFlags(sanitized));
-  }, [setSelectedSynthSubLaneEnabled, synthSubLaneStatesRef]);
+    setSelectedSynthSubLaneEnabled(subLaneEnabledFlags(sanitized, synthArpConfigsRef.current));
+  }, [setSelectedSynthSubLaneEnabled, synthArpConfigsRef, synthSubLaneStatesRef]);
+
+  const onArpConfigsChange = useCallback((configs: ProductArpConfig[]) => {
+    synthArpConfigsRef.current = configs;
+    setSelectedSynthSubLaneEnabled(subLaneEnabledFlags(synthSubLaneStatesRef.current, configs));
+  }, [setSelectedSynthSubLaneEnabled, synthArpConfigsRef, synthSubLaneStatesRef]);
 
   const onPitchSettingsChange = useCallback((settings: PitchSettings[]) => {
     synthPitchSettingsRef.current = settings;
@@ -118,8 +136,8 @@ export function useSynthPageSequencerBridge({
     setSelectedSynthEuclidEvolveConfigs(configs);
   }, [setSelectedSynthEuclidEvolveConfigs, synthEvolveConfigsRef]);
 
-  const captureEvolveHome = useCallback((laneIdx: number) => {
-    captureSelectedSynthEuclidLaneHome(laneIdx, synthSubLaneStatesRef.current?.[laneIdx]?.pitch);
+  const captureEvolveHome = useCallback((laneIdx: number, pitchState?: { steps?: number; direction?: string; scaleQuantize?: boolean } | null) => {
+    captureSelectedSynthEuclidLaneHome(laneIdx, pitchState ?? synthSubLaneStatesRef.current?.[laneIdx]?.pitch);
   }, [captureSelectedSynthEuclidLaneHome, synthSubLaneStatesRef]);
 
   return useMemo(() => ({
@@ -133,6 +151,7 @@ export function useSynthPageSequencerBridge({
     onRawStepOverridesChange,
     onStepOverridesChange,
     onSubLaneStatesChange,
+    onArpConfigsChange,
     onSwingsChange,
     resetEvolveHome: resetSelectedSynthEuclidLaneHome,
   }), [
@@ -146,6 +165,7 @@ export function useSynthPageSequencerBridge({
     onRawStepOverridesChange,
     onStepOverridesChange,
     onSubLaneStatesChange,
+    onArpConfigsChange,
     onSwingsChange,
     resetSelectedSynthEuclidLaneHome,
   ]);

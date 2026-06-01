@@ -68,6 +68,11 @@ int32_t kessho_product_copy_telemetry(
     KesshoProductEngine* engine,
     KesshoProductTelemetry* out_telemetry);
 
+int32_t kessho_product_copy_granular_waveform(
+    KesshoProductEngine* engine,
+    float* out_peaks,
+    uint32_t bin_count);
+
 int32_t kessho_product_copy_sequencer_ui_state(
     KesshoProductEngine* engine,
     KesshoProductSequencerUiState* out_state);

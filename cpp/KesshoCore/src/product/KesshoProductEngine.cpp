@@ -58,6 +58,9 @@
   routing = {};
   rng_seed = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
   rng_state = rng_seed;
+  sequencer_evolve_rng_stream_seed = 0u;
+  sequencer_evolve_rng_stream_state = 0u;
+  sequencer_evolve_rng_stream_initialized = false;
   evolution_amount = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_EVOLUTION_AMOUNT;
   evolution_state = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_EVOLUTION_STATE;
   journey_running = false;
@@ -155,6 +158,9 @@
   std::fill(delay_a_cross_carry_r, delay_a_cross_carry_r + kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES, 0.0f);
   resetDiffuseRuntime();
   rng_state = rng_seed;
+  sequencer_evolve_rng_stream_seed = 0u;
+  sequencer_evolve_rng_stream_state = 0u;
+  sequencer_evolve_rng_stream_initialized = false;
   journey_phase = 0.0f;
   if (pad_module) {
     pad_module->reset();
@@ -188,6 +194,10 @@
   if (soundscapes_module) {
     soundscapes_module->reset();
     soundscapes_module_params_configured = false;
+  }
+  for (SourceState& source : sources) {
+    source.applied_module_patch_ptr = nullptr;
+    source.applied_module_patch_revision = 0u;
   }
   resetSoundscapeTextureRuntimes();
   product_render_frame = 0u;

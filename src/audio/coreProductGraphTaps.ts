@@ -1,4 +1,4 @@
-export const CORE_PRODUCT_GRAPH_TAP_IDS: Readonly<Record<string, number>> = Object.freeze({
+export const CORE_PRODUCT_GRAPH_TAP_IDS = Object.freeze({
   reverbInput: 0,
   delayAInput: 1,
   delayBInput: 2,
@@ -148,4 +148,9 @@ export const CORE_PRODUCT_GRAPH_TAP_IDS: Readonly<Record<string, number>> = Obje
   granularNatureSend: 84,
   soundscapeStem: 85,
   earthStem: 85,
-});
+} as const satisfies Readonly<Record<string, number>>);
+
+export function getCoreProductGraphTapId(trackId: string): number | null {
+  const graphTapIds = CORE_PRODUCT_GRAPH_TAP_IDS as Readonly<Record<string, number | undefined>>;
+  return graphTapIds[trackId] ?? null;
+}

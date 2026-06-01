@@ -2,8 +2,10 @@ import React from 'react';
 import RoutingMatrix from '../global/RoutingMatrix';
 import type { DualSliderRange } from '../DualSlider';
 import type { SliderMode, SliderState } from '../state';
-import MidiRoutingPanel from './MidiRoutingPanel';
+import MidiPage from '../midi/MidiPage';
 import type { KesshoMidiMessage } from '../../native/capacitorMidiRouting';
+import type { DawOutputDeviceSelection, DawOutputRoutingConfig } from '../../audio/dawOutputRouting';
+import DawOutputPanel from './DawOutputPanel';
 import './routing.css';
 
 export interface RoutingPageProps {
@@ -13,6 +15,10 @@ export interface RoutingPageProps {
   onColumnParamChange: (key: keyof SliderState, value: number) => void;
   onToggleSource: (sourceId: string, enabled: boolean) => void;
   onMidiMessage: (message: KesshoMidiMessage) => void;
+  dawOutputRouting: DawOutputRoutingConfig;
+  dawOutputDeviceSelection: DawOutputDeviceSelection;
+  onDawOutputRoutingChange: (config: DawOutputRoutingConfig) => void;
+  onDawOutputDeviceSelectionChange: (selection: DawOutputDeviceSelection) => void;
   sliderProps: (paramKey: keyof SliderState) => {
     mode: SliderMode;
     dualRange?: DualSliderRange;
@@ -30,8 +36,13 @@ export default function RoutingPage({
   onColumnParamChange,
   onToggleSource,
   onMidiMessage,
+  dawOutputRouting,
+  dawOutputDeviceSelection,
+  onDawOutputRoutingChange,
+  onDawOutputDeviceSelectionChange,
   sliderProps,
 }: RoutingPageProps) {
+  void onMidiMessage;
   return (
     <div className={`routing-root${isMobile ? ' mobile' : ''}`}>
       <div className="routing-container">
@@ -56,7 +67,15 @@ export default function RoutingPage({
           </div>
         </section>
 
-        <MidiRoutingPanel onParamChange={onParamChange} onMidiMessage={onMidiMessage} />
+        <DawOutputPanel
+          state={state}
+          config={dawOutputRouting}
+          deviceSelection={dawOutputDeviceSelection}
+          onChange={onDawOutputRoutingChange}
+          onDeviceSelectionChange={onDawOutputDeviceSelectionChange}
+        />
+
+        <MidiPage />
       </div>
     </div>
   );

@@ -4,6 +4,8 @@ import { resolve } from 'node:path';
 const root = process.cwd();
 const host = readFileSync(resolve(root, 'src/audio/coreProductEngineHost.ts'), 'utf8');
 const hostDebugTelemetry = readFileSync(resolve(root, 'src/audio/CoreProductHostDebugTelemetry.ts'), 'utf8');
+const hostEarthTextureDebug = readFileSync(resolve(root, 'src/audio/product/host/CoreProductEarthTextureDebug.ts'), 'utf8');
+const behaviorHarness = readFileSync(resolve(root, 'scripts/lib/kesshoProductBehaviorHarness.mjs'), 'utf8');
 const fallbackDiagnostics = readFileSync(resolve(root, 'src/audio/CoreProductFallbackDiagnostics.ts'), 'utf8');
 const doc = readFileSync(resolve(root, 'docs/kessho-product-getter-policies.md'), 'utf8');
 const app = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
@@ -52,10 +54,14 @@ function methodBody(name) {
 }
 
 function helperBody(name) {
+  return helperBodyFromSource(hostDebugTelemetry, name, 'host debug telemetry');
+}
+
+function helperBodyFromSource(source, name, label) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const definition = new RegExp(`(?:^|\\n)\\s*export\\s+function\\s+${escaped}\\s*\\(`).exec(hostDebugTelemetry);
-  assert(definition, `missing helper ${name}()`);
-  return balancedBody(hostDebugTelemetry, hostDebugTelemetry.indexOf('{', definition.index), `${name}()`);
+  const definition = new RegExp(`(?:^|\\n)\\s*(?:export\\s+)?function\\s+${escaped}\\s*\\(`).exec(source);
+  assert(definition, `missing ${label} helper ${name}()`);
+  return balancedBody(source, source.indexOf('{', definition.index), `${name}()`);
 }
 
 function balancedBody(source, open, label) {
@@ -220,14 +226,15 @@ assert(
     !app.includes('liveWaveformTelemetryAvailable={liveWaveformTelemetryAvailable}') &&
     selectedAudioEnginePageRuntimeBridges.includes('liveBufferTelemetryAvailable: true') &&
     selectedAudioEnginePageRuntimeBridges.includes('liveWaveformTelemetryAvailable: options.liveWaveformTelemetryAvailable') &&
-    selectedAudioEngineDebugSurface.includes("throw new Error('Granular waveform samples are explicitly unavailable in core-product')") &&
+    selectedAudioEngineDebugSurface.includes("return productEngine.getTelemetry()?.granularBufferWaveform ?? null;") &&
+    selectedAudioEngineDebugSurface.includes("liveWaveformTelemetryAvailable: referenceRuntimeActive || audioEngineRuntimeMode === 'core-product'") &&
     !host.includes('getGranularBufferWaveform(') &&
     granularPage.includes('liveBufferTelemetryAvailable?: boolean;') &&
     granularPage.includes('liveWaveformTelemetryAvailable?: boolean;') &&
     granularPage.includes('if (!liveBufferTelemetryAvailable) return;') &&
     granularPage.includes('if (liveWaveformTelemetryAvailable) {') &&
     granularPage.includes('{liveBufferTelemetryAvailable && ('),
-  'core-product UI must enable granular live head/voice telemetry while hiding the unsupported waveform surface',
+  'core-product UI must enable granular live head/voice/waveform telemetry through Product telemetry',
 );
 assert(
   app.includes('{...productPageRuntimeSurface.dynamicsPageRuntimeProps}') &&
@@ -301,6 +308,18 @@ assert(
     activeEarthMatrix.includes('enabled: textureDebugAvailable && activeTextureDebugKeys.length > 0') &&
     activeEarthMatrix.includes('row.textureDebugKey && textureDebugAvailable'),
   'core-product Earth UI must poll Product Core soundscape texture telemetry through the selected debug surface',
+);
+assert(
+  methodBody('withHostDiagnostics').includes('telemetry.earthTextureDebugState') &&
+    methodBody('withHostDiagnostics').includes('createCoreProductEarthTextureDebugState(') &&
+    helperBodyFromSource(hostEarthTextureDebug, 'createCoreProductEarthTextureDebugState', 'Earth texture debug').includes('telemetryState?.[config.key]'),
+  'core-product Earth texture diagnostics must enrich Product Core telemetry instead of replacing it with host-only preview state',
+);
+assert(
+  !behaviorHarness.includes('createCoreProductEarthTextureDebugState: () => ({})') &&
+    behaviorHarness.includes("src/audio/product/host/CoreProductEarthTextureDebug.ts") &&
+    behaviorHarness.includes('createCoreProductEarthTextureDebugState,'),
+  'Product host behavior harness must load the real Earth texture debug adapter instead of stubbing it empty',
 );
 
 for (const classification of ['`backed-by-product-core-api`']) {

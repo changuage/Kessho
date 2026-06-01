@@ -146,7 +146,12 @@ RenderCpuStats renderCpuStats(const KesshoProductSnapshotV2& snapshot, uint32_t 
   constexpr uint32_t timed_blocks_per_sample = 5;
   KesshoProductEngine* engine = kessho_product_create(48000.0, frames, 0);
   require(engine != nullptr, "engine create failed");
-  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "snapshot load failed");
+  const int32_t load_result = kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot));
+  if (load_result != KESSHO_PRODUCT_OK) {
+    std::cerr << "snapshot load result=" << load_result
+              << " last_error=" << kessho_product_get_telemetry(engine).last_error_code << "\n";
+  }
+  require(load_result == KESSHO_PRODUCT_OK, "snapshot load failed");
 
   std::vector<float> left(frames);
   std::vector<float> right(frames);

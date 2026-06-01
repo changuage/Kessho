@@ -89,7 +89,7 @@ const leftPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
 const rightPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
 const eventPtr = malloc(40);
 const telemetryPtr = malloc(7728);
-const sequencerUiStatePtr = malloc(96292);
+const sequencerUiStatePtr = malloc(96804);
 const engine = create(48000, frames, 0);
 assert(leftPtr && rightPtr && eventPtr && telemetryPtr && sequencerUiStatePtr && engine, 'WASM product smoke allocation failed');
 
@@ -194,6 +194,7 @@ assert(view.getUint32(sequencerUiStatePtr + 4, true) === view.getUint32(telemetr
 assert(view.getUint32(sequencerUiStatePtr + 24, true) === 1, 'WASM product sequencer UI state did not report latest synth target');
 assert(view.getUint32(sequencerUiStatePtr + 32, true) === 3, 'WASM product sequencer UI state did not classify dice');
 assert((view.getUint32(sequencerUiStatePtr + 36 + 24, true) & 1) !== 0, 'WASM product sequencer UI lane did not expose diced override state');
+assert(view.getFloat32(sequencerUiStatePtr + 36 + 3016, true) <= view.getFloat32(sequencerUiStatePtr + 36 + 3020, true), 'WASM product sequencer UI lane did not expose valid note-range bounds');
 
 destroy(engine);
 free(leftPtr);
@@ -288,6 +289,7 @@ function fakeWebAssemblyWithTelemetryHash(schemaHash) {
     kessho_product_load_snapshot_v2: () => 1,
     kessho_product_enqueue_event: () => 1,
     kessho_product_copy_telemetry: copyTelemetry,
+    kessho_product_copy_granular_waveform: () => 1,
     kessho_product_copy_sequencer_ui_state: () => 1,
     kessho_product_register_asset_buffer: () => 1,
     kessho_product_unregister_asset_buffer: () => 1,

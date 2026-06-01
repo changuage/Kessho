@@ -220,7 +220,7 @@ export class CoreProductArrangementScheduler {
     const bucket = getUtcBucket(sliderState.seedWindow === 'day' ? 'day' : 'hour');
     this.rng = createRng(`${bucket}|E_ROOT`);
     this.harmonyState = createSchedulerHarmonyState(sliderState);
-    if (booleanFromState(this.state, 'synthChordSequencerEnabled', true)) {
+    if (booleanFromState(this.state, 'synthChordSequencerEnabled', false)) {
       this.triggerPadChord();
     }
     this.scheduleHarmonyTicks();
@@ -391,7 +391,7 @@ export class CoreProductArrangementScheduler {
       progressionPhraseIndex,
       isPhraseBoundary,
     );
-    if (booleanFromState(this.state, 'synthChordSequencerEnabled', true)) {
+    if (booleanFromState(this.state, 'synthChordSequencerEnabled', false)) {
       this.triggerPadChord();
     }
   }

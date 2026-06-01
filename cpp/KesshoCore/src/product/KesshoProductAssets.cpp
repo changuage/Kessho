@@ -115,6 +115,24 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
   voice.envelope_release_frames = remaining;
 }
 
+  void KesshoProductEngine::releaseLegacySoundscapeVoices(uint32_t asset_id) {
+  for (Voice& voice : voices) {
+    if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
+        !voice.sample_voice || voice.soundscape_texture_voice ||
+        voice.asset_slot >= kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS ||
+        !assets[voice.asset_slot].active ||
+        assets[voice.asset_slot].asset_id != asset_id) {
+      continue;
+    }
+    voice.looping = false;
+    voice.start_delay_frames = 0u;
+    voice.remaining_frames = std::min<uint32_t>(
+        voice.remaining_frames,
+        static_cast<uint32_t>(0.02 * sample_rate));
+    voice.total_frames = std::max<uint32_t>(1u, voice.remaining_frames);
+  }
+}
+
   void KesshoProductEngine::releaseUnwantedSoundscapeVoices(const SourceState& source) {
   for (Voice& voice : voices) {
     if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE || !voice.sample_voice) {

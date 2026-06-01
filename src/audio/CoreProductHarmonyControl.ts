@@ -203,6 +203,16 @@ const QUALITY_INTERVALS: Partial<Record<HarmonyChordQuality, readonly number[]>>
   cluster: [0, 1, 2, 4],
 };
 
+const EXTENSION_INTERVALS: Readonly<Record<string, readonly number[]>> = {
+  six: [9],
+  min7: [10],
+  dom7: [10],
+  maj7: [11],
+  add9: [14],
+  nine: [14],
+  sixNine: [9, 14],
+};
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -264,6 +274,19 @@ function normalizeMidiPool(notes: readonly number[]): number[] {
     if (pool.length >= HARMONY_POOL_MAX_NOTES) break;
   }
   return pool.sort((a, b) => a - b);
+}
+
+function applyExtensionIntervals(baseIntervals: readonly number[], extensions: readonly string[]): number[] {
+  if (extensions.length === 0) return [...baseIntervals];
+  const intervals = [...baseIntervals];
+  for (const extension of extensions) {
+    const extensionIntervals = EXTENSION_INTERVALS[extension];
+    if (!extensionIntervals) continue;
+    for (const interval of extensionIntervals) {
+      if (!intervals.includes(interval)) intervals.push(interval);
+    }
+  }
+  return intervals.sort((a, b) => a - b);
 }
 
 export function defaultHarmonyIntent(source: HarmonyIntentSource = 'baseline', degree = 0): HarmonyIntent {
@@ -545,9 +568,10 @@ export function resolveHarmonyIntentToNotePool(args: {
   const degreeRoot = intent.rootMode === 'degree'
     ? scaleDegreeMidi(args.rootMidi, args.scaleId, intent.degree)
     : 60 + pitchClass(intent.rootNote);
-  const qualityIntervals = intent.quality === 'auto'
+  const baseQualityIntervals = intent.quality === 'auto'
     ? [0, 2, 4, args.tension > 0.5 ? 6 : 7].map((degree) => scaleDegreeMidi(degreeRoot, args.scaleId, degree, degree >= 7 ? 1 : 0) - degreeRoot)
     : QUALITY_INTERVALS[intent.quality] ?? QUALITY_INTERVALS.maj ?? [0, 4, 7];
+  const qualityIntervals = applyExtensionIntervals(baseQualityIntervals, intent.extensions);
   const spreadOctave = intent.spread > 0.66 ? 1 : 0;
   const raw = qualityIntervals.map((interval, index) => degreeRoot + interval + (index >= 3 ? spreadOctave * 12 : 0));
   if (intent.bassMode === 'root') raw.unshift(degreeRoot - 12);

@@ -34,7 +34,14 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
   const bool active = (event.flags & KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE) != 0u &&
       mode != KESSHO_PRODUCT_MODULATION_RANGE_OFF;
   const bool control_only = target_id == kProductControlOnlyModulationTarget;
-  if (param_id == 0u || (!isSourceTarget(target_id) && !isDrumRangeTarget(target_id) && target_id != 0u && !control_only)) {
+  const bool soundscape_asset_level_target = isSoundscapeAssetLevelRangeTarget(target_id);
+  if (param_id == 0u ||
+      (!isSourceTarget(target_id) && !isDrumRangeTarget(target_id) && target_id != 0u &&
+       !control_only && !soundscape_asset_level_target)) {
+    telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+    return;
+  }
+  if (soundscape_asset_level_target && param_id != KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
     return;
   }
@@ -112,6 +119,9 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
     applyParam(param_event);
     return;
   }
+  if (soundscape_asset_level_target) {
+    applyModulationRangeValue(*range);
+  }
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
 }
 
@@ -134,6 +144,12 @@ float randomWalkSpeedFromFlags(uint32_t flags) {
     return;
   }
   if (range.target_id == kProductControlOnlyModulationTarget) {
+    return;
+  }
+  if (isSoundscapeAssetLevelRangeTarget(range.target_id)) {
+    if (range.param_id == KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID) {
+      applySoundscapeAssetLevelValue(soundscapeAssetIdForLevelRangeTarget(range.target_id), range.current_value);
+    }
     return;
   }
   if (isDrumRangeTarget(range.target_id)) {

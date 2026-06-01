@@ -16,6 +16,7 @@ export type ProductSnapshotPatchReason =
   | 'journey-morph-change'
   | 'sequencer-edit'
   | 'sequencer-control-change'
+  | 'midi-cc-control-change'
   | 'transport-change'
   | 'asset-reference-change'
   | 'preset-load'
@@ -199,10 +200,16 @@ export type ProductSequencerUiPatch =
   | { kind: 'synth-evolve-configs'; configs: ProductSequencerEvolveConfigs }
   | { kind: 'drum-sub-lane-enabled'; states: ProductSequencerSubLaneEnabledStates }
   | { kind: 'synth-sub-lane-enabled'; states: ProductSequencerSubLaneEnabledStates }
+  | { kind: 'drum-pitch-settings'; settings: ProductSequencerPitchSettings }
   | { kind: 'synth-pitch-settings'; settings: ProductSequencerPitchSettings }
   | { kind: 'drum-step-overrides'; overrides: ProductSequencerStepOverrides }
   | { kind: 'synth-step-overrides'; overrides: ProductSequencerStepOverrides }
-  | { kind: 'preset-home-snapshots' }
+  | {
+      kind: 'preset-home-snapshots';
+      drumPitchSettings?: ProductSequencerPitchSettings;
+      drumPitchStates?: readonly (ProductSequencerLanePitchState | null | undefined)[];
+      synthPitchStates?: readonly (ProductSequencerLanePitchState | null | undefined)[];
+    }
   | {
       kind: 'capture-synth-lane-home';
       laneIndex: number;

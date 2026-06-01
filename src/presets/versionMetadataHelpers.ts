@@ -104,6 +104,11 @@ export function buildPresetVersionMetadata(
     hasMetadata = true;
   }
 
+  if (source.synthArpConfigs && source.synthArpConfigs.length > 0) {
+    metadata.synthArpConfigs = cloneJson(source.synthArpConfigs);
+    hasMetadata = true;
+  }
+
   if (source.drumPitchSettings && source.drumPitchSettings.length > 0) {
     metadata.drumPitchSettings = cloneJson(source.drumPitchSettings);
     hasMetadata = true;

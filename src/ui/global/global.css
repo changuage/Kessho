@@ -42,6 +42,10 @@
     min-width: 0;
     max-width: 100%;
   }
+
+  .global-root .global-engine-panel {
+    order: -1;
+  }
 }
 
 /* ── Card (shared base for panels) ── */

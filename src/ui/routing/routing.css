@@ -47,6 +47,286 @@
   padding: 10px;
 }
 
+.routing-root .daw-output-card {
+  --row-accent: var(--accent-primary);
+}
+
+.routing-root .daw-output-header {
+  flex-wrap: wrap;
+}
+
+.routing-root .daw-output-status {
+  margin-left: auto;
+  padding: 2px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.routing-root .daw-output-status.active {
+  border-color: color-mix(in srgb, var(--accent-primary) 36%, transparent);
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+}
+
+.routing-root .daw-output-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 2px;
+}
+
+.routing-root .daw-output-actions button,
+.routing-root .daw-output-actions select,
+.routing-root .daw-output-setup-controls button,
+.routing-root .daw-output-setup-controls select,
+.routing-root .daw-output-test-row button,
+.routing-root .daw-output-row select {
+  min-height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.72rem;
+}
+
+.routing-root .daw-output-actions button,
+.routing-root .daw-output-setup-controls button,
+.routing-root .daw-output-test-row button {
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.routing-root .daw-output-actions button:hover:not(:disabled),
+.routing-root .daw-output-setup-controls button:hover:not(:disabled),
+.routing-root .daw-output-setup-controls select:hover:not(:disabled),
+.routing-root .daw-output-test-row button:hover:not(:disabled),
+.routing-root .daw-output-row select:hover:not(:disabled) {
+  border-color: rgba(165, 196, 212, 0.2);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.routing-root .daw-output-actions button.active {
+  border-color: color-mix(in srgb, var(--accent-primary) 42%, transparent);
+  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+  color: var(--accent-primary);
+}
+
+.routing-root .daw-output-actions button:disabled,
+.routing-root .daw-output-setup-controls button:disabled,
+.routing-root .daw-output-setup-controls select:disabled,
+.routing-root .daw-output-test-row button:disabled,
+.routing-root .daw-output-row select:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.routing-root .daw-output-channel-select {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.routing-root .daw-output-channel-select select {
+  padding: 4px 20px 4px 7px;
+}
+
+.routing-root .daw-output-body {
+  display: grid;
+  gap: 6px;
+}
+
+.routing-root .daw-output-setup {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(165, 196, 212, 0.1);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.014);
+}
+
+.routing-root .daw-output-setup-top,
+.routing-root .daw-output-setup-controls,
+.routing-root .daw-output-test-row,
+.routing-root .daw-output-setup-statuses {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.routing-root .daw-output-setup-top {
+  justify-content: space-between;
+}
+
+.routing-root .daw-output-setup-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.routing-root .daw-output-setup-title > span {
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  font-weight: 800;
+}
+
+.routing-root .daw-output-setup-title small {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routing-root .daw-output-pill {
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.018);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.routing-root .daw-output-pill.ready {
+  border-color: color-mix(in srgb, var(--accent-primary) 34%, transparent);
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 9%, transparent);
+}
+
+.routing-root .daw-output-pill.warning {
+  border-color: rgba(255, 190, 120, 0.22);
+  color: rgba(255, 208, 158, 0.9);
+  background: rgba(255, 190, 120, 0.055);
+}
+
+.routing-root .daw-output-setup-controls {
+  flex-wrap: wrap;
+}
+
+.routing-root .daw-output-device-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: min(100%, 320px);
+  flex: 1 1 320px;
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.routing-root .daw-output-device-select select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 24px 5px 8px;
+}
+
+.routing-root .daw-output-test-row {
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.routing-root .daw-output-setup-note {
+  min-height: 17px;
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+  line-height: 1.35;
+}
+
+.routing-root .daw-output-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(110px, 0.36fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.014);
+}
+
+.routing-root .daw-output-row.fixed {
+  border-color: rgba(165, 196, 212, 0.12);
+  background: rgba(165, 196, 212, 0.03);
+}
+
+.routing-root .daw-output-source {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  font-weight: 700;
+}
+
+.routing-root .daw-output-source span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routing-root .daw-output-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--row-accent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--row-accent) 24%, transparent);
+}
+
+.routing-root .daw-output-dot.mix {
+  background: var(--accent-primary);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-primary) 24%, transparent);
+}
+
+.routing-root .daw-output-pair {
+  justify-self: stretch;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.routing-root .daw-output-row select {
+  width: 100%;
+  padding: 5px 8px;
+}
+
+.routing-root .daw-output-empty {
+  padding: 9px 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+
 .routing-root .routing-matrix {
   display: flex;
   flex-direction: column;
@@ -779,6 +1059,34 @@
 }
 
 @media (max-width: 860px) {
+  .routing-root .daw-output-header {
+    align-items: stretch;
+  }
+
+  .routing-root .daw-output-status {
+    margin-left: 0;
+  }
+
+  .routing-root .daw-output-actions {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+
+  .routing-root .daw-output-setup-top,
+  .routing-root .daw-output-setup-statuses {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .routing-root .daw-output-device-select {
+    flex-basis: 100%;
+  }
+
+  .routing-root .daw-output-row {
+    grid-template-columns: 1fr;
+  }
+
   .routing-root .midi-routing-grid {
     grid-template-columns: 1fr;
   }

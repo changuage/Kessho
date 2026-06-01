@@ -54,8 +54,11 @@ struct SourceState {
   bool lead_envelope_override_enabled = false;
   bool lead_algorithm_preset_a_enabled = false;
   bool source_preset_patch_valid = false, source_preset_endpoint_valid = false;
+  uint32_t source_preset_runtime_revision = 1u;
   float source_preset_macro_morph = 0.0f, source_preset_macro_distance = 0.0f, source_preset_macro_expression = 1.0f;
   kessho::core::KesshoSourcePresetPatch source_preset_patch{}, source_preset_endpoint_a{}, source_preset_endpoint_b{};
+  const kessho::core::KesshoSourcePresetPatch* applied_module_patch_ptr = nullptr;
+  uint32_t applied_module_patch_revision = 0u;
   uint32_t drum_voice_preset_a_ids[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT]{};
   uint32_t drum_voice_preset_b_ids[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT]{};
   float drum_voice_morphs[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT]{};
@@ -85,6 +88,9 @@ struct Voice {
   uint32_t asset_slot = 0;
   bool sample_voice = false;
   bool soundscape_texture_voice = false;
+  uint32_t soundscape_texture_slice_id = 0;
+  uint64_t soundscape_texture_start_frame = 0u;
+  float soundscape_texture_start_offset_seconds = 0.0f;
   bool piano_sample_voice = false;
   bool drum_voice = false;
   bool looping = false;

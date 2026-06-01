@@ -58,6 +58,10 @@ float normalizedModulationPosition(const kessho::product::internal::ModulationRa
   out.fill_count = lane.fill_count;
   out.rotation = static_cast<uint32_t>(lane.rotation);
   out.clock_division = lane.clock_division;
+  out.swing = lane.swing;
+  out.midi_note = lane.midi_note;
+  out.note_range_min = lane.note_range_min;
+  out.note_range_max = lane.note_range_max;
   out.step_override_set_low = lane.step_override_set_low;
   out.step_override_set_high = lane.step_override_set_high;
   out.step_override_value_low = lane.step_override_value_low;
@@ -371,9 +375,7 @@ float normalizedModulationPosition(const kessho::product::internal::ModulationRa
         telemetry.earth_texture_slice_durations[slot] = static_cast<float>(slice_duration);
         telemetry.earth_texture_max_offsets[slot] = static_cast<float>(max_offset);
       }
-      if (density <= 0.0001f) {
-        reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_DENSITY_ZERO;
-      } else if (max_offset <= 0.0001) {
+      if (max_offset <= 0.0001) {
         reason = KESSHO_PRODUCT_EARTH_TEXTURE_REASON_ASSET_TOO_SHORT;
       }
     }

@@ -81,7 +81,10 @@ export function useSelectedAudioEngineTelemetrySurface(
   }, [audioEngineRuntimeMode]);
 
   const setSelectedGranularUiActive = useCallback((active: boolean): void => {
-    if (audioEngineRuntimeMode === 'core-product') return;
+    if (audioEngineRuntimeMode === 'core-product') {
+      productEngine.setGranularUiActive(active);
+      return;
+    }
     selectedProductRuntime.setGranularUiActive(active);
   }, [audioEngineRuntimeMode]);
 

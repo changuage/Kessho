@@ -6,6 +6,10 @@ export type CoreProductSequencerLaneUiState = {
   rotation: number;
   clockDivision: number;
   mutationFlags: number;
+  swing: number;
+  baseMidiNote: number;
+  noteRangeMin: number;
+  noteRangeMax: number;
   triggerToggles: [number, boolean][];
   probabilityOverrideSetLow?: number;
   probabilityOverrideSetHigh?: number;
@@ -141,6 +145,7 @@ export type CoreProductTelemetrySnapshot = {
   workletFxStemPeak?: number;
   granularWriteHeadPosition?: number;
   granularVoicePositions?: [number, number, number, number];
+  granularBufferWaveform?: Float32Array | null;
   pad1FilterFreq?: number;
   pad1Lfo1Value?: number;
   pad2FilterFreq?: number;
@@ -191,6 +196,7 @@ export type CoreProductVisualTelemetrySnapshot = Pick<
   | 'dynamicsSaturationDrive'
   | 'granularWriteHeadPosition'
   | 'granularVoicePositions'
+  | 'granularBufferWaveform'
   | 'pad1FilterFreq'
   | 'pad1Lfo1Value'
   | 'pad2FilterFreq'

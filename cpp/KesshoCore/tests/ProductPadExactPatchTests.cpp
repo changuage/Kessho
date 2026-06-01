@@ -357,6 +357,73 @@ void requireGeneratedEndpointPadSnapshotDoesNotNeedExactPatch(uint32_t source_id
   kessho_product_destroy(engine);
 }
 
+void requireStableEndpointPadPatchIsCachedAcrossTriggers() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "stable endpoint pad cache engine create failed");
+
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configureGeneratedEndpointPadSourceWithoutSnapshotExact(
+      snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u],
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      1.0f);
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].distance = 0.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "stable endpoint pad cache snapshot load failed");
+
+  auto& loaded = engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
+  require(loaded.source_preset_endpoint_valid, "stable endpoint pad cache did not compile endpoints");
+  require(loaded.applied_module_patch_ptr == nullptr, "stable endpoint pad cache started dirty");
+  const uint32_t revision = loaded.source_preset_runtime_revision;
+  const PadParams expected = expectedEndpointMorphParams(1.0f, 0.0f);
+
+  triggerPadAndExpectParams(
+      engine,
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      1.0f,
+      0.0f,
+      1.0f,
+      expected,
+      "stable endpoint pad cache first trigger");
+  require(
+      loaded.applied_module_patch_ptr == &loaded.source_preset_endpoint_b,
+      "stable endpoint pad cache did not record endpoint B patch");
+  require(
+      loaded.applied_module_patch_revision == revision,
+      "stable endpoint pad cache recorded wrong revision");
+  const auto* cached_patch = loaded.applied_module_patch_ptr;
+
+  triggerPadAndExpectParams(
+      engine,
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      1.0f,
+      0.0f,
+      1.0f,
+      expected,
+      "stable endpoint pad cache repeated trigger");
+  require(
+      loaded.applied_module_patch_ptr == cached_patch,
+      "stable endpoint pad cache lost cached patch on repeated trigger");
+  require(
+      loaded.applied_module_patch_revision == revision,
+      "stable endpoint pad cache changed revision on repeated trigger");
+
+  KesshoProductEvent endpoint_event{};
+  endpoint_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET;
+  endpoint_event.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  endpoint_event.index = 2u;
+  endpoint_event.value = static_cast<float>(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT);
+  engine->applySourcePresetEvent(endpoint_event);
+  require(
+      loaded.source_preset_runtime_revision != revision,
+      "stable endpoint pad cache did not bump revision after endpoint change");
+  require(
+      loaded.applied_module_patch_ptr == nullptr && loaded.applied_module_patch_revision == 0u,
+      "stable endpoint pad cache did not invalidate after endpoint change");
+
+  kessho_product_destroy(engine);
+}
+
 void requireNamedPluckPresetParams() {
   const PadParams soft = exactPadParamsFromPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SOFT_PLUCK);
   requireParamClose("PadSoftPluck filter cutoff max", 22u, soft[22], 2200.0f);
@@ -379,6 +446,7 @@ int main() {
   requireEndpointPadMorphMatchesWebPolicy(0.65f);
   requireGeneratedEndpointPadSnapshotDoesNotNeedExactPatch(KESSHO_PRODUCT_SOURCE_PAD1, 0.35f);
   requireGeneratedEndpointPadSnapshotDoesNotNeedExactPatch(KESSHO_PRODUCT_SOURCE_PAD2, 0.65f);
+  requireStableEndpointPadPatchIsCachedAcrossTriggers();
 
   std::cout << "Kessho Product Pad Exact Patch tests passed\n";
   return 0;

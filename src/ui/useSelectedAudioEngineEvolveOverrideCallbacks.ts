@@ -10,7 +10,7 @@ type EvolvedRangeOverride = { min: number; max: number };
 export type EvolvedOverrideState = {
   laneIndex: number;
   version: number;
-  data: Partial<StepOverrides> & { pitchSettings?: (PitchSettings | null)[] };
+  data: Partial<StepOverrides> & { pitchSettings?: (PitchSettings | null)[]; manualDiceHome?: boolean };
   swing?: number;
   subLaneStates?: EvolvedSubLanePatch;
 };
@@ -217,6 +217,7 @@ export function useSelectedAudioEngineEvolveOverrideCallbacks({
         swing?: unknown;
         subLaneStates?: unknown;
         pitchSettings?: (PitchSettings | null)[];
+        manualDiceHome?: unknown;
       };
       const swing = typeof payload.swing === 'number' && Number.isFinite(payload.swing)
         ? normalizeSequencerSwing(payload.swing)
@@ -228,7 +229,8 @@ export function useSelectedAudioEngineEvolveOverrideCallbacks({
         synthSwingsRef.current = nextSwings;
       }
       synthSubLaneStatesRef.current = mergeEvolvedSubLanePatch(synthSubLaneStatesRef.current, laneIndex, subLaneStates);
-      const data: Partial<StepOverrides> & { pitchSettings?: (PitchSettings | null)[] } = {};
+      const data: Partial<StepOverrides> & { pitchSettings?: (PitchSettings | null)[]; manualDiceHome?: boolean } = {};
+      if (payload.manualDiceHome === true) data.manualDiceHome = true;
       if (payload.pitchSettings?.[laneIndex]) {
         data.pitchSettings = payload.pitchSettings;
         const nextPitchSettings = [...(synthPitchSettingsRef.current ?? createDefaultPitchSettings())];

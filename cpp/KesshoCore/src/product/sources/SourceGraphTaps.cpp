@@ -9,7 +9,8 @@
       float ducked_left,
       float ducked_right,
       float send_left,
-      float send_right) {
+      float send_right,
+      float effective_granular_send) {
   if (!graph_taps_enabled) {
     if (source.diffuse_send <= 0.0f) {
       return;
@@ -88,8 +89,8 @@
     taps.delay_a_r[frame] += send_right * source.delay_a_send;
     taps.delay_b_l[frame] += send_left * source.delay_b_send;
     taps.delay_b_r[frame] += send_right * source.delay_b_send;
-    taps.granular_l[frame] += send_left * source.granular_send;
-    taps.granular_r[frame] += send_right * source.granular_send;
+    taps.granular_l[frame] += send_left * effective_granular_send;
+    taps.granular_r[frame] += send_right * effective_granular_send;
   }
   if (source.diffuse_send <= 0.0f) return;
   const float diffuse_left = dry_left * source.diffuse_send;

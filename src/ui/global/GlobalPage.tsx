@@ -1,6 +1,6 @@
 import React from 'react';
 import type { SliderState, SavedPreset } from '../state';
-import type { ProductEngineState } from '../../audio/product/ProductEngineTypes';
+import type { ProductEngineState, ProductManualSynthNote } from '../../audio/product/ProductEngineTypes';
 import type { TensionArcType } from '../../audio/harmony';
 import type { PresetEntry, PresetVersionMetadata } from '../../presets/types';
 import { PresetDropdown, PresetFamilyTree } from '../../presets';
@@ -15,14 +15,15 @@ import { APP_TAB_SYMBOLS, TEXT_SYMBOLS } from '../../designSystem/textSymbols';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { getRuntimeSliderPosition } from '../runtimeSliderState';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
+import { HarmonyEnginePanel } from '../harmony/HarmonyEnginePanel';
 import { GlobalRuntimeComparisonPanel, type GlobalRuntimeComparisonPanelProps } from './GlobalRuntimeComparisonPanel';
 import './global.css';
 
 // Note names for display
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const DEGREE_LABELS = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'];
-const GLOBAL_EXPANDED_SECTIONS_STORAGE_KEY = 'global:expanded-sections:v1';
-const DEFAULT_GLOBAL_EXPANDED_SECTIONS = ['morph', 'state-presets', 'root-cof', 'chord-progression', 'scale-tension', 'transport-sync'];
+const GLOBAL_EXPANDED_SECTIONS_STORAGE_KEY = 'global:expanded-sections:v2';
+const DEFAULT_GLOBAL_EXPANDED_SECTIONS = ['morph', 'state-presets'];
 type SceneHarmonyState = NonNullable<ProductEngineState['harmonyState']>;
 
 function clamp01(value: number | undefined): number {
@@ -783,6 +784,8 @@ export interface GlobalPageProps {
   onParamChange: (key: any, value: number) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onSelectChange: (key: any, value: any) => void;
+  onStateChange?: React.Dispatch<React.SetStateAction<SliderState>>;
+  onAuditionHarmonyNote?: (note: ProductManualSynthNote) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sliderProps: (paramKey: any) => Record<string, unknown>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -857,6 +860,8 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   state,
   onParamChange,
   onSelectChange,
+  onStateChange,
+  onAuditionHarmonyNote,
   sliderProps,
   SliderComponent: Slider,
   SelectComponent: Select,
@@ -1401,8 +1406,15 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
 
       {/* Harmony Engine */}
       <div className="global-engine-panel">
+        <HarmonyEnginePanel
+          state={state}
+          harmonyState={engineState.harmonyState}
+          onStateChange={onStateChange}
+          onAuditionNote={onAuditionHarmonyNote}
+        />
+
         <div className="harmony-card">
-          <h3 className="harmony-card-title">Harmony Engine</h3>
+          <h3 className="harmony-card-title">Harmony Setup</h3>
 
           {/* Root & CoF + Chord Progression side by side */}
           <div className="harmony-row-2col">

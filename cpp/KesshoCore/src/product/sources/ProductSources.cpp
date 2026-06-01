@@ -35,6 +35,17 @@ bool KesshoProductEngine::isDrumRangeTarget(uint32_t target_id) const {
   return target_id >= KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE && target_id < KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + DRUM_NUM_VOICE_TYPES;
 }
 
+bool KesshoProductEngine::isSoundscapeAssetLevelRangeTarget(uint32_t target_id) const {
+  return target_id >= kSoundscapeAssetLevelRangeTargetBase &&
+      target_id < kSoundscapeAssetLevelRangeTargetEnd;
+}
+
+uint32_t KesshoProductEngine::soundscapeAssetIdForLevelRangeTarget(uint32_t target_id) const {
+  return isSoundscapeAssetLevelRangeTarget(target_id)
+      ? target_id - kSoundscapeAssetLevelRangeTargetBase
+      : 0u;
+}
+
 void KesshoProductEngine::applySourceParam(const KesshoProductEvent& event) {
   if (event.target_id < 1u || event.target_id > kSourceCount) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;

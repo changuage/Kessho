@@ -1,10 +1,19 @@
 import type { CoreProductEvent } from './coreProductEvents';
 import type { DecodedCoreProductAsset } from './coreProductAssets';
 import type { CoreProductTelemetrySnapshot, CoreProductVisualTelemetrySnapshot } from './coreProductTelemetry';
+import {
+  DAW_OUTPUT_MAX_CHANNELS,
+  createDefaultDawOutputRoutingConfig,
+  sanitizeDawOutputRoutingConfig,
+  type DawOutputRoutingConfig,
+} from './dawOutputRouting';
+import { isIOSLikeDevice, isMobileDevice } from '../platform';
 
 const CORE_PRODUCT_GRAPH_TAP_COUNT = 110;
 const CORE_PRODUCT_TELEMETRY_INTERVAL_MS = 250;
 const CORE_PRODUCT_VISUAL_TELEMETRY_INTERVAL_MS = 33;
+const CORE_PRODUCT_RUNTIME_ASSET_VERSION = String(Date.now());
+const CORE_PRODUCT_RUNTIME_ASSET_RETRY_COUNT = 2;
 
 type RuntimeMessage =
   | { type: 'ready' }
@@ -29,10 +38,47 @@ type GraphTapCaptureSession = {
   rejectFlush: ((error: Error) => void) | null;
 };
 
+type WindowWithWebkitAudioContext = Window & {
+  webkitAudioContext?: typeof AudioContext;
+};
+
+type AudioContextWithSinkId = AudioContext & {
+  setSinkId?: (sinkId: string) => Promise<void>;
+};
+
+function createProductAudioContext(): AudioContext {
+  const AudioContextCtor = window.AudioContext ?? (window as WindowWithWebkitAudioContext).webkitAudioContext;
+  if (!AudioContextCtor) {
+    throw new Error('Core Product runtime requires AudioContext support');
+  }
+  const preferStableMobileBuffers = isMobileDevice() || isIOSLikeDevice();
+  return new AudioContextCtor(preferStableMobileBuffers ? { latencyHint: 'playback' } : undefined);
+}
+
+function runtimeAssetDelay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function withRuntimeAssetRetries<T>(operation: (attempt: number) => Promise<T>): Promise<T> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= CORE_PRODUCT_RUNTIME_ASSET_RETRY_COUNT; attempt += 1) {
+    try {
+      return await operation(attempt);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= CORE_PRODUCT_RUNTIME_ASSET_RETRY_COUNT) break;
+      await runtimeAssetDelay(100 * (attempt + 1));
+    }
+  }
+  throw lastError;
+}
+
 export class CoreProductRuntime {
   private context: AudioContext | null = null;
   private node: AudioWorkletNode | null = null;
   private outputGain: GainNode | null = null;
+  private mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
+  private mediaSessionAudio: HTMLAudioElement | null = null;
   private readyPromise: Promise<void> | null = null;
   private lastError: string | null = null;
   private telemetryTimer: number | null = null;
@@ -40,7 +86,10 @@ export class CoreProductRuntime {
   private telemetryCallback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null = null;
   private visualTelemetryCallback: ((telemetry: CoreProductVisualTelemetrySnapshot) => void) | null = null;
   private visualTelemetryActive = false;
+  private granularWaveformTelemetryActive = false;
   private perfMonitorEnabled = false;
+  private dawOutputRouting: DawOutputRoutingConfig = createDefaultDawOutputRoutingConfig();
+  private dawOutputDeviceId: string | null = null;
   private readonly graphTapCaptureSessions = new Map<number, GraphTapCaptureSession>();
 
   get audioContext(): AudioContext | null {
@@ -84,29 +133,35 @@ export class CoreProductRuntime {
   }
 
   private async initializeRuntime(): Promise<void> {
-    const context = new AudioContext();
+    this.prepareMediaSessionPlayback();
+    const context = createProductAudioContext();
     this.context = context;
+    if (this.dawOutputDeviceId) {
+      await this.applyDawOutputDeviceId(context);
+    }
     const base = new URL(import.meta.env.BASE_URL, window.location.origin);
-    const workletUrl = new URL('worklets/kessho-core-product.worklet.js', base);
-    const wasmUrl = new URL('worklets/kessho_core.wasm', base);
-    await context.audioWorklet.addModule(workletUrl);
-    const wasmBinary = await fetch(wasmUrl).then((response) => {
+    const productAssetUrl = (path: string, attempt = 0): URL => {
+      const url = new URL(path, base);
+      url.searchParams.set('v', CORE_PRODUCT_RUNTIME_ASSET_VERSION);
+      if (attempt > 0) url.searchParams.set('retry', String(attempt));
+      return url;
+    };
+    await withRuntimeAssetRetries((attempt) =>
+      context.audioWorklet.addModule(productAssetUrl('worklets/kessho-core-product.worklet.js', attempt))
+    );
+    const wasmUrl = productAssetUrl('worklets/kessho_core.wasm');
+    const wasmBinary = await withRuntimeAssetRetries(async (attempt) => {
+      const attemptWasmUrl = productAssetUrl('worklets/kessho_core.wasm', attempt);
+      const response = await fetch(attemptWasmUrl, { cache: 'no-store' });
       if (!response.ok) throw new Error(`Failed to fetch ${wasmUrl}: ${response.status}`);
       return response.arrayBuffer();
     });
 
     await new Promise<void>((resolve, reject) => {
-      const node = new AudioWorkletNode(context, 'kessho-core-product', {
-        numberOfInputs: 0,
-        numberOfOutputs: 1,
-        outputChannelCount: [2],
-        processorOptions: {
-          wasmBinary,
-          wasmUrl: wasmUrl.toString(),
-        },
-      });
+      const node = this.createProductWorkletNode(context, wasmBinary, wasmUrl.toString());
       const outputGain = context.createGain();
       outputGain.gain.value = 1;
+      this.configureOutputNode(outputGain);
       this.node = node;
       this.outputGain = outputGain;
       if (this.perfMonitorEnabled) {
@@ -115,6 +170,7 @@ export class CoreProductRuntime {
       node.port.onmessage = (event: MessageEvent<RuntimeMessage>) => {
         const message = event.data;
         if (message.type === 'ready') {
+          this.postDawOutputRouting();
           resolve();
           return;
         }
@@ -159,7 +215,7 @@ export class CoreProductRuntime {
         }
       };
       node.connect(outputGain);
-      outputGain.connect(context.destination);
+      this.connectOutputToBrowserSink(context, outputGain);
       this.startTelemetryLoop();
       this.syncVisualTelemetryLoop();
     });
@@ -168,10 +224,16 @@ export class CoreProductRuntime {
   async resume(): Promise<void> {
     await this.ensureStarted();
     await this.context?.resume();
+    if (isIOSLikeDevice()) {
+      void this.connectMediaSessionPlayback();
+    }
   }
 
   async suspend(): Promise<void> {
     await this.context?.suspend();
+    if (isIOSLikeDevice()) {
+      this.pauseMediaSessionPlayback();
+    }
   }
 
   dispose(): void {
@@ -185,9 +247,12 @@ export class CoreProductRuntime {
     }
     this.node?.disconnect();
     this.outputGain?.disconnect();
+    this.mediaStreamDest?.disconnect();
+    this.disconnectMediaSessionPlayback();
     const context = this.context;
     this.node = null;
     this.outputGain = null;
+    this.mediaStreamDest = null;
     this.context = null;
     this.readyPromise = null;
     if (context && context.state !== 'closed') {
@@ -208,9 +273,55 @@ export class CoreProductRuntime {
     this.syncVisualTelemetryLoop();
   }
 
+  setGranularWaveformTelemetryActive(active: boolean): void {
+    this.granularWaveformTelemetryActive = active;
+  }
+
   setPerfMonitorEnabled(enabled: boolean): void {
     this.perfMonitorEnabled = enabled;
     this.node?.port.postMessage({ type: 'enablePerf', enabled });
+  }
+
+  setDawOutputRouting(config: DawOutputRoutingConfig): void {
+    this.dawOutputRouting = sanitizeDawOutputRoutingConfig(config);
+    this.configureBrowserSinkChannelCount();
+    this.postDawOutputRouting();
+  }
+
+  async setDawOutputDeviceId(deviceId: string | null): Promise<boolean> {
+    this.dawOutputDeviceId = deviceId && deviceId !== 'default' ? deviceId : null;
+    return this.applyDawOutputDeviceId();
+  }
+
+  private prepareMediaSessionPlayback(): void {
+    if (!isIOSLikeDevice() || this.mediaSessionAudio) return;
+    const audio = new Audio();
+    audio.loop = false;
+    audio.volume = 1;
+    audio.setAttribute('playsinline', 'true');
+    (audio as HTMLAudioElement & { webkitPreservesPitch?: boolean }).webkitPreservesPitch = false;
+    this.mediaSessionAudio = audio;
+  }
+
+  private connectMediaSessionPlayback(): Promise<void> {
+    if (!isIOSLikeDevice()) return Promise.resolve();
+    this.prepareMediaSessionPlayback();
+    const audio = this.mediaSessionAudio;
+    const stream = this.mediaStreamDest?.stream ?? null;
+    if (!audio || !stream) return Promise.resolve();
+    if (audio.srcObject !== stream) {
+      audio.srcObject = stream;
+    }
+    return audio.play().catch((error: unknown) => {
+      console.warn('Core Product media session carrier play failed:', error);
+    });
+  }
+
+  private disconnectMediaSessionPlayback(): void {
+    this.pauseMediaSessionPlayback();
+    if (this.mediaSessionAudio) {
+      this.mediaSessionAudio.srcObject = null;
+    }
   }
 
   postEvent(event: CoreProductEvent): void {
@@ -282,6 +393,122 @@ export class CoreProductRuntime {
     return this.node;
   }
 
+  private createProductWorkletNode(
+    context: AudioContext,
+    wasmBinary: ArrayBuffer,
+    wasmUrl: string,
+  ): AudioWorkletNode {
+    const processorOptions = { wasmBinary, wasmUrl };
+    const multichannelOptions: AudioWorkletNodeOptions = {
+      numberOfInputs: 0,
+      numberOfOutputs: 1,
+      outputChannelCount: [DAW_OUTPUT_MAX_CHANNELS],
+      channelCount: DAW_OUTPUT_MAX_CHANNELS,
+      channelCountMode: 'explicit',
+      channelInterpretation: 'discrete',
+      processorOptions,
+    };
+
+    try {
+      return new AudioWorkletNode(context, 'kessho-core-product', multichannelOptions);
+    } catch (error) {
+      console.warn('Core Product multichannel output unavailable; falling back to stereo output.', error);
+      return new AudioWorkletNode(context, 'kessho-core-product', {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+        processorOptions,
+      });
+    }
+  }
+
+  private configureOutputNode(node: AudioNode): void {
+    const channelCount = isIOSLikeDevice() ? 2 : DAW_OUTPUT_MAX_CHANNELS;
+    try {
+      node.channelCount = channelCount;
+    } catch {
+      // Some AudioNode implementations clamp channelCount. The worklet still renders safely.
+    }
+    try {
+      node.channelCountMode = 'explicit';
+    } catch {
+      // Best effort only; output routing remains controlled by the worklet.
+    }
+    try {
+      node.channelInterpretation = 'discrete';
+    } catch {
+      // Best effort only; unsupported browsers will downmix.
+    }
+  }
+
+  private async applyDawOutputDeviceId(context: AudioContext | null = this.context): Promise<boolean> {
+    if (!context || isIOSLikeDevice()) return false;
+    const contextWithSink = context as AudioContextWithSinkId;
+    if (typeof contextWithSink.setSinkId !== 'function') return false;
+    try {
+      await contextWithSink.setSinkId(this.dawOutputDeviceId ?? '');
+      this.configureBrowserSinkChannelCount(context);
+      return true;
+    } catch (error) {
+      console.warn('Core Product DAW output device selection failed:', error);
+      return false;
+    }
+  }
+
+  private postDawOutputRouting(): void {
+    this.node?.port.postMessage({
+      type: 'daw-output-routing',
+      config: this.dawOutputRouting,
+    });
+  }
+
+  private connectOutputToBrowserSink(context: AudioContext, output: AudioNode): void {
+    if (isIOSLikeDevice()) {
+      const destination = this.mediaStreamDest ?? context.createMediaStreamDestination();
+      this.mediaStreamDest = destination;
+      output.connect(destination);
+      const audio = this.mediaSessionAudio;
+      if (audio && audio.srcObject !== destination.stream) {
+        audio.srcObject = destination.stream;
+      }
+      return;
+    }
+    this.configureBrowserSinkChannelCount(context);
+    output.connect(context.destination);
+  }
+
+  private configureBrowserSinkChannelCount(context: AudioContext | null = this.context): void {
+    if (!context || isIOSLikeDevice()) return;
+    const destination = context.destination;
+    const desiredChannelCount = this.dawOutputRouting.enabled
+      ? this.dawOutputRouting.channelCount
+      : 2;
+    const maxChannelCount = Number.isFinite(destination.maxChannelCount)
+      ? Math.max(2, destination.maxChannelCount)
+      : desiredChannelCount;
+    const channelCount = Math.max(2, Math.min(desiredChannelCount, maxChannelCount));
+
+    try {
+      destination.channelCount = channelCount;
+    } catch {
+      // Output devices can reject channel-count changes; stereo playback still works.
+    }
+    try {
+      destination.channelCountMode = 'explicit';
+    } catch {
+      // Best effort only.
+    }
+    try {
+      destination.channelInterpretation = 'discrete';
+    } catch {
+      // Best effort only.
+    }
+  }
+
+  private pauseMediaSessionPlayback(): void {
+    this.mediaSessionAudio?.pause();
+  }
+
   private normalizeGraphTapId(tapId: number): number {
     const normalized = Math.trunc(Number(tapId));
     if (!Number.isFinite(normalized) || normalized < 0 || normalized >= CORE_PRODUCT_GRAPH_TAP_COUNT) {
@@ -333,7 +560,10 @@ export class CoreProductRuntime {
     if (this.visualTelemetryTimer !== null) return;
     const requestVisualTelemetry = () => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      this.node?.port.postMessage({ type: 'request-visual-telemetry' });
+      this.node?.port.postMessage({
+        type: 'request-visual-telemetry',
+        includeGranularWaveform: this.granularWaveformTelemetryActive,
+      });
     };
     requestVisualTelemetry();
     this.visualTelemetryTimer = window.setInterval(requestVisualTelemetry, CORE_PRODUCT_VISUAL_TELEMETRY_INTERVAL_MS);

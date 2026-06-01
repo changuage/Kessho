@@ -5,34 +5,26 @@ import type {
   SequencerStepValueOverride,
 } from '../../CoreProductHostSequencerAdapter';
 
-export type CoreProductSequencerCacheState = {
-  synthStepToggleOverrides: SequencerStepToggleOverride[][];
-  drumStepToggleOverrides: SequencerStepToggleOverride[][];
-  synthStepValueOverrides: SequencerStepValueOverride[][];
-  drumStepValueOverrides: SequencerStepValueOverride[][];
-  synthStepValueConfigs: SequencerStepValueConfig[][];
-  drumStepValueConfigs: SequencerStepValueConfig[][];
+export type CoreProductSequencerLaneCache = {
+  toggles: SequencerStepToggleOverride[][];
+  values: SequencerStepValueOverride[][];
+  configs: SequencerStepValueConfig[][];
 };
+
+export type CoreProductSequencerCacheState = Record<SequencerKind, CoreProductSequencerLaneCache>;
+
+export function createCoreProductSequencerCacheState(): CoreProductSequencerCacheState {
+  return {
+    synth: { toggles: [[], [], [], []], values: [[], [], [], []], configs: [[], [], [], []] },
+    drum: { toggles: [[], [], [], []], values: [[], [], [], []], configs: [[], [], [], []] },
+  };
+}
 
 export function selectCoreProductSequencerCache(
   cache: CoreProductSequencerCacheState,
   sequencer: SequencerKind,
-): {
-  toggles: SequencerStepToggleOverride[][];
-  values: SequencerStepValueOverride[][];
-  configs: SequencerStepValueConfig[][];
-} {
-  return sequencer === 'synth'
-    ? {
-      toggles: cache.synthStepToggleOverrides,
-      values: cache.synthStepValueOverrides,
-      configs: cache.synthStepValueConfigs,
-    }
-    : {
-      toggles: cache.drumStepToggleOverrides,
-      values: cache.drumStepValueOverrides,
-      configs: cache.drumStepValueConfigs,
-    };
+): CoreProductSequencerLaneCache {
+  return cache[sequencer];
 }
 
 export function ensureCoreProductSequencerLaneCache(

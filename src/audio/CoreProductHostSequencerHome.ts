@@ -72,6 +72,7 @@ function homeLaneArray<T>(value: T, laneIndex: number): (T | null)[] {
 export function createCoreProductSequencerHomeStore() {
   const homes: Record<SequencerKind, (CoreProductSequencerHomeState | null)[]> = { synth: [], drum: [] };
   const pendingManualDice: Record<SequencerKind, boolean[]> = { synth: [], drum: [] };
+  const pendingManualDiceReady: Record<SequencerKind, boolean[]> = { synth: [], drum: [] };
   return {
     capture(
       sequencer: SequencerKind,
@@ -94,11 +95,27 @@ export function createCoreProductSequencerHomeStore() {
       const home = homes[sequencer][laneIndex];
       return home ? cloneHomeState(home) : null;
     },
-    armManualDice(sequencer: SequencerKind, laneIndex: number): void { if (laneIndex >= 0 && laneIndex < 16) pendingManualDice[sequencer][laneIndex] = true; },
+    armManualDice(sequencer: SequencerKind, laneIndex: number): void {
+      if (laneIndex < 0 || laneIndex >= 16) return;
+      pendingManualDice[sequencer][laneIndex] = true;
+      pendingManualDiceReady[sequencer][laneIndex] = false;
+    },
     hasManualDice(sequencer: SequencerKind, laneIndex: number): boolean { return pendingManualDice[sequencer][laneIndex] === true; },
+    markManualDiceReady(sequencer: SequencerKind, laneIndex: number): void {
+      if (pendingManualDice[sequencer][laneIndex] === true) pendingManualDiceReady[sequencer][laneIndex] = true;
+    },
+    completeManualDice(sequencer: SequencerKind, laneIndex: number): void {
+      pendingManualDice[sequencer][laneIndex] = false;
+      pendingManualDiceReady[sequencer][laneIndex] = false;
+    },
+    consumeManualDiceIfReady(sequencer: SequencerKind, laneIndex: number): boolean {
+      if (pendingManualDiceReady[sequencer][laneIndex] !== true) return false;
+      return this.consumeManualDice(sequencer, laneIndex);
+    },
     consumeManualDice(sequencer: SequencerKind, laneIndex: number): boolean {
       const pending = pendingManualDice[sequencer][laneIndex] === true;
       pendingManualDice[sequencer][laneIndex] = false;
+      pendingManualDiceReady[sequencer][laneIndex] = false;
       return pending;
     },
   };

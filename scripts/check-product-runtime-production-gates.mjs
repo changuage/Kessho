@@ -27,6 +27,11 @@ const unsupportedAudit = read('scripts/audit-product-host-unsupported-surface.mj
 const runtimeFallbackGate = read('scripts/check-kessho-product-runtime-fallbacks.mjs');
 const browserRuntimeGate = read('scripts/check-kessho-product-browser-runtime.mjs');
 const productionInteractionGate = read('scripts/check-kessho-product-production-interactions.mjs');
+const granularArtifactGate = read('scripts/check-kessho-product-granular-artifacts.mjs');
+const reverbTailQualityGate = read('scripts/check-kessho-product-reverb-tail-quality.mjs');
+const cpuScenarioGate = read('scripts/check-kessho-product-cpu-scenarios.mjs');
+const cpuGovernorPolicy = read('docs/product-core/product-cpu-governor-policy.md');
+const commonControlRouting = read('docs/product-core/common-control-routing.md');
 const reportPath = 'docs/reports/kessho-product-unsupported-surface-latest.json';
 
 for (const field of [
@@ -134,6 +139,18 @@ assert(
   packageJson.scripts?.['core:product:production-interactions'] === 'node scripts/check-kessho-product-production-interactions.mjs',
   'package.json must expose core:product:production-interactions',
 );
+assert(
+  packageJson.scripts?.['core:product:granular-artifacts'] === 'node scripts/check-kessho-product-granular-artifacts.mjs',
+  'package.json must expose core:product:granular-artifacts',
+);
+assert(
+  packageJson.scripts?.['core:product:reverb-tail-quality'] === 'node scripts/check-kessho-product-reverb-tail-quality.mjs',
+  'package.json must expose core:product:reverb-tail-quality',
+);
+assert(
+  packageJson.scripts?.['core:product:cpu-scenarios'] === 'node scripts/check-kessho-product-cpu-scenarios.mjs',
+  'package.json must expose core:product:cpu-scenarios',
+);
 assert(unsupportedAudit.includes('gateViolationCount'), 'unsupported-surface audit must report gateViolationCount');
 assert(unsupportedAudit.includes('Product Core audited files must not expose Web Audio node/browser node types'), 'unsupported-surface audit must reject raw Web Audio node surfaces');
 assert(unsupportedAudit.includes('Product Core audited files must not enter runtime fallback reporting paths'), 'unsupported-surface audit must reject runtime fallback reports');
@@ -163,6 +180,63 @@ for (const token of [
   'KESSHO_PRODUCT_MODULATION_RANGE_TRIGGER_REVERB',
 ]) {
   assert(productionInteractionGate.includes(token), `production interaction gate must cover ${token}`);
+}
+
+for (const token of [
+  'kGranularControlSmoothSeconds',
+  'WASM granular active module should produce non-zero output',
+  'manual-pad-granular-output-delayed-freeze-clean',
+  'granularPatch()',
+]) {
+  assert(granularArtifactGate.includes(token), `granular artifact gate must cover ${token}`);
+}
+
+for (const token of [
+  'reverbPreconditionerSoftLimit',
+  'spectral_freeze_reverb_crossfade',
+  'WASM reverb interleaved module should produce a non-zero tail',
+  'reverbPatch()',
+]) {
+  assert(reverbTailQualityGate.includes(token), `reverb tail-quality gate must cover ${token}`);
+}
+
+for (const token of [
+  '01-default-product-scene',
+  '02-earth-texture-scene',
+  '03-dense-granular-scene',
+  '04-long-ambient-reverb-scene',
+  '05-spectral-freeze-scene',
+  '06-random-walk-sample-hold-modulation-scene',
+  '07-mobile-browser-foreground',
+  '09-native-ios-render',
+  'Native Product Core render/device evidence is Batch 4 scope.',
+]) {
+  assert(cpuScenarioGate.includes(token), `CPU scenario gate must cover ${token}`);
+}
+
+for (const token of [
+  'Desktop governor',
+  'Mobile browser governor',
+  'Native background governor',
+  'Lite under pressure',
+  'Browser/mobile background audio is best-effort',
+]) {
+  assert(cpuGovernorPolicy.includes(token), `CPU governor policy must include ${token}`);
+}
+
+assert(!commonControlRouting.includes('| partial |'), 'common-control-routing.md must not retain vague partial status rows');
+for (const requiredStatus of ['| ok |', '| allowed |', '| allowed structural snapshot |', '| deferred-ticket |']) {
+  assert(commonControlRouting.includes(requiredStatus), `common-control-routing.md must include status ${requiredStatus}`);
+}
+for (const requiredTicket of [
+  'TODO(product-core-control-routing-slider)',
+  'TODO(product-core-control-routing-fx)',
+  'TODO(product-core-control-routing-morph)',
+  'TODO(product-core-control-routing-transport)',
+  'TODO(product-core-control-routing-sequencer)',
+  'TODO(product-core-control-routing-asset)',
+]) {
+  assert(commonControlRouting.includes(requiredTicket), `common-control-routing.md must keep ticket ${requiredTicket}`);
 }
 
 for (const token of [

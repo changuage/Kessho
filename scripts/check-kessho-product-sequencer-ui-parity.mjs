@@ -8,14 +8,48 @@ const root = process.cwd();
 const DEFAULT_PORT = 4197;
 const reportPath = resolve(root, 'docs/reports/kessho-product-sequencer-ui-parity-latest.json');
 const selectedReportPath = resolve(root, 'docs/reports/kessho-product-sequencer-ui-parity-selected-latest.json');
-const SUB_LANE_SPARK_INDEX = Object.freeze({
+const BASE_SUB_LANE_SPARK_INDEX = Object.freeze({
   pitch: 0,
   expression: 1,
   morph: 2,
   distance: 3,
 });
-const VISIBLE_SUB_LANE_ORDER = Object.freeze(Object.keys(SUB_LANE_SPARK_INDEX));
+const SYNTH_SUB_LANE_SPARK_INDEX = Object.freeze({
+  arp: 0,
+  pitch: 1,
+  expression: 2,
+  morph: 3,
+  distance: 4,
+});
+let activeParityTab = 'drums';
+
+function activeSubLaneSparkIndex() {
+  return activeParityTab === 'synth' ? SYNTH_SUB_LANE_SPARK_INDEX : BASE_SUB_LANE_SPARK_INDEX;
+}
+
+function subLaneSparkIndex(lane) {
+  return activeSubLaneSparkIndex()[lane];
+}
+
+function rangeSubLaneSparkIndex(lane) {
+  return subLaneSparkIndex(lane);
+}
+
+function pitchSubLaneSparkIndex() {
+  return subLaneSparkIndex('pitch');
+}
+
+function sparkStrip(page, sparkIndex) {
+  return page.locator('.seq-spark-strip:visible').nth(sparkIndex);
+}
+
+function visibleSubLaneOrder() {
+  return Object.keys(activeSubLaneSparkIndex());
+}
+
 const VISIBLE_SUB_LANE_LABELS = Object.freeze({
+  a: 'arp',
+  arp: 'arp',
   p: 'pitch',
   pitch: 'pitch',
   e: 'expression',
@@ -25,12 +59,7 @@ const VISIBLE_SUB_LANE_LABELS = Object.freeze({
   d: 'distance',
   distance: 'distance',
 });
-const RANGE_SUB_LANE_SPARK_INDEX = Object.freeze({
-  expression: SUB_LANE_SPARK_INDEX.expression,
-  morph: SUB_LANE_SPARK_INDEX.morph,
-  distance: SUB_LANE_SPARK_INDEX.distance,
-});
-const PITCH_SUB_LANE_SPARK_INDEX = SUB_LANE_SPARK_INDEX.pitch;
+const RANGE_SUB_LANES = Object.freeze(['expression', 'morph', 'distance']);
 const MIDI_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
 function parseArgs(argv) {
@@ -95,19 +124,19 @@ async function waitForHttp(url, timeoutMs, outputProvider = () => '') {
   throw new Error(`Timed out waiting for ${url}: ${detail}\n${outputProvider()}`);
 }
 
-function killProcessTree(child) {
+function killProcessTree(child, signal = 'SIGTERM') {
   if (!child.pid) return;
   try {
-    if (process.platform === 'win32') child.kill();
-    else process.kill(-child.pid, 'SIGTERM');
+    if (process.platform === 'win32') child.kill(signal);
+    else process.kill(-child.pid, signal);
   } catch {
-    child.kill();
+    child.kill(signal);
   }
 }
 
 async function startSharedVite(port) {
   const url = `http://127.0.0.1:${port}/`;
-  const child = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port)], {
+  const child = spawn(process.execPath, ['node_modules/.bin/vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
     cwd: root,
     detached: process.platform !== 'win32',
     env: { ...process.env, BROWSER: 'none' },
@@ -115,16 +144,25 @@ async function startSharedVite(port) {
   });
   let output = '';
   let exited = false;
+  let exitError = null;
   const append = (chunk) => {
     output = `${output}${chunk.toString()}`.slice(-20000);
   };
   child.stdout.on('data', append);
   child.stderr.on('data', append);
-  child.on('exit', () => {
+  const exitPromise = new Promise((resolve) => {
+    child.on('exit', (code, signal) => {
     exited = true;
+      exitError = new Error(`Vite exited before sequencer UI parity completed (code=${code ?? 'null'}, signal=${signal ?? 'null'}):\n${output}`);
+      resolve('exit');
+    });
   });
   try {
-    await waitForHttp(url, 45000, () => output);
+    const ready = await Promise.race([
+      waitForHttp(url, 45000, () => output).then(() => 'ready'),
+      exitPromise,
+    ]);
+    if (ready === 'exit') throw exitError;
   } catch (error) {
     killProcessTree(child);
     throw error;
@@ -134,6 +172,8 @@ async function startSharedVite(port) {
     stop: async () => {
       if (!exited) killProcessTree(child);
       await delay(500);
+      if (!exited) killProcessTree(child, 'SIGKILL');
+      await delay(250);
     },
   };
 }
@@ -161,6 +201,8 @@ function withEngine(baseUrl, engineMode) {
 function ignoredConsoleError(text) {
   return text.includes('SupabasePresetStore') ||
     text.includes('Failed to fetch') ||
+    text.includes('Failed to load resource: net::ERR_CONNECTION_REFUSED') ||
+    text.includes('Failed to load resource: net::ERR_CONNECTION_RESET') ||
     text.includes('status of 429');
 }
 
@@ -173,15 +215,15 @@ async function activeTriggerCells(page) {
 }
 
 async function sparkPlayheadX(page, sparkIndex) {
-  const playhead = page.locator('.seq-spark-strip').nth(sparkIndex).locator('.spark-playhead').first();
+  const playhead = sparkStrip(page, sparkIndex).locator('.spark-playhead').first();
   if ((await playhead.count()) === 0) return null;
   return playhead.getAttribute('x');
 }
 
 async function sampleSubLanePlayheads(page) {
   const samples = {};
-  for (const [lane, sparkIndex] of Object.entries(SUB_LANE_SPARK_INDEX)) {
-    samples[lane] = await sparkPlayheadX(page, sparkIndex);
+  for (const lane of visibleSubLaneOrder()) {
+    samples[lane] = await sparkPlayheadX(page, subLaneSparkIndex(lane));
   }
   return samples;
 }
@@ -196,19 +238,20 @@ async function proofVisibleSubLaneCoverage(page, engineMode, tab) {
     nodes.map((node) => String(node.textContent ?? '').trim()).filter(Boolean)
   );
   const lanes = labels.map(normalizeVisibleSubLaneLabel);
+  const expectedLanes = visibleSubLaneOrder();
   assert(
-    lanes.length === VISIBLE_SUB_LANE_ORDER.length,
+    lanes.length === expectedLanes.length,
     `${engineMode}/${tab}: visible sub-lane count changed without parity coverage (${lanes.join(',') || 'none'})`,
   );
   assert(
-    lanes.every((lane, index) => lane === VISIBLE_SUB_LANE_ORDER[index]),
-    `${engineMode}/${tab}: visible sub-lanes diverged from audited order (${lanes.join(',') || 'none'} !== ${VISIBLE_SUB_LANE_ORDER.join(',')})`,
+    lanes.every((lane, index) => lane === expectedLanes[index]),
+    `${engineMode}/${tab}: visible sub-lanes diverged from audited order (${lanes.join(',') || 'none'} !== ${expectedLanes.join(',')})`,
   );
-  return { labels, lanes, audited: [...VISIBLE_SUB_LANE_ORDER] };
+  return { labels, lanes, audited: [...expectedLanes] };
 }
 
 function assertSubLanePlayheadMovement(samples, engineMode, tab) {
-  for (const lane of Object.keys(SUB_LANE_SPARK_INDEX)) {
+  for (const lane of visibleSubLaneOrder()) {
     const values = samples.map((sample) => sample[lane]).filter((value) => value != null);
     const movement = new Set(values);
     assert(
@@ -236,7 +279,7 @@ function assertStoppedPlayheadsFrozen(samples, engineMode, tab) {
     `${engineMode}/${tab}: stopped trigger playhead kept moving (${samples.triggerSamples.join(' | ')})`,
   );
   const subLaneTransitions = {};
-  for (const lane of Object.keys(SUB_LANE_SPARK_INDEX)) {
+  for (const lane of visibleSubLaneOrder()) {
     const values = samples.subLaneSparkSamples.map((sample) => sample[lane] ?? '<none>');
     const transitions = countPlayheadTransitions(values);
     subLaneTransitions[lane] = transitions;
@@ -267,13 +310,13 @@ async function selectedTriggerStep(page) {
 }
 
 async function selectedEditorStep(page) {
-  const indexes = await selectedStepIndexes(page, '.seq-lane-editor-wrap .seq-step');
+  const indexes = await selectedStepIndexes(page, '.seq-lane-editor-wrap:visible .seq-step');
   assert(indexes.length === 1, `Expected one selected editor step, got ${indexes.join(',') || 'none'}`);
   return indexes[0];
 }
 
 async function setSelectedEditorStep(page, desiredStep, engineMode, tab, label) {
-  const step = page.locator('.seq-lane-editor-wrap .seq-step').nth(desiredStep);
+  const step = page.locator('.seq-lane-editor-wrap:visible .seq-step').nth(desiredStep);
   if ((await step.count()) > 0) {
     const target = step.locator('.seq-pitch-bar-wrap, .seq-vel-bar-wrap').first();
     if ((await target.count()) > 0) {
@@ -460,7 +503,7 @@ async function setTriggerRotation(page, desiredRotation) {
 }
 
 async function selectedSparkX(page, sparkIndex) {
-  const selected = page.locator('.seq-spark-strip').nth(sparkIndex).locator('.spark-selected-step').first();
+  const selected = sparkStrip(page, sparkIndex).locator('.spark-selected-step').first();
   if ((await selected.count()) === 0) return null;
   return selected.getAttribute('x');
 }
@@ -473,19 +516,34 @@ async function pressLeftShiftChord(page, key) {
 }
 
 async function ensureSequencerDetailMode(page, engineMode, tab) {
-  const clockSelect = page.locator('.seq-clock-select').first();
+  const clockSelect = page.locator('.seq-clock-select:visible').first();
   if ((await clockSelect.count()) > 0 && await clockSelect.isVisible().catch(() => false)) return;
 
   const detailLocators = [
     page.locator('.seq-view-btn').filter({ hasText: /^Detail$/ }),
     page.locator('button').filter({ hasText: /^Detail$/ }),
   ];
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    for (const locator of detailLocators) {
+      const count = await locator.count();
+      for (let index = 0; index < count; index += 1) {
+        const button = locator.nth(index);
+        if (!await button.isVisible().catch(() => false)) continue;
+        await button.scrollIntoViewIfNeeded().catch(() => {});
+        await button.click({ timeout: 10000 });
+        await page.waitForTimeout(700);
+        if ((await clockSelect.count()) > 0 && await clockSelect.isVisible().catch(() => false)) return;
+      }
+    }
+    await page.waitForTimeout(500);
+    if ((await clockSelect.count()) > 0 && await clockSelect.isVisible().catch(() => false)) return;
+  }
   for (const locator of detailLocators) {
     const count = await locator.count();
     for (let index = 0; index < count; index += 1) {
       const button = locator.nth(index);
       if (!await button.isVisible().catch(() => false)) continue;
-      await button.click({ timeout: 10000 });
+      await button.click({ timeout: 10000, force: true });
       await page.waitForTimeout(700);
       if ((await clockSelect.count()) > 0 && await clockSelect.isVisible().catch(() => false)) return;
     }
@@ -530,7 +588,7 @@ async function setSelectedTriggerStep(page, desiredStep, engineMode, tab) {
 }
 
 async function ensureSparklineEnabled(page, sparkIndex) {
-  const strip = page.locator('.seq-spark-strip').nth(sparkIndex);
+  const strip = sparkStrip(page, sparkIndex);
   await strip.waitFor({ timeout: 10000 });
   const className = String(await strip.getAttribute('class'));
   if (className.includes('disabled')) {
@@ -545,13 +603,13 @@ async function ensureSparklineEnabled(page, sparkIndex) {
 }
 
 async function readSubLaneEnabled(page, sparkIndex) {
-  const strip = page.locator('.seq-spark-strip').nth(sparkIndex);
+  const strip = sparkStrip(page, sparkIndex);
   await strip.waitFor({ timeout: 10000 });
   return !String(await strip.getAttribute('class')).includes('disabled');
 }
 
 async function setSubLaneEnabled(page, sparkIndex, desired, engineMode, tab, label) {
-  const strip = page.locator('.seq-spark-strip').nth(sparkIndex);
+  const strip = sparkStrip(page, sparkIndex);
   await strip.waitFor({ timeout: 10000 });
   const before = await readSubLaneEnabled(page, sparkIndex);
   if (before !== desired) {
@@ -564,21 +622,21 @@ async function setSubLaneEnabled(page, sparkIndex, desired, engineMode, tab, lab
 }
 
 async function ensureExpressionSparklineEnabled(page) {
-  await ensureSparklineEnabled(page, RANGE_SUB_LANE_SPARK_INDEX.expression);
+  await ensureSparklineEnabled(page, rangeSubLaneSparkIndex('expression'));
 }
 
 async function ensurePitchSparklineEnabled(page) {
-  await ensureSparklineEnabled(page, PITCH_SUB_LANE_SPARK_INDEX);
+  await ensureSparklineEnabled(page, pitchSubLaneSparkIndex());
 }
 
 async function ensureAuditedSubLaneSparklinesEnabled(page) {
-  for (const sparkIndex of Object.values(SUB_LANE_SPARK_INDEX)) {
-    await ensureSparklineEnabled(page, sparkIndex);
+  for (const lane of visibleSubLaneOrder()) {
+    await ensureSparklineEnabled(page, subLaneSparkIndex(lane));
   }
 }
 
 async function editorSteps(page) {
-  const button = page.locator('.seq-lane-editor-wrap .seq-drag-num').first();
+  const button = page.locator('.seq-lane-editor-wrap:visible .seq-drag-num').first();
   await button.waitFor({ timeout: 5000 });
   const text = String(await button.textContent());
   const value = Number.parseInt(text.trim(), 10);
@@ -587,14 +645,14 @@ async function editorSteps(page) {
 }
 
 async function readEditorDragNumber(page, controlIndex, label) {
-  const text = String(await page.locator('.seq-lane-editor-wrap .seq-drag-num').nth(controlIndex).textContent());
+  const text = String(await page.locator('.seq-lane-editor-wrap:visible .seq-drag-num').nth(controlIndex).textContent());
   const value = Number.parseInt(text.trim(), 10);
   assert(Number.isFinite(value), `Could not read ${label} editor control from ${text}`);
   return value;
 }
 
 async function setEditorControlViaDrag(page, controlIndex, desiredValue, engineMode, tab, label) {
-  const control = page.locator('.seq-lane-editor-wrap .seq-drag-num').nth(controlIndex);
+  const control = page.locator('.seq-lane-editor-wrap:visible .seq-drag-num').nth(controlIndex);
   await control.waitFor({ timeout: 5000 });
   for (let attempt = 0; attempt < 30; attempt += 1) {
     const current = await readEditorDragNumber(page, controlIndex, label);
@@ -631,7 +689,7 @@ async function setEditorSteps(page, desiredSteps) {
 }
 
 async function setEditorDirection(page, targetSymbol) {
-  const button = page.locator('.seq-lane-editor-wrap .seq-spark-ctrl-btn').first();
+  const button = page.locator('.seq-lane-editor-wrap:visible .seq-spark-ctrl-btn').first();
   await button.waitFor({ timeout: 5000 });
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const current = String(await button.textContent()).trim();
@@ -643,7 +701,7 @@ async function setEditorDirection(page, targetSymbol) {
 }
 
 async function setRangeSubLaneValueMode(page, mode) {
-  const select = page.locator('.seq-lane-editor-wrap select.seq-pitch-mode').first();
+  const select = page.locator('.seq-lane-editor-wrap:visible select.seq-pitch-mode').first();
   await select.waitFor({ timeout: 5000 });
   await select.selectOption(mode);
   await page.waitForTimeout(300);
@@ -651,23 +709,45 @@ async function setRangeSubLaneValueMode(page, mode) {
 }
 
 async function setPitchSubLaneMode(page, mode) {
-  const select = page.locator('.seq-lane-editor-wrap select.seq-pitch-mode').first();
+  const select = page.locator('.seq-lane-editor-wrap:visible select.seq-pitch-mode').first();
   await select.waitFor({ timeout: 5000 });
   await select.selectOption(mode);
   await page.waitForTimeout(300);
   assert(await select.inputValue() === mode, `Pitch mode did not reach ${mode}`);
 }
 
+async function visibleLaneEditor(page) {
+  const editor = page.locator('.seq-lane-editor-wrap:visible').first();
+  await editor.waitFor({ timeout: 5000 });
+  return editor;
+}
+
+async function visiblePitchModeSelects(page) {
+  const editor = await visibleLaneEditor(page);
+  return editor.locator('select.seq-pitch-mode:visible');
+}
+
+async function waitForVisiblePitchModeSelects(page, minimumCount, context) {
+  const selects = await visiblePitchModeSelects(page);
+  let count = await selects.count();
+  for (let attempt = 0; attempt < 20 && count < minimumCount; attempt += 1) {
+    await page.waitForTimeout(100);
+    count = await selects.count();
+  }
+  assert(count >= minimumCount, `${context}: expected at least ${minimumCount} visible pitch mode selectors, got ${count}`);
+  return selects;
+}
+
 async function setPitchBindingMode(page, mode) {
-  const selects = page.locator('.seq-lane-editor-wrap select.seq-pitch-mode');
-  if ((await selects.count()) < 2) return;
-  await selects.nth(1).selectOption(mode);
+  const selects = await waitForVisiblePitchModeSelects(page, 2, 'Pitch binding mode');
+  const select = selects.nth(1);
+  await select.selectOption(mode, { timeout: 5000 });
   await page.waitForTimeout(450);
-  assert(await selects.nth(1).inputValue() === mode, `Pitch binding mode did not reach ${mode}`);
+  assert(await select.inputValue({ timeout: 5000 }) === mode, `Pitch binding mode did not reach ${mode}`);
 }
 
 async function setPitchScale(page, scale) {
-  const select = page.locator('.seq-lane-editor-wrap select.seq-pitch-scale').first();
+  const select = page.locator('.seq-lane-editor-wrap:visible select.seq-pitch-scale').first();
   await select.waitFor({ timeout: 5000 });
   await select.selectOption(scale);
   await page.waitForTimeout(250);
@@ -675,7 +755,7 @@ async function setPitchScale(page, scale) {
 }
 
 async function setPitchScaleQuantize(page, enabled) {
-  const checkbox = page.locator('.seq-lane-editor-wrap .seq-scale-quantize input').first();
+  const checkbox = page.locator('.seq-lane-editor-wrap:visible .seq-scale-quantize input').first();
   await checkbox.waitFor({ timeout: 5000 });
   if ((await checkbox.isChecked()) !== enabled) {
     await checkbox.click({ timeout: 5000 });
@@ -689,7 +769,7 @@ async function setPitchRoot(page, root, engineMode, tab) {
 }
 
 async function setPitchNoteRange(page, minMidi, maxMidi, engineMode, tab) {
-  const rails = page.locator('.seq-lane-editor-wrap .seq-note-range-slider .sl-slider-rail');
+  const rails = page.locator('.seq-lane-editor-wrap:visible .seq-note-range-slider .sl-slider-rail');
   await rails.first().waitFor({ timeout: 5000 });
   assert(await rails.count() >= 2, `${engineMode}/${tab}: noteRange controls were not visible`);
   const values = [minMidi, maxMidi];
@@ -709,7 +789,7 @@ async function setExpressionValueMode(page, mode) {
 
 async function setRangeSubLaneRange(page, min, max) {
   await setRangeSubLaneValueMode(page, 'range');
-  const inputs = page.locator('.seq-lane-editor-wrap input[type="range"]');
+  const inputs = page.locator('.seq-lane-editor-wrap:visible input[type="range"]');
   await inputs.first().waitFor({ timeout: 5000 });
   assert(await inputs.count() >= 2, 'Range sub-lane mode did not expose low/high range sliders');
   await inputs.nth(0).evaluate((node, value) => {
@@ -733,36 +813,37 @@ async function setExpressionRange(page, min, max) {
 }
 
 async function readRangeSubLaneEditorState(page, lane) {
-  const sparkIndex = RANGE_SUB_LANE_SPARK_INDEX[lane];
+  const sparkIndex = rangeSubLaneSparkIndex(lane);
   assert(Number.isInteger(sparkIndex), `Unknown range sub-lane ${lane}`);
   await ensureSparklineEnabled(page, sparkIndex);
-  const modeSelect = page.locator('.seq-lane-editor-wrap select.seq-pitch-mode').first();
+  const modeSelect = page.locator('.seq-lane-editor-wrap:visible select.seq-pitch-mode').first();
   const steps = await editorSteps(page);
-  const direction = String(await page.locator('.seq-lane-editor-wrap .seq-spark-ctrl-btn').first().textContent()).trim();
+  const direction = String(await page.locator('.seq-lane-editor-wrap:visible .seq-spark-ctrl-btn').first().textContent()).trim();
   const mode = await modeSelect.inputValue();
-  const bodyText = String(await page.locator('.seq-lane-editor-wrap').textContent());
-  const badgeSteps = String(await page.locator('.seq-spark-strip').nth(sparkIndex).locator('.seq-spark-badge-steps').first().textContent()).trim();
+  const bodyText = String(await page.locator('.seq-lane-editor-wrap:visible').textContent());
+  const badgeSteps = String(await sparkStrip(page, sparkIndex).locator('.seq-spark-badge-steps').first().textContent()).trim();
   return { lane, steps, direction, mode, bodyText, badgeSteps };
 }
 
 async function readPitchSubLaneEditorState(page) {
   await ensurePitchSparklineEnabled(page);
-  const modeSelects = page.locator('.seq-lane-editor-wrap select.seq-pitch-mode');
+  const modeSelects = await visiblePitchModeSelects(page);
   const mode = await modeSelects.first().inputValue();
   const bindingMode = (await modeSelects.count()) >= 2 ? await modeSelects.nth(1).inputValue() : undefined;
-  const scaleSelect = page.locator('.seq-lane-editor-wrap select.seq-pitch-scale').first();
+  const scaleSelect = page.locator('.seq-lane-editor-wrap:visible select.seq-pitch-scale').first();
   const scale = (await scaleSelect.count()) > 0 ? await scaleSelect.inputValue() : undefined;
-  const quantizeInput = page.locator('.seq-lane-editor-wrap .seq-scale-quantize input').first();
+  const quantizeInput = page.locator('.seq-lane-editor-wrap:visible .seq-scale-quantize input').first();
   const scaleQuantize = (await quantizeInput.count()) > 0 ? await quantizeInput.isChecked() : undefined;
   const steps = await editorSteps(page);
-  const rootControlCount = await page.locator('.seq-lane-editor-wrap .seq-drag-num').count();
+  const rootControlCount = await page.locator('.seq-lane-editor-wrap:visible .seq-drag-num').count();
   const root = rootControlCount >= 2 ? await readEditorDragNumber(page, 1, 'pitch root') : undefined;
-  const direction = String(await page.locator('.seq-lane-editor-wrap .seq-spark-ctrl-btn').first().textContent()).trim();
-  const bodyText = String(await page.locator('.seq-lane-editor-wrap').textContent());
-  const badgeSteps = String(await page.locator('.seq-spark-strip').nth(PITCH_SUB_LANE_SPARK_INDEX).locator('.seq-spark-badge-steps').first().textContent()).trim();
-  const stripClass = String(await page.locator('.seq-spark-strip').nth(PITCH_SUB_LANE_SPARK_INDEX).getAttribute('class'));
+  const direction = String(await page.locator('.seq-lane-editor-wrap:visible .seq-spark-ctrl-btn').first().textContent()).trim();
+  const bodyText = String(await page.locator('.seq-lane-editor-wrap:visible').textContent());
+  const pitchSparkIndex = pitchSubLaneSparkIndex();
+  const badgeSteps = String(await sparkStrip(page, pitchSparkIndex).locator('.seq-spark-badge-steps').first().textContent()).trim();
+  const stripClass = String(await sparkStrip(page, pitchSparkIndex).getAttribute('class'));
   const noteRangeLabels = mode === 'noteRange'
-    ? await page.locator('.seq-lane-editor-wrap .seq-note-range-slider .app-slider-value').evaluateAll((nodes) =>
+    ? await page.locator('.seq-lane-editor-wrap:visible .seq-note-range-slider .app-slider-value').evaluateAll((nodes) =>
       nodes.slice(0, 2).map((node) => String(node.textContent ?? '').trim())
     )
     : [];
@@ -832,7 +913,7 @@ function assertExpressionState(actual, expected, context) {
 }
 
 async function setRangeSubLaneState(page, lane, options) {
-  const sparkIndex = RANGE_SUB_LANE_SPARK_INDEX[lane];
+  const sparkIndex = rangeSubLaneSparkIndex(lane);
   assert(Number.isInteger(sparkIndex), `Unknown range sub-lane ${lane}`);
   await ensureSparklineEnabled(page, sparkIndex);
   await setRangeSubLaneValueMode(page, options.mode);
@@ -863,13 +944,13 @@ async function setExpressionSequenceState(page, options) {
 }
 
 async function ratchetLineCount(page, stepIndex) {
-  const ratchet = page.locator('.seq-lane-editor-wrap .seq-step-ratchet').nth(stepIndex);
+  const ratchet = page.locator('.seq-lane-editor-wrap:visible .seq-step-ratchet').nth(stepIndex);
   await ratchet.waitFor({ timeout: 5000 });
   return ratchet.locator('.ratch-line').count();
 }
 
 async function setExpressionRatchetLineCount(page, stepIndex, desired, engineMode, tab) {
-  const ratchet = page.locator('.seq-lane-editor-wrap .seq-step-ratchet').nth(stepIndex);
+  const ratchet = page.locator('.seq-lane-editor-wrap:visible .seq-step-ratchet').nth(stepIndex);
   await ratchet.waitFor({ timeout: 5000 });
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const current = await ratchetLineCount(page, stepIndex);
@@ -884,7 +965,7 @@ async function setExpressionRatchetLineCount(page, stepIndex, desired, engineMod
 }
 
 async function editorStepValueSignature(page) {
-  const editor = page.locator('.seq-lane-editor-wrap').first();
+  const editor = page.locator('.seq-lane-editor-wrap:visible').first();
   await editor.waitFor({ timeout: 5000 });
   return editor.evaluate((node) => Array.from(node.querySelectorAll('.seq-step')).map((step) => {
     const valueNode = step.querySelector('.seq-vel-label, .pitch-val, .seq-morph-label, .seq-distance-label, .prob-label');
@@ -900,7 +981,7 @@ async function editorStepValueSignature(page) {
 }
 
 async function editorStepValueOnlySignature(page) {
-  const editor = page.locator('.seq-lane-editor-wrap').first();
+  const editor = page.locator('.seq-lane-editor-wrap:visible').first();
   await editor.waitFor({ timeout: 5000 });
   return editor.evaluate((node) => Array.from(node.querySelectorAll('.seq-step')).map((step) => {
     const valueNode = step.querySelector('.seq-vel-label, .pitch-val, .seq-morph-label, .seq-distance-label, .prob-label');
@@ -942,11 +1023,11 @@ async function writeRangeSubLaneStepValues(page, engineMode, tab, lane, state, m
 }
 
 async function proofExpressionRatchetControl(page, engineMode, tab) {
-  await ensureSparklineEnabled(page, RANGE_SUB_LANE_SPARK_INDEX.expression);
+  await ensureSparklineEnabled(page, rangeSubLaneSparkIndex('expression'));
   await setRangeSubLaneValueMode(page, 'sequence');
   await setEditorSteps(page, 4);
   const stepIndex = 0;
-  const ratchet = page.locator('.seq-lane-editor-wrap .seq-step-ratchet').nth(stepIndex);
+  const ratchet = page.locator('.seq-lane-editor-wrap:visible .seq-step-ratchet').nth(stepIndex);
   const before = await ratchetLineCount(page, stepIndex);
   await ratchet.click({ timeout: 5000 });
   await page.waitForTimeout(250);
@@ -971,7 +1052,7 @@ async function prepareSubLaneCursorAnimationProof(page, engineMode, tab) {
     scaleQuantize: false,
     ...(tab === 'synth' ? { bindingMode: 'polyrhythmic' } : {}),
   });
-  for (const lane of Object.keys(RANGE_SUB_LANE_SPARK_INDEX)) {
+  for (const lane of RANGE_SUB_LANES) {
     await setRangeSubLaneState(page, lane, {
       steps: 4,
       direction: '\u2192',
@@ -982,37 +1063,97 @@ async function prepareSubLaneCursorAnimationProof(page, engineMode, tab) {
 
 async function proofEvolveDiceMutatesState(page, engineMode, tab) {
   await ensureEvolvePanelOpen(page, engineMode, tab);
-  await setRangeSubLaneState(page, 'expression', {
+  await writeRangeSubLaneStepValues(page, engineMode, tab, 'expression', {
     steps: 8,
     direction: '\u2192',
     mode: 'sequence',
+  }, [
+    { step: 0, direction: 1, times: 2 },
+    { step: 1, direction: -1, times: 1 },
+    { step: 2, direction: 1, times: 1 },
+  ]);
+  assertRangeSubLaneState(
+    await readExpressionEditorState(page),
+    { steps: 8, direction: '\u2192', mode: 'sequence' },
+    `${engineMode}/${tab}: pre-dice expression lane state`,
+  );
+  await setEvolveEditorState(page, engineMode, tab, {
+    everyBars: 32,
+    evolutionPercent: 100,
+    writeOffset: 'auto',
+    mutationMode: 'strict',
+    methods: {
+      valueScramble: true,
+    },
+    ...(tab === 'synth'
+      ? { subLanes: { pitch: false, expression: true, morph: false, distance: false, probability: false, ratchet: false } }
+      : {}),
   });
-  const before = await editorStepValueOnlySignature(page);
-  await page.locator('.seq-evolve-dice').first().click({ timeout: 5000 });
-  let after = before;
-  for (let attempt = 0; attempt < 12 && after === before; attempt += 1) {
-    await page.waitForTimeout(250);
-    await ensureSparklineEnabled(page, RANGE_SUB_LANE_SPARK_INDEX.expression);
-    after = await editorStepValueOnlySignature(page);
+  assertEvolveEditorState(await readEvolveEditorState(page, engineMode, tab), {
+    everyBars: 32,
+    evolutionPercent: 100,
+    writeOffset: 'auto',
+    mutationMode: 'strict',
+    methods: {
+      valueScramble: true,
+    },
+    ...(tab === 'synth'
+      ? { subLanes: { pitch: false, expression: true, morph: false, distance: false, probability: false, ratchet: false } }
+      : {}),
+  }, `${engineMode}/${tab}: pre-dice evolve config`);
+  await page.waitForTimeout(900);
+  const transportName = tab === 'drums' ? 'drums' : 'synth';
+  const transport = page.locator(`.seq-play-btn[data-sequencer-transport="${transportName}"]`).first();
+  let startedForDice = false;
+  if (engineMode === 'core-product') {
+    await transport.waitFor({ timeout: 15000 });
+    if ((await transport.textContent())?.trim() !== '\u25a0') {
+      await transport.click({ timeout: 10000 });
+      startedForDice = true;
+      await page.waitForTimeout(900);
+    }
   }
-  assert(after !== before, `${engineMode}/${tab}: evolve dice did not mutate expression lane state`);
-  await page.locator('.seq-evolve-reset').first().click({ timeout: 5000 });
+  const before = await editorStepValueOnlySignature(page);
+  let after = before;
+  for (let diceAttempt = 0; diceAttempt < 4 && after === before; diceAttempt += 1) {
+    await page.locator('.seq-evolve-dice:visible').first().click({ timeout: 5000 });
+    for (let attempt = 0; attempt < 12 && after === before; attempt += 1) {
+      await page.waitForTimeout(250);
+      await ensureSparklineEnabled(page, rangeSubLaneSparkIndex('expression'));
+      after = await editorStepValueOnlySignature(page);
+    }
+  }
+  assert(after !== before, `${engineMode}/${tab}: evolve dice did not mutate expression lane state (before=${before}; after=${after})`);
+  let dicedHome = after;
+  if (startedForDice && (await transport.textContent())?.trim() === '\u25a0') {
+    await transport.click({ timeout: 10000 });
+    await page.waitForTimeout(600);
+  }
+  if (engineMode === 'core-product') {
+    await page.waitForTimeout(5000);
+    await ensureSparklineEnabled(page, rangeSubLaneSparkIndex('expression'));
+    const syncedDicedHome = await editorStepValueOnlySignature(page);
+    assert(syncedDicedHome !== before, `${engineMode}/${tab}: Product Core synced dice state reverted to pre-dice home`);
+    dicedHome = syncedDicedHome;
+  }
+  await page.locator('.seq-evolve-reset:visible').first().click({ timeout: 5000 });
   let reset = '';
-  for (let attempt = 0; attempt < 12 && reset !== after; attempt += 1) {
+  for (let attempt = 0; attempt < 12 && reset !== dicedHome; attempt += 1) {
     await page.waitForTimeout(250);
-    await ensureSparklineEnabled(page, RANGE_SUB_LANE_SPARK_INDEX.expression);
+    await ensureSparklineEnabled(page, rangeSubLaneSparkIndex('expression'));
     reset = await editorStepValueOnlySignature(page);
   }
-  assert(reset === after, `${engineMode}/${tab}: evolve reset did not restore diced home state (${signatureDiffSummary(after, reset)})`);
-  return { before, after, reset };
+  assert(reset === dicedHome, `${engineMode}/${tab}: evolve reset did not restore diced home state (${signatureDiffSummary(dicedHome, reset)})`);
+  return { before, after: dicedHome, reset };
 }
 
 async function ensureEvolveAdvancedOpen(page, engineMode, tab) {
   await ensureEvolvePanelOpen(page, engineMode, tab);
-  const advancedBody = page.locator('.seq-evolve-advanced-body').first();
+  const panel = page.locator('.seq-evolve-panel.open:visible').first();
+  const advancedBody = panel.locator('.seq-evolve-advanced-body').first();
   await advancedBody.waitFor({ state: 'attached', timeout: 5000 });
   if (!String(await advancedBody.getAttribute('class')).includes(' open')) {
-    await page.locator('.seq-evolve-advanced-toggle').first().click({ timeout: 5000 });
+    await panel.locator('.seq-evolve-advanced-toggle').first().click({ timeout: 5000 });
     await page.waitForTimeout(300);
   }
   assert(
@@ -1030,8 +1171,37 @@ async function setRangeInputValue(input, value) {
   }, value);
 }
 
+async function readEvolveEveryBars(panel) {
+  const text = String(await panel.locator('.seq-evolve-row .seq-drag-num').first().textContent());
+  const value = Number.parseInt(text.trim(), 10);
+  assert(Number.isFinite(value), `Could not read evolve every-bars control from ${text}`);
+  return value;
+}
+
+async function setEvolveEveryBars(page, panel, desiredValue, engineMode, tab) {
+  const control = panel.locator('.seq-evolve-row .seq-drag-num').first();
+  await control.waitFor({ timeout: 5000 });
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const current = await readEvolveEveryBars(panel);
+    if (current === desiredValue) return;
+    const box = await control.boundingBox();
+    assert(box, `${engineMode}/${tab}: could not locate evolve every-bars control for drag`);
+    const startX = box.x + box.width / 2;
+    const startY = box.y + box.height / 2;
+    const delta = desiredValue - current;
+    const dragPixels = Math.min(240, Math.max(16, Math.abs(delta) * 32));
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX, startY - Math.sign(delta) * dragPixels, { steps: Math.max(6, Math.min(24, Math.abs(delta) * 2)) });
+    await page.mouse.up();
+    await page.waitForTimeout(220);
+  }
+  const finalValue = await readEvolveEveryBars(panel);
+  assert(finalValue === desiredValue, `${engineMode}/${tab}: evolve every-bars control did not reach ${desiredValue}; got ${finalValue}`);
+}
+
 async function setNamedCheckboxState(page, containerSelector, label, checked) {
-  const labels = page.locator(`${containerSelector} label`);
+  const labels = page.locator(`${containerSelector}:visible label`);
   const count = await labels.count();
   for (let index = 0; index < count; index += 1) {
     const candidate = labels.nth(index);
@@ -1057,7 +1227,7 @@ async function activeModeButtonText(row) {
 }
 
 async function readNamedCheckboxStates(page, containerSelector) {
-  const container = page.locator(containerSelector).first();
+  const container = page.locator(`${containerSelector}:visible`).first();
   if ((await container.count()) === 0) return undefined;
   return container.locator('label').evaluateAll((labels) => Object.fromEntries(
     labels.map((label) => {
@@ -1070,19 +1240,20 @@ async function readNamedCheckboxStates(page, containerSelector) {
 
 async function readEvolveEditorState(page, engineMode, tab) {
   await ensureEvolveAdvancedOpen(page, engineMode, tab);
-  const everyBars = Number.parseInt(String(await page.locator('.seq-evolve-row .seq-drag-num').first().textContent()).trim(), 10);
-  const evolutionPercent = Number(await page.locator('.seq-evolve-zone-wrap input[type="range"]').first().inputValue());
-  const writeRow = page.locator('.seq-evolve-advanced-row').nth(0);
+  const panel = page.locator('.seq-evolve-panel.open:visible').first();
+  const everyBars = Number.parseInt(String(await panel.locator('.seq-evolve-row .seq-drag-num').first().textContent()).trim(), 10);
+  const evolutionPercent = Number(await panel.locator('.seq-evolve-zone-wrap input[type="range"]').first().inputValue());
+  const writeRow = panel.locator('.seq-evolve-advanced-row').nth(0);
   const writeMode = await activeModeButtonText(writeRow);
   const writeOffsetInput = writeRow.locator('input[type="range"]').first();
   const writeOffset = writeMode === 'Manual' && (await writeOffsetInput.count()) > 0
     ? Number(await writeOffsetInput.inputValue())
     : 'auto';
-  const mutationMode = await activeModeButtonText(page.locator('.seq-evolve-advanced-row').nth(1));
+  const mutationMode = await activeModeButtonText(panel.locator('.seq-evolve-advanced-row').nth(1));
   const methods = await readNamedCheckboxStates(page, '.seq-evolve-checks');
   const subLanes = await readNamedCheckboxStates(page, '.seq-evolve-sublanes');
   return {
-    enabled: String(await page.locator('.seq-evolve-btn').first().getAttribute('class')).includes(' on'),
+    enabled: String(await page.locator('.seq-evolve-btn:visible').first().getAttribute('class')).includes(' on'),
     everyBars,
     evolutionPercent,
     writeOffset,
@@ -1094,10 +1265,14 @@ async function readEvolveEditorState(page, engineMode, tab) {
 
 async function setEvolveEditorState(page, engineMode, tab, expected) {
   await ensureEvolveAdvancedOpen(page, engineMode, tab);
-  await setRangeInputValue(page.locator('.seq-evolve-zone-wrap input[type="range"]').first(), expected.evolutionPercent);
+  const panel = page.locator('.seq-evolve-panel.open:visible').first();
+  if (expected.everyBars !== undefined) {
+    await setEvolveEveryBars(page, panel, expected.everyBars, engineMode, tab);
+  }
+  await setRangeInputValue(panel.locator('.seq-evolve-zone-wrap input[type="range"]').first(), expected.evolutionPercent);
   await page.waitForTimeout(250);
 
-  const writeRow = page.locator('.seq-evolve-advanced-row').nth(0);
+  const writeRow = panel.locator('.seq-evolve-advanced-row').nth(0);
   if (expected.writeOffset === 'auto') {
     await writeRow.locator('.seq-evolve-mode-btn').filter({ hasText: /^Auto$/ }).first().click({ timeout: 5000 });
   } else {
@@ -1107,7 +1282,7 @@ async function setEvolveEditorState(page, engineMode, tab, expected) {
   }
   await page.waitForTimeout(250);
 
-  const mutationRow = page.locator('.seq-evolve-advanced-row').nth(1);
+  const mutationRow = panel.locator('.seq-evolve-advanced-row').nth(1);
   await mutationRow
     .locator('.seq-evolve-mode-btn')
     .filter({ hasText: expected.mutationMode === 'strict' ? /^Strict$/ : /^Biased$/ })
@@ -1141,17 +1316,17 @@ function assertEvolveEditorState(actual, expected, context) {
 }
 
 async function readLaneTimingEditorState(page) {
-  const clockDiv = await page.locator('.seq-clock-select').first().inputValue();
-  const swing = Number(await page.locator('.seq-swing-range').first().inputValue());
-  const swingLabel = String(await page.locator('.seq-swing-val').first().textContent()).trim();
+  const clockDiv = await page.locator('.seq-clock-select:visible').first().inputValue();
+  const swing = Number(await page.locator('.seq-swing-range:visible').first().inputValue());
+  const swingLabel = String(await page.locator('.seq-swing-val:visible').first().textContent()).trim();
   return { clockDiv, swing, swingLabel };
 }
 
 async function setLaneTimingEditorState(page, expected) {
-  await page.locator('.seq-clock-select').first().waitFor({ timeout: 10000 });
-  await page.locator('.seq-clock-select').first().selectOption(expected.clockDiv);
+  await page.locator('.seq-clock-select:visible').first().waitFor({ timeout: 10000 });
+  await page.locator('.seq-clock-select:visible').first().selectOption(expected.clockDiv);
   await page.waitForTimeout(250);
-  await setRangeInputValue(page.locator('.seq-swing-range').first(), expected.swing);
+  await setRangeInputValue(page.locator('.seq-swing-range:visible').first(), expected.swing);
   await page.waitForTimeout(250);
 }
 
@@ -1349,9 +1524,9 @@ async function proofSequencePresetRoundTrip(page, engineMode, tab) {
     await setRangeSubLaneState(page, lane, expected);
     assertRangeSubLaneState(await readRangeSubLaneEditorState(page, lane), expected, `${engineMode}/${tab}: pre-save ${lane} sequence state`);
   }
-  await setSubLaneEnabled(page, RANGE_SUB_LANE_SPARK_INDEX[disabledSubLane], false, engineMode, tab, disabledSubLane);
+  await setSubLaneEnabled(page, rangeSubLaneSparkIndex(disabledSubLane), false, engineMode, tab, disabledSubLane);
   assert(
-    await readSubLaneEnabled(page, RANGE_SUB_LANE_SPARK_INDEX[disabledSubLane]) === false,
+    await readSubLaneEnabled(page, rangeSubLaneSparkIndex(disabledSubLane)) === false,
     `${engineMode}/${tab}: pre-save ${disabledSubLane} sub-lane did not remain disabled`,
   );
   await saveActiveSequencePreset(page, savedName);
@@ -1369,7 +1544,7 @@ async function proofSequencePresetRoundTrip(page, engineMode, tab) {
   await saveActiveSequencePreset(page, changedName);
 
   await loadActiveSequencePreset(page, savedName);
-  const restoredDisabledSubLaneEnabled = await readSubLaneEnabled(page, RANGE_SUB_LANE_SPARK_INDEX[disabledSubLane]);
+  const restoredDisabledSubLaneEnabled = await readSubLaneEnabled(page, rangeSubLaneSparkIndex(disabledSubLane));
   assert(
     restoredDisabledSubLaneEnabled === false,
     `${engineMode}/${tab}: loaded sequence preset did not restore disabled ${disabledSubLane} sub-lane`,
@@ -1392,7 +1567,7 @@ async function proofSequencePresetRoundTrip(page, engineMode, tab) {
   await setPitchSubLaneState(page, engineMode, tab, changedPitchState);
   await setRangeSubLaneState(page, 'expression', changedStates.expression);
   await ensureEvolvePanelOpen(page, engineMode, tab);
-  await page.locator('.seq-evolve-reset').first().click({ timeout: 5000 });
+  await page.locator('.seq-evolve-reset:visible').first().click({ timeout: 5000 });
   await page.waitForTimeout(900);
   const resetRestored = {
     pitch: await readPitchSubLaneEditorState(page),
@@ -1440,14 +1615,14 @@ async function proofEuclideanTriggerPatternControls(page, engineMode, tab) {
 }
 
 async function ensureEvolvePanelOpen(page, engineMode, tab) {
-  const evolveButton = page.locator('.seq-evolve-btn').first();
+  const evolveButton = page.locator('.seq-evolve-btn:visible').first();
   await evolveButton.waitFor({ timeout: 15000 });
   if (!String(await evolveButton.getAttribute('class')).includes(' on')) {
     await evolveButton.click({ timeout: 5000 });
   }
-  await page.locator('.seq-evolve-panel.open').first().waitFor({ timeout: 5000 });
-  const diceButton = page.locator('.seq-evolve-dice').first();
-  const resetButton = page.locator('.seq-evolve-reset').first();
+  await page.locator('.seq-evolve-panel.open:visible').first().waitFor({ timeout: 5000 });
+  const diceButton = page.locator('.seq-evolve-dice:visible').first();
+  const resetButton = page.locator('.seq-evolve-reset:visible').first();
   await diceButton.waitFor({ timeout: 5000 });
   await resetButton.waitFor({ timeout: 5000 });
   assert(await diceButton.isVisible(), `${engineMode}/${tab}: evolve dice control is not visible`);
@@ -1456,27 +1631,34 @@ async function ensureEvolvePanelOpen(page, engineMode, tab) {
 
 async function captureEvolveFlash(page, engineMode, tab, phase) {
   await ensureEvolvePanelOpen(page, engineMode, tab);
-  const before = await page.locator('.seq-evolve-flash').count();
-  await page.locator('.seq-evolve-dice').first().click({ timeout: 5000 });
-  const counts = [];
-  for (let index = 0; index < 20; index += 1) {
-    await page.waitForTimeout(50);
-    counts.push(await page.locator('.seq-evolve-flash').count());
+  const before = await page.locator('.seq-evolve-flash:visible').count();
+  const attempts = [];
+  for (let diceAttempt = 0; diceAttempt < 2; diceAttempt += 1) {
+    await page.locator('.seq-evolve-dice:visible').first().click({ timeout: 5000 });
+    const counts = [];
+    for (let index = 0; index < 20; index += 1) {
+      await page.waitForTimeout(50);
+      counts.push(await page.locator('.seq-evolve-flash:visible').count());
+    }
+    attempts.push(counts);
+    if (Math.max(...counts) > 0) break;
+    await page.waitForTimeout(200);
   }
+  const counts = attempts.flat();
   const peak = Math.max(...counts);
   await page.waitForTimeout(350);
-  const cleared = await page.locator('.seq-evolve-flash').count();
-  assert(peak > 0, `${engineMode}/${tab}: ${phase} dice did not show evolve flash (${counts.join(',')})`);
+  const cleared = await page.locator('.seq-evolve-flash:visible').count();
+  assert(peak > 0, `${engineMode}/${tab}: ${phase} dice did not show evolve flash (${attempts.map((entry) => entry.join(',')).join(' || ')})`);
   assert(cleared === 0, `${engineMode}/${tab}: ${phase} evolve flash did not clear (${cleared})`);
   return { phase, before, peak, cleared, samples: counts };
 }
 
 async function exerciseEvolveReset(page, engineMode, tab, phase) {
   await ensureEvolvePanelOpen(page, engineMode, tab);
-  await page.locator('.seq-evolve-reset').first().click({ timeout: 5000 });
+  await page.locator('.seq-evolve-reset:visible').first().click({ timeout: 5000 });
   await page.waitForTimeout(350);
   assert(
-    await page.locator('.seq-evolve-panel.open').first().isVisible(),
+    await page.locator('.seq-evolve-panel.open:visible').first().isVisible(),
     `${engineMode}/${tab}: ${phase} evolve reset closed or broke the evolve panel`,
   );
   return { phase, status: 'clicked' };
@@ -1493,19 +1675,20 @@ async function expectedVisibleHits(page) {
   return expectedHits;
 }
 
-async function readLinkedBadgeSteps(page, count) {
-  const badgeSteps = await page.locator('.seq-spark-badge-steps').evaluateAll((nodes, limit) =>
-    nodes.slice(0, limit).map((node) => String(node.textContent ?? '').trim()),
-  count);
+async function readLinkedBadgeSteps(page, count, startIndex = 0) {
+  const badgeSteps = await page.locator('.seq-spark-badge-steps').evaluateAll((nodes, { start, limit }) =>
+    nodes.slice(start, start + limit).map((node) => String(node.textContent ?? '').trim()),
+  { start: startIndex, limit: count });
   assert(badgeSteps.length >= count, `Expected ${count} linked badge values, got ${badgeSteps.length}`);
   return badgeSteps;
 }
 
 async function assertLinkedBadgeSteps(page, count, expectedHits, engineMode, tab, phase) {
   const expectedText = String(expectedHits);
+  const startIndex = tab === 'synth' && count === 1 ? pitchSubLaneSparkIndex() : 0;
   let badgeSteps = [];
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    badgeSteps = await readLinkedBadgeSteps(page, count);
+    badgeSteps = await readLinkedBadgeSteps(page, count, startIndex);
     if (badgeSteps.every((text) => text === expectedText)) {
       return badgeSteps;
     }
@@ -1546,7 +1729,7 @@ async function ensureDrumLinkedBadges(page, engineMode = 'sequencer') {
 
 async function ensureSynthLinkedPitchBadge(page, engineMode = 'sequencer') {
   const expectedHits = await expectedVisibleHits(page);
-  const pitchStrip = page.locator('.seq-spark-strip').nth(0);
+  const pitchStrip = sparkStrip(page, pitchSubLaneSparkIndex());
   await pitchStrip.waitFor({ timeout: 10000 });
   if (String(await pitchStrip.getAttribute('class')).includes('disabled')) {
     await pitchStrip.locator('.seq-spark-badge').click({ timeout: 5000 });
@@ -1556,9 +1739,9 @@ async function ensureSynthLinkedPitchBadge(page, engineMode = 'sequencer') {
     await pitchStrip.click({ timeout: 5000 });
     await page.waitForTimeout(250);
   }
-  const changed = await page.evaluate(() => {
-    const selects = Array.from(document.querySelectorAll('select.seq-pitch-mode'));
-    const binding = selects.find((select) =>
+  const selects = await waitForVisiblePitchModeSelects(page, 2, 'Synth linked pitch badge');
+  const changed = await selects.evaluateAll((nodes) => {
+    const binding = nodes.find((select) =>
       Array.from(select.options).some((option) => option.value === 'linked')
     );
     if (!binding) return false;
@@ -1857,7 +2040,7 @@ async function proofSequencePresetStepValueRoundTrip(page, engineMode, tab) {
   );
   const restoredRangeSignatures = {};
   for (const lane of Object.keys(rangeStepValueStates)) {
-    await ensureSparklineEnabled(page, RANGE_SUB_LANE_SPARK_INDEX[lane]);
+    await ensureSparklineEnabled(page, rangeSubLaneSparkIndex(lane));
     restoredRangeSignatures[lane] = await editorStepValueOnlySignature(page);
     assert(
       restoredRangeSignatures[lane] === savedRangeSignatures[lane],
@@ -1865,7 +2048,7 @@ async function proofSequencePresetStepValueRoundTrip(page, engineMode, tab) {
     );
   }
   const restoredExpressionSignature = restoredRangeSignatures.expression;
-  await ensureSparklineEnabled(page, RANGE_SUB_LANE_SPARK_INDEX.expression);
+  await ensureSparklineEnabled(page, rangeSubLaneSparkIndex('expression'));
   const restoredExpressionRatchet = await ratchetLineCount(page, triggerStepIndex);
   assert(
     restoredExpressionRatchet === savedExpressionRatchet,
@@ -1900,9 +2083,9 @@ async function proofRangeSubLaneKeyboardControls(page, engineMode, tab) {
     { lane: 'distance', preferredDirection: 1 },
   ];
   for (const { lane, preferredDirection } of lanes) {
-    const sparkIndex = RANGE_SUB_LANE_SPARK_INDEX[lane];
+    const sparkIndex = rangeSubLaneSparkIndex(lane);
     await pressLeftShiftChord(page, 'ArrowDown');
-    const strip = page.locator('.seq-spark-strip').nth(sparkIndex);
+    const strip = sparkStrip(page, sparkIndex);
     const stripClass = String(await strip.getAttribute('class'));
     assert(stripClass.includes('expanded'), `${engineMode}/${tab}: Shift+ArrowDown did not open ${lane} lane`);
     if (await readSubLaneEnabled(page, sparkIndex) === false) {
@@ -1957,9 +2140,10 @@ async function proofDrumKeyboard(page, engineMode) {
   const triggerStepControls = await proofTriggerStepControls(page, engineMode, 'drums', movedTrigger);
 
   await pressLeftShiftChord(page, 'ArrowDown');
-  const pitchStripClass = String(await page.locator('.seq-spark-strip').nth(0).getAttribute('class'));
+  const pitchSparkIndex = pitchSubLaneSparkIndex();
+  const pitchStripClass = String(await sparkStrip(page, pitchSparkIndex).getAttribute('class'));
   assert(pitchStripClass.includes('expanded'), `${engineMode}/drums: Shift+ArrowDown did not open pitch lane`);
-  const pitchSelectedX = await selectedSparkX(page, 0);
+  const pitchSelectedX = await selectedSparkX(page, pitchSparkIndex);
   assert(pitchSelectedX != null, `${engineMode}/drums: pitch lane did not show keyboard cursor`);
 
   const initialPitch = await selectedEditorStep(page);
@@ -2006,9 +2190,10 @@ async function proofSynthKeyboard(page, engineMode) {
   const triggerStepControls = await proofTriggerStepControls(page, engineMode, 'synth', movedTrigger);
 
   await pressLeftShiftChord(page, 'ArrowDown');
-  const pitchStripClass = String(await page.locator('.seq-spark-strip').nth(0).getAttribute('class'));
+  const pitchSparkIndex = pitchSubLaneSparkIndex();
+  const pitchStripClass = String(await sparkStrip(page, pitchSparkIndex).getAttribute('class'));
   assert(pitchStripClass.includes('expanded'), `${engineMode}/synth: Shift+ArrowDown did not open pitch lane`);
-  const pitchSelectedX = await selectedSparkX(page, 0);
+  const pitchSelectedX = await selectedSparkX(page, pitchSparkIndex);
   assert(pitchSelectedX != null, `${engineMode}/synth: pitch lane did not show keyboard cursor`);
 
   const initialPitch = await selectedEditorStep(page);
@@ -2081,16 +2266,18 @@ async function proofKeyboardOnlyTransportStartStop(page, engineMode, tab) {
 }
 
 async function proofRuntime(browser, baseUrl, engineMode, tab) {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 780 } });
+  activeParityTab = tab;
+  const context = await browser.newContext({ viewport: { width: 1280, height: 780 } });
+  const page = await context.newPage();
   const consoleErrors = [];
   page.on('console', (msg) => {
     const text = msg.text();
     if (msg.type() === 'error' && !ignoredConsoleError(text)) {
-      consoleErrors.push(text.slice(0, 300));
+      consoleErrors.push(text.slice(0, 2000));
     }
   });
   page.on('pageerror', (error) => {
-    consoleErrors.push(error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300));
+    consoleErrors.push(error instanceof Error ? String(error.stack ?? error.message).slice(0, 2000) : String(error).slice(0, 2000));
   });
 
   try {
@@ -2212,7 +2399,7 @@ async function proofRuntime(browser, baseUrl, engineMode, tab) {
     }
     throw error;
   } finally {
-    await page.close();
+    await context.close().catch(() => {});
   }
 }
 

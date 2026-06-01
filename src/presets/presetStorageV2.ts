@@ -278,6 +278,7 @@ function extractEuclideanSourceSequenceState(
         linked: metadata.synthLinked,
         evolveConfigs: metadata.synthEvolveConfigs,
         subLaneStates: metadata.synthSubLaneStates,
+        arpConfigs: metadata.synthArpConfigs,
         pitchSettings: metadata.synthPitchSettings,
         pitchBindingModes: metadata.synthPitchBindingModes,
       }

@@ -165,6 +165,9 @@ float selectedDrumVoiceMidi(const kessho::product::internal::LaneState& lane, ui
           0.0f,
           1.0f);
       const uint32_t event_seed = probability_seed;
+      const uint32_t drum_voice = drum_lane
+          ? static_cast<uint32_t>(std::clamp(roundedInt(trigger_midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1))
+          : DRUM_NUM_VOICE_TYPES;
       const uint32_t morph_step_id = subLaneStepForField(
           lane,
           KESSHO_PRODUCT_STEP_FIELD_MORPH,
@@ -217,7 +220,6 @@ float selectedDrumVoiceMidi(const kessho::product::internal::LaneState& lane, ui
       float trigger_distance = resolveModulatedValue(lane.target_source_id, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance_base, event_seed);
       float trigger_expression = resolveModulatedValue(lane.target_source_id, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression_base, event_seed);
       if (lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
-        const uint32_t drum_voice = static_cast<uint32_t>(std::clamp(roundedInt(trigger_midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1));
         const uint32_t drum_target = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + drum_voice;
         trigger_morph = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, trigger_morph, event_seed);
         trigger_distance = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, trigger_distance, event_seed);
@@ -260,6 +262,10 @@ float selectedDrumVoiceMidi(const kessho::product::internal::LaneState& lane, ui
           telemetry.last_error_code = KESSHO_PRODUCT_ERROR_EVENT_QUEUE_FULL;
           return;
         }
+        lane.last_emitted_morph_valid = true;
+        lane.last_emitted_morph = trigger_morph;
+        lane.last_emitted_drum_voice = drum_voice;
+        lane.last_emitted_sample_frame = ratchet_sample;
       }
       lane.emitted_hit_count += 1u;
     }

@@ -22,8 +22,8 @@ int main() {
   static_assert(sizeof(KesshoProductEvent) == 40, "product event ABI size changed");
   static_assert(sizeof(KesshoSequencerEvent) == 60, "sequencer event ABI size changed");
   static_assert(sizeof(KesshoProductTelemetry) == 7728, "product telemetry ABI size changed");
-  static_assert(sizeof(KesshoProductSequencerLaneUiState) == 3008, "sequencer UI lane state ABI size changed");
-  static_assert(sizeof(KesshoProductSequencerUiState) == 96292, "sequencer UI state ABI size changed");
+  static_assert(sizeof(KesshoProductSequencerLaneUiState) == 3024, "sequencer UI lane state ABI size changed");
+  static_assert(sizeof(KesshoProductSequencerUiState) == 96804, "sequencer UI state ABI size changed");
 
   require(offsetof(KesshoProductSnapshotV2, schema_hash) == 4, "snapshot schema hash offset changed");
   require(offsetof(KesshoProductSnapshotV2, sources) == 164, "snapshot sources offset changed");
@@ -88,6 +88,18 @@ int main() {
   require(
       offsetof(KesshoProductSequencerLaneUiState, probability_overrides) == 168,
       "sequencer UI probability override offset changed");
+  require(
+      offsetof(KesshoProductSequencerLaneUiState, swing) == 3008,
+      "sequencer UI lane swing offset changed");
+  require(
+      offsetof(KesshoProductSequencerLaneUiState, midi_note) == 3012,
+      "sequencer UI lane base MIDI offset changed");
+  require(
+      offsetof(KesshoProductSequencerLaneUiState, note_range_min) == 3016,
+      "sequencer UI lane note-range min offset changed");
+  require(
+      offsetof(KesshoProductSequencerLaneUiState, note_range_max) == 3020,
+      "sequencer UI lane note-range max offset changed");
   require(
       offsetof(KesshoProductSequencerUiState, synth_lanes) == 36,
       "sequencer UI synth lanes offset changed");

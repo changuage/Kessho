@@ -93,6 +93,10 @@ typedef struct KesshoProductSequencerLaneUiState {
   float expression_range_maxes[KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS];
   float morph_range_maxes[KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS];
   float distance_range_maxes[KESSHO_PRODUCT_SEQUENCER_UI_STATE_STEPS];
+  float swing;
+  float midi_note;
+  float note_range_min;
+  float note_range_max;
 } KesshoProductSequencerLaneUiState;
 
 typedef struct KesshoProductSequencerUiState {

@@ -56,6 +56,30 @@ type KesshoAudioSessionStatus = {
   mediaServicesResetCount?: number;
   lastRouteChangeReason?: string;
   lastInterruptionType?: string;
+  iosAudioSession?: KesshoIOSAudioSessionTelemetry;
+};
+
+export type KesshoIOSAudioSessionTelemetry = {
+  preferredSampleRate?: number;
+  preferredBufferDurationMs?: number;
+  actualSampleRate?: number;
+  actualBufferDurationMs?: number;
+  actualBufferSizeFrames?: number;
+  routeSummary?: string;
+  silentSwitchPolicy?: string;
+  foregroundCount?: number;
+  backgroundCount?: number;
+  protectedDataUnavailableCount?: number;
+  protectedDataAvailableCount?: number;
+  lastAppLifecycleEvent?: string;
+  routeChangeCount?: number;
+  interruptionBeginCount?: number;
+  interruptionEndCount?: number;
+  mediaServicesResetCount?: number;
+  lastRouteChangeReason?: string;
+  lastInterruptionType?: string;
+  nativeRendererPrep?: Record<string, unknown>;
+  lastNativeProductRendererError?: string;
 };
 
 export type KesshoNativeProductRendererProbeStatus = {
@@ -86,6 +110,7 @@ type KesshoAudioSessionPlugin = {
   startNativeRendererForDiagnostics?: () => Promise<KesshoNativeProductRendererStartStatus>;
   stopNativeRendererForDiagnostics?: () => Promise<KesshoNativeProductRendererStopStatus>;
   probeNativeRendererForDiagnostics?: () => Promise<KesshoNativeProductRendererProbeStatus>;
+  getIOSAudioSessionTelemetry?: () => Promise<KesshoIOSAudioSessionTelemetry>;
   setNowPlaying: (options: KesshoNowPlayingPayload) => Promise<void>;
   setPlaybackState: (options: { isPlaying: boolean }) => Promise<void>;
   addListener: {
@@ -348,6 +373,12 @@ export async function probeNativeProductRendererForDiagnostics(): Promise<Kessho
   const plugin = getCapacitorAudioSessionPlugin();
   if (!plugin?.probeNativeRendererForDiagnostics) return null;
   return plugin.probeNativeRendererForDiagnostics();
+}
+
+export async function getIOSAudioSessionTelemetry(): Promise<KesshoIOSAudioSessionTelemetry | null> {
+  const plugin = getCapacitorAudioSessionPlugin();
+  if (!plugin?.getIOSAudioSessionTelemetry) return null;
+  return plugin.getIOSAudioSessionTelemetry();
 }
 
 export async function syncCapacitorAudioSessionState(payload: KesshoAudioSessionStatePayload): Promise<void> {

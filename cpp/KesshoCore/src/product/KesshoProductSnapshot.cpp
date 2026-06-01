@@ -204,6 +204,9 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   setMasterLimiterCeilingDb(snapshot.master.limiter_ceiling_db);
   rng_seed = snapshot.rng.seed == 0u ? 1u : snapshot.rng.seed;
   rng_state = snapshot.rng.state == 0u ? rng_seed : snapshot.rng.state;
+  sequencer_evolve_rng_stream_seed = 0u;
+  sequencer_evolve_rng_stream_state = 0u;
+  sequencer_evolve_rng_stream_initialized = false;
   evolution_amount = clampFloat(snapshot.evolution.amount, 0.0f, 1.0f);
   evolution_state = snapshot.evolution.state;
   journey_running = snapshot.journey.enabled != 0u;

@@ -29,6 +29,9 @@ export function applyCoreProductSequencerUiPatch(
     case 'synth-sub-lane-enabled':
       callHost<void>('setSynthSubLaneEnabled', patch.states);
       return;
+    case 'drum-pitch-settings':
+      callHost<void>('setDrumPitchSettings', patch.settings);
+      return;
     case 'synth-pitch-settings':
       callHost<void>('setSynthPitchSettings', patch.settings);
       return;
@@ -39,7 +42,7 @@ export function applyCoreProductSequencerUiPatch(
       callHost<void>('setSynthStepOverrides', patch.overrides);
       return;
     case 'preset-home-snapshots':
-      callHost<void>('setSequencerPresetHomeSnapshots');
+      callHost<void>('setSequencerPresetHomeSnapshots', patch.drumPitchSettings, patch.drumPitchStates, patch.synthPitchStates);
       return;
     case 'capture-synth-lane-home':
       callHost<void>('captureSynthEuclidLaneHome', patch.laneIndex, patch.pitchState);

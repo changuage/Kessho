@@ -69,6 +69,8 @@ export interface SliderPrimitiveProps {
   onRangeChange?: (range: SliderPrimitiveRange) => void;
   onModeCycle?: () => void;
   onAnnounce?: () => void;
+  onValueGestureStart?: () => void;
+  headAdornment?: React.ReactNode;
 }
 
 export function SliderPrimitive({
@@ -95,6 +97,8 @@ export function SliderPrimitive({
   onRangeChange,
   onModeCycle,
   onAnnounce,
+  onValueGestureStart,
+  headAdornment,
 }: SliderPrimitiveProps) {
   const [liveValue, setLiveValue] = React.useState(value);
   const [liveRange, setLiveRange] = React.useState<SliderPrimitiveRange>(() => range ?? { min: 0, max: value });
@@ -230,6 +234,7 @@ export function SliderPrimitive({
     };
 
     if (mode === 'single') {
+      onValueGestureStart?.();
       let lastValue = percentFromClientX(initialClientX, rect);
 
       const applySingleValue = (clientX: number) => {
@@ -288,6 +293,7 @@ export function SliderPrimitive({
     }
 
     const startX = startClientX - rect.left;
+    onValueGestureStart?.();
     const target = getRangeTarget(startClientX, rect);
     const currentSpan = Math.max(1e-6, currentRange.max - currentRange.min);
     const indicatorRatio = clamp((indicatorPct - currentRange.min) / currentSpan, 0, 1);
@@ -575,6 +581,7 @@ export function SliderPrimitive({
         )}
         <span className="sl-slider-label">{label}</span>
         <span className="sl-slider-value app-slider-value">{valueText}</span>
+        {headAdornment}
       </div>
 
       <div

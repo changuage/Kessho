@@ -1,5 +1,6 @@
 import Capacitor
 import CoreMIDI
+import Darwin
 import Foundation
 
 private enum KesshoMIDIError: LocalizedError {
@@ -41,12 +42,22 @@ private struct KesshoMIDIEndpointInfo {
     let uniqueID: Int32
     let name: String
     let manufacturer: String?
+    let displayName: String
+    let transport: String
+    let isBluetooth: Bool
+    let isNetworkSession: Bool
+    let persistentIdentity: String
     let isConnected: Bool
 
     var dictionary: JSObject {
         var output: JSObject = [
             "uniqueID": Int(uniqueID),
             "name": name,
+            "displayName": displayName,
+            "transport": transport,
+            "isBluetooth": isBluetooth,
+            "isNetworkSession": isNetworkSession,
+            "persistentIdentity": persistentIdentity,
             "isConnected": isConnected
         ]
         if let manufacturer {
@@ -58,6 +69,8 @@ private struct KesshoMIDIEndpointInfo {
 
 private struct KesshoMIDIMessage {
     let timestamp: TimeInterval
+    let timestampMs: Double
+    let timestampHostTime: UInt64
     let kind: KesshoMIDIMessageKind
     let status: UInt8
     let channel: UInt8?
@@ -70,6 +83,8 @@ private struct KesshoMIDIMessage {
     var dictionary: JSObject {
         var output: JSObject = [
             "timestamp": timestamp,
+            "timestampMs": timestampMs,
+            "timestampHostTime": Double(timestampHostTime),
             "kind": kind.rawValue,
             "status": Int(status),
             "rawBytes": rawBytes.map(Int.init)
@@ -96,10 +111,39 @@ private struct KesshoMIDIMessage {
 private final class KesshoMIDIConnection {
     let uniqueID: Int32
     let name: String
+    let manufacturer: String?
+    let persistentIdentity: String
 
-    init(uniqueID: Int32, name: String) {
+    init(uniqueID: Int32, name: String, manufacturer: String?, persistentIdentity: String) {
         self.uniqueID = uniqueID
         self.name = name
+        self.manufacturer = manufacturer
+        self.persistentIdentity = persistentIdentity
+    }
+}
+
+private struct KesshoMIDIDesiredConnection {
+    let uniqueID: Int32
+    let name: String?
+    let manufacturer: String?
+    let persistentIdentity: String?
+}
+
+private enum KesshoMIDITime {
+    private static let timebase: mach_timebase_info_data_t = {
+        var info = mach_timebase_info_data_t()
+        mach_timebase_info(&info)
+        return info
+    }()
+
+    static func seconds(fromHostTime hostTime: UInt64) -> TimeInterval {
+        if hostTime == 0 { return Date().timeIntervalSince1970 }
+        let nanos = Double(hostTime) * Double(timebase.numer) / Double(timebase.denom)
+        return nanos / 1_000_000_000.0
+    }
+
+    static func milliseconds(fromHostTime hostTime: UInt64) -> Double {
+        seconds(fromHostTime: hostTime) * 1_000
     }
 }
 
@@ -108,17 +152,27 @@ private final class KesshoMIDIRouter {
     private var inputPort = MIDIPortRef()
     private var sourceRefsByID: [Int32: MIDIEndpointRef] = [:]
     private var endpointNamesByID: [Int32: String] = [:]
+    private var endpointManufacturersByID: [Int32: String?] = [:]
+    private var endpointPersistentIdentitiesByID: [Int32: String] = [:]
     private var connectionRefsByID: [Int32: KesshoMIDIConnection] = [:]
+    private var desiredConnectionsByID: [Int32: KesshoMIDIDesiredConnection] = [:]
+    private var lastActivityPublishTime: TimeInterval = 0
 
     private(set) var availableInputs: [KesshoMIDIEndpointInfo] = []
     private(set) var isStarted = false
     private(set) var lastErrorMessage: String?
+    private(set) var hotplugEventCount = 0
+    private(set) var reconnectAttemptCount = 0
+    private(set) var reconnectSuccessCount = 0
+    private(set) var receivedMessageCount = 0
+    private(set) var droppedActivityEventCount = 0
 
     var connectedInputIDs: [Int32] {
         connectionRefsByID.keys.sorted()
     }
 
     var onMessage: ((KesshoMIDIMessage) -> Void)?
+    var onActivityMessage: ((KesshoMIDIMessage) -> Void)?
     var onInputsChanged: (([KesshoMIDIEndpointInfo]) -> Void)?
 
     private var callbackRefCon: UnsafeMutableRawPointer {
@@ -186,7 +240,10 @@ private final class KesshoMIDIRouter {
         availableInputs = []
         sourceRefsByID.removeAll()
         endpointNamesByID.removeAll()
+        endpointManufacturersByID.removeAll()
+        endpointPersistentIdentitiesByID.removeAll()
         connectionRefsByID.removeAll()
+        desiredConnectionsByID.removeAll()
         isStarted = false
     }
 
@@ -213,20 +270,36 @@ private final class KesshoMIDIRouter {
             let uniqueID = Self.endpointUniqueID(for: source)
             let name = Self.endpointName(for: source) ?? "MIDI Source \(index + 1)"
             let manufacturer = Self.endpointManufacturer(for: source)
+            let displayName = Self.endpointDisplayName(for: source, fallback: name)
+            let transport = Self.endpointTransportName(for: source)
+            let persistentIdentity = Self.endpointPersistentIdentity(
+                uniqueID: uniqueID,
+                name: name,
+                manufacturer: manufacturer,
+                transport: transport
+            )
 
             discovered.append(
                 KesshoMIDIEndpointInfo(
                     uniqueID: uniqueID,
                     name: name,
                     manufacturer: manufacturer,
+                    displayName: displayName,
+                    transport: transport,
+                    isBluetooth: transport == "bluetooth",
+                    isNetworkSession: transport == "network",
+                    persistentIdentity: persistentIdentity,
                     isConnected: connectionRefsByID[uniqueID] != nil
                 )
             )
 
             sourceRefsByID[uniqueID] = source
             endpointNamesByID[uniqueID] = name
+            endpointManufacturersByID[uniqueID] = manufacturer
+            endpointPersistentIdentitiesByID[uniqueID] = persistentIdentity
         }
 
+        reconcileConnectionsAfterRefresh()
         availableInputs = discovered.sorted { left, right in
             left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
         }
@@ -239,6 +312,7 @@ private final class KesshoMIDIRouter {
         }
 
         if connectionRefsByID[uniqueID] != nil {
+            rememberDesiredConnection(uniqueID: uniqueID)
             refreshAvailableInputs()
             return
         }
@@ -256,6 +330,7 @@ private final class KesshoMIDIRouter {
     }
 
     func disconnectInput(uniqueID: Int32) {
+        desiredConnectionsByID.removeValue(forKey: uniqueID)
         if let source = sourceRefsByID[uniqueID], inputPort != 0 {
             MIDIPortDisconnectSource(inputPort, source)
         }
@@ -266,6 +341,7 @@ private final class KesshoMIDIRouter {
     func disconnectAllInputs() {
         guard inputPort != 0 else {
             connectionRefsByID.removeAll()
+            desiredConnectionsByID.removeAll()
             refreshAvailableInputs()
             return
         }
@@ -277,10 +353,18 @@ private final class KesshoMIDIRouter {
         }
 
         connectionRefsByID.removeAll()
+        desiredConnectionsByID.removeAll()
         refreshAvailableInputs()
     }
 
     func setConnectedInputs(_ uniqueIDs: Set<Int32>) throws {
+        desiredConnectionsByID = Dictionary(
+            uniqueIDs.map { uniqueID in
+                (uniqueID, desiredConnection(uniqueID: uniqueID))
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+
         for connectedID in connectedInputIDs where !uniqueIDs.contains(connectedID) {
             disconnectInput(uniqueID: connectedID)
         }
@@ -294,8 +378,26 @@ private final class KesshoMIDIRouter {
 
     private func connect(source: MIDIEndpointRef, uniqueID: Int32) throws {
         let name = endpointNamesByID[uniqueID] ?? "MIDI Source"
-        let connection = KesshoMIDIConnection(uniqueID: uniqueID, name: name)
+        let manufacturer = endpointManufacturersByID[uniqueID] ?? nil
+        let persistentIdentity = endpointPersistentIdentitiesByID[uniqueID] ?? Self.endpointPersistentIdentity(
+            uniqueID: uniqueID,
+            name: name,
+            manufacturer: manufacturer,
+            transport: Self.endpointTransportName(for: source)
+        )
+        let connection = KesshoMIDIConnection(
+            uniqueID: uniqueID,
+            name: name,
+            manufacturer: manufacturer,
+            persistentIdentity: persistentIdentity
+        )
         connectionRefsByID[uniqueID] = connection
+        desiredConnectionsByID[uniqueID] = KesshoMIDIDesiredConnection(
+            uniqueID: uniqueID,
+            name: name,
+            manufacturer: manufacturer,
+            persistentIdentity: persistentIdentity
+        )
 
         let status = MIDIPortConnectSource(
             inputPort,
@@ -320,7 +422,7 @@ private final class KesshoMIDIRouter {
 
         for _ in 0..<packetCount {
             if let message = Self.message(
-                timestamp: Double(packet.timeStamp) / 1_000_000_000.0,
+                timestampHostTime: packet.timeStamp,
                 rawBytes: Self.packetBytes(packet),
                 endpointUniqueID: sourceConnection?.uniqueID,
                 endpointName: sourceConnection?.name
@@ -333,13 +435,15 @@ private final class KesshoMIDIRouter {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.isStarted else { return }
             for message in messages {
+                self.receivedMessageCount += 1
                 self.onMessage?(message)
+                self.publishThrottledActivity(message)
             }
         }
     }
 
     private static func message(
-        timestamp: TimeInterval,
+        timestampHostTime: UInt64,
         rawBytes: [UInt8],
         endpointUniqueID: Int32?,
         endpointName: String?
@@ -373,7 +477,9 @@ private final class KesshoMIDIRouter {
         }
 
         return KesshoMIDIMessage(
-            timestamp: timestamp,
+            timestamp: KesshoMIDITime.seconds(fromHostTime: timestampHostTime),
+            timestampMs: KesshoMIDITime.milliseconds(fromHostTime: timestampHostTime),
+            timestampHostTime: timestampHostTime,
             kind: kind,
             status: status,
             channel: channel,
@@ -412,6 +518,124 @@ private final class KesshoMIDIRouter {
         return cfManufacturer as String
     }
 
+    private static func endpointDisplayName(for endpoint: MIDIObjectRef, fallback: String) -> String {
+        if let displayName = endpointStringProperty(endpoint, property: kMIDIPropertyDisplayName), !displayName.isEmpty {
+            return displayName
+        }
+        return fallback
+    }
+
+    private static func endpointTransportName(for endpoint: MIDIObjectRef) -> String {
+        var transport = Int32(0)
+        let status = MIDIObjectGetIntegerProperty(endpoint, kMIDIPropertyTransportType, &transport)
+        guard status == noErr else { return "unknown" }
+        switch transport {
+        case kMIDITransportType_USB:
+            return "usb"
+        case kMIDITransportType_Bluetooth:
+            return "bluetooth"
+        case kMIDITransportType_Network:
+            return "network"
+        case kMIDITransportType_Virtual:
+            return "virtual"
+        default:
+            return "other"
+        }
+    }
+
+    private static func endpointStringProperty(_ endpoint: MIDIObjectRef, property: CFString) -> String? {
+        var value: Unmanaged<CFString>?
+        let status = MIDIObjectGetStringProperty(endpoint, property, &value)
+        guard status == noErr, let cfValue = value?.takeRetainedValue() else { return nil }
+        return cfValue as String
+    }
+
+    private static func endpointPersistentIdentity(
+        uniqueID: Int32,
+        name: String,
+        manufacturer: String?,
+        transport: String
+    ) -> String {
+        let normalizedManufacturer = (manufacturer ?? "unknown")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return "\(transport)|\(normalizedManufacturer)|\(normalizedName)|\(uniqueID)"
+    }
+
+    private func rememberDesiredConnection(uniqueID: Int32) {
+        desiredConnectionsByID[uniqueID] = desiredConnection(uniqueID: uniqueID)
+    }
+
+    private func desiredConnection(uniqueID: Int32) -> KesshoMIDIDesiredConnection {
+        KesshoMIDIDesiredConnection(
+            uniqueID: uniqueID,
+            name: endpointNamesByID[uniqueID],
+            manufacturer: endpointManufacturersByID[uniqueID] ?? nil,
+            persistentIdentity: endpointPersistentIdentitiesByID[uniqueID]
+        )
+    }
+
+    private func reconcileConnectionsAfterRefresh() {
+        guard inputPort != 0 else { return }
+
+        for uniqueID in connectedInputIDs where sourceRefsByID[uniqueID] == nil {
+            connectionRefsByID.removeValue(forKey: uniqueID)
+        }
+
+        for desired in Array(desiredConnectionsByID.values) where connectionRefsByID[desired.uniqueID] == nil {
+            if let source = sourceRefsByID[desired.uniqueID] {
+                reconnectAttemptCount += 1
+                do {
+                    try connect(source: source, uniqueID: desired.uniqueID)
+                    reconnectSuccessCount += 1
+                } catch {
+                    lastErrorMessage = "\(error)"
+                }
+                continue
+            }
+
+            guard let fallbackID = fallbackEndpointID(for: desired), let source = sourceRefsByID[fallbackID] else {
+                continue
+            }
+            reconnectAttemptCount += 1
+            do {
+                try connect(source: source, uniqueID: fallbackID)
+                reconnectSuccessCount += 1
+            } catch {
+                lastErrorMessage = "\(error)"
+            }
+        }
+    }
+
+    private func fallbackEndpointID(for desired: KesshoMIDIDesiredConnection) -> Int32? {
+        for (uniqueID, persistentIdentity) in endpointPersistentIdentitiesByID {
+            if desired.persistentIdentity == persistentIdentity {
+                return uniqueID
+            }
+        }
+        guard let desiredName = desired.name?.lowercased() else { return nil }
+        let desiredManufacturer = desired.manufacturer?.lowercased()
+        for (uniqueID, name) in endpointNamesByID {
+            guard name.lowercased() == desiredName else { continue }
+            let manufacturer = endpointManufacturersByID[uniqueID] ?? nil
+            if desiredManufacturer == nil || manufacturer?.lowercased() == desiredManufacturer {
+                return uniqueID
+            }
+        }
+        return nil
+    }
+
+    private func publishThrottledActivity(_ message: KesshoMIDIMessage) {
+        let now = Date().timeIntervalSinceReferenceDate
+        if now - lastActivityPublishTime < 1.0 / 30.0 {
+            droppedActivityEventCount += 1
+            return
+        }
+        lastActivityPublishTime = now
+        onActivityMessage?(message)
+    }
+
     private static let readProc: MIDIReadProc = { packetList, refCon, sourceConnectionRefCon in
         guard let refCon else { return }
         let router = Unmanaged<KesshoMIDIRouter>.fromOpaque(refCon).takeUnretainedValue()
@@ -425,6 +649,7 @@ private final class KesshoMIDIRouter {
         guard let refCon else { return }
         let router = Unmanaged<KesshoMIDIRouter>.fromOpaque(refCon).takeUnretainedValue()
         DispatchQueue.main.async {
+            router.hotplugEventCount += 1
             router.refreshAvailableInputs()
         }
     }
@@ -451,6 +676,9 @@ public final class KesshoMidiRoutingPlugin: CAPPlugin, CAPBridgedPlugin {
         super.load()
         router.onMessage = { [weak self] message in
             self?.notifyListeners("midiMessage", data: message.dictionary)
+        }
+        router.onActivityMessage = { [weak self] message in
+            self?.notifyListeners("midiActivity", data: message.dictionary)
         }
         router.onInputsChanged = { [weak self] inputs in
             self?.notifyListeners("inputsChanged", data: self?.inputSnapshot(inputs: inputs) ?? [:])
@@ -534,6 +762,11 @@ public final class KesshoMidiRoutingPlugin: CAPPlugin, CAPBridgedPlugin {
             "isStarted": router.isStarted,
             "inputCount": router.availableInputs.count,
             "connectedInputIDs": router.connectedInputIDs.map(Int.init),
+            "hotplugEventCount": router.hotplugEventCount,
+            "reconnectAttemptCount": router.reconnectAttemptCount,
+            "reconnectSuccessCount": router.reconnectSuccessCount,
+            "receivedMessageCount": router.receivedMessageCount,
+            "droppedActivityEventCount": router.droppedActivityEventCount,
             "lastErrorMessage": router.lastErrorMessage ?? NSNull()
         ]
     }

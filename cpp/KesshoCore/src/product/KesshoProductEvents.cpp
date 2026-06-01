@@ -116,6 +116,76 @@ void writeHarmonyPoolFromIntent(
   (void)root_note;
 }
 
+using GranularVoiceParamApplier = void (*)(GranularVoiceState&, float);
+
+struct GranularVoiceParamSpec {
+  uint32_t offset;
+  GranularVoiceParamApplier apply;
+};
+
+void setGranularVoiceEnabled(GranularVoiceState& voice, float value) { voice.enabled = value >= 0.5f; }
+void setGranularVoiceMode(GranularVoiceState& voice, float value) { voice.mode = clampU32(static_cast<uint32_t>(std::lround(value)), 0u, 2u); }
+void setGranularVoiceSlice(GranularVoiceState& voice, float value) { voice.slice = clampU32(static_cast<uint32_t>(std::lround(value)), 0u, 15u); }
+void setGranularVoiceSpeed(GranularVoiceState& voice, float value) { voice.speed = clampFloat(value, 0.0f, 4.0f); }
+void setGranularVoiceScanRate(GranularVoiceState& voice, float value) { voice.scan_rate = clampFloat(value, 0.25f, 4.0f); }
+void setGranularVoiceReverse(GranularVoiceState& voice, float value) { voice.reverse = value >= 0.5f; }
+void setGranularVoicePitch(GranularVoiceState& voice, float value) { voice.pitch = clampFloat(value, -24.0f, 24.0f); }
+void setGranularVoiceWriteFollow(GranularVoiceState& voice, float value) { voice.write_follow = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceDensity(GranularVoiceState& voice, float value) { voice.density = clampFloat(value, 1.0f, 64.0f); }
+void setGranularVoiceGrainSize(GranularVoiceState& voice, float value) { voice.grain_size_ms = clampFloat(value, 10.0f, 500.0f); }
+void setGranularVoiceSpray(GranularVoiceState& voice, float value) { voice.spray = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceGrainOctaveProbability(GranularVoiceState& voice, float value) { voice.grain_octave_probability = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceAttack(GranularVoiceState& voice, float value) { voice.attack_seconds = clampFloat(value, 0.001f, 0.5f); }
+void setGranularVoiceDecay(GranularVoiceState& voice, float value) { voice.decay_seconds = clampFloat(value, 0.01f, 4.0f); }
+void setGranularVoiceGain(GranularVoiceState& voice, float value) { voice.gain = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoicePan(GranularVoiceState& voice, float value) { voice.pan = clampFloat(value, -1.0f, 1.0f); }
+void setGranularVoiceBlur(GranularVoiceState& voice, float value) { voice.blur = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceStereoSpread(GranularVoiceState& voice, float value) { voice.stereo_spread = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoicePositionLfoRate(GranularVoiceState& voice, float value) { voice.position_lfo_rate = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoicePositionLfoDepth(GranularVoiceState& voice, float value) { voice.position_lfo_depth = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoicePanLfoRate(GranularVoiceState& voice, float value) { voice.pan_lfo_rate = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceReverseLfoRate(GranularVoiceState& voice, float value) { voice.reverse_lfo_rate = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceRecordLfoRate(GranularVoiceState& voice, float value) { voice.record_lfo_rate = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceEuclidGated(GranularVoiceState& voice, float value) { voice.euclid_gated = value >= 0.5f; }
+void setGranularVoiceEuclidMuted(GranularVoiceState& voice, float value) { voice.euclid_muted = value >= 0.5f; }
+
+constexpr GranularVoiceParamSpec kGranularVoiceParamSpecs[] = {
+  {0u, setGranularVoiceEnabled},
+  {1u, setGranularVoiceMode},
+  {2u, setGranularVoiceSlice},
+  {3u, setGranularVoiceSpeed},
+  {4u, setGranularVoiceScanRate},
+  {5u, setGranularVoiceReverse},
+  {6u, setGranularVoicePitch},
+  {7u, setGranularVoiceWriteFollow},
+  {8u, setGranularVoiceDensity},
+  {9u, setGranularVoiceGrainSize},
+  {10u, setGranularVoiceSpray},
+  {11u, setGranularVoiceGrainOctaveProbability},
+  {12u, setGranularVoiceAttack},
+  {13u, setGranularVoiceDecay},
+  {14u, setGranularVoiceGain},
+  {15u, setGranularVoicePan},
+  {16u, setGranularVoiceBlur},
+  {17u, setGranularVoiceStereoSpread},
+  {18u, setGranularVoicePositionLfoRate},
+  {19u, setGranularVoicePositionLfoDepth},
+  {20u, setGranularVoicePanLfoRate},
+  {21u, setGranularVoiceReverseLfoRate},
+  {22u, setGranularVoiceRecordLfoRate},
+  {23u, setGranularVoiceEuclidGated},
+  {24u, setGranularVoiceEuclidMuted},
+};
+
+const GranularVoiceParamSpec* findGranularVoiceParamSpec(uint32_t offset) {
+  for (const GranularVoiceParamSpec& spec : kGranularVoiceParamSpecs) {
+    if (spec.offset == offset) {
+      return &spec;
+    }
+  }
+  return nullptr;
+}
+
 } // namespace
 
   int32_t KesshoProductEngine::validateEvent(const KesshoProductEvent& event) const {
@@ -249,7 +319,8 @@ void writeHarmonyPoolFromIntent(
           event.target_id != 0u &&
           event.target_id != kProductControlOnlyModulationTarget &&
           !valid_source(event.target_id) &&
-          !isDrumRangeTarget(event.target_id)) {
+          !isDrumRangeTarget(event.target_id) &&
+          !isSoundscapeAssetLevelRangeTarget(event.target_id)) {
         return KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
       }
       return KESSHO_PRODUCT_OK;
@@ -667,86 +738,12 @@ void KesshoProductEngine::sortControlEvents() {
       continue;
     }
     GranularVoiceState& voice = fx.granular_voices[voice_index];
-    switch (event.param_id - base) {
-      case 0:
-        voice.enabled = event.value >= 0.5f;
-        break;
-      case 1:
-        voice.mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
-        break;
-      case 2:
-        voice.slice = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 15u);
-        break;
-      case 3:
-        voice.speed = clampFloat(event.value, 0.0f, 4.0f);
-        break;
-      case 4:
-        voice.scan_rate = clampFloat(event.value, 0.25f, 4.0f);
-        break;
-      case 5:
-        voice.reverse = event.value >= 0.5f;
-        break;
-      case 6:
-        voice.pitch = clampFloat(event.value, -24.0f, 24.0f);
-        break;
-      case 7:
-        voice.write_follow = clampFloat(event.value, 0.0f, 1.0f);
-        break;
-      case 8:
-        voice.density = clampFloat(event.value, 1.0f, 64.0f);
-        break;
-      case 9:
-        voice.grain_size_ms = clampFloat(event.value, 10.0f, 500.0f);
-        break;
-      case 10:
-        voice.spray = clampFloat(event.value, 0.0f, 1.0f);
-        break;
-      case 11:
-        voice.grain_octave_probability = clampFloat(event.value, 0.0f, 1.0f);
-        break;
-      case 12:
-        voice.attack_seconds = clampFloat(event.value, 0.001f, 0.5f);
-        break;
-      case 13:
-        voice.decay_seconds = clampFloat(event.value, 0.01f, 4.0f);
-        break;
-      case 14:
-        voice.gain = clampFloat(event.value, 0.0f, 1.0f);
-        break;
-      case 15:
-        voice.pan = clampFloat(event.value, -1.0f, 1.0f);
-        break;
-      case 16:
-        voice.blur = clampFloat(event.value, 0.0f, 1.0f);
-        break;
-      case 17:
-        voice.stereo_spread = clampFloat(event.value, 0.0f, 1.0f);
-        break;
-      case 18:
-        voice.position_lfo_rate = clampFloat(event.value, 0.0f, 1.0f);
-        break;
-      case 19:
-        voice.position_lfo_depth = clampFloat(event.value, 0.0f, 1.0f);
-        break;
-      case 20:
-        voice.pan_lfo_rate = clampFloat(event.value, 0.0f, 1.0f);
-        break;
-      case 21:
-        voice.reverse_lfo_rate = clampFloat(event.value, 0.0f, 1.0f);
-        break;
-      case 22:
-        voice.record_lfo_rate = clampFloat(event.value, 0.0f, 1.0f);
-        break;
-      case 23:
-        voice.euclid_gated = event.value >= 0.5f;
-        break;
-      case 24:
-        voice.euclid_muted = event.value >= 0.5f;
-        break;
-      default:
-        telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
-        return true;
+    const GranularVoiceParamSpec* spec = findGranularVoiceParamSpec(event.param_id - base);
+    if (!spec) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+      return true;
     }
+    spec->apply(voice, event.value);
     configureFxModules();
     telemetry.last_error_code = KESSHO_PRODUCT_OK;
     return true;
@@ -925,6 +922,11 @@ void KesshoProductEngine::sortControlEvents() {
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_BINDING_MODE_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_INITIAL_START_DELAY_SECONDS_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TEMPO_MULTIPLIER_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_MODE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_ROOT_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_SCALE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_NOTE_RANGE_MIN_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_NOTE_RANGE_MAX_ID:
       applySequencerLaneParamEvent(event);
       break;
     case KESSHO_PRODUCT_PARAM_TRANSPORT_BPM_ID:

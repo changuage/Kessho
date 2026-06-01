@@ -15,9 +15,11 @@ import { ENGINE_TRIMS } from './outputTrims';
 import { applyPadDistanceToState } from './distanceMacro';
 import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions';
 import { normalizeSequencerPitchBindingMode, sequencerPitchBindingModeToEventId, sequencerPitchBindingModeToProductId } from './sequencerPitchBinding';
+import { normalizeSequencerPitchSettings } from './sequencerPitchSettings';
 import { normalizeSequencerSwing } from './sequencerSwing';
 import { DEFAULT_STATE, getIndexedDelayDivisionValue, type IndexedDelayDivisionKey, type SliderState } from '../ui/state';
 import { generatedProductParamIndex } from './CoreProductGeneratedParamMetadata';
+import { CORE_PRODUCT_SOUNDSCAPE_ASSETS } from './coreProductAssets';
 import {
   HARMONY_QUALITY_IDS,
   HARMONY_SLOT_COUNT,
@@ -51,6 +53,7 @@ export const CORE_PRODUCT_SOURCE_IDS = Object.freeze({
 } as const);
 
 export const CORE_PRODUCT_CONTROL_ONLY_MODULATION_TARGET_ID = 0x7ffffff0;
+export const CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE = 0x51000000;
 
 export const CORE_PRODUCT_MODULATION_RANGE_MODE = Object.freeze({
   off: 0,
@@ -91,6 +94,32 @@ export const CORE_PRODUCT_DICE_FLAGS = Object.freeze({
   distance: 1 << 6,
   swing: 1 << 7,
 } as const);
+
+export const CORE_PRODUCT_EVOLVE_FLAGS = Object.freeze({
+  rotateDrift: 1 << 8,
+  swingDrift: 1 << 9,
+  probDrift: 1 << 10,
+  ghostNotes: 1 << 11,
+  ratchetSpray: 1 << 12,
+  hitDrift: 1 << 13,
+  pitchWalk: 1 << 14,
+  valueDrift: 1 << 15,
+  valueScramble: 1 << 16,
+  valueWiden: 1 << 17,
+  subLaneLengthDrift: 1 << 18,
+  subLaneDirectionFlip: 1 << 19,
+  triggerToggle: 1 << 20,
+  mutationStrict: 1 << 29,
+  rngStream: 1 << 30,
+  modeParity: 0x80000000,
+} as const);
+
+export const CORE_PRODUCT_EVOLVE_TENSION_PARAM_SCALE = 1000;
+
+export function encodeCoreProductSequencerEvolveTension(value: number | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return 1 + Math.round(Math.max(0, Math.min(1, value)) * CORE_PRODUCT_EVOLVE_TENSION_PARAM_SCALE);
+}
 
 export const CORE_PRODUCT_STEP_VALUE_FIELDS = Object.freeze({
   trigger: 0 << 8,
@@ -396,6 +425,20 @@ function controlOnlyRangeTarget(paramId: number, key: string): CoreProductRangeT
   };
 }
 
+function soundscapeAssetLevelTarget(
+  assetId: number,
+  key: string,
+  mapValue?: (value: number, context: CoreProductRangeValueContext) => number,
+): CoreProductRangeTarget {
+  const safeAssetId = requireIntegerInRange(assetId, 'assetId', 1, 0x00ffffff);
+  return {
+    targetId: CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE + safeAssetId,
+    paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLevel,
+    controlId: stableControlId(key),
+    mapValue,
+  };
+}
+
 function delayBTapeHeadMaskMap(headIndex: number): (value: number, context: CoreProductRangeValueContext) => number {
   return (value, context) => {
     let mask = 0;
@@ -414,6 +457,24 @@ function delayBTapeHeadMaskMap(headIndex: number): (value: number, context: Core
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
+}
+
+function soundscapeNatureAssetLevelMap(value: number, context: CoreProductRangeValueContext): number {
+  const natureLevel = context.state?.natureLevel;
+  const multiplier = typeof natureLevel === 'number' && Number.isFinite(natureLevel)
+    ? natureLevel
+    : 1;
+  return clamp(value * multiplier, 0, 2);
+}
+
+function soundscapeNatureMasterAssetLevelMap(stateKey: string): (value: number, context: CoreProductRangeValueContext) => number {
+  return (value, context) => {
+    const sourceLevel = context.state?.[stateKey];
+    const multiplier = typeof sourceLevel === 'number' && Number.isFinite(sourceLevel)
+      ? sourceLevel
+      : 0;
+    return clamp(value * multiplier, 0, 2);
+  };
 }
 
 function mapPadExactValueForDistance(
@@ -729,7 +790,14 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
     productParamTarget(coreProductDrumRuntimeParamId(CORE_PRODUCT_DRUM_MASTER_LEVEL_PARAM_INDEX), key),
   ],
   pianoLevel: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.piano, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
-  natureLevel: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
+  natureLevel: (key) => [
+    soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId, key, soundscapeNatureMasterAssetLevelMap('birdsLevel')),
+    soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds2.assetId, key, soundscapeNatureMasterAssetLevelMap('birds2Level')),
+    soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.frogs.assetId, key, soundscapeNatureMasterAssetLevelMap('frogsLevel')),
+  ],
+  birdsLevel: (key) => [soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId, key, soundscapeNatureAssetLevelMap)],
+  birds2Level: (key) => [soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds2.assetId, key, soundscapeNatureAssetLevelMap)],
+  frogsLevel: (key) => [soundscapeAssetLevelTarget(CORE_PRODUCT_SOUNDSCAPE_ASSETS.frogs.assetId, key, soundscapeNatureAssetLevelMap)],
   oceanSampleLevel: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
   waterLevel: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
   insectsSharedLevel: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.soundscape, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, key)],
@@ -1461,6 +1529,48 @@ export function createCoreProductSequencerPitchBindingModeEvents(modes: readonly
   });
 }
 
+const CORE_PRODUCT_SEQUENCER_PITCH_MODE_IDS = Object.freeze({
+  semitones: 0,
+  notes: 1,
+  noteRange: 2,
+} as const);
+
+const CORE_PRODUCT_SEQUENCER_PITCH_SCALE_IDS: Record<string, number> = Object.freeze({
+  Chromatic: 0,
+  Major: 1,
+  Minor: 2,
+  Dorian: 3,
+  Phrygian: 4,
+  Lydian: 5,
+  Mixolydian: 6,
+  Locrian: 7,
+  Pentatonic: 8,
+  'Min Penta': 9,
+  Blues: 10,
+  'Harmonic Minor': 11,
+  'Melodic Minor': 12,
+  'Whole Tone': 13,
+  Diminished: 14,
+  Augmented: 15,
+  'Hungarian Minor': 16,
+  Japanese: 17,
+  Arabic: 18,
+});
+
+export function createCoreProductSequencerPitchSettingEvents(
+  sequencer: keyof typeof CORE_PRODUCT_SEQUENCER_IDS,
+  settings: readonly unknown[],
+): CoreProductEvent[] {
+  return Array.from({ length: Math.min(settings.length, 16) }, (_, laneIndex) => {
+    const pitchSettings = normalizeSequencerPitchSettings(settings[laneIndex]);
+    return [
+      createCoreProductSequencerLaneParamEvent(sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchMode, CORE_PRODUCT_SEQUENCER_PITCH_MODE_IDS[pitchSettings.mode]),
+      createCoreProductSequencerLaneParamEvent(sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchRoot, pitchSettings.root),
+      createCoreProductSequencerLaneParamEvent(sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchScale, CORE_PRODUCT_SEQUENCER_PITCH_SCALE_IDS[pitchSettings.scale] ?? 1),
+    ];
+  }).flat();
+}
+
 export function createCoreProductSequencerStepValueEvent(
   sequencer: keyof typeof CORE_PRODUCT_SEQUENCER_IDS,
   laneIndex: number,
@@ -1534,13 +1644,19 @@ export function createCoreProductSequencerDiceEvent(
   flags = 0,
   writeOffset = 0,
   barIndex = 0,
+  effectiveTension?: number,
 ): CoreProductEvent {
+  const encodedTension = encodeCoreProductSequencerEvolveTension(effectiveTension);
+  const usesRngStream = (flags & CORE_PRODUCT_EVOLVE_FLAGS.rngStream) !== 0;
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane,
     targetId: requireSequencerId(sequencer),
     index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
+    ...(usesRngStream
+      ? { paramId: requireIntegerInRange(seed, 'rngStreamSeed', 0, 0xffffffff) }
+      : encodedTension > 0 ? { paramId: encodedTension } : {}),
     value: requireUnitValue(intensity, 'intensity'),
-    value2: requireIntegerInRange(seed, 'seed', 0, 0xffffffff),
+    value2: usesRngStream ? encodedTension : requireIntegerInRange(seed, 'seed', 0, 0xffffffff),
     value3: requireIntegerInRange(writeOffset, 'writeOffset', -1, 64),
     value4: requireIntegerInRange(barIndex, 'barIndex', 0, 0xffffffff),
     flags: requireIntegerInRange(flags, 'flags', 0, 0xffffffff),

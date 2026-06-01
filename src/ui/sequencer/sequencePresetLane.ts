@@ -1,5 +1,6 @@
 import type { TrigCondition } from '../../audio/drumSeqTypes';
 import type { ClockDivision, PitchBindingMode } from '../../audio/drumSeqTypes';
+import type { ProductArpConfig } from '../../audio/productArpeggiator';
 import { normalizeSequencerLaneDirection, normalizeOptionalSequencerLaneDirection } from '../../audio/sequencerLaneDirection';
 import { normalizeSequencerClockDivision } from '../../audio/sequencerClockDivisions';
 import { normalizeSequencerPitchBindingMode } from '../../audio/sequencerPitchBinding';
@@ -82,6 +83,7 @@ export interface SerializedSequenceLanePresetState {
   evolveConfig?: SerializedEvolveConfig;
   pitchSettings?: SerializedPitchSettings;
   pitchBindingMode?: PitchBindingMode;
+  arpConfig?: ProductArpConfig;
 }
 
 function cloneSequenceLaneArray(lane: StepOverrideArrayLane | undefined): StepOverrideArrayLane {

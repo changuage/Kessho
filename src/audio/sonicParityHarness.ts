@@ -1,3 +1,13 @@
+/**
+ * REFERENCE / A-B TESTING PATH
+ *
+ * This harness is required for web-ts, core-smoke, product-test, parity checks,
+ * smoke tests, and A/B comparison. Do not remove or narrow it until Product Core
+ * replacement coverage and A/B validation make the reference runtime unnecessary.
+ *
+ * Status: Keep Active — Archive Later
+ */
+
 import { coreProductEngineHost } from './coreProductEngineHost';
 import type { ManualSynthNoteOptions } from './engineSharedTypes';
 import { applyPadPresetMorphParamsToState } from './padPresets';

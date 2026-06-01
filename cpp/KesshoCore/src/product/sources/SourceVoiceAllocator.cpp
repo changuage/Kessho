@@ -24,6 +24,7 @@
   if (!source.enabled) {
     return kProductInvalidVoiceIndex;
   }
+  const bool source_was_idle = !sourceRuntimeActive(source_id);
   const uint32_t resolved_seed = sample_seed == 0u
       ? hashU32(rng_seed ^ source_id ^ static_cast<uint32_t>(std::max(0.0f, midi_note * 31.0f)) ^
                 static_cast<uint32_t>(transport.sample_frame))
@@ -33,6 +34,9 @@
   source.delay_a_send = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID, source.delay_a_send, resolved_seed);
   source.delay_b_send = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_BSEND_ID, source.delay_b_send, resolved_seed);
   source.granular_send = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID, source.granular_send, resolved_seed);
+  if (source_was_idle) {
+    primeGranularControlsForSourceStart(source_id);
+  }
   const bool drum_source = source_id == KESSHO_PRODUCT_SOURCE_DRUM;
   const bool event_morph_override = event_morph >= 0.0f;
   float morph = event_morph_override ? event_morph : (drum_source ? -1.0f : source.morph);

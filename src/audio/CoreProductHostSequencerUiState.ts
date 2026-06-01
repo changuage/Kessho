@@ -175,7 +175,7 @@ export function coreProductSynthEvolvePayloadFromLane(
   pitchSettings?: unknown,
   laneIndex = 0,
 ): Record<string, unknown> {
-  const payload: Record<string, unknown> = { triggerToggles: lane.triggerToggles };
+  const payload: Record<string, unknown> = { triggerToggles: lane.triggerToggles, swing: lane.swing };
   const valueOverrides = coreProductStepValueOverridesFromLane(lane, true);
   const pitch = Array.isArray(lane.midiNote) ? coreProductSynthMidiToUiPitch(lane.midiNote, pitchSettings, laneIndex, baseMidi) : null;
   for (const [key, values] of Object.entries({ pitch, expression: lane.expression, morph: lane.morph, distance: lane.distance, probability: lane.probability, ratchet: lane.ratchet, trigCondition: lane.trigCondition })) {
@@ -200,6 +200,7 @@ export function coreProductDrumEvolvePayloadFromLane(
   const pitch = Array.isArray(lane.midiNote) ? lane.midiNote.map((value) => Math.round(value - baseMidi)) : null;
   const payload: Record<string, unknown> = {
     triggerToggles,
+    swing: lane.swing,
     probability: laneArray(lane.probability, laneIndex, includeEmpty),
     ratchet: laneArray(lane.ratchet, laneIndex, includeEmpty),
     trigCondition: laneArray(lane.trigCondition, laneIndex, includeEmpty),

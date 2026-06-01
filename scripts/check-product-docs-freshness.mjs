@@ -28,6 +28,7 @@ const files = new Map([
   ['docs/product-core/host-diagnostics.md', read('docs/product-core/host-diagnostics.md')],
   ['docs/product-core/native-bridge.md', read('docs/product-core/native-bridge.md')],
   ['docs/product-core/reference-web-ts.md', read('docs/product-core/reference-web-ts.md')],
+  ['docs/product-core/web-ts-ab-compatibility-burn-down.md', read('docs/product-core/web-ts-ab-compatibility-burn-down.md')],
   ['docs/product-core/common-control-routing.md', read('docs/product-core/common-control-routing.md')],
   ['docs/product-core/unsupported-surface.md', read('docs/product-core/unsupported-surface.md')],
   ['package.json', read('package.json')],
@@ -49,6 +50,7 @@ for (const path of [
   'docs/product-core/testing-release-gates.md',
   'docs/product-core/native-bridge.md',
   'docs/product-core/reference-web-ts.md',
+  'docs/product-core/web-ts-ab-compatibility-burn-down.md',
 ]) {
   const source = files.get(path);
   assertIncludes(source, 'core-product', path, failures);
@@ -94,10 +96,19 @@ assertIncludes(files.get('MIGRATION_STATUS.md'), 'fast behavioral port mode', 'M
 assertIncludes(files.get('MIGRATION_STATUS.md'), 'Batch 13', 'MIGRATION_STATUS.md', failures);
 assertIncludes(files.get('docs/product-core/reference-web-ts.md'), 'src/audio/reference/webTs/engine.ts', 'docs/product-core/reference-web-ts.md', failures);
 assertIncludes(files.get('docs/product-core/reference-web-ts.md'), 'src/audio/reference/ReferenceSelectedRuntime.ts', 'docs/product-core/reference-web-ts.md', failures);
+assertIncludes(files.get('docs/product-core/reference-web-ts.md'), 'Keep Active — Archive Later', 'docs/product-core/reference-web-ts.md', failures);
+assertIncludes(files.get('docs/product-core/reference-web-ts.md'), 'docs/product-core/web-ts-ab-compatibility-burn-down.md', 'docs/product-core/reference-web-ts.md', failures);
+assertIncludes(files.get('docs/product-core/web-ts-ab-compatibility-burn-down.md'), 'ProductEnginePort', 'docs/product-core/web-ts-ab-compatibility-burn-down.md', failures);
+assertIncludes(files.get('docs/product-core/web-ts-ab-compatibility-burn-down.md'), 'WebProductEngine', 'docs/product-core/web-ts-ab-compatibility-burn-down.md', failures);
+assertIncludes(files.get('docs/product-core/web-ts-ab-compatibility-burn-down.md'), 'src/audio/reference/webTs/engine.ts', 'docs/product-core/web-ts-ab-compatibility-burn-down.md', failures);
+assertIncludes(files.get('docs/product-core/web-ts-ab-compatibility-burn-down.md'), 'src/audio/referenceAudioRuntime.ts', 'docs/product-core/web-ts-ab-compatibility-burn-down.md', failures);
+assertIncludes(files.get('docs/product-core/web-ts-ab-compatibility-burn-down.md'), 'Keep Active — Archive Later', 'docs/product-core/web-ts-ab-compatibility-burn-down.md', failures);
 assertIncludes(files.get('docs/product-core/architecture.md'), 'src/audio/reference/webTs/engine.ts', 'docs/product-core/architecture.md', failures);
 assertIncludes(files.get('docs/product-core/runtime-boundary.md'), 'Do not reintroduce root `src/audio/engine.ts`', 'docs/product-core/runtime-boundary.md', failures);
 assertIncludes(files.get('docs/product-core/runtime-boundary.md'), 'Do not reintroduce root `src/audio/runtime.ts`', 'docs/product-core/runtime-boundary.md', failures);
 assertIncludes(files.get('docs/product-core/runtime-boundary.md'), 'Routine sliders, toggles, sequencer edits, transport changes, journey macro moves, FX sends, and mute/solo changes', 'docs/product-core/runtime-boundary.md', failures);
+assertIncludes(files.get('docs/product-core/runtime-boundary.md'), 'Keep Active — Archive Later', 'docs/product-core/runtime-boundary.md', failures);
+assertIncludes(files.get('docs/product-core/runtime-boundary.md'), 'docs/product-core/web-ts-ab-compatibility-burn-down.md', 'docs/product-core/runtime-boundary.md', failures);
 assertIncludes(files.get('docs/product-core/testing-release-gates.md'), 'Batch 13 Web-Default Release Proof', 'docs/product-core/testing-release-gates.md', failures);
 assertIncludes(files.get('docs/product-core/testing-release-gates.md'), 'npm run core:product:ci', 'docs/product-core/testing-release-gates.md', failures);
 assertIncludes(files.get('docs/kessho-product-core-migration-status.md'), 'src/audio/reference/webTs/engine.ts', 'docs/kessho-product-core-migration-status.md', failures);

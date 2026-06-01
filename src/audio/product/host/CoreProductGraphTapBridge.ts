@@ -1,11 +1,11 @@
-import { CORE_PRODUCT_GRAPH_TAP_IDS } from '../../coreProductGraphTaps';
+import { getCoreProductGraphTapId } from '../../coreProductGraphTaps';
 import type { CoreProductGraphTapCaptureChunk, CoreProductRuntime } from '../../coreProductRuntime';
 
 export class CoreProductGraphTapBridge {
   constructor(private readonly runtime: CoreProductRuntime) {}
 
   getTapId(trackId: string): number | null {
-    return CORE_PRODUCT_GRAPH_TAP_IDS[trackId.startsWith('graph:') ? trackId.slice('graph:'.length) : trackId] ?? null;
+    return getCoreProductGraphTapId(trackId.startsWith('graph:') ? trackId.slice('graph:'.length) : trackId);
   }
 
   startCapture(trackId: string, chunkFrames: number): number {

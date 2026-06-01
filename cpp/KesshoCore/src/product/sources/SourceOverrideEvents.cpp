@@ -34,12 +34,20 @@ bool KesshoProductEngine::applyStructuredSourceOverridesToModule(uint32_t source
     return false;
   }
   SourceState& source = sources[source_id - 1u];
+  return applyStructuredSourceOverridesToModuleAtMorph(source_id, source.morph);
+}
+
+bool KesshoProductEngine::applyStructuredSourceOverridesToModuleAtMorph(uint32_t source_id, float morph) {
+  if (source_id < 1u || source_id > kSourceCount || !std::isfinite(morph)) {
+    return false;
+  }
+  SourceState& source = sources[source_id - 1u];
   if (isPadProductSource(source_id)) {
     kessho::core::KesshoSourcePresetPatch patch{};
     const auto* resolved_patch = resolveSourcePresetEndpointPatch(
         source,
         source_id,
-        source.morph,
+        clampFloat(morph, 0.0f, 1.0f),
         source.distance,
         patch);
     if (resolved_patch == nullptr ||
@@ -49,6 +57,8 @@ bool KesshoProductEngine::applyStructuredSourceOverridesToModule(uint32_t source
     if (pad_module) {
       const uint32_t pad_index = source_id == KESSHO_PRODUCT_SOURCE_PAD2 ? 1u : 0u;
       pad_module->setSourcePresetPatch(static_cast<int>(pad_index), *resolved_patch);
+      source.applied_module_patch_ptr = nullptr;
+      source.applied_module_patch_revision = 0u;
     }
     return true;
   }
@@ -58,7 +68,7 @@ bool KesshoProductEngine::applyStructuredSourceOverridesToModule(uint32_t source
     const auto* resolved_patch = resolveSourcePresetEndpointPatch(
         source,
         source_id,
-        source.morph,
+        clampFloat(morph, 0.0f, 1.0f),
         source.distance,
         patch);
     if (resolved_patch == nullptr ||
@@ -68,6 +78,8 @@ bool KesshoProductEngine::applyStructuredSourceOverridesToModule(uint32_t source
     const uint32_t lead_index = source_id == KESSHO_PRODUCT_SOURCE_LEAD2 ? 1u : 0u;
     if (lead_modules[lead_index]) {
       lead_modules[lead_index]->setSourcePresetPatch(static_cast<int>(lead_index), *resolved_patch);
+      source.applied_module_patch_ptr = nullptr;
+      source.applied_module_patch_revision = 0u;
     }
     return true;
   }
@@ -84,6 +96,8 @@ bool KesshoProductEngine::applyStructuredSourceOverridesToModule(uint32_t source
     auto patch = source.source_preset_patch;
     applyDrumSourceMixFieldsToPatch(patch, source.level, source.reverb_send);
     drum_module->setSourcePresetPatch(0, patch);
+    source.applied_module_patch_ptr = nullptr;
+    source.applied_module_patch_revision = 0u;
   }
   return true;
 }

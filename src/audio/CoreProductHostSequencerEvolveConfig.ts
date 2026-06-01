@@ -1,19 +1,12 @@
-import { CORE_PRODUCT_DICE_FLAGS } from './coreProductEvents';
+import { CORE_PRODUCT_DICE_FLAGS, CORE_PRODUCT_EVOLVE_FLAGS } from './coreProductEvents';
 
-export type NormalizedSequencerEvolveConfig = {
-  enabled: boolean;
-  evolution: number;
-  everyBars: number;
-  writeOffset: number | 'auto';
-  mutationMode: 'strict' | 'biased';
-  methods: Record<string, boolean>;
-  enabledSubLanes?: string[];
-};
+export type NormalizedSequencerEvolveConfig = { enabled: boolean; evolution: number; everyBars: number; writeOffset: number | 'auto'; mutationMode: 'strict' | 'biased'; methods: Record<string, boolean>; enabledSubLanes?: string[] };
 
 export type SequencerEvolveKind = 'synth' | 'drum';
 
 const SYNTH_METHODS: Record<string, boolean> = { swingDrift: true, probDrift: false, ratchetSpray: false, pitchWalk: false, valueDrift: true, valueScramble: false, valueWiden: false, subLaneLengthDrift: false, subLaneDirectionFlip: false, triggerToggle: false };
 const DRUM_METHODS: Record<string, boolean> = { rotateDrift: true, swingDrift: true, probDrift: false, ghostNotes: false, ratchetSpray: false, hitDrift: false, pitchWalk: false, valueDrift: true, valueScramble: false, valueWiden: false, subLaneLengthDrift: false, subLaneDirectionFlip: false };
+const EVOLVE_METHOD_FLAGS: ReadonlyArray<readonly [string, number]> = [['rotateDrift', CORE_PRODUCT_EVOLVE_FLAGS.rotateDrift], ['swingDrift', CORE_PRODUCT_EVOLVE_FLAGS.swingDrift], ['probDrift', CORE_PRODUCT_EVOLVE_FLAGS.probDrift], ['ghostNotes', CORE_PRODUCT_EVOLVE_FLAGS.ghostNotes], ['ratchetSpray', CORE_PRODUCT_EVOLVE_FLAGS.ratchetSpray], ['hitDrift', CORE_PRODUCT_EVOLVE_FLAGS.hitDrift], ['pitchWalk', CORE_PRODUCT_EVOLVE_FLAGS.pitchWalk], ['valueDrift', CORE_PRODUCT_EVOLVE_FLAGS.valueDrift], ['valueScramble', CORE_PRODUCT_EVOLVE_FLAGS.valueScramble], ['valueWiden', CORE_PRODUCT_EVOLVE_FLAGS.valueWiden], ['subLaneLengthDrift', CORE_PRODUCT_EVOLVE_FLAGS.subLaneLengthDrift], ['subLaneDirectionFlip', CORE_PRODUCT_EVOLVE_FLAGS.subLaneDirectionFlip], ['triggerToggle', CORE_PRODUCT_EVOLVE_FLAGS.triggerToggle]];
 
 function defaultEvolveMethods(kind?: SequencerEvolveKind): Record<string, boolean> {
   return kind === 'synth' ? { ...SYNTH_METHODS } : kind === 'drum' ? { ...DRUM_METHODS } : {};
@@ -22,6 +15,12 @@ function defaultEvolveMethods(kind?: SequencerEvolveKind): Record<string, boolea
 function allowsSubLane(config: NormalizedSequencerEvolveConfig, lane: string): boolean {
   return !config.enabledSubLanes || config.enabledSubLanes.includes(lane);
 }
+
+const finiteNumber = (value: unknown, fallback: number): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+
+const recordValue = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
 export function diceFlagsForEvolveConfig(config: NormalizedSequencerEvolveConfig): number {
   const methods = config.methods ?? {};
@@ -37,24 +36,23 @@ export function diceFlagsForEvolveConfig(config: NormalizedSequencerEvolveConfig
   return flags;
 }
 
+export function evolveMethodFlagsForEvolveConfig(config: NormalizedSequencerEvolveConfig): number {
+  let flags = 0;
+  for (const [method, flag] of EVOLVE_METHOD_FLAGS) if (config.methods?.[method]) flags |= flag;
+  if (config.mutationMode === 'strict') flags |= CORE_PRODUCT_EVOLVE_FLAGS.mutationStrict;
+  return flags;
+}
+
 export function normalizeEvolveConfigs(configs: unknown, kind?: SequencerEvolveKind): NormalizedSequencerEvolveConfig[] {
   const items = Array.isArray(configs) ? configs : [];
   return items.slice(0, 4).map((config) => {
     const source = config && typeof config === 'object' ? config as Record<string, unknown> : {};
-    const evolution = typeof source.evolution === 'number' && Number.isFinite(source.evolution)
-      ? source.evolution
-      : 0.25;
-    const everyBars = typeof source.everyBars === 'number' && Number.isFinite(source.everyBars)
-      ? source.everyBars
-      : 4;
+    const evolution = finiteNumber(source.evolution, 0.25);
+    const everyBars = finiteNumber(source.everyBars, 4);
     const writeOffset = source.writeOffset === 'auto'
       ? 'auto'
-      : typeof source.writeOffset === 'number' && Number.isFinite(source.writeOffset)
-        ? Math.max(0, Math.round(source.writeOffset))
-        : 0;
-    const methodsSource = source.methods && typeof source.methods === 'object' && !Array.isArray(source.methods)
-      ? source.methods as Record<string, unknown>
-      : {};
+      : Math.max(0, Math.round(finiteNumber(source.writeOffset, 0)));
+    const methodsSource = recordValue(source.methods);
     const methods: Record<string, boolean> = defaultEvolveMethods(kind);
     for (const [key, value] of Object.entries(methodsSource)) {
       methods[key] = value === true;

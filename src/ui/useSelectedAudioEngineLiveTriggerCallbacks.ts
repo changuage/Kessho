@@ -92,6 +92,14 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
   useEffect(() => {
     let lastLeadMorph = 0;
     setSelectedLeadMorphCallback((morph) => {
+      const clearKeys: string[] = [];
+      if (morph.lead1 <= -2) clearKeys.push('lead1Morph');
+      if (morph.lead2 <= -2) clearKeys.push('lead2Morph');
+      if (clearKeys.length > 0) {
+        removeRuntimeTriggerPositions(clearKeys);
+        removeRuntimeValues(clearKeys);
+        if (morph.lead1 < 0 && morph.lead2 < 0) return;
+      }
       if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
       const now = performance.now();
       if (now - lastLeadMorph < 66) return;
@@ -119,6 +127,11 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
   useEffect(() => {
     let lastPad1Morph = 0;
     setSelectedPadMorphTriggerCallback((morphPosition: number) => {
+      if (morphPosition < 0) {
+        removeRuntimeTriggerPositions(['padMorph']);
+        removeRuntimeValues(['padMorph']);
+        return;
+      }
       if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
       const now = performance.now();
       if (now - lastPad1Morph < 66) return;
@@ -141,6 +154,11 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
   useEffect(() => {
     let lastPad2Morph = 0;
     setSelectedPad2MorphTriggerCallback((morphPosition: number) => {
+      if (morphPosition < 0) {
+        removeRuntimeTriggerPositions(['pad2Morph']);
+        removeRuntimeValues(['pad2Morph']);
+        return;
+      }
       if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
       const now = performance.now();
       if (now - lastPad2Morph < 66) return;
@@ -238,8 +256,15 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
 
   useEffect(() => {
     const lastMorphIndicator: Record<string, number> = {};
-    let lastMorphState = 0;
+    const lastMorphValue: Record<string, number> = {};
     const voiceToMorphKey: Record<string, keyof SliderState> = {
+      0: 'drumSubMorph',
+      1: 'drumKickMorph',
+      2: 'drumClickMorph',
+      3: 'drumBeepHiMorph',
+      4: 'drumBeepLoMorph',
+      5: 'drumNoiseMorph',
+      6: 'drumMembraneMorph',
       sub: 'drumSubMorph',
       kick: 'drumKickMorph',
       click: 'drumClickMorph',
@@ -248,11 +273,18 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
       noise: 'drumNoiseMorph',
       membrane: 'drumMembraneMorph',
     };
+    const morphKeys = Array.from(new Set(Object.values(voiceToMorphKey)));
     setSelectedDrumMorphTriggerCallback((voice, morphPosition) => {
-      if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
-      const now = performance.now();
       const voiceKey = String(voice);
       const morphKey = voiceToMorphKey[voiceKey];
+      if (morphPosition < 0) {
+        const keysToClear = morphKey ? [morphKey] : morphKeys;
+        removeRuntimeTriggerPositions(keysToClear);
+        removeRuntimeValues(keysToClear);
+        return;
+      }
+      if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
+      const now = performance.now();
       if (activeTab === 'visualizer') {
         emitVisualizerPulse('drums', morphPosition * 0.54 + 0.12, now);
         emitVisualizerPulse('dynamics', 0.06, now);
@@ -265,14 +297,15 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
           mergeRuntimeTriggerPositions({ [morphKey]: morphPosition });
         }
       }
-      if (morphKey && stateRef.current.drumMorphSliderAnimate && now - lastMorphState >= 100) {
-        lastMorphState = now;
+      if (morphKey && stateRef.current.drumMorphSliderAnimate && now - (lastMorphValue[morphKey] || 0) >= 100) {
+        lastMorphValue[morphKey] = now;
         mergeRuntimeValues({ [morphKey]: morphPosition });
       }
     });
     return () => {
       setSelectedDrumMorphTriggerCallback(null);
-      removeRuntimeValues(Object.values(voiceToMorphKey));
+      removeRuntimeTriggerPositions(morphKeys);
+      removeRuntimeValues(morphKeys);
     };
   }, [activeTab, setSelectedDrumMorphTriggerCallback, stateRef, uiMode]);
 

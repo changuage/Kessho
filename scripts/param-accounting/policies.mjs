@@ -31,11 +31,8 @@ export const EXPECTED_APP_VISIBLE_STRUCTURAL_POLICY_BY_PATH = {
     reason: 'Soundscape module/layer controls are applied through dedicated Product snapshot fields and currently require a structured Soundscape snapshot reload.',
     keys: [
       'birds2Enabled',
-      'birds2Level',
       'birdsEnabled',
-      'birdsLevel',
       'frogsEnabled',
-      'frogsLevel',
       'insects2Enabled',
       'insects2Engine',
       'insects2Level',
@@ -320,16 +317,6 @@ export const behaviorEvidenceByAppVisibleGroup = {
     reason: 'Lead enable, hold, and structured envelope/algorithm override controls must drive Product Core source render behavior.',
     evidence: ['core:product:sources', 'ProductSourceWrapperTests.cpp#requireSourceParamEventsAffectRender', 'ProductSourceWrapperTests.cpp#requireBroadLeadPresetFamiliesRender'],
   },
-  'source.lead|lead-generated-preset-endpoint-diff': {
-    owner: 'Product Core Lead source owner',
-    reason: 'Generated Lead preset endpoint controls must be covered by endpoint reconstruction, bounded sparse override loading, and broad Lead preset render probes until remaining exact fallback retirement.',
-    evidence: ['core:product:sources', 'ProductLeadExactPatchTests.cpp#requireGeneratedEndpointLeadSnapshotDoesNotNeedExactPatch', 'ProductLeadExactPatchTests.cpp#requireLeadSparseOverrideDoesNotNeedSnapshotExact', 'ProductSourceWrapperTests.cpp#requireLeadOverridesStayStructured', 'ProductSourceWrapperTests.cpp#requireBroadLeadPresetFamiliesRender'],
-  },
-  'source.pad|pad-generated-preset-endpoint-diff': {
-    owner: 'Product Core Pad source owner',
-    reason: 'Generated Pad preset endpoint controls must be covered by endpoint reconstruction, bounded sparse override loading, and broad Pad preset render probes until remaining exact fallback retirement.',
-    evidence: ['core:product:sources', 'core:product:source-parity', 'ProductPadExactPatchTests.cpp#requireGeneratedEndpointPadSnapshotDoesNotNeedExactPatch', 'ProductSourceWrapperTests.cpp#requirePadOverridesStayStructured', 'ProductSourceWrapperTests.cpp#requireBroadPadPresetFamiliesRender'],
-  },
   'source.pad|range-event': {
     owner: 'Product Core Pad source owner',
     reason: 'Pad range controls must alter Product Core source output, post-chain, or FX send behavior.',
@@ -496,6 +483,14 @@ export const productDeferredClassifications = [
     ],
   },
   {
+    id: 'harmony-generation-policy',
+    owner: 'Product Core harmony owner',
+    allowWiredReferences: true,
+    reason:
+      'Structured harmony slots, sequence steps, and manual control resolve into Product Core harmony frames; harmonyGenerationSeed is UI generation salt for deterministic material creation, not a live Product param.',
+    patterns: [/^harmonyGenerationSeed$/],
+  },
+  {
     id: 'arrangement-and-clock-policy',
     owner: 'C++ Product Core arrangement scheduler and transport sync policy',
     allowWiredReferences: true,
@@ -635,6 +630,9 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
   'runtime-walk-global-policy': [
     'randomWalkMode',
     'randomWalkSpeed',
+  ],
+  'harmony-generation-policy': [
+    'harmonyGenerationSeed',
   ],
   'source-scheduler-ui-policy': [
     'drumBeepHiMorphAuto',
@@ -794,6 +792,50 @@ export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
   {
     key: 'chordProgressionRotation',
     reason: 'Derived chord progression Euclidean template helper; Product Core receives explicit enabled steps/pattern state.',
+  },
+  {
+    key: 'harmonyChordSequence',
+    reason: 'Structured harmony sequence state resolves into Product Core harmony sequence events instead of ParamRegistry scalar params.',
+  },
+  {
+    key: 'harmonyChordSequenceA',
+    reason: 'Structured harmony bank-A sequence state resolves into Product Core harmony sequence events instead of ParamRegistry scalar params.',
+  },
+  {
+    key: 'harmonyChordSequenceB',
+    reason: 'Structured harmony bank-B sequence state resolves into Product Core harmony sequence events instead of ParamRegistry scalar params.',
+  },
+  {
+    key: 'harmonyChordSequenceEnabled',
+    reason: 'Structured harmony sequence enable state resolves into Product Core harmony sequence events instead of ParamRegistry scalar params.',
+  },
+  {
+    key: 'harmonyChordSequenceStepIndex',
+    reason: 'Structured harmony sequence step selection resolves into Product Core harmony sequence events instead of ParamRegistry scalar params.',
+  },
+  {
+    key: 'harmonyChordSlots',
+    reason: 'Structured harmony slot state resolves into Product Core harmony slot events instead of ParamRegistry scalar params.',
+  },
+  {
+    key: 'harmonyChordSlotsA',
+    reason: 'Structured harmony bank-A slot state resolves into Product Core harmony slot events instead of ParamRegistry scalar params.',
+  },
+  {
+    key: 'harmonyChordSlotsB',
+    reason: 'Structured harmony bank-B slot state resolves into Product Core harmony slot events instead of ParamRegistry scalar params.',
+  },
+  {
+    key: 'harmonyGenerationSeed',
+    reason: 'UI generation salt for deterministic harmony material creation; generated slots and sequence carry the Product Core state.',
+  },
+  {
+    key: 'harmonyMorphPercent',
+    reason: 'Structured harmony morph state resolves into Product Core harmony frames instead of ParamRegistry scalar params.',
+  },
+  {
+    key: 'manualHarmonyControl',
+    reason: 'Structured manual harmony control resolves into Product Core harmony manual-intent events instead of ParamRegistry scalar params.',
   },
   {
     key: 'drumMembraneScaleBlend',

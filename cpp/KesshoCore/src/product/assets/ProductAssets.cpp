@@ -21,6 +21,19 @@
   return 1.0f;
 }
 
+  void KesshoProductEngine::applySoundscapeAssetLevelValue(uint32_t asset_id, float value) {
+  if (asset_id == 0u) {
+    return;
+  }
+  SourceState& source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
+  for (uint32_t i = 0; i < source.asset_ref_count; ++i) {
+    if (source.asset_refs[i] == asset_id) {
+      source.asset_ref_levels[i] = clampFloat(value, 0.0f, 2.0f);
+      return;
+    }
+  }
+}
+
   bool KesshoProductEngine::soundscapeModuleParamsAvailable(const SourceState& source) const {
   return source.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
       source.soundscape_module_param_count >= kSoundscapeProductModuleParamCount;
@@ -44,6 +57,21 @@
   bool KesshoProductEngine::hasActiveSoundscapeVoice(uint32_t asset_id) const {
   for (const Voice& voice : voices) {
     if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE || !voice.sample_voice) {
+      continue;
+    }
+    if (voice.asset_slot < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS &&
+        assets[voice.asset_slot].active &&
+        assets[voice.asset_slot].asset_id == asset_id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+  bool KesshoProductEngine::hasActiveLegacySoundscapeVoice(uint32_t asset_id) const {
+  for (const Voice& voice : voices) {
+    if (!voice.active || voice.source_id != KESSHO_PRODUCT_SOURCE_SOUNDSCAPE ||
+        !voice.sample_voice || voice.soundscape_texture_voice) {
       continue;
     }
     if (voice.asset_slot < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS &&

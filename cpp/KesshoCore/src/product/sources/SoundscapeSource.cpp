@@ -12,13 +12,9 @@
       assets[asset_slot].sample_rate <= 0.0f) {
     return;
   }
-
   SoundscapeTextureRuntime& runtime = soundscape_texture_runtimes[texture_slot];
   configureSoundscapeTextureSpatialRuntime(asset_id, runtime);
-  const uint32_t seed = soundscapeTextureSeed(
-      source,
-      texture_slot,
-      hashU32(rng_seed ^ asset_id ^ 0x51f15ca9u));
+  const uint32_t seed = soundscapeTextureSeed(source, texture_slot, hashU32(rng_seed ^ asset_id ^ 0x51f15ca9u));
   if (!runtime.initialized || runtime.seed != seed) {
     releaseSoundscapeTextureVoices(asset_id);
     runtime = {};
@@ -29,7 +25,6 @@
     runtime.next_start_frame = product_render_frame +
         static_cast<uint64_t>(std::max(1.0, std::round(kSoundscapeTextureInitialDelaySeconds * sample_rate)));
   }
-
   uint32_t queued_count = 0u;
   uint64_t latest_end_frame = product_render_frame;
   for (const Voice& voice : voices) {
@@ -47,14 +42,12 @@
             static_cast<uint64_t>(voice.start_delay_frames) +
             static_cast<uint64_t>(voice.remaining_frames));
   }
-
   const uint64_t lookahead_frame = product_render_frame +
       static_cast<uint64_t>(std::max(1.0, std::round(kSoundscapeTextureLookAheadSeconds * sample_rate)));
   if (runtime.next_start_frame < product_render_frame) {
     runtime.next_start_frame = product_render_frame +
         static_cast<uint64_t>(std::max(1.0, std::round(kSoundscapeTextureInitialDelaySeconds * sample_rate)));
   }
-
   const AssetSlot& asset = assets[asset_slot];
   while (queued_count < kSoundscapeTextureMinimumQueuedSlices || runtime.next_start_frame < lookahead_frame) {
     const double asset_duration = static_cast<double>(asset.frame_count) / std::max(1.0, static_cast<double>(asset.sample_rate));
@@ -75,10 +68,8 @@
             texture_slot == kSoundscapeTextureSlotOcean ? 0.38f : 0.48f),
         0.0f,
         1.0f);
-    const float detune_cents =
-        (soundscapeTextureRandom(texture_slot) * 2.0f - 1.0f) * kSoundscapeTexturePitchRangeCents;
-    const float speed_multiplier =
-        1.0f + (soundscapeTextureRandom(texture_slot) * 2.0f - 1.0f) * kSoundscapeTextureSpeedVariation;
+    const float detune_cents = (soundscapeTextureRandom(texture_slot) * 2.0f - 1.0f) * kSoundscapeTexturePitchRangeCents;
+    const float speed_multiplier = 1.0f + (soundscapeTextureRandom(texture_slot) * 2.0f - 1.0f) * kSoundscapeTextureSpeedVariation;
     const double total_rate =
         std::max(0.25, static_cast<double>(speed_multiplier) * std::pow(2.0, static_cast<double>(detune_cents) / 1200.0));
     const double output_duration = slice_duration / total_rate;
@@ -93,6 +84,10 @@
     const double max_offset = std::max(0.0, asset_duration - slice_duration - 0.02);
     const double offset = soundscapeTexturePickOffset(texture_slot, max_offset, slice_duration);
 
+    const uint32_t slice_id = runtime.next_slice_id++;
+    if (runtime.next_slice_id == 0u) {
+      runtime.next_slice_id = 1u;
+    }
     const uint32_t voice_index = allocateVoice();
     Voice& voice = voices[voice_index];
     voice = {};
@@ -100,6 +95,9 @@
     voice.source_id = KESSHO_PRODUCT_SOURCE_SOUNDSCAPE;
     voice.sample_voice = true;
     voice.soundscape_texture_voice = true;
+    voice.soundscape_texture_slice_id = slice_id;
+    voice.soundscape_texture_start_frame = runtime.next_start_frame;
+    voice.soundscape_texture_start_offset_seconds = static_cast<float>(offset);
     voice.asset_slot = asset_slot;
     voice.frequency = 0.0f;
     voice.amplitude = 1.0f;
@@ -121,10 +119,7 @@
         : static_cast<uint32_t>(std::ceil(fade * sample_rate));
     voice.envelope_release_frames = voice.envelope_attack_frames;
 
-    runtime.last_slice_id = runtime.next_slice_id++;
-    if (runtime.next_slice_id == 0u) {
-      runtime.next_slice_id = 1u;
-    }
+    runtime.last_slice_id = slice_id;
     runtime.last_start_frame = runtime.next_start_frame;
     runtime.last_offset_seconds = static_cast<float>(offset);
     runtime.last_slice_duration = static_cast<float>(slice_duration);
@@ -177,11 +172,16 @@
     if ((assets[slot].flags & KESSHO_PRODUCT_ASSET_SOUNDSCAPE) == 0u) {
       continue;
     }
-    if (use_texture_slices && soundscapeTextureSlotForAsset(asset_id) < kSoundscapeTextureSlotCount) {
+    const bool texture_asset = soundscapeTextureSlotForAsset(asset_id) < kSoundscapeTextureSlotCount;
+    if (use_texture_slices && texture_asset) {
+      releaseLegacySoundscapeVoices(asset_id);
       ensureSoundscapeTextureVoice(source, asset_id, slot);
       continue;
     }
-    if (hasActiveSoundscapeVoice(asset_id)) {
+    if (texture_asset) {
+      releaseSoundscapeTextureVoices(asset_id);
+    }
+    if (hasActiveLegacySoundscapeVoice(asset_id)) {
       continue;
     }
     triggerVoice(

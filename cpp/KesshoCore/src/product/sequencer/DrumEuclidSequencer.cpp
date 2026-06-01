@@ -22,6 +22,11 @@
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MORPH_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_DISTANCE_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_EXPRESSION_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_MODE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_ROOT_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_SCALE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_NOTE_RANGE_MIN_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_NOTE_RANGE_MAX_ID:
       return true;
     default:
       return false;
@@ -143,6 +148,27 @@
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_EXPRESSION_ID:
       lane.expression = clampFloat(event.value, 0.0f, 1.0f);
       break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_MODE_ID:
+      lane.pitch_mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), kSequencerPitchModeSemitones, kSequencerPitchModeNoteRange);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_ROOT_ID:
+      lane.pitch_root = clampFloat(event.value, 0.0f, 127.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_PITCH_SCALE_ID:
+      lane.pitch_scale_id = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, kSequencerPitchScaleCount - 1u);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_NOTE_RANGE_MIN_ID:
+      lane.note_range_min = clampFloat(event.value, 24.0f, 108.0f);
+      if (lane.note_range_max < lane.note_range_min + 2.0f) {
+        lane.note_range_max = clampFloat(lane.note_range_min + 2.0f, 26.0f, 108.0f);
+      }
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_NOTE_RANGE_MAX_ID:
+      lane.note_range_max = clampFloat(event.value, 24.0f, 108.0f);
+      if (lane.note_range_min > lane.note_range_max - 2.0f) {
+        lane.note_range_min = clampFloat(lane.note_range_max - 2.0f, 24.0f, 106.0f);
+      }
+      break;
     default:
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
       return;
@@ -175,6 +201,7 @@
     return;
   }
   clearLaneStepOverrides(lanes[event.index]);
+  clearSequencerEvolveHome(lanes[event.index]);
   markSequencerUiStateChanged(event.target_id, event.index, KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME);
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
 }

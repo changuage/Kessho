@@ -1,3 +1,13 @@
+/**
+ * REFERENCE / A-B TESTING PATH
+ *
+ * This runtime loader is required for explicit web-ts, core-smoke, product-test,
+ * parity checks, smoke tests, and A/B comparison. Production builds must keep
+ * resolving through ProductEnginePort -> WebProductEngine -> coreProductEngineHost.
+ *
+ * Status: Keep Active — Archive Later
+ */
+
 import type { AudioEngine } from './reference/webTs/engine';
 
 export type {

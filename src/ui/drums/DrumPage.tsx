@@ -118,7 +118,7 @@ export interface DrumPageProps {
   setEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
   setTriggerCallback: (callback: ((voice: string, velocity: number) => void) | null) => void;
   resetEvolveHome: (laneIdx: number) => void;
-  captureEvolveHome?: (laneIdx: number) => void;
+  captureEvolveHome?: (laneIdx: number, pitchState?: SubLaneState | null) => void;
   diceLane?: (laneIdx: number, intensity: number) => void;
   SliderComponent: React.ComponentType<Record<string, unknown>>;
   CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
@@ -507,37 +507,39 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
       }
       return next;
     });
-    seq.setSubLaneStates(prev => prev.map((laneState, index) => {
-      if (index !== laneIndex) return laneState;
-      const nextLane = { ...laneState };
-      const lengthFields = {
-        expression: data.expression?.[laneIndex]?.length,
-        pitch: data.pitch?.[laneIndex]?.length,
-        morph: data.morph?.[laneIndex]?.length,
-        distance: data.distance?.[laneIndex]?.length,
-        slice: data.slice?.[laneIndex]?.length,
-        reverse: data.reverse?.[laneIndex]?.length,
-      } as const;
-      const directionFields = {
-        expression: data.expressionDirection?.[laneIndex],
-        pitch: data.pitchDirection?.[laneIndex],
-        morph: data.morphDirection?.[laneIndex],
-        distance: data.distanceDirection?.[laneIndex],
-        slice: data.sliceDirection?.[laneIndex],
-        reverse: data.reverseDirection?.[laneIndex],
-      } as const;
-      for (const lane of ['expression', 'pitch', 'morph', 'distance', 'slice', 'reverse'] as const) {
-        const steps = lengthFields[lane];
-        const direction = directionFields[lane];
-        if (steps == null && direction == null) continue;
-        nextLane[lane] = {
-          ...nextLane[lane],
-          ...(typeof steps === 'number' ? { steps } : {}),
-          ...(direction ? { direction } : {}),
-        };
-      }
-      return nextLane;
-    }));
+    if (!sequenceHome) {
+      seq.setSubLaneStates(prev => prev.map((laneState, index) => {
+        if (index !== laneIndex) return laneState;
+        const nextLane = { ...laneState };
+        const lengthFields = {
+          expression: data.expression?.[laneIndex]?.length,
+          pitch: data.pitch?.[laneIndex]?.length,
+          morph: data.morph?.[laneIndex]?.length,
+          distance: data.distance?.[laneIndex]?.length,
+          slice: data.slice?.[laneIndex]?.length,
+          reverse: data.reverse?.[laneIndex]?.length,
+        } as const;
+        const directionFields = {
+          expression: data.expressionDirection?.[laneIndex],
+          pitch: data.pitchDirection?.[laneIndex],
+          morph: data.morphDirection?.[laneIndex],
+          distance: data.distanceDirection?.[laneIndex],
+          slice: data.sliceDirection?.[laneIndex],
+          reverse: data.reverseDirection?.[laneIndex],
+        } as const;
+        for (const lane of ['expression', 'pitch', 'morph', 'distance', 'slice', 'reverse'] as const) {
+          const steps = lengthFields[lane];
+          const direction = directionFields[lane];
+          if (steps == null && direction == null) continue;
+          nextLane[lane] = {
+            ...nextLane[lane],
+            ...(typeof steps === 'number' ? { steps } : {}),
+            ...(direction ? { direction } : {}),
+          };
+        }
+        return nextLane;
+      }));
+    }
   }, [evolvedOverrides, seq, state]);
 
   // Sync engine-ready step overrides while preserving raw UI pitch values for presets.
@@ -641,7 +643,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     const laneIndex = pendingSequenceHomeCaptureRef.current;
     if (laneIndex == null) return;
     pendingSequenceHomeCaptureRef.current = null;
-    captureEvolveHome?.(laneIndex);
+    captureEvolveHome?.(laneIndex, sequenceSubLaneHomeRef.current[laneIndex]?.pitch ?? null);
   }, [sequenceHomeCaptureVersion, captureEvolveHome]);
 
   const activeSeq = seq.activeSeq;

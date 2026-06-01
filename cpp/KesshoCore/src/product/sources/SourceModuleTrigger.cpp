@@ -26,6 +26,35 @@ void scaleLeadRatchetPatch(kessho::core::KesshoSourcePresetPatch& patch, float f
   }
 }
 
+bool stableSourcePatchPointer(
+    const SourceState& source,
+    const kessho::core::KesshoSourcePresetPatch* patch) {
+  return patch == &source.source_preset_patch ||
+         patch == &source.source_preset_endpoint_a ||
+         patch == &source.source_preset_endpoint_b;
+}
+
+bool modulePatchAlreadyApplied(
+    const SourceState& source,
+    const kessho::core::KesshoSourcePresetPatch* patch) {
+  return stableSourcePatchPointer(source, patch) &&
+         source.applied_module_patch_ptr == patch &&
+         source.applied_module_patch_revision == source.source_preset_runtime_revision;
+}
+
+void recordModulePatchApplied(
+    SourceState& source,
+    const kessho::core::KesshoSourcePresetPatch* patch,
+    bool applied) {
+  if (applied && stableSourcePatchPointer(source, patch)) {
+    source.applied_module_patch_ptr = patch;
+    source.applied_module_patch_revision = source.source_preset_runtime_revision;
+    return;
+  }
+  source.applied_module_patch_ptr = nullptr;
+  source.applied_module_patch_revision = 0u;
+}
+
 float padRatchetHoldSeconds(float hold_seconds, float factor) {
   if (factor >= 0.999f || !std::isfinite(hold_seconds) || hold_seconds <= 0.0f) {
     return hold_seconds;
@@ -84,12 +113,22 @@ static_assert(kLeadAttackParamIndex < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PA
       const bool exact_pad_patch =
           preset_patch != nullptr &&
           preset_patch->exact_pad_param_count == kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
+      SourceState& source = sources[source_id - 1u];
       if (exact_pad_patch) {
-        pad_module->setSourcePresetPatch(static_cast<int>(pad_index), *preset_patch);
+        if (!modulePatchAlreadyApplied(source, preset_patch)) {
+          recordModulePatchApplied(
+              source,
+              preset_patch,
+              pad_module->setSourcePresetPatch(static_cast<int>(pad_index), *preset_patch) != 0);
+        }
       } else if (preset_patch != nullptr) {
-        pad_module->setSourcePresetPatch(static_cast<int>(pad_index), *preset_patch);
+        recordModulePatchApplied(
+            source,
+            preset_patch,
+            pad_module->setSourcePresetPatch(static_cast<int>(pad_index), *preset_patch) != 0);
         pad_module->setSourceMacros(static_cast<int>(pad_index), morph, distance, expression);
       } else {
+        recordModulePatchApplied(source, preset_patch, false);
         pad_module->setSourceMacros(static_cast<int>(pad_index), morph, distance, expression);
       }
       const int route_voice_index = route % PAD_NUM_VOICES;
@@ -113,9 +152,19 @@ static_assert(kLeadAttackParamIndex < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PA
         return true;
       }
       if (preset_patch != nullptr) {
-        kessho::core::KesshoSourcePresetPatch ratchet_patch = *preset_patch;
-        scaleLeadRatchetPatch(ratchet_patch, normalizedSynthRatchetFactor(synth_ratchet_factor));
-        lead_modules[lead_index]->setSourcePresetPatch(static_cast<int>(lead_index), ratchet_patch);
+        SourceState& source = sources[source_id - 1u];
+        const float ratchet_factor = normalizedSynthRatchetFactor(synth_ratchet_factor);
+        if (ratchet_factor < 0.999f || !modulePatchAlreadyApplied(source, preset_patch)) {
+          kessho::core::KesshoSourcePresetPatch ratchet_patch = *preset_patch;
+          scaleLeadRatchetPatch(ratchet_patch, ratchet_factor);
+          recordModulePatchApplied(
+              source,
+              ratchet_factor >= 0.999f ? preset_patch : nullptr,
+              lead_modules[lead_index]->setSourcePresetPatch(static_cast<int>(lead_index), ratchet_patch) != 0);
+        }
+      } else {
+        SourceState& source = sources[source_id - 1u];
+        recordModulePatchApplied(source, preset_patch, false);
       }
       if (!exact_lead_patch) {
         lead_modules[lead_index]->setTriggerMacros(morph, distance, expression);
