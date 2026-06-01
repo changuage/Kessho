@@ -178,6 +178,61 @@ await runCheckWithReport({
       );
     }
 
+    const manualFastPathHarness = loadCoreProductHostHarness();
+    const manualFastPathHost = manualFastPathHarness.host;
+    const manualFastPathRuntime = manualFastPathHarness.runtime;
+    const manualFastPathSliderState = { padEnabled: true, leadEnabled: true, drumEnabled: true };
+    const manualFastPathSnapshot = {
+      transport: { bpm: 120 },
+      sources: [
+        { sourceId: 1, enabled: true },
+        { sourceId: 3, enabled: true },
+        { sourceId: 5, enabled: true },
+      ],
+    };
+    manualFastPathRuntime.audioContext = { state: 'running', sampleRate: 48000, currentTime: 0 };
+    manualFastPathHost.runtimeReady = true;
+    manualFastPathHost.latestSliderState = manualFastPathSliderState;
+    manualFastPathHost.latestProductSnapshot = manualFastPathSnapshot;
+    await manualFastPathHost.auditionSynthNote({ source: 'pad1', midi: 60, velocity: 0.75, durationMs: 120 }, manualFastPathSliderState);
+    await manualFastPathHost.auditionSynthNotes([
+      { source: 'pad1', midi: 64, velocity: 0.7, durationMs: 120 },
+      { source: 'lead1', midi: 67, velocity: 0.68, durationMs: 120 },
+    ], manualFastPathSliderState);
+    await manualFastPathHost.triggerDrumVoice('snare', 0.8, manualFastPathSliderState);
+    manualFastPathHost.pushMidiMessage({ data: [0x90, 60, 100], timestamp: 12.5 });
+    manualFastPathHost.enqueueLiveNoteEvent({ kind: 'live-note-on', eventID: 'test-live-on', source: 'ui-pad', instrument: 'lead1', channel: 2, note: 72, velocity: 0.5, timestampMs: 12500 });
+    manualFastPathHost.enqueueLiveNoteEvent({ kind: 'live-note-off', eventID: 'test-live-off', source: 'ui-pad', instrument: 'lead1', channel: 2, note: 72, velocity: 0, timestampMs: 12550 });
+    assert(
+      manualFastPathHost.latestProductSnapshot === manualFastPathSnapshot,
+      'manual Product note/MIDI fast path must not rebuild or dirty-diff an already compiled runtime snapshot',
+    );
+    assert(
+      manualFastPathHost.latestSliderState === manualFastPathSliderState,
+      'manual Product note/MIDI fast path must not copy UI state on repeated trigger posts',
+    );
+    assert(manualFastPathRuntime.snapshots.length === 0, 'manual Product note/MIDI fast path must not load a snapshot');
+    assert(
+      manualFastPathRuntime.events.filter((event) => event.type === 'manual-note').length === 3 &&
+        manualFastPathRuntime.events.filter((event) => event.type === 'drum-trigger').length === 1 &&
+        manualFastPathRuntime.events.filter((event) => event.type === 'host-midi').length === 1 &&
+        manualFastPathRuntime.events.filter((event) => event.type === 'live-note-midi').length === 2,
+      'manual Product note/MIDI fast path must still post compact Product runtime events',
+    );
+    assert(
+      manualFastPathRuntime.events.some((event) =>
+        event.type === 'live-note-midi' &&
+          event.targetId === 3 &&
+          event.status === 0x92 &&
+          event.data1 === 72 &&
+          event.data2 === 64) &&
+        manualFastPathRuntime.events.some((event) =>
+          event.type === 'live-note-midi' &&
+          event.status === 0x82 &&
+          event.data2 === 0),
+      'Product live-note enqueue must compile to targeted Core MIDI note-on/off events',
+    );
+
     const postSequencerBody = hostMethodBody('postSequencerControlEvent');
     assert(postSequencerBody.includes('if (this.runtimeReady)'), 'postSequencerControlEvent() must branch on runtime readiness');
     assert(postSequencerBody.includes('this.runtime.postEvent(event)'), 'postSequencerControlEvent() must post the live event');
@@ -228,6 +283,7 @@ await runCheckWithReport({
       'const config = manualSynthDiceConfig(options.adapterState, options.laneIndex, options.intensity)',
       "nativeEvolveFlagsForEvolveConfig(config, 'synth')",
       'createCoreProductSequencerDiceEvent(',
+      'CORE_PRODUCT_EVOLVE_FLAGS.manualCommit',
       'CORE_PRODUCT_EVOLVE_FLAGS.modeParity',
       "options.publish('synthEuclidEvolve', options.laneIndex)",
     ]) {
@@ -343,7 +399,7 @@ await runCheckWithReport({
       const body = methodBody(sequencerUiAdapter, `function ${methodName}`);
       for (const token of [
         'coreProductStepValueOverridesFromLane(lane',
-        'coreProductStepValueConfigsFromLane(lane',
+        'coreProductStepValueConfigsFromLaneOrPrevious(lane',
         'lane.triggerToggles.map',
         'options.setLaneSwing(',
         'options.publish(',
@@ -893,6 +949,7 @@ await runCheckWithReport({
     const manualSynthDiceFlags = (manualSynthDiceEvent.flags ?? 0) >>> 0;
     assert(
       (manualSynthDiceFlags & (harness.context.CORE_PRODUCT_EVOLVE_FLAGS.modeParity >>> 0)) !== 0 &&
+        (manualSynthDiceFlags & (harness.context.CORE_PRODUCT_EVOLVE_FLAGS.manualCommit >>> 0)) !== 0 &&
         (manualSynthDiceFlags & (harness.context.CORE_PRODUCT_EVOLVE_FLAGS.valueDrift >>> 0)) !== 0 &&
         (manualSynthDiceFlags & (harness.context.CORE_PRODUCT_EVOLVE_FLAGS.valueScramble >>> 0)) !== 0 &&
         (manualSynthDiceFlags & (harness.context.CORE_PRODUCT_DICE_FLAGS.expression >>> 0)) !== 0 &&
@@ -1184,10 +1241,10 @@ await runCheckWithReport({
     harness.host.setDrumSubLaneEnabled([{ pitch: true, expression: true }]);
     harness.host.setDrumEuclidSwings([0.19]);
     harness.host.setDrumStepOverrides({ pitch: [[1]], expression: [[0.1]], pitchDirection: ['forward'] });
-    harness.host.captureDrumEuclidLaneHome(0, { mode: 'semitones', root: 60, scale: 'Major' }, { scaleQuantize: false });
+    harness.host.captureDrumEuclidLaneHome(0, { mode: 'semitones', root: 60, scale: 'Major' }, { steps: 1, direction: 'forward', scaleQuantize: false });
     harness.host.setDrumEuclidSwings([0.39]);
     harness.host.setDrumStepOverrides({ pitch: [[5, 6]], expression: [[0.45, 0.55]], pitchDirection: ['reverse'] });
-    harness.host.captureDrumEuclidLaneHome(0, { mode: 'notes', root: 60, scale: 'Minor' }, { scaleQuantize: true });
+    harness.host.captureDrumEuclidLaneHome(0, { mode: 'notes', root: 60, scale: 'Minor' }, { steps: 8, direction: 'pingpong', scaleQuantize: true });
     harness.host.setDrumStepOverrides({ pitch: [[9]], expression: [[0.95]], pitchDirection: ['forward'] });
     harness.host.resetDrumEuclidLaneHome(0);
     const drumSequencePresetResetPayload = drumOverridePayloads.at(-1)?.payload ?? {};
@@ -1198,6 +1255,8 @@ await runCheckWithReport({
         drumSequencePresetResetPayload.pitch[0][1] === 6 &&
         drumSequencePresetResetPayload.pitchSettings?.[0]?.mode === 'notes' &&
         drumSequencePresetResetPayload.pitchSettings[0].scale === 'Minor' &&
+        drumSequencePresetResetPayload.subLaneStates?.pitch?.steps === 8 &&
+        drumSequencePresetResetPayload.subLaneStates.pitch.direction === 'pingpong' &&
         drumSequencePresetResetPayload.subLaneStates?.pitch?.scaleQuantize === true &&
         Array.isArray(drumSequencePresetResetPayload.expression?.[0]) &&
         drumSequencePresetResetPayload.expression[0][0] === 0.45,
@@ -1339,6 +1398,48 @@ await runCheckWithReport({
           entry.payload.subLaneStates.morph?.enabled === false &&
           entry.payload.subLaneStates.distance?.enabled === false),
       'reset-home reconciliation must explicitly clear Product-supported sub-lane UI state',
+    );
+
+    const drumDicedExpression = [0.12, 0.24, 0.36, 0.46, 0.58, 0.66, 0.72, 0.84];
+    harness.host.setDrumSubLaneEnabled([{}, {}, { expression: true }]);
+    harness.host.runtimeReady = true;
+    harness.host.postProductEvent({
+      eventKind: harness.context.KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane,
+      targetId: harness.context.CORE_PRODUCT_SEQUENCER_IDS.drum,
+      index: 2,
+      value: 1,
+    });
+    harness.host.setDrumStepOverrides({
+      expression: [null, null, [0, 0, 0, 0, 0, 0, 0, 0]],
+      expressionDirection: [null, null, 'forward'],
+    });
+    harness.host.reconcileSequencerUiState(makeSequencerUiTelemetry({
+      revision: 3,
+      targetId: harness.context.CORE_PRODUCT_SEQUENCER_IDS.drum,
+      laneIndex: 2,
+      changeKind: 3,
+      lane: makeLane({
+        expression: drumDicedExpression,
+        expressionRangeSetLow: undefined,
+        expressionRangeSetHigh: undefined,
+        expressionRangeMaxes: undefined,
+        stepValueConfigEnabledMask: undefined,
+        stepValueConfigSteps: undefined,
+        stepValueConfigDirections: undefined,
+      }),
+      sequencer: 'drum',
+    }));
+    harness.host.setDrumStepOverrides({
+      expression: [null, null, [0, 0, 0, 0, 0, 0, 0, 0]],
+      expressionDirection: [null, null, 'forward'],
+    });
+    harness.host.resetDrumEuclidLaneHome(2);
+    const drumDiceResetPayload = drumOverridePayloads.at(-1)?.payload ?? {};
+    assert(
+      Array.isArray(drumDiceResetPayload.expression?.[2]) &&
+        drumDiceResetPayload.expression[2][3] === 0.46 &&
+        drumDiceResetPayload.subLaneStates?.expression?.steps === 8,
+      'drum dice reconciliation must capture Product Core diced sub-lane state as the next reset home',
     );
 
     const eventCountBeforeReload = harness.runtime.events.length;

@@ -335,6 +335,42 @@ uint32_t collectActiveFields(uint32_t flags, const uint32_t* fields, uint32_t fi
   return count;
 }
 
+bool laneFieldValuesDiffer(const LaneState& left, const LaneState& right, uint32_t field) {
+  const uint32_t steps = std::max(fieldStepCount(left, field), fieldStepCount(right, field));
+  for (uint32_t step = 0u; step < steps; ++step) {
+    if (std::fabs(laneValue(left, field, step) - laneValue(right, field, step)) > 0.0001f) {
+      return true;
+    }
+  }
+  return false;
+}
+
+float committedManualValue(float current, uint32_t field, EvolveRandom& rng) {
+  const float min_value = field == KESSHO_PRODUCT_STEP_FIELD_EXPRESSION ? 0.2f : 0.0f;
+  const float delta = 0.18f + randomUnit(rng) * 0.12f;
+  const float target = current >= 0.65f ? current - delta : current + delta;
+  return kessho::product::internal::clampFloat(target, min_value, 1.0f);
+}
+
+void commitManualValueMutation(const LaneState& original, LaneState& lane, uint32_t flags, int32_t write_offset, uint32_t bar_index, EvolveRandom& rng) {
+  uint32_t active_fields[8]{};
+  const uint32_t count = collectActiveFields(flags, kValueFields, 3u, active_fields);
+  if (count == 0u) {
+    return;
+  }
+  for (uint32_t i = 0u; i < count; ++i) {
+    const uint32_t field = active_fields[i];
+    if (laneFieldValuesDiffer(original, lane, field)) {
+      continue;
+    }
+    const uint32_t steps = fieldStepCount(lane, field);
+    const uint32_t step = write_offset == 0
+        ? static_cast<uint32_t>(std::floor(randomUnit(rng) * static_cast<float>(steps))) % steps
+        : writePosition(steps, write_offset, bar_index);
+    setLaneValue(lane, field, step, committedManualValue(laneValue(lane, field, step), field, rng));
+  }
+}
+
 uint32_t randomOtherDirection(uint32_t current, EvolveRandom& rng) {
   const uint32_t safe = current > KESSHO_PRODUCT_SUBLANE_DIRECTION_PINGPONG
       ? KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD
@@ -899,6 +935,10 @@ void KesshoProductEngine::applyParityEvolveSequencerLaneEvent(const KesshoProduc
   }
   if (fieldEnabled(flags, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE)) {
     restoreMaskedValues(original, lane, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, write_offset, bar_index);
+  }
+
+  if (hasFlag(flags, KESSHO_PRODUCT_EVOLVE_MANUAL_COMMIT)) {
+    commitManualValueMutation(original, lane, flags, write_offset, bar_index, rng);
   }
 
   if (home.captured && chance(rng, 0.15f * (1.2f - intensity))) {

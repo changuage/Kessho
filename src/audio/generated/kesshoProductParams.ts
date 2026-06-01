@@ -237,6 +237,7 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   FxReverbCrossoverHz: 370,
   FxReverbInputTone: 371,
   FxReverbShimmerFeedback: 372,
+  FxReverbBloom: 388,
   FxReverbWarp: 373,
   FxReverbCrossFeed: 374,
   FxReverbEarlyReflections: 375,
@@ -2201,6 +2202,14 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "float",
     "id": 372,
     "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxReverbBloom",
+    "path": "fx.reverb.bloom",
+    "type": "float",
+    "id": 388,
+    "min": -1,
     "max": 1
   },
   {

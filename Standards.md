@@ -1,5 +1,20 @@
 # Kessho Code Standards
 
+## Pad/Pad2 State Metadata
+
+**Rule:** New duplicated Pad 1 / Pad 2 UI or state metadata should start from `PAD_SOURCE_SPECS` in `src/ui/state.ts` and keep saved preset keys flat. Do not introduce nested preset state for these sources.
+
+The current proof covers shared numeric quantization and filter cutoff range-pair metadata:
+
+```typescript
+for (const spec of PAD_SOURCE_SPECS) {
+  const minKey = padSourceStateKey(spec, 'filterCutoffMin');
+  const maxKey = padSourceStateKey(spec, 'filterCutoffMax');
+}
+```
+
+Pad 1 keeps legacy keys like `filterCutoffMin` and `synthAttack`; Pad 2 keeps keys like `pad2FilterCutoffMin` and `pad2Attack`. Shared numeric quantization for ADSR, oscillator, filter, LFO, mod-envelope, distance, and post-FX pad fields is generated from the same base-key metadata. Future enum/default metadata can move to the same pattern after preset metadata, Product boundary, and type checks pass.
+
 ## Morph Endpoint Detection
 
 **Rule:** All morph slider endpoint checks MUST use the shared helpers from `src/audio/morphUtils.ts`. Never use inline threshold comparisons or raw `=== 0` / `=== 100` checks.

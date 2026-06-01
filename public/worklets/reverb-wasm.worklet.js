@@ -257,6 +257,9 @@ class ReverbWasmProcessor extends AudioWorkletProcessor {
     if (p.erLpFreq !== undefined) {
       this.callOptionalExport('reverb_set_er_lp_freq', p.erLpFreq);
     }
+    if (p.bloom !== undefined) {
+      this.callOptionalExport('reverb_set_bloom', p.bloom);
+    }
   }
 
   /** Get Float32Array view of WASM heap (refreshed on each access since memory can grow) */

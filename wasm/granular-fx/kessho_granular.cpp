@@ -347,6 +347,34 @@ static inline int clampi(int x, int lo, int hi) {
     return x < lo ? lo : (x > hi ? hi : x);
 }
 
+static inline int wrap_index(int idx, int size) {
+    if (idx >= size) idx -= size;
+    else if (idx < 0) idx += size;
+    return idx;
+}
+
+static inline int wrap_index_any(int idx, int size) {
+    if (idx >= size || idx < 0) {
+        idx %= size;
+        if (idx < 0) idx += size;
+    }
+    return idx;
+}
+
+static inline float wrap_position(float pos, float size_f) {
+    if (pos >= size_f) {
+        pos -= size_f;
+        if (pos >= size_f) pos = fmodf(pos, size_f);
+    } else if (pos < 0.0f) {
+        pos += size_f;
+        if (pos < 0.0f) {
+            pos = fmodf(pos, size_f);
+            if (pos < 0.0f) pos += size_f;
+        }
+    }
+    return pos;
+}
+
 // Bitwise NaN/Inf/denormal sanitizer — works even with -ffast-math
 static inline float sanitize(float x) {
     union { float f; uint32_t u; } v;
@@ -464,14 +492,14 @@ static void diffuser_destroy(AllpassDiffuser* d) {
 
 static inline float diffuser_process_channel(float* buf, int size, int* write_pos,
                                                int delay_size, float g, float input) {
-    int rp = (*write_pos - delay_size + size);
-    if (rp < 0) rp += size;
-    rp = rp % size;
+    int rp = wrap_index(*write_pos - delay_size + size, size);
     float delayed = buf[rp];
     float v = input - delayed * g;
     buf[*write_pos] = sanitize(v);
     float out = delayed + v * g;
-    *write_pos = (*write_pos + 1) % size;
+    int next_write = *write_pos + 1;
+    if (next_write >= size) next_write = 0;
+    *write_pos = next_write;
     return sanitize(out);
 }
 
@@ -499,8 +527,7 @@ static float diffuser_process_r(AllpassDiffuser* d, float input) {
 
 /** 8-point Kaiser-windowed sinc interpolation — higher fidelity than cubic. */
 static inline float read_buffer_sinc(const GranularState* s, const float* buf, int size, float position) {
-    float pos = fmodf(position, (float)size);
-    if (pos < 0.0f) pos += (float)size;
+    float pos = wrap_position(position, (float)size);
     int i0 = (int)pos;
     float frac = pos - (float)i0;
 
@@ -514,6 +541,25 @@ static inline float read_buffer_sinc(const GranularState* s, const float* buf, i
     for (int t = 0; t < KESSHO_SINC_TAPS; t++) {
         int idx = i0 + t - half + 1;
         // Wrap around circular buffer
+        if (idx < 0) idx += size;
+        else if (idx >= size) idx -= size;
+        sum += buf[idx] * kernel[t];
+    }
+    return sum;
+}
+
+static inline float read_buffer_sinc_bounded(const GranularState* s, const float* buf, int size, float pos) {
+    int i0 = (int)pos;
+    float frac = pos - (float)i0;
+
+    int frac_idx = (int)(frac * (float)KESSHO_SINC_OVERSAMPLING);
+    if (frac_idx >= KESSHO_SINC_OVERSAMPLING) frac_idx = KESSHO_SINC_OVERSAMPLING - 1;
+
+    const float* kernel = &s->sinc_table[frac_idx * KESSHO_SINC_TAPS];
+    float sum = 0.0f;
+    int half = KESSHO_SINC_TAPS / 2;
+    for (int t = 0; t < KESSHO_SINC_TAPS; t++) {
+        int idx = i0 + t - half + 1;
         if (idx < 0) idx += size;
         else if (idx >= size) idx -= size;
         sum += buf[idx] * kernel[t];
@@ -657,7 +703,8 @@ static float next_random(GranularState* s) {
         return (float)(s->rng_seed & 0x7FFF) / 32768.0f;
     }
     float v = s->random_seq[s->random_idx];
-    s->random_idx = (s->random_idx + 1) % s->random_len;
+    s->random_idx++;
+    if (s->random_idx >= s->random_len) s->random_idx = 0;
     return v;
 }
 
@@ -746,10 +793,10 @@ static void spawn_grain(GranularState* s, int voice_idx) {
 
         int spray_samples = (int)(vp->spray * 600.0f / 1000.0f * sr);
         int jitter_samples = (int)(s->legacy.jitter / 1000.0f * sr);
-        int base_pos = (s->write_pos - spray_samples + s->buffer_size) % s->buffer_size;
+        int base_pos = wrap_index_any(s->write_pos - spray_samples + s->buffer_size, s->buffer_size);
         int spray_offset = (int)(next_random(s) * (float)spray_samples);
         int jitter_offset = (int)((next_random(s) - 0.5f) * 2.0f * (float)jitter_samples);
-        grain->position = (float)((base_pos - spray_offset + jitter_offset + s->buffer_size * 2) % s->buffer_size);
+        grain->position = (float)wrap_index_any(base_pos - spray_offset + jitter_offset, s->buffer_size);
         s->last_grain_pos[voice_idx] = grain->position;
 
         // Harmonic or random pitch — quantize to current scale for musicality
@@ -795,13 +842,12 @@ static void spawn_grain(GranularState* s, int voice_idx) {
 
         float base_pos;
         if (write_follow > 0.01f) {
-            int wh_pos = (s->write_pos - grain_samples * 2 + s->buffer_size * 2) % s->buffer_size;
+            int wh_pos = wrap_index_any(s->write_pos - grain_samples * 2, s->buffer_size);
             base_pos = (float)slice_start * (1.0f - write_follow) + (float)wh_pos * write_follow;
         } else {
             base_pos = (float)slice_start;
         }
-        grain->position = fmodf(base_pos + lfo_offset + spray_offset + (float)(s->buffer_size * 2),
-                                 (float)s->buffer_size);
+        grain->position = wrap_position(base_pos + lfo_offset + spray_offset, (float)s->buffer_size);
         s->last_grain_pos[voice_idx] = grain->position;
 
         // Pitch
@@ -933,8 +979,10 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
         s->pos_lfo[v].use_sine = 1;
     }
 
+    const float clean_abs_rate = fabsf(effective_rate);
+    const int use_clean_aa = clean_abs_rate > 1.05f;
     if (!is_lfo_scan) {
-        float ar = fabsf(effective_rate);
+        float ar = clean_abs_rate;
         biquad_update(aa_l, ar);
         biquad_update(aa_r, ar);
         biquad_update(aa2_l, ar);
@@ -973,9 +1021,9 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
             }
 
             float lfo_val = lfo_tick(&s->pos_lfo[v], sr);
-            float target_pos = fmodf(lfo_val * lfo_depth * (float)s->buffer_size, (float)s->buffer_size);
+            float target_pos = wrap_position(lfo_val * lfo_depth * (float)s->buffer_size, (float)s->buffer_size);
             if (write_follow > 0.01f) {
-                float wp = (float)((s->write_pos - 4096 + s->buffer_size) % s->buffer_size);
+                float wp = (float)wrap_index_any(s->write_pos - 4096, s->buffer_size);
                 target_pos = target_pos * (1.0f - write_follow) + wp * write_follow;
             }
 
@@ -988,8 +1036,8 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
             }
 
             // Advance both heads
-            sc->head_a = fmodf(sc->head_a + scan_adv + (float)s->buffer_size, (float)s->buffer_size);
-            sc->head_b = fmodf(sc->head_b + scan_adv + (float)s->buffer_size, (float)s->buffer_size);
+            sc->head_a = wrap_position(sc->head_a + scan_adv, (float)s->buffer_size);
+            sc->head_b = wrap_position(sc->head_b + scan_adv, (float)s->buffer_size);
 
             float active_pos = sc->fade < 0.5f ? sc->head_a : sc->head_b;
             float drift = target_pos - active_pos;
@@ -1058,17 +1106,21 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
 
         float lfo_val = lfo_tick(&s->pos_lfo[v], sr);
         float lfo_offset = lfo_val * lfo_depth * (float)s->buffer_size;
-        int clean_pos_int = (int)s->clean_read_pos[v] % slice_len;
-        if (clean_pos_int < 0) clean_pos_int += slice_len;
-        float read_pos = fmodf((float)slice_start + (float)clean_pos_int + lfo_offset
-                                + (float)(s->buffer_size * 2), (float)s->buffer_size);
+        int clean_pos_int = (int)s->clean_read_pos[v];
+        if (clean_pos_int >= slice_len || clean_pos_int < 0) {
+            clean_pos_int = wrap_index_any(clean_pos_int, slice_len);
+        }
+        float read_pos = wrap_position((float)slice_start + (float)clean_pos_int + lfo_offset,
+                                       (float)s->buffer_size);
 
         float sL = read_buffer_sinc(s, s->buffer_l, s->buffer_size, read_pos);
         float sR = read_buffer_sinc(s, s->buffer_r, s->buffer_size, read_pos);
 
-        // 36 dB/oct cascaded anti-alias
-        sL = biquad_process(aa_l, biquad_process(aa2_l, biquad_process(aa3_l, sL)));
-        sR = biquad_process(aa_r, biquad_process(aa2_r, biquad_process(aa3_r, sR)));
+        // 36 dB/oct cascaded anti-alias only when pitch/rate makes it necessary.
+        if (use_clean_aa) {
+            sL = biquad_process(aa_l, biquad_process(aa2_l, biquad_process(aa3_l, sL)));
+            sR = biquad_process(aa_r, biquad_process(aa2_r, biquad_process(aa3_r, sR)));
+        }
 
         if (blur > 0.01f) {
             float bl = diffuser_process_l(&s->diffuser[v], sL);
@@ -1085,8 +1137,7 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
         out_r[i] += sR * gain * env_gain * pan_r;
 
         s->clean_read_pos[v] += effective_rate;
-        s->clean_read_pos[v] = fmodf(s->clean_read_pos[v], (float)slice_len);
-        if (s->clean_read_pos[v] < 0.0f) s->clean_read_pos[v] += (float)slice_len;
+        s->clean_read_pos[v] = wrap_position(s->clean_read_pos[v], (float)slice_len);
     }
 }
 
@@ -1127,6 +1178,8 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
     biquad_update(aa2_r, max_abs_rate);
     biquad_update(aa3_l, max_abs_rate);
     biquad_update(aa3_r, max_abs_rate);
+    const int use_aa = max_abs_rate > 1.05f;
+    const float buffer_size_f = (float)s->buffer_size;
 
     static const float TRIG_DENSITY_DECAY = 0.9997f;
     float smooth_coeff = 0.06f + blur * 0.18f;
@@ -1171,9 +1224,9 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
             Grain* grain = &pool[active_indices[gi]];
             active_count++;
 
-            float read_pos = grain->position + (float)grain->start_sample * grain->playback_rate;
-            float sL = read_buffer_sinc(s, s->buffer_l, s->buffer_size, read_pos);
-            float sR = read_buffer_sinc(s, s->buffer_r, s->buffer_size, read_pos);
+            const float read_pos = grain->position;
+            float sL = read_buffer_sinc_bounded(s, s->buffer_l, s->buffer_size, read_pos);
+            float sR = read_buffer_sinc_bounded(s, s->buffer_r, s->buffer_size, read_pos);
 
             float raw_env = grain_envelope(s, grain->start_sample, grain->length,
                                         grain->attack_smp, grain->decay_smp, s->grain_shape);
@@ -1184,6 +1237,7 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
             wet_l += sL * env * grain->pan_l;
             wet_r += sR * env * grain->pan_r;
 
+            grain->position = wrap_position(read_pos + grain->playback_rate, buffer_size_f);
             grain->start_sample++;
             if (grain->start_sample >= grain->length) {
                 grain->active = 0;
@@ -1212,9 +1266,11 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
             wet_r *= comp;
         }
 
-        // Anti-alias (36 dB/oct cascaded biquads)
-        wet_l = biquad_process(aa_l, biquad_process(aa2_l, biquad_process(aa3_l, wet_l)));
-        wet_r = biquad_process(aa_r, biquad_process(aa2_r, biquad_process(aa3_r, wet_r)));
+        // Anti-alias (36 dB/oct cascaded biquads) only for non-unity playback rates.
+        if (use_aa) {
+            wet_l = biquad_process(aa_l, biquad_process(aa2_l, biquad_process(aa3_l, wet_l)));
+            wet_r = biquad_process(aa_r, biquad_process(aa2_r, biquad_process(aa3_r, wet_r)));
+        }
 
         // Blur
         if (blur > 0.01f) {
@@ -1242,14 +1298,30 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
 
 // ═══════════════ Main Process Block ═══════════════
 
-static void process_block_internal(GranularState* s, int block_size) {
+template <bool kPlanarIo>
+static void process_block_internal(
+    GranularState* s,
+    int block_size,
+    const float* planar_in_l,
+    const float* planar_in_r,
+    float* planar_out_l,
+    float* planar_out_r) {
     float sr = s->sample_rate;
     float* in_buf = s->input_buf;
     float* out_buf = s->output_buf;
 
     if (!s->enabled) {
-        // Pass-through: straight copy (compiler may auto-vectorize, but memcpy is optimal)
-        memcpy(out_buf, in_buf, block_size * 2 * sizeof(float));
+        if constexpr (kPlanarIo) {
+            if (planar_out_l != planar_in_l) {
+                memcpy(planar_out_l, planar_in_l, block_size * sizeof(float));
+            }
+            if (planar_out_r != planar_in_r) {
+                memcpy(planar_out_r, planar_in_r, block_size * sizeof(float));
+            }
+        } else {
+            // Pass-through: straight copy (compiler may auto-vectorize, but memcpy is optimal)
+            memcpy(out_buf, in_buf, block_size * 2 * sizeof(float));
+        }
         return;
     }
 
@@ -1257,8 +1329,15 @@ static void process_block_internal(GranularState* s, int block_size) {
     const int legacySilenceThreshold = legacy_scheduler_silence_threshold(s);
     int legacyInputRearmed = 0;
     for (int i = 0; i < block_size; i++) {
-        float in_l = in_buf[i * 2];
-        float in_r = in_buf[i * 2 + 1];
+        float in_l;
+        float in_r;
+        if constexpr (kPlanarIo) {
+            in_l = planar_in_l[i];
+            in_r = planar_in_r[i];
+        } else {
+            in_l = in_buf[i * 2];
+            in_r = in_buf[i * 2 + 1];
+        }
 
         // Silence detection
         float level = fabsf(in_l) + fabsf(in_r);
@@ -1296,7 +1375,8 @@ static void process_block_internal(GranularState* s, int block_size) {
                 s->buffer_l[s->write_pos] = in_l;
                 s->buffer_r[s->write_pos] = in_r;
             }
-            s->write_pos = (s->write_pos + 1) % s->buffer_size;
+            s->write_pos++;
+            if (s->write_pos >= s->buffer_size) s->write_pos = 0;
         }
     }
 
@@ -1394,7 +1474,7 @@ static void process_block_internal(GranularState* s, int block_size) {
 #endif
 
             if (!s->freeze || s->freeze_with_feedback) {
-                int fb_write_pos = (s->write_pos - block_size + i + s->buffer_size) % s->buffer_size;
+                int fb_write_pos = wrap_index_any(s->write_pos - block_size + i, s->buffer_size);
                 s->buffer_l[fb_write_pos] += sanitize(fb_l);
                 s->buffer_r[fb_write_pos] += sanitize(fb_r);
                 // Hard-clamp buffer to prevent unbounded accumulation
@@ -1425,6 +1505,42 @@ static void process_block_internal(GranularState* s, int block_size) {
 
     // ── Step 4: Output ──
     float wet_level = s->dry_wet;
+    if constexpr (kPlanarIo) {
+#ifdef __wasm_simd128__
+        v128_t wl = wasm_f32x4_splat(wet_level);
+        const v128_t out_lo = wasm_f32x4_splat(-1.0f);
+        const v128_t out_hi = wasm_f32x4_splat(1.0f);
+        int i = 0;
+        for (; i + 3 < block_size; i += 4) {
+            v128_t vl = wasm_f32x4_mul(wasm_v128_load(&v_out_l[i]), wl);
+            v128_t vr = wasm_f32x4_mul(wasm_v128_load(&v_out_r[i]), wl);
+            vl = fast_tanh_v4(vl);
+            vr = fast_tanh_v4(vr);
+            vl = wasm_f32x4_min(wasm_f32x4_max(vl, out_lo), out_hi);
+            vr = wasm_f32x4_min(wasm_f32x4_max(vr, out_lo), out_hi);
+            v128_t nanL = wasm_f32x4_ne(vl, vl);
+            v128_t nanR = wasm_f32x4_ne(vr, vr);
+            vl = wasm_v128_andnot(vl, nanL);
+            vr = wasm_v128_andnot(vr, nanR);
+            wasm_v128_store(&planar_out_l[i], vl);
+            wasm_v128_store(&planar_out_r[i], vr);
+        }
+        for (; i < block_size; i++) {
+            float oL = sanitize(fast_tanh(v_out_l[i] * wet_level));
+            float oR = sanitize(fast_tanh(v_out_r[i] * wet_level));
+            planar_out_l[i] = clampf(oL, -1.0f, 1.0f);
+            planar_out_r[i] = clampf(oR, -1.0f, 1.0f);
+        }
+#else
+        for (int i = 0; i < block_size; i++) {
+            float oL = sanitize(fast_tanh(v_out_l[i] * wet_level));
+            float oR = sanitize(fast_tanh(v_out_r[i] * wet_level));
+            planar_out_l[i] = clampf(oL, -1.0f, 1.0f);
+            planar_out_r[i] = clampf(oR, -1.0f, 1.0f);
+        }
+#endif
+        return;
+    }
 #ifdef __wasm_simd128__
     // SIMD: vectorized tanh on 4 samples at a time, then interleave L/R
     v128_t wl = wasm_f32x4_splat(wet_level);
@@ -1723,7 +1839,16 @@ float* granular_get_output_ptr(void) {
 
 void granular_process_block(int block_size) {
     if (!g_state || block_size <= 0 || block_size > KESSHO_MAX_BLOCK_SIZE) return;
-    process_block_internal(g_state, block_size);
+    process_block_internal<false>(g_state, block_size, nullptr, nullptr, nullptr, nullptr);
+}
+
+void granular_process_planar(const float* in_l, const float* in_r,
+                             float* out_l, float* out_r, int block_size) {
+    if (!g_state || !in_l || !in_r || !out_l || !out_r ||
+        block_size <= 0 || block_size > KESSHO_MAX_BLOCK_SIZE) {
+        return;
+    }
+    process_block_internal<true>(g_state, block_size, in_l, in_r, out_l, out_r);
 }
 
 void granular_set_enabled(int enabled) {
@@ -2088,6 +2213,17 @@ void granular_instance_process_block(KesshoGranularInstance* instance, int block
     if (!instance) return;
     ScopedGranularState scoped(instance->state);
     granular_process_block(block_size);
+}
+
+void granular_instance_process_planar(KesshoGranularInstance* instance,
+                                      const float* in_l,
+                                      const float* in_r,
+                                      float* out_l,
+                                      float* out_r,
+                                      int block_size) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_process_planar(in_l, in_r, out_l, out_r, block_size);
 }
 
 void granular_instance_set_enabled(KesshoGranularInstance* instance, int enabled) {

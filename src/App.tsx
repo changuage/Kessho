@@ -15,7 +15,7 @@ import {
   getSliderNumericValue,
   getStateValueFromSliderNumber,
   migratePreset,
-  type SerializedStepOverrides,
+  PAD_FILTER_CUTOFF_KEY_PAIRS,
 } from './ui/state';
 import { DualSlider, DualSliderRange } from './ui/DualSlider';
 import { SliderPrimitive } from './ui/sliderSystem';
@@ -93,6 +93,8 @@ import { getVersionData } from './presets/codec';
 import { useJourneyPresets } from './presets/useJourneyPresets';
 import { extractPresetVersionMetadata } from './presets/presetUtils';
 import { isLocalPresetStoreOverride } from './presets/sharedMode';
+import { loadPresetsFromFolder, type BundledSavedPreset } from './presets/bundledPresetLoader';
+import { savedPresetSourceFor } from './presets/savedPresetSource';
 import type { PresetEntry, PresetSummary } from './presets/types';
 import { buildPresetVersionMetadata } from './presets/versionMetadataHelpers';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
@@ -246,41 +248,7 @@ const isSonicParityMode = () => (
 );
 const LAZY_PAGE_FALLBACK = <div style={{ padding: '24px', color: '#9ca3af', textAlign: 'center' }}>Loading...</div>;
 
-type SavedPresetSource = 'bundled' | 'device-local' | 'cloud';
-
-// Preset type - local override with sliderModes support
-interface SavedPreset {
-  name: string;
-  timestamp: string;
-  state: SliderState;
-  source?: SavedPresetSource;
-  deferred?: boolean;
-  familyId?: string;
-  familyName?: string;
-  variantId?: string;
-  variantName?: string;
-  variantRank?: number;
-  versionCount?: number;
-  currentVersion?: number;
-  dualRanges?: Record<string, { min: number; max: number }>; // Optional for backward compatibility
-  sliderModes?: Record<string, SliderMode>; // Mode per parameter key
-  drumEvolveConfigs?: EvolveConfig[];
-  synthEvolveConfigs?: EvolveConfig[];
-  drumStepOverrides?: SerializedStepOverrides;
-  synthStepOverrides?: SerializedStepOverrides;
-  drumClockDivs?: ClockDivision[];
-  synthClockDivs?: ClockDivision[];
-  drumSwings?: number[];
-  synthSwings?: number[];
-  drumLinked?: boolean[];
-  synthLinked?: boolean[];
-  drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
-  synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
-  synthArpConfigs?: ProductArpConfig[];
-  drumPitchSettings?: PitchSettings[];
-  synthPitchSettings?: PitchSettings[];
-  synthPitchBindingModes?: PitchBindingMode[];
-}
+type SavedPreset = BundledSavedPreset;
 
 // iOS-only reverb types that won't work on web
 const IOS_ONLY_REVERB_TYPES = new Set([
@@ -555,51 +523,6 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
   return merged;
 };
 
-const BUNDLED_PRESET_FALLBACK_FILES = ['Ethereal_Ambient.json', 'Dark_Textures.json', 'Bright_Bells.json', 'StringWaves.json', 'ZoneOut1.json', 'Gamelantest.json'];
-
-function savedPresetFromFileData(data: Partial<SavedPreset> & Record<string, unknown>, fallbackName: string, source: SavedPresetSource): SavedPreset {
-  const migrated = migratePreset({
-    name: typeof data.name === 'string' && data.name.trim() ? data.name : fallbackName,
-    timestamp: typeof data.timestamp === 'string' ? data.timestamp : new Date().toISOString(),
-    state: (data.state && typeof data.state === 'object' ? data.state : data) as SliderState,
-    dualRanges: data.dualRanges,
-    sliderModes: data.sliderModes,
-    drumEvolveConfigs: data.drumEvolveConfigs,
-    synthEvolveConfigs: data.synthEvolveConfigs,
-    drumStepOverrides: data.drumStepOverrides,
-    synthStepOverrides: data.synthStepOverrides,
-    drumClockDivs: data.drumClockDivs,
-    synthClockDivs: data.synthClockDivs,
-    drumSwings: data.drumSwings,
-    synthSwings: data.synthSwings,
-    drumLinked: data.drumLinked,
-    synthLinked: data.synthLinked,
-    drumSubLaneStates: data.drumSubLaneStates,
-    synthSubLaneStates: data.synthSubLaneStates,
-    synthArpConfigs: data.synthArpConfigs as ProductArpConfig[] | undefined,
-    drumPitchSettings: data.drumPitchSettings,
-    synthPitchSettings: data.synthPitchSettings,
-    synthPitchBindingModes: data.synthPitchBindingModes,
-  });
-  return { ...migrated, source };
-}
-
-async function loadBundledPresetFiles(files: string[]): Promise<SavedPreset[]> {
-  const presets: SavedPreset[] = [];
-  for (const file of files) {
-    try {
-      const response = await fetch(`/presets/${file}`);
-      if (response.ok) {
-        const data = await response.json();
-        presets.push(savedPresetFromFileData(data, file.replace('.json', ''), 'bundled'));
-      }
-    } catch (e) {
-      // Skip missing or invalid bundled files.
-    }
-  }
-  return presets;
-}
-
 function sortSavedStatePresetsByFreshness(presets: SavedPreset[]): SavedPreset[] {
   return [...presets].sort((left, right) => {
     const timeDiff = new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime();
@@ -608,24 +531,12 @@ function sortSavedStatePresetsByFreshness(presets: SavedPreset[]): SavedPreset[]
   });
 }
 
-function savedPresetSourceForEntry(entry: PresetEntry): SavedPresetSource {
-  if (entry.remoteId || entry.library === 'cloud') return 'cloud';
-  if (entry.author === 'factory' || entry.library === 'stock') return 'bundled';
-  return 'device-local';
-}
-
-function savedPresetSourceForSummary(summary: PresetSummary): SavedPresetSource {
-  if (summary.remoteId || summary.library === 'cloud') return 'cloud';
-  if (summary.author === 'factory' || summary.library === 'stock') return 'bundled';
-  return 'device-local';
-}
-
 function savedPresetFromSummary(summary: PresetSummary): SavedPreset {
   return {
     name: summary.name,
     timestamp: new Date(summary.updatedAt ?? Date.now()).toISOString(),
     state: DEFAULT_STATE,
-    source: savedPresetSourceForSummary(summary),
+    source: savedPresetSourceFor(summary),
     deferred: true,
     familyId: summary.familyId,
     familyName: summary.familyName,
@@ -636,40 +547,6 @@ function savedPresetFromSummary(summary: PresetSummary): SavedPreset {
     currentVersion: summary.currentVersion,
   };
 }
-
-// Load presets by fetching the manifest from public/presets
-const loadPresetsFromFolder = async (): Promise<SavedPreset[]> => {
-  const presets: SavedPreset[] = [];
-  try {
-    // Fetch the preset manifest (list of files)
-    const manifestResponse = await fetch('/presets/manifest.json');
-    if (!manifestResponse.ok) {
-      console.warn('No preset manifest found, trying known files...');
-      return loadBundledPresetFiles(BUNDLED_PRESET_FALLBACK_FILES);
-    }
-
-    const manifest = await manifestResponse.json();
-    const files = Array.isArray(manifest.files) ? manifest.files : [];
-    if (files.length === 0) {
-      return loadBundledPresetFiles(BUNDLED_PRESET_FALLBACK_FILES);
-    }
-
-    for (const file of files) {
-      try {
-        const response = await fetch(`/presets/${file}`);
-        if (response.ok) {
-          const data = await response.json();
-          presets.push(savedPresetFromFileData(data, file.replace('.json', ''), 'bundled'));
-        }
-      } catch (e) {
-        console.warn(`Failed to load preset ${file}:`, e);
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to load presets:', e);
-  }
-  return presets;
-};
 
 function statePresetEntryToSavedPreset(entry: PresetEntry, versionSelection: 'current' | 'highest' = 'current'): SavedPreset | null {
   const version =
@@ -693,7 +570,7 @@ function statePresetEntryToSavedPreset(entry: PresetEntry, versionSelection: 'cu
 
   return {
     ...migrated,
-    source: savedPresetSourceForEntry(entry),
+    source: savedPresetSourceFor(entry),
     familyId: entry.familyId,
     familyName: entry.familyName ?? entry.name,
     variantId: entry.variantId,
@@ -1293,11 +1170,6 @@ const WALK_ONLY_DUAL_KEYS = new Set<string>([
 
 const SINGLE_ONLY_SLIDER_KEYS = new Set<string>();
 
-const PAD_FILTER_CUTOFF_PAIRS = [
-  { minKey: 'filterCutoffMin', maxKey: 'filterCutoffMax' },
-  { minKey: 'pad2FilterCutoffMin', maxKey: 'pad2FilterCutoffMax' },
-] as const;
-
 function clampQuantizedSliderValue(key: keyof SliderState, value: number): number {
   const info = getParamInfo(key);
   if (!info) return value;
@@ -1308,9 +1180,10 @@ function normalizePadFilterCutoffPairs(state: SliderState, changedKey?: keyof Sl
   const record = state as unknown as Record<string, SliderState[keyof SliderState] | number>;
   const changedKeyStr = changedKey as string | undefined;
 
-  for (const pair of PAD_FILTER_CUTOFF_PAIRS) {
-    const minKey = pair.minKey as keyof SliderState;
-    const maxKey = pair.maxKey as keyof SliderState;
+  for (const pair of PAD_FILTER_CUTOFF_KEY_PAIRS) {
+    const { minKey, maxKey } = pair;
+    const minKeyName = String(minKey);
+    const maxKeyName = String(maxKey);
     const minInfo = getParamInfo(minKey);
     const maxInfo = getParamInfo(maxKey);
     if (!minInfo || !maxInfo) continue;
@@ -1324,10 +1197,10 @@ function normalizePadFilterCutoffPairs(state: SliderState, changedKey?: keyof Sl
     let max = clampQuantizedSliderValue(maxKey, rawMax);
 
     if (min >= max) {
-      if (changedKeyStr === pair.minKey) {
+      if (changedKeyStr === minKeyName) {
         max = clampQuantizedSliderValue(maxKey, min + step);
         if (min >= max) min = clampQuantizedSliderValue(minKey, max - step);
-      } else if (changedKeyStr === pair.maxKey) {
+      } else if (changedKeyStr === maxKeyName) {
         min = clampQuantizedSliderValue(minKey, max - step);
         if (min >= max) max = clampQuantizedSliderValue(maxKey, min + step);
       } else {

@@ -3,6 +3,7 @@ import type { DawOutputRoutingConfig } from '../dawOutputRouting';
 import type { ProductRuntimeCapabilityReport } from './ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from './ProductRuntimeDiagnostics';
 import type { ProductEnginePort } from './ProductEnginePort';
+import type { ProductLiveNoteEvent } from './liveNoteEvents';
 import type {
   ProductAssetHandle,
   ProductAssetRegistration,
@@ -51,6 +52,8 @@ export class WebProductEngine implements ProductEnginePort {
   readonly mode = 'core-product' as const;
   private lifecycleState: ProductEngineLifecycleState = 'cold';
   private diagnosticsCallback: ((diagnostics: ProductRuntimeDiagnostics) => void) | null = null;
+  private diagnosticsQueued = false;
+  private diagnosticsPublishEpoch = 0;
 
   async preload(): Promise<void> {
     this.lifecycleState = this.lifecycleState === 'cold' ? 'ready' : this.lifecycleState;
@@ -112,35 +115,40 @@ export class WebProductEngine implements ProductEnginePort {
   updateSnapshotPatch(reason: ProductSnapshotPatchReason, patch: ProductSnapshotPatch): void {
     // TODO(product-core-control-routing-events): common controls should move to generated ProductEvents or dirty-diff paths.
     coreProductRuntimeHostPort.updateSnapshotPatch(reason, patch);
-    this.publishDiagnostics();
+    this.scheduleDiagnosticsPublish();
   }
 
   enqueueEvent(event: ProductEvent): void {
     // Generated events are the preferred compatibility path; do not replace generated events with legacy parameter-update snapshots.
     coreProductRuntimeHostPort.postEvent(event);
-    this.publishDiagnostics();
+    this.scheduleDiagnosticsPublish();
   }
 
   enqueueEvents(events: readonly ProductEvent[]): void {
     for (const event of events) {
-      this.enqueueEvent(event);
+      coreProductRuntimeHostPort.postEvent(event);
     }
+    this.scheduleDiagnosticsPublish();
   }
 
   pushMidiMessage(message: ProductMidiMessage): void {
     coreProductRuntimeHostPort.pushMidiMessage(message);
   }
 
+  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): void {
+    coreProductRuntimeHostPort.enqueueLiveNoteEvent(event);
+  }
+
   registerAsset(asset: ProductAssetRegistration): Promise<ProductAssetHandle> {
     const handle = coreProductRuntimeHostPort.registerAsset(asset);
-    this.publishDiagnostics();
+    this.scheduleDiagnosticsPublish();
     return Promise.resolve(handle);
   }
 
   unregisterAsset(assetId: number): void {
     // Asset lifecycle stays product-shaped here; keep host failures visible.
     coreProductRuntimeHostPort.unregisterAsset(assetId);
-    this.publishDiagnostics();
+    this.scheduleDiagnosticsPublish();
   }
 
   auditionSynthNote(note: ProductManualSynthNote, externalState?: ProductExternalState): Promise<void> {
@@ -184,7 +192,7 @@ export class WebProductEngine implements ProductEnginePort {
   }
 
   setTelemetryCallback(callback: ((telemetry: ProductTelemetrySnapshot) => void) | null): void {
-    coreProductRuntimeHostPort.setTelemetryCallback(callback, () => this.publishDiagnostics());
+    coreProductRuntimeHostPort.setTelemetryCallback(callback, () => this.scheduleDiagnosticsPublish());
   }
 
   setDrumTriggerCallback(callback: ProductDrumTriggerCallback | null): void {
@@ -228,51 +236,51 @@ export class WebProductEngine implements ProductEnginePort {
   }
 
   setLeadExpressionCallback(callback: ProductLeadExpressionCallback | null): void {
-    coreProductRuntimeHostPort.setLiveTriggerCallback('leadExpression', callback);
+    this.setLiveTriggerCallback('leadExpression', callback);
   }
 
   setLeadMorphCallback(callback: ProductLeadPairCallback | null): void {
-    coreProductRuntimeHostPort.setLiveTriggerCallback('leadMorph', callback);
+    this.setLiveTriggerCallback('leadMorph', callback);
   }
 
   setPadMorphTriggerCallback(callback: ProductScalarCallback | null): void {
-    coreProductRuntimeHostPort.setLiveTriggerCallback('padMorph', callback);
+    this.setLiveTriggerCallback('padMorph', callback);
   }
 
   setPad2MorphTriggerCallback(callback: ProductScalarCallback | null): void {
-    coreProductRuntimeHostPort.setLiveTriggerCallback('pad2Morph', callback);
+    this.setLiveTriggerCallback('pad2Morph', callback);
   }
 
   setLeadDistanceCallback(callback: ProductLeadPairCallback | null): void {
-    coreProductRuntimeHostPort.setLiveTriggerCallback('leadDistance', callback);
+    this.setLiveTriggerCallback('leadDistance', callback);
   }
 
   setPadDistanceTriggerCallback(callback: ProductScalarCallback | null): void {
-    coreProductRuntimeHostPort.setLiveTriggerCallback('padDistance', callback);
+    this.setLiveTriggerCallback('padDistance', callback);
   }
 
   setPad2DistanceTriggerCallback(callback: ProductScalarCallback | null): void {
-    coreProductRuntimeHostPort.setLiveTriggerCallback('pad2Distance', callback);
+    this.setLiveTriggerCallback('pad2Distance', callback);
   }
 
   setPianoDistanceTriggerCallback(callback: ProductScalarCallback | null): void {
-    coreProductRuntimeHostPort.setLiveTriggerCallback('pianoDistance', callback);
+    this.setLiveTriggerCallback('pianoDistance', callback);
   }
 
   setLeadDelayCallback(callback: ProductLeadDelayCallback | null): void {
-    coreProductRuntimeHostPort.setLiveTriggerCallback('leadDelay', callback);
+    this.setLiveTriggerCallback('leadDelay', callback);
   }
 
   setDrumMorphTriggerCallback(callback: ProductDrumMorphCallback | null): void {
-    coreProductRuntimeHostPort.setLiveTriggerCallback('drumMorph', callback);
+    this.setLiveTriggerCallback('drumMorph', callback);
   }
 
   setDrumParamSHTriggerCallback(callback: ProductDrumParamSampleHoldCallback | null): void {
-    coreProductRuntimeHostPort.setLiveTriggerCallback('drumParamSH', callback);
+    this.setLiveTriggerCallback('drumParamSH', callback);
   }
 
   setGranularSHTriggerCallback(callback: ProductRuntimeWalkPositionsCallback | null): void {
-    coreProductRuntimeHostPort.setLiveTriggerCallback('granularSH', callback);
+    this.setLiveTriggerCallback('granularSH', callback);
   }
 
   setGranularUiActive(active: boolean): void {
@@ -307,7 +315,7 @@ export class WebProductEngine implements ProductEnginePort {
     // TODO(product-core-sequencer-events): sequencer UI edits should continue through
     // Product patch/event bridges, not full snapshot reloads or legacy setters.
     coreProductRuntimeHostPort.applySequencerUiPatch(patch);
-    this.publishDiagnostics();
+    this.scheduleDiagnosticsPublish();
   }
 
   setPerfMonitorEnabled(enabled: boolean): void {
@@ -323,7 +331,26 @@ export class WebProductEngine implements ProductEnginePort {
     callback?.(this.getDiagnostics());
   }
 
+  private setLiveTriggerCallback(
+    name: Parameters<typeof coreProductRuntimeHostPort.setLiveTriggerCallback>[0],
+    callback: Parameters<typeof coreProductRuntimeHostPort.setLiveTriggerCallback>[1],
+  ): void {
+    coreProductRuntimeHostPort.setLiveTriggerCallback(name, callback);
+  }
+
+  private scheduleDiagnosticsPublish(): void {
+    if (!this.diagnosticsCallback || this.diagnosticsQueued) return;
+    this.diagnosticsQueued = true;
+    const queuedEpoch = this.diagnosticsPublishEpoch;
+    queueMicrotask(() => {
+      this.diagnosticsQueued = false;
+      if (queuedEpoch !== this.diagnosticsPublishEpoch) return;
+      this.publishDiagnostics();
+    });
+  }
+
   private publishDiagnostics(): void {
+    this.diagnosticsPublishEpoch += 1;
     this.diagnosticsCallback?.(this.getDiagnostics());
   }
 }

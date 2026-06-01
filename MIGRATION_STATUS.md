@@ -7,13 +7,13 @@ Current runtime ownership rule:
 - Production app code reaches audio through `ProductEnginePort` / `productEngine`.
 - `WebProductEngine` is the temporary web adapter for the product runtime.
 - `coreProductEngineHost` and `src/audio/product/host/*` own product host internals.
-- `web-ts` stays reference/parity only and is not a production runtime.
+- `web-ts` stays reference/parity only and is not a production runtime. Status: **Keep Active — Archive Later**.
 
 Current web-default scope:
 
 - `core-product` is the production web runtime direction and `ProductEngineProxy` owns production runtime selection.
 - `src/audio/engine.ts` and `src/audio/runtime.ts` must remain absent from the production audio root.
-- The legacy TypeScript/Web Audio implementation lives under `src/audio/reference/webTs/engine.ts` for reference and parity only.
+- The legacy TypeScript/Web Audio implementation lives under `src/audio/reference/webTs/engine.ts` for reference and parity only. `product-test`, A/B comparison, smoke/parity workflows, reference runtime validation, `src/audio/coreEngineHost.ts`, and `src/audio/reference/webTs/engine.ts` are **Keep Active — Archive Later** until replacement evidence no longer needs them.
 - Common live controls should use generated Product events, explicit product patches, or dirty-diff paths. Full snapshots are reserved for initial load, preset load, session restore, deterministic fixtures, schema/ABI validation, and classified structural changes.
 - Native Product runtime support is deferred for the web-default release. `native-product` and `test-product` remain guarded placeholders until native render, asset, telemetry, and CI coverage exists.
 

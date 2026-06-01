@@ -95,6 +95,8 @@ float* granular_get_output_ptr(void);
  * @param block_size  Number of samples per channel (typically 128)
  */
 void granular_process_block(int block_size);
+void granular_process_planar(const float* in_l, const float* in_r,
+                             float* out_l, float* out_r, int block_size);
 
 // ═══════════════ Global Parameters ═══════════════
 
@@ -319,6 +321,12 @@ float* granular_instance_get_input_ptr(KesshoGranularInstance* instance);
 float* granular_instance_get_output_ptr(KesshoGranularInstance* instance);
 
 void granular_instance_process_block(KesshoGranularInstance* instance, int block_size);
+void granular_instance_process_planar(KesshoGranularInstance* instance,
+                                      const float* in_l,
+                                      const float* in_r,
+                                      float* out_l,
+                                      float* out_r,
+                                      int block_size);
 void granular_instance_set_enabled(KesshoGranularInstance* instance, int enabled);
 void granular_instance_set_freeze(KesshoGranularInstance* instance, int frozen, int with_feedback);
 void granular_instance_set_dry_wet(KesshoGranularInstance* instance, float level);

@@ -5,7 +5,7 @@ void KesshoProductEngine::configureReverbModule() {
     return;
   }
   float* params = reverb_module->params();
-  if (params == nullptr || reverb_module->paramCount() < 30) {
+  if (params == nullptr || reverb_module->paramCount() < 31) {
     return;
   }
   const float effective_decay =
@@ -47,6 +47,10 @@ void KesshoProductEngine::configureReverbModule() {
   params[27] = static_cast<float>(clampU32(fx.reverb_saturation_mode, 0u, 2u));
   params[28] = clampFloat(fx.reverb_transient_smooth, 0.0f, 1.0f);
   params[29] = clampFloat(fx.reverb_er_lp_freq, 200.0f, 12000.0f);
+  params[30] = clampFloat(
+      fx.reverb_bloom + clampFloat(reverb_bloom_boost, 0.0f, 1.0f) * 0.18f,
+      -1.0f,
+      1.0f);
   reverb_module->commitParams();
 }
 

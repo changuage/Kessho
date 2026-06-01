@@ -111,6 +111,7 @@ function hasUnsignedFlag(flags: number | undefined, flag: number): boolean {
   assert(hasUnsignedFlag(event.flags, CORE_PRODUCT_EVOLVE_FLAGS.modeParity), 'native manual synth dice should request parity evolve mode');
   assert(hasUnsignedFlag(event.flags, CORE_PRODUCT_EVOLVE_FLAGS.valueDrift), 'native manual synth dice should enable value drift');
   assert(hasUnsignedFlag(event.flags, CORE_PRODUCT_EVOLVE_FLAGS.valueScramble), 'native manual synth dice should enable value scramble');
+  assert(hasUnsignedFlag(event.flags, CORE_PRODUCT_EVOLVE_FLAGS.manualCommit), 'native manual synth dice should request a committed Product Core mutation');
   assert(hasUnsignedFlag(event.flags, CORE_PRODUCT_EVOLVE_FLAGS.mutationStrict), 'native manual synth dice should preserve strict mutation mode');
   assert(hasUnsignedFlag(event.flags, CORE_PRODUCT_DICE_FLAGS.expression), 'native manual synth dice should include enabled expression field');
   assert(hasUnsignedFlag(event.flags, CORE_PRODUCT_DICE_FLAGS.morph), 'native manual synth dice should include enabled morph field');
@@ -282,6 +283,7 @@ function hasUnsignedFlag(flags: number | undefined, flag: number): boolean {
     completeManualSynthDice: () => {},
     consumeManualDrumDice: () => false,
     ensureLaneCache: () => {},
+    getLaneState: () => ({ toggles: [], values: [], configs: [], swing: 0 }),
     captureLaneHome: () => {},
     setSynthLaneState: () => {},
     setDrumLaneState: () => {},

@@ -110,6 +110,7 @@ function writeGateReport(report) {
     `Web default runtime: ${report.webDefaultRuntime}`,
     '',
     `Product browser runtime report: ${report.browserRuntime.report}`,
+    `Sequencer behavior report: ${report.sequencerBehavior.report}`,
     '',
     '## Browser Runtime Cases',
     '',
@@ -244,6 +245,7 @@ const runtimeFallbackReport = readJson('docs/reports/kessho-product-runtime-fall
 const unsupportedSurfaceReport = readJson('docs/reports/kessho-product-unsupported-surface-latest.json');
 const dirtyDiffReport = readJson('docs/reports/kessho-product-dirty-diff-classification-latest.json');
 const hostReconciliationReport = readJson('docs/reports/kessho-product-host-reconciliation-latest.json');
+const sequencerUiReport = readJson('docs/reports/kessho-product-sequencer-ui-parity-latest.json');
 const patchBridgeReport = readJson('docs/reports/kessho-product-patch-bridges.json');
 const assetManifestReport = readJson('docs/reports/kessho-product-asset-manifest-latest.json');
 
@@ -1398,10 +1400,10 @@ assert(productCiRunner.includes("'migration:no-web-ts-bundle'"), 'Product Core C
 assert(productCiRunner.includes("'migration:unsupported-surface:gate'"), 'Product Core CI runner must include unsupported-surface gate');
 assert(productCiRunner.includes("'core:product:sequencer-evolve'"), 'Product Core CI runner must include Product sequencer evolve proof');
 assert(productCiRunner.includes("'core:product:harmony'"), 'Product Core CI runner must include harmony parity proof before sequencer UI parity');
-assert(productCiRunner.includes("'core:product:sequencer-ui'"), 'Product Core CI runner must include Product/Web sequencer UI parity proof');
+assert(productCiRunner.includes("'core:product:sequencer-ui'"), 'Product Core CI runner must include sequencer behavioral regression proof');
 assert(
   productCiRunner.indexOf("'core:product:harmony'") < productCiRunner.indexOf("'core:product:sequencer-ui'"),
-  'Product Core CI runner must run harmony parity before Product/Web sequencer UI parity',
+  'Product Core CI runner must run harmony parity before sequencer behavioral regression proof',
 );
 assert(!productCiRunner.includes("'core:readiness:browser'"), 'Product Core CI runner must not use the legacy Web-vs-Core readiness gate for product default promotion');
 const archivedNativeStepPrefix = "'core:product:" + 'native';
@@ -1506,6 +1508,20 @@ requireFreshReport('docs/reports/kessho-product-unsupported-surface-latest.json'
   'src/audio/product/WebProductEngine.ts',
   'docs/product-core/unsupported-surface.md',
 ]);
+requireFreshReport('docs/reports/kessho-product-sequencer-ui-parity-latest.json', sequencerUiReport.generatedAt, [
+  'scripts/check-kessho-product-sequencer-ui-parity.mjs',
+  'src/ui/synth/SynthPage.tsx',
+  'src/ui/drums/DrumPage.tsx',
+  'src/ui/drums/SeqSparkline.tsx',
+  'src/ui/sequencer/useEuclideanSequencer.ts',
+  'src/ui/sequencer/sequencePresetLane.ts',
+  'src/ui/useSelectedAudioEngineSequencerControls.ts',
+  'src/audio/coreProductEngineHost.ts',
+  'src/audio/product/host/CoreProductSequencerUiAdapter.ts',
+  'src/audio/product/host/CoreProductManualSynthDiceBridge.ts',
+  'public/worklets/kessho-core-product.worklet.js',
+  'public/worklets/kessho_core.wasm',
+]);
 
 assert(browserRuntimeReport.status === 'pass', 'Product browser-runtime report must pass');
 assert(browserRuntimeReport.defaultRuntime === 'core-product', 'Product browser-runtime report must prove core-product default');
@@ -1538,6 +1554,35 @@ for (const [label, proofReport] of [
 ]) {
   assert(proofReport.status === 'pass', `${label} behavioral proof report must pass`);
 }
+assert(sequencerUiReport.status === 'pass', 'sequencer UI behavioral report must pass');
+assert(sequencerUiReport.evidenceRole === 'behavioral-regression', 'sequencer UI report must be classified as behavioral regression evidence');
+assert(sequencerUiReport.referenceRuntimeRole === 'web-ts-behavioral-reference', 'sequencer UI report must classify web-ts as a behavioral reference');
+assert(sequencerUiReport.architectureAuthority === false, 'sequencer UI report must not claim architecture authority');
+assert(sequencerUiReport.fullRun === true && sequencerUiReport.selectedRun === false, 'sequencer UI release evidence must be the full four-case report, not a selected diagnostic run');
+assert(sequencerUiReport.selection?.caseCount === 4, 'sequencer UI release evidence must cover four cases');
+assert(
+  JSON.stringify(sequencerUiReport.selection?.engineModes) === JSON.stringify(['core-product', 'web-ts']) &&
+    JSON.stringify(sequencerUiReport.selection?.tabs) === JSON.stringify(['drums', 'synth']),
+  'sequencer UI release evidence must cover core-product/web-ts drums/synth behavior',
+);
+for (const gate of [
+  'core:product:host-reconciliation',
+  'core:product:dirty-diff',
+  'core:product:sequencer',
+  'core:product:wasm',
+  'core:product:live-note-contract',
+  'core:product:cpu',
+]) {
+  assert(sequencerUiReport.requiredArchitectureGates?.includes(gate), `sequencer UI report must defer architecture proof to ${gate}`);
+}
+for (const nonProof of [
+  'CPU budget',
+  'allocation-free Product hot paths',
+  'snapshot-free MIDI/note trigger paths',
+  'Product Core architectural ownership',
+]) {
+  assert(sequencerUiReport.doesNotProve?.includes(nonProof), `sequencer UI report must not claim to prove ${nonProof}`);
+}
 assert(patchBridgeReport.status === 'pass', 'patch bridge report must pass');
 assert(assetManifestReport.status === 'pass', 'asset manifest report must pass');
 
@@ -1561,6 +1606,12 @@ const report = {
     disabledFx: cpuReport.cpu?.scenarios?.disabledFx,
     activeFx: cpuReport.cpu?.scenarios?.activeFx,
     heap: cpuReport.heap,
+  },
+  sequencerBehavior: {
+    report: 'docs/reports/kessho-product-sequencer-ui-parity-latest.json',
+    evidenceRole: sequencerUiReport.evidenceRole,
+    architectureAuthority: sequencerUiReport.architectureAuthority,
+    caseCount: sequencerUiReport.selection?.caseCount,
   },
   unsupportedSurface: {
     report: 'docs/reports/kessho-product-unsupported-surface-latest.json',

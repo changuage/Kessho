@@ -2255,12 +2255,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const arpRuntimeTickChanged = engineArpRuntimeTickRef.current !== arpRuntimeTick;
     if (overridesChanged || settingsChanged || subLaneStatesChanged || arpConfigsChanged || arpRuntimeTickChanged) {
       const now = Date.now();
+      let resolvedPendingDiceSync = false;
       const blockedByPendingDice = pendingDiceSyncUntilRef.current.some((until, laneIndex) => {
         if (until <= 0) return false;
         const expected = pendingDiceExpectedSignatureRef.current[laneIndex];
         if (expected && stepOverrideLaneSignature(seq.stepOverrides, laneIndex) === expected) {
           pendingDiceSyncUntilRef.current[laneIndex] = 0;
           pendingDiceExpectedSignatureRef.current[laneIndex] = null;
+          resolvedPendingDiceSync = true;
           return false;
         }
         if (now >= until) {
@@ -2270,6 +2272,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         }
         return true;
       });
+      if (resolvedPendingDiceSync) {
+        stepOverridesRef.current = seq.stepOverrides;
+        pitchSettingsRef.current = seq.pitchSettings;
+        pitchSubLaneStatesRef.current = seq.subLaneStates;
+        engineArpConfigsRef.current = arpConfigs;
+        engineArpRuntimeTickRef.current = arpRuntimeTick;
+        return;
+      }
       if (blockedByPendingDice) return;
       stepOverridesRef.current = seq.stepOverrides;
       pitchSettingsRef.current = seq.pitchSettings;

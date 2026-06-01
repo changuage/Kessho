@@ -11,11 +11,11 @@ import {
 } from '../../CoreProductHostSequencerAdapter';
 import {
   coreProductDrumEvolvePayloadFromLane,
-  coreProductStepValueConfigsFromLane,
   coreProductStepValueOverridesFromLane,
   coreProductSynthEvolvePayloadFromLane,
 } from '../../CoreProductHostSequencerUiState';
 import { reconcileCoreProductSequencerSynthNoteRange } from './CoreProductSequencerNoteRangeEvolveBridge';
+import { coreProductStepValueConfigsFromLaneOrPrevious } from './CoreProductSequencerSparseTelemetryBridge';
 
 const CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE = 3;
 const CORE_PRODUCT_SEQUENCER_UI_CHANGE_RESET_HOME = 4;
@@ -39,6 +39,7 @@ type CoreProductSequencerUiAdapterOptions = {
   completeManualSynthDice: (laneIndex: number) => void;
   consumeManualDrumDice: (laneIndex: number) => boolean;
   ensureLaneCache: (sequencer: SequencerKind, laneIndex: number) => void;
+  getLaneState: (sequencer: SequencerKind, laneIndex: number) => SequencerLaneState;
   captureLaneHome: (sequencer: SequencerKind, laneIndex: number) => void;
   setSynthLaneState: (laneIndex: number, state: SequencerLaneState) => void;
   setDrumLaneState: (laneIndex: number, state: SequencerLaneState) => void;
@@ -80,9 +81,9 @@ export function reconcileCoreProductSequencerUiState(options: CoreProductSequenc
     const lane = state.drumLanes[laneIndex];
     if (!lane) return revision;
     const diceChange = state.lastChangeKind === CORE_PRODUCT_SEQUENCER_UI_CHANGE_DICE;
-    // Keep the manual-dice marker armed until the UI step-override patch has
-    // repopulated the host cache; that cache snapshot is the reset home.
+    const manualDice = diceChange && options.consumeManualDrumDice(laneIndex);
     reconcileDrumSequencerLane(options, laneIndex, lane, shouldNotify, diceChange);
+    if (manualDice) options.captureLaneHome('drum', laneIndex);
   }
 
   return revision;
@@ -97,12 +98,13 @@ function reconcileSynthSequencerLane(
   changeKind = 0,
 ): void {
   options.ensureLaneCache('synth', laneIndex);
+  const previous = options.getLaneState('synth', laneIndex);
   const includeEmpty = lane.mutationFlags === 0;
   const values = coreProductStepValueOverridesFromLane(lane, true, denseStepValues);
   options.setSynthLaneState(laneIndex, {
     toggles: lane.triggerToggles.map(([step, value]) => ({ step, value })),
     values,
-    configs: coreProductStepValueConfigsFromLane(lane, true),
+    configs: coreProductStepValueConfigsFromLaneOrPrevious(lane, true, previous.configs, denseStepValues),
     swing: lane.swing,
   });
   options.setLaneSwing('synth', laneIndex, lane.swing);
@@ -129,11 +131,12 @@ function reconcileDrumSequencerLane(
   denseStepValues = false,
 ): void {
   options.ensureLaneCache('drum', laneIndex);
+  const previous = options.getLaneState('drum', laneIndex);
   const includeEmpty = lane.mutationFlags === 0;
   options.setDrumLaneState(laneIndex, {
     toggles: lane.triggerToggles.map(([step, value]) => ({ step, value })),
     values: coreProductStepValueOverridesFromLane(lane, true, denseStepValues),
-    configs: coreProductStepValueConfigsFromLane(lane, true),
+    configs: coreProductStepValueConfigsFromLaneOrPrevious(lane, true, previous.configs, denseStepValues),
     swing: lane.swing,
   });
   options.setLaneSwing('drum', laneIndex, lane.swing);

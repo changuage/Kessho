@@ -202,6 +202,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   reverbCrossoverFreq:   { level: 3, scope: 'reverb' },
   reverbInputTone:       { level: 3, scope: 'reverb' },
   reverbShimmerFeedback: { level: 3, scope: 'reverb' },
+  reverbBloom:           { level: 3, scope: 'reverb' },
   // v3 reverb params
   reverbWarp:            { level: 3, scope: 'reverb' },
   reverbCrossFeed:       { level: 3, scope: 'reverb' },
@@ -1220,7 +1221,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1005) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1005`);
+  if (count !== 1006) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1006`);
   }
 }

@@ -582,7 +582,7 @@ const PAD_MODULE_PARAM_COUNT = 108;
 const PAD_PARAMS_PER_PAD = 53;
 const PAD_VOICE_COUNT = 6;
 const PAD_PREVIEW_FALLBACK_PRESET = 'saturated_drift';
-const REVERB_MODULE_PARAM_COUNT = 30;
+const REVERB_MODULE_PARAM_COUNT = 31;
 const DELAY_A_MODULE_PARAM_COUNT = 16;
 const DELAY_B_MODULE_PARAM_COUNT = 24;
 const GRANULAR_MODULE_PARAM_COUNT = 143;
@@ -3668,6 +3668,7 @@ function createReverbModuleConfig(sliderState: SliderState): ReverbModuleConfig 
   params[27] = state.reverbSaturationMode === 'tape' ? 1 : state.reverbSaturationMode === 'tube' ? 2 : 0;
   params[28] = boundedNumber(state.reverbTransientSmooth, 0, 0, 1);
   params[29] = boundedNumber(state.reverbErLpFreq, 2500, 20, 20000);
+  params[30] = boundedNumber(state.reverbBloom, 0, -1, 1);
 
   const gainKey = [
     pad1SendGain,

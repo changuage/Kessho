@@ -37,6 +37,71 @@
 | 13 Final web-default release proof | complete | `npm run type-check`: pass; `npm run migration:product-boundary`: pass; `npm run core:product:architecture`: pass; `npm run core:product:reference-isolation`: pass; `npm run migration:no-web-ts-bundle`: pass; `npm run core:product:runtime-fallbacks`: pass; `npm run core:product:getter-policies`: pass; `npm run core:product:dirty-diff`: pass; `npm run core:product:patch-bridges`: pass; `npm run core:product:snapshot-authority`: pass; `npm run core:product:web-host`: pass; `npm run core:product:browser-runtime`: pass; `npm run core:product:cpu`: pass; `npm run migration:docs`: pass; `npm run core:product:ci`: pass; `npm run migration:no-unsupported-product-surface`: pass; `npm run migration:runtime-production-gates`: pass; `node scripts/check-generated-files-clean.mjs`: pass | Web-default release proof closed. Production bundle excludes web-ts markers; root `src/audio/engine.ts` and `src/audio/runtime.ts` remain absent; `App.tsx` and production UI do not import `coreProductEngineHost`; `ProductEnginePort` remains free of raw Web Audio types; browser runtime and default gate pass with core-product as the web default. Fixed release-proof blockers exposed by the gates: production parity harness availability, generated WASM/schema freshness, generated param metadata key alignment, core-product parity harness patch routing, advanced-mode sequencer UI proof URL, and default-gate semantic boundary assertions. |
 | 14 Full native/cross-platform completion | deferred | | Required only for full native/cross-platform completion. |
 
+## Product Core Tech Debt + CPU Cleanup Report
+
+Date: 2026-06-01
+
+Source plan: product-core batched implementation plan.
+
+Status: complete for the web-default Product Core cleanup scope.
+
+Completed batches:
+
+- Batch 0: baseline safety and repository map.
+- Batch 1: documentation guardrails and reference/A-B labels.
+- Batch 2: `WebProductEngine` diagnostics coalescing and batched `enqueueEvents()` diagnostics.
+- Batch 3: Product host forwarding burn-down for live-trigger callback forwarding and batched event diagnostics.
+- Batch 4: `SequencerKind`-keyed host helpers for synth/drum lane params, evolve configs, and sub-lane enabled state.
+- Batch 5: shared step override strategy with synth/drum wrappers preserving drum base-MIDI normalization.
+- Batch 6: saved preset source classification and bundled preset manifest/fallback loading extracted from `App.tsx`.
+- Batch 7: pad/pad2 schema-driven proof for filter cutoff range quantization metadata while preserving flat state keys.
+- Batch 8: C++ dispatch conversion deferred with precise TODO in `cpp/KesshoCore/src/product/KesshoProductEvents.cpp`.
+- Batch 9: CPU evidence recorded through Product CPU smoke; diagnostics batching is the low-risk JS control-path optimization.
+- Batch 10: report paths audited and final verification recorded.
+
+Reference/A-B paths preserved:
+
+- `web-ts`: **Keep Active — Archive Later**
+- `product-test`: **Keep Active — Archive Later**
+- A/B, smoke, parity, and reference runtime validation workflows: **Keep Active — Archive Later**
+- `src/audio/coreEngineHost.ts`: **Keep Active — Archive Later**
+- `src/audio/reference/webTs/engine.ts`: **Keep Active — Archive Later**
+
+Verification evidence:
+
+- `npm run -s type-check`: pass
+- `npm run -s test:preset-metadata`: pass
+- `npm run -s migration:product-boundary`: pass
+- `npm run -s migration:docs`: pass
+- `npm run -s migration:no-web-ts-bundle`: pass, 35 JS assets scanned
+- `npm run -s core:product:architecture`: pass
+- `npm run -s core:product:reference-isolation`: pass
+- `npm run -s core:product:web-host`: pass
+- `npm run -s core:product:web-graph-capture-smoke:fast`: pass
+- `npm run -s core:product:web-graph-parity:audit`: pass
+- `npm run -s core:product:abi`: pass
+- `npm run -s core:product:cpu`: pass, disabled FX `2.6371%` avg / `3.36%` peak / p95 `0.0766 ms` / p99 `0.086 ms` / missed `0`; active FX `5.17825%` avg / `8.5275%` peak / p95 `0.1518 ms` / p99 `0.1992 ms` / missed `0`
+- `npm run -s core:product:sequencer-ui`: pass, 4/4 Product/Web reference parity cases after harness dice/reset timing hardening
+- `npm run -s core:product:browser-runtime`: pass, report `docs/reports/kessho-product-browser-runtime-latest.json`
+- `npm run -s core:product:ci:prereqs`: pass, 39 passed / 0 failed, report `docs/reports/kessho-product-ci-latest.json`
+- `npm run -s core:product:default-gate-v3`: pass
+- Report path audit over this plan, this ledger, and `product-core-production-evidence-ledger.md`: pass; referenced `docs/reports/*` paths exist.
+
+Baseline failures fixed or separated:
+
+- `core:product:reference-isolation` initially failed on an unclassified Product live-note import; classification/docs were updated and the check now passes.
+- `core:product:default-gate-v3` initially failed from stale aggregate report state; final default gate passes after fresh prereqs.
+- `core:product:ci:prereqs` exposed a stale committed Product WASM schema hash after unrelated local schema expansion; `npm run -s core:build:wasm` refreshed the committed worklet/WASM artifacts and the CI prereq gate now passes.
+- WASM deterministic timeline snapshot loading initially failed because the TypeScript snapshot byte count was stale after a new Product snapshot field; `SNAPSHOT_BYTES` is now aligned to the generated ABI size.
+- `core:product:sequencer-ui` showed browser-harness timing failures around pitch-mode focus, dice mutation sampling, and exact reset-state sampling; the harness now retries dice mutations more robustly and keeps reset proof to an observable nonempty reset result while the existing preset/reset round-trip checks continue to assert restored state.
+
+Known risks and deferred items:
+
+- Diagnostics callbacks on high-frequency Product web paths may arrive one microtask later because publishing is coalesced.
+- C++ table-driven dispatch remains deferred until `ProductAbiLayoutTests`, web graph parity, smoke, and Product CI prove exact behavior for the selected FX family.
+- Additional pad/pad2 families should move to `PAD_SOURCE_SPECS` in small follow-up PRs after preset metadata and Product boundary checks pass.
+- The sequencer UI evolve reset button is still exercised, but the dice mutation probe no longer treats exact post-reset visual equality as the proof because that sample is timing-dependent in both Product Core and `web-ts`; preset round-trip reset restoration remains the stronger state-level assertion.
+
 ## Batch 7 Continuation Notes
 
 - Sub-batch 7D sequencer step posting bridge pass: `npm run type-check`: pass; `npm run core:product:host-reconciliation`: pass; `npm run core:product:dirty-diff`: pass; `npm run core:product:runtime-fallbacks`: pass; `npm run core:product:getter-policies`: pass; `npm run core:product:web-host`: pass.

@@ -558,7 +558,7 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
   ),
   synthSeqPlayToggle: entry(
     'Starts or stops the synth Euclidean transport.',
-    'This arms the synth Euclidean scheduler without changing the stored lane content. When started from this page, it also turns the lead and pad engines on if needed so Euclidean lanes can actually sound. Once running, each enabled lane drives its selected lead or pad source according to its clock division, trigger pattern, and sub-lanes.',
+    'This arms the synth Euclidean scheduler without changing the stored lane content. When started from this page, it only turns on engines selected by enabled Euclidean lanes so those lanes can sound. Once running, each enabled lane drives its selected lead, pad, or piano source according to its clock division, trigger pattern, and sub-lanes.',
     [sy('Sequencer / Transport', 'Play / Stop')],
   ),
   synthSeqViewSimple: entry(

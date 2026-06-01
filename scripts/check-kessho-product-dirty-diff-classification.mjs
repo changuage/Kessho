@@ -587,6 +587,38 @@ await runCheckWithReport({
       'synth lane macro dirty diff did not emit lane macro events',
     );
 
+    const harmonySlotBase = clone(base);
+    harmonySlotBase.harmony.activeSource = 0;
+    harmonySlotBase.harmony.activeSlotId = -1;
+    harmonySlotBase.harmony.notePoolCount = 3;
+    harmonySlotBase.harmony.notePoolMidi = [60, 64, 67, 0, 0, 0, 0, 0];
+    harmonySlotBase.harmony.nextNotePoolCount = 3;
+    harmonySlotBase.harmony.nextNotePoolMidi = [62, 65, 69, 0, 0, 0, 0, 0];
+    harmonySlotBase.harmony.resolvedHarmonyFrame = { degree: 0, quality: 'auto' };
+    harmonySlotBase.harmony.manualControl = { strength: 'bias' };
+    const harmonySlotNext = clone(harmonySlotBase);
+    harmonySlotNext.harmony.controlMode = 3;
+    harmonySlotNext.harmony.controlStrength = 1;
+    harmonySlotNext.harmony.activeSource = 2;
+    harmonySlotNext.harmony.activeSlotId = 2;
+    harmonySlotNext.harmony.notePoolCount = 4;
+    harmonySlotNext.harmony.notePoolMidi = [67, 70, 74, 77, 0, 0, 0, 0];
+    harmonySlotNext.harmony.nextNotePoolCount = 4;
+    harmonySlotNext.harmony.nextNotePoolMidi = [69, 72, 76, 79, 0, 0, 0, 0];
+    harmonySlotNext.harmony.resolvedHarmonyFrame = { degree: 4, quality: 'min7' };
+    harmonySlotNext.harmony.manualControl = { strength: 'force' };
+    const harmonySlotDiff = adapterHarness.buildCoreProductSnapshotDiff(harmonySlotBase, harmonySlotNext);
+    assert(harmonySlotDiff.applied === true, 'harmony slot triggers must dirty-diff without a full snapshot reload');
+    assert(
+      harmonySlotDiff.events.some((event) =>
+        event.type === 'harmony-slot-set' &&
+          event.slotId === 2 &&
+          event.degree === 4 &&
+          event.quality === 'min7' &&
+          event.strength === 'force'),
+      'harmony slot trigger dirty diff did not emit the selected slot-set event',
+    );
+
     const assetNext = clone(base);
     assetNext.assetRefs = [11, 99];
     const assetDiff = adapterHarness.buildCoreProductSnapshotDiff(base, assetNext);
@@ -835,6 +867,7 @@ await runCheckWithReport({
         legacyPadExactReloadReason: legacyPadExactDiff.reason,
         legacyLeadExactReloadReason: legacyLeadExactDiff.reason,
         legacyDrumExactReloadReason: legacyDrumExactDiff.reason,
+        harmonySlotDiffEvents: harmonySlotDiff.events.length,
         padOverrideReloadReason: padOverrideDiff.reason,
         leadOverrideReloadReason: leadOverrideDiff.reason,
         drumOverrideReloadReason: drumOverrideDiff.reason,

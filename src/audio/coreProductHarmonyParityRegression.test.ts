@@ -532,6 +532,96 @@ const harmonyManualDuringMorph = createCoreProductSnapshot({
 assert.equal(harmonyManualDuringMorph.harmony.manualControlAvailable, false, 'manual harmony control should be locked during morph');
 assert.equal(harmonyManualDuringMorph.harmony.resolvedHarmonyFrame.activeSource, 'baseline', 'manual harmony control should not mutate active harmony during morph');
 
+const slotTriggerIntent = {
+  source: 'slot' as const,
+  strength: 'force' as const,
+  rootMode: 'degree' as const,
+  degree: 4,
+  rootNote: 0,
+  quality: 'min7' as const,
+  extensions: [],
+  inversion: 0,
+  spread: 0.5,
+  octave: 4,
+  bassMode: 'off' as const,
+  bassNote: null,
+  capturedMidiNotes: [],
+  preserveCapturedVoicing: false,
+};
+const slotTriggerState = resolveProductHarmonyState({
+  state: {
+    manualHarmonyControl: {
+      slotTriggerMode: true,
+      activeSlotId: 2,
+    },
+    harmonyChordSlots: [{
+      id: 2,
+      name: 'Slot 3',
+      locked: false,
+      intent: slotTriggerIntent,
+    }],
+  },
+  rootMidi: 60,
+  scaleId: 1,
+  tension: 0.35,
+  seed: 1,
+});
+const expectedSlotTriggerPool = resolveHarmonyIntentToNotePool({
+  intent: slotTriggerIntent,
+  rootMidi: 60,
+  scaleId: 1,
+  tension: 0.35,
+});
+assert.equal(slotTriggerState.resolvedHarmonyFrame.activeSource, 'slot', 'slot trigger should become active harmony at endpoint morph');
+assert.equal(slotTriggerState.resolvedHarmonyFrame.activeSlotId, 2, 'slot trigger should preserve the active slot id');
+assert.deepEqual(slotTriggerState.resolvedHarmonyFrame.currentNotePool, expectedSlotTriggerPool, 'slot trigger should resolve the selected slot note pool');
+const harmonySlotTriggerSnapshot = createCoreProductSnapshot({
+  rootMidi: 60,
+  scaleMode: 'manual',
+  manualScale: 'Major (Ionian)',
+  tension: 0.35,
+  manualHarmonyControl: {
+    slotTriggerMode: true,
+    activeSlotId: 2,
+  },
+  harmonyChordSlots: [{
+    id: 2,
+    name: 'Slot 3',
+    locked: false,
+    intent: slotTriggerIntent,
+  }],
+});
+assert.equal(harmonySlotTriggerSnapshot.harmony.activeSource, 2, 'Product snapshot should encode slot trigger as active slot source');
+assert.equal(harmonySlotTriggerSnapshot.harmony.controlMode, 3, 'Product snapshot should encode slot trigger as slot control mode');
+assert.equal(harmonySlotTriggerSnapshot.harmony.activeSlotId, 2, 'Product snapshot should encode the triggered slot id');
+assert.deepEqual(
+  harmonySlotTriggerSnapshot.harmony.notePoolMidi.slice(0, harmonySlotTriggerSnapshot.harmony.notePoolCount),
+  expectedSlotTriggerPool,
+  'Product snapshot should carry the triggered slot note pool',
+);
+
+const slotTriggerDuringMorph = resolveProductHarmonyState({
+  state: {
+    harmonyMorphPercent: 50,
+    manualHarmonyControl: {
+      slotTriggerMode: true,
+      activeSlotId: 2,
+    },
+    harmonyChordSlots: [{
+      id: 2,
+      name: 'Slot 3',
+      locked: false,
+      intent: slotTriggerIntent,
+    }],
+  },
+  rootMidi: 60,
+  scaleId: 1,
+  tension: 0.35,
+  seed: 1,
+});
+assert.equal(slotTriggerDuringMorph.resolvedHarmonyFrame.manualControlAvailable, false, 'slot trigger should be locked during preset morph');
+assert.equal(slotTriggerDuringMorph.resolvedHarmonyFrame.activeSource, 'baseline', 'slot trigger should not mutate active harmony during preset morph');
+
 const morphBankState = resolveProductHarmonyState({
   state: {
     harmonyMorphPercent: 50,

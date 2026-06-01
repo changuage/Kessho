@@ -108,6 +108,7 @@ struct FxState {
   float reverb_crossover_hz = 800.0f;
   float reverb_input_tone = 0.0f;
   float reverb_shimmer_feedback = 0.0f;
+  float reverb_bloom = 0.0f;
   float reverb_warp = 0.0f;
   float reverb_cross_feed = 0.0f;
   float reverb_early_reflections = 0.3f;

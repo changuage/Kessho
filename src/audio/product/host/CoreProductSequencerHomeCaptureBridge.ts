@@ -1,14 +1,11 @@
 import type { LaneDirection } from '../../sequencerLaneDirection';
-import type { SequencerKind } from '../../CoreProductHostSequencerAdapter';
+import type { SequencerKind, SequencerStepValueConfig } from '../../CoreProductHostSequencerAdapter';
+import { CORE_PRODUCT_SUBLANE_DIRECTIONS, type CoreProductStepValueField, type CoreProductSubLaneDirection } from '../../coreProductEvents';
 import { type CoreProductSequencerHomeState } from '../../CoreProductHostSequencerHome';
 import { getCoreProductSequencerLaneSwing } from '../../CoreProductHostSequencerSwing';
 import { coreProductSynthNoteRangeHome } from '../../CoreProductHostSynthNoteRangeEvolve';
 import { normalizeSequencerPitchSettings, type SequencerPitchSettings } from '../../sequencerPitchSettings';
-import {
-  ensureCoreProductSequencerLaneCache,
-  selectCoreProductSequencerCache,
-  type CoreProductSequencerCacheState,
-} from './CoreProductSequencerCacheBridge';
+import { ensureCoreProductSequencerLaneCache, selectCoreProductSequencerCache, type CoreProductSequencerCacheState } from './CoreProductSequencerCacheBridge';
 
 type CoreProductSequencerHomeCaptureOptions = {
   sequencer: SequencerKind;
@@ -33,6 +30,8 @@ export function captureCoreProductSequencerHomeLane(options: CoreProductSequence
   if (!Number.isInteger(options.laneIndex) || options.laneIndex < 0 || options.laneIndex >= 16) return;
   ensureCoreProductSequencerLaneCache(options.cache, options.sequencer, options.laneIndex);
   const { toggles, values, configs } = selectCoreProductSequencerCache(options.cache, options.sequencer);
+  const laneValues = values[options.laneIndex] ?? [];
+  const laneConfigs = configs[options.laneIndex] ?? [];
   const noteRange = options.sequencer === 'synth'
     ? coreProductSynthNoteRangeHome({
       laneIndex: options.laneIndex,
@@ -51,18 +50,38 @@ export function captureCoreProductSequencerHomeLane(options: CoreProductSequence
       : null;
   const pitchSubLaneState = options.pitchState
     ? {
-      steps: options.pitchState.steps,
-      direction: options.pitchState.direction,
-      scaleQuantize: options.pitchState.scaleQuantize,
+      ...(typeof options.pitchState.steps === 'number' && Number.isFinite(options.pitchState.steps)
+        ? { steps: options.pitchState.steps }
+        : {}),
+      ...(options.pitchState.direction
+        ? { direction: options.pitchState.direction }
+        : {}),
+      ...(typeof options.pitchState.scaleQuantize === 'boolean'
+        ? { scaleQuantize: options.pitchState.scaleQuantize }
+        : {}),
     }
     : null;
   options.capture(options.sequencer, options.laneIndex, {
     toggles: toggles[options.laneIndex] ?? [],
-    values: values[options.laneIndex] ?? [],
-    configs: configs[options.laneIndex] ?? [],
+    values: laneValues,
+    configs: laneConfigs.length > 0 ? laneConfigs : inferCoreProductHomeConfigs(laneValues),
     swing: getCoreProductSequencerLaneSwing(options.adapterState, options.latestSliderState, options.sequencer, options.laneIndex),
     ...(noteRange ? { noteRange } : {}),
     ...(pitchSettings ? { pitchSettings } : {}),
     ...(pitchSubLaneState ? { pitchSubLaneState } : {}),
   }, { force: options.force, requireContent: options.requireContent });
+}
+
+function inferCoreProductHomeConfigs(values: { step: number; field: CoreProductStepValueField }[]): SequencerStepValueConfig[] {
+  const maxStepByField = new Map<CoreProductStepValueField, number>();
+  const direction = CORE_PRODUCT_SUBLANE_DIRECTIONS.forward as CoreProductSubLaneDirection;
+  for (const value of values) {
+    if (!Number.isInteger(value.step) || value.step < 0) continue;
+    maxStepByField.set(value.field, Math.max(maxStepByField.get(value.field) ?? -1, value.step));
+  }
+  return Array.from(maxStepByField, ([field, maxStep]) => ({
+    field,
+    steps: Math.max(1, Math.min(64, maxStep + 1)),
+    direction,
+  }));
 }

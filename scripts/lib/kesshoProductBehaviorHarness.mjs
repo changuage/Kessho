@@ -243,6 +243,45 @@ export function loadCoreProductHostHarness(options = {}) {
     speed: typeof state?.randomWalkSpeed === 'number' ? state.randomWalkSpeed : 1,
     mode: state?.randomWalkMode === 'globalWalk' ? 'globalWalk' : 'localBrownian',
   });
+  const harnessSourceIds = {
+    pad1: 1,
+    pad2: 2,
+    lead1: 3,
+    lead2: 4,
+    drum: 5,
+    piano: 6,
+    soundscape: 7,
+  };
+  const sourceId = (source) => {
+    const id = harnessSourceIds[source];
+    if (id === undefined) throw new Error(`Unknown Core Product synth source: ${String(source)}`);
+    return id;
+  };
+  const requireFiniteRange = (value, label, min, max) => {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) throw new Error(`Core Product ${label} must be a finite number in [${min}, ${max}]`);
+    return value;
+  };
+  const requirePositive = (value, label) => {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error(`Core Product ${label} must be a positive finite number`);
+    return value;
+  };
+  const requireManualNote = (note) => {
+    const voiceIndex = note.voiceIndex;
+    sourceId(note.source);
+    if (voiceIndex !== undefined && (!Number.isInteger(voiceIndex) || voiceIndex < 0 || voiceIndex > 5)) throw new Error(`Core Product manual note voiceIndex must be an integer in [0, 5]: ${String(voiceIndex)}`);
+    return { source: note.source, midi: requireFiniteRange(note.midi, 'manual note midi', 0, 127), velocity: requireFiniteRange(note.velocity, 'manual note velocity', 0.000001, 1), durationMs: requirePositive(note.durationMs, 'manual note durationMs'), ...(voiceIndex !== undefined ? { voiceIndex } : {}) };
+  };
+  const manualAuditionState = (source, state) => {
+    const next = { ...(state ?? {}) };
+    if (source === 'pad1') next.padEnabled = true;
+    else if (source === 'pad2') next.pad2Enabled = true;
+    else if (source === 'lead1') next.leadEnabled = true;
+    else if (source === 'lead2') next.lead2Enabled = true;
+    else if (source === 'piano') next.pianoEnabled = true;
+    else sourceId(source);
+    return next;
+  };
+  const drumVoiceIndex = (voice) => Number.isInteger(voice) ? voice : ({ snare: 2, clap: 2, hat: 5, hihat: 5, perc: 6, tom: 6 }[String(voice).toLowerCase()] ?? 0);
 
   class CoreProductRuntime {
     constructor() {
@@ -319,6 +358,7 @@ export function loadCoreProductHostHarness(options = {}) {
 
     async ensureDefaultAssetsForState() {}
     async ensurePianoAssetForMidi() {}
+    async ensurePianoAssetForNote() {}
     clear() {
       this.assets = [];
     }
@@ -398,6 +438,13 @@ export function loadCoreProductHostHarness(options = {}) {
       };
     },
     runtimeWalkConfigFromState,
+    drumVoiceIndex,
+    manualAuditionState,
+    midiFromFrequency: (frequency) => 69 + 12 * Math.log2(frequency / 440),
+    requireFiniteRange,
+    requireManualNote,
+    requirePositive,
+    sourceId,
     runtimeWalkConfigChanged: (left, right) => Math.abs(left.speed - right.speed) > 0.0005 || left.mode !== right.mode,
     coreProductRangeValueContext: (bpm, state) => ({
       bpm: typeof bpm === 'number' && Number.isFinite(bpm) ? bpm : 120,
@@ -456,6 +503,7 @@ export function loadCoreProductHostHarness(options = {}) {
       subLaneLengthDrift: 1 << 18,
       subLaneDirectionFlip: 1 << 19,
       triggerToggle: 1 << 20,
+      manualCommit: 1 << 28,
       mutationStrict: 1 << 29,
       rngStream: 1 << 30,
       modeParity: 0x80000000,
@@ -471,15 +519,7 @@ export function loadCoreProductHostHarness(options = {}) {
       distance: 7 << 8,
       subLaneConfig: 8 << 8,
     },
-    CORE_PRODUCT_SOURCE_IDS: {
-      pad1: 1,
-      pad2: 2,
-      lead1: 3,
-      lead2: 4,
-      drum: 5,
-      piano: 6,
-      soundscape: 7,
-    },
+    CORE_PRODUCT_SOURCE_IDS: harnessSourceIds,
     CORE_PRODUCT_GRAPH_TAP_IDS: {
       master: 1,
       pad: 2,
@@ -499,6 +539,23 @@ export function loadCoreProductHostHarness(options = {}) {
       event('journey-state', { enabled, morphPhase, morphRateBars }),
     createCoreProductManualNoteEvent: (sourceId, midi, velocity, durationMs) =>
       event('manual-note', { sourceId, midi, velocity, durationMs }),
+    createCoreProductHostMidiEvent: (message, timing) =>
+      event('host-midi', { message, timing }),
+    createCoreProductLiveNoteEvent: (liveNote, timing) => {
+      const channel = Number.isInteger(liveNote.channel) ? Math.max(0, Math.min(15, liveNote.channel)) : 0;
+      const noteOff = liveNote.kind === 'live-note-off';
+      const velocity = Math.max(0, Math.min(1, liveNote.velocity ?? 0));
+      return event('live-note-midi', {
+        timing,
+        targetId: harnessSourceIds[liveNote.instrument] ?? harnessSourceIds.piano,
+        status: (noteOff ? 0x80 : 0x90) | channel,
+        channel,
+        data1: Math.max(0, Math.min(127, Math.round(liveNote.note ?? 60))),
+        data2: noteOff ? 0 : Math.max(0, Math.min(127, Math.round(velocity * 127))),
+        normalizedValue: noteOff ? 0 : velocity,
+        rawSize: 3,
+      });
+    },
     createCoreProductMidiEvent: (payload) => event('midi', payload),
     createCoreProductModulationRangeEvent: (target, range, mode, currentValue, valueContext) =>
       event('modulation-range', { target, range, mode, currentValue, valueContext }),
@@ -716,12 +773,20 @@ Object.assign(globalThis, {
   const uiStateSource = stripImportsAndExports(readProjectFile(uiStatePath));
   const uiStateJs = transpileForVm(uiStateSource, resolve(root, uiStatePath));
   vm.runInNewContext(`${uiStateJs}
+	Object.assign(globalThis, {
+	  coreProductStepValueOverridesFromLane,
+	  coreProductStepValueConfigsFromLane,
+	  coreProductSynthEvolvePayloadFromLane,
+	  coreProductDrumEvolvePayloadFromLane,
+	});`, context, { filename: uiStatePath });
+
+  const sparseTelemetryBridgePath = 'src/audio/product/host/CoreProductSequencerSparseTelemetryBridge.ts';
+  const sparseTelemetryBridgeSource = stripImportsAndExports(readProjectFile(sparseTelemetryBridgePath));
+  const sparseTelemetryBridgeJs = transpileForVm(sparseTelemetryBridgeSource, resolve(root, sparseTelemetryBridgePath));
+  vm.runInNewContext(`${sparseTelemetryBridgeJs}
 Object.assign(globalThis, {
-  coreProductStepValueOverridesFromLane,
-  coreProductStepValueConfigsFromLane,
-  coreProductSynthEvolvePayloadFromLane,
-  coreProductDrumEvolvePayloadFromLane,
-});`, context, { filename: uiStatePath });
+  coreProductStepValueConfigsFromLaneOrPrevious,
+});`, context, { filename: sparseTelemetryBridgePath });
 
   const sequencerUiAdapterPath = 'src/audio/product/host/CoreProductSequencerUiAdapter.ts';
   const sequencerUiAdapterSource = stripImportsAndExports(readProjectFile(sequencerUiAdapterPath));
@@ -1134,11 +1199,39 @@ globalThis.__generatedProductParams = KESSHO_PRODUCT_PARAMS;`, generatedParamsCo
 	    KESSHO_PRODUCT_PAD_PARAM_COUNT: 53,
     KESSHO_PRODUCT_PARAM_IDS: createParamIds(),
     KESSHO_PRODUCT_PARAMS: generatedParamsContext.__generatedProductParams,
+    HARMONY_QUALITY_IDS: {
+      auto: 0,
+      dim: 1,
+      min: 2,
+      maj: 3,
+      sus: 4,
+      maj7: 5,
+      min7: 6,
+      dom7: 7,
+      add9: 8,
+      six: 9,
+      sixNine: 10,
+      nine: 11,
+      quartal: 12,
+      cluster: 13,
+      custom: 14,
+    },
+    HARMONY_STRENGTH_IDS: { bias: 0, force: 1 },
     coreProductDrumRuntimeParamId: (paramIndex) => `DrumRuntime${paramIndex}`,
     coreProductLeadRuntimeParamId: (leadIndex, paramIndex) => `Lead${leadIndex + 1}Runtime${paramIndex}`,
     coreProductPadRuntimeParamId: (padIndex, paramIndex) => `Pad${padIndex + 1}Runtime${paramIndex}`,
     createCoreProductJourneyStateEvent: (enabled, morphPhase, morphRateBars) =>
       event('journey-state', { enabled, morphPhase, morphRateBars }),
+    createCoreProductHarmonyControlSetManualIntentEvent: (args) =>
+      event('harmony-manual-intent', { ...args }),
+    createCoreProductHarmonyControlClearManualIntentEvent: () =>
+      event('harmony-clear-manual-intent'),
+    createCoreProductHarmonySequenceSetEnabledEvent: (enabled) =>
+      event('harmony-sequence-enabled', { enabled }),
+    createCoreProductHarmonySequenceSetStepEvent: (stepId, args) =>
+      event('harmony-sequence-step', { stepId, ...args }),
+    createCoreProductHarmonySlotSetEvent: (slotId, args) =>
+      event('harmony-slot-set', { slotId, ...args }),
     createCoreProductParamEvent: (paramId, value, targetId = 0, index = 0) =>
       event('param', { paramId, value, targetId, index }),
 	    createCoreProductSequencerLaneParamEvent: (sequencer, laneIndex, paramId, value) =>

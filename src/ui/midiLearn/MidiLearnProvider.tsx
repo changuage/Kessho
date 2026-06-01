@@ -169,6 +169,15 @@ export function MidiLearnProvider({
   const handleMidiMessage = React.useCallback((message: KesshoMidiMessage) => {
     onMidiMessageRef.current?.(message);
 
+    const isLiveNoteMessage = message.kind === 'noteOn' || message.kind === 'noteOff';
+    if (isLiveNoteMessage) {
+      const liveNoteHandler = onLiveNoteEventRef.current;
+      if (liveNoteHandler) {
+        const liveNoteEvent = midiMessageToProductLiveNoteEvent(message);
+        if (liveNoteEvent) liveNoteHandler(liveNoteEvent);
+      }
+    }
+
     const now = performance.now();
     if (now - lastMonitorUpdateRef.current >= MONITOR_THROTTLE_MS) {
       lastMonitorUpdateRef.current = now;
@@ -188,11 +197,7 @@ export function MidiLearnProvider({
       });
     }
 
-    const liveNoteEvent = midiMessageToProductLiveNoteEvent(message);
-    if (liveNoteEvent) {
-      onLiveNoteEventRef.current?.(liveNoteEvent);
-      return;
-    }
+    if (isLiveNoteMessage) return;
 
     for (const binding of profileRef.current.bindings) {
       const routed = routeMidiMessageToParameter(message, binding);

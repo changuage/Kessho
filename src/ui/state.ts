@@ -691,6 +691,7 @@ export interface SliderState {
   reverbCrossoverFreq: number; // 100..6000 Hz step 10 - damping crossover frequency
   reverbInputTone: number;    // -1..+1 step 0.01 - input tilt EQ (-1=dark, +1=bright)
   reverbShimmerFeedback: number; // 0..1 step 0.01 - compound pitch shifting feedback
+  reverbBloom: number;        // -1..+1 step 0.01 - tail direction macro
 
   // Reverb v3 params
   reverbWarp: number;            // 0..1 step 0.01 - pitch warp/bend in feedback path
@@ -1810,6 +1811,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'reverbCrossoverFreq',
   'reverbInputTone',
   'reverbShimmerFeedback',
+  'reverbBloom',
   // v3 params
   'reverbWarp',
   'reverbCrossFeed',
@@ -2715,6 +2717,7 @@ export const DEFAULT_STATE: SliderState = {
   reverbCrossoverFreq: 800,
   reverbInputTone: 0,
   reverbShimmerFeedback: 0,
+  reverbBloom: 0,
 
   // Reverb v3 params
   reverbWarp: 0,
@@ -3478,6 +3481,128 @@ interface QuantizationDef {
   step: number;
 }
 
+export const PAD_SOURCE_SPECS = [
+  { id: 'pad', statePrefix: '', sourceId: 'pad1' },
+  { id: 'pad2', statePrefix: 'pad2', sourceId: 'pad2' },
+] as const;
+
+export type PadSourceSpec = typeof PAD_SOURCE_SPECS[number];
+const PAD_SOURCE_STATE_KEY_SUFFIX = {
+  synthAttack: 'Attack',
+  synthDecay: 'Decay',
+  synthSustain: 'Sustain',
+  synthRelease: 'Release',
+  synthOctave: 'Octave',
+  hardness: 'Hardness',
+  warmth: 'Warmth',
+  presence: 'Presence',
+  padFoldAmount: 'FoldAmount',
+  padFoldMode: 'FoldMode',
+  padOscMix: 'OscMix',
+  filterCutoffMin: 'FilterCutoffMin',
+  filterCutoffMax: 'FilterCutoffMax',
+  filterResonance: 'FilterResonance',
+  filterQ: 'FilterQ',
+  filterSlope: 'FilterSlope',
+  filterKeyTracking: 'FilterKeyTracking',
+  padMorph: 'Morph',
+  padMorphSpeed: 'MorphSpeed',
+  padOscAOctave: 'OscAOctave',
+  padOscADetune: 'OscADetune',
+  padOscALevel: 'OscALevel',
+  padOscBOctave: 'OscBOctave',
+  padOscBDetune: 'OscBDetune',
+  padOscBLevel: 'OscBLevel',
+  padSubOctave: 'SubOctave',
+  padSubLevel: 'SubLevel',
+  padNoiseLevel: 'NoiseLevel',
+  padFilterBCutoff: 'FilterBCutoff',
+  padFilterBResonance: 'FilterBResonance',
+  padFilterBQ: 'FilterBQ',
+  padLfo1Rate: 'Lfo1Rate',
+  padLfo1Depth: 'Lfo1Depth',
+  padLfo2Rate: 'Lfo2Rate',
+  padLfo2Depth: 'Lfo2Depth',
+  padModEnvAttack: 'ModEnvAttack',
+  padModEnvDecay: 'ModEnvDecay',
+  padModEnvSustain: 'ModEnvSustain',
+  padModEnvRelease: 'ModEnvRelease',
+  padModEnvDepth: 'ModEnvDepth',
+  padDistance: 'Distance',
+  padPostLPF: 'PostLPF',
+  padStereoWidth: 'StereoWidth',
+  padDiffuseSend: 'DiffuseSend',
+} as const;
+
+export type PadSourceBaseKey = keyof typeof PAD_SOURCE_STATE_KEY_SUFFIX;
+export type PadFilterRangeBaseKey = Extract<PadSourceBaseKey, 'filterCutoffMin' | 'filterCutoffMax'>;
+
+export function padSourceStateKey(spec: PadSourceSpec, baseKey: PadSourceBaseKey): keyof SliderState {
+  return (spec.statePrefix === ''
+    ? baseKey
+    : `${spec.statePrefix}${PAD_SOURCE_STATE_KEY_SUFFIX[baseKey]}`) as keyof SliderState;
+}
+
+export const PAD_FILTER_CUTOFF_KEY_PAIRS = PAD_SOURCE_SPECS.map((spec) => ({
+  minKey: padSourceStateKey(spec, 'filterCutoffMin'),
+  maxKey: padSourceStateKey(spec, 'filterCutoffMax'),
+})) as readonly { minKey: keyof SliderState; maxKey: keyof SliderState }[];
+
+const PAD_SOURCE_NUMERIC_BASE_QUANTIZATION = {
+  synthAttack: { min: 0.001, max: 16, step: 0.001 },
+  synthDecay: { min: 0.01, max: 8, step: 0.01 },
+  synthSustain: { min: 0, max: 1, step: 0.01 },
+  synthRelease: { min: 0.01, max: 30, step: 0.01 },
+  synthOctave: { min: -2, max: 2, step: 1 },
+  hardness: { min: 0, max: 2, step: 0.01 },
+  warmth: { min: 0, max: 1, step: 0.01 },
+  presence: { min: 0, max: 1, step: 0.01 },
+  padFoldAmount: { min: 0, max: 1, step: 0.01 },
+  padFoldMode: { min: 0, max: 2, step: 1 },
+  padOscMix: { min: 0, max: 1, step: 0.01 },
+  filterCutoffMin: { min: 40, max: 8000, step: 10 },
+  filterCutoffMax: { min: 40, max: 8000, step: 10 },
+  filterResonance: { min: 0, max: 1, step: 0.01 },
+  filterQ: { min: 0.1, max: 12, step: 0.1 },
+  filterSlope: { min: 12, max: 48, step: 12 },
+  filterKeyTracking: { min: 0, max: 1, step: 0.01 },
+  padMorph: { min: 0, max: 1, step: 0.01 },
+  padMorphSpeed: { min: 1, max: 32, step: 1 },
+  padOscAOctave: { min: -2, max: 2, step: 1 },
+  padOscADetune: { min: -100, max: 100, step: 1 },
+  padOscALevel: { min: 0, max: 1, step: 0.01 },
+  padOscBOctave: { min: -2, max: 2, step: 1 },
+  padOscBDetune: { min: -100, max: 100, step: 1 },
+  padOscBLevel: { min: 0, max: 1, step: 0.01 },
+  padSubOctave: { min: -2, max: -1, step: 1 },
+  padSubLevel: { min: 0, max: 1, step: 0.01 },
+  padNoiseLevel: { min: 0, max: 1, step: 0.01 },
+  padFilterBCutoff: { min: 40, max: 8000, step: 10 },
+  padFilterBResonance: { min: 0, max: 1, step: 0.01 },
+  padFilterBQ: { min: 0.1, max: 12, step: 0.1 },
+  padLfo1Rate: { min: 0.01, max: 20, step: 0.01 },
+  padLfo1Depth: { min: 0, max: 1, step: 0.01 },
+  padLfo2Rate: { min: 0.01, max: 20, step: 0.01 },
+  padLfo2Depth: { min: 0, max: 1, step: 0.01 },
+  padModEnvAttack: { min: 0.001, max: 8, step: 0.001 },
+  padModEnvDecay: { min: 0.01, max: 8, step: 0.01 },
+  padModEnvSustain: { min: 0, max: 1, step: 0.01 },
+  padModEnvRelease: { min: 0.01, max: 16, step: 0.01 },
+  padModEnvDepth: { min: -1, max: 1, step: 0.01 },
+  padDistance: { min: 0, max: 1, step: 0.01 },
+  padPostLPF: { min: 20, max: 20000, step: 10 },
+  padStereoWidth: { min: 0, max: 1, step: 0.01 },
+  padDiffuseSend: { min: 0, max: 1, step: 0.01 },
+} as const satisfies Partial<Record<PadSourceBaseKey, QuantizationDef>>;
+
+const PAD_SOURCE_NUMERIC_QUANTIZATION = Object.entries(PAD_SOURCE_NUMERIC_BASE_QUANTIZATION)
+  .reduce<Partial<Record<keyof SliderState, QuantizationDef>>>((acc, [baseKey, def]) => {
+    for (const spec of PAD_SOURCE_SPECS) {
+      acc[padSourceStateKey(spec, baseKey as PadSourceBaseKey)] = def;
+    }
+    return acc;
+  }, {});
+
 export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> = {
   masterVolume: { min: 0, max: 1, step: 0.01 },
   synthLevel: { min: 0, max: 1, step: 0.01 },
@@ -3620,98 +3745,11 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   harmonyMorphPercent: { min: 0, max: 100, step: 1 },
   harmonyGenerationSeed: { min: 0, max: 2147483647, step: 1 },
   harmonyChordSequenceStepIndex: { min: 0, max: 7, step: 1 },
-  synthAttack: { min: 0.001, max: 16, step: 0.001 },
-  synthDecay: { min: 0.01, max: 8, step: 0.01 },
-  synthSustain: { min: 0, max: 1, step: 0.01 },
-  synthRelease: { min: 0.01, max: 30, step: 0.01 },
   synthVoiceMask: { min: 1, max: 63, step: 1 },
-  synthOctave: { min: -2, max: 2, step: 1 },
-  hardness: { min: 0, max: 2, step: 0.01 },
-  filterCutoffMin: { min: 40, max: 8000, step: 10 },
-  filterCutoffMax: { min: 40, max: 8000, step: 10 },
-  filterResonance: { min: 0, max: 1, step: 0.01 },
-  filterQ: { min: 0.1, max: 12, step: 0.1 },
-  filterSlope: { min: 12, max: 48, step: 12 },
-  filterKeyTracking: { min: 0, max: 1, step: 0.01 },
-  warmth: { min: 0, max: 1, step: 0.01 },
-  presence: { min: 0, max: 1, step: 0.01 },
-  padFoldAmount: { min: 0, max: 1, step: 0.01 },
-  padFoldMode: { min: 0, max: 2, step: 1 },
-  // Pad Synth Extended
-  padMorph: { min: 0, max: 1, step: 0.01 },
-  padOscAOctave: { min: -2, max: 2, step: 1 },
-  padOscADetune: { min: -100, max: 100, step: 1 },
-  padOscALevel: { min: 0, max: 1, step: 0.01 },
-  padOscBOctave: { min: -2, max: 2, step: 1 },
-  padOscBDetune: { min: -100, max: 100, step: 1 },
-  padOscBLevel: { min: 0, max: 1, step: 0.01 },
-  padSubOctave: { min: -2, max: -1, step: 1 },
-  padSubLevel: { min: 0, max: 1, step: 0.01 },
-  padNoiseLevel: { min: 0, max: 1, step: 0.01 },
-  padFilterBCutoff: { min: 40, max: 8000, step: 10 },
-  padFilterBResonance: { min: 0, max: 1, step: 0.01 },
-  padFilterBQ: { min: 0.1, max: 12, step: 0.1 },
-  padLfo1Rate: { min: 0.01, max: 20, step: 0.01 },
-  padLfo1Depth: { min: 0, max: 1, step: 0.01 },
-  padLfo2Rate: { min: 0.01, max: 20, step: 0.01 },
-  padLfo2Depth: { min: 0, max: 1, step: 0.01 },
-  padModEnvAttack: { min: 0.001, max: 8, step: 0.001 },
-  padModEnvDecay: { min: 0.01, max: 8, step: 0.01 },
-  padModEnvSustain: { min: 0, max: 1, step: 0.01 },
-  padModEnvRelease: { min: 0.01, max: 16, step: 0.01 },
-  padModEnvDepth: { min: -1, max: 1, step: 0.01 },
-  padMorphSpeed: { min: 1, max: 32, step: 1 },
-  padOscMix: { min: 0, max: 1, step: 0.01 },
-  padDistance: { min: 0, max: 1, step: 0.01 },
-  padPostLPF: { min: 20, max: 20000, step: 10 },
-  padStereoWidth: { min: 0, max: 1, step: 0.01 },
-  padDiffuseSend: { min: 0, max: 1, step: 0.01 },
+  // Pad/pad2 shared source params. Saved preset keys stay flat.
+  ...PAD_SOURCE_NUMERIC_QUANTIZATION,
   // Pad Synth 2
   pad2VoiceAssign: { min: 0, max: 63, step: 1 },
-  pad2Attack: { min: 0.001, max: 16, step: 0.001 },
-  pad2Decay: { min: 0.01, max: 8, step: 0.01 },
-  pad2Sustain: { min: 0, max: 1, step: 0.01 },
-  pad2Release: { min: 0.01, max: 30, step: 0.01 },
-  pad2Octave: { min: -2, max: 2, step: 1 },
-  pad2Hardness: { min: 0, max: 2, step: 0.01 },
-  pad2Warmth: { min: 0, max: 1, step: 0.01 },
-  pad2Presence: { min: 0, max: 1, step: 0.01 },
-  pad2FoldAmount: { min: 0, max: 1, step: 0.01 },
-  pad2FoldMode: { min: 0, max: 2, step: 1 },
-  pad2OscMix: { min: 0, max: 1, step: 0.01 },
-  pad2FilterCutoffMin: { min: 40, max: 8000, step: 10 },
-  pad2FilterCutoffMax: { min: 40, max: 8000, step: 10 },
-  pad2FilterResonance: { min: 0, max: 1, step: 0.01 },
-  pad2FilterQ: { min: 0.1, max: 12, step: 0.1 },
-  pad2FilterSlope: { min: 12, max: 48, step: 12 },
-  pad2FilterKeyTracking: { min: 0, max: 1, step: 0.01 },
-  pad2OscAOctave: { min: -2, max: 2, step: 1 },
-  pad2OscADetune: { min: -100, max: 100, step: 1 },
-  pad2OscALevel: { min: 0, max: 1, step: 0.01 },
-  pad2OscBOctave: { min: -2, max: 2, step: 1 },
-  pad2OscBDetune: { min: -100, max: 100, step: 1 },
-  pad2OscBLevel: { min: 0, max: 1, step: 0.01 },
-  pad2SubOctave: { min: -2, max: -1, step: 1 },
-  pad2SubLevel: { min: 0, max: 1, step: 0.01 },
-  pad2NoiseLevel: { min: 0, max: 1, step: 0.01 },
-  pad2FilterBCutoff: { min: 40, max: 8000, step: 10 },
-  pad2FilterBResonance: { min: 0, max: 1, step: 0.01 },
-  pad2FilterBQ: { min: 0.1, max: 12, step: 0.1 },
-  pad2Lfo1Rate: { min: 0.01, max: 20, step: 0.01 },
-  pad2Lfo1Depth: { min: 0, max: 1, step: 0.01 },
-  pad2Lfo2Rate: { min: 0.01, max: 20, step: 0.01 },
-  pad2Lfo2Depth: { min: 0, max: 1, step: 0.01 },
-  pad2ModEnvAttack: { min: 0.001, max: 8, step: 0.001 },
-  pad2ModEnvDecay: { min: 0.01, max: 8, step: 0.01 },
-  pad2ModEnvSustain: { min: 0, max: 1, step: 0.01 },
-  pad2ModEnvRelease: { min: 0.01, max: 16, step: 0.01 },
-  pad2ModEnvDepth: { min: -1, max: 1, step: 0.01 },
-  pad2Morph: { min: 0, max: 1, step: 0.01 },
-  pad2MorphSpeed: { min: 1, max: 32, step: 1 },
-  pad2Distance: { min: 0, max: 1, step: 0.01 },
-  pad2PostLPF: { min: 20, max: 20000, step: 10 },
-  pad2StereoWidth: { min: 0, max: 1, step: 0.01 },
-  pad2DiffuseSend: { min: 0, max: 1, step: 0.01 },
   reverbLevel: { min: 0, max: 1, step: 0.01 },
   reverbDecay: { min: 0, max: 1, step: 0.01 },
   reverbSize: { min: 0.5, max: 10, step: 0.1 },
@@ -3734,6 +3772,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   reverbCrossoverFreq: { min: 100, max: 6000, step: 10 },
   reverbInputTone: { min: -1, max: 1, step: 0.01 },
   reverbShimmerFeedback: { min: 0, max: 1, step: 0.01 },
+  reverbBloom: { min: -1, max: 1, step: 0.01 },
   // v3 reverb params
   reverbWarp: { min: 0, max: 1, step: 0.01 },
   reverbCrossFeed: { min: 0, max: 1, step: 0.01 },

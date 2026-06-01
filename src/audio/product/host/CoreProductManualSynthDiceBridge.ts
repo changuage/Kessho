@@ -122,7 +122,7 @@ export function applyCoreProductManualSynthDice(options: {
       options.laneIndex,
       config.evolution,
       seed,
-      nativeFlags + CORE_PRODUCT_EVOLVE_FLAGS.modeParity,
+      nativeFlags + CORE_PRODUCT_EVOLVE_FLAGS.manualCommit + CORE_PRODUCT_EVOLVE_FLAGS.modeParity,
       nativeDiceWriteOffset(config),
       Math.max(1, Math.floor((telemetry.barIndex ?? 0) + 1)),
       coreProductSequencerEffectiveEvolveTension({ sequencer: 'synth', laneIndex: options.laneIndex, latestSliderState: options.latestSliderState, latestProductSnapshot: options.latestProductSnapshot, telemetry }),

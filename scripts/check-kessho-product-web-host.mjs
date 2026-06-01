@@ -163,6 +163,7 @@ const drumSeqEvolve = read('src/audio/drumSeqEvolve.ts');
 const synthSeqEvolve = read('src/audio/synthSeqEvolve.ts');
 const synthPage = read('src/ui/synth/SynthPage.tsx');
 const drumPage = read('src/ui/drums/DrumPage.tsx');
+const seqSparkline = read('src/ui/drums/SeqSparkline.tsx');
 const drumEnvelopeVisualizer = read('src/ui/drums/EnvelopeVisualizer.tsx');
 const synthPresetManager = read('src/ui/synth/SynthPresetManager.tsx');
 const sequencePresetLane = read('src/ui/sequencer/sequencePresetLane.ts');
@@ -282,9 +283,10 @@ for (const [surfaceName, surface, tokens] of [
     'coreProductRuntimeHostPort.readTelemetry()',
     'coreProductRuntimeHostPort.readDiagnostics()',
     'coreProductRuntimeHostPort.readCapabilityReport()',
-    'coreProductRuntimeHostPort.setTelemetryCallback(callback, () => this.publishDiagnostics())',
-    "coreProductRuntimeHostPort.setLiveTriggerCallback('leadExpression', callback)",
-    "coreProductRuntimeHostPort.setLiveTriggerCallback('granularSH', callback)",
+    'coreProductRuntimeHostPort.setTelemetryCallback(callback, () => this.scheduleDiagnosticsPublish())',
+    "this.setLiveTriggerCallback('leadExpression', callback)",
+    "this.setLiveTriggerCallback('granularSH', callback)",
+    'coreProductRuntimeHostPort.setLiveTriggerCallback(name, callback)',
     'coreProductRuntimeHostPort.applySequencerUiPatch(patch)',
     'common controls should move to generated ProductEvents or dirty-diff paths',
     'do not replace generated events with legacy parameter-update snapshots',
@@ -320,10 +322,17 @@ for (const [surfaceName, surface, tokens] of [
     "return callCoreProductHost<ProductDynamicsVisualTelemetry>('getDynamicsVisualTelemetry')",
     "return callCoreProductHost<ProductRuntimeDiagnostics>('getProductRuntimeDiagnostics')",
     "return callCoreProductHost<ProductRuntimeCapabilityReport>('getCapabilityReport')",
-    "callCoreProductHost<void>('setStateChangeCallback', callback)",
+    'CORE_PRODUCT_RUNTIME_CALLBACK_METHODS',
+    'setCoreProductRuntimeCallback',
+    "stateChange: 'setStateChangeCallback'",
+    "drumTrigger: 'setDrumTriggerCallback'",
+    "drumStepPosition: 'setDrumStepPositionCallback'",
+    "synthEuclidEvolve: 'setSynthEuclidEvolveTriggerCallback'",
+    "setCoreProductRuntimeCallback('stateChange', callback)",
     "callCoreProductHost<void>('setProductTelemetryCallback', callback ?",
     'publishDiagnostics();',
-    "callCoreProductHost<void>('setDrumTriggerCallback', callback)",
+    "setCoreProductRuntimeCallback('drumTrigger', callback)",
+    "setCoreProductRuntimeCallback('runtimeWalkPositions', callback)",
     "callCoreProductHost<void>('setRuntimeWalkRanges', ranges)",
     'setCoreProductLiveTriggerCallback(callCoreProductHost, name, callback)',
     'applyCoreProductSequencerUiPatch(callCoreProductHost, patch)',
@@ -435,6 +444,19 @@ assert(
     !methodBody(webProductEngine, 'unregisterAsset(assetId: number)').includes('throw'),
   'WebProductEngine.unregisterAsset must be implemented through the Product host, not a stale unsupported placeholder',
 );
+{
+  const enqueueEventsBody = methodBody(webProductEngine, 'enqueueEvents(events: readonly ProductEvent[])');
+  assert(enqueueEventsBody.includes('for (const event of events)'), 'WebProductEngine.enqueueEvents must keep batched event posting explicit');
+  assert(enqueueEventsBody.includes('coreProductRuntimeHostPort.postEvent(event)'), 'WebProductEngine.enqueueEvents must post each generated ProductEvent');
+  assert(
+    (enqueueEventsBody.match(/this\.scheduleDiagnosticsPublish\(\)/g) ?? []).length === 1,
+    'WebProductEngine.enqueueEvents must schedule diagnostics exactly once per event batch',
+  );
+  assert(
+    !enqueueEventsBody.includes('publishDiagnostics('),
+    'WebProductEngine.enqueueEvents must not publish diagnostics once per event',
+  );
+}
 
 assert(hostPatchClassifier.includes('snapshotReloadReasonForProductPatch'), 'Product patch reload reason classification must live in CoreProductPatchClassifier.ts');
 assert(!host.includes('function snapshotReloadReasonForProductPatch'), 'coreProductEngineHost.ts must delegate Product patch reload reason classification to CoreProductPatchClassifier.ts');
@@ -803,10 +825,29 @@ assert(
   'Synth sparklines must not synthesize fallback phases outside native Product telemetry',
 );
 assert(
+  synthPage.includes('let resolvedPendingDiceSync = false;') &&
+    synthPage.includes('if (resolvedPendingDiceSync) {') &&
+    synthPage.includes('engineArpRuntimeTickRef.current = arpRuntimeTick;') &&
+    synthPage.indexOf('if (resolvedPendingDiceSync) {') < synthPage.indexOf('onStepOverridesChange?.('),
+  'Product synth dice sync must not echo Product-confirmed dice state back into the runtime',
+);
+assert(
   packageJson.scripts?.['core:product:sequencer-ui'] === 'node scripts/check-kessho-product-sequencer-ui-parity.mjs',
-  'package.json must expose the sequencer UI parity proof',
+  'package.json must expose the sequencer UI behavioral proof',
 );
 for (const token of [
+  "const BEHAVIORAL_EVIDENCE_ROLE = 'behavioral-regression';",
+  "const BEHAVIORAL_REFERENCE_ROLE = 'web-ts-behavioral-reference';",
+  'architectureAuthority: false',
+  'doesNotProve',
+  'requiredArchitectureGates',
+  "'core:product:host-reconciliation'",
+  "'core:product:dirty-diff'",
+  "'core:product:sequencer'",
+  "'core:product:wasm'",
+  "'core:product:live-note-contract'",
+  "'core:product:cpu'",
+  'Kessho sequencer behavioral regression proof passed',
   "const engineModes = args.engine ? [args.engine] : ['core-product', 'web-ts'];",
   "const tabs = args.tab ? [args.tab] : ['drums', 'synth'];",
   'const totalCases = engineModes.length * tabs.length;',
@@ -1142,6 +1183,27 @@ assert(
   /if \(this\.runtimeReady\) \{\s*if \(this\.runtime\.audioContext\?\.state === 'running'\) \{\s*post\(\);\s*return;\s*\}\s*void this\.runtime\.resume\(\)\.then\(post\);\s*return;\s*\}/.test(midiPushBody),
   'Product live MIDI path must post directly when AudioContext is already running',
 );
+for (const token of [
+  'private runtimeCanPostEventsImmediately(): boolean',
+  'private productSourceEnabled(sourceIdValue: number): boolean',
+  'private postManualSynthNote(note: RequiredManualSynthNote): void',
+]) {
+  assert(host.includes(token), `Product manual note fast path is missing ${token}`);
+}
+for (const [signature, postToken] of [
+  ['triggerDrumVoice(', 'post();'],
+  ['auditionSynthNote(', 'this.postManualSynthNote(manualNote);'],
+  ['auditionSynthNotes(', 'this.postManualSynthNote(note);'],
+]) {
+  const body = methodBody(host, signature);
+  assert(
+    body.includes('this.runtimeCanPostEventsImmediately()') &&
+      body.includes('this.productSource') &&
+      body.includes(postToken) &&
+      body.indexOf('this.runtimeCanPostEventsImmediately()') < body.indexOf('this.applyLatestSnapshotUpdate('),
+    `Product manual trigger ${signature} must direct-post before snapshot update when runtime state is already compiled`,
+  );
+}
 
 for (const token of [
   'function subLanePatch(',
@@ -1295,8 +1357,11 @@ assert(
 );
 assert(
   !synthPage.includes('derivedHitCount') &&
+    seqSparkline.includes("playheadMode = 'hit'") &&
+    seqSparkline.includes("const basis = playheadMode === 'step' ? Math.max(0, playhead) : Math.max(0, hitCount - 1);") &&
+    seqSparkline.includes("const cursorSteps = playheadMode === 'step' ? Math.max(2, steps) : steps;") &&
     synthPage.includes("playheadMode={laneKind === 'pitch' && activePitchBindingMode === 'sequence' ? 'step' : 'hit'}"),
-  'Product synth sub-lane UI must animate from native trigger telemetry, except sequence-bound pitch',
+  'Product synth sub-lane UI must animate from native emitted-hit telemetry, except sequence-bound pitch',
 );
 for (const token of [
   'assignSourcePresetEndpoints(source, \'pad\'',
@@ -1902,7 +1967,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 28460',
+  'const SNAPSHOT_BYTES = 28464',
   'const SOURCE_BYTES = 3320',
   'const LANE_BYTES = 92',
   'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
@@ -2380,9 +2445,19 @@ for (const token of [
   'const requestSequencerPlaybackStart = useCallback((statePatch?: Partial<SliderState>): void => {',
   'if (playbackIsRunning || isJourneyPlaying) return;',
   'void startPlayback(patchedState);',
+  'const SYNTH_LANE_SOURCE_KEYS = [',
+  'lazyManualSourceForLaneSource',
+  'enableSynthSequencerSource',
+  'const requestedLaneIndex = next && !hasEnabledLane ? 0 : null;',
+  'SYNTH_LANE_SOURCE_KEYS.forEach((sourceKey, laneIndex) => {',
 ]) {
   assert(lazySequencerTransport.includes(token), `Sequencer transport playback-start hook is missing ${token}`);
 }
+assert(
+  !lazySequencerTransport.includes("if (next && !currentState.leadEnabled) setPatchedSelect('leadEnabled', true);") &&
+    !lazySequencerTransport.includes("if (next && !currentState.padEnabled) setPatchedSelect('padEnabled', true);"),
+  'Lazy synth sequencer transport fallback must not wake Lead 1 and Pad 1 unconditionally',
+);
 assert(
   !app.includes('onRequestPlaybackStart={requestSequencerPlaybackStart}') &&
     app.includes('{...productPageRuntimeSurface.synthPageRuntimeProps}') &&
@@ -3006,6 +3081,7 @@ const hostImportAllowlist = new Set([
   './generated/kesshoProductEvents',
   './generated/kesshoProductParams',
   './product/ProductEngineTypes',
+  './product/liveNoteEvents',
   './product/ProductRuntimeCapabilityReport',
   './product/ProductRuntimeDiagnostics',
   './sequencerLaneDirection',

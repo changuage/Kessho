@@ -455,3 +455,42 @@ Remaining blockers:
 Next batch:
 
 - none in this markdown plan; remaining work is physical native background audio signoff.
+
+## Product Core Tech Debt Cleanup Addendum
+
+Date: 2026-06-01
+
+Source plan: product-core batched implementation plan.
+
+Scope:
+
+- Product Core remains the web production default.
+- `web-ts`, `product-test`, A/B testing, smoke, parity, reference runtime validation, `src/audio/coreEngineHost.ts`, and `src/audio/reference/webTs/engine.ts` remain **Keep Active — Archive Later**.
+- Cleanup focused on Product Core control-path overhead and duplication; no DSP behavior change is intended.
+
+Evidence:
+
+- `npm run -s core:product:ci:prereqs`: pass, 39 passed / 0 failed, report `docs/reports/kessho-product-ci-latest.json`
+- `npm run -s core:product:browser-runtime`: pass, report `docs/reports/kessho-product-browser-runtime-latest.json`
+- `npm run -s core:product:sequencer-ui`: pass, 4/4 Product/Web reference parity cases, report `docs/reports/kessho-product-sequencer-ui-parity-latest.json`
+- `npm run -s core:product:cpu`: pass, report `docs/reports/kessho-product-cpu-budget-latest.json`
+- `npm run -s core:product:default-gate-v3`: pass
+
+CPU evidence:
+
+- Disabled FX: `2.6371%` average, `3.36%` peak, p95 `0.0766 ms`, p99 `0.086 ms`, missed `0`.
+- Active FX: `5.17825%` average, `8.5275%` peak, p95 `0.1518 ms`, p99 `0.1992 ms`, missed `0`.
+
+Cleanup notes:
+
+- `WebProductEngine.enqueueEvents()` now coalesces diagnostics publication after batched event posts instead of publishing once per event.
+- Product host synth/drum sequencer wrappers now share `SequencerKind`-keyed helpers while preserving public compatibility wrappers.
+- Synth/drum step override posting now uses a shared strategy-based implementation.
+- Saved preset source classification and bundled preset loading were extracted from `App.tsx`.
+- Pad/pad2 state metadata now has a schema-driven proof for filter cutoff range quantization while flat saved preset keys are preserved.
+- C++ Product param/event table-driven dispatch remains deferred with a precise TODO in `cpp/KesshoCore/src/product/KesshoProductEvents.cpp`.
+
+Known risks:
+
+- Coalesced Product diagnostics can arrive one microtask later on high-frequency web control paths.
+- Sequencer UI evolve reset exact visual equality is intentionally not used as a dice-mutation proof because it is timing-dependent; reset control remains exercised and preset reset restoration remains asserted separately.

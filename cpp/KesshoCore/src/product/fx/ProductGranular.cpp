@@ -6,6 +6,7 @@ namespace {
 
 constexpr float kGranularReverbCompressorMakeupGain = 3.037f;
 constexpr float kGranularReverbCompressorLowerGain = 0.04466836f; // -27 dB
+constexpr float kGranularRouteEpsilon = 0.0001f;
 
 } // namespace
 
@@ -18,17 +19,17 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
     }
   }
   const bool output_armed =
-      fx.granular_mix > 0.0001f ||
-      routing.granular_to_reverb > 0.0001f ||
-      routing.granular_to_delay_a > 0.0001f ||
-      routing.granular_to_delay_b > 0.0001f;
+      fx.granular_mix > kGranularRouteEpsilon ||
+      routing.granular_to_reverb > kGranularRouteEpsilon ||
+      routing.granular_to_delay_a > kGranularRouteEpsilon ||
+      routing.granular_to_delay_b > kGranularRouteEpsilon;
   bool input_armed =
-      routing.delay_a_to_granular > 0.0001f ||
-      routing.delay_b_to_granular > 0.0001f;
+      routing.delay_a_to_granular > kGranularRouteEpsilon ||
+      routing.delay_b_to_granular > kGranularRouteEpsilon;
   if (!input_armed) {
     for (uint32_t source_index = 0; source_index < kSourceCount; ++source_index) {
       const SourceState& source = sources[source_index];
-      if (sourceRenderActive(source) && source.granular_send > 0.0001f) {
+      if (sourceRenderActive(source) && source.granular_send > kGranularRouteEpsilon) {
         input_armed = true;
         break;
       }
@@ -45,41 +46,64 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
   float* output_lpf_r = module_tap_r[0];
   float* reverb_branch_l = module_tap_l[1];
   float* reverb_branch_r = module_tap_r[1];
-  std::fill(output_lpf_l, output_lpf_l + frames, 0.0f);
-  std::fill(output_lpf_r, output_lpf_r + frames, 0.0f);
-  std::fill(reverb_branch_l, reverb_branch_l + frames, 0.0f);
-  std::fill(reverb_branch_r, reverb_branch_r + frames, 0.0f);
-  configureGranularLowpass(granular_output_lpf, fx.granular_output_lpf_hz);
-  configureGranularLowpass(granular_reverb_lpf, fx.granular_reverb_lpf_hz);
+  const bool direct_armed =
+      fx.granular_mix > kGranularRouteEpsilon ||
+      granular_mix_gain > kGranularRouteEpsilon;
+  const bool reverb_armed =
+      routing.granular_to_reverb > kGranularRouteEpsilon ||
+      granular_reverb_send_gain > kGranularRouteEpsilon;
+  const bool delay_a_armed =
+      routing.granular_to_delay_a > kGranularRouteEpsilon ||
+      granular_delay_a_send_gain > kGranularRouteEpsilon;
+  const bool delay_b_armed =
+      routing.granular_to_delay_b > kGranularRouteEpsilon ||
+      granular_delay_b_send_gain > kGranularRouteEpsilon;
+  const bool output_filter_armed = direct_armed || delay_a_armed || delay_b_armed;
+  if (output_filter_armed) {
+    std::fill(output_lpf_l, output_lpf_l + frames, 0.0f);
+    std::fill(output_lpf_r, output_lpf_r + frames, 0.0f);
+    configureGranularLowpass(granular_output_lpf, fx.granular_output_lpf_hz);
+  }
+  if (reverb_armed) {
+    std::fill(reverb_branch_l, reverb_branch_l + frames, 0.0f);
+    std::fill(reverb_branch_r, reverb_branch_r + frames, 0.0f);
+    configureGranularLowpass(granular_reverb_lpf, fx.granular_reverb_lpf_hz);
+  }
   const float attack_coeff = std::exp(-1.0f / std::max(1.0f, 0.003f * static_cast<float>(sample_rate)));
   const float release_coeff = std::exp(-1.0f / std::max(1.0f, 0.25f * static_cast<float>(sample_rate)));
-  for (uint32_t i = 0; i < frames; ++i) {
-    output_lpf_l[i] = processGranularLowpass(granular_output_lpf, granular_output_lpf.left, module_l[i]);
-    output_lpf_r[i] = processGranularLowpass(granular_output_lpf, granular_output_lpf.right, module_r[i]);
+  if (output_filter_armed || reverb_armed) {
+    for (uint32_t i = 0; i < frames; ++i) {
+      if (output_filter_armed) {
+        output_lpf_l[i] = processGranularLowpass(granular_output_lpf, granular_output_lpf.left, module_l[i]);
+        output_lpf_r[i] = processGranularLowpass(granular_output_lpf, granular_output_lpf.right, module_r[i]);
+      }
 
-    const float reverb_filtered_l = processGranularLowpass(granular_reverb_lpf, granular_reverb_lpf.left, module_l[i]);
-    const float reverb_filtered_r = processGranularLowpass(granular_reverb_lpf, granular_reverb_lpf.right, module_r[i]);
-    const float detector = std::max(std::max(std::abs(reverb_filtered_l), std::abs(reverb_filtered_r)), 1.0e-9f);
-    const float target_gain = detector <= kGranularReverbCompressorLowerGain
-        ? 1.0f
-        : std::pow(10.0f, granularCompressorGainDbForLevel(20.0f * std::log10(detector)) / 20.0f);
-    const float coeff = target_gain < granular_reverb_comp_gain ? attack_coeff : release_coeff;
-    granular_reverb_comp_gain = target_gain + (granular_reverb_comp_gain - target_gain) * coeff;
-    reverb_branch_l[i] = reverb_filtered_l * granular_reverb_comp_gain * kGranularReverbCompressorMakeupGain;
-    reverb_branch_r[i] = reverb_filtered_r * granular_reverb_comp_gain * kGranularReverbCompressorMakeupGain;
+      if (reverb_armed) {
+        const float reverb_filtered_l = processGranularLowpass(granular_reverb_lpf, granular_reverb_lpf.left, module_l[i]);
+        const float reverb_filtered_r = processGranularLowpass(granular_reverb_lpf, granular_reverb_lpf.right, module_r[i]);
+        const float detector = std::max(std::max(std::abs(reverb_filtered_l), std::abs(reverb_filtered_r)), 1.0e-9f);
+        const float target_gain = detector <= kGranularReverbCompressorLowerGain
+            ? 1.0f
+            : std::pow(10.0f, granularCompressorGainDbForLevel(20.0f * std::log10(detector)) / 20.0f);
+        const float coeff = target_gain < granular_reverb_comp_gain ? attack_coeff : release_coeff;
+        granular_reverb_comp_gain = target_gain + (granular_reverb_comp_gain - target_gain) * coeff;
+        reverb_branch_l[i] = reverb_filtered_l * granular_reverb_comp_gain * kGranularReverbCompressorMakeupGain;
+        reverb_branch_r[i] = reverb_filtered_r * granular_reverb_comp_gain * kGranularReverbCompressorMakeupGain;
+      }
+    }
   }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
     advanceGranularReturnGains(transport.sample_frame + i);
-    const float direct_l = output_lpf_l[i] * granular_mix_gain;
-    const float direct_r = output_lpf_r[i] * granular_mix_gain;
-    const float reverb_l = reverb_branch_l[i] * granular_reverb_send_gain;
-    const float reverb_r = reverb_branch_r[i] * granular_reverb_send_gain;
-    const float delay_a_l = output_lpf_l[i] * granular_delay_a_send_gain;
-    const float delay_a_r = output_lpf_r[i] * granular_delay_a_send_gain;
-    const float delay_b_l = output_lpf_l[i] * granular_delay_b_send_gain;
-    const float delay_b_r = output_lpf_r[i] * granular_delay_b_send_gain;
-    const float duck_gain = sidechainGain(kSidechainGranular, frame);
+    const float direct_l = direct_armed ? output_lpf_l[i] * granular_mix_gain : 0.0f;
+    const float direct_r = direct_armed ? output_lpf_r[i] * granular_mix_gain : 0.0f;
+    const float reverb_l = reverb_armed ? reverb_branch_l[i] * granular_reverb_send_gain : 0.0f;
+    const float reverb_r = reverb_armed ? reverb_branch_r[i] * granular_reverb_send_gain : 0.0f;
+    const float delay_a_l = delay_a_armed ? output_lpf_l[i] * granular_delay_a_send_gain : 0.0f;
+    const float delay_a_r = delay_a_armed ? output_lpf_r[i] * granular_delay_a_send_gain : 0.0f;
+    const float delay_b_l = delay_b_armed ? output_lpf_l[i] * granular_delay_b_send_gain : 0.0f;
+    const float delay_b_r = delay_b_armed ? output_lpf_r[i] * granular_delay_b_send_gain : 0.0f;
+    const float duck_gain = direct_armed ? sidechainGain(kSidechainGranular, frame) : 1.0f;
     const float direct_ducked_l = direct_l * duck_gain;
     const float direct_ducked_r = direct_r * duck_gain;
     if (graph_taps_enabled) {

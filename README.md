@@ -71,3 +71,13 @@ docs/
 ```
 
 Production code must not add a root `src/audio/engine.ts` or `src/audio/runtime.ts` path. Reference and parity code should import the legacy implementation from `src/audio/reference/webTs/engine.ts`.
+
+Reference/A-B support paths are **Keep Active — Archive Later**:
+
+- `web-ts`
+- `product-test`
+- A/B comparison workflows
+- smoke and parity workflows
+- reference runtime validation
+- `src/audio/coreEngineHost.ts`
+- `src/audio/reference/webTs/engine.ts`

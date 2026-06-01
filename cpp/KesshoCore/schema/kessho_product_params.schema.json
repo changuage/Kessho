@@ -236,6 +236,7 @@
     { "name": "FxReverbCrossoverHz", "path": "fx.reverb.crossoverHz", "type": "float", "id": 370, "min": 100, "max": 6000 },
     { "name": "FxReverbInputTone", "path": "fx.reverb.inputTone", "type": "float", "id": 371, "min": -1, "max": 1 },
     { "name": "FxReverbShimmerFeedback", "path": "fx.reverb.shimmerFeedback", "type": "float", "id": 372, "min": 0, "max": 1 },
+    { "name": "FxReverbBloom", "path": "fx.reverb.bloom", "type": "float", "id": 388, "min": -1, "max": 1 },
     { "name": "FxReverbWarp", "path": "fx.reverb.warp", "type": "float", "id": 373, "min": 0, "max": 1 },
     { "name": "FxReverbCrossFeed", "path": "fx.reverb.crossFeed", "type": "float", "id": 374, "min": 0, "max": 1 },
     { "name": "FxReverbEarlyReflections", "path": "fx.reverb.earlyReflections", "type": "float", "id": 375, "min": 0, "max": 1 },

@@ -8,6 +8,13 @@ const SYNTH_LANE_ENABLED_KEYS = [
   'synthEuclid4Enabled',
 ] as const satisfies readonly (keyof SliderState)[];
 
+const SYNTH_LANE_SOURCE_KEYS = [
+  'synthEuclid1Source',
+  'synthEuclid2Source',
+  'synthEuclid3Source',
+  'synthEuclid4Source',
+] as const satisfies readonly (keyof SliderState)[];
+
 const DRUM_LANE_ENABLED_KEYS = [
   'drumEuclid1Enabled',
   'drumEuclid2Enabled',
@@ -16,6 +23,7 @@ const DRUM_LANE_ENABLED_KEYS = [
 ] as const satisfies readonly (keyof SliderState)[];
 
 type SelectStateChange = <K extends keyof SliderState>(key: K, value: SliderState[K]) => void;
+type SequencerSynthSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'piano';
 
 type UseLazySequencerTransportOptions = {
   activeTab: string;
@@ -31,6 +39,21 @@ type UseLazySequencerTransportOptions = {
 type LazySequencerTransportControls = {
   requestSequencerPlaybackStart: (statePatch?: Partial<SliderState>) => void;
 };
+
+function lazyManualSourceForLaneSource(source: unknown, pad2VoiceAssign: unknown): SequencerSynthSource {
+  const sourceName = typeof source === 'string' ? source : 'lead1';
+  if (sourceName === 'lead2') return 'lead2';
+  if (sourceName === 'piano') return 'piano';
+  if (sourceName.startsWith('synth')) {
+    const voiceIndex = Number.parseInt(sourceName.replace('synth', ''), 10) - 1;
+    if (Number.isFinite(voiceIndex) && voiceIndex >= 0) {
+      const pad2Mask = typeof pad2VoiceAssign === 'number' && Number.isFinite(pad2VoiceAssign) ? pad2VoiceAssign : 0;
+      return (pad2Mask & (1 << voiceIndex)) !== 0 ? 'pad2' : 'pad1';
+    }
+    return 'pad1';
+  }
+  return 'lead1';
+}
 
 export function useLazySequencerTransport({
   activeTab,
@@ -61,8 +84,28 @@ export function useLazySequencerTransport({
     if (target === 'synth') {
       const next = !currentState.synthEuclideanMasterEnabled;
       setPatchedSelect('synthEuclideanMasterEnabled', next);
-      if (next && !currentState.leadEnabled) setPatchedSelect('leadEnabled', true);
-      if (next && !currentState.padEnabled) setPatchedSelect('padEnabled', true);
+      const hasEnabledLane = SYNTH_LANE_ENABLED_KEYS.some((key) => Boolean(currentState[key]));
+      const requestedLaneIndex = next && !hasEnabledLane ? 0 : null;
+      const enableSynthSequencerSource = (source: SequencerSynthSource) => {
+        if (source === 'pad1' && !currentState.padEnabled) {
+          setPatchedSelect('padEnabled', true);
+        } else if (source === 'pad2' && !currentState.pad2Enabled) {
+          setPatchedSelect('pad2Enabled', true);
+        } else if (source === 'lead1' && !currentState.leadEnabled) {
+          setPatchedSelect('leadEnabled', true);
+        } else if (source === 'lead2' && !currentState.lead2Enabled) {
+          setPatchedSelect('lead2Enabled', true);
+        } else if (source === 'piano' && !currentState.pianoEnabled) {
+          setPatchedSelect('pianoEnabled', true);
+        }
+      };
+      if (next) {
+        SYNTH_LANE_SOURCE_KEYS.forEach((sourceKey, laneIndex) => {
+          const enabledKey = SYNTH_LANE_ENABLED_KEYS[laneIndex];
+          if (!enabledKey || (!Boolean(currentState[enabledKey]) && laneIndex !== requestedLaneIndex)) return;
+          enableSynthSequencerSource(lazyManualSourceForLaneSource(currentState[sourceKey], currentState.pad2VoiceAssign));
+        });
+      }
       if (next && !SYNTH_LANE_ENABLED_KEYS.some((key) => Boolean(currentState[key]))) {
         setPatchedSelect(SYNTH_LANE_ENABLED_KEYS[0], true);
       }

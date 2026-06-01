@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 
 #include "kessho_granular.h"
@@ -140,6 +141,7 @@ public:
     if (instance_ == nullptr) {
       return false;
     }
+    params_cache_valid_ = false;
     applied_random_seed_ = 0u;
     return true;
   }
@@ -147,6 +149,7 @@ public:
   void reset() override {
     if (instance_ != nullptr &&
         granular_instance_reset(instance_, sample_rate_, params_[kParamBufferSeconds]) == 1) {
+      params_cache_valid_ = false;
       commitParams();
       applied_random_seed_ = 0u;
       applyRandomSeed();
@@ -190,17 +193,13 @@ public:
     int rendered = 0;
     while (rendered < frames) {
       const int block = std::min(kGranularBlockSize, std::min(max_block_size_, frames - rendered));
-      float* input = granular_instance_get_input_ptr(instance_);
-      float* output = granular_instance_get_output_ptr(instance_);
-      for (int i = 0; i < block; ++i) {
-        input[i * 2] = input_l[rendered + i];
-        input[i * 2 + 1] = input_r[rendered + i];
-      }
-      granular_instance_process_block(instance_, block);
-      for (int i = 0; i < block; ++i) {
-        output_l[rendered + i] = output[i * 2];
-        output_r[rendered + i] = output[i * 2 + 1];
-      }
+      granular_instance_process_planar(
+          instance_,
+          input_l + rendered,
+          input_r + rendered,
+          output_l + rendered,
+          output_r + rendered,
+          block);
       rendered += block;
     }
   }
@@ -215,6 +214,11 @@ public:
 
   void commitParams() override {
     if (instance_ == nullptr) {
+      return;
+    }
+    if (
+        params_cache_valid_ &&
+        std::memcmp(params_.data(), committed_params_.data(), params_.size() * sizeof(float)) == 0) {
       return;
     }
 
@@ -306,6 +310,9 @@ public:
         params_[kLegacyParamStart + 3],
         roundedInt(params_[kLegacyParamStart + 4]),
         params_[kLegacyParamStart + 5]);
+
+    committed_params_ = params_;
+    params_cache_valid_ = true;
   }
 
   int setRandomSeed(uint32_t seed) override {
@@ -399,6 +406,8 @@ private:
   uint32_t pending_random_seed_ = 1u;
   uint32_t applied_random_seed_ = 0u;
   std::array<float, kParamCount> params_ = makeDefaultParams();
+  std::array<float, kParamCount> committed_params_{};
+  bool params_cache_valid_ = false;
 };
 
 } // namespace

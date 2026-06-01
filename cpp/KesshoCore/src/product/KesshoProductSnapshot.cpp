@@ -314,6 +314,7 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   fx.reverb_crossover_hz = clampFloat(snapshot.fx.reverb_crossover_hz, 100.0f, 6000.0f);
   fx.reverb_input_tone = clampFloat(snapshot.fx.reverb_input_tone, -1.0f, 1.0f);
   fx.reverb_shimmer_feedback = clampFloat(snapshot.fx.reverb_shimmer_feedback, 0.0f, 1.0f);
+  fx.reverb_bloom = clampFloat(snapshot.fx.reverb_bloom, -1.0f, 1.0f);
   fx.reverb_warp = clampFloat(snapshot.fx.reverb_warp, 0.0f, 1.0f);
   fx.reverb_cross_feed = clampFloat(snapshot.fx.reverb_cross_feed, 0.0f, 1.0f);
   fx.reverb_early_reflections = clampFloat(snapshot.fx.reverb_early_reflections, 0.0f, 1.0f);

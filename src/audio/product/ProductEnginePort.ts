@@ -57,7 +57,7 @@ export type ProductEnginePort = {
   enqueueEvent(event: ProductEvent): void;
   enqueueEvents(events: readonly ProductEvent[]): void;
   pushMidiMessage(message: ProductMidiMessage): void;
-  enqueueLiveNoteEvent?(event: ProductLiveNoteEvent): Promise<void> | void;
+  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): Promise<void> | void;
 
   registerAsset(asset: ProductAssetRegistration): Promise<ProductAssetHandle>;
   unregisterAsset(assetId: number): void;

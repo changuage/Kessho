@@ -1063,6 +1063,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       reverbCrossoverHz: clamp(numberFromState(sliderState, 'reverbCrossoverFreq', 800), 100, 6000),
       reverbInputTone: clamp(numberFromState(sliderState, 'reverbInputTone', 0), -1, 1),
       reverbShimmerFeedback: clamp(numberFromState(sliderState, 'reverbShimmerFeedback', 0), 0, 1),
+      reverbBloom: clamp(numberFromState(sliderState, 'reverbBloom', 0), -1, 1),
       reverbWarp: clamp(numberFromState(sliderState, 'reverbWarp', 0), 0, 1),
       reverbCrossFeed: clamp(numberFromState(sliderState, 'reverbCrossFeed', 0), 0, 1),
       reverbEarlyReflections: clamp(numberFromState(sliderState, 'reverbEarlyReflections', 0.3), 0, 1),

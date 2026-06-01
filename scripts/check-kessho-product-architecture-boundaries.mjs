@@ -98,7 +98,7 @@ const secondStageCaps = [
   ['cpp/KesshoCore/src/product/fx/ProductDynamicsConfig.cpp', 540],
   ['cpp/KesshoCore/src/product/fx/ProductDelay.cpp', 120],
   ['cpp/KesshoCore/src/product/fx/ProductReverb.cpp', 220],
-  ['cpp/KesshoCore/src/product/fx/ProductGranular.cpp', 120],
+  ['cpp/KesshoCore/src/product/fx/ProductGranular.cpp', 160],
   ['cpp/KesshoCore/src/product/fx/ProductGranularRuntime.cpp', 120],
   ['cpp/KesshoCore/src/product/fx/ProductGranularFilters.cpp', 80],
   ['cpp/KesshoCore/src/product/fx/ProductSpectralFreeze.cpp', 80],

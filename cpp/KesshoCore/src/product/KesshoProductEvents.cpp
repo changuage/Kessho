@@ -880,6 +880,13 @@ void KesshoProductEngine::sortControlEvents() {
   if (applyDynamicsModParamEvent(event)) {
     return;
   }
+  // TODO(product-core-cpp-dispatch-table): table-drive the low-risk FX families
+  // in this switch after ProductAbiLayoutTests plus web graph parity cover the
+  // exact before/after values. Start with Delay A/B and Reverb cases below:
+  // use constexpr param specs with param_id, clamp/apply function, and
+  // configureFxModules=true. Delete this TODO only after event IDs and C ABI
+  // constants are unchanged and Product Core ABI, web-host, smoke, and parity
+  // checks pass on the table-driven implementation.
   switch (event.param_id) {
     case KESSHO_PRODUCT_PARAM_TRANSPORT_RUNNING_ID:
       transport.running = event.value >= 0.5f;
@@ -1188,6 +1195,10 @@ void KesshoProductEngine::sortControlEvents() {
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_SHIMMER_FEEDBACK_ID:
       fx.reverb_shimmer_feedback = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_REVERB_BLOOM_ID:
+      fx.reverb_bloom = clampFloat(event.value, -1.0f, 1.0f);
       configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_WARP_ID:

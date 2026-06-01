@@ -543,6 +543,7 @@
       "reverbCrossoverHz": 800,
       "reverbInputTone": 0,
       "reverbShimmerFeedback": 0,
+      "reverbBloom": 0,
       "reverbWarp": 0,
       "reverbCrossFeed": 0,
       "reverbEarlyReflections": 0.3,

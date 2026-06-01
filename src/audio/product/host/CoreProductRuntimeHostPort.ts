@@ -4,6 +4,7 @@ import { applyCoreProductSequencerUiPatch } from './CoreProductSequencerUiPatchB
 import type { DawOutputRoutingConfig } from '../../dawOutputRouting';
 import type { ProductRuntimeCapabilityReport } from '../ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
+import type { ProductLiveNoteEvent } from '../liveNoteEvents';
 import type {
   ProductAssetHandle,
   ProductAssetRegistration,
@@ -33,6 +34,37 @@ import type {
 // with product-owned generated runtime APIs once the web adapter no longer binds
 // Product host method names itself. Pure runtime forwarding stays inline here so
 // production does not maintain duplicate one-method bridge modules.
+type CoreProductRuntimeCallbackName =
+  | 'stateChange'
+  | 'drumTrigger'
+  | 'drumStepPosition'
+  | 'synthStepPosition'
+  | 'drumEuclidEvolve'
+  | 'synthEuclidEvolve'
+  | 'runtimeWalkPositions'
+  | 'journeyMorphClock'
+  | 'drumEvolveOverrides'
+  | 'synthEvolveOverrides'
+  | 'synthNoteRangeEvolved';
+
+const CORE_PRODUCT_RUNTIME_CALLBACK_METHODS: Record<CoreProductRuntimeCallbackName, string> = {
+  stateChange: 'setStateChangeCallback',
+  drumTrigger: 'setDrumTriggerCallback',
+  drumStepPosition: 'setDrumStepPositionCallback',
+  synthStepPosition: 'setSynthStepPositionCallback',
+  drumEuclidEvolve: 'setDrumEuclidEvolveTriggerCallback',
+  synthEuclidEvolve: 'setSynthEuclidEvolveTriggerCallback',
+  runtimeWalkPositions: 'setRuntimeWalkPositionsCallback',
+  journeyMorphClock: 'setJourneyMorphClockCallback',
+  drumEvolveOverrides: 'setDrumEvolveOverridesChangedCallback',
+  synthEvolveOverrides: 'setSynthEvolveOverridesChangedCallback',
+  synthNoteRangeEvolved: 'setSynthNoteRangeEvolvedCallback',
+};
+
+function setCoreProductRuntimeCallback(name: CoreProductRuntimeCallbackName, callback: unknown): void {
+  callCoreProductHost<void>(CORE_PRODUCT_RUNTIME_CALLBACK_METHODS[name], callback);
+}
+
 export const coreProductRuntimeHostPort = {
   start(initialState?: ProductEngineStartOptions['initialState']): Promise<void> {
     return callCoreProductHost<Promise<void>>('start', initialState);
@@ -78,6 +110,10 @@ export const coreProductRuntimeHostPort = {
     callCoreProductHost<void>('pushMidiMessage', message);
   },
 
+  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): void {
+    callCoreProductHost<void>('enqueueLiveNoteEvent', event);
+  },
+
   registerAsset(asset: ProductAssetRegistration): ProductAssetHandle {
     callCoreProductHost<void>('registerAsset', asset);
     return { assetId: asset.assetId };
@@ -116,7 +152,7 @@ export const coreProductRuntimeHostPort = {
   },
 
   setStateChangeCallback(callback: ((state: ProductEngineState) => void) | null): void {
-    callCoreProductHost<void>('setStateChangeCallback', callback);
+    setCoreProductRuntimeCallback('stateChange', callback);
   },
 
   setTelemetryCallback(
@@ -130,27 +166,27 @@ export const coreProductRuntimeHostPort = {
   },
 
   setDrumTriggerCallback(callback: ProductDrumTriggerCallback | null): void {
-    callCoreProductHost<void>('setDrumTriggerCallback', callback);
+    setCoreProductRuntimeCallback('drumTrigger', callback);
   },
 
   setDrumStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void {
-    callCoreProductHost<void>('setDrumStepPositionCallback', callback);
+    setCoreProductRuntimeCallback('drumStepPosition', callback);
   },
 
   setSynthStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void {
-    callCoreProductHost<void>('setSynthStepPositionCallback', callback);
+    setCoreProductRuntimeCallback('synthStepPosition', callback);
   },
 
   setDrumEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void {
-    callCoreProductHost<void>('setDrumEuclidEvolveTriggerCallback', callback);
+    setCoreProductRuntimeCallback('drumEuclidEvolve', callback);
   },
 
   setSynthEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void {
-    callCoreProductHost<void>('setSynthEuclidEvolveTriggerCallback', callback);
+    setCoreProductRuntimeCallback('synthEuclidEvolve', callback);
   },
 
   setRuntimeWalkPositionsCallback(callback: ProductRuntimeWalkPositionsCallback | null): void {
-    callCoreProductHost<void>('setRuntimeWalkPositionsCallback', callback);
+    setCoreProductRuntimeCallback('runtimeWalkPositions', callback);
   },
 
   setDrumMorphRange(voice: ProductDrumVoice, range: ProductRange | null): void {
@@ -181,7 +217,7 @@ export const coreProductRuntimeHostPort = {
   },
 
   setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void {
-    callCoreProductHost<void>('setJourneyMorphClockCallback', callback);
+    setCoreProductRuntimeCallback('journeyMorphClock', callback);
   },
 
   startJourneyMorphClock(): void {
@@ -193,15 +229,15 @@ export const coreProductRuntimeHostPort = {
   },
 
   setDrumEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void {
-    callCoreProductHost<void>('setDrumEvolveOverridesChangedCallback', callback);
+    setCoreProductRuntimeCallback('drumEvolveOverrides', callback);
   },
 
   setSynthEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void {
-    callCoreProductHost<void>('setSynthEvolveOverridesChangedCallback', callback);
+    setCoreProductRuntimeCallback('synthEvolveOverrides', callback);
   },
 
   setSynthNoteRangeEvolvedCallback(callback: ProductSynthNoteRangeEvolvedCallback | null): void {
-    callCoreProductHost<void>('setSynthNoteRangeEvolvedCallback', callback);
+    setCoreProductRuntimeCallback('synthNoteRangeEvolved', callback);
   },
 
   applySequencerUiPatch(patch: ProductSequencerUiPatch): void {

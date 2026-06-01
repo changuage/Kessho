@@ -22,7 +22,7 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
 
 const SOURCE_ORDER = [CORE_PRODUCT_SOURCE_IDS.pad1, CORE_PRODUCT_SOURCE_IDS.pad2, CORE_PRODUCT_SOURCE_IDS.lead1, CORE_PRODUCT_SOURCE_IDS.lead2, CORE_PRODUCT_SOURCE_IDS.drum, CORE_PRODUCT_SOURCE_IDS.piano, CORE_PRODUCT_SOURCE_IDS.soundscape] as const;
 
-const SNAPSHOT_BYTES = 28460;
+const SNAPSHOT_BYTES = 28464;
 const SOURCE_BYTES = 3320;
 const LANE_BYTES = 92;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES;
@@ -389,6 +389,7 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.fx.reverbCrossoverHz);
   f32(snapshot.fx.reverbInputTone);
   f32(snapshot.fx.reverbShimmerFeedback);
+  f32(snapshot.fx.reverbBloom);
   f32(snapshot.fx.reverbWarp);
   f32(snapshot.fx.reverbCrossFeed);
   f32(snapshot.fx.reverbEarlyReflections);

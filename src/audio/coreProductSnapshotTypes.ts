@@ -213,6 +213,7 @@ export type CoreProductSnapshot = {
     reverbCrossoverHz: number;
     reverbInputTone: number;
     reverbShimmerFeedback: number;
+    reverbBloom: number;
     reverbWarp: number;
     reverbCrossFeed: number;
     reverbEarlyReflections: number;

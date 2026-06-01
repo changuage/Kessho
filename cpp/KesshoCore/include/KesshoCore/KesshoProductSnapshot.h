@@ -227,6 +227,7 @@ typedef struct KesshoProductFxSnapshot {
   float reverb_crossover_hz;
   float reverb_input_tone;
   float reverb_shimmer_feedback;
+  float reverb_bloom;
   float reverb_warp;
   float reverb_cross_feed;
   float reverb_early_reflections;

@@ -176,8 +176,6 @@ constexpr float kReverbBoostEpsilon = 0.001f;
   if (!reverb_active) {
     return;
   }
-  std::fill(module_l, module_l + frames, 0.0f);
-  std::fill(module_r, module_r + frames, 0.0f);
   processReverbPreconditioner(start, frames, reverb_input_peak);
   if (graph_taps_enabled) {
     for (uint32_t i = 0; i < frames; ++i) {
@@ -187,6 +185,8 @@ constexpr float kReverbBoostEpsilon = 0.001f;
     }
   }
   if (spectral_freeze_active && fx.spectral_freeze_routing == 0u) {
+    std::fill(module_l, module_l + frames, 0.0f);
+    std::fill(module_r, module_r + frames, 0.0f);
     if (processSpectralFreezeBranch(reverb_bus_l + start, reverb_bus_r + start, module_l, module_r, start, frames)) {
       const float live_gain = 1.0f - clampFloat(fx.spectral_freeze_reverb_crossfade, 0.0f, 1.0f);
       for (uint32_t i = 0; i < frames; ++i) {
@@ -196,8 +196,6 @@ constexpr float kReverbBoostEpsilon = 0.001f;
       }
     }
   }
-  std::fill(module_l, module_l + frames, 0.0f);
-  std::fill(module_r, module_r + frames, 0.0f);
   reverb_module->processPlanarStereo(reverb_bus_l + start, reverb_bus_r + start, module_l, module_r, static_cast<int>(frames));
   if (spectral_freeze_active && fx.spectral_freeze_routing == 1u) {
     if (processSpectralFreezeBranch(module_l, module_r, module_tap_l[0], module_tap_r[0], start, frames)) {

@@ -63,6 +63,23 @@ function homeDirectionName(direction: number): 'forward' | 'reverse' | 'pingpong
   return 'forward';
 }
 
+function mergePitchSubLaneState(
+  base: { enabled?: boolean; steps?: number; direction?: 'forward' | 'reverse' | 'pingpong'; scaleQuantize?: boolean },
+  patch: { steps?: number; direction?: 'forward' | 'reverse' | 'pingpong'; scaleQuantize?: boolean },
+): { enabled?: boolean; steps?: number; direction?: 'forward' | 'reverse' | 'pingpong'; scaleQuantize?: boolean } {
+  const next = { ...base };
+  if (typeof patch.steps === 'number' && Number.isFinite(patch.steps)) {
+    next.steps = Math.max(1, Math.min(64, Math.floor(patch.steps)));
+  }
+  if (patch.direction === 'forward' || patch.direction === 'reverse' || patch.direction === 'pingpong') {
+    next.direction = patch.direction;
+  }
+  if (typeof patch.scaleQuantize === 'boolean') {
+    next.scaleQuantize = patch.scaleQuantize;
+  }
+  return next;
+}
+
 function homeLaneArray<T>(value: T, laneIndex: number): (T | null)[] {
   const lanes: (T | null)[] = [null, null, null, null];
   if (laneIndex >= 0 && laneIndex < lanes.length) lanes[laneIndex] = value;
@@ -186,8 +203,8 @@ export function coreProductSequencerHomePayload(
     subLaneStates[laneKey] = { ...(subLaneStates[laneKey] ?? {}), enabled: true, steps: config.steps, direction };
   }
   for (const key of ['pitch', 'expression', 'morph', 'distance']) subLaneStates[key] ??= { enabled: false, steps: 1, direction: 'forward' };
-  if (state.pitchSubLaneState) subLaneStates.pitch = { ...(subLaneStates.pitch ?? { enabled: false, steps: 1, direction: 'forward' }), ...state.pitchSubLaneState };
-  else if (state.pitchScaleQuantize != null) subLaneStates.pitch = { ...(subLaneStates.pitch ?? { enabled: false, steps: 1, direction: 'forward' }), scaleQuantize: state.pitchScaleQuantize };
+  if (state.pitchSubLaneState) subLaneStates.pitch = mergePitchSubLaneState(subLaneStates.pitch ?? { enabled: false, steps: 1, direction: 'forward' }, state.pitchSubLaneState);
+  else if (state.pitchScaleQuantize != null) subLaneStates.pitch = mergePitchSubLaneState(subLaneStates.pitch ?? { enabled: false, steps: 1, direction: 'forward' }, { scaleQuantize: state.pitchScaleQuantize });
   applyCoreProductRangeSubLanePatch(subLaneStates, state.values);
   addCoreProductRangePayload(payload, sequencer, laneIndex, state.values);
   if (Object.keys(subLaneStates).length > 0) payload.subLaneStates = subLaneStates;

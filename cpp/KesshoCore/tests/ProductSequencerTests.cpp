@@ -2507,6 +2507,32 @@ int main() {
   event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
   require(!engine->synth_lanes[0].evolve_home.captured, "reset-home should clear native parity evolve home state");
 
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "native manual-commit snapshot load failed");
+  KesshoProductEvent manual_commit_synth_evolve{};
+  manual_commit_synth_evolve.event_kind = KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE;
+  manual_commit_synth_evolve.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  manual_commit_synth_evolve.index = 0;
+  manual_commit_synth_evolve.value = 1.0f;
+  manual_commit_synth_evolve.value2 = 7171.0f;
+  manual_commit_synth_evolve.value3 = 3.0f;
+  manual_commit_synth_evolve.value4 = 1.0f;
+  manual_commit_synth_evolve.flags =
+      KESSHO_PRODUCT_EVOLVE_MODE_PARITY |
+      KESSHO_PRODUCT_EVOLVE_MANUAL_COMMIT |
+      KESSHO_PRODUCT_DICE_FIELD_EXPRESSION |
+      KESSHO_PRODUCT_DICE_FIELD_MORPH |
+      KESSHO_PRODUCT_DICE_FIELD_DISTANCE;
+  require(kessho_product_enqueue_event(engine, &manual_commit_synth_evolve) == KESSHO_PRODUCT_OK, "native manual-commit synth evolve enqueue failed");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
+  require(
+      maskHas(engine->synth_lanes[0].expression_override_set_low, engine->synth_lanes[0].expression_override_set_high, 3u) &&
+          maskHas(engine->synth_lanes[0].morph_override_set_low, engine->synth_lanes[0].morph_override_set_high, 3u) &&
+          maskHas(engine->synth_lanes[0].distance_override_set_low, engine->synth_lanes[0].distance_override_set_high, 3u),
+      "native manual-commit synth dice must mutate every requested value sub-lane");
+
   KesshoProductEvent strict_synth_evolve{};
   strict_synth_evolve.event_kind = KESSHO_PRODUCT_EVENT_KIND_DICE_SEQUENCER_LANE;
   strict_synth_evolve.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;

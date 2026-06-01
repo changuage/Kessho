@@ -118,6 +118,10 @@ static const float ER_GAINS[ER_TAP_COUNT]   = { 0.85f, 0.72f, 0.60f, 0.50f, 0.42
 static constexpr int MULTITAP_COUNT = 3;
 static const float MULTITAP_GAINS[MULTITAP_COUNT]   = { 0.6f, 0.25f, 0.15f };
 
+static inline float clampf(float value, float lo, float hi) {
+    return value < lo ? lo : (value > hi ? hi : value);
+}
+
 // ═══════════════ Fast Sine Approximation ═══════════════
 // 5th-order minimax polynomial — max error < 0.0002 over [-π, π]
 // Input: radians (any range, automatically wrapped to [-π, π])
@@ -467,6 +471,10 @@ struct ReverbState {
     // I/O
     float inputBuf[MAX_BLOCK_SIZE * 2];
     float outputBuf[MAX_BLOCK_SIZE * 2];
+    const float* inputPlanarL;
+    const float* inputPlanarR;
+    float* outputPlanarL;
+    float* outputPlanarR;
 
     // FDN — 16 channels max (Ultra uses 16, Balanced uses 8, Lite uses 4)
     SmoothDelay     fdnDelays[FDN_MAX_CHANNELS];
@@ -557,6 +565,7 @@ struct ReverbState {
     float inputTone;           // -1..+1
     float tiltCoeff;           // computed from ~1000 Hz center
     float shimmerFeedback;     // 0-1 (compound pitch shifting)
+    float bloom;               // -1..+1 tail direction macro
 
     // v3 parameters  
     float warp;                // 0-1 pitch warp/bend in feedback
@@ -597,6 +606,8 @@ struct ReverbState {
 
     // Per-channel decay feedback (longer delays decay faster)
     float channelFb[FDN_MAX_CHANNELS];
+    float staticWarpOffsets[FDN_MAX_CHANNELS];
+    float chorusDepthScale[FDN_MAX_CHANNELS];
 
     // Pre-computed early reflection tap positions (samples)
     int erTapSamplesL[ER_TAP_COUNT];
@@ -659,6 +670,8 @@ struct KesshoReverbInstance {
 
 // ═══════════════ Internal helpers ═══════════════
 
+static inline float goldenHash(int i);
+
 static void updatePreset() {
     // Dattorro types don't use FDN preset configs
     if (g_reverb.presetType >= 4) return;
@@ -681,20 +694,31 @@ static void updatePreset() {
     }
     g_reverb.feedbackGain = fminf(maxFeedback, effectiveDecay);
 
+    const float absBloom = fabsf(g_reverb.bloom);
+    const float staticWarp = clampf(
+        g_reverb.warp * 0.18f +
+        fmaxf(0.0f, absBloom - 0.05f) * 0.22f +
+        fmaxf(0.0f, userSize - 4.0f) * 0.025f,
+        0.0f,
+        0.32f);
+
     // FDN delay times — size range extended to 10.0 for massive spaces
     int maxChannels = (g_reverb.quality == 0) ? 16 : (g_reverb.quality == 1) ? 8 : 4;
     for (int i = 0; i < maxChannels; i++) {
-        g_reverb.fdnDelayTimes[i] = FDN_TIMES_MS[i] * scale * sr / 1000.0f * userSize;
+        const float spread = 1.0f + staticWarp * (goldenHash(i + 11) - 0.5f);
+        g_reverb.staticWarpOffsets[i] = spread;
+        g_reverb.fdnDelayTimes[i] = FDN_TIMES_MS[i] * scale * sr / 1000.0f * userSize * spread;
     }
 
     // Diffuser feedback
     float baseDiff = preset.diffusion;
     float userDiff = g_reverb.diffusion;
-    float effectiveDiff = fminf(1.12f, baseDiff * (0.72f + userDiff * 0.52f));
+    const float cosmicAmount = clampf(fmaxf(absBloom, fmaxf(0.0f, userSize - 4.0f) / 6.0f), 0.0f, 1.0f);
+    float effectiveDiff = fminf(1.12f + cosmicAmount * 0.08f, baseDiff * (0.72f + userDiff * 0.52f));
     float preFb  = fminf(0.94f, 0.56f + effectiveDiff * 0.34f);
     float midFb  = fminf(0.88f, 0.50f + effectiveDiff * 0.33f);
     float postFb = fminf(0.84f, 0.46f + effectiveDiff * 0.32f);
-    float lateFb = fminf(0.82f, 0.43f + effectiveDiff * 0.34f);
+    float lateFb = fminf(0.82f + cosmicAmount * 0.06f, 0.43f + effectiveDiff * (0.34f + cosmicAmount * 0.04f));
 
     g_reverb.preDiffL.setFeedback(preFb);
     g_reverb.preDiffR.setFeedback(preFb);
@@ -782,6 +806,10 @@ int reverb_init(float sample_rate) {
     g_reverb.sampleRate = sample_rate;
     g_reverb.twoPiOverSr = 2.0f * (float)M_PI / sample_rate;
     g_reverb.scale = sample_rate / 48000.0f;
+    g_reverb.inputPlanarL = nullptr;
+    g_reverb.inputPlanarR = nullptr;
+    g_reverb.outputPlanarL = nullptr;
+    g_reverb.outputPlanarR = nullptr;
 
     float scale = g_reverb.scale;
 
@@ -845,6 +873,8 @@ int reverb_init(float sample_rate) {
     // Per-channel decay
     for (int i = 0; i < FDN_MAX_CHANNELS; i++) {
         g_reverb.channelFb[i] = 0.9f;
+        g_reverb.staticWarpOffsets[i] = 1.0f;
+        g_reverb.chorusDepthScale[i] = 0.7f + 0.6f * goldenHash(i);
     }
 
     // Predelay modulation
@@ -926,6 +956,7 @@ int reverb_init(float sample_rate) {
     g_reverb.crossoverHz = 800.0f;
     g_reverb.inputTone = 0.0f;     // flat
     g_reverb.shimmerFeedback = 0.0f;
+    g_reverb.bloom = 0.0f;
 
     // v3 defaults
     g_reverb.warp = 0.0f;
@@ -995,6 +1026,26 @@ void reverb_destroy(void) {
 
 float* reverb_get_input_ptr(void)  { return g_reverb.inputBuf; }
 float* reverb_get_output_ptr(void) { return g_reverb.outputBuf; }
+
+void reverb_process_planar_block(
+    const float* input_l,
+    const float* input_r,
+    float* output_l,
+    float* output_r,
+    int block_size) {
+    if (input_l == nullptr || input_r == nullptr || output_l == nullptr || output_r == nullptr) {
+        return;
+    }
+    g_reverb.inputPlanarL = input_l;
+    g_reverb.inputPlanarR = input_r;
+    g_reverb.outputPlanarL = output_l;
+    g_reverb.outputPlanarR = output_r;
+    reverb_process_block(block_size);
+    g_reverb.inputPlanarL = nullptr;
+    g_reverb.inputPlanarR = nullptr;
+    g_reverb.outputPlanarL = nullptr;
+    g_reverb.outputPlanarR = nullptr;
+}
 
 void reverb_set_type(int type) {
     g_reverb.presetType = (type >= 0 && type <= 5) ? type : 1;
@@ -1096,6 +1147,11 @@ void reverb_set_er_lp_freq(float freq) {
     g_reverb.erLpFreq = fmaxf(200.0f, fminf(12000.0f, freq));
 }
 
+void reverb_set_bloom(float amount) {
+    g_reverb.bloom = clampf(amount, -1.0f, 1.0f);
+    updatePreset();
+}
+
 KesshoReverbInstance* reverb_instance_create(float sample_rate) {
     KesshoReverbInstance* instance = new (std::nothrow) KesshoReverbInstance{};
     if (instance == nullptr) {
@@ -1162,6 +1218,21 @@ void reverb_instance_process_block(KesshoReverbInstance* instance, int block_siz
 
     ScopedReverbState scoped(instance->state);
     reverb_process_block(block_size);
+}
+
+void reverb_instance_process_planar_block(
+    KesshoReverbInstance* instance,
+    const float* input_l,
+    const float* input_r,
+    float* output_l,
+    float* output_r,
+    int block_size) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_process_planar_block(input_l, input_r, output_l, output_r, block_size);
 }
 
 void reverb_instance_set_type(KesshoReverbInstance* instance, int type) {
@@ -1338,6 +1409,15 @@ void reverb_instance_set_er_lp_freq(KesshoReverbInstance* instance, float freq) 
     reverb_set_er_lp_freq(freq);
 }
 
+void reverb_instance_set_bloom(KesshoReverbInstance* instance, float amount) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    reverb_set_bloom(amount);
+}
+
 // ═══════════════ Dattorro Plate Reverb ═══════════════
 //
 // Jon Dattorro, "Effect Design Part 1", JAES 1997
@@ -1396,6 +1476,14 @@ static void dattorro_process_block(int block_size) {
     float predelayModRate = 0.1f / sr;
     float predelayModMaxSamples = 0.002f * sr;
     float transSmooth = g_reverb.transientSmooth;
+    const bool planarInput = g_reverb.inputPlanarL != nullptr && g_reverb.inputPlanarR != nullptr;
+    const bool planarOutput = g_reverb.outputPlanarL != nullptr && g_reverb.outputPlanarR != nullptr;
+    const float* inputPlanarL = g_reverb.inputPlanarL;
+    const float* inputPlanarR = g_reverb.inputPlanarR;
+    const float* inputInterleaved = g_reverb.inputBuf;
+    float* outputPlanarL = g_reverb.outputPlanarL;
+    float* outputPlanarR = g_reverb.outputPlanarR;
+    float* outputInterleaved = g_reverb.outputBuf;
 
     // Pointer aliases for output tapping
     SmoothDelay* tankDelays[4] = {
@@ -1404,8 +1492,9 @@ static void dattorro_process_block(int block_size) {
     };
 
     for (int i = 0; i < block_size; i++) {
-        float inL = g_reverb.inputBuf[i * 2];
-        float inR = g_reverb.inputBuf[i * 2 + 1];
+        const int stereoIndex = i << 1;
+        float inL = planarInput ? inputPlanarL[i] : inputInterleaved[stereoIndex];
+        float inR = planarInput ? inputPlanarR[i] : inputInterleaved[stereoIndex + 1];
 
         // Input tone shaping
         if (inputTone != 0.0f) {
@@ -1564,8 +1653,15 @@ static void dattorro_process_block(int block_size) {
         // Stereo width
         float mid  = (outL + outR) * 0.5f;
         float side = (outL - outR) * 0.5f;
-        g_reverb.outputBuf[i * 2]     = mid + side * width;
-        g_reverb.outputBuf[i * 2 + 1] = mid - side * width;
+        const float finalL = mid + side * width;
+        const float finalR = mid - side * width;
+        if (planarOutput) {
+            outputPlanarL[i] = finalL;
+            outputPlanarR[i] = finalR;
+        } else {
+            outputInterleaved[stereoIndex] = finalL;
+            outputInterleaved[stereoIndex + 1] = finalR;
+        }
     }
 
     // Restore default input AP coefficients if shimmer mode changed them
@@ -1647,7 +1743,12 @@ void reverb_process_block(int block_size) {
     const float shimmerPhaseInc = 1.0f / (float)shimmerGrainSize;
 
     // Reverse
-    float reverseAmount = g_reverb.reverseAmount;
+    const float bloom = g_reverb.bloom;
+    const float inwardBloom = clampf(-bloom, 0.0f, 1.0f);
+    const float outwardBloom = clampf(bloom, 0.0f, 1.0f);
+    const float sizeCosmic = clampf((g_reverb.size - 4.0f) / 6.0f, 0.0f, 1.0f);
+    const float cosmicAmount = clampf(fmaxf(fabsf(bloom), fmaxf(sizeCosmic, g_reverb.warp * 0.45f)), 0.0f, 1.0f);
+    float reverseAmount = clampf(g_reverb.reverseAmount + inwardBloom * (0.18f + 0.18f * cosmicAmount), 0.0f, 1.0f);
     int rCycleLen = g_reverb.reverseCycleLen;
     if (rCycleLen < 1) rCycleLen = 1;
 
@@ -1666,16 +1767,32 @@ void reverb_process_block(int block_size) {
     }
     bool isLite = (g_reverb.quality == 2);
     float lateBlend = 0.08f + g_reverb.diffusion * 0.16f + preset.lateSmear * 0.18f
-                    + (useMidDiff ? 0.06f : 0.0f) + lateSmearBoost;
-    if (lateBlend > 0.42f) lateBlend = 0.42f;
-    float bloomStrength = 0.0f;
+                    + (useMidDiff ? 0.06f : 0.0f) + lateSmearBoost
+                    + cosmicAmount * (0.08f + g_reverb.diffusion * 0.08f);
+    const float lateBlendCap = 0.42f + cosmicAmount * 0.16f;
+    if (lateBlend > lateBlendCap) lateBlend = lateBlendCap;
+    float bloomStrength = outwardBloom * 0.35f + inwardBloom * 0.22f;
     if (blockFeedback > 0.997f) {
-        bloomStrength = (blockFeedback - 0.997f) / 0.00284f;
-        if (bloomStrength > 1.0f) bloomStrength = 1.0f;
-        bloomStrength *= fminf(1.0f, 0.45f + g_reverb.diffusion * 0.35f + (useMidDiff ? 0.15f : 0.0f));
+        float decayBloom = (blockFeedback - 0.997f) / 0.00284f;
+        if (decayBloom > 1.0f) decayBloom = 1.0f;
+        bloomStrength += decayBloom * fminf(1.0f, 0.45f + g_reverb.diffusion * 0.35f + (useMidDiff ? 0.15f : 0.0f));
     }
-    const float bloomAttack = 1.0f - expf(-1.0f / (0.012f * sr));
-    const float bloomRelease = 1.0f - expf(-1.0f / (0.45f * sr));
+    if (bloomStrength > 1.0f) bloomStrength = 1.0f;
+    const bool useBloomLeveling = bloomStrength > 0.0001f;
+    const float bloomAttack = useBloomLeveling ? 1.0f - expf(-1.0f / (0.012f * sr)) : 0.0f;
+    const float bloomRelease = useBloomLeveling ? 1.0f - expf(-1.0f / (0.45f * sr)) : 0.0f;
+    if (!useBloomLeveling) {
+        if (g_reverb.bloomEnv > 0.000001f) {
+            g_reverb.bloomEnv *= powf(0.9995f, (float)block_size);
+        } else {
+            g_reverb.bloomEnv = 0.0f;
+        }
+        if (fabsf(g_reverb.bloomGain - 1.0f) > 0.000001f) {
+            g_reverb.bloomGain += (1.0f - g_reverb.bloomGain) * 0.01f;
+        } else {
+            g_reverb.bloomGain = 1.0f;
+        }
+    }
 
     // HPF
     float hpC = g_reverb.hpCoeff;
@@ -1703,7 +1820,7 @@ void reverb_process_block(int block_size) {
     // v4 enhancement params
     float airAbsCoeff = 1.0f - g_reverb.airAbsorption * 0.6f;
     int satMode = g_reverb.saturationMode;
-    float erAmount = g_reverb.earlyReflections;
+    float erAmount = g_reverb.earlyReflections * (1.0f - clampf(cosmicAmount * 0.72f + inwardBloom * 0.22f, 0.0f, 0.94f));
 
     // Predelay modulation: ±2ms at ~0.1 Hz for spatial movement
     float predelayModRate = 0.1f / sr;
@@ -1714,6 +1831,14 @@ void reverb_process_block(int block_size) {
         float erOmega = g_reverb.erLpFreq * g_reverb.twoPiOverSr;
         erAlpha = erOmega / (1.0f + erOmega);
     }
+    const bool planarInput = g_reverb.inputPlanarL != nullptr && g_reverb.inputPlanarR != nullptr;
+    const bool planarOutput = g_reverb.outputPlanarL != nullptr && g_reverb.outputPlanarR != nullptr;
+    const float* inputPlanarL = g_reverb.inputPlanarL;
+    const float* inputPlanarR = g_reverb.inputPlanarR;
+    const float* inputInterleaved = g_reverb.inputBuf;
+    float* outputPlanarL = g_reverb.outputPlanarL;
+    float* outputPlanarR = g_reverb.outputPlanarR;
+    float* outputInterleaved = g_reverb.outputBuf;
 
     // Velvet noise density: sparse impulse injection for density at high decay.
     float velvetThreshold = 0.0f;
@@ -1758,10 +1883,53 @@ void reverb_process_block(int block_size) {
         if (g_reverb.tapModPhases[j] >= 1.0f) g_reverb.tapModPhases[j] -= 1.0f;
     }
 
+    float lineModOffsets[FDN_MAX_CHANNELS]{};
+    if (chorusDepth > 0.0f || modDepth > 0.0f || warpAmount > 0.0f) {
+        for (int j = 0; j < fdnCount; j++) {
+            float phase = g_reverb.chorusPhases[j] + g_reverb.chorusPhaseInc[j] * ((float)block_size * 0.5f);
+            phase -= floorf(phase);
+            float modOffset = 0.0f;
+            if (chorusDepth > 0.0f || modDepth > 0.0f) {
+                const float sineVal = fast_sinf(phase * 2.0f * (float)M_PI);
+                const float lineDepth = chorusDepth * g_reverb.chorusDepthScale[j];
+                if (modChar == 0) {
+                    modOffset = sineVal * lineDepth;
+                } else if (modChar == 1) {
+                    modOffset = g_reverb.driftState[j] * lineDepth;
+                } else {
+                    modOffset = (sineVal * 0.6f + g_reverb.driftState[j] * 0.4f) * lineDepth;
+                }
+                modOffset += modDepth * g_reverb.fdnDelayTimes[j] * 0.015f
+                           * fast_sinf(phase * 0.37f * 2.0f * (float)M_PI);
+            }
+            if (warpAmount > 0.0f) {
+                const float warpSign = (j % 2 == 0) ? 1.0f : -1.0f;
+                const float warpBase = fmaxf(chorusDepth, 8.0f);
+                modOffset += warpAmount * warpBase * 2.0f * warpSign;
+            }
+            lineModOffsets[j] = modOffset;
+            g_reverb.chorusPhases[j] += g_reverb.chorusPhaseInc[j] * (float)block_size;
+            g_reverb.chorusPhases[j] -= floorf(g_reverb.chorusPhases[j]);
+        }
+    }
+
+    float tapWeightsL[FDN_MAX_CHANNELS]{};
+    float tapWeightsR[FDN_MAX_CHANNELS]{};
+    if (fdnCount == 16) {
+        float tapModDepth = 0.04f + spatialDrift;
+        if (tapModDepth > 0.09f) tapModDepth = 0.09f;
+        for (int j = 0; j < 16; j++) {
+            const float tapMod = tapModDepth * fast_sinf(g_reverb.tapModPhases[j] * 2.0f * (float)M_PI);
+            tapWeightsL[j] = STEREO_TAPS_L[j] + tapMod;
+            tapWeightsR[j] = STEREO_TAPS_R[j] - tapMod;
+        }
+    }
+
     // === Sample loop ===
     for (int i = 0; i < block_size; i++) {
-        float inL = g_reverb.inputBuf[i * 2];
-        float inR = g_reverb.inputBuf[i * 2 + 1];
+        const int stereoIndex = i << 1;
+        float inL = planarInput ? inputPlanarL[i] : inputInterleaved[stereoIndex];
+        float inR = planarInput ? inputPlanarR[i] : inputInterleaved[stereoIndex + 1];
 
         // Input tone shaping
         if (inputTone != 0.0f) {
@@ -1806,44 +1974,7 @@ void reverb_process_block(int block_size) {
 
         // ── Read FDN delay lines with per-line modulation ──
         for (int j = 0; j < fdnCount; j++) {
-            // Compute per-line modulation offset
-            float modOffset = 0.0f;
-
-            if (chorusDepth > 0.0f || modDepth > 0.0f) {
-                // Sine component (per-line chorus)
-                float sineVal = fast_sinf(g_reverb.chorusPhases[j] * 2.0f * (float)M_PI);
-
-                // Per-line depth variation via golden hash
-                float lineDepth = chorusDepth * (0.7f + 0.6f * goldenHash(j));
-
-                if (modChar == 0) {
-                    // Pure sine
-                    modOffset = sineVal * lineDepth;
-                } else if (modChar == 1) {
-                    // Pure drift
-                    modOffset = g_reverb.driftState[j] * lineDepth;
-                } else {
-                    // Hybrid: 60% sine + 40% drift
-                    modOffset = (sineVal * 0.6f + g_reverb.driftState[j] * 0.4f) * lineDepth;
-                }
-
-                // Add legacy global modulation on top
-                modOffset += modDepth * g_reverb.fdnDelayTimes[j] * 0.015f
-                           * fast_sinf(g_reverb.chorusPhases[j] * 0.37f * 2.0f * (float)M_PI);
-            }
-
-            // Warp: DC offset on chorus modulation — compounds pitch bend per recirculation
-            if (warpAmount > 0.0f) {
-                float warpSign = (j % 2 == 0) ? 1.0f : -1.0f;
-                float warpBase = fmaxf(chorusDepth, 8.0f);  // ensure warp works even with low chorus
-                modOffset += warpAmount * warpBase * 2.0f * warpSign;
-            }
-
-            // Advance per-line phase
-            g_reverb.chorusPhases[j] += g_reverb.chorusPhaseInc[j];
-            if (g_reverb.chorusPhases[j] >= 1.0f) g_reverb.chorusPhases[j] -= 1.0f;
-
-            float delayTime = g_reverb.fdnDelayTimes[j] + modOffset;
+            float delayTime = g_reverb.fdnDelayTimes[j] + lineModOffsets[j];
             if (delayTime < 1.0f) delayTime = 1.0f;
 
             // Multi-tap read: main tap + 2 golden-ratio positions for density
@@ -1995,14 +2126,9 @@ void reverb_process_block(int block_size) {
         float rawL = 0.0f, rawR = 0.0f;
         if (fdnCount == 16) {
             // True decorrelation with spatial modulation: slowly evolving stereo image
-            float tapModDepth = 0.04f + spatialDrift;
-            if (tapModDepth > 0.09f) tapModDepth = 0.09f;
             for (int j = 0; j < 16; j++) {
-                float tapMod = tapModDepth * fast_sinf(g_reverb.tapModPhases[j] * 2.0f * (float)M_PI);
-                float modTapL = STEREO_TAPS_L[j] + tapMod;
-                float modTapR = STEREO_TAPS_R[j] - tapMod;  // anti-phase for energy conservation
-                rawL += g_reverb.fdnReads[j] * modTapL;
-                rawR += g_reverb.fdnReads[j] * modTapR;
+                rawL += g_reverb.fdnReads[j] * tapWeightsL[j];
+                rawR += g_reverb.fdnReads[j] * tapWeightsR[j];
             }
         } else if (fdnCount == 8) {
             // Decorrelated 8-ch tapping
@@ -2061,12 +2187,22 @@ void reverb_process_block(int block_size) {
             g_reverb.reverseBufL[g_reverb.reverseWriteIdx] = rawL;
             g_reverb.reverseBufR[g_reverb.reverseWriteIdx] = rawR;
 
-            int readIdx = (g_reverb.reverseWriteIdx
-                         - (int)g_reverb.reverseReadPhase + rCycleLen) % rCycleLen;
+            int readIdx = g_reverb.reverseWriteIdx - (int)g_reverb.reverseReadPhase;
+            if (readIdx < 0) readIdx += rCycleLen;
             float envPos = g_reverb.reverseEnvPhase / (float)rCycleLen;
-            float env = fast_sinf(envPos * (float)M_PI);
-            rawL += g_reverb.reverseBufL[readIdx] * env * reverseAmount;
-            rawR += g_reverb.reverseBufR[readIdx] * env * reverseAmount;
+            float env = 4.0f * envPos * (1.0f - envPos);
+            float revL = g_reverb.reverseBufL[readIdx];
+            float revR = g_reverb.reverseBufR[readIdx];
+            const float twoHeadAmount = 0.0f;
+            if (twoHeadAmount > 0.0f && erAmount < 0.08f) {
+                int readIdxB = readIdx + (rCycleLen >> 1);
+                if (readIdxB >= rCycleLen) readIdxB -= rCycleLen;
+                const float envB = 1.0f - env;
+                revL += (g_reverb.reverseBufL[readIdxB] * envB - revL) * (twoHeadAmount * 0.45f);
+                revR += (g_reverb.reverseBufR[readIdxB] * envB - revR) * (twoHeadAmount * 0.45f);
+            }
+            rawL += revL * env * reverseAmount;
+            rawR += revR * env * reverseAmount;
 
             g_reverb.reverseReadPhase += 1.0f;
             g_reverb.reverseEnvPhase += 1.0f;
@@ -2074,12 +2210,15 @@ void reverb_process_block(int block_size) {
                 g_reverb.reverseEnvPhase = 0.0f;
                 g_reverb.reverseReadPhase = 0.0f;
             }
-            g_reverb.reverseWriteIdx = (g_reverb.reverseWriteIdx + 1) % rCycleLen;
+            g_reverb.reverseWriteIdx += 1;
+            if (g_reverb.reverseWriteIdx >= rCycleLen) {
+                g_reverb.reverseWriteIdx = 0;
+            }
         }
 
         // Gentle bloom leveling: flatten the initial hit and keep the long tail
         // more present without feeding energy back into the tank.
-        if (bloomStrength > 0.0001f) {
+        if (useBloomLeveling) {
             float monoEnv = 0.5f * (fabsf(rawL) + fabsf(rawR));
             if (monoEnv > g_reverb.bloomEnv) {
                 g_reverb.bloomEnv += (monoEnv - g_reverb.bloomEnv) * bloomAttack;
@@ -2091,7 +2230,7 @@ void reverb_process_block(int block_size) {
             if (envRatio < 0.55f) envRatio = 0.55f;
             if (envRatio > 1.85f) envRatio = 1.85f;
             float gainShape = 0.16f + bloomStrength * 0.10f;
-            float targetGain = powf(envRatio, gainShape);
+            float targetGain = 1.0f + (envRatio - 1.0f) * gainShape;
             float minGain = 0.82f - bloomStrength * 0.10f;
             float maxGain = 1.22f + bloomStrength * 0.18f;
             if (targetGain < minGain) targetGain = minGain;
@@ -2099,9 +2238,6 @@ void reverb_process_block(int block_size) {
             g_reverb.bloomGain += (targetGain - g_reverb.bloomGain) * (0.015f + bloomStrength * 0.035f);
             rawL *= g_reverb.bloomGain;
             rawR *= g_reverb.bloomGain;
-        } else {
-            g_reverb.bloomEnv *= 0.9995f;
-            g_reverb.bloomGain += (1.0f - g_reverb.bloomGain) * 0.01f;
         }
 
         // DC blocking
@@ -2120,7 +2256,14 @@ void reverb_process_block(int block_size) {
         // Stereo width (mid-side)
         float mid  = (rawL + rawR) * 0.5f;
         float side = (rawL - rawR) * 0.5f;
-        g_reverb.outputBuf[i * 2]     = mid + side * width;
-        g_reverb.outputBuf[i * 2 + 1] = mid - side * width;
+        const float finalL = mid + side * width;
+        const float finalR = mid - side * width;
+        if (planarOutput) {
+            outputPlanarL[i] = finalL;
+            outputPlanarR[i] = finalR;
+        } else {
+            outputInterleaved[stereoIndex] = finalL;
+            outputInterleaved[stereoIndex + 1] = finalR;
+        }
     }
 }

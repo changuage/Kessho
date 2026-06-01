@@ -40,6 +40,13 @@ float* reverb_get_output_ptr(void);  /* stereo interleaved: L0,R0,L1,R1,… */
 /* ────── Processing ────── */
 
 void  reverb_process_block(int block_size);
+void  reverb_process_planar_block(
+    const float* input_l,
+    const float* input_r,
+    float* output_l,
+    float* output_r,
+    int block_size
+);
 
 /* ────── Parameters ────── */
 
@@ -114,6 +121,9 @@ void  reverb_set_transient_smooth(float amount);
 /** Early-reflection low-pass filter frequency.  200-12000 Hz */
 void  reverb_set_er_lp_freq(float freq);
 
+/** Bloom: signed tail direction macro. -1=inward/reverse, 0=neutral, +1=forward bloom */
+void  reverb_set_bloom(float amount);
+
 /* ────── Instance-owned API for shared KesshoCore wrappers ────── */
 
 KesshoReverbInstance* reverb_instance_create(float sample_rate);
@@ -124,6 +134,14 @@ float* reverb_instance_get_input_ptr(KesshoReverbInstance* instance);
 float* reverb_instance_get_output_ptr(KesshoReverbInstance* instance);
 
 void  reverb_instance_process_block(KesshoReverbInstance* instance, int block_size);
+void  reverb_instance_process_planar_block(
+    KesshoReverbInstance* instance,
+    const float* input_l,
+    const float* input_r,
+    float* output_l,
+    float* output_r,
+    int block_size
+);
 void  reverb_instance_set_type(KesshoReverbInstance* instance, int type);
 void  reverb_instance_set_quality(KesshoReverbInstance* instance, int quality);
 void  reverb_instance_set_params(
@@ -156,6 +174,7 @@ void  reverb_instance_set_air_absorption(KesshoReverbInstance* instance, float a
 void  reverb_instance_set_saturation_mode(KesshoReverbInstance* instance, int mode);
 void  reverb_instance_set_transient_smooth(KesshoReverbInstance* instance, float amount);
 void  reverb_instance_set_er_lp_freq(KesshoReverbInstance* instance, float freq);
+void  reverb_instance_set_bloom(KesshoReverbInstance* instance, float amount);
 
 #ifdef __cplusplus
 }

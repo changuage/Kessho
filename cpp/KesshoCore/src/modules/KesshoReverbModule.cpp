@@ -10,7 +10,7 @@ namespace kessho::core {
 namespace {
 
 constexpr int kReverbBlockSize = 128;
-constexpr int kParamCount = 30;
+constexpr int kParamCount = 31;
 constexpr int kParamType = 0;
 constexpr int kParamQuality = 1;
 constexpr int kParamDecay = 2;
@@ -41,6 +41,7 @@ constexpr int kParamAirAbsorption = 26;
 constexpr int kParamSaturationMode = 27;
 constexpr int kParamTransientSmooth = 28;
 constexpr int kParamErLpFreq = 29;
+constexpr int kParamBloom = 30;
 
 class ReverbModule final : public IKesshoModule {
 public:
@@ -56,12 +57,14 @@ public:
     if (instance_ == nullptr) {
       return false;
     }
+    committed_params_valid_ = false;
     commitParams();
     return true;
   }
 
   void reset() override {
     if (instance_ != nullptr && reverb_instance_reset(instance_, sample_rate_) == 1) {
+      committed_params_valid_ = false;
       commitParams();
     }
   }
@@ -103,17 +106,13 @@ public:
     int rendered = 0;
     while (rendered < frames) {
       const int block = std::min(kReverbBlockSize, std::min(max_block_size_, frames - rendered));
-      float* input = reverb_instance_get_input_ptr(instance_);
-      float* output = reverb_instance_get_output_ptr(instance_);
-      for (int i = 0; i < block; ++i) {
-        input[i * 2] = input_l[rendered + i];
-        input[i * 2 + 1] = input_r[rendered + i];
-      }
-      reverb_instance_process_block(instance_, block);
-      for (int i = 0; i < block; ++i) {
-        output_l[rendered + i] = output[i * 2];
-        output_r[rendered + i] = output[i * 2 + 1];
-      }
+      reverb_instance_process_planar_block(
+          instance_,
+          input_l + rendered,
+          input_r + rendered,
+          output_l + rendered,
+          output_r + rendered,
+          block);
       rendered += block;
     }
   }
@@ -128,6 +127,9 @@ public:
 
   void commitParams() override {
     if (instance_ == nullptr) {
+      return;
+    }
+    if (committed_params_valid_ && params_ == committed_params_) {
       return;
     }
 
@@ -161,12 +163,17 @@ public:
     reverb_instance_set_saturation_mode(instance_, static_cast<int>(params_[kParamSaturationMode]));
     reverb_instance_set_transient_smooth(instance_, params_[kParamTransientSmooth]);
     reverb_instance_set_er_lp_freq(instance_, params_[kParamErLpFreq]);
+    reverb_instance_set_bloom(instance_, params_[kParamBloom]);
+    committed_params_ = params_;
+    committed_params_valid_ = true;
   }
 
 private:
   KesshoReverbInstance* instance_ = nullptr;
   float sample_rate_ = 48000.0f;
   int max_block_size_ = kReverbBlockSize;
+  bool committed_params_valid_ = false;
+  std::array<float, kParamCount> committed_params_{};
   std::array<float, kParamCount> params_{
       1.0f,    // type: hall
       0.0f,    // quality: ultra
@@ -197,7 +204,8 @@ private:
       0.2f,    // air absorption
       0.0f,    // saturation mode
       0.0f,    // transient smooth
-      2500.0f  // early-reflection low-pass
+      2500.0f, // early-reflection low-pass
+      0.0f     // bloom
   };
 };
 
