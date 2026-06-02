@@ -773,6 +773,27 @@ function padExactRangeTargets(): Record<string, CoreProductRangeTargetResolver> 
   return targets;
 }
 
+function padExactSampleHoldRangeTargets(): Record<string, CoreProductRangeTargetResolver> {
+  const targets: Record<string, CoreProductRangeTargetResolver> = {};
+  for (const spec of KESSHO_PRODUCT_PAD_PARAM_SPECS) {
+    targets[spec.key] = (key) => [
+      sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, coreProductPadRuntimeParamId(0, spec.index), key, (value, context) => (
+        mapPadExactValueForDistance(0, key, value, context)
+      )),
+    ];
+    targets[spec.pad2Key] = (key) => [
+      sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, coreProductPadRuntimeParamId(1, spec.index), key, (value, context) => (
+        mapPadExactValueForDistance(1, key, value, context)
+      )),
+    ];
+  }
+  return targets;
+}
+
+const SAMPLE_HOLD_RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
+  ...padExactSampleHoldRangeTargets(),
+};
+
 const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   ...padExactRangeTargets(),
   ...granularVoiceRangeTargets(),
@@ -817,6 +838,18 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   pad2Expression: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourceExpression, key)],
   lead1Expression: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceExpression, key)],
   lead2Expression: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceExpression, key)],
+  leadVibratoDepth: (key) => [
+    sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoDepth, key),
+    sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoDepth, key),
+  ],
+  leadVibratoRate: (key) => [
+    sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoRate, key),
+    sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoRate, key),
+  ],
+  leadGlide: (key) => [
+    sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide, key),
+    sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead2, KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide, key),
+  ],
   padPostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad1, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
   pad2PostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.pad2, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
   lead1PostLPF: (key) => [sourceTarget(CORE_PRODUCT_SOURCE_IDS.lead1, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfHz, key)],
@@ -1172,7 +1205,11 @@ function resolveCoreProductDrumRuntimeRangeTargets(key: string): CoreProductRang
   return [];
 }
 
-export function resolveCoreProductRangeTargets(key: string): CoreProductRangeTarget[] {
+export function resolveCoreProductRangeTargets(key: string, mode?: CoreProductModulationRangeMode): CoreProductRangeTarget[] {
+  if (mode === CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold) {
+    const sampleHoldTargets = SAMPLE_HOLD_RANGE_KEY_TARGETS[key]?.(key);
+    if (sampleHoldTargets) return sampleHoldTargets;
+  }
   return RANGE_KEY_TARGETS[key]?.(key) ?? resolveCoreProductDrumRuntimeRangeTargets(key);
 }
 

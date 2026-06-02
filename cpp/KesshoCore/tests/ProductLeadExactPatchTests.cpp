@@ -285,6 +285,85 @@ void triggerLeadAndExpectParams(
   requireLeadModuleParamsEqual(engine, source_id == KESSHO_PRODUCT_SOURCE_LEAD2 ? 1u : 0u, expected, context);
 }
 
+void applyLeadExpressionSampleHoldRange(
+    KesshoProductEngine* engine,
+    uint32_t source_id,
+    uint32_t param_id,
+    float value) {
+  KesshoProductEvent range{};
+  range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
+  range.target_id = source_id;
+  range.index = 9700u + param_id;
+  range.param_id = param_id;
+  range.value = value;
+  range.value2 = value;
+  range.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD);
+  range.value4 = value;
+  range.flags = KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE;
+  engine->applyModulationRangeEvent(range);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "lead expression sample-hold range apply failed");
+}
+
+void requireLeadGlideSampleHoldAffectsTriggerFrequency() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "lead glide sample-hold engine create failed");
+
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configureGeneratedEndpointLeadSourceWithoutSnapshotExact(
+      snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u],
+      KESSHO_PRODUCT_SOURCE_LEAD1,
+      1.0f);
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].lead_glide = 0.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "lead glide sample-hold snapshot load failed");
+
+  constexpr uint32_t kTriggerSeed = 113u;
+  applyLeadExpressionSampleHoldRange(
+      engine,
+      KESSHO_PRODUCT_SOURCE_LEAD1,
+      KESSHO_PRODUCT_PARAM_SOURCE_LEAD_GLIDE_ID,
+      1.0f);
+
+  const uint32_t voice_index = engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_LEAD1,
+      64.0f,
+      0.83f,
+      0.22f,
+      1.0f,
+      0.0f,
+      1.0f,
+      kTriggerSeed,
+      0u,
+      false,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      kPadVoiceNoPreference,
+      1.0f);
+  require(voice_index != kProductInvalidVoiceIndex, "lead glide sample-hold trigger failed");
+
+  const float actual_frequency = engine->lead_modules[0]->lastTriggeredFrequencyHz();
+  const float base_frequency = 440.0f * std::pow(2.0f, (64.0f - 69.0f) / 12.0f);
+  require(
+      actual_frequency > base_frequency * 0.9f && actual_frequency < base_frequency * 1.1f,
+      "lead glide sample-hold trigger frequency left the web-ts glide range");
+  require(
+      std::fabs(actual_frequency - base_frequency) > base_frequency * 0.005f,
+      "lead glide sample-hold did not alter the FM trigger frequency");
+
+  const ModulationRange* range = engine->findModulationRange(
+      KESSHO_PRODUCT_SOURCE_LEAD1,
+      KESSHO_PRODUCT_PARAM_SOURCE_LEAD_GLIDE_ID);
+  require(range != nullptr, "lead glide sample-hold range missing after trigger");
+  require(range->sample_hold_counter > 0u, "lead glide sample-hold did not sample on trigger");
+  require(
+      range->last_trigger_source == KESSHO_PRODUCT_SOURCE_LEAD1,
+      "lead glide sample-hold recorded wrong trigger source");
+
+  kessho_product_destroy(engine);
+}
+
 void requireAllParamLeadSparseOverridesSurviveTrigger(uint32_t source_id) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "all-param sparse Lead engine create failed");
@@ -642,6 +721,7 @@ int main() {
   requireLeadSparseOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD1, 0.35f);
   requireLeadSparseOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD2, 0.65f);
   requireLeadRatchetScalesOnlyEnvelopeParams();
+  requireLeadGlideSampleHoldAffectsTriggerFrequency();
   requireStableEndpointLeadPatchIsCachedUntilRatchetScratchPatch();
 
   const float low_gain_peak = renderGamelanPeakWithSparseGain(0.05f);

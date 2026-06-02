@@ -1,21 +1,81 @@
 #include "../KesshoProductEngineInternal.h"
 
-  uint32_t KesshoProductEngine::triggerVoice(
-      uint32_t source_id,
-      float midi_note,
-      float velocity,
-      float hold_seconds,
-      float event_morph ,
-      float event_distance ,
-      float event_expression ,
-      uint32_t sample_seed ,
-      uint32_t asset_id_override ,
-      bool scale_velocity_by_expression ,
-      float drum_pitch_offset ,
-      float drum_ratchet_decay_cap ,
-      float drum_ratchet_attack_cap ,
-      uint32_t pad_voice_index ,
-      float synth_ratchet_factor ) {
+namespace {
+
+uint32_t padRuntimeParamIdBaseForSource(uint32_t source_id) {
+  return source_id == KESSHO_PRODUCT_SOURCE_PAD2
+      ? kProductPad2RuntimeParamIdBase
+      : kProductPadRuntimeParamIdBase;
+}
+
+uint32_t leadRuntimeParamIdBaseForSource(uint32_t source_id) {
+  return source_id == KESSHO_PRODUCT_SOURCE_LEAD2
+      ? kProductLead2RuntimeParamIdBase
+      : kProductLeadRuntimeParamIdBase;
+}
+
+float glideAdjustedMidiNote(float midi_note, float glide, uint32_t sample_seed) {
+  const float amount = clampFloat(glide, 0.0f, 1.0f);
+  if (amount <= 0.01f) {
+    return midi_note;
+  }
+  const float ratio = 1.0f + (hashUnit(sample_seed ^ 0x92f3a5d7u) - 0.5f) * amount * 0.2f;
+  if (!std::isfinite(ratio) || ratio <= 0.0f) {
+    return midi_note;
+  }
+  return midi_note + 12.0f * std::log2(ratio);
+}
+
+bool applySourceExactRuntimeRanges(
+    KesshoProductEngine& engine,
+    uint32_t source_id,
+    uint32_t param_id_base,
+    float* params,
+    uint32_t param_count,
+    uint32_t sample_seed) {
+  if (params == nullptr || engine.active_modulation_range_count == 0u) {
+    return false;
+  }
+  bool changed = false;
+  for (ModulationRange& range : engine.modulation_ranges) {
+    if (!range.active ||
+        range.target_id != source_id ||
+        range.param_id < param_id_base ||
+        range.param_id >= param_id_base + param_count) {
+      continue;
+    }
+    const uint32_t param_index = range.param_id - param_id_base;
+    const float value = engine.modulationRangeSample(range, params[param_index], sample_seed);
+    params[param_index] = value;
+    changed = true;
+    if (range.mode == KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD) {
+      range.current_value = value;
+      ++range.sample_hold_counter;
+      range.last_trigger_frame = engine.transport.sample_frame;
+      range.last_trigger_source = source_id;
+    }
+  }
+  return changed;
+}
+
+} // namespace
+
+uint32_t KesshoProductEngine::triggerVoice(
+    uint32_t source_id,
+    float midi_note,
+    float velocity,
+    float hold_seconds,
+    float event_morph,
+    float event_distance,
+    float event_expression,
+    uint32_t sample_seed,
+    uint32_t asset_id_override,
+    bool scale_velocity_by_expression,
+    float drum_pitch_offset,
+    float drum_ratchet_decay_cap,
+    float drum_ratchet_attack_cap,
+    uint32_t pad_voice_index,
+    float synth_ratchet_factor) {
   if (source_id < 1u || source_id > kSourceCount) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
     return kProductInvalidVoiceIndex;
@@ -67,6 +127,24 @@
       resolved_seed);
   const bool pad_source = isPadProductSource(source_id);
   const bool lead_source = isLeadProductSource(source_id);
+  if (lead_source) {
+    resolveModulatedValue(
+        source_id,
+        KESSHO_PRODUCT_PARAM_SOURCE_LEAD_VIBRATO_DEPTH_ID,
+        source.lead_vibrato_depth,
+        resolved_seed);
+    resolveModulatedValue(
+        source_id,
+        KESSHO_PRODUCT_PARAM_SOURCE_LEAD_VIBRATO_RATE_ID,
+        source.lead_vibrato_rate,
+        resolved_seed);
+    const float lead_glide = resolveModulatedValue(
+        source_id,
+        KESSHO_PRODUCT_PARAM_SOURCE_LEAD_GLIDE_ID,
+        source.lead_glide,
+        resolved_seed);
+    midi_note = glideAdjustedMidiNote(midi_note, lead_glide, resolved_seed);
+  }
   kessho::core::KesshoSourcePresetPatch endpoint_morph_patch{};
   const kessho::core::KesshoSourcePresetPatch* endpoint_morph_patch_ptr = nullptr;
   if ((pad_source || lead_source) && source.source_preset_endpoint_valid) {
@@ -131,6 +209,34 @@
       (drum_source &&
        preset_patch_ptr != nullptr &&
        preset_patch_ptr->exact_drum_param_count == kessho::core::KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT);
+  if (exact_pad_patch &&
+      preset_patch_ptr != nullptr &&
+      active_modulation_range_count > 0u) {
+    preset_patch = *preset_patch_ptr;
+    if (applySourceExactRuntimeRanges(
+            *this,
+            source_id,
+            padRuntimeParamIdBaseForSource(source_id),
+            preset_patch.exact_pad_params,
+            kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT,
+            resolved_seed)) {
+      preset_patch_ptr = &preset_patch;
+    }
+  }
+  if (exact_lead_patch &&
+      preset_patch_ptr != nullptr &&
+      active_modulation_range_count > 0u) {
+    preset_patch = *preset_patch_ptr;
+    if (applySourceExactRuntimeRanges(
+            *this,
+            source_id,
+            leadRuntimeParamIdBaseForSource(source_id),
+            preset_patch.exact_lead_params,
+            kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT,
+            resolved_seed)) {
+      preset_patch_ptr = &preset_patch;
+    }
+  }
   if (!exact_pad_patch && !exact_lead_patch && !exact_drum_patch) {
     applySourcePresetMacros(source, morph, distance, expression);
   }

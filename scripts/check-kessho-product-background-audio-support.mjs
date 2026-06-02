@@ -21,6 +21,14 @@ const supportHookPath = 'src/ui/useProductRuntimeBackgroundAudioSupport.ts';
 const mediaSessionPath = 'src/ui/audioEngineMediaSession.ts';
 const coreProductRuntimePath = 'src/audio/coreProductRuntime.ts';
 const playbackAdapterPath = 'src/ui/useProductRuntimePlaybackAdapter.ts';
+const documentVisibilityHookPath = 'src/ui/hooks/useDocumentVisibility.ts';
+const runtimeCapabilitiesPath = 'src/ui/useSelectedAudioEngineRuntimeCapabilities.ts';
+const runtimeWalkSyncPath = 'src/ui/useSelectedAudioEngineRuntimeWalkSync.ts';
+const granularPagePath = 'src/ui/granular/GranularPage.tsx';
+const productPerfAdapterPath = 'src/ui/useProductRuntimePerfAdapter.ts';
+const cpuOverlayPath = 'src/ui/CpuOverlay.tsx';
+const productDebugSummaryPath = 'src/ui/useProductCoreDebugSummary.ts';
+const journeyMorphClockPath = 'src/audio/product/host/CoreProductJourneyMorphClock.ts';
 const capacitorAudioSessionPath = 'src/native/capacitorAudioSession.ts';
 const capacitorDiagnosticsPath = 'src/ui/useCapacitorAudioSessionDiagnostics.ts';
 const appPath = 'src/App.tsx';
@@ -36,6 +44,14 @@ const supportHook = read(supportHookPath);
 const mediaSession = read(mediaSessionPath);
 const coreProductRuntime = read(coreProductRuntimePath);
 const playbackAdapter = read(playbackAdapterPath);
+const documentVisibilityHook = read(documentVisibilityHookPath);
+const runtimeCapabilities = read(runtimeCapabilitiesPath);
+const runtimeWalkSync = read(runtimeWalkSyncPath);
+const granularPage = read(granularPagePath);
+const productPerfAdapter = read(productPerfAdapterPath);
+const cpuOverlay = read(cpuOverlayPath);
+const productDebugSummary = read(productDebugSummaryPath);
+const journeyMorphClock = read(journeyMorphClockPath);
 const capacitorAudioSession = read(capacitorAudioSessionPath);
 const capacitorDiagnostics = read(capacitorDiagnosticsPath);
 const app = read(appPath);
@@ -95,6 +111,68 @@ for (const token of [
   'isIOSLikeDevice()',
 ]) {
   assertIncludes(coreProductRuntime, token, coreProductRuntimePath);
+}
+
+for (const token of [
+  'isDocumentVisible',
+  'useDocumentVisibility',
+  'visibilitychange',
+]) {
+  assertIncludes(documentVisibilityHook, token, documentVisibilityHookPath);
+}
+
+for (const token of [
+  'useDocumentVisibility',
+  "audioEngineRuntimeMode === 'core-product' && uiMode === 'advanced' && documentVisible",
+  'setSelectedVisualTelemetryActive(false)',
+]) {
+  assertIncludes(runtimeCapabilities, token, runtimeCapabilitiesPath);
+}
+
+for (const token of [
+  'useDocumentVisibility',
+  '!shouldMirrorRuntimeWalkPositions || !documentVisible',
+  'setSelectedRuntimeWalkPositionsCallback(null)',
+]) {
+  assertIncludes(runtimeWalkSync, token, runtimeWalkSyncPath);
+}
+
+for (const token of [
+  'useDocumentVisibility',
+  'setGranularUiActive(isRunning && documentVisible && visualizerEnabled && liveBufferTelemetryAvailable)',
+  '!isRunning || !documentVisible || !visualizerEnabled || !liveBufferTelemetryAvailable',
+]) {
+  assertIncludes(granularPage, token, granularPagePath);
+}
+
+for (const token of [
+  'useDocumentVisibility',
+  'enabled && documentVisible',
+  'if (!showProductRuntimeSwitcher || !documentVisible) return;',
+]) {
+  assertIncludes(productPerfAdapter, token, productPerfAdapterPath);
+}
+
+for (const token of [
+  'useDocumentVisibility',
+  'setPerfMonitorEnabled(visible && documentVisible)',
+  'if (!visible || !documentVisible)',
+]) {
+  assertIncludes(cpuOverlay, token, cpuOverlayPath);
+}
+
+for (const token of [
+  'useVisibleInterval(readDebugSummary, 500',
+  "enabled: productRuntimeMode === 'core-product'",
+]) {
+  assertIncludes(productDebugSummary, token, productDebugSummaryPath);
+}
+
+for (const token of [
+  'syncAfterTelemetry',
+  'this.cancelTick();',
+]) {
+  assertIncludes(journeyMorphClock, token, journeyMorphClockPath);
 }
 
 for (const token of [

@@ -329,6 +329,9 @@ class CoreProductRuntimeAdapter {
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking, previous.postLpfKeyTracking, next.postLpfKeyTracking, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceLeadEnvelopeOverrideEnabled, previous.leadEnvelopeOverrideEnabled, next.leadEnvelopeOverrideEnabled, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceLeadAlgorithmPresetAEnabled, previous.leadAlgorithmPresetAEnabled, next.leadAlgorithmPresetAEnabled, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoDepth, previous.leadVibratoDepth, next.leadVibratoDepth, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoRate, previous.leadVibratoRate, next.leadVibratoRate, targetId);
+      this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide, previous.leadGlide, next.leadGlide, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds, previous.attackSeconds, next.attackSeconds, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds, previous.decaySeconds, next.decaySeconds, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceSustain, previous.sustain, next.sustain, targetId);

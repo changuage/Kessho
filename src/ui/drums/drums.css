@@ -378,6 +378,64 @@
 }
 .drum-root .seq-transport input:focus, .drum-root .seq-transport select:focus { border-color: var(--page-accent); outline: none; }
 
+.drum-root .live-overdub-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 3px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.03);
+}
+
+.drum-root .live-overdub-controls.active {
+  border-color: rgba(237,90,36,0.45);
+  background: rgba(237,90,36,0.08);
+}
+
+.drum-root .live-overdub-btn {
+  min-width: 52px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.drum-root .live-overdub-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-primary);
+}
+
+.drum-root .live-overdub-btn.active {
+  border-color: rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+}
+
+.drum-root .live-overdub-btn.record.active {
+  border-color: rgba(237,90,36,0.6);
+  background: rgba(237,90,36,0.22);
+  color: #ffb69a;
+}
+
+.drum-root .live-overdub-status {
+  min-width: 62px;
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
 /* ── Tab Bar ── */
 .drum-root .seq-tab-bar { display: flex; gap: 2px; margin-bottom: 0; }
 .drum-root .seq-tab {

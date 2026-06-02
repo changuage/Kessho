@@ -181,7 +181,7 @@ async function startSharedVite(port) {
   const child = spawn(process.execPath, ['node_modules/.bin/vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
     cwd: root,
     detached: process.platform !== 'win32',
-    env: { ...process.env, BROWSER: 'none' },
+    env: { ...process.env, BROWSER: 'none', KESSHO_SEQUENCER_UI_PROOF_DISABLE_HMR: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';

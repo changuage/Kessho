@@ -10,6 +10,7 @@ import {
   writeProductRuntimeCpuSummaries,
   type ProductRuntimeCpuSummaries,
 } from './productRuntimeUi';
+import { useDocumentVisibility } from './hooks/useDocumentVisibility';
 
 type ProductRuntimePerfAdapter = {
   productRuntimeCpuSummaries: ProductRuntimeCpuSummaries;
@@ -21,21 +22,33 @@ export function useProductRuntimePerfAdapter(
   productRuntimeMode: ProductRuntimeSelectionMode,
   showProductRuntimeSwitcher: boolean,
 ): ProductRuntimePerfAdapter {
+  const documentVisible = useDocumentVisibility();
   const [productRuntimeCpuSummaries, setProductRuntimeCpuSummaries] = useState<ProductRuntimeCpuSummaries>(
     () => readProductRuntimeCpuSummaries(),
   );
 
   const setProductPerfMonitorEnabled = useCallback((enabled: boolean): void => {
+    const nextEnabled = enabled && documentVisible;
     if (productRuntimeMode === 'core-product') {
-      productEngine.setPerfMonitorEnabled(enabled);
+      productEngine.setPerfMonitorEnabled(nextEnabled);
       return;
     }
     (selectedProductRuntime as unknown as {
       setPerfMonitorEnabled?: (nextEnabled: boolean) => void;
-    }).setPerfMonitorEnabled?.(enabled);
-  }, [productRuntimeMode]);
+    }).setPerfMonitorEnabled?.(nextEnabled);
+  }, [documentVisible, productRuntimeMode]);
 
   const setProductPerfUpdateCallback = useCallback((callback: CpuOverlayPerfCallback | null): void => {
+    if (!documentVisible) {
+      if (productRuntimeMode === 'core-product') {
+        productEngine.setTelemetryCallback(null);
+        return;
+      }
+      (selectedProductRuntime as unknown as {
+        setPerfUpdateCallback?: (nextCallback: CpuOverlayPerfCallback | null) => void;
+      }).setPerfUpdateCallback?.(null);
+      return;
+    }
     if (productRuntimeMode === 'core-product') {
       productEngine.setTelemetryCallback(callback ? (telemetry) => {
         callback(createProductPerfData(telemetry));
@@ -45,10 +58,10 @@ export function useProductRuntimePerfAdapter(
     (selectedProductRuntime as unknown as {
       setPerfUpdateCallback?: (nextCallback: CpuOverlayPerfCallback | null) => void;
     }).setPerfUpdateCallback?.(callback);
-  }, [productRuntimeMode]);
+  }, [documentVisible, productRuntimeMode]);
 
   useEffect(() => {
-    if (!showProductRuntimeSwitcher) return;
+    if (!showProductRuntimeSwitcher || !documentVisible) return;
 
     setProductPerfMonitorEnabled(true);
     setProductPerfUpdateCallback((data) => {
@@ -65,7 +78,7 @@ export function useProductRuntimePerfAdapter(
       setProductPerfUpdateCallback(null);
       setProductPerfMonitorEnabled(false);
     };
-  }, [productRuntimeMode, setProductPerfMonitorEnabled, setProductPerfUpdateCallback, showProductRuntimeSwitcher]);
+  }, [documentVisible, productRuntimeMode, setProductPerfMonitorEnabled, setProductPerfUpdateCallback, showProductRuntimeSwitcher]);
 
   return {
     productRuntimeCpuSummaries,

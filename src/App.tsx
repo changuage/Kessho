@@ -5864,7 +5864,7 @@ const App: React.FC = () => {
             <span style={styles.debugLabel}>Scale Family:</span>
             <span style={styles.debugValue}>
               {engineState.harmonyState?.scaleFamily.name
-                ? `${NOTE_NAMES[state.cofDriftEnabled ? calculateDriftedRoot(state.rootNote, engineState.cofCurrentStep) : state.rootNote]} ${engineState.harmonyState.scaleFamily.name}`
+                ? `${NOTE_NAMES[engineState.harmonyState.effectiveRoot] ?? NOTE_NAMES[state.cofDriftEnabled ? calculateDriftedRoot(state.rootNote, engineState.cofCurrentStep) : state.rootNote]} ${engineState.harmonyState.scaleFamily.name}`
                 : '—'}
             </span>
           </div>
@@ -5872,7 +5872,7 @@ const App: React.FC = () => {
             <div style={styles.debugRow}>
               <span style={styles.debugLabel}>CoF Key:</span>
               <span style={styles.debugValue}>
-                {NOTE_NAMES[calculateDriftedRoot(state.rootNote, engineState.cofCurrentStep)]} (step: {engineState.cofCurrentStep > 0 ? '+' : ''}
+                {NOTE_NAMES[engineState.harmonyState?.effectiveRoot ?? calculateDriftedRoot(state.rootNote, engineState.cofCurrentStep)]} (step: {engineState.cofCurrentStep > 0 ? '+' : ''}
                 {engineState.cofCurrentStep})
               </span>
             </div>

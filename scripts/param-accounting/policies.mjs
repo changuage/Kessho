@@ -523,7 +523,6 @@ export const productDeferredClassifications = [
       /^drum(Sub|Kick|Click|BeepHi|BeepLo|Noise|Membrane)Morph(Auto|Speed|Mode)$/,
       /^(drumMorphSliderAnimate|synthVoiceMask|waveSpread|synthOctave|pad2VoiceAssign|pad2Octave)$/,
       /^lead[12](Density|Octave|OctaveRange)$/,
-      /^(leadVibratoDepth|leadVibratoRate|leadGlide)$/,
     ],
   },
   {
@@ -663,9 +662,6 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
     'lead2MorphAuto',
     'lead2MorphMode',
     'lead2MorphSpeed',
-    'leadGlide',
-    'leadVibratoDepth',
-    'leadVibratoRate',
     'pad2MorphAuto',
     'pad2MorphSpeed',
     'pad2Octave',

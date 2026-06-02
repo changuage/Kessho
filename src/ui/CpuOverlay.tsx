@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useVisibleInterval } from './hooks/useVisibleInterval';
+import { useDocumentVisibility } from './hooks/useDocumentVisibility';
 
 type PerfMetrics = {
   avgPercent: number;
@@ -61,6 +62,7 @@ export const CpuOverlay: React.FC<CpuOverlayProps> = ({
   const [displayPerfData, setDisplayPerfData] = useState<Record<string, PerfMetrics>>({});
   const tapRef = useRef<number[]>([]);
   const latestPerfRef = useRef<Record<string, PerfMetrics>>({});
+  const documentVisible = useDocumentVisibility();
 
   // Toggle visibility — also enables/disables perf monitoring
   const toggle = useCallback(() => {
@@ -91,14 +93,21 @@ export const CpuOverlay: React.FC<CpuOverlayProps> = ({
 
   // Collect latest perf data from worklets and publish to state once per second.
   useEffect(() => {
-    if (!visible) return;
+    setPerfMonitorEnabled(visible && documentVisible);
+    if (!visible || !documentVisible) {
+      setPerfUpdateCallback(null);
+      latestPerfRef.current = {};
+      setDisplayPerfData({});
+      return;
+    }
     setPerfUpdateCallback((data) => {
       latestPerfRef.current = data;
     });
     return () => {
       setPerfUpdateCallback(null);
+      setPerfMonitorEnabled(false);
     };
-  }, [setPerfUpdateCallback, visible]);
+  }, [documentVisible, setPerfMonitorEnabled, setPerfUpdateCallback, visible]);
 
   useVisibleInterval(() => {
     const snap = latestPerfRef.current;

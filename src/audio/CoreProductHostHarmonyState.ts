@@ -28,6 +28,8 @@ const PRODUCT_SCALE_NAMES_BY_ID = new Map<number, string>([
   [11, 'Phrygian Dominant'],
 ]);
 
+const COF_SEQUENCE: readonly number[] = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5];
+
 function finiteNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -50,6 +52,14 @@ function seedWindowFromState(state: Record<string, unknown>): SeedWindow {
 
 function rootNoteFromMidi(midi: number): number {
   return ((Math.round(midi) % 12) + 12) % 12;
+}
+
+function cofStepBetween(homeRoot: number, effectiveRoot: number): number {
+  const homeIndex = COF_SEQUENCE.indexOf(rootNoteFromMidi(homeRoot));
+  const effectiveIndex = COF_SEQUENCE.indexOf(rootNoteFromMidi(effectiveRoot));
+  if (homeIndex < 0 || effectiveIndex < 0) return 0;
+  const clockwise = (effectiveIndex - homeIndex + 12) % 12;
+  return clockwise <= 6 ? clockwise : clockwise - 12;
 }
 
 function scaleNameFromProductId(scaleId: unknown): string | null {
@@ -99,9 +109,11 @@ export function createCoreProductHostHarmonySnapshot(
   const currentSeed = computeGranularRuntimeSeed(currentBucket);
   const telemetryScaleName = scaleNameFromProductId(telemetry?.harmonyScaleId);
   const manualScale = telemetryScaleName ?? stringValue(state.manualScale, 'Major (Ionian)');
-  const rootNote = typeof telemetry?.harmonyRootMidi === 'number' && Number.isFinite(telemetry.harmonyRootMidi)
+  const homeRoot = finiteInteger(state.rootNote, 4);
+  const telemetryRoot = typeof telemetry?.harmonyRootMidi === 'number' && Number.isFinite(telemetry.harmonyRootMidi)
     ? rootNoteFromMidi(telemetry.harmonyRootMidi)
-    : finiteInteger(state.rootNote, 4);
+    : null;
+  const rootNote = telemetryRoot ?? homeRoot;
   const tension = finiteNumber(telemetry?.harmonyTension, finiteNumber(state.tension, 0.3));
   const harmonyState = createHarmonyState(
     `${currentBucket}|E_ROOT`,
@@ -121,6 +133,7 @@ export function createCoreProductHostHarmonySnapshot(
   const currentChord = midiNotes
     ? { midiNotes, frequencies: midiNotes.map(midiToFreq) }
     : harmonyState.currentChord;
+  const effectiveRoot = telemetryRoot ?? harmonyState.effectiveRoot;
   const resolved: HarmonyState = {
     ...harmonyState,
     scaleFamily,
@@ -129,8 +142,12 @@ export function createCoreProductHostHarmonySnapshot(
     chordTension: (tension % 0.5) * 2,
     scaleTension: tension,
     currentDegree: finiteInteger(telemetry?.harmonyChordDegree, harmonyState.currentDegree),
-    effectiveRoot: rootNote,
-    cof: { ...harmonyState.cof, homeRoot: rootNote },
+    effectiveRoot,
+    cof: {
+      ...harmonyState.cof,
+      homeRoot,
+      currentStep: telemetryRoot === null ? harmonyState.cof.currentStep : cofStepBetween(homeRoot, telemetryRoot),
+    },
   };
   const signature = [
     currentBucket,

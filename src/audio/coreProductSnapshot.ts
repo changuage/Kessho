@@ -51,6 +51,7 @@ import {
   coreProductSynthLaneMacroDefaultsFromState,
 } from './coreProductSequencerMacroDefaults';
 import { soundscapeSnapshotPayloadFromState, type SoundscapeSnapshotPayload } from './coreProductSoundscapesSnapshot';
+import { productHarmonyScaleIdFromName } from './coreProductHarmonyScaleIds';
 import {
   HARMONY_POOL_MAX_NOTES,
   HARMONY_SOURCE_IDS,
@@ -246,24 +247,7 @@ function evolutionAmountFromState(state: Record<string, unknown> | undefined): n
   );
 }
 
-const PRODUCT_HARMONY_SCALE_IDS = new Map<string, number>([['Major (Ionian)', 1], ['Aeolian', 2], ['Major Pentatonic', 3], ['Octatonic Half-Whole', 4], ['Lydian', 5], ['Mixolydian', 6], ['Minor Pentatonic', 7], ['Dorian', 8], ['Harmonic Minor', 9], ['Melodic Minor', 10], ['Phrygian Dominant', 11]]);
-
-function scaleIdFromName(name: string): number {
-  const exact = PRODUCT_HARMONY_SCALE_IDS.get(name);
-  if (exact) return exact;
-  const normalized = name.toLowerCase();
-  if (normalized.includes('major pentatonic')) return 3;
-  if (normalized.includes('minor pentatonic')) return 7;
-  if (normalized.includes('harmonic minor')) return 9;
-  if (normalized.includes('melodic minor')) return 10;
-  if (normalized.includes('phrygian')) return 11;
-  if (normalized.includes('octatonic') || normalized.includes('hirajoshi')) return 4;
-  if (normalized.includes('mixolydian')) return 6;
-  if (normalized.includes('lydian')) return 5;
-  if (normalized.includes('dorian')) return 8;
-  if (normalized.includes('minor') || normalized.includes('aeolian')) return 2;
-  return 1;
-}
+// PRODUCT_HARMONY_SCALE_IDS is centralized in coreProductHarmonyScaleIds.ts.
 
 function resolveHarmonyScaleName(state: Record<string, unknown> | undefined, tension: number): string {
   const manualScale = typeof state?.manualScale === 'string' ? state.manualScale : 'Major (Ionian)';
@@ -273,7 +257,7 @@ function resolveHarmonyScaleName(state: Record<string, unknown> | undefined, ten
 }
 
 function scaleIdFromState(state: Record<string, unknown> | undefined, tension: number): number {
-  return scaleIdFromName(resolveHarmonyScaleName(state, tension));
+  return productHarmonyScaleIdFromName(resolveHarmonyScaleName(state, tension));
 }
 
 function reverbTensionModeFromState(state: Record<string, unknown> | undefined): 'follow' | 'locked' | 'bypass' {
@@ -482,6 +466,9 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     postLpfHz: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
     stereoWidth: KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
     postLpfKeyTracking: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING,
+    leadVibratoDepth: 0,
+    leadVibratoRate: 0,
+    leadGlide: 0,
     attackSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS,
     decaySeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS,
     sustain: KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN,
@@ -565,6 +552,9 @@ function sourceFromState(
       source.postLpfHz = numberFromState(state, 'lead1PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'lead1StereoWidth', source.stereoWidth);
       source.postLpfKeyTracking = numberFromState(state, 'lead1PostLPFKeyTracking', source.postLpfKeyTracking);
+      source.leadVibratoDepth = numberFromState(state, 'leadVibratoDepth', source.leadVibratoDepth);
+      source.leadVibratoRate = numberFromState(state, 'leadVibratoRate', source.leadVibratoRate);
+      source.leadGlide = numberFromState(state, 'leadGlide', source.leadGlide);
       assignLeadPresetIds(source, state, 0);
       assignLeadAlgorithmOverrideFields(source, leadAlgorithmPresetAEnabledFromState(state, 0));
       assignLeadEnvelopeOverrideFields(source, leadEnvelopeOverrideFromState(state, 0));
@@ -584,6 +574,9 @@ function sourceFromState(
       source.postLpfHz = numberFromState(state, 'lead2PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'lead2StereoWidth', source.stereoWidth);
       source.postLpfKeyTracking = numberFromState(state, 'lead2PostLPFKeyTracking', source.postLpfKeyTracking);
+      source.leadVibratoDepth = numberFromState(state, 'leadVibratoDepth', source.leadVibratoDepth);
+      source.leadVibratoRate = numberFromState(state, 'leadVibratoRate', source.leadVibratoRate);
+      source.leadGlide = numberFromState(state, 'leadGlide', source.leadGlide);
       assignLeadPresetIds(source, state, 1);
       assignLeadAlgorithmOverrideFields(source, leadAlgorithmPresetAEnabledFromState(state, 1));
       assignLeadEnvelopeOverrideFields(source, leadEnvelopeOverrideFromState(state, 1));

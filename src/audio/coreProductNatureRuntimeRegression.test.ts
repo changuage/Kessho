@@ -5,14 +5,17 @@ import {
   CORE_PRODUCT_DRUM_RANGE_TARGET_BASE,
   CORE_PRODUCT_DRUM_RUNTIME_PARAM_ID_BASE,
   CORE_PRODUCT_MODULATION_RANGE_MODE,
+  CORE_PRODUCT_PAD_RUNTIME_PARAM_ID_BASE,
+  CORE_PRODUCT_PAD2_RUNTIME_PARAM_ID_BASE,
   CORE_PRODUCT_SOURCE_IDS,
   CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE,
   createCoreProductModulationRangeEvent,
   resolveCoreProductRangeTargets,
+  type CoreProductModulationRangeMode,
 } from './coreProductEvents';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
-import { KESSHO_PRODUCT_DRUM_PARAM_SPECS } from './generated/kesshoProductSchema';
+import { KESSHO_PRODUCT_DRUM_PARAM_SPECS, KESSHO_PRODUCT_PAD_PARAM_SPECS } from './generated/kesshoProductSchema';
 import { CORE_PRODUCT_SOUNDSCAPE_ASSETS } from './coreProductAssets';
 import { createCoreProductEarthTextureDebugState } from './product/host/CoreProductEarthTextureDebug';
 
@@ -60,6 +63,20 @@ function assertResolvedTargets(key: string, expected: ExpectedRangeTarget[]): vo
   }
 }
 
+function assertResolvedTargetsForMode(key: string, mode: CoreProductModulationRangeMode, expected: ExpectedRangeTarget[]): void {
+  const targets = resolveCoreProductRangeTargets(key, mode);
+  assert.equal(targets.length, expected.length, `${key} must resolve to the expected target count for mode ${mode}`);
+  for (const expectedTarget of expected) {
+    assert(
+      targets.some((target) => (
+        target.targetId === expectedTarget.targetId &&
+        target.paramId === expectedTarget.paramId
+      )),
+      `${key} missing mode ${mode} target ${expectedTarget.targetId}:${expectedTarget.paramId}`,
+    );
+  }
+}
+
 function assetTarget(assetId: number): number {
   return CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE + assetId;
 }
@@ -68,6 +85,15 @@ function drumRuntimeParamId(key: string): number {
   const spec = KESSHO_PRODUCT_DRUM_PARAM_SPECS.find((candidate) => candidate.key === key);
   assert(spec, `Missing generated drum param spec for ${key}`);
   return CORE_PRODUCT_DRUM_RUNTIME_PARAM_ID_BASE + spec.index;
+}
+
+function padRuntimeParamId(key: string, padIndex: 0 | 1): number {
+  const spec = KESSHO_PRODUCT_PAD_PARAM_SPECS.find((candidate) => (
+    padIndex === 0 ? candidate.key === key : candidate.pad2Key === key
+  ));
+  assert(spec, `Missing generated pad param spec for ${key}`);
+  const base = padIndex === 0 ? CORE_PRODUCT_PAD_RUNTIME_PARAM_ID_BASE : CORE_PRODUCT_PAD2_RUNTIME_PARAM_ID_BASE;
+  return base + spec.index;
 }
 
 {
@@ -115,6 +141,18 @@ function drumRuntimeParamId(key: string): number {
     ['pad1DelayBSend', [{ targetId: CORE_PRODUCT_SOURCE_IDS.pad1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceDelayBSend }]],
     ['granularPad1Send', [{ targetId: CORE_PRODUCT_SOURCE_IDS.pad1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceGranularSend }]],
     ['padDiffuseSend', [{ targetId: CORE_PRODUCT_SOURCE_IDS.pad1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceDiffuseSend }]],
+    ['leadVibratoDepth', [
+      { targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoDepth },
+      { targetId: CORE_PRODUCT_SOURCE_IDS.lead2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoDepth },
+    ]],
+    ['leadVibratoRate', [
+      { targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoRate },
+      { targetId: CORE_PRODUCT_SOURCE_IDS.lead2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoRate },
+    ]],
+    ['leadGlide', [
+      { targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide },
+      { targetId: CORE_PRODUCT_SOURCE_IDS.lead2, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide },
+    ]],
     ['lead1PostLPFKeyTracking', [{ targetId: CORE_PRODUCT_SOURCE_IDS.lead1, paramId: KESSHO_PRODUCT_PARAM_IDS.SourcePostLpfKeyTracking }]],
     ['pianoAttack', [{ targetId: CORE_PRODUCT_SOURCE_IDS.piano, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceAttackSeconds }]],
     ['pianoDecay', [{ targetId: CORE_PRODUCT_SOURCE_IDS.piano, paramId: KESSHO_PRODUCT_PARAM_IDS.SourceDecaySeconds }]],
@@ -133,6 +171,16 @@ function drumRuntimeParamId(key: string): number {
     ['drumKickDecay', [{ targetId: CORE_PRODUCT_DRUM_RANGE_TARGET_BASE + 1, paramId: drumRuntimeParamId('drumKickDecay') }]],
   ];
   for (const [key, expected] of sourceParamCases) assertResolvedTargets(key, expected);
+}
+
+{
+  assertResolvedTargets('synthAttack', [{ targetId: 0, paramId: padRuntimeParamId('synthAttack', 0) }]);
+  assertResolvedTargetsForMode('synthAttack', CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold, [
+    { targetId: CORE_PRODUCT_SOURCE_IDS.pad1, paramId: padRuntimeParamId('synthAttack', 0) },
+  ]);
+  assertResolvedTargetsForMode('pad2Attack', CORE_PRODUCT_MODULATION_RANGE_MODE.sampleHold, [
+    { targetId: CORE_PRODUCT_SOURCE_IDS.pad2, paramId: padRuntimeParamId('pad2Attack', 1) },
+  ]);
 }
 
 {

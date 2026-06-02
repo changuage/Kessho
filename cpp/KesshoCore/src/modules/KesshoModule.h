@@ -104,6 +104,9 @@ public:
   virtual int lastTriggeredVoiceIndex() const {
     return -1;
   }
+  virtual float lastTriggeredFrequencyHz() const {
+    return 0.0f;
+  }
   virtual int killVoice(int voice_index) {
     (void)voice_index;
     return 0;

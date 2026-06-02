@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { CoreProductModulationDebugEntry } from '../audio/coreProductTelemetry';
 import type { ProductEnginePort } from '../audio/product/ProductEnginePort';
+import { useVisibleInterval } from './hooks/useVisibleInterval';
 
 export type ProductCoreDebugSummary = {
   earth: string;
@@ -29,32 +30,33 @@ export function useProductCoreDebugSummary(
 ): ProductCoreDebugSummary | null {
   const [summary, setSummary] = useState<ProductCoreDebugSummary | null>(null);
 
+  const readDebugSummary = useCallback(() => {
+    const telemetry = runtime.getTelemetry();
+    const earth = telemetry?.earthTextureDebugState;
+    const earthSummary = earth
+      ? (['waves', 'birds', 'birds2', 'frogs'] as const)
+        .map((key) => {
+          const slot = earth[key];
+          return `${key}:${slot?.active ? 'active' : slot?.inactiveReason ?? 'idle'}`;
+        })
+        .join(' ')
+      : '-';
+    setSummary({
+      earth: earthSummary,
+      randomWalk: summarizeProductCoreModulation(telemetry?.productModulationDebug?.randomWalk ?? [], 'walk'),
+      sampleHold: summarizeProductCoreModulation(telemetry?.productModulationDebug?.sampleHold ?? [], 'sampleHold'),
+    });
+  }, [runtime]);
+
   useEffect(() => {
     if (productRuntimeMode !== 'core-product') {
       setSummary(null);
-      return;
     }
-    const readDebugSummary = () => {
-      const telemetry = runtime.getTelemetry();
-      const earth = telemetry?.earthTextureDebugState;
-      const earthSummary = earth
-        ? (['waves', 'birds', 'birds2', 'frogs'] as const)
-          .map((key) => {
-            const slot = earth[key];
-            return `${key}:${slot?.active ? 'active' : slot?.inactiveReason ?? 'idle'}`;
-          })
-          .join(' ')
-        : '-';
-      setSummary({
-        earth: earthSummary,
-        randomWalk: summarizeProductCoreModulation(telemetry?.productModulationDebug?.randomWalk ?? [], 'walk'),
-        sampleHold: summarizeProductCoreModulation(telemetry?.productModulationDebug?.sampleHold ?? [], 'sampleHold'),
-      });
-    };
-    readDebugSummary();
-    const interval = window.setInterval(readDebugSummary, 500);
-    return () => window.clearInterval(interval);
-  }, [productRuntimeMode, runtime]);
+  }, [productRuntimeMode]);
+
+  useVisibleInterval(readDebugSummary, 500, {
+    enabled: productRuntimeMode === 'core-product',
+  });
 
   return summary;
 }

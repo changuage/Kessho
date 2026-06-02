@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { isCoreProductRangeKeySupported } from '../audio/coreProductEvents';
 import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
+import { useDocumentVisibility } from './hooks/useDocumentVisibility';
 
 type UiMode = 'snowflake' | 'advanced' | 'journey';
 
@@ -19,17 +20,18 @@ export function useSelectedAudioEngineRuntimeCapabilities({
   setSelectedVisualTelemetryActive,
   uiMode,
 }: SelectedAudioEngineRuntimeCapabilitiesOptions): SelectedAudioEngineRuntimeCapabilities {
+  const documentVisible = useDocumentVisibility();
   const selectedRuntimeSupportsRangeKey = useCallback((key: string): boolean => (
     audioEngineRuntimeMode !== 'core-product' || isCoreProductRangeKeySupported(key)
   ), [audioEngineRuntimeMode]);
 
   useEffect(() => {
-    const active = audioEngineRuntimeMode === 'core-product' && uiMode === 'advanced';
+    const active = audioEngineRuntimeMode === 'core-product' && uiMode === 'advanced' && documentVisible;
     setSelectedVisualTelemetryActive(active);
     return () => {
       setSelectedVisualTelemetryActive(false);
     };
-  }, [audioEngineRuntimeMode, setSelectedVisualTelemetryActive, uiMode]);
+  }, [audioEngineRuntimeMode, documentVisible, setSelectedVisualTelemetryActive, uiMode]);
 
   return {
     selectedRuntimeSupportsRangeKey,

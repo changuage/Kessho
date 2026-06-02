@@ -174,7 +174,15 @@ function markLeadFeedback(
   } else if (paramId === KESSHO_PRODUCT_PARAM_IDS.SourceExpression) {
     context.leadExpression[lead] = position;
     context.markLeadExpression();
+  } else if (paramId === KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoDepth) {
+    context.leadExpression.vibratoDepth = position;
+    context.markLeadExpression();
+  } else if (paramId === KESSHO_PRODUCT_PARAM_IDS.SourceLeadVibratoRate) {
+    context.leadExpression.vibratoRate = position;
+    context.markLeadExpression();
+  } else if (paramId === KESSHO_PRODUCT_PARAM_IDS.SourceLeadGlide) {
+    context.leadExpression.glide = position;
+    context.markLeadExpression();
   }
   return { source: 0, drum: 0 };
 }
-

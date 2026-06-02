@@ -828,7 +828,7 @@ class CoreProductEngineHost {
 
   private applyManualSynthDice(laneIndex: number, intensity: number): boolean {
     this.ensureSequencerLaneCache('synth', laneIndex);
-    return applyCoreProductManualSynthDice({ state: this.manualSynthDiceState, laneIndex, intensity, cache: this.sequencerCacheState(), adapterState: this.adapterState, latestSliderState: this.latestSliderState, latestProductSnapshot: this.latestProductSnapshot, latestTelemetry: this.latestTelemetry, runtimeReady: this.runtimeReady, armManualDice: () => this.sequencerHome.armManualDice('synth', laneIndex), post: (event) => this.runtime.postEvent(event), publish: (name, ...payload) => this.invokeDisplayCallback(name, ...payload), captureHome: (force = false) => this.captureSequencerHomeLane('synth', laneIndex, force) });
+    return applyCoreProductManualSynthDice({ state: this.manualSynthDiceState, laneIndex, intensity, cache: this.sequencerCacheState(), adapterState: this.adapterState, latestSliderState: this.latestSliderState, latestProductSnapshot: this.latestProductSnapshot, latestTelemetry: this.latestTelemetry, armManualDice: () => this.sequencerHome.armManualDice('synth', laneIndex), post: (event) => this.postManualSynthDiceEvent(event), publish: (name, ...payload) => this.invokeDisplayCallback(name, ...payload), captureHome: (force = false) => this.captureSequencerHomeLane('synth', laneIndex, force) });
   }
 
   private handleSequencerUiProductEvent(event: CoreProductEvent): boolean {
@@ -967,6 +967,8 @@ class CoreProductEngineHost {
       post();
     });
   }
+
+  private postManualSynthDiceEvent(event: CoreProductEvent): void { if (this.runtimeReady) { this.runtime.postEvent(event); return; } void this.runtime.ensureStarted().then(() => { this.runtimeReady = true; this.loadLatestSnapshot('runtime-bootstrap'); this.runtime.postEvent(event); }); }
 
   private stepValueFieldEnabled(sequencer: SequencerKind, laneIndex: number, field: CoreProductStepValueField): boolean { return coreProductStepValueFieldEnabled(this.synthSubLaneEnabled, this.drumSubLaneEnabled, sequencer, laneIndex, field); }
 

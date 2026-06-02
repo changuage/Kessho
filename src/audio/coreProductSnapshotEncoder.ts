@@ -22,8 +22,8 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
 
 const SOURCE_ORDER = [CORE_PRODUCT_SOURCE_IDS.pad1, CORE_PRODUCT_SOURCE_IDS.pad2, CORE_PRODUCT_SOURCE_IDS.lead1, CORE_PRODUCT_SOURCE_IDS.lead2, CORE_PRODUCT_SOURCE_IDS.drum, CORE_PRODUCT_SOURCE_IDS.piano, CORE_PRODUCT_SOURCE_IDS.soundscape] as const;
 
-const SNAPSHOT_BYTES = 28464;
-const SOURCE_BYTES = 3320;
+const SNAPSHOT_BYTES = 28548;
+const SOURCE_BYTES = 3332;
 const LANE_BYTES = 92;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES;
 
@@ -76,6 +76,9 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     postLpfHz: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
     stereoWidth: KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
     postLpfKeyTracking: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING,
+    leadVibratoDepth: 0,
+    leadVibratoRate: 0,
+    leadGlide: 0,
     attackSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS,
     decaySeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS,
     sustain: KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN,
@@ -223,6 +226,9 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
     f32(source.postLpfHz);
     f32(source.stereoWidth);
     f32(source.postLpfKeyTracking);
+    f32(source.leadVibratoDepth);
+    f32(source.leadVibratoRate);
+    f32(source.leadGlide);
     u32(exactPadParamCount);
     for (let paramIndex = 0; paramIndex < KESSHO_PRODUCT_PAD_PARAM_COUNT; paramIndex += 1) f32(0);
     u32(padOverrideCount);

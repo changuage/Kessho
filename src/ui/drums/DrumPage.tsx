@@ -14,6 +14,7 @@ import { normalizeNoteDegreeOffset } from '../../audio/drumSeqTypes';
 import { getPresetNames as getDrumPresetNames } from '../../audio/drumPresets';
 import { DRUM_VOICES as VOICE_CONFIG, DRUM_VOICE_ORDER } from '../../audio/drumVoiceConfig';
 import { useEuclideanSequencer, type EvolveConfig, type PitchSettings, type StepOverrides, type SubLaneKind, type SubLaneState } from '../sequencer/useEuclideanSequencer';
+import { liveOverdubTargetStep, useLiveOverdubRecorder } from '../sequencer/useLiveOverdubRecorder';
 import { stepOverridesForEngineSubLaneState } from '../sequencer/engineStepOverrides';
 import {
   drumPitchBaseMidiFromState,
@@ -80,6 +81,16 @@ type EvolvedSequencerPatch = {
 // ── Keyboard shortcuts: A S D F G H J → voice triggers ──
 const KEY_TO_VOICE: Record<string, DrumVoiceType> = {
   a: 'sub', s: 'kick', d: 'click', f: 'beepHi', g: 'beepLo', h: 'noise', j: 'membrane',
+};
+
+const DRUM_TARGET_SUFFIX_BY_VOICE: Record<DrumVoiceType, string> = {
+  sub: 'Sub',
+  kick: 'Kick',
+  click: 'Click',
+  beepHi: 'BeepHi',
+  beepLo: 'BeepLo',
+  noise: 'Noise',
+  membrane: 'Membrane',
 };
 
 type DrumKeyboardLane = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance';
@@ -814,6 +825,113 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     state.drumEuclidMasterEnabled,
   ]);
 
+  const startDrumPlaybackForOverdub = useCallback(() => {
+    const startPatch: Partial<SliderState> = { drumEuclidMasterEnabled: true };
+    const activeLaneEnabledKey = DRUM_LANE_ENABLED_KEYS[seq.activeTab] ?? DRUM_LANE_ENABLED_KEYS[0];
+    if (!state.drumEnabled) {
+      onSelectChange('drumEnabled', true);
+      startPatch.drumEnabled = true;
+    }
+    if (!Boolean(state[activeLaneEnabledKey])) {
+      onSelectChange(activeLaneEnabledKey, true);
+      startPatch[activeLaneEnabledKey] = true;
+    }
+    if (!state.drumEuclidMasterEnabled) {
+      onSelectChange('drumEuclidMasterEnabled', true);
+    }
+    onRequestPlaybackStart?.(startPatch);
+  }, [
+    onRequestPlaybackStart,
+    onSelectChange,
+    seq.activeTab,
+    state.drumEnabled,
+    state.drumEuclid1Enabled,
+    state.drumEuclid2Enabled,
+    state.drumEuclid3Enabled,
+    state.drumEuclid4Enabled,
+    state.drumEuclidMasterEnabled,
+  ]);
+
+  const drumLiveOverdub = useLiveOverdubRecorder({
+    bpm: Number(state.sequencerMasterBPM ?? state.drumEuclidBaseBPM ?? 120),
+    onCountInComplete: startDrumPlaybackForOverdub,
+  });
+
+  const recordDrumLiveOverdubVoice = useCallback((voice: DrumVoiceType) => {
+    const laneIdx = seq.activeTab;
+    const triggerStepCount = seq.sequencerModels[laneIdx]?.trigger.steps ?? 16;
+    if (triggerStepCount <= 0) return;
+    const targetStep = liveOverdubTargetStep(seq.playheads[laneIdx], activeTriggerKeyboardStep, triggerStepCount);
+
+    if (seq.pitchSettings[laneIdx]?.mode !== 'semitones') {
+      seq.setPitchMode(laneIdx, 'semitones');
+    }
+    seq.setSubLaneStates((prev) => prev.map((laneState, index) => (
+      index === laneIdx
+        ? {
+            ...laneState,
+            pitch: {
+              ...laneState.pitch,
+              enabled: true,
+              steps: triggerStepCount,
+            },
+          }
+        : laneState
+    )));
+    DRUM_VOICE_ORDER.forEach((candidate) => {
+      seq.setParamSelect(laneIdx, `Target${DRUM_TARGET_SUFFIX_BY_VOICE[candidate]}`, candidate === voice);
+    });
+    seq.setTriggerStep(laneIdx, targetStep, true);
+    seq.changeStepValue(laneIdx, 'pitch', targetStep, 0);
+    setKeyboardLaneSteps((prev) => ({
+      ...prev,
+      trigger: prev.trigger.map((value, index) => index === laneIdx ? targetStep : value),
+      pitch: prev.pitch.map((value, index) => index === laneIdx ? targetStep : value),
+    }));
+    seq.setViewMode('detail');
+    seq.setOpenLane('pitch');
+  }, [
+    activeTriggerKeyboardStep,
+    seq,
+  ]);
+
+  const toggleDrumLiveOverdub = useCallback(() => {
+    if (drumLiveOverdub.isArmed) {
+      drumLiveOverdub.stop();
+      return;
+    }
+    const laneIdx = seq.activeTab;
+    const triggerStepCount = seq.sequencerModels[laneIdx]?.trigger.steps ?? 16;
+    seq.setViewMode('detail');
+    seq.setOpenLane('trigger');
+    if (triggerStepCount > 0) {
+      seq.setSubLaneStates((prev) => prev.map((laneState, index) => (
+        index === laneIdx
+          ? {
+              ...laneState,
+              pitch: {
+                ...laneState.pitch,
+                enabled: true,
+                steps: triggerStepCount,
+              },
+            }
+          : laneState
+      )));
+    }
+    drumLiveOverdub.start();
+  }, [
+    drumLiveOverdub.isArmed,
+    drumLiveOverdub.start,
+    drumLiveOverdub.stop,
+    seq,
+  ]);
+
+  const drumLiveOverdubStatus = drumLiveOverdub.status === 'count-in'
+    ? `Count ${drumLiveOverdub.countInRemaining}`
+    : drumLiveOverdub.status === 'recording'
+      ? 'Recording'
+      : 'Ready';
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const tag = (e.target as HTMLElement)?.tagName;
     if (e.defaultPrevented) return;
@@ -919,6 +1037,9 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     if (!voice) return;
     e.preventDefault();
     triggerVoiceRef.current(voice);
+    if (drumLiveOverdub.isRecording) {
+      recordDrumLiveOverdubVoice(voice);
+    }
   }, [
     activeKeyboardLane,
     adjustDrumKeyboardLaneValue,
@@ -927,8 +1048,9 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     cycleDrumKeyboardLane,
     cycleDrumKeyboardSequencer,
     cycleDrumViewMode,
+    drumLiveOverdub.isRecording,
     moveDrumKeyboardStep,
-    onSelectChange,
+    recordDrumLiveOverdubVoice,
     seq.activeTab,
     toggleDrumKeyboardLane,
     toggleDrumSequencerTransport,
@@ -1062,6 +1184,25 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
               onChange={setSharedSequencerBpm}
               shapeByDrag
             />
+            <div className={`live-overdub-controls${drumLiveOverdub.isArmed ? ' active' : ''}`}>
+              <button
+                type="button"
+                className={`live-overdub-btn record${drumLiveOverdub.isArmed ? ' active' : ''}`}
+                onClick={toggleDrumLiveOverdub}
+                aria-pressed={drumLiveOverdub.isArmed}
+              >
+                REC
+              </button>
+              <button
+                type="button"
+                className={`live-overdub-btn${drumLiveOverdub.metronomeEnabled ? ' active' : ''}`}
+                onClick={drumLiveOverdub.toggleMetronome}
+                aria-pressed={drumLiveOverdub.metronomeEnabled}
+              >
+                Metro
+              </button>
+              <span className="live-overdub-status">{drumLiveOverdubStatus}</span>
+            </div>
             <div className="seq-view-toggle">
               <button
                 className={`seq-view-btn${seq.viewMode === 'simple' ? ' active' : ''}`}

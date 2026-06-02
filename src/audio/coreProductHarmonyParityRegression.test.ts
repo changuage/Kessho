@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict';
 import { createCoreProductHostHarmonySnapshot } from './CoreProductHostHarmonyState';
+import { CoreProductArrangementScheduler } from './coreProductArrangementScheduler';
 import { createHarmonyState } from './harmony';
+import { PRODUCT_HARMONY_SCALE_IDS } from './coreProductHarmonyScaleIds';
 import { createCoreProductSnapshot } from './coreProductSnapshot';
+import { createProductArpHarmonyContext } from './productArpeggiator';
 import { createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange, SCALE_FAMILIES, selectScaleFamily } from './scales';
+import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
+import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import { KESSHO_PRODUCT_SOURCE_IDS, KESSHO_PRODUCT_SOURCE_PRESET_IDS } from './generated/kesshoProductSchema';
 import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES } from './lead4opfm';
 import { applyPadPresetMorphParamsToState } from './padPresets';
 import { drumPitchUiValuesToEngineOffsets, quantizeDrumPitchOffsetToScale } from '../ui/sequencer/drumPitchSequencer';
+import { reactiveVisualizerRootPitchClass } from '../ui/visualizer/reactiveVisualizerHarmony';
 import { DEFAULT_STATE } from '../ui/state';
 import {
   HARMONY_SEQUENCE_STEP_COUNT,
@@ -32,20 +38,6 @@ function assertNoWebExactPatchFields(source: unknown, label: string): void {
     assert.equal(Object.prototype.hasOwnProperty.call(shape, key), false, `${label} should not expose ${key}`);
   }
 }
-
-const PRODUCT_HARMONY_SCALE_IDS = new Map<string, number>([
-  ['Major (Ionian)', 1],
-  ['Aeolian', 2],
-  ['Major Pentatonic', 3],
-  ['Octatonic Half-Whole', 4],
-  ['Lydian', 5],
-  ['Mixolydian', 6],
-  ['Minor Pentatonic', 7],
-  ['Dorian', 8],
-  ['Harmonic Minor', 9],
-  ['Melodic Minor', 10],
-  ['Phrygian Dominant', 11],
-]);
 
 function pitchClass(midi: number): number {
   return ((Math.round(midi) % 12) + 12) % 12;
@@ -95,6 +87,11 @@ for (const tension of [0, 0.08, 0.18, 0.28, 0.38, 0.48, 0.55, 0.65, 0.75, 0.88, 
     rootNote: 4,
   });
   assert.equal(snapshot.harmony.scaleId, expectedScaleId, `auto ${selected.name} Product scale ID mismatch`);
+  assert.equal(
+    createProductArpHarmonyContext({ scaleMode: 'auto', seedWindow, tension, rootNote: 4 }).scaleId,
+    expectedScaleId,
+    `auto ${selected.name} Product arp scale ID mismatch`,
+  );
   const webHarmony = createHarmonyState(
     `${getUtcBucket(seedWindow)}|E_ROOT`,
     tension,
@@ -152,6 +149,176 @@ assert.equal(productHostTelemetryHarmony.harmonyState?.scaleFamily.name, 'Phrygi
 assert.equal(productHostTelemetryHarmony.harmonyState?.effectiveRoot, 7, 'Product host UI harmony should follow Product telemetry root');
 assert.deepEqual(productHostTelemetryHarmony.harmonyState?.currentChord.midiNotes, [67, 68, 71, 72], 'Product host UI harmony should expose Product telemetry chord notes');
 assert.equal(productHostTelemetryHarmony.harmonyState?.currentDegree, 3, 'Product host UI harmony should expose Product telemetry chord degree');
+
+const productHostTelemetryCofHarmony = createCoreProductHostHarmonySnapshot({
+  scaleMode: 'manual',
+  manualScale: 'Major (Ionian)',
+  tension: 0.3,
+  rootNote: 0,
+  chordRate: 32,
+  voicingSpread: 0.5,
+  detune: 0,
+  seedWindow: 'hour',
+  cofDriftEnabled: true,
+}, {
+  schemaHash: 1,
+  transportRunning: true,
+  activeSources: 0,
+  activeVoices: 0,
+  activeAssets: 0,
+  sequencerEventCount: 0,
+  controlQueueDepth: 0,
+  assetMissingCount: 0,
+  lastErrorCode: 0,
+  harmonyRootMidi: 67,
+  harmonyScaleId: 1,
+  harmonyTension: 0.3,
+  harmonyChordDegree: 0,
+  harmonyChordMidi: [67, 71, 74],
+});
+assert.equal(productHostTelemetryCofHarmony.harmonyState?.effectiveRoot, 7, 'Product host UI harmony should expose drifted telemetry root');
+assert.equal(productHostTelemetryCofHarmony.harmonyState?.cof.homeRoot, 0, 'Product host UI harmony should preserve CoF home root');
+assert.equal(productHostTelemetryCofHarmony.harmonyState?.cof.currentStep, 1, 'Product host UI harmony should infer CoF step from telemetry root');
+const productArpTelemetryCofHarmony = createProductArpHarmonyContext({ rootNote: 0, scaleMode: 'manual', manualScale: 'Major (Ionian)', tension: 0.3 }, productHostTelemetryCofHarmony.harmonyState);
+assert.equal(pitchClass(productArpTelemetryCofHarmony.rootMidi), 7, 'Product arp harmony context should follow drifted telemetry root');
+assert.equal(productArpTelemetryCofHarmony.scaleId, 1, 'Product arp harmony context should follow live Product harmony scale');
+assert.equal(
+  reactiveVisualizerRootPitchClass({
+    rootNote: 0,
+    cofCurrentStep: 1,
+    cofDriftEnabled: true,
+    engineState: {
+      isRunning: true,
+      harmonyState: productHostTelemetryCofHarmony.harmonyState,
+      cofCurrentStep: 1,
+    },
+  }),
+  7,
+  'Reactive visualizer root bus should follow live drifted harmony root without double-counting CoF step',
+);
+assert.equal(
+  reactiveVisualizerRootPitchClass({
+    rootNote: 0,
+    cofCurrentStep: 1,
+    cofDriftEnabled: true,
+    engineState: {
+      isRunning: true,
+      harmonyState: null,
+      cofCurrentStep: 1,
+    },
+  }),
+  7,
+  'Reactive visualizer fallback should convert CoF step through the circle of fifths instead of adding semitones',
+);
+
+const originalWindow = (globalThis as { window?: unknown }).window;
+const postedHarmonyEvents: Array<{ paramId?: number; value?: number }> = [];
+(globalThis as { window?: unknown }).window = {
+  setTimeout: () => 1,
+  clearTimeout: () => undefined,
+};
+try {
+  const scheduler = new CoreProductArrangementScheduler(
+    (event) => postedHarmonyEvents.push({ paramId: event.paramId, value: event.value }),
+    () => null,
+  );
+  scheduler.start({
+    rootNote: 0,
+    scaleMode: 'manual',
+    manualScale: 'Major (Ionian)',
+    tension: 0.3,
+    chordRate: 32,
+    voicingSpread: 0.5,
+    detune: 0,
+    seedWindow: 'hour',
+    cofDriftEnabled: true,
+    cofDriftRate: 1,
+    cofDriftDirection: 'cw',
+    cofDriftRange: 3,
+  });
+  (scheduler as unknown as { onHarmonyTick: (isPhraseBoundary: boolean) => void }).onHarmonyTick(true);
+  scheduler.stop();
+} finally {
+  (globalThis as { window?: unknown }).window = originalWindow;
+}
+const postedHarmonyRoots = postedHarmonyEvents
+  .filter((event) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.HarmonyRootMidi)
+  .map((event) => event.value);
+assert.deepEqual(postedHarmonyRoots.slice(0, 2), [60, 67], 'Product scheduler should post CoF drift into Product harmony root');
+const postedHarmonyScales = postedHarmonyEvents
+  .filter((event) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.HarmonyScaleId)
+  .map((event) => event.value);
+assert.deepEqual(postedHarmonyScales.slice(0, 2), [1, 1], 'Product scheduler should post live harmony scale with CoF drift');
+
+const postedVoicingSpreadPadEvents: Array<{ eventKind: number; targetId?: number; value?: number }> = [];
+(globalThis as { window?: unknown }).window = {
+  setTimeout: () => 1,
+  clearTimeout: () => undefined,
+};
+try {
+  const scheduler = new CoreProductArrangementScheduler(
+    (event) => postedVoicingSpreadPadEvents.push({ eventKind: event.eventKind, targetId: event.targetId, value: event.value }),
+    () => null,
+  );
+  const state = {
+    rootNote: 0,
+    tension: 0.3,
+    chordRate: 32,
+    voicingSpread: 0.5,
+    detune: 0,
+    seedWindow: 'hour',
+    synthChordSequencerEnabled: true,
+    padEnabled: true,
+    pad2Enabled: false,
+    synthVoiceMask: 1,
+    waveSpread: 0,
+  };
+  scheduler.start(state);
+  scheduler.update({ ...state, voicingSpread: 0.95 });
+  scheduler.stop();
+} finally {
+  (globalThis as { window?: unknown }).window = originalWindow;
+}
+assert.equal(
+  postedVoicingSpreadPadEvents.filter((event) => event.eventKind === KESSHO_PRODUCT_EVENT_IDS.ManualNoteOn && event.targetId === KESSHO_PRODUCT_SOURCE_IDS.Pad1).length,
+  2,
+  'Product scheduler should regenerate pad chord immediately when voicing spread changes',
+);
+
+const postedMaskedPadEvents: Array<{ eventKind: number; targetId?: number; value?: number }> = [];
+(globalThis as { window?: unknown }).window = {
+  setTimeout: () => 1,
+  clearTimeout: () => undefined,
+};
+try {
+  const scheduler = new CoreProductArrangementScheduler(
+    (event) => postedMaskedPadEvents.push({ eventKind: event.eventKind, targetId: event.targetId, value: event.value }),
+    () => null,
+  );
+  scheduler.start({
+    rootNote: 0,
+    tension: 0.3,
+    chordRate: 32,
+    voicingSpread: 0.5,
+    detune: 0,
+    seedWindow: 'hour',
+    synthChordSequencerEnabled: true,
+    padEnabled: true,
+    pad2Enabled: false,
+    synthVoiceMask: 1 << 5,
+    waveSpread: 0,
+  });
+  const harmonyState = (scheduler as unknown as { harmonyState?: { currentChord: { midiNotes: number[] } } }).harmonyState;
+  const padEvent = postedMaskedPadEvents.find((event) => event.eventKind === KESSHO_PRODUCT_EVENT_IDS.ManualNoteOn && event.targetId === KESSHO_PRODUCT_SOURCE_IDS.Pad1);
+  assert.equal(
+    padEvent?.value,
+    harmonyState?.currentChord.midiNotes[0],
+    'Product scheduler should match web-ts masked pad voice pitch assignment',
+  );
+  scheduler.stop();
+} finally {
+  (globalThis as { window?: unknown }).window = originalWindow;
+}
 
 const selectedScaleDrumPitch = drumPitchUiValuesToEngineOffsets(
   [4, 6],

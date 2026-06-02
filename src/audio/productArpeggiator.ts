@@ -5,7 +5,9 @@ import {
   resolveProductHarmonyState,
   type HarmonyChordSlot,
 } from './CoreProductHarmonyControl';
-import { getScaleByName } from './scales';
+import { productHarmonyScaleIdFromName } from './coreProductHarmonyScaleIds';
+import { createRng, getUtcBucket } from './rng';
+import { getScaleByName, selectScaleFamily } from './scales';
 
 export type ProductArpSourceMode = 'followHarmony' | 'slotLane';
 export type ProductArpDirection = 'up' | 'down' | 'upDown' | 'downUp' | 'randomLiveTone' | 'diceHold';
@@ -30,24 +32,15 @@ export interface ProductArpHarmonyContext {
   chordSlots: HarmonyChordSlot[];
 }
 
+export interface ProductArpLiveHarmonyFrame {
+  effectiveRoot: number;
+  scaleFamily: { name: string };
+}
+
 const PRODUCT_ARP_DIRECTIONS: readonly ProductArpDirection[] = ['up', 'down', 'upDown', 'downUp', 'randomLiveTone', 'diceHold'];
 const DEFAULT_TONE_PATTERN = [0, 2, 1, 3, 0, 1, 3, 2, 0, 2, 4, 3, 1, 4, 2, 5];
 const DEFAULT_SLOT_LANE: ProductArpSlotChoice[] = Array.from({ length: 16 }, () => -1);
 const DEFAULT_PULSE_MASK = 0b01011111;
-
-const PRODUCT_HARMONY_SCALE_IDS = new Map<string, number>([
-  ['Major (Ionian)', 1],
-  ['Aeolian', 2],
-  ['Major Pentatonic', 3],
-  ['Octatonic Half-Whole', 4],
-  ['Lydian', 5],
-  ['Mixolydian', 6],
-  ['Minor Pentatonic', 7],
-  ['Dorian', 8],
-  ['Harmonic Minor', 9],
-  ['Melodic Minor', 10],
-  ['Phrygian Dominant', 11],
-]);
 
 export function defaultProductArpConfig(): ProductArpConfig {
   return {
@@ -99,10 +92,14 @@ export function sanitizeProductArpConfigs(configs: readonly ProductArpConfig[] |
   return normalized.some((config) => config.enabled) ? normalized : undefined;
 }
 
-export function createProductArpHarmonyContext(state: Record<string, unknown> | undefined): ProductArpHarmonyContext {
-  const rootMidi = rootMidiFromState(state);
+export function createProductArpHarmonyContext(
+  state: Record<string, unknown> | undefined,
+  liveHarmony?: ProductArpLiveHarmonyFrame | null,
+): ProductArpHarmonyContext {
+  const stateRootMidi = rootMidiFromState(state);
+  const rootMidi = liveHarmony ? rootMidiWithPitchClass(stateRootMidi, liveHarmony.effectiveRoot) : stateRootMidi;
   const tension = numberFromState(state, 'tension', numberFromState(DEFAULT_STATE as unknown as Record<string, unknown>, 'tension', 0.35));
-  const scaleId = scaleIdFromState(state);
+  const scaleId = liveHarmony ? productHarmonyScaleIdFromName(liveHarmony.scaleFamily.name) : scaleIdFromState(state, tension);
   const seed = positiveU32(numberFromState(state, 'rngSeed', numberFromState(state, 'seed', 1)), 1);
   const morphPercent = numberFromState(state, 'journeyMorphPhase', 0) * 100;
   const harmony = resolveProductHarmonyState({ state, rootMidi, scaleId, tension, seed, morphPercent });
@@ -183,12 +180,19 @@ function rootMidiFromState(state: Record<string, unknown> | undefined): number {
   return 60 + pitchClass;
 }
 
-function scaleIdFromState(state: Record<string, unknown> | undefined): number {
+function rootMidiWithPitchClass(baseMidi: number, rootPitchClass: number): number {
+  const base = clamp(Math.round(baseMidi), 0, 127);
+  const candidate = Math.floor(base / 12) * 12 + ((Math.round(rootPitchClass) % 12) + 12) % 12;
+  return clamp(candidate > 127 ? candidate - 12 : candidate, 0, 127);
+}
+
+function scaleIdFromState(state: Record<string, unknown> | undefined, tension: number): number {
   const manualScale = typeof state?.manualScale === 'string' ? state.manualScale : 'Major (Ionian)';
   if (state?.scaleMode === 'manual' && getScaleByName(manualScale)) {
-    return PRODUCT_HARMONY_SCALE_IDS.get(manualScale) ?? 1;
+    return productHarmonyScaleIdFromName(manualScale);
   }
-  return 1;
+  const seedWindow = state?.seedWindow === 'day' ? 'day' : 'hour';
+  return productHarmonyScaleIdFromName(selectScaleFamily(createRng(`${getUtcBucket(seedWindow)}|E_ROOT`), tension).name);
 }
 
 function positiveU32(value: number, fallback: number): number {

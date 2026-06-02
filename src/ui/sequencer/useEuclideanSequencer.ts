@@ -154,6 +154,7 @@ export interface UseEuclideanSequencerResult {
   stepOverrides: StepOverrides;
   setStepOverrides: React.Dispatch<React.SetStateAction<StepOverrides>>;
   toggleTriggerStep: (laneIdx: number, step: number) => void;
+  setTriggerStep: (laneIdx: number, step: number, enabled: boolean) => void;
   changeStepValue: (laneIdx: number, lane: LaneKind, step: number, value: number) => void;
   setStepProbability: (laneIdx: number, step: number, value: number) => void;
   cycleStepRatchet: (laneIdx: number, step: number) => void;
@@ -985,6 +986,32 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     [prefix]
   );
 
+  const setTriggerStep = useCallback(
+    (laneIdx: number, step: number, enabled: boolean) => {
+      setStepOverrides((prev) => {
+        const next = { ...prev, triggerToggles: [...prev.triggerToggles] };
+        const m = new Map(next.triggerToggles[laneIdx]);
+        const laneNum = laneIdx + 1;
+        const preset = stateRef.current[makeKey(prefix, laneNum, 'Preset')] as string;
+        const stepsVal = stateRef.current[makeKey(prefix, laneNum, 'Steps')] as number;
+        const hitsVal = stateRef.current[makeKey(prefix, laneNum, 'Hits')] as number;
+        const rotVal = stateRef.current[makeKey(prefix, laneNum, 'Rotation')] as number;
+        const resolved = resolveDrumEuclidPatternParams(preset, stepsVal, hitsVal, rotVal);
+        const basePattern = seqEuclidean(resolved.steps, resolved.hits, resolved.rotation);
+        const safeStep = ((Math.round(step) % Math.max(1, resolved.steps)) + Math.max(1, resolved.steps)) % Math.max(1, resolved.steps);
+        const baseVal = basePattern[safeStep] ?? false;
+        if (enabled === baseVal) {
+          m.delete(safeStep);
+        } else {
+          m.set(safeStep, enabled);
+        }
+        next.triggerToggles[laneIdx] = m;
+        return next;
+      });
+    },
+    [prefix]
+  );
+
   const changeStepValue = useCallback(
     (laneIdx: number, lane: LaneKind, step: number, value: number) => {
       if (lane === 'trigger') return;
@@ -1146,6 +1173,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     stepOverrides,
     setStepOverrides,
     toggleTriggerStep,
+    setTriggerStep,
     changeStepValue,
     setStepProbability,
     cycleStepRatchet,

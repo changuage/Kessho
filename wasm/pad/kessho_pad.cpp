@@ -748,7 +748,9 @@ void pad_note_on(int voice_idx, float frequency, float velocity) {
     v.osc_b.phase = 0;
     v.osc_sub.phase = 0;
 
-    // Amplitude ADSR
+    // Retriggered pad voices must not inherit the previous note's sustain or
+    // release value; long attacks should always start from silence.
+    v.amp_env.reset();
     v.amp_env.attack = p.attack;
     v.amp_env.decay = p.decay;
     v.amp_env.sustain = p.sustain;
@@ -756,6 +758,7 @@ void pad_note_on(int voice_idx, float frequency, float velocity) {
     v.amp_env.gate_on();
 
     // Mod envelope
+    v.mod_env.reset();
     if (p.mod_env_enabled) {
         v.mod_env.attack = p.mod_env_attack;
         v.mod_env.decay = p.mod_env_decay;

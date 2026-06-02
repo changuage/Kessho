@@ -146,7 +146,7 @@ export class CoreProductModulationRangeBridge {
     const nextKeys = new Set<string>();
     for (const [key, range] of Object.entries(ranges)) {
       if (!range || !Number.isFinite(range.min) || !Number.isFinite(range.max)) continue;
-      const targets = resolveCoreProductRangeTargets(key);
+      const targets = resolveCoreProductRangeTargets(key, mode);
       if (targets.length === 0) {
         this.options.reportUnsupportedRangeKey(key);
         continue;

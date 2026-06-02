@@ -106,6 +106,10 @@ const LANE0_OFFSET = SYNTH_OFFSET + 4;
 const SEQUENCER_EVENT_SIZE = 60;
 const SCHEMA_VERSION = generatedConstNumber('KESSHO_PRODUCT_SCHEMA_VERSION');
 const SCHEMA_HASH = generatedConstNumber('KESSHO_PRODUCT_SCHEMA_HASH');
+const PAD_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_PAD_PARAM_COUNT');
+const LEAD_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_LEAD_PARAM_COUNT');
+const DRUM_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_DRUM_PARAM_COUNT');
+const DRUM_VOICE_COUNT = generatedConstNumber('KESSHO_PRODUCT_DRUM_VOICE_COUNT');
 const DEFAULT_SOURCE_PRESET_IDS = [1001, 1001, 2001, 2001, 3001, 4001, 5001];
 const DEFAULT_DRUM_VOICE_PRESET_IDS = [3101, 3201, 3301, 3401, 3501, 3601, 3701];
 const SOURCE_PRESET_A_OFFSET = 12;
@@ -115,8 +119,17 @@ const SOURCE_EXPRESSION_OFFSET = 44;
 const SOURCE_DRY_GAIN_OFFSET = 48;
 const SOURCE_POST_LPF_HZ_OFFSET = 72;
 const SOURCE_STEREO_WIDTH_OFFSET = 76;
-const SOURCE_DRUM_VOICE_PRESET_A_OFFSET = 3216;
-const SOURCE_DRUM_VOICE_PRESET_B_OFFSET = 3244;
+const SOURCE_COMMON_BYTES = 96;
+const sparseGeneratedBlockBytes = (paramCount) => 4 + paramCount * 4 + 4 + paramCount * 4 + paramCount * 4;
+const SOURCE_DRUM_VOICE_PRESET_A_OFFSET =
+  SOURCE_COMMON_BYTES +
+  sparseGeneratedBlockBytes(PAD_PARAM_COUNT) +
+  sparseGeneratedBlockBytes(LEAD_PARAM_COUNT) +
+  sparseGeneratedBlockBytes(DRUM_PARAM_COUNT);
+const SOURCE_DRUM_VOICE_PRESET_B_OFFSET = SOURCE_DRUM_VOICE_PRESET_A_OFFSET + DRUM_VOICE_COUNT * 4;
+const SOURCE_DRUM_VOICE_MORPH_OFFSET = SOURCE_DRUM_VOICE_PRESET_B_OFFSET + DRUM_VOICE_COUNT * 4;
+const SOURCE_ENVELOPE_OFFSET = SOURCE_DRUM_VOICE_MORPH_OFFSET + DRUM_VOICE_COUNT * 4;
+assert(SOURCE_ENVELOPE_OFFSET + 5 * 4 === SOURCE_SIZE, `deterministic source offsets are stale: ${SOURCE_ENVELOPE_OFFSET + 5 * 4} !== ${SOURCE_SIZE}`);
 
 const snapshotPtr = malloc(SNAPSHOT_SIZE);
 const eventsPtr = malloc(SEQUENCER_EVENT_SIZE * 8);
@@ -154,7 +167,7 @@ for (let index = 0; index < SOURCE_COUNT; index += 1) {
     setU32(source + SOURCE_PRESET_B_OFFSET, DEFAULT_SOURCE_PRESET_IDS[index]);
   }
   if (index === 4) {
-    for (let voiceIndex = 0; voiceIndex < DEFAULT_DRUM_VOICE_PRESET_IDS.length; voiceIndex += 1) {
+    for (let voiceIndex = 0; voiceIndex < DRUM_VOICE_COUNT; voiceIndex += 1) {
       setU32(source + SOURCE_DRUM_VOICE_PRESET_A_OFFSET + voiceIndex * 4, DEFAULT_DRUM_VOICE_PRESET_IDS[voiceIndex]);
       setU32(source + SOURCE_DRUM_VOICE_PRESET_B_OFFSET + voiceIndex * 4, DEFAULT_DRUM_VOICE_PRESET_IDS[voiceIndex]);
     }

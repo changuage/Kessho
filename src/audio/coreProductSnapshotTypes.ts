@@ -20,6 +20,9 @@ export type ProductSourceSnapshot = {
   postLpfHz: number;
   stereoWidth: number;
   postLpfKeyTracking: number;
+  leadVibratoDepth: number;
+  leadVibratoRate: number;
+  leadGlide: number;
   attackSeconds: number;
   decaySeconds: number;
   sustain: number;

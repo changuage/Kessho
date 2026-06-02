@@ -29,6 +29,7 @@ import {
 } from './visualizerPresetStore';
 import type { PresetSummary } from '../../presets/types';
 import { getVisualizerPulseSnapshot } from './visualizerSignals';
+import { reactiveVisualizerRootSignal } from './reactiveVisualizerHarmony';
 import './reactiveVisualizer.css';
 
 type DualRanges = Record<string, { min: number; max: number } | undefined>;
@@ -470,7 +471,12 @@ function buildSnapshot(
     delay: clamp01(delayEnergy * 1.2),
     reverb: clamp01(reverbEnergy * 1.15),
     dynamics: clamp01(dynamicsEnergy * 1.1),
-    root: clamp01(((value('rootNote') + 12 + value('cofCurrentStep') + engineState.cofCurrentStep) % 12) / 12),
+    root: clamp01(reactiveVisualizerRootSignal({
+      rootNote: value('rootNote'),
+      cofCurrentStep: value('cofCurrentStep'),
+      cofDriftEnabled: readBoolean(state, 'cofDriftEnabled'),
+      engineState,
+    })),
     tension: clamp01(value('tension') * 0.8 + modulationRangeEnergy * 0.2),
     spread: clamp01(value('waveSpread') * 0.58 + value('voicingSpread') * 0.32 + transportPulse),
     detune: clamp01(value('detune') / 25),

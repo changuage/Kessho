@@ -231,6 +231,94 @@ void triggerPadAndExpectParams(
   requirePadModuleParamsEqual(engine, source_id == KESSHO_PRODUCT_SOURCE_PAD2 ? 1u : 0u, expected, context);
 }
 
+float renderPadPeakBlocks(KesshoProductEngine* engine, uint32_t blocks) {
+  require(engine != nullptr, "pad render peak engine missing");
+  require(engine->pad_module != nullptr, "pad render peak module missing");
+  std::array<float, 128> left{};
+  std::array<float, 128> right{};
+  std::array<float, 128> silent{};
+  float peak = 0.0f;
+  for (uint32_t block = 0; block < blocks; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    engine->pad_module->processPlanarStereo(
+        silent.data(),
+        silent.data(),
+        left.data(),
+        right.data(),
+        static_cast<int>(left.size()));
+    for (uint32_t frame = 0; frame < left.size(); ++frame) {
+      require(std::isfinite(left[frame]) && std::isfinite(right[frame]), "pad render produced non-finite sample");
+      peak = std::max(peak, std::fabs(left[frame]));
+      peak = std::max(peak, std::fabs(right[frame]));
+    }
+  }
+  return peak;
+}
+
+void requirePadRuntimeOverride(
+    KesshoProductEngine* engine,
+    uint32_t source_id,
+    uint32_t param_index,
+    float value,
+    const char* context) {
+  require(engine != nullptr, "pad override engine missing");
+  require(
+      engine->applyRuntimeSourceOverrideParam(source_id, param_index, value),
+      context);
+}
+
+PadParams expectedEndpointMorphParams(float morph, float distance);
+
+uint32_t padRuntimeParamId(uint32_t source_id, uint32_t param_index) {
+  const uint32_t base = source_id == KESSHO_PRODUCT_SOURCE_PAD2
+      ? kProductPad2RuntimeParamIdBase
+      : kProductPadRuntimeParamIdBase;
+  return base + param_index;
+}
+
+void applyPadExactSampleHoldRange(
+    KesshoProductEngine* engine,
+    uint32_t source_id,
+    uint32_t param_index,
+    float value) {
+  KesshoProductEvent range{};
+  range.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_MODULATION_RANGE;
+  range.target_id = source_id;
+  range.index = 9900u + param_index;
+  range.param_id = padRuntimeParamId(source_id, param_index);
+  range.value = value;
+  range.value2 = value;
+  range.value3 = static_cast<float>(KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD);
+  range.value4 = value;
+  range.flags = KESSHO_PRODUCT_MODULATION_RANGE_ACTIVE;
+  engine->applyModulationRangeEvent(range);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "pad exact sample-hold range apply failed");
+}
+
+void triggerPadVoice(
+    KesshoProductEngine* engine,
+    uint32_t source_id,
+    uint32_t pad_voice_index,
+    float hold_seconds) {
+  const uint32_t voice_index = engine->triggerVoice(
+      source_id,
+      60.0f,
+      1.0f,
+      hold_seconds,
+      1.0f,
+      0.0f,
+      1.0f,
+      911u,
+      0u,
+      false,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      pad_voice_index);
+  require(voice_index != kProductInvalidVoiceIndex, "pad voice trigger failed");
+}
+
 void requireAllParamPadSparseOverridesSurviveTrigger(uint32_t source_id) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "all-param sparse Pad engine create failed");
@@ -241,6 +329,79 @@ void requireAllParamPadSparseOverridesSurviveTrigger(uint32_t source_id) {
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "all-param sparse Pad snapshot load failed");
 
   triggerPadAndExpectParams(engine, source_id, -1.0f, -1.0f, -1.0f, expected, "all-param sparse Pad params");
+  kessho_product_destroy(engine);
+}
+
+void requirePadRetriggerRespectsLongAttack() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "pad retrigger attack engine create failed");
+
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configureGeneratedEndpointPadSourceWithoutSnapshotExact(
+      snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u],
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      1.0f);
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].distance = 0.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "pad retrigger attack snapshot load failed");
+
+  requirePadRuntimeOverride(engine, KESSHO_PRODUCT_SOURCE_PAD1, 33u, 0.001f, "pad retrigger fast attack override failed");
+  requirePadRuntimeOverride(engine, KESSHO_PRODUCT_SOURCE_PAD1, 34u, 0.01f, "pad retrigger decay override failed");
+  requirePadRuntimeOverride(engine, KESSHO_PRODUCT_SOURCE_PAD1, 35u, 1.0f, "pad retrigger sustain override failed");
+
+  triggerPadVoice(engine, KESSHO_PRODUCT_SOURCE_PAD1, 0u, 20.0f);
+  const float loud_peak = renderPadPeakBlocks(engine, 12u);
+  require(loud_peak > 0.02f, "pad retrigger setup did not reach an audible envelope level");
+
+  requirePadRuntimeOverride(engine, KESSHO_PRODUCT_SOURCE_PAD1, 33u, 10.4f, "pad retrigger long attack override failed");
+  triggerPadVoice(engine, KESSHO_PRODUCT_SOURCE_PAD1, 0u, 20.0f);
+  const float retrigger_peak = renderPadPeakBlocks(engine, 1u);
+  require(
+      retrigger_peak < 0.02f && retrigger_peak < loud_peak * 0.2f,
+      "pad retrigger reused the previous envelope level instead of starting the long attack from silence");
+
+  kessho_product_destroy(engine);
+}
+
+void requirePadExactSampleHoldRangeAppliesOnTrigger() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "pad exact sample-hold engine create failed");
+
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configureGeneratedEndpointPadSourceWithoutSnapshotExact(
+      snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u],
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      1.0f);
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].distance = 0.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "pad exact sample-hold snapshot load failed");
+
+  constexpr uint32_t kAttackParamIndex = 33u;
+  constexpr float kSampledAttack = 7.25f;
+  applyPadExactSampleHoldRange(engine, KESSHO_PRODUCT_SOURCE_PAD1, kAttackParamIndex, kSampledAttack);
+
+  PadParams expected = expectedEndpointMorphParams(1.0f, 0.0f);
+  expected[kAttackParamIndex] = kSampledAttack;
+  triggerPadAndExpectParams(
+      engine,
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      1.0f,
+      0.0f,
+      1.0f,
+      expected,
+      "pad exact sample-hold trigger params");
+
+  const ModulationRange* range = engine->findModulationRange(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      padRuntimeParamId(KESSHO_PRODUCT_SOURCE_PAD1, kAttackParamIndex));
+  require(range != nullptr, "pad exact sample-hold range missing after trigger");
+  require(range->sample_hold_counter > 0u, "pad exact sample-hold did not sample on trigger");
+  require(
+      range->last_trigger_source == KESSHO_PRODUCT_SOURCE_PAD1,
+      "pad exact sample-hold recorded wrong trigger source");
+
   kessho_product_destroy(engine);
 }
 
@@ -447,6 +608,8 @@ int main() {
   requireGeneratedEndpointPadSnapshotDoesNotNeedExactPatch(KESSHO_PRODUCT_SOURCE_PAD1, 0.35f);
   requireGeneratedEndpointPadSnapshotDoesNotNeedExactPatch(KESSHO_PRODUCT_SOURCE_PAD2, 0.65f);
   requireStableEndpointPadPatchIsCachedAcrossTriggers();
+  requirePadRetriggerRespectsLongAttack();
+  requirePadExactSampleHoldRangeAppliesOnTrigger();
 
   std::cout << "Kessho Product Pad Exact Patch tests passed\n";
   return 0;

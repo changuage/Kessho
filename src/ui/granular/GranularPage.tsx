@@ -20,6 +20,7 @@ import GranularBufferCanvas from './GranularBufferCanvas';
 import type { CanvasVoiceVisual } from './GranularBufferCanvas';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import { useVisibleInterval } from '../hooks/useVisibleInterval';
+import { useDocumentVisibility } from '../hooks/useDocumentVisibility';
 import { useRuntimeSliderVersion } from '../runtimeSliderState';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import { extractParams } from '../../presets/codec';
@@ -239,6 +240,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
   const [voicePositions, setVoicePositions] = useState<number[]>([0, 0, 0, 0]);
   const [activeGrainCount, setActiveGrainCount] = useState(0);
   const [bufferWaveform, setBufferWaveform] = useState<Float32Array | null>(null);
+  const documentVisible = useDocumentVisibility();
   const [visualizerEnabled, setVisualizerEnabled] = useState(() => liveBufferTelemetryAvailable && !isMobile);
 
   const syncGranularUi = useCallback(() => {
@@ -275,13 +277,13 @@ const GranularPage: React.FC<GranularPageProps> = ({
   }, [activeGrainCount, state.granularEnabled, state.granularFreeze]);
 
   useVisibleInterval(syncGranularUi, granularUiPollMs, {
-    enabled: isRunning && (visualizerEnabled || !liveBufferTelemetryAvailable),
+    enabled: isRunning && documentVisible && (visualizerEnabled || !liveBufferTelemetryAvailable),
   });
 
   useEffect(() => {
-    setGranularUiActive(isRunning && visualizerEnabled && liveBufferTelemetryAvailable);
+    setGranularUiActive(isRunning && documentVisible && visualizerEnabled && liveBufferTelemetryAvailable);
 
-    if (!isRunning || !visualizerEnabled || !liveBufferTelemetryAvailable) {
+    if (!isRunning || !documentVisible || !visualizerEnabled || !liveBufferTelemetryAvailable) {
       setWriteHeadPosition(prev => (prev === 0 ? prev : 0));
       setVoicePositions(prev => (positionsEqual(prev, [0, 0, 0, 0]) ? prev : [0, 0, 0, 0]));
       if (!isRunning) {
@@ -295,7 +297,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
     return () => {
       setGranularUiActive(false);
     };
-  }, [isRunning, liveBufferTelemetryAvailable, setGranularUiActive, visualizerEnabled]);
+  }, [documentVisible, isRunning, liveBufferTelemetryAvailable, setGranularUiActive, visualizerEnabled]);
 
   useEffect(() => {
     if (!liveBufferTelemetryAvailable) {

@@ -33,6 +33,9 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SourceReleaseSeconds: 118,
   SourceLeadEnvelopeOverrideEnabled: 119,
   SourceLeadAlgorithmPresetAEnabled: 120,
+  SourceLeadVibratoDepth: 121,
+  SourceLeadVibratoRate: 122,
+  SourceLeadGlide: 123,
   SequencerLaneEnabled: 200,
   SequencerLaneTargetSource: 201,
   SequencerLaneStepCount: 202,
@@ -623,6 +626,30 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "path": "sources.*.leadAlgorithmPresetAEnabled",
     "type": "bool",
     "id": 120
+  },
+  {
+    "name": "SourceLeadVibratoDepth",
+    "path": "sources.*.leadVibratoDepth",
+    "type": "float",
+    "id": 121,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SourceLeadVibratoRate",
+    "path": "sources.*.leadVibratoRate",
+    "type": "float",
+    "id": 122,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SourceLeadGlide",
+    "path": "sources.*.leadGlide",
+    "type": "float",
+    "id": 123,
+    "min": 0,
+    "max": 1
   },
   {
     "name": "SequencerLaneEnabled",

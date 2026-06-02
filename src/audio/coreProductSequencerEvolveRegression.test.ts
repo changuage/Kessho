@@ -89,7 +89,6 @@ function hasUnsignedFlag(flags: number | undefined, flag: number): boolean {
     latestSliderState: { tension: 0.4, padTensionMode: 'follow', padTensionValue: 0.1 },
     latestProductSnapshot: null,
     latestTelemetry: { ...telemetry(0, 0), barIndex: 6 },
-    runtimeReady: true,
     armManualDice: () => { armed += 1; },
     post: (event) => { posted.push(event); },
     publish: (name, ...payload) => { published.push({ name, payload }); },
@@ -138,14 +137,14 @@ function hasUnsignedFlag(flags: number | undefined, flag: number): boolean {
     latestSliderState: null,
     latestProductSnapshot: null,
     latestTelemetry: null,
-    runtimeReady: false,
     armManualDice: () => { armed += 1; },
     post: (event) => { posted.push(event); },
     publish: (name, ...payload) => { published.push({ name, payload }); },
     captureHome: () => {},
   });
 
-  assert.equal(posted.length, 0, 'native manual synth dice should not post while runtime is not ready');
+  assert.equal(posted.length, 1, 'native manual synth dice should always create the compact Product Core dice event; host post callbacks own runtime readiness');
+  assert.equal(posted[0]?.eventKind, KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane, 'cold-path manual synth dice should still use the native Product Core dice event kind');
   assert.equal(armed, 1, 'native manual synth dice should still arm UI reconciliation while runtime is cold');
   assert(
     published.some((entry) => entry.name === 'synthEuclidEvolve' && entry.payload[0] === 1),

@@ -32,7 +32,7 @@ export class CoreProductJourneyMorphClock {
       if (this.raf === null) this.scheduleTick();
       return;
     }
-    this.options.invoke(this.options.nowMs());
+    this.cancelTick();
   }
 
   scheduleTick(): void {

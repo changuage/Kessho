@@ -83,6 +83,16 @@ const enqueueEvent = resolveExport(wasm, 'kessho_product_enqueue_event');
 const render = resolveExport(wasm, 'kessho_product_render');
 const copyTelemetry = resolveExport(wasm, 'kessho_product_copy_telemetry');
 const copySequencerUiState = resolveExport(wasm, 'kessho_product_copy_sequencer_ui_state');
+const EVENT_DICE_SEQUENCER_LANE = 29;
+const SEQUENCER_SYNTH = 1;
+const DICE_FIELD_EXPRESSION = 1 << 4;
+const EVOLVE_METHOD_VALUE_SCRAMBLE = 1 << 16;
+const EVOLVE_MANUAL_COMMIT = 1 << 28;
+const EVOLVE_MODE_PARITY = 0x80000000;
+const SEQUENCER_UI_LANE_BASE_OFFSET = 36;
+const SEQUENCER_UI_LANE_SIZE = 3024;
+const LANE_EXPRESSION_OVERRIDE_SET_LOW_OFFSET = 76;
+const LANE_EXPRESSION_OVERRIDES_OFFSET = 1448;
 
 const frames = 128;
 const leftPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
@@ -125,6 +135,14 @@ function renderPeak(blocks = 1) {
     }
   }
   return peak;
+}
+
+function sequencerUiSynthLaneOffset(laneIndex) {
+  return sequencerUiStatePtr + SEQUENCER_UI_LANE_BASE_OFFSET + laneIndex * SEQUENCER_UI_LANE_SIZE;
+}
+
+function readSequencerUiLaneFloatArray(laneBase, offset, count) {
+  return Array.from({ length: count }, (_, index) => view.getFloat32(laneBase + offset + index * 4, true));
 }
 
 writeEvent({ eventKind: 14, value: 60, value2: 0.8, value3: 0.2 });
@@ -195,6 +213,31 @@ assert(view.getUint32(sequencerUiStatePtr + 24, true) === 1, 'WASM product seque
 assert(view.getUint32(sequencerUiStatePtr + 32, true) === 3, 'WASM product sequencer UI state did not classify dice');
 assert((view.getUint32(sequencerUiStatePtr + 36 + 24, true) & 1) !== 0, 'WASM product sequencer UI lane did not expose diced override state');
 assert(view.getFloat32(sequencerUiStatePtr + 36 + 3016, true) <= view.getFloat32(sequencerUiStatePtr + 36 + 3020, true), 'WASM product sequencer UI lane did not expose valid note-range bounds');
+
+reset(engine);
+enqueueRawEvent(
+  {
+    eventKind: EVENT_DICE_SEQUENCER_LANE,
+    targetId: SEQUENCER_SYNTH,
+    index: 0,
+    value: 1,
+    value2: 7171,
+    value3: -1,
+    value4: 3,
+    flags: (EVOLVE_MODE_PARITY + EVOLVE_MANUAL_COMMIT + EVOLVE_METHOD_VALUE_SCRAMBLE + DICE_FIELD_EXPRESSION) >>> 0,
+  },
+  'WASM product manual-commit synth dice enqueue failed',
+);
+render(engine, leftPtr, rightPtr, frames);
+assert(copySequencerUiState(engine, sequencerUiStatePtr) === 1, 'WASM product post-manual-commit sequencer UI state copy failed');
+const manualCommitLane = sequencerUiSynthLaneOffset(0);
+const manualCommitExpressionMask = view.getUint32(manualCommitLane + LANE_EXPRESSION_OVERRIDE_SET_LOW_OFFSET, true);
+assert(manualCommitExpressionMask !== 0, 'WASM product manual-commit synth dice did not expose an expression override mask');
+const manualCommitExpressionValues = readSequencerUiLaneFloatArray(manualCommitLane, LANE_EXPRESSION_OVERRIDES_OFFSET, 8);
+assert(
+  manualCommitExpressionValues.some((value) => Number.isFinite(value) && value > 0 && value < 1),
+  'WASM product manual-commit synth dice did not expose a mutated expression value',
+);
 
 destroy(engine);
 free(leftPtr);

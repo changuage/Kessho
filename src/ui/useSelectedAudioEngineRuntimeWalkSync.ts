@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 
 import type { SliderMode, SliderState } from './state';
 import { replaceRuntimeWalkPositions } from './runtimeSliderState';
+import { useDocumentVisibility } from './hooks/useDocumentVisibility';
 
 type ProductRange = { min: number; max: number };
 
@@ -26,6 +27,8 @@ export function useSelectedAudioEngineRuntimeWalkSync({
   shouldMirrorRuntimeWalkPositions,
   sliderModes,
 }: RuntimeWalkSyncOptions): void {
+  const documentVisible = useDocumentVisibility();
+
   useEffect(() => {
     const walkRanges: Record<string, ProductRange> = {};
     Object.entries(sliderModes).forEach(([key, mode]) => {
@@ -47,7 +50,7 @@ export function useSelectedAudioEngineRuntimeWalkSync({
   ]);
 
   useEffect(() => {
-    if (!shouldMirrorRuntimeWalkPositions) {
+    if (!shouldMirrorRuntimeWalkPositions || !documentVisible) {
       setSelectedRuntimeWalkPositionsCallback(null);
       return;
     }
@@ -59,5 +62,5 @@ export function useSelectedAudioEngineRuntimeWalkSync({
     return () => {
       setSelectedRuntimeWalkPositionsCallback(null);
     };
-  }, [setSelectedRuntimeWalkPositionsCallback, shouldMirrorRuntimeWalkPositions]);
+  }, [documentVisible, setSelectedRuntimeWalkPositionsCallback, shouldMirrorRuntimeWalkPositions]);
 }

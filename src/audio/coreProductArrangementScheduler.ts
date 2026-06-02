@@ -1,4 +1,13 @@
 import { CORE_PRODUCT_SOURCE_IDS, createCoreProductManualNoteEvent, type CoreProductEvent } from './coreProductEvents';
+import { createCoreProductHarmonyParamEvents } from './coreProductHarmonyParamEvents';
+import {
+  PAD_VOICE_COUNT,
+  arrangementRestartKey,
+  enabledChordMidiForMask,
+  enabledVoiceRank,
+  padEuclidOwnedVoiceMask,
+} from './coreProductArrangementVoiceMapping';
+import { coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
 import { createHarmonyState, getEffectiveTension, updateHarmonyState, type HarmonyParams, type HarmonyState } from './harmony';
 import { createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange } from './scales';
@@ -10,56 +19,6 @@ import {
   type TransportAnchors,
 } from './transport';
 import type { SliderState } from '../ui/state';
-
-const PAD_VOICE_COUNT = 6;
-const ARRANGEMENT_RESTART_KEYS = [
-  'phraseLength',
-  'transportPrimaryClock',
-  'transportBeatsPerBar',
-  'transportBarsPerPhrase',
-  'sequencerMasterBPM',
-  'synthEuclidBaseBPM',
-  'drumEuclidBaseBPM',
-  'harmonyClockSource',
-  'chordProgressionClockSource',
-  'chordProgressionPhraseMultiplier',
-  'chordRate',
-  'seedWindow',
-  'scaleMode',
-  'manualScale',
-  'rootNote',
-  'chordProgressionEnabled',
-  'chordProgressionPattern',
-  'chordProgressionSteps',
-  'chordProgressionStepEnabled',
-  'cofDriftEnabled',
-  'cofDriftRate',
-  'cofDriftDirection',
-  'cofDriftRange',
-  'synthChordSequencerEnabled',
-  'synthEuclideanMasterEnabled',
-  'synthEuclid1Enabled',
-  'synthEuclid1Source',
-  'synthEuclid2Enabled',
-  'synthEuclid2Source',
-  'synthEuclid3Enabled',
-  'synthEuclid3Source',
-  'synthEuclid4Enabled',
-  'synthEuclid4Source',
-  'padEnabled',
-  'pad2Enabled',
-  'synthVoiceMask',
-  'pad2VoiceAssign',
-  'synthOctave',
-  'waveSpread',
-  'leadRandomEnabled',
-  'leadRandomSource',
-  'leadRandomClockSource',
-  'leadRandomSyncPolicy',
-  'leadEnabled',
-  'lead2Enabled',
-  'pianoEnabled',
-] as const;
 type PostEvent = (event: CoreProductEvent) => void;
 type PublishTrigger = (name: string, ...payload: unknown[]) => void;
 function clamp(value: number, min: number, max: number): number {
@@ -81,9 +40,6 @@ function booleanFromState(state: Record<string, unknown>, key: string, fallback:
 }
 function sliderStateFromRecord(state: Record<string, unknown>): SliderState {
   return state as unknown as SliderState;
-}
-function arrangementRestartKey(state: Record<string, unknown>): string {
-  return JSON.stringify(ARRANGEMENT_RESTART_KEYS.map((key) => [key, state[key]]));
 }
 function harmonyParamsFromState(state: SliderState): Partial<HarmonyParams> {
   return {
@@ -149,20 +105,6 @@ function pickChordWeightedNote(
   return passingTones[Math.floor(rng() * passingTones.length)] ?? availableNotes[0] ?? 60;
 }
 
-function padEuclidOwnedVoiceMask(state: Record<string, unknown>): number {
-  if (!booleanFromState(state, 'synthEuclideanMasterEnabled', false)) return 0;
-  let mask = 0;
-  for (const laneNumber of [1, 2, 3, 4]) {
-    const prefix = `synthEuclid${laneNumber}`;
-    if (!booleanFromState(state, `${prefix}Enabled`, laneNumber === 1)) continue;
-    const source = String(state[`${prefix}Source`] ?? 'lead').toLowerCase();
-    if (!source.startsWith('synth')) continue;
-    const voiceIndex = Number.parseInt(source.replace('synth', ''), 10) - 1;
-    if (voiceIndex >= 0 && voiceIndex < PAD_VOICE_COUNT) mask |= 1 << voiceIndex;
-  }
-  return mask;
-}
-
 function leadRandomSource(state: Record<string, unknown>): 'lead1' | 'lead2' | 'piano' {
   const source = state.leadRandomSource;
   return source === 'lead2' || source === 'piano' ? source : 'lead1';
@@ -184,7 +126,6 @@ function leadRandomSourceEnabled(state: Record<string, unknown>, source: 'lead1'
   if (source === 'piano') return booleanFromState(state, 'pianoEnabled', false);
   return booleanFromState(state, 'leadEnabled', false);
 }
-
 export class CoreProductArrangementScheduler {
   private state: Record<string, unknown> | null = null;
   private anchors: TransportAnchors | null = null;
@@ -220,6 +161,7 @@ export class CoreProductArrangementScheduler {
     const bucket = getUtcBucket(sliderState.seedWindow === 'day' ? 'day' : 'hour');
     this.rng = createRng(`${bucket}|E_ROOT`);
     this.harmonyState = createSchedulerHarmonyState(sliderState);
+    for (const event of createCoreProductHarmonyParamEvents(this.harmonyState)) this.postEvent(event);
     if (booleanFromState(this.state, 'synthChordSequencerEnabled', false)) {
       this.triggerPadChord();
     }
@@ -391,6 +333,7 @@ export class CoreProductArrangementScheduler {
       progressionPhraseIndex,
       isPhraseBoundary,
     );
+    if (isPhraseBoundary) for (const event of createCoreProductHarmonyParamEvents(this.harmonyState)) this.postEvent(event);
     if (booleanFromState(this.state, 'synthChordSequencerEnabled', false)) {
       this.triggerPadChord();
     }
@@ -412,6 +355,8 @@ export class CoreProductArrangementScheduler {
       ? this.harmonyState.currentChord.midiNotes
       : [48 + boundedInteger(this.state, 'rootNote', 4, 0, 11)];
     const octaveShift = boundedInteger(this.state, 'synthOctave', 0, -2, 2) * 12;
+    const pad1ChordMidi = enabledChordMidiForMask(chordMidi, pad1Mask);
+    const pad2ChordMidi = enabledChordMidiForMask(chordMidi, pad2Mask);
     const waveSpreadSeconds =
       boundedNumber(this.state, 'waveSpread', 0.125, 0, 1) *
       boundedNumber(this.state, 'chordRate', 32, 1, 128);
@@ -426,9 +371,10 @@ export class CoreProductArrangementScheduler {
     );
     for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT; voiceIndex += 1) {
       const bit = 1 << voiceIndex;
-      const midi = clamp(chordMidi[voiceIndex % chordMidi.length]! + octaveShift, 0, 127);
       const delaySeconds = voiceOffsets[voiceIndex] ?? 0;
       if ((pad1Mask & bit) !== 0) {
+        const enabledIndex = enabledVoiceRank(pad1Mask, voiceIndex);
+        const midi = clamp(pad1ChordMidi[enabledIndex % pad1ChordMidi.length]! + octaveShift, 0, 127);
         this.scheduleNote(delaySeconds, createCoreProductManualNoteEvent(
           CORE_PRODUCT_SOURCE_IDS.pad1,
           midi,
@@ -438,6 +384,8 @@ export class CoreProductArrangementScheduler {
         ), 'pad');
       }
       if ((pad2Mask & bit) !== 0) {
+        const enabledIndex = enabledVoiceRank(pad2Mask, voiceIndex);
+        const midi = clamp(pad2ChordMidi[enabledIndex % pad2ChordMidi.length]! + octaveShift, 0, 127);
         this.scheduleNote(delaySeconds, createCoreProductManualNoteEvent(
           CORE_PRODUCT_SOURCE_IDS.pad2,
           midi,
@@ -500,11 +448,12 @@ export class CoreProductArrangementScheduler {
       if (availableNotes.length === 0) continue;
       const midi = pickChordWeightedNote(this.rng, availableNotes, this.harmonyState.currentChord?.midiNotes, chordBias);
       const velocity = 0.5 + this.rng() * 0.4;
+      const sourceId = leadRandomSourceId(source);
       this.scheduleNote(timingSeconds, createCoreProductManualNoteEvent(
-        leadRandomSourceId(source),
+        sourceId,
         midi,
         velocity,
-        boundedNumber(this.state, 'lead1Hold', 0.5, 0.03, 4) * 1000,
+        coreProductSynthSequencerHoldSecondsFromState(this.state, sourceId, 0.5) * 1000,
       ), 'lead');
     }
     const delaySeconds = getTimeUntilNextBoundaryWall(

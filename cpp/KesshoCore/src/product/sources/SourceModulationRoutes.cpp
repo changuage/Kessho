@@ -28,6 +28,12 @@
       return 11u;
     case KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID:
       return 12u;
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_VIBRATO_DEPTH_ID:
+      return 13u;
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_VIBRATO_RATE_ID:
+      return 14u;
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_GLIDE_ID:
+      return 15u;
     default:
       return kSourceModulationParamSlotCount;
   }

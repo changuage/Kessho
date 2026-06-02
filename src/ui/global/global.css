@@ -36,16 +36,26 @@
 }
 
 @media (max-width: 900px) {
+  .global-root .global-container {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
   .global-root .global-summary-panel,
   .global-root .global-engine-panel {
-    flex: 1 1 100%;
+    display: contents;
+    flex: initial;
     min-width: 0;
     max-width: 100%;
   }
 
-  .global-root .global-engine-panel {
-    order: -1;
-  }
+  .global-root .presets-card { order: 1; }
+  .global-root .scene-card-ultra { order: 2; }
+  .global-root .harmony-engine-panel { order: 3; }
+  .global-root .harmony-card { order: 4; }
+  .global-root .utility-card { order: 5; }
+  .global-root .scene-runtime-card { order: 6; }
 }
 
 /* ── Card (shared base for panels) ── */
@@ -71,9 +81,53 @@
   padding: 8px 10px;
   font-size: var(--font-lg);
   font-weight: 700;
-  color: var(--accent-harmony);
+  color: var(--text-primary);
   border-bottom: 1px solid rgba(255,255,255,0.05);
   margin: 0;
+}
+
+/* ── Chord Harmony card uses the shared global card shell ── */
+.global-root .harmony-engine-panel {
+  margin-bottom: 10px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--k-bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  color: var(--text-primary);
+}
+
+.global-root .harmony-engine-panel .harmony-summary-card {
+  padding: 0;
+}
+
+.global-root .harmony-engine-panel .harmony-engine-header {
+  padding: 8px 10px 7px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.global-root .harmony-engine-panel .harmony-engine-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--font-lg);
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.global-root .harmony-engine-panel .harmony-engine-meta {
+  color: var(--text-muted);
+}
+
+.global-root .harmony-engine-panel .harmony-summary-grid {
+  margin: 0;
+  padding: 10px;
+}
+
+.global-root .harmony-engine-panel .harmony-manual-popup,
+.global-root .harmony-engine-panel .harmony-lab-popup {
+  margin: 0 10px 10px;
 }
 
 /* ── Harmony Sub-section ── */

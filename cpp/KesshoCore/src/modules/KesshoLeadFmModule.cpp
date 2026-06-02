@@ -287,6 +287,7 @@ public:
         velocity,
         hold_seconds,
         lead_index > 0 ? 1 : 0);
+    last_triggered_frequency_hz_ = last_triggered_voice_index_ >= 0 ? frequency : 0.0f;
     return last_triggered_voice_index_ >= 0 ? 1 : 0;
   }
 
@@ -375,6 +376,10 @@ public:
     return last_triggered_voice_index_;
   }
 
+  float lastTriggeredFrequencyHz() const override {
+    return last_triggered_frequency_hz_;
+  }
+
   int activeVoiceCount() override {
     return instance_ != nullptr ? lead_fm_instance_get_active_count(instance_) : 0;
   }
@@ -426,6 +431,7 @@ private:
   float sample_rate_ = 48000.0f;
   int max_block_size_ = kLeadFmBlockSize;
   int last_triggered_voice_index_ = -1;
+  float last_triggered_frequency_hz_ = 0.0f;
   std::array<float, kParamCount> params_ = makeDefaultParams();
 };
 

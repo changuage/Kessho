@@ -23,6 +23,9 @@ bool KesshoProductEngine::isSourceParam(uint32_t param_id) const {
     case KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_ENVELOPE_OVERRIDE_ENABLED_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_ALGORITHM_PRESET_AENABLED_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_VIBRATO_DEPTH_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_VIBRATO_RATE_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_GLIDE_ID:
       return true;
     default:
       return false;
@@ -125,6 +128,15 @@ void KesshoProductEngine::applySourceParam(const KesshoProductEvent& event) {
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_ALGORITHM_PRESET_AENABLED_ID:
       source.lead_algorithm_preset_a_enabled = event.value >= 0.5f;
+      break;
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_VIBRATO_DEPTH_ID:
+      source.lead_vibrato_depth = clampFloat(event.value, 0.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_VIBRATO_RATE_ID:
+      source.lead_vibrato_rate = clampFloat(event.value, 0.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_GLIDE_ID:
+      source.lead_glide = clampFloat(event.value, 0.0f, 1.0f);
       break;
     default:
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;

@@ -103,7 +103,6 @@ export function applyCoreProductManualSynthDice(options: {
   latestSliderState: Record<string, unknown> | null;
   latestProductSnapshot: CoreProductSnapshot | null;
   latestTelemetry: CoreProductTelemetrySnapshot | null;
-  runtimeReady: boolean;
   armManualDice: () => void;
   post: (event: CoreProductEvent) => void;
   publish: (name: string, ...payload: unknown[]) => void;
@@ -114,7 +113,7 @@ export function applyCoreProductManualSynthDice(options: {
   options.armManualDice();
   const config = manualSynthDiceConfig(options.adapterState, options.laneIndex, options.intensity);
   const nativeFlags = nativeEvolveFlagsForEvolveConfig(config, 'synth');
-  if (options.runtimeReady && nativeFlags !== 0) {
+  if (nativeFlags !== 0) {
     const telemetry = options.latestTelemetry ?? ({ schemaHash: 0, transportRunning: false, activeSources: 0, activeVoices: 0, activeAssets: 0 } as CoreProductTelemetrySnapshot);
     const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
     options.post(createCoreProductSequencerDiceEvent(

@@ -63,6 +63,9 @@ typedef struct KesshoProductSourceSnapshot {
   float post_lpf_hz;
   float stereo_width;
   float post_lpf_key_tracking;
+  float lead_vibrato_depth;
+  float lead_vibrato_rate;
+  float lead_glide;
   uint32_t exact_pad_param_count;
   float exact_pad_params[53];
   uint32_t pad_override_count;

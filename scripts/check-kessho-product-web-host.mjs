@@ -31,6 +31,7 @@ function methodBody(source, signature) {
 }
 
 const host = read('src/audio/coreProductEngineHost.ts');
+const viteConfig = read('vite.config.ts');
 const packageJson = JSON.parse(read('package.json'));
 const hostAssetRegistrar = read('src/audio/product/host/CoreProductAssetRegistrar.ts');
 const fallbackDiagnostics = read('src/audio/CoreProductFallbackDiagnostics.ts');
@@ -841,6 +842,7 @@ for (const token of [
   'architectureAuthority: false',
   'doesNotProve',
   'requiredArchitectureGates',
+  "KESSHO_SEQUENCER_UI_PROOF_DISABLE_HMR: '1'",
   "'core:product:host-reconciliation'",
   "'core:product:dirty-diff'",
   "'core:product:sequencer'",
@@ -966,6 +968,11 @@ for (const token of [
 ]) {
   assert(sequencerUiParity.includes(token), `Sequencer UI parity proof is missing ${token}`);
 }
+assert(
+  viteConfig.includes("process.env.KESSHO_SEQUENCER_UI_PROOF_DISABLE_HMR === '1'") &&
+    viteConfig.includes('server: { hmr: false }'),
+  'Vite config must let the sequencer UI behavioral proof disable HMR for stable reports under concurrent edits',
+);
 for (const token of [
   'sequenced-synth-euclid-pad1-dry-routing',
   'active-morph-slider-sequenced-synth-pad1-route-smoke',
@@ -1938,6 +1945,7 @@ for (const token of [
   'updateHarmonyState',
   'getScaleNotesInRange',
   'createCoreProductManualNoteEvent',
+  'coreProductSynthSequencerHoldSecondsFromState(this.state, sourceId, 0.5) * 1000',
   "boundedNumber(this.state, 'lead1Density', 0.5, 0.1, 12)",
   'const timingSeconds = (this.rng() * phraseMs) / 1000;',
   'pickChordWeightedNote(this.rng, availableNotes',
@@ -1967,8 +1975,8 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 28464',
-  'const SOURCE_BYTES = 3320',
+  'const SNAPSHOT_BYTES = 28548',
+  'const SOURCE_BYTES = 3332',
   'const LANE_BYTES = 92',
   'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
   'KESSHO_PRODUCT_DRUM_VOICE_COUNT',
@@ -2991,6 +2999,7 @@ const snapshotImportAllowlist = new Set([
   './coreProductDelaySnapshot',
   './coreProductAssets',
   './coreProductEvents',
+  './coreProductHarmonyScaleIds',
   './coreProductSequencerMacroDefaults',
   './coreProductSequencerHold',
   './coreProductSoundscapesSnapshot',
@@ -3070,6 +3079,8 @@ const hostImportAllowlist = new Set([
   './coreProductAssets',
   './CoreProductFallbackDiagnostics',
   './coreProductEvents',
+  './coreProductHarmonyParamEvents',
+  './coreProductHarmonyScaleIds',
   './coreProductGraphTaps',
   './coreProductRuntime',
   './coreProductSnapshot',

@@ -1414,7 +1414,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
         />
 
         <div className="harmony-card">
-          <h3 className="harmony-card-title">Harmony Setup</h3>
+          <h3 className="harmony-card-title">Harmony Engine</h3>
 
           {/* Root & CoF + Chord Progression side by side */}
           <div className="harmony-row-2col">

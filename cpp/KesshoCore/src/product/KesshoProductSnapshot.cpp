@@ -495,6 +495,15 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     sources[i].post_lpf_key_tracking = std::isfinite(source.post_lpf_key_tracking)
         ? clampFloat(source.post_lpf_key_tracking, 0.0f, 1.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING;
+    sources[i].lead_vibrato_depth = std::isfinite(source.lead_vibrato_depth)
+        ? clampFloat(source.lead_vibrato_depth, 0.0f, 1.0f)
+        : 0.0f;
+    sources[i].lead_vibrato_rate = std::isfinite(source.lead_vibrato_rate)
+        ? clampFloat(source.lead_vibrato_rate, 0.0f, 1.0f)
+        : 0.0f;
+    sources[i].lead_glide = std::isfinite(source.lead_glide)
+        ? clampFloat(source.lead_glide, 0.0f, 1.0f)
+        : 0.0f;
     sources[i].attack_seconds = source.attack_seconds > 0.0f && std::isfinite(source.attack_seconds)
         ? clampFloat(source.attack_seconds, 0.001f, 2.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS;

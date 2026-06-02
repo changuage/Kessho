@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { SliderState } from '../state';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import type { HarmonyState } from '../../audio/harmony';
+import { productHarmonyScaleIdFromName } from '../../audio/coreProductHarmonyScaleIds';
 import type { ProductManualSynthNote, ProductManualSynthSource } from '../../audio/product/ProductEngineTypes';
 import {
   HARMONY_NOTE_KEYS,
@@ -103,20 +104,6 @@ const BASS_MODES: readonly { value: HarmonyBassMode; label: string }[] = [
   { value: 'fifth', label: 'Fifth' },
 ];
 
-const PRODUCT_SCALE_IDS = new Map<string, number>([
-  ['Major (Ionian)', 1],
-  ['Aeolian', 2],
-  ['Major Pentatonic', 3],
-  ['Octatonic Half-Whole', 4],
-  ['Lydian', 5],
-  ['Mixolydian', 6],
-  ['Minor Pentatonic', 7],
-  ['Dorian', 8],
-  ['Harmonic Minor', 9],
-  ['Melodic Minor', 10],
-  ['Phrygian Dominant', 11],
-]);
-
 type HarmonyBank = 'A' | 'B';
 type HarmonyPopup = 'manual' | 'lab' | null;
 type VoicingInputMode = 'root' | 'degree';
@@ -176,29 +163,17 @@ function noteName(value: number): string {
   return NOTE_NAMES[pitchClass(value)] ?? 'C';
 }
 
-function scaleIdFromName(name: string | undefined): number {
-  if (!name) return 1;
-  const exact = PRODUCT_SCALE_IDS.get(name);
-  if (exact) return exact;
-  const normalized = name.toLowerCase();
-  if (normalized.includes('major pentatonic')) return 3;
-  if (normalized.includes('minor pentatonic')) return 7;
-  if (normalized.includes('harmonic minor')) return 9;
-  if (normalized.includes('melodic minor')) return 10;
-  if (normalized.includes('phrygian')) return 11;
-  if (normalized.includes('octatonic') || normalized.includes('hirajoshi')) return 4;
-  if (normalized.includes('mixolydian')) return 6;
-  if (normalized.includes('lydian')) return 5;
-  if (normalized.includes('dorian')) return 8;
-  if (normalized.includes('minor') || normalized.includes('aeolian')) return 2;
-  return 1;
-}
-
 function rootMidiFromState(state: SliderState): number {
   const record = state as unknown as Record<string, unknown>;
   const explicit = record.rootMidi;
   if (typeof explicit === 'number' && Number.isFinite(explicit)) return clamp(explicit, 0, 127);
   return 60 + pitchClass(state.rootNote);
+}
+
+function rootMidiWithPitchClass(baseMidi: number, rootPitchClass: number): number {
+  const base = clamp(Math.round(baseMidi), 0, 127);
+  const candidate = Math.floor(base / 12) * 12 + pitchClass(rootPitchClass);
+  return clamp(candidate > 127 ? candidate - 12 : candidate, 0, 127);
 }
 
 function morphPercentFromState(state: SliderState): number {
@@ -433,7 +408,7 @@ function HarmonySummaryCard({
     <div className="harmony-summary-card">
       <div className="harmony-engine-header">
         <div>
-          <div className="harmony-engine-title">Harmony Engine</div>
+          <div className="harmony-engine-title">Chord Harmony</div>
           <div className="harmony-engine-meta">
             {rootLabel} {scaleName} · Bank {bank} · Morph {Math.round(resolvedFrame.morphPercent)}% · {manualLocked ? 'Manual locked' : 'Manual available'}
           </div>
@@ -1625,9 +1600,12 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
   }, [announceHelp]);
 
   const harmonyContext = useMemo(() => {
-    const rootMidi = rootMidiFromState(state);
+    const stateRootMidi = rootMidiFromState(state);
+    const rootMidi = harmonyState
+      ? rootMidiWithPitchClass(stateRootMidi, harmonyState.effectiveRoot)
+      : stateRootMidi;
     const scaleName = harmonyState?.scaleFamily.name ?? state.manualScale;
-    const scaleId = scaleIdFromName(scaleName);
+    const scaleId = productHarmonyScaleIdFromName(scaleName);
     const tension = clamp(state.tension, 0, 1);
     const morphPercent = morphPercentFromState(state);
     const resolved = resolveProductHarmonyState({

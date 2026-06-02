@@ -241,11 +241,25 @@ await runCheckWithReport({
         postSequencerBody.includes('const post = () => this.runtime.postEvent(event);'),
       'runtime-ready sequencer control events must post before any snapshot bootstrap path',
     );
+    const postManualSynthDiceBody = hostMethodBody('postManualSynthDiceEvent');
+    for (const token of [
+      'if (this.runtimeReady)',
+      'this.runtime.postEvent(event)',
+      'this.runtime.ensureStarted().then',
+      "this.loadLatestSnapshot('runtime-bootstrap')",
+    ]) {
+      assert(postManualSynthDiceBody.includes(token), `manual synth dice cold post path is missing ${token}`);
+    }
     const postProductEventBody = hostMethodBody('postProductEvent');
     assert(
       postProductEventBody.includes('if (this.handleSequencerUiProductEvent(event)) return;') &&
         postProductEventBody.indexOf('this.handleSequencerUiProductEvent(event)') < postProductEventBody.indexOf('Core Product runtime cannot enqueue product events'),
       'postProductEvent() must handle Product sequencer UI events before the generic runtime-ready guard',
+    );
+    const applyManualSynthDiceBody = hostMethodBody('applyManualSynthDice');
+    assert(
+      applyManualSynthDiceBody.includes('post: (event) => this.postManualSynthDiceEvent(event)'),
+      'manual synth dice must route native dice events through the host cold-runtime post helper',
     );
     const sequencerEventBody = hostMethodBody('handleSequencerUiProductEvent');
     for (const token of [
@@ -282,6 +296,7 @@ await runCheckWithReport({
       "sequencer: 'synth'",
       'const config = manualSynthDiceConfig(options.adapterState, options.laneIndex, options.intensity)',
       "nativeEvolveFlagsForEvolveConfig(config, 'synth')",
+      'if (nativeFlags !== 0)',
       'createCoreProductSequencerDiceEvent(',
       'CORE_PRODUCT_EVOLVE_FLAGS.manualCommit',
       'CORE_PRODUCT_EVOLVE_FLAGS.modeParity',
@@ -289,6 +304,7 @@ await runCheckWithReport({
     ]) {
       assert(manualSynthDiceBody.includes(token), `ProductEvent manual synth dice path is missing ${token}`);
     }
+    assert(!manualSynthDiceBody.includes('options.runtimeReady && nativeFlags !== 0'), 'manual synth dice bridge must not drop native dice while Product runtime is still bootstrapping');
     const controlEventBody = hostMethodBody('handleCoreProductSequencerControlEvent');
     for (const token of [
       'KESSHO_PRODUCT_EVENT_IDS.ResetSequencerLaneHome',
@@ -956,6 +972,25 @@ await runCheckWithReport({
         (manualSynthDiceFlags & (harness.context.CORE_PRODUCT_DICE_FLAGS.morph >>> 0)) !== 0 &&
         (manualSynthDiceFlags & (harness.context.CORE_PRODUCT_DICE_FLAGS.distance >>> 0)) !== 0,
       'diceSynthEuclidLane() must post native parity evolve flags for synth value sub-lanes',
+    );
+    const coldManualSynthDiceHarness = loadCoreProductHostHarness();
+    coldManualSynthDiceHarness.host.runtimeReady = false;
+    coldManualSynthDiceHarness.host.postProductEvent({
+      eventKind: coldManualSynthDiceHarness.context.KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane,
+      targetId: coldManualSynthDiceHarness.context.CORE_PRODUCT_SEQUENCER_IDS.synth,
+      index: 0,
+      value: 0.51,
+    });
+    await Promise.resolve();
+    assert(coldManualSynthDiceHarness.host.runtimeReady === true, 'pre-runtime ProductEvent synth manual dice must initialize Product runtime ownership before posting');
+    assert(coldManualSynthDiceHarness.runtime.snapshots.length === 1, 'pre-runtime ProductEvent synth manual dice must bootstrap Product with one compiled snapshot');
+    assert(
+      coldManualSynthDiceHarness.runtime.events.some((event) =>
+        event.type === 'sequencer-dice' &&
+          event.sequencer === 'synth' &&
+          event.laneIndex === 0 &&
+          Math.abs((event.value ?? event.intensity) - 0.51) < 1.0e-6),
+      'pre-runtime ProductEvent synth manual dice must still post the compact native Product dice event',
     );
     harness.host.reconcileSequencerUiState(makeSequencerUiTelemetry({
       revision: 40,
