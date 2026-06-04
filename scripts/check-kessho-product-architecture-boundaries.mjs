@@ -73,9 +73,12 @@ const secondStageCaps = [
   ['cpp/KesshoCore/src/product/KesshoProductApi.cpp', 420],
   ['cpp/KesshoCore/src/product/KesshoProductDebugApi.cpp', 80],
   ['cpp/KesshoCore/src/product/sources/ProductSources.cpp', 140],
+  ['cpp/KesshoCore/src/product/sources/SourceTargets.cpp', 120],
   ['cpp/KesshoCore/src/product/sources/SourcePresetEvents.cpp', 140],
   ['cpp/KesshoCore/src/product/sources/SourcePresetMorphRuntime.cpp', 120],
+  ['cpp/KesshoCore/src/product/sources/SourcePresetMorphSelector.cpp', 140],
   ['cpp/KesshoCore/src/product/sources/SourceOverrideEvents.cpp', 220],
+  ['cpp/KesshoCore/src/product/sources/SourceOverrideRuntimeEvents.cpp', 140],
   ['cpp/KesshoCore/src/product/sources/ProductSourcePostChain.cpp', 260],
   ['cpp/KesshoCore/src/product/sources/PadSource.cpp', 80],
   ['cpp/KesshoCore/src/product/sources/SourceEnable.cpp', 100],
@@ -89,6 +92,7 @@ const secondStageCaps = [
   ['cpp/KesshoCore/src/product/sources/DrumSource.cpp', 80],
   ['cpp/KesshoCore/src/product/sources/SourceModuleTrigger.cpp', 220],
   ['cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp', 340],
+  ['cpp/KesshoCore/src/product/sources/SourceVoiceRuntimeRanges.cpp', 80],
   ['cpp/KesshoCore/src/product/sources/SourcePianoEnvelope.cpp', 120],
   ['cpp/KesshoCore/src/product/sources/SourceMidiRuntime.cpp', 340],
   ['cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp', 60],
@@ -112,9 +116,12 @@ const allocationFreeHotPathFiles = [
   'cpp/KesshoCore/src/product/KesshoProductEvents.cpp',
   'cpp/KesshoCore/src/product/KesshoProductRender.cpp',
   'cpp/KesshoCore/src/product/sources/ProductSources.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceTargets.cpp',
   'cpp/KesshoCore/src/product/sources/SourcePresetEvents.cpp',
   'cpp/KesshoCore/src/product/sources/SourcePresetMorphRuntime.cpp',
+  'cpp/KesshoCore/src/product/sources/SourcePresetMorphSelector.cpp',
   'cpp/KesshoCore/src/product/sources/SourceOverrideEvents.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceOverrideRuntimeEvents.cpp',
   'cpp/KesshoCore/src/product/sources/ProductSourcePostChain.cpp',
   'cpp/KesshoCore/src/product/sources/PadSource.cpp',
   'cpp/KesshoCore/src/product/sources/SourceEnable.cpp',
@@ -129,6 +136,7 @@ const allocationFreeHotPathFiles = [
   'cpp/KesshoCore/src/product/sources/DrumSource.cpp',
   'cpp/KesshoCore/src/product/sources/SourceModuleTrigger.cpp',
   'cpp/KesshoCore/src/product/sources/SourceVoiceAllocator.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceVoiceRuntimeRanges.cpp',
   'cpp/KesshoCore/src/product/sources/SourcePianoEnvelope.cpp',
   'cpp/KesshoCore/src/product/sources/SourceMidiRuntime.cpp',
   'cpp/KesshoCore/src/product/sources/SourceVoiceRelease.cpp',
@@ -271,9 +279,14 @@ const focusedSourceContracts = [
   [
     'cpp/KesshoCore/src/product/sources/SourceOverrideEvents.cpp',
     [
+      'KesshoProductEngine::applyStructuredSourceOverridesToModule(',
+    ],
+  ],
+  [
+    'cpp/KesshoCore/src/product/sources/SourceOverrideRuntimeEvents.cpp',
+    [
       'KesshoProductEngine::applySourceOverrideEvent(',
       'KesshoProductEngine::applyRuntimeSourceOverrideParam(',
-      'KesshoProductEngine::applyStructuredSourceOverridesToModule(',
     ],
   ],
   [
@@ -317,6 +330,10 @@ const focusedSourceContracts = [
     [
       'KesshoProductEngine::triggerVoice(',
     ],
+  ],
+  [
+    'cpp/KesshoCore/src/product/sources/SourceVoiceRuntimeRanges.cpp',
+    ['KesshoProductEngine::applySourceExactRuntimeRanges('],
   ],
   [
     'cpp/KesshoCore/src/product/sources/SourcePianoEnvelope.cpp',

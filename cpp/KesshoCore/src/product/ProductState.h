@@ -266,8 +266,11 @@ struct KesshoProductEngine : ProductGraphState {
   bool activeSequencerMorphForPresetSource(uint32_t source_id, uint32_t drum_voice, float& morph) const;
   bool activeSequencerDistanceForPresetSource(uint32_t source_id, uint32_t drum_voice, float& distance) const;
   bool activeSequencerExpressionForPresetSource(uint32_t source_id, uint32_t drum_voice, float& expression) const;
+  bool activeSequencerSourceFieldForPresetSource(uint32_t source_id, uint32_t drum_voice, uint32_t step_field, float& value) const;
   void applySourceOverrideEvent(const KesshoProductEvent& event);
   bool applyRuntimeSourceOverrideParam(uint32_t source_id, uint32_t param_index, float value);
+  bool sourceOverrideStorage(SourceState& source, uint32_t source_id, uint32_t*& count, uint32_t*& indices, float*& values) const;
+  bool activeSequencerEndpointMorphAnchor(uint32_t source_id, SourceState& source, float& morph_anchor) const;
   bool applyStructuredSourceOverridesToModule(uint32_t source_id);
   bool applyStructuredSourceOverridesToModuleAtMorph(uint32_t source_id, float morph);
   bool applyStructuredSourceOverridesToModuleAtMorphAndDistance(uint32_t source_id, float morph, float distance);
@@ -375,6 +378,7 @@ struct KesshoProductEngine : ProductGraphState {
       float drum_ratchet_attack_cap = 1.0e10f,
       uint32_t pad_voice_index = kPadVoiceNoPreference,
       float synth_ratchet_factor = 1.0f);
+  bool applySourceExactRuntimeRanges(uint32_t source_id, uint32_t param_id_base, float* params, uint32_t param_count, uint32_t sample_seed);
   void configurePianoSampleVoiceEnvelope(Voice& voice, const SourceState& source, float velocity, float distance, uint32_t resolved_seed, uint32_t asset_slot);
   void ensureSoundscapeVoice();
   void releaseSourceVoices(uint32_t source_id);

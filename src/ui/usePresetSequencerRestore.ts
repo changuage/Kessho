@@ -282,7 +282,8 @@ function synthPitchOverridesForEngine(
     if (settings.mode === 'noteRange') return null;
     const resolvedPitch = restoredSynthPitchRootAndScale(settings, state);
     if (settings.mode === 'notes') {
-      return offsets.map((degree) => resolvedPitch.root + scaleDegreeToSemitone(degree, resolvedPitch.scaleIntervals));
+      const { root, scaleIntervals } = resolvedPitch;
+      return offsets.map((degree) => root + scaleDegreeToSemitone(degree, scaleIntervals));
     }
     return offsets.map((offset) => resolvedPitch.root + offset);
   });

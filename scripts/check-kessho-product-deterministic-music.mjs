@@ -130,6 +130,62 @@ const SOURCE_DRUM_VOICE_PRESET_B_OFFSET = SOURCE_DRUM_VOICE_PRESET_A_OFFSET + DR
 const SOURCE_DRUM_VOICE_MORPH_OFFSET = SOURCE_DRUM_VOICE_PRESET_B_OFFSET + DRUM_VOICE_COUNT * 4;
 const SOURCE_ENVELOPE_OFFSET = SOURCE_DRUM_VOICE_MORPH_OFFSET + DRUM_VOICE_COUNT * 4;
 assert(SOURCE_ENVELOPE_OFFSET + 5 * 4 === SOURCE_SIZE, `deterministic source offsets are stale: ${SOURCE_ENVELOPE_OFFSET + 5 * 4} !== ${SOURCE_SIZE}`);
+const ASSET_REF_COUNT = 32;
+const SOUNDSCAPE_TEXTURE_PARAM_COUNT = 37;
+const SOUNDSCAPE_MODULE_PARAM_COUNT = 101;
+const SOUNDSCAPE_BYTES = 4 + SOUNDSCAPE_TEXTURE_PARAM_COUNT * 4 + 4 + SOUNDSCAPE_MODULE_PARAM_COUNT * 4;
+const ASSET_REF_BYTES = ASSET_REF_COUNT * 4 * 2;
+const EVOLUTION_AMOUNT_OFFSET = SNAPSHOT_SIZE - SOUNDSCAPE_BYTES - ASSET_REF_BYTES - 8;
+const EVOLUTION_STATE_OFFSET = EVOLUTION_AMOUNT_OFFSET + 4;
+const RNG_SEED_OFFSET = EVOLUTION_AMOUNT_OFFSET - 8;
+const RNG_STATE_OFFSET = EVOLUTION_AMOUNT_OFFSET - 4;
+const RNG_SEED = 31;
+const EVOLUTION_AMOUNT = 0.8;
+const EVOLUTION_STATE = 4567;
+const SAMPLE_RATE = 48000;
+const DETERMINISTIC_BPM = 120;
+const BEATS_PER_BAR = 4;
+const BARS_PER_PHRASE = 4;
+const LANE_SEED = 120;
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function hashU32(value) {
+  let result = value >>> 0;
+  result = (result ^ (result >>> 16)) >>> 0;
+  result = Math.imul(result, 0x7feb352d) >>> 0;
+  result = (result ^ (result >>> 15)) >>> 0;
+  result = Math.imul(result, 0x846ca68b) >>> 0;
+  result = (result ^ (result >>> 16)) >>> 0;
+  return result >>> 0;
+}
+
+function hashUnit(value) {
+  return (hashU32(value) & 0x00ffffff) / 0x01000000;
+}
+
+function expectedEvolvedLaneValue(stepId, sample, component, base, depth, minValue, maxValue) {
+  const amount = clamp(EVOLUTION_AMOUNT, 0, 1) * clamp(depth, 0, 1);
+  if (amount <= 0.000001) {
+    return clamp(base, minValue, maxValue);
+  }
+  const samplesPerBeat = SAMPLE_RATE * 60 / DETERMINISTIC_BPM;
+  const bar = Math.trunc((sample / samplesPerBeat) / BEATS_PER_BAR);
+  const phrase = Math.trunc(bar / BARS_PER_PHRASE);
+  const seed = (
+    LANE_SEED ^
+    RNG_SEED ^
+    EVOLUTION_STATE ^
+    Math.imul(component, 374761393) ^
+    Math.imul(stepId, 2246822519) ^
+    Math.imul(bar, 3266489917) ^
+    Math.imul(phrase, 2654435761)
+  ) >>> 0;
+  const randomDelta = hashUnit(seed) * 2 - 1;
+  return clamp(base + amount * randomDelta, minValue, maxValue);
+}
 
 const snapshotPtr = malloc(SNAPSHOT_SIZE);
 const eventsPtr = malloc(SEQUENCER_EVENT_SIZE * 8);
@@ -193,8 +249,12 @@ setF32(LANE0_OFFSET + 48, 0.1);
 setF32(LANE0_OFFSET + 52, 0.35);
 setF32(LANE0_OFFSET + 56, 0.45);
 setF32(LANE0_OFFSET + 60, 0.75);
-setU32(LANE0_OFFSET + 64, 120);
+setU32(LANE0_OFFSET + 64, LANE_SEED);
 setU32(LANE0_OFFSET + 76, 0x0f);
+setU32(RNG_SEED_OFFSET, RNG_SEED);
+setU32(RNG_STATE_OFFSET, RNG_SEED);
+setF32(EVOLUTION_AMOUNT_OFFSET, EVOLUTION_AMOUNT);
+setU32(EVOLUTION_STATE_OFFSET, EVOLUTION_STATE);
 
 const loadResult = loadSnapshot(engine, snapshotPtr, SNAPSHOT_SIZE);
 copyTelemetry(engine, telemetryPtr);
@@ -211,6 +271,12 @@ const expected = [
   { sample: 12000, step: 2, midi: 64.0 },
   { sample: 18000, step: 3, midi: 65.0 },
 ];
+for (const event of expected) {
+  event.velocity = expectedEvolvedLaneValue(event.step, event.sample, 2, 0.8, 0.25, 0, 1);
+  event.morph = expectedEvolvedLaneValue(event.step, event.sample, 3, 0.35, 0.35, 0, 1);
+  event.distance = expectedEvolvedLaneValue(event.step, event.sample, 4, 0.45, 0.35, 0, 1);
+  event.expression = expectedEvolvedLaneValue(event.step, event.sample, 5, 0.75, 0.25, 0, 1);
+}
 
 for (let index = 0; index < expected.length; index += 1) {
   const event = eventsPtr + index * SEQUENCER_EVENT_SIZE;
@@ -219,10 +285,10 @@ for (let index = 0; index < expected.length; index += 1) {
   assert(view.getUint16(event + 6, true) === 0, `WASM timeline lane mismatch at event ${index}`);
   assert(view.getUint16(event + 8, true) === expected[index].step, `WASM timeline step mismatch at event ${index}`);
   assert(Math.abs(view.getFloat32(event + 16, true) - expected[index].midi) < 0.001, `WASM timeline midi mismatch at event ${index}`);
-  assert(Math.abs(view.getFloat32(event + 20, true) - 0.8) < 0.001, `WASM timeline velocity mismatch at event ${index}`);
-  assert(Math.abs(view.getFloat32(event + 28, true) - 0.35) < 0.001, `WASM timeline morph mismatch at event ${index}`);
-  assert(Math.abs(view.getFloat32(event + 32, true) - 0.45) < 0.001, `WASM timeline distance mismatch at event ${index}`);
-  assert(Math.abs(view.getFloat32(event + 36, true) - 0.75) < 0.001, `WASM timeline expression mismatch at event ${index}`);
+  assert(Math.abs(view.getFloat32(event + 20, true) - expected[index].velocity) < 0.001, `WASM timeline velocity mismatch at event ${index}`);
+  assert(Math.abs(view.getFloat32(event + 28, true) - expected[index].morph) < 0.001, `WASM timeline morph mismatch at event ${index}`);
+  assert(Math.abs(view.getFloat32(event + 32, true) - expected[index].distance) < 0.001, `WASM timeline distance mismatch at event ${index}`);
+  assert(Math.abs(view.getFloat32(event + 36, true) - expected[index].expression) < 0.001, `WASM timeline expression mismatch at event ${index}`);
 }
 
 destroy(engine);

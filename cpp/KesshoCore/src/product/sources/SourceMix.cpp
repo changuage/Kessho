@@ -1,8 +1,5 @@
 #include "../KesshoProductEngineInternal.h"
-namespace {
-void addStereo(float* left_bus, float* right_bus, uint32_t frame, float left, float right) { left_bus[frame] += left; right_bus[frame] += right; }
-} // namespace
-
+static inline void addStereo(float* left_bus, float* right_bus, uint32_t frame, float left, float right) { left_bus[frame] += left; right_bus[frame] += right; }
 void KesshoProductEngine::mixPadSourceBuffer(uint32_t source_id, const float* dry_l, const float* dry_r,
     const float* send_l, const float* send_r, float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (source_id < 1u || source_id > kSourceCount) return;

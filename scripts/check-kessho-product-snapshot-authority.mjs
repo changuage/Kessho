@@ -41,6 +41,7 @@ const allowedImports = new Set([
   './coreProductDelaySnapshot',
   './coreProductEvents',
   './coreProductAssets',
+  './coreProductHarmonyScaleIds',
   './coreProductSequencerMacroDefaults',
   './coreProductSequencerHold',
   './coreProductSoundscapesSnapshot',

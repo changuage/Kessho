@@ -11,9 +11,7 @@ bool sourceStructuredOverrideAnchorMatchesEndpoint(const SourceState& source, fl
 void clearEndpointStructuredOverridesForPresetChange(SourceState& source, uint32_t source_id, uint32_t endpoint_index) {
   const float changed_endpoint_morph = endpoint_index == 1u ? 0.0f : 1.0f;
   if (isPadProductSource(source_id)) {
-    if (source.pad_override_count == 0u) {
-      return;
-    }
+    if (source.pad_override_count == 0u) return;
     if (source.structured_override_morph_anchor_enabled &&
         !sourceStructuredOverrideAnchorMatchesEndpoint(source, changed_endpoint_morph)) {
       return;
@@ -28,9 +26,7 @@ void clearEndpointStructuredOverridesForPresetChange(SourceState& source, uint32
     return;
   }
   if (isLeadProductSource(source_id)) {
-    if (source.lead_override_count == 0u) {
-      return;
-    }
+    if (source.lead_override_count == 0u) return;
     if (source.structured_override_morph_anchor_enabled &&
         !sourceStructuredOverrideAnchorMatchesEndpoint(source, changed_endpoint_morph)) {
       return;

@@ -108,9 +108,17 @@ function leadPresetFromKey(key: unknown, fallbackKey: 'soft_rhodes' | 'gamelan')
   return normalized === 'gamelan' ? DEFAULT_GAMELAN : DEFAULT_SOFT_RHODES;
 }
 
-function generatedLeadAnchorPresetId(key: unknown, defaultKey: 'soft_rhodes' | 'gamelan'): number {
+function generatedLeadAnchorPresetId(
+  key: unknown,
+  defaultKey: 'soft_rhodes' | 'gamelan',
+  useDefaultAnchorForInvalidKey: boolean,
+): number {
   const presetId = sourcePresetId('lead', key, '');
-  return presetId !== 0 ? presetId : sourcePresetId('lead', defaultKey, defaultKey);
+  if (presetId !== 0) return presetId;
+  if (useDefaultAnchorForInvalidKey || typeof key !== 'string' || key.trim() === '') {
+    return sourcePresetId('lead', defaultKey, defaultKey);
+  }
+  return 0;
 }
 
 export function assignLeadPresetIds(
@@ -122,17 +130,17 @@ export function assignLeadPresetIds(
   const keyB = leadIndex === 0 ? state?.lead1PresetB : state?.lead2PresetD;
   const defaultA = 'soft_rhodes';
   const defaultB = 'gamelan';
-  if (hasLeadCustomPresetData(state, leadIndex)) {
-    const presetA = generatedLeadAnchorPresetId(keyA, defaultA);
-    const presetB = generatedLeadAnchorPresetId(keyB, defaultB);
-    source.sourcePresetAId = presetA;
-    source.sourcePresetBId = presetB;
-    source.presetId = clamp(source.morph, 0, 1) >= 0.5 ? presetB : presetA;
-    source.morph = clamp(source.morph, 0, 1);
-    return;
-  }
-  const presetA = generatedLeadAnchorPresetId(keyA, defaultA);
-  const presetB = generatedLeadAnchorPresetId(keyB, defaultB);
+  const hasCustomPresetData = hasLeadCustomPresetData(state, leadIndex);
+  const presetA = generatedLeadAnchorPresetId(
+    keyA,
+    defaultA,
+    hasCustomPresetData && hasLeadCustomPresetEndpointData(state, leadIndex, 'a'),
+  );
+  const presetB = generatedLeadAnchorPresetId(
+    keyB,
+    defaultB,
+    hasCustomPresetData && hasLeadCustomPresetEndpointData(state, leadIndex, 'b'),
+  );
   source.sourcePresetAId = presetA;
   source.sourcePresetBId = presetB;
   source.presetId = clamp(source.morph, 0, 1) >= 0.5 ? presetB : presetA;

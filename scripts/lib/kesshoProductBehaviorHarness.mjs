@@ -399,6 +399,7 @@ export function loadCoreProductHostHarness(options = {}) {
     encodeCoreProductSnapshot: () => new ArrayBuffer(8),
     usesLegacyGranularRuntimeSeed: () => false,
     loadProductLead4opFMPreset: async () => ({}),
+    loadProductLead4opFMPresetVerified: async () => ({}),
     publishCoreProductSequencerVisuals: (input) => {
       input.publish('synthStepPosition', [0, 0, 0, 0], [0, 0, 0, 0]);
       input.publish('drumStepPosition', [0, 0, 0, 0], [0, 0, 0, 0]);

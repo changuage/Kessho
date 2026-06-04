@@ -26,38 +26,6 @@ float glideAdjustedMidiNote(float midi_note, float glide, uint32_t sample_seed) 
   return midi_note + 12.0f * std::log2(ratio);
 }
 
-bool applySourceExactRuntimeRanges(
-    KesshoProductEngine& engine,
-    uint32_t source_id,
-    uint32_t param_id_base,
-    float* params,
-    uint32_t param_count,
-    uint32_t sample_seed) {
-  if (params == nullptr || engine.active_modulation_range_count == 0u) {
-    return false;
-  }
-  bool changed = false;
-  for (ModulationRange& range : engine.modulation_ranges) {
-    if (!range.active ||
-        range.target_id != source_id ||
-        range.param_id < param_id_base ||
-        range.param_id >= param_id_base + param_count) {
-      continue;
-    }
-    const uint32_t param_index = range.param_id - param_id_base;
-    const float value = engine.modulationRangeSample(range, params[param_index], sample_seed);
-    params[param_index] = value;
-    changed = true;
-    if (range.mode == KESSHO_PRODUCT_MODULATION_RANGE_SAMPLE_HOLD) {
-      range.current_value = value;
-      ++range.sample_hold_counter;
-      range.last_trigger_frame = engine.transport.sample_frame;
-      range.last_trigger_source = source_id;
-    }
-  }
-  return changed;
-}
-
 } // namespace
 
 uint32_t KesshoProductEngine::triggerVoice(
@@ -248,7 +216,6 @@ uint32_t KesshoProductEngine::triggerVoice(
       active_modulation_range_count > 0u) {
     preset_patch = *preset_patch_ptr;
     if (applySourceExactRuntimeRanges(
-            *this,
             source_id,
             padRuntimeParamIdBaseForSource(source_id),
             preset_patch.exact_pad_params,
@@ -262,7 +229,6 @@ uint32_t KesshoProductEngine::triggerVoice(
       active_modulation_range_count > 0u) {
     preset_patch = *preset_patch_ptr;
     if (applySourceExactRuntimeRanges(
-            *this,
             source_id,
             leadRuntimeParamIdBaseForSource(source_id),
             preset_patch.exact_lead_params,

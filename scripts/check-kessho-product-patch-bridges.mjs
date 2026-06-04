@@ -434,6 +434,7 @@ const reconstructionProofs = [
       'cpp/KesshoCore/src/product/KesshoProductEvents.cpp',
       'cpp/KesshoCore/src/product/sources/ProductSources.cpp',
       'cpp/KesshoCore/src/product/sources/SourceOverrideEvents.cpp',
+      'cpp/KesshoCore/src/product/sources/SourceOverrideRuntimeEvents.cpp',
       'cpp/KesshoCore/tests/ProductSourceWrapperTests.cpp',
     ],
     testEntrypoint: 'requireRuntimeParamEventsUseStructuredOverrides',
@@ -853,6 +854,7 @@ const productSources = [
   'cpp/KesshoCore/src/product/sources/ProductSources.cpp',
   'cpp/KesshoCore/src/product/sources/SourcePresetEvents.cpp',
   'cpp/KesshoCore/src/product/sources/SourceOverrideEvents.cpp',
+  'cpp/KesshoCore/src/product/sources/SourceOverrideRuntimeEvents.cpp',
 ].map((path) => read(path)).join('\n');
 const productEvents = read('cpp/KesshoCore/src/product/KesshoProductEvents.cpp');
 const productEngine = read('cpp/KesshoCore/src/product/KesshoProductEngine.cpp');

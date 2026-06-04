@@ -34,7 +34,8 @@ float selectedDrumVoiceMidi(const kessho::product::internal::LaneState& lane, ui
 bool sequencerStepFieldActive(
     const KesshoProductEngine& engine,
     const kessho::product::internal::LaneState& lane,
-    uint32_t field) {
+    uint32_t field,
+    bool evolution_active) {
   const uint32_t field_id = engine.stepFieldId(field);
   const bool config_enabled =
       engine.validStepFieldId(field_id) &&
@@ -42,18 +43,21 @@ bool sequencerStepFieldActive(
   switch (field) {
     case KESSHO_PRODUCT_STEP_FIELD_MORPH:
       return config_enabled ||
+          evolution_active ||
           lane.morph_override_set_low != 0u ||
           lane.morph_override_set_high != 0u ||
           lane.morph_range_set_low != 0u ||
           lane.morph_range_set_high != 0u;
     case KESSHO_PRODUCT_STEP_FIELD_DISTANCE:
       return config_enabled ||
+          evolution_active ||
           lane.distance_override_set_low != 0u ||
           lane.distance_override_set_high != 0u ||
           lane.distance_range_set_low != 0u ||
           lane.distance_range_set_high != 0u;
     case KESSHO_PRODUCT_STEP_FIELD_EXPRESSION:
       return config_enabled ||
+          evolution_active ||
           lane.expression_override_set_low != 0u ||
           lane.expression_override_set_high != 0u ||
           lane.expression_range_set_low != 0u ||
@@ -72,6 +76,7 @@ bool sequencerStepFieldActive(
       SequencerBuffer& out) {
   const uint64_t block_start = transport.sample_frame;
   const uint64_t block_end = block_start + frames;
+  const bool macro_evolution_active = evolutionDepth() > 0.000001f;
   for (uint32_t lane_index = 0; lane_index < lane_count; ++lane_index) {
     LaneState& lane = lanes[lane_index];
     const bool drum_lane = lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM;
@@ -200,9 +205,9 @@ bool sequencerStepFieldActive(
       const uint32_t drum_voice = drum_lane
           ? static_cast<uint32_t>(std::clamp(roundedInt(trigger_midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1))
           : DRUM_NUM_VOICE_TYPES;
-      const bool morph_field_active = sequencerStepFieldActive(*this, lane, KESSHO_PRODUCT_STEP_FIELD_MORPH);
-      const bool distance_field_active = sequencerStepFieldActive(*this, lane, KESSHO_PRODUCT_STEP_FIELD_DISTANCE);
-      const bool expression_field_active = sequencerStepFieldActive(*this, lane, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION);
+      const bool morph_field_active = sequencerStepFieldActive(*this, lane, KESSHO_PRODUCT_STEP_FIELD_MORPH, macro_evolution_active);
+      const bool distance_field_active = sequencerStepFieldActive(*this, lane, KESSHO_PRODUCT_STEP_FIELD_DISTANCE, macro_evolution_active);
+      const bool expression_field_active = sequencerStepFieldActive(*this, lane, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION, macro_evolution_active);
       const uint32_t drum_target = lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM
           ? KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + drum_voice
           : 0u;
