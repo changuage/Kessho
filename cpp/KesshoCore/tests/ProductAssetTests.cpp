@@ -702,6 +702,67 @@ int main() {
        KESSHO_PRODUCT_EARTH_TEXTURE_PARITY_FIXTURE) == 0u,
       "normal soundscape texture telemetry accidentally reported parity fixture mode");
 
+  auto requireTextureReleaseDoesNotJump = [&left, &right](
+      uint32_t asset_id,
+      uint32_t replacement_asset_id,
+      const char* label) {
+    KesshoProductEngine* release_engine = kessho_product_create(48000.0, 128, 0);
+    require(release_engine != nullptr, "soundscape texture release engine create failed");
+    KesshoProductSnapshotV2 release_snapshot =
+        makeTextureSoundscapeSnapshot(asset_id, false, 1.5f, 1.0f, 0.1f);
+    release_snapshot.asset_ref_levels[0] = 0.23f;
+    require(
+        kessho_product_load_snapshot_v2(release_engine, &release_snapshot, sizeof(release_snapshot)) ==
+            KESSHO_PRODUCT_OK,
+        "soundscape texture release snapshot load failed");
+    std::vector<float> release_data(48000u * 8u, 0.5f);
+    const float* release_channels[1] = {release_data.data()};
+    require(
+        kessho_product_register_asset_buffer(
+            release_engine,
+            asset_id,
+            release_channels,
+            1,
+            static_cast<uint32_t>(release_data.size()),
+            48000.0,
+            KESSHO_PRODUCT_ASSET_LOOP | KESSHO_PRODUCT_ASSET_SOUNDSCAPE) == KESSHO_PRODUCT_OK,
+        "soundscape texture release asset registration failed");
+
+    float live_peak = 0.0f;
+    for (uint32_t block = 0u; block < 240u && live_peak < 0.005f; ++block) {
+      std::fill(left.begin(), left.end(), 0.0f);
+      std::fill(right.begin(), right.end(), 0.0f);
+      kessho_product_render(release_engine, left.data(), right.data(), 128);
+      live_peak = std::max(peak(left), peak(right));
+    }
+    require(live_peak >= 0.005f, label);
+
+    KesshoProductSnapshotV2 removed_snapshot =
+        makeTextureSoundscapeSnapshot(replacement_asset_id, false, 1.5f, 1.0f, 0.1f);
+    removed_snapshot.asset_ref_levels[0] = 0.37f;
+    require(
+        kessho_product_load_snapshot_v2(release_engine, &removed_snapshot, sizeof(removed_snapshot)) ==
+            KESSHO_PRODUCT_OK,
+        "soundscape texture removal snapshot load failed");
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(release_engine, left.data(), right.data(), 128);
+    const float release_peak = std::max(peak(left), peak(right));
+    require(
+        release_peak <= live_peak * 1.15f + 0.0005f,
+        "soundscape texture release tail jumped above its live level");
+    kessho_product_destroy(release_engine);
+  };
+
+  requireTextureReleaseDoesNotJump(
+      kSoundscapeAssetOcean,
+      kSoundscapeAssetFrogs,
+      "waves texture was not audible before release regression");
+  requireTextureReleaseDoesNotJump(
+      kSoundscapeAssetBirds,
+      kSoundscapeAssetOcean,
+      "nature texture was not audible before release regression");
+
   KesshoProductEngine* birds_density_zero_engine = kessho_product_create(48000.0, 128, 0);
   require(birds_density_zero_engine != nullptr, "Birds density-zero texture engine create failed");
   KesshoProductSnapshotV2 birds_density_zero_snapshot =

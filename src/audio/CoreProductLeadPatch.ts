@@ -5,7 +5,7 @@ import {
   KESSHO_PRODUCT_LEAD_PRESET_SNAP_PARAM_INDICES,
   KESSHO_PRODUCT_SOURCE_PRESETS,
 } from './generated/kesshoProductSchema';
-import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES, loadLead4opFMPreset, morphPresets, type Lead4opFMPreset } from './lead4opfm';
+import { DEFAULT_GAMELAN, DEFAULT_SOFT_RHODES, loadLead4opFMPreset, loadLead4opFMPresetVerified, morphPresets, type Lead4opFMPreset } from './lead4opfm';
 import { getVoiceDistanceKey } from './distanceMacro';
 import { booleanFromState, clamp, coreProductParamValue, numberFromState } from './coreProductSnapshotState';
 import { normalizePresetKey, sourcePresetId } from './CoreProductPresetIds';
@@ -44,7 +44,10 @@ export type LeadEnvelopeOverride = {
   release: number;
 };
 
-export { loadLead4opFMPreset as loadProductLead4opFMPreset };
+export {
+  loadLead4opFMPreset as loadProductLead4opFMPreset,
+  loadLead4opFMPresetVerified as loadProductLead4opFMPresetVerified,
+};
 
 function leadParamUsesPresetSnap(paramIndex: number): boolean {
   return KESSHO_PRODUCT_LEAD_PRESET_SNAP_PARAM_INDICES.some((snapParamIndex) => snapParamIndex === paramIndex);
@@ -120,20 +123,16 @@ export function assignLeadPresetIds(
   const defaultA = 'soft_rhodes';
   const defaultB = 'gamelan';
   if (hasLeadCustomPresetData(state, leadIndex)) {
-    const presetA = hasLeadCustomPresetEndpointData(state, leadIndex, 'a')
-      ? generatedLeadAnchorPresetId(keyA, defaultA)
-      : sourcePresetId('lead', keyA, defaultA);
-    const presetB = hasLeadCustomPresetEndpointData(state, leadIndex, 'b')
-      ? generatedLeadAnchorPresetId(keyB, defaultB)
-      : sourcePresetId('lead', keyB, defaultB);
+    const presetA = generatedLeadAnchorPresetId(keyA, defaultA);
+    const presetB = generatedLeadAnchorPresetId(keyB, defaultB);
     source.sourcePresetAId = presetA;
     source.sourcePresetBId = presetB;
     source.presetId = clamp(source.morph, 0, 1) >= 0.5 ? presetB : presetA;
     source.morph = clamp(source.morph, 0, 1);
     return;
   }
-  const presetA = sourcePresetId('lead', keyA, defaultA);
-  const presetB = sourcePresetId('lead', keyB, defaultB);
+  const presetA = generatedLeadAnchorPresetId(keyA, defaultA);
+  const presetB = generatedLeadAnchorPresetId(keyB, defaultB);
   source.sourcePresetAId = presetA;
   source.sourcePresetBId = presetB;
   source.presetId = clamp(source.morph, 0, 1) >= 0.5 ? presetB : presetA;

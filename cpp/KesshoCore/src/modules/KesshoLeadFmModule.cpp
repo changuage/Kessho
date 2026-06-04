@@ -346,6 +346,7 @@ public:
       params_[index] = patch.exact_lead_params[index];
     }
     commitParams();
+    lead_fm_instance_refresh_active_notes(instance_);
     return 1;
   }
 
@@ -358,6 +359,7 @@ public:
     }
     params_[static_cast<uint32_t>(param_index)] = value;
     commitParams();
+    lead_fm_instance_refresh_active_notes(instance_);
     return 1;
   }
 

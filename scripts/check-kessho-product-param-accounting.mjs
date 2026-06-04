@@ -538,6 +538,29 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
+  if (key === 'synthHold' || key === 'pad2Hold') {
+    return {
+      path: 'sequencer-lane-diff',
+      evidence: [
+        'src/audio/coreProductSnapshot.ts#coreProductSynthSequencerHoldSecondsFromState',
+        'src/audio/CoreProductRuntimeAdapter.ts#SequencerLaneHoldSeconds',
+        'cpp/KesshoCore/tests/ProductSequencerTests.cpp#KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_HOLD_SECONDS_ID',
+      ],
+      reason: 'Pad hold controls are encoded as Product synth sequencer lane hold seconds, not Pad module ADSR params.',
+    };
+  }
+
+  if (key === 'padFitEnvelopeToChord' || key === 'pad2FitEnvelopeToChord') {
+    return {
+      path: 'arrangement-scheduler-event',
+      evidence: [
+        'src/audio/coreProductArrangementScheduler.ts#padEnvelopeGateSeconds',
+        'src/audio/coreProductEvents.ts#createCoreProductManualNoteEvent',
+      ],
+      reason: 'Pad fit-to-chord flags clamp generated manual-note gate lengths in host arrangement scheduling.',
+    };
+  }
+
   if ([
     'chordProgressionSteps',
     'chordProgressionClockSource',

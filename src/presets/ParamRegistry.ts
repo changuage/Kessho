@@ -570,7 +570,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthAttack:           { level: 1, scope: 'pad1' },
   synthDecay:            { level: 1, scope: 'pad1' },
   synthSustain:          { level: 1, scope: 'pad1' },
+  synthHold:             { level: 1, scope: 'pad1' },
   synthRelease:          { level: 1, scope: 'pad1' },
+  padFitEnvelopeToChord: { level: 1, scope: 'pad1' },
   padLfo1Rate:           { level: 1, scope: 'pad1' },
   padLfo1Depth:          { level: 1, scope: 'pad1' },
   padLfo1Wave:           { level: 1, scope: 'pad1' },
@@ -598,7 +600,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   pad2Attack:            { level: 1, scope: 'pad2' },
   pad2Decay:             { level: 1, scope: 'pad2' },
   pad2Sustain:           { level: 1, scope: 'pad2' },
+  pad2Hold:              { level: 1, scope: 'pad2' },
   pad2Release:           { level: 1, scope: 'pad2' },
+  pad2FitEnvelopeToChord: { level: 1, scope: 'pad2' },
   pad2Hardness:          { level: 1, scope: 'pad2' },
   pad2Warmth:            { level: 1, scope: 'pad2' },
   pad2Presence:          { level: 1, scope: 'pad2' },
@@ -1221,7 +1225,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1006) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1006`);
+  if (count !== 1010) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1010`);
   }
 }

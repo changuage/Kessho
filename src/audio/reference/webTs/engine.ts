@@ -633,7 +633,7 @@ import { applyMorphToState, DrumMorphManager, updateAutoMorph, VOICE_MORPH_KEYS 
 import {
   type Lead4opFMPreset,
   type Lead4opFMMorphedParams,
-  loadLead4opFMPreset,
+  loadLead4opFMPresetVerified,
   morphPresets,
   playLead4opFMNote,
   DEFAULT_SOFT_RHODES,
@@ -721,7 +721,7 @@ const PAD1_TO_PAD2_ENGINE: Record<string, string> = {
   filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ', filterSlope: 'pad2FilterSlope', filterKeyTracking: 'pad2FilterKeyTracking',
   padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
   padFilterBResonance: 'pad2FilterBResonance', padFilterBQ: 'pad2FilterBQ', padFilterRouting: 'pad2FilterRouting',
-  synthAttack: 'pad2Attack', synthDecay: 'pad2Decay', synthSustain: 'pad2Sustain', synthRelease: 'pad2Release',
+  synthAttack: 'pad2Attack', synthDecay: 'pad2Decay', synthSustain: 'pad2Sustain', synthHold: 'pad2Hold', synthRelease: 'pad2Release',
   padLfo1Rate: 'pad2Lfo1Rate', padLfo1Depth: 'pad2Lfo1Depth', padLfo1Wave: 'pad2Lfo1Wave', padLfo1Dest: 'pad2Lfo1Dest',
   padLfo2Rate: 'pad2Lfo2Rate', padLfo2Depth: 'pad2Lfo2Depth', padLfo2Wave: 'pad2Lfo2Wave', padLfo2Dest: 'pad2Lfo2Dest',
   padModEnvEnabled: 'pad2ModEnvEnabled', padModEnvAttack: 'pad2ModEnvAttack', padModEnvDecay: 'pad2ModEnvDecay',
@@ -1099,6 +1099,7 @@ export class AudioEngine {
   private lead1PresetBId = 'gamelan';
   private lead2PresetCId = 'soft_rhodes';
   private lead2PresetDId = 'gamelan';
+  private leadPresetPendingIds: Partial<Record<'A' | 'B' | 'C' | 'D', string>> = {};
 
   // Ikeda-style drum synth
   private drumSynth: DrumSynth | null = null;
@@ -2741,6 +2742,35 @@ export class AudioEngine {
     const attack = Math.max(0.01, pad === 'pad2' ? (state.pad2Attack ?? 0.1) : (state.synthAttack ?? 0.1));
     const decay = Math.max(0.02, pad === 'pad2' ? (state.pad2Decay ?? 0.3) : (state.synthDecay ?? 0.3));
     return Math.max(0.16, Math.min(0.6, attack + decay * 0.75));
+  }
+
+  private getPadChordTriggerIntervalSeconds(state: SliderState): number {
+    const phraseLength = this.getEffectiveHarmonyPhraseSeconds(state);
+    const chordRate = Math.max(1, Math.min(128, state.chordRate ?? 32));
+    if (chordRate < phraseLength) {
+      const chordsPerPhrase = Math.max(2, Math.round(phraseLength / chordRate));
+      return phraseLength / chordsPerPhrase;
+    }
+    return phraseLength;
+  }
+
+  private getPadEnvelopeGateSeconds(
+    state: SliderState,
+    pad: 'pad1' | 'pad2',
+    voiceDelaySeconds: number,
+    triggerIntervalSeconds: number,
+  ): number {
+    const attack = Math.max(0.001, Math.min(16, pad === 'pad2' ? (state.pad2Attack ?? 6) : (state.synthAttack ?? 6)));
+    const decay = Math.max(0.01, Math.min(8, pad === 'pad2' ? (state.pad2Decay ?? 1) : (state.synthDecay ?? 1)));
+    const requestedHold = Math.max(0, Math.min(20, pad === 'pad2' ? (state.pad2Hold ?? 1) : (state.synthHold ?? 1)));
+    const release = Math.max(0.01, Math.min(30, pad === 'pad2' ? (state.pad2Release ?? 12) : (state.synthRelease ?? 12)));
+    const fit = pad === 'pad2' ? (state.pad2FitEnvelopeToChord ?? true) : (state.padFitEnvelopeToChord ?? true);
+    let hold = requestedHold;
+    if (fit) {
+      const maxHold = triggerIntervalSeconds - voiceDelaySeconds - 0.05 - attack - decay - release;
+      hold = Math.max(0, Math.min(requestedHold, maxHold));
+    }
+    return Math.max(0.02, Math.min(20, attack + decay + hold));
   }
 
   private isNonPadMelodicSource(source: string): boolean {
@@ -8763,7 +8793,8 @@ export class AudioEngine {
       }
     }
 
-    const waveSpread = state.waveSpread * state.chordRate; // Fraction of chordRate → seconds
+    const triggerIntervalSeconds = this.getPadChordTriggerIntervalSeconds(state);
+    const waveSpread = state.waveSpread * triggerIntervalSeconds;
     const rng = this.rng; // Capture for use in loop
     const pad2Assign = (state.pad2Enabled && state.pad2VoiceAssign) ? state.pad2VoiceAssign : 0;
     const voiceMask = (state.synthVoiceMask || 63) & ~pad2Assign; // Pad 1 only — exclude Pad 2 voices
@@ -8811,6 +8842,7 @@ export class AudioEngine {
       }
       const freq = enabledFrequencies[enabledIndex % enabledFrequencies.length] ?? frequencies[0] ?? 440;
       const voiceDelay = voiceOffsets[i] ?? 0; // Staggered entry time for this voice
+      const holdSeconds = this.getPadEnvelopeGateSeconds(state, 'pad1', voiceDelay, triggerIntervalSeconds);
 
       padChordTriggered = true;
       const padNode = this.padWasmNode;
@@ -8823,6 +8855,7 @@ export class AudioEngine {
           voiceIndex: i,
           frequency: freq,
           velocity: 1,
+          holdSeconds,
         });
       };
       const delayMs = Math.max(0, voiceDelay * 1000);
@@ -10215,17 +10248,17 @@ export class AudioEngine {
     }
 
     // Load/update lead presets when selections change
-    if (state.lead1PresetA !== this.lead1PresetAId) {
-      this.loadLeadPreset('A', state.lead1PresetA);
+    if (state.lead1PresetA !== this.lead1PresetAId && state.lead1PresetA !== this.leadPresetPendingIds.A) {
+      void this.loadLeadPreset('A', state.lead1PresetA);
     }
-    if (state.lead1PresetB !== this.lead1PresetBId) {
-      this.loadLeadPreset('B', state.lead1PresetB);
+    if (state.lead1PresetB !== this.lead1PresetBId && state.lead1PresetB !== this.leadPresetPendingIds.B) {
+      void this.loadLeadPreset('B', state.lead1PresetB);
     }
-    if (state.lead2PresetC !== this.lead2PresetCId) {
-      this.loadLeadPreset('C', state.lead2PresetC);
+    if (state.lead2PresetC !== this.lead2PresetCId && state.lead2PresetC !== this.leadPresetPendingIds.C) {
+      void this.loadLeadPreset('C', state.lead2PresetC);
     }
-    if (state.lead2PresetD !== this.lead2PresetDId) {
-      this.loadLeadPreset('D', state.lead2PresetD);
+    if (state.lead2PresetD !== this.lead2PresetDId && state.lead2PresetD !== this.leadPresetPendingIds.D) {
+      void this.loadLeadPreset('D', state.lead2PresetD);
     }
 
     // Ocean filter parameters
@@ -10731,12 +10764,21 @@ export class AudioEngine {
    * Called by App.tsx when preset dropdown changes.
    */
   async loadLeadPreset(slot: 'A' | 'B' | 'C' | 'D', presetId: string): Promise<void> {
-    const preset = await loadLead4opFMPreset(presetId);
-    switch (slot) {
-      case 'A': this.lead1PresetA = preset; this.lead1PresetAId = presetId; break;
-      case 'B': this.lead1PresetB = preset; this.lead1PresetBId = presetId; break;
-      case 'C': this.lead2PresetC = preset; this.lead2PresetCId = presetId; break;
-      case 'D': this.lead2PresetD = preset; this.lead2PresetDId = presetId; break;
+    const fallbackId = slot === 'B' || slot === 'D' ? 'gamelan' : 'soft_rhodes';
+    this.leadPresetPendingIds[slot] = presetId;
+    try {
+      const preset = await loadLead4opFMPresetVerified(presetId, fallbackId);
+      if (this.leadPresetPendingIds[slot] !== presetId) return;
+      switch (slot) {
+        case 'A': this.lead1PresetA = preset; this.lead1PresetAId = presetId; break;
+        case 'B': this.lead1PresetB = preset; this.lead1PresetBId = presetId; break;
+        case 'C': this.lead2PresetC = preset; this.lead2PresetCId = presetId; break;
+        case 'D': this.lead2PresetD = preset; this.lead2PresetDId = presetId; break;
+      }
+    } finally {
+      if (this.leadPresetPendingIds[slot] === presetId) {
+        delete this.leadPresetPendingIds[slot];
+      }
     }
   }
 
@@ -12130,9 +12172,12 @@ export class AudioEngine {
                         const rDecay = isPad2
                           ? (padTriggerState?.pad2Decay ?? 0.3)
                           : (padTriggerState?.synthDecay ?? 0.3);
+                        const rHold = isPad2
+                          ? (padTriggerState?.pad2Hold ?? 1)
+                          : (padTriggerState?.synthHold ?? 1);
                         const synthAttack = rAttack * ratchetFactor;
                         const synthDecay = rDecay * ratchetFactor;
-                        const noteDuration = synthAttack + synthDecay + Math.max(0.1, (synthAttack + synthDecay) * 0.5);
+                        const noteDuration = synthAttack + synthDecay + Math.max(0, rHold) * ratchetFactor;
                         this.triggerSynthVoice(voiceIndex, frequency, velocity, noteDuration, padParamsOverride);
                       }
                       this.synthMorphOverride = null;

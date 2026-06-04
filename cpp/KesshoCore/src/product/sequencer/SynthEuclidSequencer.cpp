@@ -31,6 +31,38 @@ float selectedDrumVoiceMidi(const kessho::product::internal::LaneState& lane, ui
   return lane.midi_note;
 }
 
+bool sequencerStepFieldActive(
+    const KesshoProductEngine& engine,
+    const kessho::product::internal::LaneState& lane,
+    uint32_t field) {
+  const uint32_t field_id = engine.stepFieldId(field);
+  const bool config_enabled =
+      engine.validStepFieldId(field_id) &&
+      lane.step_value_configs[field_id].enabled;
+  switch (field) {
+    case KESSHO_PRODUCT_STEP_FIELD_MORPH:
+      return config_enabled ||
+          lane.morph_override_set_low != 0u ||
+          lane.morph_override_set_high != 0u ||
+          lane.morph_range_set_low != 0u ||
+          lane.morph_range_set_high != 0u;
+    case KESSHO_PRODUCT_STEP_FIELD_DISTANCE:
+      return config_enabled ||
+          lane.distance_override_set_low != 0u ||
+          lane.distance_override_set_high != 0u ||
+          lane.distance_range_set_low != 0u ||
+          lane.distance_range_set_high != 0u;
+    case KESSHO_PRODUCT_STEP_FIELD_EXPRESSION:
+      return config_enabled ||
+          lane.expression_override_set_low != 0u ||
+          lane.expression_override_set_high != 0u ||
+          lane.expression_range_set_low != 0u ||
+          lane.expression_range_set_high != 0u;
+    default:
+      return config_enabled;
+  }
+}
+
 } // namespace
 
   void KesshoProductEngine::generateLaneEvents(
@@ -168,66 +200,144 @@ float selectedDrumVoiceMidi(const kessho::product::internal::LaneState& lane, ui
       const uint32_t drum_voice = drum_lane
           ? static_cast<uint32_t>(std::clamp(roundedInt(trigger_midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1))
           : DRUM_NUM_VOICE_TYPES;
-      const uint32_t morph_step_id = subLaneStepForField(
-          lane,
-          KESSHO_PRODUCT_STEP_FIELD_MORPH,
-          step_id,
-          relative_step,
-          hit_count_phase);
-      const uint32_t distance_step_id = subLaneStepForField(
-          lane,
-          KESSHO_PRODUCT_STEP_FIELD_DISTANCE,
-          step_id,
-          relative_step,
-          hit_count_phase);
-      const uint32_t expression_step_id = subLaneStepForField(
-          lane,
-          KESSHO_PRODUCT_STEP_FIELD_EXPRESSION,
-          step_id,
-          relative_step,
-          hit_count_phase);
-      const float morph_base = stepFloatRangeValue(
-          morph_step_id,
-          lane.morph_override_set_low,
-          lane.morph_override_set_high,
-          lane.morph_overrides,
-          lane.morph_range_set_low,
-          lane.morph_range_set_high,
-          lane.morph_range_maxes,
-          lane.morph,
-          event_seed ^ 0x2c1b3c6du);
-      const float distance_base = stepFloatRangeValue(
-          distance_step_id,
-          lane.distance_override_set_low,
-          lane.distance_override_set_high,
-          lane.distance_overrides,
-          lane.distance_range_set_low,
-          lane.distance_range_set_high,
-          lane.distance_range_maxes,
-          lane.distance,
-          event_seed ^ 0x165667b1u);
-      const float expression_base = stepFloatRangeValue(
-          expression_step_id,
-          lane.expression_override_set_low,
-          lane.expression_override_set_high,
-          lane.expression_overrides,
-          lane.expression_range_set_low,
-          lane.expression_range_set_high,
-          lane.expression_range_maxes,
-          lane.expression,
-          event_seed ^ 0x51f15ca9u);
-      float trigger_morph = resolveModulatedValue(lane.target_source_id, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, morph_base, event_seed);
-      float trigger_distance = resolveModulatedValue(lane.target_source_id, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance_base, event_seed);
-      float trigger_expression = resolveModulatedValue(lane.target_source_id, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression_base, event_seed);
-      if (lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
-        const uint32_t drum_target = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + drum_voice;
-        trigger_morph = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, trigger_morph, event_seed);
-        trigger_distance = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, trigger_distance, event_seed);
-        trigger_expression = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, trigger_expression, event_seed);
+      const bool morph_field_active = sequencerStepFieldActive(*this, lane, KESSHO_PRODUCT_STEP_FIELD_MORPH);
+      const bool distance_field_active = sequencerStepFieldActive(*this, lane, KESSHO_PRODUCT_STEP_FIELD_DISTANCE);
+      const bool expression_field_active = sequencerStepFieldActive(*this, lane, KESSHO_PRODUCT_STEP_FIELD_EXPRESSION);
+      const uint32_t drum_target = lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM
+          ? KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + drum_voice
+          : 0u;
+      float trigger_morph = -1.0f;
+      float trigger_distance = -1.0f;
+      float trigger_expression = -1.0f;
+      if (morph_field_active) {
+        const uint32_t morph_step_id = subLaneStepForField(
+            lane,
+            KESSHO_PRODUCT_STEP_FIELD_MORPH,
+            step_id,
+            relative_step,
+            hit_count_phase);
+        const float morph_base = stepFloatRangeValue(
+            morph_step_id,
+            lane.morph_override_set_low,
+            lane.morph_override_set_high,
+            lane.morph_overrides,
+            lane.morph_range_set_low,
+            lane.morph_range_set_high,
+            lane.morph_range_maxes,
+            lane.morph,
+            event_seed ^ 0x2c1b3c6du);
+        trigger_morph = resolveModulatedValue(
+            lane.target_source_id,
+            KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID,
+            morph_base,
+            event_seed);
+        if (lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+          trigger_morph = resolveModulatedValue(
+              drum_target,
+              KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID,
+              trigger_morph,
+              event_seed);
+        }
+        trigger_morph = evolvedLaneValue(
+            lane,
+            lane_index,
+            step_id,
+            event_sample,
+            3u,
+            trigger_morph,
+            0.35f,
+            0.0f,
+            1.0f);
       }
-      trigger_morph = evolvedLaneValue(lane, lane_index, step_id, event_sample, 3u, trigger_morph, 0.35f, 0.0f, 1.0f);
-      trigger_distance = evolvedLaneValue(lane, lane_index, step_id, event_sample, 4u, trigger_distance, 0.35f, 0.0f, 1.0f);
-      trigger_expression = evolvedLaneValue(lane, lane_index, step_id, event_sample, 5u, trigger_expression, 0.25f, 0.0f, 1.0f);
+      if (distance_field_active) {
+        const uint32_t distance_step_id = subLaneStepForField(
+            lane,
+            KESSHO_PRODUCT_STEP_FIELD_DISTANCE,
+            step_id,
+            relative_step,
+            hit_count_phase);
+        const float distance_base = stepFloatRangeValue(
+            distance_step_id,
+            lane.distance_override_set_low,
+            lane.distance_override_set_high,
+            lane.distance_overrides,
+            lane.distance_range_set_low,
+            lane.distance_range_set_high,
+            lane.distance_range_maxes,
+            lane.distance,
+            event_seed ^ 0x165667b1u);
+        trigger_distance = resolveModulatedValue(
+            lane.target_source_id,
+            KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID,
+            distance_base,
+            event_seed);
+        if (lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+          trigger_distance = resolveModulatedValue(
+              drum_target,
+              KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID,
+              trigger_distance,
+              event_seed);
+        }
+        trigger_distance = evolvedLaneValue(
+            lane,
+            lane_index,
+            step_id,
+            event_sample,
+            4u,
+            trigger_distance,
+            0.35f,
+            0.0f,
+            1.0f);
+      }
+      if (expression_field_active) {
+        const uint32_t expression_step_id = subLaneStepForField(
+            lane,
+            KESSHO_PRODUCT_STEP_FIELD_EXPRESSION,
+            step_id,
+            relative_step,
+            hit_count_phase);
+        const float expression_base = stepFloatRangeValue(
+            expression_step_id,
+            lane.expression_override_set_low,
+            lane.expression_override_set_high,
+            lane.expression_overrides,
+            lane.expression_range_set_low,
+            lane.expression_range_set_high,
+            lane.expression_range_maxes,
+            lane.expression,
+            event_seed ^ 0x51f15ca9u);
+        trigger_expression = resolveModulatedValue(
+            lane.target_source_id,
+            KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID,
+            expression_base,
+            event_seed);
+        if (lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+          trigger_expression = resolveModulatedValue(
+              drum_target,
+              KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID,
+              trigger_expression,
+              event_seed);
+        }
+        trigger_expression = evolvedLaneValue(
+            lane,
+            lane_index,
+            step_id,
+            event_sample,
+            5u,
+            trigger_expression,
+            0.25f,
+            0.0f,
+            1.0f);
+      }
+      if (!morph_field_active) {
+        lane.last_emitted_morph_valid = false;
+      }
+      if (!distance_field_active) {
+        lane.last_emitted_distance_valid = false;
+      }
+      if (!expression_field_active) {
+        lane.last_emitted_expression_valid = false;
+      }
       for (uint32_t ratchet_index = 0; ratchet_index < ratchet; ++ratchet_index) {
         const uint64_t ratchet_sample = event_sample + static_cast<uint64_t>(std::llround(ratchet_spacing * ratchet_index));
         if (ratchet_sample < block_start || ratchet_sample >= block_end) {
@@ -262,8 +372,18 @@ float selectedDrumVoiceMidi(const kessho::product::internal::LaneState& lane, ui
           telemetry.last_error_code = KESSHO_PRODUCT_ERROR_EVENT_QUEUE_FULL;
           return;
         }
-        lane.last_emitted_morph_valid = true;
-        lane.last_emitted_morph = trigger_morph;
+        if (morph_field_active) {
+          lane.last_emitted_morph_valid = true;
+          lane.last_emitted_morph = trigger_morph;
+        }
+        if (distance_field_active) {
+          lane.last_emitted_distance_valid = true;
+          lane.last_emitted_distance = trigger_distance;
+        }
+        if (expression_field_active) {
+          lane.last_emitted_expression_valid = true;
+          lane.last_emitted_expression = trigger_expression;
+        }
         lane.last_emitted_drum_voice = drum_voice;
         lane.last_emitted_sample_frame = ratchet_sample;
       }

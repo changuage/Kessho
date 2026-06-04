@@ -82,6 +82,10 @@ struct LaneState {
   uint64_t emitted_hit_count = 0;
   bool last_emitted_morph_valid = false;
   float last_emitted_morph = 0.0f;
+  bool last_emitted_distance_valid = false;
+  float last_emitted_distance = 0.0f;
+  bool last_emitted_expression_valid = false;
+  float last_emitted_expression = 1.0f;
   uint32_t last_emitted_drum_voice = DRUM_NUM_VOICE_TYPES;
   uint64_t last_emitted_sample_frame = 0;
   uint64_t sequencer_runtime_sample_frame = 0;

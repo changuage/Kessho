@@ -142,6 +142,14 @@ interface SeqLaneProps {
   onChangePitchRoot?: (root: number) => void;
   /** Pitch-specific: change scale */
   onChangePitchScale?: (scale: ScaleName) => void;
+  /** Show the synthetic Harmony scale option before concrete scales. */
+  allowHarmonyPitchScale?: boolean;
+  /** Root text shown in the pitch root drag control. */
+  pitchRootDisplayValue?: string;
+  /** Root used for pitch note labels after caller-specific resolution. */
+  pitchDisplayRoot?: number;
+  /** Scale intervals used for pitch note labels after caller-specific resolution. */
+  pitchDisplayScaleIntervals?: readonly number[];
   /** Pitch-specific: toggle scale quantize */
   onToggleScaleQuantize?: () => void;
   /** Hide note-range mode when the caller needs direct note entry. */
@@ -186,6 +194,10 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   onChangePitchBindingMode,
   onChangePitchRoot,
   onChangePitchScale,
+  allowHarmonyPitchScale = false,
+  pitchRootDisplayValue,
+  pitchDisplayRoot,
+  pitchDisplayScaleIntervals,
   onToggleScaleQuantize,
   selectedStep = null,
   selectedStepLabel = 'Step',
@@ -203,6 +215,10 @@ const SeqLane: React.FC<SeqLaneProps> = ({
 }) => {
   const laneAccent = color || FALLBACK_LANE_COLORS[lane];
   const cursorMarkerStyle = getCursorMarkerStyle(laneAccent);
+  const pitchScaleOptions = Object.keys(SCALES).filter((scale) => allowHarmonyPitchScale || scale !== 'Harmony');
+  const resolvedPitchRoot = pitchDisplayRoot ?? sequencer.pitch.root;
+  const resolvedPitchScale = pitchDisplayScaleIntervals ?? SCALES[sequencer.pitch.scale] ?? SCALES.Major;
+  const showPitchRootControl = sequencer.pitch.scale !== 'Harmony';
   const laneSteps = lane === 'trigger'
     ? sequencer.trigger.steps
     : lane === 'pitch'
@@ -312,19 +328,22 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                 )}
                 {sequencer.pitch.mode !== 'noteRange' && (
                   <>
-                    <DragNumber
-                      value={sequencer.pitch.root}
-                      min={0}
-                      max={127}
-                      label="Root"
-                      onChange={(v) => onChangePitchRoot?.(v)}
-                    />
+                    {showPitchRootControl && (
+                      <DragNumber
+                        value={sequencer.pitch.root}
+                        min={0}
+                        max={127}
+                        label="Root"
+                        displayValue={pitchRootDisplayValue}
+                        onChange={(v) => onChangePitchRoot?.(v)}
+                      />
+                    )}
                     <select
                       className="seq-pitch-scale"
                       value={sequencer.pitch.scale}
                       onChange={(e) => onChangePitchScale?.(e.target.value as ScaleName)}
                     >
-                      {Object.keys(SCALES).map((s) => (
+                      {pitchScaleOptions.map((s) => (
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
@@ -548,8 +567,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
               }
               let noteName = '';
               if (isNotes) {
-                const scale = SCALES[sequencer.pitch.scale] || [];
-                const midi = sequencer.pitch.root + scaleDegreeToSemitone(off, scale);
+                const midi = resolvedPitchRoot + scaleDegreeToSemitone(off, resolvedPitchScale);
                 noteName = midiToName(midi);
               }
 

@@ -9,6 +9,8 @@ import { createEmptyStepOverrides, deserializeStepOverrides } from './sequencer/
 import { inferLegacySequencerSubLaneStatesFromOverrides } from './sequencer/sequencePresetLane';
 import { drumPitchBaseMidiFromState, drumPitchUiValuesToEngineOffsets } from './sequencer/drumPitchSequencer';
 import { SCALES, scaleDegreeToSemitone, type ClockDivision, type PitchBindingMode } from '../audio/drumSeqTypes';
+import { calculateDriftedRoot } from '../audio/harmony';
+import { getScaleByName } from '../audio/scales';
 import { normalizeSequencerClockDivisions } from '../audio/sequencerClockDivisions';
 import { normalizeSequencerLaneDirection } from '../audio/sequencerLaneDirection';
 import { normalizeSequencerPitchBindingModes } from '../audio/sequencerPitchBinding';
@@ -89,6 +91,14 @@ export function createDefaultPitchSettings(): PitchSettings[] {
     mode: 'semitones',
     root: 60,
     scale: 'Major',
+  }));
+}
+
+function createDefaultSynthPitchSettings(): PitchSettings[] {
+  return Array.from({ length: 4 }, () => ({
+    mode: 'semitones',
+    root: 60,
+    scale: 'Harmony',
   }));
 }
 
@@ -230,10 +240,39 @@ function drumStepOverridesForEngineRestore(
   );
 }
 
+function pitchClass(value: number): number {
+  return ((Math.round(value) % 12) + 12) % 12;
+}
+
+function rootMidiWithPitchClass(baseMidi: number, rootPitchClass: number): number {
+  const base = Math.max(0, Math.min(127, Math.round(baseMidi)));
+  const candidate = Math.floor(base / 12) * 12 + pitchClass(rootPitchClass);
+  return Math.max(0, Math.min(127, candidate > 127 ? candidate - 12 : candidate));
+}
+
+function restoredSynthPitchRootAndScale(settings: PitchSettings, state: SliderState) {
+  if (settings.scale !== 'Harmony') {
+    return {
+      root: settings.root,
+      scaleIntervals: SCALES[settings.scale] || SCALES.Major || [0, 2, 4, 5, 7, 9, 11],
+    };
+  }
+  const harmonyRoot = state.cofDriftEnabled
+    ? calculateDriftedRoot(state.rootNote, state.cofCurrentStep ?? 0)
+    : state.rootNote;
+  return {
+    root: rootMidiWithPitchClass(60, harmonyRoot),
+    scaleIntervals: state.scaleMode === 'manual'
+      ? getScaleByName(state.manualScale)?.intervals ?? SCALES.Harmony
+      : SCALES.Harmony,
+  };
+}
+
 function synthPitchOverridesForEngine(
   overrides: StepOverrides,
   subLaneStates: Record<SubLaneKind, SubLaneState>[] | undefined,
   pitchSettings: PitchSettings[],
+  state: SliderState,
 ): StepOverrides['pitch'] {
   return overrides.pitch.map((offsets, laneIdx) => {
     if (!offsets) return null;
@@ -241,11 +280,11 @@ function synthPitchOverridesForEngine(
     const settings = pitchSettings[laneIdx];
     if (!settings) return offsets;
     if (settings.mode === 'noteRange') return null;
+    const resolvedPitch = restoredSynthPitchRootAndScale(settings, state);
     if (settings.mode === 'notes') {
-      const scaleIntervals = SCALES[settings.scale] || SCALES.Major || [0, 2, 4, 5, 7, 9, 11];
-      return offsets.map((degree) => settings.root + scaleDegreeToSemitone(degree, scaleIntervals));
+      return offsets.map((degree) => resolvedPitch.root + scaleDegreeToSemitone(degree, resolvedPitch.scaleIntervals));
     }
-    return offsets.map((offset) => settings.root + offset);
+    return offsets.map((offset) => resolvedPitch.root + offset);
   });
 }
 
@@ -253,11 +292,12 @@ function synthStepOverridesForEngineRestore(
   overrides: StepOverrides,
   subLaneStates: Record<SubLaneKind, SubLaneState>[] | undefined,
   pitchSettings: PitchSettings[],
+  state: SliderState,
 ): StepOverrides {
   return stepOverridesForEngineSubLaneState(
     {
       ...stepOverridesWithRestoredRanges(overrides, subLaneStates),
-      pitch: synthPitchOverridesForEngine(overrides, subLaneStates, pitchSettings),
+      pitch: synthPitchOverridesForEngine(overrides, subLaneStates, pitchSettings, state),
     },
     subLaneStates,
   );
@@ -329,7 +369,7 @@ export function usePresetSequencerRestore({
       drumSubLaneStatesRef.current = drumSubLaneStates;
       synthSubLaneStatesRef.current = synthSubLaneStates;
       const drumPitchSettings = normalizeSequencerPitchSettingsArray(preset.drumPitchSettings ?? createDefaultPitchSettings(), 4) as PitchSettings[];
-      const synthPitchSettings = normalizeSequencerPitchSettingsArray(preset.synthPitchSettings ?? createDefaultPitchSettings(), 4) as PitchSettings[];
+      const synthPitchSettings = normalizeSequencerPitchSettingsArray(preset.synthPitchSettings ?? createDefaultSynthPitchSettings(), 4) as PitchSettings[];
       drumPitchSettingsRef.current = drumPitchSettings;
       synthPitchSettingsRef.current = synthPitchSettings;
       const synthArpConfigs = normalizeProductArpConfigs(preset.synthArpConfigs, 4);
@@ -349,7 +389,7 @@ export function usePresetSequencerRestore({
       setSelectedDrumStepOverrides(drumStepOverridesForEngineRestore(drumStepOverrides, drumSubLaneStates, drumPitchSettings, preset.state));
       const synthStepOverrides = deserializeStepOverrides(preset.synthStepOverrides) ?? createEmptyStepOverrides();
       synthStepOverridesRef.current = synthStepOverrides;
-      setSelectedSynthStepOverrides(synthStepOverridesForEngineRestore(synthStepOverrides, synthSubLaneStates, synthPitchSettings));
+      setSelectedSynthStepOverrides(synthStepOverridesForEngineRestore(synthStepOverrides, synthSubLaneStates, synthPitchSettings, preset.state));
       setSelectedSequencerPresetHomeSnapshots(
         drumPitchSettings,
         drumSubLaneStates?.map((state) => state.pitch),

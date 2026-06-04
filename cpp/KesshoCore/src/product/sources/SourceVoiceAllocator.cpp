@@ -98,23 +98,57 @@ uint32_t KesshoProductEngine::triggerVoice(
     primeGranularControlsForSourceStart(source_id);
   }
   const bool drum_source = source_id == KESSHO_PRODUCT_SOURCE_DRUM;
+  const bool preset_source = isPadProductSource(source_id) || isLeadProductSource(source_id);
   const bool event_morph_override = event_morph >= 0.0f;
+  const bool event_distance_override = event_distance >= 0.0f;
+  const bool event_expression_override = event_expression >= 0.0f;
   float morph = event_morph_override ? event_morph : (drum_source ? -1.0f : source.morph);
-  float distance = event_distance >= 0.0f ? event_distance : (drum_source ? -1.0f : source.distance);
-  float expression = event_expression >= 0.0f ? event_expression : (drum_source ? 1.0f : source.expression);
-  if (!drum_source) {
-    morph = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, morph, resolved_seed);
-    distance = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance, resolved_seed);
+  float distance = event_distance_override ? event_distance : (drum_source ? -1.0f : source.distance);
+  float expression = event_expression_override ? event_expression : (drum_source ? 1.0f : source.expression);
+  bool live_sequencer_morph_override = false;
+  bool live_sequencer_distance_override = false;
+  bool live_sequencer_expression_override = false;
+  if (preset_source) {
+    if (!event_morph_override) {
+      live_sequencer_morph_override =
+          activeSequencerMorphForPresetSource(source_id, DRUM_NUM_VOICE_TYPES, morph);
+    }
+    if (!event_distance_override) {
+      live_sequencer_distance_override =
+          activeSequencerDistanceForPresetSource(source_id, DRUM_NUM_VOICE_TYPES, distance);
+    }
+    if (!event_expression_override) {
+      live_sequencer_expression_override =
+          activeSequencerExpressionForPresetSource(source_id, DRUM_NUM_VOICE_TYPES, expression);
+    }
   }
-  expression = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression, resolved_seed);
+  if (!drum_source) {
+    if (!event_morph_override && !live_sequencer_morph_override) {
+      morph = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, morph, resolved_seed);
+    }
+    if (!event_distance_override && !live_sequencer_distance_override) {
+      distance = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance, resolved_seed);
+    }
+    if (!event_expression_override && !live_sequencer_expression_override) {
+      expression = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression, resolved_seed);
+    }
+  } else if (!event_expression_override) {
+    expression = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression, resolved_seed);
+  }
   float drum_delay_send = -1.0f;
   uint32_t drum_voice = 0u;
   if (drum_source) {
     drum_voice = static_cast<uint32_t>(std::clamp(roundedInt(midi_note - 36.0f), 0, DRUM_NUM_VOICE_TYPES - 1));
     const uint32_t drum_target = KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE + drum_voice;
-    morph = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, morph, resolved_seed);
-    distance = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance, resolved_seed);
-    expression = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression, resolved_seed);
+    if (!event_morph_override) {
+      morph = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID, morph, resolved_seed);
+    }
+    if (!event_distance_override) {
+      distance = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID, distance, resolved_seed);
+    }
+    if (!event_expression_override) {
+      expression = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID, expression, resolved_seed);
+    }
     drum_delay_send = resolveModulatedValue(drum_target, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID, source.delay_a_send, resolved_seed);
     triggerSidechainDuck(drum_voice, clampFloat(velocity * expression, 0.0f, 1.0f));
   }
@@ -287,6 +321,9 @@ uint32_t KesshoProductEngine::triggerVoice(
     source.last_missing_asset_id = 0u;
     voice.sample_voice = true;
     voice.asset_slot = slot;
+    if (source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
+      voice.soundscape_asset_level = soundscapeAssetRefLevel(source, assets[slot].asset_id);
+    }
     voice.sample_position = 0.0;
     const double base_step = assets[slot].sample_rate / sample_rate;
     const double pitch_step = source_id == KESSHO_PRODUCT_SOURCE_PIANO

@@ -418,8 +418,12 @@ function isLead4opFMPresetCandidate(value: unknown): value is Lead4opFMPreset {
     && typeof candidate.params === 'object';
 }
 
+export function normalizeLead4opPresetLookup(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
 function normalizeLeadPresetLookup(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return normalizeLead4opPresetLookup(value);
 }
 
 function getLead4opPresetCandidateFromEntry(entry: PresetEntry): Lead4opFMPreset | null {
@@ -455,6 +459,20 @@ function leadEntryMatchesLookup(entry: PresetEntry, presetId: string): boolean {
     .some(value => normalizeLeadPresetLookup(value) === lookup);
 }
 
+function leadSummaryMatchesLookup(
+  summary: { id?: string; name: string; remoteId?: string },
+  presetId: string,
+): boolean {
+  const lookup = normalizeLeadPresetLookup(presetId);
+  return [
+    summary.id,
+    summary.name,
+    summary.remoteId,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .some(value => normalizeLeadPresetLookup(value) === lookup);
+}
+
 async function loadLead4opPresetEntryFromStore(presetId: string): Promise<PresetEntry | null> {
   const store = getPresetStore();
   const direct = await store.load('engine', presetId, USER_LEAD4OP_SCOPE);
@@ -462,8 +480,11 @@ async function loadLead4opPresetEntryFromStore(presetId: string): Promise<Preset
 
   const summaries = await store.list('engine', USER_LEAD4OP_SCOPE);
   for (const summary of summaries) {
+    const summaryMatches = leadSummaryMatchesLookup(summary, presetId);
     const entry = await store.load('engine', summary.name, USER_LEAD4OP_SCOPE);
-    if (entry && leadEntryMatchesLookup(entry, presetId)) return entry;
+    if (!entry) continue;
+    if (summaryMatches && getLead4opPresetCandidateFromEntry(entry)) return entry;
+    if (leadEntryMatchesLookup(entry, presetId)) return entry;
   }
 
   return null;
@@ -644,10 +665,7 @@ export async function loadLead4opFMManifest(): Promise<Lead4opFMManifest> {
   return FALLBACK_LEAD4OP_MANIFEST;
 }
 
-/**
- * Load a preset by ID (cached after first fetch). Falls back to embedded defaults.
- */
-export async function loadLead4opFMPreset(presetId: string): Promise<Lead4opFMPreset> {
+async function resolveLead4opFMPreset(presetId: string, warnOnFallback: boolean): Promise<Lead4opFMPreset> {
   const stockLookup = normalizeLeadPresetLookup(presetId);
   if (stockLookup === 'soft_rhodes') {
     presetCache.set('soft_rhodes', DEFAULT_SOFT_RHODES);
@@ -667,8 +685,61 @@ export async function loadLead4opFMPreset(presetId: string): Promise<Lead4opFMPr
     return userPreset.preset;
   }
 
-  console.warn(`Lead4opFM preset not found in cloud: ${presetId}, falling back to soft_rhodes`);
+  if (warnOnFallback) {
+    console.warn(`Lead4opFM preset not found in cloud: ${presetId}, falling back to soft_rhodes`);
+  }
   return DEFAULT_SOFT_RHODES;
+}
+
+/**
+ * Load a preset by ID (cached after first fetch). Falls back to embedded defaults.
+ */
+export async function loadLead4opFMPreset(presetId: string): Promise<Lead4opFMPreset> {
+  return resolveLead4opFMPreset(presetId, true);
+}
+
+const LEAD4OP_PRESET_RETRY_DELAYS_MS = [80, 160, 320, 640, 1280] as const;
+
+function waitForLead4opPresetRetry(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms);
+  });
+}
+
+export function lead4opPresetMatchesLookup(
+  preset: unknown,
+  presetId: string,
+  fallbackId = 'soft_rhodes',
+): boolean {
+  const requested = normalizeLead4opPresetLookup(presetId);
+  if (!requested || requested === normalizeLead4opPresetLookup(fallbackId)) {
+    return true;
+  }
+  if (!preset || typeof preset !== 'object') return false;
+  const record = preset as Record<string, unknown>;
+  return [record.id, record.name]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .some((value) => normalizeLead4opPresetLookup(value) === requested);
+}
+
+/**
+ * Load a Lead 4op FM preset without caching a transient store miss as the active sound.
+ */
+export async function loadLead4opFMPresetVerified(
+  presetId: string,
+  fallbackId = 'soft_rhodes',
+): Promise<Lead4opFMPreset> {
+  for (let attempt = 0; attempt <= LEAD4OP_PRESET_RETRY_DELAYS_MS.length; attempt++) {
+    const isFinalAttempt = attempt === LEAD4OP_PRESET_RETRY_DELAYS_MS.length;
+    const preset = await resolveLead4opFMPreset(presetId, isFinalAttempt);
+    if (lead4opPresetMatchesLookup(preset, presetId, fallbackId) || isFinalAttempt) {
+      return preset;
+    }
+
+    await waitForLead4opPresetRetry(LEAD4OP_PRESET_RETRY_DELAYS_MS[attempt]!);
+  }
+
+  return resolveLead4opFMPreset(presetId, true);
 }
 
 /**

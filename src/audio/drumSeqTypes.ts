@@ -6,6 +6,7 @@ export type PitchMode = 'semitones' | 'notes' | 'noteRange';
 export type PitchBindingMode = 'polyrhythmic' | 'linked' | 'sequence';
 
 export type ScaleName =
+  | 'Harmony'
   | 'Chromatic'
   | 'Major'
   | 'Minor'
@@ -34,7 +35,7 @@ export function normalizeNoteDegreeOffset(offset: number): number {
   return Math.max(0, Math.min(1, (offset - NOTE_DEGREE_OFFSET_MIN) / NOTE_DEGREE_OFFSET_RANGE));
 }
 
-export function scaleDegreeToSemitone(degree: number, scale: number[]): number {
+export function scaleDegreeToSemitone(degree: number, scale: readonly number[]): number {
   if (scale.length === 0) return 0;
   const oct = Math.floor(degree / scale.length);
   const idx = ((degree % scale.length) + scale.length) % scale.length;
@@ -203,6 +204,7 @@ export interface SequencerState {
 }
 
 export const SCALES: Record<ScaleName, number[]> = {
+  Harmony: [0, 2, 4, 5, 7, 9, 11],
   Chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
   Major: [0, 2, 4, 5, 7, 9, 11],
   Minor: [0, 2, 3, 5, 7, 8, 10],

@@ -32,7 +32,9 @@ interface FilterLfoVizProps {
   synthAttack: number;
   synthDecay: number;
   synthSustain: number;
+  synthHold: number;
   synthRelease: number;
+  envelopeTimelineSeconds?: number;
   modEnvEnabled?: boolean;
   modEnvAttack?: number;
   modEnvDecay?: number;
@@ -46,7 +48,7 @@ interface FilterLfoVizProps {
   /** Callbacks for interactive dragging */
   onFilterMinChange?: (value: number) => void;
   onFilterMaxChange?: (value: number) => void;
-  onAdsrChange?: (param: 'synthAttack' | 'synthDecay' | 'synthSustain' | 'synthRelease', value: number) => void;
+  onAdsrChange?: (param: 'synthAttack' | 'synthDecay' | 'synthSustain' | 'synthHold' | 'synthRelease', value: number) => void;
   onModEnvChange?: (param: 'attack' | 'decay' | 'sustain' | 'release', value: number) => void;
 }
 
@@ -93,15 +95,15 @@ function lfoShapeValue(phase: number, wave: string): number {
   }
 }
 
-// Compute ADSR envelope value at time t (illustrative shape from params)
-function adsrValue(t: number, a: number, d: number, s: number, r: number, noteLen: number): number {
+// Compute amp envelope value at time t (attack, decay, hold plateau, release).
+function envelopeValue(t: number, a: number, d: number, s: number, h: number, r: number): number {
   if (t < 0) return 0;
   if (t < a) return t / Math.max(0.001, a);
   const tAfterA = t - a;
   if (tAfterA < d) return 1 - (1 - s) * (tAfterA / Math.max(0.001, d));
-  const sustainEnd = noteLen - r;
-  if (t < sustainEnd) return s;
-  const tInRelease = t - sustainEnd;
+  const releaseStart = a + d + h;
+  if (t < releaseStart) return s;
+  const tInRelease = t - releaseStart;
   if (tInRelease < r) return s * (1 - tInRelease / Math.max(0.001, r));
   return 0;
 }
@@ -110,7 +112,7 @@ function adsrValue(t: number, a: number, d: number, s: number, r: number, noteLe
 const LFO_HISTORY_LEN = 120; // ~2 seconds at 50ms polling + 60fps interp
 
 // Drag target types
-type DragTarget = 'filterMin' | 'filterMax' | 'adsrAttack' | 'adsrDecay' | 'adsrSustain' | 'adsrRelease' | null;
+type DragTarget = 'filterMin' | 'filterMax' | 'adsrAttack' | 'adsrDecay' | 'adsrSustain' | 'adsrHold' | 'adsrRelease' | null;
 const DRAG_HIT_PX = 10; // hit zone radius for drag handles
 
 const hasModEnvelope = (props: FilterLfoVizProps): boolean =>
@@ -125,6 +127,40 @@ const hasFilterModEnvelopeMotion = (props: FilterLfoVizProps): boolean =>
 const quantizeEnvelopeTime = (value: number): number => (
   value < 0.1 ? parseFloat(value.toFixed(3)) : parseFloat(value.toFixed(2))
 );
+
+function formatEnvelopeTimeLabel(value: number): string {
+  const safeValue = Math.max(0, Number.isFinite(value) ? value : 0);
+  if (safeValue < 1) return `${Math.round(safeValue * 1000)}ms`;
+  if (safeValue < 10) return `${safeValue.toFixed(2)}s`;
+  return `${safeValue.toFixed(1)}s`;
+}
+
+function formatEnvelopeSustainLabel(value: number): string {
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+}
+
+function createEnvelopeTimeScale(width: number, timelineSeconds: number) {
+  const domainSeconds = Math.max(0.25, Number.isFinite(timelineSeconds) ? timelineSeconds : 0.25);
+  const kneeSeconds = Math.max(0.05, Math.min(0.9, (domainSeconds / 24) * 1.25));
+  const denominator = Math.max(0.0001, Math.log1p(domainSeconds / kneeSeconds));
+  const safeWidth = Math.max(1, width);
+
+  return {
+    domainSeconds,
+    timeToX: (seconds: number): number => {
+      const clamped = Math.max(0, Math.min(domainSeconds, seconds));
+      return (Math.log1p(clamped / kneeSeconds) / denominator) * width;
+    },
+    xToTime: (x: number): number => {
+      const ratio = Math.max(0, Math.min(1, x / safeWidth));
+      return (Math.exp(ratio * denominator) - 1) * kneeSeconds;
+    },
+  };
+}
+
+function getEnvelopeTimelineSeconds(props: FilterLfoVizProps, fallbackSeconds: number): number {
+  return Math.max(0.25, props.envelopeTimelineSeconds ?? fallbackSeconds);
+}
 
 const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -420,10 +456,14 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     const a = props.synthAttack;
     const d = props.synthDecay;
     const s = props.synthSustain;
+    const hold = props.synthHold;
     const r = props.synthRelease;
     const envDepth = props.modEnvDepth ?? 0;
-    const noteLen = Math.max(0.5, a + d + 1 + r);
-    const totalTime = noteLen + 0.1;
+    const envEndTime = Math.max(0.001, a + d + hold + r);
+    const envelopeScale = createEnvelopeTimeScale(
+      w,
+      getEnvelopeTimelineSeconds(props, envEndTime + 0.1),
+    );
 
     ctx.beginPath();
     ctx.strokeStyle = '#f59e0b';
@@ -431,8 +471,8 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     ctx.globalAlpha = 0.85;
 
     for (let px = 0; px < w; px++) {
-      const t = (px / w) * totalTime;
-      const env = adsrValue(t, a, d, s, r, noteLen);
+      const t = envelopeScale.xToTime(px);
+      const env = envelopeValue(t, a, d, s, hold, r);
       const y = envY + envH - 4 - env * (envH - 8);
       px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
     }
@@ -449,9 +489,8 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       const modA = props.modEnvAttack ?? props.synthAttack;
       const modD = props.modEnvDecay ?? props.synthDecay;
       const modS = props.modEnvSustain ?? props.synthSustain;
+      const modH = props.synthHold;
       const modR = props.modEnvRelease ?? props.synthRelease;
-      const modNoteLen = Math.max(0.5, modA + modD + 1 + modR);
-      const modTotalTime = modNoteLen + 0.1;
 
       ctx.beginPath();
       ctx.strokeStyle = '#fde68a';
@@ -459,8 +498,8 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       ctx.globalAlpha = 0.45;
       ctx.setLineDash([4, 3]);
       for (let px = 0; px < w; px++) {
-        const t = (px / w) * modTotalTime;
-        const env = adsrValue(t, modA, modD, modS, modR, modNoteLen);
+        const t = envelopeScale.xToTime(px);
+        const env = envelopeValue(t, modA, modD, modS, modH, modR);
         const displayEnv = envDepth < 0 ? 1 - env : env;
         const y = envY + envH - 4 - displayEnv * (envH - 8);
         px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
@@ -470,25 +509,82 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       ctx.globalAlpha = 1;
     }
 
-    // ADSR phase labels
+    // ADHR/S value labels
     ctx.font = '7px monospace';
-    ctx.fillStyle = 'rgba(245,158,11,0.35)';
-    const ax = (a / totalTime) * w;
-    const dx = ((a + d) / totalTime) * w;
-    const sx = ((noteLen - r) / totalTime) * w;
-    if (ax > 12) ctx.fillText('A', ax / 2 - 3, envY + 10);
-    if (dx - ax > 12) ctx.fillText('D', (ax + dx) / 2 - 3, envY + 10);
-    if (sx - dx > 12) ctx.fillText('S', (dx + sx) / 2 - 3, envY + 10);
-    ctx.fillText('R', (sx + w) / 2 - 3, envY + 10);
+    const attackEndTime = a;
+    const decayEndTime = a + d;
+    const holdEndTime = a + d + hold;
+    const releaseEndTime = holdEndTime + r;
+    const ax = envelopeScale.timeToX(attackEndTime);
+    const dx = envelopeScale.timeToX(decayEndTime);
+    const hx = envelopeScale.timeToX(holdEndTime);
+    const rx = envelopeScale.timeToX(releaseEndTime);
+    const sustainLineY = envY + envH - 4 - s * (envH - 8);
 
     ctx.strokeStyle = 'rgba(245,158,11,0.15)';
     ctx.lineWidth = 0.5;
-    for (const px of [ax, dx, sx]) {
+    for (const px of [ax, dx, hx, rx]) {
       ctx.beginPath();
       ctx.moveTo(px, envY + 2);
       ctx.lineTo(px, envY + envH - 2);
       ctx.stroke();
     }
+
+    const labelBoxes: Array<{ left: number; top: number; right: number; bottom: number }> = [];
+    const drawEnvelopeLabel = (label: string, x: number, baselineY: number, color: string) => {
+      ctx.font = '7px monospace';
+      const paddingX = 3;
+      const labelH = 9;
+      const labelW = ctx.measureText(label).width + paddingX * 2;
+      const clampedLeft = Math.max(2, Math.min(w - labelW - 2, x - labelW * 0.5));
+      const baseTop = Math.max(envY + 2, Math.min(envY + envH - labelH - 6, baselineY - labelH + 1));
+      let top = baseTop;
+      for (let row = 0; row < 3; row++) {
+        const candidateTop = Math.min(envY + envH - labelH - 6, baseTop + row * (labelH + 1));
+        const candidate = {
+          left: clampedLeft,
+          top: candidateTop,
+          right: clampedLeft + labelW,
+          bottom: candidateTop + labelH,
+        };
+        const overlaps = labelBoxes.some((box) => !(
+          candidate.right < box.left ||
+          candidate.left > box.right ||
+          candidate.bottom < box.top ||
+          candidate.top > box.bottom
+        ));
+        if (!overlaps || row === 2) {
+          top = candidateTop;
+          labelBoxes.push(candidate);
+          break;
+        }
+      }
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(0,0,0,0.42)';
+      ctx.roundRect(clampedLeft, top, labelW, labelH, 3);
+      ctx.fill();
+      ctx.fillStyle = color;
+      ctx.fillText(label, clampedLeft + paddingX, top + labelH - 2);
+    };
+
+    const activeAdsrDragTarget = dragRef.current.target;
+    if (activeAdsrDragTarget === 'adsrDecay') {
+      drawEnvelopeLabel(`D=${formatEnvelopeTimeLabel(decayEndTime)}`, dx, sustainLineY - 4, 'rgba(255,255,255,0.62)');
+    } else if (activeAdsrDragTarget === 'adsrHold') {
+      drawEnvelopeLabel(`H=${formatEnvelopeTimeLabel(holdEndTime)}`, hx, sustainLineY - 4, 'rgba(255,255,255,0.62)');
+    } else if (activeAdsrDragTarget === 'adsrRelease') {
+      drawEnvelopeLabel(`R=${formatEnvelopeTimeLabel(releaseEndTime)}`, rx, envY + envH - 8, 'rgba(255,255,255,0.62)');
+    }
+    drawEnvelopeLabel(`A ${formatEnvelopeTimeLabel(a)}`, ax * 0.5, envY + 12, 'rgba(245,158,11,0.72)');
+    drawEnvelopeLabel(`D ${formatEnvelopeTimeLabel(d)}`, (ax + dx) * 0.5, envY + 12, 'rgba(245,158,11,0.66)');
+    drawEnvelopeLabel(`H ${formatEnvelopeTimeLabel(hold)}`, (dx + hx) * 0.5, envY + 12, 'rgba(245,158,11,0.66)');
+    drawEnvelopeLabel(`R ${formatEnvelopeTimeLabel(r)}`, (hx + rx) * 0.5, envY + 12, 'rgba(245,158,11,0.66)');
+    drawEnvelopeLabel(
+      `S ${formatEnvelopeSustainLabel(s)}`,
+      (dx + hx) * 0.5,
+      sustainLineY - 2,
+      'rgba(255,255,255,0.54)',
+    );
 
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
     ctx.font = '8px monospace';
@@ -509,20 +605,20 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       ctx.textAlign = 'start';
     }
 
-    // Amp ADSR drag handles (at the breakpoints A, D, S, R)
+    // Amp envelope drag handles (attack, decay, sustain level, hold, release).
     if (props.onAdsrChange) {
       // A handle: top of attack at (ax, envY + 4)
       const aHandleY = envY + 4;
       drawHandle(ax, aHandleY, 'adsrAttack', '#f59e0b');
       // D handle: end of decay at (dx, sustainLineY)
-      const sustainLineY = envY + envH - 4 - s * (envH - 8);
       drawHandle(dx, sustainLineY, 'adsrDecay', '#f59e0b');
-      // S handle: sustain level (middle of sustain phase)
-      const sMidX = (dx + sx) / 2;
+      // S handle: sustain level (middle of hold phase)
+      const sMidX = (dx + hx) / 2;
       drawHandle(sMidX, sustainLineY, 'adsrSustain', '#f59e0b');
-      // R handle: end of release at bottom right (100, envY+envH-4)
+      drawHandle(hx, sustainLineY, 'adsrHold', '#f59e0b');
+      // R handle: end of release.
       const rHandleY = envY + envH - 4;
-      drawHandle(w, rHandleY, 'adsrRelease', '#f59e0b');
+      drawHandle(rx, rHandleY, 'adsrRelease', '#f59e0b');
     }
 
     // ── LFO strip — all data from engine ──
@@ -774,23 +870,29 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       const a = editModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
       const d = editModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
       const s = editModEnv ? props.modEnvSustain ?? props.synthSustain : props.synthSustain;
+      const hold = props.synthHold;
       const r = editModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
       const envDepth = editModEnv ? props.modEnvDepth ?? 0 : 0;
-      const noteLen = Math.max(0.5, a + d + 1 + r);
-      const totalTime = noteLen + 0.1;
-      const ax = (a / totalTime) * w;
-      const dx = ((a + d) / totalTime) * w;
-      const sx = ((noteLen - r) / totalTime) * w;
+      const envEndTime = Math.max(0.001, a + d + hold + r);
+      const envelopeScale = createEnvelopeTimeScale(
+        w,
+        getEnvelopeTimelineSeconds(props, envEndTime + 0.1),
+      );
+      const ax = envelopeScale.timeToX(a);
+      const dx = envelopeScale.timeToX(a + d);
+      const hx = envelopeScale.timeToX(a + d + hold);
+      const rx = envelopeScale.timeToX(a + d + hold + r);
       const displaySustain = editModEnv && envDepth < 0 ? 1 - s : s;
       const sustainLineY = envY + envH - 4 - displaySustain * (envH - 8);
       const aHandleY = envY + 4;
-      const sMidX = (dx + sx) / 2;
+      const sMidX = (dx + hx) / 2;
+      const inEnvelopeY = cy > envY && cy < envY + envH;
 
-      if (Math.abs(cx - ax) < DRAG_HIT_PX && Math.abs(cy - aHandleY) < DRAG_HIT_PX) return 'adsrAttack';
-      if (Math.abs(cx - dx) < DRAG_HIT_PX && Math.abs(cy - sustainLineY) < DRAG_HIT_PX) return 'adsrDecay';
-      if (Math.abs(cx - sMidX) < DRAG_HIT_PX && cy > envY && cy < envY + envH) return 'adsrSustain';
-      // Release handle at far right
-      if (Math.abs(cx - w) < DRAG_HIT_PX && cy > envY && cy < envY + envH) return 'adsrRelease';
+      if (Math.abs(cx - ax) < DRAG_HIT_PX && (inEnvelopeY || Math.abs(cy - aHandleY) < DRAG_HIT_PX)) return 'adsrAttack';
+      if (Math.abs(cx - dx) < DRAG_HIT_PX && (inEnvelopeY || Math.abs(cy - sustainLineY) < DRAG_HIT_PX)) return 'adsrDecay';
+      if (!editModEnv && Math.abs(cx - hx) < DRAG_HIT_PX && inEnvelopeY) return 'adsrHold';
+      if (Math.abs(cx - rx) < DRAG_HIT_PX && inEnvelopeY) return 'adsrRelease';
+      if (Math.abs(cx - sMidX) < DRAG_HIT_PX && inEnvelopeY) return 'adsrSustain';
     }
 
     return null;
@@ -822,51 +924,43 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       } else if (target === 'filterMax' && props.onFilterMaxChange) {
         props.onFilterMaxChange(Math.max(clamped, props.filterCutoffMin + 10));
       }
-    } else if (target === 'adsrAttack') {
-      // Attack: horizontal drag = attack time
-      const editModEnv = !props.onAdsrChange && !!props.onModEnvChange && hasModEnvelope(props);
-      const d = editModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
-      const r = editModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
-      const currentA = editModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
-      const noteLen = Math.max(0.5, currentA + d + 1 + r);
-      const totalTime = noteLen + 0.1;
-      const newA = Math.max(0.001, Math.min(editModEnv ? 8 : 16, (cx / w) * totalTime));
-      if (editModEnv && props.onModEnvChange) props.onModEnvChange('attack', quantizeEnvelopeTime(newA));
-      else props.onAdsrChange?.('synthAttack', quantizeEnvelopeTime(newA));
-    } else if (target === 'adsrDecay') {
-      // Decay: horizontal drag from attack end
-      const editModEnv = !props.onAdsrChange && !!props.onModEnvChange && hasModEnvelope(props);
-      const a = editModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
-      const currentD = editModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
-      const r = editModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
-      const noteLen = Math.max(0.5, a + currentD + 1 + r);
-      const totalTime = noteLen + 0.1;
-      const tAtX = (cx / w) * totalTime;
-      const newD = Math.max(0.01, Math.min(8, tAtX - a));
-      if (editModEnv && props.onModEnvChange) props.onModEnvChange('decay', quantizeEnvelopeTime(newD));
-      else props.onAdsrChange?.('synthDecay', quantizeEnvelopeTime(newD));
-    } else if (target === 'adsrSustain') {
-      // Sustain: vertical drag = level
-      const relY = (cy - envY - 4) / (envH - 8);
-      const editModEnv = !props.onAdsrChange && !!props.onModEnvChange && hasModEnvelope(props);
-      const envDepth = editModEnv ? props.modEnvDepth ?? 0 : 0;
-      const rawS = Math.max(0, Math.min(1, 1 - relY));
-      const newS = editModEnv && envDepth < 0 ? 1 - rawS : rawS;
-      if (editModEnv && props.onModEnvChange) props.onModEnvChange('sustain', parseFloat(newS.toFixed(2)));
-      else props.onAdsrChange?.('synthSustain', parseFloat(newS.toFixed(2)));
-    } else if (target === 'adsrRelease') {
-      // Release: horizontal drag from sustain end
+    } else if (target?.startsWith('adsr')) {
       const editModEnv = !props.onAdsrChange && !!props.onModEnvChange && hasModEnvelope(props);
       const a = editModEnv ? props.modEnvAttack ?? props.synthAttack : props.synthAttack;
       const d = editModEnv ? props.modEnvDecay ?? props.synthDecay : props.synthDecay;
-      const currentR = editModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
-      const noteLen = Math.max(0.5, a + d + 1 + currentR);
-      const totalTime = noteLen + 0.1;
-      const tAtX = (cx / w) * totalTime;
-      // Release extends from sustain end to end. Moving left = longer release
-      const newR2 = Math.max(0.01, Math.min(editModEnv ? 16 : 30, totalTime - tAtX));
-      if (editModEnv && props.onModEnvChange) props.onModEnvChange('release', quantizeEnvelopeTime(newR2));
-      else props.onAdsrChange?.('synthRelease', quantizeEnvelopeTime(newR2));
+      const hold = props.synthHold;
+      const r = editModEnv ? props.modEnvRelease ?? props.synthRelease : props.synthRelease;
+      const envEndTime = Math.max(0.001, a + d + hold + r);
+      const envelopeScale = createEnvelopeTimeScale(
+        w,
+        getEnvelopeTimelineSeconds(props, envEndTime + 0.1),
+      );
+      const tAtX = envelopeScale.xToTime(cx);
+
+      if (target === 'adsrAttack') {
+        const newA = Math.max(0.001, Math.min(editModEnv ? 8 : 16, tAtX));
+        if (editModEnv && props.onModEnvChange) props.onModEnvChange('attack', quantizeEnvelopeTime(newA));
+        else props.onAdsrChange?.('synthAttack', quantizeEnvelopeTime(newA));
+      } else if (target === 'adsrDecay') {
+        const newD = Math.max(0.01, Math.min(8, tAtX - a));
+        if (editModEnv && props.onModEnvChange) props.onModEnvChange('decay', quantizeEnvelopeTime(newD));
+        else props.onAdsrChange?.('synthDecay', quantizeEnvelopeTime(newD));
+      } else if (target === 'adsrSustain') {
+        const relY = (cy - envY - 4) / (envH - 8);
+        const envDepth = editModEnv ? props.modEnvDepth ?? 0 : 0;
+        const rawS = Math.max(0, Math.min(1, 1 - relY));
+        const newS = editModEnv && envDepth < 0 ? 1 - rawS : rawS;
+        if (editModEnv && props.onModEnvChange) props.onModEnvChange('sustain', parseFloat(newS.toFixed(2)));
+        else props.onAdsrChange?.('synthSustain', parseFloat(newS.toFixed(2)));
+      } else if (target === 'adsrHold') {
+        const newH = Math.max(0, Math.min(20, tAtX - a - d));
+        props.onAdsrChange?.('synthHold', quantizeEnvelopeTime(newH));
+      } else if (target === 'adsrRelease') {
+        const releaseStart = a + d + hold;
+        const newR = Math.max(0.01, Math.min(editModEnv ? 16 : 30, tAtX - releaseStart));
+        if (editModEnv && props.onModEnvChange) props.onModEnvChange('release', quantizeEnvelopeTime(newR));
+        else props.onAdsrChange?.('synthRelease', quantizeEnvelopeTime(newR));
+      }
     }
   }, [props]);
 

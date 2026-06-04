@@ -48,6 +48,8 @@ struct SourceState {
   float sustain = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN;
   float hold_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
   float release_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
+  bool structured_override_morph_anchor_enabled = false;
+  float structured_override_morph_anchor = 0.0f;
   uint32_t pad_override_count = 0u; uint32_t pad_override_indices[kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT]{}; float pad_override_values[kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT]{};
   uint32_t lead_override_count = 0u; uint32_t lead_override_indices[kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT]{}; float lead_override_values[kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT]{};
   uint32_t drum_override_count = 0u; uint32_t drum_override_indices[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT]{}; float drum_override_values[kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT]{};
@@ -91,9 +93,11 @@ struct Voice {
   uint32_t asset_slot = 0;
   bool sample_voice = false;
   bool soundscape_texture_voice = false;
+  bool soundscape_releasing = false;
   uint32_t soundscape_texture_slice_id = 0;
   uint64_t soundscape_texture_start_frame = 0u;
   float soundscape_texture_start_offset_seconds = 0.0f;
+  float soundscape_asset_level = 1.0f;
   bool piano_sample_voice = false;
   bool drum_voice = false;
   bool looping = false;

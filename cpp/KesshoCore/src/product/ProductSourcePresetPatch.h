@@ -429,8 +429,13 @@ inline void applyPadDistanceToPatch(kessho::core::KesshoSourcePresetPatch& patch
 
 inline void applyPadStructuredOverridesToPatch(
     kessho::core::KesshoSourcePresetPatch& patch,
-    const SourceState& source) {
+    const SourceState& source,
+    float morph) {
   if (patch.exact_pad_param_count != kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT) {
+    return;
+  }
+  if (source.structured_override_morph_anchor_enabled &&
+      std::fabs(clampFloat(morph, 0.0f, 1.0f) - clampFloat(source.structured_override_morph_anchor, 0.0f, 1.0f)) > 0.001f) {
     return;
   }
   const uint32_t override_count = std::min<uint32_t>(
@@ -449,6 +454,7 @@ inline void applyLeadStructuredOverridesToPatch(
     kessho::core::KesshoSourcePresetPatch& patch,
     const SourceState& source,
     uint32_t source_id,
+    float morph,
     float distance) {
   if (patch.exact_lead_param_count != kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT) {
     return;
@@ -464,6 +470,10 @@ inline void applyLeadStructuredOverridesToPatch(
     patch.exact_lead_params[kLeadReleaseParamIndex] = source.release_seconds;
   }
   applyLeadDistanceToPatch(patch, source_id, distance);
+  if (source.structured_override_morph_anchor_enabled &&
+      std::fabs(clampFloat(morph, 0.0f, 1.0f) - clampFloat(source.structured_override_morph_anchor, 0.0f, 1.0f)) > 0.001f) {
+    return;
+  }
   const uint32_t override_count = std::min<uint32_t>(
       source.lead_override_count,
       kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT);
@@ -533,11 +543,11 @@ inline const kessho::core::KesshoSourcePresetPatch* resolveSourcePresetEndpointP
         morph);
   }
   if (lead_structured_override) {
-    applyLeadStructuredOverridesToPatch(scratch_patch, source, source_id, distance);
+    applyLeadStructuredOverridesToPatch(scratch_patch, source, source_id, morph, distance);
   }
   if (pad_structured_override) {
     applyPadDistanceToPatch(scratch_patch, distance);
-    applyPadStructuredOverridesToPatch(scratch_patch, source);
+    applyPadStructuredOverridesToPatch(scratch_patch, source, morph);
   }
   return &scratch_patch;
 }

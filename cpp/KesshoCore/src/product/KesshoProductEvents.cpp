@@ -231,13 +231,19 @@ const GranularVoiceParamSpec* findGranularVoiceParamSpec(uint32_t offset) {
       if (!valid_source(event.target_id) || param_count == 0u) {
         return KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
       }
-      constexpr uint32_t valid_flags = KESSHO_PRODUCT_SOURCE_OVERRIDE_SET_SLOT | KESSHO_PRODUCT_SOURCE_OVERRIDE_COMMIT;
+      constexpr uint32_t valid_flags =
+          KESSHO_PRODUCT_SOURCE_OVERRIDE_SET_SLOT |
+          KESSHO_PRODUCT_SOURCE_OVERRIDE_COMMIT |
+          KESSHO_PRODUCT_SOURCE_OVERRIDE_MORPH_ANCHORED;
       if ((event.flags & ~valid_flags) != 0u) {
         return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
       }
       const bool set_slot = (event.flags & KESSHO_PRODUCT_SOURCE_OVERRIDE_SET_SLOT) != 0u;
       const bool commit = (event.flags & KESSHO_PRODUCT_SOURCE_OVERRIDE_COMMIT) != 0u;
       if (set_slot == commit) {
+        return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
+      }
+      if (set_slot && (event.flags & KESSHO_PRODUCT_SOURCE_OVERRIDE_MORPH_ANCHORED) != 0u) {
         return KESSHO_PRODUCT_ERROR_INVALID_EVENT;
       }
       if (set_slot) {
@@ -910,6 +916,11 @@ void KesshoProductEngine::sortControlEvents() {
     case KESSHO_PRODUCT_PARAM_SOURCE_SUSTAIN_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_HOLD_SECONDS_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_ENVELOPE_OVERRIDE_ENABLED_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_ALGORITHM_PRESET_AENABLED_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_VIBRATO_DEPTH_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_VIBRATO_RATE_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_GLIDE_ID:
       applySourceParam(event);
       break;
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_ENABLED_ID:

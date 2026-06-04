@@ -16,6 +16,10 @@
   lane.emitted_hit_count = 0u;
   lane.last_emitted_morph_valid = false;
   lane.last_emitted_morph = 0.0f;
+  lane.last_emitted_distance_valid = false;
+  lane.last_emitted_distance = 0.0f;
+  lane.last_emitted_expression_valid = false;
+  lane.last_emitted_expression = 1.0f;
   lane.last_emitted_drum_voice = DRUM_NUM_VOICE_TYPES;
   lane.last_emitted_sample_frame = 0u;
   lane.sequencer_runtime_sample_frame = 0u;

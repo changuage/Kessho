@@ -201,6 +201,7 @@ int lead_fm_instance_note_on_ex(
 int lead_fm_instance_note_off(KesshoLeadFmInstance* instance, int note_index);
 int lead_fm_instance_note_set_frequency(KesshoLeadFmInstance* instance, int note_index, float frequency);
 void lead_fm_instance_all_notes_off(KesshoLeadFmInstance* instance);
+void lead_fm_instance_refresh_active_notes(KesshoLeadFmInstance* instance);
 
 void lead_fm_instance_set_algorithm(KesshoLeadFmInstance* instance, int algo);
 void lead_fm_instance_set_beat_detune(KesshoLeadFmInstance* instance, float cents);

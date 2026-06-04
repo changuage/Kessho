@@ -2,16 +2,33 @@
 
 namespace {
 
-bool sequencerMorphSubLaneActive(const KesshoProductEngine& engine, const LaneState& lane) {
-  const uint32_t morph_field_id = engine.stepFieldId(KESSHO_PRODUCT_STEP_FIELD_MORPH);
-  const bool morph_config_enabled =
-      engine.validStepFieldId(morph_field_id) &&
-      lane.step_value_configs[morph_field_id].enabled;
-  return morph_config_enabled ||
-      lane.morph_override_set_low != 0u ||
-      lane.morph_override_set_high != 0u ||
-      lane.morph_range_set_low != 0u ||
-      lane.morph_range_set_high != 0u;
+bool sequencerSourceFieldSubLaneActive(const KesshoProductEngine& engine, const LaneState& lane, uint32_t step_field) {
+  const uint32_t field_id = engine.stepFieldId(step_field);
+  const bool config_enabled =
+      engine.validStepFieldId(field_id) &&
+      lane.step_value_configs[field_id].enabled;
+  switch (step_field) {
+    case KESSHO_PRODUCT_STEP_FIELD_MORPH:
+      return config_enabled ||
+          lane.morph_override_set_low != 0u ||
+          lane.morph_override_set_high != 0u ||
+          lane.morph_range_set_low != 0u ||
+          lane.morph_range_set_high != 0u;
+    case KESSHO_PRODUCT_STEP_FIELD_DISTANCE:
+      return config_enabled ||
+          lane.distance_override_set_low != 0u ||
+          lane.distance_override_set_high != 0u ||
+          lane.distance_range_set_low != 0u ||
+          lane.distance_range_set_high != 0u;
+    case KESSHO_PRODUCT_STEP_FIELD_EXPRESSION:
+      return config_enabled ||
+          lane.expression_override_set_low != 0u ||
+          lane.expression_override_set_high != 0u ||
+          lane.expression_range_set_low != 0u ||
+          lane.expression_range_set_high != 0u;
+    default:
+      return false;
+  }
 }
 
 bool laneTargetsPresetSource(const LaneState& lane, uint32_t source_id, uint32_t drum_voice) {
@@ -23,30 +40,91 @@ bool laneTargetsPresetSource(const LaneState& lane, uint32_t source_id, uint32_t
   return lane.target_source_id == source_id;
 }
 
-void selectLatestSequencerMorph(
+bool laneLastEmittedSourceField(const LaneState& lane, uint32_t step_field, float& value) {
+  switch (step_field) {
+    case KESSHO_PRODUCT_STEP_FIELD_MORPH:
+      if (!lane.last_emitted_morph_valid) {
+        return false;
+      }
+      value = lane.last_emitted_morph;
+      return true;
+    case KESSHO_PRODUCT_STEP_FIELD_DISTANCE:
+      if (!lane.last_emitted_distance_valid) {
+        return false;
+      }
+      value = lane.last_emitted_distance;
+      return true;
+    case KESSHO_PRODUCT_STEP_FIELD_EXPRESSION:
+      if (!lane.last_emitted_expression_valid) {
+        return false;
+      }
+      value = lane.last_emitted_expression;
+      return true;
+    default:
+      return false;
+  }
+}
+
+void selectLatestSequencerSourceField(
     const KesshoProductEngine& engine,
     const LaneState* lanes,
     uint32_t lane_count,
     uint32_t source_id,
     uint32_t drum_voice,
+    uint32_t step_field,
     bool& found,
     uint64_t& latest_sample_frame,
-    float& morph) {
+    float& value) {
   for (uint32_t lane_index = 0; lane_index < lane_count; ++lane_index) {
     const LaneState& lane = lanes[lane_index];
+    float candidate = 0.0f;
     if (!lane.enabled ||
-        !lane.last_emitted_morph_valid ||
         !laneTargetsPresetSource(lane, source_id, drum_voice) ||
-        !sequencerMorphSubLaneActive(engine, lane) ||
-        !std::isfinite(lane.last_emitted_morph)) {
+        !sequencerSourceFieldSubLaneActive(engine, lane, step_field) ||
+        !laneLastEmittedSourceField(lane, step_field, candidate) ||
+        !std::isfinite(candidate)) {
       continue;
     }
     if (!found || lane.last_emitted_sample_frame >= latest_sample_frame) {
       found = true;
       latest_sample_frame = lane.last_emitted_sample_frame;
-      morph = clampFloat(lane.last_emitted_morph, 0.0f, 1.0f);
+      value = clampFloat(candidate, 0.0f, 1.0f);
     }
   }
+}
+
+bool activeSequencerSourceFieldForPresetSource(
+    const KesshoProductEngine& engine,
+    uint32_t source_id,
+    uint32_t drum_voice,
+    uint32_t step_field,
+    float& value) {
+  if (!engine.transport.running) {
+    return false;
+  }
+  bool found = false;
+  uint64_t latest_sample_frame = 0u;
+  selectLatestSequencerSourceField(
+      engine,
+      engine.synth_lanes,
+      engine.synth_lane_count,
+      source_id,
+      drum_voice,
+      step_field,
+      found,
+      latest_sample_frame,
+      value);
+  selectLatestSequencerSourceField(
+      engine,
+      engine.drum_lanes,
+      engine.drum_lane_count,
+      source_id,
+      drum_voice,
+      step_field,
+      found,
+      latest_sample_frame,
+      value);
+  return found;
 }
 
 } // namespace
@@ -55,28 +133,34 @@ bool KesshoProductEngine::activeSequencerMorphForPresetSource(
     uint32_t source_id,
     uint32_t drum_voice,
     float& morph) const {
-  if (!transport.running) {
-    return false;
-  }
-  bool found = false;
-  uint64_t latest_sample_frame = 0u;
-  selectLatestSequencerMorph(
+  return activeSequencerSourceFieldForPresetSource(
       *this,
-      synth_lanes,
-      synth_lane_count,
       source_id,
       drum_voice,
-      found,
-      latest_sample_frame,
+      KESSHO_PRODUCT_STEP_FIELD_MORPH,
       morph);
-  selectLatestSequencerMorph(
+}
+
+bool KesshoProductEngine::activeSequencerDistanceForPresetSource(
+    uint32_t source_id,
+    uint32_t drum_voice,
+    float& distance) const {
+  return activeSequencerSourceFieldForPresetSource(
       *this,
-      drum_lanes,
-      drum_lane_count,
       source_id,
       drum_voice,
-      found,
-      latest_sample_frame,
-      morph);
-  return found;
+      KESSHO_PRODUCT_STEP_FIELD_DISTANCE,
+      distance);
+}
+
+bool KesshoProductEngine::activeSequencerExpressionForPresetSource(
+    uint32_t source_id,
+    uint32_t drum_voice,
+    float& expression) const {
+  return activeSequencerSourceFieldForPresetSource(
+      *this,
+      source_id,
+      drum_voice,
+      KESSHO_PRODUCT_STEP_FIELD_EXPRESSION,
+      expression);
 }

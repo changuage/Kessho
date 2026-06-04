@@ -98,6 +98,7 @@
     voice.soundscape_texture_slice_id = slice_id;
     voice.soundscape_texture_start_frame = runtime.next_start_frame;
     voice.soundscape_texture_start_offset_seconds = static_cast<float>(offset);
+    voice.soundscape_asset_level = soundscapeAssetRefLevel(source, asset_id);
     voice.asset_slot = asset_slot;
     voice.frequency = 0.0f;
     voice.amplitude = 1.0f;

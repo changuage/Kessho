@@ -185,6 +185,7 @@ const CORE_PRODUCT_SOURCE_PRESET_ENDPOINT_HAS_MORPH_FLAG = 1;
 export const CORE_PRODUCT_SOURCE_OVERRIDE_FLAGS = Object.freeze({
   setSlot: 1 << 0,
   commit: 1 << 1,
+  morphAnchored: 1 << 2,
 } as const);
 
 function productBridgeError(message: string): Error {
@@ -929,7 +930,6 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
     ...granularMacroVoiceTargets(key, 'AttackSeconds', (model, voiceIndex) => model.voiceAttack[voiceIndex] ?? 0.01),
     ...granularMacroVoiceTargets(key, 'DecaySeconds', (model, voiceIndex) => model.voiceDecay[voiceIndex] ?? 0.1),
     ...granularMacroVoiceTargets(key, 'Blur', (model, voiceIndex) => model.voiceBlur[voiceIndex] ?? 0),
-    ...granularMacroVoiceTargets(key, 'Spray', (model, voiceIndex) => model.voiceSpray[voiceIndex] ?? 0),
     ...granularMacroVoiceTargets(key, 'Density', (model, voiceIndex) => model.voiceDensity[voiceIndex] ?? 1),
     ...granularMacroVoiceTargets(key, 'GrainSizeMs', (model, voiceIndex) => model.voiceGrainSize[voiceIndex] ?? 10),
   ],
@@ -955,7 +955,6 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   ],
   granularMacroTexture: (key) => [
     ...granularMacroVoiceTargets(key, 'Blur', (model, voiceIndex) => model.voiceBlur[voiceIndex] ?? 0),
-    ...granularMacroVoiceTargets(key, 'Spray', (model, voiceIndex) => model.voiceSpray[voiceIndex] ?? 0),
     ...granularMacroVoiceTargets(key, 'GrainSizeMs', (model, voiceIndex) => model.voiceGrainSize[voiceIndex] ?? 10),
     ...granularMacroVoiceTargets(key, 'GrainOctaveProbability', (model, voiceIndex) => model.voiceGrainOct[voiceIndex] ?? 0),
     ...granularMacroVoiceTargets(key, 'DecaySeconds', (model, voiceIndex) => model.voiceDecay[voiceIndex] ?? 0.1),
@@ -980,7 +979,6 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   ],
   granularMacroChaos: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularTimingRandomness, key, granularMacroMap(key, (model) => model.timingRandomness)),
-    ...granularMacroVoiceTargets(key, 'Spray', (model, voiceIndex) => model.voiceSpray[voiceIndex] ?? 0),
     ...granularMacroVoiceTargets(key, 'GrainOctaveProbability', (model, voiceIndex) => model.voiceGrainOct[voiceIndex] ?? 0),
     ...granularMacroVoiceTargets(key, 'ReverseLfoRate', (model, voiceIndex) => model.voiceReverseLFORate[voiceIndex] ?? 0),
   ],
@@ -1318,17 +1316,19 @@ export function createCoreProductSourceOverrideSlotEvent(
   };
 }
 
-export function createCoreProductSourceOverrideCommitEvent(sourceId: number, overrideCount: number): CoreProductEvent {
+export function createCoreProductSourceOverrideCommitEvent(sourceId: number, overrideCount: number, morphAnchor?: number): CoreProductEvent {
   const targetId = requireSourceId(sourceId);
   const paramCount = coreProductSourceOverrideParamCount(targetId);
   if (paramCount <= 0) {
     throw productBridgeError(`sourceId does not support sparse overrides: ${String(sourceId)}`);
   }
+  const anchored = typeof morphAnchor === 'number' && Number.isFinite(morphAnchor);
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSourceOverride,
     targetId,
     index: requireIntegerInRange(overrideCount, 'overrideCount', 0, paramCount),
-    flags: CORE_PRODUCT_SOURCE_OVERRIDE_FLAGS.commit,
+    flags: CORE_PRODUCT_SOURCE_OVERRIDE_FLAGS.commit | (anchored ? CORE_PRODUCT_SOURCE_OVERRIDE_FLAGS.morphAnchored : 0),
+    ...(anchored ? { value: requireUnitValue(morphAnchor, 'morphAnchor') } : {}),
   };
 }
 
@@ -1576,6 +1576,7 @@ const CORE_PRODUCT_SEQUENCER_PITCH_MODE_IDS = Object.freeze({
 } as const);
 
 const CORE_PRODUCT_SEQUENCER_PITCH_SCALE_IDS: Record<string, number> = Object.freeze({
+  Harmony: 1,
   Chromatic: 0,
   Major: 1,
   Minor: 2,

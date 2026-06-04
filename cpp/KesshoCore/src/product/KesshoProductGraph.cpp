@@ -31,18 +31,6 @@ void KesshoProductEngine::renderPadModule(float* out_l, float* out_r, uint32_t s
       module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD2],
       module_tap_r[KESSHO_MODULE_TAP_POSTFADER_PAD2],
       frames);
-  processPadPostChain(
-      pad_send_post_chains[0],
-      KESSHO_PRODUCT_SOURCE_PAD1,
-      module_tap_l[KESSHO_MODULE_TAP_PREFADER_PAD1],
-      module_tap_r[KESSHO_MODULE_TAP_PREFADER_PAD1],
-      frames);
-  processPadPostChain(
-      pad_send_post_chains[1],
-      KESSHO_PRODUCT_SOURCE_PAD2,
-      module_tap_l[KESSHO_MODULE_TAP_PREFADER_PAD2],
-      module_tap_r[KESSHO_MODULE_TAP_PREFADER_PAD2],
-      frames);
   mixPadSourceBuffer(
       KESSHO_PRODUCT_SOURCE_PAD1,
       module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD1],
@@ -81,12 +69,22 @@ void KesshoProductEngine::renderSingleModuleSource(
   std::fill(module_l, module_l + frames, 0.0f);
   std::fill(module_r, module_r + frames, 0.0f);
   module->processPlanarStereo(silent_l, silent_r, module_l, module_r, static_cast<int>(frames));
+  const float* send_l = module_l;
+  const float* send_r = module_r;
   if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1) {
+    std::copy(module_l, module_l + frames, module_tap_l[0]);
+    std::copy(module_r, module_r + frames, module_tap_r[0]);
+    send_l = module_tap_l[0];
+    send_r = module_tap_r[0];
     processLeadPostChain(0u, source_id, module_l, module_r, frames);
   } else if (source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
+    std::copy(module_l, module_l + frames, module_tap_l[0]);
+    std::copy(module_r, module_r + frames, module_tap_r[0]);
+    send_l = module_tap_l[0];
+    send_r = module_tap_r[0];
     processLeadPostChain(1u, source_id, module_l, module_r, frames);
   }
-  mixSourceBuffer(source_id, module_l, module_r, out_l, out_r, start, frames);
+  mixSourceBuffer(source_id, module_l, module_r, send_l, send_r, out_l, out_r, start, frames);
 }
 
 void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t start, uint32_t frames) {

@@ -27,6 +27,26 @@ bool sourceOverrideStorage(
   }
   return false;
 }
+
+bool activeSequencerEndpointMorphAnchor(
+    KesshoProductEngine& engine,
+    uint32_t source_id,
+    SourceState& source,
+    float& morph_anchor) {
+  if (!isPadProductSource(source_id) && !isLeadProductSource(source_id)) {
+    return false;
+  }
+  float live_morph = source.morph;
+  if (!engine.activeSequencerMorphForPresetSource(source_id, DRUM_NUM_VOICE_TYPES, live_morph)) {
+    return false;
+  }
+  live_morph = clampFloat(live_morph, 0.0f, 1.0f);
+  if (std::fabs(live_morph) > 0.001f && std::fabs(live_morph - 1.0f) > 0.001f) {
+    return false;
+  }
+  morph_anchor = live_morph;
+  return true;
+}
 }
 
 bool KesshoProductEngine::applyStructuredSourceOverridesToModule(uint32_t source_id) {
@@ -34,10 +54,42 @@ bool KesshoProductEngine::applyStructuredSourceOverridesToModule(uint32_t source
     return false;
   }
   SourceState& source = sources[source_id - 1u];
-  return applyStructuredSourceOverridesToModuleAtMorph(source_id, source.morph);
+  return applyStructuredSourceOverridesToModuleAtMorphAndDistance(source_id, source.morph, source.distance);
+}
+
+bool KesshoProductEngine::applyStructuredSourceOverridesToModuleForCurrentMorph(uint32_t source_id) {
+  if (source_id < 1u || source_id > kSourceCount) {
+    return false;
+  }
+  if (isPadProductSource(source_id) || isLeadProductSource(source_id)) {
+    SourceState& source = sources[source_id - 1u];
+    float live_morph = source.morph;
+    float live_distance = source.distance;
+    const bool has_live_morph =
+        activeSequencerMorphForPresetSource(source_id, DRUM_NUM_VOICE_TYPES, live_morph);
+    const bool has_live_distance =
+        activeSequencerDistanceForPresetSource(source_id, DRUM_NUM_VOICE_TYPES, live_distance);
+    if (has_live_morph || has_live_distance) {
+      return applyStructuredSourceOverridesToModuleAtMorphAndDistance(source_id, live_morph, live_distance);
+    }
+  }
+  return applyStructuredSourceOverridesToModule(source_id);
 }
 
 bool KesshoProductEngine::applyStructuredSourceOverridesToModuleAtMorph(uint32_t source_id, float morph) {
+  if (source_id < 1u || source_id > kSourceCount) {
+    return false;
+  }
+  return applyStructuredSourceOverridesToModuleAtMorphAndDistance(
+      source_id,
+      morph,
+      sources[source_id - 1u].distance);
+}
+
+bool KesshoProductEngine::applyStructuredSourceOverridesToModuleAtMorphAndDistance(
+    uint32_t source_id,
+    float morph,
+    float distance) {
   if (source_id < 1u || source_id > kSourceCount || !std::isfinite(morph)) {
     return false;
   }
@@ -48,7 +100,7 @@ bool KesshoProductEngine::applyStructuredSourceOverridesToModuleAtMorph(uint32_t
         source,
         source_id,
         clampFloat(morph, 0.0f, 1.0f),
-        source.distance,
+        clampFloat(distance, 0.0f, 1.0f),
         patch);
     if (resolved_patch == nullptr ||
         resolved_patch->exact_pad_param_count != kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT) {
@@ -69,7 +121,7 @@ bool KesshoProductEngine::applyStructuredSourceOverridesToModuleAtMorph(uint32_t
         source,
         source_id,
         clampFloat(morph, 0.0f, 1.0f),
-        source.distance,
+        clampFloat(distance, 0.0f, 1.0f),
         patch);
     if (resolved_patch == nullptr ||
         resolved_patch->exact_lead_param_count != kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT) {
@@ -127,7 +179,11 @@ bool KesshoProductEngine::applyRuntimeSourceOverrideParam(uint32_t source_id, ui
   for (uint32_t slot = 0u; slot < *override_count && slot < param_count; ++slot) {
     if (override_indices[slot] == param_index) {
       override_values[slot] = value;
-      return applyStructuredSourceOverridesToModule(source_id);
+      float morph_anchor = source.morph;
+      source.structured_override_morph_anchor_enabled =
+          activeSequencerEndpointMorphAnchor(*this, source_id, source, morph_anchor);
+      source.structured_override_morph_anchor = morph_anchor;
+      return applyStructuredSourceOverridesToModuleForCurrentMorph(source_id);
     }
   }
   if (*override_count >= param_count) {
@@ -137,7 +193,11 @@ bool KesshoProductEngine::applyRuntimeSourceOverrideParam(uint32_t source_id, ui
   override_indices[slot] = param_index;
   override_values[slot] = value;
   *override_count = slot + 1u;
-  return applyStructuredSourceOverridesToModule(source_id);
+  float morph_anchor = source.morph;
+  source.structured_override_morph_anchor_enabled =
+      activeSequencerEndpointMorphAnchor(*this, source_id, source, morph_anchor);
+  source.structured_override_morph_anchor = morph_anchor;
+  return applyStructuredSourceOverridesToModuleForCurrentMorph(source_id);
 }
 
 void KesshoProductEngine::applySourceOverrideEvent(const KesshoProductEvent& event) {
@@ -179,12 +239,23 @@ void KesshoProductEngine::applySourceOverrideEvent(const KesshoProductEvent& eve
     return;
   }
   *override_count = event.index;
+  const bool explicit_morph_anchor =
+      (event.flags & KESSHO_PRODUCT_SOURCE_OVERRIDE_MORPH_ANCHORED) != 0u;
+  float morph_anchor = source.morph;
+  source.structured_override_morph_anchor_enabled = explicit_morph_anchor && std::isfinite(event.value);
+  if (source.structured_override_morph_anchor_enabled) {
+    morph_anchor = clampFloat(event.value, 0.0f, 1.0f);
+  } else {
+    source.structured_override_morph_anchor_enabled =
+        activeSequencerEndpointMorphAnchor(*this, event.target_id, source, morph_anchor);
+  }
+  source.structured_override_morph_anchor = morph_anchor;
   for (uint32_t slot = *override_count; slot < param_count; ++slot) {
     override_indices[slot] = 0u;
     override_values[slot] = 0.0f;
   }
 
-  if (!applyStructuredSourceOverridesToModule(event.target_id)) {
+  if (!applyStructuredSourceOverridesToModuleForCurrentMorph(event.target_id)) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     return;
   }

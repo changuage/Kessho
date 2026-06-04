@@ -147,7 +147,7 @@ export function collectAppVisibleStructuralPolicyInventory(appVisibleLiveUpdateP
 
 export function controlDomain(key) {
   if (/^piano/.test(key)) return 'source.piano';
-  if (/^(synthAttack|synthDecay|synthSustain|synthRelease|synthLevel)$/.test(key)) return 'source.pad';
+  if (/^(synthAttack|synthDecay|synthSustain|synthHold|synthRelease|synthLevel)$/.test(key)) return 'source.pad';
   if (/^(pad|pad2|filter|lfo|env|warmth|hardness|presence|motion|shimmer|bloom|noise|drive|sub|dist|velocity|retrigger|stereo|chorus)/.test(key)) return 'source.pad';
   if (/^lead[12]?/.test(key)) return 'source.lead';
   if (/^drum/.test(key)) return 'source.drum';
@@ -317,10 +317,20 @@ export const behaviorEvidenceByAppVisibleGroup = {
     reason: 'Lead enable, hold, and structured envelope/algorithm override controls must drive Product Core source render behavior.',
     evidence: ['core:product:sources', 'ProductSourceWrapperTests.cpp#requireSourceParamEventsAffectRender', 'ProductSourceWrapperTests.cpp#requireBroadLeadPresetFamiliesRender'],
   },
+  'source.pad|arrangement-scheduler-event': {
+    owner: 'Product Core Pad arrangement owner',
+    reason: 'Pad gate-fit controls must change generated manual note durations before events are sent to Product Core.',
+    evidence: ['core:product:sequencer-ui', 'src/audio/coreProductArrangementScheduler.ts#padEnvelopeGateSeconds', 'src/audio/coreProductEvents.ts#createCoreProductManualNoteEvent'],
+  },
   'source.pad|range-event': {
     owner: 'Product Core Pad source owner',
     reason: 'Pad range controls must alter Product Core source output, post-chain, or FX send behavior.',
     evidence: ['core:product:sources', 'ProductSourceWrapperTests.cpp#renderDeltaRmsWithPadPostLpf', 'ProductSourceWrapperTests.cpp#requirePadFxSendsFollowPostLpfForBothPads'],
+  },
+  'source.pad|sequencer-lane-diff': {
+    owner: 'Product Core Pad sequencer owner',
+    reason: 'Pad hold controls must update Product synth sequencer lane hold seconds for Pad 1 and Pad 2 lanes.',
+    evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_HOLD_SECONDS_ID', 'src/audio/coreProductSnapshot.ts#coreProductSynthSequencerHoldSecondsFromState'],
   },
   'source.pad|source-param-diff': {
     owner: 'Product Core Pad source owner',

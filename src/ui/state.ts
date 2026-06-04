@@ -487,7 +487,9 @@ export interface SliderState {
   synthAttack: number;        // 0.001..16 seconds
   synthDecay: number;         // 0.01..8 seconds
   synthSustain: number;       // 0..1 level
+  synthHold: number;          // 0..20 seconds before release
   synthRelease: number;       // 0.01..16 seconds
+  padFitEnvelopeToChord: boolean; // Clamp chord note gates so staggered voices finish before the next chord
   // Shared transport / timing infrastructure
   transportPrimaryClock: TransportPrimaryClock; // Which transport domain is authoritative, or whether phrase seconds and BPM are independent
   transportBarsPerPhrase: number;     // 1..16 bars per phrase when using beat-derived phrase clocks
@@ -593,7 +595,9 @@ export interface SliderState {
   pad2Attack: number;
   pad2Decay: number;
   pad2Sustain: number;
+  pad2Hold: number;
   pad2Release: number;
+  pad2FitEnvelopeToChord: boolean;
   pad2Octave: number;
   // Drive / Character
   pad2Hardness: number;
@@ -1662,7 +1666,9 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthAttack',
   'synthDecay',
   'synthSustain',
+  'synthHold',
   'synthRelease',
+  'padFitEnvelopeToChord',
   'hardness',
   'filterType',
   'filterCutoffMin',
@@ -1727,7 +1733,9 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'pad2Attack',
   'pad2Decay',
   'pad2Sustain',
+  'pad2Hold',
   'pad2Release',
+  'pad2FitEnvelopeToChord',
   'pad2Octave',
   'pad2Hardness',
   'pad2Warmth',
@@ -2546,7 +2554,9 @@ export const DEFAULT_STATE: SliderState = {
   synthAttack: 6.0,
   synthDecay: 1.0,
   synthSustain: 0.8,
+  synthHold: 1.0,
   synthRelease: 12.0,
+  padFitEnvelopeToChord: true,
   transportPrimaryClock: 'seconds',
   transportBarsPerPhrase: 4,
   transportBeatsPerBar: 4,
@@ -2629,7 +2639,9 @@ export const DEFAULT_STATE: SliderState = {
   pad2Attack: 6.0,
   pad2Decay: 1.0,
   pad2Sustain: 0.8,
+  pad2Hold: 1.0,
   pad2Release: 12.0,
+  pad2FitEnvelopeToChord: true,
   pad2Octave: 0,
   pad2Hardness: 0.3,
   pad2Warmth: 0.4,
@@ -3491,6 +3503,7 @@ const PAD_SOURCE_STATE_KEY_SUFFIX = {
   synthAttack: 'Attack',
   synthDecay: 'Decay',
   synthSustain: 'Sustain',
+  synthHold: 'Hold',
   synthRelease: 'Release',
   synthOctave: 'Octave',
   hardness: 'Hardness',
@@ -3552,6 +3565,7 @@ const PAD_SOURCE_NUMERIC_BASE_QUANTIZATION = {
   synthAttack: { min: 0.001, max: 16, step: 0.001 },
   synthDecay: { min: 0.01, max: 8, step: 0.01 },
   synthSustain: { min: 0, max: 1, step: 0.01 },
+  synthHold: { min: 0, max: 20, step: 0.01 },
   synthRelease: { min: 0.01, max: 30, step: 0.01 },
   synthOctave: { min: -2, max: 2, step: 1 },
   hardness: { min: 0, max: 2, step: 0.01 },

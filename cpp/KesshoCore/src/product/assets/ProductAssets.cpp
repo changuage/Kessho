@@ -294,7 +294,7 @@
         assets[voice.asset_slot].asset_id != asset_id) {
       continue;
     }
-    releaseSoundscapeTextureVoice(voice);
+    releaseSoundscapeTextureVoice(voice, voice.soundscape_asset_level);
   }
 }
 

@@ -656,6 +656,12 @@ const padSustainHelp = entry(
   [sy('Pad 1 / Envelope', 'Sustain')],
 );
 
+const padHoldHelp = entry(
+  'Sets how long the current pad stays at the sustain level before release starts.',
+  'Low values move quickly from decay into release. High values keep the chord held longer before it begins fading out.',
+  [sy('Pad 1 / Envelope', 'Hold')],
+);
+
 const padReleaseHelp = entry(
   'Sets how long the current pad rings after note-off.',
   'Low values fade the pad quickly between changes. High values let chords trail and overlap for longer.',
@@ -894,6 +900,7 @@ const synthEntries: Record<string, SliderHelpEntry> = {
   synthAttack: padAttackHelp,
   synthDecay: padDecayHelp,
   synthSustain: padSustainHelp,
+  synthHold: padHoldHelp,
   synthRelease: padReleaseHelp,
   padLfo1Rate: lfoRateHelp,
   padLfo1Depth: lfoDepthHelp,
@@ -932,6 +939,7 @@ const synthEntries: Record<string, SliderHelpEntry> = {
   pad2Attack: cloneEntry(padAttackHelp, [sy('Pad 2 / Envelope', 'Attack')]),
   pad2Decay: cloneEntry(padDecayHelp, [sy('Pad 2 / Envelope', 'Decay')]),
   pad2Sustain: cloneEntry(padSustainHelp, [sy('Pad 2 / Envelope', 'Sustain')]),
+  pad2Hold: cloneEntry(padHoldHelp, [sy('Pad 2 / Envelope', 'Hold')]),
   pad2Release: cloneEntry(padReleaseHelp, [sy('Pad 2 / Envelope', 'Release')]),
   pad2Lfo1Rate: cloneEntry(lfoRateHelp, [sy('Pad 2 / LFO 1', 'Rate')]),
   pad2Lfo1Depth: cloneEntry(lfoDepthHelp, [sy('Pad 2 / LFO 1', 'Depth')]),

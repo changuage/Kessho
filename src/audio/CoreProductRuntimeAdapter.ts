@@ -345,11 +345,13 @@ class CoreProductRuntimeAdapter {
       const previous = previousSources[sourceIndex];
       const next = nextSources[sourceIndex];
       if (!previous || !next || !this.canApplySourceOverrideDiff(previous, next)) continue;
+      const endpointChanged = coreProductSourcePresetEndpointIdsChanged(previous, next);
+      const morphAnchor = endpointChanged ? next.morph : undefined;
       if (this.padOverrideChanged(previous, next)) {
-        this.appendOverrideBlockEvents(events, next.sourceId, next.padOverrideCount, next.padOverrideIndices, next.padOverrideValues);
+        this.appendOverrideBlockEvents(events, next.sourceId, next.padOverrideCount, next.padOverrideIndices, next.padOverrideValues, morphAnchor);
       }
       if (this.leadOverrideChanged(previous, next)) {
-        this.appendOverrideBlockEvents(events, next.sourceId, next.leadOverrideCount, next.leadOverrideIndices, next.leadOverrideValues);
+        this.appendOverrideBlockEvents(events, next.sourceId, next.leadOverrideCount, next.leadOverrideIndices, next.leadOverrideValues, morphAnchor);
       }
       if (this.drumOverrideChanged(previous, next)) {
         this.appendOverrideBlockEvents(events, next.sourceId, next.drumOverrideCount, next.drumOverrideIndices, next.drumOverrideValues);
@@ -363,6 +365,7 @@ class CoreProductRuntimeAdapter {
     overrideCount: number,
     overrideIndices: readonly number[],
     overrideValues: readonly number[],
+    morphAnchor?: number,
   ): void {
     for (let slot = 0; slot < overrideCount; slot += 1) {
       events.push(createCoreProductSourceOverrideSlotEvent(
@@ -372,7 +375,7 @@ class CoreProductRuntimeAdapter {
         overrideValues[slot] ?? 0,
       ));
     }
-    events.push(createCoreProductSourceOverrideCommitEvent(sourceId, overrideCount));
+    events.push(createCoreProductSourceOverrideCommitEvent(sourceId, overrideCount, morphAnchor));
   }
 
   private appendSequencerLaneDiffs(events: CoreProductEvent[], sequencer: SequencerKind, previousLanes: ProductLaneSnapshot[], nextLanes: ProductLaneSnapshot[], forceClockRejoin: boolean): void {

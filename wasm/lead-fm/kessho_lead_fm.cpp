@@ -830,6 +830,130 @@ int lead_fm_note_set_frequency(int note_index, float frequency) {
     return 1;
 }
 
+static void refresh_note_timbre_from_current_preset(LeadNote& note) {
+    if (!note.active || note.base_freq <= 0.0f) {
+        return;
+    }
+
+    const LeadPresetParams& p = g_params;
+    const int previous_unison = note.num_unison;
+    note.gain = p.gain;
+    note.x_level = p.x_level;
+    note.x_pan = p.x_pan;
+    note.y_level = p.y_level;
+    note.y_pan = p.y_pan;
+    note.filter_freq = p.filter_freq;
+    note.filter_q = p.filter_q;
+    note.filter_mode = filter_type_to_mode(p.filter_type);
+
+    const bool has_next_filter_env = fabsf(p.filter_env_depth) > 1.0f;
+    const bool had_filter_env = fabsf(note.filt_env_peak) > 1.0f || fabsf(note.filt_env_value) > 0.1f;
+    if (has_next_filter_env) {
+        const float previous_peak = note.filt_env_peak;
+        note.filt_env_peak = p.filter_env_depth;
+        note.filt_env_sustain = p.filter_env_depth * p.filter_env_sustain;
+        note.filt_env_target = note.filt_env_sustain;
+
+        if (!had_filter_env) {
+            note.filt_env_value = note.released ? 0.0f : note.filt_env_sustain;
+            note.filt_env_stage = note.released ? 3 : 2;
+            note.filt_env_rate = 0.0f;
+        } else {
+            if (fabsf(previous_peak) > 0.001f) {
+                note.filt_env_value *= note.filt_env_peak / previous_peak;
+            }
+            switch (note.filt_env_stage) {
+                case 0: {
+                    const float attack_samples = std::max(1.0f, p.filter_env_attack * g_sample_rate);
+                    note.filt_env_rate = (note.filt_env_peak - note.filt_env_value) / attack_samples;
+                    break;
+                }
+                case 1: {
+                    const float decay_samples = std::max(1.0f, p.filter_env_decay * g_sample_rate);
+                    note.filt_env_rate = (note.filt_env_sustain - note.filt_env_value) / decay_samples;
+                    break;
+                }
+                default:
+                    note.filt_env_rate = 0.0f;
+                    break;
+            }
+        }
+    } else {
+        note.filt_env_value = 0.0f;
+        note.filt_env_start = 0.0f;
+        note.filt_env_peak = 0.0f;
+        note.filt_env_sustain = 0.0f;
+        note.filt_env_target = 0.0f;
+        note.filt_env_stage = 2;
+        note.filt_env_rate = 0.0f;
+    }
+
+    note.drive = p.drive;
+    if (p.drive > 0.01f) {
+        note.waveshaper.set_drive(1.0f + p.drive * 19.0f);
+    }
+
+    const float env_rate = p.ops[0].env_rate;
+    note.amp_env.attack = p.attack * env_rate;
+    note.amp_env.decay = p.decay * env_rate;
+    note.amp_env.sustain = p.sustain_level;
+    note.amp_env.release = p.release * env_rate;
+
+    const int next_unison = std::max(1, std::min(LEAD_FM_MAX_UNISON, p.unison_voices));
+    note.num_unison = next_unison;
+    for (int u = 0; u < next_unison; ++u) {
+        UnisonVoice& uv = note.unison[u];
+        float unison_cents = 0.0f;
+        if (next_unison > 1) {
+            unison_cents = p.unison_detune * ((static_cast<float>(u) / static_cast<float>(next_unison - 1)) * 2.0f - 1.0f);
+        }
+        const float unison_freq = note.base_freq * semitones_to_ratio(unison_cents / 100.0f);
+        uv.carrier1.freq = unison_freq;
+        uv.carrier2.freq = unison_freq * semitones_to_ratio(p.beat_detune / 100.0f);
+        uv.carrier2_mix = p.carrier2_mix;
+        if (u >= previous_unison) {
+            uv.carrier1.phase = 0.0f;
+            uv.carrier2.phase = 0.0f;
+        }
+
+        for (int op = 0; op < LEAD_FM_NUM_OPERATORS; ++op) {
+            OperatorState& os = uv.ops[op];
+            const OperatorParams& op_p = p.ops[op];
+            os.osc.freq = unison_freq * op_p.ratio * semitones_to_ratio(op_p.detune_cents / 100.0f);
+            if (u >= previous_unison) {
+                os.osc.phase = 0.0f;
+                os.phase_fb = 0.0f;
+            }
+
+            const float previous_peak = std::max(0.001f, os.peak_index);
+            const float next_peak = std::max(
+                0.001f,
+                (op == 0)
+                    ? unison_freq * op_p.index * note.velocity
+                    : unison_freq * op_p.index);
+            const float peak_ratio = next_peak / previous_peak;
+            os.peak_index = next_peak;
+            os.mod_env_target = std::max(0.001f, next_peak * op_p.sustain);
+            os.mod_env_value = std::max(0.001f, os.mod_env_value * peak_ratio);
+            const float decay_samples = std::max(1.0f, op_p.decay_sec * g_sample_rate);
+            os.mod_env_rate = fast_expf(-1.0f / decay_samples);
+            if (os.mod_env_stage == 1) {
+                const float remaining = std::max(1.0f, os.mod_env_counter);
+                os.mod_env_attack_rate = (next_peak - os.mod_env_value) / remaining;
+            }
+        }
+    }
+}
+
+void lead_fm_refresh_active_notes(void) {
+    for (int i = 0; i < LEAD_FM_MAX_POLYPHONY; ++i) {
+        LeadNote& note = g_notes[i];
+        if (note.active) {
+            refresh_note_timbre_from_current_preset(note);
+        }
+    }
+}
+
 void lead_fm_all_notes_off(void) {
     for (int i = 0; i < LEAD_FM_MAX_POLYPHONY; i++) {
         release_note_slot(i);
@@ -993,6 +1117,12 @@ void lead_fm_instance_all_notes_off(KesshoLeadFmInstance* instance) {
     if (!instance) return;
     ScopedLeadFmState scoped(&instance->state);
     lead_fm_all_notes_off();
+}
+
+void lead_fm_instance_refresh_active_notes(KesshoLeadFmInstance* instance) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_refresh_active_notes();
 }
 
 void lead_fm_instance_set_algorithm(KesshoLeadFmInstance* instance, int algo) {

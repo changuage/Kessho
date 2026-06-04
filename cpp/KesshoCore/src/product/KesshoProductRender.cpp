@@ -209,7 +209,10 @@
       float layer_send_right = send_right;
       if (soundscape_sample) {
         soundscape_layer = soundscapeLayerIndexForAsset(assets[voice.asset_slot].asset_id);
-        soundscape_asset_level = soundscapeAssetRefLevel(source, assets[voice.asset_slot].asset_id);
+        soundscape_asset_level = voice.soundscape_releasing
+            ? voice.soundscape_asset_level
+            : soundscapeAssetRefLevel(source, assets[voice.asset_slot].asset_id);
+        voice.soundscape_asset_level = soundscape_asset_level;
         if (source.soundscape_module_param_count > kSoundscapeModuleEarthLevelParam) {
           soundscape_earth_level =
               clampFloat(source.soundscape_module_params[kSoundscapeModuleEarthLevelParam], 0.0f, 2.0f);
@@ -324,13 +327,16 @@
     }
     const float input_peak = std::max(std::fabs(pre_limiter_l), std::fabs(pre_limiter_r));
     master_input_peak = std::max(master_input_peak, input_peak);
-    if (input_peak > ceiling && ceiling > 0.0f) {
+    const float limiter_input_l = pre_limiter_l * kMasterLimiterWebAudioMakeupGain;
+    const float limiter_input_r = pre_limiter_r * kMasterLimiterWebAudioMakeupGain;
+    const float limiter_input_peak = input_peak * kMasterLimiterWebAudioMakeupGain;
+    if (limiter_input_peak > ceiling && ceiling > 0.0f) {
       limiter_gain_reduction_db = std::max(
           limiter_gain_reduction_db,
-          20.0f * std::log10(input_peak / ceiling));
+          20.0f * std::log10(limiter_input_peak / ceiling));
     }
-    out_l[i] = clampFloat(pre_limiter_l, -ceiling, ceiling);
-    out_r[i] = clampFloat(pre_limiter_r, -ceiling, ceiling);
+    out_l[i] = clampFloat(limiter_input_l, -ceiling, ceiling);
+    out_r[i] = clampFloat(limiter_input_r, -ceiling, ceiling);
     const float true_peak_l = std::max(
         std::fabs(out_l[i]),
         std::fabs((out_l[i] + master_true_peak_prev_l) * 0.5f));

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -26,6 +27,50 @@ float maxAbs(const std::vector<float>& values) {
     peak = std::max(peak, std::fabs(value));
   }
   return peak;
+}
+
+float renderPadModulePeakBlocks(KesshoProductEngine* engine, uint32_t blocks) {
+  require(engine != nullptr, "pad render engine missing");
+  require(engine->pad_module != nullptr, "pad render module missing");
+  std::array<float, 128> left{};
+  std::array<float, 128> right{};
+  std::array<float, 128> silent{};
+  float peak = 0.0f;
+  for (uint32_t block = 0u; block < blocks; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    engine->pad_module->processPlanarStereo(
+        silent.data(),
+        silent.data(),
+        left.data(),
+        right.data(),
+        static_cast<int>(left.size()));
+    for (uint32_t frame = 0u; frame < left.size(); ++frame) {
+      require(std::isfinite(left[frame]) && std::isfinite(right[frame]), "pad render produced non-finite samples");
+      peak = std::max(peak, std::fabs(left[frame]));
+      peak = std::max(peak, std::fabs(right[frame]));
+    }
+  }
+  return peak;
+}
+
+void hardStopPadModuleVoices(KesshoProductEngine* engine) {
+  require(engine != nullptr, "pad voice stop engine missing");
+  require(engine->pad_module != nullptr, "pad voice stop module missing");
+  constexpr int kPadModuleVoiceCount = 12;
+  for (int voice_index = 0; voice_index < kPadModuleVoiceCount; ++voice_index) {
+    engine->pad_module->killVoice(voice_index);
+  }
+}
+
+void applyRuntimeParam(KesshoProductEngine* engine, uint32_t param_id, float value, const char* label) {
+  require(engine != nullptr, "runtime param engine missing");
+  KesshoProductEvent event{};
+  event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  event.param_id = param_id;
+  event.value = value;
+  engine->applyParam(event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, label);
 }
 
 const MidiNoteRuntimeSlot* findMidiSlot(
@@ -85,6 +130,46 @@ float sourcePadOverrideValue(const SourceState& source, uint32_t param_index) {
   }
   require(false, "Pad runtime override value missing");
   return 0.0f;
+}
+
+float alternateGeneratedPadParamValue(uint32_t param_index, float current) {
+  for (const auto& preset : kessho::product::generated::KESSHO_PRODUCT_PAD_SOURCE_PRESETS) {
+    if (param_index >= kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT) {
+      break;
+    }
+    const float value = preset.params[param_index];
+    if (std::isfinite(value) && std::fabs(value - current) > 0.001f) {
+      return value;
+    }
+  }
+  return current + (std::fabs(current) > 0.001f ? std::fabs(current) * 0.25f : 0.25f);
+}
+
+void requireAllPadRuntimeParamsRefreshLiveModule(
+    KesshoProductEngine* engine,
+    uint32_t source_id,
+    uint32_t runtime_param_base,
+    float* module_params,
+    uint32_t module_param_offset,
+    const char* label) {
+  require(module_params != nullptr, "pad runtime module params missing");
+  for (uint32_t param_index = 0u; param_index < kProductPadRuntimeParamCount; ++param_index) {
+    const float target_value = alternateGeneratedPadParamValue(
+        param_index,
+        module_params[module_param_offset + param_index]);
+    KesshoProductEvent event{};
+    event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+    event.param_id = runtime_param_base + param_index;
+    event.value = target_value;
+    engine->applyParam(event);
+    require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, label);
+    require(
+        std::fabs(module_params[module_param_offset + param_index] - target_value) < 0.001f,
+        label);
+    require(
+        std::fabs(sourcePadOverrideValue(engine->sources[source_id - 1u], param_index) - target_value) < 0.001f,
+        label);
+  }
 }
 
 void compileDefaultPadEndpoints(KesshoProductEngine* engine, uint32_t source_id) {
@@ -2140,6 +2225,38 @@ int main() {
   require(std::fabs(events[0].midi_note - 72.0f) < 0.001f, "SetSequencerLane MIDI note did not affect events");
   require(events[0].velocity >= 0.49f && events[0].velocity <= 0.51f, "SetSequencerLane velocity did not affect events");
   require(events[0].hold_seconds >= 0.249f && events[0].hold_seconds <= 0.251f, "SetSequencerLane hold did not affect events");
+  require(events[0].morph < 0.0f, "inactive morph sub-lane should leave source morph in control");
+  require(events[0].distance < 0.0f, "inactive distance sub-lane should leave source distance in control");
+  require(events[0].expression < 0.0f, "inactive expression sub-lane should leave source expression in control");
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_MORPH >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      1.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_DISTANCE >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      1.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_EXPRESSION >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      1.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+  event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
+  require(event_count == 16, "active morph/distance/expression sub-lanes should preserve sequencer timing");
   require(events[0].morph >= 0.349f && events[0].morph <= 0.351f, "SetSequencerLane morph did not affect events");
   require(events[0].distance >= 0.449f && events[0].distance <= 0.451f, "SetSequencerLane distance did not affect events");
   require(events[0].expression >= 0.549f && events[0].expression <= 0.551f, "SetSequencerLane expression did not affect events");
@@ -3195,6 +3312,68 @@ int main() {
   require(kessho_product_enqueue_event(engine, &drum_range) == KESSHO_PRODUCT_OK, "drum modulation range enqueue failed");
   event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
   require(event_count == 8, "modulation ranges should preserve event generation");
+  bool saw_synth_source_owned_expression = false;
+  bool saw_drum_source_owned_morph = false;
+  for (int32_t i = 0; i < event_count; ++i) {
+    if (events[i].source_id == KESSHO_PRODUCT_SOURCE_PAD1) {
+      saw_synth_source_owned_expression = saw_synth_source_owned_expression || events[i].expression < 0.0f;
+    }
+    if (events[i].source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+      saw_drum_source_owned_morph = saw_drum_source_owned_morph || events[i].morph < 0.0f;
+    }
+  }
+  require(saw_synth_source_owned_expression, "inactive expression sub-lane should leave source expression to trigger-time modulation");
+  require(saw_drum_source_owned_morph, "inactive morph sub-lane should leave drum morph to trigger-time modulation");
+  ModulationRange* synth_expression_range = engine->findModulationRange(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      KESSHO_PRODUCT_PARAM_SOURCE_EXPRESSION_ID);
+  ModulationRange* drum_morph_range = engine->findModulationRange(
+      KESSHO_PRODUCT_DRUM_RANGE_TARGET_BASE,
+      KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID);
+  require(synth_expression_range != nullptr, "source expression modulation range missing after sequencer generation");
+  require(drum_morph_range != nullptr, "drum morph modulation range missing after sequencer generation");
+  const uint32_t source_owned_synth_expression_counter = synth_expression_range->sample_hold_counter;
+  const uint32_t source_owned_drum_morph_counter = drum_morph_range->sample_hold_counter;
+  bool triggered_synth_event = false;
+  bool triggered_drum_event = false;
+  for (int32_t i = 0; i < event_count; ++i) {
+    if (!triggered_synth_event && events[i].source_id == KESSHO_PRODUCT_SOURCE_PAD1) {
+      engine->triggerSequencerEvent(events[i]);
+      triggered_synth_event = true;
+    }
+    if (!triggered_drum_event && events[i].source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+      engine->triggerSequencerEvent(events[i]);
+      triggered_drum_event = true;
+    }
+  }
+  require(triggered_synth_event, "sequencer modulation test did not trigger synth event");
+  require(triggered_drum_event, "sequencer modulation test did not trigger drum event");
+  require(
+      synth_expression_range->sample_hold_counter > source_owned_synth_expression_counter,
+      "source-owned expression should be modulated at trigger when expression sub-lane is inactive");
+  require(
+      drum_morph_range->sample_hold_counter > source_owned_drum_morph_counter,
+      "source-owned drum morph should be modulated at trigger when morph sub-lane is inactive");
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_SYNTH,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_EXPRESSION >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      1.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+  enqueueSequencerStep(
+      engine,
+      KESSHO_PRODUCT_SEQUENCER_DRUM,
+      0u,
+      KESSHO_PRODUCT_STEP_FIELD_MORPH >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
+      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
+      1.0f,
+      1.0f,
+      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
+  event_count = kessho_product_debug_render_events(engine, events, 32, 96000);
+  require(event_count == 8, "active modulation sub-lanes should preserve event generation");
   bool saw_synth_expression_range = false;
   bool saw_drum_morph_range = false;
   for (int32_t i = 0; i < event_count; ++i) {
@@ -3205,8 +3384,30 @@ int main() {
       saw_drum_morph_range = saw_drum_morph_range || (events[i].morph >= 0.35f && events[i].morph <= 0.45f);
     }
   }
-  require(saw_synth_expression_range, "source sample-hold range did not affect sequencer event expression");
-  require(saw_drum_morph_range, "drum morph range did not affect sequencer event morph");
+  require(saw_synth_expression_range, "active expression sub-lane did not sample source expression range into events");
+  require(saw_drum_morph_range, "active morph sub-lane did not sample drum morph range into events");
+  const uint32_t explicit_synth_expression_counter = synth_expression_range->sample_hold_counter;
+  const uint32_t explicit_drum_morph_counter = drum_morph_range->sample_hold_counter;
+  triggered_synth_event = false;
+  triggered_drum_event = false;
+  for (int32_t i = 0; i < event_count; ++i) {
+    if (!triggered_synth_event && events[i].source_id == KESSHO_PRODUCT_SOURCE_PAD1) {
+      engine->triggerSequencerEvent(events[i]);
+      triggered_synth_event = true;
+    }
+    if (!triggered_drum_event && events[i].source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+      engine->triggerSequencerEvent(events[i]);
+      triggered_drum_event = true;
+    }
+  }
+  require(triggered_synth_event, "explicit sequencer modulation test did not trigger synth event");
+  require(triggered_drum_event, "explicit sequencer modulation test did not trigger drum event");
+  require(
+      synth_expression_range->sample_hold_counter == explicit_synth_expression_counter,
+      "sequencer explicit expression should not be modulated twice at trigger");
+  require(
+      drum_morph_range->sample_hold_counter == explicit_drum_morph_counter,
+      "sequencer explicit drum morph should not be modulated twice at trigger");
 
   {
     KesshoProductEngine route_cache(48000.0, 128, 0);
@@ -3566,14 +3767,410 @@ int main() {
   live_morph_lane.last_emitted_morph_valid = true;
   live_morph_lane.last_emitted_morph = 1.0f;
   live_morph_lane.last_emitted_sample_frame = 100u;
+  float ignored_live_morph = 0.0f;
+  require(
+      !engine->activeSequencerMorphForPresetSource(
+          KESSHO_PRODUCT_SOURCE_PAD1,
+          DRUM_NUM_VOICE_TYPES,
+          ignored_live_morph),
+      "inactive morph sub-lane should not own preset morph from a stale latch");
   live_morph_lane.step_value_configs[engine->stepFieldId(KESSHO_PRODUCT_STEP_FIELD_MORPH)].enabled = true;
+  float active_live_morph = 0.0f;
+  require(
+      engine->activeSequencerMorphForPresetSource(
+          KESSHO_PRODUCT_SOURCE_PAD1,
+          DRUM_NUM_VOICE_TYPES,
+          active_live_morph) &&
+          std::fabs(active_live_morph - 1.0f) < 0.001f,
+      "active morph sub-lane should expose the latest preset morph latch");
   pad_endpoint_preset_event.index = 2u;
   pad_endpoint_preset_event.value =
       static_cast<float>(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT);
   engine->applySourcePresetEvent(pad_endpoint_preset_event);
   require(
       std::fabs(pad_params[14] - 0.36f) < 0.001f,
-      "preset endpoint change should refresh live module at active sequencer morph");
+      "preset endpoint change should refresh live module at active sequencer lane morph");
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 1;
+  snapshot.drum_euclid.lane_count = 0;
+  KesshoProductSourceSnapshot& pad_anchored_override_source = snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
+  pad_anchored_override_source.source_preset_a_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT;
+  pad_anchored_override_source.source_preset_b_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT;
+  pad_anchored_override_source.morph = 0.0f;
+  pad_anchored_override_source.pad_override_count = 1u;
+  pad_anchored_override_source.pad_override_indices[0] = 14u;
+  pad_anchored_override_source.pad_override_values[0] = 0.15f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "anchored Pad override snapshot load failed");
+  pad_params = engine->pad_module ? engine->pad_module->params() : nullptr;
+  require(pad_params != nullptr, "pad module params should be available for anchored override check");
+  engine->transport.running = true;
+  LaneState& anchored_override_lane = engine->synth_lanes[0];
+  anchored_override_lane.enabled = true;
+  anchored_override_lane.target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  anchored_override_lane.last_emitted_morph_valid = true;
+  anchored_override_lane.last_emitted_morph = 1.0f;
+  anchored_override_lane.last_emitted_sample_frame = 150u;
+  anchored_override_lane.step_value_configs[engine->stepFieldId(KESSHO_PRODUCT_STEP_FIELD_MORPH)].enabled = true;
+  pad_endpoint_preset_event.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  pad_endpoint_preset_event.index = 2u;
+  pad_endpoint_preset_event.value =
+      static_cast<float>(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT);
+  engine->applySourcePresetEvent(pad_endpoint_preset_event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "anchored Pad preset B endpoint event failed");
+  require(
+      std::fabs(pad_params[14] - 0.36f) < 0.001f,
+      "Pad preset endpoint change should not let base-morph sparse overrides pin the active sequencer timbre");
+  KesshoProductEvent pad_direct_override_slot{};
+  pad_direct_override_slot.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_OVERRIDE;
+  pad_direct_override_slot.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  pad_direct_override_slot.index = 0u;
+  pad_direct_override_slot.param_id = 14u;
+  pad_direct_override_slot.value = 0.22f;
+  pad_direct_override_slot.flags = KESSHO_PRODUCT_SOURCE_OVERRIDE_SET_SLOT;
+  engine->applySourceOverrideEvent(pad_direct_override_slot);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "Pad direct override slot event failed");
+  KesshoProductEvent pad_direct_override_commit{};
+  pad_direct_override_commit.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_OVERRIDE;
+  pad_direct_override_commit.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  pad_direct_override_commit.index = 1u;
+  pad_direct_override_commit.flags = KESSHO_PRODUCT_SOURCE_OVERRIDE_COMMIT;
+  engine->applySourceOverrideEvent(pad_direct_override_commit);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "Pad direct override commit event failed");
+  require(
+      std::fabs(pad_params[14] - 0.22f) < 0.001f,
+      "direct Pad parameter edits should still update the active sequencer morph live");
+  require(
+      engine->applyStructuredSourceOverridesToModuleAtMorph(KESSHO_PRODUCT_SOURCE_PAD1, 0.0f),
+      "anchored Pad direct override should still resolve endpoint A");
+  require(
+      std::fabs(pad_params[14] - 0.15f) < 0.001f,
+      "direct Pad parameter edits made at sequenced endpoint B should not bleed into endpoint A");
+  require(
+      engine->applyStructuredSourceOverridesToModuleAtMorph(KESSHO_PRODUCT_SOURCE_PAD1, 1.0f),
+      "anchored Pad direct override should still resolve endpoint B");
+  require(
+      std::fabs(pad_params[14] - 0.22f) < 0.001f,
+      "direct Pad parameter edits made at sequenced endpoint B should be remembered at endpoint B");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 1;
+  snapshot.drum_euclid.lane_count = 0;
+  KesshoProductSourceSnapshot& pad_live_morph_reload_source = snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
+  pad_live_morph_reload_source.source_preset_a_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT;
+  pad_live_morph_reload_source.source_preset_b_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "live morph endpoint snapshot reload failed");
+  pad_params = engine->pad_module ? engine->pad_module->params() : nullptr;
+  require(pad_params != nullptr, "pad module params should be available after live morph reload");
+  engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      60.0f,
+      1.0f,
+      0.2f,
+      0.0f,
+      0.0f,
+      1.0f,
+      0u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      1.0f);
+  require(std::fabs(pad_params[14] - 0.15f) < 0.001f, "live morph reload should start on endpoint A");
+  engine->transport.running = true;
+  LaneState& live_morph_reload_lane = engine->synth_lanes[0];
+  live_morph_reload_lane.enabled = true;
+  live_morph_reload_lane.target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  live_morph_reload_lane.last_emitted_morph_valid = true;
+  live_morph_reload_lane.last_emitted_morph = 1.0f;
+  live_morph_reload_lane.last_emitted_sample_frame = 151u;
+  live_morph_reload_lane.step_value_configs[engine->stepFieldId(KESSHO_PRODUCT_STEP_FIELD_MORPH)].enabled = true;
+  pad_endpoint_preset_event.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  pad_endpoint_preset_event.index = 2u;
+  pad_endpoint_preset_event.value =
+      static_cast<float>(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT);
+  engine->applySourcePresetEvent(pad_endpoint_preset_event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "preset endpoint change after reload failed");
+  require(
+      std::fabs(pad_params[14] - 0.36f) < 0.001f,
+      "preset endpoint change should refresh live module at active sequencer morph after reload");
+  require(
+      engine->applyStructuredSourceOverridesToModuleAtMorph(KESSHO_PRODUCT_SOURCE_PAD1, 0.0f),
+      "manual trigger active morph regression setup should force endpoint A");
+  require(
+      std::fabs(pad_params[14] - 0.15f) < 0.001f,
+      "manual trigger active morph regression setup should start from endpoint A");
+  const uint32_t active_morph_manual_voice_index = engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      60.0f,
+      1.0f,
+      0.2f,
+      -1.0f,
+      -1.0f,
+      -1.0f,
+      0u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      1.0f);
+  require(active_morph_manual_voice_index != kProductInvalidVoiceIndex, "manual trigger active morph regression note failed");
+  require(
+      std::fabs(pad_params[14] - 0.36f) < 0.001f,
+      "manual trigger should use active sequencer morph instead of stored source morph");
+  constexpr uint32_t kPadLiveAdsrAttackParamIndex = 33u;
+  constexpr float kPadLiveAdsrAttack = 0.321f;
+  KesshoProductEvent pad_live_adsr_event{};
+  pad_live_adsr_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  pad_live_adsr_event.param_id = kProductPadRuntimeParamIdBase + kPadLiveAdsrAttackParamIndex;
+  pad_live_adsr_event.value = kPadLiveAdsrAttack;
+  engine->applyParam(pad_live_adsr_event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "pad live ADSR param update failed");
+  require(
+      std::fabs(pad_params[kPadLiveAdsrAttackParamIndex] - kPadLiveAdsrAttack) < 0.001f,
+      "pad live ADSR update should refresh module at active sequencer morph");
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + 21u, 12000.0f, "pad live ADSR audio cutoff min update failed");
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + 22u, 12000.0f, "pad live ADSR audio cutoff max update failed");
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + 34u, 0.01f, "pad live ADSR audio decay update failed");
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + 35u, 1.0f, "pad live ADSR audio sustain update failed");
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + 36u, 0.05f, "pad live ADSR audio release update failed");
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + 52u, 1.0f, "pad live ADSR audio level update failed");
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + kPadLiveAdsrAttackParamIndex, 8.0f, "pad live ADSR audio long attack update failed");
+  hardStopPadModuleVoices(engine);
+  const uint32_t long_attack_voice_index = engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      60.0f,
+      1.0f,
+      2.0f,
+      1.0f,
+      0.0f,
+      1.0f,
+      123u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      1.0f);
+  require(long_attack_voice_index != kProductInvalidVoiceIndex, "pad live ADSR audio long attack trigger failed");
+  const float long_attack_peak = renderPadModulePeakBlocks(engine, 1u);
+  hardStopPadModuleVoices(engine);
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + kPadLiveAdsrAttackParamIndex, 0.001f, "pad live ADSR audio fast attack update failed");
+  const uint32_t fast_attack_voice_index = engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      60.0f,
+      1.0f,
+      2.0f,
+      1.0f,
+      0.0f,
+      1.0f,
+      123u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      1.0f);
+  require(fast_attack_voice_index != kProductInvalidVoiceIndex, "pad live ADSR audio fast attack trigger failed");
+  const float fast_attack_peak = renderPadModulePeakBlocks(engine, 1u);
+  require(
+      fast_attack_peak > 0.005f && fast_attack_peak > long_attack_peak * 20.0f,
+      "pad live ADSR edit should audibly affect the next trigger while sequencer morph is latched");
+  applyRuntimeParam(engine, kProductPadRuntimeParamIdBase + kPadLiveAdsrAttackParamIndex, kPadLiveAdsrAttack, "pad live ADSR attack restore failed");
+  hardStopPadModuleVoices(engine);
+  requireAllPadRuntimeParamsRefreshLiveModule(
+      engine,
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      kProductPadRuntimeParamIdBase,
+      pad_params,
+      0u,
+      "all Pad 1 runtime params should refresh module while sequencer morph is latched");
+  engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_PAD2,
+      64.0f,
+      1.0f,
+      0.2f,
+      0.0f,
+      0.0f,
+      1.0f,
+      0u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      1.0f);
+  live_morph_lane.target_source_id = KESSHO_PRODUCT_SOURCE_PAD2;
+  live_morph_lane.last_emitted_sample_frame = 101u;
+  requireAllPadRuntimeParamsRefreshLiveModule(
+      engine,
+      KESSHO_PRODUCT_SOURCE_PAD2,
+      kProductPad2RuntimeParamIdBase,
+      pad_params,
+      kProductPadRuntimeParamCount,
+      "all Pad 2 runtime params should refresh module while sequencer morph is latched");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 1;
+  snapshot.drum_euclid.lane_count = 0;
+  KesshoProductSourceSnapshot& lead_live_override_source = snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
+  lead_live_override_source.source_preset_a_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  lead_live_override_source.source_preset_b_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN;
+  lead_live_override_source.morph = 0.0f;
+  lead_live_override_source.distance = 0.0f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "lead live morph override snapshot load failed");
+  constexpr uint32_t kLeadLiveOverrideGainParamIndex = 62u;
+  constexpr float kLeadLiveOverrideGain = 0.37f;
+  const auto* lead_live_a_preset = findSourcePreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES);
+  const auto* lead_live_b_preset = findSourcePreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN);
+  require(lead_live_a_preset != nullptr && lead_live_b_preset != nullptr, "lead live morph override presets missing");
+  const auto lead_live_a_patch = sourcePresetPatch(*lead_live_a_preset);
+  const auto lead_live_b_patch = sourcePresetPatch(*lead_live_b_preset);
+  uint32_t lead_live_probe_param_index = kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT;
+  for (uint32_t param_index = 0u; param_index < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT; ++param_index) {
+    if (param_index == kLeadLiveOverrideGainParamIndex) {
+      continue;
+    }
+    if (std::fabs(lead_live_a_patch.exact_lead_params[param_index] - lead_live_b_patch.exact_lead_params[param_index]) > 0.001f) {
+      lead_live_probe_param_index = param_index;
+      break;
+    }
+  }
+  require(
+      lead_live_probe_param_index < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PARAM_COUNT,
+      "lead live morph override presets must differ");
+  engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_LEAD1,
+      60.0f,
+      1.0f,
+      0.2f,
+      0.0f,
+      0.0f,
+      1.0f,
+      0u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      1.0f);
+  lead_params = engine->lead_modules[0] ? engine->lead_modules[0]->params() : nullptr;
+  require(lead_params != nullptr, "lead module params should be available for live morph override check");
+  require(
+      std::fabs(lead_params[lead_live_probe_param_index] - lead_live_a_patch.exact_lead_params[lead_live_probe_param_index]) < 0.001f,
+      "lead live morph override setup should start on endpoint A");
+  engine->transport.running = true;
+  LaneState& lead_live_morph_lane = engine->synth_lanes[0];
+  lead_live_morph_lane.enabled = true;
+  lead_live_morph_lane.target_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  lead_live_morph_lane.last_emitted_morph_valid = true;
+  lead_live_morph_lane.last_emitted_morph = 1.0f;
+  lead_live_morph_lane.last_emitted_sample_frame = 200u;
+  lead_live_morph_lane.step_value_configs[engine->stepFieldId(KESSHO_PRODUCT_STEP_FIELD_MORPH)].enabled = true;
+  KesshoProductEvent lead_live_override_slot{};
+  lead_live_override_slot.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_OVERRIDE;
+  lead_live_override_slot.target_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  lead_live_override_slot.index = 0u;
+  lead_live_override_slot.param_id = kLeadLiveOverrideGainParamIndex;
+  lead_live_override_slot.value = kLeadLiveOverrideGain;
+  lead_live_override_slot.flags = KESSHO_PRODUCT_SOURCE_OVERRIDE_SET_SLOT;
+  engine->applySourceOverrideEvent(lead_live_override_slot);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "lead live morph override slot event failed");
+  KesshoProductEvent lead_live_override_commit{};
+  lead_live_override_commit.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_OVERRIDE;
+  lead_live_override_commit.target_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  lead_live_override_commit.index = 1u;
+  lead_live_override_commit.flags = KESSHO_PRODUCT_SOURCE_OVERRIDE_COMMIT;
+  engine->applySourceOverrideEvent(lead_live_override_commit);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "lead live morph override commit event failed");
+  require(
+      std::fabs(lead_params[lead_live_probe_param_index] - lead_live_b_patch.exact_lead_params[lead_live_probe_param_index]) < 0.001f,
+      "lead override commit should refresh live module at active sequencer morph");
+  require(
+      std::fabs(lead_params[kLeadLiveOverrideGainParamIndex] - kLeadLiveOverrideGain) < 0.001f,
+      "lead override commit should preserve sparse Lead override value");
+  KesshoProductEvent lead_live_adsr_event{};
+  lead_live_adsr_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  lead_live_adsr_event.target_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  lead_live_adsr_event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_LEAD_ENVELOPE_OVERRIDE_ENABLED_ID;
+  lead_live_adsr_event.value = 1.0f;
+  engine->applyParam(lead_live_adsr_event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "lead live ADSR enable event failed");
+  lead_live_adsr_event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID;
+  lead_live_adsr_event.value = 0.123f;
+  engine->applyParam(lead_live_adsr_event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "lead live ADSR attack event failed");
+  lead_live_adsr_event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_DECAY_SECONDS_ID;
+  lead_live_adsr_event.value = 0.456f;
+  engine->applyParam(lead_live_adsr_event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "lead live ADSR decay event failed");
+  lead_live_adsr_event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_SUSTAIN_ID;
+  lead_live_adsr_event.value = 0.67f;
+  engine->applyParam(lead_live_adsr_event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "lead live ADSR sustain event failed");
+  lead_live_adsr_event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID;
+  lead_live_adsr_event.value = 1.23f;
+  engine->applyParam(lead_live_adsr_event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "lead live ADSR release event failed");
+  require(std::fabs(lead_params[43] - 0.123f) < 0.001f, "lead live ADSR attack should update module while sequencer morph is latched");
+  require(std::fabs(lead_params[44] - 0.456f) < 0.001f, "lead live ADSR decay should update module while sequencer morph is latched");
+  require(std::fabs(lead_params[45] - 0.67f) < 0.001f, "lead live ADSR sustain should update module while sequencer morph is latched");
+  require(std::fabs(lead_params[46] - 1.23f) < 0.001f, "lead live ADSR release should update module while sequencer morph is latched");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 1;
+  snapshot.drum_euclid.lane_count = 0;
+  KesshoProductSourceSnapshot& stale_lead_override_source = snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
+  stale_lead_override_source.enabled = true;
+  stale_lead_override_source.source_preset_a_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  stale_lead_override_source.source_preset_b_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN;
+  stale_lead_override_source.morph = 0.0f;
+  stale_lead_override_source.lead_override_count = 1u;
+  stale_lead_override_source.lead_override_indices[0] = lead_live_probe_param_index;
+  stale_lead_override_source.lead_override_values[0] = lead_live_a_patch.exact_lead_params[lead_live_probe_param_index];
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "stale Lead endpoint override snapshot load failed");
+  lead_params = engine->lead_modules[0] ? engine->lead_modules[0]->params() : nullptr;
+  require(lead_params != nullptr, "lead module params should be available for stale endpoint override check");
+  engine->transport.running = true;
+  LaneState& stale_lead_endpoint_lane = engine->synth_lanes[0];
+  stale_lead_endpoint_lane.enabled = true;
+  stale_lead_endpoint_lane.target_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  stale_lead_endpoint_lane.last_emitted_morph_valid = true;
+  stale_lead_endpoint_lane.last_emitted_morph = 0.0f;
+  stale_lead_endpoint_lane.last_emitted_sample_frame = 220u;
+  stale_lead_endpoint_lane.step_value_configs[engine->stepFieldId(KESSHO_PRODUCT_STEP_FIELD_MORPH)].enabled = true;
+  KesshoProductEvent lead_endpoint_a_event{};
+  lead_endpoint_a_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET;
+  lead_endpoint_a_event.target_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  lead_endpoint_a_event.index = 1u;
+  lead_endpoint_a_event.value =
+      static_cast<float>(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN);
+  engine->applySourcePresetEvent(lead_endpoint_a_event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "Lead preset A endpoint change with stale override failed");
+  require(
+      std::fabs(lead_params[lead_live_probe_param_index] - lead_live_b_patch.exact_lead_params[lead_live_probe_param_index]) < 0.001f,
+      "Lead preset A endpoint change should clear stale exact overrides and refresh the active sequencer morph");
 
   kessho_product_reset(engine);
   SourceState& pad_preset_source = engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];

@@ -851,6 +851,55 @@ void requireMasterGainStagingScalesBeforeLimiter() {
   require(loud_peak < quiet_peak * 4.5f, "master gain staging scaled outside expected linear range");
 }
 
+void requireMasterLimiterAppliesWebAudioMakeup() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "master limiter makeup engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.master.gain = 1.0f;
+  snapshot.master.limiter_ceiling_db = 0.0f;
+  snapshot.fx.reverb_mix = 0.0f;
+  snapshot.fx.delay_a_mix = 0.0f;
+  snapshot.fx.delay_b_mix = 0.0f;
+  snapshot.fx.granular_mix = 0.0f;
+  snapshot.fx.granular_enabled = 0u;
+  snapshot.fx.spectral_freeze_enabled = 0u;
+  snapshot.fx.dynamics_enabled = 0u;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].level = 0.18f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].dry_gain = 0.5f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].expression = 0.5f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "master limiter makeup snapshot load failed");
+  require(kessho_product_set_graph_taps_enabled(engine, 1u) == KESSHO_PRODUCT_OK, "master limiter makeup graph taps enable failed");
+
+  triggerPad(engine, 0.4f);
+  std::vector<float> out_l(128);
+  std::vector<float> out_r(128);
+  std::vector<float> pre_l(128);
+  std::vector<float> pre_r(128);
+  std::vector<float> post_l(128);
+  std::vector<float> post_r(128);
+  float pre_peak = 0.0f;
+  float post_peak = 0.0f;
+  for (uint32_t block = 0; block < 16u; ++block) {
+    kessho_product_render(engine, out_l.data(), out_r.data(), 128);
+    require(
+        kessho_product_get_graph_tap(engine, KESSHO_PRODUCT_GRAPH_TAP_MASTER_PRE_LIMITER, pre_l.data(), pre_r.data(), 128) == KESSHO_PRODUCT_OK,
+        "master pre-limiter graph tap read failed");
+    require(
+        kessho_product_get_graph_tap(engine, KESSHO_PRODUCT_GRAPH_TAP_MASTER_POST_LIMITER, post_l.data(), post_r.data(), 128) == KESSHO_PRODUCT_OK,
+        "master post-limiter graph tap read failed");
+    pre_peak = std::max(pre_peak, peak(pre_l, pre_r));
+    post_peak = std::max(post_peak, peak(post_l, post_r));
+  }
+  kessho_product_destroy(engine);
+
+  require(pre_peak > 0.00001f, "master limiter makeup probe produced no pre-limiter signal");
+  require(post_peak < 0.25f, "master limiter makeup probe unexpectedly hit ceiling");
+  const float ratio = post_peak / pre_peak;
+  require(
+      std::fabs(ratio - kMasterLimiterWebAudioMakeupGain) < 0.001f,
+      "master limiter did not apply Web Audio makeup gain");
+}
+
 void requireMasterTelemetryReportsLimiterSaturationAndLoudness() {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "master telemetry engine create failed");
@@ -1263,6 +1312,7 @@ int main() {
   kessho_product_destroy(limiter_engine);
 
   requireMasterGainStagingScalesBeforeLimiter();
+  requireMasterLimiterAppliesWebAudioMakeup();
   requireMasterTelemetryReportsLimiterSaturationAndLoudness();
   requireDisabledFxBypassKeepsDryAndSilencesFxStem();
   requireProductResetClearsFxTails();

@@ -35,7 +35,7 @@ import { normalizeDynamicsDegradeAliases } from './audio/dynamicsModel';
 import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
 import { formatChordDegrees, calculateDriftedRoot } from './audio/harmony';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
-import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS, PAD1_TO_PAD2_KEY } from './audio/padPresets';
+import { getPadPreset, morphPadPresets, PAD_PRESET_PARAM_KEYS, PAD1_TO_PAD2_KEY, type PadPreset, type PadPresetParamKey } from './audio/padPresets';
 import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, INSECT_ENGINE_DEFAULTS, getWaterPresetDualRanges, getWaterPresetSliderModes } from './audio/waterPresets';
 import { productEngine as productRuntimePort } from './audio/product/ProductEngineProxy';
 import {
@@ -66,6 +66,7 @@ import {
   getRuntimeSliderPosition,
   removeRuntimeTriggerPositions,
 } from './ui/runtimeSliderState';
+import { getRuntimeValue } from './ui/runtimeValueState';
 import { useProductCoreDebugSummary } from './ui/useProductCoreDebugSummary';
 import { useProductRuntimeParityProbe } from './ui/useProductRuntimeParityProbe';
 import {
@@ -205,6 +206,169 @@ const ROUTING_SOURCE_DISABLE_ONLY_FAMILIES = {
   insects: ['insectsEnabled', 'insects2Enabled'],
   nature: ['birdsEnabled', 'birds2Enabled', 'frogsEnabled'],
 } as const satisfies Record<string, readonly RoutingSourceFlagKey[]>;
+
+const LEAD_PRESET_SLOT_KEYS = [
+  'lead1PresetA',
+  'lead1PresetB',
+  'lead2PresetC',
+  'lead2PresetD',
+] as const satisfies readonly (keyof SliderState)[];
+
+type LeadPresetSlotStateKey = typeof LEAD_PRESET_SLOT_KEYS[number];
+
+function isLeadPresetSlotKey(key: keyof SliderState): key is LeadPresetSlotStateKey {
+  return (LEAD_PRESET_SLOT_KEYS as readonly string[]).includes(String(key));
+}
+
+function leadPresetSlotsChanged(previous: SliderState, next: SliderState): boolean {
+  return LEAD_PRESET_SLOT_KEYS.some((key) => previous[key] !== next[key]);
+}
+
+type PadMorphScope = 'pad1' | 'pad2';
+type PadMorphEndpoint = 'a' | 'b';
+type PadMorphEndpointParamValue = number | string | boolean;
+type PadMorphEndpointParamOverrides = Partial<Record<PadPresetParamKey, PadMorphEndpointParamValue>>;
+type PadMorphEndpointOverrides = Record<PadMorphScope, Record<PadMorphEndpoint, PadMorphEndpointParamOverrides>>;
+
+const PAD_PRESET_PARAM_KEY_SET = new Set<string>(PAD_PRESET_PARAM_KEYS);
+const PAD2_TO_PAD1_KEY = Object.fromEntries(
+  Object.entries(PAD1_TO_PAD2_KEY).map(([pad1Key, pad2Key]) => [pad2Key, pad1Key]),
+) as Record<string, PadPresetParamKey>;
+
+function createPadMorphEndpointOverrides(): PadMorphEndpointOverrides {
+  return {
+    pad1: { a: {}, b: {} },
+    pad2: { a: {}, b: {} },
+  };
+}
+
+function getPadMorphParamChange(key: keyof SliderState): { scope: PadMorphScope; paramKey: PadPresetParamKey } | null {
+  const keyStr = String(key);
+  if (PAD_PRESET_PARAM_KEY_SET.has(keyStr)) {
+    return { scope: 'pad1', paramKey: keyStr as PadPresetParamKey };
+  }
+
+  const pad1Key = PAD2_TO_PAD1_KEY[keyStr];
+  return pad1Key ? { scope: 'pad2', paramKey: pad1Key } : null;
+}
+
+function getPadMorphPosition(state: SliderState, scope: PadMorphScope): number | null {
+  const runtimeKey = scope === 'pad2' ? 'pad2Morph' : 'padMorph';
+  const runtimeMorph = getRuntimeValue(runtimeKey);
+  if (typeof runtimeMorph === 'number' && Number.isFinite(runtimeMorph)) {
+    return runtimeMorph;
+  }
+  const morphPosition = scope === 'pad2' ? state.pad2Morph : state.padMorph;
+  if (typeof morphPosition !== 'number') return null;
+  return morphPosition;
+}
+
+function getPadMorphEndpoint(state: SliderState, scope: PadMorphScope): PadMorphEndpoint | null {
+  const morphPosition = getPadMorphPosition(state, scope);
+  if (morphPosition === null) return null;
+  if (isAtEndpoint0(morphPosition)) return 'a';
+  if (isAtEndpoint1(morphPosition)) return 'b';
+  return null;
+}
+
+function getPadPresetStateKey(scope: PadMorphScope, paramKey: PadPresetParamKey): string | undefined {
+  return scope === 'pad2' ? PAD1_TO_PAD2_KEY[paramKey] : paramKey;
+}
+
+function isPadMorphEndpointParamValue(value: unknown): value is PadMorphEndpointParamValue {
+  return typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean';
+}
+
+function rememberPadMorphEndpointState(
+  overrides: PadMorphEndpointOverrides,
+  state: SliderState,
+  scope: PadMorphScope,
+): void {
+  const endpoint = getPadMorphEndpoint(state, scope);
+  if (!endpoint) return;
+
+  const target = overrides[scope][endpoint];
+  for (const paramKey of PAD_PRESET_PARAM_KEYS) {
+    const stateKey = getPadPresetStateKey(scope, paramKey);
+    if (!stateKey) continue;
+    const value = (state as unknown as Record<string, unknown>)[stateKey];
+    if (isPadMorphEndpointParamValue(value)) {
+      target[paramKey] = value;
+    }
+  }
+}
+
+function padMorphScopeParamsChanged(previous: SliderState, next: SliderState, scope: PadMorphScope): boolean {
+  for (const paramKey of PAD_PRESET_PARAM_KEYS) {
+    const stateKey = getPadPresetStateKey(scope, paramKey);
+    if (!stateKey) continue;
+    const key = stateKey as keyof SliderState;
+    if (previous[key] !== next[key]) return true;
+  }
+  return false;
+}
+
+function rememberChangedPadMorphEndpointStates(
+  overrides: PadMorphEndpointOverrides,
+  previous: SliderState,
+  next: SliderState,
+): void {
+  if (padMorphScopeParamsChanged(previous, next, 'pad1')) {
+    rememberPadMorphEndpointState(overrides, next, 'pad1');
+  }
+  if (padMorphScopeParamsChanged(previous, next, 'pad2')) {
+    rememberPadMorphEndpointState(overrides, next, 'pad2');
+  }
+}
+
+function clearPadMorphEndpointState(
+  overrides: PadMorphEndpointOverrides,
+  scope: PadMorphScope,
+  endpoint: PadMorphEndpoint,
+): void {
+  overrides[scope][endpoint] = {};
+}
+
+function applyPadEndpointOverridesToPreset(
+  preset: PadPreset,
+  overrides: PadMorphEndpointParamOverrides,
+): PadPreset {
+  if (Object.keys(overrides).length === 0) return preset;
+  return {
+    ...preset,
+    params: {
+      ...preset.params,
+      ...overrides,
+    },
+  };
+}
+
+function applyPadPresetMorphToState(
+  state: SliderState,
+  scope: PadMorphScope,
+  overrides: PadMorphEndpointOverrides,
+): void {
+  const presetAKey = scope === 'pad2' ? 'pad2PresetA' : 'padPresetA';
+  const presetBKey = scope === 'pad2' ? 'pad2PresetB' : 'padPresetB';
+  const presetA = getPadPreset(String(state[presetAKey] ?? 'init'), scope);
+  const presetB = getPadPreset(String(state[presetBKey] ?? state[presetAKey] ?? 'init'), scope);
+  if (!presetA || !presetB) return;
+
+  const morphPosition = getPadMorphPosition(state, scope) ?? 0;
+  const morphed = morphPadPresets(
+    applyPadEndpointOverridesToPreset(presetA, overrides[scope].a),
+    applyPadEndpointOverridesToPreset(presetB, overrides[scope].b),
+    morphPosition,
+  );
+  const record = state as unknown as Record<string, unknown>;
+  for (const paramKey of PAD_PRESET_PARAM_KEYS) {
+    if (!(paramKey in morphed)) continue;
+    const targetKey = getPadPresetStateKey(scope, paramKey);
+    if (targetKey) {
+      record[targetKey] = morphed[paramKey];
+    }
+  }
+}
 
 type RoutingSourceSimpleToggleId = keyof typeof ROUTING_SOURCE_SIMPLE_TOGGLES;
 type RoutingSourceDisableOnlyFamilyId = keyof typeof ROUTING_SOURCE_DISABLE_ONLY_FAMILIES;
@@ -1524,6 +1688,8 @@ const App: React.FC = () => {
   const [dawOutputDevice, setDawOutputDevice] = useState<DawOutputDeviceSelection>(() => loadDawOutputDeviceSelection());
   const stateRef = useRef(state);
   stateRef.current = state;
+  const pendingImmediateLeadPresetSyncRef = useRef(false);
+  const padMorphEndpointOverridesRef = useRef<PadMorphEndpointOverrides>(createPadMorphEndpointOverrides());
   const { productRuntimeMode } = useProductRuntimeSession();
   const lastAppliedPresetLoadRef = useRef<{
     preset: SavedPreset;
@@ -2625,8 +2791,16 @@ const App: React.FC = () => {
   // Web audio does not consume dual-slider ranges, so avoid re-sending params when
   // only the UI runtime range model changes.
   useEffect(() => {
+    if (pendingImmediateLeadPresetSyncRef.current) {
+      pendingImmediateLeadPresetSyncRef.current = false;
+      scheduleProductRuntimeParamUpdate(state, {
+        immediate: true,
+        reason: 'ui-control-change',
+      });
+      return;
+    }
     syncScheduledProductRuntimeState(state);
-  }, [state, syncScheduledProductRuntimeState]);
+  }, [scheduleProductRuntimeParamUpdate, state, syncScheduledProductRuntimeState]);
 
   type SliderChangeOptions = {
     preserveEnabledFlags?: boolean;
@@ -2666,6 +2840,7 @@ const App: React.FC = () => {
       // endpoint (0 or 1), save as override so it persists during morph
       // ═══════════════════════════════════════════════════════════════════════
       const keyStr = key as string;
+      const padMorphParamChange = getPadMorphParamChange(key);
 
       // Detect which voice this param belongs to based on prefix
       let drumVoice: DrumPresetVoice | null = null;
@@ -3194,16 +3369,7 @@ const App: React.FC = () => {
         // and apply the resulting params to state
         // ═══════════════════════════════════════════════════════════════════════
         if (key === 'padMorph') {
-          const presetA = getPadPreset(newState.padPresetA as string, 'pad1');
-          const presetB = getPadPreset(newState.padPresetB as string, 'pad1');
-          if (presetA && presetB) {
-            const morphed = morphPadPresets(presetA, presetB, newState.padMorph as number);
-            for (const k of PAD_PRESET_PARAM_KEYS) {
-              if (k in morphed) {
-                (newState as Record<string, unknown>)[k] = morphed[k];
-              }
-            }
-          }
+          applyPadPresetMorphToState(newState as SliderState, 'pad1', padMorphEndpointOverridesRef.current);
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -3212,19 +3378,7 @@ const App: React.FC = () => {
         // and apply the resulting params to pad2 state keys
         // ═══════════════════════════════════════════════════════════════════════
         if (key === 'pad2Morph') {
-          const presetA = getPadPreset(newState.pad2PresetA as string, 'pad2');
-          const presetB = getPadPreset(newState.pad2PresetB as string, 'pad2');
-          if (presetA && presetB) {
-            const morphed = morphPadPresets(presetA, presetB, newState.pad2Morph as number);
-            for (const k of PAD_PRESET_PARAM_KEYS) {
-              if (k in morphed) {
-                const pad2Key = PAD1_TO_PAD2_KEY[k];
-                if (pad2Key) {
-                  (newState as Record<string, unknown>)[pad2Key] = morphed[k];
-                }
-              }
-            }
-          }
+          applyPadPresetMorphToState(newState as SliderState, 'pad2', padMorphEndpointOverridesRef.current);
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -3243,6 +3397,9 @@ const App: React.FC = () => {
         }
 
         newState = normalizePadFilterCutoffPairs(newState, key);
+        if (padMorphParamChange) {
+          rememberPadMorphEndpointState(padMorphEndpointOverridesRef.current, newState, padMorphParamChange.scope);
+        }
 
         if (preservedEnabledFlags) {
           newState = {
@@ -3500,8 +3657,12 @@ const App: React.FC = () => {
     <K extends keyof SliderState>(key: K, value: SliderState[K]) => {
       // Mark that user has interacted with the UI
       hasUserInteractedRef.current = true;
+      const padMorphParamChange = getPadMorphParamChange(key);
       setState((prev) => {
         const newState: SliderState = { ...prev, [key]: value } as SliderState;
+        if (isLeadPresetSlotKey(key) && prev[key] !== value) {
+          pendingImmediateLeadPresetSyncRef.current = true;
+        }
 
         if (key === 'chordProgressionPattern' && Array.isArray(value)) {
           const stepCount = Math.max(1, prev.chordProgressionSteps ?? 1, value.length);
@@ -3519,33 +3680,14 @@ const App: React.FC = () => {
 
         // ═══ PAD PRESET MORPH: when preset A or B changes, re-morph and apply ═══
         if (key === 'padPresetA' || key === 'padPresetB') {
-          const presetA = getPadPreset(newState.padPresetA as string, 'pad1');
-          const presetB = getPadPreset(newState.padPresetB as string, 'pad1');
-          if (presetA && presetB) {
-            const morphed = morphPadPresets(presetA, presetB, newState.padMorph as number);
-            for (const k of PAD_PRESET_PARAM_KEYS) {
-              if (k in morphed) {
-                (newState as unknown as Record<string, unknown>)[k] = morphed[k];
-              }
-            }
-          }
+          clearPadMorphEndpointState(padMorphEndpointOverridesRef.current, 'pad1', key === 'padPresetA' ? 'a' : 'b');
+          applyPadPresetMorphToState(newState, 'pad1', padMorphEndpointOverridesRef.current);
         }
 
         // ═══ PAD 2 PRESET MORPH: when pad2 preset A or B changes, re-morph and apply ═══
         if (key === 'pad2PresetA' || key === 'pad2PresetB') {
-          const presetA = getPadPreset(newState.pad2PresetA as string, 'pad2');
-          const presetB = getPadPreset(newState.pad2PresetB as string, 'pad2');
-          if (presetA && presetB) {
-            const morphed = morphPadPresets(presetA, presetB, newState.pad2Morph as number);
-            for (const k of PAD_PRESET_PARAM_KEYS) {
-              if (k in morphed) {
-                const pad2Key = PAD1_TO_PAD2_KEY[k];
-                if (pad2Key) {
-                  (newState as unknown as Record<string, unknown>)[pad2Key] = morphed[k];
-                }
-              }
-            }
-          }
+          clearPadMorphEndpointState(padMorphEndpointOverridesRef.current, 'pad2', key === 'pad2PresetA' ? 'a' : 'b');
+          applyPadPresetMorphToState(newState, 'pad2', padMorphEndpointOverridesRef.current);
         }
 
         if (key === 'lead1PresetA' || key === 'lead1PresetB') {
@@ -3628,6 +3770,9 @@ const App: React.FC = () => {
         }
 
         const normalizedState = normalizePadFilterCutoffPairs(newState, key);
+        if (padMorphParamChange) {
+          rememberPadMorphEndpointState(padMorphEndpointOverridesRef.current, normalizedState, padMorphParamChange.scope);
+        }
         applyMorphEndpointStatePatch(prev, normalizedState);
         return normalizedState;
       });
@@ -3702,6 +3847,10 @@ const App: React.FC = () => {
     (nextStateOrUpdater) => {
       setState((prev) => {
         const nextState = typeof nextStateOrUpdater === 'function' ? (nextStateOrUpdater as (prevState: SliderState) => SliderState)(prev) : nextStateOrUpdater;
+        if (leadPresetSlotsChanged(prev, nextState)) {
+          pendingImmediateLeadPresetSyncRef.current = true;
+        }
+        rememberChangedPadMorphEndpointStates(padMorphEndpointOverridesRef.current, prev, nextState);
         applyMorphEndpointStatePatch(prev, nextState);
         return nextState;
       });
@@ -4400,7 +4549,9 @@ const App: React.FC = () => {
         'synthAttack',
         'synthDecay',
         'synthSustain',
+        'synthHold',
         'synthRelease',
+        'padFitEnvelopeToChord',
         'synthVoiceMask',
         'synthOctave',
         'hardness',
@@ -4627,7 +4778,9 @@ const App: React.FC = () => {
         'pad2Attack',
         'pad2Decay',
         'pad2Sustain',
+        'pad2Hold',
         'pad2Release',
+        'pad2FitEnvelopeToChord',
         'pad2Octave',
         'pad2Hardness',
         'pad2Warmth',

@@ -41,6 +41,43 @@ function booleanFromState(state: Record<string, unknown>, key: string, fallback:
 function sliderStateFromRecord(state: Record<string, unknown>): SliderState {
   return state as unknown as SliderState;
 }
+
+const PAD_CHORD_ENVELOPE_SAFETY_SECONDS = 0.05;
+
+function padChordTriggerIntervalSeconds(state: SliderState): number {
+  const phraseLength = harmonyPhraseSeconds(state);
+  const chordRate = boundedNumber(state as unknown as Record<string, unknown>, 'chordRate', 32, 1, 128);
+  if (chordRate < phraseLength) {
+    const chordsPerPhrase = Math.max(2, Math.round(phraseLength / chordRate));
+    return phraseLength / chordsPerPhrase;
+  }
+  return phraseLength;
+}
+
+function padEnvelopeGateSeconds(
+  state: Record<string, unknown>,
+  pad: 'pad1' | 'pad2',
+  voiceDelaySeconds: number,
+  triggerIntervalSeconds: number,
+): number {
+  const attackKey = pad === 'pad2' ? 'pad2Attack' : 'synthAttack';
+  const decayKey = pad === 'pad2' ? 'pad2Decay' : 'synthDecay';
+  const holdKey = pad === 'pad2' ? 'pad2Hold' : 'synthHold';
+  const releaseKey = pad === 'pad2' ? 'pad2Release' : 'synthRelease';
+  const fitKey = pad === 'pad2' ? 'pad2FitEnvelopeToChord' : 'padFitEnvelopeToChord';
+  const attack = boundedNumber(state, attackKey, 6, 0.001, 16);
+  const decay = boundedNumber(state, decayKey, 1, 0.01, 8);
+  const requestedHold = boundedNumber(state, holdKey, 1, 0, 20);
+  const release = boundedNumber(state, releaseKey, 12, 0.01, 30);
+  let hold = requestedHold;
+  if (booleanFromState(state, fitKey, true)) {
+    const availableSeconds = triggerIntervalSeconds - voiceDelaySeconds - PAD_CHORD_ENVELOPE_SAFETY_SECONDS;
+    const maxHold = availableSeconds - attack - decay - release;
+    hold = clamp(requestedHold, 0, Math.max(0, maxHold));
+  }
+  return clamp(attack + decay + hold, 0.02, 20);
+}
+
 function harmonyParamsFromState(state: SliderState): Partial<HarmonyParams> {
   return {
     cofDriftEnabled: state.cofDriftEnabled ?? false,
@@ -357,24 +394,18 @@ export class CoreProductArrangementScheduler {
     const octaveShift = boundedInteger(this.state, 'synthOctave', 0, -2, 2) * 12;
     const pad1ChordMidi = enabledChordMidiForMask(chordMidi, pad1Mask);
     const pad2ChordMidi = enabledChordMidiForMask(chordMidi, pad2Mask);
+    const triggerIntervalSeconds = padChordTriggerIntervalSeconds(sliderStateFromRecord(this.state));
     const waveSpreadSeconds =
       boundedNumber(this.state, 'waveSpread', 0.125, 0, 1) *
-      boundedNumber(this.state, 'chordRate', 32, 1, 128);
+      triggerIntervalSeconds;
     const voiceOffsets = Array.from({ length: PAD_VOICE_COUNT }, () => this.rng!() * waveSpreadSeconds).sort((a, b) => a - b);
-    const holdSeconds = clamp(
-      numberFromState(this.state, 'synthAttack', 0.05) +
-        numberFromState(this.state, 'synthDecay', 0.2) +
-        numberFromState(this.state, 'synthRelease', 1.5) +
-        0.25,
-      0.25,
-      20,
-    );
     for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT; voiceIndex += 1) {
       const bit = 1 << voiceIndex;
       const delaySeconds = voiceOffsets[voiceIndex] ?? 0;
       if ((pad1Mask & bit) !== 0) {
         const enabledIndex = enabledVoiceRank(pad1Mask, voiceIndex);
         const midi = clamp(pad1ChordMidi[enabledIndex % pad1ChordMidi.length]! + octaveShift, 0, 127);
+        const holdSeconds = padEnvelopeGateSeconds(this.state, 'pad1', delaySeconds, triggerIntervalSeconds);
         this.scheduleNote(delaySeconds, createCoreProductManualNoteEvent(
           CORE_PRODUCT_SOURCE_IDS.pad1,
           midi,
@@ -386,6 +417,7 @@ export class CoreProductArrangementScheduler {
       if ((pad2Mask & bit) !== 0) {
         const enabledIndex = enabledVoiceRank(pad2Mask, voiceIndex);
         const midi = clamp(pad2ChordMidi[enabledIndex % pad2ChordMidi.length]! + octaveShift, 0, 127);
+        const holdSeconds = padEnvelopeGateSeconds(this.state, 'pad2', delaySeconds, triggerIntervalSeconds);
         this.scheduleNote(delaySeconds, createCoreProductManualNoteEvent(
           CORE_PRODUCT_SOURCE_IDS.pad2,
           midi,

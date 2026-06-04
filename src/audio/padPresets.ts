@@ -27,7 +27,7 @@ export const PAD_PRESET_PARAM_KEYS = [
   // Filter B
   'padFilterBEnabled', 'padFilterBType', 'padFilterBCutoff', 'padFilterBResonance', 'padFilterBQ', 'padFilterRouting',
   // ADSR
-  'synthAttack', 'synthDecay', 'synthSustain', 'synthRelease',
+  'synthAttack', 'synthDecay', 'synthSustain', 'synthHold', 'synthRelease',
   // LFO
   'padLfo1Rate', 'padLfo1Depth', 'padLfo1Wave', 'padLfo1Dest',
   'padLfo2Rate', 'padLfo2Depth', 'padLfo2Wave', 'padLfo2Dest',
@@ -51,7 +51,7 @@ export const PAD1_TO_PAD2_KEY: Record<string, string> = {
   filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ', filterSlope: 'pad2FilterSlope', filterKeyTracking: 'pad2FilterKeyTracking',
   padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
   padFilterBResonance: 'pad2FilterBResonance', padFilterBQ: 'pad2FilterBQ', padFilterRouting: 'pad2FilterRouting',
-  synthAttack: 'pad2Attack', synthDecay: 'pad2Decay', synthSustain: 'pad2Sustain', synthRelease: 'pad2Release',
+  synthAttack: 'pad2Attack', synthDecay: 'pad2Decay', synthSustain: 'pad2Sustain', synthHold: 'pad2Hold', synthRelease: 'pad2Release',
   padLfo1Rate: 'pad2Lfo1Rate', padLfo1Depth: 'pad2Lfo1Depth', padLfo1Wave: 'pad2Lfo1Wave', padLfo1Dest: 'pad2Lfo1Dest',
   padLfo2Rate: 'pad2Lfo2Rate', padLfo2Depth: 'pad2Lfo2Depth', padLfo2Wave: 'pad2Lfo2Wave', padLfo2Dest: 'pad2Lfo2Dest',
   padModEnvEnabled: 'pad2ModEnvEnabled', padModEnvAttack: 'pad2ModEnvAttack', padModEnvDecay: 'pad2ModEnvDecay',
@@ -95,7 +95,7 @@ export const PAD_PRESET_DEFAULT_PARAMS: Record<string, number | string | boolean
   filterResonance: 0.2, filterQ: 1.0, filterSlope: 12, filterKeyTracking: 0,
   padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 200,
   padFilterBResonance: 0.2, padFilterBQ: 1, padFilterRouting: 'series',
-  synthAttack: 6, synthDecay: 1, synthSustain: 0.8, synthRelease: 12,
+  synthAttack: 6, synthDecay: 1, synthSustain: 0.8, synthHold: 1, synthRelease: 12,
   padLfo1Rate: 0.5, padLfo1Depth: 0, padLfo1Wave: 'sine', padLfo1Dest: 'none',
   padLfo2Rate: 0.5, padLfo2Depth: 0, padLfo2Wave: 'sine', padLfo2Dest: 'none',
   padModEnvEnabled: false, padModEnvAttack: 0.5, padModEnvDecay: 2,

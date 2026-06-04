@@ -8,6 +8,7 @@ interface DragNumberProps {
   onChange: (value: number) => void;
   shapeByDrag?: boolean;
   disabled?: boolean;
+  displayValue?: React.ReactNode;
 }
 
 const SEQ_DRAG_NUM_SLOW_FACTOR = 1.8;
@@ -20,6 +21,7 @@ const DragNumber: React.FC<DragNumberProps> = ({
   onChange,
   shapeByDrag = false,
   disabled = false,
+  displayValue,
 }) => {
   const [dragging, setDragging] = useState(false);
   const [ghostValue, setGhostValue] = useState<number | null>(null);
@@ -63,7 +65,7 @@ const DragNumber: React.FC<DragNumberProps> = ({
     (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
   };
 
-  const display = ghostValue ?? value;
+  const display = displayValue ?? ghostValue ?? value;
 
   return (
     <label style={disabled ? { opacity: 0.4, pointerEvents: 'none' } : undefined}>

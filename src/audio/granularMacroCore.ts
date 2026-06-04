@@ -174,7 +174,7 @@ export function computeGranularMacroModel(
       0,
       1,
     );
-    voiceSpray[voiceIndex] = clamp(rawSprayValue + mTexture * 0.42 + spread * mTexture * 0.06 * 0.42, 0, 1);
+    voiceSpray[voiceIndex] = clamp(rawSprayValue, 0, 1);
     voiceGrainSize[voiceIndex] = clamp(rawGrainSizeValue + textureQuadratic * 72 + spread * mTexture * 0.04 * 320, 10, 500);
     voiceGrainOct[voiceIndex] = clamp(rawGrainOctValue + textureQuadratic * 0.22 + spread * mTexture * 0.08 * 0.22, 0, 1);
     voiceDecay[voiceIndex] = clamp(rawDecayValue + mTexture * 0.38 + spread * mTexture * 0.08 * 1.6, 0.01, 4);
@@ -239,10 +239,8 @@ export function computeGranularMacroModel(
     voicePitch[voiceIndex] = rawPitchValue;
 
     const chaosQuadratic = mChaos * mChaos;
-    const currentSpray = voiceSpray[voiceIndex] ?? rawSprayValue;
     const currentGrainOct = voiceGrainOct[voiceIndex] ?? rawGrainOctValue;
     voiceReverseLFORate[voiceIndex] = clamp(rawReverseLFORateValue + chaosQuadratic * 1.1 + spread * mChaos * 0.72 * 1.1, 0, 1);
-    voiceSpray[voiceIndex] = clamp(currentSpray + chaosQuadratic * 0.26 + mChaos * 0.05, 0, 1);
     voiceGrainOct[voiceIndex] = clamp(currentGrainOct + mChaos * (isPureBehavior ? 0.06 : 0.14), 0, 1);
 
     const tension = getEffectiveTension(
@@ -282,7 +280,7 @@ export function computeGranularMacroModel(
       voiceAttack[voiceIndex] = Math.max(0.045, voiceAttack[voiceIndex] ?? rawAttackValue);
       voiceDecay[voiceIndex] = Math.max(0.6, voiceDecay[voiceIndex] ?? rawDecayValue);
       voiceBlur[voiceIndex] = clamp(Math.max(0.24, voiceBlur[voiceIndex] ?? rawBlurValue), 0, 0.82);
-      voiceSpray[voiceIndex] = Math.min(0.14, voiceSpray[voiceIndex] ?? rawSprayValue);
+      voiceSpray[voiceIndex] = clamp(rawSprayValue, 0, 1);
       voiceGrainOct[voiceIndex] = Math.min(0.06, voiceGrainOct[voiceIndex] ?? rawGrainOctValue);
       voiceDensity[voiceIndex] = Math.max(10, voiceDensity[voiceIndex] ?? rawDensityValue);
       voiceGrainSize[voiceIndex] = Math.max(120, voiceGrainSize[voiceIndex] ?? rawGrainSizeValue);
@@ -292,13 +290,11 @@ export function computeGranularMacroModel(
       const currentAttack = voiceAttack[voiceIndex] ?? rawAttackValue;
       const currentDecay = voiceDecay[voiceIndex] ?? rawDecayValue;
       const currentBlur = voiceBlur[voiceIndex] ?? rawBlurValue;
-      const currentSpray = voiceSpray[voiceIndex] ?? rawSprayValue;
       const currentDensity = voiceDensity[voiceIndex] ?? rawDensityValue;
       const currentSize = voiceGrainSize[voiceIndex] ?? rawGrainSizeValue;
       voiceAttack[voiceIndex] = Math.max(currentAttack, 0.014 + smearMacro * 0.11);
       voiceDecay[voiceIndex] = Math.max(currentDecay, 0.22 + smearMacro * 1.1);
       voiceBlur[voiceIndex] = clamp(currentBlur + smearMacro * (spaceMode === 'diffuse' ? 0.42 : 0.28), 0, 1);
-      voiceSpray[voiceIndex] = clamp(currentSpray * (1 - smearMacro * 0.42), 0, 1);
       voiceDensity[voiceIndex] = clamp(
         Math.max(currentDensity, currentDensity + smearMacro * (spaceMode === 'diffuse' ? 4 : 2)),
         1,

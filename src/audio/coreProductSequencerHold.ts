@@ -31,9 +31,11 @@ function leadHoldSecondsFromState(
 function padHoldSecondsFromState(state: Record<string, unknown> | undefined, voice: 'pad1' | 'pad2'): number {
   const attackKey: keyof SliderState = voice === 'pad2' ? 'pad2Attack' : 'synthAttack';
   const decayKey: keyof SliderState = voice === 'pad2' ? 'pad2Decay' : 'synthDecay';
+  const holdKey: keyof SliderState = voice === 'pad2' ? 'pad2Hold' : 'synthHold';
   const attack = clamp(numberFromState(state, attackKey, 0.1), 0, 10);
   const decay = clamp(numberFromState(state, decayKey, 0.3), 0, 10);
-  return attack + decay + Math.max(0.1, (attack + decay) * 0.5);
+  const hold = clamp(numberFromState(state, holdKey, 1), 0, 20);
+  return attack + decay + hold;
 }
 
 export function coreProductSynthSequencerHoldSecondsFromState(

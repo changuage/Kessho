@@ -517,12 +517,18 @@ const GranularPage: React.FC<GranularPageProps> = ({
         // already includes base_pos + lfo_offset + spray_offset).
         // Width = spray scatter only. posDepth is visible as the band
         // *swaying* over time (baked into currentPos by the LFO).
-        const sprayWindowNorm = Math.max((grainSeconds * 4) / bufferSeconds, sliceLengthNorm * 0.6);
-        const sprayRangeNorm = lookBack * lookBack * sprayWindowNorm;
-        const halfWidth = Math.max(0.006, sprayRangeNorm);
+        const lookBack2 = lookBack * lookBack;
+        const lookBack3 = lookBack2 * lookBack;
+        const localWindowNorm = Math.max((grainSeconds * 4) / bufferSeconds, sliceLengthNorm * 0.75);
+        const historyWindowNorm = 0.92;
+        const sprayRangeNorm = Math.min(
+          historyWindowNorm,
+          localWindowNorm * lookBack + (historyWindowNorm - localWindowNorm) * lookBack3,
+        );
+        const halfWidth = Math.max(0.006, sprayRangeNorm * 0.5);
         anchorPos = currentPos;
         rangeStart = currentPos - halfWidth;
-        rangeWidth = Math.max(0.012, Math.min(1, halfWidth * 2));
+        rangeWidth = Math.max(0.012, Math.min(1, sprayRangeNorm));
       } else if (mode === 'legacy') {
         // Legacy: grains trail behind write head by spray amount.
         // Width = trailing window from lookBack only.

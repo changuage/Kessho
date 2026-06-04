@@ -1,4 +1,4 @@
-import { loadProductLead4opFMPreset } from '../../CoreProductLeadPatch';
+import { loadProductLead4opFMPresetVerified } from '../../CoreProductLeadPatch';
 
 type LeadPresetSlot = 'A' | 'B' | 'C' | 'D';
 type LeadPresetSlotConfig = {
@@ -40,7 +40,7 @@ export class CoreProductLeadPresetDataLoader {
 
     const id = String(presetId ?? config.fallback);
     this.pendingLoads.set(slotKey, id);
-    const preset = await loadProductLead4opFMPreset(id);
+    const preset = await loadProductLead4opFMPresetVerified(id, config.fallback);
     if (this.pendingLoads.get(slotKey) !== id) return;
     this.pendingLoads.delete(slotKey);
     this.patchAdapterState({ [config.stateKey]: id, [config.dataKey]: preset });
@@ -69,7 +69,7 @@ export class CoreProductLeadPresetDataLoader {
       }
 
       this.pendingLoads.set(slot.slot, id);
-      void loadProductLead4opFMPreset(id)
+      void loadProductLead4opFMPresetVerified(id, slot.fallback)
         .then((preset) => {
           if (this.pendingLoads.get(slot.slot) !== id) return;
           this.pendingLoads.delete(slot.slot);

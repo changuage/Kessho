@@ -708,6 +708,25 @@ static float next_random(GranularState* s) {
     return v;
 }
 
+static inline float circular_delta(float from, float to, float size) {
+    float delta = to - from;
+    const float half = size * 0.5f;
+    if (delta > half) delta -= size;
+    else if (delta < -half) delta += size;
+    return delta;
+}
+
+static inline float circular_blend_position(float from, float to, float amount, float size) {
+    return wrap_position(from + circular_delta(from, to, size) * clampf(amount, 0.0f, 1.0f), size);
+}
+
+static inline float samples_behind_write_head(float write_pos, float read_pos, float size) {
+    float age = write_pos - read_pos;
+    if (age < 0.0f) age += size;
+    if (age >= size) age = fmodf(age, size);
+    return age;
+}
+
 static inline int legacy_scheduler_silence_threshold(const GranularState* s) {
     int threshold = (int)(s->sample_rate * 0.02f);
     return threshold > 64 ? threshold : 64;
@@ -835,19 +854,32 @@ static void spawn_grain(GranularState* s, int voice_idx) {
         float lfo_depth = vp->pos_lfo_depth;
         float lfo_offset = pos_lfo_val * lfo_depth * (float)s->buffer_size;
 
+        const float buffer_size_f = (float)s->buffer_size;
         int slice_len = s->buffer_size / KESSHO_NUM_SLICES;
-        float spray_window = fmaxf((float)grain_samples * 4.0f, (float)slice_len * 0.6f);
-        float spray_range = spray * spray * spray_window;
+        float spray2 = spray * spray;
+        float spray3 = spray2 * spray;
+        float local_window = fmaxf((float)grain_samples * 4.0f, (float)slice_len * 0.75f);
+        float history_window = buffer_size_f * 0.92f;
+        float spray_range = local_window * spray + (history_window - local_window) * spray3;
+        if (spray_range > history_window) spray_range = history_window;
         float spray_offset = spray_range * (next_random(s) - 0.5f);
 
         float base_pos;
         if (write_follow > 0.01f) {
-            int wh_pos = wrap_index_any(s->write_pos - grain_samples * 2, s->buffer_size);
-            base_pos = (float)slice_start * (1.0f - write_follow) + (float)wh_pos * write_follow;
+            int min_lookback = (int)fmaxf((float)grain_samples * 2.0f, sr * 0.08f);
+            int wh_pos = wrap_index_any(s->write_pos - min_lookback, s->buffer_size);
+            float spread_aware_write_follow = write_follow * (1.0f - spray2 * 0.72f);
+            base_pos = circular_blend_position((float)slice_start, (float)wh_pos, spread_aware_write_follow, buffer_size_f);
         } else {
             base_pos = (float)slice_start;
         }
-        grain->position = wrap_position(base_pos + lfo_offset + spray_offset, (float)s->buffer_size);
+
+        grain->position = wrap_position(base_pos + lfo_offset + spray_offset, buffer_size_f);
+        const float min_read_age = fmaxf((float)grain_samples * 1.5f, sr * 0.045f);
+        float read_age = samples_behind_write_head((float)s->write_pos, grain->position, buffer_size_f);
+        if (read_age < min_read_age) {
+            grain->position = wrap_position(grain->position - (min_read_age - read_age), buffer_size_f);
+        }
         s->last_grain_pos[voice_idx] = grain->position;
 
         // Pitch

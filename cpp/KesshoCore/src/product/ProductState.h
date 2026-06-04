@@ -264,10 +264,14 @@ struct KesshoProductEngine : ProductGraphState {
   void applyModulationRangeEvent(const KesshoProductEvent& event);
   void applySourcePresetEvent(const KesshoProductEvent& event);
   bool activeSequencerMorphForPresetSource(uint32_t source_id, uint32_t drum_voice, float& morph) const;
+  bool activeSequencerDistanceForPresetSource(uint32_t source_id, uint32_t drum_voice, float& distance) const;
+  bool activeSequencerExpressionForPresetSource(uint32_t source_id, uint32_t drum_voice, float& expression) const;
   void applySourceOverrideEvent(const KesshoProductEvent& event);
   bool applyRuntimeSourceOverrideParam(uint32_t source_id, uint32_t param_index, float value);
   bool applyStructuredSourceOverridesToModule(uint32_t source_id);
   bool applyStructuredSourceOverridesToModuleAtMorph(uint32_t source_id, float morph);
+  bool applyStructuredSourceOverridesToModuleAtMorphAndDistance(uint32_t source_id, float morph, float distance);
+  bool applyStructuredSourceOverridesToModuleForCurrentMorph(uint32_t source_id);
   void compileSourcePresetRuntime(SourceState& source);
   void compileSourcePresetEndpoints(SourceState& source);
   void applySourcePresetMacros(const SourceState& source, float& morph, float& distance, float& expression) const;
@@ -335,7 +339,7 @@ struct KesshoProductEngine : ProductGraphState {
   bool hasActiveLegacySoundscapeVoice(uint32_t asset_id) const;
   void releaseUnwantedSoundscapeVoices(const SourceState& source);
   void releaseLegacySoundscapeVoices(uint32_t asset_id);
-  void releaseSoundscapeTextureVoice(Voice& voice);
+  void releaseSoundscapeTextureVoice(Voice& voice, float release_asset_level);
   void reportMissingSourceAsset(SourceState& source);
   void reportMissingSourceAsset(SourceState& source, uint32_t asset_id);
   bool triggerModuleSource(
@@ -470,8 +474,10 @@ struct KesshoProductEngine : ProductGraphState {
   void renderVoiceSample(Voice& voice, float& out_l, float& out_r);
   void mixSourceBuffer(
       uint32_t source_id,
-      const float* in_l,
-      const float* in_r,
+      const float* dry_in_l,
+      const float* dry_in_r,
+      const float* send_in_l,
+      const float* send_in_r,
       float* out_l,
       float* out_r,
       uint32_t start,

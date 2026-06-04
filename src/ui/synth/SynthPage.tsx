@@ -82,7 +82,8 @@ import {
 } from '../../audio/padRandomize';
 import {
   getLead4opFMPresetList,
-  loadLead4opFMPreset,
+  loadLead4opFMPresetVerified,
+  morphPresets,
   overwriteLead4opFMPreset,
   saveUserLead4opFMPreset,
   setUserLead4opFMPresets,
@@ -90,6 +91,7 @@ import {
   type Lead4opFMPreset,
 } from '../../audio/lead4opfm';
 import type { ManualSynthNoteOptions, ManualSynthSource } from '../../audio/engineSharedTypes';
+import { getPhraseDurationForClockSource } from '../../audio/transport';
 import {
   applyLeadDistanceEnvelope,
   applyPadDistanceToState,
@@ -153,6 +155,19 @@ const formatEnvelopeSeconds = (value: number): string => {
 };
 
 const formatEnvelopeSustain = (value: number): string => `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+
+function getPadEnvelopeTimelineSeconds(state: SliderState): number {
+  const phraseLength = Math.max(
+    0.25,
+    getPhraseDurationForClockSource(state, state.harmonyClockSource ?? 'globalPhrase'),
+  );
+  const chordRate = Math.max(1, Math.min(128, state.chordRate ?? 32));
+  if (chordRate < phraseLength) {
+    const chordsPerPhrase = Math.max(2, Math.round(phraseLength / chordRate));
+    return phraseLength / chordsPerPhrase;
+  }
+  return phraseLength;
+}
 
 const LANE_CONFIGS = [
   { color: SEQUENCER_LANE_COLORS[0], name: 'Seq 1' },
@@ -293,6 +308,14 @@ const MANUAL_KEYBOARD_MIN_OCTAVE = 1;
 const MANUAL_KEYBOARD_MAX_OCTAVE = 6;
 const MAX_SUBLANE_STEPS = 16;
 const CHROMATIC_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
+const HARMONY_PITCH_SCALE = 'Harmony' as const;
+const HARMONY_PITCH_ROOT_OCTAVE_MIDI = 60;
+const DEFAULT_SCALE_INTERVALS = SCALES.Major ?? [0, 2, 4, 5, 7, 9, 11];
+const SYNTH_DEFAULT_PITCH_SETTINGS: PitchSettings = {
+  mode: 'semitones',
+  root: 60,
+  scale: HARMONY_PITCH_SCALE,
+};
 const PITCH_BINDING_MODE_OPTIONS: Array<{ value: PitchBindingMode; label: string }> = [
   { value: 'polyrhythmic', label: 'Polyrhythmic' },
   { value: 'linked', label: 'Linked' },
@@ -334,6 +357,7 @@ type KeyboardSequenceCursorTarget = 'trigger' | 'pitch';
 type SynthKeyboardEditLane = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance';
 type SynthDetailOpenLane = SubLaneKind | 'trigger' | 'arp';
 type LeadPresetSlotKey = 'lead1PresetA' | 'lead1PresetB' | 'lead2PresetC' | 'lead2PresetD';
+type LeadPresetFallbackId = 'soft_rhodes' | 'gamelan';
 const PRESET_ENDPOINT_RUNTIME_MORPH_KEY: Partial<Record<keyof SliderState, keyof SliderState>> = {
   padPresetA: 'padMorph',
   padPresetB: 'padMorph',
@@ -350,9 +374,35 @@ type LeadPresetOption = {
   library: 'stock' | 'user' | 'cloud';
   runtime?: boolean;
   slotKey?: LeadPresetSlotKey;
+  sourceId?: string;
   sourceName?: string;
   sourceLibrary?: 'stock' | 'user' | 'cloud';
 };
+
+function leadPresetOptionPriority(option: LeadPresetOption): number {
+  if (option.library === 'stock') return 4;
+  if (option.library === 'cloud') return 3;
+  if (option.library === 'user') return 2;
+  return 1;
+}
+
+const STOCK_LEAD4OP_PRESETS: Array<{ id: string; name: string }> = [
+  { id: 'soft_rhodes', name: 'Soft Rhodes' },
+  { id: 'gamelan', name: 'Gamelan' },
+];
+
+const LEAD_PRESET_SLOT_FALLBACKS: Record<LeadPresetSlotKey, LeadPresetFallbackId> = {
+  lead1PresetA: 'soft_rhodes',
+  lead1PresetB: 'gamelan',
+  lead2PresetC: 'soft_rhodes',
+  lead2PresetD: 'gamelan',
+};
+
+function leadPresetFallbackForPresetId(presetId: string): LeadPresetFallbackId {
+  return presetId.trim().toLowerCase().replace(/[\s-]+/g, '_') === 'gamelan'
+    ? 'gamelan'
+    : 'soft_rhodes';
+}
 
 interface LeadEditorSlotChoice {
   slotKey: LeadPresetSlotKey;
@@ -498,6 +548,30 @@ function getPitchClass(midi: number): number {
   return ((Math.round(midi) % 12) + 12) % 12;
 }
 
+function rootMidiWithPitchClass(baseMidi: number, rootPitchClass: number): number {
+  const base = Math.max(0, Math.min(127, Math.round(baseMidi)));
+  const candidate = Math.floor(base / 12) * 12 + getPitchClass(rootPitchClass);
+  return Math.max(0, Math.min(127, candidate > 127 ? candidate - 12 : candidate));
+}
+
+function resolvePitchSettingsForHarmony(settings: PitchSettings, harmony: HarmonyState | null | undefined) {
+  if (settings.scale !== HARMONY_PITCH_SCALE) {
+    return {
+      root: settings.root,
+      scaleIntervals: SCALES[settings.scale] ?? DEFAULT_SCALE_INTERVALS,
+      scaleLabel: settings.scale,
+    };
+  }
+  const harmonyRoot = typeof harmony?.effectiveRoot === 'number'
+    ? rootMidiWithPitchClass(HARMONY_PITCH_ROOT_OCTAVE_MIDI, harmony.effectiveRoot)
+    : HARMONY_PITCH_ROOT_OCTAVE_MIDI;
+  return {
+    root: harmonyRoot,
+    scaleIntervals: harmony?.scaleFamily.intervals ?? DEFAULT_SCALE_INTERVALS,
+    scaleLabel: harmony?.scaleFamily.name ?? HARMONY_PITCH_SCALE,
+  };
+}
+
 function getManualSourceForLaneSource(source: string, pad2VoiceAssign: number | undefined): ManualSynthSource {
   if (source === 'lead2') return 'lead2';
   if (source === 'piano') return 'piano';
@@ -512,10 +586,11 @@ function getManualSourceForLaneSource(source: string, pad2VoiceAssign: number | 
   return 'lead1';
 }
 
-function midiToPitchOffsetForSettings(midi: number, settings: PitchSettings): number {
+function midiToPitchOffsetForSettings(midi: number, settings: PitchSettings, harmony?: HarmonyState | null): number {
+  const resolved = resolvePitchSettingsForHarmony(settings, harmony);
   if (settings.mode === 'notes') {
-    const scaleIntervals = SCALES[settings.scale] || [0, 2, 4, 5, 7, 9, 11];
-    const semitone = midi - settings.root;
+    const scaleIntervals = resolved.scaleIntervals;
+    const semitone = midi - resolved.root;
     const octave = Math.floor(semitone / 12);
     const remainder = ((semitone % 12) + 12) % 12;
     let bestDegree = 0;
@@ -529,17 +604,17 @@ function midiToPitchOffsetForSettings(midi: number, settings: PitchSettings): nu
     });
     return octave * scaleIntervals.length + bestDegree;
   }
-  return midi - settings.root;
+  return midi - resolved.root;
 }
 
-function pitchOffsetToMidi(offset: number, settings: PitchSettings): number | null {
+function pitchOffsetToMidi(offset: number, settings: PitchSettings, harmony?: HarmonyState | null): number | null {
   if (!Number.isFinite(offset)) return null;
   if (settings.mode === 'noteRange') return null;
+  const resolved = resolvePitchSettingsForHarmony(settings, harmony);
   if (settings.mode === 'notes') {
-    const scaleIntervals = SCALES[settings.scale] || [0, 2, 4, 5, 7, 9, 11];
-    return settings.root + scaleDegreeToSemitone(offset, scaleIntervals);
+    return resolved.root + scaleDegreeToSemitone(offset, resolved.scaleIntervals);
   }
-  return settings.root + offset;
+  return resolved.root + offset;
 }
 
 function quantizePitchOffsetToScale(offset: number, scaleIntervals: readonly number[]): number {
@@ -597,7 +672,7 @@ const PAD1_TO_PAD2_KEY: Record<string, string> = {
   filterResonance: 'pad2FilterResonance', filterQ: 'pad2FilterQ', filterSlope: 'pad2FilterSlope', filterKeyTracking: 'pad2FilterKeyTracking',
   padFilterBEnabled: 'pad2FilterBEnabled', padFilterBType: 'pad2FilterBType', padFilterBCutoff: 'pad2FilterBCutoff',
   padFilterBResonance: 'pad2FilterBResonance', padFilterBQ: 'pad2FilterBQ', padFilterRouting: 'pad2FilterRouting',
-  synthAttack: 'pad2Attack', synthDecay: 'pad2Decay', synthSustain: 'pad2Sustain', synthRelease: 'pad2Release',
+  synthAttack: 'pad2Attack', synthDecay: 'pad2Decay', synthSustain: 'pad2Sustain', synthHold: 'pad2Hold', synthRelease: 'pad2Release',
   padLfo1Rate: 'pad2Lfo1Rate', padLfo1Depth: 'pad2Lfo1Depth', padLfo1Wave: 'pad2Lfo1Wave', padLfo1Dest: 'pad2Lfo1Dest',
   padLfo2Rate: 'pad2Lfo2Rate', padLfo2Depth: 'pad2Lfo2Depth', padLfo2Wave: 'pad2Lfo2Wave', padLfo2Dest: 'pad2Lfo2Dest',
   padModEnvEnabled: 'pad2ModEnvEnabled', padModEnvAttack: 'pad2ModEnvAttack', padModEnvDecay: 'pad2ModEnvDecay',
@@ -817,7 +892,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [pad2Tier, setPad2Tier] = useState<0 | 1 | 2>(0); // Pad 2: 0=closed by default
   const [dragPopup, setDragPopup] = useState<{ x: number; y: number; text: string } | null>(null);
   const [activeKeyboardCodes, setActiveKeyboardCodes] = useState<string[]>([]);
-  const [lead4opPresets, setLead4opPresets] = useState<Array<{ id: string; name: string }>>([]);
+  const [lead4opPresets, setLead4opPresets] = useState<Array<{ id: string; name: string }>>(() => STOCK_LEAD4OP_PRESETS);
+  const [leadPresetPreviewCache, setLeadPresetPreviewCache] = useState<Record<string, Lead4opFMPreset>>({});
   const [leadEditorSlot, setLeadEditorSlot] = useState<LeadEditorSession | null>(null);
   const [leadEditorRuntimeOptions, setLeadEditorRuntimeOptions] = useState<LeadPresetOption[]>([]);
   const [lead1LoaderPresetId, setLead1LoaderPresetId] = useState(() => String(state.lead1PresetA ?? ''));
@@ -856,8 +932,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     ),
     [lead4opPresets],
   );
-  const resolveLeadPresetRuntimeId = useCallback((name: string, fallbackId?: string) => {
-    return leadStockIdByName.get(name.trim().toLowerCase()) ?? fallbackId ?? name;
+  const resolveLeadPresetRuntimeId = useCallback((name: string) => {
+    return leadStockIdByName.get(name.trim().toLowerCase()) ?? name;
   }, [leadStockIdByName]);
   const createRuntimeLeadPreset = useCallback((runtimeId: string, name: string, data: Record<string, unknown>): Lead4opFMPreset | null => {
     const candidate = typeof data.preset === 'object' && data.preset !== null
@@ -962,16 +1038,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   useEffect(() => {
     getLead4opFMPresetList().then(setLead4opPresets).catch(() => {
-      setLead4opPresets([
-        { id: 'soft_rhodes', name: 'Soft Rhodes' },
-        { id: 'gamelan', name: 'Gamelan' },
-      ]);
+      setLead4opPresets(STOCK_LEAD4OP_PRESETS);
     });
   }, []);
-
-  const getLeadPreviewMorphedParams = useCallback((leadNum: 1 | 2) => {
-    return liveLeadMorphedParamsAvailable ? getLeadMorphedParams(leadNum) : null;
-  }, [getLeadMorphedParams, liveLeadMorphedParamsAvailable]);
 
   useEffect(() => {
     setLead1LoaderPresetId(String(state.lead1PresetA ?? ''));
@@ -1109,6 +1178,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const livePad2FilterMax = Math.max(livePad2DistanceState.pad2FilterCutoffMin ?? 400, livePad2DistanceState.pad2FilterCutoffMax ?? 3000);
   const livePad1PostLpf = livePad1DistanceState.padPostLPF ?? livePad1PostLpfBase;
   const livePad2PostLpf = livePad2DistanceState.pad2PostLPF ?? livePad2PostLpfBase;
+  const padEnvelopeTimelineSeconds = getPadEnvelopeTimelineSeconds(state);
   const liveSynthNoteMin1 = useRuntimeValue('synthEuclid1NoteMin', state.synthEuclid1NoteMin ?? 48) ?? (state.synthEuclid1NoteMin ?? 48);
   const liveSynthNoteMax1 = useRuntimeValue('synthEuclid1NoteMax', state.synthEuclid1NoteMax ?? 72) ?? (state.synthEuclid1NoteMax ?? 72);
   const liveSynthNoteMin2 = useRuntimeValue('synthEuclid2NoteMin', state.synthEuclid2NoteMin ?? 48) ?? (state.synthEuclid2NoteMin ?? 48);
@@ -1119,6 +1189,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const liveSynthNoteMax4 = useRuntimeValue('synthEuclid4NoteMax', state.synthEuclid4NoteMax ?? 72) ?? (state.synthEuclid4NoteMax ?? 72);
   const pad1MorphValue = livePad1Morph ?? (state.padMorph ?? 0);
   const pad2MorphValue = livePad2Morph ?? (state.pad2Morph ?? 0);
+  const pad1MorphSequencerLocked = livePad1Morph !== undefined;
+  const pad2MorphSequencerLocked = livePad2Morph !== undefined;
   const lead1MorphValue = liveLead1Morph ?? (state.lead1Morph ?? 0);
   const lead2MorphValue = liveLead2Morph ?? (state.lead2Morph ?? 0);
   const pad1DistancePreview = useMemo(() => getPadDistancePreview(state, 'pad1', livePad1Distance), [livePad1Distance, state]);
@@ -1447,7 +1519,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           .map(async (preset) => {
             const entry = await loadLeadFmPresetEntry(preset.name);
             if (!entry) return null;
-            const runtimeId = resolveLeadPresetRuntimeId(entry.name, entry.id);
+            const runtimeId = resolveLeadPresetRuntimeId(entry.name);
             const version = entry.versions.find(v => v.v === entry.currentVersion)
               || entry.versions[entry.versions.length - 1];
             if (!version) return null;
@@ -1501,16 +1573,17 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       }
 
       const normalizedName = option.name.trim().toLowerCase();
-      const priority = option.library === 'cloud' ? 3 : option.library === 'user' ? 2 : 1;
+      const priority = leadPresetOptionPriority(option);
       const existingIdByName = optionIdByName.get(normalizedName);
       if (existingIdByName) {
         const existing = optionsById.get(existingIdByName);
-        const existingPriority = existing?.library === 'cloud' ? 3 : existing?.library === 'user' ? 2 : 1;
-        if (existing && existingPriority > priority) {
+        const existingPriority = existing ? leadPresetOptionPriority(existing) : 0;
+        if (existing && existingPriority >= priority) {
           return;
         }
         optionsById.delete(existingIdByName);
       }
+
       optionsById.set(option.id, option);
       optionIdByName.set(normalizedName, option.id);
     };
@@ -1525,9 +1598,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
     for (const preset of leadFmPresets) {
       mergeOption({
-        id: resolveLeadPresetRuntimeId(preset.name, preset.id),
+        id: resolveLeadPresetRuntimeId(preset.name),
         name: preset.name,
         library: preset.library,
+        sourceId: preset.id,
         sourceName: preset.name,
         sourceLibrary: preset.library,
       });
@@ -1550,19 +1624,133 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     return leadPresetOptions.find((option) => (
       option.id.trim().toLowerCase().replace(/[_-]+/g, ' ') === normalizedValue
       || option.name.trim().toLowerCase().replace(/[_-]+/g, ' ') === normalizedValue
+      || (option.sourceId ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ') === normalizedValue
       || (option.sourceName ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ') === normalizedValue
     ));
   }, [leadPresetOptionById, leadPresetOptions]);
+  const resolveLeadPresetSelectionId = useCallback((value: unknown): string => {
+    const rawValue = String(value ?? '').trim();
+    if (!rawValue) return rawValue;
+    return findLeadPresetOption(rawValue)?.id ?? rawValue;
+  }, [findLeadPresetOption]);
+  useEffect(() => {
+    const selectedPresetLoads = [
+      { slotKey: 'lead1PresetA' as const, value: state.lead1PresetA },
+      { slotKey: 'lead1PresetB' as const, value: state.lead1PresetB },
+      { slotKey: 'lead2PresetC' as const, value: state.lead2PresetC },
+      { slotKey: 'lead2PresetD' as const, value: state.lead2PresetD },
+    ]
+      .map(({ slotKey, value }) => ({
+        id: resolveLeadPresetSelectionId(value),
+        fallbackId: LEAD_PRESET_SLOT_FALLBACKS[slotKey],
+      }))
+      .filter(({ id }) => Boolean(id && !leadPresetPreviewCache[id]));
+    const missingById = new Map<string, LeadPresetFallbackId>();
+    for (const { id, fallbackId } of selectedPresetLoads) {
+      if (!missingById.has(id)) missingById.set(id, fallbackId);
+    }
+    const missingLoads = Array.from(missingById, ([id, fallbackId]) => ({ id, fallbackId }));
+    if (missingLoads.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all(
+      missingLoads.map(async ({ id, fallbackId }) => [
+        id,
+        await loadLead4opFMPresetVerified(id, fallbackId),
+      ] as const),
+    )
+      .then((loadedPresets) => {
+        if (cancelled) return;
+        setLeadPresetPreviewCache((previous) => {
+          let changed = false;
+          const next = { ...previous };
+          for (const [id, preset] of loadedPresets) {
+            if (next[id]) continue;
+            next[id] = preset;
+            changed = true;
+          }
+          return changed ? next : previous;
+        });
+      })
+      .catch((error) => {
+        console.warn('Failed to load lead preset ADSR preview:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    leadPresetPreviewCache,
+    resolveLeadPresetSelectionId,
+    state.lead1PresetA,
+    state.lead1PresetB,
+    state.lead2PresetC,
+    state.lead2PresetD,
+  ]);
+  const getLeadPreviewMorphedParams = useCallback((leadNum: 1 | 2) => {
+    if (liveLeadMorphedParamsAvailable) {
+      return getLeadMorphedParams(leadNum);
+    }
+
+    const presetAId = resolveLeadPresetSelectionId(leadNum === 2 ? state.lead2PresetC : state.lead1PresetA);
+    const presetBId = resolveLeadPresetSelectionId(leadNum === 2 ? state.lead2PresetD : state.lead1PresetB);
+    const presetA = leadPresetPreviewCache[presetAId];
+    const presetB = leadPresetPreviewCache[presetBId];
+    if (!presetA || !presetB) return null;
+
+    return morphPresets(
+      presetA,
+      presetB,
+      leadNum === 2 ? state.lead2Morph ?? 0 : state.lead1Morph ?? 0,
+      leadNum === 2 ? state.lead2AlgorithmMode : state.lead1AlgorithmMode,
+    );
+  }, [
+    getLeadMorphedParams,
+    leadPresetPreviewCache,
+    liveLeadMorphedParamsAvailable,
+    resolveLeadPresetSelectionId,
+    state.lead1AlgorithmMode,
+    state.lead1Morph,
+    state.lead1PresetA,
+    state.lead1PresetB,
+    state.lead2AlgorithmMode,
+    state.lead2Morph,
+    state.lead2PresetC,
+    state.lead2PresetD,
+  ]);
   const findLeadPresetSummary = useCallback((option: LeadPresetOption | undefined): PresetSummary | undefined => {
     if (!option) return undefined;
+    const optionSourceId = (option.sourceId ?? '').trim().toLowerCase();
     const optionName = (option.sourceName ?? option.name).trim().toLowerCase();
     const optionId = option.id.trim().toLowerCase();
     return leadFmPresets.find((preset) => (
       preset.name.trim().toLowerCase() === optionName
       || preset.name.trim().toLowerCase() === optionId
+      || (preset.id ?? '').trim().toLowerCase() === optionSourceId
       || (preset.id ?? '').trim().toLowerCase() === optionId
     ));
   }, [leadFmPresets]);
+
+  useEffect(() => {
+    if (!onStateChange) return;
+
+    onStateChange((current) => {
+      let changed = false;
+      const next = { ...current };
+      const leadSlotState = next as unknown as Record<LeadPresetSlotKey, string>;
+      const leadSlotKeys: readonly LeadPresetSlotKey[] = ['lead1PresetA', 'lead1PresetB', 'lead2PresetC', 'lead2PresetD'];
+
+      for (const slotKey of leadSlotKeys) {
+        const currentId = String(leadSlotState[slotKey] ?? '').trim();
+        const resolvedId = resolveLeadPresetSelectionId(currentId);
+        if (!resolvedId || resolvedId === currentId) continue;
+        leadSlotState[slotKey] = resolvedId;
+        changed = true;
+      }
+
+      return changed ? next : current;
+    });
+  }, [onStateChange, resolveLeadPresetSelectionId]);
 
   const handleLeadPresetRate = useCallback(async (option: LeadPresetOption, rating: number) => {
     const summary = findLeadPresetSummary(option);
@@ -1571,7 +1759,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     try {
       let targetName = summary?.name ?? option.sourceName;
       if (!targetName) {
-        const runtimePreset = await loadLead4opFMPreset(option.id);
+        const runtimePreset = await loadLead4opFMPresetVerified(option.id, leadPresetFallbackForPresetId(option.id));
         targetName = await saveUserLead4opFMPreset(option.name, runtimePreset, 'Seeded from lead preset for rating');
         await refreshLeadFmPresets();
       }
@@ -1584,6 +1772,50 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       console.warn('Failed to update lead preset rating:', ratingError);
     }
   }, [findLeadPresetSummary, refreshLeadFmPresets, updateLeadFmPresetMetadata]);
+
+  const applyLeadPresetToSlots = useCallback((slotKeys: readonly LeadPresetSlotKey[], presetId: string) => {
+    const runtimeMorphKeys = new Set<string>();
+    slotKeys.forEach((slotKey) => {
+      const morphKey = PRESET_ENDPOINT_RUNTIME_MORPH_KEY[slotKey];
+      if (morphKey) runtimeMorphKeys.add(String(morphKey));
+    });
+    removeRuntimeValues(runtimeMorphKeys);
+
+    if (onStateChange) {
+      onStateChange((current) => {
+        let changed = false;
+        const next = { ...current };
+        const leadSlotState = next as unknown as Record<LeadPresetSlotKey, string>;
+        const touchesLead1 = slotKeys.some((slotKey) => slotKey === 'lead1PresetA' || slotKey === 'lead1PresetB');
+        const touchesLead2 = slotKeys.some((slotKey) => slotKey === 'lead2PresetC' || slotKey === 'lead2PresetD');
+        slotKeys.forEach((slotKey) => {
+          if (leadSlotState[slotKey] === presetId) return;
+          leadSlotState[slotKey] = presetId;
+          changed = true;
+        });
+        if (touchesLead1 && next.lead1UseCustomAdsr) {
+          next.lead1UseCustomAdsr = false;
+          changed = true;
+        }
+        if (touchesLead2 && next.lead2UseCustomAdsr) {
+          next.lead2UseCustomAdsr = false;
+          changed = true;
+        }
+        return changed ? next : current;
+      });
+      return;
+    }
+
+    slotKeys.forEach((slotKey) => {
+      onSelectChange(slotKey, presetId as SliderState[typeof slotKey]);
+    });
+    if (slotKeys.some((slotKey) => slotKey === 'lead1PresetA' || slotKey === 'lead1PresetB')) {
+      onSelectChange('lead1UseCustomAdsr' as keyof SliderState, false as SliderState[keyof SliderState]);
+    }
+    if (slotKeys.some((slotKey) => slotKey === 'lead2PresetC' || slotKey === 'lead2PresetD')) {
+      onSelectChange('lead2UseCustomAdsr' as keyof SliderState, false as SliderState[keyof SliderState]);
+    }
+  }, [onSelectChange, onStateChange]);
 
   const renderLeadPresetLoader = ({
     selectedPresetId,
@@ -1600,16 +1832,22 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const resolvedPresetId = selectedOption?.id ?? selectedPresetId;
     const selectedSummary = findLeadPresetSummary(selectedOption);
     const ratingKey = selectedSummary?.name ?? selectedOption?.sourceName ?? selectedOption?.name ?? selectedPresetId;
+    const handleLoaderSelectChange = (value: string) => {
+      const nextOption = findLeadPresetOption(value);
+      const nextPresetId = nextOption?.id ?? value;
+      onSelectedPresetIdChange(nextPresetId);
+      applyLeadPresetToSlots(slots.map(slot => slot.slotKey), nextPresetId);
+    };
 
     return (
       <div className="sc-preset-loader">
         <select
           value={resolvedPresetId}
-          onChange={(e) => onSelectedPresetIdChange(e.target.value)}
+          onChange={(e) => handleLoaderSelectChange(e.target.value)}
           className="sc-preset-loader-select"
           title="Select preset"
         >
-          {renderLeadPresetOptions(leadPresetOptions)}
+          {renderLeadPresetOptions(leadPresetOptions, resolvedPresetId)}
         </select>
         {selectedOption && (
           <PresetRatingStars
@@ -1625,7 +1863,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             className="sc-preset-loader-slot"
             type="button"
             style={{ '--slot-color': slot.accentColor } as React.CSSProperties}
-            onClick={() => handlePresetEndpointSelectChange(slot.slotKey, resolvedPresetId as SliderState[typeof slot.slotKey])}
+            onClick={() => applyLeadPresetToSlots([slot.slotKey], resolvedPresetId)}
             title={`Load into ${slot.slotLabel}`}
           >
             {slot.slotLabel.replace('Slot ', '')}
@@ -1782,13 +2020,26 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     );
   }, []);
 
-  const renderLeadPresetOptions = useCallback((options: LeadPresetOption[]) => {
+  const renderLeadPresetOptions = useCallback((options: LeadPresetOption[], selectedId?: string) => {
     const sorted = [...options].sort((left, right) => left.name.localeCompare(right.name));
+    const selectedPresetId = selectedId?.trim();
+    const selectedExists = selectedPresetId
+      ? sorted.some((option) => option.id === selectedPresetId)
+      : true;
 
     return (
       <>
+        {selectedPresetId && !selectedExists && (
+          <option value={selectedPresetId}>{selectedPresetId}</option>
+        )}
         {sorted.map((option) => (
-          <option key={`${option.library}:${option.id}`} value={option.id} hidden={option.runtime}>{option.name}</option>
+          <option
+            key={`${option.library}:${option.id}`}
+            value={option.id}
+            hidden={option.runtime && option.id !== selectedPresetId}
+          >
+            {option.name}
+          </option>
         ))}
       </>
     );
@@ -1860,7 +2111,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     fallbackName: string,
   ) => {
     const currentId = String(state[slotKey] ?? '').trim();
-    const currentOption = leadPresetOptionById.get(currentId);
+    const currentOption = findLeadPresetOption(currentId);
     const defaultName = currentOption?.name || fallbackName;
 
     let targetName = defaultName;
@@ -1874,13 +2125,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       targetName = requestedName.trim();
     }
 
-    const currentPreset = await loadLead4opFMPreset(currentId);
-    const savedId = await saveUserLead4opFMPreset(
+    const currentPreset = await loadLead4opFMPresetVerified(currentId, LEAD_PRESET_SLOT_FALLBACKS[slotKey]);
+    await saveUserLead4opFMPreset(
       targetName,
       currentPreset,
       currentOption ? 'Updated from lead slot' : 'Saved from lead slot',
     );
-    const runtimeId = resolveLeadPresetRuntimeId(targetName, savedId);
+    const runtimeId = resolveLeadPresetRuntimeId(targetName);
     await refreshLeadFmPresets();
 
     upsertUserLead4opFMPreset({
@@ -1897,7 +2148,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     if (String(state[slotKey] ?? '') !== runtimeId) {
       handlePresetEndpointSelectChange(slotKey, runtimeId as SliderState[typeof slotKey]);
     }
-  }, [handlePresetEndpointSelectChange, leadPresetOptionById, refreshLeadFmPresets, resolveLeadPresetRuntimeId, state]);
+  }, [findLeadPresetOption, handlePresetEndpointSelectChange, refreshLeadFmPresets, resolveLeadPresetRuntimeId, state]);
   void handleLeadSlotSave;
 
   // ── Euclidean Sequencer Hook (reuses same hook as DrumPage) ──
@@ -1918,6 +2169,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     initialSwings,
     initialLinked,
     initialPitchSettings,
+    defaultPitchSettings: SYNTH_DEFAULT_PITCH_SETTINGS,
     initialEvolveConfigs,
     resetKey: presetVersion,
   });
@@ -2307,16 +2559,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         if (!ps) return offsets;
         // noteRange mode: engine handles note selection via noteMin/noteMax
         if (ps.mode === 'noteRange') return null;
+        const resolvedPitch = resolvePitchSettingsForHarmony(ps, harmonyState);
         if (ps.mode === 'notes') {
           // Scale degree → MIDI note number
-          const scaleIntervals = SCALES[ps.scale] || [0, 2, 4, 5, 7, 9, 11];
-          return offsets.map(deg => ps.root + scaleDegreeToSemitone(deg, scaleIntervals));
+          return offsets.map(deg => resolvedPitch.root + scaleDegreeToSemitone(deg, resolvedPitch.scaleIntervals));
         }
         // Semitones mode: offset from root note
-        const scaleIntervals = SCALES[ps.scale] || [0, 2, 4, 5, 7, 9, 11];
-        return offsets.map((offset) => ps.root + (
+        return offsets.map((offset) => resolvedPitch.root + (
           seq.subLaneStates[laneIdx]?.pitch?.scaleQuantize
-            ? quantizePitchOffsetToScale(offset, scaleIntervals)
+            ? quantizePitchOffsetToScale(offset, resolvedPitch.scaleIntervals)
             : offset
         ));
       });
@@ -2360,7 +2611,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         distanceRanges,
       }, engineSubLaneStates));
     }
-  }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, arpConfigs, arpHarmonyContext, arpRuntimeTick, onStepOverridesChange, onRawStepOverridesChange]);
+  }, [seq.stepOverrides, seq.pitchSettings, seq.subLaneStates, arpConfigs, arpHarmonyContext, arpRuntimeTick, harmonyState, onStepOverridesChange, onRawStepOverridesChange]);
 
   // Persist sub-lane states (enabled/steps/direction) across tab switches
   const subLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | null>(null);
@@ -2600,9 +2851,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const keyboardBaseMidi = 12 * (keyboardOctave + 1);
   const keyboardSourceInfo = MANUAL_KEYBOARD_SOURCES.find((source) => source.value === effectiveKeyboardSource) ?? MANUAL_KEYBOARD_SOURCES[0]!;
   const keyboardHarmonyContext = useMemo(() => {
-    const activePitchSettings = seq.pitchSettings[seq.activeTab] ?? { mode: 'semitones' as const, root: keyboardBaseMidi, scale: 'Major' as const };
-    const rootPitchClass = harmonyState ? getPitchClass(harmonyState.effectiveRoot) : getPitchClass(activePitchSettings.root);
-    const scaleIntervals = harmonyState?.scaleFamily.intervals ?? (SCALES[activePitchSettings.scale] || SCALES.Major);
+    const activePitchSettings = seq.pitchSettings[seq.activeTab] ?? { ...SYNTH_DEFAULT_PITCH_SETTINGS, root: keyboardBaseMidi };
+    const resolvedPitchSettings = resolvePitchSettingsForHarmony(activePitchSettings, harmonyState);
+    const rootPitchClass = getPitchClass(resolvedPitchSettings.root);
+    const scaleIntervals = resolvedPitchSettings.scaleIntervals;
     const chordPitchClasses = new Set((harmonyState?.currentChord.midiNotes ?? []).map(getPitchClass));
     const scalePitchClasses = new Set(scaleIntervals.map((interval) => (rootPitchClass + interval) % 12));
     return {
@@ -2610,8 +2862,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       chordPitchClasses,
       scalePitchClasses,
       label: harmonyState
-        ? `${CHROMATIC_NOTE_NAMES[rootPitchClass] ?? 'C'} ${harmonyState.scaleFamily.name}`
-        : `${formatMidiNoteName(activePitchSettings.root)} root`,
+        ? `${CHROMATIC_NOTE_NAMES[rootPitchClass] ?? 'C'} ${resolvedPitchSettings.scaleLabel}`
+        : `${formatMidiNoteName(resolvedPitchSettings.root)} root`,
       usingHarmonyEngine: Boolean(harmonyState),
     };
   }, [harmonyState, keyboardBaseMidi, seq.activeTab, seq.pitchSettings]);
@@ -2646,7 +2898,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const keyboardWhiteCount = keyboardVisibleKeys.filter((key) => !key.accidental).length;
   const keyboardNaturalKeys = keyboardVisibleKeys.filter((key) => !key.accidental);
   const keyboardAccidentalKeys = keyboardVisibleKeys.filter((key) => key.accidental);
-  const activeLanePitchSettings = seq.pitchSettings[seq.activeTab] ?? { mode: 'semitones' as const, root: 60, scale: 'Major' as const };
+  const activeLanePitchSettings = seq.pitchSettings[seq.activeTab] ?? SYNTH_DEFAULT_PITCH_SETTINGS;
+  const activeResolvedPitchSettings = resolvePitchSettingsForHarmony(activeLanePitchSettings, harmonyState);
   const activePitchLaneEnabled = seq.subLaneStates[seq.activeTab]?.pitch.enabled ?? false;
   const activeSequenceTriggerEnabled = (getTriggerPatternForLane(seq.activeTab)[activeTriggerCursorStep] ?? false) === true;
   const activeVisiblePitchSteps = getVisiblePitchStepCountForLane(seq.activeTab);
@@ -2655,9 +2908,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const getSequenceStepMidi = useCallback((laneIdx: number, step: number) => {
     const offset = seq.stepOverrides.pitch[laneIdx]?.[step];
     if (typeof offset !== 'number' || !Number.isFinite(offset)) return null;
-    const settings = seq.pitchSettings[laneIdx] ?? { mode: 'semitones' as const, root: 60, scale: 'Major' as const };
-    return pitchOffsetToMidi(offset, settings);
-  }, [seq.pitchSettings, seq.stepOverrides.pitch]);
+    const settings = seq.pitchSettings[laneIdx] ?? SYNTH_DEFAULT_PITCH_SETTINGS;
+    return pitchOffsetToMidi(offset, settings, harmonyState);
+  }, [harmonyState, seq.pitchSettings, seq.stepOverrides.pitch]);
 
   const getSequenceStepLabel = useCallback((laneIdx: number, step: number) => {
     const midi = getSequenceStepMidi(laneIdx, step);
@@ -2695,14 +2948,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       ? getTriggerStepCountForLane(laneIdx)
       : getPitchCursorStepCountForLane(laneIdx);
     if (stepCount <= 0) return;
-    const currentSettings = seq.pitchSettings[laneIdx] ?? { mode: 'semitones' as const, root: 60, scale: 'Major' as const };
+    const currentSettings = seq.pitchSettings[laneIdx] ?? SYNTH_DEFAULT_PITCH_SETTINGS;
     if (currentSettings.mode === 'noteRange') return;
     if (!(seq.subLaneStates[laneIdx]?.pitch.enabled ?? false)) return;
     const currentStep = bindingMode === 'sequence'
       ? (triggerKeyboardSteps[laneIdx] ?? getFirstTriggerKeyboardStep(laneIdx))
       : (pitchKeyboardSteps[laneIdx] ?? getFirstPitchKeyboardStep(laneIdx));
     const normalizedStep = ((currentStep % stepCount) + stepCount) % stepCount;
-    const storedValue = midiToPitchOffsetForSettings(midi, currentSettings);
+    const storedValue = midiToPitchOffsetForSettings(midi, currentSettings, harmonyState);
     seq.changeStepValue(laneIdx, 'pitch', normalizedStep, storedValue);
     if (bindingMode === 'sequence') {
       const nextStep = findAdjacentTriggerStep(laneIdx, normalizedStep, 1);
@@ -2721,6 +2974,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     pitchBindingModes,
     pitchKeyboardSteps,
     seq,
+    harmonyState,
     triggerKeyboardSteps,
   ]);
 
@@ -2969,7 +3223,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     const triggerStepCount = getTriggerStepCountForLane(laneIdx);
     if (triggerStepCount <= 0) return;
     const targetStep = liveOverdubTargetStep(seq.playheads[laneIdx], activeTriggerCursorStep, triggerStepCount);
-    const currentSettings = seq.pitchSettings[laneIdx] ?? { mode: 'semitones' as const, root: 60, scale: 'Major' as const };
+    const currentSettings = seq.pitchSettings[laneIdx] ?? SYNTH_DEFAULT_PITCH_SETTINGS;
     const settingsForWrite = currentSettings.mode === 'noteRange'
       ? { ...currentSettings, mode: 'semitones' as const }
       : currentSettings;
@@ -2993,7 +3247,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         : laneState
     )));
     seq.setTriggerStep(laneIdx, targetStep, true);
-    seq.changeStepValue(laneIdx, 'pitch', targetStep, midiToPitchOffsetForSettings(midi, settingsForWrite));
+    seq.changeStepValue(laneIdx, 'pitch', targetStep, midiToPitchOffsetForSettings(midi, settingsForWrite, harmonyState));
     setKeyboardSequenceCursorTarget('trigger');
     setTriggerKeyboardSteps((prev) => prev.map((value, index) => index === laneIdx ? targetStep : value));
     setPitchKeyboardSteps((prev) => prev.map((value, index) => index === laneIdx ? targetStep : value));
@@ -3002,6 +3256,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, [
     activeTriggerCursorStep,
     getTriggerStepCountForLane,
+    harmonyState,
     pitchBindingModes,
     seq,
     setPitchBindingMode,
@@ -3425,7 +3680,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       return null;
     }
 
-    const sourceLabel = useCustomAdsr ? 'custom' : 'from runtime';
+    const sourceLabel = useCustomAdsr ? 'custom' : liveLeadMorphedParamsAvailable ? 'from runtime' : 'from preset';
     const distanceEnv = applyLeadDistanceEnvelope(voice, {
       attack: safeEnv.attack,
       decay: safeEnv.decay,
@@ -3589,7 +3844,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </select>
                 </div>
                 <div className="sc-morph-slider">
-                  <Slider label="" value={pad1MorphValue} paramKey="padMorph" onChange={handlePresetMorphSliderChange} {...sliderProps('padMorph')} />
+                  <Slider label="" value={pad1MorphValue} paramKey="padMorph" onChange={handlePresetMorphSliderChange} {...sliderProps('padMorph')} disabled={pad1MorphSequencerLocked} />
                 </div>
                 <div className="sc-preset-slot">
                   <select
@@ -3627,7 +3882,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 synthAttack={state.synthAttack}
                 synthDecay={state.synthDecay}
                 synthSustain={state.synthSustain}
+                synthHold={state.synthHold}
                 synthRelease={state.synthRelease}
+                envelopeTimelineSeconds={padEnvelopeTimelineSeconds}
                 modEnvEnabled={state.padModEnvEnabled}
                 modEnvAttack={state.padModEnvAttack ?? 0.1}
                 modEnvDecay={state.padModEnvDecay ?? 0.3}
@@ -3680,6 +3937,26 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             {/* ══ TIER 2 — Primary controls ══ */}
             {padTier >= 1 && (
               <div className="synth-card-tier2">
+                {/* ─── Envelope ─── */}
+                <div className="sc-advanced-section">
+                  <div className="sc-section-label">
+                    Envelope
+                    <button
+                      className={`sc-toggle-btn small${state.padFitEnvelopeToChord ? ' on' : ''}`}
+                      onClick={() => onSelectChange('padFitEnvelopeToChord' as keyof SliderState, !state.padFitEnvelopeToChord)}
+                    >
+                      Fit Chord
+                    </button>
+                  </div>
+                  <div className="sc-compact-grid-4">
+                    <Slider label="Attack" value={state.synthAttack} paramKey="synthAttack" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthAttack')} onChange={onParamChange} {...sliderProps('synthAttack')} />
+                    <Slider label="Decay" value={state.synthDecay} paramKey="synthDecay" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthDecay')} onChange={onParamChange} {...sliderProps('synthDecay')} />
+                    <Slider label="Sustain" value={state.synthSustain} paramKey="synthSustain" format={formatEnvelopeSustain} ghostValue={getPreviewValue(pad1DistancePreview, 'synthSustain')} onChange={onParamChange} {...sliderProps('synthSustain')} />
+                    <Slider label="Hold" value={state.synthHold} paramKey="synthHold" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthHold')} onChange={onParamChange} {...sliderProps('synthHold')} />
+                    <Slider label="Release" value={state.synthRelease} paramKey="synthRelease" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthRelease')} onChange={onParamChange} {...sliderProps('synthRelease')} />
+                  </div>
+                </div>
+
                 {/* ─── Filter ─── */}
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Filter</div>
@@ -3707,17 +3984,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <div className="sc-compact-grid-2">
                     <Slider label="Slope" value={state.filterSlope ?? 12} paramKey="filterSlope" unit=" dB/oct" onChange={onParamChange} {...sliderProps('filterSlope')} />
                     <Slider label="Key Track" value={state.filterKeyTracking ?? 0} paramKey="filterKeyTracking" onChange={onParamChange} {...sliderProps('filterKeyTracking')} />
-                  </div>
-                </div>
-
-                {/* ─── Envelope ─── */}
-                <div className="sc-advanced-section">
-                  <div className="sc-section-label">Envelope</div>
-                  <div className="sc-compact-grid-4">
-                    <Slider label="Attack" value={state.synthAttack} paramKey="synthAttack" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthAttack')} onChange={onParamChange} {...sliderProps('synthAttack')} />
-                    <Slider label="Decay" value={state.synthDecay} paramKey="synthDecay" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthDecay')} onChange={onParamChange} {...sliderProps('synthDecay')} />
-                    <Slider label="Sustain" value={state.synthSustain} paramKey="synthSustain" format={formatEnvelopeSustain} ghostValue={getPreviewValue(pad1DistancePreview, 'synthSustain')} onChange={onParamChange} {...sliderProps('synthSustain')} />
-                    <Slider label="Release" value={state.synthRelease} paramKey="synthRelease" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthRelease')} onChange={onParamChange} {...sliderProps('synthRelease')} />
                   </div>
                 </div>
 
@@ -4242,7 +4508,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </select>
                 </div>
                 <div className="sc-morph-slider">
-                  <Slider label="" value={pad2MorphValue} paramKey="pad2Morph" onChange={handlePresetMorphSliderChange} {...sliderProps('pad2Morph')} />
+                  <Slider label="" value={pad2MorphValue} paramKey="pad2Morph" onChange={handlePresetMorphSliderChange} {...sliderProps('pad2Morph')} disabled={pad2MorphSequencerLocked} />
                 </div>
                 <div className="sc-preset-slot">
                   <select
@@ -4280,7 +4546,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 synthAttack={state.pad2Attack ?? 6}
                 synthDecay={state.pad2Decay ?? 1}
                 synthSustain={state.pad2Sustain ?? 0.8}
+                synthHold={state.pad2Hold ?? 1}
                 synthRelease={state.pad2Release ?? 12}
+                envelopeTimelineSeconds={padEnvelopeTimelineSeconds}
                 modEnvEnabled={state.pad2ModEnvEnabled}
                 modEnvAttack={state.pad2ModEnvAttack ?? 0.1}
                 modEnvDecay={state.pad2ModEnvDecay ?? 0.3}
@@ -4296,7 +4564,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 onAdsrChange={(param, v) => {
                   const pad2Map: Record<string, string> = {
                     synthAttack: 'pad2Attack', synthDecay: 'pad2Decay',
-                    synthSustain: 'pad2Sustain', synthRelease: 'pad2Release',
+                    synthSustain: 'pad2Sustain', synthHold: 'pad2Hold', synthRelease: 'pad2Release',
                   };
                   onParamChange((pad2Map[param] || param) as keyof SliderState, v);
                 }}
@@ -4371,6 +4639,26 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             {/* ══ TIER 2 — Primary controls ══ */}
             {pad2Tier >= 1 && (
               <div className="synth-card-tier2">
+                {/* ─── Envelope ─── */}
+                <div className="sc-advanced-section">
+                  <div className="sc-section-label">
+                    Envelope
+                    <button
+                      className={`sc-toggle-btn small${state.pad2FitEnvelopeToChord ? ' on' : ''}`}
+                      onClick={() => onSelectChange('pad2FitEnvelopeToChord' as keyof SliderState, !state.pad2FitEnvelopeToChord)}
+                    >
+                      Fit Chord
+                    </button>
+                  </div>
+                  <div className="sc-compact-grid-4">
+                    <Slider label="Attack" value={state.pad2Attack} paramKey="pad2Attack" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Attack')} onChange={onParamChange} {...sliderProps('pad2Attack')} />
+                    <Slider label="Decay" value={state.pad2Decay} paramKey="pad2Decay" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Decay')} onChange={onParamChange} {...sliderProps('pad2Decay')} />
+                    <Slider label="Sustain" value={state.pad2Sustain} paramKey="pad2Sustain" format={formatEnvelopeSustain} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Sustain')} onChange={onParamChange} {...sliderProps('pad2Sustain')} />
+                    <Slider label="Hold" value={state.pad2Hold} paramKey="pad2Hold" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Hold')} onChange={onParamChange} {...sliderProps('pad2Hold')} />
+                    <Slider label="Release" value={state.pad2Release} paramKey="pad2Release" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Release')} onChange={onParamChange} {...sliderProps('pad2Release')} />
+                  </div>
+                </div>
+
                 {/* ─── Filter ─── */}
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Filter</div>
@@ -4398,17 +4686,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <div className="sc-compact-grid-2">
                     <Slider label="Slope" value={state.pad2FilterSlope ?? 12} paramKey="pad2FilterSlope" unit=" dB/oct" onChange={onParamChange} {...sliderProps('pad2FilterSlope')} />
                     <Slider label="Key Track" value={state.pad2FilterKeyTracking ?? 0} paramKey="pad2FilterKeyTracking" onChange={onParamChange} {...sliderProps('pad2FilterKeyTracking')} />
-                  </div>
-                </div>
-
-                {/* ─── Envelope ─── */}
-                <div className="sc-advanced-section">
-                  <div className="sc-section-label">Envelope</div>
-                  <div className="sc-compact-grid-4">
-                    <Slider label="Attack" value={state.pad2Attack} paramKey="pad2Attack" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Attack')} onChange={onParamChange} {...sliderProps('pad2Attack')} />
-                    <Slider label="Decay" value={state.pad2Decay} paramKey="pad2Decay" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Decay')} onChange={onParamChange} {...sliderProps('pad2Decay')} />
-                    <Slider label="Sustain" value={state.pad2Sustain} paramKey="pad2Sustain" format={formatEnvelopeSustain} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Sustain')} onChange={onParamChange} {...sliderProps('pad2Sustain')} />
-                    <Slider label="Release" value={state.pad2Release} paramKey="pad2Release" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Release')} onChange={onParamChange} {...sliderProps('pad2Release')} />
                   </div>
                 </div>
 
@@ -4876,12 +5153,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <span className="sc-morph-tag" style={{ color: '#f59e0b' }}>A</span>
                 <div className="sc-preset-slot">
                   <select
-                    value={state.lead1PresetA}
+                    value={resolveLeadPresetSelectionId(state.lead1PresetA)}
                     onChange={(e) => handlePresetEndpointSelectChange('lead1PresetA' as keyof SliderState, e.target.value)}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(245,158,11,0.3)' }}
                   >
-                    {renderLeadPresetOptions(leadPresetOptions)}
+                    {renderLeadPresetOptions(leadPresetOptions, resolveLeadPresetSelectionId(state.lead1PresetA))}
                   </select>
                 </div>
                 <div className="sc-morph-slider">
@@ -4889,12 +5166,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 </div>
                 <div className="sc-preset-slot">
                   <select
-                    value={state.lead1PresetB}
+                    value={resolveLeadPresetSelectionId(state.lead1PresetB)}
                     onChange={(e) => handlePresetEndpointSelectChange('lead1PresetB' as keyof SliderState, e.target.value)}
                     className="sc-preset-select"
                     style={{ borderColor: 'rgba(139,92,246,0.3)' }}
                   >
-                    {renderLeadPresetOptions(leadPresetOptions)}
+                    {renderLeadPresetOptions(leadPresetOptions, resolveLeadPresetSelectionId(state.lead1PresetB))}
                   </select>
                 </div>
                 <span className="sc-morph-tag" style={{ color: '#8b5cf6' }}>B</span>
@@ -5044,12 +5321,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   <span className="sc-morph-tag" style={{ color: '#06b6d4' }}>C</span>
                   <div className="sc-preset-slot">
                     <select
-                      value={state.lead2PresetC}
+                      value={resolveLeadPresetSelectionId(state.lead2PresetC)}
                       onChange={(e) => handlePresetEndpointSelectChange('lead2PresetC' as keyof SliderState, e.target.value)}
                       className="sc-preset-select"
                       style={{ borderColor: 'rgba(6,182,212,0.3)' }}
                     >
-                      {renderLeadPresetOptions(leadPresetOptions)}
+                      {renderLeadPresetOptions(leadPresetOptions, resolveLeadPresetSelectionId(state.lead2PresetC))}
                     </select>
                   </div>
                   <div className="sc-morph-slider">
@@ -5057,12 +5334,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </div>
                   <div className="sc-preset-slot">
                     <select
-                      value={state.lead2PresetD}
+                      value={resolveLeadPresetSelectionId(state.lead2PresetD)}
                       onChange={(e) => handlePresetEndpointSelectChange('lead2PresetD' as keyof SliderState, e.target.value)}
                       className="sc-preset-select"
                       style={{ borderColor: 'rgba(167,139,250,0.3)' }}
                     >
-                      {renderLeadPresetOptions(leadPresetOptions)}
+                      {renderLeadPresetOptions(leadPresetOptions, resolveLeadPresetSelectionId(state.lead2PresetD))}
                     </select>
                   </div>
                   <span className="sc-morph-tag" style={{ color: '#a78bfa' }}>D</span>
@@ -6156,6 +6433,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                 onChangePitchBindingMode: (mode: PitchBindingMode) => setPitchBindingMode(seq.activeTab, mode),
                                 onChangePitchRoot: (root) => seq.setPitchRoot(seq.activeTab, root),
                                 onChangePitchScale: (scale) => seq.setPitchScale(seq.activeTab, scale),
+                                allowHarmonyPitchScale: true,
+                                pitchRootDisplayValue: formatMidiNoteName(activeResolvedPitchSettings.root),
+                                pitchDisplayRoot: activeResolvedPitchSettings.root,
+                                pitchDisplayScaleIntervals: activeResolvedPitchSettings.scaleIntervals,
                                 onToggleScaleQuantize: () => seq.toggleScaleQuantize(seq.activeTab),
                                 hidePitchNoteRange: activePitchBindingMode === 'sequence',
                                 pitchNoteMin: liveSynthNoteMins[seq.activeTab] ?? (state[noteMinKey] as number),

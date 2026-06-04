@@ -142,5 +142,21 @@ void KesshoProductEngine::applySourceParam(const KesshoProductEvent& event) {
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
       return;
   }
+  switch (event.param_id) {
+    case KESSHO_PRODUCT_PARAM_SOURCE_MORPH_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_DISTANCE_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_DECAY_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_SUSTAIN_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_ENVELOPE_OVERRIDE_ENABLED_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_ALGORITHM_PRESET_AENABLED_ID:
+      if (isPadProductSource(event.target_id) || isLeadProductSource(event.target_id)) {
+        (void) applyStructuredSourceOverridesToModuleForCurrentMorph(event.target_id);
+      }
+      break;
+    default:
+      break;
+  }
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
 }

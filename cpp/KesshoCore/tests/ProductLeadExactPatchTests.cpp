@@ -21,6 +21,9 @@ void require(bool condition, const char* message) {
 
 using LeadParams = std::array<float, kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT>;
 
+LeadParams exactLeadParamsFromPreset(uint32_t preset_id);
+void configureStressLeadSource(KesshoProductSourceSnapshot& source, uint32_t source_id, const LeadParams& params);
+
 void failParamMismatch(const char* context, uint32_t param_index, float actual, float expected) {
   std::cerr << "Kessho Product Lead Exact Patch test failed: " << context
             << " param[" << param_index << "] expected " << expected
@@ -85,6 +88,25 @@ float renderPeakBlocks(KesshoProductEngine* engine, uint32_t blocks = 64u) {
   return peak;
 }
 
+float renderRmsBlocks(KesshoProductEngine* engine, uint32_t blocks = 16u) {
+  std::vector<float> left(128);
+  std::vector<float> right(128);
+  double sum = 0.0;
+  uint64_t sample_count = 0u;
+  for (uint32_t block = 0; block < blocks; ++block) {
+    std::fill(left.begin(), left.end(), 0.0f);
+    std::fill(right.begin(), right.end(), 0.0f);
+    kessho_product_render(engine, left.data(), right.data(), 128);
+    for (std::size_t index = 0; index < left.size(); ++index) {
+      require(std::isfinite(left[index]) && std::isfinite(right[index]), "non-finite render sample");
+      sum += static_cast<double>(left[index]) * static_cast<double>(left[index]);
+      sum += static_cast<double>(right[index]) * static_cast<double>(right[index]);
+      sample_count += 2u;
+    }
+  }
+  return sample_count > 0u ? static_cast<float>(std::sqrt(sum / static_cast<double>(sample_count))) : 0.0f;
+}
+
 float renderGamelanPeakWithSparseGain(float gain) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "engine create failed");
@@ -120,6 +142,81 @@ float renderGamelanPeakWithSparseGain(float gain) {
   const float peak = renderPeakBlocks(engine);
   kessho_product_destroy(engine);
   return peak;
+}
+
+void commitLeadGainOverride(KesshoProductEngine* engine, uint32_t source_id, float gain) {
+  constexpr uint32_t kLeadGainParamIndex = 62u;
+  KesshoProductEvent set_gain{};
+  set_gain.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_OVERRIDE;
+  set_gain.target_id = source_id;
+  set_gain.index = kLeadGainParamIndex;
+  set_gain.param_id = kLeadGainParamIndex;
+  set_gain.value = gain;
+  set_gain.flags = KESSHO_PRODUCT_SOURCE_OVERRIDE_SET_SLOT;
+  require(kessho_product_enqueue_event(engine, &set_gain) == KESSHO_PRODUCT_OK, "lead active gain set-slot enqueue failed");
+
+  KesshoProductEvent commit{};
+  commit.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_OVERRIDE;
+  commit.target_id = source_id;
+  commit.index = kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT;
+  commit.flags = KESSHO_PRODUCT_SOURCE_OVERRIDE_COMMIT;
+  require(kessho_product_enqueue_event(engine, &commit) == KESSHO_PRODUCT_OK, "lead active gain commit enqueue failed");
+}
+
+void requireLeadGainOverrideRefreshesActiveVoice(uint32_t source_id) {
+  constexpr uint32_t kLeadAttackParamIndex = 43u;
+  constexpr uint32_t kLeadDecayParamIndex = 44u;
+  constexpr uint32_t kLeadSustainParamIndex = 45u;
+  constexpr uint32_t kLeadReleaseParamIndex = 46u;
+  constexpr uint32_t kLeadDriveParamIndex = 55u;
+  constexpr uint32_t kLeadTransientClickParamIndex = 56u;
+  constexpr uint32_t kLeadTransientNoiseParamIndex = 57u;
+  constexpr uint32_t kLeadGainParamIndex = 62u;
+  constexpr uint32_t kLeadDelayEnabledParamIndex = 72u;
+  constexpr uint32_t kLeadDelayMixParamIndex = 77u;
+  constexpr uint32_t kLeadDelaySendParamIndex = 78u;
+
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "active Lead gain refresh engine create failed");
+
+  LeadParams params = exactLeadParamsFromPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN);
+  params[kLeadAttackParamIndex] = 0.001f;
+  params[kLeadDecayParamIndex] = 2.0f;
+  params[kLeadSustainParamIndex] = 1.0f;
+  params[kLeadReleaseParamIndex] = 1.0f;
+  params[kLeadDriveParamIndex] = 0.0f;
+  params[kLeadTransientClickParamIndex] = 0.0f;
+  params[kLeadTransientNoiseParamIndex] = 0.0f;
+  params[kLeadGainParamIndex] = 0.8f;
+  params[kLeadDelayEnabledParamIndex] = 0.0f;
+  params[kLeadDelayMixParamIndex] = 0.0f;
+  params[kLeadDelaySendParamIndex] = 0.0f;
+
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
+  configureStressLeadSource(source, source_id, params);
+  source.distance = 0.0f;
+  source.hold_seconds = 2.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "active Lead gain refresh snapshot load failed");
+
+  KesshoProductEvent note{};
+  note.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
+  note.target_id = source_id;
+  note.value = 64.0f;
+  note.value2 = 0.9f;
+  note.value3 = 2.0f;
+  require(kessho_product_enqueue_event(engine, &note) == KESSHO_PRODUCT_OK, "active Lead gain refresh note enqueue failed");
+  (void)renderRmsBlocks(engine, 8u);
+  const float before_rms = renderRmsBlocks(engine, 8u);
+  require(before_rms > 0.0001f, "active Lead gain refresh note was silent before override");
+
+  commitLeadGainOverride(engine, source_id, 0.04f);
+  const float after_rms = renderRmsBlocks(engine, 8u);
+  require(after_rms < before_rms * 0.35f, "active Lead gain override did not refresh held voice");
+
+  kessho_product_destroy(engine);
 }
 
 LeadParams exactLeadParamsFromPreset(uint32_t preset_id) {
@@ -722,6 +819,8 @@ int main() {
   requireLeadSparseOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD2, 0.65f);
   requireLeadRatchetScalesOnlyEnvelopeParams();
   requireLeadGlideSampleHoldAffectsTriggerFrequency();
+  requireLeadGainOverrideRefreshesActiveVoice(KESSHO_PRODUCT_SOURCE_LEAD1);
+  requireLeadGainOverrideRefreshesActiveVoice(KESSHO_PRODUCT_SOURCE_LEAD2);
   requireStableEndpointLeadPatchIsCachedUntilRatchetScratchPatch();
 
   const float low_gain_peak = renderGamelanPeakWithSparseGain(0.05f);

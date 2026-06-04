@@ -128,6 +128,8 @@ export interface UseEuclideanSequencerOptions {
   initialLinked?: boolean[];
   /** Initial pitch settings to restore (persisted across tab switches) */
   initialPitchSettings?: PitchSettings[];
+  /** Fallback pitch settings when no initial/preset pitch settings exist. */
+  defaultPitchSettings?: Partial<PitchSettings>;
   /** Initial evolve configs to restore (persisted across tab switches / preset load) */
   initialEvolveConfigs?: EvolveConfig[];
   /** Monotonically increasing key — when it changes, internal state resets from initial* props */
@@ -491,6 +493,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
     initialSwings,
     initialLinked,
     initialPitchSettings,
+    defaultPitchSettings,
     initialEvolveConfigs,
   } = opts;
   const resetKey = opts.resetKey;
@@ -548,7 +551,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       setClockDivs(normalizeSequencerClockDivisions(initialClockDivs, laneCount));
       setSwings(normalizeSequencerSwings(initialSwings, laneCount));
       setLinked(initialLinked ?? Array.from({ length: laneCount }, () => false));
-      setPitchSettings(normalizeSequencerPitchSettingsArray(initialPitchSettings, laneCount) as PitchSettings[]);
+      setPitchSettings(normalizeSequencerPitchSettingsArray(initialPitchSettings, laneCount, defaultPitchSettings) as PitchSettings[]);
       setEvolveConfigs(normalizeSequencerEvolveConfigs(prefix, initialEvolveConfigs, laneCount));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -556,7 +559,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
 
   // ── Per-Seq Pitch Settings ──
   const [pitchSettings, setPitchSettings] = useState<PitchSettings[]>(() =>
-    normalizeSequencerPitchSettingsArray(initialPitchSettings, laneCount) as PitchSettings[]
+    normalizeSequencerPitchSettingsArray(initialPitchSettings, laneCount, defaultPitchSettings) as PitchSettings[]
   );
 
   const setPitchMode = useCallback((seqIdx: number, mode: PitchMode) => {

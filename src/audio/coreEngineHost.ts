@@ -1464,6 +1464,33 @@ function getCoreHarmonyTickSeconds(sliderState: SliderState): number {
   return phraseSeconds;
 }
 
+const CORE_PAD_CHORD_ENVELOPE_SAFETY_SECONDS = 0.05;
+
+function corePadEnvelopeGateSeconds(
+  sliderState: SliderState,
+  pad: 'pad1' | 'pad2',
+  voiceDelaySeconds: number,
+  triggerIntervalSeconds: number,
+): number {
+  const state = sliderState as unknown as Record<string, unknown>;
+  const attackKey = pad === 'pad2' ? 'pad2Attack' : 'synthAttack';
+  const decayKey = pad === 'pad2' ? 'pad2Decay' : 'synthDecay';
+  const holdKey = pad === 'pad2' ? 'pad2Hold' : 'synthHold';
+  const releaseKey = pad === 'pad2' ? 'pad2Release' : 'synthRelease';
+  const fitKey = pad === 'pad2' ? 'pad2FitEnvelopeToChord' : 'padFitEnvelopeToChord';
+  const attack = boundedNumber(state[attackKey], 6, 0.001, 16);
+  const decay = boundedNumber(state[decayKey], 1, 0.01, 8);
+  const requestedHold = boundedNumber(state[holdKey], 1, 0, 20);
+  const release = boundedNumber(state[releaseKey], 12, 0.01, 30);
+  let hold = requestedHold;
+  if (booleanValue(state[fitKey], true)) {
+    const availableSeconds = triggerIntervalSeconds - voiceDelaySeconds - CORE_PAD_CHORD_ENVELOPE_SAFETY_SECONDS;
+    const maxHold = availableSeconds - attack - decay - release;
+    hold = clamp(requestedHold, 0, Math.max(0, maxHold));
+  }
+  return clamp(attack + decay + hold, 0.02, 20);
+}
+
 function getCoreHarmonyInitialStartDelaySeconds(
   sliderState: SliderState,
   anchors: TransportAnchors | null,
@@ -1543,7 +1570,7 @@ function createPadPreviewVoiceDelays(sliderState: SliderState, seedSuffix = ''):
   }
   const waveSpreadSeconds =
     boundedNumber(sliderState.waveSpread, 0.125, 0, 1) *
-    boundedNumber(sliderState.chordRate, 32, 1, 128);
+    getCoreHarmonyTickSeconds(sliderState);
   return Array.from({ length: 6 }, () => rng() * waveSpreadSeconds).sort((a, b) => a - b);
 }
 
@@ -1569,6 +1596,7 @@ function createPadPreviewChordNotes(
     .filter((_, index) => (voiceMask & (1 << index)) !== 0);
   const frequencyPool = enabledFrequencies.length > 0 ? enabledFrequencies : [frequencies[0] ?? midiToFreq(fallbackRootMidi)];
   const delays = createPadPreviewVoiceDelays(sliderState, seedSuffix);
+  const triggerIntervalSeconds = getCoreHarmonyTickSeconds(sliderState);
   const notes: PreviewNote[] = [];
 
   for (let route = 0; route < 6; route += 1) {
@@ -1582,6 +1610,7 @@ function createPadPreviewChordNotes(
       velocity: clamp(velocity, 0.05, 1),
       route,
       delaySeconds: delays[route] ?? 0,
+      holdSeconds: corePadEnvelopeGateSeconds(sliderState, 'pad1', delays[route] ?? 0, triggerIntervalSeconds),
     });
   }
 
@@ -1832,7 +1861,8 @@ function createSynthEuclidPreview(
             const isPad2 = (pad2Assign & (1 << voiceIndex)) !== 0;
             const attack = boundedNumber(isPad2 ? state.pad2Attack : state.synthAttack, 0.1, 0, 10);
             const decay = boundedNumber(isPad2 ? state.pad2Decay : state.synthDecay, 0.3, 0, 10);
-            const holdSeconds = attack + decay + Math.max(0.1, (attack + decay) * 0.5);
+            const hold = boundedNumber(isPad2 ? state.pad2Hold : state.synthHold, 1, 0, 20);
+            const holdSeconds = attack + decay + hold;
             for (let repeat = 0; repeat < ratchet; repeat += 1) {
               padNotes.push({
                 source,

@@ -199,7 +199,7 @@ function stabilizePadSnapshot(scope: PadRandomScope, snapshot: PadScopeSnapshot)
     setScopedValue(next, scope, key, quantizeNumber(scopeKey(scope, key) as keyof SliderState, getScopedNumber(next, scope, key)));
   }
 
-  const synthTimes = ['synthAttack', 'synthDecay', 'synthRelease', 'padModEnvAttack', 'padModEnvDecay', 'padModEnvRelease'] as const;
+  const synthTimes = ['synthAttack', 'synthDecay', 'synthHold', 'synthRelease', 'padModEnvAttack', 'padModEnvDecay', 'padModEnvRelease'] as const;
   for (const key of synthTimes) {
     setScopedValue(next, scope, key, quantizeNumber(scopeKey(scope, key) as keyof SliderState, getScopedNumber(next, scope, key)));
   }
@@ -331,6 +331,7 @@ export function createPadRandomGoal(
   const logKeys = [
     'synthAttack',
     'synthDecay',
+    'synthHold',
     'synthRelease',
     'padLfo1Rate',
     'padLfo2Rate',

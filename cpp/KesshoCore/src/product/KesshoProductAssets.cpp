@@ -88,7 +88,7 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
   return false;
 }
 
-  void KesshoProductEngine::releaseSoundscapeTextureVoice(Voice& voice) {
+  void KesshoProductEngine::releaseSoundscapeTextureVoice(Voice& voice, float release_asset_level) {
   if (!voice.soundscape_texture_voice) {
     return;
   }
@@ -105,8 +105,14 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
       voice.envelope_release_frames > 1u) {
     return;
   }
+  const float current_envelope = sampleVoiceEnvelope(voice);
   const uint32_t remaining = std::min<uint32_t>(std::max(1u, voice.remaining_frames), release_frames);
   voice.looping = false;
+  voice.soundscape_releasing = true;
+  voice.soundscape_asset_level = std::isfinite(release_asset_level)
+      ? clampFloat(release_asset_level, 0.0f, 2.0f)
+      : clampFloat(voice.soundscape_asset_level, 0.0f, 2.0f);
+  voice.amplitude *= clampFloat(current_envelope, 0.0f, 1.0f);
   voice.start_delay_frames = 0u;
   voice.age_frames = 0u;
   voice.remaining_frames = remaining;
@@ -143,7 +149,7 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
         : 0u;
     if (asset_id == 0u || !soundscapeWantsAsset(source, asset_id)) {
       if (voice.soundscape_texture_voice) {
-        releaseSoundscapeTextureVoice(voice);
+        releaseSoundscapeTextureVoice(voice, voice.soundscape_asset_level);
         continue;
       }
       voice.looping = false;
