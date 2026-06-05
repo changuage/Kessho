@@ -27,6 +27,8 @@ const files = {
   hostCommitService: read('src/audio/product/host/CoreProductResolvedStateCommitService.ts'),
   host: read('src/audio/coreProductEngineHost.ts'),
   manualTriggers: read('src/ui/useSelectedAudioEngineManualTriggers.ts'),
+  liveTriggerCallbacks: read('src/ui/useSelectedAudioEngineLiveTriggerCallbacks.ts'),
+  synthPage: read('src/ui/synth/SynthPage.tsx'),
   morphPosition: read('src/ui/useMorphPositionRuntimeSurface.ts'),
   morphSlotLoad: read('src/ui/useMorphSlotLoadRuntimeSurface.ts'),
   presetSync: read('src/ui/usePresetEngineSync.ts'),
@@ -138,6 +140,25 @@ check(
   'running-arrangement-updates-after-state-commit',
   files.host.includes('if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState)'),
   'running Product host must update arrangement bridge after committed state changes',
+);
+
+check(
+  'sequencer-morph-feedback-latches-inactive-sentinel',
+  files.liveTriggerCallbacks.includes('if (morph.lead1 < 0 && morph.lead2 < 0) return;') &&
+    count(files.liveTriggerCallbacks, 'if (morphPosition < 0) {\n        return;\n      }') >= 3 &&
+    !files.liveTriggerCallbacks.includes("removeRuntimeTriggerPositions(['padMorph']);") &&
+    !files.liveTriggerCallbacks.includes("removeRuntimeTriggerPositions(['pad2Morph']);") &&
+    !files.liveTriggerCallbacks.includes('const keysToClear = morphKey ? [morphKey] : morphKeys;'),
+  'sequencer morph callbacks must latch prior runtime morph values when inactive sentinels arrive between triggers',
+);
+
+check(
+  'preset-endpoint-changes-preserve-sequencer-morph-latch',
+  files.synthPage.includes('const handlePresetEndpointSelectChange = useCallback') &&
+    !files.synthPage.includes('PRESET_ENDPOINT_RUNTIME_MORPH_KEY') &&
+    !files.synthPage.includes('if (morphKey) removeRuntimeValues([String(morphKey)]);') &&
+    !files.synthPage.includes('removeRuntimeValues(runtimeMorphKeys);'),
+  'preset endpoint changes must not clear sequencer-owned runtime morph latches',
 );
 
 check(

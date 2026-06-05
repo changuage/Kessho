@@ -92,14 +92,7 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
   useEffect(() => {
     let lastLeadMorph = 0;
     setSelectedLeadMorphCallback((morph) => {
-      const clearKeys: string[] = [];
-      if (morph.lead1 <= -2) clearKeys.push('lead1Morph');
-      if (morph.lead2 <= -2) clearKeys.push('lead2Morph');
-      if (clearKeys.length > 0) {
-        removeRuntimeTriggerPositions(clearKeys);
-        removeRuntimeValues(clearKeys);
-        if (morph.lead1 < 0 && morph.lead2 < 0) return;
-      }
+      if (morph.lead1 < 0 && morph.lead2 < 0) return;
       if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
       const now = performance.now();
       if (now - lastLeadMorph < 66) return;
@@ -128,8 +121,6 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
     let lastPad1Morph = 0;
     setSelectedPadMorphTriggerCallback((morphPosition: number) => {
       if (morphPosition < 0) {
-        removeRuntimeTriggerPositions(['padMorph']);
-        removeRuntimeValues(['padMorph']);
         return;
       }
       if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
@@ -155,8 +146,6 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
     let lastPad2Morph = 0;
     setSelectedPad2MorphTriggerCallback((morphPosition: number) => {
       if (morphPosition < 0) {
-        removeRuntimeTriggerPositions(['pad2Morph']);
-        removeRuntimeValues(['pad2Morph']);
         return;
       }
       if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;
@@ -278,9 +267,6 @@ export function useSelectedAudioEngineLiveTriggerCallbacks({
       const voiceKey = String(voice);
       const morphKey = voiceToMorphKey[voiceKey];
       if (morphPosition < 0) {
-        const keysToClear = morphKey ? [morphKey] : morphKeys;
-        removeRuntimeTriggerPositions(keysToClear);
-        removeRuntimeValues(keysToClear);
         return;
       }
       if (uiMode !== 'advanced' || document.visibilityState !== 'visible') return;

@@ -51,19 +51,23 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
 /* ─── colours ─── */
-const BG = '#0e1420';
-const ENVELOPE_FILL_TOP = 'rgba(139, 92, 246, 0.45)';
-const ENVELOPE_FILL_BOT = 'rgba(139, 92, 246, 0.05)';
-const ENVELOPE_STROKE = 'rgba(165, 140, 255, 0.7)';
-const ER_COLOR = 'rgba(96, 165, 250, 0.6)';
-const MOD_COLOR = 'rgba(245, 158, 11, 0.35)';
-const SHIMMER_COLOR = 'rgba(244, 114, 182, 0.55)';
-const REVERSE_FILL = 'rgba(52, 211, 153, 0.2)';
-const REVERSE_STROKE = 'rgba(52, 211, 153, 0.5)';
-const WIDTH_COLOR = 'rgba(165, 196, 212, 0.4)';
-const FREEZE_OVERLAY = 'rgba(59, 130, 246, 0.15)';
-const TAPE_TINT = 'rgba(245, 158, 11, 0.06)';
-const TUBE_TINT = 'rgba(239, 68, 68, 0.06)';
+const BG_TOP = '#12110f';
+const BG = '#080807';
+const BG_LOW = '#050505';
+const GRID_LINE = 'rgba(232, 220, 196, 0.055)';
+const GRID_LINE_STRONG = 'rgba(232, 220, 196, 0.095)';
+const ENVELOPE_FILL_TOP = 'rgba(176, 120, 90, 0.38)';
+const ENVELOPE_FILL_BOT = 'rgba(176, 120, 90, 0.035)';
+const ENVELOPE_STROKE = 'rgba(232, 180, 132, 0.66)';
+const ER_COLOR = 'rgba(94, 168, 166, 0.46)';
+const MOD_COLOR = 'rgba(232, 180, 74, 0.32)';
+const SHIMMER_COLOR = 'rgba(232, 220, 196, 0.48)';
+const REVERSE_FILL = 'rgba(123, 154, 109, 0.16)';
+const REVERSE_STROKE = 'rgba(123, 154, 109, 0.42)';
+const WIDTH_COLOR = 'rgba(184, 224, 255, 0.34)';
+const FREEZE_OVERLAY = 'rgba(184, 224, 255, 0.12)';
+const TAPE_TINT = 'rgba(196, 114, 78, 0.05)';
+const TUBE_TINT = 'rgba(204, 125, 184, 0.045)';
 
 const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -115,7 +119,11 @@ const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
     const time = timeRef.current;
 
     /* ─── background ─── */
-    ctx.fillStyle = BG;
+    const bgGradient = ctx.createLinearGradient(0, 0, w, h);
+    bgGradient.addColorStop(0, BG_TOP);
+    bgGradient.addColorStop(0.55, BG);
+    bgGradient.addColorStop(1, BG_LOW);
+    ctx.fillStyle = bgGradient;
     ctx.fillRect(0, 0, w, h);
 
     /* saturation tint */
@@ -128,9 +136,9 @@ const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
     }
 
     if (!enabled) {
-      ctx.fillStyle = 'rgba(255,255,255,0.03)';
+      ctx.fillStyle = 'rgba(232,220,196,0.035)';
       ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillStyle = 'rgba(232,220,196,0.38)';
       ctx.font = `${Math.min(14, w * 0.05)}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText('Reverb Bypassed', w / 2, h / 2);
@@ -142,6 +150,26 @@ const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
     const plotW = w - pad * 2;
     const plotH = h - pad * 2 - 16; // leave room for width bar
     const plotY = pad;
+
+    ctx.save();
+    ctx.strokeStyle = GRID_LINE;
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 8; i += 1) {
+      const x = pad + (i / 8) * plotW;
+      ctx.beginPath();
+      ctx.moveTo(Math.round(x) + 0.5, plotY);
+      ctx.lineTo(Math.round(x) + 0.5, plotY + plotH);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = GRID_LINE_STRONG;
+    for (let i = 1; i <= 3; i += 1) {
+      const y = plotY + (i / 4) * plotH;
+      ctx.beginPath();
+      ctx.moveTo(pad, Math.round(y) + 0.5);
+      ctx.lineTo(pad + plotW, Math.round(y) + 0.5);
+      ctx.stroke();
+    }
+    ctx.restore();
 
     // Pre-delay as fraction of plot width (capped at 25%)
     const predelayFrac = clamp01((predelay / 400) * 0.25);
@@ -220,11 +248,11 @@ const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
 
     /* ─── 1. Pre-delay gap indicator ─── */
     if (predelayPx > 2) {
-      ctx.fillStyle = 'rgba(255,255,255,0.03)';
+      ctx.fillStyle = 'rgba(232,220,196,0.025)';
       ctx.fillRect(pad, plotY, predelayPx, plotH);
       // dashed line at boundary
       ctx.setLineDash([3, 3]);
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.strokeStyle = 'rgba(232,220,196,0.12)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(pad + predelayPx, plotY);
@@ -232,7 +260,7 @@ const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
       ctx.stroke();
       ctx.setLineDash([]);
       // label
-      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillStyle = 'rgba(232,220,196,0.34)';
       ctx.font = `${Math.min(9, w * 0.03)}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText(`${Math.round(predelay)}ms`, pad + predelayPx / 2, plotY + plotH - 4);
@@ -242,14 +270,14 @@ const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
     {
       const grd = ctx.createLinearGradient(pad + predelayPx, plotY, pad + plotW, plotY);
       // Input tone shifts the initial colour
-      const toneHue = inputTone > 0 ? 40 : inputTone < 0 ? 250 : 260;
-      const toneAlpha = Math.abs(inputTone) * 0.08;
+      const toneHue = inputTone > 0 ? 34 : inputTone < 0 ? 178 : 22;
+      const toneAlpha = Math.abs(inputTone) * 0.055;
       grd.addColorStop(0, `hsla(${toneHue}, 60%, 60%, ${toneAlpha})`);
       // Low damping in early region
-      grd.addColorStop(0.3, `rgba(96, 165, 250, ${dampLow * 0.12})`);
+      grd.addColorStop(0.3, `rgba(94, 168, 166, ${dampLow * 0.1})`);
       // High damping in late region
-      grd.addColorStop(0.7, `rgba(244, 114, 182, ${dampHigh * 0.12})`);
-      grd.addColorStop(1.0, `rgba(244, 114, 182, ${dampHigh * 0.06})`);
+      grd.addColorStop(0.7, `rgba(176, 120, 90, ${dampHigh * 0.11})`);
+      grd.addColorStop(1.0, `rgba(176, 120, 90, ${dampHigh * 0.055})`);
       ctx.fillStyle = grd;
       ctx.fillRect(pad + predelayPx, plotY, plotW - predelayPx, plotH);
     }
@@ -355,11 +383,11 @@ const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
       let chipX = pad;
       for (const chip of chips) {
         const chipWidth = ctx.measureText(chip).width + 10;
-        ctx.fillStyle = 'rgba(255,255,255,0.07)';
+        ctx.fillStyle = 'rgba(232,220,196,0.055)';
         ctx.fillRect(chipX, pad, chipWidth, 14);
-        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.strokeStyle = 'rgba(232,220,196,0.1)';
         ctx.strokeRect(chipX + 0.5, pad + 0.5, chipWidth - 1, 13);
-        ctx.fillStyle = 'rgba(245,249,255,0.75)';
+        ctx.fillStyle = 'rgba(247,250,252,0.74)';
         ctx.fillText(chip, chipX + 5, pad + 7.5);
         chipX += chipWidth + 5;
       }
@@ -372,7 +400,7 @@ const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
       const centre = w / 2;
       const halfSpread = (stereoWidth * (w - pad * 2)) / 2;
 
-      ctx.fillStyle = 'rgba(255,255,255,0.03)';
+      ctx.fillStyle = 'rgba(232,220,196,0.035)';
       ctx.fillRect(pad, barY, w - pad * 2, barH);
 
       ctx.fillStyle = WIDTH_COLOR;
@@ -381,7 +409,7 @@ const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
       ctx.fillRect(bx, barY, bw, barH);
 
       // L / R labels
-      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillStyle = 'rgba(232,220,196,0.3)';
       ctx.font = `${Math.min(7, w * 0.025)}px sans-serif`;
       ctx.textAlign = 'left';
       ctx.fillText('L', bx + 2, barY + barH - 1);
@@ -394,7 +422,7 @@ const ReverbEnvelopeCanvas: React.FC<ReverbEnvelopeCanvasProps> = (props) => {
       ctx.fillStyle = FREEZE_OVERLAY;
       ctx.fillRect(0, 0, w, h);
       // Snowflake badge
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.6)';
+      ctx.fillStyle = 'rgba(184, 224, 255, 0.58)';
       ctx.font = `${Math.min(18, w * 0.07)}px sans-serif`;
       ctx.textAlign = 'right';
       ctx.fillText('❄', w - 8, 18);

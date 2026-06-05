@@ -358,16 +358,6 @@ type SynthKeyboardEditLane = 'trigger' | 'pitch' | 'expression' | 'morph' | 'dis
 type SynthDetailOpenLane = SubLaneKind | 'trigger' | 'arp';
 type LeadPresetSlotKey = 'lead1PresetA' | 'lead1PresetB' | 'lead2PresetC' | 'lead2PresetD';
 type LeadPresetFallbackId = 'soft_rhodes' | 'gamelan';
-const PRESET_ENDPOINT_RUNTIME_MORPH_KEY: Partial<Record<keyof SliderState, keyof SliderState>> = {
-  padPresetA: 'padMorph',
-  padPresetB: 'padMorph',
-  pad2PresetA: 'pad2Morph',
-  pad2PresetB: 'pad2Morph',
-  lead1PresetA: 'lead1Morph',
-  lead1PresetB: 'lead1Morph',
-  lead2PresetC: 'lead2Morph',
-  lead2PresetD: 'lead2Morph',
-};
 type LeadPresetOption = {
   id: string;
   name: string;
@@ -1242,8 +1232,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     key: keyof SliderState,
     value: SliderState[keyof SliderState],
   ) => {
-    const morphKey = PRESET_ENDPOINT_RUNTIME_MORPH_KEY[key];
-    if (morphKey) removeRuntimeValues([String(morphKey)]);
     onSelectChange(key, value);
   }, [onSelectChange]);
 
@@ -1774,13 +1762,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, [findLeadPresetSummary, refreshLeadFmPresets, updateLeadFmPresetMetadata]);
 
   const applyLeadPresetToSlots = useCallback((slotKeys: readonly LeadPresetSlotKey[], presetId: string) => {
-    const runtimeMorphKeys = new Set<string>();
-    slotKeys.forEach((slotKey) => {
-      const morphKey = PRESET_ENDPOINT_RUNTIME_MORPH_KEY[slotKey];
-      if (morphKey) runtimeMorphKeys.add(String(morphKey));
-    });
-    removeRuntimeValues(runtimeMorphKeys);
-
     if (onStateChange) {
       onStateChange((current) => {
         let changed = false;

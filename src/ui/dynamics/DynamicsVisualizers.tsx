@@ -57,10 +57,16 @@ const EMPTY_DYNAMICS_TELEMETRY: DynamicsVisualTelemetrySnapshot = {
   sidechainEvents: [],
 };
 
-const BG = '#0e1420';
-const GRID_STRONG = 'rgba(255, 255, 255, 0.105)';
-const TEXT = 'rgba(235, 241, 248, 0.9)';
-const MUTED = 'rgba(156, 163, 175, 0.72)';
+const BG_TOP = '#12110f';
+const BG = '#080807';
+const BG_LOW = '#050505';
+const GRID_SOFT = 'rgba(232, 220, 196, 0.045)';
+const GRID_STRONG = 'rgba(232, 220, 196, 0.095)';
+const TEXT = 'rgba(247, 250, 252, 0.88)';
+const MUTED = 'rgba(232, 220, 196, 0.54)';
+const PANEL_FILL = 'rgba(232, 220, 196, 0.018)';
+const PANEL_STROKE = 'rgba(232, 220, 196, 0.075)';
+const HOT_TEXT = 'rgba(247, 250, 252, 0.92)';
 const CYAN = DYNAMICS_ENGINE_COLORS.sidechain;
 const GREEN = DYNAMICS_ENGINE_COLORS.character;
 const PURPLE = DYNAMICS_ENGINE_COLORS.degrade;
@@ -135,13 +141,30 @@ function strokeRoundedRect(ctx: CanvasRenderingContext2D, rect: Rect, radius: nu
 
 function drawBase(ctx: CanvasRenderingContext2D, width: number, height: number, accent: string): void {
   const gradient = ctx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, '#0c1320');
+  gradient.addColorStop(0, BG_TOP);
   gradient.addColorStop(0.68, BG);
-  gradient.addColorStop(1, '#0a101a');
+  gradient.addColorStop(1, BG_LOW);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
 
-  ctx.fillStyle = `${accent}12`;
+  ctx.strokeStyle = GRID_SOFT;
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 8; i += 1) {
+    const x = (width * i) / 8;
+    ctx.beginPath();
+    ctx.moveTo(Math.round(x) + 0.5, 0);
+    ctx.lineTo(Math.round(x) + 0.5, height);
+    ctx.stroke();
+  }
+  for (let i = 1; i < 4; i += 1) {
+    const y = (height * i) / 4;
+    ctx.beginPath();
+    ctx.moveTo(0, Math.round(y) + 0.5);
+    ctx.lineTo(width, Math.round(y) + 0.5);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = `${accent}0f`;
   ctx.fillRect(0, 0, width, 2);
 }
 
@@ -267,7 +290,7 @@ function drawMiniMetric(
   valueText?: string,
 ): void {
   const safeValue = clamp01(value);
-  fillRoundedRect(ctx, rect, 4, 'rgba(255, 255, 255, 0.045)');
+  fillRoundedRect(ctx, rect, 4, 'rgba(232, 220, 196, 0.032)');
   fillRoundedRect(ctx, { ...rect, w: Math.max(1, rect.w * safeValue) }, 4, `${color}88`);
   drawCaption(ctx, label, rect.x + 4, rect.y + rect.h / 2 + 0.3, TEXT);
   if (valueText) drawCaption(ctx, valueText, rect.x + rect.w - 4, rect.y + rect.h / 2 + 0.3, TEXT, 'right');
@@ -456,10 +479,10 @@ export function DynamicsCompressorVisualizer({ state, getDynamicsAnalyser, getDy
     history.push(currentReduction);
     if (history.length > 91) history.shift();
 
-    fillRoundedRect(ctx, left, 7, 'rgba(255, 255, 255, 0.025)');
-    strokeRoundedRect(ctx, left, 7, 'rgba(255, 255, 255, 0.08)');
-    fillRoundedRect(ctx, right, 7, 'rgba(255, 255, 255, 0.025)');
-    strokeRoundedRect(ctx, right, 7, 'rgba(255, 255, 255, 0.08)');
+    fillRoundedRect(ctx, left, 7, PANEL_FILL);
+    strokeRoundedRect(ctx, left, 7, PANEL_STROKE);
+    fillRoundedRect(ctx, right, 7, PANEL_FILL);
+    strokeRoundedRect(ctx, right, 7, PANEL_STROKE);
     drawSplitLine(ctx, left.x + left.w + gap / 2, left.y, left.h);
 
     const dbX = (db: number) => left.x + dbToUnit(db) * left.w;
@@ -516,7 +539,7 @@ export function DynamicsCompressorVisualizer({ state, getDynamicsAnalyser, getDy
     const markerOutputDb = clamp(hasLiveSignal ? currentOutput : currentInput - currentReduction, -60, 0);
     const markerX = dbX(markerInputDb);
     const markerY = dbY(markerOutputDb);
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = HOT_TEXT;
     ctx.beginPath();
     ctx.arc(markerX, markerY, 3.5, 0, Math.PI * 2);
     ctx.fill();
@@ -673,10 +696,10 @@ export function DynamicsSaturationVisualizer({ state, getDynamicsAnalyser, getDy
     const curve: Rect = { x: pad, y: pad, w: split - pad * 1.5, h: height - pad * 2 };
     const harmonic: Rect = { x: split + 8, y: curve.y, w: width - split - pad - 8, h: curve.h };
 
-    fillRoundedRect(ctx, curve, 7, 'rgba(255, 255, 255, 0.025)');
-    strokeRoundedRect(ctx, curve, 7, 'rgba(255, 255, 255, 0.08)');
-    fillRoundedRect(ctx, harmonic, 7, 'rgba(255, 255, 255, 0.025)');
-    strokeRoundedRect(ctx, harmonic, 7, 'rgba(255, 255, 255, 0.08)');
+    fillRoundedRect(ctx, curve, 7, PANEL_FILL);
+    strokeRoundedRect(ctx, curve, 7, PANEL_STROKE);
+    fillRoundedRect(ctx, harmonic, 7, PANEL_FILL);
+    strokeRoundedRect(ctx, harmonic, 7, PANEL_STROKE);
     drawSplitLine(ctx, split, curve.y, curve.h);
 
     const curveX = (value: number) => curve.x + ((value + 1) / 2) * curve.w;
@@ -759,7 +782,7 @@ export function DynamicsSaturationVisualizer({ state, getDynamicsAnalyser, getDy
     });
 
     const meter: Rect = { x: harmonic.x + 12, y: harmonic.y + 10, w: harmonic.w - 24, h: 6 };
-    fillRoundedRect(ctx, meter, 3, 'rgba(255, 255, 255, 0.08)');
+    fillRoundedRect(ctx, meter, 3, 'rgba(232, 220, 196, 0.065)');
     const centerX = meter.x + meter.w / 2;
     const offset = clamp(asymmetry * 0.5 + Math.abs(bias - 0.5) * 0.9, 0, 0.48) * meter.w;
     fillRoundedRect(ctx, { x: centerX - offset, y: meter.y, w: offset * 2, h: meter.h }, 3, 'rgba(251, 191, 36, 0.62)');
@@ -807,8 +830,8 @@ export function DynamicsDegradeVisualizer({ state, getDynamicsAnalyser, getDynam
     drawValue(ctx, 'DAMAGE MAP', mapRect.x, pad + 8, PURPLE);
     drawBadge(ctx, degradeQualityLabel(quality), mapRect.x + mapRect.w, pad + 1, PURPLE, 'right');
 
-    fillRoundedRect(ctx, mapRect, 7, 'rgba(255, 255, 255, 0.025)');
-    strokeRoundedRect(ctx, mapRect, 7, 'rgba(255, 255, 255, 0.08)');
+    fillRoundedRect(ctx, mapRect, 7, PANEL_FILL);
+    strokeRoundedRect(ctx, mapRect, 7, PANEL_STROKE);
 
     const lpLoss = 1 - logNorm(targets.lowpassHz, 450, 16000);
     const hpLift = logNorm(targets.highpassHz, 20, 1600);
@@ -961,10 +984,10 @@ export function DynamicsCharacterVisualizer({ state, getDynamicsAnalyser, getDyn
     const motion: Rect = { x: pad, y: pad, w: split - pad - gap / 2, h: height - pad * 2 };
     const filt: Rect = { x: split + gap / 2, y: pad, w: width - split - pad - gap / 2, h: height - pad * 2 };
 
-    fillRoundedRect(ctx, motion, 7, 'rgba(255, 255, 255, 0.025)');
-    strokeRoundedRect(ctx, motion, 7, 'rgba(255, 255, 255, 0.08)');
-    fillRoundedRect(ctx, filt, 7, 'rgba(255, 255, 255, 0.025)');
-    strokeRoundedRect(ctx, filt, 7, 'rgba(255, 255, 255, 0.08)');
+    fillRoundedRect(ctx, motion, 7, PANEL_FILL);
+    strokeRoundedRect(ctx, motion, 7, PANEL_STROKE);
+    fillRoundedRect(ctx, filt, 7, PANEL_FILL);
+    strokeRoundedRect(ctx, filt, 7, PANEL_STROKE);
     drawSplitLine(ctx, split, motion.y, motion.h);
 
     const envFollow = clamp01(state.characterEnvFollow ?? 0);
@@ -1220,7 +1243,7 @@ export function DynamicsCharacterVisualizer({ state, getDynamicsAnalyser, getDyn
     // live dot at the envelope-opened LP cutoff
     const dotX = freqToX(hasOpening ? envLpHz : lpHz);
     const dotY = dbToFiltY(0);
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = HOT_TEXT;
     ctx.beginPath();
     ctx.arc(dotX, dotY, 3.2, 0, Math.PI * 2);
     ctx.fill();
@@ -1298,10 +1321,10 @@ export function DynamicsSidechainVisualizer({ state, onParamChange, getDynamicsT
     const transfer: Rect = { x: detector.x + 8, y: detector.y + 9, w: detector.w - 16, h: detector.h * 0.56 };
     const envelope: Rect = { x: detector.x + 8, y: transfer.y + transfer.h + 13, w: detector.w - 16, h: detector.y + detector.h - (transfer.y + transfer.h + 20) };
 
-    fillRoundedRect(ctx, timeline, 7, 'rgba(255, 255, 255, 0.025)');
-    strokeRoundedRect(ctx, timeline, 7, 'rgba(255, 255, 255, 0.08)');
-    fillRoundedRect(ctx, detector, 7, 'rgba(255, 255, 255, 0.025)');
-    strokeRoundedRect(ctx, detector, 7, 'rgba(255, 255, 255, 0.08)');
+    fillRoundedRect(ctx, timeline, 7, PANEL_FILL);
+    strokeRoundedRect(ctx, timeline, 7, PANEL_STROKE);
+    fillRoundedRect(ctx, detector, 7, PANEL_FILL);
+    strokeRoundedRect(ctx, detector, 7, PANEL_STROKE);
     drawSplitLine(ctx, split, timeline.y, timeline.h);
 
     const liveTelemetry = getLiveTelemetry(getDynamicsTelemetry);
@@ -1377,7 +1400,7 @@ export function DynamicsSidechainVisualizer({ state, onParamChange, getDynamicsT
     ctx.lineWidth = 2;
     ctx.stroke();
     const thresholdX = transfer.x + dbToUnit(state.sidechainThreshold ?? -24) * transfer.w;
-    ctx.strokeStyle = activeHandleRef.current === 'threshold' ? '#fff' : 'rgba(103, 232, 249, 0.72)';
+    ctx.strokeStyle = activeHandleRef.current === 'threshold' ? HOT_TEXT : 'rgba(184, 224, 255, 0.62)';
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(thresholdX, transfer.y + 2);
@@ -1406,7 +1429,7 @@ export function DynamicsSidechainVisualizer({ state, onParamChange, getDynamicsT
       fillRoundedRect(ctx, trackRect, 2, 'rgba(255, 255, 255, 0.12)');
       fillRoundedRect(ctx, { ...trackRect, w: trackRect.w * track.value }, 2, `${track.color}90`);
       const handleX = trackRect.x + track.value * trackRect.w;
-      ctx.fillStyle = activeHandleRef.current === track.id ? '#fff' : track.color;
+      ctx.fillStyle = activeHandleRef.current === track.id ? HOT_TEXT : track.color;
       ctx.beginPath();
       ctx.arc(handleX, y, 4.2, 0, Math.PI * 2);
       ctx.fill();

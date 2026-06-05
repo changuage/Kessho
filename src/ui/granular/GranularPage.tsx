@@ -751,7 +751,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
                 <div className="granular-preset-description">
                   {scenePresetDescription || (scenePresetName ? 'No description saved for this preset.' : 'Load a granular scene preset to view its description.')}
                 </div>
-                <div className="granular-preset-description" style={{ marginTop: 8, fontSize: '0.72rem', opacity: 0.85 }}>
+                <div className="granular-preset-description granular-preset-description--hint">
                   This control stores the full granular scene: all four voices, kit macros, and source-level controls.
                 </div>
               </div>
@@ -827,7 +827,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
                   />
                 </>
               ) : (
-                <div className="granular-buffer-readouts" style={{ gap: 12 }}>
+                <div className="granular-buffer-readouts granular-buffer-readouts--empty">
                   <div className="granular-buffer-readout" style={{ '--voice-color': '#6b7280' } as React.CSSProperties}>
                     Mobile default keeps the live buffer canvas off to save CPU and battery.
                   </div>
@@ -1015,7 +1015,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
                   {...sliderProps('granularPitchMacro' as keyof SliderState)}
                 />
               </div>
-              <div className="granular-section-label" style={{ marginTop: 10 }}>Harmony</div>
+              <div className="granular-section-label granular-section-label--spaced">Harmony</div>
               <div className="granular-grid-2">
                 <Slider
                   label="Chord Bias"
@@ -1087,7 +1087,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
                 {...sliderWithGhost('granularOutputLPF' as keyof SliderState)}
               />
             </div>
-            <div className="granular-space-prototype-note" style={{ marginBottom: 10 }}>
+            <div className="granular-space-prototype-note granular-note--spaced">
               Diffuse mode and the clocked multitap both shape this output path. The Smear macro itself now lives in Modes & Macros at the top.
             </div>
 
@@ -1273,7 +1273,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
                       <>
                       {mode === 'clean' && (
                         <>
-                          <div className="granular-mode-row" style={{ marginBottom: 6 }}>
+                          <div className="granular-mode-row granular-mode-row--compact">
                             <button
                               className={`granular-mode-btn${speed === 0 ? ' active' : ''}`}
                               onClick={() => setCleanMotionMode('scan')}
@@ -1289,7 +1289,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
                               Linear
                             </button>
                           </div>
-                          <div className="granular-space-prototype-note" style={{ marginBottom: 6 }}>
+                          <div className="granular-space-prototype-note granular-note--compact">
                             Slice picks the voice&apos;s home region. In Scan, the Position LFO moves the read head. Rate Ratio sets the harmonic playback speed for that voice.
                           </div>
                         </>
@@ -1303,23 +1303,14 @@ const GranularPage: React.FC<GranularPageProps> = ({
                           {...sliderProps(keys.slice)}
                         />
                         {mode === 'clean' && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <label style={{ fontSize: '0.62rem', color: '#bdbdbd', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                          <div className="granular-select-field">
+                            <label>
                               Rate Ratio
                             </label>
                             <select
                               value={String(cleanRateValue)}
                               onChange={(e) => setCleanRate(Number(e.target.value))}
                               {...bindHelp('granularVoiceCleanRateRatio')}
-                              style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                borderRadius: '8px',
-                                border: '1px solid rgba(255,255,255,0.18)',
-                                background: 'rgba(0,0,0,0.28)',
-                                color: '#e8e8e8',
-                                fontSize: '0.72rem',
-                              }}
                             >
                               {CLEAN_RATE_OPTIONS.map(option => (
                                 <option key={option.value} value={option.value}>
@@ -1349,7 +1340,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
                             {...sliderWithGhost(keys.pitch)}
                           />
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div className="granular-reverse-cell">
                           <button
                             className={`granular-reverse-btn${baseReverse ? ' active' : ''}`}
                             onClick={() => onSelectChange(keys.reverse, !baseReverse)}
@@ -1372,7 +1363,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
                           </div>
                           {!expandedPanels.has('granularGrainCollapsed') && (
                           <>
-                          <div className="granular-mode-row" style={{ marginBottom: 6 }}>
+                          <div className="granular-mode-row granular-mode-row--compact">
                             <button
                               className={`granular-mode-btn${!tempoSync ? ' active' : ''}`}
                               onClick={() => onSelectChange(keys.tempoSync, false)}
@@ -1388,27 +1379,18 @@ const GranularPage: React.FC<GranularPageProps> = ({
                               Tempo
                             </button>
                           </div>
-                          <div className="granular-space-prototype-note" style={{ marginBottom: 6 }}>
+                          <div className="granular-space-prototype-note granular-note--compact">
                             Tempo sync uses the granular BPM and fires grain pulses on a note grid without needing the Euclidean sequencer.
                           </div>
                           {tempoSync && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
-                              <label style={{ fontSize: '0.62rem', color: '#bdbdbd', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                            <div className="granular-select-field granular-select-field--spaced">
+                              <label>
                                 Clock
                               </label>
                               <select
                                 value={tempoDiv}
                                 onChange={(e) => onSelectChange(keys.tempoDiv, e.target.value as SliderState[keyof SliderState])}
                                 {...bindHelp('granularVoiceTempoClock')}
-                                style={{
-                                  width: '100%',
-                                  padding: '6px 8px',
-                                  borderRadius: '8px',
-                                  border: '1px solid rgba(255,255,255,0.18)',
-                                  background: 'rgba(0,0,0,0.28)',
-                                  color: '#e8e8e8',
-                                  fontSize: '0.72rem',
-                                }}
                               >
                                 {GRAIN_CLOCK_OPTIONS.map(option => (
                                   <option key={option.value} value={option.value}>
@@ -1433,11 +1415,10 @@ const GranularPage: React.FC<GranularPageProps> = ({
                             <Slider label="Bloom" value={state[keys.bloom] as number} paramKey={keys.bloom} onChange={onParamChange} {...sliderWithGhost(keys.bloom)} />
                             <Slider label="Glide" value={state[keys.glide] as number} paramKey={keys.glide} onChange={onParamChange} {...sliderProps(keys.glide)} />
                           </div>
-                          <div className="granular-grid-3" style={{ marginTop: 8 }}>
+                          <div className="granular-grid-3 granular-select-grid">
                             <select
                               value={String(state[keys.pitchMode] ?? 'fixed')}
                               onChange={(e) => onSelectChange(keys.pitchMode, e.target.value as SliderState[keyof SliderState])}
-                              style={{ width: '100%', padding: '6px 8px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(0,0,0,0.28)', color: '#e8e8e8', fontSize: '0.72rem' }}
                             >
                               <option value="fixed">Pitch Fixed</option>
                               <option value="octaves">Octaves</option>
@@ -1449,7 +1430,6 @@ const GranularPage: React.FC<GranularPageProps> = ({
                             <select
                               value={String(state[keys.cloudStyle] ?? 'classic')}
                               onChange={(e) => onSelectChange(keys.cloudStyle, e.target.value as SliderState[keyof SliderState])}
-                              style={{ width: '100%', padding: '6px 8px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(0,0,0,0.28)', color: '#e8e8e8', fontSize: '0.72rem' }}
                             >
                               <option value="classic">Classic</option>
                               <option value="mosaic">Mosaic</option>
@@ -1461,7 +1441,6 @@ const GranularPage: React.FC<GranularPageProps> = ({
                             <select
                               value={String(state[keys.anchorPattern] ?? 'forward')}
                               onChange={(e) => onSelectChange(keys.anchorPattern, e.target.value as SliderState[keyof SliderState])}
-                              style={{ width: '100%', padding: '6px 8px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(0,0,0,0.28)', color: '#e8e8e8', fontSize: '0.72rem' }}
                             >
                               <option value="forward">Forward Anchors</option>
                               <option value="reverse">Reverse Anchors</option>

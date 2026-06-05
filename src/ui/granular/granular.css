@@ -1680,6 +1680,258 @@
   font-size: 0.6rem; font-weight: 700; margin-left: 4px;
 }
 
+/* Delay-aligned surface and control pass. */
+#root .granular-root .granular-global-bar,
+#root .granular-root .granular-section-card,
+#root .granular-root .granular-voice-card,
+#root .granular-root .granular-delay-section {
+  background: var(--k-bg-card);
+  border: 1px solid color-mix(in srgb, var(--engine-accent, var(--page-accent)) 24%, rgba(255,255,255,0.08));
+  border-radius: var(--radius-md);
+  box-shadow: var(--k-shadow-glass);
+}
+
+#root .granular-root .granular-global-bar {
+  box-shadow: none;
+}
+
+.granular-root .granular-section-head,
+.granular-root .section-header,
+.granular-root .granular-voice-header {
+  padding: 9px 12px 8px;
+  background: transparent;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.granular-root .section-header {
+  border-radius: 0;
+}
+
+.granular-root .granular-section-head {
+  align-items: center;
+}
+
+.granular-root .granular-section-title,
+.granular-root .granular-voice-name,
+.granular-root .section-header {
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.granular-root .granular-section-note {
+  color: var(--text-dim);
+  font-size: var(--font-xs);
+  letter-spacing: 0.02em;
+}
+
+.granular-root .granular-preset-body,
+.granular-root .granular-macro-card .section-body,
+.granular-root .granular-routing-card .section-body,
+.granular-root .granular-sequencer-card .section-body,
+.granular-root .granular-sequencer-body,
+.granular-root .granular-voice-body {
+  padding: 10px 12px 12px;
+  gap: 10px;
+}
+
+.granular-root .granular-global-sliders {
+  padding: 10px 12px 12px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.granular-root .granular-input-sources-grid {
+  padding-top: 2px;
+}
+
+.granular-root .granular-preset-meta,
+.granular-root .granular-space-prototype-note,
+.granular-root .granular-macro-note {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(0,0,0,0.12);
+}
+
+.granular-root .granular-preset-description--hint {
+  margin-top: 8px;
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
+.granular-root .granular-buffer-card .granular-top-mode-row {
+  padding: 0 12px 10px;
+}
+
+.granular-root .granular-chip-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.granular-root .granular-chip-label {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+#root .granular-root .granular-enable-btn,
+#root .granular-root .granular-freeze-btn,
+#root .granular-root .granular-chip-btn,
+#root .granular-root .granular-voice-enable-btn,
+#root .granular-root .granular-voice-expand-btn,
+#root .granular-root .granular-mode-btn,
+#root .granular-root .granular-reverse-btn,
+#root .granular-root .delay-toggle-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: auto;
+  min-width: 0;
+  height: auto;
+  min-height: 26px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-control);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-sm);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+#root .granular-root .granular-enable-btn,
+#root .granular-root .granular-freeze-btn,
+#root .granular-root .granular-voice-enable-btn,
+#root .granular-root .delay-toggle-btn {
+  min-width: 52px;
+  font-size: var(--font-xs);
+  letter-spacing: 0.06em;
+}
+
+#root .granular-root .granular-voice-expand-btn {
+  min-width: 28px;
+  padding-inline: 7px;
+}
+
+#root .granular-root .granular-enable-btn::before,
+#root .granular-root .granular-voice-enable-btn::before {
+  content: none;
+}
+
+#root .granular-root .granular-enable-btn:hover,
+#root .granular-root .granular-freeze-btn:hover,
+#root .granular-root .granular-chip-btn:hover,
+#root .granular-root .granular-voice-enable-btn:hover,
+#root .granular-root .granular-voice-expand-btn:hover,
+#root .granular-root .granular-mode-btn:hover,
+#root .granular-root .granular-reverse-btn:hover,
+#root .granular-root .delay-toggle-btn:hover {
+  border-color: var(--border-subtle);
+  background: var(--bg-control-hover);
+  color: var(--text-primary);
+}
+
+#root .granular-root .granular-enable-btn.on,
+#root .granular-root .granular-freeze-btn.frozen,
+#root .granular-root .granular-chip-btn.active,
+#root .granular-root .granular-voice-enable-btn.on,
+#root .granular-root .granular-voice-expand-btn.active,
+#root .granular-root .granular-mode-btn.active,
+#root .granular-root .granular-reverse-btn.active,
+#root .granular-root .delay-toggle-btn.on {
+  border-color: color-mix(in srgb, var(--engine-accent, var(--page-accent)) 38%, rgba(255,255,255,0.08));
+  background: color-mix(in srgb, var(--engine-accent, var(--page-accent)) 15%, transparent);
+  color: var(--text-primary);
+  box-shadow: none;
+  animation: none;
+}
+
+.granular-root .granular-mode-row {
+  gap: 6px;
+}
+
+.granular-root .granular-mode-row--compact,
+.granular-root .granular-note--compact {
+  margin-bottom: 6px;
+}
+
+.granular-root .granular-note--spaced {
+  margin-bottom: 10px;
+}
+
+.granular-root .granular-section-label--spaced {
+  margin-top: 10px;
+}
+
+.granular-root .granular-buffer-readouts--empty {
+  gap: 12px;
+}
+
+.granular-root .granular-select-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.granular-root .granular-select-field--spaced {
+  margin-bottom: 8px;
+}
+
+.granular-root .granular-select-field label {
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+
+.granular-root .granular-select-grid {
+  margin-top: 8px;
+}
+
+.granular-root .granular-select-field select,
+.granular-root .granular-select-grid select,
+.granular-root .granular-preset-select,
+.granular-root .delay-note-col select {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-sm);
+}
+
+.granular-root .granular-select-field select:focus,
+.granular-root .granular-select-grid select:focus,
+.granular-root .granular-preset-select:focus,
+.granular-root .delay-note-col select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--page-accent) 42%, rgba(255,255,255,0.12));
+}
+
+.granular-root .granular-reverse-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Final narrow-width polish for dense granular controls. */
 @media (max-width: 420px) {
   .granular-root .granular-global-bar,
