@@ -40,8 +40,24 @@ export function dynamicsCharacterModeId(value: unknown): number {
   return mappedModeId(value, { abyssWater: 1, shallowWater: 2 }, 0);
 }
 
+export function dynamicsCharacterQualityId(value: unknown): number {
+  return mappedModeId(value, { eco: 0, hq: 2 }, 1);
+}
+
+export function dynamicsDegradeQualityId(value: unknown): number {
+  return mappedModeId(value, { classic: 0, hq: 2 }, 1);
+}
+
+export function dynamicsEndCompModeId(value: unknown): number {
+  return mappedModeId(value, { clarity: 1, glue: 2, punch: 3, twoBand: 4 }, 0);
+}
+
 export function dynamicsSaturationModeId(value: unknown): number {
   return mappedModeId(value, { tape: 1, tube: 2, diode: 3, fold: 4 }, 0);
+}
+
+export function dynamicsSaturationQualityId(value: unknown): number {
+  return mappedModeId(value, { eco: 0, hq: 2 }, 1);
 }
 
 export function sidechainKeyId(value: unknown): number {

@@ -343,6 +343,9 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   fx.dynamics_enabled = snapshot.fx.dynamics_enabled != 0u;
   fx.dynamics_character_enabled = snapshot.fx.dynamics_character_enabled != 0u;
   fx.dynamics_character_mode = clampU32(snapshot.fx.dynamics_character_mode, 0u, 2u);
+  fx.dynamics_character_quality = clampU32(snapshot.fx.dynamics_character_quality, 0u, 2u);
+  fx.dynamics_character_anti_comb = clampFloat(snapshot.fx.dynamics_character_anti_comb, 0.0f, 1.0f);
+  fx.dynamics_character_diffusion = clampFloat(snapshot.fx.dynamics_character_diffusion, 0.0f, 1.0f);
   fx.dynamics_character_mix = clampFloat(snapshot.fx.dynamics_character_mix, 0.0f, 1.0f);
   fx.dynamics_character_age = clampFloat(snapshot.fx.dynamics_character_age, 0.0f, 1.0f);
   fx.dynamics_character_bias = clampFloat(snapshot.fx.dynamics_character_bias, 0.0f, 1.0f);
@@ -354,6 +357,10 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   fx.dynamics_character_rate = clampFloat(snapshot.fx.dynamics_character_rate, 0.0f, 1.0f);
   fx.dynamics_character_damp = clampFloat(snapshot.fx.dynamics_character_damp, 0.0f, 1.0f);
   fx.dynamics_degrade_enabled = snapshot.fx.dynamics_degrade_enabled != 0u;
+  fx.dynamics_degrade_quality = clampU32(snapshot.fx.dynamics_degrade_quality, 0u, 2u);
+  fx.dynamics_degrade_event_amount = clampFloat(snapshot.fx.dynamics_degrade_event_amount, 0.0f, 1.0f);
+  fx.dynamics_degrade_profile_amount = clampFloat(snapshot.fx.dynamics_degrade_profile_amount, 0.0f, 1.0f);
+  fx.dynamics_degrade_dither_amount = clampFloat(snapshot.fx.dynamics_degrade_dither_amount, 0.0f, 1.0f);
   fx.dynamics_degrade_mix = clampFloat(snapshot.fx.dynamics_degrade_mix, 0.0f, 1.0f);
   fx.dynamics_degrade_age = clampFloat(snapshot.fx.dynamics_degrade_age, 0.0f, 1.0f);
   fx.dynamics_degrade_generation = clampFloat(snapshot.fx.dynamics_degrade_generation, 0.0f, 1.0f);
@@ -400,10 +407,12 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   fx.dynamics_mod[kDynamicsModSourceNoise][kDynamicsModTargetAlias] = clampFloat(snapshot.fx.dynamics_mod_noise_alias, 0.0f, 1.0f);
   fx.dynamics_saturation_enabled = snapshot.fx.dynamics_saturation_enabled != 0u;
   fx.dynamics_saturation_mode = clampU32(snapshot.fx.dynamics_saturation_mode, 0u, 4u);
+  fx.dynamics_saturation_quality = clampU32(snapshot.fx.dynamics_saturation_quality, 0u, 2u);
   fx.dynamics_saturation_drive = clampFloat(snapshot.fx.dynamics_saturation_drive, 0.0f, 1.0f);
   fx.dynamics_saturation_tone = clampFloat(snapshot.fx.dynamics_saturation_tone, 0.0f, 1.0f);
   fx.dynamics_saturation_bias = clampFloat(snapshot.fx.dynamics_saturation_bias, 0.0f, 1.0f);
   fx.dynamics_end_comp_enabled = snapshot.fx.dynamics_end_comp_enabled != 0u;
+  fx.dynamics_end_comp_mode = clampU32(snapshot.fx.dynamics_end_comp_mode, 0u, 4u);
   fx.dynamics_end_comp_threshold = clampFloat(snapshot.fx.dynamics_end_comp_threshold, -60.0f, 0.0f);
   fx.dynamics_end_comp_knee = clampFloat(snapshot.fx.dynamics_end_comp_knee, 0.0f, 40.0f);
   fx.dynamics_end_comp_ratio = clampFloat(snapshot.fx.dynamics_end_comp_ratio, 1.0f, 20.0f);
@@ -415,6 +424,10 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   fx.dynamics_end_comp_detector_tilt = clampFloat(snapshot.fx.dynamics_end_comp_detector_tilt, 0.0f, 1.0f);
   fx.dynamics_end_comp_auto_makeup = clampFloat(snapshot.fx.dynamics_end_comp_auto_makeup, 0.0f, 1.0f);
   fx.dynamics_end_comp_program_release = clampFloat(snapshot.fx.dynamics_end_comp_program_release, 0.0f, 1.0f);
+  fx.dynamics_end_comp_peak_blend = clampFloat(snapshot.fx.dynamics_end_comp_peak_blend, 0.0f, 1.0f);
+  fx.dynamics_end_comp_clarity = clampFloat(snapshot.fx.dynamics_end_comp_clarity, 0.0f, 1.0f);
+  fx.dynamics_end_comp_two_band_amount = clampFloat(snapshot.fx.dynamics_end_comp_two_band_amount, 0.0f, 1.0f);
+  fx.dynamics_end_comp_band_split = clampFloat(snapshot.fx.dynamics_end_comp_band_split, 0.0f, 1.0f);
   fx.sidechain_enabled = snapshot.fx.sidechain_enabled != 0u;
   fx.sidechain_key_a = clampU32(snapshot.fx.sidechain_key_a, kSidechainKeyOff, kSidechainKeyMembrane);
   fx.sidechain_key_b = clampU32(snapshot.fx.sidechain_key_b, kSidechainKeyOff, kSidechainKeyMembrane);

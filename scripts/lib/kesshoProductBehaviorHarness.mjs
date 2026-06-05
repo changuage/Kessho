@@ -396,6 +396,42 @@ export function loadCoreProductHostHarness(options = {}) {
       stop() {}
     },
     createCoreProductSnapshot: () => ({ transport: { bpm: 120 } }),
+    createCoreProductDynamicsVisualTelemetry: (telemetry, contextTime) => ({
+      contextTime,
+      endCompHandledByWorklet: Boolean(telemetry),
+      endCompReductionDb: Math.max(0, telemetry?.masterLimiterGainReductionDb ?? 0),
+      worklet: telemetry ? {
+        inputPeak: Math.max(0, telemetry.masterInputPeak ?? 0),
+        outputPeak: Math.max(0, telemetry.masterOutputPeak ?? telemetry.masterTruePeak ?? 0),
+        wetPeak: Math.max(0, telemetry.masterOutputPeak ?? telemetry.masterTruePeak ?? 0),
+        characterEnv: Math.max(0, telemetry.masterOutputRms ?? 0),
+        characterReductionDb: 0,
+        dropoutGain: 1,
+        endInputPeak: Math.max(0, telemetry.masterInputPeak ?? 0),
+        endOutputPeak: Math.max(0, telemetry.masterOutputPeak ?? telemetry.masterTruePeak ?? 0),
+        endReductionDb: Math.max(0, telemetry.masterLimiterGainReductionDb ?? 0),
+        endDetectorDb: 0,
+        timestamp: contextTime,
+      } : null,
+      sidechainEvents: [],
+    }),
+    createCoreProductSonicParityDebugState: (debug) => ({
+      engineMode: debug.engineMode,
+      running: debug.running,
+      runtimeReady: debug.runtimeReady,
+      runtimeError: debug.runtimeError,
+      hasOutputNode: debug.hasOutputNode,
+      snapshot: debug.latestProductSnapshot ?? null,
+      latestTelemetry: debug.latestTelemetry,
+      runtimeWalkDebug: debug.runtimeWalkDebug,
+    }),
+    createCoreProductTransportDebugState: (telemetry, transport) => telemetry && transport ? {
+      effectiveBpm: Number.isFinite(transport.bpm) && transport.bpm > 0 ? transport.bpm : 120,
+      effectivePhraseSeconds: 0,
+      nextPhraseBoundaryIn: 0,
+      nextHarmonyEventIn: null,
+      nextProgressionStepIn: null,
+    } : null,
     encodeCoreProductSnapshot: () => new ArrayBuffer(8),
     usesLegacyGranularRuntimeSeed: () => false,
     loadProductLead4opFMPreset: async () => ({}),
@@ -1016,6 +1052,14 @@ Object.assign(globalThis, {
   CoreProductHostDiagnostics,
 });`, context, { filename: hostDiagnosticsPath });
 
+  const hostDebugSurfacePath = 'src/audio/product/host/CoreProductHostDebugSurface.ts';
+  const hostDebugSurfaceSource = stripImportsAndExports(readProjectFile(hostDebugSurfacePath));
+  const hostDebugSurfaceJs = transpileForVm(hostDebugSurfaceSource, resolve(root, hostDebugSurfacePath));
+  vm.runInNewContext(`${hostDebugSurfaceJs}
+Object.assign(globalThis, {
+  CoreProductHostDebugSurface,
+});`, context, { filename: hostDebugSurfacePath });
+
   const arrangementBridgePath = 'src/audio/product/host/CoreProductArrangementBridge.ts';
   const arrangementBridgeSource = stripImportsAndExports(readProjectFile(arrangementBridgePath));
   const arrangementBridgeJs = transpileForVm(arrangementBridgeSource, resolve(root, arrangementBridgePath));
@@ -1071,6 +1115,14 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   snapshotReloadReasonForProductPatch,
 });`, context, { filename: patchClassifierPath });
+
+  const resolvedStateCommitServicePath = 'src/audio/product/host/CoreProductResolvedStateCommitService.ts';
+  const resolvedStateCommitServiceSource = stripImportsAndExports(readProjectFile(resolvedStateCommitServicePath));
+  const resolvedStateCommitServiceJs = transpileForVm(resolvedStateCommitServiceSource, resolve(root, resolvedStateCommitServicePath));
+  vm.runInNewContext(`${resolvedStateCommitServiceJs}
+Object.assign(globalThis, {
+  CoreProductResolvedStateCommitService,
+});`, context, { filename: resolvedStateCommitServicePath });
 
   const leadPresetDataLoaderPath = 'src/audio/product/host/CoreProductLeadPresetDataLoader.ts';
   const leadPresetDataLoaderSource = stripImportsAndExports(readProjectFile(leadPresetDataLoaderPath));

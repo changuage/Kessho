@@ -6,6 +6,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useVisibleInterval } from './hooks/useVisibleInterval';
 import { useDocumentVisibility } from './hooks/useDocumentVisibility';
+import { PRODUCT_CPU_OVERLAY_REFRESH_MS } from './productRuntimeTelemetryRateLimits';
 
 type PerfMetrics = {
   avgPercent: number;
@@ -121,7 +122,7 @@ export const CpuOverlay: React.FC<CpuOverlayProps> = ({
       if (!(key in out) && metrics) out[key] = metrics;
     }
     setDisplayPerfData(out);
-  }, 2000, {
+  }, PRODUCT_CPU_OVERLAY_REFRESH_MS, {
     enabled: visible,
   });
 

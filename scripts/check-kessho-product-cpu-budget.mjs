@@ -1,7 +1,13 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { resolve, relative } from 'node:path';
+import { resolve } from 'node:path';
+import {
+  collectReportMetadata,
+  toRelativePath,
+  writeJsonReport,
+  writeMarkdownReport,
+} from './product-core/lib/reporting.mjs';
 
 const root = process.cwd();
 const reportDir = resolve(root, 'docs/reports');
@@ -38,11 +44,6 @@ function commandText(command) {
       ? part
       : `'${String(part).replace(/'/g, `'\\''`)}'`;
   }).join(' ');
-}
-
-function toRelative(path) {
-  const rel = relative(root, path);
-  return rel.startsWith('..') ? path : rel;
 }
 
 function tail(value, limit = 12000) {
@@ -272,6 +273,10 @@ function markdownReport(report) {
     '',
     `Generated: ${report.generatedAt}`,
     '',
+    `Commit: ${report.metadata.gitCommit ?? 'unknown'}`,
+    '',
+    `Platform: ${report.metadata.machine.platform}/${report.metadata.machine.arch}; CPU: ${report.metadata.machine.cpuModel ?? 'unknown'} x${report.metadata.machine.cpuCount}`,
+    '',
     `Run command: \`${report.runner.command}\``,
     '',
     `Overall status: **${report.status.toUpperCase()}**`,
@@ -361,22 +366,36 @@ async function main() {
   const heapFailures = heapReport.failures.map((failure) => `heap: ${failure}`);
   const failures = [...cpuFailures, ...heapFailures];
   const finishedAt = new Date();
+  const durationMs = finishedAt.getTime() - startedAt.getTime();
+  const generatedAt = finishedAt.toISOString();
+  const checkCommand = commandText([process.execPath, 'scripts/check-kessho-product-cpu-budget.mjs']);
   const report = {
     schemaVersion: 1,
-    generatedAt: finishedAt.toISOString(),
+    generatedAt,
     status: failures.length === 0 ? 'pass' : 'fail',
+    metadata: collectReportMetadata({
+      root,
+      generatedAt,
+      command: checkCommand,
+      scenarioName: 'ProductCpuBudgetTests',
+      sampleRate,
+      blockSize: renderQuantumFrames,
+      durationMs,
+      thresholds: cpuBudgets,
+      topSuspectedModules: ['sources', 'sequencer', 'granular', 'reverb', 'delay', 'dynamics'],
+    }),
     runner: {
       cwd: root,
-      command: commandText([process.execPath, 'scripts/check-kessho-product-cpu-budget.mjs']),
+      command: checkCommand,
       cxxCommand: commandText(command),
       startedAt: startedAt.toISOString(),
-      finishedAt: finishedAt.toISOString(),
-      durationMs: finishedAt.getTime() - startedAt.getTime(),
+      finishedAt: generatedAt,
+      durationMs,
       exitCode: result.status,
       signal: result.signal,
       reportPaths: {
-        json: toRelative(jsonReportPath),
-        markdown: toRelative(markdownReportPath),
+        json: toRelativePath(root, jsonReportPath),
+        markdown: toRelativePath(root, markdownReportPath),
       },
     },
     cpu: {
@@ -393,11 +412,10 @@ async function main() {
     failures,
   };
 
-  mkdirSync(reportDir, { recursive: true });
-  writeFileSync(jsonReportPath, `${JSON.stringify(report, null, 2)}\n`);
-  writeFileSync(markdownReportPath, markdownReport(report));
+  writeJsonReport(jsonReportPath, report);
+  writeMarkdownReport(markdownReportPath, markdownReport(report));
 
-  console.log(`Kessho Product CPU/heap report: ${report.status.toUpperCase()} (${toRelative(markdownReportPath)}, ${toRelative(jsonReportPath)})`);
+  console.log(`Kessho Product CPU/heap report: ${report.status.toUpperCase()} (${toRelativePath(root, markdownReportPath)}, ${toRelativePath(root, jsonReportPath)})`);
   if (report.status === 'fail') {
     for (const failure of failures) console.error(`  ${failure}`);
     process.exitCode = 1;

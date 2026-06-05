@@ -1,5 +1,6 @@
 #include "kessho_dynamics_character.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <new>
@@ -12,6 +13,9 @@ namespace {
 
 constexpr int kDelayMaxSamples = 24576;
 constexpr float kMinFreq = 8.0f;
+constexpr float kCharacterFullWetMinDelayS = 0.0030f;
+constexpr float kCharacterMixedMinDelayS = 0.0105f;
+constexpr float kCharacterMaxDelayS = 0.075f;
 
 enum ParamIndex {
     P_ACTIVE = 0,
@@ -96,6 +100,23 @@ enum ParamIndex {
     P_END_COMP_DETECTOR_TILT,
     P_END_COMP_AUTO_MAKEUP,
     P_END_COMP_PROGRAM_RELEASE,
+    P_CHARACTER_QUALITY,
+    P_CHARACTER_ANTI_COMB,
+    P_CHARACTER_DIFFUSION,
+    P_DEGRADE_UI_MIX,
+    P_DEGRADE_COLOR_INFLUENCE,
+    P_DEGRADE_MOTION_INFLUENCE,
+    P_DEGRADE_FAILURE_INFLUENCE,
+    P_DEGRADE_QUALITY,
+    P_DEGRADE_EVENT_AMOUNT,
+    P_DEGRADE_PROFILE_AMOUNT,
+    P_DEGRADE_DITHER_AMOUNT,
+    P_END_COMP_MODE,
+    P_END_COMP_PEAK_BLEND,
+    P_END_COMP_CLARITY,
+    P_END_COMP_TWO_BAND_AMOUNT,
+    P_END_COMP_BAND_SPLIT_HZ,
+    P_MASTER_SAT_QUALITY,
 };
 
 enum TelemetryIndex {
@@ -109,6 +130,18 @@ enum TelemetryIndex {
     T_END_OUTPUT_PEAK,
     T_END_GR_DB,
     T_END_DETECTOR_DB,
+    T_CHARACTER_COMB_RISK,
+    T_CHARACTER_MIN_DELAY_MS,
+    T_CHARACTER_DIFFUSION,
+    T_DEGRADE_EVENT_ENV,
+    T_DEGRADE_EVENT_GAIN_DB,
+    T_DEGRADE_PROFILE_AMOUNT,
+    T_END_LOW_GR_DB,
+    T_END_HIGH_GR_DB,
+    T_END_CLARITY_BOOST_DB,
+    T_END_BAND_SPLIT_HZ,
+    T_END_COMP_MODE,
+    T_MASTER_SAT_OVERSAMPLING_FACTOR,
 };
 
 inline float clampf(float value, float lo, float hi) {
@@ -230,9 +263,20 @@ struct DynamicsCharacterState {
     float compressor_gain = 1.0f;
     float master_sat_prev_l = 0.0f;
     float master_sat_prev_r = 0.0f;
+    float master_sat_os_lp_l = 0.0f;
+    float master_sat_os_lp_r = 0.0f;
     float end_comp_gain = 1.0f;
+    float end_rms = 0.0f;
+    float end_hp_rms = 0.0f;
     Biquad end_detector_hp_l, end_detector_hp_r;
     float end_detector_hp_cache = -1.0f;
+    Biquad clarity_hp_l, clarity_hp_r;
+    float clarity_gain = 1.0f;
+    float clarity_hp_cache = -1.0f;
+    float two_band_low_l = 0.0f;
+    float two_band_low_r = 0.0f;
+    float two_band_low_gain = 1.0f;
+    float two_band_high_gain = 1.0f;
     float noise_lp_l = 0.0f;
     float noise_lp_r = 0.0f;
     float drift_noise = 0.0f;
@@ -254,6 +298,14 @@ struct DynamicsCharacterState {
     float degrade_held[2] = {0.0f, 0.0f};
     float degrade_phase[2] = {1.0f, 1.0f};
     float degrade_lp[2] = {0.0f, 0.0f};
+    float media_event_env = 0.0f;
+    float media_event_target = 0.0f;
+    float media_event_lp_l = 0.0f;
+    float media_event_lp_r = 0.0f;
+    float media_event_gain_db = 0.0f;
+    int media_event_samples_left = 0;
+    Biquad media_body_l, media_body_r;
+    Biquad media_notch_l, media_notch_r;
 };
 
 DynamicsCharacterState g_default;
@@ -287,6 +339,10 @@ void init_dynamics_character_state(DynamicsCharacterState& state, float sample_r
     state.compressor_gain = 1.0f;
     state.end_comp_gain = 1.0f;
     state.end_detector_hp_cache = -1.0f;
+    state.clarity_gain = 1.0f;
+    state.clarity_hp_cache = -1.0f;
+    state.two_band_low_gain = 1.0f;
+    state.two_band_high_gain = 1.0f;
     state.rng = 0x9e3779b9u ^ static_cast<unsigned int>(state.sample_rate);
 }
 
@@ -309,6 +365,28 @@ float read_delay(const float* delay, float delay_samples) {
     const int i1 = (i0 + 1) % g.delay_size;
     const float frac = read - static_cast<float>(i0);
     return delay[i0] + (delay[i1] - delay[i0]) * frac;
+}
+
+float read_delay_cubic(const float* delay, float delay_samples) {
+    float read = static_cast<float>(g.write_pos) - delay_samples;
+    while (read < 0.0f) read += static_cast<float>(g.delay_size);
+    while (read >= static_cast<float>(g.delay_size)) read -= static_cast<float>(g.delay_size);
+
+    const int i1 = static_cast<int>(read);
+    const float t = read - static_cast<float>(i1);
+    const int i0 = (i1 - 1 + g.delay_size) % g.delay_size;
+    const int i2 = (i1 + 1) % g.delay_size;
+    const int i3 = (i1 + 2) % g.delay_size;
+
+    const float y0 = delay[i0];
+    const float y1 = delay[i1];
+    const float y2 = delay[i2];
+    const float y3 = delay[i3];
+    const float c0 = y1;
+    const float c1 = 0.5f * (y2 - y0);
+    const float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+    const float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+    return ((c3 * t + c2) * t + c1) * t + c0;
 }
 
 void pan_mono(float x, float pan, float& l, float& r) {
@@ -395,7 +473,14 @@ void process_master_saturation(float& l, float& r, const float* p) {
     const int mode = static_cast<int>(clampf(std::round(p[P_MASTER_SAT_MODE]), 0.0f, 4.0f));
     const float tone = clamp01(p[P_MASTER_SAT_TONE]);
     const float bias = clamp01(p[P_MASTER_SAT_BIAS]);
-    const int factor = drive > 0.66f ? 4 : drive > 0.18f ? 2 : 1;
+    const float sat_quality = clampf(p[P_MASTER_SAT_QUALITY], 0.0f, 2.0f);
+    const bool smooth_aa = sat_quality >= 1.0f;
+    const bool hq_aa = sat_quality >= 2.0f;
+    const int factor = drive > 0.66f ? 4 : drive > (hq_aa ? 0.12f : 0.18f) ? 2 : 1;
+    g.telemetry[T_MASTER_SAT_OVERSAMPLING_FACTOR] = std::fmax(
+        g.telemetry[T_MASTER_SAT_OVERSAMPLING_FACTOR],
+        static_cast<float>(factor)
+    );
     const float in_l = l;
     const float in_r = r;
 
@@ -409,8 +494,22 @@ void process_master_saturation(float& l, float& r, const float* p) {
             const float frac = static_cast<float>(step) / static_cast<float>(factor);
             const float os_l = g.master_sat_prev_l + (in_l - g.master_sat_prev_l) * frac;
             const float os_r = g.master_sat_prev_r + (in_r - g.master_sat_prev_r) * frac;
-            sum_l += process_master_saturation_sample(os_l, mode, drive, tone, bias);
-            sum_r += process_master_saturation_sample(os_r, mode, drive, tone, bias);
+            const float shaped_l = process_master_saturation_sample(os_l, mode, drive, tone, bias);
+            const float shaped_r = process_master_saturation_sample(os_r, mode, drive, tone, bias);
+            if (smooth_aa) {
+                const float os_alpha =
+                    1.0f - std::exp(
+                        -2.0f * static_cast<float>(M_PI) *
+                        (g.sample_rate * 0.42f / static_cast<float>(factor)) /
+                        (g.sample_rate * static_cast<float>(factor)));
+                g.master_sat_os_lp_l += (shaped_l - g.master_sat_os_lp_l) * os_alpha;
+                g.master_sat_os_lp_r += (shaped_r - g.master_sat_os_lp_r) * os_alpha;
+                sum_l += g.master_sat_os_lp_l;
+                sum_r += g.master_sat_os_lp_r;
+            } else {
+                sum_l += shaped_l;
+                sum_r += shaped_r;
+            }
         }
         l = sum_l / static_cast<float>(factor);
         r = sum_r / static_cast<float>(factor);
@@ -447,11 +546,20 @@ void process_end_chain(float& l, float& r, const float* p, float attack_coeff) {
     update_end_detector_filter(p);
     const float dry_l = l;
     const float dry_r = r;
-    const float raw_level = std::fmax(std::fabs(l), std::fabs(r));
-    g.telemetry[T_END_INPUT_PEAK] = std::fmax(g.telemetry[T_END_INPUT_PEAK], raw_level);
+    const float raw_peak = std::fmax(std::fabs(l), std::fabs(r));
+    g.telemetry[T_END_INPUT_PEAK] = std::fmax(g.telemetry[T_END_INPUT_PEAK], raw_peak);
     const float hp_l = g.end_detector_hp_l.process(l);
     const float hp_r = g.end_detector_hp_r.process(r);
-    const float hp_level = std::fmax(std::fabs(hp_l), std::fabs(hp_r));
+    const float hp_peak = std::fmax(std::fabs(hp_l), std::fabs(hp_r));
+
+    const float rms_coeff = smooth_coeff(0.010f, g.sample_rate);
+    g.end_rms += (raw_peak * raw_peak - g.end_rms) * rms_coeff;
+    g.end_hp_rms += (hp_peak * hp_peak - g.end_hp_rms) * rms_coeff;
+    const float raw_rms = std::sqrt(std::fmax(g.end_rms, 1.0e-12f));
+    const float hp_rms = std::sqrt(std::fmax(g.end_hp_rms, 1.0e-12f));
+    const float peak_blend = clamp01(p[P_END_COMP_PEAK_BLEND]);
+    const float raw_level = raw_rms + (raw_peak - raw_rms) * peak_blend;
+    const float hp_level = hp_rms + (hp_peak - hp_rms) * peak_blend;
     const float detector_tilt = clamp01(p[P_END_COMP_DETECTOR_TILT]);
     const float detector_level = raw_level * (1.0f - detector_tilt) + hp_level * detector_tilt;
     const float level_db = gain_to_db(detector_level);
@@ -484,7 +592,100 @@ void process_end_chain(float& l, float& r, const float* p, float attack_coeff) {
     g.telemetry[T_END_OUTPUT_PEAK] = std::fmax(g.telemetry[T_END_OUTPUT_PEAK], std::fmax(std::fabs(l), std::fabs(r)));
 }
 
-float degrade_sample(float dry, int channel, float mix, float alias, float generation, float corrosion, float wear) {
+void update_clarity_filter() {
+    constexpr float clarity_hz = 2800.0f;
+    if (std::fabs(clarity_hz - g.clarity_hp_cache) <= 0.05f) return;
+    g.clarity_hp_cache = clarity_hz;
+    set_highpass(g.clarity_hp_l, clarity_hz, 0.707f, g.sample_rate);
+    set_highpass(g.clarity_hp_r, clarity_hz, 0.707f, g.sample_rate);
+}
+
+void process_clarity_lift(float& l, float& r, const float* p) {
+    const float amount = clamp01(p[P_END_COMP_CLARITY]);
+    if (amount <= 0.0001f) {
+        g.telemetry[T_END_CLARITY_BOOST_DB] = 0.0f;
+        return;
+    }
+
+    update_clarity_filter();
+    const float high_l = g.clarity_hp_l.process(l);
+    const float high_r = g.clarity_hp_r.process(r);
+    const float high_level = std::fmax(std::fabs(high_l), std::fabs(high_r));
+    const float high_db = gain_to_db(high_level);
+    const float gate = clamp01((high_db + 66.0f) / 18.0f);
+    const float under_db = clampf(-34.0f - high_db, 0.0f, 24.0f);
+    const float boost_db = std::min(5.0f, under_db * 0.32f) * amount * gate;
+    const float target = db_to_gain(boost_db);
+    const float attack = smooth_coeff(0.026f, g.sample_rate);
+    const float release = smooth_coeff(0.160f, g.sample_rate);
+    const float coeff = target > g.clarity_gain ? attack : release;
+    g.clarity_gain += (target - g.clarity_gain) * coeff;
+    const float add = (g.clarity_gain - 1.0f) * 0.58f;
+    l += high_l * add;
+    r += high_r * add;
+    g.telemetry[T_END_CLARITY_BOOST_DB] = std::fmax(g.telemetry[T_END_CLARITY_BOOST_DB], boost_db);
+}
+
+void process_two_band_clarity_comp(float& l, float& r, const float* p) {
+    const int mode = static_cast<int>(std::round(p[P_END_COMP_MODE]));
+    const float amount = clamp01(p[P_END_COMP_TWO_BAND_AMOUNT]);
+    if (mode != 4 || amount <= 0.001f) {
+        g.telemetry[T_END_LOW_GR_DB] = 0.0f;
+        g.telemetry[T_END_HIGH_GR_DB] = 0.0f;
+        return;
+    }
+
+    const float split_hz = clampf(p[P_END_COMP_BAND_SPLIT_HZ], 90.0f, 320.0f);
+    const float split_alpha = one_pole_coeff(split_hz, g.sample_rate);
+    g.two_band_low_l += (l - g.two_band_low_l) * split_alpha;
+    g.two_band_low_r += (r - g.two_band_low_r) * split_alpha;
+
+    const float low_l = g.two_band_low_l;
+    const float low_r = g.two_band_low_r;
+    const float high_l = l - low_l;
+    const float high_r = r - low_r;
+    const float low_level = std::fmax(std::fabs(low_l), std::fabs(low_r));
+    const float high_level = std::fmax(std::fabs(high_l), std::fabs(high_r));
+
+    const float low_gr_db = compute_compressor_gain_db(gain_to_db(low_level), -24.0f, 6.0f, 2.6f);
+    const float high_gr_db = compute_compressor_gain_db(gain_to_db(high_level), -28.0f, 8.0f, 1.45f);
+    const float low_target = db_to_gain(low_gr_db);
+    const float high_target = db_to_gain(high_gr_db);
+    const float low_attack = smooth_coeff(0.032f, g.sample_rate);
+    const float low_release = smooth_coeff(0.220f, g.sample_rate);
+    const float high_attack = smooth_coeff(0.014f, g.sample_rate);
+    const float high_release = smooth_coeff(0.120f, g.sample_rate);
+
+    g.two_band_low_gain +=
+        (low_target - g.two_band_low_gain) *
+        (low_target < g.two_band_low_gain ? low_attack : low_release);
+    g.two_band_high_gain +=
+        (high_target - g.two_band_high_gain) *
+        (high_target < g.two_band_high_gain ? high_attack : high_release);
+
+    const float clarity_amount = clamp01(p[P_END_COMP_CLARITY]);
+    const float high_makeup = db_to_gain(1.2f * clarity_amount);
+    const float wet_l = low_l * g.two_band_low_gain + high_l * g.two_band_high_gain * high_makeup;
+    const float wet_r = low_r * g.two_band_low_gain + high_r * g.two_band_high_gain * high_makeup;
+    const float mix = clamp01(p[P_END_COMP_MIX]) * 0.78f * amount;
+    l = l + (wet_l - l) * mix;
+    r = r + (wet_r - r) * mix;
+
+    g.telemetry[T_END_LOW_GR_DB] = std::fmax(g.telemetry[T_END_LOW_GR_DB], -low_gr_db);
+    g.telemetry[T_END_HIGH_GR_DB] = std::fmax(g.telemetry[T_END_HIGH_GR_DB], -high_gr_db);
+}
+
+float degrade_sample(
+    float dry,
+    int channel,
+    float mix,
+    float alias,
+    float generation,
+    float corrosion,
+    float wear,
+    float dither_noise,
+    float dither_amount
+) {
     if (mix <= 0.0001f) return dry;
     const float alias_focus = std::pow(clamp01(alias), 1.35f);
     const float destructive = clamp01(alias_focus * (0.6f + corrosion * 0.55f));
@@ -518,7 +719,13 @@ float degrade_sample(float dry, int channel, float mix, float alias, float gener
         phase -= std::floor(phase);
         held = dry;
     }
-    float wet = std::round(held * quant_steps) / quant_steps;
+    const float lsb = 1.0f / quant_steps;
+    const float dither_amt =
+        lsb *
+        clamp01(dither_amount) *
+        (0.18f + generation * 0.42f + corrosion * 0.20f) *
+        (1.0f - destructive * 0.35f);
+    float wet = std::round((held + dither_noise * dither_amt) * quant_steps) / quant_steps;
     wet = std::tanh(wet * fold) * inv_fold_tanh * shaper_trim;
     float lp = g.degrade_lp[channel] + (wet - g.degrade_lp[channel]) * alpha;
     wet = lp + (wet - lp) * (0.08f + damage * 0.18f + destructive * 0.18f);
@@ -527,6 +734,81 @@ float degrade_sample(float dry, int channel, float mix, float alias, float gener
     g.degrade_phase[channel] = phase;
     g.degrade_lp[channel] = lp;
     return dry + (wet - dry) * mix;
+}
+
+void process_media_event(float& wet_l, float& wet_r, const float* p) {
+    const bool use_media_events = p[P_DEGRADE_QUALITY] >= 1.0f && p[P_DEGRADE_EVENT_AMOUNT] > 0.001f;
+    const float event_amount = use_media_events
+        ? clamp01(
+              p[P_DEGRADE_FAILURE_INFLUENCE] *
+              clamp01(p[P_DEGRADE_EVENT_AMOUNT]) *
+              (0.35f +
+               p[P_DEGRADE_CORROSION] * 0.35f +
+               p[P_DEGRADE_GENERATION] * 0.20f +
+               p[P_DEGRADE_WEAR] * 0.10f))
+        : 0.0f;
+
+    if (event_amount <= 0.0001f) {
+        const float release = smooth_coeff(0.070f, g.sample_rate);
+        g.media_event_env += (0.0f - g.media_event_env) * release;
+        g.media_event_gain_db = 0.0f;
+        return;
+    }
+
+    const float event_rate_hz = 0.015f + event_amount * 1.15f;
+    if (g.media_event_samples_left <= 0 && rand01() < event_rate_hz / g.sample_rate) {
+        const float dur_s = 0.035f + rand01() * 0.145f;
+        g.media_event_samples_left = static_cast<int>(dur_s * g.sample_rate);
+        g.media_event_target = 0.35f + rand01() * 0.65f;
+    }
+
+    if (g.media_event_samples_left > 0) {
+        g.media_event_samples_left--;
+        const float attack = smooth_coeff(0.004f, g.sample_rate);
+        g.media_event_env += (g.media_event_target - g.media_event_env) * attack;
+    } else {
+        const float release = smooth_coeff(0.070f, g.sample_rate);
+        g.media_event_env += (0.0f - g.media_event_env) * release;
+    }
+
+    const float e = clamp01(g.media_event_env);
+    if (e <= 0.0001f) {
+        g.media_event_gain_db = 0.0f;
+        return;
+    }
+
+    const float event_gain_db = -e * (2.0f + event_amount * 10.0f);
+    const float event_gain = db_to_gain(event_gain_db);
+    const float event_cutoff =
+        650.0f + (1.0f - e) * 5200.0f + (1.0f - event_amount) * 2400.0f;
+    const float event_alpha = one_pole_coeff(event_cutoff, g.sample_rate);
+    g.media_event_lp_l += (wet_l - g.media_event_lp_l) * event_alpha;
+    g.media_event_lp_r += (wet_r - g.media_event_lp_r) * event_alpha;
+
+    const float filter_mix = e * (0.25f + event_amount * 0.50f);
+    wet_l = (wet_l + (g.media_event_lp_l - wet_l) * filter_mix) * event_gain;
+    wet_r = (wet_r + (g.media_event_lp_r - wet_r) * filter_mix) * event_gain;
+    g.media_event_gain_db = event_gain_db;
+}
+
+void update_media_profile_filters(const float* p) {
+    const float media = clamp01(p[P_DEGRADE_COLOR_INFLUENCE]) * clamp01(p[P_DEGRADE_PROFILE_AMOUNT]);
+    const float failure = clamp01(p[P_DEGRADE_FAILURE_INFLUENCE]);
+    const float gen = clamp01(p[P_DEGRADE_GENERATION]);
+    const float wear = clamp01(p[P_DEGRADE_WEAR]);
+    const float cor = clamp01(p[P_DEGRADE_CORROSION]);
+
+    const float notch_freq = 2600.0f + gen * 1400.0f + cor * 900.0f;
+    const float notch_q = 0.65f + wear * 1.25f;
+    const float notch_gain_db = -media * (0.8f + gen * 2.4f + failure * cor * 1.6f);
+    set_peaking(g.media_notch_l, notch_freq, notch_q, notch_gain_db, g.sample_rate);
+    set_peaking(g.media_notch_r, notch_freq, notch_q, notch_gain_db, g.sample_rate);
+
+    const float body_freq = 180.0f + wear * 120.0f;
+    const float body_q = 0.55f + wear * 0.45f;
+    const float body_gain_db = media * (0.4f + wear * 1.2f) - failure * cor * 0.8f;
+    set_peaking(g.media_body_l, body_freq, body_q, body_gain_db, g.sample_rate);
+    set_peaking(g.media_body_r, body_freq, body_q, body_gain_db, g.sample_rate);
 }
 
 void update_random_hold(const float* p) {
@@ -745,6 +1027,8 @@ void dynamics_character_process_block(int block_size) {
     }
     g.telemetry[T_DROPOUT_GAIN] = 1.0f;
     g.telemetry[T_END_DETECTOR_DB] = -120.0f;
+    g.telemetry[T_END_BAND_SPLIT_HZ] = 170.0f;
+    g.telemetry[T_MASTER_SAT_OVERSAMPLING_FACTOR] = 1.0f;
     if (!g.params_initialized || g.target[P_ACTIVE] < 0.5f) {
         std::memcpy(g.output, g.input, static_cast<size_t>(block_size) * 2 * sizeof(float));
         return;
@@ -760,6 +1044,21 @@ void dynamics_character_process_block(int block_size) {
     float* p = g.current;
     update_random_hold(p);
     update_water_cv(p);
+    const float degrade_color = clamp01(p[P_DEGRADE_COLOR_INFLUENCE]);
+    const float degrade_motion = clamp01(p[P_DEGRADE_MOTION_INFLUENCE]);
+    const float degrade_failure = clamp01(p[P_DEGRADE_FAILURE_INFLUENCE]);
+    const float anti_comb = clamp01(p[P_CHARACTER_ANTI_COMB]);
+    const float diffusion = clamp01(p[P_CHARACTER_DIFFUSION]);
+    const float character_quality = clampf(p[P_CHARACTER_QUALITY], 0.0f, 2.0f);
+    const bool use_cubic_delay = character_quality >= 1.0f;
+    const bool use_microtap = character_quality >= 2.0f && diffusion > 0.001f;
+    const float degrade_quality = clampf(p[P_DEGRADE_QUALITY], 0.0f, 2.0f);
+    const bool use_profile_eq = degrade_quality >= 1.0f && p[P_DEGRADE_PROFILE_AMOUNT] > 0.001f;
+    const bool use_dither = degrade_quality >= 1.0f && p[P_DEGRADE_DITHER_AMOUNT] > 0.001f;
+    g.telemetry[T_END_BAND_SPLIT_HZ] = clampf(p[P_END_COMP_BAND_SPLIT_HZ], 90.0f, 320.0f);
+    g.telemetry[T_END_COMP_MODE] = p[P_END_COMP_MODE];
+    g.telemetry[T_CHARACTER_DIFFUSION] = diffusion;
+    g.telemetry[T_DEGRADE_PROFILE_AMOUNT] = clamp01(p[P_DEGRADE_PROFILE_AMOUNT]);
     const float water_amount = clamp01(p[P_SHALLOW] + p[P_ABYSS]);
     const float water_delay_cv_mix = clamp01(p[P_SHALLOW] * 0.72f + p[P_ABYSS] * 0.54f);
     const float water_cv_lag = std::fmax(
@@ -775,13 +1074,13 @@ void dynamics_character_process_block(int block_size) {
     const float lpg_cv_decay_coeff = smooth_coeff(0.075f + clampf(p[P_RANDOM_HOLD_LAG], 0.0f, 2.0f) * 0.025f + p[P_ABYSS] * 0.025f, g.sample_rate);
     const float drift_coeff = one_pole_coeff(p[P_RANDOM_DRIFT_FILTER_HZ], g.sample_rate);
     const float tape_wow_blend = clamp01(
-        p[P_DEGRADE_MIX] * 1.25f +
-        p[P_DEGRADE_WEAR] * 0.18f +
-        p[P_DEGRADE_GENERATION] * 0.08f +
-        p[P_DEGRADE_CORROSION] * 0.08f
+        degrade_motion * 0.58f +
+        p[P_DEGRADE_WEAR] * degrade_color * 0.24f +
+        p[P_DEGRADE_GENERATION] * degrade_color * 0.10f +
+        p[P_DEGRADE_CORROSION] * degrade_failure * 0.08f
     );
-    const float water_random_blend = clamp01(p[P_SHALLOW] * 0.74f + p[P_ABYSS] * 0.68f);
-    const float water_flutter_blend = clamp01(p[P_SHALLOW] * 0.58f + p[P_ABYSS] * 0.46f);
+    const float water_random_blend = clamp01(p[P_SHALLOW] * 0.52f + p[P_ABYSS] * 0.62f);
+    const float water_flutter_blend = clamp01(p[P_SHALLOW] * 0.42f + p[P_ABYSS] * 0.46f);
     const float wow_wander_coeff = one_pole_coeff(
         0.03f + p[P_WOW_FREQ] * 0.45f + p[P_RANDOM_DRIFT_FILTER_HZ] * 0.24f,
         g.sample_rate
@@ -797,7 +1096,10 @@ void dynamics_character_process_block(int block_size) {
     update_static_filters(p);
 
     for (int i = 0; i < block_size; ++i) {
-        if ((i & 15) == 0) update_modulated_filters(p);
+        if ((i & 15) == 0) {
+            update_modulated_filters(p);
+            if (use_profile_eq) update_media_profile_filters(p);
+        }
 
         const float in_l = std::isfinite(g.input[i * 2]) ? g.input[i * 2] : 0.0f;
         const float in_r = std::isfinite(g.input[i * 2 + 1]) ? g.input[i * 2 + 1] : in_l;
@@ -858,9 +1160,9 @@ void dynamics_character_process_block(int block_size) {
         );
         const float unstable_cyclic_wow = cyclic_wow * clampf(0.78f + g.wow_wander_slow * 0.16f, 0.62f, 1.0f);
         const float wow_blend = clampf(
-            tape_wow_blend * 0.42f + p[P_DEGRADE_MIX] * 0.12f + water_random_blend,
+            tape_wow_blend * 0.46f + degrade_motion * 0.04f + water_random_blend,
             0.0f,
-            0.93f
+            0.88f
         );
         const float wow = unstable_cyclic_wow * (1.0f - wow_blend) + tape_wow * wow_blend;
         const float cyclic_flutter = 4.0f * std::fabs(g.flutter_phase - 0.5f) - 1.0f;
@@ -871,7 +1173,7 @@ void dynamics_character_process_block(int block_size) {
             -1.0f,
             1.0f
         );
-        const float flutter_blend = clampf(tape_wow_blend * 0.78f + water_flutter_blend, 0.0f, 0.95f);
+        const float flutter_blend = clampf(tape_wow_blend * 0.60f + water_flutter_blend, 0.0f, 0.88f);
         const float flutter = cyclic_flutter * (1.0f - flutter_blend) + tape_flutter * flutter_blend;
         const float flutter_random = g.drift_noise * p[P_FLUTTER_RANDOM_DEPTH];
         const float jitter = white_l * p[P_JITTER_DEPTH];
@@ -879,21 +1181,50 @@ void dynamics_character_process_block(int block_size) {
         const float main_delay_cv = g.hold_main * (1.0f - water_delay_cv_mix) + g.water_cv_main * water_delay_cv_mix;
         const float spread_delay_cv = g.hold_spread * (1.0f - water_delay_cv_mix) + g.water_cv_spread * water_delay_cv_mix;
         const float delay_mod_trim = clampf(1.0f - p[P_ABYSS] * 0.35f, 0.4f, 1.0f);
+        const float dry_gain_for_comb = clamp01(p[P_DRY]);
+        const float wet_gain_for_comb = clamp01(p[P_WET]);
+        const float comb_risk = clamp01(4.0f * dry_gain_for_comb * wet_gain_for_comb);
+        const float min_delay_s =
+            kCharacterFullWetMinDelayS +
+            (kCharacterMixedMinDelayS - kCharacterFullWetMinDelayS) * comb_risk * anti_comb;
         const float main_delay_s = clampf(
             p[P_BASE_DELAY] + (wow * p[P_WOW_DEPTH] + flutter * p[P_FLUTTER_DEPTH] + main_delay_cv * p[P_RANDOM_DELAY_DEPTH] + g.drift_noise * p[P_RANDOM_DRIFT_DEPTH] + jitter) * delay_mod_trim,
-            0.00005f,
-            0.105f
+            min_delay_s,
+            kCharacterMaxDelayS
         );
         const float spread_delay_s = clampf(
             p[P_SPREAD_DELAY] + (wow * p[P_WOW_DEPTH] + (flutter + flutter_random) * p[P_FLUTTER_DEPTH] + spread_delay_cv * p[P_RANDOM_SPREAD_DELAY_DEPTH] + g.drift_noise * p[P_RANDOM_DRIFT_DEPTH] + jitter) * delay_mod_trim,
-            0.00005f,
-            0.105f
+            min_delay_s,
+            kCharacterMaxDelayS
         );
+        g.telemetry[T_CHARACTER_COMB_RISK] = std::fmax(g.telemetry[T_CHARACTER_COMB_RISK], comb_risk);
+        g.telemetry[T_CHARACTER_MIN_DELAY_MS] = std::fmax(g.telemetry[T_CHARACTER_MIN_DELAY_MS], min_delay_s * 1000.0f);
 
         g.main_delay[g.write_pos] = mono;
         g.spread_delay[g.write_pos] = mono;
-        const float main = read_delay(g.main_delay, main_delay_s * g.sample_rate);
-        const float spread = read_delay(g.spread_delay, spread_delay_s * g.sample_rate);
+        const float main = use_cubic_delay
+            ? read_delay_cubic(g.main_delay, main_delay_s * g.sample_rate)
+            : read_delay(g.main_delay, main_delay_s * g.sample_rate);
+        const float spread = use_cubic_delay
+            ? read_delay_cubic(g.spread_delay, spread_delay_s * g.sample_rate)
+            : read_delay(g.spread_delay, spread_delay_s * g.sample_rate);
+        float main_read = main;
+        float spread_read = spread;
+        const float decor_amount = use_microtap
+            ? comb_risk * clamp01(p[P_SHALLOW] + p[P_ABYSS] * 0.65f) * diffusion * 0.16f
+            : 0.0f;
+        if (decor_amount > 0.001f) {
+            const float main_offset_s = 0.00145f + g.water_cv_spread * 0.00025f;
+            const float spread_offset_s = -0.00110f + g.water_cv_main * 0.00020f;
+            const float main_b = read_delay_cubic(
+                g.main_delay,
+                clampf(main_delay_s + main_offset_s, min_delay_s, kCharacterMaxDelayS) * g.sample_rate);
+            const float spread_b = read_delay_cubic(
+                g.spread_delay,
+                clampf(spread_delay_s + spread_offset_s, min_delay_s, kCharacterMaxDelayS) * g.sample_rate);
+            main_read = main_read + (main_b - main_read) * decor_amount;
+            spread_read = spread_read + (spread_b - spread_read) * decor_amount;
+        }
         g.write_pos = (g.write_pos + 1) % g.delay_size;
 
         float main_l = 0.0f, main_r = 0.0f, spread_l = 0.0f, spread_r = 0.0f;
@@ -908,18 +1239,47 @@ void dynamics_character_process_block(int block_size) {
             0.68f,
             1.28f
         );
-        pan_mono(main * p[P_MAIN_DELAY_GAIN] * water_gain_motion, p[P_MAIN_PAN] - water_spread_motion * 0.38f, main_l, main_r);
-        pan_mono(spread * p[P_SPREAD_DELAY_GAIN] * spread_gain_motion, p[P_SPREAD_PAN] + water_spread_motion, spread_l, spread_r);
+        pan_mono(main_read * p[P_MAIN_DELAY_GAIN] * water_gain_motion, p[P_MAIN_PAN] - water_spread_motion * 0.38f, main_l, main_r);
+        pan_mono(spread_read * p[P_SPREAD_DELAY_GAIN] * spread_gain_motion, p[P_SPREAD_PAN] + water_spread_motion, spread_l, spread_r);
         float wet_l = main_l + spread_l;
         float wet_r = main_r + spread_r;
         g.telemetry[T_WET_PEAK] = std::fmax(g.telemetry[T_WET_PEAK], std::fmax(std::fabs(wet_l), std::fabs(wet_r)));
 
-        wet_l = degrade_sample(wet_l, 0, p[P_DEGRADE_MIX], p[P_DEGRADE_ALIAS], p[P_DEGRADE_GENERATION], p[P_DEGRADE_CORROSION], p[P_DEGRADE_WEAR]);
-        wet_r = degrade_sample(wet_r, 1, p[P_DEGRADE_MIX], p[P_DEGRADE_ALIAS], p[P_DEGRADE_GENERATION], p[P_DEGRADE_CORROSION], p[P_DEGRADE_WEAR]);
+        const float dither_amount = use_dither ? p[P_DEGRADE_DITHER_AMOUNT] : 0.0f;
+        wet_l = degrade_sample(
+            wet_l,
+            0,
+            p[P_DEGRADE_MIX],
+            p[P_DEGRADE_ALIAS] * degrade_failure,
+            p[P_DEGRADE_GENERATION] * degrade_color,
+            p[P_DEGRADE_CORROSION] * degrade_failure,
+            p[P_DEGRADE_WEAR] * degrade_color,
+            white_l,
+            dither_amount);
+        wet_r = degrade_sample(
+            wet_r,
+            1,
+            p[P_DEGRADE_MIX],
+            p[P_DEGRADE_ALIAS] * degrade_failure,
+            p[P_DEGRADE_GENERATION] * degrade_color,
+            p[P_DEGRADE_CORROSION] * degrade_failure,
+            p[P_DEGRADE_WEAR] * degrade_color,
+            white_r,
+            dither_amount);
+
+        process_media_event(wet_l, wet_r, p);
+        if (use_profile_eq) {
+            wet_l = g.media_body_l.process(wet_l);
+            wet_r = g.media_body_r.process(wet_r);
+            wet_l = g.media_notch_l.process(wet_l);
+            wet_r = g.media_notch_r.process(wet_r);
+        }
+        g.telemetry[T_DEGRADE_EVENT_ENV] = std::fmax(g.telemetry[T_DEGRADE_EVENT_ENV], g.media_event_env);
+        g.telemetry[T_DEGRADE_EVENT_GAIN_DB] = std::fmin(g.telemetry[T_DEGRADE_EVENT_GAIN_DB], g.media_event_gain_db);
 
         wet_l = g.hp_l.process(wet_l);
         wet_r = g.hp_r.process(wet_r);
-        if (p[P_ALLPASS_ACTIVE] > 0.5f) {
+        if (p[P_ALLPASS_ACTIVE] > 0.5f && diffusion > 0.001f) {
             wet_l = g.ap_a_l.process(wet_l);
             wet_r = g.ap_a_r.process(wet_r);
             wet_l = g.ap_b_l.process(wet_l);
@@ -946,10 +1306,16 @@ void dynamics_character_process_block(int block_size) {
         const float water_cv_bloom = std::fmax(0.0f, g.water_cv_main) * (p[P_SHALLOW] * 0.035f);
         const float wet_gain = clampf(p[P_WET] + g.env * p[P_ENV_TO_WET_GAIN] + water_cv_bloom, 0.0f, 1.5f);
         const float noise_gain = p[P_NOISE_GAIN];
-        float out_l = in_l * p[P_DRY] + wet_l * wet_gain + g.noise_lp_l * noise_gain;
-        float out_r = in_r * p[P_DRY] + wet_r * wet_gain + g.noise_lp_r * noise_gain;
+        const float noise_l = g.noise_lp_l * noise_gain;
+        const float noise_r = g.noise_lp_r * noise_gain;
+        float out_l = in_l * p[P_DRY] + wet_l * wet_gain;
+        float out_r = in_r * p[P_DRY] + wet_r * wet_gain;
         process_master_saturation(out_l, out_r, p);
         process_end_chain(out_l, out_r, p, end_comp_attack_coeff);
+        process_two_band_clarity_comp(out_l, out_r, p);
+        process_clarity_lift(out_l, out_r, p);
+        out_l += noise_l;
+        out_r += noise_r;
         g.telemetry[T_OUTPUT_PEAK] = std::fmax(g.telemetry[T_OUTPUT_PEAK], std::fmax(std::fabs(out_l), std::fabs(out_r)));
         g.output[i * 2] = out_l;
         g.output[i * 2 + 1] = out_r;

@@ -353,6 +353,18 @@ export type DynamicsWorkletVisualTelemetry = {
   endOutputPeak: number;
   endReductionDb: number;
   endDetectorDb: number;
+  characterCombRisk: number;
+  characterMinDelayMs: number;
+  characterDiffusion: number;
+  degradeEventEnv: number;
+  degradeEventGainDb: number;
+  degradeProfileAmount: number;
+  endLowReductionDb: number;
+  endHighReductionDb: number;
+  endClarityBoostDb: number;
+  endBandSplitHz: number;
+  endCompMode: number;
+  masterSatOversamplingFactor: number;
   timestamp: number;
 };
 
@@ -4279,6 +4291,18 @@ export class AudioEngine {
               endOutputPeak: Math.max(0, Number(event.data.endOutputPeak) || 0),
               endReductionDb: Math.max(0, Number(event.data.endReductionDb) || 0),
               endDetectorDb: Number.isFinite(Number(event.data.endDetectorDb)) ? Number(event.data.endDetectorDb) : -90,
+              characterCombRisk: Math.max(0, Number(event.data.characterCombRisk) || 0),
+              characterMinDelayMs: Math.max(0, Number(event.data.characterMinDelayMs) || 0),
+              characterDiffusion: Math.max(0, Number(event.data.characterDiffusion) || 0),
+              degradeEventEnv: Math.max(0, Number(event.data.degradeEventEnv) || 0),
+              degradeEventGainDb: Number.isFinite(Number(event.data.degradeEventGainDb)) ? Number(event.data.degradeEventGainDb) : 0,
+              degradeProfileAmount: Math.max(0, Number(event.data.degradeProfileAmount) || 0),
+              endLowReductionDb: Math.max(0, Number(event.data.endLowReductionDb) || 0),
+              endHighReductionDb: Math.max(0, Number(event.data.endHighReductionDb) || 0),
+              endClarityBoostDb: Number.isFinite(Number(event.data.endClarityBoostDb)) ? Number(event.data.endClarityBoostDb) : 0,
+              endBandSplitHz: Number.isFinite(Number(event.data.endBandSplitHz)) ? Number(event.data.endBandSplitHz) : 170,
+              endCompMode: Number.isFinite(Number(event.data.endCompMode)) ? Number(event.data.endCompMode) : 0,
+              masterSatOversamplingFactor: Math.max(1, Number(event.data.masterSatOversamplingFactor) || 1),
               timestamp: now,
             };
           } else if (event.data?.type === 'wasmReady') {

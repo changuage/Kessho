@@ -22,7 +22,7 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
 
 const SOURCE_ORDER = [CORE_PRODUCT_SOURCE_IDS.pad1, CORE_PRODUCT_SOURCE_IDS.pad2, CORE_PRODUCT_SOURCE_IDS.lead1, CORE_PRODUCT_SOURCE_IDS.lead2, CORE_PRODUCT_SOURCE_IDS.drum, CORE_PRODUCT_SOURCE_IDS.piano, CORE_PRODUCT_SOURCE_IDS.soundscape] as const;
 
-const SNAPSHOT_BYTES = 28548;
+const SNAPSHOT_BYTES = 28600;
 const SOURCE_BYTES = 3332;
 const LANE_BYTES = 92;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES;
@@ -62,23 +62,12 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     sourceId,
     presetId: defaultPresetId(sourceId),
     sourcePresetAId: 0, sourcePresetBId: 0, leadEnvelopeOverrideEnabled: false, leadAlgorithmPresetAEnabled: false,
-    assetId: 0,
-    level: 0.75,
-    morph: 0,
-    distance: 0,
-    expression: 0.75,
-    dryGain: 1,
-    reverbSend: 0.12,
-    delayASend: 0,
-    delayBSend: 0,
-    granularSend: 0,
-    diffuseSend: 0,
+    assetId: 0, level: 0.75, morph: 0, distance: 0, expression: 0.75,
+    dryGain: 1, reverbSend: 0.12, delayASend: 0, delayBSend: 0, granularSend: 0, diffuseSend: 0,
     postLpfHz: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
     stereoWidth: KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
     postLpfKeyTracking: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING,
-    leadVibratoDepth: 0,
-    leadVibratoRate: 0,
-    leadGlide: 0,
+    leadVibratoDepth: 0, leadVibratoRate: 0, leadGlide: 0,
     attackSeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS,
     decaySeconds: KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS,
     sustain: KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN,
@@ -95,59 +84,21 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
 
 function laneDefaults(targetSourceId: number, midiNote: number): ProductLaneSnapshot {
   return {
-    enabled: false,
-    targetSourceId,
-    stepCount: 16,
-    fillCount: 4,
-    rotation: 0,
-    clockDivision: 16,
-    swing: 0,
-    probability: 1,
-    ratchet: 1,
-    trigCondition: 0,
-    midiNote,
-    velocity: 0.75,
-    holdSeconds: 0.18,
-    morph: 0,
-    distance: 0,
-    expression: 0.75,
-    seed: 1,
-    barReset: true,
-    phraseReset: false,
-    manualStepMaskLow: 0,
-    manualStepMaskHigh: 0,
-    tempoMultiplier: 1,
-    initialStartDelaySeconds: -1,
+    enabled: false, targetSourceId, stepCount: 16, fillCount: 4, rotation: 0, clockDivision: 16,
+    swing: 0, probability: 1, ratchet: 1, trigCondition: 0, midiNote, velocity: 0.75,
+    holdSeconds: 0.18, morph: 0, distance: 0, expression: 0.75, seed: 1,
+    barReset: true, phraseReset: false, manualStepMaskLow: 0, manualStepMaskHigh: 0,
+    tempoMultiplier: 1, initialStartDelaySeconds: -1,
   };
 }
 
 function granularVoiceDefaults(voiceNumber: number): ProductGranularVoiceSnapshot {
   return {
-    enabled: voiceNumber === 1,
-    mode: granularVoiceModeId(undefined),
-    slice: clamp((voiceNumber - 1) * 4, 0, 15),
-    speed: 1,
-    scanRate: 1,
-    reverse: false,
-    pitch: 0,
-    writeFollow: 0,
-    density: 20,
-    grainSizeMs: 80,
-    spray: 0.3,
-    grainOctaveProbability: 0,
-    attackSeconds: 0.003,
-    decaySeconds: 0.5,
-    gain: 0.5,
-    pan: 0,
-    blur: 0,
-    stereoSpread: 0.5,
-    positionLfoRate: 0,
-    positionLfoDepth: 0,
-    panLfoRate: 0,
-    reverseLfoRate: 0,
-    recordLfoRate: 0,
-    euclidGated: false,
-    euclidMuted: false,
+    enabled: voiceNumber === 1, mode: granularVoiceModeId(undefined), slice: clamp((voiceNumber - 1) * 4, 0, 15),
+    speed: 1, scanRate: 1, reverse: false, pitch: 0, writeFollow: 0, density: 20,
+    grainSizeMs: 80, spray: 0.3, grainOctaveProbability: 0, attackSeconds: 0.003, decaySeconds: 0.5,
+    gain: 0.5, pan: 0, blur: 0, stereoSpread: 0.5, positionLfoRate: 0, positionLfoDepth: 0,
+    panLfoRate: 0, reverseLfoRate: 0, recordLfoRate: 0, euclidGated: false, euclidMuted: false,
   };
 }
 
@@ -424,6 +375,9 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   u32(bool(snapshot.fx.dynamicsEnabled));
   u32(bool(snapshot.fx.dynamicsCharacterEnabled));
   u32(snapshot.fx.dynamicsCharacterMode >>> 0);
+  u32(snapshot.fx.dynamicsCharacterQuality >>> 0);
+  f32(snapshot.fx.dynamicsCharacterAntiComb);
+  f32(snapshot.fx.dynamicsCharacterDiffusion);
   f32(snapshot.fx.dynamicsCharacterMix);
   f32(snapshot.fx.dynamicsCharacterAge);
   f32(snapshot.fx.dynamicsCharacterBias);
@@ -435,6 +389,10 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.fx.dynamicsCharacterRate);
   f32(snapshot.fx.dynamicsCharacterDamp);
   u32(bool(snapshot.fx.dynamicsDegradeEnabled));
+  u32(snapshot.fx.dynamicsDegradeQuality >>> 0);
+  f32(snapshot.fx.dynamicsDegradeEventAmount);
+  f32(snapshot.fx.dynamicsDegradeProfileAmount);
+  f32(snapshot.fx.dynamicsDegradeDitherAmount);
   f32(snapshot.fx.dynamicsDegradeMix);
   f32(snapshot.fx.dynamicsDegradeAge);
   f32(snapshot.fx.dynamicsDegradeGeneration);
@@ -481,10 +439,12 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.fx.dynamicsModNoiseAlias);
   u32(bool(snapshot.fx.dynamicsSaturationEnabled));
   u32(snapshot.fx.dynamicsSaturationMode >>> 0);
+  u32(snapshot.fx.dynamicsSaturationQuality >>> 0);
   f32(snapshot.fx.dynamicsSaturationDrive);
   f32(snapshot.fx.dynamicsSaturationTone);
   f32(snapshot.fx.dynamicsSaturationBias);
   u32(bool(snapshot.fx.dynamicsEndCompEnabled));
+  u32(snapshot.fx.dynamicsEndCompMode >>> 0);
   f32(snapshot.fx.dynamicsEndCompThreshold);
   f32(snapshot.fx.dynamicsEndCompKnee);
   f32(snapshot.fx.dynamicsEndCompRatio);
@@ -496,6 +456,10 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.fx.dynamicsEndCompDetectorTilt);
   f32(snapshot.fx.dynamicsEndCompAutoMakeup);
   f32(snapshot.fx.dynamicsEndCompProgramRelease);
+  f32(snapshot.fx.dynamicsEndCompPeakBlend);
+  f32(snapshot.fx.dynamicsEndCompClarity);
+  f32(snapshot.fx.dynamicsEndCompTwoBandAmount);
+  f32(snapshot.fx.dynamicsEndCompBandSplit);
   u32(bool(snapshot.fx.sidechainEnabled));
   u32(snapshot.fx.sidechainKeyA >>> 0);
   u32(snapshot.fx.sidechainKeyB >>> 0);

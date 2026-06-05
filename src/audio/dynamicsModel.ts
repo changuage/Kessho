@@ -111,6 +111,23 @@ export type DynamicsTargets = {
   endDetectorTilt: number;
   endAutoMakeup: number;
   endProgramRelease: number;
+  characterQuality: number;
+  characterAntiComb: number;
+  characterDiffusion: number;
+  degradeUiMix: number;
+  degradeColorInfluence: number;
+  degradeMotionInfluence: number;
+  degradeFailureInfluence: number;
+  degradeQuality: number;
+  degradeEventAmount: number;
+  degradeProfileAmount: number;
+  degradeDitherAmount: number;
+  endCompMode: number;
+  endPeakBlend: number;
+  endClarity: number;
+  endTwoBandAmount: number;
+  endBandSplitHz: number;
+  masterSatQuality: number;
 };
 
 export const DYNAMICS_DEGRADE_LEGACY_KEY_MAP = {
@@ -138,11 +155,35 @@ export function normalizeDynamicsDegradeAliases(data: Record<string, unknown>): 
   return next;
 }
 
+export function normalizeDynamicsQualityFields<T extends Record<string, unknown>>(data: T): T {
+  return {
+    characterQuality: 'balanced',
+    characterAntiComb: 1,
+    characterDiffusion: 0.55,
+    degradeQuality: 'media',
+    degradeEventAmount: 0.45,
+    degradeProfileAmount: 0.65,
+    degradeDitherAmount: 0.55,
+    endCompMode: 'studioClear',
+    endCompPeakBlend: 0.25,
+    endCompClarity: 0.22,
+    endCompTwoBandAmount: 0,
+    endCompBandSplit: 0.5,
+    dynamicsSaturationQuality: 'smooth',
+    ...data,
+  } as T;
+}
+
 function clampUnitInterval(value: number | undefined): number {
   const safeValue = Number.isFinite(value) ? (value as number) : 0;
   if (safeValue <= 0) return 0;
   if (safeValue >= 1) return 1;
   return safeValue;
+}
+
+function smoothstep01(value: number): number {
+  const x = clampUnitInterval(value);
+  return x * x * (3 - 2 * x);
 }
 
 function mapUnitToLogFrequency(value: number, minHz: number, maxHz: number): number {
@@ -212,12 +253,24 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
   const shallowFlavor = mode === 'shallowWater' ? 1 : 0;
   const abyssFlavor = mode === 'abyssWater' ? 1 : 0;
   const characterMix = characterEnabled ? clampUnitInterval(state.characterMix) : 0;
+  const characterQualityMap = { eco: 0, balanced: 1, hq: 2 } satisfies Record<SliderState['characterQuality'], number>;
+  const characterQuality = characterQualityMap[state.characterQuality ?? 'balanced'] ?? 1;
+  const characterAntiComb = clampUnitInterval(state.characterAntiComb ?? 1);
+  const characterDiffusion = clampUnitInterval(state.characterDiffusion ?? 0.55);
   const characterBias = characterEnabled ? clampUnitInterval(state.characterBias ?? defaults.bias) : defaults.bias;
   const characterLpgAmount = characterEnabled ? clampUnitInterval(state.characterLpgAmount ?? defaults.lpgAmount) : defaults.lpgAmount;
   const degradeMix = degradeEnabled ? clampUnitInterval(state.degradeMix ?? 0) : 0;
+  const degradeQualityMap = { classic: 0, media: 1, hq: 2 } satisfies Record<SliderState['degradeQuality'], number>;
+  const degradeQuality = degradeQualityMap[state.degradeQuality ?? 'media'] ?? 1;
+  const degradeEventAmount = clampUnitInterval(state.degradeEventAmount ?? 0.45);
+  const degradeProfileAmount = clampUnitInterval(state.degradeProfileAmount ?? 0.65);
+  const degradeDitherAmount = clampUnitInterval(state.degradeDitherAmount ?? 0.55);
   const sharedFilterActive = characterEnabled || degradeEnabled;
   const baseWet = clampUnitInterval(1 - (1 - characterMix) * (1 - degradeMix));
-  const degradeInfluence = Math.sqrt(degradeMix);
+  const degradeColorInfluence = Math.sqrt(degradeMix);
+  const degradeMotionInfluence = degradeMix * (0.65 + 0.35 * degradeMix);
+  const degradeFailureInfluence = smoothstep01((degradeMix - 0.25) / 0.75);
+  const degradeInfluence = degradeColorInfluence;
   const baseDry = 1 - baseWet;
   const characterAge = characterEnabled ? Math.max(clampUnitInterval(state.characterAge), modeActive ? defaults.age : 0) : 0;
   const rawDegradeAge = degradeEnabled ? clampUnitInterval(state.degradeAge ?? 0) : 0;
@@ -244,13 +297,16 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     degradeAlias: rawDegradeAlias,
     corrosion: rawCorrosion,
   });
+  contribution.materialWear = clampUnitInterval((rawDegradeAge * 0.72 + rawDegradeGeneration * 0.58) * degradeColorInfluence);
+  contribution.aliasDamage = clampUnitInterval((rawDegradeAlias * 0.9 + rawCorrosion * 0.42) * degradeFailureInfluence);
+  contribution.crossPatch = clampUnitInterval(contribution.aliasDamage * (0.4 + rawCorrosion * 0.8));
 
   const modSources = {
-    slow: degradeEnabled ? degradeInfluence * clampUnitInterval(baseDegradeWow * 0.22 + baseDegradeDrift * 0.34 + rawDegradeAge * 0.2 + rawDegradeGeneration * 0.18 + contribution.smoothDrift * 0.18) : 0,
-    flutter: degradeEnabled ? degradeInfluence * clampUnitInterval(baseDegradeFlutter * 0.55 + contribution.flutterJitter * 0.24 + rawDegradeGeneration * 0.08) : 0,
-    random: degradeEnabled ? degradeInfluence * clampUnitInterval(baseDegradeDrift * 0.3 + contribution.randomHold * 0.44 + rawMediaWear * 0.22) : 0,
-    env: degradeEnabled ? degradeInfluence * clampUnitInterval(state.characterEnvFollow ?? 0) : 0,
-    noise: degradeEnabled ? degradeInfluence * clampUnitInterval((state.degradeNoise ?? 0) * 0.64 + rawCorrosion * 0.18 + rawDegradeAlias * 0.12) : 0,
+    slow: degradeEnabled ? degradeMotionInfluence * clampUnitInterval(baseDegradeWow * 0.22 + baseDegradeDrift * 0.34 + rawDegradeAge * 0.2 + rawDegradeGeneration * 0.18 + contribution.smoothDrift * 0.18) : 0,
+    flutter: degradeEnabled ? degradeMotionInfluence * clampUnitInterval(baseDegradeFlutter * 0.55 + contribution.flutterJitter * 0.24 + rawDegradeGeneration * 0.08) : 0,
+    random: degradeEnabled ? degradeMotionInfluence * clampUnitInterval(baseDegradeDrift * 0.3 + contribution.randomHold * 0.44 + rawMediaWear * 0.22) : 0,
+    env: degradeEnabled ? degradeMotionInfluence * clampUnitInterval(state.characterEnvFollow ?? 0) : 0,
+    noise: degradeEnabled ? degradeFailureInfluence * clampUnitInterval((state.degradeNoise ?? 0) * 0.64 + rawCorrosion * 0.18 + rawDegradeAlias * 0.12) : 0,
   };
   const modRoute = (keys: {
     slow: keyof SliderState;
@@ -311,7 +367,7 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
   const workletAlias = clampUnitInterval(rawDegradeAlias + modAlias * 0.18);
   const shapedAlias = clampUnitInterval(degradeAlias + modAlias * 0.08);
   const digitalDamage = clampUnitInterval(shapedAlias * 0.46 + degradeGeneration * 0.22);
-  const damage = clampUnitInterval(degradeMix * (degradeAge * 0.32 + degradeGeneration * 0.18 + shapedAlias * 0.08 + rawCorrosion * degradeInfluence * 0.12));
+  const damage = clampUnitInterval(degradeMix * (degradeAge * 0.32 + degradeGeneration * 0.18 + shapedAlias * 0.08 + rawCorrosion * degradeFailureInfluence * 0.12));
   const age = clampUnitInterval(Math.max(characterAge, mediaWear * (0.38 + degradeMix * 0.52)));
   const depth = characterEnabled ? Math.max(clampUnitInterval(state.characterDepth), modeActive ? defaults.depth : 0) : 0;
   const rate = characterEnabled ? Math.max(clampUnitInterval(state.characterRate), modeActive ? defaults.rate : 0) : 0;
@@ -321,9 +377,9 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
   const lpgResponse = modeActive
     ? clampUnitInterval(characterLpgAmount * (0.4 + envFollow * 0.6))
     : clampUnitInterval(characterLpgAmount * (0.12 + envFollow * 0.4));
-  const rawWow = clampUnitInterval(baseDegradeWow * degradeInfluence * (0.95 + contribution.crossPatch * 0.22) + modWow * 0.2);
-  const rawFlutter = clampUnitInterval(baseDegradeFlutter * degradeInfluence * (0.38 + contribution.crossPatch * 0.18) + modFlutter * 0.08);
-  const rawDrift = baseDegradeDrift * degradeInfluence;
+  const rawWow = clampUnitInterval(baseDegradeWow * degradeMotionInfluence * (0.95 + contribution.crossPatch * 0.22) + modWow * 0.2);
+  const rawFlutter = clampUnitInterval(baseDegradeFlutter * degradeMotionInfluence * (0.38 + contribution.crossPatch * 0.18) + modFlutter * 0.08);
+  const rawDrift = baseDegradeDrift * degradeMotionInfluence;
   const waterCyclicBias = cleanFlavor ? 0.11 : shallowFlavor ? 0.026 : abyssFlavor ? 0.02 : 0.11;
   const waterSineScale = cleanFlavor ? 0.62 : shallowFlavor ? 0.24 : abyssFlavor ? 0.18 : 0.18;
   const modeWow = depth * (waterCyclicBias + contribution.sineWow * waterSineScale);
@@ -388,7 +444,7 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     cleanTapePitchFocus * 0.34 +
     rate * (0.05 + shallowFlavor * 0.09 + abyssFlavor * 0.06 + cleanFlavor * 0.08)
   ) * abyssPitchMotionTrim;
-  const corrosion = clampUnitInterval(rawCorrosion * degradeInfluence * 0.72 + degradeGeneration * 0.035 + shapedAlias * 0.025);
+  const corrosion = clampUnitInterval(rawCorrosion * degradeFailureInfluence * 0.72 + degradeGeneration * 0.035 + shapedAlias * 0.025);
   const sharedHp = sharedFilterActive ? clampUnitInterval(state.degradeHp) : 0;
   const sharedLp = sharedFilterActive ? clampUnitInterval(state.degradeLp) : 1;
   const hp = Math.max(sharedHp, damage * 0.025 + corrosion * 0.012);
@@ -411,7 +467,7 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
   );
   const tone = 0.5 + ((degradeEnabled ? clampUnitInterval(state.degradeTone ?? 0.5) : 0.5) - 0.5) * degradeInfluence;
   const dropout = damageActivity > 0.0001
-    ? clampUnitInterval(degradeMix * (mediaWear * 0.25 + corrosion * 0.28 + degradeGeneration * 0.06 + noise * 0.08 + rawDegradeAlias * 0.035) + modDropout * 0.16)
+    ? clampUnitInterval(degradeFailureInfluence * (mediaWear * 0.25 + corrosion * 0.28 + degradeGeneration * 0.06 + noise * 0.08 + rawDegradeAlias * 0.035) + modDropout * 0.16)
     : 0;
   const waterRandomDrive = cleanFlavor * 0.06 + shallowFlavor * 0.28 + abyssFlavor * 0.34;
   const randomDrift = clampUnitInterval(
@@ -427,7 +483,7 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     : mode === 'abyssWater'
       ? 0.1 + rate * 1.15 + depth * 0.26 + envFollow * 0.04
       : 0.12 + rate * 1.05 + depth * 0.32;
-  const degradeMotionWeight = degradeEnabled ? clampUnitInterval(degradeWetRatio * (0.65 + degradeInfluence * 0.35)) : 0;
+  const degradeMotionWeight = degradeEnabled ? clampUnitInterval(degradeMotionInfluence * (0.65 + degradeWetRatio * 0.35)) : 0;
   const degradeHoldRateHz = 0.02 + degradeWobbleSpeed * 0.58 + rawDrift * 0.11 + contribution.materialWear * 0.075 + contribution.aliasDamage * 0.035;
   const randomHoldRateHz = characterHoldRateHz + (degradeHoldRateHz - characterHoldRateHz) * degradeMotionWeight;
   const characterHoldLag = mode === 'shallowWater'
@@ -452,10 +508,18 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
   const spreadBaseDelay = cleanFlavor
     ? cleanSpreadDelay + (cleanTamedSpreadDelay - cleanSpreadDelay) * cleanCombTame
     : Math.min(0.095, baseDelay + 0.0012 + stereo * (0.006 + shallowFlavor * 0.006) + drift * 0.0015);
+  const shallowRandomDelayBase =
+    0.00095 + (0.00080 - 0.00095) * characterAntiComb;
+  const shallowRandomDelayDepth =
+    0.0104 + (0.0056 - 0.0104) * characterAntiComb;
+  const shallowRandomDelayRate =
+    0.0009 + (0.00065 - 0.0009) * characterAntiComb;
+  const shallowRandomDelayBbd =
+    0.0024 + (0.0014 - 0.0024) * characterAntiComb;
   const randomDelayDepth = cleanFlavor
     ? randomDrift * (0.00008 + depth * 0.0018 + rate * 0.00065 + modFlutter * 0.00018 + contribution.materialWear * 0.00024 + contribution.aliasDamage * 0.00011)
     : shallowFlavor
-      ? randomDrift * (0.00095 + depth * 0.0104 + rate * 0.0009 + contribution.bbdColor * 0.0024)
+      ? randomDrift * (shallowRandomDelayBase + depth * shallowRandomDelayDepth + rate * shallowRandomDelayRate + contribution.bbdColor * shallowRandomDelayBbd)
       : randomDrift * (0.00032 + depth * 0.0042 + rate * 0.00072 + contribution.bbdColor * 0.0009);
   const randomSpreadDelayDepth = randomDelayDepth * (0.68 + stereo * 0.56 + shallowFlavor * 0.3 + abyssFlavor * 0.22);
   const randomFilterDepth = abyssFlavor
@@ -508,12 +572,25 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     fold: 4,
   } satisfies Record<SliderState['dynamicsSaturationMode'], number>;
   const masterSatMode = masterSatModeMap[state.dynamicsSaturationMode ?? 'clean'] ?? 0;
+  const masterSatQualityMap = { eco: 0, smooth: 1, hq: 2 } satisfies Record<SliderState['dynamicsSaturationQuality'], number>;
+  const masterSatQuality = masterSatQualityMap[state.dynamicsSaturationQuality ?? 'smooth'] ?? 1;
+  const endCompModeMap = {
+    studioClear: 0,
+    clarity: 1,
+    glue: 2,
+    punch: 3,
+    twoBand: 4,
+  } satisfies Record<SliderState['endCompMode'], number>;
+  const endCompMode = endCompModeMap[state.endCompMode ?? 'studioClear'] ?? 0;
+  const endTwoBandAmount = endCompMode === 4 ? clampUnitInterval(state.endCompTwoBandAmount ?? 0) : 0;
+  const endBandSplitHz = mapUnitToLogFrequency(state.endCompBandSplit ?? 0.5, 90, 320);
+  const combRiskForAllpass = clampUnitInterval(4 * dry * wet);
 
   return {
     routing: {
       characterPathActive: wet > 0.0001 || masterSatDrive > 0.0001 || (endEnabled && endWet > 0.0001),
       degradeWorkletActive: degradeEnabled && degradeWetRatio > 0.0001,
-      allpassStackActive: false,
+      allpassStackActive: modeActive && characterDiffusion > 0.001 && combRiskForAllpass > 0.18,
       endChainActive: endEnabled && endWet > 0.0001,
     },
     mode,
@@ -549,7 +626,7 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     spreadBaseDelay,
     noiseGain: Math.min(0.018, wet * noise * (0.006 + age * 0.014 + corrosion * 0.012)) * degradeLevelTrim,
     jitterDepth: damageActivity > 0.0001
-      ? degradeMix * (contribution.flutterJitter * 0.00008 + corrosion * 0.00006 + contribution.materialWear * 0.00005 + clampUnitInterval(contribution.aliasDamage * 0.46 + contribution.crossPatch * 0.4) * 0.00004 + modFlutter * 0.00011)
+      ? degradeFailureInfluence * (contribution.flutterJitter * 0.00008 + corrosion * 0.00006 + contribution.materialWear * 0.00005 + clampUnitInterval(contribution.aliasDamage * 0.46 + contribution.crossPatch * 0.4) * 0.00004 + modFlutter * 0.00011)
       : 0,
     randomDriftFilterHz: Math.max(0.08, randomHoldRateHz * (0.92 - damp * 0.58)),
     randomDriftDepth: randomDrift * (0.00016 + drift * 0.00225 + contribution.materialWear * 0.00215 + contribution.aliasDamage * 0.00075 + contribution.crossPatch * 0.00105 + modWow * 0.00095) * abyssPitchMotionTrim,
@@ -564,10 +641,10 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     flutterDepth,
     highpassHz: mapUnitToLogFrequency(hp, 20, 2400),
     highpassQ: 0.7 + resonance * 1.5,
-    allpassAFrequency: 260 + shallowFlavor * 520 + depth * 380 + age * 240,
-    allpassAQ: 0.25 + contribution.bbdColor * 1.4 + shallowFlavor * 0.1 + resonance * (abyssFlavor ? 0.18 : 1.1),
-    allpassBFrequency: 900 + shallowFlavor * 2100 + depth * 680 + age * 420 + contribution.bbdColor * 320,
-    allpassBQ: 0.25 + contribution.bbdColor * 1.8 + shallowFlavor * 0.1 + resonance * (abyssFlavor ? 0.14 : 0.85),
+    allpassAFrequency: 420 + shallowFlavor * 480 + abyssFlavor * 620 + depth * 420 + age * 180,
+    allpassAQ: Math.min(0.95, 0.55 + shallowFlavor * 0.18 + abyssFlavor * 0.14 + depth * 0.18),
+    allpassBFrequency: 1450 + shallowFlavor * 1850 + abyssFlavor * 1250 + depth * 950 + age * 360,
+    allpassBQ: Math.min(0.85, 0.48 + shallowFlavor * 0.16 + abyssFlavor * 0.12 + depth * 0.16),
     headBumpFrequency: 80 + mediaWear * 45 + corrosion * 20,
     headBumpQ: 0.55 + mediaWear * 0.55,
     headBumpGain: degradeMix * 1.1 * (0.2 + mediaWear * 0.65) * degradeLevelTrim + characterMix * (abyssFlavor * 0.28 + shallowFlavor * 0.22),
@@ -607,5 +684,22 @@ export function resolveDynamicsTargets(state: SliderState, sampleRate = 44100): 
     endDetectorTilt: clampUnitInterval(state.endCompDetectorTilt ?? 0.5),
     endAutoMakeup: clampUnitInterval(state.endCompAutoMakeup ?? 0),
     endProgramRelease: clampUnitInterval(state.endCompProgramRelease ?? 0),
+    characterQuality,
+    characterAntiComb,
+    characterDiffusion,
+    degradeUiMix: degradeMix,
+    degradeColorInfluence,
+    degradeMotionInfluence,
+    degradeFailureInfluence,
+    degradeQuality,
+    degradeEventAmount,
+    degradeProfileAmount,
+    degradeDitherAmount,
+    endCompMode,
+    endPeakBlend: clampUnitInterval(state.endCompPeakBlend ?? 0.25),
+    endClarity: clampUnitInterval(state.endCompClarity ?? 0.22),
+    endTwoBandAmount,
+    endBandSplitHz,
+    masterSatQuality,
   };
 }

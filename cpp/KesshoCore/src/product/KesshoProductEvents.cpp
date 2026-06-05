@@ -432,6 +432,12 @@ void KesshoProductEngine::sortControlEvents() {
       break;
     case KESSHO_PRODUCT_EVENT_KIND_STOP:
       transport.running = false;
+      for (uint32_t i = 0; i < synth_lane_count; ++i) {
+        resetSequencerLaneRuntime(synth_lanes[i]);
+      }
+      for (uint32_t i = 0; i < drum_lane_count; ++i) {
+        resetSequencerLaneRuntime(drum_lanes[i]);
+      }
       break;
     case KESSHO_PRODUCT_EVENT_KIND_RESET_TRANSPORT:
       transport.reset();
@@ -444,6 +450,12 @@ void KesshoProductEngine::sortControlEvents() {
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT:
       transport.bpm = clampFloat(event.value, 1.0f, 400.0f);
+      for (uint32_t i = 0; i < synth_lane_count; ++i) {
+        clearPendingRatchets(synth_lanes[i]);
+      }
+      for (uint32_t i = 0; i < drum_lane_count; ++i) {
+        clearPendingRatchets(drum_lanes[i]);
+      }
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_STEP:
       applySequencerStepEvent(event);
@@ -896,6 +908,14 @@ void KesshoProductEngine::sortControlEvents() {
   switch (event.param_id) {
     case KESSHO_PRODUCT_PARAM_TRANSPORT_RUNNING_ID:
       transport.running = event.value >= 0.5f;
+      if (!transport.running) {
+        for (uint32_t i = 0; i < synth_lane_count; ++i) {
+          resetSequencerLaneRuntime(synth_lanes[i]);
+        }
+        for (uint32_t i = 0; i < drum_lane_count; ++i) {
+          resetSequencerLaneRuntime(drum_lanes[i]);
+        }
+      }
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_ENABLED_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID:
@@ -949,15 +969,39 @@ void KesshoProductEngine::sortControlEvents() {
       break;
     case KESSHO_PRODUCT_PARAM_TRANSPORT_BPM_ID:
       transport.bpm = clampFloat(event.value, 1.0f, 400.0f);
+      for (uint32_t i = 0; i < synth_lane_count; ++i) {
+        clearPendingRatchets(synth_lanes[i]);
+      }
+      for (uint32_t i = 0; i < drum_lane_count; ++i) {
+        clearPendingRatchets(drum_lanes[i]);
+      }
       break;
     case KESSHO_PRODUCT_PARAM_TRANSPORT_BEATS_PER_BAR_ID:
       transport.beats_per_bar = clampU32(static_cast<uint32_t>(std::lround(event.value)), 1u, 32u);
+      for (uint32_t i = 0; i < synth_lane_count; ++i) {
+        clearPendingRatchets(synth_lanes[i]);
+      }
+      for (uint32_t i = 0; i < drum_lane_count; ++i) {
+        clearPendingRatchets(drum_lanes[i]);
+      }
       break;
     case KESSHO_PRODUCT_PARAM_TRANSPORT_BARS_PER_PHRASE_ID:
       transport.bars_per_phrase = clampU32(static_cast<uint32_t>(std::lround(event.value)), 1u, 256u);
+      for (uint32_t i = 0; i < synth_lane_count; ++i) {
+        clearPendingRatchets(synth_lanes[i]);
+      }
+      for (uint32_t i = 0; i < drum_lane_count; ++i) {
+        clearPendingRatchets(drum_lanes[i]);
+      }
       break;
     case KESSHO_PRODUCT_PARAM_TRANSPORT_SWING_ID:
       transport.swing = clampFloat(event.value, 0.0f, 1.0f);
+      for (uint32_t i = 0; i < synth_lane_count; ++i) {
+        clearPendingRatchets(synth_lanes[i]);
+      }
+      for (uint32_t i = 0; i < drum_lane_count; ++i) {
+        clearPendingRatchets(drum_lanes[i]);
+      }
       break;
     case KESSHO_PRODUCT_PARAM_MASTER_GAIN_ID:
       master_gain = clampFloat(event.value, 0.0f, 1.5f);
@@ -1322,6 +1366,18 @@ void KesshoProductEngine::sortControlEvents() {
       fx.dynamics_character_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
       configureFxModules();
       break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_QUALITY_ID:
+      fx.dynamics_character_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_ANTI_COMB_ID:
+      fx.dynamics_character_anti_comb = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_DIFFUSION_ID:
+      fx.dynamics_character_diffusion = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MIX_ID:
       fx.dynamics_character_mix = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
@@ -1364,6 +1420,22 @@ void KesshoProductEngine::sortControlEvents() {
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_ENABLED_ID:
       fx.dynamics_degrade_enabled = event.value >= 0.5f;
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_QUALITY_ID:
+      fx.dynamics_degrade_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_EVENT_AMOUNT_ID:
+      fx.dynamics_degrade_event_amount = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_PROFILE_AMOUNT_ID:
+      fx.dynamics_degrade_profile_amount = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_DITHER_AMOUNT_ID:
+      fx.dynamics_degrade_dither_amount = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_MIX_ID:
@@ -1430,6 +1502,10 @@ void KesshoProductEngine::sortControlEvents() {
       fx.dynamics_saturation_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 4u);
       configureFxModules();
       break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_QUALITY_ID:
+      fx.dynamics_saturation_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
+      configureFxModules();
+      break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID:
       fx.dynamics_saturation_drive = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
@@ -1444,6 +1520,10 @@ void KesshoProductEngine::sortControlEvents() {
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_ENABLED_ID:
       fx.dynamics_end_comp_enabled = event.value >= 0.5f;
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_MODE_ID:
+      fx.dynamics_end_comp_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 4u);
       configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_THRESHOLD_ID:
@@ -1488,6 +1568,22 @@ void KesshoProductEngine::sortControlEvents() {
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_PROGRAM_RELEASE_ID:
       fx.dynamics_end_comp_program_release = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_PEAK_BLEND_ID:
+      fx.dynamics_end_comp_peak_blend = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_CLARITY_ID:
+      fx.dynamics_end_comp_clarity = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_TWO_BAND_AMOUNT_ID:
+      fx.dynamics_end_comp_two_band_amount = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_BAND_SPLIT_ID:
+      fx.dynamics_end_comp_band_split = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_ENABLED_ID:

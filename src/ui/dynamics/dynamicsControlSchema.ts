@@ -45,6 +45,11 @@ export const DYNAMICS_CHARACTER_CONTROLS: readonly DynamicsSliderControlDefiniti
   dynamicsSlider('characterResonance', 'Resonance'),
 ];
 
+export const DYNAMICS_CHARACTER_QUALITY_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
+  dynamicsSlider('characterAntiComb', 'Comb Protect'),
+  dynamicsSlider('characterDiffusion', 'Diffusion'),
+];
+
 export const DYNAMICS_DEGRADE_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
   dynamicsSlider('degradeMix', 'Mix'),
   dynamicsSlider('degradeAge', 'Wear'),
@@ -60,6 +65,12 @@ export const DYNAMICS_DEGRADE_CONTROLS: readonly DynamicsSliderControlDefinition
   dynamicsSlider('degradeTone', 'Tone'),
   dynamicsSlider('degradeSaturation', 'Clip'),
   dynamicsSlider('degradeCorrosion', 'Corrosion'),
+];
+
+export const DYNAMICS_DEGRADE_QUALITY_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
+  dynamicsSlider('degradeEventAmount', 'Events'),
+  dynamicsSlider('degradeProfileAmount', 'Profile'),
+  dynamicsSlider('degradeDitherAmount', 'Dither'),
 ];
 
 export const DYNAMICS_SATURATION_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
@@ -80,6 +91,13 @@ export const DYNAMICS_END_CHAIN_CONTROLS: readonly DynamicsSliderControlDefiniti
   dynamicsSlider('endCompDetectorTilt', 'SC Tilt'),
   dynamicsSlider('endCompAutoMakeup', 'Auto Makeup'),
   dynamicsSlider('endCompProgramRelease', 'Program Rel'),
+];
+
+export const DYNAMICS_END_CHAIN_QUALITY_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
+  dynamicsSlider('endCompPeakBlend', 'Peak/RMS'),
+  dynamicsSlider('endCompClarity', 'Clarity'),
+  dynamicsSlider('endCompTwoBandAmount', '2-Band'),
+  dynamicsSlider('endCompBandSplit', 'Band Split'),
 ];
 
 export const DYNAMICS_SIDECHAIN_MIX_CONTROLS: readonly DynamicsSliderControlDefinition[] = [

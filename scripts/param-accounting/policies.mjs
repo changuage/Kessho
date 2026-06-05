@@ -320,7 +320,7 @@ export const behaviorEvidenceByAppVisibleGroup = {
   'source.pad|arrangement-scheduler-event': {
     owner: 'Product Core Pad arrangement owner',
     reason: 'Pad gate-fit controls must change generated manual note durations before events are sent to Product Core.',
-    evidence: ['core:product:sequencer-ui', 'src/audio/coreProductArrangementScheduler.ts#padEnvelopeGateSeconds', 'src/audio/coreProductEvents.ts#createCoreProductManualNoteEvent'],
+    evidence: ['core:product:sequencer-ui', 'src/audio/coreProductSequencerHold.ts#coreProductPadEnvelopeGateSecondsFromState', 'src/audio/coreProductEvents.ts#createCoreProductManualNoteEvent'],
   },
   'source.pad|range-event': {
     owner: 'Product Core Pad source owner',
@@ -330,7 +330,7 @@ export const behaviorEvidenceByAppVisibleGroup = {
   'source.pad|sequencer-lane-diff': {
     owner: 'Product Core Pad sequencer owner',
     reason: 'Pad hold controls must update Product synth sequencer lane hold seconds for Pad 1 and Pad 2 lanes.',
-    evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_HOLD_SECONDS_ID', 'src/audio/coreProductSnapshot.ts#coreProductSynthSequencerHoldSecondsFromState'],
+    evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_HOLD_SECONDS_ID', 'src/audio/coreProductSequencerHold.ts#coreProductPadEnvelopeGateSecondsFromState'],
   },
   'source.pad|source-param-diff': {
     owner: 'Product Core Pad source owner',

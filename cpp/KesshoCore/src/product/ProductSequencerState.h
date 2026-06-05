@@ -9,6 +9,18 @@
 
 namespace kessho::product::internal {
 
+constexpr uint32_t kMaxPendingRatchetsPerLane = 128u;
+
+struct PendingRatchetEvent {
+  uint64_t parent_step_id = 0;
+  uint64_t absolute_sample = 0;
+  uint32_t lane_index = 0;
+  uint32_t step_index = 0;
+  uint32_t ratchet_index = 0;
+  uint32_t ratchet_count = 1;
+  KesshoSequencerEvent event{};
+};
+
 struct LaneState {
   bool enabled = false;
   uint32_t target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
@@ -92,6 +104,9 @@ struct LaneState {
   uint64_t sequencer_start_sample_frame = 0;
   bool sequencer_runtime_initialized = false;
   bool sequencer_join_pending = true;
+  PendingRatchetEvent pending_ratchets[kMaxPendingRatchetsPerLane]{};
+  uint32_t pending_ratchet_count = 0;
+  uint32_t pending_ratchet_drop_count = 0;
 };
 
 } // namespace kessho::product::internal

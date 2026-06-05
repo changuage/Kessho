@@ -196,6 +196,7 @@ export const DYNAMICS_SIDECHAIN_PRESET_KEYS: readonly (keyof SliderState)[] = [
 
 export const DYNAMICS_END_CHAIN_PRESET_KEYS: readonly (keyof SliderState)[] = [
   'endCompEnabled',
+  'endCompMode',
   'endCompThreshold',
   'endCompKnee',
   'endCompRatio',
@@ -207,11 +208,18 @@ export const DYNAMICS_END_CHAIN_PRESET_KEYS: readonly (keyof SliderState)[] = [
   'endCompDetectorTilt',
   'endCompAutoMakeup',
   'endCompProgramRelease',
+  'endCompPeakBlend',
+  'endCompClarity',
+  'endCompTwoBandAmount',
+  'endCompBandSplit',
 ];
 
 export const DYNAMICS_CHARACTER_PRESET_KEYS: readonly (keyof SliderState)[] = [
   'characterEnabled',
   'characterMode',
+  'characterQuality',
+  'characterAntiComb',
+  'characterDiffusion',
   'characterMix',
   'characterAge',
   'characterBias',
@@ -228,6 +236,10 @@ export const DYNAMICS_CHARACTER_PRESET_KEYS: readonly (keyof SliderState)[] = [
 
 export const DYNAMICS_DEGRADE_PRESET_KEYS: readonly (keyof SliderState)[] = [
   'degradeEnabled',
+  'degradeQuality',
+  'degradeEventAmount',
+  'degradeProfileAmount',
+  'degradeDitherAmount',
   'degradeMix',
   'degradeAge',
   'degradeGeneration',
@@ -248,6 +260,7 @@ export const DYNAMICS_DEGRADE_PRESET_KEYS: readonly (keyof SliderState)[] = [
 export const DYNAMICS_SATURATION_PRESET_KEYS: readonly (keyof SliderState)[] = [
   'dynamicsSaturationEnabled',
   'dynamicsSaturationMode',
+  'dynamicsSaturationQuality',
   'dynamicsSaturationDrive',
   'dynamicsSaturationTone',
   'dynamicsSaturationBias',

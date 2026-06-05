@@ -26,6 +26,20 @@ export type ProductSnapshotPatchReason =
 
 export type ProductSnapshotPatch = ProductStateRecord;
 
+export type ProductResolvedStateCommit = {
+  readonly revision: number;
+  readonly reason: ProductSnapshotPatchReason;
+  readonly patch: ProductSnapshotPatch;
+  readonly events?: readonly ProductEvent[];
+  readonly triggerCritical: boolean;
+};
+
+export type ProductResolvedStateCommitReceipt = {
+  readonly revision: number;
+  readonly applied: boolean;
+  readonly mode: 'event' | 'dirty-diff' | 'full-snapshot' | 'noop';
+};
+
 export type ProductExternalState = Readonly<object>;
 
 export type ProductMidiMessageKind =
@@ -92,6 +106,18 @@ export type ProductDynamicsWorkletVisualTelemetry = Readonly<{
   endOutputPeak: number;
   endReductionDb: number;
   endDetectorDb: number;
+  characterCombRisk: number;
+  characterMinDelayMs: number;
+  characterDiffusion: number;
+  degradeEventEnv: number;
+  degradeEventGainDb: number;
+  degradeProfileAmount: number;
+  endLowReductionDb: number;
+  endHighReductionDb: number;
+  endClarityBoostDb: number;
+  endBandSplitHz: number;
+  endCompMode: number;
+  masterSatOversamplingFactor: number;
   timestamp: number;
 }>;
 
@@ -195,7 +221,11 @@ export type ProductTelemetrySnapshot = CoreProductTelemetrySnapshot;
 
 export type ProductSequencerUiState = CoreProductSequencerUiState;
 
-export type ProductSequencerUiPatch =
+type ProductSequencerUiPatchRevision = {
+  readonly revision?: number;
+};
+
+export type ProductSequencerUiPatch = ProductSequencerUiPatchRevision & (
   | { kind: 'drum-evolve-configs'; configs: ProductSequencerEvolveConfigs }
   | { kind: 'synth-evolve-configs'; configs: ProductSequencerEvolveConfigs }
   | { kind: 'drum-sub-lane-enabled'; states: ProductSequencerSubLaneEnabledStates }
@@ -220,7 +250,8 @@ export type ProductSequencerUiPatch =
       laneIndex: number;
       pitchSettings?: ProductSequencerPitchSettings;
       pitchState?: ProductSequencerLanePitchState | null;
-    };
+    }
+);
 
 export type ProductEngineStartOptions = {
   initialState?: ProductStateRecord;

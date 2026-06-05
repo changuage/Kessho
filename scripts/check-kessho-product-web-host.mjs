@@ -55,6 +55,7 @@ const hostGraphTapBridge = read('src/audio/product/host/CoreProductGraphTapBridg
 const hostHarmonyStateBridge = read('src/audio/product/host/CoreProductHarmonyStateBridge.ts');
 const hostProxy = read('src/audio/product/host/CoreProductHostProxy.ts');
 const hostJourneyMorphClock = read('src/audio/product/host/CoreProductJourneyMorphClock.ts');
+const hostResolvedStateCommitService = read('src/audio/product/host/CoreProductResolvedStateCommitService.ts');
 const hostPatchClassifier = read('src/audio/product/host/CoreProductPatchClassifier.ts');
 const hostLeadPresetDataLoader = read('src/audio/product/host/CoreProductLeadPresetDataLoader.ts');
 const hostModulationRangeBridge = read('src/audio/product/host/CoreProductModulationRangeBridge.ts');
@@ -218,6 +219,7 @@ assert(lineCount(hostGraphTapBridge) <= 80, `CoreProductGraphTapBridge.ts exceed
 assert(lineCount(hostHarmonyStateBridge) <= 80, `CoreProductHarmonyStateBridge.ts exceeds cleanup size cap (${lineCount(hostHarmonyStateBridge)} lines)`);
 assert(lineCount(hostProxy) <= 80, `CoreProductHostProxy.ts exceeds cleanup size cap (${lineCount(hostProxy)} lines)`);
 assert(lineCount(hostJourneyMorphClock) <= 90, `CoreProductJourneyMorphClock.ts exceeds cleanup size cap (${lineCount(hostJourneyMorphClock)} lines)`);
+assert(lineCount(hostResolvedStateCommitService) <= 80, `CoreProductResolvedStateCommitService.ts exceeds cleanup size cap (${lineCount(hostResolvedStateCommitService)} lines)`);
 assert(lineCount(hostSynthPitch) <= 80, `CoreProductHostSynthPitch.ts exceeds cleanup size cap (${lineCount(hostSynthPitch)} lines)`);
 assert(lineCount(hostSequencerAdapter) <= 320, `CoreProductHostSequencerAdapter.ts exceeds cleanup size cap (${lineCount(hostSequencerAdapter)} lines)`);
 assert(lineCount(hostSequencerEvolveConfig) <= 80, `CoreProductHostSequencerEvolveConfig.ts exceeds cleanup size cap (${lineCount(hostSequencerEvolveConfig)} lines)`);
@@ -364,17 +366,18 @@ for (const [surfaceName, surface, tokens] of [
     'synth/drum step override event batches that carry values, directions',
     'pitch-settings and home-capture events that update Product-owned home',
     'ProductSequencerUiPatch',
-    "callHost<void>('setDrumEuclidEvolveConfigs', patch.configs)",
-    "callHost<void>('setSynthEuclidEvolveConfigs', patch.configs)",
-    "callHost<void>('setDrumSubLaneEnabled', patch.states)",
-    "callHost<void>('setSynthSubLaneEnabled', patch.states)",
-    "callHost<void>('setDrumPitchSettings', patch.settings)",
-    "callHost<void>('setSynthPitchSettings', patch.settings)",
-    "callHost<void>('setDrumStepOverrides', patch.overrides)",
-    "callHost<void>('setSynthStepOverrides', patch.overrides)",
-    "callHost<void>('setSequencerPresetHomeSnapshots', patch.drumPitchSettings, patch.drumPitchStates, patch.synthPitchStates)",
-    "callHost<void>('captureSynthEuclidLaneHome', patch.laneIndex, patch.pitchState)",
-    "callHost<void>('captureDrumEuclidLaneHome', patch.laneIndex, patch.pitchSettings, patch.pitchState)",
+    "callHost<void>('recordSequencerUiPatch', patch.revision ?? 0, patch.kind)",
+    "apply('setDrumEuclidEvolveConfigs', patch.configs)",
+    "apply('setSynthEuclidEvolveConfigs', patch.configs)",
+    "apply('setDrumSubLaneEnabled', patch.states)",
+    "apply('setSynthSubLaneEnabled', patch.states)",
+    "apply('setDrumPitchSettings', patch.settings)",
+    "apply('setSynthPitchSettings', patch.settings)",
+    "apply('setDrumStepOverrides', patch.overrides)",
+    "apply('setSynthStepOverrides', patch.overrides)",
+    "apply('setSequencerPresetHomeSnapshots', patch.drumPitchSettings, patch.drumPitchStates, patch.synthPitchStates)",
+    "apply('captureSynthEuclidLaneHome', patch.laneIndex, patch.pitchState)",
+    "apply('captureDrumEuclidLaneHome', patch.laneIndex, patch.pitchSettings, patch.pitchState)",
   ]],
   ['Product runtime capability report', productRuntimeCapabilityReport, [
     'KESSHO_PRODUCT_SCHEMA_HASH',
@@ -1918,8 +1921,8 @@ for (const token of [
 for (const token of [
   "lane.barReset = String(state?.synthEuclidJoinPolicy ?? 'bar') === 'bar';",
   "lane.barReset = String(state?.drumEuclidJoinPolicy ?? 'bar') === 'bar';",
-  'function padHoldSecondsFromState(',
-  'return attack + decay + Math.max(0.1, (attack + decay) * 0.5);',
+  'export function coreProductPadEnvelopeGateSecondsFromState(',
+  'return clamp(attack + decay + hold, 0.02, 20);',
   'coreProductSynthSequencerHoldSecondsFromState(',
   'lane.holdSeconds = coreProductSynthSequencerHoldSecondsFromState(state, sourceId, lane.holdSeconds);',
 ]) {
@@ -1945,6 +1948,8 @@ for (const token of [
   'updateHarmonyState',
   'getScaleNotesInRange',
   'createCoreProductManualNoteEvent',
+  "coreProductPadEnvelopeGateSecondsFromState(this.state, 'pad1'",
+  "coreProductPadEnvelopeGateSecondsFromState(this.state, 'pad2'",
   'coreProductSynthSequencerHoldSecondsFromState(this.state, sourceId, 0.5) * 1000',
   "boundedNumber(this.state, 'lead1Density', 0.5, 0.1, 12)",
   'const timingSeconds = (this.rng() * phraseMs) / 1000;',
@@ -1975,7 +1980,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 28548',
+  'const SNAPSHOT_BYTES = 28600',
   'const SOURCE_BYTES = 3332',
   'const LANE_BYTES = 92',
   'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
@@ -3043,12 +3048,14 @@ const hostImportAllowlist = new Set([
   './CoreProductHostMidi',
   './product/host/CoreProductArrangementBridge',
   './product/host/CoreProductHostDiagnostics',
+  './product/host/CoreProductHostDebugSurface',
   './product/host/CoreProductDisplayCallbackRegistry',
   './product/host/CoreProductEarthTextureDebug',
   './product/host/CoreProductGraphTapBridge',
   './product/host/CoreProductHarmonyStateBridge',
   './product/host/CoreProductHostProxy',
   './product/host/CoreProductJourneyMorphClock',
+  './product/host/CoreProductResolvedStateCommitService',
   './product/host/CoreProductPatchClassifier',
   './product/host/CoreProductLeadPresetDataLoader',
   './product/host/CoreProductModulationRangeBridge',

@@ -19,6 +19,8 @@ import type {
   ProductMidiMessage,
   ProductRange,
   ProductRangeMap,
+  ProductResolvedStateCommit,
+  ProductResolvedStateCommitReceipt,
   ProductRuntimeWalkPositionsCallback,
   ProductScalarCallback,
   ProductSequencerEvolveTriggerCallback,
@@ -40,7 +42,7 @@ import type { DawOutputRoutingConfig } from '../dawOutputRouting';
  * Product runtime boundary.
  * Production UI may import this file. It must not expose Web Audio node objects.
  */
-export type ProductEnginePort = {
+export type ProductEngineLifecyclePort = {
   readonly mode: ProductEngineRuntimeMode;
 
   preload(): Promise<void>;
@@ -48,37 +50,56 @@ export type ProductEnginePort = {
   stop(): Promise<void>;
   suspend(): void;
   resume(): void;
+  getLifecycleState(): ProductEngineLifecycleState;
+  setStateChangeCallback(callback: ((state: ProductEngineState) => void) | null): void;
+};
+
+export type ProductEngineCommandPort = {
   setOutputGain(target: number, durationSeconds?: number): void;
   setDawOutputRouting(config: DawOutputRoutingConfig): void;
   setDawOutputDeviceId(deviceId: string | null): Promise<boolean>;
   resetCofDrift(): void;
-
-  updateSnapshotPatch(reason: ProductSnapshotPatchReason, patch: ProductSnapshotPatch): void;
-  enqueueEvent(event: ProductEvent): void;
-  enqueueEvents(events: readonly ProductEvent[]): void;
   pushMidiMessage(message: ProductMidiMessage): void;
   enqueueLiveNoteEvent(event: ProductLiveNoteEvent): Promise<void> | void;
-
-  registerAsset(asset: ProductAssetRegistration): Promise<ProductAssetHandle>;
-  unregisterAsset(assetId: number): void;
   auditionSynthNote(note: ProductManualSynthNote, externalState?: ProductExternalState): Promise<void>;
   triggerDrumVoice(voice: ProductDrumVoice, velocity?: number, externalState?: ProductExternalState): Promise<void>;
+};
 
-  getLifecycleState(): ProductEngineLifecycleState;
+export type ProductEngineControlPort = {
+  updateSnapshotPatch(reason: ProductSnapshotPatchReason, patch: ProductSnapshotPatch): void;
+  commitResolvedState(commit: ProductResolvedStateCommit): Promise<ProductResolvedStateCommitReceipt>;
+  getCommittedStateRevision(): number;
+  enqueueEvent(event: ProductEvent): void;
+  enqueueEvents(events: readonly ProductEvent[]): void;
+};
+
+export type ProductEngineAssetPort = {
+  registerAsset(asset: ProductAssetRegistration): Promise<ProductAssetHandle>;
+  unregisterAsset(assetId: number): void;
+};
+
+export type ProductEngineTelemetryPort = {
   getProductState(): ProductEngineState;
   getTelemetry(): ProductTelemetrySnapshot | null;
-  getSequencerUiState(): ProductSequencerUiState | null;
   getDynamicsVisualTelemetry(): ProductDynamicsVisualTelemetry;
-  getDiagnostics(): ProductRuntimeDiagnostics;
-  getCapabilityReport(): ProductRuntimeCapabilityReport;
-
-  setStateChangeCallback(callback: ((state: ProductEngineState) => void) | null): void;
   setTelemetryCallback(callback: ((telemetry: ProductTelemetrySnapshot) => void) | null): void;
+  setVisualTelemetryActive(active: boolean): void;
+};
+
+export type ProductEngineSequencerPort = {
+  getSequencerUiState(): ProductSequencerUiState | null;
   setDrumTriggerCallback(callback: ProductDrumTriggerCallback | null): void;
   setDrumStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void;
   setSynthStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void;
   setDrumEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void;
   setSynthEuclidEvolveTriggerCallback(callback: ProductSequencerEvolveTriggerCallback | null): void;
+  setDrumEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void;
+  setSynthEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void;
+  setSynthNoteRangeEvolvedCallback(callback: ProductSynthNoteRangeEvolvedCallback | null): void;
+  applySequencerUiPatch(patch: ProductSequencerUiPatch): void;
+};
+
+export type ProductEngineModulationPort = {
   setRuntimeWalkPositionsCallback(callback: ProductRuntimeWalkPositionsCallback | null): void;
   setDrumMorphRange(voice: ProductDrumVoice, range: ProductRange | null): void;
   setDrumParamSHRange(key: string, range: ProductRange | null): void;
@@ -100,11 +121,21 @@ export type ProductEnginePort = {
   setJourneyMorphClockCallback(callback: ((now: number) => void) | null): void;
   startJourneyMorphClock(): void;
   stopJourneyMorphClock(): void;
-  setDrumEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void;
-  setSynthEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void;
-  setSynthNoteRangeEvolvedCallback(callback: ProductSynthNoteRangeEvolvedCallback | null): void;
-  applySequencerUiPatch(patch: ProductSequencerUiPatch): void;
+};
+
+export type ProductEngineDiagnosticsPort = {
+  getDiagnostics(): ProductRuntimeDiagnostics;
+  getCapabilityReport(): ProductRuntimeCapabilityReport;
   setPerfMonitorEnabled(enabled: boolean): void;
-  setVisualTelemetryActive(active: boolean): void;
   setDiagnosticsCallback(callback: ((diagnostics: ProductRuntimeDiagnostics) => void) | null): void;
 };
+
+export type ProductEnginePort =
+  ProductEngineLifecyclePort &
+  ProductEngineCommandPort &
+  ProductEngineControlPort &
+  ProductEngineAssetPort &
+  ProductEngineTelemetryPort &
+  ProductEngineSequencerPort &
+  ProductEngineModulationPort &
+  ProductEngineDiagnosticsPort;

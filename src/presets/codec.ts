@@ -6,7 +6,7 @@ export type { ParamLevel } from './ParamRegistry';
 import type { PresetEntry } from './types';
 import type { SliderState } from '../ui/state';
 import { presetValuesEqual } from './presetUtils';
-import { normalizeDynamicsDegradeAliases } from '../audio/dynamicsModel';
+import { normalizeDynamicsDegradeAliases, normalizeDynamicsQualityFields } from '../audio/dynamicsModel';
 
 function getDirectKeys(level: ParamLevel, scope?: string): string[] {
   if (level === 4) {
@@ -40,7 +40,9 @@ export function applyParams(
   scope?: string,
 ): SliderState {
   const merged: Record<string, unknown> = { ...state };
-  const normalizedData = normalizeDynamicsDegradeAliases(presetData);
+  const normalizedData = normalizeDynamicsQualityFields(
+    normalizeDynamicsDegradeAliases(presetData),
+  );
   for (const [key, info] of Object.entries(PARAM_REGISTRY)) {
     if (info.level === level && (!scope || info.scope === scope)) {
       if (key in normalizedData) merged[key] = normalizedData[key];
@@ -232,7 +234,9 @@ export function applyCascade(
   scope?: string,
 ): SliderState {
   const merged: Record<string, unknown> = { ...state };
-  const normalizedData = normalizeDynamicsDegradeAliases(presetData);
+  const normalizedData = normalizeDynamicsQualityFields(
+    normalizeDynamicsDegradeAliases(presetData),
+  );
   for (const key of getCascadeKeys(level, scope)) {
     if (key in normalizedData) {
       merged[key] = normalizedData[key];

@@ -11,6 +11,15 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+type PadVoice = 'pad1' | 'pad2';
+
+type PadEnvelopeGateOptions = {
+  triggerIntervalSeconds?: number;
+  voiceDelaySeconds?: number;
+};
+
+const PAD_CHORD_ENVELOPE_SAFETY_SECONDS = 0.05;
+
 function leadHoldSecondsFromState(
   state: Record<string, unknown> | undefined,
   voice: 'lead1' | 'lead2',
@@ -28,12 +37,33 @@ function leadHoldSecondsFromState(
   }, distance).hold ?? hold;
 }
 
-function padHoldSecondsFromState(state: Record<string, unknown> | undefined, voice: 'pad1' | 'pad2'): number {
+export function coreProductPadEnvelopeGateSecondsFromState(
+  state: Record<string, unknown> | undefined,
+  voice: PadVoice,
+  options: PadEnvelopeGateOptions = {},
+): number {
   const attackKey: keyof SliderState = voice === 'pad2' ? 'pad2Attack' : 'synthAttack';
   const decayKey: keyof SliderState = voice === 'pad2' ? 'pad2Decay' : 'synthDecay';
-  const attack = clamp(numberFromState(state, attackKey, 0.1), 0, 10);
-  const decay = clamp(numberFromState(state, decayKey, 0.3), 0, 10);
-  return attack + decay + Math.max(0.1, (attack + decay) * 0.5);
+  const holdKey: keyof SliderState = voice === 'pad2' ? 'pad2Hold' : 'synthHold';
+  const releaseKey: keyof SliderState = voice === 'pad2' ? 'pad2Release' : 'synthRelease';
+  const fitKey: keyof SliderState = voice === 'pad2' ? 'pad2FitEnvelopeToChord' : 'padFitEnvelopeToChord';
+  const attack = clamp(numberFromState(state, attackKey, 6), 0.001, 16);
+  const decay = clamp(numberFromState(state, decayKey, 1), 0.01, 8);
+  const requestedHold = clamp(numberFromState(state, holdKey, 1), 0, 20);
+  const release = clamp(numberFromState(state, releaseKey, 12), 0.01, 30);
+  let hold = requestedHold;
+  if (
+    state?.[fitKey] !== false &&
+    Number.isFinite(options.triggerIntervalSeconds) &&
+    Number.isFinite(options.voiceDelaySeconds)
+  ) {
+    const availableSeconds =
+      Math.max(0, options.triggerIntervalSeconds ?? 0) -
+      Math.max(0, options.voiceDelaySeconds ?? 0) -
+      PAD_CHORD_ENVELOPE_SAFETY_SECONDS;
+    hold = clamp(requestedHold, 0, Math.max(0, availableSeconds - attack - decay - release));
+  }
+  return clamp(attack + decay + hold, 0.02, 20);
 }
 
 export function coreProductSynthSequencerHoldSecondsFromState(
@@ -43,9 +73,9 @@ export function coreProductSynthSequencerHoldSecondsFromState(
 ): number {
   switch (sourceId) {
     case CORE_PRODUCT_SOURCE_IDS.pad1:
-      return padHoldSecondsFromState(state, 'pad1');
+      return coreProductPadEnvelopeGateSecondsFromState(state, 'pad1');
     case CORE_PRODUCT_SOURCE_IDS.pad2:
-      return padHoldSecondsFromState(state, 'pad2');
+      return coreProductPadEnvelopeGateSecondsFromState(state, 'pad2');
     case CORE_PRODUCT_SOURCE_IDS.lead1:
       return leadHoldSecondsFromState(state, 'lead1', fallback);
     case CORE_PRODUCT_SOURCE_IDS.lead2:

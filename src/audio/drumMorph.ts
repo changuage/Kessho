@@ -97,6 +97,16 @@ const drumMorphDualRangeOverrides: DrumMorphDualRangeOverrides = {
   membrane: {},
 };
 
+let drumMorphAuthorityRevision = 0;
+
+function bumpDrumMorphAuthorityRevision(): void {
+  drumMorphAuthorityRevision += 1;
+}
+
+export function getDrumMorphAuthorityRevision(): number {
+  return drumMorphAuthorityRevision;
+}
+
 /**
  * Set a drum morph override for a parameter
  * Called when user changes a drum synth param at any morph position
@@ -110,6 +120,7 @@ export function setDrumMorphOverride(
   // Use shared endpoint detection (0-1 scale)
   const isEndpoint = sharedIsAtEndpoint0(morphPosition) || sharedIsAtEndpoint1(morphPosition);
   drumMorphOverrides[voice][param] = { value, morphPosition, isEndpoint };
+  bumpDrumMorphAuthorityRevision();
 }
 
 /**
@@ -132,6 +143,7 @@ export function setDrumMorphDualRangeOverride(
     : createSingleState(value);
   
   drumMorphDualRangeOverrides[voice][param] = setEndpointState(existing, endpoint, endpointState);
+  bumpDrumMorphAuthorityRevision();
 }
 
 /**
@@ -142,6 +154,7 @@ export function removeDrumMorphDualRangeOverride(
   param: string
 ): void {
   delete drumMorphDualRangeOverrides[voice][param];
+  bumpDrumMorphAuthorityRevision();
 }
 
 /**
@@ -156,6 +169,7 @@ export function getDrumMorphDualRangeOverrides(voice: DrumVoiceType): Record<str
  */
 export function clearDrumMorphDualRangeOverrides(voice: DrumVoiceType): void {
   drumMorphDualRangeOverrides[voice] = {};
+  bumpDrumMorphAuthorityRevision();
 }
 
 /**
@@ -185,6 +199,7 @@ export function removeDrumMorphOverride(
   param: string
 ): void {
   delete drumMorphOverrides[voice][param];
+  bumpDrumMorphAuthorityRevision();
 }
 
 /**
@@ -194,6 +209,7 @@ export function removeDrumMorphOverride(
 export function clearDrumMorphOverrides(voice: DrumVoiceType): void {
   drumMorphOverrides[voice] = {};
   drumMorphDualRangeOverrides[voice] = {};
+  bumpDrumMorphAuthorityRevision();
 }
 
 /**
@@ -203,6 +219,7 @@ export function clearDrumMorphOverrides(voice: DrumVoiceType): void {
  * @param endpoint - 0 for preset A changes, 1 for preset B changes
  */
 export function clearDrumMorphEndpointOverrides(voice: DrumVoiceType, endpoint: 0 | 1): void {
+  let changed = false;
   // Clear value overrides for this endpoint
   const overrides = drumMorphOverrides[voice];
   for (const param of Object.keys(overrides)) {
@@ -213,6 +230,7 @@ export function clearDrumMorphEndpointOverrides(voice: DrumVoiceType, endpoint: 
       if ((endpoint === 0 && override.morphPosition < 0.01) ||
           (endpoint === 1 && override.morphPosition > 0.99)) {
         delete overrides[param];
+        changed = true;
       }
     }
   }
@@ -224,18 +242,21 @@ export function clearDrumMorphEndpointOverrides(voice: DrumVoiceType, endpoint: 
     if (!dualOverride) continue;
     if (endpoint === 0 && dualOverride.endpoint0) {
       delete dualOverride.endpoint0;
+      changed = true;
       // If no endpoints remain, remove the whole override
       if (!dualOverride.endpoint1) {
         delete dualOverrides[param];
       }
     } else if (endpoint === 1 && dualOverride.endpoint1) {
       delete dualOverride.endpoint1;
+      changed = true;
       // If no endpoints remain, remove the whole override
       if (!dualOverride.endpoint0) {
         delete dualOverrides[param];
       }
     }
   }
+  if (changed) bumpDrumMorphAuthorityRevision();
 }
 
 /**
@@ -243,14 +264,17 @@ export function clearDrumMorphEndpointOverrides(voice: DrumVoiceType, endpoint: 
  * Keeps endpoint overrides intact (they're permanent edits)
  */
 export function clearMidMorphOverrides(voice: DrumVoiceType): void {
+  let changed = false;
   const overrides = drumMorphOverrides[voice];
   for (const param of Object.keys(overrides)) {
     const override = overrides[param];
     if (!override) continue;
     if (!override.isEndpoint) {
       delete overrides[param];
+      changed = true;
     }
   }
+  if (changed) bumpDrumMorphAuthorityRevision();
 }
 
 /**

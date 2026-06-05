@@ -21,6 +21,7 @@ import { DualSlider, DualSliderRange } from './ui/DualSlider';
 import { SliderPrimitive } from './ui/sliderSystem';
 import type { ProductEngineState } from './audio/product/ProductEngineTypes';
 import { ProductRuntimeSwitch } from './ui/ProductRuntimeSwitch';
+import { AppFooterMark } from './ui/AppFooterMark';
 import { useProductRuntimeManualTriggers } from './ui/useProductRuntimeManualTriggers';
 import { useProductRuntimeMorphSurface } from './ui/useProductRuntimeMorphSurface';
 import { useProductRuntimeSurfaces } from './ui/useProductRuntimeSurfaces';
@@ -31,7 +32,7 @@ import {
   useProductRuntimeSession,
   useProductRuntimeShell,
 } from './ui/useProductRuntimeSession';
-import { normalizeDynamicsDegradeAliases } from './audio/dynamicsModel';
+import { normalizeDynamicsDegradeAliases, normalizeDynamicsQualityFields } from './audio/dynamicsModel';
 import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
 import { formatChordDegrees, calculateDriftedRoot } from './audio/harmony';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
@@ -57,6 +58,7 @@ import {
   clearMidMorphOverrides,
   setDrumMorphDualRangeOverride,
   getDrumMorphDualRangeOverrides,
+  getDrumMorphAuthorityRevision,
   interpolateDrumMorphDualRanges,
 } from './audio/drumMorph';
 
@@ -626,7 +628,12 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
     }
   }
 
-  Object.assign(normalized, normalizeDynamicsDegradeAliases(normalized as Record<string, unknown>));
+  Object.assign(
+    normalized,
+    normalizeDynamicsQualityFields(
+      normalizeDynamicsDegradeAliases(normalized as Record<string, unknown>),
+    ),
+  );
 
   // Defensive sanitization: preserve only valid scalar types and fall back to defaults.
   // Prevents runtime crashes when legacy/cloud presets contain null/invalid values.
@@ -2845,6 +2852,7 @@ const App: React.FC = () => {
       // Detect which voice this param belongs to based on prefix
       let drumVoice: DrumPresetVoice | null = null;
       let drumMorphKey: keyof SliderState | null = null;
+      const drumMorphAuthorityRevisionBefore = getDrumMorphAuthorityRevision();
 
       if (keyStr.startsWith('drumSub') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
         drumVoice = 'sub';
@@ -3409,6 +3417,18 @@ const App: React.FC = () => {
         }
 
         applyMorphEndpointStatePatch(prev, newState);
+        if (
+          drumVoice
+          && drumMorphKey
+          && isStateNumericValue
+          && getDrumMorphAuthorityRevision() !== drumMorphAuthorityRevisionBefore
+        ) {
+          scheduleProductRuntimeParamUpdate(newState as SliderState, {
+            immediate: true,
+            reason: 'morph-control-change',
+            triggerCritical: true,
+          });
+        }
         return newState;
       });
 
@@ -3588,7 +3608,7 @@ const App: React.FC = () => {
         }
       }
     },
-    [isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, state, applyMorphEndpointStatePatch],
+    [isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, state, applyMorphEndpointStatePatch, scheduleProductRuntimeParamUpdate],
   );
 
   // Handle slider change
@@ -5083,9 +5103,10 @@ const App: React.FC = () => {
       },
     };
 
+    let nextResolvedState: SliderState | null = null;
     for (const voice of drumVoices) {
       const keys = presetKeys[voice];
-      const currentState = stateRef.current; // Read current state from ref
+      const currentState: SliderState = nextResolvedState ?? stateRef.current; // Read current state from ref
       const presetA = currentState[keys.a] as string;
       const presetB = currentState[keys.b] as string;
       const morphValue = currentState[keys.morph] as number;
@@ -5110,7 +5131,7 @@ const App: React.FC = () => {
       // Reapply the morphed values using applyMorphToState
       // This recalculates interpolation with the new preset
       const morphedParams = applyMorphToState(currentState, voice);
-      setState((prev) => ({ ...prev, ...morphedParams }));
+      nextResolvedState = { ...currentState, ...morphedParams };
 
       // Also reapply dual range interpolation if there are overrides
       const currentValues: Record<string, number> = {};
@@ -5150,7 +5171,15 @@ const App: React.FC = () => {
         }
       }
     }
-  }, [drumPresetFingerprint]); // Only re-run when drum preset names actually change
+    if (nextResolvedState) {
+      setState(nextResolvedState);
+      scheduleProductRuntimeParamUpdate(nextResolvedState, {
+        immediate: true,
+        reason: 'morph-control-change',
+        triggerCritical: true,
+      });
+    }
+  }, [drumPresetFingerprint, scheduleProductRuntimeParamUpdate, stateRef]); // Only re-run when drum preset names actually change
 
   const { handleMorphPositionChange } = useMorphPositionRuntimeSurface({
     morphPresetA,
@@ -5198,6 +5227,7 @@ const App: React.FC = () => {
     morphPresetA,
     morphPresetB,
     morphPosition,
+    currentCofStep: engineState.cofCurrentStep,
     state,
     sliderModes,
     dualSliderRanges,
@@ -5205,16 +5235,22 @@ const App: React.FC = () => {
     morphCapturedStateRef,
     morphCapturedDualRangesRef,
     morphCapturedSliderModesRef,
+    morphCapturedStartRootRef,
+    morphDirectionRef,
     setMorphPresetA,
     setMorphPresetB,
     setMorphSlotAName,
     setMorphSlotBName,
     setState,
+    setSliderModes,
+    setDualSliderRanges,
     setStatePresetName,
     setVisualizerPresetName,
     setLinkedVisualizerPresetRequest,
     presetEngineUpdateOptions: presetProductRuntimeUpdateOptions,
     syncCoreProductAppliedPreset,
+    scheduleProductRuntimeParamUpdate,
+    lerpPresets,
     normalizeState: normalizePresetForWeb,
     applyDualRangesFromPreset,
     restoreEvolveConfigs,
@@ -6297,20 +6333,7 @@ const App: React.FC = () => {
           )}
         </div>
 
-        {/* Footer with kanji */}
-        <div
-          style={{
-            textAlign: 'center',
-            padding: '20px 0 30px 0',
-            fontFamily: "'Zen Maru Gothic', sans-serif",
-            fontSize: 'min(10vw, 48px)',
-            color: 'rgba(255,255,255,0.4)',
-            fontWeight: 300,
-            letterSpacing: '0.1em',
-          }}
-        >
-          結晶
-        </div>
+        <AppFooterMark />
       </div>
       </MidiLearnProvider>
     </SliderHelpProvider>

@@ -21,7 +21,6 @@ import { drumVoiceIndex, manualAuditionState, midiFromFrequency, requireFiniteRa
 import { CoreProductRuntime, type CoreProductGraphTapCaptureChunk } from './coreProductRuntime';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
-import { createCoreProductDynamicsVisualTelemetry, createCoreProductSonicParityDebugState, createCoreProductTransportDebugState } from './CoreProductHostDebugTelemetry';
 import { shouldRejoinCoreProductSequencerClocks } from './CoreProductHostSequencerClock';
 import { publishCoreProductSequencerVisuals } from './CoreProductHostSequencerVisuals';
 import { createCoreProductSequencerHomeStore } from './CoreProductHostSequencerHome';
@@ -30,11 +29,13 @@ import { CoreProductAssetRegistrar } from './product/host/CoreProductAssetRegist
 import { CoreProductDisplayCallbackRegistry } from './product/host/CoreProductDisplayCallbackRegistry';
 import { CoreProductGraphTapBridge } from './product/host/CoreProductGraphTapBridge';
 import { CoreProductHarmonyStateBridge } from './product/host/CoreProductHarmonyStateBridge';
+import { CoreProductHostDebugSurface } from './product/host/CoreProductHostDebugSurface';
 import { CoreProductHostDiagnostics } from './product/host/CoreProductHostDiagnostics';
 import { createCoreProductEngineHostProxy } from './product/host/CoreProductHostProxy';
 import { CoreProductJourneyMorphClock } from './product/host/CoreProductJourneyMorphClock';
 import { CoreProductLeadPresetDataLoader } from './product/host/CoreProductLeadPresetDataLoader';
 import { CoreProductModulationRangeBridge } from './product/host/CoreProductModulationRangeBridge';
+import { CoreProductResolvedStateCommitService } from './product/host/CoreProductResolvedStateCommitService';
 import { snapshotReloadReasonForProductPatch } from './product/host/CoreProductPatchClassifier';
 import { applyCoreProductSnapshotUpdate, createCoreProductHostSnapshot, loadCoreProductSnapshot } from './product/host/CoreProductSnapshotCoordinator';
 import { createCoreProductPerfSnapshot, enrichCoreProductHostTelemetry, mergeCoreProductVisualTelemetry } from './product/host/CoreProductTelemetryAdapter';
@@ -50,7 +51,7 @@ import { applyCoreProductSequencerLaneParamSet, patchCoreProductSequencerLaneAda
 import { CoreProductSequencerMorphFeedbackBridge } from './product/host/CoreProductSequencerMorphFeedbackBridge';
 import { applyCoreProductDrumStepOverrides, applyCoreProductSynthStepOverrides } from './product/host/CoreProductSequencerStepOverrideBridge';
 import { coreProductStepValueFieldEnabled, syncCoreProductSequencerStepState } from './product/host/CoreProductSequencerStepPostingBridge';
-import type { ProductEngineState, ProductSnapshotPatchReason } from './product/ProductEngineTypes';
+import type { ProductEngineState, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductSnapshotPatchReason } from './product/ProductEngineTypes';
 import { createWebProductRuntimeCapabilityReport, type ProductRuntimeCapabilityReport } from './product/ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from './product/ProductRuntimeDiagnostics';
 import { CoreProductArrangementBridge } from './product/host/CoreProductArrangementBridge';
@@ -84,6 +85,7 @@ class CoreProductEngineHost {
       if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState);
     },
   });
+  private readonly debugSurface = new CoreProductHostDebugSurface({ engineMode: 'core-product', runtime: this.runtime, running: () => this.running, runtimeReady: () => this.runtimeReady, latestProductSnapshot: () => this.latestProductSnapshot, latestSliderState: () => this.latestSliderState, latestTelemetry: () => this.latestTelemetry, runtimeWalkDebug: () => this.modulationRangeBridge.getRuntimeWalkDebugState() });
   private synthSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
   private drumSubLaneEnabled: Record<string, boolean>[] = [{}, {}, {}, {}];
   private latestTelemetry: CoreProductTelemetrySnapshot | null = null;
@@ -91,6 +93,7 @@ class CoreProductEngineHost {
   private running = false;
   private readonly journeyMorphClock = new CoreProductJourneyMorphClock({ hasCallback: () => this.displayCallbacks.has('journeyMorphClock'), invoke: (now) => this.invokeDisplayCallback('journeyMorphClock', now), isDocumentVisible: () => this.isDocumentVisible(), nowMs: () => this.nowMs() });
   private readonly diagnostics = new CoreProductHostDiagnostics();
+  private readonly resolvedStateCommitService = new CoreProductResolvedStateCommitService({ diagnostics: this.diagnostics, applyProductStatePatch: (patch, reason) => this.applyProductStatePatch(patch, reason), postProductEvent: (event) => this.postProductEvent(event) });
   private midiTimestampOriginSeconds: number | null = null;
   private sequencerTransportStartInFlight = false;
   private pendingSnapshotReloadReason: SnapshotReloadReason | null = null;
@@ -117,45 +120,18 @@ class CoreProductEngineHost {
     this.runtime.setDawOutputRouting(config);
   }
   setDawOutputDeviceId(deviceId: string | null): Promise<boolean> { return this.runtime.setDawOutputDeviceId(deviceId); }
-  getDynamicsVisualTelemetry(): DynamicsVisualTelemetrySnapshot {
-    return createCoreProductDynamicsVisualTelemetry(this.latestTelemetry, this.runtime.audioContext?.currentTime ?? 0);
-  }
-  getGranularActiveGrainCount(): number {
-    return this.latestTelemetry?.activeGrains ?? 0;
-  }
-  getGranularVoicePositions(): [number, number, number, number] {
-    const positions = this.latestTelemetry?.granularVoicePositions;
-    if (!positions) return [0, 0, 0, 0];
-    return [
-      this.normalizedPosition(positions[0]),
-      this.normalizedPosition(positions[1]),
-      this.normalizedPosition(positions[2]),
-      this.normalizedPosition(positions[3]),
-    ];
-  }
-  getGranularWriteHeadPosition(): number {
-    return this.normalizedPosition(this.latestTelemetry?.granularWriteHeadPosition);
-  }
+  getDynamicsVisualTelemetry(): DynamicsVisualTelemetrySnapshot { return this.debugSurface.getDynamicsVisualTelemetry(); }
+  getGranularActiveGrainCount(): number { return this.debugSurface.getGranularActiveGrainCount(); }
+  getGranularVoicePositions(): [number, number, number, number] { return this.debugSurface.getGranularVoicePositions(); }
+  getGranularWriteHeadPosition(): number { return this.debugSurface.getGranularWriteHeadPosition(); }
   getCurrentPadFilterFreq(pad: 'pad1' | 'pad2' = 'pad1'): number { return pad === 'pad2' ? this.latestTelemetry?.pad2FilterFreq ?? 0 : this.latestTelemetry?.pad1FilterFreq ?? 0; }
   getCurrentPadLfoValue(pad: 'pad1' | 'pad2' = 'pad1'): number { return pad === 'pad2' ? this.latestTelemetry?.pad2Lfo1Value ?? 0 : this.latestTelemetry?.pad1Lfo1Value ?? 0; }
   getSonicParityGraphTapId(trackId: string): number | null { return this.graphTapBridge.getTapId(trackId); }
   startSonicParityGraphCapture(trackId: string, chunkFrames: number): number { return this.graphTapBridge.startCapture(trackId, chunkFrames); }
   flushSonicParityGraphCapture(tapId: number): Promise<CoreProductGraphTapCaptureChunk[]> { return this.graphTapBridge.flushCapture(tapId); }
   stopSonicParityGraphCapture(tapId: number): Promise<CoreProductGraphTapCaptureChunk[]> { return this.graphTapBridge.stopCapture(tapId); }
-  getSonicParityDebugState(): Record<string, unknown> {
-    return createCoreProductSonicParityDebugState({
-      engineMode: this.engineMode,
-      running: this.running,
-      runtimeReady: this.runtimeReady,
-      runtimeError: this.runtime.error,
-      hasOutputNode: Boolean(this.runtime.outputNode),
-      latestProductSnapshot: this.latestProductSnapshot,
-      latestSliderState: this.latestSliderState,
-      latestTelemetry: this.latestTelemetry,
-      runtimeWalkDebug: this.modulationRangeBridge.getRuntimeWalkDebugState(),
-    });
-  }
-  getTransportDebugState(): TransportDebugSnapshot | null { return createCoreProductTransportDebugState(this.latestTelemetry, this.latestProductSnapshot?.transport); }
+  getSonicParityDebugState(): Record<string, unknown> { return this.debugSurface.getSonicParityDebugState(); }
+  getTransportDebugState(): TransportDebugSnapshot | null { return this.debugSurface.getTransportDebugState(); }
   private refreshUiHarmonySnapshot(): boolean { return this.harmonyStateBridge.refresh(this.createLatestArrangementState(), this.latestTelemetry); }
   private createEngineState(isRunning = this.running || this.latestTelemetry?.transportRunning === true): ProductEngineState {
     return this.harmonyStateBridge.createEngineState({
@@ -167,16 +143,7 @@ class CoreProductEngineHost {
   }
   private publishStateIfHarmonyChanged(): void { if (this.refreshUiHarmonySnapshot()) this.stateChangeCallback?.(this.createEngineState()); }
   getState(): ProductEngineState { return this.createEngineState(); }
-  private normalizedPosition(value: unknown): number {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return 0;
-    if (numeric <= 0) return 0;
-    if (numeric >= 1) return 1;
-    return numeric;
-  }
-  setStateChangeCallback(callback: ((state: ProductEngineState) => void) | null): void {
-    this.stateChangeCallback = callback;
-  }
+  setStateChangeCallback(callback: ((state: ProductEngineState) => void) | null): void { this.stateChangeCallback = callback; }
 
   setPerfMonitorEnabled(enabled: boolean): void {
     this.perfMonitorEnabled = enabled;
@@ -242,6 +209,18 @@ class CoreProductEngineHost {
 
   updateSnapshotPatch(reason: ProductSnapshotPatchReason, patch: Record<string, unknown>): void {
     this.applyProductStatePatch(patch, snapshotReloadReasonForProductPatch(reason));
+  }
+
+  commitResolvedState(commit: ProductResolvedStateCommit): ProductResolvedStateCommitReceipt {
+    return this.resolvedStateCommitService.commitResolvedState(commit);
+  }
+
+  getCommittedStateRevision(): number {
+    return this.resolvedStateCommitService.getCommittedStateRevision();
+  }
+
+  recordSequencerUiPatch(revision: number, kind: string): void {
+    this.resolvedStateCommitService.recordSequencerUiPatch(revision, kind);
   }
 
   private applyProductStatePatch(patch: Record<string, unknown>, fallbackReloadReason: SnapshotReloadReason): void {
@@ -464,6 +443,7 @@ class CoreProductEngineHost {
       ? CORE_PRODUCT_SOURCE_IDS.pad2
       : CORE_PRODUCT_SOURCE_IDS.pad1;
     const post = () => {
+      this.recordSoundTrigger();
       this.runtime.postEvent(createCoreProductManualNoteEvent(targetSource, midi, triggerVelocity, durationSeconds * 1000, voiceIndex));
     };
     if (this.runtimeReady) { if (this.runtime.audioContext?.state === 'running') { post(); return; } void this.runtime.resume().then(post); return; }
@@ -556,6 +536,7 @@ class CoreProductEngineHost {
     const voiceIndex = drumVoiceIndex(voice);
     const triggerVelocity = requireFiniteRange(velocity, 'drum trigger velocity', 0.000001, 1);
     const post = () => {
+      this.recordSoundTrigger();
       this.runtime.postEvent(createCoreProductDrumTriggerEvent(voiceIndex, triggerVelocity));
       this.invokeDisplayCallback('drumTrigger', voice, triggerVelocity);
     };
@@ -681,7 +662,14 @@ class CoreProductEngineHost {
     if (pending) await Promise.all(pending);
   }
 
-  private postManualSynthNote(note: RequiredManualSynthNote): void { this.runtime.postEvent(createCoreProductManualNoteEvent(sourceId(note.source), note.midi, note.velocity, note.durationMs, note.source === 'pad1' || note.source === 'pad2' ? note.voiceIndex : undefined)); }
+  private postManualSynthNote(note: RequiredManualSynthNote): void {
+    this.recordSoundTrigger();
+    this.runtime.postEvent(createCoreProductManualNoteEvent(sourceId(note.source), note.midi, note.velocity, note.durationMs, note.source === 'pad1' || note.source === 'pad2' ? note.voiceIndex : undefined));
+  }
+
+  private recordSoundTrigger(): void {
+    this.resolvedStateCommitService.recordSoundTrigger();
+  }
 
   private loadLatestSnapshot(reason: SnapshotReloadReason = 'product-patch', includeClockStartDelay = reason === 'runtime-start'): void {
     if (!this.runtimeReady) return;

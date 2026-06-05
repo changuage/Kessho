@@ -535,8 +535,8 @@ async function checkWasmExports() {
   refreshMemoryViews();
   assert(reverbModule !== 0, 'WASM failed to create reverb module');
   assert(reverbModuleB !== 0, 'WASM failed to create second reverb module');
-  assert(moduleGetParamCount(reverbModule) === 30, 'WASM reverb module param count mismatch');
-  assert(moduleGetParamCount(reverbModuleB) === 30, 'WASM second reverb module param count mismatch');
+  assert(moduleGetParamCount(reverbModule) === 31, 'WASM reverb module param count mismatch');
+  assert(moduleGetParamCount(reverbModuleB) === 31, 'WASM second reverb module param count mismatch');
   const reverbParamsPtr = moduleGetParamsPtr(reverbModule);
   const reverbParamsPtrB = moduleGetParamsPtr(reverbModuleB);
   assert(reverbParamsPtr !== 0, 'WASM reverb module params pointer was null');

@@ -650,6 +650,19 @@ async function readSubLaneEnabled(page, sparkIndex) {
   return !String(await strip.getAttribute('class')).includes('disabled');
 }
 
+function parseEditorDragNumberText(text, label) {
+  const trimmed = text.trim();
+  const numeric = Number.parseInt(trimmed, 10);
+  if (Number.isFinite(numeric)) return numeric;
+  if (label === 'pitch root') {
+    const match = /^([A-G]#?)(-?\d+)$/.exec(trimmed);
+    const pitchClass = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 }[match?.[1] ?? ''];
+    const octave = Number.parseInt(match?.[2] ?? '', 10);
+    if (pitchClass !== undefined && Number.isFinite(octave)) return (octave + 1) * 12 + pitchClass;
+  }
+  return Number.NaN;
+}
+
 async function setSubLaneEnabled(page, sparkIndex, desired, engineMode, tab, label) {
   const strip = sparkStrip(page, sparkIndex);
   await strip.waitFor({ timeout: 10000 });
@@ -688,7 +701,7 @@ async function editorSteps(page) {
 
 async function readEditorDragNumber(page, controlIndex, label) {
   const text = String(await page.locator('.seq-lane-editor-wrap:visible .seq-drag-num').nth(controlIndex).textContent());
-  const value = Number.parseInt(text.trim(), 10);
+  const value = parseEditorDragNumberText(text, label);
   assert(Number.isFinite(value), `Could not read ${label} editor control from ${text}`);
   return value;
 }
@@ -971,8 +984,8 @@ async function setPitchSubLaneState(page, engineMode, tab, options) {
   await setPitchSubLaneMode(page, options.mode);
   await setEditorSteps(page, options.steps);
   await setEditorDirection(page, options.direction);
-  if (options.root !== undefined) await setPitchRoot(page, options.root, engineMode, tab);
   if (options.scale) await setPitchScale(page, options.scale);
+  if (options.root !== undefined) await setPitchRoot(page, options.root, engineMode, tab);
   if (options.scaleQuantize !== undefined) await setPitchScaleQuantize(page, options.scaleQuantize);
   if (options.mode === 'noteRange' && options.noteMin !== undefined && options.noteMax !== undefined) {
     await setPitchNoteRange(page, options.noteMin, options.noteMax, engineMode, tab);

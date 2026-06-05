@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 const root = process.cwd();
 const host = readFileSync(resolve(root, 'src/audio/coreProductEngineHost.ts'), 'utf8');
 const hostDebugTelemetry = readFileSync(resolve(root, 'src/audio/CoreProductHostDebugTelemetry.ts'), 'utf8');
+const hostDebugSurface = readFileSync(resolve(root, 'src/audio/product/host/CoreProductHostDebugSurface.ts'), 'utf8');
 const hostEarthTextureDebug = readFileSync(resolve(root, 'src/audio/product/host/CoreProductEarthTextureDebug.ts'), 'utf8');
 const behaviorHarness = readFileSync(resolve(root, 'scripts/lib/kesshoProductBehaviorHarness.mjs'), 'utf8');
 const fallbackDiagnostics = readFileSync(resolve(root, 'src/audio/CoreProductFallbackDiagnostics.ts'), 'utf8');
@@ -46,11 +47,15 @@ function assert(condition, message) {
   }
 }
 
-function methodBody(name) {
+function methodBody(name, source = host, label = 'getter') {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const definition = new RegExp(`(?:^|\\n)\\s*(?:private\\s+)?(?:async\\s+)?${escaped}(?:<[^>]+>)?\\s*\\(`).exec(host);
-  assert(definition, `missing getter ${name}()`);
-  return balancedBody(host, host.indexOf('{', definition.index), `${name}()`);
+  const definition = new RegExp(`(?:^|\\n)\\s*(?:private\\s+)?(?:async\\s+)?${escaped}(?:<[^>]+>)?\\s*\\(`).exec(source);
+  assert(definition, `missing ${label} ${name}()`);
+  return balancedBody(source, source.indexOf('{', definition.index), `${name}()`);
+}
+
+function debugSurfaceBody(name) {
+  return methodBody(name, hostDebugSurface, 'debug surface getter');
 }
 
 function helperBody(name) {
@@ -100,22 +105,22 @@ for (const getter of getters) {
 }
 
 assert(
-  methodBody('getGranularActiveGrainCount').includes('this.latestTelemetry?.activeGrains'),
+  debugSurfaceBody('getGranularActiveGrainCount').includes('this.options.latestTelemetry()?.activeGrains'),
   'granular active grain count must use Product Core telemetry instead of a fixed placeholder',
 );
 assert(
-  methodBody('getGranularVoicePositions').includes('this.latestTelemetry?.granularVoicePositions') &&
-    methodBody('getGranularVoicePositions').includes('this.normalizedPosition'),
+  debugSurfaceBody('getGranularVoicePositions').includes('this.options.latestTelemetry()?.granularVoicePositions') &&
+    debugSurfaceBody('getGranularVoicePositions').includes('normalizedTelemetryPosition'),
   'granular voice positions must use Product Core granular telemetry instead of a hidden fallback',
 );
 assert(
-  methodBody('getGranularWriteHeadPosition').includes('this.latestTelemetry?.granularWriteHeadPosition') &&
-    methodBody('getGranularWriteHeadPosition').includes('this.normalizedPosition'),
+  debugSurfaceBody('getGranularWriteHeadPosition').includes('this.options.latestTelemetry()?.granularWriteHeadPosition') &&
+    debugSurfaceBody('getGranularWriteHeadPosition').includes('normalizedTelemetryPosition'),
   'granular write head must use Product Core granular telemetry instead of a hidden fallback',
 );
 assert(
-  methodBody('getDynamicsVisualTelemetry').includes('this.latestTelemetry') &&
-    methodBody('getDynamicsVisualTelemetry').includes('createCoreProductDynamicsVisualTelemetry') &&
+  debugSurfaceBody('getDynamicsVisualTelemetry').includes('this.options.latestTelemetry()') &&
+    debugSurfaceBody('getDynamicsVisualTelemetry').includes('createCoreProductDynamicsVisualTelemetry') &&
     helperBody('createCoreProductDynamicsVisualTelemetry').includes('telemetry.masterInputPeak') &&
     helperBody('createCoreProductDynamicsVisualTelemetry').includes('telemetry.masterOutputPeak') &&
     helperBody('createCoreProductDynamicsVisualTelemetry').includes('telemetry.masterLimiterGainReductionDb') &&
@@ -123,9 +128,9 @@ assert(
   'dynamics visual telemetry must use Product Core master/dynamics telemetry instead of fixed placeholders',
 );
 assert(
-  methodBody('getTransportDebugState').includes('this.latestTelemetry') &&
-    methodBody('getTransportDebugState').includes('this.latestProductSnapshot?.transport') &&
-    methodBody('getTransportDebugState').includes('createCoreProductTransportDebugState') &&
+  debugSurfaceBody('getTransportDebugState').includes('this.options.latestTelemetry()') &&
+    debugSurfaceBody('getTransportDebugState').includes('this.options.latestProductSnapshot()?.transport') &&
+    debugSurfaceBody('getTransportDebugState').includes('createCoreProductTransportDebugState') &&
     helperBody('createCoreProductTransportDebugState').includes('telemetry.beatPosition') &&
     helperBody('createCoreProductTransportDebugState').includes('telemetry.transportRunning'),
   'transport debug state must use Product Core telemetry and generated transport state instead of a fixed placeholder',

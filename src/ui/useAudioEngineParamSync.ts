@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { referenceAudioEngineDebug } from '../audio/reference/ReferenceAudioEngineDebugCompat';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { ProductSnapshotPatchReason } from '../audio/product/ProductEngineTypes';
+import { commitVisibleSliderStateForProduct } from '../product-control';
 import { collectChangedStatePatch } from './audioEngineStatePatch';
 import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import type { SliderState } from './state';
@@ -12,6 +13,7 @@ export type AudioEngineParamUpdateOptions = {
   immediate?: boolean;
   reason?: ProductSnapshotPatchReason;
   forceFullSnapshot?: boolean;
+  triggerCritical?: boolean;
 };
 
 const FX_CONTROL_KEY_PATTERNS: readonly RegExp[] = [
@@ -71,6 +73,29 @@ function inferProductPatchReason(
   return keys.length > 0 && keys.some(isFxControlPatchKey) ? 'fx-control-change' : 'ui-control-change';
 }
 
+function requiresResolvedCommit(
+  reason: ProductSnapshotPatchReason,
+  options?: AudioEngineParamUpdateOptions,
+): boolean {
+  return options?.triggerCritical === true
+    || options?.immediate === true
+    || options?.forceFullSnapshot === true
+    || reason === 'preset-load'
+    || reason === 'morph-control-change';
+}
+
+function shouldFlushImmediatelyForResolvedCommit(
+  previousState: SliderState | null,
+  nextState: SliderState,
+  options?: AudioEngineParamUpdateOptions,
+): boolean {
+  if (options?.immediate || options?.triggerCritical || options?.forceFullSnapshot) return true;
+  if (!previousState) return false;
+  const patch = collectChangedStatePatch(previousState, nextState);
+  const reason = inferProductPatchReason(patch, options?.reason);
+  return reason === 'preset-load' || reason === 'morph-control-change';
+}
+
 export function useAudioEngineParamSync(audioEngineRuntimeMode: AudioEngineRuntimeMode): ((
   nextState: SliderState,
   options?: AudioEngineParamUpdateOptions,
@@ -89,7 +114,17 @@ export function useAudioEngineParamSync(audioEngineRuntimeMode: AudioEngineRunti
         : { ...nextState };
       lastAppliedAudioEngineStateRef.current = nextState;
       if (previousState && Object.keys(patch).length === 0) return;
-      productEngine.updateSnapshotPatch(inferProductPatchReason(patch, options?.reason), patch);
+      const reason = inferProductPatchReason(patch, options?.reason);
+      if (requiresResolvedCommit(reason, options)) {
+        void commitVisibleSliderStateForProduct(productEngine, nextState, {
+          reason,
+          triggerCritical: options?.triggerCritical ?? true,
+        }).catch((error) => {
+          console.warn('Product resolved-state commit failed:', error);
+        });
+        return;
+      }
+      productEngine.updateSnapshotPatch(reason, patch);
       return;
     }
     lastAppliedAudioEngineStateRef.current = nextState;
@@ -111,7 +146,11 @@ export function useAudioEngineParamSync(audioEngineRuntimeMode: AudioEngineRunti
     nextState: SliderState,
     options?: AudioEngineParamUpdateOptions,
   ) => {
-    if (audioEngineRuntimeMode !== 'core-product' || options?.immediate) {
+    if (
+      audioEngineRuntimeMode !== 'core-product'
+      || options?.immediate
+      || shouldFlushImmediatelyForResolvedCommit(lastAppliedAudioEngineStateRef.current, nextState, options)
+    ) {
       pendingAudioEngineStateRef.current = null;
       pendingAudioEngineUpdateOptionsRef.current = undefined;
       if (audioEngineUpdateTimerRef.current !== null) {

@@ -4,6 +4,7 @@ import type { ProductRuntimeCapabilityReport } from './ProductRuntimeCapabilityR
 import type { ProductRuntimeDiagnostics } from './ProductRuntimeDiagnostics';
 import type { ProductEnginePort } from './ProductEnginePort';
 import type { ProductLiveNoteEvent } from './liveNoteEvents';
+import { ProductDiagnosticsPublisher } from './ProductDiagnosticsPublisher';
 import type {
   ProductAssetHandle,
   ProductAssetRegistration,
@@ -25,6 +26,8 @@ import type {
   ProductMidiMessage,
   ProductRange,
   ProductRangeMap,
+  ProductResolvedStateCommit,
+  ProductResolvedStateCommitReceipt,
   ProductRuntimeWalkPositionsCallback,
   ProductScalarCallback,
   ProductSequencerEvolveTriggerCallback,
@@ -51,9 +54,7 @@ import type {
 export class WebProductEngine implements ProductEnginePort {
   readonly mode = 'core-product' as const;
   private lifecycleState: ProductEngineLifecycleState = 'cold';
-  private diagnosticsCallback: ((diagnostics: ProductRuntimeDiagnostics) => void) | null = null;
-  private diagnosticsQueued = false;
-  private diagnosticsPublishEpoch = 0;
+  private readonly diagnosticsPublisher = new ProductDiagnosticsPublisher(() => this.getDiagnostics());
 
   async preload(): Promise<void> {
     this.lifecycleState = this.lifecycleState === 'cold' ? 'ready' : this.lifecycleState;
@@ -116,6 +117,16 @@ export class WebProductEngine implements ProductEnginePort {
     // TODO(product-core-control-routing-events): common controls should move to generated ProductEvents or dirty-diff paths.
     coreProductRuntimeHostPort.updateSnapshotPatch(reason, patch);
     this.scheduleDiagnosticsPublish();
+  }
+
+  commitResolvedState(commit: ProductResolvedStateCommit): Promise<ProductResolvedStateCommitReceipt> {
+    const receipt = coreProductRuntimeHostPort.commitResolvedState(commit);
+    this.scheduleDiagnosticsPublish();
+    return Promise.resolve(receipt);
+  }
+
+  getCommittedStateRevision(): number {
+    return coreProductRuntimeHostPort.getCommittedStateRevision();
   }
 
   enqueueEvent(event: ProductEvent): void {
@@ -327,8 +338,7 @@ export class WebProductEngine implements ProductEnginePort {
   }
 
   setDiagnosticsCallback(callback: ((diagnostics: ProductRuntimeDiagnostics) => void) | null): void {
-    this.diagnosticsCallback = callback;
-    callback?.(this.getDiagnostics());
+    this.diagnosticsPublisher.setCallback(callback);
   }
 
   private setLiveTriggerCallback(
@@ -339,18 +349,10 @@ export class WebProductEngine implements ProductEnginePort {
   }
 
   private scheduleDiagnosticsPublish(): void {
-    if (!this.diagnosticsCallback || this.diagnosticsQueued) return;
-    this.diagnosticsQueued = true;
-    const queuedEpoch = this.diagnosticsPublishEpoch;
-    queueMicrotask(() => {
-      this.diagnosticsQueued = false;
-      if (queuedEpoch !== this.diagnosticsPublishEpoch) return;
-      this.publishDiagnostics();
-    });
+    this.diagnosticsPublisher.schedule();
   }
 
   private publishDiagnostics(): void {
-    this.diagnosticsPublishEpoch += 1;
-    this.diagnosticsCallback?.(this.getDiagnostics());
+    this.diagnosticsPublisher.publish();
   }
 }

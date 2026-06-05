@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime';
@@ -8,9 +8,11 @@ import {
   readProductRuntimeCpuSummaries,
   summarizeProductRuntimeCpu,
   writeProductRuntimeCpuSummaries,
+  type ProductRuntimeCpuSummary,
   type ProductRuntimeCpuSummaries,
 } from './productRuntimeUi';
 import { useDocumentVisibility } from './hooks/useDocumentVisibility';
+import { PRODUCT_DEBUG_PANEL_INTERVAL_MS } from './productRuntimeTelemetryRateLimits';
 
 type ProductRuntimePerfAdapter = {
   productRuntimeCpuSummaries: ProductRuntimeCpuSummaries;
@@ -26,6 +28,57 @@ export function useProductRuntimePerfAdapter(
   const [productRuntimeCpuSummaries, setProductRuntimeCpuSummaries] = useState<ProductRuntimeCpuSummaries>(
     () => readProductRuntimeCpuSummaries(),
   );
+  const pendingCpuSummaryRef = useRef<ProductRuntimeCpuSummary | null>(null);
+  const publishTimerRef = useRef<number | null>(null);
+  const lastCpuSummaryPublishAtRef = useRef(0);
+
+  const clearPendingCpuSummary = useCallback(() => {
+    pendingCpuSummaryRef.current = null;
+    if (publishTimerRef.current !== null) {
+      window.clearTimeout(publishTimerRef.current);
+      publishTimerRef.current = null;
+    }
+  }, []);
+
+  const publishPendingCpuSummary = useCallback(() => {
+    if (publishTimerRef.current !== null) {
+      window.clearTimeout(publishTimerRef.current);
+      publishTimerRef.current = null;
+    }
+    const summary = pendingCpuSummaryRef.current;
+    pendingCpuSummaryRef.current = null;
+    if (!summary) return;
+    lastCpuSummaryPublishAtRef.current = Date.now();
+    setProductRuntimeCpuSummaries((prev) => {
+      const current = prev[productRuntimeMode];
+      if (
+        current &&
+        current.avgPercent === summary.avgPercent &&
+        current.peakPercent === summary.peakPercent &&
+        current.missPercent === summary.missPercent &&
+        current.moduleCount === summary.moduleCount
+      ) {
+        return prev;
+      }
+      const next = { ...prev, [productRuntimeMode]: summary };
+      writeProductRuntimeCpuSummaries(next);
+      return next;
+    });
+  }, [productRuntimeMode]);
+
+  const scheduleCpuSummaryPublish = useCallback((summary: ProductRuntimeCpuSummary) => {
+    pendingCpuSummaryRef.current = summary;
+    const elapsedMs = Date.now() - lastCpuSummaryPublishAtRef.current;
+    if (elapsedMs >= PRODUCT_DEBUG_PANEL_INTERVAL_MS) {
+      publishPendingCpuSummary();
+      return;
+    }
+    if (publishTimerRef.current !== null) return;
+    publishTimerRef.current = window.setTimeout(
+      publishPendingCpuSummary,
+      Math.max(1, PRODUCT_DEBUG_PANEL_INTERVAL_MS - elapsedMs),
+    );
+  }, [publishPendingCpuSummary]);
 
   const setProductPerfMonitorEnabled = useCallback((enabled: boolean): void => {
     const nextEnabled = enabled && documentVisible;
@@ -67,18 +120,23 @@ export function useProductRuntimePerfAdapter(
     setProductPerfUpdateCallback((data) => {
       const summary = summarizeProductRuntimeCpu(data);
       if (!summary) return;
-      setProductRuntimeCpuSummaries((prev) => {
-        const next = { ...prev, [productRuntimeMode]: summary };
-        writeProductRuntimeCpuSummaries(next);
-        return next;
-      });
+      scheduleCpuSummaryPublish(summary);
     });
 
     return () => {
+      clearPendingCpuSummary();
       setProductPerfUpdateCallback(null);
       setProductPerfMonitorEnabled(false);
     };
-  }, [documentVisible, productRuntimeMode, setProductPerfMonitorEnabled, setProductPerfUpdateCallback, showProductRuntimeSwitcher]);
+  }, [
+    clearPendingCpuSummary,
+    documentVisible,
+    productRuntimeMode,
+    scheduleCpuSummaryPublish,
+    setProductPerfMonitorEnabled,
+    setProductPerfUpdateCallback,
+    showProductRuntimeSwitcher,
+  ]);
 
   return {
     productRuntimeCpuSummaries,

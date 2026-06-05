@@ -259,6 +259,9 @@ typedef struct KesshoProductFxSnapshot {
   uint32_t dynamics_enabled;
   uint32_t dynamics_character_enabled;
   uint32_t dynamics_character_mode;
+  uint32_t dynamics_character_quality;
+  float dynamics_character_anti_comb;
+  float dynamics_character_diffusion;
   float dynamics_character_mix;
   float dynamics_character_age;
   float dynamics_character_bias;
@@ -270,6 +273,10 @@ typedef struct KesshoProductFxSnapshot {
   float dynamics_character_rate;
   float dynamics_character_damp;
   uint32_t dynamics_degrade_enabled;
+  uint32_t dynamics_degrade_quality;
+  float dynamics_degrade_event_amount;
+  float dynamics_degrade_profile_amount;
+  float dynamics_degrade_dither_amount;
   float dynamics_degrade_mix;
   float dynamics_degrade_age;
   float dynamics_degrade_generation;
@@ -316,10 +323,12 @@ typedef struct KesshoProductFxSnapshot {
   float dynamics_mod_noise_alias;
   uint32_t dynamics_saturation_enabled;
   uint32_t dynamics_saturation_mode;
+  uint32_t dynamics_saturation_quality;
   float dynamics_saturation_drive;
   float dynamics_saturation_tone;
   float dynamics_saturation_bias;
   uint32_t dynamics_end_comp_enabled;
+  uint32_t dynamics_end_comp_mode;
   float dynamics_end_comp_threshold;
   float dynamics_end_comp_knee;
   float dynamics_end_comp_ratio;
@@ -331,6 +340,10 @@ typedef struct KesshoProductFxSnapshot {
   float dynamics_end_comp_detector_tilt;
   float dynamics_end_comp_auto_makeup;
   float dynamics_end_comp_program_release;
+  float dynamics_end_comp_peak_blend;
+  float dynamics_end_comp_clarity;
+  float dynamics_end_comp_two_band_amount;
+  float dynamics_end_comp_band_split;
   uint32_t sidechain_enabled;
   uint32_t sidechain_key_a;
   uint32_t sidechain_key_b;

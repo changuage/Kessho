@@ -1,10 +1,11 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { extractPresetVersionMetadata } from '../presets/presetUtils';
 import type { PresetEntry } from '../presets/types';
-import { isAtEndpoint0, isAtEndpoint1 } from '../audio/morphUtils';
+import { isAtEndpoint0, isAtEndpoint1, isInMidMorph } from '../audio/morphUtils';
 import type { DualSliderRange } from './DualSlider';
-import { applyPreset, type ApplyPresetOptions } from './presetUtils';
+import { applyPreset, type ApplyPresetOptions, USER_PREFERENCE_KEYS } from './presetUtils';
 import { migratePreset, type SavedPreset, type SliderMode, type SliderState } from './state';
+import type { ProductRuntimeParamUpdateOptions } from './useProductRuntimePresetSurface';
 import { VISUALIZER_PRESET_SCOPE } from './visualizer/visualizerPresetStore';
 
 type PresetEngineUpdateOptions = Pick<
@@ -16,6 +17,7 @@ type UseMorphSlotLoadRuntimeSurfaceOptions<TPreset extends SavedPreset> = {
   morphPresetA: TPreset | null;
   morphPresetB: TPreset | null;
   morphPosition: number;
+  currentCofStep: number;
   state: SliderState;
   sliderModes: Record<string, SliderMode>;
   dualSliderRanges: Partial<Record<keyof SliderState, DualSliderRange>>;
@@ -23,16 +25,33 @@ type UseMorphSlotLoadRuntimeSurfaceOptions<TPreset extends SavedPreset> = {
   morphCapturedStateRef: MutableRefObject<SliderState | null>;
   morphCapturedDualRangesRef: MutableRefObject<Record<string, { min: number; max: number }> | null>;
   morphCapturedSliderModesRef: MutableRefObject<Record<string, SliderMode> | null>;
+  morphCapturedStartRootRef: MutableRefObject<number | null>;
+  morphDirectionRef: MutableRefObject<'toA' | 'toB' | null>;
   setMorphPresetA: Dispatch<SetStateAction<TPreset | null>>;
   setMorphPresetB: Dispatch<SetStateAction<TPreset | null>>;
   setMorphSlotAName: Dispatch<SetStateAction<string>>;
   setMorphSlotBName: Dispatch<SetStateAction<string>>;
   setState: Dispatch<SetStateAction<SliderState>>;
+  setSliderModes: Dispatch<SetStateAction<Record<string, SliderMode>>>;
+  setDualSliderRanges: Dispatch<SetStateAction<Partial<Record<keyof SliderState, DualSliderRange>>>>;
   setStatePresetName: Dispatch<SetStateAction<string>>;
   setVisualizerPresetName: Dispatch<SetStateAction<string>>;
   setLinkedVisualizerPresetRequest: Dispatch<SetStateAction<{ name: string; nonce: number } | null>>;
   presetEngineUpdateOptions: PresetEngineUpdateOptions;
   syncCoreProductAppliedPreset: (nextState: SliderState) => void;
+  scheduleProductRuntimeParamUpdate: (nextState: SliderState, options?: ProductRuntimeParamUpdateOptions) => void;
+  lerpPresets: (
+    presetA: TPreset,
+    presetB: TPreset,
+    t: number,
+    currentCofStep?: number,
+    capturedStartRoot?: number,
+    direction?: 'toA' | 'toB',
+  ) => {
+    state: SliderState;
+    dualRanges: Partial<Record<keyof SliderState, DualSliderRange>>;
+    dualModes: Record<string, SliderMode>;
+  };
   normalizeState: (state: SliderState) => SliderState;
   applyDualRangesFromPreset: (
     dualRanges?: Record<string, { min: number; max: number }>,
@@ -67,6 +86,7 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
   morphPresetA,
   morphPresetB,
   morphPosition,
+  currentCofStep,
   state,
   sliderModes,
   dualSliderRanges,
@@ -74,16 +94,22 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
   morphCapturedStateRef,
   morphCapturedDualRangesRef,
   morphCapturedSliderModesRef,
+  morphCapturedStartRootRef,
+  morphDirectionRef,
   setMorphPresetA,
   setMorphPresetB,
   setMorphSlotAName,
   setMorphSlotBName,
   setState,
+  setSliderModes,
+  setDualSliderRanges,
   setStatePresetName,
   setVisualizerPresetName,
   setLinkedVisualizerPresetRequest,
   presetEngineUpdateOptions,
   syncCoreProductAppliedPreset,
+  scheduleProductRuntimeParamUpdate,
+  lerpPresets,
   normalizeState,
   applyDualRangesFromPreset,
   restoreEvolveConfigs,
@@ -117,6 +143,73 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
     });
   }, [setLinkedVisualizerPresetRequest, setVisualizerPresetName]);
 
+  const mergeMorphDualRuntime = useCallback((morphResult: ReturnType<typeof lerpPresets>): void => {
+    setSliderModes((prev) => {
+      const next: Record<string, SliderMode> = {};
+      for (const [key, mode] of Object.entries(prev)) {
+        if (!(key in morphResult.dualModes)) {
+          next[key] = mode;
+        }
+      }
+      for (const [key, mode] of Object.entries(morphResult.dualModes)) {
+        if (mode !== 'single') {
+          next[key] = mode;
+        }
+      }
+      return next;
+    });
+    setDualSliderRanges((prev) => {
+      const next: typeof prev = {};
+      for (const [key, range] of Object.entries(prev)) {
+        if (!(key in morphResult.dualModes)) {
+          next[key as keyof SliderState] = range;
+        }
+      }
+      for (const [key, range] of Object.entries(morphResult.dualRanges)) {
+        next[key as keyof SliderState] = range;
+      }
+      return next;
+    });
+  }, [setDualSliderRanges, setSliderModes]);
+
+  const applyMidMorphSlotReplacement = useCallback((nextA: TPreset | null, nextB: TPreset | null): boolean => {
+    if (!isInMidMorph(morphPosition, true)) return false;
+    if (!nextA || !nextB) return false;
+
+    const direction = morphDirectionRef.current || 'toB';
+    const morphResult = lerpPresets(
+      nextA,
+      nextB,
+      morphPosition,
+      currentCofStep,
+      morphCapturedStartRootRef.current ?? undefined,
+      direction,
+    );
+    const nextState = { ...morphResult.state };
+    for (const key of USER_PREFERENCE_KEYS) {
+      (nextState as Record<string, unknown>)[key] = state[key];
+    }
+
+    setState(nextState);
+    scheduleProductRuntimeParamUpdate(nextState, {
+      immediate: true,
+      reason: 'morph-control-change',
+      triggerCritical: true,
+    });
+    mergeMorphDualRuntime(morphResult);
+    return true;
+  }, [
+    currentCofStep,
+    lerpPresets,
+    mergeMorphDualRuntime,
+    morphCapturedStartRootRef,
+    morphDirectionRef,
+    morphPosition,
+    scheduleProductRuntimeParamUpdate,
+    setState,
+    state,
+  ]);
+
   const handleLoadMorphA = useCallback(
     async (entry: PresetEntry, data: Record<string, unknown>): Promise<boolean> => {
       if (!(await confirmOverrideArmedJourneyForStatePreset(entry.name))) return false;
@@ -128,7 +221,8 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
       }
       setMorphPresetA(preset);
       const atEndpoint0 = isAtEndpoint0(morphPosition, true);
-      if (atEndpoint0 || !morphPresetB) {
+      const appliedMidMorph = applyMidMorphSlotReplacement(preset, morphPresetB);
+      if (!appliedMidMorph && (atEndpoint0 || !morphPresetB)) {
         const result = applyPreset(preset, {
           migrate: false,
           currentState: state,
@@ -146,6 +240,7 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
       return true;
     },
     [
+      applyMidMorphSlotReplacement,
       applyDualRangesFromPreset,
       applyLinkedVisualizerPreset,
       captureCurrentMorphBasis,
@@ -176,7 +271,8 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
       }
       setMorphPresetB(preset);
       const atEndpoint1 = isAtEndpoint1(morphPosition, true);
-      if (atEndpoint1 || !morphPresetA) {
+      const appliedMidMorph = applyMidMorphSlotReplacement(morphPresetA, preset);
+      if (!appliedMidMorph && (atEndpoint1 || !morphPresetA)) {
         const result = applyPreset(preset, {
           migrate: false,
           currentState: state,
@@ -194,6 +290,7 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
       return true;
     },
     [
+      applyMidMorphSlotReplacement,
       applyDualRangesFromPreset,
       applyLinkedVisualizerPreset,
       captureCurrentMorphBasis,

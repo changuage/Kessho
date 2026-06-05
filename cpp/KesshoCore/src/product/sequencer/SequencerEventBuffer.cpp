@@ -12,6 +12,10 @@
   lane.step_override_value_high &= ~bit;
 }
 
+  void KesshoProductEngine::clearPendingRatchets(LaneState& lane) {
+  lane.pending_ratchet_count = 0u;
+}
+
   void KesshoProductEngine::resetSequencerLaneRuntime(LaneState& lane, bool wait_for_join_boundary) {
   lane.emitted_hit_count = 0u;
   lane.last_emitted_morph_valid = false;
@@ -26,6 +30,7 @@
   lane.sequencer_start_sample_frame = 0u;
   lane.sequencer_runtime_initialized = false;
   lane.sequencer_join_pending = wait_for_join_boundary;
+  clearPendingRatchets(lane);
 }
 
   bool KesshoProductEngine::stepMaskHas(uint32_t low, uint32_t high, uint32_t step) const {

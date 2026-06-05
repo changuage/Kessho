@@ -414,7 +414,15 @@ export interface SliderState {
   characterDepth: number;
   characterRate: number;
   characterDamp: number;
+  characterQuality: 'eco' | 'balanced' | 'hq';
+  characterAntiComb: number;
+  characterDiffusion: number;
+  degradeQuality: 'classic' | 'media' | 'hq';
+  degradeEventAmount: number;
+  degradeProfileAmount: number;
+  degradeDitherAmount: number;
   endCompEnabled: boolean;
+  endCompMode: 'studioClear' | 'clarity' | 'glue' | 'punch' | 'twoBand';
   endCompThreshold: number;
   endCompKnee: number;
   endCompRatio: number;
@@ -426,6 +434,11 @@ export interface SliderState {
   endCompDetectorTilt: number;
   endCompAutoMakeup: number;
   endCompProgramRelease: number;
+  endCompPeakBlend: number;
+  endCompClarity: number;
+  endCompTwoBandAmount: number;
+  endCompBandSplit: number;
+  dynamicsSaturationQuality: 'eco' | 'smooth' | 'hq';
 
   // Global
   seedWindow: 'hour' | 'day';
@@ -1606,7 +1619,15 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'characterDepth',
   'characterRate',
   'characterDamp',
+  'characterQuality',
+  'characterAntiComb',
+  'characterDiffusion',
+  'degradeQuality',
+  'degradeEventAmount',
+  'degradeProfileAmount',
+  'degradeDitherAmount',
   'endCompEnabled',
+  'endCompMode',
   'endCompThreshold',
   'endCompKnee',
   'endCompRatio',
@@ -1618,6 +1639,11 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'endCompDetectorTilt',
   'endCompAutoMakeup',
   'endCompProgramRelease',
+  'endCompPeakBlend',
+  'endCompClarity',
+  'endCompTwoBandAmount',
+  'endCompBandSplit',
+  'dynamicsSaturationQuality',
   'seedWindow',
   'randomness',
   'randomWalkSpeed',
@@ -2482,7 +2508,15 @@ export const DEFAULT_STATE: SliderState = {
   characterDepth: 0,
   characterRate: 0.3,
   characterDamp: 0.5,
+  characterQuality: 'balanced',
+  characterAntiComb: 1,
+  characterDiffusion: 0.55,
+  degradeQuality: 'media',
+  degradeEventAmount: 0.45,
+  degradeProfileAmount: 0.65,
+  degradeDitherAmount: 0.55,
   endCompEnabled: false,
+  endCompMode: 'studioClear',
   endCompThreshold: -18,
   endCompKnee: 12,
   endCompRatio: 2,
@@ -2494,6 +2528,11 @@ export const DEFAULT_STATE: SliderState = {
   endCompDetectorTilt: 0.5,
   endCompAutoMakeup: 0.7,
   endCompProgramRelease: 0.65,
+  endCompPeakBlend: 0.25,
+  endCompClarity: 0.22,
+  endCompTwoBandAmount: 0,
+  endCompBandSplit: 0.5,
+  dynamicsSaturationQuality: 'smooth',
 
   // Global
   seedWindow: 'hour',
@@ -3738,6 +3777,11 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   characterDepth: { min: 0, max: 1, step: 0.01 },
   characterRate: { min: 0, max: 1, step: 0.01 },
   characterDamp: { min: 0, max: 1, step: 0.01 },
+  characterAntiComb: { min: 0, max: 1, step: 0.01 },
+  characterDiffusion: { min: 0, max: 1, step: 0.01 },
+  degradeEventAmount: { min: 0, max: 1, step: 0.01 },
+  degradeProfileAmount: { min: 0, max: 1, step: 0.01 },
+  degradeDitherAmount: { min: 0, max: 1, step: 0.01 },
   endCompThreshold: { min: -60, max: 0, step: 1 },
   endCompKnee: { min: 0, max: 40, step: 1 },
   endCompRatio: { min: 1, max: 20, step: 0.1 },
@@ -3749,6 +3793,10 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   endCompDetectorTilt: { min: 0, max: 1, step: 0.01 },
   endCompAutoMakeup: { min: 0, max: 1, step: 0.01 },
   endCompProgramRelease: { min: 0, max: 1, step: 0.01 },
+  endCompPeakBlend: { min: 0, max: 1, step: 0.01 },
+  endCompClarity: { min: 0, max: 1, step: 0.01 },
+  endCompTwoBandAmount: { min: 0, max: 1, step: 0.01 },
+  endCompBandSplit: { min: 0, max: 1, step: 0.01 },
   randomness: { min: 0, max: 1, step: 0.01 },
   tension: { min: 0, max: 1, step: 0.01 },
   chordRate: { min: 8, max: 64, step: 1 },

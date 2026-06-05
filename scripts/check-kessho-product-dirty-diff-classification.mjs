@@ -408,8 +408,9 @@ await runCheckWithReport({
       audioEngineParamSync.includes('previousState && !options?.forceFullSnapshot') &&
         audioEngineParamSync.includes('collectChangedStatePatch(previousState, nextState)') &&
         audioEngineParamSync.includes('inferProductPatchReason(patch, options?.reason)') &&
-        audioEngineParamSync.includes('productEngine.updateSnapshotPatch(inferProductPatchReason(patch, options?.reason), patch);'),
-      'Product Core UI updates must send changed-key patches instead of cloning the full slider state each tick',
+        audioEngineParamSync.includes('commitVisibleSliderStateForProduct') &&
+        audioEngineParamSync.includes('productEngine.updateSnapshotPatch(reason, patch);'),
+      'Product Core UI updates must send changed-key patches for non-critical updates and resolved commits for trigger-critical state',
     );
     assert(
       audioEngineParamSync.includes("'fx-control-change'") &&

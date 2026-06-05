@@ -22,6 +22,18 @@ export type DynamicsWorkletVisualTelemetry = {
   endOutputPeak: number;
   endReductionDb: number;
   endDetectorDb: number;
+  characterCombRisk: number;
+  characterMinDelayMs: number;
+  characterDiffusion: number;
+  degradeEventEnv: number;
+  degradeEventGainDb: number;
+  degradeProfileAmount: number;
+  endLowReductionDb: number;
+  endHighReductionDb: number;
+  endClarityBoostDb: number;
+  endBandSplitHz: number;
+  endCompMode: number;
+  masterSatOversamplingFactor: number;
   timestamp: number;
 };
 

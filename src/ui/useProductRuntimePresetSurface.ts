@@ -8,6 +8,7 @@ export type ProductRuntimeParamUpdateOptions = {
   immediate?: boolean;
   reason?: ProductSnapshotPatchReason;
   forceFullSnapshot?: boolean;
+  triggerCritical?: boolean;
 };
 
 type ProductRuntimePresetUpdateOptions = Pick<

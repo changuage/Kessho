@@ -95,6 +95,23 @@ enum DynamicsCharacterParamIndex : uint32_t {
   kDynEndCompDetectorTilt = 79,
   kDynEndCompAutoMakeup = 80,
   kDynEndCompProgramRelease = 81,
+  kDynCharacterQuality = 82,
+  kDynCharacterAntiComb = 83,
+  kDynCharacterDiffusion = 84,
+  kDynDegradeUiMix = 85,
+  kDynDegradeColorInfluence = 86,
+  kDynDegradeMotionInfluence = 87,
+  kDynDegradeFailureInfluence = 88,
+  kDynDegradeQuality = 89,
+  kDynDegradeEventAmount = 90,
+  kDynDegradeProfileAmount = 91,
+  kDynDegradeDitherAmount = 92,
+  kDynEndCompMode = 93,
+  kDynEndCompPeakBlend = 94,
+  kDynEndCompClarity = 95,
+  kDynEndCompTwoBandAmount = 96,
+  kDynEndCompBandSplitHz = 97,
+  kDynMasterSatQuality = 98,
 };
 
 } // namespace kessho::product::internal

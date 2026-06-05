@@ -137,6 +137,9 @@ struct FxState {
   bool dynamics_enabled = false;
   bool dynamics_character_enabled = false;
   uint32_t dynamics_character_mode = 0;
+  uint32_t dynamics_character_quality = 1;
+  float dynamics_character_anti_comb = 1.0f;
+  float dynamics_character_diffusion = 0.55f;
   float dynamics_character_mix = 0.0f;
   float dynamics_character_age = 0.0f;
   float dynamics_character_bias = 0.5f;
@@ -148,6 +151,10 @@ struct FxState {
   float dynamics_character_rate = 0.3f;
   float dynamics_character_damp = 0.5f;
   bool dynamics_degrade_enabled = false;
+  uint32_t dynamics_degrade_quality = 1;
+  float dynamics_degrade_event_amount = 0.45f;
+  float dynamics_degrade_profile_amount = 0.65f;
+  float dynamics_degrade_dither_amount = 0.55f;
   float dynamics_degrade_mix = 0.0f;
   float dynamics_degrade_age = 0.0f;
   float dynamics_degrade_generation = 0.0f;
@@ -171,10 +178,12 @@ struct FxState {
   };
   bool dynamics_saturation_enabled = false;
   uint32_t dynamics_saturation_mode = 0;
+  uint32_t dynamics_saturation_quality = 1;
   float dynamics_saturation_drive = 0.0f;
   float dynamics_saturation_tone = 0.5f;
   float dynamics_saturation_bias = 0.5f;
   bool dynamics_end_comp_enabled = false;
+  uint32_t dynamics_end_comp_mode = 0;
   float dynamics_end_comp_threshold = -18.0f;
   float dynamics_end_comp_knee = 12.0f;
   float dynamics_end_comp_ratio = 2.0f;
@@ -186,6 +195,10 @@ struct FxState {
   float dynamics_end_comp_detector_tilt = 0.5f;
   float dynamics_end_comp_auto_makeup = 0.7f;
   float dynamics_end_comp_program_release = 0.65f;
+  float dynamics_end_comp_peak_blend = 0.25f;
+  float dynamics_end_comp_clarity = 0.22f;
+  float dynamics_end_comp_two_band_amount = 0.0f;
+  float dynamics_end_comp_band_split = 0.5f;
   bool sidechain_enabled = false;
   uint32_t sidechain_key_a = kSidechainKeyKick;
   uint32_t sidechain_key_b = kSidechainKeyOff;

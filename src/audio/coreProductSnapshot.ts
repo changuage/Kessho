@@ -1,39 +1,13 @@
 import { KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS, KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS, KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS, KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ, KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING, KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS, KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH, KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN, KESSHO_PRODUCT_DRUM_VOICE_COUNT } from './generated/kesshoProductSchema';
 import { DEFAULT_REVERB_PRE_COMP, DEFAULT_STATE, type SliderState } from '../ui/state';
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
-import {
-  CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID,
-  getCoreProductSoundscapeAssetDescriptorsForState,
-  getPrimaryCoreProductSoundscapeAssetIdForState,
-} from './coreProductAssets';
+import { CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID, getCoreProductSoundscapeAssetDescriptorsForState, getPrimaryCoreProductSoundscapeAssetIdForState } from './coreProductAssets';
 import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from './outputTrims';
-import {
-  delayAFilterTypeId,
-  delayBPatternId,
-  delayBTapeSpacingId,
-  delayBWarpId,
-  dynamicsCharacterModeId,
-  dynamicsSaturationModeId,
-  granularLegacyPitchModeId,
-  granularShapeId,
-  granularVoiceModeId,
-  reverbModCharacterId,
-  reverbQualityId,
-  reverbSaturationModeId,
-  reverbTypeId,
-  sidechainKeyId,
-} from './CoreProductModeIds';
+import { delayAFilterTypeId, delayBPatternId, delayBTapeSpacingId, delayBWarpId, dynamicsCharacterModeId, dynamicsCharacterQualityId, dynamicsDegradeQualityId, dynamicsEndCompModeId, dynamicsSaturationModeId, dynamicsSaturationQualityId, granularLegacyPitchModeId, granularShapeId, granularVoiceModeId, reverbModCharacterId, reverbQualityId, reverbSaturationModeId, reverbTypeId, sidechainKeyId } from './CoreProductModeIds';
 import { assignLeadAlgorithmOverrideFields, assignLeadEnvelopeOverrideFields, assignLeadPresetIds, emptyLeadOverrideIndices, emptyLeadOverrideValues, exactLeadPatchFromState, leadAlgorithmPresetAEnabledFromState, leadEnvelopeOverrideFromState } from './CoreProductLeadPatch';
 import { emptyPadOverrideIndices, emptyPadOverrideValues, exactPadPatchFromState } from './CoreProductPadPatch';
 import { emptyDrumOverrideIndices, emptyDrumOverrideValues, exactDrumPatchFromState } from './CoreProductDrumPatch';
-import {
-  defaultPresetId,
-  drumVoiceMorphsFromState,
-  drumVoicePresetIdsFromState,
-  endpointPresetId,
-  soundscapePresetIdFromState,
-  sourcePresetId,
-} from './CoreProductPresetIds';
+import { defaultPresetId, drumVoiceMorphsFromState, drumVoicePresetIdsFromState, endpointPresetId, soundscapePresetIdFromState, sourcePresetId } from './CoreProductPresetIds';
 import { getTransportMetrics } from './transport';
 import { computeGranularMacroModel, type GranularMacroModel } from './granularMacroCore';
 import { applyDistanceValue, applyLeadDistanceEnvelope, getVoiceDistanceKey, type DistanceVoice } from './distanceMacro';
@@ -46,18 +20,10 @@ import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions'
 import { normalizeSequencerSwing } from './sequencerSwing';
 import { delayBTapeHeadLevelsFromState, delayBTapeHeadMaskFromState, delayBTapeHeadPansFromState, delayDivisionMs } from './coreProductDelaySnapshot';
 import { booleanFromState, clamp, numberFromState } from './coreProductSnapshotState';
-import {
-  coreProductDrumLaneMacroDefaultsFromState,
-  coreProductSynthLaneMacroDefaultsFromState,
-} from './coreProductSequencerMacroDefaults';
+import { coreProductDrumLaneMacroDefaultsFromState, coreProductSynthLaneMacroDefaultsFromState } from './coreProductSequencerMacroDefaults';
 import { soundscapeSnapshotPayloadFromState, type SoundscapeSnapshotPayload } from './coreProductSoundscapesSnapshot';
 import { productHarmonyScaleIdFromName } from './coreProductHarmonyScaleIds';
-import {
-  HARMONY_POOL_MAX_NOTES,
-  HARMONY_SOURCE_IDS,
-  HARMONY_STRENGTH_IDS,
-  resolveProductHarmonyState,
-} from './CoreProductHarmonyControl';
+import { HARMONY_POOL_MAX_NOTES, HARMONY_SOURCE_IDS, HARMONY_STRENGTH_IDS, resolveProductHarmonyState } from './CoreProductHarmonyControl';
 import { coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
 import type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 export type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductHarmonySnapshot, ProductLaneSnapshot, ProductSoundscapeSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
@@ -1087,6 +1053,9 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       dynamicsEnabled,
       dynamicsCharacterEnabled: dynamicsEnabled && booleanFromState(sliderState, 'characterEnabled', false),
       dynamicsCharacterMode: dynamicsCharacterModeId(sliderState?.characterMode),
+      dynamicsCharacterQuality: dynamicsCharacterQualityId(sliderState?.characterQuality),
+      dynamicsCharacterAntiComb: clamp(numberFromState(sliderState, 'characterAntiComb', 1), 0, 1),
+      dynamicsCharacterDiffusion: clamp(numberFromState(sliderState, 'characterDiffusion', 0.55), 0, 1),
       dynamicsCharacterMix: clamp(numberFromState(sliderState, 'characterMix', 0), 0, 1),
       dynamicsCharacterAge: clamp(numberFromState(sliderState, 'characterAge', 0), 0, 1),
       dynamicsCharacterBias: clamp(numberFromState(sliderState, 'characterBias', 0.5), 0, 1),
@@ -1098,6 +1067,10 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       dynamicsCharacterRate: clamp(numberFromState(sliderState, 'characterRate', 0.3), 0, 1),
       dynamicsCharacterDamp: clamp(numberFromState(sliderState, 'characterDamp', 0.5), 0, 1),
       dynamicsDegradeEnabled: dynamicsEnabled && booleanFromState(sliderState, 'degradeEnabled', false),
+      dynamicsDegradeQuality: dynamicsDegradeQualityId(sliderState?.degradeQuality),
+      dynamicsDegradeEventAmount: clamp(numberFromState(sliderState, 'degradeEventAmount', 0.45), 0, 1),
+      dynamicsDegradeProfileAmount: clamp(numberFromState(sliderState, 'degradeProfileAmount', 0.65), 0, 1),
+      dynamicsDegradeDitherAmount: clamp(numberFromState(sliderState, 'degradeDitherAmount', 0.55), 0, 1),
       dynamicsDegradeMix: clamp(numberFromState(sliderState, 'degradeMix', 0), 0, 1),
       dynamicsDegradeAge: clamp(numberFromState(sliderState, 'degradeAge', 0), 0, 1),
       dynamicsDegradeGeneration: clamp(numberFromState(sliderState, 'degradeGeneration', 0), 0, 1),
@@ -1144,10 +1117,12 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       dynamicsModNoiseAlias: clamp(numberFromState(sliderState, 'degradeModNoiseAlias', 0.02), 0, 1),
       dynamicsSaturationEnabled: booleanFromState(sliderState, 'dynamicsSaturationEnabled', false),
       dynamicsSaturationMode: dynamicsSaturationModeId(sliderState?.dynamicsSaturationMode),
+      dynamicsSaturationQuality: dynamicsSaturationQualityId(sliderState?.dynamicsSaturationQuality),
       dynamicsSaturationDrive: clamp(numberFromState(sliderState, 'dynamicsSaturationDrive', 0), 0, 1),
       dynamicsSaturationTone: clamp(numberFromState(sliderState, 'dynamicsSaturationTone', 0.5), 0, 1),
       dynamicsSaturationBias: clamp(numberFromState(sliderState, 'dynamicsSaturationBias', 0.5), 0, 1),
       dynamicsEndCompEnabled: dynamicsEnabled && booleanFromState(sliderState, 'endCompEnabled', false),
+      dynamicsEndCompMode: dynamicsEndCompModeId(sliderState?.endCompMode),
       dynamicsEndCompThreshold: clamp(numberFromState(sliderState, 'endCompThreshold', -18), -60, 0),
       dynamicsEndCompKnee: clamp(numberFromState(sliderState, 'endCompKnee', 12), 0, 40),
       dynamicsEndCompRatio: clamp(numberFromState(sliderState, 'endCompRatio', 2), 1, 20),
@@ -1159,6 +1134,10 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       dynamicsEndCompDetectorTilt: clamp(numberFromState(sliderState, 'endCompDetectorTilt', 0.5), 0, 1),
       dynamicsEndCompAutoMakeup: clamp(numberFromState(sliderState, 'endCompAutoMakeup', 0.7), 0, 1),
       dynamicsEndCompProgramRelease: clamp(numberFromState(sliderState, 'endCompProgramRelease', 0.65), 0, 1),
+      dynamicsEndCompPeakBlend: clamp(numberFromState(sliderState, 'endCompPeakBlend', 0.25), 0, 1),
+      dynamicsEndCompClarity: clamp(numberFromState(sliderState, 'endCompClarity', 0.22), 0, 1),
+      dynamicsEndCompTwoBandAmount: clamp(numberFromState(sliderState, 'endCompTwoBandAmount', 0), 0, 1),
+      dynamicsEndCompBandSplit: clamp(numberFromState(sliderState, 'endCompBandSplit', 0.5), 0, 1),
       sidechainEnabled: booleanFromState(sliderState, 'sidechainEnabled', false),
       sidechainKeyA: sidechainKeyId(sliderState?.sidechainKeyA),
       sidechainKeyB: sidechainKeyId(sliderState?.sidechainKeyB),

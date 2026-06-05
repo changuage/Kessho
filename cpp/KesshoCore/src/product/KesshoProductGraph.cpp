@@ -31,6 +31,18 @@ void KesshoProductEngine::renderPadModule(float* out_l, float* out_r, uint32_t s
       module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD2],
       module_tap_r[KESSHO_MODULE_TAP_POSTFADER_PAD2],
       frames);
+  processPadPostChain(
+      pad_send_post_chains[0],
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      module_tap_l[KESSHO_MODULE_TAP_PREFADER_PAD1],
+      module_tap_r[KESSHO_MODULE_TAP_PREFADER_PAD1],
+      frames);
+  processPadPostChain(
+      pad_send_post_chains[1],
+      KESSHO_PRODUCT_SOURCE_PAD2,
+      module_tap_l[KESSHO_MODULE_TAP_PREFADER_PAD2],
+      module_tap_r[KESSHO_MODULE_TAP_PREFADER_PAD2],
+      frames);
   mixPadSourceBuffer(
       KESSHO_PRODUCT_SOURCE_PAD1,
       module_tap_l[KESSHO_MODULE_TAP_POSTFADER_PAD1],

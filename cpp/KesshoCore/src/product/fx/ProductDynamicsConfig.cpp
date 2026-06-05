@@ -14,13 +14,9 @@ float KesshoProductEngine::dynamicsModRoute(const float sources[kDynamicsModSour
 void KesshoProductEngine::configureDynamicsCharacterModule() {
   if (dynamics_character_module) {
     float* params = dynamics_character_module->params();
-    if (
-        params != nullptr &&
-        static_cast<uint32_t>(dynamics_character_module->paramCount()) >= kDynamicsCharacterParamCount) {
+    if (params != nullptr && static_cast<uint32_t>(dynamics_character_module->paramCount()) >= kDynamicsCharacterParamCount) {
       std::fill(params, params + dynamics_character_module->paramCount(), 0.0f);
-      const auto unit = [](float value) {
-        return clampFloat(value, 0.0f, 1.0f);
-      };
+      const auto unit = [](float value) { return clampFloat(value, 0.0f, 1.0f); };
       const auto water_bias_floor = [](float value, float min_hz, float pedal_max_hz, float creative_max_hz) {
         const float t = clampFloat(value, 0.0f, 1.0f);
         constexpr float kPedalZone = 0.72f;
@@ -30,6 +26,9 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
         }
         const float local = (t - kPedalZone) / (1.0f - kPedalZone);
         return pedal_max_hz * std::pow(creative_max_hz / pedal_max_hz, local);
+      };
+      const auto smoothstep01 = [](float value) {
+        const float x = clampFloat(value, 0.0f, 1.0f); return x * x * (3.0f - 2.0f * x);
       };
       const bool saturation_enabled = fx.dynamics_saturation_enabled;
       const bool character_enabled = fx.dynamics_enabled && fx.dynamics_character_enabled;
@@ -48,11 +47,21 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
       const float default_bias = character_mode == 2u ? 0.44f : (character_mode == 1u ? 0.38f : 0.78f);
       const float default_lpg_amount = character_mode == 2u ? 0.68f : (character_mode == 1u ? 0.84f : 0.08f);
       const float character_mix = character_enabled ? unit(fx.dynamics_character_mix) : 0.0f;
+      const float character_quality = static_cast<float>(clampU32(fx.dynamics_character_quality, 0u, 2u));
+      const float character_anti_comb = unit(fx.dynamics_character_anti_comb);
+      const float character_diffusion = unit(fx.dynamics_character_diffusion);
       const float character_bias = character_enabled ? unit(fx.dynamics_character_bias) : default_bias;
       const float character_lpg_amount = character_enabled ? unit(fx.dynamics_character_lpg_amount) : default_lpg_amount;
       const float degrade_mix = degrade_enabled ? unit(fx.dynamics_degrade_mix) : 0.0f;
+      const float degrade_quality = static_cast<float>(clampU32(fx.dynamics_degrade_quality, 0u, 2u));
+      const float degrade_event_amount = unit(fx.dynamics_degrade_event_amount);
+      const float degrade_profile_amount = unit(fx.dynamics_degrade_profile_amount);
+      const float degrade_dither_amount = unit(fx.dynamics_degrade_dither_amount);
       const float base_wet = unit(1.0f - (1.0f - character_mix) * (1.0f - degrade_mix));
-      const float degrade_influence = std::sqrt(degrade_mix);
+      const float degrade_color_influence = std::sqrt(degrade_mix);
+      const float degrade_motion_influence = degrade_mix * (0.65f + 0.35f * degrade_mix);
+      const float degrade_failure_influence = smoothstep01((degrade_mix - 0.25f) / 0.75f);
+      const float degrade_influence = degrade_color_influence;
       const float base_dry = 1.0f - base_wet;
       const float raw_character_age = character_enabled ? unit(fx.dynamics_character_age) : 0.0f;
       const float raw_degrade_age = degrade_enabled ? unit(fx.dynamics_degrade_age) : 0.0f;
@@ -71,8 +80,8 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
       const float contribution_abyss = abyss_flavor * character_mix;
       const float contribution_shallow = shallow_flavor * character_mix;
       const float contribution_clean = clean_flavor * character_mix;
-      const float contribution_material_wear = unit((raw_degrade_age * 0.72f + raw_degrade_generation * 0.58f) * degrade_influence);
-      const float contribution_alias_damage = unit((raw_degrade_alias * 0.9f + raw_corrosion * 0.42f) * degrade_influence);
+      const float contribution_material_wear = unit((raw_degrade_age * 0.72f + raw_degrade_generation * 0.58f) * degrade_color_influence);
+      const float contribution_alias_damage = unit((raw_degrade_alias * 0.9f + raw_corrosion * 0.42f) * degrade_failure_influence);
       const float contribution_cross_patch = unit(contribution_alias_damage * (0.4f + raw_corrosion * 0.8f));
       const float contribution_random_hold = unit(
           contribution_abyss * 0.88f +
@@ -114,7 +123,7 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
       const float env_follow = character_enabled ? unit(fx.dynamics_character_env_follow) : 0.0f;
       float mod_sources[kDynamicsModSourceCount]{};
       if (degrade_enabled) {
-        mod_sources[kDynamicsModSourceSlow] = degrade_influence * clampFloat(
+        mod_sources[kDynamicsModSourceSlow] = degrade_motion_influence * clampFloat(
             base_degrade_wow * 0.22f +
                 base_degrade_drift * 0.34f +
                 raw_degrade_age * 0.2f +
@@ -122,16 +131,16 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
                 contribution_smooth_drift * 0.18f,
             0.0f,
             1.0f);
-        mod_sources[kDynamicsModSourceFlutter] = degrade_influence * clampFloat(
+        mod_sources[kDynamicsModSourceFlutter] = degrade_motion_influence * clampFloat(
             base_degrade_flutter * 0.55f + contribution_flutter_jitter * 0.24f + raw_degrade_generation * 0.08f,
             0.0f,
             1.0f);
-        mod_sources[kDynamicsModSourceRandom] = degrade_influence * clampFloat(
+        mod_sources[kDynamicsModSourceRandom] = degrade_motion_influence * clampFloat(
             base_degrade_drift * 0.3f + contribution_random_hold * 0.44f + raw_media_wear * 0.22f,
             0.0f,
             1.0f);
-        mod_sources[kDynamicsModSourceEnv] = degrade_influence * env_follow;
-        mod_sources[kDynamicsModSourceNoise] = degrade_influence * clampFloat(
+        mod_sources[kDynamicsModSourceEnv] = degrade_motion_influence * env_follow;
+        mod_sources[kDynamicsModSourceNoise] = degrade_failure_influence * clampFloat(
             unit(fx.dynamics_degrade_noise) * 0.64f + raw_corrosion * 0.18f + raw_degrade_alias * 0.12f,
             0.0f,
             1.0f);
@@ -147,34 +156,24 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
       const float digital_damage = unit(shaped_alias * 0.46f + degrade_generation * 0.22f);
       const float damage = unit(
           degrade_mix *
-          (degrade_age * 0.32f + degrade_generation * 0.18f + shaped_alias * 0.08f + raw_corrosion * degrade_influence * 0.12f));
-      const float character_age = character_enabled
-          ? std::max(raw_character_age, mode_active ? default_age : 0.0f)
-          : 0.0f;
+          (degrade_age * 0.32f + degrade_generation * 0.18f + shaped_alias * 0.08f + raw_corrosion * degrade_failure_influence * 0.12f));
+      const float character_age = character_enabled ? std::max(raw_character_age, mode_active ? default_age : 0.0f) : 0.0f;
       const float age = unit(std::max(character_age, media_wear * (0.38f + degrade_mix * 0.52f)));
-      const float depth = character_enabled
-          ? std::max(unit(fx.dynamics_character_depth), mode_active ? default_depth : 0.0f)
-          : 0.0f;
-      const float rate = character_enabled
-          ? std::max(unit(fx.dynamics_character_rate), mode_active ? default_rate : 0.0f)
-          : 0.0f;
-      const float damp = character_enabled
-          ? std::max(unit(fx.dynamics_character_damp), mode_active ? default_damp : 0.5f)
-          : 0.5f;
+      const float depth = character_enabled ? std::max(unit(fx.dynamics_character_depth), mode_active ? default_depth : 0.0f) : 0.0f;
+      const float rate = character_enabled ? std::max(unit(fx.dynamics_character_rate), mode_active ? default_rate : 0.0f) : 0.0f;
+      const float damp = character_enabled ? std::max(unit(fx.dynamics_character_damp), mode_active ? default_damp : 0.5f) : 0.5f;
       const float stereo = character_enabled ? unit(fx.dynamics_character_stereo) : 0.0f;
       const float lpg_response = mode_active
           ? unit(character_lpg_amount * (0.4f + env_follow * 0.6f))
           : unit(character_lpg_amount * (0.12f + env_follow * 0.4f));
-      const float raw_wow = unit(base_degrade_wow * degrade_influence * (0.95f + contribution_cross_patch * 0.22f) + mod_wow * 0.2f);
-      const float raw_flutter = unit(base_degrade_flutter * degrade_influence * (0.38f + contribution_cross_patch * 0.18f) + mod_flutter * 0.08f);
-      const float raw_drift = base_degrade_drift * degrade_influence;
+      const float raw_wow = unit(base_degrade_wow * degrade_motion_influence * (0.95f + contribution_cross_patch * 0.22f) + mod_wow * 0.2f);
+      const float raw_flutter = unit(base_degrade_flutter * degrade_motion_influence * (0.38f + contribution_cross_patch * 0.18f) + mod_flutter * 0.08f);
+      const float raw_drift = base_degrade_drift * degrade_motion_influence;
       const float water_cyclic_bias = clean_flavor > 0.0f ? 0.11f : (shallow_flavor > 0.0f ? 0.026f : 0.02f);
       const float water_sine_scale = clean_flavor > 0.0f ? 0.62f : (shallow_flavor > 0.0f ? 0.24f : 0.18f);
       const float mode_wow = depth * (water_cyclic_bias + contribution_sine_wow * water_sine_scale);
       const float mode_flutter = depth * (0.02f + contribution_flutter_jitter * 0.12f);
-      const float flutter_damage =
-          contribution_material_wear * 0.014f +
-          contribution_alias_damage * (0.018f + contribution_cross_patch * 0.074f);
+      const float flutter_damage = contribution_material_wear * 0.014f + contribution_alias_damage * (0.018f + contribution_cross_patch * 0.074f);
       const float cyclic_mode_scale = clean_flavor > 0.0f
           ? 1.0f
           : (shallow_flavor > 0.0f
@@ -224,7 +223,7 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
            clean_tape_pitch_focus * 0.34f +
            rate * (0.05f + shallow_flavor * 0.09f + abyss_flavor * 0.06f + clean_flavor * 0.08f)) *
           abyss_pitch_motion_trim;
-      const float corrosion = unit(raw_corrosion * degrade_influence * 0.72f + degrade_generation * 0.035f + shaped_alias * 0.025f);
+      const float corrosion = unit(raw_corrosion * degrade_failure_influence * 0.72f + degrade_generation * 0.035f + shaped_alias * 0.025f);
       const bool shared_filter_active = character_enabled || degrade_enabled;
       const float shared_hp = shared_filter_active ? unit(fx.dynamics_degrade_hp) : 0.0f;
       const float shared_lp = shared_filter_active ? unit(fx.dynamics_degrade_lp) : 1.0f;
@@ -259,7 +258,7 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
       const float tone = 0.5f + ((degrade_enabled ? unit(fx.dynamics_degrade_tone) : 0.5f) - 0.5f) * degrade_influence;
       const float dropout = damage_activity > 0.0001f
           ? unit(
-                degrade_mix *
+                degrade_failure_influence *
                     (media_wear * 0.25f +
                      corrosion * 0.28f +
                      degrade_generation * 0.06f +
@@ -280,7 +279,7 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
           : (abyss_flavor > 0.0f
                 ? 0.1f + rate * 1.15f + depth * 0.26f + env_follow * 0.04f
                 : 0.12f + rate * 1.05f + depth * 0.32f);
-      const float degrade_motion_weight = degrade_enabled ? unit(degrade_wet_ratio * (0.65f + degrade_influence * 0.35f)) : 0.0f;
+      const float degrade_motion_weight = degrade_enabled ? unit(degrade_motion_influence * (0.65f + degrade_wet_ratio * 0.35f)) : 0.0f;
       const float degrade_hold_rate_hz =
           0.02f + degrade_wobble_speed * 0.58f + raw_drift * 0.11f + contribution_material_wear * 0.075f + contribution_alias_damage * 0.035f;
       const float random_hold_rate_hz =
@@ -316,6 +315,10 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
           : std::min(
                 0.095f,
                 base_delay + 0.0012f + stereo * (0.006f + shallow_flavor * 0.006f) + drift * 0.0015f);
+      const float shallow_random_delay_base = 0.00095f + (0.00080f - 0.00095f) * character_anti_comb;
+      const float shallow_random_delay_depth = 0.0104f + (0.0056f - 0.0104f) * character_anti_comb;
+      const float shallow_random_delay_rate = 0.0009f + (0.00065f - 0.0009f) * character_anti_comb;
+      const float shallow_random_delay_bbd = 0.0024f + (0.0014f - 0.0024f) * character_anti_comb;
       const float random_delay_depth = clean_flavor > 0.0f
           ? random_drift *
               (0.00008f +
@@ -325,7 +328,7 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
                contribution_material_wear * 0.00024f +
                contribution_alias_damage * 0.00011f)
           : (shallow_flavor > 0.0f
-                ? random_drift * (0.00095f + depth * 0.0104f + rate * 0.0009f + contribution_bbd_color * 0.0024f)
+                ? random_drift * (shallow_random_delay_base + depth * shallow_random_delay_depth + rate * shallow_random_delay_rate + contribution_bbd_color * shallow_random_delay_bbd)
                 : random_drift * (0.00032f + depth * 0.0042f + rate * 0.00072f + contribution_bbd_color * 0.0009f));
       const float random_spread_delay_depth =
           random_delay_depth * (0.68f + stereo * 0.56f + shallow_flavor * 0.3f + abyss_flavor * 0.22f);
@@ -365,11 +368,18 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
           character_wow_frequency + (degrade_wow_frequency - character_wow_frequency) * degrade_motion_weight;
       const bool master_sat_active = saturation_enabled;
       const float master_sat_drive = master_sat_active ? unit(fx.dynamics_saturation_drive) : 0.0f;
+      const float master_sat_quality = static_cast<float>(clampU32(fx.dynamics_saturation_quality, 0u, 2u));
       const float end_wet = end_comp_enabled ? unit(fx.dynamics_end_comp_mix) : 0.0f;
+      const float end_comp_mode = static_cast<float>(clampU32(fx.dynamics_end_comp_mode, 0u, 4u));
+      const float end_comp_peak_blend = unit(fx.dynamics_end_comp_peak_blend);
+      const float end_comp_clarity = unit(fx.dynamics_end_comp_clarity);
+      const float end_comp_two_band_amount = fx.dynamics_end_comp_mode == 4u ? unit(fx.dynamics_end_comp_two_band_amount) : 0.0f;
+      const float end_comp_band_split_hz = unitToLogFrequency(fx.dynamics_end_comp_band_split, 90.0f, 320.0f);
       const bool worklet_active = wet > 0.0001f || master_sat_drive > 0.0001f || (end_comp_enabled && end_wet > 0.0001f);
+      const float comb_risk_for_allpass = unit(4.0f * dry * wet);
 
       params[kDynActive] = worklet_active ? 1.0f : 0.0f;
-      params[kDynAllpassActive] = 0.0f;
+      params[kDynAllpassActive] = (mode_active && character_diffusion > 0.001f && comb_risk_for_allpass > 0.18f) ? 1.0f : 0.0f;
       params[kDynDry] = dry;
       params[kDynWet] = wet;
       params[kDynDegradeMix] = degrade_wet_ratio;
@@ -379,7 +389,7 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
       params[kDynDegradeWear] = raw_media_wear;
       params[kDynNoiseGain] = std::min(0.018f, wet * noise * (0.006f + age * 0.014f + corrosion * 0.012f)) * degrade_level_trim;
       params[kDynJitterDepth] = damage_activity > 0.0001f
-          ? degrade_mix *
+          ? degrade_failure_influence *
               (contribution_flutter_jitter * 0.00008f +
                corrosion * 0.00006f +
                contribution_material_wear * 0.00005f +
@@ -432,13 +442,14 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
       params[kDynFlutterDepth] = flutter_depth;
       params[kDynHighpassHz] = unitToLogFrequency(hp, 20.0f, 2400.0f);
       params[kDynHighpassQ] = 0.7f + resonance * 1.5f;
-      params[kDynAllpassAFrequency] = 260.0f + shallow_flavor * 520.0f + depth * 380.0f + age * 240.0f;
+      params[kDynAllpassAFrequency] =
+          420.0f + shallow_flavor * 480.0f + abyss_flavor * 620.0f + depth * 420.0f + age * 180.0f;
       params[kDynAllpassAQ] =
-          0.25f + contribution_bbd_color * 1.4f + shallow_flavor * 0.1f + resonance * (abyss_flavor > 0.0f ? 0.18f : 1.1f);
+          std::min(0.95f, 0.55f + shallow_flavor * 0.18f + abyss_flavor * 0.14f + depth * 0.18f);
       params[kDynAllpassBFrequency] =
-          900.0f + shallow_flavor * 2100.0f + depth * 680.0f + age * 420.0f + contribution_bbd_color * 320.0f;
+          1450.0f + shallow_flavor * 1850.0f + abyss_flavor * 1250.0f + depth * 950.0f + age * 360.0f;
       params[kDynAllpassBQ] =
-          0.25f + contribution_bbd_color * 1.8f + shallow_flavor * 0.1f + resonance * (abyss_flavor > 0.0f ? 0.14f : 0.85f);
+          std::min(0.85f, 0.48f + shallow_flavor * 0.16f + abyss_flavor * 0.12f + depth * 0.16f);
       params[kDynHeadBumpFrequency] = 80.0f + media_wear * 45.0f + corrosion * 20.0f;
       params[kDynHeadBumpQ] = 0.55f + media_wear * 0.55f;
       params[kDynHeadBumpGain] =
@@ -504,6 +515,23 @@ void KesshoProductEngine::configureDynamicsCharacterModule() {
       params[kDynEndCompDetectorTilt] = unit(fx.dynamics_end_comp_detector_tilt);
       params[kDynEndCompAutoMakeup] = unit(fx.dynamics_end_comp_auto_makeup);
       params[kDynEndCompProgramRelease] = unit(fx.dynamics_end_comp_program_release);
+      params[kDynCharacterQuality] = character_quality;
+      params[kDynCharacterAntiComb] = character_anti_comb;
+      params[kDynCharacterDiffusion] = character_diffusion;
+      params[kDynDegradeUiMix] = degrade_mix;
+      params[kDynDegradeColorInfluence] = degrade_color_influence;
+      params[kDynDegradeMotionInfluence] = degrade_motion_influence;
+      params[kDynDegradeFailureInfluence] = degrade_failure_influence;
+      params[kDynDegradeQuality] = degrade_quality;
+      params[kDynDegradeEventAmount] = degrade_event_amount;
+      params[kDynDegradeProfileAmount] = degrade_profile_amount;
+      params[kDynDegradeDitherAmount] = degrade_dither_amount;
+      params[kDynEndCompMode] = end_comp_mode;
+      params[kDynEndCompPeakBlend] = end_comp_peak_blend;
+      params[kDynEndCompClarity] = end_comp_clarity;
+      params[kDynEndCompTwoBandAmount] = end_comp_two_band_amount;
+      params[kDynEndCompBandSplitHz] = end_comp_band_split_hz;
+      params[kDynMasterSatQuality] = master_sat_quality;
       dynamics_character_module->commitParams();
     }
   }

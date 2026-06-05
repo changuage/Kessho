@@ -339,6 +339,19 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   FxDynamicsEndCompDetectorTilt: 982,
   FxDynamicsEndCompAutoMakeup: 983,
   FxDynamicsEndCompProgramRelease: 984,
+  FxDynamicsCharacterQuality: 1041,
+  FxDynamicsCharacterAntiComb: 1042,
+  FxDynamicsCharacterDiffusion: 1043,
+  FxDynamicsDegradeQuality: 1044,
+  FxDynamicsDegradeEventAmount: 1045,
+  FxDynamicsDegradeProfileAmount: 1046,
+  FxDynamicsDegradeDitherAmount: 1047,
+  FxDynamicsEndCompMode: 1048,
+  FxDynamicsEndCompPeakBlend: 1049,
+  FxDynamicsEndCompClarity: 1050,
+  FxDynamicsEndCompTwoBandAmount: 1051,
+  FxDynamicsEndCompBandSplit: 1052,
+  FxDynamicsSaturationQuality: 1053,
   FxSidechainEnabled: 985,
   FxSidechainKeyA: 986,
   FxSidechainKeyB: 987,
@@ -3002,6 +3015,110 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 984,
     "min": 0,
     "max": 1
+  },
+  {
+    "name": "FxDynamicsCharacterQuality",
+    "path": "fx.dynamics.character.quality",
+    "type": "uint",
+    "id": 1041,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "FxDynamicsCharacterAntiComb",
+    "path": "fx.dynamics.character.antiComb",
+    "type": "float",
+    "id": 1042,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsCharacterDiffusion",
+    "path": "fx.dynamics.character.diffusion",
+    "type": "float",
+    "id": 1043,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeQuality",
+    "path": "fx.dynamics.degrade.quality",
+    "type": "uint",
+    "id": 1044,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "FxDynamicsDegradeEventAmount",
+    "path": "fx.dynamics.degrade.eventAmount",
+    "type": "float",
+    "id": 1045,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeProfileAmount",
+    "path": "fx.dynamics.degrade.profileAmount",
+    "type": "float",
+    "id": 1046,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsDegradeDitherAmount",
+    "path": "fx.dynamics.degrade.ditherAmount",
+    "type": "float",
+    "id": 1047,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEndCompMode",
+    "path": "fx.dynamics.endComp.mode",
+    "type": "uint",
+    "id": 1048,
+    "min": 0,
+    "max": 4
+  },
+  {
+    "name": "FxDynamicsEndCompPeakBlend",
+    "path": "fx.dynamics.endComp.peakBlend",
+    "type": "float",
+    "id": 1049,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEndCompClarity",
+    "path": "fx.dynamics.endComp.clarity",
+    "type": "float",
+    "id": 1050,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEndCompTwoBandAmount",
+    "path": "fx.dynamics.endComp.twoBandAmount",
+    "type": "float",
+    "id": 1051,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEndCompBandSplit",
+    "path": "fx.dynamics.endComp.bandSplit",
+    "type": "float",
+    "id": 1052,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsSaturationQuality",
+    "path": "fx.dynamics.saturation.quality",
+    "type": "uint",
+    "id": 1053,
+    "min": 0,
+    "max": 2
   },
   {
     "name": "FxSidechainEnabled",

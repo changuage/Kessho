@@ -1206,7 +1206,7 @@ int main() {
   granular_snapshot.fx.reverb_mix = 0.0f;
   require(kessho_product_load_snapshot_v2(granular_engine, &granular_snapshot, sizeof(granular_snapshot)) == KESSHO_PRODUCT_OK, "granular snapshot load failed");
   triggerPad(granular_engine, 0.4f);
-  require(renderFxPeak(granular_engine, 32) > 0.00001f, "granular send did not reach FX stem");
+  require(renderFxPeak(granular_engine, 160) > 0.00001f, "granular send did not reach FX stem");
   std::vector<float> granular_waveform(512u, 0.0f);
   require(
       kessho_product_copy_granular_waveform(

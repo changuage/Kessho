@@ -84,6 +84,23 @@ const PARAM_ORDER = [
   'endCompDetectorTilt',
   'endCompAutoMakeup',
   'endCompProgramRelease',
+  'characterQuality',
+  'characterAntiComb',
+  'characterDiffusion',
+  'degradeUiMix',
+  'degradeColorInfluence',
+  'degradeMotionInfluence',
+  'degradeFailureInfluence',
+  'degradeQuality',
+  'degradeEventAmount',
+  'degradeProfileAmount',
+  'degradeDitherAmount',
+  'endCompMode',
+  'endCompPeakBlend',
+  'endCompClarity',
+  'endCompTwoBandAmount',
+  'endCompBandSplitHz',
+  'masterSatQuality',
 ];
 
 const TELEMETRY_ORDER = [
@@ -97,6 +114,18 @@ const TELEMETRY_ORDER = [
   'endOutputPeak',
   'endReductionDb',
   'endDetectorDb',
+  'characterCombRisk',
+  'characterMinDelayMs',
+  'characterDiffusion',
+  'degradeEventEnv',
+  'degradeEventGainDb',
+  'degradeProfileAmount',
+  'endLowReductionDb',
+  'endHighReductionDb',
+  'endClarityBoostDb',
+  'endBandSplitHz',
+  'endCompMode',
+  'masterSatOversamplingFactor',
 ];
 
 class DynamicsCharacterProcessor extends AudioWorkletProcessor {
@@ -234,6 +263,18 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
       endOutputPeak: 0,
       endReductionDb: 0,
       endDetectorDb: -120,
+      characterCombRisk: 0,
+      characterMinDelayMs: 0,
+      characterDiffusion: 0,
+      degradeEventEnv: 0,
+      degradeEventGainDb: 0,
+      degradeProfileAmount: 0,
+      endLowReductionDb: 0,
+      endHighReductionDb: 0,
+      endClarityBoostDb: 0,
+      endBandSplitHz: 170,
+      endCompMode: 0,
+      masterSatOversamplingFactor: 1,
     };
   }
 
@@ -251,8 +292,14 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
       if (!Number.isFinite(value)) continue;
       if (key === 'dropoutGain') {
         this.telemetryAccum.dropoutGain = Math.min(this.telemetryAccum.dropoutGain, value);
+      } else if (key === 'degradeEventGainDb') {
+        this.telemetryAccum.degradeEventGainDb = Math.min(this.telemetryAccum.degradeEventGainDb, value);
       } else if (key === 'endDetectorDb') {
         this.telemetryAccum.endDetectorDb = Math.max(this.telemetryAccum.endDetectorDb, value);
+      } else if (key === 'endBandSplitHz' || key === 'endCompMode') {
+        this.telemetryAccum[key] = value;
+      } else if (key === 'masterSatOversamplingFactor') {
+        this.telemetryAccum.masterSatOversamplingFactor = Math.max(this.telemetryAccum.masterSatOversamplingFactor, value);
       } else {
         this.telemetryAccum[key] = Math.max(this.telemetryAccum[key], Math.max(0, value));
       }

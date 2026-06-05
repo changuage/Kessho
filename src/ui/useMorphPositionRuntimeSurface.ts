@@ -185,7 +185,11 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     }
 
     setState((prev) => ({ ...prev, ...stateWithPrefs }));
-    scheduleProductRuntimeParamUpdate(stateWithPrefs, { reason: 'morph-control-change' });
+    scheduleProductRuntimeParamUpdate(stateWithPrefs, {
+      immediate: true,
+      reason: 'morph-control-change',
+      triggerCritical: true,
+    });
     mergeMorphDualRuntime(morphResult);
   }, [
     buildFallbackPreset,
@@ -278,7 +282,11 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       }
 
       setState(finalState);
-      scheduleProductRuntimeParamUpdate(finalState, { reason: 'morph-control-change' });
+      scheduleProductRuntimeParamUpdate(finalState, {
+        immediate: true,
+        reason: 'morph-control-change',
+        triggerCritical: true,
+      });
 
       const atEndpoint = isAtEndpoint0(nextMorphPosition, true) || isAtEndpoint1(nextMorphPosition, true);
       setMorphCoFViz(atEndpoint ? null : morphResult.morphCoFInfo || null);
@@ -477,7 +485,11 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       }
 
       if (positionChanged && stateWithPrefs) {
-        scheduleProductRuntimeParamUpdate(stateWithPrefs, { reason: 'morph-control-change' });
+        scheduleProductRuntimeParamUpdate(stateWithPrefs, {
+          immediate: true,
+          reason: 'morph-control-change',
+          triggerCritical: true,
+        });
         if (isAtEndpoint0(newPos, true) || isAtEndpoint1(newPos, true)) {
           resetCofDrift();
         }

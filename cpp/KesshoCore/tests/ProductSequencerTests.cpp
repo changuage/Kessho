@@ -250,6 +250,197 @@ bool hasOffset(const KesshoSequencerEvent* events, uint32_t count, uint32_t offs
   return false;
 }
 
+struct RenderedSequencerEvent {
+  KesshoSequencerEvent event{};
+  uint32_t absolute_offset = 0;
+};
+
+std::vector<RenderedSequencerEvent> renderEventsInBlocks(
+    KesshoProductEngine* engine,
+    uint32_t block_size,
+    uint32_t total_frames) {
+  require(engine != nullptr, "cross-block render engine missing");
+  require(block_size > 0u, "cross-block render block size must be positive");
+  std::vector<RenderedSequencerEvent> rendered;
+  uint32_t cursor = 0u;
+  while (cursor < total_frames) {
+    KesshoSequencerEvent block_events[64]{};
+    const uint32_t frames = std::min(block_size, total_frames - cursor);
+    const int32_t event_count = kessho_product_debug_render_events(engine, block_events, 64u, frames);
+    require(event_count >= 0, "cross-block debug render failed");
+    for (int32_t i = 0; i < event_count; ++i) {
+      RenderedSequencerEvent rendered_event{};
+      rendered_event.event = block_events[i];
+      rendered_event.absolute_offset = cursor + block_events[i].sample_offset;
+      rendered.push_back(rendered_event);
+    }
+    cursor += frames;
+  }
+  return rendered;
+}
+
+void expectAbsoluteOffsets(
+    const std::vector<RenderedSequencerEvent>& events,
+    const std::vector<uint32_t>& expected_offsets,
+    const char* message) {
+  require(events.size() == expected_offsets.size(), message);
+  for (uint32_t expected : expected_offsets) {
+    bool found = false;
+    for (const RenderedSequencerEvent& event : events) {
+      if (event.absolute_offset == expected) {
+        found = true;
+        break;
+      }
+    }
+    require(found, message);
+  }
+  for (uint32_t i = 0u; i < events.size(); ++i) {
+    for (uint32_t j = i + 1u; j < events.size(); ++j) {
+      require(events[i].absolute_offset != events[j].absolute_offset, message);
+    }
+  }
+}
+
+std::vector<uint32_t> expectedRatchetOffsets(uint32_t ratchet, uint32_t parent_offset = 0u) {
+  std::vector<uint32_t> offsets;
+  const double samples_per_step = 6000.0;
+  const double spacing = samples_per_step / static_cast<double>(ratchet);
+  for (uint32_t i = 0u; i < ratchet; ++i) {
+    offsets.push_back(parent_offset + static_cast<uint32_t>(std::llround(spacing * i)));
+  }
+  return offsets;
+}
+
+KesshoProductSnapshotV2 makeSingleRatchetSnapshot(
+    uint32_t source_id,
+    uint32_t ratchet,
+    float initial_start_delay_seconds = 0.0f) {
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.transport.running = 1;
+  const bool drum = source_id == KESSHO_PRODUCT_SOURCE_DRUM;
+  snapshot.synth_euclid.lane_count = drum ? 0u : 1u;
+  snapshot.drum_euclid.lane_count = drum ? 1u : 0u;
+  auto& lane = drum ? snapshot.drum_euclid.lanes[0] : snapshot.synth_euclid.lanes[0];
+  lane.enabled = 1;
+  lane.target_source_id = source_id;
+  lane.step_count = 1;
+  lane.fill_count = 1;
+  lane.manual_step_mask_low = 1u;
+  lane.manual_step_mask_high = 0u;
+  lane.clock_division = 16;
+  lane.probability = 1.0f;
+  lane.ratchet = ratchet;
+  lane.initial_start_delay_seconds = initial_start_delay_seconds;
+  if (drum) {
+    lane.midi_note = 36.0f;
+    lane.hold_seconds = 0.08f;
+  } else {
+    lane.target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+    lane.midi_note = 60.0f;
+    lane.hold_seconds = 0.1f;
+  }
+  return snapshot;
+}
+
+void requireProductSequencerRatchetCrossBlockTest() {
+  constexpr double sample_rate = 48000.0;
+  constexpr uint32_t step_frames = 6000u;
+  const uint32_t ratchets[] = {1u, 2u, 3u, 4u, 8u};
+  const uint32_t block_sizes[] = {64u, 128u, 256u};
+  const uint32_t sources[] = {KESSHO_PRODUCT_SOURCE_PAD1, KESSHO_PRODUCT_SOURCE_DRUM};
+
+  for (uint32_t source_id : sources) {
+    for (uint32_t ratchet : ratchets) {
+      for (uint32_t block_size : block_sizes) {
+        KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+        require(engine != nullptr, "ratchet cross-block engine create failed");
+        KesshoProductSnapshotV2 snapshot = makeSingleRatchetSnapshot(source_id, ratchet);
+        require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "ratchet cross-block snapshot load failed");
+        const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, step_frames);
+        expectAbsoluteOffsets(events, expectedRatchetOffsets(ratchet), "ratchet cross-block offsets should be complete and unique");
+        const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+        if (source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+          require(telemetry.drum_sequencer_hit_counts[0] == 1u, "drum emitted hit count should increment once per parent ratchet step");
+        } else {
+          require(telemetry.synth_sequencer_hit_counts[0] == 1u, "synth emitted hit count should increment once per parent ratchet step");
+        }
+        kessho_product_destroy(engine);
+      }
+    }
+  }
+}
+
+void requireProductSequencerRatchetNearBlockEndTest() {
+  constexpr double sample_rate = 48000.0;
+  constexpr uint32_t block_size = 64u;
+  constexpr uint32_t parent_offset = 63u;
+  KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+  require(engine != nullptr, "ratchet near-block-end engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSingleRatchetSnapshot(
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      4u,
+      static_cast<float>(static_cast<double>(parent_offset) / sample_rate));
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "ratchet near-block-end snapshot load failed");
+  const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 6063u);
+  expectAbsoluteOffsets(events, expectedRatchetOffsets(4u, parent_offset), "ratchet parent near block end should drain future subhits");
+  kessho_product_destroy(engine);
+}
+
+void requireProductSequencerRatchetPendingClearTests() {
+  constexpr double sample_rate = 48000.0;
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "ratchet stop-clear engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleRatchetSnapshot(KESSHO_PRODUCT_SOURCE_PAD1, 8u);
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "ratchet stop-clear snapshot load failed");
+    std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, 64u, 64u);
+    expectAbsoluteOffsets(events, {0u}, "ratchet stop-clear setup should emit only the first subhit");
+    require(engine->synth_lanes[0].pending_ratchet_count > 0u, "ratchet stop-clear setup should leave future subhits pending");
+    KesshoProductEvent stop{};
+    stop.event_kind = KESSHO_PRODUCT_EVENT_KIND_STOP;
+    require(kessho_product_enqueue_event(engine, &stop) == KESSHO_PRODUCT_OK, "ratchet stop event enqueue failed");
+    events = renderEventsInBlocks(engine, 64u, 6000u);
+    require(events.empty(), "transport stop should clear pending ratchet subhits");
+    require(engine->synth_lanes[0].pending_ratchet_count == 0u, "transport stop should empty pending ratchet queue");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "ratchet snapshot-clear engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleRatchetSnapshot(KESSHO_PRODUCT_SOURCE_PAD1, 8u);
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "ratchet snapshot-clear snapshot load failed");
+    std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, 64u, 64u);
+    expectAbsoluteOffsets(events, {0u}, "ratchet snapshot-clear setup should emit only the first subhit");
+    require(engine->synth_lanes[0].pending_ratchet_count > 0u, "ratchet snapshot-clear setup should leave future subhits pending");
+    snapshot.transport.running = 0;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "ratchet snapshot-clear reload failed");
+    require(engine->synth_lanes[0].pending_ratchet_count == 0u, "snapshot reload should empty pending ratchet queue");
+    events = renderEventsInBlocks(engine, 64u, 6000u);
+    require(events.empty(), "snapshot reload should not emit stale pending ratchets");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "ratchet tempo-clear engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleRatchetSnapshot(KESSHO_PRODUCT_SOURCE_PAD1, 8u);
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "ratchet tempo-clear snapshot load failed");
+    std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, 64u, 64u);
+    expectAbsoluteOffsets(events, {0u}, "ratchet tempo-clear setup should emit only the first subhit");
+    require(engine->synth_lanes[0].pending_ratchet_count > 0u, "ratchet tempo-clear setup should leave future subhits pending");
+    KesshoProductEvent tempo{};
+    tempo.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT;
+    tempo.value = 60.0f;
+    require(kessho_product_enqueue_event(engine, &tempo) == KESSHO_PRODUCT_OK, "ratchet tempo event enqueue failed");
+    events = renderEventsInBlocks(engine, 64u, 6000u);
+    require(events.empty(), "tempo change should clear pending ratchets with old absolute timing");
+    require(engine->synth_lanes[0].pending_ratchet_count == 0u, "tempo change should empty pending ratchet queue");
+    kessho_product_destroy(engine);
+  }
+}
+
 bool laneHasGeneratedOverrides(const LaneState& lane) {
   return lane.step_override_set_low != 0u ||
       lane.step_override_set_high != 0u ||
@@ -1969,6 +2160,9 @@ void requireControlEventEnqueueOrdering() {
 } // namespace
 
 int main() {
+  requireProductSequencerRatchetCrossBlockTest();
+  requireProductSequencerRatchetNearBlockEndTest();
+  requireProductSequencerRatchetPendingClearTests();
   requireDirectSequencerCoverage();
   requireControlEventEnqueueOrdering();
   requireRuntimeWalkMovementAcrossAudioAndFxTargets();

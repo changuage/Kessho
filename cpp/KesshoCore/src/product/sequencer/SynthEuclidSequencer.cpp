@@ -67,6 +67,82 @@ bool sequencerStepFieldActive(
   }
 }
 
+void recordDrainedRatchet(
+    kessho::product::internal::LaneState& lane,
+    const kessho::product::internal::PendingRatchetEvent& pending) {
+  const KesshoSequencerEvent& event = pending.event;
+  if (event.morph >= 0.0f) {
+    lane.last_emitted_morph_valid = true;
+    lane.last_emitted_morph = event.morph;
+  } else {
+    lane.last_emitted_morph_valid = false;
+  }
+  if (event.distance >= 0.0f) {
+    lane.last_emitted_distance_valid = true;
+    lane.last_emitted_distance = event.distance;
+  } else {
+    lane.last_emitted_distance_valid = false;
+  }
+  if (event.expression >= 0.0f) {
+    lane.last_emitted_expression_valid = true;
+    lane.last_emitted_expression = event.expression;
+  } else {
+    lane.last_emitted_expression_valid = false;
+  }
+  lane.last_emitted_drum_voice = event.source_id == KESSHO_PRODUCT_SOURCE_DRUM
+      ? static_cast<uint32_t>(std::clamp(
+          static_cast<int>(std::lround(event.midi_note - 36.0f)),
+          0,
+          DRUM_NUM_VOICE_TYPES - 1))
+      : DRUM_NUM_VOICE_TYPES;
+  lane.last_emitted_sample_frame = pending.absolute_sample;
+}
+
+void pushPendingRatchet(
+    kessho::product::internal::LaneState& lane,
+    const kessho::product::internal::PendingRatchetEvent& pending) {
+  if (lane.pending_ratchet_count >= kessho::product::internal::kMaxPendingRatchetsPerLane) {
+    for (uint32_t i = 1u; i < lane.pending_ratchet_count; ++i) {
+      lane.pending_ratchets[i - 1u] = lane.pending_ratchets[i];
+    }
+    lane.pending_ratchet_count -= 1u;
+    lane.pending_ratchet_drop_count += 1u;
+  }
+  lane.pending_ratchets[lane.pending_ratchet_count++] = pending;
+}
+
+bool drainPendingRatchets(
+    kessho::product::internal::LaneState& lane,
+    uint64_t block_start,
+    uint64_t block_end,
+    kessho::product::internal::SequencerBuffer& out,
+    KesshoProductTelemetry& telemetry) {
+  uint32_t write_index = 0u;
+  for (uint32_t read_index = 0u; read_index < lane.pending_ratchet_count; ++read_index) {
+    kessho::product::internal::PendingRatchetEvent pending = lane.pending_ratchets[read_index];
+    if (pending.absolute_sample < block_start) {
+      continue;
+    }
+    if (pending.absolute_sample >= block_end) {
+      lane.pending_ratchets[write_index++] = pending;
+      continue;
+    }
+    pending.event.sample_offset = static_cast<uint32_t>(pending.absolute_sample - block_start);
+    if (!out.push(pending.event)) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_EVENT_QUEUE_FULL;
+      lane.pending_ratchets[write_index++] = pending;
+      for (uint32_t keep_index = read_index + 1u; keep_index < lane.pending_ratchet_count; ++keep_index) {
+        lane.pending_ratchets[write_index++] = lane.pending_ratchets[keep_index];
+      }
+      lane.pending_ratchet_count = write_index;
+      return false;
+    }
+    recordDrainedRatchet(lane, pending);
+  }
+  lane.pending_ratchet_count = write_index;
+  return true;
+}
+
 } // namespace
 
   void KesshoProductEngine::generateLaneEvents(
@@ -100,6 +176,9 @@ bool sequencerStepFieldActive(
           : sequencerAlignForwardSampleFrame(block_start, samples_per_step);
       lane.sequencer_runtime_initialized = true;
       lane.sequencer_join_pending = false;
+    }
+    if (!drainPendingRatchets(lane, block_start, block_end, out, telemetry)) {
+      return;
     }
     if (block_end <= lane.sequencer_start_sample_frame) {
       lane.sequencer_runtime_sample_frame = block_end;
@@ -345,11 +424,7 @@ bool sequencerStepFieldActive(
       }
       for (uint32_t ratchet_index = 0; ratchet_index < ratchet; ++ratchet_index) {
         const uint64_t ratchet_sample = event_sample + static_cast<uint64_t>(std::llround(ratchet_spacing * ratchet_index));
-        if (ratchet_sample < block_start || ratchet_sample >= block_end) {
-          continue;
-        }
         KesshoSequencerEvent event{};
-        event.sample_offset = static_cast<uint32_t>(ratchet_sample - block_start);
         event.source_id = static_cast<uint16_t>(lane.target_source_id);
         event.lane_id = static_cast<uint16_t>(lane_index);
         event.step_id = static_cast<uint16_t>(step_id);
@@ -373,26 +448,20 @@ bool sequencerStepFieldActive(
         event.distance = trigger_distance;
         event.expression = trigger_expression;
         event.flags = sequencerPadVoiceEventFlags(lane.target_pad_voice_index) | ratchet_index;
-        if (!out.push(event)) {
-          telemetry.last_error_code = KESSHO_PRODUCT_ERROR_EVENT_QUEUE_FULL;
-          return;
-        }
-        if (morph_field_active) {
-          lane.last_emitted_morph_valid = true;
-          lane.last_emitted_morph = trigger_morph;
-        }
-        if (distance_field_active) {
-          lane.last_emitted_distance_valid = true;
-          lane.last_emitted_distance = trigger_distance;
-        }
-        if (expression_field_active) {
-          lane.last_emitted_expression_valid = true;
-          lane.last_emitted_expression = trigger_expression;
-        }
-        lane.last_emitted_drum_voice = drum_voice;
-        lane.last_emitted_sample_frame = ratchet_sample;
+        PendingRatchetEvent pending{};
+        pending.parent_step_id = static_cast<uint64_t>(relative_step);
+        pending.absolute_sample = ratchet_sample;
+        pending.lane_index = lane_index;
+        pending.step_index = step_id;
+        pending.ratchet_index = ratchet_index;
+        pending.ratchet_count = ratchet;
+        pending.event = event;
+        pushPendingRatchet(lane, pending);
       }
       lane.emitted_hit_count += 1u;
+    }
+    if (!drainPendingRatchets(lane, block_start, block_end, out, telemetry)) {
+      return;
     }
     lane.sequencer_runtime_sample_frame = block_end;
   }

@@ -604,8 +604,8 @@ int main() {
       kessho_module_create(KESSHO_MODULE_REVERB, sample_rate, block_size);
   require(reverb_module != nullptr, "reverb module create failed");
   require(reverb_module_b != nullptr, "reverb module should allow concurrent instances");
-  require(kessho_module_get_param_count(reverb_module) == 30, "reverb module param count mismatch");
-  require(kessho_module_get_param_count(reverb_module_b) == 30, "second reverb module param count mismatch");
+  require(kessho_module_get_param_count(reverb_module) == 31, "reverb module param count mismatch");
+  require(kessho_module_get_param_count(reverb_module_b) == 31, "second reverb module param count mismatch");
   float* reverb_params = kessho_module_get_params_ptr(reverb_module);
   float* reverb_params_b = kessho_module_get_params_ptr(reverb_module_b);
   require(reverb_params != nullptr, "reverb module params pointer was null");
@@ -797,7 +797,7 @@ int main() {
       kessho_module_create(KESSHO_MODULE_DELAY_B, sample_rate, block_size);
   require(delay_b_module != nullptr, "delay B module create failed");
   require(delay_b_module_b != nullptr, "delay B module should allow concurrent instances");
-  require(kessho_module_get_param_count(delay_b_module) == 16, "delay B module param count mismatch");
+  require(kessho_module_get_param_count(delay_b_module) == 24, "delay B module param count mismatch");
   require(
       kessho_module_get_output_tap_count(delay_b_module) == KESSHO_MODULE_DELAY_B_OUTPUT_TAP_COUNT,
       "delay B output tap count mismatch");

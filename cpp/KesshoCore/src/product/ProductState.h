@@ -188,6 +188,7 @@ struct KesshoProductEngine : ProductGraphState {
   uint32_t resolveMidiTargetSource(const KesshoProductEvent& event, uint32_t status) const;
   void applyMidiEvent(const KesshoProductEvent& event);
   void clearStepOverride(LaneState& lane, uint32_t step);
+  void clearPendingRatchets(LaneState& lane);
   void resetSequencerLaneRuntime(LaneState& lane, bool wait_for_join_boundary = true);
   bool stepMaskHas(uint32_t low, uint32_t high, uint32_t step) const;
   void setStepMask(uint32_t& low, uint32_t& high, uint32_t step);

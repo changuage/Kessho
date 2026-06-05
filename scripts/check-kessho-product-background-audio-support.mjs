@@ -162,7 +162,8 @@ for (const token of [
 }
 
 for (const token of [
-  'useVisibleInterval(readDebugSummary, 500',
+  'PRODUCT_CORE_DEBUG_SUMMARY_REFRESH_MS',
+  'useVisibleInterval(readDebugSummary, PRODUCT_CORE_DEBUG_SUMMARY_REFRESH_MS',
   "enabled: productRuntimeMode === 'core-product'",
 ]) {
   assertIncludes(productDebugSummary, token, productDebugSummaryPath);

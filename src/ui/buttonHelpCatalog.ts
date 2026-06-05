@@ -11,6 +11,7 @@ const dr = (section: string, label: string, audit: string[] = []) => surface('dr
 const gr = (section: string, label: string, audit: string[] = []) => surface('granular', section, label, audit);
 const ea = (section: string, label: string, audit: string[] = []) => surface('earth', section, label, audit);
 const dy = (section: string, label: string, audit: string[] = []) => surface('delay', section, label, audit);
+const dn = (section: string, label: string, audit: string[] = []) => surface('dynamics', section, label, audit);
 
 function entry(short: string, long: string, surfaces: SliderHelpSurface[]): SliderHelpEntry {
   return { short, long, surfaces };
@@ -401,6 +402,76 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
     'Shows the FX Routing Matrix page in the advanced editor.',
     'This switches the visible editor to the dedicated Routing tab so you can edit cross-engine sends in one clean matrix without digging through the Global or Delay pages.',
     [app('Tab Bar', 'Routing')],
+  ),
+  characterQuality_eco: entry(
+    'Uses the lightest Character processing.',
+    'Eco keeps Character CPU lower with simpler delay reads and less extra decorrelation. It is useful when the motion should stay direct or the scene already has many expensive effects enabled.',
+    [dn('Character', 'Eco')],
+  ),
+  characterQuality_balanced: entry(
+    'Uses the default smooth Character quality.',
+    'Balanced keeps the addendum defaults: smoother delay reads, comb protection, and diffusion without the extra HQ decorrelation pass.',
+    [dn('Character', 'Balanced')],
+  ),
+  characterQuality_hq: entry(
+    'Uses the smoothest Character quality.',
+    'HQ enables the extra decorrelation path for short-delay motion so shallow and watery movement sound smoother at the cost of more CPU.',
+    [dn('Character', 'HQ')],
+  ),
+  degradeQuality_classic: entry(
+    'Keeps Degrade close to the original damage model.',
+    'Classic leaves the newer media-event/profile/dither behavior restrained, so wear and alias controls remain simpler and more direct.',
+    [dn('Degrade', 'Classic')],
+  ),
+  degradeQuality_media: entry(
+    'Uses the default copied-media Degrade model.',
+    'Media enables generation-loss events, profile shaping, and dither at the addendum defaults for a more realistic degraded path without jumping to the highest detail mode.',
+    [dn('Degrade', 'Media')],
+  ),
+  degradeQuality_hq: entry(
+    'Uses the highest-detail Degrade model.',
+    'HQ keeps the media behavior active with more smoothing and detail for audible degradation, trading some extra CPU for a more polished damage layer.',
+    [dn('Degrade', 'HQ')],
+  ),
+  dynamicsSaturationQuality_eco: entry(
+    'Uses lower-cost master saturation.',
+    'Eco keeps the Dynamics saturation path lighter and avoids the smoother antialias pass unless the rest of the patch needs the cleanest saturated top end.',
+    [dn('Saturation', 'Eco')],
+  ),
+  dynamicsSaturationQuality_smooth: entry(
+    'Uses smoothed master saturation.',
+    'Smooth is the default quality for Dynamics saturation, adding antialias smoothing while still scaling oversampling with drive.',
+    [dn('Saturation', 'Smooth')],
+  ),
+  dynamicsSaturationQuality_hq: entry(
+    'Uses the cleanest master saturation quality.',
+    'HQ allows the saturation stage to use the highest oversampling branch at lower drive thresholds, which sounds cleaner but costs more CPU.',
+    [dn('Saturation', 'HQ')],
+  ),
+  endCompMode_studioClear: entry(
+    'Loads the default transparent end-chain compressor setup.',
+    'Studio sets the compressor controls once for clear bus leveling. After selecting it, manual edits to threshold, ratio, attack, release, and mix remain yours.',
+    [dn('End Chain', 'Studio')],
+  ),
+  endCompMode_clarity: entry(
+    'Loads the clarity-focused end-chain compressor setup.',
+    'Clarity uses gentler leveling with more detector filtering and clarity lift. The mode button applies a starting point once rather than locking the compressor controls.',
+    [dn('End Chain', 'Clarity')],
+  ),
+  endCompMode_glue: entry(
+    'Loads the glue-focused end-chain compressor setup.',
+    'Glue favors slower, broader compression and a higher wet blend for holding the full mix together while still letting you tweak every compressor control afterward.',
+    [dn('End Chain', 'Glue')],
+  ),
+  endCompMode_punch: entry(
+    'Loads the punch-focused end-chain compressor setup.',
+    'Punch keeps more transient edge by using a more peak-aware detector and punchier timing defaults. The selected values stay editable after the button press.',
+    [dn('End Chain', 'Punch')],
+  ),
+  endCompMode_twoBand: entry(
+    'Loads the 2-band end-chain compressor setup.',
+    '2-Band splits the end-chain compression around the Band Split control, exposing separate low and high reduction in the visualizer while preserving manual compressor edits after selection.',
+    [dn('End Chain', '2-Band')],
   ),
   tabReverb: entry(
     'Shows the Reverb page in the advanced editor.',

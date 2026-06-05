@@ -356,6 +356,37 @@ assert.equal(
   (60 + DEFAULT_STATE.synthEuclid1NoteMax) * 0.5,
   'Product synth sequencer should combine sparse note-range state with the web default range',
 );
+const padSequencerGateSnapshot = createCoreProductSnapshot({
+  synthEuclideanMasterEnabled: true,
+  synthEuclid1Enabled: true,
+  synthEuclid1Source: 'synth1',
+  synthAttack: 0.35,
+  synthDecay: 0.42,
+  synthHold: 1.7,
+});
+assert.equal(
+  padSequencerGateSnapshot.synthLanes[0]?.targetSourceId,
+  KESSHO_PRODUCT_SOURCE_IDS.Pad1,
+  'Product synth sequencer pad lane fixture should target Pad 1',
+);
+assert.equal(
+  padSequencerGateSnapshot.synthLanes[0]?.holdSeconds,
+  0.35 + 0.42 + 1.7,
+  'Product synth sequencer pad gate should match chord ADSH timing',
+);
+const padSequencerHoldSliderSnapshot = createCoreProductSnapshot({
+  synthEuclideanMasterEnabled: true,
+  synthEuclid1Enabled: true,
+  synthEuclid1Source: 'synth1',
+  synthAttack: 0.35,
+  synthDecay: 0.42,
+  synthHold: 0.25,
+});
+assert.equal(
+  padSequencerHoldSliderSnapshot.synthLanes[0]?.holdSeconds,
+  0.35 + 0.42 + 0.25,
+  'Product synth sequencer pad gate should follow the Hold slider instead of deriving hold from attack/decay',
+);
 
 const sequencerMacroSnapshot = createCoreProductSnapshot({
   synthEuclideanMasterEnabled: true,

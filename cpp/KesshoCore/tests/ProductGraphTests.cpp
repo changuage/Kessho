@@ -113,7 +113,7 @@ void requireDirectGraphCoverage() {
   float dry_r[4] = {0.5f, 0.25f, 0.125f, 0.0625f};
   float out_l[4]{};
   float out_r[4]{};
-  direct.mixSourceBuffer(KESSHO_PRODUCT_SOURCE_PAD1, dry_l, dry_r, out_l, out_r, 0u, 4u);
+  direct.mixSourceBuffer(KESSHO_PRODUCT_SOURCE_PAD1, dry_l, dry_r, dry_l, dry_r, out_l, out_r, 0u, 4u);
   require(std::fabs(out_l[0] - 0.5f) < 0.001f, "direct graph source mix left mismatch");
   require(std::fabs(out_r[0] - 0.25f) < 0.001f, "direct graph source mix right mismatch");
   require(std::fabs(direct.stem_l[KESSHO_PRODUCT_SOURCE_PAD1][0] - 0.5f) < 0.001f, "direct graph stem mix mismatch");

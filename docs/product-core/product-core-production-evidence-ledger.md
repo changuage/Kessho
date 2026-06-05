@@ -4,7 +4,7 @@
 
 | Item | Status | Evidence |
 |---|---|---|
-| Git baseline | pass | `git rev-parse --short HEAD` -> `a71f6534` |
+| Git baseline | pass | `git rev-parse --short HEAD` -> `7dc9e6e7` |
 | Dirty tree acknowledged | pass | Existing worktree has dirty/untracked files; production-readiness batches only modify related docs, gates, reports, and scoped Product evidence files. |
 | `src/audio/engine.ts` absent | pass | `git ls-files src/audio/engine.ts src/audio/runtime.ts` produced no tracked files; `test ! -f src/audio/engine.ts` passed. |
 | `src/audio/runtime.ts` absent | pass | `git ls-files src/audio/engine.ts src/audio/runtime.ts` produced no tracked files; `test ! -f src/audio/runtime.ts` passed. |
@@ -19,8 +19,8 @@
 |---|---|---|---|
 | 0 Source-of-truth reconciliation | complete | `npm run type-check`: pass; `npm run migration:product-boundary`: pass; `npm run core:product:reference-isolation`: pass; `npm run migration:no-web-ts-bundle`: pass; `npm run migration:docs`: pass | Reconciled stale status docs with the completed web-default migration ledger and current production blocker evidence; updated boundary/reference-isolation gates to match current runtime-aware media-session and Product harmony control ownership. |
 | 1 Control-routing cleanup | complete | `npm run type-check`: pass; `npm run core:product:patch-bridges`: pass; `npm run core:product:dirty-diff`: pass; `npm run core:product:snapshot-authority`: pass; `npm run core:product:runtime-fallbacks`: pass; `npm run core:product:getter-policies`: pass; `npm run core:product:web-host`: pass; `npm run migration:runtime-production-gates`: pass; extra `npm run migration:docs`: pass | `common-control-routing.md` no longer has vague `partial` rows. Routine source, morph, FX, journey, transport, and bounded sequencer controls are classified as generated Product event, explicit product patch, or dirty-diff paths; structural snapshots are explicitly limited. Runtime production gate now rejects future vague routing rows. |
-| 2 Sonic stability and parity gates | complete | `npm run type-check`: pass; `npm run core:product:granular-artifacts`: pass; `npm run core:product:sample-hold-parity`: pass; `npm run core:product:reverb-tail-quality`: pass; `npm run core:product:browser-runtime`: pass; `npm run core:product:runtime-fallbacks`: pass; `npm run core:product:getter-policies`: pass; `npm run core:product:assets`: pass; `npm run core:product:source-parity`: pass; `npm run core:product:determinism`: pass; `npm run core:product:cpu`: pass; `npm run migration:runtime-production-gates`: pass; extra `npm run migration:docs`: pass | Added granular artifact and reverb tail-quality gates, documented product debug telemetry coverage, reconciled the deterministic WASM fixture with the current harmony-bearing snapshot ABI, and kept browser/source/assets/sample-hold/CPU evidence green. |
-| 3 CPU evidence and optimization | complete | `npm run type-check`: pass; `npm run core:product:cpu`: pass; `npm run core:product:web-cpu-comparison`: pass; `npm run core:product:page-cpu-comparison`: pass; `npm run test:mobile-web-hotpaths`: pass; `npm run core:product:browser-runtime`: pass; `npm run core:product:cpu-scenarios`: pass; `npm run migration:runtime-production-gates`: pass; extra `npm run migration:docs`: pass | Published scenario CPU evidence and governor policy. Product Core won 8/9 page CPU rows, 7.30% weighted browser-process CPU saved versus dev/reference Web TS, and 4.26% saved in the default web comparison. Earth was 0.86% slower in the page matrix and is recorded as a follow-up rather than a DSP change. |
+| 2 Sonic stability and parity gates | complete | `npm run type-check`: pass; `npm run core:product:granular-artifacts`: pass; `npm run core:product:sample-hold-parity`: pass; `npm run core:product:reverb-tail-quality`: pass; `npm run core:product:browser-runtime`: pass; `npm run core:product:runtime-fallbacks`: pass; `npm run core:product:getter-policies`: pass; `npm run core:product:assets`: pass; `npm run core:product:source-parity`: pass; `npm run core:product:determinism`: pass; `npm run core:product:cpu`: pass; `npm run migration:runtime-production-gates`: pass; extra `npm run migration:docs`: pass | Sonic gates now include offline numeric Product Core WASM render metrics for granular dry-through/dense-grain transitions and reverb impulse-tail/parameter-transition/CPU-mode cases. |
+| 3 CPU evidence and optimization | complete | `npm run type-check`: pass; `npm run core:product:cpu`: pass; `npm run core:product:web-cpu-comparison`: pass; `npm run core:product:page-cpu-comparison`: pass; `npm run test:mobile-web-hotpaths`: pass; `npm run core:product:browser-runtime`: pass; `npm run core:product:cpu-scenarios`: pass; `npm run migration:runtime-production-gates`: pass; extra `npm run migration:docs`: pass | CPU scenario signoff now requires fresh sonic render reports and emits module attribution for Earth/soundscape, granular, reverb, spectral freeze, visual telemetry, UI callbacks, and deferred native render callback evidence. |
 | 4 Native/background audio evidence | complete | `npm run type-check`: pass; `npm run core:product:background-audio`: pass; `npm run core:product:background-audio-docs`: pass; `npm run core:product:background-audio-device-evidence`: pass; `npm run core:product:native-render-path`: pass; `npm run core:product:macos-native-smoke`: pass; `npm run core:product:macos-app-native-smoke`: pass; `npm run core:product:native-background-smoke`: pass; `npm run core:product:native-capability-signoff`: pass with `ready=false`; `npm run migration:runtime-production-gates`: pass; extra `npm run migration:docs`: pass | Browser/mobile remains best-effort. Native render/local macOS smoke gates pass, device-evidence rows remain pending, and `supports_native_bridge`/`supportsNativeBridge` stay disabled until physical evidence passes. |
 | 5 Architecture debt cleanup | complete | `npm run type-check`: pass; `npm run core:product:host-reconciliation`: pass; `npm run core:product:architecture`: pass; `npm run core:product:dirty-diff`: pass; `npm run core:product:runtime-fallbacks`: pass; `npm run core:product:getter-policies`: pass; `npm run core:product:web-host`: pass; `npm run core:product:patch-bridges`: pass; `npm run migration:product-boundary`: pass; `npm run core:product:schema`: pass; `npm run core:product:param-accounting`: pass; `npm run core:product:source-parity`: pass; `npm run migration:runtime-production-gates`: pass; extra `npm run migration:docs`: pass | Behavior-preserving guard/accounting cleanup only. Updated boundary evidence for arp-aware Synth sub-lane routing and explicit Product-harmony parameter accounting for structured harmony controls. |
 | 6 Final production signoff | complete for web/default Product Core; native release remains device-gated | `npm run core:product:ci`: pass, 39 passed / 0 failed; `npm run core:product:sequencer-ui`: pass; source signoff probes rerun | Final aggregate gate passes with Product Core as web default and no production `web-ts` fallback. Native reliable background audio remains blocked on physical iOS/macOS evidence; native bridge capability stays disabled. |
@@ -494,3 +494,43 @@ Known risks:
 
 - Coalesced Product diagnostics can arrive one microtask later on high-frequency web control paths.
 - Sequencer UI evolve reset exact visual equality is intentionally not used as a dice-mutation proof because it is timing-dependent; reset control remains exercised and preset reset restoration remains asserted separately.
+
+## Evidence-Quality, CPU Attribution, and Port Surface Addendum
+
+Date: 2026-06-05 local time; reports generated 2026-06-04T22:28Z.
+
+Scope:
+
+- Reconciled source truth for the current local branch: `src/audio/engine.ts` and `src/audio/runtime.ts` remain absent.
+- Upgraded granular and reverb gates from structural token checks to offline numeric Product Core WASM render metrics while retaining the structural guards.
+- Added CPU scenario module attribution tied to granular/reverb render reports.
+- Split `ProductEnginePort` into capability type surfaces without changing the combined production contract.
+- Corrected stale native smoke parameter-count assertions for Bloom-enabled reverb and tape-head-aware Delay B.
+
+Validation:
+
+- `npm run type-check`: pass
+- `npm run migration:product-boundary`: pass
+- `npm run core:product:reference-isolation`: pass
+- `npm run migration:no-web-ts-bundle`: pass, 35 production JS assets scanned
+- `npm run migration:docs`: pass
+- `npm run core:product:granular-artifacts`: pass, report `docs/reports/kessho-product-granular-render-metrics-latest.json`
+- `npm run core:product:reverb-tail-quality`: pass, report `docs/reports/kessho-product-reverb-render-metrics-latest.json`
+- `npm run core:product:cpu-scenarios`: pass, report `docs/reports/kessho-product-cpu-scenarios-latest.json`
+- `npm run core:product:wasm`: pass
+- `node scripts/test-kessho-core.mjs`: pass, native smoke and WASM render smoke
+- `npm run core:product:background-audio`: pass
+- `npm run core:product:background-audio-device-evidence`: pass with `allNativeRowsPassed=false`
+- `npm run core:product:native-capability-signoff`: pass with `ready=false`
+- `test ! -f src/audio/engine.ts`: pass
+- `test ! -f src/audio/runtime.ts`: pass
+
+New evidence:
+
+- Granular dense-grain offline render: p95 block `0.064542 ms`; average estimated CPU `0.918872%`; max sample delta `0.030838`; max transition edge `0.030838`; max silent run `1` frame; non-finite/denormal counts `0`.
+- Reverb offline render: impulse tail peak `0.00109605`; tail estimated CPU `1.389197%`; transition estimated CPU `0.887276%`; max reverb mode estimated CPU `1.309466%`; max transition edge `0.00049469`; non-finite/denormal counts `0`.
+- CPU module attribution: Earth/soundscape, granular, reverb, spectral freeze, visual telemetry, and UI callbacks pass; native render callback remains deferred.
+
+Remaining blocker:
+
+- Native reliable background audio still requires physical iOS/macOS rows before `supports_native_bridge` or `supportsNativeBridge` may be enabled.

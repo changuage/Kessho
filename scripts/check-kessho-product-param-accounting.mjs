@@ -542,7 +542,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     return {
       path: 'sequencer-lane-diff',
       evidence: [
-        'src/audio/coreProductSnapshot.ts#coreProductSynthSequencerHoldSecondsFromState',
+        'src/audio/coreProductSequencerHold.ts#coreProductPadEnvelopeGateSecondsFromState',
         'src/audio/CoreProductRuntimeAdapter.ts#SequencerLaneHoldSeconds',
         'cpp/KesshoCore/tests/ProductSequencerTests.cpp#KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_HOLD_SECONDS_ID',
       ],
@@ -554,7 +554,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     return {
       path: 'arrangement-scheduler-event',
       evidence: [
-        'src/audio/coreProductArrangementScheduler.ts#padEnvelopeGateSeconds',
+        'src/audio/coreProductSequencerHold.ts#coreProductPadEnvelopeGateSecondsFromState',
         'src/audio/coreProductEvents.ts#createCoreProductManualNoteEvent',
       ],
       reason: 'Pad fit-to-chord flags clamp generated manual-note gate lengths in host arrangement scheduling.',
@@ -888,6 +888,7 @@ const PRODUCT_SNAPSHOT_KEY_PATHS = [
   'src/audio/CoreProductPadPatch.ts',
   'src/audio/CoreProductDrumPatch.ts',
   'src/audio/coreProductDelaySnapshot.ts',
+  'src/audio/coreProductSequencerHold.ts',
   'src/audio/coreProductAssets.ts',
   'src/audio/coreProductArrangementScheduler.ts',
   'src/audio/granularMacroCore.ts',

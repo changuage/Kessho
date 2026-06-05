@@ -173,6 +173,18 @@
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
       return;
   }
+  switch (event.param_id) {
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_STEP_COUNT_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_FILL_COUNT_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_ROTATION_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_CLOCK_DIVISION_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_SWING_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TEMPO_MULTIPLIER_ID:
+      clearPendingRatchets(lane);
+      break;
+    default:
+      break;
+  }
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
 }
 

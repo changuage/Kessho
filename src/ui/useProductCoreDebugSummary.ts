@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { CoreProductModulationDebugEntry } from '../audio/coreProductTelemetry';
 import type { ProductEnginePort } from '../audio/product/ProductEnginePort';
 import { useVisibleInterval } from './hooks/useVisibleInterval';
+import { PRODUCT_CORE_DEBUG_SUMMARY_REFRESH_MS } from './productRuntimeTelemetryRateLimits';
 
 export type ProductCoreDebugSummary = {
   earth: string;
@@ -54,7 +55,7 @@ export function useProductCoreDebugSummary(
     }
   }, [productRuntimeMode]);
 
-  useVisibleInterval(readDebugSummary, 500, {
+  useVisibleInterval(readDebugSummary, PRODUCT_CORE_DEBUG_SUMMARY_REFRESH_MS, {
     enabled: productRuntimeMode === 'core-product',
   });
 

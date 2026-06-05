@@ -22,6 +22,7 @@ struct DynamicsDegradeState {
     float held[2] = {0.0f, 0.0f};
     float phase[2] = {1.0f, 1.0f};
     float lowpass[2] = {0.0f, 0.0f};
+    unsigned int rng = 0x6d2b79f5u;
 
     float input[KESSHO_DYNAMICS_DEGRADE_MAX_BLOCK_SIZE * 2] = {0.0f};
     float output[KESSHO_DYNAMICS_DEGRADE_MAX_BLOCK_SIZE * 2] = {0.0f};
@@ -52,6 +53,13 @@ inline float clamp01(float value) {
     return value;
 }
 
+static float rand01(unsigned int& state) {
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return static_cast<float>(state & 0x00ffffffu) / static_cast<float>(0x01000000u);
+}
+
 } // namespace
 
 extern "C" {
@@ -66,6 +74,7 @@ int dynamics_degrade_init(float sample_rate) {
     g_state.sample_rate = std::isfinite(sample_rate) && sample_rate > 1000.0f ? sample_rate : 44100.0f;
     g_state.phase[0] = 1.0f;
     g_state.phase[1] = 1.0f;
+    g_state.rng = 0x6d2b79f5u ^ static_cast<unsigned int>(g_state.sample_rate);
     return 0;
 }
 
@@ -127,6 +136,11 @@ void dynamics_degrade_process_block(int block_size) {
     );
     const float alpha = std::fmin(1.0f, 1.0f - std::exp((-2.0f * static_cast<float>(M_PI) * cutoff_hz) / g_state.sample_rate));
     const float fold = 1.0f + g_state.corrosion * 0.58f + g_state.generation * 0.2f + destructive * 0.34f;
+    const float lsb = 1.0f / quant_steps;
+    const float dither_amt =
+        lsb *
+        (0.18f + g_state.generation * 0.42f + g_state.corrosion * 0.20f) *
+        (1.0f - destructive * 0.35f);
     const float inv_fold_tanh = 1.0f / std::fmax(1.0e-6f, std::tanh(fold));
     const float shaper_trim = 1.0f / (1.0f + (fold - 1.0f) * (0.52f + g_state.mix * 0.22f) + destructive * 0.18f + damage * 0.12f);
     const float wet_lift = 0.08f + damage * 0.18f + destructive * 0.18f;
@@ -158,7 +172,8 @@ void dynamics_degrade_process_block(int block_size) {
                 held = dry;
             }
 
-            float wet = std::round(held * quant_steps) / quant_steps;
+            const float tpdf = rand01(g_state.rng) + rand01(g_state.rng) - 1.0f;
+            float wet = std::round((held + tpdf * dither_amt) * quant_steps) / quant_steps;
             wet = std::tanh(wet * fold) * inv_fold_tanh * shaper_trim;
             lp += (wet - lp) * alpha;
             wet = lp + (wet - lp) * wet_lift;

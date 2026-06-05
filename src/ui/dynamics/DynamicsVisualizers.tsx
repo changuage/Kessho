@@ -245,6 +245,60 @@ function drawSplitLine(ctx: CanvasRenderingContext2D, x: number, y: number, heig
   ctx.stroke();
 }
 
+function drawBadge(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string, align: CanvasTextAlign = 'left'): void {
+  ctx.font = '800 9px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  const width = Math.max(28, ctx.measureText(text).width + 13);
+  const drawX = align === 'right' ? x - width : align === 'center' ? x - width / 2 : x;
+  const rect: Rect = { x: drawX, y, w: width, h: 15 };
+  fillRoundedRect(ctx, rect, 5, `${color}26`);
+  strokeRoundedRect(ctx, rect, 5, `${color}7a`, 1);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = TEXT;
+  ctx.fillText(text, drawX + width / 2, y + rect.h / 2 + 0.2);
+}
+
+function drawMiniMetric(
+  ctx: CanvasRenderingContext2D,
+  rect: Rect,
+  label: string,
+  value: number,
+  color: string,
+  valueText?: string,
+): void {
+  const safeValue = clamp01(value);
+  fillRoundedRect(ctx, rect, 4, 'rgba(255, 255, 255, 0.045)');
+  fillRoundedRect(ctx, { ...rect, w: Math.max(1, rect.w * safeValue) }, 4, `${color}88`);
+  drawCaption(ctx, label, rect.x + 4, rect.y + rect.h / 2 + 0.3, TEXT);
+  if (valueText) drawCaption(ctx, valueText, rect.x + rect.w - 4, rect.y + rect.h / 2 + 0.3, TEXT, 'right');
+}
+
+function characterQualityLabel(quality: SliderState['characterQuality']): string {
+  if (quality === 'eco') return 'ECO';
+  if (quality === 'hq') return 'HQ';
+  return 'BAL';
+}
+
+function degradeQualityLabel(quality: SliderState['degradeQuality']): string {
+  if (quality === 'classic') return 'CLASSIC';
+  if (quality === 'hq') return 'HQ';
+  return 'MEDIA';
+}
+
+function endCompModeLabel(mode: SliderState['endCompMode']): string {
+  if (mode === 'clarity') return 'CLARITY';
+  if (mode === 'glue') return 'GLUE';
+  if (mode === 'punch') return 'PUNCH';
+  if (mode === 'twoBand') return '2-BAND';
+  return 'STUDIO';
+}
+
+function saturationQualityLabel(quality: SliderState['dynamicsSaturationQuality']): string {
+  if (quality === 'eco') return 'ECO';
+  if (quality === 'hq') return 'HQ';
+  return 'SMOOTH';
+}
+
 interface DynamicsCanvasSurfaceProps {
   ariaLabel: string;
   className?: string;
@@ -385,6 +439,12 @@ export function DynamicsCompressorVisualizer({ state, getDynamicsAnalyser, getDy
     const inputSample = sampleAnalyser(getDynamicsAnalyser?.('endInput'), inputDataRef);
     const outputSample = sampleAnalyser(getDynamicsAnalyser?.('endOutput'), outputDataRef);
     const workletEnd = telemetry.endCompHandledByWorklet ? telemetry.worklet : null;
+    const endMode = state.endCompMode ?? 'studioClear';
+    const peakBlend = clamp01(state.endCompPeakBlend ?? 0.25);
+    const clarityBoostDb = Math.max(0, workletEnd?.endClarityBoostDb ?? (state.endCompClarity ?? 0.22) * 3.2);
+    const bandSplitHz = Math.max(1, workletEnd?.endBandSplitHz ?? fromLogNorm(state.endCompBandSplit ?? 0.5, 90, 320));
+    const lowReductionDb = Math.max(0, workletEnd?.endLowReductionDb ?? 0);
+    const highReductionDb = Math.max(0, workletEnd?.endHighReductionDb ?? 0);
     const workletLive = Boolean(workletEnd && workletEnd.timestamp > 0 && workletEnd.endInputPeak > 0.0005);
     const liveInputDb = workletLive ? gainToDb(workletEnd!.endInputPeak) : inputSample.db;
     const liveOutputDb = workletLive ? gainToDb(Math.max(workletEnd!.endOutputPeak, outputSample.peak)) : outputSample.db;
@@ -485,6 +545,49 @@ export function DynamicsCompressorVisualizer({ state, getDynamicsAnalyser, getDy
     drawLinePath(ctx, grPoints);
     ctx.stroke();
 
+    drawBadge(ctx, endCompModeLabel(endMode), right.x + right.w - 8, right.y + 8, AMBER, 'right');
+    if (endMode === 'twoBand') {
+      const splitX = timeline.x + logNorm(bandSplitHz, 90, 320) * timeline.w;
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.72)';
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      ctx.moveTo(splitX, timeline.y + 2);
+      ctx.lineTo(splitX, timeline.y + timeline.h - 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      drawCaption(ctx, `SPLIT ${Math.round(bandSplitHz)}Hz`, splitX, timeline.y + 10, TEXT, 'center');
+
+      const bandY = timeline.y + timeline.h - 22;
+      const bandW = Math.max(30, (timeline.w - 8) / 2);
+      drawMiniMetric(ctx, { x: timeline.x, y: bandY, w: bandW, h: 13 }, 'LOW GR', clamp01(lowReductionDb / 18), AMBER, `${lowReductionDb.toFixed(1)}`);
+      drawMiniMetric(ctx, { x: timeline.x + bandW + 8, y: bandY, w: bandW, h: 13 }, 'HIGH GR', clamp01(highReductionDb / 18), ROSE, `${highReductionDb.toFixed(1)}`);
+      drawMiniMetric(
+        ctx,
+        { x: timeline.x, y: bandY - 17, w: timeline.w, h: 12 },
+        '2-BAND',
+        clamp01(state.endCompTwoBandAmount ?? 0),
+        CYAN,
+        `${Math.round(clamp01(state.endCompTwoBandAmount ?? 0) * 100)}%`,
+      );
+    } else {
+      drawMiniMetric(
+        ctx,
+        { x: timeline.x, y: timeline.y + timeline.h - 18, w: Math.max(42, timeline.w * 0.48), h: 13 },
+        'PEAK',
+        peakBlend,
+        CYAN,
+        `${Math.round(peakBlend * 100)}%`,
+      );
+      drawMiniMetric(
+        ctx,
+        { x: timeline.x + Math.max(46, timeline.w * 0.52), y: timeline.y + timeline.h - 18, w: Math.max(42, timeline.w * 0.48), h: 13 },
+        'CLARITY',
+        clamp01(clarityBoostDb / 6),
+        GREEN,
+        `+${clarityBoostDb.toFixed(1)}`,
+      );
+    }
+
     const metersY = right.y + right.h - 29;
     const meterW = (right.w - 22) / 3;
     const meterValues = [
@@ -502,12 +605,17 @@ export function DynamicsCompressorVisualizer({ state, getDynamicsAnalyser, getDy
     getDynamicsAnalyser,
     getDynamicsTelemetry,
     state.endCompAttackMs,
+    state.endCompBandSplit,
+    state.endCompClarity,
     state.endCompKnee,
     state.endCompMakeup,
     state.endCompMix,
+    state.endCompMode,
+    state.endCompPeakBlend,
     state.endCompRatio,
     state.endCompReleaseMs,
     state.endCompThreshold,
+    state.endCompTwoBandAmount,
   ]);
 
   return (
@@ -543,7 +651,7 @@ function saturateSample(input: number, mode: SliderState['dynamicsSaturationMode
   return clamp(output * air, -1.08, 1.08);
 }
 
-export function DynamicsSaturationVisualizer({ state, getDynamicsAnalyser }: VisualizerProps) {
+export function DynamicsSaturationVisualizer({ state, getDynamicsAnalyser, getDynamicsTelemetry }: VisualizerProps) {
   const preDataRef = useRef<FloatBuffer | null>(null);
   const postDataRef = useRef<FloatBuffer | null>(null);
 
@@ -556,6 +664,9 @@ export function DynamicsSaturationVisualizer({ state, getDynamicsAnalyser }: Vis
     const mode = state.dynamicsSaturationMode ?? 'clean';
     const preSample = sampleAnalyser(getDynamicsAnalyser?.('preSaturation'), preDataRef);
     const postSample = sampleAnalyser(getDynamicsAnalyser?.('postSaturation'), postDataRef);
+    const telemetry = getLiveTelemetry(getDynamicsTelemetry);
+    const quality = state.dynamicsSaturationQuality ?? 'smooth';
+    const oversamplingFactor = Math.max(1, telemetry.worklet?.masterSatOversamplingFactor ?? 1);
 
     const pad = 11;
     const split = width * 0.58;
@@ -652,11 +763,14 @@ export function DynamicsSaturationVisualizer({ state, getDynamicsAnalyser }: Vis
     const centerX = meter.x + meter.w / 2;
     const offset = clamp(asymmetry * 0.5 + Math.abs(bias - 0.5) * 0.9, 0, 0.48) * meter.w;
     fillRoundedRect(ctx, { x: centerX - offset, y: meter.y, w: offset * 2, h: meter.h }, 3, 'rgba(251, 191, 36, 0.62)');
+    drawBadge(ctx, `${saturationQualityLabel(quality)} ${Math.round(oversamplingFactor)}x`, harmonic.x + harmonic.w - 8, harmonic.y + harmonic.h - 22, YELLOW, 'right');
   }, [
     getDynamicsAnalyser,
+    getDynamicsTelemetry,
     state.dynamicsSaturationBias,
     state.dynamicsSaturationDrive,
     state.dynamicsSaturationMode,
+    state.dynamicsSaturationQuality,
     state.dynamicsSaturationTone,
   ]);
 
@@ -679,13 +793,19 @@ export function DynamicsDegradeVisualizer({ state, getDynamicsAnalyser, getDynam
     const postCharacter = sampleAnalyser(getDynamicsAnalyser?.('postCharacter'), postCharacterDataRef);
     const workletWetPeak = liveTelemetry.worklet?.wetPeak ?? 0;
     const livePulse = clamp01(Math.max(postCharacter.peak, workletWetPeak) * 2.8);
+    const eventEnv = clamp01(liveTelemetry.worklet?.degradeEventEnv ?? 0);
+    const eventGainDb = liveTelemetry.worklet?.degradeEventGainDb ?? 0;
+    const profileAmount = clamp01(liveTelemetry.worklet?.degradeProfileAmount ?? state.degradeProfileAmount ?? 0.65);
+    const ditherAmount = clamp01(state.degradeDitherAmount ?? 0.55);
+    const quality = state.degradeQuality ?? 'media';
 
     const pad = 11;
     const header = 17;
-    const mapRect: Rect = { x: pad, y: pad + header, w: width - pad * 2, h: height - pad * 2 - header - 24 };
-    const footer: Rect = { x: pad, y: mapRect.y + mapRect.h + 8, w: width - pad * 2, h: 16 };
+    const footerH = 30;
+    const mapRect: Rect = { x: pad, y: pad + header, w: width - pad * 2, h: height - pad * 2 - header - footerH - 8 };
+    const footer: Rect = { x: pad, y: mapRect.y + mapRect.h + 8, w: width - pad * 2, h: footerH };
     drawValue(ctx, 'DAMAGE MAP', mapRect.x, pad + 8, PURPLE);
-    drawCaption(ctx, 'ENGINE RESOLVED', mapRect.x + mapRect.w, pad + 8, MUTED, 'right');
+    drawBadge(ctx, degradeQualityLabel(quality), mapRect.x + mapRect.w, pad + 1, PURPLE, 'right');
 
     fillRoundedRect(ctx, mapRect, 7, 'rgba(255, 255, 255, 0.025)');
     strokeRoundedRect(ctx, mapRect, 7, 'rgba(255, 255, 255, 0.08)');
@@ -731,21 +851,72 @@ export function DynamicsDegradeVisualizer({ state, getDynamicsAnalyser, getDynam
     });
 
     fillRoundedRect(ctx, footer, 5, 'rgba(255, 255, 255, 0.04)');
-    const hpX = footer.x + clamp01(hpLift) * footer.w * 0.28;
-    const lpX = footer.x + footer.w - clamp01(lpLoss) * footer.w * 0.46;
-    const usable: Rect = { x: hpX, y: footer.y + 4, w: Math.max(8, lpX - hpX), h: footer.h - 8 };
+    const eventW = Math.max(66, footer.w * 0.3);
+    drawMiniMetric(
+      ctx,
+      { x: footer.x + 5, y: footer.y + 4, w: eventW, h: 10 },
+      'EVENT',
+      eventEnv,
+      ROSE,
+      `${Math.round(eventEnv * 100)}%`,
+    );
+    drawMiniMetric(
+      ctx,
+      { x: footer.x + eventW + 10, y: footer.y + 4, w: eventW, h: 10 },
+      'DIP',
+      clamp01(Math.abs(eventGainDb) / 18),
+      AMBER,
+      `${eventGainDb.toFixed(1)}`,
+    );
+    const profileRect: Rect = {
+      x: footer.x + eventW * 2 + 15,
+      y: footer.y + 4,
+      w: Math.max(40, footer.w - eventW * 2 - 20),
+      h: 10,
+    };
+    fillRoundedRect(ctx, profileRect, 4, 'rgba(255, 255, 255, 0.045)');
+    const profilePoints: Point[] = [];
+    for (let i = 0; i <= 32; i += 1) {
+      const unit = i / 32;
+      const body = Math.exp(-((unit - 0.24) ** 2) / 0.018);
+      const notch = Math.exp(-((unit - 0.74) ** 2) / 0.012);
+      const tilt = (unit - 0.5) * 0.14;
+      const shaped = (body * 0.45 - notch * 0.72 - tilt) * profileAmount;
+      profilePoints.push({
+        x: profileRect.x + unit * profileRect.w,
+        y: profileRect.y + profileRect.h * 0.55 - shaped * profileRect.h * 0.45,
+      });
+    }
+    drawLinePath(ctx, profilePoints);
+    ctx.strokeStyle = `${PURPLE}cc`;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    drawCaption(ctx, `PROFILE ${Math.round(profileAmount * 100)}%`, profileRect.x + 4, profileRect.y + profileRect.h / 2 + 0.2, TEXT);
+    drawCaption(ctx, `DITHER ${Math.round(ditherAmount * 100)}%`, profileRect.x + profileRect.w - 4, profileRect.y + profileRect.h / 2 + 0.2, TEXT, 'right');
+
+    const bandRect: Rect = { x: footer.x, y: footer.y + 15, w: footer.w, h: footer.h - 15 };
+    const hpX = bandRect.x + clamp01(hpLift) * bandRect.w * 0.28;
+    const lpX = bandRect.x + bandRect.w - clamp01(lpLoss) * bandRect.w * 0.46;
+    const usable: Rect = { x: hpX, y: bandRect.y + 4, w: Math.max(8, lpX - hpX), h: bandRect.h - 8 };
     fillRoundedRect(ctx, usable, 4, 'rgba(139, 92, 246, 0.48)');
     ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
     for (let i = 0; i < 18; i += 1) {
       const unit = (i + 0.5) / 18;
       const wave = waveformSample(postCharacter.data, unit);
-      const x = footer.x + unit * footer.w + wave * targets.dropoutDepth * 90;
-      const stripeH = (footer.h - 6) * clamp01(0.35 + Math.abs(wave) * 1.8 + livePulse * 0.3);
-      ctx.fillRect(x, footer.y + 3 + (footer.h - 6 - stripeH) * 0.5, 1, stripeH);
+      const x = bandRect.x + unit * bandRect.w + wave * targets.dropoutDepth * 90;
+      const stripeH = (bandRect.h - 6) * clamp01(0.35 + Math.abs(wave) * 1.8 + livePulse * 0.3);
+      ctx.fillRect(x, bandRect.y + 3 + (bandRect.h - 6 - stripeH) * 0.5, 1, stripeH);
     }
-    drawCaption(ctx, 'HP', footer.x + 5, footer.y + footer.h / 2 + 0.5, MUTED);
-    drawCaption(ctx, 'LP', footer.x + footer.w - 5, footer.y + footer.h / 2 + 0.5, MUTED, 'right');
-  }, [getDynamicsAnalyser, getDynamicsTelemetry, targets]);
+    drawCaption(ctx, 'HP', bandRect.x + 5, bandRect.y + bandRect.h / 2 + 0.5, MUTED);
+    drawCaption(ctx, 'LP', bandRect.x + bandRect.w - 5, bandRect.y + bandRect.h / 2 + 0.5, MUTED, 'right');
+  }, [
+    getDynamicsAnalyser,
+    getDynamicsTelemetry,
+    state.degradeDitherAmount,
+    state.degradeProfileAmount,
+    state.degradeQuality,
+    targets,
+  ]);
 
   return (
     <DynamicsCanvasSurface
@@ -798,6 +969,14 @@ export function DynamicsCharacterVisualizer({ state, getDynamicsAnalyser, getDyn
 
     const envFollow = clamp01(state.characterEnvFollow ?? 0);
     const liveEnv = clamp01(Math.max(outputSample.peak, liveTelemetry.worklet?.characterEnv ?? 0) * (1 + envFollow * 2.2));
+    const antiComb = clamp01(state.characterAntiComb ?? 1);
+    const mix = clamp01(state.characterMix ?? 0);
+    const mixedDelayGuard = mix < 0.985 ? antiComb : 0;
+    const fallbackMinDelayMs = lerp(3, 10.5, mixedDelayGuard);
+    const minDelayMs = Math.max(0, liveTelemetry.worklet?.characterMinDelayMs ?? fallbackMinDelayMs);
+    const combRisk = clamp01(liveTelemetry.worklet?.characterCombRisk ?? mixedDelayGuard * (state.characterMode === 'shallowWater' ? 0.95 : 0.45));
+    const diffusion = clamp01(liveTelemetry.worklet?.characterDiffusion ?? state.characterDiffusion ?? 0.55);
+    const quality = state.characterQuality ?? 'balanced';
 
     // ── Motion panel (left) ──
     const motionBars = [
@@ -819,6 +998,7 @@ export function DynamicsCharacterVisualizer({ state, getDynamicsAnalyser, getDyn
     const barGap = Math.min(3, (barsAvailH - barH * motionBars.length) / Math.max(1, motionBars.length - 1));
 
     drawCaption(ctx, 'MOTION', motion.x + barPad, motion.y + titleH * 0.7, accent);
+    drawBadge(ctx, characterQualityLabel(quality), motion.x + motion.w - barPad, motion.y + 4, accent, 'right');
 
     motionBars.forEach((bar, i) => {
       const y = motion.y + titleH + 4 + i * (barH + barGap);
@@ -1050,11 +1230,34 @@ export function DynamicsCharacterVisualizer({ state, getDynamicsAnalyser, getDyn
     // panel labels
     drawCaption(ctx, 'BIAS', biasX, plotY + plotH + labelH * 0.6, `${accent}77`, 'center');
     if (hpHz > 25) drawCaption(ctx, 'HP', freqToX(hpHz), plotY + plotH + labelH * 0.6, 'rgba(251, 191, 36, 0.5)', 'center');
+
+    const overlayW = Math.max(76, Math.min(112, plotW * 0.42));
+    drawMiniMetric(
+      ctx,
+      { x: plotX + 4, y: plotY + 4, w: overlayW, h: 12 },
+      'PROTECT',
+      combRisk,
+      ROSE,
+      `${Math.round(combRisk * 100)}%`,
+    );
+    drawMiniMetric(
+      ctx,
+      { x: plotX + 4, y: plotY + 19, w: overlayW, h: 12 },
+      'DIFFUSE',
+      diffusion,
+      CYAN,
+      `${Math.round(diffusion * 100)}%`,
+    );
+    drawCaption(ctx, `MIN ${minDelayMs.toFixed(1)}ms`, plotX + plotW - 4, plotY + 10, TEXT, 'right');
   }, [
     getDynamicsAnalyser,
     getDynamicsTelemetry,
+    state.characterAntiComb,
+    state.characterDiffusion,
     state.characterEnvFollow,
+    state.characterMix,
     state.characterMode,
+    state.characterQuality,
     targets,
   ]);
 

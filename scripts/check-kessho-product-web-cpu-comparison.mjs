@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import {
+  collectReportMetadata,
+  writeJsonReport,
+  writeMarkdownReport,
+} from './product-core/lib/reporting.mjs';
 
 const root = process.cwd();
 const DEFAULT_PORT = 4196;
+const RENDER_BLOCK_FRAMES = 128;
 const CPU_SUMMARY_STORAGE_KEY = 'kessho:audio-engine-cpu-summary:v1';
 const reportJsonPath = resolve(root, 'docs/reports/kessho-product-web-cpu-comparison-latest.json');
 const reportMarkdownPath = resolve(root, 'docs/reports/kessho-product-web-cpu-comparison-latest.md');
@@ -217,6 +222,10 @@ function summarizeCapture(capture) {
   const telemetry = capture.debug?.latestTelemetry ?? {};
   return {
     engine: capture.engine,
+    sampleRate: capture.sampleRate ?? null,
+    frames: capture.frames ?? null,
+    durationMs: capture.durationMs ?? null,
+    blockSize: RENDER_BLOCK_FRAMES,
     rms: capture.stats?.rms ?? null,
     peak: capture.stats?.peak ?? null,
     activeVoices: telemetry.activeVoices ?? null,
@@ -310,14 +319,19 @@ function percentDelta(from, to) {
 }
 
 function writeReport(report) {
-  mkdirSync(resolve(root, 'docs/reports'), { recursive: true });
-  writeFileSync(reportJsonPath, `${JSON.stringify(report, null, 2)}\n`);
+  writeJsonReport(reportJsonPath, report);
   const product = report.engines['core-product'];
   const web = report.engines['web-ts'];
   const lines = [
     '# Kessho Product vs Web CPU Comparison',
     '',
     `Generated: ${report.generatedAt}`,
+    '',
+    `Commit: ${report.metadata.gitCommit ?? 'unknown'}`,
+    '',
+    `Platform: ${report.metadata.machine.platform}/${report.metadata.machine.arch}; CPU: ${report.metadata.machine.cpuModel ?? 'unknown'} x${report.metadata.machine.cpuCount}`,
+    '',
+    `Sample rate: ${report.metadata.sampleRate ?? '-'} Hz; block size: ${report.metadata.blockSize ?? '-'} frames; duration: ${report.metadata.durationMs ?? '-'} ms`,
     '',
     `Status: **${report.status.toUpperCase()}**`,
     '',
@@ -343,17 +357,32 @@ function writeReport(report) {
     '- Internal avg/peak keeps the old overlay-style metric visible. For Web TS, that is still worklet-reported CPU only and excludes native WebAudio node DSP; for Product Core, the single worklet contains the Product renderer.',
     '',
   ];
-  writeFileSync(reportMarkdownPath, `${lines.join('\n')}\n`);
+  writeMarkdownReport(reportMarkdownPath, lines);
 }
 
 const args = parseArgs(process.argv.slice(2));
 const server = args.url ? { url: args.url, stop: async () => {} } : await startPreview(args.port);
 const { chromium } = await loadPlaywright();
+const generatedAt = new Date().toISOString();
 
 const report = {
   schemaVersion: 1,
-  generatedAt: new Date().toISOString(),
+  generatedAt,
   status: 'running',
+  metadata: collectReportMetadata({
+    root,
+    generatedAt,
+    command: process.argv.map(String).join(' '),
+    scenarioName: 'string-waves-arrangement',
+    sampleRate: null,
+    blockSize: RENDER_BLOCK_FRAMES,
+    durationMs: args.durationMs,
+    thresholds: {
+      minRms: 0.0005,
+      minPeak: 0.001,
+    },
+    topSuspectedModules: ['sources', 'worklet-messaging', 'ui-telemetry', 'visual-telemetry'],
+  }),
   url: server.url,
   scenario: {
     id: 'string-waves-arrangement',
@@ -371,6 +400,20 @@ try {
   const web = await measureEngine({ chromium, baseUrl: server.url, mode: 'web-ts', args });
   report.engines['core-product'] = product;
   report.engines['web-ts'] = web;
+  report.metadata = collectReportMetadata({
+    root,
+    generatedAt: report.generatedAt,
+    command: process.argv.map(String).join(' '),
+    scenarioName: report.scenario.id,
+    sampleRate: product.capture.sampleRate ?? web.capture.sampleRate ?? null,
+    blockSize: RENDER_BLOCK_FRAMES,
+    durationMs: args.durationMs,
+    thresholds: {
+      minRms: 0.0005,
+      minPeak: 0.001,
+    },
+    topSuspectedModules: ['sources', 'worklet-messaging', 'ui-telemetry', 'visual-telemetry'],
+  });
   report.comparison = {
     browserProcessCpuSavedPercent: percentDelta(web.browserProcessCpuPercent, product.browserProcessCpuPercent),
     browserProcessCpuRatioProductOverWeb: web.browserProcessCpuPercent > 0

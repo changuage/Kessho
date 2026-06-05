@@ -15,6 +15,7 @@ type ScheduleAudioEngineParamUpdate = (
     immediate?: boolean;
     reason?: ProductSnapshotPatchReason;
     forceFullSnapshot?: boolean;
+    triggerCritical?: boolean;
   },
 ) => void;
 
@@ -72,6 +73,7 @@ export function usePresetEngineSync({
       immediate: true,
       reason: 'preset-load',
       forceFullSnapshot: true,
+      triggerCritical: true,
     });
     resetSelectedCofDrift();
   }, [audioEngineRuntimeMode, resetSelectedCofDrift, scheduleAudioEngineParamUpdate]);

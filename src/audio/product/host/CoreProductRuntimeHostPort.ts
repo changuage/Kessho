@@ -20,6 +20,8 @@ import type {
   ProductMidiMessage,
   ProductRange,
   ProductRangeMap,
+  ProductResolvedStateCommit,
+  ProductResolvedStateCommitReceipt,
   ProductRuntimeWalkPositionsCallback,
   ProductSequencerEvolveTriggerCallback,
   ProductSequencerStepPositionCallback,
@@ -30,10 +32,8 @@ import type {
   ProductTelemetrySnapshot,
 } from '../ProductEngineTypes';
 
-// TODO(product-core-burn-down): replace this bound WebProductEngine host port
-// with product-owned generated runtime APIs once the web adapter no longer binds
-// Product host method names itself. Pure runtime forwarding stays inline here so
-// production does not maintain duplicate one-method bridge modules.
+// TODO(product-core-burn-down): replace this bound WebProductEngine host port with product-owned
+// generated runtime APIs once the web adapter no longer binds Product host method names itself.
 type CoreProductRuntimeCallbackName =
   | 'stateChange'
   | 'drumTrigger'
@@ -70,9 +70,7 @@ export const coreProductRuntimeHostPort = {
     return callCoreProductHost<Promise<void>>('start', initialState);
   },
 
-  stop(): void {
-    callCoreProductHost<void>('stop');
-  },
+  stop(): void { callCoreProductHost<void>('stop'); },
 
   suspend(): Promise<void> {
     return callCoreProductHost<Promise<void>>('suspend');
@@ -94,17 +92,21 @@ export const coreProductRuntimeHostPort = {
     return callCoreProductHost<Promise<boolean>>('setDawOutputDeviceId', deviceId);
   },
 
-  resetCofDrift(): void {
-    callCoreProductHost<void>('resetCofDrift');
-  },
+  resetCofDrift(): void { callCoreProductHost<void>('resetCofDrift'); },
 
   updateSnapshotPatch(reason: ProductSnapshotPatchReason, patch: ProductSnapshotPatch): void {
     callCoreProductHost<void>('updateSnapshotPatch', reason, patch);
   },
 
-  postEvent(event: ProductEvent): void {
-    callCoreProductHost<void>('postProductEvent', event);
+  commitResolvedState(commit: ProductResolvedStateCommit): ProductResolvedStateCommitReceipt {
+    return callCoreProductHost<ProductResolvedStateCommitReceipt>('commitResolvedState', commit);
   },
+
+  getCommittedStateRevision(): number {
+    return callCoreProductHost<number>('getCommittedStateRevision');
+  },
+
+  postEvent(event: ProductEvent): void { callCoreProductHost<void>('postProductEvent', event); },
 
   pushMidiMessage(message: ProductMidiMessage): void {
     callCoreProductHost<void>('pushMidiMessage', message);

@@ -112,6 +112,7 @@ const DRUM_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_DRUM_PARAM_COUNT')
 const DRUM_VOICE_COUNT = generatedConstNumber('KESSHO_PRODUCT_DRUM_VOICE_COUNT');
 const DEFAULT_SOURCE_PRESET_IDS = [1001, 1001, 2001, 2001, 3001, 4001, 5001];
 const DEFAULT_DRUM_VOICE_PRESET_IDS = [3101, 3201, 3301, 3401, 3501, 3601, 3701];
+const DEFAULT_SOURCE_ENVELOPE = [0.005, 0.65, 0.72, 0.5, 1.4];
 const SOURCE_PRESET_A_OFFSET = 12;
 const SOURCE_PRESET_B_OFFSET = 16;
 const SOURCE_LEVEL_OFFSET = 32;
@@ -233,6 +234,9 @@ for (let index = 0; index < SOURCE_COUNT; index += 1) {
   setF32(source + SOURCE_DRY_GAIN_OFFSET, 0.8);
   setF32(source + SOURCE_POST_LPF_HZ_OFFSET, 18000.0);
   setF32(source + SOURCE_STEREO_WIDTH_OFFSET, 1.0);
+  for (let envelopeIndex = 0; envelopeIndex < DEFAULT_SOURCE_ENVELOPE.length; envelopeIndex += 1) {
+    setF32(source + SOURCE_ENVELOPE_OFFSET + envelopeIndex * 4, DEFAULT_SOURCE_ENVELOPE[envelopeIndex]);
+  }
 }
 
 setU32(SYNTH_OFFSET, 1);

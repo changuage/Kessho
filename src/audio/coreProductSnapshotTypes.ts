@@ -245,6 +245,9 @@ export type CoreProductSnapshot = {
     dynamicsEnabled: boolean;
     dynamicsCharacterEnabled: boolean;
     dynamicsCharacterMode: number;
+    dynamicsCharacterQuality: number;
+    dynamicsCharacterAntiComb: number;
+    dynamicsCharacterDiffusion: number;
     dynamicsCharacterMix: number;
     dynamicsCharacterAge: number;
     dynamicsCharacterBias: number;
@@ -256,6 +259,10 @@ export type CoreProductSnapshot = {
     dynamicsCharacterRate: number;
     dynamicsCharacterDamp: number;
     dynamicsDegradeEnabled: boolean;
+    dynamicsDegradeQuality: number;
+    dynamicsDegradeEventAmount: number;
+    dynamicsDegradeProfileAmount: number;
+    dynamicsDegradeDitherAmount: number;
     dynamicsDegradeMix: number;
     dynamicsDegradeAge: number;
     dynamicsDegradeGeneration: number;
@@ -302,10 +309,12 @@ export type CoreProductSnapshot = {
     dynamicsModNoiseAlias: number;
     dynamicsSaturationEnabled: boolean;
     dynamicsSaturationMode: number;
+    dynamicsSaturationQuality: number;
     dynamicsSaturationDrive: number;
     dynamicsSaturationTone: number;
     dynamicsSaturationBias: number;
     dynamicsEndCompEnabled: boolean;
+    dynamicsEndCompMode: number;
     dynamicsEndCompThreshold: number;
     dynamicsEndCompKnee: number;
     dynamicsEndCompRatio: number;
@@ -317,6 +326,10 @@ export type CoreProductSnapshot = {
     dynamicsEndCompDetectorTilt: number;
     dynamicsEndCompAutoMakeup: number;
     dynamicsEndCompProgramRelease: number;
+    dynamicsEndCompPeakBlend: number;
+    dynamicsEndCompClarity: number;
+    dynamicsEndCompTwoBandAmount: number;
+    dynamicsEndCompBandSplit: number;
     sidechainEnabled: boolean;
     sidechainKeyA: number;
     sidechainKeyB: number;

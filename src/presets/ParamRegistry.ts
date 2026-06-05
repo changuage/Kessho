@@ -262,6 +262,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // ═══════════════════════════════════════════════════════════════════════
   dynamicsSaturationEnabled: { level: 1, scope: 'dynamicsSaturation' },
   dynamicsSaturationMode:    { level: 1, scope: 'dynamicsSaturation' },
+  dynamicsSaturationQuality: { level: 1, scope: 'dynamicsSaturation' },
   dynamicsSaturationDrive:   { level: 1, scope: 'dynamicsSaturation' },
   dynamicsSaturationTone:    { level: 1, scope: 'dynamicsSaturation' },
   dynamicsSaturationBias:    { level: 1, scope: 'dynamicsSaturation' },
@@ -301,6 +302,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // ═══════════════════════════════════════════════════════════════════════
   characterEnabled:       { level: 1, scope: 'dynamicsCharacter' },
   characterMode:          { level: 1, scope: 'dynamicsCharacter' },
+  characterQuality:       { level: 1, scope: 'dynamicsCharacter' },
+  characterAntiComb:      { level: 1, scope: 'dynamicsCharacter' },
+  characterDiffusion:     { level: 1, scope: 'dynamicsCharacter' },
   characterMix:           { level: 1, scope: 'dynamicsCharacter' },
   characterAge:           { level: 1, scope: 'dynamicsCharacter' },
   characterBias:          { level: 1, scope: 'dynamicsCharacter' },
@@ -317,6 +321,10 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // L1: Dynamics Degrade Engine
   // ═══════════════════════════════════════════════════════════════════════
   degradeEnabled:        { level: 1, scope: 'dynamicsDegrade' },
+  degradeQuality:        { level: 1, scope: 'dynamicsDegrade' },
+  degradeEventAmount:    { level: 1, scope: 'dynamicsDegrade' },
+  degradeProfileAmount:  { level: 1, scope: 'dynamicsDegrade' },
+  degradeDitherAmount:   { level: 1, scope: 'dynamicsDegrade' },
   degradeMix:            { level: 1, scope: 'dynamicsDegrade' },
   degradeAge:            { level: 1, scope: 'dynamicsDegrade' },
   degradeGeneration:     { level: 1, scope: 'dynamicsDegrade' },
@@ -366,6 +374,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // L1: Dynamics End Chain Engine
   // ═══════════════════════════════════════════════════════════════════════
   endCompEnabled:         { level: 1, scope: 'dynamicsEndChain' },
+  endCompMode:            { level: 1, scope: 'dynamicsEndChain' },
   endCompThreshold:       { level: 1, scope: 'dynamicsEndChain' },
   endCompKnee:            { level: 1, scope: 'dynamicsEndChain' },
   endCompRatio:           { level: 1, scope: 'dynamicsEndChain' },
@@ -377,6 +386,10 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   endCompDetectorTilt:    { level: 1, scope: 'dynamicsEndChain' },
   endCompAutoMakeup:      { level: 1, scope: 'dynamicsEndChain' },
   endCompProgramRelease:  { level: 1, scope: 'dynamicsEndChain' },
+  endCompPeakBlend:       { level: 1, scope: 'dynamicsEndChain' },
+  endCompClarity:         { level: 1, scope: 'dynamicsEndChain' },
+  endCompTwoBandAmount:   { level: 1, scope: 'dynamicsEndChain' },
+  endCompBandSplit:       { level: 1, scope: 'dynamicsEndChain' },
 
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1225,7 +1238,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1010) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1010`);
+  if (count !== 1023) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1023`);
   }
 }

@@ -6,7 +6,7 @@ import { useSliderHelp } from '../SliderHelpOverlay';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
-import { normalizeDynamicsDegradeAliases } from '../../audio/dynamicsModel';
+import { normalizeDynamicsDegradeAliases, normalizeDynamicsQualityFields } from '../../audio/dynamicsModel';
 import {
   DEGRADE_MOD_SOURCES,
   DEGRADE_MOD_TARGETS,
@@ -25,8 +25,11 @@ import {
 } from './DynamicsVisualizers';
 import {
   DYNAMICS_CHARACTER_CONTROLS,
+  DYNAMICS_CHARACTER_QUALITY_CONTROLS,
   DYNAMICS_DEGRADE_CONTROLS,
+  DYNAMICS_DEGRADE_QUALITY_CONTROLS,
   DYNAMICS_END_CHAIN_CONTROLS,
+  DYNAMICS_END_CHAIN_QUALITY_CONTROLS,
   DYNAMICS_SATURATION_CONTROLS,
   DYNAMICS_SIDECHAIN_MIX_CONTROLS,
   DYNAMICS_SIDECHAIN_SHAPE_CONTROLS,
@@ -53,6 +56,26 @@ const CHARACTER_MODE_OPTIONS: Array<{ value: SliderState['characterMode']; label
   { value: 'shallowWater', label: 'Shallow' },
 ];
 
+const CHARACTER_QUALITY_OPTIONS: Array<{ value: SliderState['characterQuality']; label: string }> = [
+  { value: 'eco', label: 'Eco' },
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'hq', label: 'HQ' },
+];
+
+const DEGRADE_QUALITY_OPTIONS: Array<{ value: SliderState['degradeQuality']; label: string }> = [
+  { value: 'classic', label: 'Classic' },
+  { value: 'media', label: 'Media' },
+  { value: 'hq', label: 'HQ' },
+];
+
+const END_COMP_MODE_OPTIONS: Array<{ value: SliderState['endCompMode']; label: string }> = [
+  { value: 'studioClear', label: 'Studio' },
+  { value: 'clarity', label: 'Clarity' },
+  { value: 'glue', label: 'Glue' },
+  { value: 'punch', label: 'Punch' },
+  { value: 'twoBand', label: '2-Band' },
+];
+
 const SAT_MODE_OPTIONS: Array<{ value: SliderState['dynamicsSaturationMode']; label: string }> = [
   { value: 'clean', label: 'Clean' },
   { value: 'tape', label: 'Tape' },
@@ -60,6 +83,100 @@ const SAT_MODE_OPTIONS: Array<{ value: SliderState['dynamicsSaturationMode']; la
   { value: 'diode', label: 'Diode' },
   { value: 'fold', label: 'Fold' },
 ];
+
+const SAT_QUALITY_OPTIONS: Array<{ value: SliderState['dynamicsSaturationQuality']; label: string }> = [
+  { value: 'eco', label: 'Eco' },
+  { value: 'smooth', label: 'Smooth' },
+  { value: 'hq', label: 'HQ' },
+];
+
+const END_COMP_MODE_PRESETS: Record<SliderState['endCompMode'], Partial<SliderState>> = {
+  studioClear: {
+    endCompThreshold: -22,
+    endCompKnee: 8,
+    endCompRatio: 2.6,
+    endCompAttackMs: 18,
+    endCompReleaseMs: 160,
+    endCompMakeup: 1,
+    endCompMix: 0.78,
+    endCompDetectorHp: 0.62,
+    endCompDetectorTilt: 0.65,
+    endCompAutoMakeup: 0.65,
+    endCompProgramRelease: 0.7,
+    endCompPeakBlend: 0.25,
+    endCompClarity: 0.22,
+    endCompTwoBandAmount: 0,
+    endCompBandSplit: 0.5,
+  },
+  clarity: {
+    endCompThreshold: -26,
+    endCompKnee: 10,
+    endCompRatio: 2.2,
+    endCompAttackMs: 24,
+    endCompReleaseMs: 120,
+    endCompMakeup: 1,
+    endCompMix: 0.68,
+    endCompDetectorHp: 0.7,
+    endCompDetectorTilt: 0.78,
+    endCompAutoMakeup: 0.55,
+    endCompProgramRelease: 0.8,
+    endCompPeakBlend: 0.3,
+    endCompClarity: 0.3,
+    endCompTwoBandAmount: 0,
+    endCompBandSplit: 0.5,
+  },
+  glue: {
+    endCompThreshold: -18,
+    endCompKnee: 6,
+    endCompRatio: 1.8,
+    endCompAttackMs: 30,
+    endCompReleaseMs: 220,
+    endCompMakeup: 1,
+    endCompMix: 0.85,
+    endCompDetectorHp: 0.54,
+    endCompDetectorTilt: 0.45,
+    endCompAutoMakeup: 0.45,
+    endCompProgramRelease: 0.65,
+    endCompPeakBlend: 0.15,
+    endCompClarity: 0.1,
+    endCompTwoBandAmount: 0,
+    endCompBandSplit: 0.5,
+  },
+  punch: {
+    endCompThreshold: -20,
+    endCompKnee: 5,
+    endCompRatio: 3.2,
+    endCompAttackMs: 32,
+    endCompReleaseMs: 95,
+    endCompMakeup: 1,
+    endCompMix: 0.72,
+    endCompDetectorHp: 0.62,
+    endCompDetectorTilt: 0.55,
+    endCompAutoMakeup: 0.5,
+    endCompProgramRelease: 0.45,
+    endCompPeakBlend: 0.45,
+    endCompClarity: 0.16,
+    endCompTwoBandAmount: 0,
+    endCompBandSplit: 0.5,
+  },
+  twoBand: {
+    endCompThreshold: -24,
+    endCompKnee: 8,
+    endCompRatio: 2.2,
+    endCompAttackMs: 24,
+    endCompReleaseMs: 160,
+    endCompMakeup: 1,
+    endCompMix: 0.76,
+    endCompDetectorHp: 0.62,
+    endCompDetectorTilt: 0.65,
+    endCompAutoMakeup: 0.5,
+    endCompProgramRelease: 0.7,
+    endCompPeakBlend: 0.25,
+    endCompClarity: 0.24,
+    endCompTwoBandAmount: 0.7,
+    endCompBandSplit: 0.5,
+  },
+};
 
 function makeSubsetPresetOptions(
   keys: readonly (keyof SliderState)[],
@@ -75,7 +192,9 @@ function makeSubsetPresetOptions(
     },
     customApply: (snapshot, data) => {
       const next = { ...snapshot } as Record<string, unknown>;
-      const normalizedData = normalizeDynamicsDegradeAliases(data);
+      const normalizedData = normalizeDynamicsQualityFields(
+        normalizeDynamicsDegradeAliases(data),
+      );
       const defaultState = DEFAULT_STATE as unknown as Record<string, unknown>;
       if (options.forceDynamicsEnabled) next.dynamicsEnabled = true;
       for (const key of keys) {
@@ -198,6 +317,31 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
     onSelectChange(key, enabled);
   }, [onSelectChange, onStateChange]);
 
+  const applyEndCompMode = useCallback((mode: SliderState['endCompMode']) => {
+    const preset = END_COMP_MODE_PRESETS[mode];
+    if (onStateChange) {
+      onStateChange((currentState) => ({
+        ...currentState,
+        dynamicsEnabled: true,
+        endCompEnabled: true,
+        endCompMode: mode,
+        ...preset,
+      }));
+      return;
+    }
+
+    onSelectChange('dynamicsEnabled', true);
+    onSelectChange('endCompEnabled', true);
+    onSelectChange('endCompMode', mode);
+    for (const [key, value] of Object.entries(preset) as Array<[keyof SliderState, SliderState[keyof SliderState]]>) {
+      if (typeof value === 'number') {
+        onParamChange(key, value);
+      } else {
+        onSelectChange(key, value);
+      }
+    }
+  }, [onParamChange, onSelectChange, onStateChange]);
+
   return (
     <div className={`dynamics-root${isMobile ? ' mobile' : ''}`}>
       <div className="dynamics-container">
@@ -276,6 +420,19 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   </button>
                 ))}
               </div>
+              <div className="dynamics-mode-row" aria-label="Character quality">
+                {CHARACTER_QUALITY_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`dynamics-mode-btn${state.characterQuality === option.value ? ' active' : ''}`}
+                    onClick={() => onSelectChange('characterQuality', option.value)}
+                    {...bindHelp(`characterQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
               <div {...bindHelp('characterVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
                 <DynamicsCharacterVisualizer
                   state={state}
@@ -285,6 +442,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                 />
               </div>
               <div className="dynamics-grid-2">
+                {DYNAMICS_CHARACTER_QUALITY_CONTROLS.map(renderDynamicsSlider)}
                 {DYNAMICS_CHARACTER_CONTROLS.map(renderDynamicsSlider)}
               </div>
             </div>
@@ -324,12 +482,26 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     compact
                   />
                 </div>
+                <div className="dynamics-mode-row" aria-label="Degrade quality">
+                  {DEGRADE_QUALITY_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`dynamics-mode-btn${state.degradeQuality === option.value ? ' active' : ''}`}
+                      onClick={() => onSelectChange('degradeQuality', option.value)}
+                      {...bindHelp(`degradeQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
                 <DynamicsDegradeVisualizer
                   state={state}
                   getDynamicsAnalyser={getDynamicsAnalyser}
                   getDynamicsTelemetry={getDynamicsTelemetry}
                 />
                 <div className="dynamics-grid-2">
+                  {DYNAMICS_DEGRADE_QUALITY_CONTROLS.map(renderDynamicsSlider)}
                   {DYNAMICS_DEGRADE_CONTROLS.map(renderDynamicsSlider)}
                 </div>
                 <div className="dynamics-mod-panel">
@@ -423,6 +595,19 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   </button>
                 ))}
               </div>
+              <div className="dynamics-mode-row" aria-label="Saturation quality">
+                {SAT_QUALITY_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`dynamics-mode-btn${state.dynamicsSaturationQuality === option.value ? ' active' : ''}`}
+                    onClick={() => onSelectChange('dynamicsSaturationQuality', option.value)}
+                    {...bindHelp(`dynamicsSaturationQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
               <div {...bindHelp('dynamicsSaturationVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
                 <DynamicsSaturationVisualizer
                   state={state}
@@ -468,6 +653,19 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   compact
                 />
               </div>
+              <div className="dynamics-mode-row" aria-label="End compressor mode">
+                {END_COMP_MODE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`dynamics-mode-btn${state.endCompMode === option.value ? ' active' : ''}`}
+                    onClick={() => applyEndCompMode(option.value)}
+                    {...bindHelp(`endCompMode_${option.value}`, { label: option.label, page: 'dynamics' })}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
               <div {...bindHelp('endChainCompressionVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
                 <DynamicsCompressorVisualizer
                   state={state}
@@ -477,6 +675,11 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
               </div>
               <div className="dynamics-grid-2">
                 {DYNAMICS_END_CHAIN_CONTROLS.map(renderDynamicsSlider)}
+                {DYNAMICS_END_CHAIN_QUALITY_CONTROLS.map((control) => {
+                  if (control.key === 'endCompTwoBandAmount' && state.endCompMode !== 'twoBand') return null;
+                  if (control.key === 'endCompBandSplit' && state.endCompMode !== 'twoBand') return null;
+                  return renderDynamicsSlider(control);
+                })}
               </div>
             </div>
             )}
