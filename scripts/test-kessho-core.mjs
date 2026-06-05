@@ -23,6 +23,8 @@ const padParamLevel = 52;
 const padParamReverbSend = 106;
 const padParamOutputSelect = 107;
 const padOutputTapCount = 6;
+const dynamicsCharacterParamCount = 99;
+const granularParamCount = 199;
 
 function run(command, args) {
   console.log(`> ${[command, ...args].join(' ')}`);
@@ -408,8 +410,14 @@ async function checkWasmExports() {
   const dynamicsModuleB = moduleCreate(1, 48000, frames);
   assert(dynamicsModule !== 0, 'WASM failed to create dynamics character module');
   assert(dynamicsModuleB !== 0, 'WASM failed to create second dynamics character module');
-  assert(moduleGetParamCount(dynamicsModule) === 82, 'WASM dynamics module param count mismatch');
-  assert(moduleGetParamCount(dynamicsModuleB) === 82, 'WASM second dynamics module param count mismatch');
+  assert(
+    moduleGetParamCount(dynamicsModule) === dynamicsCharacterParamCount,
+    'WASM dynamics module param count mismatch',
+  );
+  assert(
+    moduleGetParamCount(dynamicsModuleB) === dynamicsCharacterParamCount,
+    'WASM second dynamics module param count mismatch',
+  );
   const dynamicsParamsPtr = moduleGetParamsPtr(dynamicsModule);
   const dynamicsParamsPtrB = moduleGetParamsPtr(dynamicsModuleB);
   assert(dynamicsParamsPtr !== 0, 'WASM dynamics module params pointer was null');
@@ -601,8 +609,11 @@ async function checkWasmExports() {
   refreshMemoryViews();
   assert(granularModule !== 0, 'WASM failed to create granular module');
   assert(granularModuleB !== 0, 'WASM failed to create second granular module');
-  assert(moduleGetParamCount(granularModule) === 138, 'WASM granular module param count mismatch');
-  assert(moduleGetParamCount(granularModuleB) === 138, 'WASM second granular module param count mismatch');
+  assert(moduleGetParamCount(granularModule) === granularParamCount, 'WASM granular module param count mismatch');
+  assert(
+    moduleGetParamCount(granularModuleB) === granularParamCount,
+    'WASM second granular module param count mismatch',
+  );
   const granularParamsPtr = moduleGetParamsPtr(granularModule);
   const granularParamsPtrB = moduleGetParamsPtr(granularModuleB);
   assert(granularParamsPtr !== 0, 'WASM granular module params pointer was null');

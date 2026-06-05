@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import type { CoreProductGranularVisualEvent } from '../audio/coreProductTelemetry';
 import type { DynamicsVisualTelemetrySnapshot, EarthTextureDebugState } from '../audio/engineSharedTypes';
 import { useDrumPageRuntimeBridge } from './useDrumPageRuntimeBridge';
 import { useDrumPageSequencerBridge } from './useDrumPageSequencerBridge';
@@ -24,6 +25,7 @@ export type SelectedAudioEnginePageRuntimeBridgeOptions =
     getSelectedGranularActiveGrainCount: () => number;
     getSelectedGranularBufferWaveform: () => Float32Array | null;
     getSelectedGranularVoicePositions: () => readonly number[];
+    getSelectedGranularVisualEvents: () => readonly CoreProductGranularVisualEvent[];
     getSelectedGranularWriteHeadPosition: () => number;
     getSelectedPadFilterFreq: (pad: 'pad1' | 'pad2') => number;
     getSelectedPadLfoValue: (pad: 'pad1' | 'pad2') => number;
@@ -94,6 +96,7 @@ export function useSelectedAudioEnginePageRuntimeBridges(options: SelectedAudioE
     getActiveGrainCount: options.getSelectedGranularActiveGrainCount,
     getWriteHeadPosition: options.getSelectedGranularWriteHeadPosition,
     getVoicePositions: options.getSelectedGranularVoicePositions,
+    getVisualEvents: options.getSelectedGranularVisualEvents,
     getBufferWaveform: options.getSelectedGranularBufferWaveform,
     setGranularUiActive: options.setSelectedGranularUiActive,
     liveBufferTelemetryAvailable: true,
@@ -102,6 +105,7 @@ export function useSelectedAudioEnginePageRuntimeBridges(options: SelectedAudioE
     options.getSelectedGranularActiveGrainCount,
     options.getSelectedGranularBufferWaveform,
     options.getSelectedGranularVoicePositions,
+    options.getSelectedGranularVisualEvents,
     options.getSelectedGranularWriteHeadPosition,
     options.liveWaveformTelemetryAvailable,
     options.setSelectedGranularUiActive,

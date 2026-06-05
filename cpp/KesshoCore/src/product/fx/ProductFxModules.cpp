@@ -133,7 +133,7 @@ void KesshoProductEngine::configureFxModules() {
         const GranularVoiceState& voice = fx.granular_voices[voice_index];
         const uint32_t base = kGranularGlobalParamCount + voice_index * kGranularVoiceParamCount;
         params[base + 0] = voice.enabled ? 1.0f : 0.0f;
-        params[base + 1] = static_cast<float>(clampU32(voice.mode, 0u, 2u));
+        params[base + 1] = voice.mode == 0u ? 0.0f : 1.0f;
         params[base + 2] = static_cast<float>(clampU32(voice.slice, 0u, 15u));
         params[base + 3] = clampFloat(voice.speed, 0.0f, 4.0f);
         params[base + 4] = clampFloat(voice.scan_rate, 0.25f, 4.0f);
@@ -176,6 +176,30 @@ void KesshoProductEngine::configureFxModules() {
       params[kGranularLegacyParamStart + 3] = clampFloat(fx.granular_legacy_pitch_spread, 0.0f, 12.0f);
       params[kGranularLegacyParamStart + 4] = static_cast<float>(clampU32(fx.granular_legacy_max_grains, 0u, 128u));
       params[kGranularLegacyParamStart + 5] = clampFloat(fx.granular_legacy_feedback, 0.0f, 0.35f);
+      const uint32_t ext_global = kGranularExtGlobalParamStart;
+      params[ext_global + 0] = static_cast<float>(clampU32(fx.granular_quality, 0u, 2u));
+      params[ext_global + 1] = static_cast<float>(clampU32(fx.granular_max_grains, 8u, 64u));
+      params[ext_global + 2] = clampFloat(fx.granular_spray_macro, 0.0f, 1.0f);
+      params[ext_global + 3] = clampFloat(fx.granular_cloud_macro, 0.0f, 1.0f);
+      params[ext_global + 4] = clampFloat(fx.granular_pitch_macro, 0.0f, 1.0f);
+      for (uint32_t voice_index = 0; voice_index < kGranularVoiceCount; ++voice_index) {
+        const GranularVoiceState& voice = fx.granular_voices[voice_index];
+        const uint32_t ext = kGranularExtVoiceParamStart + voice_index * kGranularExtVoiceParamCount;
+        params[ext + 0] = clampFloat(voice.position_spray, 0.0f, 1.0f);
+        params[ext + 1] = clampFloat(voice.timing_spray, 0.0f, 1.0f);
+        params[ext + 2] = clampFloat(voice.lookback, 0.0f, 1.0f);
+        params[ext + 3] = clampFloat(voice.write_guard, 0.0f, 1.0f);
+        params[ext + 4] = static_cast<float>(clampU32(voice.pitch_mode, 0u, 5u));
+        params[ext + 5] = clampFloat(voice.pitch_spread, 0.0f, 24.0f);
+        params[ext + 6] = clampFloat(voice.pitch_jitter_cents, 0.0f, 50.0f);
+        params[ext + 7] = clampFloat(voice.pitch_quantize, 0.0f, 1.0f);
+        params[ext + 8] = clampFloat(voice.reverse_chance, 0.0f, 1.0f);
+        params[ext + 9] = clampFloat(voice.bloom, 0.0f, 1.0f);
+        params[ext + 10] = clampFloat(voice.glide, 0.0f, 1.0f);
+        params[ext + 11] = static_cast<float>(clampU32(voice.cloud_style, 0u, 5u));
+        params[ext + 12] = static_cast<float>(clampU32(voice.anchor_pattern, 0u, 3u));
+        params[ext + 13] = clampFloat(voice.loop_crossfade_ms, 4.0f, 80.0f);
+      }
       granular_module->commitParams();
       granular_module->setRandomSeed(rng_state);
     }

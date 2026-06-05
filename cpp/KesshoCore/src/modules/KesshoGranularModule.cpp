@@ -23,7 +23,12 @@ constexpr int kChordCountParam = kScaleIntervalsParam + KESSHO_MAX_SCALE_INTERVA
 constexpr int kChordPitchesParam = kChordCountParam + 1;
 constexpr int kChordBiasParam = kChordPitchesParam + KESSHO_MAX_CHORD_PITCHES;
 constexpr int kLegacyParamStart = kChordBiasParam + 1;
-constexpr int kParamCount = kLegacyParamStart + 6;
+constexpr int kLegacyParamCount = 6;
+constexpr int kExtGlobalParamStart = kLegacyParamStart + kLegacyParamCount;
+constexpr int kExtGlobalParamCount = 5;
+constexpr int kExtVoiceParamCount = 14;
+constexpr int kExtVoiceParamStart = kExtGlobalParamStart + kExtGlobalParamCount;
+constexpr int kParamCount = kExtVoiceParamStart + KESSHO_NUM_VOICES * kExtVoiceParamCount;
 
 constexpr int kParamEnabled = 0;
 constexpr int kParamFreeze = 1;
@@ -61,6 +66,27 @@ constexpr int kVoiceReverseLfoRate = 21;
 constexpr int kVoiceRecordLfoRate = 22;
 constexpr int kVoiceEuclidGated = 23;
 constexpr int kVoiceEuclidMuted = 24;
+
+constexpr int kExtGlobalQuality = 0;
+constexpr int kExtGlobalMaxGrains = 1;
+constexpr int kExtGlobalSprayMacro = 2;
+constexpr int kExtGlobalCloudMacro = 3;
+constexpr int kExtGlobalPitchMacro = 4;
+
+constexpr int kExtVoicePositionSpray = 0;
+constexpr int kExtVoiceTimingSpray = 1;
+constexpr int kExtVoiceLookback = 2;
+constexpr int kExtVoiceWriteGuard = 3;
+constexpr int kExtVoicePitchMode = 4;
+constexpr int kExtVoicePitchSpread = 5;
+constexpr int kExtVoicePitchJitter = 6;
+constexpr int kExtVoicePitchQuantize = 7;
+constexpr int kExtVoiceReverseChance = 8;
+constexpr int kExtVoiceBloom = 9;
+constexpr int kExtVoiceGlide = 10;
+constexpr int kExtVoiceCloudStyle = 11;
+constexpr int kExtVoiceAnchorPattern = 12;
+constexpr int kExtVoiceLoopCrossfade = 13;
 
 std::array<float, kParamCount> makeDefaultParams() {
   std::array<float, kParamCount> params{};
@@ -113,6 +139,28 @@ std::array<float, kParamCount> makeDefaultParams() {
   params[kLegacyParamStart + 3] = 2.0f;
   params[kLegacyParamStart + 4] = KESSHO_MAX_TOTAL_GRAINS;
   params[kLegacyParamStart + 5] = 0.1f;
+  params[kExtGlobalParamStart + kExtGlobalQuality] = 1.0f;
+  params[kExtGlobalParamStart + kExtGlobalMaxGrains] = 48.0f;
+  params[kExtGlobalParamStart + kExtGlobalSprayMacro] = 0.0f;
+  params[kExtGlobalParamStart + kExtGlobalCloudMacro] = 0.0f;
+  params[kExtGlobalParamStart + kExtGlobalPitchMacro] = 0.0f;
+  for (int voice = 0; voice < KESSHO_NUM_VOICES; ++voice) {
+    const int ext = kExtVoiceParamStart + voice * kExtVoiceParamCount;
+    params[ext + kExtVoicePositionSpray] = 0.3f;
+    params[ext + kExtVoiceTimingSpray] = 0.0f;
+    params[ext + kExtVoiceLookback] = 0.35f;
+    params[ext + kExtVoiceWriteGuard] = 0.3f;
+    params[ext + kExtVoicePitchMode] = 0.0f;
+    params[ext + kExtVoicePitchSpread] = 0.0f;
+    params[ext + kExtVoicePitchJitter] = 4.0f;
+    params[ext + kExtVoicePitchQuantize] = 1.0f;
+    params[ext + kExtVoiceReverseChance] = 0.0f;
+    params[ext + kExtVoiceBloom] = 0.0f;
+    params[ext + kExtVoiceGlide] = 0.0f;
+    params[ext + kExtVoiceCloudStyle] = 0.0f;
+    params[ext + kExtVoiceAnchorPattern] = 0.0f;
+    params[ext + kExtVoiceLoopCrossfade] = 12.0f;
+  }
   return params;
 }
 
@@ -233,14 +281,39 @@ public:
     granular_instance_set_grain_shape(instance_, roundedInt(params_[kParamGrainShape]));
     granular_instance_set_bus_diffusion(instance_, params_[kParamBusDiffusion]);
     granular_instance_set_timing_randomness(instance_, params_[kParamTimingRandomness]);
+    granular_instance_set_quality_params(
+        instance_,
+        roundedInt(params_[kExtGlobalParamStart + kExtGlobalQuality]),
+        roundedInt(params_[kExtGlobalParamStart + kExtGlobalMaxGrains]),
+        params_[kExtGlobalParamStart + kExtGlobalSprayMacro],
+        params_[kExtGlobalParamStart + kExtGlobalCloudMacro],
+        params_[kExtGlobalParamStart + kExtGlobalPitchMacro]);
 
     for (int voice = 0; voice < KESSHO_NUM_VOICES; ++voice) {
       const int base = kVoiceParamStart + voice * kVoiceParamCount;
+      const int ext = kExtVoiceParamStart + voice * kExtVoiceParamCount;
       granular_instance_set_voice_mode(
           instance_,
           voice,
           params_[base + kVoiceEnabled] > 0.5f ? 1 : 0,
           roundedInt(params_[base + kVoiceMode]));
+      granular_instance_set_voice_advanced(
+          instance_,
+          voice,
+          params_[ext + kExtVoicePositionSpray],
+          params_[ext + kExtVoiceTimingSpray],
+          params_[ext + kExtVoiceLookback],
+          params_[ext + kExtVoiceWriteGuard],
+          roundedInt(params_[ext + kExtVoicePitchMode]),
+          params_[ext + kExtVoicePitchSpread],
+          params_[ext + kExtVoicePitchJitter],
+          params_[ext + kExtVoicePitchQuantize],
+          params_[ext + kExtVoiceReverseChance],
+          params_[ext + kExtVoiceBloom],
+          params_[ext + kExtVoiceGlide],
+          roundedInt(params_[ext + kExtVoiceCloudStyle]),
+          roundedInt(params_[ext + kExtVoiceAnchorPattern]),
+          params_[ext + kExtVoiceLoopCrossfade]);
       granular_instance_set_voice_position(
           instance_,
           voice,
@@ -344,6 +417,32 @@ public:
     for (uint32_t index = copy_count; index < position_count; ++index) {
       out_positions[index] = 0.0f;
     }
+  }
+
+  int copyGranularVisualEvents(KesshoGranularVisualEventSnapshot* out_events, uint32_t event_count) override {
+    if (out_events == nullptr || event_count == 0u) {
+      return 0;
+    }
+    std::array<KesshoGranularVisualEvent, 32> events{};
+    const uint32_t request_count = std::min<uint32_t>(event_count, static_cast<uint32_t>(events.size()));
+    const int copied = instance_ == nullptr
+        ? 0
+        : granular_instance_get_visual_events(instance_, events.data(), static_cast<int>(request_count));
+    const uint32_t safe_count = std::min<uint32_t>(static_cast<uint32_t>(std::max(copied, 0)), request_count);
+    for (uint32_t index = 0; index < safe_count; ++index) {
+      out_events[index].position_norm = events[index].position_norm;
+      out_events[index].pan = events[index].pan;
+      out_events[index].pitch_semi = events[index].pitch_semi;
+      out_events[index].gain = events[index].gain;
+      out_events[index].length_ms = events[index].length_ms;
+      out_events[index].voice = events[index].voice;
+      out_events[index].flags = events[index].flags;
+      out_events[index].cloud_style = events[index].cloud_style;
+    }
+    for (uint32_t index = safe_count; index < event_count; ++index) {
+      out_events[index] = KesshoGranularVisualEventSnapshot{};
+    }
+    return static_cast<int>(safe_count);
   }
 
   int copyGranularWaveform(float* out_peaks, uint32_t bin_count) override {

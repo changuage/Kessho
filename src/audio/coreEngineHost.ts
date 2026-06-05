@@ -585,7 +585,7 @@ const PAD_PREVIEW_FALLBACK_PRESET = 'saturated_drift';
 const REVERB_MODULE_PARAM_COUNT = 31;
 const DELAY_A_MODULE_PARAM_COUNT = 16;
 const DELAY_B_MODULE_PARAM_COUNT = 24;
-const GRANULAR_MODULE_PARAM_COUNT = 143;
+const GRANULAR_MODULE_PARAM_COUNT = 204;
 const SPECTRAL_FREEZE_MODULE_PARAM_COUNT = 6;
 const LEAD_FM_MODULE_PARAM_COUNT = 80;
 const DRUM_MODULE_PARAM_COUNT = 126;
@@ -609,8 +609,15 @@ const GRANULAR_CHORD_COUNT_INDEX = GRANULAR_SCALE_INTERVALS_INDEX + 12;
 const GRANULAR_CHORD_PITCHES_INDEX = GRANULAR_CHORD_COUNT_INDEX + 1;
 const GRANULAR_CHORD_BIAS_INDEX = GRANULAR_CHORD_PITCHES_INDEX + 12;
 const GRANULAR_LEGACY_INDEX = GRANULAR_CHORD_BIAS_INDEX + 1;
-const GRANULAR_MODE_VALUES: Record<string, number> = { clean: 0, granular: 1, legacy: 2 };
+const GRANULAR_EXT_GLOBAL_INDEX = GRANULAR_LEGACY_INDEX + 6;
+const GRANULAR_EXT_VOICE_PARAM_COUNT = 14;
+const GRANULAR_EXT_VOICE_INDEX = GRANULAR_EXT_GLOBAL_INDEX + 5;
+const GRANULAR_MODE_VALUES: Record<string, number> = { clean: 0, granular: 1, legacy: 1 };
+const GRANULAR_QUALITY_VALUES: Record<string, number> = { eco: 0, balanced: 1, hq: 2 };
 const GRANULAR_SHAPE_VALUES: Record<string, number> = { triangle: 0, sawUp: 1, sawDown: 2, square: 3 };
+const GRANULAR_PITCH_MODE_VALUES: Record<string, number> = { fixed: 0, octaves: 1, fifths: 2, chord: 3, scale: 4, free: 5 };
+const GRANULAR_CLOUD_STYLE_VALUES: Record<string, number> = { classic: 0, mosaic: 1, bloom: 2, tide: 3, orbit: 4, stars: 5 };
+const GRANULAR_ANCHOR_PATTERN_VALUES: Record<string, number> = { forward: 0, reverse: 1, pendulum: 2, random: 3 };
 const GRANULAR_LEGACY_PITCH_VALUES: Record<string, number> = { random: 0, harmonic: 1 };
 const DELAY_B_SPACE_MODE_VALUES: Record<string, number> = { clocked: 0, diffuse: 1 };
 const DELAY_B_PATTERN_VALUES: Record<string, number> = { cascade: 0, golden: 1, mirror: 2, dotted: 3 };
@@ -3512,6 +3519,30 @@ function writeGranularParamsFromState(params: number[], sliderState: SliderState
   params[GRANULAR_LEGACY_INDEX + 3] = boundedNumber(state.granularLegacyPitchSpread, 2, 0, 12);
   params[GRANULAR_LEGACY_INDEX + 4] = boundedInteger(state.granularLegacyMaxGrains, 64, 0, 64);
   params[GRANULAR_LEGACY_INDEX + 5] = boundedNumber(state.granularLegacyFeedback, 0.1, 0, 0.35);
+  params[GRANULAR_EXT_GLOBAL_INDEX + 0] = enumParam(state.granularQuality, GRANULAR_QUALITY_VALUES, 1);
+  params[GRANULAR_EXT_GLOBAL_INDEX + 1] = boundedInteger(state.granularMaxGrains, 48, 8, 64);
+  params[GRANULAR_EXT_GLOBAL_INDEX + 2] = boundedNumber(state.granularSprayMacro, 0, 0, 1);
+  params[GRANULAR_EXT_GLOBAL_INDEX + 3] = boundedNumber(state.granularCloudMacro, 0, 0, 1);
+  params[GRANULAR_EXT_GLOBAL_INDEX + 4] = boundedNumber(state.granularPitchMacro, 0, 0, 1);
+  for (let voice = 0; voice < GRANULAR_VOICE_COUNT; voice += 1) {
+    const voiceNumber = voice + 1;
+    const ext = GRANULAR_EXT_VOICE_INDEX + voice * GRANULAR_EXT_VOICE_PARAM_COUNT;
+    const prefix = `granularV${voiceNumber}`;
+    params[ext + 0] = macroModel.voicePositionSpray[voice] ?? boundedNumber(state[`${prefix}PositionSpray`], boundedNumber(state[`${prefix}Spray`], 0.3, 0, 1), 0, 1);
+    params[ext + 1] = macroModel.voiceTimingSpray[voice] ?? boundedNumber(state[`${prefix}TimingSpray`], 0, 0, 1);
+    params[ext + 2] = boundedNumber(state[`${prefix}Lookback`], 0.35, 0, 1);
+    params[ext + 3] = boundedNumber(state[`${prefix}WriteGuard`], 0.3, 0, 1);
+    params[ext + 4] = enumParam(state[`${prefix}PitchMode`], GRANULAR_PITCH_MODE_VALUES, 0);
+    params[ext + 5] = boundedNumber(state[`${prefix}PitchSpread`], 0, 0, 24);
+    params[ext + 6] = macroModel.voicePitchJitter[voice] ?? boundedNumber(state[`${prefix}PitchJitter`], 4, 0, 50);
+    params[ext + 7] = boundedNumber(state[`${prefix}PitchQuantize`], 1, 0, 1);
+    params[ext + 8] = boundedNumber(state[`${prefix}ReverseChance`], 0, 0, 1);
+    params[ext + 9] = macroModel.voiceBloom[voice] ?? boundedNumber(state[`${prefix}Bloom`], 0, 0, 1);
+    params[ext + 10] = boundedNumber(state[`${prefix}Glide`], 0, 0, 1);
+    params[ext + 11] = enumParam(state[`${prefix}CloudStyle`], GRANULAR_CLOUD_STYLE_VALUES, 0);
+    params[ext + 12] = enumParam(state[`${prefix}AnchorPattern`], GRANULAR_ANCHOR_PATTERN_VALUES, 0);
+    params[ext + 13] = boundedNumber(state[`${prefix}LoopCrossfade`], 12, 4, 80);
+  }
 }
 
 function createGranularModuleConfig(sliderState: SliderState): GranularModuleConfig {

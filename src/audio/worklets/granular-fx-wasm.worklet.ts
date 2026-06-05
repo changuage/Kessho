@@ -28,6 +28,21 @@ const _perfNow: () => number =
 
 type VoiceMode = 'clean' | 'granular' | 'legacy';
 type GrainShape = 'triangle' | 'sawUp' | 'sawDown' | 'square';
+type GranularQuality = 'eco' | 'balanced' | 'hq';
+type GranularPitchMode = 'fixed' | 'octaves' | 'fifths' | 'chord' | 'scale' | 'free';
+type GranularCloudStyle = 'classic' | 'mosaic' | 'bloom' | 'tide' | 'orbit' | 'stars';
+type GranularAnchorPattern = 'forward' | 'reverse' | 'pendulum' | 'random';
+
+type GranularVisualEvent = {
+  position: number;
+  pan: number;
+  pitch: number;
+  gain: number;
+  lengthMs: number;
+  voice: number;
+  flags: number;
+  cloudStyle: number;
+};
 
 interface GranularParams {
   enabled: boolean;
@@ -40,6 +55,11 @@ interface GranularParams {
   grainShape: GrainShape;
   busDiffusion: number;
   timingRandomness: number;
+  quality: GranularQuality;
+  maxGrains: number;
+  sprayMacro: number;
+  cloudMacro: number;
+  pitchMacro: number;
 
   voiceEnabled: boolean[];
   voiceMode: VoiceMode[];
@@ -64,6 +84,20 @@ interface GranularParams {
   voiceReverseLFORate: number[];
   voiceWriteFollow: number[];
   voiceRecordLFORate: number[];
+  voicePositionSpray: number[];
+  voiceTimingSpray: number[];
+  voiceLookback: number[];
+  voiceWriteGuard: number[];
+  voicePitchMode: GranularPitchMode[];
+  voicePitchSpread: number[];
+  voicePitchJitter: number[];
+  voicePitchQuantize: number[];
+  voiceReverseChance: number[];
+  voiceBloom: number[];
+  voiceGlide: number[];
+  voiceCloudStyle: GranularCloudStyle[];
+  voiceAnchorPattern: GranularAnchorPattern[];
+  voiceLoopCrossfade: number[];
   scaleIntervals: number[];
   chordPitches: number[];
   chordBias: number;
@@ -82,7 +116,10 @@ type GranularGlobalParams = Pick<
   'enabled' | 'freeze' | 'freezeWithFeedback' | 'dryWet' | 'feedback' | 'feedbackLPF' | 'bufferSeconds' | 'grainShape'
 >;
 
-type GranularSpaceParams = Pick<GranularParams, 'busDiffusion' | 'timingRandomness'>;
+type GranularSpaceParams = Pick<
+  GranularParams,
+  'busDiffusion' | 'timingRandomness' | 'quality' | 'maxGrains' | 'sprayMacro' | 'cloudMacro' | 'pitchMacro'
+>;
 
 type GranularVoiceParams = Pick<
   GranularParams,
@@ -109,6 +146,20 @@ type GranularVoiceParams = Pick<
   | 'voiceReverseLFORate'
   | 'voiceWriteFollow'
   | 'voiceRecordLFORate'
+  | 'voicePositionSpray'
+  | 'voiceTimingSpray'
+  | 'voiceLookback'
+  | 'voiceWriteGuard'
+  | 'voicePitchMode'
+  | 'voicePitchSpread'
+  | 'voicePitchJitter'
+  | 'voicePitchQuantize'
+  | 'voiceReverseChance'
+  | 'voiceBloom'
+  | 'voiceGlide'
+  | 'voiceCloudStyle'
+  | 'voiceAnchorPattern'
+  | 'voiceLoopCrossfade'
   | 'tempoGated'
 >;
 
@@ -142,6 +193,8 @@ interface KesshoWasm {
   granular_set_grain_shape(shape: number): void;
   granular_set_bus_diffusion(amount: number): void;
   granular_set_timing_randomness(amount: number): void;
+  granular_set_quality_params(quality: number, maxGrains: number, sprayMacro: number,
+    cloudMacro: number, pitchMacro: number): void;
   // Per-voice
   granular_set_voice_mode(voice: number, enabled: number, mode: number): void;
   granular_set_voice_position(voice: number, slice: number, speed: number,
@@ -154,6 +207,11 @@ interface KesshoWasm {
     panRate: number, reverseRate: number, recordRate: number): void;
   granular_set_voice_euclid_gated(voice: number, gated: number): void;
   granular_set_voice_euclid_muted(voice: number, muted: number): void;
+  granular_set_voice_advanced(voice: number, positionSpray: number, timingSpray: number,
+    lookback: number, writeGuard: number, pitchMode: number, pitchSpread: number,
+    pitchJitterCents: number, pitchQuantize: number, reverseChance: number,
+    bloom: number, glide: number, cloudStyle: number, anchorPattern: number,
+    loopCrossfadeMs: number): void;
   // Legacy
   granular_set_legacy_params(jitter: number, probability: number, pitchMode: number,
     pitchSpread: number, maxGrains: number, feedback: number): void;
@@ -165,6 +223,7 @@ interface KesshoWasm {
   granular_get_write_head(): number;
   granular_get_voice_positions(outPtr: number): void;
   granular_get_active_grain_count(): number;
+  granular_get_visual_events(outPtr: number, maxEvents: number): number;
   granular_get_buffer_ptr_l(): number;
   granular_get_buffer_size(): number;
   // Memory management
@@ -175,12 +234,18 @@ interface KesshoWasm {
 // --------------- Constants ---------------
 
 const NUM_VOICES = 4;
-const MODE_MAP: Record<VoiceMode, number> = { clean: 0, granular: 1, legacy: 2 };
+const MODE_MAP: Record<VoiceMode, number> = { clean: 0, granular: 1, legacy: 1 };
 const SHAPE_MAP: Record<GrainShape, number> = { triangle: 0, sawUp: 1, sawDown: 2, square: 3 };
+const QUALITY_MAP: Record<GranularQuality, number> = { eco: 0, balanced: 1, hq: 2 };
+const PITCH_MODE_MAP: Record<GranularPitchMode, number> = { fixed: 0, octaves: 1, fifths: 2, chord: 3, scale: 4, free: 5 };
+const CLOUD_STYLE_MAP: Record<GranularCloudStyle, number> = { classic: 0, mosaic: 1, bloom: 2, tide: 3, orbit: 4, stars: 5 };
+const ANCHOR_PATTERN_MAP: Record<GranularAnchorPattern, number> = { forward: 0, reverse: 1, pendulum: 2, random: 3 };
 const POS_REPORT_INTERVAL = Math.floor(sampleRate / 20);
 const WAVEFORM_BINS = 512;
 const WAVEFORM_SKIP = 10;
 const WAVEFORM_SAMPLES_PER_BIN = 8;
+const VISUAL_EVENT_CAPACITY = 32;
+const VISUAL_EVENT_BYTES = 32;
 
 // --------------- Processor ---------------
 
@@ -191,6 +256,7 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
   private inputPtr = 0;
   private outputPtr = 0;
   private positionsPtr = 0; // for voice position query (4 floats)
+  private visualEventsPtr = 0;
   private scalePtr = 0;     // for scale intervals (12 ints)
   private chordPtr = 0;     // for chord pitches (7 ints)
   private ready = false;
@@ -273,6 +339,7 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
 
     // Allocate persistent heap regions for queries
     this.positionsPtr = exports.malloc(NUM_VOICES * 4); // 4 floats
+    this.visualEventsPtr = exports.malloc(VISUAL_EVENT_CAPACITY * VISUAL_EVENT_BYTES);
     this.scalePtr = exports.malloc(12 * 4);             // 12 ints
     this.chordPtr = exports.malloc(7 * 4);              // 7 ints
 
@@ -419,6 +486,7 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
         if (this.wasm && this.ready) {
           try {
             if (this.positionsPtr) { this.wasm.free(this.positionsPtr); this.positionsPtr = 0; }
+            if (this.visualEventsPtr) { this.wasm.free(this.visualEventsPtr); this.visualEventsPtr = 0; }
             if (this.scalePtr) { this.wasm.free(this.scalePtr); this.scalePtr = 0; }
             if (this.chordPtr) { this.wasm.free(this.chordPtr); this.chordPtr = 0; }
             this.wasm.granular_destroy();
@@ -447,10 +515,19 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
     return {
       busDiffusion: p.busDiffusion,
       timingRandomness: p.timingRandomness,
+      quality: p.quality ?? 'balanced',
+      maxGrains: p.maxGrains ?? 48,
+      sprayMacro: p.sprayMacro ?? 0,
+      cloudMacro: p.cloudMacro ?? 0,
+      pitchMacro: p.pitchMacro ?? 0,
     };
   }
 
   private extractVoiceParams(p: GranularParams): GranularVoiceParams {
+    const numberArray = (values: number[] | undefined, fallback: number): number[] =>
+      Array.from({ length: NUM_VOICES }, (_, index) => values?.[index] ?? fallback);
+    const stringArray = <T extends string>(values: T[] | undefined, fallback: T): T[] =>
+      Array.from({ length: NUM_VOICES }, (_, index) => values?.[index] ?? fallback);
     return {
       voiceEnabled: [...p.voiceEnabled],
       voiceMode: [...p.voiceMode],
@@ -475,6 +552,20 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
       voiceReverseLFORate: [...p.voiceReverseLFORate],
       voiceWriteFollow: [...p.voiceWriteFollow],
       voiceRecordLFORate: [...p.voiceRecordLFORate],
+      voicePositionSpray: numberArray(p.voicePositionSpray ?? p.voiceSpray, 0.3),
+      voiceTimingSpray: numberArray(p.voiceTimingSpray, 0),
+      voiceLookback: numberArray(p.voiceLookback, 0.35),
+      voiceWriteGuard: numberArray(p.voiceWriteGuard, 0.3),
+      voicePitchMode: stringArray(p.voicePitchMode, 'fixed'),
+      voicePitchSpread: numberArray(p.voicePitchSpread, 0),
+      voicePitchJitter: numberArray(p.voicePitchJitter, 4),
+      voicePitchQuantize: numberArray(p.voicePitchQuantize, 1),
+      voiceReverseChance: numberArray(p.voiceReverseChance, 0),
+      voiceBloom: numberArray(p.voiceBloom, 0),
+      voiceGlide: numberArray(p.voiceGlide, 0),
+      voiceCloudStyle: stringArray(p.voiceCloudStyle, 'classic'),
+      voiceAnchorPattern: stringArray(p.voiceAnchorPattern, 'forward'),
+      voiceLoopCrossfade: numberArray(p.voiceLoopCrossfade, 12),
       tempoGated: [...p.tempoGated],
     };
   }
@@ -533,6 +624,22 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
     }
     if (!prev || prev.timingRandomness !== p.timingRandomness) {
       w.granular_set_timing_randomness(p.timingRandomness ?? 0.35);
+    }
+    if (
+      !prev ||
+      prev.quality !== p.quality ||
+      prev.maxGrains !== p.maxGrains ||
+      prev.sprayMacro !== p.sprayMacro ||
+      prev.cloudMacro !== p.cloudMacro ||
+      prev.pitchMacro !== p.pitchMacro
+    ) {
+      w.granular_set_quality_params(
+        QUALITY_MAP[p.quality ?? 'balanced'] ?? 1,
+        Math.round(p.maxGrains ?? 48),
+        p.sprayMacro ?? 0,
+        p.cloudMacro ?? 0,
+        p.pitchMacro ?? 0,
+      );
     }
     this.appliedSpaceParams = { ...p };
   }
@@ -668,6 +775,41 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
       if (!prev || prev.tempoGated[v] !== p.tempoGated[v]) {
         w.granular_set_voice_euclid_gated(v, p.tempoGated[v] ? 1 : 0);
       }
+      if (
+        !prev ||
+        prev.voicePositionSpray[v] !== p.voicePositionSpray[v] ||
+        prev.voiceTimingSpray[v] !== p.voiceTimingSpray[v] ||
+        prev.voiceLookback[v] !== p.voiceLookback[v] ||
+        prev.voiceWriteGuard[v] !== p.voiceWriteGuard[v] ||
+        prev.voicePitchMode[v] !== p.voicePitchMode[v] ||
+        prev.voicePitchSpread[v] !== p.voicePitchSpread[v] ||
+        prev.voicePitchJitter[v] !== p.voicePitchJitter[v] ||
+        prev.voicePitchQuantize[v] !== p.voicePitchQuantize[v] ||
+        prev.voiceReverseChance[v] !== p.voiceReverseChance[v] ||
+        prev.voiceBloom[v] !== p.voiceBloom[v] ||
+        prev.voiceGlide[v] !== p.voiceGlide[v] ||
+        prev.voiceCloudStyle[v] !== p.voiceCloudStyle[v] ||
+        prev.voiceAnchorPattern[v] !== p.voiceAnchorPattern[v] ||
+        prev.voiceLoopCrossfade[v] !== p.voiceLoopCrossfade[v]
+      ) {
+        w.granular_set_voice_advanced(
+          v,
+          p.voicePositionSpray[v] ?? 0.3,
+          p.voiceTimingSpray[v] ?? 0,
+          p.voiceLookback[v] ?? 0.35,
+          p.voiceWriteGuard[v] ?? 0.3,
+          PITCH_MODE_MAP[p.voicePitchMode[v] ?? 'fixed'] ?? 0,
+          p.voicePitchSpread[v] ?? 0,
+          p.voicePitchJitter[v] ?? 4,
+          p.voicePitchQuantize[v] ?? 1,
+          p.voiceReverseChance[v] ?? 0,
+          p.voiceBloom[v] ?? 0,
+          p.voiceGlide[v] ?? 0,
+          CLOUD_STYLE_MAP[p.voiceCloudStyle[v] ?? 'classic'] ?? 0,
+          ANCHOR_PATTERN_MAP[p.voiceAnchorPattern[v] ?? 'forward'] ?? 0,
+          p.voiceLoopCrossfade[v] ?? 12,
+        );
+      }
       if (!prev) {
         w.granular_set_voice_euclid_muted(v, 0);
       }
@@ -697,6 +839,20 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
       voiceReverseLFORate: [...p.voiceReverseLFORate],
       voiceWriteFollow: [...p.voiceWriteFollow],
       voiceRecordLFORate: [...p.voiceRecordLFORate],
+      voicePositionSpray: [...p.voicePositionSpray],
+      voiceTimingSpray: [...p.voiceTimingSpray],
+      voiceLookback: [...p.voiceLookback],
+      voiceWriteGuard: [...p.voiceWriteGuard],
+      voicePitchMode: [...p.voicePitchMode],
+      voicePitchSpread: [...p.voicePitchSpread],
+      voicePitchJitter: [...p.voicePitchJitter],
+      voicePitchQuantize: [...p.voicePitchQuantize],
+      voiceReverseChance: [...p.voiceReverseChance],
+      voiceBloom: [...p.voiceBloom],
+      voiceGlide: [...p.voiceGlide],
+      voiceCloudStyle: [...p.voiceCloudStyle],
+      voiceAnchorPattern: [...p.voiceAnchorPattern],
+      voiceLoopCrossfade: [...p.voiceLoopCrossfade],
       tempoGated: [...p.tempoGated],
     };
   }
@@ -741,6 +897,30 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
       this.heap = new Float32Array(buf);
     }
     return this.heap;
+  }
+
+  private readVisualEvents(): GranularVisualEvent[] | undefined {
+    if (!this.ready || !this.wasm || !this.visualEventsPtr) return undefined;
+    const count = this.wasm.granular_get_visual_events(this.visualEventsPtr, VISUAL_EVENT_CAPACITY);
+    if (count <= 0) return undefined;
+    const view = new DataView(this.wasm.memory.buffer);
+    const events: GranularVisualEvent[] = [];
+    const base = this.visualEventsPtr;
+    const safeCount = Math.min(count, VISUAL_EVENT_CAPACITY);
+    for (let index = 0; index < safeCount; index += 1) {
+      const offset = base + index * VISUAL_EVENT_BYTES;
+      events.push({
+        position: view.getFloat32(offset, true),
+        pan: view.getFloat32(offset + 4, true),
+        pitch: view.getFloat32(offset + 8, true),
+        gain: view.getFloat32(offset + 12, true),
+        lengthMs: view.getFloat32(offset + 16, true),
+        voice: view.getInt32(offset + 20, true),
+        flags: view.getInt32(offset + 24, true),
+        cloudStyle: view.getInt32(offset + 28, true),
+      });
+    }
+    return events;
   }
 
   process(inputs: Float32Array[][], outputs: Float32Array[][], _params: Record<string, Float32Array>) {
@@ -803,6 +983,7 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
           activeGrains: number;
           voices: number[];
           waveform?: Float32Array;
+          grainEvents?: GranularVisualEvent[];
         } = {
           type: 'position',
           writeHead: this.wasm.granular_get_write_head(),
@@ -814,6 +995,10 @@ class GranularFXWasmProcessor extends AudioWorkletProcessor {
             freshHeap[posOffset + 3] ?? 0,
           ],
         };
+        const grainEvents = this.readVisualEvents();
+        if (grainEvents?.length) {
+          message.grainEvents = grainEvents;
+        }
 
         // Keep the background waveform responsive without scanning the full
         // circular buffer on the audio thread. Eight probes per bin preserves

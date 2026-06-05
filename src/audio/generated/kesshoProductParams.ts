@@ -80,6 +80,67 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   FxGranularLegacyPitchSpread: 813,
   FxGranularLegacyMaxGrains: 814,
   FxGranularLegacyFeedback: 815,
+  FxGranularQuality: 1100,
+  FxGranularMaxGrains: 1101,
+  FxGranularSprayMacro: 1102,
+  FxGranularCloudMacro: 1103,
+  FxGranularPitchMacro: 1104,
+  FxGranularV1PositionSpray: 1105,
+  FxGranularV1TimingSpray: 1106,
+  FxGranularV1Lookback: 1107,
+  FxGranularV1WriteGuard: 1108,
+  FxGranularV1PitchMode: 1109,
+  FxGranularV1PitchSpread: 1110,
+  FxGranularV1PitchJitterCents: 1111,
+  FxGranularV1PitchQuantize: 1112,
+  FxGranularV1ReverseChance: 1113,
+  FxGranularV1Bloom: 1114,
+  FxGranularV1Glide: 1115,
+  FxGranularV1CloudStyle: 1116,
+  FxGranularV1AnchorPattern: 1117,
+  FxGranularV1LoopCrossfadeMs: 1118,
+  FxGranularV2PositionSpray: 1119,
+  FxGranularV2TimingSpray: 1120,
+  FxGranularV2Lookback: 1121,
+  FxGranularV2WriteGuard: 1122,
+  FxGranularV2PitchMode: 1123,
+  FxGranularV2PitchSpread: 1124,
+  FxGranularV2PitchJitterCents: 1125,
+  FxGranularV2PitchQuantize: 1126,
+  FxGranularV2ReverseChance: 1127,
+  FxGranularV2Bloom: 1128,
+  FxGranularV2Glide: 1129,
+  FxGranularV2CloudStyle: 1130,
+  FxGranularV2AnchorPattern: 1131,
+  FxGranularV2LoopCrossfadeMs: 1132,
+  FxGranularV3PositionSpray: 1133,
+  FxGranularV3TimingSpray: 1134,
+  FxGranularV3Lookback: 1135,
+  FxGranularV3WriteGuard: 1136,
+  FxGranularV3PitchMode: 1137,
+  FxGranularV3PitchSpread: 1138,
+  FxGranularV3PitchJitterCents: 1139,
+  FxGranularV3PitchQuantize: 1140,
+  FxGranularV3ReverseChance: 1141,
+  FxGranularV3Bloom: 1142,
+  FxGranularV3Glide: 1143,
+  FxGranularV3CloudStyle: 1144,
+  FxGranularV3AnchorPattern: 1145,
+  FxGranularV3LoopCrossfadeMs: 1146,
+  FxGranularV4PositionSpray: 1147,
+  FxGranularV4TimingSpray: 1148,
+  FxGranularV4Lookback: 1149,
+  FxGranularV4WriteGuard: 1150,
+  FxGranularV4PitchMode: 1151,
+  FxGranularV4PitchSpread: 1152,
+  FxGranularV4PitchJitterCents: 1153,
+  FxGranularV4PitchQuantize: 1154,
+  FxGranularV4ReverseChance: 1155,
+  FxGranularV4Bloom: 1156,
+  FxGranularV4Glide: 1157,
+  FxGranularV4CloudStyle: 1158,
+  FxGranularV4AnchorPattern: 1159,
+  FxGranularV4LoopCrossfadeMs: 1160,
   FxGranularV1Enabled: 820,
   FxGranularV1Mode: 821,
   FxGranularV1Slice: 822,
@@ -1001,6 +1062,494 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 815,
     "min": 0,
     "max": 0.35
+  },
+  {
+    "name": "FxGranularQuality",
+    "path": "fx.granular.quality",
+    "type": "uint",
+    "id": 1100,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "FxGranularMaxGrains",
+    "path": "fx.granular.maxGrains",
+    "type": "uint",
+    "id": 1101,
+    "min": 8,
+    "max": 64
+  },
+  {
+    "name": "FxGranularSprayMacro",
+    "path": "fx.granular.sprayMacro",
+    "type": "float",
+    "id": 1102,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularCloudMacro",
+    "path": "fx.granular.cloudMacro",
+    "type": "float",
+    "id": 1103,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularPitchMacro",
+    "path": "fx.granular.pitchMacro",
+    "type": "float",
+    "id": 1104,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1PositionSpray",
+    "path": "fx.granular.voices.0.positionSpray",
+    "type": "float",
+    "id": 1105,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1TimingSpray",
+    "path": "fx.granular.voices.0.timingSpray",
+    "type": "float",
+    "id": 1106,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1Lookback",
+    "path": "fx.granular.voices.0.lookback",
+    "type": "float",
+    "id": 1107,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1WriteGuard",
+    "path": "fx.granular.voices.0.writeGuard",
+    "type": "float",
+    "id": 1108,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1PitchMode",
+    "path": "fx.granular.voices.0.pitchMode",
+    "type": "uint",
+    "id": 1109,
+    "min": 0,
+    "max": 5
+  },
+  {
+    "name": "FxGranularV1PitchSpread",
+    "path": "fx.granular.voices.0.pitchSpread",
+    "type": "float",
+    "id": 1110,
+    "min": 0,
+    "max": 24
+  },
+  {
+    "name": "FxGranularV1PitchJitterCents",
+    "path": "fx.granular.voices.0.pitchJitterCents",
+    "type": "float",
+    "id": 1111,
+    "min": 0,
+    "max": 50
+  },
+  {
+    "name": "FxGranularV1PitchQuantize",
+    "path": "fx.granular.voices.0.pitchQuantize",
+    "type": "float",
+    "id": 1112,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1ReverseChance",
+    "path": "fx.granular.voices.0.reverseChance",
+    "type": "float",
+    "id": 1113,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1Bloom",
+    "path": "fx.granular.voices.0.bloom",
+    "type": "float",
+    "id": 1114,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1Glide",
+    "path": "fx.granular.voices.0.glide",
+    "type": "float",
+    "id": 1115,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV1CloudStyle",
+    "path": "fx.granular.voices.0.cloudStyle",
+    "type": "uint",
+    "id": 1116,
+    "min": 0,
+    "max": 5
+  },
+  {
+    "name": "FxGranularV1AnchorPattern",
+    "path": "fx.granular.voices.0.anchorPattern",
+    "type": "uint",
+    "id": 1117,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "FxGranularV1LoopCrossfadeMs",
+    "path": "fx.granular.voices.0.loopCrossfadeMs",
+    "type": "float",
+    "id": 1118,
+    "min": 4,
+    "max": 80
+  },
+  {
+    "name": "FxGranularV2PositionSpray",
+    "path": "fx.granular.voices.1.positionSpray",
+    "type": "float",
+    "id": 1119,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2TimingSpray",
+    "path": "fx.granular.voices.1.timingSpray",
+    "type": "float",
+    "id": 1120,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2Lookback",
+    "path": "fx.granular.voices.1.lookback",
+    "type": "float",
+    "id": 1121,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2WriteGuard",
+    "path": "fx.granular.voices.1.writeGuard",
+    "type": "float",
+    "id": 1122,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2PitchMode",
+    "path": "fx.granular.voices.1.pitchMode",
+    "type": "uint",
+    "id": 1123,
+    "min": 0,
+    "max": 5
+  },
+  {
+    "name": "FxGranularV2PitchSpread",
+    "path": "fx.granular.voices.1.pitchSpread",
+    "type": "float",
+    "id": 1124,
+    "min": 0,
+    "max": 24
+  },
+  {
+    "name": "FxGranularV2PitchJitterCents",
+    "path": "fx.granular.voices.1.pitchJitterCents",
+    "type": "float",
+    "id": 1125,
+    "min": 0,
+    "max": 50
+  },
+  {
+    "name": "FxGranularV2PitchQuantize",
+    "path": "fx.granular.voices.1.pitchQuantize",
+    "type": "float",
+    "id": 1126,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2ReverseChance",
+    "path": "fx.granular.voices.1.reverseChance",
+    "type": "float",
+    "id": 1127,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2Bloom",
+    "path": "fx.granular.voices.1.bloom",
+    "type": "float",
+    "id": 1128,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2Glide",
+    "path": "fx.granular.voices.1.glide",
+    "type": "float",
+    "id": 1129,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV2CloudStyle",
+    "path": "fx.granular.voices.1.cloudStyle",
+    "type": "uint",
+    "id": 1130,
+    "min": 0,
+    "max": 5
+  },
+  {
+    "name": "FxGranularV2AnchorPattern",
+    "path": "fx.granular.voices.1.anchorPattern",
+    "type": "uint",
+    "id": 1131,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "FxGranularV2LoopCrossfadeMs",
+    "path": "fx.granular.voices.1.loopCrossfadeMs",
+    "type": "float",
+    "id": 1132,
+    "min": 4,
+    "max": 80
+  },
+  {
+    "name": "FxGranularV3PositionSpray",
+    "path": "fx.granular.voices.2.positionSpray",
+    "type": "float",
+    "id": 1133,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3TimingSpray",
+    "path": "fx.granular.voices.2.timingSpray",
+    "type": "float",
+    "id": 1134,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3Lookback",
+    "path": "fx.granular.voices.2.lookback",
+    "type": "float",
+    "id": 1135,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3WriteGuard",
+    "path": "fx.granular.voices.2.writeGuard",
+    "type": "float",
+    "id": 1136,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3PitchMode",
+    "path": "fx.granular.voices.2.pitchMode",
+    "type": "uint",
+    "id": 1137,
+    "min": 0,
+    "max": 5
+  },
+  {
+    "name": "FxGranularV3PitchSpread",
+    "path": "fx.granular.voices.2.pitchSpread",
+    "type": "float",
+    "id": 1138,
+    "min": 0,
+    "max": 24
+  },
+  {
+    "name": "FxGranularV3PitchJitterCents",
+    "path": "fx.granular.voices.2.pitchJitterCents",
+    "type": "float",
+    "id": 1139,
+    "min": 0,
+    "max": 50
+  },
+  {
+    "name": "FxGranularV3PitchQuantize",
+    "path": "fx.granular.voices.2.pitchQuantize",
+    "type": "float",
+    "id": 1140,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3ReverseChance",
+    "path": "fx.granular.voices.2.reverseChance",
+    "type": "float",
+    "id": 1141,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3Bloom",
+    "path": "fx.granular.voices.2.bloom",
+    "type": "float",
+    "id": 1142,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3Glide",
+    "path": "fx.granular.voices.2.glide",
+    "type": "float",
+    "id": 1143,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV3CloudStyle",
+    "path": "fx.granular.voices.2.cloudStyle",
+    "type": "uint",
+    "id": 1144,
+    "min": 0,
+    "max": 5
+  },
+  {
+    "name": "FxGranularV3AnchorPattern",
+    "path": "fx.granular.voices.2.anchorPattern",
+    "type": "uint",
+    "id": 1145,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "FxGranularV3LoopCrossfadeMs",
+    "path": "fx.granular.voices.2.loopCrossfadeMs",
+    "type": "float",
+    "id": 1146,
+    "min": 4,
+    "max": 80
+  },
+  {
+    "name": "FxGranularV4PositionSpray",
+    "path": "fx.granular.voices.3.positionSpray",
+    "type": "float",
+    "id": 1147,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4TimingSpray",
+    "path": "fx.granular.voices.3.timingSpray",
+    "type": "float",
+    "id": 1148,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4Lookback",
+    "path": "fx.granular.voices.3.lookback",
+    "type": "float",
+    "id": 1149,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4WriteGuard",
+    "path": "fx.granular.voices.3.writeGuard",
+    "type": "float",
+    "id": 1150,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4PitchMode",
+    "path": "fx.granular.voices.3.pitchMode",
+    "type": "uint",
+    "id": 1151,
+    "min": 0,
+    "max": 5
+  },
+  {
+    "name": "FxGranularV4PitchSpread",
+    "path": "fx.granular.voices.3.pitchSpread",
+    "type": "float",
+    "id": 1152,
+    "min": 0,
+    "max": 24
+  },
+  {
+    "name": "FxGranularV4PitchJitterCents",
+    "path": "fx.granular.voices.3.pitchJitterCents",
+    "type": "float",
+    "id": 1153,
+    "min": 0,
+    "max": 50
+  },
+  {
+    "name": "FxGranularV4PitchQuantize",
+    "path": "fx.granular.voices.3.pitchQuantize",
+    "type": "float",
+    "id": 1154,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4ReverseChance",
+    "path": "fx.granular.voices.3.reverseChance",
+    "type": "float",
+    "id": 1155,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4Bloom",
+    "path": "fx.granular.voices.3.bloom",
+    "type": "float",
+    "id": 1156,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4Glide",
+    "path": "fx.granular.voices.3.glide",
+    "type": "float",
+    "id": 1157,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxGranularV4CloudStyle",
+    "path": "fx.granular.voices.3.cloudStyle",
+    "type": "uint",
+    "id": 1158,
+    "min": 0,
+    "max": 5
+  },
+  {
+    "name": "FxGranularV4AnchorPattern",
+    "path": "fx.granular.voices.3.anchorPattern",
+    "type": "uint",
+    "id": 1159,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "FxGranularV4LoopCrossfadeMs",
+    "path": "fx.granular.voices.3.loopCrossfadeMs",
+    "type": "float",
+    "id": 1160,
+    "min": 4,
+    "max": 80
   },
   {
     "name": "FxGranularV1Enabled",

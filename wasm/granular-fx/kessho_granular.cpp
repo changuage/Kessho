@@ -23,20 +23,51 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+enum CloudPitchMode {
+    CLOUD_PITCH_FIXED = 0,
+    CLOUD_PITCH_OCTAVES = 1,
+    CLOUD_PITCH_FIFTHS = 2,
+    CLOUD_PITCH_CHORD = 3,
+    CLOUD_PITCH_SCALE = 4,
+    CLOUD_PITCH_FREE = 5,
+};
+
+enum CloudStyle {
+    CLOUD_STYLE_CLASSIC = 0,
+    CLOUD_STYLE_MOSAIC = 1,
+    CLOUD_STYLE_BLOOM = 2,
+    CLOUD_STYLE_TIDE = 3,
+    CLOUD_STYLE_ORBIT = 4,
+    CLOUD_STYLE_STARS = 5,
+};
+
+static constexpr int kOctavePalette[] = {0, 12, -12, 24};
+static constexpr int kFifthsPalette[] = {0, 7, 12, -5, 19};
+static constexpr float kStarsAnchors[] = {0.10f, 0.30f, 0.50f, 0.70f, 0.90f};
+
 // ═══════════════ Internal Structures ═══════════════
 
 struct Grain {
     float position;      // read position in buffer (fractional samples)
     float playback_rate; // pitch shift rate (negative = reverse)
+    float playback_rate_step;
+    float pitch_semi_start;
+    float pitch_semi_end;
+    float tide_phase;
+    float tide_depth;
     float pan;           // -1 to 1
     float pan_l;         // cached constant-power gain at grain spawn
     float pan_r;         // cached constant-power gain at grain spawn
+    float gain;          // per-grain scalar for bloom ghosts
     int   start_sample;  // samples elapsed since grain start
     int   length;        // grain length in samples
     int   attack_smp;    // rise time in samples
     int   decay_smp;     // fall time in samples
     int   active;        // 0 or 1
     int   active_list_pos; // slot inside per-voice active grain index list
+    int   is_ghost;
+    int   cloud_style;
+    int   visual_flags;
     float env_z1;        // one-pole envelope smoother state
 };
 
@@ -94,6 +125,20 @@ struct VoiceParams {
     float blur;          // 0–1
     float grain_oct;     // 0–1 probability of +12st
     float spray;         // 0–1
+    float position_spray;
+    float timing_spray;
+    float lookback;
+    float write_guard;
+    int   pitch_mode;
+    float pitch_spread;
+    float pitch_jitter_cents;
+    float pitch_quantize;
+    float reverse_chance;
+    float bloom;
+    float glide;
+    int   cloud_style;
+    int   anchor_pattern;
+    float loop_crossfade_ms;
     float density;       // grains/sec
     float grain_size;    // ms
     float pan;           // -1 to +1
@@ -107,15 +152,6 @@ struct VoiceParams {
     float record_lfo_rate;   // 0–1
     int   euclid_gated;
     int   euclid_muted;  // silenced by Euclid mute/solo (still counted for gain comp)
-};
-
-struct LegacyParams {
-    float jitter;       // ms
-    float probability;  // 0–1
-    int   pitch_mode;   // KESSHO_PITCH_*
-    float pitch_spread; // semitones
-    int   max_grains;   // 0–KESSHO_MAX_TOTAL_GRAINS
-    float feedback;     // 0–0.35
 };
 
 struct GranularState {
@@ -134,12 +170,18 @@ struct GranularState {
     int    grain_shape;
     float  bus_diffusion;
     float  timing_randomness;
+    int    quality;
+    int    max_total_grains_user;
+    float  spray_macro;
+    float  cloud_macro;
+    float  pitch_macro;
 
     // Per-voice
     VoiceParams voice[KESSHO_NUM_VOICES];
     Grain       grain_pool[KESSHO_NUM_VOICES][KESSHO_MAX_GRAINS];
     int         active_grain_indices[KESSHO_NUM_VOICES][KESSHO_MAX_GRAINS];
     int         active_grain_counts[KESSHO_NUM_VOICES];
+    int         next_free_hint[KESSHO_NUM_VOICES];
     AllpassDiffuser diffuser[KESSHO_NUM_VOICES];
     TriLFO      pos_lfo[KESSHO_NUM_VOICES];
     TriLFO      pan_lfo[KESSHO_NUM_VOICES];
@@ -157,6 +199,9 @@ struct GranularState {
 
     // Per-voice clean mode read position
     float clean_read_pos[KESSHO_NUM_VOICES];
+    float clean_pan_lfo_value[KESSHO_NUM_VOICES];
+    float clean_pos_lfo_value[KESSHO_NUM_VOICES];
+    int   clean_lfo_counter[KESSHO_NUM_VOICES];
 
     // Per-voice LFO scan target position (for smooth UI visualization)
     float scan_lfo_target[KESSHO_NUM_VOICES];
@@ -169,6 +214,7 @@ struct GranularState {
 
     // Per-voice representative grain position
     float last_grain_pos[KESSHO_NUM_VOICES];
+    int   anchor_step[KESSHO_NUM_VOICES];
 
     // Per-voice grain smoothing state (used to soften transient peaking in granular mode)
     float grain_smooth_l[KESSHO_NUM_VOICES];
@@ -196,9 +242,6 @@ struct GranularState {
     OnePoleHPF fb_hpf_l, fb_hpf_r;
     OnePoleLPF fb_lpf_l, fb_lpf_r;
     float      fb_rms;
-
-    // Legacy params
-    LegacyParams legacy;
 
     // Scale quantization
     int   scale_intervals[KESSHO_MAX_SCALE_INTERVALS];
@@ -249,6 +292,10 @@ struct GranularState {
     int prev_freeze;
     int unfreeze_fade;  // countdown from KESSHO_UNFREEZE_XFADE_SAMPLES to 0
 
+    KesshoGranularVisualEvent visual_events[KESSHO_GRANULAR_VISUAL_EVENT_CAPACITY];
+    uint32_t visual_event_write;
+    uint32_t visual_event_read_shadow;
+
 };
 
 // Legacy callers use the default state. KesshoCore wrappers scope this slot to
@@ -283,13 +330,6 @@ private:
 struct KesshoGranularInstance {
     GranularState* state;
 };
-
-// ═══════════════ Harmonic Intervals (legacy mode) ═══════════════
-
-static const int HARMONIC_INTERVALS[] = {
-    0, 7, 12, -12, 19, 5, -7, 24, -5, 4, -24
-};
-static const int NUM_HARMONIC_INTERVALS = 11;
 
 // ═══════════════ Allpass Delay Sizes ═══════════════
 
@@ -401,6 +441,23 @@ static float lfo_tick(TriLFO* lfo, float sr) {
     if (lfo->rate <= 0.0f) return 0.0f;
     lfo->phase += lfo->rate / sr;
     if (lfo->phase > 1.0f) lfo->phase -= 1.0f;
+
+    if (lfo->use_sine) {
+        float p = lfo->phase;
+        if (p <= 0.5f) {
+            return 4.0f * p * (1.0f - 2.0f * p) + 0.5f;
+        }
+        return -4.0f * (p - 0.5f) * (1.0f - 2.0f * (p - 0.5f)) + 0.5f;
+    }
+    return 1.0f - fabsf(2.0f * lfo->phase - 1.0f);
+}
+
+static float lfo_tick_stride(TriLFO* lfo, float sr, float sample_stride) {
+    if (lfo->rate <= 0.0f) return 0.0f;
+    lfo->phase += (lfo->rate * sample_stride) / sr;
+    if (lfo->phase >= 1.0f) {
+        lfo->phase = fmodf(lfo->phase, 1.0f);
+    }
 
     if (lfo->use_sine) {
         float p = lfo->phase;
@@ -548,23 +605,62 @@ static inline float read_buffer_sinc(const GranularState* s, const float* buf, i
     return sum;
 }
 
-static inline float read_buffer_sinc_bounded(const GranularState* s, const float* buf, int size, float pos) {
+static inline float read_buffer_linear(const float* buf, int size, float position) {
+    float pos = wrap_position(position, (float)size);
     int i0 = (int)pos;
+    int i1 = i0 + 1;
+    if (i1 >= size) i1 -= size;
     float frac = pos - (float)i0;
+    return buf[i0] + (buf[i1] - buf[i0]) * frac;
+}
 
-    int frac_idx = (int)(frac * (float)KESSHO_SINC_OVERSAMPLING);
-    if (frac_idx >= KESSHO_SINC_OVERSAMPLING) frac_idx = KESSHO_SINC_OVERSAMPLING - 1;
+static inline float read_buffer_cubic(const float* buf, int size, float position) {
+    float pos = wrap_position(position, (float)size);
+    int i1 = (int)pos;
+    float t = pos - (float)i1;
+    int i0 = i1 - 1; if (i0 < 0) i0 += size;
+    int i2 = i1 + 1; if (i2 >= size) i2 -= size;
+    int i3 = i1 + 2; if (i3 >= size) i3 -= size;
+    const float y0 = buf[i0];
+    const float y1 = buf[i1];
+    const float y2 = buf[i2];
+    const float y3 = buf[i3];
+    const float c0 = y1;
+    const float c1 = 0.5f * (y2 - y0);
+    const float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+    const float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+    return ((c3 * t + c2) * t + c1) * t + c0;
+}
 
-    const float* kernel = &s->sinc_table[frac_idx * KESSHO_SINC_TAPS];
-    float sum = 0.0f;
-    int half = KESSHO_SINC_TAPS / 2;
-    for (int t = 0; t < KESSHO_SINC_TAPS; t++) {
-        int idx = i0 + t - half + 1;
-        if (idx < 0) idx += size;
-        else if (idx >= size) idx -= size;
-        sum += buf[idx] * kernel[t];
+static inline float read_buffer_quality(const GranularState* s, const float* buf, int size, float position, float abs_rate) {
+    if (s->quality <= 0) {
+        return abs_rate < 1.20f ? read_buffer_linear(buf, size, position)
+                                : read_buffer_cubic(buf, size, position);
     }
-    return sum;
+    if (s->quality == 1) {
+        return abs_rate < 1.70f ? read_buffer_cubic(buf, size, position)
+                                : read_buffer_sinc(s, buf, size, position);
+    }
+    return read_buffer_sinc(s, buf, size, position);
+}
+
+static inline int anti_alias_stage_count_for_rate(const GranularState* s, float abs_rate) {
+    if (s->quality <= 0) return abs_rate > 1.70f ? 1 : 0;
+    if (s->quality == 1) {
+        if (abs_rate <= 1.10f) return 0;
+        return abs_rate <= 1.85f ? 1 : 2;
+    }
+    if (abs_rate <= 1.05f) return 0;
+    return abs_rate <= 1.60f ? 2 : 3;
+}
+
+static inline float process_aa_stages(float sample, int stage_count, BiquadFilter* a, BiquadFilter* b, BiquadFilter* c) {
+    if (stage_count <= 0) return sample;
+    sample = biquad_process(a, sample);
+    if (stage_count <= 1) return sample;
+    sample = biquad_process(b, sample);
+    if (stage_count <= 2) return sample;
+    return biquad_process(c, sample);
 }
 
 // ═══════════════ Hann Window / Grain Envelope ═══════════════
@@ -708,6 +804,134 @@ static float next_random(GranularState* s) {
     return v;
 }
 
+static float choose_cloud_pitch(GranularState* s, const VoiceParams* vp, float base_pitch) {
+    const float pitch_macro = clampf(s->pitch_macro, 0.0f, 1.0f);
+    const float spread = clampf(vp->pitch_spread + pitch_macro * 12.0f, 0.0f, 24.0f);
+    const float jitter_cents = clampf(vp->pitch_jitter_cents + pitch_macro * 8.0f, 0.0f, 50.0f);
+    const float jitter_st = ((next_random(s) - 0.5f) * 2.0f) * (jitter_cents / 100.0f);
+    float offset = 0.0f;
+
+    switch (vp->pitch_mode) {
+        case CLOUD_PITCH_OCTAVES: {
+            const int count = spread >= 18.0f ? 4 : (spread >= 9.0f ? 3 : 2);
+            offset = (float)kOctavePalette[(int)(next_random(s) * (float)count) % count];
+            break;
+        }
+        case CLOUD_PITCH_FIFTHS: {
+            const int count = spread >= 16.0f ? 5 : (spread >= 8.0f ? 4 : 2);
+            offset = (float)kFifthsPalette[(int)(next_random(s) * (float)count) % count];
+            break;
+        }
+        case CLOUD_PITCH_CHORD:
+            if (s->chord_count > 0) {
+                const int idx = (int)(next_random(s) * (float)s->chord_count) % s->chord_count;
+                offset = (float)s->chord_pitches[idx];
+            }
+            break;
+        case CLOUD_PITCH_SCALE:
+            if (s->scale_count > 0) {
+                const int idx = (int)(next_random(s) * (float)s->scale_count) % s->scale_count;
+                offset = (float)s->scale_intervals[idx];
+                if (next_random(s) < spread / 24.0f) offset += next_random(s) < 0.5f ? 12.0f : -12.0f;
+            }
+            break;
+        case CLOUD_PITCH_FREE:
+            offset = ((next_random(s) - 0.5f) * 2.0f) * spread;
+            break;
+        case CLOUD_PITCH_FIXED:
+        default:
+            break;
+    }
+
+    const float raw = base_pitch + offset + jitter_st;
+    const float quantized = quantize_pitch(s, raw);
+    return raw + (quantized - raw) * clampf(vp->pitch_quantize, 0.0f, 1.0f);
+}
+
+static Grain* find_free_grain_using_hint(GranularState* s, int voice_idx, int* out_index) {
+    Grain* pool = s->grain_pool[voice_idx];
+    const int start = s->next_free_hint[voice_idx] & (KESSHO_MAX_GRAINS - 1);
+    for (int n = 0; n < KESSHO_MAX_GRAINS; ++n) {
+        const int i = (start + n) & (KESSHO_MAX_GRAINS - 1);
+        if (!pool[i].active) {
+            s->next_free_hint[voice_idx] = (i + 1) & (KESSHO_MAX_GRAINS - 1);
+            if (out_index) *out_index = i;
+            return &pool[i];
+        }
+    }
+    if (out_index) *out_index = -1;
+    return nullptr;
+}
+
+static int activate_grain(GranularState* s, int voice_idx, Grain* grain, int grain_index) {
+    int active_count = s->active_grain_counts[voice_idx];
+    if (active_count >= KESSHO_MAX_GRAINS) {
+        grain->active = 0;
+        grain->active_list_pos = -1;
+        return 0;
+    }
+    s->active_grain_indices[voice_idx][active_count] = grain_index;
+    grain->active_list_pos = active_count;
+    s->active_grain_counts[voice_idx] = active_count + 1;
+    s->total_active_grains++;
+    return 1;
+}
+
+static inline void push_visual_event(GranularState* s, int voice_idx, const Grain* grain) {
+    if (!s || !grain || s->buffer_size <= 0) return;
+    KesshoGranularVisualEvent* event =
+        &s->visual_events[s->visual_event_write % KESSHO_GRANULAR_VISUAL_EVENT_CAPACITY];
+    event->position_norm = wrap_position(grain->position, (float)s->buffer_size) / (float)s->buffer_size;
+    event->pan = grain->pan;
+    event->pitch_semi = grain->pitch_semi_start;
+    event->gain = grain->gain;
+    event->length_ms = (float)grain->length * 1000.0f / s->sample_rate;
+    event->voice = voice_idx;
+    event->flags =
+        (grain->is_ghost ? 1 : 0) |
+        (grain->playback_rate < 0.0f ? 2 : 0) |
+        (grain->cloud_style == CLOUD_STYLE_STARS ? 4 : 0) |
+        (fabsf(grain->playback_rate_step) > 0.000001f ? 8 : 0);
+    event->cloud_style = grain->cloud_style;
+    s->visual_event_write++;
+}
+
+static void spawn_bloom_ghosts(GranularState* s, int voice_idx, const Grain* source, const VoiceParams* vp) {
+    const int max_total_grains = clampi(s->max_total_grains_user, 1, KESSHO_MAX_TOTAL_GRAINS);
+    if (s->total_active_grains >= max_total_grains) return;
+
+    float bloom_amount = clampf(vp->bloom + s->cloud_macro * 0.35f, 0.0f, 1.0f);
+    if (vp->cloud_style == CLOUD_STYLE_BLOOM) bloom_amount = clampf(bloom_amount + 0.30f, 0.0f, 1.0f);
+    const int ghost_count = bloom_amount > 0.66f ? 2 : (bloom_amount > 0.08f ? 1 : 0);
+    if (ghost_count <= 0) return;
+
+    for (int ghost_num = 0; ghost_num < ghost_count && s->total_active_grains < max_total_grains; ++ghost_num) {
+        int ghost_index = -1;
+        Grain* ghost = find_free_grain_using_hint(s, voice_idx, &ghost_index);
+        if (!ghost) return;
+
+        *ghost = *source;
+        ghost->active = 1;
+        ghost->active_list_pos = -1;
+        ghost->is_ghost = 1;
+        ghost->visual_flags = source->visual_flags | 1;
+        ghost->start_sample = -(int)((float)source->length * (0.15f + 0.10f * (float)ghost_num));
+        ghost->length = clampi((int)((float)source->length * (0.68f + 0.10f * (float)ghost_num)), 1, source->length);
+        ghost->position = wrap_position(
+            source->position + source->playback_rate * (float)source->length * (0.18f + 0.13f * (float)ghost_num),
+            (float)s->buffer_size);
+        const float detune = (ghost_num == 0 ? 0.0045f : -0.0065f) * (0.45f + bloom_amount);
+        ghost->playback_rate *= 1.0f + detune;
+        ghost->playback_rate_step *= 0.65f;
+        ghost->gain = (0.28f + bloom_amount * 0.18f) * (ghost_num == 0 ? 1.0f : 0.68f);
+        ghost->pan = clampf(source->pan + (ghost_num == 0 ? 0.18f : -0.18f) * vp->stereo_spread, -1.0f, 1.0f);
+        get_pan_lr(s, ghost->pan, &ghost->pan_l, &ghost->pan_r);
+
+        if (!activate_grain(s, voice_idx, ghost, ghost_index)) return;
+        push_visual_event(s, voice_idx, ghost);
+    }
+}
+
 static inline float circular_delta(float from, float to, float size) {
     float delta = to - from;
     const float half = size * 0.5f;
@@ -725,11 +949,6 @@ static inline float samples_behind_write_head(float write_pos, float read_pos, f
     if (age < 0.0f) age += size;
     if (age >= size) age = fmodf(age, size);
     return age;
-}
-
-static inline int legacy_scheduler_silence_threshold(const GranularState* s) {
-    int threshold = (int)(s->sample_rate * 0.02f);
-    return threshold > 64 ? threshold : 64;
 }
 
 // ═══════════════ Trigger Envelope ═══════════════
@@ -774,11 +993,20 @@ static inline int compute_next_grain_interval(GranularState* s, int voice_idx) {
     float burst_mult = s->trig_density_mult[voice_idx];
     if (burst_mult < 1.0f) burst_mult = 1.0f;
     float mean_interval = base_interval / burst_mult;
-    float jitter = clampf(s->timing_randomness, 0.0f, 1.0f);
-    float spread = 0.08f + jitter * 0.92f;
-    float rand = (next_random(s) - 0.5f) * 2.0f;
-    float interval_scale = 1.0f + rand * spread;
-    if (interval_scale < 0.12f) interval_scale = 0.12f;
+    const VoiceParams* vp = &s->voice[voice_idx];
+    const float global_spray = clampf(s->timing_randomness, 0.0f, 1.0f);
+    const float voice_spray = clampf(vp->timing_spray, 0.0f, 1.0f);
+    const float macro_spray = clampf(s->spray_macro, 0.0f, 1.0f);
+    const float timing_spray = clampf(
+        voice_spray * 0.70f + global_spray * 0.45f + macro_spray * 0.35f,
+        0.0f,
+        1.0f);
+    float interval_scale = 1.0f;
+    if (timing_spray > 0.001f) {
+        const float rand = (next_random(s) - 0.5f) * 2.0f;
+        const float spread = powf(timing_spray, 1.45f) * 0.78f;
+        interval_scale = clampf(1.0f + rand * spread, 0.35f, 2.20f);
+    }
     int next_interval = (int)(mean_interval * interval_scale);
     if (next_interval < 1) next_interval = 1;
     return next_interval;
@@ -788,58 +1016,24 @@ static inline int compute_next_grain_interval(GranularState* s, int voice_idx) {
 
 static void spawn_grain(GranularState* s, int voice_idx) {
     VoiceParams* vp = &s->voice[voice_idx];
-    Grain* pool = s->grain_pool[voice_idx];
 
-    const int max_total_grains = (vp->mode == KESSHO_MODE_LEGACY)
-        ? clampi(s->legacy.max_grains, 0, KESSHO_MAX_TOTAL_GRAINS)
-        : KESSHO_MAX_TOTAL_GRAINS;
+    const int max_total_grains = clampi(s->max_total_grains_user, 1, KESSHO_MAX_TOTAL_GRAINS);
     if (s->total_active_grains >= max_total_grains) return;
 
-    // Find inactive grain
-    Grain* grain = nullptr;
-    for (int i = 0; i < KESSHO_MAX_GRAINS; i++) {
-        if (!pool[i].active) { grain = &pool[i]; break; }
-    }
+    int grain_index = -1;
+    Grain* grain = find_free_grain_using_hint(s, voice_idx, &grain_index);
     if (!grain) return;
 
     float sr = s->sample_rate;
     int grain_samples = (int)(vp->grain_size / 1000.0f * sr);
     if (grain_samples < 1) grain_samples = 1;
 
-    if (vp->mode == KESSHO_MODE_LEGACY) {
-        // Legacy mode: replicate original granulator behavior
-        if (next_random(s) > s->legacy.probability) return;
-
-        int spray_samples = (int)(vp->spray * 600.0f / 1000.0f * sr);
-        int jitter_samples = (int)(s->legacy.jitter / 1000.0f * sr);
-        int base_pos = wrap_index_any(s->write_pos - spray_samples + s->buffer_size, s->buffer_size);
-        int spray_offset = (int)(next_random(s) * (float)spray_samples);
-        int jitter_offset = (int)((next_random(s) - 0.5f) * 2.0f * (float)jitter_samples);
-        grain->position = (float)wrap_index_any(base_pos - spray_offset + jitter_offset, s->buffer_size);
-        s->last_grain_pos[voice_idx] = grain->position;
-
-        // Harmonic or random pitch — quantize to current scale for musicality
-        float pitch_offset;
-        if (s->legacy.pitch_mode == KESSHO_PITCH_HARMONIC) {
-            int max_idx = (int)(s->legacy.pitch_spread / 12.0f * (float)NUM_HARMONIC_INTERVALS);
-            if (max_idx < 1) max_idx = 1;
-            if (max_idx > NUM_HARMONIC_INTERVALS) max_idx = NUM_HARMONIC_INTERVALS;
-            pitch_offset = (float)HARMONIC_INTERVALS[(int)(next_random(s) * (float)max_idx)];
-        } else {
-            pitch_offset = (next_random(s) - 0.5f) * 2.0f * s->legacy.pitch_spread;
-        }
-        // Snap pitch to current scale so legacy grains stay in key
-        pitch_offset = quantize_pitch(s, pitch_offset);
-        grain->playback_rate = powf(2.0f, pitch_offset / 12.0f);
-        grain->pan = (next_random(s) - 0.5f) * 2.0f * (vp->stereo_spread > 0.0f ? vp->stereo_spread : 0.5f);
-    } else {
-        // Standard granular mode
+    {
+        // Granular mode
         int slice = s->euclid_slice_override[voice_idx] >= 0
             ? s->euclid_slice_override[voice_idx]
             : vp->slice;
         int slice_start = get_slice_start(s, slice);
-        float spray = vp->spray;
-
         // Write follow + record LFO
         float base_wf = vp->write_follow;
         float write_follow = base_wf;
@@ -850,32 +1044,53 @@ static void spawn_grain(GranularState* s, int voice_idx) {
         }
         if (write_follow > 1.0f) write_follow = 1.0f;
 
-        float pos_lfo_val = lfo_tick(&s->pos_lfo[voice_idx], sr);
+        float pos_lfo_val = (lfo_tick(&s->pos_lfo[voice_idx], sr) - 0.5f) * 2.0f;
         float lfo_depth = vp->pos_lfo_depth;
-        float lfo_offset = pos_lfo_val * lfo_depth * (float)s->buffer_size;
+        float lfo_offset = pos_lfo_val * lfo_depth * (float)s->buffer_size * 0.50f;
 
         const float buffer_size_f = (float)s->buffer_size;
         int slice_len = s->buffer_size / KESSHO_NUM_SLICES;
-        float spray2 = spray * spray;
-        float spray3 = spray2 * spray;
-        float local_window = fmaxf((float)grain_samples * 4.0f, (float)slice_len * 0.75f);
-        float history_window = buffer_size_f * 0.92f;
-        float spray_range = local_window * spray + (history_window - local_window) * spray3;
+        const float position_spray = clampf(vp->position_spray + s->spray_macro * 0.18f, 0.0f, 1.0f);
+        const float spray2 = position_spray * position_spray;
+        const float spray_smooth = spray2 * (3.0f - 2.0f * position_spray);
+        const float local_window = fmaxf((float)grain_samples * 3.0f, (float)slice_len * 0.35f);
+        const float history_window = buffer_size_f * 0.92f;
+        float spray_range = position_spray * (local_window + spray_smooth * (history_window - local_window));
         if (spray_range > history_window) spray_range = history_window;
-        float spray_offset = spray_range * (next_random(s) - 0.5f);
+        const float spray_offset = spray_range * (next_random(s) - 0.5f);
+
+        const float lookback_norm = clampf(vp->lookback, 0.0f, 1.0f);
+        const float min_lookback_s = 0.060f;
+        const float max_lookback_s = fminf(8.0f, (float)s->buffer_size / sr * 0.92f);
+        const float lookback_s = max_lookback_s > min_lookback_s
+            ? expf(logf(min_lookback_s) + lookback_norm * logf(max_lookback_s / min_lookback_s))
+            : min_lookback_s;
+        const int lookback_samples = clampi((int)(lookback_s * sr), 1, (int)(buffer_size_f * 0.92f));
 
         float base_pos;
         if (write_follow > 0.01f) {
-            int min_lookback = (int)fmaxf((float)grain_samples * 2.0f, sr * 0.08f);
-            int wh_pos = wrap_index_any(s->write_pos - min_lookback, s->buffer_size);
-            float spread_aware_write_follow = write_follow * (1.0f - spray2 * 0.72f);
-            base_pos = circular_blend_position((float)slice_start, (float)wh_pos, spread_aware_write_follow, buffer_size_f);
+            int wh_pos = wrap_index_any(s->write_pos - lookback_samples, s->buffer_size);
+            base_pos = circular_blend_position((float)slice_start, (float)wh_pos, write_follow, buffer_size_f);
         } else {
             base_pos = (float)slice_start;
         }
+        if (vp->cloud_style == CLOUD_STYLE_STARS) {
+            int idx = s->anchor_step[voice_idx] % 5;
+            if (vp->anchor_pattern == 1) idx = 4 - idx;
+            else if (vp->anchor_pattern == 2) {
+                const int p = s->anchor_step[voice_idx] % 8;
+                idx = p < 5 ? p : 8 - p;
+            } else if (vp->anchor_pattern == 3) {
+                idx = (int)(next_random(s) * 5.0f) % 5;
+            }
+            base_pos = kStarsAnchors[idx] * buffer_size_f;
+            s->anchor_step[voice_idx]++;
+        }
 
         grain->position = wrap_position(base_pos + lfo_offset + spray_offset, buffer_size_f);
-        const float min_read_age = fmaxf((float)grain_samples * 1.5f, sr * 0.045f);
+        const float guard_norm = clampf(vp->write_guard, 0.0f, 1.0f);
+        const float guard_ms = 15.0f + guard_norm * 105.0f;
+        const float min_read_age = fmaxf((float)grain_samples * 0.75f, sr * guard_ms * 0.001f);
         float read_age = samples_behind_write_head((float)s->write_pos, grain->position, buffer_size_f);
         if (read_age < min_read_age) {
             grain->position = wrap_position(grain->position - (min_read_age - read_age), buffer_size_f);
@@ -883,12 +1098,12 @@ static void spawn_grain(GranularState* s, int voice_idx) {
         s->last_grain_pos[voice_idx] = grain->position;
 
         // Pitch
-        float pitch_semi = quantize_pitch(s, vp->pitch);
+        float pitch_semi = choose_cloud_pitch(s, vp, vp->pitch);
         if (s->euclid_pitch_active[voice_idx]) {
             pitch_semi += s->euclid_pitch_override[voice_idx];
         }
-        if (vp->grain_oct > 0.0f && next_random(s) < vp->grain_oct * 0.6f) {
-            pitch_semi += 12.0f;
+        if (vp->grain_oct > 0.0f && next_random(s) < vp->grain_oct * 0.45f) {
+            pitch_semi += next_random(s) < 0.72f ? 12.0f : -12.0f;
         }
         float speed = vp->speed;
 
@@ -899,8 +1114,21 @@ static void spawn_grain(GranularState* s, int voice_idx) {
         if (s->euclid_reverse_active[voice_idx]) {
             is_reversed = s->euclid_reverse_override[voice_idx] != is_reversed;
         }
+        if (vp->reverse_chance > 0.001f && next_random(s) < vp->reverse_chance) {
+            is_reversed = !is_reversed;
+        }
         float direction = is_reversed ? -1.0f : 1.0f;
-        grain->playback_rate = powf(2.0f, pitch_semi / 12.0f) * speed * direction;
+        if (vp->cloud_style == CLOUD_STYLE_ORBIT) {
+            const float orbit = next_random(s);
+            const float radius = clampf(vp->stereo_spread + s->cloud_macro * 0.20f, 0.0f, 1.0f);
+            pitch_semi += cosf(orbit * 6.2831853f) * radius * 0.20f;
+        }
+        const float glide = clampf(vp->glide, 0.0f, 1.0f);
+        grain->pitch_semi_start = pitch_semi;
+        grain->pitch_semi_end = pitch_semi + ((next_random(s) - 0.5f) * 2.0f) * glide * 12.0f;
+        grain->playback_rate = powf(2.0f, grain->pitch_semi_start / 12.0f) * speed * direction;
+        const float end_rate = powf(2.0f, grain->pitch_semi_end / 12.0f) * speed * direction;
+        grain->playback_rate_step = glide > 0.001f ? (end_rate - grain->playback_rate) / fmaxf(1.0f, (float)grain_samples) : 0.0f;
 
         // Pan: manual + LFO + spread
         float base_pan = vp->pan;
@@ -910,6 +1138,16 @@ static void spawn_grain(GranularState* s, int voice_idx) {
         grain->pan = clampf(base_pan + pan_lfo * pan_rate * 0.5f
                              + (next_random(s) - 0.5f) * 2.0f * spread,
                              -1.0f, 1.0f);
+        if (vp->cloud_style == CLOUD_STYLE_ORBIT) {
+            const float orbit = next_random(s);
+            const float radius = clampf(vp->stereo_spread + s->cloud_macro * 0.20f, 0.0f, 1.0f);
+            grain->pan = clampf(vp->pan + sinf(orbit * 6.2831853f) * radius, -1.0f, 1.0f);
+        }
+        grain->tide_phase = next_random(s);
+        grain->tide_depth = vp->cloud_style == CLOUD_STYLE_TIDE
+            ? clampf(0.15f + vp->stereo_spread * 0.45f + s->cloud_macro * 0.20f, 0.0f, 0.80f)
+            : 0.0f;
+        grain->cloud_style = vp->cloud_style;
     }
 
     // Attack/decay envelope
@@ -928,23 +1166,48 @@ static void spawn_grain(GranularState* s, int voice_idx) {
     grain->start_sample = 0;
     grain->length = grain_samples;
     grain->env_z1 = 0.0f;
+    grain->is_ghost = 0;
+    grain->visual_flags = 0;
+    grain->gain = 1.0f;
+    grain->visual_flags =
+        (grain->playback_rate < 0.0f ? 2 : 0) |
+        (grain->cloud_style == CLOUD_STYLE_STARS ? 4 : 0) |
+        (fabsf(grain->playback_rate_step) > 0.000001f ? 8 : 0);
     get_pan_lr(s, grain->pan, &grain->pan_l, &grain->pan_r);
     grain->active = 1;
-    int grain_index = (int)(grain - pool);
-    int active_count = s->active_grain_counts[voice_idx];
-    if (active_count < KESSHO_MAX_GRAINS) {
-        s->active_grain_indices[voice_idx][active_count] = grain_index;
-        grain->active_list_pos = active_count;
-        s->active_grain_counts[voice_idx] = active_count + 1;
-    } else {
-        grain->active = 0;
-        grain->active_list_pos = -1;
-        return;
-    }
-    s->total_active_grains++;
+    if (!activate_grain(s, voice_idx, grain, grain_index)) return;
+    push_visual_event(s, voice_idx, grain);
+    spawn_bloom_ghosts(s, voice_idx, grain, vp);
 }
 
 // ═══════════════ Clean Voice Processing ═══════════════
+
+static inline int clean_lookback_samples_for_voice(const GranularState* s, const VoiceParams* vp) {
+    const float lookback_norm = clampf(vp->lookback, 0.0f, 1.0f);
+    const float min_lookback_s = 0.040f;
+    const float max_lookback_s = fminf(8.0f, (float)s->buffer_size / s->sample_rate * 0.92f);
+    const float lookback_s = max_lookback_s > min_lookback_s
+        ? expf(logf(min_lookback_s) + lookback_norm * logf(max_lookback_s / min_lookback_s))
+        : min_lookback_s;
+    return clampi((int)(lookback_s * s->sample_rate), 1, (int)((float)s->buffer_size * 0.92f));
+}
+
+static inline void update_clean_control_lfo(GranularState* s, int v, float sr, float* pan_l, float* pan_r) {
+    if ((s->clean_lfo_counter[v]++ & 15) != 0) return;
+    VoiceParams* vp = &s->voice[v];
+    s->clean_pos_lfo_value[v] = vp->pos_lfo_rate > 0.01f
+        ? lfo_tick_stride(&s->pos_lfo[v], sr, 16.0f)
+        : 0.0f;
+    s->clean_pan_lfo_value[v] = vp->pan_lfo_rate > 0.01f
+        ? lfo_tick_stride(&s->pan_lfo[v], sr, 16.0f)
+        : 0.5f;
+
+    const float pan_lfo_val = (s->clean_pan_lfo_value[v] - 0.5f) * 2.0f;
+    const float mod_pan = clampf(vp->pan + pan_lfo_val * vp->pan_lfo_rate * 0.5f
+                                 + vp->stereo_spread * ((v % 2 == 0) ? -0.3f : 0.3f),
+                                 -1.0f, 1.0f);
+    get_pan_lr(s, mod_pan, pan_l, pan_r);
+}
 
 static void process_clean_voice(GranularState* s, int v, float* out_l, float* out_r, int block_size) {
     VoiceParams* vp = &s->voice[v];
@@ -989,15 +1252,15 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
     }
     if (write_follow > 1.0f) write_follow = 1.0f;
 
-    // Pan
-    float pan_lfo_val = (lfo_tick(&s->pan_lfo[v], sr) - 0.5f) * 2.0f;
-    float pan_rate = vp->pan_lfo_rate;
-    float spread = vp->stereo_spread;
-    float mod_pan = clampf(vp->pan + pan_lfo_val * pan_rate * 0.5f
-                            + spread * ((v % 2 == 0) ? -0.3f : 0.3f),
-                            -1.0f, 1.0f);
-    float pan_l, pan_r;
-    get_pan_lr(s, mod_pan, &pan_l, &pan_r);
+    float pan_l = 0.0f, pan_r = 0.0f;
+    const float initial_pan_lfo = vp->pan_lfo_rate > 0.01f
+        ? (s->clean_pan_lfo_value[v] - 0.5f) * 2.0f
+        : 0.0f;
+    const float initial_pan = clampf(vp->pan + initial_pan_lfo * vp->pan_lfo_rate * 0.5f
+                                     + vp->stereo_spread * ((v % 2 == 0) ? -0.3f : 0.3f),
+                                     -1.0f, 1.0f);
+    get_pan_lr(s, initial_pan, &pan_l, &pan_r);
+    update_clean_control_lfo(s, v, sr, &pan_l, &pan_r);
 
     BiquadFilter* aa_l = &s->anti_alias_l[v];
     BiquadFilter* aa_r = &s->anti_alias_r[v];
@@ -1012,15 +1275,19 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
     }
 
     const float clean_abs_rate = fabsf(effective_rate);
-    const int use_clean_aa = clean_abs_rate > 1.05f;
+    const int clean_aa_stage_count = anti_alias_stage_count_for_rate(s, clean_abs_rate);
     if (!is_lfo_scan) {
         float ar = clean_abs_rate;
         biquad_update(aa_l, ar);
         biquad_update(aa_r, ar);
-        biquad_update(aa2_l, ar);
-        biquad_update(aa2_r, ar);
-        biquad_update(aa3_l, ar);
-        biquad_update(aa3_r, ar);
+        if (clean_aa_stage_count > 1) {
+            biquad_update(aa2_l, ar);
+            biquad_update(aa2_r, ar);
+        }
+        if (clean_aa_stage_count > 2) {
+            biquad_update(aa3_l, ar);
+            biquad_update(aa3_r, ar);
+        }
     }
 
     // ═══ LFO Scan Mode ═══
@@ -1035,16 +1302,22 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
         static const float SCAN_DRIFT_THRESH = 7200.0f;
 
         ScanState* sc = &s->scan[v];
-        if (abs_scan_rate > 1.05f) {
+        const int scan_aa_stage_count = anti_alias_stage_count_for_rate(s, abs_scan_rate);
+        if (scan_aa_stage_count > 0) {
             biquad_update(aa_l, abs_scan_rate);
             biquad_update(aa_r, abs_scan_rate);
-            biquad_update(aa2_l, abs_scan_rate);
-            biquad_update(aa2_r, abs_scan_rate);
-            biquad_update(aa3_l, abs_scan_rate);
-            biquad_update(aa3_r, abs_scan_rate);
+            if (scan_aa_stage_count > 1) {
+                biquad_update(aa2_l, abs_scan_rate);
+                biquad_update(aa2_r, abs_scan_rate);
+            }
+            if (scan_aa_stage_count > 2) {
+                biquad_update(aa3_l, abs_scan_rate);
+                biquad_update(aa3_r, abs_scan_rate);
+            }
         }
 
         for (int i = 0; i < block_size; i++) {
+            update_clean_control_lfo(s, v, sr, &pan_l, &pan_r);
             float env_gain = 1.0f;
             if (is_gated) {
                 env_gain = trig_env_level(s, v);
@@ -1052,10 +1325,11 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
                 if (env_gain < 0.001f) continue;
             }
 
-            float lfo_val = lfo_tick(&s->pos_lfo[v], sr);
+            float lfo_val = vp->pos_lfo_rate > 0.01f ? s->clean_pos_lfo_value[v] : 0.0f;
             float target_pos = wrap_position(lfo_val * lfo_depth * (float)s->buffer_size, (float)s->buffer_size);
             if (write_follow > 0.01f) {
-                float wp = (float)wrap_index_any(s->write_pos - 4096, s->buffer_size);
+                const int lookback_samples = clean_lookback_samples_for_voice(s, vp);
+                float wp = (float)wrap_index_any(s->write_pos - lookback_samples, s->buffer_size);
                 target_pos = target_pos * (1.0f - write_follow) + wp * write_follow;
             }
 
@@ -1098,14 +1372,14 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
             float gain_a = s->xfade_table_a[fade_idx];
             float gain_b = s->xfade_table_b[fade_idx];
 
-            float sL = read_buffer_sinc(s, s->buffer_l, s->buffer_size, sc->head_a) * gain_a
-                      + read_buffer_sinc(s, s->buffer_l, s->buffer_size, sc->head_b) * gain_b;
-            float sR = read_buffer_sinc(s, s->buffer_r, s->buffer_size, sc->head_a) * gain_a
-                      + read_buffer_sinc(s, s->buffer_r, s->buffer_size, sc->head_b) * gain_b;
+            float sL = read_buffer_quality(s, s->buffer_l, s->buffer_size, sc->head_a, abs_scan_rate) * gain_a
+                      + read_buffer_quality(s, s->buffer_l, s->buffer_size, sc->head_b, abs_scan_rate) * gain_b;
+            float sR = read_buffer_quality(s, s->buffer_r, s->buffer_size, sc->head_a, abs_scan_rate) * gain_a
+                      + read_buffer_quality(s, s->buffer_r, s->buffer_size, sc->head_b, abs_scan_rate) * gain_b;
 
-            if (abs_scan_rate > 1.05f) {
-                sL = biquad_process(aa_l, biquad_process(aa2_l, biquad_process(aa3_l, sL)));
-                sR = biquad_process(aa_r, biquad_process(aa2_r, biquad_process(aa3_r, sR)));
+            if (scan_aa_stage_count > 0) {
+                sL = process_aa_stages(sL, scan_aa_stage_count, aa_l, aa2_l, aa3_l);
+                sR = process_aa_stages(sR, scan_aa_stage_count, aa_r, aa2_r, aa3_r);
             }
 
             if (blur > 0.01f) {
@@ -1129,6 +1403,7 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
 
     // ═══ Normal clean voice (speed > 0) ═══
     for (int i = 0; i < block_size; i++) {
+        update_clean_control_lfo(s, v, sr, &pan_l, &pan_r);
         float env_gain = 1.0f;
         if (is_gated) {
             env_gain = trig_env_level(s, v);
@@ -1136,8 +1411,10 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
             if (env_gain < 0.001f) continue;
         }
 
-        float lfo_val = lfo_tick(&s->pos_lfo[v], sr);
-        float lfo_offset = lfo_val * lfo_depth * (float)s->buffer_size;
+        const float lfo_val = vp->pos_lfo_rate > 0.01f
+            ? (s->clean_pos_lfo_value[v] - 0.5f) * 2.0f
+            : 0.0f;
+        float lfo_offset = lfo_val * lfo_depth * (float)s->buffer_size * 0.5f;
         int clean_pos_int = (int)s->clean_read_pos[v];
         if (clean_pos_int >= slice_len || clean_pos_int < 0) {
             clean_pos_int = wrap_index_any(clean_pos_int, slice_len);
@@ -1145,13 +1422,12 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
         float read_pos = wrap_position((float)slice_start + (float)clean_pos_int + lfo_offset,
                                        (float)s->buffer_size);
 
-        float sL = read_buffer_sinc(s, s->buffer_l, s->buffer_size, read_pos);
-        float sR = read_buffer_sinc(s, s->buffer_r, s->buffer_size, read_pos);
+        float sL = read_buffer_quality(s, s->buffer_l, s->buffer_size, read_pos, clean_abs_rate);
+        float sR = read_buffer_quality(s, s->buffer_r, s->buffer_size, read_pos, clean_abs_rate);
 
-        // 36 dB/oct cascaded anti-alias only when pitch/rate makes it necessary.
-        if (use_clean_aa) {
-            sL = biquad_process(aa_l, biquad_process(aa2_l, biquad_process(aa3_l, sL)));
-            sR = biquad_process(aa_r, biquad_process(aa2_r, biquad_process(aa3_r, sR)));
+        if (clean_aa_stage_count > 0) {
+            sL = process_aa_stages(sL, clean_aa_stage_count, aa_l, aa2_l, aa3_l);
+            sR = process_aa_stages(sR, clean_aa_stage_count, aa_r, aa2_r, aa3_r);
         }
 
         if (blur > 0.01f) {
@@ -1173,7 +1449,7 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
     }
 }
 
-// ═══════════════ Granular/Legacy Voice Processing ═══════════════
+// ═══════════════ Granular Voice Processing ═══════════════
 
 static void process_granular_voice(GranularState* s, int v, float* out_l, float* out_r, int block_size) {
     VoiceParams* vp = &s->voice[v];
@@ -1184,33 +1460,31 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
     int is_gated = vp->euclid_gated;
     float euclidSchedulerThrottle = is_gated ? 0.42f : 1.0f;
     int active_grain_count = s->active_grain_counts[v];
-    const int legacy_scheduler_idle =
-        !s->freeze &&
-        vp->mode == KESSHO_MODE_LEGACY &&
-        active_grain_count == 0 &&
-        s->silent_samples >= legacy_scheduler_silence_threshold(s);
 
     // Anti-alias: max absolute rate across active grains
     float max_abs_rate = 1.0f;
     for (int gi = 0; gi < active_grain_count; gi++) {
         Grain* grain = &pool[active_indices[gi]];
-        float ar = fabsf(grain->playback_rate);
+        float ar = fabsf(grain->playback_rate + grain->playback_rate_step * (float)grain->length * 0.5f);
         if (ar > max_abs_rate) max_abs_rate = ar;
     }
-    // 3-stage cascaded biquad (36 dB/oct)
     BiquadFilter* aa_l  = &s->anti_alias_l[v];
     BiquadFilter* aa_r  = &s->anti_alias_r[v];
     BiquadFilter* aa2_l = &s->anti_alias2_l[v];
     BiquadFilter* aa2_r = &s->anti_alias2_r[v];
     BiquadFilter* aa3_l = &s->anti_alias3_l[v];
     BiquadFilter* aa3_r = &s->anti_alias3_r[v];
+    const int aa_stage_count = anti_alias_stage_count_for_rate(s, max_abs_rate);
     biquad_update(aa_l, max_abs_rate);
     biquad_update(aa_r, max_abs_rate);
-    biquad_update(aa2_l, max_abs_rate);
-    biquad_update(aa2_r, max_abs_rate);
-    biquad_update(aa3_l, max_abs_rate);
-    biquad_update(aa3_r, max_abs_rate);
-    const int use_aa = max_abs_rate > 1.05f;
+    if (aa_stage_count > 1) {
+        biquad_update(aa2_l, max_abs_rate);
+        biquad_update(aa2_r, max_abs_rate);
+    }
+    if (aa_stage_count > 2) {
+        biquad_update(aa3_l, max_abs_rate);
+        biquad_update(aa3_r, max_abs_rate);
+    }
     const float buffer_size_f = (float)s->buffer_size;
 
     static const float TRIG_DENSITY_DECAY = 0.9997f;
@@ -1226,7 +1500,7 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
         }
 
         // Grain scheduling
-        if (s->initialized && !legacy_scheduler_idle) {
+        if (s->initialized) {
             s->samples_since_grain[v]++;
             s->samples_until_grain[v]--;
             if (s->samples_until_grain[v] <= 0) {
@@ -1257,19 +1531,27 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
             active_count++;
 
             const float read_pos = grain->position;
-            float sL = read_buffer_sinc_bounded(s, s->buffer_l, s->buffer_size, read_pos);
-            float sR = read_buffer_sinc_bounded(s, s->buffer_r, s->buffer_size, read_pos);
+            const float grain_abs_rate = fabsf(grain->playback_rate);
+            float sL = read_buffer_quality(s, s->buffer_l, s->buffer_size, read_pos, grain_abs_rate);
+            float sR = read_buffer_quality(s, s->buffer_r, s->buffer_size, read_pos, grain_abs_rate);
 
             float raw_env = grain_envelope(s, grain->start_sample, grain->length,
                                         grain->attack_smp, grain->decay_smp, s->grain_shape);
+            if (grain->tide_depth > 0.001f) {
+                const float phase = clampf((float)grain->start_sample / fmaxf(1.0f, (float)grain->length), 0.0f, 1.0f);
+                const float tide = 1.0f - grain->tide_depth * 0.5f
+                    + grain->tide_depth * (0.5f + 0.5f * sinf((phase + grain->tide_phase) * 6.2831853f));
+                raw_env *= tide;
+            }
             // One-pole envelope smoother — removes micro-discontinuities
             float env = grain->env_z1 + 0.005f * (raw_env - grain->env_z1);
             grain->env_z1 = env;
 
-            wet_l += sL * env * grain->pan_l;
-            wet_r += sR * env * grain->pan_r;
+            wet_l += sL * env * grain->gain * grain->pan_l;
+            wet_r += sR * env * grain->gain * grain->pan_r;
 
             grain->position = wrap_position(read_pos + grain->playback_rate, buffer_size_f);
+            grain->playback_rate += grain->playback_rate_step;
             grain->start_sample++;
             if (grain->start_sample >= grain->length) {
                 grain->active = 0;
@@ -1298,10 +1580,9 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
             wet_r *= comp;
         }
 
-        // Anti-alias (36 dB/oct cascaded biquads) only for non-unity playback rates.
-        if (use_aa) {
-            wet_l = biquad_process(aa_l, biquad_process(aa2_l, biquad_process(aa3_l, wet_l)));
-            wet_r = biquad_process(aa_r, biquad_process(aa2_r, biquad_process(aa3_r, wet_r)));
+        if (aa_stage_count > 0) {
+            wet_l = process_aa_stages(wet_l, aa_stage_count, aa_l, aa2_l, aa3_l);
+            wet_r = process_aa_stages(wet_r, aa_stage_count, aa_r, aa2_r, aa3_r);
         }
 
         // Blur
@@ -1358,8 +1639,6 @@ static void process_block_internal(
     }
 
     // ── Step 1: Write input to buffer ──
-    const int legacySilenceThreshold = legacy_scheduler_silence_threshold(s);
-    int legacyInputRearmed = 0;
     for (int i = 0; i < block_size; i++) {
         float in_l;
         float in_r;
@@ -1383,9 +1662,6 @@ static void process_block_internal(
                 s->buffer_r[s->write_pos] *= decay;
             }
         } else {
-            if (!s->freeze && s->silent_samples >= legacySilenceThreshold) {
-                legacyInputRearmed = 1;
-            }
             s->silent_samples = 0;
         }
 
@@ -1409,16 +1685,6 @@ static void process_block_internal(
             }
             s->write_pos++;
             if (s->write_pos >= s->buffer_size) s->write_pos = 0;
-        }
-    }
-
-    if (legacyInputRearmed && !s->freeze) {
-        for (int v = 0; v < KESSHO_NUM_VOICES; ++v) {
-            if (!s->voice[v].enabled || s->voice[v].mode != KESSHO_MODE_LEGACY || s->active_grain_counts[v] != 0) continue;
-            int interval = s->samples_per_grain[v];
-            if (interval < 1) interval = 1;
-            s->samples_since_grain[v] = 0;
-            s->samples_until_grain[v] = interval;
         }
     }
 
@@ -1466,14 +1732,8 @@ static void process_block_internal(
     }
 
     // ── Step 3: Feedback ──
-    float feedback_gain;
-    if (s->voice[0].mode == KESSHO_MODE_LEGACY) {
-        feedback_gain = s->legacy.feedback;
-        if (feedback_gain > 0.35f) feedback_gain = 0.35f;
-    } else {
-        feedback_gain = s->feedback;
-        if (feedback_gain > 0.85f) feedback_gain = 0.85f;
-    }
+    float feedback_gain = s->feedback;
+    if (feedback_gain > 0.85f) feedback_gain = 0.85f;
 
     if (feedback_gain > 0.001f) {
         static const float RMS_ATTACK = 0.001f;
@@ -1642,6 +1902,11 @@ int granular_init(float sample_rate, float buffer_seconds) {
     s->grain_shape = KESSHO_GRAIN_SHAPE_TRIANGLE;
     s->bus_diffusion = 0.0f;
     s->timing_randomness = 0.35f;
+    s->quality = 1;
+    s->max_total_grains_user = 48;
+    s->spray_macro = 0.0f;
+    s->cloud_macro = 0.0f;
+    s->pitch_macro = 0.0f;
     s->total_active_grains = 0;
     memset(s->active_grain_counts, 0, sizeof(s->active_grain_counts));
     s->silent_samples = 0;
@@ -1663,14 +1928,6 @@ int granular_init(float sample_rate, float buffer_seconds) {
     memset(&s->fb_lpf_r, 0, sizeof(OnePoleLPF));
     s->fb_rms = 0.0f;
 
-    // Legacy defaults
-    s->legacy.jitter = 10.0f;
-    s->legacy.probability = 0.8f;
-    s->legacy.pitch_mode = KESSHO_PITCH_HARMONIC;
-    s->legacy.pitch_spread = 2.0f;
-    s->legacy.max_grains = KESSHO_MAX_TOTAL_GRAINS;
-    s->legacy.feedback = 0.1f;
-
     // Per-voice init
     for (int v = 0; v < KESSHO_NUM_VOICES; v++) {
         VoiceParams* vp = &s->voice[v];
@@ -1686,6 +1943,20 @@ int granular_init(float sample_rate, float buffer_seconds) {
         vp->blur = 0.0f;
         vp->grain_oct = 0.0f;
         vp->spray = 0.3f;
+        vp->position_spray = 0.3f;
+        vp->timing_spray = 0.0f;
+        vp->lookback = 0.35f;
+        vp->write_guard = 0.3f;
+        vp->pitch_mode = CLOUD_PITCH_FIXED;
+        vp->pitch_spread = 0.0f;
+        vp->pitch_jitter_cents = 4.0f;
+        vp->pitch_quantize = 1.0f;
+        vp->reverse_chance = 0.0f;
+        vp->bloom = 0.0f;
+        vp->glide = 0.0f;
+        vp->cloud_style = CLOUD_STYLE_CLASSIC;
+        vp->anchor_pattern = 0;
+        vp->loop_crossfade_ms = 12.0f;
         vp->density = 20.0f;
         vp->grain_size = 80.0f;
         vp->pan = 0.0f;
@@ -1711,7 +1982,11 @@ int granular_init(float sample_rate, float buffer_seconds) {
         s->samples_per_grain[v] = (int)(sample_rate / 20.0f);
         s->samples_until_grain[v] = s->samples_per_grain[v];
         s->trig_density_mult[v] = 1.0f;
+        s->next_free_hint[v] = 0;
         s->clean_read_pos[v] = 0.0f;
+        s->clean_pan_lfo_value[v] = 0.5f;
+        s->clean_pos_lfo_value[v] = 0.0f;
+        s->clean_lfo_counter[v] = 0;
 
         // Trigger envelope
         s->trig_env_phase[v] = -1;
@@ -1720,6 +1995,7 @@ int granular_init(float sample_rate, float buffer_seconds) {
         s->trig_env_dec_cache[v] = 1.0f;
 
         s->last_grain_pos[v] = 0.0f;
+        s->anchor_step[v] = 0;
 
         // Euclidean overrides
         s->euclid_slice_override[v] = -1;
@@ -1919,6 +2195,16 @@ void granular_set_timing_randomness(float amount) {
     g_state->timing_randomness = clampf(amount, 0.0f, 1.0f);
 }
 
+void granular_set_quality_params(int quality, int max_grains, float spray_macro,
+                                 float cloud_macro, float pitch_macro) {
+    if (!g_state) return;
+    g_state->quality = clampi(quality, 0, 2);
+    g_state->max_total_grains_user = clampi(max_grains, 1, KESSHO_MAX_TOTAL_GRAINS);
+    g_state->spray_macro = clampf(spray_macro, 0.0f, 1.0f);
+    g_state->cloud_macro = clampf(cloud_macro, 0.0f, 1.0f);
+    g_state->pitch_macro = clampf(pitch_macro, 0.0f, 1.0f);
+}
+
 void granular_set_scale(const int* intervals, int count) {
     if (!g_state) return;
     g_state->scale_count = clampi(count, 0, KESSHO_MAX_SCALE_INTERVALS);
@@ -1983,7 +2269,7 @@ void granular_set_grain_shape(int shape) {
 void granular_set_voice_mode(int voice, int enabled, int mode) {
     if (!g_state || voice < 0 || voice >= KESSHO_NUM_VOICES) return;
     g_state->voice[voice].enabled = enabled;
-    g_state->voice[voice].mode = mode;
+    g_state->voice[voice].mode = mode <= KESSHO_MODE_CLEAN ? KESSHO_MODE_CLEAN : KESSHO_MODE_GRANULAR;
 }
 
 void granular_set_voice_position(int voice, int slice, float speed, float scan_rate,
@@ -2084,15 +2370,38 @@ void granular_set_voice_euclid_muted(int voice, int muted) {
     g_state->voice[voice].euclid_muted = muted;
 }
 
+void granular_set_voice_advanced(int voice, float position_spray, float timing_spray,
+                                 float lookback, float write_guard, int pitch_mode,
+                                 float pitch_spread, float pitch_jitter_cents,
+                                 float pitch_quantize, float reverse_chance,
+                                 float bloom, float glide, int cloud_style,
+                                 int anchor_pattern, float loop_crossfade_ms) {
+    if (!g_state || voice < 0 || voice >= KESSHO_NUM_VOICES) return;
+    VoiceParams* vp = &g_state->voice[voice];
+    vp->position_spray = clampf(position_spray, 0.0f, 1.0f);
+    vp->timing_spray = clampf(timing_spray, 0.0f, 1.0f);
+    vp->lookback = clampf(lookback, 0.0f, 1.0f);
+    vp->write_guard = clampf(write_guard, 0.0f, 1.0f);
+    vp->pitch_mode = clampi(pitch_mode, CLOUD_PITCH_FIXED, CLOUD_PITCH_FREE);
+    vp->pitch_spread = clampf(pitch_spread, 0.0f, 24.0f);
+    vp->pitch_jitter_cents = clampf(pitch_jitter_cents, 0.0f, 50.0f);
+    vp->pitch_quantize = clampf(pitch_quantize, 0.0f, 1.0f);
+    vp->reverse_chance = clampf(reverse_chance, 0.0f, 1.0f);
+    vp->bloom = clampf(bloom, 0.0f, 1.0f);
+    vp->glide = clampf(glide, 0.0f, 1.0f);
+    vp->cloud_style = clampi(cloud_style, CLOUD_STYLE_CLASSIC, CLOUD_STYLE_STARS);
+    vp->anchor_pattern = clampi(anchor_pattern, 0, 3);
+    vp->loop_crossfade_ms = clampf(loop_crossfade_ms, 4.0f, 80.0f);
+}
+
 void granular_set_legacy_params(float jitter, float probability, int pitch_mode,
                                float pitch_spread, int max_grains, float feedback) {
-    if (!g_state) return;
-    g_state->legacy.jitter = jitter;
-    g_state->legacy.probability = clampf(probability, 0.0f, 1.0f);
-    g_state->legacy.pitch_mode = pitch_mode;
-    g_state->legacy.pitch_spread = pitch_spread;
-    g_state->legacy.max_grains = clampi(max_grains, 0, KESSHO_MAX_TOTAL_GRAINS);
-    g_state->legacy.feedback = clampf(feedback, 0.0f, 0.35f);
+    (void)jitter;
+    (void)probability;
+    (void)pitch_mode;
+    (void)pitch_spread;
+    (void)max_grains;
+    (void)feedback;
 }
 
 void granular_euclid_trigger(int voice, float velocity, int slice_override,
@@ -2186,6 +2495,24 @@ void granular_get_voice_positions(float* out) {
 
 int granular_get_active_grain_count(void) {
     return g_state ? g_state->total_active_grains : 0;
+}
+
+int granular_get_visual_events(KesshoGranularVisualEvent* out_events, int max_events) {
+    if (!g_state || !out_events || max_events <= 0) return 0;
+    uint32_t write = g_state->visual_event_write;
+    uint32_t read = g_state->visual_event_read_shadow;
+    uint32_t available = write - read;
+    if (available > KESSHO_GRANULAR_VISUAL_EVENT_CAPACITY) {
+        available = KESSHO_GRANULAR_VISUAL_EVENT_CAPACITY;
+    }
+    uint32_t request = (uint32_t)max_events;
+    uint32_t count = available < request ? available : request;
+    uint32_t start = write - count;
+    for (uint32_t index = 0; index < count; ++index) {
+        out_events[index] = g_state->visual_events[(start + index) % KESSHO_GRANULAR_VISUAL_EVENT_CAPACITY];
+    }
+    g_state->visual_event_read_shadow = write;
+    return (int)count;
 }
 
 float* granular_get_buffer_ptr_l(void) {
@@ -2318,6 +2645,13 @@ void granular_instance_set_timing_randomness(KesshoGranularInstance* instance, f
     granular_set_timing_randomness(amount);
 }
 
+void granular_instance_set_quality_params(KesshoGranularInstance* instance, int quality, int max_grains,
+                                          float spray_macro, float cloud_macro, float pitch_macro) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_quality_params(quality, max_grains, spray_macro, cloud_macro, pitch_macro);
+}
+
 void granular_instance_set_voice_mode(KesshoGranularInstance* instance, int voice, int enabled, int mode) {
     if (!instance) return;
     ScopedGranularState scoped(instance->state);
@@ -2364,6 +2698,19 @@ void granular_instance_set_voice_euclid_muted(KesshoGranularInstance* instance, 
     granular_set_voice_euclid_muted(voice, muted);
 }
 
+void granular_instance_set_voice_advanced(KesshoGranularInstance* instance, int voice, float position_spray,
+                                          float timing_spray, float lookback, float write_guard,
+                                          int pitch_mode, float pitch_spread, float pitch_jitter_cents,
+                                          float pitch_quantize, float reverse_chance, float bloom, float glide,
+                                          int cloud_style, int anchor_pattern, float loop_crossfade_ms) {
+    if (!instance) return;
+    ScopedGranularState scoped(instance->state);
+    granular_set_voice_advanced(voice, position_spray, timing_spray, lookback, write_guard,
+                                pitch_mode, pitch_spread, pitch_jitter_cents, pitch_quantize,
+                                reverse_chance, bloom, glide, cloud_style, anchor_pattern,
+                                loop_crossfade_ms);
+}
+
 void granular_instance_set_legacy_params(KesshoGranularInstance* instance, float jitter, float probability,
                                          int pitch_mode, float pitch_spread, int max_grains, float feedback) {
     if (!instance) return;
@@ -2401,6 +2748,15 @@ int granular_instance_get_active_grain_count(KesshoGranularInstance* instance) {
     if (!instance) return 0;
     ScopedGranularState scoped(instance->state);
     return granular_get_active_grain_count();
+}
+
+int granular_instance_get_visual_events(
+    KesshoGranularInstance* instance,
+    KesshoGranularVisualEvent* out_events,
+    int max_events) {
+    if (!instance) return 0;
+    ScopedGranularState scoped(instance->state);
+    return granular_get_visual_events(out_events, max_events);
 }
 
 float* granular_instance_get_buffer_ptr_l(KesshoGranularInstance* instance) {

@@ -534,7 +534,7 @@ function granularPatch() {
     granularV1GrainSize: 120,
     granularV1Gain: 0.55,
     granularV2Enabled: true,
-    granularV2Mode: 'legacy',
+    granularV2Mode: 'granular',
     granularV2Density: 40,
     granularV2GrainSize: 180,
     granularV2Pitch: 7,

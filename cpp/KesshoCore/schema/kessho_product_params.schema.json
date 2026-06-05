@@ -1,396 +1,3536 @@
 {
   "params": [
-    { "name": "TransportRunning", "path": "transport.running", "type": "bool", "id": 1 },
-    { "name": "TransportBpm", "path": "transport.bpm", "type": "float", "id": 2, "min": 1, "max": 400 },
-    { "name": "TransportBeatsPerBar", "path": "transport.beatsPerBar", "type": "uint", "id": 3, "min": 1, "max": 32 },
-    { "name": "TransportBarsPerPhrase", "path": "transport.barsPerPhrase", "type": "uint", "id": 4, "min": 1, "max": 256 },
-    { "name": "TransportSwing", "path": "transport.swing", "type": "float", "id": 5, "min": 0, "max": 1 },
-    { "name": "HarmonyRootMidi", "path": "harmony.rootMidi", "type": "float", "id": 20, "min": 0, "max": 127 },
-    { "name": "HarmonyScaleId", "path": "harmony.scaleId", "type": "uint", "id": 21 },
-    { "name": "HarmonyTension", "path": "harmony.tension", "type": "float", "id": 22, "min": 0, "max": 1 },
-    { "name": "JourneyEnabled", "path": "journey.enabled", "type": "bool", "id": 40 },
-    { "name": "JourneyMorphPhase", "path": "journey.morphPhase", "type": "float", "id": 41, "min": 0, "max": 1 },
-    { "name": "JourneyMorphRateBars", "path": "journey.morphRateBars", "type": "float", "id": 42, "min": 0.25, "max": 128 },
-    { "name": "SourceEnabled", "path": "sources.*.enabled", "type": "bool", "id": 100 },
-    { "name": "SourceLevel", "path": "sources.*.level", "type": "float", "id": 101, "min": 0, "max": 1.5 },
-    { "name": "SourceMorph", "path": "sources.*.morph", "type": "float", "id": 102, "min": 0, "max": 1 },
-    { "name": "SourceDistance", "path": "sources.*.distance", "type": "float", "id": 103, "min": 0, "max": 1 },
-    { "name": "SourceExpression", "path": "sources.*.expression", "type": "float", "id": 104, "min": 0, "max": 1 },
-    { "name": "SourceDryGain", "path": "sources.*.dryGain", "type": "float", "id": 105, "min": 0, "max": 2 },
-    { "name": "SourceReverbSend", "path": "sources.*.reverbSend", "type": "float", "id": 106, "min": 0, "max": 2 },
-    { "name": "SourceDelayASend", "path": "sources.*.delayASend", "type": "float", "id": 107, "min": 0, "max": 2 },
-    { "name": "SourceDelayBSend", "path": "sources.*.delayBSend", "type": "float", "id": 108, "min": 0, "max": 2 },
-    { "name": "SourceGranularSend", "path": "sources.*.granularSend", "type": "float", "id": 109, "min": 0, "max": 2 },
-    { "name": "SourceDiffuseSend", "path": "sources.*.diffuseSend", "type": "float", "id": 113, "min": 0, "max": 2 },
-    { "name": "SourcePostLpfHz", "path": "sources.*.postLpfHz", "type": "float", "id": 110, "min": 20, "max": 20000 },
-    { "name": "SourceStereoWidth", "path": "sources.*.stereoWidth", "type": "float", "id": 111, "min": 0, "max": 1 },
-    { "name": "SourcePostLpfKeyTracking", "path": "sources.*.postLpfKeyTracking", "type": "float", "id": 112, "min": 0, "max": 1 },
-    { "name": "SourceAttackSeconds", "path": "sources.*.attackSeconds", "type": "float", "id": 114, "min": 0.001, "max": 2 },
-    { "name": "SourceDecaySeconds", "path": "sources.*.decaySeconds", "type": "float", "id": 115, "min": 0.01, "max": 4 },
-    { "name": "SourceSustain", "path": "sources.*.sustain", "type": "float", "id": 116, "min": 0, "max": 1 },
-    { "name": "SourceHoldSeconds", "path": "sources.*.holdSeconds", "type": "float", "id": 117, "min": 0, "max": 20 },
-    { "name": "SourceReleaseSeconds", "path": "sources.*.releaseSeconds", "type": "float", "id": 118, "min": 0.01, "max": 8 },
-    { "name": "SourceLeadEnvelopeOverrideEnabled", "path": "sources.*.leadEnvelopeOverrideEnabled", "type": "bool", "id": 119 },
-    { "name": "SourceLeadAlgorithmPresetAEnabled", "path": "sources.*.leadAlgorithmPresetAEnabled", "type": "bool", "id": 120 },
-    { "name": "SourceLeadVibratoDepth", "path": "sources.*.leadVibratoDepth", "type": "float", "id": 121, "min": 0, "max": 1 },
-    { "name": "SourceLeadVibratoRate", "path": "sources.*.leadVibratoRate", "type": "float", "id": 122, "min": 0, "max": 1 },
-    { "name": "SourceLeadGlide", "path": "sources.*.leadGlide", "type": "float", "id": 123, "min": 0, "max": 1 },
-    { "name": "SequencerLaneEnabled", "path": "sequencers.*.lanes.*.enabled", "type": "bool", "id": 200 },
-    { "name": "SequencerLaneTargetSource", "path": "sequencers.*.lanes.*.targetSourceId", "type": "uint", "id": 201 },
-    { "name": "SequencerLaneStepCount", "path": "sequencers.*.lanes.*.stepCount", "type": "uint", "id": 202, "min": 1, "max": 64 },
-    { "name": "SequencerLaneFillCount", "path": "sequencers.*.lanes.*.fillCount", "type": "uint", "id": 203, "min": 0, "max": 64 },
-    { "name": "SequencerLaneRotation", "path": "sequencers.*.lanes.*.rotation", "type": "int", "id": 204, "min": -64, "max": 64 },
-    { "name": "SequencerLaneClockDivision", "path": "sequencers.*.lanes.*.clockDivision", "type": "uint", "id": 205, "min": 1, "max": 128 },
-    { "name": "SequencerLaneSwing", "path": "sequencers.*.lanes.*.swing", "type": "float", "id": 206, "min": 0, "max": 1 },
-    { "name": "SequencerLaneProbability", "path": "sequencers.*.lanes.*.probability", "type": "float", "id": 207, "min": 0, "max": 1 },
-    { "name": "SequencerLaneRatchet", "path": "sequencers.*.lanes.*.ratchet", "type": "uint", "id": 208, "min": 1, "max": 8 },
-    { "name": "SequencerLaneTrigCondition", "path": "sequencers.*.lanes.*.trigCondition", "type": "uint", "id": 209 },
-    { "name": "SequencerLaneMidiNote", "path": "sequencers.*.lanes.*.midiNote", "type": "float", "id": 210, "min": 0, "max": 127 },
-    { "name": "SequencerLaneVelocity", "path": "sequencers.*.lanes.*.velocity", "type": "float", "id": 211, "min": 0, "max": 1 },
-    { "name": "SequencerLaneHoldSeconds", "path": "sequencers.*.lanes.*.holdSeconds", "type": "float", "id": 212, "min": 0.001, "max": 20 },
-    { "name": "SequencerLaneSeed", "path": "sequencers.*.lanes.*.seed", "type": "uint", "id": 213 },
-    { "name": "SequencerLanePitchBindingMode", "path": "sequencers.*.lanes.*.pitchBindingMode", "type": "uint", "id": 214, "min": 0, "max": 1 },
-    { "name": "SequencerLaneInitialStartDelaySeconds", "path": "sequencers.*.lanes.*.initialStartDelaySeconds", "type": "float", "id": 215, "min": -1, "max": 64 },
-    { "name": "SequencerLaneTempoMultiplier", "path": "sequencers.*.lanes.*.tempoMultiplier", "type": "float", "id": 216, "min": 0.25, "max": 12 },
-    { "name": "SequencerLaneMorph", "path": "sequencers.*.lanes.*.morph", "type": "float", "id": 217, "min": 0, "max": 1 },
-    { "name": "SequencerLaneDistance", "path": "sequencers.*.lanes.*.distance", "type": "float", "id": 218, "min": 0, "max": 1 },
-    { "name": "SequencerLaneExpression", "path": "sequencers.*.lanes.*.expression", "type": "float", "id": 219, "min": 0, "max": 1 },
-    { "name": "SequencerLanePitchMode", "path": "sequencers.*.lanes.*.pitchMode", "type": "uint", "id": 220, "min": 0, "max": 2 },
-    { "name": "SequencerLanePitchRoot", "path": "sequencers.*.lanes.*.pitchRoot", "type": "float", "id": 221, "min": 0, "max": 127 },
-    { "name": "SequencerLanePitchScale", "path": "sequencers.*.lanes.*.pitchScale", "type": "uint", "id": 222, "min": 0, "max": 18 },
-    { "name": "SequencerLaneNoteRangeMin", "path": "sequencers.*.lanes.*.noteRangeMin", "type": "float", "id": 223, "min": 24, "max": 108 },
-    { "name": "SequencerLaneNoteRangeMax", "path": "sequencers.*.lanes.*.noteRangeMax", "type": "float", "id": 224, "min": 24, "max": 108 },
-    { "name": "FxGranularMix", "path": "fx.granular.mix", "type": "float", "id": 300, "min": 0, "max": 4 },
-    { "name": "FxGranularEnabled", "path": "fx.granular.enabled", "type": "bool", "id": 800 },
-    { "name": "FxGranularFreeze", "path": "fx.granular.freeze", "type": "bool", "id": 801 },
-    { "name": "FxGranularFreezeWithFeedback", "path": "fx.granular.freezeWithFeedback", "type": "bool", "id": 802 },
-    { "name": "FxGranularFeedback", "path": "fx.granular.feedback", "type": "float", "id": 803, "min": 0, "max": 0.85 },
-    { "name": "FxGranularFeedbackLpfHz", "path": "fx.granular.feedbackLpfHz", "type": "float", "id": 804, "min": 200, "max": 12000 },
-    { "name": "FxGranularReverbLpfHz", "path": "fx.granular.reverbLpfHz", "type": "float", "id": 816, "min": 200, "max": 12000 },
-    { "name": "FxGranularOutputLpfHz", "path": "fx.granular.outputLpfHz", "type": "float", "id": 817, "min": 200, "max": 12000 },
-    { "name": "FxGranularBufferSeconds", "path": "fx.granular.bufferSeconds", "type": "float", "id": 805, "min": 1, "max": 32 },
-    { "name": "FxGranularGrainShape", "path": "fx.granular.grainShape", "type": "uint", "id": 806, "min": 0, "max": 3 },
-    { "name": "FxGranularBusDiffusion", "path": "fx.granular.busDiffusion", "type": "float", "id": 807, "min": 0, "max": 1 },
-    { "name": "FxGranularTimingRandomness", "path": "fx.granular.timingRandomness", "type": "float", "id": 808, "min": 0, "max": 1 },
-    { "name": "FxGranularChordBias", "path": "fx.granular.chordBias", "type": "float", "id": 809, "min": 0, "max": 1 },
-    { "name": "FxGranularLegacyJitterMs", "path": "fx.granular.legacy.jitterMs", "type": "float", "id": 810, "min": 0, "max": 30 },
-    { "name": "FxGranularLegacyProbability", "path": "fx.granular.legacy.probability", "type": "float", "id": 811, "min": 0, "max": 1 },
-    { "name": "FxGranularLegacyPitchMode", "path": "fx.granular.legacy.pitchMode", "type": "uint", "id": 812, "min": 0, "max": 1 },
-    { "name": "FxGranularLegacyPitchSpread", "path": "fx.granular.legacy.pitchSpread", "type": "float", "id": 813, "min": 0, "max": 12 },
-    { "name": "FxGranularLegacyMaxGrains", "path": "fx.granular.legacy.maxGrains", "type": "uint", "id": 814, "min": 0, "max": 64 },
-    { "name": "FxGranularLegacyFeedback", "path": "fx.granular.legacy.feedback", "type": "float", "id": 815, "min": 0, "max": 0.35 },
-    { "name": "FxGranularV1Enabled", "path": "fx.granular.voices.0.enabled", "type": "bool", "id": 820 },
-    { "name": "FxGranularV1Mode", "path": "fx.granular.voices.0.mode", "type": "uint", "id": 821, "min": 0, "max": 2 },
-    { "name": "FxGranularV1Slice", "path": "fx.granular.voices.0.slice", "type": "uint", "id": 822, "min": 0, "max": 15 },
-    { "name": "FxGranularV1Speed", "path": "fx.granular.voices.0.speed", "type": "float", "id": 823, "min": 0, "max": 4 },
-    { "name": "FxGranularV1ScanRate", "path": "fx.granular.voices.0.scanRate", "type": "float", "id": 824, "min": 0.25, "max": 4 },
-    { "name": "FxGranularV1Reverse", "path": "fx.granular.voices.0.reverse", "type": "bool", "id": 825 },
-    { "name": "FxGranularV1Pitch", "path": "fx.granular.voices.0.pitch", "type": "float", "id": 826, "min": -24, "max": 24 },
-    { "name": "FxGranularV1WriteFollow", "path": "fx.granular.voices.0.writeFollow", "type": "float", "id": 827, "min": 0, "max": 1 },
-    { "name": "FxGranularV1Density", "path": "fx.granular.voices.0.density", "type": "float", "id": 828, "min": 1, "max": 64 },
-    { "name": "FxGranularV1GrainSizeMs", "path": "fx.granular.voices.0.grainSizeMs", "type": "float", "id": 829, "min": 10, "max": 500 },
-    { "name": "FxGranularV1Spray", "path": "fx.granular.voices.0.spray", "type": "float", "id": 830, "min": 0, "max": 1 },
-    { "name": "FxGranularV1GrainOctaveProbability", "path": "fx.granular.voices.0.grainOctaveProbability", "type": "float", "id": 831, "min": 0, "max": 1 },
-    { "name": "FxGranularV1AttackSeconds", "path": "fx.granular.voices.0.attackSeconds", "type": "float", "id": 832, "min": 0.001, "max": 0.5 },
-    { "name": "FxGranularV1DecaySeconds", "path": "fx.granular.voices.0.decaySeconds", "type": "float", "id": 833, "min": 0.01, "max": 4 },
-    { "name": "FxGranularV1Gain", "path": "fx.granular.voices.0.gain", "type": "float", "id": 834, "min": 0, "max": 1 },
-    { "name": "FxGranularV1Pan", "path": "fx.granular.voices.0.pan", "type": "float", "id": 835, "min": -1, "max": 1 },
-    { "name": "FxGranularV1Blur", "path": "fx.granular.voices.0.blur", "type": "float", "id": 836, "min": 0, "max": 1 },
-    { "name": "FxGranularV1StereoSpread", "path": "fx.granular.voices.0.stereoSpread", "type": "float", "id": 837, "min": 0, "max": 1 },
-    { "name": "FxGranularV1PositionLfoRate", "path": "fx.granular.voices.0.positionLfoRate", "type": "float", "id": 838, "min": 0, "max": 1 },
-    { "name": "FxGranularV1PositionLfoDepth", "path": "fx.granular.voices.0.positionLfoDepth", "type": "float", "id": 839, "min": 0, "max": 1 },
-    { "name": "FxGranularV1PanLfoRate", "path": "fx.granular.voices.0.panLfoRate", "type": "float", "id": 840, "min": 0, "max": 1 },
-    { "name": "FxGranularV1ReverseLfoRate", "path": "fx.granular.voices.0.reverseLfoRate", "type": "float", "id": 841, "min": 0, "max": 1 },
-    { "name": "FxGranularV1RecordLfoRate", "path": "fx.granular.voices.0.recordLfoRate", "type": "float", "id": 842, "min": 0, "max": 1 },
-    { "name": "FxGranularV1EuclidGated", "path": "fx.granular.voices.0.euclidGated", "type": "bool", "id": 843 },
-    { "name": "FxGranularV1EuclidMuted", "path": "fx.granular.voices.0.euclidMuted", "type": "bool", "id": 844 },
-    { "name": "FxGranularV2Enabled", "path": "fx.granular.voices.1.enabled", "type": "bool", "id": 845 },
-    { "name": "FxGranularV2Mode", "path": "fx.granular.voices.1.mode", "type": "uint", "id": 846, "min": 0, "max": 2 },
-    { "name": "FxGranularV2Slice", "path": "fx.granular.voices.1.slice", "type": "uint", "id": 847, "min": 0, "max": 15 },
-    { "name": "FxGranularV2Speed", "path": "fx.granular.voices.1.speed", "type": "float", "id": 848, "min": 0, "max": 4 },
-    { "name": "FxGranularV2ScanRate", "path": "fx.granular.voices.1.scanRate", "type": "float", "id": 849, "min": 0.25, "max": 4 },
-    { "name": "FxGranularV2Reverse", "path": "fx.granular.voices.1.reverse", "type": "bool", "id": 850 },
-    { "name": "FxGranularV2Pitch", "path": "fx.granular.voices.1.pitch", "type": "float", "id": 851, "min": -24, "max": 24 },
-    { "name": "FxGranularV2WriteFollow", "path": "fx.granular.voices.1.writeFollow", "type": "float", "id": 852, "min": 0, "max": 1 },
-    { "name": "FxGranularV2Density", "path": "fx.granular.voices.1.density", "type": "float", "id": 853, "min": 1, "max": 64 },
-    { "name": "FxGranularV2GrainSizeMs", "path": "fx.granular.voices.1.grainSizeMs", "type": "float", "id": 854, "min": 10, "max": 500 },
-    { "name": "FxGranularV2Spray", "path": "fx.granular.voices.1.spray", "type": "float", "id": 855, "min": 0, "max": 1 },
-    { "name": "FxGranularV2GrainOctaveProbability", "path": "fx.granular.voices.1.grainOctaveProbability", "type": "float", "id": 856, "min": 0, "max": 1 },
-    { "name": "FxGranularV2AttackSeconds", "path": "fx.granular.voices.1.attackSeconds", "type": "float", "id": 857, "min": 0.001, "max": 0.5 },
-    { "name": "FxGranularV2DecaySeconds", "path": "fx.granular.voices.1.decaySeconds", "type": "float", "id": 858, "min": 0.01, "max": 4 },
-    { "name": "FxGranularV2Gain", "path": "fx.granular.voices.1.gain", "type": "float", "id": 859, "min": 0, "max": 1 },
-    { "name": "FxGranularV2Pan", "path": "fx.granular.voices.1.pan", "type": "float", "id": 860, "min": -1, "max": 1 },
-    { "name": "FxGranularV2Blur", "path": "fx.granular.voices.1.blur", "type": "float", "id": 861, "min": 0, "max": 1 },
-    { "name": "FxGranularV2StereoSpread", "path": "fx.granular.voices.1.stereoSpread", "type": "float", "id": 862, "min": 0, "max": 1 },
-    { "name": "FxGranularV2PositionLfoRate", "path": "fx.granular.voices.1.positionLfoRate", "type": "float", "id": 863, "min": 0, "max": 1 },
-    { "name": "FxGranularV2PositionLfoDepth", "path": "fx.granular.voices.1.positionLfoDepth", "type": "float", "id": 864, "min": 0, "max": 1 },
-    { "name": "FxGranularV2PanLfoRate", "path": "fx.granular.voices.1.panLfoRate", "type": "float", "id": 865, "min": 0, "max": 1 },
-    { "name": "FxGranularV2ReverseLfoRate", "path": "fx.granular.voices.1.reverseLfoRate", "type": "float", "id": 866, "min": 0, "max": 1 },
-    { "name": "FxGranularV2RecordLfoRate", "path": "fx.granular.voices.1.recordLfoRate", "type": "float", "id": 867, "min": 0, "max": 1 },
-    { "name": "FxGranularV2EuclidGated", "path": "fx.granular.voices.1.euclidGated", "type": "bool", "id": 868 },
-    { "name": "FxGranularV2EuclidMuted", "path": "fx.granular.voices.1.euclidMuted", "type": "bool", "id": 869 },
-    { "name": "FxGranularV3Enabled", "path": "fx.granular.voices.2.enabled", "type": "bool", "id": 870 },
-    { "name": "FxGranularV3Mode", "path": "fx.granular.voices.2.mode", "type": "uint", "id": 871, "min": 0, "max": 2 },
-    { "name": "FxGranularV3Slice", "path": "fx.granular.voices.2.slice", "type": "uint", "id": 872, "min": 0, "max": 15 },
-    { "name": "FxGranularV3Speed", "path": "fx.granular.voices.2.speed", "type": "float", "id": 873, "min": 0, "max": 4 },
-    { "name": "FxGranularV3ScanRate", "path": "fx.granular.voices.2.scanRate", "type": "float", "id": 874, "min": 0.25, "max": 4 },
-    { "name": "FxGranularV3Reverse", "path": "fx.granular.voices.2.reverse", "type": "bool", "id": 875 },
-    { "name": "FxGranularV3Pitch", "path": "fx.granular.voices.2.pitch", "type": "float", "id": 876, "min": -24, "max": 24 },
-    { "name": "FxGranularV3WriteFollow", "path": "fx.granular.voices.2.writeFollow", "type": "float", "id": 877, "min": 0, "max": 1 },
-    { "name": "FxGranularV3Density", "path": "fx.granular.voices.2.density", "type": "float", "id": 878, "min": 1, "max": 64 },
-    { "name": "FxGranularV3GrainSizeMs", "path": "fx.granular.voices.2.grainSizeMs", "type": "float", "id": 879, "min": 10, "max": 500 },
-    { "name": "FxGranularV3Spray", "path": "fx.granular.voices.2.spray", "type": "float", "id": 880, "min": 0, "max": 1 },
-    { "name": "FxGranularV3GrainOctaveProbability", "path": "fx.granular.voices.2.grainOctaveProbability", "type": "float", "id": 881, "min": 0, "max": 1 },
-    { "name": "FxGranularV3AttackSeconds", "path": "fx.granular.voices.2.attackSeconds", "type": "float", "id": 882, "min": 0.001, "max": 0.5 },
-    { "name": "FxGranularV3DecaySeconds", "path": "fx.granular.voices.2.decaySeconds", "type": "float", "id": 883, "min": 0.01, "max": 4 },
-    { "name": "FxGranularV3Gain", "path": "fx.granular.voices.2.gain", "type": "float", "id": 884, "min": 0, "max": 1 },
-    { "name": "FxGranularV3Pan", "path": "fx.granular.voices.2.pan", "type": "float", "id": 885, "min": -1, "max": 1 },
-    { "name": "FxGranularV3Blur", "path": "fx.granular.voices.2.blur", "type": "float", "id": 886, "min": 0, "max": 1 },
-    { "name": "FxGranularV3StereoSpread", "path": "fx.granular.voices.2.stereoSpread", "type": "float", "id": 887, "min": 0, "max": 1 },
-    { "name": "FxGranularV3PositionLfoRate", "path": "fx.granular.voices.2.positionLfoRate", "type": "float", "id": 888, "min": 0, "max": 1 },
-    { "name": "FxGranularV3PositionLfoDepth", "path": "fx.granular.voices.2.positionLfoDepth", "type": "float", "id": 889, "min": 0, "max": 1 },
-    { "name": "FxGranularV3PanLfoRate", "path": "fx.granular.voices.2.panLfoRate", "type": "float", "id": 890, "min": 0, "max": 1 },
-    { "name": "FxGranularV3ReverseLfoRate", "path": "fx.granular.voices.2.reverseLfoRate", "type": "float", "id": 891, "min": 0, "max": 1 },
-    { "name": "FxGranularV3RecordLfoRate", "path": "fx.granular.voices.2.recordLfoRate", "type": "float", "id": 892, "min": 0, "max": 1 },
-    { "name": "FxGranularV3EuclidGated", "path": "fx.granular.voices.2.euclidGated", "type": "bool", "id": 893 },
-    { "name": "FxGranularV3EuclidMuted", "path": "fx.granular.voices.2.euclidMuted", "type": "bool", "id": 894 },
-    { "name": "FxGranularV4Enabled", "path": "fx.granular.voices.3.enabled", "type": "bool", "id": 895 },
-    { "name": "FxGranularV4Mode", "path": "fx.granular.voices.3.mode", "type": "uint", "id": 896, "min": 0, "max": 2 },
-    { "name": "FxGranularV4Slice", "path": "fx.granular.voices.3.slice", "type": "uint", "id": 897, "min": 0, "max": 15 },
-    { "name": "FxGranularV4Speed", "path": "fx.granular.voices.3.speed", "type": "float", "id": 898, "min": 0, "max": 4 },
-    { "name": "FxGranularV4ScanRate", "path": "fx.granular.voices.3.scanRate", "type": "float", "id": 899, "min": 0.25, "max": 4 },
-    { "name": "FxGranularV4Reverse", "path": "fx.granular.voices.3.reverse", "type": "bool", "id": 900 },
-    { "name": "FxGranularV4Pitch", "path": "fx.granular.voices.3.pitch", "type": "float", "id": 901, "min": -24, "max": 24 },
-    { "name": "FxGranularV4WriteFollow", "path": "fx.granular.voices.3.writeFollow", "type": "float", "id": 902, "min": 0, "max": 1 },
-    { "name": "FxGranularV4Density", "path": "fx.granular.voices.3.density", "type": "float", "id": 903, "min": 1, "max": 64 },
-    { "name": "FxGranularV4GrainSizeMs", "path": "fx.granular.voices.3.grainSizeMs", "type": "float", "id": 904, "min": 10, "max": 500 },
-    { "name": "FxGranularV4Spray", "path": "fx.granular.voices.3.spray", "type": "float", "id": 905, "min": 0, "max": 1 },
-    { "name": "FxGranularV4GrainOctaveProbability", "path": "fx.granular.voices.3.grainOctaveProbability", "type": "float", "id": 906, "min": 0, "max": 1 },
-    { "name": "FxGranularV4AttackSeconds", "path": "fx.granular.voices.3.attackSeconds", "type": "float", "id": 907, "min": 0.001, "max": 0.5 },
-    { "name": "FxGranularV4DecaySeconds", "path": "fx.granular.voices.3.decaySeconds", "type": "float", "id": 908, "min": 0.01, "max": 4 },
-    { "name": "FxGranularV4Gain", "path": "fx.granular.voices.3.gain", "type": "float", "id": 909, "min": 0, "max": 1 },
-    { "name": "FxGranularV4Pan", "path": "fx.granular.voices.3.pan", "type": "float", "id": 910, "min": -1, "max": 1 },
-    { "name": "FxGranularV4Blur", "path": "fx.granular.voices.3.blur", "type": "float", "id": 911, "min": 0, "max": 1 },
-    { "name": "FxGranularV4StereoSpread", "path": "fx.granular.voices.3.stereoSpread", "type": "float", "id": 912, "min": 0, "max": 1 },
-    { "name": "FxGranularV4PositionLfoRate", "path": "fx.granular.voices.3.positionLfoRate", "type": "float", "id": 913, "min": 0, "max": 1 },
-    { "name": "FxGranularV4PositionLfoDepth", "path": "fx.granular.voices.3.positionLfoDepth", "type": "float", "id": 914, "min": 0, "max": 1 },
-    { "name": "FxGranularV4PanLfoRate", "path": "fx.granular.voices.3.panLfoRate", "type": "float", "id": 915, "min": 0, "max": 1 },
-    { "name": "FxGranularV4ReverseLfoRate", "path": "fx.granular.voices.3.reverseLfoRate", "type": "float", "id": 916, "min": 0, "max": 1 },
-    { "name": "FxGranularV4RecordLfoRate", "path": "fx.granular.voices.3.recordLfoRate", "type": "float", "id": 917, "min": 0, "max": 1 },
-    { "name": "FxGranularV4EuclidGated", "path": "fx.granular.voices.3.euclidGated", "type": "bool", "id": 918 },
-    { "name": "FxGranularV4EuclidMuted", "path": "fx.granular.voices.3.euclidMuted", "type": "bool", "id": 919 },
-    { "name": "FxDelayAMix", "path": "fx.delayA.mix", "type": "float", "id": 301, "min": 0, "max": 1 },
-    { "name": "FxDelayBMix", "path": "fx.delayB.mix", "type": "float", "id": 302, "min": 0, "max": 1 },
-    { "name": "FxReverbMix", "path": "fx.reverb.mix", "type": "float", "id": 303, "min": 0, "max": 1 },
-    { "name": "FxSpectralFreezeMix", "path": "fx.spectralFreeze.mix", "type": "float", "id": 304, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDrive", "path": "fx.dynamics.drive", "type": "float", "id": 305, "min": 0, "max": 1 },
-    { "name": "FxDelayAEnabled", "path": "fx.delayA.enabled", "type": "bool", "id": 306 },
-    { "name": "FxDelayATimeLeftMs", "path": "fx.delayA.timeLeftMs", "type": "float", "id": 307, "min": 10, "max": 5000 },
-    { "name": "FxDelayATimeRightMs", "path": "fx.delayA.timeRightMs", "type": "float", "id": 308, "min": 10, "max": 5000 },
-    { "name": "FxDelayAFeedback", "path": "fx.delayA.feedback", "type": "float", "id": 309, "min": 0, "max": 0.95 },
-    { "name": "FxDelayAFilterHz", "path": "fx.delayA.filterHz", "type": "float", "id": 310, "min": 200, "max": 12000 },
-    { "name": "FxDelayAFilterType", "path": "fx.delayA.filterType", "type": "uint", "id": 311, "min": 0, "max": 2 },
-    { "name": "FxDelayAModRateHz", "path": "fx.delayA.modRateHz", "type": "float", "id": 312, "min": 0, "max": 5 },
-    { "name": "FxDelayAModDepthMs", "path": "fx.delayA.modDepthMs", "type": "float", "id": 313, "min": 0, "max": 50 },
-    { "name": "FxDelayAPingPong", "path": "fx.delayA.pingPong", "type": "bool", "id": 314 },
-    { "name": "FxDelayADuck", "path": "fx.delayA.duck", "type": "float", "id": 315, "min": 0, "max": 1 },
-    { "name": "FxDelayAWidth", "path": "fx.delayA.width", "type": "float", "id": 316, "min": 0, "max": 1 },
-    { "name": "FxDelayACrossFeedFilterHz", "path": "fx.delayA.crossFeedFilterHz", "type": "float", "id": 317, "min": 200, "max": 12000 },
-    { "name": "FxDelayBEnabled", "path": "fx.delayB.enabled", "type": "bool", "id": 330 },
-    { "name": "FxDelayBActivity", "path": "fx.delayB.activity", "type": "float", "id": 331, "min": 0, "max": 1 },
-    { "name": "FxDelayBRepeats", "path": "fx.delayB.repeats", "type": "float", "id": 332, "min": 0, "max": 0.85 },
-    { "name": "FxDelayBBaseTimeMs", "path": "fx.delayB.baseTimeMs", "type": "float", "id": 333, "min": 20, "max": 5000 },
-    { "name": "FxDelayBTone", "path": "fx.delayB.tone", "type": "float", "id": 334, "min": 0, "max": 1 },
-    { "name": "FxDelayBVibrato", "path": "fx.delayB.vibrato", "type": "float", "id": 335, "min": 0, "max": 1 },
-    { "name": "FxDelayBSpaceMode", "path": "fx.delayB.spaceMode", "type": "uint", "id": 336, "min": 0, "max": 2 },
-    { "name": "FxDelayBPattern", "path": "fx.delayB.pattern", "type": "uint", "id": 337, "min": 0, "max": 3 },
-    { "name": "FxDelayBWarp", "path": "fx.delayB.warp", "type": "uint", "id": 338, "min": 0, "max": 3 },
-    { "name": "FxDelayBWarpIntensity", "path": "fx.delayB.warpIntensity", "type": "float", "id": 339, "min": 0, "max": 1 },
-    { "name": "FxDelayBSpread", "path": "fx.delayB.spread", "type": "float", "id": 340, "min": 0, "max": 1 },
-    { "name": "FxDelayBTapeHeadMask", "path": "fx.delayB.tapeHeadMask", "type": "uint", "id": 341, "min": 0, "max": 15 },
-    { "name": "FxDelayBTapeHead1Level", "path": "fx.delayB.tapeHead1Level", "type": "float", "id": 342, "min": 0, "max": 1 },
-    { "name": "FxDelayBTapeHead2Level", "path": "fx.delayB.tapeHead2Level", "type": "float", "id": 343, "min": 0, "max": 1 },
-    { "name": "FxDelayBTapeHead3Level", "path": "fx.delayB.tapeHead3Level", "type": "float", "id": 344, "min": 0, "max": 1 },
-    { "name": "FxDelayBTapeHead4Level", "path": "fx.delayB.tapeHead4Level", "type": "float", "id": 345, "min": 0, "max": 1 },
-    { "name": "FxDelayBTapeHead1Pan", "path": "fx.delayB.tapeHead1Pan", "type": "float", "id": 346, "min": 0, "max": 1 },
-    { "name": "FxDelayBTapeHead2Pan", "path": "fx.delayB.tapeHead2Pan", "type": "float", "id": 347, "min": 0, "max": 1 },
-    { "name": "FxDelayBTapeHead3Pan", "path": "fx.delayB.tapeHead3Pan", "type": "float", "id": 348, "min": 0, "max": 1 },
-    { "name": "FxDelayBTapeHead4Pan", "path": "fx.delayB.tapeHead4Pan", "type": "float", "id": 349, "min": 0, "max": 1 },
-    { "name": "FxReverbType", "path": "fx.reverb.type", "type": "uint", "id": 350, "min": 0, "max": 5 },
-    { "name": "FxReverbQuality", "path": "fx.reverb.quality", "type": "uint", "id": 351, "min": 0, "max": 2 },
-    { "name": "FxReverbDecay", "path": "fx.reverb.decay", "type": "float", "id": 352, "min": 0, "max": 1 },
-    { "name": "FxReverbSize", "path": "fx.reverb.size", "type": "float", "id": 353, "min": 0.5, "max": 10 },
-    { "name": "FxReverbDamping", "path": "fx.reverb.damping", "type": "float", "id": 354, "min": 0, "max": 1 },
-    { "name": "FxReverbDiffusion", "path": "fx.reverb.diffusion", "type": "float", "id": 355, "min": 0, "max": 1 },
-    { "name": "FxReverbModulation", "path": "fx.reverb.modulation", "type": "float", "id": 356, "min": 0, "max": 1 },
-    { "name": "FxReverbPredelayMs", "path": "fx.reverb.predelayMs", "type": "float", "id": 357, "min": 0, "max": 100 },
-    { "name": "FxReverbWidth", "path": "fx.reverb.width", "type": "float", "id": 358, "min": 0, "max": 1 },
-    { "name": "FxReverbShimmerAmount", "path": "fx.reverb.shimmerAmount", "type": "float", "id": 359, "min": 0, "max": 1 },
-    { "name": "FxReverbShimmerPitch", "path": "fx.reverb.shimmerPitch", "type": "float", "id": 360, "min": -24, "max": 24 },
-    { "name": "FxReverbSlowRateHz", "path": "fx.reverb.slowRateHz", "type": "float", "id": 361, "min": 0.01, "max": 0.2 },
-    { "name": "FxReverbSlowDepth", "path": "fx.reverb.slowDepth", "type": "float", "id": 362, "min": 0, "max": 1 },
-    { "name": "FxReverbReverseAmount", "path": "fx.reverb.reverseAmount", "type": "float", "id": 363, "min": 0, "max": 1 },
-    { "name": "FxReverbReverseLengthSec", "path": "fx.reverb.reverseLengthSec", "type": "float", "id": 364, "min": 0.5, "max": 16 },
-    { "name": "FxReverbChorusRateHz", "path": "fx.reverb.chorusRateHz", "type": "float", "id": 365, "min": 0.05, "max": 2 },
-    { "name": "FxReverbChorusDepth", "path": "fx.reverb.chorusDepth", "type": "float", "id": 366, "min": 0, "max": 40 },
-    { "name": "FxReverbModCharacter", "path": "fx.reverb.modCharacter", "type": "uint", "id": 367, "min": 0, "max": 2 },
-    { "name": "FxReverbDampLow", "path": "fx.reverb.dampLow", "type": "float", "id": 368, "min": 0, "max": 1 },
-    { "name": "FxReverbDampHigh", "path": "fx.reverb.dampHigh", "type": "float", "id": 369, "min": 0, "max": 1 },
-    { "name": "FxReverbCrossoverHz", "path": "fx.reverb.crossoverHz", "type": "float", "id": 370, "min": 100, "max": 6000 },
-    { "name": "FxReverbInputTone", "path": "fx.reverb.inputTone", "type": "float", "id": 371, "min": -1, "max": 1 },
-    { "name": "FxReverbShimmerFeedback", "path": "fx.reverb.shimmerFeedback", "type": "float", "id": 372, "min": 0, "max": 1 },
-    { "name": "FxReverbBloom", "path": "fx.reverb.bloom", "type": "float", "id": 388, "min": -1, "max": 1 },
-    { "name": "FxReverbWarp", "path": "fx.reverb.warp", "type": "float", "id": 373, "min": 0, "max": 1 },
-    { "name": "FxReverbCrossFeed", "path": "fx.reverb.crossFeed", "type": "float", "id": 374, "min": 0, "max": 1 },
-    { "name": "FxReverbEarlyReflections", "path": "fx.reverb.earlyReflections", "type": "float", "id": 375, "min": 0, "max": 1 },
-    { "name": "FxReverbAirAbsorption", "path": "fx.reverb.airAbsorption", "type": "float", "id": 376, "min": 0, "max": 1 },
-    { "name": "FxReverbSaturationMode", "path": "fx.reverb.saturationMode", "type": "uint", "id": 377, "min": 0, "max": 2 },
-    { "name": "FxReverbTransientSmooth", "path": "fx.reverb.transientSmooth", "type": "float", "id": 378, "min": 0, "max": 1 },
-    { "name": "FxReverbErLpFreq", "path": "fx.reverb.erLpFreq", "type": "float", "id": 379, "min": 200, "max": 12000 },
-    { "name": "FxReverbPreCompThreshold", "path": "fx.reverb.preComp.threshold", "type": "float", "id": 380, "min": -60, "max": 0 },
-    { "name": "FxReverbPreCompKnee", "path": "fx.reverb.preComp.knee", "type": "float", "id": 381, "min": 0, "max": 40 },
-    { "name": "FxReverbPreCompRatio", "path": "fx.reverb.preComp.ratio", "type": "float", "id": 382, "min": 1, "max": 20 },
-    { "name": "FxReverbPreCompAttackMs", "path": "fx.reverb.preComp.attackMs", "type": "float", "id": 383, "min": 0.1, "max": 30 },
-    { "name": "FxReverbPreCompReleaseMs", "path": "fx.reverb.preComp.releaseMs", "type": "float", "id": 384, "min": 20, "max": 1000 },
-    { "name": "FxReverbPreCompMakeup", "path": "fx.reverb.preComp.makeup", "type": "float", "id": 385, "min": 0.5, "max": 4 },
-    { "name": "FxReverbChordWash", "path": "fx.reverb.chordWash", "type": "bool", "id": 386 },
-    { "name": "FxReverbResolutionBloom", "path": "fx.reverb.resolutionBloom", "type": "bool", "id": 387 },
-    { "name": "FxSpectralFreezeEnabled", "path": "fx.spectralFreeze.enabled", "type": "bool", "id": 930 },
-    { "name": "FxSpectralFreezeActive", "path": "fx.spectralFreeze.active", "type": "bool", "id": 931 },
-    { "name": "FxSpectralFreezeSlushy", "path": "fx.spectralFreeze.slushy", "type": "bool", "id": 932 },
-    { "name": "FxSpectralFreezeSpeed", "path": "fx.spectralFreeze.speed", "type": "float", "id": 933, "min": 0, "max": 1 },
-    { "name": "FxSpectralFreezeDecay", "path": "fx.spectralFreeze.decay", "type": "float", "id": 934, "min": 0, "max": 1 },
-    { "name": "FxSpectralFreezePhaseJitter", "path": "fx.spectralFreeze.phaseJitter", "type": "float", "id": 935, "min": 0, "max": 1 },
-    { "name": "FxSpectralFreezeRouting", "path": "fx.spectralFreeze.routing", "type": "uint", "id": 936, "min": 0, "max": 1 },
-    { "name": "FxSpectralFreezeReverbCrossfade", "path": "fx.spectralFreeze.reverbCrossfade", "type": "float", "id": 937, "min": 0, "max": 1 },
-    { "name": "FxDynamicsEnabled", "path": "fx.dynamics.enabled", "type": "bool", "id": 940 },
-    { "name": "FxDynamicsCharacterEnabled", "path": "fx.dynamics.character.enabled", "type": "bool", "id": 941 },
-    { "name": "FxDynamicsCharacterMode", "path": "fx.dynamics.character.mode", "type": "uint", "id": 942, "min": 0, "max": 2 },
-    { "name": "FxDynamicsCharacterMix", "path": "fx.dynamics.character.mix", "type": "float", "id": 943, "min": 0, "max": 1 },
-    { "name": "FxDynamicsCharacterAge", "path": "fx.dynamics.character.age", "type": "float", "id": 944, "min": 0, "max": 1 },
-    { "name": "FxDynamicsCharacterBias", "path": "fx.dynamics.character.bias", "type": "float", "id": 945, "min": 0, "max": 1 },
-    { "name": "FxDynamicsCharacterLpgAmount", "path": "fx.dynamics.character.lpgAmount", "type": "float", "id": 946, "min": 0, "max": 1 },
-    { "name": "FxDynamicsCharacterResonance", "path": "fx.dynamics.character.resonance", "type": "float", "id": 947, "min": 0, "max": 1 },
-    { "name": "FxDynamicsCharacterStereo", "path": "fx.dynamics.character.stereo", "type": "float", "id": 948, "min": 0, "max": 1 },
-    { "name": "FxDynamicsCharacterEnvFollow", "path": "fx.dynamics.character.envFollow", "type": "float", "id": 949, "min": 0, "max": 1 },
-    { "name": "FxDynamicsCharacterDepth", "path": "fx.dynamics.character.depth", "type": "float", "id": 950, "min": 0, "max": 1 },
-    { "name": "FxDynamicsCharacterRate", "path": "fx.dynamics.character.rate", "type": "float", "id": 951, "min": 0, "max": 1 },
-    { "name": "FxDynamicsCharacterDamp", "path": "fx.dynamics.character.damp", "type": "float", "id": 952, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeEnabled", "path": "fx.dynamics.degrade.enabled", "type": "bool", "id": 953 },
-    { "name": "FxDynamicsDegradeMix", "path": "fx.dynamics.degrade.mix", "type": "float", "id": 954, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeAge", "path": "fx.dynamics.degrade.age", "type": "float", "id": 955, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeGeneration", "path": "fx.dynamics.degrade.generation", "type": "float", "id": 956, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeAlias", "path": "fx.dynamics.degrade.alias", "type": "float", "id": 957, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeWow", "path": "fx.dynamics.degrade.wow", "type": "float", "id": 958, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeFlutter", "path": "fx.dynamics.degrade.flutter", "type": "float", "id": 959, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeDrift", "path": "fx.dynamics.degrade.drift", "type": "float", "id": 960, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeWobbleSpeed", "path": "fx.dynamics.degrade.wobbleSpeed", "type": "float", "id": 961, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeTone", "path": "fx.dynamics.degrade.tone", "type": "float", "id": 962, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeHp", "path": "fx.dynamics.degrade.hp", "type": "float", "id": 963, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeLp", "path": "fx.dynamics.degrade.lp", "type": "float", "id": 964, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeNoise", "path": "fx.dynamics.degrade.noise", "type": "float", "id": 965, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeSaturation", "path": "fx.dynamics.degrade.saturation", "type": "float", "id": 966, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeCorrosion", "path": "fx.dynamics.degrade.corrosion", "type": "float", "id": 967, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModSlowWow", "path": "fx.dynamics.mod.slow.wow", "type": "float", "id": 1011, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModSlowFlutter", "path": "fx.dynamics.mod.slow.flutter", "type": "float", "id": 1012, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModSlowLp", "path": "fx.dynamics.mod.slow.lp", "type": "float", "id": 1013, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModSlowWet", "path": "fx.dynamics.mod.slow.wet", "type": "float", "id": 1014, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModSlowDropout", "path": "fx.dynamics.mod.slow.dropout", "type": "float", "id": 1015, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModSlowAlias", "path": "fx.dynamics.mod.slow.alias", "type": "float", "id": 1016, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModFlutterWow", "path": "fx.dynamics.mod.flutter.wow", "type": "float", "id": 1017, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModFlutterFlutter", "path": "fx.dynamics.mod.flutter.flutter", "type": "float", "id": 1018, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModFlutterLp", "path": "fx.dynamics.mod.flutter.lp", "type": "float", "id": 1019, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModFlutterWet", "path": "fx.dynamics.mod.flutter.wet", "type": "float", "id": 1020, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModFlutterDropout", "path": "fx.dynamics.mod.flutter.dropout", "type": "float", "id": 1021, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModFlutterAlias", "path": "fx.dynamics.mod.flutter.alias", "type": "float", "id": 1022, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModRandomWow", "path": "fx.dynamics.mod.random.wow", "type": "float", "id": 1023, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModRandomFlutter", "path": "fx.dynamics.mod.random.flutter", "type": "float", "id": 1024, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModRandomLp", "path": "fx.dynamics.mod.random.lp", "type": "float", "id": 1025, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModRandomWet", "path": "fx.dynamics.mod.random.wet", "type": "float", "id": 1026, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModRandomDropout", "path": "fx.dynamics.mod.random.dropout", "type": "float", "id": 1027, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModRandomAlias", "path": "fx.dynamics.mod.random.alias", "type": "float", "id": 1028, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModEnvWow", "path": "fx.dynamics.mod.env.wow", "type": "float", "id": 1029, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModEnvFlutter", "path": "fx.dynamics.mod.env.flutter", "type": "float", "id": 1030, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModEnvLp", "path": "fx.dynamics.mod.env.lp", "type": "float", "id": 1031, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModEnvWet", "path": "fx.dynamics.mod.env.wet", "type": "float", "id": 1032, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModEnvDropout", "path": "fx.dynamics.mod.env.dropout", "type": "float", "id": 1033, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModEnvAlias", "path": "fx.dynamics.mod.env.alias", "type": "float", "id": 1034, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModNoiseWow", "path": "fx.dynamics.mod.noise.wow", "type": "float", "id": 1035, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModNoiseFlutter", "path": "fx.dynamics.mod.noise.flutter", "type": "float", "id": 1036, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModNoiseLp", "path": "fx.dynamics.mod.noise.lp", "type": "float", "id": 1037, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModNoiseWet", "path": "fx.dynamics.mod.noise.wet", "type": "float", "id": 1038, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModNoiseDropout", "path": "fx.dynamics.mod.noise.dropout", "type": "float", "id": 1039, "min": 0, "max": 1 },
-    { "name": "FxDynamicsModNoiseAlias", "path": "fx.dynamics.mod.noise.alias", "type": "float", "id": 1040, "min": 0, "max": 1 },
-    { "name": "FxDynamicsSaturationEnabled", "path": "fx.dynamics.saturation.enabled", "type": "bool", "id": 968 },
-    { "name": "FxDynamicsSaturationMode", "path": "fx.dynamics.saturation.mode", "type": "uint", "id": 969, "min": 0, "max": 4 },
-    { "name": "FxDynamicsSaturationDrive", "path": "fx.dynamics.saturation.drive", "type": "float", "id": 970, "min": 0, "max": 1 },
-    { "name": "FxDynamicsSaturationTone", "path": "fx.dynamics.saturation.tone", "type": "float", "id": 971, "min": 0, "max": 1 },
-    { "name": "FxDynamicsSaturationBias", "path": "fx.dynamics.saturation.bias", "type": "float", "id": 972, "min": 0, "max": 1 },
-    { "name": "FxDynamicsEndCompEnabled", "path": "fx.dynamics.endComp.enabled", "type": "bool", "id": 973 },
-    { "name": "FxDynamicsEndCompThreshold", "path": "fx.dynamics.endComp.threshold", "type": "float", "id": 974, "min": -60, "max": 0 },
-    { "name": "FxDynamicsEndCompKnee", "path": "fx.dynamics.endComp.knee", "type": "float", "id": 975, "min": 0, "max": 40 },
-    { "name": "FxDynamicsEndCompRatio", "path": "fx.dynamics.endComp.ratio", "type": "float", "id": 976, "min": 1, "max": 20 },
-    { "name": "FxDynamicsEndCompAttackMs", "path": "fx.dynamics.endComp.attackMs", "type": "float", "id": 977, "min": 0.1, "max": 100 },
-    { "name": "FxDynamicsEndCompReleaseMs", "path": "fx.dynamics.endComp.releaseMs", "type": "float", "id": 978, "min": 20, "max": 1500 },
-    { "name": "FxDynamicsEndCompMakeup", "path": "fx.dynamics.endComp.makeup", "type": "float", "id": 979, "min": 0.25, "max": 4 },
-    { "name": "FxDynamicsEndCompMix", "path": "fx.dynamics.endComp.mix", "type": "float", "id": 980, "min": 0, "max": 1 },
-    { "name": "FxDynamicsEndCompDetectorHp", "path": "fx.dynamics.endComp.detectorHp", "type": "float", "id": 981, "min": 0, "max": 1 },
-    { "name": "FxDynamicsEndCompDetectorTilt", "path": "fx.dynamics.endComp.detectorTilt", "type": "float", "id": 982, "min": 0, "max": 1 },
-    { "name": "FxDynamicsEndCompAutoMakeup", "path": "fx.dynamics.endComp.autoMakeup", "type": "float", "id": 983, "min": 0, "max": 1 },
-    { "name": "FxDynamicsEndCompProgramRelease", "path": "fx.dynamics.endComp.programRelease", "type": "float", "id": 984, "min": 0, "max": 1 },
-    { "name": "FxDynamicsCharacterQuality", "path": "fx.dynamics.character.quality", "type": "uint", "id": 1041, "min": 0, "max": 2 },
-    { "name": "FxDynamicsCharacterAntiComb", "path": "fx.dynamics.character.antiComb", "type": "float", "id": 1042, "min": 0, "max": 1 },
-    { "name": "FxDynamicsCharacterDiffusion", "path": "fx.dynamics.character.diffusion", "type": "float", "id": 1043, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeQuality", "path": "fx.dynamics.degrade.quality", "type": "uint", "id": 1044, "min": 0, "max": 2 },
-    { "name": "FxDynamicsDegradeEventAmount", "path": "fx.dynamics.degrade.eventAmount", "type": "float", "id": 1045, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeProfileAmount", "path": "fx.dynamics.degrade.profileAmount", "type": "float", "id": 1046, "min": 0, "max": 1 },
-    { "name": "FxDynamicsDegradeDitherAmount", "path": "fx.dynamics.degrade.ditherAmount", "type": "float", "id": 1047, "min": 0, "max": 1 },
-    { "name": "FxDynamicsEndCompMode", "path": "fx.dynamics.endComp.mode", "type": "uint", "id": 1048, "min": 0, "max": 4 },
-    { "name": "FxDynamicsEndCompPeakBlend", "path": "fx.dynamics.endComp.peakBlend", "type": "float", "id": 1049, "min": 0, "max": 1 },
-    { "name": "FxDynamicsEndCompClarity", "path": "fx.dynamics.endComp.clarity", "type": "float", "id": 1050, "min": 0, "max": 1 },
-    { "name": "FxDynamicsEndCompTwoBandAmount", "path": "fx.dynamics.endComp.twoBandAmount", "type": "float", "id": 1051, "min": 0, "max": 1 },
-    { "name": "FxDynamicsEndCompBandSplit", "path": "fx.dynamics.endComp.bandSplit", "type": "float", "id": 1052, "min": 0, "max": 1 },
-    { "name": "FxDynamicsSaturationQuality", "path": "fx.dynamics.saturation.quality", "type": "uint", "id": 1053, "min": 0, "max": 2 },
-    { "name": "FxSidechainEnabled", "path": "fx.sidechain.enabled", "type": "bool", "id": 985 },
-    { "name": "FxSidechainKeyA", "path": "fx.sidechain.keyA", "type": "uint", "id": 986, "min": 0, "max": 7 },
-    { "name": "FxSidechainKeyB", "path": "fx.sidechain.keyB", "type": "uint", "id": 987, "min": 0, "max": 7 },
-    { "name": "FxSidechainKeyAWeight", "path": "fx.sidechain.keyAWeight", "type": "float", "id": 988, "min": 0, "max": 1 },
-    { "name": "FxSidechainKeyBWeight", "path": "fx.sidechain.keyBWeight", "type": "float", "id": 989, "min": 0, "max": 1 },
-    { "name": "FxSidechainAmount", "path": "fx.sidechain.amount", "type": "float", "id": 990, "min": 0, "max": 1 },
-    { "name": "FxSidechainThreshold", "path": "fx.sidechain.threshold", "type": "float", "id": 991, "min": -60, "max": 0 },
-    { "name": "FxSidechainRatio", "path": "fx.sidechain.ratio", "type": "float", "id": 992, "min": 1, "max": 20 },
-    { "name": "FxSidechainKnee", "path": "fx.sidechain.knee", "type": "float", "id": 993, "min": 0, "max": 40 },
-    { "name": "FxSidechainAttackMs", "path": "fx.sidechain.attackMs", "type": "float", "id": 994, "min": 0.1, "max": 100 },
-    { "name": "FxSidechainHoldMs", "path": "fx.sidechain.holdMs", "type": "float", "id": 995, "min": 0, "max": 250 },
-    { "name": "FxSidechainReleaseMs", "path": "fx.sidechain.releaseMs", "type": "float", "id": 996, "min": 20, "max": 1500 },
-    { "name": "FxSidechainMakeup", "path": "fx.sidechain.makeup", "type": "float", "id": 997, "min": 0.25, "max": 4 },
-    { "name": "FxSidechainMix", "path": "fx.sidechain.mix", "type": "float", "id": 998, "min": 0, "max": 1 },
-    { "name": "FxSidechainCurve", "path": "fx.sidechain.curve", "type": "float", "id": 999, "min": 0, "max": 1 },
-    { "name": "FxSidechainDetectorHp", "path": "fx.sidechain.detectorHp", "type": "float", "id": 1000, "min": 0, "max": 1 },
-    { "name": "FxSidechainDetectorLp", "path": "fx.sidechain.detectorLp", "type": "float", "id": 1001, "min": 0, "max": 1 },
-    { "name": "FxSidechainPad1Target", "path": "fx.sidechain.targets.pad1", "type": "float", "id": 1002, "min": 0, "max": 1 },
-    { "name": "FxSidechainPad2Target", "path": "fx.sidechain.targets.pad2", "type": "float", "id": 1003, "min": 0, "max": 1 },
-    { "name": "FxSidechainLead1Target", "path": "fx.sidechain.targets.lead1", "type": "float", "id": 1004, "min": 0, "max": 1 },
-    { "name": "FxSidechainLead2Target", "path": "fx.sidechain.targets.lead2", "type": "float", "id": 1005, "min": 0, "max": 1 },
-    { "name": "FxSidechainPianoTarget", "path": "fx.sidechain.targets.piano", "type": "float", "id": 1006, "min": 0, "max": 1 },
-    { "name": "FxSidechainGranularTarget", "path": "fx.sidechain.targets.granular", "type": "float", "id": 1007, "min": 0, "max": 1 },
-    { "name": "FxSidechainDelayATarget", "path": "fx.sidechain.targets.delayA", "type": "float", "id": 1008, "min": 0, "max": 1 },
-    { "name": "FxSidechainDelayBTarget", "path": "fx.sidechain.targets.delayB", "type": "float", "id": 1009, "min": 0, "max": 1 },
-    { "name": "FxSidechainReverbTarget", "path": "fx.sidechain.targets.reverb", "type": "float", "id": 1010, "min": 0, "max": 1 },
-    { "name": "RoutingDelayAToDelayB", "path": "routing.delayAToDelayB", "type": "float", "id": 400, "min": 0, "max": 1 },
-    { "name": "RoutingDelayBToDelayA", "path": "routing.delayBToDelayA", "type": "float", "id": 401, "min": 0, "max": 1 },
-    { "name": "RoutingDelayToReverb", "path": "routing.delayToReverb", "type": "float", "id": 402, "min": 0, "max": 1 },
-    { "name": "RoutingGranularToReverb", "path": "routing.granularToReverb", "type": "float", "id": 403, "min": 0, "max": 1 },
-    { "name": "RoutingDelayAToGranular", "path": "routing.delayAToGranular", "type": "float", "id": 404, "min": 0, "max": 1 },
-    { "name": "RoutingDelayBToGranular", "path": "routing.delayBToGranular", "type": "float", "id": 405, "min": 0, "max": 1 },
-    { "name": "RoutingDelayBToReverb", "path": "routing.delayBToReverb", "type": "float", "id": 406, "min": 0, "max": 1 },
-    { "name": "RoutingGranularToDelayA", "path": "routing.granularToDelayA", "type": "float", "id": 407, "min": 0, "max": 1 },
-    { "name": "RoutingGranularToDelayB", "path": "routing.granularToDelayB", "type": "float", "id": 408, "min": 0, "max": 1 },
-    { "name": "MasterGain", "path": "master.gain", "type": "float", "id": 500, "min": 0, "max": 1.5 },
-    { "name": "MasterLimiterCeilingDb", "path": "master.limiterCeilingDb", "type": "float", "id": 501, "min": -24, "max": 0 },
-    { "name": "RngSeed", "path": "rng.seed", "type": "uint", "id": 600 },
-    { "name": "RngState", "path": "rng.state", "type": "uint", "id": 601 },
-    { "name": "EvolutionAmount", "path": "evolution.amount", "type": "float", "id": 700, "min": 0, "max": 1 },
-    { "name": "EvolutionState", "path": "evolution.state", "type": "uint", "id": 701 }
+    {
+      "name": "TransportRunning",
+      "path": "transport.running",
+      "type": "bool",
+      "id": 1
+    },
+    {
+      "name": "TransportBpm",
+      "path": "transport.bpm",
+      "type": "float",
+      "id": 2,
+      "min": 1,
+      "max": 400
+    },
+    {
+      "name": "TransportBeatsPerBar",
+      "path": "transport.beatsPerBar",
+      "type": "uint",
+      "id": 3,
+      "min": 1,
+      "max": 32
+    },
+    {
+      "name": "TransportBarsPerPhrase",
+      "path": "transport.barsPerPhrase",
+      "type": "uint",
+      "id": 4,
+      "min": 1,
+      "max": 256
+    },
+    {
+      "name": "TransportSwing",
+      "path": "transport.swing",
+      "type": "float",
+      "id": 5,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "HarmonyRootMidi",
+      "path": "harmony.rootMidi",
+      "type": "float",
+      "id": 20,
+      "min": 0,
+      "max": 127
+    },
+    {
+      "name": "HarmonyScaleId",
+      "path": "harmony.scaleId",
+      "type": "uint",
+      "id": 21
+    },
+    {
+      "name": "HarmonyTension",
+      "path": "harmony.tension",
+      "type": "float",
+      "id": 22,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "JourneyEnabled",
+      "path": "journey.enabled",
+      "type": "bool",
+      "id": 40
+    },
+    {
+      "name": "JourneyMorphPhase",
+      "path": "journey.morphPhase",
+      "type": "float",
+      "id": 41,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "JourneyMorphRateBars",
+      "path": "journey.morphRateBars",
+      "type": "float",
+      "id": 42,
+      "min": 0.25,
+      "max": 128
+    },
+    {
+      "name": "SourceEnabled",
+      "path": "sources.*.enabled",
+      "type": "bool",
+      "id": 100
+    },
+    {
+      "name": "SourceLevel",
+      "path": "sources.*.level",
+      "type": "float",
+      "id": 101,
+      "min": 0,
+      "max": 1.5
+    },
+    {
+      "name": "SourceMorph",
+      "path": "sources.*.morph",
+      "type": "float",
+      "id": 102,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SourceDistance",
+      "path": "sources.*.distance",
+      "type": "float",
+      "id": 103,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SourceExpression",
+      "path": "sources.*.expression",
+      "type": "float",
+      "id": 104,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SourceDryGain",
+      "path": "sources.*.dryGain",
+      "type": "float",
+      "id": 105,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "SourceReverbSend",
+      "path": "sources.*.reverbSend",
+      "type": "float",
+      "id": 106,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "SourceDelayASend",
+      "path": "sources.*.delayASend",
+      "type": "float",
+      "id": 107,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "SourceDelayBSend",
+      "path": "sources.*.delayBSend",
+      "type": "float",
+      "id": 108,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "SourceGranularSend",
+      "path": "sources.*.granularSend",
+      "type": "float",
+      "id": 109,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "SourceDiffuseSend",
+      "path": "sources.*.diffuseSend",
+      "type": "float",
+      "id": 113,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "SourcePostLpfHz",
+      "path": "sources.*.postLpfHz",
+      "type": "float",
+      "id": 110,
+      "min": 20,
+      "max": 20000
+    },
+    {
+      "name": "SourceStereoWidth",
+      "path": "sources.*.stereoWidth",
+      "type": "float",
+      "id": 111,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SourcePostLpfKeyTracking",
+      "path": "sources.*.postLpfKeyTracking",
+      "type": "float",
+      "id": 112,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SourceAttackSeconds",
+      "path": "sources.*.attackSeconds",
+      "type": "float",
+      "id": 114,
+      "min": 0.001,
+      "max": 2
+    },
+    {
+      "name": "SourceDecaySeconds",
+      "path": "sources.*.decaySeconds",
+      "type": "float",
+      "id": 115,
+      "min": 0.01,
+      "max": 4
+    },
+    {
+      "name": "SourceSustain",
+      "path": "sources.*.sustain",
+      "type": "float",
+      "id": 116,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SourceHoldSeconds",
+      "path": "sources.*.holdSeconds",
+      "type": "float",
+      "id": 117,
+      "min": 0,
+      "max": 20
+    },
+    {
+      "name": "SourceReleaseSeconds",
+      "path": "sources.*.releaseSeconds",
+      "type": "float",
+      "id": 118,
+      "min": 0.01,
+      "max": 8
+    },
+    {
+      "name": "SourceLeadEnvelopeOverrideEnabled",
+      "path": "sources.*.leadEnvelopeOverrideEnabled",
+      "type": "bool",
+      "id": 119
+    },
+    {
+      "name": "SourceLeadAlgorithmPresetAEnabled",
+      "path": "sources.*.leadAlgorithmPresetAEnabled",
+      "type": "bool",
+      "id": 120
+    },
+    {
+      "name": "SourceLeadVibratoDepth",
+      "path": "sources.*.leadVibratoDepth",
+      "type": "float",
+      "id": 121,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SourceLeadVibratoRate",
+      "path": "sources.*.leadVibratoRate",
+      "type": "float",
+      "id": 122,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SourceLeadGlide",
+      "path": "sources.*.leadGlide",
+      "type": "float",
+      "id": 123,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SequencerLaneEnabled",
+      "path": "sequencers.*.lanes.*.enabled",
+      "type": "bool",
+      "id": 200
+    },
+    {
+      "name": "SequencerLaneTargetSource",
+      "path": "sequencers.*.lanes.*.targetSourceId",
+      "type": "uint",
+      "id": 201
+    },
+    {
+      "name": "SequencerLaneStepCount",
+      "path": "sequencers.*.lanes.*.stepCount",
+      "type": "uint",
+      "id": 202,
+      "min": 1,
+      "max": 64
+    },
+    {
+      "name": "SequencerLaneFillCount",
+      "path": "sequencers.*.lanes.*.fillCount",
+      "type": "uint",
+      "id": 203,
+      "min": 0,
+      "max": 64
+    },
+    {
+      "name": "SequencerLaneRotation",
+      "path": "sequencers.*.lanes.*.rotation",
+      "type": "int",
+      "id": 204,
+      "min": -64,
+      "max": 64
+    },
+    {
+      "name": "SequencerLaneClockDivision",
+      "path": "sequencers.*.lanes.*.clockDivision",
+      "type": "uint",
+      "id": 205,
+      "min": 1,
+      "max": 128
+    },
+    {
+      "name": "SequencerLaneSwing",
+      "path": "sequencers.*.lanes.*.swing",
+      "type": "float",
+      "id": 206,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SequencerLaneProbability",
+      "path": "sequencers.*.lanes.*.probability",
+      "type": "float",
+      "id": 207,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SequencerLaneRatchet",
+      "path": "sequencers.*.lanes.*.ratchet",
+      "type": "uint",
+      "id": 208,
+      "min": 1,
+      "max": 8
+    },
+    {
+      "name": "SequencerLaneTrigCondition",
+      "path": "sequencers.*.lanes.*.trigCondition",
+      "type": "uint",
+      "id": 209
+    },
+    {
+      "name": "SequencerLaneMidiNote",
+      "path": "sequencers.*.lanes.*.midiNote",
+      "type": "float",
+      "id": 210,
+      "min": 0,
+      "max": 127
+    },
+    {
+      "name": "SequencerLaneVelocity",
+      "path": "sequencers.*.lanes.*.velocity",
+      "type": "float",
+      "id": 211,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SequencerLaneHoldSeconds",
+      "path": "sequencers.*.lanes.*.holdSeconds",
+      "type": "float",
+      "id": 212,
+      "min": 0.001,
+      "max": 20
+    },
+    {
+      "name": "SequencerLaneSeed",
+      "path": "sequencers.*.lanes.*.seed",
+      "type": "uint",
+      "id": 213
+    },
+    {
+      "name": "SequencerLanePitchBindingMode",
+      "path": "sequencers.*.lanes.*.pitchBindingMode",
+      "type": "uint",
+      "id": 214,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SequencerLaneInitialStartDelaySeconds",
+      "path": "sequencers.*.lanes.*.initialStartDelaySeconds",
+      "type": "float",
+      "id": 215,
+      "min": -1,
+      "max": 64
+    },
+    {
+      "name": "SequencerLaneTempoMultiplier",
+      "path": "sequencers.*.lanes.*.tempoMultiplier",
+      "type": "float",
+      "id": 216,
+      "min": 0.25,
+      "max": 12
+    },
+    {
+      "name": "SequencerLaneMorph",
+      "path": "sequencers.*.lanes.*.morph",
+      "type": "float",
+      "id": 217,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SequencerLaneDistance",
+      "path": "sequencers.*.lanes.*.distance",
+      "type": "float",
+      "id": 218,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SequencerLaneExpression",
+      "path": "sequencers.*.lanes.*.expression",
+      "type": "float",
+      "id": 219,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SequencerLanePitchMode",
+      "path": "sequencers.*.lanes.*.pitchMode",
+      "type": "uint",
+      "id": 220,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "SequencerLanePitchRoot",
+      "path": "sequencers.*.lanes.*.pitchRoot",
+      "type": "float",
+      "id": 221,
+      "min": 0,
+      "max": 127
+    },
+    {
+      "name": "SequencerLanePitchScale",
+      "path": "sequencers.*.lanes.*.pitchScale",
+      "type": "uint",
+      "id": 222,
+      "min": 0,
+      "max": 18
+    },
+    {
+      "name": "SequencerLaneNoteRangeMin",
+      "path": "sequencers.*.lanes.*.noteRangeMin",
+      "type": "float",
+      "id": 223,
+      "min": 24,
+      "max": 108
+    },
+    {
+      "name": "SequencerLaneNoteRangeMax",
+      "path": "sequencers.*.lanes.*.noteRangeMax",
+      "type": "float",
+      "id": 224,
+      "min": 24,
+      "max": 108
+    },
+    {
+      "name": "FxGranularMix",
+      "path": "fx.granular.mix",
+      "type": "float",
+      "id": 300,
+      "min": 0,
+      "max": 4
+    },
+    {
+      "name": "FxGranularEnabled",
+      "path": "fx.granular.enabled",
+      "type": "bool",
+      "id": 800
+    },
+    {
+      "name": "FxGranularFreeze",
+      "path": "fx.granular.freeze",
+      "type": "bool",
+      "id": 801
+    },
+    {
+      "name": "FxGranularFreezeWithFeedback",
+      "path": "fx.granular.freezeWithFeedback",
+      "type": "bool",
+      "id": 802
+    },
+    {
+      "name": "FxGranularFeedback",
+      "path": "fx.granular.feedback",
+      "type": "float",
+      "id": 803,
+      "min": 0,
+      "max": 0.85
+    },
+    {
+      "name": "FxGranularFeedbackLpfHz",
+      "path": "fx.granular.feedbackLpfHz",
+      "type": "float",
+      "id": 804,
+      "min": 200,
+      "max": 12000
+    },
+    {
+      "name": "FxGranularReverbLpfHz",
+      "path": "fx.granular.reverbLpfHz",
+      "type": "float",
+      "id": 816,
+      "min": 200,
+      "max": 12000
+    },
+    {
+      "name": "FxGranularOutputLpfHz",
+      "path": "fx.granular.outputLpfHz",
+      "type": "float",
+      "id": 817,
+      "min": 200,
+      "max": 12000
+    },
+    {
+      "name": "FxGranularBufferSeconds",
+      "path": "fx.granular.bufferSeconds",
+      "type": "float",
+      "id": 805,
+      "min": 1,
+      "max": 32
+    },
+    {
+      "name": "FxGranularGrainShape",
+      "path": "fx.granular.grainShape",
+      "type": "uint",
+      "id": 806,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "name": "FxGranularBusDiffusion",
+      "path": "fx.granular.busDiffusion",
+      "type": "float",
+      "id": 807,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularTimingRandomness",
+      "path": "fx.granular.timingRandomness",
+      "type": "float",
+      "id": 808,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularChordBias",
+      "path": "fx.granular.chordBias",
+      "type": "float",
+      "id": 809,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularLegacyJitterMs",
+      "path": "fx.granular.legacy.jitterMs",
+      "type": "float",
+      "id": 810,
+      "min": 0,
+      "max": 30
+    },
+    {
+      "name": "FxGranularLegacyProbability",
+      "path": "fx.granular.legacy.probability",
+      "type": "float",
+      "id": 811,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularLegacyPitchMode",
+      "path": "fx.granular.legacy.pitchMode",
+      "type": "uint",
+      "id": 812,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularLegacyPitchSpread",
+      "path": "fx.granular.legacy.pitchSpread",
+      "type": "float",
+      "id": 813,
+      "min": 0,
+      "max": 12
+    },
+    {
+      "name": "FxGranularLegacyMaxGrains",
+      "path": "fx.granular.legacy.maxGrains",
+      "type": "uint",
+      "id": 814,
+      "min": 0,
+      "max": 64
+    },
+    {
+      "name": "FxGranularLegacyFeedback",
+      "path": "fx.granular.legacy.feedback",
+      "type": "float",
+      "id": 815,
+      "min": 0,
+      "max": 0.35
+    },
+    {
+      "name": "FxGranularQuality",
+      "path": "fx.granular.quality",
+      "type": "uint",
+      "id": 1100,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxGranularMaxGrains",
+      "path": "fx.granular.maxGrains",
+      "type": "uint",
+      "id": 1101,
+      "min": 8,
+      "max": 64
+    },
+    {
+      "name": "FxGranularSprayMacro",
+      "path": "fx.granular.sprayMacro",
+      "type": "float",
+      "id": 1102,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularCloudMacro",
+      "path": "fx.granular.cloudMacro",
+      "type": "float",
+      "id": 1103,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularPitchMacro",
+      "path": "fx.granular.pitchMacro",
+      "type": "float",
+      "id": 1104,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1PositionSpray",
+      "path": "fx.granular.voices.0.positionSpray",
+      "type": "float",
+      "id": 1105,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1TimingSpray",
+      "path": "fx.granular.voices.0.timingSpray",
+      "type": "float",
+      "id": 1106,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1Lookback",
+      "path": "fx.granular.voices.0.lookback",
+      "type": "float",
+      "id": 1107,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1WriteGuard",
+      "path": "fx.granular.voices.0.writeGuard",
+      "type": "float",
+      "id": 1108,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1PitchMode",
+      "path": "fx.granular.voices.0.pitchMode",
+      "type": "uint",
+      "id": 1109,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "name": "FxGranularV1PitchSpread",
+      "path": "fx.granular.voices.0.pitchSpread",
+      "type": "float",
+      "id": 1110,
+      "min": 0,
+      "max": 24
+    },
+    {
+      "name": "FxGranularV1PitchJitterCents",
+      "path": "fx.granular.voices.0.pitchJitterCents",
+      "type": "float",
+      "id": 1111,
+      "min": 0,
+      "max": 50
+    },
+    {
+      "name": "FxGranularV1PitchQuantize",
+      "path": "fx.granular.voices.0.pitchQuantize",
+      "type": "float",
+      "id": 1112,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1ReverseChance",
+      "path": "fx.granular.voices.0.reverseChance",
+      "type": "float",
+      "id": 1113,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1Bloom",
+      "path": "fx.granular.voices.0.bloom",
+      "type": "float",
+      "id": 1114,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1Glide",
+      "path": "fx.granular.voices.0.glide",
+      "type": "float",
+      "id": 1115,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1CloudStyle",
+      "path": "fx.granular.voices.0.cloudStyle",
+      "type": "uint",
+      "id": 1116,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "name": "FxGranularV1AnchorPattern",
+      "path": "fx.granular.voices.0.anchorPattern",
+      "type": "uint",
+      "id": 1117,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "name": "FxGranularV1LoopCrossfadeMs",
+      "path": "fx.granular.voices.0.loopCrossfadeMs",
+      "type": "float",
+      "id": 1118,
+      "min": 4,
+      "max": 80
+    },
+    {
+      "name": "FxGranularV2PositionSpray",
+      "path": "fx.granular.voices.1.positionSpray",
+      "type": "float",
+      "id": 1119,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2TimingSpray",
+      "path": "fx.granular.voices.1.timingSpray",
+      "type": "float",
+      "id": 1120,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2Lookback",
+      "path": "fx.granular.voices.1.lookback",
+      "type": "float",
+      "id": 1121,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2WriteGuard",
+      "path": "fx.granular.voices.1.writeGuard",
+      "type": "float",
+      "id": 1122,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2PitchMode",
+      "path": "fx.granular.voices.1.pitchMode",
+      "type": "uint",
+      "id": 1123,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "name": "FxGranularV2PitchSpread",
+      "path": "fx.granular.voices.1.pitchSpread",
+      "type": "float",
+      "id": 1124,
+      "min": 0,
+      "max": 24
+    },
+    {
+      "name": "FxGranularV2PitchJitterCents",
+      "path": "fx.granular.voices.1.pitchJitterCents",
+      "type": "float",
+      "id": 1125,
+      "min": 0,
+      "max": 50
+    },
+    {
+      "name": "FxGranularV2PitchQuantize",
+      "path": "fx.granular.voices.1.pitchQuantize",
+      "type": "float",
+      "id": 1126,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2ReverseChance",
+      "path": "fx.granular.voices.1.reverseChance",
+      "type": "float",
+      "id": 1127,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2Bloom",
+      "path": "fx.granular.voices.1.bloom",
+      "type": "float",
+      "id": 1128,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2Glide",
+      "path": "fx.granular.voices.1.glide",
+      "type": "float",
+      "id": 1129,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2CloudStyle",
+      "path": "fx.granular.voices.1.cloudStyle",
+      "type": "uint",
+      "id": 1130,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "name": "FxGranularV2AnchorPattern",
+      "path": "fx.granular.voices.1.anchorPattern",
+      "type": "uint",
+      "id": 1131,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "name": "FxGranularV2LoopCrossfadeMs",
+      "path": "fx.granular.voices.1.loopCrossfadeMs",
+      "type": "float",
+      "id": 1132,
+      "min": 4,
+      "max": 80
+    },
+    {
+      "name": "FxGranularV3PositionSpray",
+      "path": "fx.granular.voices.2.positionSpray",
+      "type": "float",
+      "id": 1133,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3TimingSpray",
+      "path": "fx.granular.voices.2.timingSpray",
+      "type": "float",
+      "id": 1134,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3Lookback",
+      "path": "fx.granular.voices.2.lookback",
+      "type": "float",
+      "id": 1135,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3WriteGuard",
+      "path": "fx.granular.voices.2.writeGuard",
+      "type": "float",
+      "id": 1136,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3PitchMode",
+      "path": "fx.granular.voices.2.pitchMode",
+      "type": "uint",
+      "id": 1137,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "name": "FxGranularV3PitchSpread",
+      "path": "fx.granular.voices.2.pitchSpread",
+      "type": "float",
+      "id": 1138,
+      "min": 0,
+      "max": 24
+    },
+    {
+      "name": "FxGranularV3PitchJitterCents",
+      "path": "fx.granular.voices.2.pitchJitterCents",
+      "type": "float",
+      "id": 1139,
+      "min": 0,
+      "max": 50
+    },
+    {
+      "name": "FxGranularV3PitchQuantize",
+      "path": "fx.granular.voices.2.pitchQuantize",
+      "type": "float",
+      "id": 1140,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3ReverseChance",
+      "path": "fx.granular.voices.2.reverseChance",
+      "type": "float",
+      "id": 1141,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3Bloom",
+      "path": "fx.granular.voices.2.bloom",
+      "type": "float",
+      "id": 1142,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3Glide",
+      "path": "fx.granular.voices.2.glide",
+      "type": "float",
+      "id": 1143,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3CloudStyle",
+      "path": "fx.granular.voices.2.cloudStyle",
+      "type": "uint",
+      "id": 1144,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "name": "FxGranularV3AnchorPattern",
+      "path": "fx.granular.voices.2.anchorPattern",
+      "type": "uint",
+      "id": 1145,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "name": "FxGranularV3LoopCrossfadeMs",
+      "path": "fx.granular.voices.2.loopCrossfadeMs",
+      "type": "float",
+      "id": 1146,
+      "min": 4,
+      "max": 80
+    },
+    {
+      "name": "FxGranularV4PositionSpray",
+      "path": "fx.granular.voices.3.positionSpray",
+      "type": "float",
+      "id": 1147,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4TimingSpray",
+      "path": "fx.granular.voices.3.timingSpray",
+      "type": "float",
+      "id": 1148,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4Lookback",
+      "path": "fx.granular.voices.3.lookback",
+      "type": "float",
+      "id": 1149,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4WriteGuard",
+      "path": "fx.granular.voices.3.writeGuard",
+      "type": "float",
+      "id": 1150,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4PitchMode",
+      "path": "fx.granular.voices.3.pitchMode",
+      "type": "uint",
+      "id": 1151,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "name": "FxGranularV4PitchSpread",
+      "path": "fx.granular.voices.3.pitchSpread",
+      "type": "float",
+      "id": 1152,
+      "min": 0,
+      "max": 24
+    },
+    {
+      "name": "FxGranularV4PitchJitterCents",
+      "path": "fx.granular.voices.3.pitchJitterCents",
+      "type": "float",
+      "id": 1153,
+      "min": 0,
+      "max": 50
+    },
+    {
+      "name": "FxGranularV4PitchQuantize",
+      "path": "fx.granular.voices.3.pitchQuantize",
+      "type": "float",
+      "id": 1154,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4ReverseChance",
+      "path": "fx.granular.voices.3.reverseChance",
+      "type": "float",
+      "id": 1155,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4Bloom",
+      "path": "fx.granular.voices.3.bloom",
+      "type": "float",
+      "id": 1156,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4Glide",
+      "path": "fx.granular.voices.3.glide",
+      "type": "float",
+      "id": 1157,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4CloudStyle",
+      "path": "fx.granular.voices.3.cloudStyle",
+      "type": "uint",
+      "id": 1158,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "name": "FxGranularV4AnchorPattern",
+      "path": "fx.granular.voices.3.anchorPattern",
+      "type": "uint",
+      "id": 1159,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "name": "FxGranularV4LoopCrossfadeMs",
+      "path": "fx.granular.voices.3.loopCrossfadeMs",
+      "type": "float",
+      "id": 1160,
+      "min": 4,
+      "max": 80
+    },
+    {
+      "name": "FxGranularV1Enabled",
+      "path": "fx.granular.voices.0.enabled",
+      "type": "bool",
+      "id": 820
+    },
+    {
+      "name": "FxGranularV1Mode",
+      "path": "fx.granular.voices.0.mode",
+      "type": "uint",
+      "id": 821,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxGranularV1Slice",
+      "path": "fx.granular.voices.0.slice",
+      "type": "uint",
+      "id": 822,
+      "min": 0,
+      "max": 15
+    },
+    {
+      "name": "FxGranularV1Speed",
+      "path": "fx.granular.voices.0.speed",
+      "type": "float",
+      "id": 823,
+      "min": 0,
+      "max": 4
+    },
+    {
+      "name": "FxGranularV1ScanRate",
+      "path": "fx.granular.voices.0.scanRate",
+      "type": "float",
+      "id": 824,
+      "min": 0.25,
+      "max": 4
+    },
+    {
+      "name": "FxGranularV1Reverse",
+      "path": "fx.granular.voices.0.reverse",
+      "type": "bool",
+      "id": 825
+    },
+    {
+      "name": "FxGranularV1Pitch",
+      "path": "fx.granular.voices.0.pitch",
+      "type": "float",
+      "id": 826,
+      "min": -24,
+      "max": 24
+    },
+    {
+      "name": "FxGranularV1WriteFollow",
+      "path": "fx.granular.voices.0.writeFollow",
+      "type": "float",
+      "id": 827,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1Density",
+      "path": "fx.granular.voices.0.density",
+      "type": "float",
+      "id": 828,
+      "min": 1,
+      "max": 64
+    },
+    {
+      "name": "FxGranularV1GrainSizeMs",
+      "path": "fx.granular.voices.0.grainSizeMs",
+      "type": "float",
+      "id": 829,
+      "min": 10,
+      "max": 500
+    },
+    {
+      "name": "FxGranularV1Spray",
+      "path": "fx.granular.voices.0.spray",
+      "type": "float",
+      "id": 830,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1GrainOctaveProbability",
+      "path": "fx.granular.voices.0.grainOctaveProbability",
+      "type": "float",
+      "id": 831,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1AttackSeconds",
+      "path": "fx.granular.voices.0.attackSeconds",
+      "type": "float",
+      "id": 832,
+      "min": 0.001,
+      "max": 0.5
+    },
+    {
+      "name": "FxGranularV1DecaySeconds",
+      "path": "fx.granular.voices.0.decaySeconds",
+      "type": "float",
+      "id": 833,
+      "min": 0.01,
+      "max": 4
+    },
+    {
+      "name": "FxGranularV1Gain",
+      "path": "fx.granular.voices.0.gain",
+      "type": "float",
+      "id": 834,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1Pan",
+      "path": "fx.granular.voices.0.pan",
+      "type": "float",
+      "id": 835,
+      "min": -1,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1Blur",
+      "path": "fx.granular.voices.0.blur",
+      "type": "float",
+      "id": 836,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1StereoSpread",
+      "path": "fx.granular.voices.0.stereoSpread",
+      "type": "float",
+      "id": 837,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1PositionLfoRate",
+      "path": "fx.granular.voices.0.positionLfoRate",
+      "type": "float",
+      "id": 838,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1PositionLfoDepth",
+      "path": "fx.granular.voices.0.positionLfoDepth",
+      "type": "float",
+      "id": 839,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1PanLfoRate",
+      "path": "fx.granular.voices.0.panLfoRate",
+      "type": "float",
+      "id": 840,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1ReverseLfoRate",
+      "path": "fx.granular.voices.0.reverseLfoRate",
+      "type": "float",
+      "id": 841,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1RecordLfoRate",
+      "path": "fx.granular.voices.0.recordLfoRate",
+      "type": "float",
+      "id": 842,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV1EuclidGated",
+      "path": "fx.granular.voices.0.euclidGated",
+      "type": "bool",
+      "id": 843
+    },
+    {
+      "name": "FxGranularV1EuclidMuted",
+      "path": "fx.granular.voices.0.euclidMuted",
+      "type": "bool",
+      "id": 844
+    },
+    {
+      "name": "FxGranularV2Enabled",
+      "path": "fx.granular.voices.1.enabled",
+      "type": "bool",
+      "id": 845
+    },
+    {
+      "name": "FxGranularV2Mode",
+      "path": "fx.granular.voices.1.mode",
+      "type": "uint",
+      "id": 846,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxGranularV2Slice",
+      "path": "fx.granular.voices.1.slice",
+      "type": "uint",
+      "id": 847,
+      "min": 0,
+      "max": 15
+    },
+    {
+      "name": "FxGranularV2Speed",
+      "path": "fx.granular.voices.1.speed",
+      "type": "float",
+      "id": 848,
+      "min": 0,
+      "max": 4
+    },
+    {
+      "name": "FxGranularV2ScanRate",
+      "path": "fx.granular.voices.1.scanRate",
+      "type": "float",
+      "id": 849,
+      "min": 0.25,
+      "max": 4
+    },
+    {
+      "name": "FxGranularV2Reverse",
+      "path": "fx.granular.voices.1.reverse",
+      "type": "bool",
+      "id": 850
+    },
+    {
+      "name": "FxGranularV2Pitch",
+      "path": "fx.granular.voices.1.pitch",
+      "type": "float",
+      "id": 851,
+      "min": -24,
+      "max": 24
+    },
+    {
+      "name": "FxGranularV2WriteFollow",
+      "path": "fx.granular.voices.1.writeFollow",
+      "type": "float",
+      "id": 852,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2Density",
+      "path": "fx.granular.voices.1.density",
+      "type": "float",
+      "id": 853,
+      "min": 1,
+      "max": 64
+    },
+    {
+      "name": "FxGranularV2GrainSizeMs",
+      "path": "fx.granular.voices.1.grainSizeMs",
+      "type": "float",
+      "id": 854,
+      "min": 10,
+      "max": 500
+    },
+    {
+      "name": "FxGranularV2Spray",
+      "path": "fx.granular.voices.1.spray",
+      "type": "float",
+      "id": 855,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2GrainOctaveProbability",
+      "path": "fx.granular.voices.1.grainOctaveProbability",
+      "type": "float",
+      "id": 856,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2AttackSeconds",
+      "path": "fx.granular.voices.1.attackSeconds",
+      "type": "float",
+      "id": 857,
+      "min": 0.001,
+      "max": 0.5
+    },
+    {
+      "name": "FxGranularV2DecaySeconds",
+      "path": "fx.granular.voices.1.decaySeconds",
+      "type": "float",
+      "id": 858,
+      "min": 0.01,
+      "max": 4
+    },
+    {
+      "name": "FxGranularV2Gain",
+      "path": "fx.granular.voices.1.gain",
+      "type": "float",
+      "id": 859,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2Pan",
+      "path": "fx.granular.voices.1.pan",
+      "type": "float",
+      "id": 860,
+      "min": -1,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2Blur",
+      "path": "fx.granular.voices.1.blur",
+      "type": "float",
+      "id": 861,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2StereoSpread",
+      "path": "fx.granular.voices.1.stereoSpread",
+      "type": "float",
+      "id": 862,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2PositionLfoRate",
+      "path": "fx.granular.voices.1.positionLfoRate",
+      "type": "float",
+      "id": 863,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2PositionLfoDepth",
+      "path": "fx.granular.voices.1.positionLfoDepth",
+      "type": "float",
+      "id": 864,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2PanLfoRate",
+      "path": "fx.granular.voices.1.panLfoRate",
+      "type": "float",
+      "id": 865,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2ReverseLfoRate",
+      "path": "fx.granular.voices.1.reverseLfoRate",
+      "type": "float",
+      "id": 866,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2RecordLfoRate",
+      "path": "fx.granular.voices.1.recordLfoRate",
+      "type": "float",
+      "id": 867,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV2EuclidGated",
+      "path": "fx.granular.voices.1.euclidGated",
+      "type": "bool",
+      "id": 868
+    },
+    {
+      "name": "FxGranularV2EuclidMuted",
+      "path": "fx.granular.voices.1.euclidMuted",
+      "type": "bool",
+      "id": 869
+    },
+    {
+      "name": "FxGranularV3Enabled",
+      "path": "fx.granular.voices.2.enabled",
+      "type": "bool",
+      "id": 870
+    },
+    {
+      "name": "FxGranularV3Mode",
+      "path": "fx.granular.voices.2.mode",
+      "type": "uint",
+      "id": 871,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxGranularV3Slice",
+      "path": "fx.granular.voices.2.slice",
+      "type": "uint",
+      "id": 872,
+      "min": 0,
+      "max": 15
+    },
+    {
+      "name": "FxGranularV3Speed",
+      "path": "fx.granular.voices.2.speed",
+      "type": "float",
+      "id": 873,
+      "min": 0,
+      "max": 4
+    },
+    {
+      "name": "FxGranularV3ScanRate",
+      "path": "fx.granular.voices.2.scanRate",
+      "type": "float",
+      "id": 874,
+      "min": 0.25,
+      "max": 4
+    },
+    {
+      "name": "FxGranularV3Reverse",
+      "path": "fx.granular.voices.2.reverse",
+      "type": "bool",
+      "id": 875
+    },
+    {
+      "name": "FxGranularV3Pitch",
+      "path": "fx.granular.voices.2.pitch",
+      "type": "float",
+      "id": 876,
+      "min": -24,
+      "max": 24
+    },
+    {
+      "name": "FxGranularV3WriteFollow",
+      "path": "fx.granular.voices.2.writeFollow",
+      "type": "float",
+      "id": 877,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3Density",
+      "path": "fx.granular.voices.2.density",
+      "type": "float",
+      "id": 878,
+      "min": 1,
+      "max": 64
+    },
+    {
+      "name": "FxGranularV3GrainSizeMs",
+      "path": "fx.granular.voices.2.grainSizeMs",
+      "type": "float",
+      "id": 879,
+      "min": 10,
+      "max": 500
+    },
+    {
+      "name": "FxGranularV3Spray",
+      "path": "fx.granular.voices.2.spray",
+      "type": "float",
+      "id": 880,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3GrainOctaveProbability",
+      "path": "fx.granular.voices.2.grainOctaveProbability",
+      "type": "float",
+      "id": 881,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3AttackSeconds",
+      "path": "fx.granular.voices.2.attackSeconds",
+      "type": "float",
+      "id": 882,
+      "min": 0.001,
+      "max": 0.5
+    },
+    {
+      "name": "FxGranularV3DecaySeconds",
+      "path": "fx.granular.voices.2.decaySeconds",
+      "type": "float",
+      "id": 883,
+      "min": 0.01,
+      "max": 4
+    },
+    {
+      "name": "FxGranularV3Gain",
+      "path": "fx.granular.voices.2.gain",
+      "type": "float",
+      "id": 884,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3Pan",
+      "path": "fx.granular.voices.2.pan",
+      "type": "float",
+      "id": 885,
+      "min": -1,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3Blur",
+      "path": "fx.granular.voices.2.blur",
+      "type": "float",
+      "id": 886,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3StereoSpread",
+      "path": "fx.granular.voices.2.stereoSpread",
+      "type": "float",
+      "id": 887,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3PositionLfoRate",
+      "path": "fx.granular.voices.2.positionLfoRate",
+      "type": "float",
+      "id": 888,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3PositionLfoDepth",
+      "path": "fx.granular.voices.2.positionLfoDepth",
+      "type": "float",
+      "id": 889,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3PanLfoRate",
+      "path": "fx.granular.voices.2.panLfoRate",
+      "type": "float",
+      "id": 890,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3ReverseLfoRate",
+      "path": "fx.granular.voices.2.reverseLfoRate",
+      "type": "float",
+      "id": 891,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3RecordLfoRate",
+      "path": "fx.granular.voices.2.recordLfoRate",
+      "type": "float",
+      "id": 892,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV3EuclidGated",
+      "path": "fx.granular.voices.2.euclidGated",
+      "type": "bool",
+      "id": 893
+    },
+    {
+      "name": "FxGranularV3EuclidMuted",
+      "path": "fx.granular.voices.2.euclidMuted",
+      "type": "bool",
+      "id": 894
+    },
+    {
+      "name": "FxGranularV4Enabled",
+      "path": "fx.granular.voices.3.enabled",
+      "type": "bool",
+      "id": 895
+    },
+    {
+      "name": "FxGranularV4Mode",
+      "path": "fx.granular.voices.3.mode",
+      "type": "uint",
+      "id": 896,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxGranularV4Slice",
+      "path": "fx.granular.voices.3.slice",
+      "type": "uint",
+      "id": 897,
+      "min": 0,
+      "max": 15
+    },
+    {
+      "name": "FxGranularV4Speed",
+      "path": "fx.granular.voices.3.speed",
+      "type": "float",
+      "id": 898,
+      "min": 0,
+      "max": 4
+    },
+    {
+      "name": "FxGranularV4ScanRate",
+      "path": "fx.granular.voices.3.scanRate",
+      "type": "float",
+      "id": 899,
+      "min": 0.25,
+      "max": 4
+    },
+    {
+      "name": "FxGranularV4Reverse",
+      "path": "fx.granular.voices.3.reverse",
+      "type": "bool",
+      "id": 900
+    },
+    {
+      "name": "FxGranularV4Pitch",
+      "path": "fx.granular.voices.3.pitch",
+      "type": "float",
+      "id": 901,
+      "min": -24,
+      "max": 24
+    },
+    {
+      "name": "FxGranularV4WriteFollow",
+      "path": "fx.granular.voices.3.writeFollow",
+      "type": "float",
+      "id": 902,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4Density",
+      "path": "fx.granular.voices.3.density",
+      "type": "float",
+      "id": 903,
+      "min": 1,
+      "max": 64
+    },
+    {
+      "name": "FxGranularV4GrainSizeMs",
+      "path": "fx.granular.voices.3.grainSizeMs",
+      "type": "float",
+      "id": 904,
+      "min": 10,
+      "max": 500
+    },
+    {
+      "name": "FxGranularV4Spray",
+      "path": "fx.granular.voices.3.spray",
+      "type": "float",
+      "id": 905,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4GrainOctaveProbability",
+      "path": "fx.granular.voices.3.grainOctaveProbability",
+      "type": "float",
+      "id": 906,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4AttackSeconds",
+      "path": "fx.granular.voices.3.attackSeconds",
+      "type": "float",
+      "id": 907,
+      "min": 0.001,
+      "max": 0.5
+    },
+    {
+      "name": "FxGranularV4DecaySeconds",
+      "path": "fx.granular.voices.3.decaySeconds",
+      "type": "float",
+      "id": 908,
+      "min": 0.01,
+      "max": 4
+    },
+    {
+      "name": "FxGranularV4Gain",
+      "path": "fx.granular.voices.3.gain",
+      "type": "float",
+      "id": 909,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4Pan",
+      "path": "fx.granular.voices.3.pan",
+      "type": "float",
+      "id": 910,
+      "min": -1,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4Blur",
+      "path": "fx.granular.voices.3.blur",
+      "type": "float",
+      "id": 911,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4StereoSpread",
+      "path": "fx.granular.voices.3.stereoSpread",
+      "type": "float",
+      "id": 912,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4PositionLfoRate",
+      "path": "fx.granular.voices.3.positionLfoRate",
+      "type": "float",
+      "id": 913,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4PositionLfoDepth",
+      "path": "fx.granular.voices.3.positionLfoDepth",
+      "type": "float",
+      "id": 914,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4PanLfoRate",
+      "path": "fx.granular.voices.3.panLfoRate",
+      "type": "float",
+      "id": 915,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4ReverseLfoRate",
+      "path": "fx.granular.voices.3.reverseLfoRate",
+      "type": "float",
+      "id": 916,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4RecordLfoRate",
+      "path": "fx.granular.voices.3.recordLfoRate",
+      "type": "float",
+      "id": 917,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxGranularV4EuclidGated",
+      "path": "fx.granular.voices.3.euclidGated",
+      "type": "bool",
+      "id": 918
+    },
+    {
+      "name": "FxGranularV4EuclidMuted",
+      "path": "fx.granular.voices.3.euclidMuted",
+      "type": "bool",
+      "id": 919
+    },
+    {
+      "name": "FxDelayAMix",
+      "path": "fx.delayA.mix",
+      "type": "float",
+      "id": 301,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayBMix",
+      "path": "fx.delayB.mix",
+      "type": "float",
+      "id": 302,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbMix",
+      "path": "fx.reverb.mix",
+      "type": "float",
+      "id": 303,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSpectralFreezeMix",
+      "path": "fx.spectralFreeze.mix",
+      "type": "float",
+      "id": 304,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDrive",
+      "path": "fx.dynamics.drive",
+      "type": "float",
+      "id": 305,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayAEnabled",
+      "path": "fx.delayA.enabled",
+      "type": "bool",
+      "id": 306
+    },
+    {
+      "name": "FxDelayATimeLeftMs",
+      "path": "fx.delayA.timeLeftMs",
+      "type": "float",
+      "id": 307,
+      "min": 10,
+      "max": 5000
+    },
+    {
+      "name": "FxDelayATimeRightMs",
+      "path": "fx.delayA.timeRightMs",
+      "type": "float",
+      "id": 308,
+      "min": 10,
+      "max": 5000
+    },
+    {
+      "name": "FxDelayAFeedback",
+      "path": "fx.delayA.feedback",
+      "type": "float",
+      "id": 309,
+      "min": 0,
+      "max": 0.95
+    },
+    {
+      "name": "FxDelayAFilterHz",
+      "path": "fx.delayA.filterHz",
+      "type": "float",
+      "id": 310,
+      "min": 200,
+      "max": 12000
+    },
+    {
+      "name": "FxDelayAFilterType",
+      "path": "fx.delayA.filterType",
+      "type": "uint",
+      "id": 311,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxDelayAModRateHz",
+      "path": "fx.delayA.modRateHz",
+      "type": "float",
+      "id": 312,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "name": "FxDelayAModDepthMs",
+      "path": "fx.delayA.modDepthMs",
+      "type": "float",
+      "id": 313,
+      "min": 0,
+      "max": 50
+    },
+    {
+      "name": "FxDelayAPingPong",
+      "path": "fx.delayA.pingPong",
+      "type": "bool",
+      "id": 314
+    },
+    {
+      "name": "FxDelayADuck",
+      "path": "fx.delayA.duck",
+      "type": "float",
+      "id": 315,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayAWidth",
+      "path": "fx.delayA.width",
+      "type": "float",
+      "id": 316,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayACrossFeedFilterHz",
+      "path": "fx.delayA.crossFeedFilterHz",
+      "type": "float",
+      "id": 317,
+      "min": 200,
+      "max": 12000
+    },
+    {
+      "name": "FxDelayBEnabled",
+      "path": "fx.delayB.enabled",
+      "type": "bool",
+      "id": 330
+    },
+    {
+      "name": "FxDelayBActivity",
+      "path": "fx.delayB.activity",
+      "type": "float",
+      "id": 331,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayBRepeats",
+      "path": "fx.delayB.repeats",
+      "type": "float",
+      "id": 332,
+      "min": 0,
+      "max": 0.85
+    },
+    {
+      "name": "FxDelayBBaseTimeMs",
+      "path": "fx.delayB.baseTimeMs",
+      "type": "float",
+      "id": 333,
+      "min": 20,
+      "max": 5000
+    },
+    {
+      "name": "FxDelayBTone",
+      "path": "fx.delayB.tone",
+      "type": "float",
+      "id": 334,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayBVibrato",
+      "path": "fx.delayB.vibrato",
+      "type": "float",
+      "id": 335,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayBSpaceMode",
+      "path": "fx.delayB.spaceMode",
+      "type": "uint",
+      "id": 336,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxDelayBPattern",
+      "path": "fx.delayB.pattern",
+      "type": "uint",
+      "id": 337,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "name": "FxDelayBWarp",
+      "path": "fx.delayB.warp",
+      "type": "uint",
+      "id": 338,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "name": "FxDelayBWarpIntensity",
+      "path": "fx.delayB.warpIntensity",
+      "type": "float",
+      "id": 339,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayBSpread",
+      "path": "fx.delayB.spread",
+      "type": "float",
+      "id": 340,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayBTapeHeadMask",
+      "path": "fx.delayB.tapeHeadMask",
+      "type": "uint",
+      "id": 341,
+      "min": 0,
+      "max": 15
+    },
+    {
+      "name": "FxDelayBTapeHead1Level",
+      "path": "fx.delayB.tapeHead1Level",
+      "type": "float",
+      "id": 342,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayBTapeHead2Level",
+      "path": "fx.delayB.tapeHead2Level",
+      "type": "float",
+      "id": 343,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayBTapeHead3Level",
+      "path": "fx.delayB.tapeHead3Level",
+      "type": "float",
+      "id": 344,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayBTapeHead4Level",
+      "path": "fx.delayB.tapeHead4Level",
+      "type": "float",
+      "id": 345,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayBTapeHead1Pan",
+      "path": "fx.delayB.tapeHead1Pan",
+      "type": "float",
+      "id": 346,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayBTapeHead2Pan",
+      "path": "fx.delayB.tapeHead2Pan",
+      "type": "float",
+      "id": 347,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayBTapeHead3Pan",
+      "path": "fx.delayB.tapeHead3Pan",
+      "type": "float",
+      "id": 348,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDelayBTapeHead4Pan",
+      "path": "fx.delayB.tapeHead4Pan",
+      "type": "float",
+      "id": 349,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbType",
+      "path": "fx.reverb.type",
+      "type": "uint",
+      "id": 350,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "name": "FxReverbQuality",
+      "path": "fx.reverb.quality",
+      "type": "uint",
+      "id": 351,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxReverbDecay",
+      "path": "fx.reverb.decay",
+      "type": "float",
+      "id": 352,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbSize",
+      "path": "fx.reverb.size",
+      "type": "float",
+      "id": 353,
+      "min": 0.5,
+      "max": 10
+    },
+    {
+      "name": "FxReverbDamping",
+      "path": "fx.reverb.damping",
+      "type": "float",
+      "id": 354,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbDiffusion",
+      "path": "fx.reverb.diffusion",
+      "type": "float",
+      "id": 355,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbModulation",
+      "path": "fx.reverb.modulation",
+      "type": "float",
+      "id": 356,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbPredelayMs",
+      "path": "fx.reverb.predelayMs",
+      "type": "float",
+      "id": 357,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "name": "FxReverbWidth",
+      "path": "fx.reverb.width",
+      "type": "float",
+      "id": 358,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbShimmerAmount",
+      "path": "fx.reverb.shimmerAmount",
+      "type": "float",
+      "id": 359,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbShimmerPitch",
+      "path": "fx.reverb.shimmerPitch",
+      "type": "float",
+      "id": 360,
+      "min": -24,
+      "max": 24
+    },
+    {
+      "name": "FxReverbSlowRateHz",
+      "path": "fx.reverb.slowRateHz",
+      "type": "float",
+      "id": 361,
+      "min": 0.01,
+      "max": 0.2
+    },
+    {
+      "name": "FxReverbSlowDepth",
+      "path": "fx.reverb.slowDepth",
+      "type": "float",
+      "id": 362,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbReverseAmount",
+      "path": "fx.reverb.reverseAmount",
+      "type": "float",
+      "id": 363,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbReverseLengthSec",
+      "path": "fx.reverb.reverseLengthSec",
+      "type": "float",
+      "id": 364,
+      "min": 0.5,
+      "max": 16
+    },
+    {
+      "name": "FxReverbChorusRateHz",
+      "path": "fx.reverb.chorusRateHz",
+      "type": "float",
+      "id": 365,
+      "min": 0.05,
+      "max": 2
+    },
+    {
+      "name": "FxReverbChorusDepth",
+      "path": "fx.reverb.chorusDepth",
+      "type": "float",
+      "id": 366,
+      "min": 0,
+      "max": 40
+    },
+    {
+      "name": "FxReverbModCharacter",
+      "path": "fx.reverb.modCharacter",
+      "type": "uint",
+      "id": 367,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxReverbDampLow",
+      "path": "fx.reverb.dampLow",
+      "type": "float",
+      "id": 368,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbDampHigh",
+      "path": "fx.reverb.dampHigh",
+      "type": "float",
+      "id": 369,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbCrossoverHz",
+      "path": "fx.reverb.crossoverHz",
+      "type": "float",
+      "id": 370,
+      "min": 100,
+      "max": 6000
+    },
+    {
+      "name": "FxReverbInputTone",
+      "path": "fx.reverb.inputTone",
+      "type": "float",
+      "id": 371,
+      "min": -1,
+      "max": 1
+    },
+    {
+      "name": "FxReverbShimmerFeedback",
+      "path": "fx.reverb.shimmerFeedback",
+      "type": "float",
+      "id": 372,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbBloom",
+      "path": "fx.reverb.bloom",
+      "type": "float",
+      "id": 388,
+      "min": -1,
+      "max": 1
+    },
+    {
+      "name": "FxReverbWarp",
+      "path": "fx.reverb.warp",
+      "type": "float",
+      "id": 373,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbCrossFeed",
+      "path": "fx.reverb.crossFeed",
+      "type": "float",
+      "id": 374,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbEarlyReflections",
+      "path": "fx.reverb.earlyReflections",
+      "type": "float",
+      "id": 375,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbAirAbsorption",
+      "path": "fx.reverb.airAbsorption",
+      "type": "float",
+      "id": 376,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbSaturationMode",
+      "path": "fx.reverb.saturationMode",
+      "type": "uint",
+      "id": 377,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxReverbTransientSmooth",
+      "path": "fx.reverb.transientSmooth",
+      "type": "float",
+      "id": 378,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxReverbErLpFreq",
+      "path": "fx.reverb.erLpFreq",
+      "type": "float",
+      "id": 379,
+      "min": 200,
+      "max": 12000
+    },
+    {
+      "name": "FxReverbPreCompThreshold",
+      "path": "fx.reverb.preComp.threshold",
+      "type": "float",
+      "id": 380,
+      "min": -60,
+      "max": 0
+    },
+    {
+      "name": "FxReverbPreCompKnee",
+      "path": "fx.reverb.preComp.knee",
+      "type": "float",
+      "id": 381,
+      "min": 0,
+      "max": 40
+    },
+    {
+      "name": "FxReverbPreCompRatio",
+      "path": "fx.reverb.preComp.ratio",
+      "type": "float",
+      "id": 382,
+      "min": 1,
+      "max": 20
+    },
+    {
+      "name": "FxReverbPreCompAttackMs",
+      "path": "fx.reverb.preComp.attackMs",
+      "type": "float",
+      "id": 383,
+      "min": 0.1,
+      "max": 30
+    },
+    {
+      "name": "FxReverbPreCompReleaseMs",
+      "path": "fx.reverb.preComp.releaseMs",
+      "type": "float",
+      "id": 384,
+      "min": 20,
+      "max": 1000
+    },
+    {
+      "name": "FxReverbPreCompMakeup",
+      "path": "fx.reverb.preComp.makeup",
+      "type": "float",
+      "id": 385,
+      "min": 0.5,
+      "max": 4
+    },
+    {
+      "name": "FxReverbChordWash",
+      "path": "fx.reverb.chordWash",
+      "type": "bool",
+      "id": 386
+    },
+    {
+      "name": "FxReverbResolutionBloom",
+      "path": "fx.reverb.resolutionBloom",
+      "type": "bool",
+      "id": 387
+    },
+    {
+      "name": "FxSpectralFreezeEnabled",
+      "path": "fx.spectralFreeze.enabled",
+      "type": "bool",
+      "id": 930
+    },
+    {
+      "name": "FxSpectralFreezeActive",
+      "path": "fx.spectralFreeze.active",
+      "type": "bool",
+      "id": 931
+    },
+    {
+      "name": "FxSpectralFreezeSlushy",
+      "path": "fx.spectralFreeze.slushy",
+      "type": "bool",
+      "id": 932
+    },
+    {
+      "name": "FxSpectralFreezeSpeed",
+      "path": "fx.spectralFreeze.speed",
+      "type": "float",
+      "id": 933,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSpectralFreezeDecay",
+      "path": "fx.spectralFreeze.decay",
+      "type": "float",
+      "id": 934,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSpectralFreezePhaseJitter",
+      "path": "fx.spectralFreeze.phaseJitter",
+      "type": "float",
+      "id": 935,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSpectralFreezeRouting",
+      "path": "fx.spectralFreeze.routing",
+      "type": "uint",
+      "id": 936,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSpectralFreezeReverbCrossfade",
+      "path": "fx.spectralFreeze.reverbCrossfade",
+      "type": "float",
+      "id": 937,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsEnabled",
+      "path": "fx.dynamics.enabled",
+      "type": "bool",
+      "id": 940
+    },
+    {
+      "name": "FxDynamicsCharacterEnabled",
+      "path": "fx.dynamics.character.enabled",
+      "type": "bool",
+      "id": 941
+    },
+    {
+      "name": "FxDynamicsCharacterMode",
+      "path": "fx.dynamics.character.mode",
+      "type": "uint",
+      "id": 942,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxDynamicsCharacterMix",
+      "path": "fx.dynamics.character.mix",
+      "type": "float",
+      "id": 943,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsCharacterAge",
+      "path": "fx.dynamics.character.age",
+      "type": "float",
+      "id": 944,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsCharacterBias",
+      "path": "fx.dynamics.character.bias",
+      "type": "float",
+      "id": 945,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsCharacterLpgAmount",
+      "path": "fx.dynamics.character.lpgAmount",
+      "type": "float",
+      "id": 946,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsCharacterResonance",
+      "path": "fx.dynamics.character.resonance",
+      "type": "float",
+      "id": 947,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsCharacterStereo",
+      "path": "fx.dynamics.character.stereo",
+      "type": "float",
+      "id": 948,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsCharacterEnvFollow",
+      "path": "fx.dynamics.character.envFollow",
+      "type": "float",
+      "id": 949,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsCharacterDepth",
+      "path": "fx.dynamics.character.depth",
+      "type": "float",
+      "id": 950,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsCharacterRate",
+      "path": "fx.dynamics.character.rate",
+      "type": "float",
+      "id": 951,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsCharacterDamp",
+      "path": "fx.dynamics.character.damp",
+      "type": "float",
+      "id": 952,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeEnabled",
+      "path": "fx.dynamics.degrade.enabled",
+      "type": "bool",
+      "id": 953
+    },
+    {
+      "name": "FxDynamicsDegradeMix",
+      "path": "fx.dynamics.degrade.mix",
+      "type": "float",
+      "id": 954,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeAge",
+      "path": "fx.dynamics.degrade.age",
+      "type": "float",
+      "id": 955,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeGeneration",
+      "path": "fx.dynamics.degrade.generation",
+      "type": "float",
+      "id": 956,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeAlias",
+      "path": "fx.dynamics.degrade.alias",
+      "type": "float",
+      "id": 957,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeWow",
+      "path": "fx.dynamics.degrade.wow",
+      "type": "float",
+      "id": 958,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeFlutter",
+      "path": "fx.dynamics.degrade.flutter",
+      "type": "float",
+      "id": 959,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeDrift",
+      "path": "fx.dynamics.degrade.drift",
+      "type": "float",
+      "id": 960,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeWobbleSpeed",
+      "path": "fx.dynamics.degrade.wobbleSpeed",
+      "type": "float",
+      "id": 961,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeTone",
+      "path": "fx.dynamics.degrade.tone",
+      "type": "float",
+      "id": 962,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeHp",
+      "path": "fx.dynamics.degrade.hp",
+      "type": "float",
+      "id": 963,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeLp",
+      "path": "fx.dynamics.degrade.lp",
+      "type": "float",
+      "id": 964,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeNoise",
+      "path": "fx.dynamics.degrade.noise",
+      "type": "float",
+      "id": 965,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeSaturation",
+      "path": "fx.dynamics.degrade.saturation",
+      "type": "float",
+      "id": 966,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeCorrosion",
+      "path": "fx.dynamics.degrade.corrosion",
+      "type": "float",
+      "id": 967,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModSlowWow",
+      "path": "fx.dynamics.mod.slow.wow",
+      "type": "float",
+      "id": 1011,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModSlowFlutter",
+      "path": "fx.dynamics.mod.slow.flutter",
+      "type": "float",
+      "id": 1012,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModSlowLp",
+      "path": "fx.dynamics.mod.slow.lp",
+      "type": "float",
+      "id": 1013,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModSlowWet",
+      "path": "fx.dynamics.mod.slow.wet",
+      "type": "float",
+      "id": 1014,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModSlowDropout",
+      "path": "fx.dynamics.mod.slow.dropout",
+      "type": "float",
+      "id": 1015,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModSlowAlias",
+      "path": "fx.dynamics.mod.slow.alias",
+      "type": "float",
+      "id": 1016,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModFlutterWow",
+      "path": "fx.dynamics.mod.flutter.wow",
+      "type": "float",
+      "id": 1017,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModFlutterFlutter",
+      "path": "fx.dynamics.mod.flutter.flutter",
+      "type": "float",
+      "id": 1018,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModFlutterLp",
+      "path": "fx.dynamics.mod.flutter.lp",
+      "type": "float",
+      "id": 1019,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModFlutterWet",
+      "path": "fx.dynamics.mod.flutter.wet",
+      "type": "float",
+      "id": 1020,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModFlutterDropout",
+      "path": "fx.dynamics.mod.flutter.dropout",
+      "type": "float",
+      "id": 1021,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModFlutterAlias",
+      "path": "fx.dynamics.mod.flutter.alias",
+      "type": "float",
+      "id": 1022,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModRandomWow",
+      "path": "fx.dynamics.mod.random.wow",
+      "type": "float",
+      "id": 1023,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModRandomFlutter",
+      "path": "fx.dynamics.mod.random.flutter",
+      "type": "float",
+      "id": 1024,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModRandomLp",
+      "path": "fx.dynamics.mod.random.lp",
+      "type": "float",
+      "id": 1025,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModRandomWet",
+      "path": "fx.dynamics.mod.random.wet",
+      "type": "float",
+      "id": 1026,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModRandomDropout",
+      "path": "fx.dynamics.mod.random.dropout",
+      "type": "float",
+      "id": 1027,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModRandomAlias",
+      "path": "fx.dynamics.mod.random.alias",
+      "type": "float",
+      "id": 1028,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModEnvWow",
+      "path": "fx.dynamics.mod.env.wow",
+      "type": "float",
+      "id": 1029,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModEnvFlutter",
+      "path": "fx.dynamics.mod.env.flutter",
+      "type": "float",
+      "id": 1030,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModEnvLp",
+      "path": "fx.dynamics.mod.env.lp",
+      "type": "float",
+      "id": 1031,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModEnvWet",
+      "path": "fx.dynamics.mod.env.wet",
+      "type": "float",
+      "id": 1032,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModEnvDropout",
+      "path": "fx.dynamics.mod.env.dropout",
+      "type": "float",
+      "id": 1033,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModEnvAlias",
+      "path": "fx.dynamics.mod.env.alias",
+      "type": "float",
+      "id": 1034,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModNoiseWow",
+      "path": "fx.dynamics.mod.noise.wow",
+      "type": "float",
+      "id": 1035,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModNoiseFlutter",
+      "path": "fx.dynamics.mod.noise.flutter",
+      "type": "float",
+      "id": 1036,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModNoiseLp",
+      "path": "fx.dynamics.mod.noise.lp",
+      "type": "float",
+      "id": 1037,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModNoiseWet",
+      "path": "fx.dynamics.mod.noise.wet",
+      "type": "float",
+      "id": 1038,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModNoiseDropout",
+      "path": "fx.dynamics.mod.noise.dropout",
+      "type": "float",
+      "id": 1039,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsModNoiseAlias",
+      "path": "fx.dynamics.mod.noise.alias",
+      "type": "float",
+      "id": 1040,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsSaturationEnabled",
+      "path": "fx.dynamics.saturation.enabled",
+      "type": "bool",
+      "id": 968
+    },
+    {
+      "name": "FxDynamicsSaturationMode",
+      "path": "fx.dynamics.saturation.mode",
+      "type": "uint",
+      "id": 969,
+      "min": 0,
+      "max": 4
+    },
+    {
+      "name": "FxDynamicsSaturationDrive",
+      "path": "fx.dynamics.saturation.drive",
+      "type": "float",
+      "id": 970,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsSaturationTone",
+      "path": "fx.dynamics.saturation.tone",
+      "type": "float",
+      "id": 971,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsSaturationBias",
+      "path": "fx.dynamics.saturation.bias",
+      "type": "float",
+      "id": 972,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsEndCompEnabled",
+      "path": "fx.dynamics.endComp.enabled",
+      "type": "bool",
+      "id": 973
+    },
+    {
+      "name": "FxDynamicsEndCompThreshold",
+      "path": "fx.dynamics.endComp.threshold",
+      "type": "float",
+      "id": 974,
+      "min": -60,
+      "max": 0
+    },
+    {
+      "name": "FxDynamicsEndCompKnee",
+      "path": "fx.dynamics.endComp.knee",
+      "type": "float",
+      "id": 975,
+      "min": 0,
+      "max": 40
+    },
+    {
+      "name": "FxDynamicsEndCompRatio",
+      "path": "fx.dynamics.endComp.ratio",
+      "type": "float",
+      "id": 976,
+      "min": 1,
+      "max": 20
+    },
+    {
+      "name": "FxDynamicsEndCompAttackMs",
+      "path": "fx.dynamics.endComp.attackMs",
+      "type": "float",
+      "id": 977,
+      "min": 0.1,
+      "max": 100
+    },
+    {
+      "name": "FxDynamicsEndCompReleaseMs",
+      "path": "fx.dynamics.endComp.releaseMs",
+      "type": "float",
+      "id": 978,
+      "min": 20,
+      "max": 1500
+    },
+    {
+      "name": "FxDynamicsEndCompMakeup",
+      "path": "fx.dynamics.endComp.makeup",
+      "type": "float",
+      "id": 979,
+      "min": 0.25,
+      "max": 4
+    },
+    {
+      "name": "FxDynamicsEndCompMix",
+      "path": "fx.dynamics.endComp.mix",
+      "type": "float",
+      "id": 980,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsEndCompDetectorHp",
+      "path": "fx.dynamics.endComp.detectorHp",
+      "type": "float",
+      "id": 981,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsEndCompDetectorTilt",
+      "path": "fx.dynamics.endComp.detectorTilt",
+      "type": "float",
+      "id": 982,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsEndCompAutoMakeup",
+      "path": "fx.dynamics.endComp.autoMakeup",
+      "type": "float",
+      "id": 983,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsEndCompProgramRelease",
+      "path": "fx.dynamics.endComp.programRelease",
+      "type": "float",
+      "id": 984,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsCharacterQuality",
+      "path": "fx.dynamics.character.quality",
+      "type": "uint",
+      "id": 1041,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxDynamicsCharacterAntiComb",
+      "path": "fx.dynamics.character.antiComb",
+      "type": "float",
+      "id": 1042,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsCharacterDiffusion",
+      "path": "fx.dynamics.character.diffusion",
+      "type": "float",
+      "id": 1043,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeQuality",
+      "path": "fx.dynamics.degrade.quality",
+      "type": "uint",
+      "id": 1044,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxDynamicsDegradeEventAmount",
+      "path": "fx.dynamics.degrade.eventAmount",
+      "type": "float",
+      "id": 1045,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeProfileAmount",
+      "path": "fx.dynamics.degrade.profileAmount",
+      "type": "float",
+      "id": 1046,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsDegradeDitherAmount",
+      "path": "fx.dynamics.degrade.ditherAmount",
+      "type": "float",
+      "id": 1047,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsEndCompMode",
+      "path": "fx.dynamics.endComp.mode",
+      "type": "uint",
+      "id": 1048,
+      "min": 0,
+      "max": 4
+    },
+    {
+      "name": "FxDynamicsEndCompPeakBlend",
+      "path": "fx.dynamics.endComp.peakBlend",
+      "type": "float",
+      "id": 1049,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsEndCompClarity",
+      "path": "fx.dynamics.endComp.clarity",
+      "type": "float",
+      "id": 1050,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsEndCompTwoBandAmount",
+      "path": "fx.dynamics.endComp.twoBandAmount",
+      "type": "float",
+      "id": 1051,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsEndCompBandSplit",
+      "path": "fx.dynamics.endComp.bandSplit",
+      "type": "float",
+      "id": 1052,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxDynamicsSaturationQuality",
+      "path": "fx.dynamics.saturation.quality",
+      "type": "uint",
+      "id": 1053,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "name": "FxSidechainEnabled",
+      "path": "fx.sidechain.enabled",
+      "type": "bool",
+      "id": 985
+    },
+    {
+      "name": "FxSidechainKeyA",
+      "path": "fx.sidechain.keyA",
+      "type": "uint",
+      "id": 986,
+      "min": 0,
+      "max": 7
+    },
+    {
+      "name": "FxSidechainKeyB",
+      "path": "fx.sidechain.keyB",
+      "type": "uint",
+      "id": 987,
+      "min": 0,
+      "max": 7
+    },
+    {
+      "name": "FxSidechainKeyAWeight",
+      "path": "fx.sidechain.keyAWeight",
+      "type": "float",
+      "id": 988,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainKeyBWeight",
+      "path": "fx.sidechain.keyBWeight",
+      "type": "float",
+      "id": 989,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainAmount",
+      "path": "fx.sidechain.amount",
+      "type": "float",
+      "id": 990,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainThreshold",
+      "path": "fx.sidechain.threshold",
+      "type": "float",
+      "id": 991,
+      "min": -60,
+      "max": 0
+    },
+    {
+      "name": "FxSidechainRatio",
+      "path": "fx.sidechain.ratio",
+      "type": "float",
+      "id": 992,
+      "min": 1,
+      "max": 20
+    },
+    {
+      "name": "FxSidechainKnee",
+      "path": "fx.sidechain.knee",
+      "type": "float",
+      "id": 993,
+      "min": 0,
+      "max": 40
+    },
+    {
+      "name": "FxSidechainAttackMs",
+      "path": "fx.sidechain.attackMs",
+      "type": "float",
+      "id": 994,
+      "min": 0.1,
+      "max": 100
+    },
+    {
+      "name": "FxSidechainHoldMs",
+      "path": "fx.sidechain.holdMs",
+      "type": "float",
+      "id": 995,
+      "min": 0,
+      "max": 250
+    },
+    {
+      "name": "FxSidechainReleaseMs",
+      "path": "fx.sidechain.releaseMs",
+      "type": "float",
+      "id": 996,
+      "min": 20,
+      "max": 1500
+    },
+    {
+      "name": "FxSidechainMakeup",
+      "path": "fx.sidechain.makeup",
+      "type": "float",
+      "id": 997,
+      "min": 0.25,
+      "max": 4
+    },
+    {
+      "name": "FxSidechainMix",
+      "path": "fx.sidechain.mix",
+      "type": "float",
+      "id": 998,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainCurve",
+      "path": "fx.sidechain.curve",
+      "type": "float",
+      "id": 999,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainDetectorHp",
+      "path": "fx.sidechain.detectorHp",
+      "type": "float",
+      "id": 1000,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainDetectorLp",
+      "path": "fx.sidechain.detectorLp",
+      "type": "float",
+      "id": 1001,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainPad1Target",
+      "path": "fx.sidechain.targets.pad1",
+      "type": "float",
+      "id": 1002,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainPad2Target",
+      "path": "fx.sidechain.targets.pad2",
+      "type": "float",
+      "id": 1003,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainLead1Target",
+      "path": "fx.sidechain.targets.lead1",
+      "type": "float",
+      "id": 1004,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainLead2Target",
+      "path": "fx.sidechain.targets.lead2",
+      "type": "float",
+      "id": 1005,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainPianoTarget",
+      "path": "fx.sidechain.targets.piano",
+      "type": "float",
+      "id": 1006,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainGranularTarget",
+      "path": "fx.sidechain.targets.granular",
+      "type": "float",
+      "id": 1007,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainDelayATarget",
+      "path": "fx.sidechain.targets.delayA",
+      "type": "float",
+      "id": 1008,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainDelayBTarget",
+      "path": "fx.sidechain.targets.delayB",
+      "type": "float",
+      "id": 1009,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "FxSidechainReverbTarget",
+      "path": "fx.sidechain.targets.reverb",
+      "type": "float",
+      "id": 1010,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "RoutingDelayAToDelayB",
+      "path": "routing.delayAToDelayB",
+      "type": "float",
+      "id": 400,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "RoutingDelayBToDelayA",
+      "path": "routing.delayBToDelayA",
+      "type": "float",
+      "id": 401,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "RoutingDelayToReverb",
+      "path": "routing.delayToReverb",
+      "type": "float",
+      "id": 402,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "RoutingGranularToReverb",
+      "path": "routing.granularToReverb",
+      "type": "float",
+      "id": 403,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "RoutingDelayAToGranular",
+      "path": "routing.delayAToGranular",
+      "type": "float",
+      "id": 404,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "RoutingDelayBToGranular",
+      "path": "routing.delayBToGranular",
+      "type": "float",
+      "id": 405,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "RoutingDelayBToReverb",
+      "path": "routing.delayBToReverb",
+      "type": "float",
+      "id": 406,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "RoutingGranularToDelayA",
+      "path": "routing.granularToDelayA",
+      "type": "float",
+      "id": 407,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "RoutingGranularToDelayB",
+      "path": "routing.granularToDelayB",
+      "type": "float",
+      "id": 408,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "MasterGain",
+      "path": "master.gain",
+      "type": "float",
+      "id": 500,
+      "min": 0,
+      "max": 1.5
+    },
+    {
+      "name": "MasterLimiterCeilingDb",
+      "path": "master.limiterCeilingDb",
+      "type": "float",
+      "id": 501,
+      "min": -24,
+      "max": 0
+    },
+    {
+      "name": "RngSeed",
+      "path": "rng.seed",
+      "type": "uint",
+      "id": 600
+    },
+    {
+      "name": "RngState",
+      "path": "rng.state",
+      "type": "uint",
+      "id": 601
+    },
+    {
+      "name": "EvolutionAmount",
+      "path": "evolution.amount",
+      "type": "float",
+      "id": 700,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "EvolutionState",
+      "path": "evolution.state",
+      "type": "uint",
+      "id": 701
+    }
   ]
 }

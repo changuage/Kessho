@@ -22,7 +22,7 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
 
 const SOURCE_ORDER = [CORE_PRODUCT_SOURCE_IDS.pad1, CORE_PRODUCT_SOURCE_IDS.pad2, CORE_PRODUCT_SOURCE_IDS.lead1, CORE_PRODUCT_SOURCE_IDS.lead2, CORE_PRODUCT_SOURCE_IDS.drum, CORE_PRODUCT_SOURCE_IDS.piano, CORE_PRODUCT_SOURCE_IDS.soundscape] as const;
 
-const SNAPSHOT_BYTES = 28600;
+const SNAPSHOT_BYTES = 28844;
 const SOURCE_BYTES = 3332;
 const LANE_BYTES = 92;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES;
@@ -96,7 +96,10 @@ function granularVoiceDefaults(voiceNumber: number): ProductGranularVoiceSnapsho
   return {
     enabled: voiceNumber === 1, mode: granularVoiceModeId(undefined), slice: clamp((voiceNumber - 1) * 4, 0, 15),
     speed: 1, scanRate: 1, reverse: false, pitch: 0, writeFollow: 0, density: 20,
-    grainSizeMs: 80, spray: 0.3, grainOctaveProbability: 0, attackSeconds: 0.003, decaySeconds: 0.5,
+    grainSizeMs: 80, spray: 0.3, positionSpray: 0.3, timingSpray: 0, lookback: 0.35, writeGuard: 0.3,
+    pitchMode: 0, pitchSpread: 0, pitchJitterCents: 4, pitchQuantize: 1, reverseChance: 0,
+    bloom: 0, glide: 0, cloudStyle: 0, anchorPattern: 0, loopCrossfadeMs: 12,
+    grainOctaveProbability: 0, attackSeconds: 0.003, decaySeconds: 0.5,
     gain: 0.5, pan: 0, blur: 0, stereoSpread: 0.5, positionLfoRate: 0, positionLfoDepth: 0,
     panLfoRate: 0, reverseLfoRate: 0, recordLfoRate: 0, euclidGated: false, euclidMuted: false,
   };
@@ -256,6 +259,11 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.fx.granularBusDiffusion);
   f32(snapshot.fx.granularTimingRandomness);
   f32(snapshot.fx.granularChordBias);
+  u32(snapshot.fx.granularQuality >>> 0);
+  u32(snapshot.fx.granularMaxGrains >>> 0);
+  f32(snapshot.fx.granularSprayMacro);
+  f32(snapshot.fx.granularCloudMacro);
+  f32(snapshot.fx.granularPitchMacro);
   f32(snapshot.fx.granularLegacyJitterMs);
   f32(snapshot.fx.granularLegacyProbability);
   u32(snapshot.fx.granularLegacyPitchMode >>> 0);
@@ -275,6 +283,20 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
     f32(voice.density);
     f32(voice.grainSizeMs);
     f32(voice.spray);
+    f32(voice.positionSpray);
+    f32(voice.timingSpray);
+    f32(voice.lookback);
+    f32(voice.writeGuard);
+    u32(voice.pitchMode >>> 0);
+    f32(voice.pitchSpread);
+    f32(voice.pitchJitterCents);
+    f32(voice.pitchQuantize);
+    f32(voice.reverseChance);
+    f32(voice.bloom);
+    f32(voice.glide);
+    u32(voice.cloudStyle >>> 0);
+    u32(voice.anchorPattern >>> 0);
+    f32(voice.loopCrossfadeMs);
     f32(voice.grainOctaveProbability);
     f32(voice.attackSeconds);
     f32(voice.decaySeconds);

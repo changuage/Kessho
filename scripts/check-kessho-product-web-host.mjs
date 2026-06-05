@@ -1980,7 +1980,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 28600',
+  'const SNAPSHOT_BYTES = 28844',
   'const SOURCE_BYTES = 3332',
   'const LANE_BYTES = 92',
   'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
@@ -2694,7 +2694,7 @@ for (const token of [
   'noteRangeMax: this.view.getFloat32(ptr + 3020, true)',
   'expressionRangeSetLow: this.view.getUint32(ptr + 2216, true)',
   'expressionRangeMaxes: this.readFloatOverrides(',
-  'const TELEMETRY_BYTES = 7728;',
+  'const TELEMETRY_BYTES = 8760;',
   'rngSeed: this.view.getUint32(ptr + 928, true)',
   'rngState: this.view.getUint32(ptr + 932, true)',
   'sourcePresetIds.push(this.view.getUint32(ptr + 936 + index * 4, true));',
@@ -2706,6 +2706,8 @@ for (const token of [
   'masterIntegratedLufs: this.view.getFloat32(ptr + 996, true)',
   'granularWriteHeadPosition: this.view.getFloat32(ptr + 1000, true)',
   'granularVoicePositions: [',
+  'granularVisualEvents: this.readGranularVisualEvents(ptr)',
+  'readGranularVisualEvents(ptr)',
   'telemetry.granularBufferWaveform = granularBufferWaveform;',
   'pad1FilterFreq: this.view.getFloat32(ptr + 1020, true)',
   'pad1Lfo1Value: this.view.getFloat32(ptr + 1024, true)',

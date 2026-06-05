@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import type { CoreProductGranularVisualEvent } from '../audio/coreProductTelemetry';
 import type { DynamicsVisualTelemetrySnapshot, EarthTextureDebugState } from '../audio/engineSharedTypes';
 
 export type ProductRuntimePageDebugAnalysers = {
@@ -14,6 +15,7 @@ export type ProductRuntimePageTelemetryProps = {
   getProductGranularActiveGrainCount: () => number;
   getProductGranularBufferWaveform: () => Float32Array | null;
   getProductGranularVoicePositions: () => readonly number[];
+  getProductGranularVisualEvents: () => readonly CoreProductGranularVisualEvent[];
   getProductGranularWriteHeadPosition: () => number;
   getProductPadFilterFreq: (pad: 'pad1' | 'pad2') => number;
   getProductPadLfoValue: (pad: 'pad1' | 'pad2') => number;
@@ -31,6 +33,7 @@ export function useProductRuntimePageTelemetryProps({
   getProductGranularActiveGrainCount,
   getProductGranularBufferWaveform,
   getProductGranularVoicePositions,
+  getProductGranularVisualEvents,
   getProductGranularWriteHeadPosition,
   getProductPadFilterFreq,
   getProductPadLfoValue,
@@ -47,6 +50,7 @@ export function useProductRuntimePageTelemetryProps({
     getProductGranularActiveGrainCount,
     getProductGranularBufferWaveform,
     getProductGranularVoicePositions,
+    getProductGranularVisualEvents,
     getProductGranularWriteHeadPosition,
     getProductPadFilterFreq,
     getProductPadLfoValue,
@@ -60,6 +64,7 @@ export function useProductRuntimePageTelemetryProps({
     getProductGranularActiveGrainCount,
     getProductGranularBufferWaveform,
     getProductGranularVoicePositions,
+    getProductGranularVisualEvents,
     getProductGranularWriteHeadPosition,
     getProductLeadMorphedParams,
     getProductPadFilterFreq,

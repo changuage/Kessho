@@ -69,7 +69,23 @@ export function granularShapeId(value: unknown): number {
 }
 
 export function granularVoiceModeId(value: unknown): number {
-  return mappedModeId(value, { clean: 0, legacy: 2 }, 1);
+  return mappedModeId(value, { clean: 0, legacy: 1 }, 1);
+}
+
+export function granularQualityId(value: unknown): number {
+  return mappedModeId(value, { eco: 0, hq: 2 }, 1);
+}
+
+export function granularPitchModeId(value: unknown): number {
+  return mappedModeId(value, { octaves: 1, fifths: 2, chord: 3, scale: 4, free: 5 }, 0);
+}
+
+export function granularCloudStyleId(value: unknown): number {
+  return mappedModeId(value, { mosaic: 1, bloom: 2, tide: 3, orbit: 4, stars: 5 }, 0);
+}
+
+export function granularAnchorPatternId(value: unknown): number {
+  return mappedModeId(value, { reverse: 1, pendulum: 2, random: 3 }, 0);
 }
 
 export function granularLegacyPitchModeId(value: unknown): number {

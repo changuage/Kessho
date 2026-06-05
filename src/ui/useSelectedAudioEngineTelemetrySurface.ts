@@ -3,12 +3,14 @@ import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime'
 import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { DynamicsVisualTelemetrySnapshot } from '../audio/engineSharedTypes';
+import type { CoreProductGranularVisualEvent } from '../audio/coreProductTelemetry';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 
 type SelectedAudioEngineTelemetrySurface = {
   getSelectedGranularActiveGrainCount: () => number;
   getSelectedGranularWriteHeadPosition: () => number;
   getSelectedGranularVoicePositions: () => readonly number[];
+  getSelectedGranularVisualEvents: () => readonly CoreProductGranularVisualEvent[];
   getSelectedDynamicsVisualTelemetry: () => DynamicsVisualTelemetrySnapshot;
   getSelectedPadFilterFreq: (pad: 'pad1' | 'pad2') => number;
   getSelectedPadLfoValue: (pad: 'pad1' | 'pad2') => number;
@@ -39,6 +41,13 @@ export function useSelectedAudioEngineTelemetrySurface(
       return productEngine.getTelemetry()?.granularVoicePositions ?? [0, 0, 0, 0];
     }
     return selectedProductRuntime.getGranularVoicePositions();
+  }, [audioEngineRuntimeMode]);
+
+  const getSelectedGranularVisualEvents = useCallback((): readonly CoreProductGranularVisualEvent[] => {
+    if (audioEngineRuntimeMode === 'core-product') {
+      return productEngine.getTelemetry()?.granularVisualEvents ?? [];
+    }
+    return selectedProductRuntime.getGranularVisualEvents();
   }, [audioEngineRuntimeMode]);
 
   const getSelectedDynamicsVisualTelemetry = useCallback((): DynamicsVisualTelemetrySnapshot => {
@@ -100,6 +109,7 @@ export function useSelectedAudioEngineTelemetrySurface(
     getSelectedGranularActiveGrainCount,
     getSelectedGranularWriteHeadPosition,
     getSelectedGranularVoicePositions,
+    getSelectedGranularVisualEvents,
     getSelectedDynamicsVisualTelemetry,
     getSelectedPadFilterFreq,
     getSelectedPadLfoValue,

@@ -28,18 +28,39 @@
     "telemetry"
   ],
   "sourceIds": [
-    { "name": "Pad1", "id": 1 },
-    { "name": "Pad2", "id": 2 },
-    { "name": "Lead1", "id": 3 },
-    { "name": "Lead2", "id": 4 },
-    { "name": "Drum", "id": 5 },
-    { "name": "Piano", "id": 6 },
-    { "name": "Soundscape", "id": 7 }
+    {
+      "name": "Pad1",
+      "id": 1
+    },
+    {
+      "name": "Pad2",
+      "id": 2
+    },
+    {
+      "name": "Lead1",
+      "id": 3
+    },
+    {
+      "name": "Lead2",
+      "id": 4
+    },
+    {
+      "name": "Drum",
+      "id": 5
+    },
+    {
+      "name": "Piano",
+      "id": 6
+    },
+    {
+      "name": "Soundscape",
+      "id": 7
+    }
   ],
   "outputTrims": {
     "pad": 0.5,
     "lead": 0.59,
-    "reverb": 2.0
+    "reverb": 2
   },
   "soundscapeParamLayout": {
     "layerCount": 4,
@@ -52,208 +73,1382 @@
   "sourceParamLayout": {
     "pad": {
       "paramCount": 53,
-      "presetSnapParamIndices": [0, 4, 9, 11, 13, 20, 27, 28, 32, 39, 40, 43, 44, 45, 51]
+      "presetSnapParamIndices": [
+        0,
+        4,
+        9,
+        11,
+        13,
+        20,
+        27,
+        28,
+        32,
+        39,
+        40,
+        43,
+        44,
+        45,
+        51
+      ]
     },
     "lead": {
       "paramCount": 80,
-      "presetSnapParamIndices": [0, 49, 61, 69],
-      "presetRoundParamIndices": [70]
+      "presetSnapParamIndices": [
+        0,
+        49,
+        61,
+        69
+      ],
+      "presetRoundParamIndices": [
+        70
+      ]
     },
     "drum": {
       "paramCount": 126,
-      "presetSnapParamIndices": [32, 82, 96]
+      "presetSnapParamIndices": [
+        32,
+        82,
+        96
+      ]
     }
   },
   "sourceParamSpecs": {
     "pad": [
-      { "key": "padOscAWave", "index": 0, "enumMap": { "sine": 0, "triangle": 1, "sawtooth": 2, "square": 3 }, "fallback": 2 },
-      { "key": "padOscAOctave", "index": 1, "enumMap": null, "fallback": 0 },
-      { "key": "padOscADetune", "index": 2, "enumMap": null, "fallback": 0 },
-      { "key": "padOscALevel", "index": 3, "enumMap": null, "fallback": 0.6 },
-      { "key": "padOscBWave", "index": 4, "enumMap": { "sine": 0, "triangle": 1, "sawtooth": 2, "square": 3 }, "fallback": 1 },
-      { "key": "padOscBOctave", "index": 5, "enumMap": null, "fallback": 0 },
-      { "key": "padOscBDetune", "index": 6, "enumMap": null, "fallback": 8 },
-      { "key": "padOscBLevel", "index": 7, "enumMap": null, "fallback": 0.4 },
-      { "key": "padOscMix", "index": 8, "enumMap": null, "fallback": 0.5 },
-      { "key": "padSubEnabled", "index": 9, "enumMap": null, "fallback": 0 },
-      { "key": "padSubOctave", "index": 10, "enumMap": null, "fallback": -1 },
-      { "key": "padSubWave", "index": 11, "enumMap": { "sine": 0, "triangle": 1, "sawtooth": 2, "square": 3 }, "fallback": 0 },
-      { "key": "padSubLevel", "index": 12, "enumMap": null, "fallback": 0.3 },
-      { "key": "padNoiseType", "index": 13, "enumMap": { "white": 0, "pink": 1 }, "fallback": 0 },
-      { "key": "padNoiseLevel", "index": 14, "enumMap": null, "fallback": 0.16 },
-      { "key": "hardness", "index": 15, "enumMap": null, "fallback": 0.45 },
-      { "key": "warmth", "index": 16, "enumMap": null, "fallback": 0.4 },
-      { "key": "presence", "index": 17, "enumMap": null, "fallback": 0.4 },
-      { "key": "padFoldAmount", "index": 18, "enumMap": null, "fallback": 0 },
-      { "key": "padFoldMode", "index": 19, "enumMap": null, "fallback": 0 },
-      { "key": "filterType", "index": 20, "enumMap": { "lowpass": 0, "bandpass": 1, "highpass": 2, "notch": 3 }, "fallback": 0 },
-      { "key": "filterCutoffMin", "index": 21, "enumMap": null, "fallback": 80 },
-      { "key": "filterCutoffMax", "index": 22, "enumMap": null, "fallback": 1800 },
-      { "key": "filterResonance", "index": 23, "enumMap": null, "fallback": 0.2 },
-      { "key": "filterQ", "index": 24, "enumMap": null, "fallback": 1 },
-      { "key": "filterSlope", "index": 25, "enumMap": null, "fallback": 12 },
-      { "key": "filterKeyTracking", "index": 26, "enumMap": null, "fallback": 0 },
-      { "key": "padFilterBEnabled", "index": 27, "enumMap": null, "fallback": 0 },
-      { "key": "padFilterBType", "index": 28, "enumMap": { "lowpass": 0, "bandpass": 1, "highpass": 2, "notch": 3 }, "fallback": 2 },
-      { "key": "padFilterBCutoff", "index": 29, "enumMap": null, "fallback": 200 },
-      { "key": "padFilterBResonance", "index": 30, "enumMap": null, "fallback": 0.2 },
-      { "key": "padFilterBQ", "index": 31, "enumMap": null, "fallback": 1 },
-      { "key": "padFilterRouting", "index": 32, "enumMap": { "series": 0, "aOnly": 1, "bOnly": 2 }, "fallback": 0 },
-      { "key": "synthAttack", "index": 33, "enumMap": null, "fallback": 4 },
-      { "key": "synthDecay", "index": 34, "enumMap": null, "fallback": 1 },
-      { "key": "synthSustain", "index": 35, "enumMap": null, "fallback": 0.8 },
-      { "key": "synthRelease", "index": 36, "enumMap": null, "fallback": 10 },
-      { "key": "padLfo1Rate", "index": 37, "enumMap": null, "fallback": 0.09 },
-      { "key": "padLfo1Depth", "index": 38, "enumMap": null, "fallback": 0.6 },
-      { "key": "padLfo1Wave", "index": 39, "enumMap": { "sine": 0, "triangle": 1, "sawtooth": 2, "square": 3, "sampleHold": 4, "randomSmooth": 5, "randomWalk": 6 }, "fallback": 6 },
-      { "key": "padLfo1Dest", "index": 40, "enumMap": { "none": 0, "filterCutoff": 1, "filterB": 2, "filterBCutoff": 2, "amplitude": 3, "pitch": 4, "oscBLevel": 5, "foldAmount": 6 }, "fallback": 1 },
-      { "key": "padLfo2Rate", "index": 41, "enumMap": null, "fallback": 0.5 },
-      { "key": "padLfo2Depth", "index": 42, "enumMap": null, "fallback": 0 },
-      { "key": "padLfo2Wave", "index": 43, "enumMap": { "sine": 0, "triangle": 1, "sawtooth": 2, "square": 3, "sampleHold": 4, "randomSmooth": 5, "randomWalk": 6 }, "fallback": 0 },
-      { "key": "padLfo2Dest", "index": 44, "enumMap": { "none": 0, "filterCutoff": 1, "filterB": 2, "filterBCutoff": 2, "amplitude": 3, "pitch": 4, "oscBLevel": 5, "foldAmount": 6 }, "fallback": 0 },
-      { "key": "padModEnvEnabled", "index": 45, "enumMap": null, "fallback": 0 },
-      { "key": "padModEnvAttack", "index": 46, "enumMap": null, "fallback": 0.5 },
-      { "key": "padModEnvDecay", "index": 47, "enumMap": null, "fallback": 2 },
-      { "key": "padModEnvSustain", "index": 48, "enumMap": null, "fallback": 0 },
-      { "key": "padModEnvRelease", "index": 49, "enumMap": null, "fallback": 4 },
-      { "key": "padModEnvDepth", "index": 50, "enumMap": null, "fallback": 0.5 },
-      { "key": "padModEnvDest", "index": 51, "enumMap": { "none": 0, "filterCutoff": 1, "filterB": 2, "filterBCutoff": 2, "amplitude": 3, "pitch": 4, "oscBLevel": 5, "foldAmount": 6 }, "fallback": 1 }
+      {
+        "key": "padOscAWave",
+        "index": 0,
+        "enumMap": {
+          "sine": 0,
+          "triangle": 1,
+          "sawtooth": 2,
+          "square": 3
+        },
+        "fallback": 2
+      },
+      {
+        "key": "padOscAOctave",
+        "index": 1,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "padOscADetune",
+        "index": 2,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "padOscALevel",
+        "index": 3,
+        "enumMap": null,
+        "fallback": 0.6
+      },
+      {
+        "key": "padOscBWave",
+        "index": 4,
+        "enumMap": {
+          "sine": 0,
+          "triangle": 1,
+          "sawtooth": 2,
+          "square": 3
+        },
+        "fallback": 1
+      },
+      {
+        "key": "padOscBOctave",
+        "index": 5,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "padOscBDetune",
+        "index": 6,
+        "enumMap": null,
+        "fallback": 8
+      },
+      {
+        "key": "padOscBLevel",
+        "index": 7,
+        "enumMap": null,
+        "fallback": 0.4
+      },
+      {
+        "key": "padOscMix",
+        "index": 8,
+        "enumMap": null,
+        "fallback": 0.5
+      },
+      {
+        "key": "padSubEnabled",
+        "index": 9,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "padSubOctave",
+        "index": 10,
+        "enumMap": null,
+        "fallback": -1
+      },
+      {
+        "key": "padSubWave",
+        "index": 11,
+        "enumMap": {
+          "sine": 0,
+          "triangle": 1,
+          "sawtooth": 2,
+          "square": 3
+        },
+        "fallback": 0
+      },
+      {
+        "key": "padSubLevel",
+        "index": 12,
+        "enumMap": null,
+        "fallback": 0.3
+      },
+      {
+        "key": "padNoiseType",
+        "index": 13,
+        "enumMap": {
+          "white": 0,
+          "pink": 1
+        },
+        "fallback": 0
+      },
+      {
+        "key": "padNoiseLevel",
+        "index": 14,
+        "enumMap": null,
+        "fallback": 0.16
+      },
+      {
+        "key": "hardness",
+        "index": 15,
+        "enumMap": null,
+        "fallback": 0.45
+      },
+      {
+        "key": "warmth",
+        "index": 16,
+        "enumMap": null,
+        "fallback": 0.4
+      },
+      {
+        "key": "presence",
+        "index": 17,
+        "enumMap": null,
+        "fallback": 0.4
+      },
+      {
+        "key": "padFoldAmount",
+        "index": 18,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "padFoldMode",
+        "index": 19,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "filterType",
+        "index": 20,
+        "enumMap": {
+          "lowpass": 0,
+          "bandpass": 1,
+          "highpass": 2,
+          "notch": 3
+        },
+        "fallback": 0
+      },
+      {
+        "key": "filterCutoffMin",
+        "index": 21,
+        "enumMap": null,
+        "fallback": 80
+      },
+      {
+        "key": "filterCutoffMax",
+        "index": 22,
+        "enumMap": null,
+        "fallback": 1800
+      },
+      {
+        "key": "filterResonance",
+        "index": 23,
+        "enumMap": null,
+        "fallback": 0.2
+      },
+      {
+        "key": "filterQ",
+        "index": 24,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "filterSlope",
+        "index": 25,
+        "enumMap": null,
+        "fallback": 12
+      },
+      {
+        "key": "filterKeyTracking",
+        "index": 26,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "padFilterBEnabled",
+        "index": 27,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "padFilterBType",
+        "index": 28,
+        "enumMap": {
+          "lowpass": 0,
+          "bandpass": 1,
+          "highpass": 2,
+          "notch": 3
+        },
+        "fallback": 2
+      },
+      {
+        "key": "padFilterBCutoff",
+        "index": 29,
+        "enumMap": null,
+        "fallback": 200
+      },
+      {
+        "key": "padFilterBResonance",
+        "index": 30,
+        "enumMap": null,
+        "fallback": 0.2
+      },
+      {
+        "key": "padFilterBQ",
+        "index": 31,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "padFilterRouting",
+        "index": 32,
+        "enumMap": {
+          "series": 0,
+          "aOnly": 1,
+          "bOnly": 2
+        },
+        "fallback": 0
+      },
+      {
+        "key": "synthAttack",
+        "index": 33,
+        "enumMap": null,
+        "fallback": 4
+      },
+      {
+        "key": "synthDecay",
+        "index": 34,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "synthSustain",
+        "index": 35,
+        "enumMap": null,
+        "fallback": 0.8
+      },
+      {
+        "key": "synthRelease",
+        "index": 36,
+        "enumMap": null,
+        "fallback": 10
+      },
+      {
+        "key": "padLfo1Rate",
+        "index": 37,
+        "enumMap": null,
+        "fallback": 0.09
+      },
+      {
+        "key": "padLfo1Depth",
+        "index": 38,
+        "enumMap": null,
+        "fallback": 0.6
+      },
+      {
+        "key": "padLfo1Wave",
+        "index": 39,
+        "enumMap": {
+          "sine": 0,
+          "triangle": 1,
+          "sawtooth": 2,
+          "square": 3,
+          "sampleHold": 4,
+          "randomSmooth": 5,
+          "randomWalk": 6
+        },
+        "fallback": 6
+      },
+      {
+        "key": "padLfo1Dest",
+        "index": 40,
+        "enumMap": {
+          "none": 0,
+          "filterCutoff": 1,
+          "filterB": 2,
+          "filterBCutoff": 2,
+          "amplitude": 3,
+          "pitch": 4,
+          "oscBLevel": 5,
+          "foldAmount": 6
+        },
+        "fallback": 1
+      },
+      {
+        "key": "padLfo2Rate",
+        "index": 41,
+        "enumMap": null,
+        "fallback": 0.5
+      },
+      {
+        "key": "padLfo2Depth",
+        "index": 42,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "padLfo2Wave",
+        "index": 43,
+        "enumMap": {
+          "sine": 0,
+          "triangle": 1,
+          "sawtooth": 2,
+          "square": 3,
+          "sampleHold": 4,
+          "randomSmooth": 5,
+          "randomWalk": 6
+        },
+        "fallback": 0
+      },
+      {
+        "key": "padLfo2Dest",
+        "index": 44,
+        "enumMap": {
+          "none": 0,
+          "filterCutoff": 1,
+          "filterB": 2,
+          "filterBCutoff": 2,
+          "amplitude": 3,
+          "pitch": 4,
+          "oscBLevel": 5,
+          "foldAmount": 6
+        },
+        "fallback": 0
+      },
+      {
+        "key": "padModEnvEnabled",
+        "index": 45,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "padModEnvAttack",
+        "index": 46,
+        "enumMap": null,
+        "fallback": 0.5
+      },
+      {
+        "key": "padModEnvDecay",
+        "index": 47,
+        "enumMap": null,
+        "fallback": 2
+      },
+      {
+        "key": "padModEnvSustain",
+        "index": 48,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "padModEnvRelease",
+        "index": 49,
+        "enumMap": null,
+        "fallback": 4
+      },
+      {
+        "key": "padModEnvDepth",
+        "index": 50,
+        "enumMap": null,
+        "fallback": 0.5
+      },
+      {
+        "key": "padModEnvDest",
+        "index": 51,
+        "enumMap": {
+          "none": 0,
+          "filterCutoff": 1,
+          "filterB": 2,
+          "filterBCutoff": 2,
+          "amplitude": 3,
+          "pitch": 4,
+          "oscBLevel": 5,
+          "foldAmount": 6
+        },
+        "fallback": 1
+      }
     ],
     "lead": [
-      { "key": "algorithm", "index": 0, "enumMap": { "parallel": 0, "stack": 1, "split": 2, "cross": 3, "dx17": 4 }, "fallback": 0 },
-      { "key": "beatDetune", "index": 1, "enumMap": null, "fallback": 0 },
-      { "key": "carrier2Mix", "index": 2, "enumMap": null, "fallback": 0 },
-      { "key": "mod1Ratio", "index": 3, "enumMap": null, "fallback": 1 },
-      { "key": "mod1Index", "index": 4, "enumMap": null, "fallback": 0 },
-      { "key": "mod1Decay", "index": 5, "enumMap": null, "fallback": 0.8 },
-      { "key": "mod1Sustain", "index": 6, "enumMap": null, "fallback": 0.1 },
-      { "key": "mod1Level", "index": 7, "enumMap": null, "fallback": 1 },
-      { "key": "mod1Feedback", "index": 8, "enumMap": null, "fallback": 0 },
-      { "key": "mod1Detune", "index": 9, "enumMap": null, "fallback": 0 },
-      { "key": "mod1EnvRate", "index": 10, "enumMap": null, "fallback": 1 },
-      { "key": "mod1ModAttack", "index": 11, "enumMap": null, "fallback": 0 },
-      { "key": "mod1ModDelay", "index": 12, "enumMap": null, "fallback": 0 },
-      { "key": "mod2Ratio", "index": 13, "enumMap": null, "fallback": 1 },
-      { "key": "mod2Index", "index": 14, "enumMap": null, "fallback": 0 },
-      { "key": "mod2Decay", "index": 15, "enumMap": null, "fallback": 0.8 },
-      { "key": "mod2Sustain", "index": 16, "enumMap": null, "fallback": 0.1 },
-      { "key": "mod2Level", "index": 17, "enumMap": null, "fallback": 1 },
-      { "key": "mod2Feedback", "index": 18, "enumMap": null, "fallback": 0 },
-      { "key": "mod2Detune", "index": 19, "enumMap": null, "fallback": 0 },
-      { "key": "mod2EnvRate", "index": 20, "enumMap": null, "fallback": 1 },
-      { "key": "mod2ModAttack", "index": 21, "enumMap": null, "fallback": 0 },
-      { "key": "mod2ModDelay", "index": 22, "enumMap": null, "fallback": 0 },
-      { "key": "mod3Ratio", "index": 23, "enumMap": null, "fallback": 1 },
-      { "key": "mod3Index", "index": 24, "enumMap": null, "fallback": 0 },
-      { "key": "mod3Decay", "index": 25, "enumMap": null, "fallback": 0.8 },
-      { "key": "mod3Sustain", "index": 26, "enumMap": null, "fallback": 0.1 },
-      { "key": "mod3Level", "index": 27, "enumMap": null, "fallback": 1 },
-      { "key": "mod3Feedback", "index": 28, "enumMap": null, "fallback": 0 },
-      { "key": "mod3Detune", "index": 29, "enumMap": null, "fallback": 0 },
-      { "key": "mod3EnvRate", "index": 30, "enumMap": null, "fallback": 1 },
-      { "key": "mod3ModAttack", "index": 31, "enumMap": null, "fallback": 0 },
-      { "key": "mod3ModDelay", "index": 32, "enumMap": null, "fallback": 0 },
-      { "key": "mod4Ratio", "index": 33, "enumMap": null, "fallback": 1 },
-      { "key": "mod4Index", "index": 34, "enumMap": null, "fallback": 0 },
-      { "key": "mod4Decay", "index": 35, "enumMap": null, "fallback": 0.8 },
-      { "key": "mod4Sustain", "index": 36, "enumMap": null, "fallback": 0.1 },
-      { "key": "mod4Level", "index": 37, "enumMap": null, "fallback": 1 },
-      { "key": "mod4Feedback", "index": 38, "enumMap": null, "fallback": 0 },
-      { "key": "mod4Detune", "index": 39, "enumMap": null, "fallback": 0 },
-      { "key": "mod4EnvRate", "index": 40, "enumMap": null, "fallback": 1 },
-      { "key": "mod4ModAttack", "index": 41, "enumMap": null, "fallback": 0 },
-      { "key": "mod4ModDelay", "index": 42, "enumMap": null, "fallback": 0 },
-      { "key": "attack", "index": 43, "enumMap": null, "fallback": 0.01 },
-      { "key": "decay", "index": 44, "enumMap": null, "fallback": 0.8 },
-      { "key": "sustain", "index": 45, "enumMap": null, "fallback": 0.3 },
-      { "key": "release", "index": 46, "enumMap": null, "fallback": 2 },
-      { "key": "filterFreq", "index": 47, "enumMap": null, "fallback": 4000 },
-      { "key": "filterQ", "index": 48, "enumMap": null, "fallback": 0.7 },
-      { "key": "filterType", "index": 49, "enumMap": { "lowpass": 0, "highpass": 1, "bandpass": 2, "notch": 3, "peaking": 4 }, "fallback": 0 },
-      { "key": "filterEnvAttack", "index": 50, "enumMap": null, "fallback": 0 },
-      { "key": "filterEnvDecay", "index": 51, "enumMap": null, "fallback": 0 },
-      { "key": "filterEnvSustain", "index": 52, "enumMap": null, "fallback": 1 },
-      { "key": "filterEnvRelease", "index": 53, "enumMap": null, "fallback": 0 },
-      { "key": "filterEnvDepth", "index": 54, "enumMap": null, "fallback": 0 },
-      { "key": "drive", "index": 55, "enumMap": null, "fallback": 0 },
-      { "key": "transientClick", "index": 56, "enumMap": null, "fallback": 0 },
-      { "key": "transientNoise", "index": 57, "enumMap": null, "fallback": 0 },
-      { "key": "transientDuration", "index": 58, "enumMap": null, "fallback": 20 },
-      { "key": "transientDecay", "index": 59, "enumMap": null, "fallback": 50 },
-      { "key": "transientFilter", "index": 60, "enumMap": null, "fallback": 4000 },
-      { "key": "transientType", "index": 61, "enumMap": { "white": 0, "pink": 1, "brown": 2, "filtered": 3 }, "fallback": 0 },
-      { "key": "gain", "index": 62, "enumMap": null, "fallback": 0.34 },
-      { "key": "xLevel", "index": 63, "enumMap": null, "fallback": 1 },
-      { "key": "xPan", "index": 64, "enumMap": null, "fallback": -0.2 },
-      { "key": "yLevel", "index": 65, "enumMap": null, "fallback": 0.9 },
-      { "key": "yPan", "index": 66, "enumMap": null, "fallback": 0.2 },
-      { "key": "lfoRate", "index": 67, "enumMap": null, "fallback": 0 },
-      { "key": "lfoDepth", "index": 68, "enumMap": null, "fallback": 0 },
-      { "key": "lfoTarget", "index": 69, "enumMap": { "all": 0, "mod1": 1, "mod2": 2, "mod3": 3, "mod4": 4, "filter": 5, "pitch": 6, "detune": 7, "none": 8 }, "fallback": 0 },
-      { "key": "unisonVoices", "index": 70, "enumMap": null, "fallback": 1 },
-      { "key": "unisonDetune", "index": 71, "enumMap": null, "fallback": 0 },
-      { "key": "delayEnabled", "index": 72, "enumMap": null, "fallback": 0 },
-      { "key": "delayTimeL", "index": 73, "enumMap": null, "fallback": 0 },
-      { "key": "delayTimeR", "index": 74, "enumMap": null, "fallback": 0 },
-      { "key": "delayFeedback", "index": 75, "enumMap": null, "fallback": 0.4 },
-      { "key": "delayFilter", "index": 76, "enumMap": null, "fallback": 4000 },
-      { "key": "delayMix", "index": 77, "enumMap": null, "fallback": 0.3 },
-      { "key": "delaySend", "index": 78, "enumMap": null, "fallback": 0.3 },
-      { "key": "outputSelect", "index": 79, "enumMap": null, "fallback": 0 }
+      {
+        "key": "algorithm",
+        "index": 0,
+        "enumMap": {
+          "parallel": 0,
+          "stack": 1,
+          "split": 2,
+          "cross": 3,
+          "dx17": 4
+        },
+        "fallback": 0
+      },
+      {
+        "key": "beatDetune",
+        "index": 1,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "carrier2Mix",
+        "index": 2,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod1Ratio",
+        "index": 3,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod1Index",
+        "index": 4,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod1Decay",
+        "index": 5,
+        "enumMap": null,
+        "fallback": 0.8
+      },
+      {
+        "key": "mod1Sustain",
+        "index": 6,
+        "enumMap": null,
+        "fallback": 0.1
+      },
+      {
+        "key": "mod1Level",
+        "index": 7,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod1Feedback",
+        "index": 8,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod1Detune",
+        "index": 9,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod1EnvRate",
+        "index": 10,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod1ModAttack",
+        "index": 11,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod1ModDelay",
+        "index": 12,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod2Ratio",
+        "index": 13,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod2Index",
+        "index": 14,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod2Decay",
+        "index": 15,
+        "enumMap": null,
+        "fallback": 0.8
+      },
+      {
+        "key": "mod2Sustain",
+        "index": 16,
+        "enumMap": null,
+        "fallback": 0.1
+      },
+      {
+        "key": "mod2Level",
+        "index": 17,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod2Feedback",
+        "index": 18,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod2Detune",
+        "index": 19,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod2EnvRate",
+        "index": 20,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod2ModAttack",
+        "index": 21,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod2ModDelay",
+        "index": 22,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod3Ratio",
+        "index": 23,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod3Index",
+        "index": 24,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod3Decay",
+        "index": 25,
+        "enumMap": null,
+        "fallback": 0.8
+      },
+      {
+        "key": "mod3Sustain",
+        "index": 26,
+        "enumMap": null,
+        "fallback": 0.1
+      },
+      {
+        "key": "mod3Level",
+        "index": 27,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod3Feedback",
+        "index": 28,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod3Detune",
+        "index": 29,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod3EnvRate",
+        "index": 30,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod3ModAttack",
+        "index": 31,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod3ModDelay",
+        "index": 32,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod4Ratio",
+        "index": 33,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod4Index",
+        "index": 34,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod4Decay",
+        "index": 35,
+        "enumMap": null,
+        "fallback": 0.8
+      },
+      {
+        "key": "mod4Sustain",
+        "index": 36,
+        "enumMap": null,
+        "fallback": 0.1
+      },
+      {
+        "key": "mod4Level",
+        "index": 37,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod4Feedback",
+        "index": 38,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod4Detune",
+        "index": 39,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod4EnvRate",
+        "index": 40,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod4ModAttack",
+        "index": 41,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod4ModDelay",
+        "index": 42,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "attack",
+        "index": 43,
+        "enumMap": null,
+        "fallback": 0.01
+      },
+      {
+        "key": "decay",
+        "index": 44,
+        "enumMap": null,
+        "fallback": 0.8
+      },
+      {
+        "key": "sustain",
+        "index": 45,
+        "enumMap": null,
+        "fallback": 0.3
+      },
+      {
+        "key": "release",
+        "index": 46,
+        "enumMap": null,
+        "fallback": 2
+      },
+      {
+        "key": "filterFreq",
+        "index": 47,
+        "enumMap": null,
+        "fallback": 4000
+      },
+      {
+        "key": "filterQ",
+        "index": 48,
+        "enumMap": null,
+        "fallback": 0.7
+      },
+      {
+        "key": "filterType",
+        "index": 49,
+        "enumMap": {
+          "lowpass": 0,
+          "highpass": 1,
+          "bandpass": 2,
+          "notch": 3,
+          "peaking": 4
+        },
+        "fallback": 0
+      },
+      {
+        "key": "filterEnvAttack",
+        "index": 50,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "filterEnvDecay",
+        "index": 51,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "filterEnvSustain",
+        "index": 52,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "filterEnvRelease",
+        "index": 53,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "filterEnvDepth",
+        "index": 54,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "drive",
+        "index": 55,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "transientClick",
+        "index": 56,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "transientNoise",
+        "index": 57,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "transientDuration",
+        "index": 58,
+        "enumMap": null,
+        "fallback": 20
+      },
+      {
+        "key": "transientDecay",
+        "index": 59,
+        "enumMap": null,
+        "fallback": 50
+      },
+      {
+        "key": "transientFilter",
+        "index": 60,
+        "enumMap": null,
+        "fallback": 4000
+      },
+      {
+        "key": "transientType",
+        "index": 61,
+        "enumMap": {
+          "white": 0,
+          "pink": 1,
+          "brown": 2,
+          "filtered": 3
+        },
+        "fallback": 0
+      },
+      {
+        "key": "gain",
+        "index": 62,
+        "enumMap": null,
+        "fallback": 0.34
+      },
+      {
+        "key": "xLevel",
+        "index": 63,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "xPan",
+        "index": 64,
+        "enumMap": null,
+        "fallback": -0.2
+      },
+      {
+        "key": "yLevel",
+        "index": 65,
+        "enumMap": null,
+        "fallback": 0.9
+      },
+      {
+        "key": "yPan",
+        "index": 66,
+        "enumMap": null,
+        "fallback": 0.2
+      },
+      {
+        "key": "lfoRate",
+        "index": 67,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "lfoDepth",
+        "index": 68,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "lfoTarget",
+        "index": 69,
+        "enumMap": {
+          "all": 0,
+          "mod1": 1,
+          "mod2": 2,
+          "mod3": 3,
+          "mod4": 4,
+          "filter": 5,
+          "pitch": 6,
+          "detune": 7,
+          "none": 8
+        },
+        "fallback": 0
+      },
+      {
+        "key": "unisonVoices",
+        "index": 70,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "unisonDetune",
+        "index": 71,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "delayEnabled",
+        "index": 72,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "delayTimeL",
+        "index": 73,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "delayTimeR",
+        "index": 74,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "delayFeedback",
+        "index": 75,
+        "enumMap": null,
+        "fallback": 0.4
+      },
+      {
+        "key": "delayFilter",
+        "index": 76,
+        "enumMap": null,
+        "fallback": 4000
+      },
+      {
+        "key": "delayMix",
+        "index": 77,
+        "enumMap": null,
+        "fallback": 0.3
+      },
+      {
+        "key": "delaySend",
+        "index": 78,
+        "enumMap": null,
+        "fallback": 0.3
+      },
+      {
+        "key": "outputSelect",
+        "index": 79,
+        "enumMap": null,
+        "fallback": 0
+      }
     ]
   },
   "drumVoiceIds": [
-    { "name": "sub", "id": 1, "presetAKey": "drumSubPresetA", "presetBKey": "drumSubPresetB", "morphKey": "drumSubMorph", "defaultPreset": "Classic Sub" },
-    { "name": "kick", "id": 2, "presetAKey": "drumKickPresetA", "presetBKey": "drumKickPresetB", "morphKey": "drumKickMorph", "defaultPreset": "Ikeda Kick" },
-    { "name": "click", "id": 3, "presetAKey": "drumClickPresetA", "presetBKey": "drumClickPresetB", "morphKey": "drumClickMorph", "defaultPreset": "Data Point" },
-    { "name": "beepHi", "id": 4, "presetAKey": "drumBeepHiPresetA", "presetBKey": "drumBeepHiPresetB", "morphKey": "drumBeepHiMorph", "defaultPreset": "Data Ping" },
-    { "name": "beepLo", "id": 5, "presetAKey": "drumBeepLoPresetA", "presetBKey": "drumBeepLoPresetB", "morphKey": "drumBeepLoMorph", "defaultPreset": "Blip" },
-    { "name": "noise", "id": 6, "presetAKey": "drumNoisePresetA", "presetBKey": "drumNoisePresetB", "morphKey": "drumNoiseMorph", "defaultPreset": "Hi-Hat" },
-    { "name": "membrane", "id": 7, "presetAKey": "drumMembranePresetA", "presetBKey": "drumMembranePresetB", "morphKey": "drumMembraneMorph", "defaultPreset": "Snare Classic" }
+    {
+      "name": "sub",
+      "id": 1,
+      "presetAKey": "drumSubPresetA",
+      "presetBKey": "drumSubPresetB",
+      "morphKey": "drumSubMorph",
+      "defaultPreset": "Classic Sub"
+    },
+    {
+      "name": "kick",
+      "id": 2,
+      "presetAKey": "drumKickPresetA",
+      "presetBKey": "drumKickPresetB",
+      "morphKey": "drumKickMorph",
+      "defaultPreset": "Ikeda Kick"
+    },
+    {
+      "name": "click",
+      "id": 3,
+      "presetAKey": "drumClickPresetA",
+      "presetBKey": "drumClickPresetB",
+      "morphKey": "drumClickMorph",
+      "defaultPreset": "Data Point"
+    },
+    {
+      "name": "beepHi",
+      "id": 4,
+      "presetAKey": "drumBeepHiPresetA",
+      "presetBKey": "drumBeepHiPresetB",
+      "morphKey": "drumBeepHiMorph",
+      "defaultPreset": "Data Ping"
+    },
+    {
+      "name": "beepLo",
+      "id": 5,
+      "presetAKey": "drumBeepLoPresetA",
+      "presetBKey": "drumBeepLoPresetB",
+      "morphKey": "drumBeepLoMorph",
+      "defaultPreset": "Blip"
+    },
+    {
+      "name": "noise",
+      "id": 6,
+      "presetAKey": "drumNoisePresetA",
+      "presetBKey": "drumNoisePresetB",
+      "morphKey": "drumNoiseMorph",
+      "defaultPreset": "Hi-Hat"
+    },
+    {
+      "name": "membrane",
+      "id": 7,
+      "presetAKey": "drumMembranePresetA",
+      "presetBKey": "drumMembranePresetB",
+      "morphKey": "drumMembraneMorph",
+      "defaultPreset": "Snare Classic"
+    }
   ],
   "sourcePresetIds": [
-    { "name": "PadInit", "source": "pad", "key": "init", "id": 1001, "macroMorph": 0, "macroDistance": 0, "macroExpression": 1 },
-    { "name": "PadSaturatedDrift", "source": "pad", "key": "saturated_drift", "id": 1002, "macroMorph": 0.12, "macroDistance": 0.18, "macroExpression": 0.95 },
-    { "name": "PadDeepSubDrone", "source": "pad", "key": "deep_sub_drone", "id": 1003, "macroMorph": -0.18, "macroDistance": 0.12, "macroExpression": 0.82 },
-    { "name": "PadGlassShimmer", "source": "pad", "key": "glass_shimmer", "id": 1004, "macroMorph": 0.22, "macroDistance": 0.05, "macroExpression": 1.16 },
-    { "name": "PadWarmAnalog", "source": "pad", "key": "warm_analog", "id": 1005, "macroMorph": -0.08, "macroDistance": 0.08, "macroExpression": 1.02 },
-    { "name": "PadDigitalIce", "source": "pad", "key": "digital_ice", "id": 1006, "macroMorph": 0.28, "macroDistance": 0.2, "macroExpression": 1.08 },
-    { "name": "PadBreath", "source": "pad", "key": "breath", "id": 1007, "macroMorph": -0.12, "macroDistance": 0.24, "macroExpression": 0.9 },
-    { "name": "PadCathedralOrgan", "source": "pad", "key": "cathedral_organ", "id": 1008, "macroMorph": -0.05, "macroDistance": 0.08, "macroExpression": 1.04 },
-    { "name": "PadPluckBell", "source": "pad", "key": "pluck_bell", "id": 1009, "macroMorph": 0.2, "macroDistance": 0.12, "macroExpression": 1.1 },
-    { "name": "PadSoftPluck", "source": "pad", "key": "soft_pluck", "id": 1010, "macroMorph": 0.08, "macroDistance": 0.04, "macroExpression": 0.96 },
-    { "name": "PadHarshPluck", "source": "pad", "key": "harsh_pluck", "id": 1011, "macroMorph": 0.3, "macroDistance": 0.18, "macroExpression": 1.14 },
-    { "name": "PadMetalTine", "source": "pad", "key": "metal_tine", "id": 1012, "macroMorph": 0.32, "macroDistance": 0.2, "macroExpression": 1.08 },
-    { "name": "PadPolyLead", "source": "pad", "key": "poly_lead", "id": 1013, "macroMorph": 0.26, "macroDistance": 0.12, "macroExpression": 1.15 },
-    { "name": "PadAcidStab", "source": "pad", "key": "acid_stab", "id": 1014, "macroMorph": 0.34, "macroDistance": 0.16, "macroExpression": 1.12 },
-    { "name": "PadMutedKey", "source": "pad", "key": "muted_key", "id": 1015, "macroMorph": 0.02, "macroDistance": 0.12, "macroExpression": 0.88 },
-    { "name": "PadGlassMarimba", "source": "pad", "key": "glass_marimba", "id": 1016, "macroMorph": 0.24, "macroDistance": 0.08, "macroExpression": 1.08 },
-    { "name": "PadSubPluck", "source": "pad", "key": "sub_pluck", "id": 1017, "macroMorph": -0.15, "macroDistance": 0.04, "macroExpression": 0.9 },
-    { "name": "PadSyncLead", "source": "pad", "key": "sync_lead", "id": 1018, "macroMorph": 0.3, "macroDistance": 0.16, "macroExpression": 1.12 },
-    { "name": "PadBuchlaPluck", "source": "pad", "key": "buchla_pluck", "id": 1019, "macroMorph": 0.28, "macroDistance": 0.22, "macroExpression": 1.08 },
-    { "name": "PadSineFoldKey", "source": "pad", "key": "sine_fold_key", "id": 1020, "macroMorph": 0.18, "macroDistance": 0.08, "macroExpression": 1.02 },
-    { "name": "PadSergeStab", "source": "pad", "key": "serge_stab", "id": 1021, "macroMorph": 0.32, "macroDistance": 0.2, "macroExpression": 1.1 },
-    { "name": "PadFoldedDrift", "source": "pad", "key": "folded_drift", "id": 1022, "macroMorph": 0.2, "macroDistance": 0.24, "macroExpression": 0.98 },
-    { "name": "PadHarmonicBloom", "source": "pad", "key": "harmonic_bloom", "id": 1023, "macroMorph": 0.14, "macroDistance": 0.06, "macroExpression": 1.1 },
-    { "name": "PadSergeSwarm", "source": "pad", "key": "serge_swarm", "id": 1024, "macroMorph": 0.26, "macroDistance": 0.28, "macroExpression": 1.03 },
-    { "name": "LeadSoftRhodes", "source": "lead", "key": "soft_rhodes", "id": 2001, "macroMorph": -0.1, "macroDistance": 0, "macroExpression": 0.95 },
-    { "name": "LeadGamelan", "source": "lead", "key": "gamelan", "id": 2002, "macroMorph": 0.28, "macroDistance": 0.12, "macroExpression": 1.16 },
-    { "name": "DrumDefault", "source": "drum", "key": "default", "id": 3001, "macroMorph": 0, "macroDistance": 0, "macroExpression": 1 },
-    { "name": "PianoDefault", "source": "piano", "key": "default", "id": 4001, "macroMorph": 0, "macroDistance": 0, "macroExpression": 1 },
-    { "name": "SoundscapeOceanSample", "source": "soundscape", "key": "ocean_sample", "id": 5001, "macroMorph": 0, "macroDistance": 0.12, "macroExpression": 0.95 },
-    { "name": "SoundscapeWater0", "source": "soundscape", "key": "water_0", "id": 5010, "macroMorph": -0.04, "macroDistance": 0.08, "macroExpression": 0.92 },
-    { "name": "SoundscapeWater1", "source": "soundscape", "key": "water_1", "id": 5011, "macroMorph": -0.02, "macroDistance": 0.1, "macroExpression": 0.94 },
-    { "name": "SoundscapeWater2", "source": "soundscape", "key": "water_2", "id": 5012, "macroMorph": 0, "macroDistance": 0.12, "macroExpression": 0.96 },
-    { "name": "SoundscapeWater3", "source": "soundscape", "key": "water_3", "id": 5013, "macroMorph": 0.02, "macroDistance": 0.14, "macroExpression": 0.98 },
-    { "name": "SoundscapeWater4", "source": "soundscape", "key": "water_4", "id": 5014, "macroMorph": 0.04, "macroDistance": 0.16, "macroExpression": 1 },
-    { "name": "SoundscapeWater5", "source": "soundscape", "key": "water_5", "id": 5015, "macroMorph": 0.06, "macroDistance": 0.18, "macroExpression": 1.02 },
-    { "name": "SoundscapeWater6", "source": "soundscape", "key": "water_6", "id": 5016, "macroMorph": 0.08, "macroDistance": 0.2, "macroExpression": 1.04 },
-    { "name": "SoundscapeWater7", "source": "soundscape", "key": "water_7", "id": 5017, "macroMorph": 0.1, "macroDistance": 0.22, "macroExpression": 1.06 },
-    { "name": "SoundscapeBirds", "source": "soundscape", "key": "birds", "id": 5021, "macroMorph": 0.12, "macroDistance": 0.2, "macroExpression": 1.05 },
-    { "name": "SoundscapeBirds2", "source": "soundscape", "key": "birds2", "id": 5022, "macroMorph": 0.14, "macroDistance": 0.22, "macroExpression": 1.07 },
-    { "name": "SoundscapeFrogs", "source": "soundscape", "key": "frogs", "id": 5023, "macroMorph": -0.08, "macroDistance": 0.3, "macroExpression": 0.92 },
-    { "name": "SoundscapeInsects", "source": "soundscape", "key": "insects", "id": 5024, "macroMorph": 0.18, "macroDistance": 0.26, "macroExpression": 0.98 },
-    { "name": "SoundscapeInsects2", "source": "soundscape", "key": "insects2", "id": 5025, "macroMorph": 0.2, "macroDistance": 0.28, "macroExpression": 1 }
+    {
+      "name": "PadInit",
+      "source": "pad",
+      "key": "init",
+      "id": 1001,
+      "macroMorph": 0,
+      "macroDistance": 0,
+      "macroExpression": 1
+    },
+    {
+      "name": "PadSaturatedDrift",
+      "source": "pad",
+      "key": "saturated_drift",
+      "id": 1002,
+      "macroMorph": 0.12,
+      "macroDistance": 0.18,
+      "macroExpression": 0.95
+    },
+    {
+      "name": "PadDeepSubDrone",
+      "source": "pad",
+      "key": "deep_sub_drone",
+      "id": 1003,
+      "macroMorph": -0.18,
+      "macroDistance": 0.12,
+      "macroExpression": 0.82
+    },
+    {
+      "name": "PadGlassShimmer",
+      "source": "pad",
+      "key": "glass_shimmer",
+      "id": 1004,
+      "macroMorph": 0.22,
+      "macroDistance": 0.05,
+      "macroExpression": 1.16
+    },
+    {
+      "name": "PadWarmAnalog",
+      "source": "pad",
+      "key": "warm_analog",
+      "id": 1005,
+      "macroMorph": -0.08,
+      "macroDistance": 0.08,
+      "macroExpression": 1.02
+    },
+    {
+      "name": "PadDigitalIce",
+      "source": "pad",
+      "key": "digital_ice",
+      "id": 1006,
+      "macroMorph": 0.28,
+      "macroDistance": 0.2,
+      "macroExpression": 1.08
+    },
+    {
+      "name": "PadBreath",
+      "source": "pad",
+      "key": "breath",
+      "id": 1007,
+      "macroMorph": -0.12,
+      "macroDistance": 0.24,
+      "macroExpression": 0.9
+    },
+    {
+      "name": "PadCathedralOrgan",
+      "source": "pad",
+      "key": "cathedral_organ",
+      "id": 1008,
+      "macroMorph": -0.05,
+      "macroDistance": 0.08,
+      "macroExpression": 1.04
+    },
+    {
+      "name": "PadPluckBell",
+      "source": "pad",
+      "key": "pluck_bell",
+      "id": 1009,
+      "macroMorph": 0.2,
+      "macroDistance": 0.12,
+      "macroExpression": 1.1
+    },
+    {
+      "name": "PadSoftPluck",
+      "source": "pad",
+      "key": "soft_pluck",
+      "id": 1010,
+      "macroMorph": 0.08,
+      "macroDistance": 0.04,
+      "macroExpression": 0.96
+    },
+    {
+      "name": "PadHarshPluck",
+      "source": "pad",
+      "key": "harsh_pluck",
+      "id": 1011,
+      "macroMorph": 0.3,
+      "macroDistance": 0.18,
+      "macroExpression": 1.14
+    },
+    {
+      "name": "PadMetalTine",
+      "source": "pad",
+      "key": "metal_tine",
+      "id": 1012,
+      "macroMorph": 0.32,
+      "macroDistance": 0.2,
+      "macroExpression": 1.08
+    },
+    {
+      "name": "PadPolyLead",
+      "source": "pad",
+      "key": "poly_lead",
+      "id": 1013,
+      "macroMorph": 0.26,
+      "macroDistance": 0.12,
+      "macroExpression": 1.15
+    },
+    {
+      "name": "PadAcidStab",
+      "source": "pad",
+      "key": "acid_stab",
+      "id": 1014,
+      "macroMorph": 0.34,
+      "macroDistance": 0.16,
+      "macroExpression": 1.12
+    },
+    {
+      "name": "PadMutedKey",
+      "source": "pad",
+      "key": "muted_key",
+      "id": 1015,
+      "macroMorph": 0.02,
+      "macroDistance": 0.12,
+      "macroExpression": 0.88
+    },
+    {
+      "name": "PadGlassMarimba",
+      "source": "pad",
+      "key": "glass_marimba",
+      "id": 1016,
+      "macroMorph": 0.24,
+      "macroDistance": 0.08,
+      "macroExpression": 1.08
+    },
+    {
+      "name": "PadSubPluck",
+      "source": "pad",
+      "key": "sub_pluck",
+      "id": 1017,
+      "macroMorph": -0.15,
+      "macroDistance": 0.04,
+      "macroExpression": 0.9
+    },
+    {
+      "name": "PadSyncLead",
+      "source": "pad",
+      "key": "sync_lead",
+      "id": 1018,
+      "macroMorph": 0.3,
+      "macroDistance": 0.16,
+      "macroExpression": 1.12
+    },
+    {
+      "name": "PadBuchlaPluck",
+      "source": "pad",
+      "key": "buchla_pluck",
+      "id": 1019,
+      "macroMorph": 0.28,
+      "macroDistance": 0.22,
+      "macroExpression": 1.08
+    },
+    {
+      "name": "PadSineFoldKey",
+      "source": "pad",
+      "key": "sine_fold_key",
+      "id": 1020,
+      "macroMorph": 0.18,
+      "macroDistance": 0.08,
+      "macroExpression": 1.02
+    },
+    {
+      "name": "PadSergeStab",
+      "source": "pad",
+      "key": "serge_stab",
+      "id": 1021,
+      "macroMorph": 0.32,
+      "macroDistance": 0.2,
+      "macroExpression": 1.1
+    },
+    {
+      "name": "PadFoldedDrift",
+      "source": "pad",
+      "key": "folded_drift",
+      "id": 1022,
+      "macroMorph": 0.2,
+      "macroDistance": 0.24,
+      "macroExpression": 0.98
+    },
+    {
+      "name": "PadHarmonicBloom",
+      "source": "pad",
+      "key": "harmonic_bloom",
+      "id": 1023,
+      "macroMorph": 0.14,
+      "macroDistance": 0.06,
+      "macroExpression": 1.1
+    },
+    {
+      "name": "PadSergeSwarm",
+      "source": "pad",
+      "key": "serge_swarm",
+      "id": 1024,
+      "macroMorph": 0.26,
+      "macroDistance": 0.28,
+      "macroExpression": 1.03
+    },
+    {
+      "name": "LeadSoftRhodes",
+      "source": "lead",
+      "key": "soft_rhodes",
+      "id": 2001,
+      "macroMorph": -0.1,
+      "macroDistance": 0,
+      "macroExpression": 0.95
+    },
+    {
+      "name": "LeadGamelan",
+      "source": "lead",
+      "key": "gamelan",
+      "id": 2002,
+      "macroMorph": 0.28,
+      "macroDistance": 0.12,
+      "macroExpression": 1.16
+    },
+    {
+      "name": "DrumDefault",
+      "source": "drum",
+      "key": "default",
+      "id": 3001,
+      "macroMorph": 0,
+      "macroDistance": 0,
+      "macroExpression": 1
+    },
+    {
+      "name": "PianoDefault",
+      "source": "piano",
+      "key": "default",
+      "id": 4001,
+      "macroMorph": 0,
+      "macroDistance": 0,
+      "macroExpression": 1
+    },
+    {
+      "name": "SoundscapeOceanSample",
+      "source": "soundscape",
+      "key": "ocean_sample",
+      "id": 5001,
+      "macroMorph": 0,
+      "macroDistance": 0.12,
+      "macroExpression": 0.95
+    },
+    {
+      "name": "SoundscapeWater0",
+      "source": "soundscape",
+      "key": "water_0",
+      "id": 5010,
+      "macroMorph": -0.04,
+      "macroDistance": 0.08,
+      "macroExpression": 0.92
+    },
+    {
+      "name": "SoundscapeWater1",
+      "source": "soundscape",
+      "key": "water_1",
+      "id": 5011,
+      "macroMorph": -0.02,
+      "macroDistance": 0.1,
+      "macroExpression": 0.94
+    },
+    {
+      "name": "SoundscapeWater2",
+      "source": "soundscape",
+      "key": "water_2",
+      "id": 5012,
+      "macroMorph": 0,
+      "macroDistance": 0.12,
+      "macroExpression": 0.96
+    },
+    {
+      "name": "SoundscapeWater3",
+      "source": "soundscape",
+      "key": "water_3",
+      "id": 5013,
+      "macroMorph": 0.02,
+      "macroDistance": 0.14,
+      "macroExpression": 0.98
+    },
+    {
+      "name": "SoundscapeWater4",
+      "source": "soundscape",
+      "key": "water_4",
+      "id": 5014,
+      "macroMorph": 0.04,
+      "macroDistance": 0.16,
+      "macroExpression": 1
+    },
+    {
+      "name": "SoundscapeWater5",
+      "source": "soundscape",
+      "key": "water_5",
+      "id": 5015,
+      "macroMorph": 0.06,
+      "macroDistance": 0.18,
+      "macroExpression": 1.02
+    },
+    {
+      "name": "SoundscapeWater6",
+      "source": "soundscape",
+      "key": "water_6",
+      "id": 5016,
+      "macroMorph": 0.08,
+      "macroDistance": 0.2,
+      "macroExpression": 1.04
+    },
+    {
+      "name": "SoundscapeWater7",
+      "source": "soundscape",
+      "key": "water_7",
+      "id": 5017,
+      "macroMorph": 0.1,
+      "macroDistance": 0.22,
+      "macroExpression": 1.06
+    },
+    {
+      "name": "SoundscapeBirds",
+      "source": "soundscape",
+      "key": "birds",
+      "id": 5021,
+      "macroMorph": 0.12,
+      "macroDistance": 0.2,
+      "macroExpression": 1.05
+    },
+    {
+      "name": "SoundscapeBirds2",
+      "source": "soundscape",
+      "key": "birds2",
+      "id": 5022,
+      "macroMorph": 0.14,
+      "macroDistance": 0.22,
+      "macroExpression": 1.07
+    },
+    {
+      "name": "SoundscapeFrogs",
+      "source": "soundscape",
+      "key": "frogs",
+      "id": 5023,
+      "macroMorph": -0.08,
+      "macroDistance": 0.3,
+      "macroExpression": 0.92
+    },
+    {
+      "name": "SoundscapeInsects",
+      "source": "soundscape",
+      "key": "insects",
+      "id": 5024,
+      "macroMorph": 0.18,
+      "macroDistance": 0.26,
+      "macroExpression": 0.98
+    },
+    {
+      "name": "SoundscapeInsects2",
+      "source": "soundscape",
+      "key": "insects2",
+      "id": 5025,
+      "macroMorph": 0.2,
+      "macroDistance": 0.28,
+      "macroExpression": 1
+    }
   ],
   "defaults": {
     "transport": {
@@ -407,7 +1602,21 @@
           "reverseLfoRate": 0,
           "recordLfoRate": 0,
           "euclidGated": false,
-          "euclidMuted": false
+          "euclidMuted": false,
+          "positionSpray": 0.3,
+          "timingSpray": 0,
+          "lookback": 0.35,
+          "writeGuard": 0.3,
+          "pitchMode": 0,
+          "pitchSpread": 0,
+          "pitchJitterCents": 4,
+          "pitchQuantize": 1,
+          "reverseChance": 0,
+          "bloom": 0,
+          "glide": 0,
+          "cloudStyle": 0,
+          "anchorPattern": 0,
+          "loopCrossfadeMs": 12
         },
         {
           "enabled": false,
@@ -434,7 +1643,21 @@
           "reverseLfoRate": 0,
           "recordLfoRate": 0,
           "euclidGated": false,
-          "euclidMuted": false
+          "euclidMuted": false,
+          "positionSpray": 0.3,
+          "timingSpray": 0,
+          "lookback": 0.35,
+          "writeGuard": 0.3,
+          "pitchMode": 0,
+          "pitchSpread": 0,
+          "pitchJitterCents": 4,
+          "pitchQuantize": 1,
+          "reverseChance": 0,
+          "bloom": 0,
+          "glide": 0,
+          "cloudStyle": 0,
+          "anchorPattern": 0,
+          "loopCrossfadeMs": 12
         },
         {
           "enabled": false,
@@ -461,7 +1684,21 @@
           "reverseLfoRate": 0,
           "recordLfoRate": 0,
           "euclidGated": false,
-          "euclidMuted": false
+          "euclidMuted": false,
+          "positionSpray": 0.3,
+          "timingSpray": 0,
+          "lookback": 0.35,
+          "writeGuard": 0.3,
+          "pitchMode": 0,
+          "pitchSpread": 0,
+          "pitchJitterCents": 4,
+          "pitchQuantize": 1,
+          "reverseChance": 0,
+          "bloom": 0,
+          "glide": 0,
+          "cloudStyle": 0,
+          "anchorPattern": 0,
+          "loopCrossfadeMs": 12
         },
         {
           "enabled": false,
@@ -488,7 +1725,21 @@
           "reverseLfoRate": 0,
           "recordLfoRate": 0,
           "euclidGated": false,
-          "euclidMuted": false
+          "euclidMuted": false,
+          "positionSpray": 0.3,
+          "timingSpray": 0,
+          "lookback": 0.35,
+          "writeGuard": 0.3,
+          "pitchMode": 0,
+          "pitchSpread": 0,
+          "pitchJitterCents": 4,
+          "pitchQuantize": 1,
+          "reverseChance": 0,
+          "bloom": 0,
+          "glide": 0,
+          "cloudStyle": 0,
+          "anchorPattern": 0,
+          "loopCrossfadeMs": 12
         }
       ],
       "delayAEnabled": true,
@@ -517,8 +1768,18 @@
       "delayBWarpIntensity": 0.5,
       "delayBSpread": 0.5,
       "delayBTapeHeadMask": 15,
-      "delayBTapeHeadLevels": [0.72, 0.8, 0.88, 1],
-      "delayBTapeHeadPans": [0.28, 0.72, 0.38, 0.62],
+      "delayBTapeHeadLevels": [
+        0.72,
+        0.8,
+        0.88,
+        1
+      ],
+      "delayBTapeHeadPans": [
+        0.28,
+        0.72,
+        0.38,
+        0.62
+      ],
       "reverbMix": 0.12,
       "reverbType": 2,
       "reverbQuality": 1,
@@ -682,7 +1943,12 @@
       "sidechainGranularTarget": 0,
       "sidechainDelayATarget": 0,
       "sidechainDelayBTarget": 0,
-      "sidechainReverbTarget": 0
+      "sidechainReverbTarget": 0,
+      "granularQuality": 1,
+      "granularMaxGrains": 48,
+      "granularSprayMacro": 0,
+      "granularCloudMacro": 0,
+      "granularPitchMacro": 0
     }
   },
   "limits": {

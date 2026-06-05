@@ -23,6 +23,12 @@ import {
 import { hydrateOptimizedStatePresetData } from '../presets/statePresetOptimization';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
+export type GranularQuality = 'eco' | 'balanced' | 'hq';
+export type GranularVisualDetail = 'basic' | 'full';
+export type GranularVoiceMode = 'clean' | 'granular';
+export type GranularPitchMode = 'fixed' | 'octaves' | 'fifths' | 'chord' | 'scale' | 'free';
+export type GranularCloudStyle = 'classic' | 'mosaic' | 'bloom' | 'tide' | 'orbit' | 'stars';
+export type GranularAnchorPattern = 'forward' | 'reverse' | 'pendulum' | 'random';
 export type IndexedDelayDivisionKey = 'drumDelayNoteL' | 'drumDelayNoteR' | 'granularDelayTime';
 
 export const DELAY_A_NOTE_DIVISION_OPTIONS = [
@@ -1313,6 +1319,12 @@ export interface SliderState {
   granularFeedback: number;           // 0..0.85 global feedback
   granularFeedbackLPF: number;        // 200..12000 Hz feedback darkening
   granularBufferSeconds: number;      // 4 or 16
+  granularQuality: GranularQuality;   // engine CPU/quality profile
+  granularMaxGrains: number;          // 8..64 global grain cap
+  granularSprayMacro: number;         // 0..1 position/timing spray macro
+  granularCloudMacro: number;         // 0..1 density/bloom/cloud macro
+  granularPitchMacro: number;         // 0..1 musical pitch-cloud macro
+  granularVisualDetail: GranularVisualDetail; // visualizer CPU/detail profile
   granularPreset: string;             // preset id
   granularSpaceMode: 'diffuse' | 'clocked'; // prototype post-space behavior
   granularPresetBehavior: 'pure' | 'expressive'; // macro sensitivity profile
@@ -1337,7 +1349,7 @@ export interface SliderState {
 
   // Voice 1
   granularV1Enabled: boolean;
-  granularV1Mode: 'clean' | 'granular' | 'legacy';
+  granularV1Mode: GranularVoiceMode;
   granularV1Slice: number;            // 0..15
   granularV1Speed: number;            // 0..4 (0 = LFO scan mode)
   granularV1ScanRate: number;         // 0.25..4 clean scan playback rate
@@ -1348,6 +1360,20 @@ export interface SliderState {
   granularV1Blur: number;             // 0..1 allpass diffusion
   granularV1GrainOct: number;         // 0..1 shimmer probability
   granularV1Spray: number;            // 0..1 position randomization
+  granularV1PositionSpray: number;    // 0..1 visible replacement for legacy spray
+  granularV1TimingSpray: number;      // 0..1 grain trigger timing spread
+  granularV1Lookback: number;         // 0..1 maps roughly 60ms..8s
+  granularV1WriteGuard: number;       // 0..1 maps 15ms..120ms
+  granularV1PitchMode: GranularPitchMode;
+  granularV1PitchSpread: number;      // 0..24 semitones
+  granularV1PitchJitter: number;      // 0..50 cents
+  granularV1PitchQuantize: number;    // 0..1 quantized blend
+  granularV1ReverseChance: number;    // 0..1 grain-level reverse probability
+  granularV1Bloom: number;            // 0..1 ghost grain amount
+  granularV1Glide: number;            // 0..1 pitch glide amount
+  granularV1CloudStyle: GranularCloudStyle;
+  granularV1AnchorPattern: GranularAnchorPattern;
+  granularV1LoopCrossfade: number;    // 4..80 ms clean looper crossfade
   granularV1Density: number;          // 1..64 grains/sec
   granularV1TempoSync: boolean;       // sync grain trigger pulses to BPM grid
   granularV1TempoDiv: GranularTempoDivision; // note division for grain trigger pulses
@@ -1364,7 +1390,7 @@ export interface SliderState {
 
   // Voice 2
   granularV2Enabled: boolean;
-  granularV2Mode: 'clean' | 'granular' | 'legacy';
+  granularV2Mode: GranularVoiceMode;
   granularV2Slice: number;
   granularV2Speed: number;
   granularV2ScanRate: number;
@@ -1375,6 +1401,20 @@ export interface SliderState {
   granularV2Blur: number;
   granularV2GrainOct: number;
   granularV2Spray: number;
+  granularV2PositionSpray: number;
+  granularV2TimingSpray: number;
+  granularV2Lookback: number;
+  granularV2WriteGuard: number;
+  granularV2PitchMode: GranularPitchMode;
+  granularV2PitchSpread: number;
+  granularV2PitchJitter: number;
+  granularV2PitchQuantize: number;
+  granularV2ReverseChance: number;
+  granularV2Bloom: number;
+  granularV2Glide: number;
+  granularV2CloudStyle: GranularCloudStyle;
+  granularV2AnchorPattern: GranularAnchorPattern;
+  granularV2LoopCrossfade: number;
   granularV2Density: number;
   granularV2TempoSync: boolean;
   granularV2TempoDiv: GranularTempoDivision;
@@ -1391,7 +1431,7 @@ export interface SliderState {
 
   // Voice 3
   granularV3Enabled: boolean;
-  granularV3Mode: 'clean' | 'granular' | 'legacy';
+  granularV3Mode: GranularVoiceMode;
   granularV3Slice: number;
   granularV3Speed: number;
   granularV3ScanRate: number;
@@ -1402,6 +1442,20 @@ export interface SliderState {
   granularV3Blur: number;
   granularV3GrainOct: number;
   granularV3Spray: number;
+  granularV3PositionSpray: number;
+  granularV3TimingSpray: number;
+  granularV3Lookback: number;
+  granularV3WriteGuard: number;
+  granularV3PitchMode: GranularPitchMode;
+  granularV3PitchSpread: number;
+  granularV3PitchJitter: number;
+  granularV3PitchQuantize: number;
+  granularV3ReverseChance: number;
+  granularV3Bloom: number;
+  granularV3Glide: number;
+  granularV3CloudStyle: GranularCloudStyle;
+  granularV3AnchorPattern: GranularAnchorPattern;
+  granularV3LoopCrossfade: number;
   granularV3Density: number;
   granularV3TempoSync: boolean;
   granularV3TempoDiv: GranularTempoDivision;
@@ -1418,7 +1472,7 @@ export interface SliderState {
 
   // Voice 4
   granularV4Enabled: boolean;
-  granularV4Mode: 'clean' | 'granular' | 'legacy';
+  granularV4Mode: GranularVoiceMode;
   granularV4Slice: number;
   granularV4Speed: number;
   granularV4ScanRate: number;
@@ -1429,6 +1483,20 @@ export interface SliderState {
   granularV4Blur: number;
   granularV4GrainOct: number;
   granularV4Spray: number;
+  granularV4PositionSpray: number;
+  granularV4TimingSpray: number;
+  granularV4Lookback: number;
+  granularV4WriteGuard: number;
+  granularV4PitchMode: GranularPitchMode;
+  granularV4PitchSpread: number;
+  granularV4PitchJitter: number;
+  granularV4PitchQuantize: number;
+  granularV4ReverseChance: number;
+  granularV4Bloom: number;
+  granularV4Glide: number;
+  granularV4CloudStyle: GranularCloudStyle;
+  granularV4AnchorPattern: GranularAnchorPattern;
+  granularV4LoopCrossfade: number;
   granularV4Density: number;
   granularV4TempoSync: boolean;
   granularV4TempoDiv: GranularTempoDivision;
@@ -2298,6 +2366,12 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'granularFeedback',
   'granularFeedbackLPF',
   'granularBufferSeconds',
+  'granularQuality',
+  'granularMaxGrains',
+  'granularSprayMacro',
+  'granularCloudMacro',
+  'granularPitchMacro',
+  'granularVisualDetail',
   'granularPreset',
   'granularSpaceMode',
   'granularPresetBehavior',
@@ -2312,25 +2386,41 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'granularV1Enabled', 'granularV1Mode', 'granularV1Slice', 'granularV1Speed', 'granularV1Reverse',
   'granularV1ScanRate',
   'granularV1Pitch', 'granularV1Attack', 'granularV1Decay', 'granularV1Blur', 'granularV1GrainOct',
-  'granularV1Spray', 'granularV1Density', 'granularV1TempoSync', 'granularV1TempoDiv', 'granularV1GrainSize', 'granularV1Pan', 'granularV1Gain',
+  'granularV1Spray', 'granularV1PositionSpray', 'granularV1TimingSpray', 'granularV1Lookback', 'granularV1WriteGuard',
+  'granularV1PitchMode', 'granularV1PitchSpread', 'granularV1PitchJitter', 'granularV1PitchQuantize',
+  'granularV1ReverseChance', 'granularV1Bloom', 'granularV1Glide', 'granularV1CloudStyle', 'granularV1AnchorPattern',
+  'granularV1LoopCrossfade',
+  'granularV1Density', 'granularV1TempoSync', 'granularV1TempoDiv', 'granularV1GrainSize', 'granularV1Pan', 'granularV1Gain',
   'granularV1PosLFORate', 'granularV1PosLFODepth', 'granularV1PanLFORate', 'granularV1StereoSpread',
   'granularV1ReverseLFORate', 'granularV1WriteFollow', 'granularV1RecordLFORate',
   'granularV2Enabled', 'granularV2Mode', 'granularV2Slice', 'granularV2Speed', 'granularV2Reverse',
   'granularV2ScanRate',
   'granularV2Pitch', 'granularV2Attack', 'granularV2Decay', 'granularV2Blur', 'granularV2GrainOct',
-  'granularV2Spray', 'granularV2Density', 'granularV2TempoSync', 'granularV2TempoDiv', 'granularV2GrainSize', 'granularV2Pan', 'granularV2Gain',
+  'granularV2Spray', 'granularV2PositionSpray', 'granularV2TimingSpray', 'granularV2Lookback', 'granularV2WriteGuard',
+  'granularV2PitchMode', 'granularV2PitchSpread', 'granularV2PitchJitter', 'granularV2PitchQuantize',
+  'granularV2ReverseChance', 'granularV2Bloom', 'granularV2Glide', 'granularV2CloudStyle', 'granularV2AnchorPattern',
+  'granularV2LoopCrossfade',
+  'granularV2Density', 'granularV2TempoSync', 'granularV2TempoDiv', 'granularV2GrainSize', 'granularV2Pan', 'granularV2Gain',
   'granularV2PosLFORate', 'granularV2PosLFODepth', 'granularV2PanLFORate', 'granularV2StereoSpread',
   'granularV2ReverseLFORate', 'granularV2WriteFollow', 'granularV2RecordLFORate',
   'granularV3Enabled', 'granularV3Mode', 'granularV3Slice', 'granularV3Speed', 'granularV3Reverse',
   'granularV3ScanRate',
   'granularV3Pitch', 'granularV3Attack', 'granularV3Decay', 'granularV3Blur', 'granularV3GrainOct',
-  'granularV3Spray', 'granularV3Density', 'granularV3TempoSync', 'granularV3TempoDiv', 'granularV3GrainSize', 'granularV3Pan', 'granularV3Gain',
+  'granularV3Spray', 'granularV3PositionSpray', 'granularV3TimingSpray', 'granularV3Lookback', 'granularV3WriteGuard',
+  'granularV3PitchMode', 'granularV3PitchSpread', 'granularV3PitchJitter', 'granularV3PitchQuantize',
+  'granularV3ReverseChance', 'granularV3Bloom', 'granularV3Glide', 'granularV3CloudStyle', 'granularV3AnchorPattern',
+  'granularV3LoopCrossfade',
+  'granularV3Density', 'granularV3TempoSync', 'granularV3TempoDiv', 'granularV3GrainSize', 'granularV3Pan', 'granularV3Gain',
   'granularV3PosLFORate', 'granularV3PosLFODepth', 'granularV3PanLFORate', 'granularV3StereoSpread',
   'granularV3ReverseLFORate', 'granularV3WriteFollow', 'granularV3RecordLFORate',
   'granularV4Enabled', 'granularV4Mode', 'granularV4Slice', 'granularV4Speed', 'granularV4Reverse',
   'granularV4ScanRate',
   'granularV4Pitch', 'granularV4Attack', 'granularV4Decay', 'granularV4Blur', 'granularV4GrainOct',
-  'granularV4Spray', 'granularV4Density', 'granularV4TempoSync', 'granularV4TempoDiv', 'granularV4GrainSize', 'granularV4Pan', 'granularV4Gain',
+  'granularV4Spray', 'granularV4PositionSpray', 'granularV4TimingSpray', 'granularV4Lookback', 'granularV4WriteGuard',
+  'granularV4PitchMode', 'granularV4PitchSpread', 'granularV4PitchJitter', 'granularV4PitchQuantize',
+  'granularV4ReverseChance', 'granularV4Bloom', 'granularV4Glide', 'granularV4CloudStyle', 'granularV4AnchorPattern',
+  'granularV4LoopCrossfade',
+  'granularV4Density', 'granularV4TempoSync', 'granularV4TempoDiv', 'granularV4GrainSize', 'granularV4Pan', 'granularV4Gain',
   'granularV4PosLFORate', 'granularV4PosLFODepth', 'granularV4PanLFORate', 'granularV4StereoSpread',
   'granularV4ReverseLFORate', 'granularV4WriteFollow', 'granularV4RecordLFORate',
   'granularLegacyJitter', 'granularLegacyProbability', 'granularLegacyPitchMode',
@@ -3351,6 +3441,12 @@ export const DEFAULT_STATE: SliderState = {
   granularFeedback: 0.1,
   granularFeedbackLPF: 8000,
   granularBufferSeconds: 16,
+  granularQuality: 'balanced' as const,
+  granularMaxGrains: 48,
+  granularSprayMacro: 0,
+  granularCloudMacro: 0,
+  granularPitchMacro: 0,
+  granularVisualDetail: 'basic' as const,
   granularPreset: 'init',
   granularSpaceMode: 'clocked' as const,
   granularPresetBehavior: 'expressive' as const,
@@ -3386,6 +3482,20 @@ export const DEFAULT_STATE: SliderState = {
   granularV1Blur: 0,
   granularV1GrainOct: 0,
   granularV1Spray: 0.3,
+  granularV1PositionSpray: 0.3,
+  granularV1TimingSpray: 0,
+  granularV1Lookback: 0.35,
+  granularV1WriteGuard: 0.3,
+  granularV1PitchMode: 'fixed' as const,
+  granularV1PitchSpread: 0,
+  granularV1PitchJitter: 4,
+  granularV1PitchQuantize: 1,
+  granularV1ReverseChance: 0,
+  granularV1Bloom: 0,
+  granularV1Glide: 0,
+  granularV1CloudStyle: 'classic' as const,
+  granularV1AnchorPattern: 'forward' as const,
+  granularV1LoopCrossfade: 12,
   granularV1Density: 20,
   granularV1TempoSync: false,
   granularV1TempoDiv: '1/8',
@@ -3413,6 +3523,20 @@ export const DEFAULT_STATE: SliderState = {
   granularV2Blur: 0,
   granularV2GrainOct: 0,
   granularV2Spray: 0.3,
+  granularV2PositionSpray: 0.3,
+  granularV2TimingSpray: 0,
+  granularV2Lookback: 0.35,
+  granularV2WriteGuard: 0.3,
+  granularV2PitchMode: 'fixed' as const,
+  granularV2PitchSpread: 0,
+  granularV2PitchJitter: 4,
+  granularV2PitchQuantize: 1,
+  granularV2ReverseChance: 0,
+  granularV2Bloom: 0,
+  granularV2Glide: 0,
+  granularV2CloudStyle: 'classic' as const,
+  granularV2AnchorPattern: 'forward' as const,
+  granularV2LoopCrossfade: 12,
   granularV2Density: 20,
   granularV2TempoSync: false,
   granularV2TempoDiv: '1/8',
@@ -3440,6 +3564,20 @@ export const DEFAULT_STATE: SliderState = {
   granularV3Blur: 0,
   granularV3GrainOct: 0,
   granularV3Spray: 0.3,
+  granularV3PositionSpray: 0.3,
+  granularV3TimingSpray: 0,
+  granularV3Lookback: 0.35,
+  granularV3WriteGuard: 0.3,
+  granularV3PitchMode: 'fixed' as const,
+  granularV3PitchSpread: 0,
+  granularV3PitchJitter: 4,
+  granularV3PitchQuantize: 1,
+  granularV3ReverseChance: 0,
+  granularV3Bloom: 0,
+  granularV3Glide: 0,
+  granularV3CloudStyle: 'classic' as const,
+  granularV3AnchorPattern: 'forward' as const,
+  granularV3LoopCrossfade: 12,
   granularV3Density: 20,
   granularV3TempoSync: false,
   granularV3TempoDiv: '1/8',
@@ -3467,6 +3605,20 @@ export const DEFAULT_STATE: SliderState = {
   granularV4Blur: 0,
   granularV4GrainOct: 0,
   granularV4Spray: 0.3,
+  granularV4PositionSpray: 0.3,
+  granularV4TimingSpray: 0,
+  granularV4Lookback: 0.35,
+  granularV4WriteGuard: 0.3,
+  granularV4PitchMode: 'fixed' as const,
+  granularV4PitchSpread: 0,
+  granularV4PitchJitter: 4,
+  granularV4PitchQuantize: 1,
+  granularV4ReverseChance: 0,
+  granularV4Bloom: 0,
+  granularV4Glide: 0,
+  granularV4CloudStyle: 'classic' as const,
+  granularV4AnchorPattern: 'forward' as const,
+  granularV4LoopCrossfade: 12,
   granularV4Density: 20,
   granularV4TempoSync: false,
   granularV4TempoDiv: '1/8',
@@ -4261,6 +4413,10 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   granularFeedback: { min: 0, max: 0.85, step: 0.01 },
   granularFeedbackLPF: { min: 200, max: 12000, step: 50 },
   granularBufferSeconds: { min: 4, max: 16, step: 12 },
+  granularMaxGrains: { min: 8, max: 64, step: 1 },
+  granularSprayMacro: { min: 0, max: 1, step: 0.01 },
+  granularCloudMacro: { min: 0, max: 1, step: 0.01 },
+  granularPitchMacro: { min: 0, max: 1, step: 0.01 },
   granularReverbSend: { min: 0, max: 1, step: 0.01 },
   granularDiffusion: { min: 0, max: 1, step: 0.01 },
   granularReverbLPF: { min: 200, max: 12000, step: 50 },
@@ -4287,6 +4443,17 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   granularV1Blur: { min: 0, max: 1, step: 0.01 },
   granularV1GrainOct: { min: 0, max: 1, step: 0.01 },
   granularV1Spray: { min: 0, max: 1, step: 0.01 },
+  granularV1PositionSpray: { min: 0, max: 1, step: 0.01 },
+  granularV1TimingSpray: { min: 0, max: 1, step: 0.01 },
+  granularV1Lookback: { min: 0, max: 1, step: 0.01 },
+  granularV1WriteGuard: { min: 0, max: 1, step: 0.01 },
+  granularV1PitchSpread: { min: 0, max: 24, step: 1 },
+  granularV1PitchJitter: { min: 0, max: 50, step: 1 },
+  granularV1PitchQuantize: { min: 0, max: 1, step: 0.01 },
+  granularV1ReverseChance: { min: 0, max: 1, step: 0.01 },
+  granularV1Bloom: { min: 0, max: 1, step: 0.01 },
+  granularV1Glide: { min: 0, max: 1, step: 0.01 },
+  granularV1LoopCrossfade: { min: 4, max: 80, step: 1 },
   granularV1Density: { min: 1, max: 64, step: 1 },
   granularV1GrainSize: { min: 10, max: 500, step: 5 },
   granularV1Pan: { min: -1, max: 1, step: 0.01 },
@@ -4307,6 +4474,17 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   granularV2Blur: { min: 0, max: 1, step: 0.01 },
   granularV2GrainOct: { min: 0, max: 1, step: 0.01 },
   granularV2Spray: { min: 0, max: 1, step: 0.01 },
+  granularV2PositionSpray: { min: 0, max: 1, step: 0.01 },
+  granularV2TimingSpray: { min: 0, max: 1, step: 0.01 },
+  granularV2Lookback: { min: 0, max: 1, step: 0.01 },
+  granularV2WriteGuard: { min: 0, max: 1, step: 0.01 },
+  granularV2PitchSpread: { min: 0, max: 24, step: 1 },
+  granularV2PitchJitter: { min: 0, max: 50, step: 1 },
+  granularV2PitchQuantize: { min: 0, max: 1, step: 0.01 },
+  granularV2ReverseChance: { min: 0, max: 1, step: 0.01 },
+  granularV2Bloom: { min: 0, max: 1, step: 0.01 },
+  granularV2Glide: { min: 0, max: 1, step: 0.01 },
+  granularV2LoopCrossfade: { min: 4, max: 80, step: 1 },
   granularV2Density: { min: 1, max: 64, step: 1 },
   granularV2GrainSize: { min: 10, max: 500, step: 5 },
   granularV2Pan: { min: -1, max: 1, step: 0.01 },
@@ -4327,6 +4505,17 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   granularV3Blur: { min: 0, max: 1, step: 0.01 },
   granularV3GrainOct: { min: 0, max: 1, step: 0.01 },
   granularV3Spray: { min: 0, max: 1, step: 0.01 },
+  granularV3PositionSpray: { min: 0, max: 1, step: 0.01 },
+  granularV3TimingSpray: { min: 0, max: 1, step: 0.01 },
+  granularV3Lookback: { min: 0, max: 1, step: 0.01 },
+  granularV3WriteGuard: { min: 0, max: 1, step: 0.01 },
+  granularV3PitchSpread: { min: 0, max: 24, step: 1 },
+  granularV3PitchJitter: { min: 0, max: 50, step: 1 },
+  granularV3PitchQuantize: { min: 0, max: 1, step: 0.01 },
+  granularV3ReverseChance: { min: 0, max: 1, step: 0.01 },
+  granularV3Bloom: { min: 0, max: 1, step: 0.01 },
+  granularV3Glide: { min: 0, max: 1, step: 0.01 },
+  granularV3LoopCrossfade: { min: 4, max: 80, step: 1 },
   granularV3Density: { min: 1, max: 64, step: 1 },
   granularV3GrainSize: { min: 10, max: 500, step: 5 },
   granularV3Pan: { min: -1, max: 1, step: 0.01 },
@@ -4347,6 +4536,17 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   granularV4Blur: { min: 0, max: 1, step: 0.01 },
   granularV4GrainOct: { min: 0, max: 1, step: 0.01 },
   granularV4Spray: { min: 0, max: 1, step: 0.01 },
+  granularV4PositionSpray: { min: 0, max: 1, step: 0.01 },
+  granularV4TimingSpray: { min: 0, max: 1, step: 0.01 },
+  granularV4Lookback: { min: 0, max: 1, step: 0.01 },
+  granularV4WriteGuard: { min: 0, max: 1, step: 0.01 },
+  granularV4PitchSpread: { min: 0, max: 24, step: 1 },
+  granularV4PitchJitter: { min: 0, max: 50, step: 1 },
+  granularV4PitchQuantize: { min: 0, max: 1, step: 0.01 },
+  granularV4ReverseChance: { min: 0, max: 1, step: 0.01 },
+  granularV4Bloom: { min: 0, max: 1, step: 0.01 },
+  granularV4Glide: { min: 0, max: 1, step: 0.01 },
+  granularV4LoopCrossfade: { min: 4, max: 80, step: 1 },
   granularV4Density: { min: 1, max: 64, step: 1 },
   granularV4GrainSize: { min: 10, max: 500, step: 5 },
   granularV4Pan: { min: -1, max: 1, step: 0.01 },
@@ -4381,6 +4581,37 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   granularMacroDarkness: { min: 0, max: 1, step: 0.01 },
   granularMacroChaos: { min: 0, max: 1, step: 0.01 },
 };
+
+const GRANULAR_VOICE_NUMBERS = [1, 2, 3, 4] as const;
+const GRANULAR_QUALITY_VALUES = ['eco', 'balanced', 'hq'] as const;
+const GRANULAR_VISUAL_DETAIL_VALUES = ['basic', 'full'] as const;
+const GRANULAR_VOICE_MODE_VALUES = ['clean', 'granular'] as const;
+const GRANULAR_PITCH_MODE_VALUES = ['fixed', 'octaves', 'fifths', 'chord', 'scale', 'free'] as const;
+const GRANULAR_CLOUD_STYLE_VALUES = ['classic', 'mosaic', 'bloom', 'tide', 'orbit', 'stars'] as const;
+const GRANULAR_ANCHOR_PATTERN_VALUES = ['forward', 'reverse', 'pendulum', 'random'] as const;
+
+function isOneOf<const T extends readonly string[]>(value: string, values: T): value is T[number] {
+  return (values as readonly string[]).includes(value);
+}
+
+function sanitizeGranularStateCompatibility(state: Record<string, unknown>): void {
+  if (state.granularPreset === 'legacy_cloud') {
+    state.granularPreset = 'classic_cloud';
+  }
+  for (const voiceNumber of GRANULAR_VOICE_NUMBERS) {
+    const prefix = `granularV${voiceNumber}`;
+    const modeKey = `${prefix}Mode`;
+    if (state[modeKey] === 'legacy') {
+      state[modeKey] = 'granular';
+    }
+    const positionSprayKey = `${prefix}PositionSpray`;
+    const sprayKey = `${prefix}Spray`;
+    if (state[positionSprayKey] == null) {
+      const fallback = Number(state[sprayKey] ?? DEFAULT_STATE[positionSprayKey as keyof SliderState] ?? 0);
+      state[positionSprayKey] = Number.isFinite(fallback) ? fallback : 0;
+    }
+  }
+}
 
 /**
  * Quantize a value to its step
@@ -4709,6 +4940,39 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           (value === 'pure' || value === 'expressive')
         ) {
           state.granularPresetBehavior = value as SliderState['granularPresetBehavior'];
+        } else if (
+          key === 'granularQuality' &&
+          isOneOf(value, GRANULAR_QUALITY_VALUES)
+        ) {
+          state.granularQuality = value;
+        } else if (
+          key === 'granularVisualDetail' &&
+          isOneOf(value, GRANULAR_VISUAL_DETAIL_VALUES)
+        ) {
+          state.granularVisualDetail = value;
+        } else if (
+          ['granularV1Mode', 'granularV2Mode', 'granularV3Mode', 'granularV4Mode'].includes(key)
+        ) {
+          if (isOneOf(value, GRANULAR_VOICE_MODE_VALUES)) {
+            (state as Record<string, unknown>)[key] = value;
+          } else if (value === 'legacy') {
+            (state as Record<string, unknown>)[key] = 'granular';
+          }
+        } else if (
+          ['granularV1PitchMode', 'granularV2PitchMode', 'granularV3PitchMode', 'granularV4PitchMode'].includes(key) &&
+          isOneOf(value, GRANULAR_PITCH_MODE_VALUES)
+        ) {
+          (state as Record<string, unknown>)[key] = value;
+        } else if (
+          ['granularV1CloudStyle', 'granularV2CloudStyle', 'granularV3CloudStyle', 'granularV4CloudStyle'].includes(key) &&
+          isOneOf(value, GRANULAR_CLOUD_STYLE_VALUES)
+        ) {
+          (state as Record<string, unknown>)[key] = value;
+        } else if (
+          ['granularV1AnchorPattern', 'granularV2AnchorPattern', 'granularV3AnchorPattern', 'granularV4AnchorPattern'].includes(key) &&
+          isOneOf(value, GRANULAR_ANCHOR_PATTERN_VALUES)
+        ) {
+          (state as Record<string, unknown>)[key] = value;
         } else if (key === 'delayBGranularLinked') {
           state.delayBGranularLinked = value === 'true';
         } else if (key === 'dynamicsEnabled') {
@@ -4881,6 +5145,7 @@ export function decodeStateFromUrl(search: string): SliderState | null {
       state.characterWetHp = DEFAULT_STATE.characterWetHp;
     }
 
+    sanitizeGranularStateCompatibility(state as unknown as Record<string, unknown>);
     return state;
   } catch {
     return null;
@@ -5125,10 +5390,11 @@ export function migratePreset(preset: any): SavedPreset {
       state.granularLegacyFeedback = Math.min(0.35, state.feedback as number);
     }
     // granularReverbSend carries over as-is (same key name in unified engine)
-    // Set Voice 1 to legacy mode
-    state.granularV1Mode = 'legacy';
+    state.granularV1PositionSpray = state.granularV1PositionSpray ?? state.granularV1Spray;
+    // Legacy runtime was removed; preserve the old preset as a modern granular cloud.
+    state.granularV1Mode = 'granular';
     state.granularV1Enabled = true;
-    state.granularPreset = 'legacy_cloud';
+    state.granularPreset = 'classic_cloud';
   }
 
   // ═══ Legacy drumMembraneTension → drumMembraneStiffness rename ═══
@@ -5238,6 +5504,8 @@ export function migratePreset(preset: any): SavedPreset {
   };
   drumEvolveConfigs = migrateEvolveArray(drumEvolveConfigs);
   synthEvolveConfigs = migrateEvolveArray(synthEvolveConfigs);
+
+  sanitizeGranularStateCompatibility(state);
 
   return {
     name: preset.name || 'Untitled',

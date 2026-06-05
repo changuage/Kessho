@@ -29,7 +29,7 @@ interface BufferRangeSegment {
 
 export interface CanvasVoiceVisual {
   index: number;
-  mode: 'clean' | 'granular' | 'legacy';
+  mode: 'clean' | 'granular';
   motionMode: 'scan' | 'linear' | null;
   color: string;
   slice: number;
@@ -48,6 +48,28 @@ export interface CanvasVoiceVisual {
   reverse: boolean;
   speed: number;    // clean mode speed
   scanRate: number;
+  positionSpray: number;
+  timingSpray: number;
+  lookback: number;
+  writeGuard: number;
+  reverseChance: number;
+  bloom: number;
+  glide: number;
+  cloudStyle: 'classic' | 'mosaic' | 'bloom' | 'tide' | 'orbit' | 'stars';
+  anchorPattern: 'forward' | 'reverse' | 'pendulum' | 'random';
+  loopCrossfade: number;
+  quality: 'eco' | 'balanced' | 'hq';
+}
+
+export interface GranularVisualEvent {
+  position: number;
+  pan: number;
+  pitch: number;
+  gain: number;
+  lengthMs: number;
+  voice: number;
+  flags: number;
+  cloudStyle: number;
 }
 
 export interface GranularBufferCanvasProps {
@@ -56,11 +78,13 @@ export interface GranularBufferCanvasProps {
   voices: CanvasVoiceVisual[];
   writeHeadPosition: number;
   activeGrainCount: number;
+  grainEvents?: readonly GranularVisualEvent[];
   bufferWaveform: Float32Array | null;
   bufferSeconds: number;
   isFrozen: boolean;
   activeSlices: Set<number>;
   numSlices: number;
+  visualDetail?: 'basic' | 'full';
   onSliceClick?: (sliceIndex: number) => void;
 }
 
@@ -77,7 +101,6 @@ const GRAIN_HISTORY_LEN = 80;     // ~4s at 20fps
 const PARTICLE_LIFETIME = 350;    // ms
 const MAX_PARTICLES = 40;
 const WRITE_HEAD_TRAIL_LEN = 8;
-const POS_CHANGE_THRESHOLD = 0.002; // minimum normalized position change to spawn particle
 const TARGET_FRAME_MS = 1000 / 30;
 
 // ═══════════════ Helpers ═══════════════
@@ -99,11 +122,13 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
   voices,
   writeHeadPosition,
   activeGrainCount,
+  grainEvents = [],
   bufferWaveform,
   bufferSeconds,
   isFrozen,
   activeSlices,
   numSlices,
+  visualDetail = 'basic',
   onSliceClick,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -111,9 +136,8 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
   const animFrameRef = useRef<number>(0);
   const [measuredWidth, setMeasuredWidth] = useState(0);
   const grainHistoryRef = useRef<number[]>([]);
-  const particlesRef = useRef<{ x: number; y: number; color: string; born: number }[]>([]);
-  const prevGrainCountRef = useRef(0);
-  const prevVoicePosRef = useRef<number[]>([0, 0, 0, 0]);
+  const particlesRef = useRef<{ x: number; y: number; color: string; born: number; radius: number; hollow: boolean; glide: boolean }[]>([]);
+  const lastEventBatchRef = useRef<readonly GranularVisualEvent[] | null>(null);
   const writeHeadTrailRef = useRef<number[]>([]);
   const ghostWaveformRef = useRef<Float32Array | null>(null);
   const wasFrozenRef = useRef(false);
@@ -129,6 +153,8 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
   const activeSRef = useRef(activeSlices);
   const bufSecRef = useRef(bufferSeconds);
   const isRunningRef = useRef(isRunning);
+  const visualDetailRef = useRef(visualDetail);
+  const grainEventsRef = useRef(grainEvents);
 
   voicesRef.current = voices;
   writeHeadRef.current = writeHeadPosition;
@@ -138,6 +164,8 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
   activeSRef.current = activeSlices;
   bufSecRef.current = bufferSeconds;
   isRunningRef.current = isRunning;
+  visualDetailRef.current = visualDetail;
+  grainEventsRef.current = grainEvents;
 
   // Ghost waveform: snapshot buffer on freeze transition
   useEffect(() => {
@@ -165,9 +193,11 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
   }, []);
 
   const draw = useCallback((frameTime = performance.now()) => {
+    const fullDetail = visualDetailRef.current === 'full';
+    const targetFrameMs = fullDetail ? TARGET_FRAME_MS : 1000 / 18;
     if (isRunningRef.current && canAnimate) {
       const lastDrawTime = lastDrawTimeRef.current;
-      if (lastDrawTime !== 0 && frameTime - lastDrawTime < TARGET_FRAME_MS) {
+      if (lastDrawTime !== 0 && frameTime - lastDrawTime < targetFrameMs) {
         animFrameRef.current = requestAnimationFrame(draw);
         return;
       }
@@ -341,6 +371,43 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
         ctx.fill();
       }
 
+      if (fullDetail && voice.mode === 'granular') {
+        const lookbackW = Math.min(w, Math.max(8, voice.lookback * w * 0.32));
+        const guardW = Math.min(w, Math.max(5, voice.writeGuard * 36));
+        const sprayW = Math.min(w, Math.max(6, voice.positionSpray * w * 0.30));
+        const lookbackX = Math.max(0, markerX - lookbackW);
+        ctx.fillStyle = `rgba(${r},${g},${b},0.055)`;
+        ctx.fillRect(lookbackX, laneY + 2, lookbackW, VOICE_LANE_HEIGHT - 4);
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fillRect(Math.max(0, wh * w - guardW), laneY + 2, guardW, VOICE_LANE_HEIGHT - 4);
+        ctx.strokeStyle = `rgba(${r},${g},${b},0.18)`;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(Math.max(0, markerX - sprayW / 2), laneY + 3, sprayW, VOICE_LANE_HEIGHT - 6);
+        if (voice.timingSpray > 0.01) {
+          const tickCount = Math.min(7, Math.max(2, Math.round(voice.timingSpray * 7)));
+          const tickFan = voice.timingSpray * 34;
+          ctx.strokeStyle = `rgba(${r},${g},${b},0.28)`;
+          for (let tick = 0; tick < tickCount; tick++) {
+            const t = tickCount <= 1 ? 0.5 : tick / (tickCount - 1);
+            const tx = markerX + (t - 0.5) * tickFan;
+            ctx.beginPath();
+            ctx.moveTo(tx, laneY - 2);
+            ctx.lineTo(tx, laneY + 3);
+            ctx.stroke();
+          }
+        }
+        if (voice.cloudStyle === 'stars') {
+          ctx.strokeStyle = `rgba(${r},${g},${b},0.42)`;
+          for (const anchor of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+            const sx = anchor * w;
+            ctx.beginPath();
+            ctx.moveTo(sx, laneY + 1);
+            ctx.lineTo(sx, laneY + VOICE_LANE_HEIGHT - 1);
+            ctx.stroke();
+          }
+        }
+      }
+
       // ─ Anchor marker (dashed vertical line) ─
       ctx.strokeStyle = `rgba(${r},${g},${b},0.5)`;
       ctx.lineWidth = 1;
@@ -351,7 +418,7 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // ─ 6. Voice markers — only for clean mode (granular/legacy use particles instead) ─
+      // ─ 6. Voice markers — only for clean mode (granular uses particles instead) ─
       if (voice.mode === 'clean') {
         for (let mi = 0; mi < voice.markerPositions.length; mi++) {
           const mPos = voice.markerPositions[mi]!;
@@ -391,7 +458,7 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
           }
         }
       } else {
-        // Granular/legacy: just show voice label at current position
+        // Granular: current-grain label at the representative grain position
         const mx = voice.currentPos * w;
         ctx.fillStyle = 'rgba(255,255,255,0.72)';
         ctx.font = '6.5px system-ui';
@@ -480,29 +547,34 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
 
-    // ── 8. Grain spawn particles ──
-    // For granular/legacy: spawn white particles when voice position changes (grain spawns)
-    // For clean mode: no particles (continuous read head shown by marker instead)
-    const prevPositions = prevVoicePosRef.current;
+    // ── 8. Grain spawn particles from DSP visual events ──
     const particles = particlesRef.current;
-    for (let vi = 0; vi < vs.length; vi++) {
-      const v = vs[vi]!;
-      if (v.mode === 'clean') continue; // clean uses marker, not particles
-      if (particles.length >= MAX_PARTICLES) break;
-      const prevPos = prevPositions[vi] ?? -1;
-      const posDelta = Math.abs(v.currentPos - prevPos);
-      if (posDelta > POS_CHANGE_THRESHOLD) {
-        const py = LANES_TOP + vi * (VOICE_LANE_HEIGHT + LANE_GAP) + VOICE_LANE_HEIGHT / 2;
+    const eventBatch = grainEventsRef.current;
+    if (eventBatch !== lastEventBatchRef.current) {
+      lastEventBatchRef.current = eventBatch;
+      const particleLimit = fullDetail ? MAX_PARTICLES : 18;
+      const room = Math.max(0, particleLimit - particles.length);
+      const start = Math.max(0, eventBatch.length - room);
+      for (let eventIndex = start; eventIndex < eventBatch.length; eventIndex++) {
+        if (particles.length >= particleLimit) break;
+        const event = eventBatch[eventIndex]!;
+        const voiceIndex = Math.max(0, Math.min(vs.length - 1, Math.round(event.voice)));
+        const v = vs[voiceIndex];
+        if (!v || v.mode === 'clean') continue;
+        const py = lanesStartY + voiceIndex * (VOICE_LANE_HEIGHT + LANE_GAP) + VOICE_LANE_HEIGHT / 2;
+        const ghost = (event.flags & 1) !== 0;
+        const glide = (event.flags & 8) !== 0;
         particles.push({
-          x: v.currentPos * w,
+          x: Math.max(0, Math.min(1, event.position)) * w,
           y: py,
-          color: '#ffffff',
+          color: event.pitch > 0.5 ? '#94f3ff' : event.pitch < -0.5 ? '#ffd39b' : v.color,
           born: now,
+          radius: ghost ? 3.8 : 2.3 + Math.min(2, Math.max(0, event.gain)),
+          hollow: ghost,
+          glide,
         });
       }
     }
-    prevGrainCountRef.current = gc;
-    prevVoicePosRef.current = vs.map(v => v.currentPos);
 
     // Draw and age particles — white glow for visibility against colored bands
     for (let i = particles.length - 1; i >= 0; i--) {
@@ -513,11 +585,20 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
         continue;
       }
       const life = 1 - age / PARTICLE_LIFETIME;
-      const radius = 2 + (1 - life) * 4;
-      ctx.fillStyle = `rgba(255,255,255,${life * 0.6})`;
+      const radius = p.radius + (1 - life) * (fullDetail ? 3.5 : 2.5);
+      const [pr, pg, pb] = p.color === '#ffffff' ? [255, 255, 255] : hexToRgb(p.color);
+      ctx.strokeStyle = `rgba(${pr},${pg},${pb},${life * 0.72})`;
+      ctx.fillStyle = `rgba(${pr},${pg},${pb},${life * (fullDetail ? 0.62 : 0.45)})`;
       ctx.beginPath();
       ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
       ctx.fill();
+      if (p.hollow) ctx.stroke();
+      if (p.glide && fullDetail) {
+        ctx.beginPath();
+        ctx.moveTo(p.x - 5, p.y + 4);
+        ctx.lineTo(p.x + 5, p.y - 4);
+        ctx.stroke();
+      }
     }
 
     // ── 10. Sparkline (grain count history) ──
@@ -600,10 +681,12 @@ const GranularBufferCanvas: React.FC<GranularBufferCanvasProps> = ({
     voices,
     writeHeadPosition,
     activeGrainCount,
+    grainEvents,
     bufferWaveform,
     bufferSeconds,
     isFrozen,
     activeSlices,
+    visualDetail,
   ]);
 
   useEffect(() => {
@@ -694,9 +777,12 @@ function buildBadgeText(voice: CanvasVoiceVisual): string {
     return `${voice.speed >= 0 ? '' : '-'}${Math.abs(voice.speed).toFixed(1)}×`;
   }
   if (voice.mode === 'granular') {
-    return 'grain';
+    const style = voice.cloudStyle === 'classic' ? 'grain' : voice.cloudStyle;
+    const spray = voice.positionSpray > 0.05 ? ` spr ${voice.positionSpray.toFixed(1)}` : '';
+    const bloom = voice.bloom > 0.05 || voice.cloudStyle === 'bloom' ? ` blm ${Math.max(voice.bloom, 0.3).toFixed(1)}` : '';
+    return `${style}${spray}${bloom}`;
   }
-  return 'legacy';
+  return '';
 }
 
 function roundRect(

@@ -56,6 +56,7 @@ import {
 } from '../../synthSeqEvolve';
 import type { SynthEvolveConfig, SynthEvolveState, SynthLaneOverrides } from '../../synthSeqEvolve';
 import { computeGranularMacroModel } from '../../granularMacroModel';
+import type { CoreProductGranularVisualEvent } from '../../coreProductTelemetry';
 import { SharedDelayBusA, SharedDelayBusB, delayNoteToSeconds } from '../../delayBuses';
 import { resolveDynamicsTargets, type DynamicsRoutingTargets, type DynamicsTargets } from '../../dynamicsModel';
 import { toDynamicsCharacterParamObject } from '../../dynamicsCharacterParams';
@@ -655,6 +656,10 @@ import { morphWaterPresets, WATER_MORPH_PARAM_KEYS, type WaterPresetState } from
 
 type GranularVoiceMode = SliderState['granularV1Mode'];
 type GranularGrainShape = NonNullable<SliderState['granularShape']>;
+type GranularQuality = SliderState['granularQuality'];
+type GranularPitchMode = SliderState['granularV1PitchMode'];
+type GranularCloudStyle = SliderState['granularV1CloudStyle'];
+type GranularAnchorPattern = SliderState['granularV1AnchorPattern'];
 
 type GranularWorkletGlobalParams = {
   enabled: boolean;
@@ -670,6 +675,11 @@ type GranularWorkletGlobalParams = {
 type GranularWorkletSpaceParams = {
   busDiffusion: number;
   timingRandomness: number;
+  quality: GranularQuality;
+  maxGrains: number;
+  sprayMacro: number;
+  cloudMacro: number;
+  pitchMacro: number;
 };
 
 type GranularWorkletVoiceParams = {
@@ -696,6 +706,20 @@ type GranularWorkletVoiceParams = {
   voiceReverseLFORate: number[];
   voiceWriteFollow: number[];
   voiceRecordLFORate: number[];
+  voicePositionSpray: number[];
+  voiceTimingSpray: number[];
+  voiceLookback: number[];
+  voiceWriteGuard: number[];
+  voicePitchMode: GranularPitchMode[];
+  voicePitchSpread: number[];
+  voicePitchJitter: number[];
+  voicePitchQuantize: number[];
+  voiceReverseChance: number[];
+  voiceBloom: number[];
+  voiceGlide: number[];
+  voiceCloudStyle: GranularCloudStyle[];
+  voiceAnchorPattern: GranularAnchorPattern[];
+  voiceLoopCrossfade: number[];
   tempoGated: boolean[];
 };
 
@@ -1200,6 +1224,7 @@ export class AudioEngine {
   private granularVoicePositions = [0, 0, 0, 0]; // 0-1 per voice for UI
   private granularActiveGrainCount = 0;
   private granularBufferWaveform: Float32Array | null = null;  // downsampled buffer peaks for viz
+  private granularVisualEvents: CoreProductGranularVisualEvent[] = [];
   private granularUiActive = false;
   private lastGranularUiActiveSent: boolean | null = null;
   private pendingGranularWorkletUpdate: GranularWorkletUpdate | null = null;
@@ -4869,6 +4894,11 @@ export class AudioEngine {
   getGranularVoicePositions(): number[] { return [...this.granularVoicePositions]; }
   getGranularActiveGrainCount(): number { return this.granularActiveGrainCount; }
   getGranularBufferWaveform(): Float32Array | null { return this.granularBufferWaveform; }
+  getGranularVisualEvents(): CoreProductGranularVisualEvent[] {
+    const events = this.granularVisualEvents;
+    this.granularVisualEvents = [];
+    return events;
+  }
   getEarthTextureDebugState(): EarthTextureDebugState {
     return {
       waves: this.oceanTexturePlayer?.getDebugSnapshot() ?? null,
@@ -6534,6 +6564,7 @@ export class AudioEngine {
     this.granularWriteHeadPosition = 0;
     this.granularVoicePositions = [0, 0, 0, 0];
     this.granularActiveGrainCount = 0;
+    this.granularVisualEvents = [];
     // Stop lead random melody timer
     if (this.leadMelodyTimer !== null) {
       clearTimeout(this.leadMelodyTimer);
@@ -7555,6 +7586,9 @@ export class AudioEngine {
           this.granularActiveGrainCount = e.data.activeGrains ?? 0;
           if (e.data.waveform) {
             this.granularBufferWaveform = e.data.waveform;
+          }
+          if (Array.isArray(e.data.grainEvents)) {
+            this.granularVisualEvents = e.data.grainEvents;
           }
         } else if (e.data.type === 'perf') {
           this.handlePerfMessage(e.data);
@@ -9873,6 +9907,11 @@ export class AudioEngine {
       const granularSpaceParams: GranularWorkletSpaceParams = {
         busDiffusion: macroModel.busDiffusion,
         timingRandomness: macroModel.timingRandomness,
+        quality: state.granularQuality ?? 'balanced',
+        maxGrains: shv('granularMaxGrains', state.granularMaxGrains),
+        sprayMacro: shv('granularSprayMacro', state.granularSprayMacro),
+        cloudMacro: shv('granularCloudMacro', state.granularCloudMacro),
+        pitchMacro: shv('granularPitchMacro', state.granularPitchMacro),
       };
       const granularVoiceParams: GranularWorkletVoiceParams = {
         voiceEnabled: [state.granularV1Enabled, state.granularV2Enabled, state.granularV3Enabled, state.granularV4Enabled],
@@ -9898,6 +9937,20 @@ export class AudioEngine {
         voiceReverseLFORate: macroModel.voiceReverseLFORate,
         voiceWriteFollow: [shv('granularV1WriteFollow', state.granularV1WriteFollow), shv('granularV2WriteFollow', state.granularV2WriteFollow), shv('granularV3WriteFollow', state.granularV3WriteFollow), shv('granularV4WriteFollow', state.granularV4WriteFollow)],
         voiceRecordLFORate: [shv('granularV1RecordLFORate', state.granularV1RecordLFORate), shv('granularV2RecordLFORate', state.granularV2RecordLFORate), shv('granularV3RecordLFORate', state.granularV3RecordLFORate), shv('granularV4RecordLFORate', state.granularV4RecordLFORate)],
+        voicePositionSpray: macroModel.voicePositionSpray,
+        voiceTimingSpray: macroModel.voiceTimingSpray,
+        voiceLookback: [shv('granularV1Lookback', state.granularV1Lookback), shv('granularV2Lookback', state.granularV2Lookback), shv('granularV3Lookback', state.granularV3Lookback), shv('granularV4Lookback', state.granularV4Lookback)],
+        voiceWriteGuard: [shv('granularV1WriteGuard', state.granularV1WriteGuard), shv('granularV2WriteGuard', state.granularV2WriteGuard), shv('granularV3WriteGuard', state.granularV3WriteGuard), shv('granularV4WriteGuard', state.granularV4WriteGuard)],
+        voicePitchMode: [state.granularV1PitchMode, state.granularV2PitchMode, state.granularV3PitchMode, state.granularV4PitchMode],
+        voicePitchSpread: [shv('granularV1PitchSpread', state.granularV1PitchSpread), shv('granularV2PitchSpread', state.granularV2PitchSpread), shv('granularV3PitchSpread', state.granularV3PitchSpread), shv('granularV4PitchSpread', state.granularV4PitchSpread)],
+        voicePitchJitter: macroModel.voicePitchJitter,
+        voicePitchQuantize: [shv('granularV1PitchQuantize', state.granularV1PitchQuantize), shv('granularV2PitchQuantize', state.granularV2PitchQuantize), shv('granularV3PitchQuantize', state.granularV3PitchQuantize), shv('granularV4PitchQuantize', state.granularV4PitchQuantize)],
+        voiceReverseChance: [shv('granularV1ReverseChance', state.granularV1ReverseChance), shv('granularV2ReverseChance', state.granularV2ReverseChance), shv('granularV3ReverseChance', state.granularV3ReverseChance), shv('granularV4ReverseChance', state.granularV4ReverseChance)],
+        voiceBloom: macroModel.voiceBloom,
+        voiceGlide: [shv('granularV1Glide', state.granularV1Glide), shv('granularV2Glide', state.granularV2Glide), shv('granularV3Glide', state.granularV3Glide), shv('granularV4Glide', state.granularV4Glide)],
+        voiceCloudStyle: [state.granularV1CloudStyle, state.granularV2CloudStyle, state.granularV3CloudStyle, state.granularV4CloudStyle],
+        voiceAnchorPattern: [state.granularV1AnchorPattern, state.granularV2AnchorPattern, state.granularV3AnchorPattern, state.granularV4AnchorPattern],
+        voiceLoopCrossfade: [shv('granularV1LoopCrossfade', state.granularV1LoopCrossfade), shv('granularV2LoopCrossfade', state.granularV2LoopCrossfade), shv('granularV3LoopCrossfade', state.granularV3LoopCrossfade), shv('granularV4LoopCrossfade', state.granularV4LoopCrossfade)],
         tempoGated: [
           this.isGranularTempoSyncVoiceActive(state, 0),
           this.isGranularTempoSyncVoiceActive(state, 1),

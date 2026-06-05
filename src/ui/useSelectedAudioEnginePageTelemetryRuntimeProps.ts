@@ -10,6 +10,7 @@ export type SelectedAudioEnginePageTelemetryRuntimeProps = Pick<
   | 'getSelectedGranularActiveGrainCount'
   | 'getSelectedGranularBufferWaveform'
   | 'getSelectedGranularVoicePositions'
+  | 'getSelectedGranularVisualEvents'
   | 'getSelectedGranularWriteHeadPosition'
   | 'getSelectedPadFilterFreq'
   | 'getSelectedPadLfoValue'
@@ -27,6 +28,7 @@ export function useSelectedAudioEnginePageTelemetryRuntimeProps({
   getSelectedGranularActiveGrainCount,
   getSelectedGranularBufferWaveform,
   getSelectedGranularVoicePositions,
+  getSelectedGranularVisualEvents,
   getSelectedGranularWriteHeadPosition,
   getSelectedPadFilterFreq,
   getSelectedPadLfoValue,
@@ -43,6 +45,7 @@ export function useSelectedAudioEnginePageTelemetryRuntimeProps({
     getSelectedGranularActiveGrainCount,
     getSelectedGranularBufferWaveform,
     getSelectedGranularVoicePositions,
+    getSelectedGranularVisualEvents,
     getSelectedGranularWriteHeadPosition,
     getSelectedPadFilterFreq,
     getSelectedPadLfoValue,
@@ -56,6 +59,7 @@ export function useSelectedAudioEnginePageTelemetryRuntimeProps({
     getSelectedGranularActiveGrainCount,
     getSelectedGranularBufferWaveform,
     getSelectedGranularVoicePositions,
+    getSelectedGranularVisualEvents,
     getSelectedGranularWriteHeadPosition,
     getSelectedLeadMorphedParams,
     getSelectedPadFilterFreq,

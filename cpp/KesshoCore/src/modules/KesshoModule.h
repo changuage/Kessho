@@ -20,6 +20,17 @@ struct KesshoSourcePresetPatch {
   float exact_drum_params[KESSHO_SOURCE_PRESET_DRUM_PARAM_COUNT]{};
 };
 
+struct KesshoGranularVisualEventSnapshot {
+  float position_norm = 0.0f;
+  float pan = 0.0f;
+  float pitch_semi = 0.0f;
+  float gain = 0.0f;
+  float length_ms = 0.0f;
+  int32_t voice = 0;
+  int32_t flags = 0;
+  int32_t cloud_style = 0;
+};
+
 class IKesshoModule {
 public:
   virtual ~IKesshoModule() = default;
@@ -144,6 +155,12 @@ public:
   virtual int copyGranularWaveform(float* out_peaks, uint32_t bin_count) {
     if (out_peaks != nullptr) {
       std::fill(out_peaks, out_peaks + bin_count, 0.0f);
+    }
+    return 0;
+  }
+  virtual int copyGranularVisualEvents(KesshoGranularVisualEventSnapshot* out_events, uint32_t event_count) {
+    if (out_events != nullptr) {
+      std::fill(out_events, out_events + event_count, KesshoGranularVisualEventSnapshot{});
     }
     return 0;
   }

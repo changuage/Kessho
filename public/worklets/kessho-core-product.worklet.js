@@ -1,7 +1,7 @@
 const EVENT_BYTES = 40;
-const TELEMETRY_BYTES = 7728;
+const TELEMETRY_BYTES = 8760;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
-const EXPECTED_PRODUCT_SCHEMA_HASH = 0xad68b4d4;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0xfe2636f5;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
 const SEQUENCER_UI_LANE_BYTES = 3024;
@@ -56,6 +56,10 @@ const GRAPH_TAP_IDLE_DISABLE_SECONDS = 0.05;
 const GRANULAR_WAVEFORM_BINS = 512;
 const GRANULAR_WAVEFORM_BYTES = GRANULAR_WAVEFORM_BINS * Float32Array.BYTES_PER_ELEMENT;
 const GRANULAR_WAVEFORM_SKIP = 15;
+const GRANULAR_VISUAL_EVENT_CAPACITY = 32;
+const GRANULAR_VISUAL_EVENT_BYTES = 32;
+const TELEMETRY_GRANULAR_VISUAL_EVENT_COUNT_OFFSET = 7728;
+const TELEMETRY_GRANULAR_VISUAL_EVENTS_OFFSET = 7732;
 const STEP_TOGGLE_CLEAR_LANE = 2;
 const STEP_FIELD_MASK = 15 << 8;
 const STEP_FIELD_SUBLANE_CONFIG = 8 << 8;
@@ -1236,6 +1240,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         this.view.getFloat32(ptr + 1012, true),
         this.view.getFloat32(ptr + 1016, true),
       ],
+      granularVisualEvents: this.readGranularVisualEvents(ptr),
       pad1FilterFreq: this.view.getFloat32(ptr + 1020, true),
       pad1Lfo1Value: this.view.getFloat32(ptr + 1024, true),
       pad2FilterFreq: this.view.getFloat32(ptr + 1028, true),
@@ -1394,6 +1399,29 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     return new Float32Array(this.heapF32.subarray(start, start + GRANULAR_WAVEFORM_BINS));
   }
 
+  readGranularVisualEvents(ptr) {
+    const count = Math.min(
+      this.view.getUint32(ptr + TELEMETRY_GRANULAR_VISUAL_EVENT_COUNT_OFFSET, true),
+      GRANULAR_VISUAL_EVENT_CAPACITY,
+    );
+    if (count <= 0) return [];
+    const events = [];
+    for (let index = 0; index < count; index += 1) {
+      const offset = ptr + TELEMETRY_GRANULAR_VISUAL_EVENTS_OFFSET + index * GRANULAR_VISUAL_EVENT_BYTES;
+      events.push({
+        position: this.view.getFloat32(offset, true),
+        pan: this.view.getFloat32(offset + 4, true),
+        pitch: this.view.getFloat32(offset + 8, true),
+        gain: this.view.getFloat32(offset + 12, true),
+        lengthMs: this.view.getFloat32(offset + 16, true),
+        voice: this.view.getInt32(offset + 20, true),
+        flags: this.view.getInt32(offset + 24, true),
+        cloudStyle: this.view.getInt32(offset + 28, true),
+      });
+    }
+    return events;
+  }
+
   readVisualTelemetry(includeGranularWaveform = false) {
     if (!this.telemetryPtr || this.api.copyTelemetry(this.engine, this.telemetryPtr) !== 1) {
       return null;
@@ -1437,6 +1465,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         this.view.getFloat32(ptr + 1012, true),
         this.view.getFloat32(ptr + 1016, true),
       ],
+      granularVisualEvents: this.readGranularVisualEvents(ptr),
       pad1FilterFreq: this.view.getFloat32(ptr + 1020, true),
       pad1Lfo1Value: this.view.getFloat32(ptr + 1024, true),
       pad2FilterFreq: this.view.getFloat32(ptr + 1028, true),

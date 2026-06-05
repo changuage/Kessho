@@ -84,10 +84,15 @@ struct KesshoProductEngine : ProductGraphState {
   ProductBiquadLowpassState granular_output_lpf{};
   ProductBiquadLowpassState granular_reverb_lpf{};
   float granular_reverb_comp_gain = 1.0f;
+  float granular_reverb_comp_attack_coeff = 0.0f;
+  float granular_reverb_comp_release_coeff = 0.0f;
+  double granular_reverb_comp_coeff_sample_rate = 0.0;
   float granular_mix_gain = 0.0f;
   float granular_reverb_send_gain = 0.0f;
   float granular_delay_a_send_gain = 0.0f;
   float granular_delay_b_send_gain = 0.0f;
+  float granular_control_smooth_coeff = 0.999f;
+  double granular_control_smooth_coeff_sample_rate = 0.0;
   uint64_t granular_return_gain_frame = UINT64_MAX;
   ProductBiquadFilterState diffuse_highpass{};
   ProductBiquadFilterState diffuse_lowpass{};
@@ -157,6 +162,8 @@ struct KesshoProductEngine : ProductGraphState {
   void advanceReverbHarmonyCoupling(uint32_t frames);
   void resetGranularPhraseRuntime();
   void advanceGranularPhraseReseed();
+  void updateGranularControlSmoothCoeff();
+  void updateGranularReverbCompressorCoeffs();
   bool sourceRuntimeActive(uint32_t source_id) const;
   void snapGranularReturnGainsToTargets();
   void primeGranularControlsForSourceStart(uint32_t source_id);

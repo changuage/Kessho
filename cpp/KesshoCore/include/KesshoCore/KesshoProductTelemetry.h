@@ -24,6 +24,7 @@ typedef struct KesshoProductCapabilityReport {
 #define KESSHO_PRODUCT_RUNTIME_WALK_TELEMETRY_CAPACITY 96u
 #define KESSHO_PRODUCT_EARTH_TEXTURE_TELEMETRY_CAPACITY 4u
 #define KESSHO_PRODUCT_MODULATION_DEBUG_TELEMETRY_CAPACITY 96u
+#define KESSHO_PRODUCT_GRANULAR_VISUAL_EVENT_CAPACITY 32u
 #define KESSHO_PRODUCT_SEQUENCER_UI_MUTATION_HAS_OVERRIDES 1u
 #define KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_SNAPSHOT 1u
 #define KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_STEP 2u
@@ -112,6 +113,17 @@ typedef struct KesshoProductSequencerUiState {
   KesshoProductSequencerLaneUiState synth_lanes[KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES];
   KesshoProductSequencerLaneUiState drum_lanes[KESSHO_PRODUCT_SEQUENCER_UI_STATE_LANES];
 } KesshoProductSequencerUiState;
+
+typedef struct KesshoProductGranularVisualEvent {
+  float position_norm;
+  float pan;
+  float pitch_semi;
+  float gain;
+  float length_ms;
+  int32_t voice;
+  int32_t flags;
+  int32_t cloud_style;
+} KesshoProductGranularVisualEvent;
 
 typedef struct KesshoProductTelemetry {
   uint32_t schema_hash;
@@ -203,4 +215,6 @@ typedef struct KesshoProductTelemetry {
   float modulation_debug_normalized_positions[KESSHO_PRODUCT_MODULATION_DEBUG_TELEMETRY_CAPACITY];
   float modulation_debug_speeds[KESSHO_PRODUCT_MODULATION_DEBUG_TELEMETRY_CAPACITY];
   uint64_t modulation_debug_last_trigger_frames[KESSHO_PRODUCT_MODULATION_DEBUG_TELEMETRY_CAPACITY];
+  uint32_t granular_visual_event_count;
+  KesshoProductGranularVisualEvent granular_visual_events[KESSHO_PRODUCT_GRANULAR_VISUAL_EVENT_CAPACITY];
 } KesshoProductTelemetry;

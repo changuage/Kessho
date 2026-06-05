@@ -100,7 +100,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const TELEMETRY_BYTES = 7728;',
+  'const TELEMETRY_BYTES = 8760;',
   'masterInputPeak: this.view.getFloat32(ptr + 964, true)',
   'masterOutputPeak: this.view.getFloat32(ptr + 968, true)',
   'masterOutputRms: this.view.getFloat32(ptr + 972, true)',
@@ -124,7 +124,7 @@ for (const token of [
 }
 
 for (const token of [
-  'sizeof(KesshoProductTelemetry) == 7728',
+  'sizeof(KesshoProductTelemetry) == 8760',
   'offsetof(KesshoProductTelemetry, master_input_peak) == 964',
   'offsetof(KesshoProductTelemetry, dynamics_saturation_drive) == 980',
   'offsetof(KesshoProductTelemetry, master_true_peak) == 988',
@@ -139,6 +139,8 @@ for (const token of [
   'offsetof(KesshoProductTelemetry, drum_sequencer_hit_counts) == 1100',
   'offsetof(KesshoProductTelemetry, synth_sequencer_current_steps) == 1164',
   'offsetof(KesshoProductTelemetry, drum_sequencer_current_steps) == 1228',
+  'offsetof(KesshoProductTelemetry, granular_visual_event_count) == 7728',
+  'offsetof(KesshoProductTelemetry, granular_visual_events) == 7732',
 ]) {
   assert(abiTest.includes(token), `ABI layout test is missing ${token}`);
 }

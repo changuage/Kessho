@@ -38,6 +38,7 @@ constexpr int kSoundscapesParamWaterLayerMix = 23;
 constexpr int kSoundscapesParamWaterLayerDensity = 29;
 constexpr int kSoundscapesParamInsectsActive = 61;
 constexpr int kSoundscapesParamInsectsEngine = 62;
+constexpr int kGranularParamCount = 199;
 constexpr int kSoundscapesParamOutputSelect = 95;
 
 void require(bool condition, const char* message) {
@@ -461,10 +462,10 @@ int main() {
   require(dynamics_module != nullptr, "dynamics character module create failed");
   require(dynamics_module_b != nullptr, "dynamics character module should allow concurrent instances");
   require(
-      kessho_module_get_param_count(dynamics_module) == 82,
+      kessho_module_get_param_count(dynamics_module) == KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT,
       "dynamics character module param count mismatch");
   require(
-      kessho_module_get_param_count(dynamics_module_b) == 82,
+      kessho_module_get_param_count(dynamics_module_b) == KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT,
       "second dynamics character module param count mismatch");
   float* dynamics_params = kessho_module_get_params_ptr(dynamics_module);
   float* dynamics_params_b = kessho_module_get_params_ptr(dynamics_module_b);
@@ -887,8 +888,8 @@ int main() {
       kessho_module_create(KESSHO_MODULE_GRANULAR, sample_rate, block_size);
   require(granular_module != nullptr, "granular module create failed");
   require(granular_module_b != nullptr, "granular module should allow concurrent instances");
-  require(kessho_module_get_param_count(granular_module) == 138, "granular module param count mismatch");
-  require(kessho_module_get_param_count(granular_module_b) == 138, "second granular module param count mismatch");
+  require(kessho_module_get_param_count(granular_module) == kGranularParamCount, "granular module param count mismatch");
+  require(kessho_module_get_param_count(granular_module_b) == kGranularParamCount, "second granular module param count mismatch");
   float* granular_params = kessho_module_get_params_ptr(granular_module);
   float* granular_params_b = kessho_module_get_params_ptr(granular_module_b);
   require(granular_params != nullptr, "granular module params pointer was null");

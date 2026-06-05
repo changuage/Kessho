@@ -9,6 +9,10 @@ type VoiceKeys = {
   scanRate: keyof SliderState;
   blur: keyof SliderState;
   spray: keyof SliderState;
+  positionSpray: keyof SliderState;
+  timingSpray: keyof SliderState;
+  pitchJitter: keyof SliderState;
+  bloom: keyof SliderState;
   grainSize: keyof SliderState;
   grainOct: keyof SliderState;
   decay: keyof SliderState;
@@ -27,6 +31,10 @@ const VOICE_KEYS: VoiceKeys[] = [1, 2, 3, 4].map((voice) => ({
   scanRate: `granularV${voice}ScanRate` as keyof SliderState,
   blur: `granularV${voice}Blur` as keyof SliderState,
   spray: `granularV${voice}Spray` as keyof SliderState,
+  positionSpray: `granularV${voice}PositionSpray` as keyof SliderState,
+  timingSpray: `granularV${voice}TimingSpray` as keyof SliderState,
+  pitchJitter: `granularV${voice}PitchJitter` as keyof SliderState,
+  bloom: `granularV${voice}Bloom` as keyof SliderState,
   grainSize: `granularV${voice}GrainSize` as keyof SliderState,
   grainOct: `granularV${voice}GrainOct` as keyof SliderState,
   decay: `granularV${voice}Decay` as keyof SliderState,
@@ -41,6 +49,11 @@ const VOICE_KEYS: VoiceKeys[] = [1, 2, 3, 4].map((voice) => ({
 }));
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+const smoothstep = (edge0: number, edge1: number, x: number): number => {
+  const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+};
 
 function getEffectiveTension(globalTension: number, mode: GranularTensionMode, value: number): number {
   if (mode === 'bypass') return -1;
@@ -62,6 +75,10 @@ export interface GranularMacroModel {
   directLevelScale: number;
   voiceBlur: number[];
   voiceSpray: number[];
+  voicePositionSpray: number[];
+  voiceTimingSpray: number[];
+  voicePitchJitter: number[];
+  voiceBloom: number[];
   voiceGrainSize: number[];
   voiceGrainOct: number[];
   voiceDecay: number[];
@@ -100,11 +117,23 @@ export function computeGranularMacroModel(
     1,
   );
   const chaosIntent = clamp(state.granularMacroChaos ?? 0.1, 0, 1);
+  const sprayMacro = clamp(state.granularSprayMacro ?? 0, 0, 1);
+  const cloudMacro = clamp(state.granularCloudMacro ?? 0, 0, 1);
+  const pitchMacro = clamp(state.granularPitchMacro ?? 0, 0, 1);
+  const macroBudget = Math.max(
+    1,
+    Math.sqrt(sprayMacro * sprayMacro + cloudMacro * cloudMacro + pitchMacro * pitchMacro),
+  );
+  const sprayShare = sprayMacro / macroBudget;
+  const cloudShare = cloudMacro / macroBudget;
+  const pitchShare = pitchMacro / macroBudget;
   const busDiffusion = clamp(smearMacro * (spaceMode === 'diffuse' ? 1.0 : 0.72), 0, 1);
   const timingRandomness = clamp(
-    0.12 + smearMacro * 0.34 + chaosIntent * 0.32 + (spaceMode === 'diffuse' ? 0.08 : 0),
+    sprayMacro * 0.28 +
+      chaosIntent * 0.22 +
+      smearMacro * (spaceMode === 'diffuse' ? 0.14 : 0.06),
     0,
-    0.95,
+    1,
   );
   const macroScale = isPureBehavior ? 0.42 : 0.92;
   const activityScale = isPureBehavior ? 1.0 : 1.15;
@@ -121,6 +150,11 @@ export function computeGranularMacroModel(
   const voiceScanRate = VOICE_KEYS.map(({ scanRate }) => resolveValue(scanRate, state[scanRate] as number));
   const rawBlur = VOICE_KEYS.map(({ blur }) => resolveValue(blur, state[blur] as number));
   const rawSpray = VOICE_KEYS.map(({ spray }) => resolveValue(spray, state[spray] as number));
+  const rawPositionSpray = VOICE_KEYS.map(({ positionSpray, spray }) =>
+    resolveValue(positionSpray, (state[positionSpray] ?? state[spray]) as number));
+  const rawTimingSpray = VOICE_KEYS.map(({ timingSpray }) => resolveValue(timingSpray, state[timingSpray] as number));
+  const rawPitchJitter = VOICE_KEYS.map(({ pitchJitter }) => resolveValue(pitchJitter, state[pitchJitter] as number));
+  const rawBloom = VOICE_KEYS.map(({ bloom }) => resolveValue(bloom, state[bloom] as number));
   const rawGrainSize = VOICE_KEYS.map(({ grainSize }) => resolveValue(grainSize, state[grainSize] as number));
   const rawGrainOct = VOICE_KEYS.map(({ grainOct }) => resolveValue(grainOct, state[grainOct] as number));
   const rawDecay = VOICE_KEYS.map(({ decay }) => resolveValue(decay, state[decay] as number));
@@ -135,6 +169,10 @@ export function computeGranularMacroModel(
 
   const voiceBlur = [...rawBlur];
   const voiceSpray = [...rawSpray];
+  const voicePositionSpray = [...rawPositionSpray];
+  const voiceTimingSpray = [...rawTimingSpray];
+  const voicePitchJitter = [...rawPitchJitter];
+  const voiceBloom = [...rawBloom];
   const voiceGrainSize = [...rawGrainSize];
   const voiceGrainOct = [...rawGrainOct];
   const voiceDecay = [...rawDecay];
@@ -153,6 +191,10 @@ export function computeGranularMacroModel(
     const spread = spreadOffsets[voiceIndex]!;
     const rawBlurValue = rawBlur[voiceIndex]!;
     const rawSprayValue = rawSpray[voiceIndex]!;
+    const rawPositionSprayValue = rawPositionSpray[voiceIndex]!;
+    const rawTimingSprayValue = rawTimingSpray[voiceIndex]!;
+    const rawPitchJitterValue = rawPitchJitter[voiceIndex]!;
+    const rawBloomValue = rawBloom[voiceIndex]!;
     const rawGrainSizeValue = rawGrainSize[voiceIndex]!;
     const rawGrainOctValue = rawGrainOct[voiceIndex]!;
     const rawDecayValue = rawDecay[voiceIndex]!;
@@ -164,63 +206,56 @@ export function computeGranularMacroModel(
     const rawDensityValue = rawDensity[voiceIndex]!;
     const rawSpeedValue = rawSpeed[voiceIndex]!;
     const rawPitchValue = rawPitch[voiceIndex]!;
-    const voiceMode = state[keys.mode] as SliderState['granularV1Mode'];
+    const voiceMode = state[keys.mode] === 'clean' ? 'clean' : 'granular';
     const isScanMode = rawSpeedValue === 0;
+    const activityReach = smoothstep(0.18, 1.0, activityMacro);
+    const activityEndPush = smoothstep(0.82, 1.0, activityMacro);
 
     const textureQuadratic = mTexture * mTexture;
     const textureBlurScale = isScanMode ? 0.15 : 1.0;
     voiceBlur[voiceIndex] = clamp(
-      rawBlurValue + (textureQuadratic * 0.72 + spread * mTexture * 0.14 * 0.72) * textureBlurScale,
+      rawBlurValue + (textureQuadratic * 0.32 + spread * mTexture * 0.08 * 0.32) * textureBlurScale,
       0,
-      1,
+      0.92,
     );
     voiceSpray[voiceIndex] = clamp(rawSprayValue, 0, 1);
-    voiceGrainSize[voiceIndex] = clamp(rawGrainSizeValue + textureQuadratic * 72 + spread * mTexture * 0.04 * 320, 10, 500);
+    voicePositionSpray[voiceIndex] = clamp(rawPositionSprayValue + sprayShare * 0.45, 0, 1);
+    voiceTimingSpray[voiceIndex] = clamp(rawTimingSprayValue + sprayShare * 0.55, 0, 1);
+    voicePitchJitter[voiceIndex] = clamp(rawPitchJitterValue + pitchShare * 14, 0, 50);
+    voiceBloom[voiceIndex] = clamp(rawBloomValue + cloudShare * 0.35, 0, 1);
+    voiceGrainSize[voiceIndex] = clamp(rawGrainSizeValue + textureQuadratic * 36 + spread * mTexture * 0.03 * 180, 10, 500);
     voiceGrainOct[voiceIndex] = clamp(rawGrainOctValue + textureQuadratic * 0.22 + spread * mTexture * 0.08 * 0.22, 0, 1);
     voiceDecay[voiceIndex] = clamp(rawDecayValue + mTexture * 0.38 + spread * mTexture * 0.08 * 1.6, 0.01, 4);
 
     const activityQuadratic = mActivity * mActivity;
-    const activityReach = Math.pow(activityMacro, isPureBehavior ? 0.72 : 0.64);
     if (voiceMode !== 'clean') {
-      const densityTarget = 64;
-      const sizeTarget = voiceMode === 'legacy' ? 300 : 380;
-      const blurTarget = voiceMode === 'legacy' ? 0.42 : 0.58;
-      const decayTarget = voiceMode === 'legacy' ? 1.8 : 2.5;
+      const densityTarget = 38 + activityEndPush * 26;
+      const sizeTarget = 90 + mTexture * 230 + mActivity * 90;
+      const blurTarget = 0.42 + cloudShare * 0.18;
+      const decayTarget = 1.4 + cloudShare * 1.1;
       const currentDecay = voiceDecay[voiceIndex] ?? rawDecayValue;
       const currentDensity = voiceDensity[voiceIndex] ?? rawDensityValue;
       const currentBlur = voiceBlur[voiceIndex] ?? rawBlurValue;
       const currentSize = voiceGrainSize[voiceIndex] ?? rawGrainSizeValue;
       voiceDecay[voiceIndex] = clamp(
-        Math.max(
-          currentDecay + mActivity * 0.7 + activityQuadratic * 0.85,
-          currentDecay + (decayTarget - currentDecay) * activityReach * 0.72,
-        ),
+        lerp(currentDecay + mActivity * 0.28 + activityQuadratic * 0.35, decayTarget, activityReach * 0.38),
         0.01,
         4,
       );
+      const densityBlend = 0.2 + activityReach * 0.45 + activityEndPush * 0.25;
       voiceDensity[voiceIndex] = clamp(
-        currentDensity + mActivity * 20 + activityQuadratic * 14 + spread * mActivity * 0.05 * 24,
-        1,
-        64,
-      );
-      const activityDensity = voiceDensity[voiceIndex] ?? currentDensity;
-      voiceDensity[voiceIndex] = clamp(
-        activityDensity + (densityTarget - activityDensity) * activityReach * 0.94,
+        lerp(currentDensity, densityTarget, densityBlend) + spread * activityMacro * 2.0 + cloudShare * 4,
         1,
         64,
       );
       voiceBlur[voiceIndex] = clamp(
-        Math.max(
-          currentBlur + activityQuadratic * 0.08,
-          currentBlur + (blurTarget - currentBlur) * activityReach * 0.34,
-        ),
+        lerp(currentBlur + mTexture * 0.32 + smearMacro * 0.24 + activityEndPush * 0.1, blurTarget, activityReach * 0.16),
         0,
-        1,
+        0.92,
       );
-      voiceGrainSize[voiceIndex] = clamp(currentSize + mActivity * 48 + activityQuadratic * 110, 10, 500);
-      const activityGrainSize = voiceGrainSize[voiceIndex] ?? currentSize;
+      const densityTrim = smoothstep(36, 64, voiceDensity[voiceIndex] ?? rawDensityValue) * 70;
       voiceGrainSize[voiceIndex] = clamp(
-        activityGrainSize + (sizeTarget - activityGrainSize) * activityReach * 0.58,
+        lerp(currentSize, sizeTarget - densityTrim, smoothstep(0.1, 1.0, mTexture + mActivity * 0.35)),
         10,
         500,
       );
@@ -280,7 +315,7 @@ export function computeGranularMacroModel(
       voiceAttack[voiceIndex] = Math.max(0.045, voiceAttack[voiceIndex] ?? rawAttackValue);
       voiceDecay[voiceIndex] = Math.max(0.6, voiceDecay[voiceIndex] ?? rawDecayValue);
       voiceBlur[voiceIndex] = clamp(Math.max(0.24, voiceBlur[voiceIndex] ?? rawBlurValue), 0, 0.82);
-      voiceSpray[voiceIndex] = clamp(rawSprayValue, 0, 1);
+      voicePositionSpray[voiceIndex] = clamp(rawPositionSprayValue + sprayShare * 0.18, 0, 1);
       voiceGrainOct[voiceIndex] = Math.min(0.06, voiceGrainOct[voiceIndex] ?? rawGrainOctValue);
       voiceDensity[voiceIndex] = Math.max(10, voiceDensity[voiceIndex] ?? rawDensityValue);
       voiceGrainSize[voiceIndex] = Math.max(120, voiceGrainSize[voiceIndex] ?? rawGrainSizeValue);
@@ -294,7 +329,7 @@ export function computeGranularMacroModel(
       const currentSize = voiceGrainSize[voiceIndex] ?? rawGrainSizeValue;
       voiceAttack[voiceIndex] = Math.max(currentAttack, 0.014 + smearMacro * 0.11);
       voiceDecay[voiceIndex] = Math.max(currentDecay, 0.22 + smearMacro * 1.1);
-      voiceBlur[voiceIndex] = clamp(currentBlur + smearMacro * (spaceMode === 'diffuse' ? 0.42 : 0.28), 0, 1);
+      voiceBlur[voiceIndex] = clamp(currentBlur + smearMacro * (spaceMode === 'diffuse' ? 0.28 : 0.18), 0, 0.92);
       voiceDensity[voiceIndex] = clamp(
         Math.max(currentDensity, currentDensity + smearMacro * (spaceMode === 'diffuse' ? 4 : 2)),
         1,
@@ -312,6 +347,10 @@ export function computeGranularMacroModel(
     effectiveValues[keys.blur] = voiceBlur[voiceIndex];
     effectiveValues[keys.grainOct] = voiceGrainOct[voiceIndex];
     effectiveValues[keys.spray] = voiceSpray[voiceIndex];
+    effectiveValues[keys.positionSpray] = voicePositionSpray[voiceIndex];
+    effectiveValues[keys.timingSpray] = voiceTimingSpray[voiceIndex];
+    effectiveValues[keys.pitchJitter] = voicePitchJitter[voiceIndex];
+    effectiveValues[keys.bloom] = voiceBloom[voiceIndex];
     effectiveValues[keys.density] = voiceDensity[voiceIndex];
     effectiveValues[keys.grainSize] = voiceGrainSize[voiceIndex];
     effectiveValues[keys.posLFORate] = voicePosLFORate[voiceIndex];
@@ -364,6 +403,10 @@ export function computeGranularMacroModel(
     directLevelScale,
     voiceBlur,
     voiceSpray,
+    voicePositionSpray,
+    voiceTimingSpray,
+    voicePitchJitter,
+    voiceBloom,
     voiceGrainSize,
     voiceGrainOct,
     voiceDecay,

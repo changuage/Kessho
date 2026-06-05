@@ -6,11 +6,8 @@ namespace {
 
 constexpr float kGranularControlSmoothSeconds = 0.05f;
 
-float smoothedGranularControl(float current, float target, double sample_rate) {
-  if (sample_rate <= 0.0 || !std::isfinite(target)) {
-    return std::isfinite(target) ? target : 0.0f;
-  }
-  const float coeff = std::exp(-1.0f / std::max(1.0f, kGranularControlSmoothSeconds * static_cast<float>(sample_rate)));
+float smoothedGranularControlCached(float current, float target, float coeff) {
+  if (!std::isfinite(target)) return 0.0f;
   const float next = target + (current - target) * coeff;
   return std::abs(next - target) < 0.000001f ? target : next;
 }
@@ -20,6 +17,17 @@ float smoothedGranularControl(float current, float target, double sample_rate) {
 void KesshoProductEngine::resetGranularPhraseRuntime() {
   granular_last_phrase_index = 0u;
   granular_phrase_runtime_initialized = false;
+}
+
+void KesshoProductEngine::updateGranularControlSmoothCoeff() {
+  if (sample_rate == granular_control_smooth_coeff_sample_rate) return;
+  granular_control_smooth_coeff_sample_rate = sample_rate;
+  if (sample_rate <= 0.0) {
+    granular_control_smooth_coeff = 0.0f;
+    return;
+  }
+  granular_control_smooth_coeff = std::exp(
+      -1.0f / std::max(1.0f, kGranularControlSmoothSeconds * static_cast<float>(sample_rate)));
 }
 
 bool KesshoProductEngine::sourceRuntimeActive(uint32_t source_id) const {
@@ -72,29 +80,34 @@ float KesshoProductEngine::granularSendGainForFrame(uint32_t source_id, float ta
   if (source_id < 1u || source_id > kSourceCount) return clampFloat(target, 0.0f, 2.0f);
   SourceState& source = sources[source_id - 1u];
   if (source.granular_send_gain_frame == absolute_frame) return source.granular_send_gain;
-  source.granular_send_gain = smoothedGranularControl(
+  updateGranularControlSmoothCoeff();
+  source.granular_send_gain = smoothedGranularControlCached(
       source.granular_send_gain,
       clampFloat(target, 0.0f, 2.0f),
-      sample_rate);
+      granular_control_smooth_coeff);
   source.granular_send_gain_frame = absolute_frame;
   return source.granular_send_gain;
 }
 
 void KesshoProductEngine::advanceGranularReturnGains(uint64_t absolute_frame) {
   if (granular_return_gain_frame == absolute_frame) return;
-  granular_mix_gain = smoothedGranularControl(granular_mix_gain, clampFloat(fx.granular_mix, 0.0f, 4.0f), sample_rate);
-  granular_reverb_send_gain = smoothedGranularControl(
+  updateGranularControlSmoothCoeff();
+  granular_mix_gain = smoothedGranularControlCached(
+      granular_mix_gain,
+      clampFloat(fx.granular_mix, 0.0f, 4.0f),
+      granular_control_smooth_coeff);
+  granular_reverb_send_gain = smoothedGranularControlCached(
       granular_reverb_send_gain,
       clampFloat(routing.granular_to_reverb, 0.0f, 4.0f),
-      sample_rate);
-  granular_delay_a_send_gain = smoothedGranularControl(
+      granular_control_smooth_coeff);
+  granular_delay_a_send_gain = smoothedGranularControlCached(
       granular_delay_a_send_gain,
       clampFloat(routing.granular_to_delay_a, 0.0f, 1.0f),
-      sample_rate);
-  granular_delay_b_send_gain = smoothedGranularControl(
+      granular_control_smooth_coeff);
+  granular_delay_b_send_gain = smoothedGranularControlCached(
       granular_delay_b_send_gain,
       clampFloat(routing.granular_to_delay_b, 0.0f, 1.0f),
-      sample_rate);
+      granular_control_smooth_coeff);
   granular_return_gain_frame = absolute_frame;
 }
 

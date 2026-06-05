@@ -8,6 +8,7 @@ import {
   preloadReferenceSelectedRuntime,
 } from '../reference/ReferenceSelectedRuntime';
 import type { DawOutputRoutingConfig } from '../dawOutputRouting';
+import type { CoreProductGranularVisualEvent } from '../coreProductTelemetry';
 import type { ProductLiveNoteEvent } from './liveNoteEvents';
 import type {
   ProductDrumVoice,
@@ -40,6 +41,7 @@ export type SelectedProductRuntime = SelectedRuntimeTarget & {
   getGranularActiveGrainCount(): number;
   getGranularWriteHeadPosition(): number;
   getGranularVoicePositions(): readonly number[];
+  getGranularVisualEvents(): readonly CoreProductGranularVisualEvent[];
   setGranularUiActive(active: boolean): void;
   setStateChangeCallback(callback: unknown): void;
   setVisualTelemetryActive(active: boolean): void;

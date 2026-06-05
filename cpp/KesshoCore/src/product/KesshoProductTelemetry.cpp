@@ -1,5 +1,7 @@
 #include "KesshoProductEngineInternal.h"
 
+#include <array>
+
 namespace {
 
 uint32_t earthTextureAssetIdForSlot(uint32_t slot) {
@@ -200,10 +202,27 @@ float normalizedModulationPosition(const kessho::product::internal::ModulationRa
       : granular_module->granularWriteHeadPosition();
   if (granular_module != nullptr) {
     granular_module->granularVoicePositions(telemetry.granular_voice_positions, 4u);
+    std::array<kessho::core::KesshoGranularVisualEventSnapshot, KESSHO_PRODUCT_GRANULAR_VISUAL_EVENT_CAPACITY> granular_events{};
+    const int copied_events = granular_module->copyGranularVisualEvents(
+        granular_events.data(),
+        KESSHO_PRODUCT_GRANULAR_VISUAL_EVENT_CAPACITY);
+    const uint32_t event_count = static_cast<uint32_t>(std::max(0, copied_events));
+    telemetry.granular_visual_event_count = std::min<uint32_t>(event_count, KESSHO_PRODUCT_GRANULAR_VISUAL_EVENT_CAPACITY);
+    for (uint32_t index = 0; index < telemetry.granular_visual_event_count; ++index) {
+      telemetry.granular_visual_events[index].position_norm = granular_events[index].position_norm;
+      telemetry.granular_visual_events[index].pan = granular_events[index].pan;
+      telemetry.granular_visual_events[index].pitch_semi = granular_events[index].pitch_semi;
+      telemetry.granular_visual_events[index].gain = granular_events[index].gain;
+      telemetry.granular_visual_events[index].length_ms = granular_events[index].length_ms;
+      telemetry.granular_visual_events[index].voice = granular_events[index].voice;
+      telemetry.granular_visual_events[index].flags = granular_events[index].flags;
+      telemetry.granular_visual_events[index].cloud_style = granular_events[index].cloud_style;
+    }
   } else {
     for (float& position : telemetry.granular_voice_positions) {
       position = 0.0f;
     }
+    telemetry.granular_visual_event_count = 0u;
   }
   telemetry.pad1_filter_freq = pad_module == nullptr ? 0.0f : pad_module->currentPadFilterFrequency(0);
   telemetry.pad1_lfo1_value = pad_module == nullptr ? 0.0f : pad_module->currentPadLfoValue(0);

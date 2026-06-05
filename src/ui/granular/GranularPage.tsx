@@ -5,7 +5,7 @@
  * - Global controls bar (enable, freeze, dry/wet, feedback, preset)
  * - 16-slice buffer visualization with write head + voice position markers
  * - 4 expandable voice cards with mode selection, slice, pitch, grain, LFO controls
- * - Legacy mode support for original granulator compatibility
+ * - Clean and granular cloud modes with quality-scaled CPU controls
  *
  * Follows SynthPage/DrumPage pattern: dedicated component with own CSS,
  * receives SliderComponent, sliderProps, onParamChange as props from App.tsx
@@ -14,6 +14,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { SliderState, formatIndexedDelayDivision, getParamInfo, getSliderNumericValue } from '../state';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
+import type { CoreProductGranularVisualEvent } from '../../audio/coreProductTelemetry';
 import type { DynamicsAnalyserKey, DynamicsVisualTelemetrySnapshot } from '../../audio/engineSharedTypes';
 import { computeGranularMacroModel } from '../../audio/granularMacroModel';
 import GranularBufferCanvas from './GranularBufferCanvas';
@@ -32,10 +33,12 @@ import './granular.css';
 
 // ═══════════════ Types ═══════════════
 
-type VoiceMode = 'clean' | 'granular' | 'legacy';
+type VoiceMode = 'clean' | 'granular';
 type GranularSpaceMode = 'diffuse' | 'clocked';
 type GranularPresetBehavior = 'pure' | 'expressive';
 type GranularShape = 'triangle' | 'sawUp' | 'sawDown' | 'square';
+type GranularQuality = SliderState['granularQuality'];
+type GranularVisualDetail = SliderState['granularVisualDetail'];
 
 interface VoicePrefix {
   enabled: keyof SliderState;
@@ -63,6 +66,20 @@ interface VoicePrefix {
   reverseLFORate: keyof SliderState;
   writeFollow: keyof SliderState;
   recordLFORate: keyof SliderState;
+  positionSpray: keyof SliderState;
+  timingSpray: keyof SliderState;
+  lookback: keyof SliderState;
+  writeGuard: keyof SliderState;
+  pitchMode: keyof SliderState;
+  pitchSpread: keyof SliderState;
+  pitchJitter: keyof SliderState;
+  pitchQuantize: keyof SliderState;
+  reverseChance: keyof SliderState;
+  bloom: keyof SliderState;
+  glide: keyof SliderState;
+  cloudStyle: keyof SliderState;
+  anchorPattern: keyof SliderState;
+  loopCrossfade: keyof SliderState;
 }
 
 // ═══════════════ Constants ═══════════════
@@ -118,6 +135,20 @@ const VOICE_KEYS: VoicePrefix[] = [1, 2, 3, 4].map(n => ({
   reverseLFORate: `granularV${n}ReverseLFORate` as keyof SliderState,
   writeFollow: `granularV${n}WriteFollow` as keyof SliderState,
   recordLFORate: `granularV${n}RecordLFORate` as keyof SliderState,
+  positionSpray: `granularV${n}PositionSpray` as keyof SliderState,
+  timingSpray: `granularV${n}TimingSpray` as keyof SliderState,
+  lookback: `granularV${n}Lookback` as keyof SliderState,
+  writeGuard: `granularV${n}WriteGuard` as keyof SliderState,
+  pitchMode: `granularV${n}PitchMode` as keyof SliderState,
+  pitchSpread: `granularV${n}PitchSpread` as keyof SliderState,
+  pitchJitter: `granularV${n}PitchJitter` as keyof SliderState,
+  pitchQuantize: `granularV${n}PitchQuantize` as keyof SliderState,
+  reverseChance: `granularV${n}ReverseChance` as keyof SliderState,
+  bloom: `granularV${n}Bloom` as keyof SliderState,
+  glide: `granularV${n}Glide` as keyof SliderState,
+  cloudStyle: `granularV${n}CloudStyle` as keyof SliderState,
+  anchorPattern: `granularV${n}AnchorPattern` as keyof SliderState,
+  loopCrossfade: `granularV${n}LoopCrossfade` as keyof SliderState,
 }));
 
 
@@ -139,6 +170,7 @@ export interface GranularPageProps {
   getActiveGrainCount: () => number;
   getWriteHeadPosition: () => number;
   getVoicePositions: () => readonly number[];
+  getVisualEvents: () => readonly CoreProductGranularVisualEvent[];
   getBufferWaveform: () => Float32Array | null;
   setGranularUiActive: (active: boolean) => void;
   liveBufferTelemetryAvailable?: boolean;
@@ -153,6 +185,7 @@ interface BufferRangeSegment {
 interface BufferVoiceVisual {
   index: number;
   mode: VoiceMode;
+  quality: GranularQuality;
   motionMode: 'scan' | 'linear' | null;
   color: string;
   slice: number;
@@ -173,7 +206,19 @@ interface BufferVoiceVisual {
   reverse: boolean;
   speed: number;
   scanRate: number;
+  positionSpray: number;
+  timingSpray: number;
+  lookback: number;
+  writeGuard: number;
+  reverseChance: number;
+  bloom: number;
+  glide: number;
+  cloudStyle: SliderState['granularV1CloudStyle'];
+  anchorPattern: SliderState['granularV1AnchorPattern'];
+  loopCrossfade: number;
 }
+
+const sanitizeVoiceMode = (mode: unknown): VoiceMode => (mode === 'clean' ? 'clean' : 'granular');
 
 const clamp01 = (value: number): number => {
   if (!Number.isFinite(value)) return 0;
@@ -228,6 +273,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
   getActiveGrainCount,
   getWriteHeadPosition,
   getVoicePositions,
+  getVisualEvents,
   getBufferWaveform,
   setGranularUiActive,
   liveBufferTelemetryAvailable = true,
@@ -240,6 +286,8 @@ const GranularPage: React.FC<GranularPageProps> = ({
   const [voicePositions, setVoicePositions] = useState<number[]>([0, 0, 0, 0]);
   const [activeGrainCount, setActiveGrainCount] = useState(0);
   const [bufferWaveform, setBufferWaveform] = useState<Float32Array | null>(null);
+  const [grainEvents, setGrainEvents] = useState<readonly CoreProductGranularVisualEvent[]>([]);
+  const lastGrainEventsRef = useRef<readonly CoreProductGranularVisualEvent[] | null>(null);
   const documentVisible = useDocumentVisibility();
   const [visualizerEnabled, setVisualizerEnabled] = useState(() => liveBufferTelemetryAvailable && !isMobile);
 
@@ -254,6 +302,11 @@ const GranularPage: React.FC<GranularPageProps> = ({
 
     setWriteHeadPosition(prev => (Math.abs(prev - nextWriteHead) > 0.002 ? nextWriteHead : prev));
     setVoicePositions(prev => (positionsEqual(prev, nextVoicePositions) ? prev : [...nextVoicePositions]));
+    const nextGrainEvents = getVisualEvents();
+    if (nextGrainEvents.length > 0 && nextGrainEvents !== lastGrainEventsRef.current) {
+      lastGrainEventsRef.current = nextGrainEvents;
+      setGrainEvents([...nextGrainEvents]);
+    }
 
     if (liveWaveformTelemetryAvailable) {
       const waveform = getBufferWaveform();
@@ -264,6 +317,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
   }, [
     getActiveGrainCount,
     getBufferWaveform,
+    getVisualEvents,
     getVoicePositions,
     getWriteHeadPosition,
     liveBufferTelemetryAvailable,
@@ -290,6 +344,8 @@ const GranularPage: React.FC<GranularPageProps> = ({
         setActiveGrainCount(prev => (prev === 0 ? prev : 0));
       }
       setBufferWaveform(prev => (prev === null ? prev : null));
+      setGrainEvents(prev => (prev.length === 0 ? prev : []));
+      lastGrainEventsRef.current = null;
       return () => {
         setGranularUiActive(false);
       };
@@ -322,7 +378,6 @@ const GranularPage: React.FC<GranularPageProps> = ({
     { level: 1 as const, scope: 'granularVoice2' },
     { level: 1 as const, scope: 'granularVoice3' },
     { level: 1 as const, scope: 'granularVoice4' },
-    { level: 1 as const, scope: 'granularLegacy' },
     { level: 2 as const, scope: 'granularKit' },
     { level: 3 as const, scope: 'granular' },
   ];
@@ -337,7 +392,14 @@ const GranularPage: React.FC<GranularPageProps> = ({
     customApply: (snapshot: SliderState, data: Record<string, unknown>) => {
       const next = { ...snapshot } as Record<string, unknown>;
       for (const [key, value] of Object.entries(data)) {
-        if (key in next) next[key] = value;
+        if (!(key in next)) continue;
+        if (key.endsWith('Mode') && value === 'legacy') {
+          next[key] = 'granular';
+        } else if (key === 'granularPreset' && value === 'legacy_cloud') {
+          next[key] = 'classic_cloud';
+        } else {
+          next[key] = value;
+        }
       }
       return next as unknown as SliderState;
     },
@@ -419,6 +481,12 @@ const GranularPage: React.FC<GranularPageProps> = ({
   const setGranularShape = (shape: GranularShape) => {
     onSelectChange('granularShape' as keyof SliderState, shape as SliderState[keyof SliderState]);
   };
+  const setGranularQuality = (quality: GranularQuality) => {
+    onSelectChange('granularQuality' as keyof SliderState, quality as SliderState[keyof SliderState]);
+  };
+  const setGranularVisualDetail = (detail: GranularVisualDetail) => {
+    onSelectChange('granularVisualDetail' as keyof SliderState, detail as SliderState[keyof SliderState]);
+  };
   const bindHelp = useCallback((helpKey: string, options: { label?: string } = {}) => ({
     onMouseEnter: () => announceHelp(helpKey, options),
     onPointerDown: () => announceHelp(helpKey, options),
@@ -488,11 +556,20 @@ const GranularPage: React.FC<GranularPageProps> = ({
       const keys = VOICE_KEYS[voiceIndex]!;
       if (!state[keys.enabled]) return [];
 
-      const mode = state[keys.mode] as VoiceMode;
+      const mode = sanitizeVoiceMode(state[keys.mode]);
       const slice = Math.max(0, Math.min(NUM_SLICES - 1, Math.round(Number(state[keys.slice] ?? 0))));
       const sliceStart = slice / NUM_SLICES;
       const currentPos = wrap01(voicePositions[voiceIndex] ?? 0);
-      const lookBack = clamp01(getEffectiveNumber(keys.spray, Number(state[keys.spray]) || 0));
+      const positionSpray = clamp01(getEffectiveNumber(keys.positionSpray, Number(state[keys.positionSpray]) || Number(state[keys.spray]) || 0.3));
+      const timingSpray = clamp01(getEffectiveNumber(keys.timingSpray, Number(state[keys.timingSpray]) || 0));
+      const lookback = clamp01(getEffectiveNumber(keys.lookback, Number(state[keys.lookback]) || 0.35));
+      const writeGuard = clamp01(getEffectiveNumber(keys.writeGuard, Number(state[keys.writeGuard]) || 0.3));
+      const reverseChance = clamp01(getEffectiveNumber(keys.reverseChance, Number(state[keys.reverseChance]) || 0));
+      const bloom = clamp01(getEffectiveNumber(keys.bloom, Number(state[keys.bloom]) || 0));
+      const glide = clamp01(getEffectiveNumber(keys.glide, Number(state[keys.glide]) || 0));
+      const loopCrossfade = Math.max(4, Number(state[keys.loopCrossfade]) || 12);
+      const cloudStyle = (state[keys.cloudStyle] ?? 'classic') as SliderState['granularV1CloudStyle'];
+      const anchorPattern = (state[keys.anchorPattern] ?? 'forward') as SliderState['granularV1AnchorPattern'];
       const density = Math.max(0, getEffectiveNumber(keys.density, Number(state[keys.density]) || 0));
       const grainSizeMs = Math.max(1, getEffectiveNumber(keys.grainSize, Number(state[keys.grainSize]) || 60));
       const posDepth = clamp01(getEffectiveNumber(keys.posLFODepth, Number(state[keys.posLFODepth]) || 0));
@@ -517,26 +594,18 @@ const GranularPage: React.FC<GranularPageProps> = ({
         // already includes base_pos + lfo_offset + spray_offset).
         // Width = spray scatter only. posDepth is visible as the band
         // *swaying* over time (baked into currentPos by the LFO).
-        const lookBack2 = lookBack * lookBack;
-        const lookBack3 = lookBack2 * lookBack;
+        const spray2 = positionSpray * positionSpray;
+        const spray3 = spray2 * positionSpray;
         const localWindowNorm = Math.max((grainSeconds * 4) / bufferSeconds, sliceLengthNorm * 0.75);
         const historyWindowNorm = 0.92;
         const sprayRangeNorm = Math.min(
           historyWindowNorm,
-          localWindowNorm * lookBack + (historyWindowNorm - localWindowNorm) * lookBack3,
+          localWindowNorm * positionSpray + (historyWindowNorm - localWindowNorm) * spray3,
         );
         const halfWidth = Math.max(0.006, sprayRangeNorm * 0.5);
         anchorPos = currentPos;
         rangeStart = currentPos - halfWidth;
         rangeWidth = Math.max(0.012, Math.min(1, sprayRangeNorm));
-      } else if (mode === 'legacy') {
-        // Legacy: grains trail behind write head by spray amount.
-        // Width = trailing window from lookBack only.
-        const trailingWindowNorm = (lookBack * 0.6) / bufferSeconds;
-        const halfWidth = Math.max(0.006, trailingWindowNorm);
-        anchorPos = currentPos;
-        rangeStart = currentPos - halfWidth;
-        rangeWidth = Math.max(0.012, Math.min(1, halfWidth * 2));
       } else if (Math.abs(speed) < 0.0001) {
         motionMode = 'scan';
         const writeHeadLead = Math.min(0.09 / bufferSeconds, 0.25);
@@ -571,7 +640,8 @@ const GranularPage: React.FC<GranularPageProps> = ({
         summaryParts.push(`${(motionMode === 'scan' ? scanRate : speed).toFixed(2)}x`);
       } else {
         summaryParts.push(`D${Math.round(density)}`);
-        summaryParts.push(`LB ${lookBack.toFixed(2)}`);
+        summaryParts.push(`Spr ${positionSpray.toFixed(2)}`);
+        summaryParts.push(`Back ${lookback.toFixed(2)}`);
       }
       if (tempoLabel) summaryParts.push(tempoLabel);
 
@@ -583,7 +653,10 @@ const GranularPage: React.FC<GranularPageProps> = ({
       ];
       if (mode !== 'clean') {
         titleParts.push(`Density ${density.toFixed(1)}`);
-        titleParts.push(`Look Back ${lookBack.toFixed(2)}`);
+        titleParts.push(`Position Spray ${positionSpray.toFixed(2)}`);
+        titleParts.push(`Lookback ${lookback.toFixed(2)}`);
+        titleParts.push(`Timing Spray ${timingSpray.toFixed(2)}`);
+        titleParts.push(`Cloud ${cloudStyle}`);
       }
       if (tempoLabel) titleParts.push(`Clock ${tempoLabel}`);
 
@@ -609,6 +682,17 @@ const GranularPage: React.FC<GranularPageProps> = ({
         reverse,
         speed,
         scanRate,
+        positionSpray,
+        timingSpray,
+        lookback,
+        writeGuard,
+        reverseChance,
+        bloom,
+        glide,
+        cloudStyle,
+        anchorPattern,
+        loopCrossfade,
+        quality: state.granularQuality ?? 'balanced',
       }];
     });
   }, [
@@ -668,7 +752,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
                   {scenePresetDescription || (scenePresetName ? 'No description saved for this preset.' : 'Load a granular scene preset to view its description.')}
                 </div>
                 <div className="granular-preset-description" style={{ marginTop: 8, fontSize: '0.72rem', opacity: 0.85 }}>
-                  This control stores the full granular scene: all four voices, legacy state, kit macros, and source-level controls.
+                  This control stores the full granular scene: all four voices, kit macros, and source-level controls.
                 </div>
               </div>
             </div>
@@ -733,11 +817,13 @@ const GranularPage: React.FC<GranularPageProps> = ({
                     voices={bufferVoiceVisuals as CanvasVoiceVisual[]}
                     writeHeadPosition={writeHeadPosition}
                     activeGrainCount={activeGrainCount}
+                    grainEvents={grainEvents}
                     bufferWaveform={bufferWaveform}
                     bufferSeconds={(state.granularBufferSeconds as number) || 16}
                     isFrozen={Boolean(state.granularFreeze)}
                     activeSlices={activeSlices}
                     numSlices={NUM_SLICES}
+                    visualDetail={state.granularVisualDetail ?? 'basic'}
                   />
                 </>
               ) : (
@@ -829,9 +915,42 @@ const GranularPage: React.FC<GranularPageProps> = ({
                     Square
                   </button>
                 </div>
+
+                <div className="granular-chip-group">
+                  <span className="granular-chip-label">Quality</span>
+                  {(['eco', 'balanced', 'hq'] as GranularQuality[]).map((quality) => (
+                    <button
+                      key={quality}
+                      className={`granular-chip-btn${state.granularQuality === quality ? ' active' : ''}`}
+                      onClick={() => setGranularQuality(quality)}
+                    >
+                      {quality === 'hq' ? 'HQ' : quality}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="granular-chip-group">
+                  <span className="granular-chip-label">Visual</span>
+                  {(['basic', 'full'] as GranularVisualDetail[]).map((detail) => (
+                    <button
+                      key={detail}
+                      className={`granular-chip-btn${(state.granularVisualDetail ?? 'basic') === detail ? ' active' : ''}`}
+                      onClick={() => setGranularVisualDetail(detail)}
+                    >
+                      {detail}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="granular-grid-4">
+                <Slider
+                  label="Max Grains"
+                  value={state.granularMaxGrains}
+                  paramKey={'granularMaxGrains' as keyof SliderState}
+                  onChange={onParamChange}
+                  {...sliderProps('granularMaxGrains' as keyof SliderState)}
+                />
                 <Slider
                   label="Smear"
                   value={state.granularDiffusion}
@@ -873,6 +992,27 @@ const GranularPage: React.FC<GranularPageProps> = ({
                   paramKey={'granularMacroChaos' as keyof SliderState}
                   onChange={onParamChange}
                   {...sliderProps('granularMacroChaos' as keyof SliderState)}
+                />
+                <Slider
+                  label="Spray"
+                  value={state.granularSprayMacro}
+                  paramKey={'granularSprayMacro' as keyof SliderState}
+                  onChange={onParamChange}
+                  {...sliderProps('granularSprayMacro' as keyof SliderState)}
+                />
+                <Slider
+                  label="Cloud"
+                  value={state.granularCloudMacro}
+                  paramKey={'granularCloudMacro' as keyof SliderState}
+                  onChange={onParamChange}
+                  {...sliderProps('granularCloudMacro' as keyof SliderState)}
+                />
+                <Slider
+                  label="Pitch Macro"
+                  value={state.granularPitchMacro}
+                  paramKey={'granularPitchMacro' as keyof SliderState}
+                  onChange={onParamChange}
+                  {...sliderProps('granularPitchMacro' as keyof SliderState)}
                 />
               </div>
               <div className="granular-section-label" style={{ marginTop: 10 }}>Harmony</div>
@@ -1020,7 +1160,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
               {VOICE_KEYS.map((keys, v) => {
               const isEnabled = state[keys.enabled] as boolean;
               const isExpanded = expandedVoices.has(v);
-              const mode = state[keys.mode] as VoiceMode;
+              const mode = sanitizeVoiceMode(state[keys.mode]);
               const slice = state[keys.slice] as number;
               const speed = state[keys.speed] as number;
               const scanRate = state[keys.scanRate] as number;
@@ -1106,17 +1246,15 @@ const GranularPage: React.FC<GranularPageProps> = ({
 
                       {/* Mode Select */}
                       <div className="granular-mode-row">
-                        {(['clean', 'granular', 'legacy'] as VoiceMode[]).map(m => (
+                        {(['clean', 'granular'] as VoiceMode[]).map(m => (
                           <button
                             key={m}
                             className={`granular-mode-btn${mode === m ? ' active' : ''}`}
-                            onClick={() => onSelectChange(keys.mode, m)}
+                            onClick={() => onSelectChange(keys.mode, m as SliderState[keyof SliderState])}
                             {...bindHelp(
                               m === 'clean'
                                 ? 'granularVoiceModeClean'
-                                : m === 'granular'
-                                  ? 'granularVoiceModeGranular'
-                                  : 'granularVoiceModeLegacy',
+                                : 'granularVoiceModeGranular',
                             )}
                           >
                             {m}
@@ -1223,7 +1361,7 @@ const GranularPage: React.FC<GranularPageProps> = ({
                       </>
                       )}
 
-                      {/* ── Grain Controls (only for granular/legacy) ── */}
+                      {/* ── Grain Controls (granular mode) ── */}
                       {mode !== 'clean' && (
                         <>
                           <div
@@ -1234,61 +1372,102 @@ const GranularPage: React.FC<GranularPageProps> = ({
                           </div>
                           {!expandedPanels.has('granularGrainCollapsed') && (
                           <>
-                          {mode === 'granular' && (
-                            <>
-                              <div className="granular-mode-row" style={{ marginBottom: 6 }}>
-                                <button
-                                  className={`granular-mode-btn${!tempoSync ? ' active' : ''}`}
-                                  onClick={() => onSelectChange(keys.tempoSync, false)}
-                                  {...bindHelp('granularVoiceFreeTempo')}
-                                >
-                                  Free
-                                </button>
-                                <button
-                                  className={`granular-mode-btn${tempoSync ? ' active' : ''}`}
-                                  onClick={() => onSelectChange(keys.tempoSync, true)}
-                                  {...bindHelp('granularVoiceTempoSync')}
-                                >
-                                  Tempo
-                                </button>
-                              </div>
-                              <div className="granular-space-prototype-note" style={{ marginBottom: 6 }}>
-                                Tempo sync uses the granular BPM and fires grain pulses on a note grid without needing the Euclidean sequencer.
-                              </div>
-                              {tempoSync && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
-                                  <label style={{ fontSize: '0.62rem', color: '#bdbdbd', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                                    Clock
-                                  </label>
-                                  <select
-                                    value={tempoDiv}
-                                    onChange={(e) => onSelectChange(keys.tempoDiv, e.target.value as SliderState[keyof SliderState])}
-                                    {...bindHelp('granularVoiceTempoClock')}
-                                    style={{
-                                      width: '100%',
-                                      padding: '6px 8px',
-                                      borderRadius: '8px',
-                                      border: '1px solid rgba(255,255,255,0.18)',
-                                      background: 'rgba(0,0,0,0.28)',
-                                      color: '#e8e8e8',
-                                      fontSize: '0.72rem',
-                                    }}
-                                  >
-                                    {GRAIN_CLOCK_OPTIONS.map(option => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              )}
-                            </>
+                          <div className="granular-mode-row" style={{ marginBottom: 6 }}>
+                            <button
+                              className={`granular-mode-btn${!tempoSync ? ' active' : ''}`}
+                              onClick={() => onSelectChange(keys.tempoSync, false)}
+                              {...bindHelp('granularVoiceFreeTempo')}
+                            >
+                              Free
+                            </button>
+                            <button
+                              className={`granular-mode-btn${tempoSync ? ' active' : ''}`}
+                              onClick={() => onSelectChange(keys.tempoSync, true)}
+                              {...bindHelp('granularVoiceTempoSync')}
+                            >
+                              Tempo
+                            </button>
+                          </div>
+                          <div className="granular-space-prototype-note" style={{ marginBottom: 6 }}>
+                            Tempo sync uses the granular BPM and fires grain pulses on a note grid without needing the Euclidean sequencer.
+                          </div>
+                          {tempoSync && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+                              <label style={{ fontSize: '0.62rem', color: '#bdbdbd', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                                Clock
+                              </label>
+                              <select
+                                value={tempoDiv}
+                                onChange={(e) => onSelectChange(keys.tempoDiv, e.target.value as SliderState[keyof SliderState])}
+                                {...bindHelp('granularVoiceTempoClock')}
+                                style={{
+                                  width: '100%',
+                                  padding: '6px 8px',
+                                  borderRadius: '8px',
+                                  border: '1px solid rgba(255,255,255,0.18)',
+                                  background: 'rgba(0,0,0,0.28)',
+                                  color: '#e8e8e8',
+                                  fontSize: '0.72rem',
+                                }}
+                              >
+                                {GRAIN_CLOCK_OPTIONS.map(option => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           )}
                           <div className="granular-grid-4">
                             <Slider label="Density" value={state[keys.density] as number} paramKey={keys.density} unit="/s" onChange={onParamChange} {...sliderWithGhost(keys.density)} />
                             <Slider label="Size" value={state[keys.grainSize] as number} paramKey={keys.grainSize} unit="ms" onChange={onParamChange} {...sliderWithGhost(keys.grainSize)} />
-                            <Slider label="Look Back" value={state[keys.spray] as number} paramKey={keys.spray} onChange={onParamChange} {...sliderWithGhost(keys.spray)} />
+                            <Slider label="Position Spray" value={state[keys.positionSpray] as number} paramKey={keys.positionSpray} onChange={onParamChange} {...sliderWithGhost(keys.positionSpray)} />
+                            <Slider label="Timing Spray" value={state[keys.timingSpray] as number} paramKey={keys.timingSpray} onChange={onParamChange} {...sliderWithGhost(keys.timingSpray)} />
+                            <Slider label="Lookback" value={state[keys.lookback] as number} paramKey={keys.lookback} onChange={onParamChange} {...sliderProps(keys.lookback)} />
+                            <Slider label="Write Guard" value={state[keys.writeGuard] as number} paramKey={keys.writeGuard} onChange={onParamChange} {...sliderProps(keys.writeGuard)} />
                             <Slider label="Shimmer" value={state[keys.grainOct] as number} paramKey={keys.grainOct} onChange={onParamChange} {...sliderWithGhost(keys.grainOct)} />
+                            <Slider label="Pitch Spread" value={state[keys.pitchSpread] as number} paramKey={keys.pitchSpread} unit="st" onChange={onParamChange} {...sliderProps(keys.pitchSpread)} />
+                            <Slider label="Pitch Jitter" value={state[keys.pitchJitter] as number} paramKey={keys.pitchJitter} unit="ct" onChange={onParamChange} {...sliderWithGhost(keys.pitchJitter)} />
+                            <Slider label="Pitch Lock" value={state[keys.pitchQuantize] as number} paramKey={keys.pitchQuantize} onChange={onParamChange} {...sliderProps(keys.pitchQuantize)} />
+                            <Slider label="Rev Chance" value={state[keys.reverseChance] as number} paramKey={keys.reverseChance} onChange={onParamChange} {...sliderProps(keys.reverseChance)} />
+                            <Slider label="Bloom" value={state[keys.bloom] as number} paramKey={keys.bloom} onChange={onParamChange} {...sliderWithGhost(keys.bloom)} />
+                            <Slider label="Glide" value={state[keys.glide] as number} paramKey={keys.glide} onChange={onParamChange} {...sliderProps(keys.glide)} />
+                          </div>
+                          <div className="granular-grid-3" style={{ marginTop: 8 }}>
+                            <select
+                              value={String(state[keys.pitchMode] ?? 'fixed')}
+                              onChange={(e) => onSelectChange(keys.pitchMode, e.target.value as SliderState[keyof SliderState])}
+                              style={{ width: '100%', padding: '6px 8px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(0,0,0,0.28)', color: '#e8e8e8', fontSize: '0.72rem' }}
+                            >
+                              <option value="fixed">Pitch Fixed</option>
+                              <option value="octaves">Octaves</option>
+                              <option value="fifths">Fifths</option>
+                              <option value="chord">Chord</option>
+                              <option value="scale">Scale</option>
+                              <option value="free">Free</option>
+                            </select>
+                            <select
+                              value={String(state[keys.cloudStyle] ?? 'classic')}
+                              onChange={(e) => onSelectChange(keys.cloudStyle, e.target.value as SliderState[keyof SliderState])}
+                              style={{ width: '100%', padding: '6px 8px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(0,0,0,0.28)', color: '#e8e8e8', fontSize: '0.72rem' }}
+                            >
+                              <option value="classic">Classic</option>
+                              <option value="mosaic">Mosaic</option>
+                              <option value="bloom">Bloom</option>
+                              <option value="tide">Tide</option>
+                              <option value="orbit">Orbit</option>
+                              <option value="stars">Stars</option>
+                            </select>
+                            <select
+                              value={String(state[keys.anchorPattern] ?? 'forward')}
+                              onChange={(e) => onSelectChange(keys.anchorPattern, e.target.value as SliderState[keyof SliderState])}
+                              style={{ width: '100%', padding: '6px 8px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(0,0,0,0.28)', color: '#e8e8e8', fontSize: '0.72rem' }}
+                            >
+                              <option value="forward">Forward Anchors</option>
+                              <option value="reverse">Reverse Anchors</option>
+                              <option value="pendulum">Pendulum Anchors</option>
+                              <option value="random">Random Anchors</option>
+                            </select>
                           </div>
                           </>
                           )}
@@ -1308,6 +1487,9 @@ const GranularPage: React.FC<GranularPageProps> = ({
                         <Slider label="Fade Out" value={state[keys.decay] as number} paramKey={keys.decay} unit="s" onChange={onParamChange} {...sliderWithGhost(keys.decay)} />
                         <Slider label="Blur" value={state[keys.blur] as number} paramKey={keys.blur} onChange={onParamChange} {...sliderWithGhost(keys.blur)} />
                         <Slider label="Gain" value={state[keys.gain] as number} paramKey={keys.gain} onChange={onParamChange} {...sliderProps(keys.gain)} />
+                        {mode === 'clean' && (
+                          <Slider label="Loop Xfade" value={state[keys.loopCrossfade] as number} paramKey={keys.loopCrossfade} unit="ms" onChange={onParamChange} {...sliderProps(keys.loopCrossfade)} />
+                        )}
                       </div>
                       )}
 
@@ -1329,33 +1511,6 @@ const GranularPage: React.FC<GranularPageProps> = ({
                         <Slider label="Rec LFO" value={(state[keys.recordLFORate] as number) ?? 0} paramKey={keys.recordLFORate} onChange={onParamChange} {...sliderProps(keys.recordLFORate)} />
                         <Slider label="Write Fol" value={(state[keys.writeFollow] as number) ?? 0} paramKey={keys.writeFollow} onChange={onParamChange} {...sliderProps(keys.writeFollow)} />
                       </div>
-                      )}
-
-                      {/* ── Legacy-only controls ── */}
-                      {mode === 'legacy' && v === 0 && (
-                        <div className="granular-legacy-section">
-                          <div className="granular-legacy-label">Legacy Granulator</div>
-                          <div className="granular-grid-3">
-                            <Slider label="Jitter" value={state.granularLegacyJitter} paramKey={'granularLegacyJitter' as keyof SliderState} unit="ms" onChange={onParamChange} {...sliderProps('granularLegacyJitter' as keyof SliderState)} />
-                            <Slider label="Probability" value={state.granularLegacyProbability} paramKey={'granularLegacyProbability' as keyof SliderState} onChange={onParamChange} {...sliderProps('granularLegacyProbability' as keyof SliderState)} />
-                            <Slider label="Max Grains" value={state.granularLegacyMaxGrains} paramKey={'granularLegacyMaxGrains' as keyof SliderState} onChange={onParamChange} {...sliderProps('granularLegacyMaxGrains' as keyof SliderState)} />
-                          </div>
-                          <div className="granular-grid-2" style={{ marginTop: 4 }}>
-                            <Slider label="Pitch Spread" value={state.granularLegacyPitchSpread} paramKey={'granularLegacyPitchSpread' as keyof SliderState} unit="st" onChange={onParamChange} {...sliderProps('granularLegacyPitchSpread' as keyof SliderState)} />
-                            <Slider label="Legacy FB" value={state.granularLegacyFeedback} paramKey={'granularLegacyFeedback' as keyof SliderState} onChange={onParamChange} {...sliderProps('granularLegacyFeedback' as keyof SliderState)} />
-                          </div>
-                          <div style={{ marginTop: 4 }}>
-                            <select
-                              style={{ width: '100%', padding: '3px 6px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.3)', color: '#e0e0e0', fontSize: '0.65rem' }}
-                              value={state.granularLegacyPitchMode}
-                              onChange={e => onSelectChange('granularLegacyPitchMode' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
-                              {...bindHelp('granularLegacyPitchMode')}
-                            >
-                              <option value="harmonic">Harmonic Intervals</option>
-                              <option value="random">Random Pitch</option>
-                            </select>
-                          </div>
-                        </div>
                       )}
 
                     </div>

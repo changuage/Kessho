@@ -7,7 +7,7 @@
  *  - Mosaic A/B/C/D (Microcosm): octave-up, octave-down, shimmer, wide spread
  *  - Flux Cloud (Fors Opal): Always-recording, spray, blur
  *  - Self-Generating: Feedback drone, LFOs, evolving
- *  - Legacy Cloud: Replicates original granulator.worklet.ts
+ *  - Classic Cloud: Modern granular replacement for the old cloud preset
  */
 
 // Partial state override — only granular-specific keys
@@ -40,7 +40,6 @@ export function isGranularDelayBStateKey(key: string): boolean {
 
 export const GRANULAR_PRESET_OPTIONS: GranularPresetOption[] = [
   { id: 'init', name: 'Init', group: 'Utility', description: 'Neutral starting point with no preset coloration.', tags: ['neutral', 'edit from scratch'] },
-  { id: 'legacy_cloud', name: 'Legacy Cloud (Legacy)', group: 'Utility', description: 'Original legacy granulator branch for direct A/B comparison.', tags: ['legacy', 'single voice', 'compare'] },
   { id: 'classic_cloud', name: 'Classic Cloud (Granular)', group: 'Reference Targets', description: 'Four-voice granular rebuild of the old legacy cloud, tuned for side-by-side comparison.', tags: ['granular', 'legacy replacement', 'four voices'] },
   { id: 'loop_forest', name: 'Loop Forest (ZOIA)', group: 'Reference Targets', description: 'Four clean looper heads drifting through one shared buffer with diffuse bloom.', tags: ['clean voices', 'diffuse', 'sequencer off'] },
   { id: 'mosaic_a', name: 'Mosaic A (Octave Up)', group: 'Reference Targets', description: 'Clocked micro-loops with fixed 1x and 2x varispeed layers for a soft octave-up halo.', tags: ['microcosm', 'clocked', 'octave up'] },
@@ -63,7 +62,8 @@ export const GRANULAR_PRESET_OPTIONS: GranularPresetOption[] = [
  * Returns undefined for 'init' (no-op: leaves current state as-is).
  */
 export function getGranularPresetData(presetId: string): GranularPresetData | undefined {
-  const preset = GRANULAR_PRESET_MAP[presetId];
+  const canonicalPresetId = presetId === 'legacy_cloud' ? 'classic_cloud' : presetId;
+  const preset = GRANULAR_PRESET_MAP[canonicalPresetId];
   if (!preset) return undefined;
 
   const normalized: GranularPresetData = { ...preset };
@@ -78,6 +78,24 @@ export function getGranularPresetData(presetId: string): GranularPresetData | un
     const scanRateKey = `granularV${voice}ScanRate`;
     const tempoSyncKey = `granularV${voice}TempoSync`;
     const tempoDivKey = `granularV${voice}TempoDiv`;
+    const oldSprayKey = `granularV${voice}Spray`;
+    const positionSprayKey = `granularV${voice}PositionSpray`;
+    const timingSprayKey = `granularV${voice}TimingSpray`;
+    const lookbackKey = `granularV${voice}Lookback`;
+    const writeGuardKey = `granularV${voice}WriteGuard`;
+    const pitchModeKey = `granularV${voice}PitchMode`;
+    const pitchSpreadKey = `granularV${voice}PitchSpread`;
+    const pitchJitterKey = `granularV${voice}PitchJitter`;
+    const pitchQuantizeKey = `granularV${voice}PitchQuantize`;
+    const reverseChanceKey = `granularV${voice}ReverseChance`;
+    const bloomKey = `granularV${voice}Bloom`;
+    const glideKey = `granularV${voice}Glide`;
+    const cloudStyleKey = `granularV${voice}CloudStyle`;
+    const anchorPatternKey = `granularV${voice}AnchorPattern`;
+    const loopCrossfadeKey = `granularV${voice}LoopCrossfade`;
+    if (normalized[modeKey] === 'legacy') {
+      normalized[modeKey] = 'granular';
+    }
     if (normalized[modeKey] === 'clean' && normalized[scanRateKey] == null) {
       normalized[scanRateKey] = 1.0;
     }
@@ -87,6 +105,20 @@ export function getGranularPresetData(presetId: string): GranularPresetData | un
     if (normalized[tempoDivKey] == null) {
       normalized[tempoDivKey] = '1/8';
     }
+    if (normalized[positionSprayKey] == null) normalized[positionSprayKey] = normalized[oldSprayKey] ?? 0.3;
+    if (normalized[timingSprayKey] == null) normalized[timingSprayKey] = 0;
+    if (normalized[lookbackKey] == null) normalized[lookbackKey] = 0.35;
+    if (normalized[writeGuardKey] == null) normalized[writeGuardKey] = 0.3;
+    if (normalized[pitchModeKey] == null) normalized[pitchModeKey] = 'fixed';
+    if (normalized[pitchSpreadKey] == null) normalized[pitchSpreadKey] = 0;
+    if (normalized[pitchJitterKey] == null) normalized[pitchJitterKey] = 4;
+    if (normalized[pitchQuantizeKey] == null) normalized[pitchQuantizeKey] = 1;
+    if (normalized[reverseChanceKey] == null) normalized[reverseChanceKey] = 0;
+    if (normalized[bloomKey] == null) normalized[bloomKey] = 0;
+    if (normalized[glideKey] == null) normalized[glideKey] = 0;
+    if (normalized[cloudStyleKey] == null) normalized[cloudStyleKey] = 'classic';
+    if (normalized[anchorPatternKey] == null) normalized[anchorPatternKey] = 'forward';
+    if (normalized[loopCrossfadeKey] == null) normalized[loopCrossfadeKey] = 12;
   }
   return normalized;
 }
@@ -101,11 +133,13 @@ export function getGranularPresetSliderModes(presetId: string): Record<string, s
 }
 
 export function getGranularPresetMeta(presetId: string): GranularPresetOption | undefined {
-  return GRANULAR_PRESET_OPTIONS.find(option => option.id === presetId);
+  const canonicalPresetId = presetId === 'legacy_cloud' ? 'classic_cloud' : presetId;
+  return GRANULAR_PRESET_OPTIONS.find(option => option.id === canonicalPresetId);
 }
 
 export function getGranularPresetSuggestedDelayBGranularSend(presetId: string): number | undefined {
-  const preset = GRANULAR_PRESET_MAP[presetId];
+  const canonicalPresetId = presetId === 'legacy_cloud' ? 'classic_cloud' : presetId;
+  const preset = GRANULAR_PRESET_MAP[canonicalPresetId];
   if (!preset) return undefined;
 
   const explicit = preset.linkedDelayBGranularSend;
@@ -127,8 +161,8 @@ export function getGranularPresetSuggestedDelayBGranularSend(presetId: string): 
 }
 
 // Per-voice param suffixes that benefit from generative modes
-const WALK_PARAMS = ['Blur', 'Pan', 'Gain', 'PosLFORate', 'PosLFODepth', 'PanLFORate', 'WriteFollow'];
-const SH_PARAMS = ['Spray', 'Density', 'GrainSize', 'Pitch', 'GrainOct', 'Speed'];
+const WALK_PARAMS = ['Blur', 'Pan', 'Gain', 'PosLFORate', 'PosLFODepth', 'PanLFORate', 'WriteFollow', 'Bloom'];
+const SH_PARAMS = ['PositionSpray', 'TimingSpray', 'Density', 'GrainSize', 'Pitch', 'PitchJitter', 'GrainOct', 'Speed'];
 const MUSICAL_LOOP_SH_PARAMS: string[] = [];
 const GENTLE_GRANULAR_SH_PARAMS = ['Density', 'GrainSize'];
 
@@ -146,7 +180,6 @@ function buildVoiceModes(
 }
 
 const GRANULAR_SLIDER_MODES: Record<string, Record<string, string>> = {
-  legacy_cloud: {},   // Legacy mode: all fixed, no generative variation
   classic_cloud: {
     granularV3Gain: 'walk',
     granularV4Gain: 'walk',
@@ -176,44 +209,6 @@ const GRANULAR_SLIDER_MODES: Record<string, Record<string, string>> = {
 };
 
 const GRANULAR_PRESET_MAP: Record<string, GranularPresetData> = {
-  // ─── Legacy Cloud: Replicates original granulator.worklet.ts ───
-  legacy_cloud: {
-    granularEnabled: true,
-    granularSpaceMode: 'clocked',
-    granularPresetBehavior: 'pure',
-    granularShape: 'triangle',
-    granularFeedback: 0.1,
-    granularFeedbackLPF: 8000,
-    granularFreeze: false,
-    granularBufferSeconds: 16,
-    granularDiffusion: 0.32,
-    granularReverbSend: 0.0,
-    granularReverbLPF: 8000,
-    granularOutputLPF: 12000,
-    granularChordBias: 0.0,
-    granularMacroActivity: 0.28,
-    granularMacroTexture: 0, granularMacroComplexity: 0,
-    granularMacroDarkness: 0, granularMacroChaos: 0,
-    // V1: legacy mode
-    granularV1Enabled: true, granularV1Mode: 'legacy',
-    granularV1Slice: 0, granularV1Speed: 1, granularV1Reverse: false,
-    granularV1Pitch: 0, granularV1Attack: 0.003, granularV1Decay: 0.5,
-    granularV1Blur: 0, granularV1GrainOct: 0, granularV1Spray: 0.3,
-    granularV1Density: 20, granularV1GrainSize: 80, granularV1Pan: 0, granularV1Gain: 0.5,
-    granularV1PosLFORate: 0, granularV1PosLFODepth: 0, granularV1PanLFORate: 0,
-    granularV1StereoSpread: 0.5, granularV1ReverseLFORate: 0,
-    granularV1WriteFollow: 0, granularV1RecordLFORate: 0,
-    // V2-V4: off
-    granularV2Enabled: false, granularV3Enabled: false, granularV4Enabled: false,
-    // Legacy params
-    granularLegacyJitter: 10, granularLegacyProbability: 0.8,
-    granularLegacyPitchMode: 'harmonic', granularLegacyPitchSpread: 2,
-    granularLegacyMaxGrains: 64, granularLegacyFeedback: 0.1,
-    // Euclidean: OFF (continuous playback)
-    // Delay: minimal
-    granularDelayEnabled: false,
-  },
-
   // ─── Classic Cloud: standard granular rebuild of the legacy feel ───
   // Four decorrelated granular voices approximate the softer, probabilistic
   // legacy cloud without relying on the legacy DSP branch:

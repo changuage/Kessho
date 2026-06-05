@@ -190,7 +190,7 @@ function expectedEvolvedLaneValue(stepId, sample, component, base, depth, minVal
 
 const snapshotPtr = malloc(SNAPSHOT_SIZE);
 const eventsPtr = malloc(SEQUENCER_EVENT_SIZE * 8);
-const telemetryPtr = malloc(7728);
+const telemetryPtr = malloc(8760);
 const engine = create(48000, 128, 0);
 assert(snapshotPtr && eventsPtr && telemetryPtr && engine, 'WASM deterministic timeline allocation failed');
 

@@ -90,7 +90,7 @@ function configureDenseGranular(harness) {
   for (let voice = 0; voice < 4; voice += 1) {
     const base = granularParam.voiceStart + voice * granularParam.voiceStride;
     harness.setParam(base + granularVoiceParam.enabled, 1);
-    harness.setParam(base + granularVoiceParam.mode, voice === 1 ? 2 : 0);
+    harness.setParam(base + granularVoiceParam.mode, voice === 1 ? 1 : 0);
     harness.setParam(base + granularVoiceParam.speed, voice === 2 ? 0 : 1);
     harness.setParam(base + granularVoiceParam.scanRate, voice === 2 ? 0.8 : 1);
     harness.setParam(base + granularVoiceParam.pitch, voice === 3 ? -12 : voice === 1 ? 7 : 0);
@@ -110,7 +110,7 @@ async function runGranularRenderMetrics() {
   const disabledHarness = await createKesshoModuleHarness(root, 4);
   let disabledReport;
   try {
-    assertMetric(disabledHarness.paramCount === 138, `granular module param count changed: ${disabledHarness.paramCount}`);
+    assertMetric(disabledHarness.paramCount === 199, `granular module param count changed: ${disabledHarness.paramCount}`);
     disabledHarness.setParam(granularParam.enabled, 0);
     disabledHarness.commitParams();
     fillGranularInput(disabledHarness, 0, 0.2);
@@ -280,7 +280,8 @@ async function runGranularRenderMetrics() {
 
 requireTokens('cpp/KesshoCore/src/product/fx/ProductGranularRuntime.cpp', [
   'kGranularControlSmoothSeconds',
-  'smoothedGranularControl',
+  'smoothedGranularControlCached',
+  'updateGranularControlSmoothCoeff',
   'std::isfinite(target)',
   'granularSendGainForFrame',
   'advanceGranularReturnGains',
@@ -293,8 +294,9 @@ requireTokens('cpp/KesshoCore/src/product/fx/ProductGranular.cpp', [
   'fx.granular_enabled',
   'configureGranularLowpass(granular_output_lpf',
   'configureGranularLowpass(granular_reverb_lpf',
-  'const float attack_coeff',
-  'const float release_coeff',
+  'updateGranularReverbCompressorCoeffs',
+  'granular_reverb_comp_attack_coeff',
+  'granular_reverb_comp_release_coeff',
   'advanceGranularReturnGains(transport.sample_frame + i)',
   'sidechainGain(kSidechainGranular, frame)',
 ]);
@@ -316,10 +318,11 @@ requireTokens('cpp/KesshoCore/src/product/fx/ProductFxModules.cpp', [
 ]);
 
 requireTokens('scripts/test-kessho-core.mjs', [
+  'const granularParamCount = 199',
   'WASM granular disabled module should pass input',
   'WASM granular disabled planar module process failed',
   'WASM granular active module should produce non-zero output',
-  'moduleGetParamCount(granularModule) === 138',
+  'moduleGetParamCount(granularModule) === granularParamCount',
   'granularParamsPtr !== granularParamsPtrB',
 ]);
 

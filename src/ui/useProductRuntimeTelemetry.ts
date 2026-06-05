@@ -1,5 +1,6 @@
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
 import type { ProductDynamicsVisualTelemetry } from '../audio/product/ProductEngineTypes';
+import type { CoreProductGranularVisualEvent } from '../audio/coreProductTelemetry';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import { useSelectedAudioEngineRuntimeTelemetry } from './useSelectedAudioEngineRuntimeTelemetry';
 
@@ -14,6 +15,7 @@ type ProductRuntimeTelemetry = {
   getProductGranularActiveGrainCount: () => number;
   getProductGranularWriteHeadPosition: () => number;
   getProductGranularVoicePositions: () => readonly number[];
+  getProductGranularVisualEvents: () => readonly CoreProductGranularVisualEvent[];
   getProductDynamicsVisualTelemetry: () => ProductDynamicsVisualTelemetry;
   getProductPadFilterFreq: (pad: 'pad1' | 'pad2') => number;
   getProductPadLfoValue: (pad: 'pad1' | 'pad2') => number;
@@ -33,6 +35,7 @@ export function useProductRuntimeTelemetry({
     getSelectedGranularActiveGrainCount,
     getSelectedGranularWriteHeadPosition,
     getSelectedGranularVoicePositions,
+    getSelectedGranularVisualEvents,
     getSelectedDynamicsVisualTelemetry,
     getSelectedPadFilterFreq,
     getSelectedPadLfoValue,
@@ -49,6 +52,7 @@ export function useProductRuntimeTelemetry({
     getProductGranularActiveGrainCount: getSelectedGranularActiveGrainCount,
     getProductGranularWriteHeadPosition: getSelectedGranularWriteHeadPosition,
     getProductGranularVoicePositions: getSelectedGranularVoicePositions,
+    getProductGranularVisualEvents: getSelectedGranularVisualEvents,
     getProductDynamicsVisualTelemetry: getSelectedDynamicsVisualTelemetry,
     getProductPadFilterFreq: getSelectedPadFilterFreq,
     getProductPadLfoValue: getSelectedPadLfoValue,

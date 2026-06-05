@@ -10,6 +10,20 @@ constexpr float kGranularRouteEpsilon = 0.0001f;
 
 } // namespace
 
+void KesshoProductEngine::updateGranularReverbCompressorCoeffs() {
+  if (sample_rate == granular_reverb_comp_coeff_sample_rate) return;
+  granular_reverb_comp_coeff_sample_rate = sample_rate;
+  if (sample_rate <= 0.0) {
+    granular_reverb_comp_attack_coeff = 0.0f;
+    granular_reverb_comp_release_coeff = 0.0f;
+    return;
+  }
+  granular_reverb_comp_attack_coeff = std::exp(
+      -1.0f / std::max(1.0f, 0.003f * static_cast<float>(sample_rate)));
+  granular_reverb_comp_release_coeff = std::exp(
+      -1.0f / std::max(1.0f, 0.25f * static_cast<float>(sample_rate)));
+}
+
 void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (graph_taps_enabled) {
     for (uint32_t i = 0; i < frames; ++i) {
@@ -69,8 +83,7 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
     std::fill(reverb_branch_r, reverb_branch_r + frames, 0.0f);
     configureGranularLowpass(granular_reverb_lpf, fx.granular_reverb_lpf_hz);
   }
-  const float attack_coeff = std::exp(-1.0f / std::max(1.0f, 0.003f * static_cast<float>(sample_rate)));
-  const float release_coeff = std::exp(-1.0f / std::max(1.0f, 0.25f * static_cast<float>(sample_rate)));
+  updateGranularReverbCompressorCoeffs();
   if (output_filter_armed || reverb_armed) {
     for (uint32_t i = 0; i < frames; ++i) {
       if (output_filter_armed) {
@@ -85,7 +98,9 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
         const float target_gain = detector <= kGranularReverbCompressorLowerGain
             ? 1.0f
             : std::pow(10.0f, granularCompressorGainDbForLevel(20.0f * std::log10(detector)) / 20.0f);
-        const float coeff = target_gain < granular_reverb_comp_gain ? attack_coeff : release_coeff;
+        const float coeff = target_gain < granular_reverb_comp_gain
+            ? granular_reverb_comp_attack_coeff
+            : granular_reverb_comp_release_coeff;
         granular_reverb_comp_gain = target_gain + (granular_reverb_comp_gain - target_gain) * coeff;
         reverb_branch_l[i] = reverb_filtered_l * granular_reverb_comp_gain * kGranularReverbCompressorMakeupGain;
         reverb_branch_r[i] = reverb_filtered_r * granular_reverb_comp_gain * kGranularReverbCompressorMakeupGain;

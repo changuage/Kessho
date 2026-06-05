@@ -124,7 +124,7 @@ struct GranularVoiceParamSpec {
 };
 
 void setGranularVoiceEnabled(GranularVoiceState& voice, float value) { voice.enabled = value >= 0.5f; }
-void setGranularVoiceMode(GranularVoiceState& voice, float value) { voice.mode = clampU32(static_cast<uint32_t>(std::lround(value)), 0u, 2u); }
+void setGranularVoiceMode(GranularVoiceState& voice, float value) { voice.mode = value < 0.5f ? 0u : 1u; }
 void setGranularVoiceSlice(GranularVoiceState& voice, float value) { voice.slice = clampU32(static_cast<uint32_t>(std::lround(value)), 0u, 15u); }
 void setGranularVoiceSpeed(GranularVoiceState& voice, float value) { voice.speed = clampFloat(value, 0.0f, 4.0f); }
 void setGranularVoiceScanRate(GranularVoiceState& voice, float value) { voice.scan_rate = clampFloat(value, 0.25f, 4.0f); }
@@ -148,6 +148,20 @@ void setGranularVoiceReverseLfoRate(GranularVoiceState& voice, float value) { vo
 void setGranularVoiceRecordLfoRate(GranularVoiceState& voice, float value) { voice.record_lfo_rate = clampFloat(value, 0.0f, 1.0f); }
 void setGranularVoiceEuclidGated(GranularVoiceState& voice, float value) { voice.euclid_gated = value >= 0.5f; }
 void setGranularVoiceEuclidMuted(GranularVoiceState& voice, float value) { voice.euclid_muted = value >= 0.5f; }
+void setGranularVoicePositionSpray(GranularVoiceState& voice, float value) { voice.position_spray = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceTimingSpray(GranularVoiceState& voice, float value) { voice.timing_spray = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceLookback(GranularVoiceState& voice, float value) { voice.lookback = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceWriteGuard(GranularVoiceState& voice, float value) { voice.write_guard = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoicePitchMode(GranularVoiceState& voice, float value) { voice.pitch_mode = clampU32(static_cast<uint32_t>(std::lround(value)), 0u, 5u); }
+void setGranularVoicePitchSpread(GranularVoiceState& voice, float value) { voice.pitch_spread = clampFloat(value, 0.0f, 24.0f); }
+void setGranularVoicePitchJitter(GranularVoiceState& voice, float value) { voice.pitch_jitter_cents = clampFloat(value, 0.0f, 50.0f); }
+void setGranularVoicePitchQuantize(GranularVoiceState& voice, float value) { voice.pitch_quantize = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceReverseChance(GranularVoiceState& voice, float value) { voice.reverse_chance = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceBloom(GranularVoiceState& voice, float value) { voice.bloom = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceGlide(GranularVoiceState& voice, float value) { voice.glide = clampFloat(value, 0.0f, 1.0f); }
+void setGranularVoiceCloudStyle(GranularVoiceState& voice, float value) { voice.cloud_style = clampU32(static_cast<uint32_t>(std::lround(value)), 0u, 5u); }
+void setGranularVoiceAnchorPattern(GranularVoiceState& voice, float value) { voice.anchor_pattern = clampU32(static_cast<uint32_t>(std::lround(value)), 0u, 3u); }
+void setGranularVoiceLoopCrossfade(GranularVoiceState& voice, float value) { voice.loop_crossfade_ms = clampFloat(value, 4.0f, 80.0f); }
 
 constexpr GranularVoiceParamSpec kGranularVoiceParamSpecs[] = {
   {0u, setGranularVoiceEnabled},
@@ -179,6 +193,32 @@ constexpr GranularVoiceParamSpec kGranularVoiceParamSpecs[] = {
 
 const GranularVoiceParamSpec* findGranularVoiceParamSpec(uint32_t offset) {
   for (const GranularVoiceParamSpec& spec : kGranularVoiceParamSpecs) {
+    if (spec.offset == offset) {
+      return &spec;
+    }
+  }
+  return nullptr;
+}
+
+constexpr GranularVoiceParamSpec kGranularExtVoiceParamSpecs[] = {
+  {0u, setGranularVoicePositionSpray},
+  {1u, setGranularVoiceTimingSpray},
+  {2u, setGranularVoiceLookback},
+  {3u, setGranularVoiceWriteGuard},
+  {4u, setGranularVoicePitchMode},
+  {5u, setGranularVoicePitchSpread},
+  {6u, setGranularVoicePitchJitter},
+  {7u, setGranularVoicePitchQuantize},
+  {8u, setGranularVoiceReverseChance},
+  {9u, setGranularVoiceBloom},
+  {10u, setGranularVoiceGlide},
+  {11u, setGranularVoiceCloudStyle},
+  {12u, setGranularVoiceAnchorPattern},
+  {13u, setGranularVoiceLoopCrossfade},
+};
+
+const GranularVoiceParamSpec* findGranularExtVoiceParamSpec(uint32_t offset) {
+  for (const GranularVoiceParamSpec& spec : kGranularExtVoiceParamSpecs) {
     if (spec.offset == offset) {
       return &spec;
     }
@@ -750,10 +790,29 @@ void KesshoProductEngine::sortControlEvents() {
     KESSHO_PRODUCT_PARAM_FX_GRANULAR_V3_ENABLED_ID,
     KESSHO_PRODUCT_PARAM_FX_GRANULAR_V4_ENABLED_ID,
   };
+  const uint32_t ext_voice_param_bases[kGranularVoiceCount] = {
+    KESSHO_PRODUCT_PARAM_FX_GRANULAR_V1_POSITION_SPRAY_ID,
+    KESSHO_PRODUCT_PARAM_FX_GRANULAR_V2_POSITION_SPRAY_ID,
+    KESSHO_PRODUCT_PARAM_FX_GRANULAR_V3_POSITION_SPRAY_ID,
+    KESSHO_PRODUCT_PARAM_FX_GRANULAR_V4_POSITION_SPRAY_ID,
+  };
   for (uint32_t voice_index = 0; voice_index < kGranularVoiceCount; ++voice_index) {
     const uint32_t base = voice_param_bases[voice_index];
     if (event.param_id < base || event.param_id >= base + kGranularVoiceParamCount) {
-      continue;
+      const uint32_t ext_base = ext_voice_param_bases[voice_index];
+      if (event.param_id < ext_base || event.param_id >= ext_base + kGranularExtVoiceParamCount) {
+        continue;
+      }
+      GranularVoiceState& voice = fx.granular_voices[voice_index];
+      const GranularVoiceParamSpec* spec = findGranularExtVoiceParamSpec(event.param_id - ext_base);
+      if (!spec) {
+        telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+        return true;
+      }
+      spec->apply(voice, event.value);
+      configureFxModules();
+      telemetry.last_error_code = KESSHO_PRODUCT_OK;
+      return true;
     }
     GranularVoiceState& voice = fx.granular_voices[voice_index];
     const GranularVoiceParamSpec* spec = findGranularVoiceParamSpec(event.param_id - base);
@@ -812,6 +871,21 @@ void KesshoProductEngine::sortControlEvents() {
       break;
     case KESSHO_PRODUCT_PARAM_FX_GRANULAR_CHORD_BIAS_ID:
       fx.granular_chord_bias = clampFloat(event.value, 0.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_QUALITY_ID:
+      fx.granular_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_MAX_GRAINS_ID:
+      fx.granular_max_grains = clampU32(static_cast<uint32_t>(std::lround(event.value)), 8u, 64u);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_SPRAY_MACRO_ID:
+      fx.granular_spray_macro = clampFloat(event.value, 0.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_CLOUD_MACRO_ID:
+      fx.granular_cloud_macro = clampFloat(event.value, 0.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_GRANULAR_PITCH_MACRO_ID:
+      fx.granular_pitch_macro = clampFloat(event.value, 0.0f, 1.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_GRANULAR_LEGACY_JITTER_MS_ID:
       fx.granular_legacy_jitter_ms = clampFloat(event.value, 0.0f, 30.0f);

@@ -37,15 +37,27 @@ typedef struct KesshoGranularInstance KesshoGranularInstance;
 #define KESSHO_SINC_OVERSAMPLING  256   // fractional offset resolution
 #define KESSHO_SINC_TABLE_SIZE    (KESSHO_SINC_TAPS * KESSHO_SINC_OVERSAMPLING)
 #define KESSHO_UNFREEZE_XFADE_SAMPLES 480  // ~10ms crossfade at 48kHz
+#define KESSHO_GRANULAR_VISUAL_EVENT_CAPACITY 128
 
 // Voice modes
 #define KESSHO_MODE_CLEAN    0
 #define KESSHO_MODE_GRANULAR 1
-#define KESSHO_MODE_LEGACY   2
+#define KESSHO_MODE_LEGACY   2  // deprecated: sanitized to KESSHO_MODE_GRANULAR
 
 // Pitch modes (legacy)
 #define KESSHO_PITCH_RANDOM   0
 #define KESSHO_PITCH_HARMONIC 1
+
+typedef struct KesshoGranularVisualEvent {
+    float position_norm;
+    float pan;
+    float pitch_semi;
+    float gain;
+    float length_ms;
+    int32_t voice;
+    int32_t flags;
+    int32_t cloud_style;
+} KesshoGranularVisualEvent;
 
 // Grain envelope shapes
 #define KESSHO_GRAIN_SHAPE_TRIANGLE 0
@@ -168,13 +180,16 @@ void granular_set_bus_diffusion(float amount);
  */
 void granular_set_timing_randomness(float amount);
 
+void granular_set_quality_params(int quality, int max_grains, float spray_macro,
+                                 float cloud_macro, float pitch_macro);
+
 // ═══════════════ Per-Voice Parameters ═══════════════
 
 /**
  * Set voice mode and enable state.
  * @param voice   Voice index (0–3)
  * @param enabled 1 = active, 0 = muted
- * @param mode    KESSHO_MODE_CLEAN, KESSHO_MODE_GRANULAR, or KESSHO_MODE_LEGACY
+ * @param mode    KESSHO_MODE_CLEAN or KESSHO_MODE_GRANULAR; legacy values are sanitized.
  */
 void granular_set_voice_mode(int voice, int enabled, int mode);
 
@@ -243,10 +258,17 @@ void granular_set_voice_euclid_gated(int voice, int gated);
  */
 void granular_set_voice_euclid_muted(int voice, int muted);
 
+void granular_set_voice_advanced(int voice, float position_spray, float timing_spray,
+                                 float lookback, float write_guard, int pitch_mode,
+                                 float pitch_spread, float pitch_jitter_cents,
+                                 float pitch_quantize, float reverse_chance,
+                                 float bloom, float glide, int cloud_style,
+                                 int anchor_pattern, float loop_crossfade_ms);
+
 // ═══════════════ Legacy Mode Parameters ═══════════════
 
 /**
- * Set legacy granulator parameters (used when any voice is in KESSHO_MODE_LEGACY).
+ * Deprecated ABI shim. Legacy params are ignored by the DSP engine.
  * @param jitter         Timing jitter in ms
  * @param probability    Grain trigger probability (0–1)
  * @param pitch_mode     KESSHO_PITCH_RANDOM or KESSHO_PITCH_HARMONIC
@@ -301,6 +323,12 @@ void granular_get_voice_positions(float* out);
 int granular_get_active_grain_count(void);
 
 /**
+ * Copy newly spawned grain visual events since the last read.
+ * Returns the number of events copied, capped by max_events.
+ */
+int granular_get_visual_events(KesshoGranularVisualEvent* out_events, int max_events);
+
+/**
  * Get pointer to the left-channel circular buffer (read-only for visualization).
  * Returns NULL if engine not initialized.
  */
@@ -337,6 +365,8 @@ void granular_instance_set_buffer_size(KesshoGranularInstance* instance, float b
 void granular_instance_set_grain_shape(KesshoGranularInstance* instance, int shape);
 void granular_instance_set_bus_diffusion(KesshoGranularInstance* instance, float amount);
 void granular_instance_set_timing_randomness(KesshoGranularInstance* instance, float amount);
+void granular_instance_set_quality_params(KesshoGranularInstance* instance, int quality, int max_grains,
+                                          float spray_macro, float cloud_macro, float pitch_macro);
 void granular_instance_set_voice_mode(KesshoGranularInstance* instance, int voice, int enabled, int mode);
 void granular_instance_set_voice_position(KesshoGranularInstance* instance, int voice, int slice, float speed,
                                           float scan_rate, int reverse, float pitch, float write_follow);
@@ -348,6 +378,11 @@ void granular_instance_set_voice_lfo(KesshoGranularInstance* instance, int voice
                                      float pan_rate, float reverse_rate, float record_rate);
 void granular_instance_set_voice_euclid_gated(KesshoGranularInstance* instance, int voice, int gated);
 void granular_instance_set_voice_euclid_muted(KesshoGranularInstance* instance, int voice, int muted);
+void granular_instance_set_voice_advanced(KesshoGranularInstance* instance, int voice, float position_spray,
+                                          float timing_spray, float lookback, float write_guard,
+                                          int pitch_mode, float pitch_spread, float pitch_jitter_cents,
+                                          float pitch_quantize, float reverse_chance, float bloom, float glide,
+                                          int cloud_style, int anchor_pattern, float loop_crossfade_ms);
 void granular_instance_set_legacy_params(KesshoGranularInstance* instance, float jitter, float probability,
                                          int pitch_mode, float pitch_spread, int max_grains, float feedback);
 void granular_instance_euclid_trigger(KesshoGranularInstance* instance, int voice, float velocity,
@@ -357,6 +392,10 @@ void granular_instance_set_random_sequence(KesshoGranularInstance* instance, con
 float granular_instance_get_write_head(KesshoGranularInstance* instance);
 void granular_instance_get_voice_positions(KesshoGranularInstance* instance, float* out);
 int granular_instance_get_active_grain_count(KesshoGranularInstance* instance);
+int granular_instance_get_visual_events(
+    KesshoGranularInstance* instance,
+    KesshoGranularVisualEvent* out_events,
+    int max_events);
 float* granular_instance_get_buffer_ptr_l(KesshoGranularInstance* instance);
 int granular_instance_get_buffer_size(KesshoGranularInstance* instance);
 

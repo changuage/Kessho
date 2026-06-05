@@ -74,7 +74,6 @@ inline bool productDrumRuntimeParamIndex(uint32_t param_id, uint32_t& param_inde
 
 constexpr uint32_t kGranularVoiceCount = 4;
 constexpr uint32_t kSidechainTargetCount = 9;
-constexpr uint32_t kGranularParamCount = 138;
 constexpr uint32_t kGranularGlobalParamCount = 10;
 constexpr uint32_t kGranularVoiceParamCount = 25;
 constexpr uint32_t kGranularScaleCountParam = 110;
@@ -83,6 +82,13 @@ constexpr uint32_t kGranularChordCountParam = 123;
 constexpr uint32_t kGranularChordPitchesParam = 124;
 constexpr uint32_t kGranularChordBiasParam = 131;
 constexpr uint32_t kGranularLegacyParamStart = 132;
+constexpr uint32_t kGranularLegacyParamCount = 6;
+constexpr uint32_t kGranularExtGlobalParamStart = kGranularLegacyParamStart + kGranularLegacyParamCount;
+constexpr uint32_t kGranularExtGlobalParamCount = 5;
+constexpr uint32_t kGranularExtVoiceParamCount = 14;
+constexpr uint32_t kGranularExtVoiceParamStart = kGranularExtGlobalParamStart + kGranularExtGlobalParamCount;
+constexpr uint32_t kGranularParamCount =
+    kGranularExtVoiceParamStart + kGranularVoiceCount * kGranularExtVoiceParamCount;
 constexpr uint32_t kPianoAssetIdBase = 7200;
 constexpr uint32_t kPianoBaseMidi = 21;
 constexpr uint32_t kPianoSampleCount = 64;

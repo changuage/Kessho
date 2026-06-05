@@ -3,7 +3,7 @@ import { DEFAULT_REVERB_PRE_COMP, DEFAULT_STATE, type SliderState } from '../ui/
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import { CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID, getCoreProductSoundscapeAssetDescriptorsForState, getPrimaryCoreProductSoundscapeAssetIdForState } from './coreProductAssets';
 import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from './outputTrims';
-import { delayAFilterTypeId, delayBPatternId, delayBTapeSpacingId, delayBWarpId, dynamicsCharacterModeId, dynamicsCharacterQualityId, dynamicsDegradeQualityId, dynamicsEndCompModeId, dynamicsSaturationModeId, dynamicsSaturationQualityId, granularLegacyPitchModeId, granularShapeId, granularVoiceModeId, reverbModCharacterId, reverbQualityId, reverbSaturationModeId, reverbTypeId, sidechainKeyId } from './CoreProductModeIds';
+import { delayAFilterTypeId, delayBPatternId, delayBTapeSpacingId, delayBWarpId, dynamicsCharacterModeId, dynamicsCharacterQualityId, dynamicsDegradeQualityId, dynamicsEndCompModeId, dynamicsSaturationModeId, dynamicsSaturationQualityId, granularAnchorPatternId, granularCloudStyleId, granularLegacyPitchModeId, granularPitchModeId, granularQualityId, granularShapeId, granularVoiceModeId, reverbModCharacterId, reverbQualityId, reverbSaturationModeId, reverbTypeId, sidechainKeyId } from './CoreProductModeIds';
 import { assignLeadAlgorithmOverrideFields, assignLeadEnvelopeOverrideFields, assignLeadPresetIds, emptyLeadOverrideIndices, emptyLeadOverrideValues, exactLeadPatchFromState, leadAlgorithmPresetAEnabledFromState, leadEnvelopeOverrideFromState } from './CoreProductLeadPatch';
 import { emptyPadOverrideIndices, emptyPadOverrideValues, exactPadPatchFromState } from './CoreProductPadPatch';
 import { emptyDrumOverrideIndices, emptyDrumOverrideValues, exactDrumPatchFromState } from './CoreProductDrumPatch';
@@ -827,6 +827,20 @@ function granularVoiceFromState(state: Record<string, unknown> | undefined, voic
     density: clamp(macro?.voiceDensity[voiceIndex] ?? numberFromState(state, `${prefix}Density`, 20), 1, 64),
     grainSizeMs: clamp(macro?.voiceGrainSize[voiceIndex] ?? numberFromState(state, `${prefix}GrainSize`, 80), 10, 500),
     spray: clamp(macro?.voiceSpray[voiceIndex] ?? numberFromState(state, `${prefix}Spray`, 0.3), 0, 1),
+    positionSpray: clamp(macro?.voicePositionSpray?.[voiceIndex] ?? numberFromState(state, `${prefix}PositionSpray`, numberFromState(state, `${prefix}Spray`, 0.3)), 0, 1),
+    timingSpray: clamp(macro?.voiceTimingSpray?.[voiceIndex] ?? numberFromState(state, `${prefix}TimingSpray`, 0), 0, 1),
+    lookback: clamp(numberFromState(state, `${prefix}Lookback`, 0.35), 0, 1),
+    writeGuard: clamp(numberFromState(state, `${prefix}WriteGuard`, 0.3), 0, 1),
+    pitchMode: granularPitchModeId(state?.[`${prefix}PitchMode`]),
+    pitchSpread: clamp(numberFromState(state, `${prefix}PitchSpread`, 0), 0, 24),
+    pitchJitterCents: clamp(macro?.voicePitchJitter?.[voiceIndex] ?? numberFromState(state, `${prefix}PitchJitter`, 4), 0, 50),
+    pitchQuantize: clamp(numberFromState(state, `${prefix}PitchQuantize`, 1), 0, 1),
+    reverseChance: clamp(numberFromState(state, `${prefix}ReverseChance`, 0), 0, 1),
+    bloom: clamp(macro?.voiceBloom?.[voiceIndex] ?? numberFromState(state, `${prefix}Bloom`, 0), 0, 1),
+    glide: clamp(numberFromState(state, `${prefix}Glide`, 0), 0, 1),
+    cloudStyle: granularCloudStyleId(state?.[`${prefix}CloudStyle`]),
+    anchorPattern: granularAnchorPatternId(state?.[`${prefix}AnchorPattern`]),
+    loopCrossfadeMs: clamp(numberFromState(state, `${prefix}LoopCrossfade`, 12), 4, 80),
     grainOctaveProbability: clamp(macro?.voiceGrainOct[voiceIndex] ?? numberFromState(state, `${prefix}GrainOct`, 0), 0, 1),
     attackSeconds: clamp(macro?.voiceAttack[voiceIndex] ?? numberFromState(state, `${prefix}Attack`, 0.003), 0.001, 0.5),
     decaySeconds: clamp(macro?.voiceDecay[voiceIndex] ?? numberFromState(state, `${prefix}Decay`, 0.5), 0.01, 4),
@@ -953,6 +967,11 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       granularBusDiffusion: clamp(granularMacroModel.busDiffusion, 0, 1),
       granularTimingRandomness: clamp(granularMacroModel.timingRandomness, 0, 1),
       granularChordBias: clamp(numberFromState(sliderState, 'granularChordBias', 0), 0, 1),
+      granularQuality: granularQualityId(sliderState?.granularQuality),
+      granularMaxGrains: clamp(Math.round(numberFromState(sliderState, 'granularMaxGrains', 48)), 8, 64),
+      granularSprayMacro: clamp(numberFromState(sliderState, 'granularSprayMacro', 0), 0, 1),
+      granularCloudMacro: clamp(numberFromState(sliderState, 'granularCloudMacro', 0), 0, 1),
+      granularPitchMacro: clamp(numberFromState(sliderState, 'granularPitchMacro', 0), 0, 1),
       granularLegacyJitterMs: clamp(numberFromState(sliderState, 'granularLegacyJitter', 10), 0, 30),
       granularLegacyProbability: clamp(numberFromState(sliderState, 'granularLegacyProbability', 0.8), 0, 1),
       granularLegacyPitchMode: granularLegacyPitchModeId(sliderState?.granularLegacyPitchMode),

@@ -60,6 +60,17 @@ export type CoreProductSequencerUiState = {
   drumLanes: CoreProductSequencerLaneUiState[];
 };
 
+export type CoreProductGranularVisualEvent = {
+  position: number;
+  pan: number;
+  pitch: number;
+  gain: number;
+  lengthMs: number;
+  voice: number;
+  flags: number;
+  cloudStyle: number;
+};
+
 export type CoreProductTelemetrySnapshot = {
   schemaHash: number;
   sampleRate?: number;
@@ -146,6 +157,7 @@ export type CoreProductTelemetrySnapshot = {
   granularWriteHeadPosition?: number;
   granularVoicePositions?: [number, number, number, number];
   granularBufferWaveform?: Float32Array | null;
+  granularVisualEvents?: CoreProductGranularVisualEvent[];
   pad1FilterFreq?: number;
   pad1Lfo1Value?: number;
   pad2FilterFreq?: number;
@@ -197,6 +209,7 @@ export type CoreProductVisualTelemetrySnapshot = Pick<
   | 'granularWriteHeadPosition'
   | 'granularVoicePositions'
   | 'granularBufferWaveform'
+  | 'granularVisualEvents'
   | 'pad1FilterFreq'
   | 'pad1Lfo1Value'
   | 'pad2FilterFreq'
