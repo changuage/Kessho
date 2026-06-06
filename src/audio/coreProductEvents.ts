@@ -82,6 +82,23 @@ export const CORE_PRODUCT_STEP_TOGGLE_FLAGS = Object.freeze({
   clearLane: 2,
   clearField: 4,
   rangeValue: 8,
+  subLaneEnabledState: 1 << 24,
+  stepOverrideState: 1 << 25,
+  drumPitchOffsetValue: 1 << 26,
+  stepOverrideCommit: 1 << 27,
+  homeCaptureState: 1 << 28,
+} as const);
+
+export const CORE_PRODUCT_HOME_CAPTURE_FLAGS = Object.freeze({
+  force: 1 << 0,
+  requireContent: 1 << 1,
+  hasPitchState: 1 << 2,
+  pitchScaleQuantize: 1 << 3,
+  pitchScaleQuantizeSet: 1 << 4,
+} as const);
+
+export const CORE_PRODUCT_HOST_PARAM_IDS = Object.freeze({
+  SequencerEvolveConfig: -1000,
 } as const);
 
 export const CORE_PRODUCT_DICE_FLAGS = Object.freeze({
@@ -109,6 +126,7 @@ export const CORE_PRODUCT_EVOLVE_FLAGS = Object.freeze({
   subLaneLengthDrift: 1 << 18,
   subLaneDirectionFlip: 1 << 19,
   triggerToggle: 1 << 20,
+  evolveConfigSubLaneMask: 1 << 27,
   manualCommit: 1 << 28,
   mutationStrict: 1 << 29,
   rngStream: 1 << 30,
@@ -1642,16 +1660,40 @@ const CORE_PRODUCT_SEQUENCER_PITCH_SCALE_IDS: Record<string, number> = Object.fr
   Arabic: 18,
 });
 
+const CORE_PRODUCT_SEQUENCER_PITCH_EXACT_SCALE_IDS: Record<string, number> = Object.freeze({
+  Harmony: 0,
+  Chromatic: 1,
+  Major: 2,
+  Minor: 3,
+  Dorian: 4,
+  Phrygian: 5,
+  Lydian: 6,
+  Mixolydian: 7,
+  Locrian: 8,
+  Pentatonic: 9,
+  'Min Penta': 10,
+  Blues: 11,
+  'Harmonic Minor': 12,
+  'Melodic Minor': 13,
+  'Whole Tone': 14,
+  Diminished: 15,
+  Augmented: 16,
+  'Hungarian Minor': 17,
+  Japanese: 18,
+  Arabic: 19,
+});
+
 export function createCoreProductSequencerPitchSettingEvents(
   sequencer: keyof typeof CORE_PRODUCT_SEQUENCER_IDS,
   settings: readonly unknown[],
 ): CoreProductEvent[] {
   return Array.from({ length: Math.min(settings.length, 16) }, (_, laneIndex) => {
     const pitchSettings = normalizeSequencerPitchSettings(settings[laneIndex]);
+    const scaleEvent = createCoreProductSequencerLaneParamEvent(sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchScale, CORE_PRODUCT_SEQUENCER_PITCH_SCALE_IDS[pitchSettings.scale] ?? 1);
     return [
       createCoreProductSequencerLaneParamEvent(sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchMode, CORE_PRODUCT_SEQUENCER_PITCH_MODE_IDS[pitchSettings.mode]),
       createCoreProductSequencerLaneParamEvent(sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchRoot, pitchSettings.root),
-      createCoreProductSequencerLaneParamEvent(sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchScale, CORE_PRODUCT_SEQUENCER_PITCH_SCALE_IDS[pitchSettings.scale] ?? 1),
+      { ...scaleEvent, value2: CORE_PRODUCT_SEQUENCER_PITCH_EXACT_SCALE_IDS[pitchSettings.scale] ?? 2 },
     ];
   }).flat();
 }
@@ -1684,6 +1726,7 @@ export function createCoreProductSequencerSubLaneConfigEvent(
   steps: number,
   direction: CoreProductSubLaneDirection,
   enabled = true,
+  extraFlags = 0,
 ): CoreProductEvent {
   const validatedField = requireStepField(field);
   return {
@@ -1694,7 +1737,7 @@ export function createCoreProductSequencerSubLaneConfigEvent(
     value: enabled ? 1 : 0,
     value2: requireIntegerInRange(steps, 'steps', 1, 64),
     value3: requireSubLaneDirection(direction),
-    flags: CORE_PRODUCT_STEP_TOGGLE_FLAGS.active | CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig,
+    flags: CORE_PRODUCT_STEP_TOGGLE_FLAGS.active | CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig | extraFlags,
   };
 }
 
@@ -1708,6 +1751,53 @@ export function createCoreProductSequencerClearStepsEvent(
     index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
     flags: CORE_PRODUCT_STEP_TOGGLE_FLAGS.clearLane,
   };
+}
+
+export function createCoreProductSequencerStepOverrideCommitEvent(
+  sequencer: keyof typeof CORE_PRODUCT_SEQUENCER_IDS,
+  laneIndex: number,
+  extraFlags = 0,
+): CoreProductEvent {
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep,
+    targetId: requireSequencerId(sequencer),
+    index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
+    flags: CORE_PRODUCT_STEP_TOGGLE_FLAGS.stepOverrideCommit | extraFlags,
+  };
+}
+
+export function createCoreProductSequencerHomeCaptureEvent(
+  sequencer: keyof typeof CORE_PRODUCT_SEQUENCER_IDS,
+  laneIndex: number,
+  pitchState?: { steps?: unknown; direction?: unknown; scaleQuantize?: unknown } | null,
+  options: { force?: boolean; requireContent?: boolean } = {},
+): CoreProductEvent {
+  const pitchSteps = typeof pitchState?.steps === 'number' && Number.isFinite(pitchState.steps)
+    ? requireIntegerInRange(Math.round(pitchState.steps), 'pitchState.steps', 1, 64)
+    : 0;
+  const pitchDirection = encodeCoreProductHomePitchDirection(pitchState?.direction);
+  const hasPitchState = pitchSteps > 0 || pitchDirection >= 0 || typeof pitchState?.scaleQuantize === 'boolean';
+  return {
+    eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep,
+    targetId: requireSequencerId(sequencer),
+    index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
+    value: (options.force ? CORE_PRODUCT_HOME_CAPTURE_FLAGS.force : 0) |
+      (options.requireContent ? CORE_PRODUCT_HOME_CAPTURE_FLAGS.requireContent : 0) |
+      (hasPitchState ? CORE_PRODUCT_HOME_CAPTURE_FLAGS.hasPitchState : 0) |
+      (typeof pitchState?.scaleQuantize === 'boolean' ? CORE_PRODUCT_HOME_CAPTURE_FLAGS.pitchScaleQuantizeSet : 0) |
+      (pitchState?.scaleQuantize === true ? CORE_PRODUCT_HOME_CAPTURE_FLAGS.pitchScaleQuantize : 0),
+    value2: pitchSteps,
+    value3: pitchDirection,
+    flags: CORE_PRODUCT_STEP_TOGGLE_FLAGS.homeCaptureState,
+  };
+}
+
+function encodeCoreProductHomePitchDirection(value: unknown): number {
+  const text = String(value ?? '').toLowerCase();
+  if (text === 'forward') return CORE_PRODUCT_SUBLANE_DIRECTIONS.forward;
+  if (text === 'reverse') return CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse;
+  if (text === 'pingpong') return CORE_PRODUCT_SUBLANE_DIRECTIONS.pingpong;
+  return -1;
 }
 
 export function createCoreProductSequencerResetHomeEvent(

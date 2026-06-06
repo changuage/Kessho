@@ -1,4 +1,6 @@
+import type { MutableRefObject } from 'react';
 import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection';
+import type { SliderState } from './state';
 import { useSelectedAudioEngineSequencerControls } from './useSelectedAudioEngineSequencerControls';
 
 type ProductRuntimeSequencerPitchState = { steps?: number; direction?: string; scaleQuantize?: boolean } | null;
@@ -30,10 +32,16 @@ type ProductRuntimeSequencerControls = {
   diceProductDrumEuclidLane: (laneIndex: number, intensity?: number) => void;
 };
 
-export function useProductRuntimeSequencerControls(
-  productRuntimeMode: ProductRuntimeSelectionMode,
-): ProductRuntimeSequencerControls {
-  const sequencerControls = useSelectedAudioEngineSequencerControls(productRuntimeMode);
+type ProductRuntimeSequencerControlsOptions = {
+  productRuntimeMode: ProductRuntimeSelectionMode;
+  stateRef: MutableRefObject<SliderState>;
+};
+
+export function useProductRuntimeSequencerControls({
+  productRuntimeMode,
+  stateRef,
+}: ProductRuntimeSequencerControlsOptions): ProductRuntimeSequencerControls {
+  const sequencerControls = useSelectedAudioEngineSequencerControls(productRuntimeMode, stateRef);
 
   return {
     setProductDrumEuclidEvolveConfigs: sequencerControls.setSelectedDrumEuclidEvolveConfigs,

@@ -2,6 +2,18 @@ import type { SliderState } from '../ui/state';
 import type { ProductControlAction } from './ProductControlActions';
 import { nextProductControlRevision } from './ProductStateRevision';
 import {
+  clearProductDrumMorphDualRangeOverrides,
+  clearProductDrumMorphEndpointOverrides,
+  clearProductDrumMorphMidpointOverrides,
+  clearProductDrumMorphOverrides,
+  createInitialDrumMorphOverrideState,
+  removeProductDrumMorphDualRangeOverride,
+  removeProductDrumMorphOverride,
+  setProductDrumMorphDualRangeOverride,
+  setProductDrumMorphOverride,
+  type ProductDrumMorphOverrideState,
+} from './drumMorphOverrideState';
+import {
   clampMorphPosition,
   cloneSliderState,
   createMorphEndpointState,
@@ -11,6 +23,7 @@ import {
   type MorphState,
   type ProductControlReason,
   type ProductControlState,
+  type ProductControlStateRecord,
   type ProductControlTarget,
 } from './ProductControlState';
 
@@ -92,6 +105,21 @@ function midpointEndpointForPosition(position: number): MorphEndpointName | null
   return null;
 }
 
+function commitDrumMorphOverrideState(
+  previous: ProductControlState,
+  nextDrumMorphOverrides: ProductDrumMorphOverrideState,
+): ProductControlState {
+  if (nextDrumMorphOverrides === previous.drumMorphOverrides) {
+    return commitState(previous, previous, 'morph-control-change', false, false);
+  }
+  return commitState(
+    previous,
+    { ...previous, drumMorphOverrides: nextDrumMorphOverrides },
+    'morph-control-change',
+    true,
+  );
+}
+
 export function reduceProductControlState(
   previous: ProductControlState,
   action: ProductControlAction,
@@ -101,11 +129,31 @@ export function reduceProductControlState(
       const rawSliders = {
         ...previous.rawSliders,
         [action.key]: action.value,
-      } as SliderState;
+      } as ProductControlStateRecord;
       return commitState(
         previous,
         { ...previous, rawSliders },
         'ui-control-change',
+        action.triggerCritical ?? true,
+      );
+    }
+    case 'slider/patch': {
+      const rawSliders = {
+        ...previous.rawSliders,
+        ...action.patch,
+      } as ProductControlStateRecord;
+      return commitState(
+        previous,
+        { ...previous, rawSliders },
+        action.reason ?? 'ui-control-change',
+        action.triggerCritical ?? true,
+      );
+    }
+    case 'visible-sliders/commit': {
+      return commitState(
+        previous,
+        { ...previous, rawSliders: cloneSliderState(action.sliders) },
+        action.reason ?? 'ui-control-change',
         action.triggerCritical ?? true,
       );
     }
@@ -118,6 +166,7 @@ export function reduceProductControlState(
           rawSliders,
           synthMorph: resetMorphToPreset(previous.synthMorph, rawSliders, action.presetId),
           drumMorph: resetMorphToPreset(previous.drumMorph, rawSliders, action.presetId),
+          drumMorphOverrides: createInitialDrumMorphOverrideState(),
           overrides: { visibleMidpoint: { synth: {}, drum: {} } },
         },
         'preset-load',
@@ -189,6 +238,60 @@ export function reduceProductControlState(
         true,
       );
     }
+    case 'drum-morph/override-set':
+      return commitDrumMorphOverrideState(
+        previous,
+        setProductDrumMorphOverride(
+          previous.drumMorphOverrides,
+          action.voice,
+          action.param,
+          action.value,
+          action.morphPosition,
+        ),
+      );
+    case 'drum-morph/override-remove':
+      return commitDrumMorphOverrideState(
+        previous,
+        removeProductDrumMorphOverride(previous.drumMorphOverrides, action.voice, action.param),
+      );
+    case 'drum-morph/overrides-clear':
+      return commitDrumMorphOverrideState(
+        previous,
+        clearProductDrumMorphOverrides(previous.drumMorphOverrides, action.voice),
+      );
+    case 'drum-morph/endpoint-clear':
+      return commitDrumMorphOverrideState(
+        previous,
+        clearProductDrumMorphEndpointOverrides(previous.drumMorphOverrides, action.voice, action.endpoint),
+      );
+    case 'drum-morph/midpoint-clear':
+      return commitDrumMorphOverrideState(
+        previous,
+        clearProductDrumMorphMidpointOverrides(previous.drumMorphOverrides, action.voice),
+      );
+    case 'drum-morph/dual-range-set':
+      return commitDrumMorphOverrideState(
+        previous,
+        setProductDrumMorphDualRangeOverride(
+          previous.drumMorphOverrides,
+          action.voice,
+          action.param,
+          action.isDualMode,
+          action.value,
+          action.range,
+          action.endpoint,
+        ),
+      );
+    case 'drum-morph/dual-range-remove':
+      return commitDrumMorphOverrideState(
+        previous,
+        removeProductDrumMorphDualRangeOverride(previous.drumMorphOverrides, action.voice, action.param),
+      );
+    case 'drum-morph/dual-ranges-clear':
+      return commitDrumMorphOverrideState(
+        previous,
+        clearProductDrumMorphDualRangeOverrides(previous.drumMorphOverrides, action.voice),
+      );
     case 'sequencer/edit':
       return commitState(
         previous,
@@ -199,7 +302,7 @@ export function reduceProductControlState(
     case 'transport/edit':
       return commitState(
         previous,
-        { ...previous, rawSliders: { ...previous.rawSliders, ...action.patch } as SliderState },
+        { ...previous, rawSliders: { ...previous.rawSliders, ...action.patch } as ProductControlStateRecord },
         'transport-change',
         action.triggerCritical ?? true,
       );
@@ -214,6 +317,7 @@ export function reduceProductControlState(
           rawSliders,
           synthMorph: action.morph?.synthMorph ?? createMorphState(rawSliders, { keys: previous.synthMorph.keys }),
           drumMorph: action.morph?.drumMorph ?? createMorphState(rawSliders, { keys: previous.drumMorph.keys }),
+          drumMorphOverrides: action.morph?.drumMorphOverrides ?? previous.drumMorphOverrides,
           overrides: action.morph?.overrides ?? previous.overrides,
         },
         'session-restore',

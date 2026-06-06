@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef } from 'react';
 import { referenceAudioEngineDebug } from '../audio/reference/ReferenceAudioEngineDebugCompat';
 import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { ProductSnapshotPatchReason } from '../audio/product/ProductEngineTypes';
-import { commitVisibleSliderStateForProduct } from '../product-control';
+import {
+  KESSHO_PRODUCT_DRUM_PARAM_SPECS,
+  KESSHO_PRODUCT_PAD_PARAM_SPECS,
+} from '../audio/generated/kesshoProductSchema';
+import { commitProductControlPatchForProduct } from '../product-control';
 import { collectChangedStatePatch } from './audioEngineStatePatch';
 import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import type { SliderState } from './state';
@@ -45,6 +49,59 @@ const SEQUENCER_CONTROL_KEY_PATTERNS: readonly RegExp[] = [
   /^chordProgression/,
 ];
 
+const SEQUENCER_TRANSPORT_TRIGGER_KEYS = new Set<string>([
+  'synthEuclideanMasterEnabled',
+  'drumEuclidMasterEnabled',
+]);
+
+const SOURCE_CORE_FULL_SNAPSHOT_KEYS = new Set<string>([
+  'padPresetA',
+  'padPresetB',
+  'padMorph',
+  'pad2PresetA',
+  'pad2PresetB',
+  'pad2Morph',
+  'lead1PresetA',
+  'lead1PresetB',
+  'lead1Morph',
+  'lead1UseCustomAdsr',
+  'lead1Attack',
+  'lead1Decay',
+  'lead1Sustain',
+  'lead1Hold',
+  'lead1Release',
+  'lead1AlgorithmMode',
+  'lead1Distance',
+  'lead1PostLPF',
+  'lead1PostLPFKeyTracking',
+  'lead1StereoWidth',
+  'lead1DiffuseSend',
+  'lead2PresetC',
+  'lead2PresetD',
+  'lead2Morph',
+  'lead2UseCustomAdsr',
+  'lead2Attack',
+  'lead2Decay',
+  'lead2Sustain',
+  'lead2Hold',
+  'lead2Release',
+  'lead2AlgorithmMode',
+  'lead2Distance',
+  'lead2PostLPF',
+  'lead2PostLPFKeyTracking',
+  'lead2StereoWidth',
+  'lead2DiffuseSend',
+  'leadVibratoDepth',
+  'leadVibratoRate',
+  'leadGlide',
+  ...KESSHO_PRODUCT_PAD_PARAM_SPECS.flatMap((spec) => [spec.key, spec.pad2Key]),
+  ...KESSHO_PRODUCT_DRUM_PARAM_SPECS.map((spec) => spec.key),
+]);
+
+const SOURCE_CORE_FULL_SNAPSHOT_KEY_PATTERNS: readonly RegExp[] = [
+  /^lead(?:1Preset[AB]|2Preset[CD])Data$/,
+];
+
 function isFxControlPatchKey(key: string): boolean {
   return FX_CONTROL_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
@@ -61,6 +118,28 @@ function isSequencerControlPatchKey(key: string): boolean {
   return SEQUENCER_CONTROL_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
 
+function isSequencerTransportTriggerPatchKey(key: string): boolean {
+  return SEQUENCER_TRANSPORT_TRIGGER_KEYS.has(key);
+}
+
+function isSourceCoreFullSnapshotPatchKey(key: string): boolean {
+  return SOURCE_CORE_FULL_SNAPSHOT_KEYS.has(key) ||
+    SOURCE_CORE_FULL_SNAPSHOT_KEY_PATTERNS.some((pattern) => pattern.test(key));
+}
+
+function requiresSequencerTransportResolvedCommit(patch: Partial<SliderState>): boolean {
+  return Object.keys(patch).some(isSequencerTransportTriggerPatchKey);
+}
+
+function requiresSourceCoreFullSnapshot(
+  patch: Partial<SliderState>,
+  reason: ProductSnapshotPatchReason,
+  options?: AudioEngineParamUpdateOptions,
+): boolean {
+  if (options?.forceFullSnapshot === true || reason === 'preset-load') return true;
+  return Object.keys(patch).some(isSourceCoreFullSnapshotPatchKey);
+}
+
 function inferProductPatchReason(
   patch: Partial<SliderState>,
   explicitReason?: ProductSnapshotPatchReason,
@@ -75,13 +154,30 @@ function inferProductPatchReason(
 
 function requiresResolvedCommit(
   reason: ProductSnapshotPatchReason,
+  patch: Partial<SliderState>,
   options?: AudioEngineParamUpdateOptions,
 ): boolean {
   return options?.triggerCritical === true
     || options?.immediate === true
     || options?.forceFullSnapshot === true
+    || requiresSequencerTransportResolvedCommit(patch)
+    || requiresSourceCoreFullSnapshot(patch, reason, options)
     || reason === 'preset-load'
     || reason === 'morph-control-change';
+}
+
+function resolvedCommitTriggerCritical(
+  reason: ProductSnapshotPatchReason,
+  forceFullSnapshot: boolean,
+  patch: Partial<SliderState>,
+  options?: AudioEngineParamUpdateOptions,
+): boolean {
+  return options?.triggerCritical ?? (
+    forceFullSnapshot ||
+    requiresSequencerTransportResolvedCommit(patch) ||
+    reason === 'preset-load' ||
+    reason === 'morph-control-change'
+  );
 }
 
 function shouldFlushImmediatelyForResolvedCommit(
@@ -93,6 +189,8 @@ function shouldFlushImmediatelyForResolvedCommit(
   if (!previousState) return false;
   const patch = collectChangedStatePatch(previousState, nextState);
   const reason = inferProductPatchReason(patch, options?.reason);
+  if (requiresSequencerTransportResolvedCommit(patch)) return true;
+  if (requiresSourceCoreFullSnapshot(patch, reason, options)) return true;
   return reason === 'preset-load' || reason === 'morph-control-change';
 }
 
@@ -115,10 +213,12 @@ export function useAudioEngineParamSync(audioEngineRuntimeMode: AudioEngineRunti
       lastAppliedAudioEngineStateRef.current = nextState;
       if (previousState && Object.keys(patch).length === 0) return;
       const reason = inferProductPatchReason(patch, options?.reason);
-      if (requiresResolvedCommit(reason, options)) {
-        void commitVisibleSliderStateForProduct(productEngine, nextState, {
+      const forceFullSnapshot = requiresSourceCoreFullSnapshot(patch, reason, options);
+      if (requiresResolvedCommit(reason, patch, options)) {
+        void commitProductControlPatchForProduct(productEngine, nextState, patch, {
           reason,
-          triggerCritical: options?.triggerCritical ?? true,
+          triggerCritical: resolvedCommitTriggerCritical(reason, forceFullSnapshot, patch, options),
+          forceFullSnapshot,
         }).catch((error) => {
           console.warn('Product resolved-state commit failed:', error);
         });

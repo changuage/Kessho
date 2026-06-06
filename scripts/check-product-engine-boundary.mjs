@@ -33,8 +33,6 @@ const productPortFiles = new Set([
 
 const webAudioBoundaryTypes = ['AudioNode', 'GainNode', 'AnalyserNode', 'AudioContext', 'AudioWorkletNode', 'MediaStream', 'MediaStreamAudioDestinationNode'];
 const migratedSequencerCompatMethodSignatures = [
-  'setDrumEuclidEvolveConfigs(configs:',
-  'setSynthEuclidEvolveConfigs(configs:',
   'setDrumEuclidClockDivs(divs:',
   'setSynthEuclidClockDivs(divs:',
   'setDrumEuclidSwings(swings:',
@@ -44,14 +42,10 @@ const migratedSequencerCompatMethodSignatures = [
   'setDrumPitchSettings(settings:',
   'setSynthPitchSettings(settings:',
   'setSynthPitchBindingModes(modes:',
-  'setDrumStepOverrides(overrides:',
   'setSynthStepOverrides(overrides:',
-  'setSequencerPresetHomeSnapshots(',
   'resetSynthEuclidLaneHome(laneIndex:',
-  'captureSynthEuclidLaneHome(laneIndex:',
   'diceSynthEuclidLane(laneIndex:',
   'resetDrumEuclidLaneHome(laneIndex:',
-  'captureDrumEuclidLaneHome(',
   'diceDrumEuclidLane(laneIndex:',
 ];
 const webProductLiveTriggerHostMethods = [
@@ -460,7 +454,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces({ productRuntimeMode, stateRef })') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineCallbackSurfaces'") ||
@@ -476,7 +470,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces({ productRuntimeMode, stateRef })') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         !source.includes('productRuntimeDebugAnalysers,') ||
@@ -576,7 +570,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces({ productRuntimeMode, stateRef })') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineCallbackSurfaces'") ||
@@ -598,7 +592,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces({ productRuntimeMode, stateRef })') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineControlSurfaces'") ||
@@ -630,7 +624,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces({ productRuntimeMode, stateRef })') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineCallbackSurfaces'") ||
@@ -643,7 +637,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces({ productRuntimeMode, stateRef })') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineControlSurfaces'") ||
@@ -694,7 +688,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         !source.includes("from './ui/useProductRuntimeSurfaces'") ||
-        !source.includes('useProductRuntimeSurfaces(productRuntimeMode)') ||
+        !source.includes('useProductRuntimeSurfaces({ productRuntimeMode, stateRef })') ||
         source.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") ||
         source.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') ||
         source.includes("from './ui/useSelectedAudioEngineControlSurfaces'") ||
@@ -1842,10 +1836,11 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useSelectedAudioEngineManualTriggers.ts') {
       for (const requiredSnippet of [
         'stateRef.current',
-        'commitThenTrigger(productEngine, resolved',
-        'productEngine.auditionSynthNote(note))',
+        'commitProductControlActionThenTrigger(',
+        "type: 'manual-trigger/request'",
+        'productEngine.auditionSynthNote(note),',
         'selectedProductRuntime.auditionSynthNote(note, externalState)',
-        'productEngine.triggerDrumVoice(voice, 0.8))',
+        'productEngine.triggerDrumVoice(voice, 0.8),',
         'selectedProductRuntime.triggerDrumVoice(voice, 0.8, externalState)',
       ]) {
         if (!source.includes(requiredSnippet)) {
@@ -3108,36 +3103,57 @@ for (const rootDir of sourceRoots) {
         }
       }
       for (const [method, snippet] of [
-        ['setDrumEuclidEvolveConfigs', "applyProductSequencerUiPatch({ kind: 'drum-evolve-configs', configs })"],
-        ['setSynthEuclidEvolveConfigs', "applyProductSequencerUiPatch({ kind: 'synth-evolve-configs', configs })"],
-        ['setDrumEuclidClockDivs', "productEngine.enqueueEvents(createCoreProductSequencerClockDivisionEvents('drum', divs))"],
-        ['setSynthEuclidClockDivs', "productEngine.enqueueEvents(createCoreProductSequencerClockDivisionEvents('synth', divs))"],
-        ['setDrumEuclidSwings', "productEngine.enqueueEvents(createCoreProductSequencerSwingEvents('drum', swings))"],
-        ['setSynthEuclidSwings', "productEngine.enqueueEvents(createCoreProductSequencerSwingEvents('synth', swings))"],
-        ['setDrumSubLaneEnabled', "applyProductSequencerUiPatch({ kind: 'drum-sub-lane-enabled', states })"],
-        ['setSynthSubLaneEnabled', "applyProductSequencerUiPatch({ kind: 'synth-sub-lane-enabled', states })"],
-        ['setDrumPitchSettings', "applyProductSequencerUiPatch({ kind: 'drum-pitch-settings', settings })"],
-        ['setSynthPitchSettings', "applyProductSequencerUiPatch({ kind: 'synth-pitch-settings', settings })"],
-        ['setSynthPitchBindingModes', 'productEngine.enqueueEvents(createCoreProductSequencerPitchBindingModeEvents(modes))'],
-        ['setDrumStepOverrides', "applyProductSequencerUiPatch({ kind: 'drum-step-overrides', overrides })"],
-        ['setSynthStepOverrides', "applyProductSequencerUiPatch({ kind: 'synth-step-overrides', overrides })"],
-        ['setSequencerPresetHomeSnapshots', "applyProductSequencerUiPatch({ kind: 'preset-home-snapshots', drumPitchSettings, drumPitchStates, synthPitchStates })"],
-        ['resetSynthEuclidLaneHome', "productEngine.enqueueEvent(createCoreProductSequencerResetHomeEvent('synth', laneIndex))"],
-        ['captureSynthEuclidLaneHome', "applyProductSequencerUiPatch({ kind: 'capture-synth-lane-home', laneIndex, pitchState })"],
-        ['diceSynthEuclidLane', "productEngine.enqueueEvent(createCoreProductSequencerDiceEvent('synth', laneIndex, intensity))"],
-        ['resetDrumEuclidLaneHome', "productEngine.enqueueEvent(createCoreProductSequencerResetHomeEvent('drum', laneIndex))"],
-        ['captureDrumEuclidLaneHome', "applyProductSequencerUiPatch({ kind: 'capture-drum-lane-home', laneIndex, pitchSettings, pitchState })"],
-        ['diceDrumEuclidLane', "productEngine.enqueueEvent(createCoreProductSequencerDiceEvent('drum', laneIndex, intensity))"],
+        ['setDrumEuclidEvolveConfigs', "sequencerPatch('drumEuclidEvolveConfigs', configs)"],
+        ['setSynthEuclidEvolveConfigs', "sequencerPatch('synthEuclidEvolveConfigs', configs)"],
+        ['setDrumEuclidClockDivs', "sequencerPatch('drumEuclidClockDivs', divs)"],
+        ['setSynthEuclidClockDivs', "sequencerPatch('synthEuclidClockDivs', divs)"],
+        ['setDrumEuclidSwings', "sequencerPatch('drumEuclidSwings', swings)"],
+        ['setSynthEuclidSwings', "sequencerPatch('synthEuclidSwings', swings)"],
+        ['setDrumSubLaneEnabled', "sequencerPatch('drumSubLaneEnabled', states)"],
+        ['setSynthSubLaneEnabled', "sequencerPatch('synthSubLaneEnabled', states)"],
+        ['setDrumPitchSettings', "sequencerPatch('drumPitchSettings', settings)"],
+        ['setSynthPitchSettings', "sequencerPatch('synthPitchSettings', settings)"],
+        ['setSynthPitchBindingModes', "sequencerPatch('synthPitchBindingModes', modes)"],
+        ['setDrumStepOverrides', "sequencerPatch('drumStepOverrides', overrides)"],
+        ['setSynthStepOverrides', "sequencerPatch('synthStepOverrides', overrides)"],
+        ['setSequencerPresetHomeSnapshots', "sequencerPatch('sequencerPresetHomeSnapshots'"],
+        ['resetSynthEuclidLaneHome', "sequencerPatch('synthEuclidLaneHomeAction', { type: 'reset', laneIndex })"],
+        ['captureSynthEuclidLaneHome', "sequencerPatch('synthEuclidLaneHomeAction', { type: 'capture', laneIndex, pitchState })"],
+        ['diceSynthEuclidLane', "sequencerPatch('synthEuclidLaneHomeAction', { type: 'dice', laneIndex, intensity })"],
+        ['resetDrumEuclidLaneHome', "sequencerPatch('drumEuclidLaneHomeAction', { type: 'reset', laneIndex })"],
+        ['captureDrumEuclidLaneHome', "sequencerPatch('drumEuclidLaneHomeAction', { type: 'capture', laneIndex, pitchSettings, pitchState })"],
+        ['diceDrumEuclidLane', "sequencerPatch('drumEuclidLaneHomeAction', { type: 'dice', laneIndex, intensity })"],
       ]) {
         if (!source.includes(snippet)) {
-          failures.push(`${relative}: Product Core ${method} must route through ProductEnginePort/productEngine sequencer control APIs`);
+          failures.push(`${relative}: Product Core ${method} must reduce sequencer intent into ProductControl state`);
+        }
+      }
+      for (const directEnqueue of ['productEngine.enqueueEvent(', 'productEngine.enqueueEvents(']) {
+        if (source.includes(directEnqueue)) {
+          failures.push(`${relative}: Product Core sequencer controls must not directly enqueue ProductEvents from UI (${directEnqueue})`);
+        }
+      }
+      for (const token of [
+        'commitProductControlActionForProduct',
+        'commitCoreProductSequencerEvents',
+        "type: 'sequencer/edit'",
+        'productEvents: events',
+      ]) {
+        if (!source.includes(token)) {
+          failures.push(`${relative}: Product Core sequencer controls must route generated ProductEvents through ProductControl resolved commits; missing ${token}`);
         }
       }
       for (const eventFactory of [
         'createCoreProductSequencerClockDivisionEvents',
         'createCoreProductSequencerDiceEvent',
+        'createCoreProductDrumSequencerStepOverrideEvents',
+        'createCoreProductSequencerEvolveConfigEvents',
+        'createCoreProductSequencerLaneHomeCaptureEvent',
         'createCoreProductSequencerPitchBindingModeEvents',
+        'createCoreProductSequencerPitchSettingEvents',
+        'createCoreProductSequencerPresetHomeCaptureEvents',
         'createCoreProductSequencerResetHomeEvent',
+        'createCoreProductSequencerSubLaneEnabledEvents',
         'createCoreProductSequencerSwingEvents',
       ]) {
         if (!source.includes(eventFactory)) {
@@ -3329,9 +3345,9 @@ for (const rootDir of sourceRoots) {
         "import { useProductRuntimeControlSurfaces } from './useProductRuntimeControlSurfaces'",
         "import { useProductRuntimeDebugRuntime } from './useProductRuntimeDebugRuntime'",
         "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
-        'export function useProductRuntimeSurfaces(productRuntimeMode: ProductRuntimeSelectionMode)',
+        'export function useProductRuntimeSurfaces({',
         'useProductRuntimeCallbackSurfaces(productRuntimeMode)',
-        'useProductRuntimeControlSurfaces(productRuntimeMode)',
+        'useProductRuntimeControlSurfaces({ productRuntimeMode, stateRef })',
         'useProductRuntimeDebugRuntime(productRuntimeMode)',
         '...callbackSurfaces',
         '...controlSurfaces',
@@ -3385,10 +3401,10 @@ for (const rootDir of sourceRoots) {
         "import { useProductRuntimeMorphRuntimeSurface } from './useProductRuntimeMorphRuntimeSurface'",
         "import { useProductRuntimeSequencerControls } from './useProductRuntimeSequencerControls'",
         "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
-        'export function useProductRuntimeControlSurfaces(productRuntimeMode: ProductRuntimeSelectionMode)',
+        'export function useProductRuntimeControlSurfaces({',
         'useProductRuntimeModulationRanges(productRuntimeMode)',
         'useProductRuntimeMorphRuntimeSurface(productRuntimeMode)',
-        'useProductRuntimeSequencerControls(productRuntimeMode)',
+        'useProductRuntimeSequencerControls({ productRuntimeMode, stateRef })',
         '...modulationRanges',
         '...morphRuntimeSurface',
         '...sequencerControls',
@@ -3549,7 +3565,7 @@ for (const rootDir of sourceRoots) {
         'type ProductRuntimeSequencerControls = {',
         'setProductDrumEuclidEvolveConfigs: (configs: readonly unknown[]) => void',
         'captureProductSynthEuclidLaneHome: (laneIndex: number, pitchState?: ProductRuntimeSequencerPitchState) => void',
-        'const sequencerControls = useSelectedAudioEngineSequencerControls(productRuntimeMode)',
+        'const sequencerControls = useSelectedAudioEngineSequencerControls(productRuntimeMode, stateRef)',
         'setProductDrumEuclidEvolveConfigs: sequencerControls.setSelectedDrumEuclidEvolveConfigs',
         'captureProductSynthEuclidLaneHome: sequencerControls.captureSelectedSynthEuclidLaneHome',
       ]) {
@@ -3703,7 +3719,6 @@ for (const rootDir of sourceRoots) {
         'coreProductRuntimeHostPort.setDrumEvolveOverridesChangedCallback(callback)',
         'coreProductRuntimeHostPort.setSynthEvolveOverridesChangedCallback(callback)',
         'coreProductRuntimeHostPort.setSynthNoteRangeEvolvedCallback(callback)',
-        'coreProductRuntimeHostPort.applySequencerUiPatch(patch)',
         'coreProductRuntimeHostPort.setPerfMonitorEnabled(enabled)',
         'coreProductRuntimeHostPort.setVisualTelemetryActive(active)',
       ]) {
@@ -3792,7 +3807,6 @@ for (const rootDir of sourceRoots) {
         'common controls should move to generated ProductEvents or dirty-diff paths',
         'do not replace generated events with legacy parameter-update snapshots',
         'Asset lifecycle stays product-shaped here',
-        'sequencer UI edits should continue through',
       ]) {
         if (!source.includes(token)) {
           failures.push(`${relative}: WebProductEngine compatibility burn-down comment missing ${token}`);
@@ -3848,7 +3862,6 @@ for (const rootDir of sourceRoots) {
         "setCoreProductRuntimeCallback('runtimeWalkPositions', callback)",
         "callCoreProductHost<void>('setRuntimeWalkRanges', ranges)",
         'setCoreProductLiveTriggerCallback(callCoreProductHost, name, callback)',
-        'applyCoreProductSequencerUiPatch(callCoreProductHost, patch)',
         "callCoreProductHost<void>('setVisualTelemetryActive', active)",
       ]) {
         if (!source.includes(token)) {
@@ -3880,43 +3893,17 @@ for (const rootDir of sourceRoots) {
         }
       }
     }
-    if (relative === 'src/audio/product/host/CoreProductSequencerUiPatchBridge.ts') {
-      for (const token of [
-        'TODO(product-core-burn-down)',
-        'TODO(product-core-sequencer-events)',
-        'evolve config events for drum/synth lane evolution settings',
-        'sub-lane enabled/config events that carry enabled, step count, direction',
-        'synth/drum step override event batches that carry values, directions',
-        'pitch-settings and home-capture events that update Product-owned home',
-        'ProductSequencerUiPatch',
-        "import type { CoreProductHostMethodCall } from './CoreProductHostInvoker'",
-        "callHost<void>('recordSequencerUiPatch', patch.revision ?? 0, patch.kind)",
-        "apply('setDrumEuclidEvolveConfigs', patch.configs)",
-        "apply('setSynthEuclidEvolveConfigs', patch.configs)",
-        "apply('setDrumSubLaneEnabled', patch.states)",
-        "apply('setSynthSubLaneEnabled', patch.states)",
-        "apply('setDrumPitchSettings', patch.settings)",
-        "apply('setSynthPitchSettings', patch.settings)",
-        "apply('setDrumStepOverrides', patch.overrides)",
-        "apply('setSynthStepOverrides', patch.overrides)",
-        "apply('setSequencerPresetHomeSnapshots', patch.drumPitchSettings, patch.drumPitchStates, patch.synthPitchStates)",
-        "apply('captureSynthEuclidLaneHome', patch.laneIndex, patch.pitchState)",
-        "apply('captureDrumEuclidLaneHome', patch.laneIndex, patch.pitchSettings, patch.pitchState)",
-      ]) {
-        if (!source.includes(token)) {
-          failures.push(`${relative}: Product sequencer UI patch bridge missing ${token}`);
-        }
-      }
-    }
+    if (relative === 'src/audio/product/host/CoreProductSequencerUiPatchBridge.ts') failures.push(`${relative}: Product sequencer UI patch bridge must stay deleted; use generated Product events`);
     if (relative === 'docs/product-core/product-engine-port.md') {
       for (const token of [
-        '## Sequencer UI Patch Burn-down',
-        '`applySequencerUiPatch` is temporary compatibility',
+        '## Sequencer Generated Event Burn-down',
+        '`applySequencerUiPatch` is retired from the ProductEnginePort surface',
         '`product-core-sequencer-evolve-config-events`',
         '`product-core-sequencer-sub-lane-config-events`',
         '`product-core-sequencer-step-override-events`',
         '`product-core-sequencer-pitch-settings-events`',
         '`product-core-sequencer-home-capture-events`',
+        'CoreProductSequencerUiPatchBridge must stay deleted',
         'must not reintroduce individual legacy setter methods on `ProductEnginePort`',
         'force full snapshot reloads for routine sequencer edits',
       ]) {
@@ -3934,7 +3921,6 @@ for (const rootDir of sourceRoots) {
         'triggerDrumVoice(voice: ProductDrumVoice, velocity?: number, externalState?: ProductExternalState): Promise<void>',
         'getDynamicsVisualTelemetry(): ProductDynamicsVisualTelemetry',
         'getCapabilityReport(): ProductRuntimeCapabilityReport',
-        'applySequencerUiPatch(patch: ProductSequencerUiPatch): void',
         'setVisualTelemetryActive(active: boolean): void',
         'setDrumTriggerCallback(callback: ProductDrumTriggerCallback | null): void',
         'setDrumStepPositionCallback(callback: ProductSequencerStepPositionCallback | null): void',

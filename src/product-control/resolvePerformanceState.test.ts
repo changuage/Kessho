@@ -4,10 +4,17 @@ import type { ProductEnginePort } from '../audio/product/ProductEnginePort';
 import type { ProductResolvedStateCommit } from '../audio/product/ProductEngineTypes';
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
 import {
+  commitProductControlActionForProduct,
+  commitProductControlActionThenTrigger,
+  commitProductControlPatchForProduct,
   commitThenTrigger,
   commitVisibleSliderStateForProduct,
   createInitialProductControlState,
+  getProductDrumMorphDualRangeOverrides,
+  interpolateProductDrumMorphDualRanges,
   reduceProductControlState,
+  reduceVisibleSliderPatchForProductCommit,
+  reduceVisibleSliderStateForProductCommit,
   resolvePerformanceState,
   resolveVisibleSliderStateForProductCommit,
   type ProductControlState,
@@ -159,6 +166,65 @@ function replaceEndpoint(
 }
 
 {
+  let next = controlState();
+  const initialRevision = next.revision;
+  next = reduceProductControlState(next, {
+    type: 'drum-morph/override-set',
+    voice: 'kick',
+    param: 'drumKickFreq',
+    value: 72,
+    morphPosition: 0,
+  });
+  assert.equal(next.revision, initialRevision + 1, 'drum morph value override should increment ProductControl revision');
+  assert.equal(
+    next.drumMorphOverrides.valueOverrides.kick.drumKickFreq?.value,
+    72,
+    'drum morph value override should be stored in ProductControl state',
+  );
+  next = reduceProductControlState(next, {
+    type: 'drum-morph/dual-range-set',
+    voice: 'kick',
+    param: 'drumKickFreq',
+    isDualMode: true,
+    value: 72,
+    range: { min: 50, max: 90 },
+    endpoint: 0,
+  });
+  next = reduceProductControlState(next, {
+    type: 'drum-morph/dual-range-set',
+    voice: 'kick',
+    param: 'drumKickFreq',
+    isDualMode: false,
+    value: 100,
+    endpoint: 1,
+  });
+  const interpolated = interpolateProductDrumMorphDualRanges(
+    next.drumMorphOverrides,
+    'kick',
+    0.5,
+    { drumKickFreq: 72 },
+  ).drumKickFreq;
+  assert.deepEqual(
+    interpolated,
+    { isDualMode: true, range: { min: 75, max: 95 } },
+    'drum morph dual ranges should interpolate from ProductControl-owned endpoints',
+  );
+  next = reduceProductControlState(next, {
+    type: 'drum-morph/endpoint-clear',
+    voice: 'kick',
+    endpoint: 0,
+  });
+  assert.equal(
+    next.drumMorphOverrides.valueOverrides.kick.drumKickFreq,
+    undefined,
+    'clearing endpoint 0 should remove value overrides authored at endpoint 0',
+  );
+  const remainingDualRange = getProductDrumMorphDualRangeOverrides(next.drumMorphOverrides, 'kick').drumKickFreq;
+  assert.equal(remainingDualRange?.endpoint0, undefined, 'clearing endpoint 0 should remove endpoint 0 range state');
+  assert.equal(remainingDualRange?.endpoint1?.value, 100, 'clearing endpoint 0 should preserve endpoint 1 range state');
+}
+
+{
   const initial = controlState({ synthLevel: 0.2 });
   const edited = reduceProductControlState(initial, {
     type: 'slider/edit',
@@ -176,14 +242,39 @@ function replaceEndpoint(
 {
   const resolved = resolveVisibleSliderStateForProductCommit(
     stateWith({ synthLevel: 0.64, padMorph: 74 }),
-    { revision: 12, reason: 'morph-control-change', triggerCritical: true },
+    { revision: 12, reason: 'morph-control-change', triggerCritical: true, forceFullSnapshot: true },
   );
   assert.equal(resolved.revision, 12, 'visible slider commit should use the supplied revision');
   assert.equal(resolved.reason, 'morph-control-change', 'visible slider commit should preserve the transaction reason');
   assert.equal(resolved.triggerCritical, true, 'visible slider commit should preserve trigger-critical intent');
+  assert.equal(resolved.applyMode, 'full-snapshot', 'visible slider commit should preserve explicit full-snapshot intent');
   assert.equal(resolved.sliders.synthLevel, 0.64, 'visible slider commit should resolve from visible sliders');
   assert.equal(resolved.productPatch.synthLevel, 0.64, 'visible slider commit patch should match visible sliders');
   assert.equal(resolved.productPatch.padMorph, 74, 'visible morph position should be included in the resolved patch');
+}
+
+{
+  const initial = controlState({ synthLevel: 0.2 });
+  const patched = reduceVisibleSliderPatchForProductCommit(
+    initial,
+    stateWith({ synthLevel: 0.42, padMorph: 33 }),
+    { synthLevel: 0.42, padMorph: 33 },
+    { reason: 'morph-control-change', triggerCritical: true },
+  );
+  assert.equal(patched.revision, initial.revision + 1, 'visible patch transaction should increment revision once');
+  assert.equal(patched.lastReason, 'morph-control-change', 'visible patch transaction should preserve reducer reason');
+  assert.equal(resolvePerformanceState(patched).sliders.synthLevel, 0.42, 'visible patch transaction should persist patched slider state');
+  assert.equal(resolvePerformanceState(patched).sliders.padMorph, 33, 'visible patch transaction should persist patched runtime morph state');
+
+  const committed = reduceVisibleSliderStateForProductCommit(
+    initial,
+    stateWith({ synthLevel: 0.42, padMorph: 33 }),
+    { reason: 'morph-control-change', triggerCritical: true },
+  );
+  const resolved = resolvePerformanceState(committed);
+  assert.equal(committed.revision, initial.revision + 1, 'visible slider transaction should increment revision once');
+  assert.equal(resolved.sliders.synthLevel, 0.42, 'visible slider transaction should persist raw slider state');
+  assert.equal(resolved.sliders.padMorph, 33, 'visible slider transaction should persist visible runtime morph state');
 }
 
 {
@@ -193,14 +284,23 @@ function replaceEndpoint(
     commitResolvedState: async (commit: ProductResolvedStateCommit) => {
       capturedCommits.push(commit);
       committedRevision = commit.revision;
-      return { revision: commit.revision, applied: true, mode: 'full-snapshot' as const };
+      return {
+        revision: commit.revision,
+        applied: true,
+        mode: commit.applyMode === 'full-snapshot' ? 'full-snapshot' as const : 'dirty-diff' as const,
+      };
     },
     getCommittedStateRevision: () => committedRevision,
   } as unknown as ProductEnginePort;
   await commitVisibleSliderStateForProduct(
     fakeProductEngine,
     stateWith({ synthLevel: 0.91 }),
-    { reason: 'preset-load', triggerCritical: true },
+    { reason: 'preset-load', triggerCritical: true, forceFullSnapshot: true },
+  );
+  await commitVisibleSliderStateForProduct(
+    fakeProductEngine,
+    stateWith({ synthLevel: 0.52, padMorph: 25 }),
+    { reason: 'morph-control-change', triggerCritical: true },
   );
   const capturedCommit = capturedCommits[0];
   assert.ok(capturedCommit, 'visible slider commit should call commitResolvedState');
@@ -208,6 +308,161 @@ function replaceEndpoint(
   assert.equal(capturedCommit.reason, 'preset-load', 'visible slider commit should forward preset transaction reason');
   assert.equal(capturedCommit.patch.synthLevel, 0.91, 'visible slider commit should patch the visible slider value');
   assert.equal(capturedCommit.triggerCritical, true, 'visible slider commit should forward trigger-critical flag');
+  assert.equal(capturedCommit.applyMode, 'full-snapshot', 'visible slider commit should forward full-snapshot apply mode');
+  const secondCommit = capturedCommits[1];
+  assert.ok(secondCommit, 'persistent visible slider commit should call commitResolvedState again');
+  assert.equal(secondCommit.revision, 8, 'persistent visible slider commits should continue from the stored reducer revision');
+  assert.equal(secondCommit.reason, 'morph-control-change', 'persistent visible slider commit should forward the second reason');
+  assert.equal(secondCommit.patch.padMorph, 25, 'persistent visible slider commit should include the later visible slider value');
+  assert.equal(secondCommit.applyMode, undefined, 'non-forced visible slider commit should not request a full snapshot');
+}
+
+{
+  let committedRevision = 10;
+  const capturedCommits: ProductResolvedStateCommit[] = [];
+  const fakeProductEngine = {
+    commitResolvedState: async (commit: ProductResolvedStateCommit) => {
+      capturedCommits.push(commit);
+      committedRevision = commit.revision;
+      return { revision: commit.revision, applied: true, mode: 'full-snapshot' as const };
+    },
+    getCommittedStateRevision: () => committedRevision,
+  } as unknown as ProductEnginePort;
+  await commitProductControlPatchForProduct(
+    fakeProductEngine,
+    stateWith({ synthLevel: 0.91, padMorph: 0 }),
+    { synthLevel: 0.91 },
+    { reason: 'ui-control-change', triggerCritical: true },
+  );
+  await commitProductControlPatchForProduct(
+    fakeProductEngine,
+    stateWith({ synthLevel: 0.52, padMorph: 25 }),
+    { padMorph: 25 },
+    { reason: 'morph-control-change', triggerCritical: true },
+  );
+  const firstCommit = capturedCommits[0];
+  assert.ok(firstCommit, 'ProductControl patch commit should call commitResolvedState');
+  assert.equal(firstCommit.revision, 11, 'ProductControl patch commit should allocate the next Product revision');
+  assert.equal(firstCommit.patch.synthLevel, 0.91, 'ProductControl patch commit should apply the patched slider value');
+  const secondCommit = capturedCommits[1];
+  assert.ok(secondCommit, 'ProductControl patch commit should persist reducer state across commits');
+  assert.equal(secondCommit.revision, 12, 'ProductControl patch commits should continue from stored reducer revision');
+  assert.equal(secondCommit.patch.padMorph, 25, 'ProductControl patch commit should apply the later patch value');
+  assert.equal(
+    secondCommit.patch.synthLevel,
+    0.91,
+    'ProductControl patch commit must not accept unpatched nextState keys as authoritative reducer changes',
+  );
+}
+
+{
+  let committedRevision = 40;
+  const capturedCommits: ProductResolvedStateCommit[] = [];
+  const fakeProductEngine = {
+    commitResolvedState: async (commit: ProductResolvedStateCommit) => {
+      capturedCommits.push(commit);
+      committedRevision = commit.revision;
+      return { revision: commit.revision, applied: true, mode: 'full-snapshot' as const };
+    },
+    getCommittedStateRevision: () => committedRevision,
+  } as unknown as ProductEnginePort;
+  await commitProductControlPatchForProduct(
+    fakeProductEngine,
+    stateWith({ lead1PresetB: 'soft_rhodes' }),
+    { lead1PresetB: 'soft_rhodes' },
+    { reason: 'ui-control-change', triggerCritical: true, forceFullSnapshot: true },
+  );
+  const capturedCommit = capturedCommits[0];
+  assert.ok(capturedCommit, 'Lead preset ProductControl commit should call commitResolvedState');
+  assert.equal(capturedCommit.revision, 41, 'Lead preset data hydration should share the preset edit revision');
+  assert.equal(capturedCommit.patch.lead1PresetB, 'soft_rhodes', 'Lead preset commit should include the selected endpoint id');
+  assert.equal(
+    (capturedCommit.patch.lead1PresetBData as Record<string, unknown> | undefined)?.id,
+    'soft_rhodes',
+    'Lead preset commit should carry resolved preset data in the same ProductControl patch',
+  );
+}
+
+{
+  let committedRevision = 30;
+  const capturedCommits: ProductResolvedStateCommit[] = [];
+  const fakeProductEngine = {
+    commitResolvedState: async (commit: ProductResolvedStateCommit) => {
+      capturedCommits.push(commit);
+      committedRevision = commit.revision;
+      return { revision: commit.revision, applied: true, mode: 'event' as const };
+    },
+    getCommittedStateRevision: () => committedRevision,
+  } as unknown as ProductEnginePort;
+  const event = { type: 'sequencer-control-test', value: 7 } as unknown as NonNullable<ProductResolvedStateCommit['events']>[number];
+  await commitProductControlActionForProduct(
+    fakeProductEngine,
+    stateWith({ synthLevel: 0.66 }),
+    {
+      type: 'sequencer/edit',
+      patch: { synthEuclid1Swing: 0.25 },
+      triggerCritical: true,
+    },
+    {
+      reason: 'sequencer-control-change',
+      triggerCritical: true,
+      productEvents: [event],
+    },
+  );
+  await commitProductControlActionForProduct(
+    fakeProductEngine,
+    stateWith({ synthLevel: 0.72 }),
+    {
+      type: 'sequencer/edit',
+      patch: { synthEuclid1Probability: 0.5 },
+      triggerCritical: true,
+    },
+    {
+      reason: 'sequencer-control-change',
+      triggerCritical: true,
+      productEvents: [event],
+    },
+  );
+  const capturedCommit = capturedCommits[0];
+  assert.ok(capturedCommit, 'ProductControl action commit should call commitResolvedState');
+  assert.equal(capturedCommit.revision, 31, 'ProductControl sequencer action should allocate a revision');
+  assert.equal(capturedCommit.reason, 'sequencer-control-change', 'ProductControl sequencer action should forward its reason');
+  assert.equal(capturedCommit.patch.synthLevel, 0.66, 'ProductControl sequencer action should resolve from current visible sliders');
+  assert.deepEqual(capturedCommit.events, [event], 'ProductControl sequencer action should carry generated Product events atomically');
+  const secondCommit = capturedCommits[1];
+  assert.ok(secondCommit, 'ProductControl sequencer action should keep committing subsequent live edits');
+  assert.equal(secondCommit.revision, 33, 'ProductControl sequencer action should commit the final synced reducer revision');
+  assert.equal(
+    secondCommit.patch.synthLevel,
+    0.72,
+    'ProductControl sequencer action must sync changed visible sliders into raw slider state before sequencer edits',
+  );
+}
+
+{
+  const calls: string[] = [];
+  let committedRevision = 20;
+  const capturedCommits: ProductResolvedStateCommit[] = [];
+  const fakeProductEngine = {
+    commitResolvedState: async (commit: ProductResolvedStateCommit) => {
+      capturedCommits.push(commit);
+      calls.push(`commit:${commit.revision}`);
+      committedRevision = commit.revision;
+      return { revision: commit.revision, applied: true, mode: 'full-snapshot' as const };
+    },
+    getCommittedStateRevision: () => committedRevision,
+  } as unknown as ProductEnginePort;
+  await commitProductControlActionThenTrigger(
+    fakeProductEngine,
+    stateWith({ synthLevel: 0.88 }),
+    { type: 'manual-trigger/request', source: 'pad1' },
+    (revision) => calls.push(`trigger:${revision}`),
+  );
+  const capturedCommit = capturedCommits[0];
+  assert.ok(capturedCommit, 'manual trigger helper should commit the visible ProductControl state');
+  assert.equal(capturedCommit.revision, 21, 'first manual trigger should allocate a revision for the visible state sync');
+  assert.equal(capturedCommit.patch.synthLevel, 0.88, 'manual trigger helper should commit current visible sliders before triggering');
+  assert.deepEqual(calls, ['commit:21', 'trigger:21'], 'manual trigger helper should commit before invoking trigger callback');
 }
 
 {

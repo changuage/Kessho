@@ -1,6 +1,5 @@
 import { callCoreProductHost } from './CoreProductHostInvoker';
 import { setCoreProductLiveTriggerCallback } from './CoreProductLiveTriggerCallbackBridge';
-import { applyCoreProductSequencerUiPatch } from './CoreProductSequencerUiPatchBridge';
 import type { DawOutputRoutingConfig } from '../../dawOutputRouting';
 import type { ProductRuntimeCapabilityReport } from '../ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
@@ -25,7 +24,6 @@ import type {
   ProductRuntimeWalkPositionsCallback,
   ProductSequencerEvolveTriggerCallback,
   ProductSequencerStepPositionCallback,
-  ProductSequencerUiPatch,
   ProductSnapshotPatch,
   ProductSnapshotPatchReason,
   ProductSynthNoteRangeEvolvedCallback,
@@ -240,10 +238,6 @@ export const coreProductRuntimeHostPort = {
 
   setSynthNoteRangeEvolvedCallback(callback: ProductSynthNoteRangeEvolvedCallback | null): void {
     setCoreProductRuntimeCallback('synthNoteRangeEvolved', callback);
-  },
-
-  applySequencerUiPatch(patch: ProductSequencerUiPatch): void {
-    applyCoreProductSequencerUiPatch(callCoreProductHost, patch);
   },
 
   setPerfMonitorEnabled(enabled: boolean): void {

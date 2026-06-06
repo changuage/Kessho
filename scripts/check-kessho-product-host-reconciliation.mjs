@@ -11,11 +11,14 @@ const host = readProjectFile('src/audio/coreProductEngineHost.ts');
 const runtimeAdapter = readProjectFile('src/audio/CoreProductRuntimeAdapter.ts');
 const snapshotCoordinator = readProjectFile('src/audio/product/host/CoreProductSnapshotCoordinator.ts');
 const sequencerUiAdapter = readProjectFile('src/audio/product/host/CoreProductSequencerUiAdapter.ts');
+const sequencerHomeCaptureEventBridge = readProjectFile('src/audio/product/host/CoreProductSequencerHomeCaptureEventBridge.ts');
 const sequencerLaneParamBridge = readProjectFile('src/audio/product/host/CoreProductSequencerLaneParamBridge.ts');
+const sequencerPitchSettingEventBridge = readProjectFile('src/audio/product/host/CoreProductSequencerPitchSettingEventBridge.ts');
+const sequencerSubLaneEnabledEventBridge = readProjectFile('src/audio/product/host/CoreProductSequencerSubLaneEnabledEventBridge.ts');
 const sequencerControlEventBridge = readProjectFile('src/audio/product/host/CoreProductSequencerControlEventBridge.ts');
 const sequencerMorphFeedbackBridge = readProjectFile('src/audio/product/host/CoreProductSequencerMorphFeedbackBridge.ts');
 const manualSynthDiceBridge = readProjectFile('src/audio/product/host/CoreProductManualSynthDiceBridge.ts');
-const hostRuntimeSurface = `${host}\n${runtimeAdapter}\n${snapshotCoordinator}\n${sequencerUiAdapter}\n${sequencerLaneParamBridge}\n${sequencerControlEventBridge}\n${sequencerMorphFeedbackBridge}\n${manualSynthDiceBridge}`;
+const hostRuntimeSurface = `${host}\n${runtimeAdapter}\n${snapshotCoordinator}\n${sequencerUiAdapter}\n${sequencerHomeCaptureEventBridge}\n${sequencerLaneParamBridge}\n${sequencerPitchSettingEventBridge}\n${sequencerSubLaneEnabledEventBridge}\n${sequencerControlEventBridge}\n${sequencerMorphFeedbackBridge}\n${manualSynthDiceBridge}`;
 const sequencerTests = readProjectFile('cpp/KesshoCore/tests/ProductSequencerTests.cpp');
 
 function hostMethodBody(name) {
@@ -35,6 +38,156 @@ function assertLiveSequencerMutation(methodName, eventCreator) {
   ]) {
     assert(!body.includes(forbidden), `${methodName}() must not refresh stale adapter snapshots with ${forbidden}`);
   }
+}
+
+function setPitchSettingsViaEvents(harness, sequencer, settings) {
+  for (const event of harness.context.createCoreProductSequencerPitchSettingEvents(sequencer, settings)) {
+    harness.host.postProductEvent(event);
+  }
+}
+
+const SUB_LANE_ENABLED_FIELD_KEYS = [
+  ['pitch', 'midiNote'],
+  ['expression', 'expression'],
+  ['morph', 'morph'],
+  ['distance', 'distance'],
+];
+
+function setSubLaneEnabledViaEvents(harness, sequencer, states) {
+  const context = harness.context;
+  const laneCount = Math.max(4, Math.min(16, Array.isArray(states) ? states.length || 4 : 4));
+  for (let laneIndex = 0; laneIndex < laneCount; laneIndex += 1) {
+    const state = states?.[laneIndex] ?? {};
+    for (const [key, fieldKey] of SUB_LANE_ENABLED_FIELD_KEYS) {
+      harness.host.postProductEvent({
+        eventKind: context.KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep,
+        targetId: context.CORE_PRODUCT_SEQUENCER_IDS[sequencer],
+        index: laneIndex,
+        paramId: context.CORE_PRODUCT_STEP_VALUE_FIELDS[fieldKey] / (1 << 8),
+        value: state[key] === true ? 1 : 0,
+        value2: 1,
+        value3: context.CORE_PRODUCT_SUBLANE_DIRECTIONS.forward,
+        flags: context.CORE_PRODUCT_STEP_TOGGLE_FLAGS.active |
+          context.CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig |
+          context.CORE_PRODUCT_STEP_TOGGLE_FLAGS.subLaneEnabledState,
+      });
+    }
+  }
+}
+
+function setEvolveConfigsViaEvents(harness, sequencer, configs) {
+  const events = harness.context.createCoreProductSequencerEvolveConfigEvents(sequencer, configs);
+  for (const event of events) harness.host.postProductEvent(event);
+}
+
+function setDrumStepOverridesViaEvents(harness, overrides) {
+  const context = harness.context;
+  const emptyLanes = [[], [], [], []];
+  const toggles = context.normalizeSequencerStepToggleOverrides(overrides, emptyLanes);
+  const values = context.normalizeDrumSequencerStepOffsetOverrides(overrides, emptyLanes);
+  const configs = context.normalizeSequencerStepValueConfigs(overrides, emptyLanes, true);
+  const laneCount = Math.max(toggles.length, values.length, configs.length);
+  const baseFlags = context.CORE_PRODUCT_STEP_TOGGLE_FLAGS.stepOverrideState;
+  for (let laneIndex = 0; laneIndex < laneCount; laneIndex += 1) {
+    harness.host.postProductEvent({
+      eventKind: context.KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep,
+      targetId: context.CORE_PRODUCT_SEQUENCER_IDS.drum,
+      index: laneIndex,
+      flags: context.CORE_PRODUCT_STEP_TOGGLE_FLAGS.clearLane | baseFlags,
+    });
+    for (const config of configs[laneIndex] ?? []) {
+      harness.host.postProductEvent({
+        eventKind: context.KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep,
+        targetId: context.CORE_PRODUCT_SEQUENCER_IDS.drum,
+        index: laneIndex,
+        paramId: config.field / (1 << 8),
+        value: 1,
+        value2: config.steps,
+        value3: config.direction,
+        flags: context.CORE_PRODUCT_STEP_TOGGLE_FLAGS.active |
+          context.CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig |
+          baseFlags,
+      });
+    }
+    for (const toggle of toggles[laneIndex] ?? []) {
+      harness.host.postProductEvent({
+        eventKind: context.KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep,
+        targetId: context.CORE_PRODUCT_SEQUENCER_IDS.drum,
+        index: laneIndex,
+        paramId: toggle.step,
+        value: toggle.value ? 1 : 0,
+        flags: context.CORE_PRODUCT_STEP_TOGGLE_FLAGS.active | baseFlags,
+      });
+    }
+    for (const value of values[laneIndex] ?? []) {
+      harness.host.postProductEvent({
+        eventKind: context.KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep,
+        targetId: context.CORE_PRODUCT_SEQUENCER_IDS.drum,
+        index: laneIndex,
+        paramId: value.step,
+        value: value.value,
+        value2: value.value2 ?? 0,
+        flags: context.CORE_PRODUCT_STEP_TOGGLE_FLAGS.active |
+          value.field |
+          (value.range ? context.CORE_PRODUCT_STEP_TOGGLE_FLAGS.rangeValue : 0) |
+          (value.field === context.CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote
+            ? context.CORE_PRODUCT_STEP_TOGGLE_FLAGS.drumPitchOffsetValue
+            : 0) |
+          baseFlags,
+      });
+    }
+  }
+  harness.host.postProductEvent({
+    eventKind: context.KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep,
+    targetId: context.CORE_PRODUCT_SEQUENCER_IDS.drum,
+    index: 0,
+    flags: baseFlags | context.CORE_PRODUCT_STEP_TOGGLE_FLAGS.stepOverrideCommit,
+  });
+}
+
+function captureSequencerLaneHomeViaEvents(harness, sequencer, laneIndex, pitchState, options = {}) {
+  const context = harness.context;
+  const pitchFlags = pitchState && typeof pitchState === 'object'
+    ? context.CORE_PRODUCT_HOME_CAPTURE_FLAGS.hasPitchState |
+      (typeof pitchState.scaleQuantize === 'boolean' ? context.CORE_PRODUCT_HOME_CAPTURE_FLAGS.pitchScaleQuantizeSet : 0) |
+      (pitchState.scaleQuantize === true ? context.CORE_PRODUCT_HOME_CAPTURE_FLAGS.pitchScaleQuantize : 0)
+    : 0;
+  const directionIds = {
+    forward: context.CORE_PRODUCT_SUBLANE_DIRECTIONS.forward,
+    reverse: context.CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse,
+    pingpong: context.CORE_PRODUCT_SUBLANE_DIRECTIONS.pingpong,
+  };
+  harness.host.postProductEvent({
+    eventKind: context.KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep,
+    targetId: context.CORE_PRODUCT_SEQUENCER_IDS[sequencer],
+    index: laneIndex,
+    value: (options.force === false ? 0 : context.CORE_PRODUCT_HOME_CAPTURE_FLAGS.force) |
+      (options.requireContent ? context.CORE_PRODUCT_HOME_CAPTURE_FLAGS.requireContent : 0) |
+      pitchFlags,
+    value2: typeof pitchState?.steps === 'number' ? pitchState.steps : 0,
+    value3: directionIds[pitchState?.direction] ?? -1,
+    flags: context.CORE_PRODUCT_STEP_TOGGLE_FLAGS.homeCaptureState,
+  });
+}
+
+function setSequencerPresetHomeSnapshotsViaEvents(harness, drumPitchStates, synthPitchStates) {
+  const synthLaneCount = Math.max(4, Math.min(16, Array.isArray(synthPitchStates) ? synthPitchStates.length || 4 : 4));
+  for (let laneIndex = 0; laneIndex < synthLaneCount; laneIndex += 1) {
+    captureSequencerLaneHomeViaEvents(harness, 'synth', laneIndex, synthPitchStates?.[laneIndex], { force: true });
+  }
+  const drumLaneCount = Math.max(4, Math.min(16, Array.isArray(drumPitchStates) ? drumPitchStates.length || 4 : 4));
+  for (let laneIndex = 0; laneIndex < drumLaneCount; laneIndex += 1) {
+    captureSequencerLaneHomeViaEvents(harness, 'drum', laneIndex, drumPitchStates?.[laneIndex], { force: true });
+  }
+}
+
+function captureDrumLaneHomeViaEvents(harness, laneIndex, pitchSettings, pitchState) {
+  if (pitchSettings) {
+    const settings = Array.from({ length: laneIndex + 1 }, () => undefined);
+    settings[laneIndex] = pitchSettings;
+    setPitchSettingsViaEvents(harness, 'drum', settings);
+  }
+  captureSequencerLaneHomeViaEvents(harness, 'drum', laneIndex, pitchState, { force: true });
 }
 
 function makeLane(overrides = {}) {
@@ -156,11 +309,12 @@ await runCheckWithReport({
     assertLiveSequencerMutation('diceDrumEuclidLane', 'createCoreProductSequencerDiceEvent(');
     assertLiveSequencerMutation('resetSynthEuclidLaneHome', 'createCoreProductSequencerResetHomeEvent(');
     assertLiveSequencerMutation('resetDrumEuclidLaneHome', 'createCoreProductSequencerResetHomeEvent(');
-    const presetHomeBody = hostMethodBody('setSequencerPresetHomeSnapshots');
     assert(
-      presetHomeBody.includes("this.captureSequencerHomeLanes('synth', false, true, undefined, synthPitchStates)") &&
-        presetHomeBody.includes("this.captureSequencerHomeLanes('drum', false, true, drumPitchSettings, drumPitchStates)"),
-      'preset restore must force-replace Product synth/drum home snapshots with loaded pitch metadata',
+      host.includes('applyCoreProductSequencerHomeCaptureEvent({') &&
+        host.includes('this.captureSequencerHomeLane(captureSequencer, captureLaneIndex, force, requireContent, undefined, pitchState)') &&
+        sequencerHomeCaptureEventBridge.includes('CORE_PRODUCT_HOME_CAPTURE_FLAGS.force') &&
+        sequencerHomeCaptureEventBridge.includes('decodePitchState(event, valueFlags)'),
+      'preset restore and lane-home capture must route through Product home-capture events with force and pitch metadata',
     );
     assert(
       hostMethodBody('captureSequencerHomeLanes').includes('this.captureSequencerHomeLane(sequencer, laneIndex, force, requireContent'),
@@ -264,6 +418,7 @@ await runCheckWithReport({
     const sequencerEventBody = hostMethodBody('handleSequencerUiProductEvent');
     for (const token of [
       'KESSHO_PRODUCT_EVENT_IDS.SetSequencerLane',
+      'applyCoreProductSequencerEvolveConfigEvent({',
       'KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision',
       'KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing',
       'KESSHO_PRODUCT_PARAM_IDS.SequencerLanePitchBindingMode',
@@ -338,11 +493,12 @@ await runCheckWithReport({
     const coordinatorBody = methodBody(snapshotCoordinator, 'applyCoreProductSnapshotUpdate');
     assert(updateBody.includes('previousSnapshot: this.latestProductSnapshot'), 'snapshot update must compare against last host snapshot');
     assert(updateBody.includes('applyCoreProductSnapshotUpdate'), 'snapshot update must delegate through the dirty-diff coordinator');
+    assert(coordinatorBody.includes('if (options.forceFullSnapshot)'), 'snapshot coordinator must expose an explicit forced full-snapshot branch');
     assert(coordinatorBody.includes('buildCoreProductSnapshotDiff(options.previousSnapshot, options.nextSnapshot'), 'snapshot coordinator must try dirty diff first');
     assert(
       coordinatorBody.indexOf('buildCoreProductSnapshotDiff(options.previousSnapshot, options.nextSnapshot') <
-        coordinatorBody.indexOf('return loadCoreProductSnapshot({'),
-      'snapshot update must only full-reload after dirty diff rejection',
+        coordinatorBody.indexOf('return loadSnapshotUpdate(options, options.pendingReloadReason ?? diff.reason ?? options.fallbackReloadReason)'),
+      'non-forced snapshot update must only full-reload after dirty diff rejection',
     );
 
     const loadSnapshotBody = hostMethodBody('afterProductSnapshotLoad');
@@ -351,9 +507,10 @@ await runCheckWithReport({
       'full snapshot reloads must replay reconciled sequencer UI caches after load',
     );
 
-    const patchBody = hostMethodBody('patchAdapterState');
-    assert(patchBody.includes('this.applyLatestSnapshotUpdate();'), 'adapter state patches must enter the dirty diff path');
-    assert(!patchBody.includes('this.loadProductSnapshot('), 'adapter state patches must not bypass dirty diff with direct snapshot loads');
+    assert(
+      !host.includes('patchAdapterState('),
+      'adapter state patches must stay retired; source data changes must enter through resolved ProductControl commits',
+    );
 
     const createSnapshotBody = hostMethodBody('createLatestSnapshot');
     const createHostSnapshotBody = methodBody(snapshotCoordinator, 'createCoreProductHostSnapshot');
@@ -561,10 +718,62 @@ await runCheckWithReport({
       },
     });
 
+    const generatedStepEventHarness = loadCoreProductHostHarness();
+    generatedStepEventHarness.host.runtimeReady = true;
+    const stepEventContext = generatedStepEventHarness.context;
+    generatedStepEventHarness.host.postProductEvent({
+      eventKind: stepEventContext.KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep,
+      targetId: stepEventContext.CORE_PRODUCT_SEQUENCER_IDS.synth,
+      index: 1,
+      flags: stepEventContext.CORE_PRODUCT_STEP_TOGGLE_FLAGS.clearLane,
+    });
+    generatedStepEventHarness.host.postProductEvent({
+      eventKind: stepEventContext.KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep,
+      targetId: stepEventContext.CORE_PRODUCT_SEQUENCER_IDS.synth,
+      index: 1,
+      paramId: stepEventContext.CORE_PRODUCT_STEP_VALUE_FIELDS.expression / (1 << 8),
+      value: 1,
+      value2: 2,
+      value3: stepEventContext.CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse,
+      flags: stepEventContext.CORE_PRODUCT_STEP_TOGGLE_FLAGS.active | stepEventContext.CORE_PRODUCT_STEP_VALUE_FIELDS.subLaneConfig,
+    });
+    generatedStepEventHarness.host.postProductEvent({
+      eventKind: stepEventContext.KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep,
+      targetId: stepEventContext.CORE_PRODUCT_SEQUENCER_IDS.synth,
+      index: 1,
+      paramId: 0,
+      value: 0.73,
+      flags: stepEventContext.CORE_PRODUCT_STEP_TOGGLE_FLAGS.active | stepEventContext.CORE_PRODUCT_STEP_VALUE_FIELDS.expression,
+    });
+    assert(
+      generatedStepEventHarness.host.sequencerCache.synth.configs[1].some((entry) =>
+        entry.field === stepEventContext.CORE_PRODUCT_STEP_VALUE_FIELDS.expression &&
+          entry.steps === 2 &&
+          entry.direction === stepEventContext.CORE_PRODUCT_SUBLANE_DIRECTIONS.reverse) &&
+        generatedStepEventHarness.host.sequencerCache.synth.values[1].some((entry) =>
+          entry.field === stepEventContext.CORE_PRODUCT_STEP_VALUE_FIELDS.expression &&
+            entry.step === 0 &&
+            Math.abs(entry.value - 0.73) < 1.0e-6) &&
+        generatedStepEventHarness.runtime.events.some((event) =>
+          event.eventKind === stepEventContext.KESSHO_PRODUCT_EVENT_IDS.SetSequencerStep &&
+            event.targetId === stepEventContext.CORE_PRODUCT_SEQUENCER_IDS.synth &&
+            event.index === 1),
+      'generated synth step ProductEvents must reconcile host cache and post to live runtime',
+    );
+    addEvidence(report, {
+      id: 'synth-step-override-generated-event-routing',
+      summary: 'Generated synth step ProductEvents update host cache and post to live runtime.',
+      details: {
+        configs: generatedStepEventHarness.host.sequencerCache.synth.configs[1],
+        values: generatedStepEventHarness.host.sequencerCache.synth.values[1],
+        runtimeEvents: generatedStepEventHarness.runtime.events,
+      },
+    });
+
     const stepValueHarness = loadCoreProductHostHarness();
     stepValueHarness.host.runtimeReady = true;
     const { CORE_PRODUCT_STEP_VALUE_FIELDS, CORE_PRODUCT_SUBLANE_DIRECTIONS } = stepValueHarness.context;
-    stepValueHarness.host.setSynthSubLaneEnabled([{ expression: true, morph: true }]);
+    setSubLaneEnabledViaEvents(stepValueHarness, 'synth', [{ expression: true, morph: true }]);
     const beforeSynthStepValueEvents = stepValueHarness.runtime.events.length;
     stepValueHarness.host.setSynthStepOverrides({
       expression: [[0.55, 0.65]],
@@ -614,9 +823,9 @@ await runCheckWithReport({
       'Product host must post live synth ratchet step values into Core',
     );
 
-    stepValueHarness.host.setDrumSubLaneEnabled([{ expression: true, morph: true }]);
+    setSubLaneEnabledViaEvents(stepValueHarness, 'drum', [{ expression: true, morph: true }]);
     const beforeDrumStepValueEvents = stepValueHarness.runtime.events.length;
-    stepValueHarness.host.setDrumStepOverrides({
+    setDrumStepOverridesViaEvents(stepValueHarness, {
       expressionDirection: ['reverse'],
       morph: [[0.1, 0.6]],
       morphDirection: ['pingpong'],
@@ -695,13 +904,13 @@ await runCheckWithReport({
         }),
       ],
     };
-    morphFeedbackHarness.host.setSynthSubLaneEnabled([{ morph: true }, { morph: true }]);
+    setSubLaneEnabledViaEvents(morphFeedbackHarness, 'synth', [{ morph: true }, { morph: true }]);
     morphFeedbackHarness.host.setSynthStepOverrides({
       morph: [[0.2, 0.8], [0.35, 0.65]],
       morphDirection: ['forward', 'reverse'],
     });
-    morphFeedbackHarness.host.setDrumSubLaneEnabled([{ morph: true }]);
-    morphFeedbackHarness.host.setDrumStepOverrides({
+    setSubLaneEnabledViaEvents(morphFeedbackHarness, 'drum', [{ morph: true }]);
+    setDrumStepOverridesViaEvents(morphFeedbackHarness, {
       morph: [[0.1, 0.6]],
       morphDirection: ['pingpong'],
     });
@@ -796,6 +1005,41 @@ await runCheckWithReport({
     harness.host.setSynthNoteRangeEvolvedCallback((laneIndex, noteMin, noteMax) => {
       synthNoteRangePayloads.push({ laneIndex, noteMin, noteMax });
     });
+
+    const beforeEvolveConfigEvents = harness.runtime.events.length;
+    setEvolveConfigsViaEvents(harness, 'synth', [{
+      enabled: true,
+      evolution: 0.6,
+      everyBars: 2,
+      writeOffset: 'auto',
+      mutationMode: 'strict',
+      methods: { pitchWalk: true },
+      enabledSubLanes: ['pitch'],
+    }]);
+    setEvolveConfigsViaEvents(harness, 'drum', [{
+      enabled: true,
+      evolution: 0.75,
+      everyBars: 3,
+      writeOffset: 2,
+      methods: { ghostNotes: true },
+      enabledSubLanes: ['expression', 'distance'],
+    }]);
+    assert(
+      harness.host.adapterState.synthEuclidEvolveConfigs[0]?.enabled === true &&
+        harness.host.adapterState.synthEuclidEvolveConfigs[0]?.mutationMode === 'strict' &&
+        harness.host.adapterState.synthEuclidEvolveConfigs[0]?.methods?.pitchWalk === true &&
+        harness.host.adapterState.synthEuclidEvolveConfigs[0]?.enabledSubLanes?.includes('pitch') &&
+        harness.host.adapterState.drumEuclidEvolveConfigs[0]?.enabled === true &&
+        harness.host.adapterState.drumEuclidEvolveConfigs[0]?.writeOffset === 2 &&
+        harness.host.adapterState.drumEuclidEvolveConfigs[0]?.methods?.ghostNotes === true &&
+        harness.host.adapterState.drumEuclidEvolveConfigs[0]?.enabledSubLanes?.includes('expression') &&
+        harness.host.adapterState.drumEuclidEvolveConfigs[0]?.enabledSubLanes?.includes('distance'),
+      'Product generated evolve config events must update host synth/drum evolve adapter state',
+    );
+    assert(
+      harness.runtime.events.length === beforeEvolveConfigEvents,
+      'Product evolve config events are host-only cache commits and must not post the host param marker to the runtime',
+    );
 
     const directSubLaneEvolve = harness.context.evolveCoreProductSequencerSubLaneConfigs;
     assert(typeof directSubLaneEvolve === 'function', 'Product sub-lane evolve helper must be behavior-testable from the host harness');
@@ -902,8 +1146,8 @@ await runCheckWithReport({
       'Product host stop must clear synth note-range evolve overrides so restart uses current slider state',
     );
     harness.host.latestProductSnapshot = { transport: { bpm: 120 }, synthLanes: [], drumLanes: [{ midiNote: 37 }] };
-    harness.host.setDrumSubLaneEnabled([{ pitch: true }]);
-    harness.host.setDrumStepOverrides({
+    setSubLaneEnabledViaEvents(harness, 'drum', [{ pitch: true }]);
+    setDrumStepOverridesViaEvents(harness, {
       pitch: [[-3, 7]],
       pitchDirection: ['reverse'],
     });
@@ -1024,9 +1268,9 @@ await runCheckWithReport({
     assert(synthEvolveTriggers.includes(1), 'diceSynthEuclidLane() must preserve UI evolve trigger callback behavior');
     assert(drumEvolveTriggers.includes(3), 'diceDrumEuclidLane() must preserve UI evolve trigger callback behavior');
     harness.host.latestSliderState = { synthEuclid1NoteMin: 62, synthEuclid1NoteMax: 74 };
-    harness.host.setSynthPitchSettings([{ mode: 'noteRange', root: 60, scale: 'Major' }]);
+    setPitchSettingsViaEvents(harness, 'synth', [{ mode: 'noteRange', root: 60, scale: 'Major' }]);
     harness.host.setSynthStepOverrides({ expression: [[0.5, 0.6]], expressionDirection: ['forward'] });
-    harness.host.setSequencerPresetHomeSnapshots();
+    setSequencerPresetHomeSnapshotsViaEvents(harness);
     harness.host.synthNoteRangeOverrides[0] = { min: 68, max: 80 };
     harness.host.resetSynthEuclidLaneHome(0);
     assert(harness.host.synthNoteRangeOverrides[0] === null, 'Product synth reset-home must clear the current note-range evolve override');
@@ -1061,15 +1305,15 @@ await runCheckWithReport({
       'Product synth note-range evolve must stay anchored to captured home, not the current evolved override',
     );
     const noteRangeMergeStart = synthNoteRangePayloads.length;
-    harness.host.setSynthPitchSettings([
+    setPitchSettingsViaEvents(harness, 'synth', [
       { mode: 'semitones', root: 60, scale: 'Major' },
       { mode: 'semitones', root: 60, scale: 'Major' },
       { mode: 'semitones', root: 60, scale: 'Major' },
     ]);
     harness.host.setSynthStepOverrides({ expression: [null, null, [0.25, 0.35]], expressionDirection: [null, null, 'forward'] });
-    harness.host.setSequencerPresetHomeSnapshots();
+    setSequencerPresetHomeSnapshotsViaEvents(harness);
     harness.host.latestSliderState = { synthEuclid3NoteMin: 55, synthEuclid3NoteMax: 67 };
-    harness.host.setSynthPitchSettings([
+    setPitchSettingsViaEvents(harness, 'synth', [
       { mode: 'semitones', root: 60, scale: 'Major' },
       { mode: 'semitones', root: 60, scale: 'Major' },
       { mode: 'noteRange', root: 60, scale: 'Major' },
@@ -1128,14 +1372,14 @@ await runCheckWithReport({
       synthLanes: [{ midiNote: 60 }],
       drumLanes: [{ midiNote: 37 }],
     };
-    harness.host.setSynthSubLaneEnabled([{ pitch: true, expression: true }]);
-    harness.host.setDrumSubLaneEnabled([{ pitch: true, expression: true }]);
+    setSubLaneEnabledViaEvents(harness, 'synth', [{ pitch: true, expression: true }]);
+    setSubLaneEnabledViaEvents(harness, 'drum', [{ pitch: true, expression: true }]);
     harness.host.setSynthEuclidSwings([0.11]);
     harness.host.setSynthStepOverrides({ pitch: [[64, 67]], expression: [[0.1, 0.2]], pitchDirection: ['forward'] });
-    harness.host.setSequencerPresetHomeSnapshots();
+    setSequencerPresetHomeSnapshotsViaEvents(harness);
     harness.host.setSynthEuclidSwings([0.22]);
     harness.host.setSynthStepOverrides({ pitch: [[72, 74]], expression: [[0.3, 0.4]], pitchDirection: ['reverse'] });
-    harness.host.setSequencerPresetHomeSnapshots();
+    setSequencerPresetHomeSnapshotsViaEvents(harness);
     harness.host.setSynthStepOverrides({ pitch: [[55, 56]], expression: [[0.8, 0.9]], pitchDirection: ['forward'] });
     const beforeSynthPresetResetEvents = harness.runtime.events.length;
     harness.host.resetSynthEuclidLaneHome(0);
@@ -1150,9 +1394,9 @@ await runCheckWithReport({
         synthPresetResetPayload.expression[0] === 0.3,
       'Product synth reset-home must restore the latest loaded preset home, not a stale edit or previous preset',
     );
-    harness.host.setSynthPitchSettings([{ mode: 'semitones', root: 48, scale: 'Major' }]);
+    setPitchSettingsViaEvents(harness, 'synth', [{ mode: 'semitones', root: 48, scale: 'Major' }]);
     harness.host.setSynthStepOverrides({ pitch: [[60, 64]], expression: [[0.5, 0.6]], pitchDirection: ['forward'] });
-    harness.host.setSequencerPresetHomeSnapshots();
+    setSequencerPresetHomeSnapshotsViaEvents(harness);
     harness.host.setSynthStepOverrides({ pitch: [[55, 56]], expression: [[0.8, 0.9]], pitchDirection: ['reverse'] });
     harness.host.resetSynthEuclidLaneHome(0);
     const synthRootResetPayload = synthOverridePayloads.at(-1)?.payload ?? {};
@@ -1162,9 +1406,9 @@ await runCheckWithReport({
         synthRootResetPayload.pitch[1] === 16,
       'Product synth reset-home must convert Core MIDI back through the current synth pitch root',
     );
-    harness.host.setSynthPitchSettings([{ mode: 'notes', root: 60, scale: 'Major' }]);
+    setPitchSettingsViaEvents(harness, 'synth', [{ mode: 'notes', root: 60, scale: 'Major' }]);
     harness.host.setSynthStepOverrides({ pitch: [[60, 62, 67]], expression: [[0.2, 0.3, 0.4]], pitchDirection: ['forward'] });
-    harness.host.setSequencerPresetHomeSnapshots();
+    setSequencerPresetHomeSnapshotsViaEvents(harness);
     harness.host.setSynthStepOverrides({ pitch: [[55, 56]], expression: [[0.8, 0.9]], pitchDirection: ['reverse'] });
     harness.host.resetSynthEuclidLaneHome(0);
     const synthScaleResetPayload = synthOverridePayloads.at(-1)?.payload ?? {};
@@ -1185,7 +1429,7 @@ await runCheckWithReport({
         event.value === 72),
       'Product synth preset-home reset must replay the forced preset MIDI values to Core',
     );
-    harness.host.setSynthSubLaneEnabled([{ expression: true, morph: true, distance: true }]);
+    setSubLaneEnabledViaEvents(harness, 'synth', [{ expression: true, morph: true, distance: true }]);
     harness.host.setSynthStepOverrides({
       expression: [[0.45, 0.5, 0.55]],
       expressionRanges: [{ min: 0.2, max: 0.7 }],
@@ -1197,7 +1441,7 @@ await runCheckWithReport({
       distanceRanges: [{ min: 0.3, max: 0.8 }],
       distanceDirection: ['forward'],
     });
-    harness.host.setSequencerPresetHomeSnapshots();
+    setSequencerPresetHomeSnapshotsViaEvents(harness);
     harness.host.setSynthStepOverrides({ expression: [[0.9]], expressionDirection: ['forward'] });
     const beforeSynthRangeResetEvents = harness.runtime.events.length;
     harness.host.resetSynthEuclidLaneHome(0);
@@ -1232,12 +1476,12 @@ await runCheckWithReport({
     );
 
     harness.host.setDrumEuclidSwings([0.15]);
-    harness.host.setDrumStepOverrides({ pitch: [[1, 2]], expression: [[0.2, 0.3]], pitchDirection: ['forward'] });
-    harness.host.setSequencerPresetHomeSnapshots();
+    setDrumStepOverridesViaEvents(harness, { pitch: [[1, 2]], expression: [[0.2, 0.3]], pitchDirection: ['forward'] });
+    setSequencerPresetHomeSnapshotsViaEvents(harness);
     harness.host.setDrumEuclidSwings([0.35]);
-    harness.host.setDrumStepOverrides({ pitch: [[5, 6]], expression: [[0.4, 0.5]], pitchDirection: ['reverse'] });
-    harness.host.setSequencerPresetHomeSnapshots();
-    harness.host.setDrumStepOverrides({ pitch: [[9, 10]], expression: [[0.8, 0.9]], pitchDirection: ['forward'] });
+    setDrumStepOverridesViaEvents(harness, { pitch: [[5, 6]], expression: [[0.4, 0.5]], pitchDirection: ['reverse'] });
+    setSequencerPresetHomeSnapshotsViaEvents(harness);
+    setDrumStepOverridesViaEvents(harness, { pitch: [[9, 10]], expression: [[0.8, 0.9]], pitchDirection: ['forward'] });
     harness.host.resetDrumEuclidLaneHome(0);
     const drumPresetResetPayload = drumOverridePayloads.at(-1)?.payload ?? {};
     assert(
@@ -1249,14 +1493,14 @@ await runCheckWithReport({
         drumPresetResetPayload.expression[0][0] === 0.4,
       'Product drum reset-home must restore the latest loaded preset home, not a stale edit or previous preset',
     );
-    harness.host.setSynthSubLaneEnabled([{ pitch: true, expression: true }]);
-    harness.host.setSynthPitchSettings([{ mode: 'semitones', root: 60, scale: 'Major' }]);
+    setSubLaneEnabledViaEvents(harness, 'synth', [{ pitch: true, expression: true }]);
+    setPitchSettingsViaEvents(harness, 'synth', [{ mode: 'semitones', root: 60, scale: 'Major' }]);
     harness.host.setSynthEuclidSwings([0.18]);
     harness.host.setSynthStepOverrides({ pitch: [[61]], expression: [[0.1]], pitchDirection: ['forward'] });
-    harness.host.captureSynthEuclidLaneHome(0, { steps: 1, direction: 'forward', scaleQuantize: false });
+    captureSequencerLaneHomeViaEvents(harness, 'synth', 0, { steps: 1, direction: 'forward', scaleQuantize: false });
     harness.host.setSynthEuclidSwings([0.28]);
     harness.host.setSynthStepOverrides({ pitch: [[72, 74]], expression: [[0.6, 0.7]], pitchDirection: ['reverse'] });
-    harness.host.captureSynthEuclidLaneHome(0, { steps: 8, direction: 'pingpong', scaleQuantize: true });
+    captureSequencerLaneHomeViaEvents(harness, 'synth', 0, { steps: 8, direction: 'pingpong', scaleQuantize: true });
     harness.host.setSynthStepOverrides({ pitch: [[55]], expression: [[0.95]], pitchDirection: ['forward'] });
     harness.host.resetSynthEuclidLaneHome(0);
     const synthSequencePresetResetPayload = synthOverridePayloads.at(-1)?.payload ?? {};
@@ -1273,14 +1517,14 @@ await runCheckWithReport({
         synthSequencePresetResetPayload.expression[0] === 0.6,
       'Product synth sequence preset lane-home capture must make reset restore the loaded sequence preset home',
     );
-    harness.host.setDrumSubLaneEnabled([{ pitch: true, expression: true }]);
+    setSubLaneEnabledViaEvents(harness, 'drum', [{ pitch: true, expression: true }]);
     harness.host.setDrumEuclidSwings([0.19]);
-    harness.host.setDrumStepOverrides({ pitch: [[1]], expression: [[0.1]], pitchDirection: ['forward'] });
-    harness.host.captureDrumEuclidLaneHome(0, { mode: 'semitones', root: 60, scale: 'Major' }, { steps: 1, direction: 'forward', scaleQuantize: false });
+    setDrumStepOverridesViaEvents(harness, { pitch: [[1]], expression: [[0.1]], pitchDirection: ['forward'] });
+    captureDrumLaneHomeViaEvents(harness, 0, { mode: 'semitones', root: 60, scale: 'Major' }, { steps: 1, direction: 'forward', scaleQuantize: false });
     harness.host.setDrumEuclidSwings([0.39]);
-    harness.host.setDrumStepOverrides({ pitch: [[5, 6]], expression: [[0.45, 0.55]], pitchDirection: ['reverse'] });
-    harness.host.captureDrumEuclidLaneHome(0, { mode: 'notes', root: 60, scale: 'Minor' }, { steps: 8, direction: 'pingpong', scaleQuantize: true });
-    harness.host.setDrumStepOverrides({ pitch: [[9]], expression: [[0.95]], pitchDirection: ['forward'] });
+    setDrumStepOverridesViaEvents(harness, { pitch: [[5, 6]], expression: [[0.45, 0.55]], pitchDirection: ['reverse'] });
+    captureDrumLaneHomeViaEvents(harness, 0, { mode: 'notes', root: 60, scale: 'Minor' }, { steps: 8, direction: 'pingpong', scaleQuantize: true });
+    setDrumStepOverridesViaEvents(harness, { pitch: [[9]], expression: [[0.95]], pitchDirection: ['forward'] });
     harness.host.resetDrumEuclidLaneHome(0);
     const drumSequencePresetResetPayload = drumOverridePayloads.at(-1)?.payload ?? {};
     assert(
@@ -1297,8 +1541,8 @@ await runCheckWithReport({
         drumSequencePresetResetPayload.expression[0][0] === 0.45,
       'Product drum sequence preset lane-home capture must make reset restore the loaded sequence preset home',
     );
-    harness.host.setDrumSubLaneEnabled([{ expression: true, morph: true, distance: true }]);
-    harness.host.setDrumStepOverrides({
+    setSubLaneEnabledViaEvents(harness, 'drum', [{ expression: true, morph: true, distance: true }]);
+    setDrumStepOverridesViaEvents(harness, {
       expression: [[0.44, 0.48]],
       expressionRanges: [{ min: 0.25, max: 0.75 }],
       expressionDirection: ['reverse'],
@@ -1309,8 +1553,8 @@ await runCheckWithReport({
       distanceRanges: [{ min: 0.15, max: 0.65 }],
       distanceDirection: ['forward'],
     });
-    harness.host.setSequencerPresetHomeSnapshots();
-    harness.host.setDrumStepOverrides({ expression: [[0.95]], expressionDirection: ['forward'] });
+    setSequencerPresetHomeSnapshotsViaEvents(harness);
+    setDrumStepOverridesViaEvents(harness, { expression: [[0.95]], expressionDirection: ['forward'] });
     harness.host.resetDrumEuclidLaneHome(0);
     const drumRangeResetPayload = drumOverridePayloads.at(-1)?.payload ?? {};
     assert(
@@ -1436,7 +1680,7 @@ await runCheckWithReport({
     );
 
     const drumDicedExpression = [0.12, 0.24, 0.36, 0.46, 0.58, 0.66, 0.72, 0.84];
-    harness.host.setDrumSubLaneEnabled([{}, {}, { expression: true }]);
+    setSubLaneEnabledViaEvents(harness, 'drum', [{}, {}, { expression: true }]);
     harness.host.runtimeReady = true;
     harness.host.postProductEvent({
       eventKind: harness.context.KESSHO_PRODUCT_EVENT_IDS.DiceSequencerLane,
@@ -1444,7 +1688,7 @@ await runCheckWithReport({
       index: 2,
       value: 1,
     });
-    harness.host.setDrumStepOverrides({
+    setDrumStepOverridesViaEvents(harness, {
       expression: [null, null, [0, 0, 0, 0, 0, 0, 0, 0]],
       expressionDirection: [null, null, 'forward'],
     });
@@ -1464,7 +1708,7 @@ await runCheckWithReport({
       }),
       sequencer: 'drum',
     }));
-    harness.host.setDrumStepOverrides({
+    setDrumStepOverridesViaEvents(harness, {
       expression: [null, null, [0, 0, 0, 0, 0, 0, 0, 0]],
       expressionDirection: [null, null, 'forward'],
     });

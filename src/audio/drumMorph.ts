@@ -12,21 +12,22 @@ import {
   getPreset 
 } from './drumPresets';
 import {
-  EndpointState,
-  DualRangeOverride,
-  InterpolatedDualRange,
-  interpolateAllDualRanges,
-  isAtEndpoint0 as sharedIsAtEndpoint0,
-  isAtEndpoint1 as sharedIsAtEndpoint1,
-  setEndpointState,
-  createSingleState,
-  createDualState,
   clampMorphPosition,
   lerp,
   expLerp,
   smoothstep,
   shouldUseExpLerp,
 } from './morphUtils';
+import {
+  getProductDrumMorphOverrides,
+  type ProductDrumMorphDualRangeOverride,
+  type ProductDrumMorphDualRangeOverrides,
+  type ProductDrumMorphEndpointState,
+  type ProductDrumMorphOverride,
+  type ProductDrumMorphOverrides,
+  type ProductDrumMorphOverrideState,
+  type ProductInterpolatedDrumMorphDualRange,
+} from '../product-control/drumMorphOverrideState';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -59,230 +60,12 @@ export interface MorphState {
  * - morphPosition: the morph position when override was set (0-1)
  * - isEndpoint: true if set at exactly 0 or 1, false for mid-morph
  */
-export interface DrumMorphOverride {
-  value: number;
-  morphPosition: number;  // 0-1, where override was set
-  isEndpoint: boolean;    // true if at exactly 0 or 1
-}
-
-// Re-export shared types for backward compatibility
-export type DrumMorphEndpointState = EndpointState;
-export type DrumMorphDualRangeOverride = DualRangeOverride;
-
-// Also re-export InterpolatedDualRange from shared utils
-export type { InterpolatedDualRange } from './morphUtils';
-
-export type DrumMorphOverrides = Record<DrumVoiceType, Record<string, DrumMorphOverride>>;
-export type DrumMorphDualRangeOverrides = Record<DrumVoiceType, Record<string, DrumMorphDualRangeOverride>>;
-
-// Module-level override storage
-const drumMorphOverrides: DrumMorphOverrides = {
-  sub: {},
-  kick: {},
-  click: {},
-  beepHi: {},
-  beepLo: {},
-  noise: {},
-  membrane: {},
-};
-
-// Module-level dual range override storage
-const drumMorphDualRangeOverrides: DrumMorphDualRangeOverrides = {
-  sub: {},
-  kick: {},
-  click: {},
-  beepHi: {},
-  beepLo: {},
-  noise: {},
-  membrane: {},
-};
-
-let drumMorphAuthorityRevision = 0;
-
-function bumpDrumMorphAuthorityRevision(): void {
-  drumMorphAuthorityRevision += 1;
-}
-
-export function getDrumMorphAuthorityRevision(): number {
-  return drumMorphAuthorityRevision;
-}
-
-/**
- * Set a drum morph override for a parameter
- * Called when user changes a drum synth param at any morph position
- */
-export function setDrumMorphOverride(
-  voice: DrumVoiceType,
-  param: string,
-  value: number,
-  morphPosition: number
-): void {
-  // Use shared endpoint detection (0-1 scale)
-  const isEndpoint = sharedIsAtEndpoint0(morphPosition) || sharedIsAtEndpoint1(morphPosition);
-  drumMorphOverrides[voice][param] = { value, morphPosition, isEndpoint };
-  bumpDrumMorphAuthorityRevision();
-}
-
-/**
- * Set a dual range override for a drum morph parameter
- * Called when user toggles dual mode or changes range at an endpoint
- * Stores state at the specified endpoint while preserving the other endpoint's state
- * Uses shared utility for consistent behavior with main morph system
- */
-export function setDrumMorphDualRangeOverride(
-  voice: DrumVoiceType,
-  param: string,
-  isDualMode: boolean,
-  value: number,
-  range: { min: number; max: number } | undefined,
-  endpoint: 0 | 1
-): void {
-  const existing = drumMorphDualRangeOverrides[voice][param];
-  const endpointState: EndpointState = isDualMode 
-    ? createDualState(value, range!.min, range!.max)
-    : createSingleState(value);
-  
-  drumMorphDualRangeOverrides[voice][param] = setEndpointState(existing, endpoint, endpointState);
-  bumpDrumMorphAuthorityRevision();
-}
-
-/**
- * Remove a dual range override
- */
-export function removeDrumMorphDualRangeOverride(
-  voice: DrumVoiceType,
-  param: string
-): void {
-  delete drumMorphDualRangeOverrides[voice][param];
-  bumpDrumMorphAuthorityRevision();
-}
-
-/**
- * Get dual range overrides for a voice
- */
-export function getDrumMorphDualRangeOverrides(voice: DrumVoiceType): Record<string, DrumMorphDualRangeOverride> {
-  return drumMorphDualRangeOverrides[voice];
-}
-
-/**
- * Clear all dual range overrides for a voice
- */
-export function clearDrumMorphDualRangeOverrides(voice: DrumVoiceType): void {
-  drumMorphDualRangeOverrides[voice] = {};
-  bumpDrumMorphAuthorityRevision();
-}
-
-/**
- * Interpolate dual ranges based on morph position
- * Uses shared utility for consistent behavior with main morph system.
- * 
- * @param voice - Drum voice type
- * @param morphPosition - Current morph position (0-1)
- * @param currentValues - Current slider values for fallback
- * @returns Record of param -> interpolated dual state
- */
-export function interpolateDrumMorphDualRanges(
-  voice: DrumVoiceType,
-  morphPosition: number,
-  currentValues: Record<string, number>
-): Record<string, InterpolatedDualRange> {
-  const overrides = drumMorphDualRangeOverrides[voice];
-  // Use shared interpolation logic
-  return interpolateAllDualRanges(overrides, morphPosition, currentValues);
-}
-
-/**
- * Remove a drum morph override (when preset changes)
- */
-export function removeDrumMorphOverride(
-  voice: DrumVoiceType,
-  param: string
-): void {
-  delete drumMorphOverrides[voice][param];
-  bumpDrumMorphAuthorityRevision();
-}
-
-/**
- * Clear all overrides for a voice (when preset A or B changes)
- * Also clears dual range overrides
- */
-export function clearDrumMorphOverrides(voice: DrumVoiceType): void {
-  drumMorphOverrides[voice] = {};
-  drumMorphDualRangeOverrides[voice] = {};
-  bumpDrumMorphAuthorityRevision();
-}
-
-/**
- * Clear only endpoint-specific overrides for a voice
- * Used when a preset changes - only clear overrides for that endpoint
- * @param voice - The drum voice
- * @param endpoint - 0 for preset A changes, 1 for preset B changes
- */
-export function clearDrumMorphEndpointOverrides(voice: DrumVoiceType, endpoint: 0 | 1): void {
-  let changed = false;
-  // Clear value overrides for this endpoint
-  const overrides = drumMorphOverrides[voice];
-  for (const param of Object.keys(overrides)) {
-    const override = overrides[param];
-    if (!override) continue;
-    if (override.isEndpoint) {
-      // Check if this override was set at this endpoint
-      if ((endpoint === 0 && override.morphPosition < 0.01) ||
-          (endpoint === 1 && override.morphPosition > 0.99)) {
-        delete overrides[param];
-        changed = true;
-      }
-    }
-  }
-  
-  // Clear dual range overrides for this endpoint
-  const dualOverrides = drumMorphDualRangeOverrides[voice];
-  for (const param of Object.keys(dualOverrides)) {
-    const dualOverride = dualOverrides[param];
-    if (!dualOverride) continue;
-    if (endpoint === 0 && dualOverride.endpoint0) {
-      delete dualOverride.endpoint0;
-      changed = true;
-      // If no endpoints remain, remove the whole override
-      if (!dualOverride.endpoint1) {
-        delete dualOverrides[param];
-      }
-    } else if (endpoint === 1 && dualOverride.endpoint1) {
-      delete dualOverride.endpoint1;
-      changed = true;
-      // If no endpoints remain, remove the whole override
-      if (!dualOverride.endpoint0) {
-        delete dualOverrides[param];
-      }
-    }
-  }
-  if (changed) bumpDrumMorphAuthorityRevision();
-}
-
-/**
- * Clear mid-morph overrides when reaching an endpoint
- * Keeps endpoint overrides intact (they're permanent edits)
- */
-export function clearMidMorphOverrides(voice: DrumVoiceType): void {
-  let changed = false;
-  const overrides = drumMorphOverrides[voice];
-  for (const param of Object.keys(overrides)) {
-    const override = overrides[param];
-    if (!override) continue;
-    if (!override.isEndpoint) {
-      delete overrides[param];
-      changed = true;
-    }
-  }
-  if (changed) bumpDrumMorphAuthorityRevision();
-}
-
-/**
- * Get all overrides for a voice
- */
-export function getDrumMorphOverrides(voice: DrumVoiceType): Record<string, DrumMorphOverride> {
-  return drumMorphOverrides[voice];
-}
+export type DrumMorphOverride = ProductDrumMorphOverride;
+export type DrumMorphEndpointState = ProductDrumMorphEndpointState;
+export type DrumMorphDualRangeOverride = ProductDrumMorphDualRangeOverride;
+export type InterpolatedDualRange = ProductInterpolatedDrumMorphDualRange;
+export type DrumMorphOverrides = ProductDrumMorphOverrides;
+export type DrumMorphDualRangeOverrides = ProductDrumMorphDualRangeOverrides;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INTERPOLATION HELPERS (re-exported from shared utils)
@@ -358,8 +141,8 @@ export function interpolatePresets(
       const override = overrides[key];
       
       if (override.isEndpoint) {
-        // Endpoint override: replace the appropriate preset value
-        // Use tolerance-based detection matching setDrumMorphOverride
+        // Endpoint override: replace the appropriate preset value.
+        // Use tolerance-based detection matching ProductControl endpoint clears.
         if (override.morphPosition < 0.01) {
           valueA = override.value;
         } else {
@@ -570,7 +353,8 @@ export function getMorphStateFromSliders(
 export function getMorphedParams(
   state: SliderState,
   voice: DrumVoiceType,
-  morphOverride?: number
+  morphOverride?: number,
+  drumMorphOverrideState?: ProductDrumMorphOverrideState,
 ): Record<string, number | string> {
   const morphState = getMorphStateFromSliders(state, voice);
   
@@ -583,8 +367,9 @@ export function getMorphedParams(
   // Use override morph value if provided, otherwise use state value
   const morphValue = morphOverride !== undefined ? morphOverride : morphState.morph;
   
-  // Get user overrides for this voice
-  const overrides = getDrumMorphOverrides(voice);
+  const overrides = drumMorphOverrideState
+    ? getProductDrumMorphOverrides(drumMorphOverrideState, voice)
+    : {};
   
   return interpolatePresets(
     morphState.presetA,
@@ -600,9 +385,10 @@ export function getMorphedParams(
  */
 export function applyMorphToState(
   state: SliderState,
-  voice: DrumVoiceType
+  voice: DrumVoiceType,
+  drumMorphOverrideState?: ProductDrumMorphOverrideState,
 ): Partial<SliderState> {
-  const morphedParams = getMorphedParams(state, voice);
+  const morphedParams = getMorphedParams(state, voice, undefined, drumMorphOverrideState);
   const result: Partial<SliderState> = {};
   
   for (const [key, value] of Object.entries(morphedParams)) {
@@ -615,12 +401,15 @@ export function applyMorphToState(
 /**
  * Get all morphed drum parameters for all voices
  */
-export function getAllMorphedDrumParams(state: SliderState): Partial<SliderState> {
+export function getAllMorphedDrumParams(
+  state: SliderState,
+  drumMorphOverrideState?: ProductDrumMorphOverrideState,
+): Partial<SliderState> {
   const voices: DrumVoiceType[] = ['sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'];
   let result: Partial<SliderState> = {};
   
   for (const voice of voices) {
-    const morphedParams = applyMorphToState(state, voice);
+    const morphedParams = applyMorphToState(state, voice, drumMorphOverrideState);
     result = { ...result, ...morphedParams };
   }
   

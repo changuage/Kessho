@@ -53,14 +53,15 @@ import {
 } from './audio/dawOutputRouting';
 import {
   applyMorphToState,
-  setDrumMorphOverride,
-  clearDrumMorphEndpointOverrides,
-  clearMidMorphOverrides,
-  setDrumMorphDualRangeOverride,
-  getDrumMorphDualRangeOverrides,
-  getDrumMorphAuthorityRevision,
-  interpolateDrumMorphDualRanges,
 } from './audio/drumMorph';
+import {
+  dispatchProductControlActionForProductEngine,
+  getProductControlStateForProductEngine,
+  getProductDrumMorphDualRangeOverrides,
+  interpolateProductDrumMorphDualRanges,
+  type ProductControlAction,
+  type ProductDrumMorphOverrideState,
+} from './product-control';
 
 import { clampMorphPosition, isInMidMorph, isAtEndpoint0, isAtEndpoint1 } from './audio/morphUtils';
 import {
@@ -1821,7 +1822,7 @@ const App: React.FC = () => {
     liveWaveformTelemetryAvailable,
     textureDebugAvailable,
     updateProductReferenceParams,
-  } = useProductRuntimeSurfaces(productRuntimeMode);
+  } = useProductRuntimeSurfaces({ productRuntimeMode, stateRef });
 
   const [engineState, setEngineState] = useState<ProductEngineState>({
     isRunning: false,
@@ -1859,6 +1860,18 @@ const App: React.FC = () => {
     resetProductCofDrift: resetCofDrift,
     updateSelectedReferenceParams: updateProductReferenceParams,
   });
+
+  const getCurrentDrumMorphOverrideState = useCallback(
+    (sourceState: SliderState = stateRef.current): ProductDrumMorphOverrideState =>
+      getProductControlStateForProductEngine(productRuntimePort, sourceState).drumMorphOverrides,
+    [],
+  );
+
+  const dispatchDrumMorphProductControlAction = useCallback(
+    (sourceState: SliderState, action: ProductControlAction): ProductDrumMorphOverrideState =>
+      dispatchProductControlActionForProductEngine(productRuntimePort, sourceState, action).drumMorphOverrides,
+    [],
+  );
 
   const productRuntimeManualTriggers = useProductRuntimeManualTriggers({
     productRuntimeMode,
@@ -2479,9 +2492,23 @@ const App: React.FC = () => {
           const drumMorphPosition = state[drumMorphKey] as number;
           const currentVal = state[key] as number;
           if (isAtEndpoint0(drumMorphPosition)) {
-            setDrumMorphDualRangeOverride(drumVoice, keyStr, false, currentVal, undefined, 0);
+            dispatchDrumMorphProductControlAction(stateRef.current, {
+              type: 'drum-morph/dual-range-set',
+              voice: drumVoice,
+              param: keyStr,
+              isDualMode: false,
+              value: currentVal,
+              endpoint: 0,
+            });
           } else if (isAtEndpoint1(drumMorphPosition)) {
-            setDrumMorphDualRangeOverride(drumVoice, keyStr, false, currentVal, undefined, 1);
+            dispatchDrumMorphProductControlAction(stateRef.current, {
+              type: 'drum-morph/dual-range-set',
+              voice: drumVoice,
+              param: keyStr,
+              isDualMode: false,
+              value: currentVal,
+              endpoint: 1,
+            });
           }
         }
       } else {
@@ -2548,9 +2575,25 @@ const App: React.FC = () => {
             if (drumVoice && drumMorphKey) {
               const drumMorphPosition = state[drumMorphKey] as number;
               if (isAtEndpoint0(drumMorphPosition)) {
-                setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 0);
+                dispatchDrumMorphProductControlAction(stateRef.current, {
+                  type: 'drum-morph/dual-range-set',
+                  voice: drumVoice,
+                  param: keyStr,
+                  isDualMode: true,
+                  value: currentVal,
+                  range: { min, max },
+                  endpoint: 0,
+                });
               } else if (isAtEndpoint1(drumMorphPosition)) {
-                setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 1);
+                dispatchDrumMorphProductControlAction(stateRef.current, {
+                  type: 'drum-morph/dual-range-set',
+                  voice: drumVoice,
+                  param: keyStr,
+                  isDualMode: true,
+                  value: currentVal,
+                  range: { min, max },
+                  endpoint: 1,
+                });
               }
             }
           }
@@ -2584,7 +2627,17 @@ const App: React.FC = () => {
         }
       }
     },
-    [isJourneyPlaying, dualSliderRanges, sliderModes, state, drumMorphKeys, morphPosition, morphPresetA, morphPresetB],
+    [
+      isJourneyPlaying,
+      dualSliderRanges,
+      sliderModes,
+      state,
+      drumMorphKeys,
+      morphPosition,
+      morphPresetA,
+      morphPresetB,
+      dispatchDrumMorphProductControlAction,
+    ],
   );
 
   // Update dual slider range
@@ -2654,13 +2707,29 @@ const App: React.FC = () => {
         const drumMorphPosition = state[drumMorphKey] as number;
         const currentVal = state[key] as number;
         if (isAtEndpoint0(drumMorphPosition)) {
-          setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 0);
+          dispatchDrumMorphProductControlAction(stateRef.current, {
+            type: 'drum-morph/dual-range-set',
+            voice: drumVoice,
+            param: keyStr,
+            isDualMode: true,
+            value: currentVal,
+            range: { min, max },
+            endpoint: 0,
+          });
         } else if (isAtEndpoint1(drumMorphPosition)) {
-          setDrumMorphDualRangeOverride(drumVoice, keyStr, true, currentVal, { min, max }, 1);
+          dispatchDrumMorphProductControlAction(stateRef.current, {
+            type: 'drum-morph/dual-range-set',
+            voice: drumVoice,
+            param: keyStr,
+            isDualMode: true,
+            value: currentVal,
+            range: { min, max },
+            endpoint: 1,
+          });
         }
       }
     },
-    [isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, state],
+    [isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, state, dispatchDrumMorphProductControlAction],
   );
 
   const { cloudSharedPresetToSavedPreset, applyCloudSharedPreset } = useCloudSharedPresetRuntimeSurface({
@@ -2853,7 +2922,6 @@ const App: React.FC = () => {
       // Detect which voice this param belongs to based on prefix
       let drumVoice: DrumPresetVoice | null = null;
       let drumMorphKey: keyof SliderState | null = null;
-      const drumMorphAuthorityRevisionBefore = getDrumMorphAuthorityRevision();
 
       if (keyStr.startsWith('drumSub') && !keyStr.includes('Morph') && !keyStr.includes('Preset')) {
         drumVoice = 'sub';
@@ -2884,6 +2952,7 @@ const App: React.FC = () => {
         // We need to read from the current state, so we'll do this inside setState
       }
 
+      let drumMorphProductControlChanged = false;
       setState((prev) => {
         const preservedEnabledFlags = options?.preserveEnabledFlags
           ? {
@@ -2907,6 +2976,7 @@ const App: React.FC = () => {
             }
           : null;
         let newState = { ...prev, [key]: stateValue };
+        let drumMorphOverrideState = getCurrentDrumMorphOverrideState(prev);
 
         if (key === 'chordProgressionSteps' && typeof stateValue === 'number') {
           const nextSteps = Math.max(1, Math.round(stateValue));
@@ -2927,7 +2997,15 @@ const App: React.FC = () => {
         if (drumVoice && drumMorphKey && isStateNumericValue) {
           const drumMorphPosition = prev[drumMorphKey] as number; // 0-1
           // Store override at current morph position (works for both endpoints and mid-morph)
-          setDrumMorphOverride(drumVoice, keyStr, stateValue as number, drumMorphPosition);
+          const nextDrumMorphOverrideState = dispatchDrumMorphProductControlAction(prev, {
+            type: 'drum-morph/override-set',
+            voice: drumVoice,
+            param: keyStr,
+            value: stateValue as number,
+            morphPosition: drumMorphPosition,
+          });
+          drumMorphProductControlChanged = nextDrumMorphOverrideState !== drumMorphOverrideState;
+          drumMorphOverrideState = nextDrumMorphOverrideState;
         }
 
         const routeKey = key as keyof SliderState;
@@ -3354,21 +3432,41 @@ const App: React.FC = () => {
           // Clear only the relevant endpoint's overrides when a preset changes
           // This preserves user edits at the OTHER endpoint
           if (keyStr.includes('PresetA')) {
-            clearDrumMorphEndpointOverrides(voice, 0);
+            const nextDrumMorphOverrideState = dispatchDrumMorphProductControlAction(prev, {
+              type: 'drum-morph/endpoint-clear',
+              voice,
+              endpoint: 0,
+            });
+            drumMorphProductControlChanged = drumMorphProductControlChanged
+              || nextDrumMorphOverrideState !== drumMorphOverrideState;
+            drumMorphOverrideState = nextDrumMorphOverrideState;
           } else if (keyStr.includes('PresetB')) {
-            clearDrumMorphEndpointOverrides(voice, 1);
+            const nextDrumMorphOverrideState = dispatchDrumMorphProductControlAction(prev, {
+              type: 'drum-morph/endpoint-clear',
+              voice,
+              endpoint: 1,
+            });
+            drumMorphProductControlChanged = drumMorphProductControlChanged
+              || nextDrumMorphOverrideState !== drumMorphOverrideState;
+            drumMorphOverrideState = nextDrumMorphOverrideState;
           }
 
           // Clear mid-morph overrides when reaching an endpoint (keep endpoint edits)
           if (keyStr.includes('Morph') && !keyStr.includes('Auto') && !keyStr.includes('Speed') && !keyStr.includes('Mode')) {
             const morphValue = value as number;
             if (isAtEndpoint0(morphValue) || isAtEndpoint1(morphValue)) {
-              clearMidMorphOverrides(voice);
+              const nextDrumMorphOverrideState = dispatchDrumMorphProductControlAction(prev, {
+                type: 'drum-morph/midpoint-clear',
+                voice,
+              });
+              drumMorphProductControlChanged = drumMorphProductControlChanged
+                || nextDrumMorphOverrideState !== drumMorphOverrideState;
+              drumMorphOverrideState = nextDrumMorphOverrideState;
             }
           }
 
           // Apply morphed preset values to the state
-          const morphedParams = applyMorphToState(newState, voice);
+          const morphedParams = applyMorphToState(newState, voice, drumMorphOverrideState);
           newState = { ...newState, ...morphedParams };
         }
 
@@ -3422,7 +3520,7 @@ const App: React.FC = () => {
           drumVoice
           && drumMorphKey
           && isStateNumericValue
-          && getDrumMorphAuthorityRevision() !== drumMorphAuthorityRevisionBefore
+          && drumMorphProductControlChanged
         ) {
           scheduleProductRuntimeParamUpdate(newState as SliderState, {
             immediate: true,
@@ -3568,7 +3666,8 @@ const App: React.FC = () => {
         // Build current values map for fallback
         // We need to read current state values for the interpolation
         const currentValues: Record<string, number> = {};
-        const overrides = getDrumMorphDualRangeOverrides(morphVoice);
+        const drumMorphOverrideState = getCurrentDrumMorphOverrideState();
+        const overrides = getProductDrumMorphDualRangeOverrides(drumMorphOverrideState, morphVoice);
         for (const param of Object.keys(overrides)) {
           const stateVal = state[param as keyof SliderState];
           if (typeof stateVal === 'number') {
@@ -3577,7 +3676,12 @@ const App: React.FC = () => {
         }
 
         // Get interpolated dual ranges for all params
-        const interpolatedRanges = interpolateDrumMorphDualRanges(morphVoice, morphValue, currentValues);
+        const interpolatedRanges = interpolateProductDrumMorphDualRanges(
+          drumMorphOverrideState,
+          morphVoice,
+          morphValue,
+          currentValues,
+        );
 
         // Apply the interpolated states
         for (const [param, interpState] of Object.entries(interpolatedRanges)) {
@@ -3609,7 +3713,17 @@ const App: React.FC = () => {
         }
       }
     },
-    [isJourneyPlaying, morphPosition, morphPresetA, morphPresetB, state, applyMorphEndpointStatePatch, scheduleProductRuntimeParamUpdate],
+    [
+      isJourneyPlaying,
+      morphPosition,
+      morphPresetA,
+      morphPresetB,
+      state,
+      applyMorphEndpointStatePatch,
+      scheduleProductRuntimeParamUpdate,
+      getCurrentDrumMorphOverrideState,
+      dispatchDrumMorphProductControlAction,
+    ],
   );
 
   // Handle slider change
@@ -5132,12 +5246,13 @@ const App: React.FC = () => {
 
       // Reapply the morphed values using applyMorphToState
       // This recalculates interpolation with the new preset
-      const morphedParams = applyMorphToState(currentState, voice);
+      const drumMorphOverrideState = getCurrentDrumMorphOverrideState(currentState);
+      const morphedParams = applyMorphToState(currentState, voice, drumMorphOverrideState);
       nextResolvedState = { ...currentState, ...morphedParams };
 
       // Also reapply dual range interpolation if there are overrides
       const currentValues: Record<string, number> = {};
-      const overrides = getDrumMorphDualRangeOverrides(voice);
+      const overrides = getProductDrumMorphDualRangeOverrides(drumMorphOverrideState, voice);
       for (const param of Object.keys(overrides)) {
         const stateVal = currentState[param as keyof SliderState];
         if (typeof stateVal === 'number') {
@@ -5145,7 +5260,12 @@ const App: React.FC = () => {
         }
       }
 
-      const interpolatedRanges = interpolateDrumMorphDualRanges(voice, morphValue, currentValues);
+      const interpolatedRanges = interpolateProductDrumMorphDualRanges(
+        drumMorphOverrideState,
+        voice,
+        morphValue,
+        currentValues,
+      );
 
       for (const [param, interpState] of Object.entries(interpolatedRanges)) {
         const paramKey = param as keyof SliderState;
@@ -5181,7 +5301,7 @@ const App: React.FC = () => {
         triggerCritical: true,
       });
     }
-  }, [drumPresetFingerprint, scheduleProductRuntimeParamUpdate, stateRef]); // Only re-run when drum preset names actually change
+  }, [drumPresetFingerprint, scheduleProductRuntimeParamUpdate, stateRef, getCurrentDrumMorphOverrideState]); // Only re-run when drum preset names actually change
 
   const { handleMorphPositionChange } = useMorphPositionRuntimeSurface({
     morphPresetA,

@@ -17,14 +17,10 @@ export type ProductRuntimeDiagnostics = {
   lastTriggeredRevision: number;
   pendingCommitCount: number;
   lastCommitReason: string | null;
-  lastCommitMode: 'event' | 'dirty-diff' | 'full-snapshot' | 'noop' | null;
+  lastCommitMode: 'event' | 'dirty-diff' | 'full-snapshot' | 'deferred' | 'noop' | null;
   triggerBeforeCommitCount: number;
   commitThenTriggerCount: number;
   staleTriggerBlockedCount: number;
-  sequencerUiPatchCount: number;
-  lastSequencerUiPatchKind: string | null;
-  lastSequencerUiRevision: number;
-  lastAppliedSequencerUiRevision: number;
 };
 
 export const EMPTY_PRODUCT_RUNTIME_DIAGNOSTICS: ProductRuntimeDiagnostics = {
@@ -48,8 +44,4 @@ export const EMPTY_PRODUCT_RUNTIME_DIAGNOSTICS: ProductRuntimeDiagnostics = {
   triggerBeforeCommitCount: 0,
   commitThenTriggerCount: 0,
   staleTriggerBlockedCount: 0,
-  sequencerUiPatchCount: 0,
-  lastSequencerUiPatchKind: null,
-  lastSequencerUiRevision: 0,
-  lastAppliedSequencerUiRevision: 0,
 };

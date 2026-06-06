@@ -178,6 +178,29 @@ const HARNESS_PITCH_SCALE_IDS = Object.freeze({
   Arabic: 18,
 });
 
+const HARNESS_PITCH_EXACT_SCALE_IDS = Object.freeze({
+  Harmony: 0,
+  Chromatic: 1,
+  Major: 2,
+  Minor: 3,
+  Dorian: 4,
+  Phrygian: 5,
+  Lydian: 6,
+  Mixolydian: 7,
+  Locrian: 8,
+  Pentatonic: 9,
+  'Min Penta': 10,
+  Blues: 11,
+  'Harmonic Minor': 12,
+  'Melodic Minor': 13,
+  'Whole Tone': 14,
+  Diminished: 15,
+  Augmented: 16,
+  'Hungarian Minor': 17,
+  Japanese: 18,
+  Arabic: 19,
+});
+
 function normalizeHarnessPitchSetting(value) {
   const setting = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const mode = Object.hasOwn(HARNESS_PITCH_MODE_IDS, setting.mode) ? setting.mode : 'semitones';
@@ -216,6 +239,7 @@ function createHarnessSequencerPitchSettingEvents(sequencer, settings) {
         laneIndex,
         paramId: 'SequencerLanePitchScale',
         value: HARNESS_PITCH_SCALE_IDS[pitch.scale],
+        value2: HARNESS_PITCH_EXACT_SCALE_IDS[pitch.scale] ?? 2,
         eventKind: 8,
         targetId: sequencer === 'synth' ? 1 : 2,
         index: laneIndex,
@@ -517,6 +541,7 @@ export function loadCoreProductHostHarness(options = {}) {
     ].includes(key),
     KESSHO_PRODUCT_PARAM_IDS: createParamIds(),
     KESSHO_PRODUCT_EVENT_IDS: {
+      SetSequencerStep: 7,
       SetSequencerLane: 8,
       ResetSequencerLaneHome: 28,
       DiceSequencerLane: 29,
@@ -524,7 +549,27 @@ export function loadCoreProductHostHarness(options = {}) {
     CORE_PRODUCT_MODULATION_RANGE_MODE: { sampleHold: 1, randomWalk: 2 },
     CORE_PRODUCT_SEQUENCER_IDS: { synth: 1, drum: 2 },
     CORE_PRODUCT_SUBLANE_DIRECTIONS: { forward: 0, reverse: 1, pingpong: 2 },
-    CORE_PRODUCT_STEP_TOGGLE_FLAGS: { active: 1, clearLane: 2, clearField: 4, rangeValue: 8 },
+    CORE_PRODUCT_STEP_TOGGLE_FLAGS: {
+      active: 1,
+      clearLane: 2,
+      clearField: 4,
+      rangeValue: 8,
+      subLaneEnabledState: 1 << 24,
+      stepOverrideState: 1 << 25,
+      drumPitchOffsetValue: 1 << 26,
+      stepOverrideCommit: 1 << 27,
+      homeCaptureState: 1 << 28,
+    },
+    CORE_PRODUCT_HOME_CAPTURE_FLAGS: {
+      force: 1,
+      requireContent: 2,
+      hasPitchState: 4,
+      pitchScaleQuantize: 8,
+      pitchScaleQuantizeSet: 16,
+    },
+    CORE_PRODUCT_HOST_PARAM_IDS: {
+      SequencerEvolveConfig: -1000,
+    },
     CORE_PRODUCT_DICE_FLAGS: { trigger: 1, probability: 2, ratchet: 4, midiNote: 8, expression: 16, morph: 32, distance: 64, swing: 128 },
     CORE_PRODUCT_EVOLVE_FLAGS: {
       rotateDrift: 1 << 8,
@@ -540,6 +585,7 @@ export function loadCoreProductHostHarness(options = {}) {
       subLaneLengthDrift: 1 << 18,
       subLaneDirectionFlip: 1 << 19,
       triggerToggle: 1 << 20,
+      evolveConfigSubLaneMask: 1 << 27,
       manualCommit: 1 << 28,
       mutationStrict: 1 << 29,
       rngStream: 1 << 30,
@@ -743,7 +789,7 @@ Object.assign(globalThis, {
   vm.runInNewContext(`${adapterJs}
 Object.assign(globalThis, {
   normalizeClockDivisionValue,
-  normalizeDrumSequencerStepValueOverrides,
+  normalizeDrumSequencerStepOffsetOverrides,
   normalizeSequencerStepToggleOverrides,
   normalizeSequencerStepValueConfigs,
   normalizeSequencerStepValueOverrides,
@@ -765,6 +811,9 @@ Object.assign(globalThis, {
   const pitchSettingsJs = transpileForVm(pitchSettingsSource, resolve(root, pitchSettingsPath));
   vm.runInNewContext(`${pitchSettingsJs}
 Object.assign(globalThis, {
+  normalizeSequencerPitchMode,
+  normalizeSequencerPitchRoot,
+  normalizeSequencerPitchScale,
   normalizeSequencerPitchSettings,
   normalizeSequencerPitchSettingsArray,
 });`, context, { filename: pitchSettingsPath });
@@ -895,9 +944,26 @@ ${sequencerEvolveConfigJs}
 Object.assign(globalThis, {
   diceFlagsForEvolveConfig,
   evolveMethodFlagsForEvolveConfig,
+  evolveMethodsForFlags,
   normalizeEvolveConfigs,
 });
 }`, context, { filename: sequencerEvolveConfigPath });
+
+  const sequencerEvolveConfigEventBridgePath = 'src/audio/product/host/CoreProductSequencerEvolveConfigEventBridge.ts';
+  const sequencerEvolveConfigEventBridgeSource = stripImportsAndExports(readProjectFile(sequencerEvolveConfigEventBridgePath));
+  const sequencerEvolveConfigEventBridgeJs = transpileForVm(sequencerEvolveConfigEventBridgeSource, resolve(root, sequencerEvolveConfigEventBridgePath));
+  vm.runInNewContext(`${sequencerEvolveConfigEventBridgeJs}
+Object.assign(globalThis, {
+  applyCoreProductSequencerEvolveConfigEvent,
+});`, context, { filename: sequencerEvolveConfigEventBridgePath });
+
+  const sequencerEvolveConfigEventsPath = 'src/audio/product/ProductSequencerEvolveConfigEvents.ts';
+  const sequencerEvolveConfigEventsSource = stripImportsAndExports(readProjectFile(sequencerEvolveConfigEventsPath));
+  const sequencerEvolveConfigEventsJs = transpileForVm(sequencerEvolveConfigEventsSource, resolve(root, sequencerEvolveConfigEventsPath));
+  vm.runInNewContext(`${sequencerEvolveConfigEventsJs}
+Object.assign(globalThis, {
+  createCoreProductSequencerEvolveConfigEvents,
+});`, context, { filename: sequencerEvolveConfigEventsPath });
 
   const sequencerEvolveTensionPath = 'src/audio/CoreProductHostSequencerEvolveTension.ts';
   const sequencerEvolveTensionSource = stripImportsAndExports(readProjectFile(sequencerEvolveTensionPath));
@@ -997,6 +1063,14 @@ Object.assign(globalThis, {
   captureCoreProductSequencerHomeLane,
 });`, context, { filename: sequencerHomeCaptureBridgePath });
 
+  const sequencerHomeCaptureEventBridgePath = 'src/audio/product/host/CoreProductSequencerHomeCaptureEventBridge.ts';
+  const sequencerHomeCaptureEventBridgeSource = stripImportsAndExports(readProjectFile(sequencerHomeCaptureEventBridgePath));
+  const sequencerHomeCaptureEventBridgeJs = transpileForVm(sequencerHomeCaptureEventBridgeSource, resolve(root, sequencerHomeCaptureEventBridgePath));
+  vm.runInNewContext(`${sequencerHomeCaptureEventBridgeJs}
+Object.assign(globalThis, {
+  applyCoreProductSequencerHomeCaptureEvent,
+});`, context, { filename: sequencerHomeCaptureEventBridgePath });
+
   const sequencerHomeRestoreBridgePath = 'src/audio/product/host/CoreProductSequencerHomeRestoreBridge.ts';
   const sequencerHomeRestoreBridgeSource = stripImportsAndExports(readProjectFile(sequencerHomeRestoreBridgePath));
   const sequencerHomeRestoreBridgeJs = transpileForVm(sequencerHomeRestoreBridgeSource, resolve(root, sequencerHomeRestoreBridgePath));
@@ -1015,6 +1089,14 @@ Object.assign(globalThis, {
   patchCoreProductSynthPitchBindingModeFromEvent,
 });`, context, { filename: sequencerLaneParamBridgePath });
 
+  const sequencerPitchSettingEventBridgePath = 'src/audio/product/host/CoreProductSequencerPitchSettingEventBridge.ts';
+  const sequencerPitchSettingEventBridgeSource = stripImportsAndExports(readProjectFile(sequencerPitchSettingEventBridgePath));
+  const sequencerPitchSettingEventBridgeJs = transpileForVm(sequencerPitchSettingEventBridgeSource, resolve(root, sequencerPitchSettingEventBridgePath));
+  vm.runInNewContext(`${sequencerPitchSettingEventBridgeJs}
+Object.assign(globalThis, {
+  applyCoreProductSequencerPitchSettingEvent,
+});`, context, { filename: sequencerPitchSettingEventBridgePath });
+
   const sequencerNoteRangeEvolveBridgePath = 'src/audio/product/host/CoreProductSequencerNoteRangeEvolveBridge.ts';
   const sequencerNoteRangeEvolveBridgeSource = stripImportsAndExports(readProjectFile(sequencerNoteRangeEvolveBridgePath));
   const sequencerNoteRangeEvolveBridgeJs = transpileForVm(sequencerNoteRangeEvolveBridgeSource, resolve(root, sequencerNoteRangeEvolveBridgePath));
@@ -1029,8 +1111,31 @@ Object.assign(globalThis, {
   vm.runInNewContext(`${sequencerStepOverrideBridgeJs}
 Object.assign(globalThis, {
   applyCoreProductSynthStepOverrides,
-  applyCoreProductDrumStepOverrides,
 });`, context, { filename: sequencerStepOverrideBridgePath });
+
+  const sequencerStepEventBridgePath = 'src/audio/product/host/CoreProductSequencerStepEventBridge.ts';
+  const sequencerStepEventBridgeSource = stripImportsAndExports(readProjectFile(sequencerStepEventBridgePath));
+  const sequencerStepEventBridgeJs = transpileForVm(sequencerStepEventBridgeSource, resolve(root, sequencerStepEventBridgePath));
+  vm.runInNewContext(`${sequencerStepEventBridgeJs}
+Object.assign(globalThis, {
+  applyCoreProductSequencerStepEventToCache,
+});`, context, { filename: sequencerStepEventBridgePath });
+
+  const sequencerStepOverrideEventBridgePath = 'src/audio/product/host/CoreProductSequencerStepOverrideEventBridge.ts';
+  const sequencerStepOverrideEventBridgeSource = stripImportsAndExports(readProjectFile(sequencerStepOverrideEventBridgePath));
+  const sequencerStepOverrideEventBridgeJs = transpileForVm(sequencerStepOverrideEventBridgeSource, resolve(root, sequencerStepOverrideEventBridgePath));
+  vm.runInNewContext(`${sequencerStepOverrideEventBridgeJs}
+Object.assign(globalThis, {
+  applyCoreProductDrumSequencerStepOverrideEvent,
+});`, context, { filename: sequencerStepOverrideEventBridgePath });
+
+  const sequencerSubLaneEnabledEventBridgePath = 'src/audio/product/host/CoreProductSequencerSubLaneEnabledEventBridge.ts';
+  const sequencerSubLaneEnabledEventBridgeSource = stripImportsAndExports(readProjectFile(sequencerSubLaneEnabledEventBridgePath));
+  const sequencerSubLaneEnabledEventBridgeJs = transpileForVm(sequencerSubLaneEnabledEventBridgeSource, resolve(root, sequencerSubLaneEnabledEventBridgePath));
+  vm.runInNewContext(`${sequencerSubLaneEnabledEventBridgeJs}
+Object.assign(globalThis, {
+  applyCoreProductSequencerSubLaneEnabledEvent,
+});`, context, { filename: sequencerSubLaneEnabledEventBridgePath });
 
   const sequencerStepPostingBridgePath = 'src/audio/product/host/CoreProductSequencerStepPostingBridge.ts';
   const sequencerStepPostingBridgeSource = stripImportsAndExports(readProjectFile(sequencerStepPostingBridgePath));

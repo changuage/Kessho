@@ -43,6 +43,12 @@ export function evolveMethodFlagsForEvolveConfig(config: NormalizedSequencerEvol
   return flags;
 }
 
+export function evolveMethodsForFlags(flags: number, kind?: SequencerEvolveKind): Record<string, boolean> {
+  const methods = defaultEvolveMethods(kind);
+  for (const [method, flag] of EVOLVE_METHOD_FLAGS) methods[method] = (flags & flag) !== 0;
+  return methods;
+}
+
 export function normalizeEvolveConfigs(configs: unknown, kind?: SequencerEvolveKind): NormalizedSequencerEvolveConfig[] {
   const items = Array.isArray(configs) ? configs : [];
   return items.slice(0, 4).map((config) => {

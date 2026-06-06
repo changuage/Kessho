@@ -34,6 +34,7 @@ export type CoreProductSnapshotUpdateOptions = {
   nextSnapshot: CoreProductSnapshot;
   fallbackReloadReason: SnapshotReloadReason;
   pendingReloadReason: SnapshotReloadReason | null;
+  forceFullSnapshot?: boolean;
   forceSequencerClockRejoin?: boolean;
   forwardRngDiffs?: boolean;
   nowMs: () => number;
@@ -88,7 +89,18 @@ export function loadCoreProductSnapshot(options: CoreProductSnapshotLoadOptions)
   };
 }
 
+function loadSnapshotUpdate(options: CoreProductSnapshotUpdateOptions, reason: SnapshotReloadReason): CoreProductFullSnapshotResult {
+  return loadCoreProductSnapshot({
+    runtime: options.runtime, snapshot: options.nextSnapshot, reason,
+    nowMs: options.nowMs, afterLoad: options.afterFullSnapshotLoad,
+  });
+}
+
 export function applyCoreProductSnapshotUpdate(options: CoreProductSnapshotUpdateOptions): CoreProductSnapshotUpdateResult {
+  if (options.forceFullSnapshot) {
+    return loadSnapshotUpdate(options, options.pendingReloadReason ?? options.fallbackReloadReason);
+  }
+
   if (options.previousSnapshot) {
     const diff = buildCoreProductSnapshotDiff(options.previousSnapshot, options.nextSnapshot, {
       forwardRngDiffs: options.forwardRngDiffs,
@@ -100,20 +112,8 @@ export function applyCoreProductSnapshotUpdate(options: CoreProductSnapshotUpdat
       }
       return { mode: 'dirty-diff', snapshot: options.nextSnapshot };
     }
-    return loadCoreProductSnapshot({
-      runtime: options.runtime,
-      snapshot: options.nextSnapshot,
-      reason: options.pendingReloadReason ?? diff.reason ?? options.fallbackReloadReason,
-      nowMs: options.nowMs,
-      afterLoad: options.afterFullSnapshotLoad,
-    });
+    return loadSnapshotUpdate(options, options.pendingReloadReason ?? diff.reason ?? options.fallbackReloadReason);
   }
 
-  return loadCoreProductSnapshot({
-    runtime: options.runtime,
-    snapshot: options.nextSnapshot,
-    reason: 'initial-snapshot',
-    nowMs: options.nowMs,
-    afterLoad: options.afterFullSnapshotLoad,
-  });
+  return loadSnapshotUpdate(options, 'initial-snapshot');
 }

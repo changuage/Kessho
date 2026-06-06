@@ -1,5 +1,9 @@
 import type { ProductSnapshotPatchReason } from '../audio/product/ProductEngineTypes';
 import type { SliderState } from '../ui/state';
+import {
+  createInitialDrumMorphOverrideState,
+  type ProductDrumMorphOverrideState,
+} from './drumMorphOverrideState';
 
 export type ProductControlRevision = number;
 
@@ -13,6 +17,8 @@ export type ProductControlActionReason =
 export type ProductControlReason = ProductSnapshotPatchReason | ProductControlActionReason;
 
 export type ProductControlSliderKey = keyof SliderState;
+export type ProductControlStateRecord = SliderState & Record<string, unknown>;
+export type ProductControlStatePatch = Partial<SliderState> & Record<string, unknown>;
 
 export type MorphEndpointName = 'A' | 'B';
 
@@ -46,9 +52,10 @@ export type ProductControlOverrides = Readonly<{
 }>;
 
 export type ProductControlState = {
-  readonly rawSliders: SliderState;
+  readonly rawSliders: ProductControlStateRecord;
   readonly synthMorph: MorphState;
   readonly drumMorph: MorphState;
+  readonly drumMorphOverrides: ProductDrumMorphOverrideState;
   readonly sequencer: SequencerControlState;
   readonly overrides: ProductControlOverrides;
   readonly revision: ProductControlRevision;
@@ -57,12 +64,12 @@ export type ProductControlState = {
   readonly triggerCritical: boolean;
 };
 
-export function cloneSliderState(sliders: SliderState): SliderState {
-  return { ...sliders };
+export function cloneSliderState(sliders: SliderState | ProductControlStateRecord): ProductControlStateRecord {
+  return { ...sliders } as ProductControlStateRecord;
 }
 
 export function createMorphEndpointState(
-  sliders: SliderState,
+  sliders: SliderState | ProductControlStateRecord,
   presetId: string | null = null,
   label?: string,
 ): MorphEndpointState {
@@ -74,7 +81,7 @@ export function createMorphEndpointState(
 }
 
 export function createMorphState(
-  sliders: SliderState,
+  sliders: SliderState | ProductControlStateRecord,
   options: {
     presetAId?: string | null;
     presetBId?: string | null;
@@ -104,6 +111,7 @@ export function createInitialProductControlState(
     rawSliders,
     synthMorph: createMorphState(rawSliders, { keys: options.synthMorphKeys ?? [] }),
     drumMorph: createMorphState(rawSliders, { keys: options.drumMorphKeys ?? [] }),
+    drumMorphOverrides: createInitialDrumMorphOverrideState(),
     sequencer: { patch: {} },
     overrides: { visibleMidpoint: { synth: {}, drum: {} } },
     revision: options.revision ?? 0,

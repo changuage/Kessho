@@ -118,16 +118,18 @@ assertIncludes(files.get('docs/product-core/native-bridge.md'), 'Native Product 
 assertIncludes(files.get('docs/product-core/native-bridge.md'), 'supports_native_bridge', 'docs/product-core/native-bridge.md', failures);
 assertIncludes(files.get('docs/product-core/native-bridge.md'), 'native-product', 'docs/product-core/native-bridge.md', failures);
 assertIncludes(files.get('docs/product-core/unsupported-surface.md'), 'zero production findings', 'docs/product-core/unsupported-surface.md', failures);
-assertIncludes(files.get('docs/product-core/product-engine-port.md'), '## Sequencer UI Patch Burn-down', 'docs/product-core/product-engine-port.md', failures);
+assertIncludes(files.get('docs/product-core/product-engine-port.md'), '## Sequencer Generated Event Burn-down', 'docs/product-core/product-engine-port.md', failures);
 assertIncludes(files.get('docs/product-core/product-engine-port.md'), '`product-core-sequencer-evolve-config-events`', 'docs/product-core/product-engine-port.md', failures);
 assertIncludes(files.get('docs/product-core/product-engine-port.md'), '`product-core-sequencer-sub-lane-config-events`', 'docs/product-core/product-engine-port.md', failures);
 assertIncludes(files.get('docs/product-core/product-engine-port.md'), '`product-core-sequencer-step-override-events`', 'docs/product-core/product-engine-port.md', failures);
 assertIncludes(files.get('docs/product-core/product-engine-port.md'), '`product-core-sequencer-pitch-settings-events`', 'docs/product-core/product-engine-port.md', failures);
 assertIncludes(files.get('docs/product-core/product-engine-port.md'), '`product-core-sequencer-home-capture-events`', 'docs/product-core/product-engine-port.md', failures);
-assertIncludes(files.get('docs/product-core/architecture.md'), 'The remaining `applySequencerUiPatch` lane is an explicit temporary bridge', 'docs/product-core/architecture.md', failures);
+assertIncludes(files.get('docs/product-core/product-engine-port.md'), 'CoreProductSequencerUiPatchBridge must stay deleted', 'docs/product-core/product-engine-port.md', failures);
+assertIncludes(files.get('docs/product-core/architecture.md'), 'The sequencer UI patch lane is retired from `ProductEnginePort`', 'docs/product-core/architecture.md', failures);
 assertIncludes(files.get('docs/product-core/common-control-routing.md'), 'Common live controls should use Product events, explicit product patches, or dirty-diff paths', 'docs/product-core/common-control-routing.md', failures);
 assertIncludes(files.get('docs/product-core/common-control-routing.md'), 'Allowed full snapshot reasons', 'docs/product-core/common-control-routing.md', failures);
-assertIncludes(files.get('docs/product-core/unsupported-surface.md'), '`applySequencerUiPatch` is not an unsupported production getter or fallback', 'docs/product-core/unsupported-surface.md', failures);
+assertIncludes(files.get('docs/product-core/common-control-routing.md'), 'createCoreProductSequencerEvolveConfigEvents', 'docs/product-core/common-control-routing.md', failures);
+assertIncludes(files.get('docs/product-core/unsupported-surface.md'), '`applySequencerUiPatch` is retired from the Product Core production surface', 'docs/product-core/unsupported-surface.md', failures);
 assertIncludes(files.get('package.json'), '"migration:docs": "node scripts/check-product-docs-freshness.mjs"', 'package.json', failures);
 assertIncludes(files.get('scripts/run-kessho-product-ci.mjs'), "'migration:docs'", 'scripts/run-kessho-product-ci.mjs', failures);
 

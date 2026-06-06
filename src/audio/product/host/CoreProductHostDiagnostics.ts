@@ -16,11 +16,8 @@ export class CoreProductHostDiagnostics {
   private lastCommittedRevision = 0; private lastTriggeredRevision = 0;
   private pendingCommitCount = 0; private triggerBeforeCommitCount = 0;
   private commitThenTriggerCount = 0; private staleTriggerBlockedCount = 0;
-  private sequencerUiPatchCount = 0; private lastSequencerUiRevision = 0;
-  private lastAppliedSequencerUiRevision = 0;
   private lastCommitReason: string | null = null;
   private lastCommitMode: ProductResolvedStateCommitReceipt['mode'] | null = null;
-  private lastSequencerUiPatchKind: string | null = null;
 
   snapshot(): ProductRuntimeDiagnostics {
     return {
@@ -35,9 +32,6 @@ export class CoreProductHostDiagnostics {
       pendingCommitCount: this.pendingCommitCount, lastCommitReason: this.lastCommitReason,
       lastCommitMode: this.lastCommitMode, triggerBeforeCommitCount: this.triggerBeforeCommitCount,
       commitThenTriggerCount: this.commitThenTriggerCount, staleTriggerBlockedCount: this.staleTriggerBlockedCount,
-      sequencerUiPatchCount: this.sequencerUiPatchCount, lastSequencerUiPatchKind: this.lastSequencerUiPatchKind,
-      lastSequencerUiRevision: this.lastSequencerUiRevision,
-      lastAppliedSequencerUiRevision: this.lastAppliedSequencerUiRevision,
     };
   }
 
@@ -56,7 +50,8 @@ export class CoreProductHostDiagnostics {
   }
 
   recordCommitReceipt(receipt: ProductResolvedStateCommitReceipt): void {
-    this.lastCommittedRevision = receipt.revision; this.lastCommitMode = receipt.mode;
+    if (receipt.applied) this.lastCommittedRevision = receipt.revision;
+    this.lastCommitMode = receipt.mode;
     this.pendingCommitCount = Math.max(0, this.pendingCommitCount - 1);
   }
 
@@ -68,11 +63,6 @@ export class CoreProductHostDiagnostics {
   }
 
   recordStaleTriggerBlocked(): void { this.staleTriggerBlockedCount += 1; }
-
-  recordSequencerUiPatch(revision: number, kind: string): void {
-    this.sequencerUiPatchCount += 1; this.lastSequencerUiPatchKind = kind;
-    this.lastSequencerUiRevision = revision; this.lastAppliedSequencerUiRevision = revision;
-  }
 
   reportRuntimeFallback(method: string, classification: RuntimeFallbackClassification): void {
     this.recordUnsupportedMethod(method, classification);

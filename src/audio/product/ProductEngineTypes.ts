@@ -26,18 +26,24 @@ export type ProductSnapshotPatchReason =
 
 export type ProductSnapshotPatch = ProductStateRecord;
 
+export type ProductResolvedStateApplyMode =
+  | 'auto'
+  | 'dirty-diff'
+  | 'full-snapshot';
+
 export type ProductResolvedStateCommit = {
   readonly revision: number;
   readonly reason: ProductSnapshotPatchReason;
   readonly patch: ProductSnapshotPatch;
   readonly events?: readonly ProductEvent[];
   readonly triggerCritical: boolean;
+  readonly applyMode?: ProductResolvedStateApplyMode;
 };
 
 export type ProductResolvedStateCommitReceipt = {
   readonly revision: number;
   readonly applied: boolean;
-  readonly mode: 'event' | 'dirty-diff' | 'full-snapshot' | 'noop';
+  readonly mode: 'event' | 'dirty-diff' | 'full-snapshot' | 'deferred' | 'noop';
 };
 
 export type ProductExternalState = Readonly<object>;
@@ -168,20 +174,6 @@ export type ProductEvolveOverridesCallback = (laneIndex: number, overrides: Prod
 
 export type ProductSynthNoteRangeEvolvedCallback = (laneIndex: number, noteMin: number, noteMax: number) => void;
 
-export type ProductSequencerEvolveConfigs = readonly unknown[];
-
-export type ProductSequencerSubLaneEnabledStates = readonly Record<string, boolean>[];
-
-export type ProductSequencerPitchSettings = unknown;
-
-export type ProductSequencerStepOverrides = unknown;
-
-export type ProductSequencerLanePitchState = Readonly<{
-  steps?: number;
-  direction?: string;
-  scaleQuantize?: boolean;
-}>;
-
 export type ProductEvent = CoreProductEvent;
 
 export type ProductAssetRegistration = DecodedCoreProductAsset;
@@ -220,38 +212,6 @@ export type ProductEngineState = {
 export type ProductTelemetrySnapshot = CoreProductTelemetrySnapshot;
 
 export type ProductSequencerUiState = CoreProductSequencerUiState;
-
-type ProductSequencerUiPatchRevision = {
-  readonly revision?: number;
-};
-
-export type ProductSequencerUiPatch = ProductSequencerUiPatchRevision & (
-  | { kind: 'drum-evolve-configs'; configs: ProductSequencerEvolveConfigs }
-  | { kind: 'synth-evolve-configs'; configs: ProductSequencerEvolveConfigs }
-  | { kind: 'drum-sub-lane-enabled'; states: ProductSequencerSubLaneEnabledStates }
-  | { kind: 'synth-sub-lane-enabled'; states: ProductSequencerSubLaneEnabledStates }
-  | { kind: 'drum-pitch-settings'; settings: ProductSequencerPitchSettings }
-  | { kind: 'synth-pitch-settings'; settings: ProductSequencerPitchSettings }
-  | { kind: 'drum-step-overrides'; overrides: ProductSequencerStepOverrides }
-  | { kind: 'synth-step-overrides'; overrides: ProductSequencerStepOverrides }
-  | {
-      kind: 'preset-home-snapshots';
-      drumPitchSettings?: ProductSequencerPitchSettings;
-      drumPitchStates?: readonly (ProductSequencerLanePitchState | null | undefined)[];
-      synthPitchStates?: readonly (ProductSequencerLanePitchState | null | undefined)[];
-    }
-  | {
-      kind: 'capture-synth-lane-home';
-      laneIndex: number;
-      pitchState?: ProductSequencerLanePitchState | null;
-    }
-  | {
-      kind: 'capture-drum-lane-home';
-      laneIndex: number;
-      pitchSettings?: ProductSequencerPitchSettings;
-      pitchState?: ProductSequencerLanePitchState | null;
-    }
-);
 
 export type ProductEngineStartOptions = {
   initialState?: ProductStateRecord;

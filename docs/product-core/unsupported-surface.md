@@ -20,9 +20,9 @@ Retired recording/platform Web Audio node getters: `getMediaStream`, `getLimiter
 
 Retired visual/debug getters: `getDynamicsAnalyser`, `getDrumVoiceAnalyser`, `getGranularBufferWaveform`, `getLeadMorphedParams`, and `getEarthTextureDebugState`. Product Core UI paths now use Product telemetry-backed alternatives where available and disable the remaining debug/node polling surfaces before host calls can occur.
 
-## Tracked Temporary Compatibility
+## Retired Sequencer Compatibility
 
-`applySequencerUiPatch` is not an unsupported production getter or fallback, but it is a temporary compatibility bridge. It remains only because Product Core does not yet own generated event or dirty-diff paths for sequencer evolve configs, sub-lane config payloads, step override batches, pitch settings, and home-capture cache updates. Do not hide those gaps with full snapshot reloads or new one-off `ProductEnginePort` setters.
+`applySequencerUiPatch` is retired from the Product Core production surface. Sequencer evolve configs, pitch settings, sub-lane enabled edits, synth/drum step override batches, and home-capture cache updates now enter as ProductControl `sequencer/edit` actions with generated Product events attached to the same commit. Host sequencer caches are runtime-derived from those committed events; do not add direct UI writers, full-snapshot shortcuts, or new one-off `ProductEnginePort` setters for them.
 
 ## Current Gates
 

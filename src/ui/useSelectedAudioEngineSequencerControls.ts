@@ -1,15 +1,28 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, type MutableRefObject } from 'react';
 import {
   createCoreProductSequencerClockDivisionEvents,
   createCoreProductSequencerDiceEvent,
   createCoreProductSequencerPitchBindingModeEvents,
+  createCoreProductSequencerPitchSettingEvents,
   createCoreProductSequencerResetHomeEvent,
   createCoreProductSequencerSwingEvents,
 } from '../audio/coreProductEvents';
 import { productEngine } from '../audio/product/ProductEngineProxy';
-import type { ProductSequencerUiPatch } from '../audio/product/ProductEngineTypes';
+import { createCoreProductSequencerSubLaneEnabledEvents } from '../audio/product/ProductSequencerSubLaneEnabledEvents';
+import {
+  createCoreProductSequencerLaneHomeCaptureEvent,
+  createCoreProductSequencerPresetHomeCaptureEvents,
+} from '../audio/product/ProductSequencerHomeCaptureEvents';
+import { createCoreProductSequencerEvolveConfigEvents } from '../audio/product/ProductSequencerEvolveConfigEvents';
+import {
+  createCoreProductDrumSequencerStepOverrideEvents,
+  createCoreProductSynthSequencerStepOverrideEvents,
+} from '../audio/product/ProductSequencerStepOverrideEvents';
 import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime';
+import type { ProductEvent } from '../audio/product/ProductEngineTypes';
+import { commitProductControlActionForProduct } from '../product-control';
+import type { SliderState } from './state';
 
 type SequencerPitchState = { steps?: number; direction?: string; scaleQuantize?: boolean } | null;
 
@@ -40,181 +53,289 @@ type SelectedAudioEngineSequencerControls = {
   diceSelectedDrumEuclidLane: (laneIndex: number, intensity?: number) => void;
 };
 
+function cloneSequencerPatchValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(cloneSequencerPatchValue);
+  if (value && typeof value === 'object') return { ...(value as Record<string, unknown>) };
+  return value;
+}
+
+function sequencerPatch(key: string, value: unknown): Readonly<Record<string, unknown>> {
+  return { [key]: cloneSequencerPatchValue(value) };
+}
+
+function commitCoreProductSequencerEvents(
+  stateRef: MutableRefObject<SliderState> | undefined,
+  patch: Readonly<Record<string, unknown>>,
+  events: readonly ProductEvent[],
+): void {
+  if (!stateRef) {
+    throw new Error('ProductControl sequencer commits require current SliderState');
+  }
+  void commitProductControlActionForProduct(
+    productEngine,
+    stateRef.current,
+    {
+      type: 'sequencer/edit',
+      patch,
+      triggerCritical: true,
+    },
+    {
+      reason: 'sequencer-control-change',
+      triggerCritical: true,
+      productEvents: events,
+    },
+  ).catch((error) => {
+    console.warn('Product sequencer control commit failed:', error);
+  });
+}
+
 export function useSelectedAudioEngineSequencerControls(
   audioEngineRuntimeMode: AudioEngineRuntimeMode,
+  stateRef?: MutableRefObject<SliderState>,
 ): SelectedAudioEngineSequencerControls {
-  const sequencerUiRevisionRef = useRef(0);
-  const applyProductSequencerUiPatch = useCallback((patch: ProductSequencerUiPatch): void => {
-    sequencerUiRevisionRef.current += 1;
-    productEngine.applySequencerUiPatch({
-      ...patch,
-      revision: sequencerUiRevisionRef.current,
-    });
-  }, []);
-
   const setSelectedDrumEuclidEvolveConfigs = useCallback((configs: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      applyProductSequencerUiPatch({ kind: 'drum-evolve-configs', configs });
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('drumEuclidEvolveConfigs', configs),
+        createCoreProductSequencerEvolveConfigEvents('drum', configs),
+      );
       return;
     }
     selectedProductRuntime.setDrumEuclidEvolveConfigs(configs);
-  }, [audioEngineRuntimeMode, applyProductSequencerUiPatch]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const setSelectedSynthEuclidEvolveConfigs = useCallback((configs: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      applyProductSequencerUiPatch({ kind: 'synth-evolve-configs', configs });
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('synthEuclidEvolveConfigs', configs),
+        createCoreProductSequencerEvolveConfigEvents('synth', configs),
+      );
       return;
     }
     selectedProductRuntime.setSynthEuclidEvolveConfigs(configs);
-  }, [audioEngineRuntimeMode, applyProductSequencerUiPatch]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const setSelectedDrumEuclidClockDivs = useCallback((divs: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.enqueueEvents(createCoreProductSequencerClockDivisionEvents('drum', divs));
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('drumEuclidClockDivs', divs),
+        createCoreProductSequencerClockDivisionEvents('drum', divs),
+      );
       return;
     }
     selectedProductRuntime.setDrumEuclidClockDivs(divs);
-  }, [audioEngineRuntimeMode]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const setSelectedSynthEuclidClockDivs = useCallback((divs: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.enqueueEvents(createCoreProductSequencerClockDivisionEvents('synth', divs));
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('synthEuclidClockDivs', divs),
+        createCoreProductSequencerClockDivisionEvents('synth', divs),
+      );
       return;
     }
     selectedProductRuntime.setSynthEuclidClockDivs(divs);
-  }, [audioEngineRuntimeMode]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const setSelectedDrumEuclidSwings = useCallback((swings: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.enqueueEvents(createCoreProductSequencerSwingEvents('drum', swings));
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('drumEuclidSwings', swings),
+        createCoreProductSequencerSwingEvents('drum', swings),
+      );
       return;
     }
     selectedProductRuntime.setDrumEuclidSwings(swings);
-  }, [audioEngineRuntimeMode]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const setSelectedSynthEuclidSwings = useCallback((swings: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.enqueueEvents(createCoreProductSequencerSwingEvents('synth', swings));
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('synthEuclidSwings', swings),
+        createCoreProductSequencerSwingEvents('synth', swings),
+      );
       return;
     }
     selectedProductRuntime.setSynthEuclidSwings(swings);
-  }, [audioEngineRuntimeMode]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
-  // TODO(product-core): route sub-lane and step override edits through ProductEvents once the host can update toggle, value, config, and home caches atomically from event batches.
   const setSelectedDrumSubLaneEnabled = useCallback((states: Record<string, boolean>[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      applyProductSequencerUiPatch({ kind: 'drum-sub-lane-enabled', states });
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('drumSubLaneEnabled', states),
+        createCoreProductSequencerSubLaneEnabledEvents('drum', states),
+      );
       return;
     }
     selectedProductRuntime.setDrumSubLaneEnabled(states);
-  }, [audioEngineRuntimeMode, applyProductSequencerUiPatch]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const setSelectedSynthSubLaneEnabled = useCallback((states: Record<string, boolean>[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      applyProductSequencerUiPatch({ kind: 'synth-sub-lane-enabled', states });
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('synthSubLaneEnabled', states),
+        createCoreProductSequencerSubLaneEnabledEvents('synth', states),
+      );
       return;
     }
     selectedProductRuntime.setSynthSubLaneEnabled(states);
-  }, [audioEngineRuntimeMode, applyProductSequencerUiPatch]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const setSelectedDrumPitchSettings = useCallback((settings: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      applyProductSequencerUiPatch({ kind: 'drum-pitch-settings', settings });
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('drumPitchSettings', settings),
+        createCoreProductSequencerPitchSettingEvents('drum', settings),
+      );
       return;
     }
-  }, [audioEngineRuntimeMode, applyProductSequencerUiPatch]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const setSelectedSynthPitchSettings = useCallback((settings: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      applyProductSequencerUiPatch({ kind: 'synth-pitch-settings', settings });
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('synthPitchSettings', settings),
+        createCoreProductSequencerPitchSettingEvents('synth', settings),
+      );
       return;
     }
     selectedProductRuntime.setSynthPitchSettings(settings);
-  }, [audioEngineRuntimeMode, applyProductSequencerUiPatch]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const setSelectedSynthPitchBindingModes = useCallback((modes: readonly unknown[]): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.enqueueEvents(createCoreProductSequencerPitchBindingModeEvents(modes));
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('synthPitchBindingModes', modes),
+        createCoreProductSequencerPitchBindingModeEvents(modes),
+      );
       return;
     }
     selectedProductRuntime.setSynthPitchBindingModes(modes);
-  }, [audioEngineRuntimeMode]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const setSelectedDrumStepOverrides = useCallback((overrides: unknown): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      applyProductSequencerUiPatch({ kind: 'drum-step-overrides', overrides });
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('drumStepOverrides', overrides),
+        createCoreProductDrumSequencerStepOverrideEvents(overrides),
+      );
       return;
     }
     selectedProductRuntime.setDrumStepOverrides(overrides);
-  }, [audioEngineRuntimeMode, applyProductSequencerUiPatch]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const setSelectedSynthStepOverrides = useCallback((overrides: unknown): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      applyProductSequencerUiPatch({ kind: 'synth-step-overrides', overrides });
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('synthStepOverrides', overrides),
+        createCoreProductSynthSequencerStepOverrideEvents(overrides),
+      );
       return;
     }
     selectedProductRuntime.setSynthStepOverrides(overrides);
-  }, [audioEngineRuntimeMode, applyProductSequencerUiPatch]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const setSelectedSequencerPresetHomeSnapshots = useCallback((
     drumPitchSettings?: readonly unknown[],
     drumPitchStates?: readonly (SequencerPitchState | undefined)[],
     synthPitchStates?: readonly (SequencerPitchState | undefined)[],
   ): void => {
+    void drumPitchSettings;
     if (audioEngineRuntimeMode === 'core-product') {
-      applyProductSequencerUiPatch({ kind: 'preset-home-snapshots', drumPitchSettings, drumPitchStates, synthPitchStates });
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('sequencerPresetHomeSnapshots', { drumPitchStates, synthPitchStates }),
+        createCoreProductSequencerPresetHomeCaptureEvents(drumPitchStates, synthPitchStates),
+      );
       return;
     }
     selectedProductRuntime.setSequencerPresetHomeSnapshots();
-  }, [audioEngineRuntimeMode, applyProductSequencerUiPatch]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const resetSelectedSynthEuclidLaneHome = useCallback((laneIndex: number): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.enqueueEvent(createCoreProductSequencerResetHomeEvent('synth', laneIndex));
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('synthEuclidLaneHomeAction', { type: 'reset', laneIndex }),
+        [createCoreProductSequencerResetHomeEvent('synth', laneIndex)],
+      );
       return;
     }
     selectedProductRuntime.resetSynthEuclidLaneHome(laneIndex);
-  }, [audioEngineRuntimeMode]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const captureSelectedSynthEuclidLaneHome = useCallback((laneIndex: number, pitchState?: SequencerPitchState): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      applyProductSequencerUiPatch({ kind: 'capture-synth-lane-home', laneIndex, pitchState });
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('synthEuclidLaneHomeAction', { type: 'capture', laneIndex, pitchState }),
+        [createCoreProductSequencerLaneHomeCaptureEvent('synth', laneIndex, pitchState)],
+      );
       return;
     }
     selectedProductRuntime.captureSynthEuclidLaneHome(laneIndex, pitchState);
-  }, [audioEngineRuntimeMode, applyProductSequencerUiPatch]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const diceSelectedSynthEuclidLane = useCallback((laneIndex: number, intensity?: number): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.enqueueEvent(createCoreProductSequencerDiceEvent('synth', laneIndex, intensity));
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('synthEuclidLaneHomeAction', { type: 'dice', laneIndex, intensity }),
+        [createCoreProductSequencerDiceEvent('synth', laneIndex, intensity)],
+      );
       return;
     }
     selectedProductRuntime.diceSynthEuclidLane(laneIndex, intensity);
-  }, [audioEngineRuntimeMode]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const resetSelectedDrumEuclidLaneHome = useCallback((laneIndex: number): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.enqueueEvent(createCoreProductSequencerResetHomeEvent('drum', laneIndex));
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('drumEuclidLaneHomeAction', { type: 'reset', laneIndex }),
+        [createCoreProductSequencerResetHomeEvent('drum', laneIndex)],
+      );
       return;
     }
     selectedProductRuntime.resetDrumEuclidLaneHome(laneIndex);
-  }, [audioEngineRuntimeMode]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const captureSelectedDrumEuclidLaneHome = useCallback((laneIndex: number, pitchSettings?: unknown, pitchState?: SequencerPitchState): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      applyProductSequencerUiPatch({ kind: 'capture-drum-lane-home', laneIndex, pitchSettings, pitchState });
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('drumEuclidLaneHomeAction', { type: 'capture', laneIndex, pitchSettings, pitchState }),
+        [createCoreProductSequencerLaneHomeCaptureEvent('drum', laneIndex, pitchState)],
+      );
       return;
     }
     selectedProductRuntime.captureDrumEuclidLaneHome(laneIndex, pitchSettings, pitchState);
-  }, [audioEngineRuntimeMode, applyProductSequencerUiPatch]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   const diceSelectedDrumEuclidLane = useCallback((laneIndex: number, intensity?: number): void => {
     if (audioEngineRuntimeMode === 'core-product') {
-      productEngine.enqueueEvent(createCoreProductSequencerDiceEvent('drum', laneIndex, intensity));
+      commitCoreProductSequencerEvents(
+        stateRef,
+        sequencerPatch('drumEuclidLaneHomeAction', { type: 'dice', laneIndex, intensity }),
+        [createCoreProductSequencerDiceEvent('drum', laneIndex, intensity)],
+      );
       return;
     }
     selectedProductRuntime.diceDrumEuclidLane(laneIndex, intensity);
-  }, [audioEngineRuntimeMode]);
+  }, [audioEngineRuntimeMode, stateRef]);
 
   return {
     setSelectedDrumEuclidEvolveConfigs,

@@ -1,5 +1,4 @@
 import {
-  normalizeDrumSequencerStepValueOverrides,
   normalizeSequencerStepToggleOverrides,
   normalizeSequencerStepValueConfigs,
   normalizeSequencerStepValueOverrides,
@@ -49,21 +48,5 @@ export function applyCoreProductSynthStepOverrides(options: {
     ...options,
     normalizeValues: (overrides, previousValues) =>
       normalizeSequencerStepValueOverrides(overrides, previousValues, true),
-  });
-}
-
-export function applyCoreProductDrumStepOverrides(options: {
-  overrides: unknown;
-  previousToggles: SequencerStepToggleOverride[][];
-  previousValues: SequencerStepValueOverride[][];
-  previousConfigs: SequencerStepValueConfig[][];
-  drumBaseMidi: (laneIndex: number) => number;
-  visibleLaneCount: number;
-  consumeManualDice: (laneIndex: number) => boolean;
-}): CoreProductSequencerStepOverrideResult {
-  return applyCoreProductSequencerStepOverrides({
-    ...options,
-    normalizeValues: (overrides, previousValues) =>
-      normalizeDrumSequencerStepValueOverrides(overrides, previousValues, options.drumBaseMidi),
   });
 }

@@ -32,7 +32,6 @@ import type {
   ProductScalarCallback,
   ProductSequencerEvolveTriggerCallback,
   ProductSequencerStepPositionCallback,
-  ProductSequencerUiPatch,
   ProductSequencerUiState,
   ProductSnapshotPatch,
   ProductSnapshotPatchReason,
@@ -320,13 +319,6 @@ export class WebProductEngine implements ProductEnginePort {
 
   setSynthNoteRangeEvolvedCallback(callback: ProductSynthNoteRangeEvolvedCallback | null): void {
     coreProductRuntimeHostPort.setSynthNoteRangeEvolvedCallback(callback);
-  }
-
-  applySequencerUiPatch(patch: ProductSequencerUiPatch): void {
-    // TODO(product-core-sequencer-events): sequencer UI edits should continue through
-    // Product patch/event bridges, not full snapshot reloads or legacy setters.
-    coreProductRuntimeHostPort.applySequencerUiPatch(patch);
-    this.scheduleDiagnosticsPublish();
   }
 
   setPerfMonitorEnabled(enabled: boolean): void {

@@ -25,7 +25,6 @@ import type {
   ProductScalarCallback,
   ProductSequencerEvolveTriggerCallback,
   ProductSequencerStepPositionCallback,
-  ProductSequencerUiPatch,
   ProductSequencerUiState,
   ProductSnapshotPatch,
   ProductSnapshotPatchReason,
@@ -96,7 +95,6 @@ export type ProductEngineSequencerPort = {
   setDrumEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void;
   setSynthEvolveOverridesChangedCallback(callback: ProductEvolveOverridesCallback | null): void;
   setSynthNoteRangeEvolvedCallback(callback: ProductSynthNoteRangeEvolvedCallback | null): void;
-  applySequencerUiPatch(patch: ProductSequencerUiPatch): void;
 };
 
 export type ProductEngineModulationPort = {

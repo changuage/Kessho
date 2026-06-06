@@ -72,12 +72,17 @@ const hostSequencerEvolveRuntimeBridge = read('src/audio/product/host/CoreProduc
 const hostSequencerNativeEvolveFlags = read('src/audio/product/host/CoreProductSequencerNativeEvolveFlags.ts');
 const hostSequencerEvolvePayloadBridge = read('src/audio/product/host/CoreProductSequencerEvolvePayloadBridge.ts');
 const hostSequencerHomeCaptureBridge = read('src/audio/product/host/CoreProductSequencerHomeCaptureBridge.ts');
+const hostSequencerHomeCaptureEventBridge = read('src/audio/product/host/CoreProductSequencerHomeCaptureEventBridge.ts');
 const hostSequencerHomeRestoreBridge = read('src/audio/product/host/CoreProductSequencerHomeRestoreBridge.ts');
 const hostSequencerLaneParamBridge = read('src/audio/product/host/CoreProductSequencerLaneParamBridge.ts');
 const hostSequencerNoteRangeEvolveBridge = read('src/audio/product/host/CoreProductSequencerNoteRangeEvolveBridge.ts');
+const hostSequencerPitchSettingEventBridge = read('src/audio/product/host/CoreProductSequencerPitchSettingEventBridge.ts');
+const hostSequencerStepEventBridge = read('src/audio/product/host/CoreProductSequencerStepEventBridge.ts');
+const hostSequencerStepOverrideEventBridge = read('src/audio/product/host/CoreProductSequencerStepOverrideEventBridge.ts');
 const hostSequencerStepOverrideBridge = read('src/audio/product/host/CoreProductSequencerStepOverrideBridge.ts');
 const hostSequencerStepPostingBridge = read('src/audio/product/host/CoreProductSequencerStepPostingBridge.ts');
-const hostSequencerUiPatchBridge = read('src/audio/product/host/CoreProductSequencerUiPatchBridge.ts');
+const hostSequencerSubLaneEnabledEventBridge = read('src/audio/product/host/CoreProductSequencerSubLaneEnabledEventBridge.ts');
+const hostSequencerEvolveConfigEventBridge = read('src/audio/product/host/CoreProductSequencerEvolveConfigEventBridge.ts');
 const hostInvoker = read('src/audio/product/host/CoreProductHostInvoker.ts');
 const runtimeAdapter = read('src/audio/CoreProductRuntimeAdapter.ts');
 const runtime = read('src/audio/coreProductRuntime.ts');
@@ -86,6 +91,8 @@ const productAudioRuntimeSelection = read('src/audio/product/ProductAudioRuntime
 const productEnginePort = read('src/audio/product/ProductEnginePort.ts');
 const productRuntimeCapabilityReport = read('src/audio/product/ProductRuntimeCapabilityReport.ts');
 const webProductEngine = read('src/audio/product/WebProductEngine.ts');
+const productControlCommitResolvedState = read('src/product-control/commitResolvedState.ts');
+const productControlLeadPresetData = read('src/product-control/leadPresetData.ts');
 const app = read('src/App.tsx');
 const lazySequencerTransport = read('src/ui/useLazySequencerTransport.ts');
 const presetRestoreRuntimeSurface = read('src/ui/usePresetRestoreRuntimeSurface.ts');
@@ -104,6 +111,7 @@ const selectedPageRuntimeBridgeOptions = read('src/ui/useSelectedAudioEnginePage
 const selectedPageTelemetryRuntimeProps = read('src/ui/useSelectedAudioEnginePageTelemetryRuntimeProps.ts');
 const selectedPageSequencerRuntimeProps = read('src/ui/useSelectedAudioEnginePageSequencerRuntimeProps.ts');
 const selectedPageControlRuntimeProps = read('src/ui/useSelectedAudioEnginePageControlRuntimeProps.ts');
+const selectedSequencerControls = read('src/ui/useSelectedAudioEngineSequencerControls.ts');
 const audioEngineMediaSession = read('src/ui/audioEngineMediaSession.ts');
 const selectedAudioEngineMediaSession = read('src/ui/useSelectedAudioEngineMediaSession.ts');
 const selectedAudioEnginePlaybackControls = read('src/ui/useSelectedAudioEnginePlaybackControls.ts');
@@ -202,11 +210,15 @@ const productApi = read('cpp/KesshoCore/src/product/KesshoProductApi.cpp');
 const productTelemetryHeader = read('cpp/KesshoCore/include/KesshoCore/KesshoProductTelemetry.h');
 const productTypesHeader = read('cpp/KesshoCore/include/KesshoCore/KesshoProductTypes.h');
 const productSequencerTests = read('cpp/KesshoCore/tests/ProductSequencerTests.cpp');
-const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostSequencerEvolveConfig}\n${hostSequencerHome}\n${hostSequencerRangePayload}\n${hostSynthPitch}\n${hostSequencerUiState}\n${hostRuntimeGuards}\n${hostMidi}\n${hostAssetRegistrar}\n${hostArrangementBridge}\n${hostDiagnostics}\n${hostDisplayCallbackRegistry}\n${hostGraphTapBridge}\n${hostHarmonyStateBridge}\n${hostProxy}\n${hostJourneyMorphClock}\n${hostPatchClassifier}\n${hostLeadPresetDataLoader}\n${hostModulationRangeBridge}\n${hostLiveTriggerCallbackBridge}\n${hostSnapshotCoordinator}\n${hostTelemetryAdapter}\n${hostRuntimeHostPort}\n${hostSequencerCacheBridge}\n${hostSequencerControlEventBridge}\n${hostManualSynthDiceBridge}\n${hostSequencerUiAdapter}\n${hostSequencerEvolveBridge}\n${hostSequencerEvolveRuntimeBridge}\n${hostSequencerNativeEvolveFlags}\n${hostSequencerEvolvePayloadBridge}\n${hostSequencerHomeCaptureBridge}\n${hostSequencerHomeRestoreBridge}\n${hostSequencerLaneParamBridge}\n${hostSequencerNoteRangeEvolveBridge}\n${hostSequencerStepOverrideBridge}\n${hostSequencerStepPostingBridge}`;
+const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostSequencerEvolveConfig}\n${hostSequencerHome}\n${hostSequencerRangePayload}\n${hostSynthPitch}\n${hostSequencerUiState}\n${hostRuntimeGuards}\n${hostMidi}\n${hostAssetRegistrar}\n${hostArrangementBridge}\n${hostDiagnostics}\n${hostDisplayCallbackRegistry}\n${hostGraphTapBridge}\n${hostHarmonyStateBridge}\n${hostProxy}\n${hostJourneyMorphClock}\n${hostPatchClassifier}\n${hostLeadPresetDataLoader}\n${hostModulationRangeBridge}\n${hostLiveTriggerCallbackBridge}\n${hostSnapshotCoordinator}\n${hostTelemetryAdapter}\n${hostRuntimeHostPort}\n${hostSequencerCacheBridge}\n${hostSequencerControlEventBridge}\n${hostManualSynthDiceBridge}\n${hostSequencerUiAdapter}\n${hostSequencerEvolveBridge}\n${hostSequencerEvolveRuntimeBridge}\n${hostSequencerNativeEvolveFlags}\n${hostSequencerEvolvePayloadBridge}\n${hostSequencerHomeCaptureBridge}\n${hostSequencerHomeCaptureEventBridge}\n${hostSequencerHomeRestoreBridge}\n${hostSequencerLaneParamBridge}\n${hostSequencerNoteRangeEvolveBridge}\n${hostSequencerPitchSettingEventBridge}\n${hostSequencerStepEventBridge}\n${hostSequencerStepOverrideEventBridge}\n${hostSequencerStepOverrideBridge}\n${hostSequencerStepPostingBridge}\n${hostSequencerSubLaneEnabledEventBridge}\n${hostSequencerEvolveConfigEventBridge}`;
 
 assert(
   !existsSync(resolve(root, 'src/ui/useSelectedAudioEngineSurface.ts')),
   'Broad selected audio engine surface must remain removed; use focused selected runtime surfaces',
+);
+assert(
+  !existsSync(resolve(root, 'src/audio/product/host/CoreProductSequencerUiPatchBridge.ts')),
+  'Product sequencer UI patch bridge must stay deleted; use generated Product events instead',
 );
 const snapshotSurface = `${snapshotTypes}\n${snapshot}\n${snapshotEncoder}\n${productLeadPatch}\n${productPadPatch}\n${productDrumPatch}`;
 
@@ -234,6 +246,31 @@ assert(lineCount(hostRuntimeGuards) <= 180, `CoreProductHostRuntimeGuards.ts exc
 assert(lineCount(hostDiagnostics) <= 120, `CoreProductHostDiagnostics.ts exceeds cleanup size cap (${lineCount(hostDiagnostics)} lines)`);
 assert(lineCount(hostPatchClassifier) <= 80, `CoreProductPatchClassifier.ts exceeds cleanup size cap (${lineCount(hostPatchClassifier)} lines)`);
 assert(lineCount(hostLeadPresetDataLoader) <= 120, `CoreProductLeadPresetDataLoader.ts exceeds cleanup size cap (${lineCount(hostLeadPresetDataLoader)} lines)`);
+const leadPresetSyncBody = methodBody(hostLeadPresetDataLoader, 'syncPresetData(');
+assert(
+  leadPresetSyncBody.includes('copyAdapterSlot(') &&
+    leadPresetSyncBody.includes('sliderState[slot.dataKey]'),
+  'Product Core lead preset sync must mirror ProductControl-resolved preset data',
+);
+assert(
+  !leadPresetSyncBody.includes('loadProductLead4opFMPresetVerified(') &&
+    !leadPresetSyncBody.includes('patchAdapterState('),
+  'Product Core lead preset sync must not hydrate data through an async host adapter patch',
+);
+assert(
+  methodBody(hostLeadPresetDataLoader, 'loadLeadPreset(slot: unknown, presetId: unknown): Promise<void>')
+    .includes('await loadProductLead4opFMPresetVerified(id, config.fallback);') &&
+    !hostLeadPresetDataLoader.includes('patchAdapterState') &&
+    !hostLeadPresetDataLoader.includes('pendingLoads'),
+  'Product Core direct Lead preset loader must be cache warm-up only, not a hidden state authority',
+);
+assert(
+  productControlCommitResolvedState.includes('hydrateProductControlLeadPresetDataPatch(') &&
+    productControlCommitResolvedState.includes('PRODUCT_CONTROL_LEAD_PRESET_DATA_KEYS') &&
+    productControlLeadPresetData.includes('loadProductLead4opFMPresetVerified(presetId, slot.fallback)') &&
+    productControlLeadPresetData.includes('lead4opPresetMatchesLookup(data, presetId, \'\')'),
+  'ProductControl commits must hydrate Lead preset data before resolved Product patches are committed',
+);
 assert(lineCount(hostModulationRangeBridge) <= 220, `CoreProductModulationRangeBridge.ts exceeds cleanup size cap (${lineCount(hostModulationRangeBridge)} lines)`);
 assert(lineCount(hostLiveTriggerCallbackBridge) <= 80, `CoreProductLiveTriggerCallbackBridge.ts exceeds cleanup size cap (${lineCount(hostLiveTriggerCallbackBridge)} lines)`);
 assert(lineCount(hostSnapshotCoordinator) <= 120, `CoreProductSnapshotCoordinator.ts exceeds cleanup size cap (${lineCount(hostSnapshotCoordinator)} lines)`);
@@ -248,12 +285,17 @@ assert(lineCount(hostSequencerEvolveRuntimeBridge) <= 140, `CoreProductSequencer
 assert(lineCount(hostSequencerNativeEvolveFlags) <= 80, `CoreProductSequencerNativeEvolveFlags.ts exceeds cleanup size cap (${lineCount(hostSequencerNativeEvolveFlags)} lines)`);
 assert(lineCount(hostSequencerEvolvePayloadBridge) <= 80, `CoreProductSequencerEvolvePayloadBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerEvolvePayloadBridge)} lines)`);
 assert(lineCount(hostSequencerHomeCaptureBridge) <= 90, `CoreProductSequencerHomeCaptureBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerHomeCaptureBridge)} lines)`);
+assert(lineCount(hostSequencerHomeCaptureEventBridge) <= 90, `CoreProductSequencerHomeCaptureEventBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerHomeCaptureEventBridge)} lines)`);
 assert(lineCount(hostSequencerHomeRestoreBridge) <= 110, `CoreProductSequencerHomeRestoreBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerHomeRestoreBridge)} lines)`);
 assert(lineCount(hostSequencerLaneParamBridge) <= 80, `CoreProductSequencerLaneParamBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerLaneParamBridge)} lines)`);
 assert(lineCount(hostSequencerNoteRangeEvolveBridge) <= 70, `CoreProductSequencerNoteRangeEvolveBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerNoteRangeEvolveBridge)} lines)`);
+assert(lineCount(hostSequencerPitchSettingEventBridge) <= 140, `CoreProductSequencerPitchSettingEventBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerPitchSettingEventBridge)} lines)`);
+assert(lineCount(hostSequencerStepEventBridge) <= 120, `CoreProductSequencerStepEventBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerStepEventBridge)} lines)`);
+assert(lineCount(hostSequencerStepOverrideEventBridge) <= 80, `CoreProductSequencerStepOverrideEventBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerStepOverrideEventBridge)} lines)`);
 assert(lineCount(hostSequencerStepOverrideBridge) <= 80, `CoreProductSequencerStepOverrideBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerStepOverrideBridge)} lines)`);
 assert(lineCount(hostSequencerStepPostingBridge) <= 120, `CoreProductSequencerStepPostingBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerStepPostingBridge)} lines)`);
-assert(lineCount(hostSequencerUiPatchBridge) <= 80, `CoreProductSequencerUiPatchBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerUiPatchBridge)} lines)`);
+assert(lineCount(hostSequencerSubLaneEnabledEventBridge) <= 80, `CoreProductSequencerSubLaneEnabledEventBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerSubLaneEnabledEventBridge)} lines)`);
+assert(lineCount(hostSequencerEvolveConfigEventBridge) <= 90, `CoreProductSequencerEvolveConfigEventBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerEvolveConfigEventBridge)} lines)`);
 assert(lineCount(hostInvoker) <= 60, `CoreProductHostInvoker.ts exceeds cleanup size cap (${lineCount(hostInvoker)} lines)`);
 assert(lineCount(runtimeAdapter) <= 650, `CoreProductRuntimeAdapter.ts exceeds cleanup size cap (${lineCount(runtimeAdapter)} lines)`);
 
@@ -271,7 +313,6 @@ for (const [surfaceName, surface, tokens] of [
     'getCapabilityReport(): ProductRuntimeCapabilityReport',
     'TODO(product-core-web-adapter-burn-down)',
     'TODO(product-core-control-routing-events)',
-    'TODO(product-core-sequencer-events)',
     "import { coreProductRuntimeHostPort } from './host/CoreProductRuntimeHostPort'",
     'coreProductRuntimeHostPort.start(options?.initialState)',
     'coreProductRuntimeHostPort.stop()',
@@ -290,11 +331,9 @@ for (const [surfaceName, surface, tokens] of [
     "this.setLiveTriggerCallback('leadExpression', callback)",
     "this.setLiveTriggerCallback('granularSH', callback)",
     'coreProductRuntimeHostPort.setLiveTriggerCallback(name, callback)',
-    'coreProductRuntimeHostPort.applySequencerUiPatch(patch)',
     'common controls should move to generated ProductEvents or dirty-diff paths',
     'do not replace generated events with legacy parameter-update snapshots',
     'Asset lifecycle stays product-shaped here',
-    'sequencer UI edits should continue through',
   ]],
   ['Core Product host invoker', hostInvoker, [
     "import { coreProductEngineHost } from '../../coreProductEngineHost'",
@@ -338,7 +377,6 @@ for (const [surfaceName, surface, tokens] of [
     "setCoreProductRuntimeCallback('runtimeWalkPositions', callback)",
     "callCoreProductHost<void>('setRuntimeWalkRanges', ranges)",
     'setCoreProductLiveTriggerCallback(callCoreProductHost, name, callback)',
-    'applyCoreProductSequencerUiPatch(callCoreProductHost, patch)',
     "callCoreProductHost<void>('setVisualTelemetryActive', active)",
   ]],
   ['Product live trigger callback bridge', hostLiveTriggerCallbackBridge, [
@@ -358,26 +396,13 @@ for (const [surfaceName, surface, tokens] of [
     "drumParamSH: 'setDrumParamSHTriggerCallback'",
     "granularSH: 'setGranularSHTriggerCallback'",
   ]],
-  ['Product sequencer UI patch bridge', hostSequencerUiPatchBridge, [
-    'TODO(product-core-burn-down)',
-    'TODO(product-core-sequencer-events)',
-    'evolve config events for drum/synth lane evolution settings',
-    'sub-lane enabled/config events that carry enabled, step count, direction',
-    'synth/drum step override event batches that carry values, directions',
-    'pitch-settings and home-capture events that update Product-owned home',
-    'ProductSequencerUiPatch',
-    "callHost<void>('recordSequencerUiPatch', patch.revision ?? 0, patch.kind)",
-    "apply('setDrumEuclidEvolveConfigs', patch.configs)",
-    "apply('setSynthEuclidEvolveConfigs', patch.configs)",
-    "apply('setDrumSubLaneEnabled', patch.states)",
-    "apply('setSynthSubLaneEnabled', patch.states)",
-    "apply('setDrumPitchSettings', patch.settings)",
-    "apply('setSynthPitchSettings', patch.settings)",
-    "apply('setDrumStepOverrides', patch.overrides)",
-    "apply('setSynthStepOverrides', patch.overrides)",
-    "apply('setSequencerPresetHomeSnapshots', patch.drumPitchSettings, patch.drumPitchStates, patch.synthPitchStates)",
-    "apply('captureSynthEuclidLaneHome', patch.laneIndex, patch.pitchState)",
-    "apply('captureDrumEuclidLaneHome', patch.laneIndex, patch.pitchSettings, patch.pitchState)",
+  ['Product sequencer evolve config event bridge', `${hostSequencerEvolveConfigEventBridge}\n${selectedSequencerControls}\n${events}`, [
+    'applyCoreProductSequencerEvolveConfigEvent',
+    'CORE_PRODUCT_HOST_PARAM_IDS.SequencerEvolveConfig',
+    'createCoreProductSequencerEvolveConfigEvents',
+    'commitProductControlActionForProduct',
+    "sequencerPatch('drumEuclidEvolveConfigs', configs)",
+    "sequencerPatch('synthEuclidEvolveConfigs', configs)",
   ]],
   ['Product runtime capability report', productRuntimeCapabilityReport, [
     'KESSHO_PRODUCT_SCHEMA_HASH',
@@ -595,7 +620,7 @@ for (const [label, source, token] of [
   ['Lane preset restore', sequencePresetLane, 'normalizeSequencerPitchSettings'],
   ['Legacy Web engine', webEngine, 'normalizeSequencerPitchSettings(settings[i], this.synthPitchSettings[i])'],
   ['Core-Web host', coreEngineHost, 'normalizeSequencerPitchSettings(settings[index], this.synthPitchSettings[index])'],
-  ['Product host', host, 'normalizeSequencerPitchSettingsArray('],
+  ['Product pitch-setting event bridge', hostSequencerPitchSettingEventBridge, 'normalizeSequencerPitchSettings('],
 ]) {
   assert(source.includes(token), `${label} must use shared sequencer pitch-settings normalization`);
 }
@@ -682,9 +707,10 @@ assert(
 assert(
   hostSequencerEvolveConfig.includes("normalizeEvolveConfigs(configs: unknown, kind?: SequencerEvolveKind)") &&
     hostSequencerEvolveConfig.includes('defaultEvolveMethods(kind)') &&
-    host.includes("normalizeEvolveConfigs(configs, 'synth')") &&
-    host.includes("normalizeEvolveConfigs(configs, 'drum')"),
-  'Product host evolve config normalization must restore default method maps for synth and drum',
+    hostSequencerEvolveConfig.includes('evolveMethodsForFlags(flags: number, kind?: SequencerEvolveKind)') &&
+    hostSequencerEvolveConfigEventBridge.includes('applyCoreProductSequencerEvolveConfigEvent') &&
+    hostSequencerEvolveConfigEventBridge.includes("sequencer === 'synth' ? 'synthEuclidEvolveConfigs' : 'drumEuclidEvolveConfigs'"),
+  'Product host evolve config events must restore default method maps for synth and drum',
 );
 assert(
   webEngine.includes('const incoming = configs[i] ?? {};') &&
@@ -1032,10 +1058,11 @@ assert(
 );
 
 for (const token of [
-  'applyProductState(sliderState: Record<string, unknown>, fallbackReloadReason: SnapshotReloadReason): void',
+  'private applyProductState(',
   'options.runtime.loadSnapshot(encodeCoreProductSnapshot(options.snapshot));',
   'latestProductSnapshot: CoreProductSnapshot | null',
-  'applyLatestSnapshotUpdate(reason: SnapshotReloadReason = \'product-patch\', forceSequencerClockRejoin = false): void',
+  'private applyLatestSnapshotUpdate(',
+  "ProductResolvedStateCommitReceipt['mode']",
   'applyCoreProductSnapshotUpdate',
   'dirtyDiffCount',
   'fullSnapshotReloadCount',
@@ -1084,7 +1111,8 @@ for (const token of [
   'diceSynthEuclidLane(laneIndex: number, intensity: number = 1): void',
   'resetDrumEuclidLaneHome(laneIndex: number): void',
   'diceDrumEuclidLane(laneIndex: number, intensity: number = 1): void',
-  'setSequencerPresetHomeSnapshots(',
+  'applyCoreProductSequencerHomeCaptureEvent({',
+  'CoreProductSequencerHomeCaptureEventBridge',
   'createCoreProductSequencerHomeStore',
   'restoreSequencerLaneHome(sequencer: SequencerKind, laneIndex: number): boolean',
   'options.armManualDice(options.sequencer, options.laneIndex)',
@@ -1102,21 +1130,22 @@ for (const token of [
   'KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing',
   'normalizeClockDivisionValue(value, 16)',
   'sequencerClockDivisionToNumericValue(value, fallback)',
-  'setSynthEuclidEvolveConfigs(configs: unknown[]): void',
-  'setDrumEuclidEvolveConfigs(configs: unknown[]): void',
-  'setSynthSubLaneEnabled(states: Record<string, boolean>[]): void',
-  'setDrumSubLaneEnabled(states: Record<string, boolean>[]): void',
-  'setDrumPitchSettings(settings: unknown[]): void',
-  'setSynthPitchSettings(settings: unknown[]): void',
+  'CORE_PRODUCT_HOST_PARAM_IDS.SequencerEvolveConfig',
+  'applyCoreProductSequencerEvolveConfigEvent(',
+  'applyCoreProductSequencerSubLaneEnabledEvent(',
+  'applyCoreProductSequencerPitchSettingEvent(',
+  'SequencerLanePitchMode',
+  'SequencerLanePitchRoot',
+  'SequencerLanePitchScale',
   'setSynthPitchBindingModes(modes: unknown[]): void',
   'syncSynthPitchBindingModes()',
   'enabledSequencerSubLanes(sequencer: SequencerKind, laneIndex: number): string[]',
   'SequencerLanePitchBindingMode',
   'sequencerPitchBindingModeToProductId(modes[laneIndex])',
   'setSynthStepOverrides(overrides: unknown): void',
-  'setDrumStepOverrides(overrides: unknown): void',
+  'applyCoreProductDrumSequencerStepOverrideEvent(',
   'normalizeSubLaneEnabledStates(states: unknown)',
-  'normalizeDrumSequencerStepValueOverrides(',
+  'normalizeDrumSequencerStepOffsetOverrides(',
   'normalizeSequencerStepToggleOverrides(',
   'normalizeSequencerStepValueOverrides(',
   'normalizeSequencerStepValueConfigs(',
@@ -1127,8 +1156,8 @@ for (const token of [
   "this.syncSequencerStepToggles('synth', true);",
   "this.syncSequencerStepToggles('drum', true);",
   'this.flushSequencerStepToggles();',
-  "synthEuclidEvolveConfigs: normalizeEvolveConfigs(configs, 'synth')",
-  "drumEuclidEvolveConfigs: normalizeEvolveConfigs(configs, 'drum')",
+  "sequencer === 'synth' ? 'synthEuclidEvolveConfigs' : 'drumEuclidEvolveConfigs'",
+  'evolveMethodsForFlags(flags, sequencer)',
   'createCoreProductModulationRangeEvent(',
   'createCoreProductSequencerStepEvent(',
   'createCoreProductSequencerStepValueEvent(',
@@ -1656,10 +1685,10 @@ for (const token of [
 }
 
 for (const [surfaceName, surface, token] of [
-  ['Product host', host, "this.captureSequencerHomeLanes('synth', false, true, undefined, synthPitchStates)"],
-  ['Product host', host, "this.captureSequencerHomeLanes('drum', false, true, drumPitchSettings, drumPitchStates)"],
-  ['Product host', host, "captureSynthEuclidLaneHome(laneIndex: number"],
-  ['Product host', host, "captureDrumEuclidLaneHome(laneIndex: number"],
+  ['Product host', host, 'applyCoreProductSequencerHomeCaptureEvent({'],
+  ['Product host', host, 'this.captureSequencerHomeLane(captureSequencer, captureLaneIndex, force, requireContent, undefined, pitchState)'],
+  ['Product home-capture event bridge', hostSequencerHomeCaptureEventBridge, 'decodePitchState(event, valueFlags)'],
+  ['Product home-capture event bridge', hostSequencerHomeCaptureEventBridge, 'CORE_PRODUCT_HOME_CAPTURE_FLAGS.pitchScaleQuantizeSet'],
   ['Core-Web host', coreEngineHost, 'this.drumHomeStepOverrides = cloneCoreDrumStepOverrides(this.drumStepOverrides);'],
   ['Core-Web host', coreEngineHost, 'this.captureCurrentSynthLaneHome(index)'],
   ['Core-Web host', coreEngineHost, 'captureSynthEuclidLaneHome(laneIndex: number'],
@@ -1930,8 +1959,8 @@ for (const token of [
 }
 
 assert(
-  /private patchAdapterState[\s\S]*if \(loadSnapshot\) \{\s*this\.applyLatestSnapshotUpdate\(\);/.test(host),
-  'core-product host adapter patches must use the dirty snapshot diff path',
+  !host.includes('patchAdapterState('),
+  'core-product host adapter patches must stay retired; source data must arrive through resolved ProductControl commits',
 );
 
 for (const token of [
@@ -2613,9 +2642,10 @@ for (const token of [
   'createCoreProductSourceOverrideCommitEvent',
   'legacyExactBridgeFieldsPresent',
   "this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return 'source-structure-change'",
-  "this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'pad-override-change'",
-  "this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'lead-override-change'",
-  "this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'drum-override-change'",
+  "coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource)) return 'source-structure-change'",
+  "this.padOverrideChanged(previousSource, nextSource)) return 'pad-override-change'",
+  "this.leadOverrideChanged(previousSource, nextSource)) return 'lead-override-change'",
+  "this.drumOverrideChanged(previousSource, nextSource)) return 'drum-override-change'",
   'private padOverrideChanged',
   'private leadOverrideChanged',
   'private drumOverrideChanged',
@@ -2937,7 +2967,7 @@ assert(
     !app.includes('getDynamicsAnalyser={productRuntimeDebugAnalysers.dynamicsAnalyser}') &&
     !app.includes('getAnalyserNode={productRuntimeDebugAnalysers.drumVoiceAnalyser}') &&
     app.includes("from './ui/useProductRuntimeSurfaces'") &&
-    app.includes('useProductRuntimeSurfaces(productRuntimeMode)') &&
+    app.includes('useProductRuntimeSurfaces({ productRuntimeMode, stateRef })') &&
     !app.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") &&
     !app.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') &&
     productRuntimeSurfaces.includes("import { useProductRuntimeDebugRuntime } from './useProductRuntimeDebugRuntime'") &&
@@ -3067,15 +3097,21 @@ const hostImportAllowlist = new Set([
   './product/host/CoreProductSequencerControlEventBridge',
   './product/host/CoreProductManualSynthDiceBridge',
   './product/host/CoreProductSequencerEvolveBridge',
+  './product/host/CoreProductSequencerEvolveConfigEventBridge',
   './product/host/CoreProductSequencerEvolveRuntimeBridge',
   './product/host/CoreProductSequencerEvolvePayloadBridge',
   './product/host/CoreProductSequencerHomeCaptureBridge',
+  './product/host/CoreProductSequencerHomeCaptureEventBridge',
   './product/host/CoreProductSequencerHomeRestoreBridge',
   './product/host/CoreProductSequencerLaneParamBridge',
   './product/host/CoreProductSequencerMorphFeedbackBridge',
   './product/host/CoreProductSequencerNoteRangeEvolveBridge',
+  './product/host/CoreProductSequencerPitchSettingEventBridge',
+  './product/host/CoreProductSequencerStepEventBridge',
+  './product/host/CoreProductSequencerStepOverrideEventBridge',
   './product/host/CoreProductSequencerStepOverrideBridge',
   './product/host/CoreProductSequencerStepPostingBridge',
+  './product/host/CoreProductSequencerSubLaneEnabledEventBridge',
   './product/host/CoreProductSequencerUiAdapter',
   './CoreProductHostSynthNoteRangeEvolve',
   './CoreProductHostSynthPitch',

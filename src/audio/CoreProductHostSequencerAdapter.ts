@@ -117,10 +117,9 @@ export function normalizeSequencerStepValueOverrides(
   return normalizeSequencerStepValueOverridesInternal(overrides, fallback, includeMidiNote, 0, 127);
 }
 
-export function normalizeDrumSequencerStepValueOverrides(
+export function normalizeDrumSequencerStepOffsetOverrides(
   overrides: unknown,
   fallback: SequencerStepValueOverride[][],
-  baseMidiForLane: (laneIndex: number) => number,
 ): SequencerStepValueOverride[][] {
   return normalizeSequencerStepValueOverridesInternal(
     overrides,
@@ -128,7 +127,6 @@ export function normalizeDrumSequencerStepValueOverrides(
     true,
     -24,
     24,
-    (offset, laneIndex) => baseMidiForLane(laneIndex) + offset,
   );
 }
 

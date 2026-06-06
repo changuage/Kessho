@@ -3,12 +3,7 @@ import { productEngine } from '../audio/product/ProductEngineProxy';
 import type { AudioEngineRuntimeMode } from './audioEngineRuntimeMode';
 import { selectedProductRuntime } from '../audio/product/SelectedProductRuntime';
 import type { ProductDrumVoice, ProductManualSynthNote } from '../audio/product/ProductEngineTypes';
-import {
-  commitThenTrigger,
-  createInitialProductControlState,
-  reduceProductControlState,
-  resolvePerformanceState,
-} from '../product-control';
+import { commitProductControlActionThenTrigger } from '../product-control';
 import type { SliderState } from './state';
 
 type UseSelectedAudioEngineManualTriggersOptions = {
@@ -28,12 +23,12 @@ export function useSelectedAudioEngineManualTriggers({
   const auditionSynthNote = useCallback((note: ProductManualSynthNote): void => {
     const externalState = stateRef.current;
     if (audioEngineRuntimeMode === 'core-product') {
-      const controlState = reduceProductControlState(
-        createInitialProductControlState(externalState),
+      void commitProductControlActionThenTrigger(
+        productEngine,
+        externalState,
         { type: 'manual-trigger/request', source: note.source },
+        () => productEngine.auditionSynthNote(note),
       );
-      const resolved = resolvePerformanceState(controlState);
-      void commitThenTrigger(productEngine, resolved, () => productEngine.auditionSynthNote(note));
       return;
     }
     void selectedProductRuntime.auditionSynthNote(note, externalState);
@@ -42,12 +37,12 @@ export function useSelectedAudioEngineManualTriggers({
   const triggerDrumVoice = useCallback((voice: ProductDrumVoice): void => {
     const externalState = stateRef.current;
     if (audioEngineRuntimeMode === 'core-product') {
-      const controlState = reduceProductControlState(
-        createInitialProductControlState(externalState),
+      void commitProductControlActionThenTrigger(
+        productEngine,
+        externalState,
         { type: 'manual-trigger/request', source: `drum:${String(voice)}` },
+        () => productEngine.triggerDrumVoice(voice, 0.8),
       );
-      const resolved = resolvePerformanceState(controlState);
-      void commitThenTrigger(productEngine, resolved, () => productEngine.triggerDrumVoice(voice, 0.8));
       return;
     }
     void selectedProductRuntime.triggerDrumVoice(voice, 0.8, externalState);

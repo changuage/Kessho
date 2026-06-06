@@ -1,5 +1,6 @@
 import type {
   ProductEvent,
+  ProductResolvedStateApplyMode,
   ProductSnapshotPatch,
   ProductSnapshotPatchReason,
 } from '../audio/product/ProductEngineTypes';
@@ -20,12 +21,14 @@ export type ResolvedPerformanceState = {
   readonly revision: number;
   readonly reason: ProductSnapshotPatchReason | ProductControlReason;
   readonly triggerCritical: boolean;
+  readonly applyMode?: ProductResolvedStateApplyMode;
 };
 
 type ResolvePerformanceStateOptions = {
   readonly reason?: ProductSnapshotPatchReason | ProductControlReason;
   readonly triggerCritical?: boolean;
   readonly productEvents?: readonly ProductEvent[];
+  readonly applyMode?: ProductResolvedStateApplyMode;
 };
 
 function mergeMorphKeys(morph: MorphState): ProductControlSliderKey[] {
@@ -84,5 +87,6 @@ export function resolvePerformanceState(
     revision: controlState.revision,
     reason: options.reason ?? controlState.lastReason,
     triggerCritical: options.triggerCritical ?? controlState.triggerCritical,
+    ...(options.applyMode ? { applyMode: options.applyMode } : {}),
   };
 }

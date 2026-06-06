@@ -26,24 +26,38 @@ function normalizeLeadPresetSlot(slot: unknown): LeadPresetSlot {
     : 'A';
 }
 
+function isLeadPresetData(value: unknown): boolean {
+  return Boolean(value && typeof value === 'object');
+}
+
+function copyAdapterSlot(
+  adapterState: Record<string, unknown>,
+  slot: LeadPresetSlotConfig,
+  id: string,
+  data: unknown,
+): Record<string, unknown> {
+  const currentId = typeof adapterState[slot.stateKey] === 'string'
+    ? adapterState[slot.stateKey]
+    : undefined;
+  if (currentId === id && adapterState[slot.dataKey] === data) return adapterState;
+
+  const next = { ...adapterState, [slot.stateKey]: id };
+  if (isLeadPresetData(data)) {
+    next[slot.dataKey] = data;
+  } else {
+    delete next[slot.dataKey];
+  }
+  return next;
+}
+
 export class CoreProductLeadPresetDataLoader {
-  private readonly pendingLoads = new Map<LeadPresetSlot, string>();
-
-  constructor(
-    private readonly patchAdapterState: (patch: Record<string, unknown>) => void,
-  ) {}
-
   async loadLeadPreset(slot: unknown, presetId: unknown): Promise<void> {
     const slotKey = normalizeLeadPresetSlot(slot);
     const config = LEAD_PRESET_SLOT_BY_KEY.get(slotKey);
     if (!config) return;
 
     const id = String(presetId ?? config.fallback);
-    this.pendingLoads.set(slotKey, id);
-    const preset = await loadProductLead4opFMPresetVerified(id, config.fallback);
-    if (this.pendingLoads.get(slotKey) !== id) return;
-    this.pendingLoads.delete(slotKey);
-    this.patchAdapterState({ [config.stateKey]: id, [config.dataKey]: preset });
+    await loadProductLead4opFMPresetVerified(id, config.fallback);
   }
 
   syncPresetData(
@@ -54,33 +68,7 @@ export class CoreProductLeadPresetDataLoader {
 
     for (const slot of PRODUCT_LEAD_PRESET_SLOTS) {
       const id = String(sliderState[slot.stateKey] ?? slot.fallback);
-      const currentId = typeof nextAdapterState[slot.stateKey] === 'string'
-        ? nextAdapterState[slot.stateKey]
-        : undefined;
-      const hasCurrentData = currentId === id && Boolean(nextAdapterState[slot.dataKey]);
-
-      if (currentId !== id) {
-        nextAdapterState = { ...nextAdapterState, [slot.stateKey]: id };
-        delete nextAdapterState[slot.dataKey];
-      }
-
-      if (hasCurrentData || this.pendingLoads.get(slot.slot) === id) {
-        continue;
-      }
-
-      this.pendingLoads.set(slot.slot, id);
-      void loadProductLead4opFMPresetVerified(id, slot.fallback)
-        .then((preset) => {
-          if (this.pendingLoads.get(slot.slot) !== id) return;
-          this.pendingLoads.delete(slot.slot);
-          this.patchAdapterState({ [slot.stateKey]: id, [slot.dataKey]: preset });
-        })
-        .catch((error) => {
-          if (this.pendingLoads.get(slot.slot) === id) {
-            this.pendingLoads.delete(slot.slot);
-          }
-          console.warn(`Failed to hydrate Product Core lead preset ${slot.slot}:`, error);
-        });
+      nextAdapterState = copyAdapterSlot(nextAdapterState, slot, id, sliderState[slot.dataKey]);
     }
 
     return nextAdapterState;

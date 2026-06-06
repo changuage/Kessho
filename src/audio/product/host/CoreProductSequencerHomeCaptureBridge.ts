@@ -43,10 +43,12 @@ export function captureCoreProductSequencerHomeLane(options: CoreProductSequence
   const synthPitchSettings = Array.isArray(options.adapterState.synthPitchSettings)
     ? options.adapterState.synthPitchSettings[options.laneIndex]
     : undefined;
+  const drumPitchSettings = options.drumPitchSettings ??
+    (Array.isArray(options.adapterState.drumPitchSettings) ? options.adapterState.drumPitchSettings[options.laneIndex] : undefined);
   const pitchSettings = options.sequencer === 'synth'
     ? normalizeSequencerPitchSettings(synthPitchSettings)
-    : options.drumPitchSettings
-      ? normalizeSequencerPitchSettings(options.drumPitchSettings)
+    : drumPitchSettings
+      ? normalizeSequencerPitchSettings(drumPitchSettings)
       : null;
   const pitchSubLaneState = options.pitchState
     ? {
