@@ -1,5 +1,9 @@
 import type { CoreProductEvent } from './coreProductEvents';
 import type { DecodedCoreProductAsset } from './coreProductAssets';
+import type {
+  ProductRuntimeSnapshotMetadata,
+  ProductSnapshotAppliedReceipt,
+} from './product/ProductEngineTypes';
 import type { CoreProductTelemetrySnapshot, CoreProductVisualTelemetrySnapshot } from './coreProductTelemetry';
 import {
   DAW_OUTPUT_MAX_CHANNELS,
@@ -8,16 +12,25 @@ import {
   type DawOutputRoutingConfig,
 } from './dawOutputRouting';
 import { isIOSLikeDevice, isMobileDevice } from '../platform';
+import { logProductStateDebug } from '../debug/productStateDebug';
 
 const CORE_PRODUCT_GRAPH_TAP_COUNT = 110;
 const CORE_PRODUCT_TELEMETRY_INTERVAL_MS = 250;
 const CORE_PRODUCT_VISUAL_TELEMETRY_INTERVAL_MS = 33;
 const CORE_PRODUCT_RUNTIME_ASSET_VERSION = String(Date.now());
 const CORE_PRODUCT_RUNTIME_ASSET_RETRY_COUNT = 2;
+const SNAPSHOT_APPLIED_TIMEOUT_MS = 1000;
 
 type RuntimeMessage =
   | { type: 'ready' }
   | { type: 'error'; message: string }
+  | {
+      type: 'snapshot-applied';
+      revision: number;
+      encodedSnapshotHash: string;
+      workletSourceSummaryHash?: string;
+      appliedAtFrame?: number;
+    }
   | { type: 'perf'; cpuPercent: number; peakPercent: number; sequencerEventCount?: number; controlQueueDepth?: number }
   | { type: 'telemetry'; telemetry: CoreProductTelemetrySnapshot }
   | { type: 'visual-telemetry'; telemetry: CoreProductVisualTelemetrySnapshot }
@@ -36,6 +49,13 @@ type GraphTapCaptureSession = {
   chunks: CoreProductGraphTapCaptureChunk[];
   resolveFlush: (() => void) | null;
   rejectFlush: ((error: Error) => void) | null;
+};
+
+type PendingSnapshotReceipt = {
+  metadata: ProductRuntimeSnapshotMetadata;
+  resolve: (receipt: ProductSnapshotAppliedReceipt) => void;
+  reject: (error: Error) => void;
+  timeout: number;
 };
 
 type WindowWithWebkitAudioContext = Window & {
@@ -90,6 +110,7 @@ export class CoreProductRuntime {
   private perfMonitorEnabled = false;
   private dawOutputRouting: DawOutputRoutingConfig = createDefaultDawOutputRoutingConfig();
   private dawOutputDeviceId: string | null = null;
+  private readonly pendingSnapshotReceipts = new Map<number, PendingSnapshotReceipt>();
   private readonly graphTapCaptureSessions = new Map<number, GraphTapCaptureSession>();
 
   get audioContext(): AudioContext | null {
@@ -177,12 +198,17 @@ export class CoreProductRuntime {
         if (message.type === 'error') {
           this.lastError = message.message;
           const runtimeError = new Error(message.message);
+          this.rejectPendingSnapshotReceipts(runtimeError);
           for (const session of this.graphTapCaptureSessions.values()) {
             session.rejectFlush?.(runtimeError);
             session.resolveFlush = null;
             session.rejectFlush = null;
           }
           reject(runtimeError);
+          return;
+        }
+        if (message.type === 'snapshot-applied') {
+          this.handleSnapshotApplied(message);
           return;
         }
         if (message.type === 'telemetry') {
@@ -249,6 +275,7 @@ export class CoreProductRuntime {
     this.outputGain?.disconnect();
     this.mediaStreamDest?.disconnect();
     this.disconnectMediaSessionPlayback();
+    this.rejectPendingSnapshotReceipts(new Error('Core Product runtime disposed before pending snapshots were applied'));
     const context = this.context;
     this.node = null;
     this.outputGain = null;
@@ -328,8 +355,38 @@ export class CoreProductRuntime {
     this.requireNode('postEvent').port.postMessage({ type: 'event', event });
   }
 
-  loadSnapshot(snapshot: ArrayBuffer): void {
-    this.requireNode('loadSnapshot').port.postMessage({ type: 'snapshot', snapshot }, [snapshot]);
+  loadSnapshot(
+    snapshot: ArrayBuffer,
+    metadata?: ProductRuntimeSnapshotMetadata,
+  ): Promise<ProductSnapshotAppliedReceipt> {
+    const node = this.requireNode('loadSnapshot');
+    if (!metadata) {
+      node.port.postMessage({ type: 'snapshot', snapshot }, [snapshot]);
+      return Promise.resolve({
+        revision: 0,
+        applied: true,
+        encodedSnapshotHash: '',
+      });
+    }
+
+    const pending = new Promise<ProductSnapshotAppliedReceipt>((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        this.pendingSnapshotReceipts.delete(metadata.revision);
+        reject(new Error(
+          `Timed out waiting for Product snapshot revision ${metadata.revision} ` +
+          `(${metadata.encodedSnapshotHash}) to be applied by the audio thread`,
+        ));
+      }, SNAPSHOT_APPLIED_TIMEOUT_MS);
+      this.pendingSnapshotReceipts.set(metadata.revision, {
+        metadata,
+        resolve,
+        reject,
+        timeout,
+      });
+    });
+
+    node.port.postMessage({ type: 'snapshot', snapshot, metadata }, [snapshot]);
+    return pending;
   }
 
   reset(): void {
@@ -384,6 +441,44 @@ export class CoreProductRuntime {
       type: 'unregister-asset',
       assetId: normalizedAssetId,
     });
+  }
+
+  private handleSnapshotApplied(message: Extract<RuntimeMessage, { type: 'snapshot-applied' }>): void {
+    logProductStateDebug({
+      stage: 'snapshot-applied',
+      revision: message.revision,
+      encodedSnapshotHash: message.encodedSnapshotHash,
+      workletSourceSummaryHash: message.workletSourceSummaryHash ?? null,
+      appliedAtFrame: message.appliedAtFrame ?? null,
+    });
+    const pending = this.pendingSnapshotReceipts.get(message.revision);
+    if (!pending) return;
+    if (pending.metadata.encodedSnapshotHash !== message.encodedSnapshotHash) {
+      window.clearTimeout(pending.timeout);
+      this.pendingSnapshotReceipts.delete(message.revision);
+      pending.reject(new Error(
+        `Product snapshot ack hash mismatch for revision ${message.revision}: ` +
+        `expected ${pending.metadata.encodedSnapshotHash}, got ${message.encodedSnapshotHash}`,
+      ));
+      return;
+    }
+    window.clearTimeout(pending.timeout);
+    this.pendingSnapshotReceipts.delete(message.revision);
+    pending.resolve({
+      revision: message.revision,
+      applied: true,
+      encodedSnapshotHash: message.encodedSnapshotHash,
+      ...(message.workletSourceSummaryHash ? { workletSourceSummaryHash: message.workletSourceSummaryHash } : {}),
+      ...(typeof message.appliedAtFrame === 'number' ? { appliedAtFrame: message.appliedAtFrame } : {}),
+    });
+  }
+
+  private rejectPendingSnapshotReceipts(error: Error): void {
+    for (const pending of this.pendingSnapshotReceipts.values()) {
+      window.clearTimeout(pending.timeout);
+      pending.reject(error);
+    }
+    this.pendingSnapshotReceipts.clear();
   }
 
   private requireNode(operation: string): AudioWorkletNode {

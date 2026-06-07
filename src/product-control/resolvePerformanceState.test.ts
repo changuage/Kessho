@@ -17,6 +17,7 @@ import {
   reduceVisibleSliderStateForProductCommit,
   resolvePerformanceState,
   resolveVisibleSliderStateForProductCommit,
+  type ProductControlAction,
   type ProductControlState,
 } from './index';
 
@@ -43,6 +44,250 @@ function replaceEndpoint(
     presetId: `preset-${endpoint}`,
     sliders,
   });
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(object[key])}`)
+    .join(',')}}`;
+}
+
+function hashJson(value: unknown): string {
+  return stableStringify(value);
+}
+
+function expectSoundActionChangesResolvedOutput(
+  before: ProductControlState,
+  action: ProductControlAction,
+  message: string,
+): ProductControlState {
+  const beforeResolved = resolvePerformanceState(before);
+  const after = reduceProductControlState(before, action);
+  const afterResolved = resolvePerformanceState(after);
+
+  if (after.revision !== before.revision) {
+    assert.notEqual(
+      hashJson(afterResolved.productPatch),
+      hashJson(beforeResolved.productPatch),
+      message,
+    );
+  }
+
+  return after;
+}
+
+// ProductControl state authority invariants.
+{
+  let next = controlState({ padPostLPF: 1000, synthAttack: 0.1 });
+  next = reduceProductControlState(next, {
+    type: 'morph/endpoint-replace',
+    target: 'synth',
+    endpoint: 'A',
+    presetId: 'pad-a',
+    sliders: stateWith({ padPostLPF: 1000, synthAttack: 0.1 }),
+  });
+  next = reduceProductControlState(next, {
+    type: 'morph/endpoint-replace',
+    target: 'synth',
+    endpoint: 'B',
+    presetId: 'pad-b',
+    sliders: stateWith({ padPostLPF: 5000, synthAttack: 0.9 }),
+  });
+  next = reduceProductControlState(next, {
+    type: 'morph/position-set',
+    target: 'synth',
+    position: 0.5,
+    triggerCritical: true,
+  });
+  const resolved = resolvePerformanceState(next);
+  assert.equal(resolved.sliders.padPostLPF, 3000, 'empty morph keys should interpolate endpoint Pad LPF');
+  assert.equal(resolved.sliders.synthAttack, 0.5, 'empty morph keys should interpolate endpoint envelope keys');
+  assert.equal(resolved.productPatch.padPostLPF, 3000, 'empty morph keys should write interpolated Pad LPF to Product patch');
+  assert.equal(resolved.productPatch.synthAttack, 0.5, 'empty morph keys should write interpolated envelope to Product patch');
+}
+
+{
+  const next = reduceProductControlState(controlState({ synthEuclideanMasterEnabled: false }), {
+    type: 'sequencer/edit',
+    patch: { synthEuclideanMasterEnabled: true },
+    triggerCritical: true,
+  });
+  const resolved = resolvePerformanceState(next);
+  assert.equal(resolved.sliders.synthEuclideanMasterEnabled, true, 'sequencer/edit should affect resolved visible sequencer sliders');
+  assert.equal(resolved.productPatch.synthEuclideanMasterEnabled, true, 'sequencer/edit should affect resolved Product patch');
+}
+
+{
+  const before = controlState({
+    drumKickPresetA: 'Ikeda Kick',
+    drumKickPresetB: 'Ikeda Kick',
+    drumKickMorph: 0,
+    drumKickFreq: 55,
+  });
+  const after = reduceProductControlState(before, {
+    type: 'drum-morph/override-set',
+    voice: 'kick',
+    param: 'drumKickFreq',
+    value: 72,
+    morphPosition: 0,
+  });
+  if (after.revision !== before.revision) {
+    assert.notEqual(
+      hashJson(resolvePerformanceState(after).productPatch),
+      hashJson(resolvePerformanceState(before).productPatch),
+      'drum morph override revisions should change resolved Product output',
+    );
+  }
+}
+
+{
+  let next = controlState({ padPostLPF: 1000 });
+  next = reduceProductControlState(next, {
+    type: 'morph/endpoint-replace',
+    target: 'synth',
+    endpoint: 'A',
+    presetId: 'A1',
+    sliders: stateWith({ padPostLPF: 1000 }),
+  });
+  next = reduceProductControlState(next, {
+    type: 'morph/endpoint-replace',
+    target: 'synth',
+    endpoint: 'B',
+    presetId: 'B1',
+    sliders: stateWith({ padPostLPF: 5000 }),
+  });
+  next = reduceProductControlState(next, {
+    type: 'morph/position-set',
+    target: 'synth',
+    position: 0.5,
+    triggerCritical: true,
+  });
+  assert.equal(resolvePerformanceState(next).sliders.padPostLPF, 3000, 'morph midpoint should resolve before endpoint replacement');
+  next = reduceProductControlState(next, {
+    type: 'morph/endpoint-replace',
+    target: 'synth',
+    endpoint: 'B',
+    presetId: 'B2',
+    sliders: stateWith({ padPostLPF: 9000 }),
+  });
+  const resolved = resolvePerformanceState(next);
+  assert.equal(resolved.sliders.padPostLPF, 5000, 'endpoint replacement at midpoint should recompute visible slider immediately');
+  assert.equal(resolved.productPatch.padPostLPF, 5000, 'endpoint replacement at midpoint should recompute Product patch immediately');
+}
+
+{
+  let next = controlState({ padPostLPF: 1000 });
+  next = reduceProductControlState(next, {
+    type: 'morph/position-set',
+    target: 'synth',
+    position: 0,
+    triggerCritical: true,
+  });
+  next = reduceProductControlState(next, {
+    type: 'morph/midpoint-edit',
+    target: 'synth',
+    key: 'padPostLPF',
+    value: 2222,
+  });
+  next = reduceProductControlState(next, {
+    type: 'morph/position-set',
+    target: 'synth',
+    position: 1,
+    triggerCritical: true,
+  });
+  next = reduceProductControlState(next, {
+    type: 'morph/position-set',
+    target: 'synth',
+    position: 0,
+    triggerCritical: true,
+  });
+  assert.equal(resolvePerformanceState(next).sliders.padPostLPF, 2222, 'endpoint A edits should persist after morphing away and back');
+}
+
+{
+  const initial = controlState({ synthLevel: 0.2, synthEuclideanMasterEnabled: false, drumKickMorph: 0 });
+  expectSoundActionChangesResolvedOutput(
+    initial,
+    { type: 'slider/edit', key: 'synthLevel', value: 0.3 },
+    'slider/edit should not bump revision without resolved output change',
+  );
+  expectSoundActionChangesResolvedOutput(
+    initial,
+    { type: 'slider/patch', patch: { synthLevel: 0.4 }, reason: 'ui-control-change', triggerCritical: true },
+    'slider/patch should not bump revision without resolved output change',
+  );
+  expectSoundActionChangesResolvedOutput(
+    initial,
+    { type: 'preset/load', presetId: 'preset-b', sliders: stateWith({ synthLevel: 0.5 }) },
+    'preset/load should not bump revision without resolved output change',
+  );
+
+  let morphing = reduceProductControlState(initial, {
+    type: 'morph/endpoint-replace',
+    target: 'synth',
+    endpoint: 'A',
+    presetId: 'A',
+    sliders: stateWith({ synthLevel: 0.1 }),
+  });
+  morphing = reduceProductControlState(morphing, {
+    type: 'morph/endpoint-replace',
+    target: 'synth',
+    endpoint: 'B',
+    presetId: 'B',
+    sliders: stateWith({ synthLevel: 0.9 }),
+  });
+  morphing = reduceProductControlState(morphing, {
+    type: 'morph/position-set',
+    target: 'synth',
+    position: 0.25,
+    triggerCritical: true,
+  });
+  expectSoundActionChangesResolvedOutput(
+    morphing,
+    { type: 'morph/position-set', target: 'synth', position: 0.75, triggerCritical: true },
+    'morph/position-set should not bump revision without resolved output change',
+  );
+  expectSoundActionChangesResolvedOutput(
+    morphing,
+    {
+      type: 'morph/endpoint-replace',
+      target: 'synth',
+      endpoint: 'B',
+      presetId: 'B2',
+      sliders: stateWith({ synthLevel: 0.6 }),
+    },
+    'morph/endpoint-replace should not bump revision without resolved output change',
+  );
+  expectSoundActionChangesResolvedOutput(
+    reduceProductControlState(morphing, { type: 'morph/position-set', target: 'synth', position: 0, triggerCritical: true }),
+    { type: 'morph/endpoint-edit', target: 'synth', endpoint: 'A', key: 'synthLevel', value: 0.6 },
+    'morph/endpoint-edit should not bump revision without resolved output change',
+  );
+  expectSoundActionChangesResolvedOutput(
+    reduceProductControlState(morphing, { type: 'morph/position-set', target: 'synth', position: 0, triggerCritical: true }),
+    { type: 'morph/midpoint-edit', target: 'synth', key: 'synthLevel', value: 0.55 },
+    'morph/midpoint-edit should not bump revision without resolved output change',
+  );
+  expectSoundActionChangesResolvedOutput(
+    initial,
+    { type: 'sequencer/edit', patch: { synthEuclideanMasterEnabled: true }, triggerCritical: true },
+    'sequencer/edit should not bump revision without resolved output change',
+  );
+  expectSoundActionChangesResolvedOutput(
+    initial,
+    { type: 'transport/edit', patch: { transportBeatsPerBar: 5 }, triggerCritical: true },
+    'transport/edit should not bump revision without resolved output change',
+  );
+  expectSoundActionChangesResolvedOutput(
+    controlState({ drumKickPresetA: 'Ikeda Kick', drumKickPresetB: 'Ikeda Kick', drumKickMorph: 0 }),
+    { type: 'drum-morph/override-set', voice: 'kick', param: 'drumKickFreq', value: 72, morphPosition: 0 },
+    'drum-morph/override-set should not bump revision without resolved output change',
+  );
 }
 
 {

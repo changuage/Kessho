@@ -27,6 +27,129 @@ float normalizedModulationPosition(const kessho::product::internal::ModulationRa
   return kessho::product::internal::clampFloat((range.current_value - range.min_value) / span, 0.0f, 1.0f);
 }
 
+uint32_t mixDebugHash(uint32_t hash, uint32_t value) {
+  hash ^= value;
+  hash *= 16777619u;
+  return hash == 0u ? 1u : hash;
+}
+
+uint32_t floatDebugBits(float value) {
+  if (!std::isfinite(value)) {
+    return 0x7fc00000u;
+  }
+  uint32_t bits = 0u;
+  std::memcpy(&bits, &value, sizeof(bits));
+  return bits;
+}
+
+uint32_t mixDebugFloat(uint32_t hash, float value) {
+  return mixDebugHash(hash, floatDebugBits(value));
+}
+
+uint32_t overrideBlockHash(
+    uint32_t hash,
+    uint32_t count,
+    const uint32_t* indices,
+    const float* values,
+    uint32_t capacity) {
+  const uint32_t bounded_count = std::min<uint32_t>(count, capacity);
+  hash = mixDebugHash(hash, bounded_count);
+  for (uint32_t index = 0u; index < bounded_count; ++index) {
+    hash = mixDebugHash(hash, indices[index]);
+    hash = mixDebugFloat(hash, values[index]);
+  }
+  return hash;
+}
+
+uint32_t sourceOverrideBlockHash(const kessho::product::internal::SourceState& source) {
+  uint32_t hash = 0x811c9dc5u;
+  hash = overrideBlockHash(
+      hash,
+      source.pad_override_count,
+      source.pad_override_indices,
+      source.pad_override_values,
+      kessho::product::generated::KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT);
+  hash = overrideBlockHash(
+      hash,
+      source.lead_override_count,
+      source.lead_override_indices,
+      source.lead_override_values,
+      kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT);
+  hash = overrideBlockHash(
+      hash,
+      source.drum_override_count,
+      source.drum_override_indices,
+      source.drum_override_values,
+      kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT);
+  return hash;
+}
+
+uint32_t sourceStateHash(const kessho::product::internal::SourceState& source) {
+  uint32_t hash = 0x811c9dc5u;
+  hash = mixDebugHash(hash, source.enabled ? 1u : 0u);
+  hash = mixDebugHash(hash, source.source_id);
+  hash = mixDebugHash(hash, source.preset_id);
+  hash = mixDebugHash(hash, source.source_preset_a_id);
+  hash = mixDebugHash(hash, source.source_preset_b_id);
+  hash = mixDebugHash(hash, source.asset_id);
+  hash = mixDebugHash(hash, std::min<uint32_t>(source.asset_ref_count, kessho::product::internal::kMaxSoundscapeAssetRefs));
+  for (uint32_t index = 0u; index < std::min<uint32_t>(source.asset_ref_count, kessho::product::internal::kMaxSoundscapeAssetRefs); ++index) {
+    hash = mixDebugHash(hash, source.asset_refs[index]);
+    hash = mixDebugFloat(hash, source.asset_ref_levels[index]);
+  }
+  hash = mixDebugFloat(hash, source.level);
+  hash = mixDebugFloat(hash, source.morph);
+  hash = mixDebugFloat(hash, source.distance);
+  hash = mixDebugFloat(hash, source.expression);
+  hash = mixDebugFloat(hash, source.reverb_send);
+  hash = mixDebugFloat(hash, source.delay_a_send);
+  hash = mixDebugFloat(hash, source.delay_b_send);
+  hash = mixDebugFloat(hash, source.granular_send);
+  hash = mixDebugFloat(hash, source.diffuse_send);
+  hash = mixDebugFloat(hash, source.post_lpf_hz);
+  hash = mixDebugFloat(hash, source.stereo_width);
+  hash = mixDebugFloat(hash, source.lead_vibrato_depth);
+  hash = mixDebugFloat(hash, source.lead_vibrato_rate);
+  hash = mixDebugFloat(hash, source.lead_glide);
+  hash = mixDebugFloat(hash, source.attack_seconds);
+  hash = mixDebugFloat(hash, source.decay_seconds);
+  hash = mixDebugFloat(hash, source.sustain);
+  hash = mixDebugFloat(hash, source.hold_seconds);
+  hash = mixDebugFloat(hash, source.release_seconds);
+  hash = mixDebugHash(hash, source.structured_override_morph_anchor_enabled ? 1u : 0u);
+  hash = mixDebugFloat(hash, source.structured_override_morph_anchor);
+  hash = mixDebugHash(hash, sourceOverrideBlockHash(source));
+  for (uint32_t index = 0u; index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT; ++index) {
+    hash = mixDebugHash(hash, source.drum_voice_preset_a_ids[index]);
+    hash = mixDebugHash(hash, source.drum_voice_preset_b_ids[index]);
+    hash = mixDebugFloat(hash, source.drum_voice_morphs[index]);
+  }
+  return hash;
+}
+
+uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source) {
+  uint32_t hash = 0x811c9dc5u;
+  hash = mixDebugHash(hash, source.source_id);
+  hash = mixDebugHash(hash, source.preset_id);
+  hash = mixDebugHash(hash, source.source_preset_a_id);
+  hash = mixDebugHash(hash, source.source_preset_b_id);
+  hash = mixDebugHash(hash, source.source_preset_runtime_revision);
+  hash = mixDebugHash(hash, source.source_preset_patch_valid ? 1u : 0u);
+  hash = mixDebugHash(hash, source.source_preset_endpoint_valid ? 1u : 0u);
+  hash = mixDebugHash(hash, source.applied_module_patch_revision);
+  hash = mixDebugFloat(hash, source.source_preset_macro_morph);
+  hash = mixDebugFloat(hash, source.source_preset_macro_distance);
+  hash = mixDebugFloat(hash, source.source_preset_macro_expression);
+  hash = mixDebugHash(hash, source.source_preset_patch.exact_pad_param_count);
+  hash = mixDebugHash(hash, source.source_preset_patch.exact_lead_param_count);
+  hash = mixDebugHash(hash, source.source_preset_patch.exact_drum_param_count);
+  hash = mixDebugHash(hash, source.source_preset_endpoint_a.exact_pad_param_count);
+  hash = mixDebugHash(hash, source.source_preset_endpoint_a.exact_lead_param_count);
+  hash = mixDebugHash(hash, source.source_preset_endpoint_b.exact_pad_param_count);
+  hash = mixDebugHash(hash, source.source_preset_endpoint_b.exact_lead_param_count);
+  return hash;
+}
+
 } // namespace
 
   void KesshoProductEngine::resetMasterTelemetryState() {
@@ -142,6 +265,51 @@ float normalizedModulationPosition(const kessho::product::internal::ModulationRa
   for (uint32_t i = 0; i < std::min<uint32_t>(drum_lane_count, lane_limit); ++i) {
     copySequencerLaneUiState(drum_lanes[i], out.drum_lanes[i]);
   }
+}
+
+  KesshoProductDebugSourceState KesshoProductEngine::debugSourceState(uint32_t source_id) const {
+  KesshoProductDebugSourceState out{};
+  if (source_id < 1u || source_id > kSourceCount) {
+    return out;
+  }
+  const SourceState& source = sources[source_id - 1u];
+  out.source_id = source.source_id;
+  out.preset_id = source.preset_id;
+  out.source_preset_a_id = source.source_preset_a_id;
+  out.source_preset_b_id = source.source_preset_b_id;
+  out.source_revision = source.source_preset_runtime_revision;
+  out.source_state_hash = sourceStateHash(source);
+  out.compiled_source_hash = compiledSourceHash(source);
+  out.override_block_hash = sourceOverrideBlockHash(source);
+  return out;
+}
+
+  void KesshoProductEngine::recordDebugVoiceSpawn(uint32_t source_id, uint32_t voice_id, uint32_t sample_seed) {
+  if (source_id < 1u || source_id > kSourceCount) {
+    return;
+  }
+  const uint32_t slot = static_cast<uint32_t>(
+      debug_voice_spawn_sequence % KESSHO_PRODUCT_DEBUG_VOICE_SPAWN_CAPACITY);
+  KesshoProductDebugVoiceSpawn& out = telemetry.debug_voice_spawns[slot];
+  const KesshoProductDebugSourceState source_debug = debugSourceState(source_id);
+  out = {};
+  out.trigger_sample = transport.sample_frame;
+  out.trigger_sequence = ++debug_voice_spawn_sequence;
+  out.source_id = source_debug.source_id;
+  out.voice_id = voice_id;
+  out.preset_id = source_debug.preset_id;
+  out.source_revision = source_debug.source_revision;
+  out.source_state_hash = source_debug.source_state_hash;
+  out.compiled_source_hash = source_debug.compiled_source_hash;
+  out.override_block_hash = source_debug.override_block_hash;
+  uint32_t context_hash = 0x811c9dc5u;
+  context_hash = mixDebugHash(context_hash, source_id);
+  context_hash = mixDebugHash(context_hash, voice_id);
+  context_hash = mixDebugHash(context_hash, sample_seed);
+  context_hash = mixDebugHash(context_hash, rng_state);
+  out.trigger_context_hash = context_hash;
+  telemetry.debug_voice_spawn_count = static_cast<uint32_t>(
+      std::min<uint64_t>(debug_voice_spawn_sequence, KESSHO_PRODUCT_DEBUG_VOICE_SPAWN_CAPACITY));
 }
 
   void KesshoProductEngine::updateTelemetry(uint32_t frames) {
@@ -452,6 +620,10 @@ float normalizedModulationPosition(const kessho::product::internal::ModulationRa
   telemetry.rng_state = rng_state;
   for (uint32_t i = 0; i < kSourceCount; ++i) {
     telemetry.source_preset_ids[i] = sources[i].preset_id;
+  }
+  telemetry.debug_source_state_count = kSourceCount;
+  for (uint32_t i = 0; i < kSourceCount; ++i) {
+    telemetry.debug_source_states[i] = debugSourceState(i + 1u);
   }
   telemetry.sequencer_ui_state_revision = sequencer_ui_state_revision;
 }

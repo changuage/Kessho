@@ -20,6 +20,8 @@ export function coreProductStepValueFieldSubLaneKey(field: CoreProductStepValueF
   switch (field) {
     case CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote:
       return 'pitch';
+    case CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet:
+      return 'expression';
     case CORE_PRODUCT_STEP_VALUE_FIELDS.expression:
       return 'expression';
     case CORE_PRODUCT_STEP_VALUE_FIELDS.morph:
@@ -52,6 +54,7 @@ export function createCoreProductEvolvedStepValuePayload(options: {
   baseMidi: number;
   synthPitchSettings?: unknown;
 }): { key: 'pitch' | 'expression' | 'morph' | 'distance'; values: number[] } | null {
+  if (options.field === CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet) return null;
   const key = coreProductStepValueFieldSubLaneKey(options.field);
   if (key !== 'pitch' && key !== 'expression' && key !== 'morph' && key !== 'distance') return null;
   const entries = options.overrides.filter(isStepValueOverride).filter((entry) => entry.field === options.field).sort((left, right) => left.step - right.step);

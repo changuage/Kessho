@@ -96,8 +96,8 @@ export const coreProductRuntimeHostPort = {
     callCoreProductHost<void>('updateSnapshotPatch', reason, patch);
   },
 
-  commitResolvedState(commit: ProductResolvedStateCommit): ProductResolvedStateCommitReceipt {
-    return callCoreProductHost<ProductResolvedStateCommitReceipt>('commitResolvedState', commit);
+  commitResolvedState(commit: ProductResolvedStateCommit): Promise<ProductResolvedStateCommitReceipt> {
+    return callCoreProductHost<Promise<ProductResolvedStateCommitReceipt>>('commitResolvedState', commit);
   },
 
   getCommittedStateRevision(): number {

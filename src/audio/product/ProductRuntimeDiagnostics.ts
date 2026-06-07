@@ -17,7 +17,7 @@ export type ProductRuntimeDiagnostics = {
   lastTriggeredRevision: number;
   pendingCommitCount: number;
   lastCommitReason: string | null;
-  lastCommitMode: 'event' | 'dirty-diff' | 'full-snapshot' | 'deferred' | 'noop' | null;
+  lastCommitMode: 'event' | 'dirty-diff' | 'source-rebuild' | 'full-snapshot' | 'deferred' | 'noop' | null;
   triggerBeforeCommitCount: number;
   commitThenTriggerCount: number;
   staleTriggerBlockedCount: number;

@@ -118,10 +118,10 @@ export class WebProductEngine implements ProductEnginePort {
     this.scheduleDiagnosticsPublish();
   }
 
-  commitResolvedState(commit: ProductResolvedStateCommit): Promise<ProductResolvedStateCommitReceipt> {
-    const receipt = coreProductRuntimeHostPort.commitResolvedState(commit);
+  async commitResolvedState(commit: ProductResolvedStateCommit): Promise<ProductResolvedStateCommitReceipt> {
+    const receipt = await coreProductRuntimeHostPort.commitResolvedState(commit);
     this.scheduleDiagnosticsPublish();
-    return Promise.resolve(receipt);
+    return receipt;
   }
 
   getCommittedStateRevision(): number {

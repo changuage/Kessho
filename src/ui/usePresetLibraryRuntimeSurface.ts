@@ -1,4 +1,4 @@
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { usePresetLibraryLoader, type CloudSharedPresetPayload } from './usePresetLibraryLoader';
 import { useSavedPresetResolver } from './useSavedPresetResolver';
 
@@ -44,6 +44,10 @@ export function usePresetLibraryRuntimeSurface<TSavedPreset extends DeferredSave
   usesCapacitorLocalPresetLibrary,
   usesCloudBackedStatePresetLibrary,
 }: UsePresetLibraryRuntimeSurfaceOptions<TSavedPreset>) {
+  const handlePresetsLoadFailed = useCallback(() => {
+    setSavedPresets((previous) => (previous.length === 0 ? previous : []));
+  }, [setSavedPresets]);
+
   usePresetLibraryLoader<TSavedPreset>({
     cloudEnabled,
     cloudPresetAllowed,
@@ -55,7 +59,7 @@ export function usePresetLibraryRuntimeSurface<TSavedPreset extends DeferredSave
     loadCapacitorLocalPresets,
     loadCloudBackedPresets,
     onPresetsLoaded: setSavedPresets,
-    onPresetsLoadFailed: () => setSavedPresets([]),
+    onPresetsLoadFailed: handlePresetsLoadFailed,
     toCloudSharedPreset,
     onCloudSharedPresetLoaded,
   });

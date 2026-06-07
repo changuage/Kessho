@@ -116,6 +116,8 @@
   telemetry.schema_hash = KESSHO_PRODUCT_SNAPSHOT_SCHEMA_HASH;
   telemetry.sample_rate = sample_rate;
   telemetry.block_size = max_block_size;
+  debug_voice_spawn_sequence = 0u;
+  telemetry.debug_voice_spawn_count = 0u;
   resetSoundscapeTextureRuntimes();
   product_render_frame = 0u;
   pad_voice_cursors[0] = 0;
@@ -158,6 +160,8 @@
   std::fill(delay_a_cross_carry_r, delay_a_cross_carry_r + kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES, 0.0f);
   resetDiffuseRuntime();
   rng_state = rng_seed;
+  debug_voice_spawn_sequence = 0u;
+  telemetry.debug_voice_spawn_count = 0u;
   sequencer_evolve_rng_stream_seed = 0u;
   sequencer_evolve_rng_stream_state = 0u;
   sequencer_evolve_rng_stream_initialized = false;

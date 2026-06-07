@@ -53,6 +53,29 @@ const VERSION_CHECKPOINT_INTERVAL = 8;
 const PATCH_TO_SNAPSHOT_RATIO = 0.65;
 const INTERNAL_DERIVED_TAG = 'internal-derived';
 const AUTO_CHILD_TAG = 'auto-child';
+const PRESET_V2_SUMMARY_SELECT = [
+  'id',
+  'owner_user_id',
+  'type',
+  'scope',
+  'name',
+  'author',
+  'library',
+  'creator',
+  'description',
+  'tags',
+  'visibility',
+  'family_name',
+  'variant_name',
+  'variant_rank',
+  'latest_version_no',
+  'latest_metadata_hash',
+  'play_count',
+  'rating',
+  'deleted_at',
+  'created_at',
+  'updated_at',
+].join(',');
 
 interface V2LookupOptions {
   includeDeleted?: boolean;
@@ -1256,7 +1279,7 @@ export class SupabasePresetStore implements IPresetStore {
   private async listV2(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {
     let query = this.client
       .from('presets_v2')
-      .select('*')
+      .select(PRESET_V2_SUMMARY_SELECT)
       .eq('type', type);
 
     if (scope) query = query.eq('scope', scope);
@@ -1272,7 +1295,7 @@ export class SupabasePresetStore implements IPresetStore {
       return [];
     }
 
-    const rows = dedupePreferredV2Rows((data ?? []) as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId)
+    const rows = dedupePreferredV2Rows((data ?? []) as unknown as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId)
       .filter(isActivePresetV2Row)
       .filter(row => !isInternalDerivedRow(row));
     const metadataHashes = type === 'journey'

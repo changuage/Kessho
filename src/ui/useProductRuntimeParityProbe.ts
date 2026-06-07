@@ -30,6 +30,18 @@ function waitForProbeUiCommit(): Promise<void> {
 declare global {
   interface Window {
     __kesshoProductRuntimeProbe?: {
+      startState(options?: {
+        statePatch?: Partial<SliderState>;
+        activeTab?: ActiveTab;
+      }): Promise<void>;
+      applyStatePatch(options: {
+        patch: Partial<SliderState>;
+        activeTab?: ActiveTab;
+      }): Promise<void>;
+      readProductStateProbe(): {
+        telemetry: ReturnType<ProductEnginePort['getTelemetry']>;
+        diagnostics: ReturnType<ProductEnginePort['getDiagnostics']>;
+      };
       configureRuntimeWalk(options: {
         key: string;
         range: { min: number; max: number };
@@ -100,6 +112,27 @@ export function useProductRuntimeParityProbe({
     };
 
     window.__kesshoProductRuntimeProbe = {
+      async startState(options = {}) {
+        const nextState = { ...stateRef.current, ...(options.statePatch ?? {}) } as SliderState;
+        setUiMode('advanced');
+        setActiveTab(options.activeTab ?? 'synth');
+        setState(nextState);
+        await waitForProbeUiCommit();
+        await runtime.start({ initialState: nextState as unknown as Record<string, unknown> });
+      },
+      async applyStatePatch(options) {
+        const nextState = { ...stateRef.current, ...options.patch } as SliderState;
+        setUiMode('advanced');
+        if (options.activeTab) setActiveTab(options.activeTab);
+        setState(nextState);
+        await waitForProbeUiCommit();
+      },
+      readProductStateProbe() {
+        return {
+          telemetry: runtime.getTelemetry(),
+          diagnostics: runtime.getDiagnostics(),
+        };
+      },
       configureRuntimeWalk: (options) => configureRange(
         options.key,
         'walk',

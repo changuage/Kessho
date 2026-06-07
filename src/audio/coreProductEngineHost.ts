@@ -55,14 +55,22 @@ import { applyCoreProductDrumSequencerStepOverrideEvent } from './product/host/C
 import { applyCoreProductSequencerStepEventToCache } from './product/host/CoreProductSequencerStepEventBridge';
 import { applyCoreProductSequencerSubLaneEnabledEvent } from './product/host/CoreProductSequencerSubLaneEnabledEventBridge';
 import { coreProductStepValueFieldEnabled, syncCoreProductSequencerStepState } from './product/host/CoreProductSequencerStepPostingBridge';
-import type { ProductEngineState, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductSnapshotPatchReason } from './product/ProductEngineTypes';
+import type { ProductEngineState, ProductResolvedStateApplyMode, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductSnapshotPatchReason } from './product/ProductEngineTypes';
 import { createWebProductRuntimeCapabilityReport, type ProductRuntimeCapabilityReport } from './product/ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from './product/ProductRuntimeDiagnostics';
 import { CoreProductArrangementBridge } from './product/host/CoreProductArrangementBridge';
+import { logProductStateDebug, productStateDebugEnabled } from '../debug/productStateDebug';
 const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = 4;
 const PRODUCT_VISIBLE_DRUM_LANE_COUNT = 4;
 type SequencerLanePitchState = { steps?: number; direction?: LaneDirection; scaleQuantize?: boolean };
-type ProductStateApplyOptions = { forceFullSnapshot?: boolean };
+type ProductStateApplyOptions = {
+  forceFullSnapshot?: boolean;
+  revision?: number;
+  commitReason?: string;
+  triggerCritical?: boolean;
+  applyMode?: ProductResolvedStateApplyMode;
+};
+type ProductPatchApplyReceipt = Omit<ProductResolvedStateCommitReceipt, 'revision'>;
 
 class CoreProductEngineHost {
   private readonly runtime = new CoreProductRuntime();
@@ -213,10 +221,10 @@ class CoreProductEngineHost {
   }
 
   updateSnapshotPatch(reason: ProductSnapshotPatchReason, patch: Record<string, unknown>): void {
-    this.applyProductStatePatch(patch, snapshotReloadReasonForProductPatch(reason));
+    void this.applyProductStatePatch(patch, snapshotReloadReasonForProductPatch(reason));
   }
 
-  commitResolvedState(commit: ProductResolvedStateCommit): ProductResolvedStateCommitReceipt {
+  commitResolvedState(commit: ProductResolvedStateCommit): Promise<ProductResolvedStateCommitReceipt> {
     return this.resolvedStateCommitService.commitResolvedState(commit);
   }
 
@@ -228,15 +236,15 @@ class CoreProductEngineHost {
     patch: Record<string, unknown>,
     fallbackReloadReason: SnapshotReloadReason,
     options?: ProductStateApplyOptions,
-  ): ProductResolvedStateCommitReceipt['mode'] {
+  ): Promise<ProductPatchApplyReceipt> {
     return this.applyProductState({ ...(this.latestSliderState ?? {}), ...patch }, fallbackReloadReason, options);
   }
 
-  private applyProductState(
+  private async applyProductState(
     sliderState: Record<string, unknown>,
     fallbackReloadReason: SnapshotReloadReason,
     options?: ProductStateApplyOptions,
-  ): ProductResolvedStateCommitReceipt['mode'] {
+  ): Promise<ProductPatchApplyReceipt> {
     const previousSliderState = this.latestSliderState, previousWalkConfig = runtimeWalkConfigFromState(previousSliderState);
     this.latestSliderState = sliderState;
     const nextWalkConfig = runtimeWalkConfigFromState(this.latestSliderState);
@@ -251,20 +259,20 @@ class CoreProductEngineHost {
         .finally(() => {
           this.sequencerTransportStartInFlight = false;
         });
-      return 'deferred';
+      return { applied: false, mode: 'deferred' };
     }
     if (this.runtimeReady && this.assetRegistrar.hasMissingDefaultAssetsForState()) {
       void this.assetRegistrar.ensureDefaultAssetsForState().then(() => {
-        this.applyLatestSnapshotUpdate('asset-reference-change', forceSequencerClockRejoin, options);
+        void this.applyLatestSnapshotUpdate('asset-reference-change', forceSequencerClockRejoin, options);
         if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.modulationRangeBridge.flushRuntimeWalkRanges();
         if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState); this.publishStateIfHarmonyChanged();
       });
-      return 'deferred';
+      return { applied: false, mode: 'deferred' };
     }
-    const mode = this.applyLatestSnapshotUpdate(fallbackReloadReason, forceSequencerClockRejoin, options);
+    const receipt = await this.applyLatestSnapshotUpdate(fallbackReloadReason, forceSequencerClockRejoin, options);
     if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.modulationRangeBridge.flushRuntimeWalkRanges();
     if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState); this.publishStateIfHarmonyChanged();
-    return mode;
+    return receipt;
   }
 
   private sequencerTransportRequested(sliderState: Record<string, unknown>): boolean {
@@ -320,7 +328,7 @@ class CoreProductEngineHost {
     await this.runtime.ensureStarted();
     this.runtimeReady = true;
     await this.assetRegistrar.ensureDefaultAssetsForState(); this.resetSequencerEvolveState();
-    this.loadLatestSnapshot('runtime-start');
+    await this.loadLatestSnapshot('runtime-start');
     await this.runtime.resume();
     this.runtime.postEvent(createCoreProductStartEvent());
     this.modulationRangeBridge.flushModulationRanges();
@@ -331,7 +339,7 @@ class CoreProductEngineHost {
 
   async resume(): Promise<void> {
     await this.runtime.resume(); this.resetSequencerEvolveState();
-    this.loadLatestSnapshot('runtime-start', true);
+    await this.loadLatestSnapshot('runtime-start', true);
     this.runtime.postEvent(createCoreProductStartEvent());
     this.running = true;
     this.arrangementBridge.start(this.latestSliderState, this.adapterState);
@@ -383,12 +391,12 @@ class CoreProductEngineHost {
     }
     void this.runtime.ensureStarted().then(() => {
       this.runtimeReady = true;
-      this.loadLatestSnapshot('runtime-bootstrap');
+      void this.loadLatestSnapshot('runtime-bootstrap');
     });
   }
 
   resetCofDrift(): void {
-    this.loadLatestSnapshot('explicit-reset-request');
+    void this.loadLatestSnapshot('explicit-reset-request');
     this.stateChangeCallback?.(this.createEngineState());
   }
 
@@ -416,7 +424,7 @@ class CoreProductEngineHost {
     const midi = midiFromFrequency(frequency);
     const triggerVelocity = requireFiniteRange(velocity, 'synth trigger velocity', 0.000001, 1);
     const durationSeconds = requirePositive(noteDuration, 'synth trigger duration');
-    if (padParamsOverride) this.applyProductStatePatch(padParamsOverride, snapshotReloadReasonForProductPatch('ui-control-change'));
+    if (padParamsOverride) void this.applyProductStatePatch(padParamsOverride, snapshotReloadReasonForProductPatch('ui-control-change'));
     const pad2Assign = typeof this.latestSliderState?.pad2VoiceAssign === 'number' ? Math.round(this.latestSliderState.pad2VoiceAssign) & 0x3f : 0;
     const targetSource = this.latestSliderState?.pad2Enabled === true && (pad2Assign & (1 << voiceIndex)) !== 0
       ? CORE_PRODUCT_SOURCE_IDS.pad2
@@ -428,8 +436,7 @@ class CoreProductEngineHost {
     if (this.runtimeReady) { if (this.runtime.audioContext?.state === 'running') { post(); return; } void this.runtime.resume().then(post); return; }
     void this.runtime.ensureStarted().then(() => {
       this.runtimeReady = true;
-      this.loadLatestSnapshot('runtime-bootstrap');
-      return this.runtime.resume();
+      return this.loadLatestSnapshot('runtime-bootstrap').then(() => this.runtime.resume());
     }).then(post);
   }
 
@@ -451,9 +458,9 @@ class CoreProductEngineHost {
     const event = createCoreProductHostMidiEvent(message, { sampleRate: audioContext?.sampleRate ?? 48000, currentTimeSeconds, timestampOriginSeconds: this.midiTimestampOriginSeconds ?? undefined });
     const post = () => { this.runtime.postEvent(event); };
     if (this.runtimeReady) { if (this.runtime.audioContext?.state === 'running') { post(); return; } void this.runtime.resume().then(post); return; }
-    void this.runtime.ensureStarted().then(() => { this.runtimeReady = true; this.loadLatestSnapshot('runtime-bootstrap'); return this.runtime.resume(); }).then(post);
+    void this.runtime.ensureStarted().then(() => { this.runtimeReady = true; return this.loadLatestSnapshot('runtime-bootstrap').then(() => this.runtime.resume()); }).then(post);
   }
-  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): void { const audioContext = this.runtime.audioContext; const currentTimeSeconds = audioContext?.currentTime ?? 0; if (this.midiTimestampOriginSeconds === null && typeof event.timestampMs === 'number' && Number.isFinite(event.timestampMs)) this.midiTimestampOriginSeconds = event.timestampMs / 1000 - currentTimeSeconds; const productEvent = createCoreProductLiveNoteEvent(event, { sampleRate: audioContext?.sampleRate ?? 48000, currentTimeSeconds, timestampOriginSeconds: this.midiTimestampOriginSeconds ?? undefined }); const post = () => { this.runtime.postEvent(productEvent); }; if (this.runtimeReady) { if (this.runtime.audioContext?.state === 'running') { post(); return; } void this.runtime.resume().then(post); return; } void this.runtime.ensureStarted().then(() => { this.runtimeReady = true; this.loadLatestSnapshot('runtime-bootstrap'); return this.runtime.resume(); }).then(post); }
+  enqueueLiveNoteEvent(event: ProductLiveNoteEvent): void { const audioContext = this.runtime.audioContext; const currentTimeSeconds = audioContext?.currentTime ?? 0; if (this.midiTimestampOriginSeconds === null && typeof event.timestampMs === 'number' && Number.isFinite(event.timestampMs)) this.midiTimestampOriginSeconds = event.timestampMs / 1000 - currentTimeSeconds; const productEvent = createCoreProductLiveNoteEvent(event, { sampleRate: audioContext?.sampleRate ?? 48000, currentTimeSeconds, timestampOriginSeconds: this.midiTimestampOriginSeconds ?? undefined }); const post = () => { this.runtime.postEvent(productEvent); }; if (this.runtimeReady) { if (this.runtime.audioContext?.state === 'running') { post(); return; } void this.runtime.resume().then(post); return; } void this.runtime.ensureStarted().then(() => { this.runtimeReady = true; return this.loadLatestSnapshot('runtime-bootstrap').then(() => this.runtime.resume()); }).then(post); }
 
   setRuntimeWalkPositionsCallback(callback: ((positions: Record<string, number>) => void) | null): void {
     this.setDisplayCallback('runtimeWalkPositions', callback);
@@ -527,7 +534,7 @@ class CoreProductEngineHost {
     await this.runtime.ensureStarted();
     this.runtimeReady = true;
     await this.runtime.resume();
-    if (!this.productSourceEnabled(CORE_PRODUCT_SOURCE_IDS.drum)) this.applyLatestSnapshotUpdate('runtime-bootstrap');
+    if (!this.productSourceEnabled(CORE_PRODUCT_SOURCE_IDS.drum)) await this.applyLatestSnapshotUpdate('runtime-bootstrap');
     post();
   }
 
@@ -588,7 +595,7 @@ class CoreProductEngineHost {
     await this.runtime.ensureStarted();
     this.runtimeReady = true;
     await this.runtime.resume();
-    if (!this.productSourceEnabled(targetSourceId)) this.applyLatestSnapshotUpdate(manualNote.source === 'piano' ? 'manual-piano-asset' : 'runtime-bootstrap');
+    if (!this.productSourceEnabled(targetSourceId)) await this.applyLatestSnapshotUpdate(manualNote.source === 'piano' ? 'manual-piano-asset' : 'runtime-bootstrap');
     if (manualNote.source === 'piano') await this.assetRegistrar.ensurePianoAssetForNote(manualNote.midi, manualNote.velocity);
     this.postManualSynthNote(manualNote);
   }
@@ -615,7 +622,7 @@ class CoreProductEngineHost {
     this.runtimeReady = true;
     await this.runtime.resume();
     if (!this.productSourcesEnabled(targetSourceIds)) {
-      this.applyLatestSnapshotUpdate(manualNotes.some((note) => note.source === 'piano') ? 'manual-piano-asset' : 'runtime-bootstrap');
+      await this.applyLatestSnapshotUpdate(manualNotes.some((note) => note.source === 'piano') ? 'manual-piano-asset' : 'runtime-bootstrap');
     }
     await this.ensurePianoAssetsForManualNotes(manualNotes);
     for (const note of manualNotes) this.postManualSynthNote(note);
@@ -650,9 +657,9 @@ class CoreProductEngineHost {
     this.resolvedStateCommitService.recordSoundTrigger();
   }
 
-  private loadLatestSnapshot(reason: SnapshotReloadReason = 'product-patch', includeClockStartDelay = reason === 'runtime-start'): void {
+  private async loadLatestSnapshot(reason: SnapshotReloadReason = 'product-patch', includeClockStartDelay = reason === 'runtime-start'): Promise<void> {
     if (!this.runtimeReady) return;
-    const result = loadCoreProductSnapshot({
+    const result = await loadCoreProductSnapshot({
       runtime: this.runtime,
       snapshot: this.createLatestSnapshot(includeClockStartDelay),
       reason,
@@ -667,10 +674,17 @@ class CoreProductEngineHost {
     reason: SnapshotReloadReason = 'product-patch',
     forceSequencerClockRejoin = false,
     options?: ProductStateApplyOptions,
-  ): ProductResolvedStateCommitReceipt['mode'] {
-    if (!this.runtimeReady) return 'deferred';
+  ): Promise<ProductPatchApplyReceipt> {
+    if (!this.runtimeReady) return Promise.resolve({ applied: false, mode: 'deferred' });
     const applyOptions = options ?? {};
-    const result = applyCoreProductSnapshotUpdate({
+    const metadata = typeof applyOptions.revision === 'number'
+      ? {
+        revision: applyOptions.revision,
+        reason: applyOptions.commitReason ?? reason,
+        triggerCritical: applyOptions.triggerCritical === true,
+      }
+      : undefined;
+    return applyCoreProductSnapshotUpdate({
       runtime: this.runtime,
       previousSnapshot: this.latestProductSnapshot,
       nextSnapshot: this.createLatestSnapshot(forceSequencerClockRejoin),
@@ -679,17 +693,27 @@ class CoreProductEngineHost {
       forceFullSnapshot: applyOptions.forceFullSnapshot,
       forceSequencerClockRejoin,
       forwardRngDiffs: shouldForwardCoreProductRngDiffs(this.latestSliderState, this.latestTelemetry),
+      metadata,
+      awaitAudioThreadAck: applyOptions.triggerCritical === true,
       nowMs: () => this.nowMs(),
       afterFullSnapshotLoad: () => this.afterProductSnapshotLoad(),
+    }).then((result): ProductPatchApplyReceipt => {
+      this.latestProductSnapshot = result.snapshot;
+      this.pendingSnapshotReloadReason = null;
+      if (result.mode === 'dirty-diff') {
+        this.diagnostics.recordDirtyDiff();
+        return { applied: true, mode: 'dirty-diff' };
+      }
+      this.diagnostics.recordFullSnapshotReload(result.reason, result.cpuMs);
+      return {
+        applied: true,
+        mode: 'full-snapshot',
+        audioThreadApplied: result.receipt?.applied === true,
+        ...(result.receipt?.encodedSnapshotHash ? { encodedSnapshotHash: result.receipt.encodedSnapshotHash } : {}),
+        ...(result.receipt?.workletSourceSummaryHash ? { workletSourceSummaryHash: result.receipt.workletSourceSummaryHash } : {}),
+        ...(typeof result.receipt?.appliedAtFrame === 'number' ? { appliedAtFrame: result.receipt.appliedAtFrame } : {}),
+      };
     });
-    this.latestProductSnapshot = result.snapshot;
-    this.pendingSnapshotReloadReason = null;
-    if (result.mode === 'dirty-diff') {
-      this.diagnostics.recordDirtyDiff();
-      return 'dirty-diff';
-    }
-    this.diagnostics.recordFullSnapshotReload(result.reason, result.cpuMs);
-    return 'full-snapshot';
   }
 
   private afterProductSnapshotLoad(): void {
@@ -720,6 +744,7 @@ class CoreProductEngineHost {
 
   private handleTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
     const hostTelemetry = this.withHostDiagnostics(telemetry);
+    this.logProductCoreDebugTelemetry(hostTelemetry);
     this.latestTelemetry = hostTelemetry;
     if (this.journeyMorphClock.running && typeof hostTelemetry.journeyMorphPhase === 'number') {
       this.adapterState = {
@@ -759,6 +784,50 @@ class CoreProductEngineHost {
     hostTelemetry.sampleHoldDebug = this.modulationRangeBridge.getSampleHoldDebugState();
     this.tickSequencerEvolveClock(hostTelemetry); this.publishStateIfHarmonyChanged();
     this.publishSequencerVisuals(hostTelemetry);
+  }
+  private logProductCoreDebugTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
+    if (!productStateDebugEnabled()) return;
+    const relevantSources = (telemetry.productDebugSourceStates ?? []).filter((source) =>
+      source.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 ||
+      source.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ||
+      source.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 ||
+      source.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2,
+    );
+    const recentSpawns = (telemetry.productDebugVoiceSpawns ?? [])
+      .filter((spawn) =>
+        spawn.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 ||
+        spawn.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ||
+        spawn.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 ||
+        spawn.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2,
+      )
+      .slice(-8);
+    logProductStateDebug({
+      stage: 'cpp-product-telemetry',
+      transportRunning: telemetry.transportRunning,
+      absoluteSampleTime: telemetry.absoluteSampleTime ?? null,
+      activeSources: relevantSources.map((source) => ({
+        sourceId: source.sourceId,
+        presetId: source.presetId,
+        sourcePresetAId: source.sourcePresetAId,
+        sourcePresetBId: source.sourcePresetBId,
+        sourceRevision: source.sourceRevision,
+        sourceStateHash: source.sourceStateHash,
+        compiledSourceHash: source.compiledSourceHash,
+        overrideBlockHash: source.overrideBlockHash,
+      })),
+      recentVoiceSpawns: recentSpawns.map((spawn) => ({
+        triggerSequence: spawn.triggerSequence,
+        triggerSample: spawn.triggerSample,
+        sourceId: spawn.sourceId,
+        voiceId: spawn.voiceId,
+        presetId: spawn.presetId,
+        sourceRevision: spawn.sourceRevision,
+        sourceStateHash: spawn.sourceStateHash,
+        compiledSourceHash: spawn.compiledSourceHash,
+        overrideBlockHash: spawn.overrideBlockHash,
+        triggerContextHash: spawn.triggerContextHash,
+      })),
+    });
   }
   private tickSequencerEvolveClock(hostTelemetry: CoreProductTelemetrySnapshot): void {
     this.sequencerEvolveBridge.tick(hostTelemetry);
@@ -961,12 +1030,11 @@ class CoreProductEngineHost {
     }
     void this.runtime.ensureStarted().then(() => {
       this.runtimeReady = true;
-      this.loadLatestSnapshot('runtime-bootstrap');
-      post();
-    });
+      return this.loadLatestSnapshot('runtime-bootstrap');
+    }).then(post);
   }
 
-  private postManualSynthDiceEvent(event: CoreProductEvent): void { if (this.runtimeReady) { this.runtime.postEvent(event); return; } void this.runtime.ensureStarted().then(() => { this.runtimeReady = true; this.loadLatestSnapshot('runtime-bootstrap'); this.runtime.postEvent(event); }); }
+  private postManualSynthDiceEvent(event: CoreProductEvent): void { if (this.runtimeReady) { this.runtime.postEvent(event); return; } void this.runtime.ensureStarted().then(() => { this.runtimeReady = true; return this.loadLatestSnapshot('runtime-bootstrap'); }).then(() => this.runtime.postEvent(event)); }
 
   private stepValueFieldEnabled(sequencer: SequencerKind, laneIndex: number, field: CoreProductStepValueField): boolean { return coreProductStepValueFieldEnabled(this.synthSubLaneEnabled, this.drumSubLaneEnabled, sequencer, laneIndex, field); }
 

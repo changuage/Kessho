@@ -50,6 +50,7 @@ struct KesshoProductEngine : ProductGraphState {
   bool snapshot_loaded_once = false;
   SequencerBuffer sequencer_events{};
   KesshoProductTelemetry telemetry{};
+  uint64_t debug_voice_spawn_sequence = 0u;
   float stem_l[kStemCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float stem_r[kStemCount][kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float silent_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
@@ -318,6 +319,8 @@ struct KesshoProductEngine : ProductGraphState {
   void markSequencerUiStateChanged(uint32_t target_id, uint32_t lane_index, uint32_t change_kind);
   void copySequencerLaneUiState(const LaneState& lane, KesshoProductSequencerLaneUiState& out) const;
   void copySequencerUiState(KesshoProductSequencerUiState& out) const;
+  KesshoProductDebugSourceState debugSourceState(uint32_t source_id) const;
+  void recordDebugVoiceSpawn(uint32_t source_id, uint32_t voice_id, uint32_t sample_seed);
   float evolutionDepth() const;
   float evolvedLaneValue(
       const LaneState& lane,

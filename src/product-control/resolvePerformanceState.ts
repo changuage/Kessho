@@ -4,8 +4,10 @@ import type {
   ProductSnapshotPatch,
   ProductSnapshotPatchReason,
 } from '../audio/product/ProductEngineTypes';
+import { getAllMorphedDrumParams } from '../audio/drumMorph';
 import type { SliderState } from '../ui/state';
 import { buildResolvedProductPatch } from './buildResolvedProductPatch';
+import { PRODUCT_DRUM_MORPH_VOICES } from './drumMorphOverrideState';
 import {
   clampMorphPosition,
   type MorphState,
@@ -32,13 +34,17 @@ type ResolvePerformanceStateOptions = {
 };
 
 function mergeMorphKeys(morph: MorphState): ProductControlSliderKey[] {
-  if (morph.keys) return [...morph.keys];
+  if (morph.keys && morph.keys.length > 0) return [...morph.keys];
   const keys = new Set<ProductControlSliderKey>();
   for (const key of Object.keys(morph.presetA.sliders) as ProductControlSliderKey[]) {
-    keys.add(key);
+    if (!Object.is(morph.presetA.sliders[key], morph.presetB.sliders[key])) {
+      keys.add(key);
+    }
   }
   for (const key of Object.keys(morph.presetB.sliders) as ProductControlSliderKey[]) {
-    keys.add(key);
+    if (!Object.is(morph.presetA.sliders[key], morph.presetB.sliders[key])) {
+      keys.add(key);
+    }
   }
   return [...keys];
 }
@@ -67,6 +73,14 @@ function applyMorph(resolved: SliderState, morph: MorphState): SliderState {
   return next as unknown as SliderState;
 }
 
+function hasDrumMorphOverrides(controlState: ProductControlState): boolean {
+  for (const voice of PRODUCT_DRUM_MORPH_VOICES) {
+    if (Object.keys(controlState.drumMorphOverrides.valueOverrides[voice]).length > 0) return true;
+    if (Object.keys(controlState.drumMorphOverrides.dualRangeOverrides[voice]).length > 0) return true;
+  }
+  return false;
+}
+
 export function resolvePerformanceState(
   controlState: ProductControlState,
   options: ResolvePerformanceStateOptions = {},
@@ -74,6 +88,16 @@ export function resolvePerformanceState(
   let sliders = { ...controlState.rawSliders } as SliderState;
   sliders = applyMorph(sliders, controlState.synthMorph);
   sliders = applyMorph(sliders, controlState.drumMorph);
+  sliders = {
+    ...sliders,
+    ...controlState.sequencer.patch,
+  } as SliderState;
+  if (hasDrumMorphOverrides(controlState)) {
+    sliders = {
+      ...sliders,
+      ...getAllMorphedDrumParams(sliders, controlState.drumMorphOverrides),
+    } as SliderState;
+  }
   sliders = {
     ...sliders,
     ...controlState.overrides.visibleMidpoint.synth,

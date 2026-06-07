@@ -52,6 +52,8 @@ function subLaneKeyFromFieldIndex(value: unknown): string | null {
   switch (field) {
     case CORE_PRODUCT_STEP_VALUE_FIELDS.midiNote:
       return 'pitch';
+    case CORE_PRODUCT_STEP_VALUE_FIELDS.ratchet:
+      return 'expression';
     case CORE_PRODUCT_STEP_VALUE_FIELDS.expression:
       return 'expression';
     case CORE_PRODUCT_STEP_VALUE_FIELDS.morph:

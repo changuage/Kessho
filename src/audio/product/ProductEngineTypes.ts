@@ -28,7 +28,9 @@ export type ProductSnapshotPatch = ProductStateRecord;
 
 export type ProductResolvedStateApplyMode =
   | 'auto'
+  | 'event'
   | 'dirty-diff'
+  | 'source-rebuild'
   | 'full-snapshot';
 
 export type ProductResolvedStateCommit = {
@@ -43,7 +45,26 @@ export type ProductResolvedStateCommit = {
 export type ProductResolvedStateCommitReceipt = {
   readonly revision: number;
   readonly applied: boolean;
-  readonly mode: 'event' | 'dirty-diff' | 'full-snapshot' | 'deferred' | 'noop';
+  readonly mode: 'event' | 'dirty-diff' | 'source-rebuild' | 'full-snapshot' | 'deferred' | 'noop';
+  readonly audioThreadApplied?: boolean;
+  readonly encodedSnapshotHash?: string;
+  readonly workletSourceSummaryHash?: string;
+  readonly appliedAtFrame?: number;
+};
+
+export type ProductRuntimeSnapshotMetadata = {
+  readonly revision: number;
+  readonly reason: string;
+  readonly triggerCritical: boolean;
+  readonly encodedSnapshotHash: string;
+};
+
+export type ProductSnapshotAppliedReceipt = {
+  readonly revision: number;
+  readonly applied: true;
+  readonly encodedSnapshotHash: string;
+  readonly workletSourceSummaryHash?: string;
+  readonly appliedAtFrame?: number;
 };
 
 export type ProductExternalState = Readonly<object>;

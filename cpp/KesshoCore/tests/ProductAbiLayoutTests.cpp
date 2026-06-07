@@ -22,7 +22,9 @@ int main() {
   static_assert(sizeof(KesshoProductEvent) == 40, "product event ABI size changed");
   static_assert(sizeof(KesshoSequencerEvent) == 60, "sequencer event ABI size changed");
   static_assert(sizeof(KesshoProductGranularVisualEvent) == 32, "granular visual event ABI size changed");
-  static_assert(sizeof(KesshoProductTelemetry) == 8760, "product telemetry ABI size changed");
+  static_assert(sizeof(KesshoProductDebugSourceState) == 32, "product debug source telemetry ABI size changed");
+  static_assert(sizeof(KesshoProductDebugVoiceSpawn) == 48, "product debug voice telemetry ABI size changed");
+  static_assert(sizeof(KesshoProductTelemetry) == 9760, "product telemetry ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneUiState) == 3024, "sequencer UI lane state ABI size changed");
   static_assert(sizeof(KesshoProductSequencerUiState) == 96804, "sequencer UI state ABI size changed");
 
@@ -92,6 +94,18 @@ int main() {
   require(
       offsetof(KesshoProductTelemetry, granular_visual_events) == 7732,
       "telemetry granular visual events offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, debug_source_state_count) == 8756,
+      "telemetry debug source count offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, debug_source_states) == 8760,
+      "telemetry debug source states offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, debug_voice_spawn_count) == 8984,
+      "telemetry debug voice count offset changed");
+  require(
+      offsetof(KesshoProductTelemetry, debug_voice_spawns) == 8992,
+      "telemetry debug voice spawns offset changed");
   require(
       offsetof(KesshoProductSequencerLaneUiState, probability_overrides) == 168,
       "sequencer UI probability override offset changed");

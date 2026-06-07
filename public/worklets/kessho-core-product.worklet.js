@@ -1,5 +1,5 @@
 const EVENT_BYTES = 40;
-const TELEMETRY_BYTES = 8760;
+const TELEMETRY_BYTES = 9760;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
 const EXPECTED_PRODUCT_SCHEMA_HASH = 0xfe2636f5;
 const SEQUENCER_UI_STATE_LANES = 16;
@@ -60,6 +60,14 @@ const GRANULAR_VISUAL_EVENT_CAPACITY = 32;
 const GRANULAR_VISUAL_EVENT_BYTES = 32;
 const TELEMETRY_GRANULAR_VISUAL_EVENT_COUNT_OFFSET = 7728;
 const TELEMETRY_GRANULAR_VISUAL_EVENTS_OFFSET = 7732;
+const TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET = 8756;
+const TELEMETRY_DEBUG_SOURCE_OFFSET = 8760;
+const TELEMETRY_DEBUG_SOURCE_BYTES = 32;
+const TELEMETRY_DEBUG_SOURCE_CAPACITY = 7;
+const TELEMETRY_DEBUG_VOICE_COUNT_OFFSET = 8984;
+const TELEMETRY_DEBUG_VOICE_OFFSET = 8992;
+const TELEMETRY_DEBUG_VOICE_BYTES = 48;
+const TELEMETRY_DEBUG_VOICE_CAPACITY = 16;
 const STEP_TOGGLE_CLEAR_LANE = 2;
 const STEP_FIELD_MASK = 15 << 8;
 const STEP_FIELD_SUBLANE_CONFIG = 8 << 8;
@@ -81,6 +89,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.sequencerUiStatePtr = 0;
     this.lastSequencerUiStateRevision = 0;
     this.lastSequencerUiState = null;
+    this.pendingSnapshots = [];
+    this.renderedFrameCount = 0;
     this.assetAllocations = new Map();
     this.assetDecodedBytes = 0;
     this.assetAllocationBytes = 0;
@@ -239,7 +249,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         return;
       }
       if (message.type === 'snapshot') {
-        this.loadSnapshot(message.snapshot);
+        this.pendingSnapshots.push({
+          snapshot: message.snapshot,
+          metadata: message.metadata || null,
+        });
         return;
       }
       if (message.type === 'reset') {
@@ -857,6 +870,21 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     }
   }
 
+  applyPendingSnapshots() {
+    while (this.pendingSnapshots.length > 0) {
+      const pending = this.pendingSnapshots.shift();
+      this.loadSnapshot(pending.snapshot);
+      if (pending.metadata) {
+        this.port.postMessage({
+          type: 'snapshot-applied',
+          revision: pending.metadata.revision,
+          encodedSnapshotHash: pending.metadata.encodedSnapshotHash,
+          appliedAtFrame: this.renderedFrameCount,
+        });
+      }
+    }
+  }
+
   registerAsset(message) {
     const channels = Array.isArray(message.channels) ? message.channels : [];
     if (!Number.isInteger(message.assetId) || message.assetId <= 0) {
@@ -941,6 +969,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const low = this.view.getUint32(byteOffset, true);
     const high = this.view.getUint32(byteOffset + 4, true);
     return high * 4294967296 + low;
+  }
+
+  hash32Hex(value) {
+    return (value >>> 0).toString(16).padStart(8, '0');
   }
 
   maskHas(low, high, step) {
@@ -1179,6 +1211,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         : null;
     const earthTextureDebugState = this.readEarthTextureDebugState(ptr);
     const productModulationDebug = this.readProductModulationDebug(ptr);
+    const productDebugSourceStates = this.readProductDebugSourceStates(ptr);
+    const productDebugVoiceSpawns = this.readProductDebugVoiceSpawns(ptr);
     return {
       schemaHash: this.view.getUint32(ptr, true),
       sampleRate: this.view.getFloat64(ptr + 8, true),
@@ -1221,6 +1255,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       runtimeWalkValues,
       earthTextureDebugState,
       productModulationDebug,
+      productDebugSourceStates,
+      productDebugVoiceSpawns,
       rngSeed: this.view.getUint32(ptr + 928, true),
       rngState: this.view.getUint32(ptr + 932, true),
       sourcePresetIds,
@@ -1382,6 +1418,55 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     return { randomWalk, sampleHold };
   }
 
+  readProductDebugSourceStates(ptr) {
+    const count = Math.min(
+      this.view.getUint32(ptr + TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET, true),
+      TELEMETRY_DEBUG_SOURCE_CAPACITY,
+    );
+    if (count <= 0) return [];
+    const states = [];
+    for (let index = 0; index < count; index += 1) {
+      const offset = ptr + TELEMETRY_DEBUG_SOURCE_OFFSET + index * TELEMETRY_DEBUG_SOURCE_BYTES;
+      states.push({
+        sourceId: this.view.getUint32(offset, true),
+        presetId: this.view.getUint32(offset + 4, true),
+        sourcePresetAId: this.view.getUint32(offset + 8, true),
+        sourcePresetBId: this.view.getUint32(offset + 12, true),
+        sourceRevision: this.view.getUint32(offset + 16, true),
+        sourceStateHash: this.hash32Hex(this.view.getUint32(offset + 20, true)),
+        compiledSourceHash: this.hash32Hex(this.view.getUint32(offset + 24, true)),
+        overrideBlockHash: this.hash32Hex(this.view.getUint32(offset + 28, true)),
+      });
+    }
+    return states;
+  }
+
+  readProductDebugVoiceSpawns(ptr) {
+    const count = Math.min(
+      this.view.getUint32(ptr + TELEMETRY_DEBUG_VOICE_COUNT_OFFSET, true),
+      TELEMETRY_DEBUG_VOICE_CAPACITY,
+    );
+    if (count <= 0) return [];
+    const spawns = [];
+    for (let index = 0; index < count; index += 1) {
+      const offset = ptr + TELEMETRY_DEBUG_VOICE_OFFSET + index * TELEMETRY_DEBUG_VOICE_BYTES;
+      spawns.push({
+        triggerSample: this.readUint64Number(offset),
+        triggerSequence: this.readUint64Number(offset + 8),
+        sourceId: this.view.getUint32(offset + 16, true),
+        voiceId: this.view.getUint32(offset + 20, true),
+        presetId: this.view.getUint32(offset + 24, true),
+        sourceRevision: this.view.getUint32(offset + 28, true),
+        sourceStateHash: this.hash32Hex(this.view.getUint32(offset + 32, true)),
+        compiledSourceHash: this.hash32Hex(this.view.getUint32(offset + 36, true)),
+        overrideBlockHash: this.hash32Hex(this.view.getUint32(offset + 40, true)),
+        triggerContextHash: this.hash32Hex(this.view.getUint32(offset + 44, true)),
+      });
+    }
+    spawns.sort((a, b) => a.triggerSequence - b.triggerSequence);
+    return spawns;
+  }
+
   readGranularWaveform(includeGranularWaveform) {
     if (!includeGranularWaveform || !this.granularWaveformPtr || !this.api.copyGranularWaveform) {
       this.granularWaveformReportCounter = 0;
@@ -1526,6 +1611,16 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     }
     const perfStartMs = this.perfEnabled ? this.nowMs() : 0;
     const frames = left.length;
+    try {
+      this.applyPendingSnapshots();
+    } catch (error) {
+      this.pendingSnapshots.length = 0;
+      for (const channel of output || []) {
+        channel.fill(0);
+      }
+      this.port.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+      return true;
+    }
     this.api.render(this.engine, this.leftPtr, this.rightPtr, frames);
     if (this.heapF32.buffer !== this.exports.memory.buffer) {
       this.refreshViews();
@@ -1540,6 +1635,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.renderDawOutputChannels(output, frames);
     this.maintainGraphTapMode();
     this.recordPerfBlock(perfStartMs, frames);
+    this.renderedFrameCount += frames;
     return true;
   }
 }

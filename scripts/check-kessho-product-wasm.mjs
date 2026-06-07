@@ -93,12 +93,19 @@ const SEQUENCER_UI_LANE_BASE_OFFSET = 36;
 const SEQUENCER_UI_LANE_SIZE = 3024;
 const LANE_EXPRESSION_OVERRIDE_SET_LOW_OFFSET = 76;
 const LANE_EXPRESSION_OVERRIDES_OFFSET = 1448;
+const TELEMETRY_BYTES = 9760;
+const TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET = 8756;
+const TELEMETRY_DEBUG_SOURCE_OFFSET = 8760;
+const TELEMETRY_DEBUG_SOURCE_BYTES = 32;
+const TELEMETRY_DEBUG_VOICE_COUNT_OFFSET = 8984;
+const TELEMETRY_DEBUG_VOICE_OFFSET = 8992;
+const TELEMETRY_DEBUG_VOICE_BYTES = 48;
 
 const frames = 128;
 const leftPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
 const rightPtr = malloc(frames * Float32Array.BYTES_PER_ELEMENT);
 const eventPtr = malloc(40);
-const telemetryPtr = malloc(8760);
+const telemetryPtr = malloc(TELEMETRY_BYTES);
 const sequencerUiStatePtr = malloc(96804);
 const engine = create(48000, frames, 0);
 assert(leftPtr && rightPtr && eventPtr && telemetryPtr && sequencerUiStatePtr && engine, 'WASM product smoke allocation failed');
@@ -181,6 +188,18 @@ assert(view.getUint32(telemetryPtr + 60, true) > 0, 'WASM product telemetry did 
 assert(view.getUint32(telemetryPtr + 928, true) > 0, 'WASM product telemetry did not expose RNG seed');
 assert(view.getUint32(telemetryPtr + 932, true) > 0, 'WASM product telemetry did not expose RNG state');
 assert(view.getUint32(telemetryPtr + 936 + 4 * 4, true) > 0, 'WASM product telemetry did not expose source preset IDs');
+assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_COUNT_OFFSET, true) === 7, 'WASM product telemetry did not expose debug source count');
+assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_OFFSET, true) === 1, 'WASM product telemetry did not expose Pad debug source id');
+assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_OFFSET + 4, true) > 0, 'WASM product telemetry did not expose Pad debug preset id');
+assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_OFFSET + 16, true) > 0, 'WASM product telemetry did not expose Pad debug source revision');
+assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_OFFSET + 20, true) > 0, 'WASM product telemetry did not expose Pad debug source hash');
+assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_OFFSET + 24, true) > 0, 'WASM product telemetry did not expose Pad debug compiled source hash');
+assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_SOURCE_OFFSET + 28, true) > 0, 'WASM product telemetry did not expose Pad debug override hash');
+assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_COUNT_OFFSET, true) > 0, 'WASM product telemetry did not expose debug voice-spawn count');
+assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_OFFSET + 16, true) === 3, 'WASM product telemetry did not expose Lead debug voice source id');
+assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_OFFSET + 28, true) > 0, 'WASM product telemetry did not expose Lead debug voice source revision');
+assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_OFFSET + 32, true) > 0, 'WASM product telemetry did not expose Lead debug voice source hash');
+assert(view.getUint32(telemetryPtr + TELEMETRY_DEBUG_VOICE_OFFSET + 36, true) > 0, 'WASM product telemetry did not expose Lead debug voice compiled hash');
 assert(view.getFloat32(telemetryPtr + 968, true) > 0, 'WASM product telemetry did not expose master output peak');
 assert(view.getFloat32(telemetryPtr + 972, true) > 0, 'WASM product telemetry did not expose master output RMS');
 assert(view.getFloat32(telemetryPtr + 988, true) >= view.getFloat32(telemetryPtr + 968, true), 'WASM product telemetry did not expose master true peak');
@@ -360,6 +379,7 @@ assert(!liveInitError, `Product worklet failed to initialize with committed WASM
 const staleSnapshot = new ArrayBuffer(16);
 new DataView(staleSnapshot).setUint32(4, expectedSchemaHash ^ 0xffffffff, true);
 liveWorklet.processor.handleMessage({ type: 'snapshot', snapshot: staleSnapshot });
+liveWorklet.processor.process([], [[new Float32Array(128), new Float32Array(128)]]);
 const staleSnapshotError = liveWorklet.messages.find(
   (message) => message.type === 'error' && message.message.includes('snapshot schema hash mismatch'),
 );

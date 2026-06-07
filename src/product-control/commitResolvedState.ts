@@ -5,6 +5,8 @@ import type {
   ProductResolvedStateCommitReceipt,
   ProductSnapshotPatchReason,
 } from '../audio/product/ProductEngineTypes';
+import { hashJson } from '../debug/productStateDebugHash';
+import { logProductStateDebug } from '../debug/productStateDebug';
 import type { SliderState } from '../ui/state';
 import type { ProductControlAction } from './ProductControlActions';
 import {
@@ -36,6 +38,19 @@ const PRODUCT_PATCH_REASONS = new Set<ProductSnapshotPatchReason>([
   'runtime-bootstrap',
   'debug-force-reload',
 ]);
+
+const PAD_RELEVANT_KEY_PREFIXES = [
+  'pad',
+  'synth',
+  'filter',
+  'hardness',
+  'warmth',
+  'presence',
+] as const;
+
+const LEAD_RELEVANT_KEY_PREFIXES = [
+  'lead',
+] as const;
 
 export function productPatchReasonForResolvedState(reason: ProductControlReason): ProductSnapshotPatchReason {
   return PRODUCT_PATCH_REASONS.has(reason as ProductSnapshotPatchReason)
@@ -110,6 +125,42 @@ function collectProductControlSliderPatch(
     }
   }
   return patch;
+}
+
+function extractFieldsWithPrefixes(
+  sliders: SliderState,
+  prefixes: readonly string[],
+): Record<string, unknown> {
+  const source = sliders as unknown as Record<string, unknown>;
+  const fields: Record<string, unknown> = {};
+  for (const key of Object.keys(source).sort()) {
+    if (prefixes.some((prefix) => key.startsWith(prefix))) {
+      fields[key] = source[key];
+    }
+  }
+  return fields;
+}
+
+function extractPadRelevantFields(sliders: SliderState): Record<string, unknown> {
+  return extractFieldsWithPrefixes(sliders, PAD_RELEVANT_KEY_PREFIXES);
+}
+
+function extractLeadRelevantFields(sliders: SliderState): Record<string, unknown> {
+  return extractFieldsWithPrefixes(sliders, LEAD_RELEVANT_KEY_PREFIXES);
+}
+
+function logResolvedPerformanceStateForDebug(resolved: ResolvedPerformanceState): void {
+  logProductStateDebug({
+    stage: 'product-control-resolved',
+    revision: resolved.revision,
+    reason: resolved.reason,
+    triggerCritical: resolved.triggerCritical,
+    applyMode: resolved.applyMode ?? null,
+    sliderHash: hashJson(resolved.sliders),
+    productPatchHash: hashJson(resolved.productPatch),
+    padRelevantHash: hashJson(extractPadRelevantFields(resolved.sliders)),
+    leadRelevantHash: hashJson(extractLeadRelevantFields(resolved.sliders)),
+  });
 }
 
 function productControlActionForVisiblePatch(
@@ -381,6 +432,7 @@ export async function commitResolvedStateForProduct(
   productEngine: ProductEnginePort,
   resolved: ResolvedPerformanceState,
 ): Promise<ProductResolvedStateCommitReceipt> {
+  logResolvedPerformanceStateForDebug(resolved);
   return productEngine.commitResolvedState({
     revision: resolved.revision,
     reason: productPatchReasonForResolvedState(resolved.reason),

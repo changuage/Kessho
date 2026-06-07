@@ -258,6 +258,9 @@ uint32_t KesshoProductEngine::triggerVoice(
           synth_ratchet_factor,
           pad_voice_index,
           &module_voice_index)) {
+    if (module_voice_index != kProductInvalidVoiceIndex) {
+      recordDebugVoiceSpawn(source_id, module_voice_index, resolved_seed);
+    }
     return module_voice_index;
   }
   const uint32_t voice_index = allocateVoice();
@@ -309,6 +312,7 @@ uint32_t KesshoProductEngine::triggerVoice(
         voice.amplitude = source.level;
         voice.pan = 0.0f;
         voice.sample_step = base_step;
+        recordDebugVoiceSpawn(source_id, voice_index, resolved_seed);
         return voice_index;
       }
       voice.sample_position = soundscapeRandomStartFrame(assets[slot], resolved_seed);
@@ -317,5 +321,6 @@ uint32_t KesshoProductEngine::triggerVoice(
       voice.sample_step *= soundscapeLayerPlaybackRate(assets[slot], resolved_seed);
     }
   }
+  recordDebugVoiceSpawn(source_id, voice_index, resolved_seed);
   return voice_index;
 }
