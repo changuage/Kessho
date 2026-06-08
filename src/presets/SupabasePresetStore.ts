@@ -4,6 +4,10 @@
 // inline-json table during cutover, and keeps the existing IPresetStore API.
 
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
+import {
+  isSupabaseEgressListRefreshPaused,
+  isSupabaseEgressQuotaCircuitOpen,
+} from '../cloud/supabaseEgressDiagnostics';
 import { compressVersions, getVersionData } from './codec';
 import {
   buildDrumEuclideanStateFromPatternData,
@@ -53,6 +57,8 @@ const VERSION_CHECKPOINT_INTERVAL = 8;
 const PATCH_TO_SNAPSHOT_RATIO = 0.65;
 const INTERNAL_DERIVED_TAG = 'internal-derived';
 const AUTO_CHILD_TAG = 'auto-child';
+const PRESET_LIST_CACHE_TTL_MS = 60_000;
+const PRESET_LIST_ERROR_CIRCUIT_MS = 120_000;
 const PRESET_V2_SUMMARY_SELECT = [
   'id',
   'owner_user_id',
@@ -76,6 +82,111 @@ const PRESET_V2_SUMMARY_SELECT = [
   'created_at',
   'updated_at',
 ].join(',');
+const PRESET_V2_ROW_SELECT = [
+  'id',
+  'owner_key',
+  'owner_user_id',
+  'type',
+  'scope',
+  'name',
+  'author',
+  'library',
+  'creator',
+  'description',
+  'tags',
+  'visibility',
+  'family_name',
+  'variant_name',
+  'variant_rank',
+  'forked_from',
+  'latest_version_no',
+  'latest_version_id',
+  'latest_resolved_hash',
+  'latest_metadata_hash',
+  'play_count',
+  'rating',
+  'archived',
+  'deleted_at',
+  'deleted_by',
+  'created_at',
+  'updated_at',
+].join(',');
+const PRESET_VERSION_SELECT = [
+  'id',
+  'preset_id',
+  'version_no',
+  'created_by',
+  'parent_version_id',
+  'storage_mode',
+  'note',
+  'override_hash',
+  'metadata_hash',
+  'patch_from_prev_hash',
+  'resolved_hash',
+  'is_checkpoint',
+  'created_at',
+].join(',');
+const PRESET_VERSION_REF_SELECT = [
+  'version_id',
+  'ref_slot',
+  'target_preset_id',
+  'target_version_no',
+  'follow_latest',
+  'override_hash',
+  'created_at',
+].join(',');
+const PRESET_PAYLOAD_SELECT = [
+  'hash',
+  'payload_kind',
+  'payload',
+  'payload_bytes',
+  'created_at',
+  'last_seen_at',
+].join(',');
+const LEGACY_PRESET_ROW_SELECT = [
+  'id',
+  'user_id',
+  'type',
+  'scope',
+  'name',
+  'author',
+  'library',
+  'creator',
+  'description',
+  'tags',
+  'visibility',
+  'family_name',
+  'variant_name',
+  'variant_rank',
+  'forked_from',
+  'plays',
+  'versions',
+  'current_version',
+  'created_at',
+  'updated_at',
+  'rating',
+].join(',');
+const LEGACY_PRESET_SUMMARY_SELECT = [
+  'id',
+  'user_id',
+  'type',
+  'scope',
+  'name',
+  'author',
+  'library',
+  'creator',
+  'description',
+  'tags',
+  'visibility',
+  'family_name',
+  'variant_name',
+  'variant_rank',
+  'plays',
+  'current_version',
+  'created_at',
+  'updated_at',
+  'rating',
+].join(',');
 
 interface V2LookupOptions {
   includeDeleted?: boolean;
@@ -92,6 +203,11 @@ interface StorablePayloadV2 {
   hash: string;
   payloadKind: PresetPayloadKind;
   payload: Record<string, unknown>;
+}
+
+interface CachedPresetList {
+  expiresAt: number;
+  summaries: PresetSummary[];
 }
 
 /** Row shape returned from the legacy Supabase `presets` table */
@@ -119,17 +235,79 @@ interface PresetRow {
   rating: number | null;
 }
 
+interface LegacyPresetSummaryRow {
+  id: string;
+  user_id: string | null;
+  type: string;
+  scope: string | null;
+  name: string;
+  author: string;
+  library: string;
+  creator: string | null;
+  description: string | null;
+  tags: string[] | null;
+  visibility: string;
+  family_name: string | null;
+  variant_name: string | null;
+  variant_rank: number | null;
+  plays: number | null;
+  current_version: number;
+  created_at: string;
+  updated_at: string;
+  rating: number | null;
+}
+
+type PresetV2ComparableRow = Pick<
+  PresetV2Row,
+  'type' | 'scope' | 'name' | 'owner_user_id' | 'visibility' | 'latest_version_no' | 'created_at' | 'updated_at'
+>;
+
+type PresetV2SummaryRow = Pick<
+  PresetV2Row,
+  | 'id'
+  | 'owner_user_id'
+  | 'type'
+  | 'scope'
+  | 'name'
+  | 'author'
+  | 'library'
+  | 'creator'
+  | 'description'
+  | 'tags'
+  | 'visibility'
+  | 'family_name'
+  | 'variant_name'
+  | 'variant_rank'
+  | 'latest_version_no'
+  | 'latest_metadata_hash'
+  | 'play_count'
+  | 'rating'
+  | 'deleted_at'
+  | 'created_at'
+  | 'updated_at'
+>;
+
 function normalizeNameKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
-function getLegacyLogicalKey(row: PresetRow): string {
+type LegacyComparableRow = Pick<PresetRow, 'type' | 'scope' | 'name' | 'user_id' | 'visibility' | 'created_at' | 'updated_at'> & {
+  current_version?: number;
+  versions?: unknown;
+};
+
+function getLegacyLogicalKey(row: Pick<PresetRow, 'type' | 'scope' | 'name'>): string {
   return `${row.type}:${row.scope ?? ''}:${normalizeNameKey(row.name)}`;
 }
 
-function compareLegacyPresetRowPriority(left: PresetRow, right: PresetRow, userId: string | null): number {
-  const leftVersionCount = Array.isArray(left.versions) ? left.versions.length : 0;
-  const rightVersionCount = Array.isArray(right.versions) ? right.versions.length : 0;
+function getLegacyVersionCount(row: Pick<LegacyComparableRow, 'current_version' | 'versions'>): number {
+  if (Array.isArray(row.versions)) return row.versions.length;
+  return Math.max(row.current_version ?? 0, 0);
+}
+
+function compareLegacyPresetRowPriority<T extends LegacyComparableRow>(left: T, right: T, userId: string | null): number {
+  const leftVersionCount = getLegacyVersionCount(left);
+  const rightVersionCount = getLegacyVersionCount(right);
 
   if (SHARED_PRESET_TEST_MODE) {
     if (leftVersionCount !== rightVersionCount) return rightVersionCount - leftVersionCount;
@@ -162,8 +340,8 @@ function compareLegacyPresetRowPriority(left: PresetRow, right: PresetRow, userI
   return rightCreated - leftCreated;
 }
 
-function dedupePreferredLegacyRows(rows: PresetRow[], userId: string | null): PresetRow[] {
-  const preferred = new Map<string, PresetRow>();
+function dedupePreferredLegacyRows<T extends LegacyComparableRow>(rows: T[], userId: string | null): T[] {
+  const preferred = new Map<string, T>();
   for (const row of rows) {
     const key = getLegacyLogicalKey(row);
     const existing = preferred.get(key);
@@ -201,6 +379,48 @@ function legacyRowToEntry(row: PresetRow): PresetEntry {
   })!;
 }
 
+function legacySummaryRowToSummary(row: LegacyPresetSummaryRow): PresetSummary {
+  const type = row.type as PresetLevel;
+  const scope = row.scope ?? undefined;
+  const familyName = row.family_name ?? row.name;
+  const variantName = row.variant_name ?? row.name;
+  const versionCount = Math.max(row.current_version ?? 1, 1);
+  const visibility = (row.visibility ?? 'private') as PresetSummary['visibility'];
+  return {
+    id: row.id,
+    type,
+    scope,
+    engine: type === 'engine' ? scope : undefined,
+    source: type !== 'engine' ? scope : undefined,
+    name: row.name,
+    author: row.author as PresetSummary['author'],
+    library: row.library as PresetSummary['library'],
+    creator: row.creator ?? undefined,
+    description: row.description ?? undefined,
+    visibility,
+    familyId: `${type}:${scope ?? 'global'}:${normalizeNameKey(familyName)}`,
+    familyName,
+    variantId: `${type}:${scope ?? 'global'}:${normalizeNameKey(familyName)}:${normalizeNameKey(variantName)}`,
+    variantName,
+    variantRank: row.variant_rank ?? undefined,
+    remoteId: row.id,
+    playCount: row.plays ?? undefined,
+    featured: visibility === 'featured',
+    rating: row.rating ?? undefined,
+    tags: row.tags ?? [],
+    versionCount,
+    currentVersion: versionCount,
+    updatedAt: new Date(row.updated_at).getTime(),
+  };
+}
+
+function clonePresetSummaries(summaries: PresetSummary[]): PresetSummary[] {
+  return summaries.map(summary => ({
+    ...summary,
+    tags: summary.tags ? [...summary.tags] : summary.tags,
+  }));
+}
+
 function entryToLegacyRow(entry: PresetEntry, userId: string | null): Record<string, unknown> {
   return {
     user_id: userId,
@@ -222,11 +442,11 @@ function entryToLegacyRow(entry: PresetEntry, userId: string | null): Record<str
   };
 }
 
-function getV2LogicalKey(row: Pick<PresetV2Row, 'type' | 'scope' | 'name'>): string {
+function getV2LogicalKey(row: Pick<PresetV2ComparableRow, 'type' | 'scope' | 'name'>): string {
   return `${row.type}:${row.scope ?? ''}:${normalizeNameKey(row.name)}`;
 }
 
-function comparePresetV2Priority(left: PresetV2Row, right: PresetV2Row, userId: string | null): number {
+function comparePresetV2Priority<T extends PresetV2ComparableRow>(left: T, right: T, userId: string | null): number {
   if (SHARED_PRESET_TEST_MODE) {
     if (left.latest_version_no !== right.latest_version_no) {
       return right.latest_version_no - left.latest_version_no;
@@ -262,8 +482,8 @@ function comparePresetV2Priority(left: PresetV2Row, right: PresetV2Row, userId: 
   return rightCreated - leftCreated;
 }
 
-function dedupePreferredV2Rows(rows: PresetV2Row[], userId: string | null): PresetV2Row[] {
-  const preferred = new Map<string, PresetV2Row>();
+function dedupePreferredV2Rows<T extends PresetV2ComparableRow>(rows: T[], userId: string | null): T[] {
+  const preferred = new Map<string, T>();
   for (const row of rows) {
     const key = getV2LogicalKey(row);
     const existing = preferred.get(key);
@@ -274,7 +494,7 @@ function dedupePreferredV2Rows(rows: PresetV2Row[], userId: string | null): Pres
   return Array.from(preferred.values()).sort((left, right) => comparePresetV2Priority(left, right, userId));
 }
 
-function isActivePresetV2Row(row: Pick<PresetV2Row, 'deleted_at'>): boolean {
+function isActivePresetV2Row(row: Pick<PresetV2SummaryRow, 'deleted_at'>): boolean {
   return !row.deleted_at;
 }
 
@@ -282,7 +502,7 @@ function isInternalDerivedTags(tags: string[] | null | undefined): boolean {
   return Array.isArray(tags) && tags.includes(INTERNAL_DERIVED_TAG);
 }
 
-function isInternalDerivedRow(row: Pick<PresetV2Row, 'name' | 'tags'>): boolean {
+function isInternalDerivedRow(row: Pick<PresetV2SummaryRow, 'name' | 'tags'>): boolean {
   return row.name.startsWith('__derived__/') || isInternalDerivedTags(row.tags);
 }
 
@@ -323,6 +543,36 @@ function isConflictError(error: unknown): boolean {
   return record.code === '23505' || record.message?.toLowerCase().includes('duplicate key') === true;
 }
 
+function getSupabaseErrorText(error: unknown): string {
+  if (!error || typeof error !== 'object') return String(error ?? '');
+  const record = error as { code?: string; status?: number; statusCode?: number; message?: string; details?: string; hint?: string };
+  return [
+    record.code,
+    record.status,
+    record.statusCode,
+    record.message,
+    record.details,
+    record.hint,
+  ]
+    .filter(value => value !== undefined && value !== null)
+    .map(String)
+    .join(' ')
+    .toLowerCase();
+}
+
+function isTerminalSupabaseListError(error: unknown): boolean {
+  const text = getSupabaseErrorText(error);
+  return text.includes('402')
+    || text.includes('payment required')
+    || text.includes('quota')
+    || text.includes('egress');
+}
+
+function isPermissionDeniedError(error: unknown): boolean {
+  const text = getSupabaseErrorText(error);
+  return text.includes('42501') || text.includes('permission denied');
+}
+
 function fixedRefVersionLabel(versionNo: number | null | undefined): string {
   return versionNo == null ? 'latest' : String(versionNo);
 }
@@ -350,12 +600,28 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+let sharedV2SchemaAvailable: boolean | null = null;
+let sharedV2ProbeInFlight: Promise<boolean> | null = null;
+let sharedReadCircuitOpenUntil = 0;
+
+function isSharedReadCircuitOpen(now = Date.now()): boolean {
+  return sharedReadCircuitOpenUntil > now || isSupabaseEgressQuotaCircuitOpen(now);
+}
+
+function openSharedReadCircuitIfTerminal(error: unknown): void {
+  if (!isTerminalSupabaseListError(error)) return;
+  sharedReadCircuitOpenUntil = Math.max(sharedReadCircuitOpenUntil, Date.now() + PRESET_LIST_ERROR_CIRCUIT_MS);
+}
+
 export class SupabasePresetStore implements IPresetStore {
   private client: SupabaseClient;
   private userId: string | null = null;
   private isAnonymous = false;
   private v2SchemaAvailable: boolean | null = null;
   private knownPayloadHashesV2 = new Set<string>();
+  private listCache = new Map<string, CachedPresetList>();
+  private listInFlight = new Map<string, Promise<PresetSummary[]>>();
+  private listCircuitOpenUntil = 0;
 
   constructor(client: SupabaseClient) {
     this.client = client;
@@ -363,13 +629,30 @@ export class SupabasePresetStore implements IPresetStore {
 
   /** Set the authenticated user ID. Call after auth state changes. */
   setUserId(userId: string | null, anonymous = false): void {
+    const ownerChanged = this.userId !== userId || this.isAnonymous !== anonymous;
     this.userId = userId;
     this.isAnonymous = anonymous;
+    if (ownerChanged) this.clearListCache();
   }
 
   private getOwnerKey(): string {
     if (SHARED_PRESET_TEST_MODE) return 'public';
     return this.userId ? `user:${this.userId}` : 'anonymous';
+  }
+
+  private getListCacheKey(type: PresetLevel, scope?: string): string {
+    return `${this.getOwnerKey()}:${type}:${scope ?? ''}`;
+  }
+
+  private clearListCache(): void {
+    this.listCache.clear();
+    this.listInFlight.clear();
+  }
+
+  private openListCircuitIfTerminal(error: unknown): void {
+    if (!isTerminalSupabaseListError(error)) return;
+    openSharedReadCircuitIfTerminal(error);
+    this.listCircuitOpenUntil = Math.max(this.listCircuitOpenUntil, Date.now() + PRESET_LIST_ERROR_CIRCUIT_MS);
   }
 
   private getVersionTimestamp(version: PresetEntry['versions'][number]): string {
@@ -379,6 +662,7 @@ export class SupabasePresetStore implements IPresetStore {
   private markV2UnavailableIfMissing(error: unknown): boolean {
     if (isMissingRelationError(error)) {
       this.v2SchemaAvailable = false;
+      sharedV2SchemaAvailable = false;
       return true;
     }
     return false;
@@ -386,20 +670,45 @@ export class SupabasePresetStore implements IPresetStore {
 
   private async supportsV2(): Promise<boolean> {
     if (this.v2SchemaAvailable !== null) return this.v2SchemaAvailable;
-
-    const { error } = await this.client
-      .from('presets_v2')
-      .select('id')
-      .limit(1);
-
-    if (error) {
-      if (this.markV2UnavailableIfMissing(error)) return false;
-      this.v2SchemaAvailable = true;
+    if (sharedV2SchemaAvailable !== null) {
+      this.v2SchemaAvailable = sharedV2SchemaAvailable;
+      return sharedV2SchemaAvailable;
+    }
+    if (isSharedReadCircuitOpen()) {
       return true;
     }
+    if (sharedV2ProbeInFlight) {
+      const supported = await sharedV2ProbeInFlight;
+      this.v2SchemaAvailable = supported;
+      return supported;
+    }
 
-    this.v2SchemaAvailable = true;
-    return true;
+    sharedV2ProbeInFlight = (async () => {
+      const { error } = await this.client
+        .from('presets_v2')
+        .select('id')
+        .limit(1);
+
+      if (error) {
+        if (this.markV2UnavailableIfMissing(error)) return false;
+        openSharedReadCircuitIfTerminal(error);
+        sharedV2SchemaAvailable = true;
+        return true;
+      }
+
+      sharedV2SchemaAvailable = true;
+      return true;
+    })().finally(() => {
+      sharedV2ProbeInFlight = null;
+    });
+
+    const supported = await sharedV2ProbeInFlight;
+    this.v2SchemaAvailable = supported;
+    return supported;
+  }
+
+  private shouldSkipReadForCircuit(): boolean {
+    return isSharedReadCircuitOpen();
   }
 
   private async rewriteLegacyDelayAKeysIfOwned(row: PresetRow, entry: PresetEntry): Promise<void> {
@@ -435,7 +744,7 @@ export class SupabasePresetStore implements IPresetStore {
 
     let existingQuery = this.client
       .from('presets')
-      .select('*')
+      .select(LEGACY_PRESET_ROW_SELECT)
       .eq('type', normalized.type)
       .eq('name', normalized.name);
 
@@ -457,7 +766,7 @@ export class SupabasePresetStore implements IPresetStore {
     }
 
     const existing = existingRows?.length
-      ? dedupePreferredLegacyRows(existingRows as PresetRow[], SHARED_PRESET_TEST_MODE ? null : this.userId)[0]
+      ? dedupePreferredLegacyRows(existingRows as unknown as PresetRow[], SHARED_PRESET_TEST_MODE ? null : this.userId)[0]
       : null;
 
     let error: PostgrestError | null = null;
@@ -479,7 +788,7 @@ export class SupabasePresetStore implements IPresetStore {
   private async loadLegacy(type: PresetLevel, name: string, scope?: string, version?: number): Promise<PresetEntry | null> {
     let query = this.client
       .from('presets')
-      .select('*')
+      .select(LEGACY_PRESET_ROW_SELECT)
       .eq('type', type)
       .eq('name', name);
 
@@ -494,10 +803,12 @@ export class SupabasePresetStore implements IPresetStore {
       }
     }
 
-    const { data, error } = await query;
+    const { data, error } = await query
+      .order('updated_at', { ascending: false })
+      .limit(20);
     if (error || !data || data.length === 0) return null;
 
-    const rows = dedupePreferredLegacyRows(data as PresetRow[], SHARED_PRESET_TEST_MODE ? null : this.userId);
+    const rows = dedupePreferredLegacyRows(data as unknown as PresetRow[], SHARED_PRESET_TEST_MODE ? null : this.userId);
     const row = rows[0];
     if (!row) return null;
     const entry = legacyRowToEntry(row);
@@ -511,36 +822,39 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   private async listLegacy(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {
-    let query = this.client
-      .from('presets')
-      .select('*')
-      .eq('type', type);
+    const buildQuery = (table: 'legacy_preset_summaries' | 'presets') => {
+      let query = this.client
+        .from(table)
+        .select(LEGACY_PRESET_SUMMARY_SELECT)
+        .eq('type', type);
 
-    if (scope) query = query.eq('scope', scope);
+      if (scope) query = query.eq('scope', scope);
 
-    if (!SHARED_PRESET_TEST_MODE) {
-      if (this.userId) {
-        query = query.or(`user_id.eq.${this.userId},visibility.in.(public,featured)`);
-      } else {
-        query = query.in('visibility', ['public', 'featured']);
+      if (!SHARED_PRESET_TEST_MODE) {
+        if (this.userId) {
+          query = query.or(`user_id.eq.${this.userId},visibility.in.(public,featured)`);
+        } else {
+          query = query.in('visibility', ['public', 'featured']);
+        }
       }
+
+      return query.order('updated_at', { ascending: false }).limit(200);
+    };
+
+    let { data, error } = await buildQuery('legacy_preset_summaries');
+    if ((error && isMissingRelationError(error)) || (!error && (data?.length ?? 0) === 0)) {
+      ({ data, error } = await buildQuery('presets'));
     }
-
-    query = query.order('updated_at', { ascending: false }).limit(200);
-
-    const { data, error } = await query;
     if (error) {
+      this.openListCircuitIfTerminal(error);
       console.error('SupabasePresetStore.list error:', error);
       return [];
     }
 
-    const rows = dedupePreferredLegacyRows(data as PresetRow[], SHARED_PRESET_TEST_MODE ? null : this.userId);
-    const entries = rows.map(row => legacyRowToEntry(row));
-    await Promise.allSettled(entries.map((entry, index) => this.rewriteLegacyDelayAKeysIfOwned(rows[index]!, entry)));
-
-    return entries
-      .map(entry => normalizePresetSummary(entry))
-      .filter(Boolean) as PresetSummary[];
+    return dedupePreferredLegacyRows(
+      (data ?? []) as unknown as LegacyPresetSummaryRow[],
+      SHARED_PRESET_TEST_MODE ? null : this.userId,
+    ).map(legacySummaryRowToSummary);
   }
 
   private async deleteLegacy(type: PresetLevel, name: string, scope?: string): Promise<void> {
@@ -586,7 +900,7 @@ export class SupabasePresetStore implements IPresetStore {
   ): Promise<PresetV2Row[]> {
     let query = this.client
       .from('presets_v2')
-      .select('*')
+      .select(PRESET_V2_ROW_SELECT)
       .eq('type', type)
       .eq('name_key', normalizeNameKey(name));
 
@@ -604,7 +918,7 @@ export class SupabasePresetStore implements IPresetStore {
       throw new Error(`V2 preset lookup failed: ${error.message}`);
     }
 
-    return dedupePreferredV2Rows((data ?? []) as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId);
+    return dedupePreferredV2Rows((data ?? []) as unknown as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId);
   }
 
   private async queryPresetRowsByNameV2(
@@ -614,7 +928,7 @@ export class SupabasePresetStore implements IPresetStore {
   ): Promise<PresetV2Row[]> {
     let query = this.client
       .from('presets_v2')
-      .select('*')
+      .select(PRESET_V2_ROW_SELECT)
       .eq('type', type)
       .eq('name_key', normalizeNameKey(name));
 
@@ -630,7 +944,7 @@ export class SupabasePresetStore implements IPresetStore {
       throw new Error(`V2 preset lookup failed: ${error.message}`);
     }
 
-    return dedupePreferredV2Rows((data ?? []) as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId);
+    return dedupePreferredV2Rows((data ?? []) as unknown as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId);
   }
 
   private async findPresetRowByIdV2(id: string): Promise<PresetV2Row | null> {
@@ -638,7 +952,7 @@ export class SupabasePresetStore implements IPresetStore {
 
     const { data, error } = await this.client
       .from('presets_v2')
-      .select('*')
+      .select(PRESET_V2_ROW_SELECT)
       .eq('id', id)
       .is('deleted_at', null)
       .limit(1);
@@ -648,7 +962,7 @@ export class SupabasePresetStore implements IPresetStore {
       throw new Error(`V2 preset id lookup failed: ${error.message}`);
     }
 
-    return ((data ?? []) as PresetV2Row[])[0] ?? null;
+    return ((data ?? []) as unknown as PresetV2Row[])[0] ?? null;
   }
 
   private getExplicitRefTargetType(parentType: PresetLevel): PresetLevel | null {
@@ -702,7 +1016,7 @@ export class SupabasePresetStore implements IPresetStore {
   ): Promise<PresetV2Row | null> {
     let query = this.client
       .from('presets_v2')
-      .select('*')
+      .select(PRESET_V2_ROW_SELECT)
       .eq('type', type)
       .eq('scope', scope)
       .eq('latest_resolved_hash', resolvedHash)
@@ -720,7 +1034,7 @@ export class SupabasePresetStore implements IPresetStore {
       throw new Error(`V2 ref lookup failed: ${error.message}`);
     }
 
-    const rows = dedupePreferredV2Rows((data ?? []) as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId)
+    const rows = dedupePreferredV2Rows((data ?? []) as unknown as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId)
       .sort((left, right) => {
         const leftDerived = isInternalDerivedRow(left);
         const rightDerived = isInternalDerivedRow(right);
@@ -803,7 +1117,7 @@ export class SupabasePresetStore implements IPresetStore {
     const targetIds = [...new Set(refRows.map(ref => ref.target_preset_id))];
     const { data: targetData, error: targetError } = await this.client
       .from('presets_v2')
-      .select('*')
+      .select(PRESET_V2_ROW_SELECT)
       .in('id', targetIds);
 
     if (targetError) {
@@ -811,7 +1125,8 @@ export class SupabasePresetStore implements IPresetStore {
       throw new Error(`V2 graph target lookup failed: ${targetError.message}`);
     }
 
-    const targetsById = new Map((targetData ?? []).map(candidate => [candidate.id, candidate as PresetV2Row]));
+    const targetRows = (targetData ?? []) as unknown as PresetV2Row[];
+    const targetsById = new Map(targetRows.map(candidate => [candidate.id, candidate]));
     const targetsBySlot = new Map<string, PresetV2Row>();
     for (const ref of refRows) {
       const target = targetsById.get(ref.target_preset_id);
@@ -910,7 +1225,7 @@ export class SupabasePresetStore implements IPresetStore {
 
     const { data, error } = await this.client
       .from('preset_version_refs_v2')
-      .select('*')
+      .select(PRESET_VERSION_REF_SELECT)
       .eq('version_id', versionId);
 
     if (error) {
@@ -918,7 +1233,7 @@ export class SupabasePresetStore implements IPresetStore {
       throw new Error(`V2 version ref signature lookup failed: ${error.message}`);
     }
 
-    return ((data ?? []) as PresetVersionRefV2Row[])
+    return ((data ?? []) as unknown as PresetVersionRefV2Row[])
       .map(makeStoredRefKey)
       .sort();
   }
@@ -947,6 +1262,7 @@ export class SupabasePresetStore implements IPresetStore {
       .in('id', staleIds);
 
     if (deleteError && !this.markV2UnavailableIfMissing(deleteError)) {
+      if (isPermissionDeniedError(deleteError)) return;
       throw new Error(`V2 version prune failed: ${deleteError.message}`);
     }
   }
@@ -1002,7 +1318,7 @@ export class SupabasePresetStore implements IPresetStore {
 
     const { data, error } = await this.client
       .from('preset_payloads_v2')
-      .select('*')
+      .select(PRESET_PAYLOAD_SELECT)
       .in('hash', uniqueHashes);
 
     if (error) {
@@ -1010,7 +1326,7 @@ export class SupabasePresetStore implements IPresetStore {
       throw new Error(`V2 payload fetch failed: ${error.message}`);
     }
 
-    for (const row of (data ?? []) as PresetPayloadV2Row[]) {
+    for (const row of (data ?? []) as unknown as PresetPayloadV2Row[]) {
       payloadMap.set(row.hash, row.payload);
     }
 
@@ -1133,7 +1449,7 @@ export class SupabasePresetStore implements IPresetStore {
   private async loadV2ByRow(row: PresetV2Row, version?: number): Promise<PresetEntry | null> {
     const { data: versionData, error: versionError } = await this.client
       .from('preset_versions_v2')
-      .select('*')
+      .select(PRESET_VERSION_SELECT)
       .eq('preset_id', row.id)
       .order('version_no', { ascending: true });
 
@@ -1142,13 +1458,13 @@ export class SupabasePresetStore implements IPresetStore {
       throw new Error(`V2 version load failed: ${versionError.message}`);
     }
 
-    const versionRows = (versionData ?? []) as PresetVersionV2Row[];
+    const versionRows = (versionData ?? []) as unknown as PresetVersionV2Row[];
     if (!versionRows.length) return null;
 
     const versionIds = versionRows.map(candidate => candidate.id);
     const { data: refData, error: refError } = await this.client
       .from('preset_version_refs_v2')
-      .select('*')
+      .select(PRESET_VERSION_REF_SELECT)
       .in('version_id', versionIds);
 
     if (refError) {
@@ -1156,13 +1472,13 @@ export class SupabasePresetStore implements IPresetStore {
       throw new Error(`V2 ref load failed: ${refError.message}`);
     }
 
-    const refRows = (refData ?? []) as PresetVersionRefV2Row[];
+    const refRows = (refData ?? []) as unknown as PresetVersionRefV2Row[];
     const targetPresetIds = [...new Set(refRows.map(candidate => candidate.target_preset_id))];
     let targetPresetMap = new Map<string, PresetV2Row>();
     if (targetPresetIds.length > 0) {
       const { data: targetData, error: targetError } = await this.client
         .from('presets_v2')
-        .select('*')
+        .select(PRESET_V2_ROW_SELECT)
         .in('id', targetPresetIds);
 
       if (targetError) {
@@ -1170,7 +1486,8 @@ export class SupabasePresetStore implements IPresetStore {
         throw new Error(`V2 ref target load failed: ${targetError.message}`);
       }
 
-      targetPresetMap = new Map((targetData ?? []).map(candidate => [candidate.id, candidate as PresetV2Row]));
+      const targetRows = (targetData ?? []) as unknown as PresetV2Row[];
+      targetPresetMap = new Map(targetRows.map(candidate => [candidate.id, candidate]));
     }
 
     const payloadHashes = new Set<string>();
@@ -1277,31 +1594,38 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   private async listV2(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {
-    let query = this.client
-      .from('presets_v2')
-      .select(PRESET_V2_SUMMARY_SELECT)
-      .eq('type', type);
+    const buildQuery = (table: 'preset_summaries_v2' | 'presets_v2') => {
+      let query = this.client
+        .from(table)
+        .select(PRESET_V2_SUMMARY_SELECT)
+        .eq('type', type);
 
-    if (scope) query = query.eq('scope', scope);
-    query = query.is('deleted_at', null);
+      if (scope) query = query.eq('scope', scope);
+      query = query.is('deleted_at', null);
 
-    const { data, error } = await query
-      .order('updated_at', { ascending: false })
-      .limit(300);
+      return query.order('updated_at', { ascending: false }).limit(200);
+    };
+
+    let { data, error } = await buildQuery('preset_summaries_v2');
+    if ((error && isMissingRelationError(error)) || (!error && (data?.length ?? 0) === 0)) {
+      ({ data, error } = await buildQuery('presets_v2'));
+    }
 
     if (error) {
       if (this.markV2UnavailableIfMissing(error)) return [];
+      this.openListCircuitIfTerminal(error);
       console.error('SupabasePresetStore.listV2 error:', error);
       return [];
     }
 
-    const rows = dedupePreferredV2Rows((data ?? []) as unknown as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId)
+    const rows = dedupePreferredV2Rows((data ?? []) as unknown as PresetV2SummaryRow[], SHARED_PRESET_TEST_MODE ? null : this.userId)
       .filter(isActivePresetV2Row)
       .filter(row => !isInternalDerivedRow(row));
-    const metadataHashes = type === 'journey'
+    const shouldHydrateJourneyPreview = type === 'journey' && !SHARED_PRESET_TEST_MODE;
+    const metadataHashes = shouldHydrateJourneyPreview
       ? [...new Set(rows.map(row => row.latest_metadata_hash).filter((hash): hash is string => Boolean(hash)))]
       : [];
-    const metadataMap = type === 'journey'
+    const metadataMap = shouldHydrateJourneyPreview
       ? await this.fetchPayloadMapV2(metadataHashes)
       : new Map<string, unknown>();
     const summaries: PresetSummary[] = rows.map((row) => ({
@@ -1324,7 +1648,7 @@ export class SupabasePresetStore implements IPresetStore {
       remoteId: row.id,
       playCount: row.play_count ?? undefined,
       rating: row.rating ?? undefined,
-      journeyPreview: type === 'journey' && row.latest_metadata_hash
+      journeyPreview: shouldHydrateJourneyPreview && row.latest_metadata_hash
         ? normalizeJourneyPresetPreview(
           isPlainObject(metadataMap.get(row.latest_metadata_hash))
             ? (metadataMap.get(row.latest_metadata_hash) as Record<string, unknown>).journeyPreview
@@ -1415,7 +1739,7 @@ export class SupabasePresetStore implements IPresetStore {
     const internalDerived = isInternalDerivedEntry(normalized);
     const identityPayload = {
       owner_key: this.getOwnerKey(),
-      owner_user_id: this.userId,
+      owner_user_id: SHARED_PRESET_TEST_MODE ? null : this.userId,
       type: normalized.type,
       scope: scope ?? null,
       name: normalized.name,
@@ -1445,7 +1769,7 @@ export class SupabasePresetStore implements IPresetStore {
     if (presetRow) {
       const { data: storedVersionData, error: storedVersionError } = await this.client
         .from('preset_versions_v2')
-        .select('*')
+        .select(PRESET_VERSION_SELECT)
         .eq('preset_id', presetRow.id)
         .order('version_no', { ascending: true });
 
@@ -1457,7 +1781,7 @@ export class SupabasePresetStore implements IPresetStore {
         throw new Error(`V2 stored version lookup failed: ${storedVersionError.message}`);
       }
 
-      storedVersionRows = (storedVersionData ?? []) as PresetVersionV2Row[];
+      storedVersionRows = (storedVersionData ?? []) as unknown as PresetVersionV2Row[];
     }
     const storedVersionMap = new Map(storedVersionRows.map(candidate => [candidate.version_no, candidate]));
     let previousStoredVersionRow = storedVersionRows[storedVersionRows.length - 1] ?? null;
@@ -1596,29 +1920,82 @@ export class SupabasePresetStore implements IPresetStore {
   async save(entry: PresetEntry): Promise<void> {
     if (await this.supportsV2()) {
       await this.saveV2(entry);
+      this.clearListCache();
       return;
     }
     await this.saveLegacy(entry);
+    this.clearListCache();
   }
 
   async load(type: PresetLevel, name: string, scope?: string, version?: number): Promise<PresetEntry | null> {
-    if (await this.supportsV2()) {
-      const v2Entry = await this.loadV2(type, name, scope, version);
-      if (v2Entry) return v2Entry;
-      if (SHARED_PRESET_TEST_MODE) return null;
-    }
+    if (this.shouldSkipReadForCircuit()) return null;
 
-    return this.loadLegacy(type, name, scope, version);
+    try {
+      if (await this.supportsV2()) {
+        if (this.shouldSkipReadForCircuit()) return null;
+        const v2Entry = await this.loadV2(type, name, scope, version);
+        if (v2Entry) return v2Entry;
+        if (SHARED_PRESET_TEST_MODE) return null;
+      }
+
+      if (this.shouldSkipReadForCircuit()) return null;
+      return this.loadLegacy(type, name, scope, version);
+    } catch (error) {
+      if (isTerminalSupabaseListError(error)) {
+        this.openListCircuitIfTerminal(error);
+        return null;
+      }
+      throw error;
+    }
   }
 
   async list(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {
+    const key = this.getListCacheKey(type, scope);
+    const now = Date.now();
+    const cached = this.listCache.get(key);
+    if (cached && cached.expiresAt > now) {
+      return clonePresetSummaries(cached.summaries);
+    }
+    if (this.listCircuitOpenUntil > now || isSharedReadCircuitOpen(now) || isSupabaseEgressListRefreshPaused()) {
+      return cached ? clonePresetSummaries(cached.summaries) : [];
+    }
+
+    const inFlight = this.listInFlight.get(key);
+    if (inFlight) {
+      return clonePresetSummaries(await inFlight);
+    }
+
+    const request = this.listUncached(type, scope)
+      .then((summaries) => {
+        this.listCache.set(key, {
+          expiresAt: Date.now() + PRESET_LIST_CACHE_TTL_MS,
+          summaries: clonePresetSummaries(summaries),
+        });
+        return summaries;
+      })
+      .catch((error) => {
+        this.openListCircuitIfTerminal(error);
+        const fallback = this.listCache.get(key);
+        if (fallback) return clonePresetSummaries(fallback.summaries);
+        throw error;
+      })
+      .finally(() => {
+        this.listInFlight.delete(key);
+      });
+    this.listInFlight.set(key, request);
+    return clonePresetSummaries(await request);
+  }
+
+  private async listUncached(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {
     const summaries: PresetSummary[] = [];
 
     if (await this.supportsV2()) {
+      if (this.shouldSkipReadForCircuit()) return summaries;
       summaries.push(...await this.listV2(type, scope));
       if (SHARED_PRESET_TEST_MODE) return summaries;
     }
 
+    if (this.shouldSkipReadForCircuit()) return summaries;
     const legacySummaries = await this.listLegacy(type, scope);
     const byKey = new Map<string, PresetSummary>();
 
@@ -1646,23 +2023,30 @@ export class SupabasePresetStore implements IPresetStore {
   async delete(type: PresetLevel, name: string, scope?: string): Promise<void> {
     if (await this.supportsV2()) {
       await this.deleteV2(type, name, scope);
+      this.clearListCache();
       return;
     }
     await this.deleteLegacy(type, name, scope);
+    this.clearListCache();
   }
 
   async exists(type: PresetLevel, name: string, scope?: string): Promise<boolean> {
+    if (this.shouldSkipReadForCircuit()) return false;
     if (await this.supportsV2()) {
+      if (this.shouldSkipReadForCircuit()) return false;
       if (await this.existsV2(type, name, scope)) return true;
       if (SHARED_PRESET_TEST_MODE) return false;
     }
+    if (this.shouldSkipReadForCircuit()) return false;
     return this.existsLegacy(type, name, scope);
   }
 
   async findReferences(type: PresetLevel, name: string): Promise<string[]> {
+    if (this.shouldSkipReadForCircuit()) return [];
     if (!(await this.supportsV2())) {
       return [];
     }
+    if (this.shouldSkipReadForCircuit()) return [];
 
     const rows = await this.queryPresetRowsByNameV2(type, name);
     const targetIds = rows.map(row => row.id);
@@ -1711,11 +2095,13 @@ export class SupabasePresetStore implements IPresetStore {
   }
 
   async getStorageUsed(): Promise<{ bytes: number; count: number }> {
+    if (this.shouldSkipReadForCircuit()) return { bytes: 0, count: 0 };
     if (await this.supportsV2()) {
+      if (this.shouldSkipReadForCircuit()) return { bytes: 0, count: 0 };
       const [{ count }, { data }] = await Promise.all([
         this.client
           .from('presets_v2')
-          .select('*', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true })
           .is('deleted_at', null),
         this.client
           .from('preset_payloads_v2')
@@ -1736,7 +2122,7 @@ export class SupabasePresetStore implements IPresetStore {
 
     const { count, error } = await this.client
       .from('presets')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('user_id', this.userId);
 
     if (error) return { bytes: 0, count: 0 };
@@ -1746,16 +2132,37 @@ export class SupabasePresetStore implements IPresetStore {
   async exportAll(): Promise<Blob> {
     const entries: PresetEntry[] = [];
 
+    if (this.shouldSkipReadForCircuit()) {
+      const payload = {
+        kesshoBackup: true,
+        formatVersion: 2,
+        exportedAt: new Date().toISOString(),
+        count: 0,
+        entries,
+      };
+      return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    }
+
     const v2Supported = await this.supportsV2();
     if (v2Supported) {
+      if (this.shouldSkipReadForCircuit()) {
+        const payload = {
+          kesshoBackup: true,
+          formatVersion: 2,
+          exportedAt: new Date().toISOString(),
+          count: 0,
+          entries,
+        };
+        return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      }
       const { data, error } = await this.client
         .from('presets_v2')
-        .select('*')
+        .select(PRESET_V2_ROW_SELECT)
         .is('deleted_at', null)
         .order('updated_at', { ascending: false });
 
       if (!error) {
-        for (const row of (data ?? []) as PresetV2Row[]) {
+        for (const row of (data ?? []) as unknown as PresetV2Row[]) {
           const entry = await this.loadV2ByRow(row);
           if (entry) entries.push(entry);
         }
@@ -1775,11 +2182,11 @@ export class SupabasePresetStore implements IPresetStore {
 
     let legacyQuery = this.client
       .from('presets')
-      .select('*');
+      .select(LEGACY_PRESET_ROW_SELECT);
     if (this.userId) legacyQuery = legacyQuery.eq('user_id', this.userId);
     const { data: legacyRows } = await legacyQuery;
     if (legacyRows) {
-      for (const row of legacyRows as PresetRow[]) {
+      for (const row of legacyRows as unknown as PresetRow[]) {
         entries.push(legacyRowToEntry(row));
       }
     }

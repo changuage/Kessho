@@ -8,13 +8,14 @@ import React, { useState, useEffect } from 'react';
 import {
   fetchCloudPresets,
   fetchFeaturedPresets,
+  fetchPresetById,
   searchCloudPresets,
   saveCloudPreset,
   incrementPresetPlays,
-  CloudPreset,
+  type CloudPresetSummary,
 } from '../cloud/supabase';
 import { isCloudEnabled } from '../cloud/config';
-import { SliderState } from './state';
+import type { SliderState } from './state';
 
 // Unicode symbols with text variation selector (U+FE0E) to prevent emoji rendering on mobile
 const TEXT_SYMBOLS = {
@@ -191,7 +192,7 @@ type Tab = 'browse' | 'featured' | 'share';
 
 export const CloudPresets: React.FC<CloudPresetsProps> = ({ currentState, onLoadPreset }) => {
   const [activeTab, setActiveTab] = useState<Tab>('browse');
-  const [presets, setPresets] = useState<CloudPreset[]>([]);
+  const [presets, setPresets] = useState<CloudPresetSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -245,14 +246,21 @@ export const CloudPresets: React.FC<CloudPresetsProps> = ({ currentState, onLoad
     }
   };
 
-  const handleLoadPreset = async (preset: CloudPreset) => {
-    onLoadPreset(preset.data, preset.name);
-    await incrementPresetPlays(preset.id);
-    
+  const handleLoadPreset = async (preset: CloudPresetSummary) => {
+    const detail = await fetchPresetById(preset.id);
+    if (!detail) {
+      setMessage({ type: 'error', text: `Could not load "${preset.name}".` });
+      setTimeout(() => setMessage(null), 3000);
+      return;
+    }
+
+    onLoadPreset(detail.data, detail.name);
+    await incrementPresetPlays(detail.id);
+
     // Copy share link to clipboard
-    const url = `${window.location.origin}${window.location.pathname}?cloud=${preset.id}`;
+    const url = `${window.location.origin}${window.location.pathname}?cloud=${detail.id}`;
     await navigator.clipboard.writeText(url);
-    setMessage({ type: 'success', text: `Loaded "${preset.name}" - Share link copied!` });
+    setMessage({ type: 'success', text: `Loaded "${detail.name}" - Share link copied!` });
     setTimeout(() => setMessage(null), 3000);
   };
 

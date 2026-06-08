@@ -161,6 +161,29 @@ const DEFAULT_CHILD_GRAPH_REPAIR_SCOPES: PresetChildGraphRepairScope[] = [
   { type: 'kit', scope: 'earthKit' },
 ];
 
+const LEGACY_PRESET_ROW_SELECT = [
+  'id',
+  'user_id',
+  'type',
+  'scope',
+  'name',
+  'author',
+  'library',
+  'creator',
+  'description',
+  'tags',
+  'visibility',
+  'family_name',
+  'variant_name',
+  'variant_rank',
+  'plays',
+  'versions',
+  'current_version',
+  'created_at',
+  'updated_at',
+  'rating',
+].join(',');
+
 function createPhaseReport(phase: MigrationPhase, candidates: number): MigrationPhaseReport {
   return {
     phase,
@@ -452,7 +475,7 @@ async function countLatestRefsForPreset(
 
   const { count, error: refError } = await client
     .from('preset_version_refs_v2')
-    .select('*', { count: 'exact', head: true })
+    .select('version_id', { count: 'exact', head: true })
     .eq('version_id', latestVersionId);
 
   if (refError) {
@@ -635,7 +658,7 @@ async function fetchLegacyL1L3(client: SupabaseClient): Promise<PresetEntry[]> {
     const to = from + pageSize - 1;
     const { data, error } = await client
       .from('presets')
-      .select('*')
+      .select(LEGACY_PRESET_ROW_SELECT)
       .in('type', ['engine', 'kit', 'source'])
       .range(from, to)
       .order('updated_at', { ascending: false });
@@ -644,7 +667,7 @@ async function fetchLegacyL1L3(client: SupabaseClient): Promise<PresetEntry[]> {
       throw new Error(`Legacy L1-L3 fetch failed: ${error.message}`);
     }
 
-    const page = (data ?? []) as LegacyPresetRow[];
+    const page = (data ?? []) as unknown as LegacyPresetRow[];
     rows.push(...page);
     if (page.length < pageSize) break;
   }
@@ -657,7 +680,7 @@ async function fetchLegacyL1L3(client: SupabaseClient): Promise<PresetEntry[]> {
 async function fetchLegacyStringWaves(client: SupabaseClient): Promise<PresetEntry | null> {
   const { data, error } = await client
     .from('presets')
-    .select('*')
+    .select(LEGACY_PRESET_ROW_SELECT)
     .eq('type', 'state')
     .ilike('name', 'String Waves')
     .order('updated_at', { ascending: false })
@@ -667,7 +690,7 @@ async function fetchLegacyStringWaves(client: SupabaseClient): Promise<PresetEnt
     throw new Error(`Legacy String Waves fetch failed: ${error.message}`);
   }
 
-  const entries = ((data ?? []) as LegacyPresetRow[])
+  const entries = ((data ?? []) as unknown as LegacyPresetRow[])
     .map(normalizeLegacyRow)
     .filter((entry): entry is PresetEntry => Boolean(entry))
     .filter(entry => entry.name.trim().toLowerCase() === 'string waves');
@@ -747,10 +770,10 @@ export async function verifyPresetV2Migration(): Promise<{
     refs,
     payloads,
   ] = await Promise.all([
-    client.from('presets_v2').select('*', { count: 'exact', head: true }),
-    client.from('preset_versions_v2').select('*', { count: 'exact', head: true }),
-    client.from('preset_version_refs_v2').select('*', { count: 'exact', head: true }),
-    client.from('preset_payloads_v2').select('*', { count: 'exact', head: true }),
+    client.from('presets_v2').select('id', { count: 'exact', head: true }),
+    client.from('preset_versions_v2').select('id', { count: 'exact', head: true }),
+    client.from('preset_version_refs_v2').select('version_id', { count: 'exact', head: true }),
+    client.from('preset_payloads_v2').select('hash', { count: 'exact', head: true }),
   ]);
 
   for (const result of [presets, versions, refs, payloads]) {

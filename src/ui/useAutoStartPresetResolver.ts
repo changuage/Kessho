@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 
 type AutoStartPresetSource = 'cloud' | 'device-local' | 'bundled';
 
@@ -103,16 +103,6 @@ export function useAutoStartPresetResolver<TPreset extends { name: string; sourc
     loadBundledPresetByName,
     loadCloudAutoStartPreset,
     savedPresets,
-    usesCapacitorLocalPresetLibrary,
-    usesCloudBackedStatePresetLibrary,
-  ]);
-
-  useEffect(() => {
-    if (!(usesCapacitorLocalPresetLibrary || usesCloudBackedStatePresetLibrary) || !cloudEnabled || autoStartPresetRef.current) return;
-    void loadCloudAutoStartPreset();
-  }, [
-    cloudEnabled,
-    loadCloudAutoStartPreset,
     usesCapacitorLocalPresetLibrary,
     usesCloudBackedStatePresetLibrary,
   ]);

@@ -11,7 +11,11 @@ This guide will help you set up cloud preset sharing for your generative music a
 5. Choose a region close to your users
 6. Click **Create new project** (takes ~2 minutes)
 
-## 2. Create the Database Table
+## 2. Enable anonymous Auth
+
+In your Supabase dashboard, go to **Authentication** -> **Sign In / Providers** and enable **Anonymous sign-ins**. The app uses anonymous Auth sessions so Row Level Security can allow shared preset editing without exposing raw unauthenticated writes.
+
+## 3. Create the Database Table
 
 In your Supabase dashboard:
 
@@ -39,17 +43,28 @@ ALTER TABLE presets ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public read access" ON presets
   FOR SELECT USING (true);
 
--- Allow anyone to insert new presets
-CREATE POLICY "Public insert access" ON presets
-  FOR INSERT WITH CHECK (true);
+-- Allow anonymous Auth users to share and edit presets.
+-- Raw unauthenticated Data API writes should stay blocked.
+CREATE POLICY "Authenticated insert access" ON presets
+  FOR INSERT TO authenticated WITH CHECK (true);
+
+CREATE POLICY "Authenticated update access" ON presets
+  FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
 -- Create function to increment plays
 CREATE OR REPLACE FUNCTION increment_plays(preset_id UUID)
 RETURNS void AS $$
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentication is required to increment preset plays';
+  END IF;
+
   UPDATE presets SET plays = plays + 1 WHERE id = preset_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+REVOKE EXECUTE ON FUNCTION increment_plays(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION increment_plays(UUID) TO authenticated;
 
 -- Create index for faster searches
 CREATE INDEX idx_presets_name ON presets USING gin(to_tsvector('english', name));
@@ -57,14 +72,14 @@ CREATE INDEX idx_presets_created ON presets(created_at DESC);
 CREATE INDEX idx_presets_featured ON presets(is_featured) WHERE is_featured = true;
 ```
 
-## 3. Get Your API Keys
+## 4. Get Your API Keys
 
 1. Go to **Settings** (gear icon) → **API**
 2. Copy these values:
    - **Project URL** (looks like `https://abcdefgh.supabase.co`)
    - **anon public** key (under "Project API keys")
 
-## 4. Configure Your App
+## 5. Configure Your App
 
 Create a `.env` file in your project root:
 
@@ -77,7 +92,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...your-long-key
 - Add `.env` to your `.gitignore` if not already there
 - For production, set these as environment variables in your hosting platform
 
-## 5. Restart the Dev Server
+## 6. Restart the Dev Server
 
 ```bash
 npm run dev

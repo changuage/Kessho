@@ -4,6 +4,7 @@ import { getPresetStore, subscribePresetStore } from './PresetStore';
 import { getVersionData } from './codec';
 import { buildJourneyPresetPreview } from './journeyPresetPreview';
 import { getPresetScope, normalizePresetEntry } from './presetUtils';
+import { isSharedPresetCloudOnlyMode } from './sharedMode';
 import type { JourneyPresetPreview, PresetEntry, PresetRef, PresetSummary, PresetVersion } from './types';
 import {
   JOURNEY_STATE_PRESET_SCOPE,
@@ -204,6 +205,10 @@ export function useJourneyPresets(): UseJourneyPresetsResult {
     try {
       const activeStore = getPresetStore();
       const listed = await activeStore.list('journey');
+      if (isSharedPresetCloudOnlyMode()) {
+        setPresets(listed);
+        return;
+      }
       const withPreviews = await mapWithConcurrency(listed, 8, async (summary) => {
         if (summary.journeyPreview) return summary;
         const cacheKey = `${summary.id ?? summary.name}:${summary.currentVersion}:${summary.updatedAt}`;

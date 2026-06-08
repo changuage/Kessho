@@ -11,6 +11,8 @@
     "test:dynamics-character": "node scripts/check-dynamics-character-wasm.mjs",
     "test:mobile-web-hotpaths": "node scripts/check-mobile-web-hotpaths.mjs",
     "audit:preset-v2": "node scripts/audit-supabase-presets-v2.mjs",
+    "audit:supabase-egress": "node scripts/check-supabase-egress-guards.mjs",
+    "audit:supabase-security": "node scripts/check-supabase-security-guards.mjs",
     "repair:preset-child-graphs": "node scripts/repair-new-engine-cloud-presets.mjs",
     "type-check": "tsc --noEmit",
     "preview": "vite preview",
