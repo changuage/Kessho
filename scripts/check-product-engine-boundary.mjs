@@ -4175,7 +4175,7 @@ for (const rootDir of sourceRoots) {
         "if (audioEngineRuntimeMode === 'core-product') return;",
         'updateSelectedReferenceParams(nextState, metadata)',
         "reason: 'preset-load'",
-        'forceFullSnapshot: true',
+        'triggerCritical: true',
         'resetSelectedCofDrift()',
       ]) {
         if (!source.includes(token)) {

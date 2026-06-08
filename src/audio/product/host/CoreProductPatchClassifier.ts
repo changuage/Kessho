@@ -11,10 +11,9 @@ export function snapshotReloadReasonForProductPatch(reason: ProductSnapshotPatch
       return 'runtime-bootstrap';
     case 'debug-force-reload':
       return 'explicit-reset-request';
-    case 'preset-load':
-      return 'explicit-reset-request';
     case 'sequencer-edit':
       return 'sequencer-structure-change';
+    case 'preset-load':
     case 'transport-change':
     case 'sequencer-control-change':
     case 'midi-cc-control-change':

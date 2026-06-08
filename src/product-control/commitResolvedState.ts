@@ -75,6 +75,20 @@ export type ProductControlActionTriggerOptions = ProductControlPatchCommitOption
 };
 
 const productControlStateByEngine = new WeakMap<ProductEnginePort, ProductControlState>();
+const productControlCommitQueueByEngine = new WeakMap<ProductEnginePort, Promise<void>>();
+
+function enqueueProductControlCommit<T>(
+  productEngine: ProductEnginePort,
+  task: () => Promise<T>,
+): Promise<T> {
+  const previous = productControlCommitQueueByEngine.get(productEngine) ?? Promise.resolve();
+  const queued = previous.catch(() => undefined).then(task);
+  productControlCommitQueueByEngine.set(
+    productEngine,
+    queued.then(() => undefined, () => undefined),
+  );
+  return queued;
+}
 
 function getAlignedProductControlStateRecordForEngine(
   productEngine: ProductEnginePort,
@@ -271,24 +285,26 @@ export async function commitVisibleSliderStateForProduct(
   sliders: SliderState,
   options: ResolveVisibleSliderStateCommitOptions = {},
 ): Promise<ProductResolvedStateCommitReceipt> {
-  const previousControlState = getAlignedProductControlStateForEngine(productEngine, sliders);
-  const patch = await hydrateProductControlLeadPresetDataPatch(
-    previousControlState.rawSliders,
-    collectProductControlSliderPatch(previousControlState.rawSliders, sliders),
-  );
-  const nextControlState = reduceVisibleSliderPatchForProductCommit(previousControlState, sliders, patch, options);
-  const applyMode = applyModeForCommitOptions(options);
-  const resolved = resolvePerformanceState(nextControlState, {
-    reason: options.reason ?? nextControlState.lastReason,
-    triggerCritical: options.triggerCritical ?? nextControlState.triggerCritical,
-    ...(options.productEvents ? { productEvents: options.productEvents } : {}),
-    ...(applyMode ? { applyMode } : {}),
+  return enqueueProductControlCommit(productEngine, async () => {
+    const previousControlState = getAlignedProductControlStateForEngine(productEngine, sliders);
+    const patch = await hydrateProductControlLeadPresetDataPatch(
+      previousControlState.rawSliders,
+      collectProductControlSliderPatch(previousControlState.rawSliders, sliders),
+    );
+    const nextControlState = reduceVisibleSliderPatchForProductCommit(previousControlState, sliders, patch, options);
+    const applyMode = applyModeForCommitOptions(options);
+    const resolved = resolvePerformanceState(nextControlState, {
+      reason: options.reason ?? nextControlState.lastReason,
+      triggerCritical: options.triggerCritical ?? nextControlState.triggerCritical,
+      ...(options.productEvents ? { productEvents: options.productEvents } : {}),
+      ...(applyMode ? { applyMode } : {}),
+    });
+    const receipt = await commitResolvedStateForProduct(productEngine, resolved);
+    if (receipt.applied) {
+      productControlStateByEngine.set(productEngine, nextControlState);
+    }
+    return receipt;
   });
-  const receipt = await commitResolvedStateForProduct(productEngine, resolved);
-  if (receipt.applied) {
-    productControlStateByEngine.set(productEngine, nextControlState);
-  }
-  return receipt;
 }
 
 export async function commitProductControlPatchForProduct(
@@ -297,24 +313,26 @@ export async function commitProductControlPatchForProduct(
   patch: Partial<SliderState>,
   options: ProductControlPatchCommitOptions = {},
 ): Promise<ProductResolvedStateCommitReceipt> {
-  const previousControlState = getAlignedProductControlStateForEngine(productEngine, sliders);
-  const hydratedPatch = await hydrateProductControlLeadPresetDataPatch(
-    previousControlState.rawSliders,
-    patch as ProductControlStatePatch,
-  );
-  const nextControlState = reduceVisibleSliderPatchForProductCommit(previousControlState, sliders, hydratedPatch, options);
-  const applyMode = applyModeForCommitOptions(options);
-  const resolved = resolvePerformanceState(nextControlState, {
-    reason: options.reason ?? nextControlState.lastReason,
-    triggerCritical: options.triggerCritical ?? nextControlState.triggerCritical,
-    ...(options.productEvents ? { productEvents: options.productEvents } : {}),
-    ...(applyMode ? { applyMode } : {}),
+  return enqueueProductControlCommit(productEngine, async () => {
+    const previousControlState = getAlignedProductControlStateForEngine(productEngine, sliders);
+    const hydratedPatch = await hydrateProductControlLeadPresetDataPatch(
+      previousControlState.rawSliders,
+      patch as ProductControlStatePatch,
+    );
+    const nextControlState = reduceVisibleSliderPatchForProductCommit(previousControlState, sliders, hydratedPatch, options);
+    const applyMode = applyModeForCommitOptions(options);
+    const resolved = resolvePerformanceState(nextControlState, {
+      reason: options.reason ?? nextControlState.lastReason,
+      triggerCritical: options.triggerCritical ?? nextControlState.triggerCritical,
+      ...(options.productEvents ? { productEvents: options.productEvents } : {}),
+      ...(applyMode ? { applyMode } : {}),
+    });
+    const receipt = await commitResolvedStateForProduct(productEngine, resolved);
+    if (receipt.applied) {
+      productControlStateByEngine.set(productEngine, nextControlState);
+    }
+    return receipt;
   });
-  const receipt = await commitResolvedStateForProduct(productEngine, resolved);
-  if (receipt.applied) {
-    productControlStateByEngine.set(productEngine, nextControlState);
-  }
-  return receipt;
 }
 
 export async function commitProductControlActionForProduct(
@@ -323,33 +341,35 @@ export async function commitProductControlActionForProduct(
   action: ProductControlAction,
   options: ProductControlActionTriggerOptions = {},
 ): Promise<ProductResolvedStateCommitReceipt> {
-  const aligned = getAlignedProductControlStateRecordForEngine(productEngine, sliders);
-  let nextControlState = aligned.state;
-  if (options.syncVisibleSliders !== false) {
-    const patch = collectProductControlSliderPatch(nextControlState.rawSliders, sliders);
-    const hydratedPatch = await hydrateProductControlLeadPresetDataPatch(nextControlState.rawSliders, patch);
-    if (Object.keys(hydratedPatch).length > 0 || options.forceFullSnapshot) {
-      nextControlState = reduceVisibleSliderPatchForProductCommit(
-        nextControlState,
-        sliders,
-        hydratedPatch,
-        visibleSliderSyncCommitOptions(options, options.triggerCritical ?? true),
-      );
+  return enqueueProductControlCommit(productEngine, async () => {
+    const aligned = getAlignedProductControlStateRecordForEngine(productEngine, sliders);
+    let nextControlState = aligned.state;
+    if (options.syncVisibleSliders !== false) {
+      const patch = collectProductControlSliderPatch(nextControlState.rawSliders, sliders);
+      const hydratedPatch = await hydrateProductControlLeadPresetDataPatch(nextControlState.rawSliders, patch);
+      if (Object.keys(hydratedPatch).length > 0 || options.forceFullSnapshot) {
+        nextControlState = reduceVisibleSliderPatchForProductCommit(
+          nextControlState,
+          sliders,
+          hydratedPatch,
+          visibleSliderSyncCommitOptions(options, options.triggerCritical ?? true),
+        );
+      }
     }
-  }
-  nextControlState = reduceProductControlState(nextControlState, action);
-  const applyMode = applyModeForCommitOptions(options);
-  const resolved = resolvePerformanceState(nextControlState, {
-    reason: options.reason ?? nextControlState.lastReason,
-    triggerCritical: options.triggerCritical ?? nextControlState.triggerCritical,
-    ...(options.productEvents ? { productEvents: options.productEvents } : {}),
-    ...(applyMode ? { applyMode } : {}),
+    nextControlState = reduceProductControlState(nextControlState, action);
+    const applyMode = applyModeForCommitOptions(options);
+    const resolved = resolvePerformanceState(nextControlState, {
+      reason: options.reason ?? nextControlState.lastReason,
+      triggerCritical: options.triggerCritical ?? nextControlState.triggerCritical,
+      ...(options.productEvents ? { productEvents: options.productEvents } : {}),
+      ...(applyMode ? { applyMode } : {}),
+    });
+    const receipt = await commitResolvedStateForProduct(productEngine, resolved);
+    if (receipt.applied) {
+      productControlStateByEngine.set(productEngine, nextControlState);
+    }
+    return receipt;
   });
-  const receipt = await commitResolvedStateForProduct(productEngine, resolved);
-  if (receipt.applied) {
-    productControlStateByEngine.set(productEngine, nextControlState);
-  }
-  return receipt;
 }
 
 export async function commitProductControlActionThenTrigger<T>(
@@ -359,37 +379,39 @@ export async function commitProductControlActionThenTrigger<T>(
   trigger: (revision: number) => Promise<T> | T,
   options: ProductControlActionTriggerOptions = {},
 ): Promise<T> {
-  const aligned = getAlignedProductControlStateRecordForEngine(productEngine, sliders);
-  let nextControlState = aligned.state;
-  if (options.syncVisibleSliders !== false) {
-    const patch = collectProductControlSliderPatch(nextControlState.rawSliders, sliders);
-    const hydratedPatch = await hydrateProductControlLeadPresetDataPatch(nextControlState.rawSliders, patch);
-    if (aligned.initialized || Object.keys(hydratedPatch).length > 0 || options.forceFullSnapshot) {
-      nextControlState = reduceVisibleSliderPatchForProductCommit(
-        nextControlState,
-        sliders,
-        hydratedPatch,
-        visibleSliderSyncCommitOptions(options, true),
-      );
+  return enqueueProductControlCommit(productEngine, async () => {
+    const aligned = getAlignedProductControlStateRecordForEngine(productEngine, sliders);
+    let nextControlState = aligned.state;
+    if (options.syncVisibleSliders !== false) {
+      const patch = collectProductControlSliderPatch(nextControlState.rawSliders, sliders);
+      const hydratedPatch = await hydrateProductControlLeadPresetDataPatch(nextControlState.rawSliders, patch);
+      if (aligned.initialized || Object.keys(hydratedPatch).length > 0 || options.forceFullSnapshot) {
+        nextControlState = reduceVisibleSliderPatchForProductCommit(
+          nextControlState,
+          sliders,
+          hydratedPatch,
+          visibleSliderSyncCommitOptions(options, true),
+        );
+      }
     }
-  }
-  nextControlState = reduceProductControlState(nextControlState, action);
-  const applyMode = applyModeForCommitOptions(options);
-  const resolved = resolvePerformanceState(nextControlState, {
-    reason: options.reason ?? nextControlState.lastReason,
-    triggerCritical: options.triggerCritical ?? nextControlState.triggerCritical,
-    ...(options.productEvents ? { productEvents: options.productEvents } : {}),
-    ...(applyMode ? { applyMode } : {}),
+    nextControlState = reduceProductControlState(nextControlState, action);
+    const applyMode = applyModeForCommitOptions(options);
+    const resolved = resolvePerformanceState(nextControlState, {
+      reason: options.reason ?? nextControlState.lastReason,
+      triggerCritical: options.triggerCritical ?? nextControlState.triggerCritical,
+      ...(options.productEvents ? { productEvents: options.productEvents } : {}),
+      ...(applyMode ? { applyMode } : {}),
+    });
+    const receipt = await commitResolvedStateForProduct(productEngine, resolved);
+    const committedRevision = productEngine.getCommittedStateRevision();
+    if (resolved.triggerCritical && (!receipt.applied || committedRevision < resolved.revision)) {
+      throw new Error(`Product state revision ${resolved.revision} was not committed before trigger`);
+    }
+    if (receipt.applied) {
+      productControlStateByEngine.set(productEngine, nextControlState);
+    }
+    return trigger(resolved.revision);
   });
-  const receipt = await commitResolvedStateForProduct(productEngine, resolved);
-  const committedRevision = productEngine.getCommittedStateRevision();
-  if (resolved.triggerCritical && (!receipt.applied || committedRevision < resolved.revision)) {
-    throw new Error(`Product state revision ${resolved.revision} was not committed before trigger`);
-  }
-  if (receipt.applied) {
-    productControlStateByEngine.set(productEngine, nextControlState);
-  }
-  return trigger(resolved.revision);
 }
 
 export function getProductControlStateForProductEngine(

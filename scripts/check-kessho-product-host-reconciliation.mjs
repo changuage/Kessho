@@ -25,6 +25,12 @@ function hostMethodBody(name) {
   return methodBody(hostRuntimeSurface, name);
 }
 
+async function settleAsyncHostWork(count = 4) {
+  for (let index = 0; index < count; index += 1) {
+    await new Promise((settle) => setTimeout(settle, 0));
+  }
+}
+
 function assertLiveSequencerMutation(methodName, eventCreator) {
   const body = hostMethodBody(methodName);
   assert(body.includes(`this.postProductEvent(${eventCreator}`), `${methodName}() must delegate to the ProductEvent queue path`);
@@ -1225,7 +1231,7 @@ await runCheckWithReport({
       index: 0,
       value: 0.51,
     });
-    await Promise.resolve();
+    await settleAsyncHostWork();
     assert(coldManualSynthDiceHarness.host.runtimeReady === true, 'pre-runtime ProductEvent synth manual dice must initialize Product runtime ownership before posting');
     assert(coldManualSynthDiceHarness.runtime.snapshots.length === 1, 'pre-runtime ProductEvent synth manual dice must bootstrap Product with one compiled snapshot');
     assert(

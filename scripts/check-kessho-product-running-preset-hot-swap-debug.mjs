@@ -140,10 +140,26 @@ function baseHotSwapState() {
     spectralFreezeEnabled: false,
     synthAttack: 0.05,
     synthChordSequencerEnabled: false,
-    synthEuclideanMasterEnabled: false,
+    synthEuclid1Enabled: true,
+    synthEuclid1Hits: 4,
+    synthEuclid1NoteMax: 64,
+    synthEuclid1NoteMin: 64,
+    synthEuclid1Preset: 'custom',
+    synthEuclid1Probability: 1,
+    synthEuclid1Rotation: 0,
+    synthEuclid1Source: 'synth1',
+    synthEuclid1Steps: 4,
+    synthEuclid2Enabled: false,
+    synthEuclid3Enabled: false,
+    synthEuclid4Enabled: false,
+    synthEuclidBaseBPM: 150,
+    synthEuclidClockSource: 'localBeat',
+    synthEuclideanMasterEnabled: true,
+    synthEuclideanTempo: 1,
     synthHold: 0.25,
     synthLevel: 0.32,
     synthRelease: 0.45,
+    sequencerMasterBPM: 150,
     waterEnabled: false,
   };
 }
@@ -192,7 +208,7 @@ async function main() {
       const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
       const probe = window.__kesshoProductRuntimeProbe;
       await probe.startState({ statePatch: initialState, activeTab: 'synth' });
-      await wait(1000);
+      await wait(1300);
       const before = probe.readProductStateProbe();
 
       await probe.applyStatePatch({
@@ -203,7 +219,8 @@ async function main() {
           padMorph: 0,
         },
       });
-      await wait(900);
+      await wait(1300);
+      const afterPadSequencer = probe.readProductStateProbe();
       await probe.triggerSampleHoldNote({ source: 'pad1', midi: 60, velocity: 0.85, durationMs: 360 });
       await wait(900);
       const afterPad = probe.readProductStateProbe();
@@ -221,29 +238,30 @@ async function main() {
       await wait(1200);
       const afterLead = probe.readProductStateProbe();
 
-      return { before, afterPad, afterLead };
+      return { before, afterPadSequencer, afterPad, afterLead };
     }, baseHotSwapState());
 
     await waitForStage(productStateRecords, 'product-control-resolved', 2);
     await waitForStage(productStateRecords, 'encoded-product-snapshot', 2);
-    await waitForStage(productStateRecords, 'snapshot-applied', 2);
     await waitForStage(productStateRecords, 'cpp-product-telemetry', 2);
 
     assert(pageErrors.length === 0, `Page errors were reported: ${pageErrors.join('; ')}`);
     assert(result.before?.telemetry?.transportRunning === true, 'transport was not running before hot-swap');
+    assert(result.afterPadSequencer?.telemetry?.transportRunning === true, 'transport stopped after Pad sequencer hot-swap');
     assert(result.afterPad?.telemetry?.transportRunning === true, 'transport stopped after Pad hot-swap');
     assert(result.afterLead?.telemetry?.transportRunning === true, 'transport stopped after Lead hot-swap');
 
     const padBefore = sourceEntry(result.before?.telemetry, 1);
+    const padAfterSequencer = sourceEntry(result.afterPadSequencer?.telemetry, 1);
     const padAfter = sourceEntry(result.afterPad?.telemetry, 1);
     const leadBefore = sourceEntry(result.afterPad?.telemetry, 3);
     const leadAfter = sourceEntry(result.afterLead?.telemetry, 3);
-    assert(padBefore && padAfter, 'Pad source debug telemetry was missing');
+    assert(padBefore && padAfterSequencer && padAfter, 'Pad source debug telemetry was missing');
     assert(leadBefore && leadAfter, 'Lead source debug telemetry was missing');
     assert(
-      padBefore.sourceStateHash !== padAfter.sourceStateHash ||
-        padBefore.compiledSourceHash !== padAfter.compiledSourceHash,
-      'Pad source hash did not change after running hot-swap',
+      padBefore.sourceStateHash !== padAfterSequencer.sourceStateHash ||
+        padBefore.compiledSourceHash !== padAfterSequencer.compiledSourceHash,
+      'Pad source hash did not change after running sequencer hot-swap',
     );
     assert(
       leadBefore.sourceStateHash !== leadAfter.sourceStateHash ||
@@ -251,8 +269,11 @@ async function main() {
       'Lead source hash did not change after running hot-swap',
     );
 
+    const padSpawnBefore = latestSpawn(result.before?.telemetry, 1);
+    const padSequencerSpawn = latestSpawn(result.afterPadSequencer?.telemetry, 1);
     const padSpawn = latestSpawn(result.afterPad?.telemetry, 1);
     const leadSpawn = latestSpawn(result.afterLead?.telemetry, 3);
+    assert(padSpawnBefore, 'Pad voice-spawn telemetry was missing before hot-swap');
     assert(padSpawn, 'Pad voice-spawn telemetry was missing after hot-swap trigger');
     assert(leadSpawn, 'Lead voice-spawn telemetry was missing after hot-swap trigger');
     assert(padSpawn.sourceStateHash === padAfter.sourceStateHash, 'Pad voice-spawn hash did not match active source hash');
@@ -264,7 +285,12 @@ async function main() {
     assert(uniqueValues(productControlRecords, 'padRelevantHash').length >= 2, 'ProductControl Pad hash did not change');
     assert(uniqueValues(productControlRecords, 'leadRelevantHash').length >= 2, 'ProductControl Lead hash did not change');
     assert(uniqueValues(encodedRecords, 'encodedSnapshotHash').length >= 2, 'encoded snapshot hash did not change');
-    assert(uniqueValues(appliedRecords, 'encodedSnapshotHash').length >= 2, 'worklet-applied snapshot hash did not change');
+    assert((result.afterPadSequencer?.diagnostics?.dirtyDiffCount ?? 0) > (result.before?.diagnostics?.dirtyDiffCount ?? 0), 'Pad hot-swap did not apply as a dirty diff');
+    assert(
+      (result.afterPadSequencer?.diagnostics?.fullSnapshotReloadCount ?? 0) ===
+        (result.before?.diagnostics?.fullSnapshotReloadCount ?? 0),
+      'Pad hot-swap triggered a full snapshot reload',
+    );
 
     const report = {
       schemaVersion: 1,
@@ -276,6 +302,9 @@ async function main() {
       workletAppliedHashCount: appliedRecords.length,
       pad: {
         before: padBefore,
+        afterSequencer: padAfterSequencer,
+        sequencerSpawnBefore: padSpawnBefore,
+        sequencerSpawnAfter: padSequencerSpawn,
         after: padAfter,
         spawn: padSpawn,
       },
@@ -300,7 +329,8 @@ async function main() {
         `Encoded snapshot records: ${report.encodedSnapshotHashCount}`,
         `Worklet-applied records: ${report.workletAppliedHashCount}`,
         '',
-        `Pad source: ${padBefore.sourceStateHash}/${padBefore.compiledSourceHash} -> ${padAfter.sourceStateHash}/${padAfter.compiledSourceHash}; voice ${padSpawn.sourceStateHash}/${padSpawn.compiledSourceHash}`,
+        `Pad source: ${padBefore.sourceStateHash}/${padBefore.compiledSourceHash} -> ${padAfterSequencer.sourceStateHash}/${padAfterSequencer.compiledSourceHash}; sequencer voice ${padSpawnBefore.sourceStateHash}/${padSpawnBefore.compiledSourceHash} -> ${padSequencerSpawn?.sourceStateHash ?? 'unreported'}/${padSequencerSpawn?.compiledSourceHash ?? 'unreported'}`,
+        `Pad manual trigger: ${padAfter.sourceStateHash}/${padAfter.compiledSourceHash}; voice ${padSpawn.sourceStateHash}/${padSpawn.compiledSourceHash}`,
         `Lead source: ${leadBefore.sourceStateHash}/${leadBefore.compiledSourceHash} -> ${leadAfter.sourceStateHash}/${leadAfter.compiledSourceHash}; voice ${leadSpawn.sourceStateHash}/${leadSpawn.compiledSourceHash}`,
         '',
       ].join('\n'),

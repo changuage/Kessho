@@ -501,11 +501,11 @@ class CoreProductEngineHost {
   setSynthNoteRangeEvolvedCallback(callback: ((laneIndex: number, noteMin: number, noteMax: number) => void) | null): void { this.setDisplayCallback('synthNoteRangeEvolved', callback); }
   setDrumStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
     this.setDisplayCallback('drumStepPosition', callback);
-    callback?.([0, 0, 0, 0], [0, 0, 0, 0]);
+    this.publishCurrentSequencerVisualsOnCallbackRegistration(callback);
   }
   setSynthStepPositionCallback(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
     this.setDisplayCallback('synthStepPosition', callback);
-    callback?.([0, 0, 0, 0], [0, 0, 0, 0]);
+    this.publishCurrentSequencerVisualsOnCallbackRegistration(callback);
   }
   setDrumEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void { this.setDisplayCallback('drumEuclidEvolve', callback); }
   setSynthEuclidEvolveTriggerCallback(callback: ((laneIndex: number) => void) | null): void { this.setDisplayCallback('synthEuclidEvolve', callback); }
@@ -847,6 +847,15 @@ class CoreProductEngineHost {
 
   private publishSequencerVisuals(telemetry: CoreProductTelemetrySnapshot | null): void {
     publishCoreProductSequencerVisuals({ telemetry, snapshot: this.latestProductSnapshot, state: this.latestSliderState ? { ...this.latestSliderState, ...this.adapterState } : this.adapterState, synthToggles: selectCoreProductSequencerCache(this.sequencerCache, 'synth').toggles, drumToggles: selectCoreProductSequencerCache(this.sequencerCache, 'drum').toggles, sampleRate: telemetry?.sampleRate ?? this.runtime.audioContext?.sampleRate ?? 48000, publish: (name, steps, hitCounts) => this.invokeDisplayCallback(name, steps, hitCounts) });
+  }
+
+  private publishCurrentSequencerVisualsOnCallbackRegistration(callback: ((steps: number[], hitCounts: number[]) => void) | null): void {
+    if (!callback) return;
+    if (this.running) {
+      if (this.latestTelemetry) this.publishSequencerVisuals(this.latestTelemetry);
+      return;
+    }
+    callback([0, 0, 0, 0], [0, 0, 0, 0]);
   }
 
   private resetSequencerVisuals(): void { this.publishSequencerVisuals(null); this.clearSequencerMorphFeedback(); }

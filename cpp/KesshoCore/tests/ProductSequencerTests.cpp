@@ -1237,6 +1237,26 @@ void renderSilentBlocks(KesshoProductEngine* engine, uint32_t block_count) {
   }
 }
 
+KesshoProductDebugVoiceSpawn latestDebugVoiceSpawnForSource(
+    const KesshoProductTelemetry& telemetry,
+    uint32_t source_id,
+    const char* message) {
+  bool found = false;
+  KesshoProductDebugVoiceSpawn latest{};
+  for (uint32_t i = 0; i < telemetry.debug_voice_spawn_count; ++i) {
+    const KesshoProductDebugVoiceSpawn& spawn = telemetry.debug_voice_spawns[i];
+    if (spawn.source_id != source_id) {
+      continue;
+    }
+    if (!found || spawn.trigger_sequence > latest.trigger_sequence) {
+      found = true;
+      latest = spawn;
+    }
+  }
+  require(found, message);
+  return latest;
+}
+
 void requireRuntimeWalkMovementAcrossAudioAndFxTargets() {
   struct ProductProbe {
     uint32_t param_id;
@@ -4414,6 +4434,61 @@ int main() {
       0u,
       1.0f);
   require(std::fabs(pad_params[14] - 0.36f) < 0.001f, "source preset event should refresh compiled patch before trigger");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 1;
+  snapshot.drum_euclid.lane_count = 0;
+  snapshot.transport.running = 1;
+  snapshot.synth_euclid.lanes[0].enabled = 1;
+  snapshot.synth_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  snapshot.synth_euclid.lanes[0].step_count = 4;
+  snapshot.synth_euclid.lanes[0].fill_count = 4;
+  snapshot.synth_euclid.lanes[0].clock_division = 16;
+  snapshot.synth_euclid.lanes[0].probability = 1.0f;
+  snapshot.synth_euclid.lanes[0].midi_note = 60.0f;
+  snapshot.synth_euclid.lanes[0].hold_seconds = 0.12f;
+  KesshoProductSourceSnapshot& running_endpoint_source = snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u];
+  running_endpoint_source.source_preset_a_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT;
+  running_endpoint_source.source_preset_b_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_INIT;
+  running_endpoint_source.morph = 0.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "running Pad endpoint hot-swap snapshot load failed");
+  renderSilentBlocks(engine, 60u);
+  KesshoProductTelemetry running_before_telemetry = kessho_product_get_telemetry(engine);
+  const KesshoProductDebugVoiceSpawn running_before_spawn = latestDebugVoiceSpawnForSource(
+      running_before_telemetry,
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      "running Pad endpoint hot-swap setup should produce sequencer triggers");
+  KesshoProductEvent running_pad_endpoint_event{};
+  running_pad_endpoint_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET;
+  running_pad_endpoint_event.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  running_pad_endpoint_event.index = 1u;
+  running_pad_endpoint_event.value =
+      static_cast<float>(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT);
+  require(
+      kessho_product_enqueue_event(engine, &running_pad_endpoint_event) == KESSHO_PRODUCT_OK,
+      "running Pad endpoint hot-swap event enqueue failed");
+  renderSilentBlocks(engine, 60u);
+  KesshoProductTelemetry running_after_telemetry = kessho_product_get_telemetry(engine);
+  const KesshoProductDebugVoiceSpawn running_after_spawn = latestDebugVoiceSpawnForSource(
+      running_after_telemetry,
+      KESSHO_PRODUCT_SOURCE_PAD1,
+      "running Pad endpoint hot-swap should keep producing sequencer triggers");
+  require(
+      running_after_spawn.trigger_sequence > running_before_spawn.trigger_sequence,
+      "running Pad endpoint hot-swap should not stop sequencer triggers");
+  require(
+      running_after_spawn.source_state_hash != running_before_spawn.source_state_hash ||
+          running_after_spawn.compiled_source_hash != running_before_spawn.compiled_source_hash,
+      "running Pad endpoint hot-swap should change the next sequencer trigger source patch");
+  require(
+      engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].source_preset_a_id ==
+          kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT,
+      "running Pad endpoint hot-swap should update endpoint A state");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();

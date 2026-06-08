@@ -61,6 +61,14 @@ function hashJson(value: unknown): string {
   return stableStringify(value);
 }
 
+async function waitForCondition(condition: () => boolean, message: string): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  assert.ok(condition(), message);
+}
+
 function expectSoundActionChangesResolvedOutput(
   before: ProductControlState,
   action: ProductControlAction,
@@ -626,6 +634,53 @@ function expectSoundActionChangesResolvedOutput(
     'soft_rhodes',
     'Lead preset commit should carry resolved preset data in the same ProductControl patch',
   );
+}
+
+{
+  let committedRevision = 70;
+  let releaseFirstCommit = (): void => undefined;
+  const firstCommitGate = new Promise<void>((resolve) => {
+    releaseFirstCommit = resolve;
+  });
+  const capturedCommits: ProductResolvedStateCommit[] = [];
+  const fakeProductEngine = {
+    commitResolvedState: async (commit: ProductResolvedStateCommit) => {
+      capturedCommits.push(commit);
+      if (capturedCommits.length === 1) await firstCommitGate;
+      committedRevision = commit.revision;
+      return { revision: commit.revision, applied: true, mode: 'dirty-diff' as const };
+    },
+    getCommittedStateRevision: () => committedRevision,
+  } as unknown as ProductEnginePort;
+  const firstCommit = commitProductControlPatchForProduct(
+    fakeProductEngine,
+    stateWith({ padPresetA: 'glass_shimmer', padPresetB: 'init', padMorph: 0 }),
+    { padPresetA: 'glass_shimmer' },
+    { reason: 'ui-control-change', triggerCritical: true },
+  );
+  await waitForCondition(
+    () => capturedCommits.length === 1,
+    'first queued ProductControl commit should start immediately',
+  );
+  const secondCommit = commitProductControlPatchForProduct(
+    fakeProductEngine,
+    stateWith({ padPresetA: 'glass_shimmer', padPresetB: 'init', padMorph: 0.25 }),
+    { padMorph: 0.25 },
+    { reason: 'morph-control-change', triggerCritical: true },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(capturedCommits.length, 1, 'second ProductControl commit should wait for the first receipt');
+  releaseFirstCommit();
+  await Promise.all([firstCommit, secondCommit]);
+  const secondCapturedCommit = capturedCommits[1];
+  assert.ok(secondCapturedCommit, 'queued ProductControl commit should run after first receipt');
+  assert.equal(secondCapturedCommit.revision, 72, 'queued ProductControl commits should allocate revisions in receipt order');
+  assert.equal(
+    secondCapturedCommit.patch.padPresetA,
+    'glass_shimmer',
+    'queued morph commit must retain the preceding Pad endpoint change',
+  );
+  assert.equal(secondCapturedCommit.patch.padMorph, 0.25, 'queued morph commit should still apply the latest morph value');
 }
 
 {

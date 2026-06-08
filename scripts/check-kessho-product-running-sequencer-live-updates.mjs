@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadCoreProductHostHarness } from './lib/kesshoProductBehaviorHarness.mjs';
+import { loadCoreProductHostHarness, methodBody } from './lib/kesshoProductBehaviorHarness.mjs';
 
 const root = process.cwd();
 const reportJsonPath = resolve(root, 'docs/reports/kessho-product-running-sequencer-live-updates-latest.json');
@@ -55,6 +55,7 @@ const files = {
   sequencerControls: read('src/ui/useSelectedAudioEngineSequencerControls.ts'),
   sequencerStepOverrideEventBridge: read('src/audio/product/host/CoreProductSequencerStepOverrideEventBridge.ts'),
   drumMorph: read('src/audio/drumMorph.ts'),
+  sequencerClock: read('src/audio/CoreProductHostSequencerClock.ts'),
   sequencerTests: read('cpp/KesshoCore/tests/ProductSequencerTests.cpp'),
 };
 
@@ -100,14 +101,14 @@ check(
 check(
   'sequencer-transport-start-commit-accepted',
   files.hostCommitService.includes('isSequencerTransportStartPatch') &&
-    files.hostCommitService.includes("patchMode !== 'deferred' || (") &&
+    files.hostCommitService.includes('patchReceipt.applied || (') &&
     files.host.includes('applyProductStatePatch: (patch, reason, options) => this.applyProductStatePatch(patch, reason, options)'),
   'trigger-critical sequencer transport start commits must advance Product revision even while runtime start work is deferred',
 );
 
 {
   const harness = loadCoreProductHostHarness();
-  const receipt = harness.host.commitResolvedState({
+  const receipt = await harness.host.commitResolvedState({
     revision: 1,
     reason: 'sequencer-control-change',
     triggerCritical: true,
@@ -126,6 +127,84 @@ check(
       harness.runtime.events.some((event) => eventType(event) === 'start') &&
       harness.runtime.snapshots.length > 0,
     'sequencer transport start commit must be revisioned before the runtime start event plays',
+  );
+}
+
+{
+  const clockHarness = loadCoreProductHostHarness();
+  const rejoin = clockHarness.context.shouldRejoinCoreProductSequencerClocks;
+  const runningSynthBase = {
+    synthEuclideanMasterEnabled: true,
+    transportPrimaryClock: 'seconds',
+    phraseLength: 16,
+    sequencerMasterBPM: 120,
+    transportBarsPerPhrase: 4,
+    transportBeatsPerBar: 4,
+    synthEuclidClockSource: 'localBeat',
+    synthEuclidJoinPolicy: 'bar',
+  };
+  check(
+    'preset-morph-does-not-rejoin-default-synth-lane',
+    rejoin(
+      runningSynthBase,
+      {
+        ...runningSynthBase,
+        synthEuclid1Enabled: true,
+        padMorph: 0.42,
+      },
+    ) === false &&
+      rejoin(
+        { ...runningSynthBase, synthEuclid2Enabled: false },
+        { ...runningSynthBase, synthEuclid2Enabled: true },
+      ) === true &&
+      rejoin(
+        { ...runningSynthBase, sequencerMasterBPM: 120 },
+        { ...runningSynthBase, sequencerMasterBPM: 121 },
+      ) === true,
+    'preset morph/full resolved patches must not rejoin an already-default synth lane, while real lane enables and timing edits still rejoin',
+  );
+}
+
+{
+  const visualPublishes = [];
+  const harness = loadCoreProductHostHarness({
+    globals: {
+      publishCoreProductSequencerVisuals: (input) => {
+        visualPublishes.push(Boolean(input.telemetry?.transportRunning));
+        input.publish('synthStepPosition', [2, 0, 0, 0], [5, 0, 0, 0]);
+        input.publish('drumStepPosition', [3, 0, 0, 0], [7, 0, 0, 0]);
+      },
+    },
+  });
+  const noTelemetryCalls = [];
+  harness.host.running = true;
+  harness.host.latestTelemetry = null;
+  harness.host.setSynthStepPositionCallback((steps, hitCounts) => noTelemetryCalls.push({ steps, hitCounts }));
+
+  const telemetryCalls = [];
+  harness.host.latestTelemetry = { transportRunning: true, sampleRate: 48000 };
+  harness.host.setSynthStepPositionCallback((steps, hitCounts) => telemetryCalls.push({ steps, hitCounts }));
+
+  check(
+    'running-step-callback-registration-preserves-playhead',
+    noTelemetryCalls.length === 0 &&
+      visualPublishes.length === 1 &&
+      telemetryCalls.some((call) => call.steps[0] === 2 && call.hitCounts[0] === 5),
+    'running sequencer step callback registration must not publish a synthetic zero playhead reset',
+  );
+}
+
+{
+  const callbackRegistrationBody = methodBody(files.host, 'publishCurrentSequencerVisualsOnCallbackRegistration');
+  check(
+    'running-step-callback-no-zero-reset-static',
+    count(files.host, 'publishCurrentSequencerVisualsOnCallbackRegistration(callback)') >= 2 &&
+      callbackRegistrationBody.includes('if (this.running)') &&
+      callbackRegistrationBody.includes('this.publishSequencerVisuals(this.latestTelemetry)') &&
+      !files.host.includes('callback?.([0, 0, 0, 0], [0, 0, 0, 0]);') &&
+      files.sequencerClock.includes('resolvedSequencerLaneEnabled') &&
+      files.sequencerClock.includes("kind === 'synth' && laneNumber === 1"),
+    'running callback registration and clock rejoin decisions must preserve existing playhead state',
   );
 }
 
@@ -164,15 +243,18 @@ check(
   'sequencer master transport keys must route through immediate resolved ProductControl commits',
 );
 check(
-  'audio-sync-source-core-full-snapshot',
+  'audio-sync-source-core-resolved-continuous',
   files.audioSync.includes('SOURCE_CORE_FULL_SNAPSHOT_KEYS') &&
     files.audioSync.includes('KESSHO_PRODUCT_PAD_PARAM_SPECS') &&
     files.audioSync.includes('KESSHO_PRODUCT_DRUM_PARAM_SPECS') &&
     files.audioSync.includes("'lead2PresetC'") &&
     files.audioSync.includes("'lead2UseCustomAdsr'") &&
+    files.audioSync.includes('requiresSourceCoreResolvedCommit(patch)') &&
     files.audioSync.includes('requiresSourceCoreFullSnapshot(patch, reason, options)') &&
-    files.audioSync.includes('forceFullSnapshot'),
-  'source preset and source-core parameter edits must force a resolved full-snapshot commit while running',
+    files.presetSync.includes("reason: 'preset-load'") &&
+    files.presetSync.includes('triggerCritical: true') &&
+    !files.presetSync.includes('forceFullSnapshot: true'),
+  'source preset and source-core parameter edits must use resolved commits without forcing sequencer-resetting full snapshots',
 );
 
 check(

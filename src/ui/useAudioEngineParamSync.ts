@@ -131,13 +131,16 @@ function requiresSequencerTransportResolvedCommit(patch: Partial<SliderState>): 
   return Object.keys(patch).some(isSequencerTransportTriggerPatchKey);
 }
 
+function requiresSourceCoreResolvedCommit(patch: Partial<SliderState>): boolean {
+  return Object.keys(patch).some(isSourceCoreFullSnapshotPatchKey);
+}
+
 function requiresSourceCoreFullSnapshot(
-  patch: Partial<SliderState>,
-  reason: ProductSnapshotPatchReason,
+  _patch: Partial<SliderState>,
+  _reason: ProductSnapshotPatchReason,
   options?: AudioEngineParamUpdateOptions,
 ): boolean {
-  if (options?.forceFullSnapshot === true || reason === 'preset-load') return true;
-  return Object.keys(patch).some(isSourceCoreFullSnapshotPatchKey);
+  return options?.forceFullSnapshot === true;
 }
 
 function inferProductPatchReason(
@@ -161,6 +164,7 @@ function requiresResolvedCommit(
     || options?.immediate === true
     || options?.forceFullSnapshot === true
     || requiresSequencerTransportResolvedCommit(patch)
+    || requiresSourceCoreResolvedCommit(patch)
     || requiresSourceCoreFullSnapshot(patch, reason, options)
     || reason === 'preset-load'
     || reason === 'morph-control-change';
@@ -190,6 +194,7 @@ function shouldFlushImmediatelyForResolvedCommit(
   const patch = collectChangedStatePatch(previousState, nextState);
   const reason = inferProductPatchReason(patch, options?.reason);
   if (requiresSequencerTransportResolvedCommit(patch)) return true;
+  if (requiresSourceCoreResolvedCommit(patch)) return true;
   if (requiresSourceCoreFullSnapshot(patch, reason, options)) return true;
   return reason === 'preset-load' || reason === 'morph-control-change';
 }

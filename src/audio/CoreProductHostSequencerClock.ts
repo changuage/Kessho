@@ -4,6 +4,23 @@ const PRODUCT_VISIBLE_LANE_COUNT = 4;
 const CORE_PRODUCT_CLOCK_START_DELAY_STATE_KEY = '__coreProductClockStartDelay';
 const CORE_PRODUCT_SNAPSHOT_WALL_SEC_STATE_KEY = '__coreProductSnapshotWallSec';
 
+function booleanFromState(state: Record<string, unknown>, key: string, fallback = false): boolean {
+  const value = state[key];
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function resolvedSequencerLaneEnabled(
+  state: Record<string, unknown>,
+  kind: SequencerClockKind,
+  laneNumber: number,
+): boolean {
+  const prefix = kind === 'synth' ? 'synthEuclid' : 'drumEuclid';
+  const masterKey = kind === 'synth' ? 'synthEuclideanMasterEnabled' : 'drumEuclidMasterEnabled';
+  if (!booleanFromState(state, masterKey, false)) return false;
+  const defaultLaneEnabled = kind === 'synth' && laneNumber === 1;
+  return booleanFromState(state, `${prefix}${laneNumber}Enabled`, defaultLaneEnabled);
+}
+
 function shouldRejoinSequencerKind(
   previous: Record<string, unknown>,
   next: Record<string, unknown>,
@@ -11,7 +28,7 @@ function shouldRejoinSequencerKind(
 ): boolean {
   const prefix = kind === 'synth' ? 'synthEuclid' : 'drumEuclid';
   const masterKey = kind === 'synth' ? 'synthEuclideanMasterEnabled' : 'drumEuclidMasterEnabled';
-  if (next[masterKey] !== true) return false;
+  if (!booleanFromState(next, masterKey, false)) return false;
   const timingKeys = [
     'transportPrimaryClock',
     'phraseLength',
@@ -23,8 +40,7 @@ function shouldRejoinSequencerKind(
   ];
   if (timingKeys.some((key) => previous[key] !== next[key])) return true;
   for (let lane = 1; lane <= PRODUCT_VISIBLE_LANE_COUNT; lane += 1) {
-    const enabledKey = `${prefix}${lane}Enabled`;
-    if (previous[enabledKey] !== true && next[enabledKey] === true) return true;
+    if (!resolvedSequencerLaneEnabled(previous, kind, lane) && resolvedSequencerLaneEnabled(next, kind, lane)) return true;
   }
   return false;
 }

@@ -1056,6 +1056,12 @@ const rawCases = [
     sequencedPad1EuclidStatePatch,
     'padMorph',
   ),
+  sequencedSynthMorphSliderSmokeCase(
+    'lead1-morph-while-sequenced-pad1-route-smoke',
+    'pad1Dry',
+    sequencedPad1EuclidStatePatch,
+    'lead1Morph',
+  ),
   {
     id: 'manual-pad1-reverb-send',
     track: 'pad1ReverbSend',

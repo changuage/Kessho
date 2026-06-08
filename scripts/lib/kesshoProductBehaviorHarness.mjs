@@ -18,7 +18,9 @@ export function assert(condition, message) {
 
 export function methodBody(source, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const definition = new RegExp(`(?:^|\\n)\\s*(?:export\\s+)?(?:function\\s+)?(?:private\\s+)?(?:async\\s+)?${escaped}\\s*\\(`).exec(source);
+  const definition = new RegExp(
+    `(?:^|\\n)\\s*(?:export\\s+)?(?:(?:async\\s+)?function\\s+|private\\s+(?:async\\s+)?|async\\s+)?${escaped}\\s*\\(`,
+  ).exec(source);
   assert(definition, `missing ${name}()`);
   const open = source.indexOf('{', definition.index);
   assert(open >= 0, `${name}() has no body`);
@@ -89,7 +91,7 @@ function writeMachineReport({ reportName, status, command, evidence, blocker, de
 function stripImportsAndExports(source) {
   return source
     .replace(/^\s*import[\s\S]*?;\s*/gm, '')
-    .replace(/\bexport\s+(?=(?:const|function|class|type|interface)\b)/g, '');
+    .replace(/\bexport\s+(?=(?:const|async\s+function|function|class|type|interface)\b)/g, '');
 }
 
 function transpileForVm(source, fileName) {
@@ -344,6 +346,7 @@ export function loadCoreProductHostHarness(options = {}) {
 
     loadSnapshot(snapshot) {
       this.snapshots.push(snapshot);
+      return Promise.resolve({ applied: true });
     }
 
     reset() {
@@ -412,6 +415,10 @@ export function loadCoreProductHostHarness(options = {}) {
     },
     classifyCoreProductRuntimeFallback: diagnostics.classifyCoreProductRuntimeFallback,
     CORE_PRODUCT_GETTER_POLICIES: diagnostics.CORE_PRODUCT_GETTER_POLICIES,
+    fnv1a32Bytes: () => 0,
+    hashJson: (value) => JSON.stringify(value ?? null),
+    logProductStateDebug: () => {},
+    productStateDebugEnabled: () => false,
     buildCoreProductSnapshotDiff: () => ({ applied: true, events: [] }),
     shouldForwardCoreProductRngDiffs: () => false,
     CoreProductArrangementScheduler: class {
@@ -419,7 +426,14 @@ export function loadCoreProductHostHarness(options = {}) {
       update() {}
       stop() {}
     },
-    createCoreProductSnapshot: () => ({ transport: { bpm: 120 } }),
+    createCoreProductSnapshot: () => ({
+      assetRefs: [],
+      assetRefLevels: [],
+      sources: [],
+      synthLanes: [],
+      drumLanes: [],
+      transport: { running: false, bpm: 120, beatsPerBar: 4, barsPerPhrase: 4, swing: 0 },
+    }),
     createCoreProductDynamicsVisualTelemetry: (telemetry, contextTime) => ({
       contextTime,
       endCompHandledByWorklet: Boolean(telemetry),

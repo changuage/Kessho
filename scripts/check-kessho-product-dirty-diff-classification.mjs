@@ -284,7 +284,7 @@ await runCheckWithReport({
     const loadBody = methodBody(snapshotCoordinator, 'loadCoreProductSnapshot');
     for (const token of [
       'const startMs = options.nowMs()',
-      'options.runtime.loadSnapshot(encodeCoreProductSnapshot(options.snapshot));',
+      'options.runtime.loadSnapshot(encodedSnapshot, metadata)',
       'cpuMs: Math.max(0, options.nowMs() - startMs)',
     ]) {
       assert(loadBody.includes(token), `full snapshot reload telemetry is missing ${token}`);
@@ -305,20 +305,20 @@ await runCheckWithReport({
       "previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change'",
       "previousSource.assetId !== nextSource.assetId) return 'source-structure-change'",
       "this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return 'source-structure-change'",
-      "this.padOverrideChanged(previousSource, nextSource)) return 'pad-override-change'",
-      "this.leadOverrideChanged(previousSource, nextSource)) return 'lead-override-change'",
-      "this.drumOverrideChanged(previousSource, nextSource)) return 'drum-override-change'",
-      "coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource)) return 'source-structure-change'",
+      "this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'pad-override-change'",
+      "this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'lead-override-change'",
+      "this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'drum-override-change'",
+      'canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)',
       "canApplyLaneDiffs(previous.synthLanes, next.synthLanes)) return 'sequencer-structure-change'",
     ]) {
       assert(classifyBody.includes(token), `snapshot reload reason classifier is missing ${token}`);
     }
     const canApplyBody = methodBody(runtimeAdapter, 'canApplySnapshotDiff');
     for (const token of [
-      'coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource)) return false',
-      'this.padOverrideChanged(previousSource, nextSource)) return false',
-      'this.leadOverrideChanged(previousSource, nextSource)) return false',
-      'this.drumOverrideChanged(previousSource, nextSource)) return false',
+      'canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)',
+      'this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false',
+      'this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false',
+      'this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false',
     ]) {
       assert(canApplyBody.includes(token), `snapshot dirty-diff apply gate is missing ${token}`);
     }
@@ -461,7 +461,8 @@ await runCheckWithReport({
       !app.includes('immediatelyAppliedAudioEngineStateRef') &&
         !app.includes('skipNextPresetLoadEngineSyncRef') &&
         presetEngineSyncHook.includes("reason: 'preset-load'") &&
-        presetEngineSyncHook.includes('forceFullSnapshot: true') &&
+        !presetEngineSyncHook.includes('forceFullSnapshot: true') &&
+        presetEngineSyncHook.includes('triggerCritical: true') &&
         presetEngineSyncHook.includes("updateEngine: audioEngineRuntimeMode !== 'core-product'"),
       'App must keep preset engine sync branching inside usePresetEngineSync',
     );
@@ -683,8 +684,17 @@ await runCheckWithReport({
     padOverrideNext.sources[0].padOverrideValues = [0.87];
     const padOverrideDiff = adapterHarness.buildCoreProductSnapshotDiff(padOverrideBase, padOverrideNext);
     assert(
-      padOverrideDiff.applied === false && padOverrideDiff.reason === 'pad-override-change',
-      'Product Pad sparse override changes must full-reload so running sequencer triggers hear the rebuilt source patch',
+      padOverrideDiff.applied === true &&
+        padOverrideDiff.events.some((event) =>
+          event.type === 'source-override-slot' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.pad1 &&
+            event.paramIndex === 15 &&
+            Math.abs(event.value - 0.87) < 1.0e-6) &&
+        padOverrideDiff.events.some((event) =>
+          event.type === 'source-override-commit' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.pad1 &&
+            event.overrideCount === 1),
+      'Product Pad sparse override changes must dirty-diff as generated source override events so running sequencers stay continuous',
     );
 
     const leadOverrideBase = clone(base);
@@ -697,8 +707,17 @@ await runCheckWithReport({
     leadOverrideNext.sources[0].leadOverrideValues = [0.41];
     const leadOverrideDiff = adapterHarness.buildCoreProductSnapshotDiff(leadOverrideBase, leadOverrideNext);
     assert(
-      leadOverrideDiff.applied === false && leadOverrideDiff.reason === 'lead-override-change',
-      'Product Lead sparse override changes must full-reload so running sequencer triggers hear the rebuilt source patch',
+      leadOverrideDiff.applied === true &&
+        leadOverrideDiff.events.some((event) =>
+          event.type === 'source-override-slot' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            event.paramIndex === 62 &&
+            Math.abs(event.value - 0.41) < 1.0e-6) &&
+        leadOverrideDiff.events.some((event) =>
+          event.type === 'source-override-commit' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            event.overrideCount === 1),
+      'Product Lead sparse override changes must dirty-diff as generated source override events so running sequencers stay continuous',
     );
 
     const drumOverrideBase = clone(base);
@@ -709,8 +728,17 @@ await runCheckWithReport({
     drumOverrideNext.sources[0].drumOverrideValues = [72];
     const drumOverrideDiff = adapterHarness.buildCoreProductSnapshotDiff(drumOverrideBase, drumOverrideNext);
     assert(
-      drumOverrideDiff.applied === false && drumOverrideDiff.reason === 'drum-override-change',
-      'Product Drum sparse override changes must full-reload so running sequencer triggers hear the rebuilt source patch',
+      drumOverrideDiff.applied === true &&
+        drumOverrideDiff.events.some((event) =>
+          event.type === 'source-override-slot' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.drum &&
+            event.paramIndex === 0 &&
+            event.value === 72) &&
+        drumOverrideDiff.events.some((event) =>
+          event.type === 'source-override-commit' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.drum &&
+            event.overrideCount === 1),
+      'Product Drum sparse override changes must dirty-diff as generated source override events so running sequencers stay continuous',
     );
 
     const legacyLeadExactBase = clone(base);
@@ -761,8 +789,76 @@ await runCheckWithReport({
     endpointNext.sources[0].sourcePresetBId = 2001;
     const endpointDiff = adapterHarness.buildCoreProductSnapshotDiff(endpointBase, endpointNext);
     assert(
-      endpointDiff.applied === false && endpointDiff.reason === 'source-structure-change',
-      'source preset endpoint ID changes must full-reload so running sequencer triggers hear the rebuilt source patch',
+      endpointDiff.applied === true &&
+        endpointDiff.events.some((event) =>
+          event.type === 'source-preset-endpoint' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            event.endpoint === 'B' &&
+            event.presetId === 2001),
+      'source preset endpoint ID changes must dirty-diff as generated source-preset endpoint events so running sequencers stay continuous',
+    );
+
+    const endpointAndOverrideNext = clone(endpointBase);
+    endpointAndOverrideNext.sources[0].sourcePresetBId = 2001;
+    endpointAndOverrideNext.sources[0].leadOverrideCount = 2;
+    endpointAndOverrideNext.sources[0].leadOverrideIndices = [12, 62];
+    endpointAndOverrideNext.sources[0].leadOverrideValues = [0.25, 0.41];
+    const endpointAndOverrideDiff = adapterHarness.buildCoreProductSnapshotDiff(endpointBase, endpointAndOverrideNext);
+    assert(
+      endpointAndOverrideDiff.applied === true &&
+        endpointAndOverrideDiff.events.some((event) =>
+          event.type === 'source-preset-endpoint' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            event.endpoint === 'B' &&
+            event.presetId === 2001) &&
+        endpointAndOverrideDiff.events.some((event) =>
+          event.type === 'source-override-commit' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            event.overrideCount === 2),
+      'source preset endpoint changes paired with sparse override changes must dirty-diff without a full snapshot reload',
+    );
+
+    const morphAfterEndpointAndOverrideNext = clone(endpointAndOverrideNext);
+    morphAfterEndpointAndOverrideNext.sources[0].morph = 0.72;
+    const morphAfterEndpointAndOverrideDiff = adapterHarness.buildCoreProductSnapshotDiff(
+      endpointAndOverrideNext,
+      morphAfterEndpointAndOverrideNext,
+    );
+    assert(
+      morphAfterEndpointAndOverrideDiff.applied === true &&
+        morphAfterEndpointAndOverrideDiff.events.some((event) =>
+          event.type === 'param' &&
+            event.paramId === 'SourceMorph' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            Math.abs(event.value - 0.72) < 1.0e-6) &&
+        !morphAfterEndpointAndOverrideDiff.events.some((event) =>
+          event.type === 'source-preset-endpoint'),
+      'preset morph changes after an endpoint+override dirty diff must remain dirty-diffed and must not become reset-prone',
+    );
+
+    const leadMorphWhilePadSequencingBase = clone(base);
+    leadMorphWhilePadSequencingBase.transport.running = true;
+    leadMorphWhilePadSequencingBase.sources[0] = makeSource(adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.pad1);
+    leadMorphWhilePadSequencingBase.sources[1] = makeSource(adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1);
+    leadMorphWhilePadSequencingBase.synthLanes[0].enabled = true;
+    leadMorphWhilePadSequencingBase.synthLanes[0].targetSourceId = adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.pad1;
+    leadMorphWhilePadSequencingBase.sources[1].morph = 0.15;
+    const leadMorphWhilePadSequencingNext = clone(leadMorphWhilePadSequencingBase);
+    leadMorphWhilePadSequencingNext.sources[1].morph = 0.82;
+    const leadMorphWhilePadSequencingDiff = adapterHarness.buildCoreProductSnapshotDiff(
+      leadMorphWhilePadSequencingBase,
+      leadMorphWhilePadSequencingNext,
+    );
+    assert(
+      leadMorphWhilePadSequencingDiff.applied === true &&
+        leadMorphWhilePadSequencingDiff.events.some((event) =>
+          event.type === 'param' &&
+            event.paramId === 'SourceMorph' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            Math.abs(event.value - 0.82) < 1.0e-6) &&
+        !leadMorphWhilePadSequencingDiff.events.some((event) =>
+          event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.pad1),
+      'Lead preset morph while sequencing Pad must dirty-diff only Lead-targeted source morph changes',
     );
 
     const drumEndpointBase = clone(base);
@@ -775,16 +871,27 @@ await runCheckWithReport({
     drumEndpointNext.sources[0].drumVoicePresetBIds[6] = 3716;
     const drumEndpointDiff = adapterHarness.buildCoreProductSnapshotDiff(drumEndpointBase, drumEndpointNext);
     assert(
-      drumEndpointDiff.applied === false && drumEndpointDiff.reason === 'source-structure-change',
-      'Product Drum preset B changes must full-reload with the current drum voice morph so running triggers hear the rebuilt source patch',
+      drumEndpointDiff.applied === true &&
+        drumEndpointDiff.events.some((event) =>
+          event.type === 'source-preset-endpoint' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.drum &&
+            event.endpoint === 'B' &&
+            event.voiceIndex === 1 &&
+            event.presetId === 3203),
+      'Product Drum preset B changes must dirty-diff with current drum voice morph so running triggers stay continuous',
     );
 
     const drumMorphOnlyNext = clone(drumEndpointBase);
     drumMorphOnlyNext.sources[0].drumVoiceMorphs[1] = 0.25;
     const drumMorphOnlyDiff = adapterHarness.buildCoreProductSnapshotDiff(drumEndpointBase, drumMorphOnlyNext);
     assert(
-      drumMorphOnlyDiff.applied === false && drumMorphOnlyDiff.reason === 'source-structure-change',
-      'Product Drum morph-only changes must full-reload so running triggers hear the rebuilt drum morph patch',
+      drumMorphOnlyDiff.applied === true &&
+        drumMorphOnlyDiff.events.some((event) =>
+          event.type === 'source-preset-endpoint' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.drum &&
+            event.voiceIndex === 1 &&
+            Math.abs(event.morph - 0.25) < 1.0e-6),
+      'Product Drum morph-only changes must dirty-diff so running triggers stay continuous',
     );
 
     const drumEndpointWithLegacyExactNext = clone(drumEndpointBase);
@@ -830,10 +937,19 @@ await runCheckWithReport({
       },
     });
 
+    const makeHostSnapshot = (id) => ({
+      id,
+      assetRefs: [],
+      assetRefLevels: [],
+      sources: [],
+      synthLanes: [],
+      drumLanes: [],
+      transport: { running: false, bpm: 120, beatsPerBar: 4, barsPerPhrase: 4, swing: 0 },
+    });
     const hostSnapshots = [
-      { id: 'initial', transport: { running: false, bpm: 120, beatsPerBar: 4, barsPerPhrase: 4, swing: 0 } },
-      { id: 'dirty', transport: { running: false, bpm: 120, beatsPerBar: 4, barsPerPhrase: 4, swing: 0 } },
-      { id: 'structural', transport: { running: false, bpm: 120, beatsPerBar: 4, barsPerPhrase: 4, swing: 0 } },
+      makeHostSnapshot('initial'),
+      makeHostSnapshot('dirty'),
+      makeHostSnapshot('structural'),
     ];
     let nextSnapshotIndex = 0;
     const hostHarness = loadCoreProductHostHarness({
@@ -849,19 +965,19 @@ await runCheckWithReport({
       },
     });
     hostHarness.host.runtimeReady = true;
-    hostHarness.host.applyLatestSnapshotUpdate();
+    await hostHarness.host.applyLatestSnapshotUpdate();
     let hostDiagnosticsSnapshot = hostHarness.host.getProductRuntimeDiagnostics();
     assert(hostDiagnosticsSnapshot.fullSnapshotReloadCount === 1, 'initial update must load a full snapshot');
     assert(hostDiagnosticsSnapshot.lastSnapshotReloadReason === 'initial-snapshot', 'initial update must classify as initial-snapshot');
     assert(hostHarness.runtime.snapshots.length === 1, 'initial update must call runtime.loadSnapshot');
 
-    hostHarness.host.applyLatestSnapshotUpdate();
+    await hostHarness.host.applyLatestSnapshotUpdate();
     hostDiagnosticsSnapshot = hostHarness.host.getProductRuntimeDiagnostics();
     assert(hostDiagnosticsSnapshot.dirtyDiffCount === 1, 'applied dirty diff must increment dirtyDiffCount');
     assert(hostDiagnosticsSnapshot.fullSnapshotReloadCount === 1, 'applied dirty diff must not load a full snapshot');
     assert(hostHarness.runtime.events.some((event) => event.type === 'dirty-param'), 'applied dirty diff must post runtime events');
 
-    hostHarness.host.applyLatestSnapshotUpdate();
+    await hostHarness.host.applyLatestSnapshotUpdate();
     hostDiagnosticsSnapshot = hostHarness.host.getProductRuntimeDiagnostics();
     assert(hostDiagnosticsSnapshot.fullSnapshotReloadCount === 2, 'rejected dirty diff must load a full snapshot');
     assert(hostDiagnosticsSnapshot.lastSnapshotReloadReason === 'asset-reference-change', 'rejected dirty diff must preserve adapter reload reason');
@@ -883,6 +999,11 @@ await runCheckWithReport({
       globals: {
         createCoreProductSnapshot: () => clone({
           id: `live-${liveSnapshotIndex++}`,
+          assetRefs: [],
+          assetRefLevels: [],
+          sources: [],
+          synthLanes: [],
+          drumLanes: [],
           transport: { running: false, bpm: 120, beatsPerBar: 4, barsPerPhrase: 4, swing: 0 },
         }),
         encodeCoreProductSnapshot: (snapshot) => clone(snapshot),
@@ -890,7 +1011,12 @@ await runCheckWithReport({
       },
     });
     await liveReloadHarness.host.start({ sequencerMasterBPM: 120 });
-    liveReloadHarness.host.updateSnapshotPatch('transport-change', { sequencerMasterBPM: 121 });
+    await liveReloadHarness.host.commitResolvedState({
+      revision: 1,
+      reason: 'transport-change',
+      triggerCritical: true,
+      patch: { sequencerMasterBPM: 121 },
+    });
     const reloadedSnapshot = liveReloadHarness.runtime.snapshots[liveReloadHarness.runtime.snapshots.length - 1];
     assert(
       reloadedSnapshot.transport.running === true &&
