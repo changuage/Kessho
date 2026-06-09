@@ -7,6 +7,7 @@
  * 3. Create a .env file with:
  *    VITE_SUPABASE_URL=your-project-url
  *    VITE_SUPABASE_ANON_KEY=your-anon-key
+ *    Vercel builds may also use NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY.
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -64,12 +65,14 @@ export function getSupabase(): SupabaseClient | null {
   const { url, anonKey } = getPublicSupabaseConfig();
 
   if (!url || !anonKey) {
-    console.warn('Supabase not configured. Cloud presets disabled.');
+    console.warn(
+      'Supabase not configured. Cloud presets disabled. Set VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_URL/NEXT_PUBLIC_SUPABASE_ANON_KEY.',
+    );
     return null;
   }
 
   if (!/^https?:\/\//i.test(url)) {
-    console.warn('Supabase config invalid. VITE_SUPABASE_URL must be only the bare https://... project URL.');
+    console.warn('Supabase config invalid. The Supabase URL must be only the bare https://... project URL.');
     return null;
   }
 

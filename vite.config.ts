@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
+  envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
   ...(process.env.KESSHO_SEQUENCER_UI_PROOF_DISABLE_HMR === '1'
     ? { server: { hmr: false } }
     : {}),

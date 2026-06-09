@@ -1,4 +1,11 @@
-type PublicSupabaseEnvName = 'VITE_SUPABASE_URL' | 'VITE_SUPABASE_ANON_KEY';
+type PublicSupabaseEnvName =
+  | 'VITE_SUPABASE_URL'
+  | 'VITE_SUPABASE_ANON_KEY'
+  | 'NEXT_PUBLIC_SUPABASE_URL'
+  | 'NEXT_PUBLIC_SUPABASE_ANON_KEY';
+
+const SUPABASE_URL_ENV_NAMES = ['VITE_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL'] as const;
+const SUPABASE_ANON_KEY_ENV_NAMES = ['VITE_SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'] as const;
 
 export function normalizePublicSupabaseEnvValue(
   name: PublicSupabaseEnvName,
@@ -22,10 +29,21 @@ export function normalizePublicSupabaseEnvValue(
   return value || null;
 }
 
+function readPublicSupabaseEnvValue(
+  names: readonly PublicSupabaseEnvName[],
+): string | null {
+  const env = import.meta.env as unknown as Record<string, string | undefined>;
+  for (const name of names) {
+    const value = normalizePublicSupabaseEnvValue(name, env[name]);
+    if (value) return value;
+  }
+  return null;
+}
+
 export function getPublicSupabaseConfig(): { url: string | null; anonKey: string | null } {
   return {
-    url: normalizePublicSupabaseEnvValue('VITE_SUPABASE_URL', import.meta.env.VITE_SUPABASE_URL),
-    anonKey: normalizePublicSupabaseEnvValue('VITE_SUPABASE_ANON_KEY', import.meta.env.VITE_SUPABASE_ANON_KEY),
+    url: readPublicSupabaseEnvValue(SUPABASE_URL_ENV_NAMES),
+    anonKey: readPublicSupabaseEnvValue(SUPABASE_ANON_KEY_ENV_NAMES),
   };
 }
 

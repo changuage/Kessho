@@ -88,9 +88,10 @@ VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...your-long-key
 ```
 
-**Important:** 
+**Important:**
 - Add `.env` to your `.gitignore` if not already there
 - For production, set these as environment variables in your hosting platform
+- For Vercel, configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the project environment for Production, then redeploy. The app also accepts `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` aliases. Do not use only unprefixed `SUPABASE_URL` / `SUPABASE_ANON_KEY` for this Vite browser app; unprefixed variables are not included in the client bundle.
 
 ## 6. Restart the Dev Server
 

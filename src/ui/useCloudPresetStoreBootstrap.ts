@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
+import { getPublicSupabaseConfig } from '../cloud/config';
 import type { IPresetStore } from '../presets/PresetStore';
 import type { PresetEntry } from '../presets/types';
 
@@ -250,5 +251,5 @@ function presetNameForLog(preset: unknown): string | null {
 }
 
 function getCloudAutoStartCacheKey(defaultAutoStartPresetName: string): string {
-  return `${import.meta.env.VITE_SUPABASE_URL ?? 'unconfigured'}:state:global:${defaultAutoStartPresetName}`;
+  return `${getPublicSupabaseConfig().url ?? 'unconfigured'}:state:global:${defaultAutoStartPresetName}`;
 }
