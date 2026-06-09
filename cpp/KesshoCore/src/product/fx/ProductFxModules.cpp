@@ -57,13 +57,14 @@ void KesshoProductEngine::configureReverbModule() {
 void KesshoProductEngine::configureFxModules() {
   if (delay_a_module) {
     float* params = delay_a_module->params();
-    if (params != nullptr && delay_a_module->paramCount() >= 16) {
+    if (params != nullptr && delay_a_module->paramCount() >= 17) {
       const bool active =
           fx.delay_a_enabled &&
           (fx.delay_a_mix > 0.0001f ||
            routing.delay_a_to_delay_b > 0.0001f ||
            routing.delay_to_reverb > 0.0001f ||
-           routing.delay_a_to_granular > 0.0001f);
+           routing.delay_a_to_granular > 0.0001f ||
+           routing.delay_a_to_degrade > 0.0001f);
       params[0] = active ? 1.0f : 0.0f;
       params[1] = clampFloat(fx.delay_a_time_left_ms, 10.0f, 5000.0f);
       params[2] = clampFloat(fx.delay_a_time_right_ms, 10.0f, 5000.0f);
@@ -80,18 +81,20 @@ void KesshoProductEngine::configureFxModules() {
       params[13] = clampFloat(routing.delay_a_to_delay_b, 0.0f, 1.0f);
       params[14] = clampFloat(fx.delay_a_cross_feed_filter_hz, 200.0f, 12000.0f);
       params[15] = clampFloat(routing.delay_a_to_granular, 0.0f, 1.0f);
+      params[16] = clampFloat(routing.delay_a_to_degrade, 0.0f, 1.0f);
       delay_a_module->commitParams();
     }
   }
   if (delay_b_module) {
     float* params = delay_b_module->params();
-    if (params != nullptr && delay_b_module->paramCount() >= 24) {
+    if (params != nullptr && delay_b_module->paramCount() >= 25) {
       const bool active =
           fx.delay_b_enabled &&
           (fx.delay_b_mix > 0.0001f ||
            routing.delay_b_to_delay_a > 0.0001f ||
            routing.delay_b_to_reverb > 0.0001f ||
-           routing.delay_b_to_granular > 0.0001f);
+           routing.delay_b_to_granular > 0.0001f ||
+           routing.delay_b_to_degrade > 0.0001f);
       params[0] = active ? 1.0f : 0.0f;
       params[1] = clampFloat(fx.delay_b_activity, 0.0f, 1.0f);
       params[2] = clampFloat(fx.delay_b_repeats, 0.0f, 0.85f);
@@ -112,6 +115,7 @@ void KesshoProductEngine::configureFxModules() {
         params[16 + index] = clampFloat(fx.delay_b_tape_head_levels[index], 0.0f, 1.0f);
         params[20 + index] = clampFloat(fx.delay_b_tape_head_pans[index], 0.0f, 1.0f);
       }
+      params[24] = clampFloat(routing.delay_b_to_degrade, 0.0f, 1.0f);
       delay_b_module->commitParams();
     }
   }
@@ -216,5 +220,5 @@ void KesshoProductEngine::configureFxModules() {
       spectral_freeze_module->commitParams();
     }
   }
-  configureDynamicsCharacterModule();
+  configureDynamicsDriftModule();
 }

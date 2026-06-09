@@ -147,7 +147,7 @@ int main() {
 
   KesshoModule* dynamics = nullptr;
   if (with_dry_dynamics != 0) {
-    dynamics = kessho_module_create(KESSHO_MODULE_DYNAMICS_CHARACTER, kSampleRate, kBlockSize);
+    dynamics = kessho_module_create(KESSHO_MODULE_DYNAMICS_DRIFT, kSampleRate, kBlockSize);
     if (dynamics == nullptr) {
       kessho_module_destroy(source);
       fail("failed to create native dry dynamics module");

@@ -9,7 +9,7 @@
 namespace kessho::core {
 namespace {
 
-constexpr int kParamCount = 16;
+constexpr int kParamCount = 17;
 constexpr int kParamEnabled = 0;
 constexpr int kParamTimeLeftMs = 1;
 constexpr int kParamTimeRightMs = 2;
@@ -26,8 +26,9 @@ constexpr int kParamWidth = 12;
 constexpr int kParamToDelayB = 13;
 constexpr int kParamCrossFeedFilterHz = 14;
 constexpr int kParamGranularSend = 15;
+constexpr int kParamDriftSend = 16;
 
-constexpr int kOutputTapCount = 4;
+constexpr int kOutputTapCount = 5;
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kMergerDownmixGain = 0.75f;
 constexpr float kWebAudioCompressorLookaheadSeconds = 0.006f;
@@ -189,6 +190,7 @@ struct DelayAState {
   float to_delay_b = 0.0f;
   float cross_feed_filter_hz = 8000.0f;
   float granular_send = 0.0f;
+  float degrade_send = 0.0f;
 };
 
 class DelayAModule final : public IKesshoModule {
@@ -356,6 +358,7 @@ public:
     state_.to_delay_b = enabled ? clamp(params_[kParamToDelayB], 0.0f, 1.0f) : 0.0f;
     state_.cross_feed_filter_hz = clamp(params_[kParamCrossFeedFilterHz], 200.0f, 12000.0f);
     state_.granular_send = enabled ? clamp(params_[kParamGranularSend], 0.0f, 1.0f) : 0.0f;
+    state_.degrade_send = enabled ? clamp(params_[kParamDriftSend], 0.0f, 1.0f) : 0.0f;
     configureFilters();
   }
 
@@ -382,6 +385,7 @@ private:
     params_[kParamToDelayB] = 0.0f;
     params_[kParamCrossFeedFilterHz] = 8000.0f;
     params_[kParamGranularSend] = 0.0f;
+    params_[kParamDriftSend] = 0.0f;
     commitParams();
   }
 
@@ -471,6 +475,8 @@ private:
     taps_r[2] = cross_filter_r_.process(output_r) * state_.to_delay_b;
     taps_l[3] = output_l * state_.granular_send;
     taps_r[3] = output_r * state_.granular_send;
+    taps_l[4] = output_l * state_.degrade_send;
+    taps_r[4] = output_r * state_.degrade_send;
   }
 
   float sample_rate_ = 48000.0f;

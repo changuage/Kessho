@@ -1200,7 +1200,7 @@
         "manual-pad-master-post-limiter"
       ],
       "masterCaseIds": [
-        "master-pad-dynamics-character-scene",
+        "master-pad-dynamics-drift-scene",
         "master-pad-dynamics-saturation-scene",
         "master-pad-dynamics-end-comp-scene",
         "master-pad-dynamics-sat-end-comp-scene",
@@ -1309,7 +1309,7 @@
         {
           "file": "scripts/lib/kesshoProductWebMasterCases.mjs",
           "tokens": [
-            "master-pad-dynamics-character-scene",
+            "master-pad-dynamics-drift-scene",
             "master-pad-dynamics-saturation-scene",
             "master-pad-dynamics-end-comp-scene",
             "master-pad-dynamics-sat-end-comp-scene",

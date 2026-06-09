@@ -157,8 +157,9 @@ constexpr float kReverbBoostEpsilon = 0.001f;
   void KesshoProductEngine::renderReverb(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   const bool spectral_freeze_active =
       fx.spectral_freeze_enabled && fx.spectral_freeze_mix > 0.0f;
+  const bool degrade_send_active = routing.reverb_to_degrade > 0.0001f && routing.degrade_to_reverb <= 0.0001f;
   const bool reverb_active =
-      reverb_module != nullptr && frames > 0u && (!(fx.reverb_mix <= 0.0f) || spectral_freeze_active);
+      reverb_module != nullptr && frames > 0u && (!(fx.reverb_mix <= 0.0f) || degrade_send_active || spectral_freeze_active);
   if (!graph_taps_enabled && !reverb_active) {
     return;
   }
@@ -206,6 +207,7 @@ constexpr float kReverbBoostEpsilon = 0.001f;
     }
   }
   const float return_gain = fx.reverb_mix * kessho::product::generated::KESSHO_PRODUCT_GENERATED_REVERB_OUTPUT_TRIM;
+  const float degrade_gain = routing.reverb_to_degrade * kessho::product::generated::KESSHO_PRODUCT_GENERATED_REVERB_OUTPUT_TRIM;
   if (graph_taps_enabled) {
     for (uint32_t i = 0; i < frames; ++i) {
       const uint32_t frame = start + i;
@@ -213,5 +215,19 @@ constexpr float kReverbBoostEpsilon = 0.001f;
       graph_reverb_output_r[frame] = module_r[i] * return_gain;
     }
   }
-  mixFxBuffer(module_l, module_r, out_l, out_r, start, frames, return_gain, kSidechainReverb);
+  if (degrade_send_active) {
+    for (uint32_t i = 0; i < frames; ++i) {
+      const uint32_t frame = start + i;
+      degrade_bus_l[frame] += module_l[i] * degrade_gain;
+      degrade_bus_r[frame] += module_r[i] * degrade_gain;
+    }
+  }
+  for (uint32_t i = 0; i < frames; ++i) {
+    const uint32_t frame = start + i;
+    const float left = module_l[i] * return_gain;
+    const float right = module_r[i] * return_gain;
+    routeTerminalSample(routing.dynamics_routes[kDynamicsRouteReverb], out_l, out_r, frame, left, right);
+    stem_l[KESSHO_PRODUCT_STEM_FX][frame] += left;
+    stem_r[KESSHO_PRODUCT_STEM_FX][frame] += right;
+  }
 }

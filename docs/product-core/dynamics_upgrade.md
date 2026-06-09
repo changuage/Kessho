@@ -15,13 +15,13 @@ Improve the sonic quality and usefulness of the Dynamics page engines:
 
 ## Current code facts to preserve
 
-- `ProductDynamicsConfig.cpp` maps Dynamics UI to the Character worklet, including Character mix, Degrade mix, `base_wet`, `base_dry`, and the current `degrade_influence = sqrt(degrade_mix)`. Do not break that routing.  
-- `ProductDynamicsConstants.h` has the product-side Character worklet parameter enum ending at `kDynEndCompProgramRelease = 81`. Append new params only at the end. Do not insert in the middle.  
-- `wasm/dynamics-character/kessho_dynamics_character.cpp` has a matching worklet-side `ParamIndex` enum and fixed-size param arrays based on `KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT`. Keep product-side and worklet-side param order identical.  
-- Character currently clamps modulated delay to `0.00005f–0.105f` and reads the delay with `read_delay(...)`; this is the main source of short-delay dry/wet combing.  
-- Product config currently hard-disables the allpass diffusion path with `params[kDynAllpassActive] = 0.0f`, even though the worklet has an existing wet-only allpass processing block.  
-- The end compressor already has threshold, knee, ratio, attack, release, makeup, mix, detector HP, detector tilt, auto makeup, and program release. Build on this instead of replacing it.  
-- Standalone and integrated Degrade currently use sample-hold / quantization with `std::round(...)`; add dither rather than making it cleaner.  
+- `ProductDynamicsConfig.cpp` maps Dynamics UI to the Character worklet, including Character mix, Degrade mix, `base_wet`, `base_dry`, and the current `degrade_influence = sqrt(degrade_mix)`. Do not break that routing.
+- `ProductDynamicsConstants.h` has the product-side Character worklet parameter enum ending at `kDynEndCompProgramRelease = 81`. Append new params only at the end. Do not insert in the middle.
+- `wasm/dynamics-drift/kessho_dynamics_drift.cpp` has a matching worklet-side `ParamIndex` enum and fixed-size param arrays based on `KESSHO_DYNAMICS_DRIFT_PARAM_COUNT`. Keep product-side and worklet-side param order identical.
+- Character currently clamps modulated delay to `0.00005f–0.105f` and reads the delay with `read_delay(...)`; this is the main source of short-delay dry/wet combing.
+- Product config currently hard-disables the allpass diffusion path with `params[kDynAllpassActive] = 0.0f`, even though the worklet has an existing wet-only allpass processing block.
+- The end compressor already has threshold, knee, ratio, attack, release, makeup, mix, detector HP, detector tilt, auto makeup, and program release. Build on this instead of replacing it.
+- Standalone and integrated Degrade currently use sample-hold / quantization with `std::round(...)`; add dither rather than making it cleaner.
 
 Sources: current repo files show the Dynamics config mappings, enum indices, Character delay clamps/read calls, allpass-off mapping, end-compressor detector path, and Degrade quantization path. :contentReference[oaicite:0]{index=0}
 
@@ -34,7 +34,7 @@ Sources: current repo files show the Dynamics config mappings, enum indices, Cha
 3. Do not change bypass behavior.
 4. Do not allow NaN/Inf output.
 5. Do not add full OTT as the default compressor behavior.
-6. Do not remove existing Degrade dry/wet routing. `P_DEGRADE_MIX` currently behaves like “degrade ratio inside the wet path,” not necessarily the raw UI mix. Preserve that meaning.
+6. Do not remove existing Degrade dry/wet routing. `P_EROSION_MIX` currently behaves like “degrade ratio inside the wet path,” not necessarily the raw UI mix. Preserve that meaning.
 7. New CPU-heavy behavior must be gated by amount/mode checks so inactive engines stay cheap.
 
 ---
@@ -52,9 +52,9 @@ git checkout -b dynamics-quality-pass
 Run:
 
 ```bash
-grep -R "KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT" -n .
-grep -R "DynamicsCharacterParamIndex" -n .
-grep -R "enum ParamIndex" -n wasm/dynamics-character
+grep -R "KESSHO_DYNAMICS_DRIFT_PARAM_COUNT" -n .
+grep -R "DynamicsDriftParamIndex" -n .
+grep -R "enum ParamIndex" -n wasm/dynamics-drift
 grep -R "kDynEndCompProgramRelease" -n .
 grep -R "P_END_COMP_PROGRAM_RELEASE" -n .
 ```
@@ -76,10 +76,10 @@ This phase enables safer mapping and later quality upgrades without abusing exis
 Append these after `kDynEndCompProgramRelease = 81`:
 
 ```cpp
-  kDynDegradeUiMix = 82,
-  kDynDegradeColorInfluence = 83,
-  kDynDegradeMotionInfluence = 84,
-  kDynDegradeFailureInfluence = 85,
+  kDynErosionUiMix = 82,
+  kDynErosionColorInfluence = 83,
+  kDynErosionMotionInfluence = 84,
+  kDynErosionFailureInfluence = 85,
   kDynEndCompPeakBlend = 86,
   kDynEndCompClarity = 87,
   kDynEndCompTwoBand = 88,
@@ -87,15 +87,15 @@ Append these after `kDynEndCompProgramRelease = 81`:
 
 Do not renumber existing params.
 
-## 1.2 Update `wasm/dynamics-character/kessho_dynamics_character.cpp`
+## 1.2 Update `wasm/dynamics-drift/kessho_dynamics_drift.cpp`
 
 Append matching worklet params after `P_END_COMP_PROGRAM_RELEASE`:
 
 ```cpp
-  P_DEGRADE_UI_MIX,
-  P_DEGRADE_COLOR_INFLUENCE,
-  P_DEGRADE_MOTION_INFLUENCE,
-  P_DEGRADE_FAILURE_INFLUENCE,
+  P_EROSION_UI_MIX,
+  P_EROSION_COLOR_INFLUENCE,
+  P_EROSION_MOTION_INFLUENCE,
+  P_EROSION_FAILURE_INFLUENCE,
   P_END_COMP_PEAK_BLEND,
   P_END_COMP_CLARITY,
   P_END_COMP_TWO_BAND,
@@ -105,12 +105,12 @@ The enum should still start at `P_ACTIVE = 0`. Do not assign explicit numbers un
 
 ## 1.3 Update param count
 
-Update every definition of `KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT` from the old value to `89`.
+Update every definition of `KESSHO_DYNAMICS_DRIFT_PARAM_COUNT` from the old value to `89`.
 
 If the count is generated, update the generation source and regenerate. Then verify:
 
 ```bash
-grep -R "KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT" -n .
+grep -R "KESSHO_DYNAMICS_DRIFT_PARAM_COUNT" -n .
 ```
 
 Expected final count: `89`.
@@ -318,10 +318,10 @@ const float degrade_motion_weight =
 Near the existing `params[kDyn...]` assignments, add:
 
 ```cpp
-params[kDynDegradeUiMix] = degrade_mix;
-params[kDynDegradeColorInfluence] = degrade_color_influence;
-params[kDynDegradeMotionInfluence] = degrade_motion_influence;
-params[kDynDegradeFailureInfluence] = degrade_failure_influence;
+params[kDynErosionUiMix] = degrade_mix;
+params[kDynErosionColorInfluence] = degrade_color_influence;
+params[kDynErosionMotionInfluence] = degrade_motion_influence;
+params[kDynErosionFailureInfluence] = degrade_failure_influence;
 ```
 
 Set the new compressor helper params:
@@ -350,7 +350,7 @@ Build now. Fix only compile errors from this phase.
 Main file:
 
 ```text
-wasm/dynamics-character/kessho_dynamics_character.cpp
+wasm/dynamics-drift/kessho_dynamics_drift.cpp
 ```
 
 Config file:
@@ -363,7 +363,7 @@ Current Character delay can clamp down to `0.00005f`, and current Shallow random
 
 ## 3.1 Add Character delay constants
 
-In `kessho_dynamics_character.cpp`, near existing constants such as `kDelayMaxSamples` and `kMinFreq`, add:
+In `kessho_dynamics_drift.cpp`, near existing constants such as `kDelayMaxSamples` and `kMinFreq`, add:
 
 ```cpp
 constexpr float kCharacterFullWetMinDelayS = 0.0030f;
@@ -373,7 +373,7 @@ constexpr float kCharacterMaxDelayS = 0.075f;
 
 ## 3.2 Compute comb-risk-sensitive minimum delay
 
-In `dynamics_character_process_block`, before `main_delay_s` and `spread_delay_s` are computed, add:
+In `dynamics_drift_process_block`, before `main_delay_s` and `spread_delay_s` are computed, add:
 
 ```cpp
 const float dry_gain_for_comb = clamp01(p[P_DRY]);
@@ -448,7 +448,7 @@ This phase allows moderate CPU increase for better audio quality.
 
 ## 4.1 Add cubic delay read
 
-In `kessho_dynamics_character.cpp`, place this next to the existing `read_delay(...)` function:
+In `kessho_dynamics_drift.cpp`, place this next to the existing `read_delay(...)` function:
 
 ```cpp
 float read_delay_cubic(const float* delay, float delay_samples) {
@@ -570,17 +570,17 @@ Compile and A/B. If CPU increase is too high, keep cubic interpolation and allpa
 
 # Phase 5 — Character + Degrade motion budget fix
 
-In `kessho_dynamics_character.cpp`, replace the current tape/water blend section. The current code uses `P_DEGRADE_MIX` heavily in `tape_wow_blend`, `wow_blend`, and `flutter_blend`; that is risky because `P_DEGRADE_MIX` is the wet-path degrade ratio, not the raw UI amount. ([GitHub][2])
+In `kessho_dynamics_drift.cpp`, replace the current tape/water blend section. The current code uses `P_EROSION_MIX` heavily in `tape_wow_blend`, `wow_blend`, and `flutter_blend`; that is risky because `P_EROSION_MIX` is the wet-path degrade ratio, not the raw UI amount. ([GitHub][2])
 
 ## 5.1 Add local influence aliases
 
 Near the existing `tape_wow_blend` section, add:
 
 ```cpp
-const float degrade_ui_mix = clamp01(p[P_DEGRADE_UI_MIX]);
-const float degrade_color = clamp01(p[P_DEGRADE_COLOR_INFLUENCE]);
-const float degrade_motion = clamp01(p[P_DEGRADE_MOTION_INFLUENCE]);
-const float degrade_failure = clamp01(p[P_DEGRADE_FAILURE_INFLUENCE]);
+const float degrade_ui_mix = clamp01(p[P_EROSION_UI_MIX]);
+const float degrade_color = clamp01(p[P_EROSION_COLOR_INFLUENCE]);
+const float degrade_motion = clamp01(p[P_EROSION_MOTION_INFLUENCE]);
+const float degrade_failure = clamp01(p[P_EROSION_FAILURE_INFLUENCE]);
 ```
 
 ## 5.2 Replace `tape_wow_blend`, `water_random_blend`, and `water_flutter_blend`
@@ -590,9 +590,9 @@ Replace the existing block with:
 ```cpp
 const float tape_wow_blend = clamp01(
     degrade_motion * 0.58f +
-    p[P_DEGRADE_WEAR] * degrade_color * 0.24f +
-    p[P_DEGRADE_GENERATION] * degrade_color * 0.10f +
-    p[P_DEGRADE_CORROSION] * degrade_failure * 0.08f);
+    p[P_EROSION_WEAR] * degrade_color * 0.24f +
+    p[P_EROSION_GENERATION] * degrade_color * 0.10f +
+    p[P_EROSION_CORROSION] * degrade_failure * 0.08f);
 
 const float water_random_blend =
     clamp01(p[P_SHALLOW] * 0.52f + p[P_ABYSS] * 0.62f);
@@ -607,7 +607,7 @@ Replace:
 
 ```cpp
 const float wow_blend = clampf(
-  tape_wow_blend * 0.42f + p[P_DEGRADE_MIX] * 0.12f + water_random_blend,
+  tape_wow_blend * 0.42f + p[P_EROSION_MIX] * 0.12f + water_random_blend,
   0.0f,
   0.93f
 );
@@ -652,22 +652,22 @@ Acceptance checks:
 Files:
 
 ```text
-wasm/dynamics-character/kessho_dynamics_character.cpp
+wasm/dynamics-drift/kessho_dynamics_drift.cpp
 wasm/dynamics-degrade/kessho_dynamics_degrade.cpp
 ```
 
-## 6.1 Integrated Degrade: add dither to `degrade_sample`
+## 6.1 Integrated Degrade: add dither to `erosion_sample`
 
 Change signature from:
 
 ```cpp
-float degrade_sample(float dry, int channel, float mix, float alias, float generation, float corrosion, float wear)
+float erosion_sample(float dry, int channel, float mix, float alias, float generation, float corrosion, float wear)
 ```
 
 to:
 
 ```cpp
-float degrade_sample(
+float erosion_sample(
     float dry,
     int channel,
     float mix,
@@ -702,24 +702,24 @@ float wet = std::round(dithered * quant_steps) / quant_steps;
 Update calls:
 
 ```cpp
-wet_l = degrade_sample(
+wet_l = erosion_sample(
     wet_l,
     0,
-    p[P_DEGRADE_MIX],
-    p[P_DEGRADE_ALIAS] * degrade_failure,
-    p[P_DEGRADE_GENERATION] * degrade_color,
-    p[P_DEGRADE_CORROSION] * degrade_failure,
-    p[P_DEGRADE_WEAR] * degrade_color,
+    p[P_EROSION_MIX],
+    p[P_EROSION_ALIAS] * degrade_failure,
+    p[P_EROSION_GENERATION] * degrade_color,
+    p[P_EROSION_CORROSION] * degrade_failure,
+    p[P_EROSION_WEAR] * degrade_color,
     white_l);
 
-wet_r = degrade_sample(
+wet_r = erosion_sample(
     wet_r,
     1,
-    p[P_DEGRADE_MIX],
-    p[P_DEGRADE_ALIAS] * degrade_failure,
-    p[P_DEGRADE_GENERATION] * degrade_color,
-    p[P_DEGRADE_CORROSION] * degrade_failure,
-    p[P_DEGRADE_WEAR] * degrade_color,
+    p[P_EROSION_MIX],
+    p[P_EROSION_ALIAS] * degrade_failure,
+    p[P_EROSION_GENERATION] * degrade_color,
+    p[P_EROSION_CORROSION] * degrade_failure,
+    p[P_EROSION_WEAR] * degrade_color,
     white_r);
 ```
 
@@ -770,7 +770,7 @@ float wet = std::round((held + tpdf * dither_amt) * quant_steps) / quant_steps;
 
 ## 6.3 Add event-based media failures to integrated Degrade
 
-Add these fields to `DynamicsCharacterState`:
+Add these fields to `DynamicsDriftState`:
 
 ```cpp
 float media_event_env = 0.0f;
@@ -785,11 +785,11 @@ Add this helper near other processing helpers:
 ```cpp
 void process_media_event(float& wet_l, float& wet_r, const float* p) {
   const float event_amount = clamp01(
-      p[P_DEGRADE_FAILURE_INFLUENCE] *
+      p[P_EROSION_FAILURE_INFLUENCE] *
       (0.35f +
-       p[P_DEGRADE_CORROSION] * 0.35f +
-       p[P_DEGRADE_GENERATION] * 0.20f +
-       p[P_DEGRADE_WEAR] * 0.10f));
+       p[P_EROSION_CORROSION] * 0.35f +
+       p[P_EROSION_GENERATION] * 0.20f +
+       p[P_EROSION_WEAR] * 0.10f));
 
   if (event_amount <= 0.0001f) {
     const float release = smooth_coeff(0.070f, g.sample_rate);
@@ -836,7 +836,7 @@ void process_media_event(float& wet_l, float& wet_r, const float* p) {
 }
 ```
 
-Call it after `degrade_sample(...)` and before highpass/allpass filtering:
+Call it after `erosion_sample(...)` and before highpass/allpass filtering:
 
 ```cpp
 process_media_event(wet_l, wet_r, p);
@@ -855,11 +855,11 @@ Add helper:
 
 ```cpp
 void update_media_profile_filters(const float* p) {
-  const float media = clamp01(p[P_DEGRADE_COLOR_INFLUENCE]);
-  const float failure = clamp01(p[P_DEGRADE_FAILURE_INFLUENCE]);
-  const float gen = clamp01(p[P_DEGRADE_GENERATION]);
-  const float wear = clamp01(p[P_DEGRADE_WEAR]);
-  const float cor = clamp01(p[P_DEGRADE_CORROSION]);
+  const float media = clamp01(p[P_EROSION_COLOR_INFLUENCE]);
+  const float failure = clamp01(p[P_EROSION_FAILURE_INFLUENCE]);
+  const float gen = clamp01(p[P_EROSION_GENERATION]);
+  const float wear = clamp01(p[P_EROSION_WEAR]);
+  const float cor = clamp01(p[P_EROSION_CORROSION]);
 
   const float notch_freq = 2600.0f + gen * 1400.0f + cor * 900.0f;
   const float notch_q = 0.65f + wear * 1.25f;
@@ -886,8 +886,8 @@ update_media_profile_filters(p);
 Process after media event and before highpass:
 
 ```cpp
-if (p[P_DEGRADE_COLOR_INFLUENCE] > 0.001f ||
-    p[P_DEGRADE_FAILURE_INFLUENCE] > 0.001f) {
+if (p[P_EROSION_COLOR_INFLUENCE] > 0.001f ||
+    p[P_EROSION_FAILURE_INFLUENCE] > 0.001f) {
   wet_l = g.media_body_l.process(wet_l);
   wet_r = g.media_body_r.process(wet_r);
 
@@ -915,7 +915,7 @@ Acceptance checks:
 Main file:
 
 ```text
-wasm/dynamics-character/kessho_dynamics_character.cpp
+wasm/dynamics-drift/kessho_dynamics_drift.cpp
 ```
 
 Config file:
@@ -928,7 +928,7 @@ Do not add full OTT yet. First improve the existing end compressor.
 
 ## 7.1 Add RMS detector state
 
-Add to `DynamicsCharacterState`:
+Add to `DynamicsDriftState`:
 
 ```cpp
 float end_rms = 0.0f;
@@ -972,7 +972,7 @@ Leave the existing gain-computation, attack/release, auto makeup, and mix code a
 
 ## 7.3 Add clarity lift state
 
-Add to `DynamicsCharacterState`:
+Add to `DynamicsDriftState`:
 
 ```cpp
 Biquad clarity_hp_l, clarity_hp_r;
@@ -1144,7 +1144,7 @@ Use `P_END_COMP_TWO_BAND > 0.5f` as the gate. Default remains `0.0f`.
 
 ## 8.1 Add state
 
-Add to `DynamicsCharacterState`:
+Add to `DynamicsDriftState`:
 
 ```cpp
 float two_band_low_l = 0.0f;
@@ -1233,7 +1233,7 @@ The master saturation already switches to a 2x/4x internal branch based on drive
 
 ## 9.1 Add state
 
-Add to `DynamicsCharacterState`:
+Add to `DynamicsDriftState`:
 
 ```cpp
 float master_sat_os_lp_l = 0.0f;
@@ -1331,9 +1331,9 @@ Run full project build.
 Run:
 
 ```bash
-grep -R "kDynDegradeUiMix" -n .
-grep -R "P_DEGRADE_UI_MIX" -n .
-grep -R "KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT" -n .
+grep -R "kDynErosionUiMix" -n .
+grep -R "P_EROSION_UI_MIX" -n .
+grep -R "KESSHO_DYNAMICS_DRIFT_PARAM_COUNT" -n .
 ```
 
 Confirm:
@@ -1342,7 +1342,7 @@ Confirm:
 - Product enum and worklet enum match.
 - Param count is 89 everywhere.
 - New params are assigned in ProductDynamicsConfig.cpp.
-- New params are read in kessho_dynamics_character.cpp.
+- New params are read in kessho_dynamics_drift.cpp.
 ```
 
 ## 11.3 Runtime safety
@@ -1557,8 +1557,8 @@ Primary Product Core / DSP files:
 ```text
 cpp/KesshoCore/src/product/ProductDynamicsConstants.h
 cpp/KesshoCore/src/product/fx/ProductDynamicsConfig.cpp
-wasm/dynamics-character/kessho_dynamics_character.cpp
-wasm/dynamics-character/kessho_dynamics_character.h
+wasm/dynamics-drift/kessho_dynamics_drift.cpp
+wasm/dynamics-drift/kessho_dynamics_drift.h
 wasm/dynamics-degrade/kessho_dynamics_degrade.cpp
 ```
 
@@ -1567,8 +1567,8 @@ Also grep for generated/schema/state-sync paths before implementation:
 ```bash
 grep -R "endCompProgramRelease" -n src cpp wasm public | head -100
 grep -R "DynamicsWorkletVisualTelemetry" -n src cpp wasm public
-grep -R "KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT" -n cpp wasm public
-grep -R "KESSHO_DYNAMICS_CHARACTER_TELEMETRY_COUNT" -n cpp wasm public
+grep -R "KESSHO_DYNAMICS_DRIFT_PARAM_COUNT" -n cpp wasm public
+grep -R "KESSHO_DYNAMICS_DRIFT_TELEMETRY_COUNT" -n cpp wasm public
 grep -R "DYNAMICS_END_CHAIN_PRESET_KEYS" -n src
 ```
 
@@ -1578,19 +1578,19 @@ grep -R "DYNAMICS_END_CHAIN_PRESET_KEYS" -n src
 
 ## 1.1 Add `SliderState` fields
 
-In `src/ui/state.ts`, add these fields near the existing Dynamics section, close to `characterMode`, `degradeMix`, `endCompProgramRelease`, and `dynamicsSaturationMode`.
+In `src/ui/state.ts`, add these fields near the existing Dynamics section, close to `driftMode`, `erosionMix`, `endCompProgramRelease`, and `dynamicsSaturationMode`.
 
 ```ts
 // Character quality / protection
-characterQuality: 'eco' | 'balanced' | 'hq';
-characterAntiComb: number;      // 0..1, default 1.0
-characterDiffusion: number;     // 0..1, default 0.55
+driftQuality: 'eco' | 'balanced' | 'hq';
+driftAntiComb: number;      // 0..1, default 1.0
+driftDiffusion: number;     // 0..1, default 0.55
 
 // Degrade quality / media behavior
-degradeQuality: 'classic' | 'media' | 'hq';
-degradeEventAmount: number;     // 0..1, default 0.45
-degradeProfileAmount: number;   // 0..1, default 0.65
-degradeDitherAmount: number;    // 0..1, default 0.55
+erosionQuality: 'classic' | 'media' | 'hq';
+erosionEventAmount: number;     // 0..1, default 0.45
+erosionProfileAmount: number;   // 0..1, default 0.65
+erosionDitherAmount: number;    // 0..1, default 0.55
 
 // End compressor mode / clarity behavior
 endCompMode: 'studioClear' | 'clarity' | 'glue' | 'punch' | 'twoBand';
@@ -1608,14 +1608,14 @@ dynamicsSaturationQuality: 'eco' | 'smooth' | 'hq';
 Add defaults to `DEFAULT_STATE` or the current equivalent default object.
 
 ```ts
-characterQuality: 'balanced',
-characterAntiComb: 1.0,
-characterDiffusion: 0.55,
+driftQuality: 'balanced',
+driftAntiComb: 1.0,
+driftDiffusion: 0.55,
 
-degradeQuality: 'media',
-degradeEventAmount: 0.45,
-degradeProfileAmount: 0.65,
-degradeDitherAmount: 0.55,
+erosionQuality: 'media',
+erosionEventAmount: 0.45,
+erosionProfileAmount: 0.65,
+erosionDitherAmount: 0.55,
 
 endCompMode: 'studioClear',
 endCompPeakBlend: 0.25,
@@ -1633,13 +1633,13 @@ In `src/audio/dynamicsModel.ts`, add a helper that fills missing fields when loa
 ```ts
 export function normalizeDynamicsQualityFields<T extends Record<string, unknown>>(data: T): T {
   return {
-    characterQuality: 'balanced',
-    characterAntiComb: 1.0,
-    characterDiffusion: 0.55,
-    degradeQuality: 'media',
-    degradeEventAmount: 0.45,
-    degradeProfileAmount: 0.65,
-    degradeDitherAmount: 0.55,
+    driftQuality: 'balanced',
+    driftAntiComb: 1.0,
+    driftDiffusion: 0.55,
+    erosionQuality: 'media',
+    erosionEventAmount: 0.45,
+    erosionProfileAmount: 0.65,
+    erosionDitherAmount: 0.55,
     endCompMode: 'studioClear',
     endCompPeakBlend: 0.25,
     endCompClarity: 0.22,
@@ -1651,15 +1651,15 @@ export function normalizeDynamicsQualityFields<T extends Record<string, unknown>
 }
 ```
 
-In `DynamicsPage.tsx`, where `makeSubsetPresetOptions(...)` already calls `normalizeDynamicsDegradeAliases(data)`, wrap with the new helper:
+In `DynamicsPage.tsx`, where `makeSubsetPresetOptions(...)` already calls `normalizeDynamicsErosionAliases(data)`, wrap with the new helper:
 
 ```ts
 const normalizedData = normalizeDynamicsQualityFields(
-  normalizeDynamicsDegradeAliases(data),
+  normalizeDynamicsErosionAliases(data),
 );
 ```
 
-If there are full-preset restore paths outside `DynamicsPage.tsx`, grep for `normalizeDynamicsDegradeAliases` and use the new quality migration there too.
+If there are full-preset restore paths outside `DynamicsPage.tsx`, grep for `normalizeDynamicsErosionAliases` and use the new quality migration there too.
 
 ---
 
@@ -1672,18 +1672,18 @@ Do not call these hidden params in comments. They are low-level worklet params d
 In `cpp/KesshoCore/src/product/ProductDynamicsConstants.h`, append after `kDynEndCompProgramRelease = 81`:
 
 ```cpp
-  kDynCharacterQuality = 82,
-  kDynCharacterAntiComb = 83,
-  kDynCharacterDiffusion = 84,
+  kDynDriftQuality = 82,
+  kDynDriftAntiComb = 83,
+  kDynDriftDiffusion = 84,
 
-  kDynDegradeUiMix = 85,
-  kDynDegradeColorInfluence = 86,
-  kDynDegradeMotionInfluence = 87,
-  kDynDegradeFailureInfluence = 88,
-  kDynDegradeQuality = 89,
-  kDynDegradeEventAmount = 90,
-  kDynDegradeProfileAmount = 91,
-  kDynDegradeDitherAmount = 92,
+  kDynErosionUiMix = 85,
+  kDynErosionColorInfluence = 86,
+  kDynErosionMotionInfluence = 87,
+  kDynErosionFailureInfluence = 88,
+  kDynErosionQuality = 89,
+  kDynErosionEventAmount = 90,
+  kDynErosionProfileAmount = 91,
+  kDynErosionDitherAmount = 92,
 
   kDynEndCompMode = 93,
   kDynEndCompPeakBlend = 94,
@@ -1698,21 +1698,21 @@ Expected param count: `99` because indices are `0..98`.
 
 ## 2.2 Update the worklet enum
 
-In `wasm/dynamics-character/kessho_dynamics_character.cpp`, append matching values after `P_END_COMP_PROGRAM_RELEASE`:
+In `wasm/dynamics-drift/kessho_dynamics_drift.cpp`, append matching values after `P_END_COMP_PROGRAM_RELEASE`:
 
 ```cpp
   P_CHARACTER_QUALITY,
   P_CHARACTER_ANTI_COMB,
   P_CHARACTER_DIFFUSION,
 
-  P_DEGRADE_UI_MIX,
-  P_DEGRADE_COLOR_INFLUENCE,
-  P_DEGRADE_MOTION_INFLUENCE,
-  P_DEGRADE_FAILURE_INFLUENCE,
-  P_DEGRADE_QUALITY,
-  P_DEGRADE_EVENT_AMOUNT,
-  P_DEGRADE_PROFILE_AMOUNT,
-  P_DEGRADE_DITHER_AMOUNT,
+  P_EROSION_UI_MIX,
+  P_EROSION_COLOR_INFLUENCE,
+  P_EROSION_MOTION_INFLUENCE,
+  P_EROSION_FAILURE_INFLUENCE,
+  P_EROSION_QUALITY,
+  P_EROSION_EVENT_AMOUNT,
+  P_EROSION_PROFILE_AMOUNT,
+  P_EROSION_DITHER_AMOUNT,
 
   P_END_COMP_MODE,
   P_END_COMP_PEAK_BLEND,
@@ -1723,7 +1723,7 @@ In `wasm/dynamics-character/kessho_dynamics_character.cpp`, append matching valu
   P_MASTER_SAT_QUALITY,
 ```
 
-Update every `KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT` definition to `99`.
+Update every `KESSHO_DYNAMICS_DRIFT_PARAM_COUNT` definition to `99`.
 
 ## 2.3 Map UI state to params in `ProductDynamicsConfig.cpp`
 
@@ -1748,9 +1748,9 @@ const float character_quality =
     fx.character_quality == CharacterQuality::Eco ? 0.0f :
     fx.character_quality == CharacterQuality::Hq ? 2.0f : 1.0f;
 
-const float degrade_quality =
-    fx.degrade_quality == DegradeQuality::Classic ? 0.0f :
-    fx.degrade_quality == DegradeQuality::Hq ? 2.0f : 1.0f;
+const float erosion_quality =
+    fx.erosion_quality == DegradeQuality::Classic ? 0.0f :
+    fx.erosion_quality == DegradeQuality::Hq ? 2.0f : 1.0f;
 
 const float end_comp_mode =
     fx.end_comp_mode == EndCompMode::Clarity ? 1.0f :
@@ -1766,18 +1766,18 @@ const float master_sat_quality =
 Then assign:
 
 ```cpp
-params[kDynCharacterQuality] = character_quality;
-params[kDynCharacterAntiComb] = unit(fx.character_anti_comb);
-params[kDynCharacterDiffusion] = unit(fx.character_diffusion);
+params[kDynDriftQuality] = character_quality;
+params[kDynDriftAntiComb] = unit(fx.character_anti_comb);
+params[kDynDriftDiffusion] = unit(fx.character_diffusion);
 
-params[kDynDegradeUiMix] = degrade_mix;
-params[kDynDegradeColorInfluence] = degrade_color_influence;
-params[kDynDegradeMotionInfluence] = degrade_motion_influence;
-params[kDynDegradeFailureInfluence] = degrade_failure_influence;
-params[kDynDegradeQuality] = degrade_quality;
-params[kDynDegradeEventAmount] = unit(fx.degrade_event_amount);
-params[kDynDegradeProfileAmount] = unit(fx.degrade_profile_amount);
-params[kDynDegradeDitherAmount] = unit(fx.degrade_dither_amount);
+params[kDynErosionUiMix] = degrade_mix;
+params[kDynErosionColorInfluence] = degrade_color_influence;
+params[kDynErosionMotionInfluence] = degrade_motion_influence;
+params[kDynErosionFailureInfluence] = degrade_failure_influence;
+params[kDynErosionQuality] = erosion_quality;
+params[kDynErosionEventAmount] = unit(fx.erosion_event_amount);
+params[kDynErosionProfileAmount] = unit(fx.erosion_profile_amount);
+params[kDynErosionDitherAmount] = unit(fx.erosion_dither_amount);
 
 params[kDynEndCompMode] = end_comp_mode;
 params[kDynEndCompPeakBlend] = unit(fx.end_comp_peak_blend);
@@ -1808,15 +1808,15 @@ src/ui/dynamics/dynamicsControlSchema.ts
 Add separate control arrays so the page can group the new controls near the right engines.
 
 ```ts
-export const DYNAMICS_CHARACTER_QUALITY_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
-  dynamicsSlider('characterAntiComb', 'Comb Protect'),
-  dynamicsSlider('characterDiffusion', 'Diffusion'),
+export const DYNAMICS_DRIFT_QUALITY_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
+  dynamicsSlider('driftAntiComb', 'Comb Protect'),
+  dynamicsSlider('driftDiffusion', 'Diffusion'),
 ];
 
 export const DYNAMICS_DEGRADE_QUALITY_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
-  dynamicsSlider('degradeEventAmount', 'Events'),
-  dynamicsSlider('degradeProfileAmount', 'Profile'),
-  dynamicsSlider('degradeDitherAmount', 'Dither'),
+  dynamicsSlider('erosionEventAmount', 'Events'),
+  dynamicsSlider('erosionProfileAmount', 'Profile'),
+  dynamicsSlider('erosionDitherAmount', 'Dither'),
 ];
 
 export const DYNAMICS_END_CHAIN_QUALITY_CONTROLS: readonly DynamicsSliderControlDefinition[] = [
@@ -1827,7 +1827,7 @@ export const DYNAMICS_END_CHAIN_QUALITY_CONTROLS: readonly DynamicsSliderControl
 ];
 ```
 
-Keep the existing arrays intact. Add these new arrays in addition to the existing `DYNAMICS_CHARACTER_CONTROLS`, `DYNAMICS_DEGRADE_CONTROLS`, and `DYNAMICS_END_CHAIN_CONTROLS`.
+Keep the existing arrays intact. Add these new arrays in addition to the existing `DYNAMICS_DRIFT_CONTROLS`, `DYNAMICS_DEGRADE_CONTROLS`, and `DYNAMICS_END_CHAIN_CONTROLS`.
 
 ## 12.2 Update Dynamics preset keys
 
@@ -1841,15 +1841,15 @@ Add the new state keys to the appropriate subset preset arrays.
 
 ```ts
 // Character preset keys
-'characterQuality',
-'characterAntiComb',
-'characterDiffusion',
+'driftQuality',
+'driftAntiComb',
+'driftDiffusion',
 
 // Degrade preset keys
-'degradeQuality',
-'degradeEventAmount',
-'degradeProfileAmount',
-'degradeDitherAmount',
+'erosionQuality',
+'erosionEventAmount',
+'erosionProfileAmount',
+'erosionDitherAmount',
 
 // End-chain preset keys
 'endCompMode',
@@ -1875,13 +1875,13 @@ src/ui/dynamics/DynamicsPage.tsx
 Add option arrays near the existing `CHARACTER_MODE_OPTIONS` and `SAT_MODE_OPTIONS`.
 
 ```ts
-const CHARACTER_QUALITY_OPTIONS: Array<{ value: SliderState['characterQuality']; label: string }> = [
+const CHARACTER_QUALITY_OPTIONS: Array<{ value: SliderState['driftQuality']; label: string }> = [
   { value: 'eco', label: 'Eco' },
   { value: 'balanced', label: 'Balanced' },
   { value: 'hq', label: 'HQ' },
 ];
 
-const DEGRADE_QUALITY_OPTIONS: Array<{ value: SliderState['degradeQuality']; label: string }> = [
+const EROSION_QUALITY_OPTIONS: Array<{ value: SliderState['erosionQuality']; label: string }> = [
   { value: 'classic', label: 'Classic' },
   { value: 'media', label: 'Media' },
   { value: 'hq', label: 'HQ' },
@@ -2034,29 +2034,29 @@ In the Character card, render quality buttons after the Clean/Abyss/Shallow mode
     <button
       key={option.value}
       type="button"
-      className={state.characterQuality === option.value ? 'active' : ''}
-      onClick={() => onSelectChange('characterQuality', option.value)}
-      {...bindHelp(`characterQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
+      className={state.driftQuality === option.value ? 'active' : ''}
+      onClick={() => onSelectChange('driftQuality', option.value)}
+      {...bindHelp(`driftQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
     >
       {option.label}
     </button>
   ))}
 </div>
 
-{DYNAMICS_CHARACTER_QUALITY_CONTROLS.map(renderDynamicsSlider)}
+{DYNAMICS_DRIFT_QUALITY_CONTROLS.map(renderDynamicsSlider)}
 ```
 
 In the Degrade card, render quality buttons before the existing Degrade sliders:
 
 ```tsx
 <div className="dynamics-mode-row" aria-label="Degrade quality">
-  {DEGRADE_QUALITY_OPTIONS.map((option) => (
+  {EROSION_QUALITY_OPTIONS.map((option) => (
     <button
       key={option.value}
       type="button"
-      className={state.degradeQuality === option.value ? 'active' : ''}
-      onClick={() => onSelectChange('degradeQuality', option.value)}
-      {...bindHelp(`degradeQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
+      className={state.erosionQuality === option.value ? 'active' : ''}
+      onClick={() => onSelectChange('erosionQuality', option.value)}
+      {...bindHelp(`erosionQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
     >
       {option.label}
     </button>
@@ -2122,14 +2122,14 @@ src/ui/buttonHelpCatalog.ts
 Add help copy:
 
 ```text
-characterQuality: Eco uses the lightest Character processing, Balanced uses smoother delay reads and diffusion, HQ adds extra decorrelation for the smoothest motion.
-characterAntiComb: Raises the mixed dry/wet delay floor to reduce flanger-like airplane sweeps.
-characterDiffusion: Adds wet-path phase diffusion/decorrelation so chorus movement feels less like a comb filter.
+driftQuality: Eco uses the lightest Character processing, Balanced uses smoother delay reads and diffusion, HQ adds extra decorrelation for the smoothest motion.
+driftAntiComb: Raises the mixed dry/wet delay floor to reduce flanger-like airplane sweeps.
+driftDiffusion: Adds wet-path phase diffusion/decorrelation so chorus movement feels less like a comb filter.
 
-degradeQuality: Classic keeps the old simpler damage behavior, Media adds generation-loss style events/profile/dither, HQ increases smoothing/detail.
-degradeEventAmount: Controls brief media-style dips, tone collapses, and unstable failure events.
-degradeProfileAmount: Controls the added media body/notch profile EQ.
-degradeDitherAmount: Softens static quantization artifacts in the degrade engine.
+erosionQuality: Classic keeps the old simpler damage behavior, Media adds generation-loss style events/profile/dither, HQ increases smoothing/detail.
+erosionEventAmount: Controls brief media-style dips, tone collapses, and unstable failure events.
+erosionProfileAmount: Controls the added media body/notch profile EQ.
+erosionDitherAmount: Softens static quantization artifacts in the degrade engine.
 
 endCompMode: Chooses the compressor behavior: Studio, Clarity, Glue, Punch, or 2-Band.
 endCompPeakBlend: Blends RMS-style detection toward peak-style detection.
@@ -2151,13 +2151,13 @@ src/audio/engineSharedTypes.ts
 Extend `DynamicsWorkletVisualTelemetry`:
 
 ```ts
-characterCombRisk: number;
-characterMinDelayMs: number;
-characterDiffusion: number;
+driftCombRisk: number;
+driftMinDelayMs: number;
+driftDiffusion: number;
 
 degradeEventEnv: number;
 degradeEventGainDb: number;
-degradeProfileAmount: number;
+erosionProfileAmount: number;
 
 endLowReductionDb: number;
 endHighReductionDb: number;
@@ -2171,12 +2171,12 @@ masterSatOversamplingFactor: number;
 Extend fallback values wherever `EMPTY_DYNAMICS_TELEMETRY` or worklet telemetry defaults are defined:
 
 ```ts
-characterCombRisk: 0,
-characterMinDelayMs: 0,
-characterDiffusion: 0,
+driftCombRisk: 0,
+driftMinDelayMs: 0,
+driftDiffusion: 0,
 degradeEventEnv: 0,
 degradeEventGainDb: 0,
-degradeProfileAmount: 0,
+erosionProfileAmount: 0,
 endLowReductionDb: 0,
 endHighReductionDb: 0,
 endClarityBoostDb: 0,
@@ -2187,16 +2187,16 @@ masterSatOversamplingFactor: 1,
 
 ## 12.8 Extend DSP telemetry enum/count
 
-In `wasm/dynamics-character/kessho_dynamics_character.cpp`, append telemetry indices after `T_END_DETECTOR_DB`:
+In `wasm/dynamics-drift/kessho_dynamics_drift.cpp`, append telemetry indices after `T_END_DETECTOR_DB`:
 
 ```cpp
   T_CHARACTER_COMB_RISK,
   T_CHARACTER_MIN_DELAY_MS,
   T_CHARACTER_DIFFUSION,
 
-  T_DEGRADE_EVENT_ENV,
-  T_DEGRADE_EVENT_GAIN_DB,
-  T_DEGRADE_PROFILE_AMOUNT,
+  T_EROSION_EVENT_ENV,
+  T_EROSION_EVENT_GAIN_DB,
+  T_EROSION_PROFILE_AMOUNT,
 
   T_END_LOW_GR_DB,
   T_END_HIGH_GR_DB,
@@ -2209,7 +2209,7 @@ In `wasm/dynamics-character/kessho_dynamics_character.cpp`, append telemetry ind
 
 Current telemetry indices are `0..9`. New telemetry count should be `22` if exactly the 12 values above are appended.
 
-Update every `KESSHO_DYNAMICS_CHARACTER_TELEMETRY_COUNT` definition to `22`.
+Update every `KESSHO_DYNAMICS_DRIFT_TELEMETRY_COUNT` definition to `22`.
 
 Write telemetry during processing:
 
@@ -2218,9 +2218,9 @@ g.telemetry[T_CHARACTER_COMB_RISK] = comb_risk;
 g.telemetry[T_CHARACTER_MIN_DELAY_MS] = min_delay_s * 1000.0f;
 g.telemetry[T_CHARACTER_DIFFUSION] = clamp01(p[P_CHARACTER_DIFFUSION]);
 
-g.telemetry[T_DEGRADE_EVENT_ENV] = g.media_event_env;
-g.telemetry[T_DEGRADE_EVENT_GAIN_DB] = media_event_gain_db;
-g.telemetry[T_DEGRADE_PROFILE_AMOUNT] = clamp01(p[P_DEGRADE_PROFILE_AMOUNT]);
+g.telemetry[T_EROSION_EVENT_ENV] = g.media_event_env;
+g.telemetry[T_EROSION_EVENT_GAIN_DB] = media_event_gain_db;
+g.telemetry[T_EROSION_PROFILE_AMOUNT] = clamp01(p[P_EROSION_PROFILE_AMOUNT]);
 
 g.telemetry[T_END_LOW_GR_DB] = two_band_low_gr_db;
 g.telemetry[T_END_HIGH_GR_DB] = two_band_high_gr_db;
@@ -2263,10 +2263,10 @@ src/ui/dynamics/DynamicsVisualizers.tsx
 Add a compact quality/protection overlay:
 
 ```text
-- Comb Protect meter: uses `worklet.characterCombRisk`.
-- Min Delay label: uses `worklet.characterMinDelayMs`; fallback computes 3.0..10.5 ms from state.characterAntiComb and mix.
+- Comb Protect meter: uses `worklet.driftCombRisk`.
+- Min Delay label: uses `worklet.driftMinDelayMs`; fallback computes 3.0..10.5 ms from state.driftAntiComb and mix.
 - Quality badge: Eco / Balanced / HQ.
-- Diffusion ring/bar: uses state.characterDiffusion or telemetry.characterDiffusion.
+- Diffusion ring/bar: uses state.driftDiffusion or telemetry.driftDiffusion.
 ```
 
 Draw text labels:
@@ -2277,7 +2277,7 @@ MIN 3.0–10.5ms
 HQ / BAL / ECO
 ```
 
-Acceptance: at Character Mix 50%, Shallow mode, `Comb Protect` should visibly rise and Min Delay should read near 10.5 ms when `characterAntiComb = 1.0`.
+Acceptance: at Character Mix 50%, Shallow mode, `Comb Protect` should visibly rise and Min Delay should read near 10.5 ms when `driftAntiComb = 1.0`.
 
 ### Degrade visualizer
 
@@ -2286,9 +2286,9 @@ Add media-event and profile panels:
 ```text
 - Event envelope pulse: `worklet.degradeEventEnv`.
 - Event gain dip meter: `worklet.degradeEventGainDb`.
-- Profile EQ mini curve: low body bump around 180–300 Hz and notch around 2.6–4.9 kHz, scaled by `degradeProfileAmount`.
+- Profile EQ mini curve: low body bump around 180–300 Hz and notch around 2.6–4.9 kHz, scaled by `erosionProfileAmount`.
 - Quality badge: Classic / Media / HQ.
-- Dither indicator: state.degradeDitherAmount.
+- Dither indicator: state.erosionDitherAmount.
 ```
 
 Acceptance: with Degrade Events high, visualizer should show occasional pulses matching audible media dips.
@@ -2386,7 +2386,7 @@ Do not introduce a new visual language. Match existing Dynamics styling.
 
 ## Character
 
-Use these mappings in `kessho_dynamics_character.cpp`:
+Use these mappings in `kessho_dynamics_drift.cpp`:
 
 ```cpp
 const float quality = p[P_CHARACTER_QUALITY];
@@ -2415,37 +2415,37 @@ If this scale is easier to apply in `ProductDynamicsConfig.cpp`, apply it there 
 Use these mappings:
 
 ```cpp
-const float degrade_quality = p[P_DEGRADE_QUALITY];
-const float degrade_events = clamp01(p[P_DEGRADE_EVENT_AMOUNT]);
-const float degrade_profile = clamp01(p[P_DEGRADE_PROFILE_AMOUNT]);
-const float degrade_dither = clamp01(p[P_DEGRADE_DITHER_AMOUNT]);
+const float erosion_quality = p[P_EROSION_QUALITY];
+const float erosion_events = clamp01(p[P_EROSION_EVENT_AMOUNT]);
+const float erosion_profile = clamp01(p[P_EROSION_PROFILE_AMOUNT]);
+const float erosion_dither = clamp01(p[P_EROSION_DITHER_AMOUNT]);
 
-const bool use_media_events = degrade_quality >= 1.0f && degrade_events > 0.001f;
-const bool use_profile_eq = degrade_quality >= 1.0f && degrade_profile > 0.001f;
-const bool use_dither = degrade_quality >= 1.0f && degrade_dither > 0.001f;
+const bool use_media_events = erosion_quality >= 1.0f && erosion_events > 0.001f;
+const bool use_profile_eq = erosion_quality >= 1.0f && erosion_profile > 0.001f;
+const bool use_dither = erosion_quality >= 1.0f && erosion_dither > 0.001f;
 ```
 
 Scale event amount:
 
 ```cpp
 const float event_amount = clamp01(
-    p[P_DEGRADE_FAILURE_INFLUENCE] * degrade_events *
+    p[P_EROSION_FAILURE_INFLUENCE] * erosion_events *
     (0.35f +
-     p[P_DEGRADE_CORROSION] * 0.35f +
-     p[P_DEGRADE_GENERATION] * 0.20f +
-     p[P_DEGRADE_WEAR] * 0.10f));
+     p[P_EROSION_CORROSION] * 0.35f +
+     p[P_EROSION_GENERATION] * 0.20f +
+     p[P_EROSION_WEAR] * 0.10f));
 ```
 
 Scale dither:
 
 ```cpp
 const float dither_amt =
-    lsb * degrade_dither *
+    lsb * erosion_dither *
     (0.18f + generation * 0.42f + corrosion * 0.20f) *
     (1.0f - destructive * 0.35f);
 ```
 
-Scale profile EQ gain by `degrade_profile`.
+Scale profile EQ gain by `erosion_profile`.
 
 ## Compressor
 
@@ -2552,4 +2552,3 @@ HQ:     enter 2x filtered branch slightly earlier, e.g. drive > 0.12 instead of 
 11. `dynamics-telemetry: expose character/degrade/compressor quality telemetry`
 12. `dynamics-visualizers: show comb protect media events and 2-band compression`
 13. `dynamics: final preset validation and cpu profiling`
-

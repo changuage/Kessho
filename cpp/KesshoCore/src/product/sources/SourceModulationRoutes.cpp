@@ -34,6 +34,8 @@
       return 14u;
     case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_GLIDE_ID:
       return 15u;
+    case KESSHO_PRODUCT_PARAM_SOURCE_DEGRADE_SEND_ID:
+      return 16u;
     default:
       return kSourceModulationParamSlotCount;
   }

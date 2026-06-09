@@ -72,6 +72,7 @@ export function usePresetEngineSync({
     scheduleAudioEngineParamUpdate(nextState, {
       immediate: true,
       reason: 'preset-load',
+      forceFullSnapshot: true,
       triggerCritical: true,
     });
     resetSelectedCofDrift();

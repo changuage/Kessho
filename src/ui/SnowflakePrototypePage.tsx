@@ -743,10 +743,10 @@ function buildLayout(sources: SourceVisual[]): ArmLayout[] {
   }));
 }
 
-function getGlobalFx(state: SliderState, scenario: PrototypeScenario): { character: number; degrade: number; dynamics: number; reverb: number } {
+function getGlobalFx(state: SliderState, scenario: PrototypeScenario): { drift: number; degrade: number; dynamics: number; reverb: number } {
   if (scenario !== 'live') {
     return {
-      character: scenario === 'sparse' ? 0.14 : 0.28,
+      drift: scenario === 'sparse' ? 0.14 : 0.28,
       degrade: scenario === 'full' ? 0.2 : 0.12,
       dynamics: scenario === 'dense' ? 0.34 : 0.22,
       reverb: scenario === 'sparse' ? 0.3 : 0.58,
@@ -758,8 +758,8 @@ function getGlobalFx(state: SliderState, scenario: PrototypeScenario): { charact
     state.dynamicsSaturationEnabled ? numericState(state, 'dynamicsSaturationDrive') : 0,
   ];
   return {
-    character: state.characterEnabled ? clamp01(numericState(state, 'characterMix')) : 0,
-    degrade: state.degradeEnabled ? clamp01(numericState(state, 'degradeMix')) : 0,
+    drift: state.driftEnabled ? clamp01(numericState(state, 'driftMix')) : 0,
+    degrade: state.erosionEnabled ? clamp01(numericState(state, 'erosionMix')) : 0,
     dynamics: state.dynamicsEnabled ? clamp01(Math.max(...dynamicsCandidates)) : 0,
     reverb: state.reverbEnabled ? clamp01(numericState(state, 'reverbLevel')) : 0,
   };

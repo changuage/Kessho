@@ -6,9 +6,9 @@ const PARAM_ORDER = [
   'allpassActive',
   'dry',
   'wet',
-  'degradeMix',
+  'erosionMix',
   'workletAlias',
-  'rawDegradeGeneration',
+  'rawErosionGeneration',
   'rawCorrosion',
   'rawMediaWear',
   'noiseGain',
@@ -84,17 +84,17 @@ const PARAM_ORDER = [
   'endCompDetectorTilt',
   'endCompAutoMakeup',
   'endCompProgramRelease',
-  'characterQuality',
-  'characterAntiComb',
-  'characterDiffusion',
-  'degradeUiMix',
-  'degradeColorInfluence',
-  'degradeMotionInfluence',
-  'degradeFailureInfluence',
-  'degradeQuality',
-  'degradeEventAmount',
-  'degradeProfileAmount',
-  'degradeDitherAmount',
+  'driftQuality',
+  'driftAntiComb',
+  'driftDiffusion',
+  'erosionUiMix',
+  'erosionColorInfluence',
+  'erosionMotionInfluence',
+  'erosionFailureInfluence',
+  'erosionQuality',
+  'erosionEventAmount',
+  'erosionProfileAmount',
+  'erosionDitherAmount',
   'endCompMode',
   'endCompPeakBlend',
   'endCompClarity',
@@ -107,19 +107,19 @@ const TELEMETRY_ORDER = [
   'inputPeak',
   'outputPeak',
   'wetPeak',
-  'characterEnv',
-  'characterReductionDb',
+  'driftEnv',
+  'driftReductionDb',
   'dropoutGain',
   'endInputPeak',
   'endOutputPeak',
   'endReductionDb',
   'endDetectorDb',
-  'characterCombRisk',
-  'characterMinDelayMs',
-  'characterDiffusion',
-  'degradeEventEnv',
-  'degradeEventGainDb',
-  'degradeProfileAmount',
+  'driftCombRisk',
+  'driftMinDelayMs',
+  'driftDiffusion',
+  'erosionEventEnv',
+  'erosionEventGainDb',
+  'erosionProfileAmount',
   'endLowReductionDb',
   'endHighReductionDb',
   'endClarityBoostDb',
@@ -128,7 +128,7 @@ const TELEMETRY_ORDER = [
   'masterSatOversamplingFactor',
 ];
 
-class DynamicsCharacterProcessor extends AudioWorkletProcessor {
+class DynamicsDriftProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.wasm = null;
@@ -153,12 +153,12 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
     this.telemetryAccum = this.createTelemetryAccum();
     this.port.onmessage = (event) => this.handleMessage(event.data);
     this.initWasm(options?.processorOptions?.wasmBinary).catch((error) => {
-      console.warn('[DynamicsCharacter-WASM] Init failed, using pass-through:', error);
+      console.warn('[DynamicsDrift-WASM] Init failed, using pass-through:', error);
     });
   }
 
   async initWasm(wasmBinary) {
-    if (!wasmBinary) throw new Error('Missing kessho_dynamics_character.wasm binary');
+    if (!wasmBinary) throw new Error('Missing kessho_dynamics_drift.wasm binary');
 
     const module = await WebAssembly.compile(wasmBinary);
     const instance = await WebAssembly.instantiate(module, {
@@ -177,14 +177,14 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
     });
 
     const exports = instance.exports;
-    const result = exports.dynamics_character_init(sampleRate);
+    const result = exports.dynamics_drift_init(sampleRate);
     if (result !== 0) throw new Error(`C++ init returned ${result}`);
 
     this.wasm = exports;
-    this.inputPtr = exports.dynamics_character_get_input_ptr();
-    this.outputPtr = exports.dynamics_character_get_output_ptr();
-    this.paramsPtr = exports.dynamics_character_get_params_ptr();
-    this.telemetryPtr = exports.dynamics_character_get_telemetry_ptr();
+    this.inputPtr = exports.dynamics_drift_get_input_ptr();
+    this.outputPtr = exports.dynamics_drift_get_output_ptr();
+    this.paramsPtr = exports.dynamics_drift_get_params_ptr();
+    this.telemetryPtr = exports.dynamics_drift_get_telemetry_ptr();
     this.ready = true;
     this.port.postMessage({ type: 'wasmReady' });
     if (this.pendingParams) {
@@ -201,12 +201,12 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
       return;
     }
     if (data.type === 'reset') {
-      if (this.wasm && this.ready && typeof this.wasm.dynamics_character_reset === 'function') {
-        this.wasm.dynamics_character_reset(sampleRate);
-        this.inputPtr = this.wasm.dynamics_character_get_input_ptr();
-        this.outputPtr = this.wasm.dynamics_character_get_output_ptr();
-        this.paramsPtr = this.wasm.dynamics_character_get_params_ptr();
-        this.telemetryPtr = this.wasm.dynamics_character_get_telemetry_ptr();
+      if (this.wasm && this.ready && typeof this.wasm.dynamics_drift_reset === 'function') {
+        this.wasm.dynamics_drift_reset(sampleRate);
+        this.inputPtr = this.wasm.dynamics_drift_get_input_ptr();
+        this.outputPtr = this.wasm.dynamics_drift_get_output_ptr();
+        this.paramsPtr = this.wasm.dynamics_drift_get_params_ptr();
+        this.telemetryPtr = this.wasm.dynamics_drift_get_telemetry_ptr();
         if (this.currentParams) this.applyParams(this.currentParams);
         this.resetTelemetryAccum();
       }
@@ -214,7 +214,7 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
     }
     if (data.type === 'destroy') {
       if (this.wasm && this.ready) {
-        try { this.wasm.dynamics_character_destroy(); } catch { /* noop */ }
+        try { this.wasm.dynamics_drift_destroy(); } catch { /* noop */ }
       }
       this.ready = false;
       this.wasm = null;
@@ -248,7 +248,7 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
       const value = Number(params[PARAM_ORDER[i]]);
       heap[offset + i] = Number.isFinite(value) ? value : 0;
     }
-    this.wasm.dynamics_character_commit_params();
+    this.wasm.dynamics_drift_commit_params();
   }
 
   createTelemetryAccum() {
@@ -256,19 +256,19 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
       inputPeak: 0,
       outputPeak: 0,
       wetPeak: 0,
-      characterEnv: 0,
-      characterReductionDb: 0,
+      driftEnv: 0,
+      driftReductionDb: 0,
       dropoutGain: 1,
       endInputPeak: 0,
       endOutputPeak: 0,
       endReductionDb: 0,
       endDetectorDb: -120,
-      characterCombRisk: 0,
-      characterMinDelayMs: 0,
-      characterDiffusion: 0,
-      degradeEventEnv: 0,
-      degradeEventGainDb: 0,
-      degradeProfileAmount: 0,
+      driftCombRisk: 0,
+      driftMinDelayMs: 0,
+      driftDiffusion: 0,
+      erosionEventEnv: 0,
+      erosionEventGainDb: 0,
+      erosionProfileAmount: 0,
       endLowReductionDb: 0,
       endHighReductionDb: 0,
       endClarityBoostDb: 0,
@@ -292,8 +292,8 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
       if (!Number.isFinite(value)) continue;
       if (key === 'dropoutGain') {
         this.telemetryAccum.dropoutGain = Math.min(this.telemetryAccum.dropoutGain, value);
-      } else if (key === 'degradeEventGainDb') {
-        this.telemetryAccum.degradeEventGainDb = Math.min(this.telemetryAccum.degradeEventGainDb, value);
+      } else if (key === 'erosionEventGainDb') {
+        this.telemetryAccum.erosionEventGainDb = Math.min(this.telemetryAccum.erosionEventGainDb, value);
       } else if (key === 'endDetectorDb') {
         this.telemetryAccum.endDetectorDb = Math.max(this.telemetryAccum.endDetectorDb, value);
       } else if (key === 'endBandSplitHz' || key === 'endCompMode') {
@@ -333,7 +333,7 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
       const avgMs = this.perfTotalTime / this.perfCount;
       this.port.postMessage({
         type: 'perf',
-        name: 'dynamics-character',
+        name: 'dynamics-drift',
         cpuPercent: (avgMs / budgetMs) * 100,
         peakPercent: (this.perfPeakTime / budgetMs) * 100,
         missPercent: this.perfBlockCount > 0 ? (this.perfOverBudgetCount / this.perfBlockCount) * 100 : 0,
@@ -391,7 +391,7 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
         heap[inOffset + i * 2 + 1] = right;
       }
 
-      this.wasm.dynamics_character_process_block(blockSize);
+      this.wasm.dynamics_drift_process_block(blockSize);
       this.accumulateTelemetry();
 
       for (let i = 0; i < blockSize; i++) {
@@ -408,7 +408,7 @@ class DynamicsCharacterProcessor extends AudioWorkletProcessor {
 }
 
 try {
-  registerProcessor('dynamics-character', DynamicsCharacterProcessor);
+  registerProcessor('dynamics-drift', DynamicsDriftProcessor);
 } catch (error) {
   if (error?.name !== 'NotSupportedError') throw error;
 }

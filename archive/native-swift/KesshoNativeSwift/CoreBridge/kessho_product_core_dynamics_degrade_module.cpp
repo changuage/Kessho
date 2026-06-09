@@ -1,1 +1,1 @@
-#include "../../cpp/KesshoCore/src/modules/KesshoDynamicsDegradeModule.cpp"
+#include "../../cpp/KesshoCore/src/modules/KesshoDynamicsErosionModule.cpp"

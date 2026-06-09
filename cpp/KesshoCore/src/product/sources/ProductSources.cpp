@@ -47,6 +47,9 @@ void KesshoProductEngine::applySourceParam(const KesshoProductEvent& event) {
     case KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID:
       source.granular_send = clampFloat(event.value, 0.0f, 2.0f);
       break;
+    case KESSHO_PRODUCT_PARAM_SOURCE_DEGRADE_SEND_ID:
+      source.degrade_send = clampFloat(event.value, 0.0f, 2.0f);
+      break;
     case KESSHO_PRODUCT_PARAM_SOURCE_DIFFUSE_SEND_ID:
       source.diffuse_send = clampFloat(event.value, 0.0f, 2.0f);
       break;

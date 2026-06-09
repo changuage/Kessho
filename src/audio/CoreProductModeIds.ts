@@ -36,15 +36,15 @@ export function reverbSaturationModeId(value: unknown): number {
   return mappedModeId(value, { tape: 1, tube: 2 }, 0);
 }
 
-export function dynamicsCharacterModeId(value: unknown): number {
+export function dynamicsDriftModeId(value: unknown): number {
   return mappedModeId(value, { abyssWater: 1, shallowWater: 2 }, 0);
 }
 
-export function dynamicsCharacterQualityId(value: unknown): number {
+export function dynamicsDriftQualityId(value: unknown): number {
   return mappedModeId(value, { eco: 0, hq: 2 }, 1);
 }
 
-export function dynamicsDegradeQualityId(value: unknown): number {
+export function dynamicsErosionQualityId(value: unknown): number {
   return mappedModeId(value, { classic: 0, hq: 2 }, 1);
 }
 

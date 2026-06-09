@@ -88,11 +88,42 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularNatureSend:    { level: 4, scope: 'global' },
   granularWaterSend:     { level: 4, scope: 'global' },
   granularInsectsSend:   { level: 4, scope: 'global' },
+  degradeLevel:          { level: 4, scope: 'global' },
+  degradePad1Send:       { level: 4, scope: 'global' },
+  degradePad2Send:       { level: 4, scope: 'global' },
+  degradeLead1Send:      { level: 4, scope: 'global' },
+  degradeLead2Send:      { level: 4, scope: 'global' },
+  degradePianoSend:      { level: 4, scope: 'global' },
+  degradeDrumSend:       { level: 4, scope: 'global' },
+  degradeWavesSend:      { level: 4, scope: 'global' },
+  degradeNatureSend:     { level: 4, scope: 'global' },
+  degradeWaterSend:      { level: 4, scope: 'global' },
+  degradeInsectsSend:    { level: 4, scope: 'global' },
+  delayADegradeSend:     { level: 4, scope: 'global' },
+  delayBDegradeSend:     { level: 4, scope: 'global' },
+  granularDegradeSend:   { level: 4, scope: 'global' },
+  reverbDegradeSend:     { level: 4, scope: 'global' },
+  degradeReverbSend:     { level: 4, scope: 'global' },
   pianoLevel:            { level: 4, scope: 'global' },
   pianoReverbSend:       { level: 4, scope: 'global' },
   pianoDelayASend:       { level: 4, scope: 'global' },
   pianoDelayBSend:       { level: 4, scope: 'global' },
   reverbLevel:           { level: 4, scope: 'global' },
+  dynamicsPad1Bus:       { level: 4, scope: 'global' },
+  dynamicsPad2Bus:       { level: 4, scope: 'global' },
+  dynamicsLead1Bus:      { level: 4, scope: 'global' },
+  dynamicsLead2Bus:      { level: 4, scope: 'global' },
+  dynamicsPianoBus:      { level: 4, scope: 'global' },
+  dynamicsDrumBus:       { level: 4, scope: 'global' },
+  dynamicsGranularBus:   { level: 4, scope: 'global' },
+  dynamicsWavesBus:      { level: 4, scope: 'global' },
+  dynamicsWaterBus:      { level: 4, scope: 'global' },
+  dynamicsInsectsBus:    { level: 4, scope: 'global' },
+  dynamicsNatureBus:     { level: 4, scope: 'global' },
+  dynamicsDelayABus:     { level: 4, scope: 'global' },
+  dynamicsDelayBBus:     { level: 4, scope: 'global' },
+  dynamicsDegradeBus:    { level: 4, scope: 'global' },
+  dynamicsReverbBus:     { level: 4, scope: 'global' },
   seedWindow:            { level: 4, scope: 'global' },
   randomness:            { level: 4, scope: 'global' },
   rootNote:              { level: 4, scope: 'global' },
@@ -242,6 +273,11 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularFeedback:        { level: 3, scope: 'granular' },
   granularFeedbackLPF:     { level: 3, scope: 'granular' },
   granularBufferSeconds:   { level: 3, scope: 'granular' },
+  granularQuality:         { level: 3, scope: 'granular' },
+  granularMaxGrains:       { level: 3, scope: 'granular' },
+  granularSprayMacro:      { level: 3, scope: 'granular' },
+  granularCloudMacro:      { level: 3, scope: 'granular' },
+  granularPitchMacro:      { level: 3, scope: 'granular' },
   granularShape:           { level: 3, scope: 'granular' },
   granularSpaceMode:       { level: 3, scope: 'granular' },
   granularPresetBehavior:  { level: 3, scope: 'granular' },
@@ -253,14 +289,14 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularTensionValue:    { level: 3, scope: 'granular' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L3: Dynamics Source (full page)
+  // L3: Master FX Source
   // ═══════════════════════════════════════════════════════════════════════
-  dynamicsEnabled:        { level: 3, scope: 'dynamics' },
+  dynamicsSaturationEnabled: { level: 3, scope: 'masterFx' },
+  endCompEnabled:           { level: 3, scope: 'masterFx' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Dynamics Saturation Engine
   // ═══════════════════════════════════════════════════════════════════════
-  dynamicsSaturationEnabled: { level: 1, scope: 'dynamicsSaturation' },
   dynamicsSaturationMode:    { level: 1, scope: 'dynamicsSaturation' },
   dynamicsSaturationQuality: { level: 1, scope: 'dynamicsSaturation' },
   dynamicsSaturationDrive:   { level: 1, scope: 'dynamicsSaturation' },
@@ -270,7 +306,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Dynamics Sidechain Engine
   // ═══════════════════════════════════════════════════════════════════════
-  sidechainEnabled:       { level: 1, scope: 'dynamicsSidechain' },
   sidechainKeyA:          { level: 1, scope: 'dynamicsSidechain' },
   sidechainKeyB:          { level: 1, scope: 'dynamicsSidechain' },
   sidechainKeyAWeight:    { level: 1, scope: 'dynamicsSidechain' },
@@ -287,93 +322,134 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   sidechainCurve:         { level: 1, scope: 'dynamicsSidechain' },
   sidechainDetectorHp:    { level: 1, scope: 'dynamicsSidechain' },
   sidechainDetectorLp:    { level: 1, scope: 'dynamicsSidechain' },
-  sidechainPad1Target:    { level: 1, scope: 'dynamicsSidechain' },
-  sidechainPad2Target:    { level: 1, scope: 'dynamicsSidechain' },
-  sidechainLead1Target:   { level: 1, scope: 'dynamicsSidechain' },
-  sidechainLead2Target:   { level: 1, scope: 'dynamicsSidechain' },
-  sidechainPianoTarget:   { level: 1, scope: 'dynamicsSidechain' },
-  sidechainGranularTarget:{ level: 1, scope: 'dynamicsSidechain' },
-  sidechainDelayATarget:  { level: 1, scope: 'dynamicsSidechain' },
-  sidechainDelayBTarget:  { level: 1, scope: 'dynamicsSidechain' },
-  sidechainReverbTarget:  { level: 1, scope: 'dynamicsSidechain' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Dynamics Character Engine
+  // L3: Dynamics Bus Source
   // ═══════════════════════════════════════════════════════════════════════
-  characterEnabled:       { level: 1, scope: 'dynamicsCharacter' },
-  characterMode:          { level: 1, scope: 'dynamicsCharacter' },
-  characterQuality:       { level: 1, scope: 'dynamicsCharacter' },
-  characterAntiComb:      { level: 1, scope: 'dynamicsCharacter' },
-  characterDiffusion:     { level: 1, scope: 'dynamicsCharacter' },
-  characterMix:           { level: 1, scope: 'dynamicsCharacter' },
-  characterAge:           { level: 1, scope: 'dynamicsCharacter' },
-  characterBias:          { level: 1, scope: 'dynamicsCharacter' },
-  characterLpgAmount:     { level: 1, scope: 'dynamicsCharacter' },
-  characterResonance:     { level: 1, scope: 'dynamicsCharacter' },
-  characterStereo:        { level: 1, scope: 'dynamicsCharacter' },
-  characterEnvFollow:     { level: 1, scope: 'dynamicsCharacter' },
-  characterDepth:         { level: 1, scope: 'dynamicsCharacter' },
-  characterRate:          { level: 1, scope: 'dynamicsCharacter' },
-  characterDamp:          { level: 1, scope: 'dynamicsCharacter' },
-  characterWetHp:         { level: 1, scope: 'dynamicsCharacter' },
+  dynamicsBusEnabled:     { level: 3, scope: 'dynamicsBus' },
+  dynamicsEq1Enabled:     { level: 3, scope: 'dynamicsBus' },
+  dynamicsEq2Enabled:     { level: 3, scope: 'dynamicsBus' },
+  sidechainEnabled:       { level: 3, scope: 'dynamicsBus' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Dynamics Degrade Engine
+  // L1: Dynamics Bus EQ 1
   // ═══════════════════════════════════════════════════════════════════════
-  degradeEnabled:        { level: 1, scope: 'dynamicsDegrade' },
-  degradeQuality:        { level: 1, scope: 'dynamicsDegrade' },
-  degradeEventAmount:    { level: 1, scope: 'dynamicsDegrade' },
-  degradeProfileAmount:  { level: 1, scope: 'dynamicsDegrade' },
-  degradeDitherAmount:   { level: 1, scope: 'dynamicsDegrade' },
-  degradeMix:            { level: 1, scope: 'dynamicsDegrade' },
-  degradeAge:            { level: 1, scope: 'dynamicsDegrade' },
-  degradeGeneration:     { level: 1, scope: 'dynamicsDegrade' },
-  degradeAlias:          { level: 1, scope: 'dynamicsDegrade' },
-  degradeWow:            { level: 1, scope: 'dynamicsDegrade' },
-  degradeFlutter:        { level: 1, scope: 'dynamicsDegrade' },
-  degradeDrift:          { level: 1, scope: 'dynamicsDegrade' },
-  degradeWobbleSpeed:    { level: 1, scope: 'dynamicsDegrade' },
-  degradeTone:           { level: 1, scope: 'dynamicsDegrade' },
-  degradeHp:             { level: 1, scope: 'dynamicsDegrade' },
-  degradeLp:             { level: 1, scope: 'dynamicsDegrade' },
-  degradeNoise:          { level: 1, scope: 'dynamicsDegrade' },
-  degradeSaturation:     { level: 1, scope: 'dynamicsDegrade' },
-  degradeCorrosion:      { level: 1, scope: 'dynamicsDegrade' },
-  degradeModSlowWow:     { level: 1, scope: 'dynamicsDegrade' },
-  degradeModSlowFlutter: { level: 1, scope: 'dynamicsDegrade' },
-  degradeModSlowLp:      { level: 1, scope: 'dynamicsDegrade' },
-  degradeModSlowWet:     { level: 1, scope: 'dynamicsDegrade' },
-  degradeModSlowDropout: { level: 1, scope: 'dynamicsDegrade' },
-  degradeModSlowAlias:   { level: 1, scope: 'dynamicsDegrade' },
-  degradeModFlutterWow:  { level: 1, scope: 'dynamicsDegrade' },
-  degradeModFlutterFlutter: { level: 1, scope: 'dynamicsDegrade' },
-  degradeModFlutterLp:   { level: 1, scope: 'dynamicsDegrade' },
-  degradeModFlutterWet:  { level: 1, scope: 'dynamicsDegrade' },
-  degradeModFlutterDropout: { level: 1, scope: 'dynamicsDegrade' },
-  degradeModFlutterAlias: { level: 1, scope: 'dynamicsDegrade' },
-  degradeModRandomWow:   { level: 1, scope: 'dynamicsDegrade' },
-  degradeModRandomFlutter: { level: 1, scope: 'dynamicsDegrade' },
-  degradeModRandomLp:    { level: 1, scope: 'dynamicsDegrade' },
-  degradeModRandomWet:   { level: 1, scope: 'dynamicsDegrade' },
-  degradeModRandomDropout: { level: 1, scope: 'dynamicsDegrade' },
-  degradeModRandomAlias: { level: 1, scope: 'dynamicsDegrade' },
-  degradeModEnvWow:      { level: 1, scope: 'dynamicsDegrade' },
-  degradeModEnvFlutter:  { level: 1, scope: 'dynamicsDegrade' },
-  degradeModEnvLp:       { level: 1, scope: 'dynamicsDegrade' },
-  degradeModEnvWet:      { level: 1, scope: 'dynamicsDegrade' },
-  degradeModEnvDropout:  { level: 1, scope: 'dynamicsDegrade' },
-  degradeModEnvAlias:    { level: 1, scope: 'dynamicsDegrade' },
-  degradeModNoiseWow:    { level: 1, scope: 'dynamicsDegrade' },
-  degradeModNoiseFlutter: { level: 1, scope: 'dynamicsDegrade' },
-  degradeModNoiseLp:     { level: 1, scope: 'dynamicsDegrade' },
-  degradeModNoiseWet:    { level: 1, scope: 'dynamicsDegrade' },
-  degradeModNoiseDropout: { level: 1, scope: 'dynamicsDegrade' },
-  degradeModNoiseAlias:  { level: 1, scope: 'dynamicsDegrade' },
+  dynamicsEq1InputGain:   { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1OutputGain:  { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1LowType:     { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1LowFreq:     { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1LowGain:     { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1LowQ:        { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1LowSlope:    { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1MidFreq:     { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1MidGain:     { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1MidQ:        { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1HighType:    { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1HighFreq:    { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1HighGain:    { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1HighQ:       { level: 1, scope: 'dynamicsEq1' },
+  dynamicsEq1HighSlope:   { level: 1, scope: 'dynamicsEq1' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L1: Dynamics Bus EQ 2
+  // ═══════════════════════════════════════════════════════════════════════
+  dynamicsEq2InputGain:   { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2OutputGain:  { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2LowType:     { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2LowFreq:     { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2LowGain:     { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2LowQ:        { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2LowSlope:    { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2MidFreq:     { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2MidGain:     { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2MidQ:        { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2HighType:    { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2HighFreq:    { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2HighGain:    { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2HighQ:       { level: 1, scope: 'dynamicsEq2' },
+  dynamicsEq2HighSlope:   { level: 1, scope: 'dynamicsEq2' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L3: Degrade Source
+  // ═══════════════════════════════════════════════════════════════════════
+  degradeEnabled:      { level: 3, scope: 'degrade' },
+  degradeHp:           { level: 3, scope: 'degrade' },
+  degradeLp:           { level: 3, scope: 'degrade' },
+  driftEnabled:        { level: 3, scope: 'degrade' },
+  erosionEnabled:      { level: 3, scope: 'degrade' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L2: Degrade Drift Submodule
+  // ═══════════════════════════════════════════════════════════════════════
+  driftMode:          { level: 2, scope: 'dynamicsDrift' },
+  driftQuality:       { level: 2, scope: 'dynamicsDrift' },
+  driftAntiComb:      { level: 2, scope: 'dynamicsDrift' },
+  driftDiffusion:     { level: 2, scope: 'dynamicsDrift' },
+  driftMix:           { level: 2, scope: 'dynamicsDrift' },
+  driftAge:           { level: 2, scope: 'dynamicsDrift' },
+  driftBias:          { level: 2, scope: 'dynamicsDrift' },
+  driftLpgAmount:     { level: 2, scope: 'dynamicsDrift' },
+  driftResonance:     { level: 2, scope: 'dynamicsDrift' },
+  driftStereo:        { level: 2, scope: 'dynamicsDrift' },
+  driftEnvFollow:     { level: 2, scope: 'dynamicsDrift' },
+  driftDepth:         { level: 2, scope: 'dynamicsDrift' },
+  driftRate:          { level: 2, scope: 'dynamicsDrift' },
+  driftDamp:          { level: 2, scope: 'dynamicsDrift' },
+  driftWetHp:         { level: 2, scope: 'dynamicsDrift' },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // L2: Degrade Erosion Submodule
+  // ═══════════════════════════════════════════════════════════════════════
+  erosionQuality:        { level: 2, scope: 'dynamicsErosion' },
+  erosionEventAmount:    { level: 2, scope: 'dynamicsErosion' },
+  erosionProfileAmount:  { level: 2, scope: 'dynamicsErosion' },
+  erosionDitherAmount:   { level: 2, scope: 'dynamicsErosion' },
+  erosionMix:            { level: 2, scope: 'dynamicsErosion' },
+  erosionAge:            { level: 2, scope: 'dynamicsErosion' },
+  erosionGeneration:     { level: 2, scope: 'dynamicsErosion' },
+  erosionAlias:          { level: 2, scope: 'dynamicsErosion' },
+  erosionWow:            { level: 2, scope: 'dynamicsErosion' },
+  erosionFlutter:        { level: 2, scope: 'dynamicsErosion' },
+  erosionDrift:          { level: 2, scope: 'dynamicsErosion' },
+  erosionWobbleSpeed:    { level: 2, scope: 'dynamicsErosion' },
+  erosionTone:           { level: 2, scope: 'dynamicsErosion' },
+  erosionNoise:          { level: 2, scope: 'dynamicsErosion' },
+  erosionSaturation:     { level: 2, scope: 'dynamicsErosion' },
+  erosionCorrosion:      { level: 2, scope: 'dynamicsErosion' },
+  erosionModSlowWow:     { level: 2, scope: 'dynamicsErosion' },
+  erosionModSlowFlutter: { level: 2, scope: 'dynamicsErosion' },
+  erosionModSlowLp:      { level: 2, scope: 'dynamicsErosion' },
+  erosionModSlowWet:     { level: 2, scope: 'dynamicsErosion' },
+  erosionModSlowDropout: { level: 2, scope: 'dynamicsErosion' },
+  erosionModSlowAlias:   { level: 2, scope: 'dynamicsErosion' },
+  erosionModFlutterWow:  { level: 2, scope: 'dynamicsErosion' },
+  erosionModFlutterFlutter: { level: 2, scope: 'dynamicsErosion' },
+  erosionModFlutterLp:   { level: 2, scope: 'dynamicsErosion' },
+  erosionModFlutterWet:  { level: 2, scope: 'dynamicsErosion' },
+  erosionModFlutterDropout: { level: 2, scope: 'dynamicsErosion' },
+  erosionModFlutterAlias: { level: 2, scope: 'dynamicsErosion' },
+  erosionModRandomWow:   { level: 2, scope: 'dynamicsErosion' },
+  erosionModRandomFlutter: { level: 2, scope: 'dynamicsErosion' },
+  erosionModRandomLp:    { level: 2, scope: 'dynamicsErosion' },
+  erosionModRandomWet:   { level: 2, scope: 'dynamicsErosion' },
+  erosionModRandomDropout: { level: 2, scope: 'dynamicsErosion' },
+  erosionModRandomAlias: { level: 2, scope: 'dynamicsErosion' },
+  erosionModEnvWow:      { level: 2, scope: 'dynamicsErosion' },
+  erosionModEnvFlutter:  { level: 2, scope: 'dynamicsErosion' },
+  erosionModEnvLp:       { level: 2, scope: 'dynamicsErosion' },
+  erosionModEnvWet:      { level: 2, scope: 'dynamicsErosion' },
+  erosionModEnvDropout:  { level: 2, scope: 'dynamicsErosion' },
+  erosionModEnvAlias:    { level: 2, scope: 'dynamicsErosion' },
+  erosionModNoiseWow:    { level: 2, scope: 'dynamicsErosion' },
+  erosionModNoiseFlutter: { level: 2, scope: 'dynamicsErosion' },
+  erosionModNoiseLp:     { level: 2, scope: 'dynamicsErosion' },
+  erosionModNoiseWet:    { level: 2, scope: 'dynamicsErosion' },
+  erosionModNoiseDropout: { level: 2, scope: 'dynamicsErosion' },
+  erosionModNoiseAlias:  { level: 2, scope: 'dynamicsErosion' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Dynamics End Chain Engine
   // ═══════════════════════════════════════════════════════════════════════
-  endCompEnabled:         { level: 1, scope: 'dynamicsEndChain' },
   endCompMode:            { level: 1, scope: 'dynamicsEndChain' },
   endCompThreshold:       { level: 1, scope: 'dynamicsEndChain' },
   endCompKnee:            { level: 1, scope: 'dynamicsEndChain' },
@@ -1066,7 +1142,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   wetLPF:                { level: 1, scope: 'legacyGranular' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Granular Voice 1 Engine (21 params)
+  // L1: Granular Voice 1 Engine
   // ═══════════════════════════════════════════════════════════════════════
   granularV1Mode:          { level: 1, scope: 'granularVoice1' },
   granularV1Slice:         { level: 1, scope: 'granularVoice1' },
@@ -1079,6 +1155,20 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV1Blur:          { level: 1, scope: 'granularVoice1' },
   granularV1GrainOct:      { level: 1, scope: 'granularVoice1' },
   granularV1Spray:         { level: 1, scope: 'granularVoice1' },
+  granularV1PositionSpray: { level: 1, scope: 'granularVoice1' },
+  granularV1TimingSpray:   { level: 1, scope: 'granularVoice1' },
+  granularV1Lookback:      { level: 1, scope: 'granularVoice1' },
+  granularV1WriteGuard:    { level: 1, scope: 'granularVoice1' },
+  granularV1PitchMode:     { level: 1, scope: 'granularVoice1' },
+  granularV1PitchSpread:   { level: 1, scope: 'granularVoice1' },
+  granularV1PitchJitter:   { level: 1, scope: 'granularVoice1' },
+  granularV1PitchQuantize: { level: 1, scope: 'granularVoice1' },
+  granularV1ReverseChance: { level: 1, scope: 'granularVoice1' },
+  granularV1Bloom:         { level: 1, scope: 'granularVoice1' },
+  granularV1Glide:         { level: 1, scope: 'granularVoice1' },
+  granularV1CloudStyle:    { level: 1, scope: 'granularVoice1' },
+  granularV1AnchorPattern: { level: 1, scope: 'granularVoice1' },
+  granularV1LoopCrossfade: { level: 1, scope: 'granularVoice1' },
   granularV1Density:       { level: 1, scope: 'granularVoice1' },
   granularV1TempoSync:     { level: 1, scope: 'granularVoice1' },
   granularV1TempoDiv:      { level: 1, scope: 'granularVoice1' },
@@ -1093,7 +1183,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV1RecordLFORate: { level: 1, scope: 'granularVoice1' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Granular Voice 2 Engine (21 params)
+  // L1: Granular Voice 2 Engine
   // ═══════════════════════════════════════════════════════════════════════
   granularV2Mode:          { level: 1, scope: 'granularVoice2' },
   granularV2Slice:         { level: 1, scope: 'granularVoice2' },
@@ -1106,6 +1196,20 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV2Blur:          { level: 1, scope: 'granularVoice2' },
   granularV2GrainOct:      { level: 1, scope: 'granularVoice2' },
   granularV2Spray:         { level: 1, scope: 'granularVoice2' },
+  granularV2PositionSpray: { level: 1, scope: 'granularVoice2' },
+  granularV2TimingSpray:   { level: 1, scope: 'granularVoice2' },
+  granularV2Lookback:      { level: 1, scope: 'granularVoice2' },
+  granularV2WriteGuard:    { level: 1, scope: 'granularVoice2' },
+  granularV2PitchMode:     { level: 1, scope: 'granularVoice2' },
+  granularV2PitchSpread:   { level: 1, scope: 'granularVoice2' },
+  granularV2PitchJitter:   { level: 1, scope: 'granularVoice2' },
+  granularV2PitchQuantize: { level: 1, scope: 'granularVoice2' },
+  granularV2ReverseChance: { level: 1, scope: 'granularVoice2' },
+  granularV2Bloom:         { level: 1, scope: 'granularVoice2' },
+  granularV2Glide:         { level: 1, scope: 'granularVoice2' },
+  granularV2CloudStyle:    { level: 1, scope: 'granularVoice2' },
+  granularV2AnchorPattern: { level: 1, scope: 'granularVoice2' },
+  granularV2LoopCrossfade: { level: 1, scope: 'granularVoice2' },
   granularV2Density:       { level: 1, scope: 'granularVoice2' },
   granularV2TempoSync:     { level: 1, scope: 'granularVoice2' },
   granularV2TempoDiv:      { level: 1, scope: 'granularVoice2' },
@@ -1120,7 +1224,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV2RecordLFORate: { level: 1, scope: 'granularVoice2' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Granular Voice 3 Engine (21 params)
+  // L1: Granular Voice 3 Engine
   // ═══════════════════════════════════════════════════════════════════════
   granularV3Mode:          { level: 1, scope: 'granularVoice3' },
   granularV3Slice:         { level: 1, scope: 'granularVoice3' },
@@ -1133,6 +1237,20 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV3Blur:          { level: 1, scope: 'granularVoice3' },
   granularV3GrainOct:      { level: 1, scope: 'granularVoice3' },
   granularV3Spray:         { level: 1, scope: 'granularVoice3' },
+  granularV3PositionSpray: { level: 1, scope: 'granularVoice3' },
+  granularV3TimingSpray:   { level: 1, scope: 'granularVoice3' },
+  granularV3Lookback:      { level: 1, scope: 'granularVoice3' },
+  granularV3WriteGuard:    { level: 1, scope: 'granularVoice3' },
+  granularV3PitchMode:     { level: 1, scope: 'granularVoice3' },
+  granularV3PitchSpread:   { level: 1, scope: 'granularVoice3' },
+  granularV3PitchJitter:   { level: 1, scope: 'granularVoice3' },
+  granularV3PitchQuantize: { level: 1, scope: 'granularVoice3' },
+  granularV3ReverseChance: { level: 1, scope: 'granularVoice3' },
+  granularV3Bloom:         { level: 1, scope: 'granularVoice3' },
+  granularV3Glide:         { level: 1, scope: 'granularVoice3' },
+  granularV3CloudStyle:    { level: 1, scope: 'granularVoice3' },
+  granularV3AnchorPattern: { level: 1, scope: 'granularVoice3' },
+  granularV3LoopCrossfade: { level: 1, scope: 'granularVoice3' },
   granularV3Density:       { level: 1, scope: 'granularVoice3' },
   granularV3TempoSync:     { level: 1, scope: 'granularVoice3' },
   granularV3TempoDiv:      { level: 1, scope: 'granularVoice3' },
@@ -1147,7 +1265,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV3RecordLFORate: { level: 1, scope: 'granularVoice3' },
 
   // ═══════════════════════════════════════════════════════════════════════
-  // L1: Granular Voice 4 Engine (21 params)
+  // L1: Granular Voice 4 Engine
   // ═══════════════════════════════════════════════════════════════════════
   granularV4Mode:          { level: 1, scope: 'granularVoice4' },
   granularV4Slice:         { level: 1, scope: 'granularVoice4' },
@@ -1160,6 +1278,20 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   granularV4Blur:          { level: 1, scope: 'granularVoice4' },
   granularV4GrainOct:      { level: 1, scope: 'granularVoice4' },
   granularV4Spray:         { level: 1, scope: 'granularVoice4' },
+  granularV4PositionSpray: { level: 1, scope: 'granularVoice4' },
+  granularV4TimingSpray:   { level: 1, scope: 'granularVoice4' },
+  granularV4Lookback:      { level: 1, scope: 'granularVoice4' },
+  granularV4WriteGuard:    { level: 1, scope: 'granularVoice4' },
+  granularV4PitchMode:     { level: 1, scope: 'granularVoice4' },
+  granularV4PitchSpread:   { level: 1, scope: 'granularVoice4' },
+  granularV4PitchJitter:   { level: 1, scope: 'granularVoice4' },
+  granularV4PitchQuantize: { level: 1, scope: 'granularVoice4' },
+  granularV4ReverseChance: { level: 1, scope: 'granularVoice4' },
+  granularV4Bloom:         { level: 1, scope: 'granularVoice4' },
+  granularV4Glide:         { level: 1, scope: 'granularVoice4' },
+  granularV4CloudStyle:    { level: 1, scope: 'granularVoice4' },
+  granularV4AnchorPattern: { level: 1, scope: 'granularVoice4' },
+  granularV4LoopCrossfade: { level: 1, scope: 'granularVoice4' },
   granularV4Density:       { level: 1, scope: 'granularVoice4' },
   granularV4TempoSync:     { level: 1, scope: 'granularVoice4' },
   granularV4TempoDiv:      { level: 1, scope: 'granularVoice4' },
@@ -1238,7 +1370,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1023) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1023`);
+  if (count !== 1139) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1139`);
   }
 }

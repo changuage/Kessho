@@ -24,7 +24,7 @@ import {
 } from './coreSnapshot';
 import { delayNoteToSeconds } from './delayBuses';
 import { resolveDynamicsTargets } from './dynamicsModel';
-import { toDynamicsCharacterParamArray } from './dynamicsCharacterParams';
+import { toDynamicsDriftParamArray } from './dynamicsDriftParams';
 import { toKesshoCoreMidiEventPayload } from './coreMidiEvents';
 import { EarthTexturePlayer } from './earthTexturePlayer';
 import {
@@ -101,7 +101,7 @@ import { clampSequencerRatchet } from './seqEvolveCore';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import { DEFAULT_REVERB_PRE_COMP, getStateValueFromSliderNumber, quantize, type SliderState } from '../ui/state';
 
-const DYNAMICS_CHARACTER_DISABLED_CONFIG_KEY = 'dynamics-character:disabled-v1';
+const DYNAMICS_DRIFT_DISABLED_CONFIG_KEY = 'dynamics-drift:disabled-v1';
 const HOST_PIANO_SAMPLE_CACHE_LIMIT_PER_VARIANT = 16;
 const CORE_SOFT_STOP_SOURCE_FADE_SECONDS = 0.18;
 const CORE_SOFT_STOP_CLEANUP_DELAY_MS = Math.ceil(CORE_SOFT_STOP_SOURCE_FADE_SECONDS * 1000) + 120;
@@ -6518,15 +6518,15 @@ export class CoreEngineHost {
     const node = this.node;
     if (!node) return;
 
-    const enabled = targets.routing.characterPathActive;
-    const params = enabled ? toDynamicsCharacterParamArray(targets) : undefined;
-    const configKey = enabled ? `dynamics-character:${paramConfigKey(params ?? [])}` : DYNAMICS_CHARACTER_DISABLED_CONFIG_KEY;
+    const enabled = targets.routing.degradePathActive;
+    const params = enabled ? toDynamicsDriftParamArray(targets) : undefined;
+    const configKey = enabled ? `dynamics-drift:${paramConfigKey(params ?? [])}` : DYNAMICS_DRIFT_DISABLED_CONFIG_KEY;
     if (this.lastDynamicsModuleConfigKey === configKey) return;
 
     this.lastDynamicsModuleConfigKey = configKey;
     node.port.postMessage({
       type: 'configureModule',
-      module: 'dynamics-character',
+      module: 'dynamics-drift',
       enabled,
       params,
     });

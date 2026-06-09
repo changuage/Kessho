@@ -9,17 +9,16 @@ void KesshoProductEngine::renderFx(float* out_l, float* out_r, uint32_t start, u
       (fx.delay_a_mix > 0.0001f ||
        routing.delay_a_to_delay_b > 0.0001f ||
        routing.delay_to_reverb > 0.0001f ||
-       routing.delay_a_to_granular > 0.0001f);
+       routing.delay_a_to_granular > 0.0001f ||
+       routing.delay_a_to_degrade > 0.0001f);
   const bool delay_b_active =
       fx.delay_b_enabled &&
       (fx.delay_b_mix > 0.0001f ||
        routing.delay_b_to_delay_a > 0.0001f ||
        routing.delay_b_to_reverb > 0.0001f ||
-       routing.delay_b_to_granular > 0.0001f);
-  const bool reverb_or_freeze_active =
-      fx.reverb_mix > 0.0f ||
-      (fx.spectral_freeze_enabled && fx.spectral_freeze_mix > 0.0f);
-  if (!graph_taps_enabled && !delay_a_active && !delay_b_active && !fx.granular_enabled && !reverb_or_freeze_active) {
+       routing.delay_b_to_granular > 0.0001f ||
+       routing.delay_b_to_degrade > 0.0001f);
+  if (!graph_taps_enabled && !delay_a_active && !delay_b_active && !fx.granular_enabled) {
     return;
   }
   const bool granular_feeds_delay =
@@ -43,5 +42,4 @@ void KesshoProductEngine::renderFx(float* out_l, float* out_r, uint32_t start, u
     }
     renderGranular(out_l, out_r, start, frames);
   }
-  renderReverb(out_l, out_r, start, frames);
 }

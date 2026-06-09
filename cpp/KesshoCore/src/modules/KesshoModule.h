@@ -192,8 +192,8 @@ public:
   }
 };
 
-std::unique_ptr<IKesshoModule> createDynamicsCharacterModule();
-std::unique_ptr<IKesshoModule> createDynamicsDegradeModule();
+std::unique_ptr<IKesshoModule> createDynamicsDriftModule();
+std::unique_ptr<IKesshoModule> createDynamicsErosionModule();
 std::unique_ptr<IKesshoModule> createReverbModule();
 std::unique_ptr<IKesshoModule> createGranularModule();
 std::unique_ptr<IKesshoModule> createSpectralFreezeModule();

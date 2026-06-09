@@ -5,7 +5,7 @@ import type { TransportDebugSnapshot } from './transport';
 
 export type DynamicsAnalyserKey =
   | 'input'
-  | 'postCharacter'
+  | 'postDegrade'
   | 'preSaturation'
   | 'postSaturation'
   | 'endInput'
@@ -15,19 +15,19 @@ export type DynamicsWorkletVisualTelemetry = {
   inputPeak: number;
   outputPeak: number;
   wetPeak: number;
-  characterEnv: number;
-  characterReductionDb: number;
+  driftEnv: number;
+  driftReductionDb: number;
   dropoutGain: number;
   endInputPeak: number;
   endOutputPeak: number;
   endReductionDb: number;
   endDetectorDb: number;
-  characterCombRisk: number;
-  characterMinDelayMs: number;
-  characterDiffusion: number;
-  degradeEventEnv: number;
-  degradeEventGainDb: number;
-  degradeProfileAmount: number;
+  driftCombRisk: number;
+  driftMinDelayMs: number;
+  driftDiffusion: number;
+  erosionEventEnv: number;
+  erosionEventGainDb: number;
+  erosionProfileAmount: number;
   endLowReductionDb: number;
   endHighReductionDb: number;
   endClarityBoostDb: number;

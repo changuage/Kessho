@@ -8,7 +8,7 @@
 
 #include "KesshoCore/KesshoCore.h"
 #include "kessho_drum.h"
-#include "kessho_dynamics_character.h"
+#include "kessho_dynamics_drift.h"
 #include "kessho_dynamics_degrade.h"
 #include "kessho_granular.h"
 #include "kessho_lead_fm.h"
@@ -456,22 +456,22 @@ int main() {
 
   require(kessho_module_create(999, sample_rate, block_size) == nullptr, "invalid module type should fail");
   KesshoModule* dynamics_module =
-      kessho_module_create(KESSHO_MODULE_DYNAMICS_CHARACTER, sample_rate, block_size);
+      kessho_module_create(KESSHO_MODULE_DYNAMICS_DRIFT, sample_rate, block_size);
   KesshoModule* dynamics_module_b =
-      kessho_module_create(KESSHO_MODULE_DYNAMICS_CHARACTER, sample_rate, block_size);
-  require(dynamics_module != nullptr, "dynamics character module create failed");
-  require(dynamics_module_b != nullptr, "dynamics character module should allow concurrent instances");
+      kessho_module_create(KESSHO_MODULE_DYNAMICS_DRIFT, sample_rate, block_size);
+  require(dynamics_module != nullptr, "dynamics drift module create failed");
+  require(dynamics_module_b != nullptr, "dynamics drift module should allow concurrent instances");
   require(
-      kessho_module_get_param_count(dynamics_module) == KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT,
-      "dynamics character module param count mismatch");
+      kessho_module_get_param_count(dynamics_module) == KESSHO_DYNAMICS_DRIFT_PARAM_COUNT,
+      "dynamics drift module param count mismatch");
   require(
-      kessho_module_get_param_count(dynamics_module_b) == KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT,
-      "second dynamics character module param count mismatch");
+      kessho_module_get_param_count(dynamics_module_b) == KESSHO_DYNAMICS_DRIFT_PARAM_COUNT,
+      "second dynamics drift module param count mismatch");
   float* dynamics_params = kessho_module_get_params_ptr(dynamics_module);
   float* dynamics_params_b = kessho_module_get_params_ptr(dynamics_module_b);
-  require(dynamics_params != nullptr, "dynamics character module params pointer was null");
-  require(dynamics_params_b != nullptr, "second dynamics character module params pointer was null");
-  require(dynamics_params != dynamics_params_b, "dynamics character module params should be instance-owned");
+  require(dynamics_params != nullptr, "dynamics drift module params pointer was null");
+  require(dynamics_params_b != nullptr, "second dynamics drift module params pointer was null");
+  require(dynamics_params != dynamics_params_b, "dynamics drift module params should be instance-owned");
   dynamics_params[0] = 1.0f; // active
   dynamics_params[2] = 1.0f; // dry
   dynamics_params[3] = 0.0f; // wet
@@ -494,7 +494,7 @@ int main() {
           module_input.data(),
           module_output.data(),
           block_size) == 1,
-      "dynamics character module process failed");
+      "dynamics drift module process failed");
   require(diffRms(module_input, module_output) < 1.0e-7f, "dynamics dry module path should pass input");
   std::vector<float> module_left(block_size);
   std::vector<float> module_right(block_size);
@@ -512,7 +512,7 @@ int main() {
           module_left.data(),
           module_right.data(),
           block_size) == 1,
-      "dynamics character planar module process failed");
+      "dynamics drift planar module process failed");
   require(diffRms(module_left, expected_left) < 1.0e-7f, "dynamics planar dry left path should pass input");
   require(diffRms(module_right, expected_right) < 1.0e-7f, "dynamics planar dry right path should pass input");
   std::fill(module_output.begin(), module_output.end(), 1.0f);
@@ -522,7 +522,7 @@ int main() {
           module_input.data(),
           module_output.data(),
           block_size) == 1,
-      "second dynamics character module process failed");
+      "second dynamics drift module process failed");
   require(maxAbs(module_output) == 0.0f, "second dynamics module params should not affect first module state");
   std::fill(module_left.begin(), module_left.end(), 1.0f);
   std::fill(module_right.begin(), module_right.end(), 1.0f);
@@ -534,40 +534,40 @@ int main() {
           module_left.data(),
           module_right.data(),
           block_size) == 1,
-      "second dynamics character planar module process failed");
+      "second dynamics drift planar module process failed");
   require(maxAbs(module_left) == 0.0f, "second dynamics planar left path should be silent");
   require(maxAbs(module_right) == 0.0f, "second dynamics planar right path should be silent");
   kessho_module_destroy(dynamics_module_b);
   kessho_module_destroy(dynamics_module);
 
-  KesshoModule* degrade_module =
+  KesshoModule* erosion_module =
       kessho_module_create(KESSHO_MODULE_DYNAMICS_DEGRADE, sample_rate, block_size);
-  KesshoModule* degrade_module_b =
+  KesshoModule* erosion_module_b =
       kessho_module_create(KESSHO_MODULE_DYNAMICS_DEGRADE, sample_rate, block_size);
-  require(degrade_module != nullptr, "dynamics degrade module create failed");
-  require(degrade_module_b != nullptr, "dynamics degrade module should allow concurrent instances");
-  require(kessho_module_get_param_count(degrade_module) == 6, "dynamics degrade module param count mismatch");
-  require(kessho_module_get_param_count(degrade_module_b) == 6, "second dynamics degrade module param count mismatch");
-  float* degrade_params = kessho_module_get_params_ptr(degrade_module);
-  float* degrade_params_b = kessho_module_get_params_ptr(degrade_module_b);
+  require(erosion_module != nullptr, "dynamics degrade module create failed");
+  require(erosion_module_b != nullptr, "dynamics degrade module should allow concurrent instances");
+  require(kessho_module_get_param_count(erosion_module) == 6, "dynamics degrade module param count mismatch");
+  require(kessho_module_get_param_count(erosion_module_b) == 6, "second dynamics degrade module param count mismatch");
+  float* degrade_params = kessho_module_get_params_ptr(erosion_module);
+  float* degrade_params_b = kessho_module_get_params_ptr(erosion_module_b);
   require(degrade_params != nullptr, "dynamics degrade module params pointer was null");
   require(degrade_params_b != nullptr, "second dynamics degrade module params pointer was null");
   require(degrade_params != degrade_params_b, "dynamics degrade module params should be instance-owned");
   degrade_params[0] = 1.0f; // enabled
   degrade_params[1] = 0.0f; // mix
-  kessho_module_commit_params(degrade_module);
+  kessho_module_commit_params(erosion_module);
   degrade_params_b[0] = 1.0f; // enabled
   degrade_params_b[1] = 0.8f; // mix
   degrade_params_b[2] = 0.58f; // alias
   degrade_params_b[3] = 0.34f; // generation
   degrade_params_b[4] = 0.3f; // corrosion
   degrade_params_b[5] = 0.25f; // wear
-  kessho_module_commit_params(degrade_module_b);
+  kessho_module_commit_params(erosion_module_b);
 
   std::fill(module_output.begin(), module_output.end(), 0.0f);
   require(
       kessho_module_process_interleaved(
-          degrade_module,
+          erosion_module,
           module_input.data(),
           module_output.data(),
           block_size) == 1,
@@ -576,7 +576,7 @@ int main() {
   std::fill(module_output.begin(), module_output.end(), 0.0f);
   require(
       kessho_module_process_interleaved(
-          degrade_module_b,
+          erosion_module_b,
           module_input.data(),
           module_output.data(),
           block_size) == 1,
@@ -587,7 +587,7 @@ int main() {
   module_right = expected_right;
   require(
       kessho_module_process_planar_stereo(
-          degrade_module,
+          erosion_module,
           module_left.data(),
           module_right.data(),
           module_left.data(),
@@ -596,8 +596,8 @@ int main() {
       "dynamics degrade planar dry module process failed");
   require(diffRms(module_left, expected_left) < 1.0e-7f, "dynamics degrade planar dry left path should pass input");
   require(diffRms(module_right, expected_right) < 1.0e-7f, "dynamics degrade planar dry right path should pass input");
-  kessho_module_destroy(degrade_module_b);
-  kessho_module_destroy(degrade_module);
+  kessho_module_destroy(erosion_module_b);
+  kessho_module_destroy(erosion_module);
 
   KesshoModule* reverb_module =
       kessho_module_create(KESSHO_MODULE_REVERB, sample_rate, block_size);
@@ -686,7 +686,7 @@ int main() {
       kessho_module_create(KESSHO_MODULE_DELAY_A, sample_rate, block_size);
   require(delay_a_module != nullptr, "delay A module create failed");
   require(delay_a_module_b != nullptr, "delay A module should allow concurrent instances");
-  require(kessho_module_get_param_count(delay_a_module) == 16, "delay A module param count mismatch");
+  require(kessho_module_get_param_count(delay_a_module) == 17, "delay A module param count mismatch");
   require(
       kessho_module_get_output_tap_count(delay_a_module) == KESSHO_MODULE_DELAY_A_OUTPUT_TAP_COUNT,
       "delay A output tap count mismatch");
@@ -711,6 +711,7 @@ int main() {
   delay_a_params[13] = 0.25f;  // delay B send
   delay_a_params[14] = 6000.0f;// crossfeed filter
   delay_a_params[15] = 0.2f;   // granular send
+  delay_a_params[16] = 0.2f;   // degrade send
   kessho_module_commit_params(delay_a_module);
   kessho_module_destroy(delay_a_module_b);
 
@@ -746,17 +747,21 @@ int main() {
   std::vector<float> delay_a_cross_r(block_size);
   std::vector<float> delay_a_granular_l(block_size);
   std::vector<float> delay_a_granular_r(block_size);
+  std::vector<float> delay_a_drift_l(block_size);
+  std::vector<float> delay_a_drift_r(block_size);
   std::array<float*, KESSHO_MODULE_DELAY_A_OUTPUT_TAP_COUNT> delay_a_tap_l{
     delay_a_main_l.data(),     // KESSHO_MODULE_DELAY_A_TAP_MAIN
     delay_a_reverb_l.data(),   // KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND
     delay_a_cross_l.data(),    // KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND
     delay_a_granular_l.data(), // KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND
+    delay_a_drift_l.data(), // KESSHO_MODULE_DELAY_A_TAP_DRIFT_SEND
   };
   std::array<float*, KESSHO_MODULE_DELAY_A_OUTPUT_TAP_COUNT> delay_a_tap_r{
     delay_a_main_r.data(),     // KESSHO_MODULE_DELAY_A_TAP_MAIN
     delay_a_reverb_r.data(),   // KESSHO_MODULE_DELAY_A_TAP_REVERB_SEND
     delay_a_cross_r.data(),    // KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND
     delay_a_granular_r.data(), // KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND
+    delay_a_drift_r.data(), // KESSHO_MODULE_DELAY_A_TAP_DRIFT_SEND
   };
   float delay_a_tap_peak = 0.0f;
   for (int block = 0; block < 24; ++block) {
@@ -768,6 +773,8 @@ int main() {
     std::fill(delay_a_reverb_r.begin(), delay_a_reverb_r.end(), 0.0f);
     std::fill(delay_a_cross_l.begin(), delay_a_cross_l.end(), 0.0f);
     std::fill(delay_a_cross_r.begin(), delay_a_cross_r.end(), 0.0f);
+    std::fill(delay_a_drift_l.begin(), delay_a_drift_l.end(), 0.0f);
+    std::fill(delay_a_drift_r.begin(), delay_a_drift_r.end(), 0.0f);
     std::fill(delay_a_granular_l.begin(), delay_a_granular_l.end(), 0.0f);
     std::fill(delay_a_granular_r.begin(), delay_a_granular_r.end(), 0.0f);
     if (block == 0) {
@@ -788,6 +795,7 @@ int main() {
     delay_a_tap_peak = std::max(delay_a_tap_peak, maxAbs(delay_a_reverb_l));
     delay_a_tap_peak = std::max(delay_a_tap_peak, maxAbs(delay_a_cross_l));
     delay_a_tap_peak = std::max(delay_a_tap_peak, maxAbs(delay_a_granular_l));
+    delay_a_tap_peak = std::max(delay_a_tap_peak, maxAbs(delay_a_drift_l));
   }
   require(delay_a_tap_peak > 1.0e-5f, "delay A taps should produce non-zero delayed output");
   kessho_module_destroy(delay_a_module);
@@ -798,7 +806,7 @@ int main() {
       kessho_module_create(KESSHO_MODULE_DELAY_B, sample_rate, block_size);
   require(delay_b_module != nullptr, "delay B module create failed");
   require(delay_b_module_b != nullptr, "delay B module should allow concurrent instances");
-  require(kessho_module_get_param_count(delay_b_module) == 24, "delay B module param count mismatch");
+  require(kessho_module_get_param_count(delay_b_module) == 25, "delay B module param count mismatch");
   require(
       kessho_module_get_output_tap_count(delay_b_module) == KESSHO_MODULE_DELAY_B_OUTPUT_TAP_COUNT,
       "delay B output tap count mismatch");
@@ -823,6 +831,7 @@ int main() {
   delay_b_params[13] = 0.55f;  // warp intensity
   delay_b_params[14] = 0.8f;   // spread
   delay_b_params[15] = 0.0f;   // reserved
+  delay_b_params[24] = 0.2f;   // degrade send
   kessho_module_commit_params(delay_b_module);
   kessho_module_destroy(delay_b_module_b);
 
@@ -836,17 +845,21 @@ int main() {
   std::vector<float> delay_b_cross_r(block_size);
   std::vector<float> delay_b_granular_l(block_size);
   std::vector<float> delay_b_granular_r(block_size);
+  std::vector<float> delay_b_drift_l(block_size);
+  std::vector<float> delay_b_drift_r(block_size);
   std::array<float*, KESSHO_MODULE_DELAY_B_OUTPUT_TAP_COUNT> delay_b_tap_l{
     delay_b_main_l.data(),     // KESSHO_MODULE_DELAY_B_TAP_MAIN
     delay_b_reverb_l.data(),   // KESSHO_MODULE_DELAY_B_TAP_REVERB_SEND
     delay_b_cross_l.data(),    // KESSHO_MODULE_DELAY_B_TAP_DELAY_A_SEND
     delay_b_granular_l.data(), // KESSHO_MODULE_DELAY_B_TAP_GRANULAR_SEND
+    delay_b_drift_l.data(), // KESSHO_MODULE_DELAY_B_TAP_DRIFT_SEND
   };
   std::array<float*, KESSHO_MODULE_DELAY_B_OUTPUT_TAP_COUNT> delay_b_tap_r{
     delay_b_main_r.data(),     // KESSHO_MODULE_DELAY_B_TAP_MAIN
     delay_b_reverb_r.data(),   // KESSHO_MODULE_DELAY_B_TAP_REVERB_SEND
     delay_b_cross_r.data(),    // KESSHO_MODULE_DELAY_B_TAP_DELAY_A_SEND
     delay_b_granular_r.data(), // KESSHO_MODULE_DELAY_B_TAP_GRANULAR_SEND
+    delay_b_drift_r.data(), // KESSHO_MODULE_DELAY_B_TAP_DRIFT_SEND
   };
   float delay_b_tap_peak = 0.0f;
   for (int block = 0; block < 24; ++block) {
@@ -860,6 +873,8 @@ int main() {
     std::fill(delay_b_cross_r.begin(), delay_b_cross_r.end(), 0.0f);
     std::fill(delay_b_granular_l.begin(), delay_b_granular_l.end(), 0.0f);
     std::fill(delay_b_granular_r.begin(), delay_b_granular_r.end(), 0.0f);
+    std::fill(delay_b_drift_l.begin(), delay_b_drift_l.end(), 0.0f);
+    std::fill(delay_b_drift_r.begin(), delay_b_drift_r.end(), 0.0f);
     if (block == 0) {
       delay_b_left[0] = 0.7f;
       delay_b_right[0] = -0.25f;
@@ -878,6 +893,7 @@ int main() {
     delay_b_tap_peak = std::max(delay_b_tap_peak, maxAbs(delay_b_reverb_l));
     delay_b_tap_peak = std::max(delay_b_tap_peak, maxAbs(delay_b_cross_l));
     delay_b_tap_peak = std::max(delay_b_tap_peak, maxAbs(delay_b_granular_l));
+    delay_b_tap_peak = std::max(delay_b_tap_peak, maxAbs(delay_b_drift_l));
   }
   require(delay_b_tap_peak > 1.0e-5f, "delay B taps should produce non-zero delayed output");
   kessho_module_destroy(delay_b_module);
@@ -1362,22 +1378,22 @@ int main() {
   kessho_module_destroy(soundscapes_module_b);
   kessho_module_destroy(soundscapes_module);
 
-  require(dynamics_character_init(static_cast<float>(sample_rate)) == 0, "legacy dynamics init failed");
-  float* legacy_input = dynamics_character_get_input_ptr();
-  float* legacy_output = dynamics_character_get_output_ptr();
-  float* legacy_params = dynamics_character_get_params_ptr();
+  require(dynamics_drift_init(static_cast<float>(sample_rate)) == 0, "legacy dynamics init failed");
+  float* legacy_input = dynamics_drift_get_input_ptr();
+  float* legacy_output = dynamics_drift_get_output_ptr();
+  float* legacy_params = dynamics_drift_get_params_ptr();
   require(legacy_input != nullptr, "legacy dynamics input pointer was null");
   require(legacy_output != nullptr, "legacy dynamics output pointer was null");
   require(legacy_params != nullptr, "legacy dynamics params pointer was null");
   legacy_params[0] = 1.0f; // active
   legacy_params[2] = 1.0f; // dry
   legacy_params[3] = 0.0f; // wet
-  dynamics_character_commit_params();
+  dynamics_drift_commit_params();
   std::copy(module_input.begin(), module_input.end(), legacy_input);
-  dynamics_character_process_block(block_size);
+  dynamics_drift_process_block(block_size);
   std::vector<float> legacy_render(legacy_output, legacy_output + module_input.size());
   require(diffRms(module_input, legacy_render) < 1.0e-7f, "legacy dynamics dry path should pass input");
-  dynamics_character_destroy();
+  dynamics_drift_destroy();
 
   require(dynamics_degrade_init(static_cast<float>(sample_rate)) == 0, "legacy dynamics degrade init failed");
   float* legacy_degrade_input = dynamics_degrade_get_input_ptr();

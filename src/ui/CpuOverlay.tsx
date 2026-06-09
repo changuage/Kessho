@@ -25,7 +25,7 @@ export type CpuOverlayProps = {
 const WORKLET_LABELS: Record<string, string> = {
   // WASM engines
   'reverb-wasm': 'Reverb',
-  'dynamics-character': 'Dynamics',
+  'dynamics-drift': 'Dynamics',
   'lead-fm-wasm': 'Lead FM',
   'pad-wasm': 'Pad',
   'drum-wasm': 'Drums',
@@ -41,7 +41,7 @@ const WORKLET_LABELS: Record<string, string> = {
 /** Preferred display order */
 const DISPLAY_ORDER = [
   // FX group
-  'reverb-wasm', 'spectral-freeze-wasm', 'granular-fx-wasm', 'dynamics-character',
+  'reverb-wasm', 'spectral-freeze-wasm', 'granular-fx-wasm', 'dynamics-drift',
   // Instrument group
   'lead-fm-wasm', 'pad-wasm', 'drum-wasm',
   // Soundscapes group

@@ -23,7 +23,7 @@ export type AudioEngineParamUpdateOptions = {
 const FX_CONTROL_KEY_PATTERNS: readonly RegExp[] = [
   /^(reverb|delayA|delayB)([A-Z]|$)/,
   /^granular(?!Level$)([A-Z]|$)/,
-  /^(dynamics|sidechain|character|degrade|spectralFreeze|endComp)([A-Z]|$)/,
+  /^(dynamics|sidechain|drift|degrade|spectralFreeze|endComp)([A-Z]|$)/,
   /(ReverbSend|DelayASend|DelayBSend|GranularSend)$/,
 ];
 
@@ -102,6 +102,37 @@ const SOURCE_CORE_FULL_SNAPSHOT_KEY_PATTERNS: readonly RegExp[] = [
   /^lead(?:1Preset[AB]|2Preset[CD])Data$/,
 ];
 
+const SOURCE_PRESET_ENDPOINT_FULL_SNAPSHOT_KEYS = new Set<string>([
+  'padPresetA',
+  'padPresetB',
+  'pad2PresetA',
+  'pad2PresetB',
+  'lead1PresetA',
+  'lead1PresetB',
+  'lead2PresetC',
+  'lead2PresetD',
+]);
+
+const SOURCE_PRESET_BODY_FULL_SNAPSHOT_KEYS = new Set<string>([
+  ...KESSHO_PRODUCT_PAD_PARAM_SPECS.flatMap((spec) => [spec.key, spec.pad2Key]),
+  'lead1UseCustomAdsr',
+  'lead1Attack',
+  'lead1Decay',
+  'lead1Sustain',
+  'lead1Release',
+  'lead1AlgorithmMode',
+  'lead2UseCustomAdsr',
+  'lead2Attack',
+  'lead2Decay',
+  'lead2Sustain',
+  'lead2Release',
+  'lead2AlgorithmMode',
+]);
+
+const SOURCE_PRESET_BODY_FULL_SNAPSHOT_KEY_PATTERNS: readonly RegExp[] = [
+  /^lead(?:1Preset[AB]|2Preset[CD])Data$/,
+];
+
 function isFxControlPatchKey(key: string): boolean {
   return FX_CONTROL_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
@@ -127,6 +158,12 @@ function isSourceCoreFullSnapshotPatchKey(key: string): boolean {
     SOURCE_CORE_FULL_SNAPSHOT_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
 
+function isSourcePresetEndpointFullSnapshotPatchKey(key: string): boolean {
+  return SOURCE_PRESET_ENDPOINT_FULL_SNAPSHOT_KEYS.has(key) ||
+    SOURCE_PRESET_BODY_FULL_SNAPSHOT_KEYS.has(key) ||
+    SOURCE_PRESET_BODY_FULL_SNAPSHOT_KEY_PATTERNS.some((pattern) => pattern.test(key));
+}
+
 function requiresSequencerTransportResolvedCommit(patch: Partial<SliderState>): boolean {
   return Object.keys(patch).some(isSequencerTransportTriggerPatchKey);
 }
@@ -136,11 +173,13 @@ function requiresSourceCoreResolvedCommit(patch: Partial<SliderState>): boolean 
 }
 
 function requiresSourceCoreFullSnapshot(
-  _patch: Partial<SliderState>,
-  _reason: ProductSnapshotPatchReason,
+  patch: Partial<SliderState>,
+  reason: ProductSnapshotPatchReason,
   options?: AudioEngineParamUpdateOptions,
 ): boolean {
-  return options?.forceFullSnapshot === true;
+  if (options?.forceFullSnapshot === true) return true;
+  if (reason === 'preset-load') return true;
+  return Object.keys(patch).some(isSourcePresetEndpointFullSnapshotPatchKey);
 }
 
 function inferProductPatchReason(

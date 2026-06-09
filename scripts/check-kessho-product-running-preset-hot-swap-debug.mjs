@@ -110,7 +110,7 @@ function baseHotSwapState() {
   return {
     birds2Enabled: false,
     birdsEnabled: false,
-    characterEnabled: false,
+    driftEnabled: false,
     delayAEnabled: false,
     delayBToASend: 0,
     drumEnabled: false,
@@ -170,7 +170,12 @@ async function waitForStage(records, stage, minCount, timeoutMs = 8000) {
     if (records.filter((record) => record?.stage === stage).length >= minCount) return;
     await delay(100);
   }
-  throw new Error(`Timed out waiting for ${minCount} ${stage} records`);
+  const stageCounts = records.reduce((counts, record) => {
+    const recordStage = record?.stage ?? 'unknown';
+    counts[recordStage] = (counts[recordStage] ?? 0) + 1;
+    return counts;
+  }, {});
+  throw new Error(`Timed out waiting for ${minCount} ${stage} records; observed ${records.filter((record) => record?.stage === stage).length}; stage counts: ${JSON.stringify(stageCounts)}`);
 }
 
 async function main() {
@@ -241,8 +246,9 @@ async function main() {
       return { before, afterPadSequencer, afterPad, afterLead };
     }, baseHotSwapState());
 
-    await waitForStage(productStateRecords, 'product-control-resolved', 2);
-    await waitForStage(productStateRecords, 'encoded-product-snapshot', 2);
+    await waitForStage(productStateRecords, 'product-control-resolved', 3);
+    await waitForStage(productStateRecords, 'encoded-product-snapshot', 3);
+    await waitForStage(productStateRecords, 'snapshot-applied', 2);
     await waitForStage(productStateRecords, 'cpp-product-telemetry', 2);
 
     assert(pageErrors.length === 0, `Page errors were reported: ${pageErrors.join('; ')}`);
@@ -282,14 +288,21 @@ async function main() {
     const productControlRecords = productStateRecords.filter((record) => record.stage === 'product-control-resolved');
     const encodedRecords = productStateRecords.filter((record) => record.stage === 'encoded-product-snapshot');
     const appliedRecords = productStateRecords.filter((record) => record.stage === 'snapshot-applied');
+    const fullSnapshotResolvedRecords = productControlRecords.filter((record) => record.applyMode === 'full-snapshot');
     assert(uniqueValues(productControlRecords, 'padRelevantHash').length >= 2, 'ProductControl Pad hash did not change');
     assert(uniqueValues(productControlRecords, 'leadRelevantHash').length >= 2, 'ProductControl Lead hash did not change');
     assert(uniqueValues(encodedRecords, 'encodedSnapshotHash').length >= 2, 'encoded snapshot hash did not change');
-    assert((result.afterPadSequencer?.diagnostics?.dirtyDiffCount ?? 0) > (result.before?.diagnostics?.dirtyDiffCount ?? 0), 'Pad hot-swap did not apply as a dirty diff');
+    assert(uniqueValues(appliedRecords, 'encodedSnapshotHash').length >= 2, 'worklet-applied snapshot hash did not change');
+    assert(fullSnapshotResolvedRecords.length >= 3, 'ProductControl did not resolve preset-load, Pad, and Lead hot-swaps as full snapshots');
     assert(
-      (result.afterPadSequencer?.diagnostics?.fullSnapshotReloadCount ?? 0) ===
+      (result.afterPadSequencer?.diagnostics?.fullSnapshotReloadCount ?? 0) >
         (result.before?.diagnostics?.fullSnapshotReloadCount ?? 0),
-      'Pad hot-swap triggered a full snapshot reload',
+      'Pad hot-swap did not trigger a full snapshot reload',
+    );
+    assert(
+      (result.afterLead?.diagnostics?.fullSnapshotReloadCount ?? 0) >
+        (result.afterPad?.diagnostics?.fullSnapshotReloadCount ?? 0),
+      'Lead hot-swap did not trigger a full snapshot reload',
     );
 
     const report = {
@@ -298,6 +311,7 @@ async function main() {
       status: 'pass',
       url: vite.url,
       productControlHashCount: productControlRecords.length,
+      productControlFullSnapshotCount: fullSnapshotResolvedRecords.length,
       encodedSnapshotHashCount: encodedRecords.length,
       workletAppliedHashCount: appliedRecords.length,
       pad: {
@@ -326,6 +340,7 @@ async function main() {
         `Status: **${report.status.toUpperCase()}**`,
         '',
         `ProductControl hash records: ${report.productControlHashCount}`,
+        `ProductControl full-snapshot records: ${report.productControlFullSnapshotCount}`,
         `Encoded snapshot records: ${report.encodedSnapshotHashCount}`,
         `Worklet-applied records: ${report.workletAppliedHashCount}`,
         '',

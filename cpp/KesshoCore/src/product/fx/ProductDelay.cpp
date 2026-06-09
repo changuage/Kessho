@@ -43,15 +43,6 @@
     std::fill(module_tap_r[bus], module_tap_r[bus] + frames, 0.0f);
   }
   module->processPlanarStereoTaps(input_l + start, input_r + start, tap_l, tap_r, tap_count, static_cast<int>(frames));
-  mixFxBuffer(
-      module_tap_l[KESSHO_MODULE_DELAY_A_TAP_MAIN],
-      module_tap_r[KESSHO_MODULE_DELAY_A_TAP_MAIN],
-      out_l,
-      out_r,
-      start,
-      frames,
-      1.0f,
-      module == delay_a_module.get() ? kSidechainDelayA : kSidechainDelayB);
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
     const float output_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_MAIN][i];
@@ -62,6 +53,8 @@
     const float cross_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_DELAY_B_SEND][i];
     const float granular_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND][i];
     const float granular_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_GRANULAR_SEND][i];
+    const float drift_l_sample = module_tap_l[KESSHO_MODULE_DELAY_A_TAP_DRIFT_SEND][i];
+    const float drift_r_sample = module_tap_r[KESSHO_MODULE_DELAY_A_TAP_DRIFT_SEND][i];
     if (graph_taps_enabled) {
       graph_output_l[frame] = output_l_sample;
       graph_output_r[frame] = output_r_sample;
@@ -72,6 +65,15 @@
       graph_granular_l[frame] = granular_l_sample;
       graph_granular_r[frame] = granular_r_sample;
     }
+    routeTerminalSample(
+        routing.dynamics_routes[is_delay_a ? kDynamicsRouteDelayA : kDynamicsRouteDelayB],
+        out_l,
+        out_r,
+        frame,
+        output_l_sample,
+        output_r_sample);
+    stem_l[KESSHO_PRODUCT_STEM_FX][frame] += output_l_sample;
+    stem_r[KESSHO_PRODUCT_STEM_FX][frame] += output_r_sample;
     reverb_bus_l[frame] += reverb_l_sample;
     reverb_bus_r[frame] += reverb_r_sample;
     cross_l[frame] += cross_l_sample;
@@ -82,5 +84,7 @@
     }
     granular_bus_l[frame] += granular_l_sample;
     granular_bus_r[frame] += granular_r_sample;
+    degrade_bus_l[frame] += drift_l_sample;
+    degrade_bus_r[frame] += drift_r_sample;
   }
 }

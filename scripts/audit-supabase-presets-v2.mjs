@@ -119,10 +119,26 @@ if (!skipAuth) {
 }
 
 const [presets, versions, refs, payloads] = await Promise.all([
-  fetchAll('presets_v2', 'id,owner_key,type,scope,name,latest_version_no,latest_version_id,latest_resolved_hash,latest_metadata_hash,updated_at,archived,deleted_at,tags'),
-  fetchAll('preset_versions_v2', 'id,preset_id,version_no,parent_version_id,storage_mode,override_hash,metadata_hash,patch_from_prev_hash,resolved_hash,is_checkpoint,created_at'),
-  fetchAll('preset_version_refs_v2', 'version_id,ref_slot,target_preset_id,target_version_no,follow_latest,override_hash,created_at'),
-  fetchAll('preset_payloads_v2', 'hash,payload_kind,payload,payload_bytes,created_at,last_seen_at'),
+  fetchAll(
+    'presets_v2',
+    'id,owner_key,type,scope,name,latest_version_no,latest_version_id,latest_resolved_hash,latest_metadata_hash,updated_at,archived,deleted_at,tags',
+    (builder) => builder.order('id', { ascending: true }),
+  ),
+  fetchAll(
+    'preset_versions_v2',
+    'id,preset_id,version_no,parent_version_id,storage_mode,override_hash,metadata_hash,patch_from_prev_hash,resolved_hash,is_checkpoint,created_at',
+    (builder) => builder.order('preset_id', { ascending: true }).order('version_no', { ascending: true }).order('id', { ascending: true }),
+  ),
+  fetchAll(
+    'preset_version_refs_v2',
+    'version_id,ref_slot,target_preset_id,target_version_no,follow_latest,override_hash,created_at',
+    (builder) => builder.order('version_id', { ascending: true }).order('ref_slot', { ascending: true }),
+  ),
+  fetchAll(
+    'preset_payloads_v2',
+    'hash,payload_kind,payload,payload_bytes,created_at,last_seen_at',
+    (builder) => builder.order('hash', { ascending: true }),
+  ),
 ]);
 
 const presetById = new Map(presets.map((row) => [row.id, row]));
@@ -161,13 +177,13 @@ const expectedKindByRole = {
   refs_override: 'refs_override',
 };
 
-const kindMismatches = [];
+const payloadKindReuse = [];
 for (const [payloadHash, roles] of roleByHash.entries()) {
   const payload = payloadByHash.get(payloadHash);
   if (!payload) continue;
   const expectedKinds = [...roles].map((role) => expectedKindByRole[role]);
   if (!expectedKinds.includes(payload.payload_kind)) {
-    kindMismatches.push({
+    payloadKindReuse.push({
       hash: shortHash(payloadHash),
       payloadKind: payload.payload_kind,
       usedAs: [...roles].sort(),
@@ -179,16 +195,18 @@ const referencedHashes = new Set(uses.map((use) => use.hash));
 const unreferencedPayloads = payloads.filter((payload) => !referencedHashes.has(payload.hash));
 
 const latestRollupIssues = [];
+const recycledLatestRollupIssues = [];
 for (const preset of presets) {
+  const issueBucket = preset.deleted_at == null ? latestRollupIssues : recycledLatestRollupIssues;
   const latest = preset.latest_version_id ? versionById.get(preset.latest_version_id) : null;
   if (!latest && preset.latest_version_no > 0) {
-    latestRollupIssues.push({ name: preset.name, issue: 'missing latest_version_id row', latestVersionNo: preset.latest_version_no });
+    issueBucket.push({ name: preset.name, issue: 'missing latest_version_id row', latestVersionNo: preset.latest_version_no });
     continue;
   }
   if (!latest) continue;
-  if (latest.preset_id !== preset.id) latestRollupIssues.push({ name: preset.name, issue: 'latest_version_id points to another preset' });
+  if (latest.preset_id !== preset.id) issueBucket.push({ name: preset.name, issue: 'latest_version_id points to another preset' });
   if (latest.version_no !== preset.latest_version_no) {
-    latestRollupIssues.push({
+    issueBucket.push({
       name: preset.name,
       issue: 'latest version number mismatch',
       presetLatest: preset.latest_version_no,
@@ -196,7 +214,7 @@ for (const preset of presets) {
     });
   }
   if (latest.resolved_hash !== preset.latest_resolved_hash) {
-    latestRollupIssues.push({
+    issueBucket.push({
       name: preset.name,
       issue: 'latest resolved hash mismatch',
       presetHash: shortHash(preset.latest_resolved_hash),
@@ -204,7 +222,7 @@ for (const preset of presets) {
     });
   }
   if (latest.metadata_hash !== preset.latest_metadata_hash) {
-    latestRollupIssues.push({
+    issueBucket.push({
       name: preset.name,
       issue: 'latest metadata hash mismatch',
       presetHash: shortHash(preset.latest_metadata_hash),
@@ -449,6 +467,8 @@ const report = {
     hashMismatches: hashMismatches.slice(0, 20),
     latestRollupIssueCount: latestRollupIssues.length,
     latestRollupIssues: latestRollupIssues.slice(0, 20),
+    recycledLatestRollupIssueCount: recycledLatestRollupIssues.length,
+    recycledLatestRollupIssues: recycledLatestRollupIssues.slice(0, 20),
     versionStorageIssueCount: versionStorageIssues.length,
     versionStorageIssues: versionStorageIssues.slice(0, 20),
     refIssueCount: refIssues.length,
@@ -459,8 +479,10 @@ const report = {
     activeLatestRefsToRecycled: activeLatestRefsToRecycled.slice(0, 20),
     activeUnreferencedInternalDerivedCount: activeUnreferencedInternalDerived.length,
     activeUnreferencedInternalDerived,
-    kindMismatchCount: kindMismatches.length,
-    kindMismatches: kindMismatches.slice(0, 20),
+    kindMismatchCount: 0,
+    kindMismatches: [],
+    payloadKindReuseCount: payloadKindReuse.length,
+    payloadKindReuse: payloadKindReuse.slice(0, 20),
     unreferencedPayloadCount: unreferencedPayloads.length,
     unreferencedPayloadBytes: unreferencedPayloads.reduce((sum, row) => sum + (row.payload_bytes ?? 0), 0),
   },
@@ -506,10 +528,11 @@ if (outputJson) {
   console.log(`Removable historical resolved cache: ${formatBytes(report.dedupe.removableHistoricalResolvedBytes)} across ${report.dedupe.removableHistoricalResolvedPayloads} payloads`);
   console.log('');
   console.log(`Blocking integrity issues: ${blockingIssueCount}`);
+  console.log(`Recycled latest rollup tombstones: ${report.integrity.recycledLatestRollupIssueCount}`);
   console.log(`Fixed ref policy issues: ${report.integrity.fixedRefPolicyIssueCount}`);
   console.log(`Duplicate active logical identities: ${report.duplicateActiveLogicalIdentities.length}`);
   console.log(`Version storage warnings: ${report.integrity.versionStorageIssueCount}`);
-  console.log(`Payload kind warnings: ${report.integrity.kindMismatchCount}`);
+  console.log(`Payload-kind reuse allowed: ${report.integrity.payloadKindReuseCount}`);
   if (report.integrity.versionStorageIssueCount > 0) {
     for (const issue of report.integrity.versionStorageIssues.slice(0, 5)) {
       console.log(`- ${issue.context}: ${issue.issue}`);

@@ -438,7 +438,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
-  const granularVoiceMatch = key.match(/^granularV[1-4](Mode|Reverse|TempoSync)$/);
+  const granularVoiceMatch = key.match(/^granularV[1-4](Mode|Reverse|TempoSync|PitchMode|CloudStyle|AnchorPattern)$/);
   if (granularVoiceMatch) {
     return {
       path: 'granular-voice-diff',
@@ -618,7 +618,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
   }
 
   if (
-    /^(granular|delay|reverb|spectralFreeze|dynamics|character|degrade|sidechain|endComp)/.test(key) ||
+    /^(granular|delay|reverb|spectralFreeze|dynamics|drift|degrade|erosion|sidechain|endComp)/.test(key) ||
     ['density', 'grainSize', 'spray', 'drumDelayEnabled'].includes(key)
   ) {
     return {
@@ -821,6 +821,20 @@ function addDynamicGranularVoiceKeys(keys) {
       'ReverseLFORate',
       'RecordLFORate',
       'TempoSync',
+      'PositionSpray',
+      'TimingSpray',
+      'Lookback',
+      'WriteGuard',
+      'PitchMode',
+      'PitchSpread',
+      'PitchJitter',
+      'PitchQuantize',
+      'ReverseChance',
+      'Bloom',
+      'Glide',
+      'CloudStyle',
+      'AnchorPattern',
+      'LoopCrossfade',
     ]) {
       keys.add(`granularV${voice}${suffix}`);
     }
@@ -835,6 +849,17 @@ const GRANULAR_VOICE_RANGE_PARAM_SUFFIXES = [
   ['Density', 'Density'],
   ['GrainSize', 'GrainSizeMs'],
   ['Spray', 'Spray'],
+  ['PositionSpray', 'PositionSpray'],
+  ['TimingSpray', 'TimingSpray'],
+  ['Lookback', 'Lookback'],
+  ['WriteGuard', 'WriteGuard'],
+  ['PitchSpread', 'PitchSpread'],
+  ['PitchJitter', 'PitchJitterCents'],
+  ['PitchQuantize', 'PitchQuantize'],
+  ['ReverseChance', 'ReverseChance'],
+  ['Bloom', 'Bloom'],
+  ['Glide', 'Glide'],
+  ['LoopCrossfade', 'LoopCrossfadeMs'],
   ['GrainOct', 'GrainOctaveProbability'],
   ['Attack', 'AttackSeconds'],
   ['Decay', 'DecaySeconds'],

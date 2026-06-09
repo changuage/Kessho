@@ -23,7 +23,7 @@ const padParamLevel = 52;
 const padParamReverbSend = 106;
 const padParamOutputSelect = 107;
 const padOutputTapCount = 6;
-const dynamicsCharacterParamCount = 99;
+const dynamicsDriftParamCount = 99;
 const granularParamCount = 199;
 
 function run(command, args) {
@@ -408,14 +408,14 @@ async function checkWasmExports() {
 
   const dynamicsModule = moduleCreate(1, 48000, frames);
   const dynamicsModuleB = moduleCreate(1, 48000, frames);
-  assert(dynamicsModule !== 0, 'WASM failed to create dynamics character module');
-  assert(dynamicsModuleB !== 0, 'WASM failed to create second dynamics character module');
+  assert(dynamicsModule !== 0, 'WASM failed to create dynamics drift module');
+  assert(dynamicsModuleB !== 0, 'WASM failed to create second dynamics drift module');
   assert(
-    moduleGetParamCount(dynamicsModule) === dynamicsCharacterParamCount,
+    moduleGetParamCount(dynamicsModule) === dynamicsDriftParamCount,
     'WASM dynamics module param count mismatch',
   );
   assert(
-    moduleGetParamCount(dynamicsModuleB) === dynamicsCharacterParamCount,
+    moduleGetParamCount(dynamicsModuleB) === dynamicsDriftParamCount,
     'WASM second dynamics module param count mismatch',
   );
   const dynamicsParamsPtr = moduleGetParamsPtr(dynamicsModule);

@@ -155,7 +155,7 @@ export function controlDomain(key) {
   if (/^granular/.test(key) || /^(grainProbability|maxGrains|grainSize|density|spray|jitter|pitchSpread|wetHPF|wetLPF|feedback)$/.test(key)) return 'fx.granular';
   if (/^delay/.test(key)) return 'fx.delay';
   if (/^reverb/.test(key) || /^spectralFreeze/.test(key) || /^(damping|predelay|width)$/.test(key)) return 'fx.reverb';
-  if (/^(character|degrade|dynamics|endComp|sidechain|masterLimiter)/.test(key)) return 'fx.dynamics';
+  if (/^(drift|degrade|erosion|dynamics|endComp|sidechain|masterLimiter)/.test(key)) return 'fx.dynamics';
   if (/^(synthEuclid|drumEuclid|sequencer|transport|chordProgression|cof|harmony|randomWalk|rootNote|scaleMode|manualScale|tension|phraseLength|chordRate|voicingSpread|waveSpread|detune|seedWindow|synthChordSequencerEnabled|synthOctave|randomness)/.test(key)) return 'music.sequencer';
   if (/^master/.test(key)) return 'master';
   return 'misc';
@@ -190,7 +190,7 @@ export const behaviorEvidenceByAppVisibleGroup = {
   'fx.dynamics|fx-param-diff': {
     owner: 'Product Core Dynamics owner',
     reason: 'Dynamics/sidechain/master-saturation controls must map to C++ params and produce changed render traces.',
-    evidence: ['core:product:fx-depth', 'ProductFxRoutingTests.cpp#requireDynamicsParamSnapshotEventParity', 'ProductFxRoutingTests.cpp#requireDynamicsParamChangesTrace', 'ProductFxRoutingTests.cpp#requireSidechainDucksPadTarget'],
+    evidence: ['core:product:fx-depth', 'ProductFxRoutingTests.cpp#requireDynamicsParamSnapshotEventParity', 'ProductFxRoutingTests.cpp#requireDynamicsParamChangesTrace', 'ProductFxRoutingTests.cpp#requireSidechainDucksTerminalBusOnly'],
   },
   'fx.dynamics|range-event': {
     owner: 'Product Core Dynamics owner',
@@ -557,6 +557,9 @@ export const productDeferredClassifications = [
     patterns: [
       /^(reverbEngine|reverbScaleShimmer)$/,
       /^granular(Preset|PresetBehavior)$/,
+      /^granularVisualDetail$/,
+      /^driftWetHp$/,
+      /^dynamicsBusEnabled$/,
       /^character(Wow|Flutter|Drift|Noise|Hp|Lp|Tone|Saturation|Corrosion|WetHp)$/,
       /^delayBGranularLinked$/,
       /^granularV[1-4]TempoDiv$/,
@@ -692,18 +695,11 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
     'wetLPF',
   ],
   'fx-macro-deferred': [
-    'characterCorrosion',
-    'characterDrift',
-    'characterFlutter',
-    'characterHp',
-    'characterLp',
-    'characterNoise',
-    'characterSaturation',
-    'characterTone',
-    'characterWetHp',
-    'characterWow',
     'delayBGranularLinked',
+    'driftWetHp',
+    'dynamicsBusEnabled',
     'granularPreset',
+    'granularVisualDetail',
     'granularV1TempoDiv',
     'granularV2TempoDiv',
     'granularV3TempoDiv',
@@ -755,42 +751,6 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
 };
 
 export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
-  {
-    key: 'characterCorrosion',
-    reason: 'Legacy Character alias; canonical Product/preset control is degradeCorrosion.',
-  },
-  {
-    key: 'characterDrift',
-    reason: 'Legacy Character alias; canonical Product/preset control is degradeDrift.',
-  },
-  {
-    key: 'characterFlutter',
-    reason: 'Legacy Character alias; canonical Product/preset control is degradeFlutter.',
-  },
-  {
-    key: 'characterHp',
-    reason: 'Legacy Character alias; canonical Product/preset control is degradeHp.',
-  },
-  {
-    key: 'characterLp',
-    reason: 'Legacy Character alias; canonical Product/preset control is degradeLp.',
-  },
-  {
-    key: 'characterNoise',
-    reason: 'Legacy Character alias; canonical Product/preset control is degradeNoise.',
-  },
-  {
-    key: 'characterSaturation',
-    reason: 'Legacy Character alias; canonical Product/preset control is degradeSaturation.',
-  },
-  {
-    key: 'characterTone',
-    reason: 'Legacy Character alias; canonical Product/preset control is degradeTone.',
-  },
-  {
-    key: 'characterWow',
-    reason: 'Legacy Character alias; canonical Product/preset control is degradeWow.',
-  },
   {
     key: 'chordProgressionHits',
     reason: 'Derived chord progression Euclidean template helper; Product Core receives explicit enabled steps/pattern state.',
@@ -844,8 +804,52 @@ export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
     reason: 'Structured manual harmony control resolves into Product Core harmony manual-intent events instead of ParamRegistry scalar params.',
   },
   {
+    key: 'sidechainDelayATarget',
+    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+  },
+  {
+    key: 'sidechainDelayBTarget',
+    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+  },
+  {
+    key: 'sidechainGranularTarget',
+    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+  },
+  {
+    key: 'sidechainLead1Target',
+    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+  },
+  {
+    key: 'sidechainLead2Target',
+    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+  },
+  {
+    key: 'sidechainPad1Target',
+    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+  },
+  {
+    key: 'sidechainPad2Target',
+    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+  },
+  {
+    key: 'sidechainPianoTarget',
+    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+  },
+  {
+    key: 'sidechainReverbTarget',
+    reason: 'Legacy per-target sidechain bridge field; current presets target sidechain via the Routing page Dynamics bus.',
+  },
+  {
     key: 'drumMembraneScaleBlend',
     reason: 'Drum membrane module extra not present in the current Product Drum ABI.',
+  },
+  {
+    key: 'dynamicsEnabled',
+    reason: 'Legacy Texture page runtime gate; presets are owned by separate L3 Degrade, Dynamics Bus, and Master FX scopes.',
+  },
+  {
+    key: 'granularVisualDetail',
+    reason: 'Visualizer CPU/detail preference; not part of the audible granular preset state.',
   },
   {
     key: 'granularPreset',
@@ -873,11 +877,12 @@ export const FACTORY_PRESET_PAYLOAD_SCOPE_CHECKS = [
   { path: 'src/ui/drums/drumSourcePresets.ts', declarationName: 'DRUMS_SOURCE_PRESETS', level: 3, scope: 'drums' },
   { path: 'src/ui/drums/drumSourcePresets.ts', declarationName: 'DRUM_KIT_PRESETS', level: 2, scope: 'drumKit' },
   { path: 'src/ui/dynamics/dynamicsPresets.ts', declarationName: 'DYNAMICS_SIDECHAIN_PRESETS', level: 1, scope: 'dynamicsSidechain' },
-  { path: 'src/ui/dynamics/dynamicsPresets.ts', declarationName: 'DYNAMICS_CHARACTER_PRESETS', level: 1, scope: 'dynamicsCharacter' },
-  { path: 'src/ui/dynamics/dynamicsPresets.ts', declarationName: 'DYNAMICS_DEGRADE_PRESETS', level: 1, scope: 'dynamicsDegrade' },
+  { path: 'src/ui/dynamics/dynamicsPresets.ts', declarationName: 'DYNAMICS_DRIFT_PRESETS', level: 2, scope: 'dynamicsDrift' },
+  { path: 'src/ui/dynamics/dynamicsPresets.ts', declarationName: 'DYNAMICS_EROSION_PRESETS', level: 2, scope: 'dynamicsErosion' },
   { path: 'src/ui/dynamics/dynamicsPresets.ts', declarationName: 'DYNAMICS_SATURATION_PRESETS', level: 1, scope: 'dynamicsSaturation' },
   { path: 'src/ui/dynamics/dynamicsPresets.ts', declarationName: 'DYNAMICS_END_CHAIN_PRESETS', level: 1, scope: 'dynamicsEndChain' },
-  { path: 'src/ui/dynamics/dynamicsPresets.ts', declarationName: 'DYNAMICS_SOURCE_PRESETS', level: 3, scope: 'dynamics' },
+  { path: 'src/ui/dynamics/dynamicsPresets.ts', declarationName: 'DYNAMICS_MASTER_FX_PRESETS', level: 3, scope: 'masterFx' },
+  { path: 'src/ui/dynamics/dynamicsPresets.ts', declarationName: 'DYNAMICS_DEGRADE_PRESETS', level: 3, scope: 'degrade' },
   { path: 'src/ui/earth/earthPresets.ts', declarationName: 'EARTH_KIT_PRESETS', level: 2, scope: 'earthKit' },
   { path: 'src/ui/reverb/ReverbPage.tsx', declarationName: 'REVERB_CHARACTER_PRESETS', level: 3, scope: 'reverb' },
   { path: 'src/ui/synth/synthSourcePresets.ts', declarationName: 'SYNTH_SOURCE_PRESETS', level: 3, scope: 'synth' },

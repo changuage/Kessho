@@ -3286,22 +3286,22 @@ private struct KesshoMacDynamicsPage: View {
     private var degradeCard: some View {
         KesshoMacCard(title: "Degrade", symbol: "scribble.variable", accent: accent) {
             VStack(spacing: 10) {
-                KesshoMacToggleRow(title: "Degrade Engine", symbol: "power", accent: accent, isOn: $appState.state.degradeEnabled)
+                KesshoMacToggleRow(title: "Degrade Engine", symbol: "power", accent: accent, isOn: $appState.state.erosionEnabled)
                 KesshoMacSliderGrid(specs: [
-                    .init("Mix", key: "degradeMix", icon: "slider.horizontal.3", value: \.degradeMix),
-                    .init("Age", key: "degradeAge", icon: "clock", value: \.degradeAge),
-                    .init("Generation", key: "degradeGeneration", icon: "square.stack.3d.up", value: \.degradeGeneration),
-                    .init("Alias", key: "degradeAlias", icon: "waveform.badge.magnifyingglass", value: \.degradeAlias),
-                    .init("Wow", key: "degradeWow", icon: "waveform", value: \.degradeWow),
-                    .init("Flutter", key: "degradeFlutter", icon: "wind", value: \.degradeFlutter),
-                    .init("Drift", key: "degradeDrift", icon: "arrow.triangle.2.circlepath", value: \.degradeDrift),
-                    .init("Wobble", key: "degradeWobbleSpeed", icon: "speedometer", value: \.degradeWobbleSpeed),
-                    .init("Tone", key: "degradeTone", icon: "slider.horizontal.3", value: \.degradeTone),
+                    .init("Mix", key: "erosionMix", icon: "slider.horizontal.3", value: \.erosionMix),
+                    .init("Age", key: "erosionAge", icon: "clock", value: \.erosionAge),
+                    .init("Generation", key: "erosionGeneration", icon: "square.stack.3d.up", value: \.erosionGeneration),
+                    .init("Alias", key: "erosionAlias", icon: "waveform.badge.magnifyingglass", value: \.erosionAlias),
+                    .init("Wow", key: "erosionWow", icon: "waveform", value: \.erosionWow),
+                    .init("Flutter", key: "erosionFlutter", icon: "wind", value: \.erosionFlutter),
+                    .init("Drift", key: "erosionDrift", icon: "arrow.triangle.2.circlepath", value: \.erosionDrift),
+                    .init("Wobble", key: "erosionWobbleSpeed", icon: "speedometer", value: \.erosionWobbleSpeed),
+                    .init("Tone", key: "erosionTone", icon: "slider.horizontal.3", value: \.erosionTone),
                     .init("HP", key: "degradeHp", icon: "line.3.horizontal.decrease.circle", value: \.degradeHp),
                     .init("LP", key: "degradeLp", icon: "line.3.horizontal.decrease", value: \.degradeLp),
-                    .init("Noise", key: "degradeNoise", icon: "waveform.path", value: \.degradeNoise),
-                    .init("Clip", key: "degradeSaturation", icon: "bolt", value: \.degradeSaturation),
-                    .init("Corrosion", key: "degradeCorrosion", icon: "aqi.medium", value: \.degradeCorrosion),
+                    .init("Noise", key: "erosionNoise", icon: "waveform.path", value: \.erosionNoise),
+                    .init("Clip", key: "erosionSaturation", icon: "bolt", value: \.erosionSaturation),
+                    .init("Corrosion", key: "erosionCorrosion", icon: "aqi.medium", value: \.erosionCorrosion),
                 ], accent: accent, columns: 2)
             }
         }

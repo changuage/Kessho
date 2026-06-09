@@ -6,7 +6,7 @@ export type { ParamLevel } from './ParamRegistry';
 import type { PresetEntry } from './types';
 import type { SliderState } from '../ui/state';
 import { presetValuesEqual } from './presetUtils';
-import { normalizeDynamicsDegradeAliases, normalizeDynamicsQualityFields } from '../audio/dynamicsModel';
+import { normalizeDynamicsErosionAliases, normalizeDynamicsQualityFields } from '../audio/dynamicsModel';
 
 function getDirectKeys(level: ParamLevel, scope?: string): string[] {
   if (level === 4) {
@@ -41,7 +41,7 @@ export function applyParams(
 ): SliderState {
   const merged: Record<string, unknown> = { ...state };
   const normalizedData = normalizeDynamicsQualityFields(
-    normalizeDynamicsDegradeAliases(presetData),
+    normalizeDynamicsErosionAliases(presetData),
   );
   for (const [key, info] of Object.entries(PARAM_REGISTRY)) {
     if (info.level === level && (!scope || info.scope === scope)) {
@@ -78,15 +78,15 @@ export function validateRegistry(stateKeys: string[]): {
   const dropped = new Set([
     'leadTimbre',
     'granularPreset',
-    'characterWow',
-    'characterFlutter',
-    'characterDrift',
-    'characterTone',
-    'characterHp',
-    'characterLp',
-    'characterNoise',
-    'characterSaturation',
-    'characterCorrosion',
+    'sidechainDelayATarget',
+    'sidechainDelayBTarget',
+    'sidechainGranularTarget',
+    'sidechainLead1Target',
+    'sidechainLead2Target',
+    'sidechainPad1Target',
+    'sidechainPad2Target',
+    'sidechainPianoTarget',
+    'sidechainReverbTarget',
   ]);
 
   return {
@@ -118,10 +118,16 @@ const CASCADE_CHILDREN: Record<string, { level: ParamLevel; scope: string }[]> =
   granular: [
     { level: 2, scope: 'granularKit' },
   ],
-  dynamics: [
+  dynamicsBus: [
+    { level: 1, scope: 'dynamicsEq1' },
+    { level: 1, scope: 'dynamicsEq2' },
     { level: 1, scope: 'dynamicsSidechain' },
-    { level: 1, scope: 'dynamicsCharacter' },
-    { level: 1, scope: 'dynamicsDegrade' },
+  ],
+  degrade: [
+    { level: 2, scope: 'dynamicsDrift' },
+    { level: 2, scope: 'dynamicsErosion' },
+  ],
+  masterFx: [
     { level: 1, scope: 'dynamicsSaturation' },
     { level: 1, scope: 'dynamicsEndChain' },
   ],
@@ -235,7 +241,7 @@ export function applyCascade(
 ): SliderState {
   const merged: Record<string, unknown> = { ...state };
   const normalizedData = normalizeDynamicsQualityFields(
-    normalizeDynamicsDegradeAliases(presetData),
+    normalizeDynamicsErosionAliases(presetData),
   );
   for (const key of getCascadeKeys(level, scope)) {
     if (key in normalizedData) {

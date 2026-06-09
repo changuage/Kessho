@@ -74,14 +74,17 @@ class CoreProductRuntimeAdapter {
       if (previousSource.assetId !== nextSource.assetId) return 'source-structure-change';
       if (this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return 'source-structure-change';
       if (
+        this.padOrLeadSourcePresetEndpointIdsChanged(previousSource, nextSource)
+      ) return 'source-structure-change';
+      if (
         coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource) &&
         !canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)
       ) return 'source-structure-change';
       const soundscapeFadeCanCoverPatchRemoval =
         soundscapeFadeCanCoverAssetRemoval && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape;
       if (!soundscapeFadeCanCoverPatchRemoval) {
-        if (this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'pad-override-change';
-        if (this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'lead-override-change';
+        if (this.padOverrideChanged(previousSource, nextSource)) return 'pad-override-change';
+        if (this.leadOverrideChanged(previousSource, nextSource)) return 'lead-override-change';
         if (this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'drum-override-change';
       }
     }
@@ -105,6 +108,7 @@ class CoreProductRuntimeAdapter {
       if (previousSource.sourceId !== nextSource.sourceId) return false;
       if (previousSource.assetId !== nextSource.assetId) return false;
       if (this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return false;
+      if (this.padOrLeadSourcePresetEndpointIdsChanged(previousSource, nextSource)) return false;
       if (
         coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource) &&
         !canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)
@@ -112,8 +116,8 @@ class CoreProductRuntimeAdapter {
       const soundscapeFadeCanCoverPatchRemoval =
         soundscapeFadeCanCoverAssetRemoval && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape;
       if (!soundscapeFadeCanCoverPatchRemoval) {
-        if (this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false;
-        if (this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false;
+        if (this.padOverrideChanged(previousSource, nextSource)) return false;
+        if (this.leadOverrideChanged(previousSource, nextSource)) return false;
         if (this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false;
       }
     }
@@ -129,6 +133,21 @@ class CoreProductRuntimeAdapter {
       Object.prototype.hasOwnProperty.call(sourceShape, 'exactLeadParams') ||
       Object.prototype.hasOwnProperty.call(sourceShape, 'exactDrumParamCount') ||
       Object.prototype.hasOwnProperty.call(sourceShape, 'exactDrumParams');
+  }
+
+  private padOrLeadSourcePresetEndpointIdsChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
+    const padOrLeadSource =
+      previous.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 ||
+      previous.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ||
+      previous.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 ||
+      previous.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2 ||
+      next.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 ||
+      next.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ||
+      next.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 ||
+      next.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2;
+    if (!padOrLeadSource) return false;
+    return (previous.sourcePresetAId ?? 0) !== (next.sourcePresetAId ?? 0) ||
+      (previous.sourcePresetBId ?? 0) !== (next.sourcePresetBId ?? 0);
   }
 
   private padOverrideChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
@@ -437,7 +456,7 @@ class CoreProductRuntimeAdapter {
 
   private snapshotRuntimeParamValue(snapshot: CoreProductSnapshot, path: string): SnapshotScalar {
     if (path.startsWith('fx.')) return this.fxRuntimeParamValue(snapshot.fx, path.slice(3));
-    if (path.startsWith('routing.')) return this.requiredSnapshotScalar(snapshot.routing, path.slice(8), path);
+    if (path.startsWith('routing.')) return this.requiredSnapshotScalar(snapshot.routing, this.flattenRuntimePath(path.slice(8)), path);
     if (path.startsWith('master.')) return this.requiredSnapshotScalar(snapshot.master, path.slice(7), path);
     throw new Error(`Unsupported Product Core runtime diff path ${path}`);
   }
@@ -457,6 +476,12 @@ class CoreProductRuntimeAdapter {
     const sidechainTargetMatch = /^sidechain\.targets\.(pad1|pad2|lead1|lead2|piano|granular|delayA|delayB|reverb)$/.exec(path);
     if (sidechainTargetMatch) {
       const key = `sidechain${this.capitalized(sidechainTargetMatch[1]!)}Target`;
+      return this.requiredSnapshotScalar(fx, key, `fx.${path}`);
+    }
+    const dynamicsDegradeChildMatch = /^dynamics\.degrade\.(drift|erosion)\.(.+)$/.exec(path);
+    if (dynamicsDegradeChildMatch) {
+      const [, child, field] = dynamicsDegradeChildMatch;
+      const key = `dynamics${this.capitalized(child!)}${this.capitalized(field!)}`;
       return this.requiredSnapshotScalar(fx, key, `fx.${path}`);
     }
     return this.requiredSnapshotScalar(fx, this.flattenRuntimePath(path), `fx.${path}`);

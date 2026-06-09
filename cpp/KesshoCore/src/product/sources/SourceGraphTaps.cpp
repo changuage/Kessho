@@ -25,6 +25,8 @@
     diffuse_bus_active_this_block = true;
     return;
   }
+  (void)ducked_left;
+  (void)ducked_right;
 
   struct SourceGraphTapPointers {
     float* dry_l;
@@ -67,18 +69,6 @@
     }
   }();
   if (taps.dry_l == nullptr) return;
-
-  const uint32_t sidechain_target = sidechainTargetForSource(source_id);
-  if (graph_taps_enabled && sidechain_target < kSidechainTargetCount) {
-    const bool lead_source = source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
-    const float duck_gain_for_tap = lead_source ? sidechainGain(sidechain_target, frame) : 1.0f;
-    const float sidechain_output_left = lead_source ? dry_left * duck_gain_for_tap : ducked_left;
-    const float sidechain_output_right = lead_source ? dry_right * duck_gain_for_tap : ducked_right;
-    graph_sidechain_input_l[sidechain_target][frame] += dry_left;
-    graph_sidechain_input_r[sidechain_target][frame] += dry_right;
-    graph_sidechain_output_l[sidechain_target][frame] += sidechain_output_left;
-    graph_sidechain_output_r[sidechain_target][frame] += sidechain_output_right;
-  }
 
   if (graph_taps_enabled) {
     taps.dry_l[frame] += dry_left;

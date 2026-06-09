@@ -651,7 +651,7 @@ public final class AudioEngine {
         masterMixer.installTap(onBus: 0, bufferSize: 128, format: format) { [weak self] buffer, _ in
             guard let self else { return }
             let dynamicsActive = self.currentParams.dynamicsEnabled &&
-                (self.currentParams.characterEnabled || self.currentParams.degradeEnabled || self.currentParams.endCompEnabled)
+                (self.currentParams.characterEnabled || self.currentParams.erosionEnabled || self.currentParams.endCompEnabled)
             let freezeActive = self.currentParams.spectralFreezeEnabled
             guard dynamicsActive || freezeActive else { return }
             if dynamicsActive {
@@ -686,7 +686,7 @@ public final class AudioEngine {
         }
 
         let dynamicsActive = currentParams.dynamicsEnabled &&
-            (currentParams.characterEnabled || currentParams.degradeEnabled || currentParams.endCompEnabled)
+            (currentParams.characterEnabled || currentParams.erosionEnabled || currentParams.endCompEnabled)
         let freezeActive = currentParams.spectralFreezeEnabled
         if dynamicsActive || freezeActive {
             setupDynamicsCharacterInputTap(format: format)

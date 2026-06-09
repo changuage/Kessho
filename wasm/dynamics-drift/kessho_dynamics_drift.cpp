@@ -1,4 +1,4 @@
-#include "kessho_dynamics_character.h"
+#include "kessho_dynamics_drift.h"
 
 #include <algorithm>
 #include <cmath>
@@ -13,20 +13,20 @@ namespace {
 
 constexpr int kDelayMaxSamples = 24576;
 constexpr float kMinFreq = 8.0f;
-constexpr float kCharacterFullWetMinDelayS = 0.0030f;
-constexpr float kCharacterMixedMinDelayS = 0.0105f;
-constexpr float kCharacterMaxDelayS = 0.075f;
+constexpr float kDriftFullWetMinDelayS = 0.0030f;
+constexpr float kDriftMixedMinDelayS = 0.0105f;
+constexpr float kDriftMaxDelayS = 0.075f;
 
 enum ParamIndex {
     P_ACTIVE = 0,
     P_ALLPASS_ACTIVE,
     P_DRY,
     P_WET,
-    P_DEGRADE_MIX,
-    P_DEGRADE_ALIAS,
-    P_DEGRADE_GENERATION,
-    P_DEGRADE_CORROSION,
-    P_DEGRADE_WEAR,
+    P_EROSION_MIX,
+    P_EROSION_ALIAS,
+    P_EROSION_GENERATION,
+    P_EROSION_CORROSION,
+    P_EROSION_WEAR,
     P_NOISE_GAIN,
     P_JITTER_DEPTH,
     P_RANDOM_DRIFT_FILTER_HZ,
@@ -100,17 +100,17 @@ enum ParamIndex {
     P_END_COMP_DETECTOR_TILT,
     P_END_COMP_AUTO_MAKEUP,
     P_END_COMP_PROGRAM_RELEASE,
-    P_CHARACTER_QUALITY,
-    P_CHARACTER_ANTI_COMB,
-    P_CHARACTER_DIFFUSION,
-    P_DEGRADE_UI_MIX,
-    P_DEGRADE_COLOR_INFLUENCE,
-    P_DEGRADE_MOTION_INFLUENCE,
-    P_DEGRADE_FAILURE_INFLUENCE,
-    P_DEGRADE_QUALITY,
-    P_DEGRADE_EVENT_AMOUNT,
-    P_DEGRADE_PROFILE_AMOUNT,
-    P_DEGRADE_DITHER_AMOUNT,
+    P_DRIFT_QUALITY,
+    P_DRIFT_ANTI_COMB,
+    P_DRIFT_DIFFUSION,
+    P_EROSION_UI_MIX,
+    P_EROSION_COLOR_INFLUENCE,
+    P_EROSION_MOTION_INFLUENCE,
+    P_EROSION_FAILURE_INFLUENCE,
+    P_EROSION_QUALITY,
+    P_EROSION_EVENT_AMOUNT,
+    P_EROSION_PROFILE_AMOUNT,
+    P_EROSION_DITHER_AMOUNT,
     P_END_COMP_MODE,
     P_END_COMP_PEAK_BLEND,
     P_END_COMP_CLARITY,
@@ -130,12 +130,12 @@ enum TelemetryIndex {
     T_END_OUTPUT_PEAK,
     T_END_GR_DB,
     T_END_DETECTOR_DB,
-    T_CHARACTER_COMB_RISK,
-    T_CHARACTER_MIN_DELAY_MS,
-    T_CHARACTER_DIFFUSION,
-    T_DEGRADE_EVENT_ENV,
-    T_DEGRADE_EVENT_GAIN_DB,
-    T_DEGRADE_PROFILE_AMOUNT,
+    T_DRIFT_COMB_RISK,
+    T_DRIFT_MIN_DELAY_MS,
+    T_DRIFT_DIFFUSION,
+    T_EROSION_EVENT_ENV,
+    T_EROSION_EVENT_GAIN_DB,
+    T_EROSION_PROFILE_AMOUNT,
     T_END_LOW_GR_DB,
     T_END_HIGH_GR_DB,
     T_END_CLARITY_BOOST_DB,
@@ -229,19 +229,19 @@ void set_peaking(Biquad& f, float freq, float q, float gain_db, float sr) {
     f.set(1.0f + alpha * a, -2.0f * c, 1.0f - alpha * a, 1.0f + alpha / a, -2.0f * c, 1.0f - alpha / a);
 }
 
-struct DynamicsCharacterState {
+struct DynamicsDriftState {
     float sample_rate = 44100.0f;
     int delay_size = 8192;
     int write_pos = 0;
     unsigned int rng = 0x6d2b79f5u;
     long long sample_clock = 0;
 
-    float input[KESSHO_DYNAMICS_CHARACTER_MAX_BLOCK_SIZE * 2] = {0.0f};
-    float output[KESSHO_DYNAMICS_CHARACTER_MAX_BLOCK_SIZE * 2] = {0.0f};
-    float param_buffer[KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT] = {0.0f};
-    float telemetry[KESSHO_DYNAMICS_CHARACTER_TELEMETRY_COUNT] = {0.0f};
-    float target[KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT] = {0.0f};
-    float current[KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT] = {0.0f};
+    float input[KESSHO_DYNAMICS_DRIFT_MAX_BLOCK_SIZE * 2] = {0.0f};
+    float output[KESSHO_DYNAMICS_DRIFT_MAX_BLOCK_SIZE * 2] = {0.0f};
+    float param_buffer[KESSHO_DYNAMICS_DRIFT_PARAM_COUNT] = {0.0f};
+    float telemetry[KESSHO_DYNAMICS_DRIFT_TELEMETRY_COUNT] = {0.0f};
+    float target[KESSHO_DYNAMICS_DRIFT_PARAM_COUNT] = {0.0f};
+    float current[KESSHO_DYNAMICS_DRIFT_PARAM_COUNT] = {0.0f};
     int params_initialized = 0;
 
     float main_delay[kDelayMaxSamples] = {0.0f};
@@ -295,9 +295,9 @@ struct DynamicsCharacterState {
     float water_cv_spread_target = 0.0f;
     long long next_water_cv_sample = 0;
 
-    float degrade_held[2] = {0.0f, 0.0f};
-    float degrade_phase[2] = {1.0f, 1.0f};
-    float degrade_lp[2] = {0.0f, 0.0f};
+    float erosion_held[2] = {0.0f, 0.0f};
+    float erosion_phase[2] = {1.0f, 1.0f};
+    float erosion_lp[2] = {0.0f, 0.0f};
     float media_event_env = 0.0f;
     float media_event_target = 0.0f;
     float media_event_lp_l = 0.0f;
@@ -308,34 +308,34 @@ struct DynamicsCharacterState {
     Biquad media_notch_l, media_notch_r;
 };
 
-DynamicsCharacterState g_default;
-thread_local DynamicsCharacterState* g_current = &g_default;
+DynamicsDriftState g_default;
+thread_local DynamicsDriftState* g_current = &g_default;
 
-DynamicsCharacterState& dynamics_character_current_state() {
+DynamicsDriftState& dynamics_drift_current_state() {
     return *g_current;
 }
 
-struct ScopedDynamicsCharacterState {
-    explicit ScopedDynamicsCharacterState(DynamicsCharacterState& next) : previous(g_current) {
+struct ScopedDynamicsDriftState {
+    explicit ScopedDynamicsDriftState(DynamicsDriftState& next) : previous(g_current) {
         g_current = &next;
     }
 
-    ~ScopedDynamicsCharacterState() {
+    ~ScopedDynamicsDriftState() {
         g_current = previous;
     }
 
-    DynamicsCharacterState* previous;
+    DynamicsDriftState* previous;
 };
 
-#define g dynamics_character_current_state()
+#define g dynamics_drift_current_state()
 
-void init_dynamics_character_state(DynamicsCharacterState& state, float sample_rate) {
+void init_dynamics_drift_state(DynamicsDriftState& state, float sample_rate) {
     std::memset(&state, 0, sizeof(state));
     state.sample_rate = std::isfinite(sample_rate) && sample_rate > 1000.0f ? sample_rate : 44100.0f;
     state.delay_size = static_cast<int>(std::fmin(static_cast<float>(kDelayMaxSamples), state.sample_rate * 0.12f));
     if (state.delay_size < 512) state.delay_size = 512;
-    state.degrade_phase[0] = 1.0f;
-    state.degrade_phase[1] = 1.0f;
+    state.erosion_phase[0] = 1.0f;
+    state.erosion_phase[1] = 1.0f;
     state.compressor_gain = 1.0f;
     state.end_comp_gain = 1.0f;
     state.end_detector_hp_cache = -1.0f;
@@ -396,7 +396,7 @@ void pan_mono(float x, float pan, float& l, float& r) {
     r = x * std::sin(angle);
 }
 
-float saturate_character(float x, float amount, float corrosion) {
+float saturate_drift(float x, float amount, float corrosion) {
     const float sat = clamp01(amount);
     const float rust = clamp01(corrosion);
     if (sat <= 0.0001f && rust <= 0.0001f) return x;
@@ -675,7 +675,7 @@ void process_two_band_clarity_comp(float& l, float& r, const float* p) {
     g.telemetry[T_END_HIGH_GR_DB] = std::fmax(g.telemetry[T_END_HIGH_GR_DB], -high_gr_db);
 }
 
-float degrade_sample(
+float erosion_sample(
     float dry,
     int channel,
     float mix,
@@ -696,13 +696,13 @@ float degrade_sample(
 
     if (clean_media_path) {
         if (wear <= 0.0001f) {
-            g.degrade_held[channel] = dry;
-            g.degrade_lp[channel] = dry;
+            g.erosion_held[channel] = dry;
+            g.erosion_lp[channel] = dry;
             return dry;
         }
-        const float lp = g.degrade_lp[channel] + (dry - g.degrade_lp[channel]) * alpha;
-        g.degrade_held[channel] = dry;
-        g.degrade_lp[channel] = lp;
+        const float lp = g.erosion_lp[channel] + (dry - g.erosion_lp[channel]) * alpha;
+        g.erosion_held[channel] = dry;
+        g.erosion_lp[channel] = lp;
         return dry + (lp - dry) * mix;
     }
 
@@ -713,8 +713,8 @@ float degrade_sample(
     const float inv_fold_tanh = 1.0f / std::fmax(1.0e-6f, std::tanh(fold));
     const float shaper_trim = 1.0f / (1.0f + (fold - 1.0f) * (0.52f + mix * 0.22f) + destructive * 0.18f + damage * 0.12f);
 
-    float held = g.degrade_held[channel];
-    float phase = g.degrade_phase[channel] + rate_ratio;
+    float held = g.erosion_held[channel];
+    float phase = g.erosion_phase[channel] + rate_ratio;
     if (phase >= 1.0f) {
         phase -= std::floor(phase);
         held = dry;
@@ -727,25 +727,25 @@ float degrade_sample(
         (1.0f - destructive * 0.35f);
     float wet = std::round((held + dither_noise * dither_amt) * quant_steps) / quant_steps;
     wet = std::tanh(wet * fold) * inv_fold_tanh * shaper_trim;
-    float lp = g.degrade_lp[channel] + (wet - g.degrade_lp[channel]) * alpha;
+    float lp = g.erosion_lp[channel] + (wet - g.erosion_lp[channel]) * alpha;
     wet = lp + (wet - lp) * (0.08f + damage * 0.18f + destructive * 0.18f);
 
-    g.degrade_held[channel] = held;
-    g.degrade_phase[channel] = phase;
-    g.degrade_lp[channel] = lp;
+    g.erosion_held[channel] = held;
+    g.erosion_phase[channel] = phase;
+    g.erosion_lp[channel] = lp;
     return dry + (wet - dry) * mix;
 }
 
 void process_media_event(float& wet_l, float& wet_r, const float* p) {
-    const bool use_media_events = p[P_DEGRADE_QUALITY] >= 1.0f && p[P_DEGRADE_EVENT_AMOUNT] > 0.001f;
+    const bool use_media_events = p[P_EROSION_QUALITY] >= 1.0f && p[P_EROSION_EVENT_AMOUNT] > 0.001f;
     const float event_amount = use_media_events
         ? clamp01(
-              p[P_DEGRADE_FAILURE_INFLUENCE] *
-              clamp01(p[P_DEGRADE_EVENT_AMOUNT]) *
+              p[P_EROSION_FAILURE_INFLUENCE] *
+              clamp01(p[P_EROSION_EVENT_AMOUNT]) *
               (0.35f +
-               p[P_DEGRADE_CORROSION] * 0.35f +
-               p[P_DEGRADE_GENERATION] * 0.20f +
-               p[P_DEGRADE_WEAR] * 0.10f))
+               p[P_EROSION_CORROSION] * 0.35f +
+               p[P_EROSION_GENERATION] * 0.20f +
+               p[P_EROSION_WEAR] * 0.10f))
         : 0.0f;
 
     if (event_amount <= 0.0001f) {
@@ -792,11 +792,11 @@ void process_media_event(float& wet_l, float& wet_r, const float* p) {
 }
 
 void update_media_profile_filters(const float* p) {
-    const float media = clamp01(p[P_DEGRADE_COLOR_INFLUENCE]) * clamp01(p[P_DEGRADE_PROFILE_AMOUNT]);
-    const float failure = clamp01(p[P_DEGRADE_FAILURE_INFLUENCE]);
-    const float gen = clamp01(p[P_DEGRADE_GENERATION]);
-    const float wear = clamp01(p[P_DEGRADE_WEAR]);
-    const float cor = clamp01(p[P_DEGRADE_CORROSION]);
+    const float media = clamp01(p[P_EROSION_COLOR_INFLUENCE]) * clamp01(p[P_EROSION_PROFILE_AMOUNT]);
+    const float failure = clamp01(p[P_EROSION_FAILURE_INFLUENCE]);
+    const float gen = clamp01(p[P_EROSION_GENERATION]);
+    const float wear = clamp01(p[P_EROSION_WEAR]);
+    const float cor = clamp01(p[P_EROSION_CORROSION]);
 
     const float notch_freq = 2600.0f + gen * 1400.0f + cor * 900.0f;
     const float notch_q = 0.65f + wear * 1.25f;
@@ -976,42 +976,42 @@ void process_compressor(float& l, float& r, const float* p, float attack_coeff, 
 
 extern "C" {
 
-struct KesshoDynamicsCharacterInstance {
-    DynamicsCharacterState state;
+struct KesshoDynamicsDriftInstance {
+    DynamicsDriftState state;
 };
 
-int dynamics_character_init(float sample_rate) {
-    init_dynamics_character_state(g, sample_rate);
+int dynamics_drift_init(float sample_rate) {
+    init_dynamics_drift_state(g, sample_rate);
     return 0;
 }
 
-int dynamics_character_reset(float sample_rate) {
-    init_dynamics_character_state(g, sample_rate);
+int dynamics_drift_reset(float sample_rate) {
+    init_dynamics_drift_state(g, sample_rate);
     return 0;
 }
 
-void dynamics_character_destroy(void) {
+void dynamics_drift_destroy(void) {
     std::memset(&g, 0, sizeof(g));
 }
 
-float* dynamics_character_get_input_ptr(void) {
+float* dynamics_drift_get_input_ptr(void) {
     return g.input;
 }
 
-float* dynamics_character_get_output_ptr(void) {
+float* dynamics_drift_get_output_ptr(void) {
     return g.output;
 }
 
-float* dynamics_character_get_params_ptr(void) {
+float* dynamics_drift_get_params_ptr(void) {
     return g.param_buffer;
 }
 
-float* dynamics_character_get_telemetry_ptr(void) {
+float* dynamics_drift_get_telemetry_ptr(void) {
     return g.telemetry;
 }
 
-void dynamics_character_commit_params(void) {
-    for (int i = 0; i < KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT; ++i) {
+void dynamics_drift_commit_params(void) {
+    for (int i = 0; i < KESSHO_DYNAMICS_DRIFT_PARAM_COUNT; ++i) {
         const float value = std::isfinite(g.param_buffer[i]) ? g.param_buffer[i] : 0.0f;
         g.target[i] = value;
         if (!g.params_initialized) g.current[i] = value;
@@ -1019,10 +1019,10 @@ void dynamics_character_commit_params(void) {
     g.params_initialized = 1;
 }
 
-void dynamics_character_process_block(int block_size) {
+void dynamics_drift_process_block(int block_size) {
     if (block_size <= 0) return;
-    if (block_size > KESSHO_DYNAMICS_CHARACTER_MAX_BLOCK_SIZE) block_size = KESSHO_DYNAMICS_CHARACTER_MAX_BLOCK_SIZE;
-    for (int i = 0; i < KESSHO_DYNAMICS_CHARACTER_TELEMETRY_COUNT; ++i) {
+    if (block_size > KESSHO_DYNAMICS_DRIFT_MAX_BLOCK_SIZE) block_size = KESSHO_DYNAMICS_DRIFT_MAX_BLOCK_SIZE;
+    for (int i = 0; i < KESSHO_DYNAMICS_DRIFT_TELEMETRY_COUNT; ++i) {
         g.telemetry[i] = 0.0f;
     }
     g.telemetry[T_DROPOUT_GAIN] = 1.0f;
@@ -1035,7 +1035,7 @@ void dynamics_character_process_block(int block_size) {
     }
 
     const float block_smooth = smooth_coeff(0.035f, g.sample_rate, block_size);
-    for (int i = 0; i < KESSHO_DYNAMICS_CHARACTER_PARAM_COUNT; ++i) {
+    for (int i = 0; i < KESSHO_DYNAMICS_DRIFT_PARAM_COUNT; ++i) {
         g.current[i] += (g.target[i] - g.current[i]) * block_smooth;
     }
     g.current[P_ACTIVE] = g.target[P_ACTIVE];
@@ -1044,21 +1044,21 @@ void dynamics_character_process_block(int block_size) {
     float* p = g.current;
     update_random_hold(p);
     update_water_cv(p);
-    const float degrade_color = clamp01(p[P_DEGRADE_COLOR_INFLUENCE]);
-    const float degrade_motion = clamp01(p[P_DEGRADE_MOTION_INFLUENCE]);
-    const float degrade_failure = clamp01(p[P_DEGRADE_FAILURE_INFLUENCE]);
-    const float anti_comb = clamp01(p[P_CHARACTER_ANTI_COMB]);
-    const float diffusion = clamp01(p[P_CHARACTER_DIFFUSION]);
-    const float character_quality = clampf(p[P_CHARACTER_QUALITY], 0.0f, 2.0f);
-    const bool use_cubic_delay = character_quality >= 1.0f;
-    const bool use_microtap = character_quality >= 2.0f && diffusion > 0.001f;
-    const float degrade_quality = clampf(p[P_DEGRADE_QUALITY], 0.0f, 2.0f);
-    const bool use_profile_eq = degrade_quality >= 1.0f && p[P_DEGRADE_PROFILE_AMOUNT] > 0.001f;
-    const bool use_dither = degrade_quality >= 1.0f && p[P_DEGRADE_DITHER_AMOUNT] > 0.001f;
+    const float degrade_color = clamp01(p[P_EROSION_COLOR_INFLUENCE]);
+    const float degrade_motion = clamp01(p[P_EROSION_MOTION_INFLUENCE]);
+    const float degrade_failure = clamp01(p[P_EROSION_FAILURE_INFLUENCE]);
+    const float anti_comb = clamp01(p[P_DRIFT_ANTI_COMB]);
+    const float diffusion = clamp01(p[P_DRIFT_DIFFUSION]);
+    const float drift_quality = clampf(p[P_DRIFT_QUALITY], 0.0f, 2.0f);
+    const bool use_cubic_delay = drift_quality >= 1.0f;
+    const bool use_microtap = drift_quality >= 2.0f && diffusion > 0.001f;
+    const float erosion_quality = clampf(p[P_EROSION_QUALITY], 0.0f, 2.0f);
+    const bool use_profile_eq = erosion_quality >= 1.0f && p[P_EROSION_PROFILE_AMOUNT] > 0.001f;
+    const bool use_dither = erosion_quality >= 1.0f && p[P_EROSION_DITHER_AMOUNT] > 0.001f;
     g.telemetry[T_END_BAND_SPLIT_HZ] = clampf(p[P_END_COMP_BAND_SPLIT_HZ], 90.0f, 320.0f);
     g.telemetry[T_END_COMP_MODE] = p[P_END_COMP_MODE];
-    g.telemetry[T_CHARACTER_DIFFUSION] = diffusion;
-    g.telemetry[T_DEGRADE_PROFILE_AMOUNT] = clamp01(p[P_DEGRADE_PROFILE_AMOUNT]);
+    g.telemetry[T_DRIFT_DIFFUSION] = diffusion;
+    g.telemetry[T_EROSION_PROFILE_AMOUNT] = clamp01(p[P_EROSION_PROFILE_AMOUNT]);
     const float water_amount = clamp01(p[P_SHALLOW] + p[P_ABYSS]);
     const float water_delay_cv_mix = clamp01(p[P_SHALLOW] * 0.72f + p[P_ABYSS] * 0.54f);
     const float water_cv_lag = std::fmax(
@@ -1075,9 +1075,9 @@ void dynamics_character_process_block(int block_size) {
     const float drift_coeff = one_pole_coeff(p[P_RANDOM_DRIFT_FILTER_HZ], g.sample_rate);
     const float tape_wow_blend = clamp01(
         degrade_motion * 0.58f +
-        p[P_DEGRADE_WEAR] * degrade_color * 0.24f +
-        p[P_DEGRADE_GENERATION] * degrade_color * 0.10f +
-        p[P_DEGRADE_CORROSION] * degrade_failure * 0.08f
+        p[P_EROSION_WEAR] * degrade_color * 0.24f +
+        p[P_EROSION_GENERATION] * degrade_color * 0.10f +
+        p[P_EROSION_CORROSION] * degrade_failure * 0.08f
     );
     const float water_random_blend = clamp01(p[P_SHALLOW] * 0.52f + p[P_ABYSS] * 0.62f);
     const float water_flutter_blend = clamp01(p[P_SHALLOW] * 0.42f + p[P_ABYSS] * 0.46f);
@@ -1185,20 +1185,20 @@ void dynamics_character_process_block(int block_size) {
         const float wet_gain_for_comb = clamp01(p[P_WET]);
         const float comb_risk = clamp01(4.0f * dry_gain_for_comb * wet_gain_for_comb);
         const float min_delay_s =
-            kCharacterFullWetMinDelayS +
-            (kCharacterMixedMinDelayS - kCharacterFullWetMinDelayS) * comb_risk * anti_comb;
+            kDriftFullWetMinDelayS +
+            (kDriftMixedMinDelayS - kDriftFullWetMinDelayS) * comb_risk * anti_comb;
         const float main_delay_s = clampf(
             p[P_BASE_DELAY] + (wow * p[P_WOW_DEPTH] + flutter * p[P_FLUTTER_DEPTH] + main_delay_cv * p[P_RANDOM_DELAY_DEPTH] + g.drift_noise * p[P_RANDOM_DRIFT_DEPTH] + jitter) * delay_mod_trim,
             min_delay_s,
-            kCharacterMaxDelayS
+            kDriftMaxDelayS
         );
         const float spread_delay_s = clampf(
             p[P_SPREAD_DELAY] + (wow * p[P_WOW_DEPTH] + (flutter + flutter_random) * p[P_FLUTTER_DEPTH] + spread_delay_cv * p[P_RANDOM_SPREAD_DELAY_DEPTH] + g.drift_noise * p[P_RANDOM_DRIFT_DEPTH] + jitter) * delay_mod_trim,
             min_delay_s,
-            kCharacterMaxDelayS
+            kDriftMaxDelayS
         );
-        g.telemetry[T_CHARACTER_COMB_RISK] = std::fmax(g.telemetry[T_CHARACTER_COMB_RISK], comb_risk);
-        g.telemetry[T_CHARACTER_MIN_DELAY_MS] = std::fmax(g.telemetry[T_CHARACTER_MIN_DELAY_MS], min_delay_s * 1000.0f);
+        g.telemetry[T_DRIFT_COMB_RISK] = std::fmax(g.telemetry[T_DRIFT_COMB_RISK], comb_risk);
+        g.telemetry[T_DRIFT_MIN_DELAY_MS] = std::fmax(g.telemetry[T_DRIFT_MIN_DELAY_MS], min_delay_s * 1000.0f);
 
         g.main_delay[g.write_pos] = mono;
         g.spread_delay[g.write_pos] = mono;
@@ -1218,10 +1218,10 @@ void dynamics_character_process_block(int block_size) {
             const float spread_offset_s = -0.00110f + g.water_cv_main * 0.00020f;
             const float main_b = read_delay_cubic(
                 g.main_delay,
-                clampf(main_delay_s + main_offset_s, min_delay_s, kCharacterMaxDelayS) * g.sample_rate);
+                clampf(main_delay_s + main_offset_s, min_delay_s, kDriftMaxDelayS) * g.sample_rate);
             const float spread_b = read_delay_cubic(
                 g.spread_delay,
-                clampf(spread_delay_s + spread_offset_s, min_delay_s, kCharacterMaxDelayS) * g.sample_rate);
+                clampf(spread_delay_s + spread_offset_s, min_delay_s, kDriftMaxDelayS) * g.sample_rate);
             main_read = main_read + (main_b - main_read) * decor_amount;
             spread_read = spread_read + (spread_b - spread_read) * decor_amount;
         }
@@ -1245,25 +1245,25 @@ void dynamics_character_process_block(int block_size) {
         float wet_r = main_r + spread_r;
         g.telemetry[T_WET_PEAK] = std::fmax(g.telemetry[T_WET_PEAK], std::fmax(std::fabs(wet_l), std::fabs(wet_r)));
 
-        const float dither_amount = use_dither ? p[P_DEGRADE_DITHER_AMOUNT] : 0.0f;
-        wet_l = degrade_sample(
+        const float dither_amount = use_dither ? p[P_EROSION_DITHER_AMOUNT] : 0.0f;
+        wet_l = erosion_sample(
             wet_l,
             0,
-            p[P_DEGRADE_MIX],
-            p[P_DEGRADE_ALIAS] * degrade_failure,
-            p[P_DEGRADE_GENERATION] * degrade_color,
-            p[P_DEGRADE_CORROSION] * degrade_failure,
-            p[P_DEGRADE_WEAR] * degrade_color,
+            p[P_EROSION_MIX],
+            p[P_EROSION_ALIAS] * degrade_failure,
+            p[P_EROSION_GENERATION] * degrade_color,
+            p[P_EROSION_CORROSION] * degrade_failure,
+            p[P_EROSION_WEAR] * degrade_color,
             white_l,
             dither_amount);
-        wet_r = degrade_sample(
+        wet_r = erosion_sample(
             wet_r,
             1,
-            p[P_DEGRADE_MIX],
-            p[P_DEGRADE_ALIAS] * degrade_failure,
-            p[P_DEGRADE_GENERATION] * degrade_color,
-            p[P_DEGRADE_CORROSION] * degrade_failure,
-            p[P_DEGRADE_WEAR] * degrade_color,
+            p[P_EROSION_MIX],
+            p[P_EROSION_ALIAS] * degrade_failure,
+            p[P_EROSION_GENERATION] * degrade_color,
+            p[P_EROSION_CORROSION] * degrade_failure,
+            p[P_EROSION_WEAR] * degrade_color,
             white_r,
             dither_amount);
 
@@ -1274,8 +1274,8 @@ void dynamics_character_process_block(int block_size) {
             wet_l = g.media_notch_l.process(wet_l);
             wet_r = g.media_notch_r.process(wet_r);
         }
-        g.telemetry[T_DEGRADE_EVENT_ENV] = std::fmax(g.telemetry[T_DEGRADE_EVENT_ENV], g.media_event_env);
-        g.telemetry[T_DEGRADE_EVENT_GAIN_DB] = std::fmin(g.telemetry[T_DEGRADE_EVENT_GAIN_DB], g.media_event_gain_db);
+        g.telemetry[T_EROSION_EVENT_ENV] = std::fmax(g.telemetry[T_EROSION_EVENT_ENV], g.media_event_env);
+        g.telemetry[T_EROSION_EVENT_GAIN_DB] = std::fmin(g.telemetry[T_EROSION_EVENT_GAIN_DB], g.media_event_gain_db);
 
         wet_l = g.hp_l.process(wet_l);
         wet_r = g.hp_r.process(wet_r);
@@ -1294,8 +1294,8 @@ void dynamics_character_process_block(int block_size) {
 
         process_compressor(wet_l, wet_r, p, comp_attack_coeff, comp_release_coeff);
 
-        wet_l = saturate_character(wet_l, p[P_SATURATION], p[P_CORROSION]);
-        wet_r = saturate_character(wet_r, p[P_SATURATION], p[P_CORROSION]);
+        wet_l = saturate_drift(wet_l, p[P_SATURATION], p[P_CORROSION]);
+        wet_r = saturate_drift(wet_r, p[P_SATURATION], p[P_CORROSION]);
 
         const float dropout_dip = std::fmax(0.0f, -g.dropout_noise);
         const float dropout_gain = clampf(p[P_DROPOUT_GAIN] - dropout_dip * p[P_DROPOUT_DEPTH], 0.0f, 1.25f);
@@ -1323,49 +1323,49 @@ void dynamics_character_process_block(int block_size) {
     }
 }
 
-KesshoDynamicsCharacterInstance* dynamics_character_instance_create(float sample_rate) {
-    auto* instance = new (std::nothrow) KesshoDynamicsCharacterInstance{};
+KesshoDynamicsDriftInstance* dynamics_drift_instance_create(float sample_rate) {
+    auto* instance = new (std::nothrow) KesshoDynamicsDriftInstance{};
     if (instance == nullptr) return nullptr;
-    init_dynamics_character_state(instance->state, sample_rate);
+    init_dynamics_drift_state(instance->state, sample_rate);
     return instance;
 }
 
-void dynamics_character_instance_destroy(KesshoDynamicsCharacterInstance* instance) {
+void dynamics_drift_instance_destroy(KesshoDynamicsDriftInstance* instance) {
     delete instance;
 }
 
-int dynamics_character_instance_reset(KesshoDynamicsCharacterInstance* instance, float sample_rate) {
+int dynamics_drift_instance_reset(KesshoDynamicsDriftInstance* instance, float sample_rate) {
     if (instance == nullptr) return 0;
-    init_dynamics_character_state(instance->state, sample_rate);
+    init_dynamics_drift_state(instance->state, sample_rate);
     return 1;
 }
 
-float* dynamics_character_instance_get_input_ptr(KesshoDynamicsCharacterInstance* instance) {
+float* dynamics_drift_instance_get_input_ptr(KesshoDynamicsDriftInstance* instance) {
     return instance != nullptr ? instance->state.input : nullptr;
 }
 
-float* dynamics_character_instance_get_output_ptr(KesshoDynamicsCharacterInstance* instance) {
+float* dynamics_drift_instance_get_output_ptr(KesshoDynamicsDriftInstance* instance) {
     return instance != nullptr ? instance->state.output : nullptr;
 }
 
-float* dynamics_character_instance_get_params_ptr(KesshoDynamicsCharacterInstance* instance) {
+float* dynamics_drift_instance_get_params_ptr(KesshoDynamicsDriftInstance* instance) {
     return instance != nullptr ? instance->state.param_buffer : nullptr;
 }
 
-float* dynamics_character_instance_get_telemetry_ptr(KesshoDynamicsCharacterInstance* instance) {
+float* dynamics_drift_instance_get_telemetry_ptr(KesshoDynamicsDriftInstance* instance) {
     return instance != nullptr ? instance->state.telemetry : nullptr;
 }
 
-void dynamics_character_instance_commit_params(KesshoDynamicsCharacterInstance* instance) {
+void dynamics_drift_instance_commit_params(KesshoDynamicsDriftInstance* instance) {
     if (instance == nullptr) return;
-    ScopedDynamicsCharacterState scoped(instance->state);
-    dynamics_character_commit_params();
+    ScopedDynamicsDriftState scoped(instance->state);
+    dynamics_drift_commit_params();
 }
 
-void dynamics_character_instance_process_block(KesshoDynamicsCharacterInstance* instance, int block_size) {
+void dynamics_drift_instance_process_block(KesshoDynamicsDriftInstance* instance, int block_size) {
     if (instance == nullptr) return;
-    ScopedDynamicsCharacterState scoped(instance->state);
-    dynamics_character_process_block(block_size);
+    ScopedDynamicsDriftState scoped(instance->state);
+    dynamics_drift_process_block(block_size);
 }
 
 } // extern "C"

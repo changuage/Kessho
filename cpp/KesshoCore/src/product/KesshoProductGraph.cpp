@@ -119,6 +119,7 @@ void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t 
   const float delay_a_send = std::max(0.0f, source.delay_a_send);
   const float delay_b_send = std::max(0.0f, source.delay_b_send);
   const float granular_send = std::max(0.0f, source.granular_send);
+  const float degrade_send = std::max(0.0f, source.degrade_send);
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
     const float source_gate = sourceEnableGainForFrame(source, transport.sample_frame + i);
@@ -132,9 +133,10 @@ void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t 
     const float delay_b_r = dry_r * delay_b_send;
     const float granular_l = dry_l * granular_send;
     const float granular_r = dry_r * granular_send;
+    const float drift_l = dry_l * degrade_send;
+    const float drift_r = dry_r * degrade_send;
 
-    out_l[frame] += dry_l;
-    out_r[frame] += dry_r;
+    routeTerminalSample(dynamicsBusForSource(KESSHO_PRODUCT_SOURCE_DRUM), out_l, out_r, frame, dry_l, dry_r);
     stem_l[KESSHO_PRODUCT_STEM_DRUM][frame] += dry_l;
     stem_r[KESSHO_PRODUCT_STEM_DRUM][frame] += dry_r;
     reverb_bus_l[frame] += reverb_l;
@@ -145,6 +147,8 @@ void KesshoProductEngine::renderDrumModule(float* out_l, float* out_r, uint32_t 
     delay_b_bus_r[frame] += delay_b_r;
     granular_bus_l[frame] += granular_l;
     granular_bus_r[frame] += granular_r;
+    degrade_bus_l[frame] += drift_l;
+    degrade_bus_r[frame] += drift_r;
 
     if (graph_taps_enabled) {
       graph_drum_dry_l[frame] += dry_l;
@@ -233,10 +237,12 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
   const float water_delay_a_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteDelayA, 0.0f);
   const float water_delay_b_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteDelayB, 0.0f);
   const float water_granular_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteGranular, 0.0f);
+  const float water_degrade_send = soundscapeLayerRouteSend(source, kSoundscapeLayerWater, kSoundscapeLayerRouteDegrade, 0.0f);
   const float insects_reverb_send = soundscapeLayerRouteSend(source, kSoundscapeLayerInsects, kSoundscapeLayerRouteReverb, 0.0f);
   const float insects_delay_a_send = soundscapeLayerRouteSend(source, kSoundscapeLayerInsects, kSoundscapeLayerRouteDelayA, 0.0f);
   const float insects_delay_b_send = soundscapeLayerRouteSend(source, kSoundscapeLayerInsects, kSoundscapeLayerRouteDelayB, 0.0f);
   const float insects_granular_send = soundscapeLayerRouteSend(source, kSoundscapeLayerInsects, kSoundscapeLayerRouteGranular, 0.0f);
+  const float insects_degrade_send = soundscapeLayerRouteSend(source, kSoundscapeLayerInsects, kSoundscapeLayerRouteDegrade, 0.0f);
 
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
@@ -276,8 +282,20 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
       graph_soundscape_layer_granular_send_r[kSoundscapeLayerInsects][frame] += insects_prefader_r * insects_granular_send;
     }
 
-    out_l[frame] += water_out_l + insects_out_l;
-    out_r[frame] += water_out_r + insects_out_r;
+    routeTerminalSample(
+        dynamicsBusForSoundscapeLayer(kSoundscapeLayerWater),
+        out_l,
+        out_r,
+        frame,
+        water_out_l,
+        water_out_r);
+    routeTerminalSample(
+        dynamicsBusForSoundscapeLayer(kSoundscapeLayerInsects),
+        out_l,
+        out_r,
+        frame,
+        insects_out_l,
+        insects_out_r);
     stem_l[KESSHO_PRODUCT_STEM_SOUNDSCAPE][frame] += water_out_l + insects_out_l;
     stem_r[KESSHO_PRODUCT_STEM_SOUNDSCAPE][frame] += water_out_r + insects_out_r;
     reverb_bus_l[frame] += water_l * water_reverb_send + insects_prefader_l * insects_reverb_send;
@@ -288,6 +306,8 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
     delay_b_bus_r[frame] += water_r * water_delay_b_send + insects_prefader_r * insects_delay_b_send;
     granular_bus_l[frame] += water_l * water_granular_send + insects_prefader_l * insects_granular_send;
     granular_bus_r[frame] += water_r * water_granular_send + insects_prefader_r * insects_granular_send;
+    degrade_bus_l[frame] += water_l * water_degrade_send + insects_prefader_l * insects_degrade_send;
+    degrade_bus_r[frame] += water_r * water_degrade_send + insects_prefader_r * insects_degrade_send;
   }
 }
 

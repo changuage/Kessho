@@ -62,6 +62,7 @@ uint32_t KesshoProductEngine::triggerVoice(
   source.delay_a_send = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID, source.delay_a_send, resolved_seed);
   source.delay_b_send = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DELAY_BSEND_ID, source.delay_b_send, resolved_seed);
   source.granular_send = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID, source.granular_send, resolved_seed);
+  source.degrade_send = resolveModulatedValue(source_id, KESSHO_PRODUCT_PARAM_SOURCE_DEGRADE_SEND_ID, source.degrade_send, resolved_seed);
   if (source_was_idle) {
     primeGranularControlsForSourceStart(source_id);
   }

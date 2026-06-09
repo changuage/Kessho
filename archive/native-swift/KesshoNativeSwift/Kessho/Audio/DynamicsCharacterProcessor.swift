@@ -38,9 +38,9 @@ final class DynamicsCharacterProcessor {
         case allpassActive
         case dry
         case wet
-        case degradeMix
+        case erosionMix
         case workletAlias
-        case rawDegradeGeneration
+        case rawErosionGeneration
         case rawCorrosion
         case rawMediaWear
         case noiseGain
@@ -320,7 +320,7 @@ final class DynamicsCharacterProcessor {
         }
 
         let characterEnabled = state.dynamicsEnabled && state.characterEnabled
-        let degradeEnabled = state.dynamicsEnabled && state.degradeEnabled
+        let erosionEnabled = state.dynamicsEnabled && state.erosionEnabled
         let rawMode = state.characterMode
         let mode = characterEnabled && (rawMode == "abyssWater" || rawMode == "shallowWater") ? rawMode : "clean"
         let modeActive = mode != "clean"
@@ -330,50 +330,50 @@ final class DynamicsCharacterProcessor {
         let defaults = characterDefaults(for: mode)
 
         let characterMix = characterEnabled ? clamp01(state.characterMix) : 0
-        let degradeMix = degradeEnabled ? clamp01(state.degradeMix) : 0
-        let wet = clamp01(1 - (1 - characterMix) * (1 - degradeMix))
-        let degradeWetRatio = wet > 0.0001 ? clamp01(degradeMix / wet) : 0
-        let degradeInfluence = sqrt(degradeMix)
+        let erosionMix = erosionEnabled ? clamp01(state.erosionMix) : 0
+        let wet = clamp01(1 - (1 - characterMix) * (1 - erosionMix))
+        let erosionWetRatio = wet > 0.0001 ? clamp01(erosionMix / wet) : 0
+        let erosionInfluence = sqrt(erosionMix)
         let dry = 1 - wet
         let characterAge = characterEnabled ? max(clamp01(state.characterAge), modeActive ? defaults.age : 0) : 0
-        let rawDegradeAge = degradeEnabled ? clamp01(state.degradeAge) : 0
-        let rawDegradeGeneration = degradeEnabled ? clamp01(state.degradeGeneration) : 0
-        let rawDegradeAlias = degradeEnabled ? clamp01(state.degradeAlias) : 0
-        let baseDegradeWow = degradeEnabled ? clamp01(state.degradeWow) : 0
-        let baseDegradeFlutter = degradeEnabled ? clamp01(state.degradeFlutter) : 0
-        let baseDegradeDrift = degradeEnabled ? clamp01(state.degradeDrift) : 0
-        let degradeWobbleSpeed = degradeEnabled ? clamp01(state.degradeWobbleSpeed) : 0.35
-        let degradeAge = rawDegradeAge * degradeInfluence
-        let degradeGeneration = rawDegradeGeneration * degradeInfluence
-        let degradeAlias = rawDegradeAlias * degradeInfluence
-        let rawMediaWear = clamp01(rawDegradeAge + rawDegradeGeneration * 0.42)
-        let mediaWear = clamp01(degradeAge + degradeGeneration * 0.42)
-        let rawCorrosion = degradeEnabled ? clamp01(state.degradeCorrosion) : 0
+        let rawErosionAge = erosionEnabled ? clamp01(state.erosionAge) : 0
+        let rawErosionGeneration = erosionEnabled ? clamp01(state.erosionGeneration) : 0
+        let rawErosionAlias = erosionEnabled ? clamp01(state.erosionAlias) : 0
+        let baseErosionWow = erosionEnabled ? clamp01(state.erosionWow) : 0
+        let baseErosionFlutter = erosionEnabled ? clamp01(state.erosionFlutter) : 0
+        let baseErosionDrift = erosionEnabled ? clamp01(state.erosionDrift) : 0
+        let erosionWobbleSpeed = erosionEnabled ? clamp01(state.erosionWobbleSpeed) : 0.35
+        let erosionAge = rawErosionAge * erosionInfluence
+        let erosionGeneration = rawErosionGeneration * erosionInfluence
+        let erosionAlias = rawErosionAlias * erosionInfluence
+        let rawMediaWear = clamp01(rawErosionAge + rawErosionGeneration * 0.42)
+        let mediaWear = clamp01(erosionAge + erosionGeneration * 0.42)
+        let rawCorrosion = erosionEnabled ? clamp01(state.erosionCorrosion) : 0
 
         let contribution = contributionMatrix(
             mode: mode,
             characterEnabled: characterEnabled,
-            degradeEnabled: degradeEnabled,
+            erosionEnabled: erosionEnabled,
             characterMix: characterMix,
-            degradeMix: degradeMix,
-            degradeAge: rawDegradeAge,
-            degradeGeneration: rawDegradeGeneration,
-            degradeAlias: rawDegradeAlias,
+            erosionMix: erosionMix,
+            erosionAge: rawErosionAge,
+            erosionGeneration: rawErosionGeneration,
+            erosionAlias: rawErosionAlias,
             corrosion: rawCorrosion
         )
 
-        let modSlow = degradeEnabled
-            ? degradeInfluence * clamp01(baseDegradeWow * 0.22 + baseDegradeDrift * 0.34 + rawDegradeAge * 0.2 + rawDegradeGeneration * 0.18 + contribution.smoothDrift * 0.18)
+        let modSlow = erosionEnabled
+            ? erosionInfluence * clamp01(baseErosionWow * 0.22 + baseErosionDrift * 0.34 + rawErosionAge * 0.2 + rawErosionGeneration * 0.18 + contribution.smoothDrift * 0.18)
             : 0
-        let modFlutterSource = degradeEnabled
-            ? degradeInfluence * clamp01(baseDegradeFlutter * 0.55 + contribution.flutterJitter * 0.24 + rawDegradeGeneration * 0.08)
+        let modFlutterSource = erosionEnabled
+            ? erosionInfluence * clamp01(baseErosionFlutter * 0.55 + contribution.flutterJitter * 0.24 + rawErosionGeneration * 0.08)
             : 0
-        let modRandom = degradeEnabled
-            ? degradeInfluence * clamp01(baseDegradeDrift * 0.3 + contribution.randomHold * 0.44 + rawMediaWear * 0.22)
+        let modRandom = erosionEnabled
+            ? erosionInfluence * clamp01(baseErosionDrift * 0.3 + contribution.randomHold * 0.44 + rawMediaWear * 0.22)
             : 0
-        let modEnv = degradeEnabled ? degradeInfluence * clamp01(state.characterEnvFollow) : 0
-        let modNoise = degradeEnabled
-            ? degradeInfluence * clamp01(state.degradeNoise * 0.64 + rawCorrosion * 0.18 + rawDegradeAlias * 0.12)
+        let modEnv = erosionEnabled ? erosionInfluence * clamp01(state.characterEnvFollow) : 0
+        let modNoise = erosionEnabled
+            ? erosionInfluence * clamp01(state.erosionNoise * 0.64 + rawCorrosion * 0.18 + rawErosionAlias * 0.12)
             : 0
         func modRoute(slow: Double, flutter: Double, random: Double, env: Double, noise: Double) -> Double {
             clamp01(
@@ -385,22 +385,22 @@ final class DynamicsCharacterProcessor {
             )
         }
 
-        let modWow = modRoute(slow: state.degradeModSlowWow, flutter: state.degradeModFlutterWow, random: state.degradeModRandomWow, env: state.degradeModEnvWow, noise: state.degradeModNoiseWow)
-        let modFlutter = modRoute(slow: state.degradeModSlowFlutter, flutter: state.degradeModFlutterFlutter, random: state.degradeModRandomFlutter, env: state.degradeModEnvFlutter, noise: state.degradeModNoiseFlutter)
-        let modLp = modRoute(slow: state.degradeModSlowLp, flutter: state.degradeModFlutterLp, random: state.degradeModRandomLp, env: state.degradeModEnvLp, noise: state.degradeModNoiseLp)
-        let modWet = modRoute(slow: state.degradeModSlowWet, flutter: state.degradeModFlutterWet, random: state.degradeModRandomWet, env: state.degradeModEnvWet, noise: state.degradeModNoiseWet)
-        let modDropout = modRoute(slow: state.degradeModSlowDropout, flutter: state.degradeModFlutterDropout, random: state.degradeModRandomDropout, env: state.degradeModEnvDropout, noise: state.degradeModNoiseDropout)
-        let modAlias = modRoute(slow: state.degradeModSlowAlias, flutter: state.degradeModFlutterAlias, random: state.degradeModRandomAlias, env: state.degradeModEnvAlias, noise: state.degradeModNoiseAlias)
+        let modWow = modRoute(slow: state.erosionModSlowWow, flutter: state.erosionModFlutterWow, random: state.erosionModRandomWow, env: state.erosionModEnvWow, noise: state.erosionModNoiseWow)
+        let modFlutter = modRoute(slow: state.erosionModSlowFlutter, flutter: state.erosionModFlutterFlutter, random: state.erosionModRandomFlutter, env: state.erosionModEnvFlutter, noise: state.erosionModNoiseFlutter)
+        let modLp = modRoute(slow: state.erosionModSlowLp, flutter: state.erosionModFlutterLp, random: state.erosionModRandomLp, env: state.erosionModEnvLp, noise: state.erosionModNoiseLp)
+        let modWet = modRoute(slow: state.erosionModSlowWet, flutter: state.erosionModFlutterWet, random: state.erosionModRandomWet, env: state.erosionModEnvWet, noise: state.erosionModNoiseWet)
+        let modDropout = modRoute(slow: state.erosionModSlowDropout, flutter: state.erosionModFlutterDropout, random: state.erosionModRandomDropout, env: state.erosionModEnvDropout, noise: state.erosionModNoiseDropout)
+        let modAlias = modRoute(slow: state.erosionModSlowAlias, flutter: state.erosionModFlutterAlias, random: state.erosionModRandomAlias, env: state.erosionModEnvAlias, noise: state.erosionModNoiseAlias)
 
-        let workletAlias = clamp01(rawDegradeAlias + modAlias * 0.18)
-        let shapedAlias = clamp01(degradeAlias + modAlias * 0.08)
-        let digitalDamage = clamp01(shapedAlias * 0.46 + degradeGeneration * 0.22)
-        let damage = clamp01(degradeMix * (0.1 + degradeAge * 0.32 + degradeGeneration * 0.18 + shapedAlias * 0.08))
-        let age = clamp01(max(characterAge, mediaWear * (0.38 + degradeMix * 0.52)))
+        let workletAlias = clamp01(rawErosionAlias + modAlias * 0.18)
+        let shapedAlias = clamp01(erosionAlias + modAlias * 0.08)
+        let digitalDamage = clamp01(shapedAlias * 0.46 + erosionGeneration * 0.22)
+        let damage = clamp01(erosionMix * (0.1 + erosionAge * 0.32 + erosionGeneration * 0.18 + shapedAlias * 0.08))
+        let age = clamp01(max(characterAge, mediaWear * (0.38 + erosionMix * 0.52)))
         let depth = characterEnabled ? max(clamp01(state.characterDepth), modeActive ? defaults.depth : 0) : 0
-        let rawWow = clamp01(baseDegradeWow * degradeInfluence * (0.54 + contribution.crossPatch * 0.22) + modWow * 0.18)
-        let rawFlutter = clamp01(baseDegradeFlutter * degradeInfluence * (0.38 + contribution.crossPatch * 0.18) + modFlutter * 0.08)
-        let rawDrift = baseDegradeDrift * degradeInfluence
+        let rawWow = clamp01(baseErosionWow * erosionInfluence * (0.54 + contribution.crossPatch * 0.22) + modWow * 0.18)
+        let rawFlutter = clamp01(baseErosionFlutter * erosionInfluence * (0.38 + contribution.crossPatch * 0.18) + modFlutter * 0.08)
+        let rawDrift = baseErosionDrift * erosionInfluence
         let waterCyclicBias = cleanFlavor > 0 ? 0.08 : shallowFlavor > 0 ? 0.012 : abyssFlavor > 0 ? 0.006 : 0.08
         let waterSineScale = cleanFlavor > 0 ? 0.5 : 0.12
         let modeWow = depth * (waterCyclicBias + contribution.sineWow * waterSineScale)
@@ -409,51 +409,51 @@ final class DynamicsCharacterProcessor {
         let cyclicModeScale = cleanFlavor > 0
             ? 1
             : shallowFlavor > 0
-                ? 0.16 + degradeMix * 0.05
+                ? 0.16 + erosionMix * 0.05
                 : abyssFlavor > 0
-                    ? 0.1 + degradeMix * 0.04
+                    ? 0.1 + erosionMix * 0.04
                     : modeActive
-                        ? 0.38 + degradeMix * 0.12
+                        ? 0.38 + erosionMix * 0.12
                         : 1
         let cyclicFlutterScale = cleanFlavor > 0
             ? 1
             : shallowFlavor > 0
-                ? 0.34 + degradeMix * 0.07
+                ? 0.34 + erosionMix * 0.07
                 : abyssFlavor > 0
-                    ? 0.26 + degradeMix * 0.05
+                    ? 0.26 + erosionMix * 0.05
                     : modeActive
-                        ? 0.55 + degradeMix * 0.1
+                        ? 0.55 + erosionMix * 0.1
                         : 1
         let cyclicWow = clamp01(rawWow + modeWow * cyclicModeScale)
         let flutter = clamp01(rawFlutter + modeFlutter + flutterDamage)
         let cyclicFlutter = clamp01(rawFlutter + modeFlutter * cyclicFlutterScale)
         let abyssPitchMotionTrim = abyssFlavor > 0 ? 0.08 : 1
         let drift = clamp01(rawDrift + depth * (0.06 + contribution.smoothDrift * 0.32) + contribution.materialWear * 0.22 + contribution.crossPatch * 0.12 + modWow * 0.06)
-        let tapeWanderDepth = degradeEnabled
+        let tapeWanderDepth = erosionEnabled
             ? rawDrift * 0.0021 + contribution.materialWear * 0.0011 + contribution.aliasDamage * 0.00032 + modWow * 0.00085
             : 0
-        let tapeFlutterDepth = degradeEnabled
+        let tapeFlutterDepth = erosionEnabled
             ? rawFlutter * 0.00022 + contribution.materialWear * 0.00009 + contribution.aliasDamage * 0.0001 + modFlutter * 0.0002
             : 0
-        let corrosion = clamp01(rawCorrosion * degradeInfluence * 0.72 + damage * 0.09 + degradeGeneration * 0.035)
-        let sharedFilterActive = characterEnabled || degradeEnabled
+        let corrosion = clamp01(rawCorrosion * erosionInfluence * 0.72 + damage * 0.09 + erosionGeneration * 0.035)
+        let sharedFilterActive = characterEnabled || erosionEnabled
         let sharedHp = sharedFilterActive ? clamp01(state.degradeHp) : 0
         let sharedLp = sharedFilterActive ? clamp01(state.degradeLp) : 1
         let hp = max(sharedHp, damage * 0.08 + corrosion * 0.03)
-        let lpCeiling = max(0.08, 1 - damage * 0.2 - corrosion * 0.1 - mediaWear * degradeMix * 0.08 - digitalDamage * 0.05 - modLp * 0.08)
+        let lpCeiling = max(0.08, 1 - damage * 0.2 - corrosion * 0.1 - mediaWear * erosionMix * 0.08 - digitalDamage * 0.05 - modLp * 0.08)
         let lp = max(0.08, min(sharedLp, lpCeiling))
         let rate = characterEnabled ? max(clamp01(state.characterRate), modeActive ? defaults.rate : 0) : 0
         let damp = characterEnabled ? max(clamp01(state.characterDamp), modeActive ? defaults.damp : 0.5) : 0.5
         let stereo = characterEnabled ? clamp01(state.characterStereo) : 0
         let envFollow = characterEnabled ? clamp01(state.characterEnvFollow) : 0
         let resonance = characterEnabled ? max(clamp01(state.characterResonance), modeActive ? defaults.resonance : 0.2) : 0.2
-        let noise = degradeEnabled ? clamp01(clamp01(state.degradeNoise) * degradeInfluence * 0.55 + degradeMix * (mediaWear * 0.025 + digitalDamage * 0.012)) : 0
+        let noise = erosionEnabled ? clamp01(clamp01(state.erosionNoise) * erosionInfluence * 0.55 + erosionMix * (mediaWear * 0.025 + digitalDamage * 0.012)) : 0
         let characterDrive = characterEnabled
             ? characterMix * (shallowFlavor * 0.07 + abyssFlavor * (0.06 + envFollow * 0.04) + characterAge * 0.06)
             : 0
-        let saturation = clamp01((degradeEnabled ? clamp01(state.degradeSaturation) * degradeInfluence * 0.55 + damage * 0.06 + degradeGeneration * 0.015 : 0) + characterDrive)
-        let tone = 0.5 + ((degradeEnabled ? clamp01(state.degradeTone) : 0.5) - 0.5) * degradeInfluence
-        let dropout = clamp01(degradeMix * (mediaWear * 0.25 + corrosion * 0.28 + degradeGeneration * 0.06 + noise * 0.08 + rawDegradeAlias * 0.035) + modDropout * 0.16)
+        let saturation = clamp01((erosionEnabled ? clamp01(state.erosionSaturation) * erosionInfluence * 0.55 + damage * 0.06 + erosionGeneration * 0.015 : 0) + characterDrive)
+        let tone = 0.5 + ((erosionEnabled ? clamp01(state.erosionTone) : 0.5) - 0.5) * erosionInfluence
+        let dropout = clamp01(erosionMix * (mediaWear * 0.25 + corrosion * 0.28 + erosionGeneration * 0.06 + noise * 0.08 + rawErosionAlias * 0.035) + modDropout * 0.16)
         let waterRandomDrive = shallowFlavor * 0.18 + abyssFlavor * 0.24
         let randomDrift = clamp01(
             contribution.randomHold * (0.42 + stereo * 0.24) +
@@ -472,9 +472,9 @@ final class DynamicsCharacterProcessor {
         } else {
             characterHoldRateHz = 0.025 + rate * 0.14
         }
-        let degradeMotionWeight = degradeEnabled ? clamp01(degradeWetRatio * (0.65 + degradeInfluence * 0.35)) : 0
-        let degradeHoldRateHz = 0.02 + degradeWobbleSpeed * 0.58 + rawDrift * 0.11 + contribution.materialWear * 0.075 + contribution.aliasDamage * 0.035
-        let randomHoldRateHz = characterHoldRateHz + (degradeHoldRateHz - characterHoldRateHz) * degradeMotionWeight
+        let erosionMotionWeight = erosionEnabled ? clamp01(erosionWetRatio * (0.65 + erosionInfluence * 0.35)) : 0
+        let erosionHoldRateHz = 0.02 + erosionWobbleSpeed * 0.58 + rawDrift * 0.11 + contribution.materialWear * 0.075 + contribution.aliasDamage * 0.035
+        let randomHoldRateHz = characterHoldRateHz + (erosionHoldRateHz - characterHoldRateHz) * erosionMotionWeight
 
         let characterHoldLag: Double
         if mode == "shallowWater" {
@@ -484,13 +484,13 @@ final class DynamicsCharacterProcessor {
         } else {
             characterHoldLag = 0.75 + damp * 2.1
         }
-        let degradeHoldLag = max(0.18, 1.3 - degradeWobbleSpeed * 0.98 + rawMediaWear * (0.2 + (1 - degradeWobbleSpeed) * 0.16))
-        let randomHoldLag = characterHoldLag + (degradeHoldLag - characterHoldLag) * degradeMotionWeight
-        let degradeLevelTrim = degradeEnabled
-            ? max(0.7, 1 - degradeWetRatio * (0.12 + rawMediaWear * 0.12 + rawCorrosion * 0.16 + rawDegradeAlias * 0.1))
+        let erosionHoldLag = max(0.18, 1.3 - erosionWobbleSpeed * 0.98 + rawMediaWear * (0.2 + (1 - erosionWobbleSpeed) * 0.16))
+        let randomHoldLag = characterHoldLag + (erosionHoldLag - characterHoldLag) * erosionMotionWeight
+        let erosionLevelTrim = erosionEnabled
+            ? max(0.7, 1 - erosionWetRatio * (0.12 + rawMediaWear * 0.12 + rawCorrosion * 0.16 + rawErosionAlias * 0.1))
             : 1
 
-        let cleanCombTame = cleanFlavor * clamp01(degradeMix * (0.85 + contribution.materialWear * 0.35 + contribution.aliasDamage * 0.18))
+        let cleanCombTame = cleanFlavor * clamp01(erosionMix * (0.85 + contribution.materialWear * 0.35 + contribution.aliasDamage * 0.18))
         let cleanBaseDelay = 0.00035 + age * 0.0012 + drift * 0.0006
         let cleanTamedBaseDelay = 0.00014 + age * 0.00045 + drift * 0.00024
         let baseDelay = cleanFlavor > 0
@@ -524,8 +524,8 @@ final class DynamicsCharacterProcessor {
             (1 - modLp * 0.08)
         )
         let characterWowFrequency = 0.03 + rate * 0.45 + drift * 0.18
-        let degradeWowFrequency = 0.018 + degradeWobbleSpeed * 0.36 + drift * 0.12 + contribution.materialWear * 0.05 + modWow * 0.04
-        let wowFrequency = characterWowFrequency + (degradeWowFrequency - characterWowFrequency) * degradeMotionWeight
+        let erosionWowFrequency = 0.018 + erosionWobbleSpeed * 0.36 + drift * 0.12 + contribution.materialWear * 0.05 + modWow * 0.04
+        let wowFrequency = characterWowFrequency + (erosionWowFrequency - characterWowFrequency) * erosionMotionWeight
         let endEnabled = state.dynamicsEnabled && state.endCompEnabled
         let endWet = endEnabled ? clamp01(state.endCompMix) : 0
         let endActive = endWet > 0.0001
@@ -565,13 +565,13 @@ final class DynamicsCharacterProcessor {
         set(.allpassActive, wet > 0.0001 && mode == "shallowWater" ? 1 : 0)
         set(.dry, dry)
         set(.wet, wet)
-        set(.degradeMix, degradeWetRatio)
+        set(.erosionMix, erosionWetRatio)
         set(.workletAlias, workletAlias)
-        set(.rawDegradeGeneration, rawDegradeGeneration)
+        set(.rawErosionGeneration, rawErosionGeneration)
         set(.rawCorrosion, rawCorrosion)
         set(.rawMediaWear, rawMediaWear)
-        set(.noiseGain, min(0.018, wet * noise * (0.006 + age * 0.014 + corrosion * 0.012)) * degradeLevelTrim)
-        set(.jitterDepth, degradeMix * (0.000014 + contribution.flutterJitter * 0.00008 + corrosion * 0.00006 + contribution.materialWear * 0.00005 + clamp01(contribution.aliasDamage * 0.46 + contribution.crossPatch * 0.4) * 0.00004 + modFlutter * 0.00011))
+        set(.noiseGain, min(0.018, wet * noise * (0.006 + age * 0.014 + corrosion * 0.012)) * erosionLevelTrim)
+        set(.jitterDepth, erosionMix * (0.000014 + contribution.flutterJitter * 0.00008 + corrosion * 0.00006 + contribution.materialWear * 0.00005 + clamp01(contribution.aliasDamage * 0.46 + contribution.crossPatch * 0.4) * 0.00004 + modFlutter * 0.00011))
         set(.randomDriftFilterHz, randomHoldRateHz * (0.6 + damp * 0.32))
         set(.randomDriftDepth, randomDrift * (0.00016 + drift * 0.00225 + contribution.materialWear * 0.00215 + contribution.aliasDamage * 0.00075 + contribution.crossPatch * 0.00105 + modWow * 0.00095) * abyssPitchMotionTrim)
         set(.baseDelay, baseDelay)
@@ -591,12 +591,12 @@ final class DynamicsCharacterProcessor {
         set(.damage, damage)
         set(.mainPan, -stereo * (0.25 + shallowFlavor * 0.18))
         set(.spreadPan, stereo * (0.58 + shallowFlavor * 0.24))
-        set(.mainDelayGain, (1 - stereo * (0.14 + shallowFlavor * 0.12)) * (1 - cleanCombTame * 0.08) * degradeLevelTrim)
-        set(.spreadDelayGain, stereo * (cleanFlavor > 0 ? (0.05 + depth * 0.12) * (1 - cleanCombTame * 0.34) : 0.16 + depth * (0.4 + shallowFlavor * 0.18)) * degradeLevelTrim)
+        set(.mainDelayGain, (1 - stereo * (0.14 + shallowFlavor * 0.12)) * (1 - cleanCombTame * 0.08) * erosionLevelTrim)
+        set(.spreadDelayGain, stereo * (cleanFlavor > 0 ? (0.05 + depth * 0.12) * (1 - cleanCombTame * 0.34) : 0.16 + depth * (0.4 + shallowFlavor * 0.18)) * erosionLevelTrim)
         set(.wowFrequency, wowFrequency)
         set(.flutterFrequency, 2.2 + rate * (5.4 + shallowFlavor * 3.2 + abyssFlavor * 1.2) + flutter * (4.2 + corrosion * 2.8))
-        set(.flutterRandomDepth, degradeMix * clamp01(0.2 + modFlutter * 1.8 + contribution.flutterJitter * 0.5 + corrosion * 0.25) * (0.00004 + flutter * 0.00082 + modFlutter * 0.00048))
-        let cyclicWowDepthScale = cleanFlavor > 0 ? 0.0062 : 0.0019 + degradeMix * 0.0007
+        set(.flutterRandomDepth, erosionMix * clamp01(0.2 + modFlutter * 1.8 + contribution.flutterJitter * 0.5 + corrosion * 0.25) * (0.00004 + flutter * 0.00082 + modFlutter * 0.00048))
+        let cyclicWowDepthScale = cleanFlavor > 0 ? 0.0062 : 0.0019 + erosionMix * 0.0007
         set(.wowDepth, (cyclicWow * cyclicWowDepthScale + tapeWanderDepth) * (0.38 + depth * (0.78 + shallowFlavor * 0.18 + abyssFlavor * 0.06) + contribution.crossPatch * 0.34) * abyssPitchMotionTrim)
         set(.flutterDepth, (cyclicFlutter * 0.00072 + tapeFlutterDepth) * (0.24 + depth * (0.34 + shallowFlavor * 0.1) + contribution.crossPatch * 0.44) * abyssPitchMotionTrim)
         set(.highpassHz, mapUnitToLogFrequency(hp, minHz: 20, maxHz: 2400))
@@ -607,14 +607,14 @@ final class DynamicsCharacterProcessor {
         set(.allpassBQ, 0.25 + contribution.bbdColor * 1.8 + shallowFlavor * 0.1 + resonance * (abyssFlavor > 0 ? 0.14 : 0.85))
         set(.headBumpFrequency, 80 + mediaWear * 45 + corrosion * 20)
         set(.headBumpQ, 0.55 + mediaWear * 0.55)
-        set(.headBumpGain, degradeMix * 1.1 * (0.2 + mediaWear * 0.65) * degradeLevelTrim + characterMix * (abyssFlavor * 0.28 + shallowFlavor * 0.22))
+        set(.headBumpGain, erosionMix * 1.1 * (0.2 + mediaWear * 0.65) * erosionLevelTrim + characterMix * (abyssFlavor * 0.28 + shallowFlavor * 0.22))
         set(.dropoutFilterHz, 0.25 + mediaWear * 1.8 + corrosion * 4.5 + digitalDamage * 1.2 + modDropout * 2.2)
         set(.dropoutDepth, dropout * 0.16)
         set(.dropoutGain, 1 - dropout * 0.14)
         set(.envFilterHz, 2.5 + envFollow * 26 + rate * 12)
         set(.envToLowpassGain, envFollow * contribution.envelopeBloom * (abyssFlavor > 0 ? 720 + depth * 2800 + resonance * 1300 : shallowFlavor > 0 ? 170 + depth * 820 : 120 + depth * 420) + modLp * 180)
         set(.envToResonanceGain, envFollow * contribution.envelopeBloom * (abyssFlavor > 0 ? 0.24 + resonance * 0.74 : shallowFlavor > 0 ? 0.08 + resonance * 0.2 : 0.025))
-        set(.envToWetGain, envFollow * contribution.envelopeBloom * characterMix * (abyssFlavor > 0 ? 0.15 : shallowFlavor > 0 ? 0.045 : 0.015) + modWet * degradeMix * 0.04)
+        set(.envToWetGain, envFollow * contribution.envelopeBloom * characterMix * (abyssFlavor > 0 ? 0.15 : shallowFlavor > 0 ? 0.045 : 0.015) + modWet * erosionMix * 0.04)
         set(.lowpassHz, lowpassHz)
         set(.lowpassQ, 0.7 + resonance * (cleanFlavor > 0 ? 0.45 + contribution.cascadedFilter * 0.25 : abyssFlavor > 0 ? 1.1 + contribution.cascadedFilter * 0.75 : 3.2 + contribution.cascadedFilter * 2.6))
         set(.lowpassStage2Hz, lowpassHz * (cleanFlavor > 0 || abyssFlavor > 0 ? 1 : 0.92 - contribution.materialWear * 0.08 + shallowFlavor * 0.04))
@@ -670,12 +670,12 @@ final class DynamicsCharacterProcessor {
     private static func contributionMatrix(
         mode: String,
         characterEnabled: Bool,
-        degradeEnabled: Bool,
+        erosionEnabled: Bool,
         characterMix: Double,
-        degradeMix: Double,
-        degradeAge: Double,
-        degradeGeneration: Double,
-        degradeAlias: Double,
+        erosionMix: Double,
+        erosionAge: Double,
+        erosionGeneration: Double,
+        erosionAlias: Double,
         corrosion: Double
     ) -> (
         randomHold: Double,
@@ -690,12 +690,12 @@ final class DynamicsCharacterProcessor {
         crossPatch: Double
     ) {
         let character = characterEnabled ? clamp01(characterMix) : 0
-        let degrade = degradeEnabled ? sqrt(clamp01(degradeMix)) : 0
+        let degrade = erosionEnabled ? sqrt(clamp01(erosionMix)) : 0
         let abyss = mode == "abyssWater" ? character : 0
         let shallow = mode == "shallowWater" ? character : 0
         let clean = mode == "clean" ? character : 0
-        let materialWear = clamp01((degradeAge * 0.72 + degradeGeneration * 0.58) * degrade)
-        let aliasDamage = clamp01((degradeAlias * 0.9 + corrosion * 0.42) * degrade)
+        let materialWear = clamp01((erosionAge * 0.72 + erosionGeneration * 0.58) * degrade)
+        let aliasDamage = clamp01((erosionAlias * 0.9 + corrosion * 0.42) * degrade)
         let crossPatch = clamp01(aliasDamage * (0.4 + corrosion * 0.8))
 
         return (

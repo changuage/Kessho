@@ -3,7 +3,7 @@ import { DEFAULT_REVERB_PRE_COMP, DEFAULT_STATE, type SliderState } from '../ui/
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import { CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID, getCoreProductSoundscapeAssetDescriptorsForState, getPrimaryCoreProductSoundscapeAssetIdForState } from './coreProductAssets';
 import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from './outputTrims';
-import { delayAFilterTypeId, delayBPatternId, delayBTapeSpacingId, delayBWarpId, dynamicsCharacterModeId, dynamicsCharacterQualityId, dynamicsDegradeQualityId, dynamicsEndCompModeId, dynamicsSaturationModeId, dynamicsSaturationQualityId, granularAnchorPatternId, granularCloudStyleId, granularLegacyPitchModeId, granularPitchModeId, granularQualityId, granularShapeId, granularVoiceModeId, reverbModCharacterId, reverbQualityId, reverbSaturationModeId, reverbTypeId, sidechainKeyId } from './CoreProductModeIds';
+import { delayAFilterTypeId, delayBPatternId, delayBTapeSpacingId, delayBWarpId, dynamicsDriftModeId, dynamicsDriftQualityId, dynamicsErosionQualityId, dynamicsEndCompModeId, dynamicsSaturationModeId, dynamicsSaturationQualityId, granularAnchorPatternId, granularCloudStyleId, granularLegacyPitchModeId, granularPitchModeId, granularQualityId, granularShapeId, granularVoiceModeId, reverbModCharacterId, reverbQualityId, reverbSaturationModeId, reverbTypeId, sidechainKeyId } from './CoreProductModeIds';
 import { assignLeadAlgorithmOverrideFields, assignLeadEnvelopeOverrideFields, assignLeadPresetIds, emptyLeadOverrideIndices, emptyLeadOverrideValues, exactLeadPatchFromState, leadAlgorithmPresetAEnabledFromState, leadEnvelopeOverrideFromState } from './CoreProductLeadPatch';
 import { emptyPadOverrideIndices, emptyPadOverrideValues, exactPadPatchFromState } from './CoreProductPadPatch';
 import { emptyDrumOverrideIndices, emptyDrumOverrideValues, exactDrumPatchFromState } from './CoreProductDrumPatch';
@@ -101,6 +101,14 @@ function positiveU32(value: number, fallback: number): number {
   if (rounded <= 0) return fallback >>> 0 || 1;
   const normalized = rounded >>> 0;
   return normalized === 0 ? 1 : normalized;
+}
+
+function dynamicsEqEdgeTypeId(value: unknown): number {
+  return value === 'bell' ? 1 : 0;
+}
+
+function dynamicsBusFromState(state: Record<string, unknown> | undefined, key: keyof SliderState): number {
+  return clamp(Math.round(numberFromState(state, key, 0)), 0, 3) >>> 0;
 }
 
 function hashSeedMaterial(material: string): number {
@@ -428,6 +436,7 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     delayASend: 0,
     delayBSend: 0,
     granularSend: 0,
+    degradeSend: 0,
     diffuseSend: 0,
     postLpfHz: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
     stereoWidth: KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
@@ -475,6 +484,7 @@ function sourceFromState(
       source.delayASend = numberFromState(state, 'pad1DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'pad1DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularPad1Send', source.granularSend);
+      source.degradeSend = numberFromState(state, 'degradePad1Send', source.degradeSend);
       source.diffuseSend = distanceAdjustedNumberFromState(state, 'padDiffuseSend', 'pad1', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'padPostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'padStereoWidth', source.stereoWidth);
@@ -494,6 +504,7 @@ function sourceFromState(
       source.delayASend = numberFromState(state, 'pad2DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'pad2DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularPad2Send', source.granularSend);
+      source.degradeSend = numberFromState(state, 'degradePad2Send', source.degradeSend);
       source.diffuseSend = distanceAdjustedNumberFromState(state, 'pad2DiffuseSend', 'pad2', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'pad2PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'pad2StereoWidth', source.stereoWidth);
@@ -514,6 +525,7 @@ function sourceFromState(
       source.delayASend = numberFromState(state, 'lead1DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'lead1DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularLead1Send', source.granularSend);
+      source.degradeSend = numberFromState(state, 'degradeLead1Send', source.degradeSend);
       source.diffuseSend = distanceAdjustedNumberFromState(state, 'lead1DiffuseSend', 'lead1', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'lead1PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'lead1StereoWidth', source.stereoWidth);
@@ -536,6 +548,7 @@ function sourceFromState(
       source.delayASend = numberFromState(state, 'lead2DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'lead2DelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularLead2Send', source.granularSend);
+      source.degradeSend = numberFromState(state, 'degradeLead2Send', source.degradeSend);
       source.diffuseSend = distanceAdjustedNumberFromState(state, 'lead2DiffuseSend', 'lead2', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'lead2PostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'lead2StereoWidth', source.stereoWidth);
@@ -555,6 +568,7 @@ function sourceFromState(
       source.delayASend = numberFromState(state, 'drumDelayASend', source.delayASend) * drumDelaySendProfile(state);
       source.delayBSend = numberFromState(state, 'drumDelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularDrumSend', source.granularSend);
+      source.degradeSend = numberFromState(state, 'degradeDrumSend', source.degradeSend);
       source.presetId = sourcePresetId('drum', 'default', 'default');
       source.drumVoicePresetAIds = drumVoicePresetIdsFromState(state, 'a');
       source.drumVoicePresetBIds = drumVoicePresetIdsFromState(state, 'b');
@@ -575,6 +589,7 @@ function sourceFromState(
       source.delayASend = numberFromState(state, 'pianoDelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'pianoDelayBSend', source.delayBSend);
       source.granularSend = numberFromState(state, 'granularPianoSend', source.granularSend);
+      source.degradeSend = numberFromState(state, 'degradePianoSend', source.degradeSend);
       source.diffuseSend = distanceAdjustedNumberFromState(state, 'pianoDiffuseSend', 'piano', source.diffuseSend);
       source.postLpfHz = numberFromState(state, 'pianoPostLPF', source.postLpfHz);
       source.stereoWidth = numberFromState(state, 'pianoStereoWidth', source.stereoWidth);
@@ -591,6 +606,7 @@ function sourceFromState(
         source.delayASend = source.enabled ? payload.routePeaks[1] ?? 0 : source.delayASend;
         source.delayBSend = source.enabled ? payload.routePeaks[2] ?? 0 : source.delayBSend;
         source.granularSend = source.enabled ? payload.routePeaks[3] ?? 0 : source.granularSend;
+        source.degradeSend = source.enabled ? payload.routePeaks[4] ?? 0 : source.degradeSend;
         source.presetId = soundscapePresetIdFromState(state);
       }
       break;
@@ -601,6 +617,7 @@ function sourceFromState(
   source.delayASend = clamp(source.delayASend, 0, 2);
   source.delayBSend = clamp(source.delayBSend, 0, 2);
   source.granularSend = clamp(source.granularSend, 0, 2);
+  source.degradeSend = clamp(source.degradeSend, 0, 2);
   source.diffuseSend = clamp(source.diffuseSend, 0, 2);
   source.level = clamp(source.level, 0, 1.5);
   source.morph = clamp(source.morph, 0, 1);
@@ -892,14 +909,17 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     morphPercent: journey.morphPhase * 100,
   });
   const harmonyFrame = harmonyControl.resolvedHarmonyFrame;
-  const granularEnabled = booleanFromState(sliderState, 'granularEnabled', false);
+  const granularEnabled =
+    booleanFromState(sliderState, 'granularEnabled', false) ||
+    numberFromState(sliderState, 'granularDegradeSend', 0) > 0.0001;
   const granularToDelayA = clamp(numberFromState(sliderState, 'granularDelayASend', 0), 0, 1);
   const granularToDelayB = clamp(numberFromState(sliderState, 'granularDelayBSend', 0), 0, 1);
   const delayAEnabled =
     booleanFromState(sliderState, 'delayAEnabled', true) ||
     sourceDelayASendActive ||
     numberFromState(sliderState, 'delayBToASend', 0) > 0.0001 ||
-    granularToDelayA > 0.0001;
+    granularToDelayA > 0.0001 ||
+    numberFromState(sliderState, 'delayADegradeSend', 0) > 0.0001;
   const delayBOutputDefaultActive =
     delayBSendActive ||
     numberFromState(sliderState, 'delayAToBSend', 0) > 0.0001 ||
@@ -908,11 +928,52 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     booleanFromState(sliderState, 'granularDelayEnabled', false) ||
     sourceDelayBSendActive ||
     numberFromState(sliderState, 'delayAToBSend', 0) > 0.0001 ||
-    granularToDelayB > 0.0001;
+    granularToDelayB > 0.0001 ||
+    numberFromState(sliderState, 'delayBDegradeSend', 0) > 0.0001;
   const rawDelayAToB = clamp(numberFromState(sliderState, 'delayAToBSend', 0), 0, 1), rawDelayBToA = clamp(numberFromState(sliderState, 'delayBToASend', 0), 0, 1), delayCrossScale = rawDelayAToB * rawDelayBToA > 0.4 ? Math.sqrt(0.4 / (rawDelayAToB * rawDelayBToA)) : 1, delayBToATrim = rawDelayAToB > 0.0001 && rawDelayBToA > 0.0001 ? 0.7 : 1;
   const spectralFreezeEnabled = booleanFromState(sliderState, 'spectralFreezeEnabled', false);
-  const dynamicsEnabled = booleanFromState(sliderState, 'dynamicsEnabled', false);
-  const reverbEnabled = booleanFromState(sliderState, 'reverbEnabled', false);
+  const degradeToReverb = clamp(numberFromState(sliderState, 'degradeReverbSend', 0), 0, 1);
+  const reverbToDegrade = degradeToReverb > 0.0001
+    ? 0
+    : clamp(numberFromState(sliderState, 'reverbDegradeSend', 0), 0, 1);
+  const degradeSendActive =
+    numberFromState(sliderState, 'degradePad1Send', 0) > 0.0001 ||
+    numberFromState(sliderState, 'degradePad2Send', 0) > 0.0001 ||
+    numberFromState(sliderState, 'degradeLead1Send', 0) > 0.0001 ||
+    numberFromState(sliderState, 'degradeLead2Send', 0) > 0.0001 ||
+    numberFromState(sliderState, 'degradePianoSend', 0) > 0.0001 ||
+    numberFromState(sliderState, 'degradeDrumSend', 0) > 0.0001 ||
+    numberFromState(sliderState, 'degradeWavesSend', 0) > 0.0001 ||
+    numberFromState(sliderState, 'degradeWaterSend', 0) > 0.0001 ||
+    numberFromState(sliderState, 'degradeInsectsSend', 0) > 0.0001 ||
+    numberFromState(sliderState, 'degradeNatureSend', 0) > 0.0001 ||
+    numberFromState(sliderState, 'delayADegradeSend', 0) > 0.0001 ||
+    numberFromState(sliderState, 'delayBDegradeSend', 0) > 0.0001 ||
+    numberFromState(sliderState, 'granularDegradeSend', 0) > 0.0001 ||
+    reverbToDegrade > 0.0001;
+  const rawDynamicsEnabled = booleanFromState(sliderState, 'dynamicsEnabled', false);
+  const rawDegradeEnabled = booleanFromState(sliderState, 'degradeEnabled', false);
+  const rawDriftEnabled = booleanFromState(sliderState, 'driftEnabled', false);
+  const rawErosionEnabled = booleanFromState(sliderState, 'erosionEnabled', false);
+  const rawReverbEnabled = booleanFromState(sliderState, 'reverbEnabled', false);
+  const degradeOutputActive = numberFromState(sliderState, 'degradeLevel', 1) > 0.0001 || degradeToReverb > 0.0001;
+  const degradeReturnActive = degradeSendActive && degradeOutputActive;
+  const degradeEngineActive = rawDegradeEnabled || degradeReturnActive;
+  const dynamicsEnabled = rawDynamicsEnabled || degradeEngineActive;
+  let driftMix = clamp(numberFromState(sliderState, 'driftMix', 0), 0, 1);
+  let erosionMix = clamp(numberFromState(sliderState, 'erosionMix', 0), 0, 1);
+  if (degradeReturnActive && driftMix <= 0.0001 && erosionMix <= 0.0001) {
+    if (rawErosionEnabled && !rawDriftEnabled) {
+      erosionMix = 1;
+    } else {
+      driftMix = 1;
+    }
+  }
+  const degradeControlsEnabled = rawDynamicsEnabled || degradeEngineActive;
+  const driftEnabled = degradeControlsEnabled && (rawDriftEnabled || (degradeReturnActive && driftMix > 0.0001));
+  const erosionEnabled = degradeControlsEnabled && (rawErosionEnabled || (degradeReturnActive && erosionMix > 0.0001));
+  const reverbReturnActive = rawReverbEnabled || degradeToReverb > 0.0001;
+  const reverbEnabled = reverbReturnActive || reverbToDegrade > 0.0001;
   const granularMacroModel = computeGranularMacroModel((sliderState ?? {}) as unknown as SliderState, (key, fallback) => numberFromState(sliderState, key as string, fallback));
   const granularUsesLegacyRuntimeSeed = usesLegacyGranularRuntimeSeed(sliderState);
   const reverbParams = resolveReverbSnapshotParams(sliderState, tension);
@@ -1017,7 +1078,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       delayBTapeHeadMask: delayBTapeHeadMaskFromState(sliderState),
       delayBTapeHeadLevels: delayBTapeHeadLevelsFromState(sliderState),
       delayBTapeHeadPans: delayBTapeHeadPansFromState(sliderState),
-      reverbMix: sliderState?.reverbEnabled === false ? 0 : clamp(numberFromState(sliderState, 'reverbLevel', 0.12), 0, 1),
+      reverbMix: reverbReturnActive ? clamp(numberFromState(sliderState, 'reverbLevel', 0.12), 0, 1) : 0,
       reverbType: reverbTypeId(sliderState?.reverbType),
       reverbQuality: reverbQualityId(shouldUseMobileReverbQualityOverride(sliderState) ? 'balanced' : sliderState?.reverbQuality),
       reverbDecay: reverbParams.decay,
@@ -1070,70 +1131,70 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
         ? clamp(numberFromState(sliderState, 'dynamicsDrive', numberFromState(sliderState, 'dynamicsSaturationDrive', 0)), 0, 1)
         : 0,
       dynamicsEnabled,
-      dynamicsCharacterEnabled: dynamicsEnabled && booleanFromState(sliderState, 'characterEnabled', false),
-      dynamicsCharacterMode: dynamicsCharacterModeId(sliderState?.characterMode),
-      dynamicsCharacterQuality: dynamicsCharacterQualityId(sliderState?.characterQuality),
-      dynamicsCharacterAntiComb: clamp(numberFromState(sliderState, 'characterAntiComb', 1), 0, 1),
-      dynamicsCharacterDiffusion: clamp(numberFromState(sliderState, 'characterDiffusion', 0.55), 0, 1),
-      dynamicsCharacterMix: clamp(numberFromState(sliderState, 'characterMix', 0), 0, 1),
-      dynamicsCharacterAge: clamp(numberFromState(sliderState, 'characterAge', 0), 0, 1),
-      dynamicsCharacterBias: clamp(numberFromState(sliderState, 'characterBias', 0.5), 0, 1),
-      dynamicsCharacterLpgAmount: clamp(numberFromState(sliderState, 'characterLpgAmount', 0.5), 0, 1),
-      dynamicsCharacterResonance: clamp(numberFromState(sliderState, 'characterResonance', 0.2), 0, 1),
-      dynamicsCharacterStereo: clamp(numberFromState(sliderState, 'characterStereo', 0.5), 0, 1),
-      dynamicsCharacterEnvFollow: clamp(numberFromState(sliderState, 'characterEnvFollow', 0), 0, 1),
-      dynamicsCharacterDepth: clamp(numberFromState(sliderState, 'characterDepth', 0), 0, 1),
-      dynamicsCharacterRate: clamp(numberFromState(sliderState, 'characterRate', 0.3), 0, 1),
-      dynamicsCharacterDamp: clamp(numberFromState(sliderState, 'characterDamp', 0.5), 0, 1),
-      dynamicsDegradeEnabled: dynamicsEnabled && booleanFromState(sliderState, 'degradeEnabled', false),
-      dynamicsDegradeQuality: dynamicsDegradeQualityId(sliderState?.degradeQuality),
-      dynamicsDegradeEventAmount: clamp(numberFromState(sliderState, 'degradeEventAmount', 0.45), 0, 1),
-      dynamicsDegradeProfileAmount: clamp(numberFromState(sliderState, 'degradeProfileAmount', 0.65), 0, 1),
-      dynamicsDegradeDitherAmount: clamp(numberFromState(sliderState, 'degradeDitherAmount', 0.55), 0, 1),
-      dynamicsDegradeMix: clamp(numberFromState(sliderState, 'degradeMix', 0), 0, 1),
-      dynamicsDegradeAge: clamp(numberFromState(sliderState, 'degradeAge', 0), 0, 1),
-      dynamicsDegradeGeneration: clamp(numberFromState(sliderState, 'degradeGeneration', 0), 0, 1),
-      dynamicsDegradeAlias: clamp(numberFromState(sliderState, 'degradeAlias', 0), 0, 1),
-      dynamicsDegradeWow: clamp(numberFromState(sliderState, 'degradeWow', 0), 0, 1),
-      dynamicsDegradeFlutter: clamp(numberFromState(sliderState, 'degradeFlutter', 0), 0, 1),
-      dynamicsDegradeDrift: clamp(numberFromState(sliderState, 'degradeDrift', 0), 0, 1),
-      dynamicsDegradeWobbleSpeed: clamp(numberFromState(sliderState, 'degradeWobbleSpeed', 0.35), 0, 1),
-      dynamicsDegradeTone: clamp(numberFromState(sliderState, 'degradeTone', 0.5), 0, 1),
+      dynamicsDriftEnabled: dynamicsEnabled && driftEnabled,
+      dynamicsDriftMode: dynamicsDriftModeId(sliderState?.driftMode),
+      dynamicsDriftQuality: dynamicsDriftQualityId(sliderState?.driftQuality),
+      dynamicsDriftAntiComb: clamp(numberFromState(sliderState, 'driftAntiComb', 1), 0, 1),
+      dynamicsDriftDiffusion: clamp(numberFromState(sliderState, 'driftDiffusion', 0.55), 0, 1),
+      dynamicsDriftMix: driftMix,
+      dynamicsDriftAge: clamp(numberFromState(sliderState, 'driftAge', 0), 0, 1),
+      dynamicsDriftBias: clamp(numberFromState(sliderState, 'driftBias', 0.5), 0, 1),
+      dynamicsDriftLpgAmount: clamp(numberFromState(sliderState, 'driftLpgAmount', 0.5), 0, 1),
+      dynamicsDriftResonance: clamp(numberFromState(sliderState, 'driftResonance', 0.2), 0, 1),
+      dynamicsDriftStereo: clamp(numberFromState(sliderState, 'driftStereo', 0.5), 0, 1),
+      dynamicsDriftEnvFollow: clamp(numberFromState(sliderState, 'driftEnvFollow', 0), 0, 1),
+      dynamicsDriftDepth: clamp(numberFromState(sliderState, 'driftDepth', 0), 0, 1),
+      dynamicsDriftRate: clamp(numberFromState(sliderState, 'driftRate', 0.3), 0, 1),
+      dynamicsDriftDamp: clamp(numberFromState(sliderState, 'driftDamp', 0.5), 0, 1),
+      dynamicsErosionEnabled: dynamicsEnabled && erosionEnabled,
+      dynamicsErosionQuality: dynamicsErosionQualityId(sliderState?.erosionQuality),
+      dynamicsErosionEventAmount: clamp(numberFromState(sliderState, 'erosionEventAmount', 0.45), 0, 1),
+      dynamicsErosionProfileAmount: clamp(numberFromState(sliderState, 'erosionProfileAmount', 0.65), 0, 1),
+      dynamicsErosionDitherAmount: clamp(numberFromState(sliderState, 'erosionDitherAmount', 0.55), 0, 1),
+      dynamicsErosionMix: erosionMix,
+      dynamicsErosionAge: clamp(numberFromState(sliderState, 'erosionAge', 0), 0, 1),
+      dynamicsErosionGeneration: clamp(numberFromState(sliderState, 'erosionGeneration', 0), 0, 1),
+      dynamicsErosionAlias: clamp(numberFromState(sliderState, 'erosionAlias', 0), 0, 1),
+      dynamicsErosionWow: clamp(numberFromState(sliderState, 'erosionWow', 0), 0, 1),
+      dynamicsErosionFlutter: clamp(numberFromState(sliderState, 'erosionFlutter', 0), 0, 1),
+      dynamicsErosionDrift: clamp(numberFromState(sliderState, 'erosionDrift', 0), 0, 1),
+      dynamicsErosionWobbleSpeed: clamp(numberFromState(sliderState, 'erosionWobbleSpeed', 0.35), 0, 1),
+      dynamicsErosionTone: clamp(numberFromState(sliderState, 'erosionTone', 0.5), 0, 1),
       dynamicsDegradeHp: clamp(numberFromState(sliderState, 'degradeHp', 0), 0, 1),
       dynamicsDegradeLp: clamp(numberFromState(sliderState, 'degradeLp', 1), 0, 1),
-      dynamicsDegradeNoise: clamp(numberFromState(sliderState, 'degradeNoise', 0), 0, 1),
-      dynamicsDegradeSaturation: clamp(numberFromState(sliderState, 'degradeSaturation', 0), 0, 1),
-      dynamicsDegradeCorrosion: clamp(numberFromState(sliderState, 'degradeCorrosion', 0), 0, 1),
-      dynamicsModSlowWow: clamp(numberFromState(sliderState, 'degradeModSlowWow', 0.18), 0, 1),
-      dynamicsModSlowFlutter: clamp(numberFromState(sliderState, 'degradeModSlowFlutter', 0.02), 0, 1),
-      dynamicsModSlowLp: clamp(numberFromState(sliderState, 'degradeModSlowLp', 0.12), 0, 1),
-      dynamicsModSlowWet: clamp(numberFromState(sliderState, 'degradeModSlowWet', 0.03), 0, 1),
-      dynamicsModSlowDropout: clamp(numberFromState(sliderState, 'degradeModSlowDropout', 0.04), 0, 1),
-      dynamicsModSlowAlias: clamp(numberFromState(sliderState, 'degradeModSlowAlias', 0), 0, 1),
-      dynamicsModFlutterWow: clamp(numberFromState(sliderState, 'degradeModFlutterWow', 0), 0, 1),
-      dynamicsModFlutterFlutter: clamp(numberFromState(sliderState, 'degradeModFlutterFlutter', 0.12), 0, 1),
-      dynamicsModFlutterLp: clamp(numberFromState(sliderState, 'degradeModFlutterLp', 0.02), 0, 1),
-      dynamicsModFlutterWet: clamp(numberFromState(sliderState, 'degradeModFlutterWet', 0), 0, 1),
-      dynamicsModFlutterDropout: clamp(numberFromState(sliderState, 'degradeModFlutterDropout', 0.02), 0, 1),
-      dynamicsModFlutterAlias: clamp(numberFromState(sliderState, 'degradeModFlutterAlias', 0), 0, 1),
-      dynamicsModRandomWow: clamp(numberFromState(sliderState, 'degradeModRandomWow', 0.04), 0, 1),
-      dynamicsModRandomFlutter: clamp(numberFromState(sliderState, 'degradeModRandomFlutter', 0.03), 0, 1),
-      dynamicsModRandomLp: clamp(numberFromState(sliderState, 'degradeModRandomLp', 0.14), 0, 1),
-      dynamicsModRandomWet: clamp(numberFromState(sliderState, 'degradeModRandomWet', 0.02), 0, 1),
-      dynamicsModRandomDropout: clamp(numberFromState(sliderState, 'degradeModRandomDropout', 0.1), 0, 1),
-      dynamicsModRandomAlias: clamp(numberFromState(sliderState, 'degradeModRandomAlias', 0.02), 0, 1),
-      dynamicsModEnvWow: clamp(numberFromState(sliderState, 'degradeModEnvWow', 0), 0, 1),
-      dynamicsModEnvFlutter: clamp(numberFromState(sliderState, 'degradeModEnvFlutter', 0), 0, 1),
-      dynamicsModEnvLp: clamp(numberFromState(sliderState, 'degradeModEnvLp', 0.08), 0, 1),
-      dynamicsModEnvWet: clamp(numberFromState(sliderState, 'degradeModEnvWet', 0.04), 0, 1),
-      dynamicsModEnvDropout: clamp(numberFromState(sliderState, 'degradeModEnvDropout', 0), 0, 1),
-      dynamicsModEnvAlias: clamp(numberFromState(sliderState, 'degradeModEnvAlias', 0), 0, 1),
-      dynamicsModNoiseWow: clamp(numberFromState(sliderState, 'degradeModNoiseWow', 0), 0, 1),
-      dynamicsModNoiseFlutter: clamp(numberFromState(sliderState, 'degradeModNoiseFlutter', 0.06), 0, 1),
-      dynamicsModNoiseLp: clamp(numberFromState(sliderState, 'degradeModNoiseLp', 0.02), 0, 1),
-      dynamicsModNoiseWet: clamp(numberFromState(sliderState, 'degradeModNoiseWet', 0), 0, 1),
-      dynamicsModNoiseDropout: clamp(numberFromState(sliderState, 'degradeModNoiseDropout', 0.06), 0, 1),
-      dynamicsModNoiseAlias: clamp(numberFromState(sliderState, 'degradeModNoiseAlias', 0.02), 0, 1),
+      dynamicsErosionNoise: clamp(numberFromState(sliderState, 'erosionNoise', 0), 0, 1),
+      dynamicsErosionSaturation: clamp(numberFromState(sliderState, 'erosionSaturation', 0), 0, 1),
+      dynamicsErosionCorrosion: clamp(numberFromState(sliderState, 'erosionCorrosion', 0), 0, 1),
+      dynamicsModSlowWow: clamp(numberFromState(sliderState, 'erosionModSlowWow', 0.18), 0, 1),
+      dynamicsModSlowFlutter: clamp(numberFromState(sliderState, 'erosionModSlowFlutter', 0.02), 0, 1),
+      dynamicsModSlowLp: clamp(numberFromState(sliderState, 'erosionModSlowLp', 0.12), 0, 1),
+      dynamicsModSlowWet: clamp(numberFromState(sliderState, 'erosionModSlowWet', 0.03), 0, 1),
+      dynamicsModSlowDropout: clamp(numberFromState(sliderState, 'erosionModSlowDropout', 0.04), 0, 1),
+      dynamicsModSlowAlias: clamp(numberFromState(sliderState, 'erosionModSlowAlias', 0), 0, 1),
+      dynamicsModFlutterWow: clamp(numberFromState(sliderState, 'erosionModFlutterWow', 0), 0, 1),
+      dynamicsModFlutterFlutter: clamp(numberFromState(sliderState, 'erosionModFlutterFlutter', 0.12), 0, 1),
+      dynamicsModFlutterLp: clamp(numberFromState(sliderState, 'erosionModFlutterLp', 0.02), 0, 1),
+      dynamicsModFlutterWet: clamp(numberFromState(sliderState, 'erosionModFlutterWet', 0), 0, 1),
+      dynamicsModFlutterDropout: clamp(numberFromState(sliderState, 'erosionModFlutterDropout', 0.02), 0, 1),
+      dynamicsModFlutterAlias: clamp(numberFromState(sliderState, 'erosionModFlutterAlias', 0), 0, 1),
+      dynamicsModRandomWow: clamp(numberFromState(sliderState, 'erosionModRandomWow', 0.04), 0, 1),
+      dynamicsModRandomFlutter: clamp(numberFromState(sliderState, 'erosionModRandomFlutter', 0.03), 0, 1),
+      dynamicsModRandomLp: clamp(numberFromState(sliderState, 'erosionModRandomLp', 0.14), 0, 1),
+      dynamicsModRandomWet: clamp(numberFromState(sliderState, 'erosionModRandomWet', 0.02), 0, 1),
+      dynamicsModRandomDropout: clamp(numberFromState(sliderState, 'erosionModRandomDropout', 0.1), 0, 1),
+      dynamicsModRandomAlias: clamp(numberFromState(sliderState, 'erosionModRandomAlias', 0.02), 0, 1),
+      dynamicsModEnvWow: clamp(numberFromState(sliderState, 'erosionModEnvWow', 0), 0, 1),
+      dynamicsModEnvFlutter: clamp(numberFromState(sliderState, 'erosionModEnvFlutter', 0), 0, 1),
+      dynamicsModEnvLp: clamp(numberFromState(sliderState, 'erosionModEnvLp', 0.08), 0, 1),
+      dynamicsModEnvWet: clamp(numberFromState(sliderState, 'erosionModEnvWet', 0.04), 0, 1),
+      dynamicsModEnvDropout: clamp(numberFromState(sliderState, 'erosionModEnvDropout', 0), 0, 1),
+      dynamicsModEnvAlias: clamp(numberFromState(sliderState, 'erosionModEnvAlias', 0), 0, 1),
+      dynamicsModNoiseWow: clamp(numberFromState(sliderState, 'erosionModNoiseWow', 0), 0, 1),
+      dynamicsModNoiseFlutter: clamp(numberFromState(sliderState, 'erosionModNoiseFlutter', 0.06), 0, 1),
+      dynamicsModNoiseLp: clamp(numberFromState(sliderState, 'erosionModNoiseLp', 0.02), 0, 1),
+      dynamicsModNoiseWet: clamp(numberFromState(sliderState, 'erosionModNoiseWet', 0), 0, 1),
+      dynamicsModNoiseDropout: clamp(numberFromState(sliderState, 'erosionModNoiseDropout', 0.06), 0, 1),
+      dynamicsModNoiseAlias: clamp(numberFromState(sliderState, 'erosionModNoiseAlias', 0.02), 0, 1),
       dynamicsSaturationEnabled: booleanFromState(sliderState, 'dynamicsSaturationEnabled', false),
       dynamicsSaturationMode: dynamicsSaturationModeId(sliderState?.dynamicsSaturationMode),
       dynamicsSaturationQuality: dynamicsSaturationQualityId(sliderState?.dynamicsSaturationQuality),
@@ -1157,6 +1218,38 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       dynamicsEndCompClarity: clamp(numberFromState(sliderState, 'endCompClarity', 0.22), 0, 1),
       dynamicsEndCompTwoBandAmount: clamp(numberFromState(sliderState, 'endCompTwoBandAmount', 0), 0, 1),
       dynamicsEndCompBandSplit: clamp(numberFromState(sliderState, 'endCompBandSplit', 0.5), 0, 1),
+      dynamicsEq1Enabled: booleanFromState(sliderState, 'dynamicsEq1Enabled', false),
+      dynamicsEq1InputGain: clamp(numberFromState(sliderState, 'dynamicsEq1InputGain', 0), -24, 24),
+      dynamicsEq1OutputGain: clamp(numberFromState(sliderState, 'dynamicsEq1OutputGain', 0), -24, 24),
+      dynamicsEq1LowType: dynamicsEqEdgeTypeId(sliderState?.dynamicsEq1LowType),
+      dynamicsEq1LowFreq: clamp(numberFromState(sliderState, 'dynamicsEq1LowFreq', 120), 20, 20000),
+      dynamicsEq1LowGain: clamp(numberFromState(sliderState, 'dynamicsEq1LowGain', 0), -24, 24),
+      dynamicsEq1LowQ: clamp(numberFromState(sliderState, 'dynamicsEq1LowQ', 0.7), 0.1, 18),
+      dynamicsEq1LowSlope: clamp(numberFromState(sliderState, 'dynamicsEq1LowSlope', 1), 0.25, 4),
+      dynamicsEq1MidFreq: clamp(numberFromState(sliderState, 'dynamicsEq1MidFreq', 1000), 20, 20000),
+      dynamicsEq1MidGain: clamp(numberFromState(sliderState, 'dynamicsEq1MidGain', 0), -24, 24),
+      dynamicsEq1MidQ: clamp(numberFromState(sliderState, 'dynamicsEq1MidQ', 0.9), 0.1, 18),
+      dynamicsEq1HighType: dynamicsEqEdgeTypeId(sliderState?.dynamicsEq1HighType),
+      dynamicsEq1HighFreq: clamp(numberFromState(sliderState, 'dynamicsEq1HighFreq', 8000), 20, 20000),
+      dynamicsEq1HighGain: clamp(numberFromState(sliderState, 'dynamicsEq1HighGain', 0), -24, 24),
+      dynamicsEq1HighQ: clamp(numberFromState(sliderState, 'dynamicsEq1HighQ', 0.7), 0.1, 18),
+      dynamicsEq1HighSlope: clamp(numberFromState(sliderState, 'dynamicsEq1HighSlope', 1), 0.25, 4),
+      dynamicsEq2Enabled: booleanFromState(sliderState, 'dynamicsEq2Enabled', false),
+      dynamicsEq2InputGain: clamp(numberFromState(sliderState, 'dynamicsEq2InputGain', 0), -24, 24),
+      dynamicsEq2OutputGain: clamp(numberFromState(sliderState, 'dynamicsEq2OutputGain', 0), -24, 24),
+      dynamicsEq2LowType: dynamicsEqEdgeTypeId(sliderState?.dynamicsEq2LowType),
+      dynamicsEq2LowFreq: clamp(numberFromState(sliderState, 'dynamicsEq2LowFreq', 90), 20, 20000),
+      dynamicsEq2LowGain: clamp(numberFromState(sliderState, 'dynamicsEq2LowGain', 0), -24, 24),
+      dynamicsEq2LowQ: clamp(numberFromState(sliderState, 'dynamicsEq2LowQ', 0.7), 0.1, 18),
+      dynamicsEq2LowSlope: clamp(numberFromState(sliderState, 'dynamicsEq2LowSlope', 1), 0.25, 4),
+      dynamicsEq2MidFreq: clamp(numberFromState(sliderState, 'dynamicsEq2MidFreq', 2200), 20, 20000),
+      dynamicsEq2MidGain: clamp(numberFromState(sliderState, 'dynamicsEq2MidGain', 0), -24, 24),
+      dynamicsEq2MidQ: clamp(numberFromState(sliderState, 'dynamicsEq2MidQ', 0.9), 0.1, 18),
+      dynamicsEq2HighType: dynamicsEqEdgeTypeId(sliderState?.dynamicsEq2HighType),
+      dynamicsEq2HighFreq: clamp(numberFromState(sliderState, 'dynamicsEq2HighFreq', 10000), 20, 20000),
+      dynamicsEq2HighGain: clamp(numberFromState(sliderState, 'dynamicsEq2HighGain', 0), -24, 24),
+      dynamicsEq2HighQ: clamp(numberFromState(sliderState, 'dynamicsEq2HighQ', 0.7), 0.1, 18),
+      dynamicsEq2HighSlope: clamp(numberFromState(sliderState, 'dynamicsEq2HighSlope', 1), 0.25, 4),
       sidechainEnabled: booleanFromState(sliderState, 'sidechainEnabled', false),
       sidechainKeyA: sidechainKeyId(sliderState?.sidechainKeyA),
       sidechainKeyB: sidechainKeyId(sliderState?.sidechainKeyB),
@@ -1198,6 +1291,27 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       delayBToReverb: clamp(numberFromState(sliderState, 'granularDelayReverbSend', 0.4), 0, 1),
       granularToDelayA,
       granularToDelayB,
+      delayAToDegrade: clamp(numberFromState(sliderState, 'delayADegradeSend', 0), 0, 1),
+      delayBToDegrade: clamp(numberFromState(sliderState, 'delayBDegradeSend', 0), 0, 1),
+      granularToDegrade: clamp(numberFromState(sliderState, 'granularDegradeSend', 0), 0, 1),
+      reverbToDegrade,
+      degradeToReverb,
+      degradeReturnLevel: clamp(numberFromState(sliderState, 'degradeLevel', 1), 0, 1),
+      dynamicsPad1Bus: dynamicsBusFromState(sliderState, 'dynamicsPad1Bus'),
+      dynamicsPad2Bus: dynamicsBusFromState(sliderState, 'dynamicsPad2Bus'),
+      dynamicsLead1Bus: dynamicsBusFromState(sliderState, 'dynamicsLead1Bus'),
+      dynamicsLead2Bus: dynamicsBusFromState(sliderState, 'dynamicsLead2Bus'),
+      dynamicsPianoBus: dynamicsBusFromState(sliderState, 'dynamicsPianoBus'),
+      dynamicsDrumBus: dynamicsBusFromState(sliderState, 'dynamicsDrumBus'),
+      dynamicsGranularBus: dynamicsBusFromState(sliderState, 'dynamicsGranularBus'),
+      dynamicsWavesBus: dynamicsBusFromState(sliderState, 'dynamicsWavesBus'),
+      dynamicsWaterBus: dynamicsBusFromState(sliderState, 'dynamicsWaterBus'),
+      dynamicsInsectsBus: dynamicsBusFromState(sliderState, 'dynamicsInsectsBus'),
+      dynamicsNatureBus: dynamicsBusFromState(sliderState, 'dynamicsNatureBus'),
+      dynamicsDelayABus: dynamicsBusFromState(sliderState, 'dynamicsDelayABus'),
+      dynamicsDelayBBus: dynamicsBusFromState(sliderState, 'dynamicsDelayBBus'),
+      dynamicsDegradeBus: dynamicsBusFromState(sliderState, 'dynamicsDegradeBus'),
+      dynamicsReverbBus: dynamicsBusFromState(sliderState, 'dynamicsReverbBus'),
     },
     master: {
       gain: clamp(numberFromState(sliderState, 'masterVolume', DEFAULT_MASTER_VOLUME) * MASTER_OUTPUT_TRIM, 0, 1.5),

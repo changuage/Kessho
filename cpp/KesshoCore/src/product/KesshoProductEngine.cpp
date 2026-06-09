@@ -16,11 +16,12 @@
   reverb_module = kessho::core::createReverbModule();
   granular_module = kessho::core::createGranularModule();
   spectral_freeze_module = kessho::core::createSpectralFreezeModule();
-  dynamics_character_module = kessho::core::createDynamicsCharacterModule();
+  dynamics_drift_module = kessho::core::createDynamicsDriftModule();
+  dynamics_degrade_send_module = kessho::core::createDynamicsDriftModule();
   soundscapes_module = kessho::core::createSoundscapesModule();
   if (!pad_module || !lead_modules[0] || !lead_modules[1] || !drum_module ||
       !delay_a_module || !delay_b_module || !reverb_module || !granular_module ||
-      !spectral_freeze_module || !dynamics_character_module || !soundscapes_module) {
+      !spectral_freeze_module || !dynamics_drift_module || !dynamics_degrade_send_module || !soundscapes_module) {
     return false;
   }
   if (!pad_module->prepare(sample_rate, static_cast<int>(max_block_size)) ||
@@ -32,7 +33,8 @@
       !reverb_module->prepare(sample_rate, static_cast<int>(max_block_size)) ||
       !granular_module->prepare(sample_rate, static_cast<int>(max_block_size)) ||
       !spectral_freeze_module->prepare(sample_rate, static_cast<int>(max_block_size)) ||
-      !dynamics_character_module->prepare(sample_rate, static_cast<int>(max_block_size)) ||
+      !dynamics_drift_module->prepare(sample_rate, static_cast<int>(max_block_size)) ||
+      !dynamics_degrade_send_module->prepare(sample_rate, static_cast<int>(max_block_size)) ||
       !soundscapes_module->prepare(sample_rate, static_cast<int>(max_block_size))) {
     return false;
   }
@@ -192,8 +194,11 @@
   if (spectral_freeze_module) {
     spectral_freeze_module->reset();
   }
-  if (dynamics_character_module) {
-    dynamics_character_module->reset();
+  if (dynamics_drift_module) {
+    dynamics_drift_module->reset();
+  }
+  if (dynamics_degrade_send_module) {
+    dynamics_degrade_send_module->reset();
   }
   if (soundscapes_module) {
     soundscapes_module->reset();

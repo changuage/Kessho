@@ -155,7 +155,9 @@ interface V2GraphRepairRow {
 const DEFAULT_CHILD_GRAPH_REPAIR_SCOPES: PresetChildGraphRepairScope[] = [
   { type: 'source', scope: 'delay' },
   { type: 'kit', scope: 'delayKit' },
-  { type: 'source', scope: 'dynamics' },
+  { type: 'source', scope: 'dynamicsBus' },
+  { type: 'source', scope: 'degrade' },
+  { type: 'source', scope: 'masterFx' },
   { type: 'source', scope: 'granular' },
   { type: 'kit', scope: 'granularKit' },
   { type: 'kit', scope: 'earthKit' },

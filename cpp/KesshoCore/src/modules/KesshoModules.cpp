@@ -17,10 +17,10 @@ namespace {
 
 std::unique_ptr<kessho::core::IKesshoModule> createModule(int module_type) {
   switch (module_type) {
-    case KESSHO_MODULE_DYNAMICS_CHARACTER:
-      return kessho::core::createDynamicsCharacterModule();
+    case KESSHO_MODULE_DYNAMICS_DRIFT:
+      return kessho::core::createDynamicsDriftModule();
     case KESSHO_MODULE_DYNAMICS_DEGRADE:
-      return kessho::core::createDynamicsDegradeModule();
+      return kessho::core::createDynamicsErosionModule();
     case KESSHO_MODULE_REVERB:
       return kessho::core::createReverbModule();
     case KESSHO_MODULE_GRANULAR:

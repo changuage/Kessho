@@ -1,11 +1,11 @@
 #!/bin/bash
-# Kessho Dynamics Character — Emscripten → WASM build
+# Kessho Dynamics Drift — Emscripten → WASM build
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SRC="$SCRIPT_DIR/kessho_dynamics_character.cpp"
-OUT="$SCRIPT_DIR/kessho_dynamics_character.wasm"
+SRC="$SCRIPT_DIR/kessho_dynamics_drift.cpp"
+OUT="$SCRIPT_DIR/kessho_dynamics_drift.wasm"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LOCAL_EMSDK="$REPO_ROOT/emsdk"
 LOCAL_EMCC="$LOCAL_EMSDK/upstream/emscripten/emcc.py"
@@ -24,21 +24,21 @@ else
 fi
 
 EXPORTS="[
-  '_dynamics_character_init',
-  '_dynamics_character_reset',
-  '_dynamics_character_destroy',
-  '_dynamics_character_get_input_ptr',
-  '_dynamics_character_get_output_ptr',
-  '_dynamics_character_get_params_ptr',
-  '_dynamics_character_get_telemetry_ptr',
-  '_dynamics_character_commit_params',
-  '_dynamics_character_process_block',
+  '_dynamics_drift_init',
+  '_dynamics_drift_reset',
+  '_dynamics_drift_destroy',
+  '_dynamics_drift_get_input_ptr',
+  '_dynamics_drift_get_output_ptr',
+  '_dynamics_drift_get_params_ptr',
+  '_dynamics_drift_get_telemetry_ptr',
+  '_dynamics_drift_commit_params',
+  '_dynamics_drift_process_block',
   '_malloc',
   '_free'
 ]"
 
 if [[ "${1:-}" == "debug" ]]; then
-    echo "Building Dynamics Character DEBUG..."
+    echo "Building Dynamics Drift DEBUG..."
     "${EMCC_CMD[@]}" "$SRC" \
         -o "$OUT" \
         -std=c++17 \
@@ -52,7 +52,7 @@ if [[ "${1:-}" == "debug" ]]; then
         --no-entry \
         -s "EXPORTED_FUNCTIONS=$EXPORTS"
 else
-    echo "Building Dynamics Character RELEASE..."
+    echo "Building Dynamics Drift RELEASE..."
     "${EMCC_CMD[@]}" "$SRC" \
         -o "$OUT" \
         -std=c++17 \
@@ -75,8 +75,8 @@ echo "Built: $OUT ($(( SIZE / 1024 )) KB)"
 
 PUBLIC_DIR="$SCRIPT_DIR/../../public/worklets"
 if [ -d "$PUBLIC_DIR" ]; then
-    cp "$OUT" "$PUBLIC_DIR/kessho_dynamics_character.wasm"
-    echo "Copied to $PUBLIC_DIR/kessho_dynamics_character.wasm"
+    cp "$OUT" "$PUBLIC_DIR/kessho_dynamics_drift.wasm"
+    echo "Copied to $PUBLIC_DIR/kessho_dynamics_drift.wasm"
 else
     echo "Public worklets dir not found: $PUBLIC_DIR"
 fi

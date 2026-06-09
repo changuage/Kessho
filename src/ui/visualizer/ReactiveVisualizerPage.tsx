@@ -452,8 +452,8 @@ function buildSnapshot(
     ? Math.max(
       value('dynamicsSaturationDrive'),
       value('sidechainAmount'),
-      value('characterMix'),
-      value('degradeMix'),
+      value('driftMix'),
+      value('erosionMix'),
       value('endCompMix'),
     )
     : Math.max(value('masterSatDrive'), value('hardness')) * 0.5;

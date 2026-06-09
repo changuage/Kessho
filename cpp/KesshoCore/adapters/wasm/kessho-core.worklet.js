@@ -9,8 +9,8 @@ const KESSHO_MODULE_DELAY_A = 10;
 const KESSHO_MODULE_DELAY_B = 11;
 const KESSHO_DRUM_PARAM_TRIGGER = 117;
 const KESSHO_MODULE_PAD_OUTPUT_TAP_COUNT = 6;
-const KESSHO_MODULE_DELAY_A_OUTPUT_TAP_COUNT = 4;
-const KESSHO_MODULE_DELAY_B_OUTPUT_TAP_COUNT = 4;
+const KESSHO_MODULE_DELAY_A_OUTPUT_TAP_COUNT = 5;
+const KESSHO_MODULE_DELAY_B_OUTPUT_TAP_COUNT = 5;
 const KESSHO_MODULE_TAP_PREFADER_PAD1 = 2;
 const KESSHO_MODULE_TAP_PREFADER_PAD2 = 3;
 const KESSHO_MODULE_TAP_POSTFADER_PAD1 = 4;
@@ -1997,7 +1997,7 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
     }
 
     if (message.type === 'configureModule' && this.ready) {
-      if (message.module === 'dynamics-character') {
+      if (message.module === 'dynamics-drift') {
         this.configureDynamicsModule(message);
       } else if (message.module === 'reverb') {
         this.configureReverbModule(message);

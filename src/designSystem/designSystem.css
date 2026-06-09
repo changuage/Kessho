@@ -172,8 +172,8 @@
   --page-accent: var(--tab-dynamics);
   --engine-accent: var(--page-accent);
   --accent-dynamics: var(--tab-dynamics);
-  --accent-character: var(--k-sage);
-  --accent-degrade: var(--k-violet);
+  --accent-drift: var(--k-sage);
+  --accent-erosion: var(--k-violet);
   --accent-saturation: var(--k-gold);
   --accent-end: var(--k-clay);
 }
@@ -183,11 +183,11 @@
   --engine-accent: var(--page-accent);
 }
 
-#root .dynamics-character-card {
+#root .dynamics-drift-card {
   --engine-accent: var(--k-sage);
 }
 
-#root .dynamics-degrade-card {
+#root .dynamics-erosion-card {
   --engine-accent: var(--k-violet);
 }
 

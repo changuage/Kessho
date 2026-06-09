@@ -298,7 +298,7 @@ requireTokens('cpp/KesshoCore/src/product/fx/ProductGranular.cpp', [
   'granular_reverb_comp_attack_coeff',
   'granular_reverb_comp_release_coeff',
   'advanceGranularReturnGains(transport.sample_frame + i)',
-  'sidechainGain(kSidechainGranular, frame)',
+  'routeTerminalSample(routing.dynamics_routes[kDynamicsRouteGranular]',
 ]);
 
 requireTokens('cpp/KesshoCore/src/product/fx/ProductGranularFilters.cpp', [

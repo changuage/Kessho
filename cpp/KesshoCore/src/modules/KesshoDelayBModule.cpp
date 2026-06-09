@@ -10,7 +10,7 @@
 namespace kessho::core {
 namespace {
 
-constexpr int kParamCount = 24;
+constexpr int kParamCount = 25;
 constexpr int kParamEnabled = 0;
 constexpr int kParamActivity = 1;
 constexpr int kParamRepeats = 2;
@@ -29,10 +29,11 @@ constexpr int kParamSpread = 14;
 constexpr int kParamTapeHeadMask = 15;
 constexpr int kParamTapeHeadLevelBase = 16;
 constexpr int kParamTapeHeadPanBase = 20;
+constexpr int kParamDriftSend = 24;
 
 constexpr int kTapCount = 8;
 constexpr int kTapeHeadCount = 4;
-constexpr int kOutputTapCount = 4;
+constexpr int kOutputTapCount = 5;
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kWebAudioCompressorLookaheadSeconds = 0.006f;
 constexpr float kWebAudioCompressorMakeupGain = 1.477f;
@@ -302,6 +303,7 @@ struct DelayBState {
   float reverb_send = 0.0f;
   float granular_send = 0.0f;
   float to_delay_a = 0.0f;
+  float degrade_send = 0.0f;
   bool diffuse = false;
   bool tape_heads = false;
   int pattern = 0;
@@ -445,6 +447,7 @@ public:
     state_.reverb_send = state_.enabled ? clamp(params_[kParamReverbSend], 0.0f, 1.0f) : 0.0f;
     state_.granular_send = state_.enabled ? clamp(params_[kParamGranularSend], 0.0f, 1.0f) : 0.0f;
     state_.to_delay_a = state_.enabled ? clamp(params_[kParamToDelayA], 0.0f, 1.0f) : 0.0f;
+    state_.degrade_send = state_.enabled ? clamp(params_[kParamDriftSend], 0.0f, 1.0f) : 0.0f;
     const int space_mode = static_cast<int>(clamp(std::round(params_[kParamSpaceMode]), 0.0f, 2.0f));
     state_.diffuse = space_mode == 1;
     state_.tape_heads = space_mode == 2;
@@ -676,6 +679,8 @@ private:
     taps_r[2] = limited_r * state_.to_delay_a;
     taps_l[3] = limited_l * state_.granular_send;
     taps_r[3] = limited_r * state_.granular_send;
+    taps_l[4] = limited_l * state_.degrade_send;
+    taps_r[4] = limited_r * state_.degrade_send;
   }
 
   float sample_rate_ = 48000.0f;

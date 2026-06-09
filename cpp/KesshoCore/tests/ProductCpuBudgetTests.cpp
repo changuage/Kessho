@@ -109,10 +109,10 @@ void enableFxStress(KesshoProductSnapshotV2& snapshot) {
   snapshot.fx.granular_voices[0].density = 24.0f;
   snapshot.fx.dynamics_enabled = 1u;
   snapshot.fx.dynamics_drive = 0.35f;
-  snapshot.fx.dynamics_character_enabled = 1u;
-  snapshot.fx.dynamics_character_mix = 0.25f;
-  snapshot.fx.dynamics_degrade_enabled = 1u;
-  snapshot.fx.dynamics_degrade_mix = 0.2f;
+  snapshot.fx.dynamics_drift_enabled = 1u;
+  snapshot.fx.dynamics_drift_mix = 0.25f;
+  snapshot.fx.dynamics_erosion_enabled = 1u;
+  snapshot.fx.dynamics_erosion_mix = 0.2f;
   snapshot.fx.dynamics_saturation_enabled = 1u;
   snapshot.fx.dynamics_saturation_drive = 0.2f;
   snapshot.fx.dynamics_end_comp_enabled = 1u;

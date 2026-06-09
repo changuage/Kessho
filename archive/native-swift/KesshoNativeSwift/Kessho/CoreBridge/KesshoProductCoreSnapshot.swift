@@ -192,21 +192,21 @@ public enum KesshoProductCoreSnapshotEncoder {
         writer.f32(snapshot.fx.dynamicsCharacterDepth)
         writer.f32(snapshot.fx.dynamicsCharacterRate)
         writer.f32(snapshot.fx.dynamicsCharacterDamp)
-        writer.u32(snapshot.fx.dynamicsDegradeEnabled ? 1 : 0)
-        writer.f32(snapshot.fx.dynamicsDegradeMix)
-        writer.f32(snapshot.fx.dynamicsDegradeAge)
-        writer.f32(snapshot.fx.dynamicsDegradeGeneration)
-        writer.f32(snapshot.fx.dynamicsDegradeAlias)
-        writer.f32(snapshot.fx.dynamicsDegradeWow)
-        writer.f32(snapshot.fx.dynamicsDegradeFlutter)
-        writer.f32(snapshot.fx.dynamicsDegradeDrift)
-        writer.f32(snapshot.fx.dynamicsDegradeWobbleSpeed)
-        writer.f32(snapshot.fx.dynamicsDegradeTone)
-        writer.f32(snapshot.fx.dynamicsDegradeHp)
-        writer.f32(snapshot.fx.dynamicsDegradeLp)
-        writer.f32(snapshot.fx.dynamicsDegradeNoise)
-        writer.f32(snapshot.fx.dynamicsDegradeSaturation)
-        writer.f32(snapshot.fx.dynamicsDegradeCorrosion)
+        writer.u32(snapshot.fx.dynamicsErosionEnabled ? 1 : 0)
+        writer.f32(snapshot.fx.dynamicsErosionMix)
+        writer.f32(snapshot.fx.dynamicsErosionAge)
+        writer.f32(snapshot.fx.dynamicsErosionGeneration)
+        writer.f32(snapshot.fx.dynamicsErosionAlias)
+        writer.f32(snapshot.fx.dynamicsErosionWow)
+        writer.f32(snapshot.fx.dynamicsErosionFlutter)
+        writer.f32(snapshot.fx.dynamicsErosionDrift)
+        writer.f32(snapshot.fx.dynamicsErosionWobbleSpeed)
+        writer.f32(snapshot.fx.dynamicsErosionTone)
+        writer.f32(snapshot.fx.dynamicsErosionHp)
+        writer.f32(snapshot.fx.dynamicsErosionLp)
+        writer.f32(snapshot.fx.dynamicsErosionNoise)
+        writer.f32(snapshot.fx.dynamicsErosionSaturation)
+        writer.f32(snapshot.fx.dynamicsErosionCorrosion)
         writer.f32(snapshot.fx.dynamicsModSlowWow)
         writer.f32(snapshot.fx.dynamicsModSlowFlutter)
         writer.f32(snapshot.fx.dynamicsModSlowLp)
@@ -465,51 +465,51 @@ public enum KesshoProductCoreSnapshotEncoder {
                 dynamicsCharacterDepth: Float(clamp(state.characterDepth, 0, 1)),
                 dynamicsCharacterRate: Float(clamp(state.characterRate, 0, 1)),
                 dynamicsCharacterDamp: Float(clamp(state.characterDamp, 0, 1)),
-                dynamicsDegradeEnabled: state.dynamicsEnabled && state.degradeEnabled,
-                dynamicsDegradeMix: Float(clamp(state.degradeMix, 0, 1)),
-                dynamicsDegradeAge: Float(clamp(state.degradeAge, 0, 1)),
-                dynamicsDegradeGeneration: Float(clamp(state.degradeGeneration, 0, 1)),
-                dynamicsDegradeAlias: Float(clamp(state.degradeAlias, 0, 1)),
-                dynamicsDegradeWow: Float(clamp(state.degradeWow, 0, 1)),
-                dynamicsDegradeFlutter: Float(clamp(state.degradeFlutter, 0, 1)),
-                dynamicsDegradeDrift: Float(clamp(state.degradeDrift, 0, 1)),
-                dynamicsDegradeWobbleSpeed: Float(clamp(state.degradeWobbleSpeed, 0, 1)),
-                dynamicsDegradeTone: Float(clamp(state.degradeTone, 0, 1)),
-                dynamicsDegradeHp: Float(clamp(state.degradeHp, 0, 1)),
-                dynamicsDegradeLp: Float(clamp(state.degradeLp, 0, 1)),
-                dynamicsDegradeNoise: Float(clamp(state.degradeNoise, 0, 1)),
-                dynamicsDegradeSaturation: Float(clamp(state.degradeSaturation, 0, 1)),
-                dynamicsDegradeCorrosion: Float(clamp(state.degradeCorrosion, 0, 1)),
-                dynamicsModSlowWow: Float(clamp(state.degradeModSlowWow, 0, 1)),
-                dynamicsModSlowFlutter: Float(clamp(state.degradeModSlowFlutter, 0, 1)),
-                dynamicsModSlowLp: Float(clamp(state.degradeModSlowLp, 0, 1)),
-                dynamicsModSlowWet: Float(clamp(state.degradeModSlowWet, 0, 1)),
-                dynamicsModSlowDropout: Float(clamp(state.degradeModSlowDropout, 0, 1)),
-                dynamicsModSlowAlias: Float(clamp(state.degradeModSlowAlias, 0, 1)),
-                dynamicsModFlutterWow: Float(clamp(state.degradeModFlutterWow, 0, 1)),
-                dynamicsModFlutterFlutter: Float(clamp(state.degradeModFlutterFlutter, 0, 1)),
-                dynamicsModFlutterLp: Float(clamp(state.degradeModFlutterLp, 0, 1)),
-                dynamicsModFlutterWet: Float(clamp(state.degradeModFlutterWet, 0, 1)),
-                dynamicsModFlutterDropout: Float(clamp(state.degradeModFlutterDropout, 0, 1)),
-                dynamicsModFlutterAlias: Float(clamp(state.degradeModFlutterAlias, 0, 1)),
-                dynamicsModRandomWow: Float(clamp(state.degradeModRandomWow, 0, 1)),
-                dynamicsModRandomFlutter: Float(clamp(state.degradeModRandomFlutter, 0, 1)),
-                dynamicsModRandomLp: Float(clamp(state.degradeModRandomLp, 0, 1)),
-                dynamicsModRandomWet: Float(clamp(state.degradeModRandomWet, 0, 1)),
-                dynamicsModRandomDropout: Float(clamp(state.degradeModRandomDropout, 0, 1)),
-                dynamicsModRandomAlias: Float(clamp(state.degradeModRandomAlias, 0, 1)),
-                dynamicsModEnvWow: Float(clamp(state.degradeModEnvWow, 0, 1)),
-                dynamicsModEnvFlutter: Float(clamp(state.degradeModEnvFlutter, 0, 1)),
-                dynamicsModEnvLp: Float(clamp(state.degradeModEnvLp, 0, 1)),
-                dynamicsModEnvWet: Float(clamp(state.degradeModEnvWet, 0, 1)),
-                dynamicsModEnvDropout: Float(clamp(state.degradeModEnvDropout, 0, 1)),
-                dynamicsModEnvAlias: Float(clamp(state.degradeModEnvAlias, 0, 1)),
-                dynamicsModNoiseWow: Float(clamp(state.degradeModNoiseWow, 0, 1)),
-                dynamicsModNoiseFlutter: Float(clamp(state.degradeModNoiseFlutter, 0, 1)),
-                dynamicsModNoiseLp: Float(clamp(state.degradeModNoiseLp, 0, 1)),
-                dynamicsModNoiseWet: Float(clamp(state.degradeModNoiseWet, 0, 1)),
-                dynamicsModNoiseDropout: Float(clamp(state.degradeModNoiseDropout, 0, 1)),
-                dynamicsModNoiseAlias: Float(clamp(state.degradeModNoiseAlias, 0, 1)),
+                dynamicsErosionEnabled: state.dynamicsEnabled && state.erosionEnabled,
+                dynamicsErosionMix: Float(clamp(state.erosionMix, 0, 1)),
+                dynamicsErosionAge: Float(clamp(state.erosionAge, 0, 1)),
+                dynamicsErosionGeneration: Float(clamp(state.erosionGeneration, 0, 1)),
+                dynamicsErosionAlias: Float(clamp(state.erosionAlias, 0, 1)),
+                dynamicsErosionWow: Float(clamp(state.erosionWow, 0, 1)),
+                dynamicsErosionFlutter: Float(clamp(state.erosionFlutter, 0, 1)),
+                dynamicsErosionDrift: Float(clamp(state.erosionDrift, 0, 1)),
+                dynamicsErosionWobbleSpeed: Float(clamp(state.erosionWobbleSpeed, 0, 1)),
+                dynamicsErosionTone: Float(clamp(state.erosionTone, 0, 1)),
+                dynamicsErosionHp: Float(clamp(state.degradeHp, 0, 1)),
+                dynamicsErosionLp: Float(clamp(state.degradeLp, 0, 1)),
+                dynamicsErosionNoise: Float(clamp(state.erosionNoise, 0, 1)),
+                dynamicsErosionSaturation: Float(clamp(state.erosionSaturation, 0, 1)),
+                dynamicsErosionCorrosion: Float(clamp(state.erosionCorrosion, 0, 1)),
+                dynamicsModSlowWow: Float(clamp(state.erosionModSlowWow, 0, 1)),
+                dynamicsModSlowFlutter: Float(clamp(state.erosionModSlowFlutter, 0, 1)),
+                dynamicsModSlowLp: Float(clamp(state.erosionModSlowLp, 0, 1)),
+                dynamicsModSlowWet: Float(clamp(state.erosionModSlowWet, 0, 1)),
+                dynamicsModSlowDropout: Float(clamp(state.erosionModSlowDropout, 0, 1)),
+                dynamicsModSlowAlias: Float(clamp(state.erosionModSlowAlias, 0, 1)),
+                dynamicsModFlutterWow: Float(clamp(state.erosionModFlutterWow, 0, 1)),
+                dynamicsModFlutterFlutter: Float(clamp(state.erosionModFlutterFlutter, 0, 1)),
+                dynamicsModFlutterLp: Float(clamp(state.erosionModFlutterLp, 0, 1)),
+                dynamicsModFlutterWet: Float(clamp(state.erosionModFlutterWet, 0, 1)),
+                dynamicsModFlutterDropout: Float(clamp(state.erosionModFlutterDropout, 0, 1)),
+                dynamicsModFlutterAlias: Float(clamp(state.erosionModFlutterAlias, 0, 1)),
+                dynamicsModRandomWow: Float(clamp(state.erosionModRandomWow, 0, 1)),
+                dynamicsModRandomFlutter: Float(clamp(state.erosionModRandomFlutter, 0, 1)),
+                dynamicsModRandomLp: Float(clamp(state.erosionModRandomLp, 0, 1)),
+                dynamicsModRandomWet: Float(clamp(state.erosionModRandomWet, 0, 1)),
+                dynamicsModRandomDropout: Float(clamp(state.erosionModRandomDropout, 0, 1)),
+                dynamicsModRandomAlias: Float(clamp(state.erosionModRandomAlias, 0, 1)),
+                dynamicsModEnvWow: Float(clamp(state.erosionModEnvWow, 0, 1)),
+                dynamicsModEnvFlutter: Float(clamp(state.erosionModEnvFlutter, 0, 1)),
+                dynamicsModEnvLp: Float(clamp(state.erosionModEnvLp, 0, 1)),
+                dynamicsModEnvWet: Float(clamp(state.erosionModEnvWet, 0, 1)),
+                dynamicsModEnvDropout: Float(clamp(state.erosionModEnvDropout, 0, 1)),
+                dynamicsModEnvAlias: Float(clamp(state.erosionModEnvAlias, 0, 1)),
+                dynamicsModNoiseWow: Float(clamp(state.erosionModNoiseWow, 0, 1)),
+                dynamicsModNoiseFlutter: Float(clamp(state.erosionModNoiseFlutter, 0, 1)),
+                dynamicsModNoiseLp: Float(clamp(state.erosionModNoiseLp, 0, 1)),
+                dynamicsModNoiseWet: Float(clamp(state.erosionModNoiseWet, 0, 1)),
+                dynamicsModNoiseDropout: Float(clamp(state.erosionModNoiseDropout, 0, 1)),
+                dynamicsModNoiseAlias: Float(clamp(state.erosionModNoiseAlias, 0, 1)),
                 dynamicsSaturationEnabled: state.dynamicsEnabled && state.dynamicsSaturationEnabled,
                 dynamicsSaturationMode: dynamicsSaturationModeId(state.dynamicsSaturationMode),
                 dynamicsSaturationDrive: Float(clamp(state.dynamicsSaturationDrive, 0, 1)),
@@ -1782,21 +1782,21 @@ private struct ProductFxSnapshot {
     var dynamicsCharacterDepth: Float
     var dynamicsCharacterRate: Float
     var dynamicsCharacterDamp: Float
-    var dynamicsDegradeEnabled: Bool
-    var dynamicsDegradeMix: Float
-    var dynamicsDegradeAge: Float
-    var dynamicsDegradeGeneration: Float
-    var dynamicsDegradeAlias: Float
-    var dynamicsDegradeWow: Float
-    var dynamicsDegradeFlutter: Float
-    var dynamicsDegradeDrift: Float
-    var dynamicsDegradeWobbleSpeed: Float
-    var dynamicsDegradeTone: Float
-    var dynamicsDegradeHp: Float
-    var dynamicsDegradeLp: Float
-    var dynamicsDegradeNoise: Float
-    var dynamicsDegradeSaturation: Float
-    var dynamicsDegradeCorrosion: Float
+    var dynamicsErosionEnabled: Bool
+    var dynamicsErosionMix: Float
+    var dynamicsErosionAge: Float
+    var dynamicsErosionGeneration: Float
+    var dynamicsErosionAlias: Float
+    var dynamicsErosionWow: Float
+    var dynamicsErosionFlutter: Float
+    var dynamicsErosionDrift: Float
+    var dynamicsErosionWobbleSpeed: Float
+    var dynamicsErosionTone: Float
+    var dynamicsErosionHp: Float
+    var dynamicsErosionLp: Float
+    var dynamicsErosionNoise: Float
+    var dynamicsErosionSaturation: Float
+    var dynamicsErosionCorrosion: Float
     var dynamicsModSlowWow: Float
     var dynamicsModSlowFlutter: Float
     var dynamicsModSlowLp: Float

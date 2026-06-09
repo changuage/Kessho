@@ -36,7 +36,8 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
       fx.granular_mix > kGranularRouteEpsilon ||
       routing.granular_to_reverb > kGranularRouteEpsilon ||
       routing.granular_to_delay_a > kGranularRouteEpsilon ||
-      routing.granular_to_delay_b > kGranularRouteEpsilon;
+      routing.granular_to_delay_b > kGranularRouteEpsilon ||
+      routing.granular_to_degrade > kGranularRouteEpsilon;
   bool input_armed =
       routing.delay_a_to_granular > kGranularRouteEpsilon ||
       routing.delay_b_to_granular > kGranularRouteEpsilon;
@@ -72,7 +73,10 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
   const bool delay_b_armed =
       routing.granular_to_delay_b > kGranularRouteEpsilon ||
       granular_delay_b_send_gain > kGranularRouteEpsilon;
-  const bool output_filter_armed = direct_armed || delay_a_armed || delay_b_armed;
+  const bool drift_armed =
+      routing.granular_to_degrade > kGranularRouteEpsilon ||
+      granular_degrade_send_gain > kGranularRouteEpsilon;
+  const bool output_filter_armed = direct_armed || delay_a_armed || delay_b_armed || drift_armed;
   if (output_filter_armed) {
     std::fill(output_lpf_l, output_lpf_l + frames, 0.0f);
     std::fill(output_lpf_r, output_lpf_r + frames, 0.0f);
@@ -118,9 +122,8 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
     const float delay_a_r = delay_a_armed ? output_lpf_r[i] * granular_delay_a_send_gain : 0.0f;
     const float delay_b_l = delay_b_armed ? output_lpf_l[i] * granular_delay_b_send_gain : 0.0f;
     const float delay_b_r = delay_b_armed ? output_lpf_r[i] * granular_delay_b_send_gain : 0.0f;
-    const float duck_gain = direct_armed ? sidechainGain(kSidechainGranular, frame) : 1.0f;
-    const float direct_ducked_l = direct_l * duck_gain;
-    const float direct_ducked_r = direct_r * duck_gain;
+    const float drift_l = drift_armed ? output_lpf_l[i] * granular_degrade_send_gain : 0.0f;
+    const float drift_r = drift_armed ? output_lpf_r[i] * granular_degrade_send_gain : 0.0f;
     if (graph_taps_enabled) {
       graph_granular_output_l[frame] = direct_l;
       graph_granular_output_r[frame] = direct_r;
@@ -130,20 +133,17 @@ void KesshoProductEngine::renderGranular(float* out_l, float* out_r, uint32_t st
       graph_granular_to_delay_a_send_r[frame] = delay_a_r;
       graph_granular_to_delay_b_send_l[frame] = delay_b_l;
       graph_granular_to_delay_b_send_r[frame] = delay_b_r;
-      graph_sidechain_input_l[kSidechainGranular][frame] += direct_l;
-      graph_sidechain_input_r[kSidechainGranular][frame] += direct_r;
-      graph_sidechain_output_l[kSidechainGranular][frame] += direct_ducked_l;
-      graph_sidechain_output_r[kSidechainGranular][frame] += direct_ducked_r;
     }
-    out_l[frame] += direct_ducked_l;
-    out_r[frame] += direct_ducked_r;
-    stem_l[KESSHO_PRODUCT_STEM_FX][frame] += direct_ducked_l;
-    stem_r[KESSHO_PRODUCT_STEM_FX][frame] += direct_ducked_r;
+    routeTerminalSample(routing.dynamics_routes[kDynamicsRouteGranular], out_l, out_r, frame, direct_l, direct_r);
+    stem_l[KESSHO_PRODUCT_STEM_FX][frame] += direct_l;
+    stem_r[KESSHO_PRODUCT_STEM_FX][frame] += direct_r;
     reverb_bus_l[frame] += reverb_l;
     reverb_bus_r[frame] += reverb_r;
     delay_a_bus_l[frame] += delay_a_l;
     delay_a_bus_r[frame] += delay_a_r;
     delay_b_bus_l[frame] += delay_b_l;
     delay_b_bus_r[frame] += delay_b_r;
+    degrade_bus_l[frame] += drift_l;
+    degrade_bus_r[frame] += drift_r;
   }
 }

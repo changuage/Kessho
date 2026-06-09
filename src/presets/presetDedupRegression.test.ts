@@ -61,7 +61,9 @@ function testGraphCoversAllCompositeLevels(): void {
     'source:granular:granular',
     'source:delay:delay',
     'source:reverb:reverb',
-    'source:dynamics:dynamics',
+    'source:degrade:degrade',
+    'source:dynamicsBus:dynamicsBus',
+    'source:masterFx:masterFx',
     'kit:earthKit:earth',
   ]);
 
@@ -79,10 +81,16 @@ function testGraphCoversAllCompositeLevels(): void {
   ]);
   assertChildScopes('source', 'granular', ['kit:granularKit:granularKit']);
   assertChildScopes('source', 'delay', ['kit:delayKit:delayKit']);
-  assertChildScopes('source', 'dynamics', [
+  assertChildScopes('source', 'dynamicsBus', [
+    'engine:dynamicsEq1:eq1',
+    'engine:dynamicsEq2:eq2',
     'engine:dynamicsSidechain:sidechain',
-    'engine:dynamicsCharacter:character',
-    'engine:dynamicsDegrade:degrade',
+  ]);
+  assertChildScopes('source', 'degrade', [
+    'kit:dynamicsDrift:drift',
+    'kit:dynamicsErosion:erosion',
+  ]);
+  assertChildScopes('source', 'masterFx', [
     'engine:dynamicsSaturation:saturation',
     'engine:dynamicsEndChain:endChain',
   ]);
@@ -148,19 +156,37 @@ function testCascadeExtractionIsRecursive(): void {
   assert.equal(delayKeys.has('delayAPingPong'), true, 'delay source should include Echo Line L1 params through delayKit');
   assert.equal(delayKeys.has('delayBPattern'), true, 'delay source should include Clocked Space L1 params through delayKit');
 
-  const dynamicsKeys = new Set(getCascadeKeys(3, 'dynamics'));
-  assert.equal(dynamicsKeys.has('dynamicsEnabled'), true, 'dynamics source should include direct L3 page params');
-  assert.equal(dynamicsKeys.has('sidechainAmount'), true, 'dynamics source should include L1 sidechain params');
-  assert.equal(dynamicsKeys.has('characterEnabled'), true, 'dynamics source should include L1 character bypass params');
-  assert.equal(dynamicsKeys.has('characterMode'), true, 'dynamics source should include L1 character params');
-  assert.equal(dynamicsKeys.has('degradeEnabled'), true, 'dynamics source should include L1 degrade bypass params');
-  assert.equal(dynamicsKeys.has('degradeMix'), true, 'dynamics source should include L1 degrade mix params');
-  assert.equal(dynamicsKeys.has('degradeGeneration'), true, 'dynamics source should include L1 degrade generation params');
-  assert.equal(dynamicsKeys.has('degradeAlias'), true, 'dynamics source should include L1 degrade alias params');
-  assert.equal(dynamicsKeys.has('degradeWow'), true, 'dynamics source should include L1 degrade params');
-  assert.equal(dynamicsKeys.has('dynamicsSaturationDrive'), true, 'dynamics source should include L1 saturation params');
-  assert.equal(dynamicsKeys.has('dynamicsSaturationEnabled'), true, 'dynamics source should include L1 saturation bypass params');
-  assert.equal(dynamicsKeys.has('endCompThreshold'), true, 'dynamics source should include L1 end-chain params');
+  const degradeKeys = new Set(getCascadeKeys(3, 'degrade'));
+  assert.equal(degradeKeys.has('degradeEnabled'), true, 'degrade source should include direct L3 Degrade params');
+  assert.equal(degradeKeys.has('degradeHp'), true, 'degrade source should include shared Degrade filter params');
+  assert.equal(degradeKeys.has('driftEnabled'), true, 'degrade source should own Drift enable');
+  assert.equal(degradeKeys.has('driftMode'), true, 'degrade source should include L2 drift params');
+  assert.equal(degradeKeys.has('erosionEnabled'), true, 'degrade source should own Erosion enable');
+  assert.equal(degradeKeys.has('erosionMix'), true, 'degrade source should include L2 erosion mix params');
+  assert.equal(degradeKeys.has('erosionGeneration'), true, 'degrade source should include L2 erosion generation params');
+  assert.equal(degradeKeys.has('erosionAlias'), true, 'degrade source should include L2 erosion alias params');
+  assert.equal(degradeKeys.has('erosionWow'), true, 'degrade source should include L2 erosion params');
+  assert.equal(degradeKeys.has('sidechainAmount'), false, 'degrade source should not include sidechain params');
+  assert.equal(degradeKeys.has('endCompThreshold'), false, 'degrade source should not include end-chain params');
+
+  const dynamicsBusKeys = new Set(getCascadeKeys(3, 'dynamicsBus'));
+  assert.equal(dynamicsBusKeys.has('dynamicsBusEnabled'), true, 'dynamics bus source should include its L3 enable');
+  assert.equal(dynamicsBusKeys.has('dynamicsEq1Enabled'), true, 'dynamics bus source should own EQ 1 enable');
+  assert.equal(dynamicsBusKeys.has('dynamicsEq2Enabled'), true, 'dynamics bus source should own EQ 2 enable');
+  assert.equal(dynamicsBusKeys.has('sidechainEnabled'), true, 'dynamics bus source should own sidechain enable');
+  assert.equal(dynamicsBusKeys.has('dynamicsEq1LowFreq'), true, 'dynamics bus source should include EQ 1 child params');
+  assert.equal(dynamicsBusKeys.has('dynamicsEq2HighQ'), true, 'dynamics bus source should include EQ 2 child params');
+  assert.equal(dynamicsBusKeys.has('sidechainAmount'), true, 'dynamics bus source should include sidechain compression child params');
+  assert.equal(dynamicsBusKeys.has('driftMix'), false, 'dynamics bus source should not include Degrade params');
+  assert.equal(dynamicsBusKeys.has('endCompThreshold'), false, 'dynamics bus source should not include end-chain params');
+
+  const masterFxKeys = new Set(getCascadeKeys(3, 'masterFx'));
+  assert.equal(masterFxKeys.has('dynamicsSaturationEnabled'), true, 'master FX source should own Saturation enable');
+  assert.equal(masterFxKeys.has('endCompEnabled'), true, 'master FX source should own End Chain enable');
+  assert.equal(masterFxKeys.has('dynamicsSaturationDrive'), true, 'master FX source should include Saturation child params');
+  assert.equal(masterFxKeys.has('endCompThreshold'), true, 'master FX source should include End Chain child params');
+  assert.equal(masterFxKeys.has('dynamicsEq1LowFreq'), false, 'master FX source should not include Dynamics Bus params');
+  assert.equal(masterFxKeys.has('driftMix'), false, 'master FX source should not include Degrade params');
 }
 
 function testOverlapIsStrippedAtEachLevel(): void {
@@ -209,17 +235,44 @@ function testOverlapIsStrippedAtEachLevel(): void {
   assert.equal('delayBToASend' in delayOverride, false, 'L2 delay kit params should move out of delay source override');
   assert.equal('delayBPattern' in delayOverride, false, 'Clocked Space L1 params should move out of delay source override');
 
-  const dynamicsData = extractCascade(DEFAULT_STATE, 3, 'dynamics');
-  const dynamicsOverride = stripReferencedChildData(
-    dynamicsData,
-    childRefData(getPresetChildSpecs('source', 'dynamics'), dynamicsData),
+  const degradeData = extractCascade(DEFAULT_STATE, 3, 'degrade');
+  const degradeOverride = stripReferencedChildData(
+    degradeData,
+    childRefData(getPresetChildSpecs('source', 'degrade'), degradeData),
   );
-  assert.equal('dynamicsEnabled' in dynamicsOverride, true, 'source-owned dynamics params should remain in L3 override');
-  assert.equal('sidechainAmount' in dynamicsOverride, false, 'Sidechain L1 params should move out of dynamics source override');
-  assert.equal('characterMode' in dynamicsOverride, false, 'Character L1 params should move out of dynamics source override');
-  assert.equal('degradeMix' in dynamicsOverride, false, 'Degrade L1 params should move out of dynamics source override');
-  assert.equal('dynamicsSaturationDrive' in dynamicsOverride, false, 'Saturation L1 params should move out of dynamics source override');
-  assert.equal('endCompThreshold' in dynamicsOverride, false, 'End-chain L1 params should move out of dynamics source override');
+  assert.equal('degradeEnabled' in degradeOverride, true, 'source-owned Degrade params should remain in L3 override');
+  assert.equal('degradeHp' in degradeOverride, true, 'shared Degrade filter params should remain in L3 override');
+  assert.equal('driftEnabled' in degradeOverride, true, 'Drift enable should remain in Degrade L3 override');
+  assert.equal('erosionEnabled' in degradeOverride, true, 'Erosion enable should remain in Degrade L3 override');
+  assert.equal('driftMode' in degradeOverride, false, 'Drift L2 params should move out of Degrade source override');
+  assert.equal('erosionMix' in degradeOverride, false, 'Erosion L2 params should move out of Degrade source override');
+  assert.equal('sidechainAmount' in degradeOverride, false, 'Sidechain params should not live in Degrade source override');
+  assert.equal('endCompThreshold' in degradeOverride, false, 'End-chain params should not live in Degrade source override');
+
+  const dynamicsBusData = extractCascade(DEFAULT_STATE, 3, 'dynamicsBus');
+  const dynamicsBusOverride = stripReferencedChildData(
+    dynamicsBusData,
+    childRefData(getPresetChildSpecs('source', 'dynamicsBus'), dynamicsBusData),
+  );
+  assert.equal('dynamicsBusEnabled' in dynamicsBusOverride, true, 'source-owned Dynamics Bus params should remain in bus override');
+  assert.equal('dynamicsEq1Enabled' in dynamicsBusOverride, true, 'EQ 1 enable should remain in Dynamics Bus L3 override');
+  assert.equal('dynamicsEq2Enabled' in dynamicsBusOverride, true, 'EQ 2 enable should remain in Dynamics Bus L3 override');
+  assert.equal('sidechainEnabled' in dynamicsBusOverride, true, 'Sidechain enable should remain in Dynamics Bus L3 override');
+  assert.equal('dynamicsEq1LowFreq' in dynamicsBusOverride, false, 'EQ 1 L1 params should move out of Dynamics Bus source override');
+  assert.equal('dynamicsEq2HighQ' in dynamicsBusOverride, false, 'EQ 2 L1 params should move out of Dynamics Bus source override');
+  assert.equal('sidechainAmount' in dynamicsBusOverride, false, 'Sidechain L1 params should move out of Dynamics Bus source override');
+  assert.equal('driftMix' in dynamicsBusOverride, false, 'Degrade params should not live in Dynamics Bus source override');
+
+  const masterFxData = extractCascade(DEFAULT_STATE, 3, 'masterFx');
+  const masterFxOverride = stripReferencedChildData(
+    masterFxData,
+    childRefData(getPresetChildSpecs('source', 'masterFx'), masterFxData),
+  );
+  assert.equal('dynamicsSaturationEnabled' in masterFxOverride, true, 'Saturation enable should remain in Master FX L3 override');
+  assert.equal('endCompEnabled' in masterFxOverride, true, 'End Chain enable should remain in Master FX L3 override');
+  assert.equal('dynamicsSaturationDrive' in masterFxOverride, false, 'Saturation L1 params should move out of Master FX source override');
+  assert.equal('endCompThreshold' in masterFxOverride, false, 'End Chain L1 params should move out of Master FX source override');
+  assert.equal('dynamicsEq1LowFreq' in masterFxOverride, false, 'Dynamics Bus params should not live in Master FX source override');
 
   const granularData = extractCascade(DEFAULT_STATE, 3, 'granular');
   const granularOverride = stripReferencedChildData(

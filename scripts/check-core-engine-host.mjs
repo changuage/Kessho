@@ -20,11 +20,11 @@ const host = read('src/audio/coreEngineHost.ts');
 const engine = read('src/audio/reference/webTs/engine.ts');
 const drumSynth = read('src/audio/drumSynth.ts');
 const outputTrims = read('src/audio/outputTrims.ts');
-const dynamicsParams = read('src/audio/dynamicsCharacterParams.ts');
+const dynamicsParams = read('src/audio/dynamicsDriftParams.ts');
 const presetUtils = read('src/ui/presetUtils.ts');
 const workletSource = read('cpp/KesshoCore/adapters/wasm/kessho-core.worklet.js');
 const publicWorklet = read('public/worklets/kessho-core.worklet.js');
-const dynamicsCharacterWorklet = read('public/worklets/dynamics-character.worklet.js');
+const dynamicsDriftWorklet = read('public/worklets/dynamics-drift.worklet.js');
 
 function readStringArray(source, name) {
   const pattern = new RegExp(`(?:const|export const) ${name} = \\[([\\s\\S]*?)\\]`);
@@ -1826,7 +1826,7 @@ for (const token of [
   'createEarthTextureSeed',
   "randomSeed: this.createEarthTextureSeed('ocean'",
   'resolveDynamicsTargets',
-  'toDynamicsCharacterParamArray',
+  'toDynamicsDriftParamArray',
   'getPadPreset',
   'morphPadPresets',
   'morphPresets',
@@ -1839,7 +1839,7 @@ for (const token of [
   'lastDelayBModuleConfigKey',
   'lastSpectralFreezeModuleConfigKey',
   'paramConfigKey',
-  'DYNAMICS_CHARACTER_DISABLED_CONFIG_KEY',
+  'DYNAMICS_DRIFT_DISABLED_CONFIG_KEY',
   'private configurePreviewSource(config: PreviewSourceConfig | null)',
   "type: 'configureSource'",
   'private configureDynamicsModule(targets: ReturnType<typeof resolveDynamicsTargets>)',
@@ -1848,7 +1848,7 @@ for (const token of [
   'private configureSpectralFreezeModule(config: SpectralFreezeModuleConfig)',
   'if (this.lastDynamicsModuleConfigKey === configKey) return;',
   "type: 'configureModule'",
-  "module: 'dynamics-character'",
+  "module: 'dynamics-drift'",
   "module: 'reverb'",
   'toKesshoCoreMidiEventPayload',
   "type: 'applySnapshot'",
@@ -2004,25 +2004,25 @@ assert(
 );
 
 for (const token of [
-  'toDynamicsCharacterParamObject',
-  'toDynamicsCharacterParamArray',
-  'DYNAMICS_CHARACTER_PARAM_ORDER',
+  'toDynamicsDriftParamObject',
+  'toDynamicsDriftParamArray',
+  'DYNAMICS_DRIFT_PARAM_ORDER',
   'endCompProgramRelease',
 ]) {
-  assert(dynamicsParams.includes(token), `dynamics character param helper is missing ${token}`);
+  assert(dynamicsParams.includes(token), `dynamics drift param helper is missing ${token}`);
 }
 
 for (const token of [
-  "import { toDynamicsCharacterParamObject } from '../../dynamicsCharacterParams'",
-  'const params = toDynamicsCharacterParamObject(targets);',
+  "import { toDynamicsDriftParamObject } from '../../dynamicsDriftParams'",
+  'const params = toDynamicsDriftParamObject(targets);',
 ]) {
   assert(engine.includes(token), `AudioEngine dynamics worklet mapping is missing ${token}`);
 }
 
 assert(
-  JSON.stringify(readStringArray(dynamicsParams, 'DYNAMICS_CHARACTER_PARAM_ORDER')) ===
-    JSON.stringify(readStringArray(dynamicsCharacterWorklet, 'PARAM_ORDER')),
-  'Core/legacy dynamics-character param orders must stay identical',
+  JSON.stringify(readStringArray(dynamicsParams, 'DYNAMICS_DRIFT_PARAM_ORDER')) ===
+    JSON.stringify(readStringArray(dynamicsDriftWorklet, 'PARAM_ORDER')),
+  'Core/legacy dynamics-drift param orders must stay identical',
 );
 
 const legacySynthEuclidScheduler = readBraceBody(engine, 'private startSynthEuclidScheduler()', 'AudioEngine synth Euclid scheduler');

@@ -4,6 +4,8 @@ import { removeRuntimeTriggerPositions } from './runtimeSliderState';
 import { removeRuntimeValues } from './runtimeValueState';
 
 const STOPPED_RUNTIME_VALUE_KEYS = [
+  'padMorph',
+  'pad2Morph',
   'lead1Morph',
   'lead2Morph',
   'lead1Distance',

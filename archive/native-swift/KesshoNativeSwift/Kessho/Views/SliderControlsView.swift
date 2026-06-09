@@ -1316,77 +1316,77 @@ struct SliderControlsView: View {
 
 	                // MARK: - Dynamics Degrade Section
 	                CollapsibleSection(title: "Dynamics Degrade", icon: "waveform.path.ecg.rectangle", expanded: $expandedSections) {
-	                    Toggle("Degrade", isOn: $appState.state.degradeEnabled)
+	                    Toggle("Degrade", isOn: $appState.state.erosionEnabled)
 	                        .foregroundColor(.white)
 
 	                    ParameterSlider(
 	                        label: "Mix",
-	                        key: "degradeMix",
-	                        value: $appState.state.degradeMix,
+	                        key: "erosionMix",
+	                        value: $appState.state.erosionMix,
 	                        range: 0...1,
 	                        icon: "circle.lefthalf.filled"
 	                    )
 
 	                    ParameterSlider(
 	                        label: "Age",
-	                        key: "degradeAge",
-	                        value: $appState.state.degradeAge,
+	                        key: "erosionAge",
+	                        value: $appState.state.erosionAge,
 	                        range: 0...1,
 	                        icon: "clock.arrow.circlepath"
 	                    )
 
 	                    ParameterSlider(
 	                        label: "Generation",
-	                        key: "degradeGeneration",
-	                        value: $appState.state.degradeGeneration,
+	                        key: "erosionGeneration",
+	                        value: $appState.state.erosionGeneration,
 	                        range: 0...1,
 	                        icon: "square.stack.3d.down.right"
 	                    )
 
 	                    ParameterSlider(
 	                        label: "Alias",
-	                        key: "degradeAlias",
-	                        value: $appState.state.degradeAlias,
+	                        key: "erosionAlias",
+	                        value: $appState.state.erosionAlias,
 	                        range: 0...1,
 	                        icon: "waveform.path.badge.minus"
 	                    )
 
 	                    ParameterSlider(
 	                        label: "Wow",
-	                        key: "degradeWow",
-	                        value: $appState.state.degradeWow,
+	                        key: "erosionWow",
+	                        value: $appState.state.erosionWow,
 	                        range: 0...1,
 	                        icon: "waveform.path"
 	                    )
 
 	                    ParameterSlider(
 	                        label: "Flutter",
-	                        key: "degradeFlutter",
-	                        value: $appState.state.degradeFlutter,
+	                        key: "erosionFlutter",
+	                        value: $appState.state.erosionFlutter,
 	                        range: 0...1,
 	                        icon: "speedometer"
 	                    )
 
                     ParameterSlider(
                         label: "Drift",
-                        key: "degradeDrift",
-                        value: $appState.state.degradeDrift,
+                        key: "erosionDrift",
+                        value: $appState.state.erosionDrift,
                         range: 0...1,
                         icon: "arrow.triangle.2.circlepath"
                     )
 
                     ParameterSlider(
                         label: "Wobble Speed",
-                        key: "degradeWobbleSpeed",
-                        value: $appState.state.degradeWobbleSpeed,
+                        key: "erosionWobbleSpeed",
+                        value: $appState.state.erosionWobbleSpeed,
                         range: 0...1,
                         icon: "metronome"
                     )
 
                     ParameterSlider(
                         label: "Tone",
-	                        key: "degradeTone",
-	                        value: $appState.state.degradeTone,
+	                        key: "erosionTone",
+	                        value: $appState.state.erosionTone,
 	                        range: 0...1,
 	                        icon: "slider.horizontal.3"
 	                    )
@@ -1409,24 +1409,24 @@ struct SliderControlsView: View {
 
 	                    ParameterSlider(
 	                        label: "Noise",
-	                        key: "degradeNoise",
-	                        value: $appState.state.degradeNoise,
+	                        key: "erosionNoise",
+	                        value: $appState.state.erosionNoise,
 	                        range: 0...1,
 	                        icon: "sparkles"
 	                    )
 
 	                    ParameterSlider(
 	                        label: "Clip",
-	                        key: "degradeSaturation",
-	                        value: $appState.state.degradeSaturation,
+	                        key: "erosionSaturation",
+	                        value: $appState.state.erosionSaturation,
 	                        range: 0...1,
 	                        icon: "waveform"
 	                    )
 
 	                    ParameterSlider(
 	                        label: "Corrosion",
-	                        key: "degradeCorrosion",
-	                        value: $appState.state.degradeCorrosion,
+	                        key: "erosionCorrosion",
+	                        value: $appState.state.erosionCorrosion,
 	                        range: 0...1,
 	                        icon: "bolt.trianglebadge.exclamationmark"
 	                    )

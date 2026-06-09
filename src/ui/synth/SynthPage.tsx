@@ -183,6 +183,13 @@ const SYNTH_LANE_ENABLED_KEYS = [
   'synthEuclid4Enabled',
 ] as const satisfies readonly (keyof SliderState)[];
 
+const SYNTH_LANE_SOURCE_KEYS = [
+  'synthEuclid1Source',
+  'synthEuclid2Source',
+  'synthEuclid3Source',
+  'synthEuclid4Source',
+] as const satisfies readonly (keyof SliderState)[];
+
 type EvolvedSequencerPatch = {
   laneIndex: number;
   version: number;
@@ -574,6 +581,17 @@ function getManualSourceForLaneSource(source: string, pad2VoiceAssign: number | 
     return 'pad1';
   }
   return 'lead1';
+}
+
+type RuntimeMorphValueKey = 'padMorph' | 'pad2Morph' | 'lead1Morph' | 'lead2Morph';
+
+function runtimeMorphKeyForLaneSource(source: unknown, pad2VoiceAssign: number | undefined): RuntimeMorphValueKey | null {
+  const manualSource = getManualSourceForLaneSource(String(source ?? 'lead1'), pad2VoiceAssign);
+  if (manualSource === 'pad1') return 'padMorph';
+  if (manualSource === 'pad2') return 'pad2Morph';
+  if (manualSource === 'lead1') return 'lead1Morph';
+  if (manualSource === 'lead2') return 'lead2Morph';
+  return null;
 }
 
 function midiToPitchOffsetForSettings(midi: number, settings: PitchSettings, harmony?: HarmonyState | null): number {
@@ -2399,6 +2417,41 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       }
     });
   }, [pitchBindingModes, seq.sequencerModels, seq.setSubLaneSteps, seq.subLaneStates]);
+
+  const morphSubLaneRuntimeOwnersRef = useRef<Array<{ enabled: boolean; key: RuntimeMorphValueKey | null }> | null>(null);
+  useEffect(() => {
+    const currentOwners = seq.subLaneStates.map((laneState, laneIndex) => ({
+      enabled: laneState.morph.enabled === true,
+      key: runtimeMorphKeyForLaneSource(
+        state[SYNTH_LANE_SOURCE_KEYS[laneIndex] ?? SYNTH_LANE_SOURCE_KEYS[0]],
+        state.pad2VoiceAssign,
+      ),
+    }));
+    const previousOwners = morphSubLaneRuntimeOwnersRef.current;
+    if (previousOwners) {
+      const activeKeys = new Set(
+        currentOwners
+          .filter((owner): owner is { enabled: true; key: RuntimeMorphValueKey } => owner.enabled && owner.key !== null)
+          .map((owner) => owner.key),
+      );
+      const keysToClear = new Set<RuntimeMorphValueKey>();
+      previousOwners.forEach((owner, laneIndex) => {
+        if (!owner.enabled || owner.key === null) return;
+        const nextOwner = currentOwners[laneIndex];
+        if (!nextOwner?.enabled || nextOwner.key !== owner.key) keysToClear.add(owner.key);
+      });
+      activeKeys.forEach((key) => keysToClear.delete(key));
+      if (keysToClear.size > 0) removeRuntimeValues(keysToClear);
+    }
+    morphSubLaneRuntimeOwnersRef.current = currentOwners;
+  }, [
+    seq.subLaneStates,
+    state.pad2VoiceAssign,
+    state.synthEuclid1Source,
+    state.synthEuclid2Source,
+    state.synthEuclid3Source,
+    state.synthEuclid4Source,
+  ]);
 
   // Merge evolved overrides from audio engine into visualizer state
   const evolvedVersionRef = useRef(-1);

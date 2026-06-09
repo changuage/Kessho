@@ -157,12 +157,12 @@ const DEFAULT_MIDI_ROUTE_TARGETS = [
   { key: 'delayBWarpIntensity', label: 'Delay B Warp' },
   { key: 'sidechainAmount', label: 'Sidechain Amount' },
   { key: 'dynamicsSaturationDrive', label: 'Saturation Drive' },
-  { key: 'characterMix', label: 'Character Mix' },
-  { key: 'characterBias', label: 'Character Bias' },
-  { key: 'characterLpgAmount', label: 'Character LPG Open' },
+  { key: 'driftMix', label: 'Drift Mix' },
+  { key: 'driftBias', label: 'Drift Bias' },
+  { key: 'driftLpgAmount', label: 'Drift LPG Open' },
   { key: 'degradeHp', label: 'Dynamics HP' },
   { key: 'degradeLp', label: 'Dynamics LP' },
-  { key: 'degradeMix', label: 'Degrade Mix' },
+  { key: 'erosionMix', label: 'Degrade Mix' },
 ] as const satisfies readonly KesshoMidiRouteTarget[];
 
 function getCapacitorRuntime(): CapacitorRuntime | null {

@@ -4,7 +4,7 @@
 
 #include "KesshoCore/KesshoProductTypes.h"
 
-#define KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT 37u
+#define KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT 41u
 #define KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT 101u
 #define KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT 53u
 #define KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT 80u
@@ -59,6 +59,7 @@ typedef struct KesshoProductSourceSnapshot {
   float delay_a_send;
   float delay_b_send;
   float granular_send;
+  float degrade_send;
   float diffuse_send;
   float post_lpf_hz;
   float stereo_width;
@@ -276,40 +277,40 @@ typedef struct KesshoProductFxSnapshot {
   float spectral_freeze_reverb_crossfade;
   float dynamics_drive;
   uint32_t dynamics_enabled;
-  uint32_t dynamics_character_enabled;
-  uint32_t dynamics_character_mode;
-  uint32_t dynamics_character_quality;
-  float dynamics_character_anti_comb;
-  float dynamics_character_diffusion;
-  float dynamics_character_mix;
-  float dynamics_character_age;
-  float dynamics_character_bias;
-  float dynamics_character_lpg_amount;
-  float dynamics_character_resonance;
-  float dynamics_character_stereo;
-  float dynamics_character_env_follow;
-  float dynamics_character_depth;
-  float dynamics_character_rate;
-  float dynamics_character_damp;
-  uint32_t dynamics_degrade_enabled;
-  uint32_t dynamics_degrade_quality;
-  float dynamics_degrade_event_amount;
-  float dynamics_degrade_profile_amount;
-  float dynamics_degrade_dither_amount;
-  float dynamics_degrade_mix;
-  float dynamics_degrade_age;
-  float dynamics_degrade_generation;
-  float dynamics_degrade_alias;
-  float dynamics_degrade_wow;
-  float dynamics_degrade_flutter;
-  float dynamics_degrade_drift;
-  float dynamics_degrade_wobble_speed;
-  float dynamics_degrade_tone;
+  uint32_t dynamics_drift_enabled;
+  uint32_t dynamics_drift_mode;
+  uint32_t dynamics_drift_quality;
+  float dynamics_drift_anti_comb;
+  float dynamics_drift_diffusion;
+  float dynamics_drift_mix;
+  float dynamics_drift_age;
+  float dynamics_drift_bias;
+  float dynamics_drift_lpg_amount;
+  float dynamics_drift_resonance;
+  float dynamics_drift_stereo;
+  float dynamics_drift_env_follow;
+  float dynamics_drift_depth;
+  float dynamics_drift_rate;
+  float dynamics_drift_damp;
+  uint32_t dynamics_erosion_enabled;
+  uint32_t dynamics_erosion_quality;
+  float dynamics_erosion_event_amount;
+  float dynamics_erosion_profile_amount;
+  float dynamics_erosion_dither_amount;
+  float dynamics_erosion_mix;
+  float dynamics_erosion_age;
+  float dynamics_erosion_generation;
+  float dynamics_erosion_alias;
+  float dynamics_erosion_wow;
+  float dynamics_erosion_flutter;
+  float dynamics_erosion_drift;
+  float dynamics_erosion_wobble_speed;
+  float dynamics_erosion_tone;
   float dynamics_degrade_hp;
   float dynamics_degrade_lp;
-  float dynamics_degrade_noise;
-  float dynamics_degrade_saturation;
-  float dynamics_degrade_corrosion;
+  float dynamics_erosion_noise;
+  float dynamics_erosion_saturation;
+  float dynamics_erosion_corrosion;
   float dynamics_mod_slow_wow;
   float dynamics_mod_slow_flutter;
   float dynamics_mod_slow_lp;
@@ -363,6 +364,38 @@ typedef struct KesshoProductFxSnapshot {
   float dynamics_end_comp_clarity;
   float dynamics_end_comp_two_band_amount;
   float dynamics_end_comp_band_split;
+  uint32_t dynamics_eq1_enabled;
+  float dynamics_eq1_input_gain_db;
+  float dynamics_eq1_output_gain_db;
+  uint32_t dynamics_eq1_low_type;
+  float dynamics_eq1_low_freq;
+  float dynamics_eq1_low_gain_db;
+  float dynamics_eq1_low_q;
+  float dynamics_eq1_low_slope;
+  float dynamics_eq1_mid_freq;
+  float dynamics_eq1_mid_gain_db;
+  float dynamics_eq1_mid_q;
+  uint32_t dynamics_eq1_high_type;
+  float dynamics_eq1_high_freq;
+  float dynamics_eq1_high_gain_db;
+  float dynamics_eq1_high_q;
+  float dynamics_eq1_high_slope;
+  uint32_t dynamics_eq2_enabled;
+  float dynamics_eq2_input_gain_db;
+  float dynamics_eq2_output_gain_db;
+  uint32_t dynamics_eq2_low_type;
+  float dynamics_eq2_low_freq;
+  float dynamics_eq2_low_gain_db;
+  float dynamics_eq2_low_q;
+  float dynamics_eq2_low_slope;
+  float dynamics_eq2_mid_freq;
+  float dynamics_eq2_mid_gain_db;
+  float dynamics_eq2_mid_q;
+  uint32_t dynamics_eq2_high_type;
+  float dynamics_eq2_high_freq;
+  float dynamics_eq2_high_gain_db;
+  float dynamics_eq2_high_q;
+  float dynamics_eq2_high_slope;
   uint32_t sidechain_enabled;
   uint32_t sidechain_key_a;
   uint32_t sidechain_key_b;
@@ -401,6 +434,27 @@ typedef struct KesshoProductRoutingSnapshot {
   float delay_b_to_reverb;
   float granular_to_delay_a;
   float granular_to_delay_b;
+  float delay_a_to_degrade;
+  float delay_b_to_degrade;
+  float granular_to_degrade;
+  float reverb_to_degrade;
+  float degrade_to_reverb;
+  float degrade_return_level;
+  uint32_t dynamics_pad1_bus;
+  uint32_t dynamics_pad2_bus;
+  uint32_t dynamics_lead1_bus;
+  uint32_t dynamics_lead2_bus;
+  uint32_t dynamics_piano_bus;
+  uint32_t dynamics_drum_bus;
+  uint32_t dynamics_granular_bus;
+  uint32_t dynamics_waves_bus;
+  uint32_t dynamics_water_bus;
+  uint32_t dynamics_insects_bus;
+  uint32_t dynamics_nature_bus;
+  uint32_t dynamics_delay_a_bus;
+  uint32_t dynamics_delay_b_bus;
+  uint32_t dynamics_degrade_bus;
+  uint32_t dynamics_reverb_bus;
 } KesshoProductRoutingSnapshot;
 
 typedef struct KesshoProductMasterSnapshot {

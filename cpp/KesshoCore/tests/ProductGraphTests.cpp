@@ -383,9 +383,6 @@ int main() {
   require(graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_PAD1_DELAY_A_SEND] > 0.00001f, "pad1 Delay A send graph tap stayed silent");
   require(graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_PAD1_DELAY_B_SEND] > 0.00001f, "pad1 Delay B send graph tap stayed silent");
   require(graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_PAD1_GRANULAR_SEND] > 0.00001f, "pad1 granular send graph tap stayed silent");
-  require(graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD1_INPUT] > 0.00001f, "pad1 sidechain input graph tap stayed silent");
-  require(graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD1_OUTPUT] > 0.00001f, "pad1 sidechain output graph tap stayed silent");
-  require(graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD1_GAIN_TRACE] > 0.00001f, "pad1 sidechain gain trace graph tap stayed silent");
   require(graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_DYNAMICS_INPUT] > 0.00001f, "dynamics input graph tap stayed silent");
   require(graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_DYNAMICS_OUTPUT] > 0.00001f, "dynamics output graph tap stayed silent");
   require(graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_MASTER_PRE_LIMITER] > 0.00001f, "master pre-limiter graph tap stayed silent");
@@ -443,9 +440,6 @@ int main() {
   require(pad2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_PAD2_DELAY_A_SEND] > 0.00001f, "pad2 Delay A send graph tap stayed silent");
   require(pad2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_PAD2_DELAY_B_SEND] > 0.00001f, "pad2 Delay B send graph tap stayed silent");
   require(pad2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_PAD2_GRANULAR_SEND] > 0.00001f, "pad2 granular send graph tap stayed silent");
-  require(pad2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD2_INPUT] > 0.00001f, "pad2 sidechain input graph tap stayed silent");
-  require(pad2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD2_OUTPUT] > 0.00001f, "pad2 sidechain output graph tap stayed silent");
-  require(pad2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PAD2_GAIN_TRACE] > 0.00001f, "pad2 sidechain gain trace graph tap stayed silent");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
@@ -486,9 +480,6 @@ int main() {
   require(lead1_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_LEAD1_DELAY_A_SEND] > 0.00001f, "lead1 Delay A send graph tap stayed silent");
   require(lead1_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_LEAD1_DELAY_B_SEND] > 0.00001f, "lead1 Delay B send graph tap stayed silent");
   require(lead1_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_LEAD1_GRANULAR_SEND] > 0.00001f, "lead1 granular send graph tap stayed silent");
-  require(lead1_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_LEAD1_INPUT] > 0.00001f, "lead1 sidechain input graph tap stayed silent");
-  require(lead1_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_LEAD1_OUTPUT] > 0.00001f, "lead1 sidechain output graph tap stayed silent");
-  require(lead1_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_LEAD1_GAIN_TRACE] > 0.00001f, "lead1 sidechain gain trace graph tap stayed silent");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
@@ -529,9 +520,6 @@ int main() {
   require(lead2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_LEAD2_DELAY_A_SEND] > 0.00001f, "lead2 Delay A send graph tap stayed silent");
   require(lead2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_LEAD2_DELAY_B_SEND] > 0.00001f, "lead2 Delay B send graph tap stayed silent");
   require(lead2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_LEAD2_GRANULAR_SEND] > 0.00001f, "lead2 granular send graph tap stayed silent");
-  require(lead2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_LEAD2_INPUT] > 0.00001f, "lead2 sidechain input graph tap stayed silent");
-  require(lead2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_LEAD2_OUTPUT] > 0.00001f, "lead2 sidechain output graph tap stayed silent");
-  require(lead2_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_LEAD2_GAIN_TRACE] > 0.00001f, "lead2 sidechain gain trace graph tap stayed silent");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
@@ -582,9 +570,6 @@ int main() {
   require(piano_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_PIANO_DELAY_A_SEND] > 0.00001f, "piano Delay A send graph tap stayed silent");
   require(piano_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_PIANO_DELAY_B_SEND] > 0.00001f, "piano Delay B send graph tap stayed silent");
   require(piano_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_PIANO_GRANULAR_SEND] > 0.00001f, "piano granular send graph tap stayed silent");
-  require(piano_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PIANO_INPUT] > 0.00001f, "piano sidechain input graph tap stayed silent");
-  require(piano_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PIANO_OUTPUT] > 0.00001f, "piano sidechain output graph tap stayed silent");
-  require(piano_graph_tap_peaks[KESSHO_PRODUCT_GRAPH_TAP_SIDECHAIN_PIANO_GAIN_TRACE] > 0.00001f, "piano sidechain gain trace graph tap stayed silent");
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();

@@ -932,6 +932,167 @@ void KesshoProductEngine::sortControlEvents() {
   return true;
 }
 
+  bool KesshoProductEngine::applyDynamicsEqParamEvent(const KesshoProductEvent& event) {
+  switch (event.param_id) {
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_ENABLED_ID:
+      fx.dynamics_eq1_enabled = event.value >= 0.5f;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_INPUT_GAIN_ID:
+      fx.dynamics_eq1_input_gain_db = clampFloat(event.value, -24.0f, 24.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_OUTPUT_GAIN_ID:
+      fx.dynamics_eq1_output_gain_db = clampFloat(event.value, -24.0f, 24.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_LOW_TYPE_ID:
+      fx.dynamics_eq1_low_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_LOW_FREQ_ID:
+      fx.dynamics_eq1_low_freq = clampFloat(event.value, 20.0f, 20000.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_LOW_GAIN_ID:
+      fx.dynamics_eq1_low_gain_db = clampFloat(event.value, -24.0f, 24.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_LOW_Q_ID:
+      fx.dynamics_eq1_low_q = clampFloat(event.value, 0.1f, 18.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_LOW_SLOPE_ID:
+      fx.dynamics_eq1_low_slope = clampFloat(event.value, 0.25f, 4.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_MID_FREQ_ID:
+      fx.dynamics_eq1_mid_freq = clampFloat(event.value, 20.0f, 20000.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_MID_GAIN_ID:
+      fx.dynamics_eq1_mid_gain_db = clampFloat(event.value, -24.0f, 24.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_MID_Q_ID:
+      fx.dynamics_eq1_mid_q = clampFloat(event.value, 0.1f, 18.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_HIGH_TYPE_ID:
+      fx.dynamics_eq1_high_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_HIGH_FREQ_ID:
+      fx.dynamics_eq1_high_freq = clampFloat(event.value, 20.0f, 20000.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_HIGH_GAIN_ID:
+      fx.dynamics_eq1_high_gain_db = clampFloat(event.value, -24.0f, 24.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_HIGH_Q_ID:
+      fx.dynamics_eq1_high_q = clampFloat(event.value, 0.1f, 18.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_HIGH_SLOPE_ID:
+      fx.dynamics_eq1_high_slope = clampFloat(event.value, 0.25f, 4.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_ENABLED_ID:
+      fx.dynamics_eq2_enabled = event.value >= 0.5f;
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_INPUT_GAIN_ID:
+      fx.dynamics_eq2_input_gain_db = clampFloat(event.value, -24.0f, 24.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_OUTPUT_GAIN_ID:
+      fx.dynamics_eq2_output_gain_db = clampFloat(event.value, -24.0f, 24.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_LOW_TYPE_ID:
+      fx.dynamics_eq2_low_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_LOW_FREQ_ID:
+      fx.dynamics_eq2_low_freq = clampFloat(event.value, 20.0f, 20000.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_LOW_GAIN_ID:
+      fx.dynamics_eq2_low_gain_db = clampFloat(event.value, -24.0f, 24.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_LOW_Q_ID:
+      fx.dynamics_eq2_low_q = clampFloat(event.value, 0.1f, 18.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_LOW_SLOPE_ID:
+      fx.dynamics_eq2_low_slope = clampFloat(event.value, 0.25f, 4.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_MID_FREQ_ID:
+      fx.dynamics_eq2_mid_freq = clampFloat(event.value, 20.0f, 20000.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_MID_GAIN_ID:
+      fx.dynamics_eq2_mid_gain_db = clampFloat(event.value, -24.0f, 24.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_MID_Q_ID:
+      fx.dynamics_eq2_mid_q = clampFloat(event.value, 0.1f, 18.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_HIGH_TYPE_ID:
+      fx.dynamics_eq2_high_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_HIGH_FREQ_ID:
+      fx.dynamics_eq2_high_freq = clampFloat(event.value, 20.0f, 20000.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_HIGH_GAIN_ID:
+      fx.dynamics_eq2_high_gain_db = clampFloat(event.value, -24.0f, 24.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_HIGH_Q_ID:
+      fx.dynamics_eq2_high_q = clampFloat(event.value, 0.1f, 18.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_HIGH_SLOPE_ID:
+      fx.dynamics_eq2_high_slope = clampFloat(event.value, 0.25f, 4.0f);
+      break;
+    default:
+      return false;
+  }
+  telemetry.last_error_code = KESSHO_PRODUCT_OK;
+  return true;
+}
+
+  bool KesshoProductEngine::applyRoutingParamEvent(const KesshoProductEvent& event) {
+  uint32_t route = kDynamicsRouteCount;
+  switch (event.param_id) {
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_PAD1_BUS_ID:
+      route = kDynamicsRoutePad1;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_PAD2_BUS_ID:
+      route = kDynamicsRoutePad2;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_LEAD1_BUS_ID:
+      route = kDynamicsRouteLead1;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_LEAD2_BUS_ID:
+      route = kDynamicsRouteLead2;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_PIANO_BUS_ID:
+      route = kDynamicsRoutePiano;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_DRUM_BUS_ID:
+      route = kDynamicsRouteDrum;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_GRANULAR_BUS_ID:
+      route = kDynamicsRouteGranular;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_WAVES_BUS_ID:
+      route = kDynamicsRouteWaves;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_WATER_BUS_ID:
+      route = kDynamicsRouteWater;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_INSECTS_BUS_ID:
+      route = kDynamicsRouteInsects;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_NATURE_BUS_ID:
+      route = kDynamicsRouteNature;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_DELAY_ABUS_ID:
+      route = kDynamicsRouteDelayA;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_DELAY_BBUS_ID:
+      route = kDynamicsRouteDelayB;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_DEGRADE_BUS_ID:
+      route = kDynamicsRouteDegrade;
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_REVERB_BUS_ID:
+      route = kDynamicsRouteReverb;
+      break;
+    default:
+      return false;
+  }
+  routing.dynamics_routes[route] = normalizedDynamicsBus(event.value);
+  telemetry.last_error_code = KESSHO_PRODUCT_OK;
+  return true;
+}
+
   void KesshoProductEngine::applyParam(const KesshoProductEvent& event) {
   uint32_t pad_source_id = 0u;
   uint32_t pad_index = 0u;
@@ -972,6 +1133,12 @@ void KesshoProductEngine::sortControlEvents() {
   if (applyDynamicsModParamEvent(event)) {
     return;
   }
+  if (applyDynamicsEqParamEvent(event)) {
+    return;
+  }
+  if (applyRoutingParamEvent(event)) {
+    return;
+  }
   // TODO(product-core-cpp-dispatch-table): table-drive the low-risk FX families
   // in this switch after ProductAbiLayoutTests plus web graph parity cover the
   // exact before/after values. Start with Delay A/B and Reverb cases below:
@@ -1001,6 +1168,7 @@ void KesshoProductEngine::sortControlEvents() {
     case KESSHO_PRODUCT_PARAM_SOURCE_DELAY_ASEND_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_DELAY_BSEND_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_GRANULAR_SEND_ID:
+    case KESSHO_PRODUCT_PARAM_SOURCE_DEGRADE_SEND_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_DIFFUSE_SEND_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_POST_LPF_HZ_ID:
     case KESSHO_PRODUCT_PARAM_SOURCE_STEREO_WIDTH_ID:
@@ -1432,120 +1600,120 @@ void KesshoProductEngine::sortControlEvents() {
       fx.dynamics_enabled = event.value >= 0.5f;
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_ENABLED_ID:
-      fx.dynamics_character_enabled = event.value >= 0.5f;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_ENABLED_ID:
+      fx.dynamics_drift_enabled = event.value >= 0.5f;
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MODE_ID:
-      fx.dynamics_character_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_MODE_ID:
+      fx.dynamics_drift_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_QUALITY_ID:
-      fx.dynamics_character_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_QUALITY_ID:
+      fx.dynamics_drift_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_ANTI_COMB_ID:
-      fx.dynamics_character_anti_comb = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_ANTI_COMB_ID:
+      fx.dynamics_drift_anti_comb = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_DIFFUSION_ID:
-      fx.dynamics_character_diffusion = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_DIFFUSION_ID:
+      fx.dynamics_drift_diffusion = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MIX_ID:
-      fx.dynamics_character_mix = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_MIX_ID:
+      fx.dynamics_drift_mix = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_AGE_ID:
-      fx.dynamics_character_age = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_AGE_ID:
+      fx.dynamics_drift_age = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_BIAS_ID:
-      fx.dynamics_character_bias = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_BIAS_ID:
+      fx.dynamics_drift_bias = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_LPG_AMOUNT_ID:
-      fx.dynamics_character_lpg_amount = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_LPG_AMOUNT_ID:
+      fx.dynamics_drift_lpg_amount = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_RESONANCE_ID:
-      fx.dynamics_character_resonance = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_RESONANCE_ID:
+      fx.dynamics_drift_resonance = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_STEREO_ID:
-      fx.dynamics_character_stereo = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_STEREO_ID:
+      fx.dynamics_drift_stereo = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_ENV_FOLLOW_ID:
-      fx.dynamics_character_env_follow = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_ENV_FOLLOW_ID:
+      fx.dynamics_drift_env_follow = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_DEPTH_ID:
-      fx.dynamics_character_depth = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_DEPTH_ID:
+      fx.dynamics_drift_depth = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_RATE_ID:
-      fx.dynamics_character_rate = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_RATE_ID:
+      fx.dynamics_drift_rate = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_DAMP_ID:
-      fx.dynamics_character_damp = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_DAMP_ID:
+      fx.dynamics_drift_damp = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_ENABLED_ID:
-      fx.dynamics_degrade_enabled = event.value >= 0.5f;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_ENABLED_ID:
+      fx.dynamics_erosion_enabled = event.value >= 0.5f;
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_QUALITY_ID:
-      fx.dynamics_degrade_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_QUALITY_ID:
+      fx.dynamics_erosion_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_EVENT_AMOUNT_ID:
-      fx.dynamics_degrade_event_amount = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_EVENT_AMOUNT_ID:
+      fx.dynamics_erosion_event_amount = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_PROFILE_AMOUNT_ID:
-      fx.dynamics_degrade_profile_amount = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_PROFILE_AMOUNT_ID:
+      fx.dynamics_erosion_profile_amount = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_DITHER_AMOUNT_ID:
-      fx.dynamics_degrade_dither_amount = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_DITHER_AMOUNT_ID:
+      fx.dynamics_erosion_dither_amount = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_MIX_ID:
-      fx.dynamics_degrade_mix = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_MIX_ID:
+      fx.dynamics_erosion_mix = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_AGE_ID:
-      fx.dynamics_degrade_age = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_AGE_ID:
+      fx.dynamics_erosion_age = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_GENERATION_ID:
-      fx.dynamics_degrade_generation = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_GENERATION_ID:
+      fx.dynamics_erosion_generation = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_ALIAS_ID:
-      fx.dynamics_degrade_alias = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_ALIAS_ID:
+      fx.dynamics_erosion_alias = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOW_ID:
-      fx.dynamics_degrade_wow = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_WOW_ID:
+      fx.dynamics_erosion_wow = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_FLUTTER_ID:
-      fx.dynamics_degrade_flutter = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_FLUTTER_ID:
+      fx.dynamics_erosion_flutter = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_DRIFT_ID:
-      fx.dynamics_degrade_drift = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_DRIFT_ID:
+      fx.dynamics_erosion_drift = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOBBLE_SPEED_ID:
-      fx.dynamics_degrade_wobble_speed = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_WOBBLE_SPEED_ID:
+      fx.dynamics_erosion_wobble_speed = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_TONE_ID:
-      fx.dynamics_degrade_tone = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_TONE_ID:
+      fx.dynamics_erosion_tone = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_HP_ID:
@@ -1556,16 +1724,16 @@ void KesshoProductEngine::sortControlEvents() {
       fx.dynamics_degrade_lp = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_NOISE_ID:
-      fx.dynamics_degrade_noise = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_NOISE_ID:
+      fx.dynamics_erosion_noise = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_SATURATION_ID:
-      fx.dynamics_degrade_saturation = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_SATURATION_ID:
+      fx.dynamics_erosion_saturation = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_CORROSION_ID:
-      fx.dynamics_degrade_corrosion = clampFloat(event.value, 0.0f, 1.0f);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_CORROSION_ID:
+      fx.dynamics_erosion_corrosion = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_ENABLED_ID:
@@ -1775,6 +1943,32 @@ void KesshoProductEngine::sortControlEvents() {
     case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_DELAY_B_ID:
       routing.granular_to_delay_b = clampFloat(event.value, 0.0f, 1.0f);
       configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_DEGRADE_ID:
+      routing.delay_a_to_degrade = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_DEGRADE_ID:
+      routing.delay_b_to_degrade = clampFloat(event.value, 0.0f, 1.0f);
+      configureFxModules();
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_DEGRADE_ID:
+      routing.granular_to_degrade = clampFloat(event.value, 0.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_REVERB_TO_DEGRADE_ID:
+      routing.reverb_to_degrade = clampFloat(event.value, 0.0f, 1.0f);
+      if (routing.reverb_to_degrade > 0.0001f) {
+        routing.degrade_to_reverb = 0.0f;
+      }
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DEGRADE_TO_REVERB_ID:
+      routing.degrade_to_reverb = clampFloat(event.value, 0.0f, 1.0f);
+      if (routing.degrade_to_reverb > 0.0001f) {
+        routing.reverb_to_degrade = 0.0f;
+      }
+      break;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DEGRADE_RETURN_LEVEL_ID:
+      routing.degrade_return_level = clampFloat(event.value, 0.0f, 1.0f);
       break;
     case KESSHO_PRODUCT_PARAM_RNG_SEED_ID:
       rng_seed = static_cast<uint32_t>(std::max(1.0f, event.value));

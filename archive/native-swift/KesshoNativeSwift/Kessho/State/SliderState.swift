@@ -157,51 +157,51 @@ public struct SliderState: Codable, Equatable {
     var characterEnvFollow: Double = 0.12
     var characterStereo: Double = 0.72
     var characterResonance: Double = 0.28
-    var degradeEnabled: Bool = false
-    var degradeMix: Double = 0
-    var degradeAge: Double = 0
-    var degradeGeneration: Double = 0
-    var degradeAlias: Double = 0
-    var degradeWow: Double = 0
-    var degradeFlutter: Double = 0
-    var degradeDrift: Double = 0
-    var degradeWobbleSpeed: Double = 0.35
-    var degradeTone: Double = 0.5
+    var erosionEnabled: Bool = false
+    var erosionMix: Double = 0
+    var erosionAge: Double = 0
+    var erosionGeneration: Double = 0
+    var erosionAlias: Double = 0
+    var erosionWow: Double = 0
+    var erosionFlutter: Double = 0
+    var erosionDrift: Double = 0
+    var erosionWobbleSpeed: Double = 0.35
+    var erosionTone: Double = 0.5
     var degradeHp: Double = 0
     var degradeLp: Double = 1
-    var degradeNoise: Double = 0
-    var degradeSaturation: Double = 0
-    var degradeCorrosion: Double = 0
-    var degradeModSlowWow: Double = 0.18
-    var degradeModSlowFlutter: Double = 0.02
-    var degradeModSlowLp: Double = 0.12
-    var degradeModSlowWet: Double = 0.03
-    var degradeModSlowDropout: Double = 0.04
-    var degradeModSlowAlias: Double = 0
-    var degradeModFlutterWow: Double = 0
-    var degradeModFlutterFlutter: Double = 0.12
-    var degradeModFlutterLp: Double = 0.02
-    var degradeModFlutterWet: Double = 0
-    var degradeModFlutterDropout: Double = 0.02
-    var degradeModFlutterAlias: Double = 0
-    var degradeModRandomWow: Double = 0.04
-    var degradeModRandomFlutter: Double = 0.03
-    var degradeModRandomLp: Double = 0.14
-    var degradeModRandomWet: Double = 0.02
-    var degradeModRandomDropout: Double = 0.1
-    var degradeModRandomAlias: Double = 0.02
-    var degradeModEnvWow: Double = 0
-    var degradeModEnvFlutter: Double = 0
-    var degradeModEnvLp: Double = 0.08
-    var degradeModEnvWet: Double = 0.04
-    var degradeModEnvDropout: Double = 0
-    var degradeModEnvAlias: Double = 0
-    var degradeModNoiseWow: Double = 0
-    var degradeModNoiseFlutter: Double = 0.06
-    var degradeModNoiseLp: Double = 0.02
-    var degradeModNoiseWet: Double = 0
-    var degradeModNoiseDropout: Double = 0.06
-    var degradeModNoiseAlias: Double = 0.02
+    var erosionNoise: Double = 0
+    var erosionSaturation: Double = 0
+    var erosionCorrosion: Double = 0
+    var erosionModSlowWow: Double = 0.18
+    var erosionModSlowFlutter: Double = 0.02
+    var erosionModSlowLp: Double = 0.12
+    var erosionModSlowWet: Double = 0.03
+    var erosionModSlowDropout: Double = 0.04
+    var erosionModSlowAlias: Double = 0
+    var erosionModFlutterWow: Double = 0
+    var erosionModFlutterFlutter: Double = 0.12
+    var erosionModFlutterLp: Double = 0.02
+    var erosionModFlutterWet: Double = 0
+    var erosionModFlutterDropout: Double = 0.02
+    var erosionModFlutterAlias: Double = 0
+    var erosionModRandomWow: Double = 0.04
+    var erosionModRandomFlutter: Double = 0.03
+    var erosionModRandomLp: Double = 0.14
+    var erosionModRandomWet: Double = 0.02
+    var erosionModRandomDropout: Double = 0.1
+    var erosionModRandomAlias: Double = 0.02
+    var erosionModEnvWow: Double = 0
+    var erosionModEnvFlutter: Double = 0
+    var erosionModEnvLp: Double = 0.08
+    var erosionModEnvWet: Double = 0.04
+    var erosionModEnvDropout: Double = 0
+    var erosionModEnvAlias: Double = 0
+    var erosionModNoiseWow: Double = 0
+    var erosionModNoiseFlutter: Double = 0.06
+    var erosionModNoiseLp: Double = 0.02
+    var erosionModNoiseWet: Double = 0
+    var erosionModNoiseDropout: Double = 0.06
+    var erosionModNoiseAlias: Double = 0.02
     var endCompEnabled: Bool = false
     var endCompThreshold: Double = -18
     var endCompKnee: Double = 12
@@ -1524,15 +1524,15 @@ private extension SliderState {
         assignNumberIfMissing("filterCutoffMax", from: ["filterCutoff"], source: source, target: &target)
         assignNumberIfMissing("reverbLevel", from: ["reverbMix"], source: source, target: &target)
         assignNumberIfMissing("drumEuclidBaseBPM", from: ["sequencerMasterBPM"], source: source, target: &target)
-        assignNumberIfMissing("degradeWow", from: ["characterWow"], source: source, target: &target)
-        assignNumberIfMissing("degradeFlutter", from: ["characterFlutter"], source: source, target: &target)
-        assignNumberIfMissing("degradeDrift", from: ["characterDrift"], source: source, target: &target)
-        assignNumberIfMissing("degradeTone", from: ["characterTone"], source: source, target: &target)
+        assignNumberIfMissing("erosionWow", from: ["characterWow"], source: source, target: &target)
+        assignNumberIfMissing("erosionFlutter", from: ["characterFlutter"], source: source, target: &target)
+        assignNumberIfMissing("erosionDrift", from: ["characterDrift"], source: source, target: &target)
+        assignNumberIfMissing("erosionTone", from: ["characterTone"], source: source, target: &target)
         assignNumberIfMissing("degradeHp", from: ["characterHp", "characterWetHp"], source: source, target: &target)
         assignNumberIfMissing("degradeLp", from: ["characterLp"], source: source, target: &target)
-        assignNumberIfMissing("degradeNoise", from: ["characterNoise"], source: source, target: &target)
-        assignNumberIfMissing("degradeSaturation", from: ["characterSaturation"], source: source, target: &target)
-        assignNumberIfMissing("degradeCorrosion", from: ["characterCorrosion"], source: source, target: &target)
+        assignNumberIfMissing("erosionNoise", from: ["characterNoise"], source: source, target: &target)
+        assignNumberIfMissing("erosionSaturation", from: ["characterSaturation"], source: source, target: &target)
+        assignNumberIfMissing("erosionCorrosion", from: ["characterCorrosion"], source: source, target: &target)
     }
 
     static func normalizeSynthEuclidSources(

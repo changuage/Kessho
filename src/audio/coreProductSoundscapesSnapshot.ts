@@ -16,16 +16,17 @@ import { morphWaterPresets, type WaterPresetState } from './waterPresets';
 
 export const SOUNDSCAPE_ROUTE_PARAM_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_PARAM_COUNT;
 export const SOUNDSCAPE_ROUTE_KEYS = [
-  ['oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend'],
-  ['waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'granularWaterSend'],
-  ['insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'granularInsectsSend'],
-  ['natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'granularNatureSend'],
+  ['oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend', 'degradeWavesSend'],
+  ['waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'granularWaterSend', 'degradeWaterSend'],
+  ['insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'granularInsectsSend', 'degradeInsectsSend'],
+  ['natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'granularNatureSend', 'degradeNatureSend'],
 ] as const;
+const SOUNDSCAPE_LAYER_ROUTE_STRIDE = SOUNDSCAPE_ROUTE_KEYS[0]?.length ?? 0;
 export const SOUNDSCAPE_ROUTE_FALLBACKS = [
-  [0.2, 0, 0, 0],
-  [0.3, 0, 0, 0],
-  [0.15, 0, 0, 0],
-  [0.18, 0, 0, 0],
+  [0.2, 0, 0, 0, 0],
+  [0.3, 0, 0, 0, 0],
+  [0.15, 0, 0, 0, 0],
+  [0.18, 0, 0, 0, 0],
 ] as const;
 export const SOUNDSCAPE_PARITY_FIXTURE_PARAM = KESSHO_PRODUCT_SOUNDSCAPE_PARITY_FIXTURE_PARAM;
 export const SOUNDSCAPE_PARITY_PARAM_COUNT = KESSHO_PRODUCT_SOUNDSCAPE_PARITY_PARAM_COUNT;
@@ -328,7 +329,7 @@ export function soundscapeSnapshotPayloadFromState(state: Record<string, unknown
   const textureParams = Array.from({ length: SOUNDSCAPE_TEXTURE_PARAM_COUNT }, () => 0);
   const moduleParams = exactSoundscapesModuleParamsFromState(state).slice(0, SOUNDSCAPES_PRODUCT_PARAM_COUNT);
   const layerActive = [oceanActive, waterActive, insectsActive, natureActive];
-  const routePeaks = [0, 0, 0, 0];
+  const routePeaks = [0, 0, 0, 0, 0];
 
   if (parityFixture) textureParams[SOUNDSCAPE_PARITY_FIXTURE_PARAM] = 1;
   writeSoundscapeTextureParamsFromState(textureParams, state);
@@ -340,7 +341,7 @@ export function soundscapeSnapshotPayloadFromState(state: Record<string, unknown
       const value = layerActive[layer] === true
         ? clamp(numberFromState(state, key, routeFallbacks[route] ?? 0), 0, 2)
         : 0;
-      textureParams[layer * 4 + route] = value;
+      textureParams[layer * SOUNDSCAPE_LAYER_ROUTE_STRIDE + route] = value;
       routePeaks[route] = Math.max(routePeaks[route] ?? 0, value);
     }
   }

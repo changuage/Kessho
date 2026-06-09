@@ -68,8 +68,8 @@ const PANEL_FILL = 'rgba(232, 220, 196, 0.018)';
 const PANEL_STROKE = 'rgba(232, 220, 196, 0.075)';
 const HOT_TEXT = 'rgba(247, 250, 252, 0.92)';
 const CYAN = DYNAMICS_ENGINE_COLORS.sidechain;
-const GREEN = DYNAMICS_ENGINE_COLORS.character;
-const PURPLE = DYNAMICS_ENGINE_COLORS.degrade;
+const GREEN = DYNAMICS_ENGINE_COLORS.drift;
+const PURPLE = DYNAMICS_ENGINE_COLORS.erosion;
 const AMBER = DYNAMICS_ENGINE_COLORS.endChain;
 const YELLOW = DYNAMICS_ENGINE_COLORS.saturation;
 const ROSE = '#fb7185';
@@ -296,13 +296,13 @@ function drawMiniMetric(
   if (valueText) drawCaption(ctx, valueText, rect.x + rect.w - 4, rect.y + rect.h / 2 + 0.3, TEXT, 'right');
 }
 
-function characterQualityLabel(quality: SliderState['characterQuality']): string {
+function driftQualityLabel(quality: SliderState['driftQuality']): string {
   if (quality === 'eco') return 'ECO';
   if (quality === 'hq') return 'HQ';
   return 'BAL';
 }
 
-function degradeQualityLabel(quality: SliderState['degradeQuality']): string {
+function erosionQualityLabel(quality: SliderState['erosionQuality']): string {
   if (quality === 'classic') return 'CLASSIC';
   if (quality === 'hq') return 'HQ';
   return 'MEDIA';
@@ -806,21 +806,21 @@ export function DynamicsSaturationVisualizer({ state, getDynamicsAnalyser, getDy
   );
 }
 
-export function DynamicsDegradeVisualizer({ state, getDynamicsAnalyser, getDynamicsTelemetry }: VisualizerProps) {
+export function DynamicsErosionVisualizer({ state, getDynamicsAnalyser, getDynamicsTelemetry }: VisualizerProps) {
   const targets = useMemo(() => resolveDynamicsTargets(state), [state]);
-  const postCharacterDataRef = useRef<FloatBuffer | null>(null);
+  const postDegradeDataRef = useRef<FloatBuffer | null>(null);
 
   const draw = useCallback(({ ctx, width, height }: CanvasDrawArgs) => {
     drawBase(ctx, width, height, PURPLE);
     const liveTelemetry = getLiveTelemetry(getDynamicsTelemetry);
-    const postCharacter = sampleAnalyser(getDynamicsAnalyser?.('postCharacter'), postCharacterDataRef);
+    const postDegrade = sampleAnalyser(getDynamicsAnalyser?.('postDegrade'), postDegradeDataRef);
     const workletWetPeak = liveTelemetry.worklet?.wetPeak ?? 0;
-    const livePulse = clamp01(Math.max(postCharacter.peak, workletWetPeak) * 2.8);
-    const eventEnv = clamp01(liveTelemetry.worklet?.degradeEventEnv ?? 0);
-    const eventGainDb = liveTelemetry.worklet?.degradeEventGainDb ?? 0;
-    const profileAmount = clamp01(liveTelemetry.worklet?.degradeProfileAmount ?? state.degradeProfileAmount ?? 0.65);
-    const ditherAmount = clamp01(state.degradeDitherAmount ?? 0.55);
-    const quality = state.degradeQuality ?? 'media';
+    const livePulse = clamp01(Math.max(postDegrade.peak, workletWetPeak) * 2.8);
+    const eventEnv = clamp01(liveTelemetry.worklet?.erosionEventEnv ?? 0);
+    const eventGainDb = liveTelemetry.worklet?.erosionEventGainDb ?? 0;
+    const profileAmount = clamp01(liveTelemetry.worklet?.erosionProfileAmount ?? state.erosionProfileAmount ?? 0.65);
+    const ditherAmount = clamp01(state.erosionDitherAmount ?? 0.55);
+    const quality = state.erosionQuality ?? 'media';
 
     const pad = 11;
     const header = 17;
@@ -828,7 +828,7 @@ export function DynamicsDegradeVisualizer({ state, getDynamicsAnalyser, getDynam
     const mapRect: Rect = { x: pad, y: pad + header, w: width - pad * 2, h: height - pad * 2 - header - footerH - 8 };
     const footer: Rect = { x: pad, y: mapRect.y + mapRect.h + 8, w: width - pad * 2, h: footerH };
     drawValue(ctx, 'DAMAGE MAP', mapRect.x, pad + 8, PURPLE);
-    drawBadge(ctx, degradeQualityLabel(quality), mapRect.x + mapRect.w, pad + 1, PURPLE, 'right');
+    drawBadge(ctx, erosionQualityLabel(quality), mapRect.x + mapRect.w, pad + 1, PURPLE, 'right');
 
     fillRoundedRect(ctx, mapRect, 7, PANEL_FILL);
     strokeRoundedRect(ctx, mapRect, 7, PANEL_STROKE);
@@ -836,7 +836,7 @@ export function DynamicsDegradeVisualizer({ state, getDynamicsAnalyser, getDynam
     const lpLoss = 1 - logNorm(targets.lowpassHz, 450, 16000);
     const hpLift = logNorm(targets.highpassHz, 20, 1600);
     const cells = [
-      { label: 'Wet',     norm: targets.degradeMix,                           raw: targets.degradeMix,                unit: '%',  color: CYAN },
+      { label: 'Wet',     norm: targets.erosionMix,                           raw: targets.erosionMix,                unit: '%',  color: CYAN },
       { label: 'Wear',    norm: targets.rawMediaWear,                          raw: targets.rawMediaWear,              unit: '%',  color: PURPLE },
       { label: 'Damage',  norm: targets.damage,                                raw: targets.damage,                    unit: '%',  color: ROSE },
       { label: 'Alias',   norm: targets.workletAlias,                           raw: targets.workletAlias,              unit: '%',  color: YELLOW },
@@ -845,7 +845,7 @@ export function DynamicsDegradeVisualizer({ state, getDynamicsAnalyser, getDynam
       { label: 'Jitter',  norm: clamp01(targets.jitterDepth / 0.0012),          raw: targets.jitterDepth * 1200,        unit: 'ct', color: AMBER },
       { label: 'Wow',     norm: clamp01(targets.wowDepth / 0.018),              raw: targets.wowDepth * 1200,           unit: 'ct', color: GREEN },
       { label: 'Flutter', norm: clamp01(targets.flutterDepth / 0.0018),          raw: targets.flutterDepth * 1200,       unit: 'ct', color: GREEN },
-      { label: 'Wobble',  norm: clamp01(state.degradeWobbleSpeed ?? 0.35),       raw: state.degradeWobbleSpeed ?? 0.35,  unit: '%',  color: GREEN },
+      { label: 'Wobble',  norm: clamp01(state.erosionWobbleSpeed ?? 0.35),       raw: state.erosionWobbleSpeed ?? 0.35,  unit: '%',  color: GREEN },
       { label: 'LP Cut',  norm: lpLoss,                                         raw: targets.lowpassHz,                 unit: 'Hz', color: YELLOW },
       { label: 'Corrode', norm: targets.corrosion,                               raw: targets.corrosion,                 unit: '%',  color: ROSE },
     ];
@@ -925,7 +925,7 @@ export function DynamicsDegradeVisualizer({ state, getDynamicsAnalyser, getDynam
     ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
     for (let i = 0; i < 18; i += 1) {
       const unit = (i + 0.5) / 18;
-      const wave = waveformSample(postCharacter.data, unit);
+      const wave = waveformSample(postDegrade.data, unit);
       const x = bandRect.x + unit * bandRect.w + wave * targets.dropoutDepth * 90;
       const stripeH = (bandRect.h - 6) * clamp01(0.35 + Math.abs(wave) * 1.8 + livePulse * 0.3);
       ctx.fillRect(x, bandRect.y + 3 + (bandRect.h - 6 - stripeH) * 0.5, 1, stripeH);
@@ -935,22 +935,22 @@ export function DynamicsDegradeVisualizer({ state, getDynamicsAnalyser, getDynam
   }, [
     getDynamicsAnalyser,
     getDynamicsTelemetry,
-    state.degradeDitherAmount,
-    state.degradeProfileAmount,
-    state.degradeQuality,
+    state.erosionDitherAmount,
+    state.erosionProfileAmount,
+    state.erosionQuality,
     targets,
   ]);
 
   return (
     <DynamicsCanvasSurface
-      ariaLabel="Degrade damage map based on resolved engine targets"
-      className="dynamics-viz-degrade"
+      ariaLabel="Erosion damage map based on resolved engine targets"
+      className="dynamics-viz-erosion"
       draw={draw}
     />
   );
 }
 
-function characterAccent(mode: SliderState['characterMode']): string {
+function driftAccent(mode: SliderState['driftMode']): string {
   if (mode === 'abyssWater') return CYAN;
   if (mode === 'shallowWater') return GREEN;
   return PURPLE;
@@ -968,15 +968,15 @@ function biquadHpMag(f: number, fc: number, q: number): number {
   return r2 / Math.sqrt((1 - r2) ** 2 + (r / q) ** 2);
 }
 
-export function DynamicsCharacterVisualizer({ state, getDynamicsAnalyser, getDynamicsTelemetry }: EditableVisualizerProps) {
+export function DynamicsDriftVisualizer({ state, getDynamicsAnalyser, getDynamicsTelemetry }: EditableVisualizerProps) {
   const outputDataRef = useRef<FloatBuffer | null>(null);
   const targets = useMemo(() => resolveDynamicsTargets(state), [state]);
 
   const draw = useCallback(({ ctx, width, height }: CanvasDrawArgs) => {
-    const accent = characterAccent(state.characterMode);
+    const accent = driftAccent(state.driftMode);
     drawBase(ctx, width, height, accent);
     const liveTelemetry = getLiveTelemetry(getDynamicsTelemetry);
-    const outputSample = sampleAnalyser(getDynamicsAnalyser?.('postCharacter'), outputDataRef);
+    const outputSample = sampleAnalyser(getDynamicsAnalyser?.('postDegrade'), outputDataRef);
 
     const pad = 11;
     const gap = 12;
@@ -990,16 +990,16 @@ export function DynamicsCharacterVisualizer({ state, getDynamicsAnalyser, getDyn
     strokeRoundedRect(ctx, filt, 7, PANEL_STROKE);
     drawSplitLine(ctx, split, motion.y, motion.h);
 
-    const envFollow = clamp01(state.characterEnvFollow ?? 0);
-    const liveEnv = clamp01(Math.max(outputSample.peak, liveTelemetry.worklet?.characterEnv ?? 0) * (1 + envFollow * 2.2));
-    const antiComb = clamp01(state.characterAntiComb ?? 1);
-    const mix = clamp01(state.characterMix ?? 0);
+    const envFollow = clamp01(state.driftEnvFollow ?? 0);
+    const liveEnv = clamp01(Math.max(outputSample.peak, liveTelemetry.worklet?.driftEnv ?? 0) * (1 + envFollow * 2.2));
+    const antiComb = clamp01(state.driftAntiComb ?? 1);
+    const mix = clamp01(state.driftMix ?? 0);
     const mixedDelayGuard = mix < 0.985 ? antiComb : 0;
     const fallbackMinDelayMs = lerp(3, 10.5, mixedDelayGuard);
-    const minDelayMs = Math.max(0, liveTelemetry.worklet?.characterMinDelayMs ?? fallbackMinDelayMs);
-    const combRisk = clamp01(liveTelemetry.worklet?.characterCombRisk ?? mixedDelayGuard * (state.characterMode === 'shallowWater' ? 0.95 : 0.45));
-    const diffusion = clamp01(liveTelemetry.worklet?.characterDiffusion ?? state.characterDiffusion ?? 0.55);
-    const quality = state.characterQuality ?? 'balanced';
+    const minDelayMs = Math.max(0, liveTelemetry.worklet?.driftMinDelayMs ?? fallbackMinDelayMs);
+    const combRisk = clamp01(liveTelemetry.worklet?.driftCombRisk ?? mixedDelayGuard * (state.driftMode === 'shallowWater' ? 0.95 : 0.45));
+    const diffusion = clamp01(liveTelemetry.worklet?.driftDiffusion ?? state.driftDiffusion ?? 0.55);
+    const quality = state.driftQuality ?? 'balanced';
 
     // ── Motion panel (left) ──
     const motionBars = [
@@ -1021,7 +1021,7 @@ export function DynamicsCharacterVisualizer({ state, getDynamicsAnalyser, getDyn
     const barGap = Math.min(3, (barsAvailH - barH * motionBars.length) / Math.max(1, motionBars.length - 1));
 
     drawCaption(ctx, 'MOTION', motion.x + barPad, motion.y + titleH * 0.7, accent);
-    drawBadge(ctx, characterQualityLabel(quality), motion.x + motion.w - barPad, motion.y + 4, accent, 'right');
+    drawBadge(ctx, driftQualityLabel(quality), motion.x + motion.w - barPad, motion.y + 4, accent, 'right');
 
     motionBars.forEach((bar, i) => {
       const y = motion.y + titleH + 4 + i * (barH + barGap);
@@ -1275,20 +1275,354 @@ export function DynamicsCharacterVisualizer({ state, getDynamicsAnalyser, getDyn
   }, [
     getDynamicsAnalyser,
     getDynamicsTelemetry,
-    state.characterAntiComb,
-    state.characterDiffusion,
-    state.characterEnvFollow,
-    state.characterMix,
-    state.characterMode,
-    state.characterQuality,
+    state.driftAntiComb,
+    state.driftDiffusion,
+    state.driftEnvFollow,
+    state.driftMix,
+    state.driftMode,
+    state.driftQuality,
     targets,
   ]);
 
   return (
     <DynamicsCanvasSurface
-      ariaLabel="Character visualizer"
-      className="dynamics-viz-character"
+      ariaLabel="Drift visualizer"
+      className="dynamics-viz-drift"
       draw={draw}
+    />
+  );
+}
+
+type DynamicsEqId = 'eq1' | 'eq2';
+type DynamicsEqBandId = 'low' | 'mid' | 'high';
+type DynamicsEqHandleKind = 'node' | 'q';
+
+type DynamicsEqHandle = {
+  band: DynamicsEqBandId;
+  kind: DynamicsEqHandleKind;
+  x: number;
+  y: number;
+  radius: number;
+  plot: Rect;
+};
+
+type DynamicsEqLayout = {
+  handles: DynamicsEqHandle[];
+};
+
+type DynamicsEqBandState = {
+  band: DynamicsEqBandId;
+  label: string;
+  freqKey: keyof SliderState;
+  gainKey: keyof SliderState;
+  qKey: keyof SliderState;
+  slopeKey?: keyof SliderState;
+  typeKey?: keyof SliderState;
+  edge: 'low' | 'high' | null;
+  color: string;
+  freq: number;
+  gain: number;
+  q: number;
+  slope: number;
+  type: 'shelf' | 'bell';
+};
+
+const EQ_FREQ_MIN = 20;
+const EQ_FREQ_MAX = 20000;
+const EQ_GAIN_MIN = -18;
+const EQ_GAIN_MAX = 18;
+const EQ_Q_MIN = 0.1;
+const EQ_Q_MAX = 18;
+
+function formatEqHz(freq: number): string {
+  if (freq >= 10000) return `${Math.round(freq / 1000)}k`;
+  if (freq >= 1000) return `${(freq / 1000).toFixed(1)}k`;
+  return `${Math.round(freq)}`;
+}
+
+function readEqNumber(state: SliderState, key: keyof SliderState, fallback: number): number {
+  const value = state[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function readEqBandType(state: SliderState, key: keyof SliderState | undefined): 'shelf' | 'bell' {
+  if (!key) return 'bell';
+  return state[key] === 'bell' ? 'bell' : 'shelf';
+}
+
+function getEqBandStates(state: SliderState, eqId: DynamicsEqId): DynamicsEqBandState[] {
+  const prefix = eqId === 'eq1' ? 'dynamicsEq1' : 'dynamicsEq2';
+  const key = (suffix: string) => `${prefix}${suffix}` as keyof SliderState;
+  return [
+    {
+      band: 'low',
+      label: 'LOW',
+      freqKey: key('LowFreq'),
+      gainKey: key('LowGain'),
+      qKey: key('LowQ'),
+      slopeKey: key('LowSlope'),
+      typeKey: key('LowType'),
+      edge: 'low',
+      color: CYAN,
+      freq: readEqNumber(state, key('LowFreq'), eqId === 'eq1' ? 120 : 90),
+      gain: readEqNumber(state, key('LowGain'), 0),
+      q: readEqNumber(state, key('LowQ'), 0.7),
+      slope: readEqNumber(state, key('LowSlope'), 1),
+      type: readEqBandType(state, key('LowType')),
+    },
+    {
+      band: 'mid',
+      label: 'MID',
+      freqKey: key('MidFreq'),
+      gainKey: key('MidGain'),
+      qKey: key('MidQ'),
+      edge: null,
+      color: AMBER,
+      freq: readEqNumber(state, key('MidFreq'), eqId === 'eq1' ? 1000 : 2200),
+      gain: readEqNumber(state, key('MidGain'), 0),
+      q: readEqNumber(state, key('MidQ'), 0.9),
+      slope: 1,
+      type: 'bell',
+    },
+    {
+      band: 'high',
+      label: 'HIGH',
+      freqKey: key('HighFreq'),
+      gainKey: key('HighGain'),
+      qKey: key('HighQ'),
+      slopeKey: key('HighSlope'),
+      typeKey: key('HighType'),
+      edge: 'high',
+      color: ROSE,
+      freq: readEqNumber(state, key('HighFreq'), eqId === 'eq1' ? 8000 : 10000),
+      gain: readEqNumber(state, key('HighGain'), 0),
+      q: readEqNumber(state, key('HighQ'), 0.7),
+      slope: readEqNumber(state, key('HighSlope'), 1),
+      type: readEqBandType(state, key('HighType')),
+    },
+  ];
+}
+
+function bellResponseDb(freq: number, center: number, gain: number, q: number): number {
+  const octaveDistance = Math.log2(Math.max(0.001, freq / Math.max(1, center)));
+  const width = Math.max(0.12, 1.45 / Math.max(EQ_Q_MIN, q));
+  return gain * Math.exp(-(octaveDistance * octaveDistance) / (2 * width * width));
+}
+
+function shelfResponseDb(freq: number, center: number, gain: number, slope: number, edge: 'low' | 'high'): number {
+  const steepness = Math.max(0.25, slope) * 2.15;
+  const ratio = edge === 'low'
+    ? Math.max(0.0001, freq / Math.max(1, center))
+    : Math.max(0.0001, Math.max(1, center) / freq);
+  return gain / (1 + Math.pow(ratio, steepness));
+}
+
+function eqBandResponseDb(freq: number, band: DynamicsEqBandState): number {
+  if (band.edge && band.type === 'shelf') {
+    return shelfResponseDb(freq, band.freq, band.gain, band.slope, band.edge);
+  }
+  return bellResponseDb(freq, band.freq, band.gain, band.q);
+}
+
+function getEqTrimDb(state: SliderState, eqId: DynamicsEqId): number {
+  const prefix = eqId === 'eq1' ? 'dynamicsEq1' : 'dynamicsEq2';
+  return readEqNumber(state, `${prefix}InputGain` as keyof SliderState, 0) +
+    readEqNumber(state, `${prefix}OutputGain` as keyof SliderState, 0);
+}
+
+export function DynamicsEqVisualizer({ state, eqId, onParamChange }: EditableVisualizerProps & { eqId: DynamicsEqId }) {
+  const layoutRef = useRef<DynamicsEqLayout | null>(null);
+  const activeHandleRef = useRef<DynamicsEqHandle | null>(null);
+  const bands = useMemo(() => getEqBandStates(state, eqId), [eqId, state]);
+  const trimDb = getEqTrimDb(state, eqId);
+  const enabled = Boolean(state[eqId === 'eq1' ? 'dynamicsEq1Enabled' : 'dynamicsEq2Enabled']);
+  const accent = eqId === 'eq1' ? CYAN : GREEN;
+
+  const draw = useCallback(({ ctx, width, height }: CanvasDrawArgs) => {
+    drawBase(ctx, width, height, accent);
+
+    const pad = 12;
+    const headerH = 18;
+    const footerH = 20;
+    const plot: Rect = {
+      x: pad,
+      y: pad + headerH,
+      w: width - pad * 2,
+      h: height - pad * 2 - headerH - footerH,
+    };
+    const freqToX = (freq: number) => plot.x + logNorm(freq, EQ_FREQ_MIN, EQ_FREQ_MAX) * plot.w;
+    const dbToY = (db: number) => plot.y + (1 - clamp01((db - EQ_GAIN_MIN) / (EQ_GAIN_MAX - EQ_GAIN_MIN))) * plot.h;
+
+    fillRoundedRect(ctx, plot, 7, PANEL_FILL);
+    strokeRoundedRect(ctx, plot, 7, PANEL_STROKE);
+    drawValue(ctx, `${eqId === 'eq1' ? 'EQ 1' : 'EQ 2'} RESPONSE`, plot.x, pad + 9, accent);
+    drawBadge(ctx, enabled ? 'ACTIVE' : 'BYPASS', plot.x + plot.w, pad + 1, accent, 'right');
+
+    const gridFreqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+    const labelFreqs = [50, 100, 1000, 10000];
+    for (const freq of gridFreqs) {
+      const x = freqToX(freq);
+      ctx.strokeStyle = labelFreqs.includes(freq) ? GRID_STRONG : GRID_SOFT;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(Math.round(x) + 0.5, plot.y + 2);
+      ctx.lineTo(Math.round(x) + 0.5, plot.y + plot.h - 2);
+      ctx.stroke();
+    }
+    for (const db of [-12, 0, 12]) {
+      const y = dbToY(db);
+      ctx.strokeStyle = db === 0 ? 'rgba(255, 255, 255, 0.14)' : 'rgba(255, 255, 255, 0.06)';
+      ctx.setLineDash(db === 0 ? [3, 4] : []);
+      ctx.beginPath();
+      ctx.moveTo(plot.x + 2, Math.round(y) + 0.5);
+      ctx.lineTo(plot.x + plot.w - 2, Math.round(y) + 0.5);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      drawCaption(ctx, `${db > 0 ? '+' : ''}${db}`, plot.x + 4, y - 5, MUTED);
+    }
+
+    const response: Point[] = [];
+    const zeroY = dbToY(0);
+    for (let i = 0; i <= 160; i += 1) {
+      const unit = i / 160;
+      const freq = fromLogNorm(unit, EQ_FREQ_MIN, EQ_FREQ_MAX);
+      const bandDb = bands.reduce((sum, band) => sum + eqBandResponseDb(freq, band), trimDb);
+      response.push({ x: plot.x + unit * plot.w, y: dbToY(clamp(bandDb, EQ_GAIN_MIN, EQ_GAIN_MAX)) });
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(plot.x, plot.y, plot.w, plot.h);
+    ctx.clip();
+    ctx.beginPath();
+    ctx.moveTo(plot.x, zeroY);
+    for (const point of response) ctx.lineTo(point.x, point.y);
+    ctx.lineTo(plot.x + plot.w, zeroY);
+    ctx.closePath();
+    const fill = ctx.createLinearGradient(0, plot.y, 0, plot.y + plot.h);
+    fill.addColorStop(0, `${accent}28`);
+    fill.addColorStop(0.5, `${accent}08`);
+    fill.addColorStop(1, `${accent}20`);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    drawLinePath(ctx, response);
+    ctx.strokeStyle = enabled ? `${accent}f2` : `${accent}76`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const handles: DynamicsEqHandle[] = [];
+    for (const band of bands) {
+      const nodeX = freqToX(band.freq);
+      const nodeY = dbToY(band.gain);
+      const qOctaves = clamp(1 / Math.max(EQ_Q_MIN, band.q), 0.055, 2.4);
+      const qFreq = clamp(band.freq * Math.pow(2, qOctaves), EQ_FREQ_MIN, EQ_FREQ_MAX);
+      const qX = Math.max(nodeX + 9, freqToX(qFreq));
+      const qY = nodeY;
+
+      ctx.strokeStyle = `${band.color}5c`;
+      ctx.setLineDash([2, 4]);
+      ctx.beginPath();
+      ctx.moveTo(nodeX, plot.y + 3);
+      ctx.lineTo(nodeX, plot.y + plot.h - 3);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.strokeStyle = `${band.color}70`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(nodeX, nodeY);
+      ctx.lineTo(qX, qY);
+      ctx.stroke();
+
+      ctx.fillStyle = activeHandleRef.current?.band === band.band && activeHandleRef.current.kind === 'q'
+        ? HOT_TEXT
+        : `${band.color}cc`;
+      ctx.beginPath();
+      ctx.arc(qX, qY, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = activeHandleRef.current?.band === band.band && activeHandleRef.current.kind === 'node'
+        ? HOT_TEXT
+        : band.color;
+      ctx.beginPath();
+      ctx.arc(nodeX, nodeY, 5.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.58)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      const badgeText = `${band.label} ${formatEqHz(band.freq)} ${band.gain >= 0 ? '+' : ''}${band.gain.toFixed(1)}`;
+      const badgeY = clamp(nodeY - 21, plot.y + 4, plot.y + plot.h - 21);
+      drawBadge(ctx, badgeText, nodeX, badgeY, band.color, 'center');
+
+      handles.push({ band: band.band, kind: 'node', x: nodeX, y: nodeY, radius: 14, plot });
+      handles.push({ band: band.band, kind: 'q', x: qX, y: qY, radius: 12, plot });
+    }
+    layoutRef.current = { handles };
+    ctx.restore();
+
+    for (const freq of labelFreqs) {
+      drawCaption(ctx, formatEqHz(freq), freqToX(freq), plot.y + plot.h + 11, MUTED, 'center');
+    }
+    drawCaption(ctx, `TRIM ${trimDb >= 0 ? '+' : ''}${trimDb.toFixed(1)} dB`, plot.x + plot.w - 4, plot.y + plot.h + 11, TEXT, 'right');
+  }, [accent, bands, enabled, eqId, trimDb]);
+
+  const updateHandle = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const active = activeHandleRef.current;
+    if (!active) return;
+    const band = bands.find((candidate) => candidate.band === active.band);
+    if (!band) return;
+    const point = getPointerPoint(event);
+    const xUnit = clamp01((point.x - active.plot.x) / active.plot.w);
+    const freq = clamp(fromLogNorm(xUnit, EQ_FREQ_MIN, EQ_FREQ_MAX), EQ_FREQ_MIN, EQ_FREQ_MAX);
+    if (active.kind === 'node') {
+      const gainUnit = 1 - clamp01((point.y - active.plot.y) / active.plot.h);
+      const gain = EQ_GAIN_MIN + gainUnit * (EQ_GAIN_MAX - EQ_GAIN_MIN);
+      onParamChange(band.freqKey, roundStep(freq, 1));
+      onParamChange(band.gainKey, roundStep(clamp(gain, EQ_GAIN_MIN, EQ_GAIN_MAX), 0.1));
+      return;
+    }
+    const octaves = Math.abs(Math.log2(Math.max(0.001, freq / Math.max(1, band.freq))));
+    const q = clamp(1 / Math.max(0.055, octaves), EQ_Q_MIN, EQ_Q_MAX);
+    onParamChange(band.qKey, roundStep(q, 0.1));
+  }, [bands, onParamChange]);
+
+  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const layout = layoutRef.current;
+    if (!layout) return;
+    const point = getPointerPoint(event);
+    let nearest: DynamicsEqHandle | null = null;
+    let nearestDistance = Infinity;
+    for (const handle of layout.handles) {
+      const distance = Math.hypot(point.x - handle.x, point.y - handle.y);
+      if (distance < nearestDistance) {
+        nearest = handle;
+        nearestDistance = distance;
+      }
+    }
+    if (!nearest || nearestDistance > nearest.radius) return;
+    activeHandleRef.current = nearest;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    updateHandle(event);
+  }, [updateHandle]);
+
+  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (activeHandleRef.current) updateHandle(event);
+  }, [updateHandle]);
+
+  const handlePointerUp = useCallback(() => {
+    activeHandleRef.current = null;
+  }, []);
+
+  return (
+    <DynamicsCanvasSurface
+      ariaLabel={`${eqId === 'eq1' ? 'EQ 1' : 'EQ 2'} editable response visualizer`}
+      className="dynamics-viz-eq"
+      draw={draw}
+      interactive
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
     />
   );
 }

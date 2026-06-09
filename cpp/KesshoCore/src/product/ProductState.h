@@ -69,6 +69,14 @@ struct KesshoProductEngine : ProductGraphState {
   float delay_a_cross_carry_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float granular_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float granular_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float degrade_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float degrade_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float dynamics_eq1_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float dynamics_eq1_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float dynamics_eq2_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float dynamics_eq2_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float dynamics_sidechain_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
+  float dynamics_sidechain_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float diffuse_bus_l[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float diffuse_bus_r[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
 
@@ -92,11 +100,16 @@ struct KesshoProductEngine : ProductGraphState {
   float granular_reverb_send_gain = 0.0f;
   float granular_delay_a_send_gain = 0.0f;
   float granular_delay_b_send_gain = 0.0f;
+  float granular_degrade_send_gain = 0.0f;
   float granular_control_smooth_coeff = 0.999f;
   double granular_control_smooth_coeff_sample_rate = 0.0;
   uint64_t granular_return_gain_frame = UINT64_MAX;
   ProductBiquadFilterState diffuse_highpass{};
   ProductBiquadFilterState diffuse_lowpass{};
+  ProductTerminalEqState dynamics_eq1_state{};
+  ProductTerminalEqState dynamics_eq2_state{};
+  SidechainEnvelope sidechain_bus_envelope{};
+  float sidechain_bus_gains[kessho::product::generated::KESSHO_PRODUCT_MAX_STEM_FRAMES]{};
   float diffuse_delay_l[kDiffuseDelayMaxFrames]{};
   float diffuse_delay_r[kDiffuseDelayMaxFrames]{};
   uint32_t diffuse_delay_index = 0u;
@@ -136,7 +149,8 @@ struct KesshoProductEngine : ProductGraphState {
   std::unique_ptr<kessho::core::IKesshoModule> reverb_module{};
   std::unique_ptr<kessho::core::IKesshoModule> granular_module{};
   std::unique_ptr<kessho::core::IKesshoModule> spectral_freeze_module{};
-  std::unique_ptr<kessho::core::IKesshoModule> dynamics_character_module{};
+  std::unique_ptr<kessho::core::IKesshoModule> dynamics_drift_module{};
+  std::unique_ptr<kessho::core::IKesshoModule> dynamics_degrade_send_module{};
   std::unique_ptr<kessho::core::IKesshoModule> soundscapes_module{};
   std::array<float, kSoundscapeModuleParamCount> soundscapes_module_param_cache{};
   bool soundscapes_module_params_configured = false;
@@ -156,7 +170,7 @@ struct KesshoProductEngine : ProductGraphState {
 
   bool prepareProductModules();
   float dynamicsModRoute(const float sources[kDynamicsModSourceCount], uint32_t target) const;
-  void configureDynamicsCharacterModule();
+  void configureDynamicsDriftModule();
   void configureFxModules();
   void configureReverbModule();
   void resetReverbHarmonyCoupling();
@@ -174,11 +188,24 @@ struct KesshoProductEngine : ProductGraphState {
   void resetMasterTelemetryState();
   void resetSidechainRuntime();
   float sidechainTargetAmount(uint32_t target) const;
+  float sidechainBusAmount() const;
   uint32_t sidechainTargetForSource(uint32_t source_id) const;
   float sidechainGain(uint32_t target, uint32_t frame) const;
+  float sidechainBusGain(uint32_t frame) const;
   void triggerSidechainDuck(uint32_t drum_voice, float velocity);
   float advanceSidechainEnvelope(SidechainEnvelope& envelope);
   void renderSidechainGains(uint32_t start, uint32_t frames);
+  uint32_t normalizedDynamicsBus(float value) const;
+  uint32_t dynamicsBusForSource(uint32_t source_id) const;
+  uint32_t dynamicsBusForSoundscapeLayer(uint32_t layer) const;
+  void routeTerminalSample(
+      uint32_t bus,
+      float* out_l,
+      float* out_r,
+      uint32_t frame,
+      float left,
+      float right);
+  void renderDynamicsBuses(float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void loadDefaults();
   void reset();
   void resetSonicParityFxRuntime();
@@ -251,6 +278,8 @@ struct KesshoProductEngine : ProductGraphState {
   bool applyGranularVoiceParamEvent(const KesshoProductEvent& event);
   bool applyGranularParamEvent(const KesshoProductEvent& event);
   bool applyDynamicsModParamEvent(const KesshoProductEvent& event);
+  bool applyDynamicsEqParamEvent(const KesshoProductEvent& event);
+  bool applyRoutingParamEvent(const KesshoProductEvent& event);
   void applyParam(const KesshoProductEvent& event);
   bool isSourceParam(uint32_t param_id) const;
   bool isSourceTarget(uint32_t target_id) const;
@@ -541,6 +570,7 @@ struct KesshoProductEngine : ProductGraphState {
   void renderSampleVoices(float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void renderSegment(float* out_l, float* out_r, uint32_t start, uint32_t frames);
   bool processSpectralFreezeBranch(float* input_l, float* input_r, float* output_l, float* output_r, uint32_t start, uint32_t frames);
+  void renderDegradeSend(float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void renderDynamics(float* out_l, float* out_r, uint32_t frames);
   void applyMaster(float* out_l, float* out_r, uint32_t frames);
   void clearOutput(float* out_l, float* out_r, uint32_t frames);

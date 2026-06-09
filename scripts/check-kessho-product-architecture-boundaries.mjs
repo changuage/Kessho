@@ -372,7 +372,7 @@ for (const forbidden of [
   'processSpectralFreezeBranch(',
   'renderDynamics(',
   'dynamicsModRoute(',
-  'configureDynamicsCharacterModule(',
+  'configureDynamicsDriftModule(',
 ]) {
   assert(!read('cpp/KesshoCore/src/product/fx/ProductFx.cpp').includes(`KesshoProductEngine::${forbidden}`), `ProductFx.cpp must not reclaim focused FX runtime method: ${forbidden}`);
 }
@@ -386,7 +386,7 @@ const focusedFxContracts = [
     'cpp/KesshoCore/src/product/fx/ProductDynamicsConfig.cpp',
     [
       'KesshoProductEngine::dynamicsModRoute(',
-      'KesshoProductEngine::configureDynamicsCharacterModule(',
+      'KesshoProductEngine::configureDynamicsDriftModule(',
     ],
   ],
   ['cpp/KesshoCore/src/product/fx/ProductDelay.cpp', ['KesshoProductEngine::renderDelayModule(']],

@@ -62,7 +62,7 @@ type SceneSignalKind =
   | 'delay'
   | 'reverb'
   | 'freeze'
-  | 'character'
+  | 'drift'
   | 'degrade'
   | 'saturation'
   | 'end';
@@ -124,7 +124,7 @@ const SCENE_SIGNAL_POSITIONS: Record<string, { x: number; y: number }> = {
   delayB: { x: 552, y: 174 },
   saturation: { x: 552, y: 326 },
   reverb: { x: 674, y: 150 },
-  masterCharacter: { x: 92, y: 458 },
+  masterDrift: { x: 92, y: 458 },
   masterDegrade: { x: 284, y: 458 },
   masterSaturation: { x: 476, y: 458 },
   masterEnd: { x: 668, y: 458 },
@@ -154,7 +154,7 @@ const SCENE_SIGNAL_RGB = {
   delayB: hexToRgbTriplet(SOURCE_COLORS.delayB),
   reverb: hexToRgbTriplet(SOURCE_COLORS.reverb),
   freeze: hexToRgbTriplet(DYNAMICS_ENGINE_COLORS.sidechain),
-  character: hexToRgbTriplet(DYNAMICS_ENGINE_COLORS.character),
+  drift: hexToRgbTriplet(DYNAMICS_ENGINE_COLORS.drift),
   degrade: hexToRgbTriplet(DYNAMICS_ENGINE_COLORS.degrade),
   saturation: hexToRgbTriplet(DYNAMICS_ENGINE_COLORS.saturation),
   end: hexToRgbTriplet(DYNAMICS_ENGINE_COLORS.endChain),
@@ -170,7 +170,7 @@ const SCENE_SIGNAL_SYMBOLS: Record<SceneSignalKind, string> = {
   delay: APP_TAB_SYMBOLS.delay,
   reverb: APP_TAB_SYMBOLS.reverb,
   freeze: TEXT_SYMBOLS.sparkle,
-  character: APP_TAB_SYMBOLS.dynamics,
+  drift: APP_TAB_SYMBOLS.dynamics,
   degrade: APP_TAB_SYMBOLS.dynamics,
   saturation: TEXT_SYMBOLS.filledCircle,
   end: APP_TAB_SYMBOLS.dynamics,
@@ -247,11 +247,11 @@ const SCENE_SIGNAL_RUNTIME_KEYS = [
   'granularDelayReverbSend',
   'spectralFreezeMix',
   'sidechainAmount',
-  'characterMix',
-  'degradeMix',
-  'degradeAge',
-  'degradeGeneration',
-  'degradeSaturation',
+  'driftMix',
+  'erosionMix',
+  'erosionAge',
+  'erosionGeneration',
+  'erosionSaturation',
   'dynamicsSaturationDrive',
   'endCompMix',
 ] as const satisfies readonly (keyof SliderState)[];
@@ -658,17 +658,18 @@ function buildSceneSignalModel(state: SliderState): SceneSignalModel {
     (granularActive && hasSceneLevel(state.granularReverbSend))
   );
   const freezeActive = !!state.spectralFreezeEnabled && hasSceneLevel(state.spectralFreezeMix);
-  const characterEnabled = !!state.dynamicsEnabled && !!state.characterEnabled;
-  const degradeEnabled = !!state.dynamicsEnabled && !!state.degradeEnabled;
+  const degradeEngineEnabled = !!(state.dynamicsEnabled || state.degradeEnabled) && !!(state.driftEnabled || state.erosionEnabled);
+  const driftEnabled = degradeEngineEnabled && !!state.driftEnabled;
+  const erosionEnabled = degradeEngineEnabled && !!state.erosionEnabled;
   const saturationEnabled = !!state.dynamicsSaturationEnabled;
   const endCompEnabled = !!state.dynamicsEnabled && !!state.endCompEnabled;
-  const characterLevel = characterEnabled ? clamp01(state.characterMix) : 0;
-  const degradeLevel = degradeEnabled
+  const driftLevel = driftEnabled ? clamp01(state.driftMix) : 0;
+  const erosionLevel = erosionEnabled
     ? Math.max(
-        clamp01(state.degradeMix),
-        clamp01(state.degradeAge),
-        clamp01(state.degradeGeneration),
-        clamp01(state.degradeSaturation),
+        clamp01(state.erosionMix),
+        clamp01(state.erosionAge),
+        clamp01(state.erosionGeneration),
+        clamp01(state.erosionSaturation),
       )
     : 0;
   const saturationLevel = saturationEnabled ? clamp01(state.dynamicsSaturationDrive) : 0;
@@ -687,18 +688,18 @@ function buildSceneSignalModel(state: SliderState): SceneSignalModel {
     ...fxNodes.filter((node) => node.id === 'granular' || node.id === 'delayA' || node.id === 'delayB' || node.id === 'reverb'),
   ];
   const masterChainActive = masterInputNodes.length > 0 && (
-    characterEnabled ||
-    degradeEnabled ||
+    driftEnabled ||
+    erosionEnabled ||
     saturationEnabled ||
     endCompEnabled
   );
   const masterChainNodes = masterChainActive
     ? [
-        characterEnabled
-          ? createSceneNode('masterCharacter', 'Character', 'character', 'master', characterLevel, SCENE_SIGNAL_RGB.character)
+        driftEnabled
+          ? createSceneNode('masterDrift', 'Drift', 'drift', 'master', driftLevel, SCENE_SIGNAL_RGB.drift)
           : null,
-        degradeEnabled
-          ? createSceneNode('masterDegrade', 'Degrade', 'degrade', 'master', degradeLevel, SCENE_SIGNAL_RGB.degrade)
+        erosionEnabled
+          ? createSceneNode('masterErosion', 'Erosion', 'degrade', 'master', erosionLevel, SCENE_SIGNAL_RGB.degrade)
           : null,
         saturationEnabled
           ? createSceneNode('masterSaturation', 'Saturation', 'saturation', 'master', saturationLevel, SCENE_SIGNAL_RGB.saturation)

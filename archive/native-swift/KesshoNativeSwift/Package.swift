@@ -72,7 +72,7 @@ let package = Package(
                 "kessho_product_core_product_components.cpp",
                 "kessho_product_core_modules.cpp",
                 "kessho_product_core_dynamics_character_module.cpp",
-                "kessho_product_core_dynamics_degrade_module.cpp",
+                "kessho_product_core_dynamics_erosion_module.cpp",
                 "kessho_product_core_reverb_module.cpp",
                 "kessho_product_core_granular_module.cpp",
                 "kessho_product_core_spectral_freeze_module.cpp",

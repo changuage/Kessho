@@ -59,7 +59,7 @@ import { computeGranularMacroModel } from '../../granularMacroModel';
 import type { CoreProductGranularVisualEvent } from '../../coreProductTelemetry';
 import { SharedDelayBusA, SharedDelayBusB, delayNoteToSeconds } from '../../delayBuses';
 import { resolveDynamicsTargets, type DynamicsRoutingTargets, type DynamicsTargets } from '../../dynamicsModel';
-import { toDynamicsCharacterParamObject } from '../../dynamicsCharacterParams';
+import { toDynamicsDriftParamObject } from '../../dynamicsDriftParams';
 import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from '../../outputTrims';
 import { isIOSLikeDevice, isMobileDevice } from '../../../platform';
 import {
@@ -337,7 +337,7 @@ type SidechainTargetNode = {
 
 export type DynamicsAnalyserKey =
   | 'input'
-  | 'postCharacter'
+  | 'postDegrade'
   | 'preSaturation'
   | 'postSaturation'
   | 'endInput'
@@ -347,19 +347,19 @@ export type DynamicsWorkletVisualTelemetry = {
   inputPeak: number;
   outputPeak: number;
   wetPeak: number;
-  characterEnv: number;
-  characterReductionDb: number;
+  driftEnv: number;
+  driftReductionDb: number;
   dropoutGain: number;
   endInputPeak: number;
   endOutputPeak: number;
   endReductionDb: number;
   endDetectorDb: number;
-  characterCombRisk: number;
-  characterMinDelayMs: number;
-  characterDiffusion: number;
-  degradeEventEnv: number;
-  degradeEventGainDb: number;
-  degradeProfileAmount: number;
+  driftCombRisk: number;
+  driftMinDelayMs: number;
+  driftDiffusion: number;
+  erosionEventEnv: number;
+  erosionEventGainDb: number;
+  erosionProfileAmount: number;
   endLowReductionDb: number;
   endHighReductionDb: number;
   endClarityBoostDb: number;
@@ -852,8 +852,8 @@ const spectralFreezeWorkletUrl = getWorkletUrl('spectral-freeze-wasm.worklet.js'
 const padSynthWasmWorkletUrl = getWorkletUrl('pad-synth-wasm.worklet.js');
 const leadFmWasmWorkletUrl = getWorkletUrl('lead-fm-wasm.worklet.js');
 const drumSynthWasmWorkletUrl = getWorkletUrl('drum-synth-wasm.worklet.js');
-const dynamicsCharacterWorkletUrl = getWorkletUrl('dynamics-character.worklet.js');
-const dynamicsCharacterWasmUrl = getWorkletUrl('kessho_dynamics_character.wasm');
+const dynamicsDriftWorkletUrl = getWorkletUrl('dynamics-drift.worklet.js');
+const dynamicsDriftWasmUrl = getWorkletUrl('kessho_dynamics_drift.wasm');
 const GRANULAR_WORKLET_DISPATCH_INTERVAL_MS = 16;
 const RUNTIME_RANDOM_WALK_INTERVAL_MS = 100;
 const RANDOM_WALK_MAX_CATCHUP_STEPS = 600;
@@ -1011,15 +1011,15 @@ export class AudioEngine {
   private satPostTone: BiquadFilterNode | null = null;
   private satPostGain: GainNode | null = null;
   private lastMasterSatMode: MasterSaturationCurveMode | null = null;
-  private characterInputGain: GainNode | null = null;
-  private characterProcessorNode: AudioWorkletNode | GainNode | null = null;
-  private characterProcessorNodeMode: 'gain' | 'worklet' | null = null;
-  private characterOutputGain: GainNode | null = null;
-  private dynamicsCharacterWorkletLoaded = false;
-  private dynamicsCharacterWorkletLoadPromise: Promise<void> | null = null;
-  private dynamicsCharacterWorkletLoadContext: AudioContext | null = null;
-  private dynamicsCharacterWorkletContext: AudioContext | null = null;
-  private wasmDynamicsCharacterBinary: ArrayBuffer | null = null;
+  private driftInputGain: GainNode | null = null;
+  private driftProcessorNode: AudioWorkletNode | GainNode | null = null;
+  private driftProcessorNodeMode: 'gain' | 'worklet' | null = null;
+  private driftOutputGain: GainNode | null = null;
+  private dynamicsDriftWorkletLoaded = false;
+  private dynamicsDriftWorkletLoadPromise: Promise<void> | null = null;
+  private dynamicsDriftWorkletLoadContext: AudioContext | null = null;
+  private dynamicsDriftWorkletContext: AudioContext | null = null;
+  private wasmDynamicsDriftBinary: ArrayBuffer | null = null;
   private dynamicsRoutingKey: string | null = null;
   private endCompInputGain: GainNode | null = null;
   private endCompDryGain: GainNode | null = null;
@@ -2614,7 +2614,7 @@ export class AudioEngine {
       this.leadFmWasmReady = false;
     }
 
-    this.disposeCharacterNodes();
+    this.disposeDriftNodes();
     this.disposeEndCompressorNodes();
 
     const synthNodeKeys = [
@@ -2925,8 +2925,8 @@ export class AudioEngine {
     if (this.soundscapesNode && (state.waterEnabled || state.insectsEnabled || state.insects2Enabled)) {
       waits.push(this.waitForSoundscapesWasmReady(timeoutMs));
     }
-    if (this.dynamicsCharacterWorkletLoadPromise && this.dynamicsCharacterWorkletLoadContext === this.ctx) {
-      const loadPromise = this.dynamicsCharacterWorkletLoadPromise;
+    if (this.dynamicsDriftWorkletLoadPromise && this.dynamicsDriftWorkletLoadContext === this.ctx) {
+      const loadPromise = this.dynamicsDriftWorkletLoadPromise;
       waits.push(Promise.race([
         loadPromise.then(() => undefined).catch(() => undefined),
         new Promise<void>((resolve) => window.setTimeout(resolve, timeoutMs)),
@@ -3942,25 +3942,25 @@ export class AudioEngine {
     }
   }
 
-  private disposeCharacterNodes(): void {
+  private disposeDriftNodes(): void {
     try {
-      if (this.characterProcessorNode instanceof AudioWorkletNode) {
-        this.characterProcessorNode.port.postMessage({ type: 'destroy' });
-        this.characterProcessorNode.port.close();
+      if (this.driftProcessorNode instanceof AudioWorkletNode) {
+        this.driftProcessorNode.port.postMessage({ type: 'destroy' });
+        this.driftProcessorNode.port.close();
       }
     } catch { /* */ }
     const nodes: Array<AudioNode | null> = [
-      this.characterInputGain,
-      this.characterProcessorNode,
-      this.characterOutputGain,
+      this.driftInputGain,
+      this.driftProcessorNode,
+      this.driftOutputGain,
     ];
     for (const node of nodes) {
       try { node?.disconnect(); } catch { /* */ }
     }
-    this.characterInputGain = null;
-    this.characterProcessorNode = null;
-    this.characterProcessorNodeMode = null;
-    this.characterOutputGain = null;
+    this.driftInputGain = null;
+    this.driftProcessorNode = null;
+    this.driftProcessorNodeMode = null;
+    this.driftOutputGain = null;
     this.dynamicsWorkletTelemetry = null;
     this.dynamicsRoutingKey = null;
   }
@@ -4206,8 +4206,8 @@ export class AudioEngine {
   private connectDynamicsAnalyserTaps(routing: DynamicsRoutingTargets): void {
     this.connectDynamicsAnalyserTap('input', this.masterGain);
     this.connectDynamicsAnalyserTap(
-      'postCharacter',
-      routing.characterPathActive ? this.characterOutputGain : this.masterGain,
+      'postDegrade',
+      routing.degradePathActive ? this.driftOutputGain : this.masterGain,
     );
     this.connectDynamicsAnalyserTap('preSaturation', this.satPreGain);
     this.connectDynamicsAnalyserTap('postSaturation', this.satPostGain);
@@ -4227,28 +4227,28 @@ export class AudioEngine {
     }
   }
 
-  private ensureDynamicsCharacterWorkletModule(ctx: AudioContext): void {
-    if (this.dynamicsCharacterWorkletLoaded && this.dynamicsCharacterWorkletContext === ctx) return;
-    if (this.dynamicsCharacterWorkletLoadPromise && this.dynamicsCharacterWorkletLoadContext === ctx) return;
-    if (this.dynamicsCharacterWorkletContext !== ctx) {
-      this.dynamicsCharacterWorkletLoaded = false;
-      this.wasmDynamicsCharacterBinary = null;
+  private ensureDynamicsDriftWorkletModule(ctx: AudioContext): void {
+    if (this.dynamicsDriftWorkletLoaded && this.dynamicsDriftWorkletContext === ctx) return;
+    if (this.dynamicsDriftWorkletLoadPromise && this.dynamicsDriftWorkletLoadContext === ctx) return;
+    if (this.dynamicsDriftWorkletContext !== ctx) {
+      this.dynamicsDriftWorkletLoaded = false;
+      this.wasmDynamicsDriftBinary = null;
     }
-    this.dynamicsCharacterWorkletLoadContext = ctx;
-    this.dynamicsCharacterWorkletLoadPromise = Promise.all([
-      fetch(dynamicsCharacterWasmUrl).then((response) => {
-        if (!response.ok) throw new Error(`Dynamics Character WASM fetch failed: ${response.status}`);
+    this.dynamicsDriftWorkletLoadContext = ctx;
+    this.dynamicsDriftWorkletLoadPromise = Promise.all([
+      fetch(dynamicsDriftWasmUrl).then((response) => {
+        if (!response.ok) throw new Error(`Dynamics Drift WASM fetch failed: ${response.status}`);
         return response.arrayBuffer();
       }),
-      ctx.audioWorklet.addModule(dynamicsCharacterWorkletUrl),
+      ctx.audioWorklet.addModule(dynamicsDriftWorkletUrl),
     ])
       .then(([binary]) => {
-        if (this.dynamicsCharacterWorkletLoadContext !== ctx || this.ctx !== ctx) return;
-        this.wasmDynamicsCharacterBinary = binary;
-        this.dynamicsCharacterWorkletLoaded = true;
-        this.dynamicsCharacterWorkletContext = ctx;
-        this.dynamicsCharacterWorkletLoadContext = null;
-        this.dynamicsCharacterWorkletLoadPromise = null;
+        if (this.dynamicsDriftWorkletLoadContext !== ctx || this.ctx !== ctx) return;
+        this.wasmDynamicsDriftBinary = binary;
+        this.dynamicsDriftWorkletLoaded = true;
+        this.dynamicsDriftWorkletContext = ctx;
+        this.dynamicsDriftWorkletLoadContext = null;
+        this.dynamicsDriftWorkletLoadPromise = null;
         this.dynamicsRoutingKey = null;
         if (this.sliderState && this.ctx === ctx) {
           this.wireMasterOutputChain(ctx);
@@ -4257,50 +4257,50 @@ export class AudioEngine {
         }
       })
       .catch((e) => {
-        if (this.dynamicsCharacterWorkletLoadContext !== ctx) return;
-        this.dynamicsCharacterWorkletLoaded = false;
-        this.dynamicsCharacterWorkletContext = null;
-        this.dynamicsCharacterWorkletLoadContext = null;
-        this.dynamicsCharacterWorkletLoadPromise = null;
-        this.wasmDynamicsCharacterBinary = null;
-        console.warn('Dynamics Character worklet unavailable, Character will use pass-through fallback:', e);
+        if (this.dynamicsDriftWorkletLoadContext !== ctx) return;
+        this.dynamicsDriftWorkletLoaded = false;
+        this.dynamicsDriftWorkletContext = null;
+        this.dynamicsDriftWorkletLoadContext = null;
+        this.dynamicsDriftWorkletLoadPromise = null;
+        this.wasmDynamicsDriftBinary = null;
+        console.warn('Dynamics Drift worklet unavailable, Drift will use pass-through fallback:', e);
       });
   }
 
-  private ensureCharacterProcessorNode(ctx: AudioContext, useWorklet: boolean): void {
-    const workletReady = this.dynamicsCharacterWorkletLoaded && this.dynamicsCharacterWorkletContext === ctx;
+  private ensureDriftProcessorNode(ctx: AudioContext, useWorklet: boolean): void {
+    const workletReady = this.dynamicsDriftWorkletLoaded && this.dynamicsDriftWorkletContext === ctx;
     const wantedMode: 'gain' | 'worklet' = useWorklet && workletReady ? 'worklet' : 'gain';
     if (useWorklet && !workletReady) {
-      this.ensureDynamicsCharacterWorkletModule(ctx);
+      this.ensureDynamicsDriftWorkletModule(ctx);
     }
     if (
-      this.characterProcessorNode &&
-      (this.characterProcessorNode.context !== ctx || this.characterProcessorNodeMode !== wantedMode)
+      this.driftProcessorNode &&
+      (this.driftProcessorNode.context !== ctx || this.driftProcessorNodeMode !== wantedMode)
     ) {
       try {
-        if (this.characterProcessorNode instanceof AudioWorkletNode) {
-          this.characterProcessorNode.port.postMessage({ type: 'destroy' });
-          this.characterProcessorNode.port.close();
+        if (this.driftProcessorNode instanceof AudioWorkletNode) {
+          this.driftProcessorNode.port.postMessage({ type: 'destroy' });
+          this.driftProcessorNode.port.close();
         }
       } catch { /* */ }
-      try { this.characterProcessorNode.disconnect(); } catch { /* */ }
-      this.characterProcessorNode = null;
-      this.characterProcessorNodeMode = null;
+      try { this.driftProcessorNode.disconnect(); } catch { /* */ }
+      this.driftProcessorNode = null;
+      this.driftProcessorNodeMode = null;
     }
-    if (this.characterProcessorNode) return;
+    if (this.driftProcessorNode) return;
     if (wantedMode === 'worklet') {
       try {
-        this.characterProcessorNode = new AudioWorkletNode(ctx, 'dynamics-character', {
+        this.driftProcessorNode = new AudioWorkletNode(ctx, 'dynamics-drift', {
           numberOfInputs: 1,
           numberOfOutputs: 1,
           outputChannelCount: [2],
           channelCount: 2,
           channelCountMode: 'explicit',
           processorOptions: {
-            wasmBinary: this.wasmDynamicsCharacterBinary,
+            wasmBinary: this.wasmDynamicsDriftBinary,
           },
         });
-        this.characterProcessorNode.port.onmessage = (event) => {
+        this.driftProcessorNode.port.onmessage = (event) => {
           if (event.data?.type === 'perf') {
             this.handlePerfMessage(event.data);
           } else if (event.data?.type === 'dynamicsTelemetry') {
@@ -4309,19 +4309,19 @@ export class AudioEngine {
               inputPeak: Math.max(0, Number(event.data.inputPeak) || 0),
               outputPeak: Math.max(0, Number(event.data.outputPeak) || 0),
               wetPeak: Math.max(0, Number(event.data.wetPeak) || 0),
-              characterEnv: Math.max(0, Number(event.data.characterEnv) || 0),
-              characterReductionDb: Math.max(0, Number(event.data.characterReductionDb) || 0),
+              driftEnv: Math.max(0, Number(event.data.driftEnv) || 0),
+              driftReductionDb: Math.max(0, Number(event.data.driftReductionDb) || 0),
               dropoutGain: Math.max(0, Number(event.data.dropoutGain) || 0),
               endInputPeak: Math.max(0, Number(event.data.endInputPeak) || 0),
               endOutputPeak: Math.max(0, Number(event.data.endOutputPeak) || 0),
               endReductionDb: Math.max(0, Number(event.data.endReductionDb) || 0),
               endDetectorDb: Number.isFinite(Number(event.data.endDetectorDb)) ? Number(event.data.endDetectorDb) : -90,
-              characterCombRisk: Math.max(0, Number(event.data.characterCombRisk) || 0),
-              characterMinDelayMs: Math.max(0, Number(event.data.characterMinDelayMs) || 0),
-              characterDiffusion: Math.max(0, Number(event.data.characterDiffusion) || 0),
-              degradeEventEnv: Math.max(0, Number(event.data.degradeEventEnv) || 0),
-              degradeEventGainDb: Number.isFinite(Number(event.data.degradeEventGainDb)) ? Number(event.data.degradeEventGainDb) : 0,
-              degradeProfileAmount: Math.max(0, Number(event.data.degradeProfileAmount) || 0),
+              driftCombRisk: Math.max(0, Number(event.data.driftCombRisk) || 0),
+              driftMinDelayMs: Math.max(0, Number(event.data.driftMinDelayMs) || 0),
+              driftDiffusion: Math.max(0, Number(event.data.driftDiffusion) || 0),
+              erosionEventEnv: Math.max(0, Number(event.data.erosionEventEnv) || 0),
+              erosionEventGainDb: Number.isFinite(Number(event.data.erosionEventGainDb)) ? Number(event.data.erosionEventGainDb) : 0,
+              erosionProfileAmount: Math.max(0, Number(event.data.erosionProfileAmount) || 0),
               endLowReductionDb: Math.max(0, Number(event.data.endLowReductionDb) || 0),
               endHighReductionDb: Math.max(0, Number(event.data.endHighReductionDb) || 0),
               endClarityBoostDb: Number.isFinite(Number(event.data.endClarityBoostDb)) ? Number(event.data.endClarityBoostDb) : 0,
@@ -4331,39 +4331,39 @@ export class AudioEngine {
               timestamp: now,
             };
           } else if (event.data?.type === 'wasmReady') {
-            console.log('Dynamics Character WASM engine initialized');
+            console.log('Dynamics Drift WASM engine initialized');
           }
         };
         if (this.perfMonitorEnabled) {
-          this.characterProcessorNode.port.postMessage({ type: 'enablePerf', enabled: true });
+          this.driftProcessorNode.port.postMessage({ type: 'enablePerf', enabled: true });
         }
-        this.characterProcessorNodeMode = 'worklet';
+        this.driftProcessorNodeMode = 'worklet';
         return;
       } catch (error) {
-        console.warn('Dynamics Character worklet unavailable, using pass-through fallback:', error);
-        this.dynamicsCharacterWorkletLoaded = false;
-        this.dynamicsCharacterWorkletContext = null;
+        console.warn('Dynamics Drift worklet unavailable, using pass-through fallback:', error);
+        this.dynamicsDriftWorkletLoaded = false;
+        this.dynamicsDriftWorkletContext = null;
       }
     }
-    this.characterProcessorNode = ctx.createGain();
-    this.characterProcessorNodeMode = 'gain';
+    this.driftProcessorNode = ctx.createGain();
+    this.driftProcessorNodeMode = 'gain';
   }
 
   private ensureDynamicsNodes(ctx: AudioContext, routing: DynamicsRoutingTargets): void {
-    if (this.characterInputGain && this.characterInputGain.context !== ctx) {
-      this.disposeCharacterNodes();
+    if (this.driftInputGain && this.driftInputGain.context !== ctx) {
+      this.disposeDriftNodes();
     }
-    if (!routing.characterPathActive) {
-      this.disposeCharacterNodes();
-    } else if (!this.characterInputGain) {
-      this.characterInputGain = ctx.createGain();
-      this.characterInputGain.gain.value = 1;
-      this.ensureCharacterProcessorNode(ctx, routing.characterPathActive);
-      this.characterOutputGain = ctx.createGain();
-      this.characterOutputGain.gain.value = 1;
+    if (!routing.degradePathActive) {
+      this.disposeDriftNodes();
+    } else if (!this.driftInputGain) {
+      this.driftInputGain = ctx.createGain();
+      this.driftInputGain.gain.value = 1;
+      this.ensureDriftProcessorNode(ctx, routing.degradePathActive);
+      this.driftOutputGain = ctx.createGain();
+      this.driftOutputGain.gain.value = 1;
     }
-    if (routing.characterPathActive) {
-      this.ensureCharacterProcessorNode(ctx, routing.characterPathActive);
+    if (routing.degradePathActive) {
+      this.ensureDriftProcessorNode(ctx, routing.degradePathActive);
     }
 
     if (this.endCompInputGain && this.endCompInputGain.context !== ctx) {
@@ -4387,23 +4387,23 @@ export class AudioEngine {
   }
 
   private getDynamicsRoutingKey(routing: DynamicsRoutingTargets): string {
-    const characterWasmReady = this.ctx
-      ? this.dynamicsCharacterWorkletLoaded && this.dynamicsCharacterWorkletContext === this.ctx
+    const driftWasmReady = this.ctx
+      ? this.dynamicsDriftWorkletLoaded && this.dynamicsDriftWorkletContext === this.ctx
       : false;
-    return `${routing.characterPathActive ? 1 : 0}:${routing.characterPathActive && characterWasmReady ? 1 : 0}:${routing.endChainActive ? 1 : 0}`;
+    return `${routing.degradePathActive ? 1 : 0}:${routing.degradePathActive && driftWasmReady ? 1 : 0}:${routing.endChainActive ? 1 : 0}`;
   }
 
   private wireMasterOutputChain(ctx: AudioContext, routing?: DynamicsRoutingTargets): void {
     if (!this.masterGain || !this.limiter) return;
     const resolvedRouting = routing ?? (this.sliderState
       ? resolveDynamicsTargets(this.sliderState, ctx.sampleRate).routing
-      : { characterPathActive: false, degradeWorkletActive: false, allpassStackActive: false, endChainActive: false });
+      : { degradePathActive: false, erosionWorkletActive: false, allpassStackActive: false, endChainActive: false });
     this.ensureMasterSaturationNodes(ctx);
     this.ensureDynamicsNodes(ctx, resolvedRouting);
     try { this.masterGain.disconnect(); } catch { /* */ }
-    try { this.characterInputGain?.disconnect(); } catch { /* */ }
-    try { this.characterProcessorNode?.disconnect(); } catch { /* */ }
-    try { this.characterOutputGain?.disconnect(); } catch { /* */ }
+    try { this.driftInputGain?.disconnect(); } catch { /* */ }
+    try { this.driftProcessorNode?.disconnect(); } catch { /* */ }
+    try { this.driftOutputGain?.disconnect(); } catch { /* */ }
     try { this.satPreGain?.disconnect(); } catch { /* */ }
     try { this.satWaveshaper?.disconnect(); } catch { /* */ }
     try { this.satPostTone?.disconnect(); } catch { /* */ }
@@ -4414,11 +4414,11 @@ export class AudioEngine {
     try { this.endCompMakeupGain?.disconnect(); } catch { /* */ }
     try { this.endCompWetGain?.disconnect(); } catch { /* */ }
     try { this.endCompOutputGain?.disconnect(); } catch { /* */ }
-    if (resolvedRouting.characterPathActive) {
-      this.masterGain.connect(this.characterInputGain!);
-      this.characterInputGain!.connect(this.characterProcessorNode!);
-      this.characterProcessorNode!.connect(this.characterOutputGain!);
-      this.characterOutputGain!.connect(this.satPreGain!);
+    if (resolvedRouting.degradePathActive) {
+      this.masterGain.connect(this.driftInputGain!);
+      this.driftInputGain!.connect(this.driftProcessorNode!);
+      this.driftProcessorNode!.connect(this.driftOutputGain!);
+      this.driftOutputGain!.connect(this.satPreGain!);
     } else {
       this.masterGain.connect(this.satPreGain!);
     }
@@ -4445,7 +4445,7 @@ export class AudioEngine {
     const saturationEnabled = Boolean(state.dynamicsSaturationEnabled);
     const saturationHandledByWorklet = Boolean(
       saturationEnabled &&
-      this.characterProcessorNodeMode === 'worklet',
+      this.driftProcessorNodeMode === 'worklet',
     );
     const rawDrive = saturationEnabled
       ? Math.max(0, Math.min(1, saturationHandledByWorklet ? 0 : (state.dynamicsSaturationDrive ?? 0)))
@@ -4473,12 +4473,12 @@ export class AudioEngine {
     this.satPostTone?.gain.setTargetAtTime(tiltDb, now, 0.05);
   }
 
-  private sendCharacterProcessorParams(targets: DynamicsTargets): void {
-    if (!(this.characterProcessorNode instanceof AudioWorkletNode)) return;
-    const params = toDynamicsCharacterParamObject(targets);
+  private sendDriftProcessorParams(targets: DynamicsTargets): void {
+    if (!(this.driftProcessorNode instanceof AudioWorkletNode)) return;
+    const params = toDynamicsDriftParamObject(targets);
     this.postCachedWorkletMessage(
-      'dynamics:character',
-      this.characterProcessorNode,
+      'dynamics:drift',
+      this.driftProcessorNode,
       { type: 'params', params },
       params
     );
@@ -4491,11 +4491,11 @@ export class AudioEngine {
       this.wireMasterOutputChain(this.ctx, targets.routing);
     }
 
-    if (targets.routing.characterPathActive) {
-      this.sendCharacterProcessorParams(targets);
+    if (targets.routing.degradePathActive) {
+      this.sendDriftProcessorParams(targets);
     }
 
-    const endHandledByWorklet = Boolean(targets.routing.endChainActive && this.characterProcessorNodeMode === 'worklet');
+    const endHandledByWorklet = Boolean(targets.routing.endChainActive && this.driftProcessorNodeMode === 'worklet');
     this.endCompDryGain?.gain.setTargetAtTime(endHandledByWorklet ? 1 : targets.endDry, now, 0.03);
     this.endCompWetGain?.gain.setTargetAtTime(endHandledByWorklet ? 0 : targets.endWet, now, 0.03);
     this.endCompMakeupGain?.gain.setTargetAtTime(endHandledByWorklet ? 1 : targets.endMakeup, now, 0.03);
@@ -4769,7 +4769,7 @@ export class AudioEngine {
     if (this.leadFmWasmNode) this.leadFmWasmNode.port.postMessage(msg);
     if (this.drumWasmNode) this.drumWasmNode.port.postMessage(msg);
     if (this.spectralFreezeNode) this.spectralFreezeNode.port.postMessage(msg);
-    if (this.characterProcessorNode instanceof AudioWorkletNode) this.characterProcessorNode.port.postMessage(msg);
+    if (this.driftProcessorNode instanceof AudioWorkletNode) this.driftProcessorNode.port.postMessage(msg);
   }
 
   setPerfUpdateCallback(callback: ((data: Record<string, PerfMetrics>) => void) | null) {
@@ -6051,8 +6051,8 @@ export class AudioEngine {
     if (this.reverbNode && (this.reverbNode as any).port) {
       (this.reverbNode as AudioWorkletNode).port.postMessage({ type: 'reset' });
     }
-    if (this.characterProcessorNode instanceof AudioWorkletNode) {
-      this.characterProcessorNode.port.postMessage({ type: 'reset' });
+    if (this.driftProcessorNode instanceof AudioWorkletNode) {
+      this.driftProcessorNode.port.postMessage({ type: 'reset' });
     }
   }
 
@@ -6234,7 +6234,7 @@ export class AudioEngine {
         this.satPostGain = null;
       }
       this.lastMasterSatMode = null;
-      this.disposeCharacterNodes();
+      this.disposeDriftNodes();
       this.disposeEndCompressorNodes();
       this.disposeSidechainTargetNodes();
       this.reverbNode = null;
@@ -6796,7 +6796,7 @@ export class AudioEngine {
     if (this.satPostTone) { try { this.satPostTone.disconnect(); } catch { /* */ } this.satPostTone = null; }
     if (this.satPostGain) { try { this.satPostGain.disconnect(); } catch { /* */ } this.satPostGain = null; }
     this.lastMasterSatMode = null;
-    this.disposeCharacterNodes();
+    this.disposeDriftNodes();
     this.disposeEndCompressorNodes();
     this.disposeSidechainTargetNodes();
     this.sharedDelayA?.dispose();
@@ -6928,7 +6928,7 @@ export class AudioEngine {
     this.disposeTempDrumSynth();
 
     // Close AudioContext — full teardown
-    this.disposeCharacterNodes();
+    this.disposeDriftNodes();
     this.disposeEndCompressorNodes();
     this.disposeSidechainTargetNodes();
     this.ctx?.close();
@@ -7082,7 +7082,7 @@ export class AudioEngine {
         this.satPostTone = null;
         this.satPostGain = null;
         this.lastMasterSatMode = null;
-        this.disposeCharacterNodes();
+        this.disposeDriftNodes();
         this.disposeEndCompressorNodes();
         this.disposeSidechainTargetNodes();
         this.reverbNode = null;
@@ -12478,7 +12478,7 @@ export class AudioEngine {
     const endCompHandledByWorklet = Boolean(
       this.sliderState &&
       resolveDynamicsTargets(this.sliderState, this.ctx?.sampleRate ?? 44100).routing.endChainActive &&
-      this.characterProcessorNodeMode === 'worklet',
+      this.driftProcessorNodeMode === 'worklet',
     );
     return {
       contextTime,
@@ -12496,7 +12496,7 @@ export class AudioEngine {
   // Dynamics captures the post-master-dynamics, pre-limiter print.
 
   private getDynamicsRecordableNode(): AudioNode | null {
-    return this.endCompOutputGain ?? this.satPostGain ?? this.characterOutputGain ?? this.masterGain;
+    return this.endCompOutputGain ?? this.satPostGain ?? this.driftOutputGain ?? this.masterGain;
   }
 
   getRecordableBusNodes(): Record<DiagnosticRecordTrackId, RecordableTrackSource> {

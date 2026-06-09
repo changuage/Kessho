@@ -174,8 +174,6 @@
       }
       const float pan_l = voice.pan <= 0.0f ? 1.0f : 1.0f - voice.pan * 0.5f;
       const float pan_r = voice.pan >= 0.0f ? 1.0f : 1.0f + voice.pan * 0.5f;
-      const uint32_t sidechain_target = sidechainTargetForSource(voice.source_id);
-      const float duck_gain = sidechainGain(sidechain_target, frame);
       const bool piano_voice = voice.source_id == KESSHO_PRODUCT_SOURCE_PIANO;
       const bool soundscape_sample =
           voice.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE &&
@@ -224,8 +222,8 @@
         layer_send_left = send_left * soundscape_asset_level;
         layer_send_right = send_right * soundscape_asset_level;
       }
-      const float left = output_dry_left * duck_gain;
-      const float right = output_dry_right * duck_gain;
+      const float left = output_dry_left;
+      const float right = output_dry_right;
       const float graph_granular_send = soundscape_sample
           ? source.granular_send
           : granularSendGainForFrame(source.source_id, source.granular_send, transport.sample_frame + i);
@@ -246,12 +244,14 @@
       float delay_a_send = source.delay_a_send;
       float delay_b_send = source.delay_b_send;
       float granular_send = source.granular_send;
+      float degrade_send = source.degrade_send;
       if (soundscape_sample) {
         if (soundscape_layer < kSoundscapeLayerCount) {
           reverb_send = soundscapeLayerRouteSend(source, soundscape_layer, kSoundscapeLayerRouteReverb, reverb_send);
           delay_a_send = soundscapeLayerRouteSend(source, soundscape_layer, kSoundscapeLayerRouteDelayA, delay_a_send);
           delay_b_send = soundscapeLayerRouteSend(source, soundscape_layer, kSoundscapeLayerRouteDelayB, delay_b_send);
           granular_send = soundscapeLayerRouteSend(source, soundscape_layer, kSoundscapeLayerRouteGranular, granular_send);
+          degrade_send = soundscapeLayerRouteSend(source, soundscape_layer, kSoundscapeLayerRouteDegrade, degrade_send);
           if (graph_taps_enabled) {
             graph_soundscape_layer_dry_l[soundscape_layer][frame] += graph_dry_left;
             graph_soundscape_layer_dry_r[soundscape_layer][frame] += graph_dry_right;
@@ -269,8 +269,10 @@
       const float effective_granular_send = soundscape_sample
           ? granular_send
           : granularSendGainForFrame(source.source_id, granular_send, transport.sample_frame + i);
-      out_l[frame] += left;
-      out_r[frame] += right;
+      const uint32_t terminal_bus = soundscape_sample
+          ? dynamicsBusForSoundscapeLayer(soundscape_layer)
+          : dynamicsBusForSource(voice.source_id);
+      routeTerminalSample(terminal_bus, out_l, out_r, frame, left, right);
       if (voice.source_id < kStemCount) {
         stem_l[voice.source_id][frame] += left;
         stem_r[voice.source_id][frame] += right;
@@ -285,6 +287,8 @@
       delay_b_bus_r[frame] += bus_send_right * delay_b_send;
       granular_bus_l[frame] += bus_send_left * effective_granular_send;
       granular_bus_r[frame] += bus_send_right * effective_granular_send;
+      degrade_bus_l[frame] += bus_send_left * degrade_send;
+      degrade_bus_r[frame] += bus_send_right * degrade_send;
     }
   }
 }
@@ -398,6 +402,14 @@
     delay_b_bus_r[i] = 0.0f;
     granular_bus_l[i] = 0.0f;
     granular_bus_r[i] = 0.0f;
+    degrade_bus_l[i] = 0.0f;
+    degrade_bus_r[i] = 0.0f;
+    dynamics_eq1_bus_l[i] = 0.0f;
+    dynamics_eq1_bus_r[i] = 0.0f;
+    dynamics_eq2_bus_l[i] = 0.0f;
+    dynamics_eq2_bus_r[i] = 0.0f;
+    dynamics_sidechain_bus_l[i] = 0.0f;
+    dynamics_sidechain_bus_r[i] = 0.0f;
     diffuse_bus_l[i] = 0.0f;
     diffuse_bus_r[i] = 0.0f;
     if (graph_taps_enabled) {
@@ -620,6 +632,14 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
       kessho::product::generated::KESSHO_PRODUCT_MAX_SEQUENCER_EVENTS);
   renderDiffuseBus(out_l, out_r, frames);
   renderFx(out_l, out_r, 0u, frames);
+  if (routing.degrade_to_reverb > 0.0001f) {
+    renderDegradeSend(out_l, out_r, 0u, frames);
+    renderReverb(out_l, out_r, 0u, frames);
+  } else {
+    renderReverb(out_l, out_r, 0u, frames);
+    renderDegradeSend(out_l, out_r, 0u, frames);
+  }
+  renderDynamicsBuses(out_l, out_r, 0u, frames);
   applyMaster(out_l, out_r, frames);
   compactControlEvents(frames, control_index);
   advanceJourney(frames);

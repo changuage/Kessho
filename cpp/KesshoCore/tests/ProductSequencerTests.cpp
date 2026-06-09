@@ -966,54 +966,54 @@ float productRuntimeFieldValue(const KesshoProductEngine& engine, uint32_t param
       return engine.fx.spectral_freeze_reverb_crossfade;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID:
       return engine.fx.dynamics_drive;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MIX_ID:
-      return engine.fx.dynamics_character_mix;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_AGE_ID:
-      return engine.fx.dynamics_character_age;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_BIAS_ID:
-      return engine.fx.dynamics_character_bias;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_LPG_AMOUNT_ID:
-      return engine.fx.dynamics_character_lpg_amount;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_RESONANCE_ID:
-      return engine.fx.dynamics_character_resonance;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_STEREO_ID:
-      return engine.fx.dynamics_character_stereo;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_ENV_FOLLOW_ID:
-      return engine.fx.dynamics_character_env_follow;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_DEPTH_ID:
-      return engine.fx.dynamics_character_depth;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_RATE_ID:
-      return engine.fx.dynamics_character_rate;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_DAMP_ID:
-      return engine.fx.dynamics_character_damp;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_MIX_ID:
-      return engine.fx.dynamics_degrade_mix;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_AGE_ID:
-      return engine.fx.dynamics_degrade_age;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_GENERATION_ID:
-      return engine.fx.dynamics_degrade_generation;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_ALIAS_ID:
-      return engine.fx.dynamics_degrade_alias;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOW_ID:
-      return engine.fx.dynamics_degrade_wow;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_FLUTTER_ID:
-      return engine.fx.dynamics_degrade_flutter;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_DRIFT_ID:
-      return engine.fx.dynamics_degrade_drift;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOBBLE_SPEED_ID:
-      return engine.fx.dynamics_degrade_wobble_speed;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_TONE_ID:
-      return engine.fx.dynamics_degrade_tone;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_MIX_ID:
+      return engine.fx.dynamics_drift_mix;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_AGE_ID:
+      return engine.fx.dynamics_drift_age;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_BIAS_ID:
+      return engine.fx.dynamics_drift_bias;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_LPG_AMOUNT_ID:
+      return engine.fx.dynamics_drift_lpg_amount;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_RESONANCE_ID:
+      return engine.fx.dynamics_drift_resonance;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_STEREO_ID:
+      return engine.fx.dynamics_drift_stereo;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_ENV_FOLLOW_ID:
+      return engine.fx.dynamics_drift_env_follow;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_DEPTH_ID:
+      return engine.fx.dynamics_drift_depth;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_RATE_ID:
+      return engine.fx.dynamics_drift_rate;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_DAMP_ID:
+      return engine.fx.dynamics_drift_damp;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_MIX_ID:
+      return engine.fx.dynamics_erosion_mix;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_AGE_ID:
+      return engine.fx.dynamics_erosion_age;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_GENERATION_ID:
+      return engine.fx.dynamics_erosion_generation;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_ALIAS_ID:
+      return engine.fx.dynamics_erosion_alias;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_WOW_ID:
+      return engine.fx.dynamics_erosion_wow;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_FLUTTER_ID:
+      return engine.fx.dynamics_erosion_flutter;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_DRIFT_ID:
+      return engine.fx.dynamics_erosion_drift;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_WOBBLE_SPEED_ID:
+      return engine.fx.dynamics_erosion_wobble_speed;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_TONE_ID:
+      return engine.fx.dynamics_erosion_tone;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_HP_ID:
       return engine.fx.dynamics_degrade_hp;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_LP_ID:
       return engine.fx.dynamics_degrade_lp;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_NOISE_ID:
-      return engine.fx.dynamics_degrade_noise;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_SATURATION_ID:
-      return engine.fx.dynamics_degrade_saturation;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_CORROSION_ID:
-      return engine.fx.dynamics_degrade_corrosion;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_NOISE_ID:
+      return engine.fx.dynamics_erosion_noise;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_SATURATION_ID:
+      return engine.fx.dynamics_erosion_saturation;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_CORROSION_ID:
+      return engine.fx.dynamics_erosion_corrosion;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID:
       return engine.fx.dynamics_saturation_drive;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_TONE_ID:
@@ -1098,6 +1098,8 @@ float productRuntimeFieldValue(const KesshoProductEngine& engine, uint32_t param
       return engine.routing.granular_to_delay_a;
     case KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_DELAY_B_ID:
       return engine.routing.granular_to_delay_b;
+    case KESSHO_PRODUCT_PARAM_ROUTING_DEGRADE_TO_REVERB_ID:
+      return engine.routing.degrade_to_reverb;
     case kProductPadRuntimeParamIdBase + 21u:
       return sourcePadOverrideValue(engine.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u], 21u);
     case kProductPad2RuntimeParamIdBase + 21u:
@@ -1276,7 +1278,7 @@ void requireRuntimeWalkMovementAcrossAudioAndFxTargets() {
       {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_MIX_ID, 0.05f, 0.95f, 0.30f, "spectral freeze mix runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID, 0.05f, 0.95f, 0.31f, "dynamics drive runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID, 0.05f, 0.95f, 0.32f, "dynamics saturation drive runtime walk did not move"},
-      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOBBLE_SPEED_ID, 0.05f, 0.95f, 0.35f, "dynamics degrade wobble-speed runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_WOBBLE_SPEED_ID, 0.05f, 0.95f, 0.35f, "dynamics degrade wobble-speed runtime walk did not move"},
       {kProductPadRuntimeParamIdBase + 21u, 250.0f, 3200.0f, 900.0f, "Pad 1 exact cutoff runtime walk did not move"},
       {kProductPad2RuntimeParamIdBase + 21u, 450.0f, 6200.0f, 1600.0f, "Pad 2 exact cutoff runtime walk did not move"},
   };
@@ -1387,13 +1389,13 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
       {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_DECAY_ID, 0.05f, 0.95f, 0.32f, "low-rate spectral freeze decay runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_SPECTRAL_FREEZE_PHASE_JITTER_ID, 0.05f, 0.95f, 0.21f, "low-rate spectral freeze phase-jitter runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID, 0.05f, 0.95f, 0.31f, "low-rate dynamics drive runtime walk did not move"},
-      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MIX_ID, 0.05f, 0.95f, 0.29f, "low-rate dynamics character mix runtime walk did not move"},
-      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_RATE_ID, 0.05f, 0.95f, 0.34f, "low-rate dynamics character rate runtime walk did not move"},
-      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_MIX_ID, 0.05f, 0.95f, 0.27f, "low-rate dynamics degrade mix runtime walk did not move"},
-      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_AGE_ID, 0.05f, 0.95f, 0.36f, "low-rate dynamics degrade age runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_MIX_ID, 0.05f, 0.95f, 0.29f, "low-rate dynamics drift mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_RATE_ID, 0.05f, 0.95f, 0.34f, "low-rate dynamics drift rate runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_MIX_ID, 0.05f, 0.95f, 0.27f, "low-rate dynamics degrade mix runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_AGE_ID, 0.05f, 0.95f, 0.36f, "low-rate dynamics degrade age runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID, 0.05f, 0.95f, 0.32f, "low-rate dynamics saturation drive runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_TONE_ID, 0.05f, 0.95f, 0.43f, "low-rate dynamics saturation tone runtime walk did not move"},
-      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_WOBBLE_SPEED_ID, 0.05f, 0.95f, 0.35f, "low-rate dynamics degrade wobble-speed runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_WOBBLE_SPEED_ID, 0.05f, 0.95f, 0.35f, "low-rate dynamics degrade wobble-speed runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_THRESHOLD_ID, -48.0f, -3.0f, -18.0f, "low-rate dynamics end-comp threshold runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_ATTACK_MS_ID, 0.2f, 90.0f, 12.0f, "low-rate dynamics end-comp attack runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_MIX_ID, 0.05f, 0.95f, 0.62f, "low-rate dynamics end-comp mix runtime walk did not move"},
@@ -1407,6 +1409,7 @@ void requireLowRateRuntimeWalkMovementAcrossAudioFxAndSourceTargets() {
       {KESSHO_PRODUCT_PARAM_ROUTING_DELAY_ATO_GRANULAR_ID, 0.05f, 0.95f, 0.33f, "low-rate Delay A to Granular routing runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_ROUTING_DELAY_BTO_GRANULAR_ID, 0.05f, 0.95f, 0.35f, "low-rate Delay B to Granular routing runtime walk did not move"},
       {KESSHO_PRODUCT_PARAM_ROUTING_GRANULAR_TO_REVERB_ID, 0.05f, 1.5f, 0.4f, "low-rate Granular to Reverb routing runtime walk did not move"},
+      {KESSHO_PRODUCT_PARAM_ROUTING_DEGRADE_TO_REVERB_ID, 0.05f, 0.95f, 0.41f, "low-rate Degrade to Reverb routing runtime walk did not move"},
       {kProductPadRuntimeParamIdBase + 21u, 250.0f, 3200.0f, 900.0f, "low-rate Pad 1 exact cutoff runtime walk did not move"},
       {kProductPad2RuntimeParamIdBase + 21u, 450.0f, 6200.0f, 1600.0f, "low-rate Pad 2 exact cutoff runtime walk did not move"},
   };

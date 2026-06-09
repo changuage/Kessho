@@ -22,8 +22,8 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
 
 const SOURCE_ORDER = [CORE_PRODUCT_SOURCE_IDS.pad1, CORE_PRODUCT_SOURCE_IDS.pad2, CORE_PRODUCT_SOURCE_IDS.lead1, CORE_PRODUCT_SOURCE_IDS.lead2, CORE_PRODUCT_SOURCE_IDS.drum, CORE_PRODUCT_SOURCE_IDS.piano, CORE_PRODUCT_SOURCE_IDS.soundscape] as const;
 
-const SNAPSHOT_BYTES = 28844;
-const SOURCE_BYTES = 3332;
+const SNAPSHOT_BYTES = 29100;
+const SOURCE_BYTES = 3336;
 const LANE_BYTES = 92;
 const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES;
 
@@ -63,7 +63,7 @@ function sourceDefaults(sourceId: number): ProductSourceSnapshot {
     presetId: defaultPresetId(sourceId),
     sourcePresetAId: 0, sourcePresetBId: 0, leadEnvelopeOverrideEnabled: false, leadAlgorithmPresetAEnabled: false,
     assetId: 0, level: 0.75, morph: 0, distance: 0, expression: 0.75,
-    dryGain: 1, reverbSend: 0.12, delayASend: 0, delayBSend: 0, granularSend: 0, diffuseSend: 0,
+    dryGain: 1, reverbSend: 0.12, delayASend: 0, delayBSend: 0, granularSend: 0, degradeSend: 0, diffuseSend: 0,
     postLpfHz: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ,
     stereoWidth: KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH,
     postLpfKeyTracking: KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_KEY_TRACKING,
@@ -176,6 +176,7 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
     f32(source.delayASend);
     f32(source.delayBSend);
     f32(source.granularSend);
+    f32(source.degradeSend);
     f32(source.diffuseSend);
     f32(source.postLpfHz);
     f32(source.stereoWidth);
@@ -395,40 +396,40 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.fx.spectralFreezeReverbCrossfade);
   f32(snapshot.fx.dynamicsDrive);
   u32(bool(snapshot.fx.dynamicsEnabled));
-  u32(bool(snapshot.fx.dynamicsCharacterEnabled));
-  u32(snapshot.fx.dynamicsCharacterMode >>> 0);
-  u32(snapshot.fx.dynamicsCharacterQuality >>> 0);
-  f32(snapshot.fx.dynamicsCharacterAntiComb);
-  f32(snapshot.fx.dynamicsCharacterDiffusion);
-  f32(snapshot.fx.dynamicsCharacterMix);
-  f32(snapshot.fx.dynamicsCharacterAge);
-  f32(snapshot.fx.dynamicsCharacterBias);
-  f32(snapshot.fx.dynamicsCharacterLpgAmount);
-  f32(snapshot.fx.dynamicsCharacterResonance);
-  f32(snapshot.fx.dynamicsCharacterStereo);
-  f32(snapshot.fx.dynamicsCharacterEnvFollow);
-  f32(snapshot.fx.dynamicsCharacterDepth);
-  f32(snapshot.fx.dynamicsCharacterRate);
-  f32(snapshot.fx.dynamicsCharacterDamp);
-  u32(bool(snapshot.fx.dynamicsDegradeEnabled));
-  u32(snapshot.fx.dynamicsDegradeQuality >>> 0);
-  f32(snapshot.fx.dynamicsDegradeEventAmount);
-  f32(snapshot.fx.dynamicsDegradeProfileAmount);
-  f32(snapshot.fx.dynamicsDegradeDitherAmount);
-  f32(snapshot.fx.dynamicsDegradeMix);
-  f32(snapshot.fx.dynamicsDegradeAge);
-  f32(snapshot.fx.dynamicsDegradeGeneration);
-  f32(snapshot.fx.dynamicsDegradeAlias);
-  f32(snapshot.fx.dynamicsDegradeWow);
-  f32(snapshot.fx.dynamicsDegradeFlutter);
-  f32(snapshot.fx.dynamicsDegradeDrift);
-  f32(snapshot.fx.dynamicsDegradeWobbleSpeed);
-  f32(snapshot.fx.dynamicsDegradeTone);
+  u32(bool(snapshot.fx.dynamicsDriftEnabled));
+  u32(snapshot.fx.dynamicsDriftMode >>> 0);
+  u32(snapshot.fx.dynamicsDriftQuality >>> 0);
+  f32(snapshot.fx.dynamicsDriftAntiComb);
+  f32(snapshot.fx.dynamicsDriftDiffusion);
+  f32(snapshot.fx.dynamicsDriftMix);
+  f32(snapshot.fx.dynamicsDriftAge);
+  f32(snapshot.fx.dynamicsDriftBias);
+  f32(snapshot.fx.dynamicsDriftLpgAmount);
+  f32(snapshot.fx.dynamicsDriftResonance);
+  f32(snapshot.fx.dynamicsDriftStereo);
+  f32(snapshot.fx.dynamicsDriftEnvFollow);
+  f32(snapshot.fx.dynamicsDriftDepth);
+  f32(snapshot.fx.dynamicsDriftRate);
+  f32(snapshot.fx.dynamicsDriftDamp);
+  u32(bool(snapshot.fx.dynamicsErosionEnabled));
+  u32(snapshot.fx.dynamicsErosionQuality >>> 0);
+  f32(snapshot.fx.dynamicsErosionEventAmount);
+  f32(snapshot.fx.dynamicsErosionProfileAmount);
+  f32(snapshot.fx.dynamicsErosionDitherAmount);
+  f32(snapshot.fx.dynamicsErosionMix);
+  f32(snapshot.fx.dynamicsErosionAge);
+  f32(snapshot.fx.dynamicsErosionGeneration);
+  f32(snapshot.fx.dynamicsErosionAlias);
+  f32(snapshot.fx.dynamicsErosionWow);
+  f32(snapshot.fx.dynamicsErosionFlutter);
+  f32(snapshot.fx.dynamicsErosionDrift);
+  f32(snapshot.fx.dynamicsErosionWobbleSpeed);
+  f32(snapshot.fx.dynamicsErosionTone);
   f32(snapshot.fx.dynamicsDegradeHp);
   f32(snapshot.fx.dynamicsDegradeLp);
-  f32(snapshot.fx.dynamicsDegradeNoise);
-  f32(snapshot.fx.dynamicsDegradeSaturation);
-  f32(snapshot.fx.dynamicsDegradeCorrosion);
+  f32(snapshot.fx.dynamicsErosionNoise);
+  f32(snapshot.fx.dynamicsErosionSaturation);
+  f32(snapshot.fx.dynamicsErosionCorrosion);
   f32(snapshot.fx.dynamicsModSlowWow);
   f32(snapshot.fx.dynamicsModSlowFlutter);
   f32(snapshot.fx.dynamicsModSlowLp);
@@ -482,6 +483,38 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.fx.dynamicsEndCompClarity);
   f32(snapshot.fx.dynamicsEndCompTwoBandAmount);
   f32(snapshot.fx.dynamicsEndCompBandSplit);
+  u32(bool(snapshot.fx.dynamicsEq1Enabled));
+  f32(snapshot.fx.dynamicsEq1InputGain);
+  f32(snapshot.fx.dynamicsEq1OutputGain);
+  u32(snapshot.fx.dynamicsEq1LowType >>> 0);
+  f32(snapshot.fx.dynamicsEq1LowFreq);
+  f32(snapshot.fx.dynamicsEq1LowGain);
+  f32(snapshot.fx.dynamicsEq1LowQ);
+  f32(snapshot.fx.dynamicsEq1LowSlope);
+  f32(snapshot.fx.dynamicsEq1MidFreq);
+  f32(snapshot.fx.dynamicsEq1MidGain);
+  f32(snapshot.fx.dynamicsEq1MidQ);
+  u32(snapshot.fx.dynamicsEq1HighType >>> 0);
+  f32(snapshot.fx.dynamicsEq1HighFreq);
+  f32(snapshot.fx.dynamicsEq1HighGain);
+  f32(snapshot.fx.dynamicsEq1HighQ);
+  f32(snapshot.fx.dynamicsEq1HighSlope);
+  u32(bool(snapshot.fx.dynamicsEq2Enabled));
+  f32(snapshot.fx.dynamicsEq2InputGain);
+  f32(snapshot.fx.dynamicsEq2OutputGain);
+  u32(snapshot.fx.dynamicsEq2LowType >>> 0);
+  f32(snapshot.fx.dynamicsEq2LowFreq);
+  f32(snapshot.fx.dynamicsEq2LowGain);
+  f32(snapshot.fx.dynamicsEq2LowQ);
+  f32(snapshot.fx.dynamicsEq2LowSlope);
+  f32(snapshot.fx.dynamicsEq2MidFreq);
+  f32(snapshot.fx.dynamicsEq2MidGain);
+  f32(snapshot.fx.dynamicsEq2MidQ);
+  u32(snapshot.fx.dynamicsEq2HighType >>> 0);
+  f32(snapshot.fx.dynamicsEq2HighFreq);
+  f32(snapshot.fx.dynamicsEq2HighGain);
+  f32(snapshot.fx.dynamicsEq2HighQ);
+  f32(snapshot.fx.dynamicsEq2HighSlope);
   u32(bool(snapshot.fx.sidechainEnabled));
   u32(snapshot.fx.sidechainKeyA >>> 0);
   u32(snapshot.fx.sidechainKeyB >>> 0);
@@ -517,6 +550,27 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
   f32(snapshot.routing.delayBToReverb);
   f32(snapshot.routing.granularToDelayA);
   f32(snapshot.routing.granularToDelayB);
+  f32(snapshot.routing.delayAToDegrade);
+  f32(snapshot.routing.delayBToDegrade);
+  f32(snapshot.routing.granularToDegrade);
+  f32(snapshot.routing.reverbToDegrade);
+  f32(snapshot.routing.degradeToReverb);
+  f32(snapshot.routing.degradeReturnLevel);
+  u32(snapshot.routing.dynamicsPad1Bus >>> 0);
+  u32(snapshot.routing.dynamicsPad2Bus >>> 0);
+  u32(snapshot.routing.dynamicsLead1Bus >>> 0);
+  u32(snapshot.routing.dynamicsLead2Bus >>> 0);
+  u32(snapshot.routing.dynamicsPianoBus >>> 0);
+  u32(snapshot.routing.dynamicsDrumBus >>> 0);
+  u32(snapshot.routing.dynamicsGranularBus >>> 0);
+  u32(snapshot.routing.dynamicsWavesBus >>> 0);
+  u32(snapshot.routing.dynamicsWaterBus >>> 0);
+  u32(snapshot.routing.dynamicsInsectsBus >>> 0);
+  u32(snapshot.routing.dynamicsNatureBus >>> 0);
+  u32(snapshot.routing.dynamicsDelayABus >>> 0);
+  u32(snapshot.routing.dynamicsDelayBBus >>> 0);
+  u32(snapshot.routing.dynamicsDegradeBus >>> 0);
+  u32(snapshot.routing.dynamicsReverbBus >>> 0);
   f32(snapshot.master.gain);
   f32(snapshot.master.limiterCeilingDb);
   u32(snapshot.rng.seed);

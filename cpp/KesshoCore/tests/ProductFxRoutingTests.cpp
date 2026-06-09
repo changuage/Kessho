@@ -131,14 +131,14 @@ KesshoProductSnapshotV2 makeSnapshot() {
   snapshot.fx.spectral_freeze_phase_jitter = 0.0f;
   snapshot.fx.spectral_freeze_routing = 0u;
   snapshot.fx.spectral_freeze_reverb_crossfade = 1.0f;
-  snapshot.fx.dynamics_character_bias = 0.5f;
-  snapshot.fx.dynamics_character_lpg_amount = 0.5f;
-  snapshot.fx.dynamics_character_resonance = 0.2f;
-  snapshot.fx.dynamics_character_stereo = 0.5f;
-  snapshot.fx.dynamics_character_rate = 0.3f;
-  snapshot.fx.dynamics_character_damp = 0.5f;
-  snapshot.fx.dynamics_degrade_wobble_speed = 0.35f;
-  snapshot.fx.dynamics_degrade_tone = 0.5f;
+  snapshot.fx.dynamics_drift_bias = 0.5f;
+  snapshot.fx.dynamics_drift_lpg_amount = 0.5f;
+  snapshot.fx.dynamics_drift_resonance = 0.2f;
+  snapshot.fx.dynamics_drift_stereo = 0.5f;
+  snapshot.fx.dynamics_drift_rate = 0.3f;
+  snapshot.fx.dynamics_drift_damp = 0.5f;
+  snapshot.fx.dynamics_erosion_wobble_speed = 0.35f;
+  snapshot.fx.dynamics_erosion_tone = 0.5f;
   snapshot.fx.dynamics_degrade_lp = 1.0f;
   snapshot.fx.dynamics_saturation_tone = 0.5f;
   snapshot.fx.dynamics_saturation_bias = 0.5f;
@@ -305,32 +305,40 @@ float renderPadKickPeak(const KesshoProductSnapshotV2& snapshot) {
   return result;
 }
 
-void requireSidechainDucksPadTarget() {
+void requireSidechainDucksTerminalBusOnly() {
   KesshoProductSnapshotV2 baseline = makeSnapshot();
   baseline.fx.reverb_mix = 0.0f;
   baseline.fx.delay_a_mix = 0.0f;
   baseline.fx.delay_b_mix = 0.0f;
   baseline.fx.dynamics_enabled = 0u;
   baseline.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1].level = 0.0f;
+  baseline.routing.dynamics_pad1_bus = kDynamicsBusSkip;
 
-  KesshoProductSnapshotV2 ducked = baseline;
-  ducked.fx.sidechain_enabled = 1u;
-  ducked.fx.sidechain_key_a = 2u;
-  ducked.fx.sidechain_key_a_weight = 1.0f;
-  ducked.fx.sidechain_amount = 1.0f;
-  ducked.fx.sidechain_threshold = -60.0f;
-  ducked.fx.sidechain_ratio = 20.0f;
-  ducked.fx.sidechain_attack_ms = 0.1f;
-  ducked.fx.sidechain_hold_ms = 250.0f;
-  ducked.fx.sidechain_release_ms = 1500.0f;
-  ducked.fx.sidechain_makeup = 1.0f;
-  ducked.fx.sidechain_mix = 1.0f;
-  ducked.fx.sidechain_pad1_target = 1.0f;
+  KesshoProductSnapshotV2 bypassed = baseline;
+  bypassed.fx.sidechain_enabled = 1u;
+  bypassed.fx.sidechain_key_a = 2u;
+  bypassed.fx.sidechain_key_a_weight = 1.0f;
+  bypassed.fx.sidechain_amount = 1.0f;
+  bypassed.fx.sidechain_threshold = -60.0f;
+  bypassed.fx.sidechain_ratio = 20.0f;
+  bypassed.fx.sidechain_attack_ms = 0.1f;
+  bypassed.fx.sidechain_hold_ms = 250.0f;
+  bypassed.fx.sidechain_release_ms = 1500.0f;
+  bypassed.fx.sidechain_makeup = 1.0f;
+  bypassed.fx.sidechain_mix = 1.0f;
+  bypassed.fx.sidechain_pad1_target = 1.0f;
+
+  KesshoProductSnapshotV2 ducked = bypassed;
+  ducked.routing.dynamics_pad1_bus = kDynamicsBusSidechain;
 
   const float baseline_peak = renderPadKickPeak(baseline);
+  const float bypassed_peak = renderPadKickPeak(bypassed);
   const float ducked_peak = renderPadKickPeak(ducked);
   require(baseline_peak > 0.00001f, "sidechain baseline had no signal");
-  require(ducked_peak < baseline_peak * 0.75f, "sidechain kick did not duck Pad 1 output");
+  require(
+      std::fabs(bypassed_peak - baseline_peak) < baseline_peak * 0.02f,
+      "sidechain changed Pad 1 while Pad 1 skipped the Dynamics Bus");
+  require(ducked_peak < baseline_peak * 0.75f, "sidechain kick did not duck Pad 1 routed into Sidechain bus");
 }
 
 void applyDelayParamToSnapshot(KesshoProductSnapshotV2& snapshot, uint32_t param_id, float value) {
@@ -471,17 +479,17 @@ void applyDynamicsParamToSnapshot(KesshoProductSnapshotV2& snapshot, uint32_t pa
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_ENABLED_ID:
       snapshot.fx.dynamics_enabled = value >= 0.5f ? 1u : 0u;
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MIX_ID:
-      snapshot.fx.dynamics_character_mix = value;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_MIX_ID:
+      snapshot.fx.dynamics_drift_mix = value;
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MODE_ID:
-      snapshot.fx.dynamics_character_mode = static_cast<uint32_t>(value);
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_MODE_ID:
+      snapshot.fx.dynamics_drift_mode = static_cast<uint32_t>(value);
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_MIX_ID:
-      snapshot.fx.dynamics_degrade_mix = value;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_MIX_ID:
+      snapshot.fx.dynamics_erosion_mix = value;
       break;
-    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_ALIAS_ID:
-      snapshot.fx.dynamics_degrade_alias = value;
+    case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_ALIAS_ID:
+      snapshot.fx.dynamics_erosion_alias = value;
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MOD_SLOW_WOW_ID:
       snapshot.fx.dynamics_mod_slow_wow = value;
@@ -556,34 +564,36 @@ void configureSpectralFreezeTestSnapshot(KesshoProductSnapshotV2& snapshot) {
 
 void configureDynamicsTestSnapshot(KesshoProductSnapshotV2& snapshot) {
   snapshot.fx.reverb_mix = 0.0f;
+  snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1].degrade_send = 1.0f;
+  snapshot.routing.degrade_return_level = 1.0f;
   snapshot.fx.dynamics_enabled = 1;
-  snapshot.fx.dynamics_character_enabled = 1;
-  snapshot.fx.dynamics_character_mode = 2;
-  snapshot.fx.dynamics_character_mix = 0.35f;
-  snapshot.fx.dynamics_character_age = 0.2f;
-  snapshot.fx.dynamics_character_bias = 0.44f;
-  snapshot.fx.dynamics_character_lpg_amount = 0.7f;
-  snapshot.fx.dynamics_character_resonance = 0.35f;
-  snapshot.fx.dynamics_character_stereo = 0.65f;
-  snapshot.fx.dynamics_character_env_follow = 0.45f;
-  snapshot.fx.dynamics_character_depth = 0.72f;
-  snapshot.fx.dynamics_character_rate = 0.18f;
-  snapshot.fx.dynamics_character_damp = 0.62f;
-  snapshot.fx.dynamics_degrade_enabled = 1;
-  snapshot.fx.dynamics_degrade_mix = 0.45f;
-  snapshot.fx.dynamics_degrade_age = 0.35f;
-  snapshot.fx.dynamics_degrade_generation = 0.3f;
-  snapshot.fx.dynamics_degrade_alias = 0.25f;
-  snapshot.fx.dynamics_degrade_wow = 0.45f;
-  snapshot.fx.dynamics_degrade_flutter = 0.28f;
-  snapshot.fx.dynamics_degrade_drift = 0.42f;
-  snapshot.fx.dynamics_degrade_wobble_speed = 0.4f;
-  snapshot.fx.dynamics_degrade_tone = 0.42f;
+  snapshot.fx.dynamics_drift_enabled = 1;
+  snapshot.fx.dynamics_drift_mode = 2;
+  snapshot.fx.dynamics_drift_mix = 0.35f;
+  snapshot.fx.dynamics_drift_age = 0.2f;
+  snapshot.fx.dynamics_drift_bias = 0.44f;
+  snapshot.fx.dynamics_drift_lpg_amount = 0.7f;
+  snapshot.fx.dynamics_drift_resonance = 0.35f;
+  snapshot.fx.dynamics_drift_stereo = 0.65f;
+  snapshot.fx.dynamics_drift_env_follow = 0.45f;
+  snapshot.fx.dynamics_drift_depth = 0.72f;
+  snapshot.fx.dynamics_drift_rate = 0.18f;
+  snapshot.fx.dynamics_drift_damp = 0.62f;
+  snapshot.fx.dynamics_erosion_enabled = 1;
+  snapshot.fx.dynamics_erosion_mix = 0.45f;
+  snapshot.fx.dynamics_erosion_age = 0.35f;
+  snapshot.fx.dynamics_erosion_generation = 0.3f;
+  snapshot.fx.dynamics_erosion_alias = 0.25f;
+  snapshot.fx.dynamics_erosion_wow = 0.45f;
+  snapshot.fx.dynamics_erosion_flutter = 0.28f;
+  snapshot.fx.dynamics_erosion_drift = 0.42f;
+  snapshot.fx.dynamics_erosion_wobble_speed = 0.4f;
+  snapshot.fx.dynamics_erosion_tone = 0.42f;
   snapshot.fx.dynamics_degrade_hp = 0.08f;
   snapshot.fx.dynamics_degrade_lp = 0.82f;
-  snapshot.fx.dynamics_degrade_noise = 0.3f;
-  snapshot.fx.dynamics_degrade_saturation = 0.36f;
-  snapshot.fx.dynamics_degrade_corrosion = 0.28f;
+  snapshot.fx.dynamics_erosion_noise = 0.3f;
+  snapshot.fx.dynamics_erosion_saturation = 0.36f;
+  snapshot.fx.dynamics_erosion_corrosion = 0.28f;
   snapshot.fx.dynamics_mod_slow_wow = 0.18f;
   snapshot.fx.dynamics_mod_flutter_flutter = 0.12f;
   snapshot.fx.dynamics_mod_noise_alias = 0.02f;
@@ -1064,6 +1074,173 @@ void requireModuleSourceFxSendsArePreFader() {
   kessho_product_destroy(engine);
 }
 
+enum class DegradeFeeder {
+  DelayA,
+  DelayB,
+  Granular,
+  Reverb,
+};
+
+void configureFxToDegradeProbe(KesshoProductSnapshotV2& snapshot, DegradeFeeder feeder, bool route_to_degrade) {
+  snapshot.master.gain = 1.0f;
+  snapshot.master.limiter_ceiling_db = 0.0f;
+  snapshot.fx.reverb_mix = 0.0f;
+  snapshot.fx.delay_a_mix = 0.0f;
+  snapshot.fx.delay_b_mix = 0.0f;
+  snapshot.fx.granular_mix = 0.0f;
+  snapshot.fx.spectral_freeze_enabled = 0u;
+  snapshot.fx.dynamics_enabled = 1u;
+  snapshot.fx.dynamics_drift_enabled = 1u;
+  snapshot.fx.dynamics_drift_mode = 2u;
+  snapshot.fx.dynamics_drift_mix = 1.0f;
+  snapshot.fx.dynamics_drift_age = 0.22f;
+  snapshot.fx.dynamics_drift_depth = 0.75f;
+  snapshot.fx.dynamics_drift_rate = 0.18f;
+  snapshot.fx.dynamics_erosion_enabled = 0u;
+  snapshot.fx.dynamics_saturation_enabled = 0u;
+  snapshot.fx.dynamics_end_comp_enabled = 0u;
+  snapshot.routing.degrade_return_level = 1.0f;
+  snapshot.routing.delay_to_reverb = 0.0f;
+  snapshot.routing.delay_b_to_reverb = 0.0f;
+  snapshot.routing.granular_to_reverb = 0.0f;
+  snapshot.routing.delay_a_to_delay_b = 0.0f;
+  snapshot.routing.delay_b_to_delay_a = 0.0f;
+  snapshot.routing.delay_a_to_granular = 0.0f;
+  snapshot.routing.delay_b_to_granular = 0.0f;
+  snapshot.routing.granular_to_delay_a = 0.0f;
+  snapshot.routing.granular_to_delay_b = 0.0f;
+  snapshot.routing.delay_a_to_degrade = 0.0f;
+  snapshot.routing.delay_b_to_degrade = 0.0f;
+  snapshot.routing.granular_to_degrade = 0.0f;
+  snapshot.routing.reverb_to_degrade = 0.0f;
+  snapshot.routing.degrade_to_reverb = 0.0f;
+
+  KesshoProductSourceSnapshot& pad = snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1];
+  pad.level = 0.0f;
+  pad.dry_gain = 1.0f;
+  pad.expression = 0.9f;
+  pad.reverb_send = 0.0f;
+  pad.delay_a_send = 0.0f;
+  pad.delay_b_send = 0.0f;
+  pad.granular_send = 0.0f;
+  pad.degrade_send = 0.0f;
+
+  switch (feeder) {
+    case DegradeFeeder::DelayA:
+      pad.delay_a_send = 1.0f;
+      snapshot.fx.delay_a_enabled = 1u;
+      snapshot.fx.delay_a_time_left_ms = 24.0f;
+      snapshot.fx.delay_a_time_right_ms = 36.0f;
+      snapshot.fx.delay_a_feedback = 0.25f;
+      snapshot.routing.delay_a_to_degrade = route_to_degrade ? 1.0f : 0.0f;
+      break;
+    case DegradeFeeder::DelayB:
+      pad.delay_b_send = 1.0f;
+      snapshot.fx.delay_b_enabled = 1u;
+      snapshot.fx.delay_b_activity = 1.0f;
+      snapshot.fx.delay_b_repeats = 0.7f;
+      snapshot.fx.delay_b_base_time_ms = 36.0f;
+      snapshot.routing.delay_b_to_degrade = route_to_degrade ? 1.0f : 0.0f;
+      break;
+    case DegradeFeeder::Granular:
+      pad.granular_send = 1.0f;
+      snapshot.fx.granular_enabled = 1u;
+      snapshot.routing.granular_to_degrade = route_to_degrade ? 1.0f : 0.0f;
+      break;
+    case DegradeFeeder::Reverb:
+      pad.reverb_send = 1.0f;
+      snapshot.routing.reverb_to_degrade = route_to_degrade ? 1.0f : 0.0f;
+      break;
+  }
+}
+
+float renderFxToDegradePeak(DegradeFeeder feeder, bool route_to_degrade) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "FX-to-Degrade engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  configureFxToDegradeProbe(snapshot, feeder, route_to_degrade);
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "FX-to-Degrade snapshot load failed");
+  triggerPad(engine, 0.45f);
+  const RenderPeaks peaks = renderMasterAndFxPeaks(engine, 180);
+  kessho_product_destroy(engine);
+  return peaks.fx;
+}
+
+void requireFxReturnsCanFeedDegrade() {
+  const DegradeFeeder feeders[] = {
+    DegradeFeeder::DelayA,
+    DegradeFeeder::DelayB,
+    DegradeFeeder::Granular,
+    DegradeFeeder::Reverb,
+  };
+  for (const DegradeFeeder feeder : feeders) {
+    const float bypassed_peak = renderFxToDegradePeak(feeder, false);
+    const float routed_peak = renderFxToDegradePeak(feeder, true);
+    require(bypassed_peak <= 0.000001f, "disabled FX-to-Degrade route leaked to FX stem");
+    require(routed_peak > 0.00001f, "enabled FX-to-Degrade route did not reach Degrade return");
+  }
+}
+
+float renderDegradeToReverbPeak(bool route_to_reverb, bool also_route_reverb_to_degrade) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "Degrade-to-Reverb engine create failed");
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.master.gain = 1.0f;
+  snapshot.master.limiter_ceiling_db = 0.0f;
+  snapshot.fx.reverb_mix = 1.0f;
+  snapshot.fx.spectral_freeze_enabled = 0u;
+  snapshot.fx.delay_a_mix = 0.0f;
+  snapshot.fx.delay_b_mix = 0.0f;
+  snapshot.fx.granular_mix = 0.0f;
+  snapshot.fx.dynamics_enabled = 1u;
+  snapshot.fx.dynamics_drift_enabled = 1u;
+  snapshot.fx.dynamics_drift_mode = 2u;
+  snapshot.fx.dynamics_drift_mix = 1.0f;
+  snapshot.fx.dynamics_drift_age = 0.25f;
+  snapshot.fx.dynamics_drift_depth = 0.8f;
+  snapshot.fx.dynamics_drift_rate = 0.2f;
+  snapshot.fx.dynamics_erosion_enabled = 0u;
+  snapshot.fx.dynamics_saturation_enabled = 0u;
+  snapshot.fx.dynamics_end_comp_enabled = 0u;
+  snapshot.routing.delay_to_reverb = 0.0f;
+  snapshot.routing.delay_b_to_reverb = 0.0f;
+  snapshot.routing.granular_to_reverb = 0.0f;
+  snapshot.routing.delay_a_to_degrade = 0.0f;
+  snapshot.routing.delay_b_to_degrade = 0.0f;
+  snapshot.routing.granular_to_degrade = 0.0f;
+  snapshot.routing.reverb_to_degrade = also_route_reverb_to_degrade ? 1.0f : 0.0f;
+  snapshot.routing.degrade_to_reverb = route_to_reverb ? 1.0f : 0.0f;
+  snapshot.routing.degrade_return_level = 0.0f;
+
+  KesshoProductSourceSnapshot& pad = snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1];
+  pad.level = 0.0f;
+  pad.dry_gain = 0.0f;
+  pad.expression = 0.9f;
+  pad.reverb_send = 0.0f;
+  pad.delay_a_send = 0.0f;
+  pad.delay_b_send = 0.0f;
+  pad.granular_send = 0.0f;
+  pad.degrade_send = 1.0f;
+
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Degrade-to-Reverb snapshot load failed");
+  require(
+      !route_to_reverb || engine->routing.reverb_to_degrade == 0.0f,
+      "snapshot load did not make Degrade-to-Reverb override Reverb-to-Degrade");
+  triggerPad(engine, 0.45f);
+  const RenderPeaks peaks = renderMasterAndFxPeaks(engine, 180);
+  kessho_product_destroy(engine);
+  return peaks.fx;
+}
+
+void requireDegradeCanFeedReverbWithoutReverseFeedback() {
+  const float bypassed_peak = renderDegradeToReverbPeak(false, false);
+  const float routed_peak = renderDegradeToReverbPeak(true, false);
+  const float mutually_exclusive_peak = renderDegradeToReverbPeak(true, true);
+  require(bypassed_peak <= 0.000001f, "disabled Degrade-to-Reverb route leaked to FX stem");
+  require(routed_peak > 0.00001f, "enabled Degrade-to-Reverb route did not reach Reverb return");
+  require(mutually_exclusive_peak > 0.00001f, "Degrade-to-Reverb did not survive mutual-exclusion snapshot load");
+}
+
 std::vector<float> renderSnapshotFxTrace(uint32_t param_id, float value) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "snapshot FX event parity engine create failed");
@@ -1167,6 +1344,40 @@ void requireDirectFxCoverage() {
   direct.mixFxBuffer(in_l, in_r, out_l, out_r, 0u, 4u, 0.5f, kSidechainTargetCount);
   require(std::fabs(out_l[0] - 0.5f) < 0.001f, "direct FX bus mix left mismatch");
   require(std::fabs(out_r[0] - 0.25f) < 0.001f, "direct FX bus mix right mismatch");
+
+  KesshoProductEvent eq_event{};
+  eq_event.param_id = KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_LOW_TYPE_ID;
+  eq_event.value = static_cast<float>(kDynamicsEqEdgeBell);
+  require(direct.applyDynamicsEqParamEvent(eq_event), "direct Dynamics EQ param event was not handled");
+  require(direct.fx.dynamics_eq1_low_type == kDynamicsEqEdgeBell, "direct Dynamics EQ param event mapped wrong low type");
+  eq_event.param_id = KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_HIGH_SLOPE_ID;
+  eq_event.value = 2.5f;
+  require(direct.applyDynamicsEqParamEvent(eq_event), "direct Dynamics EQ2 param event was not handled");
+  require(std::fabs(direct.fx.dynamics_eq2_high_slope - 2.5f) < 0.001f, "direct Dynamics EQ param event mapped wrong slope");
+
+  KesshoProductEvent route_event{};
+  route_event.param_id = KESSHO_PRODUCT_PARAM_ROUTING_DYNAMICS_PAD1_BUS_ID;
+  route_event.value = static_cast<float>(kDynamicsBusEq1);
+  require(direct.applyRoutingParamEvent(route_event), "direct Dynamics routing param event was not handled");
+  require(direct.routing.dynamics_routes[kDynamicsRoutePad1] == kDynamicsBusEq1, "direct Dynamics routing event mapped wrong bus");
+  direct.routing.reverb_to_degrade = 0.75f;
+  route_event.param_id = KESSHO_PRODUCT_PARAM_ROUTING_DEGRADE_TO_REVERB_ID;
+  route_event.value = 1.0f;
+  direct.applyParam(route_event);
+  require(direct.routing.degrade_to_reverb > 0.99f, "direct Degrade-to-Reverb routing event mapped wrong amount");
+  require(direct.routing.reverb_to_degrade == 0.0f, "Degrade-to-Reverb routing event did not clear reverse route");
+  route_event.param_id = KESSHO_PRODUCT_PARAM_ROUTING_REVERB_TO_DEGRADE_ID;
+  route_event.value = 1.0f;
+  direct.applyParam(route_event);
+  require(direct.routing.reverb_to_degrade > 0.99f, "direct Reverb-to-Degrade routing event mapped wrong amount");
+  require(direct.routing.degrade_to_reverb == 0.0f, "Reverb-to-Degrade routing event did not clear reverse route");
+
+  float terminal_l[4]{};
+  float terminal_r[4]{};
+  direct.routeTerminalSample(kDynamicsBusEq1, terminal_l, terminal_r, 0u, 0.25f, 0.125f);
+  direct.renderDynamicsBuses(terminal_l, terminal_r, 0u, 4u);
+  require(std::fabs(terminal_l[0] - 0.25f) < 0.001f, "terminal EQ bus did not pass through left sample");
+  require(std::fabs(terminal_r[0] - 0.125f) < 0.001f, "terminal EQ bus did not pass through right sample");
 }
 
 } // namespace
@@ -1317,6 +1528,8 @@ int main() {
   requireDisabledFxBypassKeepsDryAndSilencesFxStem();
   requireProductResetClearsFxTails();
   requireModuleSourceFxSendsArePreFader();
+  requireFxReturnsCanFeedDegrade();
+  requireDegradeCanFeedReverbWithoutReverseFeedback();
 
   requireProductParamSampleHoldRangeChangesMaster();
 
@@ -1345,15 +1558,15 @@ int main() {
       1.0f,
       "dynamics drive SetParam did not match snapshot-configured render");
   requireDynamicsParamSnapshotEventParity(
-      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MIX_ID,
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_MIX_ID,
       0.68f,
-      "dynamics character mix SetParam did not match snapshot-configured render");
+      "dynamics drift mix SetParam did not match snapshot-configured render");
   requireDynamicsParamSnapshotEventParity(
-      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_CHARACTER_MODE_ID,
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_MODE_ID,
       1.0f,
-      "dynamics character mode SetParam did not match snapshot-configured render");
+      "dynamics drift mode SetParam did not match snapshot-configured render");
   requireDynamicsParamSnapshotEventParity(
-      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_ALIAS_ID,
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_ALIAS_ID,
       0.82f,
       "dynamics degrade alias SetParam did not match snapshot-configured render");
   requireDynamicsParamSnapshotEventParity(
@@ -1502,7 +1715,7 @@ int main() {
       1.0f,
       "dynamics enabled parameter did not change C++ render");
   requireDynamicsParamChangesTrace(
-      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_MIX_ID,
+      KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_MIX_ID,
       0.0f,
       0.85f,
       "dynamics degrade mix parameter did not change C++ render");
@@ -1516,7 +1729,7 @@ int main() {
       0.0f,
       1.0f,
       "dynamics end-compressor mix parameter did not change C++ render");
-  requireSidechainDucksPadTarget();
+  requireSidechainDucksTerminalBusOnly();
 
   std::cout << "Kessho Product FX Routing tests passed\n";
   return 0;

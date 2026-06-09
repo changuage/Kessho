@@ -36,7 +36,7 @@ let package = Package(
             ],
             sources: [
                 "cpp/KesshoCore/src",
-                "wasm/dynamics-character/kessho_dynamics_character.cpp",
+                "wasm/dynamics-drift/kessho_dynamics_drift.cpp",
                 "wasm/dynamics-degrade/kessho_dynamics_degrade.cpp",
                 "wasm/reverb/kessho_reverb.cpp",
                 "wasm/granular-fx/kessho_granular.cpp",
@@ -52,7 +52,7 @@ let package = Package(
             ],
             cxxSettings: [
                 .headerSearchPath("cpp/KesshoCore/generated"),
-                .headerSearchPath("wasm/dynamics-character"),
+                .headerSearchPath("wasm/dynamics-drift"),
                 .headerSearchPath("wasm/dynamics-degrade"),
                 .headerSearchPath("wasm/reverb"),
                 .headerSearchPath("wasm/granular-fx"),

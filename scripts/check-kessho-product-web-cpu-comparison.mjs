@@ -116,7 +116,7 @@ function lowNoisePatch() {
   return {
     birds2Enabled: false,
     birdsEnabled: false,
-    characterEnabled: false,
+    driftEnabled: false,
     delayAEnabled: false,
     delayAFeedback: 0,
     delayAGranularSend: 0,

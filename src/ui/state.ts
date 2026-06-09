@@ -30,6 +30,8 @@ export type GranularPitchMode = 'fixed' | 'octaves' | 'fifths' | 'chord' | 'scal
 export type GranularCloudStyle = 'classic' | 'mosaic' | 'bloom' | 'tide' | 'orbit' | 'stars';
 export type GranularAnchorPattern = 'forward' | 'reverse' | 'pendulum' | 'random';
 export type IndexedDelayDivisionKey = 'drumDelayNoteL' | 'drumDelayNoteR' | 'granularDelayTime';
+export type DynamicsEqEdgeBandType = 'shelf' | 'bell';
+export type DynamicsBusRouteDestination = 0 | 1 | 2 | 3;
 
 export const DELAY_A_NOTE_DIVISION_OPTIONS = [
   { value: '1/1', label: '1/1' },
@@ -321,6 +323,22 @@ export interface SliderState {
   delayACrossFeedFilter: number; // 0..1 mapped to 200..8000 Hz LPF on A→B
   drumDelayBSend: number;     // 0..1 - whole drum bus send into shared Delay B
   reverbLevel: number;        // 0..1 step 0.01 - reverb output level
+  degradeLevel: number;     // 0..1 step 0.01 - Degrade FX return level
+  delayADegradeSend: number; // 0..1 - shared Delay A output into Degrade
+  delayBDegradeSend: number; // 0..1 - shared Delay B output into Degrade
+  granularDegradeSend: number; // 0..1 - granular output into Degrade
+  reverbDegradeSend: number; // 0..1 - reverb output into Degrade
+  degradeReverbSend: number; // 0..1 - Degrade output into Reverb
+  degradePad1Send: number;  // 0..1 Pad 1 send into Degrade
+  degradePad2Send: number;  // 0..1 Pad 2 send into Degrade
+  degradeLead1Send: number; // 0..1 Lead 1 send into Degrade
+  degradeLead2Send: number; // 0..1 Lead 2 send into Degrade
+  degradePianoSend: number; // 0..1 Piano send into Degrade
+  degradeDrumSend: number;  // 0..1 Drums send into Degrade
+  degradeWavesSend: number; // 0..1 Waves send into Degrade
+  degradeWaterSend: number; // 0..1 Water send into Degrade
+  degradeInsectsSend: number; // 0..1 Insects send into Degrade
+  degradeNatureSend: number; // 0..1 Nature send into Degrade
   dynamicsEnabled: boolean;    // master enable for Dynamics page processing
   dynamicsSaturationEnabled: boolean; // dynamics-page master saturation on/off
   dynamicsSaturationMode: 'clean' | 'tape' | 'tube' | 'diode' | 'fold';
@@ -353,80 +371,120 @@ export interface SliderState {
   sidechainDelayATarget: number;
   sidechainDelayBTarget: number;
   sidechainReverbTarget: number;
-  characterEnabled: boolean;
-  characterMode: 'clean' | 'abyssWater' | 'shallowWater';
-  characterMix: number;
-  characterAge: number;
-  characterBias: number;
-  characterLpgAmount: number;
-  characterWetHp: number;
+  dynamicsPad1Bus: DynamicsBusRouteDestination;
+  dynamicsPad2Bus: DynamicsBusRouteDestination;
+  dynamicsLead1Bus: DynamicsBusRouteDestination;
+  dynamicsLead2Bus: DynamicsBusRouteDestination;
+  dynamicsPianoBus: DynamicsBusRouteDestination;
+  dynamicsDrumBus: DynamicsBusRouteDestination;
+  dynamicsGranularBus: DynamicsBusRouteDestination;
+  dynamicsWavesBus: DynamicsBusRouteDestination;
+  dynamicsWaterBus: DynamicsBusRouteDestination;
+  dynamicsInsectsBus: DynamicsBusRouteDestination;
+  dynamicsNatureBus: DynamicsBusRouteDestination;
+  dynamicsDelayABus: DynamicsBusRouteDestination;
+  dynamicsDelayBBus: DynamicsBusRouteDestination;
+  dynamicsDegradeBus: DynamicsBusRouteDestination;
+  dynamicsReverbBus: DynamicsBusRouteDestination;
+  dynamicsBusEnabled: boolean;
+  dynamicsEq1Enabled: boolean;
+  dynamicsEq1InputGain: number;
+  dynamicsEq1OutputGain: number;
+  dynamicsEq1LowType: DynamicsEqEdgeBandType;
+  dynamicsEq1LowFreq: number;
+  dynamicsEq1LowGain: number;
+  dynamicsEq1LowQ: number;
+  dynamicsEq1LowSlope: number;
+  dynamicsEq1MidFreq: number;
+  dynamicsEq1MidGain: number;
+  dynamicsEq1MidQ: number;
+  dynamicsEq1HighType: DynamicsEqEdgeBandType;
+  dynamicsEq1HighFreq: number;
+  dynamicsEq1HighGain: number;
+  dynamicsEq1HighQ: number;
+  dynamicsEq1HighSlope: number;
+  dynamicsEq2Enabled: boolean;
+  dynamicsEq2InputGain: number;
+  dynamicsEq2OutputGain: number;
+  dynamicsEq2LowType: DynamicsEqEdgeBandType;
+  dynamicsEq2LowFreq: number;
+  dynamicsEq2LowGain: number;
+  dynamicsEq2LowQ: number;
+  dynamicsEq2LowSlope: number;
+  dynamicsEq2MidFreq: number;
+  dynamicsEq2MidGain: number;
+  dynamicsEq2MidQ: number;
+  dynamicsEq2HighType: DynamicsEqEdgeBandType;
+  dynamicsEq2HighFreq: number;
+  dynamicsEq2HighGain: number;
+  dynamicsEq2HighQ: number;
+  dynamicsEq2HighSlope: number;
   degradeEnabled: boolean;
-  degradeMix: number;
-  degradeAge: number;
-  degradeGeneration: number;
-  degradeAlias: number;
-  degradeWow: number;
-  degradeFlutter: number;
-  degradeDrift: number;
-  degradeWobbleSpeed: number;
-  degradeTone: number;
+  driftEnabled: boolean;
+  driftMode: 'clean' | 'abyssWater' | 'shallowWater';
+  driftMix: number;
+  driftAge: number;
+  driftBias: number;
+  driftLpgAmount: number;
+  driftWetHp: number;
+  erosionEnabled: boolean;
+  erosionMix: number;
+  erosionAge: number;
+  erosionGeneration: number;
+  erosionAlias: number;
+  erosionWow: number;
+  erosionFlutter: number;
+  erosionDrift: number;
+  erosionWobbleSpeed: number;
+  erosionTone: number;
   degradeHp: number;
   degradeLp: number;
-  characterResonance: number;
-  degradeNoise: number;
-  degradeSaturation: number;
-  degradeCorrosion: number;
-  degradeModSlowWow: number;
-  degradeModSlowFlutter: number;
-  degradeModSlowLp: number;
-  degradeModSlowWet: number;
-  degradeModSlowDropout: number;
-  degradeModSlowAlias: number;
-  degradeModFlutterWow: number;
-  degradeModFlutterFlutter: number;
-  degradeModFlutterLp: number;
-  degradeModFlutterWet: number;
-  degradeModFlutterDropout: number;
-  degradeModFlutterAlias: number;
-  degradeModRandomWow: number;
-  degradeModRandomFlutter: number;
-  degradeModRandomLp: number;
-  degradeModRandomWet: number;
-  degradeModRandomDropout: number;
-  degradeModRandomAlias: number;
-  degradeModEnvWow: number;
-  degradeModEnvFlutter: number;
-  degradeModEnvLp: number;
-  degradeModEnvWet: number;
-  degradeModEnvDropout: number;
-  degradeModEnvAlias: number;
-  degradeModNoiseWow: number;
-  degradeModNoiseFlutter: number;
-  degradeModNoiseLp: number;
-  degradeModNoiseWet: number;
-  degradeModNoiseDropout: number;
-  degradeModNoiseAlias: number;
-  characterWow: number;
-  characterFlutter: number;
-  characterDrift: number;
-  characterTone: number;
-  characterHp: number;
-  characterLp: number;
-  characterNoise: number;
-  characterSaturation: number;
-  characterCorrosion: number;
-  characterStereo: number;
-  characterEnvFollow: number;
-  characterDepth: number;
-  characterRate: number;
-  characterDamp: number;
-  characterQuality: 'eco' | 'balanced' | 'hq';
-  characterAntiComb: number;
-  characterDiffusion: number;
-  degradeQuality: 'classic' | 'media' | 'hq';
-  degradeEventAmount: number;
-  degradeProfileAmount: number;
-  degradeDitherAmount: number;
+  driftResonance: number;
+  erosionNoise: number;
+  erosionSaturation: number;
+  erosionCorrosion: number;
+  erosionModSlowWow: number;
+  erosionModSlowFlutter: number;
+  erosionModSlowLp: number;
+  erosionModSlowWet: number;
+  erosionModSlowDropout: number;
+  erosionModSlowAlias: number;
+  erosionModFlutterWow: number;
+  erosionModFlutterFlutter: number;
+  erosionModFlutterLp: number;
+  erosionModFlutterWet: number;
+  erosionModFlutterDropout: number;
+  erosionModFlutterAlias: number;
+  erosionModRandomWow: number;
+  erosionModRandomFlutter: number;
+  erosionModRandomLp: number;
+  erosionModRandomWet: number;
+  erosionModRandomDropout: number;
+  erosionModRandomAlias: number;
+  erosionModEnvWow: number;
+  erosionModEnvFlutter: number;
+  erosionModEnvLp: number;
+  erosionModEnvWet: number;
+  erosionModEnvDropout: number;
+  erosionModEnvAlias: number;
+  erosionModNoiseWow: number;
+  erosionModNoiseFlutter: number;
+  erosionModNoiseLp: number;
+  erosionModNoiseWet: number;
+  erosionModNoiseDropout: number;
+  erosionModNoiseAlias: number;
+  driftStereo: number;
+  driftEnvFollow: number;
+  driftDepth: number;
+  driftRate: number;
+  driftDamp: number;
+  driftQuality: 'eco' | 'balanced' | 'hq';
+  driftAntiComb: number;
+  driftDiffusion: number;
+  erosionQuality: 'classic' | 'media' | 'hq';
+  erosionEventAmount: number;
+  erosionProfileAmount: number;
+  erosionDitherAmount: number;
   endCompEnabled: boolean;
   endCompMode: 'studioClear' | 'clarity' | 'glue' | 'punch' | 'twoBand';
   endCompThreshold: number;
@@ -618,7 +676,7 @@ export interface SliderState {
   pad2Release: number;
   pad2FitEnvelopeToChord: boolean;
   pad2Octave: number;
-  // Drive / Character
+  // Drive / Drift
   pad2Hardness: number;
   pad2Warmth: number;
   pad2Presence: number;
@@ -1597,6 +1655,22 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'drumDelayBSend',
   'granularDelayMix',
   'reverbLevel',
+  'degradeLevel',
+  'degradePad1Send',
+  'degradePad2Send',
+  'degradeLead1Send',
+  'degradeLead2Send',
+  'degradePianoSend',
+  'degradeDrumSend',
+  'degradeWavesSend',
+  'degradeWaterSend',
+  'degradeInsectsSend',
+  'degradeNatureSend',
+  'delayADegradeSend',
+  'delayBDegradeSend',
+  'granularDegradeSend',
+  'reverbDegradeSend',
+  'degradeReverbSend',
   'dynamicsEnabled',
   'dynamicsSaturationEnabled',
   'dynamicsSaturationMode',
@@ -1629,71 +1703,120 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'sidechainDelayATarget',
   'sidechainDelayBTarget',
   'sidechainReverbTarget',
-  'characterEnabled',
-  'characterMode',
-  'characterMix',
-  'characterAge',
-  'characterBias',
-  'characterLpgAmount',
+  'dynamicsPad1Bus',
+  'dynamicsPad2Bus',
+  'dynamicsLead1Bus',
+  'dynamicsLead2Bus',
+  'dynamicsPianoBus',
+  'dynamicsDrumBus',
+  'dynamicsGranularBus',
+  'dynamicsWavesBus',
+  'dynamicsWaterBus',
+  'dynamicsInsectsBus',
+  'dynamicsNatureBus',
+  'dynamicsDelayABus',
+  'dynamicsDelayBBus',
+  'dynamicsDegradeBus',
+  'dynamicsReverbBus',
+  'dynamicsBusEnabled',
+  'dynamicsEq1Enabled',
+  'dynamicsEq1InputGain',
+  'dynamicsEq1OutputGain',
+  'dynamicsEq1LowType',
+  'dynamicsEq1LowFreq',
+  'dynamicsEq1LowGain',
+  'dynamicsEq1LowQ',
+  'dynamicsEq1LowSlope',
+  'dynamicsEq1MidFreq',
+  'dynamicsEq1MidGain',
+  'dynamicsEq1MidQ',
+  'dynamicsEq1HighType',
+  'dynamicsEq1HighFreq',
+  'dynamicsEq1HighGain',
+  'dynamicsEq1HighQ',
+  'dynamicsEq1HighSlope',
+  'dynamicsEq2Enabled',
+  'dynamicsEq2InputGain',
+  'dynamicsEq2OutputGain',
+  'dynamicsEq2LowType',
+  'dynamicsEq2LowFreq',
+  'dynamicsEq2LowGain',
+  'dynamicsEq2LowQ',
+  'dynamicsEq2LowSlope',
+  'dynamicsEq2MidFreq',
+  'dynamicsEq2MidGain',
+  'dynamicsEq2MidQ',
+  'dynamicsEq2HighType',
+  'dynamicsEq2HighFreq',
+  'dynamicsEq2HighGain',
+  'dynamicsEq2HighQ',
+  'dynamicsEq2HighSlope',
   'degradeEnabled',
-  'degradeMix',
-  'degradeAge',
-  'degradeGeneration',
-  'degradeAlias',
-  'degradeWow',
-  'degradeFlutter',
-  'degradeDrift',
-  'degradeWobbleSpeed',
-  'degradeTone',
+  'driftEnabled',
+  'driftMode',
+  'driftMix',
+  'driftAge',
+  'driftBias',
+  'driftLpgAmount',
+  'erosionEnabled',
+  'erosionMix',
+  'erosionAge',
+  'erosionGeneration',
+  'erosionAlias',
+  'erosionWow',
+  'erosionFlutter',
+  'erosionDrift',
+  'erosionWobbleSpeed',
+  'erosionTone',
   'degradeHp',
   'degradeLp',
-  'characterResonance',
-  'degradeNoise',
-  'degradeSaturation',
-  'degradeCorrosion',
-  'degradeModSlowWow',
-  'degradeModSlowFlutter',
-  'degradeModSlowLp',
-  'degradeModSlowWet',
-  'degradeModSlowDropout',
-  'degradeModSlowAlias',
-  'degradeModFlutterWow',
-  'degradeModFlutterFlutter',
-  'degradeModFlutterLp',
-  'degradeModFlutterWet',
-  'degradeModFlutterDropout',
-  'degradeModFlutterAlias',
-  'degradeModRandomWow',
-  'degradeModRandomFlutter',
-  'degradeModRandomLp',
-  'degradeModRandomWet',
-  'degradeModRandomDropout',
-  'degradeModRandomAlias',
-  'degradeModEnvWow',
-  'degradeModEnvFlutter',
-  'degradeModEnvLp',
-  'degradeModEnvWet',
-  'degradeModEnvDropout',
-  'degradeModEnvAlias',
-  'degradeModNoiseWow',
-  'degradeModNoiseFlutter',
-  'degradeModNoiseLp',
-  'degradeModNoiseWet',
-  'degradeModNoiseDropout',
-  'degradeModNoiseAlias',
-  'characterStereo',
-  'characterEnvFollow',
-  'characterWetHp',
-  'characterDepth',
-  'characterRate',
-  'characterDamp',
-  'characterQuality',
-  'characterAntiComb',
-  'characterDiffusion',
-  'degradeQuality',
-  'degradeEventAmount',
-  'degradeProfileAmount',
-  'degradeDitherAmount',
+  'driftResonance',
+  'erosionNoise',
+  'erosionSaturation',
+  'erosionCorrosion',
+  'erosionModSlowWow',
+  'erosionModSlowFlutter',
+  'erosionModSlowLp',
+  'erosionModSlowWet',
+  'erosionModSlowDropout',
+  'erosionModSlowAlias',
+  'erosionModFlutterWow',
+  'erosionModFlutterFlutter',
+  'erosionModFlutterLp',
+  'erosionModFlutterWet',
+  'erosionModFlutterDropout',
+  'erosionModFlutterAlias',
+  'erosionModRandomWow',
+  'erosionModRandomFlutter',
+  'erosionModRandomLp',
+  'erosionModRandomWet',
+  'erosionModRandomDropout',
+  'erosionModRandomAlias',
+  'erosionModEnvWow',
+  'erosionModEnvFlutter',
+  'erosionModEnvLp',
+  'erosionModEnvWet',
+  'erosionModEnvDropout',
+  'erosionModEnvAlias',
+  'erosionModNoiseWow',
+  'erosionModNoiseFlutter',
+  'erosionModNoiseLp',
+  'erosionModNoiseWet',
+  'erosionModNoiseDropout',
+  'erosionModNoiseAlias',
+  'driftStereo',
+  'driftEnvFollow',
+  'driftWetHp',
+  'driftDepth',
+  'driftRate',
+  'driftDamp',
+  'driftQuality',
+  'driftAntiComb',
+  'driftDiffusion',
+  'erosionQuality',
+  'erosionEventAmount',
+  'erosionProfileAmount',
+  'erosionDitherAmount',
   'endCompEnabled',
   'endCompMode',
   'endCompThreshold',
@@ -2328,7 +2451,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   // Ocean
   'earthLevel',
   'oceanSampleEnabled',
-  'oceanSampleLevel', 'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend',
+  'oceanSampleLevel', 'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend', 'degradeWavesSend',
   'oceanSliceDuration', 'oceanSliceDensity',
   'oceanFilterType',
   'oceanFilterCutoff',
@@ -2336,13 +2459,13 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'birdsEnabled', 'birdsLevel', 'birdsReverbSend', 'birdsDelayASend', 'birdsDelayBSend', 'birdsSliceDuration', 'birdsSliceDensity',
   'birds2Enabled', 'birds2Level', 'birds2ReverbSend', 'birds2DelayASend', 'birds2DelayBSend', 'birds2SliceDuration', 'birds2SliceDensity',
   'frogsEnabled', 'frogsLevel', 'frogsReverbSend', 'frogsDelayASend', 'frogsDelayBSend', 'frogsSliceDuration', 'frogsSliceDensity',
-  'natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend',
+  'natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'degradeNatureSend',
   // Soundscapes (Water + Insects)
   'waterEnabled',
   'waterPreset', 'waterMorphA', 'waterMorphB', 'waterMorph',
   'waterIntensity', 'waterDistance', 'waterBaseFreq',
   'waterDropSize', 'waterHardness', 'waterGlassThickness',
-  'waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'waterLevel',
+  'waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'degradeWaterSend', 'waterLevel',
   'waterLayerHardDrops', 'waterLayerWaterDrops', 'waterLayerTurbulence',
   'waterLayerBubbling', 'waterLayerSurf', 'waterLayerChannels',
   'waterHardDropBaseFreq', 'waterHardDropRate', 'waterHardDropLPF', 'waterHardDropTone',
@@ -2355,7 +2478,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'waterChannelsMorph', 'waterChannelsSpeed',
   'insectsEnabled', 'insectsEngine',
   'insectsDensity', 'insectsTemperature', 'insectsDistance', 'insectsProximity',
-  'insectsAntiphony', 'insectsClickRate', 'insectsMotion', 'insectsLevel', 'insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend',
+  'insectsAntiphony', 'insectsClickRate', 'insectsMotion', 'insectsLevel', 'insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'degradeInsectsSend',
   'insects2Enabled', 'insects2Engine',
   'insects2Density', 'insects2Temperature', 'insects2Distance', 'insects2Proximity',
   'insects2Antiphony', 'insects2ClickRate', 'insects2Motion', 'insects2Level',
@@ -2381,7 +2504,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'granularReverbSend',
   'granularReverbLPF',
   'granularOutputLPF',
-  'granularDelayASend', 'granularDelayBSend',
+  'granularDelayASend', 'granularDelayBSend', 'granularDegradeSend',
   'granularPad1Send', 'granularPad2Send', 'granularLead1Send', 'granularLead2Send', 'granularPianoSend', 'granularDrumSend', 'granularWavesSend', 'granularNatureSend', 'granularWaterSend', 'granularInsectsSend',
   'granularV1Enabled', 'granularV1Mode', 'granularV1Slice', 'granularV1Speed', 'granularV1Reverse',
   'granularV1ScanRate',
@@ -2499,6 +2622,22 @@ export const DEFAULT_STATE: SliderState = {
   delayACrossFeedFilter: 1,
   drumDelayBSend: 0,
   reverbLevel: 0.5,
+  degradeLevel: 1,
+  delayADegradeSend: 0,
+  delayBDegradeSend: 0,
+  granularDegradeSend: 0,
+  reverbDegradeSend: 0,
+  degradeReverbSend: 0,
+  degradePad1Send: 0,
+  degradePad2Send: 0,
+  degradeLead1Send: 0,
+  degradeLead2Send: 0,
+  degradePianoSend: 0,
+  degradeDrumSend: 0,
+  degradeWavesSend: 0,
+  degradeWaterSend: 0,
+  degradeInsectsSend: 0,
+  degradeNatureSend: 0,
   dynamicsEnabled: false,
   dynamicsSaturationEnabled: false,
   dynamicsSaturationMode: 'clean' as const,
@@ -2531,80 +2670,120 @@ export const DEFAULT_STATE: SliderState = {
   sidechainDelayATarget: 0,
   sidechainDelayBTarget: 0,
   sidechainReverbTarget: 0,
-  characterEnabled: false,
-  characterMode: 'clean' as const,
-  characterMix: 0,
-  characterAge: 0,
-  characterBias: 0.5,
-  characterLpgAmount: 0.5,
-  characterWetHp: 0,
+  dynamicsPad1Bus: 0,
+  dynamicsPad2Bus: 0,
+  dynamicsLead1Bus: 0,
+  dynamicsLead2Bus: 0,
+  dynamicsPianoBus: 0,
+  dynamicsDrumBus: 0,
+  dynamicsGranularBus: 0,
+  dynamicsWavesBus: 0,
+  dynamicsWaterBus: 0,
+  dynamicsInsectsBus: 0,
+  dynamicsNatureBus: 0,
+  dynamicsDelayABus: 0,
+  dynamicsDelayBBus: 0,
+  dynamicsDegradeBus: 0,
+  dynamicsReverbBus: 0,
+  dynamicsBusEnabled: false,
+  dynamicsEq1Enabled: false,
+  dynamicsEq1InputGain: 0,
+  dynamicsEq1OutputGain: 0,
+  dynamicsEq1LowType: 'shelf',
+  dynamicsEq1LowFreq: 120,
+  dynamicsEq1LowGain: 0,
+  dynamicsEq1LowQ: 0.7,
+  dynamicsEq1LowSlope: 1,
+  dynamicsEq1MidFreq: 1000,
+  dynamicsEq1MidGain: 0,
+  dynamicsEq1MidQ: 0.9,
+  dynamicsEq1HighType: 'shelf',
+  dynamicsEq1HighFreq: 8000,
+  dynamicsEq1HighGain: 0,
+  dynamicsEq1HighQ: 0.7,
+  dynamicsEq1HighSlope: 1,
+  dynamicsEq2Enabled: false,
+  dynamicsEq2InputGain: 0,
+  dynamicsEq2OutputGain: 0,
+  dynamicsEq2LowType: 'shelf',
+  dynamicsEq2LowFreq: 90,
+  dynamicsEq2LowGain: 0,
+  dynamicsEq2LowQ: 0.7,
+  dynamicsEq2LowSlope: 1,
+  dynamicsEq2MidFreq: 2200,
+  dynamicsEq2MidGain: 0,
+  dynamicsEq2MidQ: 0.9,
+  dynamicsEq2HighType: 'shelf',
+  dynamicsEq2HighFreq: 10000,
+  dynamicsEq2HighGain: 0,
+  dynamicsEq2HighQ: 0.7,
+  dynamicsEq2HighSlope: 1,
   degradeEnabled: false,
-  degradeMix: 0,
-  degradeAge: 0,
-  degradeGeneration: 0,
-  degradeAlias: 0,
-  degradeWow: 0,
-  degradeFlutter: 0,
-  degradeDrift: 0,
-  degradeWobbleSpeed: 0.35,
-  degradeTone: 0.5,
+  driftEnabled: false,
+  driftMode: 'clean' as const,
+  driftMix: 0,
+  driftAge: 0,
+  driftBias: 0.5,
+  driftLpgAmount: 0.5,
+  driftWetHp: 0,
+  erosionEnabled: false,
+  erosionMix: 0,
+  erosionAge: 0,
+  erosionGeneration: 0,
+  erosionAlias: 0,
+  erosionWow: 0,
+  erosionFlutter: 0,
+  erosionDrift: 0,
+  erosionWobbleSpeed: 0.35,
+  erosionTone: 0.5,
   degradeHp: 0,
   degradeLp: 1,
-  characterResonance: 0.2,
-  degradeNoise: 0,
-  degradeSaturation: 0,
-  degradeCorrosion: 0,
-  degradeModSlowWow: 0.18,
-  degradeModSlowFlutter: 0.02,
-  degradeModSlowLp: 0.12,
-  degradeModSlowWet: 0.03,
-  degradeModSlowDropout: 0.04,
-  degradeModSlowAlias: 0,
-  degradeModFlutterWow: 0,
-  degradeModFlutterFlutter: 0.12,
-  degradeModFlutterLp: 0.02,
-  degradeModFlutterWet: 0,
-  degradeModFlutterDropout: 0.02,
-  degradeModFlutterAlias: 0,
-  degradeModRandomWow: 0.04,
-  degradeModRandomFlutter: 0.03,
-  degradeModRandomLp: 0.14,
-  degradeModRandomWet: 0.02,
-  degradeModRandomDropout: 0.1,
-  degradeModRandomAlias: 0.02,
-  degradeModEnvWow: 0,
-  degradeModEnvFlutter: 0,
-  degradeModEnvLp: 0.08,
-  degradeModEnvWet: 0.04,
-  degradeModEnvDropout: 0,
-  degradeModEnvAlias: 0,
-  degradeModNoiseWow: 0,
-  degradeModNoiseFlutter: 0.06,
-  degradeModNoiseLp: 0.02,
-  degradeModNoiseWet: 0,
-  degradeModNoiseDropout: 0.06,
-  degradeModNoiseAlias: 0.02,
-  characterWow: 0,
-  characterFlutter: 0,
-  characterDrift: 0,
-  characterTone: 0.5,
-  characterHp: 0,
-  characterLp: 1,
-  characterNoise: 0,
-  characterSaturation: 0,
-  characterCorrosion: 0,
-  characterStereo: 0.5,
-  characterEnvFollow: 0,
-  characterDepth: 0,
-  characterRate: 0.3,
-  characterDamp: 0.5,
-  characterQuality: 'balanced',
-  characterAntiComb: 1,
-  characterDiffusion: 0.55,
-  degradeQuality: 'media',
-  degradeEventAmount: 0.45,
-  degradeProfileAmount: 0.65,
-  degradeDitherAmount: 0.55,
+  driftResonance: 0.2,
+  erosionNoise: 0,
+  erosionSaturation: 0,
+  erosionCorrosion: 0,
+  erosionModSlowWow: 0.18,
+  erosionModSlowFlutter: 0.02,
+  erosionModSlowLp: 0.12,
+  erosionModSlowWet: 0.03,
+  erosionModSlowDropout: 0.04,
+  erosionModSlowAlias: 0,
+  erosionModFlutterWow: 0,
+  erosionModFlutterFlutter: 0.12,
+  erosionModFlutterLp: 0.02,
+  erosionModFlutterWet: 0,
+  erosionModFlutterDropout: 0.02,
+  erosionModFlutterAlias: 0,
+  erosionModRandomWow: 0.04,
+  erosionModRandomFlutter: 0.03,
+  erosionModRandomLp: 0.14,
+  erosionModRandomWet: 0.02,
+  erosionModRandomDropout: 0.1,
+  erosionModRandomAlias: 0.02,
+  erosionModEnvWow: 0,
+  erosionModEnvFlutter: 0,
+  erosionModEnvLp: 0.08,
+  erosionModEnvWet: 0.04,
+  erosionModEnvDropout: 0,
+  erosionModEnvAlias: 0,
+  erosionModNoiseWow: 0,
+  erosionModNoiseFlutter: 0.06,
+  erosionModNoiseLp: 0.02,
+  erosionModNoiseWet: 0,
+  erosionModNoiseDropout: 0.06,
+  erosionModNoiseAlias: 0.02,
+  driftStereo: 0.5,
+  driftEnvFollow: 0,
+  driftDepth: 0,
+  driftRate: 0.3,
+  driftDamp: 0.5,
+  driftQuality: 'balanced',
+  driftAntiComb: 1,
+  driftDiffusion: 0.55,
+  erosionQuality: 'media',
+  erosionEventAmount: 0.45,
+  erosionProfileAmount: 0.65,
+  erosionDitherAmount: 0.55,
   endCompEnabled: false,
   endCompMode: 'studioClear',
   endCompThreshold: -18,
@@ -3848,6 +4027,22 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   delayBToASend: { min: 0, max: 1, step: 0.01 },
   delayACrossFeedFilter: { min: 0, max: 1, step: 0.01 },
   drumDelayBSend: { min: 0, max: 1, step: 0.01 },
+  degradeLevel: { min: 0, max: 1, step: 0.01 },
+  degradePad1Send: { min: 0, max: 1, step: 0.01 },
+  degradePad2Send: { min: 0, max: 1, step: 0.01 },
+  degradeLead1Send: { min: 0, max: 1, step: 0.01 },
+  degradeLead2Send: { min: 0, max: 1, step: 0.01 },
+  degradePianoSend: { min: 0, max: 1, step: 0.01 },
+  degradeDrumSend: { min: 0, max: 1, step: 0.01 },
+  degradeWavesSend: { min: 0, max: 1, step: 0.01 },
+  degradeWaterSend: { min: 0, max: 1, step: 0.01 },
+  degradeInsectsSend: { min: 0, max: 1, step: 0.01 },
+  degradeNatureSend: { min: 0, max: 1, step: 0.01 },
+  delayADegradeSend: { min: 0, max: 1, step: 0.01 },
+  delayBDegradeSend: { min: 0, max: 1, step: 0.01 },
+  granularDegradeSend: { min: 0, max: 1, step: 0.01 },
+  reverbDegradeSend: { min: 0, max: 1, step: 0.01 },
+  degradeReverbSend: { min: 0, max: 1, step: 0.01 },
   dynamicsSaturationDrive: { min: 0, max: 1, step: 0.01 },
   dynamicsSaturationTone: { min: 0, max: 1, step: 0.01 },
   dynamicsSaturationBias: { min: 0, max: 1, step: 0.01 },
@@ -3874,66 +4069,107 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   sidechainDelayATarget: { min: 0, max: 1, step: 0.01 },
   sidechainDelayBTarget: { min: 0, max: 1, step: 0.01 },
   sidechainReverbTarget: { min: 0, max: 1, step: 0.01 },
-  characterMix: { min: 0, max: 1, step: 0.01 },
-  characterAge: { min: 0, max: 1, step: 0.01 },
-  characterBias: { min: 0, max: 1, step: 0.01 },
-  characterLpgAmount: { min: 0, max: 1, step: 0.01 },
-  characterWetHp: { min: 0, max: 1, step: 0.01 },
-  degradeMix: { min: 0, max: 1, step: 0.01 },
-  degradeAge: { min: 0, max: 1, step: 0.01 },
-  degradeGeneration: { min: 0, max: 1, step: 0.01 },
-  degradeAlias: { min: 0, max: 1, step: 0.01 },
-  degradeWow: { min: 0, max: 1, step: 0.01 },
-  degradeFlutter: { min: 0, max: 1, step: 0.01 },
-  degradeDrift: { min: 0, max: 1, step: 0.01 },
-  degradeWobbleSpeed: { min: 0, max: 1, step: 0.01 },
-  degradeTone: { min: 0, max: 1, step: 0.01 },
+  dynamicsPad1Bus: { min: 0, max: 3, step: 1 },
+  dynamicsPad2Bus: { min: 0, max: 3, step: 1 },
+  dynamicsLead1Bus: { min: 0, max: 3, step: 1 },
+  dynamicsLead2Bus: { min: 0, max: 3, step: 1 },
+  dynamicsPianoBus: { min: 0, max: 3, step: 1 },
+  dynamicsDrumBus: { min: 0, max: 3, step: 1 },
+  dynamicsGranularBus: { min: 0, max: 3, step: 1 },
+  dynamicsWavesBus: { min: 0, max: 3, step: 1 },
+  dynamicsWaterBus: { min: 0, max: 3, step: 1 },
+  dynamicsInsectsBus: { min: 0, max: 3, step: 1 },
+  dynamicsNatureBus: { min: 0, max: 3, step: 1 },
+  dynamicsDelayABus: { min: 0, max: 3, step: 1 },
+  dynamicsDelayBBus: { min: 0, max: 3, step: 1 },
+  dynamicsDegradeBus: { min: 0, max: 3, step: 1 },
+  dynamicsReverbBus: { min: 0, max: 3, step: 1 },
+  dynamicsEq1InputGain: { min: -24, max: 24, step: 0.1 },
+  dynamicsEq1OutputGain: { min: -24, max: 24, step: 0.1 },
+  dynamicsEq1LowFreq: { min: 20, max: 20000, step: 1 },
+  dynamicsEq1LowGain: { min: -18, max: 18, step: 0.1 },
+  dynamicsEq1LowQ: { min: 0.1, max: 18, step: 0.1 },
+  dynamicsEq1LowSlope: { min: 0.25, max: 4, step: 0.05 },
+  dynamicsEq1MidFreq: { min: 20, max: 20000, step: 1 },
+  dynamicsEq1MidGain: { min: -18, max: 18, step: 0.1 },
+  dynamicsEq1MidQ: { min: 0.1, max: 18, step: 0.1 },
+  dynamicsEq1HighFreq: { min: 20, max: 20000, step: 1 },
+  dynamicsEq1HighGain: { min: -18, max: 18, step: 0.1 },
+  dynamicsEq1HighQ: { min: 0.1, max: 18, step: 0.1 },
+  dynamicsEq1HighSlope: { min: 0.25, max: 4, step: 0.05 },
+  dynamicsEq2InputGain: { min: -24, max: 24, step: 0.1 },
+  dynamicsEq2OutputGain: { min: -24, max: 24, step: 0.1 },
+  dynamicsEq2LowFreq: { min: 20, max: 20000, step: 1 },
+  dynamicsEq2LowGain: { min: -18, max: 18, step: 0.1 },
+  dynamicsEq2LowQ: { min: 0.1, max: 18, step: 0.1 },
+  dynamicsEq2LowSlope: { min: 0.25, max: 4, step: 0.05 },
+  dynamicsEq2MidFreq: { min: 20, max: 20000, step: 1 },
+  dynamicsEq2MidGain: { min: -18, max: 18, step: 0.1 },
+  dynamicsEq2MidQ: { min: 0.1, max: 18, step: 0.1 },
+  dynamicsEq2HighFreq: { min: 20, max: 20000, step: 1 },
+  dynamicsEq2HighGain: { min: -18, max: 18, step: 0.1 },
+  dynamicsEq2HighQ: { min: 0.1, max: 18, step: 0.1 },
+  dynamicsEq2HighSlope: { min: 0.25, max: 4, step: 0.05 },
+  driftMix: { min: 0, max: 1, step: 0.01 },
+  driftAge: { min: 0, max: 1, step: 0.01 },
+  driftBias: { min: 0, max: 1, step: 0.01 },
+  driftLpgAmount: { min: 0, max: 1, step: 0.01 },
+  driftWetHp: { min: 0, max: 1, step: 0.01 },
+  erosionMix: { min: 0, max: 1, step: 0.01 },
+  erosionAge: { min: 0, max: 1, step: 0.01 },
+  erosionGeneration: { min: 0, max: 1, step: 0.01 },
+  erosionAlias: { min: 0, max: 1, step: 0.01 },
+  erosionWow: { min: 0, max: 1, step: 0.01 },
+  erosionFlutter: { min: 0, max: 1, step: 0.01 },
+  erosionDrift: { min: 0, max: 1, step: 0.01 },
+  erosionWobbleSpeed: { min: 0, max: 1, step: 0.01 },
+  erosionTone: { min: 0, max: 1, step: 0.01 },
   degradeHp: { min: 0, max: 1, step: 0.01 },
   degradeLp: { min: 0, max: 1, step: 0.01 },
-  characterResonance: { min: 0, max: 1, step: 0.01 },
-  degradeNoise: { min: 0, max: 1, step: 0.01 },
-  degradeSaturation: { min: 0, max: 1, step: 0.01 },
-  degradeCorrosion: { min: 0, max: 1, step: 0.01 },
-  degradeModSlowWow: { min: 0, max: 1, step: 0.01 },
-  degradeModSlowFlutter: { min: 0, max: 1, step: 0.01 },
-  degradeModSlowLp: { min: 0, max: 1, step: 0.01 },
-  degradeModSlowWet: { min: 0, max: 1, step: 0.01 },
-  degradeModSlowDropout: { min: 0, max: 1, step: 0.01 },
-  degradeModSlowAlias: { min: 0, max: 1, step: 0.01 },
-  degradeModFlutterWow: { min: 0, max: 1, step: 0.01 },
-  degradeModFlutterFlutter: { min: 0, max: 1, step: 0.01 },
-  degradeModFlutterLp: { min: 0, max: 1, step: 0.01 },
-  degradeModFlutterWet: { min: 0, max: 1, step: 0.01 },
-  degradeModFlutterDropout: { min: 0, max: 1, step: 0.01 },
-  degradeModFlutterAlias: { min: 0, max: 1, step: 0.01 },
-  degradeModRandomWow: { min: 0, max: 1, step: 0.01 },
-  degradeModRandomFlutter: { min: 0, max: 1, step: 0.01 },
-  degradeModRandomLp: { min: 0, max: 1, step: 0.01 },
-  degradeModRandomWet: { min: 0, max: 1, step: 0.01 },
-  degradeModRandomDropout: { min: 0, max: 1, step: 0.01 },
-  degradeModRandomAlias: { min: 0, max: 1, step: 0.01 },
-  degradeModEnvWow: { min: 0, max: 1, step: 0.01 },
-  degradeModEnvFlutter: { min: 0, max: 1, step: 0.01 },
-  degradeModEnvLp: { min: 0, max: 1, step: 0.01 },
-  degradeModEnvWet: { min: 0, max: 1, step: 0.01 },
-  degradeModEnvDropout: { min: 0, max: 1, step: 0.01 },
-  degradeModEnvAlias: { min: 0, max: 1, step: 0.01 },
-  degradeModNoiseWow: { min: 0, max: 1, step: 0.01 },
-  degradeModNoiseFlutter: { min: 0, max: 1, step: 0.01 },
-  degradeModNoiseLp: { min: 0, max: 1, step: 0.01 },
-  degradeModNoiseWet: { min: 0, max: 1, step: 0.01 },
-  degradeModNoiseDropout: { min: 0, max: 1, step: 0.01 },
-  degradeModNoiseAlias: { min: 0, max: 1, step: 0.01 },
-  characterStereo: { min: 0, max: 1, step: 0.01 },
-  characterEnvFollow: { min: 0, max: 1, step: 0.01 },
-  characterDepth: { min: 0, max: 1, step: 0.01 },
-  characterRate: { min: 0, max: 1, step: 0.01 },
-  characterDamp: { min: 0, max: 1, step: 0.01 },
-  characterAntiComb: { min: 0, max: 1, step: 0.01 },
-  characterDiffusion: { min: 0, max: 1, step: 0.01 },
-  degradeEventAmount: { min: 0, max: 1, step: 0.01 },
-  degradeProfileAmount: { min: 0, max: 1, step: 0.01 },
-  degradeDitherAmount: { min: 0, max: 1, step: 0.01 },
+  driftResonance: { min: 0, max: 1, step: 0.01 },
+  erosionNoise: { min: 0, max: 1, step: 0.01 },
+  erosionSaturation: { min: 0, max: 1, step: 0.01 },
+  erosionCorrosion: { min: 0, max: 1, step: 0.01 },
+  erosionModSlowWow: { min: 0, max: 1, step: 0.01 },
+  erosionModSlowFlutter: { min: 0, max: 1, step: 0.01 },
+  erosionModSlowLp: { min: 0, max: 1, step: 0.01 },
+  erosionModSlowWet: { min: 0, max: 1, step: 0.01 },
+  erosionModSlowDropout: { min: 0, max: 1, step: 0.01 },
+  erosionModSlowAlias: { min: 0, max: 1, step: 0.01 },
+  erosionModFlutterWow: { min: 0, max: 1, step: 0.01 },
+  erosionModFlutterFlutter: { min: 0, max: 1, step: 0.01 },
+  erosionModFlutterLp: { min: 0, max: 1, step: 0.01 },
+  erosionModFlutterWet: { min: 0, max: 1, step: 0.01 },
+  erosionModFlutterDropout: { min: 0, max: 1, step: 0.01 },
+  erosionModFlutterAlias: { min: 0, max: 1, step: 0.01 },
+  erosionModRandomWow: { min: 0, max: 1, step: 0.01 },
+  erosionModRandomFlutter: { min: 0, max: 1, step: 0.01 },
+  erosionModRandomLp: { min: 0, max: 1, step: 0.01 },
+  erosionModRandomWet: { min: 0, max: 1, step: 0.01 },
+  erosionModRandomDropout: { min: 0, max: 1, step: 0.01 },
+  erosionModRandomAlias: { min: 0, max: 1, step: 0.01 },
+  erosionModEnvWow: { min: 0, max: 1, step: 0.01 },
+  erosionModEnvFlutter: { min: 0, max: 1, step: 0.01 },
+  erosionModEnvLp: { min: 0, max: 1, step: 0.01 },
+  erosionModEnvWet: { min: 0, max: 1, step: 0.01 },
+  erosionModEnvDropout: { min: 0, max: 1, step: 0.01 },
+  erosionModEnvAlias: { min: 0, max: 1, step: 0.01 },
+  erosionModNoiseWow: { min: 0, max: 1, step: 0.01 },
+  erosionModNoiseFlutter: { min: 0, max: 1, step: 0.01 },
+  erosionModNoiseLp: { min: 0, max: 1, step: 0.01 },
+  erosionModNoiseWet: { min: 0, max: 1, step: 0.01 },
+  erosionModNoiseDropout: { min: 0, max: 1, step: 0.01 },
+  erosionModNoiseAlias: { min: 0, max: 1, step: 0.01 },
+  driftStereo: { min: 0, max: 1, step: 0.01 },
+  driftEnvFollow: { min: 0, max: 1, step: 0.01 },
+  driftDepth: { min: 0, max: 1, step: 0.01 },
+  driftRate: { min: 0, max: 1, step: 0.01 },
+  driftDamp: { min: 0, max: 1, step: 0.01 },
+  driftAntiComb: { min: 0, max: 1, step: 0.01 },
+  driftDiffusion: { min: 0, max: 1, step: 0.01 },
+  erosionEventAmount: { min: 0, max: 1, step: 0.01 },
+  erosionProfileAmount: { min: 0, max: 1, step: 0.01 },
+  erosionDitherAmount: { min: 0, max: 1, step: 0.01 },
   endCompThreshold: { min: -60, max: 0, step: 1 },
   endCompKnee: { min: 0, max: 40, step: 1 },
   endCompRatio: { min: 1, max: 20, step: 0.1 },
@@ -4634,43 +4870,123 @@ const LEGACY_STATE_KEY_ALIASES = {
   leadDelaySpread: 'delayASpread',
   leadDelayFilter: 'delayAFilter',
   leadDelaySend: 'delayASend',
-  characterWow: 'degradeWow',
-  characterFlutter: 'degradeFlutter',
-  characterDrift: 'degradeDrift',
-  characterTone: 'degradeTone',
+  characterLevel: 'degradeLevel',
+  characterPad1Send: 'degradePad1Send',
+  characterPad2Send: 'degradePad2Send',
+  characterLead1Send: 'degradeLead1Send',
+  characterLead2Send: 'degradeLead2Send',
+  characterPianoSend: 'degradePianoSend',
+  characterDrumSend: 'degradeDrumSend',
+  characterWavesSend: 'degradeWavesSend',
+  characterWaterSend: 'degradeWaterSend',
+  characterInsectsSend: 'degradeInsectsSend',
+  characterNatureSend: 'degradeNatureSend',
+  delayACharacterSend: 'delayADegradeSend',
+  delayBCharacterSend: 'delayBDegradeSend',
+  granularCharacterSend: 'granularDegradeSend',
+  reverbCharacterSend: 'reverbDegradeSend',
+  driftLevel: 'degradeLevel',
+  driftPad1Send: 'degradePad1Send',
+  driftPad2Send: 'degradePad2Send',
+  driftLead1Send: 'degradeLead1Send',
+  driftLead2Send: 'degradeLead2Send',
+  driftPianoSend: 'degradePianoSend',
+  driftDrumSend: 'degradeDrumSend',
+  driftWavesSend: 'degradeWavesSend',
+  driftWaterSend: 'degradeWaterSend',
+  driftInsectsSend: 'degradeInsectsSend',
+  driftNatureSend: 'degradeNatureSend',
+  delayADriftSend: 'delayADegradeSend',
+  delayBDriftSend: 'delayBDegradeSend',
+  granularDriftSend: 'granularDegradeSend',
+  reverbDriftSend: 'reverbDegradeSend',
+  characterEnabled: 'driftEnabled',
+  characterMode: 'driftMode',
+  characterQuality: 'driftQuality',
+  characterAntiComb: 'driftAntiComb',
+  characterDiffusion: 'driftDiffusion',
+  characterMix: 'driftMix',
+  characterAge: 'driftAge',
+  characterBias: 'driftBias',
+  characterLpgAmount: 'driftLpgAmount',
+  characterWetHp: 'driftWetHp',
+  characterResonance: 'driftResonance',
+  characterStereo: 'driftStereo',
+  characterEnvFollow: 'driftEnvFollow',
+  characterDepth: 'driftDepth',
+  characterRate: 'driftRate',
+  characterDamp: 'driftDamp',
+  characterWow: 'erosionWow',
+  characterFlutter: 'erosionFlutter',
+  characterDrift: 'erosionDrift',
+  characterTone: 'erosionTone',
   characterHp: 'degradeHp',
   characterLp: 'degradeLp',
-  characterNoise: 'degradeNoise',
-  characterSaturation: 'degradeSaturation',
-  characterCorrosion: 'degradeCorrosion',
+  characterNoise: 'erosionNoise',
+  characterSaturation: 'erosionSaturation',
+  characterCorrosion: 'erosionCorrosion',
+  degradeQuality: 'erosionQuality',
+  degradeEventAmount: 'erosionEventAmount',
+  degradeProfileAmount: 'erosionProfileAmount',
+  degradeDitherAmount: 'erosionDitherAmount',
+  degradeMix: 'erosionMix',
+  degradeAge: 'erosionAge',
+  degradeGeneration: 'erosionGeneration',
+  degradeAlias: 'erosionAlias',
+  degradeWow: 'erosionWow',
+  degradeFlutter: 'erosionFlutter',
+  degradeDrift: 'erosionDrift',
+  degradeWobbleSpeed: 'erosionWobbleSpeed',
+  degradeTone: 'erosionTone',
+  degradeNoise: 'erosionNoise',
+  degradeSaturation: 'erosionSaturation',
+  degradeCorrosion: 'erosionCorrosion',
 } as const satisfies Record<string, keyof SliderState>;
 
-const LEGACY_STATE_KEY_FALLBACKS = Object.fromEntries(
-  Object.entries(LEGACY_STATE_KEY_ALIASES).map(([legacyKey, currentKey]) => [currentKey, legacyKey]),
-) as Partial<Record<keyof SliderState, string>>;
+const LEGACY_STATE_KEY_FALLBACKS = Object.entries(LEGACY_STATE_KEY_ALIASES).reduce(
+  (fallbacks, [legacyKey, currentKey]) => {
+    if (!fallbacks[currentKey]) {
+      fallbacks[currentKey] = legacyKey;
+    }
+    return fallbacks;
+  },
+  {} as Partial<Record<keyof SliderState, string>>,
+);
 
 function applyLegacyStateKeyAliases(record: Record<string, unknown>): void {
+  const legacyDegradeEnabled = record.degradeEnabled;
+  const hasLegacyErosionPayload = [
+    'degradeQuality',
+    'degradeEventAmount',
+    'degradeProfileAmount',
+    'degradeDitherAmount',
+    'degradeMix',
+    'degradeAge',
+    'degradeGeneration',
+    'degradeAlias',
+    'degradeWow',
+    'degradeFlutter',
+    'degradeDrift',
+    'degradeWobbleSpeed',
+    'degradeTone',
+    'degradeNoise',
+    'degradeSaturation',
+    'degradeCorrosion',
+  ].some((key) => key in record);
+
+  if (!('erosionEnabled' in record) && hasLegacyErosionPayload && legacyDegradeEnabled !== undefined) {
+    record.erosionEnabled = legacyDegradeEnabled;
+  }
+
   for (const [legacyKey, currentKey] of Object.entries(LEGACY_STATE_KEY_ALIASES)) {
     if (!(currentKey in record) && legacyKey in record) {
       record[currentKey] = record[legacyKey];
     }
     delete record[legacyKey];
   }
-  if (record.characterWetHp !== undefined) {
-    if (record.degradeHp === undefined) {
-      record.degradeHp = record.characterWetHp;
-    } else {
-      const legacyWetHp = typeof record.characterWetHp === 'number'
-        ? record.characterWetHp
-        : Number(record.characterWetHp);
-      const currentHp = typeof record.degradeHp === 'number'
-        ? record.degradeHp
-        : Number(record.degradeHp);
-      if (Number.isFinite(legacyWetHp) && Number.isFinite(currentHp) && Math.abs(currentHp - DEFAULT_STATE.degradeHp) < 1e-9) {
-        record.degradeHp = legacyWetHp;
-      }
-    }
-    delete record.characterWetHp;
+
+  if (!('degradeEnabled' in record) && (record.driftEnabled === true || record.erosionEnabled === true)) {
+    record.degradeEnabled = true;
   }
 }
 
@@ -4986,20 +5302,20 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.dynamicsSaturationMode = value as SliderState['dynamicsSaturationMode'];
         } else if (key === 'sidechainEnabled') {
           state.sidechainEnabled = value === 'true';
-        } else if (key === 'characterEnabled') {
-          state.characterEnabled = value === 'true';
-        } else if (key === 'degradeEnabled') {
-          state.degradeEnabled = value === 'true';
+        } else if (key === 'driftEnabled') {
+          state.driftEnabled = value === 'true';
+        } else if (key === 'erosionEnabled') {
+          state.erosionEnabled = value === 'true';
         } else if (
           (key === 'sidechainKeyA' || key === 'sidechainKeyB') &&
           ['off', 'sub', 'kick', 'click', 'beepHi', 'beepLo', 'noise', 'membrane'].includes(value)
         ) {
           (state as Record<string, unknown>)[key] = value;
-        } else if (key === 'characterMode') {
+        } else if (key === 'driftMode') {
           if (['clean', 'abyssWater', 'shallowWater'].includes(value)) {
-            state.characterMode = value as SliderState['characterMode'];
+            state.driftMode = value as SliderState['driftMode'];
           } else if (['degenerateGain', 'generationLoss', 'wornVhs'].includes(value)) {
-            state.characterMode = 'clean';
+            state.driftMode = 'clean';
           }
         } else if (key === 'endCompEnabled') {
           state.endCompEnabled = value === 'true';
@@ -5133,17 +5449,6 @@ export function decodeStateFromUrl(search: string): SliderState | null {
     state.sequencerMasterBPM = quantize('sequencerMasterBPM', sharedSequencerBpm);
     state.synthEuclidBaseBPM = state.sequencerMasterBPM;
     state.drumEuclidBaseBPM = state.sequencerMasterBPM;
-
-    const legacyCharacterWetHp = params.get('characterWetHp');
-    const explicitDynamicsHp = params.get('degradeHp') ?? params.get('characterHp');
-    if (legacyCharacterWetHp !== null) {
-      const legacyHp = parseFloat(legacyCharacterWetHp);
-      const currentHp = explicitDynamicsHp === null ? NaN : parseFloat(explicitDynamicsHp);
-      if (!Number.isNaN(legacyHp) && (Number.isNaN(currentHp) || Math.abs(currentHp - DEFAULT_STATE.degradeHp) < 1e-9)) {
-        state.degradeHp = quantize('degradeHp', legacyHp);
-      }
-      state.characterWetHp = DEFAULT_STATE.characterWetHp;
-    }
 
     sanitizeGranularStateCompatibility(state as unknown as Record<string, unknown>);
     return state;

@@ -335,7 +335,7 @@ for (const { sdk, deploymentTarget } of [
     '-Icpp/KesshoCore/include',
     '-Icpp/KesshoCore/generated',
     '-Icpp/KesshoCore/src/product',
-    '-Iwasm/dynamics-character',
+    '-Iwasm/dynamics-drift',
     '-Iwasm/dynamics-degrade',
     '-Iwasm/reverb',
     '-Iwasm/granular-fx',

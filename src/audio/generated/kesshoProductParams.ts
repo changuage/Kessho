@@ -22,6 +22,7 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SourceDelayASend: 107,
   SourceDelayBSend: 108,
   SourceGranularSend: 109,
+  SourceDegradeSend: 124,
   SourceDiffuseSend: 113,
   SourcePostLpfHz: 110,
   SourceStereoWidth: 111,
@@ -326,33 +327,33 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   FxSpectralFreezeRouting: 936,
   FxSpectralFreezeReverbCrossfade: 937,
   FxDynamicsEnabled: 940,
-  FxDynamicsCharacterEnabled: 941,
-  FxDynamicsCharacterMode: 942,
-  FxDynamicsCharacterMix: 943,
-  FxDynamicsCharacterAge: 944,
-  FxDynamicsCharacterBias: 945,
-  FxDynamicsCharacterLpgAmount: 946,
-  FxDynamicsCharacterResonance: 947,
-  FxDynamicsCharacterStereo: 948,
-  FxDynamicsCharacterEnvFollow: 949,
-  FxDynamicsCharacterDepth: 950,
-  FxDynamicsCharacterRate: 951,
-  FxDynamicsCharacterDamp: 952,
-  FxDynamicsDegradeEnabled: 953,
-  FxDynamicsDegradeMix: 954,
-  FxDynamicsDegradeAge: 955,
-  FxDynamicsDegradeGeneration: 956,
-  FxDynamicsDegradeAlias: 957,
-  FxDynamicsDegradeWow: 958,
-  FxDynamicsDegradeFlutter: 959,
-  FxDynamicsDegradeDrift: 960,
-  FxDynamicsDegradeWobbleSpeed: 961,
-  FxDynamicsDegradeTone: 962,
+  FxDynamicsDriftEnabled: 941,
+  FxDynamicsDriftMode: 942,
+  FxDynamicsDriftMix: 943,
+  FxDynamicsDriftAge: 944,
+  FxDynamicsDriftBias: 945,
+  FxDynamicsDriftLpgAmount: 946,
+  FxDynamicsDriftResonance: 947,
+  FxDynamicsDriftStereo: 948,
+  FxDynamicsDriftEnvFollow: 949,
+  FxDynamicsDriftDepth: 950,
+  FxDynamicsDriftRate: 951,
+  FxDynamicsDriftDamp: 952,
+  FxDynamicsErosionEnabled: 953,
+  FxDynamicsErosionMix: 954,
+  FxDynamicsErosionAge: 955,
+  FxDynamicsErosionGeneration: 956,
+  FxDynamicsErosionAlias: 957,
+  FxDynamicsErosionWow: 958,
+  FxDynamicsErosionFlutter: 959,
+  FxDynamicsErosionDrift: 960,
+  FxDynamicsErosionWobbleSpeed: 961,
+  FxDynamicsErosionTone: 962,
   FxDynamicsDegradeHp: 963,
   FxDynamicsDegradeLp: 964,
-  FxDynamicsDegradeNoise: 965,
-  FxDynamicsDegradeSaturation: 966,
-  FxDynamicsDegradeCorrosion: 967,
+  FxDynamicsErosionNoise: 965,
+  FxDynamicsErosionSaturation: 966,
+  FxDynamicsErosionCorrosion: 967,
   FxDynamicsModSlowWow: 1011,
   FxDynamicsModSlowFlutter: 1012,
   FxDynamicsModSlowLp: 1013,
@@ -400,19 +401,51 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   FxDynamicsEndCompDetectorTilt: 982,
   FxDynamicsEndCompAutoMakeup: 983,
   FxDynamicsEndCompProgramRelease: 984,
-  FxDynamicsCharacterQuality: 1041,
-  FxDynamicsCharacterAntiComb: 1042,
-  FxDynamicsCharacterDiffusion: 1043,
-  FxDynamicsDegradeQuality: 1044,
-  FxDynamicsDegradeEventAmount: 1045,
-  FxDynamicsDegradeProfileAmount: 1046,
-  FxDynamicsDegradeDitherAmount: 1047,
+  FxDynamicsDriftQuality: 1041,
+  FxDynamicsDriftAntiComb: 1042,
+  FxDynamicsDriftDiffusion: 1043,
+  FxDynamicsErosionQuality: 1044,
+  FxDynamicsErosionEventAmount: 1045,
+  FxDynamicsErosionProfileAmount: 1046,
+  FxDynamicsErosionDitherAmount: 1047,
   FxDynamicsEndCompMode: 1048,
   FxDynamicsEndCompPeakBlend: 1049,
   FxDynamicsEndCompClarity: 1050,
   FxDynamicsEndCompTwoBandAmount: 1051,
   FxDynamicsEndCompBandSplit: 1052,
   FxDynamicsSaturationQuality: 1053,
+  FxDynamicsEq1Enabled: 1161,
+  FxDynamicsEq1InputGain: 1162,
+  FxDynamicsEq1OutputGain: 1163,
+  FxDynamicsEq1LowType: 1164,
+  FxDynamicsEq1LowFreq: 1165,
+  FxDynamicsEq1LowGain: 1166,
+  FxDynamicsEq1LowQ: 1167,
+  FxDynamicsEq1LowSlope: 1168,
+  FxDynamicsEq1MidFreq: 1169,
+  FxDynamicsEq1MidGain: 1170,
+  FxDynamicsEq1MidQ: 1171,
+  FxDynamicsEq1HighType: 1172,
+  FxDynamicsEq1HighFreq: 1173,
+  FxDynamicsEq1HighGain: 1174,
+  FxDynamicsEq1HighQ: 1175,
+  FxDynamicsEq1HighSlope: 1176,
+  FxDynamicsEq2Enabled: 1177,
+  FxDynamicsEq2InputGain: 1178,
+  FxDynamicsEq2OutputGain: 1179,
+  FxDynamicsEq2LowType: 1180,
+  FxDynamicsEq2LowFreq: 1181,
+  FxDynamicsEq2LowGain: 1182,
+  FxDynamicsEq2LowQ: 1183,
+  FxDynamicsEq2LowSlope: 1184,
+  FxDynamicsEq2MidFreq: 1185,
+  FxDynamicsEq2MidGain: 1186,
+  FxDynamicsEq2MidQ: 1187,
+  FxDynamicsEq2HighType: 1188,
+  FxDynamicsEq2HighFreq: 1189,
+  FxDynamicsEq2HighGain: 1190,
+  FxDynamicsEq2HighQ: 1191,
+  FxDynamicsEq2HighSlope: 1192,
   FxSidechainEnabled: 985,
   FxSidechainKeyA: 986,
   FxSidechainKeyB: 987,
@@ -448,6 +481,27 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   RoutingDelayBToReverb: 406,
   RoutingGranularToDelayA: 407,
   RoutingGranularToDelayB: 408,
+  RoutingDelayAToDegrade: 409,
+  RoutingDelayBToDegrade: 410,
+  RoutingGranularToDegrade: 411,
+  RoutingReverbToDegrade: 412,
+  RoutingDegradeReturnLevel: 413,
+  RoutingDynamicsPad1Bus: 414,
+  RoutingDynamicsPad2Bus: 415,
+  RoutingDynamicsLead1Bus: 416,
+  RoutingDynamicsLead2Bus: 417,
+  RoutingDynamicsPianoBus: 418,
+  RoutingDynamicsDrumBus: 419,
+  RoutingDynamicsGranularBus: 420,
+  RoutingDynamicsWavesBus: 421,
+  RoutingDynamicsWaterBus: 422,
+  RoutingDynamicsInsectsBus: 423,
+  RoutingDynamicsNatureBus: 424,
+  RoutingDynamicsDelayABus: 425,
+  RoutingDynamicsDelayBBus: 426,
+  RoutingDynamicsDegradeBus: 427,
+  RoutingDynamicsReverbBus: 428,
+  RoutingDegradeToReverb: 429,
   MasterGain: 500,
   MasterLimiterCeilingDb: 501,
   RngSeed: 600,
@@ -614,6 +668,14 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "path": "sources.*.granularSend",
     "type": "float",
     "id": 109,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SourceDegradeSend",
+    "path": "sources.*.degradeSend",
+    "type": "float",
+    "id": 124,
     "min": 0,
     "max": 2
   },
@@ -2982,172 +3044,172 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 940
   },
   {
-    "name": "FxDynamicsCharacterEnabled",
-    "path": "fx.dynamics.character.enabled",
+    "name": "FxDynamicsDriftEnabled",
+    "path": "fx.dynamics.drift.enabled",
     "type": "bool",
     "id": 941
   },
   {
-    "name": "FxDynamicsCharacterMode",
-    "path": "fx.dynamics.character.mode",
+    "name": "FxDynamicsDriftMode",
+    "path": "fx.dynamics.drift.mode",
     "type": "uint",
     "id": 942,
     "min": 0,
     "max": 2
   },
   {
-    "name": "FxDynamicsCharacterMix",
-    "path": "fx.dynamics.character.mix",
+    "name": "FxDynamicsDriftMix",
+    "path": "fx.dynamics.drift.mix",
     "type": "float",
     "id": 943,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsCharacterAge",
-    "path": "fx.dynamics.character.age",
+    "name": "FxDynamicsDriftAge",
+    "path": "fx.dynamics.drift.age",
     "type": "float",
     "id": 944,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsCharacterBias",
-    "path": "fx.dynamics.character.bias",
+    "name": "FxDynamicsDriftBias",
+    "path": "fx.dynamics.drift.bias",
     "type": "float",
     "id": 945,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsCharacterLpgAmount",
-    "path": "fx.dynamics.character.lpgAmount",
+    "name": "FxDynamicsDriftLpgAmount",
+    "path": "fx.dynamics.drift.lpgAmount",
     "type": "float",
     "id": 946,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsCharacterResonance",
-    "path": "fx.dynamics.character.resonance",
+    "name": "FxDynamicsDriftResonance",
+    "path": "fx.dynamics.drift.resonance",
     "type": "float",
     "id": 947,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsCharacterStereo",
-    "path": "fx.dynamics.character.stereo",
+    "name": "FxDynamicsDriftStereo",
+    "path": "fx.dynamics.drift.stereo",
     "type": "float",
     "id": 948,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsCharacterEnvFollow",
-    "path": "fx.dynamics.character.envFollow",
+    "name": "FxDynamicsDriftEnvFollow",
+    "path": "fx.dynamics.drift.envFollow",
     "type": "float",
     "id": 949,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsCharacterDepth",
-    "path": "fx.dynamics.character.depth",
+    "name": "FxDynamicsDriftDepth",
+    "path": "fx.dynamics.drift.depth",
     "type": "float",
     "id": 950,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsCharacterRate",
-    "path": "fx.dynamics.character.rate",
+    "name": "FxDynamicsDriftRate",
+    "path": "fx.dynamics.drift.rate",
     "type": "float",
     "id": 951,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsCharacterDamp",
-    "path": "fx.dynamics.character.damp",
+    "name": "FxDynamicsDriftDamp",
+    "path": "fx.dynamics.drift.damp",
     "type": "float",
     "id": 952,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeEnabled",
-    "path": "fx.dynamics.degrade.enabled",
+    "name": "FxDynamicsErosionEnabled",
+    "path": "fx.dynamics.degrade.erosion.enabled",
     "type": "bool",
     "id": 953
   },
   {
-    "name": "FxDynamicsDegradeMix",
-    "path": "fx.dynamics.degrade.mix",
+    "name": "FxDynamicsErosionMix",
+    "path": "fx.dynamics.degrade.erosion.mix",
     "type": "float",
     "id": 954,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeAge",
-    "path": "fx.dynamics.degrade.age",
+    "name": "FxDynamicsErosionAge",
+    "path": "fx.dynamics.degrade.erosion.age",
     "type": "float",
     "id": 955,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeGeneration",
-    "path": "fx.dynamics.degrade.generation",
+    "name": "FxDynamicsErosionGeneration",
+    "path": "fx.dynamics.degrade.erosion.generation",
     "type": "float",
     "id": 956,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeAlias",
-    "path": "fx.dynamics.degrade.alias",
+    "name": "FxDynamicsErosionAlias",
+    "path": "fx.dynamics.degrade.erosion.alias",
     "type": "float",
     "id": 957,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeWow",
-    "path": "fx.dynamics.degrade.wow",
+    "name": "FxDynamicsErosionWow",
+    "path": "fx.dynamics.degrade.erosion.wow",
     "type": "float",
     "id": 958,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeFlutter",
-    "path": "fx.dynamics.degrade.flutter",
+    "name": "FxDynamicsErosionFlutter",
+    "path": "fx.dynamics.degrade.erosion.flutter",
     "type": "float",
     "id": 959,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeDrift",
-    "path": "fx.dynamics.degrade.drift",
+    "name": "FxDynamicsErosionDrift",
+    "path": "fx.dynamics.degrade.erosion.drift",
     "type": "float",
     "id": 960,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeWobbleSpeed",
-    "path": "fx.dynamics.degrade.wobbleSpeed",
+    "name": "FxDynamicsErosionWobbleSpeed",
+    "path": "fx.dynamics.degrade.erosion.wobbleSpeed",
     "type": "float",
     "id": 961,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeTone",
-    "path": "fx.dynamics.degrade.tone",
+    "name": "FxDynamicsErosionTone",
+    "path": "fx.dynamics.degrade.erosion.tone",
     "type": "float",
     "id": 962,
     "min": 0,
@@ -3170,24 +3232,24 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeNoise",
-    "path": "fx.dynamics.degrade.noise",
+    "name": "FxDynamicsErosionNoise",
+    "path": "fx.dynamics.degrade.erosion.noise",
     "type": "float",
     "id": 965,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeSaturation",
-    "path": "fx.dynamics.degrade.saturation",
+    "name": "FxDynamicsErosionSaturation",
+    "path": "fx.dynamics.degrade.erosion.saturation",
     "type": "float",
     "id": 966,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeCorrosion",
-    "path": "fx.dynamics.degrade.corrosion",
+    "name": "FxDynamicsErosionCorrosion",
+    "path": "fx.dynamics.degrade.erosion.corrosion",
     "type": "float",
     "id": 967,
     "min": 0,
@@ -3566,56 +3628,56 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "max": 1
   },
   {
-    "name": "FxDynamicsCharacterQuality",
-    "path": "fx.dynamics.character.quality",
+    "name": "FxDynamicsDriftQuality",
+    "path": "fx.dynamics.drift.quality",
     "type": "uint",
     "id": 1041,
     "min": 0,
     "max": 2
   },
   {
-    "name": "FxDynamicsCharacterAntiComb",
-    "path": "fx.dynamics.character.antiComb",
+    "name": "FxDynamicsDriftAntiComb",
+    "path": "fx.dynamics.drift.antiComb",
     "type": "float",
     "id": 1042,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsCharacterDiffusion",
-    "path": "fx.dynamics.character.diffusion",
+    "name": "FxDynamicsDriftDiffusion",
+    "path": "fx.dynamics.drift.diffusion",
     "type": "float",
     "id": 1043,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeQuality",
-    "path": "fx.dynamics.degrade.quality",
+    "name": "FxDynamicsErosionQuality",
+    "path": "fx.dynamics.degrade.erosion.quality",
     "type": "uint",
     "id": 1044,
     "min": 0,
     "max": 2
   },
   {
-    "name": "FxDynamicsDegradeEventAmount",
-    "path": "fx.dynamics.degrade.eventAmount",
+    "name": "FxDynamicsErosionEventAmount",
+    "path": "fx.dynamics.degrade.erosion.eventAmount",
     "type": "float",
     "id": 1045,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeProfileAmount",
-    "path": "fx.dynamics.degrade.profileAmount",
+    "name": "FxDynamicsErosionProfileAmount",
+    "path": "fx.dynamics.degrade.erosion.profileAmount",
     "type": "float",
     "id": 1046,
     "min": 0,
     "max": 1
   },
   {
-    "name": "FxDynamicsDegradeDitherAmount",
-    "path": "fx.dynamics.degrade.ditherAmount",
+    "name": "FxDynamicsErosionDitherAmount",
+    "path": "fx.dynamics.degrade.erosion.ditherAmount",
     "type": "float",
     "id": 1047,
     "min": 0,
@@ -3668,6 +3730,258 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 1053,
     "min": 0,
     "max": 2
+  },
+  {
+    "name": "FxDynamicsEq1Enabled",
+    "path": "fx.dynamics.eq1.enabled",
+    "type": "bool",
+    "id": 1161
+  },
+  {
+    "name": "FxDynamicsEq1InputGain",
+    "path": "fx.dynamics.eq1.inputGain",
+    "type": "float",
+    "id": 1162,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxDynamicsEq1OutputGain",
+    "path": "fx.dynamics.eq1.outputGain",
+    "type": "float",
+    "id": 1163,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxDynamicsEq1LowType",
+    "path": "fx.dynamics.eq1.low.type",
+    "type": "uint",
+    "id": 1164,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEq1LowFreq",
+    "path": "fx.dynamics.eq1.low.freq",
+    "type": "float",
+    "id": 1165,
+    "min": 20,
+    "max": 20000
+  },
+  {
+    "name": "FxDynamicsEq1LowGain",
+    "path": "fx.dynamics.eq1.low.gain",
+    "type": "float",
+    "id": 1166,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxDynamicsEq1LowQ",
+    "path": "fx.dynamics.eq1.low.q",
+    "type": "float",
+    "id": 1167,
+    "min": 0.1,
+    "max": 18
+  },
+  {
+    "name": "FxDynamicsEq1LowSlope",
+    "path": "fx.dynamics.eq1.low.slope",
+    "type": "float",
+    "id": 1168,
+    "min": 0.25,
+    "max": 4
+  },
+  {
+    "name": "FxDynamicsEq1MidFreq",
+    "path": "fx.dynamics.eq1.mid.freq",
+    "type": "float",
+    "id": 1169,
+    "min": 20,
+    "max": 20000
+  },
+  {
+    "name": "FxDynamicsEq1MidGain",
+    "path": "fx.dynamics.eq1.mid.gain",
+    "type": "float",
+    "id": 1170,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxDynamicsEq1MidQ",
+    "path": "fx.dynamics.eq1.mid.q",
+    "type": "float",
+    "id": 1171,
+    "min": 0.1,
+    "max": 18
+  },
+  {
+    "name": "FxDynamicsEq1HighType",
+    "path": "fx.dynamics.eq1.high.type",
+    "type": "uint",
+    "id": 1172,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEq1HighFreq",
+    "path": "fx.dynamics.eq1.high.freq",
+    "type": "float",
+    "id": 1173,
+    "min": 20,
+    "max": 20000
+  },
+  {
+    "name": "FxDynamicsEq1HighGain",
+    "path": "fx.dynamics.eq1.high.gain",
+    "type": "float",
+    "id": 1174,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxDynamicsEq1HighQ",
+    "path": "fx.dynamics.eq1.high.q",
+    "type": "float",
+    "id": 1175,
+    "min": 0.1,
+    "max": 18
+  },
+  {
+    "name": "FxDynamicsEq1HighSlope",
+    "path": "fx.dynamics.eq1.high.slope",
+    "type": "float",
+    "id": 1176,
+    "min": 0.25,
+    "max": 4
+  },
+  {
+    "name": "FxDynamicsEq2Enabled",
+    "path": "fx.dynamics.eq2.enabled",
+    "type": "bool",
+    "id": 1177
+  },
+  {
+    "name": "FxDynamicsEq2InputGain",
+    "path": "fx.dynamics.eq2.inputGain",
+    "type": "float",
+    "id": 1178,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxDynamicsEq2OutputGain",
+    "path": "fx.dynamics.eq2.outputGain",
+    "type": "float",
+    "id": 1179,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxDynamicsEq2LowType",
+    "path": "fx.dynamics.eq2.low.type",
+    "type": "uint",
+    "id": 1180,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEq2LowFreq",
+    "path": "fx.dynamics.eq2.low.freq",
+    "type": "float",
+    "id": 1181,
+    "min": 20,
+    "max": 20000
+  },
+  {
+    "name": "FxDynamicsEq2LowGain",
+    "path": "fx.dynamics.eq2.low.gain",
+    "type": "float",
+    "id": 1182,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxDynamicsEq2LowQ",
+    "path": "fx.dynamics.eq2.low.q",
+    "type": "float",
+    "id": 1183,
+    "min": 0.1,
+    "max": 18
+  },
+  {
+    "name": "FxDynamicsEq2LowSlope",
+    "path": "fx.dynamics.eq2.low.slope",
+    "type": "float",
+    "id": 1184,
+    "min": 0.25,
+    "max": 4
+  },
+  {
+    "name": "FxDynamicsEq2MidFreq",
+    "path": "fx.dynamics.eq2.mid.freq",
+    "type": "float",
+    "id": 1185,
+    "min": 20,
+    "max": 20000
+  },
+  {
+    "name": "FxDynamicsEq2MidGain",
+    "path": "fx.dynamics.eq2.mid.gain",
+    "type": "float",
+    "id": 1186,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxDynamicsEq2MidQ",
+    "path": "fx.dynamics.eq2.mid.q",
+    "type": "float",
+    "id": 1187,
+    "min": 0.1,
+    "max": 18
+  },
+  {
+    "name": "FxDynamicsEq2HighType",
+    "path": "fx.dynamics.eq2.high.type",
+    "type": "uint",
+    "id": 1188,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "FxDynamicsEq2HighFreq",
+    "path": "fx.dynamics.eq2.high.freq",
+    "type": "float",
+    "id": 1189,
+    "min": 20,
+    "max": 20000
+  },
+  {
+    "name": "FxDynamicsEq2HighGain",
+    "path": "fx.dynamics.eq2.high.gain",
+    "type": "float",
+    "id": 1190,
+    "min": -24,
+    "max": 24
+  },
+  {
+    "name": "FxDynamicsEq2HighQ",
+    "path": "fx.dynamics.eq2.high.q",
+    "type": "float",
+    "id": 1191,
+    "min": 0.1,
+    "max": 18
+  },
+  {
+    "name": "FxDynamicsEq2HighSlope",
+    "path": "fx.dynamics.eq2.high.slope",
+    "type": "float",
+    "id": 1192,
+    "min": 0.25,
+    "max": 4
   },
   {
     "name": "FxSidechainEnabled",
@@ -3944,6 +4258,174 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "path": "routing.granularToDelayB",
     "type": "float",
     "id": 408,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "RoutingDelayAToDegrade",
+    "path": "routing.delayAToDegrade",
+    "type": "float",
+    "id": 409,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "RoutingDelayBToDegrade",
+    "path": "routing.delayBToDegrade",
+    "type": "float",
+    "id": 410,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "RoutingGranularToDegrade",
+    "path": "routing.granularToDegrade",
+    "type": "float",
+    "id": 411,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "RoutingReverbToDegrade",
+    "path": "routing.reverbToDegrade",
+    "type": "float",
+    "id": 412,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "RoutingDegradeReturnLevel",
+    "path": "routing.degradeReturnLevel",
+    "type": "float",
+    "id": 413,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "RoutingDynamicsPad1Bus",
+    "path": "routing.dynamicsPad1Bus",
+    "type": "uint",
+    "id": 414,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsPad2Bus",
+    "path": "routing.dynamicsPad2Bus",
+    "type": "uint",
+    "id": 415,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsLead1Bus",
+    "path": "routing.dynamicsLead1Bus",
+    "type": "uint",
+    "id": 416,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsLead2Bus",
+    "path": "routing.dynamicsLead2Bus",
+    "type": "uint",
+    "id": 417,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsPianoBus",
+    "path": "routing.dynamicsPianoBus",
+    "type": "uint",
+    "id": 418,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsDrumBus",
+    "path": "routing.dynamicsDrumBus",
+    "type": "uint",
+    "id": 419,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsGranularBus",
+    "path": "routing.dynamicsGranularBus",
+    "type": "uint",
+    "id": 420,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsWavesBus",
+    "path": "routing.dynamicsWavesBus",
+    "type": "uint",
+    "id": 421,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsWaterBus",
+    "path": "routing.dynamicsWaterBus",
+    "type": "uint",
+    "id": 422,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsInsectsBus",
+    "path": "routing.dynamicsInsectsBus",
+    "type": "uint",
+    "id": 423,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsNatureBus",
+    "path": "routing.dynamicsNatureBus",
+    "type": "uint",
+    "id": 424,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsDelayABus",
+    "path": "routing.dynamicsDelayABus",
+    "type": "uint",
+    "id": 425,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsDelayBBus",
+    "path": "routing.dynamicsDelayBBus",
+    "type": "uint",
+    "id": 426,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsDegradeBus",
+    "path": "routing.dynamicsDegradeBus",
+    "type": "uint",
+    "id": 427,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDynamicsReverbBus",
+    "path": "routing.dynamicsReverbBus",
+    "type": "uint",
+    "id": 428,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "RoutingDegradeToReverb",
+    "path": "routing.degradeToReverb",
+    "type": "float",
+    "id": 429,
     "min": 0,
     "max": 1
   },

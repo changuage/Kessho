@@ -23,7 +23,8 @@ import {
 } from '../sliderSystem';
 import '../sliderSystem/matrixSurface.css';
 
-type ColumnId = 'level' | 'delayA' | 'delayB' | 'granular' | 'reverb';
+type SliderColumnId = 'level' | 'delayA' | 'delayB' | 'granular' | 'degrade' | 'reverb';
+type ColumnId = SliderColumnId | 'dynamics';
 type CellHandle = MatrixCellHandle;
 
 interface RouteControl {
@@ -43,7 +44,19 @@ interface MatrixRow {
   accent: string;
   note?: string;
   sourceToggle?: 'toggle' | 'disable-only';
-  cells: Record<ColumnId, MatrixCell>;
+  cells: Record<SliderColumnId, MatrixCell>;
+}
+
+interface RoutingColumn {
+  id: ColumnId;
+  label: string;
+  helpKey: string;
+  note?: string;
+}
+
+interface DynamicsRouteControl {
+  key: keyof SliderState;
+  label: string;
 }
 
 interface RoutingSliderRuntime {
@@ -132,26 +145,54 @@ const ROUTING_MATRIX_ACTIVE_FILTER_STORAGE_KEY = 'routing-matrix:show-active-onl
 
 const ROUTING_MATRIX_OVERVIEW_HELP_KEY = 'routingMatrixOverview';
 
-const COLUMNS: Array<{ id: ColumnId; label: string; helpKey: string; note?: string }> = [
+const COLUMNS: RoutingColumn[] = [
   { id: 'level', label: 'Level', helpKey: 'routingMatrixLevelColumn', note: 'Drag the header left or right to trim every level in this column together.' },
   { id: 'delayA', label: 'Delay A', helpKey: 'routingMatrixDelayAColumn', note: 'Drag the header left or right to trim every Delay A send in this column together.' },
   { id: 'delayB', label: 'Delay B', helpKey: 'routingMatrixDelayBColumn', note: 'Drag the header left or right to trim every Delay B send in this column together.' },
   { id: 'granular', label: 'Granular', helpKey: 'routingMatrixGranularColumn', note: 'Drag the header left or right to trim every granular feed in this column together.' },
+  { id: 'degrade', label: 'Degrade', helpKey: 'routingMatrixDegradeColumn', note: 'Drag the header left or right to trim every Degrade send in this column together.' },
   { id: 'reverb', label: 'Reverb', helpKey: 'routingMatrixReverbColumn', note: 'Drag the header left or right to trim every reverb send in this column together.' },
+  { id: 'dynamics', label: 'Dynamics', helpKey: 'routingMatrixDynamicsColumn', note: 'Click a cell to choose the terminal Dynamics Bus path: Skip, EQ 1, EQ 2, or Sidechain.' },
 ];
 const DEFAULT_COLUMN = COLUMNS[0]!;
+
+const DYNAMICS_DESTINATIONS = [
+  { value: 0, label: 'Skip', className: 'skip' },
+  { value: 1, label: 'EQ 1', className: 'eq1' },
+  { value: 2, label: 'EQ 2', className: 'eq2' },
+  { value: 3, label: 'Sidechain', className: 'sidechain' },
+] as const;
+
+const DYNAMICS_ROUTE_BY_ROW: Record<string, DynamicsRouteControl> = {
+  pad1: { key: 'dynamicsPad1Bus', label: 'Pad 1 → Dynamics Bus' },
+  pad2: { key: 'dynamicsPad2Bus', label: 'Pad 2 → Dynamics Bus' },
+  lead1: { key: 'dynamicsLead1Bus', label: 'Lead 1 → Dynamics Bus' },
+  lead2: { key: 'dynamicsLead2Bus', label: 'Lead 2 → Dynamics Bus' },
+  piano: { key: 'dynamicsPianoBus', label: 'Piano → Dynamics Bus' },
+  drums: { key: 'dynamicsDrumBus', label: 'Drums → Dynamics Bus' },
+  granular: { key: 'dynamicsGranularBus', label: 'Granular → Dynamics Bus' },
+  waves: { key: 'dynamicsWavesBus', label: 'Waves → Dynamics Bus' },
+  water: { key: 'dynamicsWaterBus', label: 'Water → Dynamics Bus' },
+  insects: { key: 'dynamicsInsectsBus', label: 'Insects → Dynamics Bus' },
+  nature: { key: 'dynamicsNatureBus', label: 'Nature → Dynamics Bus' },
+  delayAOut: { key: 'dynamicsDelayABus', label: 'Delay A → Dynamics Bus' },
+  delayBOut: { key: 'dynamicsDelayBBus', label: 'Delay B → Dynamics Bus' },
+  degrade: { key: 'dynamicsDegradeBus', label: 'Degrade → Dynamics Bus' },
+  reverb: { key: 'dynamicsReverbBus', label: 'Reverb → Dynamics Bus' },
+};
 
 const ROWS: MatrixRow[] = [
   {
     id: 'pad1',
     label: 'Pad 1',
     accent: '#E07A84',
-    note: 'Pad 1 now has its own Delay A, Delay B, Granular, and Reverb sends.',
+    note: 'Pad 1 now has its own Delay A, Delay B, Granular, Degrade, and Reverb sends.',
     cells: {
       level: { kind: 'editable', route: { key: 'synthLevel', label: 'Pad 1 Level' } },
       delayA: { kind: 'editable', route: { key: 'pad1DelayASend', label: 'Pad 1 → Delay A' } },
       delayB: { kind: 'editable', route: { key: 'pad1DelayBSend', label: 'Pad 1 → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularPad1Send', label: 'Pad 1 → Granular' } },
+      degrade: { kind: 'editable', route: { key: 'degradePad1Send', label: 'Pad 1 → Degrade' } },
       reverb: { kind: 'editable', route: { key: 'pad1ReverbSend', label: 'Pad 1 → Reverb' } },
     },
   },
@@ -159,12 +200,13 @@ const ROWS: MatrixRow[] = [
     id: 'pad2',
     label: 'Pad 2',
     accent: '#B96A72',
-    note: 'Pad 2 now has its own Delay A, Delay B, Granular, and Reverb sends.',
+    note: 'Pad 2 now has its own Delay A, Delay B, Granular, Degrade, and Reverb sends.',
     cells: {
       level: { kind: 'editable', route: { key: 'pad2Level', label: 'Pad 2 Level' } },
       delayA: { kind: 'editable', route: { key: 'pad2DelayASend', label: 'Pad 2 → Delay A' } },
       delayB: { kind: 'editable', route: { key: 'pad2DelayBSend', label: 'Pad 2 → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularPad2Send', label: 'Pad 2 → Granular' } },
+      degrade: { kind: 'editable', route: { key: 'degradePad2Send', label: 'Pad 2 → Degrade' } },
       reverb: { kind: 'editable', route: { key: 'pad2ReverbSend', label: 'Pad 2 → Reverb' } },
     },
   },
@@ -177,6 +219,7 @@ const ROWS: MatrixRow[] = [
       delayA: { kind: 'editable', route: { key: 'lead1DelayASend', label: 'Lead 1 → Delay A' } },
       delayB: { kind: 'editable', route: { key: 'lead1DelayBSend', label: 'Lead 1 → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularLead1Send', label: 'Lead 1 → Granular' } },
+      degrade: { kind: 'editable', route: { key: 'degradeLead1Send', label: 'Lead 1 → Degrade' } },
       reverb: { kind: 'editable', route: { key: 'lead1ReverbSend', label: 'Lead 1 → Reverb' } },
     },
   },
@@ -189,6 +232,7 @@ const ROWS: MatrixRow[] = [
       delayA: { kind: 'editable', route: { key: 'lead2DelayASend', label: 'Lead 2 → Delay A' } },
       delayB: { kind: 'editable', route: { key: 'lead2DelayBSend', label: 'Lead 2 → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularLead2Send', label: 'Lead 2 → Granular' } },
+      degrade: { kind: 'editable', route: { key: 'degradeLead2Send', label: 'Lead 2 → Degrade' } },
       reverb: { kind: 'editable', route: { key: 'lead2ReverbSend', label: 'Lead 2 → Reverb' } },
     },
   },
@@ -201,6 +245,7 @@ const ROWS: MatrixRow[] = [
       delayA: { kind: 'editable', route: { key: 'pianoDelayASend', label: 'Piano → Delay A' } },
       delayB: { kind: 'editable', route: { key: 'pianoDelayBSend', label: 'Piano → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularPianoSend', label: 'Piano → Granular' } },
+      degrade: { kind: 'editable', route: { key: 'degradePianoSend', label: 'Piano → Degrade' } },
       reverb: { kind: 'editable', route: { key: 'pianoReverbSend', label: 'Piano → Reverb' } },
     },
   },
@@ -214,6 +259,7 @@ const ROWS: MatrixRow[] = [
       delayA: { kind: 'editable', route: { key: 'drumDelayASend', label: 'Drums → Delay A' } },
       delayB: { kind: 'editable', route: { key: 'drumDelayBSend', label: 'Drums → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularDrumSend', label: 'Drums → Granular' } },
+      degrade: { kind: 'editable', route: { key: 'degradeDrumSend', label: 'Drums → Degrade' } },
       reverb: { kind: 'editable', route: { key: 'drumReverbSend', label: 'Drums → Reverb' } },
     },
   },
@@ -227,6 +273,7 @@ const ROWS: MatrixRow[] = [
       delayA: { kind: 'editable', route: { key: 'granularDelayASend', label: 'Granular → Delay A' } },
       delayB: { kind: 'editable', route: { key: 'granularDelayBSend', label: 'Granular → Delay B' } },  // overridden dynamically
       granular: { kind: 'self' },
+      degrade: { kind: 'editable', route: { key: 'granularDegradeSend', label: 'Granular → Degrade' } },
       reverb: { kind: 'editable', route: { key: 'granularReverbSend', label: 'Granular → Reverb' } },
     },
   },
@@ -239,6 +286,7 @@ const ROWS: MatrixRow[] = [
       delayA: { kind: 'editable', route: { key: 'oceanDelayASend', label: 'Waves → Delay A' } },
       delayB: { kind: 'editable', route: { key: 'oceanDelayBSend', label: 'Waves → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularWavesSend', label: 'Waves → Granular' } },
+      degrade: { kind: 'editable', route: { key: 'degradeWavesSend', label: 'Waves → Degrade' } },
       reverb: { kind: 'editable', route: { key: 'oceanReverbSend', label: 'Waves → Reverb' } },
     },
   },
@@ -251,6 +299,7 @@ const ROWS: MatrixRow[] = [
       delayA: { kind: 'editable', route: { key: 'waterDelayASend', label: 'Water → Delay A' } },
       delayB: { kind: 'editable', route: { key: 'waterDelayBSend', label: 'Water → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularWaterSend', label: 'Water → Granular' } },
+      degrade: { kind: 'editable', route: { key: 'degradeWaterSend', label: 'Water → Degrade' } },
       reverb: { kind: 'editable', route: { key: 'waterReverbSend', label: 'Water → Reverb' } },
     },
   },
@@ -265,6 +314,7 @@ const ROWS: MatrixRow[] = [
       delayA: { kind: 'editable', route: { key: 'insDelayASend', label: 'Insects → Delay A' } },
       delayB: { kind: 'editable', route: { key: 'insDelayBSend', label: 'Insects → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularInsectsSend', label: 'Insects → Granular' } },
+      degrade: { kind: 'editable', route: { key: 'degradeInsectsSend', label: 'Insects → Degrade' } },
       reverb: { kind: 'editable', route: { key: 'insectsReverbSend', label: 'Insects → Reverb' } },
     },
   },
@@ -279,6 +329,7 @@ const ROWS: MatrixRow[] = [
       delayA: { kind: 'editable', route: { key: 'natureDelayASend', label: 'Nature → Delay A' } },
       delayB: { kind: 'editable', route: { key: 'natureDelayBSend', label: 'Nature → Delay B' } },
       granular: { kind: 'editable', route: { key: 'granularNatureSend', label: 'Nature → Granular' } },
+      degrade: { kind: 'editable', route: { key: 'degradeNatureSend', label: 'Nature → Degrade' } },
       reverb: { kind: 'editable', route: { key: 'natureReverbSend', label: 'Nature → Reverb' } },
     },
   },
@@ -291,6 +342,7 @@ const ROWS: MatrixRow[] = [
       delayA: { kind: 'self' },
       delayB: { kind: 'editable', route: { key: 'delayAToBSend', label: 'Delay A → Delay B' } },
       granular: { kind: 'editable', route: { key: 'delayAGranularSend', label: 'Delay A → Granular' } },
+      degrade: { kind: 'editable', route: { key: 'delayADegradeSend', label: 'Delay A → Degrade' } },
       reverb: { kind: 'editable', route: { key: 'delayAReverbSend', label: 'Delay A → Reverb' } },
     },
   },
@@ -304,7 +356,22 @@ const ROWS: MatrixRow[] = [
       delayA: { kind: 'editable', route: { key: 'delayBToASend', label: 'Delay B → Delay A' } },
       delayB: { kind: 'self' },
       granular: { kind: 'editable', route: { key: 'delayBGranularSend', label: 'Delay B → Granular' } },  // overridden dynamically
+      degrade: { kind: 'editable', route: { key: 'delayBDegradeSend', label: 'Delay B → Degrade' } },
       reverb: { kind: 'editable', route: { key: 'granularDelayReverbSend', label: 'Delay B → Reverb' } },
+    },
+  },
+  {
+    id: 'degrade',
+    label: 'Degrade',
+    accent: '#A980FF',
+    note: 'Degrade is the return for the Drift and Erosion processors. It can feed Reverb, but Reverb and Degrade cannot feed each other at the same time.',
+    cells: {
+      level: { kind: 'editable', route: { key: 'degradeLevel', label: 'Degrade Level' } },
+      delayA: { kind: 'blocked', note: 'Degrade does not currently feed Delay A.' },
+      delayB: { kind: 'blocked', note: 'Degrade does not currently feed Delay B.' },
+      granular: { kind: 'blocked', note: 'Degrade does not currently feed Granular.' },
+      degrade: { kind: 'self' },
+      reverb: { kind: 'editable', route: { key: 'degradeReverbSend', label: 'Degrade → Reverb' } },
     },
   },
   {
@@ -317,6 +384,7 @@ const ROWS: MatrixRow[] = [
       delayA: { kind: 'blocked', note: 'Reverb does not currently feed Delay A.' },
       delayB: { kind: 'blocked', note: 'Reverb does not currently feed Delay B.' },
       granular: { kind: 'blocked', note: 'Reverb does not currently feed Granular.' },
+      degrade: { kind: 'editable', route: { key: 'reverbDegradeSend', label: 'Reverb → Degrade' } },
       reverb: { kind: 'self' },
     },
   },
@@ -389,6 +457,15 @@ function cellValue(state: SliderState, route: RouteControl | undefined): number 
   return clamp01(Number(state[route.key] ?? 0) || 0);
 }
 
+function isSliderColumnId(columnId: ColumnId): columnId is SliderColumnId {
+  return columnId !== 'dynamics';
+}
+
+function dynamicsDestinationIndex(value: unknown): number {
+  const index = Math.round(Number(value ?? 0));
+  return Math.max(0, Math.min(DYNAMICS_DESTINATIONS.length - 1, Number.isFinite(index) ? index : 0));
+}
+
 function rowIsEnabled(row: MatrixRow, state: SliderState): boolean {
   switch (row.id) {
     case 'pad1':
@@ -417,8 +494,10 @@ function rowIsEnabled(row: MatrixRow, state: SliderState): boolean {
       return !!state.delayAEnabled;
     case 'delayBOut':
       return !!state.granularDelayEnabled;
+    case 'degrade':
+      return !!((state.dynamicsEnabled || state.degradeEnabled) && (state.driftEnabled || state.erosionEnabled));
     case 'reverb':
-      return !!state.reverbEnabled;
+      return !!state.reverbEnabled || (state.reverbDegradeSend ?? 0) > 0.0001 || (state.degradeReverbSend ?? 0) > 0.0001;
     default:
       return true;
   }
@@ -435,6 +514,7 @@ function getColumnTargets(
   state: SliderState,
   sliderProps: (paramKey: keyof SliderState) => RoutingSliderRuntime,
 ): ColumnDragTarget[] {
+  if (!isSliderColumnId(columnId)) return [];
   const seen = new Set<keyof SliderState>();
   const targets: ColumnDragTarget[] = [];
 
@@ -840,21 +920,22 @@ export default function RoutingMatrix({
     </button>
   ), [showActiveOnly]);
 
-  const renderColumnHeader = React.useCallback((column: { id: ColumnId; label: string; helpKey: string; note?: string }, className?: string) => {
+  const renderColumnHeader = React.useCallback((column: RoutingColumn, className?: string) => {
     const headerId = `column:${column.id}`;
     const targets = getColumnTargets(column.id, visibleRows, state, sliderProps);
+    const isSliderColumn = isSliderColumnId(column.id);
 
     return (
       <button
         key={column.id}
         type="button"
-        className={`routing-matrix-header routing-matrix-header-button${className ? ` ${className}` : ''}${draggingId === headerId ? ' dragging' : ''}`}
+        className={`routing-matrix-header routing-matrix-header-button${!isSliderColumn ? ' destination' : ''}${className ? ` ${className}` : ''}${draggingId === headerId ? ' dragging' : ''}`}
         title={column.note}
-        disabled={targets.length === 0}
+        disabled={isSliderColumn && targets.length === 0}
         onMouseEnter={() => announceHelp(column.helpKey, { page: helpPage, label: `${column.label} Column` })}
         onFocus={() => announceHelp(column.helpKey, { page: helpPage, label: `${column.label} Column` })}
         onPointerDown={(event) => {
-          if (targets.length === 0) return;
+          if (!isSliderColumn || targets.length === 0) return;
           announceHelp(column.helpKey, { page: helpPage, label: `${column.label} Column` });
           clearLongPress();
           startColumnDrag(column.id, headerId, event.pointerId, event.clientX, event.currentTarget.getBoundingClientRect().width, targets);
@@ -881,7 +962,62 @@ export default function RoutingMatrix({
     );
   }, [announceHelp, applyColumnDrag, clearLongPress, draggingId, helpPage, resetInteraction, sliderProps, startColumnDrag, state, stopDrag, visibleRows]);
 
-  const renderCell = React.useCallback((row: MatrixRow, rowEnabled: boolean, column: { id: ColumnId; label: string; helpKey: string; note?: string }, suffix = '') => {
+  const renderDynamicsCell = React.useCallback((row: MatrixRow, rowEnabled: boolean, suffix = '') => {
+    const route = DYNAMICS_ROUTE_BY_ROW[row.id];
+    const offInAll = !showActiveOnly && !rowEnabled;
+    if (!route) {
+      return (
+        <button
+          key={`cell:${row.id}:dynamics${suffix}`}
+          type="button"
+          className={`routing-matrix-cell blocked${offInAll ? ' source-off' : ''}`}
+          style={{ '--row-accent': offInAll ? '#7e8794' : row.accent } as React.CSSProperties}
+          disabled
+        >
+          <span className="routing-matrix-cell-static" />
+        </button>
+      );
+    }
+
+    const value = dynamicsDestinationIndex(state[route.key]);
+    const option = DYNAMICS_DESTINATIONS[value] ?? DYNAMICS_DESTINATIONS[0]!;
+    const nextOption = DYNAMICS_DESTINATIONS[(value + 1) % DYNAMICS_DESTINATIONS.length] ?? DYNAMICS_DESTINATIONS[0]!;
+    const active = value > 0;
+    const title = `${route.label}: ${option.label}. Click to change to ${nextOption.label}.`;
+
+    return (
+      <button
+        key={`cell:${row.id}:dynamics${suffix}`}
+        type="button"
+        className={`routing-matrix-cell dynamics-route ${active ? 'active' : 'skip'} ${option.className}${offInAll ? ' source-off' : ''}`}
+        style={{ '--row-accent': offInAll ? '#7e8794' : row.accent } as React.CSSProperties}
+        title={title}
+        aria-label={title}
+        onMouseEnter={() => announceHelp('routingMatrixDynamicsColumn', { page: helpPage, label: 'Dynamics Column' })}
+        onFocus={() => announceHelp('routingMatrixDynamicsColumn', { page: helpPage, label: 'Dynamics Column' })}
+        onClick={() => {
+          announceHelp('routingMatrixDynamicsColumn', { page: helpPage, label: 'Dynamics Column' });
+          onParamChange(route.key, nextOption.value);
+        }}
+      >
+        <span className="routing-matrix-dynamics-rail" aria-hidden="true">
+          {DYNAMICS_DESTINATIONS.map((destination) => (
+            <span
+              key={destination.value}
+              className={`routing-matrix-dynamics-dot ${destination.className}${destination.value === value ? ' active' : ''}`}
+            />
+          ))}
+        </span>
+        <span className="routing-matrix-dynamics-label">{option.label}</span>
+      </button>
+    );
+  }, [announceHelp, helpPage, onParamChange, showActiveOnly, state]);
+
+  const renderCell = React.useCallback((row: MatrixRow, rowEnabled: boolean, column: RoutingColumn, suffix = '') => {
+    if (!isSliderColumnId(column.id)) {
+      return renderDynamicsCell(row, rowEnabled, suffix);
+    }
+
     const cell = row.cells[column.id];
     const route = cell.kind === 'editable' ? (cell.route ?? null) : null;
     const value = cellValue(state, cell.route);
@@ -1122,6 +1258,7 @@ export default function RoutingMatrix({
     resetInteraction,
     scheduleLongPress,
     showActiveOnly,
+    renderDynamicsCell,
     sliderProps,
     startCellDrag,
     state,

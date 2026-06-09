@@ -403,32 +403,32 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
     'This switches the visible editor to the dedicated Routing tab so you can edit cross-engine sends in one clean matrix without digging through the Global or Delay pages.',
     [app('Tab Bar', 'Routing')],
   ),
-  characterQuality_eco: entry(
-    'Uses the lightest Character processing.',
-    'Eco keeps Character CPU lower with simpler delay reads and less extra decorrelation. It is useful when the motion should stay direct or the scene already has many expensive effects enabled.',
-    [dn('Character', 'Eco')],
+  driftQuality_eco: entry(
+    'Uses the lightest Drift processing.',
+    'Eco keeps Drift CPU lower with simpler delay reads and less extra decorrelation. It is useful when the motion should stay direct or the scene already has many expensive effects enabled.',
+    [dn('Drift', 'Eco')],
   ),
-  characterQuality_balanced: entry(
-    'Uses the default smooth Character quality.',
+  driftQuality_balanced: entry(
+    'Uses the default smooth Drift quality.',
     'Balanced keeps the addendum defaults: smoother delay reads, comb protection, and diffusion without the extra HQ decorrelation pass.',
-    [dn('Character', 'Balanced')],
+    [dn('Drift', 'Balanced')],
   ),
-  characterQuality_hq: entry(
-    'Uses the smoothest Character quality.',
+  driftQuality_hq: entry(
+    'Uses the smoothest Drift quality.',
     'HQ enables the extra decorrelation path for short-delay motion so shallow and watery movement sound smoother at the cost of more CPU.',
-    [dn('Character', 'HQ')],
+    [dn('Drift', 'HQ')],
   ),
-  degradeQuality_classic: entry(
+  erosionQuality_classic: entry(
     'Keeps Degrade close to the original damage model.',
     'Classic leaves the newer media-event/profile/dither behavior restrained, so wear and alias controls remain simpler and more direct.',
     [dn('Degrade', 'Classic')],
   ),
-  degradeQuality_media: entry(
+  erosionQuality_media: entry(
     'Uses the default copied-media Degrade model.',
     'Media enables generation-loss events, profile shaping, and dither at the addendum defaults for a more realistic degraded path without jumping to the highest detail mode.',
     [dn('Degrade', 'Media')],
   ),
-  degradeQuality_hq: entry(
+  erosionQuality_hq: entry(
     'Uses the highest-detail Degrade model.',
     'HQ keeps the media behavior active with more smoothing and detail for audible degradation, trading some extra CPU for a more polished damage layer.',
     [dn('Degrade', 'HQ')],

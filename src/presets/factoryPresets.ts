@@ -23,7 +23,7 @@ import {
   EUCLIDEAN_PATTERN_LABELS,
 } from './euclideanPatternBank';
 
-const FACTORY_LOADED_KEY = 'preset:factory-loaded:v24';
+const FACTORY_LOADED_KEY = 'preset:factory-loaded:v26';
 
 function canUseLocalStorage(): boolean {
   try {
@@ -128,11 +128,15 @@ function getLatestVersionData(entry: PresetEntry): Record<string, unknown> | nul
 function isDynamicsFactoryScope(entry: PresetEntry): boolean {
   const scope = entry.scope ?? entry.engine ?? entry.source;
   return scope === 'dynamicsSidechain' ||
-    scope === 'dynamicsCharacter' ||
-    scope === 'dynamicsDegrade' ||
+    scope === 'dynamicsBus' ||
+    scope === 'dynamicsEq1' ||
+    scope === 'dynamicsEq2' ||
+    scope === 'degrade' ||
+    scope === 'dynamicsDrift' ||
+    scope === 'dynamicsErosion' ||
+    scope === 'masterFx' ||
     scope === 'dynamicsSaturation' ||
-    scope === 'dynamicsEndChain' ||
-    scope === 'dynamics';
+    scope === 'dynamicsEndChain';
 }
 
 function shouldRefreshBundledFactoryEntry(existing: PresetEntry, next: PresetEntry): boolean {
@@ -301,18 +305,22 @@ async function loadDelayFactory(): Promise<PresetEntry[]> {
   return entries;
 }
 
-// ─── Dynamics presets (L1 engines + L3 full page) ─────────────────────────
+// ─── Dynamics / Degrade presets ───────────────────────────────────────────
 
 async function loadDynamicsFactory(): Promise<PresetEntry[]> {
   const entries: PresetEntry[] = [];
   try {
     const {
-      DYNAMICS_CHARACTER_PRESETS,
-      DYNAMICS_DEGRADE_PRESETS,
+      DYNAMICS_DRIFT_PRESETS,
+      DYNAMICS_BUS_PRESETS,
+      DYNAMICS_EQ1_PRESETS,
+      DYNAMICS_EQ2_PRESETS,
+      DYNAMICS_EROSION_PRESETS,
       DYNAMICS_END_CHAIN_PRESETS,
+      DYNAMICS_MASTER_FX_PRESETS,
       DYNAMICS_SATURATION_PRESETS,
       DYNAMICS_SIDECHAIN_PRESETS,
-      DYNAMICS_SOURCE_PRESETS,
+      DYNAMICS_DEGRADE_PRESETS,
     } = await import('../ui/dynamics/dynamicsPresets');
 
     for (const [, preset] of Object.entries(DYNAMICS_SIDECHAIN_PRESETS)) {
@@ -321,15 +329,33 @@ async function loadDynamicsFactory(): Promise<PresetEntry[]> {
         tags: preset.tags,
       }));
     }
-    for (const [, preset] of Object.entries(DYNAMICS_CHARACTER_PRESETS)) {
+    for (const [, preset] of Object.entries(DYNAMICS_EQ1_PRESETS)) {
       entries.push(makeFactory('engine', preset.name, preset.params, {
-        engine: 'dynamicsCharacter',
+        engine: 'dynamicsEq1',
         tags: preset.tags,
       }));
     }
-    for (const [, preset] of Object.entries(DYNAMICS_DEGRADE_PRESETS)) {
+    for (const [, preset] of Object.entries(DYNAMICS_EQ2_PRESETS)) {
       entries.push(makeFactory('engine', preset.name, preset.params, {
-        engine: 'dynamicsDegrade',
+        engine: 'dynamicsEq2',
+        tags: preset.tags,
+      }));
+    }
+    for (const [, preset] of Object.entries(DYNAMICS_BUS_PRESETS)) {
+      entries.push(makeFactory('source', preset.name, preset.params, {
+        source: 'dynamicsBus',
+        tags: preset.tags,
+      }));
+    }
+    for (const [, preset] of Object.entries(DYNAMICS_DRIFT_PRESETS)) {
+      entries.push(makeFactory('kit', preset.name, preset.params, {
+        source: 'dynamicsDrift',
+        tags: preset.tags,
+      }));
+    }
+    for (const [, preset] of Object.entries(DYNAMICS_EROSION_PRESETS)) {
+      entries.push(makeFactory('kit', preset.name, preset.params, {
+        source: 'dynamicsErosion',
         tags: preset.tags,
       }));
     }
@@ -345,9 +371,15 @@ async function loadDynamicsFactory(): Promise<PresetEntry[]> {
         tags: preset.tags,
       }));
     }
-    for (const [, preset] of Object.entries(DYNAMICS_SOURCE_PRESETS)) {
+    for (const [, preset] of Object.entries(DYNAMICS_MASTER_FX_PRESETS)) {
       entries.push(makeFactory('source', preset.name, preset.params, {
-        source: 'dynamics',
+        source: 'masterFx',
+        tags: preset.tags,
+      }));
+    }
+    for (const [, preset] of Object.entries(DYNAMICS_DEGRADE_PRESETS)) {
+      entries.push(makeFactory('source', preset.name, preset.params, {
+        source: 'degrade',
         tags: preset.tags,
       }));
     }

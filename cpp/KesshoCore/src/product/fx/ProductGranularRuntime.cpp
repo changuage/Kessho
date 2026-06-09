@@ -51,6 +51,7 @@ void KesshoProductEngine::snapGranularReturnGainsToTargets() {
   granular_reverb_send_gain = clampFloat(routing.granular_to_reverb, 0.0f, 4.0f);
   granular_delay_a_send_gain = clampFloat(routing.granular_to_delay_a, 0.0f, 1.0f);
   granular_delay_b_send_gain = clampFloat(routing.granular_to_delay_b, 0.0f, 1.0f);
+  granular_degrade_send_gain = clampFloat(routing.granular_to_degrade, 0.0f, 1.0f);
   granular_return_gain_frame = UINT64_MAX;
 }
 
@@ -68,7 +69,8 @@ void KesshoProductEngine::primeGranularControlsForSourceStart(uint32_t source_id
       fx.granular_mix > 0.0001f ||
       routing.granular_to_reverb > 0.0001f ||
       routing.granular_to_delay_a > 0.0001f ||
-      routing.granular_to_delay_b > 0.0001f;
+      routing.granular_to_delay_b > 0.0001f ||
+      routing.granular_to_degrade > 0.0001f;
   if (!output_armed) return;
   const bool granular_idle = granular_module == nullptr || granular_module->activeGrainCount() <= 0;
   if (granular_idle) {
@@ -107,6 +109,10 @@ void KesshoProductEngine::advanceGranularReturnGains(uint64_t absolute_frame) {
   granular_delay_b_send_gain = smoothedGranularControlCached(
       granular_delay_b_send_gain,
       clampFloat(routing.granular_to_delay_b, 0.0f, 1.0f),
+      granular_control_smooth_coeff);
+  granular_degrade_send_gain = smoothedGranularControlCached(
+      granular_degrade_send_gain,
+      clampFloat(routing.granular_to_degrade, 0.0f, 1.0f),
       granular_control_smooth_coeff);
   granular_return_gain_frame = absolute_frame;
 }

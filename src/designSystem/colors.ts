@@ -57,8 +57,9 @@ export const SOURCE_COLORS = {
 export const DYNAMICS_ENGINE_COLORS = {
   main: SOURCE_COLORS.dynamics,
   sidechain: JOURNEY_COLORS.icy,
-  character: JOURNEY_COLORS.sage,
+  drift: JOURNEY_COLORS.sage,
   degrade: JOURNEY_COLORS.violet,
+  erosion: JOURNEY_COLORS.violet,
   saturation: JOURNEY_COLORS.gold,
   endChain: JOURNEY_COLORS.clay,
 } as const;

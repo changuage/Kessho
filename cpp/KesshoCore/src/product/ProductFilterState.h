@@ -28,6 +28,22 @@ struct ProductBiquadFilterState {
   BiquadState left{}, right{};
 };
 
+struct ProductEqBiquadState {
+  float coeff_freq = -1.0f;
+  float coeff_gain_db = 0.0f;
+  float coeff_q = -1.0f;
+  float coeff_slope = -1.0f;
+  uint32_t coeff_type = kDynamicsEqEdgeBell;
+  float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f;
+  BiquadState left{}, right{};
+};
+
+struct ProductTerminalEqState {
+  ProductEqBiquadState low{};
+  ProductEqBiquadState mid{};
+  ProductEqBiquadState high{};
+};
+
 struct SourcePostChainState {
   float post_lpf_hz = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_POST_LPF_HZ;
   float stereo_width = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_STEREO_WIDTH;

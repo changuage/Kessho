@@ -39,7 +39,7 @@
   font-size: 0.7rem;
   font-weight: 700;
   color: var(--accent-primary);
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -63,7 +63,7 @@
   color: var(--text-muted);
   font-size: 0.62rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -133,7 +133,7 @@
   color: var(--text-muted);
   font-size: 0.62rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -198,7 +198,7 @@
   background: rgba(255, 255, 255, 0.018);
   font-size: 0.62rem;
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -228,7 +228,7 @@
   color: var(--text-muted);
   font-size: 0.62rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -243,7 +243,7 @@
   color: var(--text-muted);
   font-size: 0.62rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -341,9 +341,9 @@
 
 .routing-root .routing-matrix-grid {
   display: grid;
-  grid-template-columns: 132px repeat(5, minmax(92px, 1fr));
+  grid-template-columns: 132px repeat(7, minmax(92px, 1fr));
   gap: 6px;
-  min-width: 726px;
+  min-width: 940px;
 }
 
 .routing-root .routing-matrix-corner,
@@ -364,7 +364,7 @@
   color: var(--text-secondary);
   font-size: var(--font-xs);
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -405,6 +405,10 @@
   font: inherit;
 }
 
+.routing-root .routing-matrix-header-button.destination {
+  cursor: default;
+}
+
 .routing-root .routing-matrix-header-button:hover:not(:disabled) {
   border-color: rgba(165, 196, 212, 0.22);
   background: rgba(255, 255, 255, 0.04);
@@ -428,7 +432,7 @@
   font-size: 0.48rem;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.34);
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -500,9 +504,31 @@
   cursor: ew-resize;
 }
 
+.routing-root .routing-matrix-cell.dynamics-route {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+
 .routing-root .routing-matrix-cell.editable:hover {
   border-color: color-mix(in srgb, var(--row-accent, #a5c4d4) 28%, transparent);
   background: rgba(255, 255, 255, 0.025);
+}
+
+.routing-root .routing-matrix-cell.dynamics-route:hover {
+  border-color: color-mix(in srgb, var(--row-accent, #a5c4d4) 30%, transparent);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.routing-root .routing-matrix-cell.dynamics-route.active {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--row-accent, #a5c4d4) 14%, transparent),
+      rgba(255, 255, 255, 0.014)
+    );
 }
 
 .routing-root .routing-matrix-cell.dragging {
@@ -673,7 +699,7 @@
   color: rgba(235, 242, 248, 0.92);
   font-size: 0.58rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0;
   pointer-events: none;
 }
 
@@ -682,14 +708,14 @@
 .routing-root .routing-matrix-cell-static {
   font-size: var(--font-sm);
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 
 .routing-root .routing-matrix-cell-mode {
   color: rgba(235, 242, 248, 0.62);
   font-size: 0.54rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
 }
 
 .routing-root .routing-matrix-cell-static {
@@ -699,6 +725,48 @@
   align-items: center;
   justify-content: center;
   color: inherit;
+}
+
+.routing-root .routing-matrix-dynamics-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
+  width: 100%;
+  pointer-events: none;
+}
+
+.routing-root .routing-matrix-dynamics-dot {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.075);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.018);
+}
+
+.routing-root .routing-matrix-dynamics-dot.active {
+  background: color-mix(in srgb, var(--row-accent, #a5c4d4) 62%, white 8%);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--row-accent, #a5c4d4) 22%, transparent);
+}
+
+.routing-root .routing-matrix-dynamics-dot.skip.active {
+  background: rgba(188, 197, 207, 0.34);
+  box-shadow: none;
+}
+
+.routing-root .routing-matrix-dynamics-label {
+  min-width: 0;
+  color: rgba(235, 242, 248, 0.9);
+  font-size: var(--font-sm);
+  font-weight: 800;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.routing-root .routing-matrix-cell.dynamics-route.skip .routing-matrix-dynamics-label {
+  color: rgba(207, 217, 232, 0.58);
 }
 
 .routing-root .routing-matrix-mobile-picker {
@@ -727,7 +795,7 @@
   font: inherit;
   font-size: var(--font-sm);
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   white-space: nowrap;
   scroll-snap-align: start;
 }
@@ -839,7 +907,7 @@
   color: var(--text-secondary);
   font-size: 0.58rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -958,7 +1026,7 @@
   color: var(--text-secondary);
   font-size: 0.6rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 

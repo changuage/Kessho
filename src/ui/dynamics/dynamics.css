@@ -3,8 +3,8 @@
 .dynamics-root {
   /* Engine-specific accents (beyond design system) */
   --accent-dynamics: #06b6d4;
-  --accent-character: #10b981;
-  --accent-degrade: #8b5cf6;
+  --accent-drift: #10b981;
+  --accent-erosion: #8b5cf6;
   --accent-saturation: #eab308;
   --accent-end: #f59e0b;
 
@@ -79,7 +79,7 @@
   font-size: var(--font-md);
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
   flex: 1;
   min-width: 150px;
 }
@@ -142,7 +142,11 @@
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
+}
+
+.dynamics-parent-label {
+  display: inline;
 }
 
 .dynamics-fx-toggle {
@@ -174,14 +178,14 @@
 
 .dynamics-fx-toggle.on.green {
   background: rgba(16, 185, 129, 0.16);
-  border-color: var(--accent-character);
-  color: var(--accent-character);
+  border-color: var(--accent-drift);
+  color: var(--accent-drift);
 }
 
 .dynamics-fx-toggle.on.purple {
   background: rgba(139, 92, 246, 0.18);
-  border-color: var(--accent-degrade);
-  color: var(--accent-degrade);
+  border-color: var(--accent-erosion);
+  color: var(--accent-erosion);
 }
 
 .dynamics-fx-toggle.on.amber {
@@ -196,7 +200,7 @@
   line-height: 1.3;
   text-align: right;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
 }
 
 .dynamics-section-body {
@@ -246,7 +250,7 @@
   font-size: 11px;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
 }
 
 .dynamics-chip-row,
@@ -273,7 +277,7 @@
   font-size: var(--font-xs);
   color: var(--text-dim);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
@@ -312,14 +316,14 @@
   color: #fff;
 }
 
-.dynamics-character-card .dynamics-mode-btn.active {
+.dynamics-drift-card .dynamics-mode-btn.active {
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.24), rgba(16, 185, 129, 0.08));
-  border-color: var(--accent-character);
+  border-color: var(--accent-drift);
 }
 
-.dynamics-degrade-card .dynamics-mode-btn.active {
+.dynamics-erosion-card .dynamics-mode-btn.active {
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.24), rgba(139, 92, 246, 0.08));
-  border-color: var(--accent-degrade);
+  border-color: var(--accent-erosion);
 }
 
 .dynamics-viz-frame {
@@ -349,11 +353,11 @@
   cursor: grabbing;
 }
 
-.dynamics-viz-character {
+.dynamics-viz-drift {
   height: 210px;
 }
 
-.dynamics-viz-degrade {
+.dynamics-viz-erosion {
   height: 224px;
 }
 
@@ -361,6 +365,51 @@
 .dynamics-viz-compressor,
 .dynamics-viz-sidechain {
   height: 166px;
+}
+
+.dynamics-viz-eq {
+  height: 190px;
+}
+
+.dynamics-bus-description {
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.dynamics-bus-module {
+  padding: 9px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dynamics-bus-description + .dynamics-bus-module,
+.dynamics-module-preset-row + .dynamics-bus-module {
+  margin-top: 8px;
+}
+
+.dynamics-bus-module-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  margin-bottom: 8px;
+}
+
+.dynamics-bus-module-body {
+  padding-bottom: 6px;
+}
+
+.dynamics-eq-type-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.dynamics-eq-type-row .dynamics-mode-row {
+  margin-bottom: 0;
 }
 
 .dynamics-grid-2 {
@@ -394,7 +443,7 @@
   font-size: var(--font-xs);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   cursor: pointer;
 }
 
@@ -427,7 +476,7 @@
   font-size: var(--font-xs);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
 }
 
 .dynamics-mod-header {
@@ -444,6 +493,10 @@
 }
 
 @media (max-width: 560px) {
+  .dynamics-parent-label {
+    display: none;
+  }
+
   .dynamics-grid-2 {
     grid-template-columns: 1fr;
   }
@@ -452,8 +505,16 @@
     height: 168px;
   }
 
-  .dynamics-viz-degrade {
+  .dynamics-viz-erosion {
     height: 246px;
+  }
+
+  .dynamics-viz-eq {
+    height: 210px;
+  }
+
+  .dynamics-eq-type-row {
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .dynamics-select-wrap {

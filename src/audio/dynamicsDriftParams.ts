@@ -1,13 +1,13 @@
 import type { DynamicsTargets } from './dynamicsModel';
 
-export const DYNAMICS_CHARACTER_PARAM_ORDER = [
+export const DYNAMICS_DRIFT_PARAM_ORDER = [
   'active',
   'allpassActive',
   'dry',
   'wet',
-  'degradeMix',
+  'erosionMix',
   'workletAlias',
-  'rawDegradeGeneration',
+  'rawErosionGeneration',
   'rawCorrosion',
   'rawMediaWear',
   'noiseGain',
@@ -83,17 +83,17 @@ export const DYNAMICS_CHARACTER_PARAM_ORDER = [
   'endCompDetectorTilt',
   'endCompAutoMakeup',
   'endCompProgramRelease',
-  'characterQuality',
-  'characterAntiComb',
-  'characterDiffusion',
-  'degradeUiMix',
-  'degradeColorInfluence',
-  'degradeMotionInfluence',
-  'degradeFailureInfluence',
-  'degradeQuality',
-  'degradeEventAmount',
-  'degradeProfileAmount',
-  'degradeDitherAmount',
+  'driftQuality',
+  'driftAntiComb',
+  'driftDiffusion',
+  'erosionUiMix',
+  'erosionColorInfluence',
+  'erosionMotionInfluence',
+  'erosionFailureInfluence',
+  'erosionQuality',
+  'erosionEventAmount',
+  'erosionProfileAmount',
+  'erosionDitherAmount',
   'endCompMode',
   'endCompPeakBlend',
   'endCompClarity',
@@ -102,22 +102,22 @@ export const DYNAMICS_CHARACTER_PARAM_ORDER = [
   'masterSatQuality',
 ] as const;
 
-export type DynamicsCharacterParamName = (typeof DYNAMICS_CHARACTER_PARAM_ORDER)[number];
-export type DynamicsCharacterParams = Record<DynamicsCharacterParamName, number>;
+export type DynamicsDriftParamName = (typeof DYNAMICS_DRIFT_PARAM_ORDER)[number];
+export type DynamicsDriftParams = Record<DynamicsDriftParamName, number>;
 
 function finiteParam(value: number): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-export function toDynamicsCharacterParamObject(targets: DynamicsTargets): DynamicsCharacterParams {
+export function toDynamicsDriftParamObject(targets: DynamicsTargets): DynamicsDriftParams {
   return {
-    active: targets.routing.characterPathActive ? 1 : 0,
+    active: targets.routing.degradePathActive ? 1 : 0,
     allpassActive: targets.routing.allpassStackActive ? 1 : 0,
     dry: targets.dry,
     wet: targets.wet,
-    degradeMix: targets.degradeWetRatio,
+    erosionMix: targets.erosionWetRatio,
     workletAlias: targets.workletAlias,
-    rawDegradeGeneration: targets.rawDegradeGeneration,
+    rawErosionGeneration: targets.rawErosionGeneration,
     rawCorrosion: targets.rawCorrosion,
     rawMediaWear: targets.rawMediaWear,
     noiseGain: targets.noiseGain,
@@ -193,17 +193,17 @@ export function toDynamicsCharacterParamObject(targets: DynamicsTargets): Dynami
     endCompDetectorTilt: targets.endDetectorTilt,
     endCompAutoMakeup: targets.endAutoMakeup,
     endCompProgramRelease: targets.endProgramRelease,
-    characterQuality: targets.characterQuality,
-    characterAntiComb: targets.characterAntiComb,
-    characterDiffusion: targets.characterDiffusion,
-    degradeUiMix: targets.degradeUiMix,
-    degradeColorInfluence: targets.degradeColorInfluence,
-    degradeMotionInfluence: targets.degradeMotionInfluence,
-    degradeFailureInfluence: targets.degradeFailureInfluence,
-    degradeQuality: targets.degradeQuality,
-    degradeEventAmount: targets.degradeEventAmount,
-    degradeProfileAmount: targets.degradeProfileAmount,
-    degradeDitherAmount: targets.degradeDitherAmount,
+    driftQuality: targets.driftQuality,
+    driftAntiComb: targets.driftAntiComb,
+    driftDiffusion: targets.driftDiffusion,
+    erosionUiMix: targets.erosionUiMix,
+    erosionColorInfluence: targets.erosionColorInfluence,
+    erosionMotionInfluence: targets.erosionMotionInfluence,
+    erosionFailureInfluence: targets.erosionFailureInfluence,
+    erosionQuality: targets.erosionQuality,
+    erosionEventAmount: targets.erosionEventAmount,
+    erosionProfileAmount: targets.erosionProfileAmount,
+    erosionDitherAmount: targets.erosionDitherAmount,
     endCompMode: targets.endCompMode,
     endCompPeakBlend: targets.endPeakBlend,
     endCompClarity: targets.endClarity,
@@ -213,7 +213,7 @@ export function toDynamicsCharacterParamObject(targets: DynamicsTargets): Dynami
   };
 }
 
-export function toDynamicsCharacterParamArray(targets: DynamicsTargets): number[] {
-  const params = toDynamicsCharacterParamObject(targets);
-  return DYNAMICS_CHARACTER_PARAM_ORDER.map((name) => finiteParam(params[name]));
+export function toDynamicsDriftParamArray(targets: DynamicsTargets): number[] {
+  const params = toDynamicsDriftParamObject(targets);
+  return DYNAMICS_DRIFT_PARAM_ORDER.map((name) => finiteParam(params[name]));
 }

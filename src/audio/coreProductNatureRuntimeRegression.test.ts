@@ -18,6 +18,7 @@ import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 import { KESSHO_PRODUCT_DRUM_PARAM_SPECS, KESSHO_PRODUCT_PAD_PARAM_SPECS } from './generated/kesshoProductSchema';
 import { CORE_PRODUCT_SOUNDSCAPE_ASSETS } from './coreProductAssets';
 import { createCoreProductEarthTextureDebugState } from './product/host/CoreProductEarthTextureDebug';
+import type { SliderState } from '../ui/state';
 
 type ExpectedRangeTarget = {
   targetId: number;
@@ -94,6 +95,19 @@ function padRuntimeParamId(key: string, padIndex: 0 | 1): number {
   assert(spec, `Missing generated pad param spec for ${key}`);
   const base = padIndex === 0 ? CORE_PRODUCT_PAD_RUNTIME_PARAM_ID_BASE : CORE_PRODUCT_PAD2_RUNTIME_PARAM_ID_BASE;
   return base + spec.index;
+}
+
+function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateValue: SliderState[K], expectedValue: number): void {
+  const targets = resolveCoreProductRangeTargets(String(key));
+  assert.equal(targets.length, 1, `${String(key)} must resolve to one enum target`);
+  const event = createCoreProductModulationRangeEvent(
+    targets[0]!,
+    { min: 0, max: 1 },
+    CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk,
+    0.5,
+    { state: { [key]: stateValue } as Partial<SliderState> },
+  );
+  assert.equal(event.value4, expectedValue, `${String(key)} must map ${String(stateValue)} to ${expectedValue}`);
 }
 
 {
@@ -206,18 +220,59 @@ function padRuntimeParamId(key: string, padIndex: 0 | 1): number {
     ['spectralFreezeMix', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeMix }]],
     ['spectralFreezeSpeed', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeSpeed }]],
     ['dynamicsDrive', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDrive }]],
-    ['characterMix', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsCharacterMix }]],
-    ['degradeMix', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeMix }]],
+    ['dynamicsEnabled', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEnabled }]],
+    ['driftEnabled', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDriftEnabled }]],
+    ['driftMode', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDriftMode }]],
+    ['driftQuality', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDriftQuality }]],
+    ['driftMix', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDriftMix }]],
+    ['erosionEnabled', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsErosionEnabled }]],
+    ['erosionQuality', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsErosionQuality }]],
+    ['erosionMix', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsErosionMix }]],
+    ['degradeHp', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeHp }]],
+    ['degradeLp', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsDegradeLp }]],
+    ['dynamicsSaturationEnabled', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationEnabled }]],
+    ['dynamicsSaturationMode', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationMode }]],
+    ['dynamicsSaturationQuality', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationQuality }]],
     ['dynamicsSaturationDrive', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsSaturationDrive }]],
+    ['endCompEnabled', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompEnabled }]],
+    ['endCompMode', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompMode }]],
     ['endCompMix', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEndCompMix }]],
+    ['dynamicsEq1Enabled', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1Enabled }]],
+    ['dynamicsEq1LowType', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1LowType }]],
+    ['dynamicsEq2Enabled', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2Enabled }]],
+    ['dynamicsEq2HighType', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2HighType }]],
+    ['sidechainEnabled', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSidechainEnabled }]],
     ['sidechainAmount', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSidechainAmount }]],
+    ['sidechainKeyA', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyA }]],
+    ['sidechainKeyB', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyB }]],
+    ['sidechainKeyAWeight', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyAWeight }]],
+    ['sidechainKeyBWeight', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSidechainKeyBWeight }]],
     ['sidechainPad1Target', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.FxSidechainPad1Target }]],
     ['delayAToBSend', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.RoutingDelayAToDelayB }]],
     ['delayBGranularSend', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToGranular }]],
     ['granularReverbSend', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToReverb }]],
+    ['degradeReverbSend', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.RoutingDegradeToReverb }]],
     ['lead1Density', [{ targetId: CORE_PRODUCT_CONTROL_ONLY_MODULATION_TARGET_ID, paramId: KESSHO_PRODUCT_PARAM_IDS.SequencerLaneProbability }]],
   ];
   for (const [key, expected] of fxCases) assertResolvedTargets(key, expected);
+}
+
+{
+  assertStateBackedEnumValue('driftMode', 'clean', 0);
+  assertStateBackedEnumValue('driftMode', 'abyssWater', 1);
+  assertStateBackedEnumValue('driftMode', 'shallowWater', 2);
+  assertStateBackedEnumValue('driftQuality', 'balanced', 1);
+  assertStateBackedEnumValue('driftQuality', 'hq', 2);
+  assertStateBackedEnumValue('erosionQuality', 'media', 1);
+  assertStateBackedEnumValue('erosionQuality', 'hq', 2);
+  assertStateBackedEnumValue('dynamicsSaturationMode', 'clean', 0);
+  assertStateBackedEnumValue('dynamicsSaturationMode', 'fold', 4);
+  assertStateBackedEnumValue('dynamicsSaturationQuality', 'smooth', 1);
+  assertStateBackedEnumValue('dynamicsSaturationQuality', 'hq', 2);
+  assertStateBackedEnumValue('endCompMode', 'studioClear', 0);
+  assertStateBackedEnumValue('endCompMode', 'twoBand', 4);
+  assertStateBackedEnumValue('sidechainKeyA', 'kick', 2);
+  assertStateBackedEnumValue('sidechainKeyB', 'membrane', 7);
 }
 
 {

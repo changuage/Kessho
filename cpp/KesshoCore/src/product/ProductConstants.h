@@ -132,6 +132,7 @@ constexpr uint32_t kSoundscapeLayerRouteReverb = 0u;
 constexpr uint32_t kSoundscapeLayerRouteDelayA = 1u;
 constexpr uint32_t kSoundscapeLayerRouteDelayB = 2u;
 constexpr uint32_t kSoundscapeLayerRouteGranular = 3u;
+constexpr uint32_t kSoundscapeLayerRouteDegrade = 4u;
 constexpr uint32_t kSoundscapeLayerRouteStride = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_STRIDE;
 constexpr uint32_t kSoundscapeLayerRouteParamCount = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_PARAM_COUNT;
 constexpr uint32_t kSoundscapeParityFixtureParam = kessho::product::generated::KESSHO_PRODUCT_SOUNDSCAPE_PARITY_FIXTURE_PARAM;
@@ -175,7 +176,38 @@ constexpr uint32_t kSoundscapeProductModuleParamCount = kessho::product::generat
 static_assert(
     kSoundscapeProductModuleParamCount == KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT,
     "Soundscape module snapshot ABI count must match Product Core module params");
-constexpr uint32_t kDynamicsCharacterParamCount = 82;
+constexpr uint32_t kDynamicsDriftParamCount = 82;
+
+enum DynamicsTerminalBus : uint32_t {
+  kDynamicsBusSkip = 0,
+  kDynamicsBusEq1 = 1,
+  kDynamicsBusEq2 = 2,
+  kDynamicsBusSidechain = 3,
+};
+
+enum DynamicsRouteIndex : uint32_t {
+  kDynamicsRoutePad1 = 0,
+  kDynamicsRoutePad2 = 1,
+  kDynamicsRouteLead1 = 2,
+  kDynamicsRouteLead2 = 3,
+  kDynamicsRoutePiano = 4,
+  kDynamicsRouteDrum = 5,
+  kDynamicsRouteGranular = 6,
+  kDynamicsRouteWaves = 7,
+  kDynamicsRouteWater = 8,
+  kDynamicsRouteInsects = 9,
+  kDynamicsRouteNature = 10,
+  kDynamicsRouteDelayA = 11,
+  kDynamicsRouteDelayB = 12,
+  kDynamicsRouteDegrade = 13,
+  kDynamicsRouteReverb = 14,
+  kDynamicsRouteCount = 15,
+};
+
+enum DynamicsEqEdgeType : uint32_t {
+  kDynamicsEqEdgeShelf = 0,
+  kDynamicsEqEdgeBell = 1,
+};
 
 enum SidechainTargetIndex : uint32_t {
   kSidechainPad1 = 0,

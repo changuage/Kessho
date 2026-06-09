@@ -211,8 +211,9 @@ check(
 check(
   'preset-load-trigger-critical',
   files.presetSync.includes("reason: 'preset-load'") &&
+    files.presetSync.includes('forceFullSnapshot: true') &&
     files.presetSync.includes('triggerCritical: true'),
-  'preset load must be a trigger-critical resolved transaction',
+  'preset load must be a trigger-critical full-snapshot resolved transaction',
 );
 check(
   'morph-position-trigger-critical',
@@ -243,18 +244,22 @@ check(
   'sequencer master transport keys must route through immediate resolved ProductControl commits',
 );
 check(
-  'audio-sync-source-core-resolved-continuous',
+  'audio-sync-source-core-resolved-full-snapshot-boundary',
   files.audioSync.includes('SOURCE_CORE_FULL_SNAPSHOT_KEYS') &&
+    files.audioSync.includes('SOURCE_PRESET_ENDPOINT_FULL_SNAPSHOT_KEYS') &&
+    files.audioSync.includes('SOURCE_PRESET_BODY_FULL_SNAPSHOT_KEYS') &&
     files.audioSync.includes('KESSHO_PRODUCT_PAD_PARAM_SPECS') &&
     files.audioSync.includes('KESSHO_PRODUCT_DRUM_PARAM_SPECS') &&
     files.audioSync.includes("'lead2PresetC'") &&
     files.audioSync.includes("'lead2UseCustomAdsr'") &&
     files.audioSync.includes('requiresSourceCoreResolvedCommit(patch)') &&
     files.audioSync.includes('requiresSourceCoreFullSnapshot(patch, reason, options)') &&
+    files.audioSync.includes("if (reason === 'preset-load') return true;") &&
+    files.audioSync.includes('Object.keys(patch).some(isSourcePresetEndpointFullSnapshotPatchKey)') &&
     files.presetSync.includes("reason: 'preset-load'") &&
     files.presetSync.includes('triggerCritical: true') &&
-    !files.presetSync.includes('forceFullSnapshot: true'),
-  'source preset and source-core parameter edits must use resolved commits without forcing sequencer-resetting full snapshots',
+    files.presetSync.includes('forceFullSnapshot: true'),
+  'source preset endpoint/body edits must use resolved full-snapshot commits while morph-only controls stay on the continuous resolved path',
 );
 
 check(
@@ -344,6 +349,16 @@ check(
     !files.liveTriggerCallbacks.includes("removeRuntimeTriggerPositions(['pad2Morph']);") &&
     !files.liveTriggerCallbacks.includes('const keysToClear = morphKey ? [morphKey] : morphKeys;'),
   'sequencer morph callbacks must latch prior runtime morph values when inactive sentinels arrive between triggers',
+);
+
+check(
+  'morph-sub-lane-disable-clears-runtime-lock',
+  files.synthPage.includes('morphSubLaneRuntimeOwnersRef') &&
+    files.synthPage.includes('runtimeMorphKeyForLaneSource') &&
+    files.synthPage.includes('keysToClear.add(owner.key)') &&
+    files.synthPage.includes('activeKeys.forEach((key) => keysToClear.delete(key))') &&
+    files.synthPage.includes('removeRuntimeValues(keysToClear)'),
+  'explicitly disabling or retargeting a morph sub-lane must clear stale runtime morph values that lock preset morph sliders',
 );
 
 check(

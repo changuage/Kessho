@@ -28,7 +28,7 @@ for (const [label, source] of [
   ['web slider help', sliderHelp],
   ['web param registry', paramRegistry],
 ]) {
-  assert(source.includes('degradeWobbleSpeed'), `${label} must include degradeWobbleSpeed`);
+  assert(source.includes('erosionWobbleSpeed'), `${label} must include erosionWobbleSpeed`);
 }
 
 const iosState = read('KesshoNativeSwift/Kessho/State/SliderState.swift');
@@ -44,11 +44,11 @@ for (const [label, source] of [
   ['iOS controls', iosControls],
   ['iOS dynamics model', iosDynamics],
 ]) {
-  assert(source.includes('degradeWobbleSpeed'), `${label} must include degradeWobbleSpeed`);
+  assert(source.includes('erosionWobbleSpeed'), `${label} must include erosionWobbleSpeed`);
 }
 
 assert(
-  iosControls.includes('label: "Wobble Speed"') && iosControls.includes('$appState.state.degradeWobbleSpeed'),
+  iosControls.includes('label: "Wobble Speed"') && iosControls.includes('$appState.state.erosionWobbleSpeed'),
   'iOS controls must expose the Degrade Wobble Speed slider'
 );
 

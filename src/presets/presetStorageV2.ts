@@ -12,8 +12,10 @@ import { hydrateOptimizedStatePresetData } from './statePresetOptimization';
 import type { PresetEntry, PresetLevel, PresetRef, PresetVersion, PresetVersionMetadata } from './types';
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
 import {
-  DYNAMICS_CHARACTER_PRESET_KEYS,
-  DYNAMICS_DEGRADE_PRESET_KEYS,
+  DYNAMICS_DRIFT_PRESET_KEYS,
+  DYNAMICS_EQ1_PRESET_KEYS,
+  DYNAMICS_EQ2_PRESET_KEYS,
+  DYNAMICS_EROSION_PRESET_KEYS,
   DYNAMICS_END_CHAIN_PRESET_KEYS,
   DYNAMICS_SATURATION_PRESET_KEYS,
   DYNAMICS_SIDECHAIN_PRESET_KEYS,
@@ -245,6 +247,21 @@ function engineSubsetChild(slot: string, scope: string, keys: readonly (keyof Sl
   };
 }
 
+function kitSubsetChild(slot: string, scope: string, keys: readonly (keyof SliderState)[]): PresetChildSpec {
+  return {
+    slot,
+    type: 'kit',
+    scope,
+    extract: (state) => {
+      const data: Record<string, unknown> = {};
+      for (const key of keys) {
+        data[key] = state[key];
+      }
+      return canonicalizeRecord(data);
+    },
+  };
+}
+
 function withStepOverrides(
   data: Record<string, unknown>,
   stepOverrides: unknown,
@@ -319,7 +336,9 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
       { slot: 'granular', type: 'source', scope: 'granular', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'granular')) },
       { slot: 'delay', type: 'source', scope: 'delay', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'delay')) },
       { slot: 'reverb', type: 'source', scope: 'reverb', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'reverb')) },
-      { slot: 'dynamics', type: 'source', scope: 'dynamics', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'dynamics')) },
+      { slot: 'degrade', type: 'source', scope: 'degrade', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'degrade')) },
+      { slot: 'dynamicsBus', type: 'source', scope: 'dynamicsBus', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'dynamicsBus')) },
+      { slot: 'masterFx', type: 'source', scope: 'masterFx', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'masterFx')) },
       { slot: 'earth', type: 'kit', scope: 'earthKit', extract: (state) => canonicalizeRecord(extractCascade(state, 2, 'earthKit')) },
     ];
   }
@@ -374,11 +393,23 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
     ];
   }
 
-  if (type === 'source' && scope === 'dynamics') {
+  if (type === 'source' && scope === 'dynamicsBus') {
     return [
+      engineSubsetChild('eq1', 'dynamicsEq1', DYNAMICS_EQ1_PRESET_KEYS),
+      engineSubsetChild('eq2', 'dynamicsEq2', DYNAMICS_EQ2_PRESET_KEYS),
       engineSubsetChild('sidechain', 'dynamicsSidechain', DYNAMICS_SIDECHAIN_PRESET_KEYS),
-      engineSubsetChild('character', 'dynamicsCharacter', DYNAMICS_CHARACTER_PRESET_KEYS),
-      engineSubsetChild('degrade', 'dynamicsDegrade', DYNAMICS_DEGRADE_PRESET_KEYS),
+    ];
+  }
+
+  if (type === 'source' && scope === 'degrade') {
+    return [
+      kitSubsetChild('drift', 'dynamicsDrift', DYNAMICS_DRIFT_PRESET_KEYS),
+      kitSubsetChild('erosion', 'dynamicsErosion', DYNAMICS_EROSION_PRESET_KEYS),
+    ];
+  }
+
+  if (type === 'source' && scope === 'masterFx') {
+    return [
       engineSubsetChild('saturation', 'dynamicsSaturation', DYNAMICS_SATURATION_PRESET_KEYS),
       engineSubsetChild('endChain', 'dynamicsEndChain', DYNAMICS_END_CHAIN_PRESET_KEYS),
     ];
@@ -546,15 +577,36 @@ function sourceSlotFallbackOverrides(slot: string): Record<string, unknown> {
         spectralFreezeActive: false,
         spectralFreezeMix: 0,
       };
-    case 'dynamics':
+    case 'dynamicsBus':
       return {
-        dynamicsEnabled: false,
+        dynamicsBusEnabled: false,
+        dynamicsEq1Enabled: false,
+        dynamicsEq2Enabled: false,
         sidechainEnabled: false,
-        characterEnabled: false,
-        degradeEnabled: false,
-        dynamicsSaturationEnabled: false,
-        endCompEnabled: false,
+        sidechainMix: 0,
+        sidechainAmount: 0,
       };
+    case 'degrade':
+      return {
+        degradeEnabled: false,
+        driftEnabled: false,
+        driftMix: 0,
+        erosionEnabled: false,
+        erosionMix: 0,
+      };
+    case 'masterFx':
+      return {
+        dynamicsSaturationEnabled: false,
+        dynamicsSaturationDrive: 0,
+        endCompEnabled: false,
+        endCompMix: 0,
+      };
+    case 'sidechain':
+      return { sidechainMix: 0, sidechainAmount: 0 };
+    case 'saturation':
+      return { dynamicsSaturationDrive: 0 };
+    case 'endChain':
+      return { endCompMix: 0 };
     case 'earth':
       return {
         earthLevel: 0,
@@ -624,16 +676,38 @@ function kitOrEngineSlotFallbackOverrides(slot: string): Record<string, unknown>
       };
     case 'earthKit':
       return sourceSlotFallbackOverrides('earth');
+    case 'dynamicsBus':
+      return sourceSlotFallbackOverrides('dynamicsBus');
+    case 'masterFx':
+      return sourceSlotFallbackOverrides('masterFx');
+    case 'eq1':
+      return {
+        dynamicsEq1InputGain: 0,
+        dynamicsEq1OutputGain: 0,
+        dynamicsEq1LowGain: 0,
+        dynamicsEq1MidGain: 0,
+        dynamicsEq1HighGain: 0,
+      };
+    case 'eq2':
+      return {
+        dynamicsEq2InputGain: 0,
+        dynamicsEq2OutputGain: 0,
+        dynamicsEq2LowGain: 0,
+        dynamicsEq2MidGain: 0,
+        dynamicsEq2HighGain: 0,
+      };
     case 'sidechain':
-      return { sidechainEnabled: false, sidechainMix: 0, sidechainAmount: 0 };
-    case 'character':
-      return { characterEnabled: false, characterMix: 0 };
+      return { sidechainMix: 0, sidechainAmount: 0 };
+    case 'drift':
+      return { driftMix: 0 };
     case 'degrade':
-      return { degradeEnabled: false, degradeMix: 0 };
+      return { degradeEnabled: false, driftEnabled: false, driftMix: 0, erosionEnabled: false, erosionMix: 0 };
+    case 'erosion':
+      return { erosionMix: 0 };
     case 'saturation':
-      return { dynamicsSaturationEnabled: false, dynamicsSaturationDrive: 0 };
+      return { dynamicsSaturationDrive: 0 };
     case 'endChain':
-      return { endCompEnabled: false, endCompMix: 0 };
+      return { endCompMix: 0 };
     default:
       return {};
   }

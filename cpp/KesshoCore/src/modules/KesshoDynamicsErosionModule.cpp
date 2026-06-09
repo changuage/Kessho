@@ -17,9 +17,9 @@ constexpr int kParamGeneration = 3;
 constexpr int kParamCorrosion = 4;
 constexpr int kParamWear = 5;
 
-class DynamicsDegradeModule final : public IKesshoModule {
+class DynamicsErosionModule final : public IKesshoModule {
 public:
-  ~DynamicsDegradeModule() override {
+  ~DynamicsErosionModule() override {
     dynamics_degrade_instance_destroy(instance_);
   }
 
@@ -122,8 +122,8 @@ private:
 
 } // namespace
 
-std::unique_ptr<IKesshoModule> createDynamicsDegradeModule() {
-  return std::make_unique<DynamicsDegradeModule>();
+std::unique_ptr<IKesshoModule> createDynamicsErosionModule() {
+  return std::make_unique<DynamicsErosionModule>();
 }
 
 } // namespace kessho::core

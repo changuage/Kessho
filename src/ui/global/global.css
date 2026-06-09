@@ -847,9 +847,9 @@
 }
 
 .global-root .routing-matrix-grid {
-  min-width: 620px;
+  min-width: 928px;
   display: grid;
-  grid-template-columns: 124px repeat(5, minmax(108px, 1fr));
+  grid-template-columns: 124px repeat(7, minmax(108px, 1fr));
   gap: 6px;
 }
 
@@ -916,9 +916,20 @@
   cursor: pointer;
 }
 
+.global-root .routing-matrix-cell.dynamics-route {
+  cursor: pointer;
+  align-items: stretch;
+  text-align: left;
+}
+
 .global-root .routing-matrix-cell.editable:hover {
   transform: translateY(-1px);
   border-color: rgba(165, 196, 212, 0.34);
+}
+
+.global-root .routing-matrix-cell.dynamics-route:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--row-accent, #a5c4d4) 32%, transparent);
 }
 
 .global-root .routing-matrix-cell.selected {
@@ -952,6 +963,47 @@
   color: rgba(235, 242, 248, 0.72);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.global-root .routing-matrix-dynamics-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
+  width: 100%;
+  pointer-events: none;
+}
+
+.global-root .routing-matrix-dynamics-dot {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.global-root .routing-matrix-dynamics-dot.active {
+  background: color-mix(in srgb, var(--row-accent, #a5c4d4) 62%, white 8%);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--row-accent, #a5c4d4) 22%, transparent);
+}
+
+.global-root .routing-matrix-dynamics-dot.skip.active {
+  background: rgba(188, 197, 207, 0.34);
+  box-shadow: none;
+}
+
+.global-root .routing-matrix-dynamics-label {
+  min-width: 0;
+  color: rgba(235, 242, 248, 0.9);
+  font-size: var(--font-sm);
+  font-weight: 800;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.global-root .routing-matrix-cell.dynamics-route.skip .routing-matrix-dynamics-label {
+  color: rgba(207, 217, 232, 0.58);
 }
 
 .global-root .routing-matrix-inspector {

@@ -6,34 +6,39 @@ import { useSliderHelp } from '../SliderHelpOverlay';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';
 import type { UsePresetsOptions } from '../../presets/usePresets';
-import { normalizeDynamicsDegradeAliases, normalizeDynamicsQualityFields } from '../../audio/dynamicsModel';
+import { normalizeDynamicsErosionAliases, normalizeDynamicsQualityFields } from '../../audio/dynamicsModel';
 import {
-  DEGRADE_MOD_SOURCES,
-  DEGRADE_MOD_TARGETS,
-  DYNAMICS_CHARACTER_PRESET_KEYS,
-  DYNAMICS_DEGRADE_PRESET_KEYS,
+  EROSION_MOD_SOURCES,
+  EROSION_MOD_TARGETS,
+  DYNAMICS_DRIFT_PRESET_KEYS,
+  DYNAMICS_EQ1_PRESET_KEYS,
+  DYNAMICS_EQ2_PRESET_KEYS,
+  DYNAMICS_EROSION_PRESET_KEYS,
   DYNAMICS_END_CHAIN_PRESET_KEYS,
+  DYNAMICS_MASTER_FX_PRESET_KEYS,
   DYNAMICS_SATURATION_PRESET_KEYS,
   DYNAMICS_SIDECHAIN_PRESET_KEYS,
 } from './dynamicsPresets';
 import {
-  DynamicsCharacterVisualizer,
+  DynamicsDriftVisualizer,
   DynamicsCompressorVisualizer,
-  DynamicsDegradeVisualizer,
+  DynamicsEqVisualizer,
+  DynamicsErosionVisualizer,
   DynamicsSaturationVisualizer,
   DynamicsSidechainVisualizer,
 } from './DynamicsVisualizers';
 import {
-  DYNAMICS_CHARACTER_CONTROLS,
-  DYNAMICS_CHARACTER_QUALITY_CONTROLS,
-  DYNAMICS_DEGRADE_CONTROLS,
-  DYNAMICS_DEGRADE_QUALITY_CONTROLS,
+  DYNAMICS_DRIFT_CONTROLS,
+  DYNAMICS_DRIFT_QUALITY_CONTROLS,
+  DYNAMICS_EQ_CONTROL_SETS,
+  DYNAMICS_EROSION_CONTROLS,
+  DYNAMICS_EROSION_QUALITY_CONTROLS,
   DYNAMICS_END_CHAIN_CONTROLS,
   DYNAMICS_END_CHAIN_QUALITY_CONTROLS,
   DYNAMICS_SATURATION_CONTROLS,
   DYNAMICS_SIDECHAIN_MIX_CONTROLS,
   DYNAMICS_SIDECHAIN_SHAPE_CONTROLS,
-  DYNAMICS_SIDECHAIN_TARGET_CONTROLS,
+  type DynamicsEqControlSet,
   type DynamicsSliderControlDefinition,
 } from './dynamicsControlSchema';
 import { getProductSliderValue } from '../controls/productControlSchema';
@@ -50,19 +55,19 @@ const DRUM_KEY_OPTIONS: Array<{ value: SliderState['sidechainKeyA']; label: stri
   { value: 'membrane', label: 'Membrane' },
 ];
 
-const CHARACTER_MODE_OPTIONS: Array<{ value: SliderState['characterMode']; label: string }> = [
+const DRIFT_MODE_OPTIONS: Array<{ value: SliderState['driftMode']; label: string }> = [
   { value: 'clean', label: 'Clean' },
   { value: 'abyssWater', label: 'Abyss' },
   { value: 'shallowWater', label: 'Shallow' },
 ];
 
-const CHARACTER_QUALITY_OPTIONS: Array<{ value: SliderState['characterQuality']; label: string }> = [
+const DRIFT_QUALITY_OPTIONS: Array<{ value: SliderState['driftQuality']; label: string }> = [
   { value: 'eco', label: 'Eco' },
   { value: 'balanced', label: 'Balanced' },
   { value: 'hq', label: 'HQ' },
 ];
 
-const DEGRADE_QUALITY_OPTIONS: Array<{ value: SliderState['degradeQuality']; label: string }> = [
+const EROSION_QUALITY_OPTIONS: Array<{ value: SliderState['erosionQuality']; label: string }> = [
   { value: 'classic', label: 'Classic' },
   { value: 'media', label: 'Media' },
   { value: 'hq', label: 'HQ' },
@@ -89,6 +94,21 @@ const SAT_QUALITY_OPTIONS: Array<{ value: SliderState['dynamicsSaturationQuality
   { value: 'smooth', label: 'Smooth' },
   { value: 'hq', label: 'HQ' },
 ];
+
+const EQ_EDGE_TYPE_OPTIONS: Array<{ value: SliderState['dynamicsEq1LowType']; label: string }> = [
+  { value: 'shelf', label: 'Shelf' },
+  { value: 'bell', label: 'Bell' },
+];
+
+type ToggleableDynamicsModule =
+  | 'dynamicsBusEnabled'
+  | 'dynamicsEq1Enabled'
+  | 'dynamicsEq2Enabled'
+  | 'sidechainEnabled'
+  | 'driftEnabled'
+  | 'erosionEnabled'
+  | 'dynamicsSaturationEnabled'
+  | 'endCompEnabled';
 
 const END_COMP_MODE_PRESETS: Record<SliderState['endCompMode'], Partial<SliderState>> = {
   studioClear: {
@@ -178,10 +198,7 @@ const END_COMP_MODE_PRESETS: Record<SliderState['endCompMode'], Partial<SliderSt
   },
 };
 
-function makeSubsetPresetOptions(
-  keys: readonly (keyof SliderState)[],
-  options: { forceDynamicsEnabled?: boolean } = {},
-): UsePresetsOptions {
+function makeSubsetPresetOptions(keys: readonly (keyof SliderState)[]): UsePresetsOptions {
   return {
     customExtract: (snapshot) => {
       const data: Record<string, unknown> = {};
@@ -193,10 +210,13 @@ function makeSubsetPresetOptions(
     customApply: (snapshot, data) => {
       const next = { ...snapshot } as Record<string, unknown>;
       const normalizedData = normalizeDynamicsQualityFields(
-        normalizeDynamicsDegradeAliases(data),
+        normalizeDynamicsErosionAliases(data),
       );
       const defaultState = DEFAULT_STATE as unknown as Record<string, unknown>;
-      if (options.forceDynamicsEnabled) next.dynamicsEnabled = true;
+      const nextEndCompEnabled = 'endCompEnabled' in normalizedData
+        ? Boolean(normalizedData.endCompEnabled)
+        : Boolean(defaultState.endCompEnabled);
+      if (nextEndCompEnabled) next.dynamicsEnabled = true;
       for (const key of keys) {
         const normalizedKey = key as string;
         next[normalizedKey] = normalizedKey in normalizedData
@@ -233,14 +253,20 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
 }) => {
   const Slider = SliderComponent as React.ComponentType<any>;
   const { announceHelp, announceSlider } = useSliderHelp();
-  const [presetName, setPresetName] = useState<string | undefined>();
-  const [presetDescription, setPresetDescription] = useState<string>('');
+  const [degradePresetName, setDegradePresetName] = useState<string | undefined>();
+  const [degradePresetDescription, setDegradePresetDescription] = useState<string>('');
   const [sidechainPresetName, setSidechainPresetName] = useState<string | undefined>();
   const [endChainPresetName, setEndChainPresetName] = useState<string | undefined>();
-  const [characterPresetName, setCharacterPresetName] = useState<string | undefined>();
-  const [degradePresetName, setDegradePresetName] = useState<string | undefined>();
+  const [dynamicsBusPresetName, setDynamicsBusPresetName] = useState<string | undefined>();
+  const [dynamicsBusPresetDescription, setDynamicsBusPresetDescription] = useState<string>('');
+  const [masterFxPresetName, setMasterFxPresetName] = useState<string | undefined>();
+  const [masterFxPresetDescription, setMasterFxPresetDescription] = useState<string>('');
+  const [eq1PresetName, setEq1PresetName] = useState<string | undefined>();
+  const [eq2PresetName, setEq2PresetName] = useState<string | undefined>();
+  const [driftPresetName, setDriftPresetName] = useState<string | undefined>();
+  const [erosionPresetName, setErosionPresetName] = useState<string | undefined>();
   const [saturationPresetName, setSaturationPresetName] = useState<string | undefined>();
-  const [degradeMatrixOpen, setDegradeMatrixOpen] = useState(false);
+  const [erosionMatrixOpen, setErosionMatrixOpen] = useState(false);
 
   const bindSliderHelp = useCallback((paramKey: keyof SliderState, label: string, page: SliderPageId = 'dynamics') => ({
     onMouseEnter: () => announceSlider(String(paramKey), { label, page }),
@@ -254,33 +280,54 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
     onFocus: () => announceHelp(helpKey, options),
   }), [announceHelp]);
 
-  const activeTargets = useMemo(
-    () => DYNAMICS_SIDECHAIN_TARGET_CONTROLS.filter(({ key }) => Number(state[key] ?? 0) > 0.001).length,
-    [state],
-  );
-  const activeCharacter = CHARACTER_MODE_OPTIONS.find((mode) => mode.value === state.characterMode)?.label ?? 'Clean';
-  const sidechainPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_SIDECHAIN_PRESET_KEYS, { forceDynamicsEnabled: true }), []);
-  const endChainPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_END_CHAIN_PRESET_KEYS, { forceDynamicsEnabled: true }), []);
-  const characterPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_CHARACTER_PRESET_KEYS, { forceDynamicsEnabled: true }), []);
-  const degradePresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_DEGRADE_PRESET_KEYS, { forceDynamicsEnabled: true }), []);
+  const activeBusModules = [
+    state.dynamicsEq1Enabled,
+    state.dynamicsEq2Enabled,
+    state.sidechainEnabled,
+  ].filter(Boolean).length;
+  const dynamicsBusActive = state.dynamicsBusEnabled || activeBusModules > 0;
+  const activeDrift = DRIFT_MODE_OPTIONS.find((mode) => mode.value === state.driftMode)?.label ?? 'Clean';
+  const eq1PresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_EQ1_PRESET_KEYS), []);
+  const eq2PresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_EQ2_PRESET_KEYS), []);
+  const sidechainPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_SIDECHAIN_PRESET_KEYS), []);
+  const endChainPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_END_CHAIN_PRESET_KEYS), []);
+  const masterFxPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_MASTER_FX_PRESET_KEYS), []);
+  const driftPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_DRIFT_PRESET_KEYS), []);
+  const erosionPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_EROSION_PRESET_KEYS), []);
   const saturationPresetOptions = useMemo(() => makeSubsetPresetOptions(DYNAMICS_SATURATION_PRESET_KEYS), []);
 
-  const handlePresetLoad = useCallback((entry: PresetEntry) => {
-    setPresetName(entry.name);
+  const handleDegradePresetLoad = useCallback((entry: PresetEntry) => {
+    setDegradePresetName(entry.name);
     const currentVersion = entry.versions.find(version => version.v === entry.currentVersion);
-    setPresetDescription(entry.description ?? currentVersion?.note ?? '');
+    setDegradePresetDescription(entry.description ?? currentVersion?.note ?? '');
   }, []);
   const handleSidechainPresetLoad = useCallback((entry: PresetEntry) => {
     setSidechainPresetName(entry.name);
   }, []);
+  const handleDynamicsBusPresetLoad = useCallback((entry: PresetEntry) => {
+    setDynamicsBusPresetName(entry.name);
+    const currentVersion = entry.versions.find(version => version.v === entry.currentVersion);
+    setDynamicsBusPresetDescription(entry.description ?? currentVersion?.note ?? '');
+  }, []);
+  const handleMasterFxPresetLoad = useCallback((entry: PresetEntry) => {
+    setMasterFxPresetName(entry.name);
+    const currentVersion = entry.versions.find(version => version.v === entry.currentVersion);
+    setMasterFxPresetDescription(entry.description ?? currentVersion?.note ?? '');
+  }, []);
+  const handleEq1PresetLoad = useCallback((entry: PresetEntry) => {
+    setEq1PresetName(entry.name);
+  }, []);
+  const handleEq2PresetLoad = useCallback((entry: PresetEntry) => {
+    setEq2PresetName(entry.name);
+  }, []);
   const handleEndChainPresetLoad = useCallback((entry: PresetEntry) => {
     setEndChainPresetName(entry.name);
   }, []);
-  const handleCharacterPresetLoad = useCallback((entry: PresetEntry) => {
-    setCharacterPresetName(entry.name);
+  const handleDriftPresetLoad = useCallback((entry: PresetEntry) => {
+    setDriftPresetName(entry.name);
   }, []);
-  const handleDegradePresetLoad = useCallback((entry: PresetEntry) => {
-    setDegradePresetName(entry.name);
+  const handleErosionPresetLoad = useCallback((entry: PresetEntry) => {
+    setErosionPresetName(entry.name);
   }, []);
   const handleSaturationPresetLoad = useCallback((entry: PresetEntry) => {
     setSaturationPresetName(entry.name);
@@ -301,21 +348,50 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
     />
   ), [Slider, bindSliderHelp, onParamChange, sliderProps, state]);
 
-  const setModuleEnabled = useCallback((key: 'sidechainEnabled' | 'characterEnabled' | 'degradeEnabled' | 'dynamicsSaturationEnabled' | 'endCompEnabled', enabled: boolean) => {
-    const shouldEnableDynamics = key !== 'dynamicsSaturationEnabled';
+  const setModuleEnabled = useCallback((key: ToggleableDynamicsModule, enabled: boolean) => {
+    const shouldEnableDynamics = key === 'sidechainEnabled' || key === 'endCompEnabled';
+    const isDegradeChild = key === 'driftEnabled' || key === 'erosionEnabled';
+    const isDynamicsBusChild = key === 'dynamicsEq1Enabled' || key === 'dynamicsEq2Enabled' || key === 'sidechainEnabled';
     if (onStateChange) {
-      onStateChange((currentState) => ({
-        ...currentState,
-        ...(shouldEnableDynamics ? { dynamicsEnabled: true } : {}),
-        [key]: enabled,
-      }));
+      onStateChange((currentState) => {
+        const next = {
+          ...currentState,
+          ...(enabled && shouldEnableDynamics ? { dynamicsEnabled: true } : {}),
+          ...(enabled && isDynamicsBusChild ? { dynamicsBusEnabled: true } : {}),
+          [key]: enabled,
+        };
+        if (key === 'dynamicsBusEnabled' && !enabled) {
+          next.dynamicsEq1Enabled = false;
+          next.dynamicsEq2Enabled = false;
+          next.sidechainEnabled = false;
+        }
+        if (isDegradeChild) {
+          next.degradeEnabled = enabled
+            ? true
+            : key === 'driftEnabled'
+              ? Boolean(currentState.erosionEnabled)
+              : Boolean(currentState.driftEnabled);
+        }
+        return next;
+      });
       return;
     }
-    if (shouldEnableDynamics) {
+    if (enabled && shouldEnableDynamics) {
       onSelectChange('dynamicsEnabled', true);
     }
+    if (enabled && isDynamicsBusChild) {
+      onSelectChange('dynamicsBusEnabled', true);
+    }
+    if (key === 'dynamicsBusEnabled' && !enabled) {
+      onSelectChange('dynamicsEq1Enabled', false);
+      onSelectChange('dynamicsEq2Enabled', false);
+      onSelectChange('sidechainEnabled', false);
+    }
+    if (isDegradeChild) {
+      onSelectChange('degradeEnabled', enabled || (key === 'driftEnabled' ? state.erosionEnabled : state.driftEnabled));
+    }
     onSelectChange(key, enabled);
-  }, [onSelectChange, onStateChange]);
+  }, [onSelectChange, onStateChange, state.driftEnabled, state.erosionEnabled]);
 
   const applyEndCompMode = useCallback((mode: SliderState['endCompMode']) => {
     const preset = END_COMP_MODE_PRESETS[mode];
@@ -342,99 +418,209 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
     }
   }, [onParamChange, onSelectChange, onStateChange]);
 
-  return (
-    <div className={`dynamics-root${isMobile ? ' mobile' : ''}`}>
-      <div className="dynamics-container">
-        <div className="dynamics-column dynamics-left">
-          <div className="dynamics-global-bar fx-page-header">
-            <span className="dynamics-title fx-page-title">⊞ Dynamics FX</span>
-          </div>
+  const renderEqModule = (config: DynamicsEqControlSet) => {
+    const enabled = Boolean(state[config.enabledKey]);
+    const presetName = config.id === 'eq1' ? eq1PresetName : eq2PresetName;
+    const presetOptions = config.id === 'eq1' ? eq1PresetOptions : eq2PresetOptions;
+    const onPresetLoad = config.id === 'eq1' ? handleEq1PresetLoad : handleEq2PresetLoad;
+    const lowType = state[config.lowTypeKey] === 'bell' ? 'bell' : 'shelf';
+    const highType = state[config.highTypeKey] === 'bell' ? 'bell' : 'shelf';
+    const note = enabled
+      ? `${lowType === 'shelf' ? 'Low shelf' : 'Low bell'} / ${highType === 'shelf' ? 'High shelf' : 'High bell'}`
+      : 'Off';
 
-          <section className="dynamics-section-card dynamics-preset-card">
-            <div className="dynamics-section-head">
-              <span className="dynamics-section-title">Preset</span>
-              <span className="dynamics-section-note">Save or recall the dynamics setup</span>
-            </div>
-            <div className="dynamics-preset-body">
+    return (
+      <div key={config.id} className="dynamics-bus-module dynamics-eq-module">
+        <div className="dynamics-bus-module-head">
+          <div className="dynamics-section-label">
+            <span className="dynamics-section-title">{config.label}</span>
+            <button
+              className={`dynamics-fx-toggle${enabled ? ' on cyan' : ''}`}
+              type="button"
+              aria-pressed={enabled}
+              onClick={() => setModuleEnabled(config.enabledKey, !enabled)}
+              {...bindHelp(`${config.enabledKey}`, { label: `${config.label} FX`, page: 'dynamics' })}
+            >
+              {enabled ? 'FX On' : 'FX Off'}
+            </button>
+          </div>
+          <span className="dynamics-section-note">{note}</span>
+        </div>
+        {enabled && (
+          <div className="dynamics-bus-module-body">
+            <div className="dynamics-module-preset-row">
               <PresetDropdown
                 className="dynamics-preset-toolbar"
-                level="source"
-                scope="dynamics"
+                level="engine"
+                scope={config.scope}
                 state={state}
                 currentName={presetName}
-                onLoad={handlePresetLoad}
+                onLoad={onPresetLoad}
                 onStateChange={onStateChange}
+                presetOptions={presetOptions}
                 compact
               />
-              <div className="dynamics-preset-meta">
-                <div className="dynamics-preset-description">
-                  {presetDescription || (presetName ? 'No description saved for this preset.' : 'Load a dynamics preset to view its description.')}
-                </div>
-                <div className="dynamics-preset-description dynamics-preset-note">
-                  Stores sidechain keys and targets, character, degrade, saturation, and end-chain compression.
-                </div>
-              </div>
             </div>
-          </section>
-
-          <section className="dynamics-section-card dynamics-character-card">
-            <div className="dynamics-section-head">
-              <div className="dynamics-section-label">
-                <span className="dynamics-section-title">Character</span>
-                <button
-                  className={`dynamics-fx-toggle${state.characterEnabled ? ' on green' : ''}`}
-                  type="button"
-                  aria-pressed={state.characterEnabled}
-                  onClick={() => setModuleEnabled('characterEnabled', !state.characterEnabled)}
-                  {...bindHelp('characterEnabled', { label: 'Character FX', page: 'dynamics' })}
-                >
-                  {state.characterEnabled ? 'FX On' : 'FX Off'}
-                </button>
-              </div>
-              <span className="dynamics-section-note">{state.characterEnabled ? activeCharacter : 'Off'}</span>
-            </div>
-            {state.characterEnabled && (
-            <div className="dynamics-section-body">
-              <div className="dynamics-module-preset-row">
-                <PresetDropdown
-                  className="dynamics-preset-toolbar"
-                  level="engine"
-                  scope="dynamicsCharacter"
-                  state={state}
-                  currentName={characterPresetName}
-                  onLoad={handleCharacterPresetLoad}
-                  onStateChange={onStateChange}
-                  presetOptions={characterPresetOptions}
-                  compact
-                />
-              </div>
-              <div className="dynamics-mode-row">
-                {CHARACTER_MODE_OPTIONS.map((mode) => (
-                  <button
-                    key={mode.value}
-                    className={`dynamics-mode-btn${state.characterMode === mode.value ? ' active' : ''}`}
-                    onClick={() => onSelectChange('characterMode', mode.value)}
-                    {...bindHelp(`characterMode_${mode.value}`, { label: mode.label, page: 'dynamics' })}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-              <div className="dynamics-mode-row" aria-label="Character quality">
-                {CHARACTER_QUALITY_OPTIONS.map((option) => (
+            <div className="dynamics-eq-type-row">
+              <span className="dynamics-chip-label">Low</span>
+              <div className="dynamics-mode-row" aria-label={`${config.label} low band type`}>
+                {EQ_EDGE_TYPE_OPTIONS.map((option) => (
                   <button
                     key={option.value}
                     type="button"
-                    className={`dynamics-mode-btn${state.characterQuality === option.value ? ' active' : ''}`}
-                    onClick={() => onSelectChange('characterQuality', option.value)}
-                    {...bindHelp(`characterQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
+                    className={`dynamics-mode-btn${lowType === option.value ? ' active' : ''}`}
+                    onClick={() => onSelectChange(config.lowTypeKey, option.value)}
+                    {...bindHelp(`${String(config.lowTypeKey)}_${option.value}`, { label: option.label, page: 'dynamics' })}
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
-              <div {...bindHelp('characterVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
-                <DynamicsCharacterVisualizer
+              <span className="dynamics-chip-label">High</span>
+              <div className="dynamics-mode-row" aria-label={`${config.label} high band type`}>
+                {EQ_EDGE_TYPE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`dynamics-mode-btn${highType === option.value ? ' active' : ''}`}
+                    onClick={() => onSelectChange(config.highTypeKey, option.value)}
+                    {...bindHelp(`${String(config.highTypeKey)}_${option.value}`, { label: option.label, page: 'dynamics' })}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div {...bindHelp('dynamicsEqVisualizer', { label: `${config.label} Visualizer`, page: 'dynamics' })}>
+              <DynamicsEqVisualizer
+                state={state}
+                eqId={config.id}
+                onParamChange={onParamChange}
+              />
+            </div>
+            <div className="dynamics-subsection">Trim</div>
+            <div className="dynamics-grid-2">
+              {config.trimControls.map(renderDynamicsSlider)}
+            </div>
+            <div className="dynamics-subsection">Low Band</div>
+            <div className="dynamics-grid-2">
+              {config.lowControls.map((control) => {
+                if (control.key === 'dynamicsEq1LowSlope' && lowType !== 'shelf') return null;
+                if (control.key === 'dynamicsEq2LowSlope' && lowType !== 'shelf') return null;
+                return renderDynamicsSlider(control);
+              })}
+            </div>
+            <div className="dynamics-subsection">Mid Band</div>
+            <div className="dynamics-grid-2">
+              {config.midControls.map(renderDynamicsSlider)}
+            </div>
+            <div className="dynamics-subsection">High Band</div>
+            <div className="dynamics-grid-2">
+              {config.highControls.map((control) => {
+                if (control.key === 'dynamicsEq1HighSlope' && highType !== 'shelf') return null;
+                if (control.key === 'dynamicsEq2HighSlope' && highType !== 'shelf') return null;
+                return renderDynamicsSlider(control);
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className={`dynamics-root${isMobile ? ' mobile' : ''}`}>
+      <div className="dynamics-container">
+        <div className="dynamics-column dynamics-left">
+          <div className="dynamics-global-bar fx-page-header">
+            <span className="dynamics-title fx-page-title">Texture</span>
+          </div>
+
+          <section className="dynamics-section-card dynamics-preset-card">
+            <div className="dynamics-section-head">
+              <span className="dynamics-section-title">Degrade Preset</span>
+              <span className="dynamics-section-note">Save or recall Drift and Erosion together</span>
+            </div>
+            <div className="dynamics-preset-body">
+              <PresetDropdown
+                className="dynamics-preset-toolbar"
+                level="source"
+                scope="degrade"
+                state={state}
+                currentName={degradePresetName}
+                onLoad={handleDegradePresetLoad}
+                onStateChange={onStateChange}
+                compact
+              />
+              <div className="dynamics-preset-meta">
+                <div className="dynamics-preset-description">
+                  {degradePresetDescription || (degradePresetName ? 'No description saved for this preset.' : 'Load a Degrade preset to view its description.')}
+                </div>
+                <div className="dynamics-preset-description dynamics-preset-note">
+                  Stores the Degrade parent controls plus Drift and Erosion child presets.
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="dynamics-section-card dynamics-drift-card">
+            <div className="dynamics-section-head">
+              <div className="dynamics-section-label">
+                <span className="dynamics-section-title"><span className="dynamics-parent-label">Degrade - </span>Drift</span>
+                <button
+                  className={`dynamics-fx-toggle${state.driftEnabled ? ' on green' : ''}`}
+                  type="button"
+                  aria-pressed={state.driftEnabled}
+                  onClick={() => setModuleEnabled('driftEnabled', !state.driftEnabled)}
+                  {...bindHelp('driftEnabled', { label: 'Drift FX', page: 'dynamics' })}
+                >
+                  {state.driftEnabled ? 'FX On' : 'FX Off'}
+                </button>
+              </div>
+              <span className="dynamics-section-note">{state.driftEnabled ? activeDrift : 'Off'}</span>
+            </div>
+            {state.driftEnabled && (
+            <div className="dynamics-section-body">
+              <div className="dynamics-module-preset-row">
+                <PresetDropdown
+                  className="dynamics-preset-toolbar"
+                  level="kit"
+                  scope="dynamicsDrift"
+                  state={state}
+                  currentName={driftPresetName}
+                  onLoad={handleDriftPresetLoad}
+                  onStateChange={onStateChange}
+                  presetOptions={driftPresetOptions}
+                  compact
+                />
+              </div>
+              <div className="dynamics-mode-row">
+                {DRIFT_MODE_OPTIONS.map((mode) => (
+                  <button
+                    key={mode.value}
+                    className={`dynamics-mode-btn${state.driftMode === mode.value ? ' active' : ''}`}
+                    onClick={() => onSelectChange('driftMode', mode.value)}
+                    {...bindHelp(`driftMode_${mode.value}`, { label: mode.label, page: 'dynamics' })}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+              <div className="dynamics-mode-row" aria-label="Drift quality">
+                {DRIFT_QUALITY_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`dynamics-mode-btn${state.driftQuality === option.value ? ' active' : ''}`}
+                    onClick={() => onSelectChange('driftQuality', option.value)}
+                    {...bindHelp(`driftQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <div {...bindHelp('driftVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
+                <DynamicsDriftVisualizer
                   state={state}
                   onParamChange={onParamChange}
                   getDynamicsAnalyser={getDynamicsAnalyser}
@@ -442,8 +628,8 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                 />
               </div>
               <div className="dynamics-grid-2">
-                {DYNAMICS_CHARACTER_QUALITY_CONTROLS.map(renderDynamicsSlider)}
-                {DYNAMICS_CHARACTER_CONTROLS.map(renderDynamicsSlider)}
+                {DYNAMICS_DRIFT_QUALITY_CONTROLS.map(renderDynamicsSlider)}
+                {DYNAMICS_DRIFT_CONTROLS.map(renderDynamicsSlider)}
               </div>
             </div>
             )}
@@ -451,81 +637,81 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
         </div>
 
         <div className="dynamics-column dynamics-middle">
-          <section className="dynamics-section-card dynamics-degrade-card">
+          <section className="dynamics-section-card dynamics-erosion-card">
               <div className="dynamics-section-head">
                 <div className="dynamics-section-label">
-                  <span className="dynamics-section-title">Degrade</span>
+                  <span className="dynamics-section-title"><span className="dynamics-parent-label">Degrade - </span>Erosion</span>
                   <button
-                    className={`dynamics-fx-toggle${state.degradeEnabled ? ' on purple' : ''}`}
+                    className={`dynamics-fx-toggle${state.erosionEnabled ? ' on purple' : ''}`}
                     type="button"
-                    aria-pressed={state.degradeEnabled}
-                    onClick={() => setModuleEnabled('degradeEnabled', !state.degradeEnabled)}
-                    {...bindHelp('degradeEnabled', { label: 'Degrade FX', page: 'dynamics' })}
+                    aria-pressed={state.erosionEnabled}
+                    onClick={() => setModuleEnabled('erosionEnabled', !state.erosionEnabled)}
+                    {...bindHelp('erosionEnabled', { label: 'Erosion FX', page: 'dynamics' })}
                   >
-                    {state.degradeEnabled ? 'FX On' : 'FX Off'}
+                    {state.erosionEnabled ? 'FX On' : 'FX Off'}
                   </button>
                 </div>
-                <span className="dynamics-section-note">{state.degradeEnabled ? 'Media' : 'Off'}</span>
+                <span className="dynamics-section-note">{state.erosionEnabled ? 'Media' : 'Off'}</span>
               </div>
-              {state.degradeEnabled && (
+              {state.erosionEnabled && (
               <div className="dynamics-section-body">
                 <div className="dynamics-module-preset-row">
                   <PresetDropdown
                     className="dynamics-preset-toolbar"
-                    level="engine"
-                    scope="dynamicsDegrade"
+                    level="kit"
+                    scope="dynamicsErosion"
                     state={state}
-                    currentName={degradePresetName}
-                    onLoad={handleDegradePresetLoad}
+                    currentName={erosionPresetName}
+                    onLoad={handleErosionPresetLoad}
                     onStateChange={onStateChange}
-                    presetOptions={degradePresetOptions}
+                    presetOptions={erosionPresetOptions}
                     compact
                   />
                 </div>
-                <div className="dynamics-mode-row" aria-label="Degrade quality">
-                  {DEGRADE_QUALITY_OPTIONS.map((option) => (
+                <div className="dynamics-mode-row" aria-label="Erosion quality">
+                  {EROSION_QUALITY_OPTIONS.map((option) => (
                     <button
                       key={option.value}
                       type="button"
-                      className={`dynamics-mode-btn${state.degradeQuality === option.value ? ' active' : ''}`}
-                      onClick={() => onSelectChange('degradeQuality', option.value)}
-                      {...bindHelp(`degradeQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
+                      className={`dynamics-mode-btn${state.erosionQuality === option.value ? ' active' : ''}`}
+                      onClick={() => onSelectChange('erosionQuality', option.value)}
+                      {...bindHelp(`erosionQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
                     >
                       {option.label}
                     </button>
                   ))}
                 </div>
-                <DynamicsDegradeVisualizer
+                <DynamicsErosionVisualizer
                   state={state}
                   getDynamicsAnalyser={getDynamicsAnalyser}
                   getDynamicsTelemetry={getDynamicsTelemetry}
                 />
                 <div className="dynamics-grid-2">
-                  {DYNAMICS_DEGRADE_QUALITY_CONTROLS.map(renderDynamicsSlider)}
-                  {DYNAMICS_DEGRADE_CONTROLS.map(renderDynamicsSlider)}
+                  {DYNAMICS_EROSION_QUALITY_CONTROLS.map(renderDynamicsSlider)}
+                  {DYNAMICS_EROSION_CONTROLS.map(renderDynamicsSlider)}
                 </div>
                 <div className="dynamics-mod-panel">
                   <button
                     className="dynamics-advanced-toggle"
                     type="button"
-                    aria-expanded={degradeMatrixOpen}
-                    onClick={() => setDegradeMatrixOpen((open) => !open)}
-                    {...bindHelp('degradeModMatrix', { label: 'Mod Matrix', page: 'dynamics' })}
+                    aria-expanded={erosionMatrixOpen}
+                    onClick={() => setErosionMatrixOpen((open) => !open)}
+                    {...bindHelp('erosionModMatrix', { label: 'Mod Matrix', page: 'dynamics' })}
                   >
                     <span>Mod Matrix</span>
-                    <span>{degradeMatrixOpen ? 'Hide' : 'Show'}</span>
+                    <span>{erosionMatrixOpen ? 'Hide' : 'Show'}</span>
                   </button>
-                  {degradeMatrixOpen && (
+                  {erosionMatrixOpen && (
                     <div className="dynamics-mod-scroll">
                       <div className="dynamics-mod-matrix">
                         <div className="dynamics-mod-corner">Source</div>
-                        {DEGRADE_MOD_TARGETS.map((target) => (
+                        {EROSION_MOD_TARGETS.map((target) => (
                           <div key={target.id} className="dynamics-mod-header">{target.label}</div>
                         ))}
-                        {DEGRADE_MOD_SOURCES.map((source) => (
+                        {EROSION_MOD_SOURCES.map((source) => (
                           <React.Fragment key={source.id}>
                             <div className="dynamics-mod-source">{source.label}</div>
-                            {DEGRADE_MOD_TARGETS.map((target) => {
+                            {EROSION_MOD_TARGETS.map((target) => {
                               const key = source.keys[target.id];
                               return (
                                 <div key={key} className="dynamics-mod-cell">
@@ -552,6 +738,147 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
         </div>
 
         <div className="dynamics-column dynamics-right">
+          <section className="dynamics-section-card dynamics-bus-card">
+            <div className="dynamics-section-head">
+              <div className="dynamics-section-label">
+                <span className="dynamics-section-title">Dynamics Bus</span>
+                <button
+                  className={`dynamics-fx-toggle${dynamicsBusActive ? ' on cyan' : ''}`}
+                  type="button"
+                  aria-pressed={dynamicsBusActive}
+                  onClick={() => setModuleEnabled('dynamicsBusEnabled', !dynamicsBusActive)}
+                  {...bindHelp('dynamicsBusEnabled', { label: 'Dynamics Bus', page: 'dynamics' })}
+                >
+                  {dynamicsBusActive ? 'FX On' : 'FX Off'}
+                </button>
+              </div>
+              <span className="dynamics-section-note">{dynamicsBusActive ? `${activeBusModules}/3 active` : 'Off'}</span>
+            </div>
+            {dynamicsBusActive && (
+              <div className="dynamics-section-body">
+                <div className="dynamics-module-preset-row">
+                  <PresetDropdown
+                    className="dynamics-preset-toolbar"
+                    level="source"
+                    scope="dynamicsBus"
+                    state={state}
+                    currentName={dynamicsBusPresetName}
+                    onLoad={handleDynamicsBusPresetLoad}
+                    onStateChange={onStateChange}
+                    compact
+                  />
+                </div>
+                <div className="dynamics-preset-description dynamics-bus-description">
+                  {dynamicsBusPresetDescription || (dynamicsBusPresetName ? 'No description saved for this preset.' : 'Stores EQ 1, EQ 2, and Sidechain Compression together.')}
+                </div>
+
+                {DYNAMICS_EQ_CONTROL_SETS.map(renderEqModule)}
+
+                <div className="dynamics-bus-module dynamics-sidechain-card">
+                  <div className="dynamics-bus-module-head">
+                    <div className="dynamics-section-label">
+                      <span className="dynamics-section-title">Sidechain Compression</span>
+                      <button
+                        className={`dynamics-fx-toggle${state.sidechainEnabled ? ' on cyan' : ''}`}
+                        type="button"
+                        aria-pressed={state.sidechainEnabled}
+                        onClick={() => setModuleEnabled('sidechainEnabled', !state.sidechainEnabled)}
+                        {...bindHelp('sidechainEnabled', { label: 'Sidechain Compression', page: 'dynamics' })}
+                      >
+                        {state.sidechainEnabled ? 'FX On' : 'FX Off'}
+                      </button>
+                    </div>
+                    <span className="dynamics-section-note">{state.sidechainEnabled ? 'Routing bus' : 'Off'}</span>
+                  </div>
+                  {state.sidechainEnabled && (
+                    <div className="dynamics-bus-module-body">
+                      <div className="dynamics-module-preset-row">
+                        <PresetDropdown
+                          className="dynamics-preset-toolbar"
+                          level="engine"
+                          scope="dynamicsSidechain"
+                          state={state}
+                          currentName={sidechainPresetName}
+                          onLoad={handleSidechainPresetLoad}
+                          onStateChange={onStateChange}
+                          presetOptions={sidechainPresetOptions}
+                          compact
+                        />
+                      </div>
+                      <div className="dynamics-chip-row">
+                        <div className="dynamics-select-wrap">
+                          <span className="dynamics-chip-label">Key A</span>
+                          <select
+                            value={state.sidechainKeyA}
+                            onChange={(event) => onSelectChange('sidechainKeyA', event.target.value as SliderState['sidechainKeyA'])}
+                          >
+                            {DRUM_KEY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                          </select>
+                        </div>
+                        <div className="dynamics-select-wrap">
+                          <span className="dynamics-chip-label">Key B</span>
+                          <select
+                            value={state.sidechainKeyB}
+                            onChange={(event) => onSelectChange('sidechainKeyB', event.target.value as SliderState['sidechainKeyB'])}
+                          >
+                            {DRUM_KEY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div {...bindHelp('sidechainVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
+                        <DynamicsSidechainVisualizer
+                          state={state}
+                          onParamChange={onParamChange}
+                          getDynamicsAnalyser={getDynamicsAnalyser}
+                          getDynamicsTelemetry={getDynamicsTelemetry}
+                        />
+                      </div>
+
+                      <div className="dynamics-grid-2">
+                        {DYNAMICS_SIDECHAIN_MIX_CONTROLS.map(renderDynamicsSlider)}
+                      </div>
+
+                      <div className="dynamics-subsection">Shape</div>
+                      <div className="dynamics-grid-2">
+                        {DYNAMICS_SIDECHAIN_SHAPE_CONTROLS.map(renderDynamicsSlider)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="dynamics-section-card dynamics-master-fx-card">
+            <div className="dynamics-section-head">
+              <div className="dynamics-section-label">
+                <span className="dynamics-section-title">Master FX</span>
+              </div>
+              <span className="dynamics-section-note">
+                {state.dynamicsSaturationEnabled || state.endCompEnabled ? 'Active' : 'Off'}
+              </span>
+            </div>
+            <div className="dynamics-section-body">
+              <div className="dynamics-module-preset-row">
+                <PresetDropdown
+                  className="dynamics-preset-toolbar"
+                  level="source"
+                  scope="masterFx"
+                  state={state}
+                  currentName={masterFxPresetName}
+                  onLoad={handleMasterFxPresetLoad}
+                  onStateChange={onStateChange}
+                  presetOptions={masterFxPresetOptions}
+                  compact
+                />
+              </div>
+              <div className="dynamics-preset-description">
+                {masterFxPresetDescription || (masterFxPresetName ? 'No description saved for this preset.' : 'Stores Saturation and End Chain Compression together.')}
+              </div>
+            </div>
+          </section>
+
           <section className="dynamics-section-card dynamics-saturation-card">
             <div className="dynamics-section-head">
               <div className="dynamics-section-label">
@@ -685,83 +1012,6 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
             )}
           </section>
 
-          <section className="dynamics-section-card dynamics-sidechain-card">
-            <div className="dynamics-section-head">
-              <div className="dynamics-section-label">
-                <span className="dynamics-section-title">Sidechain</span>
-                <button
-                  className={`dynamics-fx-toggle${state.sidechainEnabled ? ' on cyan' : ''}`}
-                  type="button"
-                  aria-pressed={state.sidechainEnabled}
-                  onClick={() => setModuleEnabled('sidechainEnabled', !state.sidechainEnabled)}
-                  {...bindHelp('sidechainEnabled', { label: 'Sidechain FX', page: 'dynamics' })}
-                >
-                  {state.sidechainEnabled ? 'FX On' : 'FX Off'}
-                </button>
-              </div>
-              <span className="dynamics-section-note">{state.sidechainEnabled ? `${activeTargets} targets` : 'Off'}</span>
-            </div>
-            {state.sidechainEnabled && (
-            <div className="dynamics-section-body">
-              <div className="dynamics-module-preset-row">
-                <PresetDropdown
-                  className="dynamics-preset-toolbar"
-                  level="engine"
-                  scope="dynamicsSidechain"
-                  state={state}
-                  currentName={sidechainPresetName}
-                  onLoad={handleSidechainPresetLoad}
-                  onStateChange={onStateChange}
-                  presetOptions={sidechainPresetOptions}
-                  compact
-                />
-              </div>
-              <div className="dynamics-chip-row">
-                <div className="dynamics-select-wrap">
-                  <span className="dynamics-chip-label">Key A</span>
-                  <select
-                    value={state.sidechainKeyA}
-                    onChange={(event) => onSelectChange('sidechainKeyA', event.target.value as SliderState['sidechainKeyA'])}
-                  >
-                    {DRUM_KEY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </div>
-                <div className="dynamics-select-wrap">
-                  <span className="dynamics-chip-label">Key B</span>
-                  <select
-                    value={state.sidechainKeyB}
-                    onChange={(event) => onSelectChange('sidechainKeyB', event.target.value as SliderState['sidechainKeyB'])}
-                  >
-                    {DRUM_KEY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div {...bindHelp('sidechainVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
-                <DynamicsSidechainVisualizer
-                  state={state}
-                  onParamChange={onParamChange}
-                  getDynamicsAnalyser={getDynamicsAnalyser}
-                  getDynamicsTelemetry={getDynamicsTelemetry}
-                />
-              </div>
-
-              <div className="dynamics-grid-2">
-                {DYNAMICS_SIDECHAIN_MIX_CONTROLS.map(renderDynamicsSlider)}
-              </div>
-
-              <div className="dynamics-subsection">Shape</div>
-              <div className="dynamics-grid-2">
-                {DYNAMICS_SIDECHAIN_SHAPE_CONTROLS.map(renderDynamicsSlider)}
-              </div>
-
-              <div className="dynamics-subsection">Targets</div>
-              <div className="dynamics-grid-2">
-                {DYNAMICS_SIDECHAIN_TARGET_CONTROLS.map(renderDynamicsSlider)}
-              </div>
-            </div>
-            )}
-          </section>
         </div>
       </div>
     </div>

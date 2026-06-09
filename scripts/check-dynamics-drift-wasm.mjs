@@ -2,12 +2,12 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
-const wasmPath = resolve(root, 'public/worklets/kessho_dynamics_character.wasm');
-const workletPath = resolve(root, 'public/worklets/dynamics-character.worklet.js');
+const wasmPath = resolve(root, 'public/worklets/kessho_dynamics_drift.wasm');
+const workletPath = resolve(root, 'public/worklets/dynamics-drift.worklet.js');
 
 const workletSource = readFileSync(workletPath, 'utf8');
 const orderMatch = workletSource.match(/const PARAM_ORDER = \[([\s\S]*?)\];/);
-if (!orderMatch) throw new Error('Could not read PARAM_ORDER from dynamics-character.worklet.js');
+if (!orderMatch) throw new Error('Could not read PARAM_ORDER from dynamics-drift.worklet.js');
 const paramOrder = [...orderMatch[1].matchAll(/'([^']+)'/g)].map((match) => match[1]);
 
 const wasmBinary = readFileSync(wasmPath);
@@ -32,8 +32,8 @@ const sampleRate = 48000;
 const blockSize = 128;
 
 function init() {
-  const result = wasm.dynamics_character_init(sampleRate);
-  if (result !== 0) throw new Error(`dynamics_character_init failed: ${result}`);
+  const result = wasm.dynamics_drift_init(sampleRate);
+  if (result !== 0) throw new Error(`dynamics_drift_init failed: ${result}`);
 }
 
 function heapF32() {
@@ -42,11 +42,11 @@ function heapF32() {
 
 function writeParams(params) {
   const heap = heapF32();
-  const offset = wasm.dynamics_character_get_params_ptr() >> 2;
+  const offset = wasm.dynamics_drift_get_params_ptr() >> 2;
   for (let i = 0; i < paramOrder.length; i++) {
     heap[offset + i] = Number(params[paramOrder[i]] ?? 0);
   }
-  wasm.dynamics_character_commit_params();
+  wasm.dynamics_drift_commit_params();
 }
 
 function baseParams(overrides = {}) {
@@ -55,9 +55,9 @@ function baseParams(overrides = {}) {
     allpassActive: 1,
     dry: 0.58,
     wet: 0.42,
-    degradeMix: 0,
+    erosionMix: 0,
     workletAlias: 0,
-    rawDegradeGeneration: 0,
+    rawErosionGeneration: 0,
     rawCorrosion: 0,
     rawMediaWear: 0.08,
     noiseGain: 0.0008,
@@ -123,8 +123,8 @@ function baseParams(overrides = {}) {
 function processBlocks(params, fillInput, blocks = 80) {
   init();
   writeParams(params);
-  const inputPtr = wasm.dynamics_character_get_input_ptr() >> 2;
-  const outputPtr = wasm.dynamics_character_get_output_ptr() >> 2;
+  const inputPtr = wasm.dynamics_drift_get_input_ptr() >> 2;
+  const outputPtr = wasm.dynamics_drift_get_output_ptr() >> 2;
   const rendered = [];
   for (let block = 0; block < blocks; block++) {
     const heap = heapF32();
@@ -133,7 +133,7 @@ function processBlocks(params, fillInput, blocks = 80) {
       heap[inputPtr + i * 2] = left;
       heap[inputPtr + i * 2 + 1] = right;
     }
-    wasm.dynamics_character_process_block(blockSize);
+    wasm.dynamics_drift_process_block(blockSize);
     for (let i = 0; i < blockSize; i++) {
       rendered.push(heap[outputPtr + i * 2], heap[outputPtr + i * 2 + 1]);
     }
@@ -224,7 +224,7 @@ const impulseStats = stats(impulse);
 const tail = impulse.slice(blockSize * 2);
 assert(impulseStats.finite, 'Impulse render produced non-finite samples');
 assert(impulseStats.maxAbs < 2, `Impulse render clipped unexpectedly: ${impulseStats.maxAbs}`);
-assert(stats(tail).rms > 0.00001, 'Impulse render did not produce a Character delay/filter tail');
+assert(stats(tail).rms > 0.00001, 'Impulse render did not produce a Drift delay/filter tail');
 assert(stereoRms(impulse) > 0.00001, 'Impulse render did not create measurable stereo spread');
 
 const cleanInput = [];
@@ -239,9 +239,9 @@ const clean = processBlocks(
   80,
 );
 const cleanStats = stats(clean);
-assert(cleanStats.finite, 'Clean Character render produced non-finite samples');
-assert(cleanStats.rms > 0.01 && cleanStats.rms < 0.6, `Clean Character RMS is out of range: ${cleanStats.rms}`);
-assert(diffRms(clean, cleanInput) > 0.001, 'Clean Character render is too close to dry input');
+assert(cleanStats.finite, 'Clean Drift render produced non-finite samples');
+assert(cleanStats.rms > 0.01 && cleanStats.rms < 0.6, `Clean Drift RMS is out of range: ${cleanStats.rms}`);
+assert(diffRms(clean, cleanInput) > 0.001, 'Clean Drift render is too close to dry input');
 
 const abyss = processBlocks(
   baseParams({
@@ -334,9 +334,9 @@ const harsh = processBlocks(
   baseParams({
     dry: 0.25,
     wet: 0.75,
-    degradeMix: 0.9,
+    erosionMix: 0.9,
     workletAlias: 0.85,
-    rawDegradeGeneration: 0.72,
+    rawErosionGeneration: 0.72,
     rawCorrosion: 0.55,
     rawMediaWear: 0.88,
     saturation: 0.62,

@@ -32,7 +32,7 @@ import {
   useProductRuntimeSession,
   useProductRuntimeShell,
 } from './ui/useProductRuntimeSession';
-import { normalizeDynamicsDegradeAliases, normalizeDynamicsQualityFields } from './audio/dynamicsModel';
+import { normalizeDynamicsErosionAliases, normalizeDynamicsQualityFields } from './audio/dynamicsModel';
 import { isCloudEnabled as isCloudPresetConfigEnabled } from './cloud/config';
 import { formatChordDegrees, calculateDriftedRoot } from './audio/harmony';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
@@ -167,9 +167,27 @@ const ROUTING_MATRIX_DELAY_B_INPUT_KEYS = new Set<string>([
   'delayAToBSend',
 ]);
 
-const ROUTING_MATRIX_NATURE_KEYS = new Set<string>(['natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'granularNatureSend']);
+const ROUTING_MATRIX_DEGRADE_ACTIVE_KEYS = new Set<string>([
+  'degradePad1Send',
+  'degradePad2Send',
+  'degradeLead1Send',
+  'degradeLead2Send',
+  'degradePianoSend',
+  'degradeDrumSend',
+  'degradeWavesSend',
+  'degradeWaterSend',
+  'degradeInsectsSend',
+  'degradeNatureSend',
+  'delayADegradeSend',
+  'delayBDegradeSend',
+  'granularDegradeSend',
+  'reverbDegradeSend',
+  'degradeReverbSend',
+]);
 
-const ROUTING_MATRIX_INSECTS_KEYS = new Set<string>(['insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'granularInsectsSend']);
+const ROUTING_MATRIX_NATURE_KEYS = new Set<string>(['natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'granularNatureSend', 'degradeNatureSend']);
+
+const ROUTING_MATRIX_INSECTS_KEYS = new Set<string>(['insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'granularInsectsSend', 'degradeInsectsSend']);
 
 type RoutingSourceFlagKey =
   | 'padEnabled'
@@ -534,6 +552,32 @@ const checkPresetCompatibility = (preset: SavedPreset): string[] => {
   return warnings;
 };
 
+function normalizeDegradeReverbRouteExclusion(state: SliderState): SliderState {
+  const normalized = { ...state };
+  const degradeToReverb = Number(normalized.degradeReverbSend ?? 0);
+  const reverbToDegrade = Number(normalized.reverbDegradeSend ?? 0);
+  if (Number.isFinite(degradeToReverb) && degradeToReverb > 0.0001) {
+    normalized.reverbDegradeSend = 0;
+  } else if (Number.isFinite(reverbToDegrade) && reverbToDegrade > 0.0001) {
+    normalized.degradeReverbSend = 0;
+  }
+  return normalized;
+}
+
+function normalizeDegradeReverbRouteRanges(
+  state: SliderState,
+  dualRanges: DualSliderState,
+  dualModes: Record<string, SliderMode>,
+): void {
+  if ((state.degradeReverbSend ?? 0) > 0.0001) {
+    delete dualRanges.reverbDegradeSend;
+    dualModes.reverbDegradeSend = 'single';
+  } else if ((state.reverbDegradeSend ?? 0) > 0.0001) {
+    delete dualRanges.degradeReverbSend;
+    dualModes.degradeReverbSend = 'single';
+  }
+}
+
 // Normalize iOS-only settings to web-compatible values
 const normalizePresetForWeb = (state: SliderState): SliderState => {
   const normalized = { ...state };
@@ -632,7 +676,7 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
   Object.assign(
     normalized,
     normalizeDynamicsQualityFields(
-      normalizeDynamicsDegradeAliases(normalized as Record<string, unknown>),
+      normalizeDynamicsErosionAliases(normalized as Record<string, unknown>),
     ),
   );
 
@@ -692,7 +736,7 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
     }
   }
 
-  return merged;
+  return normalizeDegradeReverbRouteExclusion(merged);
 };
 
 function sortSavedStatePresetsByFreshness(presets: SavedPreset[]): SavedPreset[] {
@@ -1229,7 +1273,7 @@ const ADVANCED_EDITOR_TABS = [
     id: 'dynamics',
     helpKey: 'tabDynamics',
     symbol: APP_TAB_SYMBOLS.dynamics,
-    label: 'Dynamics',
+    label: 'Texture',
   },
   {
     id: 'routing',
@@ -3016,6 +3060,7 @@ const App: React.FC = () => {
             case 'delayAMix':
             case 'delayAReverbSend':
             case 'delayAToBSend':
+            case 'delayADegradeSend':
               newState.delayAEnabled = true;
               if (routeKey === 'delayAToBSend') {
                 newState.granularDelayEnabled = true;
@@ -3028,6 +3073,7 @@ const App: React.FC = () => {
             case 'granularDelayFilter':
             case 'granularDelayVibrato':
             case 'delayBToASend':
+            case 'delayBDegradeSend':
             case 'delayBWarpIntensity':
             case 'delayBSpread':
               newState.granularDelayEnabled = true;
@@ -3036,6 +3082,7 @@ const App: React.FC = () => {
             case 'granularReverbSend':
             case 'granularDelayASend':
             case 'granularDelayBSend':
+            case 'granularDegradeSend':
               newState.granularEnabled = true;
               if (routeKey === 'granularDelayBSend') {
                 newState.granularDelayEnabled = true;
@@ -3053,10 +3100,18 @@ const App: React.FC = () => {
               // Mutual exclusion: zero the reverse direction
               if (positiveNumber) newState.granularDelayBSend = 0;
               break;
+            case 'degradeReverbSend':
+              newState.reverbEnabled = true;
+              if (positiveNumber) newState.reverbDegradeSend = 0;
+              break;
+            case 'reverbDegradeSend':
+              if (positiveNumber) newState.degradeReverbSend = 0;
+              break;
             case 'lead1Level':
             case 'lead1ReverbSend':
             case 'lead1DelayASend':
             case 'lead1DelayBSend':
+            case 'degradeLead1Send':
               newState.leadEnabled = true;
               if (routeKey === 'lead1DelayBSend') {
                 newState.granularDelayEnabled = true;
@@ -3070,6 +3125,7 @@ const App: React.FC = () => {
             case 'lead2ReverbSend':
             case 'lead2DelayASend':
             case 'lead2DelayBSend':
+            case 'degradeLead2Send':
               newState.lead2Enabled = true;
               if (routeKey === 'lead2DelayBSend') {
                 newState.granularDelayEnabled = true;
@@ -3083,6 +3139,7 @@ const App: React.FC = () => {
             case 'pianoReverbSend':
             case 'pianoDelayASend':
             case 'pianoDelayBSend':
+            case 'degradePianoSend':
               newState.pianoEnabled = true;
               if (routeKey === 'pianoDelayBSend') {
                 newState.granularDelayEnabled = true;
@@ -3096,6 +3153,7 @@ const App: React.FC = () => {
             case 'drumReverbSend':
             case 'drumDelayASend':
             case 'drumDelayBSend':
+            case 'degradeDrumSend':
               newState.drumEnabled = true;
               if (routeKey === 'drumDelayBSend') {
                 newState.granularDelayEnabled = true;
@@ -3109,6 +3167,7 @@ const App: React.FC = () => {
             case 'oceanReverbSend':
             case 'oceanDelayASend':
             case 'oceanDelayBSend':
+            case 'degradeWavesSend':
             case 'oceanSliceDuration':
             case 'oceanSliceDensity':
               newState.oceanSampleEnabled = true;
@@ -3124,6 +3183,7 @@ const App: React.FC = () => {
             case 'natureReverbSend':
             case 'natureDelayASend':
             case 'natureDelayBSend':
+            case 'degradeNatureSend':
               if (routeKey === 'natureDelayBSend') {
                 newState.granularDelayEnabled = true;
               }
@@ -3150,9 +3210,11 @@ const App: React.FC = () => {
               newState.padEnabled = true;
               break;
             case 'pad1ReverbSend':
+            case 'degradePad1Send':
               newState.padEnabled = true;
               break;
             case 'pad2ReverbSend':
+            case 'degradePad2Send':
               newState.pad2Enabled = true;
               break;
             case 'pad1DelayASend':
@@ -3176,6 +3238,7 @@ const App: React.FC = () => {
             case 'waterReverbSend':
             case 'waterDelayASend':
             case 'waterDelayBSend':
+            case 'degradeWaterSend':
             case 'waterLayerHardDrops':
             case 'waterLayerWaterDrops':
             case 'waterLayerTurbulence':
@@ -3202,6 +3265,7 @@ const App: React.FC = () => {
             case 'insectsReverbSend':
             case 'insDelayASend':
             case 'insDelayBSend':
+            case 'degradeInsectsSend':
               if (routeKey === 'insDelayBSend') {
                 newState.granularDelayEnabled = true;
               }
@@ -3225,6 +3289,22 @@ const App: React.FC = () => {
           if (ROUTING_MATRIX_INSECTS_KEYS.has(routeKeyString) && !newState.insectsEnabled && !newState.insects2Enabled) {
             newState.insectsEnabled = true;
           }
+          if (ROUTING_MATRIX_DEGRADE_ACTIVE_KEYS.has(routeKeyString) || routeKey === 'degradeLevel') {
+            newState.dynamicsEnabled = true;
+            if (!newState.driftEnabled && !newState.erosionEnabled) {
+              newState.driftEnabled = true;
+            }
+            if ((newState.driftMix ?? 0) <= 0 && (newState.erosionMix ?? 0) <= 0) {
+              if (newState.erosionEnabled && !newState.driftEnabled) {
+                newState.erosionMix = 1;
+              } else {
+                newState.driftMix = 1;
+              }
+            }
+            if ((newState.degradeLevel ?? 0) <= 0) {
+              newState.degradeLevel = 1;
+            }
+          }
         }
 
         const pad1WetActive =
@@ -3232,18 +3312,21 @@ const App: React.FC = () => {
           (newState.pad1ReverbSend ?? 0) > 0 ||
           (newState.pad1DelayASend ?? 0) > 0 ||
           (newState.pad1DelayBSend ?? 0) > 0 ||
-          (newState.granularPad1Send ?? 0) > 0;
+          (newState.granularPad1Send ?? 0) > 0 ||
+          (newState.degradePad1Send ?? 0) > 0;
         const pad2WetActive =
           (newState.pad2Level ?? 0) > 0 ||
           (newState.pad2ReverbSend ?? 0) > 0 ||
           (newState.pad2DelayASend ?? 0) > 0 ||
           (newState.pad2DelayBSend ?? 0) > 0 ||
-          (newState.granularPad2Send ?? 0) > 0;
+          (newState.granularPad2Send ?? 0) > 0 ||
+          (newState.degradePad2Send ?? 0) > 0;
         const granularEngineActive =
           (newState.granularLevel ?? 0) > 0 ||
           (newState.granularReverbSend ?? 0) > 0 ||
           (newState.granularDelayASend ?? 0) > 0 ||
           (newState.granularDelayBSend ?? 0) > 0 ||
+          (newState.granularDegradeSend ?? 0) > 0 ||
           (newState.delayAGranularSend ?? 0) > 0 ||
           (newState.delayBGranularSend ?? 0) > 0 ||
           (newState.granularPad1Send ?? 0) > 0 ||
@@ -3261,6 +3344,7 @@ const App: React.FC = () => {
           (newState.delayAReverbSend ?? 0) > 0 ||
           (newState.delayAToBSend ?? 0) > 0 ||
           (newState.delayAGranularSend ?? 0) > 0 ||
+          (newState.delayADegradeSend ?? 0) > 0 ||
           (newState.delayBToASend ?? 0) > 0 ||
           (newState.pad1DelayASend ?? 0) > 0 ||
           (newState.pad2DelayASend ?? 0) > 0 ||
@@ -3278,6 +3362,7 @@ const App: React.FC = () => {
           (newState.granularDelayReverbSend ?? 0) > 0 ||
           (newState.delayBToASend ?? 0) > 0 ||
           (newState.delayBGranularSend ?? 0) > 0 ||
+          (newState.delayBDegradeSend ?? 0) > 0 ||
           (newState.delayAToBSend ?? 0) > 0 ||
           (newState.pad1DelayBSend ?? 0) > 0 ||
           (newState.pad2DelayBSend ?? 0) > 0 ||
@@ -3295,49 +3380,57 @@ const App: React.FC = () => {
           (newState.lead1ReverbSend ?? 0) > 0 ||
           (newState.lead1DelayASend ?? 0) > 0 ||
           (newState.lead1DelayBSend ?? 0) > 0 ||
-          (newState.granularLead1Send ?? 0) > 0;
+          (newState.granularLead1Send ?? 0) > 0 ||
+          (newState.degradeLead1Send ?? 0) > 0;
         const lead2WetActive =
           (newState.lead2Level ?? 0) > 0 ||
           (newState.lead2ReverbSend ?? 0) > 0 ||
           (newState.lead2DelayASend ?? 0) > 0 ||
           (newState.lead2DelayBSend ?? 0) > 0 ||
-          (newState.granularLead2Send ?? 0) > 0;
+          (newState.granularLead2Send ?? 0) > 0 ||
+          (newState.degradeLead2Send ?? 0) > 0;
         const pianoWetActive =
           (newState.pianoLevel ?? 0) > 0 ||
           (newState.pianoReverbSend ?? 0) > 0 ||
           (newState.pianoDelayASend ?? 0) > 0 ||
           (newState.pianoDelayBSend ?? 0) > 0 ||
-          (newState.granularPianoSend ?? 0) > 0;
+          (newState.granularPianoSend ?? 0) > 0 ||
+          (newState.degradePianoSend ?? 0) > 0;
         const drumWetActive =
           (newState.drumLevel ?? 0) > 0 ||
           (newState.drumReverbSend ?? 0) > 0 ||
           (newState.drumDelayASend ?? 0) > 0 ||
           (newState.drumDelayBSend ?? 0) > 0 ||
-          (newState.granularDrumSend ?? 0) > 0;
+          (newState.granularDrumSend ?? 0) > 0 ||
+          (newState.degradeDrumSend ?? 0) > 0;
         const oceanWetActive =
           (newState.oceanSampleLevel ?? 0) > 0 ||
           (newState.oceanReverbSend ?? 0) > 0 ||
           (newState.oceanDelayASend ?? 0) > 0 ||
           (newState.oceanDelayBSend ?? 0) > 0 ||
-          (newState.granularWavesSend ?? 0) > 0;
+          (newState.granularWavesSend ?? 0) > 0 ||
+          (newState.degradeWavesSend ?? 0) > 0;
         const birdsWetActive =
           (newState.birdsLevel ?? 0) > 0 ||
           (newState.natureReverbSend ?? 0) > 0 ||
           (newState.natureDelayASend ?? 0) > 0 ||
           (newState.natureDelayBSend ?? 0) > 0 ||
-          (newState.granularNatureSend ?? 0) > 0;
+          (newState.granularNatureSend ?? 0) > 0 ||
+          (newState.degradeNatureSend ?? 0) > 0;
         const birds2WetActive =
           (newState.birds2Level ?? 0) > 0 ||
           (newState.natureReverbSend ?? 0) > 0 ||
           (newState.natureDelayASend ?? 0) > 0 ||
           (newState.natureDelayBSend ?? 0) > 0 ||
-          (newState.granularNatureSend ?? 0) > 0;
+          (newState.granularNatureSend ?? 0) > 0 ||
+          (newState.degradeNatureSend ?? 0) > 0;
         const frogsWetActive =
           (newState.frogsLevel ?? 0) > 0 ||
           (newState.natureReverbSend ?? 0) > 0 ||
           (newState.natureDelayASend ?? 0) > 0 ||
           (newState.natureDelayBSend ?? 0) > 0 ||
-          (newState.granularNatureSend ?? 0) > 0;
+          (newState.granularNatureSend ?? 0) > 0 ||
+          (newState.degradeNatureSend ?? 0) > 0;
         const waterWetActive =
           (newState.waterLevel ?? 0) > 0 ||
           (newState.waterReverbSend ?? 0) > 0 ||
@@ -3349,9 +3442,10 @@ const App: React.FC = () => {
           (newState.waterLayerBubbling ?? 0) > 0 ||
           (newState.waterLayerSurf ?? 0) > 0 ||
           (newState.waterLayerChannels ?? 0) > 0 ||
-          (newState.granularWaterSend ?? 0) > 0;
+          (newState.granularWaterSend ?? 0) > 0 ||
+          (newState.degradeWaterSend ?? 0) > 0;
         const insectsSharedWetActive =
-          (newState.insectsReverbSend ?? 0) > 0 || (newState.insDelayASend ?? 0) > 0 || (newState.insDelayBSend ?? 0) > 0 || (newState.granularInsectsSend ?? 0) > 0;
+          (newState.insectsReverbSend ?? 0) > 0 || (newState.insDelayASend ?? 0) > 0 || (newState.insDelayBSend ?? 0) > 0 || (newState.granularInsectsSend ?? 0) > 0 || (newState.degradeInsectsSend ?? 0) > 0;
 
         if (!granularEngineActive) {
           newState.granularEnabled = false;
@@ -4318,11 +4412,11 @@ const App: React.FC = () => {
       }> = [
         {
           isOn: (s) => !!s.padEnabled,
-          keys: ['synthLevel', 'pad1ReverbSend', 'pad1DelayASend', 'pad1DelayBSend', 'granularPad1Send'],
+          keys: ['synthLevel', 'pad1ReverbSend', 'pad1DelayASend', 'pad1DelayBSend', 'granularPad1Send', 'degradePad1Send'],
         },
         {
           isOn: (s) => !!s.pad2Enabled,
-          keys: ['pad2Level', 'pad2ReverbSend', 'pad2DelayASend', 'pad2DelayBSend', 'granularPad2Send'],
+          keys: ['pad2Level', 'pad2ReverbSend', 'pad2DelayASend', 'pad2DelayBSend', 'granularPad2Send', 'degradePad2Send'],
         },
         {
           isOn: (s) => !!s.granularEnabled,
@@ -4331,6 +4425,7 @@ const App: React.FC = () => {
             'granularReverbSend',
             'granularDelayASend',
             'granularDelayBSend',
+            'granularDegradeSend',
             'delayAGranularSend',
             'delayBGranularSend',
             'granularPad1Send',
@@ -4347,38 +4442,38 @@ const App: React.FC = () => {
         },
         {
           isOn: (s) => !!s.leadEnabled,
-          keys: ['leadLevel', 'lead1Level', 'lead1ReverbSend', 'lead1DelayASend', 'lead1DelayBSend', 'delayAReverbSend', 'delayAMix', 'granularLead1Send'],
+          keys: ['leadLevel', 'lead1Level', 'lead1ReverbSend', 'lead1DelayASend', 'lead1DelayBSend', 'delayAReverbSend', 'delayAMix', 'granularLead1Send', 'degradeLead1Send'],
         },
         {
           isOn: (s) => !!s.lead2Enabled,
-          keys: ['lead2Level', 'lead2ReverbSend', 'lead2DelayASend', 'lead2DelayBSend', 'granularLead2Send'],
+          keys: ['lead2Level', 'lead2ReverbSend', 'lead2DelayASend', 'lead2DelayBSend', 'granularLead2Send', 'degradeLead2Send'],
         },
         {
           isOn: (s) => !!s.pianoEnabled,
-          keys: ['pianoLevel', 'pianoReverbSend', 'pianoDelayASend', 'pianoDelayBSend', 'granularPianoSend'],
+          keys: ['pianoLevel', 'pianoReverbSend', 'pianoDelayASend', 'pianoDelayBSend', 'granularPianoSend', 'degradePianoSend'],
         },
         {
           isOn: (s) => !!s.drumEnabled,
-          keys: ['drumLevel', 'drumReverbSend', 'drumDelayASend', 'drumDelayBSend', 'granularDrumSend'],
+          keys: ['drumLevel', 'drumReverbSend', 'drumDelayASend', 'drumDelayBSend', 'granularDrumSend', 'degradeDrumSend'],
         },
         {
           isOn: (s) => !!s.oceanSampleEnabled,
-          keys: ['oceanSampleLevel', 'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend'],
+          keys: ['oceanSampleLevel', 'oceanReverbSend', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend', 'degradeWavesSend'],
         },
         // "Nature" engine = birds OR birds2 OR frogs. Master nature router values
         // collapse to 0 only when ALL nature sub-engines are off on that side.
         {
           isOn: (s) => !!s.birdsEnabled || !!s.birds2Enabled || !!s.frogsEnabled,
-          keys: ['natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'granularNatureSend'],
+          keys: ['natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'granularNatureSend', 'degradeNatureSend'],
         },
         {
           isOn: (s) => !!s.waterEnabled,
-          keys: ['waterLevel', 'waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'granularWaterSend'],
+          keys: ['waterLevel', 'waterReverbSend', 'waterDelayASend', 'waterDelayBSend', 'granularWaterSend', 'degradeWaterSend'],
         },
         // Insects share bus sends, but each layer has its own dry carrier level.
         {
           isOn: (s) => !!s.insectsEnabled || !!s.insects2Enabled,
-          keys: ['insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'granularInsectsSend'],
+          keys: ['insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'granularInsectsSend', 'degradeInsectsSend'],
         },
         { isOn: (s) => !!s.insectsEnabled, keys: ['insectsLevel'] },
         { isOn: (s) => !!s.insects2Enabled, keys: ['insects2Level'] },
@@ -4388,13 +4483,17 @@ const App: React.FC = () => {
         { isOn: (s) => !!s.frogsEnabled, keys: ['frogsLevel'] },
         {
           isOn: (s) => !!s.delayAEnabled,
-          keys: ['delayAMix', 'delayAReverbSend'],
+          keys: ['delayAMix', 'delayAReverbSend', 'delayAToBSend', 'delayAGranularSend', 'delayADegradeSend'],
         },
         {
           isOn: (s) => !!s.granularDelayEnabled,
-          keys: ['granularDelayMix', 'granularDelayReverbSend'],
+          keys: ['granularDelayMix', 'granularDelayReverbSend', 'delayBToASend', 'delayBGranularSend', 'delayBDegradeSend'],
         },
-        { isOn: (s) => !!s.reverbEnabled, keys: ['reverbLevel'] },
+        {
+          isOn: (s) => Boolean(s.dynamicsEnabled && (s.driftEnabled || s.erosionEnabled)),
+          keys: ['degradeLevel', 'degradeReverbSend'],
+        },
+        { isOn: (s) => !!s.reverbEnabled || (s.reverbDegradeSend ?? 0) > 0.0001 || (s.degradeReverbSend ?? 0) > 0.0001, keys: ['reverbLevel', 'reverbDegradeSend', 'degradeReverbSend'] },
       ];
 
       // For router-matrix keys with mismatched engine toggle: record which side is OFF.
@@ -4425,12 +4524,12 @@ const App: React.FC = () => {
           fadeKey: 'sidechainMix',
         },
         {
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.characterEnabled),
-          fadeKey: 'characterMix',
+          isOn: (s) => Boolean(s.dynamicsEnabled && s.driftEnabled),
+          fadeKey: 'driftMix',
         },
         {
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.degradeEnabled),
-          fadeKey: 'degradeMix',
+          isOn: (s) => Boolean(s.dynamicsEnabled && s.erosionEnabled),
+          fadeKey: 'erosionMix',
         },
         {
           isOn: (s) => Boolean(s.dynamicsEnabled && s.dynamicsSaturationEnabled),
@@ -4534,6 +4633,7 @@ const App: React.FC = () => {
           'granularOutputLPF',
           'granularDelayASend',
           'granularDelayBSend',
+          'granularDegradeSend',
           'delayAGranularSend',
           'delayBGranularSend',
           'granularPad1Send',
@@ -4570,8 +4670,10 @@ const App: React.FC = () => {
           'delayAReverbSend',
           'lead1DelayASend',
           'lead1DelayBSend',
+          'degradeLead1Send',
           'lead2DelayASend',
           'lead2DelayBSend',
+          'degradeLead2Send',
         ],
         pianoEnabled: [
           'pianoAttack',
@@ -4584,9 +4686,10 @@ const App: React.FC = () => {
           'pianoDelayASend',
           'pianoDelayBSend',
           'granularPianoSend',
+          'degradePianoSend',
         ],
         synthEuclideanMasterEnabled: ['synthEuclideanTempo'],
-        oceanSampleEnabled: ['oceanFilterCutoff', 'oceanFilterResonance', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend', 'oceanSliceDuration', 'oceanSliceDensity'],
+        oceanSampleEnabled: ['oceanFilterCutoff', 'oceanFilterResonance', 'oceanDelayASend', 'oceanDelayBSend', 'granularWavesSend', 'degradeWavesSend', 'oceanSliceDuration', 'oceanSliceDensity'],
         birdsEnabled: ['birdsLevel', 'birdsSliceDuration', 'birdsSliceDensity'],
         birds2Enabled: ['birds2Level', 'birds2SliceDuration', 'birds2SliceDensity'],
         frogsEnabled: ['frogsLevel', 'frogsSliceDuration', 'frogsSliceDensity'],
@@ -4625,23 +4728,33 @@ const App: React.FC = () => {
         'granularReverbSend',
         'pad1DelayASend',
         'pad1DelayBSend',
+        'degradePad1Send',
         'pad2DelayASend',
         'pad2DelayBSend',
+        'degradePad2Send',
         'lead1DelayASend',
         'lead1DelayBSend',
+        'degradeLead1Send',
         'lead2DelayASend',
         'lead2DelayBSend',
+        'degradeLead2Send',
         'pianoLevel',
         'pianoReverbSend',
         'pianoDelayASend',
         'pianoDelayBSend',
+        'degradePianoSend',
         'drumDelayASend',
         'drumDelayBSend',
+        'degradeDrumSend',
         'delayAToBSend',
         'delayAGranularSend',
+        'delayADegradeSend',
+        'delayBToASend',
         'delayBGranularSend',
+        'delayBDegradeSend',
         'granularDelayASend',
         'granularDelayBSend',
+        'granularDegradeSend',
         'granularPad1Send',
         'granularPad2Send',
         'granularLead1Send',
@@ -4652,6 +4765,10 @@ const App: React.FC = () => {
         'granularNatureSend',
         'granularWaterSend',
         'granularInsectsSend',
+        'degradeWavesSend',
+        'degradeNatureSend',
+        'degradeWaterSend',
+        'degradeInsectsSend',
         'drumReverbSend',
         'oceanReverbSend',
         'natureLevel',
@@ -4676,6 +4793,9 @@ const App: React.FC = () => {
         'lead2ReverbSend',
         'delayAReverbSend',
         'reverbLevel',
+        'reverbDegradeSend',
+        'degradeReverbSend',
+        'degradeLevel',
         'randomness',
         'tension',
         'chordRate',
@@ -4782,60 +4902,60 @@ const App: React.FC = () => {
         'sidechainDelayATarget',
         'sidechainDelayBTarget',
         'sidechainReverbTarget',
-        'characterMix',
-        'characterAge',
-        'characterBias',
-        'characterLpgAmount',
-        'characterDepth',
-        'characterRate',
-        'characterDamp',
-        'characterEnvFollow',
-        'characterWetHp',
-        'characterStereo',
-        'characterResonance',
-        'degradeMix',
-        'degradeAge',
-        'degradeGeneration',
-        'degradeAlias',
-        'degradeWow',
-        'degradeFlutter',
-        'degradeDrift',
-        'degradeNoise',
+        'driftMix',
+        'driftAge',
+        'driftBias',
+        'driftLpgAmount',
+        'driftDepth',
+        'driftRate',
+        'driftDamp',
+        'driftEnvFollow',
+        'driftWetHp',
+        'driftStereo',
+        'driftResonance',
+        'erosionMix',
+        'erosionAge',
+        'erosionGeneration',
+        'erosionAlias',
+        'erosionWow',
+        'erosionFlutter',
+        'erosionDrift',
+        'erosionNoise',
         'degradeHp',
         'degradeLp',
-        'degradeTone',
-        'degradeSaturation',
-        'degradeCorrosion',
-        'degradeModSlowWow',
-        'degradeModSlowFlutter',
-        'degradeModSlowLp',
-        'degradeModSlowWet',
-        'degradeModSlowDropout',
-        'degradeModSlowAlias',
-        'degradeModFlutterWow',
-        'degradeModFlutterFlutter',
-        'degradeModFlutterLp',
-        'degradeModFlutterWet',
-        'degradeModFlutterDropout',
-        'degradeModFlutterAlias',
-        'degradeModRandomWow',
-        'degradeModRandomFlutter',
-        'degradeModRandomLp',
-        'degradeModRandomWet',
-        'degradeModRandomDropout',
-        'degradeModRandomAlias',
-        'degradeModEnvWow',
-        'degradeModEnvFlutter',
-        'degradeModEnvLp',
-        'degradeModEnvWet',
-        'degradeModEnvDropout',
-        'degradeModEnvAlias',
-        'degradeModNoiseWow',
-        'degradeModNoiseFlutter',
-        'degradeModNoiseLp',
-        'degradeModNoiseWet',
-        'degradeModNoiseDropout',
-        'degradeModNoiseAlias',
+        'erosionTone',
+        'erosionSaturation',
+        'erosionCorrosion',
+        'erosionModSlowWow',
+        'erosionModSlowFlutter',
+        'erosionModSlowLp',
+        'erosionModSlowWet',
+        'erosionModSlowDropout',
+        'erosionModSlowAlias',
+        'erosionModFlutterWow',
+        'erosionModFlutterFlutter',
+        'erosionModFlutterLp',
+        'erosionModFlutterWet',
+        'erosionModFlutterDropout',
+        'erosionModFlutterAlias',
+        'erosionModRandomWow',
+        'erosionModRandomFlutter',
+        'erosionModRandomLp',
+        'erosionModRandomWet',
+        'erosionModRandomDropout',
+        'erosionModRandomAlias',
+        'erosionModEnvWow',
+        'erosionModEnvFlutter',
+        'erosionModEnvLp',
+        'erosionModEnvWet',
+        'erosionModEnvDropout',
+        'erosionModEnvAlias',
+        'erosionModNoiseWow',
+        'erosionModNoiseFlutter',
+        'erosionModNoiseLp',
+        'erosionModNoiseWet',
+        'erosionModNoiseDropout',
+        'erosionModNoiseAlias',
         'endCompThreshold',
         'endCompKnee',
         'endCompRatio',
@@ -4987,7 +5107,7 @@ const App: React.FC = () => {
         'cofDriftDirection',
         'leadRandomSource',
         // Dynamics discrete choices
-        'characterMode',
+        'driftMode',
         'dynamicsSaturationMode',
         'sidechainKeyA',
         'sidechainKeyB',
@@ -5107,12 +5227,12 @@ const App: React.FC = () => {
           isOn: (s) => Boolean(s.dynamicsEnabled && s.sidechainEnabled),
         },
         {
-          key: 'characterEnabled',
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.characterEnabled),
+          key: 'driftEnabled',
+          isOn: (s) => Boolean(s.dynamicsEnabled && s.driftEnabled),
         },
         {
-          key: 'degradeEnabled',
-          isOn: (s) => Boolean(s.dynamicsEnabled && s.degradeEnabled),
+          key: 'erosionEnabled',
+          isOn: (s) => Boolean(s.dynamicsEnabled && s.erosionEnabled),
         },
         {
           key: 'dynamicsSaturationEnabled',
@@ -5147,9 +5267,11 @@ const App: React.FC = () => {
       } else if (atEndpointB) {
         Object.assign(result, stateB);
       }
+      const normalizedResult = normalizeDegradeReverbRouteExclusion(result);
+      normalizeDegradeReverbRouteRanges(normalizedResult, resultDualRanges, resultDualModes);
 
       return {
-        state: result,
+        state: normalizedResult,
         dualRanges: resultDualRanges,
         dualModes: resultDualModes,
         morphCoFInfo,
