@@ -18,7 +18,7 @@ This file classifies the `core-product` host control surface by Product Core upd
 - Routine `updateParams` and `patchAdapterState` updates create a next generated Product snapshot, compare it to `latestProductSnapshot`, and emit generated param/source-preset/journey/sequencer-lane events when the diff is bounded.
 - Source enabled, level, morph, distance, expression, dry gain, FX sends, granular send, diffuse send, post-LPF, stereo width, post-LPF key tracking, source envelope fields, and Lead envelope/algorithm override flags are dirty diff events.
 - FX, routing, master, RNG, and evolution scalar changes are dirty diff events.
-- Source preset ID changes are dirty diff source-preset events when source identity and asset references are unchanged.
+- Source preset ID and Pad/Lead A/B endpoint changes are dirty diff source-preset events when source identity and asset references are unchanged.
 - Structured Pad, Lead, and Drum sparse override changes are dirty diff `SetSourceOverride` slot/commit events when the source remains reconstructable from generated preset IDs and exact compatibility arrays stay empty.
 
 ## Structural Full Snapshot Reloads

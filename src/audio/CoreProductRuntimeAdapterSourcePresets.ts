@@ -21,7 +21,7 @@ function unitArrayChanged(previous: readonly number[] | undefined, next: readonl
   return false;
 }
 
-function isPadOrLeadEndpointSource(sourceId: number): boolean {
+export function isPadOrLeadEndpointSource(sourceId: number): boolean {
   return sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 ||
     sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ||
     sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 ||

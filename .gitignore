@@ -99,3 +99,7 @@ emsdk/
 
 # Temporary build helpers
 .tmp_*.cjs
+
+# AI agent configuration (local only)
+.agents/
+docs/product-core/*agent*.md

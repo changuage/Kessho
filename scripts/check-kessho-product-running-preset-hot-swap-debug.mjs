@@ -106,6 +106,11 @@ function latestSpawn(telemetry, sourceId) {
     .at(-1) ?? null;
 }
 
+function sequencerHitCount(telemetry, laneIndex = 0) {
+  const value = telemetry?.synthSequencerHitCounts?.[laneIndex];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 function baseHotSwapState() {
   return {
     birds2Enabled: false,
@@ -233,6 +238,16 @@ async function main() {
       await probe.applyStatePatch({
         activeTab: 'synth',
         patch: {
+          synthEuclid1Source: 'lead',
+          lead1Morph: 0,
+        },
+      });
+      await wait(1300);
+      const beforeLeadSequencer = probe.readProductStateProbe();
+
+      await probe.applyStatePatch({
+        activeTab: 'synth',
+        patch: {
           lead1PresetA: 'gamelan',
           lead1PresetB: 'soft_rhodes',
           lead1Morph: 0,
@@ -243,24 +258,48 @@ async function main() {
       await wait(1200);
       const afterLead = probe.readProductStateProbe();
 
-      return { before, afterPadSequencer, afterPad, afterLead };
+      return { before, afterPadSequencer, afterPad, beforeLeadSequencer, afterLead };
     }, baseHotSwapState());
 
     await waitForStage(productStateRecords, 'product-control-resolved', 3);
     await waitForStage(productStateRecords, 'encoded-product-snapshot', 3);
-    await waitForStage(productStateRecords, 'snapshot-applied', 2);
     await waitForStage(productStateRecords, 'cpp-product-telemetry', 2);
 
     assert(pageErrors.length === 0, `Page errors were reported: ${pageErrors.join('; ')}`);
     assert(result.before?.telemetry?.transportRunning === true, 'transport was not running before hot-swap');
     assert(result.afterPadSequencer?.telemetry?.transportRunning === true, 'transport stopped after Pad sequencer hot-swap');
     assert(result.afterPad?.telemetry?.transportRunning === true, 'transport stopped after Pad hot-swap');
+    assert(result.beforeLeadSequencer?.telemetry?.transportRunning === true, 'transport stopped before Lead sequencer hot-swap');
     assert(result.afterLead?.telemetry?.transportRunning === true, 'transport stopped after Lead hot-swap');
+    const beforeHitCount = sequencerHitCount(result.before?.telemetry);
+    const afterPadSequencerHitCount = sequencerHitCount(result.afterPadSequencer?.telemetry);
+    const beforeLeadSequencerHitCount = sequencerHitCount(result.beforeLeadSequencer?.telemetry);
+    const afterLeadHitCount = sequencerHitCount(result.afterLead?.telemetry);
+    if (
+      beforeHitCount !== null &&
+        afterPadSequencerHitCount !== null &&
+        Math.max(beforeHitCount, afterPadSequencerHitCount) > 0
+    ) {
+      assert(
+        afterPadSequencerHitCount > beforeHitCount,
+        `Pad hot-swap reset or stalled sequencer hit count (${beforeHitCount} -> ${afterPadSequencerHitCount})`,
+      );
+    }
+    if (
+      beforeLeadSequencerHitCount !== null &&
+        afterLeadHitCount !== null &&
+        Math.max(beforeLeadSequencerHitCount, afterLeadHitCount) > 0
+    ) {
+      assert(
+        afterLeadHitCount > beforeLeadSequencerHitCount,
+        `Lead hot-swap reset or stalled sequencer hit count (${beforeLeadSequencerHitCount} -> ${afterLeadHitCount})`,
+      );
+    }
 
     const padBefore = sourceEntry(result.before?.telemetry, 1);
     const padAfterSequencer = sourceEntry(result.afterPadSequencer?.telemetry, 1);
     const padAfter = sourceEntry(result.afterPad?.telemetry, 1);
-    const leadBefore = sourceEntry(result.afterPad?.telemetry, 3);
+    const leadBefore = sourceEntry(result.beforeLeadSequencer?.telemetry, 3);
     const leadAfter = sourceEntry(result.afterLead?.telemetry, 3);
     assert(padBefore && padAfterSequencer && padAfter, 'Pad source debug telemetry was missing');
     assert(leadBefore && leadAfter, 'Lead source debug telemetry was missing');
@@ -278,9 +317,11 @@ async function main() {
     const padSpawnBefore = latestSpawn(result.before?.telemetry, 1);
     const padSequencerSpawn = latestSpawn(result.afterPadSequencer?.telemetry, 1);
     const padSpawn = latestSpawn(result.afterPad?.telemetry, 1);
+    const leadSequencerSpawnBefore = latestSpawn(result.beforeLeadSequencer?.telemetry, 3);
     const leadSpawn = latestSpawn(result.afterLead?.telemetry, 3);
     assert(padSpawnBefore, 'Pad voice-spawn telemetry was missing before hot-swap');
     assert(padSpawn, 'Pad voice-spawn telemetry was missing after hot-swap trigger');
+    assert(leadSequencerSpawnBefore, 'Lead voice-spawn telemetry was missing before sequenced hot-swap');
     assert(leadSpawn, 'Lead voice-spawn telemetry was missing after hot-swap trigger');
     assert(padSpawn.sourceStateHash === padAfter.sourceStateHash, 'Pad voice-spawn hash did not match active source hash');
     assert(leadSpawn.sourceStateHash === leadAfter.sourceStateHash, 'Lead voice-spawn hash did not match active source hash');
@@ -292,17 +333,21 @@ async function main() {
     assert(uniqueValues(productControlRecords, 'padRelevantHash').length >= 2, 'ProductControl Pad hash did not change');
     assert(uniqueValues(productControlRecords, 'leadRelevantHash').length >= 2, 'ProductControl Lead hash did not change');
     assert(uniqueValues(encodedRecords, 'encodedSnapshotHash').length >= 2, 'encoded snapshot hash did not change');
-    assert(uniqueValues(appliedRecords, 'encodedSnapshotHash').length >= 2, 'worklet-applied snapshot hash did not change');
-    assert(fullSnapshotResolvedRecords.length >= 3, 'ProductControl did not resolve preset-load, Pad, and Lead hot-swaps as full snapshots');
+    assert(fullSnapshotResolvedRecords.length <= 1, 'Pad/Lead hot-swaps should not resolve as full snapshots');
     assert(
-      (result.afterPadSequencer?.diagnostics?.fullSnapshotReloadCount ?? 0) >
-        (result.before?.diagnostics?.fullSnapshotReloadCount ?? 0),
-      'Pad hot-swap did not trigger a full snapshot reload',
+      (result.afterPadSequencer?.diagnostics?.dirtyDiffCount ?? 0) >
+        (result.before?.diagnostics?.dirtyDiffCount ?? 0),
+      'Pad hot-swap did not dirty-diff the running Product snapshot',
     );
     assert(
-      (result.afterLead?.diagnostics?.fullSnapshotReloadCount ?? 0) >
-        (result.afterPad?.diagnostics?.fullSnapshotReloadCount ?? 0),
-      'Lead hot-swap did not trigger a full snapshot reload',
+      (result.afterLead?.diagnostics?.dirtyDiffCount ?? 0) >
+        (result.beforeLeadSequencer?.diagnostics?.dirtyDiffCount ?? 0),
+      'Lead hot-swap did not dirty-diff the running Product snapshot',
+    );
+    assert(
+      (result.afterLead?.diagnostics?.fullSnapshotReloadCount ?? 0) ===
+        (result.before?.diagnostics?.fullSnapshotReloadCount ?? 0),
+      'Pad/Lead hot-swaps should not increase full snapshot reload count',
     );
 
     const report = {
@@ -314,6 +359,12 @@ async function main() {
       productControlFullSnapshotCount: fullSnapshotResolvedRecords.length,
       encodedSnapshotHashCount: encodedRecords.length,
       workletAppliedHashCount: appliedRecords.length,
+      dirtyDiffCountBefore: result.before?.diagnostics?.dirtyDiffCount ?? null,
+      dirtyDiffCountAfterPad: result.afterPadSequencer?.diagnostics?.dirtyDiffCount ?? null,
+      dirtyDiffCountBeforeLead: result.beforeLeadSequencer?.diagnostics?.dirtyDiffCount ?? null,
+      dirtyDiffCountAfterLead: result.afterLead?.diagnostics?.dirtyDiffCount ?? null,
+      fullSnapshotReloadCountBefore: result.before?.diagnostics?.fullSnapshotReloadCount ?? null,
+      fullSnapshotReloadCountAfterLead: result.afterLead?.diagnostics?.fullSnapshotReloadCount ?? null,
       pad: {
         before: padBefore,
         afterSequencer: padAfterSequencer,
@@ -324,6 +375,7 @@ async function main() {
       },
       lead: {
         before: leadBefore,
+        sequencerSpawnBefore: leadSequencerSpawnBefore,
         after: leadAfter,
         spawn: leadSpawn,
       },
@@ -343,10 +395,12 @@ async function main() {
         `ProductControl full-snapshot records: ${report.productControlFullSnapshotCount}`,
         `Encoded snapshot records: ${report.encodedSnapshotHashCount}`,
         `Worklet-applied records: ${report.workletAppliedHashCount}`,
+        `Dirty diffs: ${report.dirtyDiffCountBefore} -> ${report.dirtyDiffCountAfterPad} -> ${report.dirtyDiffCountBeforeLead} -> ${report.dirtyDiffCountAfterLead}`,
+        `Full snapshot reloads: ${report.fullSnapshotReloadCountBefore} -> ${report.fullSnapshotReloadCountAfterLead}`,
         '',
         `Pad source: ${padBefore.sourceStateHash}/${padBefore.compiledSourceHash} -> ${padAfterSequencer.sourceStateHash}/${padAfterSequencer.compiledSourceHash}; sequencer voice ${padSpawnBefore.sourceStateHash}/${padSpawnBefore.compiledSourceHash} -> ${padSequencerSpawn?.sourceStateHash ?? 'unreported'}/${padSequencerSpawn?.compiledSourceHash ?? 'unreported'}`,
         `Pad manual trigger: ${padAfter.sourceStateHash}/${padAfter.compiledSourceHash}; voice ${padSpawn.sourceStateHash}/${padSpawn.compiledSourceHash}`,
-        `Lead source: ${leadBefore.sourceStateHash}/${leadBefore.compiledSourceHash} -> ${leadAfter.sourceStateHash}/${leadAfter.compiledSourceHash}; voice ${leadSpawn.sourceStateHash}/${leadSpawn.compiledSourceHash}`,
+        `Lead source: ${leadBefore.sourceStateHash}/${leadBefore.compiledSourceHash} -> ${leadAfter.sourceStateHash}/${leadAfter.compiledSourceHash}; sequencer voice ${leadSequencerSpawnBefore.sourceStateHash}/${leadSequencerSpawnBefore.compiledSourceHash}; latest voice ${leadSpawn.sourceStateHash}/${leadSpawn.compiledSourceHash}`,
         '',
       ].join('\n'),
     );

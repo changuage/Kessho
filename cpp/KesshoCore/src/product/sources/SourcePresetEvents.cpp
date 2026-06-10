@@ -131,6 +131,30 @@ void KesshoProductEngine::applySourcePresetEvent(const KesshoProductEvent& event
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
     return;
   }
+  if (
+      (event.target_id == KESSHO_PRODUCT_SOURCE_PAD1 ||
+       event.target_id == KESSHO_PRODUCT_SOURCE_PAD2 ||
+       event.target_id == KESSHO_PRODUCT_SOURCE_LEAD1 ||
+       event.target_id == KESSHO_PRODUCT_SOURCE_LEAD2) &&
+      source.source_preset_endpoint_valid) {
+    float selected_morph = source.morph;
+    activeSequencerMorphForPresetSource(event.target_id, DRUM_NUM_VOICE_TYPES, selected_morph);
+    const uint32_t endpoint_index = clampFloat(selected_morph, 0.0f, 1.0f) >= 0.5f ? 2u : 1u;
+    if (endpoint_index == 1u) {
+      source.source_preset_a_id = preset_id;
+    } else {
+      source.source_preset_b_id = preset_id;
+    }
+    source.preset_id = preset_id;
+    clearEndpointStructuredOverridesForPresetChange(source, event.target_id, endpoint_index);
+    compileSourcePresetEndpoints(source);
+    if (!applyStructuredSourceOverridesToModuleForCurrentMorph(event.target_id)) {
+      telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+      return;
+    }
+    telemetry.last_error_code = KESSHO_PRODUCT_OK;
+    return;
+  }
   source.preset_id = preset_id;
   compileSourcePresetRuntime(source);
   telemetry.last_error_code = KESSHO_PRODUCT_OK;

@@ -277,6 +277,27 @@ try {
           return latestVersion(versionsByPreset.get(presetId) ?? []);
         }
 
+        function activeVisibleGraphPresetIds() {
+          const protectedIds = new Set();
+          const queue = presets.filter((preset) => (
+            preset.deleted_at == null
+            && preset.latest_version_id
+            && !isInternalDerived(preset)
+          ));
+          while (queue.length > 0) {
+            const current = queue.shift();
+            if (!current || protectedIds.has(current.id)) continue;
+            protectedIds.add(current.id);
+            for (const ref of refsByVersion.get(current.latest_version_id) ?? []) {
+              const child = presetById.get(ref.target_preset_id);
+              if (child && child.deleted_at == null && child.latest_version_id) {
+                queue.push(child);
+              }
+            }
+          }
+          return protectedIds;
+        }
+
         async function materializeVersion(version, stack = new Set()) {
           if (!version) return null;
           if (materializedByVersionId.has(version.id)) return materializedByVersionId.get(version.id);
@@ -463,11 +484,12 @@ try {
           refTargets.add(rewrite.canonical.id);
         }
 
+        const protectedGraphIds = activeVisibleGraphPresetIds();
         const unreferencedInternal = presets.filter((preset) => (
           preset.deleted_at == null
           && !archivedPresetIds.has(preset.id)
           && isInternalDerived(preset)
-          && !refTargets.has(preset.id)
+          && !protectedGraphIds.has(preset.id)
         ));
         actions.unreferencedInternalPresetsArchived = unreferencedInternal.length;
         if (write) {

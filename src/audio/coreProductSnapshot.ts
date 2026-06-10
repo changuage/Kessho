@@ -780,9 +780,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   const drumLanes = drumLanesFromState(sliderState, defaultEnabled, transport);
   const soundscapePayload = soundscapeSnapshotPayloadFromState(sliderState);
   const sources = SOURCE_ORDER.map((sourceId) => sourceFromState(sourceId, sliderState, soundscapePayload));
-  const sourceDelayASendActive = sources.some((source) => source.enabled && source.delayASend > 0.0001);
   const delayBSendActive = sources.some((source) => source.delayBSend > 0.0001);
-  const sourceDelayBSendActive = sources.some((source) => source.enabled && source.delayBSend > 0.0001);
   const soundscapeSource = sources.find((source) => source.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape);
   const soundscapeAssets = soundscapeSource?.enabled
     ? getCoreProductSoundscapeAssetDescriptorsForState(sliderState)
@@ -810,22 +808,12 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     numberFromState(sliderState, 'granularDegradeSend', 0) > 0.0001;
   const granularToDelayA = clamp(numberFromState(sliderState, 'granularDelayASend', 0), 0, 1);
   const granularToDelayB = clamp(numberFromState(sliderState, 'granularDelayBSend', 0), 0, 1);
-  const delayAEnabled =
-    booleanFromState(sliderState, 'delayAEnabled', true) ||
-    sourceDelayASendActive ||
-    numberFromState(sliderState, 'delayBToASend', 0) > 0.0001 ||
-    granularToDelayA > 0.0001 ||
-    numberFromState(sliderState, 'delayADegradeSend', 0) > 0.0001;
+  const delayAEnabled = booleanFromState(sliderState, 'delayAEnabled', true);
   const delayBOutputDefaultActive =
     delayBSendActive ||
     numberFromState(sliderState, 'delayAToBSend', 0) > 0.0001 ||
     granularToDelayB > 0.0001;
-  const delayBEnabled =
-    booleanFromState(sliderState, 'granularDelayEnabled', false) ||
-    sourceDelayBSendActive ||
-    numberFromState(sliderState, 'delayAToBSend', 0) > 0.0001 ||
-    granularToDelayB > 0.0001 ||
-    numberFromState(sliderState, 'delayBDegradeSend', 0) > 0.0001;
+  const delayBEnabled = booleanFromState(sliderState, 'granularDelayEnabled', false);
   const rawDelayAToB = clamp(numberFromState(sliderState, 'delayAToBSend', 0), 0, 1), rawDelayBToA = clamp(numberFromState(sliderState, 'delayBToASend', 0), 0, 1), delayCrossScale = rawDelayAToB * rawDelayBToA > 0.4 ? Math.sqrt(0.4 / (rawDelayAToB * rawDelayBToA)) : 1, delayBToATrim = rawDelayAToB > 0.0001 && rawDelayBToA > 0.0001 ? 0.7 : 1;
   const spectralFreezeEnabled = booleanFromState(sliderState, 'spectralFreezeEnabled', false);
   const degradeToReverb = clamp(numberFromState(sliderState, 'degradeReverbSend', 0), 0, 1);

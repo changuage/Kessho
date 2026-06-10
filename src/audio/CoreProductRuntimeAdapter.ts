@@ -5,6 +5,7 @@ import {
   appendCoreProductSourcePresetEndpointDiffs,
   canApplyCoreProductSourcePresetEndpointIdDiff,
   coreProductSourcePresetEndpointIdsChanged,
+  isPadOrLeadEndpointSource,
 } from './CoreProductRuntimeAdapterSourcePresets';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import { KESSHO_PRODUCT_PARAM_IDS, KESSHO_PRODUCT_PARAMS } from './generated/kesshoProductParams';
@@ -74,17 +75,14 @@ class CoreProductRuntimeAdapter {
       if (previousSource.assetId !== nextSource.assetId) return 'source-structure-change';
       if (this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return 'source-structure-change';
       if (
-        this.padOrLeadSourcePresetEndpointIdsChanged(previousSource, nextSource)
-      ) return 'source-structure-change';
-      if (
         coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource) &&
         !canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)
       ) return 'source-structure-change';
       const soundscapeFadeCanCoverPatchRemoval =
         soundscapeFadeCanCoverAssetRemoval && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape;
       if (!soundscapeFadeCanCoverPatchRemoval) {
-        if (this.padOverrideChanged(previousSource, nextSource)) return 'pad-override-change';
-        if (this.leadOverrideChanged(previousSource, nextSource)) return 'lead-override-change';
+        if (this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'pad-override-change';
+        if (this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'lead-override-change';
         if (this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'drum-override-change';
       }
     }
@@ -108,7 +106,6 @@ class CoreProductRuntimeAdapter {
       if (previousSource.sourceId !== nextSource.sourceId) return false;
       if (previousSource.assetId !== nextSource.assetId) return false;
       if (this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return false;
-      if (this.padOrLeadSourcePresetEndpointIdsChanged(previousSource, nextSource)) return false;
       if (
         coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource) &&
         !canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)
@@ -116,8 +113,8 @@ class CoreProductRuntimeAdapter {
       const soundscapeFadeCanCoverPatchRemoval =
         soundscapeFadeCanCoverAssetRemoval && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape;
       if (!soundscapeFadeCanCoverPatchRemoval) {
-        if (this.padOverrideChanged(previousSource, nextSource)) return false;
-        if (this.leadOverrideChanged(previousSource, nextSource)) return false;
+        if (this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false;
+        if (this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false;
         if (this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false;
       }
     }
@@ -133,21 +130,6 @@ class CoreProductRuntimeAdapter {
       Object.prototype.hasOwnProperty.call(sourceShape, 'exactLeadParams') ||
       Object.prototype.hasOwnProperty.call(sourceShape, 'exactDrumParamCount') ||
       Object.prototype.hasOwnProperty.call(sourceShape, 'exactDrumParams');
-  }
-
-  private padOrLeadSourcePresetEndpointIdsChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
-    const padOrLeadSource =
-      previous.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 ||
-      previous.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ||
-      previous.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 ||
-      previous.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2 ||
-      next.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 ||
-      next.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ||
-      next.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 ||
-      next.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2;
-    if (!padOrLeadSource) return false;
-    return (previous.sourcePresetAId ?? 0) !== (next.sourcePresetAId ?? 0) ||
-      (previous.sourcePresetBId ?? 0) !== (next.sourcePresetBId ?? 0);
   }
 
   private padOverrideChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
@@ -340,11 +322,14 @@ class CoreProductRuntimeAdapter {
       if (!previous || !next) continue;
       const targetId = next.sourceId;
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceEnabled, previous.enabled, next.enabled, targetId);
-      if (previous.presetId !== next.presetId) {
-        events.push(createCoreProductSourcePresetEvent(targetId, next.presetId));
-      }
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceLevel, previous.level, next.level, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceMorph, previous.morph, next.morph, targetId);
+      if (
+        previous.presetId !== next.presetId &&
+        (!isPadOrLeadEndpointSource(targetId) || coreProductSourcePresetEndpointIdsChanged(previous, next))
+      ) {
+        events.push(createCoreProductSourcePresetEvent(targetId, next.presetId));
+      }
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceDistance, previous.distance, next.distance, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceExpression, previous.expression, next.expression, targetId);
       this.appendParamDiff(events, KESSHO_PRODUCT_PARAM_IDS.SourceDryGain, previous.dryGain, next.dryGain, targetId);

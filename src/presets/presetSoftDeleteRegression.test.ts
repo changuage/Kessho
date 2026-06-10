@@ -12,6 +12,7 @@ import { encodeJourneyPresetData, getJourneyNodeRefSlot } from './journeyPresetC
 
 type Filter =
   | { kind: 'eq'; column: string; value: unknown }
+  | { kind: 'ilike'; column: string; value: string }
   | { kind: 'neq'; column: string; value: unknown }
   | { kind: 'is'; column: string; value: unknown }
   | { kind: 'notIs'; column: string; value: unknown }
@@ -121,6 +122,11 @@ class FakeSupabaseQuery {
 
   eq(column: string, value: unknown): this {
     this.filters.push({ kind: 'eq', column, value });
+    return this;
+  }
+
+  ilike(column: string, value: string): this {
+    this.filters.push({ kind: 'ilike', column, value });
     return this;
   }
 
@@ -270,6 +276,10 @@ class FakeSupabaseClient {
         String(args.target_name),
         (args.target_scope as string | null | undefined) ?? null,
       );
+    }
+
+    if (functionName === 'kessho_prune_internal_derived_v2') {
+      return this.pruneInternalDerived();
     }
 
     if (functionName === 'kessho_save_preset_v2') {
@@ -425,6 +435,7 @@ class FakeSupabaseClient {
     target.deleted_by = this.authUserId;
     target.archived = true;
     target.updated_at = this.now();
+    this.pruneInternalDerived();
     return { data: true, error: null };
   }
 
@@ -558,7 +569,11 @@ class FakeSupabaseClient {
   }
 
   private activeRootsReferencing(targetPresetId: string): FakePresetV2Row[] {
-    const roots = this.tables.presets_v2.filter(row => !row.deleted_at && row.latest_version_id);
+    const roots = this.tables.presets_v2.filter(row => (
+      !row.deleted_at
+      && row.latest_version_id
+      && !this.isInternalDerived(row)
+    ));
     const blockers: FakePresetV2Row[] = [];
     for (const root of roots) {
       const visited = new Set<string>();
@@ -579,6 +594,46 @@ class FakeSupabaseClient {
     }
     return blockers;
   }
+
+  private pruneInternalDerived(): { data: number; error: null } {
+    const protectedIds = this.activeVisibleGraphPresetIds();
+    let deletedCount = 0;
+    for (const row of this.tables.presets_v2) {
+      if (row.deleted_at || !this.isInternalDerived(row) || protectedIds.has(row.id)) continue;
+      row.deleted_at = this.now();
+      row.deleted_by = null;
+      row.archived = true;
+      row.updated_at = this.now();
+      deletedCount += 1;
+    }
+    return { data: deletedCount, error: null };
+  }
+
+  private activeVisibleGraphPresetIds(): Set<string> {
+    const protectedIds = new Set<string>();
+    const queue = this.tables.presets_v2.filter(row => (
+      !row.deleted_at
+      && row.latest_version_id
+      && !this.isInternalDerived(row)
+    ));
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (protectedIds.has(current.id)) continue;
+      protectedIds.add(current.id);
+      for (const ref of this.tables.preset_version_refs_v2.filter(candidate => candidate.version_id === current.latest_version_id)) {
+        const child = this.tables.presets_v2.find(candidate => (
+          candidate.id === ref.target_preset_id
+          && !candidate.deleted_at
+        ));
+        if (child) queue.push(child);
+      }
+    }
+    return protectedIds;
+  }
+
+  private isInternalDerived(row: Pick<FakePresetV2Row, 'name' | 'tags'>): boolean {
+    return row.name.startsWith('__derived__/') || row.tags.includes('internal-derived');
+  }
 }
 
 function matchesFilter(row: FakeRow, filter: Filter): boolean {
@@ -588,6 +643,8 @@ function matchesFilter(row: FakeRow, filter: Filter): boolean {
   switch (filter.kind) {
     case 'eq':
       return value === filter.value;
+    case 'ilike':
+      return String(value ?? '').trim().toLowerCase() === filter.value.trim().toLowerCase();
     case 'neq':
       return value !== filter.value;
     case 'is':
@@ -667,6 +724,47 @@ function mutateFirstNumber(data: Record<string, unknown>): Record<string, unknow
   assert.ok(key, 'expected preset data to include a numeric key to mutate');
   next[key] = Number(next[key]) + 0.123456;
   return next;
+}
+
+function isInternalDerivedPresetRow(row: Pick<FakePresetV2Row, 'name' | 'tags'>): boolean {
+  return row.name.startsWith('__derived__/') || row.tags.includes('internal-derived');
+}
+
+function activeInternalDerivedRows(client: FakeSupabaseClient): FakePresetV2Row[] {
+  return client.tables.presets_v2.filter(row => row.deleted_at == null && isInternalDerivedPresetRow(row));
+}
+
+function activeLogicalRows(
+  client: FakeSupabaseClient,
+  type: PresetLevel,
+  scope: string | null,
+  name: string,
+): FakePresetV2Row[] {
+  const nameKey = name.trim().toLowerCase();
+  return client.tables.presets_v2.filter(row => (
+    row.deleted_at == null
+    && row.type === type
+    && row.scope === scope
+    && row.name.trim().toLowerCase() === nameKey
+  ));
+}
+
+function makeInternalDerivedEntry(
+  type: PresetLevel,
+  scope: string,
+  name: string,
+  data: Record<string, unknown>,
+): PresetEntry {
+  return {
+    ...makePresetEntry(type, scope, name, data),
+    author: 'cloud',
+    creator: 'Soft Delete Internal Derived Regression',
+    description: `Hidden derived child preset for ${scope}.`,
+    familyName: `__derived__/${scope}`,
+    library: 'cloud',
+    tags: ['internal-derived', 'auto-child', `scope:${scope}`],
+    visibility: 'private',
+  };
 }
 
 class NoopPresetStore implements IPresetStore {
@@ -750,9 +848,21 @@ async function testActiveDependencyBlocksSoftDeleteAcrossL1ToL4(): Promise<void>
   const padKitData = extractCascade(DEFAULT_STATE, 2, 'pad1Kit');
   const synthData = extractCascade(DEFAULT_STATE, 3, 'synth');
   const stateData = DEFAULT_STATE as unknown as Record<string, unknown>;
+  const padKitEntry = makePresetEntry('kit', 'pad1Kit', 'Pad Kit Active Dependency', padKitData);
+  padKitEntry.versions[0]!.refs = {
+    pad1: { name: 'Pad Engine Active Dependency', scope: 'pad1', version: 'latest' },
+  };
+  const synthEntry = makePresetEntry('source', 'synth', 'Synth Active Dependency', synthData);
+  synthEntry.versions[0]!.refs = {
+    pad1Kit: { name: 'Pad Kit Active Dependency', scope: 'pad1Kit', version: 'latest' },
+  };
+  const stateEntry = makePresetEntry('state', 'global', 'State Active Dependency', stateData);
+  stateEntry.versions[0]!.refs = {
+    synth: { name: 'Synth Active Dependency', scope: 'synth', version: 'latest' },
+  };
 
   await store.save(makePresetEntry('engine', 'pad1', 'Pad Engine Active Dependency', padEngineData));
-  await store.save(makePresetEntry('kit', 'pad1Kit', 'Pad Kit Active Dependency', padKitData));
+  await store.save(padKitEntry);
   const padEngine = findPresetRow(client, 'engine', 'pad1', 'Pad Engine Active Dependency');
   const padKit = findPresetRow(client, 'kit', 'pad1Kit', 'Pad Kit Active Dependency');
   assert.equal(latestRefTarget(client, padKit, 'pad1')?.id, padEngine.id, 'L2 latest version should reference the matching L1 preset');
@@ -763,7 +873,7 @@ async function testActiveDependencyBlocksSoftDeleteAcrossL1ToL4(): Promise<void>
   );
   assert.equal(padEngine.deleted_at, null, 'blocked L1 delete should leave the row active');
 
-  await store.save(makePresetEntry('source', 'synth', 'Synth Active Dependency', synthData));
+  await store.save(synthEntry);
   const synth = findPresetRow(client, 'source', 'synth', 'Synth Active Dependency');
   assert.equal(latestRefTarget(client, synth, 'pad1Kit')?.id, padKit.id, 'L3 latest version should reference the matching L2 preset');
   await assert.rejects(
@@ -773,7 +883,7 @@ async function testActiveDependencyBlocksSoftDeleteAcrossL1ToL4(): Promise<void>
   );
   assert.equal(padKit.deleted_at, null, 'blocked L2 delete should leave the row active');
 
-  await store.save(makePresetEntry('state', 'global', 'State Active Dependency', stateData));
+  await store.save(stateEntry);
   const state = findPresetRow(client, 'state', 'global', 'State Active Dependency');
   assert.equal(latestRefTarget(client, state, 'synth')?.id, synth.id, 'L4 latest version should reference the matching L3 preset');
   await assert.rejects(
@@ -782,6 +892,167 @@ async function testActiveDependencyBlocksSoftDeleteAcrossL1ToL4(): Promise<void>
     'active L4 -> L3 refs should block deleting the L3 preset',
   );
   assert.equal(synth.deleted_at, null, 'blocked L3 delete should leave the row active');
+}
+
+async function testDeletingStatePrunesUnreferencedInternalDerivedGraph(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '15151515-1515-4151-8151-151515151515';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const stateName = 'State With Derived Graph';
+  await store.save(makePresetEntry('state', 'global', stateName, DEFAULT_STATE as unknown as Record<string, unknown>));
+
+  const state = findPresetRow(client, 'state', 'global', stateName);
+  assert.ok(latestRefTarget(client, state, 'synth'), 'state save should create source-derived children');
+  assert.ok(activeInternalDerivedRows(client).some(row => row.type === 'source'), 'state save should create active L3 internal-derived rows');
+  assert.ok(activeInternalDerivedRows(client).some(row => row.type === 'kit'), 'state save should create active L2 internal-derived rows');
+  assert.ok(activeInternalDerivedRows(client).some(row => row.type === 'engine'), 'state save should create active L1 internal-derived rows');
+
+  await store.delete('state', stateName, 'global');
+
+  assert.equal(
+    activeInternalDerivedRows(client).length,
+    0,
+    'deleting the only visible root should recycle the entire unreferenced internal-derived graph',
+  );
+}
+
+async function testSharedDerivedChildSurvivesUntilLastVisibleRootDeletes(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '16161616-1616-4161-8161-161616161616';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const stateAName = 'Shared Derived State A';
+  const stateBName = 'Shared Derived State B';
+  await store.save(makePresetEntry('state', 'global', stateAName, DEFAULT_STATE as unknown as Record<string, unknown>));
+  await store.save(makePresetEntry('state', 'global', stateBName, DEFAULT_STATE as unknown as Record<string, unknown>));
+
+  const stateA = findPresetRow(client, 'state', 'global', stateAName);
+  const stateB = findPresetRow(client, 'state', 'global', stateBName);
+  const sharedSynthA = latestRefTarget(client, stateA, 'synth');
+  const sharedSynthB = latestRefTarget(client, stateB, 'synth');
+  assert.ok(sharedSynthA, 'first state should reference a derived synth source');
+  assert.ok(sharedSynthB, 'second state should reference a derived synth source');
+  assert.equal(sharedSynthA.id, sharedSynthB.id, 'identical states should share the same internal-derived source child');
+
+  await store.delete('state', stateAName, 'global');
+  assert.equal(sharedSynthA.deleted_at, null, 'shared child should stay active while another visible root still reaches it');
+  assert.ok(activeInternalDerivedRows(client).length > 0, 'shared internal-derived graph should remain while one state is active');
+
+  await store.delete('state', stateBName, 'global');
+  assert.equal(
+    activeInternalDerivedRows(client).length,
+    0,
+    'shared internal-derived graph should recycle after the last visible root is deleted',
+  );
+}
+
+async function testOrphanInternalDerivedChainPrunesAllLevels(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '17171717-1717-4171-8171-171717171717';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  await store.save(makeInternalDerivedEntry(
+    'source',
+    'synth',
+    '__derived__/synth/manual-orphan-source',
+    extractCascade(DEFAULT_STATE, 3, 'synth'),
+  ));
+
+  assert.ok(activeInternalDerivedRows(client).some(row => row.type === 'source'), 'orphan setup should include an active L3 source');
+  assert.ok(activeInternalDerivedRows(client).some(row => row.type === 'kit'), 'orphan setup should include active L2 kits');
+  assert.ok(activeInternalDerivedRows(client).some(row => row.type === 'engine'), 'orphan setup should include active L1 engines');
+
+  const { data, error } = await client.rpc('kessho_prune_internal_derived_v2', {});
+  assert.equal(error, null, 'fake internal-derived GC should complete');
+  assert.equal(typeof data, 'number', 'fake internal-derived GC should report a recycled count');
+  assert.ok((data as number) > 0, 'orphan internal-derived GC should recycle at least one row');
+  assert.equal(activeInternalDerivedRows(client).length, 0, 'orphan source -> kit -> engine chain should fully recycle');
+}
+
+async function testConcurrentSameIdentitySaveKeepsOneActiveV2Row(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '18181818-1818-4181-8181-181818181818';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const entry = makePresetEntry(
+    'engine',
+    'pad1',
+    'Concurrent Same Identity',
+    extractParams(DEFAULT_STATE, 1, 'pad1'),
+  );
+
+  await Promise.all([
+    store.save(entry),
+    store.save(structuredClone(entry)),
+  ]);
+
+  assert.equal(
+    activeLogicalRows(client, 'engine', 'pad1', 'Concurrent Same Identity').length,
+    1,
+    'atomic V2 save should keep one active row for concurrent same type/scope/name saves',
+  );
+}
+
+async function testLegacyCaseFoldedNameSemanticsStayConsistent(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '19191919-1919-4191-8191-191919191919';
+  client.authUserId = userId;
+  store.setUserId(userId);
+  store['v2SchemaAvailable'] = false;
+
+  const data = extractParams(DEFAULT_STATE, 1, 'pad1');
+  await store.save(makePresetEntry('engine', 'pad1', 'Foo', data));
+  await store.save(makePresetEntry('engine', 'pad1', 'foo', mutateFirstNumber(data)));
+  await store.save(makePresetEntry('engine', 'pad1', 'Foo', mutateFirstNumber(mutateFirstNumber(data))));
+
+  const activeLegacyRows = client.tables.presets.filter(row => row.deleted_at == null);
+  assert.equal(activeLegacyRows.length, 1, 'legacy saves should treat Foo/foo/Foo as one logical row');
+  assert.equal((await store.list('engine', 'pad1')).filter(summary => summary.name.toLowerCase() === 'foo').length, 1);
+  assert.ok(await store.load('engine', 'foo', 'pad1'), 'legacy load should use the same case-folded identity as save');
+  assert.equal(await store.exists('engine', 'FOO', 'pad1'), true, 'legacy exists should use the same case-folded identity as save');
+
+  await store.delete('engine', 'fOo', 'pad1');
+
+  assert.equal(await store.exists('engine', 'foo', 'pad1'), false, 'legacy delete should remove the case-folded logical row from exists');
+  assert.equal(await store.load('engine', 'Foo', 'pad1'), null, 'legacy delete should remove the case-folded logical row from load');
+  assert.equal(
+    (await store.list('engine', 'pad1')).some(summary => summary.name.toLowerCase() === 'foo'),
+    false,
+    'legacy delete should remove the case-folded logical row from list',
+  );
+}
+
+async function testAutoDerivedParentDoesNotBindVisibleSameHashChild(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  const store = new SupabasePresetStore(client as never);
+  const userId = '20202020-2020-4202-8202-202020202020';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const visibleKitName = 'Visible Same Hash Pad Kit';
+  await store.save(makePresetEntry('kit', 'pad1Kit', visibleKitName, extractCascade(DEFAULT_STATE, 2, 'pad1Kit')));
+  const visibleKit = findPresetRow(client, 'kit', 'pad1Kit', visibleKitName);
+  assert.equal(isInternalDerivedPresetRow(visibleKit), false, 'setup should create a user-visible kit child');
+
+  const parentName = 'Parent Should Use Hidden Pad Kit';
+  await store.save(makePresetEntry('source', 'synth', parentName, extractCascade(DEFAULT_STATE, 3, 'synth')));
+  const parent = findPresetRow(client, 'source', 'synth', parentName);
+  const target = latestRefTarget(client, parent, 'pad1Kit');
+
+  assert.ok(target, 'source parent should store a pad1Kit graph ref');
+  assert.notEqual(target.id, visibleKit.id, 'automatic graph refs must not bind to mutable visible same-hash children');
+  assert.equal(isInternalDerivedPresetRow(target), true, 'automatic graph refs should bind to a hidden internal-derived child');
+  assert.equal(visibleKit.deleted_at, null, 'visible same-hash child should remain visible and independent');
 }
 
 async function testJourneyRefsPersistAsSupabaseV2GraphEdges(): Promise<void> {
@@ -989,7 +1260,16 @@ async function testHistoricalOnlyReferenceAllowsSoftDelete(): Promise<void> {
     'Lead Kit Historical Parent',
     leadKitA,
     [
-      { v: 1, data: leadKitA, note: 'references visible L1' },
+      {
+        v: 1,
+        data: leadKitA,
+        note: 'references visible L1',
+        metadata: {
+          refs: {
+            lead1: { name: 'Lead Engine Historical Only', scope: 'lead1', version: 'latest' },
+          },
+        },
+      },
       { v: 2, data: leadKitB, note: 'moves latest ref away from visible L1' },
     ],
   ));
@@ -1232,6 +1512,12 @@ async function testSharedV2DoesNotLeakLegacyRows(): Promise<void> {
 
 await testSupabaseDeleteMovesPresetToRecycleBin();
 await testActiveDependencyBlocksSoftDeleteAcrossL1ToL4();
+await testDeletingStatePrunesUnreferencedInternalDerivedGraph();
+await testSharedDerivedChildSurvivesUntilLastVisibleRootDeletes();
+await testOrphanInternalDerivedChainPrunesAllLevels();
+await testConcurrentSameIdentitySaveKeepsOneActiveV2Row();
+await testLegacyCaseFoldedNameSemanticsStayConsistent();
+await testAutoDerivedParentDoesNotBindVisibleSameHashChild();
 await testJourneyRefsPersistAsSupabaseV2GraphEdges();
 await testUnresolvedJourneyRefFailsClosed();
 await testAtomicSaveRollsBackWhenRefInsertFails();

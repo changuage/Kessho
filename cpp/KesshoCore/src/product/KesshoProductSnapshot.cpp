@@ -55,6 +55,12 @@ bool exactParamBlockEmpty(uint32_t count, const float* values, uint32_t param_co
   }
   return true;
 }
+
+struct SequencerLaneRuntimePhase {
+  uint64_t emitted_hit_count = 0u;
+  uint64_t sequencer_runtime_sample_frame = 0u;
+  uint64_t sequencer_start_sample_frame = 0u;
+};
 } // namespace
 
 int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapshot) {
@@ -169,6 +175,9 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     telemetry.last_error_code = drum_lane_validation;
     return drum_lane_validation;
   }
+  const bool was_transport_running = transport.running;
+  const bool preserve_running_sequencer_runtime =
+      snapshot_loaded_once && was_transport_running && snapshot.transport.running != 0u;
   transport.running = snapshot.transport.running != 0u;
   transport.bpm = clampFloat(snapshot.transport.bpm, 1.0f, 400.0f);
   transport.beats_per_bar = clampU32(snapshot.transport.beats_per_bar, 1u, 32u);
@@ -728,8 +737,8 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
 
   synth_lane_count = std::min<uint32_t>(snapshot.synth_euclid.lane_count, kMaxLaneCount);
   drum_lane_count = std::min<uint32_t>(snapshot.drum_euclid.lane_count, kMaxLaneCount);
-  loadLaneSnapshots(snapshot.synth_euclid, synth_lanes, KESSHO_PRODUCT_SOURCE_PAD1);
-  loadLaneSnapshots(snapshot.drum_euclid, drum_lanes, KESSHO_PRODUCT_SOURCE_DRUM);
+  loadLaneSnapshots(snapshot.synth_euclid, synth_lanes, KESSHO_PRODUCT_SOURCE_PAD1, preserve_running_sequencer_runtime);
+  loadLaneSnapshots(snapshot.drum_euclid, drum_lanes, KESSHO_PRODUCT_SOURCE_DRUM, preserve_running_sequencer_runtime);
   markSequencerUiStateChanged(0u, 0xffffffffu, KESSHO_PRODUCT_SEQUENCER_UI_CHANGE_SNAPSHOT);
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
   snapshot_loaded_once = true;
@@ -739,10 +748,23 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   void KesshoProductEngine::loadLaneSnapshots(
       const KesshoProductSequencerSnapshot& snapshot,
       LaneState* lanes,
-      uint32_t fallback_source) {
+      uint32_t fallback_source,
+      bool preserve_running_runtime) {
   const uint32_t count = std::min<uint32_t>(snapshot.lane_count, kMaxLaneCount);
   for (uint32_t i = 0; i < count; ++i) {
     const KesshoProductSequencerLaneSnapshot& lane = snapshot.lanes[i];
+    const bool preserve_phase =
+        preserve_running_runtime &&
+        lanes[i].enabled &&
+        lane.enabled != 0u &&
+        lanes[i].sequencer_runtime_initialized &&
+        lanes[i].step_count != 0u &&
+        lanes[i].clock_division != 0u;
+    const SequencerLaneRuntimePhase preserved_phase{
+        lanes[i].emitted_hit_count,
+        lanes[i].sequencer_runtime_sample_frame,
+        lanes[i].sequencer_start_sample_frame,
+    };
     lanes[i].enabled = lane.enabled != 0u;
     (void) fallback_source;
     lanes[i].target_source_id = lane.target_source_id;
@@ -789,6 +811,13 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     lanes[i].step_override_value_low = 0;
     lanes[i].step_override_value_high = 0;
     resetSequencerLaneRuntime(lanes[i], lanes[i].initial_start_delay_seconds >= 0.0f);
+    if (preserve_phase) {
+      lanes[i].emitted_hit_count = preserved_phase.emitted_hit_count;
+      lanes[i].sequencer_runtime_sample_frame = preserved_phase.sequencer_runtime_sample_frame;
+      lanes[i].sequencer_start_sample_frame = preserved_phase.sequencer_start_sample_frame;
+      lanes[i].sequencer_runtime_initialized = true;
+      lanes[i].sequencer_join_pending = false;
+    }
     clearLaneStepOverrides(lanes[i]);
   }
 }

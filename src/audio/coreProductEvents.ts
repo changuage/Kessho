@@ -1087,6 +1087,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
     ...granularMacroVoiceTargets(key, 'GrainOctaveProbability', (model, voiceIndex) => model.voiceGrainOct[voiceIndex] ?? 0),
     ...granularMacroVoiceTargets(key, 'ReverseLfoRate', (model, voiceIndex) => model.voiceReverseLFORate[voiceIndex] ?? 0),
   ],
+  delayAEnabled: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAEnabled, key, binaryParamValue)],
   delayAMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayAMix, key)],
   drumDelayNoteL: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayATimeLeftMs, key, indexedDelayDivisionMs('drumDelayNoteL', 10)),
@@ -1107,6 +1108,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayACrossFeedFilterHz, key, normalizedToDelayACrossFeedFilterHz),
   ],
   delayBMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBMix, key)],
+  granularDelayEnabled: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBEnabled, key, binaryParamValue)],
   granularDelayMix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBMix, key)],
   granularDelayTime: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDelayBBaseTimeMs, key, indexedDelayDivisionMs('granularDelayTime', 20)),

@@ -313,9 +313,8 @@ await runCheckWithReport({
       "previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change'",
       "previousSource.assetId !== nextSource.assetId) return 'source-structure-change'",
       "this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return 'source-structure-change'",
-      'this.padOrLeadSourcePresetEndpointIdsChanged(previousSource, nextSource)',
-      "this.padOverrideChanged(previousSource, nextSource)) return 'pad-override-change'",
-      "this.leadOverrideChanged(previousSource, nextSource)) return 'lead-override-change'",
+      "this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'pad-override-change'",
+      "this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'lead-override-change'",
       "this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'drum-override-change'",
       'canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)',
       "canApplyLaneDiffs(previous.synthLanes, next.synthLanes)) return 'sequencer-structure-change'",
@@ -324,10 +323,9 @@ await runCheckWithReport({
     }
     const canApplyBody = methodBody(runtimeAdapter, 'canApplySnapshotDiff');
     for (const token of [
-      'this.padOrLeadSourcePresetEndpointIdsChanged(previousSource, nextSource)) return false',
       'canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)',
-      'this.padOverrideChanged(previousSource, nextSource)) return false',
-      'this.leadOverrideChanged(previousSource, nextSource)) return false',
+      'this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false',
+      'this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false',
       'this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false',
     ]) {
       assert(canApplyBody.includes(token), `snapshot dirty-diff apply gate is missing ${token}`);
@@ -452,11 +450,18 @@ await runCheckWithReport({
       'sequencer state controls must use an explicit product patch reason before host classification',
     );
     assert(
-      audioEngineParamSync.includes('SOURCE_PRESET_ENDPOINT_FULL_SNAPSHOT_KEYS') &&
-        audioEngineParamSync.includes('SOURCE_PRESET_BODY_FULL_SNAPSHOT_KEYS') &&
+      audioEngineParamSync.includes('SOURCE_PRESET_ENDPOINT_RESOLVED_COMMIT_KEYS') &&
+        audioEngineParamSync.includes('SOURCE_PRESET_DATA_RESOLVED_COMMIT_KEY_PATTERNS') &&
         audioEngineParamSync.includes("if (reason === 'preset-load') return true;") &&
-        audioEngineParamSync.includes('Object.keys(patch).some(isSourcePresetEndpointFullSnapshotPatchKey)'),
-      'Product Core UI sync must force full snapshots for preset loads and Pad/Lead source preset endpoint/body changes',
+        audioEngineParamSync.includes('return false;') &&
+        !audioEngineParamSync.includes('KESSHO_PRODUCT_PAD_PARAM_SPECS') &&
+        !audioEngineParamSync.includes('KESSHO_PRODUCT_DRUM_PARAM_SPECS'),
+      'Product Core UI sync must resolve source preset endpoints/data while forcing full snapshots only for explicit preset loads',
+    );
+    const resolvedTriggerBody = methodBody(audioEngineParamSync, 'resolvedCommitTriggerCritical');
+    assert(
+      resolvedTriggerBody.includes('requiresSourceCoreResolvedCommit(patch)'),
+      'source preset endpoint/data commits must be trigger-critical so running Lead sequencers receive preset swaps immediately',
     );
     assert(
       !audioEngineParamSync.includes("productEngine.updateSnapshotPatch('ui-control-change', { ...nextState });"),
@@ -701,9 +706,17 @@ await runCheckWithReport({
     padOverrideNext.sources[0].padOverrideValues = [0.87];
     const padOverrideDiff = adapterHarness.buildCoreProductSnapshotDiff(padOverrideBase, padOverrideNext);
     assert(
-      padOverrideDiff.applied === false &&
-        padOverrideDiff.reason === 'pad-override-change',
-      'Product Pad sparse override/body changes must fall back to a full snapshot so live triggers rebuild from one resolved preset state',
+      padOverrideDiff.applied === true &&
+        padOverrideDiff.events.some((event) =>
+          event.type === 'source-override-slot' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.pad1 &&
+            event.paramIndex === 15 &&
+            Math.abs(event.value - 0.87) < 1.0e-6) &&
+        padOverrideDiff.events.some((event) =>
+          event.type === 'source-override-commit' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.pad1 &&
+            event.overrideCount === 1),
+      'Product Pad sparse override/body changes must dirty-diff as generated source override events so running sequencers stay continuous',
     );
 
     const leadOverrideBase = clone(base);
@@ -716,9 +729,17 @@ await runCheckWithReport({
     leadOverrideNext.sources[0].leadOverrideValues = [0.41];
     const leadOverrideDiff = adapterHarness.buildCoreProductSnapshotDiff(leadOverrideBase, leadOverrideNext);
     assert(
-      leadOverrideDiff.applied === false &&
-        leadOverrideDiff.reason === 'lead-override-change',
-      'Product Lead sparse override/body changes must fall back to a full snapshot so live triggers rebuild from one resolved preset state',
+      leadOverrideDiff.applied === true &&
+        leadOverrideDiff.events.some((event) =>
+          event.type === 'source-override-slot' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            event.paramIndex === 62 &&
+            Math.abs(event.value - 0.41) < 1.0e-6) &&
+        leadOverrideDiff.events.some((event) =>
+          event.type === 'source-override-commit' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            event.overrideCount === 1),
+      'Product Lead sparse override/body changes must dirty-diff as generated source override events so running sequencers stay continuous',
     );
 
     const drumOverrideBase = clone(base);
@@ -786,25 +807,78 @@ await runCheckWithReport({
     endpointBase.sources[0] = makeSource(adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1);
     endpointBase.sources[0].sourcePresetAId = 2001;
     endpointBase.sources[0].sourcePresetBId = 2002;
+    endpointBase.sources[0].presetId = 2002;
+    endpointBase.sources[0].morph = 1;
     const endpointNext = clone(endpointBase);
     endpointNext.sources[0].sourcePresetBId = 2001;
+    endpointNext.sources[0].presetId = 2001;
     const endpointDiff = adapterHarness.buildCoreProductSnapshotDiff(endpointBase, endpointNext);
     assert(
-      endpointDiff.applied === false &&
-        endpointDiff.reason === 'source-structure-change',
-      'Pad/Lead source preset endpoint ID changes must fall back to a full snapshot instead of dirty-diffing partial endpoint state',
+      endpointDiff.applied === true &&
+        endpointDiff.events.some((event) =>
+          event.type === 'source-preset-endpoint' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            event.endpoint === 'B' &&
+            event.presetId === 2001),
+      'Pad/Lead source preset endpoint ID changes must dirty-diff as generated endpoint events so running sequencers stay continuous',
+    );
+    assert(
+      endpointDiff.events.some((event) =>
+        event.type === 'source-preset' &&
+          event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+          event.presetId === 2001),
+      'Pad/Lead active endpoint preset changes must also emit a live selected-preset event so running endpoint sources update immediately',
     );
 
     const endpointAndOverrideNext = clone(endpointBase);
     endpointAndOverrideNext.sources[0].sourcePresetBId = 2001;
+    endpointAndOverrideNext.sources[0].presetId = 2001;
     endpointAndOverrideNext.sources[0].leadOverrideCount = 2;
     endpointAndOverrideNext.sources[0].leadOverrideIndices = [12, 62];
     endpointAndOverrideNext.sources[0].leadOverrideValues = [0.25, 0.41];
     const endpointAndOverrideDiff = adapterHarness.buildCoreProductSnapshotDiff(endpointBase, endpointAndOverrideNext);
     assert(
-      endpointAndOverrideDiff.applied === false &&
-        endpointAndOverrideDiff.reason === 'source-structure-change',
-      'Pad/Lead source preset endpoint changes paired with sparse overrides must fall back to a full snapshot',
+      endpointAndOverrideDiff.applied === true &&
+        endpointAndOverrideDiff.events.some((event) =>
+          event.type === 'source-preset-endpoint' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            event.endpoint === 'B' &&
+            event.presetId === 2001) &&
+        endpointAndOverrideDiff.events.some((event) =>
+          event.type === 'source-override-slot' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            event.paramIndex === 12 &&
+            Math.abs(event.value - 0.25) < 1.0e-6) &&
+        endpointAndOverrideDiff.events.some((event) =>
+          event.type === 'source-override-commit' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            event.overrideCount === 2),
+      'Pad/Lead source preset endpoint changes paired with sparse overrides must dirty-diff as endpoint and override events',
+    );
+    assert(
+      endpointAndOverrideDiff.events.some((event) =>
+        event.type === 'source-preset' &&
+          event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+          event.presetId === 2001),
+      'Pad/Lead endpoint+override dirty diffs must include the live selected-preset event',
+    );
+
+    const morphAcrossEndpointsNext = clone(endpointBase);
+    morphAcrossEndpointsNext.sources[0].morph = 0;
+    morphAcrossEndpointsNext.sources[0].presetId = 2001;
+    const morphAcrossEndpointsBase = clone(morphAcrossEndpointsNext);
+    morphAcrossEndpointsBase.sources[0].morph = 1;
+    morphAcrossEndpointsBase.sources[0].presetId = 2002;
+    const morphAcrossEndpointsDiff = adapterHarness.buildCoreProductSnapshotDiff(morphAcrossEndpointsBase, morphAcrossEndpointsNext);
+    assert(
+      morphAcrossEndpointsDiff.applied === true &&
+        morphAcrossEndpointsDiff.events.some((event) =>
+          event.type === 'param' &&
+            event.paramId === 'SourceMorph' &&
+            event.targetId === adapterHarness.context.CORE_PRODUCT_SOURCE_IDS.lead1 &&
+            Math.abs(event.value) < 1.0e-6) &&
+        !morphAcrossEndpointsDiff.events.some((event) => event.type === 'source-preset'),
+      'Pad/Lead preset morph crossings must not emit selected-preset events when endpoint IDs are unchanged',
     );
 
     const morphAfterEndpointAndOverrideNext = clone(endpointAndOverrideNext);
@@ -917,8 +991,9 @@ await runCheckWithReport({
         legacyLeadExactReloadReason: legacyLeadExactDiff.reason,
         legacyDrumExactReloadReason: legacyDrumExactDiff.reason,
         harmonySlotDiffEvents: harmonySlotDiff.events.length,
-        padOverrideReloadReason: padOverrideDiff.reason,
-        leadOverrideReloadReason: leadOverrideDiff.reason,
+        padOverrideDiffEvents: padOverrideDiff.events.length,
+        leadOverrideDiffEvents: leadOverrideDiff.events.length,
+        endpointDiffEvents: endpointDiff.events.length,
         drumOverrideReloadReason: drumOverrideDiff.reason,
         drumEndpointLegacyExactReloadReason: drumEndpointWithLegacyExactDiff.reason,
         budgetReloadReason: budgetDiff.reason,

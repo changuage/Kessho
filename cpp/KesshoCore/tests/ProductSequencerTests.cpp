@@ -2246,6 +2246,38 @@ int main() {
 
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
+  snapshot.synth_euclid.lanes[0].fill_count = 2;
+  snapshot.synth_euclid.lanes[0].manual_step_mask_low = (1u << 0u) | (1u << 2u);
+  snapshot.drum_euclid.lanes[0].fill_count = 2;
+  snapshot.drum_euclid.lanes[0].manual_step_mask_low = (1u << 0u) | (1u << 2u);
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "running sequencer phase hot-swap setup should load");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 128);
+  require(event_count == 2, "running sequencer phase setup should emit step-zero synth and drum hits");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 12100);
+  require(event_count == 2, "running sequencer phase setup should emit second synth and drum hits");
+  const KesshoProductTelemetry hot_swap_before_telemetry = kessho_product_get_telemetry(engine);
+  require(hot_swap_before_telemetry.synth_sequencer_current_steps[0] == 2u, "synth hot-swap setup should be mid-pattern");
+  require(hot_swap_before_telemetry.drum_sequencer_current_steps[0] == 2u, "drum hot-swap setup should be mid-pattern");
+  require(hot_swap_before_telemetry.synth_sequencer_hit_counts[0] == 2u, "synth hot-swap setup should have advanced hit phase");
+  require(hot_swap_before_telemetry.drum_sequencer_hit_counts[0] == 2u, "drum hot-swap setup should have advanced hit phase");
+  KesshoProductSnapshotV2 hot_swap_snapshot = snapshot;
+  hot_swap_snapshot.synth_euclid.lanes[0].midi_note = 67.0f;
+  hot_swap_snapshot.drum_euclid.lanes[0].midi_note = 38.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &hot_swap_snapshot, sizeof(hot_swap_snapshot)) == KESSHO_PRODUCT_OK,
+      "running sequencer phase hot-swap snapshot should load");
+  event_count = kessho_product_debug_render_events(engine, events, 32, 128);
+  require(event_count == 0, "running sequencer phase hot-swap should not re-emit step zero");
+  const KesshoProductTelemetry hot_swap_after_telemetry = kessho_product_get_telemetry(engine);
+  require(hot_swap_after_telemetry.synth_sequencer_current_steps[0] == 2u, "synth hot-swap should preserve current step");
+  require(hot_swap_after_telemetry.drum_sequencer_current_steps[0] == 2u, "drum hot-swap should preserve current step");
+  require(hot_swap_after_telemetry.synth_sequencer_hit_counts[0] == 2u, "synth hot-swap should preserve sub-lane hit phase");
+  require(hot_swap_after_telemetry.drum_sequencer_hit_counts[0] == 2u, "drum hot-swap should preserve sub-lane hit phase");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
   snapshot.drum_euclid.lane_count = 0;
   snapshot.synth_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_PAD2;
   snapshot.synth_euclid.lanes[0].seed =
@@ -4000,13 +4032,22 @@ int main() {
           active_live_morph) &&
           std::fabs(active_live_morph - 1.0f) < 0.001f,
       "active morph sub-lane should expose the latest preset morph latch");
-  pad_endpoint_preset_event.index = 2u;
+  pad_endpoint_preset_event.index = 0u;
   pad_endpoint_preset_event.value =
       static_cast<float>(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT);
   engine->applySourcePresetEvent(pad_endpoint_preset_event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "selected Pad preset event at active sequencer morph failed");
   require(
       std::fabs(pad_params[14] - 0.36f) < 0.001f,
-      "preset endpoint change should refresh live module at active sequencer lane morph");
+      "selected Pad preset change should refresh live module at active sequencer lane morph");
+  require(
+      engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].source_preset_b_id ==
+          kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT,
+      "selected Pad preset change should update the active endpoint");
+  require(
+      engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].preset_id ==
+          kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT,
+      "selected Pad preset change should update the selected preset state");
   kessho_product_reset(engine);
   snapshot = makeSnapshot();
   snapshot.synth_euclid.lane_count = 1;
@@ -4354,6 +4395,66 @@ int main() {
   snapshot = makeSnapshot();
   snapshot.synth_euclid.lane_count = 1;
   snapshot.drum_euclid.lane_count = 0;
+  KesshoProductSourceSnapshot& lead_selected_preset_source = snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
+  lead_selected_preset_source.source_preset_a_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  lead_selected_preset_source.source_preset_b_id =
+      kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES;
+  lead_selected_preset_source.morph = 1.0f;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "selected Lead preset snapshot load failed");
+  engine->triggerVoice(
+      KESSHO_PRODUCT_SOURCE_LEAD1,
+      60.0f,
+      1.0f,
+      0.2f,
+      1.0f,
+      0.0f,
+      1.0f,
+      0u,
+      0u,
+      true,
+      0.0f,
+      1.0e10f,
+      1.0e10f,
+      0u,
+      1.0f);
+  lead_params = engine->lead_modules[0] ? engine->lead_modules[0]->params() : nullptr;
+  require(lead_params != nullptr, "lead module params should be available for selected preset change check");
+  require(
+      std::fabs(lead_params[lead_live_probe_param_index] - lead_live_a_patch.exact_lead_params[lead_live_probe_param_index]) < 0.001f,
+      "selected Lead preset change setup should start on endpoint B");
+  engine->transport.running = true;
+  LaneState& lead_selected_preset_lane = engine->synth_lanes[0];
+  lead_selected_preset_lane.enabled = true;
+  lead_selected_preset_lane.target_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  lead_selected_preset_lane.last_emitted_morph_valid = true;
+  lead_selected_preset_lane.last_emitted_morph = 1.0f;
+  lead_selected_preset_lane.last_emitted_sample_frame = 210u;
+  lead_selected_preset_lane.step_value_configs[engine->stepFieldId(KESSHO_PRODUCT_STEP_FIELD_MORPH)].enabled = true;
+  KesshoProductEvent lead_selected_preset_event{};
+  lead_selected_preset_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET;
+  lead_selected_preset_event.target_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  lead_selected_preset_event.index = 0u;
+  lead_selected_preset_event.value =
+      static_cast<float>(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN);
+  engine->applySourcePresetEvent(lead_selected_preset_event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "selected Lead preset event at active sequencer morph failed");
+  require(
+      std::fabs(lead_params[lead_live_probe_param_index] - lead_live_b_patch.exact_lead_params[lead_live_probe_param_index]) < 0.001f,
+      "selected Lead preset change should refresh live module at active sequencer lane morph");
+  require(
+      engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].source_preset_b_id ==
+          kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN,
+      "selected Lead preset change should update the active endpoint");
+  require(
+      engine->sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].preset_id ==
+          kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN,
+      "selected Lead preset change should update the selected preset state");
+
+  kessho_product_reset(engine);
+  snapshot = makeSnapshot();
+  snapshot.synth_euclid.lane_count = 1;
+  snapshot.drum_euclid.lane_count = 0;
   KesshoProductSourceSnapshot& stale_lead_override_source = snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u];
   stale_lead_override_source.enabled = true;
   stale_lead_override_source.source_preset_a_id =
@@ -4469,7 +4570,7 @@ int main() {
   KesshoProductEvent running_pad_endpoint_event{};
   running_pad_endpoint_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SOURCE_PRESET;
   running_pad_endpoint_event.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
-  running_pad_endpoint_event.index = 1u;
+  running_pad_endpoint_event.index = 0u;
   running_pad_endpoint_event.value =
       static_cast<float>(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_PAD_SATURATED_DRIFT);
   require(

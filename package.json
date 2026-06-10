@@ -49,6 +49,7 @@
     "migration:no-web-ts-bundle": "node scripts/check-no-web-ts-production-bundle.mjs",
     "core:product:patch-bridges": "node scripts/check-kessho-product-patch-bridges.mjs",
     "core:product:snapshot-authority": "node scripts/check-kessho-product-snapshot-authority.mjs",
+    "core:product:snapshot-regression": "node scripts/run-kessho-product-snapshot-regression.mjs",
     "core:product:host-reconciliation": "node scripts/check-kessho-product-host-reconciliation.mjs",
     "core:product:dirty-diff": "node scripts/check-kessho-product-dirty-diff-classification.mjs",
     "core:product:runtime-fallbacks": "node scripts/check-kessho-product-runtime-fallbacks.mjs",

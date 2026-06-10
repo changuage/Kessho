@@ -18,6 +18,7 @@ const prerequisiteSteps = [
   'migration:no-web-ts-bundle',
   'core:product:patch-bridges',
   'core:product:snapshot-authority',
+  'core:product:snapshot-regression',
   'core:product:host-reconciliation',
   'core:product:dirty-diff',
   'core:product:runtime-fallbacks',

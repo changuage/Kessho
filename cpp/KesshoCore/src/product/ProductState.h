@@ -214,7 +214,8 @@ struct KesshoProductEngine : ProductGraphState {
   void loadLaneSnapshots(
       const KesshoProductSequencerSnapshot& snapshot,
       LaneState* lanes,
-      uint32_t fallback_source);
+      uint32_t fallback_source,
+      bool preserve_running_runtime = false);
   int32_t enqueueEvent(const KesshoProductEvent& event);
   int32_t validateEvent(const KesshoProductEvent& event) const;
   void sortControlEvents();

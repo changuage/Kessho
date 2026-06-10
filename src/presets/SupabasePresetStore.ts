@@ -79,6 +79,10 @@ interface V2LookupOptions {
   scopeAliases?: boolean;
 }
 
+interface V2HashLookupOptions {
+  internalDerivedOnly?: boolean;
+}
+
 interface PendingVersionRefV2 {
   slot: string;
   target: PresetV2Row;
@@ -632,7 +636,8 @@ export class SupabasePresetStore implements IPresetStore {
       .from('presets')
       .select(LEGACY_PRESET_ROW_SELECT)
       .eq('type', normalized.type)
-      .eq('name', normalized.name);
+      .ilike('name', normalized.name.trim())
+      .is('deleted_at', null);
 
     if (!SHARED_PRESET_TEST_MODE) {
       if (this.userId) existingQuery = existingQuery.eq('user_id', this.userId);
@@ -676,7 +681,8 @@ export class SupabasePresetStore implements IPresetStore {
       .from('presets')
       .select(LEGACY_PRESET_ROW_SELECT)
       .eq('type', type)
-      .eq('name', name);
+      .ilike('name', name.trim())
+      .is('deleted_at', null);
 
     if (scope) {
       const scopes = getPresetScopeReadCandidates(scope);
@@ -717,7 +723,8 @@ export class SupabasePresetStore implements IPresetStore {
       let query = this.client
         .from(table)
         .select(LEGACY_PRESET_SUMMARY_SELECT)
-        .eq('type', type);
+        .eq('type', type)
+        .is('deleted_at', null);
 
       if (scope) {
         const scopes = getPresetScopeReadCandidates(scope);
@@ -778,7 +785,8 @@ export class SupabasePresetStore implements IPresetStore {
       .from('presets')
       .select('id')
       .eq('type', type)
-      .eq('name', name);
+      .ilike('name', name.trim())
+      .is('deleted_at', null);
 
     if (scope) {
       const scopes = getPresetScopeReadCandidates(scope);
@@ -871,27 +879,39 @@ export class SupabasePresetStore implements IPresetStore {
     return ((data ?? []) as unknown as PresetV2Row[])[0] ?? null;
   }
 
-  private getExplicitRefTargetType(parentType: PresetLevel): PresetLevel | null {
-    if (parentType === 'journey') return 'state';
-    return null;
+  private getExplicitRefTargetSpec(
+    parentType: PresetLevel,
+    parentScope: string | undefined,
+    slot: string,
+  ): { type: PresetLevel; scope?: string } | null {
+    if (parentType === 'journey') return { type: 'state', scope: 'global' };
+    const childSpec = getPresetChildSpecs(parentType, parentScope).find(spec => spec.slot === slot);
+    if (!childSpec) return null;
+    return {
+      type: childSpec.type,
+      scope: childSpec.scope,
+    };
   }
 
   private async resolveExplicitVersionRefsV2(
     parentType: PresetLevel,
+    parentScope: string | undefined,
     refs: Record<string, PresetRef> | undefined,
     excludePresetId?: string | null,
   ): Promise<PendingVersionRefV2[]> {
-    const targetType = this.getExplicitRefTargetType(parentType);
-    if (!targetType || !refs) return [];
+    if (!refs) return [];
 
     const resolvedRefs: PendingVersionRefV2[] = [];
     for (const [slot, ref] of Object.entries(refs).sort(([left], [right]) => left.localeCompare(right))) {
+      const targetSpec = this.getExplicitRefTargetSpec(parentType, parentScope, slot);
+      if (!targetSpec) continue;
+      const targetType = targetSpec.type;
       let target: PresetV2Row | null = ref.id ? await this.findPresetRowByIdV2(ref.id) : null;
       if (target?.type !== targetType) target = null;
       if (excludePresetId && target?.id === excludePresetId) target = null;
 
       if (!target) {
-        const targetScope = ref.scope ?? (targetType === 'state' ? 'global' : undefined);
+        const targetScope = ref.scope ?? targetSpec.scope ?? (targetType === 'state' ? 'global' : undefined);
         const targetRows = await this.queryPresetRowsV2(targetType, ref.name, targetScope, { scopeAliases: true });
         target = targetRows.find(row => row.id !== excludePresetId) ?? null;
         if (!target && targetScope) {
@@ -919,6 +939,7 @@ export class SupabasePresetStore implements IPresetStore {
     scope: string,
     resolvedHash: string,
     excludePresetId?: string,
+    options: V2HashLookupOptions = {},
   ): Promise<PresetV2Row | null> {
     let query = this.client
       .from('presets_v2')
@@ -941,6 +962,7 @@ export class SupabasePresetStore implements IPresetStore {
     }
 
     const rows = dedupePreferredV2Rows((data ?? []) as unknown as PresetV2Row[], SHARED_PRESET_TEST_MODE ? null : this.userId)
+      .filter(row => !options.internalDerivedOnly || isInternalDerivedRow(row))
       .sort((left, right) => {
         const leftDerived = isInternalDerivedRow(left);
         const rightDerived = isInternalDerivedRow(right);
@@ -956,7 +978,7 @@ export class SupabasePresetStore implements IPresetStore {
     resolvedHash: string,
     data: Record<string, unknown>,
   ): Promise<PresetV2Row | null> {
-    const existing = await this.findMatchingPresetV2(type, scope, resolvedHash);
+    const existing = await this.findMatchingPresetV2(type, scope, resolvedHash, undefined, { internalDerivedOnly: true });
     if (existing) {
       if (isInternalDerivedRow(existing) && !(await this.isPresetGraphCompleteV2(existing, data))) {
         return this.rewriteDerivedChildPresetV2(existing, data);
@@ -1001,7 +1023,7 @@ export class SupabasePresetStore implements IPresetStore {
       if (!isConflictError(error)) throw error;
     }
 
-    return this.findMatchingPresetV2(type, scope, resolvedHash);
+    return this.findMatchingPresetV2(type, scope, resolvedHash, undefined, { internalDerivedOnly: true });
   }
 
   private async getLatestRefTargetsV2(row: PresetV2Row): Promise<Map<string, PresetV2Row>> {
@@ -1101,7 +1123,13 @@ export class SupabasePresetStore implements IPresetStore {
     };
 
     await this.saveV2(entry);
-    return this.findMatchingPresetV2(row.type, canonicalizePresetScope(row.scope) ?? '', row.latest_resolved_hash ?? '');
+    return this.findMatchingPresetV2(
+      row.type,
+      canonicalizePresetScope(row.scope) ?? '',
+      row.latest_resolved_hash ?? '',
+      undefined,
+      { internalDerivedOnly: true },
+    );
   }
 
   private async hashStorablePayloadV2(payload: unknown): Promise<string | null> {
@@ -1727,7 +1755,13 @@ export class SupabasePresetStore implements IPresetStore {
         if (!Object.keys(childData).length) continue;
 
         const childHash = await hashCanonicalJson(childData);
-        let target = await this.findMatchingPresetV2(childSpec.type, childSpec.scope, childHash, presetRow?.id);
+        let target = await this.findMatchingPresetV2(
+          childSpec.type,
+          childSpec.scope,
+          childHash,
+          presetRow?.id,
+          { internalDerivedOnly: true },
+        );
         if (target && isInternalDerivedRow(target) && !(await this.isPresetGraphCompleteV2(target, childData))) {
           target = await this.rewriteDerivedChildPresetV2(target, childData);
         }
@@ -1746,11 +1780,13 @@ export class SupabasePresetStore implements IPresetStore {
         });
       }
 
-      const existingRefSlots = new Set(refsToInsert.map(ref => ref.slot));
-      for (const explicitRef of await this.resolveExplicitVersionRefsV2(normalized.type, version.refs, presetRow?.id)) {
-        if (existingRefSlots.has(explicitRef.slot)) continue;
+      for (const explicitRef of await this.resolveExplicitVersionRefsV2(normalized.type, scope, version.refs, presetRow?.id)) {
+        const existingIndex = refsToInsert.findIndex(ref => ref.slot === explicitRef.slot);
+        if (existingIndex >= 0) {
+          refsToInsert[existingIndex] = explicitRef;
+          continue;
+        }
         refsToInsert.push(explicitRef);
-        existingRefSlots.add(explicitRef.slot);
       }
 
       const overrideData = stripReferencedChildData(resolvedData, childRefData);

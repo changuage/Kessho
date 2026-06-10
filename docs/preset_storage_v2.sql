@@ -358,6 +358,7 @@ BEGIN
    WHERE id = target_row.id;
 
   GET DIAGNOSTICS changed_count = ROW_COUNT;
+  PERFORM kessho_prune_internal_derived_v2();
   RETURN changed_count > 0;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -712,29 +713,40 @@ CREATE OR REPLACE FUNCTION kessho_prune_internal_derived_v2()
 RETURNS INTEGER AS $$
 DECLARE
   deleted_count INTEGER := 0;
-  total_deleted INTEGER := 0;
 BEGIN
   PERFORM set_config('app.kessho_allow_preset_recycle_update', 'on', TRUE);
 
-  LOOP
+  WITH RECURSIVE active_visible_graph(preset_id, version_id) AS (
+    SELECT p.id, p.latest_version_id
+      FROM presets_v2 p
+     WHERE p.deleted_at IS NULL
+       AND p.latest_version_id IS NOT NULL
+       AND NOT ('internal-derived' = ANY(COALESCE(p.tags, ARRAY[]::TEXT[])))
+    UNION
+    SELECT child.id, child.latest_version_id
+      FROM active_visible_graph g
+      JOIN preset_version_refs_v2 r ON r.version_id = g.version_id
+      JOIN presets_v2 child ON child.id = r.target_preset_id
+     WHERE child.deleted_at IS NULL
+       AND child.latest_version_id IS NOT NULL
+  ),
+  pruned AS (
     UPDATE presets_v2 p
        SET deleted_at = COALESCE(p.deleted_at, now()),
            deleted_by = NULL,
            archived = TRUE
-     WHERE 'internal-derived' = ANY(p.tags)
+     WHERE 'internal-derived' = ANY(COALESCE(p.tags, ARRAY[]::TEXT[]))
        AND p.deleted_at IS NULL
        AND NOT EXISTS (
          SELECT 1
-         FROM preset_version_refs_v2 r
-         WHERE r.target_preset_id = p.id
-       );
+           FROM active_visible_graph g
+          WHERE g.preset_id = p.id
+       )
+     RETURNING 1
+  )
+  SELECT COUNT(*) INTO deleted_count FROM pruned;
 
-    GET DIAGNOSTICS deleted_count = ROW_COUNT;
-    total_deleted := total_deleted + deleted_count;
-    EXIT WHEN deleted_count = 0;
-  END LOOP;
-
-  RETURN total_deleted;
+  RETURN deleted_count;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 

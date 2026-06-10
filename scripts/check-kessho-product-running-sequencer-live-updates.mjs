@@ -39,6 +39,7 @@ const files = {
   host: read('src/audio/coreProductEngineHost.ts'),
   manualTriggers: read('src/ui/useSelectedAudioEngineManualTriggers.ts'),
   liveTriggerCallbacks: read('src/ui/useSelectedAudioEngineLiveTriggerCallbacks.ts'),
+  liveTriggerUiCallbacks: read('src/ui/useLiveTriggerUiCallbacks.ts'),
   synthPage: read('src/ui/synth/SynthPage.tsx'),
   morphPosition: read('src/ui/useMorphPositionRuntimeSurface.ts'),
   morphSlotLoad: read('src/ui/useMorphSlotLoadRuntimeSurface.ts'),
@@ -233,8 +234,9 @@ check(
   files.audioSync.includes('commitProductControlPatchForProduct') &&
     files.audioSync.includes('resolvedCommitTriggerCritical') &&
     files.audioSync.includes('requiresResolvedCommit') &&
-    files.audioSync.includes("reason === 'morph-control-change'"),
-  'audio sync must route trigger-critical state through ProductControl patch commits',
+    files.audioSync.includes('isMorphControlPatchKey') &&
+    !files.audioSync.includes("reason === 'morph-control-change'"),
+  'audio sync must route explicit trigger-critical state through ProductControl patch commits without promoting morph-only controls to full reloads',
 );
 check(
   'audio-sync-sequencer-transport-resolved',
@@ -245,21 +247,20 @@ check(
 );
 check(
   'audio-sync-source-core-resolved-full-snapshot-boundary',
-  files.audioSync.includes('SOURCE_CORE_FULL_SNAPSHOT_KEYS') &&
-    files.audioSync.includes('SOURCE_PRESET_ENDPOINT_FULL_SNAPSHOT_KEYS') &&
-    files.audioSync.includes('SOURCE_PRESET_BODY_FULL_SNAPSHOT_KEYS') &&
-    files.audioSync.includes('KESSHO_PRODUCT_PAD_PARAM_SPECS') &&
-    files.audioSync.includes('KESSHO_PRODUCT_DRUM_PARAM_SPECS') &&
+  files.audioSync.includes('SOURCE_PRESET_ENDPOINT_RESOLVED_COMMIT_KEYS') &&
+    files.audioSync.includes('SOURCE_PRESET_DATA_RESOLVED_COMMIT_KEY_PATTERNS') &&
     files.audioSync.includes("'lead2PresetC'") &&
-    files.audioSync.includes("'lead2UseCustomAdsr'") &&
     files.audioSync.includes('requiresSourceCoreResolvedCommit(patch)') &&
+    methodBody(files.audioSync, 'resolvedCommitTriggerCritical').includes('requiresSourceCoreResolvedCommit(patch)') &&
     files.audioSync.includes('requiresSourceCoreFullSnapshot(patch, reason, options)') &&
     files.audioSync.includes("if (reason === 'preset-load') return true;") &&
-    files.audioSync.includes('Object.keys(patch).some(isSourcePresetEndpointFullSnapshotPatchKey)') &&
+    files.audioSync.includes('return false;') &&
+    !files.audioSync.includes('KESSHO_PRODUCT_PAD_PARAM_SPECS') &&
+    !files.audioSync.includes('KESSHO_PRODUCT_DRUM_PARAM_SPECS') &&
     files.presetSync.includes("reason: 'preset-load'") &&
     files.presetSync.includes('triggerCritical: true') &&
     files.presetSync.includes('forceFullSnapshot: true'),
-  'source preset endpoint/body edits must use resolved full-snapshot commits while morph-only controls stay on the continuous resolved path',
+  'source preset endpoint/data edits must use resolved dirty-diff commits while morph/body controls stay off the full-snapshot path',
 );
 
 check(
@@ -343,11 +344,11 @@ check(
 
 check(
   'sequencer-morph-feedback-latches-inactive-sentinel',
-  files.liveTriggerCallbacks.includes('if (morph.lead1 < 0 && morph.lead2 < 0) return;') &&
-    count(files.liveTriggerCallbacks, 'if (morphPosition < 0) {\n        return;\n      }') >= 3 &&
-    !files.liveTriggerCallbacks.includes("removeRuntimeTriggerPositions(['padMorph']);") &&
-    !files.liveTriggerCallbacks.includes("removeRuntimeTriggerPositions(['pad2Morph']);") &&
-    !files.liveTriggerCallbacks.includes('const keysToClear = morphKey ? [morphKey] : morphKeys;'),
+  files.liveTriggerUiCallbacks.includes('if (morph.lead1 < 0 && morph.lead2 < 0) return;') &&
+    count(files.liveTriggerUiCallbacks, 'if (morphPosition < 0) return;') >= 3 &&
+    !files.liveTriggerUiCallbacks.includes("removeRuntimeTriggerPositions(['padMorph']);") &&
+    !files.liveTriggerUiCallbacks.includes("removeRuntimeTriggerPositions(['pad2Morph']);") &&
+    !files.liveTriggerUiCallbacks.includes('const keysToClear = morphKey ? [morphKey] : morphKeys;'),
   'sequencer morph callbacks must latch prior runtime morph values when inactive sentinels arrive between triggers',
 );
 
