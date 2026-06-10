@@ -4,7 +4,7 @@ import {
   setVisualizerSequencerState,
 } from './visualizer/visualizerSignals';
 
-type ActiveTab = 'global' | 'visualizer' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing';
+type ActiveTab = 'global' | 'visualizer' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'texture' | 'routing';
 type UiMode = 'snowflake' | 'advanced' | 'journey';
 
 type SelectedAudioEngineVisualizerCallbacksOptions = {

@@ -405,16 +405,19 @@ requireTokens('cpp/KesshoCore/src/product/fx/ProductReverb.cpp', [
   'reverb_wash_boost',
   'reverb_bloom_boost',
   'configureReverbModule()',
-  'reverbPreCompressorGainDbForLevel',
-  'reverbPreconditionerSoftLimit',
-  'processReverbPreconditioner',
   'spectral_freeze_active',
   'spectral_freeze_reverb_crossfade',
   'reverb_module->processPlanarStereo',
-  'mixFxBuffer(module_l, module_r, out_l, out_r, start, frames, return_gain, kSidechainReverb)',
+  'routeTerminalSample(routing.dynamics_routes[kDynamicsRouteReverb], out_l, out_r, frame, left, right)',
 ]);
 
-requireTokens('cpp/KesshoCore/src/product/fx/ProductFxModules.cpp', [
+requireTokens('cpp/KesshoCore/src/product/fx/ProductReverbPreconditioner.cpp', [
+  'reverbPreCompressorGainDbForLevel',
+  'reverbPreconditionerSoftLimit',
+  'processReverbPreconditioner',
+]);
+
+requireTokens('cpp/KesshoCore/src/product/fx/ProductReverbModuleConfig.cpp', [
   'params[0] = static_cast<float>(clampU32(fx.reverb_type, 0u, 5u))',
   'params[1] = static_cast<float>(clampU32(fx.reverb_quality, 0u, 2u))',
   'params[2] = effective_decay',

@@ -4,6 +4,7 @@ import { createCoreProductSnapshot, type CoreProductSnapshot } from './coreProdu
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import { gainToDb } from './CoreProductHostRuntimeGuards';
+import { logProductStateDebug, productStateDebugEnabled } from '../debug/productStateDebug';
 
 export function createCoreProductDynamicsVisualTelemetry(
   telemetry: CoreProductTelemetrySnapshot | null,
@@ -155,4 +156,49 @@ export function createCoreProductSonicParityDebugState({
     latestTelemetry,
     runtimeWalkDebug,
   };
+}
+
+export function logCoreProductDebugTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
+  if (!productStateDebugEnabled()) return;
+  const relevantSources = (telemetry.productDebugSourceStates ?? []).filter((source) =>
+    source.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 ||
+    source.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ||
+    source.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 ||
+    source.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2,
+  );
+  const recentSpawns = (telemetry.productDebugVoiceSpawns ?? [])
+    .filter((spawn) =>
+      spawn.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 ||
+      spawn.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ||
+      spawn.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 ||
+      spawn.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2,
+    )
+    .slice(-8);
+  logProductStateDebug({
+    stage: 'cpp-product-telemetry',
+    transportRunning: telemetry.transportRunning,
+    absoluteSampleTime: telemetry.absoluteSampleTime ?? null,
+    activeSources: relevantSources.map((source) => ({
+      sourceId: source.sourceId,
+      presetId: source.presetId,
+      sourcePresetAId: source.sourcePresetAId,
+      sourcePresetBId: source.sourcePresetBId,
+      sourceRevision: source.sourceRevision,
+      sourceStateHash: source.sourceStateHash,
+      compiledSourceHash: source.compiledSourceHash,
+      overrideBlockHash: source.overrideBlockHash,
+    })),
+    recentVoiceSpawns: recentSpawns.map((spawn) => ({
+      triggerSequence: spawn.triggerSequence,
+      triggerSample: spawn.triggerSample,
+      sourceId: spawn.sourceId,
+      voiceId: spawn.voiceId,
+      presetId: spawn.presetId,
+      sourceRevision: spawn.sourceRevision,
+      sourceStateHash: spawn.sourceStateHash,
+      compiledSourceHash: spawn.compiledSourceHash,
+      overrideBlockHash: spawn.overrideBlockHash,
+      triggerContextHash: spawn.triggerContextHash,
+    })),
+  });
 }

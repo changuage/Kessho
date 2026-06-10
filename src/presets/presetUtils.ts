@@ -12,6 +12,11 @@ import type {
   PresetVersionMetadata,
 } from './types';
 import { normalizeJourneyPresetPreview } from './journeyPresetPreview';
+import {
+  arePresetScopesCompatible,
+  canonicalizePresetScope,
+  getPresetScopeReadCandidates,
+} from './presetScopeAliases';
 
 const PREFIX = 'preset:';
 const METADATA_FIELDS = [
@@ -169,7 +174,7 @@ function normalizePresetRef(value: unknown): PresetRef | null {
   const id = coerceString(value.id);
   if (id) ref.id = id;
   const scope = coerceString(value.scope);
-  if (scope) ref.scope = scope;
+  if (scope) ref.scope = canonicalizePresetScope(scope);
   return ref;
 }
 
@@ -218,8 +223,9 @@ function makeDerivedVariantId(type: PresetLevel, scope: string | undefined, fami
 }
 
 export function makePresetKey(type: PresetLevel, name: string, scope?: string): string {
-  if (scope && type !== 'state' && type !== 'journey') {
-    return `${PREFIX}${type}:${scope}:${name}`;
+  const normalizedScope = canonicalizePresetScope(scope);
+  if (normalizedScope && type !== 'state' && type !== 'journey') {
+    return `${PREFIX}${type}:${normalizedScope}:${name}`;
   }
   return `${PREFIX}${type}:${name}`;
 }
@@ -244,10 +250,10 @@ export function getPresetScope(
 ): string | undefined {
   if (!entry) return undefined;
   const normalizedScope = coerceString(entry.scope);
-  if (normalizedScope) return normalizedScope;
-  if (type === 'engine') return coerceString(entry.engine);
-  if (type === 'kit' || type === 'source') return coerceString(entry.source);
-  return coerceString(entry.engine) ?? coerceString(entry.source);
+  if (normalizedScope) return canonicalizePresetScope(normalizedScope);
+  if (type === 'engine') return canonicalizePresetScope(coerceString(entry.engine));
+  if (type === 'kit' || type === 'source') return canonicalizePresetScope(coerceString(entry.source));
+  return canonicalizePresetScope(coerceString(entry.engine) ?? coerceString(entry.source));
 }
 
 export function buildPresetKeyCandidates(
@@ -256,11 +262,13 @@ export function buildPresetKeyCandidates(
   scope?: string,
 ): string[] {
   const candidates: string[] = [];
-  const scopedKey = makePresetKey(type, name, scope);
   const legacyKey = makePresetKey(type, name);
 
-  if (scope && scopedKey !== legacyKey) {
-    candidates.push(scopedKey);
+  if (scope && type !== 'state' && type !== 'journey') {
+    for (const candidateScope of getPresetScopeReadCandidates(scope)) {
+      const scopedKey = `${PREFIX}${type}:${candidateScope}:${name}`;
+      if (scopedKey !== legacyKey) candidates.push(scopedKey);
+    }
   }
   candidates.push(legacyKey);
 
@@ -341,12 +349,13 @@ export function normalizePresetEntry(input: unknown): PresetEntry | null {
   const versions = [...versionMap.values()].sort((a, b) => a.v - b.v);
   if (!versions.length) return null;
 
-  const normalizedScope = coerceString(input.scope)
+  const rawScope = coerceString(input.scope)
     ?? (type === 'engine' ? coerceString(input.engine) : undefined)
     ?? ((type === 'kit' || type === 'source') ? coerceString(input.source) : undefined);
+  const normalizedScope = canonicalizePresetScope(rawScope);
 
-  const engine = coerceString(input.engine) ?? (type === 'engine' ? normalizedScope : undefined);
-  const source = coerceString(input.source) ?? ((type === 'kit' || type === 'source') ? normalizedScope : undefined);
+  const engine = canonicalizePresetScope(coerceString(input.engine) ?? (type === 'engine' ? normalizedScope : undefined));
+  const source = canonicalizePresetScope(coerceString(input.source) ?? ((type === 'kit' || type === 'source') ? normalizedScope : undefined));
   const id = coerceString(input.id) ?? generatePresetId();
   const familyName = coerceString(input.familyName) ?? name;
   const variantName = coerceString(input.variantName) ?? name;
@@ -412,8 +421,11 @@ export function normalizePresetEntry(input: unknown): PresetEntry | null {
 export function normalizePresetSummary(entry: PresetEntry): PresetSummary {
   const familyName = entry.familyName ?? entry.name;
   const variantName = entry.variantName ?? entry.name;
-  const familyId = entry.familyId ?? makeDerivedFamilyId(entry.type, getPresetScope(entry, entry.type), familyName);
-  const variantId = entry.variantId ?? makeDerivedVariantId(entry.type, getPresetScope(entry, entry.type), familyName, variantName);
+  const scope = getPresetScope(entry, entry.type);
+  const engine = canonicalizePresetScope(entry.engine);
+  const source = canonicalizePresetScope(entry.source);
+  const familyId = entry.familyId ?? makeDerivedFamilyId(entry.type, scope, familyName);
+  const variantId = entry.variantId ?? makeDerivedVariantId(entry.type, scope, familyName, variantName);
   const currentVersion = entry.versions.find(version => version.v === entry.currentVersion)
     ?? entry.versions[entry.versions.length - 1];
   const journeyPreview = entry.type === 'journey'
@@ -422,9 +434,9 @@ export function normalizePresetSummary(entry: PresetEntry): PresetSummary {
   return {
     id: entry.id,
     type: entry.type,
-    scope: entry.scope ?? getPresetScope(entry, entry.type),
-    engine: entry.engine,
-    source: entry.source,
+    scope,
+    engine,
+    source,
     name: entry.name,
     author: entry.author,
     library: entry.library ?? (entry.author === 'factory' ? 'stock' : entry.author === 'cloud' ? 'cloud' : 'user'),
@@ -455,7 +467,7 @@ export function isPresetCompatibleWithSlot(
 ): boolean {
   if (!entry || entry.type !== level) return false;
   const entryScope = getPresetScope(entry, entry.type);
-  if (scope) return entryScope === scope;
+  if (scope) return arePresetScopesCompatible(entryScope, scope);
   if (level === 'engine' || level === 'kit' || level === 'source') return Boolean(entryScope);
   return true;
 }

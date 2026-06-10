@@ -1,26 +1,24 @@
 import type { SnapshotReloadReason } from '../../CoreProductRuntimeAdapter';
-import type {
-  ProductEvent,
-  ProductResolvedStateApplyMode,
-  ProductResolvedStateCommit,
-  ProductResolvedStateCommitReceipt,
-} from '../ProductEngineTypes';
+import type { ProductEvent, ProductResolvedStateApplyMode, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt } from '../ProductEngineTypes';
 import { snapshotReloadReasonForProductPatch } from './CoreProductPatchClassifier';
 import type { CoreProductHostDiagnostics } from './CoreProductHostDiagnostics';
+
+type CoreProductResolvedStatePatchReceipt = Omit<ProductResolvedStateCommitReceipt, 'revision'>;
+type CoreProductResolvedStatePatchOptions = {
+  forceFullSnapshot?: boolean;
+  revision: number;
+  commitReason: string;
+  triggerCritical: boolean;
+  applyMode?: ProductResolvedStateApplyMode;
+};
 
 type CoreProductResolvedStateCommitServiceOptions = {
   diagnostics: CoreProductHostDiagnostics;
   applyProductStatePatch: (
     patch: Record<string, unknown>,
     reason: SnapshotReloadReason,
-    options?: {
-      forceFullSnapshot?: boolean;
-      revision: number;
-      commitReason: string;
-      triggerCritical: boolean;
-      applyMode?: ProductResolvedStateApplyMode;
-    },
-  ) => Promise<Omit<ProductResolvedStateCommitReceipt, 'revision'>>;
+    options?: CoreProductResolvedStatePatchOptions,
+  ) => Promise<CoreProductResolvedStatePatchReceipt>;
   postProductEvent: (event: ProductEvent) => void;
 };
 
@@ -36,7 +34,7 @@ export class CoreProductResolvedStateCommitService {
     try {
       const patchKeyCount = Object.keys(commit.patch).length;
       const eventCount = commit.events?.length ?? 0;
-      let patchReceipt: Omit<ProductResolvedStateCommitReceipt, 'revision'> | null = null;
+      let patchReceipt: CoreProductResolvedStatePatchReceipt | null = null;
       if (patchKeyCount > 0) {
         patchReceipt = await this.options.applyProductStatePatch(
           commit.patch,
@@ -75,11 +73,7 @@ export class CoreProductResolvedStateCommitService {
     }
   }
 
-  getCommittedStateRevision(): number {
-    return this.options.diagnostics.snapshot().lastCommittedRevision;
-  }
+  getCommittedStateRevision(): number { return this.options.diagnostics.snapshot().lastCommittedRevision; }
 
-  recordSoundTrigger(): void {
-    this.options.diagnostics.recordProductTrigger(this.getCommittedStateRevision());
-  }
+  recordSoundTrigger(): void { this.options.diagnostics.recordProductTrigger(this.getCommittedStateRevision()); }
 }

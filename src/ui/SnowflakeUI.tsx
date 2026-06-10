@@ -15,7 +15,7 @@ import type { PresetSummary } from '../presets/types';
 import type { JourneyValidationResult } from '../presets/journeyPresetCodec';
 import { isMobileDevice } from '../platform';
 import { JourneyPresetGlyph } from './JourneyPresetGlyph';
-import { useSnowflakeV2, FX_COLORS, ENGINE_GROUPS, type EngineGroupDef } from './snowflakeV2';
+import { useSnowflakeV2, FX_COLORS, ENGINE_GROUPS, type EngineGroupDef, type StarDirection } from './snowflakeV2';
 import { generateSnowflake } from '../snowflake/SnowflakeGenerator';
 import type { SnowflakeParams, SnowflakeRingStyle } from '../snowflake/types';
 import { getRuntimeSliderPosition, useRuntimeSliderVersion } from './runtimeSliderState';
@@ -110,6 +110,7 @@ const SNOWFLAKE_RUNTIME_KEYS: readonly (keyof SliderState)[] = Array.from(new Se
     engine.sends.delayA,
     engine.sends.delayB,
     engine.sends.granular,
+    engine.sends.degrade,
     engine.sends.reverb,
   ]),
 ].filter((key): key is keyof SliderState => key !== null && key !== undefined)));
@@ -209,7 +210,7 @@ function sliderPositionToValue(position: number, min: number, max: number): numb
   return min + curved * (max - min);
 }
 
-function getSendValue(state: SliderState, key: keyof SliderState | null): number {
+function getSendValue(state: SliderState, key: keyof SliderState | null | undefined): number {
   if (!key) return 0;
   const value = state[key];
   return typeof value === 'number' ? value : 0;
@@ -1664,14 +1665,21 @@ const SnowflakeUI: React.FC<SnowflakeUIProps> = ({ state, onChange, onShowAdvanc
               const nodeR = 8 * scaleFactor; // large tap target
               const hitR = 16 * scaleFactor; // invisible hit area even larger
 
-              const starPoints = [
-                { key: 'reverb' as const, label: 'Rev', startAngle: -Math.PI / 2, dx: 0, dy: -1, color: FX_COLORS.reverb, value: getSendValue(snowflakeState, engine.sends.reverb) },
-                { key: 'delayB' as const, label: 'DlyB', startAngle: 0, dx: 1, dy: 0, color: FX_COLORS.delayB, value: getSendValue(snowflakeState, engine.sends.delayB) },
-                { key: 'granular' as const, label: 'Gran', startAngle: Math.PI / 2, dx: 0, dy: 1, color: FX_COLORS.granular, value: getSendValue(snowflakeState, engine.sends.granular) },
-                { key: 'delayA' as const, label: 'DlyA', startAngle: Math.PI, dx: -1, dy: 0, color: FX_COLORS.delayA, value: getSendValue(snowflakeState, engine.sends.delayA) },
+              const starPointAngles: Array<{ key: StarDirection; label: string; angle: number; color: string; value: number }> = [
+                { key: 'reverb', label: 'Rev', angle: -Math.PI / 2, color: FX_COLORS.reverb, value: getSendValue(snowflakeState, engine.sends.reverb) },
+                { key: 'delayB', label: 'DlyB', angle: -Math.PI / 2 + (Math.PI * 2) / 5, color: FX_COLORS.delayB, value: getSendValue(snowflakeState, engine.sends.delayB) },
+                { key: 'granular', label: 'Gran', angle: -Math.PI / 2 + (Math.PI * 4) / 5, color: FX_COLORS.granular, value: getSendValue(snowflakeState, engine.sends.granular) },
+                { key: 'degrade', label: 'Dgrd', angle: -Math.PI / 2 + (Math.PI * 6) / 5, color: FX_COLORS.degrade, value: getSendValue(snowflakeState, engine.sends.degrade) },
+                { key: 'delayA', label: 'DlyA', angle: -Math.PI / 2 + (Math.PI * 8) / 5, color: FX_COLORS.delayA, value: getSendValue(snowflakeState, engine.sends.delayA) },
               ];
+              const starPoints = starPointAngles.map((point) => ({
+                ...point,
+                startAngle: point.angle,
+                dx: Math.cos(point.angle),
+                dy: Math.sin(point.angle),
+              }));
 
-              const availablePoints = starPoints.filter((p) => engine.sends[p.key] !== null);
+              const availablePoints = starPoints.filter((p) => engine.sends[p.key] != null);
 
               return (
                 <g key={`star-${slot}`}>

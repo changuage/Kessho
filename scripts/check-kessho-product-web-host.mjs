@@ -60,7 +60,10 @@ const hostPatchClassifier = read('src/audio/product/host/CoreProductPatchClassif
 const hostLeadPresetDataLoader = read('src/audio/product/host/CoreProductLeadPresetDataLoader.ts');
 const hostModulationRangeBridge = read('src/audio/product/host/CoreProductModulationRangeBridge.ts');
 const hostLiveTriggerCallbackBridge = read('src/audio/product/host/CoreProductLiveTriggerCallbackBridge.ts');
+const hostManualAuditionBridge = read('src/audio/product/host/CoreProductManualAuditionBridge.ts');
 const hostSnapshotCoordinator = read('src/audio/product/host/CoreProductSnapshotCoordinator.ts');
+const hostSnapshotDebug = read('src/audio/product/host/CoreProductSnapshotDebug.ts');
+const hostSnapshotFactory = read('src/audio/product/host/CoreProductHostSnapshotFactory.ts');
 const hostTelemetryAdapter = read('src/audio/product/host/CoreProductTelemetryAdapter.ts');
 const hostRuntimeHostPort = read('src/audio/product/host/CoreProductRuntimeHostPort.ts');
 const hostSequencerCacheBridge = read('src/audio/product/host/CoreProductSequencerCacheBridge.ts');
@@ -153,6 +156,8 @@ const generatedParams = read('src/audio/generated/kesshoProductParams.ts');
 const sequencerHold = read('src/audio/coreProductSequencerHold.ts');
 const arrangementScheduler = read('src/audio/coreProductArrangementScheduler.ts');
 const snapshotEncoder = read('src/audio/coreProductSnapshotEncoder.ts');
+const snapshotDefaults = read('src/audio/coreProductSnapshotDefaults.ts');
+const snapshotReverb = read('src/audio/coreProductReverbSnapshot.ts');
 const productLeadPatch = read('src/audio/CoreProductLeadPatch.ts');
 const productPadPatch = read('src/audio/CoreProductPadPatch.ts');
 const productDrumPatch = read('src/audio/CoreProductDrumPatch.ts');
@@ -210,7 +215,7 @@ const productApi = read('cpp/KesshoCore/src/product/KesshoProductApi.cpp');
 const productTelemetryHeader = read('cpp/KesshoCore/include/KesshoCore/KesshoProductTelemetry.h');
 const productTypesHeader = read('cpp/KesshoCore/include/KesshoCore/KesshoProductTypes.h');
 const productSequencerTests = read('cpp/KesshoCore/tests/ProductSequencerTests.cpp');
-const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostSequencerEvolveConfig}\n${hostSequencerHome}\n${hostSequencerRangePayload}\n${hostSynthPitch}\n${hostSequencerUiState}\n${hostRuntimeGuards}\n${hostMidi}\n${hostAssetRegistrar}\n${hostArrangementBridge}\n${hostDiagnostics}\n${hostDisplayCallbackRegistry}\n${hostGraphTapBridge}\n${hostHarmonyStateBridge}\n${hostProxy}\n${hostJourneyMorphClock}\n${hostPatchClassifier}\n${hostLeadPresetDataLoader}\n${hostModulationRangeBridge}\n${hostLiveTriggerCallbackBridge}\n${hostSnapshotCoordinator}\n${hostTelemetryAdapter}\n${hostRuntimeHostPort}\n${hostSequencerCacheBridge}\n${hostSequencerControlEventBridge}\n${hostManualSynthDiceBridge}\n${hostSequencerUiAdapter}\n${hostSequencerEvolveBridge}\n${hostSequencerEvolveRuntimeBridge}\n${hostSequencerNativeEvolveFlags}\n${hostSequencerEvolvePayloadBridge}\n${hostSequencerHomeCaptureBridge}\n${hostSequencerHomeCaptureEventBridge}\n${hostSequencerHomeRestoreBridge}\n${hostSequencerLaneParamBridge}\n${hostSequencerNoteRangeEvolveBridge}\n${hostSequencerPitchSettingEventBridge}\n${hostSequencerStepEventBridge}\n${hostSequencerStepOverrideEventBridge}\n${hostSequencerStepOverrideBridge}\n${hostSequencerStepPostingBridge}\n${hostSequencerSubLaneEnabledEventBridge}\n${hostSequencerEvolveConfigEventBridge}`;
+const hostSurface = `${host}\n${hostSequencerAdapter}\n${hostSequencerEvolveConfig}\n${hostSequencerHome}\n${hostSequencerRangePayload}\n${hostSynthPitch}\n${hostSequencerUiState}\n${hostRuntimeGuards}\n${hostMidi}\n${hostAssetRegistrar}\n${hostArrangementBridge}\n${hostDiagnostics}\n${hostDisplayCallbackRegistry}\n${hostGraphTapBridge}\n${hostHarmonyStateBridge}\n${hostProxy}\n${hostJourneyMorphClock}\n${hostPatchClassifier}\n${hostLeadPresetDataLoader}\n${hostModulationRangeBridge}\n${hostLiveTriggerCallbackBridge}\n${hostManualAuditionBridge}\n${hostSnapshotCoordinator}\n${hostSnapshotDebug}\n${hostSnapshotFactory}\n${hostTelemetryAdapter}\n${hostRuntimeHostPort}\n${hostSequencerCacheBridge}\n${hostSequencerControlEventBridge}\n${hostManualSynthDiceBridge}\n${hostSequencerUiAdapter}\n${hostSequencerEvolveBridge}\n${hostSequencerEvolveRuntimeBridge}\n${hostSequencerNativeEvolveFlags}\n${hostSequencerEvolvePayloadBridge}\n${hostSequencerHomeCaptureBridge}\n${hostSequencerHomeCaptureEventBridge}\n${hostSequencerHomeRestoreBridge}\n${hostSequencerLaneParamBridge}\n${hostSequencerNoteRangeEvolveBridge}\n${hostSequencerPitchSettingEventBridge}\n${hostSequencerStepEventBridge}\n${hostSequencerStepOverrideEventBridge}\n${hostSequencerStepOverrideBridge}\n${hostSequencerStepPostingBridge}\n${hostSequencerSubLaneEnabledEventBridge}\n${hostSequencerEvolveConfigEventBridge}`;
 
 assert(
   !existsSync(resolve(root, 'src/ui/useSelectedAudioEngineSurface.ts')),
@@ -220,7 +225,7 @@ assert(
   !existsSync(resolve(root, 'src/audio/product/host/CoreProductSequencerUiPatchBridge.ts')),
   'Product sequencer UI patch bridge must stay deleted; use generated Product events instead',
 );
-const snapshotSurface = `${snapshotTypes}\n${snapshot}\n${snapshotEncoder}\n${productLeadPatch}\n${productPadPatch}\n${productDrumPatch}`;
+const snapshotSurface = `${snapshotTypes}\n${snapshot}\n${snapshotEncoder}\n${snapshotDefaults}\n${snapshotReverb}\n${productLeadPatch}\n${productPadPatch}\n${productDrumPatch}`;
 
 const lineCount = (source) => source.split('\n').length;
 assert(lineCount(host) <= 1000, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
@@ -273,7 +278,10 @@ assert(
 );
 assert(lineCount(hostModulationRangeBridge) <= 220, `CoreProductModulationRangeBridge.ts exceeds cleanup size cap (${lineCount(hostModulationRangeBridge)} lines)`);
 assert(lineCount(hostLiveTriggerCallbackBridge) <= 80, `CoreProductLiveTriggerCallbackBridge.ts exceeds cleanup size cap (${lineCount(hostLiveTriggerCallbackBridge)} lines)`);
+assert(lineCount(hostManualAuditionBridge) <= 180, `CoreProductManualAuditionBridge.ts exceeds cleanup size cap (${lineCount(hostManualAuditionBridge)} lines)`);
 assert(lineCount(hostSnapshotCoordinator) <= 120, `CoreProductSnapshotCoordinator.ts exceeds cleanup size cap (${lineCount(hostSnapshotCoordinator)} lines)`);
+assert(lineCount(hostSnapshotDebug) <= 100, `CoreProductSnapshotDebug.ts exceeds cleanup size cap (${lineCount(hostSnapshotDebug)} lines)`);
+assert(lineCount(hostSnapshotFactory) <= 80, `CoreProductHostSnapshotFactory.ts exceeds cleanup size cap (${lineCount(hostSnapshotFactory)} lines)`);
 assert(lineCount(hostTelemetryAdapter) <= 120, `CoreProductTelemetryAdapter.ts exceeds cleanup size cap (${lineCount(hostTelemetryAdapter)} lines)`);
 assert(lineCount(hostRuntimeHostPort) <= 260, `CoreProductRuntimeHostPort.ts exceeds cleanup size cap (${lineCount(hostRuntimeHostPort)} lines)`);
 assert(lineCount(hostSequencerCacheBridge) <= 100, `CoreProductSequencerCacheBridge.ts exceeds cleanup size cap (${lineCount(hostSequencerCacheBridge)} lines)`);
@@ -495,6 +503,8 @@ assert(!host.includes('private createPerfSnapshot'), 'coreProductEngineHost.ts m
 assert(lineCount(arrangementScheduler) <= 520, `coreProductArrangementScheduler.ts exceeds cleanup size cap (${lineCount(arrangementScheduler)} lines)`);
 assert(lineCount(snapshot) <= 1240, `coreProductSnapshot.ts exceeds cleanup size cap (${lineCount(snapshot)} lines)`);
 assert(lineCount(snapshotEncoder) <= 560, `coreProductSnapshotEncoder.ts exceeds cleanup size cap (${lineCount(snapshotEncoder)} lines)`);
+assert(lineCount(snapshotDefaults) <= 120, `coreProductSnapshotDefaults.ts exceeds cleanup size cap (${lineCount(snapshotDefaults)} lines)`);
+assert(lineCount(snapshotReverb) <= 120, `coreProductReverbSnapshot.ts exceeds cleanup size cap (${lineCount(snapshotReverb)} lines)`);
 assert(
   fallbackDiagnostics.includes('classifyCoreProductRuntimeFallback') &&
     fallbackDiagnostics.includes('CORE_PRODUCT_GETTER_POLICIES'),
@@ -1058,8 +1068,8 @@ assert(
 );
 
 for (const token of [
-  'private applyProductState(',
-  'options.runtime.loadSnapshot(encodeCoreProductSnapshot(options.snapshot));',
+  'private async applyProductState(',
+  'options.runtime.loadSnapshot(encodedSnapshot, metadata)',
   'latestProductSnapshot: CoreProductSnapshot | null',
   'private applyLatestSnapshotUpdate(',
   "ProductResolvedStateCommitReceipt['mode']",
@@ -1080,7 +1090,7 @@ for (const token of [
   'this.assetRegistrar.clear()',
   'this.assetRegistrar.hasMissingDefaultAssetsForState()',
   'this.assetRegistrar.ensureDefaultAssetsForState()',
-  'this.assetRegistrar.ensurePianoAssetForNote(note.midi, note.velocity)',
+  'context.assetRegistrar.ensurePianoAssetForNote(note.midi, note.velocity)',
   'this.assetRegistrar.registeredDecodedAssetByteLength()',
   'CORE_PRODUCT_MEMORY_BUDGETS.totalRegisteredDecodedBytes',
   "if (property === 'then') return undefined;",
@@ -1223,23 +1233,23 @@ assert(
   'Product live MIDI path must post directly when AudioContext is already running',
 );
 for (const token of [
-  'private runtimeCanPostEventsImmediately(): boolean',
-  'private productSourceEnabled(sourceIdValue: number): boolean',
-  'private postManualSynthNote(note: RequiredManualSynthNote): void',
+  'function runtimeCanPostEventsImmediately(context: CoreProductManualAuditionContext): boolean',
+  'function productSourceEnabled(context: CoreProductManualAuditionContext, sourceIdValue: number): boolean',
+  'function postManualSynthNote(context: CoreProductManualAuditionContext, note: RequiredManualSynthNote): void',
 ]) {
-  assert(host.includes(token), `Product manual note fast path is missing ${token}`);
+  assert(hostManualAuditionBridge.includes(token), `Product manual note fast path is missing ${token}`);
 }
 for (const [signature, postToken] of [
-  ['triggerDrumVoice(', 'post();'],
-  ['auditionSynthNote(', 'this.postManualSynthNote(manualNote);'],
-  ['auditionSynthNotes(', 'this.postManualSynthNote(note);'],
+  ['triggerCoreProductDrumVoice(', 'post();'],
+  ['auditionCoreProductSynthNote(', 'postManualSynthNote(context, manualNote);'],
+  ['auditionCoreProductSynthNotes(', 'postManualSynthNote(context, note);'],
 ]) {
-  const body = methodBody(host, signature);
+  const body = methodBody(hostManualAuditionBridge, signature);
   assert(
-    body.includes('this.runtimeCanPostEventsImmediately()') &&
-      body.includes('this.productSource') &&
+    body.includes('runtimeCanPostEventsImmediately(context)') &&
+      body.includes('productSource') &&
       body.includes(postToken) &&
-      body.indexOf('this.runtimeCanPostEventsImmediately()') < body.indexOf('this.applyLatestSnapshotUpdate('),
+      body.indexOf('runtimeCanPostEventsImmediately(context)') < body.indexOf('applyLatestSnapshotUpdate('),
     `Product manual trigger ${signature} must direct-post before snapshot update when runtime state is already compiled`,
   );
 }
@@ -2009,7 +2019,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 28908',
+  'const SNAPSHOT_BYTES = 29100',
   'const SOURCE_BYTES = 3336',
   'const LANE_BYTES = 92',
   'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
@@ -2642,10 +2652,11 @@ for (const token of [
   'createCoreProductSourceOverrideCommitEvent',
   'legacyExactBridgeFieldsPresent',
   "this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return 'source-structure-change'",
-  "coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource)) return 'source-structure-change'",
+  'coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource) &&',
+  '!canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)',
   "this.padOverrideChanged(previousSource, nextSource)) return 'pad-override-change'",
   "this.leadOverrideChanged(previousSource, nextSource)) return 'lead-override-change'",
-  "this.drumOverrideChanged(previousSource, nextSource)) return 'drum-override-change'",
+  'this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)',
   'private padOverrideChanged',
   'private leadOverrideChanged',
   'private drumOverrideChanged',
@@ -2724,7 +2735,7 @@ for (const token of [
   'noteRangeMax: this.view.getFloat32(ptr + 3020, true)',
   'expressionRangeSetLow: this.view.getUint32(ptr + 2216, true)',
   'expressionRangeMaxes: this.readFloatOverrides(',
-  'const TELEMETRY_BYTES = 8760;',
+  'const TELEMETRY_BYTES = 9760;',
   'rngSeed: this.view.getUint32(ptr + 928, true)',
   'rngState: this.view.getUint32(ptr + 932, true)',
   'sourcePresetIds.push(this.view.getUint32(ptr + 936 + index * 4, true));',
@@ -2771,11 +2782,13 @@ for (const token of [
   "numberFromState(sliderState, 'journeyMorphPhase', 0)",
   "numberFromState(sliderState, 'journeyMorphRateBars', 8)",
   'fx',
-  "const granularEnabled = booleanFromState(sliderState, 'granularEnabled', false)",
+  'const granularEnabled =',
+  "numberFromState(sliderState, 'granularDegradeSend', 0) > 0.0001",
   "const delayAEnabled =",
   "const delayBEnabled =",
   "const spectralFreezeEnabled = booleanFromState(sliderState, 'spectralFreezeEnabled', false)",
-  "const dynamicsEnabled = booleanFromState(sliderState, 'dynamicsEnabled', false)",
+  "const rawDynamicsEnabled = booleanFromState(sliderState, 'dynamicsEnabled', false)",
+  'const dynamicsEnabled = rawDynamicsEnabled || degradeEngineActive',
   "granularMix: granularEnabled",
   "delayATimeLeftMs: clamp(delayDivisionMs(sliderState, 'drumDelayNoteL', '1/8d', transport.bpm), 10, 5000)",
   "delayATimeRightMs: clamp(delayDivisionMs(sliderState, 'drumDelayNoteR', '1/4', transport.bpm), 10, 5000)",
@@ -2795,7 +2808,8 @@ for (const token of [
   "spectralFreezeEnabled,",
   "dynamicsDrive: dynamicsEnabled",
   "dynamicsDriftMode: dynamicsDriftModeId(sliderState?.driftMode)",
-  "dynamicsErosionMix: clamp(numberFromState(sliderState, 'erosionMix', 0), 0, 1)",
+  "let erosionMix = clamp(numberFromState(sliderState, 'erosionMix', 0), 0, 1)",
+  'dynamicsErosionMix: erosionMix',
   "dynamicsModSlowWow: clamp(numberFromState(sliderState, 'erosionModSlowWow', 0.18), 0, 1)",
   "dynamicsModNoiseAlias: clamp(numberFromState(sliderState, 'erosionModNoiseAlias', 0.02), 0, 1)",
   "dynamicsSaturationDrive: clamp(numberFromState(sliderState, 'dynamicsSaturationDrive', 0), 0, 1)",
@@ -3041,6 +3055,7 @@ const snapshotImportAllowlist = new Set([
   './coreProductSequencerHold',
   './coreProductSoundscapesSnapshot',
   './coreProductSnapshotEncoder',
+  './coreProductReverbSnapshot',
   './coreProductSnapshotState',
   './coreProductSnapshotTypes',
   './distanceMacro',
@@ -3091,6 +3106,8 @@ const hostImportAllowlist = new Set([
   './product/host/CoreProductPatchClassifier',
   './product/host/CoreProductLeadPresetDataLoader',
   './product/host/CoreProductModulationRangeBridge',
+  './product/host/CoreProductManualAuditionBridge',
+  './product/host/CoreProductHostSnapshotFactory',
   './product/host/CoreProductSnapshotCoordinator',
   './product/host/CoreProductTelemetryAdapter',
   './product/host/CoreProductSequencerCacheBridge',

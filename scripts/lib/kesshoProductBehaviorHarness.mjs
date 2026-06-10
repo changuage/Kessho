@@ -418,6 +418,7 @@ export function loadCoreProductHostHarness(options = {}) {
     fnv1a32Bytes: () => 0,
     hashJson: (value) => JSON.stringify(value ?? null),
     logProductStateDebug: () => {},
+    logCoreProductDebugTelemetry: () => {},
     productStateDebugEnabled: () => false,
     buildCoreProductSnapshotDiff: () => ({ applied: true, events: [] }),
     shouldForwardCoreProductRngDiffs: () => false,
@@ -1295,6 +1296,32 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   CoreProductModulationRangeBridge,
 });`, context, { filename: modulationRangeBridgePath });
+
+  const manualAuditionBridgePath = 'src/audio/product/host/CoreProductManualAuditionBridge.ts';
+  const manualAuditionBridgeSource = stripImportsAndExports(readProjectFile(manualAuditionBridgePath));
+  const manualAuditionBridgeJs = transpileForVm(manualAuditionBridgeSource, resolve(root, manualAuditionBridgePath));
+  vm.runInNewContext(`${manualAuditionBridgeJs}
+Object.assign(globalThis, {
+  triggerCoreProductDrumVoice,
+  auditionCoreProductSynthNote,
+  auditionCoreProductSynthNotes,
+});`, context, { filename: manualAuditionBridgePath });
+
+  const snapshotFactoryPath = 'src/audio/product/host/CoreProductHostSnapshotFactory.ts';
+  const snapshotFactorySource = stripImportsAndExports(readProjectFile(snapshotFactoryPath));
+  const snapshotFactoryJs = transpileForVm(snapshotFactorySource, resolve(root, snapshotFactoryPath));
+  vm.runInNewContext(`${snapshotFactoryJs}
+Object.assign(globalThis, {
+  createCoreProductHostSnapshot,
+});`, context, { filename: snapshotFactoryPath });
+
+  const snapshotDebugPath = 'src/audio/product/host/CoreProductSnapshotDebug.ts';
+  const snapshotDebugSource = stripImportsAndExports(readProjectFile(snapshotDebugPath));
+  const snapshotDebugJs = transpileForVm(snapshotDebugSource, resolve(root, snapshotDebugPath));
+  vm.runInNewContext(`${snapshotDebugJs}
+Object.assign(globalThis, {
+  logEncodedSnapshotForDebug,
+});`, context, { filename: snapshotDebugPath });
 
   const snapshotCoordinatorPath = 'src/audio/product/host/CoreProductSnapshotCoordinator.ts';
   const snapshotCoordinatorSource = stripImportsAndExports(readProjectFile(snapshotCoordinatorPath));

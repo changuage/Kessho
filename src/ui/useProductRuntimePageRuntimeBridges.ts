@@ -1,4 +1,5 @@
 import { useSelectedAudioEnginePageRuntimeBridges } from './useSelectedAudioEnginePageRuntimeBridges';
+import { useSelectedAudioEngineManualTriggers } from './useSelectedAudioEngineManualTriggers';
 import type { ProductRuntimePageControlProps } from './useProductRuntimePageControlProps';
 import type { ProductRuntimePageSequencerProps } from './useProductRuntimePageSequencerProps';
 import type { ProductRuntimePageTelemetryProps } from './useProductRuntimePageTelemetryProps';
@@ -40,6 +41,9 @@ export function useProductRuntimePageRuntimeBridges({
   setProductSynthStepOverrides,
   setProductSynthSubLaneEnabled,
   preloadProductRuntime,
+  productRuntimeManualTriggers,
+  productRuntimeMode,
+  stateRef,
   setProductDrumEvolveTriggerCallback,
   setProductDrumStepPositionCallback,
   setProductDrumTriggerCallback,
@@ -49,6 +53,14 @@ export function useProductRuntimePageRuntimeBridges({
 }: ProductRuntimePageRuntimeBridgeOptions) {
   // TODO(product-runtime-compat-10E): this is the explicit compatibility boundary between
   // product-named page surfaces and the selected-audio-engine page bridge implementation.
+  const selectedRuntimeManualTriggers = useSelectedAudioEngineManualTriggers({
+    audioEngineRuntimeMode: productRuntimeMode,
+    stateRef,
+  });
+  const pageManualTriggers = productRuntimeMode === 'core-product'
+    ? productRuntimeManualTriggers
+    : selectedRuntimeManualTriggers;
+
   const selectedOptions = {
     ...options,
     getSelectedLeadMorphedParams: getProductLeadMorphedParams,
@@ -82,6 +94,7 @@ export function useProductRuntimePageRuntimeBridges({
     setSelectedSynthStepOverrides: setProductSynthStepOverrides,
     setSelectedSynthSubLaneEnabled: setProductSynthSubLaneEnabled,
     preloadSelectedAudioEngine: preloadProductRuntime,
+    productRuntimeManualTriggers: pageManualTriggers,
     setSelectedDrumEvolveTriggerCallback: setProductDrumEvolveTriggerCallback,
     setSelectedDrumStepPositionCallback: setProductDrumStepPositionCallback,
     setSelectedDrumTriggerCallback: setProductDrumTriggerCallback,

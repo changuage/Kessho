@@ -5,11 +5,48 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const args = new Set(process.argv.slice(2));
+const rawArgs = process.argv.slice(2);
+const args = new Set(rawArgs);
 const write = args.has('--write');
+const explicitDryRun = args.has('--dry-run');
 const outputJson = args.has('--json');
 const useAnon = args.has('--anon');
 const allowAnonWrite = args.has('--allow-anon-write');
+const TEXTURE_REPAIR_ACTIVE_ROW_SELECT = 'id,type,scope,name,author,library,latest_version_no,latest_version_id,archived,deleted_at';
+const TEXTURE_REPAIR_REF_SLOT_SELECT = 'ref_slot,target_preset_id';
+
+if (write && explicitDryRun) {
+  throw new Error('Use either --write or --dry-run, not both.');
+}
+
+function getArgValue(name) {
+  const prefix = `${name}=`;
+  const inline = rawArgs.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
+  if (inline !== undefined) return inline;
+  const index = rawArgs.indexOf(name);
+  if (index < 0) return undefined;
+  const value = rawArgs[index + 1];
+  return value && !value.startsWith('--') ? value : undefined;
+}
+
+function parseIntegerArg(name, fallback) {
+  const raw = getArgValue(name);
+  if (raw === undefined) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseEnumArg(name, fallback, allowed) {
+  const raw = getArgValue(name);
+  if (raw === undefined) return fallback;
+  if (allowed.includes(raw)) return raw;
+  throw new Error(`Invalid ${name}: ${raw}. Expected one of: ${allowed.join(', ')}`);
+}
+
+const activeRowLimit = Math.max(1, Math.min(1000, parseIntegerArg('--limit', 200)));
+const activeRowOffset = Math.max(0, parseIntegerArg('--offset', 0));
+const repairTargetType = parseEnumArg('--type', 'all', ['state', 'source', 'leaf', 'all']);
+const repairOwnershipScope = parseEnumArg('--scope', 'all', ['user', 'factory', 'all']);
 
 const tempDir = await mkdtemp(path.join(tmpdir(), 'preset-v2-texture-repair-'));
 const outfile = path.join(tempDir, 'preset-v2-texture-repair.mjs');
@@ -46,6 +83,12 @@ try {
         const outputJson = ${JSON.stringify(outputJson)};
         const useAnon = ${JSON.stringify(useAnon)};
         const allowAnonWrite = ${JSON.stringify(allowAnonWrite)};
+        const activeRowLimit = ${JSON.stringify(activeRowLimit)};
+        const activeRowOffset = ${JSON.stringify(activeRowOffset)};
+        const repairTargetType = ${JSON.stringify(repairTargetType)};
+        const repairOwnershipScope = ${JSON.stringify(repairOwnershipScope)};
+        const activeRowSelect = ${JSON.stringify(TEXTURE_REPAIR_ACTIVE_ROW_SELECT)};
+        const refSlotSelect = ${JSON.stringify(TEXTURE_REPAIR_REF_SLOT_SELECT)};
 
         function readEnvFile(filePath) {
           if (!fs.existsSync(filePath)) return {};
@@ -119,8 +162,8 @@ try {
         const dynamicsBusParentKeys = ['dynamicsBusEnabled', 'dynamicsEq1Enabled', 'dynamicsEq2Enabled', 'sidechainEnabled'];
         const masterFxParentKeys = ['dynamicsSaturationEnabled', 'endCompEnabled'];
         const leafAllowed = {
-          'kit:dynamicsDrift': DYNAMICS_DRIFT_PRESET_KEYS,
-          'kit:dynamicsErosion': DYNAMICS_EROSION_PRESET_KEYS,
+          'kit:degradeDrift': DYNAMICS_DRIFT_PRESET_KEYS,
+          'kit:degradeErosion': DYNAMICS_EROSION_PRESET_KEYS,
           'engine:dynamicsEq1': DYNAMICS_EQ1_PRESET_KEYS,
           'engine:dynamicsEq2': DYNAMICS_EQ2_PRESET_KEYS,
           'engine:dynamicsSidechain': DYNAMICS_SIDECHAIN_PRESET_KEYS,
@@ -168,17 +211,40 @@ try {
           };
         }
 
+        function recordTargetPreflight(report, phase, type, scope, rows) {
+          const entry = {
+            phase,
+            type,
+            scope: scope ?? null,
+            activeRowsInPage: rows.length,
+            pageRange: [activeRowOffset, activeRowOffset + activeRowLimit - 1],
+          };
+          report.activeRowFetches.push(entry);
+          if (!outputJson) {
+            console.log(
+              'Target ' + phase + ' ' + type + ':' + (scope ?? 'global')
+              + ' active rows in page: ' + rows.length,
+            );
+          }
+        }
+
         async function fetchActiveRows(type, scope) {
           let query = client
             .from('presets_v2')
-            .select('id,type,scope,name,latest_version_no,latest_version_id,archived,deleted_at')
+            .select(activeRowSelect)
             .eq('type', type)
             .eq('archived', false)
             .is('deleted_at', null)
             .gt('latest_version_no', 0)
-            .order('updated_at', { ascending: true });
+            .order('updated_at', { ascending: true })
+            .range(activeRowOffset, activeRowOffset + activeRowLimit - 1);
           if (scope) query = query.eq('scope', scope);
           else query = query.is('scope', null);
+          if (repairOwnershipScope === 'factory') {
+            query = query.or('author.eq.factory,library.eq.stock');
+          } else if (repairOwnershipScope === 'user') {
+            query = query.not('author', 'eq', 'factory').not('library', 'eq', 'stock');
+          }
 
           const { data, error } = await query;
           if (error) throw new Error('Active preset fetch failed for ' + type + ':' + (scope ?? '') + ': ' + error.message);
@@ -189,7 +255,7 @@ try {
           if (!versionId) return [];
           const { data, error } = await client
             .from('preset_version_refs_v2')
-            .select('ref_slot,target_preset_id')
+            .select(refSlotSelect)
             .eq('version_id', versionId);
           if (error) throw new Error('Latest ref fetch failed: ' + error.message);
           return data ?? [];
@@ -235,6 +301,7 @@ try {
           for (const [targetScopeKey, allowedKeys] of Object.entries(leafAllowed)) {
             const [type, scope] = targetScopeKey.split(':');
             const rows = await fetchActiveRows(type, scope);
+            recordTargetPreflight(report, 'leaf', type, scope, rows);
             for (const row of rows) {
               try {
                 const { entry, data } = await loadEntry(row);
@@ -274,16 +341,17 @@ try {
           for (const [targetScopeKey, allowedKeys] of Object.entries(sourceAllowed)) {
             const [type, scope] = targetScopeKey.split(':');
             const rows = await fetchActiveRows(type, scope);
+            recordTargetPreflight(report, 'source', type, scope, rows);
             const expectedSlots = getPresetChildSpecs(type, scope).map((spec) => spec.slot).sort();
             for (const row of rows) {
               try {
-                const { entry, data } = await loadEntry(row);
-                const sanitized = pickKeys(data, allowedKeys);
-                const delta = shapeDelta(data, allowedKeys);
                 const refRows = await fetchLatestRefSlots(row.latest_version_id);
                 const refSlots = [...new Set(refRows.map((ref) => ref.ref_slot))].sort();
                 const missingSlots = expectedSlots.filter((slot) => !refSlots.includes(slot));
                 const unexpectedSlots = refSlots.filter((slot) => !expectedSlots.includes(slot));
+                const { entry, data } = await loadEntry(row);
+                const sanitized = pickKeys(data, allowedKeys);
+                const delta = shapeDelta(data, allowedKeys);
                 if (!delta.extra.length && !delta.missing.length && !missingSlots.length && !unexpectedSlots.length) {
                   report.source.skippedClean += 1;
                   continue;
@@ -317,6 +385,7 @@ try {
 
         async function repairStateRows(report) {
           const rows = await fetchActiveRows('state', 'global');
+          recordTargetPreflight(report, 'state', 'state', 'global', rows);
           const expectedSlots = getPresetChildSpecs('state', 'global')
             .filter((spec) => ['degrade', 'dynamicsBus', 'masterFx'].includes(spec.slot))
             .map((spec) => spec.slot)
@@ -359,20 +428,40 @@ try {
         const report = {
           dryRun: !write,
           canWrite: write,
+          page: {
+            activeRowLimit,
+            activeRowOffset,
+            activeRowRange: [activeRowOffset, activeRowOffset + activeRowLimit - 1],
+          },
+          filters: {
+            type: repairTargetType,
+            scope: repairOwnershipScope,
+          },
+          selectedColumns: {
+            activeRows: activeRowSelect,
+            latestRefs: refSlotSelect,
+          },
+          activeRowFetches: [],
           leaf: { wouldWrite: 0, written: 0, skippedClean: 0, rows: [] },
           source: { wouldWrite: 0, written: 0, skippedClean: 0, rows: [] },
           state: { wouldWrite: 0, written: 0, skippedClean: 0, rows: [] },
           errors: [],
         };
 
-        await repairLeafRows(report);
-        await repairSourceRows(report);
-        await repairStateRows(report);
+        if (!outputJson) {
+          console.log('Supabase preset V2 Texture repair ' + (write ? 'write' : 'dry run'));
+          console.log('Active-row page: offset ' + activeRowOffset + ', limit ' + activeRowLimit);
+          console.log('Filters: type ' + repairTargetType + ', scope ' + repairOwnershipScope);
+          console.log('Selected columns: active rows [' + activeRowSelect + ']; latest refs [' + refSlotSelect + ']');
+        }
+
+        if (repairTargetType === 'all' || repairTargetType === 'leaf') await repairLeafRows(report);
+        if (repairTargetType === 'all' || repairTargetType === 'source') await repairSourceRows(report);
+        if (repairTargetType === 'all' || repairTargetType === 'state') await repairStateRows(report);
 
         if (outputJson) {
           console.log(JSON.stringify(report, null, 2));
         } else {
-          console.log('Supabase preset V2 Texture repair ' + (write ? 'write' : 'dry run'));
           console.log('Leaf rows: ' + (write ? report.leaf.written : report.leaf.wouldWrite) + '; skipped clean ' + report.leaf.skippedClean);
           console.log('Source rows: ' + (write ? report.source.written : report.source.wouldWrite) + '; skipped clean ' + report.source.skippedClean);
           console.log('State rows: ' + (write ? report.state.written : report.state.wouldWrite) + '; skipped clean ' + report.state.skippedClean);

@@ -11,18 +11,15 @@ import { defaultPresetId, drumVoiceMorphsFromState, drumVoicePresetIdsFromState,
 import { getTransportMetrics } from './transport';
 import { computeGranularMacroModel, type GranularMacroModel } from './granularMacroCore';
 import { applyDistanceValue, applyLeadDistanceEnvelope, getVoiceDistanceKey, type DistanceVoice } from './distanceMacro';
-import { getEffectiveTension } from './harmony';
-import { getScaleByName, selectScaleFamily } from './scales';
-import { computeGranularRuntimeSeed, createRng, getUtcBucket } from './rng';
-import { isIOSLikeDevice, isMobileDevice } from '../platform';
+import { computeGranularRuntimeSeed, getUtcBucket } from './rng';
 import { defaultDrumEuclidPattern, defaultSynthEuclidPattern, euclideanPatternMask, resolveEuclidPatternParams } from './euclideanPatterns';
 import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions';
 import { normalizeSequencerSwing } from './sequencerSwing';
 import { delayBTapeHeadLevelsFromState, delayBTapeHeadMaskFromState, delayBTapeHeadPansFromState, delayDivisionMs } from './coreProductDelaySnapshot';
 import { booleanFromState, clamp, numberFromState } from './coreProductSnapshotState';
+import { resolveReverbSnapshotParams, scaleIdFromState, shouldUseMobileReverbQualityOverride } from './coreProductReverbSnapshot';
 import { coreProductDrumLaneMacroDefaultsFromState, coreProductSynthLaneMacroDefaultsFromState } from './coreProductSequencerMacroDefaults';
 import { soundscapeSnapshotPayloadFromState, type SoundscapeSnapshotPayload } from './coreProductSoundscapesSnapshot';
-import { productHarmonyScaleIdFromName } from './coreProductHarmonyScaleIds';
 import { HARMONY_POOL_MAX_NOTES, HARMONY_SOURCE_IDS, HARMONY_STRENGTH_IDS, resolveProductHarmonyState } from './CoreProductHarmonyControl';
 import { coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
 import type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
@@ -57,9 +54,7 @@ function drumDelaySendProfile(state: Record<string, unknown> | undefined): numbe
   return clamp(peak * 0.5 + average * 0.5, 0, 1);
 }
 
-function drumDelayFilterHz(state: Record<string, unknown> | undefined): number {
-  return clamp(500 * Math.pow(32, clamp(numberFromState(state, 'drumDelayFilter', 0.5), 0, 1)), 200, 12000);
-}
+function drumDelayFilterHz(state: Record<string, unknown> | undefined): number { return clamp(500 * Math.pow(32, clamp(numberFromState(state, 'drumDelayFilter', 0.5), 0, 1)), 200, 12000); }
 
 function distanceAdjustedNumberFromState(
   state: Record<string, unknown> | undefined,
@@ -103,13 +98,9 @@ function positiveU32(value: number, fallback: number): number {
   return normalized === 0 ? 1 : normalized;
 }
 
-function dynamicsEqEdgeTypeId(value: unknown): number {
-  return value === 'bell' ? 1 : 0;
-}
+function dynamicsEqEdgeTypeId(value: unknown): number { return value === 'bell' ? 1 : 0; }
 
-function dynamicsBusFromState(state: Record<string, unknown> | undefined, key: keyof SliderState): number {
-  return clamp(Math.round(numberFromState(state, key, 0)), 0, 3) >>> 0;
-}
+function dynamicsBusFromState(state: Record<string, unknown> | undefined, key: keyof SliderState): number { return clamp(Math.round(numberFromState(state, key, 0)), 0, 3) >>> 0; }
 
 function hashSeedMaterial(material: string): number {
   let hash = 2166136261;
@@ -219,101 +210,6 @@ function evolutionAmountFromState(state: Record<string, unknown> | undefined): n
     evolveAmountFromList(state?.drumEuclidEvolveConfigs),
     clamp(numberFromState(state, 'granularEvolution', 0), 0, 1),
   );
-}
-
-// PRODUCT_HARMONY_SCALE_IDS is centralized in coreProductHarmonyScaleIds.ts.
-
-function resolveHarmonyScaleName(state: Record<string, unknown> | undefined, tension: number): string {
-  const manualScale = typeof state?.manualScale === 'string' ? state.manualScale : 'Major (Ionian)';
-  if (state?.scaleMode === 'manual' && getScaleByName(manualScale)) return manualScale;
-  const seedWindow = state?.seedWindow === 'day' ? 'day' : 'hour';
-  return selectScaleFamily(createRng(`${getUtcBucket(seedWindow)}|E_ROOT`), tension).name;
-}
-
-function scaleIdFromState(state: Record<string, unknown> | undefined, tension: number): number {
-  return productHarmonyScaleIdFromName(resolveHarmonyScaleName(state, tension));
-}
-
-function reverbTensionModeFromState(state: Record<string, unknown> | undefined): 'follow' | 'locked' | 'bypass' {
-  const mode = state?.reverbTensionMode;
-  if (mode === 'follow' || mode === 'locked') return mode;
-  return 'bypass';
-}
-
-function navigatorFromGlobal(): Navigator | null {
-  return typeof navigator === 'undefined' ? null : navigator;
-}
-
-function shouldUseMobileReverbQualityOverride(state: Record<string, unknown> | undefined): boolean {
-  const forced = state?.coreProductMobileDevice ?? state?.sonicParityMobileDevice;
-  if (typeof forced === 'boolean') return forced;
-  const nav = navigatorFromGlobal();
-  return nav ? isMobileDevice(nav) || isIOSLikeDevice(nav) : false;
-}
-
-function resolveHarmonyScaleIntervals(state: Record<string, unknown> | undefined, tension: number): readonly number[] | undefined {
-  try {
-    return getScaleByName(resolveHarmonyScaleName(state, tension))?.intervals;
-  } catch {
-    return undefined;
-  }
-}
-
-function quantizeShimmerPitchToScale(pitch: number, intervals: readonly number[] | undefined): number {
-  if (!intervals || intervals.length === 0) return pitch;
-  const octaves = Math.floor(pitch / 12);
-  const rem = ((pitch % 12) + 12) % 12;
-  let bestInterval = intervals[0] ?? 0;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (const interval of intervals) {
-    const distance = Math.abs(interval - rem);
-    const circularDistance = Math.min(distance, 12 - distance);
-    if (circularDistance < bestDistance) {
-      bestDistance = circularDistance;
-      bestInterval = interval;
-    }
-  }
-  return octaves * 12 + bestInterval;
-}
-
-function resolveReverbSnapshotParams(state: Record<string, unknown> | undefined, tension: number) {
-  const reverbTension = getEffectiveTension(
-    tension,
-    reverbTensionModeFromState(state),
-    numberFromState(state, 'reverbTensionValue', 0),
-  );
-  let decay = clamp(numberFromState(state, 'reverbDecay', 0.9), 0, 1);
-  let diffusion = clamp(numberFromState(state, 'reverbDiffusion', 1), 0, 1);
-  let shimmer = clamp(numberFromState(state, 'reverbShimmer', 0), 0, 1);
-  let shimmerPitch = clamp(numberFromState(state, 'reverbShimmerPitch', 12), -24, 24);
-
-  if (reverbTension >= 0) {
-    const inverse = 1 - reverbTension;
-    decay = clamp(decay + inverse * 0.15, 0, 1);
-    diffusion = clamp(diffusion + inverse * 0.1, 0, 1);
-    shimmer = clamp(shimmer + reverbTension * 0.08, 0, 1);
-  }
-
-  const washBoost = clamp(numberFromState(state, 'sonicParityReverbWashBoost', 0), 0, 1);
-  if (washBoost > 0.001) {
-    shimmer = clamp(shimmer + washBoost * 0.15, 0, 1);
-  }
-  const bloomBoost = clamp(numberFromState(state, 'sonicParityReverbBloomBoost', 0), 0, 1);
-  if (bloomBoost > 0.001) {
-    decay = clamp(decay + bloomBoost * 0.12, 0, 1);
-    shimmer = clamp(shimmer + bloomBoost * 0.1, 0, 1);
-  }
-
-  if (booleanFromState(state, 'reverbScaleShimmer', false)) {
-    shimmerPitch = clamp(quantizeShimmerPitchToScale(shimmerPitch, resolveHarmonyScaleIntervals(state, tension)), -24, 24);
-  }
-
-  return {
-    decay,
-    diffusion,
-    shimmer,
-    shimmerPitch,
-  };
 }
 
 function clockDivisionFromState(state: Record<string, unknown> | undefined, key: string, fallback: number): number {

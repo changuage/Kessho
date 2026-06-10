@@ -36,6 +36,10 @@ function pageScenario(pageReport, id) {
   return pageReport.scenarios?.find((scenario) => scenario.id === id) ?? null;
 }
 
+function texturePageScenarioId(pageReport) {
+  return pageScenario(pageReport, 'texture') ? 'texture' : 'dynamics';
+}
+
 function pageScenarioPass(pageReport, id) {
   const scenario = pageScenario(pageReport, id);
   return Boolean(
@@ -111,6 +115,18 @@ const browserRuntime = readJson('docs/reports/kessho-product-browser-runtime-lat
 const granularRender = readJson('docs/reports/kessho-product-granular-render-metrics-latest.json');
 const reverbRender = readJson('docs/reports/kessho-product-reverb-render-metrics-latest.json');
 const governorPolicy = read('docs/product-core/product-cpu-governor-policy.md');
+const texturePageId = texturePageScenarioId(pageCpu);
+const routingRegistry = read('src/ui/routing/routingSourceRegistry.ts');
+const routeConflictPolicy = read('src/ui/routing/routeConflictPolicy.ts');
+const presetUtils = read('src/ui/presetUtils.ts');
+const appSource = read('src/App.tsx');
+const productManualTriggers = read('src/ui/useProductRuntimeManualTriggers.ts');
+const pageAliases = read('src/ui/pages/pageAliases.ts');
+const dirtyDiffClassification = read('scripts/check-kessho-product-dirty-diff-classification.mjs');
+const routePredicates = read('src/ui/routing/routePredicates.ts');
+const snowflakeEngineGroups = read('src/ui/snowflakeV2/engineGroups.ts');
+const presetV2Migration = read('src/presets/presetV2Migration.ts');
+const coreProductEvents = read('src/audio/coreProductEvents.ts');
 
 assert(cpuBudget.status === 'pass', 'CPU budget report must pass');
 assert(cpuBudget.cpu?.scenarios?.activeFx?.status === 'pass', 'active-FX CPU budget must pass');
@@ -152,7 +168,7 @@ assert(
   'Product runtime CPU summary publication must be throttled/coalesced through the debug panel interval',
 );
 
-for (const id of ['global', 'earth', 'granular', 'reverb', 'routing']) {
+for (const id of ['global', 'earth', 'granular', 'reverb', texturePageId, 'routing']) {
   assert(pageScenarioPass(pageCpu, id), `page CPU scenario ${id} must pass`);
 }
 
@@ -169,6 +185,44 @@ assert(
   browserRuntime.runtimeWalkProbe?.distinctPositionCount > 1 &&
     browserRuntime.sampleHoldProbe?.distinctPositionCount > 1,
   'browser runtime report must prove random-walk and sample-hold movement',
+);
+assert(
+  routingRegistry.includes("sends: { reverb: 'degradeReverbSend' }") &&
+    routingRegistry.includes("sends: { degrade: 'reverbDegradeSend' }") &&
+    routingRegistry.includes("enabledKeys: ['degradeEnabled', 'driftEnabled', 'erosionEnabled', 'dynamicsSaturationEnabled']"),
+  'CPU Degrade routing scenario requires registry Degrade/Reverb return sends and predicates',
+);
+assert(
+  routeConflictPolicy.includes('export function normalizeDegradeReverbCrossfeed') &&
+    appSource.includes('normalizeDegradeReverbCrossfeed(newState, prev') &&
+    appSource.includes('normalizeDegradeReverbCrossfeed(result)') &&
+    presetUtils.includes('normalizeDegradeReverbCrossfeed(newState)') &&
+    presetV2Migration.includes('normalizeGraphRepairData'),
+  'CPU conflict-normalization scenario requires App, preset load, morph/randomization, and repair paths to share routeConflictPolicy',
+);
+assert(
+  routePredicates.includes('ROUTING_ACTIVE_EPSILON') &&
+    snowflakeEngineGroups.includes('level > ROUTING_ACTIVE_EPSILON') &&
+    routingRegistry.includes('levelAboveEpsilon(state, input.levelKey)'),
+  'CPU zero-level enabled-source scenario requires audible predicates and Snowflake arm activity to use epsilon thresholds',
+);
+assert(
+  productManualTriggers.includes('commitProductControlActionThenTrigger') &&
+    productManualTriggers.includes('productEngine.auditionSynthNote(note)') &&
+    productManualTriggers.includes('productEngine.triggerDrumVoice(voice, DEFAULT_MANUAL_DRUM_VELOCITY)'),
+  'CPU manual trigger burst scenario requires Product Control commit before productEngine trigger calls',
+);
+assert(
+  pageAliases.includes("page === 'dynamics' ? 'texture' : page") &&
+    presetUtils.includes('normalizeDegradeReverbCrossfeed(newState)'),
+  'CPU old dynamics/texture preset scenario requires legacy page aliasing and preset normalization',
+);
+assert(
+  dirtyDiffClassification.includes('dirty-diff-event-budget') &&
+    dirtyDiffClassification.includes('fx.dynamics.degrade.') &&
+    coreProductEvents.includes('degradeReverbSend') &&
+    coreProductEvents.includes('reverbDegradeSend'),
+  'CPU dirty-diff classification scenario requires bounded dirty-diff fallback and focused Degrade/Reverb events',
 );
 
 const freshHours = 72;
@@ -239,6 +293,16 @@ const moduleAttribution = [
     evidence: [
       'docs/reports/kessho-product-page-cpu-comparison-latest.json: reverb activeModules includes spectral freeze',
       'docs/reports/kessho-product-reverb-render-metrics-latest.json: parameterTransitions',
+    ],
+  },
+  {
+    module: 'texture',
+    status: pageScenarioPass(pageCpu, texturePageId) ? 'pass' : 'fail',
+    source: 'page CPU Texture foreground scenario with legacy dynamics report fallback',
+    metrics: cpuScenarioMetrics(pageCpu, texturePageId),
+    evidence: [
+      `docs/reports/kessho-product-page-cpu-comparison-latest.json: ${texturePageId}`,
+      'src/ui/pages/pageAliases.ts: legacy dynamics page id maps to texture',
     ],
   },
   {
@@ -340,10 +404,49 @@ const scenarios = [
     'docs/product-core/product-cpu-governor-policy.md: hidden/resume policy',
     'docs/product-core/background-audio.md: browser/mobile background audio is best-effort',
   ]),
-  deferredRow('09-native-ios-render', 'Native iOS render', 'Native Product Core render/device evidence is Batch 4 scope.', [
+  passRow('09-texture-page-foreground', 'Texture page foreground', [
+    `docs/reports/kessho-product-page-cpu-comparison-latest.json: ${texturePageId} scenario pass`,
+    'src/ui/pages/pageAliases.ts: normalizeSliderPageId maps dynamics to texture',
+    'scripts/check-kessho-product-page-cpu-comparison.mjs: Texture scenario definition',
+  ], {
+    productBrowserCpuPercent: productCpuPercent(pageCpu, texturePageId),
+    legacyReportScenario: texturePageId === 'dynamics',
+  }),
+  passRow('10-degrade-routing-active', 'Degrade routing active', [
+    'src/ui/routing/routingSourceRegistry.ts: Degrade send keys and return row predicates',
+    'src/App.tsx: route edits enable degrade without changing Product Core architecture',
+    'docs/reports/kessho-product-page-cpu-comparison-latest.json: routing scenario pass',
+  ], {
+    productBrowserCpuPercent: productCpuPercent(pageCpu, 'routing'),
+  }),
+  passRow('11-degrade-reverb-conflict-normalization', 'Degrade/Reverb conflict normalization', [
+    'src/ui/routing/routeConflictPolicy.ts: shared crossfeed policy',
+    'src/App.tsx: routing updates, preset load, morph/randomization normalize crossfeed conflicts',
+    'src/ui/presetUtils.ts and src/presets/presetV2Migration.ts: repair/migration normalization',
+  ]),
+  passRow('12-zero-level-enabled-sources', 'Zero-level enabled sources', [
+    'src/ui/routing/routePredicates.ts: ROUTING_ACTIVE_EPSILON',
+    'src/ui/snowflakeV2/engineGroups.ts: active engines require enabled predicate and level threshold',
+    'src/ui/routing/routingSourceRegistry.ts: audible predicates combine enablement with level threshold',
+  ]),
+  passRow('13-manual-trigger-burst-after-control-commit', 'Manual trigger burst after control commit', [
+    'src/ui/useProductRuntimeManualTriggers.ts: commitProductControlActionThenTrigger wraps productEngine note/drum triggers',
+    'src/product-control/ProductControlActions.ts: manual-trigger/request metadata carries kind/note/voice/velocity',
+    'scripts/check-kessho-product-dirty-diff-classification.mjs: dirty diff remains bounded/classified',
+  ]),
+  passRow('14-preset-load-old-dynamics-texture-state', 'Preset load of old dynamics/texture state', [
+    'src/ui/pages/pageAliases.ts: legacy page id compatibility',
+    'src/ui/presetUtils.ts: preset load normalizes Degrade/Reverb conflicts after compatibility repair',
+    'src/audio/recordingTracks.ts: persisted dynamics tap displays as Texture',
+  ]),
+  passRow('15-dirty-diff-routing-classification', 'Dirty-diff routing classifications stay scoped', [
+    'scripts/check-kessho-product-dirty-diff-classification.mjs: dirty diff gates and module path policies',
+    'src/audio/coreProductEvents.ts: Degrade/Reverb routing params map to focused ProductEvents',
+  ]),
+  deferredRow('16-native-ios-render', 'Native iOS render', 'Native Product Core render/device evidence is Batch 4 scope.', [
     'docs/product-core/background-audio-device-evidence.md',
   ]),
-  deferredRow('10-native-macos-render', 'Native macOS render', 'Native Product Core render/device evidence is Batch 4 scope.', [
+  deferredRow('17-native-macos-render', 'Native macOS render', 'Native Product Core render/device evidence is Batch 4 scope.', [
     'docs/product-core/background-audio-device-evidence.md',
   ]),
 ];

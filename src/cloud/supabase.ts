@@ -17,21 +17,10 @@ import {
   isSupabaseEgressListRefreshPaused,
   supabaseEgressDiagnosticFetch,
 } from './supabaseEgressDiagnostics';
-
-const CLOUD_PRESET_SUMMARY_SELECT = [
-  'id',
-  'name',
-  'author',
-  'description',
-  'created_at',
-  'plays',
-  'is_featured',
-].join(',');
-
-const CLOUD_PRESET_DETAIL_SELECT = [
-  ...CLOUD_PRESET_SUMMARY_SELECT.split(','),
-  'data',
-].join(',');
+import {
+  CLOUD_PRESET_DETAIL_SELECT,
+  CLOUD_PRESET_SUMMARY_SELECT,
+} from './presetSelects';
 
 // Types for cloud presets
 export interface CloudPreset {

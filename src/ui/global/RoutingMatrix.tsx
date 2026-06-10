@@ -4,6 +4,7 @@ import { useSliderHelp } from '../SliderHelpOverlay';
 import type { SliderPageId } from '../sliderHelpCatalog';
 import type { SliderMode, SliderState } from '../state';
 import { useRuntimeSliderIndicator } from '../runtimeSliderState';
+import { getRoutingSourceDef, ROUTING_SOURCE_REGISTRY } from '../routing';
 import {
   LONG_PRESS_MOVE_TOLERANCE_PX,
   LONG_PRESS_MS,
@@ -24,7 +25,7 @@ import {
 import '../sliderSystem/matrixSurface.css';
 
 type SliderColumnId = 'level' | 'delayA' | 'delayB' | 'granular' | 'degrade' | 'reverb';
-type ColumnId = SliderColumnId | 'dynamics';
+type ColumnId = SliderColumnId | 'texture';
 type CellHandle = MatrixCellHandle;
 
 interface RouteControl {
@@ -152,7 +153,7 @@ const COLUMNS: RoutingColumn[] = [
   { id: 'granular', label: 'Granular', helpKey: 'routingMatrixGranularColumn', note: 'Drag the header left or right to trim every granular feed in this column together.' },
   { id: 'degrade', label: 'Degrade', helpKey: 'routingMatrixDegradeColumn', note: 'Drag the header left or right to trim every Degrade send in this column together.' },
   { id: 'reverb', label: 'Reverb', helpKey: 'routingMatrixReverbColumn', note: 'Drag the header left or right to trim every reverb send in this column together.' },
-  { id: 'dynamics', label: 'Dynamics', helpKey: 'routingMatrixDynamicsColumn', note: 'Click a cell to choose the terminal Dynamics Bus path: Skip, EQ 1, EQ 2, or Sidechain.' },
+  { id: 'texture', label: 'Texture', helpKey: 'routingMatrixTextureColumn', note: 'Click a cell to choose the terminal Texture Bus path: Skip, EQ 1, EQ 2, or Sidechain.' },
 ];
 const DEFAULT_COLUMN = COLUMNS[0]!;
 
@@ -163,23 +164,17 @@ const DYNAMICS_DESTINATIONS = [
   { value: 3, label: 'Sidechain', className: 'sidechain' },
 ] as const;
 
-const DYNAMICS_ROUTE_BY_ROW: Record<string, DynamicsRouteControl> = {
-  pad1: { key: 'dynamicsPad1Bus', label: 'Pad 1 → Dynamics Bus' },
-  pad2: { key: 'dynamicsPad2Bus', label: 'Pad 2 → Dynamics Bus' },
-  lead1: { key: 'dynamicsLead1Bus', label: 'Lead 1 → Dynamics Bus' },
-  lead2: { key: 'dynamicsLead2Bus', label: 'Lead 2 → Dynamics Bus' },
-  piano: { key: 'dynamicsPianoBus', label: 'Piano → Dynamics Bus' },
-  drums: { key: 'dynamicsDrumBus', label: 'Drums → Dynamics Bus' },
-  granular: { key: 'dynamicsGranularBus', label: 'Granular → Dynamics Bus' },
-  waves: { key: 'dynamicsWavesBus', label: 'Waves → Dynamics Bus' },
-  water: { key: 'dynamicsWaterBus', label: 'Water → Dynamics Bus' },
-  insects: { key: 'dynamicsInsectsBus', label: 'Insects → Dynamics Bus' },
-  nature: { key: 'dynamicsNatureBus', label: 'Nature → Dynamics Bus' },
-  delayAOut: { key: 'dynamicsDelayABus', label: 'Delay A → Dynamics Bus' },
-  delayBOut: { key: 'dynamicsDelayBBus', label: 'Delay B → Dynamics Bus' },
-  degrade: { key: 'dynamicsDegradeBus', label: 'Degrade → Dynamics Bus' },
-  reverb: { key: 'dynamicsReverbBus', label: 'Reverb → Dynamics Bus' },
-};
+const DYNAMICS_ROUTE_BY_ROW: Record<string, DynamicsRouteControl> = Object.fromEntries(
+  ROUTING_SOURCE_REGISTRY
+    .filter((row) => row.dynamicsBusKey)
+    .map((row) => [
+      row.id,
+      {
+        key: row.dynamicsBusKey!,
+        label: `${row.label} → Texture Bus`,
+      },
+    ]),
+) as Record<string, DynamicsRouteControl>;
 
 const ROWS: MatrixRow[] = [
   {
@@ -458,7 +453,7 @@ function cellValue(state: SliderState, route: RouteControl | undefined): number 
 }
 
 function isSliderColumnId(columnId: ColumnId): columnId is SliderColumnId {
-  return columnId !== 'dynamics';
+  return columnId !== 'texture';
 }
 
 function dynamicsDestinationIndex(value: unknown): number {
@@ -467,40 +462,7 @@ function dynamicsDestinationIndex(value: unknown): number {
 }
 
 function rowIsEnabled(row: MatrixRow, state: SliderState): boolean {
-  switch (row.id) {
-    case 'pad1':
-      return !!state.padEnabled;
-    case 'pad2':
-      return !!state.pad2Enabled;
-    case 'lead1':
-      return !!state.leadEnabled;
-    case 'lead2':
-      return !!state.lead2Enabled;
-    case 'piano':
-      return !!state.pianoEnabled;
-    case 'drums':
-      return !!state.drumEnabled;
-    case 'granular':
-      return !!state.granularEnabled;
-    case 'waves':
-      return !!state.oceanSampleEnabled;
-    case 'water':
-      return !!state.waterEnabled;
-    case 'insects':
-      return !!(state.insectsEnabled || state.insects2Enabled);
-    case 'nature':
-      return !!(state.birdsEnabled || state.birds2Enabled || state.frogsEnabled);
-    case 'delayAOut':
-      return !!state.delayAEnabled;
-    case 'delayBOut':
-      return !!state.granularDelayEnabled;
-    case 'degrade':
-      return !!((state.dynamicsEnabled || state.degradeEnabled) && (state.driftEnabled || state.erosionEnabled));
-    case 'reverb':
-      return !!state.reverbEnabled || (state.reverbDegradeSend ?? 0) > 0.0001 || (state.degradeReverbSend ?? 0) > 0.0001;
-    default:
-      return true;
-  }
+  return getRoutingSourceDef(row.id)?.isEnabled(state) ?? true;
 }
 
 function getResolvedMode(runtime: RoutingSliderRuntime | null): SliderMode {
@@ -660,13 +622,23 @@ export default function RoutingMatrix({
   const granularToDelayBActive = (state.granularDelayBSend ?? 0) > 0.0001;
   const delayBToGranularActive = (state.delayBGranularSend ?? 0) > 0.0001;
   const effectiveRows = React.useMemo(() => ROWS.map(row => {
-    if (row.id === 'granular' && delayBToGranularActive) {
-      return { ...row, cells: { ...row.cells, delayB: { kind: 'blocked' as const, note: 'Blocked while Delay B → Granular is active' } } };
+    const source = getRoutingSourceDef(row.id);
+    const registryRow = source
+      ? {
+          ...row,
+          label: source.label,
+          accent: source.accent,
+          note: source.note ?? row.note,
+          sourceToggle: source.toggleMode === 'disable-only-family' ? 'disable-only' as const : undefined,
+        }
+      : row;
+    if (registryRow.id === 'granular' && delayBToGranularActive) {
+      return { ...registryRow, cells: { ...registryRow.cells, delayB: { kind: 'blocked' as const, note: 'Blocked while Delay B → Granular is active' } } };
     }
-    if (row.id === 'delayBOut' && granularToDelayBActive) {
-      return { ...row, cells: { ...row.cells, granular: { kind: 'blocked' as const, note: 'Blocked while Granular → Delay B is active' } } };
+    if (registryRow.id === 'delayBOut' && granularToDelayBActive) {
+      return { ...registryRow, cells: { ...registryRow.cells, granular: { kind: 'blocked' as const, note: 'Blocked while Granular → Delay B is active' } } };
     }
-    return row;
+    return registryRow;
   }), [granularToDelayBActive, delayBToGranularActive]);
   const visibleRows = React.useMemo(
     () => (showActiveOnly ? effectiveRows.filter((row) => rowIsEnabled(row, state)) : effectiveRows),
@@ -993,10 +965,10 @@ export default function RoutingMatrix({
         style={{ '--row-accent': offInAll ? '#7e8794' : row.accent } as React.CSSProperties}
         title={title}
         aria-label={title}
-        onMouseEnter={() => announceHelp('routingMatrixDynamicsColumn', { page: helpPage, label: 'Dynamics Column' })}
-        onFocus={() => announceHelp('routingMatrixDynamicsColumn', { page: helpPage, label: 'Dynamics Column' })}
+        onMouseEnter={() => announceHelp('routingMatrixTextureColumn', { page: helpPage, label: 'Texture Column' })}
+        onFocus={() => announceHelp('routingMatrixTextureColumn', { page: helpPage, label: 'Texture Column' })}
         onClick={() => {
-          announceHelp('routingMatrixDynamicsColumn', { page: helpPage, label: 'Dynamics Column' });
+          announceHelp('routingMatrixTextureColumn', { page: helpPage, label: 'Texture Column' });
           onParamChange(route.key, nextOption.value);
         }}
       >

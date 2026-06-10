@@ -34,7 +34,7 @@ export const STEM_RECORD_TRACK_LABELS: Record<StemRecordTrackId, string> = {
   delayAOut: 'Delay A',
   delayBOut: 'Delay B',
   reverb: 'Reverb',
-  dynamics: 'Dynamics',
+  dynamics: 'Texture',
 };
 
 export const STEM_RECORD_DEFAULTS: Record<StemRecordTrackId, boolean> = {

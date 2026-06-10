@@ -1,20 +1,14 @@
 import type { MutableRefObject } from 'react';
 
-import { useSelectedAudioEngineLiveTriggerCallbacks } from './useSelectedAudioEngineLiveTriggerCallbacks';
+import {
+  useLiveTriggerUiCallbacks,
+  type LiveTriggerActiveTab,
+  type LiveTriggerUiMode,
+} from './useLiveTriggerUiCallbacks';
 import type { SliderState } from './state';
 
-type ProductRuntimeLiveTriggerActiveTab =
-  | 'global'
-  | 'visualizer'
-  | 'synth'
-  | 'drums'
-  | 'reverb'
-  | 'granular'
-  | 'earth'
-  | 'delay'
-  | 'dynamics'
-  | 'routing';
-type ProductRuntimeLiveTriggerUiMode = 'snowflake' | 'advanced' | 'journey';
+type ProductRuntimeLiveTriggerActiveTab = LiveTriggerActiveTab;
+type ProductRuntimeLiveTriggerUiMode = LiveTriggerUiMode;
 
 export type ProductRuntimeLiveTriggerCallbacksOptions = {
   activeTab: ProductRuntimeLiveTriggerActiveTab;
@@ -49,21 +43,19 @@ export function useProductRuntimeLiveTriggerCallbacks({
   setProductPianoDistanceTriggerCallback,
   ...options
 }: ProductRuntimeLiveTriggerCallbacksOptions): void {
-  // TODO(product-runtime-compat-10E): live trigger registration still delegates to the
-  // selected-runtime compatibility hook until source/FX callbacks are product-owned.
-  useSelectedAudioEngineLiveTriggerCallbacks({
+  useLiveTriggerUiCallbacks({
     ...options,
-    setSelectedDrumMorphTriggerCallback: setProductDrumMorphTriggerCallback,
-    setSelectedDrumParamSHTriggerCallback: setProductDrumParamSHTriggerCallback,
-    setSelectedGranularSHTriggerCallback: setProductGranularSHTriggerCallback,
-    setSelectedLeadDelayCallback: setProductLeadDelayCallback,
-    setSelectedLeadDistanceCallback: setProductLeadDistanceCallback,
-    setSelectedLeadExpressionCallback: setProductLeadExpressionCallback,
-    setSelectedLeadMorphCallback: setProductLeadMorphCallback,
-    setSelectedPad2DistanceTriggerCallback: setProductPad2DistanceTriggerCallback,
-    setSelectedPad2MorphTriggerCallback: setProductPad2MorphTriggerCallback,
-    setSelectedPadDistanceTriggerCallback: setProductPadDistanceTriggerCallback,
-    setSelectedPadMorphTriggerCallback: setProductPadMorphTriggerCallback,
-    setSelectedPianoDistanceTriggerCallback: setProductPianoDistanceTriggerCallback,
+    setDrumMorphTriggerCallback: setProductDrumMorphTriggerCallback,
+    setDrumParamSHTriggerCallback: setProductDrumParamSHTriggerCallback,
+    setGranularSHTriggerCallback: setProductGranularSHTriggerCallback,
+    setLeadDelayCallback: setProductLeadDelayCallback,
+    setLeadDistanceCallback: setProductLeadDistanceCallback,
+    setLeadExpressionCallback: setProductLeadExpressionCallback,
+    setLeadMorphCallback: setProductLeadMorphCallback,
+    setPad2DistanceTriggerCallback: setProductPad2DistanceTriggerCallback,
+    setPad2MorphTriggerCallback: setProductPad2MorphTriggerCallback,
+    setPadDistanceTriggerCallback: setProductPadDistanceTriggerCallback,
+    setPadMorphTriggerCallback: setProductPadMorphTriggerCallback,
+    setPianoDistanceTriggerCallback: setProductPianoDistanceTriggerCallback,
   });
 }

@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 const args = new Set(process.argv.slice(2));
 const outputJson = args.has('--json');
 const failOnIssues = args.has('--fail-on-issues');
+const requireDb = args.has('--require-db');
 
 const tempDir = await mkdtemp(path.join(tmpdir(), 'preset-v2-texture-audit-'));
 const outfile = path.join(tempDir, 'preset-v2-texture-audit.mjs');
@@ -37,6 +38,7 @@ try {
 
         const outputJson = ${JSON.stringify(outputJson)};
         const failOnIssues = ${JSON.stringify(failOnIssues)};
+        const requireDb = ${JSON.stringify(requireDb)};
 
         function readEnvFile(filePath) {
           if (!fs.existsSync(filePath)) return {};
@@ -67,9 +69,20 @@ try {
         };
 
         const databaseUrl = env.DATABASE_URL ?? env.SUPABASE_DATABASE_URL ?? env.SUPABASE_DB_URL;
-        if (!databaseUrl) throw new Error('Missing DATABASE_URL, SUPABASE_DATABASE_URL, or SUPABASE_DB_URL.');
+        if (!databaseUrl) {
+          const report = {
+            schemaVersion: 1,
+            generatedAt: new Date().toISOString(),
+            status: 'skipped',
+            reason: 'Missing DATABASE_URL, SUPABASE_DATABASE_URL, or SUPABASE_DB_URL.',
+          };
+          if (requireDb) throw new Error(report.reason);
+          if (outputJson) console.log(JSON.stringify(report, null, 2));
+          else console.log('Supabase preset V2 Texture Postgres audit skipped: ' + report.reason);
+          process.exit(0);
+        }
 
-        const require = createRequire(import.meta.url);
+        const require = createRequire(path.join(process.cwd(), 'package.json'));
         const pg = require('pg');
         const client = new pg.Client({
           connectionString: databaseUrl,
@@ -132,6 +145,12 @@ try {
           return counts;
         }
 
+        function canonicalScope(scope) {
+          if (scope === 'dynamicsDrift') return 'degradeDrift';
+          if (scope === 'dynamicsErosion') return 'degradeErosion';
+          return scope ?? '';
+        }
+
         async function queryRows(sql, params = []) {
           const result = await client.query(sql, params);
           return result.rows;
@@ -168,8 +187,8 @@ try {
 
         const textureScopeKeys = [
           'source:degrade',
-          'kit:dynamicsDrift',
-          'kit:dynamicsErosion',
+          'kit:degradeDrift',
+          'kit:degradeErosion',
           'source:dynamicsBus',
           'engine:dynamicsEq1',
           'engine:dynamicsEq2',
@@ -177,6 +196,10 @@ try {
           'source:masterFx',
           'engine:dynamicsSaturation',
           'engine:dynamicsEndChain',
+        ];
+        const legacyTextureScopeKeys = [
+          'kit:dynamicsDrift',
+          'kit:dynamicsErosion',
         ];
 
         const hashMismatches = [];
@@ -389,7 +412,7 @@ try {
         const duplicateActiveLogicalIdentities = [];
         const logicalGroups = new Map();
         for (const preset of activePresets) {
-          const logicalKey = key(preset.owner_key, preset.type, preset.scope, String(preset.name ?? '').trim().toLowerCase());
+          const logicalKey = key(preset.owner_key, preset.type, canonicalScope(preset.scope), String(preset.name ?? '').trim().toLowerCase());
           const rows = logicalGroups.get(logicalKey) ?? [];
           rows.push(preset);
           logicalGroups.set(logicalKey, rows);
@@ -399,7 +422,7 @@ try {
             duplicateActiveLogicalIdentities.push({
               ownerKey: group[0].owner_key,
               type: group[0].type,
-              scope: group[0].scope,
+              scope: canonicalScope(group[0].scope),
               nameKey: String(group[0].name ?? '').trim().toLowerCase(),
               count: group.length,
               ids: group.map((row) => row.id),
@@ -411,7 +434,7 @@ try {
         const latestHashGroups = new Map();
         for (const preset of activePresets) {
           if (!preset.latest_resolved_hash) continue;
-          const latestKey = key(preset.type, preset.scope, preset.latest_resolved_hash);
+          const latestKey = key(preset.type, canonicalScope(preset.scope), preset.latest_resolved_hash);
           const rows = latestHashGroups.get(latestKey) ?? [];
           rows.push(preset);
           latestHashGroups.set(latestKey, rows);
@@ -420,7 +443,7 @@ try {
           if (group.length > 1) {
             duplicateLatestGroups.push({
               type: group[0].type,
-              scope: group[0].scope,
+              scope: canonicalScope(group[0].scope),
               resolvedHash: shortHash(group[0].latest_resolved_hash),
               count: group.length,
               names: group.map((row) => row.name).sort(),
@@ -432,7 +455,7 @@ try {
           .filter((group) => {
             const fullGroup = activePresets.filter((preset) => (
               preset.type === group.type
-              && preset.scope === group.scope
+              && canonicalScope(preset.scope) === group.scope
               && shortHash(preset.latest_resolved_hash) === group.resolvedHash
             ));
             return fullGroup.some(isInternalDerived);
@@ -463,8 +486,8 @@ try {
           'source:masterFx': masterFxParentKeys,
         };
         const leafAllowed = {
-          'kit:dynamicsDrift': DYNAMICS_DRIFT_PRESET_KEYS,
-          'kit:dynamicsErosion': DYNAMICS_EROSION_PRESET_KEYS,
+          'kit:degradeDrift': DYNAMICS_DRIFT_PRESET_KEYS,
+          'kit:degradeErosion': DYNAMICS_EROSION_PRESET_KEYS,
           'engine:dynamicsEq1': DYNAMICS_EQ1_PRESET_KEYS,
           'engine:dynamicsEq2': DYNAMICS_EQ2_PRESET_KEYS,
           'engine:dynamicsSidechain': DYNAMICS_SIDECHAIN_PRESET_KEYS,
@@ -547,6 +570,13 @@ try {
               total: countByScope(presets)[scopeKey] ?? 0,
             },
           ])),
+          legacyTextureCounts: Object.fromEntries(legacyTextureScopeKeys.map((scopeKey) => [
+            scopeKey,
+            {
+              active: countByScope(activePresets)[scopeKey] ?? 0,
+              total: countByScope(presets)[scopeKey] ?? 0,
+            },
+          ])),
           integrity: {
             hashMismatchCount: hashMismatches.length,
             hashMismatches: hashMismatches.slice(0, 20),
@@ -566,6 +596,8 @@ try {
             activeLatestRefsToLegacyDynamics: activeLatestRefsToLegacyDynamics.slice(0, 20),
             payloadShapeIssueCount: payloadShapeIssues.length,
             payloadShapeIssues: payloadShapeIssues.slice(0, 60),
+            activeLegacyTextureScopeCount: legacyTextureScopeKeys
+              .reduce((sum, scopeKey) => sum + (countByScope(activePresets)[scopeKey] ?? 0), 0),
             unreferencedPayloadCount,
           },
           dedupe: {
@@ -595,6 +627,7 @@ try {
           + report.integrity.legacyStateTextureRefCount
           + report.integrity.activeLatestRefsToLegacyDynamicsCount
           + report.integrity.payloadShapeIssueCount
+          + report.integrity.activeLegacyTextureScopeCount
           + report.dedupe.duplicateActiveLogicalIdentityCount
           + report.dedupe.duplicateLatestGroupCount;
 
@@ -620,6 +653,7 @@ try {
           console.log('- legacy state Texture refs: ' + report.integrity.legacyStateTextureRefCount);
           console.log('- active latest refs to source:dynamics: ' + report.integrity.activeLatestRefsToLegacyDynamicsCount);
           console.log('- Texture payload shape issues: ' + report.integrity.payloadShapeIssueCount);
+          console.log('- active legacy Drift/Erosion scopes: ' + report.integrity.activeLegacyTextureScopeCount);
           console.log('- duplicate active logical identities: ' + report.dedupe.duplicateActiveLogicalIdentityCount);
           console.log('- duplicate latest groups: ' + report.dedupe.duplicateLatestGroupCount);
           console.log('Historical unresolved version warnings: ' + report.integrity.unresolvedVersionWarningCount);

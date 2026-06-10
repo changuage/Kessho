@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "KesshoProductParamIds.h"
+#include "ProductDynamicsRouteConstants.h"
 
 namespace kessho::product::internal {
 

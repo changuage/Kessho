@@ -840,17 +840,24 @@
       ],
       "productEvidence": [
         {
-          "file": "src/audio/coreProductSnapshot.ts",
+          "file": "src/audio/coreProductReverbSnapshot.ts",
           "tokens": [
             "resolveReverbSnapshotParams",
             "shouldUseMobileReverbQualityOverride",
             "isMobileDevice(nav)",
             "sonicParityReverbWashBoost",
             "sonicParityReverbBloomBoost",
+            "getEffectiveTension",
+            "quantizeShimmerPitchToScale"
+          ]
+        },
+        {
+          "file": "src/audio/coreProductSnapshot.ts",
+          "tokens": [
+            "resolveReverbSnapshotParams(sliderState, tension)",
+            "shouldUseMobileReverbQualityOverride(sliderState)",
             "reverbChordWash",
             "reverbResolutionBloom",
-            "getEffectiveTension",
-            "quantizeShimmerPitchToScale",
             "reverbMix:",
             "reverbShimmerPitch:",
             "reverbPreCompThreshold:"
@@ -873,7 +880,7 @@
           ]
         },
         {
-          "file": "cpp/KesshoCore/src/product/fx/ProductFxModules.cpp",
+          "file": "cpp/KesshoCore/src/product/fx/ProductReverbModuleConfig.cpp",
           "tokens": [
             "configureReverbModule",
             "effective_decay",
@@ -1105,9 +1112,9 @@
           ]
         },
         {
-          "file": "src/audio/coreProductEngineHost.ts",
+          "file": "src/audio/product/host/CoreProductManualAuditionBridge.ts",
           "tokens": [
-            "ensurePianoAssetForNote(manualNote.midi, manualNote.velocity)"
+            "context.assetRegistrar.ensurePianoAssetForNote(manualNote.midi, manualNote.velocity)"
           ]
         },
         {
@@ -1235,13 +1242,28 @@
         {
           "file": "cpp/KesshoCore/src/product/fx/ProductDynamics.cpp",
           "tokens": [
+            "resetSonicParityFxRuntime"
+          ]
+        },
+        {
+          "file": "cpp/KesshoCore/src/product/fx/ProductDynamicsSidechain.cpp",
+          "tokens": [
             "sidechainTargetAmount",
             "triggerSidechainDuck",
-            "renderSidechainGains",
+            "renderSidechainGains"
+          ]
+        },
+        {
+          "file": "cpp/KesshoCore/src/product/fx/ProductDynamicsRouting.cpp",
+          "tokens": [
             "mixFxBuffer",
-            "graph_sidechain_input_l[sidechain_target]",
-            "renderDynamics",
-            "resetSonicParityFxRuntime"
+            "graph_sidechain_input_l[sidechain_target]"
+          ]
+        },
+        {
+          "file": "cpp/KesshoCore/src/product/fx/ProductDynamicsRender.cpp",
+          "tokens": [
+            "renderDynamics"
           ]
         },
         {

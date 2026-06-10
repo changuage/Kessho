@@ -9,7 +9,7 @@ type ProductRuntimeVisualizerActiveTab =
   | 'granular'
   | 'earth'
   | 'delay'
-  | 'dynamics'
+  | 'texture'
   | 'routing';
 type ProductRuntimeVisualizerUiMode = 'snowflake' | 'advanced' | 'journey';
 

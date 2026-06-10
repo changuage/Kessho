@@ -1,7 +1,8 @@
 import { DRUM_VOICES, type DrumParamDef } from '../audio/drumVoiceConfig';
 import type { DrumVoiceType } from '../audio/drumSynth';
+export type { SliderPageId } from './pages/pageAliases';
+import type { SliderPageId } from './pages/pageAliases';
 
-export type SliderPageId = 'app' | 'global' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing';
 export type DualModeSupport = 'full' | 'walk-only' | 'single-only';
 
 export interface SliderHelpSurface {
@@ -54,7 +55,7 @@ const ea = (section: string, label: string, dualMode: DualModeSupport = 'full', 
 const dy = (section: string, label: string, dualMode: DualModeSupport = 'full', audit: string[] = []) =>
   surface('delay', section, label, dualMode, audit);
 const dn = (section: string, label: string, dualMode: DualModeSupport = 'full', audit: string[] = []) =>
-  surface('dynamics', section, label, dualMode, audit);
+  surface('texture', section, label, dualMode, audit);
 const rt = (section: string, label: string, dualMode: DualModeSupport = 'full', audit: string[] = []) =>
   surface('routing', section, label, dualMode, audit);
 
@@ -381,7 +382,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
 const routingEntries: Record<string, SliderHelpEntry> = {
   routingMatrixOverview: entry(
     'Shows source levels and FX sends in one dense grid.',
-    'Rows are sound sources and return buses. Columns are Level, Delay A, Delay B, Granular, Degrade, Reverb, and Dynamics. Drag an amount cell to trim one route. In walk or sample-and-hold, drag the band edges to resize the range or drag the band body to move the whole range. Double-click on desktop or long-press on touch to cycle modes. Drag an amount column header left or right to trim every editable route in that destination column. Click a Dynamics cell to cycle Skip, EQ 1, EQ 2, and Sidechain. Use Source all/on to switch between every source and only active sources.',
+    'Rows are sound sources and return buses. Columns are Level, Delay A, Delay B, Granular, Degrade, Reverb, and Texture. Drag an amount cell to trim one route. In walk or sample-and-hold, drag the band edges to resize the range or drag the band body to move the whole range. Double-click on desktop or long-press on touch to cycle modes. Drag an amount column header left or right to trim every editable route in that destination column. Click a Texture cell to cycle Skip, EQ 1, EQ 2, and Sidechain. Use Source all/on to switch between every source and only active sources.',
     [
       rt('FX Routing Matrix', 'FX Routing Matrix', 'full', [
         'Routing uses the neutral MatrixSurface baseline: row/source dots carry identity, while destination columns and cells stay visually neutral.',
@@ -418,10 +419,10 @@ const routingEntries: Record<string, SliderHelpEntry> = {
     'The Reverb column controls how much each source feeds the shared reverb tail. Drag one cell for a single source, or drag the Reverb header to trim every editable reverb send together. Degrade can feed Reverb, but that disables the reverse Reverb-to-Degrade route.',
     [rt('FX Routing Matrix', 'Reverb Column')],
   ),
-  routingMatrixDynamicsColumn: entry(
-    'Chooses the terminal Dynamics Bus path for each row.',
+  routingMatrixTextureColumn: entry(
+    'Chooses the terminal Texture Bus path for each row.',
     'Each cell cycles through Skip, EQ 1, EQ 2, and Sidechain. This is a mutually exclusive destination selector rather than a level slider, so the column header is not a drag control.',
-    [rt('FX Routing Matrix', 'Dynamics Column', 'single-only')],
+    [rt('FX Routing Matrix', 'Texture Column', 'single-only')],
   ),
 };
 

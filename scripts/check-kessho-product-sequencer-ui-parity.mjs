@@ -1057,6 +1057,30 @@ async function nudgeSelectedEditorValue(page, direction, times = 1) {
   }
 }
 
+const RANGE_SUB_LANE_BASELINE_UP_NUDGES = Object.freeze({
+  expression: 5,
+  morph: 5,
+  distance: 0,
+});
+
+const RANGE_SUB_LANE_FLOOR_NUDGES = Object.freeze({
+  expression: 6,
+  morph: 12,
+  distance: 6,
+});
+
+async function resetRangeSubLaneStepValues(page, engineMode, tab, lane, steps) {
+  const floorNudges = RANGE_SUB_LANE_FLOOR_NUDGES[lane] ?? 6;
+  const baselineUpNudges = RANGE_SUB_LANE_BASELINE_UP_NUDGES[lane] ?? 0;
+  for (let step = 0; step < steps; step += 1) {
+    await setSelectedEditorStep(page, step, engineMode, tab, `${lane} baseline`);
+    await nudgeSelectedEditorValue(page, -1, floorNudges);
+    if (baselineUpNudges > 0) {
+      await nudgeSelectedEditorValue(page, 1, baselineUpNudges);
+    }
+  }
+}
+
 async function nudgeSelectedEditorValueUntilChanged(page, preferredDirection) {
   const directions = [preferredDirection, -preferredDirection];
   for (const direction of directions) {
@@ -1068,8 +1092,11 @@ async function nudgeSelectedEditorValueUntilChanged(page, preferredDirection) {
   throw new Error(`Selected editor value did not change with keyboard nudge (${preferredDirection})`);
 }
 
-async function writeRangeSubLaneStepValues(page, engineMode, tab, lane, state, moves) {
+async function writeRangeSubLaneStepValues(page, engineMode, tab, lane, state, moves, options = {}) {
   await setRangeSubLaneState(page, lane, state);
+  if (options.resetStepValues) {
+    await resetRangeSubLaneStepValues(page, engineMode, tab, lane, state.steps);
+  }
   for (const move of moves) {
     await setSelectedEditorStep(page, move.step, engineMode, tab, `${lane} value`);
     await nudgeSelectedEditorValue(page, move.direction, move.times);
@@ -2031,7 +2058,7 @@ async function proofSequencePresetStepValueRoundTrip(page, engineMode, tab) {
 
   const savedRangeSignatures = {};
   for (const [lane, state] of Object.entries(rangeStepValueStates)) {
-    savedRangeSignatures[lane] = await writeRangeSubLaneStepValues(page, engineMode, tab, lane, state, savedRangeMoves[lane]);
+    savedRangeSignatures[lane] = await writeRangeSubLaneStepValues(page, engineMode, tab, lane, state, savedRangeMoves[lane], { resetStepValues: true });
   }
   const savedExpressionSignature = savedRangeSignatures.expression;
   const triggerStepIndex = 1;
@@ -2071,7 +2098,7 @@ async function proofSequencePresetStepValueRoundTrip(page, engineMode, tab) {
 
   const changedRangeSignatures = {};
   for (const [lane, state] of Object.entries(rangeStepValueStates)) {
-    changedRangeSignatures[lane] = await writeRangeSubLaneStepValues(page, engineMode, tab, lane, state, changedRangeMoves[lane]);
+    changedRangeSignatures[lane] = await writeRangeSubLaneStepValues(page, engineMode, tab, lane, state, changedRangeMoves[lane], { resetStepValues: true });
     assert(
       changedRangeSignatures[lane] !== savedRangeSignatures[lane],
       `${engineMode}/${tab}: ${lane} step values did not dirty before sequence preset reload`,

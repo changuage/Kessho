@@ -268,7 +268,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
   const [saturationPresetName, setSaturationPresetName] = useState<string | undefined>();
   const [erosionMatrixOpen, setErosionMatrixOpen] = useState(false);
 
-  const bindSliderHelp = useCallback((paramKey: keyof SliderState, label: string, page: SliderPageId = 'dynamics') => ({
+  const bindSliderHelp = useCallback((paramKey: keyof SliderState, label: string, page: SliderPageId = 'texture') => ({
     onMouseEnter: () => announceSlider(String(paramKey), { label, page }),
     onPointerDown: () => announceSlider(String(paramKey), { label, page }),
     onFocus: () => announceSlider(String(paramKey), { label, page }),
@@ -439,7 +439,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
               type="button"
               aria-pressed={enabled}
               onClick={() => setModuleEnabled(config.enabledKey, !enabled)}
-              {...bindHelp(`${config.enabledKey}`, { label: `${config.label} FX`, page: 'dynamics' })}
+              {...bindHelp(`${config.enabledKey}`, { label: `${config.label} FX`, page: 'texture' })}
             >
               {enabled ? 'FX On' : 'FX Off'}
             </button>
@@ -470,7 +470,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     type="button"
                     className={`dynamics-mode-btn${lowType === option.value ? ' active' : ''}`}
                     onClick={() => onSelectChange(config.lowTypeKey, option.value)}
-                    {...bindHelp(`${String(config.lowTypeKey)}_${option.value}`, { label: option.label, page: 'dynamics' })}
+                    {...bindHelp(`${String(config.lowTypeKey)}_${option.value}`, { label: option.label, page: 'texture' })}
                   >
                     {option.label}
                   </button>
@@ -484,14 +484,14 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     type="button"
                     className={`dynamics-mode-btn${highType === option.value ? ' active' : ''}`}
                     onClick={() => onSelectChange(config.highTypeKey, option.value)}
-                    {...bindHelp(`${String(config.highTypeKey)}_${option.value}`, { label: option.label, page: 'dynamics' })}
+                    {...bindHelp(`${String(config.highTypeKey)}_${option.value}`, { label: option.label, page: 'texture' })}
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
             </div>
-            <div {...bindHelp('dynamicsEqVisualizer', { label: `${config.label} Visualizer`, page: 'dynamics' })}>
+            <div {...bindHelp('dynamicsEqVisualizer', { label: `${config.label} Visualizer`, page: 'texture' })}>
               <DynamicsEqVisualizer
                 state={state}
                 eqId={config.id}
@@ -572,7 +572,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   type="button"
                   aria-pressed={state.driftEnabled}
                   onClick={() => setModuleEnabled('driftEnabled', !state.driftEnabled)}
-                  {...bindHelp('driftEnabled', { label: 'Drift FX', page: 'dynamics' })}
+                  {...bindHelp('driftEnabled', { label: 'Drift FX', page: 'texture' })}
                 >
                   {state.driftEnabled ? 'FX On' : 'FX Off'}
                 </button>
@@ -585,7 +585,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                 <PresetDropdown
                   className="dynamics-preset-toolbar"
                   level="kit"
-                  scope="dynamicsDrift"
+                  scope="degradeDrift"
                   state={state}
                   currentName={driftPresetName}
                   onLoad={handleDriftPresetLoad}
@@ -600,7 +600,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     key={mode.value}
                     className={`dynamics-mode-btn${state.driftMode === mode.value ? ' active' : ''}`}
                     onClick={() => onSelectChange('driftMode', mode.value)}
-                    {...bindHelp(`driftMode_${mode.value}`, { label: mode.label, page: 'dynamics' })}
+                    {...bindHelp(`driftMode_${mode.value}`, { label: mode.label, page: 'texture' })}
                   >
                     {mode.label}
                   </button>
@@ -613,13 +613,13 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     type="button"
                     className={`dynamics-mode-btn${state.driftQuality === option.value ? ' active' : ''}`}
                     onClick={() => onSelectChange('driftQuality', option.value)}
-                    {...bindHelp(`driftQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
+                    {...bindHelp(`driftQuality_${option.value}`, { label: option.label, page: 'texture' })}
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
-              <div {...bindHelp('driftVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
+              <div {...bindHelp('driftVisualizer', { label: 'Visualizer', page: 'texture' })}>
                 <DynamicsDriftVisualizer
                   state={state}
                   onParamChange={onParamChange}
@@ -646,7 +646,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     type="button"
                     aria-pressed={state.erosionEnabled}
                     onClick={() => setModuleEnabled('erosionEnabled', !state.erosionEnabled)}
-                    {...bindHelp('erosionEnabled', { label: 'Erosion FX', page: 'dynamics' })}
+                    {...bindHelp('erosionEnabled', { label: 'Erosion FX', page: 'texture' })}
                   >
                     {state.erosionEnabled ? 'FX On' : 'FX Off'}
                   </button>
@@ -659,7 +659,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   <PresetDropdown
                     className="dynamics-preset-toolbar"
                     level="kit"
-                    scope="dynamicsErosion"
+                    scope="degradeErosion"
                     state={state}
                     currentName={erosionPresetName}
                     onLoad={handleErosionPresetLoad}
@@ -675,7 +675,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                       type="button"
                       className={`dynamics-mode-btn${state.erosionQuality === option.value ? ' active' : ''}`}
                       onClick={() => onSelectChange('erosionQuality', option.value)}
-                      {...bindHelp(`erosionQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
+                      {...bindHelp(`erosionQuality_${option.value}`, { label: option.label, page: 'texture' })}
                     >
                       {option.label}
                     </button>
@@ -696,7 +696,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     type="button"
                     aria-expanded={erosionMatrixOpen}
                     onClick={() => setErosionMatrixOpen((open) => !open)}
-                    {...bindHelp('erosionModMatrix', { label: 'Mod Matrix', page: 'dynamics' })}
+                    {...bindHelp('erosionModMatrix', { label: 'Mod Matrix', page: 'texture' })}
                   >
                     <span>Mod Matrix</span>
                     <span>{erosionMatrixOpen ? 'Hide' : 'Show'}</span>
@@ -720,7 +720,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                                     value={Number(state[key] ?? 0)}
                                     paramKey={key}
                                     onChange={onParamChange}
-                                    helpPage="dynamics"
+                                    helpPage="texture"
                                     {...sliderProps(key)}
                                   />
                                 </div>
@@ -747,7 +747,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   type="button"
                   aria-pressed={dynamicsBusActive}
                   onClick={() => setModuleEnabled('dynamicsBusEnabled', !dynamicsBusActive)}
-                  {...bindHelp('dynamicsBusEnabled', { label: 'Dynamics Bus', page: 'dynamics' })}
+                  {...bindHelp('dynamicsBusEnabled', { label: 'Dynamics Bus', page: 'texture' })}
                 >
                   {dynamicsBusActive ? 'FX On' : 'FX Off'}
                 </button>
@@ -783,7 +783,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                         type="button"
                         aria-pressed={state.sidechainEnabled}
                         onClick={() => setModuleEnabled('sidechainEnabled', !state.sidechainEnabled)}
-                        {...bindHelp('sidechainEnabled', { label: 'Sidechain Compression', page: 'dynamics' })}
+                        {...bindHelp('sidechainEnabled', { label: 'Sidechain Compression', page: 'texture' })}
                       >
                         {state.sidechainEnabled ? 'FX On' : 'FX Off'}
                       </button>
@@ -826,7 +826,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                         </div>
                       </div>
 
-                      <div {...bindHelp('sidechainVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
+                      <div {...bindHelp('sidechainVisualizer', { label: 'Visualizer', page: 'texture' })}>
                         <DynamicsSidechainVisualizer
                           state={state}
                           onParamChange={onParamChange}
@@ -888,7 +888,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   type="button"
                   aria-pressed={state.dynamicsSaturationEnabled}
                   onClick={() => setModuleEnabled('dynamicsSaturationEnabled', !state.dynamicsSaturationEnabled)}
-                  {...bindHelp('dynamicsSaturationEnabled', { label: 'Saturation FX', page: 'dynamics' })}
+                  {...bindHelp('dynamicsSaturationEnabled', { label: 'Saturation FX', page: 'texture' })}
                 >
                   {state.dynamicsSaturationEnabled ? 'FX On' : 'FX Off'}
                 </button>
@@ -916,7 +916,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     key={mode.value}
                     className={`dynamics-mode-btn${state.dynamicsSaturationMode === mode.value ? ' active' : ''}`}
                     onClick={() => onSelectChange('dynamicsSaturationMode', mode.value)}
-                    {...bindHelp(`dynamicsSaturationMode_${mode.value}`, { label: mode.label, page: 'dynamics' })}
+                    {...bindHelp(`dynamicsSaturationMode_${mode.value}`, { label: mode.label, page: 'texture' })}
                   >
                     {mode.label}
                   </button>
@@ -929,13 +929,13 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     type="button"
                     className={`dynamics-mode-btn${state.dynamicsSaturationQuality === option.value ? ' active' : ''}`}
                     onClick={() => onSelectChange('dynamicsSaturationQuality', option.value)}
-                    {...bindHelp(`dynamicsSaturationQuality_${option.value}`, { label: option.label, page: 'dynamics' })}
+                    {...bindHelp(`dynamicsSaturationQuality_${option.value}`, { label: option.label, page: 'texture' })}
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
-              <div {...bindHelp('dynamicsSaturationVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
+              <div {...bindHelp('dynamicsSaturationVisualizer', { label: 'Visualizer', page: 'texture' })}>
                 <DynamicsSaturationVisualizer
                   state={state}
                   getDynamicsAnalyser={getDynamicsAnalyser}
@@ -958,7 +958,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                   type="button"
                   aria-pressed={state.endCompEnabled}
                   onClick={() => setModuleEnabled('endCompEnabled', !state.endCompEnabled)}
-                  {...bindHelp('endCompEnabled', { label: 'End Chain FX', page: 'dynamics' })}
+                  {...bindHelp('endCompEnabled', { label: 'End Chain FX', page: 'texture' })}
                 >
                   {state.endCompEnabled ? 'FX On' : 'FX Off'}
                 </button>
@@ -987,13 +987,13 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
                     type="button"
                     className={`dynamics-mode-btn${state.endCompMode === option.value ? ' active' : ''}`}
                     onClick={() => applyEndCompMode(option.value)}
-                    {...bindHelp(`endCompMode_${option.value}`, { label: option.label, page: 'dynamics' })}
+                    {...bindHelp(`endCompMode_${option.value}`, { label: option.label, page: 'texture' })}
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
-              <div {...bindHelp('endChainCompressionVisualizer', { label: 'Visualizer', page: 'dynamics' })}>
+              <div {...bindHelp('endChainCompressionVisualizer', { label: 'Visualizer', page: 'texture' })}>
                 <DynamicsCompressorVisualizer
                   state={state}
                   getDynamicsAnalyser={getDynamicsAnalyser}

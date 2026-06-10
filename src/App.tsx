@@ -107,7 +107,19 @@ import { serializeStepOverrides } from './ui/sequencer/stepOverrideSerialization
 import { type ClockDivision, type PitchBindingMode } from './audio/drumSeqTypes';
 import { sanitizeProductArpConfigs, type ProductArpConfig } from './audio/productArpeggiator';
 import { normalizeSequencerPitchSettingsArray } from './audio/sequencerPitchSettings';
-import type { SliderPageId } from './ui/sliderHelpCatalog';
+import type { SliderPageId } from './ui/pages/pageAliases';
+import {
+  getActiveDawOutputSourceIds,
+  getRoutingSourceDef,
+  getRoutingSourceToggleKeys,
+  normalizeDegradeReverbCrossfeed,
+  normalizeDegradeReverbCrossfeedRanges,
+  ROUTING_DEGRADE_ACTIVE_KEYS,
+  ROUTING_DELAY_A_INPUT_KEYS,
+  ROUTING_DELAY_B_INPUT_KEYS,
+  ROUTING_INSECTS_KEYS,
+  ROUTING_NATURE_KEYS,
+} from './ui/routing';
 import type { SynthKeyboardUiState } from './ui/synth/SynthPage';
 import SnowflakeGeneratorPage from './ui/snowflakeGenerator/SnowflakeGeneratorPage';
 import { usePlatformRuntimeCapabilities } from './ui/usePlatformRuntimeCapabilities';
@@ -136,97 +148,6 @@ const GlobalPage = React.lazy(() => import('./ui/global/GlobalPage'));
 const SynthPage = React.lazy(() => import('./ui/synth/SynthPage'));
 const ReverbPage = React.lazy(() => import('./ui/reverb/ReverbPage'));
 const DrumPage = React.lazy(() => import('./ui/drums/DrumPage'));
-
-const ROUTING_MATRIX_DELAY_A_INPUT_KEYS = new Set<string>([
-  'pad1DelayASend',
-  'pad2DelayASend',
-  'lead1DelayASend',
-  'lead2DelayASend',
-  'pianoDelayASend',
-  'drumDelayASend',
-  'oceanDelayASend',
-  'waterDelayASend',
-  'insDelayASend',
-  'natureDelayASend',
-  'granularDelayASend',
-  'delayBToASend',
-]);
-
-const ROUTING_MATRIX_DELAY_B_INPUT_KEYS = new Set<string>([
-  'pad1DelayBSend',
-  'pad2DelayBSend',
-  'lead1DelayBSend',
-  'lead2DelayBSend',
-  'pianoDelayBSend',
-  'drumDelayBSend',
-  'oceanDelayBSend',
-  'waterDelayBSend',
-  'insDelayBSend',
-  'natureDelayBSend',
-  'granularDelayBSend',
-  'delayAToBSend',
-]);
-
-const ROUTING_MATRIX_DEGRADE_ACTIVE_KEYS = new Set<string>([
-  'degradePad1Send',
-  'degradePad2Send',
-  'degradeLead1Send',
-  'degradeLead2Send',
-  'degradePianoSend',
-  'degradeDrumSend',
-  'degradeWavesSend',
-  'degradeWaterSend',
-  'degradeInsectsSend',
-  'degradeNatureSend',
-  'delayADegradeSend',
-  'delayBDegradeSend',
-  'granularDegradeSend',
-  'reverbDegradeSend',
-  'degradeReverbSend',
-]);
-
-const ROUTING_MATRIX_NATURE_KEYS = new Set<string>(['natureLevel', 'natureReverbSend', 'natureDelayASend', 'natureDelayBSend', 'granularNatureSend', 'degradeNatureSend']);
-
-const ROUTING_MATRIX_INSECTS_KEYS = new Set<string>(['insectsSharedLevel', 'insectsReverbSend', 'insDelayASend', 'insDelayBSend', 'granularInsectsSend', 'degradeInsectsSend']);
-
-type RoutingSourceFlagKey =
-  | 'padEnabled'
-  | 'pad2Enabled'
-  | 'leadEnabled'
-  | 'lead2Enabled'
-  | 'pianoEnabled'
-  | 'drumEnabled'
-  | 'granularEnabled'
-  | 'oceanSampleEnabled'
-  | 'waterEnabled'
-  | 'insectsEnabled'
-  | 'insects2Enabled'
-  | 'birdsEnabled'
-  | 'birds2Enabled'
-  | 'frogsEnabled'
-  | 'delayAEnabled'
-  | 'granularDelayEnabled'
-  | 'reverbEnabled';
-
-const ROUTING_SOURCE_SIMPLE_TOGGLES = {
-  pad1: 'padEnabled',
-  pad2: 'pad2Enabled',
-  lead1: 'leadEnabled',
-  lead2: 'lead2Enabled',
-  piano: 'pianoEnabled',
-  drums: 'drumEnabled',
-  granular: 'granularEnabled',
-  waves: 'oceanSampleEnabled',
-  water: 'waterEnabled',
-  delayAOut: 'delayAEnabled',
-  delayBOut: 'granularDelayEnabled',
-  reverb: 'reverbEnabled',
-} as const satisfies Record<string, RoutingSourceFlagKey>;
-
-const ROUTING_SOURCE_DISABLE_ONLY_FAMILIES = {
-  insects: ['insectsEnabled', 'insects2Enabled'],
-  nature: ['birdsEnabled', 'birds2Enabled', 'frogsEnabled'],
-} as const satisfies Record<string, readonly RoutingSourceFlagKey[]>;
 
 const LEAD_PRESET_SLOT_KEYS = [
   'lead1PresetA',
@@ -391,32 +312,9 @@ function applyPadPresetMorphToState(
   }
 }
 
-type RoutingSourceSimpleToggleId = keyof typeof ROUTING_SOURCE_SIMPLE_TOGGLES;
-type RoutingSourceDisableOnlyFamilyId = keyof typeof ROUTING_SOURCE_DISABLE_ONLY_FAMILIES;
-
-function activeDawOutputSourceIds(state: SliderState): DawOutputSourceId[] {
-  const ids: DawOutputSourceId[] = [];
-  if (state.padEnabled) ids.push('pad1');
-  if (state.pad2Enabled) ids.push('pad2');
-  if (state.leadEnabled) ids.push('lead1');
-  if (state.lead2Enabled) ids.push('lead2');
-  if (state.pianoEnabled) ids.push('piano');
-  if (state.drumEnabled) ids.push('drums');
-  if (state.granularEnabled) ids.push('granular');
-  if (state.oceanSampleEnabled) ids.push('waves');
-  if (state.waterEnabled) ids.push('water');
-  if (state.insectsEnabled || state.insects2Enabled) ids.push('insects');
-  if (state.birdsEnabled || state.birds2Enabled || state.frogsEnabled) ids.push('nature');
-  if (state.delayAEnabled) ids.push('delayAOut');
-  if (state.granularDelayEnabled) ids.push('delayBOut');
-  if (state.reverbEnabled) ids.push('reverb');
-  if (state.dynamicsEnabled) ids.push('dynamics');
-  return ids;
-}
-
 const GranularPage = React.lazy(() => import('./ui/granular/GranularPage'));
 const DelayPage = React.lazy(() => import('./ui/delay/DelayPage'));
-const DynamicsPage = React.lazy(() => import('./ui/dynamics/DynamicsPage'));
+const TexturePage = React.lazy(() => import('./ui/texture/TexturePage'));
 const RoutingPage = React.lazy(() => import('./ui/routing/RoutingPage'));
 const EarthPage = React.lazy(() => import('./ui/earth/EarthPage'));
 const ReactiveVisualizerPage = React.lazy(() => import('./ui/visualizer/ReactiveVisualizerPage'));
@@ -551,32 +449,6 @@ const checkPresetCompatibility = (preset: SavedPreset): string[] => {
 
   return warnings;
 };
-
-function normalizeDegradeReverbRouteExclusion(state: SliderState): SliderState {
-  const normalized = { ...state };
-  const degradeToReverb = Number(normalized.degradeReverbSend ?? 0);
-  const reverbToDegrade = Number(normalized.reverbDegradeSend ?? 0);
-  if (Number.isFinite(degradeToReverb) && degradeToReverb > 0.0001) {
-    normalized.reverbDegradeSend = 0;
-  } else if (Number.isFinite(reverbToDegrade) && reverbToDegrade > 0.0001) {
-    normalized.degradeReverbSend = 0;
-  }
-  return normalized;
-}
-
-function normalizeDegradeReverbRouteRanges(
-  state: SliderState,
-  dualRanges: DualSliderState,
-  dualModes: Record<string, SliderMode>,
-): void {
-  if ((state.degradeReverbSend ?? 0) > 0.0001) {
-    delete dualRanges.reverbDegradeSend;
-    dualModes.reverbDegradeSend = 'single';
-  } else if ((state.reverbDegradeSend ?? 0) > 0.0001) {
-    delete dualRanges.degradeReverbSend;
-    dualModes.degradeReverbSend = 'single';
-  }
-}
 
 // Normalize iOS-only settings to web-compatible values
 const normalizePresetForWeb = (state: SliderState): SliderState => {
@@ -736,7 +608,7 @@ const normalizePresetForWeb = (state: SliderState): SliderState => {
     }
   }
 
-  return normalizeDegradeReverbRouteExclusion(merged);
+  return normalizeDegradeReverbCrossfeed(merged);
 };
 
 function sortSavedStatePresetsByFreshness(presets: SavedPreset[]): SavedPreset[] {
@@ -1210,7 +1082,7 @@ function extractNativeDualRanges(ranges: DualSliderState): Record<string, { min:
   return output;
 }
 
-type AdvancedTab = 'global' | 'visualizer' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing';
+type AdvancedTab = 'global' | 'visualizer' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'texture' | 'routing';
 type AdvancedEditorTab = Exclude<AdvancedTab, 'visualizer'>;
 
 const ADVANCED_TAB_COLORS: Record<AdvancedTab, string> = {
@@ -1222,7 +1094,7 @@ const ADVANCED_TAB_COLORS: Record<AdvancedTab, string> = {
   granular: SOURCE_COLORS.granular,
   earth: SOURCE_COLORS.earth,
   delay: SOURCE_COLORS.delayA,
-  dynamics: SOURCE_COLORS.dynamics,
+  texture: SOURCE_COLORS.dynamics,
   routing: SOURCE_COLORS.routing,
 };
 
@@ -1270,7 +1142,7 @@ const ADVANCED_EDITOR_TABS = [
     label: 'Reverb',
   },
   {
-    id: 'dynamics',
+    id: 'texture',
     helpKey: 'tabDynamics',
     symbol: APP_TAB_SYMBOLS.dynamics,
     label: 'Texture',
@@ -1303,7 +1175,7 @@ const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
   '5': 'granular',
   '6': 'delay',
   '7': 'reverb',
-  '8': 'dynamics',
+  '8': 'texture',
   '9': 'routing',
 };
 
@@ -1771,7 +1643,7 @@ const App: React.FC = () => {
     stateRef,
   });
   const activeDawOutputSources = useMemo(
-    () => activeDawOutputSourceIds(state),
+    () => getActiveDawOutputSourceIds(state) as DawOutputSourceId[],
     [
       state.padEnabled,
       state.pad2Enabled,
@@ -1789,6 +1661,12 @@ const App: React.FC = () => {
       state.frogsEnabled,
       state.delayAEnabled,
       state.granularDelayEnabled,
+      state.degradeEnabled,
+      state.driftEnabled,
+      state.erosionEnabled,
+      state.dynamicsSaturationEnabled,
+      state.degradeReverbSend,
+      state.reverbDegradeSend,
       state.reverbEnabled,
       state.dynamicsEnabled,
     ],
@@ -3102,10 +2980,20 @@ const App: React.FC = () => {
               break;
             case 'degradeReverbSend':
               newState.reverbEnabled = true;
-              if (positiveNumber) newState.reverbDegradeSend = 0;
+              if (positiveNumber) {
+                newState = normalizeDegradeReverbCrossfeed(newState, prev, {
+                  preserveActiveDirection: 'last-edited',
+                  lastEditedDirection: 'degrade-to-reverb',
+                });
+              }
               break;
             case 'reverbDegradeSend':
-              if (positiveNumber) newState.degradeReverbSend = 0;
+              if (positiveNumber) {
+                newState = normalizeDegradeReverbCrossfeed(newState, prev, {
+                  preserveActiveDirection: 'last-edited',
+                  lastEditedDirection: 'reverb-to-degrade',
+                });
+              }
               break;
             case 'lead1Level':
             case 'lead1ReverbSend':
@@ -3276,21 +3164,21 @@ const App: React.FC = () => {
             default:
               break;
           }
-          const routeKeyString = String(routeKey);
-          if (ROUTING_MATRIX_DELAY_A_INPUT_KEYS.has(routeKeyString)) {
+          if (ROUTING_DELAY_A_INPUT_KEYS.has(routeKey)) {
             newState.delayAEnabled = true;
           }
-          if (ROUTING_MATRIX_DELAY_B_INPUT_KEYS.has(routeKeyString)) {
+          if (ROUTING_DELAY_B_INPUT_KEYS.has(routeKey)) {
             newState.granularDelayEnabled = true;
           }
-          if (ROUTING_MATRIX_NATURE_KEYS.has(routeKeyString) && !newState.birdsEnabled && !newState.birds2Enabled && !newState.frogsEnabled) {
+          if (ROUTING_NATURE_KEYS.has(routeKey) && !newState.birdsEnabled && !newState.birds2Enabled && !newState.frogsEnabled) {
             newState.birdsEnabled = true;
           }
-          if (ROUTING_MATRIX_INSECTS_KEYS.has(routeKeyString) && !newState.insectsEnabled && !newState.insects2Enabled) {
+          if (ROUTING_INSECTS_KEYS.has(routeKey) && !newState.insectsEnabled && !newState.insects2Enabled) {
             newState.insectsEnabled = true;
           }
-          if (ROUTING_MATRIX_DEGRADE_ACTIVE_KEYS.has(routeKeyString) || routeKey === 'degradeLevel') {
+          if (ROUTING_DEGRADE_ACTIVE_KEYS.has(routeKey)) {
             newState.dynamicsEnabled = true;
+            newState.degradeEnabled = true;
             if (!newState.driftEnabled && !newState.erosionEnabled) {
               newState.driftEnabled = true;
             }
@@ -4317,6 +4205,8 @@ const App: React.FC = () => {
       onRequestPlaybackStart: requestSequencerPlaybackStart,
       preloadProductRuntime,
       productRuntimeManualTriggers,
+      productRuntimeMode,
+      stateRef,
       setProductDrumEvolveTriggerCallback,
       setProductDrumStepPositionCallback,
       setProductDrumTriggerCallback,
@@ -5267,8 +5157,8 @@ const App: React.FC = () => {
       } else if (atEndpointB) {
         Object.assign(result, stateB);
       }
-      const normalizedResult = normalizeDegradeReverbRouteExclusion(result);
-      normalizeDegradeReverbRouteRanges(normalizedResult, resultDualRanges, resultDualModes);
+      const normalizedResult = normalizeDegradeReverbCrossfeed(result);
+      normalizeDegradeReverbCrossfeedRanges(normalizedResult, resultDualRanges, resultDualModes);
 
       return {
         state: normalizedResult,
@@ -5638,19 +5528,21 @@ const App: React.FC = () => {
     (sourceId: string, enabled: boolean) => {
       hasUserInteractedRef.current = true;
       setState((prev) => {
+        const source = getRoutingSourceDef(sourceId);
+        if (!source) return prev;
         let nextState: SliderState | null = null;
         const ensureNextState = () => {
           if (!nextState) nextState = { ...prev };
           return nextState;
         };
-        const setFlag = (key: RoutingSourceFlagKey, value: boolean) => {
+        const setFlag = (key: keyof SliderState, value: boolean) => {
           if (prev[key] === value) return;
-          ensureNextState()[key] = value;
+          (ensureNextState() as unknown as Record<keyof SliderState, unknown>)[key] = value;
         };
 
-        const simpleToggleKey = ROUTING_SOURCE_SIMPLE_TOGGLES[sourceId as RoutingSourceSimpleToggleId];
-        if (simpleToggleKey) {
-          setFlag(simpleToggleKey, enabled);
+        const toggleKeys = getRoutingSourceToggleKeys(sourceId);
+        if (source.toggleMode === 'simple-toggle' || source.toggleMode === 'return-row') {
+          toggleKeys.forEach((key) => setFlag(key, enabled));
           const finalState = nextState ?? prev;
           if (nextState) {
             applyMorphEndpointStatePatch(prev, finalState);
@@ -5658,9 +5550,8 @@ const App: React.FC = () => {
           return finalState;
         }
 
-        const familyKeys = ROUTING_SOURCE_DISABLE_ONLY_FAMILIES[sourceId as RoutingSourceDisableOnlyFamilyId];
-        if (familyKeys && !enabled) {
-          familyKeys.forEach((key) => setFlag(key, false));
+        if (source.toggleMode === 'disable-only-family' && !enabled) {
+          toggleKeys.forEach((key) => setFlag(key, false));
         }
 
         const finalState = nextState ?? prev;
@@ -6236,9 +6127,9 @@ const App: React.FC = () => {
               />
             )}
 
-            {/* === DYNAMICS TAB === */}
-            {activeTab === 'dynamics' && (
-              <DynamicsPage
+            {/* Texture page controls persisted dynamics* keys until the schema migration. */}
+            {activeTab === 'texture' && (
+              <TexturePage
                 state={state}
                 isMobile={isMobile}
                 onParamChange={handleSliderChange}

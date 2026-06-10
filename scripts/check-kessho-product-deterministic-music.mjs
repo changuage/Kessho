@@ -118,9 +118,9 @@ const SOURCE_PRESET_B_OFFSET = 16;
 const SOURCE_LEVEL_OFFSET = 32;
 const SOURCE_EXPRESSION_OFFSET = 44;
 const SOURCE_DRY_GAIN_OFFSET = 48;
-const SOURCE_POST_LPF_HZ_OFFSET = 72;
-const SOURCE_STEREO_WIDTH_OFFSET = 76;
-const SOURCE_COMMON_BYTES = 96;
+const SOURCE_POST_LPF_HZ_OFFSET = 76;
+const SOURCE_STEREO_WIDTH_OFFSET = 80;
+const SOURCE_COMMON_BYTES = 100;
 const sparseGeneratedBlockBytes = (paramCount) => 4 + paramCount * 4 + 4 + paramCount * 4 + paramCount * 4;
 const SOURCE_DRUM_VOICE_PRESET_A_OFFSET =
   SOURCE_COMMON_BYTES +
@@ -132,8 +132,8 @@ const SOURCE_DRUM_VOICE_MORPH_OFFSET = SOURCE_DRUM_VOICE_PRESET_B_OFFSET + DRUM_
 const SOURCE_ENVELOPE_OFFSET = SOURCE_DRUM_VOICE_MORPH_OFFSET + DRUM_VOICE_COUNT * 4;
 assert(SOURCE_ENVELOPE_OFFSET + 5 * 4 === SOURCE_SIZE, `deterministic source offsets are stale: ${SOURCE_ENVELOPE_OFFSET + 5 * 4} !== ${SOURCE_SIZE}`);
 const ASSET_REF_COUNT = 32;
-const SOUNDSCAPE_TEXTURE_PARAM_COUNT = 37;
-const SOUNDSCAPE_MODULE_PARAM_COUNT = 101;
+const SOUNDSCAPE_TEXTURE_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT');
+const SOUNDSCAPE_MODULE_PARAM_COUNT = generatedConstNumber('KESSHO_PRODUCT_SOUNDSCAPE_PRODUCT_MODULE_PARAM_COUNT');
 const SOUNDSCAPE_BYTES = 4 + SOUNDSCAPE_TEXTURE_PARAM_COUNT * 4 + 4 + SOUNDSCAPE_MODULE_PARAM_COUNT * 4;
 const ASSET_REF_BYTES = ASSET_REF_COUNT * 4 * 2;
 const EVOLUTION_AMOUNT_OFFSET = SNAPSHOT_SIZE - SOUNDSCAPE_BYTES - ASSET_REF_BYTES - 8;
@@ -289,10 +289,14 @@ for (let index = 0; index < expected.length; index += 1) {
   assert(view.getUint16(event + 6, true) === 0, `WASM timeline lane mismatch at event ${index}`);
   assert(view.getUint16(event + 8, true) === expected[index].step, `WASM timeline step mismatch at event ${index}`);
   assert(Math.abs(view.getFloat32(event + 16, true) - expected[index].midi) < 0.001, `WASM timeline midi mismatch at event ${index}`);
-  assert(Math.abs(view.getFloat32(event + 20, true) - expected[index].velocity) < 0.001, `WASM timeline velocity mismatch at event ${index}`);
-  assert(Math.abs(view.getFloat32(event + 28, true) - expected[index].morph) < 0.001, `WASM timeline morph mismatch at event ${index}`);
-  assert(Math.abs(view.getFloat32(event + 32, true) - expected[index].distance) < 0.001, `WASM timeline distance mismatch at event ${index}`);
-  assert(Math.abs(view.getFloat32(event + 36, true) - expected[index].expression) < 0.001, `WASM timeline expression mismatch at event ${index}`);
+  const actualVelocity = view.getFloat32(event + 20, true);
+  const actualMorph = view.getFloat32(event + 28, true);
+  const actualDistance = view.getFloat32(event + 32, true);
+  const actualExpression = view.getFloat32(event + 36, true);
+  assert(Math.abs(actualVelocity - expected[index].velocity) < 0.001, `WASM timeline velocity mismatch at event ${index}: ${actualVelocity} !== ${expected[index].velocity}`);
+  assert(Math.abs(actualMorph - expected[index].morph) < 0.001, `WASM timeline morph mismatch at event ${index}: ${actualMorph} !== ${expected[index].morph}`);
+  assert(Math.abs(actualDistance - expected[index].distance) < 0.001, `WASM timeline distance mismatch at event ${index}: ${actualDistance} !== ${expected[index].distance}`);
+  assert(Math.abs(actualExpression - expected[index].expression) < 0.001, `WASM timeline expression mismatch at event ${index}: ${actualExpression} !== ${expected[index].expression}`);
 }
 
 destroy(engine);

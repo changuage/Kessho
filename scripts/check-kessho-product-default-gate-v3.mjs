@@ -151,6 +151,7 @@ const globalRuntimeComparisonPanel = read('src/ui/global/GlobalRuntimeComparison
 const audioRecording = read('src/ui/useAudioRecording.ts');
 const selectedAudioEngineMacRecovery = read('src/ui/useSelectedAudioEngineMacRecovery.ts');
 const selectedAudioEngineLiveTriggerCallbacks = read('src/ui/useSelectedAudioEngineLiveTriggerCallbacks.ts');
+const liveTriggerUiCallbacks = read('src/ui/useLiveTriggerUiCallbacks.ts');
 const selectedAudioEngineEvolveOverrideCallbacks = read('src/ui/useSelectedAudioEngineEvolveOverrideCallbacks.ts');
 const selectedAudioEngineRuntimeValueCleanup = read('src/ui/useSelectedAudioEngineRuntimeValueCleanup.ts');
 const selectedAudioEngineRuntimeWalkSync = read('src/ui/useSelectedAudioEngineRuntimeWalkSync.ts');
@@ -381,13 +382,16 @@ assert(
     productRuntimeLiveTriggerCallbacks.includes('export type ProductRuntimeLiveTriggerCallbacksOptions = {') &&
     productRuntimeLiveTriggerCallbacks.includes('setProductLeadExpressionCallback: (callback: ((expression: Record<string, number>) => void) | null) => void') &&
     productRuntimeLiveTriggerCallbacks.includes('setProductGranularSHTriggerCallback: (callback: ((positions: Record<string, number>) => void) | null) => void') &&
-    productRuntimeLiveTriggerCallbacks.includes('setSelectedLeadExpressionCallback: setProductLeadExpressionCallback') &&
+    productRuntimeLiveTriggerCallbacks.includes('setLeadExpressionCallback: setProductLeadExpressionCallback') &&
+    productRuntimeLiveTriggerCallbacks.includes('setGranularSHTriggerCallback: setProductGranularSHTriggerCallback') &&
     !productRuntimeLiveTriggerCallbacks.includes('SelectedRuntimeLiveTriggerCallbacksOptions') &&
     !productRuntimeLiveTriggerCallbacks.includes('Parameters<typeof useSelectedAudioEngineLiveTriggerCallbacks>') &&
-    selectedAudioEngineLiveTriggerCallbacks.includes('setSelectedLeadExpressionCallback((expression) =>') &&
-    selectedAudioEngineLiveTriggerCallbacks.includes('setSelectedGranularSHTriggerCallback((positions: Record<string, number>) =>') &&
-    selectedAudioEngineLiveTriggerCallbacks.includes('emitVisualizerPulses({') &&
-    selectedAudioEngineLiveTriggerCallbacks.includes('setRuntimeFlashKeys(Object.keys(positions))'),
+    selectedAudioEngineLiveTriggerCallbacks.includes('setLeadExpressionCallback: setSelectedLeadExpressionCallback') &&
+    selectedAudioEngineLiveTriggerCallbacks.includes('setGranularSHTriggerCallback: setSelectedGranularSHTriggerCallback') &&
+    liveTriggerUiCallbacks.includes('setLeadExpressionCallback((expression) =>') &&
+    liveTriggerUiCallbacks.includes('setGranularSHTriggerCallback((positions: Record<string, number>) =>') &&
+    liveTriggerUiCallbacks.includes('emitVisualizerPulses({') &&
+    liveTriggerUiCallbacks.includes('setRuntimeFlashKeys(Object.keys(positions))'),
   'App must delegate live source/FX selected-runtime callback registration to the live trigger callback hook',
 );
 assert(
@@ -861,7 +865,7 @@ assert(
     !app.includes('const ensureCloudAutoStartPresetStore = useCallback(') &&
     !app.includes('new SupabasePresetStore(supabaseClient)') &&
     !app.includes('new HybridPresetStore(local, cloud)') &&
-    cloudPresetStoreBootstrap.includes("const { getSupabase } = await import('../cloud/supabase')") &&
+    cloudPresetStoreBootstrap.includes("const { ensureCloudAnonymousSession, getSupabase } = await import('../cloud/supabase')") &&
     cloudPresetStoreBootstrap.includes('new SupabasePresetStore(supabaseClient)') &&
     cloudPresetStoreBootstrap.includes('new HybridPresetStore(local, cloud)') &&
     cloudPresetStoreBootstrap.includes('setPresetStore(hybrid)') &&
@@ -890,7 +894,7 @@ assert(
     presetLibraryLoader.includes('onCloudSharedPresetLoaded(') &&
     presetLibraryRuntimeSurface.includes('usePresetLibraryLoader<TSavedPreset>({') &&
     presetLibraryRuntimeSurface.includes('onPresetsLoaded: setSavedPresets') &&
-    presetLibraryRuntimeSurface.includes('onPresetsLoadFailed: () => setSavedPresets([])'),
+    presetLibraryRuntimeSurface.includes('onPresetsLoadFailed: handlePresetsLoadFailed'),
   'App must delegate preset library source selection and cloud share fetches to usePresetLibraryRuntimeSurface',
 );
 assert(
@@ -935,9 +939,9 @@ assert(
     autoStartPresetResolver.includes('window.setTimeout(() => resolve(null), timeoutMs);') &&
     autoStartPresetResolver.includes('const deviceLocalPreset = savedPresets.find((preset) => preset.name === defaultAutoStartPresetName)') &&
     autoStartPresetResolver.includes('const bundledPreset = await loadBundledPresetByName(defaultAutoStartPresetName);') &&
-    autoStartPresetResolver.includes('void loadCloudAutoStartPreset();') &&
     presetBootstrapRuntimeSurface.includes('useAutoStartPresetResolver<TSavedPreset>({') &&
     presetBootstrapRuntimeSurface.includes('loadCloudAutoStartPreset: loadCloudAutoStartPresetFromBootstrap') &&
+    presetBootstrapRuntimeSurface.includes('onCloudAutoStartPreset: setCloudAutoStartPreset') &&
     presetBootstrapRuntimeSurface.includes('resolveDefaultAutoStartPreset'),
   'App must delegate default auto-start preset resolution to usePresetBootstrapRuntimeSurface',
 );

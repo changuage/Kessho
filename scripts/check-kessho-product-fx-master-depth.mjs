@@ -100,7 +100,7 @@ for (const token of [
 }
 
 for (const token of [
-  'const TELEMETRY_BYTES = 8760;',
+  'const TELEMETRY_BYTES = 9760;',
   'masterInputPeak: this.view.getFloat32(ptr + 964, true)',
   'masterOutputPeak: this.view.getFloat32(ptr + 968, true)',
   'masterOutputRms: this.view.getFloat32(ptr + 972, true)',
@@ -124,7 +124,7 @@ for (const token of [
 }
 
 for (const token of [
-  'sizeof(KesshoProductTelemetry) == 8760',
+  'sizeof(KesshoProductTelemetry) == 9760',
   'offsetof(KesshoProductTelemetry, master_input_peak) == 964',
   'offsetof(KesshoProductTelemetry, dynamics_saturation_drive) == 980',
   'offsetof(KesshoProductTelemetry, master_true_peak) == 988',

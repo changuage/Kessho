@@ -913,6 +913,7 @@ const PRODUCT_SNAPSHOT_KEY_PATHS = [
   'src/audio/CoreProductPadPatch.ts',
   'src/audio/CoreProductDrumPatch.ts',
   'src/audio/coreProductDelaySnapshot.ts',
+  'src/audio/coreProductReverbSnapshot.ts',
   'src/audio/coreProductSequencerHold.ts',
   'src/audio/coreProductAssets.ts',
   'src/audio/coreProductArrangementScheduler.ts',

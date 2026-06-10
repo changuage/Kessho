@@ -1852,19 +1852,28 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useProductRuntimeManualTriggers.ts') {
       for (const requiredSnippet of [
         "import type { ProductRuntimeSelectionMode } from '../audio/product/ProductAudioRuntimeSelection'",
-        "import { useSelectedAudioEngineManualTriggers } from './useSelectedAudioEngineManualTriggers'",
+        "import { productEngine } from '../audio/product/ProductEngineProxy'",
+        "import { commitProductControlActionThenTrigger } from '../product-control'",
         'type ProductRuntimeManualTriggersOptions = {',
         'productRuntimeMode: ProductRuntimeSelectionMode',
         'type ProductRuntimeManualTriggers = {',
         'export function useProductRuntimeManualTriggers(',
-        'audioEngineRuntimeMode: productRuntimeMode',
+        "type: 'manual-trigger/request'",
+        "kind: 'synth-note'",
+        "kind: 'drum-voice'",
+        'productEngine.auditionSynthNote(note)',
+        'productEngine.triggerDrumVoice(voice, DEFAULT_MANUAL_DRUM_VELOCITY)',
       ]) {
         if (!source.includes(requiredSnippet)) {
-          failures.push(`${relative}: product manual trigger surface must delegate through the selected-runtime compatibility hook; missing ${requiredSnippet}`);
+          failures.push(`${relative}: product manual trigger surface must own Product Core commit-before-trigger dispatch; missing ${requiredSnippet}`);
         }
       }
-      if (source.includes('productEngine') || source.includes('selectedProductRuntime') || source.includes('referenceAudioEngineDebug')) {
-        failures.push(`${relative}: product manual trigger surface must not touch runtime implementations directly`);
+      if (
+        source.includes("useSelectedAudioEngineManualTriggers") ||
+        source.includes('selectedProductRuntime') ||
+        source.includes('referenceAudioEngineDebug')
+      ) {
+        failures.push(`${relative}: product manual trigger surface must not delegate through selected/reference runtime implementations`);
       }
     }
 
@@ -2590,12 +2599,12 @@ for (const rootDir of sourceRoots) {
     if (relative === 'src/ui/useCloudPresetStoreBootstrap.ts') {
       for (const requiredSnippet of [
         "import type { IPresetStore } from '../presets/PresetStore'",
-        "const { getSupabase } = await import('../cloud/supabase')",
+        "const { ensureCloudAnonymousSession, getSupabase } = await import('../cloud/supabase')",
         'new LocalStoragePresetStore()',
         'new SupabasePresetStore(supabaseClient)',
         'new HybridPresetStore(local, cloud)',
         'setPresetStore(hybrid)',
-        'const autoStartEntry = await cloud.load(',
+        "store.load('state', defaultAutoStartPresetName, 'global')",
         'cloudAutoStartStoreInitPromiseRef.current = (async () =>',
         'onCloudAutoStartPreset(preset, ',
       ]) {
@@ -2655,7 +2664,8 @@ for (const rootDir of sourceRoots) {
         'usePresetLibraryLoader<TSavedPreset>({',
         'loadCloudBackedPresets',
         'onPresetsLoaded: setSavedPresets',
-        'onPresetsLoadFailed: () => setSavedPresets([])',
+        'const handlePresetsLoadFailed = useCallback(() =>',
+        'onPresetsLoadFailed: handlePresetsLoadFailed',
         'toCloudSharedPreset',
         'onCloudSharedPresetLoaded',
         'return useSavedPresetResolver<TSavedPreset>({',
@@ -2999,7 +3009,6 @@ for (const rootDir of sourceRoots) {
         'usesCloudBackedStatePresetLibrary',
         'usesCapacitorLocalPresetLibrary',
         'const bundledPreset = await loadBundledPresetByName(defaultAutoStartPresetName);',
-        'void loadCloudAutoStartPreset();',
       ]) {
         if (!source.includes(requiredSnippet)) {
           failures.push(
@@ -4623,17 +4632,17 @@ for (const rootDir of sourceRoots) {
 
     if (relative === 'src/ui/useProductRuntimeLiveTriggerCallbacks.ts') {
       for (const token of [
-        "import { useSelectedAudioEngineLiveTriggerCallbacks } from './useSelectedAudioEngineLiveTriggerCallbacks'",
+        "useLiveTriggerUiCallbacks,",
         'import type { SliderState } from \'./state\'',
         'export type ProductRuntimeLiveTriggerCallbacksOptions = {',
         'setProductLeadExpressionCallback: (callback: ((expression: Record<string, number>) => void) | null) => void',
         'setProductGranularSHTriggerCallback: (callback: ((positions: Record<string, number>) => void) | null) => void',
         'export function useProductRuntimeLiveTriggerCallbacks({',
-        'setSelectedLeadExpressionCallback: setProductLeadExpressionCallback',
-        'setSelectedGranularSHTriggerCallback: setProductGranularSHTriggerCallback',
+        'setLeadExpressionCallback: setProductLeadExpressionCallback',
+        'setGranularSHTriggerCallback: setProductGranularSHTriggerCallback',
       ]) {
         if (!source.includes(token)) {
-          failures.push(`${relative}: product runtime live trigger callbacks must delegate through selected-runtime compatibility hook; missing ${token}`);
+          failures.push(`${relative}: product runtime live trigger callbacks must use the product-owned live trigger UI callback surface; missing ${token}`);
         }
       }
       const productLiveTriggerCallbackOptions = source.match(/type ProductRuntimeLiveTriggerCallbacksOptions =[\s\S]*?;\n/)?.[0] ?? '';
@@ -4642,6 +4651,7 @@ for (const rootDir of sourceRoots) {
       }
       if (
         source.includes('SelectedRuntimeLiveTriggerCallbacksOptions') ||
+        source.includes('useSelectedAudioEngineLiveTriggerCallbacks') ||
         source.includes('Parameters<typeof useSelectedAudioEngineLiveTriggerCallbacks>') ||
         source.includes('SelectedLiveTriggerCallbackKey')
       ) {
@@ -4674,22 +4684,34 @@ for (const rootDir of sourceRoots) {
 
     if (relative === 'src/ui/useSelectedAudioEngineLiveTriggerCallbacks.ts') {
       for (const token of [
-        'setSelectedLeadExpressionCallback((expression) =>',
-        'setSelectedLeadMorphCallback((morph) =>',
-        'setSelectedPadMorphTriggerCallback((morphPosition: number) =>',
-        'setSelectedPad2MorphTriggerCallback((morphPosition: number) =>',
-        'setSelectedLeadDistanceCallback((distance) =>',
-        'setSelectedLeadDelayCallback((delay) =>',
-        'setSelectedDrumMorphTriggerCallback((voice, morphPosition) =>',
-        'setSelectedDrumParamSHTriggerCallback((_voice, key, position) =>',
-        'setSelectedGranularSHTriggerCallback((positions: Record<string, number>) =>',
+        "useLiveTriggerUiCallbacks,",
+        'setLeadExpressionCallback: setSelectedLeadExpressionCallback',
+        'setGranularSHTriggerCallback: setSelectedGranularSHTriggerCallback',
+      ]) {
+        if (!source.includes(token)) {
+          failures.push(`${relative}: selected live trigger callback hook must wrap the neutral live trigger UI callback surface; missing ${token}`);
+        }
+      }
+    }
+
+    if (relative === 'src/ui/useLiveTriggerUiCallbacks.ts') {
+      for (const token of [
+        'setLeadExpressionCallback((expression) =>',
+        'setLeadMorphCallback((morph) =>',
+        'setPadMorphTriggerCallback((morphPosition: number) =>',
+        'setPad2MorphTriggerCallback((morphPosition: number) =>',
+        'setLeadDistanceCallback((distance) =>',
+        'setLeadDelayCallback((delay) =>',
+        'setDrumMorphTriggerCallback((voice, morphPosition) =>',
+        'setDrumParamSHTriggerCallback((_voice, key, position) =>',
+        'setGranularSHTriggerCallback((positions: Record<string, number>) =>',
         'emitVisualizerPulses({',
         'setRuntimeFlashKeys(Object.keys(positions))',
         'removeRuntimeTriggerPositions(distanceKeys)',
         'stateRef.current.drumMorphSliderAnimate',
       ]) {
         if (!source.includes(token)) {
-          failures.push(`${relative}: live trigger callback hook must own source/FX selected runtime callback registration; missing ${token}`);
+          failures.push(`${relative}: neutral live trigger UI callback hook must own source/FX callback registration; missing ${token}`);
         }
       }
     }

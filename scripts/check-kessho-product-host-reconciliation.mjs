@@ -10,6 +10,7 @@ import {
 const host = readProjectFile('src/audio/coreProductEngineHost.ts');
 const runtimeAdapter = readProjectFile('src/audio/CoreProductRuntimeAdapter.ts');
 const snapshotCoordinator = readProjectFile('src/audio/product/host/CoreProductSnapshotCoordinator.ts');
+const snapshotFactory = readProjectFile('src/audio/product/host/CoreProductHostSnapshotFactory.ts');
 const sequencerUiAdapter = readProjectFile('src/audio/product/host/CoreProductSequencerUiAdapter.ts');
 const sequencerHomeCaptureEventBridge = readProjectFile('src/audio/product/host/CoreProductSequencerHomeCaptureEventBridge.ts');
 const sequencerLaneParamBridge = readProjectFile('src/audio/product/host/CoreProductSequencerLaneParamBridge.ts');
@@ -18,7 +19,7 @@ const sequencerSubLaneEnabledEventBridge = readProjectFile('src/audio/product/ho
 const sequencerControlEventBridge = readProjectFile('src/audio/product/host/CoreProductSequencerControlEventBridge.ts');
 const sequencerMorphFeedbackBridge = readProjectFile('src/audio/product/host/CoreProductSequencerMorphFeedbackBridge.ts');
 const manualSynthDiceBridge = readProjectFile('src/audio/product/host/CoreProductManualSynthDiceBridge.ts');
-const hostRuntimeSurface = `${host}\n${runtimeAdapter}\n${snapshotCoordinator}\n${sequencerUiAdapter}\n${sequencerHomeCaptureEventBridge}\n${sequencerLaneParamBridge}\n${sequencerPitchSettingEventBridge}\n${sequencerSubLaneEnabledEventBridge}\n${sequencerControlEventBridge}\n${sequencerMorphFeedbackBridge}\n${manualSynthDiceBridge}`;
+const hostRuntimeSurface = `${host}\n${runtimeAdapter}\n${snapshotCoordinator}\n${snapshotFactory}\n${sequencerUiAdapter}\n${sequencerHomeCaptureEventBridge}\n${sequencerLaneParamBridge}\n${sequencerPitchSettingEventBridge}\n${sequencerSubLaneEnabledEventBridge}\n${sequencerControlEventBridge}\n${sequencerMorphFeedbackBridge}\n${manualSynthDiceBridge}`;
 const sequencerTests = readProjectFile('cpp/KesshoCore/tests/ProductSequencerTests.cpp');
 
 function hostMethodBody(name) {
@@ -519,13 +520,13 @@ await runCheckWithReport({
     );
 
     const createSnapshotBody = hostMethodBody('createLatestSnapshot');
-    const createHostSnapshotBody = methodBody(snapshotCoordinator, 'createCoreProductHostSnapshot');
+    const createHostSnapshotBody = methodBody(snapshotFactory, 'createCoreProductHostSnapshot');
     assert(
       createSnapshotBody.includes('createCoreProductHostSnapshot({') &&
         createSnapshotBody.includes('latestSliderState: this.latestSliderState') &&
         createSnapshotBody.includes('adapterState: this.adapterState') &&
         createSnapshotBody.includes('latestTelemetry: this.latestTelemetry'),
-      'host createLatestSnapshot() must delegate snapshot state reconciliation to CoreProductSnapshotCoordinator',
+      'host createLatestSnapshot() must delegate snapshot state reconciliation to CoreProductHostSnapshotFactory',
     );
     for (const token of [
       'telemetryRngState',

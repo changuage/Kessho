@@ -9,6 +9,7 @@ import {
 } from './euclideanPatternBank';
 import { extractPresetVersionMetadata, presetValuesEqual } from './presetUtils';
 import { hydrateOptimizedStatePresetData } from './statePresetOptimization';
+import { canonicalizePresetScope } from './presetScopeAliases';
 import type { PresetEntry, PresetLevel, PresetRef, PresetVersion, PresetVersionMetadata } from './types';
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
 import {
@@ -329,6 +330,7 @@ function withEuclideanSequencerMetadata(
 }
 
 export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetChildSpec[] {
+  const normalizedScope = canonicalizePresetScope(scope);
   if (type === 'state') {
     return [
       { slot: 'synth', type: 'source', scope: 'synth', extract: (state) => canonicalizeRecord(extractCascade(state, 3, 'synth')) },
@@ -343,7 +345,7 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
     ];
   }
 
-  if (type === 'source' && scope === 'synth') {
+  if (type === 'source' && normalizedScope === 'synth') {
     return [
       {
         slot: 'euclideanPattern',
@@ -364,7 +366,7 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
     ];
   }
 
-  if (type === 'source' && scope === 'drums') {
+  if (type === 'source' && normalizedScope === 'drums') {
     return [
       {
         slot: 'euclideanPattern',
@@ -381,19 +383,19 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
     ];
   }
 
-  if (type === 'source' && scope === 'granular') {
+  if (type === 'source' && normalizedScope === 'granular') {
     return [
       kitChild('granularKit', 'granularKit'),
     ];
   }
 
-  if (type === 'source' && scope === 'delay') {
+  if (type === 'source' && normalizedScope === 'delay') {
     return [
       kitChild('delayKit', 'delayKit'),
     ];
   }
 
-  if (type === 'source' && scope === 'dynamicsBus') {
+  if (type === 'source' && normalizedScope === 'dynamicsBus') {
     return [
       engineSubsetChild('eq1', 'dynamicsEq1', DYNAMICS_EQ1_PRESET_KEYS),
       engineSubsetChild('eq2', 'dynamicsEq2', DYNAMICS_EQ2_PRESET_KEYS),
@@ -401,37 +403,37 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
     ];
   }
 
-  if (type === 'source' && scope === 'degrade') {
+  if (type === 'source' && normalizedScope === 'degrade') {
     return [
-      kitSubsetChild('drift', 'dynamicsDrift', DYNAMICS_DRIFT_PRESET_KEYS),
-      kitSubsetChild('erosion', 'dynamicsErosion', DYNAMICS_EROSION_PRESET_KEYS),
+      kitSubsetChild('drift', 'degradeDrift', DYNAMICS_DRIFT_PRESET_KEYS),
+      kitSubsetChild('erosion', 'degradeErosion', DYNAMICS_EROSION_PRESET_KEYS),
     ];
   }
 
-  if (type === 'source' && scope === 'masterFx') {
+  if (type === 'source' && normalizedScope === 'masterFx') {
     return [
       engineSubsetChild('saturation', 'dynamicsSaturation', DYNAMICS_SATURATION_PRESET_KEYS),
       engineSubsetChild('endChain', 'dynamicsEndChain', DYNAMICS_END_CHAIN_PRESET_KEYS),
     ];
   }
 
-  if (type === 'kit' && scope === 'pad1Kit') {
+  if (type === 'kit' && normalizedScope === 'pad1Kit') {
     return [engineChild('pad1', 'pad1')];
   }
 
-  if (type === 'kit' && scope === 'pad2Kit') {
+  if (type === 'kit' && normalizedScope === 'pad2Kit') {
     return [engineChild('pad2', 'pad2')];
   }
 
-  if (type === 'kit' && scope === 'lead1Kit') {
+  if (type === 'kit' && normalizedScope === 'lead1Kit') {
     return [engineChild('lead1', 'lead1')];
   }
 
-  if (type === 'kit' && scope === 'lead2Kit') {
+  if (type === 'kit' && normalizedScope === 'lead2Kit') {
     return [engineChild('lead2', 'lead2')];
   }
 
-  if (type === 'kit' && scope === 'drumKit') {
+  if (type === 'kit' && normalizedScope === 'drumKit') {
     return [
       engineChild('drumSub', 'drumSub'),
       engineChild('drumKick', 'drumKick'),
@@ -443,7 +445,7 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
     ];
   }
 
-  if (type === 'kit' && scope === 'granularKit') {
+  if (type === 'kit' && normalizedScope === 'granularKit') {
     return [
       engineChild('granularVoice1', 'granularVoice1'),
       engineChild('granularVoice2', 'granularVoice2'),
@@ -454,7 +456,7 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
     ];
   }
 
-  if (type === 'kit' && scope === 'delayKit') {
+  if (type === 'kit' && normalizedScope === 'delayKit') {
     return [
       engineChild('leadDelay', 'leadDelay'),
       engineChild('echoLine', 'echoLine'),
@@ -462,7 +464,7 @@ export function getPresetChildSpecs(type: PresetLevel, scope?: string): PresetCh
     ];
   }
 
-  if (type === 'kit' && scope === 'earthKit') {
+  if (type === 'kit' && normalizedScope === 'earthKit') {
     return [
       engineChild('water', 'water'),
       engineChild('insects1', 'insects1'),

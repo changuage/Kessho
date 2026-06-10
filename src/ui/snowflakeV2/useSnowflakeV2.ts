@@ -3,7 +3,7 @@
  *
  * Arms are dynamically assigned from the top active engines.
  * Inactive engines don't get arms. Mirrors fill empty hex slots for symmetry.
- * Star interaction: pointer over/touch handle → opens 4-pointed star for FX sends.
+ * Star interaction: pointer over/touch handle → opens FX send star.
  */
 
 import { useMemo, useCallback, useState, useRef } from 'react';
@@ -32,7 +32,7 @@ export interface ArmSnowflake {
   isMirror: boolean;
 }
 
-export type StarDirection = 'reverb' | 'delayA' | 'delayB' | 'granular';
+export type StarDirection = 'reverb' | 'delayA' | 'delayB' | 'granular' | 'degrade';
 
 export interface StarState {
   isOpen: boolean;
@@ -152,10 +152,11 @@ function getEngineFingerprint(engine: EngineGroupDef, state: SliderState): strin
   const gr = engine.sends.granular ? ((state[engine.sends.granular] as number) * 100) | 0 : 0;
   const da = engine.sends.delayA ? ((state[engine.sends.delayA] as number) * 100) | 0 : 0;
   const db = engine.sends.delayB ? ((state[engine.sends.delayB] as number) * 100) | 0 : 0;
+  const dg = engine.sends.degrade ? ((state[engine.sends.degrade] as number) * 100) | 0 : 0;
   const rd = ((state.reverbDecay as number) * 20) | 0;
   const rdf = ((state.reverbDiffusion as number) * 20) | 0;
   const gm = state.granularV1Mode === 'granular' ? 1 : 0;
-  return `${lv}.${rv}.${gr}.${da}.${db}.${rd}.${rdf}.${gm}`;
+  return `${lv}.${rv}.${gr}.${da}.${db}.${dg}.${rd}.${rdf}.${gm}`;
 }
 
 export function useSnowflakeV2(
@@ -410,10 +411,11 @@ export function useSnowflakeV2(
     if (!sendKey) return;
 
     // Project pointer delta onto the star direction axis
-    const dir = drag.direction === 'delayA' ? { x: -1, y: 0 }
-      : drag.direction === 'delayB' ? { x: 1, y: 0 }
-      : drag.direction === 'reverb' ? { x: 0, y: -1 }
-      : { x: 0, y: 1 }; // granular = down
+    const dir = drag.direction === 'reverb' ? { x: 0, y: -1 }
+      : drag.direction === 'delayB' ? { x: 0.9511, y: -0.309 }
+      : drag.direction === 'granular' ? { x: 0.5878, y: 0.809 }
+      : drag.direction === 'degrade' ? { x: -0.5878, y: 0.809 }
+      : { x: -0.9511, y: -0.309 }; // delayA
     const deltaX = clientX - drag.startX;
     const deltaY = clientY - drag.startY;
     const projection = deltaX * dir.x + deltaY * dir.y;

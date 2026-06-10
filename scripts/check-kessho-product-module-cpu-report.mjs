@@ -36,6 +36,10 @@ function productScenario(pageCpu, id) {
   return pageCpu.scenarios?.find((scenario) => scenario.id === id)?.engines?.['core-product'] ?? null;
 }
 
+function texturePageScenarioId(pageCpu) {
+  return pageCpu.scenarios?.some((scenario) => scenario.id === 'texture') ? 'texture' : 'dynamics';
+}
+
 function productScenarioCpuPercent(pageCpu, id) {
   const scenario = productScenario(pageCpu, id);
   return scenario?.capture?.renderCpuPercent ?? scenario?.internalOverlayCpu?.avgPercent ?? null;
@@ -80,6 +84,7 @@ const pageCpu = readPageCpuComparisonReport(root);
 const browserRuntime = readJson('docs/reports/kessho-product-browser-runtime-latest.json');
 const granularRender = readJson('docs/reports/kessho-product-granular-render-metrics-latest.json');
 const reverbRender = readJson('docs/reports/kessho-product-reverb-render-metrics-latest.json');
+const textureScenarioId = texturePageScenarioId(pageCpu);
 
 for (const [label, report] of [
   ['cpu-budget', cpuBudget],
@@ -175,11 +180,11 @@ const modules = [
     evidence: ['docs/reports/kessho-product-page-cpu-comparison-latest.json: delay'],
   }),
   row({
-    module: 'dynamics',
-    source: 'page CPU dynamics scenario Product render telemetry',
-    estimatedCpuPercent: productScenarioCpuPercent(pageCpu, 'dynamics'),
+    module: 'texture',
+    source: 'page CPU Texture scenario Product render telemetry',
+    estimatedCpuPercent: productScenarioCpuPercent(pageCpu, textureScenarioId),
     quantumMs,
-    evidence: ['docs/reports/kessho-product-page-cpu-comparison-latest.json: dynamics'],
+    evidence: [`docs/reports/kessho-product-page-cpu-comparison-latest.json: ${textureScenarioId}`],
   }),
   row({
     module: 'visual-telemetry',

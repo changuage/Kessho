@@ -132,6 +132,8 @@ function isDynamicsFactoryScope(entry: PresetEntry): boolean {
     scope === 'dynamicsEq1' ||
     scope === 'dynamicsEq2' ||
     scope === 'degrade' ||
+    scope === 'degradeDrift' ||
+    scope === 'degradeErosion' ||
     scope === 'dynamicsDrift' ||
     scope === 'dynamicsErosion' ||
     scope === 'masterFx' ||
@@ -349,13 +351,13 @@ async function loadDynamicsFactory(): Promise<PresetEntry[]> {
     }
     for (const [, preset] of Object.entries(DYNAMICS_DRIFT_PRESETS)) {
       entries.push(makeFactory('kit', preset.name, preset.params, {
-        source: 'dynamicsDrift',
+        source: 'degradeDrift',
         tags: preset.tags,
       }));
     }
     for (const [, preset] of Object.entries(DYNAMICS_EROSION_PRESETS)) {
       entries.push(makeFactory('kit', preset.name, preset.params, {
-        source: 'dynamicsErosion',
+        source: 'degradeErosion',
         tags: preset.tags,
       }));
     }

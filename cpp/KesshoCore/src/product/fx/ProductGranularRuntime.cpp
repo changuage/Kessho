@@ -14,11 +14,6 @@ float smoothedGranularControlCached(float current, float target, float coeff) {
 
 } // namespace
 
-void KesshoProductEngine::resetGranularPhraseRuntime() {
-  granular_last_phrase_index = 0u;
-  granular_phrase_runtime_initialized = false;
-}
-
 void KesshoProductEngine::updateGranularControlSmoothCoeff() {
   if (sample_rate == granular_control_smooth_coeff_sample_rate) return;
   granular_control_smooth_coeff_sample_rate = sample_rate;
@@ -115,17 +110,4 @@ void KesshoProductEngine::advanceGranularReturnGains(uint64_t absolute_frame) {
       clampFloat(routing.granular_to_degrade, 0.0f, 1.0f),
       granular_control_smooth_coeff);
   granular_return_gain_frame = absolute_frame;
-}
-
-void KesshoProductEngine::advanceGranularPhraseReseed() {
-  if (granular_module == nullptr || !transport.running || sample_rate <= 0.0) return;
-  const uint64_t phrase = transport.phraseIndex(sample_rate);
-  if (!granular_phrase_runtime_initialized) {
-    granular_phrase_runtime_initialized = true;
-    granular_last_phrase_index = phrase;
-    return;
-  }
-  if (phrase == granular_last_phrase_index) return;
-  granular_last_phrase_index = phrase;
-  granular_module->setRandomSeed(rng_state);
 }

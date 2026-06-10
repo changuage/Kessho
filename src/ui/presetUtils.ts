@@ -8,6 +8,7 @@
 
 import { SliderState, DEFAULT_STATE, migratePreset, SavedPreset } from './state';
 import { getAllMorphedDrumParams } from '../audio/drumMorph';
+import { normalizeDegradeReverbCrossfeed } from './routing';
 
 // User preference keys — audio processing settings that should NOT change
 // when loading presets or morphing between them.
@@ -113,6 +114,8 @@ export function applyPreset(
   if (delayBHasFeed && delayBHasOutput) {
     newState.granularDelayEnabled = true;
   }
+
+  Object.assign(newState, normalizeDegradeReverbCrossfeed(newState));
 
   // 5. Auto-disable engines if both dry level and reverb send are 0
   if (

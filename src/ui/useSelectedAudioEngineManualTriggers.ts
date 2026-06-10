@@ -26,7 +26,13 @@ export function useSelectedAudioEngineManualTriggers({
       void commitProductControlActionThenTrigger(
         productEngine,
         externalState,
-        { type: 'manual-trigger/request', source: note.source },
+        {
+          type: 'manual-trigger/request',
+          source: note.source,
+          kind: 'synth-note',
+          note,
+          velocity: note.velocity,
+        },
         () => productEngine.auditionSynthNote(note),
       );
       return;
@@ -40,7 +46,13 @@ export function useSelectedAudioEngineManualTriggers({
       void commitProductControlActionThenTrigger(
         productEngine,
         externalState,
-        { type: 'manual-trigger/request', source: `drum:${String(voice)}` },
+        {
+          type: 'manual-trigger/request',
+          source: `drum:${String(voice)}`,
+          kind: 'drum-voice',
+          voice,
+          velocity: 0.8,
+        },
         () => productEngine.triggerDrumVoice(voice, 0.8),
       );
       return;

@@ -113,10 +113,6 @@ export function syncCoreProductSequencerStepState(options: {
   }
 }
 
-function isStepValueOverride(entry: SequencerStepValueOverride | null | undefined): entry is SequencerStepValueOverride {
-  return typeof entry === 'object' && entry !== null && typeof entry.field === 'number';
-}
+function isStepValueOverride(entry: SequencerStepValueOverride | null | undefined): entry is SequencerStepValueOverride { return typeof entry === 'object' && entry !== null && typeof entry.field === 'number'; }
 
-function isStepValueConfig(entry: SequencerStepValueConfig | null | undefined): entry is SequencerStepValueConfig {
-  return typeof entry === 'object' && entry !== null && typeof entry.field === 'number';
-}
+function isStepValueConfig(entry: SequencerStepValueConfig | null | undefined): entry is SequencerStepValueConfig { return typeof entry === 'object' && entry !== null && typeof entry.field === 'number'; }

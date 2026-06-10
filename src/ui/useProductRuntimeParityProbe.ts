@@ -7,7 +7,7 @@ import {
   getRuntimeSliderPosition,
 } from './runtimeSliderState';
 
-type ActiveTab = 'global' | 'visualizer' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'dynamics' | 'routing';
+type ActiveTab = 'global' | 'visualizer' | 'synth' | 'drums' | 'reverb' | 'granular' | 'earth' | 'delay' | 'texture' | 'routing';
 
 type ProductRuntimeParityProbeOptions = {
   enabled: boolean;

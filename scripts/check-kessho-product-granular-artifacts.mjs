@@ -285,6 +285,9 @@ requireTokens('cpp/KesshoCore/src/product/fx/ProductGranularRuntime.cpp', [
   'std::isfinite(target)',
   'granularSendGainForFrame',
   'advanceGranularReturnGains',
+]);
+
+requireTokens('cpp/KesshoCore/src/product/fx/ProductGranularPhraseRuntime.cpp', [
   'advanceGranularPhraseReseed',
   'granular_module->setRandomSeed(rng_state)',
 ]);

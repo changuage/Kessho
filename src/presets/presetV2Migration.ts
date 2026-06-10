@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabase } from '../cloud/supabase';
+import { normalizeDegradeReverbCrossfeed } from '../ui/routing';
+import type { SliderState } from '../ui/state';
 import { getVersionData } from './codec';
 import { loadFactoryPresetV2Phases } from './factoryPresets';
 import { getPresetChildSpecs, normalizeResolvedVersionData } from './presetStorageV2';
@@ -40,6 +42,12 @@ interface LegacyPresetRow {
   created_at: string;
   updated_at: string;
   rating: number | null;
+}
+
+type CrossfeedRecord = Record<string, unknown> & Partial<Pick<SliderState, 'degradeReverbSend' | 'reverbDegradeSend'>>;
+
+function normalizeGraphRepairData<T extends Record<string, unknown>>(data: T): T {
+  return normalizeDegradeReverbCrossfeed(data as T & CrossfeedRecord) as T;
 }
 
 export interface PresetV2MigrationOptions {
@@ -333,7 +341,7 @@ async function saveAsNextVersion(
   const timestamp = Date.now();
   const existing = await store.load(type, name, scope);
   if (!existing) {
-    await store.save(makePresetEntry(type, scope, name, data, note, 1, timestamp));
+    await store.save(makePresetEntry(type, scope, name, normalizeGraphRepairData(data), note, 1, timestamp));
     return 1;
   }
 
@@ -342,7 +350,7 @@ async function saveAsNextVersion(
     v: maxVersion + 1,
     note,
     timestamp,
-    data,
+    data: normalizeGraphRepairData(data),
   });
   existing.currentVersion = maxVersion + 1;
   existing.updatedAt = timestamp;
@@ -372,7 +380,7 @@ async function saveAsNextVersionForGraphRepair(
   }
 
   if (!existing) {
-    await store.save(makePresetEntry(type, scope, name, data, note, 1, timestamp));
+    await store.save(makePresetEntry(type, scope, name, normalizeGraphRepairData(data), note, 1, timestamp));
     return { version: 1, written: true };
   }
 
@@ -380,7 +388,7 @@ async function saveAsNextVersionForGraphRepair(
     v: nextVersion,
     note,
     timestamp,
-    data,
+    data: normalizeGraphRepairData(data),
   });
   existing.currentVersion = nextVersion;
   existing.updatedAt = timestamp;
@@ -411,7 +419,7 @@ async function resaveStateForGraphRepair(
     v: nextVersion,
     note,
     timestamp,
-    data,
+    data: normalizeGraphRepairData(data),
     ...(metadata || {}),
   });
   entry.currentVersion = nextVersion;
@@ -442,7 +450,7 @@ async function resavePresetForGraphRepair(
     v: nextVersion,
     note,
     timestamp,
-    data,
+    data: normalizeGraphRepairData(data),
     ...(metadata || {}),
   });
   entry.currentVersion = nextVersion;

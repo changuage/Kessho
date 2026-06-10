@@ -38,7 +38,7 @@ function dynamicsSlider(
       key,
       label,
       defaultValue: defaultNumericValue(key),
-      helpPage: 'dynamics',
+      helpPage: 'texture',
       ...options,
     }),
     announceHelp: options.announceHelp,

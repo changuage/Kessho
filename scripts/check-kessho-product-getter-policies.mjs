@@ -247,7 +247,7 @@ assert(
     !app.includes('getDynamicsAnalyser={productRuntimeDebugAnalysers.dynamicsAnalyser}') &&
     !app.includes('getAnalyserNode={productRuntimeDebugAnalysers.drumVoiceAnalyser}') &&
     app.includes("from './ui/useProductRuntimeSurfaces'") &&
-    app.includes('useProductRuntimeSurfaces(productRuntimeMode)') &&
+    app.includes('useProductRuntimeSurfaces({ productRuntimeMode, stateRef })') &&
     !app.includes("from './ui/useSelectedAudioEngineRuntimeSurfaces'") &&
     !app.includes('useSelectedAudioEngineRuntimeSurfaces(audioEngineRuntimeMode)') &&
     productRuntimeSurfaces.includes("import { useProductRuntimeDebugRuntime } from './useProductRuntimeDebugRuntime'") &&

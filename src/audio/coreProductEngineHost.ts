@@ -1,12 +1,11 @@
 import type { DynamicsVisualTelemetrySnapshot, ManualSynthNoteOptions } from './engineSharedTypes';
-import type { RequiredManualSynthNote } from './CoreProductHostRuntimeGuards';
 import type { LaneDirection } from './sequencerLaneDirection';
 import type { TransportDebugSnapshot } from './transport';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import type { ProductLiveNoteEvent } from './product/liveNoteEvents';
 import type { DecodedCoreProductAsset } from './coreProductAssets';
 import type { CoreProductSnapshot } from './coreProductSnapshot';
-import { CORE_PRODUCT_SEQUENCER_IDS, CORE_PRODUCT_SOURCE_IDS, type CoreProductEvent, type CoreProductStepValueField, createCoreProductDrumTriggerEvent, createCoreProductJourneyEvent, createCoreProductJourneyStateEvent, createCoreProductManualNoteEvent, createCoreProductSequencerDiceEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSequencerPitchSettingEvents, createCoreProductSequencerResetHomeEvent, createCoreProductStartEvent, createCoreProductStopEvent } from './coreProductEvents';
+import { CORE_PRODUCT_SEQUENCER_IDS, CORE_PRODUCT_SOURCE_IDS, type CoreProductEvent, type CoreProductStepValueField, createCoreProductJourneyEvent, createCoreProductJourneyStateEvent, createCoreProductManualNoteEvent, createCoreProductSequencerDiceEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSequencerPitchSettingEvents, createCoreProductSequencerResetHomeEvent, createCoreProductStartEvent, createCoreProductStopEvent } from './coreProductEvents';
 import { type CoreProductTelemetrySnapshot, type CoreProductVisualTelemetrySnapshot } from './coreProductTelemetry';
 import type { RuntimeFallbackClassification } from './CoreProductFallbackDiagnostics';
 import { shouldForwardCoreProductRngDiffs, type SnapshotReloadReason } from './CoreProductRuntimeAdapter';
@@ -15,7 +14,7 @@ import { normalizeSequencerPitchBindingMode, sequencerPitchBindingModeToProductI
 import type { SequencerPitchSettings } from './sequencerPitchSettings';
 import { normalizeSequencerSwing } from './sequencerSwing';
 import { getCoreProductSequencerLaneSwing, patchCoreProductSequencerLaneSwing } from './CoreProductHostSequencerSwing';
-import { drumVoiceIndex, manualAuditionState, midiFromFrequency, requireFiniteRange, requireManualNote, requirePositive, runtimeWalkConfigChanged, runtimeWalkConfigFromState, sourceId } from './CoreProductHostRuntimeGuards';
+import { drumVoiceIndex, midiFromFrequency, requireFiniteRange, requirePositive, runtimeWalkConfigChanged, runtimeWalkConfigFromState } from './CoreProductHostRuntimeGuards';
 import { CoreProductRuntime, type CoreProductGraphTapCaptureChunk } from './coreProductRuntime';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
@@ -35,9 +34,11 @@ import { CoreProductLeadPresetDataLoader } from './product/host/CoreProductLeadP
 import { CoreProductModulationRangeBridge } from './product/host/CoreProductModulationRangeBridge';
 import { CoreProductResolvedStateCommitService } from './product/host/CoreProductResolvedStateCommitService';
 import { snapshotReloadReasonForProductPatch } from './product/host/CoreProductPatchClassifier';
-import { applyCoreProductSnapshotUpdate, createCoreProductHostSnapshot, loadCoreProductSnapshot } from './product/host/CoreProductSnapshotCoordinator';
+import { applyCoreProductSnapshotUpdate, loadCoreProductSnapshot } from './product/host/CoreProductSnapshotCoordinator';
+import { createCoreProductHostSnapshot } from './product/host/CoreProductHostSnapshotFactory';
 import { createCoreProductPerfSnapshot, enrichCoreProductHostTelemetry, mergeCoreProductVisualTelemetry } from './product/host/CoreProductTelemetryAdapter';
 import { createCoreProductEarthTextureDebugState } from './product/host/CoreProductEarthTextureDebug';
+import { logCoreProductDebugTelemetry } from './CoreProductHostDebugTelemetry';
 import { reconcileCoreProductSequencerUiState } from './product/host/CoreProductSequencerUiAdapter';
 import { coreProductSequencerLaneCacheCount, createCoreProductSequencerCacheState, enabledCoreProductSequencerSubLanes, ensureCoreProductSequencerLaneCache, selectCoreProductSequencerCache, type CoreProductSequencerCacheState } from './product/host/CoreProductSequencerCacheBridge';
 import { handleCoreProductSequencerControlEvent } from './product/host/CoreProductSequencerControlEventBridge';
@@ -49,6 +50,7 @@ import { applyCoreProductSequencerEvolveConfigEvent } from './product/host/CoreP
 import { restoreCoreProductSequencerLaneHome } from './product/host/CoreProductSequencerHomeRestoreBridge';
 import { applyCoreProductSequencerLaneParamSet, patchCoreProductSequencerLaneAdapterParam, patchCoreProductSynthPitchBindingModeFromEvent } from './product/host/CoreProductSequencerLaneParamBridge';
 import { CoreProductSequencerMorphFeedbackBridge } from './product/host/CoreProductSequencerMorphFeedbackBridge';
+import { auditionCoreProductSynthNote, auditionCoreProductSynthNotes, triggerCoreProductDrumVoice, type CoreProductManualAuditionContext } from './product/host/CoreProductManualAuditionBridge';
 import { applyCoreProductSequencerPitchSettingEvent } from './product/host/CoreProductSequencerPitchSettingEventBridge';
 import { applyCoreProductSynthStepOverrides } from './product/host/CoreProductSequencerStepOverrideBridge';
 import { applyCoreProductDrumSequencerStepOverrideEvent } from './product/host/CoreProductSequencerStepOverrideEventBridge';
@@ -59,7 +61,6 @@ import type { ProductEngineState, ProductResolvedStateApplyMode, ProductResolved
 import { createWebProductRuntimeCapabilityReport, type ProductRuntimeCapabilityReport } from './product/ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from './product/ProductRuntimeDiagnostics';
 import { CoreProductArrangementBridge } from './product/host/CoreProductArrangementBridge';
-import { logProductStateDebug, productStateDebugEnabled } from '../debug/productStateDebug';
 const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = 4;
 const PRODUCT_VISIBLE_DRUM_LANE_COUNT = 4;
 type SequencerLanePitchState = { steps?: number; direction?: LaneDirection; scaleQuantize?: boolean };
@@ -519,23 +520,7 @@ class CoreProductEngineHost {
     velocity: number,
     externalState?: Record<string, unknown>,
   ): Promise<void> {
-    const voiceIndex = drumVoiceIndex(voice);
-    const triggerVelocity = requireFiniteRange(velocity, 'drum trigger velocity', 0.000001, 1);
-    const post = () => {
-      this.recordSoundTrigger();
-      this.runtime.postEvent(createCoreProductDrumTriggerEvent(voiceIndex, triggerVelocity));
-      this.invokeDisplayCallback('drumTrigger', voice, triggerVelocity);
-    };
-    if (this.runtimeCanPostEventsImmediately() && this.productSourceEnabled(CORE_PRODUCT_SOURCE_IDS.drum)) {
-      post();
-      return;
-    }
-    if (externalState) this.latestSliderState = { ...externalState, drumEnabled: true };
-    await this.runtime.ensureStarted();
-    this.runtimeReady = true;
-    await this.runtime.resume();
-    if (!this.productSourceEnabled(CORE_PRODUCT_SOURCE_IDS.drum)) await this.applyLatestSnapshotUpdate('runtime-bootstrap');
-    post();
+    await triggerCoreProductDrumVoice(this.manualAuditionContext(), voice, velocity, externalState);
   }
 
   resetSynthEuclidLaneHome(laneIndex: number): void {
@@ -582,79 +567,33 @@ class CoreProductEngineHost {
     note: ManualSynthNoteOptions,
     externalState?: Record<string, unknown>,
   ): Promise<void> {
-    const manualNote = requireManualNote(note);
-    const targetSourceId = sourceId(manualNote.source);
-    if (this.runtimeCanPostEventsImmediately() && this.productSourceEnabled(targetSourceId)) {
-      if (manualNote.source === 'piano') await this.assetRegistrar.ensurePianoAssetForNote(manualNote.midi, manualNote.velocity);
-      this.postManualSynthNote(manualNote);
-      return;
-    }
-    if (!this.productSourceEnabled(targetSourceId)) {
-      this.latestSliderState = manualAuditionState(manualNote.source, externalState ?? this.latestSliderState ?? undefined);
-    }
-    await this.runtime.ensureStarted();
-    this.runtimeReady = true;
-    await this.runtime.resume();
-    if (!this.productSourceEnabled(targetSourceId)) await this.applyLatestSnapshotUpdate(manualNote.source === 'piano' ? 'manual-piano-asset' : 'runtime-bootstrap');
-    if (manualNote.source === 'piano') await this.assetRegistrar.ensurePianoAssetForNote(manualNote.midi, manualNote.velocity);
-    this.postManualSynthNote(manualNote);
+    await auditionCoreProductSynthNote(this.manualAuditionContext(), note, externalState);
   }
 
   async auditionSynthNotes(
     notes: ManualSynthNoteOptions[],
     externalState?: Record<string, unknown>,
   ): Promise<void> {
-    const manualNotes = notes.map(requireManualNote);
-    const targetSourceIds = manualNotes.map((note) => sourceId(note.source));
-    if (this.runtimeCanPostEventsImmediately() && this.productSourcesEnabled(targetSourceIds)) {
-      await this.ensurePianoAssetsForManualNotes(manualNotes);
-      for (const note of manualNotes) this.postManualSynthNote(note);
-      return;
-    }
-    if (!this.productSourcesEnabled(targetSourceIds)) {
-      let nextState = { ...(externalState ?? this.latestSliderState ?? {}) };
-      for (const note of manualNotes) {
-        nextState = manualAuditionState(note.source, nextState);
-      }
-      this.latestSliderState = nextState;
-    }
-    await this.runtime.ensureStarted();
-    this.runtimeReady = true;
-    await this.runtime.resume();
-    if (!this.productSourcesEnabled(targetSourceIds)) {
-      await this.applyLatestSnapshotUpdate(manualNotes.some((note) => note.source === 'piano') ? 'manual-piano-asset' : 'runtime-bootstrap');
-    }
-    await this.ensurePianoAssetsForManualNotes(manualNotes);
-    for (const note of manualNotes) this.postManualSynthNote(note);
-  }
-
-  private runtimeCanPostEventsImmediately(): boolean { return this.runtimeReady && this.runtime.audioContext?.state === 'running'; }
-
-  private productSourceEnabled(sourceIdValue: number): boolean {
-    return this.latestProductSnapshot?.sources.some((source) => source.sourceId === sourceIdValue && source.enabled) === true;
-  }
-
-  private productSourcesEnabled(sourceIds: readonly number[]): boolean {
-    return sourceIds.every((sourceIdValue) => this.productSourceEnabled(sourceIdValue));
-  }
-
-  private async ensurePianoAssetsForManualNotes(notes: readonly RequiredManualSynthNote[]): Promise<void> {
-    let pending: Promise<void>[] | null = null;
-    for (const note of notes) {
-      if (note.source !== 'piano') continue;
-      const promise = this.assetRegistrar.ensurePianoAssetForNote(note.midi, note.velocity);
-      if (pending) pending.push(promise); else pending = [promise];
-    }
-    if (pending) await Promise.all(pending);
-  }
-
-  private postManualSynthNote(note: RequiredManualSynthNote): void {
-    this.recordSoundTrigger();
-    this.runtime.postEvent(createCoreProductManualNoteEvent(sourceId(note.source), note.midi, note.velocity, note.durationMs, note.source === 'pad1' || note.source === 'pad2' ? note.voiceIndex : undefined));
+    await auditionCoreProductSynthNotes(this.manualAuditionContext(), notes, externalState);
   }
 
   private recordSoundTrigger(): void {
     this.resolvedStateCommitService.recordSoundTrigger();
+  }
+
+  private manualAuditionContext(): CoreProductManualAuditionContext {
+    return {
+      runtime: this.runtime,
+      assetRegistrar: this.assetRegistrar,
+      latestSliderState: () => this.latestSliderState,
+      setLatestSliderState: (state) => { this.latestSliderState = state; },
+      latestProductSnapshot: () => this.latestProductSnapshot,
+      runtimeReady: () => this.runtimeReady,
+      setRuntimeReady: (ready) => { this.runtimeReady = ready; },
+      applyLatestSnapshotUpdate: (reason) => this.applyLatestSnapshotUpdate(reason),
+      recordSoundTrigger: () => this.recordSoundTrigger(),
+      publish: (name, ...args) => this.invokeDisplayCallback(name, ...args),
+    };
   }
 
   private async loadLatestSnapshot(reason: SnapshotReloadReason = 'product-patch', includeClockStartDelay = reason === 'runtime-start'): Promise<void> {
@@ -744,7 +683,7 @@ class CoreProductEngineHost {
 
   private handleTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
     const hostTelemetry = this.withHostDiagnostics(telemetry);
-    this.logProductCoreDebugTelemetry(hostTelemetry);
+    logCoreProductDebugTelemetry(hostTelemetry);
     this.latestTelemetry = hostTelemetry;
     if (this.journeyMorphClock.running && typeof hostTelemetry.journeyMorphPhase === 'number') {
       this.adapterState = {
@@ -784,50 +723,6 @@ class CoreProductEngineHost {
     hostTelemetry.sampleHoldDebug = this.modulationRangeBridge.getSampleHoldDebugState();
     this.tickSequencerEvolveClock(hostTelemetry); this.publishStateIfHarmonyChanged();
     this.publishSequencerVisuals(hostTelemetry);
-  }
-  private logProductCoreDebugTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
-    if (!productStateDebugEnabled()) return;
-    const relevantSources = (telemetry.productDebugSourceStates ?? []).filter((source) =>
-      source.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 ||
-      source.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ||
-      source.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 ||
-      source.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2,
-    );
-    const recentSpawns = (telemetry.productDebugVoiceSpawns ?? [])
-      .filter((spawn) =>
-        spawn.sourceId === CORE_PRODUCT_SOURCE_IDS.pad1 ||
-        spawn.sourceId === CORE_PRODUCT_SOURCE_IDS.pad2 ||
-        spawn.sourceId === CORE_PRODUCT_SOURCE_IDS.lead1 ||
-        spawn.sourceId === CORE_PRODUCT_SOURCE_IDS.lead2,
-      )
-      .slice(-8);
-    logProductStateDebug({
-      stage: 'cpp-product-telemetry',
-      transportRunning: telemetry.transportRunning,
-      absoluteSampleTime: telemetry.absoluteSampleTime ?? null,
-      activeSources: relevantSources.map((source) => ({
-        sourceId: source.sourceId,
-        presetId: source.presetId,
-        sourcePresetAId: source.sourcePresetAId,
-        sourcePresetBId: source.sourcePresetBId,
-        sourceRevision: source.sourceRevision,
-        sourceStateHash: source.sourceStateHash,
-        compiledSourceHash: source.compiledSourceHash,
-        overrideBlockHash: source.overrideBlockHash,
-      })),
-      recentVoiceSpawns: recentSpawns.map((spawn) => ({
-        triggerSequence: spawn.triggerSequence,
-        triggerSample: spawn.triggerSample,
-        sourceId: spawn.sourceId,
-        voiceId: spawn.voiceId,
-        presetId: spawn.presetId,
-        sourceRevision: spawn.sourceRevision,
-        sourceStateHash: spawn.sourceStateHash,
-        compiledSourceHash: spawn.compiledSourceHash,
-        overrideBlockHash: spawn.overrideBlockHash,
-        triggerContextHash: spawn.triggerContextHash,
-      })),
-    });
   }
   private tickSequencerEvolveClock(hostTelemetry: CoreProductTelemetrySnapshot): void {
     this.sequencerEvolveBridge.tick(hostTelemetry);

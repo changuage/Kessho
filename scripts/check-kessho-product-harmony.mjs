@@ -63,10 +63,16 @@ requireTokens('cpp/KesshoCore/src/product/sequencer/SynthEuclidSequencer.cpp', [
   'const float trigger_midi_note = drum_lane ? drum_midi_note : sequenced_midi_note;',
 ]);
 
-requireTokens('src/audio/coreProductSnapshot.ts', [
+requireTokens('src/audio/coreProductHarmonyScaleIds.ts', [
   'PRODUCT_HARMONY_SCALE_IDS',
+]);
+
+requireTokens('src/audio/coreProductReverbSnapshot.ts', [
   'resolveHarmonyScaleName',
   'selectScaleFamily(createRng',
+]);
+
+requireTokens('src/audio/coreProductSnapshot.ts', [
   'const rootMidi = rootMidiFromState(sliderState)',
   'const scaleId = scaleIdFromState(sliderState, tension)',
   'tension,',

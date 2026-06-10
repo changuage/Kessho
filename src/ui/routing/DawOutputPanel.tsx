@@ -15,6 +15,7 @@ import {
 } from '../../audio/dawOutputRouting';
 import { SOURCE_COLORS } from '../../designSystem/colors';
 import type { SliderState } from '../state';
+import { dawOutputSourceIsActive } from './routingSourceRegistry';
 
 type DawOutputSourceView = {
   sourceId: DawOutputSourceId;
@@ -132,42 +133,7 @@ const DAW_OUTPUT_SOURCES: DawOutputSourceView[] = DAW_OUTPUT_SOURCE_DEFS.map((so
   sourceId: source.sourceId,
   label: source.label,
   accent: SOURCE_ACCENTS[source.sourceId],
-  active: (state: SliderState) => {
-    switch (source.sourceId) {
-      case 'pad1':
-        return Boolean(state.padEnabled);
-      case 'pad2':
-        return Boolean(state.pad2Enabled);
-      case 'lead1':
-        return Boolean(state.leadEnabled);
-      case 'lead2':
-        return Boolean(state.lead2Enabled);
-      case 'piano':
-        return Boolean(state.pianoEnabled);
-      case 'drums':
-        return Boolean(state.drumEnabled);
-      case 'granular':
-        return Boolean(state.granularEnabled);
-      case 'waves':
-        return Boolean(state.oceanSampleEnabled);
-      case 'water':
-        return Boolean(state.waterEnabled);
-      case 'insects':
-        return Boolean(state.insectsEnabled || state.insects2Enabled);
-      case 'nature':
-        return Boolean(state.birdsEnabled || state.birds2Enabled || state.frogsEnabled);
-      case 'delayAOut':
-        return Boolean(state.delayAEnabled);
-      case 'delayBOut':
-        return Boolean(state.granularDelayEnabled);
-      case 'reverb':
-        return Boolean(state.reverbEnabled);
-      case 'dynamics':
-        return Boolean(state.dynamicsEnabled);
-      default:
-        return false;
-    }
-  },
+  active: (state: SliderState) => dawOutputSourceIsActive(source.sourceId, state),
 }));
 
 function pairLabel(channel: number): string {

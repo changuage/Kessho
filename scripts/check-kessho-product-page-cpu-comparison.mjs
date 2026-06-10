@@ -813,9 +813,9 @@ const SCENARIOS = [
     { manualNotes: DEFAULT_MANUAL_NOTES, manualDrumTriggers: DEFAULT_DRUM_TRIGGERS },
   ),
   makeScenario(
-    'dynamics',
-    'Dynamics',
-    'Dynamics Page',
+    'texture',
+    'Texture',
+    'Texture Page',
     ['sidechain', 'drift', 'degrade', 'saturation', 'end compressor'],
     {
       ...synthSourcesPatch(0.3),
@@ -833,7 +833,7 @@ const SCENARIOS = [
     'routing',
     'Routing',
     'Routing Page',
-    ['all primary sources', 'delay A', 'delay B', 'granular', 'reverb', 'dynamics', 'soundscapes'],
+    ['all primary sources', 'delay A', 'delay B', 'granular', 'reverb', 'texture', 'soundscapes'],
     {
       ...synthSourcesPatch(0.25),
       ...synthSequencerPatch(),

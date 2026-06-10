@@ -1,4 +1,5 @@
 import type { SliderState } from '../ui/state';
+import type { ProductDrumVoice, ProductManualSynthNote } from '../audio/product/ProductEngineTypes';
 import type { ProductDrumMorphEndpoint, ProductDrumMorphVoice } from './drumMorphOverrideState';
 import type {
   MidMorphEditPolicy,
@@ -12,6 +13,7 @@ import type {
 } from './ProductControlState';
 
 export type ProductSourceId = string;
+export type ProductManualTriggerKind = 'synth-note' | 'drum-voice';
 
 export type ProductControlAction =
   | {
@@ -120,6 +122,10 @@ export type ProductControlAction =
   | {
       readonly type: 'manual-trigger/request';
       readonly source: ProductSourceId;
+      readonly kind?: ProductManualTriggerKind;
+      readonly note?: ProductManualSynthNote;
+      readonly voice?: ProductDrumVoice;
+      readonly velocity?: number;
     }
   | {
       readonly type: 'session/restore';

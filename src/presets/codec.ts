@@ -7,13 +7,15 @@ import type { PresetEntry } from './types';
 import type { SliderState } from '../ui/state';
 import { presetValuesEqual } from './presetUtils';
 import { normalizeDynamicsErosionAliases, normalizeDynamicsQualityFields } from '../audio/dynamicsModel';
+import { canonicalizePresetScope } from './presetScopeAliases';
 
 function getDirectKeys(level: ParamLevel, scope?: string): string[] {
+  const normalizedScope = canonicalizePresetScope(scope);
   if (level === 4) {
     return Object.keys(PARAM_REGISTRY);
   }
   return Object.entries(PARAM_REGISTRY)
-    .filter(([, info]) => info.level === level && (!scope || info.scope === scope))
+    .filter(([, info]) => info.level === level && (!normalizedScope || info.scope === normalizedScope))
     .map(([key]) => key);
 }
 
@@ -23,9 +25,10 @@ export function extractParams(
   level: ParamLevel,
   scope?: string,
 ): Record<string, unknown> {
+  const normalizedScope = canonicalizePresetScope(scope);
   const result: Record<string, unknown> = {};
   for (const [key, info] of Object.entries(PARAM_REGISTRY)) {
-    if (info.level === level && (!scope || info.scope === scope)) {
+    if (info.level === level && (!normalizedScope || info.scope === normalizedScope)) {
       if (key in state) result[key] = (state as unknown as Record<string, unknown>)[key];
     }
   }
@@ -39,12 +42,13 @@ export function applyParams(
   level: ParamLevel,
   scope?: string,
 ): SliderState {
+  const normalizedScope = canonicalizePresetScope(scope);
   const merged: Record<string, unknown> = { ...state };
   const normalizedData = normalizeDynamicsQualityFields(
     normalizeDynamicsErosionAliases(presetData),
   );
   for (const [key, info] of Object.entries(PARAM_REGISTRY)) {
-    if (info.level === level && (!scope || info.scope === scope)) {
+    if (info.level === level && (!normalizedScope || info.scope === normalizedScope)) {
       if (key in normalizedData) merged[key] = normalizedData[key];
     }
   }
@@ -53,8 +57,9 @@ export function applyParams(
 
 /** Get all keys owned by a level+scope */
 export function getKeysForScope(level: ParamLevel, scope: string): string[] {
+  const normalizedScope = canonicalizePresetScope(scope);
   return Object.entries(PARAM_REGISTRY)
-    .filter(([, info]) => info.level === level && info.scope === scope)
+    .filter(([, info]) => info.level === level && info.scope === normalizedScope)
     .map(([key]) => key);
 }
 
@@ -124,8 +129,8 @@ const CASCADE_CHILDREN: Record<string, { level: ParamLevel; scope: string }[]> =
     { level: 1, scope: 'dynamicsSidechain' },
   ],
   degrade: [
-    { level: 2, scope: 'dynamicsDrift' },
-    { level: 2, scope: 'dynamicsErosion' },
+    { level: 2, scope: 'degradeDrift' },
+    { level: 2, scope: 'degradeErosion' },
   ],
   masterFx: [
     { level: 1, scope: 'dynamicsSaturation' },

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { extractCascade, getCascadeKeys } from './codec';
+import { extractCascade, extractParams, getCascadeKeys } from './codec';
 import {
   getPresetChildSpecs,
   hashCanonicalJson,
@@ -9,6 +9,10 @@ import {
   stripReferencedChildData,
   type PresetChildSpec,
 } from './presetStorageV2';
+import {
+  buildPresetKeyCandidates,
+  isPresetCompatibleWithSlot,
+} from './presetUtils';
 import type { PresetLevel, PresetVersionMetadata } from './types';
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
 
@@ -87,8 +91,8 @@ function testGraphCoversAllCompositeLevels(): void {
     'engine:dynamicsSidechain:sidechain',
   ]);
   assertChildScopes('source', 'degrade', [
-    'kit:dynamicsDrift:drift',
-    'kit:dynamicsErosion:erosion',
+    'kit:degradeDrift:drift',
+    'kit:degradeErosion:erosion',
   ]);
   assertChildScopes('source', 'masterFx', [
     'engine:dynamicsSaturation:saturation',
@@ -126,6 +130,36 @@ function testGraphCoversAllCompositeLevels(): void {
     'engine:insects1:insects1',
     'engine:insects2:insects2',
   ]);
+}
+
+function testLegacyDegradeChildScopesAliasToCanonical(): void {
+  const canonicalDrift = extractParams(DEFAULT_STATE, 2, 'degradeDrift');
+  const legacyDrift = extractParams(DEFAULT_STATE, 2, 'dynamicsDrift');
+  assert.ok(Object.keys(canonicalDrift).length > 0, 'canonical Drift scope should own L2 params');
+  assert.deepStrictEqual(legacyDrift, canonicalDrift, 'legacy Drift scope should read canonical Drift params');
+
+  const canonicalErosion = extractParams(DEFAULT_STATE, 2, 'degradeErosion');
+  const legacyErosion = extractParams(DEFAULT_STATE, 2, 'dynamicsErosion');
+  assert.ok(Object.keys(canonicalErosion).length > 0, 'canonical Erosion scope should own L2 params');
+  assert.deepStrictEqual(legacyErosion, canonicalErosion, 'legacy Erosion scope should read canonical Erosion params');
+
+  assert.equal(
+    isPresetCompatibleWithSlot({ type: 'kit', scope: 'dynamicsDrift' }, 'kit', 'degradeDrift'),
+    true,
+    'legacy Drift presets should remain compatible with canonical Drift slots',
+  );
+  assert.equal(
+    isPresetCompatibleWithSlot({ type: 'kit', scope: 'dynamicsErosion' }, 'kit', 'degradeErosion'),
+    true,
+    'legacy Erosion presets should remain compatible with canonical Erosion slots',
+  );
+
+  const driftCandidates = buildPresetKeyCandidates('kit', 'Clean Tape Head', 'degradeDrift');
+  assert.equal(
+    driftCandidates.includes('preset:kit:dynamicsDrift:Clean Tape Head'),
+    true,
+    'canonical Drift key lookup should include legacy localStorage keys',
+  );
 }
 
 function testCascadeExtractionIsRecursive(): void {
@@ -505,6 +539,7 @@ function testJourneyDedupKeepsGraphAsResolvedPayload(): void {
 
 async function run(): Promise<void> {
   testGraphCoversAllCompositeLevels();
+  testLegacyDegradeChildScopesAliasToCanonical();
   testCascadeExtractionIsRecursive();
   testOverlapIsStrippedAtEachLevel();
   await testEuclideanStepOverridesAffectOnlyEuclideanChildHash();

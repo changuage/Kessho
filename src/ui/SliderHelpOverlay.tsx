@@ -6,6 +6,7 @@ import {
   type SliderPageId,
 } from './sliderHelpCatalog';
 import { BUTTON_HELP_CATALOG } from './buttonHelpCatalog';
+import { normalizeSliderPageId } from './pages/pageAliases';
 
 type SliderHelpTarget = {
   paramKey: string;
@@ -68,7 +69,7 @@ function normalizeLabel(label?: string): string | undefined {
 }
 
 function formatPage(page?: SliderPageId): string {
-  switch (page) {
+  switch (page ? normalizeSliderPageId(page) : page) {
     case 'app':
       return 'App';
     case 'global':
@@ -85,6 +86,8 @@ function formatPage(page?: SliderPageId): string {
       return 'Earth';
     case 'delay':
       return 'Delay';
+    case 'texture':
+      return 'Texture';
     case 'routing':
       return 'Routing';
     default:
@@ -100,14 +103,15 @@ function resolveSurface(
   if (!target) return null;
   const label = normalizeLabel(target.label);
   const page = target.page ?? activePage;
+  const canonicalPage = page ? normalizeSliderPageId(page) : page;
 
-  if (page && label) {
-    const exact = entry.surfaces.find((surface) => surface.page === page && normalizeLabel(surface.label) === label);
+  if (canonicalPage && label) {
+    const exact = entry.surfaces.find((surface) => normalizeSliderPageId(surface.page) === canonicalPage && normalizeLabel(surface.label) === label);
     if (exact) return exact;
   }
 
-  if (page) {
-    const pageMatch = entry.surfaces.find((surface) => surface.page === page);
+  if (canonicalPage) {
+    const pageMatch = entry.surfaces.find((surface) => normalizeSliderPageId(surface.page) === canonicalPage);
     if (pageMatch) return pageMatch;
   }
 

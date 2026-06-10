@@ -11,7 +11,7 @@ const dr = (section: string, label: string, audit: string[] = []) => surface('dr
 const gr = (section: string, label: string, audit: string[] = []) => surface('granular', section, label, audit);
 const ea = (section: string, label: string, audit: string[] = []) => surface('earth', section, label, audit);
 const dy = (section: string, label: string, audit: string[] = []) => surface('delay', section, label, audit);
-const dn = (section: string, label: string, audit: string[] = []) => surface('dynamics', section, label, audit);
+const dn = (section: string, label: string, audit: string[] = []) => surface('texture', section, label, audit);
 
 function entry(short: string, long: string, surfaces: SliderHelpSurface[]): SliderHelpEntry {
   return { short, long, surfaces };

@@ -1,24 +1,27 @@
 /**
  * Snowflake V2 — Engine Group Definitions & Arm Assignment
  *
- * Each engine group maps 1:1 to a routing matrix row.
+ * Engine groups project the arm-eligible source rows from the routing registry.
+ * Degrade/Reverb return rows stay in the routing matrix but not in Snowflake arms.
  * The top 6 active groups (enabled + level > 0) are assigned to snowflake arms.
  */
 
 import type { SliderState } from '../state';
+import { ROUTING_ACTIVE_EPSILON, ROUTING_SOURCE_REGISTRY, type RoutingRowId, type RoutingSourceDef } from '../routing';
 import type { SnowflakeFamily } from '../../snowflake/types';
 
 /** FX send keys for a given engine row (matches routing matrix columns) */
 export interface EngineSendKeys {
-  delayA: keyof SliderState | null;
-  delayB: keyof SliderState | null;
-  granular: keyof SliderState | null;
-  reverb: keyof SliderState | null;
+  delayA?: keyof SliderState | null;
+  delayB?: keyof SliderState | null;
+  granular?: keyof SliderState | null;
+  degrade?: keyof SliderState | null;
+  reverb?: keyof SliderState | null;
 }
 
 /** Defines one arm-eligible engine source */
 export interface EngineGroupDef {
-  id: string;
+  id: RoutingRowId;
   label: string;
   color: string;
   /** The key that controls this source's output level */
@@ -28,226 +31,61 @@ export interface EngineGroupDef {
   levelMax: number;
   /** How to determine if this source is active (enabled + audible) */
   enabledKey: keyof SliderState | null; // null = always enabled (e.g. delay outputs)
+  isEnabled?: (state: SliderState) => boolean;
   /** FX send keys matching routing matrix columns */
   sends: EngineSendKeys;
   /** Visual identity: snowflake family used for this engine's arm shape */
   family: SnowflakeFamily;
 }
 
+const SNOWFLAKE_FAMILY_BY_ROW_ID = {
+  pad1: "stellarPlate",
+  pad2: "stellarPlate",
+  lead1: "thinSharpCrystal",
+  lead2: "thinSharpCrystal",
+  piano: "classicDendrite",
+  drums: "simpleSpoke",
+  granular: "denseFractal",
+  waves: "hexPlate",
+  water: "roundedIcon",
+  insects: "fernDendrite",
+  nature: "roundedIcon",
+  delayAOut: "ringedCrystal",
+  delayBOut: "ringedCrystal",
+  degrade: "ringedCrystal",
+  reverb: "classicDendrite",
+} as const satisfies Record<RoutingRowId, SnowflakeFamily>;
+
+export const SNOWFLAKE_RETURN_ROW_POLICY = "Degrade and Reverb return rows are routing matrix rows, but they are not Snowflake arm-eligible source rows.";
+
+function engineGroupFromRoutingSource(row: RoutingSourceDef): EngineGroupDef {
+  return {
+    id: row.id,
+    label: row.label,
+    color: row.accent,
+    levelKey: row.levelKey,
+    levelMin: 0,
+    levelMax: 1,
+    enabledKey: row.enabledKeys?.[0] ?? null,
+    isEnabled: row.isEnabled,
+    sends: {
+      delayA: row.sends.delayA ?? null,
+      delayB: row.sends.delayB ?? null,
+      granular: row.sends.granular ?? null,
+      degrade: row.sends.degrade ?? null,
+      reverb: row.sends.reverb ?? null,
+    },
+    family: SNOWFLAKE_FAMILY_BY_ROW_ID[row.id],
+  };
+}
+
 /**
- * All 13 arm-eligible sources, matching routing matrix rows exactly.
- * Order here is used as tiebreaker for equal-level assignment.
+ * Arm-eligible source rows projected from the central routing registry.
+ * Return rows are intentionally excluded; see SNOWFLAKE_RETURN_ROW_POLICY.
  */
-export const ENGINE_GROUPS: EngineGroupDef[] = [
-  {
-    id: 'pad1',
-    label: 'Pad 1',
-    color: '#E07A84',
-    levelKey: 'synthLevel',
-    levelMin: 0,
-    levelMax: 1,
-    enabledKey: 'padEnabled',
-    sends: {
-      delayA: 'pad1DelayASend',
-      delayB: 'pad1DelayBSend',
-      granular: 'granularPad1Send',
-      reverb: 'pad1ReverbSend',
-    },
-    family: 'stellarPlate',
-  },
-  {
-    id: 'pad2',
-    label: 'Pad 2',
-    color: '#B96A72',
-    levelKey: 'pad2Level',
-    levelMin: 0,
-    levelMax: 1,
-    enabledKey: 'pad2Enabled',
-    sends: {
-      delayA: 'pad2DelayASend',
-      delayB: 'pad2DelayBSend',
-      granular: 'granularPad2Send',
-      reverb: 'pad2ReverbSend',
-    },
-    family: 'stellarPlate',
-  },
-  {
-    id: 'lead1',
-    label: 'Lead 1',
-    color: '#D4A520',
-    levelKey: 'lead1Level',
-    levelMin: 0,
-    levelMax: 1,
-    enabledKey: 'leadEnabled',
-    sends: {
-      delayA: 'lead1DelayASend',
-      delayB: 'lead1DelayBSend',
-      granular: 'granularLead1Send',
-      reverb: 'lead1ReverbSend',
-    },
-    family: 'thinSharpCrystal',
-  },
-  {
-    id: 'lead2',
-    label: 'Lead 2',
-    color: '#BFA45A',
-    levelKey: 'lead2Level',
-    levelMin: 0,
-    levelMax: 1,
-    enabledKey: 'lead2Enabled',
-    sends: {
-      delayA: 'lead2DelayASend',
-      delayB: 'lead2DelayBSend',
-      granular: 'granularLead2Send',
-      reverb: 'lead2ReverbSend',
-    },
-    family: 'thinSharpCrystal',
-  },
-  {
-    id: 'piano',
-    label: 'Piano',
-    color: '#E8DCC4',
-    levelKey: 'pianoLevel',
-    levelMin: 0,
-    levelMax: 1,
-    enabledKey: 'pianoEnabled',
-    sends: {
-      delayA: 'pianoDelayASend',
-      delayB: 'pianoDelayBSend',
-      granular: 'granularPianoSend',
-      reverb: 'pianoReverbSend',
-    },
-    family: 'classicDendrite',
-  },
-  {
-    id: 'drums',
-    label: 'Drums',
-    color: '#A870E8',
-    levelKey: 'drumLevel',
-    levelMin: 0,
-    levelMax: 1,
-    enabledKey: 'drumEnabled',
-    sends: {
-      delayA: 'drumDelayASend',
-      delayB: 'drumDelayBSend',
-      granular: 'granularDrumSend',
-      reverb: 'drumReverbSend',
-    },
-    family: 'simpleSpoke',
-  },
-  {
-    id: 'granular',
-    label: 'Granular',
-    color: '#E8B44A',
-    levelKey: 'granularLevel',
-    levelMin: 0,
-    levelMax: 1,
-    enabledKey: 'granularEnabled',
-    sends: {
-      delayA: 'granularDelayASend',
-      delayB: 'granularDelayBSend',
-      granular: null, // self
-      reverb: 'granularReverbSend',
-    },
-    family: 'denseFractal',
-  },
-  {
-    id: 'waves',
-    label: 'Waves',
-    color: '#5A7B8A',
-    levelKey: 'oceanSampleLevel',
-    levelMin: 0,
-    levelMax: 1,
-    enabledKey: 'oceanSampleEnabled',
-    sends: {
-      delayA: 'oceanDelayASend',
-      delayB: 'oceanDelayBSend',
-      granular: 'granularWavesSend',
-      reverb: 'oceanReverbSend',
-    },
-    family: 'hexPlate',
-  },
-  {
-    id: 'water',
-    label: 'Water',
-    color: '#6F9AB1',
-    levelKey: 'waterLevel',
-    levelMin: 0,
-    levelMax: 1,
-    enabledKey: 'waterEnabled',
-    sends: {
-      delayA: 'waterDelayASend',
-      delayB: 'waterDelayBSend',
-      granular: 'granularWaterSend',
-      reverb: 'waterReverbSend',
-    },
-    family: 'roundedIcon',
-  },
-  {
-    id: 'insects',
-    label: 'Insects',
-    color: '#7B9A6D',
-    levelKey: 'insectsSharedLevel',
-    levelMin: 0,
-    levelMax: 1,
-    enabledKey: 'insectsEnabled',
-    sends: {
-      delayA: 'insDelayASend',
-      delayB: 'insDelayBSend',
-      granular: 'granularInsectsSend',
-      reverb: 'insectsReverbSend',
-    },
-    family: 'fernDendrite',
-  },
-  {
-    id: 'nature',
-    label: 'Nature',
-    color: '#A6B98A',
-    levelKey: 'natureLevel',
-    levelMin: 0,
-    levelMax: 1,
-    enabledKey: 'birdsEnabled', // at least one nature source enabled
-    sends: {
-      delayA: 'natureDelayASend',
-      delayB: 'natureDelayBSend',
-      granular: 'granularNatureSend',
-      reverb: 'natureReverbSend',
-    },
-    family: 'roundedIcon',
-  },
-  {
-    id: 'delayAOut',
-    label: 'Delay A',
-    color: '#32C8C8',
-    levelKey: 'delayAMix',
-    levelMin: 0,
-    levelMax: 1,
-    enabledKey: 'delayAEnabled',
-    sends: {
-      delayA: null, // self
-      delayB: 'delayAToBSend',
-      granular: 'delayAGranularSend',
-      reverb: 'delayAReverbSend',
-    },
-    family: 'ringedCrystal',
-  },
-  {
-    id: 'delayBOut',
-    label: 'Delay B',
-    color: '#32C7C7',
-    levelKey: 'granularDelayMix',
-    levelMin: 0,
-    levelMax: 1,
-    enabledKey: 'granularDelayEnabled',
-    sends: {
-      delayA: 'delayBToASend',
-      delayB: null, // self
-      granular: 'delayBGranularSend',
-      reverb: 'granularDelayReverbSend',
-    },
-    family: 'ringedCrystal',
-  },
-];
+export const ENGINE_GROUPS: EngineGroupDef[] = ROUTING_SOURCE_REGISTRY
+  .filter((row) => row.snowflakeArmEligible)
+  .map(engineGroupFromRoutingSource);
 
 /** A resolved arm assignment for one snowflake arm slot */
 export interface ArmAssignment {
@@ -262,14 +100,13 @@ export interface ArmAssignment {
 
 /** Check if an engine source is active (enabled AND level > threshold) */
 function isEngineActive(engine: EngineGroupDef, state: SliderState): boolean {
-  const level = state[engine.levelKey] as number;
-
-  if (engine.enabledKey === null) {
-    // Return rows have no enable toggle, so their level remains the active signal.
-    return level >= 0.001;
-  }
-
-  return !!(state[engine.enabledKey] as boolean);
+  const enabled = engine.isEnabled
+    ? engine.isEnabled(state)
+    : engine.enabledKey
+      ? Boolean(state[engine.enabledKey])
+      : true;
+  const level = Number(state[engine.levelKey] ?? 0);
+  return enabled && Number.isFinite(level) && level > ROUTING_ACTIVE_EPSILON;
 }
 
 /** Get normalized level (0-1) for an engine */
@@ -383,7 +220,9 @@ export function computeArmAssignments(
       normalizedLevel: getNormalizedLevel(engine, state),
     }));
 
-  const activeById = new Map(active.map(entry => [entry.engine.id, entry]));
+  const activeById = new Map<string, { engine: EngineGroupDef; normalizedLevel: number }>(
+    active.map(entry => [entry.engine.id, entry]),
+  );
   const orderedActive = preferredEngineOrder
     ? preferredEngineOrder
         .map(id => activeById.get(id))
@@ -439,11 +278,11 @@ export function computeArmAssignments(
  */
 export function getSendValue(
   engine: EngineGroupDef,
-  direction: 'delayA' | 'delayB' | 'granular' | 'reverb',
+  direction: 'delayA' | 'delayB' | 'granular' | 'degrade' | 'reverb',
   state: SliderState,
 ): number {
   const key = engine.sends[direction];
-  if (key === null) return 0;
+  if (key == null) return 0;
   return (state[key] as number) ?? 0;
 }
 
@@ -453,4 +292,5 @@ export const FX_COLORS = {
   delayA: '#32C8C8',
   delayB: '#32C7C7',
   granular: '#E8B44A',
+  degrade: '#A980FF',
 } as const;

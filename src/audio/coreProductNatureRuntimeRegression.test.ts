@@ -325,7 +325,24 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
     birdsSliceDensity: 0,
     seed: 42,
     seedWindow: 'hour',
-  }, 18);
+  }, 18, {
+    waves: null,
+    birds: {
+      fileName: 'Alps Birds_441_m_normalized.ogg',
+      active: true,
+      seed: 2,
+      sliceDuration: 20,
+      fadeTime: 3.2,
+      density: 0,
+      strideSeconds: 0,
+      nowTime: 18,
+      activeSliceCount: 4,
+      playingSliceCount: 1,
+      activeSlices: [],
+    },
+    birds2: null,
+    frogs: null,
+  });
   const birds = debugState.birds;
   assert(birds, 'Birds texture debug snapshot should exist');
   assert.equal(birds.active, true, 'Enabled audible birds should be marked active');
