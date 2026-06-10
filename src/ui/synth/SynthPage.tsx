@@ -122,6 +122,7 @@ import {
   type ProductArpSlotChoice,
   type ProductArpSourceMode,
 } from '../../audio/productArpeggiator';
+import { normalizeSynthEuclidSource } from '../../audio/coreProductSourceMapping';
 
 const OV_PROB_DRAG_PX = 80;
 
@@ -570,10 +571,13 @@ function resolvePitchSettingsForHarmony(settings: PitchSettings, harmony: Harmon
 }
 
 function getManualSourceForLaneSource(source: string, pad2VoiceAssign: number | undefined): ManualSynthSource {
-  if (source === 'lead2') return 'lead2';
-  if (source === 'piano') return 'piano';
-  if (source.startsWith('synth')) {
-    const voiceIndex = Number.parseInt(source.replace('synth', ''), 10) - 1;
+  const normalized = normalizeSynthEuclidSource(source);
+  if (normalized === 'lead2') return 'lead2';
+  if (normalized === 'piano') return 'piano';
+  if (normalized === 'pad1') return 'pad1';
+  if (normalized === 'pad2') return 'pad2';
+  if (normalized.startsWith('synth')) {
+    const voiceIndex = Number.parseInt(normalized.replace('synth', ''), 10) - 1;
     if (Number.isFinite(voiceIndex) && voiceIndex >= 0) {
       const assignedToPad2 = ((pad2VoiceAssign ?? 0) & (1 << voiceIndex)) !== 0;
       return assignedToPad2 ? 'pad2' : 'pad1';
@@ -581,6 +585,13 @@ function getManualSourceForLaneSource(source: string, pad2VoiceAssign: number | 
     return 'pad1';
   }
   return 'lead1';
+}
+
+function synthSourceSelectValue(source: unknown): string {
+  const normalized = normalizeSynthEuclidSource(source);
+  if (normalized === 'pad1') return 'synth1';
+  if (normalized === 'pad2') return 'synth2';
+  return normalized;
 }
 
 type RuntimeMorphValueKey = 'padMorph' | 'pad2Morph' | 'lead1Morph' | 'lead2Morph';
@@ -2705,7 +2716,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     `synthEuclid${laneIdx + 1}Source` as keyof SliderState;
 
   const getSourceColor = (source: string): string =>
-    SYNTH_SOURCES.find(s => s.value === source)?.color ?? '#888';
+    SYNTH_SOURCES.find(s => s.value === synthSourceSelectValue(source))?.color ?? '#888';
 
   const getDefaultKeyboardSource = useCallback((): ManualSynthSource => {
     if (editingSection === 'pad2') return 'pad2';
@@ -2861,7 +2872,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     setDistanceKeyboardSteps((prev) => prev.map((current, index) => index === laneIdx ? normalizedStep : current));
   }, [getSynthKeyboardLaneStepCount, seq]);
 
-  const activeLaneSource = String(state[getSourceKey(seq.activeTab)] ?? 'lead1');
+  const activeLaneSource = normalizeSynthEuclidSource(state[getSourceKey(seq.activeTab)] ?? 'lead1');
+  const activeLaneSourceDisplay = synthSourceSelectValue(activeLaneSource);
   const sequenceKeyboardSource = getManualSourceForLaneSource(activeLaneSource, state.pad2VoiceAssign);
   const effectiveKeyboardSource = keyboardInputMode === 'sequence' ? sequenceKeyboardSource : keyboardSource;
   const activePitchBindingMode = pitchBindingModes[seq.activeTab] ?? 'polyrhythmic';
@@ -2974,7 +2986,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               : activeKeyboardEditLane === 'morph'
                 ? 'Morph lane is active. Left/Right moves steps and Up/Down changes the value.'
                 : 'Distance lane is active. Left/Right moves steps and Up/Down changes the value.';
-  const keyboardSequenceStatus = `Seq ${seq.activeTab + 1} | ${SYNTH_SOURCES.find((source) => source.value === activeLaneSource)?.label ?? 'Lead 1'} | Lane ${activeKeyboardEditLane === 'trigger' ? 'Sequence' : activeKeyboardEditLane.charAt(0).toUpperCase() + activeKeyboardEditLane.slice(1)} | Step ${String(activeSynthKeyboardStep + 1).padStart(2, '0')}${activeKeyboardEditLane === 'trigger' ? ` | ${activeSequenceTriggerEnabled ? 'On' : 'Off'}` : ''}${activeKeyboardEditLane === 'pitch' && activePitchCursorLabel ? ` | ${activePitchCursorLabel}` : ''}${activeKeyboardEditLane === 'pitch' && activePitchBindingMode === 'polyrhythmic' && activePitchCursorIsBeyondVisibleRange ? ' | Hidden' : ''}`;
+  const keyboardSequenceStatus = `Seq ${seq.activeTab + 1} | ${SYNTH_SOURCES.find((source) => source.value === activeLaneSourceDisplay)?.label ?? 'Lead 1'} | Lane ${activeKeyboardEditLane === 'trigger' ? 'Sequence' : activeKeyboardEditLane.charAt(0).toUpperCase() + activeKeyboardEditLane.slice(1)} | Step ${String(activeSynthKeyboardStep + 1).padStart(2, '0')}${activeKeyboardEditLane === 'trigger' ? ` | ${activeSequenceTriggerEnabled ? 'On' : 'Off'}` : ''}${activeKeyboardEditLane === 'pitch' && activePitchCursorLabel ? ` | ${activePitchCursorLabel}` : ''}${activeKeyboardEditLane === 'pitch' && activePitchBindingMode === 'polyrhythmic' && activePitchCursorIsBeyondVisibleRange ? ' | Hidden' : ''}`;
 
   const writeKeyboardSequenceNote = useCallback((laneIdx: number, midi: number) => {
     const bindingMode = pitchBindingModes[laneIdx] ?? 'polyrhythmic';
@@ -5932,12 +5944,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     Source
                     <select
                       className="synth-source-select"
-                      value={(state[getSourceKey(seq.activeTab)] as string) ?? 'lead1'}
+                      value={synthSourceSelectValue(state[getSourceKey(seq.activeTab)] ?? 'lead1')}
                       onChange={(e) => onSelectChange(getSourceKey(seq.activeTab), e.target.value)}
                       {...bindHelp('synthSeqSourceSelect')}
                       style={{
-                        borderColor: getSourceColor((state[getSourceKey(seq.activeTab)] as string) ?? 'lead1') + '60',
-                        color: getSourceColor((state[getSourceKey(seq.activeTab)] as string) ?? 'lead1'),
+                        borderColor: getSourceColor(String(state[getSourceKey(seq.activeTab)] ?? 'lead1')) + '60',
+                        color: getSourceColor(String(state[getSourceKey(seq.activeTab)] ?? 'lead1')),
                       }}
                     >
                       {SYNTH_SOURCES.map(s => (
@@ -6503,7 +6515,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             <>
               <div className="seq-overview">
                 {seq.sequencerModels.map((seqModel, row) => {
-                  const source = (state[getSourceKey(row)] as string) ?? 'lead1';
+                  const source = synthSourceSelectValue(state[getSourceKey(row)] ?? 'lead1');
                   const sourceInfo = SYNTH_SOURCES.find(s => s.value === source);
                   return (
                     <div

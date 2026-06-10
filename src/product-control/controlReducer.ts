@@ -23,6 +23,7 @@ import {
   type MorphState,
   type ProductControlReason,
   type ProductControlState,
+  type ProductControlStatePatch,
   type ProductControlStateRecord,
   type ProductControlTarget,
 } from './ProductControlState';
@@ -86,6 +87,33 @@ function commitState(
   };
 }
 
+function clearSequencerPatchKeys(
+  previousPatch: ProductControlState['sequencer']['patch'],
+  keys: Iterable<string>,
+): ProductControlState['sequencer']['patch'] {
+  const nextPatch = { ...previousPatch };
+  for (const key of keys) {
+    delete nextPatch[key];
+  }
+  return nextPatch;
+}
+
+function withRawSliderPatch(
+  previous: ProductControlState,
+  patch: ProductControlStatePatch,
+): ProductControlState {
+  return {
+    ...previous,
+    rawSliders: {
+      ...previous.rawSliders,
+      ...patch,
+    } as ProductControlStateRecord,
+    sequencer: {
+      patch: clearSequencerPatchKeys(previous.sequencer.patch, Object.keys(patch)),
+    },
+  };
+}
+
 function resetMorphToPreset(
   previous: MorphState,
   sliders: SliderState,
@@ -126,25 +154,17 @@ export function reduceProductControlState(
 ): ProductControlState {
   switch (action.type) {
     case 'slider/edit': {
-      const rawSliders = {
-        ...previous.rawSliders,
-        [action.key]: action.value,
-      } as ProductControlStateRecord;
       return commitState(
         previous,
-        { ...previous, rawSliders },
+        withRawSliderPatch(previous, { [action.key]: action.value } as ProductControlStatePatch),
         'ui-control-change',
         action.triggerCritical ?? true,
       );
     }
     case 'slider/patch': {
-      const rawSliders = {
-        ...previous.rawSliders,
-        ...action.patch,
-      } as ProductControlStateRecord;
       return commitState(
         previous,
-        { ...previous, rawSliders },
+        withRawSliderPatch(previous, action.patch),
         action.reason ?? 'ui-control-change',
         action.triggerCritical ?? true,
       );
@@ -152,7 +172,7 @@ export function reduceProductControlState(
     case 'visible-sliders/commit': {
       return commitState(
         previous,
-        { ...previous, rawSliders: cloneSliderState(action.sliders) },
+        { ...previous, rawSliders: cloneSliderState(action.sliders), sequencer: { patch: {} } },
         action.reason ?? 'ui-control-change',
         action.triggerCritical ?? true,
       );
@@ -164,6 +184,7 @@ export function reduceProductControlState(
         {
           ...previous,
           rawSliders,
+          sequencer: { patch: {} },
           synthMorph: resetMorphToPreset(previous.synthMorph, rawSliders, action.presetId),
           drumMorph: resetMorphToPreset(previous.drumMorph, rawSliders, action.presetId),
           drumMorphOverrides: createInitialDrumMorphOverrideState(),
@@ -302,7 +323,7 @@ export function reduceProductControlState(
     case 'transport/edit':
       return commitState(
         previous,
-        { ...previous, rawSliders: { ...previous.rawSliders, ...action.patch } as ProductControlStateRecord },
+        withRawSliderPatch(previous, action.patch as ProductControlStatePatch),
         'transport-change',
         action.triggerCritical ?? true,
       );
@@ -315,6 +336,7 @@ export function reduceProductControlState(
         {
           ...previous,
           rawSliders,
+          sequencer: { patch: {} },
           synthMorph: action.morph?.synthMorph ?? createMorphState(rawSliders, { keys: previous.synthMorph.keys }),
           drumMorph: action.morph?.drumMorph ?? createMorphState(rawSliders, { keys: previous.drumMorph.keys }),
           drumMorphOverrides: action.morph?.drumMorphOverrides ?? previous.drumMorphOverrides,

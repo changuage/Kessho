@@ -168,7 +168,7 @@ export type RandomWalkMode = 'localBrownian' | 'globalWalk';
 export type ProgressionClockSource = 'harmony' | 'localPhrase' | 'globalPhrase';
 export type TransportPrimaryClock = 'seconds' | 'bpm' | 'decoupled';
 export type LeadRandomSource = 'lead1' | 'lead2' | 'piano';
-export type SynthEuclidSource = 'lead' | 'lead1' | 'lead2' | 'piano' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+export type SynthEuclidSource = 'lead' | 'lead1' | 'lead2' | 'pad' | 'pad1' | 'pad2' | 'piano' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
 
 /**
  * Serialized evolve config for preset save/load.
@@ -3179,7 +3179,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid1NoteMax: 76,  // E5 (root octave 3)
   synthEuclid1Level: 0.8,
   synthEuclid1Probability: 1.0,
-  synthEuclid1Source: 'lead' as const,
+  synthEuclid1Source: 'lead1' as const,
   // Lane 2 - interlocking (kotekan) - higher register
   synthEuclid2Enabled: false,
   synthEuclid2Preset: 'kotekan',
@@ -3190,7 +3190,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid2NoteMax: 88,  // E6 (root octave 4)
   synthEuclid2Level: 0.6,
   synthEuclid2Probability: 1.0,
-  synthEuclid2Source: 'lead' as const,
+  synthEuclid2Source: 'lead1' as const,
   // Lane 3 - sparse accent - bass register
   synthEuclid3Enabled: false,
   synthEuclid3Preset: 'ketawang',
@@ -3201,7 +3201,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid3NoteMax: 64,  // E4 (root octave 2)
   synthEuclid3Level: 0.9,
   synthEuclid3Probability: 1.0,
-  synthEuclid3Source: 'lead' as const,
+  synthEuclid3Source: 'lead1' as const,
   // Lane 4 - fill/texture - sparkle register
   synthEuclid4Enabled: false,
   synthEuclid4Preset: 'srepegan',
@@ -3212,7 +3212,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid4NoteMax: 96,  // C7
   synthEuclid4Level: 0.5,
   synthEuclid4Probability: 1.0,
-  synthEuclid4Source: 'lead' as const,
+  synthEuclid4Source: 'lead1' as const,
   
   // Synth chord sequencer toggle
   synthChordSequencerEnabled: false,

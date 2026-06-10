@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { SliderState } from '../state';
 import { useSliderHelp } from '../SliderHelpOverlay';
 import type { HarmonyState } from '../../audio/harmony';
+import { SCALE_FAMILIES } from '../../audio/scales';
 import { productHarmonyScaleIdFromName } from '../../audio/coreProductHarmonyScaleIds';
 import type { ProductManualSynthNote, ProductManualSynthSource } from '../../audio/product/ProductEngineTypes';
 import {
@@ -91,11 +92,11 @@ const EXTENSION_TITLE_LABELS: Readonly<Record<string, string>> = {
   sixNine: '6/9',
 };
 
-const SEQUENCE_MODES: readonly { value: HarmonySequenceStepMode; label: string }[] = [
-  { value: 'auto', label: 'Auto' },
-  { value: 'intent', label: 'Intent' },
-  { value: 'slotCopy', label: 'Copy' },
-  { value: 'slotFollow', label: 'Follow' },
+const SEQUENCE_MODES: readonly { value: HarmonySequenceStepMode; label: string; tooltip: string }[] = [
+  { value: 'auto', label: 'Auto', tooltip: 'Automatically choose chord based on scale degree' },
+  { value: 'intent', label: 'Custom', tooltip: 'Define a specific custom chord for this step' },
+  { value: 'slotCopy', label: 'Copy Slot', tooltip: 'Copy a slot chord (static — won\u2019t update if slot changes)' },
+  { value: 'slotFollow', label: 'Link Slot', tooltip: 'Link to a slot (live — updates when slot changes)' },
 ];
 
 const BASS_MODES: readonly { value: HarmonyBassMode; label: string }[] = [
@@ -271,8 +272,8 @@ function frameChordTitle(frame: ResolvedHarmonyFrame): string {
 
 function stepSourceLabel(step: HarmonySequenceStep): string {
   if (step.mode === 'slotCopy') return 'Copy';
-  if (step.mode === 'slotFollow') return 'Follow';
-  if (step.mode === 'intent') return 'Intent';
+  if (step.mode === 'slotFollow') return 'Linked';
+  if (step.mode === 'intent') return 'Custom';
   return 'Auto';
 }
 
@@ -381,8 +382,16 @@ function HarmonySummaryCard({
   activePopup,
   manualLocked,
   chordSequenceEnabled,
+  tension,
+  rootNote,
+  scaleMode,
+  manualScale,
   onTogglePopup,
   onFocusNextStep,
+  onTensionChange,
+  onRootNoteChange,
+  onScaleModeChange,
+  onManualScaleChange,
 }: {
   bank: HarmonyBank;
   rootLabel: string;
@@ -391,8 +400,16 @@ function HarmonySummaryCard({
   activePopup: HarmonyPopup;
   manualLocked: boolean;
   chordSequenceEnabled: boolean;
+  tension: number;
+  rootNote: number;
+  scaleMode: string;
+  manualScale: string;
   onTogglePopup: (popup: Exclude<HarmonyPopup, null>) => void;
   onFocusNextStep: () => void;
+  onTensionChange?: (tension: number) => void;
+  onRootNoteChange?: (rootNote: number) => void;
+  onScaleModeChange?: (mode: string) => void;
+  onManualScaleChange?: (scale: string) => void;
 }) {
   const controlMeta = manualLocked
     ? 'Manual control locked'
@@ -410,10 +427,50 @@ function HarmonySummaryCard({
         <div>
           <div className="harmony-engine-title">Chord Harmony</div>
           <div className="harmony-engine-meta">
-            {rootLabel} {scaleName} · Bank {bank} · Morph {Math.round(resolvedFrame.morphPercent)}% · {manualLocked ? 'Manual locked' : 'Manual available'}
+            {rootLabel} {scaleName} · Bank {bank} · Morph {Math.round(resolvedFrame.morphPercent)}%
           </div>
         </div>
         <HarmonyActionButtons activePopup={activePopup} onTogglePopup={onTogglePopup} />
+      </div>
+      <div className="harmony-tension-strip" title="Tension drives generative chord complexity — low tension gives simple triads, high tension adds extensions and chromatic movement">
+        <label className="harmony-tension-label" {...harmonyHelpAttrs('harmonyTension')}>
+          <span>Tension</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={tension}
+            onChange={onTensionChange ? (event) => onTensionChange(Number(event.target.value)) : undefined}
+            disabled={!onTensionChange}
+          />
+          <strong>{Math.round(tension * 100)}%</strong>
+        </label>
+      </div>
+      <div className="harmony-palette-strip">
+        <div className="harmony-palette-row">
+          <label className="harmony-palette-select" {...harmonyHelpAttrs('harmonyRootNote')}>
+            <span>Root</span>
+            <select value={rootNote} onChange={onRootNoteChange ? (e) => onRootNoteChange(Number(e.target.value)) : undefined} disabled={!onRootNoteChange}>
+              {NOTE_NAMES.map((name, i) => <option key={i} value={i}>{name}</option>)}
+            </select>
+          </label>
+          <label className="harmony-palette-select" {...harmonyHelpAttrs('harmonyScaleMode')}>
+            <span>Scale</span>
+            <select value={scaleMode} onChange={onScaleModeChange ? (e) => onScaleModeChange(e.target.value) : undefined} disabled={!onScaleModeChange}>
+              <option value="auto">Auto</option>
+              <option value="manual">Manual</option>
+            </select>
+          </label>
+          {scaleMode === 'manual' && (
+            <label className="harmony-palette-select harmony-palette-select--wide" {...harmonyHelpAttrs('harmonyManualScale')}>
+              <span>Family</span>
+              <select value={manualScale} onChange={onManualScaleChange ? (e) => onManualScaleChange(e.target.value) : undefined} disabled={!onManualScaleChange}>
+                {SCALE_FAMILIES.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+              </select>
+            </label>
+          )}
+        </div>
       </div>
       <div className="harmony-summary-grid">
         <HarmonyStatusTile
@@ -485,39 +542,14 @@ function ManualVoicingModeSwitch({
   onModeChange: (mode: ManualHarmonyControlMode) => void;
   onStrengthChange: (strength: HarmonyControlStrength) => void;
 }) {
-  return (
-    <div className="harmony-voicing-switch-row">
-      <div className="harmony-segment-group">
-        {(['audition', 'control', 'capture'] as const).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            className={`harmony-segment ${mode}${manual.mode === mode ? ' active' : ''}`}
-            onClick={() => onModeChange(mode)}
-            disabled={!canWriteState || (mode !== 'audition' && manualLocked)}
-            {...harmonyHelpAttrs(`harmonyManualMode${mode.charAt(0).toUpperCase()}${mode.slice(1)}`)}
-          >
-            {mode}
-          </button>
-        ))}
-      </div>
-      <div className="harmony-segment-group compact">
-        <span>Strength</span>
-        {(['bias', 'force'] as const).map((strength) => (
-          <button
-            key={strength}
-            type="button"
-            className={`harmony-segment${manual.strength === strength ? ' active' : ''}`}
-            onClick={() => onStrengthChange(strength)}
-            disabled={!canWriteState}
-            {...harmonyHelpAttrs(`harmonyManualStrength${strength.charAt(0).toUpperCase()}${strength.slice(1)}`)}
-          >
-            {strength}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+  void onModeChange;
+  void onStrengthChange;
+  void manualLocked;
+  void canWriteState;
+  void manual;
+  // Mode strip removed — audition is always-on, control is implicit, capture is an action button.
+  // Strength (Blend toggle) is now inside the Advanced disclosure.
+  return null;
 }
 
 function ManualVoicingPreview({
@@ -527,6 +559,12 @@ function ManualVoicingPreview({
   auditionEnabled,
   onAuditionSourceChange,
   onAuditionPreview,
+  onCapture,
+  canWriteState,
+  writeLocked,
+  captureSlotId,
+  onCaptureSlotChange,
+  slots,
 }: {
   label: string;
   notes: readonly number[];
@@ -534,6 +572,12 @@ function ManualVoicingPreview({
   auditionEnabled: boolean;
   onAuditionSourceChange: (source: ProductManualSynthSource) => void;
   onAuditionPreview: () => void;
+  onCapture?: () => void;
+  canWriteState: boolean;
+  writeLocked: boolean;
+  captureSlotId: number;
+  onCaptureSlotChange: (slotId: number) => void;
+  slots: readonly HarmonyChordSlot[];
 }) {
   return (
     <div className="harmony-manual-preview">
@@ -541,7 +585,7 @@ function ManualVoicingPreview({
       <strong>{label}</strong>
       <HarmonyNotePoolPills notes={notes} compact />
       <div className="harmony-audition-tools" aria-label="Audition sound engine">
-        <label {...harmonyHelpAttrs('harmonyManualAuditionSound')}>
+        <label {...harmonyHelpAttrs('harmonyManualAuditionSound')} title="Choose which synth voice to preview chords through">
           <span>Sound</span>
           <select
             value={auditionSource}
@@ -558,10 +602,38 @@ function ManualVoicingPreview({
           className="harmony-primary-button"
           onClick={onAuditionPreview}
           disabled={!auditionEnabled || notes.length === 0}
+          title="Play the current chord selection through the chosen synth voice"
           {...harmonyHelpAttrs('harmonyManualAuditionPlay')}
         >
           Play
         </button>
+        {onCapture && (
+          <div className="harmony-capture-group">
+            <select
+              value={captureSlotId}
+              onChange={(event) => onCaptureSlotChange(Number(event.target.value))}
+              disabled={!canWriteState || writeLocked}
+              title="Choose which slot to capture the current chord into"
+              {...harmonyHelpAttrs('harmonyManualCaptureSlot')}
+            >
+              {slots.map((slot) => (
+                <option key={slot.id} value={slot.id}>
+                  S{slot.id + 1}{slot.locked ? ' 🔒' : ''}{slot.name ? ` ${slot.name}` : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="harmony-subtle-button"
+              onClick={onCapture}
+              disabled={!canWriteState || writeLocked || slots[captureSlotId]?.locked}
+              title={`Snapshot current chord into Slot ${captureSlotId + 1}`}
+              {...harmonyHelpAttrs('harmonyManualCapture')}
+            >
+              Capture
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -659,9 +731,9 @@ function ChordModifierPanel({
 }) {
   return (
     <div className="harmony-modifier-panel">
-      <div className="harmony-panel-label">Chord Modifiers</div>
+      <div className="harmony-panel-label">Chord Type</div>
       <div className="harmony-control-cluster">
-        <span>Type</span>
+        <span>Quality</span>
         <div className="harmony-chip-row">
           {QUALITY_OPTIONS.slice(1, 5).map((quality) => (
             <button
@@ -670,6 +742,7 @@ function ChordModifierPanel({
               className={`harmony-chip${manual.selectedQuality === quality.value ? ' active' : ''}`}
               onClick={() => onQualityChange(quality.value)}
               disabled={!canWriteState}
+              title={`Set chord quality to ${quality.label}`}
               {...harmonyHelpAttrs('harmonyManualQuality')}
             >
               <em>{quality.key}</em>
@@ -688,6 +761,7 @@ function ChordModifierPanel({
               className={`harmony-chip${manual.selectedExtensions.includes(extension.value) ? ' active' : ''}`}
               onClick={() => onToggleExtension(extension.value)}
               disabled={!canWriteState}
+              title={`Toggle ${extension.label} extension`}
               {...harmonyHelpAttrs('harmonyManualExtension')}
             >
               <em>{extension.key}</em>
@@ -705,44 +779,48 @@ function VoicingAdvancedDisclosure({
   open,
   canWriteState,
   preserveExactVoicing,
+  blendWithSequence,
   onToggleOpen,
   onOctaveChange,
   onInversionChange,
   onSpreadChange,
   onBassModeChange,
   onPreserveExactVoicingChange,
+  onBlendChange,
 }: {
   manual: ManualHarmonyControlState;
   open: boolean;
   canWriteState: boolean;
   preserveExactVoicing: boolean;
+  blendWithSequence: boolean;
   onToggleOpen: () => void;
   onOctaveChange: (delta: number) => void;
   onInversionChange: (delta: number) => void;
   onSpreadChange: (spread: number) => void;
   onBassModeChange: (bassMode: HarmonyBassMode) => void;
   onPreserveExactVoicingChange: (preserve: boolean) => void;
+  onBlendChange: (blend: boolean) => void;
 }) {
   return (
     <div className="harmony-advanced-disclosure">
-      <button type="button" className="harmony-disclosure-button" onClick={onToggleOpen} aria-expanded={open} {...harmonyHelpAttrs('harmonyManualVoicingDisclosure')}>
-        Voicing
+      <button type="button" className="harmony-disclosure-button" onClick={onToggleOpen} aria-expanded={open} title="Advanced voicing controls: octave, inversion, spread, bass, and blending" {...harmonyHelpAttrs('harmonyManualVoicingDisclosure')}>
+        Advanced
       </button>
       {open && (
         <div className="harmony-advanced-grid">
           <div className="harmony-stepper">
             <span>Octave</span>
-            <button type="button" onClick={() => onOctaveChange(-1)} disabled={!canWriteState} {...harmonyHelpAttrs('harmonyManualOctave')}>.</button>
+            <button type="button" onClick={() => onOctaveChange(-1)} disabled={!canWriteState} title="Lower octave" {...harmonyHelpAttrs('harmonyManualOctave')}>−</button>
             <strong>{manual.selectedOctave}</strong>
-            <button type="button" onClick={() => onOctaveChange(1)} disabled={!canWriteState} {...harmonyHelpAttrs('harmonyManualOctave')}>/</button>
+            <button type="button" onClick={() => onOctaveChange(1)} disabled={!canWriteState} title="Raise octave" {...harmonyHelpAttrs('harmonyManualOctave')}>+</button>
           </div>
           <div className="harmony-stepper">
             <span>Inversion</span>
-            <button type="button" onClick={() => onInversionChange(-1)} disabled={!canWriteState} {...harmonyHelpAttrs('harmonyManualInversion')}>-</button>
+            <button type="button" onClick={() => onInversionChange(-1)} disabled={!canWriteState} title="Invert down" {...harmonyHelpAttrs('harmonyManualInversion')}>−</button>
             <strong>{manual.selectedInversion}</strong>
-            <button type="button" onClick={() => onInversionChange(1)} disabled={!canWriteState} {...harmonyHelpAttrs('harmonyManualInversion')}>+</button>
+            <button type="button" onClick={() => onInversionChange(1)} disabled={!canWriteState} title="Invert up" {...harmonyHelpAttrs('harmonyManualInversion')}>+</button>
           </div>
-          <label className="harmony-range-control" {...harmonyHelpAttrs('harmonyManualSpread')}>
+          <label className="harmony-range-control" title="How spread apart the notes in the chord are" {...harmonyHelpAttrs('harmonyManualSpread')}>
             <span>Spread</span>
             <input
               type="range"
@@ -764,13 +842,23 @@ function VoicingAdvancedDisclosure({
                 className={manual.selectedBassMode === mode.value ? 'active' : ''}
                 onClick={() => onBassModeChange(mode.value)}
                 disabled={!canWriteState}
+                title={mode.value === 'off' ? 'No bass note' : mode.value === 'root' ? 'Add root note one octave below' : 'Add fifth below'}
                 {...harmonyHelpAttrs('harmonyManualBass')}
               >
                 {mode.label}
               </button>
             ))}
           </div>
-          <label className="harmony-checkbox-row" {...harmonyHelpAttrs('harmonyManualPreserve')}>
+          <label className="harmony-checkbox-row" title="When enabled, your manual chord blends with the active sequence instead of overriding it" {...harmonyHelpAttrs('harmonyManualBlend')}>
+            <input
+              type="checkbox"
+              checked={blendWithSequence}
+              onChange={(event) => onBlendChange(event.target.checked)}
+              disabled={!canWriteState}
+            />
+            Blend with sequence
+          </label>
+          <label className="harmony-checkbox-row" title="Preserve the exact MIDI notes from a captured voicing" {...harmonyHelpAttrs('harmonyManualPreserve')}>
             <input
               type="checkbox"
               checked={preserveExactVoicing}
@@ -846,6 +934,8 @@ function ManualVoicingPopup({
   auditionSource,
   auditionEnabled,
   preserveExactVoicing,
+  writeLocked,
+  captureSlotId,
   onAuditionSourceChange,
   onAuditionPreview,
   onInputModeChange,
@@ -862,8 +952,8 @@ function ManualVoicingPopup({
   onSpreadChange,
   onBassModeChange,
   onPreserveExactVoicingChange,
-  onSlotTriggerModeChange,
-  onSlotActivate,
+  onCapture,
+  onCaptureSlotChange,
   onKeyDown,
 }: {
   scaleLabel: string;
@@ -878,6 +968,8 @@ function ManualVoicingPopup({
   auditionSource: ProductManualSynthSource;
   auditionEnabled: boolean;
   preserveExactVoicing: boolean;
+  writeLocked: boolean;
+  captureSlotId: number;
   onAuditionSourceChange: (source: ProductManualSynthSource) => void;
   onAuditionPreview: () => void;
   onInputModeChange: (mode: VoicingInputMode) => void;
@@ -894,8 +986,8 @@ function ManualVoicingPopup({
   onSpreadChange: (spread: number) => void;
   onBassModeChange: (bassMode: HarmonyBassMode) => void;
   onPreserveExactVoicingChange: (preserve: boolean) => void;
-  onSlotTriggerModeChange: (enabled: boolean) => void;
-  onSlotActivate: (slotId: number) => void;
+  onCapture: () => void;
+  onCaptureSlotChange: (slotId: number) => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void;
 }) {
   return (
@@ -915,6 +1007,12 @@ function ManualVoicingPopup({
         auditionEnabled={auditionEnabled}
         onAuditionSourceChange={onAuditionSourceChange}
         onAuditionPreview={onAuditionPreview}
+        onCapture={onCapture}
+        canWriteState={canWriteState}
+        writeLocked={writeLocked}
+        captureSlotId={captureSlotId}
+        onCaptureSlotChange={onCaptureSlotChange}
+        slots={slots}
       />
       <div className="harmony-manual-workspace">
         <div className="harmony-root-panel">
@@ -927,6 +1025,7 @@ function ManualVoicingPopup({
                   type="button"
                   className={`harmony-segment${inputMode === mode ? ' active' : ''}`}
                   onClick={() => onInputModeChange(mode)}
+                  title={mode === 'root' ? 'Select chord root by note name' : 'Select chord root by scale degree (I-VII)'}
                   {...harmonyHelpAttrs(mode === 'root' ? 'harmonyManualInputRoot' : 'harmonyManualInputDegree')}
                 >
                   {mode}
@@ -948,14 +1047,6 @@ function ManualVoicingPopup({
               canWriteState={canWriteState}
             />
           )}
-          <SlotTriggerStrip
-            manual={manual}
-            slots={slots}
-            manualLocked={manualLocked}
-            canWriteState={canWriteState}
-            onSlotTriggerModeChange={onSlotTriggerModeChange}
-            onSlotActivate={onSlotActivate}
-          />
         </div>
         <div className="harmony-right-panel">
           <ChordModifierPanel
@@ -969,14 +1060,61 @@ function ManualVoicingPopup({
             open={advancedOpen}
             canWriteState={canWriteState}
             preserveExactVoicing={preserveExactVoicing}
+            blendWithSequence={manual.strength === 'bias'}
             onToggleOpen={() => onAdvancedOpenChange(!advancedOpen)}
             onOctaveChange={onOctaveChange}
             onInversionChange={onInversionChange}
             onSpreadChange={onSpreadChange}
             onBassModeChange={onBassModeChange}
             onPreserveExactVoicingChange={onPreserveExactVoicingChange}
+            onBlendChange={(blend) => onStrengthChange(blend ? 'bias' : 'force')}
           />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CompactSequenceStrip({
+  sequence,
+  slots,
+  activeStepId,
+  chordSequenceEnabled,
+  onToggleSequence,
+  onStepClick,
+}: {
+  sequence: readonly HarmonySequenceStep[];
+  slots: readonly HarmonyChordSlot[];
+  activeStepId: number | null;
+  chordSequenceEnabled: boolean;
+  onToggleSequence: () => void;
+  onStepClick: (stepId: number) => void;
+}) {
+  return (
+    <div className="harmony-compact-sequence">
+      <button
+        type="button"
+        className={`harmony-compact-seq-toggle${chordSequenceEnabled ? ' active' : ''}`}
+        onClick={onToggleSequence}
+        title={chordSequenceEnabled ? 'Disable chord sequence' : 'Enable chord sequence'}
+        {...harmonyHelpAttrs('harmonyCompactSeqToggle')}
+      >
+        Seq
+      </button>
+      <div className="harmony-compact-seq-steps">
+        {sequence.map((step) => (
+          <button
+            key={step.id}
+            type="button"
+            className={`harmony-compact-step${activeStepId === step.id ? ' active' : ''}${step.enabled ? '' : ' muted'}`}
+            onClick={() => onStepClick(step.id)}
+            title={`Step ${step.id + 1}: ${sequenceStepTitle(step, slots)}`}
+            {...harmonyHelpAttrs('harmonyCompactStep')}
+          >
+            <span>{step.id + 1}</span>
+            <strong>{sequenceStepTitle(step, slots)}</strong>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -1122,17 +1260,18 @@ function ChordSlotInspector({
           </select>
         </label>
         <div className="harmony-segment-group compact">
-          <span>Strength</span>
-          {(['bias', 'force'] as const).map((strength) => (
+          <span>Override</span>
+          {([{ key: 'bias', label: 'Suggest', tip: 'Blend this chord with the active sequence' }, { key: 'force', label: 'Override', tip: 'Force this exact chord, ignoring the sequence' }] as const).map(({ key, label, tip }) => (
             <button
-              key={strength}
+              key={key}
               type="button"
-              className={`harmony-segment${slot.intent.strength === strength ? ' active' : ''}`}
-              onClick={() => updateIntent({ strength })}
+              className={`harmony-segment${slot.intent.strength === key ? ' active' : ''}`}
+              onClick={() => updateIntent({ strength: key })}
               disabled={!canWriteState || writeLocked}
+              title={tip}
               {...harmonyHelpAttrs('harmonyLabSlotStrength')}
             >
-              {strength}
+              {label}
             </button>
           ))}
         </div>
@@ -1327,17 +1466,18 @@ function ChordStepInspector({
           <strong>{Math.round(step.probability * 100)}</strong>
         </label>
         <div className="harmony-segment-group compact">
-          <span>Strength</span>
-          {(['bias', 'force'] as const).map((strength) => (
+          <span>Override</span>
+          {([{ key: 'bias', label: 'Suggest', tip: 'Blend this step with surrounding context' }, { key: 'force', label: 'Override', tip: 'Force this exact chord on this step' }] as const).map(({ key, label, tip }) => (
             <button
-              key={strength}
+              key={key}
               type="button"
-              className={`harmony-segment${(step.intent?.strength ?? 'bias') === strength ? ' active' : ''}`}
-              onClick={() => updateIntent({ strength })}
+              className={`harmony-segment${(step.intent?.strength ?? 'bias') === key ? ' active' : ''}`}
+              onClick={() => updateIntent({ strength: key })}
               disabled={!canWriteState || writeLocked}
+              title={tip}
               {...harmonyHelpAttrs('harmonyLabStepStrength')}
             >
-              {strength}
+              {label}
             </button>
           ))}
         </div>
@@ -1354,6 +1494,16 @@ function ChordStepInspector({
   );
 }
 
+const SEQUENCE_PRESETS: readonly { label: string; degrees: readonly number[] }[] = [
+  { label: 'I – IV – V – I', degrees: [0, 3, 4, 0] },
+  { label: 'I – vi – IV – V', degrees: [0, 5, 3, 4] },
+  { label: 'ii – V – I – I', degrees: [1, 4, 0, 0] },
+  { label: 'I – V – vi – IV', degrees: [0, 4, 5, 3] },
+  { label: 'I – IV – ii – V', degrees: [0, 3, 1, 4] },
+  { label: 'i – VII – VI – VII', degrees: [0, 6, 5, 6] },
+  { label: 'I – iii – vi – IV – V – I – IV – V', degrees: [0, 2, 5, 3, 4, 0, 3, 4] },
+];
+
 function ChordGeneratePanel({
   target,
   style,
@@ -1369,6 +1519,7 @@ function ChordGeneratePanel({
   onRespectLocksChange,
   onGenerate,
   onCommitBaseline,
+  onApplyPreset,
 }: {
   target: GenerateTarget;
   style: GenerateStyle;
@@ -1384,9 +1535,20 @@ function ChordGeneratePanel({
   onRespectLocksChange: (respectLocks: boolean) => void;
   onGenerate: (target: GenerateTarget) => void;
   onCommitBaseline: () => void;
+  onApplyPreset: (degrees: readonly number[]) => void;
 }) {
   return (
     <div className="harmony-generate-panel">
+      <div className="harmony-control-cluster">
+        <span>Quick Presets</span>
+        <div className="harmony-chip-row harmony-chip-row--wrap">
+          {SEQUENCE_PRESETS.map((p) => (
+            <button key={p.label} type="button" className="harmony-chip" onClick={() => onApplyPreset(p.degrees)} disabled={!canWriteState || writeLocked} {...harmonyHelpAttrs('harmonySequencePreset')}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="harmony-control-cluster">
         <span>Target</span>
         <div className="harmony-chip-row">
@@ -1466,6 +1628,7 @@ function ChordLabPopup({
   onGenerateRespectLocksChange,
   onGenerate,
   onCommitBaseline,
+  onApplyPreset,
 }: {
   bank: HarmonyBank;
   labTab: ChordLabTab;
@@ -1498,6 +1661,7 @@ function ChordLabPopup({
   onGenerateRespectLocksChange: (respectLocks: boolean) => void;
   onGenerate: (target: GenerateTarget) => void;
   onCommitBaseline: () => void;
+  onApplyPreset: (degrees: readonly number[]) => void;
 }) {
   const selectedSlot = slots[selectedSlotId] ?? slots[0];
   const selectedStep = sequence[selectedStepId] ?? sequence[0];
@@ -1519,6 +1683,14 @@ function ChordLabPopup({
             activeSlotId={manual.activeSlotId}
             onSelectSlot={onSelectSlot}
             onActivateSlot={onActivateSlot}
+          />
+          <SlotTriggerStrip
+            manual={manual}
+            slots={slots}
+            manualLocked={false}
+            canWriteState={canWriteState}
+            onSlotTriggerModeChange={() => {}}
+            onSlotActivate={onActivateSlot}
           />
           <ChordSlotInspector
             slot={selectedSlot}
@@ -1565,6 +1737,7 @@ function ChordLabPopup({
           onRespectLocksChange={onGenerateRespectLocksChange}
           onGenerate={onGenerate}
           onCommitBaseline={onCommitBaseline}
+          onApplyPreset={onApplyPreset}
         />
       )}
     </div>
@@ -1757,9 +1930,8 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
   }, [auditionSource, onAuditionNote]);
 
   const previewAuditionIntent = useCallback((intent: HarmonyIntent) => {
-    if (manual.mode !== 'audition') return;
     playPreviewNotes(resolveIntentPreviewNotes({ ...intent, source: 'audition' }));
-  }, [manual.mode, playPreviewNotes, resolveIntentPreviewNotes]);
+  }, [playPreviewNotes, resolveIntentPreviewNotes]);
 
   const captureSelectedToSlot = useCallback((slotId: number) => {
     if (writeLocked) return;
@@ -1871,6 +2043,20 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
       existingSequence: sequence,
     }));
   }, [harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.tension, patchSequence, sequence, state, writeLocked]);
+
+  const applySequencePreset = useCallback((degrees: readonly number[]) => {
+    if (writeLocked) return;
+    const nextSequence: HarmonySequenceStep[] = sequence.map((step, i) => {
+      if (step.locked) return step;
+      const deg = i < degrees.length ? degrees[i] : undefined;
+      if (deg !== undefined) {
+        return { ...step, enabled: true, mode: 'intent' as const, degree: deg, quality: 'auto' as const, intent: null, slotId: null };
+      }
+      return { ...step, enabled: false };
+    });
+    patchSequence(nextSequence);
+    applyPatch({ harmonyChordSequenceEnabled: true });
+  }, [applyPatch, patchSequence, sequence, writeLocked]);
 
   const setStrength = useCallback((strength: HarmonyControlStrength) => {
     applyManualSelection({ strength }, { strength });
@@ -1992,9 +2178,8 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
   const preserveExactVoicing = Boolean((manual.activeIntent ?? manual.auditionIntent)?.preserveCapturedVoicing);
 
   const playManualPreview = useCallback(() => {
-    if (manual.mode !== 'audition') return;
     playPreviewNotes(manualPreviewNotes);
-  }, [manual.mode, manualPreviewNotes, playPreviewNotes]);
+  }, [manualPreviewNotes, playPreviewNotes]);
 
   const togglePopup = useCallback((popup: Exclude<HarmonyPopup, null>) => {
     setActivePopup((current) => current === popup ? null : popup);
@@ -2023,14 +2208,6 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
     previewAuditionIntent({ ...slot.intent, source: 'audition' });
   }, [manual, previewAuditionIntent, slots, updateManual]);
 
-  const setSlotTriggerMode = useCallback((enabled: boolean) => {
-    updateManual({
-      ...manual,
-      slotTriggerMode: enabled,
-      activeSlotId: enabled ? manual.activeSlotId : null,
-      auditionIntent: enabled ? null : manual.auditionIntent,
-    });
-  }, [manual, updateManual]);
 
   const setPreserveExactVoicing = useCallback((preserve: boolean) => {
     applyManualSelection({}, { preserveCapturedVoicing: preserve });
@@ -2063,9 +2240,32 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
         activePopup={activePopup}
         manualLocked={manualLocked}
         chordSequenceEnabled={harmonyContext.chordSequenceEnabled}
+        tension={harmonyContext.tension}
+        rootNote={state.rootNote ?? 4}
+        scaleMode={state.scaleMode ?? 'auto'}
+        manualScale={typeof state.manualScale === 'string' ? state.manualScale : 'Major (Ionian)'}
         onTogglePopup={togglePopup}
         onFocusNextStep={focusNextStep}
+        onTensionChange={onStateChange ? (value) => applyPatch({ tension: value }) : undefined}
+        onRootNoteChange={onStateChange ? (value) => applyPatch({ rootNote: value }) : undefined}
+        onScaleModeChange={onStateChange ? (value) => applyPatch({ scaleMode: value }) : undefined}
+        onManualScaleChange={onStateChange ? (value) => applyPatch({ manualScale: value }) : undefined}
       />
+
+      {harmonyContext.chordSequenceEnabled && (
+        <CompactSequenceStrip
+          sequence={sequence}
+          slots={slots}
+          activeStepId={harmonyContext.chordSequenceStepIndex}
+          chordSequenceEnabled={harmonyContext.chordSequenceEnabled}
+          onToggleSequence={() => setSequenceEnabled(!harmonyContext.chordSequenceEnabled)}
+          onStepClick={(stepId) => {
+            setSelectedStepId(stepId);
+            setLabTab('sequence');
+            setActivePopup('lab');
+          }}
+        />
+      )}
 
       {activePopup === 'manual' && (
         <ManualVoicingPopup
@@ -2079,8 +2279,9 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
           previewLabel={activeIntentLabel}
           previewNotes={manualPreviewNotes}
           auditionSource={auditionSource}
-          auditionEnabled={Boolean(onAuditionNote) && manual.mode === 'audition'}
+          auditionEnabled={Boolean(onAuditionNote)}
           preserveExactVoicing={preserveExactVoicing}
+          writeLocked={writeLocked}
           onAuditionSourceChange={setAuditionSource}
           onAuditionPreview={playManualPreview}
           onInputModeChange={setVoicingInputMode}
@@ -2097,8 +2298,9 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
           onSpreadChange={setSpread}
           onBassModeChange={setBassMode}
           onPreserveExactVoicingChange={setPreserveExactVoicing}
-          onSlotTriggerModeChange={setSlotTriggerMode}
-          onSlotActivate={activateSlot}
+          onCapture={() => captureSelectedToSlot(selectedSlotId)}
+          onCaptureSlotChange={setSelectedSlotId}
+          captureSlotId={selectedSlotId}
           onKeyDown={handleManualKeyDown}
         />
       )}
@@ -2136,6 +2338,7 @@ export function HarmonyEnginePanel({ state, harmonyState, onStateChange, onAudit
           onGenerateRespectLocksChange={setGenerateRespectLocks}
           onGenerate={runGenerate}
           onCommitBaseline={commitBaselineAction}
+          onApplyPreset={applySequencePreset}
         />
       )}
     </div>

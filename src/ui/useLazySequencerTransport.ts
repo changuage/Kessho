@@ -1,4 +1,5 @@
 import { useCallback, useEffect, type MutableRefObject } from 'react';
+import { normalizeSynthEuclidSource } from '../audio/coreProductSourceMapping';
 import type { SliderState } from './state';
 
 const SYNTH_LANE_ENABLED_KEYS = [
@@ -41,9 +42,11 @@ type LazySequencerTransportControls = {
 };
 
 function lazyManualSourceForLaneSource(source: unknown, pad2VoiceAssign: unknown): SequencerSynthSource {
-  const sourceName = typeof source === 'string' ? source : 'lead1';
+  const sourceName = normalizeSynthEuclidSource(source);
   if (sourceName === 'lead2') return 'lead2';
   if (sourceName === 'piano') return 'piano';
+  if (sourceName === 'pad1') return 'pad1';
+  if (sourceName === 'pad2') return 'pad2';
   if (sourceName.startsWith('synth')) {
     const voiceIndex = Number.parseInt(sourceName.replace('synth', ''), 10) - 1;
     if (Number.isFinite(voiceIndex) && voiceIndex >= 0) {

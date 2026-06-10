@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createCoreProductSnapshot } from './coreProductSnapshot';
-import { resolveCoreProductRangeTargets } from './coreProductEvents';
+import { CORE_PRODUCT_SOURCE_IDS, resolveCoreProductRangeTargets } from './coreProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 
 const disabledDelaySnapshot = createCoreProductSnapshot({
@@ -42,3 +42,27 @@ assert.equal(delayBEnableTargets.length, 1, 'Delay B enable should have one live
 assert.equal(delayBEnableTargets[0]?.paramId, KESSHO_PRODUCT_PARAM_IDS.FxDelayBEnabled);
 assert.equal(delayBEnableTargets[0]?.mapValue?.(0, {}), 0);
 assert.equal(delayBEnableTargets[0]?.mapValue?.(1, {}), 1);
+
+const synthSourceAliasCases = [
+  ['lead', CORE_PRODUCT_SOURCE_IDS.lead1],
+  ['lead1', CORE_PRODUCT_SOURCE_IDS.lead1],
+  ['lead2', CORE_PRODUCT_SOURCE_IDS.lead2],
+  ['piano', CORE_PRODUCT_SOURCE_IDS.piano],
+  ['pad', CORE_PRODUCT_SOURCE_IDS.pad1],
+  ['pad1', CORE_PRODUCT_SOURCE_IDS.pad1],
+  ['pad2', CORE_PRODUCT_SOURCE_IDS.pad2],
+  ['synth1', CORE_PRODUCT_SOURCE_IDS.pad1],
+] as const;
+
+for (const [sourceValue, expectedSourceId] of synthSourceAliasCases) {
+  const snapshot = createCoreProductSnapshot({
+    synthEuclideanMasterEnabled: true,
+    synthEuclid1Enabled: true,
+    synthEuclid1Source: sourceValue,
+  });
+  assert.equal(
+    snapshot.synthLanes[0]?.targetSourceId,
+    expectedSourceId,
+    `Product synth sequencer source ${sourceValue} should map to the intended source ID`,
+  );
+}

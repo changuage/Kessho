@@ -22,6 +22,7 @@ import { coreProductDrumLaneMacroDefaultsFromState, coreProductSynthLaneMacroDef
 import { soundscapeSnapshotPayloadFromState, type SoundscapeSnapshotPayload } from './coreProductSoundscapesSnapshot';
 import { HARMONY_POOL_MAX_NOTES, HARMONY_SOURCE_IDS, HARMONY_STRENGTH_IDS, resolveProductHarmonyState } from './CoreProductHarmonyControl';
 import { coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
+import { normalizeSynthEuclidSource } from './coreProductSourceMapping';
 import type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 export type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductHarmonySnapshot, ProductLaneSnapshot, ProductSoundscapeSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 
@@ -240,9 +241,12 @@ function initialStartDelaySecondsFromState(state: Record<string, unknown> | unde
 }
 
 function synthSourceIdFromState(state: Record<string, unknown> | undefined, key: string): number {
-  const source = String(state?.[key] ?? 'lead').toLowerCase();
+  const source = normalizeSynthEuclidSource(state?.[key]);
+  if (source === 'lead1') return CORE_PRODUCT_SOURCE_IDS.lead1;
   if (source === 'lead2') return CORE_PRODUCT_SOURCE_IDS.lead2;
   if (source === 'piano') return CORE_PRODUCT_SOURCE_IDS.piano;
+  if (source === 'pad1') return CORE_PRODUCT_SOURCE_IDS.pad1;
+  if (source === 'pad2') return CORE_PRODUCT_SOURCE_IDS.pad2;
   if (source.startsWith('synth')) {
     const voiceIndex = Number.parseInt(source.slice('synth'.length), 10) - 1;
     const pad2Assign = Math.round(numberFromState(state, 'pad2VoiceAssign', 0)) & 0x3f;
@@ -255,7 +259,7 @@ function synthSourceIdFromState(state: Record<string, unknown> | undefined, key:
 }
 
 function synthSourcePadVoiceIndexFromState(state: Record<string, unknown> | undefined, key: string): number | null {
-  const source = String(state?.[key] ?? '').toLowerCase();
+  const source = normalizeSynthEuclidSource(state?.[key]);
   if (!source.startsWith('synth')) return null;
   const voiceIndex = Number.parseInt(source.slice('synth'.length), 10) - 1;
   return Number.isFinite(voiceIndex) && voiceIndex >= 0 && voiceIndex < 6 ? voiceIndex : null;

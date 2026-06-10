@@ -6,7 +6,6 @@ import type { PresetEntry, PresetVersionMetadata } from '../../presets/types';
 import { PresetDropdown, PresetFamilyTree } from '../../presets';
 import { extractOptimizedStatePresetData } from '../../presets/statePresetOptimization';
 import type { SliderMode } from '../state';
-import { SCALE_FAMILIES } from '../../audio/scales';
 import { isAtEndpoint0, isAtEndpoint1 } from '../../audio/morphUtils';
 import { getTransportMetrics } from '../../audio/transport';
 import { STEM_RECORD_TRACK_IDS, STEM_RECORD_TRACK_LABELS } from '../../audio/recordingTracks';
@@ -937,13 +936,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
     onFocus: () => announceHelp(helpKey, { ...options, page: 'global' }),
   }), [announceHelp]);
   const transportMetrics = React.useMemo(() => getTransportMetrics(state), [state]);
-  const progressionSteps = Math.max(1, state.chordProgressionSteps ?? 4);
-  const progressionStepEnabled = React.useMemo(
-    () => (state.chordProgressionStepEnabled ?? [])
-      .slice(0, progressionSteps)
-      .concat(new Array(Math.max(0, progressionSteps - (state.chordProgressionStepEnabled?.length ?? 0))).fill(true)),
-    [progressionSteps, state.chordProgressionStepEnabled],
-  );
+
   const primaryClock = state.transportPrimaryClock ?? 'seconds';
   const isSecondsMaster = primaryClock === 'seconds';
   const isBpmMaster = primaryClock === 'bpm';
@@ -1064,7 +1057,7 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
   const sceneChordRootPc = getSceneChordRootPc(sceneHarmony, state.rootNote);
   const sceneChordLabel = formatSceneChordName(sceneHarmony, state.rootNote);
   const sceneChordNotes = formatSceneChordNotes(sceneHarmony?.currentChord.midiNotes, sceneChordRootPc);
-  const sceneDegreeLabel = DEGREE_LABELS[sceneHarmony?.currentDegree ?? state.chordProgressionPattern?.[0] ?? 0] ?? 'I';
+  const sceneDegreeLabel = DEGREE_LABELS[sceneHarmony?.currentDegree ?? 0] ?? 'I';
   const sceneArc = sceneHarmony?.tensionArc;
   const sceneArcPhase = sceneArc && sceneArc.type !== 'sustain'
     ? sceneArc.type.charAt(0).toUpperCase() + sceneArc.type.slice(1)
@@ -1414,309 +1407,87 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
           onAuditionNote={onAuditionHarmonyNote}
         />
 
-        <div className="harmony-card">
-          <h3 className="harmony-card-title">Harmony Engine</h3>
+        <div className="harmony-card evolution-card">
+          <h3 className="harmony-card-title">Evolution</h3>
 
-          {/* Root & CoF + Chord Progression side by side */}
-          <div className="harmony-row-2col">
-            {/* Root & CoF Drift */}
-            <div className="harmony-section">
-              <div className="harmony-section-header" onClick={() => toggleSection('root-cof')}>
-                <span className={`harmony-section-chevron ${expandedSections.has('root-cof') ? 'expanded' : ''}`}>▶</span>
-                <span className="harmony-section-name">Root & CoF Drift</span>
-              </div>
-              {expandedSections.has('root-cof') && (
-                <div className="harmony-section-body">
-                  <Select
-                    label="Root Note"
-                    value={String(state.rootNote)}
-                    options={[
-                      { value: '0', label: 'C' },
-                      { value: '1', label: 'C#' },
-                      { value: '2', label: 'D' },
-                      { value: '3', label: 'D#' },
-                      { value: '4', label: 'E' },
-                      { value: '5', label: 'F' },
-                      { value: '6', label: 'F#' },
-                      { value: '7', label: 'G' },
-                      { value: '8', label: 'G#' },
-                      { value: '9', label: 'A' },
-                      { value: '10', label: 'A#' },
-                      { value: '11', label: 'B' },
-                    ]}
-                    onChange={(v: string) => onSelectChange('rootNote', parseInt(v, 10))}
-                  />
-                  <div className="cof-drift-block">
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: state.cofDriftEnabled ? '#4ade80' : '#666' }}>
-                        CoF Drift
-                      </span>
-                      <button
-                        onClick={() => onSelectChange('cofDriftEnabled', !state.cofDriftEnabled)}
-                        style={{
-                          padding: '3px 10px',
-                          fontSize: '0.7rem',
-                          fontWeight: 'bold',
-                          background: state.cofDriftEnabled ? '#22c55e' : '#333',
-                          border: 'none',
-                          borderRadius: '4px',
-                          color: state.cofDriftEnabled ? '#000' : '#888',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease',
-                        }}
-                      >
-                        {state.cofDriftEnabled ? 'ON' : 'OFF'}
-                      </button>
-                    </div>
-                    <CircleOfFifths
-                      homeRoot={state.rootNote}
-                      currentStep={morphCoFViz ? morphCoFViz.cofStep : engineState.cofCurrentStep}
-                      driftRange={state.cofDriftRange}
-                      driftDirection={state.cofDriftDirection}
-                      enabled={state.cofDriftEnabled}
-                      size={140}
-                      isMorphing={!!morphCoFViz}
-                      morphStartRoot={morphCoFViz?.startRoot}
-                      morphTargetRoot={morphCoFViz?.targetRoot}
-                      morphProgress={morphPosition}
-                      onSelectRoot={(semitone: number) => {
-                        onSelectChange('rootNote', semitone);
-                        onResetCofDrift();
-                      }}
-                    />
-                    {state.cofDriftEnabled && (
-                      <>
-                        <Slider label="Rate (phrases)" value={state.cofDriftRate} paramKey="cofDriftRate" onChange={onParamChange} />
-                        <Select
-                          label="Direction"
-                          value={state.cofDriftDirection}
-                          options={[
-                            { value: 'cw', label: 'CW' },
-                            { value: 'ccw', label: 'CCW' },
-                            { value: 'random', label: 'Rnd' },
-                          ]}
-                          onChange={(v: string) => onSelectChange('cofDriftDirection', v)}
-                        />
-                        <Slider label="Range (steps)" value={state.cofDriftRange} paramKey="cofDriftRange" onChange={onParamChange} />
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
+          {/* CoF Drift — always visible compact row */}
+          <div className="evolution-block">
+            <div className="evolution-block-header">
+              <span className="evolution-block-label">CoF Drift</span>
+              <button
+                onClick={() => onSelectChange('cofDriftEnabled', !state.cofDriftEnabled)}
+                className={`evolution-toggle-btn${state.cofDriftEnabled ? ' active' : ''}`}
+              >
+                {state.cofDriftEnabled ? 'ON' : 'OFF'}
+              </button>
             </div>
-
-            {/* Chord Progression */}
-            <div className="harmony-section">
-              <div className="harmony-section-header" onClick={() => toggleSection('chord-progression')}>
-                <span className={`harmony-section-chevron ${expandedSections.has('chord-progression') ? 'expanded' : ''}`}>▶</span>
-                <span className="harmony-section-name">Chord Progression</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onSelectChange('chordProgressionEnabled', !state.chordProgressionEnabled); }}
-                  style={{
-                    marginLeft: 'auto',
-                    padding: '3px 10px',
-                    fontSize: '0.75rem',
-                    fontWeight: 'bold',
-                    background: state.chordProgressionEnabled ? '#22c55e' : '#333',
-                    border: 'none',
-                    borderRadius: '4px',
-                    color: state.chordProgressionEnabled ? '#000' : '#888',
-                    cursor: 'pointer',
+            {state.cofDriftEnabled && (
+              <div className="evolution-cof-content">
+                <CircleOfFifths
+                  homeRoot={state.rootNote}
+                  currentStep={morphCoFViz ? morphCoFViz.cofStep : engineState.cofCurrentStep}
+                  driftRange={state.cofDriftRange}
+                  driftDirection={state.cofDriftDirection}
+                  enabled={state.cofDriftEnabled}
+                  size={120}
+                  isMorphing={!!morphCoFViz}
+                  morphStartRoot={morphCoFViz?.startRoot}
+                  morphTargetRoot={morphCoFViz?.targetRoot}
+                  morphProgress={morphPosition}
+                  onSelectRoot={(semitone: number) => {
+                    onSelectChange('rootNote', semitone);
+                    onResetCofDrift();
                   }}
-                >
-                  {state.chordProgressionEnabled ? 'ON' : 'OFF'}
-                </button>
-              </div>
-              {expandedSections.has('chord-progression') && state.chordProgressionEnabled && (
-                <div className="harmony-section-body">
-                  <div className="harmony-grid-2">
-                    <Select
-                      label="Clock Source"
-                      value={state.chordProgressionClockSource}
-                      options={[
-                        { value: 'harmony', label: 'Follow Harmony' },
-                        { value: 'globalPhrase', label: 'Global Phrase' },
-                        { value: 'localPhrase', label: 'Local Phrase' },
-                      ]}
-                      onChange={(v: string) => onSelectChange('chordProgressionClockSource', v)}
-                      {...bindHelp('chordProgressionClockSource')}
-                    />
-                    <Select
-                      label="Step Length"
-                      value={String(state.chordProgressionPhraseMultiplier)}
-                      options={[
-                        { value: '1', label: '1 Phrase' },
-                        { value: '2', label: '2 Phrases' },
-                        { value: '4', label: '4 Phrases' },
-                        { value: '8', label: '8 Phrases' },
-                      ]}
-                      onChange={(v: string) => onSelectChange('chordProgressionPhraseMultiplier', parseInt(v, 10))}
-                      {...bindHelp('chordProgressionPhraseMultiplier')}
-                    />
-                  </div>
-                  <Slider
-                    label="Pattern Length"
-                    value={state.chordProgressionSteps}
-                    paramKey="chordProgressionSteps"
-                    onChange={onParamChange}
-                    {...sliderProps('chordProgressionSteps')}
-                  />
+                />
+                <div className="evolution-cof-params">
+                  <Slider label="Rate" value={state.cofDriftRate} paramKey="cofDriftRate" onChange={onParamChange} />
+                  <Slider label="Range" value={state.cofDriftRange} paramKey="cofDriftRange" onChange={onParamChange} />
                   <Select
-                    label="Preset"
-                    value="custom"
+                    label="Dir"
+                    value={state.cofDriftDirection}
                     options={[
-                      { value: 'custom', label: 'Custom' },
-                      { value: '0,3,4,0', label: 'I – IV – V – I' },
-                      { value: '0,5,3,4', label: 'I – vi – IV – V' },
-                      { value: '1,4,0,0', label: 'ii – V – I – I' },
-                      { value: '0,2,5,3', label: 'I – iii – vi – IV' },
-                      { value: '0,4,5,3', label: 'I – V – vi – IV' },
-                      { value: '0,3,1,4', label: 'I – IV – ii – V' },
-                      { value: '0,5,3,4,0,3,4,0', label: 'I – vi – IV – V – I – IV – V – I' },
-                      { value: '0,6,5,6', label: 'i – VII – VI – VII' },
-                      { value: '0,6,3,0', label: 'I – bVII – IV – I' },
+                      { value: 'cw', label: 'CW' },
+                      { value: 'ccw', label: 'CCW' },
+                      { value: 'random', label: 'Rnd' },
                     ]}
-                    onChange={(v: string) => {
-                      if (v !== 'custom') {
-                        const degrees = v.split(',').map(Number);
-                        onSelectChange('chordProgressionPattern', degrees);
-                        onSelectChange('chordProgressionSteps', degrees.length);
-                        onSelectChange('chordProgressionStepEnabled', new Array(degrees.length).fill(true));
-                      }
-                    }}
-                  />
-                  <div style={{ marginTop: '6px' }}>
-                    <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '5px' }}>Progression Steps</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(62px, 1fr))', gap: '6px' }}>
-                      {Array.from({ length: progressionSteps }, (_, i) => {
-                        const deg = (state.chordProgressionPattern ?? [])[i] ?? 0;
-                        const isActive = progressionStepEnabled[i] ?? true;
-                        return (
-                          <div
-                            key={i}
-                            style={{
-                              border: `1px solid ${isActive ? '#7c3aed' : '#333'}`,
-                              background: isActive ? 'rgba(124, 58, 237, 0.14)' : '#171717',
-                              borderRadius: '8px',
-                              padding: '6px 5px',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '5px',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <span style={{ fontSize: '0.6rem', color: '#888' }}>{`S${i + 1}`}</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const nextEnabled = progressionStepEnabled.slice();
-                                  nextEnabled[i] = !isActive;
-                                  onSelectChange('chordProgressionStepEnabled', nextEnabled);
-                                }}
-                                style={{
-                                  fontSize: '0.56rem',
-                                  fontWeight: 700,
-                                  color: isActive ? '#ede9fe' : '#777',
-                                  background: isActive ? 'rgba(167, 139, 250, 0.18)' : '#222',
-                                  border: '1px solid #3a3a3a',
-                                  borderRadius: '999px',
-                                  padding: '2px 5px',
-                                  cursor: 'pointer',
-                                }}
-                                {...bindHelp('chordProgressionStepEnabled', { label: 'Step On/Off' })}
-                              >
-                                {isActive ? 'on' : 'off'}
-                              </button>
-                            </div>
-                            <select
-                              value={deg}
-                              onChange={(e) => {
-                                const newPattern = [...(state.chordProgressionPattern ?? [0, 3, 4, 0])];
-                                while (newPattern.length < progressionSteps) newPattern.push(0);
-                                newPattern[i] = parseInt(e.target.value, 10);
-                                onSelectChange('chordProgressionPattern', newPattern);
-                              }}
-                              style={{
-                                background: '#222',
-                                color: '#ddd',
-                                border: '1px solid #3a3a3a',
-                                borderRadius: '6px',
-                                padding: '4px 3px',
-                                fontSize: '0.65rem',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {DEGREE_LABELS.map((label, d) => (
-                                <option key={d} value={d}>{label}</option>
-                              ))}
-                            </select>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Scale & Tension */}
-          <div className="harmony-section">
-            <div className="harmony-section-header" onClick={() => toggleSection('scale-tension')}>
-              <span className={`harmony-section-chevron ${expandedSections.has('scale-tension') ? 'expanded' : ''}`}>▶</span>
-              <span className="harmony-section-name">Scale & Tension</span>
-            </div>
-            {expandedSections.has('scale-tension') && (
-              <div className="harmony-section-body">
-                <div className="harmony-grid-2">
-                  <Select
-                    label="Scale Mode"
-                    value={state.scaleMode}
-                    options={[
-                      { value: 'auto', label: 'Auto (tension-based)' },
-                      { value: 'manual', label: 'Manual' },
-                    ]}
-                    onChange={(v: string) => onSelectChange('scaleMode', v)}
-                  />
-                  <Select
-                    label="Seed Window"
-                    value={state.seedWindow}
-                    options={[
-                      { value: 'hour', label: 'Hour (changes hourly)' },
-                      { value: 'day', label: 'Day (changes daily)' },
-                    ]}
-                    onChange={(v: string) => onSelectChange('seedWindow', v)}
-                  />
-                </div>
-                {state.scaleMode === 'manual' && (
-                  <Select
-                    label="Scale Family"
-                    value={state.manualScale}
-                    options={SCALE_FAMILIES.map((s) => ({ value: s.name, label: `${NOTE_NAMES[state.rootNote]} ${s.name}` }))}
-                    onChange={(v: string) => onSelectChange('manualScale', v)}
-                  />
-                )}
-                <div className="harmony-grid-2">
-                  <Slider label="Tension" value={state.tension} paramKey="tension" onChange={onParamChange} {...sliderProps('tension')} />
-                  <Slider label="Randomness" value={state.randomness} paramKey="randomness" onChange={onParamChange} {...sliderProps('randomness')} />
-                </div>
-                <div className="harmony-grid-2">
-                  <Slider label="Walk Speed" value={state.randomWalkSpeed} paramKey="randomWalkSpeed" logarithmic onChange={onParamChange} {...sliderProps('randomWalkSpeed')} />
-                  <Select
-                    label="Walk Mode"
-                    value={state.randomWalkMode}
-                    options={[
-                      { value: 'localBrownian', label: 'Local Brownian' },
-                      { value: 'globalWalk', label: 'Global Epoch Walk' },
-                    ]}
-                    onChange={(v: string) => onSelectChange('randomWalkMode', v)}
-                    {...bindHelp('randomWalkMode')}
+                    onChange={(v: string) => onSelectChange('cofDriftDirection', v)}
                   />
                 </div>
               </div>
             )}
           </div>
 
+          {/* Lead Melody + Seed — flat grid, no accordion */}
+          <div className="evolution-block">
+            <div className="evolution-block-header">
+              <span className="evolution-block-label">Lead Melody & Variation</span>
+            </div>
+            <div className="evolution-compact-grid">
+              <Slider label="Walk Speed" value={state.randomWalkSpeed} paramKey="randomWalkSpeed" logarithmic onChange={onParamChange} {...sliderProps('randomWalkSpeed')} />
+              <Slider label="Randomness" value={state.randomness} paramKey="randomness" onChange={onParamChange} {...sliderProps('randomness')} />
+              <Select
+                label="Walk Mode"
+                value={state.randomWalkMode}
+                options={[
+                  { value: 'localBrownian', label: 'Local Brownian' },
+                  { value: 'globalWalk', label: 'Global Epoch Walk' },
+                ]}
+                onChange={(v: string) => onSelectChange('randomWalkMode', v)}
+                {...bindHelp('randomWalkMode')}
+              />
+              <Select
+                label="Seed Window"
+                value={state.seedWindow}
+                options={[
+                  { value: 'hour', label: 'Hourly' },
+                  { value: 'day', label: 'Daily' },
+                ]}
+                onChange={(v: string) => onSelectChange('seedWindow', v)}
+              />
+            </div>
+          </div>
+
+          {/* Transport & Sync — collapsible (complex) */}
           <div className="harmony-section">
             <div className="harmony-section-header" onClick={() => toggleSection('transport-sync')}>
               <span className={`harmony-section-chevron ${expandedSections.has('transport-sync') ? 'expanded' : ''}`}>▶</span>
@@ -1922,7 +1693,6 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '6px 12px', fontSize: '0.68rem' }}>
                     <div><span style={{ color: '#777' }}>Harmony:</span> <span style={{ color: '#ddd' }}>{engineState.transportDebug?.nextHarmonyEventIn !== null && engineState.transportDebug?.nextHarmonyEventIn !== undefined ? `${engineState.transportDebug.nextHarmonyEventIn.toFixed(2)}s` : '—'}</span></div>
                     <div><span style={{ color: '#777' }}>Phrase:</span> <span style={{ color: '#ddd' }}>{engineState.transportDebug ? `${engineState.transportDebug.nextPhraseBoundaryIn.toFixed(2)}s` : '—'}</span></div>
-                    <div><span style={{ color: '#777' }}>Progression:</span> <span style={{ color: '#ddd' }}>{engineState.transportDebug?.nextProgressionStepIn !== null && engineState.transportDebug?.nextProgressionStepIn !== undefined ? `${engineState.transportDebug.nextProgressionStepIn.toFixed(2)}s` : '—'}</span></div>
                     <div><span style={{ color: '#777' }}>Beat BPM:</span> <span style={{ color: '#ddd' }}>{transportMetrics.effectiveBpm.toFixed(1)}</span></div>
                   </div>
                 </div>

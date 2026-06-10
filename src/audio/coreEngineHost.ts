@@ -65,6 +65,7 @@ import type { DrumEuclidEvolveConfig, DrumVoiceType } from './drumSynth';
 import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from './outputTrims';
 import { computeGranularMacroModel } from './granularMacroModel';
 import { getPadPreset, morphPadPresets, PAD1_TO_PAD2_KEY } from './padPresets';
+import { normalizeSynthEuclidSource } from './coreProductSourceMapping';
 import { createHarmonyState, getEffectiveTension, updateHarmonyState, type HarmonyParams, type HarmonyState } from './harmony';
 import { computeSeed, createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange, midiToFreq } from './scales';
@@ -1219,11 +1220,22 @@ function sampleRange(rng: () => number, range: { min: number; max: number } | nu
 
 function coreSynthEuclidSource(state: Record<string, unknown>, lane: 1 | 2 | 3 | 4): string {
   const value = state[`synthEuclid${lane}Source`];
-  return typeof value === 'string' ? value : 'lead';
+  return normalizeSynthEuclidSource(value);
 }
 
 function isCoreSynthPadSource(source: string): boolean {
-  return /^synth[1-6]$/.test(source);
+  return source === 'pad1' || source === 'pad2' || /^synth[1-6]$/.test(source);
+}
+
+function coreSynthPadVoiceIndex(source: string): number {
+  if (!source.startsWith('synth')) return 0;
+  return boundedInteger(Number.parseInt(source.replace('synth', ''), 10), 1, 1, PAD_VOICE_COUNT) - 1;
+}
+
+function coreSynthSourceUsesPad2(source: string, pad2Assign: number): boolean {
+  if (source === 'pad2') return true;
+  if (source === 'pad1') return false;
+  return (pad2Assign & (1 << coreSynthPadVoiceIndex(source))) !== 0;
 }
 
 function coreEuclideanUsesPadSource(state: Record<string, unknown>): boolean {
@@ -1241,7 +1253,7 @@ function coreEuclideanUsesLead1Source(state: Record<string, unknown>): boolean {
     const lane = (laneIndex + 1) as 1 | 2 | 3 | 4;
     const source = coreSynthEuclidSource(state, lane);
     return booleanValue(state[`synthEuclid${lane}Enabled`], laneIndex === 0) &&
-      (source === 'lead' || source === 'lead1');
+      source === 'lead1';
   });
 }
 
@@ -1296,8 +1308,7 @@ function coreSynthEuclidPadVoiceMask(state: Record<string, unknown>): number {
     if (!booleanValue(state[`synthEuclid${lane}Enabled`], laneIndex === 0)) continue;
     const source = coreSynthEuclidSource(state, lane);
     if (!isCoreSynthPadSource(source)) continue;
-    const voiceIndex = boundedInteger(Number.parseInt(source.replace('synth', ''), 10), 1, 1, PAD_VOICE_COUNT) - 1;
-    mask |= 1 << voiceIndex;
+    mask |= 1 << coreSynthPadVoiceIndex(source);
   }
   return mask;
 }
@@ -1728,7 +1739,7 @@ function createSynthEuclidPreview(
     if (!booleanValue(state[`synthEuclid${lane}Enabled`], laneIndex === 0)) continue;
 
     const source = coreSynthEuclidSource(state, lane);
-    if (!isCoreSynthPadSource(source) && source !== 'lead' && source !== 'lead1' && source !== 'lead2' && source !== 'piano') continue;
+    if (!isCoreSynthPadSource(source) && source !== 'lead1' && source !== 'lead2' && source !== 'piano') continue;
 
     const defaultPattern = defaultSynthEuclidPattern(laneIndex);
     const patternParams = resolveDrumEuclidPatternParams(
@@ -1864,8 +1875,8 @@ function createSynthEuclidPreview(
           );
 
           if (isCoreSynthPadSource(source)) {
-            const voiceIndex = boundedInteger(Number.parseInt(source.replace('synth', ''), 10), 1, 1, PAD_VOICE_COUNT) - 1;
-            const isPad2 = (pad2Assign & (1 << voiceIndex)) !== 0;
+            const voiceIndex = coreSynthPadVoiceIndex(source);
+            const isPad2 = coreSynthSourceUsesPad2(source, pad2Assign);
             const attack = boundedNumber(isPad2 ? state.pad2Attack : state.synthAttack, 0.1, 0, 10);
             const decay = boundedNumber(isPad2 ? state.pad2Decay : state.synthDecay, 0.3, 0, 10);
             const hold = boundedNumber(isPad2 ? state.pad2Hold : state.synthHold, 1, 0, 20);

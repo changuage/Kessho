@@ -183,19 +183,6 @@
   gap: 6px 8px;
 }
 
-/* ── Root+CoF & Chord Progression 2-column row ── */
-.global-root .harmony-row-2col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
-}
-.global-root .harmony-row-2col > .harmony-section {
-  border-bottom: none;
-}
-.global-root .harmony-row-2col > .harmony-section:first-child {
-  border-right: 1px solid rgba(255,255,255,0.05);
-}
-
 /* ── Per-Engine Tension 2×3 grid ── */
 .global-root .tension-engine-grid {
   display: grid;
@@ -249,13 +236,6 @@
 @media (max-width: 600px) {
   .global-root .harmony-grid-2 {
     grid-template-columns: 1fr;
-  }
-  .global-root .harmony-row-2col {
-    grid-template-columns: 1fr;
-  }
-  .global-root .harmony-row-2col > .harmony-section:first-child {
-    border-right: none;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
   }
   .global-root .tension-engine-grid {
     grid-template-columns: 1fr;
@@ -810,6 +790,76 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* ── Evolution card compact layout ── */
+.global-root .evolution-card .evolution-block {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.global-root .evolution-card .evolution-block:last-of-type {
+  border-bottom: none;
+}
+
+.global-root .evolution-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.global-root .evolution-block-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.global-root .evolution-toggle-btn {
+  padding: 3px 10px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: #333;
+  border: none;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.global-root .evolution-toggle-btn.active {
+  background: #22c55e;
+  color: #000;
+}
+
+.global-root .evolution-cof-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.global-root .evolution-cof-params {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.global-root .evolution-compact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+
+@media (max-width: 600px) {
+  .global-root .evolution-cof-content {
+    flex-direction: column;
+    align-items: center;
+  }
+  .global-root .evolution-compact-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── Uniform select/dropdown sizing within cards ── */

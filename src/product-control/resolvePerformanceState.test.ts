@@ -131,6 +131,31 @@ function expectSoundActionChangesResolvedOutput(
 }
 
 {
+  let next = reduceProductControlState(controlState({ synthEuclid1Source: 'lead1' }), {
+    type: 'sequencer/edit',
+    patch: { synthEuclid1Source: 'lead1' },
+    triggerCritical: true,
+  });
+  next = reduceProductControlState(next, {
+    type: 'slider/patch',
+    patch: { synthEuclid1Source: 'pad1' },
+    reason: 'ui-control-change',
+    triggerCritical: true,
+  });
+  const resolved = resolvePerformanceState(next);
+  assert.equal(
+    resolved.sliders.synthEuclid1Source,
+    'pad1',
+    'raw source changes should clear stale sequencer source patches',
+  );
+  assert.equal(
+    next.sequencer.patch.synthEuclid1Source,
+    undefined,
+    'overlapping sequencer patch source key should be removed after raw source changes',
+  );
+}
+
+{
   const before = controlState({
     drumKickPresetA: 'Ikeda Kick',
     drumKickPresetB: 'Ikeda Kick',
