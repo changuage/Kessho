@@ -49,11 +49,21 @@ function laneStepStateSignature(cache: CoreProductSequencerCacheState, sequencer
   return sequencerStepStateSignature(selected.toggles[laneIndex] ?? [], selected.values[laneIndex] ?? [], selected.configs[laneIndex] ?? []);
 }
 
-function manualSynthDiceConfig(adapterState: Record<string, unknown>, laneIndex: number, intensity: number): NormalizedSequencerEvolveConfig {
+function manualSynthDiceConfig(
+  adapterState: Record<string, unknown>,
+  laneIndex: number,
+  intensity: number,
+  enabledSubLanes?: readonly string[],
+): NormalizedSequencerEvolveConfig {
   const configs = Array.isArray(adapterState.synthEuclidEvolveConfigs)
     ? adapterState.synthEuclidEvolveConfigs as NormalizedSequencerEvolveConfig[]
     : [];
   const configured = configs[laneIndex];
+  const configuredSubLanes = configured?.enabledSubLanes;
+  const activeEnabledSubLanes = enabledSubLanes ?? ['pitch', 'expression', 'morph', 'distance', 'probability', 'ratchet'];
+  const activeSubLanes = configuredSubLanes
+    ? configuredSubLanes.filter((lane) => activeEnabledSubLanes.includes(lane))
+    : [...activeEnabledSubLanes];
   return {
     enabled: true,
     evolution: Math.max(0, Math.min(1, intensity)),
@@ -61,7 +71,7 @@ function manualSynthDiceConfig(adapterState: Record<string, unknown>, laneIndex:
     writeOffset: 0,
     mutationMode: configured?.mutationMode ?? 'strict',
     methods: { ...(configured?.methods ?? {}), valueDrift: true, valueScramble: true },
-    ...(configured?.enabledSubLanes ? { enabledSubLanes: configured.enabledSubLanes } : {}),
+    enabledSubLanes: activeSubLanes,
   };
 }
 
@@ -103,6 +113,7 @@ export function applyCoreProductManualSynthDice(options: {
   latestSliderState: Record<string, unknown> | null;
   latestProductSnapshot: CoreProductSnapshot | null;
   latestTelemetry: CoreProductTelemetrySnapshot | null;
+  enabledSubLanes?: string[];
   armManualDice: () => void;
   post: (event: CoreProductEvent) => void;
   publish: (name: string, ...payload: unknown[]) => void;
@@ -111,7 +122,7 @@ export function applyCoreProductManualSynthDice(options: {
   options.captureHome();
   options.state.baselineSignatures[options.laneIndex] = laneStepStateSignature(options.cache, 'synth', options.laneIndex);
   options.armManualDice();
-  const config = manualSynthDiceConfig(options.adapterState, options.laneIndex, options.intensity);
+  const config = manualSynthDiceConfig(options.adapterState, options.laneIndex, options.intensity, options.enabledSubLanes);
   const nativeFlags = nativeEvolveFlagsForEvolveConfig(config, 'synth');
   if (nativeFlags !== 0) {
     const telemetry = options.latestTelemetry ?? ({ schemaHash: 0, transportRunning: false, activeSources: 0, activeVoices: 0, activeAssets: 0 } as CoreProductTelemetrySnapshot);

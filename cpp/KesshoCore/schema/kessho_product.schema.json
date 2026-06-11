@@ -92,12 +92,19 @@
       ]
     },
     "lead": {
-      "paramCount": 80,
+      "paramCount": 112,
       "presetSnapParamIndices": [
         0,
         49,
         61,
-        69
+        69,
+        80,
+        81,
+        86,
+        88,
+        94,
+        100,
+        106
       ],
       "presetRoundParamIndices": [
         70
@@ -946,7 +953,9 @@
           "filter": 5,
           "pitch": 6,
           "detune": 7,
-          "none": 8
+          "none": 8,
+          "amp": 9,
+          "pan": 10
         },
         "fallback": 0
       },
@@ -1007,6 +1016,233 @@
       {
         "key": "outputSelect",
         "index": 79,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "carrier1Waveform",
+        "index": 80,
+        "enumMap": {
+          "sine": 0,
+          "triangle": 1,
+          "sawtooth": 2,
+          "square": 3
+        },
+        "fallback": 0
+      },
+      {
+        "key": "carrier2Waveform",
+        "index": 81,
+        "enumMap": {
+          "sine": 0,
+          "triangle": 1,
+          "sawtooth": 2,
+          "square": 3
+        },
+        "fallback": 0
+      },
+      {
+        "key": "stereoSpread",
+        "index": 82,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "pitchEnvDepthCents",
+        "index": 83,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "pitchEnvAttack",
+        "index": 84,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "pitchEnvDecay",
+        "index": 85,
+        "enumMap": null,
+        "fallback": 0.08
+      },
+      {
+        "key": "pitchEnvTarget",
+        "index": 86,
+        "enumMap": {
+          "carriers": 0,
+          "carrier1": 1,
+          "carrier2": 2,
+          "all": 3
+        },
+        "fallback": 0
+      },
+      {
+        "key": "pitchEnvVelocityDepth",
+        "index": 87,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod1Waveform",
+        "index": 88,
+        "enumMap": {
+          "sine": 0,
+          "triangle": 1,
+          "sawtooth": 2,
+          "square": 3
+        },
+        "fallback": 0
+      },
+      {
+        "key": "mod1FixedHz",
+        "index": 89,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod1KeyTrack",
+        "index": 90,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod1VelocityToIndex",
+        "index": 91,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod1VelocityToLevel",
+        "index": 92,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod1ModRelease",
+        "index": 93,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod2Waveform",
+        "index": 94,
+        "enumMap": {
+          "sine": 0,
+          "triangle": 1,
+          "sawtooth": 2,
+          "square": 3
+        },
+        "fallback": 0
+      },
+      {
+        "key": "mod2FixedHz",
+        "index": 95,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod2KeyTrack",
+        "index": 96,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod2VelocityToIndex",
+        "index": 97,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod2VelocityToLevel",
+        "index": 98,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod2ModRelease",
+        "index": 99,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod3Waveform",
+        "index": 100,
+        "enumMap": {
+          "sine": 0,
+          "triangle": 1,
+          "sawtooth": 2,
+          "square": 3
+        },
+        "fallback": 0
+      },
+      {
+        "key": "mod3FixedHz",
+        "index": 101,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod3KeyTrack",
+        "index": 102,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod3VelocityToIndex",
+        "index": 103,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod3VelocityToLevel",
+        "index": 104,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod3ModRelease",
+        "index": 105,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod4Waveform",
+        "index": 106,
+        "enumMap": {
+          "sine": 0,
+          "triangle": 1,
+          "sawtooth": 2,
+          "square": 3
+        },
+        "fallback": 0
+      },
+      {
+        "key": "mod4FixedHz",
+        "index": 107,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod4KeyTrack",
+        "index": 108,
+        "enumMap": null,
+        "fallback": 1
+      },
+      {
+        "key": "mod4VelocityToIndex",
+        "index": 109,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod4VelocityToLevel",
+        "index": 110,
+        "enumMap": null,
+        "fallback": 0
+      },
+      {
+        "key": "mod4ModRelease",
+        "index": 111,
         "enumMap": null,
         "fallback": 0
       }

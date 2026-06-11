@@ -23,6 +23,11 @@ const LIBRARY_SORT_ORDER = {
 
 const LEGACY_DELAY_A_KEY_PATTERN = /"leadDelay(?:ReverbSend|Time|Feedback|Mix|Enabled|Spread|Filter|Send)"/;
 
+function getBrowserPresetStorage(): Storage | null {
+  if (typeof localStorage === 'undefined') return null;
+  return localStorage;
+}
+
 // ─── Interface ──────────────────────────────────────────────────────────────
 
 export interface IPresetStore {
@@ -73,6 +78,10 @@ function containsReferenceValue(value: unknown, needle: string): boolean {
 
 export class LocalStoragePresetStore implements IPresetStore {
   async save(entry: PresetEntry): Promise<void> {
+    const storage = getBrowserPresetStorage();
+    if (!storage) {
+      throw new Error('Preset localStorage backend is unavailable');
+    }
     const normalized = normalizePresetEntry(entry);
     if (!normalized) {
       throw new Error('Invalid preset entry');
@@ -85,22 +94,24 @@ export class LocalStoragePresetStore implements IPresetStore {
     const key = getLogicalKey(normalized);
     for (const candidate of buildPresetKeyCandidates(normalized.type, normalized.name, getPresetScope(normalized, normalized.type))) {
       if (candidate !== key) {
-        localStorage.removeItem(candidate);
+        storage.removeItem(candidate);
       }
     }
 
-    localStorage.setItem(key, JSON.stringify(normalized));
+    storage.setItem(key, JSON.stringify(normalized));
   }
 
   async load(type: PresetLevel, name: string, scope?: string, version?: number): Promise<PresetEntry | null> {
+    const storage = getBrowserPresetStorage();
+    if (!storage) return null;
     for (const key of buildPresetKeyCandidates(type, name, scope)) {
-      const raw = localStorage.getItem(key);
+      const raw = storage.getItem(key);
       if (!raw) continue;
       const entry = readNormalizedEntry(raw);
       if (!entry || entry.type !== type) continue;
       if (!isPresetCompatibleWithSlot(entry, type, scope)) continue;
       if (LEGACY_DELAY_A_KEY_PATTERN.test(raw)) {
-        localStorage.setItem(key, JSON.stringify(entry));
+        storage.setItem(key, JSON.stringify(entry));
       }
       if (version !== undefined) {
         const selected = entry.versions.find(v => v.v === version);
@@ -116,19 +127,21 @@ export class LocalStoragePresetStore implements IPresetStore {
   }
 
   async list(type: PresetLevel, scope?: string): Promise<PresetSummary[]> {
+    const storage = getBrowserPresetStorage();
+    if (!storage) return [];
     const results = new Map<string, PresetEntry>();
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
       if (!key?.startsWith(PREFIX)) continue;
       const parsed = parsePresetKey(key);
       if (!parsed) continue;
       if (parsed.type !== type) continue;
-      const raw = localStorage.getItem(key);
+      const raw = storage.getItem(key);
       if (!raw) continue;
       const entry = readNormalizedEntry(raw);
       if (!entry) continue;
       if (LEGACY_DELAY_A_KEY_PATTERN.test(raw)) {
-        localStorage.setItem(key, JSON.stringify(entry));
+        storage.setItem(key, JSON.stringify(entry));
       }
       if (!isPresetCompatibleWithSlot(entry, type, scope)) continue;
       const logicalKey = getLogicalKey(entry);
@@ -152,24 +165,30 @@ export class LocalStoragePresetStore implements IPresetStore {
   }
 
   async delete(type: PresetLevel, name: string, scope?: string): Promise<void> {
+    const storage = getBrowserPresetStorage();
+    if (!storage) return;
     for (const key of buildPresetKeyCandidates(type, name, scope)) {
-      localStorage.removeItem(key);
+      storage.removeItem(key);
     }
   }
 
   async exists(type: PresetLevel, name: string, scope?: string): Promise<boolean> {
+    const storage = getBrowserPresetStorage();
+    if (!storage) return false;
     for (const key of buildPresetKeyCandidates(type, name, scope)) {
-      if (localStorage.getItem(key) !== null) return true;
+      if (storage.getItem(key) !== null) return true;
     }
     return false;
   }
 
   async findReferences(_type: PresetLevel, name: string): Promise<string[]> {
+    const storage = getBrowserPresetStorage();
+    if (!storage) return [];
     const refs: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
       if (!key?.startsWith(PREFIX)) continue;
-      const raw = localStorage.getItem(key);
+      const raw = storage.getItem(key);
       if (!raw) continue;
       const entry = readNormalizedEntry(raw);
       if (!entry) continue;
@@ -189,12 +208,14 @@ export class LocalStoragePresetStore implements IPresetStore {
   }
 
   async getStorageUsed(): Promise<{ bytes: number; count: number }> {
+    const storage = getBrowserPresetStorage();
+    if (!storage) return { bytes: 0, count: 0 };
     let bytes = 0;
     let count = 0;
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
       if (!key?.startsWith(PREFIX)) continue;
-      const raw = localStorage.getItem(key);
+      const raw = storage.getItem(key);
       if (raw) {
         bytes += key.length * 2 + raw.length * 2; // UTF-16
         count++;
@@ -204,20 +225,23 @@ export class LocalStoragePresetStore implements IPresetStore {
   }
 
   async exportAll(): Promise<Blob> {
+    const storage = getBrowserPresetStorage();
     const entries = new Map<string, PresetEntry>();
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key?.startsWith(PREFIX)) continue;
-      // Skip system flags
-      if (key.includes('factory-loaded') || key.includes('migration-version') || key.includes('storage-backend')) continue;
-      const raw = localStorage.getItem(key);
-      if (!raw) continue;
-      const entry = readNormalizedEntry(raw);
-      if (!entry) continue;
-      const logicalKey = getLogicalKey(entry);
-      const existing = entries.get(logicalKey);
-      if (!existing || compareEntriesByFreshness(existing, entry) < 0) {
-        entries.set(logicalKey, entry);
+    if (storage) {
+      for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        if (!key?.startsWith(PREFIX)) continue;
+        // Skip system flags
+        if (key.includes('factory-loaded') || key.includes('migration-version') || key.includes('storage-backend')) continue;
+        const raw = storage.getItem(key);
+        if (!raw) continue;
+        const entry = readNormalizedEntry(raw);
+        if (!entry) continue;
+        const logicalKey = getLogicalKey(entry);
+        const existing = entries.get(logicalKey);
+        if (!existing || compareEntriesByFreshness(existing, entry) < 0) {
+          entries.set(logicalKey, entry);
+        }
       }
     }
     const payload = {

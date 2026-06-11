@@ -13,7 +13,9 @@ import {
   type Lead4opFMAlgorithm,
   type Lead4opFMModulator,
   type Lead4opFMParams,
+  type Lead4opFMPitchEnv,
   type Lead4opFMPreset,
+  type Lead4opFMWaveform,
 } from '../../audio/lead4opfm';
 import { SliderPrimitive } from '../sliderSystem';
 
@@ -24,8 +26,10 @@ type AuditionMode = 'pre' | 'post';
 type SequencePattern = 'ascending' | 'descending' | 'updown' | 'chord';
 type OperatorKey = 'mod1' | 'mod2' | 'mod3' | 'mod4';
 type OperatorField = keyof Lead4opFMModulator;
+type NumericOperatorField = Exclude<OperatorField, 'waveform'>;
 type FilterType = NonNullable<Lead4opFMParams['filter']['type']>;
 type LfoTarget = NonNullable<NonNullable<Lead4opFMParams['lfo']>['target']>;
+type PitchEnvTarget = NonNullable<NonNullable<Lead4opFMParams['pitchEnv']>['target']>;
 type TransientType = Lead4opFMParams['transient']['type'];
 
 export interface Lead4opFMEditorApplyRequest {
@@ -80,7 +84,7 @@ const SEQUENCE_PATTERNS: Array<{ id: SequencePattern; label: string }> = [
 const OPERATOR_KEYS: OperatorKey[] = ['mod1', 'mod2', 'mod3', 'mod4'];
 
 const MAIN_OPERATOR_FIELDS: Array<{
-  key: OperatorField;
+  key: NumericOperatorField;
   label: string;
   min: number;
   max: number;
@@ -98,7 +102,7 @@ const MAIN_OPERATOR_FIELDS: Array<{
 ];
 
 const TIMING_OPERATOR_FIELDS: Array<{
-  key: OperatorField;
+  key: NumericOperatorField;
   label: string;
   min: number;
   max: number;
@@ -107,6 +111,22 @@ const TIMING_OPERATOR_FIELDS: Array<{
 }> = [
   { key: 'modAttack', label: 'Mod attack', min: 0, max: 2, step: 0.001, defaultValue: 0 },
   { key: 'modDelay', label: 'Mod delay', min: 0, max: 2, step: 0.001, defaultValue: 0 },
+];
+
+const V2_OPERATOR_FIELDS: Array<{
+  key: NumericOperatorField;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  defaultValue: number;
+  unit?: string;
+}> = [
+  { key: 'fixedHz', label: 'Fixed Hz', min: 0, max: 20000, step: 1, defaultValue: 0, unit: 'Hz' },
+  { key: 'keyTrack', label: 'Key track', min: 0, max: 1, step: 0.01, defaultValue: 1 },
+  { key: 'velocityToIndex', label: 'Vel Index', min: 0, max: 1, step: 0.01, defaultValue: 0 },
+  { key: 'velocityToLevel', label: 'Vel Level', min: 0, max: 1, step: 0.01, defaultValue: 0 },
+  { key: 'modRelease', label: 'Mod release', min: 0, max: 10, step: 0.01, defaultValue: 0, unit: 's' },
 ];
 
 const ALGORITHMS: Array<{ value: Lead4opFMAlgorithm; label: string }> = [
@@ -118,7 +138,22 @@ const ALGORITHMS: Array<{ value: Lead4opFMAlgorithm; label: string }> = [
 ];
 
 const FILTER_TYPES: FilterType[] = ['lowpass', 'highpass', 'bandpass', 'notch', 'peaking'];
-const LFO_TARGETS: LfoTarget[] = ['all', 'mod1', 'mod2', 'mod3', 'mod4', 'filter', 'pitch', 'detune', 'none'];
+const WAVEFORMS: Lead4opFMWaveform[] = ['sine', 'triangle', 'sawtooth', 'square'];
+const LFO_TARGETS: LfoTarget[] = ['all', 'mod1', 'mod2', 'mod3', 'mod4', 'filter', 'pitch', 'detune', 'amp', 'pan', 'none'];
+const LFO_TARGET_LABELS: Record<LfoTarget, string> = {
+  all: 'All operators',
+  mod1: 'Mod 1',
+  mod2: 'Mod 2',
+  mod3: 'Mod 3',
+  mod4: 'Mod 4',
+  filter: 'Filter',
+  pitch: 'Pitch',
+  detune: 'Detune',
+  amp: 'Amp Tremolo',
+  pan: 'Pan Motion',
+  none: 'None',
+};
+const PITCH_ENV_TARGETS: PitchEnvTarget[] = ['carriers', 'carrier1', 'carrier2', 'all'];
 const TRANSIENT_TYPES: TransientType[] = ['white', 'pink', 'brown', 'filtered'];
 
 const DEFAULT_TRANSIENT: Lead4opFMParams['transient'] = {
@@ -145,6 +180,14 @@ const DEFAULT_LFO: NonNullable<Lead4opFMParams['lfo']> = {
   rate: 0,
   depth: 0,
   target: 'all',
+};
+
+const DEFAULT_PITCH_ENV: Required<Lead4opFMPitchEnv> = {
+  depthCents: 0,
+  attack: 0,
+  decay: 0.08,
+  target: 'carriers',
+  velocityDepth: 0,
 };
 
 function clonePreset(preset: Lead4opFMPreset): Lead4opFMPreset {
@@ -227,6 +270,12 @@ function normalizeOperator(operator: Lead4opFMModulator | undefined, index: numb
     envRate: operator?.envRate ?? 1,
     modAttack: operator?.modAttack ?? 0,
     modDelay: operator?.modDelay ?? 0,
+    waveform: operator?.waveform ?? 'sine',
+    fixedHz: operator?.fixedHz ?? 0,
+    keyTrack: operator?.keyTrack ?? 1,
+    velocityToIndex: operator?.velocityToIndex ?? 0,
+    velocityToLevel: operator?.velocityToLevel ?? 0,
+    modRelease: operator?.modRelease ?? 0,
   };
 }
 
@@ -262,6 +311,14 @@ function normalizeLeadPresetForEditor(preset: Lead4opFMPreset): Lead4opFMPreset 
       ...DEFAULT_LFO,
       ...(cloned.params.lfo ?? {}),
       target: cloned.params.lfo?.target ?? 'all',
+    },
+    carrier1Waveform: cloned.params.carrier1Waveform ?? 'sine',
+    carrier2Waveform: cloned.params.carrier2Waveform ?? 'sine',
+    stereoSpread: cloned.params.stereoSpread ?? 0,
+    pitchEnv: {
+      ...DEFAULT_PITCH_ENV,
+      ...(cloned.params.pitchEnv ?? {}),
+      target: cloned.params.pitchEnv?.target ?? DEFAULT_PITCH_ENV.target,
     },
     unisonVoices: cloned.params.unisonVoices ?? paramsWithLegacy.unison?.voices ?? 1,
     unisonDetune: cloned.params.unisonDetune ?? paramsWithLegacy.unison?.detune ?? 0,
@@ -579,13 +636,27 @@ export function Lead4opFMEditorOverlay({
     }));
   }, [updateDraft]);
 
-  const updateOperator = useCallback((operatorKey: OperatorKey, field: OperatorField, value: number) => {
+  const updateOperator = useCallback(<K extends OperatorField>(operatorKey: OperatorKey, field: K, value: Lead4opFMModulator[K]) => {
     updateDraft((preset) => ({
       ...preset,
       params: {
         ...preset.params,
         [operatorKey]: {
           ...preset.params[operatorKey],
+          [field]: value,
+        },
+      },
+    }));
+  }, [updateDraft]);
+
+  const updatePitchEnv = useCallback(<K extends keyof Lead4opFMPitchEnv>(field: K, value: Lead4opFMPitchEnv[K]) => {
+    updateDraft((preset) => ({
+      ...preset,
+      params: {
+        ...preset.params,
+        pitchEnv: {
+          ...DEFAULT_PITCH_ENV,
+          ...(preset.params.pitchEnv ?? {}),
           [field]: value,
         },
       },
@@ -882,6 +953,23 @@ export function Lead4opFMEditorOverlay({
               </div>
 
               <div className="lead-editor-subsection">
+                <div className="lead-editor-section-head">
+                  <span>Pitch Envelope</span>
+                  <select value={draft.params.pitchEnv?.target ?? DEFAULT_PITCH_ENV.target} onChange={(event) => updatePitchEnv('target', event.currentTarget.value as PitchEnvTarget)}>
+                    {PITCH_ENV_TARGETS.map((target) => (
+                      <option key={target} value={target}>{target}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="lead-editor-control-grid">
+                  <NumberControl label="Depth" value={draft.params.pitchEnv?.depthCents ?? 0} min={-240} max={240} step={1} unit="ct" onChange={(value) => updatePitchEnv('depthCents', value)} />
+                  <NumberControl label="Attack" value={draft.params.pitchEnv?.attack ?? 0} min={0} max={1} step={0.001} unit="s" onChange={(value) => updatePitchEnv('attack', value)} />
+                  <NumberControl label="Decay" value={draft.params.pitchEnv?.decay ?? DEFAULT_PITCH_ENV.decay} min={0.001} max={3} step={0.001} unit="s" onChange={(value) => updatePitchEnv('decay', value)} />
+                  <NumberControl label="Velocity Depth" value={draft.params.pitchEnv?.velocityDepth ?? 0} min={0} max={1} step={0.01} onChange={(value) => updatePitchEnv('velocityDepth', value)} />
+                </div>
+              </div>
+
+              <div className="lead-editor-subsection">
                 <div className="lead-editor-subsection-title">Output</div>
                 <div className="lead-editor-control-grid">
                   <NumberControl label="Gain" value={draft.params.gain} min={0} max={1.5} step={0.01} onChange={(value) => updateParam('gain', value)} />
@@ -912,8 +1000,28 @@ export function Lead4opFMEditorOverlay({
               </div>
 
               <div className="lead-editor-control-grid">
+                <label className="lead-editor-select-control">
+                  <span>Carrier 1 Wave</span>
+                  <select value={draft.params.carrier1Waveform ?? 'sine'} onChange={(event) => updateParam('carrier1Waveform', event.currentTarget.value as Lead4opFMWaveform)}>
+                    {WAVEFORMS.map((waveform) => (
+                      <option key={waveform} value={waveform}>{waveform}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="lead-editor-select-control">
+                  <span>Carrier 2 Wave</span>
+                  <select value={draft.params.carrier2Waveform ?? 'sine'} onChange={(event) => updateParam('carrier2Waveform', event.currentTarget.value as Lead4opFMWaveform)}>
+                    {WAVEFORMS.map((waveform) => (
+                      <option key={waveform} value={waveform}>{waveform}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="lead-editor-control-grid">
                 <NumberControl label="Beat detune" value={draft.params.beatDetune} min={-50} max={50} step={1} unit="ct" onChange={(value) => updateParam('beatDetune', value)} />
                 <NumberControl label="Carrier 2 mix" value={draft.params.carrier2Mix} min={0} max={1} step={0.01} onChange={(value) => updateParam('carrier2Mix', value)} />
+                <NumberControl label="Stereo Spread" value={draft.params.stereoSpread ?? 0} min={0} max={1} step={0.01} onChange={(value) => updateParam('stereoSpread', value)} />
                 <NumberControl label="Drive" value={draft.params.drive ?? 0} min={0} max={1} step={0.01} onChange={(value) => updateParam('drive', value)} />
                 <NumberControl label="Unison voices" value={draft.params.unisonVoices ?? 1} min={1} max={4} step={1} onChange={(value) => updateParam('unisonVoices', Math.round(value))} />
                 <NumberControl label="Unison detune" value={draft.params.unisonDetune ?? 0} min={0} max={50} step={1} unit="ct" onChange={(value) => updateParam('unisonDetune', value)} />
@@ -928,7 +1036,7 @@ export function Lead4opFMEditorOverlay({
                     <span>Target</span>
                     <select value={draft.params.lfo?.target ?? 'all'} onChange={(event) => updateLfo('target', event.currentTarget.value as LfoTarget)}>
                       {LFO_TARGETS.map((target) => (
-                        <option key={target} value={target}>{target}</option>
+                        <option key={target} value={target}>{LFO_TARGET_LABELS[target]}</option>
                       ))}
                     </select>
                   </label>
@@ -1008,6 +1116,41 @@ export function Lead4opFMEditorOverlay({
                       ))}
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div className="lead-editor-subsection">
+                <div className="lead-editor-subsection-title">Operator color and response</div>
+                <div className="lead-editor-operator-v2-grid">
+                  {OPERATOR_KEYS.map((operatorKey, index) => {
+                    const operator = draft.params[operatorKey];
+                    return (
+                      <div className="lead-editor-operator-v2-row" key={operatorKey}>
+                        <span className="lead-editor-operator-label">Op {index + 1}</span>
+                        <label className="lead-editor-select-control compact">
+                          <span>Wave</span>
+                          <select value={operator.waveform ?? 'sine'} onChange={(event) => updateOperator(operatorKey, 'waveform', event.currentTarget.value as Lead4opFMWaveform)}>
+                            {WAVEFORMS.map((waveform) => (
+                              <option key={waveform} value={waveform}>{waveform}</option>
+                            ))}
+                          </select>
+                        </label>
+                        {V2_OPERATOR_FIELDS.map((field) => (
+                          <NumberControl
+                            key={field.key}
+                            compact
+                            label={field.label}
+                            value={operator[field.key] ?? field.defaultValue}
+                            min={field.min}
+                            max={field.max}
+                            step={field.step}
+                            unit={field.unit}
+                            onChange={(value) => updateOperator(operatorKey, field.key, value)}
+                          />
+                        ))}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

@@ -21,11 +21,14 @@ OUT="$SCRIPT_DIR/kessho_lead_fm.wasm"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LOCAL_EMSDK="$REPO_ROOT/emsdk"
 LOCAL_EMCC="$LOCAL_EMSDK/upstream/emscripten/emcc.py"
+LOCAL_EMSDK_PY="$LOCAL_EMSDK/python/3.13.3_64bit/bin/python3"
 LOCAL_PY312="$REPO_ROOT/.venv312/bin/python"
 
 if [[ -f "$LOCAL_EMCC" ]]; then
     EMCC_CMD=()
-    if [[ -x "$LOCAL_PY312" ]]; then
+    if [[ -x "$LOCAL_EMSDK_PY" ]]; then
+        EMCC_CMD=("$LOCAL_EMSDK_PY" "$LOCAL_EMCC")
+    elif [[ -x "$LOCAL_PY312" ]]; then
         EMCC_CMD=("$LOCAL_PY312" "$LOCAL_EMCC")
     else
         EMCC_CMD=("python3" "$LOCAL_EMCC")
@@ -47,6 +50,14 @@ EXPORTS="[
   '_lead_fm_set_algorithm',
   '_lead_fm_set_beat_detune',
   '_lead_fm_set_carrier2_mix',
+  '_lead_fm_set_carrier1_waveform',
+  '_lead_fm_set_carrier2_waveform',
+  '_lead_fm_set_stereo_spread',
+  '_lead_fm_set_pitch_env_depth_cents',
+  '_lead_fm_set_pitch_env_attack',
+  '_lead_fm_set_pitch_env_decay',
+  '_lead_fm_set_pitch_env_target',
+  '_lead_fm_set_pitch_env_velocity_depth',
   '_lead_fm_set_op_ratio',
   '_lead_fm_set_op_index',
   '_lead_fm_set_op_decay',
@@ -57,6 +68,12 @@ EXPORTS="[
   '_lead_fm_set_op_env_rate',
   '_lead_fm_set_op_mod_attack',
   '_lead_fm_set_op_mod_delay',
+  '_lead_fm_set_op_waveform',
+  '_lead_fm_set_op_fixed_hz',
+  '_lead_fm_set_op_key_track',
+  '_lead_fm_set_op_velocity_to_index',
+  '_lead_fm_set_op_velocity_to_level',
+  '_lead_fm_set_op_mod_release',
   '_lead_fm_set_attack',
   '_lead_fm_set_decay',
   '_lead_fm_set_sustain',
@@ -106,6 +123,14 @@ EXPORTS="[
   '_lead_fm_instance_set_algorithm',
   '_lead_fm_instance_set_beat_detune',
   '_lead_fm_instance_set_carrier2_mix',
+  '_lead_fm_instance_set_carrier1_waveform',
+  '_lead_fm_instance_set_carrier2_waveform',
+  '_lead_fm_instance_set_stereo_spread',
+  '_lead_fm_instance_set_pitch_env_depth_cents',
+  '_lead_fm_instance_set_pitch_env_attack',
+  '_lead_fm_instance_set_pitch_env_decay',
+  '_lead_fm_instance_set_pitch_env_target',
+  '_lead_fm_instance_set_pitch_env_velocity_depth',
   '_lead_fm_instance_set_op_ratio',
   '_lead_fm_instance_set_op_index',
   '_lead_fm_instance_set_op_decay',
@@ -116,6 +141,12 @@ EXPORTS="[
   '_lead_fm_instance_set_op_env_rate',
   '_lead_fm_instance_set_op_mod_attack',
   '_lead_fm_instance_set_op_mod_delay',
+  '_lead_fm_instance_set_op_waveform',
+  '_lead_fm_instance_set_op_fixed_hz',
+  '_lead_fm_instance_set_op_key_track',
+  '_lead_fm_instance_set_op_velocity_to_index',
+  '_lead_fm_instance_set_op_velocity_to_level',
+  '_lead_fm_instance_set_op_mod_release',
   '_lead_fm_instance_set_attack',
   '_lead_fm_instance_set_decay',
   '_lead_fm_instance_set_sustain',

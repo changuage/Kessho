@@ -190,6 +190,7 @@ function mapSubLaneStatesToEnabledFlags(
   return Array.from({ length: 4 }, (_, index) => ({
     pitch: states?.[index]?.pitch.enabled === true || arpConfigs?.[index]?.enabled === true,
     expression: states?.[index]?.expression.enabled === true,
+    ratchet: states?.[index]?.expression.enabled === true,
     morph: states?.[index]?.morph.enabled === true,
     distance: states?.[index]?.distance.enabled === true,
     slice: states?.[index]?.slice.enabled === true,

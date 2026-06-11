@@ -53,7 +53,17 @@ constexpr int kParamDelayFilter = kParamAttack + 33;
 constexpr int kParamDelayMix = kParamAttack + 34;
 constexpr int kParamDelaySend = kParamAttack + 35;
 constexpr int kParamOutputSelect = kParamAttack + 36;
-constexpr int kParamCount = kParamOutputSelect + 1;
+constexpr int kParamCarrier1Waveform = 80;
+constexpr int kParamCarrier2Waveform = 81;
+constexpr int kParamStereoSpread = 82;
+constexpr int kParamPitchEnvDepthCents = 83;
+constexpr int kParamPitchEnvAttack = 84;
+constexpr int kParamPitchEnvDecay = 85;
+constexpr int kParamPitchEnvTarget = 86;
+constexpr int kParamPitchEnvVelocityDepth = 87;
+constexpr int kOperatorV2ParamStart = 88;
+constexpr int kOperatorV2ParamCount = 6;
+constexpr int kParamCount = 112;
 
 constexpr int kOpRatio = 0;
 constexpr int kOpIndex = 1;
@@ -65,15 +75,30 @@ constexpr int kOpDetune = 6;
 constexpr int kOpEnvRate = 7;
 constexpr int kOpModAttack = 8;
 constexpr int kOpModDelay = 9;
+constexpr int kOpWaveform = 0;
+constexpr int kOpFixedHz = 1;
+constexpr int kOpKeyTrack = 2;
+constexpr int kOpVelocityToIndex = 3;
+constexpr int kOpVelocityToLevel = 4;
+constexpr int kOpModRelease = 5;
 
 std::array<float, kParamCount> makeDefaultParams() {
   std::array<float, kParamCount> params{};
   params[kParamAlgorithm] = LEAD_FM_ALG_PARALLEL;
   params[kParamBeatDetune] = 0.0f;
   params[kParamCarrier2Mix] = 0.0f;
+  params[kParamCarrier1Waveform] = LEAD_FM_WAVE_SINE;
+  params[kParamCarrier2Waveform] = LEAD_FM_WAVE_SINE;
+  params[kParamStereoSpread] = 0.0f;
+  params[kParamPitchEnvDepthCents] = 0.0f;
+  params[kParamPitchEnvAttack] = 0.0f;
+  params[kParamPitchEnvDecay] = 0.08f;
+  params[kParamPitchEnvTarget] = LEAD_FM_PITCH_ENV_CARRIERS;
+  params[kParamPitchEnvVelocityDepth] = 0.0f;
 
   for (int op = 0; op < LEAD_FM_NUM_OPERATORS; ++op) {
     const int base = kOperatorParamStart + op * kOperatorParamCount;
+    const int v2_base = kOperatorV2ParamStart + op * kOperatorV2ParamCount;
     params[base + kOpRatio] = 1.0f;
     params[base + kOpIndex] = 0.0f;
     params[base + kOpDecay] = 0.8f;
@@ -84,6 +109,12 @@ std::array<float, kParamCount> makeDefaultParams() {
     params[base + kOpEnvRate] = 1.0f;
     params[base + kOpModAttack] = 0.0f;
     params[base + kOpModDelay] = 0.0f;
+    params[v2_base + kOpWaveform] = LEAD_FM_WAVE_SINE;
+    params[v2_base + kOpFixedHz] = 0.0f;
+    params[v2_base + kOpKeyTrack] = 1.0f;
+    params[v2_base + kOpVelocityToIndex] = 0.0f;
+    params[v2_base + kOpVelocityToLevel] = 0.0f;
+    params[v2_base + kOpModRelease] = 0.0f;
   }
 
   params[kParamAttack] = 0.01f;
@@ -216,9 +247,18 @@ public:
     lead_fm_instance_set_algorithm(instance_, clampedRounded(params_[kParamAlgorithm], 0, 4));
     lead_fm_instance_set_beat_detune(instance_, params_[kParamBeatDetune]);
     lead_fm_instance_set_carrier2_mix(instance_, params_[kParamCarrier2Mix]);
+    lead_fm_instance_set_carrier1_waveform(instance_, clampedRounded(params_[kParamCarrier1Waveform], 0, 3));
+    lead_fm_instance_set_carrier2_waveform(instance_, clampedRounded(params_[kParamCarrier2Waveform], 0, 3));
+    lead_fm_instance_set_stereo_spread(instance_, params_[kParamStereoSpread]);
+    lead_fm_instance_set_pitch_env_depth_cents(instance_, params_[kParamPitchEnvDepthCents]);
+    lead_fm_instance_set_pitch_env_attack(instance_, params_[kParamPitchEnvAttack]);
+    lead_fm_instance_set_pitch_env_decay(instance_, params_[kParamPitchEnvDecay]);
+    lead_fm_instance_set_pitch_env_target(instance_, clampedRounded(params_[kParamPitchEnvTarget], 0, 3));
+    lead_fm_instance_set_pitch_env_velocity_depth(instance_, params_[kParamPitchEnvVelocityDepth]);
 
     for (int op = 0; op < LEAD_FM_NUM_OPERATORS; ++op) {
       const int base = kOperatorParamStart + op * kOperatorParamCount;
+      const int v2_base = kOperatorV2ParamStart + op * kOperatorV2ParamCount;
       lead_fm_instance_set_op_ratio(instance_, op, params_[base + kOpRatio]);
       lead_fm_instance_set_op_index(instance_, op, params_[base + kOpIndex]);
       lead_fm_instance_set_op_decay(instance_, op, params_[base + kOpDecay]);
@@ -229,6 +269,12 @@ public:
       lead_fm_instance_set_op_env_rate(instance_, op, params_[base + kOpEnvRate]);
       lead_fm_instance_set_op_mod_attack(instance_, op, params_[base + kOpModAttack]);
       lead_fm_instance_set_op_mod_delay(instance_, op, params_[base + kOpModDelay]);
+      lead_fm_instance_set_op_waveform(instance_, op, clampedRounded(params_[v2_base + kOpWaveform], 0, 3));
+      lead_fm_instance_set_op_fixed_hz(instance_, op, params_[v2_base + kOpFixedHz]);
+      lead_fm_instance_set_op_key_track(instance_, op, params_[v2_base + kOpKeyTrack]);
+      lead_fm_instance_set_op_velocity_to_index(instance_, op, params_[v2_base + kOpVelocityToIndex]);
+      lead_fm_instance_set_op_velocity_to_level(instance_, op, params_[v2_base + kOpVelocityToLevel]);
+      lead_fm_instance_set_op_mod_release(instance_, op, params_[v2_base + kOpModRelease]);
     }
 
     lead_fm_instance_set_attack(instance_, params_[kParamAttack]);
@@ -257,7 +303,7 @@ public:
     lead_fm_instance_set_y_pan(instance_, params_[kParamYPan]);
     lead_fm_instance_set_lfo_rate(instance_, params_[kParamLfoRate]);
     lead_fm_instance_set_lfo_depth(instance_, params_[kParamLfoDepth]);
-    lead_fm_instance_set_lfo_target(instance_, clampedRounded(params_[kParamLfoTarget], 0, 8));
+    lead_fm_instance_set_lfo_target(instance_, clampedRounded(params_[kParamLfoTarget], 0, 10));
     lead_fm_instance_set_unison_voices(instance_, clampedRounded(params_[kParamUnisonVoices], 1, LEAD_FM_MAX_UNISON));
     lead_fm_instance_set_unison_detune(instance_, params_[kParamUnisonDetune]);
     lead_fm_instance_set_delay_enabled(instance_, params_[kParamDelayEnabled] > 0.5f ? 1 : 0);

@@ -16,6 +16,7 @@ import { getPresetStore } from '../presets/PresetStore';
 import type { PresetEntry, PresetLibrary } from '../presets/types';
 import { SHARED_PRESET_TEST_MODE } from '../presets/sharedMode';
 import { clampMorphPosition } from './morphUtils';
+import lead4opfmV2PresetBank from './lead4opfmV2PresetBank.json';
 
 // ─── Active note tracking for CPU overlay ───
 let activeLeadNoteCount = 0;
@@ -34,6 +35,8 @@ export interface Lead4opFMPresetXY {
   yPan: number;
 }
 
+export type Lead4opFMWaveform = 'sine' | 'triangle' | 'sawtooth' | 'square';
+
 export interface Lead4opFMModulator {
   ratio: number;
   index: number;
@@ -45,6 +48,12 @@ export interface Lead4opFMModulator {
   envRate?: number;  // envelope rate multiplier 0.1..8 (default 1) — scales global ADSR per operator
   modAttack?: number;  // operator mod envelope attack in seconds (default 0 = instant)
   modDelay?: number;   // operator mod envelope delay in seconds (default 0 = no delay)
+  waveform?: Lead4opFMWaveform;
+  fixedHz?: number;
+  keyTrack?: number;
+  velocityToIndex?: number;
+  velocityToLevel?: number;
+  modRelease?: number;
 }
 
 export interface Lead4opFMEnvelope {
@@ -77,7 +86,15 @@ export interface Lead4opFMTransient {
 export interface Lead4opFMLFO {
   rate?: number;    // LFO rate in Hz (0.05..20, default 0)
   depth?: number;   // LFO depth 0..1 — modulates FM index (default 0)
-  target?: 'all' | 'mod1' | 'mod2' | 'mod3' | 'mod4' | 'filter' | 'pitch' | 'detune' | 'none'; // modulation destination
+  target?: 'all' | 'mod1' | 'mod2' | 'mod3' | 'mod4' | 'filter' | 'pitch' | 'detune' | 'amp' | 'pan' | 'none'; // modulation destination
+}
+
+export interface Lead4opFMPitchEnv {
+  depthCents?: number;
+  attack?: number;
+  decay?: number;
+  target?: 'carriers' | 'carrier1' | 'carrier2' | 'all';
+  velocityDepth?: number;
 }
 
 export interface Lead4opFMParams {
@@ -95,6 +112,10 @@ export interface Lead4opFMParams {
   unisonVoices?: number;   // 1..4 unison voice count (default 1)
   unisonDetune?: number;   // unison spread in cents 0..50 (default 0)
   drive?: number;           // drive/saturation amount 0..1 (default 0, no drive)
+  carrier1Waveform?: Lead4opFMWaveform;
+  carrier2Waveform?: Lead4opFMWaveform;
+  stereoSpread?: number;
+  pitchEnv?: Lead4opFMPitchEnv;
 }
 
 export interface Lead4opFMPreset {
@@ -132,6 +153,14 @@ export interface Lead4opFMMorphedParams {
   algorithm: Lead4opFMAlgorithm;
   beatDetune: number;
   carrier2Mix: number;
+  carrier1Waveform: Lead4opFMWaveform;
+  carrier2Waveform: Lead4opFMWaveform;
+  stereoSpread: number;
+  pitchEnvDepthCents: number;
+  pitchEnvAttack: number;
+  pitchEnvDecay: number;
+  pitchEnvTarget: 'carriers' | 'carrier1' | 'carrier2' | 'all';
+  pitchEnvVelocityDepth: number;
   mod1Ratio: number;
   mod1Index: number;
   mod1Decay: number;
@@ -142,6 +171,12 @@ export interface Lead4opFMMorphedParams {
   mod1EnvRate: number;
   mod1ModAttack: number;
   mod1ModDelay: number;
+  mod1Waveform: Lead4opFMWaveform;
+  mod1FixedHz: number;
+  mod1KeyTrack: number;
+  mod1VelocityToIndex: number;
+  mod1VelocityToLevel: number;
+  mod1ModRelease: number;
   mod2Ratio: number;
   mod2Index: number;
   mod2Decay: number;
@@ -152,6 +187,12 @@ export interface Lead4opFMMorphedParams {
   mod2EnvRate: number;
   mod2ModAttack: number;
   mod2ModDelay: number;
+  mod2Waveform: Lead4opFMWaveform;
+  mod2FixedHz: number;
+  mod2KeyTrack: number;
+  mod2VelocityToIndex: number;
+  mod2VelocityToLevel: number;
+  mod2ModRelease: number;
   mod3Ratio: number;
   mod3Index: number;
   mod3Decay: number;
@@ -162,6 +203,12 @@ export interface Lead4opFMMorphedParams {
   mod3EnvRate: number;
   mod3ModAttack: number;
   mod3ModDelay: number;
+  mod3Waveform: Lead4opFMWaveform;
+  mod3FixedHz: number;
+  mod3KeyTrack: number;
+  mod3VelocityToIndex: number;
+  mod3VelocityToLevel: number;
+  mod3ModRelease: number;
   mod4Ratio: number;
   mod4Index: number;
   mod4Decay: number;
@@ -172,6 +219,12 @@ export interface Lead4opFMMorphedParams {
   mod4EnvRate: number;
   mod4ModAttack: number;
   mod4ModDelay: number;
+  mod4Waveform: Lead4opFMWaveform;
+  mod4FixedHz: number;
+  mod4KeyTrack: number;
+  mod4VelocityToIndex: number;
+  mod4VelocityToLevel: number;
+  mod4ModRelease: number;
   attack: number;
   decay: number;
   sustain: number;
@@ -198,15 +251,93 @@ export interface Lead4opFMMorphedParams {
   yPan: number;
   lfoRate: number;
   lfoDepth: number;
-  lfoTarget: 'all' | 'mod1' | 'mod2' | 'mod3' | 'mod4' | 'filter' | 'pitch' | 'detune' | 'none';
+  lfoTarget: 'all' | 'mod1' | 'mod2' | 'mod3' | 'mod4' | 'filter' | 'pitch' | 'detune' | 'amp' | 'pan' | 'none';
   unisonVoices: number;
   unisonDetune: number;
 }
 
 // ─── Interpolation ───
 
+const LEAD4OP_WAVEFORMS: Lead4opFMWaveform[] = ['sine', 'triangle', 'sawtooth', 'square'];
+const DEFAULT_WAVEFORM: Lead4opFMWaveform = 'sine';
+const DEFAULT_PITCH_ENV: Required<Lead4opFMPitchEnv> = {
+  depthCents: 0,
+  attack: 0,
+  decay: 0.08,
+  target: 'carriers',
+  velocityDepth: 0,
+};
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+function validWaveform(value: unknown): Lead4opFMWaveform {
+  return LEAD4OP_WAVEFORMS.includes(value as Lead4opFMWaveform)
+    ? value as Lead4opFMWaveform
+    : DEFAULT_WAVEFORM;
+}
+
+function snapWaveform(a: unknown, b: unknown, t: number): Lead4opFMWaveform {
+  return t < 0.5 ? validWaveform(a) : validWaveform(b);
+}
+
+function validPitchEnvTarget(value: unknown): Required<Lead4opFMPitchEnv>['target'] {
+  return value === 'carrier1' || value === 'carrier2' || value === 'all' || value === 'carriers'
+    ? value
+    : DEFAULT_PITCH_ENV.target;
+}
+
+function getPitchEnv(params: Lead4opFMParams): Required<Lead4opFMPitchEnv> {
+  const env = params.pitchEnv ?? {};
+  return {
+    depthCents: Number.isFinite(env.depthCents) ? env.depthCents! : DEFAULT_PITCH_ENV.depthCents,
+    attack: Math.max(0, env.attack ?? DEFAULT_PITCH_ENV.attack),
+    decay: Math.max(0.001, env.decay ?? DEFAULT_PITCH_ENV.decay),
+    target: validPitchEnvTarget(env.target),
+    velocityDepth: clamp(env.velocityDepth ?? DEFAULT_PITCH_ENV.velocityDepth, 0, 1),
+  };
+}
+
+function operatorFrequency(noteHz: number, op: Pick<Lead4opFMModulator, 'fixedHz' | 'keyTrack'>, ratio: number, centsDetune: number): number {
+  const detuneMul = Math.pow(2, centsDetune / 1200);
+  const fixedHz = Math.max(0, op.fixedHz ?? 0);
+  const keyTrack = clamp(op.keyTrack ?? 1, 0, 1);
+  const trackedHz = noteHz * ratio;
+  const baseHz = fixedHz > 0 ? lerp(fixedHz, trackedHz, keyTrack) : trackedHz;
+  return Math.max(0.001, baseHz * detuneMul);
+}
+
+function velocityScale(velocity: number, amount: number | undefined): number {
+  return lerp(1, velocity, clamp(amount ?? 0, 0, 1));
+}
+
+function centsToRatio(cents: number): number {
+  return Math.pow(2, cents / 1200);
+}
+
+function applyPitchEnvToFrequency(
+  param: AudioParam,
+  baseHz: number,
+  env: Pick<Lead4opFMMorphedParams, 'pitchEnvDepthCents' | 'pitchEnvAttack' | 'pitchEnvDecay' | 'pitchEnvVelocityDepth'>,
+  now: number,
+  velocity: number,
+): void {
+  if (Math.abs(env.pitchEnvDepthCents) <= 0.001) return;
+  const depth = env.pitchEnvDepthCents * (1 + clamp(env.pitchEnvVelocityDepth, 0, 1) * velocity);
+  const startHz = Math.max(0.001, baseHz * centsToRatio(depth));
+  const attack = Math.max(0, env.pitchEnvAttack);
+  const decay = Math.max(0.001, env.pitchEnvDecay);
+  param.cancelScheduledValues(now);
+  param.setValueAtTime(startHz, now);
+  if (attack > 0) {
+    param.linearRampToValueAtTime(startHz, now + attack);
+  }
+  param.exponentialRampToValueAtTime(Math.max(0.001, baseHz), now + attack + decay);
 }
 
 function computeAttackTransientScale(attackSeconds: number): number {
@@ -255,55 +386,116 @@ export function morphPresets(
   const lfoTargetA = a.lfo?.target ?? 'all';
   const lfoTargetB = b.lfo?.target ?? 'all';
   const lfoTarget = morphPosition < 0.5 ? lfoTargetA : lfoTargetB;
+  const pitchEnvA = getPitchEnv(a);
+  const pitchEnvB = getPitchEnv(b);
+  const morphMod = (
+    left: Lead4opFMModulator,
+    right: Lead4opFMModulator,
+    ratioDefault: number,
+    sustainDefault: number,
+  ) => ({
+    ratio: lerp(left.ratio ?? ratioDefault, right.ratio ?? ratioDefault, morphPosition),
+    index: lerp(left.index ?? 0, right.index ?? 0, morphPosition),
+    decay: lerp(left.decay ?? 0.5, right.decay ?? 0.5, morphPosition),
+    sustain: lerp(left.sustain ?? sustainDefault, right.sustain ?? sustainDefault, morphPosition),
+    level: lerp(left.level ?? 1, right.level ?? 1, morphPosition),
+    feedback: lerp(left.feedback ?? 0, right.feedback ?? 0, morphPosition),
+    detune: lerp(left.detune ?? 0, right.detune ?? 0, morphPosition),
+    envRate: lerp(left.envRate ?? 1, right.envRate ?? 1, morphPosition),
+    modAttack: lerp(left.modAttack ?? 0, right.modAttack ?? 0, morphPosition),
+    modDelay: lerp(left.modDelay ?? 0, right.modDelay ?? 0, morphPosition),
+    waveform: snapWaveform(left.waveform, right.waveform, morphPosition),
+    fixedHz: lerp(left.fixedHz ?? 0, right.fixedHz ?? 0, morphPosition),
+    keyTrack: lerp(left.keyTrack ?? 1, right.keyTrack ?? 1, morphPosition),
+    velocityToIndex: lerp(left.velocityToIndex ?? 0, right.velocityToIndex ?? 0, morphPosition),
+    velocityToLevel: lerp(left.velocityToLevel ?? 0, right.velocityToLevel ?? 0, morphPosition),
+    modRelease: lerp(left.modRelease ?? 0, right.modRelease ?? 0, morphPosition),
+  });
+  const mod1 = morphMod(a.mod1, b.mod1, 1, 0.1);
+  const mod2 = morphMod(a.mod2, b.mod2, 2, 0.05);
+  const mod3 = morphMod(a.mod3, b.mod3, 3, 0.02);
+  const mod4 = morphMod(a.mod4, b.mod4, 4, 0.1);
 
   return {
     algorithm,
     beatDetune: lerp(a.beatDetune, b.beatDetune, morphPosition),
     carrier2Mix: lerp(a.carrier2Mix, b.carrier2Mix, morphPosition),
+    carrier1Waveform: snapWaveform(a.carrier1Waveform, b.carrier1Waveform, morphPosition),
+    carrier2Waveform: snapWaveform(a.carrier2Waveform, b.carrier2Waveform, morphPosition),
+    stereoSpread: lerp(a.stereoSpread ?? 0, b.stereoSpread ?? 0, morphPosition),
+    pitchEnvDepthCents: lerp(pitchEnvA.depthCents, pitchEnvB.depthCents, morphPosition),
+    pitchEnvAttack: lerp(pitchEnvA.attack, pitchEnvB.attack, morphPosition),
+    pitchEnvDecay: lerp(pitchEnvA.decay, pitchEnvB.decay, morphPosition),
+    pitchEnvTarget: morphPosition < 0.5 ? pitchEnvA.target : pitchEnvB.target,
+    pitchEnvVelocityDepth: lerp(pitchEnvA.velocityDepth, pitchEnvB.velocityDepth, morphPosition),
 
-    mod1Ratio: lerp(a.mod1.ratio, b.mod1.ratio, morphPosition),
-    mod1Index: lerp(a.mod1.index, b.mod1.index, morphPosition),
-    mod1Decay: lerp(a.mod1.decay, b.mod1.decay, morphPosition),
-    mod1Sustain: lerp(a.mod1.sustain ?? 0.1, b.mod1.sustain ?? 0.1, morphPosition),
-    mod1Level: lerp(a.mod1.level ?? 1, b.mod1.level ?? 1, morphPosition),
-    mod1Feedback: lerp(a.mod1.feedback ?? 0, b.mod1.feedback ?? 0, morphPosition),
-    mod1Detune: lerp(a.mod1.detune ?? 0, b.mod1.detune ?? 0, morphPosition),
-    mod1EnvRate: lerp(a.mod1.envRate ?? 1, b.mod1.envRate ?? 1, morphPosition),
-    mod1ModAttack: lerp(a.mod1.modAttack ?? 0, b.mod1.modAttack ?? 0, morphPosition),
-    mod1ModDelay: lerp(a.mod1.modDelay ?? 0, b.mod1.modDelay ?? 0, morphPosition),
+    mod1Ratio: mod1.ratio,
+    mod1Index: mod1.index,
+    mod1Decay: mod1.decay,
+    mod1Sustain: mod1.sustain,
+    mod1Level: mod1.level,
+    mod1Feedback: mod1.feedback,
+    mod1Detune: mod1.detune,
+    mod1EnvRate: mod1.envRate,
+    mod1ModAttack: mod1.modAttack,
+    mod1ModDelay: mod1.modDelay,
+    mod1Waveform: mod1.waveform,
+    mod1FixedHz: mod1.fixedHz,
+    mod1KeyTrack: mod1.keyTrack,
+    mod1VelocityToIndex: mod1.velocityToIndex,
+    mod1VelocityToLevel: mod1.velocityToLevel,
+    mod1ModRelease: mod1.modRelease,
 
-    mod2Ratio: lerp(a.mod2.ratio, b.mod2.ratio, morphPosition),
-    mod2Index: lerp(a.mod2.index, b.mod2.index, morphPosition),
-    mod2Decay: lerp(a.mod2.decay, b.mod2.decay, morphPosition),
-    mod2Sustain: lerp(a.mod2.sustain ?? 0.05, b.mod2.sustain ?? 0.05, morphPosition),
-    mod2Level: lerp(a.mod2.level ?? 1, b.mod2.level ?? 1, morphPosition),
-    mod2Feedback: lerp(a.mod2.feedback ?? 0, b.mod2.feedback ?? 0, morphPosition),
-    mod2Detune: lerp(a.mod2.detune ?? 0, b.mod2.detune ?? 0, morphPosition),
-    mod2EnvRate: lerp(a.mod2.envRate ?? 1, b.mod2.envRate ?? 1, morphPosition),
-    mod2ModAttack: lerp(a.mod2.modAttack ?? 0, b.mod2.modAttack ?? 0, morphPosition),
-    mod2ModDelay: lerp(a.mod2.modDelay ?? 0, b.mod2.modDelay ?? 0, morphPosition),
+    mod2Ratio: mod2.ratio,
+    mod2Index: mod2.index,
+    mod2Decay: mod2.decay,
+    mod2Sustain: mod2.sustain,
+    mod2Level: mod2.level,
+    mod2Feedback: mod2.feedback,
+    mod2Detune: mod2.detune,
+    mod2EnvRate: mod2.envRate,
+    mod2ModAttack: mod2.modAttack,
+    mod2ModDelay: mod2.modDelay,
+    mod2Waveform: mod2.waveform,
+    mod2FixedHz: mod2.fixedHz,
+    mod2KeyTrack: mod2.keyTrack,
+    mod2VelocityToIndex: mod2.velocityToIndex,
+    mod2VelocityToLevel: mod2.velocityToLevel,
+    mod2ModRelease: mod2.modRelease,
 
-    mod3Ratio: lerp(a.mod3.ratio, b.mod3.ratio, morphPosition),
-    mod3Index: lerp(a.mod3.index, b.mod3.index, morphPosition),
-    mod3Decay: lerp(a.mod3.decay, b.mod3.decay, morphPosition),
-    mod3Sustain: lerp(a.mod3.sustain ?? 0.02, b.mod3.sustain ?? 0.02, morphPosition),
-    mod3Level: lerp(a.mod3.level ?? 1, b.mod3.level ?? 1, morphPosition),
-    mod3Feedback: lerp(a.mod3.feedback ?? 0, b.mod3.feedback ?? 0, morphPosition),
-    mod3Detune: lerp(a.mod3.detune ?? 0, b.mod3.detune ?? 0, morphPosition),
-    mod3EnvRate: lerp(a.mod3.envRate ?? 1, b.mod3.envRate ?? 1, morphPosition),
-    mod3ModAttack: lerp(a.mod3.modAttack ?? 0, b.mod3.modAttack ?? 0, morphPosition),
-    mod3ModDelay: lerp(a.mod3.modDelay ?? 0, b.mod3.modDelay ?? 0, morphPosition),
+    mod3Ratio: mod3.ratio,
+    mod3Index: mod3.index,
+    mod3Decay: mod3.decay,
+    mod3Sustain: mod3.sustain,
+    mod3Level: mod3.level,
+    mod3Feedback: mod3.feedback,
+    mod3Detune: mod3.detune,
+    mod3EnvRate: mod3.envRate,
+    mod3ModAttack: mod3.modAttack,
+    mod3ModDelay: mod3.modDelay,
+    mod3Waveform: mod3.waveform,
+    mod3FixedHz: mod3.fixedHz,
+    mod3KeyTrack: mod3.keyTrack,
+    mod3VelocityToIndex: mod3.velocityToIndex,
+    mod3VelocityToLevel: mod3.velocityToLevel,
+    mod3ModRelease: mod3.modRelease,
 
-    mod4Ratio: lerp(a.mod4.ratio, b.mod4.ratio, morphPosition),
-    mod4Index: lerp(a.mod4.index, b.mod4.index, morphPosition),
-    mod4Decay: lerp(a.mod4.decay, b.mod4.decay, morphPosition),
-    mod4Sustain: lerp(a.mod4.sustain ?? 0.1, b.mod4.sustain ?? 0.1, morphPosition),
-    mod4Level: lerp(a.mod4.level ?? 1, b.mod4.level ?? 1, morphPosition),
-    mod4Feedback: lerp(a.mod4.feedback ?? 0, b.mod4.feedback ?? 0, morphPosition),
-    mod4Detune: lerp(a.mod4.detune ?? 0, b.mod4.detune ?? 0, morphPosition),
-    mod4EnvRate: lerp(a.mod4.envRate ?? 1, b.mod4.envRate ?? 1, morphPosition),
-    mod4ModAttack: lerp(a.mod4.modAttack ?? 0, b.mod4.modAttack ?? 0, morphPosition),
-    mod4ModDelay: lerp(a.mod4.modDelay ?? 0, b.mod4.modDelay ?? 0, morphPosition),
+    mod4Ratio: mod4.ratio,
+    mod4Index: mod4.index,
+    mod4Decay: mod4.decay,
+    mod4Sustain: mod4.sustain,
+    mod4Level: mod4.level,
+    mod4Feedback: mod4.feedback,
+    mod4Detune: mod4.detune,
+    mod4EnvRate: mod4.envRate,
+    mod4ModAttack: mod4.modAttack,
+    mod4ModDelay: mod4.modDelay,
+    mod4Waveform: mod4.waveform,
+    mod4FixedHz: mod4.fixedHz,
+    mod4KeyTrack: mod4.keyTrack,
+    mod4VelocityToIndex: mod4.velocityToIndex,
+    mod4VelocityToLevel: mod4.velocityToLevel,
+    mod4ModRelease: mod4.modRelease,
 
     attack: lerp(a.envelope.attack, b.envelope.attack, morphPosition),
     decay: lerp(a.envelope.decay, b.envelope.decay, morphPosition),
@@ -348,19 +540,29 @@ export const DEFAULT_SOFT_RHODES: Lead4opFMPreset = {
   id: 'soft_rhodes',
   name: 'Soft Rhodes',
   engine: 'Lead4opFM',
+  method: 'new',
+  operators: 4,
   algorithm: 'parallel',
-  xy: { xLevel: 1, xPan: -0.2, yLevel: 0.9, yPan: 0.2 },
+  xy: { xLevel: 0.96, xPan: -0.26, yLevel: 0.7, yPan: 0.26 },
   params: {
-    beatDetune: 0,
-    carrier2Mix: 0,
-    mod1: { ratio: 1, index: 0.25, decay: 0.8, sustain: 0.23 },
-    mod2: { ratio: 2, index: 0.08, decay: 0.72 },
-    mod3: { ratio: 3, index: 0, decay: 0.3 },
-    mod4: { ratio: 0.5, index: 0, decay: 0.3 },
-    envelope: { attack: 0.01, decay: 0.8, sustain: 0.3, release: 2 },
-    filter: { freq: 4000, q: 0.7 },
-    transient: { click: 0.08, noise: 0.02, duration: 12, decay: 130, filter: 4200, type: 'filtered' },
-    gain: 0.34,
+    beatDetune: 1.25,
+    carrier2Mix: 0.2,
+    mod1: { ratio: 1, index: 0.42, decay: 1.2, sustain: 0.28, level: 0.82, feedback: 0.015, envRate: 1.1, waveform: 'sine', keyTrack: 1, velocityToIndex: 0.55, velocityToLevel: 0.18, modRelease: 1.9 },
+    mod2: { ratio: 2.01, index: 0.62, decay: 0.28, sustain: 0.02, level: 0.75, detune: 3, envRate: 1.25, waveform: 'triangle', keyTrack: 1, velocityToIndex: 0.9, velocityToLevel: 0.12, modRelease: 0.48 },
+    mod3: { ratio: 0.5, index: 0.1, decay: 1.8, sustain: 0.18, level: 0.42, detune: -4, envRate: 0.85, waveform: 'sine', fixedHz: 2100, keyTrack: 0.22, velocityToIndex: 0.5, velocityToLevel: 0.05, modRelease: 0.24 },
+    mod4: { ratio: 3, index: 0.06, decay: 0.5, sustain: 0, level: 0.35, detune: 5, envRate: 1.3, waveform: 'triangle', fixedHz: 122, keyTrack: 0, velocityToIndex: 0.04, velocityToLevel: 0, modRelease: 2.2 },
+    envelope: { attack: 0.018, decay: 0.95, sustain: 0.32, release: 2.3 },
+    filter: { freq: 3050, q: 0.68, type: 'lowpass', envDepth: 600, envAttack: 0.01, envDecay: 0.35, envSustain: 0.45, envRelease: 0.9 },
+    transient: { click: 0.055, noise: 0.018, duration: 12, decay: 125, filter: 3600, type: 'filtered' },
+    gain: 0.36,
+    lfo: { rate: 4.1, depth: 0.035, target: 'amp' },
+    unisonVoices: 2,
+    unisonDetune: 2.4,
+    drive: 0.025,
+    carrier1Waveform: 'sine',
+    carrier2Waveform: 'triangle',
+    stereoSpread: 0.24,
+    pitchEnv: { depthCents: 10, attack: 0, decay: 0.16, target: 'carriers', velocityDepth: 0.1 },
   },
 };
 
@@ -368,19 +570,25 @@ export const DEFAULT_GAMELAN: Lead4opFMPreset = {
   id: 'gamelan',
   name: 'Gamelan',
   engine: 'Lead4opFM',
+  method: 'new',
+  operators: 4,
   algorithm: 'cross',
   xy: { xLevel: 0.95, xPan: -0.35, yLevel: 1.05, yPan: 0.35 },
   params: {
     beatDetune: 25,
     carrier2Mix: 0.65,
-    mod1: { ratio: 2.4, index: 2, decay: 0.45, sustain: 0.08 },
-    mod2: { ratio: 4, index: 0.8, decay: 0.35 },
-    mod3: { ratio: 5.5, index: 0.5, decay: 0.2 },
-    mod4: { ratio: 0.65, index: 0.3, decay: 0.6 },
+    mod1: { ratio: 2.4, index: 2, decay: 0.45, sustain: 0.08, level: 1, feedback: 0, detune: 0, envRate: 1, waveform: 'sine', keyTrack: 1, velocityToIndex: 0, velocityToLevel: 0, modRelease: 0 },
+    mod2: { ratio: 4, index: 0.8, decay: 0.35, sustain: 0.1, level: 1, feedback: 0, detune: 0, envRate: 1, waveform: 'sine', keyTrack: 1, velocityToIndex: 0, velocityToLevel: 0, modRelease: 0 },
+    mod3: { ratio: 5.5, index: 0.5, decay: 0.2, sustain: 0.1, level: 1, feedback: 0, detune: 0, envRate: 1, waveform: 'sine', keyTrack: 1, velocityToIndex: 0, velocityToLevel: 0, modRelease: 0 },
+    mod4: { ratio: 0.65, index: 0.3, decay: 0.6, sustain: 0.1, level: 1, feedback: 0, detune: 0, envRate: 1, waveform: 'sine', keyTrack: 1, velocityToIndex: 0, velocityToLevel: 0, modRelease: 0 },
     envelope: { attack: 0.002, decay: 0.35, sustain: 0.3, release: 6 },
     filter: { freq: 7000, q: 1 },
     transient: { click: 0.5, noise: 0.15, duration: 25, decay: 80, filter: 5000, type: 'filtered' },
     gain: 0.7,
+    carrier1Waveform: 'sine',
+    carrier2Waveform: 'sine',
+    stereoSpread: 0,
+    pitchEnv: { depthCents: 0, attack: 0, decay: 0.001, target: 'carriers', velocityDepth: 0 },
   },
 };
 
@@ -389,13 +597,18 @@ export const DEFAULT_GAMELAN: Lead4opFMPreset = {
 const presetCache: Map<string, Lead4opFMPreset> = new Map();
 const USER_LEAD4OP_SCOPE = 'lead4opfm';
 const USER_LEAD4OP_PRESETS = new Map<string, { preset: Lead4opFMPreset; library: PresetLibrary }>();
+const FALLBACK_LEAD4OP_PRESETS = [DEFAULT_SOFT_RHODES, DEFAULT_GAMELAN, ...(lead4opfmV2PresetBank as Lead4opFMPreset[])];
+const FALLBACK_LEAD4OP_PRESET_MAP = new Map<string, Lead4opFMPreset>();
+for (const preset of FALLBACK_LEAD4OP_PRESETS) {
+  FALLBACK_LEAD4OP_PRESET_MAP.set(normalizeLead4opPresetLookup(preset.id), preset);
+  FALLBACK_LEAD4OP_PRESET_MAP.set(normalizeLead4opPresetLookup(preset.name), preset);
+}
 const FALLBACK_LEAD4OP_MANIFEST: Lead4opFMManifest = {
   engine: 'Lead4opFM',
-  version: 1,
-  presets: [
-    { id: 'soft_rhodes', name: 'Soft Rhodes', file: '', algorithm: 'parallel' },
-    { id: 'gamelan', name: 'Gamelan', file: '', algorithm: 'cross' },
-  ],
+  version: 2,
+  presets: Array.from(FALLBACK_LEAD4OP_PRESET_MAP.values())
+    .filter((preset, index, presets) => presets.findIndex((candidate) => candidate.id === preset.id) === index)
+    .map((preset) => ({ id: preset.id, name: preset.name, file: '', algorithm: preset.algorithm })),
 };
 
 function cloneLead4opPreset(preset: Lead4opFMPreset, id = preset.id, name = preset.name): Lead4opFMPreset {
@@ -666,16 +879,6 @@ export async function loadLead4opFMManifest(): Promise<Lead4opFMManifest> {
 }
 
 async function resolveLead4opFMPreset(presetId: string, warnOnFallback: boolean): Promise<Lead4opFMPreset> {
-  const stockLookup = normalizeLeadPresetLookup(presetId);
-  if (stockLookup === 'soft_rhodes') {
-    presetCache.set('soft_rhodes', DEFAULT_SOFT_RHODES);
-    return DEFAULT_SOFT_RHODES;
-  }
-  if (stockLookup === 'gamelan') {
-    presetCache.set('gamelan', DEFAULT_GAMELAN);
-    return DEFAULT_GAMELAN;
-  }
-
   // Check cache
   const cached = presetCache.get(presetId);
   if (cached) return cached;
@@ -683,6 +886,14 @@ async function resolveLead4opFMPreset(presetId: string, warnOnFallback: boolean)
   const userPreset = await loadUserLead4opPresetFromStore(presetId);
   if (userPreset) {
     return userPreset.preset;
+  }
+
+  const stockLookup = normalizeLeadPresetLookup(presetId);
+  const fallbackPreset = FALLBACK_LEAD4OP_PRESET_MAP.get(stockLookup);
+  if (fallbackPreset) {
+    presetCache.set(presetId, fallbackPreset);
+    presetCache.set(fallbackPreset.id, fallbackPreset);
+    return fallbackPreset;
   }
 
   if (warnOnFallback) {
@@ -873,12 +1084,18 @@ export function playLead4opFMNote(
     envRate: number;
     modAttack: number;
     modDelay: number;
+    waveform: Lead4opFMWaveform;
+    fixedHz: number;
+    keyTrack: number;
+    velocityToIndex: number;
+    velocityToLevel: number;
+    modRelease: number;
   };
   const opParams: [OperatorParams, OperatorParams, OperatorParams, OperatorParams] = [
-    { ratio: morphed.mod1Ratio, index: morphed.mod1Index, decay: morphed.mod1Decay, sustain: morphed.mod1Sustain, level: morphed.mod1Level, feedback: morphed.mod1Feedback, detune: morphed.mod1Detune, envRate: morphed.mod1EnvRate, modAttack: morphed.mod1ModAttack, modDelay: morphed.mod1ModDelay },
-    { ratio: morphed.mod2Ratio, index: morphed.mod2Index, decay: morphed.mod2Decay, sustain: morphed.mod2Sustain, level: morphed.mod2Level, feedback: morphed.mod2Feedback, detune: morphed.mod2Detune, envRate: morphed.mod2EnvRate, modAttack: morphed.mod2ModAttack, modDelay: morphed.mod2ModDelay },
-    { ratio: morphed.mod3Ratio, index: morphed.mod3Index, decay: morphed.mod3Decay, sustain: morphed.mod3Sustain, level: morphed.mod3Level, feedback: morphed.mod3Feedback, detune: morphed.mod3Detune, envRate: morphed.mod3EnvRate, modAttack: morphed.mod3ModAttack, modDelay: morphed.mod3ModDelay },
-    { ratio: morphed.mod4Ratio, index: morphed.mod4Index, decay: morphed.mod4Decay, sustain: morphed.mod4Sustain, level: morphed.mod4Level, feedback: morphed.mod4Feedback, detune: morphed.mod4Detune, envRate: morphed.mod4EnvRate, modAttack: morphed.mod4ModAttack, modDelay: morphed.mod4ModDelay },
+    { ratio: morphed.mod1Ratio, index: morphed.mod1Index, decay: morphed.mod1Decay, sustain: morphed.mod1Sustain, level: morphed.mod1Level, feedback: morphed.mod1Feedback, detune: morphed.mod1Detune, envRate: morphed.mod1EnvRate, modAttack: morphed.mod1ModAttack, modDelay: morphed.mod1ModDelay, waveform: morphed.mod1Waveform, fixedHz: morphed.mod1FixedHz, keyTrack: morphed.mod1KeyTrack, velocityToIndex: morphed.mod1VelocityToIndex, velocityToLevel: morphed.mod1VelocityToLevel, modRelease: morphed.mod1ModRelease },
+    { ratio: morphed.mod2Ratio, index: morphed.mod2Index, decay: morphed.mod2Decay, sustain: morphed.mod2Sustain, level: morphed.mod2Level, feedback: morphed.mod2Feedback, detune: morphed.mod2Detune, envRate: morphed.mod2EnvRate, modAttack: morphed.mod2ModAttack, modDelay: morphed.mod2ModDelay, waveform: morphed.mod2Waveform, fixedHz: morphed.mod2FixedHz, keyTrack: morphed.mod2KeyTrack, velocityToIndex: morphed.mod2VelocityToIndex, velocityToLevel: morphed.mod2VelocityToLevel, modRelease: morphed.mod2ModRelease },
+    { ratio: morphed.mod3Ratio, index: morphed.mod3Index, decay: morphed.mod3Decay, sustain: morphed.mod3Sustain, level: morphed.mod3Level, feedback: morphed.mod3Feedback, detune: morphed.mod3Detune, envRate: morphed.mod3EnvRate, modAttack: morphed.mod3ModAttack, modDelay: morphed.mod3ModDelay, waveform: morphed.mod3Waveform, fixedHz: morphed.mod3FixedHz, keyTrack: morphed.mod3KeyTrack, velocityToIndex: morphed.mod3VelocityToIndex, velocityToLevel: morphed.mod3VelocityToLevel, modRelease: morphed.mod3ModRelease },
+    { ratio: morphed.mod4Ratio, index: morphed.mod4Index, decay: morphed.mod4Decay, sustain: morphed.mod4Sustain, level: morphed.mod4Level, feedback: morphed.mod4Feedback, detune: morphed.mod4Detune, envRate: morphed.mod4EnvRate, modAttack: morphed.mod4ModAttack, modDelay: morphed.mod4ModDelay, waveform: morphed.mod4Waveform, fixedHz: morphed.mod4FixedHz, keyTrack: morphed.mod4KeyTrack, velocityToIndex: morphed.mod4VelocityToIndex, velocityToLevel: morphed.mod4VelocityToLevel, modRelease: morphed.mod4ModRelease },
   ];
 
   // Track active notes for CPU overlay
@@ -905,15 +1122,17 @@ export function playLead4opFMNote(
       unisonCents = unisonSpread * ((u / (unisonCount - 1)) * 2 - 1); // -spread..+spread
     }
     const unisonFreq = frequency * Math.pow(2, unisonCents / 1200);
+    const carrier1BaseHz = unisonFreq;
+    const carrier2BaseHz = unisonFreq * Math.pow(2, morphed.beatDetune / 1200);
 
     // ─── Carriers ───
     const carrier1 = ctx.createOscillator();
-    carrier1.type = 'sine';
-    carrier1.frequency.value = unisonFreq;
+    carrier1.type = validWaveform(morphed.carrier1Waveform);
+    carrier1.frequency.value = carrier1BaseHz;
 
     const carrier2 = ctx.createOscillator();
-    carrier2.type = 'sine';
-    carrier2.frequency.value = unisonFreq * Math.pow(2, morphed.beatDetune / 1200);
+    carrier2.type = validWaveform(morphed.carrier2Waveform);
+    carrier2.frequency.value = carrier2BaseHz;
 
     const carrier2GainNode = ctx.createGain();
     carrier2GainNode.gain.value = morphed.carrier2Mix;
@@ -925,21 +1144,21 @@ export function playLead4opFMNote(
     const fbGains: GainNode[] = []; // per-op self-feedback
 
     for (const [opIdx, op] of opParams.entries()) {
-      const opFreq = unisonFreq * op.ratio * Math.pow(2, op.detune / 1200);
+      const opFreq = operatorFrequency(unisonFreq, op, op.ratio, op.detune);
+      const legacyVelocityMultiplier = opIdx === 0 ? velocity : 1;
+      const modIdxVal = unisonFreq * op.index * legacyVelocityMultiplier * velocityScale(velocity, op.velocityToIndex);
+      const opLevel = op.level * velocityScale(velocity, op.velocityToLevel);
 
       const modulator = ctx.createOscillator();
-      modulator.type = 'sine';
+      modulator.type = validWaveform(op.waveform);
       modulator.frequency.value = opFreq;
 
       const modGain = ctx.createGain();
-      const modIdxVal = opIdx === 0
-        ? unisonFreq * op.index * velocity
-        : unisonFreq * op.index;
       modGain.gain.value = modIdxVal;
 
       // Per-operator level gain
       const levelGain = ctx.createGain();
-      levelGain.gain.value = op.level;
+      levelGain.gain.value = opLevel;
 
       // Connect: modulator → levelGain → modGain
       modulator.connect(levelGain);
@@ -961,6 +1180,26 @@ export function playLead4opFMNote(
       fbGains.push(fbGain!);
       allOscillators.push(modulator);
       allNodes.push(modGain, levelGain);
+    }
+
+    const pitchEnv = {
+      pitchEnvDepthCents: morphed.pitchEnvDepthCents,
+      pitchEnvAttack: morphed.pitchEnvAttack,
+      pitchEnvDecay: morphed.pitchEnvDecay,
+      pitchEnvVelocityDepth: morphed.pitchEnvVelocityDepth,
+    };
+    if (morphed.pitchEnvTarget === 'carriers' || morphed.pitchEnvTarget === 'carrier1' || morphed.pitchEnvTarget === 'all') {
+      applyPitchEnvToFrequency(carrier1.frequency, carrier1BaseHz, pitchEnv, now, velocity);
+    }
+    if (morphed.pitchEnvTarget === 'carriers' || morphed.pitchEnvTarget === 'carrier2' || morphed.pitchEnvTarget === 'all') {
+      applyPitchEnvToFrequency(carrier2.frequency, carrier2BaseHz, pitchEnv, now, velocity);
+    }
+    if (morphed.pitchEnvTarget === 'all') {
+      for (const [opIdx, modulator] of modulators.entries()) {
+        const op = opParams[opIdx];
+        if (!op) continue;
+        applyPitchEnvToFrequency(modulator.frequency, operatorFrequency(unisonFreq, op, op.ratio, op.detune), pitchEnv, now, velocity);
+      }
     }
 
     // ─── LFO → Modulation (target-dependent routing) ───
@@ -988,7 +1227,12 @@ export function playLead4opFMNote(
             const modGain = modGains[opIdx];
             if (!targetOp || !modGain) continue;
             const lfoGain = ctx.createGain();
-            lfoGain.gain.value = unisonFreq * targetOp.index * morphed.lfoDepth;
+            const legacyVelocityMultiplier = opIdx === 0 ? velocity : 1;
+            lfoGain.gain.value = unisonFreq
+              * targetOp.index
+              * legacyVelocityMultiplier
+              * velocityScale(velocity, targetOp.velocityToIndex)
+              * morphed.lfoDepth;
             lfo.connect(lfoGain);
             lfoGain.connect(modGain.gain);
             lfoModGains.push(lfoGain);
@@ -1142,9 +1386,37 @@ export function playLead4opFMNote(
     yGainNode.gain.value = morphed.yLevel;
 
     const xPanNode = ctx.createStereoPanner();
-    xPanNode.pan.value = morphed.xPan;
     const yPanNode = ctx.createStereoPanner();
-    yPanNode.pan.value = morphed.yPan;
+    const spread = clamp(morphed.stereoSpread ?? 0, 0, 1);
+    const spreadPos = unisonCount > 1 ? (u / (unisonCount - 1)) * 2 - 1 : 0;
+    const panOffset = spreadPos * spread * 0.65;
+    xPanNode.pan.value = clamp(morphed.xPan + panOffset, -1, 1);
+    yPanNode.pan.value = clamp(morphed.yPan - panOffset, -1, 1);
+
+    const voiceOutput = lfo && lfoTarget === 'amp' ? ctx.createGain() : null;
+    if (voiceOutput) {
+      voiceOutput.gain.setValueAtTime(1, now);
+    }
+
+    if (lfo && lfoTarget === 'pan') {
+      const panDepthX = ctx.createGain();
+      const panDepthY = ctx.createGain();
+      const panDepth = clamp(morphed.lfoDepth, 0, 1) * 0.65;
+      panDepthX.gain.setValueAtTime(panDepth, now);
+      panDepthY.gain.setValueAtTime(-panDepth, now);
+      lfo.connect(panDepthX).connect(xPanNode.pan);
+      lfo.connect(panDepthY).connect(yPanNode.pan);
+      lfoModGains.push(panDepthX, panDepthY);
+      allNodes.push(panDepthX, panDepthY);
+    }
+
+    if (lfo && lfoTarget === 'amp' && voiceOutput) {
+      const ampDepth = ctx.createGain();
+      ampDepth.gain.setValueAtTime(clamp(morphed.lfoDepth, 0, 1) * 0.35, now);
+      lfo.connect(ampDepth).connect(voiceOutput.gain);
+      lfoModGains.push(ampDepth);
+      allNodes.push(ampDepth);
+    }
 
     // Signal chain: envelope → [drive] → filter → gain → pan → output
     if (driveNodeX && driveNodeY) {
@@ -1158,11 +1430,14 @@ export function playLead4opFMNote(
     }
     filterX.connect(xGainNode);
     xGainNode.connect(xPanNode);
-    xPanNode.connect(output);
+    xPanNode.connect(voiceOutput ?? output);
 
     filterY.connect(yGainNode);
     yGainNode.connect(yPanNode);
-    yPanNode.connect(output);
+    yPanNode.connect(voiceOutput ?? output);
+    if (voiceOutput) {
+      voiceOutput.connect(output);
+    }
 
     // ─── Start Oscillators ───
     carrier1.start(now);
@@ -1171,6 +1446,7 @@ export function playLead4opFMNote(
     allOscillators.push(carrier1, carrier2);
     allNodes.push(carrier1, carrier2, carrier2GainNode, envelope1, envelope2,
       filterX, filterY, xGainNode, yGainNode, xPanNode, yPanNode);
+    if (voiceOutput) allNodes.push(voiceOutput);
 
     // ─── Amplitude Envelopes (per-op envRate on carrier envelopes) ───
     // Carrier 1 uses mod1's envRate, carrier 2 uses mod2's envRate (as primary modulators)
@@ -1195,9 +1471,11 @@ export function playLead4opFMNote(
     for (const [opIdx, op] of opParams.entries()) {
       const modGain = modGains[opIdx];
       if (!modGain) continue;
-      const modPeakVal = opIdx === 0
-        ? unisonFreq * op.index * velocity
-        : unisonFreq * op.index;
+      const legacyVelocityMultiplier = opIdx === 0 ? velocity : 1;
+      const modPeakVal = unisonFreq
+        * op.index
+        * legacyVelocityMultiplier
+        * velocityScale(velocity, op.velocityToIndex);
       const modEndVal = Math.max(0.001, modPeakVal * op.sustain);
       const modDelay = op.modDelay || 0;  // delay before attack starts
       const modAttack = op.modAttack || 0;  // attack ramp time
@@ -1238,6 +1516,22 @@ export function playLead4opFMNote(
 
     envelope2.gain.setValueAtTime(baseSustain * 0.8, noteEnd);
     envelope2.gain.exponentialRampToValueAtTime(0.001, noteEnd + rel2);
+
+    for (const [opIdx, op] of opParams.entries()) {
+      const modRelease = Math.max(0, op.modRelease ?? 0);
+      if (modRelease <= 0) continue;
+      const modGain = modGains[opIdx];
+      if (!modGain) continue;
+      const legacyVelocityMultiplier = opIdx === 0 ? velocity : 1;
+      const modPeakVal = unisonFreq
+        * op.index
+        * legacyVelocityMultiplier
+        * velocityScale(velocity, op.velocityToIndex);
+      const modEndVal = Math.max(0.001, modPeakVal * op.sustain);
+      modGain.gain.cancelScheduledValues(noteEnd);
+      modGain.gain.setValueAtTime(modEndVal, noteEnd);
+      modGain.gain.exponentialRampToValueAtTime(0.001, noteEnd + Math.max(0.001, modRelease));
+    }
 
     // ─── Filter Envelope Release ───
     if (Math.abs(morphed.filterEnvDepth) > 1) {

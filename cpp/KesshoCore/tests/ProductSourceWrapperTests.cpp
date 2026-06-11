@@ -381,14 +381,14 @@ void requireExactSourcePresetMetadata() {
       lead_patch.exact_lead_param_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT,
       "generated LeadSoftRhodes exact lead param count missing");
   require(
-      kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT == 80u,
+      kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT == 112u,
       "generated lead param count must match module layout");
   require(
       std::fabs(kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_OUTPUT_TRIM - 0.59f) < 0.00001f,
       "generated lead output trim must match Product Core parity trim");
   require(std::fabs(lead_patch.exact_lead_params[0] - 0.0f) < 0.00001f, "LeadSoftRhodes exact algorithm did not match web preset");
   require(std::fabs(lead_patch.exact_lead_params[3] - 1.0f) < 0.00001f, "LeadSoftRhodes exact operator ratio did not match web preset");
-  require(std::fabs(lead_patch.exact_lead_params[62] - 0.34f) < 0.00001f, "LeadSoftRhodes exact gain did not match web preset");
+  require(std::fabs(lead_patch.exact_lead_params[62] - 0.36f) < 0.00001f, "LeadSoftRhodes exact gain did not match web preset");
 
   const auto* gamelan = generatedPreset(kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN);
   require(gamelan != nullptr, "generated LeadGamelan preset missing");

@@ -1394,7 +1394,7 @@ globalThis.__generatedProductParams = KESSHO_PRODUCT_PARAMS;`, generatedParamsCo
       { index: 5, paramStart: 78, paramCount: 14 },
       { index: 6, paramStart: 92, paramCount: 12 },
     ],
-	    KESSHO_PRODUCT_LEAD_PARAM_COUNT: 80,
+	    KESSHO_PRODUCT_LEAD_PARAM_COUNT: 112,
 	    KESSHO_PRODUCT_PAD_PARAM_COUNT: 53,
     KESSHO_PRODUCT_PARAM_IDS: createParamIds(),
     KESSHO_PRODUCT_PARAMS: generatedParamsContext.__generatedProductParams,

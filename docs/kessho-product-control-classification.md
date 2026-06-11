@@ -15,11 +15,10 @@ This file classifies the `core-product` host control surface by Product Core upd
 
 ## Bounded Dirty Diffs
 
-- Routine `updateParams` and `patchAdapterState` updates create a next generated Product snapshot, compare it to `latestProductSnapshot`, and emit generated param/source-preset/journey/sequencer-lane events when the diff is bounded.
+- Routine `updateParams` and `patchAdapterState` updates create a next generated Product snapshot, compare it to `latestProductSnapshot`, and emit generated param/source-preset/journey/sequencer-lane events when the diff is bounded and does not change source preset/body state.
 - Source enabled, level, morph, distance, expression, dry gain, FX sends, granular send, diffuse send, post-LPF, stereo width, post-LPF key tracking, source envelope fields, and Lead envelope/algorithm override flags are dirty diff events.
 - FX, routing, master, RNG, and evolution scalar changes are dirty diff events.
-- Source preset ID and Pad/Lead A/B endpoint changes are dirty diff source-preset events when source identity and asset references are unchanged.
-- Structured Pad, Lead, and Drum sparse override changes are dirty diff `SetSourceOverride` slot/commit events when the source remains reconstructable from generated preset IDs and exact compatibility arrays stay empty.
+- Drum voice morph-only changes are dirty diff source-preset events when Drum endpoint IDs are unchanged.
 
 ## Structural Full Snapshot Reloads
 
@@ -27,7 +26,9 @@ This file classifies the `core-product` host control surface by Product Core upd
 - Asset reference changes use a full Product snapshot after host-side asset decode/registration.
 - Harmony chord/voicing mode changes use a full Product snapshot until mode-specific events are final.
 - Source structure changes use a full Product snapshot: source count, source ID, or source asset ID.
-- Sparse override changes fall back to a full Product snapshot only when the source is not reconstructable through generated endpoint/voice preset state. Exact Pad/Lead/Drum compatibility patch changes still use a full Product snapshot for legacy or non-reconstructable bridge state.
+- Pad/Lead source preset endpoint changes and Drum voice preset endpoint ID changes use a full Product snapshot so the running source renderer is rebuilt through the same path as stop/start.
+- Structured Pad, Lead, and Drum sparse override/body changes use a full Product snapshot; the generated override event helpers remain wired for future source-rebuild work, but the dirty-diff gate rejects these changes for now.
+- Exact Pad/Lead/Drum compatibility patch changes still use a full Product snapshot for legacy or non-reconstructable bridge state.
 - Partial exact Pad, Lead, and Drum patch counts are invalid state, not structural fallback inputs.
 - Unknown generated source preset IDs and Drum voice preset IDs are invalid state; they must be rejected rather than routed to a default preset fallback or sibling morph endpoint.
 - Sequencer structural changes use a full Product snapshot: lane count mismatch, manual step masks, morph/distance/expression structural fields, bar reset, or phrase reset.

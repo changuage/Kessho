@@ -15,7 +15,7 @@ inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_DRUM_SOURCE_PRESET_COUNT = 1u
 inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_DRUM_VOICE_COUNT = 7u;
 inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_DRUM_VOICE_PRESET_COUNT = 161u;
 inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_PAD_PARAM_COUNT = 53u;
-inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT = 80u;
+inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT = 112u;
 inline constexpr uint32_t KESSHO_PRODUCT_GENERATED_DRUM_PARAM_COUNT = 126u;
 inline constexpr uint32_t KESSHO_PRODUCT_SOUNDSCAPE_LAYER_COUNT = 4u;
 inline constexpr uint32_t KESSHO_PRODUCT_SOUNDSCAPE_LAYER_ROUTE_STRIDE = 5u;
@@ -32,7 +32,7 @@ inline constexpr float KESSHO_PRODUCT_GENERATED_PAD_OUTPUT_TRIM = 0.5f;
 inline constexpr float KESSHO_PRODUCT_GENERATED_LEAD_OUTPUT_TRIM = 0.59f;
 inline constexpr float KESSHO_PRODUCT_GENERATED_REVERB_OUTPUT_TRIM = 2.0f;
 inline constexpr uint32_t KESSHO_PRODUCT_PAD_PRESET_SNAP_PARAM_INDICES[] = {0u, 4u, 9u, 11u, 13u, 20u, 27u, 28u, 32u, 39u, 40u, 43u, 44u, 45u, 51u};
-inline constexpr uint32_t KESSHO_PRODUCT_LEAD_PRESET_SNAP_PARAM_INDICES[] = {0u, 49u, 61u, 69u};
+inline constexpr uint32_t KESSHO_PRODUCT_LEAD_PRESET_SNAP_PARAM_INDICES[] = {0u, 49u, 61u, 69u, 80u, 81u, 86u, 88u, 94u, 100u, 106u};
 inline constexpr uint32_t KESSHO_PRODUCT_LEAD_PRESET_ROUND_PARAM_INDICES[] = {70u};
 inline constexpr uint32_t KESSHO_PRODUCT_DRUM_PRESET_SNAP_PARAM_INDICES[] = {32u, 82u, 96u};
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_BLOCK_SIZE = 4096u;
@@ -425,8 +425,8 @@ struct KesshoProductGeneratedLeadSourcePreset {
 };
 
 inline constexpr KesshoProductGeneratedLeadSourcePreset KESSHO_PRODUCT_LEAD_SOURCE_PRESETS[] = {
-  {"soft_rhodes", 2001u, {0.0f, 0.0f, 0.0f, 1.0f, 0.25f, 0.8f, 0.23f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 2.0f, 0.08f, 0.72f, 0.05f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 3.0f, 0.0f, 0.3f, 0.02f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.5f, 0.0f, 0.3f, 0.1f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.01f, 0.8f, 0.3f, 2.0f, 4000.0f, 0.7f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.08f, 0.02f, 12.0f, 130.0f, 4200.0f, 3.0f, 0.34f, 1.0f, -0.2f, 0.9f, 0.2f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.4f, 4000.0f, 0.3f, 0.3f, 0.0f}},
-  {"gamelan", 2002u, {3.0f, 25.0f, 0.65f, 2.4f, 2.0f, 0.45f, 0.08f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 4.0f, 0.8f, 0.35f, 0.05f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 5.5f, 0.5f, 0.2f, 0.02f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.65f, 0.3f, 0.6f, 0.1f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.002f, 0.35f, 0.3f, 6.0f, 7000.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.15f, 25.0f, 80.0f, 5000.0f, 3.0f, 0.7f, 0.95f, -0.35f, 1.05f, 0.35f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.4f, 4000.0f, 0.3f, 0.3f, 0.0f}}
+  {"soft_rhodes", 2001u, {0.0f, 1.25f, 0.2f, 1.0f, 0.42f, 1.2f, 0.28f, 0.82f, 0.015f, 0.0f, 1.1f, 0.0f, 0.0f, 2.01f, 0.62f, 0.28f, 0.02f, 0.75f, 0.0f, 3.0f, 1.25f, 0.0f, 0.0f, 0.5f, 0.1f, 1.8f, 0.18f, 0.42f, 0.0f, -4.0f, 0.85f, 0.0f, 0.0f, 3.0f, 0.06f, 0.5f, 0.0f, 0.35f, 0.0f, 5.0f, 1.3f, 0.0f, 0.0f, 0.018f, 0.95f, 0.32f, 2.3f, 3050.0f, 0.68f, 0.0f, 0.01f, 0.35f, 0.45f, 0.9f, 600.0f, 0.025f, 0.055f, 0.018f, 12.0f, 125.0f, 3600.0f, 3.0f, 0.36f, 0.96f, -0.26f, 0.7f, 0.26f, 4.1f, 0.035f, 9.0f, 2.0f, 2.4f, 0.0f, 0.0f, 0.0f, 0.4f, 4000.0f, 0.3f, 0.3f, 0.0f, 0.0f, 1.0f, 0.24f, 10.0f, 0.0f, 0.16f, 0.0f, 0.1f, 0.0f, 0.0f, 1.0f, 0.55f, 0.18f, 1.9f, 1.0f, 0.0f, 1.0f, 0.9f, 0.12f, 0.48f, 0.0f, 2100.0f, 0.22f, 0.5f, 0.05f, 0.24f, 1.0f, 122.0f, 0.0f, 0.04f, 0.0f, 2.2f}},
+  {"gamelan", 2002u, {3.0f, 25.0f, 0.65f, 2.4f, 2.0f, 0.45f, 0.08f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 4.0f, 0.8f, 0.35f, 0.1f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 5.5f, 0.5f, 0.2f, 0.1f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.65f, 0.3f, 0.6f, 0.1f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.002f, 0.35f, 0.3f, 6.0f, 7000.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.15f, 25.0f, 80.0f, 5000.0f, 3.0f, 0.7f, 0.95f, -0.35f, 1.05f, 0.35f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.4f, 4000.0f, 0.3f, 0.3f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.001f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f}}
 };
 
 struct KesshoProductGeneratedDrumSourcePreset {

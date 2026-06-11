@@ -38,12 +38,26 @@ struct OperatorParams {
     float env_rate = 1;
     float mod_attack_sec = 0;
     float mod_delay_sec = 0;
+    int waveform = LEAD_FM_WAVE_SINE;
+    float fixed_hz = 0;
+    float key_track = 1;
+    float velocity_to_index = 0;
+    float velocity_to_level = 0;
+    float mod_release_sec = 0;
 };
 
 struct LeadPresetParams {
     int   algorithm = LEAD_FM_ALG_PARALLEL;
     float beat_detune = 0;      // cents
     float carrier2_mix = 0;
+    int   carrier1_waveform = LEAD_FM_WAVE_SINE;
+    int   carrier2_waveform = LEAD_FM_WAVE_SINE;
+    float stereo_spread = 0;
+    float pitch_env_depth_cents = 0;
+    float pitch_env_attack = 0;
+    float pitch_env_decay = 0.08f;
+    int   pitch_env_target = LEAD_FM_PITCH_ENV_CARRIERS;
+    float pitch_env_velocity_depth = 0;
 
     OperatorParams ops[LEAD_FM_NUM_OPERATORS];
 
@@ -97,10 +111,11 @@ struct OperatorState {
     float mod_env_target = 0;   // ADE mod envelope end value
     float mod_env_rate = 1;     // per-sample decay multiplier
     float peak_index = 0;       // peak FM index value
-    // ADE state machine: 0=delay, 1=attack, 2=decay
+    // ADE state machine: 0=delay, 1=attack, 2=decay, 3=release
     int   mod_env_stage = 2;
     float mod_env_counter = 0;  // samples remaining in current stage
     float mod_env_attack_rate = 0; // per-sample attack increment
+    float mod_env_release_rate = 0;
 };
 
 // State for a single unison sub-voice
@@ -282,6 +297,70 @@ static int find_note_slot() {
     return oldest;
 }
 
+static Waveform lead_waveform_to_dsp(int waveform) {
+    switch (waveform) {
+        case LEAD_FM_WAVE_TRIANGLE: return WAVE_TRIANGLE;
+        case LEAD_FM_WAVE_SAWTOOTH: return WAVE_SAWTOOTH;
+        case LEAD_FM_WAVE_SQUARE: return WAVE_SQUARE;
+        default: return WAVE_SINE;
+    }
+}
+
+static float cents_to_ratio(float cents) {
+    return semitones_to_ratio(cents / 100.0f);
+}
+
+static float operator_frequency(float note_hz, const OperatorParams& op) {
+    const float fixed_hz = std::max(0.0f, op.fixed_hz);
+    const float key_track = clampf(op.key_track, 0.0f, 1.0f);
+    const float tracked_hz = note_hz * op.ratio;
+    const float base_hz = fixed_hz > 0.0f ? lerp(fixed_hz, tracked_hz, key_track) : tracked_hz;
+    return std::max(0.001f, base_hz * cents_to_ratio(op.detune_cents));
+}
+
+static float velocity_scale(float velocity, float amount) {
+    return lerp(1.0f, velocity, clampf(amount, 0.0f, 1.0f));
+}
+
+static float pitch_env_ratio(const LeadPresetParams& p, const LeadNote& note) {
+    if (fabsf(p.pitch_env_depth_cents) <= 0.001f) {
+        return 1.0f;
+    }
+    const float attack_samples = std::max(0.0f, p.pitch_env_attack * g_sample_rate);
+    const float decay_samples = std::max(1.0f, p.pitch_env_decay * g_sample_rate);
+    const float depth = p.pitch_env_depth_cents * (1.0f + clampf(p.pitch_env_velocity_depth, 0.0f, 1.0f) * note.velocity);
+    const float age = note.samples_since_trigger;
+    float cents = depth;
+    if (age > attack_samples) {
+        const float t = clampf((age - attack_samples) / decay_samples, 0.0f, 1.0f);
+        cents = depth * (1.0f - t);
+    }
+    return cents_to_ratio(cents);
+}
+
+static void begin_note_release(LeadNote& note) {
+    if (note.released) {
+        return;
+    }
+    note.amp_env.gate_off();
+    note.released = 1;
+    note.filt_env_stage = 3;
+    const LeadPresetParams& p = g_params;
+    for (int u = 0; u < note.num_unison; ++u) {
+        for (int op = 0; op < LEAD_FM_NUM_OPERATORS; ++op) {
+            OperatorState& os = note.unison[u].ops[op];
+            const float release_sec = std::max(0.0f, p.ops[op].mod_release_sec);
+            if (release_sec <= 0.0f) {
+                continue;
+            }
+            const float release_samples = std::max(1.0f, release_sec * g_sample_rate);
+            os.mod_env_stage = 3;
+            os.mod_env_counter = release_samples;
+            os.mod_env_release_rate = std::max(0.0f, os.mod_env_value - 0.001f) / release_samples;
+        }
+    }
+}
+
 static int release_note_slot(int note_index) {
     if (note_index < 0 || note_index >= LEAD_FM_MAX_POLYPHONY) {
         return 0;
@@ -290,11 +369,7 @@ static int release_note_slot(int note_index) {
     if (!note.active) {
         return 0;
     }
-    if (!note.released) {
-        note.amp_env.gate_off();
-        note.released = 1;
-        note.filt_env_stage = 3;
-    }
+    begin_note_release(note);
     return 1;
 }
 
@@ -313,10 +388,7 @@ static void render_note(LeadNote& note, float* out_l, float* out_r, int block_si
 
         // Check hold time → trigger release
         if (!note.released && note.samples_since_trigger >= note.hold_samples) {
-            note.amp_env.gate_off();
-            note.released = 1;
-            // Filter envelope release
-            note.filt_env_stage = 3;
+            begin_note_release(note);
         }
 
         // Amplitude envelope
@@ -390,6 +462,7 @@ static void render_note(LeadNote& note, float* out_l, float* out_r, int block_si
             if (p.lfo_target == LEAD_FM_LFO_PITCH) {
                 pitch_mod = lfo_val * note.base_freq * 0.02f;
             }
+            const float pitch_env = pitch_env_ratio(p, note);
             float detune_mod = 0;
             if (p.lfo_target == LEAD_FM_LFO_DETUNE) {
                 detune_mod = lfo_val * note.base_freq * 0.01f;
@@ -424,6 +497,13 @@ static void render_note(LeadNote& note, float* out_l, float* out_r, int block_si
                         os.mod_env_value = os.mod_env_target +
                             (os.mod_env_value - os.mod_env_target) * os.mod_env_rate;
                         break;
+                    case 3: // release
+                        os.mod_env_value = std::max(0.001f, os.mod_env_value - os.mod_env_release_rate);
+                        os.mod_env_counter -= 1;
+                        if (os.mod_env_counter <= 0 || os.mod_env_value <= 0.001f) {
+                            os.mod_env_value = 0.001f;
+                        }
+                        break;
                 }
 
                 // LFO → specific operator
@@ -440,14 +520,21 @@ static void render_note(LeadNote& note, float* out_l, float* out_r, int block_si
                 }
 
                 // Advance operator oscillator with FM input
-                float freq_mod = external_fm + fb + lfo_mod;
+                float pitch_env_mod = 0.0f;
+                if (p.pitch_env_target == LEAD_FM_PITCH_ENV_ALL) {
+                    pitch_env_mod = os.osc.freq * (pitch_env - 1.0f);
+                }
+                float freq_mod = external_fm + fb + lfo_mod + pitch_env_mod;
                 os.osc.freq += freq_mod;
                 os.osc.advance(g_sample_rate);
-                float op_out = os.osc.generate(WAVE_SINE, g_sample_rate, g_sine);
+                float op_out = os.osc.generate(lead_waveform_to_dsp(p.ops[op].waveform), g_sample_rate, g_sine);
                 os.osc.freq -= freq_mod;
 
                 os.phase_fb = op_out; // store for feedback
-                mod_outputs[op] = op_out * os.mod_env_value * p.ops[op].level;
+                mod_outputs[op] = op_out
+                    * os.mod_env_value
+                    * p.ops[op].level
+                    * velocity_scale(note.velocity, p.ops[op].velocity_to_level);
                 return mod_outputs[op];
             };
 
@@ -503,15 +590,24 @@ static void render_note(LeadNote& note, float* out_l, float* out_r, int block_si
             }
 
             // Generate carriers
-            uv.carrier1.freq += carrier1_fm + pitch_mod;
-            uv.carrier1.advance(g_sample_rate);
-            float c1 = uv.carrier1.generate(WAVE_SINE, g_sample_rate, g_sine);
-            uv.carrier1.freq -= carrier1_fm + pitch_mod;
+            const bool pitch_env_carrier1 = p.pitch_env_target == LEAD_FM_PITCH_ENV_CARRIERS ||
+                p.pitch_env_target == LEAD_FM_PITCH_ENV_CARRIER1 ||
+                p.pitch_env_target == LEAD_FM_PITCH_ENV_ALL;
+            const bool pitch_env_carrier2 = p.pitch_env_target == LEAD_FM_PITCH_ENV_CARRIERS ||
+                p.pitch_env_target == LEAD_FM_PITCH_ENV_CARRIER2 ||
+                p.pitch_env_target == LEAD_FM_PITCH_ENV_ALL;
+            const float carrier1_pitch_env_mod = pitch_env_carrier1 ? uv.carrier1.freq * (pitch_env - 1.0f) : 0.0f;
+            const float carrier2_pitch_env_mod = pitch_env_carrier2 ? uv.carrier2.freq * (pitch_env - 1.0f) : 0.0f;
 
-            uv.carrier2.freq += carrier2_fm + pitch_mod + detune_mod;
+            uv.carrier1.freq += carrier1_fm + pitch_mod + carrier1_pitch_env_mod;
+            uv.carrier1.advance(g_sample_rate);
+            float c1 = uv.carrier1.generate(lead_waveform_to_dsp(p.carrier1_waveform), g_sample_rate, g_sine);
+            uv.carrier1.freq -= carrier1_fm + pitch_mod + carrier1_pitch_env_mod;
+
+            uv.carrier2.freq += carrier2_fm + pitch_mod + detune_mod + carrier2_pitch_env_mod;
             uv.carrier2.advance(g_sample_rate);
-            float c2 = uv.carrier2.generate(WAVE_SINE, g_sample_rate, g_sine);
-            uv.carrier2.freq -= carrier2_fm + pitch_mod + detune_mod;
+            float c2 = uv.carrier2.generate(lead_waveform_to_dsp(p.carrier2_waveform), g_sample_rate, g_sine);
+            uv.carrier2.freq -= carrier2_fm + pitch_mod + detune_mod + carrier2_pitch_env_mod;
 
             carrier_sum_x += c1;
             const float carrier2_mix = p.algorithm == LEAD_FM_ALG_DX17 ? 0.0f : uv.carrier2_mix;
@@ -564,12 +660,19 @@ static void render_note(LeadNote& note, float* out_l, float* out_r, int block_si
 
         // XY stereo panning
         // X → left-biased, Y → right-biased
-        float x_pan_l = std::max(0.0f, 1.0f - note.x_pan) * 0.5f;
-        float x_pan_r = std::max(0.0f, 1.0f + note.x_pan) * 0.5f;
-        float y_pan_l = std::max(0.0f, 1.0f - note.y_pan) * 0.5f;
-        float y_pan_r = std::max(0.0f, 1.0f + note.y_pan) * 0.5f;
+        const float spread = note.num_unison > 1 ? clampf(p.stereo_spread, 0.0f, 1.0f) * 0.65f : 0.0f;
+        const float pan_lfo = p.lfo_target == LEAD_FM_LFO_PAN ? lfo_val * 0.65f : 0.0f;
+        const float x_pan = clampf(note.x_pan - spread + pan_lfo, -1.0f, 1.0f);
+        const float y_pan = clampf(note.y_pan + spread - pan_lfo, -1.0f, 1.0f);
+        float x_pan_l = std::max(0.0f, 1.0f - x_pan) * 0.5f;
+        float x_pan_r = std::max(0.0f, 1.0f + x_pan) * 0.5f;
+        float y_pan_l = std::max(0.0f, 1.0f - y_pan) * 0.5f;
+        float y_pan_r = std::max(0.0f, 1.0f + y_pan) * 0.5f;
 
         float gain = note.gain * note.velocity;
+        if (p.lfo_target == LEAD_FM_LFO_AMP) {
+            gain *= std::max(0.0f, 1.0f + lfo_val * 0.35f);
+        }
         float sample_l = (carrier_sum_x * x_pan_l + carrier_sum_y * y_pan_l + transient) * gain;
         float sample_r = (carrier_sum_x * x_pan_r + carrier_sum_y * y_pan_r + transient) * gain;
 
@@ -766,15 +869,17 @@ int lead_fm_note_on_ex(float frequency, float velocity, float hold_seconds, int 
             OperatorState& os = uv.ops[op];
             const OperatorParams& op_p = p.ops[op];
 
-            float op_freq = unison_freq * op_p.ratio * semitones_to_ratio(op_p.detune_cents / 100.0f);
+            float op_freq = operator_frequency(unison_freq, op_p);
             os.osc.freq = op_freq;
             os.osc.phase = 0;
             os.phase_fb = 0;
 
             // FM index (peak value)
-            float mod_idx = (op == 0)
-                ? unison_freq * op_p.index * velocity
-                : unison_freq * op_p.index;
+            const float legacy_velocity = op == 0 ? velocity : 1.0f;
+            float mod_idx = unison_freq
+                * op_p.index
+                * legacy_velocity
+                * velocity_scale(velocity, op_p.velocity_to_index);
             os.peak_index = mod_idx;
             os.mod_env_target = std::max(0.001f, mod_idx * op_p.sustain);
 
@@ -812,19 +917,34 @@ int lead_fm_note_set_frequency(int note_index, float frequency) {
     if (!note.active || note.base_freq <= 0.0f) {
         return 0;
     }
-    const float ratio = frequency / note.base_freq;
     note.base_freq = frequency;
+    const LeadPresetParams& p = g_params;
     for (int u = 0; u < note.num_unison; ++u) {
         UnisonVoice& uv = note.unison[u];
-        uv.carrier1.freq *= ratio;
-        uv.carrier2.freq *= ratio;
+        float unison_cents = 0.0f;
+        if (note.num_unison > 1) {
+            unison_cents = p.unison_detune * ((static_cast<float>(u) / static_cast<float>(note.num_unison - 1)) * 2.0f - 1.0f);
+        }
+        const float unison_freq = frequency * cents_to_ratio(unison_cents);
+        uv.carrier1.freq = unison_freq;
+        uv.carrier2.freq = unison_freq * cents_to_ratio(p.beat_detune);
         for (int op = 0; op < 4; ++op) {
             OperatorState& os = uv.ops[op];
-            os.osc.freq *= ratio;
-            os.peak_index *= ratio;
-            os.mod_env_target *= ratio;
-            os.mod_env_value *= ratio;
-            os.mod_env_attack_rate *= ratio;
+            const OperatorParams& op_p = p.ops[op];
+            const float previous_peak = std::max(0.001f, os.peak_index);
+            const float legacy_velocity = op == 0 ? note.velocity : 1.0f;
+            const float next_peak = std::max(
+                0.001f,
+                unison_freq
+                    * op_p.index
+                    * legacy_velocity
+                    * velocity_scale(note.velocity, op_p.velocity_to_index));
+            const float peak_ratio = next_peak / previous_peak;
+            os.osc.freq = operator_frequency(unison_freq, op_p);
+            os.peak_index = next_peak;
+            os.mod_env_target = std::max(0.001f, next_peak * op_p.sustain);
+            os.mod_env_value = std::max(0.001f, os.mod_env_value * peak_ratio);
+            os.mod_env_attack_rate *= peak_ratio;
         }
     }
     return 1;
@@ -919,7 +1039,7 @@ static void refresh_note_timbre_from_current_preset(LeadNote& note) {
         for (int op = 0; op < LEAD_FM_NUM_OPERATORS; ++op) {
             OperatorState& os = uv.ops[op];
             const OperatorParams& op_p = p.ops[op];
-            os.osc.freq = unison_freq * op_p.ratio * semitones_to_ratio(op_p.detune_cents / 100.0f);
+            os.osc.freq = operator_frequency(unison_freq, op_p);
             if (u >= previous_unison) {
                 os.osc.phase = 0.0f;
                 os.phase_fb = 0.0f;
@@ -929,8 +1049,8 @@ static void refresh_note_timbre_from_current_preset(LeadNote& note) {
             const float next_peak = std::max(
                 0.001f,
                 (op == 0)
-                    ? unison_freq * op_p.index * note.velocity
-                    : unison_freq * op_p.index);
+                    ? unison_freq * op_p.index * note.velocity * velocity_scale(note.velocity, op_p.velocity_to_index)
+                    : unison_freq * op_p.index * velocity_scale(note.velocity, op_p.velocity_to_index));
             const float peak_ratio = next_peak / previous_peak;
             os.peak_index = next_peak;
             os.mod_env_target = std::max(0.001f, next_peak * op_p.sustain);
@@ -967,6 +1087,14 @@ void lead_fm_all_notes_off(void) {
 void lead_fm_set_algorithm(int v) { g_params.algorithm = v; }
 void lead_fm_set_beat_detune(float v) { g_params.beat_detune = v; }
 void lead_fm_set_carrier2_mix(float v) { g_params.carrier2_mix = v; }
+void lead_fm_set_carrier1_waveform(int v) { g_params.carrier1_waveform = v; }
+void lead_fm_set_carrier2_waveform(int v) { g_params.carrier2_waveform = v; }
+void lead_fm_set_stereo_spread(float v) { g_params.stereo_spread = v; }
+void lead_fm_set_pitch_env_depth_cents(float v) { g_params.pitch_env_depth_cents = v; }
+void lead_fm_set_pitch_env_attack(float v) { g_params.pitch_env_attack = v; }
+void lead_fm_set_pitch_env_decay(float v) { g_params.pitch_env_decay = v; }
+void lead_fm_set_pitch_env_target(int v) { g_params.pitch_env_target = v; }
+void lead_fm_set_pitch_env_velocity_depth(float v) { g_params.pitch_env_velocity_depth = v; }
 
 void lead_fm_set_op_ratio(int i, float v)      { if (i >= 0 && i < 4) g_params.ops[i].ratio = v; }
 void lead_fm_set_op_index(int i, float v)      { if (i >= 0 && i < 4) g_params.ops[i].index = v; }
@@ -978,6 +1106,12 @@ void lead_fm_set_op_detune(int i, float v)     { if (i >= 0 && i < 4) g_params.o
 void lead_fm_set_op_env_rate(int i, float v)   { if (i >= 0 && i < 4) g_params.ops[i].env_rate = v; }
 void lead_fm_set_op_mod_attack(int i, float v) { if (i >= 0 && i < 4) g_params.ops[i].mod_attack_sec = v; }
 void lead_fm_set_op_mod_delay(int i, float v)  { if (i >= 0 && i < 4) g_params.ops[i].mod_delay_sec = v; }
+void lead_fm_set_op_waveform(int i, int v)     { if (i >= 0 && i < 4) g_params.ops[i].waveform = v; }
+void lead_fm_set_op_fixed_hz(int i, float v)   { if (i >= 0 && i < 4) g_params.ops[i].fixed_hz = v; }
+void lead_fm_set_op_key_track(int i, float v)  { if (i >= 0 && i < 4) g_params.ops[i].key_track = v; }
+void lead_fm_set_op_velocity_to_index(int i, float v) { if (i >= 0 && i < 4) g_params.ops[i].velocity_to_index = v; }
+void lead_fm_set_op_velocity_to_level(int i, float v) { if (i >= 0 && i < 4) g_params.ops[i].velocity_to_level = v; }
+void lead_fm_set_op_mod_release(int i, float v) { if (i >= 0 && i < 4) g_params.ops[i].mod_release_sec = v; }
 
 void lead_fm_set_attack(float v) { g_params.attack = v; }
 void lead_fm_set_decay(float v) { g_params.decay = v; }
@@ -1143,6 +1277,54 @@ void lead_fm_instance_set_carrier2_mix(KesshoLeadFmInstance* instance, float mix
     lead_fm_set_carrier2_mix(mix);
 }
 
+void lead_fm_instance_set_carrier1_waveform(KesshoLeadFmInstance* instance, int waveform) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_carrier1_waveform(waveform);
+}
+
+void lead_fm_instance_set_carrier2_waveform(KesshoLeadFmInstance* instance, int waveform) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_carrier2_waveform(waveform);
+}
+
+void lead_fm_instance_set_stereo_spread(KesshoLeadFmInstance* instance, float amount) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_stereo_spread(amount);
+}
+
+void lead_fm_instance_set_pitch_env_depth_cents(KesshoLeadFmInstance* instance, float cents) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_pitch_env_depth_cents(cents);
+}
+
+void lead_fm_instance_set_pitch_env_attack(KesshoLeadFmInstance* instance, float seconds) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_pitch_env_attack(seconds);
+}
+
+void lead_fm_instance_set_pitch_env_decay(KesshoLeadFmInstance* instance, float seconds) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_pitch_env_decay(seconds);
+}
+
+void lead_fm_instance_set_pitch_env_target(KesshoLeadFmInstance* instance, int target) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_pitch_env_target(target);
+}
+
+void lead_fm_instance_set_pitch_env_velocity_depth(KesshoLeadFmInstance* instance, float amount) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_pitch_env_velocity_depth(amount);
+}
+
 void lead_fm_instance_set_op_ratio(KesshoLeadFmInstance* instance, int op_idx, float ratio) {
     if (!instance) return;
     ScopedLeadFmState scoped(&instance->state);
@@ -1201,6 +1383,42 @@ void lead_fm_instance_set_op_mod_delay(KesshoLeadFmInstance* instance, int op_id
     if (!instance) return;
     ScopedLeadFmState scoped(&instance->state);
     lead_fm_set_op_mod_delay(op_idx, delay_sec);
+}
+
+void lead_fm_instance_set_op_waveform(KesshoLeadFmInstance* instance, int op_idx, int waveform) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_waveform(op_idx, waveform);
+}
+
+void lead_fm_instance_set_op_fixed_hz(KesshoLeadFmInstance* instance, int op_idx, float hz) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_fixed_hz(op_idx, hz);
+}
+
+void lead_fm_instance_set_op_key_track(KesshoLeadFmInstance* instance, int op_idx, float amount) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_key_track(op_idx, amount);
+}
+
+void lead_fm_instance_set_op_velocity_to_index(KesshoLeadFmInstance* instance, int op_idx, float amount) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_velocity_to_index(op_idx, amount);
+}
+
+void lead_fm_instance_set_op_velocity_to_level(KesshoLeadFmInstance* instance, int op_idx, float amount) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_velocity_to_level(op_idx, amount);
+}
+
+void lead_fm_instance_set_op_mod_release(KesshoLeadFmInstance* instance, int op_idx, float seconds) {
+    if (!instance) return;
+    ScopedLeadFmState scoped(&instance->state);
+    lead_fm_set_op_mod_release(op_idx, seconds);
 }
 
 void lead_fm_instance_set_attack(KesshoLeadFmInstance* instance, float seconds) {

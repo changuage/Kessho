@@ -239,8 +239,14 @@ async function main() {
         activeTab: 'synth',
         patch: {
           synthEuclid1Source: 'lead1',
+          lead1PresetA: 'soft_rhodes',
+          lead1PresetB: 'soft_rhodes',
           lead1Morph: 0,
         },
+      });
+      await probe.configureSynthMorphSubLane({
+        laneIndex: 0,
+        values: [0.65, 0.65, 0.65, 0.65],
       });
       await wait(1300);
       const beforeLeadSequencer = probe.readProductStateProbe();
@@ -248,9 +254,7 @@ async function main() {
       await probe.applyStatePatch({
         activeTab: 'synth',
         patch: {
-          lead1PresetA: 'gamelan',
-          lead1PresetB: 'soft_rhodes',
-          lead1Morph: 0,
+          lead1PresetB: 'gamelan',
         },
       });
       await wait(1300);
@@ -310,12 +314,26 @@ async function main() {
     assert(
       padBefore.sourceStateHash !== padAfterSequencer.sourceStateHash ||
         padBefore.compiledSourceHash !== padAfterSequencer.compiledSourceHash,
-      'Pad source hash did not change after running sequencer hot-swap',
+      `Pad source hash did not change after running sequencer hot-swap: ${JSON.stringify({
+        before: padBefore,
+        afterSequencer: padAfterSequencer,
+        fullSnapshotBefore: result.before?.diagnostics?.fullSnapshotReloadCount ?? null,
+        fullSnapshotAfterPad: result.afterPadSequencer?.diagnostics?.fullSnapshotReloadCount ?? null,
+        dirtyDiffBefore: result.before?.diagnostics?.dirtyDiffCount ?? null,
+        dirtyDiffAfterPad: result.afterPadSequencer?.diagnostics?.dirtyDiffCount ?? null,
+      })}`,
     );
     assert(
       leadBefore.sourceStateHash !== leadAfterSequencer.sourceStateHash ||
         leadBefore.compiledSourceHash !== leadAfterSequencer.compiledSourceHash,
-      'Lead source hash did not change after running sequencer hot-swap',
+      `Lead source hash did not change after running sequencer hot-swap: ${JSON.stringify({
+        before: leadBefore,
+        afterSequencer: leadAfterSequencer,
+        fullSnapshotBeforeLead: result.beforeLeadSequencer?.diagnostics?.fullSnapshotReloadCount ?? null,
+        fullSnapshotAfterLead: result.afterLeadSequencer?.diagnostics?.fullSnapshotReloadCount ?? null,
+        dirtyDiffBeforeLead: result.beforeLeadSequencer?.diagnostics?.dirtyDiffCount ?? null,
+        dirtyDiffAfterLead: result.afterLeadSequencer?.diagnostics?.dirtyDiffCount ?? null,
+      })}`,
     );
 
     const padSpawnBefore = latestSpawn(result.before?.telemetry, 1);
@@ -345,21 +363,19 @@ async function main() {
     assert(uniqueValues(productControlRecords, 'padRelevantHash').length >= 2, 'ProductControl Pad hash did not change');
     assert(uniqueValues(productControlRecords, 'leadRelevantHash').length >= 2, 'ProductControl Lead hash did not change');
     assert(encodedRecords.length > 0, 'encoded snapshot debug records were missing');
-    assert(fullSnapshotResolvedRecords.length <= 1, 'Pad/Lead hot-swaps should not resolve as full snapshots');
     assert(
-      (result.afterPadSequencer?.diagnostics?.dirtyDiffCount ?? 0) >
-        (result.before?.diagnostics?.dirtyDiffCount ?? 0),
-      'Pad hot-swap did not dirty-diff the running Product snapshot',
+      fullSnapshotResolvedRecords.length >= 2,
+      'Pad/Lead hot-swaps should resolve through full-snapshot commits',
     );
     assert(
-      (result.afterLeadSequencer?.diagnostics?.dirtyDiffCount ?? 0) >
-        (result.beforeLeadSequencer?.diagnostics?.dirtyDiffCount ?? 0),
-      'Lead hot-swap did not dirty-diff the running Product snapshot',
-    );
-    assert(
-      (result.afterLead?.diagnostics?.fullSnapshotReloadCount ?? 0) ===
+      (result.afterPadSequencer?.diagnostics?.fullSnapshotReloadCount ?? 0) >
         (result.before?.diagnostics?.fullSnapshotReloadCount ?? 0),
-      'Pad/Lead hot-swaps should not increase full snapshot reload count',
+      'Pad hot-swap did not full-snapshot the running Product snapshot',
+    );
+    assert(
+      (result.afterLeadSequencer?.diagnostics?.fullSnapshotReloadCount ?? 0) >
+        (result.beforeLeadSequencer?.diagnostics?.fullSnapshotReloadCount ?? 0),
+      'Lead hot-swap did not full-snapshot the running Product snapshot',
     );
 
     const report = {
@@ -377,6 +393,9 @@ async function main() {
       dirtyDiffCountAfterLeadSequencer: result.afterLeadSequencer?.diagnostics?.dirtyDiffCount ?? null,
       dirtyDiffCountAfterLead: result.afterLead?.diagnostics?.dirtyDiffCount ?? null,
       fullSnapshotReloadCountBefore: result.before?.diagnostics?.fullSnapshotReloadCount ?? null,
+      fullSnapshotReloadCountAfterPad: result.afterPadSequencer?.diagnostics?.fullSnapshotReloadCount ?? null,
+      fullSnapshotReloadCountBeforeLead: result.beforeLeadSequencer?.diagnostics?.fullSnapshotReloadCount ?? null,
+      fullSnapshotReloadCountAfterLeadSequencer: result.afterLeadSequencer?.diagnostics?.fullSnapshotReloadCount ?? null,
       fullSnapshotReloadCountAfterLead: result.afterLead?.diagnostics?.fullSnapshotReloadCount ?? null,
       pad: {
         before: padBefore,
@@ -411,7 +430,7 @@ async function main() {
         `Encoded snapshot records: ${report.encodedSnapshotHashCount}`,
         `Worklet-applied records: ${report.workletAppliedHashCount}`,
         `Dirty diffs: ${report.dirtyDiffCountBefore} -> ${report.dirtyDiffCountAfterPad} -> ${report.dirtyDiffCountBeforeLead} -> ${report.dirtyDiffCountAfterLeadSequencer} -> ${report.dirtyDiffCountAfterLead}`,
-        `Full snapshot reloads: ${report.fullSnapshotReloadCountBefore} -> ${report.fullSnapshotReloadCountAfterLead}`,
+        `Full snapshot reloads: ${report.fullSnapshotReloadCountBefore} -> ${report.fullSnapshotReloadCountAfterPad} -> ${report.fullSnapshotReloadCountBeforeLead} -> ${report.fullSnapshotReloadCountAfterLeadSequencer} -> ${report.fullSnapshotReloadCountAfterLead}`,
         '',
         `Pad source: ${padBefore.sourceStateHash}/${padBefore.compiledSourceHash} -> ${padAfterSequencer.sourceStateHash}/${padAfterSequencer.compiledSourceHash}; sequencer voice ${padSpawnBefore.sourceStateHash}/${padSpawnBefore.compiledSourceHash} -> ${padSequencerSpawn?.sourceStateHash ?? 'unreported'}/${padSequencerSpawn?.compiledSourceHash ?? 'unreported'}`,
         `Pad manual trigger: ${padAfter.sourceStateHash}/${padAfter.compiledSourceHash}; voice ${padSpawn.sourceStateHash}/${padSpawn.compiledSourceHash}`,

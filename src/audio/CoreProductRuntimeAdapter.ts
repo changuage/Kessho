@@ -74,6 +74,7 @@ class CoreProductRuntimeAdapter {
       if (previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change';
       if (previousSource.assetId !== nextSource.assetId) return 'source-structure-change';
       if (this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return 'source-structure-change';
+      if (this.sourcePresetEndpointBodyChanged(previousSource, nextSource)) return 'source-structure-change';
       if (
         coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource) &&
         !canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)
@@ -81,9 +82,9 @@ class CoreProductRuntimeAdapter {
       const soundscapeFadeCanCoverPatchRemoval =
         soundscapeFadeCanCoverAssetRemoval && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape;
       if (!soundscapeFadeCanCoverPatchRemoval) {
-        if (this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'pad-override-change';
-        if (this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'lead-override-change';
-        if (this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return 'drum-override-change';
+        if (this.padOverrideChanged(previousSource, nextSource)) return 'pad-override-change';
+        if (this.leadOverrideChanged(previousSource, nextSource)) return 'lead-override-change';
+        if (this.drumOverrideChanged(previousSource, nextSource)) return 'drum-override-change';
       }
     }
     if (!this.canApplyLaneDiffs(previous.synthLanes, next.synthLanes)) return 'sequencer-structure-change';
@@ -106,6 +107,7 @@ class CoreProductRuntimeAdapter {
       if (previousSource.sourceId !== nextSource.sourceId) return false;
       if (previousSource.assetId !== nextSource.assetId) return false;
       if (this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return false;
+      if (this.sourcePresetEndpointBodyChanged(previousSource, nextSource)) return false;
       if (
         coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource) &&
         !canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)
@@ -113,9 +115,9 @@ class CoreProductRuntimeAdapter {
       const soundscapeFadeCanCoverPatchRemoval =
         soundscapeFadeCanCoverAssetRemoval && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape;
       if (!soundscapeFadeCanCoverPatchRemoval) {
-        if (this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false;
-        if (this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false;
-        if (this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)) return false;
+        if (this.padOverrideChanged(previousSource, nextSource)) return false;
+        if (this.leadOverrideChanged(previousSource, nextSource)) return false;
+        if (this.drumOverrideChanged(previousSource, nextSource)) return false;
       }
     }
     return this.canApplyLaneDiffs(previous.synthLanes, next.synthLanes) &&
@@ -130,6 +132,25 @@ class CoreProductRuntimeAdapter {
       Object.prototype.hasOwnProperty.call(sourceShape, 'exactLeadParams') ||
       Object.prototype.hasOwnProperty.call(sourceShape, 'exactDrumParamCount') ||
       Object.prototype.hasOwnProperty.call(sourceShape, 'exactDrumParams');
+  }
+
+  private sourcePresetEndpointBodyChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {
+    if (previous.sourceId !== next.sourceId) return false;
+    if (isPadOrLeadEndpointSource(next.sourceId)) {
+      return (previous.sourcePresetAId ?? 0) !== (next.sourcePresetAId ?? 0) ||
+        (previous.sourcePresetBId ?? 0) !== (next.sourcePresetBId ?? 0);
+    }
+    if (next.sourceId !== CORE_PRODUCT_SOURCE_IDS.drum) return false;
+    return this.u32ArrayChanged(previous.drumVoicePresetAIds, next.drumVoicePresetAIds) ||
+      this.u32ArrayChanged(previous.drumVoicePresetBIds, next.drumVoicePresetBIds);
+  }
+
+  private u32ArrayChanged(previous: readonly number[] | undefined, next: readonly number[] | undefined): boolean {
+    const length = Math.max(previous?.length ?? 0, next?.length ?? 0);
+    for (let index = 0; index < length; index += 1) {
+      if ((previous?.[index] ?? 0) !== (next?.[index] ?? 0)) return true;
+    }
+    return false;
   }
 
   private padOverrideChanged(previous: ProductSourceSnapshot, next: ProductSourceSnapshot): boolean {

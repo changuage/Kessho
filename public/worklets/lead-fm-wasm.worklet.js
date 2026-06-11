@@ -25,8 +25,12 @@ const _perfNow = typeof performance !== 'undefined' ? () => performance.now() : 
 const ALG_MAP = { parallel: 0, stack: 1, split: 2, cross: 3, dx17: 4 };
 // Filter type map
 const FILTER_MAP = { lowpass: 0, highpass: 1, bandpass: 2, notch: 3, peaking: 4 };
+// Waveform map
+const WAVE_MAP = { sine: 0, triangle: 1, sawtooth: 2, square: 3 };
+// Pitch envelope target map
+const PITCH_ENV_TARGET_MAP = { carriers: 0, carrier1: 1, carrier2: 2, all: 3 };
 // LFO target map
-const LFO_MAP = { all: 0, mod1: 1, mod2: 2, mod3: 3, mod4: 4, filter: 5, pitch: 6, detune: 7, none: 8 };
+const LFO_MAP = { all: 0, mod1: 1, mod2: 2, mod3: 3, mod4: 4, filter: 5, pitch: 6, detune: 7, none: 8, amp: 9, pan: 10 };
 // Transient type map
 const TRANS_MAP = { white: 0, pink: 1, brown: 2, filtered: 3 };
 
@@ -146,6 +150,20 @@ class LeadFMWasmProcessor extends AudioWorkletProcessor {
     }
     if (p.beatDetune !== undefined) w.lead_fm_set_beat_detune(p.beatDetune);
     if (p.carrier2Mix !== undefined) w.lead_fm_set_carrier2_mix(p.carrier2Mix);
+    if (p.carrier1Waveform !== undefined && w.lead_fm_set_carrier1_waveform) {
+      w.lead_fm_set_carrier1_waveform(typeof p.carrier1Waveform === 'string' ? (WAVE_MAP[p.carrier1Waveform] ?? 0) : p.carrier1Waveform);
+    }
+    if (p.carrier2Waveform !== undefined && w.lead_fm_set_carrier2_waveform) {
+      w.lead_fm_set_carrier2_waveform(typeof p.carrier2Waveform === 'string' ? (WAVE_MAP[p.carrier2Waveform] ?? 0) : p.carrier2Waveform);
+    }
+    if (p.stereoSpread !== undefined && w.lead_fm_set_stereo_spread) w.lead_fm_set_stereo_spread(p.stereoSpread);
+    if (p.pitchEnvDepthCents !== undefined && w.lead_fm_set_pitch_env_depth_cents) w.lead_fm_set_pitch_env_depth_cents(p.pitchEnvDepthCents);
+    if (p.pitchEnvAttack !== undefined && w.lead_fm_set_pitch_env_attack) w.lead_fm_set_pitch_env_attack(p.pitchEnvAttack);
+    if (p.pitchEnvDecay !== undefined && w.lead_fm_set_pitch_env_decay) w.lead_fm_set_pitch_env_decay(p.pitchEnvDecay);
+    if (p.pitchEnvTarget !== undefined && w.lead_fm_set_pitch_env_target) {
+      w.lead_fm_set_pitch_env_target(typeof p.pitchEnvTarget === 'string' ? (PITCH_ENV_TARGET_MAP[p.pitchEnvTarget] ?? 0) : p.pitchEnvTarget);
+    }
+    if (p.pitchEnvVelocityDepth !== undefined && w.lead_fm_set_pitch_env_velocity_depth) w.lead_fm_set_pitch_env_velocity_depth(p.pitchEnvVelocityDepth);
 
     // Per-operator params (mod1..mod4)
     for (let i = 0; i < 4; i++) {
@@ -160,6 +178,14 @@ class LeadFMWasmProcessor extends AudioWorkletProcessor {
       if (p[prefix + 'EnvRate'] !== undefined) w.lead_fm_set_op_env_rate(i, p[prefix + 'EnvRate']);
       if (p[prefix + 'ModAttack'] !== undefined) w.lead_fm_set_op_mod_attack(i, p[prefix + 'ModAttack']);
       if (p[prefix + 'ModDelay'] !== undefined) w.lead_fm_set_op_mod_delay(i, p[prefix + 'ModDelay']);
+      if (p[prefix + 'Waveform'] !== undefined && w.lead_fm_set_op_waveform) {
+        w.lead_fm_set_op_waveform(i, typeof p[prefix + 'Waveform'] === 'string' ? (WAVE_MAP[p[prefix + 'Waveform']] ?? 0) : p[prefix + 'Waveform']);
+      }
+      if (p[prefix + 'FixedHz'] !== undefined && w.lead_fm_set_op_fixed_hz) w.lead_fm_set_op_fixed_hz(i, p[prefix + 'FixedHz']);
+      if (p[prefix + 'KeyTrack'] !== undefined && w.lead_fm_set_op_key_track) w.lead_fm_set_op_key_track(i, p[prefix + 'KeyTrack']);
+      if (p[prefix + 'VelocityToIndex'] !== undefined && w.lead_fm_set_op_velocity_to_index) w.lead_fm_set_op_velocity_to_index(i, p[prefix + 'VelocityToIndex']);
+      if (p[prefix + 'VelocityToLevel'] !== undefined && w.lead_fm_set_op_velocity_to_level) w.lead_fm_set_op_velocity_to_level(i, p[prefix + 'VelocityToLevel']);
+      if (p[prefix + 'ModRelease'] !== undefined && w.lead_fm_set_op_mod_release) w.lead_fm_set_op_mod_release(i, p[prefix + 'ModRelease']);
     }
 
     // Envelope

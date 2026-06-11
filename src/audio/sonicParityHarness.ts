@@ -434,6 +434,43 @@ function createWarmupNote(note: ManualSynthNoteOptions): ManualSynthNoteOptions 
   };
 }
 
+function patchRequiresPadPresetResolution(patch: Partial<SliderState>): boolean {
+  return Object.prototype.hasOwnProperty.call(patch, 'padPresetA') ||
+    Object.prototype.hasOwnProperty.call(patch, 'padPresetB') ||
+    Object.prototype.hasOwnProperty.call(patch, 'padMorph') ||
+    Object.prototype.hasOwnProperty.call(patch, 'pad2PresetC') ||
+    Object.prototype.hasOwnProperty.call(patch, 'pad2PresetD') ||
+    Object.prototype.hasOwnProperty.call(patch, 'pad2Morph');
+}
+
+function createResolvedStateEventPatch(
+  previousState: SliderState,
+  patch: Partial<SliderState>,
+  manualMode: boolean,
+): { state: SliderState; patch: Partial<SliderState> } {
+  if (!patchRequiresPadPresetResolution(patch)) {
+    return {
+      state: {
+        ...previousState,
+        ...patch,
+        ...(manualMode ? { synthChordSequencerEnabled: false } : {}),
+      },
+      patch,
+    };
+  }
+  const state = createCaptureState(previousState, patch, manualMode);
+  const resolvedPatch: Partial<SliderState> = {};
+  const resolvedPatchRecord = resolvedPatch as Record<string, unknown>;
+  const previousRecord = previousState as unknown as Record<string, unknown>;
+  const nextRecord = state as unknown as Record<string, unknown>;
+  for (const key of Object.keys(nextRecord)) {
+    if (!Object.is(nextRecord[key], previousRecord[key])) {
+      resolvedPatchRecord[key] = nextRecord[key];
+    }
+  }
+  return { state, patch: resolvedPatch };
+}
+
 export function installSonicParityHarness({ getState }: InstallOptions): void {
   if (installed) return;
   installed = true;
@@ -559,7 +596,8 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
         };
         for (const event of stateEvents) {
           const timer = window.setTimeout(() => {
-            eventState = { ...eventState, ...event.patch };
+            const resolvedEvent = createResolvedStateEventPatch(eventState, event.patch, manualMode);
+            eventState = resolvedEvent.state;
 	            if (manualMode && runtime.mode === 'web-ts' && typeof paramTarget.applyParams === 'function') {
 	              paramTarget.sourceSliderState = eventState;
 	              paramTarget.sliderState = eventState;
@@ -568,7 +606,7 @@ export function installSonicParityHarness({ getState }: InstallOptions): void {
 	              return;
 	            }
 	            if (runtime.mode === 'core-product' && typeof paramTarget.updateSnapshotPatch === 'function') {
-	              paramTarget.updateSnapshotPatch.call(engine, 'fx-control-change', event.patch);
+	              paramTarget.updateSnapshotPatch.call(engine, 'fx-control-change', resolvedEvent.patch);
 	              return;
 	            }
 	            if (typeof paramTarget.updateParams === 'function') {

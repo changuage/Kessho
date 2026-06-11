@@ -19,7 +19,7 @@
 
 namespace {
 
-constexpr int kLeadFmParamCount = 80;
+constexpr int kLeadFmParamCount = 112;
 constexpr int kLeadFmParamRelease = 46;
 constexpr int kLeadFmParamOutputSelect = 79;
 constexpr int kPadParamCount = 108;

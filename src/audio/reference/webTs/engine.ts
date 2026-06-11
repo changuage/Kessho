@@ -12032,7 +12032,9 @@ export class AudioEngine {
                 // Filter evolve's enabledSubLanes by the UI sub-lane enabled state
                 const uiEnabled = this.synthSubLaneEnabled[laneIndex] ?? {};
                 const evolveEnabledSubs = (evolveConfig.enabledSubLanes ?? ['pitch', 'expression', 'morph', 'distance', 'probability', 'ratchet'])
-                  .filter(sl => sl === 'probability' || sl === 'ratchet' || uiEnabled[sl] === true);
+                  .filter(sl => (
+                    sl === 'probability' || sl === 'ratchet' || uiEnabled[sl] === true
+                  ) && (sl !== 'ratchet' || (uiEnabled.expression === true && uiEnabled.ratchet !== false)));
                 if (!this.synthEvolveStates[laneIndex].homePitchSettings && ps) this.synthEvolveStates[laneIndex].homePitchSettings = { ...ps };
                 const result = evolveSynthLane(
                   laneOv,
@@ -12088,7 +12090,7 @@ export class AudioEngine {
               const distanceDir = ov.distanceDirection[laneIndex] ?? 'forward';
               const distanceSteps = distanceArr?.length ?? 0;
               const probArr = ov.probability[laneIndex];
-              const ratchetArr = ov.ratchet[laneIndex];
+              const ratchetArr = slEnabled.expression === true && slEnabled.ratchet !== false ? ov.ratchet[laneIndex] : null;
               const trigCondArr = ov.trigCondition[laneIndex];
 
               // Synchronously increment hit count for sub-lane accuracy

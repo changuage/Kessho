@@ -254,13 +254,15 @@ check(
     methodBody(files.audioSync, 'resolvedCommitTriggerCritical').includes('requiresSourceCoreResolvedCommit(patch)') &&
     files.audioSync.includes('requiresSourceCoreFullSnapshot(patch, reason, options)') &&
     files.audioSync.includes("if (reason === 'preset-load') return true;") &&
+    files.audioSync.includes('Object.keys(patch).some(isSourceCoreResolvedCommitPatchKey)') &&
+    files.audioSync.includes("'drumKickPresetA'") &&
     files.audioSync.includes('return false;') &&
     !files.audioSync.includes('KESSHO_PRODUCT_PAD_PARAM_SPECS') &&
     !files.audioSync.includes('KESSHO_PRODUCT_DRUM_PARAM_SPECS') &&
     files.presetSync.includes("reason: 'preset-load'") &&
     files.presetSync.includes('triggerCritical: true') &&
     files.presetSync.includes('forceFullSnapshot: true'),
-  'source preset endpoint/data edits must use resolved dirty-diff commits while morph/body controls stay off the full-snapshot path',
+  'source preset endpoint/data edits must use resolved full-snapshot commits while morph-only controls stay off the full-snapshot path',
 );
 
 check(

@@ -167,6 +167,7 @@ function leadPresetSlotsChanged(previous: SliderState, next: SliderState): boole
 }
 
 type PadMorphScope = 'pad1' | 'pad2';
+type LeadMorphScope = 'lead1' | 'lead2';
 type PadMorphEndpoint = 'a' | 'b';
 type PadMorphEndpointParamValue = number | string | boolean;
 type PadMorphEndpointParamOverrides = Partial<Record<PadPresetParamKey, PadMorphEndpointParamValue>>;
@@ -203,6 +204,26 @@ function getPadMorphPosition(state: SliderState, scope: PadMorphScope): number |
   const morphPosition = scope === 'pad2' ? state.pad2Morph : state.padMorph;
   if (typeof morphPosition !== 'number') return null;
   return morphPosition;
+}
+
+function applyLiveLeadMorphToPresetChange(state: SliderState, scope: LeadMorphScope): void {
+  const runtimeKey = scope === 'lead2' ? 'lead2Morph' : 'lead1Morph';
+  const runtimeMorph = getRuntimeValue(runtimeKey);
+  if (typeof runtimeMorph !== 'number' || !Number.isFinite(runtimeMorph)) return;
+  state[runtimeKey] = clampMorphPosition(runtimeMorph);
+}
+
+function applyLiveLeadMorphToChangedPresetSlots(previous: SliderState, next: SliderState): SliderState {
+  let normalized = next;
+  if (previous.lead1PresetA !== next.lead1PresetA || previous.lead1PresetB !== next.lead1PresetB) {
+    normalized = normalized === next ? { ...next } : normalized;
+    applyLiveLeadMorphToPresetChange(normalized, 'lead1');
+  }
+  if (previous.lead2PresetC !== next.lead2PresetC || previous.lead2PresetD !== next.lead2PresetD) {
+    normalized = normalized === next ? { ...next } : normalized;
+    applyLiveLeadMorphToPresetChange(normalized, 'lead2');
+  }
+  return normalized;
 }
 
 function getPadMorphEndpoint(state: SliderState, scope: PadMorphScope): PadMorphEndpoint | null {
@@ -2727,6 +2748,7 @@ const App: React.FC = () => {
     setState,
     setUiMode,
     stateRef,
+    normalizeStatePatch: applyLiveLeadMorphToChangedPresetSlots,
   });
 
   useEffect(() => {
@@ -3809,10 +3831,12 @@ const App: React.FC = () => {
 
         if (key === 'lead1PresetA' || key === 'lead1PresetB') {
           newState.lead1UseCustomAdsr = false;
+          applyLiveLeadMorphToPresetChange(newState, 'lead1');
         }
 
         if (key === 'lead2PresetC' || key === 'lead2PresetD') {
           newState.lead2UseCustomAdsr = false;
+          applyLiveLeadMorphToPresetChange(newState, 'lead2');
         }
 
         // ═══ GRANULAR ↔ GRANULAR SYNC: granularEnabled controls granularEnabled ═══
@@ -3963,9 +3987,10 @@ const App: React.FC = () => {
   const handleStateChange = useCallback<React.Dispatch<React.SetStateAction<SliderState>>>(
     (nextStateOrUpdater) => {
       setState((prev) => {
-        const nextState = typeof nextStateOrUpdater === 'function' ? (nextStateOrUpdater as (prevState: SliderState) => SliderState)(prev) : nextStateOrUpdater;
+        let nextState = typeof nextStateOrUpdater === 'function' ? (nextStateOrUpdater as (prevState: SliderState) => SliderState)(prev) : nextStateOrUpdater;
         if (leadPresetSlotsChanged(prev, nextState)) {
           pendingImmediateLeadPresetSyncRef.current = true;
+          nextState = applyLiveLeadMorphToChangedPresetSlots(prev, nextState);
         }
         rememberChangedPadMorphEndpointStates(padMorphEndpointOverridesRef.current, prev, nextState);
         applyMorphEndpointStatePatch(prev, nextState);

@@ -48,6 +48,20 @@ typedef struct KesshoLeadFmInstance KesshoLeadFmInstance;
 #define LEAD_FM_LFO_PITCH   6
 #define LEAD_FM_LFO_DETUNE  7
 #define LEAD_FM_LFO_NONE    8
+#define LEAD_FM_LFO_AMP     9
+#define LEAD_FM_LFO_PAN     10
+
+// Waveforms
+#define LEAD_FM_WAVE_SINE      0
+#define LEAD_FM_WAVE_TRIANGLE  1
+#define LEAD_FM_WAVE_SAWTOOTH  2
+#define LEAD_FM_WAVE_SQUARE    3
+
+// Pitch envelope targets
+#define LEAD_FM_PITCH_ENV_CARRIERS 0
+#define LEAD_FM_PITCH_ENV_CARRIER1 1
+#define LEAD_FM_PITCH_ENV_CARRIER2 2
+#define LEAD_FM_PITCH_ENV_ALL      3
 
 // Filter types
 #define LEAD_FM_FILTER_LP    0
@@ -105,6 +119,14 @@ void lead_fm_set_algorithm(int algo);
 // Carrier
 void lead_fm_set_beat_detune(float cents);
 void lead_fm_set_carrier2_mix(float mix);
+void lead_fm_set_carrier1_waveform(int waveform);
+void lead_fm_set_carrier2_waveform(int waveform);
+void lead_fm_set_stereo_spread(float amount);
+void lead_fm_set_pitch_env_depth_cents(float cents);
+void lead_fm_set_pitch_env_attack(float seconds);
+void lead_fm_set_pitch_env_decay(float seconds);
+void lead_fm_set_pitch_env_target(int target);
+void lead_fm_set_pitch_env_velocity_depth(float amount);
 
 // Per-operator (op_idx: 0-3)
 void lead_fm_set_op_ratio(int op_idx, float ratio);
@@ -117,6 +139,12 @@ void lead_fm_set_op_detune(int op_idx, float cents);
 void lead_fm_set_op_env_rate(int op_idx, float rate);
 void lead_fm_set_op_mod_attack(int op_idx, float attack_sec);
 void lead_fm_set_op_mod_delay(int op_idx, float delay_sec);
+void lead_fm_set_op_waveform(int op_idx, int waveform);
+void lead_fm_set_op_fixed_hz(int op_idx, float hz);
+void lead_fm_set_op_key_track(int op_idx, float amount);
+void lead_fm_set_op_velocity_to_index(int op_idx, float amount);
+void lead_fm_set_op_velocity_to_level(int op_idx, float amount);
+void lead_fm_set_op_mod_release(int op_idx, float seconds);
 
 // Amplitude envelope (ADSR)
 void lead_fm_set_attack(float seconds);
@@ -206,6 +234,14 @@ void lead_fm_instance_refresh_active_notes(KesshoLeadFmInstance* instance);
 void lead_fm_instance_set_algorithm(KesshoLeadFmInstance* instance, int algo);
 void lead_fm_instance_set_beat_detune(KesshoLeadFmInstance* instance, float cents);
 void lead_fm_instance_set_carrier2_mix(KesshoLeadFmInstance* instance, float mix);
+void lead_fm_instance_set_carrier1_waveform(KesshoLeadFmInstance* instance, int waveform);
+void lead_fm_instance_set_carrier2_waveform(KesshoLeadFmInstance* instance, int waveform);
+void lead_fm_instance_set_stereo_spread(KesshoLeadFmInstance* instance, float amount);
+void lead_fm_instance_set_pitch_env_depth_cents(KesshoLeadFmInstance* instance, float cents);
+void lead_fm_instance_set_pitch_env_attack(KesshoLeadFmInstance* instance, float seconds);
+void lead_fm_instance_set_pitch_env_decay(KesshoLeadFmInstance* instance, float seconds);
+void lead_fm_instance_set_pitch_env_target(KesshoLeadFmInstance* instance, int target);
+void lead_fm_instance_set_pitch_env_velocity_depth(KesshoLeadFmInstance* instance, float amount);
 
 void lead_fm_instance_set_op_ratio(KesshoLeadFmInstance* instance, int op_idx, float ratio);
 void lead_fm_instance_set_op_index(KesshoLeadFmInstance* instance, int op_idx, float index);
@@ -217,6 +253,12 @@ void lead_fm_instance_set_op_detune(KesshoLeadFmInstance* instance, int op_idx, 
 void lead_fm_instance_set_op_env_rate(KesshoLeadFmInstance* instance, int op_idx, float rate);
 void lead_fm_instance_set_op_mod_attack(KesshoLeadFmInstance* instance, int op_idx, float attack_sec);
 void lead_fm_instance_set_op_mod_delay(KesshoLeadFmInstance* instance, int op_idx, float delay_sec);
+void lead_fm_instance_set_op_waveform(KesshoLeadFmInstance* instance, int op_idx, int waveform);
+void lead_fm_instance_set_op_fixed_hz(KesshoLeadFmInstance* instance, int op_idx, float hz);
+void lead_fm_instance_set_op_key_track(KesshoLeadFmInstance* instance, int op_idx, float amount);
+void lead_fm_instance_set_op_velocity_to_index(KesshoLeadFmInstance* instance, int op_idx, float amount);
+void lead_fm_instance_set_op_velocity_to_level(KesshoLeadFmInstance* instance, int op_idx, float amount);
+void lead_fm_instance_set_op_mod_release(KesshoLeadFmInstance* instance, int op_idx, float seconds);
 
 void lead_fm_instance_set_attack(KesshoLeadFmInstance* instance, float seconds);
 void lead_fm_instance_set_decay(KesshoLeadFmInstance* instance, float seconds);

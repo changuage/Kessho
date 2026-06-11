@@ -68,5 +68,9 @@ export function enabledCoreProductSequencerSubLanes(
   laneIndex: number,
 ): string[] {
   const state = (sequencer === 'synth' ? synthSubLaneEnabled : drumSubLaneEnabled)[laneIndex] ?? {};
-  return ['probability', 'ratchet', ...['pitch', 'expression', 'morph', 'distance'].filter((lane) => state[lane] === true)];
+  return [
+    'probability',
+    ...(state.expression === true && state.ratchet !== false ? ['ratchet'] : []),
+    ...['pitch', 'expression', 'morph', 'distance'].filter((lane) => state[lane] === true),
+  ];
 }

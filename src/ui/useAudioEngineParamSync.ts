@@ -63,6 +63,20 @@ const SOURCE_PRESET_ENDPOINT_RESOLVED_COMMIT_KEYS = new Set<string>([
   'lead1PresetB',
   'lead2PresetC',
   'lead2PresetD',
+  'drumSubPresetA',
+  'drumSubPresetB',
+  'drumKickPresetA',
+  'drumKickPresetB',
+  'drumClickPresetA',
+  'drumClickPresetB',
+  'drumBeepHiPresetA',
+  'drumBeepHiPresetB',
+  'drumBeepLoPresetA',
+  'drumBeepLoPresetB',
+  'drumNoisePresetA',
+  'drumNoisePresetB',
+  'drumMembranePresetA',
+  'drumMembranePresetB',
 ]);
 
 function isFxControlPatchKey(key: string): boolean {
@@ -99,12 +113,13 @@ function requiresSourceCoreResolvedCommit(patch: Partial<SliderState>): boolean 
 }
 
 function requiresSourceCoreFullSnapshot(
-  _patch: Partial<SliderState>,
+  patch: Partial<SliderState>,
   reason: ProductSnapshotPatchReason,
   options?: AudioEngineParamUpdateOptions,
 ): boolean {
   if (options?.forceFullSnapshot === true) return true;
   if (reason === 'preset-load') return true;
+  if (Object.keys(patch).some(isSourceCoreResolvedCommitPatchKey)) return true;
   return false;
 }
 

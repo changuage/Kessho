@@ -2566,6 +2566,22 @@
   font-weight: 760;
 }
 
+.synth-root .lead-editor-select-control.compact {
+  padding: 6px;
+  gap: 4px;
+}
+
+.synth-root .lead-editor-select-control.compact span {
+  font-size: 0.56rem;
+}
+
+.synth-root .lead-editor-select-control.compact select {
+  width: 100%;
+  min-width: 0;
+  font-size: 0.6rem;
+  padding: 3px 5px;
+}
+
 .synth-root .lead-editor-matrix-wrap {
   overflow-x: auto;
   padding-bottom: 4px;
@@ -2651,6 +2667,22 @@
   display: grid;
   grid-template-columns: 52px 1fr 1fr;
   gap: 6px;
+  align-items: stretch;
+}
+
+.synth-root .lead-editor-operator-v2-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.synth-root .lead-editor-operator-v2-row {
+  display: grid;
+  grid-template-columns: 52px minmax(108px, 0.9fr) repeat(5, minmax(94px, 1fr));
+  gap: 6px;
+  min-width: 760px;
   align-items: stretch;
 }
 

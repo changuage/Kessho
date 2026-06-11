@@ -2019,8 +2019,8 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 29100',
-  'const SOURCE_BYTES = 3336',
+  'const SNAPSHOT_BYTES = 31788',
+  'const SOURCE_BYTES = 3720',
   'const LANE_BYTES = 92',
   'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
   'KESSHO_PRODUCT_DRUM_VOICE_COUNT',
@@ -2652,17 +2652,18 @@ for (const token of [
   'createCoreProductSourceOverrideCommitEvent',
   'legacyExactBridgeFieldsPresent',
   "this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return 'source-structure-change'",
+  "this.sourcePresetEndpointBodyChanged(previousSource, nextSource)) return 'source-structure-change'",
   'coreProductSourcePresetEndpointIdsChanged(previousSource, nextSource) &&',
   '!canApplyCoreProductSourcePresetEndpointIdDiff(previousSource, nextSource)',
-  "this.padOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)",
-  "this.leadOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)",
-  'this.drumOverrideChanged(previousSource, nextSource) && !this.canApplySourceOverrideDiff(previousSource, nextSource)',
+  'this.padOverrideChanged(previousSource, nextSource)) return false',
+  'this.leadOverrideChanged(previousSource, nextSource)) return false',
+  'this.drumOverrideChanged(previousSource, nextSource)) return false',
   'private padOverrideChanged',
   'private leadOverrideChanged',
   'private drumOverrideChanged',
   'private canApplySourceOverrideDiff',
 ]) {
-  assert(runtimeAdapter.includes(token), `Product TS sparse override dirty diff must reject legacy exact bridge fields and keep override events wired: missing ${token}`);
+  assert(runtimeAdapter.includes(token), `Product TS source-body full snapshot gate must reject partial endpoint/override dirty diffs and keep override helpers wired: missing ${token}`);
 }
 for (const forbidden of [
   'appendPadExactPatchDiffs',
@@ -3056,6 +3057,7 @@ const snapshotImportAllowlist = new Set([
   './coreProductSoundscapesSnapshot',
   './coreProductSnapshotEncoder',
   './coreProductReverbSnapshot',
+  './coreProductSourceMapping',
   './coreProductSnapshotState',
   './coreProductSnapshotTypes',
   './distanceMacro',

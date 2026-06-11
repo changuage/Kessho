@@ -1229,7 +1229,9 @@ export class DrumSynth {
     const laneMidVelocity = (unit(`drumEuclid${laneNumber}VelocityMin`, 0.6) + unit(`drumEuclid${laneNumber}VelocityMax`, 1)) * 0.5;
     if (sequencer.expression.velocities.length !== patternParams.steps) sequencer.expression.velocities = new Array(patternParams.steps).fill(laneMidVelocity);
     sequencer.trigger.probability = ov.probability[laneIndex] ?? new Array(patternParams.steps).fill(1);
-    sequencer.trigger.ratchet = ov.ratchet[laneIndex] ?? new Array(patternParams.steps).fill(1);
+    sequencer.trigger.ratchet = enabled.expression === true && enabled.ratchet !== false
+      ? ov.ratchet[laneIndex] ?? new Array(patternParams.steps).fill(1)
+      : new Array(patternParams.steps).fill(1);
     sequencer.trigger.trigCondition = ov.trigCondition[laneIndex] ?? new Array(patternParams.steps).fill([1, 1] as [number, number]);
     if (enabled.expression === true && ov.expression[laneIndex]) { sequencer.expression.velocities = ov.expression[laneIndex]!; sequencer.expression.steps = ov.expression[laneIndex]!.length; sequencer.expression.enabled = true; } else sequencer.expression.enabled = false;
     if (enabled.morph === true && ov.morph[laneIndex]) { sequencer.morph.values = ov.morph[laneIndex]!; sequencer.morph.steps = ov.morph[laneIndex]!.length; sequencer.morph.enabled = true; } else sequencer.morph.enabled = false;

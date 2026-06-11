@@ -35,6 +35,19 @@ function engineLaneValues(
   return next;
 }
 
+function engineRatchetValues(
+  values: number[] | null | undefined,
+  expressionState: SubLaneState | undefined,
+): number[] | null {
+  if (!expressionState?.enabled || !Array.isArray(values)) return null;
+  const steps = visibleSubLaneSteps(expressionState, values.length || 1);
+  const next = values.slice(0, steps);
+  if (next.length < steps) {
+    next.push(...Array.from({ length: steps - next.length }, () => 1));
+  }
+  return next;
+}
+
 export function stepOverridesForEngineSubLaneState(
   overrides: StepOverrides,
   subLaneStates: Record<SubLaneKind, SubLaneState>[] | undefined,
@@ -46,6 +59,9 @@ export function stepOverridesForEngineSubLaneState(
     morphRanges: [...(overrides.morphRanges ?? [])],
     distanceRanges: [...(overrides.distanceRanges ?? [])],
   };
+  next.ratchet = overrides.ratchet.map((values, laneIndex) =>
+    engineRatchetValues(values, subLaneStates[laneIndex]?.expression)
+  );
   for (const lane of SUB_LANE_VALUE_FIELDS) {
     const source = overrides[lane];
     next[lane] = source.map((values, laneIndex) =>

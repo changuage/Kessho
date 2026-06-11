@@ -20,8 +20,25 @@ COMMON_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "common"))
 EMSDK_ROOT = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "emsdk"))
 EMCC_PY = os.path.join(EMSDK_ROOT, "upstream", "emscripten", "emcc.py")
 
+def first_existing_dir(candidates):
+    for candidate in candidates:
+        if candidate and os.path.isdir(candidate):
+            return candidate
+    return None
+
+def first_existing_file(candidates):
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate):
+            return candidate
+    return None
+
 if os.path.exists(EMCC_PY):
-    EMCC = [sys.executable, EMCC_PY]
+    emsdk_python = first_existing_file([
+        os.path.join(EMSDK_ROOT, "python", "3.13.3_64bit", "bin", "python3"),
+        os.path.join(EMSDK_ROOT, "python", "3.13.3_64bit", "bin", "python3.13"),
+        os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", ".python312", "bin", "python3")),
+    ])
+    EMCC = [emsdk_python or sys.executable, EMCC_PY]
     print(f"Using emcc.py: {EMCC_PY}")
 else:
     EMCC = ["emcc"]
@@ -39,18 +56,16 @@ env["EMCC_CORES"] = "1"
 llvm_bin = os.path.normpath(os.path.join(EMSDK_ROOT, "upstream", "bin"))
 node_bin = os.path.join(EMSDK_ROOT, "node")
 python_bin = os.path.join(EMSDK_ROOT, "python")
-if os.path.isdir(python_bin):
-    for d in os.listdir(python_bin):
-        python_full = os.path.join(python_bin, d, "bin")
-        if os.path.isdir(python_full):
-            env["PATH"] = python_full + os.pathsep + env.get("PATH", "")
-            break
-if os.path.isdir(node_bin):
-    for d in os.listdir(node_bin):
-        node_full = os.path.join(node_bin, d, "bin")
-        if os.path.isdir(node_full):
-            env["PATH"] = node_full + os.pathsep + env.get("PATH", "")
-            break
+python_full = first_existing_dir([
+    os.path.join(python_bin, "3.13.3_64bit", "bin"),
+])
+if python_full:
+    env["PATH"] = python_full + os.pathsep + env.get("PATH", "")
+node_full = first_existing_dir([
+    os.path.join(node_bin, "22.16.0_64bit", "bin"),
+])
+if node_full:
+    env["PATH"] = node_full + os.pathsep + env.get("PATH", "")
 env["PATH"] = llvm_bin + os.pathsep + env.get("PATH", "")
 
 EXPORTS = [
@@ -65,6 +80,14 @@ EXPORTS = [
     "_lead_fm_set_algorithm",
     "_lead_fm_set_beat_detune",
     "_lead_fm_set_carrier2_mix",
+    "_lead_fm_set_carrier1_waveform",
+    "_lead_fm_set_carrier2_waveform",
+    "_lead_fm_set_stereo_spread",
+    "_lead_fm_set_pitch_env_depth_cents",
+    "_lead_fm_set_pitch_env_attack",
+    "_lead_fm_set_pitch_env_decay",
+    "_lead_fm_set_pitch_env_target",
+    "_lead_fm_set_pitch_env_velocity_depth",
     "_lead_fm_set_op_ratio",
     "_lead_fm_set_op_index",
     "_lead_fm_set_op_decay",
@@ -75,6 +98,12 @@ EXPORTS = [
     "_lead_fm_set_op_env_rate",
     "_lead_fm_set_op_mod_attack",
     "_lead_fm_set_op_mod_delay",
+    "_lead_fm_set_op_waveform",
+    "_lead_fm_set_op_fixed_hz",
+    "_lead_fm_set_op_key_track",
+    "_lead_fm_set_op_velocity_to_index",
+    "_lead_fm_set_op_velocity_to_level",
+    "_lead_fm_set_op_mod_release",
     "_lead_fm_set_attack",
     "_lead_fm_set_decay",
     "_lead_fm_set_sustain",
@@ -124,6 +153,14 @@ EXPORTS = [
     "_lead_fm_instance_set_algorithm",
     "_lead_fm_instance_set_beat_detune",
     "_lead_fm_instance_set_carrier2_mix",
+    "_lead_fm_instance_set_carrier1_waveform",
+    "_lead_fm_instance_set_carrier2_waveform",
+    "_lead_fm_instance_set_stereo_spread",
+    "_lead_fm_instance_set_pitch_env_depth_cents",
+    "_lead_fm_instance_set_pitch_env_attack",
+    "_lead_fm_instance_set_pitch_env_decay",
+    "_lead_fm_instance_set_pitch_env_target",
+    "_lead_fm_instance_set_pitch_env_velocity_depth",
     "_lead_fm_instance_set_op_ratio",
     "_lead_fm_instance_set_op_index",
     "_lead_fm_instance_set_op_decay",
@@ -134,6 +171,12 @@ EXPORTS = [
     "_lead_fm_instance_set_op_env_rate",
     "_lead_fm_instance_set_op_mod_attack",
     "_lead_fm_instance_set_op_mod_delay",
+    "_lead_fm_instance_set_op_waveform",
+    "_lead_fm_instance_set_op_fixed_hz",
+    "_lead_fm_instance_set_op_key_track",
+    "_lead_fm_instance_set_op_velocity_to_index",
+    "_lead_fm_instance_set_op_velocity_to_level",
+    "_lead_fm_instance_set_op_mod_release",
     "_lead_fm_instance_set_attack",
     "_lead_fm_instance_set_decay",
     "_lead_fm_instance_set_sustain",

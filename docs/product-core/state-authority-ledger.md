@@ -1649,9 +1649,9 @@ web-ts touched:
 
 Behavior changes:
 - Product preset loads now force trigger-critical Product full snapshots instead of relying on a changed-key patch.
-- Pad/Lead preset endpoint changes, Pad generated source-body controls, Lead ADSR/algorithm controls, and Lead custom preset data now resolve through ProductControl with `applyMode: full-snapshot`.
-- The runtime adapter now refuses Pad/Lead source preset endpoint and sparse override/body changes as live dirty diffs. If a caller forgets to request a full snapshot, the adapter falls back to a full snapshot instead of applying a partial hidden source authority.
-- Preset morph and cheap source runtime controls remain on the continuous dirty-diff/resolved path; Drum endpoint/override dirty diffs remain allowed.
+- Pad/Lead preset endpoint changes, Drum voice preset endpoint ID changes, and Lead preset-data changes now resolve through ProductControl with `applyMode: full-snapshot`.
+- The runtime adapter now refuses Pad/Lead/Drum source preset endpoint and sparse override/body changes as live dirty diffs. If a caller forgets to request a full snapshot, the adapter falls back to a full snapshot instead of applying a partial hidden source authority.
+- Preset morph, Drum voice morph-only changes, and cheap source runtime controls remain on the continuous dirty-diff/resolved path.
 - Browser hot-swap proof now verifies the intended path: ProductControl full-snapshot commits, encoded snapshot changes, worklet-applied snapshot hashes, running transport, and next trigger source/compiled hashes matching the changed Pad/Lead source state.
 
 Validation run:
@@ -1688,6 +1688,40 @@ Parallel coordination notes:
 
 Next batch:
 - Manual in-app verification of the exact gesture sequence on local hardware: start Pad sequencer, toggle the sub-sequencer morph path on/off, change Pad preset A/B, move Pad preset morph, then change Lead preset morph while Pad is sequencing. If an audible issue remains, capture the latest browser hot-swap report plus Product debug console records for the failing gesture.
+
+## Running Preset Hot-Swap Audio Parity Proof - 2026-06-11
+
+Changed files:
+- `src/audio/sonicParityHarness.ts`
+- `src/presets/PresetStore.ts`
+- `scripts/check-kessho-product-running-preset-hot-swap-audio-parity.mjs`
+- `package.json`
+- `docs/product-core/state-authority-ledger.md`
+
+web-ts touched:
+- no
+
+Behavior changes:
+- Timed sonic-parity state events now resolve Pad preset/morph patches through the same Pad preset-body resolver used for initial capture state before forwarding Product Core snapshot patches.
+- Lead-only timed events stay Lead-only, so they do not drag unrelated resolved Pad body values into the source-change classification.
+- LocalStorage preset reads now return empty/null when browser storage is unavailable, which lets Node ProductControl regressions fall back to embedded Lead presets instead of throwing on `localStorage`.
+- Added `core:product:hot-swap-audio-parity`, a browser graph-capture proof that records running Lead 1 and Pad 1 dry stems after source preset hot-swaps and compares the post-swap audio against a target baseline.
+
+Validation run:
+- `npm run core:product:hot-swap-audio-parity`: pass
+- `npm run core:product:hot-swap-debug`: pass
+- `npm run core:product:resolved-state`: pass
+- `npm run core:product:state-authority`: pass
+- `npm run type-check`: pass
+- `git diff --check`: pass
+
+Audio proof:
+- Lead 1 running preset hot-swap uses a fresh-target baseline. Hot and baseline source state/compiled hashes both resolved to `db78b71e/95656dc7`; post-swap RMS ratio was `0.9956`; envelope correlation was `0.9921`.
+- Pad 1 running preset hot-swap uses an immediate-hot-swap baseline on the same Product event path. Hot and baseline source state/compiled hashes both resolved to `2cc76075/211290d1`; post-swap RMS ratio was `0.9997`; envelope correlation was `1.0000`.
+- Both hot captures reported `source-structure-change` full snapshot reloads while the Euclidean lanes remained running.
+
+Batch exit status:
+- complete for automated audio-side proof that running Pad/Lead preset hot-swaps rebuild audible source output without a stop/start cycle.
 
 ## Morph Sub-Lane Runtime Lock Release - 2026-06-09
 

@@ -179,6 +179,8 @@ function testEngineStepOverridesTrimHiddenSubLaneValues(): void {
   overrides.pitch[0] = [0, 2, 4, 7];
   overrides.expression[0] = [0.4];
   overrides.expressionRanges![0] = { min: 0.2, max: 0.8 };
+  overrides.ratchet[0] = [2, 3, 4, 1];
+  overrides.ratchet[1] = [4, 4];
   overrides.morph[0] = [0.2, 0.6, 0.9];
   overrides.morphRanges![0] = { min: 0.1, max: 0.7 };
   overrides.slice[0] = [8, 12];
@@ -198,11 +200,14 @@ function testEngineStepOverridesTrimHiddenSubLaneValues(): void {
   assert.deepStrictEqual(engineOverrides.pitch[0], [0, 2]);
   assert.deepStrictEqual(engineOverrides.expression[0], [0.4, 1, 1]);
   assert.deepStrictEqual(engineOverrides.expressionRanges?.[0], { min: 0.2, max: 0.8 });
+  assert.deepStrictEqual(engineOverrides.ratchet[0], [2, 3, 4]);
+  assert.equal(engineOverrides.ratchet[1], null, 'ratchet should be inactive while expression sub-lane is disabled');
   assert.equal(engineOverrides.morph[0], null);
   assert.equal(engineOverrides.morphRanges?.[0], null);
   assert.deepStrictEqual(engineOverrides.slice[0], [8]);
   assert.deepStrictEqual(engineOverrides.reverse[0], [1, 0, 1]);
   assert.deepStrictEqual(overrides.pitch[0], [0, 2, 4, 7], 'raw UI overrides should retain hidden values');
+  assert.deepStrictEqual(overrides.ratchet[1], [4, 4], 'raw UI ratchets should survive expression disable');
 }
 
 function testMigratePresetPreservesSynthPitchBindingModes(): void {

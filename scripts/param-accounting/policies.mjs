@@ -264,7 +264,7 @@ export const behaviorEvidenceByAppVisibleGroup = {
   },
   'source.drum|drum-generated-preset-endpoint-diff': {
     owner: 'Product Core Drum source owner',
-    reason: 'Drum preset endpoint swaps and morph-only changes must be covered by generated Drum preset render probes, bounded sparse override loading, and dirty-diff endpoint events.',
+    reason: 'Drum preset endpoint swaps must rebuild through full snapshots until source-rebuild exists; morph-only changes remain covered by generated Drum preset render probes and dirty-diff endpoint events.',
     evidence: ['core:product:sources', 'core:product:source-parity', 'ProductSourceWrapperTests.cpp#requireGeneratedDrumPresetRenders', 'ProductSourceWrapperTests.cpp#requireDrumOverridesStayStructured'],
   },
   'source.drum|fx-param-diff': {
@@ -690,7 +690,6 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
     'jitter',
     'maxGrains',
     'pitchSpread',
-    'stereoSpread',
     'wetHPF',
     'wetLPF',
   ],

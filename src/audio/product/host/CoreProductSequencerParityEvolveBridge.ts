@@ -580,7 +580,10 @@ function drumPitchSettings(adapterState: Record<string, unknown>, state: Record<
 
 function enabledSynthSubLanes(configured: string[] | undefined, uiEnabled: Record<string, boolean> | undefined): string[] {
   const allowed = configured ?? ['pitch', 'expression', 'morph', 'distance', 'probability', 'ratchet'];
-  return allowed.filter((lane) => lane === 'probability' || lane === 'ratchet' || uiEnabled?.[lane] === true);
+  return allowed.filter((lane) => (
+    lane === 'probability' ||
+    (lane === 'ratchet' ? uiEnabled?.expression === true && uiEnabled?.ratchet !== false : uiEnabled?.[lane] === true)
+  ));
 }
 
 function enabledDrumSubLanes(configured: string[] | undefined, uiEnabled: Record<string, boolean> | undefined): ('pitch' | 'expression' | 'morph' | 'distance')[] {

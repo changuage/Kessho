@@ -1,4 +1,11 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import {
+  CORE_PRODUCT_STEP_TOGGLE_FLAGS,
+  CORE_PRODUCT_STEP_VALUE_FIELDS,
+  CORE_PRODUCT_SUBLANE_DIRECTIONS,
+  createCoreProductSequencerStepValueEvent,
+  createCoreProductSequencerSubLaneConfigEvent,
+} from '../audio/coreProductEvents';
 import type { ProductEnginePort } from '../audio/product/ProductEnginePort';
 import type { SliderMode, SliderState } from './state';
 import {
@@ -19,6 +26,7 @@ type ProductRuntimeParityProbeOptions = {
   setState: Dispatch<SetStateAction<SliderState>>;
   setUiMode: Dispatch<SetStateAction<'snowflake' | 'advanced' | 'journey'>>;
   stateRef: MutableRefObject<SliderState>;
+  normalizeStatePatch?: (previous: SliderState, next: SliderState) => SliderState;
 };
 
 function waitForProbeUiCommit(): Promise<void> {
@@ -60,6 +68,11 @@ declare global {
         velocity?: number;
         durationMs?: number;
       }): Promise<void>;
+      configureSynthMorphSubLane(options?: {
+        laneIndex?: number;
+        enabled?: boolean;
+        values?: number[];
+      }): Promise<void>;
       readRuntimeWalkProbe(key: string): {
         position?: number;
         runtimeSliderDebug: ReturnType<typeof getRuntimeSliderDebugState>;
@@ -87,6 +100,7 @@ export function useProductRuntimeParityProbe({
   setState,
   setUiMode,
   stateRef,
+  normalizeStatePatch,
 }: ProductRuntimeParityProbeOptions): void {
   useEffect(() => {
     if (!enabled) return;
@@ -101,7 +115,7 @@ export function useProductRuntimeParityProbe({
       if (!productRuntimeSupportsRangeKey(keyText)) {
         throw new Error(`Product runtime does not support range key: ${keyText}`);
       }
-      const nextState = { ...stateRef.current, ...(statePatch ?? {}) } as SliderState;
+      const nextState = stateWithPatch(statePatch);
       setUiMode('advanced');
       setActiveTab(activeTab);
       setSliderModes((prev) => ({ ...prev, [keyText]: mode }));
@@ -111,9 +125,15 @@ export function useProductRuntimeParityProbe({
       await runtime.start({ initialState: nextState as unknown as Record<string, unknown> });
     };
 
+    const stateWithPatch = (patch: Partial<SliderState> | undefined): SliderState => {
+      const previousState = stateRef.current;
+      const patchedState = { ...previousState, ...(patch ?? {}) } as SliderState;
+      return normalizeStatePatch?.(previousState, patchedState) ?? patchedState;
+    };
+
     window.__kesshoProductRuntimeProbe = {
       async startState(options = {}) {
-        const nextState = { ...stateRef.current, ...(options.statePatch ?? {}) } as SliderState;
+        const nextState = stateWithPatch(options.statePatch);
         setUiMode('advanced');
         setActiveTab(options.activeTab ?? 'synth');
         setState(nextState);
@@ -121,7 +141,7 @@ export function useProductRuntimeParityProbe({
         await runtime.start({ initialState: nextState as unknown as Record<string, unknown> });
       },
       async applyStatePatch(options) {
-        const nextState = { ...stateRef.current, ...options.patch } as SliderState;
+        const nextState = stateWithPatch(options.patch);
         setUiMode('advanced');
         if (options.activeTab) setActiveTab(options.activeTab);
         setState(nextState);
@@ -155,6 +175,28 @@ export function useProductRuntimeParityProbe({
           durationMs: options.durationMs ?? 240,
         }, stateRef.current as unknown as Record<string, unknown>);
       },
+      async configureSynthMorphSubLane(options = {}) {
+        const laneIndex = Math.max(0, Math.min(15, Math.round(options.laneIndex ?? 0)));
+        const enabled = options.enabled ?? true;
+        const values = (options.values?.length ? options.values : [0.65, 0.65, 0.65, 0.65])
+          .map((value) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)))
+          .slice(0, 64);
+        runtime.enqueueEvents([
+          createCoreProductSequencerSubLaneConfigEvent(
+            'synth',
+            laneIndex,
+            CORE_PRODUCT_STEP_VALUE_FIELDS.morph,
+            Math.max(1, values.length),
+            CORE_PRODUCT_SUBLANE_DIRECTIONS.forward,
+            enabled,
+            CORE_PRODUCT_STEP_TOGGLE_FLAGS.subLaneEnabledState,
+          ),
+          ...values.map((value, step) =>
+            createCoreProductSequencerStepValueEvent('synth', laneIndex, step, CORE_PRODUCT_STEP_VALUE_FIELDS.morph, value),
+          ),
+        ]);
+        await waitForProbeUiCommit();
+      },
       readRuntimeWalkProbe(key) {
         return {
           position: getRuntimeSliderPosition(key, 'walk'),
@@ -186,5 +228,6 @@ export function useProductRuntimeParityProbe({
     setState,
     setUiMode,
     stateRef,
+    normalizeStatePatch,
   ]);
 }

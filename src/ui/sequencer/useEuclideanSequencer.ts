@@ -869,6 +869,8 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
       const enabled = state[makeKey(prefix, laneNum, 'Enabled')] as boolean;
 
       const cfg = lanes[idx] ?? { color: '#a855f7', name: `Seq ${laneNum}` };
+      const expressionState = subLaneStates[idx]?.expression;
+      const activeRatchet = expressionState?.enabled === true ? stepOverrides.ratchet[idx] : null;
 
       return {
         id: idx,
@@ -888,7 +890,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
           pattern,
           overrides: new Set<number>(),
           probability: stepOverrides.probability[idx] ?? new Array(resolved.steps).fill(probability),
-          ratchet: stepOverrides.ratchet[idx] ?? new Array(subLaneStates[idx]?.expression.steps ?? 5).fill(1),
+          ratchet: activeRatchet ?? new Array(expressionState?.steps ?? 5).fill(1),
           trigCondition: stepOverrides.trigCondition[idx] ?? new Array(resolved.steps).fill([1, 1] as TrigCondition),
         },
         pitch: {

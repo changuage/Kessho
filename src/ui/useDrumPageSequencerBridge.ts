@@ -29,6 +29,7 @@ function subLaneEnabledFlags(states: Record<SubLaneKind, SubLaneState>[]): Recor
     for (const [key, value] of Object.entries(state)) {
       out[key] = value.enabled;
     }
+    out.ratchet = out.expression === true;
     return out;
   });
 }

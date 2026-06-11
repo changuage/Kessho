@@ -1212,6 +1212,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const pad2MorphSequencerLocked = livePad2Morph !== undefined;
   const lead1MorphValue = liveLead1Morph ?? (state.lead1Morph ?? 0);
   const lead2MorphValue = liveLead2Morph ?? (state.lead2Morph ?? 0);
+  const lead1MorphSequencerLocked = liveLead1Morph !== undefined;
+  const lead2MorphSequencerLocked = liveLead2Morph !== undefined;
   const pad1DistancePreview = useMemo(() => getPadDistancePreview(state, 'pad1', livePad1Distance), [livePad1Distance, state]);
   const pad2DistancePreview = useMemo(() => getPadDistancePreview(state, 'pad2', livePad2Distance), [livePad2Distance, state]);
   const lead1DistancePreview = useMemo(() => getLeadDistancePreview(state, 'lead1', liveLead1Distance), [liveLead1Distance, state]);
@@ -5208,7 +5210,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </select>
                 </div>
                 <div className="sc-morph-slider">
-                  <Slider label="" value={lead1MorphValue} paramKey="lead1Morph" onChange={handlePresetMorphSliderChange} {...sliderProps('lead1Morph')} />
+                  <Slider label="" value={lead1MorphValue} paramKey="lead1Morph" onChange={handlePresetMorphSliderChange} {...sliderProps('lead1Morph')} disabled={lead1MorphSequencerLocked} />
                 </div>
                 <div className="sc-preset-slot">
                   <select
@@ -5376,7 +5378,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     </select>
                   </div>
                   <div className="sc-morph-slider">
-                    <Slider label="" value={lead2MorphValue} paramKey="lead2Morph" onChange={handlePresetMorphSliderChange} {...sliderProps('lead2Morph')} />
+                    <Slider label="" value={lead2MorphValue} paramKey="lead2Morph" onChange={handlePresetMorphSliderChange} {...sliderProps('lead2Morph')} disabled={lead2MorphSequencerLocked} />
                   </div>
                   <div className="sc-preset-slot">
                     <select

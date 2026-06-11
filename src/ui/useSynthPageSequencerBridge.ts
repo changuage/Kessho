@@ -39,6 +39,7 @@ function subLaneEnabledFlags(
     for (const [key, value] of Object.entries(state ?? {})) {
       out[key] = value.enabled;
     }
+    out.ratchet = out.expression === true;
     if (arpConfigs?.[laneIndex]?.enabled) {
       out.arp = true;
       out.pitch = true;

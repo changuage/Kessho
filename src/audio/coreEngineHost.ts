@@ -588,7 +588,7 @@ const DELAY_A_MODULE_PARAM_COUNT = 16;
 const DELAY_B_MODULE_PARAM_COUNT = 24;
 const GRANULAR_MODULE_PARAM_COUNT = 204;
 const SPECTRAL_FREEZE_MODULE_PARAM_COUNT = 6;
-const LEAD_FM_MODULE_PARAM_COUNT = 80;
+const LEAD_FM_MODULE_PARAM_COUNT = 112;
 const DRUM_MODULE_PARAM_COUNT = 126;
 const CORE_DRUM_DRY_TRIM = 1.0;
 const CORE_DRUM_INITIAL_CHORD_LEAD_SECONDS = 640 / 48000;
@@ -744,6 +744,16 @@ const LEAD_FM_PARAM_INDEX = {
   delayMix: 77,
   delaySend: 78,
   outputSelect: 79,
+  carrier1Waveform: 80,
+  carrier2Waveform: 81,
+  stereoSpread: 82,
+  pitchEnvDepthCents: 83,
+  pitchEnvAttack: 84,
+  pitchEnvDecay: 85,
+  pitchEnvTarget: 86,
+  pitchEnvVelocityDepth: 87,
+  operatorV2Start: 88,
+  operatorV2Count: 6,
 } as const;
 
 const LEAD_FM_OPERATOR_PARAM_INDEX = {
@@ -775,6 +785,20 @@ const LEAD_FM_FILTER_VALUES: Record<string, number> = {
   peaking: 4,
 };
 
+const LEAD_FM_WAVEFORM_VALUES: Record<string, number> = {
+  sine: 0,
+  triangle: 1,
+  sawtooth: 2,
+  square: 3,
+};
+
+const LEAD_FM_PITCH_ENV_TARGET_VALUES: Record<string, number> = {
+  carriers: 0,
+  carrier1: 1,
+  carrier2: 2,
+  all: 3,
+};
+
 const LEAD_FM_LFO_TARGET_VALUES: Record<string, number> = {
   all: 0,
   mod1: 1,
@@ -785,6 +809,8 @@ const LEAD_FM_LFO_TARGET_VALUES: Record<string, number> = {
   pitch: 6,
   detune: 7,
   none: 8,
+  amp: 9,
+  pan: 10,
 };
 
 const LEAD_FM_TRANSIENT_VALUES: Record<string, number> = {
@@ -1774,7 +1800,7 @@ function createSynthEuclidPreview(
     const distanceDirection = stepOverrides.distanceDirection[laneIndex] ?? 'forward';
     const distanceRange = laneSubLanes.distance === true ? stepOverrides.distanceRanges[laneIndex] : null;
     const probabilityValues = laneSubLanes.probability !== false ? stepOverrides.probability[laneIndex] : null;
-    const ratchetValues = laneSubLanes.ratchet !== false ? stepOverrides.ratchet[laneIndex] : null;
+    const ratchetValues = laneSubLanes.expression === true && laneSubLanes.ratchet !== false ? stepOverrides.ratchet[laneIndex] : null;
     const trigConditions = stepOverrides.trigCondition[laneIndex];
     const cycleRepeats = getTrigConditionCycleRepeats(trigConditions);
     const noteRangeOverride = runtime.noteRangeOverrides[laneIndex];
@@ -2593,6 +2619,7 @@ function writeLeadFmOperatorParams(
 ): void {
   const source = morphed as unknown as Record<string, unknown>;
   const base = LEAD_FM_PARAM_INDEX.operatorStart + opIndex * LEAD_FM_PARAM_INDEX.operatorCount;
+  const v2Base = LEAD_FM_PARAM_INDEX.operatorV2Start + opIndex * LEAD_FM_PARAM_INDEX.operatorV2Count;
   params[base + LEAD_FM_OPERATOR_PARAM_INDEX.ratio] = finiteNumber(source[`${prefix}Ratio`], 1);
   params[base + LEAD_FM_OPERATOR_PARAM_INDEX.index] = finiteNumber(source[`${prefix}Index`], 0);
   params[base + LEAD_FM_OPERATOR_PARAM_INDEX.decay] = finiteNumber(source[`${prefix}Decay`], 0.8);
@@ -2603,6 +2630,12 @@ function writeLeadFmOperatorParams(
   params[base + LEAD_FM_OPERATOR_PARAM_INDEX.envRate] = finiteNumber(source[`${prefix}EnvRate`], 1);
   params[base + LEAD_FM_OPERATOR_PARAM_INDEX.modAttack] = finiteNumber(source[`${prefix}ModAttack`], 0);
   params[base + LEAD_FM_OPERATOR_PARAM_INDEX.modDelay] = finiteNumber(source[`${prefix}ModDelay`], 0);
+  params[v2Base] = enumParam(source[`${prefix}Waveform`], LEAD_FM_WAVEFORM_VALUES, 0);
+  params[v2Base + 1] = finiteNumber(source[`${prefix}FixedHz`], 0);
+  params[v2Base + 2] = finiteNumber(source[`${prefix}KeyTrack`], 1);
+  params[v2Base + 3] = finiteNumber(source[`${prefix}VelocityToIndex`], 0);
+  params[v2Base + 4] = finiteNumber(source[`${prefix}VelocityToLevel`], 0);
+  params[v2Base + 5] = finiteNumber(source[`${prefix}ModRelease`], 0);
 }
 
 function createLeadFmParams(morphed: Lead4opFMMorphedParams, outputSelect: 0 | 1 | 2): number[] {
@@ -2610,6 +2643,14 @@ function createLeadFmParams(morphed: Lead4opFMMorphedParams, outputSelect: 0 | 1
   params[LEAD_FM_PARAM_INDEX.algorithm] = enumParam(morphed.algorithm, LEAD_FM_ALGORITHM_VALUES, 0);
   params[LEAD_FM_PARAM_INDEX.beatDetune] = finiteNumber(morphed.beatDetune, 0);
   params[LEAD_FM_PARAM_INDEX.carrier2Mix] = finiteNumber(morphed.carrier2Mix, 0);
+  params[LEAD_FM_PARAM_INDEX.carrier1Waveform] = enumParam(morphed.carrier1Waveform, LEAD_FM_WAVEFORM_VALUES, 0);
+  params[LEAD_FM_PARAM_INDEX.carrier2Waveform] = enumParam(morphed.carrier2Waveform, LEAD_FM_WAVEFORM_VALUES, 0);
+  params[LEAD_FM_PARAM_INDEX.stereoSpread] = finiteNumber(morphed.stereoSpread, 0);
+  params[LEAD_FM_PARAM_INDEX.pitchEnvDepthCents] = finiteNumber(morphed.pitchEnvDepthCents, 0);
+  params[LEAD_FM_PARAM_INDEX.pitchEnvAttack] = finiteNumber(morphed.pitchEnvAttack, 0);
+  params[LEAD_FM_PARAM_INDEX.pitchEnvDecay] = finiteNumber(morphed.pitchEnvDecay, 0.08);
+  params[LEAD_FM_PARAM_INDEX.pitchEnvTarget] = enumParam(morphed.pitchEnvTarget, LEAD_FM_PITCH_ENV_TARGET_VALUES, 0);
+  params[LEAD_FM_PARAM_INDEX.pitchEnvVelocityDepth] = finiteNumber(morphed.pitchEnvVelocityDepth, 0);
   writeLeadFmOperatorParams(params, morphed, 0, 'mod1');
   writeLeadFmOperatorParams(params, morphed, 1, 'mod2');
   writeLeadFmOperatorParams(params, morphed, 2, 'mod3');
@@ -2967,7 +3008,7 @@ function createDrumPreviewNotes(
     const pitchValues = laneSubLanes.pitch === true ? runtime.stepOverrides.pitch[laneIndex] : null;
     const pitchDirection = runtime.stepOverrides.pitchDirection[laneIndex] ?? 'forward';
     const probabilityValues = laneSubLanes.probability !== false ? runtime.stepOverrides.probability[laneIndex] : null;
-    const ratchetValues = laneSubLanes.ratchet !== false ? runtime.stepOverrides.ratchet[laneIndex] : null;
+    const ratchetValues = laneSubLanes.expression === true && laneSubLanes.ratchet !== false ? runtime.stepOverrides.ratchet[laneIndex] : null;
     const trigCondition = laneSubLanes.trigCondition !== false ? runtime.stepOverrides.trigCondition[laneIndex] : null;
     const cycleRepeats = getTrigConditionCycleRepeats(trigCondition);
     let hitCount = 0;
@@ -5178,7 +5219,9 @@ export class CoreEngineHost {
     const noteMax = noteRangeOverride?.max ?? boundedInteger(state[`synthEuclid${lane}NoteMax`], laneIndex === 1 ? 88 : laneIndex === 2 ? 64 : laneIndex === 3 ? 96 : 76, 24, 108);
     const uiEnabledSubLanes = this.synthSubLaneEnabled[laneIndex] ?? {};
     const enabledSubLanes = (config.enabledSubLanes ?? ['pitch', 'expression', 'morph', 'distance', 'probability', 'ratchet'])
-      .filter((subLane) => subLane === 'probability' || subLane === 'ratchet' || uiEnabledSubLanes[subLane] === true);
+      .filter((subLane) => (
+        subLane === 'probability' || subLane === 'ratchet' || uiEnabledSubLanes[subLane] === true
+      ) && (subLane !== 'ratchet' || (uiEnabledSubLanes.expression === true && uiEnabledSubLanes.ratchet !== false)));
     const seedWindow = sliderState.seedWindow === 'day' ? 'day' : 'hour';
     this.synthEuclidLiveEvolveRng ??= createRng(`${getUtcBucket(seedWindow)}|E_ROOT|core-synth-euclid-live-evolve`);
     const evolveState = this.synthEvolveStates[laneIndex] ?? defaultSynthEvolveState();

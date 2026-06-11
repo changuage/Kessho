@@ -774,7 +774,7 @@ class CoreProductEngineHost {
 
   private applyManualSynthDice(laneIndex: number, intensity: number): boolean {
     this.ensureSequencerLaneCache('synth', laneIndex);
-    return applyCoreProductManualSynthDice({ state: this.manualSynthDiceState, laneIndex, intensity, cache: this.sequencerCacheState(), adapterState: this.adapterState, latestSliderState: this.latestSliderState, latestProductSnapshot: this.latestProductSnapshot, latestTelemetry: this.latestTelemetry, armManualDice: () => this.sequencerHome.armManualDice('synth', laneIndex), post: (event) => this.postManualSynthDiceEvent(event), publish: (name, ...payload) => this.invokeDisplayCallback(name, ...payload), captureHome: (force = false) => this.captureSequencerHomeLane('synth', laneIndex, force) });
+    return applyCoreProductManualSynthDice({ state: this.manualSynthDiceState, laneIndex, intensity, cache: this.sequencerCacheState(), adapterState: this.adapterState, latestSliderState: this.latestSliderState, latestProductSnapshot: this.latestProductSnapshot, latestTelemetry: this.latestTelemetry, enabledSubLanes: this.enabledSequencerSubLanes('synth', laneIndex), armManualDice: () => this.sequencerHome.armManualDice('synth', laneIndex), post: (event) => this.postManualSynthDiceEvent(event), publish: (name, ...payload) => this.invokeDisplayCallback(name, ...payload), captureHome: (force = false) => this.captureSequencerHomeLane('synth', laneIndex, force) });
   }
 
   private handleSequencerUiProductEvent(event: CoreProductEvent): boolean {

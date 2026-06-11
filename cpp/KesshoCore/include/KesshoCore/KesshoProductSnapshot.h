@@ -7,7 +7,7 @@
 #define KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT 41u
 #define KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT 101u
 #define KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT 53u
-#define KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT 80u
+#define KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT 112u
 #define KESSHO_PRODUCT_DRUM_OVERRIDE_PARAM_COUNT 126u
 
 typedef struct KesshoProductTransportSnapshot {
@@ -73,7 +73,7 @@ typedef struct KesshoProductSourceSnapshot {
   uint32_t pad_override_indices[KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT];
   float pad_override_values[KESSHO_PRODUCT_PAD_OVERRIDE_PARAM_COUNT];
   uint32_t exact_lead_param_count;
-  float exact_lead_params[80];
+  float exact_lead_params[KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT];
   uint32_t lead_override_count;
   uint32_t lead_override_indices[KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT];
   float lead_override_values[KESSHO_PRODUCT_LEAD_OVERRIDE_PARAM_COUNT];
