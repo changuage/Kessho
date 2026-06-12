@@ -4,7 +4,7 @@
  *   Left  = Collapsible panels for Pad Synth ADSR, Pad Timbre, Lead Synth
  *   Right = Sequencer with Simple / Detail / Overview view modes
  *
- * Simple  = Probability-based controls (chord rate, voicing spread, etc.)
+ * Simple  = Probability-based controls (chords per phrase, voicing spread, etc.)
  * Detail  = Euclidean sequencer per-lane (reuses useEuclideanSequencer hook)
  * Overview = All 4 trigger lanes at once
  */
@@ -91,7 +91,9 @@ import {
   type Lead4opFMPreset,
 } from '../../audio/lead4opfm';
 import type { ManualSynthNoteOptions, ManualSynthSource } from '../../audio/engineSharedTypes';
+import type { TransportDebugSnapshot } from '../../audio/transport';
 import { getPhraseDurationForClockSource } from '../../audio/transport';
+import { chordIntervalSecondsFromState } from '../../audio/chordPhraseTiming';
 import {
   applyLeadDistanceEnvelope,
   applyPadDistanceToState,
@@ -108,6 +110,7 @@ import {
   Lead4opFMEditorOverlay,
   type Lead4opFMEditorApplyRequest,
 } from './Lead4opFMEditorOverlay';
+import { SimplePhraseVisualizer } from './SimplePhraseVisualizer';
 import { SEQUENCER_LANE_COLORS, SEQUENCER_SUB_LANE_COLORS, SOURCE_COLORS } from '../../designSystem/colors';
 import {
   createProductArpHarmonyContext,
@@ -162,12 +165,7 @@ function getPadEnvelopeTimelineSeconds(state: SliderState): number {
     0.25,
     getPhraseDurationForClockSource(state, state.harmonyClockSource ?? 'globalPhrase'),
   );
-  const chordRate = Math.max(1, Math.min(128, state.chordRate ?? 32));
-  if (chordRate < phraseLength) {
-    const chordsPerPhrase = Math.max(2, Math.round(phraseLength / chordRate));
-    return phraseLength / chordsPerPhrase;
-  }
-  return phraseLength;
+  return chordIntervalSecondsFromState(state.chordRate, phraseLength);
 }
 
 const LANE_CONFIGS = [
@@ -264,16 +262,25 @@ function applyEvolvedStepOverridePatch(
 }
 
 const SYNTH_SOURCES = [
+  { value: 'pad1', label: 'Pad 1', color: SOURCE_COLORS.pad1 },
+  { value: 'pad2', label: 'Pad 2', color: SOURCE_COLORS.pad2 },
   { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
   { value: 'lead2', label: 'Lead 2', color: SOURCE_COLORS.lead2 },
   { value: 'piano', label: 'Piano', color: SOURCE_COLORS.piano },
-  { value: 'synth1', label: 'Pad 1', color: SOURCE_COLORS.pad1 },
-  { value: 'synth2', label: 'Pad 2', color: SOURCE_COLORS.pad2 },
-  { value: 'synth3', label: 'Pad 3', color: '#B4624E' },
-  { value: 'synth4', label: 'Pad 4', color: '#A45E4E' },
-  { value: 'synth5', label: 'Pad 5', color: '#946050' },
-  { value: 'synth6', label: 'Pad 6', color: '#8E5842' },
 ];
+
+const CHORD_SEQUENCER_SOURCES = [
+  { value: 'both', label: 'Both Pads', color: SOURCE_COLORS.pad1 },
+  { value: 'pad1', label: 'Pad 1', color: SOURCE_COLORS.pad1 },
+  { value: 'pad2', label: 'Pad 2', color: SOURCE_COLORS.pad2 },
+  { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
+  { value: 'lead2', label: 'Lead 2', color: SOURCE_COLORS.lead2 },
+  { value: 'piano', label: 'Piano', color: SOURCE_COLORS.piano },
+] as const;
+
+const PAD_VOICE_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+const PAD_VOICE_MASK_ALL = 0xff;
+const PAD_VOICE_DEFAULT_MASK = 1 << 7;
 
 const RANDOM_TIMING_SOURCES = [
   { value: 'lead1', label: 'Lead 1', color: SOURCE_COLORS.lead1 },
@@ -589,9 +596,45 @@ function getManualSourceForLaneSource(source: string, pad2VoiceAssign: number | 
 
 function synthSourceSelectValue(source: unknown): string {
   const normalized = normalizeSynthEuclidSource(source);
-  if (normalized === 'pad1') return 'synth1';
-  if (normalized === 'pad2') return 'synth2';
+  if (normalized.startsWith('synth')) return 'pad1';
   return normalized;
+}
+
+type PadVoiceAssignment = 'off' | 'pad1' | 'pad2';
+
+function padVoiceAssignment(state: SliderState, voice: number): PadVoiceAssignment {
+  const bit = 1 << (voice - 1);
+  const enabledMask = (state.synthVoiceMask ?? 63) & PAD_VOICE_MASK_ALL;
+  if ((enabledMask & bit) === 0) return 'off';
+  return ((state.pad2VoiceAssign ?? 0) & bit) !== 0 ? 'pad2' : 'pad1';
+}
+
+function padVoiceButtonStyle(voice: number, assignment: PadVoiceAssignment): React.CSSProperties | undefined {
+  if (assignment === 'off') return undefined;
+  const hue = assignment === 'pad2' ? 260 + voice * 15 : 210 + voice * 25;
+  return {
+    background: `linear-gradient(135deg, hsl(${hue}, 60%, 35%), hsl(${hue}, 60%, 25%))`,
+    borderColor: `hsl(${hue}, 60%, 50%)`,
+  };
+}
+
+function padVoiceAssignmentLabel(assignment: PadVoiceAssignment): string {
+  if (assignment === 'pad2') return 'Pad 2';
+  if (assignment === 'pad1') return 'Pad 1';
+  return 'Off';
+}
+
+function padVoiceAssignmentSummary(state: SliderState): string {
+  const grouped = {
+    pad1: PAD_VOICE_NUMBERS.filter((voice) => padVoiceAssignment(state, voice) === 'pad1'),
+    pad2: PAD_VOICE_NUMBERS.filter((voice) => padVoiceAssignment(state, voice) === 'pad2'),
+    off: PAD_VOICE_NUMBERS.filter((voice) => padVoiceAssignment(state, voice) === 'off'),
+  };
+  return [
+    grouped.pad1.length > 0 ? `P1 ${grouped.pad1.join(' ')}` : '',
+    grouped.pad2.length > 0 ? `P2 ${grouped.pad2.join(' ')}` : '',
+    grouped.off.length > 0 ? `Off ${grouped.off.join(' ')}` : '',
+  ].filter(Boolean).join(' · ');
 }
 
 type RuntimeMorphValueKey = 'padMorph' | 'pad2Morph' | 'lead1Morph' | 'lead2Morph';
@@ -752,6 +795,8 @@ export interface SynthPageProps {
   CollapsiblePanelComponent: React.ComponentType<Record<string, unknown>>;
   /** Whether audio engine is running */
   isRunning: boolean;
+  /** Live transport timing used by simple phrase visualizers */
+  transportDebug?: TransportDebugSnapshot | null;
   onRequestPlaybackStart?: (statePatch?: Partial<SliderState>) => void;
   /** Get morphed lead params for ADSR preview */
   getLeadMorphedParams: (lead: 1 | 2) => { attack: number; decay: number; sustain: number; release: number } | null;
@@ -835,6 +880,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     SelectComponent,
     // CollapsiblePanelComponent — available via props if needed
     isRunning,
+    transportDebug,
     onRequestPlaybackStart,
     getLeadMorphedParams,
     liveLeadMorphedParamsAvailable = true,
@@ -2717,8 +2763,86 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const getSourceKey = (laneIdx: number): keyof SliderState =>
     `synthEuclid${laneIdx + 1}Source` as keyof SliderState;
 
+  const getVoiceMaskKey = (laneIdx: number): keyof SliderState =>
+    `synthEuclid${laneIdx + 1}VoiceMask` as keyof SliderState;
+
   const getSourceColor = (source: string): string =>
     SYNTH_SOURCES.find(s => s.value === synthSourceSelectValue(source))?.color ?? '#888';
+
+  const cyclePadVoiceAssignment = useCallback((voice: number): void => {
+    const bit = 1 << (voice - 1);
+    const assignment = padVoiceAssignment(state, voice);
+    let nextVoiceMask = (state.synthVoiceMask ?? 63) & PAD_VOICE_MASK_ALL;
+    let nextPad2Assign = (state.pad2VoiceAssign ?? 0) & PAD_VOICE_MASK_ALL;
+    if (assignment === 'off') {
+      nextVoiceMask |= bit;
+      nextPad2Assign &= ~bit;
+    } else if (assignment === 'pad1') {
+      nextVoiceMask |= bit;
+      nextPad2Assign |= bit;
+    } else {
+      nextVoiceMask &= ~bit;
+      nextPad2Assign &= ~bit;
+    }
+    onParamChange('synthVoiceMask', nextVoiceMask);
+    onParamChange('pad2VoiceAssign', nextPad2Assign);
+  }, [onParamChange, state]);
+
+  const assignLaneVoiceMaskToSource = useCallback((laneSource: string, mask: number): void => {
+    const source = normalizeSynthEuclidSource(laneSource);
+    if (source !== 'pad1' && source !== 'pad2') return;
+    const safeMask = (Math.round(mask) || PAD_VOICE_DEFAULT_MASK) & PAD_VOICE_MASK_ALL;
+    const nextVoiceMask = ((state.synthVoiceMask ?? 63) | safeMask) & PAD_VOICE_MASK_ALL;
+    const currentPad2Assign = (state.pad2VoiceAssign ?? 0) & PAD_VOICE_MASK_ALL;
+    const nextPad2Assign = source === 'pad2'
+      ? (currentPad2Assign | safeMask) & PAD_VOICE_MASK_ALL
+      : currentPad2Assign & ~safeMask;
+    onParamChange('synthVoiceMask', nextVoiceMask);
+    onParamChange('pad2VoiceAssign', nextPad2Assign);
+  }, [onParamChange, state.pad2VoiceAssign, state.synthVoiceMask]);
+
+  const defaultLaneVoiceMask = useCallback((laneIdx: number): number => {
+    let usedMask = 0;
+    for (let index = 0; index < SYNTH_LANE_SOURCE_KEYS.length; index += 1) {
+      if (index === laneIdx) continue;
+      const source = normalizeSynthEuclidSource(state[getSourceKey(index)] ?? 'lead1');
+      if (source === 'pad1' || source === 'pad2') {
+        usedMask |= (Number(state[getVoiceMaskKey(index)] ?? PAD_VOICE_DEFAULT_MASK) || PAD_VOICE_DEFAULT_MASK) & PAD_VOICE_MASK_ALL;
+      } else if (source.startsWith('synth')) {
+        const voice = Number.parseInt(source.replace('synth', ''), 10);
+        if (voice >= 1 && voice <= PAD_VOICE_NUMBERS.length) usedMask |= 1 << (voice - 1);
+      }
+    }
+    for (let voice = PAD_VOICE_NUMBERS.length; voice >= 1; voice -= 1) {
+      const bit = 1 << (voice - 1);
+      if ((usedMask & bit) === 0) return bit;
+    }
+    return PAD_VOICE_DEFAULT_MASK;
+  }, [getSourceKey, getVoiceMaskKey, state]);
+
+  const handleLaneSourceChange = useCallback((laneIdx: number, value: string): void => {
+    const sourceKey = getSourceKey(laneIdx);
+    const voiceMaskKey = getVoiceMaskKey(laneIdx);
+    const nextSource = normalizeSynthEuclidSource(value);
+    const previousSource = normalizeSynthEuclidSource(state[sourceKey] ?? 'lead1');
+    const existingMask = (Number(state[voiceMaskKey] ?? PAD_VOICE_DEFAULT_MASK) || PAD_VOICE_DEFAULT_MASK) & PAD_VOICE_MASK_ALL;
+    const shouldPickAvailableSlot = (nextSource === 'pad1' || nextSource === 'pad2') && previousSource !== 'pad1' && previousSource !== 'pad2';
+    const mask = shouldPickAvailableSlot ? defaultLaneVoiceMask(laneIdx) : existingMask || PAD_VOICE_DEFAULT_MASK;
+    onSelectChange(sourceKey, value as SliderState[keyof SliderState]);
+    if (nextSource === 'pad1' || nextSource === 'pad2') onParamChange(voiceMaskKey, mask);
+    assignLaneVoiceMaskToSource(value, mask);
+  }, [assignLaneVoiceMaskToSource, defaultLaneVoiceMask, getSourceKey, getVoiceMaskKey, onParamChange, onSelectChange, state]);
+
+  const toggleLaneVoiceMask = useCallback((laneIdx: number, voice: number): void => {
+    const source = normalizeSynthEuclidSource(state[getSourceKey(laneIdx)] ?? 'lead1');
+    const key = getVoiceMaskKey(laneIdx);
+    const bit = 1 << (voice - 1);
+    const currentMask = (Number(state[key] ?? PAD_VOICE_DEFAULT_MASK) || PAD_VOICE_DEFAULT_MASK) & PAD_VOICE_MASK_ALL;
+    let nextMask = currentMask ^ bit;
+    if (nextMask === 0) nextMask = bit;
+    onParamChange(key, nextMask);
+    if ((nextMask & bit) !== 0) assignLaneVoiceMaskToSource(source, bit);
+  }, [assignLaneVoiceMaskToSource, getSourceKey, getVoiceMaskKey, onParamChange, state]);
 
   const getDefaultKeyboardSource = useCallback((): ManualSynthSource => {
     if (editingSection === 'pad2') return 'pad2';
@@ -2876,6 +3000,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
   const activeLaneSource = normalizeSynthEuclidSource(state[getSourceKey(seq.activeTab)] ?? 'lead1');
   const activeLaneSourceDisplay = synthSourceSelectValue(activeLaneSource);
+  const activeLaneVoiceMask = (Number(state[getVoiceMaskKey(seq.activeTab)] ?? PAD_VOICE_DEFAULT_MASK) || PAD_VOICE_DEFAULT_MASK) & PAD_VOICE_MASK_ALL;
+  const activeLaneUsesPadVoiceMask = activeLaneSource === 'pad1' || activeLaneSource === 'pad2';
   const sequenceKeyboardSource = getManualSourceForLaneSource(activeLaneSource, state.pad2VoiceAssign);
   const effectiveKeyboardSource = keyboardInputMode === 'sequence' ? sequenceKeyboardSource : keyboardSource;
   const activePitchBindingMode = pitchBindingModes[seq.activeTab] ?? 'polyrhythmic';
@@ -3389,10 +3515,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       writeKeyboardSequenceNote(seq.activeTab, midi);
     }
     if (!onAuditionNote) return;
-    const parsedVoiceIndex = keyboardInputMode === 'sequence' && activeLaneSource.startsWith('synth')
-      ? Number.parseInt(activeLaneSource.replace('synth', ''), 10) - 1
+    const parsedVoiceIndex = keyboardInputMode === 'sequence'
+      ? activeLaneSource.startsWith('synth')
+        ? Number.parseInt(activeLaneSource.replace('synth', ''), 10) - 1
+        : activeLaneUsesPadVoiceMask
+          ? PAD_VOICE_NUMBERS.find((voice) => (activeLaneVoiceMask & (1 << (voice - 1))) !== 0)! - 1
+          : undefined
       : undefined;
-    const voiceIndex = Number.isInteger(parsedVoiceIndex) && parsedVoiceIndex! >= 0 && parsedVoiceIndex! < 6 ? parsedVoiceIndex : undefined;
+    const voiceIndex = Number.isInteger(parsedVoiceIndex) && parsedVoiceIndex! >= 0 && parsedVoiceIndex! < PAD_VOICE_NUMBERS.length ? parsedVoiceIndex : undefined;
     void onAuditionNote({
       source: effectiveKeyboardSource,
       midi,
@@ -3402,6 +3532,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     });
   }, [
     activeLaneSource,
+    activeLaneUsesPadVoiceMask,
+    activeLaneVoiceMask,
     canWriteSequenceNotes,
     effectiveKeyboardSource,
     keyboardBaseMidi,
@@ -3782,17 +3914,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           release={safeEnv.release}
           accentColor={accentColor}
           accentRgba={accentRgba}
+          envelopeTimelineSeconds={padEnvelopeTimelineSeconds}
           onChange={useCustomAdsr ? (param, v) => onParamChange(param as keyof SliderState, v) : undefined}
           disabled={!useCustomAdsr}
           paramPrefix={leadNum === 2 ? 'lead2' : 'lead1'}
         />
         {useCustomAdsr && (
           <div style={{ marginTop: '8px' }}>
-            <Slider label="Attack" value={state[attackKey]} paramKey={attackKey} unit="s" ghostValue={getPreviewValue(distancePreview, attackKey)} onChange={onParamChange} {...sliderProps(attackKey)} />
-            <Slider label="Decay" value={state[decayKey]} paramKey={decayKey} unit="s" ghostValue={getPreviewValue(distancePreview, decayKey)} onChange={onParamChange} {...sliderProps(decayKey)} />
+            <Slider label="Attack" value={state[attackKey]} paramKey={attackKey} unit="s" logarithmic ghostValue={getPreviewValue(distancePreview, attackKey)} onChange={onParamChange} {...sliderProps(attackKey)} />
+            <Slider label="Decay" value={state[decayKey]} paramKey={decayKey} unit="s" logarithmic ghostValue={getPreviewValue(distancePreview, decayKey)} onChange={onParamChange} {...sliderProps(decayKey)} />
             <Slider label="Sustain" value={state[sustainKey]} paramKey={sustainKey} ghostValue={getPreviewValue(distancePreview, sustainKey)} onChange={onParamChange} {...sliderProps(sustainKey)} />
             <Slider label="Hold" value={state[holdKey]} paramKey={holdKey} unit="s" ghostValue={getPreviewValue(distancePreview, holdKey)} onChange={onParamChange} {...sliderProps(holdKey)} />
-            <Slider label="Release" value={state[releaseKey]} paramKey={releaseKey} unit="s" ghostValue={getPreviewValue(distancePreview, releaseKey)} onChange={onParamChange} {...sliderProps(releaseKey)} />
+            <Slider label="Release" value={state[releaseKey]} paramKey={releaseKey} unit="s" logarithmic ghostValue={getPreviewValue(distancePreview, releaseKey)} onChange={onParamChange} {...sliderProps(releaseKey)} />
           </div>
         )}
       </div>
@@ -3933,6 +4066,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 synthHold={state.synthHold}
                 synthRelease={state.synthRelease}
                 envelopeTimelineSeconds={padEnvelopeTimelineSeconds}
+                envelopeAccentColor={SOURCE_COLORS.pad1}
                 modEnvEnabled={state.padModEnvEnabled}
                 modEnvAttack={state.padModEnvAttack ?? 0.1}
                 modEnvDecay={state.padModEnvDecay ?? 0.3}
@@ -3997,11 +4131,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     </button>
                   </div>
                   <div className="sc-compact-grid-4">
-                    <Slider label="Attack" value={state.synthAttack} paramKey="synthAttack" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthAttack')} onChange={onParamChange} {...sliderProps('synthAttack')} />
-                    <Slider label="Decay" value={state.synthDecay} paramKey="synthDecay" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthDecay')} onChange={onParamChange} {...sliderProps('synthDecay')} />
+                    <Slider label="Attack" value={state.synthAttack} paramKey="synthAttack" format={formatEnvelopeSeconds} logarithmic ghostValue={getPreviewValue(pad1DistancePreview, 'synthAttack')} onChange={onParamChange} {...sliderProps('synthAttack')} />
+                    <Slider label="Decay" value={state.synthDecay} paramKey="synthDecay" format={formatEnvelopeSeconds} logarithmic ghostValue={getPreviewValue(pad1DistancePreview, 'synthDecay')} onChange={onParamChange} {...sliderProps('synthDecay')} />
                     <Slider label="Sustain" value={state.synthSustain} paramKey="synthSustain" format={formatEnvelopeSustain} ghostValue={getPreviewValue(pad1DistancePreview, 'synthSustain')} onChange={onParamChange} {...sliderProps('synthSustain')} />
                     <Slider label="Hold" value={state.synthHold} paramKey="synthHold" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthHold')} onChange={onParamChange} {...sliderProps('synthHold')} />
-                    <Slider label="Release" value={state.synthRelease} paramKey="synthRelease" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad1DistancePreview, 'synthRelease')} onChange={onParamChange} {...sliderProps('synthRelease')} />
+                    <Slider label="Release" value={state.synthRelease} paramKey="synthRelease" format={formatEnvelopeSeconds} logarithmic ghostValue={getPreviewValue(pad1DistancePreview, 'synthRelease')} onChange={onParamChange} {...sliderProps('synthRelease')} />
                   </div>
                 </div>
 
@@ -4358,10 +4492,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       />
                       <Slider label="Depth" value={state.padModEnvDepth ?? 0} paramKey="padModEnvDepth" onChange={onParamChange} {...sliderProps('padModEnvDepth')} />
                       <div className="sc-compact-grid-4">
-                        <Slider label="Attack" value={state.padModEnvAttack ?? 0.1} paramKey="padModEnvAttack" format={formatEnvelopeSeconds} onChange={onParamChange} {...sliderProps('padModEnvAttack')} />
-                        <Slider label="Decay" value={state.padModEnvDecay ?? 0.3} paramKey="padModEnvDecay" format={formatEnvelopeSeconds} onChange={onParamChange} {...sliderProps('padModEnvDecay')} />
+                        <Slider label="Attack" value={state.padModEnvAttack ?? 0.1} paramKey="padModEnvAttack" format={formatEnvelopeSeconds} logarithmic onChange={onParamChange} {...sliderProps('padModEnvAttack')} />
+                        <Slider label="Decay" value={state.padModEnvDecay ?? 0.3} paramKey="padModEnvDecay" format={formatEnvelopeSeconds} logarithmic onChange={onParamChange} {...sliderProps('padModEnvDecay')} />
                         <Slider label="Sustain" value={state.padModEnvSustain ?? 0} paramKey="padModEnvSustain" format={formatEnvelopeSustain} onChange={onParamChange} {...sliderProps('padModEnvSustain')} />
-                        <Slider label="Release" value={state.padModEnvRelease ?? 0.5} paramKey="padModEnvRelease" format={formatEnvelopeSeconds} onChange={onParamChange} {...sliderProps('padModEnvRelease')} />
+                        <Slider label="Release" value={state.padModEnvRelease ?? 0.5} paramKey="padModEnvRelease" format={formatEnvelopeSeconds} logarithmic onChange={onParamChange} {...sliderProps('padModEnvRelease')} />
                       </div>
                     </>
                   )}
@@ -4422,30 +4556,21 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 <div className="sc-advanced-section">
                   <div className="sc-section-label">Voices</div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '0.65rem', color: '#888' }}>Mask</span>
+                    <span style={{ fontSize: '0.65rem', color: '#888' }}>Assignments</span>
                     <span style={{ fontSize: '0.55rem', color: '#666' }}>
-                      {[1, 2, 3, 4, 5, 6].filter(v => (state.synthVoiceMask || 63) & (1 << (v - 1))).join(' ')}
+                      {padVoiceAssignmentSummary(state)}
                     </span>
                   </div>
                   <div className="voice-mask-row">
-                    {[1, 2, 3, 4, 5, 6].map(voice => {
-                      const bit = 1 << (voice - 1);
-                      const isEnabled = ((state.synthVoiceMask || 63) & bit) !== 0;
+                    {PAD_VOICE_NUMBERS.map(voice => {
+                      const assignment = padVoiceAssignment(state, voice);
                       return (
                         <button
                           key={voice}
-                          className={`voice-mask-btn ${isEnabled ? 'active' : ''}`}
-                          onClick={() => {
-                            const currentMask = state.synthVoiceMask || 63;
-                            let newMask = currentMask ^ bit;
-                            if (newMask === 0) newMask = bit;
-                            onParamChange('synthVoiceMask', newMask);
-                          }}
-                          style={isEnabled ? {
-                            background: `linear-gradient(135deg, hsl(${210 + voice * 25}, 60%, 35%), hsl(${210 + voice * 25}, 60%, 25%))`,
-                            borderColor: `hsl(${210 + voice * 25}, 60%, 50%)`,
-                          } : undefined}
-                          title={`Voice ${voice}`}
+                          className={`voice-mask-btn ${assignment !== 'off' ? 'active' : ''}`}
+                          onClick={() => cyclePadVoiceAssignment(voice)}
+                          style={padVoiceButtonStyle(voice, assignment)}
+                          title={`Voice ${voice} · ${padVoiceAssignmentLabel(assignment)}`}
                           {...bindHelp('synthVoiceMaskToggle', { label: `Voice ${voice}` })}
                         >
                           {voice}
@@ -4453,23 +4578,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       );
                     })}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '6px 0 4px' }}>
-                    <span style={{ fontSize: '0.65rem', color: '#888' }}>Octave</span>
-                    <span style={{ fontSize: '0.55rem', color: '#666' }}>
-                      {state.synthOctave === 0 ? '0' : (state.synthOctave > 0 ? `+${state.synthOctave}` : state.synthOctave)}
-                    </span>
-                  </div>
-                  <div className="octave-row">
-                    {[-2, -1, 0, 1, 2].map(oct => (
-                      <button
-                        key={oct}
-                        className={`octave-btn ${state.synthOctave === oct ? 'active' : ''}`}
-                        onClick={() => onParamChange('synthOctave', oct)}
-                      >
-                        {oct === 0 ? '0' : (oct > 0 ? `+${oct}` : oct)}
-                      </button>
-                    ))}
-                  </div>
+                  <Slider label="Octave Offset" value={state.synthOctave} paramKey="synthOctave" onChange={onParamChange} {...sliderProps('synthOctave')} />
                 </div>
               </div>
             )}
@@ -4597,6 +4706,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 synthHold={state.pad2Hold ?? 1}
                 synthRelease={state.pad2Release ?? 12}
                 envelopeTimelineSeconds={padEnvelopeTimelineSeconds}
+                envelopeAccentColor={SOURCE_COLORS.pad2}
                 modEnvEnabled={state.pad2ModEnvEnabled}
                 modEnvAttack={state.pad2ModEnvAttack ?? 0.1}
                 modEnvDecay={state.pad2ModEnvDecay ?? 0.3}
@@ -4651,35 +4761,28 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 />
               </div>
 
-              {/* Voice assignment — which of the 6 voices belong to Pad 2 */}
+              {/* Shared voice assignment */}
               <div className="sc-advanced-section" style={{ marginTop: '4px' }}>
                 <div className="sc-section-label" style={{ fontSize: '0.65rem' }}>Voice Assignment</div>
+                <div style={{ fontSize: '0.55rem', color: '#888', marginBottom: '4px' }}>
+                  {padVoiceAssignmentSummary(state)}
+                </div>
                 <div className="voice-mask-row">
-                  {[1, 2, 3, 4, 5, 6].map(voice => {
-                    const bit = 1 << (voice - 1);
-                    const isAssigned = ((state.pad2VoiceAssign ?? 0) & bit) !== 0;
+                  {PAD_VOICE_NUMBERS.map(voice => {
+                    const assignment = padVoiceAssignment(state, voice);
                     return (
                       <button
                         key={voice}
-                        className={`voice-mask-btn ${isAssigned ? 'active' : ''}`}
-                        onClick={() => {
-                          const cur = state.pad2VoiceAssign ?? 0;
-                          onParamChange('pad2VoiceAssign', cur ^ bit);
-                        }}
-                        style={isAssigned ? {
-                          background: `linear-gradient(135deg, hsl(${260 + voice * 15}, 60%, 35%), hsl(${260 + voice * 15}, 60%, 25%))`,
-                          borderColor: `hsl(${260 + voice * 15}, 60%, 50%)`,
-                        } : undefined}
-                        title={`Voice ${voice}`}
+                        className={`voice-mask-btn ${assignment !== 'off' ? 'active' : ''}`}
+                        onClick={() => cyclePadVoiceAssignment(voice)}
+                        style={padVoiceButtonStyle(voice, assignment)}
+                        title={`Voice ${voice} · ${padVoiceAssignmentLabel(assignment)}`}
                         {...bindHelp('synthPad2VoiceAssign', { label: `Voice ${voice}` })}
                       >
                         {voice}
                       </button>
                     );
                   })}
-                </div>
-                <div style={{ fontSize: '0.55rem', color: '#888', marginTop: '2px' }}>
-                  Assigned voices play Pad 2. Unassigned stay on Pad 1.
                 </div>
               </div>
             </div>
@@ -4699,11 +4802,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     </button>
                   </div>
                   <div className="sc-compact-grid-4">
-                    <Slider label="Attack" value={state.pad2Attack} paramKey="pad2Attack" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Attack')} onChange={onParamChange} {...sliderProps('pad2Attack')} />
-                    <Slider label="Decay" value={state.pad2Decay} paramKey="pad2Decay" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Decay')} onChange={onParamChange} {...sliderProps('pad2Decay')} />
+                    <Slider label="Attack" value={state.pad2Attack} paramKey="pad2Attack" format={formatEnvelopeSeconds} logarithmic ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Attack')} onChange={onParamChange} {...sliderProps('pad2Attack')} />
+                    <Slider label="Decay" value={state.pad2Decay} paramKey="pad2Decay" format={formatEnvelopeSeconds} logarithmic ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Decay')} onChange={onParamChange} {...sliderProps('pad2Decay')} />
                     <Slider label="Sustain" value={state.pad2Sustain} paramKey="pad2Sustain" format={formatEnvelopeSustain} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Sustain')} onChange={onParamChange} {...sliderProps('pad2Sustain')} />
                     <Slider label="Hold" value={state.pad2Hold} paramKey="pad2Hold" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Hold')} onChange={onParamChange} {...sliderProps('pad2Hold')} />
-                    <Slider label="Release" value={state.pad2Release} paramKey="pad2Release" format={formatEnvelopeSeconds} ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Release')} onChange={onParamChange} {...sliderProps('pad2Release')} />
+                    <Slider label="Release" value={state.pad2Release} paramKey="pad2Release" format={formatEnvelopeSeconds} logarithmic ghostValue={getPreviewValue(pad2DistancePreview, 'pad2Release')} onChange={onParamChange} {...sliderProps('pad2Release')} />
                   </div>
                 </div>
 
@@ -5055,10 +5158,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       />
                       <Slider label="Depth" value={state.pad2ModEnvDepth ?? 0} paramKey="pad2ModEnvDepth" onChange={onParamChange} {...sliderProps('pad2ModEnvDepth')} />
                       <div className="sc-compact-grid-4">
-                        <Slider label="Attack" value={state.pad2ModEnvAttack ?? 0.1} paramKey="pad2ModEnvAttack" format={formatEnvelopeSeconds} onChange={onParamChange} {...sliderProps('pad2ModEnvAttack')} />
-                        <Slider label="Decay" value={state.pad2ModEnvDecay ?? 0.3} paramKey="pad2ModEnvDecay" format={formatEnvelopeSeconds} onChange={onParamChange} {...sliderProps('pad2ModEnvDecay')} />
+                        <Slider label="Attack" value={state.pad2ModEnvAttack ?? 0.1} paramKey="pad2ModEnvAttack" format={formatEnvelopeSeconds} logarithmic onChange={onParamChange} {...sliderProps('pad2ModEnvAttack')} />
+                        <Slider label="Decay" value={state.pad2ModEnvDecay ?? 0.3} paramKey="pad2ModEnvDecay" format={formatEnvelopeSeconds} logarithmic onChange={onParamChange} {...sliderProps('pad2ModEnvDecay')} />
                         <Slider label="Sustain" value={state.pad2ModEnvSustain ?? 0} paramKey="pad2ModEnvSustain" format={formatEnvelopeSustain} onChange={onParamChange} {...sliderProps('pad2ModEnvSustain')} />
-                        <Slider label="Release" value={state.pad2ModEnvRelease ?? 0.5} paramKey="pad2ModEnvRelease" format={formatEnvelopeSeconds} onChange={onParamChange} {...sliderProps('pad2ModEnvRelease')} />
+                        <Slider label="Release" value={state.pad2ModEnvRelease ?? 0.5} paramKey="pad2ModEnvRelease" format={formatEnvelopeSeconds} logarithmic onChange={onParamChange} {...sliderProps('pad2ModEnvRelease')} />
                       </div>
                     </>
                   )}
@@ -5525,17 +5628,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 release={state.pianoRelease}
                 accentColor="#e7c87f"
                 accentRgba="rgba(231,200,127,"
+                envelopeTimelineSeconds={padEnvelopeTimelineSeconds}
                 onChange={(param, value) => onParamChange(param as keyof SliderState, value)}
                 paramPrefix="piano"
               />
               <div className="sc-compact-grid-2" style={{ marginTop: '8px' }}>
-                <Slider label="Attack" value={state.pianoAttack} paramKey="pianoAttack" unit="s" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoAttack')} onChange={onParamChange} {...sliderProps('pianoAttack')} />
-                <Slider label="Decay" value={state.pianoDecay} paramKey="pianoDecay" unit="s" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoDecay')} onChange={onParamChange} {...sliderProps('pianoDecay')} />
+                <Slider label="Attack" value={state.pianoAttack} paramKey="pianoAttack" unit="s" logarithmic ghostValue={getPreviewValue(pianoDistancePreview, 'pianoAttack')} onChange={onParamChange} {...sliderProps('pianoAttack')} />
+                <Slider label="Decay" value={state.pianoDecay} paramKey="pianoDecay" unit="s" logarithmic ghostValue={getPreviewValue(pianoDistancePreview, 'pianoDecay')} onChange={onParamChange} {...sliderProps('pianoDecay')} />
                 <Slider label="Sustain" value={state.pianoSustain} paramKey="pianoSustain" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoSustain')} onChange={onParamChange} {...sliderProps('pianoSustain')} />
                 <Slider label="Hold" value={state.pianoHold} paramKey="pianoHold" unit="s" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoHold')} onChange={onParamChange} {...sliderProps('pianoHold')} />
               </div>
               <div style={{ marginTop: '8px' }}>
-                <Slider label="Release" value={state.pianoRelease} paramKey="pianoRelease" unit="s" ghostValue={getPreviewValue(pianoDistancePreview, 'pianoRelease')} onChange={onParamChange} {...sliderProps('pianoRelease')} />
+                <Slider label="Release" value={state.pianoRelease} paramKey="pianoRelease" unit="s" logarithmic ghostValue={getPreviewValue(pianoDistancePreview, 'pianoRelease')} onChange={onParamChange} {...sliderProps('pianoRelease')} />
               </div>
             </div>
 
@@ -5797,76 +5901,58 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     {state.synthChordSequencerEnabled === true ? 'ON' : 'OFF'}
                   </button>
                 </div>
-                <Slider label="Chord Rate" value={state.chordRate} paramKey="chordRate" unit="s" onChange={onParamChange} {...sliderProps('chordRate')} />
-                <Slider label="Voicing Spread" value={state.voicingSpread} paramKey="voicingSpread" onChange={onParamChange} {...sliderProps('voicingSpread')} />
-                <Slider label="Wave Spread" value={state.waveSpread} paramKey="waveSpread" onChange={onParamChange} {...sliderProps('waveSpread')} />
-                <div style={{ position: 'relative', height: '14px', marginTop: '-4px', marginBottom: '4px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.5rem', color: '#666', padding: '0 2px' }}>
-                    <span>0</span>
-                    <span style={{ position: 'absolute', left: '6.25%', transform: 'translateX(-50%)' }}>1/16</span>
-                    <span style={{ position: 'absolute', left: '12.5%', transform: 'translateX(-50%)' }}>⅛</span>
-                    <span style={{ position: 'absolute', left: '25%', transform: 'translateX(-50%)' }}>¼</span>
-                    <span style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>½</span>
-                    <span style={{ position: 'absolute', right: 0 }}>1</span>
-                  </div>
-                </div>
-                <Slider label="Detune" value={state.detune} paramKey="detune" unit={'\u00A2'} onChange={onParamChange} {...sliderProps('detune')} />
-
-                {/* Voice Mask */}
-                <div style={{ marginTop: '8px', marginBottom: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Voice Mask</span>
-                    <span style={{ fontSize: '0.6rem', color: '#888' }}>
-                      {[1, 2, 3, 4, 5, 6].filter(v => (state.synthVoiceMask || 63) & (1 << (v - 1))).join(' ')}
-                    </span>
-                  </div>
-                  <div className="voice-mask-row">
-                    {[1, 2, 3, 4, 5, 6].map(voice => {
-                      const bit = 1 << (voice - 1);
-                      const isEnabled = ((state.synthVoiceMask || 63) & bit) !== 0;
-                      return (
-                        <button
-                          key={voice}
-                          className={`voice-mask-btn ${isEnabled ? 'active' : ''}`}
-                          onClick={() => {
-                            const currentMask = state.synthVoiceMask || 63;
-                            let newMask = currentMask ^ bit;
-                            if (newMask === 0) newMask = bit;
-                            onParamChange('synthVoiceMask', newMask);
-                          }}
-                          style={isEnabled ? {
-                            background: `linear-gradient(135deg, hsl(${210 + voice * 25}, 60%, 35%), hsl(${210 + voice * 25}, 60%, 25%))`,
-                            borderColor: `hsl(${210 + voice * 25}, 60%, 50%)`,
-                          } : undefined}
-                          title={`Voice ${voice}`}
-                          {...bindHelp('synthVoiceMaskToggle', { label: `Voice ${voice}` })}
-                        >
-                          {voice}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Synth Octave */}
-                <div style={{ marginBottom: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Octave</span>
-                    <span style={{ fontSize: '0.65rem', color: '#888' }}>
-                      {state.synthOctave === 0 ? '0' : (state.synthOctave > 0 ? `+${state.synthOctave}` : state.synthOctave)}
-                    </span>
-                  </div>
-                  <div className="octave-row">
-                    {[-2, -1, 0, 1, 2].map(oct => (
-                      <button
-                        key={oct}
-                        className={`octave-btn ${state.synthOctave === oct ? 'active' : ''}`}
-                        onClick={() => onParamChange('synthOctave', oct)}
+                <div className="synth-simple-content">
+                  <div className="synth-simple-controls">
+                    <div className="seq-sources" style={{ marginBottom: '6px' }}>
+                      <select
+                        className="synth-source-select"
+                        aria-label="Chord sequencer source"
+                        value={state.synthChordSequencerSource ?? 'both'}
+                        onChange={(e) => onSelectChange('synthChordSequencerSource' as keyof SliderState, e.target.value as SliderState[keyof SliderState])}
+                        style={{
+                          borderColor: `${CHORD_SEQUENCER_SOURCES.find((source) => source.value === (state.synthChordSequencerSource ?? 'both'))?.color ?? '#888'}60`,
+                          color: CHORD_SEQUENCER_SOURCES.find((source) => source.value === (state.synthChordSequencerSource ?? 'both'))?.color ?? '#888',
+                        }}
                       >
-                        {oct === 0 ? '0' : (oct > 0 ? `+${oct}` : oct)}
-                      </button>
-                    ))}
+                        {CHORD_SEQUENCER_SOURCES.map((source) => (
+                          <option key={source.value} value={source.value}>{source.label}</option>
+                        ))}
+                      </select>
+                      <label className="synth-source-label">
+                        Voices
+                        <select
+                          className="synth-source-select"
+                          value={state.synthChordSequencerVoiceCount ?? 6}
+                          onChange={(e) => onParamChange('synthChordSequencerVoiceCount', Number(e.target.value))}
+                        >
+                          {PAD_VOICE_NUMBERS.map((voice) => (
+                            <option key={voice} value={voice}>{voice}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <Slider label="Chords / Phrase" value={state.chordRate} paramKey="chordRate" onChange={onParamChange} {...sliderProps('chordRate')} />
+                    <Slider label="Voicing Spread" value={state.voicingSpread} paramKey="voicingSpread" onChange={onParamChange} {...sliderProps('voicingSpread')} />
+                    <Slider label="Wave Spread" value={state.waveSpread} paramKey="waveSpread" onChange={onParamChange} {...sliderProps('waveSpread')} />
+                    <div style={{ position: 'relative', height: '14px', marginTop: '-4px', marginBottom: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.5rem', color: '#666', padding: '0 2px' }}>
+                        <span>0</span>
+                        <span style={{ position: 'absolute', left: '6.25%', transform: 'translateX(-50%)' }}>1/16</span>
+                        <span style={{ position: 'absolute', left: '12.5%', transform: 'translateX(-50%)' }}>⅛</span>
+                        <span style={{ position: 'absolute', left: '25%', transform: 'translateX(-50%)' }}>¼</span>
+                        <span style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>½</span>
+                        <span style={{ position: 'absolute', right: 0 }}>1</span>
+                      </div>
+                    </div>
+                    <Slider label="Detune" value={state.detune} paramKey="detune" unit={'\u00A2'} onChange={onParamChange} {...sliderProps('detune')} />
+                    <Slider label="Octave Offset" value={state.synthOctave} paramKey="synthOctave" onChange={onParamChange} {...sliderProps('synthOctave')} />
                   </div>
+                  <SimplePhraseVisualizer
+                    kind="padChord"
+                    state={state}
+                    isRunning={isRunning}
+                    transportDebug={transportDebug}
+                  />
                 </div>
               </div>
 
@@ -5881,27 +5967,34 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     {state.leadRandomEnabled ? 'ON' : 'OFF'}
                   </button>
                 </div>
-                <label className="synth-source-label" style={{ marginBottom: '8px' }}>
-                  Source
-                  <select
-                    className="synth-source-select"
-                    value={state.leadRandomSource}
-                    onChange={(e) => onSelectChange('leadRandomSource' as keyof SliderState, e.target.value)}
-                    style={{
-                      borderColor: `${RANDOM_TIMING_SOURCES.find((source) => source.value === state.leadRandomSource)?.color ?? '#888'}60`,
-                      color: RANDOM_TIMING_SOURCES.find((source) => source.value === state.leadRandomSource)?.color ?? '#888',
-                    }}
-                  >
-                    {RANDOM_TIMING_SOURCES.map((source) => (
-                      <option key={source.value} value={source.value}>{source.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <Slider label="Note Density" value={state.lead1Density} paramKey="lead1Density" unit="/phrase" onChange={onParamChange} {...sliderProps('lead1Density')} />
-                <Slider label="Octave Offset" value={state.lead1Octave} paramKey="lead1Octave" onChange={onParamChange} {...sliderProps('lead1Octave')} />
-                <Slider label="Octave Range" value={state.lead1OctaveRange} paramKey="lead1OctaveRange" unit=" oct" onChange={onParamChange} {...sliderProps('lead1OctaveRange')} />
-                <div style={{ fontSize: '0.6rem', color: '#666', marginTop: '4px' }}>
-                  Controls random melodic timing for the selected source when Euclidean mode is OFF
+                <div className="synth-simple-content">
+                  <div className="synth-simple-controls">
+                    <label className="synth-source-label" style={{ marginBottom: '8px' }}>
+                      Source
+                      <select
+                        className="synth-source-select"
+                        value={state.leadRandomSource}
+                        onChange={(e) => onSelectChange('leadRandomSource' as keyof SliderState, e.target.value)}
+                        style={{
+                          borderColor: `${RANDOM_TIMING_SOURCES.find((source) => source.value === state.leadRandomSource)?.color ?? '#888'}60`,
+                          color: RANDOM_TIMING_SOURCES.find((source) => source.value === state.leadRandomSource)?.color ?? '#888',
+                        }}
+                      >
+                        {RANDOM_TIMING_SOURCES.map((source) => (
+                          <option key={source.value} value={source.value}>{source.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <Slider label="Note Density" value={state.lead1Density} paramKey="lead1Density" unit="/phrase" onChange={onParamChange} {...sliderProps('lead1Density')} />
+                    <Slider label="Octave Offset" value={state.lead1Octave} paramKey="lead1Octave" onChange={onParamChange} {...sliderProps('lead1Octave')} />
+                    <Slider label="Octave Range" value={state.lead1OctaveRange} paramKey="lead1OctaveRange" unit=" oct" onChange={onParamChange} {...sliderProps('lead1OctaveRange')} />
+                  </div>
+                  <SimplePhraseVisualizer
+                    kind="randomTiming"
+                    state={state}
+                    isRunning={isRunning}
+                    transportDebug={transportDebug}
+                  />
                 </div>
               </div>
             </div>
@@ -5941,13 +6034,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
                 {/* ── Source selector + per-seq controls ── */}
                 <div className="seq-sources">
-                  {/* Single source dropdown */}
-                  <label className="synth-source-label">
-                    Source
+                  {/* Per-seq controls */}
+                  <div className="seq-per-controls" style={{ marginLeft: 0 }}>
                     <select
                       className="synth-source-select"
+                      aria-label={`Seq ${seq.activeTab + 1} source`}
                       value={synthSourceSelectValue(state[getSourceKey(seq.activeTab)] ?? 'lead1')}
-                      onChange={(e) => onSelectChange(getSourceKey(seq.activeTab), e.target.value)}
+                      onChange={(e) => handleLaneSourceChange(seq.activeTab, e.target.value)}
                       {...bindHelp('synthSeqSourceSelect')}
                       style={{
                         borderColor: getSourceColor(String(state[getSourceKey(seq.activeTab)] ?? 'lead1')) + '60',
@@ -5958,10 +6051,34 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         <option key={s.value} value={s.value}>{s.label}</option>
                       ))}
                     </select>
-                  </label>
-
-                  {/* Per-seq controls */}
-                  <div className="seq-per-controls">
+                    {activeLaneUsesPadVoiceMask && (
+                      <label className="seq-clock-label">
+                        Voices
+                        <div className="voice-mask-row" style={{ width: '176px', gap: '3px' }}>
+                          {PAD_VOICE_NUMBERS.map((voice) => {
+                            const bit = 1 << (voice - 1);
+                            const selected = (activeLaneVoiceMask & bit) !== 0;
+                            const sourceAssignment: PadVoiceAssignment = activeLaneSource === 'pad2' ? 'pad2' : 'pad1';
+                            return (
+                              <button
+                                key={voice}
+                                type="button"
+                                className={`voice-mask-btn ${selected ? 'active' : ''}`}
+                                onClick={() => toggleLaneVoiceMask(seq.activeTab, voice)}
+                                style={{
+                                  ...(selected ? padVoiceButtonStyle(voice, sourceAssignment) : undefined),
+                                  padding: '4px 0',
+                                  fontSize: '0.65rem',
+                                }}
+                                title={`Seq ${seq.activeTab + 1} voice ${voice} · ${selected ? 'Rotate' : 'Off'}`}
+                              >
+                                {voice}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </label>
+                    )}
                     <label className="seq-clock-label">
                       Clock
                       <select
@@ -6562,7 +6679,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           <select
                             className="seq-ov-select synth-ov-source"
                             value={source}
-                            onChange={(e) => onSelectChange(getSourceKey(row), e.target.value)}
+                            onChange={(e) => handleLaneSourceChange(row, e.target.value)}
                             {...bindHelp('synthSeqSourceSelect')}
                             style={{ color: sourceInfo?.color ?? '#888' }}
                           >

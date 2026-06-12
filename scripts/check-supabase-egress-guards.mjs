@@ -153,6 +153,12 @@ function assertFunctionUsesOnlySummarySelect(filePath, text, name, summarySelect
   }
 }
 
+function assertTextIncludes(filePath, text, token, message = `missing required egress guard token: ${token}`) {
+  if (!text.includes(token)) {
+    fail(filePath, findLine(text, token), message);
+  }
+}
+
 {
   const { filePath, text } = readRepoFile('src/cloud/presetSelects.ts');
   assertSummarySelectExcludesPayload(filePath, text, 'CLOUD_PRESET_SUMMARY_SELECT');
@@ -163,7 +169,21 @@ function assertFunctionUsesOnlySummarySelect(filePath, text, name, summarySelect
 {
   const { filePath, text } = readRepoFile('src/cloud/supabase.ts');
   for (const name of ['fetchCloudPresets', 'fetchFeaturedPresets', 'searchCloudPresets']) {
-    assertFunctionUsesOnlySummarySelect(filePath, text, name, 'CLOUD_PRESET_SUMMARY_SELECT');
+    assertFunctionUsesOnlySummarySelect(filePath, text, name, 'LEGACY_PRESET_SUMMARY_SELECT');
+  }
+  for (const token of [
+    'const CLOUD_PRESET_LIST_MEMORY_CACHE_TTL_MS = 10 * 60_000',
+    'const CLOUD_PRESET_LIST_SESSION_CACHE_TTL_MS = 45 * 60_000',
+    "const functionName = 'kessho_get_legacy_preset_detail'",
+    'legacySummaryToCloudPresetSummary',
+    ".from('legacy_preset_summaries')",
+    'fetchPresetByIdRpc(client, id)',
+    'await ensureCloudAnonymousSession(client)',
+    'readCloudPresetListCache(cacheKey)',
+    'writeCloudPresetListCache(cacheKey, summaries)',
+    'clearCloudPresetListCache()',
+  ]) {
+    assertTextIncludes(filePath, text, token);
   }
 }
 
@@ -171,6 +191,72 @@ function assertFunctionUsesOnlySummarySelect(filePath, text, name, summarySelect
   const { filePath, text } = readRepoFile('src/presets/SupabasePresetStore.ts');
   assertFunctionUsesOnlySummarySelect(filePath, text, 'listV2', 'PRESET_V2_SUMMARY_SELECT');
   assertFunctionUsesOnlySummarySelect(filePath, text, 'listLegacy', 'LEGACY_PRESET_SUMMARY_SELECT');
+
+  const listV2Body = functionBody(text, 'listV2');
+  if (!listV2Body) {
+    fail(filePath, findLine(text, 'listV2'), 'listV2 body not found for payload hydration guard');
+  } else if (listV2Body.includes('fetchPayloadMapV2')) {
+    fail(filePath, findLine(text, 'fetchPayloadMapV2'), 'listV2 must not hydrate payload metadata during summary reads');
+  } else if (listV2Body.includes('data?.length')) {
+    fail(filePath, findLine(text, 'data?.length'), 'listV2 must not fall back to base-table reads when summary views are empty');
+  }
+
+  const listLegacyBody = functionBody(text, 'listLegacy');
+  if (!listLegacyBody) {
+    fail(filePath, findLine(text, 'listLegacy'), 'listLegacy body not found for summary fallback guard');
+  } else if (listLegacyBody.includes('data?.length')) {
+    fail(filePath, findLine(text, 'data?.length'), 'listLegacy must not fall back to base-table reads when summary views are empty');
+  }
+
+  for (const token of [
+    'const PRESET_LIST_MEMORY_CACHE_TTL_MS = 10 * 60_000',
+    'const PRESET_LIST_SESSION_CACHE_TTL_MS = 45 * 60_000',
+    'const PRESET_LIST_SESSION_CACHE_PREFIX =',
+    ".from('preset_summaries_v2')",
+    "const functionName = 'kessho_get_preset_detail_v2'",
+    "const functionName = 'kessho_get_legacy_preset_detail'",
+    'fetchDetailBundleRpcV2({ type, name, scope, version })',
+    'fetchLegacyDetailRpc(type, name, scope)',
+    'materializeDetailBundleV2(rpcBundle, version)',
+    'readPresetListSessionCache(key, now)',
+    'writePresetListSessionCache(key, summaries)',
+  ]) {
+    assertTextIncludes(filePath, text, token);
+  }
+}
+
+{
+  const { filePath, text } = readRepoFile('src/cloud/supabaseEgressDiagnostics.ts');
+  for (const token of [
+    'const WARNING_THRESHOLD_BYTES = 256 * 1024',
+    'const LIST_REFRESH_PAUSE_THRESHOLD_BYTES = 1024 * 1024',
+    'status === 402 || status === 429',
+    'getContentLengthBytes(response)',
+    'measureResponseBody(response, diagnosticsEnabled)',
+    'window.__kesshoSupabaseEgress = getSupabaseEgressTripwireSnapshot',
+  ]) {
+    assertTextIncludes(filePath, text, token);
+  }
+}
+
+{
+  const { filePath, text } = readRepoFile('scripts/check-supabase-egress-budget.mjs');
+  for (const token of [
+    'freshBudgetBytes: DEFAULT_FRESH_BUDGET_BYTES',
+    'detailBudgetBytes: DEFAULT_DETAIL_BUDGET_BYTES',
+    'assertNoForbiddenCalls(calls, id)',
+    'assertNoSupabaseErrors(calls, id)',
+    'decodeURIComponent(call.url).includes(\'select=*\')',
+    'call.url.includes(\'/rest/v1/preset_payloads_v2\')',
+    '--load-first-preset',
+    '--fail-supabase-errors',
+    'found Supabase HTTP ${call.status} response',
+    'clickFirstPresetLoadButton(page, args.loadPresetSelector)',
+    'load-first-preset: ${formatBytes(detail.summary.totalBytes)} exceeds budget',
+    'localStorage.setItem(\'kessho:supabaseEgressDebug\', \'1\')',
+  ]) {
+    assertTextIncludes(filePath, text, token);
+  }
 }
 
 {

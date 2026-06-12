@@ -9,7 +9,9 @@ export type CanonicalSynthEuclidSource =
   | 'synth3'
   | 'synth4'
   | 'synth5'
-  | 'synth6';
+  | 'synth6'
+  | 'synth7'
+  | 'synth8';
 
 export function normalizeSynthEuclidSource(value: unknown): CanonicalSynthEuclidSource {
   const source = String(value ?? 'lead1').trim().toLowerCase();
@@ -19,7 +21,7 @@ export function normalizeSynthEuclidSource(value: unknown): CanonicalSynthEuclid
   if (source === 'piano') return 'piano';
   if (source === 'pad' || source === 'pad1') return 'pad1';
   if (source === 'pad2') return 'pad2';
-  if (/^synth[1-6]$/.test(source)) return source as CanonicalSynthEuclidSource;
+  if (/^synth[1-8]$/.test(source)) return source as CanonicalSynthEuclidSource;
 
   return 'lead1';
 }

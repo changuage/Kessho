@@ -447,7 +447,9 @@ bool drainPendingRatchets(
         event.morph = trigger_morph;
         event.distance = trigger_distance;
         event.expression = trigger_expression;
-        event.flags = sequencerPadVoiceEventFlags(lane.target_pad_voice_index) | ratchet_index;
+        const uint32_t pad_voice_index =
+            padVoiceIndexFromMask(lane.target_pad_voice_mask, lane.emitted_hit_count);
+        event.flags = sequencerPadVoiceEventFlags(pad_voice_index) | ratchet_index;
         PendingRatchetEvent pending{};
         pending.parent_step_id = static_cast<uint64_t>(relative_step);
         pending.absolute_sample = ratchet_sample;

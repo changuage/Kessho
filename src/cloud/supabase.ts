@@ -17,10 +17,7 @@ import {
   isSupabaseEgressListRefreshPaused,
   supabaseEgressDiagnosticFetch,
 } from './supabaseEgressDiagnostics';
-import {
-  CLOUD_PRESET_DETAIL_SELECT,
-  CLOUD_PRESET_SUMMARY_SELECT,
-} from './presetSelects';
+import { LEGACY_PRESET_SUMMARY_SELECT } from './presetSelects';
 
 // Types for cloud presets
 export interface CloudPreset {
@@ -36,6 +33,21 @@ export interface CloudPreset {
 
 export type CloudPresetSummary = Omit<CloudPreset, 'data'>;
 
+type LegacyCloudPresetSummaryRow = {
+  id: string;
+  name: string;
+  author?: string | null;
+  description?: string | null;
+  created_at: string;
+  plays?: number | null;
+  visibility?: string | null;
+};
+
+type LegacyCloudPresetDetailRow = LegacyCloudPresetSummaryRow & {
+  versions?: Array<{ v?: number; data?: SliderState }> | null;
+  current_version?: number | null;
+};
+
 export interface CloudPresetInsert {
   name: string;
   author: string;
@@ -47,6 +59,173 @@ export interface CloudPresetInsert {
 let supabase: SupabaseClient | null = null;
 type CloudSessionUser = { id: string; isAnonymous: boolean };
 let cloudAnonymousSessionInFlight: Promise<CloudSessionUser | null> | null = null;
+let legacyPresetDetailRpcAvailable: boolean | null = null;
+const CLOUD_PRESET_LIST_MEMORY_CACHE_TTL_MS = 10 * 60_000;
+const CLOUD_PRESET_LIST_SESSION_CACHE_TTL_MS = 45 * 60_000;
+const CLOUD_PRESET_LIST_SESSION_CACHE_PREFIX = 'kessho:legacyCloudPresetList:v1:';
+
+type CachedCloudPresetSummaryList = {
+  expiresAt: number;
+  summaries: CloudPresetSummary[];
+};
+const cloudPresetListCache = new Map<string, CachedCloudPresetSummaryList>();
+
+function cloneCloudPresetSummaries(summaries: CloudPresetSummary[]): CloudPresetSummary[] {
+  return summaries.map(summary => ({ ...summary }));
+}
+
+function legacySummaryToCloudPresetSummary(row: LegacyCloudPresetSummaryRow): CloudPresetSummary {
+  return {
+    id: row.id,
+    name: row.name,
+    author: row.author || 'Anonymous',
+    description: row.description || '',
+    created_at: row.created_at,
+    plays: row.plays ?? 0,
+    is_featured: row.visibility === 'featured',
+  };
+}
+
+function legacyDetailToCloudPreset(row: LegacyCloudPresetDetailRow): CloudPreset {
+  const versions = Array.isArray(row.versions) ? row.versions : [];
+  const current = versions.find(version => version.v === row.current_version) ?? versions[versions.length - 1];
+  return {
+    ...legacySummaryToCloudPresetSummary(row),
+    data: (current?.data ?? {}) as SliderState,
+  };
+}
+
+function canUseCloudPresetSessionCache(): boolean {
+  return typeof sessionStorage !== 'undefined';
+}
+
+function readCloudPresetSessionCache(key: string, now: number): CachedCloudPresetSummaryList | null {
+  if (!canUseCloudPresetSessionCache()) return null;
+  const storageKey = `${CLOUD_PRESET_LIST_SESSION_CACHE_PREFIX}${key}`;
+  try {
+    const raw = sessionStorage.getItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CachedCloudPresetSummaryList> | null;
+    if (!parsed || typeof parsed.expiresAt !== 'number' || !Array.isArray(parsed.summaries)) {
+      sessionStorage.removeItem(storageKey);
+      return null;
+    }
+    if (parsed.expiresAt <= now) {
+      sessionStorage.removeItem(storageKey);
+      return null;
+    }
+    return {
+      expiresAt: parsed.expiresAt,
+      summaries: cloneCloudPresetSummaries(parsed.summaries as CloudPresetSummary[]),
+    };
+  } catch {
+    try {
+      sessionStorage.removeItem(storageKey);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
+    return null;
+  }
+}
+
+function readCloudPresetListCache(key: string): CloudPresetSummary[] | null {
+  const now = Date.now();
+  const memory = cloudPresetListCache.get(key);
+  if (memory && memory.expiresAt > now) return cloneCloudPresetSummaries(memory.summaries);
+
+  const sessionCached = readCloudPresetSessionCache(key, now);
+  if (!sessionCached) return null;
+  cloudPresetListCache.set(key, {
+    expiresAt: Math.min(sessionCached.expiresAt, now + CLOUD_PRESET_LIST_MEMORY_CACHE_TTL_MS),
+    summaries: cloneCloudPresetSummaries(sessionCached.summaries),
+  });
+  return cloneCloudPresetSummaries(sessionCached.summaries);
+}
+
+function writeCloudPresetListCache(key: string, summaries: CloudPresetSummary[]): void {
+  const cloned = cloneCloudPresetSummaries(summaries);
+  cloudPresetListCache.set(key, {
+    expiresAt: Date.now() + CLOUD_PRESET_LIST_MEMORY_CACHE_TTL_MS,
+    summaries: cloned,
+  });
+  if (!canUseCloudPresetSessionCache()) return;
+  try {
+    sessionStorage.setItem(
+      `${CLOUD_PRESET_LIST_SESSION_CACHE_PREFIX}${key}`,
+      JSON.stringify({
+        expiresAt: Date.now() + CLOUD_PRESET_LIST_SESSION_CACHE_TTL_MS,
+        summaries: cloned,
+      }),
+    );
+  } catch {
+    // Storage quota or privacy mode failures should not break cloud reads.
+  }
+}
+
+function clearCloudPresetListCache(): void {
+  cloudPresetListCache.clear();
+  if (!canUseCloudPresetSessionCache()) return;
+  try {
+    for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+      const key = sessionStorage.key(index);
+      if (key?.startsWith(CLOUD_PRESET_LIST_SESSION_CACHE_PREFIX)) {
+        sessionStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Storage cleanup is best-effort.
+  }
+}
+
+function getSupabaseErrorText(error: unknown): string {
+  if (!error || typeof error !== 'object') return String(error ?? '');
+  const record = error as { code?: string; status?: number; statusCode?: number; message?: string; details?: string; hint?: string };
+  return [
+    record.code,
+    record.status,
+    record.statusCode,
+    record.message,
+    record.details,
+    record.hint,
+  ]
+    .filter(value => value !== undefined && value !== null)
+    .map(String)
+    .join(' ')
+    .toLowerCase();
+}
+
+function isMissingRpcError(error: unknown, functionName: string): boolean {
+  const text = getSupabaseErrorText(error);
+  return text.includes('pgrst202')
+    || text.includes('schema cache')
+    || text.includes(`could not find the function public.${functionName}`.toLowerCase())
+    || text.includes(`function public.${functionName}`)
+    || (text.includes('function') && text.includes(functionName.toLowerCase()) && text.includes('does not exist'));
+}
+
+async function fetchPresetByIdRpc(client: SupabaseClient, id: string): Promise<CloudPreset | null | undefined> {
+  if (legacyPresetDetailRpcAvailable === false) return undefined;
+
+  const functionName = 'kessho_get_legacy_preset_detail';
+  const { data, error } = await client.rpc(functionName, {
+    target_preset_id: id,
+    target_type: null,
+    target_name: null,
+    target_scopes: null,
+  });
+
+  if (error) {
+    if (isMissingRpcError(error, functionName)) {
+      legacyPresetDetailRpcAvailable = false;
+      return undefined;
+    }
+    console.error('Error fetching preset through detail RPC:', error);
+    return null;
+  }
+
+  legacyPresetDetailRpcAvailable = true;
+  return data ? legacyDetailToCloudPreset(data as unknown as LegacyCloudPresetDetailRow) : null;
+}
 
 export function getSupabase(): SupabaseClient | null {
   if (supabase) return supabase;
@@ -117,11 +296,14 @@ function sanitizePostgrestSearchTerm(query: string): string {
 export async function fetchCloudPresets(limit = 50): Promise<CloudPresetSummary[]> {
   const client = getSupabase();
   if (!client) return [];
+  const cacheKey = `browse:${limit}`;
+  const cached = readCloudPresetListCache(cacheKey);
+  if (cached) return cached;
   if (isSupabaseEgressListRefreshPaused()) return [];
 
   const { data, error } = await client
-    .from('presets')
-    .select(CLOUD_PRESET_SUMMARY_SELECT)
+    .from('legacy_preset_summaries')
+    .select(LEGACY_PRESET_SUMMARY_SELECT)
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -130,7 +312,9 @@ export async function fetchCloudPresets(limit = 50): Promise<CloudPresetSummary[
     return [];
   }
 
-  return (data ?? []) as unknown as CloudPresetSummary[];
+  const summaries = ((data ?? []) as unknown as LegacyCloudPresetSummaryRow[]).map(legacySummaryToCloudPresetSummary);
+  writeCloudPresetListCache(cacheKey, summaries);
+  return cloneCloudPresetSummaries(summaries);
 }
 
 /**
@@ -139,12 +323,15 @@ export async function fetchCloudPresets(limit = 50): Promise<CloudPresetSummary[
 export async function fetchFeaturedPresets(): Promise<CloudPresetSummary[]> {
   const client = getSupabase();
   if (!client) return [];
+  const cacheKey = 'featured:10';
+  const cached = readCloudPresetListCache(cacheKey);
+  if (cached) return cached;
   if (isSupabaseEgressListRefreshPaused()) return [];
 
   const { data, error } = await client
-    .from('presets')
-    .select(CLOUD_PRESET_SUMMARY_SELECT)
-    .eq('is_featured', true)
+    .from('legacy_preset_summaries')
+    .select(LEGACY_PRESET_SUMMARY_SELECT)
+    .eq('visibility', 'featured')
     .order('plays', { ascending: false })
     .limit(10);
 
@@ -153,7 +340,9 @@ export async function fetchFeaturedPresets(): Promise<CloudPresetSummary[]> {
     return [];
   }
 
-  return (data ?? []) as unknown as CloudPresetSummary[];
+  const summaries = ((data ?? []) as unknown as LegacyCloudPresetSummaryRow[]).map(legacySummaryToCloudPresetSummary);
+  writeCloudPresetListCache(cacheKey, summaries);
+  return cloneCloudPresetSummaries(summaries);
 }
 
 /**
@@ -162,13 +351,16 @@ export async function fetchFeaturedPresets(): Promise<CloudPresetSummary[]> {
 export async function searchCloudPresets(query: string): Promise<CloudPresetSummary[]> {
   const client = getSupabase();
   if (!client) return [];
-  if (isSupabaseEgressListRefreshPaused()) return [];
   const searchTerm = sanitizePostgrestSearchTerm(query);
   if (!searchTerm) return fetchCloudPresets(30);
+  const cacheKey = `search:${searchTerm}`;
+  const cached = readCloudPresetListCache(cacheKey);
+  if (cached) return cached;
+  if (isSupabaseEgressListRefreshPaused()) return [];
 
   const { data, error } = await client
-    .from('presets')
-    .select(CLOUD_PRESET_SUMMARY_SELECT)
+    .from('legacy_preset_summaries')
+    .select(LEGACY_PRESET_SUMMARY_SELECT)
     .or(`name.ilike.%${searchTerm}%,author.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
     .order('plays', { ascending: false })
     .limit(30);
@@ -178,7 +370,9 @@ export async function searchCloudPresets(query: string): Promise<CloudPresetSumm
     return [];
   }
 
-  return (data ?? []) as unknown as CloudPresetSummary[];
+  const summaries = ((data ?? []) as unknown as LegacyCloudPresetSummaryRow[]).map(legacySummaryToCloudPresetSummary);
+  writeCloudPresetListCache(cacheKey, summaries);
+  return cloneCloudPresetSummaries(summaries);
 }
 
 /**
@@ -189,25 +383,33 @@ export async function saveCloudPreset(preset: CloudPresetInsert): Promise<CloudP
   if (!client) return null;
   await ensureCloudAnonymousSession(client);
 
-  const { data, error } = await client
-    .from('presets')
-    .insert({
+  const { data, error } = await client.rpc('kessho_save_legacy_preset', {
+    preset_payload: {
       name: preset.name.trim(),
       author: preset.author.trim() || 'Anonymous',
       description: preset.description?.trim() || '',
-      data: preset.data,
       plays: 0,
-      is_featured: false,
-    })
-    .select(CLOUD_PRESET_DETAIL_SELECT)
-    .single();
+      visibility: 'public',
+      library: 'cloud',
+      creator: 'Anonymous',
+      tags: [],
+      versions: [{
+        v: 1,
+        note: '',
+        timestamp: Date.now(),
+        data: preset.data,
+      }],
+      current_version: 1,
+    },
+  });
 
   if (error) {
     console.error('Error saving preset:', error);
     throw new Error(error.message);
   }
 
-  return data as unknown as CloudPreset;
+  clearCloudPresetListCache();
+  return data ? legacyDetailToCloudPreset(data as unknown as LegacyCloudPresetDetailRow) : null;
 }
 
 /**
@@ -232,16 +434,8 @@ export async function fetchPresetById(id: string): Promise<CloudPreset | null> {
   const client = getSupabase();
   if (!client) return null;
 
-  const { data, error } = await client
-    .from('presets')
-    .select(CLOUD_PRESET_DETAIL_SELECT)
-    .eq('id', id)
-    .single();
-
-  if (error) {
-    console.error('Error fetching preset:', error);
-    return null;
-  }
-
-  return data as unknown as CloudPreset;
+  await ensureCloudAnonymousSession(client);
+  const rpcPreset = await fetchPresetByIdRpc(client, id);
+  if (rpcPreset !== undefined) return rpcPreset;
+  return null;
 }

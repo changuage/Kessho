@@ -20,6 +20,7 @@ export const kesshoCoreSourceFiles = Object.freeze([
   'cpp/KesshoCore/src/product/sources/ProductSources.cpp',
   'cpp/KesshoCore/src/product/sources/SourceTargets.cpp',
   'cpp/KesshoCore/src/product/sources/SourcePresetEvents.cpp',
+  'cpp/KesshoCore/src/product/sources/SourcePresetEndpointOverrides.cpp',
   'cpp/KesshoCore/src/product/sources/SourcePresetMorphRuntime.cpp',
   'cpp/KesshoCore/src/product/sources/SourcePresetMorphSelector.cpp',
   'cpp/KesshoCore/src/product/sources/SourceOverrideEvents.cpp',

@@ -798,6 +798,8 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthEuclidTensionMode:      { level: 1, scope: 'synthEuclidean' },
   synthEuclidTensionValue:     { level: 1, scope: 'synthEuclidean' },
   synthChordSequencerEnabled:  { level: 1, scope: 'synthEuclidean' },
+  synthChordSequencerSource:   { level: 1, scope: 'synthEuclidean' },
+  synthChordSequencerVoiceCount: { level: 1, scope: 'synthEuclidean' },
   // Lane 1 (10)
   synthEuclid1Enabled:     { level: 1, scope: 'synthEuclidean' },
   synthEuclid1Preset:      { level: 1, scope: 'synthEuclidean' },
@@ -809,6 +811,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthEuclid1Level:       { level: 1, scope: 'synthEuclidean' },
   synthEuclid1Probability: { level: 1, scope: 'synthEuclidean' },
   synthEuclid1Source:      { level: 1, scope: 'synthEuclidean' },
+  synthEuclid1VoiceMask:   { level: 1, scope: 'synthEuclidean' },
   // Lane 2 (10)
   synthEuclid2Enabled:     { level: 1, scope: 'synthEuclidean' },
   synthEuclid2Preset:      { level: 1, scope: 'synthEuclidean' },
@@ -820,6 +823,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthEuclid2Level:       { level: 1, scope: 'synthEuclidean' },
   synthEuclid2Probability: { level: 1, scope: 'synthEuclidean' },
   synthEuclid2Source:      { level: 1, scope: 'synthEuclidean' },
+  synthEuclid2VoiceMask:   { level: 1, scope: 'synthEuclidean' },
   // Lane 3 (10)
   synthEuclid3Enabled:     { level: 1, scope: 'synthEuclidean' },
   synthEuclid3Preset:      { level: 1, scope: 'synthEuclidean' },
@@ -831,6 +835,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthEuclid3Level:       { level: 1, scope: 'synthEuclidean' },
   synthEuclid3Probability: { level: 1, scope: 'synthEuclidean' },
   synthEuclid3Source:      { level: 1, scope: 'synthEuclidean' },
+  synthEuclid3VoiceMask:   { level: 1, scope: 'synthEuclidean' },
   // Lane 4 (10)
   synthEuclid4Enabled:     { level: 1, scope: 'synthEuclidean' },
   synthEuclid4Preset:      { level: 1, scope: 'synthEuclidean' },
@@ -842,6 +847,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthEuclid4Level:       { level: 1, scope: 'synthEuclidean' },
   synthEuclid4Probability: { level: 1, scope: 'synthEuclidean' },
   synthEuclid4Source:      { level: 1, scope: 'synthEuclidean' },
+  synthEuclid4VoiceMask:   { level: 1, scope: 'synthEuclidean' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Drum Sub Engine (10 params)
@@ -1370,7 +1376,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1139) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1139`);
+  if (count !== 1145) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1145`);
   }
 }

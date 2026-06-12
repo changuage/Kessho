@@ -66,6 +66,7 @@
       }
       if (source_id != KESSHO_PRODUCT_SOURCE_PAD1 && source_id != KESSHO_PRODUCT_SOURCE_PAD2) {
         lane.target_pad_voice_index = kPadVoiceNoPreference;
+        lane.target_pad_voice_mask = 0u;
       }
       break;
     }
@@ -118,6 +119,9 @@
       lane.target_pad_voice_index = pad_lane
           ? padVoiceIndexFromEncodedSeed(seed)
           : kPadVoiceNoPreference;
+      lane.target_pad_voice_mask = pad_lane
+          ? padVoiceMaskFromEncodedSeed(seed)
+          : 0u;
       const uint32_t decoded_seed = lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM
           ? laneSeedFromEncodedDrumVoiceMask(seed)
           : (pad_lane ? laneSeedFromEncodedPadVoice(seed) : seed);

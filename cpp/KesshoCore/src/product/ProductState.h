@@ -35,6 +35,10 @@ struct KesshoProductEngine : ProductGraphState {
   uint32_t drum_lane_count = 8;
   AssetSlot assets[kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS]{};
   Voice voices[kessho::product::generated::KESSHO_PRODUCT_MAX_VOICES]{};
+  uint16_t active_voice_indices[kessho::product::generated::KESSHO_PRODUCT_MAX_VOICES]{};
+  uint32_t active_voice_count = 0u;
+  uint32_t active_source_mask = 0u;
+  bool active_voice_list_dirty = true;
   ModulationRange modulation_ranges[kMaxModulationRanges]{};
   uint32_t active_modulation_range_count = 0u;
   uint32_t source_modulation_param_masks[kSourceCount]{};
@@ -124,6 +128,8 @@ struct KesshoProductEngine : ProductGraphState {
   float master_true_peak_prev_r = 0.0f;
   double master_integrated_loudness_energy = 0.0;
   uint64_t master_integrated_loudness_frames = 0;
+  uint32_t master_telemetry_block_counter = 0u;
+  bool drum_module_trigger_pending = false;
   FxState fx{};
   RoutingState routing{};
   uint32_t rng_seed = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
@@ -302,6 +308,7 @@ struct KesshoProductEngine : ProductGraphState {
   bool drumRuntimeParamModulated(uint32_t drum_voice, uint32_t param_index) const;
   void applyModulationRangeEvent(const KesshoProductEvent& event);
   void applySourcePresetEvent(const KesshoProductEvent& event);
+  void clearEndpointStructuredOverridesForPresetChange(SourceState& source, uint32_t source_id, uint32_t endpoint_index);
   bool activeSequencerMorphForPresetSource(uint32_t source_id, uint32_t drum_voice, float& morph) const;
   bool activeSequencerDistanceForPresetSource(uint32_t source_id, uint32_t drum_voice, float& distance) const;
   bool activeSequencerExpressionForPresetSource(uint32_t source_id, uint32_t drum_voice, float& expression) const;
@@ -372,6 +379,8 @@ struct KesshoProductEngine : ProductGraphState {
   bool pianoAssetRootMidi(uint32_t asset_id, float& out_midi, bool* out_short_variant = nullptr) const;
   uint32_t findPianoAssetSlot(float midi_note, float velocity, float& out_root_midi) const;
   uint32_t allocateVoice();
+  void markActiveVoiceListDirty();
+  void rebuildActiveVoiceList();
   bool hasActiveSourceVoice(uint32_t source_id) const;
   bool soundscapeWantsAsset(const SourceState& source, uint32_t asset_id) const;
   float soundscapeAssetRefLevel(const SourceState& source, uint32_t asset_id) const;
@@ -538,6 +547,7 @@ struct KesshoProductEngine : ProductGraphState {
   void renderDrumModule(float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void configureSoundscapesModuleFromSource();
   void renderSoundscapesModule(float* out_l, float* out_r, uint32_t start, uint32_t frames);
+  uint32_t computeActiveModuleMask() const;
   void renderProductModules(float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void mixFxBuffer(
       const float* in_l,
@@ -574,6 +584,10 @@ struct KesshoProductEngine : ProductGraphState {
   void renderDegradeSend(float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void renderDynamics(float* out_l, float* out_r, uint32_t frames);
   void applyMaster(float* out_l, float* out_r, uint32_t frames);
+  void clearAudioOutput(float* out_l, float* out_r, uint32_t frames);
+  void clearStemOutput(uint32_t frames);
+  void clearBusOutput(uint32_t frames);
+  void clearGraphTapOutput(uint32_t frames);
   void clearOutput(float* out_l, float* out_r, uint32_t frames);
   void advanceJourney(uint32_t frames);
   void render(float* out_l, float* out_r, uint32_t frames);

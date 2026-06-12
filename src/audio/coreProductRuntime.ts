@@ -20,6 +20,8 @@ const CORE_PRODUCT_VISUAL_TELEMETRY_INTERVAL_MS = 33;
 const CORE_PRODUCT_RUNTIME_ASSET_VERSION = String(Date.now());
 const CORE_PRODUCT_RUNTIME_ASSET_RETRY_COUNT = 2;
 const SNAPSHOT_APPLIED_TIMEOUT_MS = 1000;
+const CORE_PRODUCT_GRAPH_CAPTURE_ALLOWED =
+  import.meta.env.DEV || import.meta.env.VITE_KESSHO_ENABLE_GRAPH_CAPTURE === 'true';
 
 type RuntimeMessage =
   | { type: 'ready' }
@@ -112,6 +114,9 @@ export class CoreProductRuntime {
   private dawOutputDeviceId: string | null = null;
   private readonly pendingSnapshotReceipts = new Map<number, PendingSnapshotReceipt>();
   private readonly graphTapCaptureSessions = new Map<number, GraphTapCaptureSession>();
+  private readonly handleVisibilityChange = (): void => {
+    this.syncVisualTelemetryLoop();
+  };
 
   get audioContext(): AudioContext | null {
     return this.context;
@@ -185,6 +190,7 @@ export class CoreProductRuntime {
       this.configureOutputNode(outputGain);
       this.node = node;
       this.outputGain = outputGain;
+      this.bindVisibilityTelemetrySync();
       if (this.perfMonitorEnabled) {
         node.port.postMessage({ type: 'enablePerf', enabled: true });
       }
@@ -271,6 +277,7 @@ export class CoreProductRuntime {
       window.clearInterval(this.visualTelemetryTimer);
       this.visualTelemetryTimer = null;
     }
+    this.unbindVisibilityTelemetrySync();
     this.node?.disconnect();
     this.outputGain?.disconnect();
     this.mediaStreamDest?.disconnect();
@@ -398,6 +405,7 @@ export class CoreProductRuntime {
   }
 
   startGraphTapCapture(tapId: number, chunkFrames: number): void {
+    this.assertGraphCaptureAllowed();
     const node = this.requireNode('startGraphTapCapture');
     const normalizedTapId = this.normalizeGraphTapId(tapId);
     const normalizedChunkFrames = Math.max(128, Math.round(chunkFrames || 4096));
@@ -493,7 +501,11 @@ export class CoreProductRuntime {
     wasmBinary: ArrayBuffer,
     wasmUrl: string,
   ): AudioWorkletNode {
-    const processorOptions = { wasmBinary, wasmUrl };
+    const processorOptions = {
+      wasmBinary,
+      wasmUrl,
+      graphCaptureAllowed: CORE_PRODUCT_GRAPH_CAPTURE_ALLOWED,
+    };
     const multichannelOptions: AudioWorkletNodeOptions = {
       numberOfInputs: 0,
       numberOfOutputs: 1,
@@ -613,6 +625,7 @@ export class CoreProductRuntime {
   }
 
   private async requestGraphTapFlush(tapId: number, stopped: boolean): Promise<CoreProductGraphTapCaptureChunk[]> {
+    this.assertGraphCaptureAllowed();
     const node = this.requireNode(stopped ? 'stopGraphTapCapture' : 'flushGraphTapCapture');
     const normalizedTapId = this.normalizeGraphTapId(tapId);
     const session = this.graphTapCaptureSessions.get(normalizedTapId);
@@ -645,16 +658,15 @@ export class CoreProductRuntime {
   }
 
   private syncVisualTelemetryLoop(): void {
-    if (!this.visualTelemetryActive || !this.node) {
-      if (this.visualTelemetryTimer !== null) {
-        window.clearInterval(this.visualTelemetryTimer);
-        this.visualTelemetryTimer = null;
-      }
+    if (this.visualTelemetryTimer !== null) {
+      window.clearInterval(this.visualTelemetryTimer);
+      this.visualTelemetryTimer = null;
+    }
+    if (!this.visualTelemetryActive || !this.node || !this.isDocumentVisible()) {
       return;
     }
-    if (this.visualTelemetryTimer !== null) return;
     const requestVisualTelemetry = () => {
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (!this.isDocumentVisible()) return;
       this.node?.port.postMessage({
         type: 'request-visual-telemetry',
         includeGranularWaveform: this.granularWaveformTelemetryActive,
@@ -662,5 +674,25 @@ export class CoreProductRuntime {
     };
     requestVisualTelemetry();
     this.visualTelemetryTimer = window.setInterval(requestVisualTelemetry, CORE_PRODUCT_VISUAL_TELEMETRY_INTERVAL_MS);
+  }
+
+  private assertGraphCaptureAllowed(): void {
+    if (!CORE_PRODUCT_GRAPH_CAPTURE_ALLOWED) {
+      throw new Error('Core Product graph capture is disabled in this build.');
+    }
+  }
+
+  private isDocumentVisible(): boolean {
+    return typeof document === 'undefined' || document.visibilityState === 'visible';
+  }
+
+  private bindVisibilityTelemetrySync(): void {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+  }
+
+  private unbindVisibilityTelemetrySync(): void {
+    if (typeof document === 'undefined') return;
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
   }
 }

@@ -157,6 +157,7 @@ uint32_t compiledSourceHash(const kessho::product::internal::SourceState& source
   master_true_peak_prev_r = 0.0f;
   master_integrated_loudness_energy = 0.0;
   master_integrated_loudness_frames = 0;
+  master_telemetry_block_counter = 0u;
   telemetry.master_true_peak = 0.0f;
   telemetry.master_true_peak_dbtp = kProductTelemetrySilenceDb;
   telemetry.master_integrated_lufs = kProductTelemetrySilenceDb;

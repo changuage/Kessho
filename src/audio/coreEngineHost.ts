@@ -67,6 +67,7 @@ import { computeGranularMacroModel } from './granularMacroModel';
 import { getPadPreset, morphPadPresets, PAD1_TO_PAD2_KEY } from './padPresets';
 import { normalizeSynthEuclidSource } from './coreProductSourceMapping';
 import { createHarmonyState, getEffectiveTension, updateHarmonyState, type HarmonyParams, type HarmonyState } from './harmony';
+import { chordIntervalSecondsFromState, resolveChordsPerPhrase } from './chordPhraseTiming';
 import { computeSeed, createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange, midiToFreq } from './scales';
 import {
@@ -581,7 +582,9 @@ function createPadPostChainConfig(sliderState: SliderState): Pick<
 
 const PAD_MODULE_PARAM_COUNT = 108;
 const PAD_PARAMS_PER_PAD = 53;
-const PAD_VOICE_COUNT = 6;
+const PAD_VOICE_COUNT = 8;
+const PAD_VOICE_MASK_ALL = (1 << PAD_VOICE_COUNT) - 1;
+const PAD_VOICE_DEFAULT_MASK = 1 << (PAD_VOICE_COUNT - 1);
 const PAD_PREVIEW_FALLBACK_PRESET = 'saturated_drift';
 const REVERB_MODULE_PARAM_COUNT = 31;
 const DELAY_A_MODULE_PARAM_COUNT = 16;
@@ -1250,12 +1253,29 @@ function coreSynthEuclidSource(state: Record<string, unknown>, lane: 1 | 2 | 3 |
 }
 
 function isCoreSynthPadSource(source: string): boolean {
-  return source === 'pad1' || source === 'pad2' || /^synth[1-6]$/.test(source);
+  return source === 'pad1' || source === 'pad2' || /^synth[1-8]$/.test(source);
 }
 
 function coreSynthPadVoiceIndex(source: string): number {
   if (!source.startsWith('synth')) return 0;
   return boundedInteger(Number.parseInt(source.replace('synth', ''), 10), 1, 1, PAD_VOICE_COUNT) - 1;
+}
+
+function coreSynthPadVoiceMask(state: Record<string, unknown>, lane: 1 | 2 | 3 | 4, source: string): number {
+  if (source === 'pad1' || source === 'pad2') {
+    const mask = boundedInteger(state[`synthEuclid${lane}VoiceMask`], PAD_VOICE_DEFAULT_MASK, 0, PAD_VOICE_MASK_ALL) & PAD_VOICE_MASK_ALL;
+    return mask !== 0 ? mask : PAD_VOICE_DEFAULT_MASK;
+  }
+  if (!source.startsWith('synth')) return 0;
+  return 1 << coreSynthPadVoiceIndex(source);
+}
+
+function corePadVoiceIndexFromMask(mask: number, hitCount: number): number {
+  const voices = Array.from({ length: PAD_VOICE_COUNT }, (_, index) => index)
+    .filter((index) => (mask & (1 << index)) !== 0);
+  if (voices.length === 0) return 0;
+  const normalized = ((Math.trunc(hitCount) % voices.length) + voices.length) % voices.length;
+  return voices[normalized] ?? voices[0] ?? 0;
 }
 
 function coreSynthSourceUsesPad2(source: string, pad2Assign: number): boolean {
@@ -1334,7 +1354,7 @@ function coreSynthEuclidPadVoiceMask(state: Record<string, unknown>): number {
     if (!booleanValue(state[`synthEuclid${lane}Enabled`], laneIndex === 0)) continue;
     const source = coreSynthEuclidSource(state, lane);
     if (!isCoreSynthPadSource(source)) continue;
-    mask |= 1 << coreSynthPadVoiceIndex(source);
+    mask |= coreSynthPadVoiceMask(state, lane, source);
   }
   return mask;
 }
@@ -1474,7 +1494,7 @@ function createCorePreviewHarmonyState(sliderState: SliderState): HarmonyState {
   return createHarmonyState(
     `${bucket}|E_ROOT`,
     boundedNumber(sliderState.tension, 0.3, 0, 1),
-    boundedNumber(sliderState.chordRate, 32, 1, 128),
+    chordIntervalSecondsFromState(sliderState.chordRate, phraseSeconds),
     boundedNumber(sliderState.voicingSpread, 0.5, 0, 1),
     boundedNumber(sliderState.detune, 8, 0, 50),
     sliderState.scaleMode === 'manual' ? 'manual' : 'auto',
@@ -1500,12 +1520,7 @@ function getCoreHarmonyPhraseSeconds(sliderState: SliderState): number {
 
 function getCoreHarmonyTickSeconds(sliderState: SliderState): number {
   const phraseSeconds = getCoreHarmonyPhraseSeconds(sliderState);
-  const chordRateSeconds = boundedNumber(sliderState.chordRate, 32, 1, 128);
-  if (chordRateSeconds < phraseSeconds) {
-    const chordsPerPhrase = Math.max(2, Math.round(phraseSeconds / chordRateSeconds));
-    return phraseSeconds / chordsPerPhrase;
-  }
-  return phraseSeconds;
+  return chordIntervalSecondsFromState(sliderState.chordRate, phraseSeconds);
 }
 
 const CORE_PAD_CHORD_ENVELOPE_SAFETY_SECONDS = 0.05;
@@ -1559,11 +1574,7 @@ function getCoreHarmonyInitialChordLeadSeconds(
 
 function getCoreHarmonyPreviewTickCount(sliderState: SliderState): number {
   const phraseSeconds = getCoreHarmonyPhraseSeconds(sliderState);
-  const chordRateSeconds = boundedNumber(sliderState.chordRate, 32, 1, 128);
-  const chordsPerPhrase = chordRateSeconds < phraseSeconds
-    ? Math.max(2, Math.round(phraseSeconds / chordRateSeconds))
-    : 1;
-  const phrasesPerChord = Math.max(1, Math.round(chordRateSeconds / phraseSeconds));
+  const chordsPerPhrase = resolveChordsPerPhrase(sliderState.chordRate, phraseSeconds);
   const progressionSteps = sliderState.chordProgressionEnabled
     ? Math.max(1, boundedInteger(sliderState.chordProgressionSteps, 4, 1, 16)) *
       Math.max(1, boundedInteger(sliderState.chordProgressionPhraseMultiplier, 1, 1, 8))
@@ -1572,7 +1583,7 @@ function getCoreHarmonyPreviewTickCount(sliderState: SliderState): number {
     ? Math.max(1, boundedInteger(sliderState.cofDriftRate, 2, 1, 32)) *
       Math.max(2, boundedInteger(sliderState.cofDriftRange, 3, 1, 6) * 2)
     : 1;
-  const phraseSpan = clamp(Math.max(4, phrasesPerChord * 4, progressionSteps, driftPhrases), 4, 64);
+  const phraseSpan = clamp(Math.max(4, progressionSteps, driftPhrases), 4, 64);
   return clamp(Math.ceil(phraseSpan * chordsPerPhrase), 2, 128);
 }
 
@@ -1591,7 +1602,7 @@ function advanceCorePreviewHarmonyState(
     corePreviewHarmonySeedMaterial(sliderState),
     phraseIndex,
     boundedNumber(sliderState.tension, 0.3, 0, 1),
-    boundedNumber(sliderState.chordRate, 32, 1, 128),
+    chordIntervalSecondsFromState(sliderState.chordRate, phraseSeconds),
     boundedNumber(sliderState.voicingSpread, 0.5, 0, 1),
     boundedNumber(sliderState.detune, 8, 0, 50),
     sliderState.scaleMode === 'manual' ? 'manual' : 'auto',
@@ -1615,7 +1626,7 @@ function createPadPreviewVoiceDelays(sliderState: SliderState, seedSuffix = ''):
   const waveSpreadSeconds =
     boundedNumber(sliderState.waveSpread, 0.125, 0, 1) *
     getCoreHarmonyTickSeconds(sliderState);
-  return Array.from({ length: 6 }, () => rng() * waveSpreadSeconds).sort((a, b) => a - b);
+  return Array.from({ length: PAD_VOICE_COUNT }, () => rng() * waveSpreadSeconds).sort((a, b) => a - b);
 }
 
 function createPadPreviewChordNotes(
@@ -1629,32 +1640,53 @@ function createPadPreviewChordNotes(
   const fallbackRootMidi = 48 + fallbackRoot;
   const fallbackFrequencies = [0, 7, 10, 14, 17, 24].map((interval) => midiToFreq(fallbackRootMidi + interval));
   const frequencies = rawFrequencies.length > 0 ? rawFrequencies : fallbackFrequencies;
-  const pad2Assign = booleanValue(state.pad2Enabled, false)
-    ? boundedInteger(state.pad2VoiceAssign, 0, 0, 63)
-    : 0;
+  const source = String(state.synthChordSequencerSource ?? 'both').trim().toLowerCase();
+  if (source === 'lead1' || source === 'lead' || source === 'lead2' || source === 'piano') return [];
+  const voiceCount = boundedInteger(state.synthChordSequencerVoiceCount, 6, 1, PAD_VOICE_COUNT);
+  const pad2Assign = boundedInteger(state.pad2VoiceAssign, 0, 0, PAD_VOICE_MASK_ALL) & PAD_VOICE_MASK_ALL;
   const euclidVoiceMask = coreSynthEuclidPadVoiceMask(state);
-  const voiceMask = boundedInteger(state.synthVoiceMask, 63, 1, 63) & ~pad2Assign & ~euclidVoiceMask;
-  if (voiceMask === 0) return [];
-  const enabledFrequencies = frequencies
-    .slice(0, 6)
-    .filter((_, index) => (voiceMask & (1 << index)) !== 0);
-  const frequencyPool = enabledFrequencies.length > 0 ? enabledFrequencies : [frequencies[0] ?? midiToFreq(fallbackRootMidi)];
+  const availableMask = (boundedInteger(state.synthVoiceMask, 63, 0, PAD_VOICE_MASK_ALL) & PAD_VOICE_MASK_ALL) & ~euclidVoiceMask;
+  const limitVoiceMask = (mask: number, count: number): number => {
+    let selected = 0;
+    let limited = 0;
+    for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT && selected < count; voiceIndex += 1) {
+      const bit = 1 << voiceIndex;
+      if ((mask & bit) === 0) continue;
+      limited |= bit;
+      selected += 1;
+    }
+    return limited;
+  };
+  let selectedMask = 0;
+  if (source === 'pad1' || source === 'pad') {
+    const eligible = availableMask & ~pad2Assign;
+    selectedMask = limitVoiceMask(eligible !== 0 ? eligible : availableMask, voiceCount);
+  } else if (source === 'pad2') {
+    const eligible = availableMask & pad2Assign;
+    selectedMask = limitVoiceMask(eligible !== 0 ? eligible : availableMask, voiceCount);
+  } else {
+    selectedMask = limitVoiceMask(availableMask, voiceCount);
+  }
+  if (selectedMask === 0) return [];
   const delays = createPadPreviewVoiceDelays(sliderState, seedSuffix);
   const triggerIntervalSeconds = getCoreHarmonyTickSeconds(sliderState);
   const notes: PreviewNote[] = [];
 
-  for (let route = 0; route < 6; route += 1) {
-    if ((voiceMask & (1 << route)) === 0) continue;
+  for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT; voiceIndex += 1) {
+    const bit = 1 << voiceIndex;
+    if ((selectedMask & bit) === 0) continue;
+    const isPad2 = source === 'pad2' || (source === 'both' && (pad2Assign & bit) !== 0);
+    const route = voiceIndex + (isPad2 ? PAD_VOICE_COUNT : 0);
     let enabledIndex = 0;
-    for (let index = 0; index < route; index += 1) {
-      if ((voiceMask & (1 << index)) !== 0) enabledIndex += 1;
+    for (let index = 0; index < voiceIndex; index += 1) {
+      if ((selectedMask & (1 << index)) !== 0) enabledIndex += 1;
     }
     notes.push({
-      frequency: frequencyPool[enabledIndex % frequencyPool.length] ?? frequencyPool[0] ?? midiToFreq(69),
+      frequency: frequencies[enabledIndex % frequencies.length] ?? frequencies[0] ?? midiToFreq(69),
       velocity: clamp(velocity, 0.05, 1),
       route,
-      delaySeconds: delays[route] ?? 0,
-      holdSeconds: corePadEnvelopeGateSeconds(sliderState, 'pad1', delays[route] ?? 0, triggerIntervalSeconds),
+      delaySeconds: delays[voiceIndex] ?? 0,
+      holdSeconds: corePadEnvelopeGateSeconds(sliderState, isPad2 ? 'pad2' : 'pad1', delays[voiceIndex] ?? 0, triggerIntervalSeconds),
     });
   }
 
@@ -1746,9 +1778,7 @@ function createSynthEuclidPreview(
   const beatSeconds = 60 / (bpm * tempo);
   const rng = createRng(`${bucket}|E_ROOT|core-synth-euclid`);
   const stepOverrides = runtime.stepOverrides;
-  const pad2Assign = booleanValue(state.pad2Enabled, false)
-    ? boundedInteger(state.pad2VoiceAssign, 0, 0, 63)
-    : 0;
+  const pad2Assign = boundedInteger(state.pad2VoiceAssign, 0, 0, PAD_VOICE_MASK_ALL) & PAD_VOICE_MASK_ALL;
   const padNotes: CoreSynthEuclidGeneratedNote[] = [];
   const leadNotes: CoreSynthEuclidGeneratedNote[] = [];
   const pianoNotes: CoreSynthEuclidGeneratedNote[] = [];
@@ -1901,7 +1931,7 @@ function createSynthEuclidPreview(
           );
 
           if (isCoreSynthPadSource(source)) {
-            const voiceIndex = coreSynthPadVoiceIndex(source);
+            const voiceIndex = corePadVoiceIndexFromMask(coreSynthPadVoiceMask(state, lane, source), hitPhase);
             const isPad2 = coreSynthSourceUsesPad2(source, pad2Assign);
             const attack = boundedNumber(isPad2 ? state.pad2Attack : state.synthAttack, 0.1, 0, 10);
             const decay = boundedNumber(isPad2 ? state.pad2Decay : state.synthDecay, 0.3, 0, 10);
@@ -2059,9 +2089,6 @@ function createLeadRandomPreview(
         ? boundedInteger(sliderState.chordProgressionSteps, 4, 1, 16) *
           boundedInteger(sliderState.chordProgressionPhraseMultiplier, 1, 1, 8)
         : 1,
-      boundedNumber(sliderState.chordRate, 32, 1, 128) > phraseSeconds
-        ? Math.round(boundedNumber(sliderState.chordRate, 32, 1, 128) / phraseSeconds) * 4
-        : 4,
     ),
     4,
     64,
@@ -2081,7 +2108,7 @@ function createLeadRandomPreview(
         corePreviewHarmonySeedMaterial(sliderState),
         phraseIndex,
         boundedNumber(sliderState.tension, 0.3, 0, 1),
-        boundedNumber(sliderState.chordRate, 32, 1, 128),
+        chordIntervalSecondsFromState(sliderState.chordRate, getCoreHarmonyPhraseSeconds(sliderState)),
         boundedNumber(sliderState.voicingSpread, 0.5, 0, 1),
         boundedNumber(sliderState.detune, 8, 0, 50),
         sliderState.scaleMode === 'manual' ? 'manual' : 'auto',
@@ -2294,9 +2321,9 @@ function createPadPreviewSource(
 
 function getManualPadVoicePool(source: 'pad1' | 'pad2', sliderState: SliderState): number[] {
   const state = sliderState as unknown as Record<string, unknown>;
-  const voiceMask = Math.max(1, boundedInteger(state.synthVoiceMask, 63, 1, 63) & 63);
-  const pad2Assign = boundedInteger(state.pad2VoiceAssign, 0, 0, 63) & 63;
-  const enabledVoices = Array.from({ length: 6 }, (_, index) => index)
+  const voiceMask = boundedInteger(state.synthVoiceMask, 63, 0, PAD_VOICE_MASK_ALL) & PAD_VOICE_MASK_ALL;
+  const pad2Assign = boundedInteger(state.pad2VoiceAssign, 0, 0, PAD_VOICE_MASK_ALL) & PAD_VOICE_MASK_ALL;
+  const enabledVoices = Array.from({ length: PAD_VOICE_COUNT }, (_, index) => index)
     .filter((index) => (voiceMask & (1 << index)) !== 0);
   const preferredVoices = enabledVoices.filter((index) => {
     const assignedToPad2 = (pad2Assign & (1 << index)) !== 0;
@@ -2318,12 +2345,13 @@ function applyManualPadVoiceRoute(
 ): SliderState {
   const state = { ...(sliderState as unknown as Record<string, unknown>) };
   const voiceBit = 1 << clamp(voiceIndex, 0, PAD_VOICE_COUNT - 1);
+  state.synthVoiceMask = (boundedInteger(state.synthVoiceMask, 63, 0, PAD_VOICE_MASK_ALL) | voiceBit) & PAD_VOICE_MASK_ALL;
   if (source === 'pad2') {
     state.pad2Enabled = true;
-    state.pad2VoiceAssign = (boundedInteger(state.pad2VoiceAssign, 0, 0, 63) | voiceBit) & 63;
+    state.pad2VoiceAssign = (boundedInteger(state.pad2VoiceAssign, 0, 0, PAD_VOICE_MASK_ALL) | voiceBit) & PAD_VOICE_MASK_ALL;
   } else {
     state.padEnabled = true;
-    state.pad2VoiceAssign = boundedInteger(state.pad2VoiceAssign, 0, 0, 63) & ~voiceBit;
+    state.pad2VoiceAssign = boundedInteger(state.pad2VoiceAssign, 0, 0, PAD_VOICE_MASK_ALL) & ~voiceBit;
   }
   return state as unknown as SliderState;
 }
@@ -2340,12 +2368,13 @@ function createManualPadSourceConfig(
     ? clamp(voiceIndexOverride, 0, PAD_VOICE_COUNT - 1)
     : pickManualPadVoice(source, effectiveState);
   const voiceBit = 1 << voiceIndex;
+  state.synthVoiceMask = (boundedInteger(state.synthVoiceMask, 63, 0, PAD_VOICE_MASK_ALL) | voiceBit) & PAD_VOICE_MASK_ALL;
   if (source === 'pad2') {
     state.pad2Enabled = true;
-    state.pad2VoiceAssign = (boundedInteger(state.pad2VoiceAssign, 0, 0, 63) | voiceBit) & 63;
+    state.pad2VoiceAssign = (boundedInteger(state.pad2VoiceAssign, 0, 0, PAD_VOICE_MASK_ALL) | voiceBit) & PAD_VOICE_MASK_ALL;
   } else {
     state.padEnabled = true;
-    state.pad2VoiceAssign = boundedInteger(state.pad2VoiceAssign, 0, 0, 63) & ~voiceBit;
+    state.pad2VoiceAssign = boundedInteger(state.pad2VoiceAssign, 0, 0, PAD_VOICE_MASK_ALL) & ~voiceBit;
   }
 
   const routedState = state as unknown as SliderState;
@@ -2551,11 +2580,11 @@ function createLeadMorphedParams(
     ? 'presetA'
     : 'snap';
   const useCustomAdsr = booleanValue(state[isLead2 ? 'lead2UseCustomAdsr' : 'lead1UseCustomAdsr'], false);
-  const attack = boundedNumber(state[isLead2 ? 'lead2Attack' : 'lead1Attack'], 0.01, 0, 10);
-  const decay = boundedNumber(state[isLead2 ? 'lead2Decay' : 'lead1Decay'], 0.8, 0, 10);
+  const attack = boundedNumber(state[isLead2 ? 'lead2Attack' : 'lead1Attack'], 0.01, 0.001, 16);
+  const decay = boundedNumber(state[isLead2 ? 'lead2Decay' : 'lead1Decay'], 0.8, 0.01, 8);
   const sustain = boundedNumber(state[isLead2 ? 'lead2Sustain' : 'lead1Sustain'], 0.3, 0, 1);
-  const hold = boundedNumber(state[isLead2 ? 'lead2Hold' : 'lead1Hold'], 0.5, 0, 4);
-  const release = boundedNumber(state[isLead2 ? 'lead2Release' : 'lead1Release'], 2, 0, 20);
+  const hold = boundedNumber(state[isLead2 ? 'lead2Hold' : 'lead1Hold'], 0.5, 0, 20);
+  const release = boundedNumber(state[isLead2 ? 'lead2Release' : 'lead1Release'], 2, 0.01, 30);
   const baseMorphed = morphPresets(presetA, presetB, morphT, algorithmMode);
   const morphed = useCustomAdsr
     ? { ...baseMorphed, attack, decay, sustain, release }
@@ -5601,11 +5630,11 @@ export class CoreEngineHost {
       nowWallSec,
     );
 
-    const chordRateSeconds = boundedNumber(state.chordRate, 32, 1, 128);
-    const nextHarmonyEventIn = chordRateSeconds < phraseSeconds
+    const chordsPerPhrase = resolveChordsPerPhrase(state.chordRate, phraseSeconds);
+    const nextHarmonyEventIn = chordsPerPhrase > 1
       ? getTimeUntilNextBoundaryWall(
         clockSource,
-        phraseSeconds / Math.max(2, Math.round(phraseSeconds / chordRateSeconds)),
+        phraseSeconds / chordsPerPhrase,
         anchors,
         nowWallSec,
       )

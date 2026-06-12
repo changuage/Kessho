@@ -2,7 +2,7 @@
  * Pad Synth Preset System
  *
  * Each preset captures timbre/synthesis parameters for the pad synth.
- * Performance params (chord rate, voicing spread, wave spread, voice mask, octave,
+ * Performance params (chords per phrase, voicing spread, wave spread, voice mask, octave,
  * synth level, reverb send) are NOT part of presets — they're controlled independently.
  *
  * Presets can be morphed between A/B using linear interpolation for numeric params
@@ -463,24 +463,26 @@ const SYNC_LEAD: PadPreset = {
 
 // ─── Fold Showcase Presets ───
 
-/** Buchla Pluck — short percussive with triangle foldback, great for A/B morphing */
+/** Buchla Pluck — rounded LPG-style triangle fold pluck with slow modular drift */
 const BUCHLA_PLUCK: PadPreset = {
   name: 'Buchla Pluck',
-  tags: ['pluck', 'fold', 'buchla', 'percussive'],
+  tags: ['pluck', 'fold', 'buchla', 'percussive', 'floating'],
   params: {
-    padOscAWave: 'triangle', padOscAOctave: 0, padOscADetune: 0, padOscALevel: 0.6,
-    padOscBWave: 'sine', padOscBOctave: 1, padOscBDetune: 0, padOscBLevel: 0.3,
+    padOscAWave: 'triangle', padOscAOctave: 0, padOscADetune: 0, padOscALevel: 0.58,
+    padOscBWave: 'sine', padOscBOctave: 1, padOscBDetune: 0, padOscBLevel: 0.22,
+    padOscMix: 0.42,
     padSubEnabled: false, padSubOctave: -1, padSubWave: 'sine', padSubLevel: 0.2,
-    padNoiseType: 'white', padNoiseLevel: 0.02,
-    hardness: 0.1, warmth: 0.3, presence: 0.5, padFoldAmount: 0.45, padFoldMode: 0, detune: 0,
-    filterType: 'lowpass', filterCutoffMin: 800, filterCutoffMax: 5000,
-    filterResonance: 0.15, filterQ: 1.2,
+    padNoiseType: 'pink', padNoiseLevel: 0.01,
+    hardness: 0.12, warmth: 0.66, presence: 0.32, padFoldAmount: 0.28, padFoldMode: 0, detune: 1,
+    filterType: 'lowpass', filterCutoffMin: 220, filterCutoffMax: 2400,
+    filterResonance: 0.08, filterQ: 0.85, filterSlope: 12, filterKeyTracking: 0.35,
     padFilterBEnabled: false, padFilterBType: 'highpass', padFilterBCutoff: 100,
     padFilterBResonance: 0.1, padFilterBQ: 0.7, padFilterRouting: 'series',
-    synthAttack: 0.005, synthDecay: 0.35, synthSustain: 0.05, synthRelease: 0.6,
-    padLfo1Rate: 0.5, padLfo1Depth: 0, padLfo1Wave: 'sine', padLfo1Dest: 'none',
-    padModEnvEnabled: true, padModEnvAttack: 0.005, padModEnvDecay: 0.2,
-    padModEnvSustain: 0, padModEnvRelease: 0.3, padModEnvDepth: 0.4, padModEnvDest: 'filterCutoff',
+    synthAttack: 0.003, synthDecay: 0.55, synthSustain: 0, synthHold: 0, synthRelease: 0.18,
+    padLfo1Rate: 0.06, padLfo1Depth: 0.1, padLfo1Wave: 'randomWalk', padLfo1Dest: 'filterCutoff',
+    padLfo2Rate: 0.04, padLfo2Depth: 0.06, padLfo2Wave: 'randomWalk', padLfo2Dest: 'foldAmount',
+    padModEnvEnabled: true, padModEnvAttack: 0.003, padModEnvDecay: 0.22,
+    padModEnvSustain: 0, padModEnvRelease: 0.1, padModEnvDepth: 0.6, padModEnvDest: 'filterCutoff',
   },
 };
 

@@ -191,6 +191,8 @@ public:
     }
     params_cache_valid_ = false;
     applied_random_seed_ = 0u;
+    prepared_random_seed_ = 0u;
+    pending_random_sequence_ready_ = false;
     return true;
   }
 
@@ -200,7 +202,10 @@ public:
       params_cache_valid_ = false;
       commitParams();
       applied_random_seed_ = 0u;
-      applyRandomSeed();
+      prepared_random_seed_ = 0u;
+      pending_random_sequence_ready_ = false;
+      prepareRandomSequence(pending_random_seed_);
+      commitPreparedRandomSequence();
     }
   }
 
@@ -264,39 +269,131 @@ public:
     if (instance_ == nullptr) {
       return;
     }
+    preparePendingRandomSequence();
     if (
         params_cache_valid_ &&
         std::memcmp(params_.data(), committed_params_.data(), params_.size() * sizeof(float)) == 0) {
+      commitPreparedRandomSequence();
       return;
     }
 
-    granular_instance_set_enabled(instance_, params_[kParamEnabled] > 0.5f ? 1 : 0);
-    granular_instance_set_freeze(
-        instance_,
-        params_[kParamFreeze] > 0.5f ? 1 : 0,
-        params_[kParamFreezeWithFeedback] > 0.5f ? 1 : 0);
-    granular_instance_set_dry_wet(instance_, params_[kParamDryWet]);
-    granular_instance_set_feedback(instance_, params_[kParamFeedback], params_[kParamFeedbackLpf]);
-    granular_instance_set_buffer_size(instance_, params_[kParamBufferSeconds]);
-    granular_instance_set_grain_shape(instance_, roundedInt(params_[kParamGrainShape]));
-    granular_instance_set_bus_diffusion(instance_, params_[kParamBusDiffusion]);
-    granular_instance_set_timing_randomness(instance_, params_[kParamTimingRandomness]);
-    granular_instance_set_quality_params(
-        instance_,
-        roundedInt(params_[kExtGlobalParamStart + kExtGlobalQuality]),
-        roundedInt(params_[kExtGlobalParamStart + kExtGlobalMaxGrains]),
-        params_[kExtGlobalParamStart + kExtGlobalSprayMacro],
-        params_[kExtGlobalParamStart + kExtGlobalCloudMacro],
-        params_[kExtGlobalParamStart + kExtGlobalPitchMacro]);
+    const bool full_commit = !params_cache_valid_;
+    const auto changed = [&](int index) -> bool {
+      return full_commit || params_[index] != committed_params_[index];
+    };
+    const auto changed_range = [&](int start, int count) -> bool {
+      if (full_commit) {
+        return true;
+      }
+      for (int index = 0; index < count; ++index) {
+        if (params_[start + index] != committed_params_[start + index]) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const bool globals_changed =
+        changed_range(0, kGlobalParamCount) ||
+        changed_range(kScaleCountParam, 1 + KESSHO_MAX_SCALE_INTERVALS) ||
+        changed_range(kChordCountParam, 1 + KESSHO_MAX_CHORD_PITCHES + 1) ||
+        changed_range(kLegacyParamStart, kLegacyParamCount) ||
+        changed_range(kExtGlobalParamStart, kExtGlobalParamCount);
+
+    uint64_t voice_mode_mask = 0u;
+    uint64_t voice_advanced_mask = 0u;
+    uint64_t voice_position_mask = 0u;
+    uint64_t voice_grain_mask = 0u;
+    uint64_t voice_output_mask = 0u;
+    uint64_t voice_lfo_mask = 0u;
+    uint64_t voice_euclid_mask = 0u;
+    for (int voice = 0; voice < KESSHO_NUM_VOICES; ++voice) {
+      const int base = kVoiceParamStart + voice * kVoiceParamCount;
+      const int ext = kExtVoiceParamStart + voice * kExtVoiceParamCount;
+      const uint64_t bit = 1ull << static_cast<uint32_t>(voice);
+      if (changed(base + kVoiceEnabled) || changed(base + kVoiceMode)) {
+        voice_mode_mask |= bit;
+      }
+      if (changed_range(ext, kExtVoiceParamCount)) {
+        voice_advanced_mask |= bit;
+      }
+      if (changed_range(base + kVoiceSlice, 6)) {
+        voice_position_mask |= bit;
+      }
+      if (changed_range(base + kVoiceDensity, 6)) {
+        voice_grain_mask |= bit;
+      }
+      if (changed_range(base + kVoiceGain, 4)) {
+        voice_output_mask |= bit;
+      }
+      if (changed_range(base + kVoicePosLfoRate, 5)) {
+        voice_lfo_mask |= bit;
+      }
+      if (changed(base + kVoiceEuclidGated) || changed(base + kVoiceEuclidMuted)) {
+        voice_euclid_mask |= bit;
+      }
+    }
+
+    if (globals_changed) {
+      granular_instance_set_enabled(instance_, params_[kParamEnabled] > 0.5f ? 1 : 0);
+      granular_instance_set_freeze(
+          instance_,
+          params_[kParamFreeze] > 0.5f ? 1 : 0,
+          params_[kParamFreezeWithFeedback] > 0.5f ? 1 : 0);
+      granular_instance_set_dry_wet(instance_, params_[kParamDryWet]);
+      granular_instance_set_feedback(instance_, params_[kParamFeedback], params_[kParamFeedbackLpf]);
+      granular_instance_set_buffer_size(instance_, params_[kParamBufferSeconds]);
+      granular_instance_set_grain_shape(instance_, roundedInt(params_[kParamGrainShape]));
+      granular_instance_set_bus_diffusion(instance_, params_[kParamBusDiffusion]);
+      granular_instance_set_timing_randomness(instance_, params_[kParamTimingRandomness]);
+      granular_instance_set_quality_params(
+          instance_,
+          roundedInt(params_[kExtGlobalParamStart + kExtGlobalQuality]),
+          roundedInt(params_[kExtGlobalParamStart + kExtGlobalMaxGrains]),
+          params_[kExtGlobalParamStart + kExtGlobalSprayMacro],
+          params_[kExtGlobalParamStart + kExtGlobalCloudMacro],
+          params_[kExtGlobalParamStart + kExtGlobalPitchMacro]);
+
+      std::array<int, KESSHO_MAX_SCALE_INTERVALS> scale_intervals{};
+      const int scale_count = std::clamp(roundedInt(params_[kScaleCountParam]), 0, KESSHO_MAX_SCALE_INTERVALS);
+      for (int i = 0; i < scale_count; ++i) {
+        scale_intervals[i] = roundedInt(params_[kScaleIntervalsParam + i]);
+      }
+      granular_instance_set_scale(instance_, scale_intervals.data(), scale_count);
+
+      std::array<int, KESSHO_MAX_CHORD_PITCHES> chord_pitches{};
+      const int chord_count = std::clamp(roundedInt(params_[kChordCountParam]), 0, KESSHO_MAX_CHORD_PITCHES);
+      for (int i = 0; i < chord_count; ++i) {
+        chord_pitches[i] = roundedInt(params_[kChordPitchesParam + i]);
+      }
+      granular_instance_set_chord_bias(
+          instance_,
+          chord_pitches.data(),
+          chord_count,
+          params_[kChordBiasParam]);
+
+      granular_instance_set_legacy_params(
+          instance_,
+          params_[kLegacyParamStart],
+          params_[kLegacyParamStart + 1],
+          roundedInt(params_[kLegacyParamStart + 2]),
+          params_[kLegacyParamStart + 3],
+          roundedInt(params_[kLegacyParamStart + 4]),
+          params_[kLegacyParamStart + 5]);
+    }
 
     for (int voice = 0; voice < KESSHO_NUM_VOICES; ++voice) {
       const int base = kVoiceParamStart + voice * kVoiceParamCount;
       const int ext = kExtVoiceParamStart + voice * kExtVoiceParamCount;
+      const uint64_t bit = 1ull << static_cast<uint32_t>(voice);
+      if ((voice_mode_mask & bit) != 0u) {
       granular_instance_set_voice_mode(
           instance_,
           voice,
           params_[base + kVoiceEnabled] > 0.5f ? 1 : 0,
           roundedInt(params_[base + kVoiceMode]));
+      }
+      if ((voice_advanced_mask & bit) != 0u) {
       granular_instance_set_voice_advanced(
           instance_,
           voice,
@@ -314,6 +411,8 @@ public:
           roundedInt(params_[ext + kExtVoiceCloudStyle]),
           roundedInt(params_[ext + kExtVoiceAnchorPattern]),
           params_[ext + kExtVoiceLoopCrossfade]);
+      }
+      if ((voice_position_mask & bit) != 0u) {
       granular_instance_set_voice_position(
           instance_,
           voice,
@@ -323,6 +422,8 @@ public:
           params_[base + kVoiceReverse] > 0.5f ? 1 : 0,
           params_[base + kVoicePitch],
           params_[base + kVoiceWriteFollow]);
+      }
+      if ((voice_grain_mask & bit) != 0u) {
       granular_instance_set_voice_grain(
           instance_,
           voice,
@@ -332,6 +433,8 @@ public:
           params_[base + kVoiceGrainOct],
           params_[base + kVoiceAttack],
           params_[base + kVoiceDecay]);
+      }
+      if ((voice_output_mask & bit) != 0u) {
       granular_instance_set_voice_output(
           instance_,
           voice,
@@ -339,6 +442,8 @@ public:
           params_[base + kVoicePan],
           params_[base + kVoiceBlur],
           params_[base + kVoiceStereoSpread]);
+      }
+      if ((voice_lfo_mask & bit) != 0u) {
       granular_instance_set_voice_lfo(
           instance_,
           voice,
@@ -347,6 +452,8 @@ public:
           params_[base + kVoicePanLfoRate],
           params_[base + kVoiceReverseLfoRate],
           params_[base + kVoiceRecordLfoRate]);
+      }
+      if ((voice_euclid_mask & bit) != 0u) {
       granular_instance_set_voice_euclid_gated(
           instance_,
           voice,
@@ -355,42 +462,22 @@ public:
           instance_,
           voice,
           params_[base + kVoiceEuclidMuted] > 0.5f ? 1 : 0);
+      }
     }
-
-    std::array<int, KESSHO_MAX_SCALE_INTERVALS> scale_intervals{};
-    const int scale_count = std::clamp(roundedInt(params_[kScaleCountParam]), 0, KESSHO_MAX_SCALE_INTERVALS);
-    for (int i = 0; i < scale_count; ++i) {
-      scale_intervals[i] = roundedInt(params_[kScaleIntervalsParam + i]);
-    }
-    granular_instance_set_scale(instance_, scale_intervals.data(), scale_count);
-
-    std::array<int, KESSHO_MAX_CHORD_PITCHES> chord_pitches{};
-    const int chord_count = std::clamp(roundedInt(params_[kChordCountParam]), 0, KESSHO_MAX_CHORD_PITCHES);
-    for (int i = 0; i < chord_count; ++i) {
-      chord_pitches[i] = roundedInt(params_[kChordPitchesParam + i]);
-    }
-    granular_instance_set_chord_bias(
-        instance_,
-        chord_pitches.data(),
-        chord_count,
-        params_[kChordBiasParam]);
-
-    granular_instance_set_legacy_params(
-        instance_,
-        params_[kLegacyParamStart],
-        params_[kLegacyParamStart + 1],
-        roundedInt(params_[kLegacyParamStart + 2]),
-        params_[kLegacyParamStart + 3],
-        roundedInt(params_[kLegacyParamStart + 4]),
-        params_[kLegacyParamStart + 5]);
 
     committed_params_ = params_;
     params_cache_valid_ = true;
+    commitPreparedRandomSequence();
   }
 
   int setRandomSeed(uint32_t seed) override {
     pending_random_seed_ = seed == 0u ? 1u : seed;
-    applyRandomSeed();
+    return 1;
+  }
+
+  int prepareRandomSeed(uint32_t seed) override {
+    pending_random_seed_ = seed == 0u ? 1u : seed;
+    preparePendingRandomSequence();
     return 1;
   }
 
@@ -486,17 +573,41 @@ public:
   }
 
 private:
-  void applyRandomSeed() {
+  void preparePendingRandomSequence() {
+    if (pending_random_seed_ == 0u || applied_random_seed_ == pending_random_seed_) {
+      return;
+    }
+    prepareRandomSequence(pending_random_seed_);
+  }
+
+  void prepareRandomSequence(uint32_t seed) {
+    if (
+        seed == 0u ||
+        applied_random_seed_ == seed ||
+        (pending_random_sequence_ready_ && prepared_random_seed_ == seed)) {
+      return;
+    }
+    uint32_t state = seed;
+    for (float& value : pending_random_sequence_) {
+      value = nextMulberry32(state);
+    }
+    prepared_random_seed_ = seed;
+    pending_random_sequence_ready_ = true;
+  }
+
+  void commitPreparedRandomSequence() {
     if (instance_ == nullptr || pending_random_seed_ == 0u || applied_random_seed_ == pending_random_seed_) {
       return;
     }
-    uint32_t seed = pending_random_seed_;
-    std::array<float, kGranularRandomSequenceCount> sequence{};
-    for (float& value : sequence) {
-      value = nextMulberry32(seed);
+    if (!pending_random_sequence_ready_ || prepared_random_seed_ != pending_random_seed_) {
+      return;
     }
-    granular_instance_set_random_sequence(instance_, sequence.data(), static_cast<int>(sequence.size()));
+    granular_instance_set_random_sequence(
+        instance_,
+        pending_random_sequence_.data(),
+        static_cast<int>(pending_random_sequence_.size()));
     applied_random_seed_ = pending_random_seed_;
+    pending_random_sequence_ready_ = false;
   }
 
   KesshoGranularInstance* instance_ = nullptr;
@@ -504,6 +615,9 @@ private:
   int max_block_size_ = kGranularBlockSize;
   uint32_t pending_random_seed_ = 1u;
   uint32_t applied_random_seed_ = 0u;
+  uint32_t prepared_random_seed_ = 0u;
+  std::array<float, kGranularRandomSequenceCount> pending_random_sequence_{};
+  bool pending_random_sequence_ready_ = false;
   std::array<float, kParamCount> params_ = makeDefaultParams();
   std::array<float, kParamCount> committed_params_{};
   bool params_cache_valid_ = false;

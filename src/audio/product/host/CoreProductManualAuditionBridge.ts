@@ -6,8 +6,10 @@ import type { SnapshotReloadReason } from '../../CoreProductRuntimeAdapter';
 import {
   drumVoiceIndex,
   manualAuditionState,
+  midiFromFrequency,
   requireFiniteRange,
   requireManualNote,
+  requirePositive,
   sourceId,
   type RequiredManualSynthNote,
 } from '../../CoreProductHostRuntimeGuards';
@@ -21,6 +23,7 @@ export type CoreProductManualAuditionContext = {
   latestProductSnapshot: () => CoreProductSnapshot | null;
   runtimeReady: () => boolean;
   setRuntimeReady: (ready: boolean) => void;
+  applyProductStatePatch: (patch: Record<string, unknown>) => Promise<unknown>;
   applyLatestSnapshotUpdate: (reason: SnapshotReloadReason) => Promise<unknown>;
   recordSoundTrigger: () => void;
   publish: (name: string, ...args: unknown[]) => void;
@@ -82,6 +85,36 @@ export async function triggerCoreProductDrumVoice(
   await context.runtime.resume();
   if (!productSourceEnabled(context, CORE_PRODUCT_SOURCE_IDS.drum)) await context.applyLatestSnapshotUpdate('runtime-bootstrap');
   post();
+}
+
+export function triggerCoreProductSynthVoice(
+  context: CoreProductManualAuditionContext,
+  voiceIndex: number,
+  frequency: number,
+  velocity: number,
+  noteDuration = 0.18,
+  padParamsOverride?: Record<string, unknown>,
+): void {
+  if (!Number.isInteger(voiceIndex) || voiceIndex < 0 || voiceIndex > 7) throw new Error(`Core Product synth trigger voiceIndex must be an integer in [0, 7]: ${String(voiceIndex)}`);
+  const midi = midiFromFrequency(frequency);
+  const triggerVelocity = requireFiniteRange(velocity, 'synth trigger velocity', 0.000001, 1);
+  const durationSeconds = requirePositive(noteDuration, 'synth trigger duration');
+  if (padParamsOverride) void context.applyProductStatePatch(padParamsOverride);
+  const state = context.latestSliderState();
+  const pad2Assign = typeof state?.pad2VoiceAssign === 'number' ? Math.round(state.pad2VoiceAssign) & 0xff : 0;
+  const targetSource = state?.pad2Enabled === true && (pad2Assign & (1 << voiceIndex)) !== 0
+    ? CORE_PRODUCT_SOURCE_IDS.pad2
+    : CORE_PRODUCT_SOURCE_IDS.pad1;
+  const post = () => {
+    context.recordSoundTrigger();
+    context.runtime.postEvent(createCoreProductManualNoteEvent(targetSource, midi, triggerVelocity, durationSeconds * 1000, voiceIndex));
+  };
+  if (runtimeCanPostEventsImmediately(context)) { post(); return; }
+  if (context.runtimeReady()) { void context.runtime.resume().then(post); return; }
+  void context.runtime.ensureStarted().then(() => {
+    context.setRuntimeReady(true);
+    return context.applyLatestSnapshotUpdate('runtime-bootstrap').then(() => context.runtime.resume());
+  }).then(post);
 }
 
 export async function auditionCoreProductSynthNote(

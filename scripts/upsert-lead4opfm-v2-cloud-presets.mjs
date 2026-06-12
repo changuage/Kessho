@@ -24,32 +24,6 @@ const assetDir = argValue('--asset-dir', process.env.LEAD4OPFM_V2_ASSET_DIR || j
 const cloudPayloadPath = join(assetDir, 'kessho-lead4opfm-v2-cloud-upsert-payload.json');
 const localBackupPath = join(assetDir, 'kessho-lead4opfm-v2-local-import-backup.json');
 
-const PRESET_ROW_SELECT = [
-  'id',
-  'owner_key',
-  'type',
-  'scope',
-  'name',
-  'name_key',
-  'author',
-  'library',
-  'creator',
-  'description',
-  'tags',
-  'visibility',
-  'family_name',
-  'variant_name',
-  'variant_rank',
-  'latest_version_no',
-  'latest_version_id',
-  'latest_resolved_hash',
-  'latest_metadata_hash',
-  'archived',
-  'deleted_at',
-  'created_at',
-  'updated_at',
-].join(',');
-
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -180,32 +154,47 @@ async function fetchAll(client, table, select, query = (builder) => builder, pag
   return rows;
 }
 
-async function fetchPresetById(client, rowId) {
-  const { data, error } = await client
-    .from('presets_v2')
-    .select(PRESET_ROW_SELECT)
-    .eq('id', rowId)
-    .limit(1);
-  if (error) throw new Error(`Preset lookup failed for ${rowId}: ${error.message}`);
-  return data?.[0] ?? null;
+async function lookupPresetRowsV2(client, params, label) {
+  const { data, error } = await client.rpc('kessho_lookup_preset_rows_v2', {
+    target_preset_id: params.target_preset_id ?? null,
+    target_type: params.target_type ?? null,
+    target_name: params.target_name ?? null,
+    target_scopes: params.target_scopes ?? null,
+    target_scope_is_null: params.target_scope_is_null ?? false,
+    target_resolved_hash: params.target_resolved_hash ?? null,
+    exclude_preset_id: params.exclude_preset_id ?? null,
+    include_deleted: params.include_deleted ?? false,
+    deleted_only: params.deleted_only ?? false,
+    include_internal_derived: params.include_internal_derived ?? true,
+    internal_derived_only: params.internal_derived_only ?? false,
+    max_rows: params.max_rows ?? 20,
+    page_offset: params.page_offset ?? 0,
+  });
+  if (error) throw new Error(`${label} failed: ${error.message}`);
+  return Array.isArray(data) ? data : [];
 }
 
-function databaseNameKey(name) {
-  return String(name ?? '').trim().toLowerCase();
+async function fetchPresetById(client, rowId) {
+  const rows = await lookupPresetRowsV2(
+    client,
+    { target_preset_id: rowId, max_rows: 1 },
+    `Preset lookup for ${rowId}`,
+  );
+  return rows[0] ?? null;
 }
 
 async function fetchPresetByName(client, name) {
-  const { data, error } = await client
-    .from('presets_v2')
-    .select(PRESET_ROW_SELECT)
-    .eq('owner_key', 'public')
-    .eq('type', 'engine')
-    .eq('scope', 'lead4opfm')
-    .eq('name_key', databaseNameKey(name))
-    .order('updated_at', { ascending: false })
-    .limit(1);
-  if (error) throw new Error(`Preset lookup failed for ${name}: ${error.message}`);
-  return data?.[0] ?? null;
+  const rows = await lookupPresetRowsV2(
+    client,
+    {
+      target_type: 'engine',
+      target_name: name,
+      target_scopes: ['lead4opfm'],
+      max_rows: 20,
+    },
+    `Preset lookup for ${name}`,
+  );
+  return rows.find(row => row.owner_key === 'public' && rowIsActive(row)) ?? null;
 }
 
 async function writeBackup(client) {
@@ -296,6 +285,9 @@ const env = {
 };
 const supabaseUrl = env.VITE_SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = env.VITE_SUPABASE_ANON_KEY ?? env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY
+  ?? env.SUPABASE_SERVICE_KEY
+  ?? env.SUPABASE_SECRET_KEY;
 assert(supabaseUrl, 'Missing VITE_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL');
 assert(anonKey, 'Missing VITE_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY');
 
@@ -310,17 +302,20 @@ const backupEntryByPresetName = new Map(
 const client = createClient(supabaseUrl, anonKey, {
   auth: { persistSession: false },
 });
-
-let authUser = null;
-try {
-  const { data, error } = await client.auth.signInAnonymously();
-  if (error) throw error;
-  authUser = data.user ?? null;
-} catch (error) {
-  if (write) throw new Error(`Anonymous Supabase auth is required for write mode: ${error.message}`);
+const needsWideTableBackup = write || backupRequested;
+const backupClient = serviceKey
+  ? createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+  : null;
+if (needsWideTableBackup && !backupClient) {
+  throw new Error('Write/backup mode requires SUPABASE_SERVICE_ROLE_KEY, SUPABASE_SERVICE_KEY, or SUPABASE_SECRET_KEY for wide-table backup reads.');
 }
 
-const backup = (write || backupRequested) ? await writeBackup(client) : null;
+let authUser = null;
+const { data: authData, error: authError } = await client.auth.signInAnonymously();
+if (authError) throw new Error(`Anonymous Supabase auth is required for preset RPC access: ${authError.message}`);
+authUser = authData.user ?? null;
+
+const backup = needsWideTableBackup ? await writeBackup(backupClient) : null;
 const report = {
   dryRun: !write,
   authenticated: Boolean(authUser),

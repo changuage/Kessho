@@ -856,9 +856,9 @@ const leadDelayMixHelp = entry(
 );
 
 const chordRateHelp = entry(
-  'Sets how often the pad chord generator picks a new harmony.',
-  'Low values refresh the harmony more often. High values hold each chord for longer spans.',
-  [sy('Harmony', 'Chord Rate')],
+  'Sets how many chord hits are planned inside each harmony phrase.',
+  'Low values leave more space between chord changes. High values divide the phrase into more chord slots.',
+  [sy('Harmony', 'Chords / Phrase')],
 );
 
 const voicingSpreadHelp = entry(

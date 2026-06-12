@@ -19,6 +19,10 @@ if (write && explicitDryRun) {
   throw new Error('Use either --write or --dry-run, not both.');
 }
 
+if (useAnon || allowAnonWrite) {
+  throw new Error('Texture repair scans wide preset base tables and must use a service key for those reads; remove --anon/--allow-anon-write.');
+}
+
 function getArgValue(name) {
   const prefix = `${name}=`;
   const inline = rawArgs.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
@@ -81,8 +85,6 @@ try {
 
         const write = ${JSON.stringify(write)};
         const outputJson = ${JSON.stringify(outputJson)};
-        const useAnon = ${JSON.stringify(useAnon)};
-        const allowAnonWrite = ${JSON.stringify(allowAnonWrite)};
         const activeRowLimit = ${JSON.stringify(activeRowLimit)};
         const activeRowOffset = ${JSON.stringify(activeRowOffset)};
         const repairTargetType = ${JSON.stringify(repairTargetType)};
@@ -118,34 +120,39 @@ try {
           ...process.env,
         };
 
-        const supabaseUrl = env.SUPABASE_URL ?? env.VITE_SUPABASE_URL;
+        const supabaseUrl = env.SUPABASE_URL
+          ?? env.VITE_SUPABASE_URL
+          ?? env.NEXT_PUBLIC_SUPABASE_URL;
         const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY ?? env.SUPABASE_SERVICE_KEY;
-        const anonKey = env.VITE_SUPABASE_ANON_KEY;
-        const supabaseKey = useAnon ? anonKey : (serviceRoleKey ?? anonKey);
-        if (!supabaseUrl || !supabaseKey) {
-          throw new Error('Missing SUPABASE_URL/VITE_SUPABASE_URL and a Supabase key.');
+        const anonKey = env.VITE_SUPABASE_ANON_KEY ?? env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (!supabaseUrl) {
+          throw new Error('Missing SUPABASE_URL, VITE_SUPABASE_URL, or NEXT_PUBLIC_SUPABASE_URL.');
         }
-        if (write && useAnon && !allowAnonWrite) {
-          throw new Error('Refusing authenticated anon write without --allow-anon-write.');
+        if (!serviceRoleKey) {
+          throw new Error('Texture repair scans wide preset base tables; set SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY.');
         }
-        if (write && !useAnon && !serviceRoleKey) {
-          throw new Error('Refusing write without SUPABASE_SERVICE_ROLE_KEY, SUPABASE_SERVICE_KEY, or --anon --allow-anon-write.');
+        if (!anonKey) {
+          throw new Error('Texture repair loads/saves presets through authenticated app RPCs; set VITE_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY.');
         }
 
-        const client = createClient(supabaseUrl, supabaseKey, {
+        const adminClient = createClient(supabaseUrl, serviceRoleKey, {
           auth: {
             persistSession: false,
             autoRefreshToken: false,
             detectSessionInUrl: false,
           },
         });
-        const store = new SupabasePresetStore(client);
-        store.setUserId(null, true);
-        if (useAnon) {
-          const { data, error } = await client.auth.signInAnonymously();
-          if (error) throw new Error('Anonymous auth failed: ' + error.message);
-          store.setUserId(data.user?.id ?? null, true);
-        }
+        const appClient = createClient(supabaseUrl, anonKey, {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false,
+          },
+        });
+        const store = new SupabasePresetStore(appClient);
+        const { data: authData, error: authError } = await appClient.auth.signInAnonymously();
+        if (authError) throw new Error('Anonymous Supabase auth failed: ' + authError.message);
+        store.setUserId(authData.user?.id ?? null, true);
 
         const legacySidechainTargetKeys = [
           'sidechainDelayATarget',
@@ -229,7 +236,7 @@ try {
         }
 
         async function fetchActiveRows(type, scope) {
-          let query = client
+          let query = adminClient
             .from('presets_v2')
             .select(activeRowSelect)
             .eq('type', type)
@@ -253,7 +260,7 @@ try {
 
         async function fetchLatestRefSlots(versionId) {
           if (!versionId) return [];
-          const { data, error } = await client
+          const { data, error } = await adminClient
             .from('preset_version_refs_v2')
             .select(refSlotSelect)
             .eq('version_id', versionId);

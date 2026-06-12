@@ -1906,7 +1906,7 @@ for (const token of [
   'renderMode: 0',
   'smokeAmplitude: 0',
   'createPadPreviewChords(sliderState, 1)',
-  'const PAD_VOICE_COUNT = 6;',
+  'const PAD_VOICE_COUNT = 8;',
   "route: source === 'pad2' ? voiceIndex + PAD_VOICE_COUNT : voiceIndex",
   "source: 'lead-fm'",
   'LEAD_FM_MODULE_PARAM_COUNT = 112',

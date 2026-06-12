@@ -5,7 +5,7 @@
  *   - WebAssembly (via Emscripten) for web AudioWorklet
  *   - Native ARM/x86 for iOS/macOS (via CMake)
  *
- * Dual-pad architecture: Pad 1 + Pad 2, 6 voices each (12 total).
+ * Dual-pad architecture: Pad 1 + Pad 2, 8 voices each (16 total).
  * Each voice: 4 oscillators (OscA, OscA detuned, OscB, Sub) + noise,
  * dual SVF filters (A+B, configurable routing), warmth/presence EQ,
  * saturation waveshaper, ADSR amplitude envelope, 2 LFOs, mod envelope.
@@ -27,7 +27,7 @@ typedef struct KesshoPadInstance KesshoPadInstance;
 // ═══════════════ Constants ═══════════════
 
 #define PAD_NUM_PADS            2
-#define PAD_VOICES_PER_PAD      6
+#define PAD_VOICES_PER_PAD      8
 #define PAD_NUM_VOICES          (PAD_VOICES_PER_PAD * PAD_NUM_PADS)
 #define PAD_MAX_BLOCK_SIZE      128
 

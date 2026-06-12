@@ -289,7 +289,12 @@ int32_t kessho_product_set_graph_taps_enabled(KesshoProductEngine* engine, uint3
   if (engine == nullptr) {
     return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
   }
+#if defined(KESSHO_DISABLE_GRAPH_TAPS)
+  (void)enabled;
+  engine->graph_taps_enabled = false;
+#else
   engine->graph_taps_enabled = enabled != 0u;
+#endif
   return KESSHO_PRODUCT_OK;
 }
 

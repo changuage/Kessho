@@ -90,6 +90,7 @@ import {
   getTransportMetrics,
   resolveProgressionPhraseClockSource,
 } from '../../transport';
+import { chordIntervalSecondsFromState, resolveChordsPerPhrase } from '../../chordPhraseTiming';
 import { SEQUENCER_VISUAL_SYNC_OFFSET_MS } from '../../sequencerVisualSync';
 import type { StemRecordTrackId } from '../../recordingTracks';
 import { DEFAULT_REVERB_PRE_COMP, getIndexedDelayDivisionValue, getStateValueFromSliderNumber, quantize, type IndexedDelayDivisionKey, type SliderState } from '../../../ui/state';
@@ -553,7 +554,8 @@ export type FxOwnershipDebugState = Record<
 
 const SYNTH_LANE_INDICES = [0, 1, 2, 3] as const;
 const DRUM_LANE_INDICES = [0, 1, 2, 3] as const;
-const PAD_VOICE_COUNT = 6;
+const PAD_VOICE_COUNT = 8;
+const PAD_VOICE_MASK_ALL = (1 << PAD_VOICE_COUNT) - 1;
 
 function createEmptyDrumStepOverrides(): DrumStepOverrides {
   return {
@@ -1317,7 +1319,7 @@ export class AudioEngine {
   };
   private phraseTimer: number | null = null;
   private nextHarmonyEventWallSec: number | null = null;
-  private chordSubTickCount = 0;    // Sub-phrase tick counter for chord rate < phraseLength
+  private chordSubTickCount = 0;    // Sub-phrase tick counter for multi-chord phrases
   private effectiveRoot = 4;  // Current root note including CoF drift
   private transportAnchors: TransportAnchors | null = null;
   private prevSynthEuclidLaneEnabled: Quad<boolean> = [false, false, false, false];
@@ -2410,8 +2412,8 @@ export class AudioEngine {
   }
 
   private getManualPadVoicePool(pad: 'pad1' | 'pad2', state: SliderState): number[] {
-    const mask = Math.max(1, (state.synthVoiceMask ?? 63) & 63);
-    const assign = (state.pad2VoiceAssign ?? 0) & 63;
+    const mask = (state.synthVoiceMask ?? 63) & PAD_VOICE_MASK_ALL;
+    const assign = (state.pad2VoiceAssign ?? 0) & PAD_VOICE_MASK_ALL;
     const enabledVoices = Array.from({ length: PAD_VOICE_COUNT }, (_, voiceIndex) => voiceIndex)
       .filter((voiceIndex) => (mask & (1 << voiceIndex)) !== 0);
 
@@ -2783,12 +2785,7 @@ export class AudioEngine {
 
   private getPadChordTriggerIntervalSeconds(state: SliderState): number {
     const phraseLength = this.getEffectiveHarmonyPhraseSeconds(state);
-    const chordRate = Math.max(1, Math.min(128, state.chordRate ?? 32));
-    if (chordRate < phraseLength) {
-      const chordsPerPhrase = Math.max(2, Math.round(phraseLength / chordRate));
-      return phraseLength / chordsPerPhrase;
-    }
-    return phraseLength;
+    return chordIntervalSecondsFromState(state.chordRate, phraseLength);
   }
 
   private getPadEnvelopeGateSeconds(
@@ -5784,7 +5781,7 @@ export class AudioEngine {
 
   private euclideanUsesPadSource(state: SliderState | null | undefined = this.sliderState): boolean {
     if (!state?.synthEuclideanMasterEnabled) return false;
-    const isPadSource = (source: string | undefined) => typeof source === 'string' && source.startsWith('synth');
+    const isPadSource = (source: string | undefined) => typeof source === 'string' && (source === 'pad1' || source === 'pad2' || source.startsWith('synth'));
     return (
       (state.synthEuclid1Enabled && isPadSource(state.synthEuclid1Source)) ||
       (state.synthEuclid2Enabled && isPadSource(state.synthEuclid2Source)) ||
@@ -8151,16 +8148,17 @@ export class AudioEngine {
     this.rng = createRng(this.lastGranularRandomSeedMaterial);
 
     // Create harmony state with full params (CoF + progression)
+    const effectiveHarmonyPhraseSeconds = this.getEffectiveHarmonyPhraseSeconds(this.sliderState);
     this.harmonyState = createHarmonyState(
       `${this.currentBucket}|E_ROOT`,
       this.sliderState.tension,
-      this.sliderState.chordRate,
+      chordIntervalSecondsFromState(this.sliderState.chordRate, effectiveHarmonyPhraseSeconds),
       this.sliderState.voicingSpread,
       this.sliderState.detune,
       this.sliderState.scaleMode,
       this.sliderState.manualScale,
       this.sliderState.rootNote ?? 4,
-      this.getEffectiveHarmonyPhraseSeconds(this.sliderState),
+      effectiveHarmonyPhraseSeconds,
       this.getHarmonyParams()
     );
 
@@ -8229,12 +8227,11 @@ export class AudioEngine {
       if (!this.sliderState) return;
       const nowWallSec = Date.now() / 1000;
       const phraseLength = this.getEffectiveHarmonyPhraseSeconds(this.sliderState);
-      const chordRate = this.sliderState?.chordRate ?? 32;
+      const chordsPerPhrase = resolveChordsPerPhrase(this.sliderState.chordRate, phraseLength);
       const clockSource = this.sliderState.harmonyClockSource ?? 'globalPhrase';
 
-      if (chordRate < phraseLength) {
+      if (chordsPerPhrase > 1) {
         // Sub-phrase mode: multiple chord changes per phrase
-        const chordsPerPhrase = Math.max(2, Math.round(phraseLength / chordRate));
         const subInterval = phraseLength / chordsPerPhrase;
         this.nextHarmonyEventWallSec = nowWallSec + subInterval;
 
@@ -8764,7 +8761,7 @@ export class AudioEngine {
       `${this.currentBucket}|${this.sliderStateJson}|E_ROOT`,
       phraseIndex,
       this.sliderState.tension,
-      this.sliderState.chordRate,
+      chordIntervalSecondsFromState(this.sliderState.chordRate, effectivePhraseLength),
       this.sliderState.voicingSpread,
       this.sliderState.detune,
       this.sliderState.scaleMode,
@@ -8842,11 +8839,17 @@ export class AudioEngine {
     if (state.synthEuclideanMasterEnabled) {
       const sources = [state.synthEuclid1Source, state.synthEuclid2Source, state.synthEuclid3Source, state.synthEuclid4Source];
       const enables = [state.synthEuclid1Enabled, state.synthEuclid2Enabled, state.synthEuclid3Enabled, state.synthEuclid4Enabled];
+      const voiceMasks = [state.synthEuclid1VoiceMask, state.synthEuclid2VoiceMask, state.synthEuclid3VoiceMask, state.synthEuclid4VoiceMask];
       for (const li of SYNTH_LANE_INDICES) {
         const source = sources[li];
         if (enables[li] && source?.startsWith('synth')) {
           const vi = parseInt(source.replace('synth', ''), 10) - 1;
           if (vi >= 0 && vi < PAD_VOICE_COUNT) euclidOwnedVoices.add(vi);
+        } else if (enables[li] && (source === 'pad1' || source === 'pad2')) {
+          const mask = (voiceMasks[li] ?? 1) & PAD_VOICE_MASK_ALL;
+          for (let vi = 0; vi < PAD_VOICE_COUNT; vi += 1) {
+            if ((mask & (1 << vi)) !== 0) euclidOwnedVoices.add(vi);
+          }
         }
       }
     }
@@ -8854,8 +8857,8 @@ export class AudioEngine {
     const triggerIntervalSeconds = this.getPadChordTriggerIntervalSeconds(state);
     const waveSpread = state.waveSpread * triggerIntervalSeconds;
     const rng = this.rng; // Capture for use in loop
-    const pad2Assign = (state.pad2Enabled && state.pad2VoiceAssign) ? state.pad2VoiceAssign : 0;
-    const voiceMask = (state.synthVoiceMask || 63) & ~pad2Assign; // Pad 1 only — exclude Pad 2 voices
+    const pad2Assign = (state.pad2VoiceAssign ?? 0) & PAD_VOICE_MASK_ALL;
+    const voiceMask = ((state.synthVoiceMask ?? 63) & PAD_VOICE_MASK_ALL) & ~pad2Assign;
     const octaveShift = state.synthOctave || 0; // Octave shift (-2 to +2)
     const octaveMultiplier = Math.pow(2, octaveShift); // 0.25, 0.5, 1, 2, or 4
 
@@ -8955,8 +8958,7 @@ export class AudioEngine {
         this.padWasmUnavailableWarned = false;
         if (this.sliderState) {
           this.sendPadWasmParams(this.sliderState);
-          const pad2Assign = (this.sliderState.pad2Enabled && this.sliderState.pad2VoiceAssign)
-            ? this.sliderState.pad2VoiceAssign : 0;
+          const pad2Assign = (this.sliderState.pad2VoiceAssign ?? 0) & PAD_VOICE_MASK_ALL;
           for (let i = 0; i < PAD_VOICE_COUNT; i++) {
             const isPad2 = (pad2Assign & (1 << i)) !== 0;
             this.padWasmNode?.port.postMessage({ type: 'voicePad', voiceIndex: i, pad: isPad2 ? 1 : 0 });
@@ -9260,7 +9262,7 @@ export class AudioEngine {
   /**
    * Trigger a single synth voice with a specific frequency.
    * Used by Euclidean sequencer to play individual synth notes.
-   * @param voiceIndex Which voice (0-5) to trigger
+   * @param voiceIndex Which voice (0-7) to trigger
    * @param frequency Note frequency in Hz
    * @param velocity Volume/intensity (0-1)
    * @param noteDuration Optional duration in seconds; if provided, schedules release after this time
@@ -11630,16 +11632,17 @@ export class AudioEngine {
       this.ensureTransportAnchors();
       this.currentBucket = getUtcBucket(this.sliderState.seedWindow);
       this.currentSeed = computeGranularRuntimeSeed(this.currentBucket);
+      const effectiveHarmonyPhraseSeconds = this.getEffectiveHarmonyPhraseSeconds(this.sliderState);
       this.harmonyState = createHarmonyState(
         `${this.currentBucket}|E_ROOT`,
         this.sliderState.tension,
-        this.sliderState.chordRate,
+        chordIntervalSecondsFromState(this.sliderState.chordRate, effectiveHarmonyPhraseSeconds),
         this.sliderState.voicingSpread,
         this.sliderState.detune,
         this.sliderState.scaleMode,
         this.sliderState.manualScale,
         this.sliderState.rootNote ?? 4,
-        this.getEffectiveHarmonyPhraseSeconds(this.sliderState),
+        effectiveHarmonyPhraseSeconds,
         this.getHarmonyParams()
       );
     }

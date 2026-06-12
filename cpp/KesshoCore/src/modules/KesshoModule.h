@@ -108,6 +108,9 @@ public:
     (void)seed;
     return 0;
   }
+  virtual int prepareRandomSeed(uint32_t seed) {
+    return setRandomSeed(seed);
+  }
   virtual int noteOff(int voice_index) {
     (void)voice_index;
     return 0;

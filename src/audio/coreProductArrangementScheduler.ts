@@ -5,12 +5,14 @@ import {
   arrangementRestartKey,
   enabledChordMidiForMask,
   enabledVoiceRank,
+  padChordVoiceMasksForSource,
   padEuclidOwnedVoiceMask,
 } from './coreProductArrangementVoiceMapping';
 import { coreProductPadEnvelopeGateSecondsFromState, coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
 import { createHarmonyState, getEffectiveTension, updateHarmonyState, type HarmonyParams, type HarmonyState } from './harmony';
 import { createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange } from './scales';
+import { chordIntervalSecondsFromState, resolveChordsPerPhrase } from './chordPhraseTiming';
 import {
   getCurrentClockIndexWall,
   getPhraseDurationForClockSource,
@@ -42,14 +44,13 @@ function sliderStateFromRecord(state: Record<string, unknown>): SliderState {
   return state as unknown as SliderState;
 }
 
-function padChordTriggerIntervalSeconds(state: SliderState): number {
+function harmonyChordIntervalSeconds(state: SliderState): number {
   const phraseLength = harmonyPhraseSeconds(state);
-  const chordRate = boundedNumber(state as unknown as Record<string, unknown>, 'chordRate', 32, 1, 128);
-  if (chordRate < phraseLength) {
-    const chordsPerPhrase = Math.max(2, Math.round(phraseLength / chordRate));
-    return phraseLength / chordsPerPhrase;
-  }
-  return phraseLength;
+  return chordIntervalSecondsFromState(state.chordRate, phraseLength);
+}
+
+function padChordTriggerIntervalSeconds(state: SliderState): number {
+  return harmonyChordIntervalSeconds(state);
 }
 
 function harmonyParamsFromState(state: SliderState): Partial<HarmonyParams> {
@@ -83,7 +84,7 @@ function createSchedulerHarmonyState(state: SliderState): HarmonyState {
   return createHarmonyState(
     `${bucket}|E_ROOT`,
     state.tension ?? 0.3,
-    state.chordRate ?? 32,
+    harmonyChordIntervalSeconds(state),
     state.voicingSpread ?? 0.5,
     state.detune ?? 8,
     state.scaleMode === 'manual' ? 'manual' : 'auto',
@@ -287,10 +288,9 @@ export class CoreProductArrangementScheduler {
     if (!this.running || !this.state || !this.anchors) return;
     const sliderState = sliderStateFromRecord(this.state);
     const phraseLength = harmonyPhraseSeconds(sliderState);
-    const chordRate = boundedNumber(this.state, 'chordRate', 32, 1, 128);
+    const chordsPerPhrase = resolveChordsPerPhrase(sliderState.chordRate, phraseLength);
     const clockSource = sliderState.harmonyClockSource ?? 'globalPhrase';
-    if (chordRate < phraseLength) {
-      const chordsPerPhrase = Math.max(2, Math.round(phraseLength / chordRate));
+    if (chordsPerPhrase > 1) {
       const subInterval = phraseLength / chordsPerPhrase;
       this.harmonyTimer = window.setTimeout(() => {
         this.chordSubTickCount += 1;
@@ -333,7 +333,7 @@ export class CoreProductArrangementScheduler {
       `${getUtcBucket(sliderState.seedWindow === 'day' ? 'day' : 'hour')}|${JSON.stringify(sliderState)}|E_ROOT`,
       phraseIndex,
       sliderState.tension ?? 0.3,
-      sliderState.chordRate ?? 32,
+      harmonyChordIntervalSeconds(sliderState),
       sliderState.voicingSpread ?? 0.5,
       sliderState.detune ?? 8,
       sliderState.scaleMode === 'manual' ? 'manual' : 'auto',
@@ -352,27 +352,49 @@ export class CoreProductArrangementScheduler {
 
   private triggerPadChord(): void {
     if (!this.state || !this.harmonyState || !this.rng) return;
-    const pad1Enabled = booleanFromState(this.state, 'padEnabled', true);
-    const pad2Enabled = booleanFromState(this.state, 'pad2Enabled', false);
-    if (!pad1Enabled && !pad2Enabled) return;
+    const state = this.state;
     const maskLimit = (1 << PAD_VOICE_COUNT) - 1;
-    const euclidOwnedMask = padEuclidOwnedVoiceMask(this.state);
-    const rawVoiceMask = boundedInteger(this.state, 'synthVoiceMask', 63, 0, maskLimit) & maskLimit;
-    const pad2Assign = pad2Enabled ? boundedInteger(this.state, 'pad2VoiceAssign', 0, 0, maskLimit) & maskLimit : 0;
-    let pad1Mask = pad1Enabled ? rawVoiceMask & ~pad2Assign & ~euclidOwnedMask : 0;
-    const pad2Mask = pad2Enabled ? pad2Assign & ~euclidOwnedMask : 0;
-    if (pad1Enabled && pad1Mask === 0 && pad2Mask === 0) pad1Mask = 1;
+    const source = String(state.synthChordSequencerSource ?? 'both').trim().toLowerCase();
+    const voiceCount = boundedInteger(state, 'synthChordSequencerVoiceCount', 6, 1, PAD_VOICE_COUNT);
+    const euclidOwnedMask = padEuclidOwnedVoiceMask(state);
+    const rawVoiceMask = boundedInteger(state, 'synthVoiceMask', 63, 0, maskLimit) & maskLimit;
+    const pad2Assign = boundedInteger(state, 'pad2VoiceAssign', 0, 0, maskLimit) & maskLimit;
+    const availablePadMask = rawVoiceMask & ~euclidOwnedMask;
     const chordMidi = this.harmonyState.currentChord.midiNotes.length > 0
       ? this.harmonyState.currentChord.midiNotes
-      : [48 + boundedInteger(this.state, 'rootNote', 4, 0, 11)];
-    const octaveShift = boundedInteger(this.state, 'synthOctave', 0, -2, 2) * 12;
-    const pad1ChordMidi = enabledChordMidiForMask(chordMidi, pad1Mask);
-    const pad2ChordMidi = enabledChordMidiForMask(chordMidi, pad2Mask);
+      : [48 + boundedInteger(state, 'rootNote', 4, 0, 11)];
+    const octaveShift = boundedInteger(state, 'synthOctave', 0, -2, 2) * 12;
     const triggerIntervalSeconds = padChordTriggerIntervalSeconds(sliderStateFromRecord(this.state));
     const waveSpreadSeconds =
-      boundedNumber(this.state, 'waveSpread', 0.125, 0, 1) *
+      boundedNumber(state, 'waveSpread', 0.125, 0, 1) *
       triggerIntervalSeconds;
     const voiceOffsets = Array.from({ length: PAD_VOICE_COUNT }, () => this.rng!() * waveSpreadSeconds).sort((a, b) => a - b);
+
+    const nonPadSourceId = source === 'lead1' || source === 'lead'
+      ? CORE_PRODUCT_SOURCE_IDS.lead1
+      : source === 'lead2'
+        ? CORE_PRODUCT_SOURCE_IDS.lead2
+        : source === 'piano'
+          ? CORE_PRODUCT_SOURCE_IDS.piano
+          : 0;
+    if (nonPadSourceId !== 0) {
+      for (let index = 0; index < voiceCount; index += 1) {
+        const midi = clamp(chordMidi[index % chordMidi.length]! + octaveShift, 0, 127);
+        const holdSeconds = coreProductSynthSequencerHoldSecondsFromState(state, nonPadSourceId, 0.5);
+        this.scheduleNote(voiceOffsets[index] ?? 0, createCoreProductManualNoteEvent(
+          nonPadSourceId,
+          midi,
+          1,
+          holdSeconds * 1000,
+        ), 'lead');
+      }
+      return;
+    }
+
+    const { pad1Mask, pad2Mask } = padChordVoiceMasksForSource(source, availablePadMask, pad2Assign, voiceCount);
+    if ((pad1Mask | pad2Mask) === 0) return;
+    const pad1ChordMidi = enabledChordMidiForMask(chordMidi, pad1Mask);
+    const pad2ChordMidi = enabledChordMidiForMask(chordMidi, pad2Mask);
     for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT; voiceIndex += 1) {
       const bit = 1 << voiceIndex;
       const delaySeconds = voiceOffsets[voiceIndex] ?? 0;

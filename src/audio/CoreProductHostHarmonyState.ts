@@ -1,4 +1,5 @@
 import { createHarmonyState, type HarmonyParams, type HarmonyState } from './harmony';
+import { chordIntervalSecondsFromState } from './chordPhraseTiming';
 import { computeGranularRuntimeSeed, getUtcBucket } from './rng';
 import { getPhraseDurationForClockSource } from './transport';
 import { getScaleByName, midiToFreq } from './scales';
@@ -115,16 +116,17 @@ export function createCoreProductHostHarmonySnapshot(
     : null;
   const rootNote = telemetryRoot ?? homeRoot;
   const tension = finiteNumber(telemetry?.harmonyTension, finiteNumber(state.tension, 0.3));
+  const phraseSeconds = phraseSecondsFromState(state);
   const harmonyState = createHarmonyState(
     `${currentBucket}|E_ROOT`,
     tension,
-    finiteNumber(state.chordRate, 32),
+    chordIntervalSecondsFromState(state.chordRate, phraseSeconds),
     finiteNumber(state.voicingSpread, 0.5),
     finiteNumber(state.detune, 8),
     telemetryScaleName ? 'manual' : (state.scaleMode === 'manual' ? 'manual' : 'auto'),
     manualScale,
     rootNote,
-    phraseSecondsFromState(state),
+    phraseSeconds,
     harmonyParamsFromState(state),
   );
 

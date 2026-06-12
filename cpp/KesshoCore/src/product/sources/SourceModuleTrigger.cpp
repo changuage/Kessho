@@ -198,6 +198,7 @@ static_assert(kLeadAttackParamIndex < kessho::core::KESSHO_SOURCE_PRESET_LEAD_PA
           drum_ratchet_decay_cap,
           drum_ratchet_attack_cap);
       drum_module->noteOn(0.0f, clamped_velocity, 0.0f, voice_type);
+      drum_module_trigger_pending = true;
       if (out_module_voice_index != nullptr) {
         *out_module_voice_index = static_cast<uint32_t>(voice_type);
       }

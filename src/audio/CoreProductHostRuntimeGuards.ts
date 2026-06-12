@@ -139,8 +139,8 @@ export function requireManualNote(note: ManualSynthNoteOptions): RequiredManualS
   const source = note.source;
   sourceId(source);
   const voiceIndex = note.voiceIndex;
-  if (voiceIndex !== undefined && (!Number.isInteger(voiceIndex) || voiceIndex < 0 || voiceIndex > 5)) {
-    throw new Error(`Core Product manual note voiceIndex must be an integer in [0, 5]: ${String(voiceIndex)}`);
+  if (voiceIndex !== undefined && (!Number.isInteger(voiceIndex) || voiceIndex < 0 || voiceIndex > 7)) {
+    throw new Error(`Core Product manual note voiceIndex must be an integer in [0, 7]: ${String(voiceIndex)}`);
   }
   return { source, midi: requireFiniteRange(note.midi, 'manual note midi', 0, 127), velocity: requireFiniteRange(note.velocity, 'manual note velocity', 0.000001, 1), durationMs: requirePositive(note.durationMs, 'manual note durationMs'), ...(voiceIndex !== undefined ? { voiceIndex } : {}) };
 }

@@ -120,6 +120,10 @@
   telemetry.block_size = max_block_size;
   debug_voice_spawn_sequence = 0u;
   telemetry.debug_voice_spawn_count = 0u;
+  active_voice_count = 0u;
+  active_source_mask = 0u;
+  active_voice_list_dirty = true;
+  drum_module_trigger_pending = false;
   resetSoundscapeTextureRuntimes();
   product_render_frame = 0u;
   pad_voice_cursors[0] = 0;
@@ -145,6 +149,10 @@
   for (Voice& voice : voices) {
     voice = {};
   }
+  active_voice_count = 0u;
+  active_source_mask = 0u;
+  active_voice_list_dirty = true;
+  drum_module_trigger_pending = false;
   for (ModulationRange& range : modulation_ranges) {
     range = {};
   }

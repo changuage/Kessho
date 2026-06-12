@@ -1,10 +1,21 @@
 #include "KesshoProductEngineInternal.h"
 
+namespace {
+
+enum ProductModuleMask : uint32_t {
+  kModulePad = 1u << 0,
+  kModuleLead1 = 1u << 1,
+  kModuleLead2 = 1u << 2,
+  kModuleDrum = 1u << 3,
+  kModuleSoundscape = 1u << 4,
+};
+
+} // namespace
+
 void KesshoProductEngine::renderPadModule(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (!pad_module || frames == 0u) {
     return;
   }
-  advancePadVoiceReleases(frames);
   if (pad_module->activeVoiceCount() <= 0) {
     pad_module->advancePadIdleTelemetry(0, static_cast<int>(frames));
     pad_module->advancePadIdleTelemetry(1, static_cast<int>(frames));
@@ -84,16 +95,38 @@ void KesshoProductEngine::renderSingleModuleSource(
   const float* send_l = module_l;
   const float* send_r = module_r;
   if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1) {
-    std::copy(module_l, module_l + frames, module_tap_l[0]);
-    std::copy(module_r, module_r + frames, module_tap_r[0]);
-    send_l = module_tap_l[0];
-    send_r = module_tap_r[0];
+    const SourceState& source = sources[source_id - 1u];
+    const bool needs_prefx_copy =
+        graph_taps_enabled ||
+        source.reverb_send > 0.0f ||
+        source.delay_a_send > 0.0f ||
+        source.delay_b_send > 0.0f ||
+        source.granular_send > 0.0f ||
+        source.diffuse_send > 0.0f ||
+        source.degrade_send > 0.0f;
+    if (needs_prefx_copy) {
+      std::copy(module_l, module_l + frames, module_tap_l[0]);
+      std::copy(module_r, module_r + frames, module_tap_r[0]);
+      send_l = module_tap_l[0];
+      send_r = module_tap_r[0];
+    }
     processLeadPostChain(0u, source_id, module_l, module_r, frames);
   } else if (source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
-    std::copy(module_l, module_l + frames, module_tap_l[0]);
-    std::copy(module_r, module_r + frames, module_tap_r[0]);
-    send_l = module_tap_l[0];
-    send_r = module_tap_r[0];
+    const SourceState& source = sources[source_id - 1u];
+    const bool needs_prefx_copy =
+        graph_taps_enabled ||
+        source.reverb_send > 0.0f ||
+        source.delay_a_send > 0.0f ||
+        source.delay_b_send > 0.0f ||
+        source.granular_send > 0.0f ||
+        source.diffuse_send > 0.0f ||
+        source.degrade_send > 0.0f;
+    if (needs_prefx_copy) {
+      std::copy(module_l, module_l + frames, module_tap_l[0]);
+      std::copy(module_r, module_r + frames, module_tap_r[0]);
+      send_l = module_tap_l[0];
+      send_r = module_tap_r[0];
+    }
     processLeadPostChain(1u, source_id, module_l, module_r, frames);
   }
   mixSourceBuffer(source_id, module_l, module_r, send_l, send_r, out_l, out_r, start, frames);
@@ -311,13 +344,55 @@ void KesshoProductEngine::renderSoundscapesModule(float* out_l, float* out_r, ui
   }
 }
 
+uint32_t KesshoProductEngine::computeActiveModuleMask() const {
+  uint32_t mask = 0u;
+  if (pad_module && pad_module->activeVoiceCount() > 0) {
+    mask |= kModulePad;
+  }
+  if (lead_modules[0] && lead_modules[0]->activeVoiceCount() > 0) {
+    mask |= kModuleLead1;
+  }
+  if (lead_modules[1] && lead_modules[1]->activeVoiceCount() > 0) {
+    mask |= kModuleLead2;
+  }
+  if (
+      drum_module &&
+      (drum_module_trigger_pending || drum_module->activeVoiceCount() > 0) &&
+      sourceRenderActive(sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u])) {
+    mask |= kModuleDrum;
+  }
+  if (
+      soundscapes_module &&
+      soundscapes_module->activeVoiceCount() > 0 &&
+      soundscapeModuleShouldRun(sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u])) {
+    mask |= kModuleSoundscape;
+  }
+  return mask;
+}
+
 void KesshoProductEngine::renderProductModules(float* out_l, float* out_r, uint32_t start, uint32_t frames) {
   if (!modules_ready || frames == 0u) {
     return;
   }
-  renderPadModule(out_l, out_r, start, frames);
-  renderSingleModuleSource(lead_modules[0].get(), KESSHO_PRODUCT_SOURCE_LEAD1, out_l, out_r, start, frames);
-  renderSingleModuleSource(lead_modules[1].get(), KESSHO_PRODUCT_SOURCE_LEAD2, out_l, out_r, start, frames);
-  renderDrumModule(out_l, out_r, start, frames);
-  renderSoundscapesModule(out_l, out_r, start, frames);
+  advancePadVoiceReleases(frames);
+  const uint32_t active_module_mask = computeActiveModuleMask();
+  if ((active_module_mask & kModulePad) != 0u) {
+    renderPadModule(out_l, out_r, start, frames);
+  } else if (pad_module) {
+    pad_module->advancePadIdleTelemetry(0, static_cast<int>(frames));
+    pad_module->advancePadIdleTelemetry(1, static_cast<int>(frames));
+  }
+  if ((active_module_mask & kModuleLead1) != 0u) {
+    renderSingleModuleSource(lead_modules[0].get(), KESSHO_PRODUCT_SOURCE_LEAD1, out_l, out_r, start, frames);
+  }
+  if ((active_module_mask & kModuleLead2) != 0u) {
+    renderSingleModuleSource(lead_modules[1].get(), KESSHO_PRODUCT_SOURCE_LEAD2, out_l, out_r, start, frames);
+  }
+  if ((active_module_mask & kModuleDrum) != 0u) {
+    renderDrumModule(out_l, out_r, start, frames);
+    drum_module_trigger_pending = false;
+  }
+  if ((active_module_mask & kModuleSoundscape) != 0u) {
+    renderSoundscapesModule(out_l, out_r, start, frames);
+  }
 }

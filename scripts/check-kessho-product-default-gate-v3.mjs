@@ -242,6 +242,8 @@ const statusDoc = read('docs/kessho-product-core-migration-status.md');
 const productCiReport = readJson('docs/reports/kessho-product-ci-latest.json');
 const browserRuntimeReport = readJson('docs/reports/kessho-product-browser-runtime-latest.json');
 const cpuReport = readJson('docs/reports/kessho-product-cpu-budget-latest.json');
+const moduleCpuReport = readJson('docs/reports/kessho-product-module-cpu-latest.json');
+const cpuScenariosReport = readJson('docs/reports/kessho-product-cpu-scenarios-latest.json');
 const runtimeFallbackReport = readJson('docs/reports/kessho-product-runtime-fallbacks-latest.json');
 const unsupportedSurfaceReport = readJson('docs/reports/kessho-product-unsupported-surface-latest.json');
 const dirtyDiffReport = readJson('docs/reports/kessho-product-dirty-diff-classification-latest.json');
@@ -1439,6 +1441,7 @@ const requiredPrerequisiteSteps = [
   'migration:no-web-ts-bundle',
   'core:product:patch-bridges',
   'core:product:snapshot-authority',
+  'core:product:snapshot-regression',
   'core:product:host-reconciliation',
   'core:product:dirty-diff',
   'core:product:runtime-fallbacks',
@@ -1467,6 +1470,8 @@ const requiredPrerequisiteSteps = [
   'core:product:sequencer-ui',
   'core:product:cpu',
   'core:product:browser-runtime',
+  'core:product:module-cpu',
+  'core:product:cpu-scenarios',
 ];
 
 assert(Array.isArray(productCiReport.prerequisiteSteps), 'Product Core CI report must list prerequisiteSteps');
@@ -1502,6 +1507,16 @@ requireFreshReport('docs/reports/kessho-product-browser-runtime-latest.json', br
 requireFreshReport('docs/reports/kessho-product-cpu-budget-latest.json', cpuReport.generatedAt, [
   'scripts/check-kessho-product-cpu-budget.mjs',
   'cpp/KesshoCore/tests/ProductCpuBudgetTests.cpp',
+]);
+requireFreshReport('docs/reports/kessho-product-module-cpu-latest.json', moduleCpuReport.generatedAt, [
+  'scripts/check-kessho-product-module-cpu-report.mjs',
+  'docs/reports/kessho-product-cpu-budget-latest.json',
+  'docs/reports/kessho-product-browser-runtime-latest.json',
+]);
+requireFreshReport('docs/reports/kessho-product-cpu-scenarios-latest.json', cpuScenariosReport.generatedAt, [
+  'scripts/check-kessho-product-cpu-scenarios.mjs',
+  'docs/reports/kessho-product-cpu-budget-latest.json',
+  'docs/reports/kessho-product-browser-runtime-latest.json',
 ]);
 requireFreshReport('docs/reports/kessho-product-unsupported-surface-latest.json', unsupportedSurfaceReport.generatedAt, [
   'scripts/audit-product-host-unsupported-surface.mjs',
@@ -1548,6 +1563,8 @@ assert((stringWavesCase?.workletPadStemPeak ?? 0) > 0.00001, 'String Waves brows
 assert((stringWavesCase?.workletLeadStemPeak ?? 0) > 0.000001, 'String Waves browser-runtime case did not report Lead stem output');
 
 assert(cpuReport.status === 'pass' && cpuReport.cpu?.status === 'pass' && cpuReport.heap?.status === 'pass', 'CPU/heap report must pass');
+assert(moduleCpuReport.status === 'pass', 'module CPU report must pass');
+assert(cpuScenariosReport.status === 'pass', 'CPU scenario report must pass');
 assert(unsupportedSurfaceReport.gateMode === true, 'unsupported-surface report must be generated in gate mode');
 assert(unsupportedSurfaceReport.findingCount === 0, 'unsupported-surface gate report must have zero findings');
 assert(unsupportedSurfaceReport.gateViolationCount === 0, 'unsupported-surface gate report must have zero gate violations');

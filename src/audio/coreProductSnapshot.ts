@@ -22,7 +22,13 @@ import { coreProductDrumLaneMacroDefaultsFromState, coreProductSynthLaneMacroDef
 import { soundscapeSnapshotPayloadFromState, type SoundscapeSnapshotPayload } from './coreProductSoundscapesSnapshot';
 import { HARMONY_POOL_MAX_NOTES, HARMONY_SOURCE_IDS, HARMONY_STRENGTH_IDS, resolveProductHarmonyState } from './CoreProductHarmonyControl';
 import { coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
-import { normalizeSynthEuclidSource } from './coreProductSourceMapping';
+import {
+  encodedPadVoiceLaneSeed,
+  synthChordSequencerUsesSourceId,
+  synthEuclidUsesSourceId,
+  synthSourceIdFromState,
+  synthSourcePadVoiceMaskFromState,
+} from './coreProductSnapshotPadVoiceRouting';
 import type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 export type { CoreProductSnapshot, ProductGranularVoiceSnapshot, ProductHarmonySnapshot, ProductLaneSnapshot, ProductSoundscapeSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
 
@@ -240,48 +246,6 @@ function initialStartDelaySecondsFromState(state: Record<string, unknown> | unde
   return timeUntilNextGlobalBoundary(periodSeconds, nowWallSec);
 }
 
-function synthSourceIdFromState(state: Record<string, unknown> | undefined, key: string): number {
-  const source = normalizeSynthEuclidSource(state?.[key]);
-  if (source === 'lead1') return CORE_PRODUCT_SOURCE_IDS.lead1;
-  if (source === 'lead2') return CORE_PRODUCT_SOURCE_IDS.lead2;
-  if (source === 'piano') return CORE_PRODUCT_SOURCE_IDS.piano;
-  if (source === 'pad1') return CORE_PRODUCT_SOURCE_IDS.pad1;
-  if (source === 'pad2') return CORE_PRODUCT_SOURCE_IDS.pad2;
-  if (source.startsWith('synth')) {
-    const voiceIndex = Number.parseInt(source.slice('synth'.length), 10) - 1;
-    const pad2Assign = Math.round(numberFromState(state, 'pad2VoiceAssign', 0)) & 0x3f;
-    const pad2Enabled = booleanFromState(state, 'pad2Enabled', false);
-    return pad2Enabled && voiceIndex >= 0 && voiceIndex < 6 && (pad2Assign & (1 << voiceIndex)) !== 0
-      ? CORE_PRODUCT_SOURCE_IDS.pad2
-      : CORE_PRODUCT_SOURCE_IDS.pad1;
-  }
-  return CORE_PRODUCT_SOURCE_IDS.lead1;
-}
-
-function synthSourcePadVoiceIndexFromState(state: Record<string, unknown> | undefined, key: string): number | null {
-  const source = normalizeSynthEuclidSource(state?.[key]);
-  if (!source.startsWith('synth')) return null;
-  const voiceIndex = Number.parseInt(source.slice('synth'.length), 10) - 1;
-  return Number.isFinite(voiceIndex) && voiceIndex >= 0 && voiceIndex < 6 ? voiceIndex : null;
-}
-
-function synthEuclidLaneEnabled(state: Record<string, unknown> | undefined, laneNumber: number): boolean {
-  return booleanFromState(state, 'synthEuclideanMasterEnabled', false) &&
-    booleanFromState(state, `synthEuclid${laneNumber}Enabled`, laneNumber === 1);
-}
-
-function synthEuclidUsesSourceId(state: Record<string, unknown> | undefined, sourceId: number): boolean {
-  for (let laneNumber = 1; laneNumber <= 4; laneNumber += 1) {
-    if (
-      synthEuclidLaneEnabled(state, laneNumber) &&
-      synthSourceIdFromState(state, `synthEuclid${laneNumber}Source`) === sourceId
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function laneManualMaskFromPattern(
   state: Record<string, unknown> | undefined,
   prefix: string,
@@ -376,7 +340,9 @@ function sourceFromState(
   const source = sourceDefaults(sourceId);
   switch (sourceId) {
     case CORE_PRODUCT_SOURCE_IDS.pad1:
-      source.enabled = booleanFromState(state, 'padEnabled', false) || synthEuclidUsesSourceId(state, sourceId);
+      source.enabled = booleanFromState(state, 'padEnabled', false) ||
+        synthEuclidUsesSourceId(state, sourceId) ||
+        synthChordSequencerUsesSourceId(state, sourceId);
       source.level = numberFromState(state, 'synthLevel', source.level);
       source.morph = numberFromState(state, 'padMorph', source.morph);
       source.distance = numberFromState(state, 'padDistance', source.distance);
@@ -396,7 +362,9 @@ function sourceFromState(
       );
       break;
     case CORE_PRODUCT_SOURCE_IDS.pad2:
-      source.enabled = booleanFromState(state, 'pad2Enabled', false) || synthEuclidUsesSourceId(state, sourceId);
+      source.enabled = booleanFromState(state, 'pad2Enabled', false) ||
+        synthEuclidUsesSourceId(state, sourceId) ||
+        synthChordSequencerUsesSourceId(state, sourceId);
       source.level = numberFromState(state, 'pad2Level', source.level);
       source.morph = numberFromState(state, 'pad2Morph', source.morph);
       source.distance = numberFromState(state, 'pad2Distance', source.distance);
@@ -416,7 +384,9 @@ function sourceFromState(
       );
       break;
     case CORE_PRODUCT_SOURCE_IDS.lead1:
-      source.enabled = booleanFromState(state, 'leadEnabled', false) || synthEuclidUsesSourceId(state, sourceId);
+      source.enabled = booleanFromState(state, 'leadEnabled', false) ||
+        synthEuclidUsesSourceId(state, sourceId) ||
+        synthChordSequencerUsesSourceId(state, sourceId);
       source.level = distanceAdjustedNumberFromState(state, 'lead1Level', 'lead1', numberFromState(state, 'leadLevel', source.level));
       source.morph = numberFromState(state, 'lead1Morph', source.morph);
       source.distance = numberFromState(state, 'lead1Distance', source.distance);
@@ -439,7 +409,9 @@ function sourceFromState(
       Object.assign(source, exactLeadPatchFromState(state, 0, source.sourcePresetAId, source.sourcePresetBId, source.morph));
       break;
     case CORE_PRODUCT_SOURCE_IDS.lead2:
-      source.enabled = booleanFromState(state, 'lead2Enabled', booleanFromState(state, 'leadEnabled', false)) || synthEuclidUsesSourceId(state, sourceId);
+      source.enabled = booleanFromState(state, 'lead2Enabled', booleanFromState(state, 'leadEnabled', false)) ||
+        synthEuclidUsesSourceId(state, sourceId) ||
+        synthChordSequencerUsesSourceId(state, sourceId);
       source.level = distanceAdjustedNumberFromState(state, 'lead2Level', 'lead2', source.level);
       source.morph = numberFromState(state, 'lead2Morph', source.morph);
       source.distance = numberFromState(state, 'lead2Distance', source.distance);
@@ -476,7 +448,9 @@ function sourceFromState(
       Object.assign(source, exactDrumPatchFromState(state));
       break;
     case CORE_PRODUCT_SOURCE_IDS.piano:
-      source.enabled = booleanFromState(state, 'pianoEnabled', false) || synthEuclidUsesSourceId(state, sourceId);
+      source.enabled = booleanFromState(state, 'pianoEnabled', false) ||
+        synthEuclidUsesSourceId(state, sourceId) ||
+        synthChordSequencerUsesSourceId(state, sourceId);
       source.assetId = CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID;
       source.level = distanceAdjustedNumberFromState(state, 'pianoLevel', 'piano', source.level) * ENGINE_TRIMS.piano;
       source.distance = numberFromState(state, 'pianoDistance', source.distance);
@@ -525,11 +499,11 @@ function sourceFromState(
   source.postLpfHz = clamp(source.postLpfHz, 20, 20000);
   source.stereoWidth = clamp(source.stereoWidth, 0, 1);
   source.postLpfKeyTracking = clamp(source.postLpfKeyTracking, 0, 1);
-  source.attackSeconds = clamp(source.attackSeconds, 0.001, 2);
-  source.decaySeconds = clamp(source.decaySeconds, 0.01, 4);
+  source.attackSeconds = clamp(source.attackSeconds, 0.001, 16);
+  source.decaySeconds = clamp(source.decaySeconds, 0.01, 8);
   source.sustain = clamp(source.sustain, 0, 1);
   source.holdSeconds = clamp(source.holdSeconds, 0, 20);
-  source.releaseSeconds = clamp(source.releaseSeconds, 0.01, 8);
+  source.releaseSeconds = clamp(source.releaseSeconds, 0.01, 30);
   return source;
 }
 
@@ -601,7 +575,7 @@ function synthLaneFromState(
   lane.probability = numberFromState(state, `${prefix}Probability`, 1);
   lane.velocity = numberFromState(state, `${prefix}Level`, lane.velocity);
   lane.holdSeconds = coreProductSynthSequencerHoldSecondsFromState(state, sourceId, lane.holdSeconds);
-  lane.seed = encodedPadVoiceLaneSeed(1000 + laneNumber, synthSourcePadVoiceIndexFromState(state, `${prefix}Source`));
+  lane.seed = encodedPadVoiceLaneSeed(1000 + laneNumber, synthSourcePadVoiceMaskFromState(state, `${prefix}Source`));
   Object.assign(lane, laneManualMaskFromPattern(state, prefix, resolved.steps, resolved.hits, resolved.rotation));
   return lane;
 }
@@ -619,9 +593,6 @@ const DRUM_TARGETS = [
 const DRUM_VOICE_MASK_SEED_FLAG = 0x80000000;
 const DRUM_VOICE_MASK_SEED_SHIFT = 24;
 const DRUM_VOICE_MASK_SEED_PAYLOAD_MASK = 0x00ffffff;
-const PAD_VOICE_SEED_FLAG = 0x40000000;
-const PAD_VOICE_SEED_SHIFT = 24;
-const PAD_VOICE_SEED_PAYLOAD_MASK = 0x00ffffff;
 
 function defaultDrumTargetSuffix(laneNumber: number): (typeof DRUM_TARGETS)[number]['suffix'] {
   if (laneNumber === 2) return 'BeepHi';
@@ -640,14 +611,6 @@ function drumTargetVoiceIndices(state: Record<string, unknown> | undefined, pref
 function encodedDrumLaneSeed(baseSeed: number, voiceIndices: readonly number[]): number {
   const mask = voiceIndices.reduce((bits, voice) => bits | (1 << clamp(Math.round(voice), 0, 6)), 0) & 0x7f;
   return (DRUM_VOICE_MASK_SEED_FLAG | (mask << DRUM_VOICE_MASK_SEED_SHIFT) | (baseSeed & DRUM_VOICE_MASK_SEED_PAYLOAD_MASK)) >>> 0;
-}
-
-function encodedPadVoiceLaneSeed(baseSeed: number, voiceIndex: number | null): number {
-  if (voiceIndex == null) {
-    return baseSeed >>> 0;
-  }
-  const encodedVoice = clamp(Math.round(voiceIndex) + 1, 1, 6);
-  return (PAD_VOICE_SEED_FLAG | (encodedVoice << PAD_VOICE_SEED_SHIFT) | (baseSeed & PAD_VOICE_SEED_PAYLOAD_MASK)) >>> 0;
 }
 
 function drumLaneBaseFromState(

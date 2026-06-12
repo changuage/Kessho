@@ -20,6 +20,12 @@ import {
   type HarmonySequenceStep,
   type ManualHarmonyControlState,
 } from '../audio/CoreProductHarmonyControl';
+import {
+  DEFAULT_CHORDS_PER_PHRASE,
+  MAX_CHORDS_PER_PHRASE,
+  legacyChordRateSecondsToChordsPerPhrase,
+  normalizeChordsPerPhrase,
+} from '../audio/chordPhraseTiming';
 import { hydrateOptimizedStatePresetData } from '../presets/statePresetOptimization';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
@@ -168,7 +174,8 @@ export type RandomWalkMode = 'localBrownian' | 'globalWalk';
 export type ProgressionClockSource = 'harmony' | 'localPhrase' | 'globalPhrase';
 export type TransportPrimaryClock = 'seconds' | 'bpm' | 'decoupled';
 export type LeadRandomSource = 'lead1' | 'lead2' | 'piano';
-export type SynthEuclidSource = 'lead' | 'lead1' | 'lead2' | 'pad' | 'pad1' | 'pad2' | 'piano' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6';
+export type SynthEuclidSource = 'lead' | 'lead1' | 'lead2' | 'pad' | 'pad1' | 'pad2' | 'piano' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6' | 'synth7' | 'synth8';
+export type SynthChordSequencerSource = 'pad1' | 'pad2' | 'both' | 'lead1' | 'lead2' | 'piano';
 
 /**
  * Serialized evolve config for preset save/load.
@@ -544,10 +551,10 @@ export interface SliderState {
   scaleMode: 'auto' | 'manual';
   manualScale: string;        // Scale family name
   tension: number;            // 0..1 step 0.01
-  chordRate: number;          // 8..64 seconds step 1
+  chordRate: number;          // 1..8 chords per phrase step 1
   phraseLength: number;       // 4..128 seconds step 1 - harmony phrase length
   voicingSpread: number;      // 0..1 step 0.01
-  waveSpread: number;         // 0..1 fraction of chordRate - stagger time between voice entries
+  waveSpread: number;         // 0..1 fraction of the chord slot - stagger time between voice entries
   detune: number;             // 0..25 cents step 1
   harmonyMorphPercent: number; // 0..100 preset morph position used by product harmony endpoint selection
   harmonyGenerationSeed: number; // deterministic UI salt for regenerating unlocked harmony material
@@ -580,7 +587,7 @@ export interface SliderState {
   drumEuclidClockSource: BeatClockSource;
   drumEuclidJoinPolicy: SequencerJoinPolicy;
   randomWalkMode: RandomWalkMode;
-  synthVoiceMask: number;     // 1..63 binary mask for which voices play (1=voice1, 2=voice2, 4=voice3, etc)
+  synthVoiceMask: number;     // 0..255 binary mask for which shared pad voice slots are on
   synthOctave: number;        // -2..+2 octave shift
 
   // Timbre / Drive
@@ -667,7 +674,7 @@ export interface SliderState {
 
   // ─── Pad Synth 2 ───
   pad2Enabled: boolean;
-  pad2VoiceAssign: number;      // bitmask 0..63: which voices belong to Pad 2 (default 0 = none)
+  pad2VoiceAssign: number;      // bitmask 0..255: which enabled shared pad voice slots belong to Pad 2
   // ADSR
   pad2Attack: number;
   pad2Decay: number;
@@ -831,11 +838,11 @@ export interface SliderState {
   leadRandomSource: LeadRandomSource;
   leadLevel: number;          // 0..1 step 0.01
   lead1UseCustomAdsr: boolean; // when true, use lead ADSR sliders instead of preset ADSR
-  lead1Attack: number;         // 0.001..2 seconds
-  lead1Decay: number;          // 0.01..4 seconds
+  lead1Attack: number;         // 0.001..16 seconds
+  lead1Decay: number;          // 0.01..8 seconds
   lead1Sustain: number;        // 0..1 level
-  lead1Hold: number;           // 0..4 seconds - how long to hold at sustain level
-  lead1Release: number;        // 0.01..8 seconds
+  lead1Hold: number;           // 0..20 seconds - how long to hold at sustain level
+  lead1Release: number;        // 0.01..30 seconds
   delayATime: number;            // legacy ms timing value for the old lead-owned delay path
   delayAFeedback: number;        // shared Delay A feedback amount (range in dualSliderRanges)
   delayAMix: number;             // shared Delay A wet level (range in dualSliderRanges)
@@ -876,11 +883,11 @@ export interface SliderState {
   lead2Level: number;         // 0..1 level for lead 2
   lead2ReverbSend: number;    // 0..1 step 0.01 - how much lead 2 goes to reverb
   lead2UseCustomAdsr: boolean; // when true, use lead2 ADSR sliders instead of preset ADSR
-  lead2Attack: number;         // 0.001..2 seconds
-  lead2Decay: number;          // 0.01..4 seconds
+  lead2Attack: number;         // 0.001..16 seconds
+  lead2Decay: number;          // 0.01..8 seconds
   lead2Sustain: number;        // 0..1 level
-  lead2Hold: number;           // 0..4 seconds - how long to hold at sustain level
-  lead2Release: number;        // 0.01..8 seconds
+  lead2Hold: number;           // 0..20 seconds - how long to hold at sustain level
+  lead2Release: number;        // 0.01..30 seconds
   lead2Distance: number;
   lead2PostLPF: number;       // 20..20000 Hz post-voice LPF
   lead2PostLPFKeyTracking: number;
@@ -920,6 +927,7 @@ export interface SliderState {
   synthEuclid1Level: number;      // 0..1 velocity/level for this lane
   synthEuclid1Probability: number; // 0..1 probability of triggering each hit
   synthEuclid1Source: SynthEuclidSource;
+  synthEuclid1VoiceMask: number;  // 1..255 rotating shared pad voice slot mask for pad sources
   // Lane 2
   synthEuclid2Enabled: boolean;
   synthEuclid2Preset: string;
@@ -931,6 +939,7 @@ export interface SliderState {
   synthEuclid2Level: number;
   synthEuclid2Probability: number;
   synthEuclid2Source: SynthEuclidSource;
+  synthEuclid2VoiceMask: number;
   // Lane 3
   synthEuclid3Enabled: boolean;
   synthEuclid3Preset: string;
@@ -942,6 +951,7 @@ export interface SliderState {
   synthEuclid3Level: number;
   synthEuclid3Probability: number;
   synthEuclid3Source: SynthEuclidSource;
+  synthEuclid3VoiceMask: number;
   // Lane 4
   synthEuclid4Enabled: boolean;
   synthEuclid4Preset: string;
@@ -953,9 +963,12 @@ export interface SliderState {
   synthEuclid4Level: number;
   synthEuclid4Probability: number;
   synthEuclid4Source: SynthEuclidSource;
+  synthEuclid4VoiceMask: number;
   
-  // Synth chord sequencer toggle (when false, synth only plays from Euclidean triggers)
+  // Synth chord sequencer routing (when disabled, synth only plays from random timing/Euclidean/manual triggers)
   synthChordSequencerEnabled: boolean;
+  synthChordSequencerSource: SynthChordSequencerSource;
+  synthChordSequencerVoiceCount: number;
 
   // ─── Ikeda-Style Drum Synth ───
   drumEnabled: boolean;                    // Master on/off
@@ -2167,6 +2180,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthEuclid1Level',
   'synthEuclid1Probability',
   'synthEuclid1Source',
+  'synthEuclid1VoiceMask',
   'synthEuclid2Enabled',
   'synthEuclid2Preset',
   'synthEuclid2Steps',
@@ -2177,6 +2191,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthEuclid2Level',
   'synthEuclid2Probability',
   'synthEuclid2Source',
+  'synthEuclid2VoiceMask',
   'synthEuclid3Enabled',
   'synthEuclid3Preset',
   'synthEuclid3Steps',
@@ -2187,6 +2202,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthEuclid3Level',
   'synthEuclid3Probability',
   'synthEuclid3Source',
+  'synthEuclid3VoiceMask',
   'synthEuclid4Enabled',
   'synthEuclid4Preset',
   'synthEuclid4Steps',
@@ -2197,7 +2213,10 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthEuclid4Level',
   'synthEuclid4Probability',
   'synthEuclid4Source',
+  'synthEuclid4VoiceMask',
   'synthChordSequencerEnabled',
+  'synthChordSequencerSource',
+  'synthChordSequencerVoiceCount',
   // Drum Synth
   'drumEnabled',
   'drumLevel',
@@ -2843,7 +2862,7 @@ export const DEFAULT_STATE: SliderState = {
   scaleMode: 'auto',
   manualScale: 'Major (Ionian)',
   tension: 0.3,
-  chordRate: 32,
+  chordRate: DEFAULT_CHORDS_PER_PHRASE,
   phraseLength: 16,
   voicingSpread: 0.5,
   waveSpread: 0.125,
@@ -2877,7 +2896,7 @@ export const DEFAULT_STATE: SliderState = {
   drumEuclidClockSource: 'localBeat',
   drumEuclidJoinPolicy: 'bar',
   randomWalkMode: 'localBrownian',
-  synthVoiceMask: 63,  // All 6 voices (binary 111111)
+  synthVoiceMask: 63,  // Voices 1-6 on; voices 7-8 default Off
   synthOctave: 0,      // No octave shift
 
   // Timbre / Drive
@@ -2943,7 +2962,7 @@ export const DEFAULT_STATE: SliderState = {
 
   // Pad Synth 2
   pad2Enabled: false,
-  pad2VoiceAssign: 0,  // No voices assigned to Pad 2
+  pad2VoiceAssign: 0,  // No shared voice slots assigned to Pad 2
   pad2Attack: 6.0,
   pad2Decay: 1.0,
   pad2Sustain: 0.8,
@@ -3180,6 +3199,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid1Level: 0.8,
   synthEuclid1Probability: 1.0,
   synthEuclid1Source: 'lead1' as const,
+  synthEuclid1VoiceMask: 128,
   // Lane 2 - interlocking (kotekan) - higher register
   synthEuclid2Enabled: false,
   synthEuclid2Preset: 'kotekan',
@@ -3191,6 +3211,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid2Level: 0.6,
   synthEuclid2Probability: 1.0,
   synthEuclid2Source: 'lead1' as const,
+  synthEuclid2VoiceMask: 128,
   // Lane 3 - sparse accent - bass register
   synthEuclid3Enabled: false,
   synthEuclid3Preset: 'ketawang',
@@ -3202,6 +3223,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid3Level: 0.9,
   synthEuclid3Probability: 1.0,
   synthEuclid3Source: 'lead1' as const,
+  synthEuclid3VoiceMask: 128,
   // Lane 4 - fill/texture - sparkle register
   synthEuclid4Enabled: false,
   synthEuclid4Preset: 'srepegan',
@@ -3213,9 +3235,12 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid4Level: 0.5,
   synthEuclid4Probability: 1.0,
   synthEuclid4Source: 'lead1' as const,
+  synthEuclid4VoiceMask: 128,
   
-  // Synth chord sequencer toggle
+  // Synth chord sequencer routing
   synthChordSequencerEnabled: false,
+  synthChordSequencerSource: 'both' as const,
+  synthChordSequencerVoiceCount: 6,
 
   // ─── Ikeda-Style Drum Synth ───
   drumEnabled: false,
@@ -4187,7 +4212,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   endCompBandSplit: { min: 0, max: 1, step: 0.01 },
   randomness: { min: 0, max: 1, step: 0.01 },
   tension: { min: 0, max: 1, step: 0.01 },
-  chordRate: { min: 8, max: 64, step: 1 },
+  chordRate: { min: 1, max: 8, step: 1 },
   phraseLength: { min: 4, max: 128, step: 1 },
   voicingSpread: { min: 0, max: 1, step: 0.01 },
   waveSpread: { min: 0, max: 1, step: 0.01 },
@@ -4195,11 +4220,11 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   harmonyMorphPercent: { min: 0, max: 100, step: 1 },
   harmonyGenerationSeed: { min: 0, max: 2147483647, step: 1 },
   harmonyChordSequenceStepIndex: { min: 0, max: 7, step: 1 },
-  synthVoiceMask: { min: 1, max: 63, step: 1 },
+  synthVoiceMask: { min: 0, max: 255, step: 1 },
   // Pad/pad2 shared source params. Saved preset keys stay flat.
   ...PAD_SOURCE_NUMERIC_QUANTIZATION,
   // Pad Synth 2
-  pad2VoiceAssign: { min: 0, max: 63, step: 1 },
+  pad2VoiceAssign: { min: 0, max: 255, step: 1 },
   reverbLevel: { min: 0, max: 1, step: 0.01 },
   reverbDecay: { min: 0, max: 1, step: 0.01 },
   reverbSize: { min: 0.5, max: 10, step: 0.1 },
@@ -4409,11 +4434,11 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   drumBeepLoDelaySend: { min: 0, max: 1, step: 0.01 },
   drumNoiseDelaySend: { min: 0, max: 1, step: 0.01 },
   drumMembraneDelaySend: { min: 0, max: 1, step: 0.01 },
-  lead1Attack: { min: 0.001, max: 2, step: 0.001 },
-  lead1Decay: { min: 0.01, max: 4, step: 0.01 },
+  lead1Attack: { min: 0.001, max: 16, step: 0.001 },
+  lead1Decay: { min: 0.01, max: 8, step: 0.01 },
   lead1Sustain: { min: 0, max: 1, step: 0.01 },
-  lead1Hold: { min: 0, max: 4, step: 0.01 },
-  lead1Release: { min: 0.01, max: 8, step: 0.01 },
+  lead1Hold: { min: 0, max: 20, step: 0.01 },
+  lead1Release: { min: 0.01, max: 30, step: 0.01 },
   delayATime: { min: 0, max: 1000, step: 10 },
   delayAFeedback: { min: 0, max: 0.8, step: 0.01 },
   delayAMix: { min: 0, max: 1, step: 0.01 },
@@ -4438,11 +4463,11 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   lead2MorphSpeed: { min: 1, max: 32, step: 1 },
   lead2Level: { min: 0, max: 1, step: 0.01 },
   lead2ReverbSend: { min: 0, max: 1, step: 0.01 },
-  lead2Attack: { min: 0.001, max: 2, step: 0.001 },
-  lead2Decay: { min: 0.01, max: 4, step: 0.01 },
+  lead2Attack: { min: 0.001, max: 16, step: 0.001 },
+  lead2Decay: { min: 0.01, max: 8, step: 0.01 },
   lead2Sustain: { min: 0, max: 1, step: 0.01 },
-  lead2Hold: { min: 0, max: 4, step: 0.01 },
-  lead2Release: { min: 0.01, max: 8, step: 0.01 },
+  lead2Hold: { min: 0, max: 20, step: 0.01 },
+  lead2Release: { min: 0.01, max: 30, step: 0.01 },
   lead2Distance: { min: 0, max: 1, step: 0.01 },
   lead2PostLPF: { min: 20, max: 20000, step: 10 },
   lead2PostLPFKeyTracking: { min: 0, max: 1, step: 0.01 },
@@ -4476,6 +4501,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   synthEuclid1NoteMax: { min: 36, max: 96, step: 1 },
   synthEuclid1Level: { min: 0, max: 1, step: 0.01 },
   synthEuclid1Probability: { min: 0, max: 1, step: 0.01 },
+  synthEuclid1VoiceMask: { min: 1, max: 255, step: 1 },
   synthEuclid2Steps: { min: 4, max: 32, step: 1 },
   synthEuclid2Hits: { min: 1, max: 16, step: 1 },
   synthEuclid2Rotation: { min: 0, max: 31, step: 1 },
@@ -4483,6 +4509,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   synthEuclid2NoteMax: { min: 36, max: 96, step: 1 },
   synthEuclid2Level: { min: 0, max: 1, step: 0.01 },
   synthEuclid2Probability: { min: 0, max: 1, step: 0.01 },
+  synthEuclid2VoiceMask: { min: 1, max: 255, step: 1 },
   synthEuclid3Steps: { min: 4, max: 32, step: 1 },
   synthEuclid3Hits: { min: 1, max: 16, step: 1 },
   synthEuclid3Rotation: { min: 0, max: 31, step: 1 },
@@ -4490,6 +4517,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   synthEuclid3NoteMax: { min: 36, max: 96, step: 1 },
   synthEuclid3Level: { min: 0, max: 1, step: 0.01 },
   synthEuclid3Probability: { min: 0, max: 1, step: 0.01 },
+  synthEuclid3VoiceMask: { min: 1, max: 255, step: 1 },
   synthEuclid4Steps: { min: 4, max: 32, step: 1 },
   synthEuclid4Hits: { min: 1, max: 16, step: 1 },
   synthEuclid4Rotation: { min: 0, max: 31, step: 1 },
@@ -4497,6 +4525,8 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   synthEuclid4NoteMax: { min: 36, max: 96, step: 1 },
   synthEuclid4Level: { min: 0, max: 1, step: 0.01 },
   synthEuclid4Probability: { min: 0, max: 1, step: 0.01 },
+  synthEuclid4VoiceMask: { min: 1, max: 255, step: 1 },
+  synthChordSequencerVoiceCount: { min: 1, max: 8, step: 1 },
   // Drum Euclidean sequencer
   drumEuclidBaseBPM: { min: 40, max: 300, step: 1 },
   drumEuclidTempo: { min: 0.25, max: 4, step: 0.25 },
@@ -5112,7 +5142,11 @@ export function decodeStateFromUrl(search: string): SliderState | null {
         // Numeric parameter
         const num = parseFloat(value);
         if (!isNaN(num)) {
-          (state as Record<string, unknown>)[key] = quantize(key, num);
+          if (key === 'chordRate' && num > MAX_CHORDS_PER_PHRASE) {
+            (state as Record<string, unknown>)[key] = num;
+          } else {
+            (state as Record<string, unknown>)[key] = quantize(key, num);
+          }
         }
       } else {
         const defaultValue = DEFAULT_STATE[key];
@@ -5450,6 +5484,12 @@ export function decodeStateFromUrl(search: string): SliderState | null {
     state.synthEuclidBaseBPM = state.sequencerMasterBPM;
     state.drumEuclidBaseBPM = state.sequencerMasterBPM;
 
+    if (typeof state.chordRate === 'number' && state.chordRate > MAX_CHORDS_PER_PHRASE) {
+      state.chordRate = legacyChordRateSecondsToChordsPerPhrase(state.chordRate, state.phraseLength);
+    } else {
+      state.chordRate = normalizeChordsPerPhrase(state.chordRate);
+    }
+
     sanitizeGranularStateCompatibility(state as unknown as Record<string, unknown>);
     return state;
   } catch {
@@ -5708,10 +5748,33 @@ export function migratePreset(preset: any): SavedPreset {
     delete state.drumMembraneTension;
   }
 
-  // ═══ Legacy waveSpread: seconds → fraction of chordRate ═══
+  // ═══ Legacy waveSpread: seconds → fraction of the chord slot ═══
   if (typeof state.waveSpread === 'number' && state.waveSpread > 1) {
     const cr = typeof state.chordRate === 'number' ? state.chordRate : 32;
     state.waveSpread = Math.min(1, state.waveSpread / cr);
+  }
+
+  // ═══ Legacy chordRate: seconds → chords per phrase ═══
+  if (typeof state.chordRate === 'number' && state.chordRate > MAX_CHORDS_PER_PHRASE) {
+    state.chordRate = legacyChordRateSecondsToChordsPerPhrase(
+      state.chordRate,
+      typeof state.phraseLength === 'number' ? state.phraseLength : DEFAULT_STATE.phraseLength,
+    );
+  } else {
+    state.chordRate = normalizeChordsPerPhrase(state.chordRate);
+  }
+
+  if (dualRanges.chordRate) {
+    const phraseSeconds = typeof state.phraseLength === 'number' ? state.phraseLength : DEFAULT_STATE.phraseLength;
+    const convert = (value: unknown) => {
+      const numeric = typeof value === 'number' && Number.isFinite(value) ? value : DEFAULT_CHORDS_PER_PHRASE;
+      return numeric > MAX_CHORDS_PER_PHRASE
+        ? legacyChordRateSecondsToChordsPerPhrase(numeric, phraseSeconds)
+        : normalizeChordsPerPhrase(numeric);
+    };
+    const min = convert(dualRanges.chordRate.min);
+    const max = convert(dualRanges.chordRate.max);
+    dualRanges.chordRate = { min: Math.min(min, max), max: Math.max(min, max) };
   }
 
   // ═══ Shared sequencer BPM: collapse legacy per-engine BPMs onto one master ═══

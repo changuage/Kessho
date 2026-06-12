@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -8,6 +8,7 @@ const root = process.cwd();
 const DEFAULT_PORT = 4185;
 const reportJsonPath = resolve(root, 'docs/reports/kessho-product-browser-runtime-latest.json');
 const reportMarkdownPath = resolve(root, 'docs/reports/kessho-product-browser-runtime-latest.md');
+const capturePreviewOutDir = 'build/kessho-product-browser-runtime-dist';
 
 function parseArgs(argv) {
   const args = {
@@ -59,12 +60,37 @@ async function waitForHttp(url, timeoutMs, outputProvider = () => '') {
   throw new Error(`Timed out waiting for ${url}: ${detail}\n${outputProvider()}`);
 }
 
-async function startPreview(port) {
+function graphCaptureBuildEnv() {
+  return {
+    ...process.env,
+    BROWSER: 'none',
+    VITE_KESSHO_ENABLE_GRAPH_CAPTURE: 'true',
+  };
+}
+
+function buildGraphCapturePreviewBundle() {
+  const result = spawnSync(process.execPath, [
+    'node_modules/.bin/vite',
+    'build',
+    '--outDir',
+    capturePreviewOutDir,
+    '--emptyOutDir',
+  ], {
+    cwd: root,
+    env: graphCaptureBuildEnv(),
+    stdio: 'inherit',
+  });
+  if (result.status !== 0) {
+    throw new Error(`Capture-enabled Product browser runtime build failed with exit code ${result.status ?? 'unknown'}`);
+  }
+}
+
+async function startPreview(port, outDir = 'dist') {
   const url = `http://127.0.0.1:${port}/`;
-  const child = spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+  const child = spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort', '--outDir', outDir], {
     cwd: root,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, BROWSER: 'none' },
+    env: graphCaptureBuildEnv(),
   });
   let output = '';
   const append = (chunk) => {
@@ -505,7 +531,8 @@ function writeReport(report) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const vite = args.url ? { url: args.url, stop: async () => {} } : await startPreview(args.port);
+if (!args.url) buildGraphCapturePreviewBundle();
+const vite = args.url ? { url: args.url, stop: async () => {} } : await startPreview(args.port, capturePreviewOutDir);
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch({
   headless: true,
@@ -518,6 +545,7 @@ const report = {
   status: 'running',
   defaultRuntime: 'unknown',
   url: vite.url,
+  graphCapturePreviewBuild: args.url ? 'external-url' : capturePreviewOutDir,
   cases: [],
   earthTextureProbe: null,
   runtimeWalkProbe: null,

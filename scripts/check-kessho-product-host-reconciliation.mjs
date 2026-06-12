@@ -456,7 +456,7 @@ await runCheckWithReport({
       'options.captureHome()',
       'options.armManualDice()',
       "sequencer: 'synth'",
-      'const config = manualSynthDiceConfig(options.adapterState, options.laneIndex, options.intensity)',
+      'const config = manualSynthDiceConfig(options.adapterState, options.laneIndex, options.intensity, options.enabledSubLanes)',
       "nativeEvolveFlagsForEvolveConfig(config, 'synth')",
       'if (nativeFlags !== 0)',
       'createCoreProductSequencerDiceEvent(',

@@ -150,8 +150,8 @@ void KesshoProductEngine::configureFxModules() {
         params[ext + 12] = static_cast<float>(clampU32(voice.anchor_pattern, 0u, 3u));
         params[ext + 13] = clampFloat(voice.loop_crossfade_ms, 4.0f, 80.0f);
       }
+      granular_module->prepareRandomSeed(rng_state);
       granular_module->commitParams();
-      granular_module->setRandomSeed(rng_state);
     }
   }
   if (spectral_freeze_module) {

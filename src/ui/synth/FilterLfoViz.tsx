@@ -9,6 +9,15 @@
  */
 import React, { useRef, useEffect, useCallback } from 'react';
 import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
+import {
+  colorWithAlpha,
+  createEnvelopeTimeScale,
+  envelopeValue,
+  formatEnvelopeSustainLabel,
+  formatEnvelopeTimeLabel,
+  getEnvelopeTimelineSeconds,
+  quantizeEnvelopeTime,
+} from './envelopeVizMath';
 
 interface FilterLfoVizProps {
   filterAType: string;
@@ -35,6 +44,7 @@ interface FilterLfoVizProps {
   synthHold: number;
   synthRelease: number;
   envelopeTimelineSeconds?: number;
+  envelopeAccentColor?: string;
   modEnvEnabled?: boolean;
   modEnvAttack?: number;
   modEnvDecay?: number;
@@ -95,19 +105,6 @@ function lfoShapeValue(phase: number, wave: string): number {
   }
 }
 
-// Compute amp envelope value at time t (attack, decay, hold plateau, release).
-function envelopeValue(t: number, a: number, d: number, s: number, h: number, r: number): number {
-  if (t < 0) return 0;
-  if (t < a) return t / Math.max(0.001, a);
-  const tAfterA = t - a;
-  if (tAfterA < d) return 1 - (1 - s) * (tAfterA / Math.max(0.001, d));
-  const releaseStart = a + d + h;
-  if (t < releaseStart) return s;
-  const tInRelease = t - releaseStart;
-  if (tInRelease < r) return s * (1 - tInRelease / Math.max(0.001, r));
-  return 0;
-}
-
 // Max number of samples in the LFO history ring buffer
 const LFO_HISTORY_LEN = 120; // ~2 seconds at 50ms polling + 60fps interp
 
@@ -123,44 +120,6 @@ const hasFilterModEnvelopeMotion = (props: FilterLfoVizProps): boolean =>
   !!props.modEnvEnabled &&
   props.modEnvDest === 'filterCutoff' &&
   Math.abs(props.modEnvDepth ?? 0) > 0.0001;
-
-const quantizeEnvelopeTime = (value: number): number => (
-  value < 0.1 ? parseFloat(value.toFixed(3)) : parseFloat(value.toFixed(2))
-);
-
-function formatEnvelopeTimeLabel(value: number): string {
-  const safeValue = Math.max(0, Number.isFinite(value) ? value : 0);
-  if (safeValue < 1) return `${Math.round(safeValue * 1000)}ms`;
-  if (safeValue < 10) return `${safeValue.toFixed(2)}s`;
-  return `${safeValue.toFixed(1)}s`;
-}
-
-function formatEnvelopeSustainLabel(value: number): string {
-  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
-}
-
-function createEnvelopeTimeScale(width: number, timelineSeconds: number) {
-  const domainSeconds = Math.max(0.25, Number.isFinite(timelineSeconds) ? timelineSeconds : 0.25);
-  const kneeSeconds = Math.max(0.05, Math.min(0.9, (domainSeconds / 24) * 1.25));
-  const denominator = Math.max(0.0001, Math.log1p(domainSeconds / kneeSeconds));
-  const safeWidth = Math.max(1, width);
-
-  return {
-    domainSeconds,
-    timeToX: (seconds: number): number => {
-      const clamped = Math.max(0, Math.min(domainSeconds, seconds));
-      return (Math.log1p(clamped / kneeSeconds) / denominator) * width;
-    },
-    xToTime: (x: number): number => {
-      const ratio = Math.max(0, Math.min(1, x / safeWidth));
-      return (Math.exp(ratio * denominator) - 1) * kneeSeconds;
-    },
-  };
-}
-
-function getEnvelopeTimelineSeconds(props: FilterLfoVizProps, fallbackSeconds: number): number {
-  return Math.max(0.25, props.envelopeTimelineSeconds ?? fallbackSeconds);
-}
 
 const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -459,14 +418,16 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     const hold = props.synthHold;
     const r = props.synthRelease;
     const envDepth = props.modEnvDepth ?? 0;
+    const envelopeAccentColor = props.envelopeAccentColor ?? '#f59e0b';
+    const envelopeAccent = (alpha: number) => colorWithAlpha(envelopeAccentColor, alpha);
     const envEndTime = Math.max(0.001, a + d + hold + r);
     const envelopeScale = createEnvelopeTimeScale(
       w,
-      getEnvelopeTimelineSeconds(props, envEndTime + 0.1),
+      getEnvelopeTimelineSeconds(props.envelopeTimelineSeconds, envEndTime + 0.1),
     );
 
     ctx.beginPath();
-    ctx.strokeStyle = '#f59e0b';
+    ctx.strokeStyle = envelopeAccentColor;
     ctx.lineWidth = 1.5;
     ctx.globalAlpha = 0.85;
 
@@ -481,7 +442,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     ctx.lineTo(w, envY + envH);
     ctx.lineTo(0, envY + envH);
     ctx.closePath();
-    ctx.fillStyle = '#f59e0b';
+    ctx.fillStyle = envelopeAccentColor;
     ctx.fill();
     ctx.globalAlpha = 1;
 
@@ -493,9 +454,9 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       const modR = props.modEnvRelease ?? props.synthRelease;
 
       ctx.beginPath();
-      ctx.strokeStyle = '#fde68a';
+      ctx.strokeStyle = envelopeAccent(0.66);
       ctx.lineWidth = 1;
-      ctx.globalAlpha = 0.45;
+      ctx.globalAlpha = 0.7;
       ctx.setLineDash([4, 3]);
       for (let px = 0; px < w; px++) {
         const t = envelopeScale.xToTime(px);
@@ -521,7 +482,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     const rx = envelopeScale.timeToX(releaseEndTime);
     const sustainLineY = envY + envH - 4 - s * (envH - 8);
 
-    ctx.strokeStyle = 'rgba(245,158,11,0.15)';
+    ctx.strokeStyle = envelopeAccent(0.15);
     ctx.lineWidth = 0.5;
     for (const px of [ax, dx, hx, rx]) {
       ctx.beginPath();
@@ -575,10 +536,10 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     } else if (activeAdsrDragTarget === 'adsrRelease') {
       drawEnvelopeLabel(`R=${formatEnvelopeTimeLabel(releaseEndTime)}`, rx, envY + envH - 8, 'rgba(255,255,255,0.62)');
     }
-    drawEnvelopeLabel(`A ${formatEnvelopeTimeLabel(a)}`, ax * 0.5, envY + 12, 'rgba(245,158,11,0.72)');
-    drawEnvelopeLabel(`D ${formatEnvelopeTimeLabel(d)}`, (ax + dx) * 0.5, envY + 12, 'rgba(245,158,11,0.66)');
-    drawEnvelopeLabel(`H ${formatEnvelopeTimeLabel(hold)}`, (dx + hx) * 0.5, envY + 12, 'rgba(245,158,11,0.66)');
-    drawEnvelopeLabel(`R ${formatEnvelopeTimeLabel(r)}`, (hx + rx) * 0.5, envY + 12, 'rgba(245,158,11,0.66)');
+    drawEnvelopeLabel(`A ${formatEnvelopeTimeLabel(a)}`, ax * 0.5, envY + 12, envelopeAccent(0.72));
+    drawEnvelopeLabel(`D ${formatEnvelopeTimeLabel(d)}`, (ax + dx) * 0.5, envY + 12, envelopeAccent(0.66));
+    drawEnvelopeLabel(`H ${formatEnvelopeTimeLabel(hold)}`, (dx + hx) * 0.5, envY + 12, envelopeAccent(0.66));
+    drawEnvelopeLabel(`R ${formatEnvelopeTimeLabel(r)}`, (hx + rx) * 0.5, envY + 12, envelopeAccent(0.66));
     drawEnvelopeLabel(
       `S ${formatEnvelopeSustainLabel(s)}`,
       (dx + hx) * 0.5,
@@ -592,7 +553,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
 
     if (showModEnv) {
       ctx.font = '7px monospace';
-      ctx.fillStyle = 'rgba(245,158,11,0.38)';
+      ctx.fillStyle = envelopeAccent(0.38);
       ctx.textAlign = 'right';
       const envLabel = props.modEnvDest === 'filterCutoff' ? 'filter env'
         : props.modEnvDest === 'pitch' ? 'pitch env'
@@ -609,16 +570,16 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
     if (props.onAdsrChange) {
       // A handle: top of attack at (ax, envY + 4)
       const aHandleY = envY + 4;
-      drawHandle(ax, aHandleY, 'adsrAttack', '#f59e0b');
+      drawHandle(ax, aHandleY, 'adsrAttack', envelopeAccentColor);
       // D handle: end of decay at (dx, sustainLineY)
-      drawHandle(dx, sustainLineY, 'adsrDecay', '#f59e0b');
+      drawHandle(dx, sustainLineY, 'adsrDecay', envelopeAccentColor);
       // S handle: sustain level (middle of hold phase)
       const sMidX = (dx + hx) / 2;
-      drawHandle(sMidX, sustainLineY, 'adsrSustain', '#f59e0b');
-      drawHandle(hx, sustainLineY, 'adsrHold', '#f59e0b');
+      drawHandle(sMidX, sustainLineY, 'adsrSustain', envelopeAccentColor);
+      drawHandle(hx, sustainLineY, 'adsrHold', envelopeAccentColor);
       // R handle: end of release.
       const rHandleY = envY + envH - 4;
-      drawHandle(rx, rHandleY, 'adsrRelease', '#f59e0b');
+      drawHandle(rx, rHandleY, 'adsrRelease', envelopeAccentColor);
     }
 
     // ── LFO strip — all data from engine ──
@@ -876,7 +837,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       const envEndTime = Math.max(0.001, a + d + hold + r);
       const envelopeScale = createEnvelopeTimeScale(
         w,
-        getEnvelopeTimelineSeconds(props, envEndTime + 0.1),
+        getEnvelopeTimelineSeconds(props.envelopeTimelineSeconds, envEndTime + 0.1),
       );
       const ax = envelopeScale.timeToX(a);
       const dx = envelopeScale.timeToX(a + d);
@@ -933,7 +894,7 @@ const FilterLfoViz: React.FC<FilterLfoVizProps> = (props) => {
       const envEndTime = Math.max(0.001, a + d + hold + r);
       const envelopeScale = createEnvelopeTimeScale(
         w,
-        getEnvelopeTimelineSeconds(props, envEndTime + 0.1),
+        getEnvelopeTimelineSeconds(props.envelopeTimelineSeconds, envEndTime + 0.1),
       );
       const tAtX = envelopeScale.xToTime(cx);
 

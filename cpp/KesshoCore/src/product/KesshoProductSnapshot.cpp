@@ -786,6 +786,9 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     lanes[i].target_pad_voice_index = pad_lane
         ? padVoiceIndexFromEncodedSeed(lane.seed)
         : kPadVoiceNoPreference;
+    lanes[i].target_pad_voice_mask = pad_lane
+        ? padVoiceMaskFromEncodedSeed(lane.seed)
+        : 0u;
     lanes[i].velocity = clampFloat(lane.velocity, 0.0f, 1.0f);
     lanes[i].hold_seconds = clampFloat(lane.hold_seconds, 0.001f, 20.0f);
     lanes[i].morph = clampFloat(lane.morph, 0.0f, 1.0f);

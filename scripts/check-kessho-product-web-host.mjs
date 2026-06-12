@@ -151,6 +151,7 @@ const selectedAudioEngineRecordingRuntime = read('src/ui/useSelectedAudioEngineR
 const audioRecordingHook = read('src/ui/useAudioRecording.ts');
 const events = read('src/audio/coreProductEvents.ts');
 const snapshot = read('src/audio/coreProductSnapshot.ts');
+const snapshotPadVoiceRouting = read('src/audio/coreProductSnapshotPadVoiceRouting.ts');
 const snapshotTypes = read('src/audio/coreProductSnapshotTypes.ts');
 const generatedParams = read('src/audio/generated/kesshoProductParams.ts');
 const sequencerHold = read('src/audio/coreProductSequencerHold.ts');
@@ -225,7 +226,7 @@ assert(
   !existsSync(resolve(root, 'src/audio/product/host/CoreProductSequencerUiPatchBridge.ts')),
   'Product sequencer UI patch bridge must stay deleted; use generated Product events instead',
 );
-const snapshotSurface = `${snapshotTypes}\n${snapshot}\n${snapshotEncoder}\n${snapshotDefaults}\n${snapshotReverb}\n${productLeadPatch}\n${productPadPatch}\n${productDrumPatch}`;
+const snapshotSurface = `${snapshotTypes}\n${snapshot}\n${snapshotPadVoiceRouting}\n${snapshotEncoder}\n${snapshotDefaults}\n${snapshotReverb}\n${productLeadPatch}\n${productPadPatch}\n${productDrumPatch}`;
 
 const lineCount = (source) => source.split('\n').length;
 assert(lineCount(host) <= 1000, `coreProductEngineHost.ts exceeds cleanup size cap (${lineCount(host)} lines)`);
@@ -2575,22 +2576,26 @@ for (const token of [
   'laneManualMaskFromPattern',
   'resolveEuclidPatternParams(',
   'euclideanPatternMask(steps, hits, rotation)',
-  'synthSourcePadVoiceIndexFromState',
+  'synthSourcePadVoiceMaskFromState',
   'encodedPadVoiceLaneSeed',
   'PAD_VOICE_SEED_FLAG',
+  'PAD_VOICE_MASK_SEED_FLAG',
   'exactPadPatchFromState(state, 0',
   'exactPadPatchFromState(state, 1',
 ]) {
-  assert(snapshot.includes(token), `Product Core Pad snapshot must route distance-aware exact patch comparison through CoreProductPadPatch: missing ${token}`);
+  assert(snapshotSurface.includes(token), `Product Core Pad snapshot must route distance-aware exact patch comparison through CoreProductPadPatch: missing ${token}`);
 }
 
 for (const token of [
   'target_pad_voice_index = kPadVoiceNoPreference',
+  'target_pad_voice_mask = 0',
   'padVoiceIndexFromEncodedSeed',
+  'padVoiceMaskFromEncodedSeed',
   'laneSeedFromEncodedPadVoice',
+  'padVoiceIndexFromMask',
   'sequencerPadVoiceEventFlags',
   'padVoiceIndexFromSequencerEventFlags',
-  'sequencerPadVoiceEventFlags(lane.target_pad_voice_index)',
+  'padVoiceIndexFromMask(lane.target_pad_voice_mask, lane.emitted_hit_count)',
   'pad_voice_index < static_cast<uint32_t>(PAD_VOICES_PER_PAD)',
   'exact pad voice trigger should not consume pad2 round-robin cursor',
 ]) {
@@ -2831,14 +2836,14 @@ for (const token of [
   'drumLanesFromState',
   'synthSourceIdFromState',
   'synthEuclidUsesSourceId',
-  'synthEuclidLaneEnabled',
+  'synthChordSequencerUsesSourceId',
   "booleanFromState(state, 'synthEuclideanMasterEnabled', false)",
   "numberFromState(state, 'pad2VoiceAssign', 0)",
   "booleanFromState(state, 'pad2Enabled', false)",
   'source.slice(\'synth\'.length)',
-  "source.enabled = booleanFromState(state, 'padEnabled', false) || synthEuclidUsesSourceId(state, sourceId)",
-  "source.enabled = booleanFromState(state, 'lead2Enabled', booleanFromState(state, 'leadEnabled', false)) || synthEuclidUsesSourceId(state, sourceId)",
-  "source.enabled = booleanFromState(state, 'pianoEnabled', false) || synthEuclidUsesSourceId(state, sourceId)",
+  "source.enabled = booleanFromState(state, 'padEnabled', false) ||",
+  "source.enabled = booleanFromState(state, 'lead2Enabled', booleanFromState(state, 'leadEnabled', false)) ||",
+  "source.enabled = booleanFromState(state, 'pianoEnabled', false) ||",
   'drumTargetVoiceIndices',
   'CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID',
   'getPrimaryCoreProductSoundscapeAssetIdForState(state)',
@@ -3056,6 +3061,7 @@ const snapshotImportAllowlist = new Set([
   './coreProductSequencerHold',
   './coreProductSoundscapesSnapshot',
   './coreProductSnapshotEncoder',
+  './coreProductSnapshotPadVoiceRouting',
   './coreProductReverbSnapshot',
   './coreProductSourceMapping',
   './coreProductSnapshotState',

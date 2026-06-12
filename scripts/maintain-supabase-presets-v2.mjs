@@ -66,28 +66,23 @@ try {
           ...process.env,
         };
 
-        const supabaseUrl = env.VITE_SUPABASE_URL;
-        const anonKey = env.VITE_SUPABASE_ANON_KEY;
+        const supabaseUrl = env.SUPABASE_URL
+          ?? env.VITE_SUPABASE_URL
+          ?? env.NEXT_PUBLIC_SUPABASE_URL;
         const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY
           ?? env.SUPABASE_SERVICE_KEY
           ?? env.SUPABASE_SECRET_KEY;
 
-        if (!supabaseUrl) throw new Error('Missing VITE_SUPABASE_URL.');
-        if (write && !serviceKey) {
-          throw new Error('Write mode requires SUPABASE_SERVICE_ROLE_KEY, SUPABASE_SERVICE_KEY, or SUPABASE_SECRET_KEY.');
+        if (!supabaseUrl) {
+          throw new Error('Missing SUPABASE_URL, VITE_SUPABASE_URL, or NEXT_PUBLIC_SUPABASE_URL.');
         }
-        if (!write && !anonKey && !serviceKey) {
-          throw new Error('Dry-run mode requires VITE_SUPABASE_ANON_KEY or a service key.');
+        if (!serviceKey) {
+          throw new Error('Preset V2 maintenance reads and mutates wide base tables; set SUPABASE_SERVICE_ROLE_KEY, SUPABASE_SERVICE_KEY, or SUPABASE_SECRET_KEY.');
         }
 
-        const client = createClient(supabaseUrl, write ? serviceKey : (anonKey ?? serviceKey), {
+        const client = createClient(supabaseUrl, serviceKey, {
           auth: { persistSession: false },
         });
-
-        if (!write && anonKey) {
-          const { error } = await client.auth.signInAnonymously();
-          if (error) throw new Error('Anonymous Supabase auth failed: ' + error.message);
-        }
 
         async function fetchAll(table, select, query = (builder) => builder, pageSize = 1000) {
           const rows = [];

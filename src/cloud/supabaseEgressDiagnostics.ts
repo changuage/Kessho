@@ -1,9 +1,10 @@
 const DEBUG_STORAGE_KEY = 'kessho:supabaseEgressDebug';
-const WARNING_THRESHOLD_BYTES = 1 * 1024 * 1024;
-const LIST_REFRESH_PAUSE_THRESHOLD_BYTES = 5 * 1024 * 1024;
+const WARNING_THRESHOLD_BYTES = 256 * 1024;
+const LIST_REFRESH_PAUSE_THRESHOLD_BYTES = 1024 * 1024;
 const QUOTA_RESPONSE_WINDOW_MS = 30_000;
 const QUOTA_RESPONSE_THRESHOLD = 2;
 const QUOTA_CIRCUIT_MS = 120_000;
+const ERROR_BODY_INSPECTION_MAX_BYTES = 64 * 1024;
 
 type SupabaseEgressService = 'rest' | 'auth' | 'storage' | 'functions' | 'realtime' | 'other';
 
@@ -33,7 +34,6 @@ const tripwireState: SupabaseEgressTripwireState = {
 };
 
 function isDiagnosticsEnabled(): boolean {
-  if (!import.meta.env.DEV) return false;
   if (typeof localStorage === 'undefined') return false;
   return localStorage.getItem(DEBUG_STORAGE_KEY) === '1';
 }
@@ -71,7 +71,7 @@ function formatMib(bytes: number): string {
 }
 
 function looksLikeQuotaResponse(status: number, bodyText: string | null): boolean {
-  if (status === 402) return true;
+  if (status === 402 || status === 429) return true;
   if (!bodyText) return false;
   const lower = bodyText.toLowerCase();
   return lower.includes('payment required') || lower.includes('quota') || lower.includes('egress');
@@ -115,7 +115,7 @@ function recordSupabaseEgress(
 
   if (!tripwireState.warningLogged && tripwireState.totalBytes >= WARNING_THRESHOLD_BYTES) {
     tripwireState.warningLogged = true;
-    console.warn('[supabase-egress] This tab has received more than 1 MB from Supabase.', {
+    console.warn('[supabase-egress] This tab has received more than 256 KB from Supabase.', {
       sessionMb: formatMib(tripwireState.totalBytes),
       restMb: formatMib(tripwireState.serviceBytes.rest),
     });
@@ -123,7 +123,7 @@ function recordSupabaseEgress(
 
   if (!tripwireState.listRefreshPaused && tripwireState.totalBytes >= LIST_REFRESH_PAUSE_THRESHOLD_BYTES) {
     tripwireState.listRefreshPaused = true;
-    console.warn('[supabase-egress] Supabase list refreshes are paused for this tab after 5 MB of received data. Explicit loads still work.', {
+    console.warn('[supabase-egress] Supabase list refreshes are paused for this tab after 1 MB of received data. Explicit loads still work.', {
       sessionMb: formatMib(tripwireState.totalBytes),
       restMb: formatMib(tripwireState.serviceBytes.rest),
     });
@@ -140,15 +140,35 @@ function decodeBodyForInspection(buffer: ArrayBuffer, status: number): string | 
   }
 }
 
-async function measureResponseBody(response: Response): Promise<{ bytes: number; text: string | null }> {
+function getContentLengthBytes(response: Response): number {
+  const raw = response.headers.get('content-length');
+  if (!raw) return 0;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+async function measureResponseBody(
+  response: Response,
+  exactBodyMeasurement: boolean,
+): Promise<{ bytes: number; text: string | null }> {
+  const contentLengthBytes = getContentLengthBytes(response);
+  const shouldInspectErrorBody = response.status >= 400
+    && response.status !== 402
+    && response.status !== 429
+    && contentLengthBytes <= ERROR_BODY_INSPECTION_MAX_BYTES;
+
+  if (!exactBodyMeasurement && !shouldInspectErrorBody) {
+    return { bytes: contentLengthBytes, text: null };
+  }
+
   try {
     const buffer = await response.clone().arrayBuffer();
     return {
-      bytes: buffer.byteLength,
+      bytes: buffer.byteLength || contentLengthBytes,
       text: decodeBodyForInspection(buffer, response.status),
     };
   } catch {
-    return { bytes: 0, text: null };
+    return { bytes: contentLengthBytes, text: null };
   }
 }
 
@@ -180,7 +200,7 @@ export async function supabaseEgressDiagnosticFetch(
   if (!service) return response;
 
   const diagnosticsEnabled = isDiagnosticsEnabled();
-  const { bytes: bodyBytes, text: bodyText } = await measureResponseBody(response);
+  const { bytes: bodyBytes, text: bodyText } = await measureResponseBody(response, diagnosticsEnabled);
   recordSupabaseEgress(service, bodyBytes, url, response.status, bodyText);
 
   if (diagnosticsEnabled) {
@@ -195,4 +215,14 @@ export async function supabaseEgressDiagnosticFetch(
   }
 
   return response;
+}
+
+declare global {
+  interface Window {
+    __kesshoSupabaseEgress?: typeof getSupabaseEgressTripwireSnapshot;
+  }
+}
+
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  window.__kesshoSupabaseEgress = getSupabaseEgressTripwireSnapshot;
 }

@@ -50,6 +50,7 @@ const allowedImports = new Set([
   './coreProductReverbSnapshot',
   './coreProductSoundscapesSnapshot',
   './coreProductSnapshotEncoder',
+  './coreProductSnapshotPadVoiceRouting',
   './coreProductSnapshotState',
   './coreProductSnapshotTypes',
   './distanceMacro',

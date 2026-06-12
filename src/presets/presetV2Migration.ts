@@ -44,6 +44,11 @@ interface LegacyPresetRow {
   rating: number | null;
 }
 
+interface LegacyPresetSummaryRow {
+  id: string;
+  name: string;
+}
+
 type CrossfeedRecord = Record<string, unknown> & Partial<Pick<SliderState, 'degradeReverbSend' | 'reverbDegradeSend'>>;
 
 function normalizeGraphRepairData<T extends Record<string, unknown>>(data: T): T {
@@ -160,6 +165,33 @@ interface V2GraphRepairRow {
   archived: boolean;
 }
 
+interface V2LatestRefTargetResult {
+  ref_slot: string;
+}
+
+interface V2StorageVerificationStats {
+  count?: number;
+  version_count?: number;
+  ref_count?: number;
+  payload_count?: number;
+}
+
+interface V2LookupParams {
+  target_preset_id?: string | null;
+  target_type?: string | null;
+  target_name?: string | null;
+  target_scopes?: string[] | null;
+  target_scope_is_null?: boolean;
+  target_resolved_hash?: string | null;
+  exclude_preset_id?: string | null;
+  include_deleted?: boolean;
+  deleted_only?: boolean;
+  include_internal_derived?: boolean;
+  internal_derived_only?: boolean;
+  max_rows?: number;
+  page_offset?: number;
+}
+
 const DEFAULT_CHILD_GRAPH_REPAIR_SCOPES: PresetChildGraphRepairScope[] = [
   { type: 'source', scope: 'delay' },
   { type: 'kit', scope: 'delayKit' },
@@ -170,29 +202,6 @@ const DEFAULT_CHILD_GRAPH_REPAIR_SCOPES: PresetChildGraphRepairScope[] = [
   { type: 'kit', scope: 'granularKit' },
   { type: 'kit', scope: 'earthKit' },
 ];
-
-const LEGACY_PRESET_ROW_SELECT = [
-  'id',
-  'user_id',
-  'type',
-  'scope',
-  'name',
-  'author',
-  'library',
-  'creator',
-  'description',
-  'tags',
-  'visibility',
-  'family_name',
-  'variant_name',
-  'variant_rank',
-  'plays',
-  'versions',
-  'current_version',
-  'created_at',
-  'updated_at',
-  'rating',
-].join(',');
 
 function createPhaseReport(phase: MigrationPhase, candidates: number): MigrationPhaseReport {
   return {
@@ -461,38 +470,83 @@ async function resavePresetForGraphRepair(
   return { version: nextVersion, written: true };
 }
 
+async function lookupPresetRowsV2<T extends object>(
+  client: SupabaseClient,
+  params: V2LookupParams,
+  label: string,
+): Promise<T[]> {
+  const { data, error } = await client.rpc('kessho_lookup_preset_rows_v2', {
+    target_preset_id: params.target_preset_id ?? null,
+    target_type: params.target_type ?? null,
+    target_name: params.target_name ?? null,
+    target_scopes: params.target_scopes ?? null,
+    target_scope_is_null: params.target_scope_is_null ?? false,
+    target_resolved_hash: params.target_resolved_hash ?? null,
+    exclude_preset_id: params.exclude_preset_id ?? null,
+    include_deleted: params.include_deleted ?? false,
+    deleted_only: params.deleted_only ?? false,
+    include_internal_derived: params.include_internal_derived ?? true,
+    internal_derived_only: params.internal_derived_only ?? false,
+    max_rows: params.max_rows ?? 20,
+    page_offset: params.page_offset ?? 0,
+  });
+
+  if (error) {
+    throw new Error(`${label} failed: ${error.message}`);
+  }
+
+  return Array.isArray(data) ? data as unknown as T[] : [];
+}
+
+async function fetchLegacyDetailById(
+  client: SupabaseClient,
+  id: string,
+  label: string,
+): Promise<PresetEntry | null> {
+  const { data, error } = await client.rpc('kessho_get_legacy_preset_detail', {
+    target_preset_id: id,
+    target_type: null,
+    target_name: null,
+    target_scopes: null,
+  });
+
+  if (error) {
+    throw new Error(`${label} failed: ${error.message}`);
+  }
+
+  return data ? normalizeLegacyRow(data as unknown as LegacyPresetRow) : null;
+}
+
+async function fetchPresetStorageVerificationStats(
+  client: SupabaseClient,
+): Promise<V2StorageVerificationStats> {
+  const { data, error } = await client.rpc('kessho_get_preset_storage_stats_v2', {});
+  if (error) {
+    throw new Error(`V2 verification failed: ${error.message}`);
+  }
+  return (data ?? {}) as unknown as V2StorageVerificationStats;
+}
+
 async function countLatestRefsForPreset(
   client: SupabaseClient,
   type: PresetLevel,
   scope: string,
   name: string,
 ): Promise<number> {
-  const { data: presetRows, error: presetError } = await client
-    .from('presets_v2')
-    .select('latest_version_id')
-    .eq('type', type)
-    .eq('scope', scope)
-    .eq('name', name)
-    .order('updated_at', { ascending: false })
-    .limit(1);
-
-  if (presetError) {
-    throw new Error(`String Waves ref lookup failed: ${presetError.message}`);
-  }
-
-  const latestVersionId = (presetRows?.[0] as { latest_version_id?: string | null } | undefined)?.latest_version_id;
+  const presetRows = await lookupPresetRowsV2<{ latest_version_id?: string | null }>(
+    client,
+    {
+      target_type: type,
+      target_name: name,
+      target_scopes: [scope],
+      max_rows: 1,
+    },
+    'String Waves ref lookup',
+  );
+  const latestVersionId = presetRows[0]?.latest_version_id;
   if (!latestVersionId) return 0;
 
-  const { count, error: refError } = await client
-    .from('preset_version_refs_v2')
-    .select('version_id', { count: 'exact', head: true })
-    .eq('version_id', latestVersionId);
-
-  if (refError) {
-    throw new Error(`String Waves latest-ref count failed: ${refError.message}`);
-  }
-
-  return count ?? 0;
+  return (await fetchLatestRefSlotsForVersion(client, latestVersionId)).length;
 }
 
 async function fetchLatestRefSlotsForVersion(
@@ -501,16 +555,15 @@ async function fetchLatestRefSlotsForVersion(
 ): Promise<string[]> {
   if (!versionId) return [];
 
-  const { data, error } = await client
-    .from('preset_version_refs_v2')
-    .select('ref_slot')
-    .eq('version_id', versionId);
+  const { data, error } = await client.rpc('kessho_get_latest_ref_targets_v2', {
+    target_version_id: versionId,
+  });
 
   if (error) {
     throw new Error(`Latest ref-slot lookup failed: ${error.message}`);
   }
 
-  return [...new Set(((data ?? []) as Array<{ ref_slot: string }>).map(row => row.ref_slot))].sort();
+  return [...new Set(((data ?? []) as V2LatestRefTargetResult[]).map(row => row.ref_slot))].sort();
 }
 
 async function fetchChildGraphRepairRows(
@@ -521,22 +574,19 @@ async function fetchChildGraphRepairRows(
   const pageSize = 1000;
 
   for (const repairScope of scopes) {
-    for (let from = 0; ; from += pageSize) {
-      const to = from + pageSize - 1;
-      const { data, error } = await client
-        .from('presets_v2')
-        .select('id,type,scope,name,latest_version_no,latest_version_id,archived')
-        .eq('type', repairScope.type)
-        .eq('scope', repairScope.scope)
-        .eq('archived', false)
-        .range(from, to);
-
-      if (error) {
-        throw new Error(`Child graph repair row lookup failed: ${error.message}`);
-      }
-
-      const page = (data ?? []) as V2GraphRepairRow[];
-      rows.push(...page.filter(row => row.latest_version_no > 0));
+    for (let pageOffset = 0; ; pageOffset += pageSize) {
+      const page = await lookupPresetRowsV2<V2GraphRepairRow>(
+        client,
+        {
+          target_type: repairScope.type,
+          target_scopes: [repairScope.scope],
+          include_internal_derived: false,
+          max_rows: pageSize,
+          page_offset: pageOffset,
+        },
+        'Child graph repair row lookup',
+      );
+      rows.push(...page.filter(row => !row.archived && row.latest_version_no > 0));
       if (page.length < pageSize) break;
     }
   }
@@ -564,7 +614,7 @@ async function ensureAnonymousAuth(client: SupabaseClient, store: SupabasePreset
 
 async function assertV2Schema(client: SupabaseClient): Promise<void> {
   const { error } = await client
-    .from('presets_v2')
+    .from('preset_summaries_v2')
     .select('id')
     .limit(1);
 
@@ -577,18 +627,16 @@ async function fetchExistingV2Keys(client: SupabaseClient): Promise<Set<string>>
   const keys = new Set<string>();
   const pageSize = 1000;
 
-  for (let from = 0; ; from += pageSize) {
-    const to = from + pageSize - 1;
-    const { data, error } = await client
-      .from('presets_v2')
-      .select('type, scope, name, latest_version_no')
-      .range(from, to);
-
-    if (error) {
-      throw new Error(`V2 existing-key fetch failed: ${error.message}`);
-    }
-
-    const page = (data ?? []) as V2ExistingRow[];
+  for (let pageOffset = 0; ; pageOffset += pageSize) {
+    const page = await lookupPresetRowsV2<V2ExistingRow>(
+      client,
+      {
+        include_internal_derived: false,
+        max_rows: pageSize,
+        page_offset: pageOffset,
+      },
+      'V2 existing-key fetch',
+    );
     for (const row of page) {
       if (row.latest_version_no > 0) {
         keys.add(getLogicalKeyFromParts(row.type, row.scope, row.name));
@@ -661,14 +709,14 @@ async function migrateEntries(
 }
 
 async function fetchLegacyL1L3(client: SupabaseClient): Promise<PresetEntry[]> {
-  const rows: LegacyPresetRow[] = [];
+  const rows: LegacyPresetSummaryRow[] = [];
   const pageSize = 1000;
 
   for (let from = 0; ; from += pageSize) {
     const to = from + pageSize - 1;
     const { data, error } = await client
-      .from('presets')
-      .select(LEGACY_PRESET_ROW_SELECT)
+      .from('legacy_preset_summaries')
+      .select('id,name')
       .in('type', ['engine', 'kit', 'source'])
       .range(from, to)
       .order('updated_at', { ascending: false });
@@ -677,20 +725,23 @@ async function fetchLegacyL1L3(client: SupabaseClient): Promise<PresetEntry[]> {
       throw new Error(`Legacy L1-L3 fetch failed: ${error.message}`);
     }
 
-    const page = (data ?? []) as unknown as LegacyPresetRow[];
+    const page = (data ?? []) as unknown as LegacyPresetSummaryRow[];
     rows.push(...page);
     if (page.length < pageSize) break;
   }
 
-  return rows
-    .map(normalizeLegacyRow)
-    .filter((entry): entry is PresetEntry => Boolean(entry));
+  const entries: PresetEntry[] = [];
+  for (const row of rows) {
+    const entry = await fetchLegacyDetailById(client, row.id, `Legacy L1-L3 detail fetch for "${row.name}"`);
+    if (entry) entries.push(entry);
+  }
+  return entries;
 }
 
 async function fetchLegacyStringWaves(client: SupabaseClient): Promise<PresetEntry | null> {
   const { data, error } = await client
-    .from('presets')
-    .select(LEGACY_PRESET_ROW_SELECT)
+    .from('legacy_preset_summaries')
+    .select('id,name')
     .eq('type', 'state')
     .ilike('name', 'String Waves')
     .order('updated_at', { ascending: false })
@@ -700,12 +751,16 @@ async function fetchLegacyStringWaves(client: SupabaseClient): Promise<PresetEnt
     throw new Error(`Legacy String Waves fetch failed: ${error.message}`);
   }
 
-  const entries = ((data ?? []) as unknown as LegacyPresetRow[])
-    .map(normalizeLegacyRow)
-    .filter((entry): entry is PresetEntry => Boolean(entry))
+  const entries: PresetEntry[] = [];
+  for (const row of (data ?? []) as unknown as LegacyPresetSummaryRow[]) {
+    const entry = await fetchLegacyDetailById(client, row.id, `Legacy String Waves detail fetch for "${row.name}"`);
+    if (entry) entries.push(entry);
+  }
+
+  const matchingEntries = entries
     .filter(entry => entry.name.trim().toLowerCase() === 'string waves');
 
-  return dedupeEntriesByLogicalKey(entries)[0] ?? null;
+  return dedupeEntriesByLogicalKey(matchingEntries)[0] ?? null;
 }
 
 export async function runPresetV2Migration(
@@ -774,29 +829,13 @@ export async function verifyPresetV2Migration(): Promise<{
     throw new Error('Supabase is not configured. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
   }
 
-  const [
-    presets,
-    versions,
-    refs,
-    payloads,
-  ] = await Promise.all([
-    client.from('presets_v2').select('id', { count: 'exact', head: true }),
-    client.from('preset_versions_v2').select('id', { count: 'exact', head: true }),
-    client.from('preset_version_refs_v2').select('version_id', { count: 'exact', head: true }),
-    client.from('preset_payloads_v2').select('hash', { count: 'exact', head: true }),
-  ]);
-
-  for (const result of [presets, versions, refs, payloads]) {
-    if (result.error) {
-      throw new Error(`V2 verification failed: ${result.error.message}`);
-    }
-  }
+  const stats = await fetchPresetStorageVerificationStats(client);
 
   return {
-    presets: presets.count ?? 0,
-    versions: versions.count ?? 0,
-    refs: refs.count ?? 0,
-    payloads: payloads.count ?? 0,
+    presets: stats.count ?? 0,
+    versions: stats.version_count ?? 0,
+    refs: stats.ref_count ?? 0,
+    payloads: stats.payload_count ?? 0,
   };
 }
 
@@ -1000,20 +1039,17 @@ async function countLatestRefSlotsForPreset(
   scope: string,
   name: string,
 ): Promise<string[]> {
-  const { data: presetRows, error: presetError } = await client
-    .from('presets_v2')
-    .select('latest_version_id')
-    .eq('type', type)
-    .eq('scope', scope)
-    .eq('name', name)
-    .order('updated_at', { ascending: false })
-    .limit(1);
-
-  if (presetError) {
-    throw new Error(`Latest ref-slot preset lookup failed: ${presetError.message}`);
-  }
-
-  const latestVersionId = (presetRows?.[0] as { latest_version_id?: string | null } | undefined)?.latest_version_id;
+  const presetRows = await lookupPresetRowsV2<{ latest_version_id?: string | null }>(
+    client,
+    {
+      target_type: type,
+      target_name: name,
+      target_scopes: [scope],
+      max_rows: 1,
+    },
+    'Latest ref-slot preset lookup',
+  );
+  const latestVersionId = presetRows[0]?.latest_version_id;
   return fetchLatestRefSlotsForVersion(client, latestVersionId);
 }
 

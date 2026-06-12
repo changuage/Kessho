@@ -6,6 +6,9 @@ void KesshoProductEngine::resetSonicParityFxRuntime() {
   for (Voice& voice : voices) {
     voice = {};
   }
+  active_voice_count = 0u;
+  active_source_mask = 0u;
+  active_voice_list_dirty = true;
   pad_voice_cursors[0] = 0;
   pad_voice_cursors[1] = 0;
   clearPadVoiceReleases(0u);

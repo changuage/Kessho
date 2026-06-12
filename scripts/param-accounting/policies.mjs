@@ -147,7 +147,7 @@ export function collectAppVisibleStructuralPolicyInventory(appVisibleLiveUpdateP
 
 export function controlDomain(key) {
   if (/^piano/.test(key)) return 'source.piano';
-  if (/^(synthAttack|synthDecay|synthSustain|synthHold|synthRelease|synthLevel)$/.test(key)) return 'source.pad';
+  if (/^(synthAttack|synthDecay|synthSustain|synthHold|synthRelease|synthLevel|synthVoiceMask)$/.test(key)) return 'source.pad';
   if (/^(pad|pad2|filter|lfo|env|warmth|hardness|presence|motion|shimmer|bloom|noise|drive|sub|dist|velocity|retrigger|stereo|chorus)/.test(key)) return 'source.pad';
   if (/^lead[12]?/.test(key)) return 'source.lead';
   if (/^drum/.test(key)) return 'source.drum';
@@ -156,7 +156,7 @@ export function controlDomain(key) {
   if (/^delay/.test(key)) return 'fx.delay';
   if (/^reverb/.test(key) || /^spectralFreeze/.test(key) || /^(damping|predelay|width)$/.test(key)) return 'fx.reverb';
   if (/^(drift|degrade|erosion|dynamics|endComp|sidechain|masterLimiter)/.test(key)) return 'fx.dynamics';
-  if (/^(synthEuclid|drumEuclid|sequencer|transport|chordProgression|cof|harmony|randomWalk|rootNote|scaleMode|manualScale|tension|phraseLength|chordRate|voicingSpread|waveSpread|detune|seedWindow|synthChordSequencerEnabled|synthOctave|randomness)/.test(key)) return 'music.sequencer';
+  if (/^(synthEuclid|drumEuclid|sequencer|transport|chordProgression|cof|harmony|randomWalk|rootNote|scaleMode|manualScale|tension|phraseLength|chordRate|voicingSpread|waveSpread|detune|seedWindow|synthChordSequencer|synthOctave|randomness)/.test(key)) return 'music.sequencer';
   if (/^master/.test(key)) return 'master';
   return 'misc';
 }
@@ -321,6 +321,11 @@ export const behaviorEvidenceByAppVisibleGroup = {
     owner: 'Product Core Pad arrangement owner',
     reason: 'Pad gate-fit controls must change generated manual note durations before events are sent to Product Core.',
     evidence: ['core:product:sequencer-ui', 'src/audio/coreProductSequencerHold.ts#coreProductPadEnvelopeGateSecondsFromState', 'src/audio/coreProductEvents.ts#createCoreProductManualNoteEvent'],
+  },
+  'source.pad|pad-voice-routing-snapshot': {
+    owner: 'Product Core Pad sequencer owner',
+    reason: 'Shared Pad 1/Pad 2 voice assignment controls must update encoded lane seeds and generated manual-note routing.',
+    evidence: ['core:product:sequencer', 'core:product:web-host', 'src/audio/coreProductSnapshotPadVoiceRouting.ts#encodedPadVoiceLaneSeed'],
   },
   'source.pad|range-event': {
     owner: 'Product Core Pad source owner',

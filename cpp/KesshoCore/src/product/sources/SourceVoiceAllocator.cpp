@@ -269,6 +269,7 @@ uint32_t KesshoProductEngine::triggerVoice(
   Voice& voice = voices[voice_index];
   voice = {};
   voice.active = true;
+  markActiveVoiceListDirty();
   voice.source_id = source_id;
   voice.frequency = midiToFrequency(clampFloat(midi_note, 0.0f, 127.0f));
   voice.amplitude = clampFloat(velocity * expression, 0.0f, 1.0f);
@@ -285,6 +286,7 @@ uint32_t KesshoProductEngine::triggerVoice(
         : findAssetSlot(asset_id_override != 0u ? asset_id_override : source.asset_id);
     if (slot == kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS) {
       voice.active = false;
+      markActiveVoiceListDirty();
       reportMissingSourceAsset(source, asset_id_override != 0u ? asset_id_override : source.asset_id);
       return kProductInvalidVoiceIndex;
     }

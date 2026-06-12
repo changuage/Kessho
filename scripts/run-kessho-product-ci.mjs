@@ -47,6 +47,8 @@ const prerequisiteSteps = [
   'core:product:sequencer-ui',
   'core:product:cpu',
   'core:product:browser-runtime',
+  'core:product:module-cpu',
+  'core:product:cpu-scenarios',
 ];
 
 const finalGateStep = 'core:product:default-gate-v3';

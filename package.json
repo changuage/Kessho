@@ -19,7 +19,14 @@
     "maintenance:preset-v2": "node scripts/maintain-supabase-presets-v2.mjs",
     "maintenance:preset-v2:postgres": "node scripts/maintain-supabase-presets-v2-postgres.mjs",
     "audit:supabase-egress": "node scripts/check-supabase-egress-guards.mjs",
+    "audit:supabase-egress:runtime": "node scripts/check-supabase-egress-budget.mjs",
+    "audit:supabase-egress:runtime:detail": "node scripts/check-supabase-egress-budget.mjs --open-presets --load-first-preset",
+    "audit:supabase-egress:runtime:detail:strict": "node scripts/check-supabase-egress-budget.mjs --open-presets --load-first-preset --require-supabase-calls --fail-supabase-errors",
+    "audit:supabase-egress:runtime:reload": "node scripts/check-supabase-egress-budget.mjs --idle-ms=60000 --reload-count=20",
+    "audit:supabase-api-surface": "node scripts/audit-supabase-api-surface.mjs",
     "audit:supabase-security": "node scripts/check-supabase-security-guards.mjs",
+    "audit:supabase-revoke-readiness": "node scripts/check-supabase-revoke-readiness.mjs",
+    "apply:supabase-api-hardening": "node scripts/apply-supabase-api-hardening.mjs",
     "audit:texture-naming": "node scripts/check-texture-naming.mjs",
     "audit:routing-registry": "node scripts/check-routing-registry-consistency.mjs",
     "audit:product-triggers": "node scripts/check-product-trigger-ownership.mjs",
@@ -127,7 +134,8 @@
     "core:product:cpu-scenarios": "node scripts/check-kessho-product-cpu-scenarios.mjs",
     "core:product:wasm": "node scripts/check-kessho-product-wasm.mjs",
     "core:product:ci:prereqs": "node scripts/run-kessho-product-ci.mjs --skip-final-gate",
-    "core:product:ci": "node scripts/run-kessho-product-ci.mjs"
+    "core:product:ci": "node scripts/run-kessho-product-ci.mjs",
+    "beta:gate": "npm run migration:no-unsupported-product-surface && npm run core:product:ci && npm run core:product:browser-runtime && npm run core:product:module-cpu && npm run core:product:cpu-scenarios"
   },
   "dependencies": {
     "@capacitor/cli": "^8.3.0",

@@ -102,6 +102,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.stemPeakProbeCountdown = 0;
     this.lastGraphTapPeaks = new Array(PRODUCT_GRAPH_TAP_COUNT).fill(0);
     this.graphTapCaptures = new Map();
+    this.graphCaptureAllowed = options.processorOptions?.graphCaptureAllowed === true;
     this.coreGraphTapsEnabled = null;
     this.graphTapDisableCountdownBlocks = 0;
     this.dawOutputRouting = { enabled: false, channelCount: 2, routes: [] };
@@ -456,6 +457,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   }
 
   startGraphTapCapture(message) {
+    if (!this.graphCaptureAllowed) {
+      throw new Error('Kessho Product Core graph capture is disabled in this build.');
+    }
     const tapId = this.normalizeGraphTapId(message.tapId);
     const chunkFrames = Math.max(128, Math.round(Number(message.chunkFrames) || 4096));
     if (this.graphTapCaptures.size === 0) {
@@ -513,6 +517,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   }
 
   flushGraphTapCapture(rawTapId, stopped) {
+    if (!this.graphCaptureAllowed) {
+      throw new Error('Kessho Product Core graph capture is disabled in this build.');
+    }
     const tapId = this.normalizeGraphTapId(rawTapId);
     const capture = this.graphTapCaptures.get(tapId);
     if (capture) {

@@ -291,7 +291,7 @@ function coreProductSourceOverrideParamCount(sourceId: number): number {
 
 function coreProductPadVoiceEventFlags(voiceIndex: number | undefined): number {
   if (voiceIndex === undefined) return 0;
-  const value = requireIntegerInRange(voiceIndex, 'padVoiceIndex', 0, 5);
+  const value = requireIntegerInRange(voiceIndex, 'padVoiceIndex', 0, 7);
   return (CORE_PRODUCT_PAD_VOICE_EVENT_FLAG | ((value + 1) << CORE_PRODUCT_PAD_VOICE_EVENT_SHIFT)) >>> 0;
 }
 

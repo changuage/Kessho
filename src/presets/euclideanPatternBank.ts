@@ -103,6 +103,7 @@ function extractLanePatternData(
   if (prefix === 'synth') {
     data.euclideanPatternNoteMin = stateRecord[`synthEuclid${lane}NoteMin`];
     data.euclideanPatternNoteMax = stateRecord[`synthEuclid${lane}NoteMax`];
+    data.euclideanPatternVoiceMask = stateRecord[`synthEuclid${lane}VoiceMask`];
   }
   return data;
 }
@@ -153,11 +154,15 @@ function buildLaneStateFromPatternData(
     const highFallback = lane === 1 ? 76 : lane === 2 ? 88 : lane === 3 ? 64 : 96;
     const rawLow = data.euclideanPatternNoteMin ?? data[`${sourcePrefix}NoteMin`];
     const rawHigh = data.euclideanPatternNoteMax ?? data[`${sourcePrefix}NoteMax`];
+    const rawVoiceMask = data.euclideanPatternVoiceMask ?? data[`${sourcePrefix}VoiceMask`];
     if (rawLow !== undefined || rawHigh !== undefined) {
       const low = coerceMidiNote(rawLow, lowFallback);
       const high = coerceMidiNote(rawHigh, highFallback);
       next[`synthEuclid${lane}NoteMin`] = Math.min(low, high);
       next[`synthEuclid${lane}NoteMax`] = Math.max(low, high);
+    }
+    if (rawVoiceMask !== undefined) {
+      next[`synthEuclid${lane}VoiceMask`] = Math.max(1, Math.min(255, Math.round(coerceNumber(rawVoiceMask, 1))));
     }
   }
   return next;
@@ -203,6 +208,7 @@ function buildNeutralSynthLaneDefaults(lane: 2 | 3 | 4): Record<string, unknown>
     [`synthEuclid${lane}Level`]: laneDefaults.level,
     [`synthEuclid${lane}Probability`]: 1,
     [`synthEuclid${lane}Source`]: 'lead',
+    [`synthEuclid${lane}VoiceMask`]: 128,
   };
 }
 
@@ -255,7 +261,7 @@ function pickSpecificEuclideanData(data: Record<string, unknown>, prefix: 'drum'
       key.startsWith('synthEuclid')
       || key === 'synthEuclideanMasterEnabled'
       || key === 'synthEuclideanTempo'
-      || key === 'synthChordSequencerEnabled'
+      || key.startsWith('synthChordSequencer')
     );
     if (
       isDrumKey
@@ -344,6 +350,7 @@ export function buildSynthEuclideanStateFromPatternData(
     synthEuclid1Level: 0.8,
     synthEuclid1Probability: 1,
     synthEuclid1Source: 'lead',
+    synthEuclid1VoiceMask: 128,
     ...buildNeutralSynthLaneDefaults(2),
     ...buildNeutralSynthLaneDefaults(3),
     ...buildNeutralSynthLaneDefaults(4),

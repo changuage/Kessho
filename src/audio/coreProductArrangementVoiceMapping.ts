@@ -1,4 +1,6 @@
-export const PAD_VOICE_COUNT = 6;
+export const PAD_VOICE_COUNT = 8;
+export const PAD_VOICE_MASK_ALL = (1 << PAD_VOICE_COUNT) - 1;
+export const PAD_VOICE_DEFAULT_MASK = 1 << (PAD_VOICE_COUNT - 1);
 
 const ARRANGEMENT_RESTART_KEYS = [
   'phraseLength', 'transportPrimaryClock', 'transportBeatsPerBar', 'transportBarsPerPhrase',
@@ -7,9 +9,12 @@ const ARRANGEMENT_RESTART_KEYS = [
   'chordRate', 'seedWindow', 'scaleMode', 'manualScale', 'rootNote',
   'chordProgressionEnabled', 'chordProgressionPattern', 'chordProgressionSteps',
   'chordProgressionStepEnabled', 'cofDriftEnabled', 'cofDriftRate', 'cofDriftDirection',
-  'cofDriftRange', 'voicingSpread', 'synthChordSequencerEnabled', 'synthEuclideanMasterEnabled',
-  'synthEuclid1Enabled', 'synthEuclid1Source', 'synthEuclid2Enabled', 'synthEuclid2Source',
-  'synthEuclid3Enabled', 'synthEuclid3Source', 'synthEuclid4Enabled', 'synthEuclid4Source',
+  'cofDriftRange', 'voicingSpread', 'synthChordSequencerEnabled', 'synthChordSequencerSource',
+  'synthChordSequencerVoiceCount', 'synthEuclideanMasterEnabled',
+  'synthEuclid1Enabled', 'synthEuclid1Source', 'synthEuclid1VoiceMask',
+  'synthEuclid2Enabled', 'synthEuclid2Source', 'synthEuclid2VoiceMask',
+  'synthEuclid3Enabled', 'synthEuclid3Source', 'synthEuclid3VoiceMask',
+  'synthEuclid4Enabled', 'synthEuclid4Source', 'synthEuclid4VoiceMask',
   'padEnabled', 'pad2Enabled', 'synthVoiceMask', 'pad2VoiceAssign', 'synthOctave',
   'waveSpread', 'leadRandomEnabled', 'leadRandomSource', 'leadRandomClockSource',
   'leadRandomSyncPolicy', 'leadEnabled', 'lead2Enabled', 'pianoEnabled',
@@ -31,6 +36,11 @@ export function padEuclidOwnedVoiceMask(state: Record<string, unknown>): number 
     const prefix = `synthEuclid${laneNumber}`;
     if (!booleanFromState(state, `${prefix}Enabled`, laneNumber === 1)) continue;
     const source = String(state[`${prefix}Source`] ?? 'lead').toLowerCase();
+    if (source === 'pad1' || source === 'pad2') {
+      const voiceMask = Math.round(Number(state[`${prefix}VoiceMask`] ?? PAD_VOICE_DEFAULT_MASK)) & PAD_VOICE_MASK_ALL;
+      mask |= voiceMask;
+      continue;
+    }
     if (!source.startsWith('synth')) continue;
     const voiceIndex = Number.parseInt(source.replace('synth', ''), 10) - 1;
     if (voiceIndex >= 0 && voiceIndex < PAD_VOICE_COUNT) mask |= 1 << voiceIndex;
@@ -40,8 +50,8 @@ export function padEuclidOwnedVoiceMask(state: Record<string, unknown>): number 
 
 export function enabledChordMidiForMask(chordMidi: number[], voiceMask: number): number[] {
   const enabledMidi: number[] = [];
-  for (let voiceIndex = 0; voiceIndex < Math.min(PAD_VOICE_COUNT, chordMidi.length); voiceIndex += 1) {
-    const midi = chordMidi[voiceIndex];
+  for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT; voiceIndex += 1) {
+    const midi = chordMidi[voiceIndex % Math.max(1, chordMidi.length)];
     if ((voiceMask & (1 << voiceIndex)) !== 0 && midi !== undefined) enabledMidi.push(midi);
   }
   if (enabledMidi.length === 0 && chordMidi.length > 0) enabledMidi.push(chordMidi[0]!);
@@ -54,4 +64,34 @@ export function enabledVoiceRank(voiceMask: number, voiceIndex: number): number 
     if ((voiceMask & (1 << index)) !== 0) rank += 1;
   }
   return rank;
+}
+
+export function limitVoiceMaskByCount(mask: number, count: number): number {
+  let limited = 0;
+  let selected = 0;
+  for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT && selected < count; voiceIndex += 1) {
+    const bit = 1 << voiceIndex;
+    if ((mask & bit) === 0) continue;
+    limited |= bit;
+    selected += 1;
+  }
+  return limited;
+}
+
+export function padChordVoiceMasksForSource(
+  source: string,
+  availablePadMask: number,
+  pad2Assign: number,
+  voiceCount: number,
+): { pad1Mask: number; pad2Mask: number } {
+  if (source === 'pad1' || source === 'pad') {
+    const eligible = availablePadMask & ~pad2Assign;
+    return { pad1Mask: limitVoiceMaskByCount(eligible !== 0 ? eligible : availablePadMask, voiceCount), pad2Mask: 0 };
+  }
+  if (source === 'pad2') {
+    const eligible = availablePadMask & pad2Assign;
+    return { pad1Mask: 0, pad2Mask: limitVoiceMaskByCount(eligible !== 0 ? eligible : availablePadMask, voiceCount) };
+  }
+  const selected = limitVoiceMaskByCount(availablePadMask, voiceCount);
+  return { pad1Mask: selected & ~pad2Assign, pad2Mask: selected & pad2Assign };
 }

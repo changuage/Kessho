@@ -79,6 +79,28 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
   return 0;
 }
 
+  void KesshoProductEngine::markActiveVoiceListDirty() {
+  active_voice_list_dirty = true;
+}
+
+  void KesshoProductEngine::rebuildActiveVoiceList() {
+  active_voice_count = 0u;
+  active_source_mask = 0u;
+  for (uint32_t i = 0; i < kessho::product::generated::KESSHO_PRODUCT_MAX_VOICES; ++i) {
+    Voice& voice = voices[i];
+    if (!voice.active) {
+      continue;
+    }
+    if (voice.source_id < 1u || voice.source_id > kSourceCount) {
+      voice.active = false;
+      continue;
+    }
+    active_voice_indices[active_voice_count++] = static_cast<uint16_t>(i);
+    active_source_mask |= 1u << (voice.source_id - 1u);
+  }
+  active_voice_list_dirty = false;
+}
+
   bool KesshoProductEngine::hasActiveSourceVoice(uint32_t source_id) const {
   for (const Voice& voice : voices) {
     if (voice.active && voice.source_id == source_id) {
@@ -94,6 +116,7 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
   }
   if (voice.start_delay_frames > 0u) {
     voice.active = false;
+    markActiveVoiceListDirty();
     return;
   }
   const uint32_t release_frames = std::max<uint32_t>(
@@ -337,6 +360,7 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
   }
   if (voice.remaining_frames == 0u) {
     voice.active = false;
+    markActiveVoiceListDirty();
     return;
   }
 
@@ -346,12 +370,14 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
     const AssetSlot& asset = assets[voice.asset_slot];
     if (asset.frame_count == 0u || asset.channels[0] == nullptr) {
       voice.active = false;
+      markActiveVoiceListDirty();
       return;
     }
     uint32_t frame = static_cast<uint32_t>(voice.sample_position);
     if (frame >= asset.frame_count) {
       if (!voice.looping) {
         voice.active = false;
+        markActiveVoiceListDirty();
         return;
       }
       while (frame >= asset.frame_count) {
@@ -397,6 +423,7 @@ bool chooseShortPianoSampleVariant(float midi_note, float velocity) {
     --voice.remaining_frames;
     if (voice.remaining_frames == 0u) {
       voice.active = false;
+      markActiveVoiceListDirty();
     }
   }
   out_l = sample_l * voice.amplitude;

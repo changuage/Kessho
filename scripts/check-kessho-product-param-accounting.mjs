@@ -394,10 +394,17 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
-  if (/^synthEuclid[1-4](Enabled|Source|Steps|Hits|Rotation|ClockDivision|Swing|Probability|Level|NoteMin|NoteMax)$/.test(key)) {
+  if (/^synthEuclid[1-4](Enabled|Source|VoiceMask|Steps|Hits|Rotation|ClockDivision|Swing|Probability|Level|NoteMin|NoteMax)$/.test(key)) {
     return {
       path: 'sequencer-lane-diff',
       evidence: ['src/audio/CoreProductRuntimeAdapter.ts#appendSequencerLaneDiffs', 'cpp/KesshoCore/src/product/sequencer/SynthEuclidSequencer.cpp'],
+    };
+  }
+
+  if (key === 'synthVoiceMask' || key === 'pad2VoiceAssign') {
+    return {
+      path: 'pad-voice-routing-snapshot',
+      evidence: ['src/audio/coreProductSnapshotPadVoiceRouting.ts', 'src/audio/CoreProductRuntimeAdapter.ts#appendSequencerLaneDiffs', 'src/audio/coreProductArrangementScheduler.ts'],
     };
   }
 
@@ -585,6 +592,8 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     'leadRandomSyncPolicy',
     'seedWindow',
     'synthChordSequencerEnabled',
+    'synthChordSequencerSource',
+    'synthChordSequencerVoiceCount',
     'synthEuclideanMasterEnabled',
     'synthOctave',
     'voicingSpread',
@@ -760,6 +769,8 @@ function addDynamicSequencerKeys(keys) {
       'NoteMin',
       'NoteMax',
       'Enabled',
+      'Source',
+      'VoiceMask',
       'Steps',
       'Hits',
       'Rotation',

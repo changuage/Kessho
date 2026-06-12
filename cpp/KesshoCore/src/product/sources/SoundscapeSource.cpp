@@ -1,6 +1,5 @@
 #include "../KesshoProductEngineInternal.h"
-
-  void KesshoProductEngine::ensureSoundscapeTextureVoice(
+void KesshoProductEngine::ensureSoundscapeTextureVoice(
       SourceState& source,
       uint32_t asset_id,
       uint32_t asset_slot) {
@@ -92,6 +91,7 @@
     Voice& voice = voices[voice_index];
     voice = {};
     voice.active = true;
+    markActiveVoiceListDirty();
     voice.source_id = KESSHO_PRODUCT_SOURCE_SOUNDSCAPE;
     voice.sample_voice = true;
     voice.soundscape_texture_voice = true;
@@ -146,7 +146,7 @@
   }
 }
 
-  void KesshoProductEngine::ensureSoundscapeVoice() {
+void KesshoProductEngine::ensureSoundscapeVoice() {
   SourceState& source = sources[KESSHO_PRODUCT_SOURCE_SOUNDSCAPE - 1u];
   if (!sourceRenderActive(source)) {
     releaseSourceVoices(KESSHO_PRODUCT_SOURCE_SOUNDSCAPE);

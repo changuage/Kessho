@@ -5,7 +5,7 @@ import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import type { ProductLiveNoteEvent } from './product/liveNoteEvents';
 import type { DecodedCoreProductAsset } from './coreProductAssets';
 import type { CoreProductSnapshot } from './coreProductSnapshot';
-import { CORE_PRODUCT_SEQUENCER_IDS, CORE_PRODUCT_SOURCE_IDS, type CoreProductEvent, type CoreProductStepValueField, createCoreProductJourneyEvent, createCoreProductJourneyStateEvent, createCoreProductManualNoteEvent, createCoreProductSequencerDiceEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSequencerPitchSettingEvents, createCoreProductSequencerResetHomeEvent, createCoreProductStartEvent, createCoreProductStopEvent } from './coreProductEvents';
+import { CORE_PRODUCT_SEQUENCER_IDS, type CoreProductEvent, type CoreProductStepValueField, createCoreProductJourneyEvent, createCoreProductJourneyStateEvent, createCoreProductSequencerDiceEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSequencerPitchSettingEvents, createCoreProductSequencerResetHomeEvent, createCoreProductStartEvent, createCoreProductStopEvent } from './coreProductEvents';
 import { type CoreProductTelemetrySnapshot, type CoreProductVisualTelemetrySnapshot } from './coreProductTelemetry';
 import type { RuntimeFallbackClassification } from './CoreProductFallbackDiagnostics';
 import { shouldForwardCoreProductRngDiffs, type SnapshotReloadReason } from './CoreProductRuntimeAdapter';
@@ -14,7 +14,7 @@ import { normalizeSequencerPitchBindingMode, sequencerPitchBindingModeToProductI
 import type { SequencerPitchSettings } from './sequencerPitchSettings';
 import { normalizeSequencerSwing } from './sequencerSwing';
 import { getCoreProductSequencerLaneSwing, patchCoreProductSequencerLaneSwing } from './CoreProductHostSequencerSwing';
-import { drumVoiceIndex, midiFromFrequency, requireFiniteRange, requirePositive, runtimeWalkConfigChanged, runtimeWalkConfigFromState } from './CoreProductHostRuntimeGuards';
+import { drumVoiceIndex, runtimeWalkConfigChanged, runtimeWalkConfigFromState } from './CoreProductHostRuntimeGuards';
 import { CoreProductRuntime, type CoreProductGraphTapCaptureChunk } from './coreProductRuntime';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
@@ -50,7 +50,7 @@ import { applyCoreProductSequencerEvolveConfigEvent } from './product/host/CoreP
 import { restoreCoreProductSequencerLaneHome } from './product/host/CoreProductSequencerHomeRestoreBridge';
 import { applyCoreProductSequencerLaneParamSet, patchCoreProductSequencerLaneAdapterParam, patchCoreProductSynthPitchBindingModeFromEvent } from './product/host/CoreProductSequencerLaneParamBridge';
 import { CoreProductSequencerMorphFeedbackBridge } from './product/host/CoreProductSequencerMorphFeedbackBridge';
-import { auditionCoreProductSynthNote, auditionCoreProductSynthNotes, triggerCoreProductDrumVoice, type CoreProductManualAuditionContext } from './product/host/CoreProductManualAuditionBridge';
+import { auditionCoreProductSynthNote, auditionCoreProductSynthNotes, triggerCoreProductDrumVoice, triggerCoreProductSynthVoice, type CoreProductManualAuditionContext } from './product/host/CoreProductManualAuditionBridge';
 import { applyCoreProductSequencerPitchSettingEvent } from './product/host/CoreProductSequencerPitchSettingEventBridge';
 import { applyCoreProductSynthStepOverrides } from './product/host/CoreProductSequencerStepOverrideBridge';
 import { applyCoreProductDrumSequencerStepOverrideEvent } from './product/host/CoreProductSequencerStepOverrideEventBridge';
@@ -111,6 +111,13 @@ class CoreProductEngineHost {
   private midiTimestampOriginSeconds: number | null = null;
   private sequencerTransportStartInFlight = false;
   private pendingSnapshotReloadReason: SnapshotReloadReason | null = null;
+  private pendingProductStatePatch: Record<string, unknown> | null = null;
+  private pendingProductStatePatchReason: SnapshotReloadReason | null = null;
+  private productPatchFlushQueued = false;
+  private readonly pendingProductStatePatchReceipts: Array<{
+    resolve: (receipt: ProductPatchApplyReceipt) => void;
+    reject: (error: unknown) => void;
+  }> = [];
   private lastSequencerUiStateRevision = 0;
   private readonly sequencerCache: CoreProductSequencerCacheState = createCoreProductSequencerCacheState();
   private readonly sequencerMorphFeedback = new CoreProductSequencerMorphFeedbackBridge();
@@ -158,7 +165,6 @@ class CoreProductEngineHost {
   private publishStateIfHarmonyChanged(): void { if (this.refreshUiHarmonySnapshot()) this.stateChangeCallback?.(this.createEngineState()); }
   getState(): ProductEngineState { return this.createEngineState(); }
   setStateChangeCallback(callback: ((state: ProductEngineState) => void) | null): void { this.stateChangeCallback = callback; }
-
   setPerfMonitorEnabled(enabled: boolean): void {
     this.perfMonitorEnabled = enabled;
     this.runtime.setPerfMonitorEnabled(enabled);
@@ -189,7 +195,6 @@ class CoreProductEngineHost {
   setVisualTelemetryActive(active: boolean): void {
     this.runtime.setVisualTelemetryActive(active);
   }
-
   setProductTelemetryCallback(callback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null): void {
     this.productTelemetryCallback = callback;
     if (callback && this.latestTelemetry) {
@@ -238,7 +243,58 @@ class CoreProductEngineHost {
     fallbackReloadReason: SnapshotReloadReason,
     options?: ProductStateApplyOptions,
   ): Promise<ProductPatchApplyReceipt> {
-    return this.applyProductState({ ...(this.latestSliderState ?? {}), ...patch }, fallbackReloadReason, options);
+    if (
+      options?.forceFullSnapshot === true ||
+      options?.triggerCritical === true ||
+      typeof options?.revision === 'number' ||
+      options?.applyMode === 'full-snapshot'
+    ) {
+      return this.applyProductState({ ...(this.latestSliderState ?? {}), ...patch }, fallbackReloadReason, options);
+    }
+    this.pendingProductStatePatch = {
+      ...(this.pendingProductStatePatch ?? {}),
+      ...patch,
+    };
+    this.pendingProductStatePatchReason = fallbackReloadReason;
+    const receipt = new Promise<ProductPatchApplyReceipt>((resolve, reject) => {
+      this.pendingProductStatePatchReceipts.push({ resolve, reject });
+    });
+    this.queueProductStatePatchFlush();
+    return receipt;
+  }
+
+  private queueProductStatePatchFlush(): void {
+    if (this.productPatchFlushQueued) return;
+    this.productPatchFlushQueued = true;
+    const flush = () => {
+      void this.flushPendingProductStatePatch();
+    };
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(flush);
+      return;
+    }
+    if (typeof queueMicrotask === 'function') { queueMicrotask(flush); return; }
+    void Promise.resolve().then(flush);
+  }
+
+  private async flushPendingProductStatePatch(): Promise<void> {
+    this.productPatchFlushQueued = false;
+    const pending = this.pendingProductStatePatch;
+    const reason = this.pendingProductStatePatchReason ?? 'product-patch';
+    const receipts = this.pendingProductStatePatchReceipts.splice(0);
+    this.pendingProductStatePatch = null;
+    this.pendingProductStatePatchReason = null;
+    if (!pending) {
+      const noop: ProductPatchApplyReceipt = { applied: false, mode: 'deferred' };
+      for (const { resolve } of receipts) resolve(noop);
+      return;
+    }
+    try {
+      const receipt = await this.applyProductState({ ...(this.latestSliderState ?? {}), ...pending }, reason);
+      for (const { resolve } of receipts) resolve(receipt);
+    } catch (error) {
+      for (const { reject } of receipts) reject(error);
+    }
   }
 
   private async applyProductState(
@@ -419,26 +475,7 @@ class CoreProductEngineHost {
     noteDuration = 0.18,
     padParamsOverride?: Record<string, unknown>,
   ): void {
-    if (!Number.isInteger(voiceIndex) || voiceIndex < 0 || voiceIndex > 5) {
-      throw new Error(`Core Product synth trigger voiceIndex must be an integer in [0, 5]: ${String(voiceIndex)}`);
-    }
-    const midi = midiFromFrequency(frequency);
-    const triggerVelocity = requireFiniteRange(velocity, 'synth trigger velocity', 0.000001, 1);
-    const durationSeconds = requirePositive(noteDuration, 'synth trigger duration');
-    if (padParamsOverride) void this.applyProductStatePatch(padParamsOverride, snapshotReloadReasonForProductPatch('ui-control-change'));
-    const pad2Assign = typeof this.latestSliderState?.pad2VoiceAssign === 'number' ? Math.round(this.latestSliderState.pad2VoiceAssign) & 0x3f : 0;
-    const targetSource = this.latestSliderState?.pad2Enabled === true && (pad2Assign & (1 << voiceIndex)) !== 0
-      ? CORE_PRODUCT_SOURCE_IDS.pad2
-      : CORE_PRODUCT_SOURCE_IDS.pad1;
-    const post = () => {
-      this.recordSoundTrigger();
-      this.runtime.postEvent(createCoreProductManualNoteEvent(targetSource, midi, triggerVelocity, durationSeconds * 1000, voiceIndex));
-    };
-    if (this.runtimeReady) { if (this.runtime.audioContext?.state === 'running') { post(); return; } void this.runtime.resume().then(post); return; }
-    void this.runtime.ensureStarted().then(() => {
-      this.runtimeReady = true;
-      return this.loadLatestSnapshot('runtime-bootstrap').then(() => this.runtime.resume());
-    }).then(post);
+    triggerCoreProductSynthVoice(this.manualAuditionContext(), voiceIndex, frequency, velocity, noteDuration, padParamsOverride);
   }
 
   async loadLeadPreset(slot: unknown, presetId: unknown): Promise<void> {
@@ -590,6 +627,7 @@ class CoreProductEngineHost {
       latestProductSnapshot: () => this.latestProductSnapshot,
       runtimeReady: () => this.runtimeReady,
       setRuntimeReady: (ready) => { this.runtimeReady = ready; },
+      applyProductStatePatch: (patch) => this.applyProductStatePatch(patch, snapshotReloadReasonForProductPatch('ui-control-change')),
       applyLatestSnapshotUpdate: (reason) => this.applyLatestSnapshotUpdate(reason),
       recordSoundTrigger: () => this.recordSoundTrigger(),
       publish: (name, ...args) => this.invokeDisplayCallback(name, ...args),

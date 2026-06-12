@@ -35,6 +35,7 @@ struct LaneState {
   float midi_note = 60.0f;
   uint32_t drum_voice_mask = 0;
   uint32_t target_pad_voice_index = kPadVoiceNoPreference;
+  uint32_t target_pad_voice_mask = 0;
   float velocity = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SEQUENCER_VELOCITY;
   float hold_seconds = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SEQUENCER_HOLD_SECONDS;
   float morph = 0.0f;

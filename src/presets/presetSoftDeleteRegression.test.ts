@@ -256,7 +256,10 @@ class FakeSupabaseClient {
     presets: [] as FakeRow[],
   };
   presetsV2HardDeleteAttempts = 0;
+  presetDetailRpcCalls = 0;
+  legacyDetailRpcCalls = 0;
   failNextAtomicRefInsert = false;
+  compactDetailPayloads = false;
   authUserId: string | null = null;
   private nextId = 1;
   private clock = Date.parse('2026-05-19T12:00:00.000Z');
@@ -286,6 +289,46 @@ class FakeSupabaseClient {
       return this.atomicSavePresetV2(args);
     }
 
+    if (functionName === 'kessho_get_preset_detail_v2') {
+      return this.getPresetDetailV2(args);
+    }
+
+    if (functionName === 'kessho_get_legacy_preset_detail') {
+      return this.getLegacyPresetDetail(args);
+    }
+
+    if (functionName === 'kessho_lookup_preset_rows_v2') {
+      return this.lookupPresetRowsV2(args);
+    }
+
+    if (functionName === 'kessho_get_preset_versions_v2') {
+      return this.getPresetVersionsV2(String(args.target_preset_id));
+    }
+
+    if (functionName === 'kessho_get_preset_version_ref_keys_v2') {
+      return this.getPresetVersionRefKeysV2(String(args.target_version_id));
+    }
+
+    if (functionName === 'kessho_get_latest_ref_targets_v2') {
+      return this.getLatestRefTargetsV2(String(args.target_version_id));
+    }
+
+    if (functionName === 'kessho_get_preset_payloads_v2') {
+      return this.getPresetPayloadsV2((args.target_hashes as string[] | null | undefined) ?? []);
+    }
+
+    if (functionName === 'kessho_find_preset_references_v2') {
+      return this.findPresetReferencesV2(String(args.target_type), String(args.target_name));
+    }
+
+    if (functionName === 'kessho_get_preset_storage_stats_v2') {
+      return this.getPresetStorageStatsV2();
+    }
+
+    if (functionName === 'kessho_save_legacy_preset') {
+      return this.saveLegacyPreset((args.preset_payload as FakeRow | null | undefined) ?? {});
+    }
+
     return {
       data: null,
       error: { message: `unsupported fake rpc: ${functionName}` },
@@ -293,6 +336,15 @@ class FakeSupabaseClient {
   }
 
   rows(tableName: string): FakeRow[] {
+    if (tableName === 'preset_summaries_v2') {
+      return this.tables.presets_v2.filter(row => (
+        row.deleted_at == null
+        && !this.isInternalDerived(row)
+      )) as unknown as FakeRow[];
+    }
+    if (tableName === 'legacy_preset_summaries') {
+      return this.tables.presets.filter(row => row.deleted_at == null) as FakeRow[];
+    }
     return (this.tables as unknown as Record<string, FakeRow[]>)[tableName] ?? [];
   }
 
@@ -568,6 +620,338 @@ class FakeSupabaseClient {
     }
   }
 
+  private getPresetDetailV2(args: Record<string, unknown>): { data: unknown; error: { message: string } | null } {
+    this.presetDetailRpcCalls += 1;
+    if (!this.authUserId) {
+      return {
+        data: null,
+        error: { message: 'Authentication is required to load preset details' },
+      };
+    }
+
+    const targetPresetId = (args.target_preset_id as string | null | undefined) ?? null;
+    const targetType = (args.target_type as string | null | undefined) ?? null;
+    const targetName = (args.target_name as string | null | undefined) ?? null;
+    const targetScopes = (args.target_scopes as string[] | null | undefined) ?? null;
+    const targetVersionNo = (args.target_version_no as number | null | undefined) ?? null;
+    const normalizedName = targetName?.trim().toLowerCase() ?? null;
+    const candidates = this.tables.presets_v2
+      .filter(row => (
+        !row.deleted_at
+        && this.canReadPresetV2(row)
+        && (
+          targetPresetId
+            ? row.id === targetPresetId
+            : (
+              row.type === targetType
+              && row.name.trim().toLowerCase() === normalizedName
+              && (
+                targetScopes === null
+                  ? row.scope === null
+                  : targetScopes.includes(row.scope ?? '')
+              )
+            )
+        )
+      ))
+      .sort((left, right) => {
+        const leftOwn = left.owner_user_id === this.authUserId ? 0 : 1;
+        const rightOwn = right.owner_user_id === this.authUserId ? 0 : 1;
+        if (leftOwn !== rightOwn) return leftOwn - rightOwn;
+        const leftFeatured = left.visibility === 'featured' ? 0 : 1;
+        const rightFeatured = right.visibility === 'featured' ? 0 : 1;
+        if (leftFeatured !== rightFeatured) return leftFeatured - rightFeatured;
+        return right.updated_at.localeCompare(left.updated_at)
+          || right.latest_version_no - left.latest_version_no
+          || right.created_at.localeCompare(left.created_at);
+      });
+    const preset = candidates[0] ?? null;
+    if (!preset) return { data: null, error: null };
+
+    const versions = this.tables.preset_versions_v2
+      .filter(row => (
+        row.preset_id === preset.id
+        && (targetVersionNo === null || row.version_no <= targetVersionNo)
+      ))
+      .sort((left, right) => left.version_no - right.version_no);
+    const versionIds = new Set(versions.map(row => row.id));
+    const refs = this.tables.preset_version_refs_v2
+      .filter(row => versionIds.has(String(row.version_id)))
+      .sort((left, right) => String(left.version_id).localeCompare(String(right.version_id))
+        || String(left.ref_slot).localeCompare(String(right.ref_slot)));
+    const targetIds = new Set(refs.map(row => String(row.target_preset_id)));
+    const targetPresets = this.tables.presets_v2
+      .filter(row => targetIds.has(row.id) && !row.deleted_at && this.canReadPresetV2(row))
+      .sort((left, right) => left.id.localeCompare(right.id));
+    const payloadHashes = new Set<string>();
+    for (const version of versions) {
+      if (version.override_hash) payloadHashes.add(version.override_hash);
+      if (version.metadata_hash) payloadHashes.add(version.metadata_hash);
+      if (version.patch_from_prev_hash) payloadHashes.add(version.patch_from_prev_hash);
+      if (version.resolved_hash) payloadHashes.add(version.resolved_hash);
+    }
+    for (const ref of refs) {
+      if (ref.override_hash) payloadHashes.add(String(ref.override_hash));
+    }
+    for (const target of targetPresets) {
+      if (target.latest_resolved_hash) payloadHashes.add(target.latest_resolved_hash);
+    }
+    const payloads = this.tables.preset_payloads_v2
+      .filter(row => payloadHashes.has(row.hash))
+      .sort((left, right) => left.hash.localeCompare(right.hash));
+
+    return {
+      data: {
+        preset,
+        versions,
+        refs,
+        targetPresets,
+        payloads: this.compactDetailPayloads ? payloads.map(row => row.payload) : payloads,
+      },
+      error: null,
+    };
+  }
+
+  private getLegacyPresetDetail(args: Record<string, unknown>): { data: unknown; error: { message: string } | null } {
+    this.legacyDetailRpcCalls += 1;
+    if (!this.authUserId) {
+      return {
+        data: null,
+        error: { message: 'Authentication is required to load legacy preset details' },
+      };
+    }
+
+    const targetPresetId = (args.target_preset_id as string | null | undefined) ?? null;
+    const targetType = (args.target_type as string | null | undefined) ?? null;
+    const targetName = (args.target_name as string | null | undefined) ?? null;
+    const targetScopes = (args.target_scopes as string[] | null | undefined) ?? null;
+    const normalizedName = targetName?.trim().toLowerCase() ?? null;
+    const candidates = this.tables.presets
+      .filter(row => (
+        row.deleted_at == null
+        && (
+          targetPresetId
+            ? row.id === targetPresetId
+            : (
+              row.type === targetType
+              && String(row.name).trim().toLowerCase() === normalizedName
+              && (
+                targetScopes === null
+                  ? (row.scope ?? null) === null
+                  : targetScopes.includes(String(row.scope ?? ''))
+              )
+            )
+        )
+        && (
+          row.visibility === 'public'
+          || row.visibility === 'featured'
+          || row.user_id === this.authUserId
+        )
+      ))
+      .sort((left, right) => {
+        const leftOwn = left.user_id === this.authUserId ? 0 : 1;
+        const rightOwn = right.user_id === this.authUserId ? 0 : 1;
+        if (leftOwn !== rightOwn) return leftOwn - rightOwn;
+        const leftFeatured = left.visibility === 'featured' ? 0 : 1;
+        const rightFeatured = right.visibility === 'featured' ? 0 : 1;
+        if (leftFeatured !== rightFeatured) return leftFeatured - rightFeatured;
+        return String(right.updated_at).localeCompare(String(left.updated_at))
+          || Number(right.current_version ?? 0) - Number(left.current_version ?? 0)
+          || String(right.created_at).localeCompare(String(left.created_at));
+      });
+
+    return {
+      data: candidates[0] ?? null,
+      error: null,
+    };
+  }
+
+  private lookupPresetRowsV2(args: Record<string, unknown>): { data: unknown; error: { message: string } | null } {
+    if (!this.authUserId) return { data: null, error: { message: 'Authentication is required to look up preset rows' } };
+
+    const targetPresetId = (args.target_preset_id as string | null | undefined) ?? null;
+    const targetType = (args.target_type as string | null | undefined) ?? null;
+    const targetName = (args.target_name as string | null | undefined) ?? null;
+    const targetScopes = (args.target_scopes as string[] | null | undefined) ?? null;
+    const targetScopeIsNull = Boolean(args.target_scope_is_null);
+    const targetResolvedHash = (args.target_resolved_hash as string | null | undefined) ?? null;
+    const excludePresetId = (args.exclude_preset_id as string | null | undefined) ?? null;
+    const includeDeleted = Boolean(args.include_deleted);
+    const deletedOnly = Boolean(args.deleted_only);
+    const includeInternalDerived = args.include_internal_derived !== false;
+    const internalDerivedOnly = Boolean(args.internal_derived_only);
+    const maxRows = Math.max(1, Math.min(Number(args.max_rows ?? 20), 1000));
+    const normalizedName = targetName?.trim().toLowerCase() ?? null;
+
+    const rows = this.tables.presets_v2
+      .filter(row => (
+        this.canReadPresetV2(row)
+        && (!targetPresetId || row.id === targetPresetId)
+        && (!targetType || row.type === targetType)
+        && (!normalizedName || row.name.trim().toLowerCase() === normalizedName)
+        && (
+          (targetScopes === null && !targetScopeIsNull)
+          || (targetScopeIsNull && row.scope === null)
+          || (targetScopes !== null && targetScopes.includes(row.scope ?? ''))
+        )
+        && (!targetResolvedHash || row.latest_resolved_hash === targetResolvedHash)
+        && (!excludePresetId || row.id !== excludePresetId)
+        && (
+          (deletedOnly && row.deleted_at !== null)
+          || (!deletedOnly && (includeDeleted || row.deleted_at === null))
+        )
+        && (includeInternalDerived || !this.isInternalDerived(row))
+        && (!internalDerivedOnly || this.isInternalDerived(row))
+      ))
+      .sort((left, right) => {
+        const leftOwn = left.owner_user_id === this.authUserId ? 0 : 1;
+        const rightOwn = right.owner_user_id === this.authUserId ? 0 : 1;
+        if (leftOwn !== rightOwn) return leftOwn - rightOwn;
+        const leftFeatured = left.visibility === 'featured' ? 0 : 1;
+        const rightFeatured = right.visibility === 'featured' ? 0 : 1;
+        if (leftFeatured !== rightFeatured) return leftFeatured - rightFeatured;
+        return right.updated_at.localeCompare(left.updated_at)
+          || right.latest_version_no - left.latest_version_no
+          || right.created_at.localeCompare(left.created_at);
+      })
+      .slice(0, maxRows);
+
+    return { data: rows, error: null };
+  }
+
+  private getPresetVersionsV2(targetPresetId: string): { data: unknown; error: { message: string } | null } {
+    const preset = this.tables.presets_v2.find(row => row.id === targetPresetId && !row.deleted_at && this.canReadPresetV2(row));
+    if (!preset) return { data: [], error: null };
+    return {
+      data: this.tables.preset_versions_v2
+        .filter(row => row.preset_id === targetPresetId)
+        .sort((left, right) => left.version_no - right.version_no),
+      error: null,
+    };
+  }
+
+  private getPresetVersionRefKeysV2(targetVersionId: string): { data: unknown; error: { message: string } | null } {
+    if (!this.canReadVersion(targetVersionId)) return { data: [], error: null };
+    return {
+      data: this.tables.preset_version_refs_v2
+        .filter(row => row.version_id === targetVersionId)
+        .map(row => [
+          row.ref_slot,
+          row.target_preset_id,
+          row.target_version_no ?? 'latest',
+          row.override_hash ?? '',
+        ].join(':'))
+        .sort(),
+      error: null,
+    };
+  }
+
+  private getLatestRefTargetsV2(targetVersionId: string): { data: unknown; error: { message: string } | null } {
+    if (!this.canReadVersion(targetVersionId)) return { data: [], error: null };
+    const rows = this.tables.preset_version_refs_v2
+      .filter(row => row.version_id === targetVersionId)
+      .map(row => ({
+        ref_slot: row.ref_slot,
+        target: this.tables.presets_v2.find(target => target.id === row.target_preset_id && !target.deleted_at && this.canReadPresetV2(target)),
+      }))
+      .filter(row => row.target);
+    return { data: rows, error: null };
+  }
+
+  private getPresetPayloadsV2(targetHashes: string[]): { data: unknown; error: { message: string } | null } {
+    const hashSet = new Set(targetHashes);
+    return {
+      data: this.tables.preset_payloads_v2.filter(row => hashSet.has(row.hash)).sort((left, right) => left.hash.localeCompare(right.hash)),
+      error: null,
+    };
+  }
+
+  private findPresetReferencesV2(targetType: string, targetName: string): { data: unknown; error: { message: string } | null } {
+    const normalizedName = targetName.trim().toLowerCase();
+    const targets = this.tables.presets_v2.filter(row => (
+      row.type === targetType
+      && row.name.trim().toLowerCase() === normalizedName
+      && !row.deleted_at
+      && this.canReadPresetV2(row)
+    ));
+    const targetIds = new Set(targets.map(row => row.id));
+    const parentVersionIds = new Set(this.tables.preset_version_refs_v2
+      .filter(row => targetIds.has(String(row.target_preset_id)))
+      .map(row => String(row.version_id)));
+    const parentIds = new Set(this.tables.preset_versions_v2
+      .filter(row => parentVersionIds.has(row.id))
+      .map(row => row.preset_id));
+    const names = this.tables.presets_v2
+      .filter(row => parentIds.has(row.id) && !row.deleted_at && this.canReadPresetV2(row))
+      .map(row => row.name)
+      .sort();
+    return { data: [...new Set(names)], error: null };
+  }
+
+  private getPresetStorageStatsV2(): { data: unknown; error: { message: string } | null } {
+    const presets = this.tables.presets_v2.filter(row => !row.deleted_at && !this.isInternalDerived(row) && this.canReadPresetV2(row));
+    const presetIds = new Set(presets.map(row => row.id));
+    const hashes = new Set<string>();
+    for (const version of this.tables.preset_versions_v2.filter(row => presetIds.has(row.preset_id))) {
+      if (version.override_hash) hashes.add(version.override_hash);
+      if (version.metadata_hash) hashes.add(version.metadata_hash);
+      if (version.patch_from_prev_hash) hashes.add(version.patch_from_prev_hash);
+      if (version.resolved_hash) hashes.add(version.resolved_hash);
+      for (const ref of this.tables.preset_version_refs_v2.filter(row => row.version_id === version.id)) {
+        if (ref.override_hash) hashes.add(String(ref.override_hash));
+      }
+    }
+    const bytes = this.tables.preset_payloads_v2
+      .filter(row => hashes.has(row.hash))
+      .reduce((sum, row) => sum + row.payload_bytes, 0);
+    return { data: { bytes, count: presets.length }, error: null };
+  }
+
+  private saveLegacyPreset(payload: FakeRow): { data: unknown; error: { message: string } | null } {
+    if (!this.authUserId) return { data: null, error: { message: 'Authentication is required to save legacy presets' } };
+    const type = String(payload.type ?? '');
+    const name = String(payload.name ?? '');
+    if (!type) return { data: null, error: { message: 'Legacy preset type is required' } };
+    if (!name) return { data: null, error: { message: 'Legacy preset name is required' } };
+    const scope = (payload.scope as string | null | undefined) ?? null;
+    const existing = this.tables.presets.find(row => (
+      row.deleted_at == null
+      && row.type === type
+      && String(row.name).trim().toLowerCase() === name.trim().toLowerCase()
+      && (row.scope ?? null) === scope
+      && (row.user_id === this.authUserId || row.user_id == null)
+    ));
+    const row = {
+      ...existing,
+      ...payload,
+      id: String(existing?.id ?? this.id('legacy')),
+      user_id: this.authUserId,
+      type,
+      scope,
+      name,
+      visibility: payload.visibility ?? 'public',
+      created_at: String(existing?.created_at ?? this.now()),
+      updated_at: this.now(),
+      deleted_at: null,
+      archived: false,
+    };
+    if (existing) Object.assign(existing, row);
+    else this.tables.presets.push(row);
+    return { data: row, error: null };
+  }
+
+  private canReadVersion(versionId: string): boolean {
+    const version = this.tables.preset_versions_v2.find(row => row.id === versionId);
+    const preset = version ? this.tables.presets_v2.find(row => row.id === version.preset_id) : null;
+    return !!preset && !preset.deleted_at && this.canReadPresetV2(preset);
+  }
+
+  private canReadPresetV2(row: FakePresetV2Row): boolean {
+    return row.visibility === 'public'
+      || row.visibility === 'featured'
+      || row.owner_key === 'public'
+      || row.owner_user_id === this.authUserId;
+  }
+
   private activeRootsReferencing(targetPresetId: string): FakePresetV2Row[] {
     const roots = this.tables.presets_v2.filter(row => (
       !row.deleted_at
@@ -821,6 +1205,8 @@ async function testSupabaseDeleteMovesPresetToRecycleBin(): Promise<void> {
   assert.equal(client.tables.preset_versions_v2.length, 1, 'save should create a version row');
   assert.ok(client.tables.preset_payloads_v2.length > 0, 'save should store content-addressed payloads');
   assert.equal((await store.list('engine', 'pad1')).some(preset => preset.name === presetName), true);
+  assert.ok(await store.load('engine', presetName, 'pad1'), 'V2 detail load should work before recycle');
+  assert.ok(client.presetDetailRpcCalls > 0, 'V2 detail loads should prefer the narrow detail RPC');
 
   await store.delete('engine', presetName, 'pad1');
 
@@ -835,6 +1221,34 @@ async function testSupabaseDeleteMovesPresetToRecycleBin(): Promise<void> {
   assert.equal(await store.load('engine', presetName, 'pad1'), null, 'normal load should hide recycled presets');
   assert.equal((await store.list('engine', 'pad1')).some(preset => preset.name === presetName), false, 'normal list should hide recycled presets');
   assert.equal(await store.exists('engine', presetName, 'pad1'), false, 'normal existence checks should ignore recycled presets');
+}
+
+async function testCompactDetailPayloadBundleLoadsByContentHash(): Promise<void> {
+  const client = new FakeSupabaseClient();
+  client.compactDetailPayloads = true;
+  const store = new SupabasePresetStore(client as never);
+  const userId = '12121212-1212-4121-8121-121212121212';
+  const presetName = 'Compact Detail Payload';
+  client.authUserId = userId;
+  store.setUserId(userId);
+
+  const data = {
+    ...extractParams(DEFAULT_STATE, 1, 'pad1'),
+    synthAttack: 0.003,
+    synthDecay: 0.55,
+    synthRelease: 0.18,
+    padFoldAmount: 0.28,
+  };
+  await store.save(makePresetEntry('engine', 'pad1', presetName, data));
+
+  const loaded = await store.load('engine', presetName, 'pad1');
+  const loadedData = loaded ? getVersionData(loaded) : null;
+
+  assert.ok(loaded, 'V2 detail load should accept compact payload objects from the RPC');
+  assert.ok(client.presetDetailRpcCalls > 0, 'test should exercise the V2 detail RPC');
+  assert.equal(loaded?.recoveryWarnings?.length ?? 0, 0, 'compact payload rows should not trigger recovery fallbacks');
+  assert.equal(loadedData?.synthAttack, 0.003, 'loaded data should come from the compact resolved payload');
+  assert.equal(loadedData?.padFoldAmount, 0.28, 'content-hashed compact payload should populate the resolved map');
 }
 
 async function testActiveDependencyBlocksSoftDeleteAcrossL1ToL4(): Promise<void> {
@@ -1019,6 +1433,7 @@ async function testLegacyCaseFoldedNameSemanticsStayConsistent(): Promise<void> 
   assert.equal(activeLegacyRows.length, 1, 'legacy saves should treat Foo/foo/Foo as one logical row');
   assert.equal((await store.list('engine', 'pad1')).filter(summary => summary.name.toLowerCase() === 'foo').length, 1);
   assert.ok(await store.load('engine', 'foo', 'pad1'), 'legacy load should use the same case-folded identity as save');
+  assert.ok(client.legacyDetailRpcCalls > 0, 'legacy detail loads should prefer the narrow legacy detail RPC');
   assert.equal(await store.exists('engine', 'FOO', 'pad1'), true, 'legacy exists should use the same case-folded identity as save');
 
   await store.delete('engine', 'fOo', 'pad1');
@@ -1511,6 +1926,7 @@ async function testSharedV2DoesNotLeakLegacyRows(): Promise<void> {
 }
 
 await testSupabaseDeleteMovesPresetToRecycleBin();
+await testCompactDetailPayloadBundleLoadsByContentHash();
 await testActiveDependencyBlocksSoftDeleteAcrossL1ToL4();
 await testDeletingStatePrunesUnreferencedInternalDerivedGraph();
 await testSharedDerivedChildSurvivesUntilLastVisibleRootDeletes();
