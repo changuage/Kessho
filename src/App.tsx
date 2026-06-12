@@ -3494,7 +3494,7 @@ const App: React.FC = () => {
       return {
         mode,
         dualRange: dualModeSupported ? dualSliderRanges[paramKey] : undefined,
-        walkPosition: dualModeSupported ? walkPos : undefined,
+        walkPosition: dualModeSupported && productRuntimeRangeSupported ? walkPos : undefined,
         isFlashing: dualModeSupported && productRuntimeRangeSupported ? isFlashing : false,
         onCycleMode: dualModeSupported ? handleCycleSliderMode : undefined,
         onDualRangeChange: dualModeSupported ? handleDualRangeChange : undefined,

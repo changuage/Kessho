@@ -20,13 +20,19 @@ const ARRANGEMENT_RESTART_KEYS = [
   'leadRandomSyncPolicy', 'leadEnabled', 'lead2Enabled', 'pianoEnabled',
 ] as const;
 
+const ARRANGEMENT_RESTART_STATE_KEY = '__arrangementRestartState';
+
 function booleanFromState(state: Record<string, unknown>, key: string, fallback: boolean): boolean {
   const value = state[key];
   return typeof value === 'boolean' ? value : fallback;
 }
 
 export function arrangementRestartKey(state: Record<string, unknown>): string {
-  return JSON.stringify(ARRANGEMENT_RESTART_KEYS.map((key) => [key, state[key]]));
+  const restartState = state[ARRANGEMENT_RESTART_STATE_KEY];
+  const source = restartState && typeof restartState === 'object'
+    ? restartState as Record<string, unknown>
+    : state;
+  return JSON.stringify(ARRANGEMENT_RESTART_KEYS.map((key) => [key, source[key]]));
 }
 
 export function padEuclidOwnedVoiceMask(state: Record<string, unknown>): number {

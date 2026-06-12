@@ -602,20 +602,23 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
     sources[i].lead_glide = std::isfinite(source.lead_glide)
         ? clampFloat(source.lead_glide, 0.0f, 1.0f)
         : 0.0f;
+    const bool lead_source =
+        source.source_id == KESSHO_PRODUCT_SOURCE_LEAD1 ||
+        source.source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
     sources[i].attack_seconds = source.attack_seconds > 0.0f && std::isfinite(source.attack_seconds)
-        ? clampFloat(source.attack_seconds, 0.001f, 2.0f)
+        ? clampFloat(source.attack_seconds, 0.001f, lead_source ? 16.0f : 2.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS;
     sources[i].decay_seconds = source.decay_seconds > 0.0f && std::isfinite(source.decay_seconds)
-        ? clampFloat(source.decay_seconds, 0.01f, 4.0f)
+        ? clampFloat(source.decay_seconds, 0.01f, lead_source ? 8.0f : 4.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS;
     sources[i].sustain = std::isfinite(source.sustain)
         ? clampFloat(source.sustain, 0.0f, 1.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN;
     sources[i].hold_seconds = std::isfinite(source.hold_seconds)
-        ? clampFloat(source.hold_seconds, 0.0f, 20.0f)
+        ? clampFloat(source.hold_seconds, 0.0f, lead_source ? 44.0f : 20.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_HOLD_SECONDS;
     sources[i].release_seconds = source.release_seconds > 0.0f && std::isfinite(source.release_seconds)
-        ? clampFloat(source.release_seconds, 0.01f, 8.0f)
+        ? clampFloat(source.release_seconds, 0.01f, lead_source ? 30.0f : 8.0f)
         : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SOURCE_RELEASE_SECONDS;
     const bool pad_source =
         source.source_id == KESSHO_PRODUCT_SOURCE_PAD1 ||
@@ -632,9 +635,6 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
               ? source.pad_override_values[param_index]
               : 0.0f;
     }
-    const bool lead_source =
-        source.source_id == KESSHO_PRODUCT_SOURCE_LEAD1 ||
-        source.source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
     sources[i].lead_override_count = lead_source ? source.lead_override_count : 0u;
     for (uint32_t param_index = 0; param_index < kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT; ++param_index) {
       const uint32_t override_index = source.lead_override_indices[param_index];
@@ -753,10 +753,12 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
   const uint32_t count = std::min<uint32_t>(snapshot.lane_count, kMaxLaneCount);
   for (uint32_t i = 0; i < count; ++i) {
     const KesshoProductSequencerLaneSnapshot& lane = snapshot.lanes[i];
+    const uint32_t next_mode = clampU32(lane.sequencer_mode, kSequencerModeEuclid, kSequencerModeOrbit);
     const bool preserve_phase =
         preserve_running_runtime &&
         lanes[i].enabled &&
         lane.enabled != 0u &&
+        lanes[i].sequencer_mode == next_mode &&
         lanes[i].sequencer_runtime_initialized &&
         lanes[i].step_count != 0u &&
         lanes[i].clock_division != 0u;
@@ -765,6 +767,25 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
         lanes[i].sequencer_runtime_sample_frame,
         lanes[i].sequencer_start_sample_frame,
     };
+    const int32_t preserved_walker_cursor_degree = lanes[i].anchor_walker.cursor_degree;
+    const float preserved_walker_cursor_midi = lanes[i].anchor_walker.cursor_midi;
+    const bool preserved_walker_cursor_valid = lanes[i].anchor_walker.cursor_valid;
+    const float preserved_walker_anchor_midi = lanes[i].anchor_walker.anchor_midi;
+    const bool preserved_walker_anchor_valid = lanes[i].anchor_walker.anchor_valid;
+    const uint64_t preserved_walker_runtime_sample_frame = lanes[i].anchor_walker.runtime_sample_frame;
+    const uint64_t preserved_walker_next_walk_sample = lanes[i].anchor_walker.next_walk_sample;
+    const bool preserved_walker_runtime_initialized = lanes[i].anchor_walker.runtime_initialized;
+    const float preserved_orbit_base_angle = lanes[i].orbit.base_angle;
+    const float preserved_orbit_prev_base_angle = lanes[i].orbit.prev_base_angle;
+    const uint64_t preserved_orbit_runtime_sample_frame = lanes[i].orbit.runtime_sample_frame;
+    const bool preserved_orbit_runtime_initialized = lanes[i].orbit.runtime_initialized;
+    float preserved_orbit_note_angles[kMaxOrbitSequencerNotes]{};
+    float preserved_orbit_note_prev_angles[kMaxOrbitSequencerNotes]{};
+    for (uint32_t note_index = 0u; note_index < kMaxOrbitSequencerNotes; ++note_index) {
+      preserved_orbit_note_angles[note_index] = lanes[i].orbit.notes[note_index].angle;
+      preserved_orbit_note_prev_angles[note_index] = lanes[i].orbit.notes[note_index].prev_angle;
+    }
+    lanes[i].sequencer_mode = next_mode;
     lanes[i].enabled = lane.enabled != 0u;
     (void) fallback_source;
     lanes[i].target_source_id = lane.target_source_id;
@@ -809,6 +830,101 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
             : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SEQUENCER_INITIAL_START_DELAY_SECONDS;
     lanes[i].manual_step_mask_low = lane.manual_step_mask_low;
     lanes[i].manual_step_mask_high = lane.manual_step_mask_high;
+    const KesshoProductAnchorWalkerSnapshot& walker_snapshot = snapshot.mode_states[i].anchor_walker;
+    AnchorWalkerState& walker = lanes[i].anchor_walker;
+    walker.enabled = walker_snapshot.enabled != 0u;
+    walker.mode = clampU32(walker_snapshot.mode, 0u, 2u);
+    walker.target_source_id = clampU32(walker_snapshot.target_source_id, 1u, kSourceCount);
+    walker.anchor_source = clampU32(walker_snapshot.anchor_source, 0u, 3u);
+    walker.manual_anchor_midi = clampFloat(walker_snapshot.manual_anchor_midi, 0.0f, 127.0f);
+    walker.snap_source = clampU32(walker_snapshot.snap_source, 0u, 4u);
+    walker.custom_pitch_class_mask = static_cast<uint16_t>(
+        clampU32(walker_snapshot.custom_pitch_class_mask, 1u, 0x0fffu));
+    walker.auto_rate = clampU32(walker_snapshot.auto_rate, 0u, 6u);
+    walker.auto_feel = clampU32(walker_snapshot.auto_feel, 0u, 2u);
+    walker.swing = clampFloat(walker_snapshot.swing, 0.0f, 0.75f);
+    walker.lead_mode = walker_snapshot.lead_mode != 0u;
+    walker.mw_to_velocity = walker_snapshot.mw_to_velocity != 0u;
+    walker.pitch_wheel_walk = walker_snapshot.pitch_wheel_walk != 0u;
+    for (uint32_t pattern_index = 0u; pattern_index < kMaxAnchorWalkerPatternSteps; ++pattern_index) {
+      walker.gesture_pattern[pattern_index] = static_cast<int32_t>(
+          clampInt(walker_snapshot.gesture_pattern[pattern_index], -7, 7));
+    }
+    walker.gesture_pattern_length =
+        clampU32(walker_snapshot.gesture_pattern_length, 1u, kMaxAnchorWalkerPatternSteps);
+    walker.active_pad_delta = static_cast<int32_t>(clampInt(walker_snapshot.active_pad_delta, -7, 7));
+    walker.layer_preset = clampU32(walker_snapshot.layer_preset, 0u, 6u);
+    walker.spread_seconds = clampFloat(walker_snapshot.spread_seconds, 0.0f, 0.5f);
+    walker.layer_count = clampU32(walker_snapshot.layer_count, 1u, kMaxAnchorWalkerLayers);
+    for (uint32_t layer_index = 0u; layer_index < kMaxAnchorWalkerLayers; ++layer_index) {
+      const KesshoProductAnchorWalkerLayerSnapshot& layer_snapshot = walker_snapshot.layers[layer_index];
+      AnchorWalkerLayerState& layer = walker.layers[layer_index];
+      layer.enabled = layer_snapshot.enabled != 0u;
+      layer.transpose_semitones = static_cast<int32_t>(clampInt(layer_snapshot.transpose_semitones, -48, 48));
+      layer.diatonic_offset = static_cast<int32_t>(clampInt(layer_snapshot.diatonic_offset, -14, 14));
+      layer.tuning = clampU32(layer_snapshot.tuning, 0u, 2u);
+      layer.motion = clampU32(layer_snapshot.motion, 0u, 2u);
+      layer.delay_seconds = clampFloat(layer_snapshot.delay_seconds, 0.0f, 0.5f);
+      layer.gate_ratio = clampFloat(layer_snapshot.gate_ratio, 0.05f, 1.0f);
+      layer.velocity_scale = clampFloat(layer_snapshot.velocity_scale, 0.0f, 2.0f);
+      layer.velocity_offset = clampFloat(layer_snapshot.velocity_offset, -1.0f, 1.0f);
+      layer.target_source_id = clampU32(layer_snapshot.target_source_id, 0u, kSourceCount);
+    }
+    walker.output_range_min = clampFloat(walker_snapshot.output_range_min, 0.0f, 127.0f);
+    walker.output_range_max = clampFloat(walker_snapshot.output_range_max, walker.output_range_min, 127.0f);
+    walker.seed = walker_snapshot.seed == 0u ? rng_seed + 1000u + i : walker_snapshot.seed;
+
+    const KesshoProductOrbitSequencerSnapshot& orbit_snapshot = snapshot.mode_states[i].orbit;
+    OrbitSequencerState& orbit = lanes[i].orbit;
+    orbit.enabled = orbit_snapshot.enabled != 0u;
+    orbit.target_source_id = clampU32(orbit_snapshot.target_source_id, 1u, kSourceCount);
+    orbit.trigger_line_count = clampU32(orbit_snapshot.trigger_line_count, 1u, kMaxOrbitTriggerLines);
+    orbit.clock_mode = orbit_snapshot.clock_mode > 0u ? 1u : 0u;
+    orbit.bpm_percent = clampFloat(orbit_snapshot.bpm_percent, 1.0f, 800.0f);
+    orbit.quantize_to_harmony = orbit_snapshot.quantize_to_harmony != 0u;
+    orbit.snap_source = clampU32(orbit_snapshot.snap_source, 0u, 4u);
+    orbit.pitch_range_min = clampFloat(orbit_snapshot.pitch_range_min, 0.0f, 127.0f);
+    orbit.pitch_range_max = clampFloat(orbit_snapshot.pitch_range_max, orbit.pitch_range_min, 127.0f);
+    orbit.spline_h1_x = clampFloat(orbit_snapshot.spline_h1_x, -1.2f, 1.2f);
+    orbit.spline_h1_y = clampFloat(orbit_snapshot.spline_h1_y, -1.2f, 1.2f);
+    orbit.spline_h2_x = clampFloat(orbit_snapshot.spline_h2_x, -1.2f, 1.2f);
+    orbit.spline_h2_y = clampFloat(orbit_snapshot.spline_h2_y, -1.2f, 1.2f);
+    orbit.spline_tip_x = clampFloat(orbit_snapshot.spline_tip_x, -1.2f, 1.2f);
+    orbit.spline_tip_y = clampFloat(orbit_snapshot.spline_tip_y, -1.2f, 1.2f);
+    orbit.spline_spin_enabled = orbit_snapshot.spline_spin_enabled != 0u;
+    orbit.spline_spin_direction = orbit_snapshot.spline_spin_direction < 0 ? -1 : 1;
+    orbit.base_angle = wrapRadians(orbit_snapshot.base_angle);
+    orbit.prev_base_angle = orbit.base_angle;
+    orbit.note_count = clampU32(orbit_snapshot.note_count, 0u, kMaxOrbitSequencerNotes);
+    orbit.seed = orbit_snapshot.seed == 0u ? rng_seed + 3000u + i : orbit_snapshot.seed;
+    for (uint32_t note_index = 0u; note_index < kMaxOrbitSequencerNotes; ++note_index) {
+      const KesshoProductOrbitNoteSnapshot& note_snapshot = orbit_snapshot.notes[note_index];
+      OrbitNoteState& note = orbit.notes[note_index];
+      note.enabled = note_snapshot.enabled != 0u;
+      note.radius_norm = clampFloat(note_snapshot.radius_norm, 0.08f, 1.0f);
+      note.angle = wrapRadians(note_snapshot.phase);
+      note.prev_angle = note.angle;
+      note.speed_mode = note_snapshot.speed_mode > 0u ? 1u : 0u;
+      note.speed_value = clampFloat(note_snapshot.speed_value, 0.125f, 800.0f);
+      note.direction = note_snapshot.direction < 0 ? -1 : 1;
+      note.pitch_mode = clampU32(note_snapshot.pitch_mode, 0u, 2u);
+      note.midi_note = clampFloat(note_snapshot.midi_note, 0.0f, 127.0f);
+      note.harmony_degree = static_cast<int32_t>(clampInt(note_snapshot.harmony_degree, -32, 32));
+      note.pitch_range_min = clampFloat(note_snapshot.pitch_range_min, 0.0f, 127.0f);
+      note.pitch_range_max = clampFloat(note_snapshot.pitch_range_max, note.pitch_range_min, 127.0f);
+      note.velocity = clampFloat(note_snapshot.velocity, 0.0f, 1.0f);
+      note.velocity_range_enabled = note_snapshot.velocity_range_enabled != 0u;
+      note.velocity_min = clampFloat(note_snapshot.velocity_min, 0.0f, 1.0f);
+      note.velocity_max = clampFloat(note_snapshot.velocity_max, note.velocity_min, 1.0f);
+      note.gate_beats = clampFloat(note_snapshot.gate_beats, 0.05f, 8.0f);
+      note.gate_range_enabled = note_snapshot.gate_range_enabled != 0u;
+      note.gate_min_beats = clampFloat(note_snapshot.gate_min_beats, 0.05f, 8.0f);
+      note.gate_max_beats = clampFloat(note_snapshot.gate_max_beats, note.gate_min_beats, 8.0f);
+      note.probability = clampFloat(note_snapshot.probability, 0.0f, 1.0f);
+      note.target_source_id = clampU32(note_snapshot.target_source_id, 0u, kSourceCount);
+      note.seed = note_snapshot.seed == 0u ? rng_seed + 4000u + note_index + i * 31u : note_snapshot.seed;
+      note.flash = 0.0f;
+    }
     lanes[i].step_override_set_low = 0;
     lanes[i].step_override_set_high = 0;
     lanes[i].step_override_value_low = 0;
@@ -820,6 +936,25 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& snapsho
       lanes[i].sequencer_start_sample_frame = preserved_phase.sequencer_start_sample_frame;
       lanes[i].sequencer_runtime_initialized = true;
       lanes[i].sequencer_join_pending = false;
+      if (lanes[i].sequencer_mode == kSequencerModeAnchorWalker) {
+        lanes[i].anchor_walker.cursor_degree = preserved_walker_cursor_degree;
+        lanes[i].anchor_walker.cursor_midi = preserved_walker_cursor_midi;
+        lanes[i].anchor_walker.cursor_valid = preserved_walker_cursor_valid;
+        lanes[i].anchor_walker.anchor_midi = preserved_walker_anchor_midi;
+        lanes[i].anchor_walker.anchor_valid = preserved_walker_anchor_valid;
+        lanes[i].anchor_walker.runtime_sample_frame = preserved_walker_runtime_sample_frame;
+        lanes[i].anchor_walker.next_walk_sample = preserved_walker_next_walk_sample;
+        lanes[i].anchor_walker.runtime_initialized = preserved_walker_runtime_initialized;
+      } else if (lanes[i].sequencer_mode == kSequencerModeOrbit) {
+        lanes[i].orbit.base_angle = preserved_orbit_base_angle;
+        lanes[i].orbit.prev_base_angle = preserved_orbit_prev_base_angle;
+        lanes[i].orbit.runtime_sample_frame = preserved_orbit_runtime_sample_frame;
+        lanes[i].orbit.runtime_initialized = preserved_orbit_runtime_initialized;
+        for (uint32_t note_index = 0u; note_index < kMaxOrbitSequencerNotes; ++note_index) {
+          lanes[i].orbit.notes[note_index].angle = preserved_orbit_note_angles[note_index];
+          lanes[i].orbit.notes[note_index].prev_angle = preserved_orbit_note_prev_angles[note_index];
+        }
+      }
     }
     clearLaneStepOverrides(lanes[i]);
   }

@@ -3,6 +3,7 @@ import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import { SOUNDSCAPE_TEXTURE_PARAM_COUNT, SOUNDSCAPES_PRODUCT_PARAM_COUNT } from './coreProductSoundscapesSnapshot';
 import { granularVoiceDefaults, laneDefaults, SOURCE_ORDER, sourceDefaults } from './coreProductSnapshotDefaults';
 import type { CoreProductSnapshot } from './coreProductSnapshot';
+import { encodeCoreProductSequencerFaceModes, KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES } from './coreProductSequencerFaceEncoder';
 
 type ProductSourceSnapshot = CoreProductSnapshot['sources'][number];
 type ProductLaneSnapshot = CoreProductSnapshot['synthLanes'][number];
@@ -15,10 +16,10 @@ type LegacyExactBridgeSource = ProductSourceSnapshot & {
   exactDrumParams?: unknown;
 };
 
-const SNAPSHOT_BYTES = 31788;
+const SNAPSHOT_BYTES = 134572;
 const SOURCE_BYTES = 3720;
-const LANE_BYTES = 92;
-const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES;
+const LANE_BYTES = 96;
+const SEQUENCER_BYTES = 4 + 16 * LANE_BYTES + 16 * KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES;
 
 function bool(value: unknown): number {
   return value ? 1 : 0;
@@ -181,7 +182,9 @@ export function encodeCoreProductSnapshot(snapshot: CoreProductSnapshot): ArrayB
       u32(lane.manualStepMaskHigh);
       f32(lane.tempoMultiplier);
       f32(lane.initialStartDelaySeconds);
+      u32(lane.sequencerMode);
     }
+    offset = encodeCoreProductSequencerFaceModes(view, offset, lanes);
     offset = start + SEQUENCER_BYTES;
   };
 

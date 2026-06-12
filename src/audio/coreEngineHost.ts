@@ -68,6 +68,7 @@ import { getPadPreset, morphPadPresets, PAD1_TO_PAD2_KEY } from './padPresets';
 import { normalizeSynthEuclidSource } from './coreProductSourceMapping';
 import { createHarmonyState, getEffectiveTension, updateHarmonyState, type HarmonyParams, type HarmonyState } from './harmony';
 import { chordIntervalSecondsFromState, resolveChordsPerPhrase } from './chordPhraseTiming';
+import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
 import { computeSeed, createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange, midiToFreq } from './scales';
 import {
@@ -1485,14 +1486,12 @@ function getCorePreviewHarmonyParams(sliderState: SliderState): Partial<HarmonyP
 }
 
 function createCorePreviewHarmonyState(sliderState: SliderState): HarmonyState {
-  const seedWindow = sliderState.seedWindow === 'day' ? 'day' : 'hour';
-  const bucket = getUtcBucket(seedWindow);
   const phraseSeconds = getPhraseDurationForClockSource(
     sliderState,
     sliderState.harmonyClockSource ?? 'globalPhrase',
   );
   return createHarmonyState(
-    `${bucket}|E_ROOT`,
+    corePreviewHarmonySeedMaterial(sliderState),
     boundedNumber(sliderState.tension, 0.3, 0, 1),
     chordIntervalSecondsFromState(sliderState.chordRate, phraseSeconds),
     boundedNumber(sliderState.voicingSpread, 0.5, 0, 1),
@@ -1506,9 +1505,7 @@ function createCorePreviewHarmonyState(sliderState: SliderState): HarmonyState {
 }
 
 function corePreviewHarmonySeedMaterial(sliderState: SliderState): string {
-  const seedWindow = sliderState.seedWindow === 'day' ? 'day' : 'hour';
-  const bucket = getUtcBucket(seedWindow);
-  return `${bucket}|${JSON.stringify(sliderState)}|E_ROOT`;
+  return harmonySeedMaterialFromState(sliderState);
 }
 
 function getCoreHarmonyPhraseSeconds(sliderState: SliderState): number {
@@ -2607,9 +2604,10 @@ function createLeadMorphedParams(
     release: envelope.release,
   }, distance);
 
+  const sustainHold = envelope.hold ?? hold;
   return {
     morphed: distanceMorphed,
-    holdSeconds: envelope.hold ?? hold,
+    holdSeconds: clamp(envelope.attack + envelope.decay + sustainHold, 0.02, 44),
   };
 }
 

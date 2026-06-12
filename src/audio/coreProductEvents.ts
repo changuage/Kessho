@@ -365,6 +365,11 @@ type CoreProductRangeTargetResolver = (key: string) => CoreProductRangeTarget[];
 type ProductParamIdName = keyof typeof KESSHO_PRODUCT_PARAM_IDS;
 
 export const CORE_PRODUCT_ARRANGEMENT_RUNTIME_WALK_KEYS = [
+  'chordRate',
+  'voicingSpread',
+  'waveSpread',
+  'detune',
+  'synthOctave',
   'lead1Density',
   'lead1Octave',
   'lead1OctaveRange',
@@ -1082,6 +1087,21 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   lead1OctaveRange: (key) => [
     controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneHoldSeconds, key),
   ],
+  chordRate: (key) => [
+    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision, key),
+  ],
+  voicingSpread: (key) => [
+    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.HarmonyTension, key),
+  ],
+  waveSpread: (key) => [
+    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing, key),
+  ],
+  detune: (key) => [
+    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneVelocity, key),
+  ],
+  synthOctave: (key) => [
+    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMidiNote, key),
+  ],
   granularMacroChaos: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularTimingRandomness, key, granularMacroMap(key, (model) => model.timingRandomness)),
     ...granularMacroVoiceTargets(key, 'GrainOctaveProbability', (model, voiceIndex) => model.voiceGrainOct[voiceIndex] ?? 0),
@@ -1701,6 +1721,7 @@ export function createCoreProductSequencerLaneParamEvent(
   laneIndex: number,
   paramId: number,
   value: number,
+  flags = 0,
 ): CoreProductEvent {
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.SetSequencerLane,
@@ -1708,6 +1729,7 @@ export function createCoreProductSequencerLaneParamEvent(
     index: requireIntegerInRange(laneIndex, 'laneIndex', 0, 15),
     paramId: requireParamId(paramId),
     value: requireFiniteNumber(value, 'value'),
+    flags,
   };
 }
 

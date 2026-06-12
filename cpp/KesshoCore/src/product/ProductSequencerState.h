@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ProductConstants.h"
+#include "ProductSequencerFaceState.h"
 #include "ProductSequencerPitchConstants.h"
 #include "ProductSequencerEvolveState.h"
 #include "kessho_drum.h"
@@ -22,6 +23,7 @@ struct PendingRatchetEvent {
 };
 
 struct LaneState {
+  uint32_t sequencer_mode = kSequencerModeEuclid;
   bool enabled = false;
   uint32_t target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
   uint32_t step_count = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SEQUENCER_STEPS;
@@ -108,6 +110,8 @@ struct LaneState {
   PendingRatchetEvent pending_ratchets[kMaxPendingRatchetsPerLane]{};
   uint32_t pending_ratchet_count = 0;
   uint32_t pending_ratchet_drop_count = 0;
+  AnchorWalkerState anchor_walker{};
+  OrbitSequencerState orbit{};
 };
 
 } // namespace kessho::product::internal

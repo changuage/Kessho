@@ -441,6 +441,230 @@ void requireProductSequencerRatchetPendingClearTests() {
   }
 }
 
+KesshoProductSnapshotV2 makeAnchorWalkerSnapshot() {
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.harmony.root_midi = 60.0f;
+  snapshot.harmony.scale_id = 1u;
+  snapshot.drum_euclid.lane_count = 0u;
+  snapshot.synth_euclid.lane_count = 1u;
+  KesshoProductSequencerLaneSnapshot& lane = snapshot.synth_euclid.lanes[0];
+  lane.sequencer_mode = kSequencerModeAnchorWalker;
+  lane.target_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  lane.velocity = 1.0f;
+  lane.hold_seconds = 0.1f;
+  lane.trig_condition = KESSHO_PRODUCT_TRIG_ALWAYS;
+
+  KesshoProductAnchorWalkerSnapshot& walker = snapshot.synth_euclid.mode_states[0].anchor_walker;
+  walker.enabled = 1u;
+  walker.mode = 0u;
+  walker.target_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  walker.anchor_source = 0u;
+  walker.manual_anchor_midi = 60.0f;
+  walker.snap_source = 0u;
+  walker.custom_pitch_class_mask = 0x0ab5u;
+  walker.auto_rate = 4u;
+  walker.auto_feel = 0u;
+  walker.swing = 0.0f;
+  walker.lead_mode = 1u;
+  walker.gesture_pattern[0] = 0;
+  walker.gesture_pattern_length = 1u;
+  walker.layer_preset = 2u;
+  walker.spread_seconds = 0.01f;
+  walker.layer_count = 2u;
+  walker.output_range_min = 48.0f;
+  walker.output_range_max = 84.0f;
+  walker.seed = 9001u;
+  walker.layers[0].enabled = 1u;
+  walker.layers[0].diatonic_offset = 0;
+  walker.layers[0].tuning = 2u;
+  walker.layers[0].motion = 0u;
+  walker.layers[0].delay_seconds = 0.0f;
+  walker.layers[0].gate_ratio = 1.0f;
+  walker.layers[0].velocity_scale = 1.0f;
+  walker.layers[0].target_source_id = 0u;
+  walker.layers[1] = walker.layers[0];
+  walker.layers[1].diatonic_offset = 2;
+  walker.layers[1].delay_seconds = 0.01f;
+  return snapshot;
+}
+
+KesshoProductSnapshotV2 makeOrbitSnapshot() {
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.harmony.root_midi = 60.0f;
+  snapshot.harmony.scale_id = 1u;
+  snapshot.drum_euclid.lane_count = 0u;
+  snapshot.synth_euclid.lane_count = 1u;
+  KesshoProductSequencerLaneSnapshot& lane = snapshot.synth_euclid.lanes[0];
+  lane.sequencer_mode = kSequencerModeOrbit;
+  lane.target_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  lane.velocity = 1.0f;
+  lane.hold_seconds = 0.1f;
+
+  KesshoProductOrbitSequencerSnapshot& orbit = snapshot.synth_euclid.mode_states[0].orbit;
+  orbit.enabled = 1u;
+  orbit.target_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  orbit.trigger_line_count = 1u;
+  orbit.clock_mode = 0u;
+  orbit.bpm_percent = 100.0f;
+  orbit.quantize_to_harmony = 1u;
+  orbit.snap_source = 0u;
+  orbit.pitch_range_min = 48.0f;
+  orbit.pitch_range_max = 84.0f;
+  orbit.spline_spin_enabled = 0u;
+  orbit.spline_spin_direction = 1;
+  orbit.base_angle = 0.0f;
+  orbit.note_count = 1u;
+  orbit.seed = 9101u;
+  KesshoProductOrbitNoteSnapshot& note = orbit.notes[0];
+  note.enabled = 1u;
+  note.radius_norm = 0.5f;
+  note.phase = 6.20f;
+  note.speed_mode = 1u;
+  note.speed_value = 1.0f;
+  note.direction = 1;
+  note.pitch_mode = 1u;
+  note.midi_note = 60.0f;
+  note.harmony_degree = 0;
+  note.pitch_range_min = 48.0f;
+  note.pitch_range_max = 84.0f;
+  note.velocity = 1.0f;
+  note.gate_beats = 0.25f;
+  note.probability = 1.0f;
+  note.target_source_id = 0u;
+  note.seed = 9201u;
+  return snapshot;
+}
+
+void requireProductSequencerDisabledTargetSourceTests() {
+  constexpr double sample_rate = 48000.0;
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "disabled Pad sequencer engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSnapshot();
+    snapshot.drum_euclid.lane_count = 0u;
+    snapshot.sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].enabled = 0u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "disabled Pad sequencer snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 96000u);
+    require(event_count == 0, "synth sequencer must not emit events for disabled Pad source");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "disabled Drum sequencer engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSnapshot();
+    snapshot.synth_euclid.lane_count = 0u;
+    snapshot.sources[KESSHO_PRODUCT_SOURCE_DRUM - 1u].enabled = 0u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "disabled Drum sequencer snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 96000u);
+    require(event_count == 0, "drum sequencer must not emit events for disabled Drum source");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "disabled Anchor Walker engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot();
+    snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].enabled = 0u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "disabled Anchor Walker snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 1024u);
+    require(event_count == 0, "Anchor Walker must not emit events for disabled Lead source");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "disabled Orbit engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeOrbitSnapshot();
+    snapshot.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].enabled = 0u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "disabled Orbit snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 2048u);
+    require(event_count == 0, "Orbit must not emit events for disabled Lead source");
+    kessho_product_destroy(engine);
+  }
+}
+
+void requireProductSequencerModeEventTests() {
+  constexpr double sample_rate = 48000.0;
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Anchor Walker engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot();
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Anchor Walker snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    const int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 1024u);
+    require(event_count == 2, "Anchor Walker should emit layered Product Core events");
+    require(events[0].source_id == KESSHO_PRODUCT_SOURCE_LEAD1, "Anchor Walker source mismatch");
+    require(events[0].sample_offset == 0u, "Anchor Walker root layer should emit on the walk tick");
+    require(events[1].sample_offset == 480u, "Anchor Walker delayed layer should use Product Core pending queue");
+    require(std::fabs(events[0].midi_note - 60.0f) < 0.001f, "Anchor Walker root pitch should follow harmony root");
+    require(std::fabs(events[1].midi_note - 64.0f) < 0.001f, "Anchor Walker diatonic layer should follow harmony snap");
+    const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+    require(telemetry.synth_sequencer_hit_counts[0] == 1u, "Anchor Walker should count one parent walk tick");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Orbit engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeOrbitSnapshot();
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Orbit snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 2048u);
+    require(event_count == 1, "Orbit should emit a Product Core crossing event");
+    require(events[0].source_id == KESSHO_PRODUCT_SOURCE_LEAD1, "Orbit source mismatch");
+    require(events[0].sample_offset > 0u && events[0].sample_offset < 2048u, "Orbit crossing should land inside the rendered block");
+    require(std::fabs(events[0].midi_note - 60.0f) < 0.001f, "Orbit harmony degree should resolve through Product Core harmony");
+    require(engine->synth_lanes[0].orbit.runtime_initialized, "Orbit runtime should initialize in Product Core");
+    kessho_product_destroy(engine);
+  }
+}
+
+void requireProductSequencerModeRuntimePreservationTests() {
+  constexpr double sample_rate = 48000.0;
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Anchor Walker preservation engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot();
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Anchor Walker preservation snapshot load failed");
+    std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, 128u, 13000u);
+    require(events.size() == 4u, "Anchor Walker preservation setup should render two walk ticks");
+    const uint64_t next_walk_before = engine->synth_lanes[0].anchor_walker.next_walk_sample;
+    KesshoProductSnapshotV2 hot_swap = snapshot;
+    hot_swap.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].level = 0.55f;
+    require(kessho_product_load_snapshot_v2(engine, &hot_swap, sizeof(hot_swap)) == KESSHO_PRODUCT_OK, "Anchor Walker source hot-swap should load");
+    require(engine->synth_lanes[0].anchor_walker.next_walk_sample == next_walk_before, "Anchor Walker source hot-swap should preserve next walk sample");
+    events = renderEventsInBlocks(engine, 128u, 128u);
+    require(events.empty(), "Anchor Walker source hot-swap should not restart at sample zero");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Orbit preservation engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeOrbitSnapshot();
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Orbit preservation snapshot load failed");
+    KesshoSequencerEvent events[8]{};
+    int32_t event_count = kessho_product_debug_render_events(engine, events, 8u, 2048u);
+    require(event_count == 1, "Orbit preservation setup should render first crossing");
+    const float angle_before = engine->synth_lanes[0].orbit.notes[0].angle;
+    KesshoProductSnapshotV2 hot_swap = snapshot;
+    hot_swap.sources[KESSHO_PRODUCT_SOURCE_LEAD1 - 1u].expression = 0.65f;
+    require(kessho_product_load_snapshot_v2(engine, &hot_swap, sizeof(hot_swap)) == KESSHO_PRODUCT_OK, "Orbit source hot-swap should load");
+    require(std::fabs(engine->synth_lanes[0].orbit.notes[0].angle - angle_before) < 0.000001f, "Orbit source hot-swap should preserve note angle");
+    event_count = kessho_product_debug_render_events(engine, events, 8u, 128u);
+    require(event_count == 0, "Orbit source hot-swap should not restart crossing phase");
+    kessho_product_destroy(engine);
+  }
+}
+
 bool laneHasGeneratedOverrides(const LaneState& lane) {
   return lane.step_override_set_low != 0u ||
       lane.step_override_set_high != 0u ||
@@ -2186,6 +2410,9 @@ int main() {
   requireProductSequencerRatchetCrossBlockTest();
   requireProductSequencerRatchetNearBlockEndTest();
   requireProductSequencerRatchetPendingClearTests();
+  requireProductSequencerModeEventTests();
+  requireProductSequencerDisabledTargetSourceTests();
+  requireProductSequencerModeRuntimePreservationTests();
   requireDirectSequencerCoverage();
   requireControlEventEnqueueOrdering();
   requireRuntimeWalkMovementAcrossAudioAndFxTargets();

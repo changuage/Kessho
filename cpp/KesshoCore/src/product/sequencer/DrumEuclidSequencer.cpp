@@ -29,7 +29,8 @@
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_NOTE_RANGE_MAX_ID:
       return true;
     default:
-      return false;
+      return param_id >= KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MODE_ID &&
+          param_id <= KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_GATE_RANGE_ENABLED_ID;
   }
 }
 
@@ -173,6 +174,182 @@
         lane.note_range_min = clampFloat(lane.note_range_max - 2.0f, 24.0f, 106.0f);
       }
       break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MODE_ID: {
+      const uint32_t mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), kSequencerModeEuclid, kSequencerModeOrbit);
+      if (lane.sequencer_mode != mode) {
+        lane.sequencer_mode = mode;
+        resetSequencerLaneRuntime(lane);
+      }
+      break;
+    }
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_MODE_ID:
+      lane.anchor_walker.mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 2u);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_ANCHOR_SOURCE_ID:
+      lane.anchor_walker.anchor_source = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 3u);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_MANUAL_ANCHOR_MIDI_ID:
+      lane.anchor_walker.manual_anchor_midi = clampFloat(event.value, 0.0f, 127.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_SNAP_SOURCE_ID:
+      lane.anchor_walker.snap_source = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 4u);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_CUSTOM_PITCH_CLASS_MASK_ID:
+      lane.anchor_walker.custom_pitch_class_mask = static_cast<uint16_t>(
+          clampU32(static_cast<uint32_t>(std::lround(std::max(1.0f, event.value))), 1u, 0x0fffu));
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_AUTO_RATE_ID:
+      lane.anchor_walker.auto_rate = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 6u);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_AUTO_FEEL_ID:
+      lane.anchor_walker.auto_feel = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 2u);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LEAD_MODE_ID:
+      lane.anchor_walker.lead_mode = event.value >= 0.5f;
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_MW_TO_VELOCITY_ID:
+      lane.anchor_walker.mw_to_velocity = event.value >= 0.5f;
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_PITCH_WHEEL_WALK_ID:
+      lane.anchor_walker.pitch_wheel_walk = event.value >= 0.5f;
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_GESTURE_PATTERN_STEP_ID: {
+      const uint32_t pattern_index = event.flags & 0xffu;
+      if (pattern_index < kMaxAnchorWalkerPatternSteps) {
+        lane.anchor_walker.gesture_pattern[pattern_index] = static_cast<int32_t>(
+            clampInt(static_cast<int32_t>(std::lround(event.value)), -7, 7));
+      }
+      break;
+    }
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_GESTURE_PATTERN_LENGTH_ID:
+      lane.anchor_walker.gesture_pattern_length = clampU32(static_cast<uint32_t>(std::lround(std::max(1.0f, event.value))), 1u, kMaxAnchorWalkerPatternSteps);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_PRESET_ID:
+      lane.anchor_walker.layer_preset = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 6u);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_SPREAD_MS_ID:
+      lane.anchor_walker.spread_seconds = clampFloat(event.value * 0.001f, 0.0f, 0.5f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_OUTPUT_RANGE_MIN_ID:
+      lane.anchor_walker.output_range_min = clampFloat(event.value, 0.0f, 127.0f);
+      if (lane.anchor_walker.output_range_max < lane.anchor_walker.output_range_min) {
+        lane.anchor_walker.output_range_max = lane.anchor_walker.output_range_min;
+      }
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_OUTPUT_RANGE_MAX_ID:
+      lane.anchor_walker.output_range_max = clampFloat(event.value, lane.anchor_walker.output_range_min, 127.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_ENABLED_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_TRANSPOSE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_DIATONIC_OFFSET_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_TUNING_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_MOTION_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_DELAY_MS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_GATE_RATIO_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_VELOCITY_SCALE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_VELOCITY_OFFSET_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_TARGET_SOURCE_ID: {
+      const uint32_t layer_index = event.flags & 0xffu;
+      if (layer_index >= kMaxAnchorWalkerLayers) break;
+      AnchorWalkerLayerState& layer = lane.anchor_walker.layers[layer_index];
+      switch (event.param_id) {
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_ENABLED_ID: layer.enabled = event.value >= 0.5f; break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_TRANSPOSE_ID: layer.transpose_semitones = static_cast<int32_t>(clampInt(static_cast<int32_t>(std::lround(event.value)), -48, 48)); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_DIATONIC_OFFSET_ID: layer.diatonic_offset = static_cast<int32_t>(clampInt(static_cast<int32_t>(std::lround(event.value)), -14, 14)); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_TUNING_ID: layer.tuning = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 2u); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_MOTION_ID: layer.motion = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 2u); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_DELAY_MS_ID: layer.delay_seconds = clampFloat(event.value * 0.001f, 0.0f, 0.5f); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_GATE_RATIO_ID: layer.gate_ratio = clampFloat(event.value, 0.05f, 1.0f); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_VELOCITY_SCALE_ID: layer.velocity_scale = clampFloat(event.value, 0.0f, 2.0f); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_VELOCITY_OFFSET_ID: layer.velocity_offset = clampFloat(event.value, -1.0f, 1.0f); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_LAYER_TARGET_SOURCE_ID: layer.target_source_id = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, kSourceCount); break;
+        default: break;
+      }
+      break;
+    }
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_TRIGGER_LINE_COUNT_ID:
+      lane.orbit.trigger_line_count = clampU32(static_cast<uint32_t>(std::lround(std::max(1.0f, event.value))), 1u, kMaxOrbitTriggerLines);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_BPM_PERCENT_ID:
+      lane.orbit.bpm_percent = clampFloat(event.value, 1.0f, 800.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_QUANTIZE_TO_HARMONY_ID:
+      lane.orbit.quantize_to_harmony = event.value >= 0.5f;
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SNAP_SOURCE_ID:
+      lane.orbit.snap_source = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 4u);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_PITCH_RANGE_MIN_ID:
+      lane.orbit.pitch_range_min = clampFloat(event.value, 0.0f, 127.0f);
+      if (lane.orbit.pitch_range_max < lane.orbit.pitch_range_min) lane.orbit.pitch_range_max = lane.orbit.pitch_range_min;
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_PITCH_RANGE_MAX_ID:
+      lane.orbit.pitch_range_max = clampFloat(event.value, lane.orbit.pitch_range_min, 127.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_H1_X_ID: lane.orbit.spline_h1_x = clampFloat(event.value, -1.2f, 1.2f); break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_H1_Y_ID: lane.orbit.spline_h1_y = clampFloat(event.value, -1.2f, 1.2f); break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_H2_X_ID: lane.orbit.spline_h2_x = clampFloat(event.value, -1.2f, 1.2f); break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_H2_Y_ID: lane.orbit.spline_h2_y = clampFloat(event.value, -1.2f, 1.2f); break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_TIP_X_ID: lane.orbit.spline_tip_x = clampFloat(event.value, -1.2f, 1.2f); break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_TIP_Y_ID: lane.orbit.spline_tip_y = clampFloat(event.value, -1.2f, 1.2f); break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_SPIN_ENABLED_ID: lane.orbit.spline_spin_enabled = event.value >= 0.5f; break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_SPIN_DIRECTION_ID: lane.orbit.spline_spin_direction = event.value < 0.0f ? -1 : 1; break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_SPLINE_BASE_ANGLE_ID: lane.orbit.base_angle = wrapRadians(event.value); lane.orbit.prev_base_angle = lane.orbit.base_angle; break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_COUNT_ID:
+      lane.orbit.note_count = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, kMaxOrbitSequencerNotes);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_ENABLED_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_RADIUS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PHASE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_SPEED_MODE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_SPEED_VALUE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_DIRECTION_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PITCH_MODE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_MIDI_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_HARMONY_DEGREE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_VELOCITY_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_VELOCITY_MIN_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_VELOCITY_MAX_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_GATE_BEATS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_GATE_MIN_BEATS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_GATE_MAX_BEATS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PROBABILITY_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_TARGET_SOURCE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_SEED_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PITCH_RANGE_MIN_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PITCH_RANGE_MAX_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_VELOCITY_RANGE_ENABLED_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_GATE_RANGE_ENABLED_ID: {
+      const uint32_t note_index = event.flags & 0xffu;
+      if (note_index >= kMaxOrbitSequencerNotes) break;
+      OrbitNoteState& note = lane.orbit.notes[note_index];
+      switch (event.param_id) {
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_ENABLED_ID: note.enabled = event.value >= 0.5f; break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_RADIUS_ID: note.radius_norm = clampFloat(event.value, 0.08f, 1.0f); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PHASE_ID: note.angle = wrapRadians(event.value); note.prev_angle = note.angle; break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_SPEED_MODE_ID: note.speed_mode = event.value >= 0.5f ? 1u : 0u; break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_SPEED_VALUE_ID: note.speed_value = clampFloat(event.value, 0.125f, 800.0f); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_DIRECTION_ID: note.direction = event.value < 0.0f ? -1 : 1; break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PITCH_MODE_ID: note.pitch_mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, 2u); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_MIDI_ID: note.midi_note = clampFloat(event.value, 0.0f, 127.0f); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_HARMONY_DEGREE_ID: note.harmony_degree = static_cast<int32_t>(clampInt(static_cast<int32_t>(std::lround(event.value)), -32, 32)); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_VELOCITY_ID: note.velocity = clampFloat(event.value, 0.0f, 1.0f); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_VELOCITY_MIN_ID: note.velocity_min = clampFloat(event.value, 0.0f, 1.0f); if (note.velocity_max < note.velocity_min) note.velocity_max = note.velocity_min; break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_VELOCITY_MAX_ID: note.velocity_max = clampFloat(event.value, note.velocity_min, 1.0f); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_GATE_BEATS_ID: note.gate_beats = clampFloat(event.value, 0.05f, 8.0f); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_GATE_MIN_BEATS_ID: note.gate_min_beats = clampFloat(event.value, 0.05f, 8.0f); if (note.gate_max_beats < note.gate_min_beats) note.gate_max_beats = note.gate_min_beats; break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_GATE_MAX_BEATS_ID: note.gate_max_beats = clampFloat(event.value, note.gate_min_beats, 8.0f); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PROBABILITY_ID: note.probability = clampFloat(event.value, 0.0f, 1.0f); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_TARGET_SOURCE_ID: note.target_source_id = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), 0u, kSourceCount); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_SEED_ID: note.seed = static_cast<uint32_t>(std::lround(std::max(1.0f, event.value))); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PITCH_RANGE_MIN_ID: note.pitch_range_min = clampFloat(event.value, 0.0f, 127.0f); if (note.pitch_range_max < note.pitch_range_min) note.pitch_range_max = note.pitch_range_min; break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_PITCH_RANGE_MAX_ID: note.pitch_range_max = clampFloat(event.value, note.pitch_range_min, 127.0f); break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_VELOCITY_RANGE_ENABLED_ID: note.velocity_range_enabled = event.value >= 0.5f; break;
+        case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_GATE_RANGE_ENABLED_ID: note.gate_range_enabled = event.value >= 0.5f; break;
+        default: break;
+      }
+      break;
+    }
     default:
       telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_PARAM;
       return;

@@ -88,11 +88,50 @@
   }
   for (uint32_t i = 0; i < kMaxLaneCount; ++i) {
     synth_lanes[i] = {};
+    synth_lanes[i].sequencer_mode = kSequencerModeEuclid;
     synth_lanes[i].enabled = i == 0u;
     synth_lanes[i].target_source_id = (i % 2 == 0) ? KESSHO_PRODUCT_SOURCE_PAD1 : KESSHO_PRODUCT_SOURCE_LEAD1;
     synth_lanes[i].midi_note = 60.0f + static_cast<float>((i % 4) * 7);
     synth_lanes[i].seed = rng_seed + i + 1;
+    synth_lanes[i].anchor_walker = {};
+    synth_lanes[i].anchor_walker.enabled = true;
+    synth_lanes[i].anchor_walker.target_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+    synth_lanes[i].anchor_walker.manual_anchor_midi = 60.0f + static_cast<float>(i * 2u);
+    synth_lanes[i].anchor_walker.seed = rng_seed + 1000u + i;
+    synth_lanes[i].anchor_walker.layers[0].enabled = true;
+    synth_lanes[i].anchor_walker.layers[0].diatonic_offset = 0;
+    synth_lanes[i].anchor_walker.layers[0].delay_seconds = 0.0f;
+    synth_lanes[i].anchor_walker.layers[1].enabled = true;
+    synth_lanes[i].anchor_walker.layers[1].diatonic_offset = 2;
+    synth_lanes[i].anchor_walker.layers[1].delay_seconds = 0.035f;
+    synth_lanes[i].anchor_walker.layers[1].velocity_scale = 0.9f;
+    synth_lanes[i].anchor_walker.layers[2].enabled = true;
+    synth_lanes[i].anchor_walker.layers[2].diatonic_offset = 4;
+    synth_lanes[i].anchor_walker.layers[2].delay_seconds = 0.070f;
+    synth_lanes[i].anchor_walker.layers[2].velocity_scale = 0.82f;
+    synth_lanes[i].orbit = {};
+    synth_lanes[i].orbit.enabled = true;
+    synth_lanes[i].orbit.target_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+    synth_lanes[i].orbit.base_angle = static_cast<float>(i) * 0.12f;
+    synth_lanes[i].orbit.prev_base_angle = synth_lanes[i].orbit.base_angle;
+    synth_lanes[i].orbit.note_count = 6u;
+    synth_lanes[i].orbit.seed = rng_seed + 3000u + i;
+    for (uint32_t note = 0u; note < synth_lanes[i].orbit.note_count; ++note) {
+      OrbitNoteState& orbit_note = synth_lanes[i].orbit.notes[note];
+      orbit_note.enabled = true;
+      orbit_note.radius_norm = 0.34f + static_cast<float>(note % 3u) * 0.19f;
+      orbit_note.angle = static_cast<float>(kTwoPi * static_cast<double>(note) / 6.0);
+      orbit_note.prev_angle = orbit_note.angle;
+      orbit_note.speed_mode = 1u;
+      orbit_note.speed_value = note % 3u == 0u ? 1.0f : (note % 3u == 1u ? 2.0f : 4.0f);
+      orbit_note.direction = note % 3u == 0u ? -1 : 1;
+      orbit_note.pitch_mode = 1u;
+      orbit_note.harmony_degree = static_cast<int32_t>((note * 2u) % 7u);
+      orbit_note.midi_note = 60.0f + static_cast<float>(note);
+      orbit_note.seed = rng_seed + 4000u + note + i * 31u;
+    }
     drum_lanes[i] = {};
+    drum_lanes[i].sequencer_mode = kSequencerModeEuclid;
     drum_lanes[i].enabled = i == 0u;
     drum_lanes[i].target_source_id = KESSHO_PRODUCT_SOURCE_DRUM;
     drum_lanes[i].midi_note = 36.0f + static_cast<float>(i);

@@ -45,6 +45,21 @@ inline uint32_t clampU32(uint32_t value, uint32_t min_value, uint32_t max_value)
   return std::min(max_value, std::max(min_value, value));
 }
 
+inline int32_t clampInt(int32_t value, int32_t min_value, int32_t max_value) {
+  return std::min(max_value, std::max(min_value, value));
+}
+
+inline float wrapRadians(float value) {
+  if (!std::isfinite(value)) {
+    return 0.0f;
+  }
+  float wrapped = std::fmod(value, static_cast<float>(kTwoPi));
+  if (wrapped < 0.0f) {
+    wrapped += static_cast<float>(kTwoPi);
+  }
+  return wrapped;
+}
+
 inline float midiToFrequency(float midi_note) {
   return kProductTuningA4Hz * std::pow(2.0f, (midi_note - 69.0f) / 12.0f);
 }

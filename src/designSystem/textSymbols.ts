@@ -18,6 +18,12 @@ export const TEXT_SYMBOLS = {
   drumBeepLo: '\u22F0\uFE0E',
   drumNoise: '\u224B\uFE0E',
   drumMembrane: '\u203B\uFE0E',
+  walker: '\u2195\uFE0E',
+  anchor: '\u2693\uFE0E',
+  orbit: '\u25CE\uFE0E',
+  line: '\u2571\uFE0E',
+  layers: '\u224B\uFE0E',
+  snap: '\u2301\uFE0E',
 } as const;
 
 export const APP_TAB_SYMBOLS = {

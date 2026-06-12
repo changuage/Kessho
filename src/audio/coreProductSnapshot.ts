@@ -4,13 +4,13 @@ import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import { CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID, getCoreProductSoundscapeAssetDescriptorsForState, getPrimaryCoreProductSoundscapeAssetIdForState } from './coreProductAssets';
 import { DEFAULT_MASTER_VOLUME, ENGINE_TRIMS, MASTER_OUTPUT_TRIM } from './outputTrims';
 import { delayAFilterTypeId, delayBPatternId, delayBTapeSpacingId, delayBWarpId, dynamicsDriftModeId, dynamicsDriftQualityId, dynamicsErosionQualityId, dynamicsEndCompModeId, dynamicsSaturationModeId, dynamicsSaturationQualityId, granularAnchorPatternId, granularCloudStyleId, granularLegacyPitchModeId, granularPitchModeId, granularQualityId, granularShapeId, granularVoiceModeId, reverbModCharacterId, reverbQualityId, reverbSaturationModeId, reverbTypeId, sidechainKeyId } from './CoreProductModeIds';
-import { assignLeadAlgorithmOverrideFields, assignLeadEnvelopeOverrideFields, assignLeadPresetIds, emptyLeadOverrideIndices, emptyLeadOverrideValues, exactLeadPatchFromState, leadAlgorithmPresetAEnabledFromState, leadEnvelopeOverrideFromState } from './CoreProductLeadPatch';
+import { assignLeadAlgorithmOverrideFields, assignLeadEnvelopeOverrideFields, assignLeadPresetIds, emptyLeadOverrideIndices, emptyLeadOverrideValues, exactLeadPatchFromState, leadAlgorithmPresetAEnabledFromState, leadEnvelopeGateSecondsFromState, leadEnvelopeOverrideFromState } from './CoreProductLeadPatch';
 import { emptyPadOverrideIndices, emptyPadOverrideValues, exactPadPatchFromState } from './CoreProductPadPatch';
 import { emptyDrumOverrideIndices, emptyDrumOverrideValues, exactDrumPatchFromState } from './CoreProductDrumPatch';
 import { defaultPresetId, drumVoiceMorphsFromState, drumVoicePresetIdsFromState, endpointPresetId, soundscapePresetIdFromState, sourcePresetId } from './CoreProductPresetIds';
 import { getTransportMetrics } from './transport';
 import { computeGranularMacroModel, type GranularMacroModel } from './granularMacroCore';
-import { applyDistanceValue, applyLeadDistanceEnvelope, getVoiceDistanceKey, type DistanceVoice } from './distanceMacro';
+import { applyDistanceValue, getVoiceDistanceKey, type DistanceVoice } from './distanceMacro';
 import { computeGranularRuntimeSeed, getUtcBucket } from './rng';
 import { defaultDrumEuclidPattern, defaultSynthEuclidPattern, euclideanPatternMask, resolveEuclidPatternParams } from './euclideanPatterns';
 import { sequencerClockDivisionToNumericValue } from './sequencerClockDivisions';
@@ -19,13 +19,13 @@ import { delayBTapeHeadLevelsFromState, delayBTapeHeadMaskFromState, delayBTapeH
 import { booleanFromState, clamp, numberFromState } from './coreProductSnapshotState';
 import { resolveReverbSnapshotParams, scaleIdFromState, shouldUseMobileReverbQualityOverride } from './coreProductReverbSnapshot';
 import { coreProductDrumLaneMacroDefaultsFromState, coreProductSynthLaneMacroDefaultsFromState } from './coreProductSequencerMacroDefaults';
+import { laneDefaults as coreProductLaneDefaults } from './coreProductSnapshotDefaults';
 import { soundscapeSnapshotPayloadFromState, type SoundscapeSnapshotPayload } from './coreProductSoundscapesSnapshot';
 import { HARMONY_POOL_MAX_NOTES, HARMONY_SOURCE_IDS, HARMONY_STRENGTH_IDS, resolveProductHarmonyState } from './CoreProductHarmonyControl';
 import { coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
+import { productAnchorWalkerFromConfig, productOrbitFromConfig, SEQUENCER_MODE_IDS, synthSequencerFaceSlotsFromState } from './coreProductSequencerFaceSnapshot';
 import {
   encodedPadVoiceLaneSeed,
-  synthChordSequencerUsesSourceId,
-  synthEuclidUsesSourceId,
   synthSourceIdFromState,
   synthSourcePadVoiceMaskFromState,
 } from './coreProductSnapshotPadVoiceRouting';
@@ -78,23 +78,6 @@ function distanceAdjustedNumberFromState(
     [distanceKey]: distance,
   } as unknown as SliderState;
   return applyDistanceValue(key, distanceState, voice, distance);
-}
-
-function distanceAdjustedLeadHoldSecondsFromState(
-  state: Record<string, unknown> | undefined,
-  voice: 'lead1' | 'lead2',
-  fallback: number,
-): number {
-  const holdKey = voice === 'lead2' ? 'lead2Hold' : 'lead1Hold';
-  const hold = numberFromState(state, holdKey, fallback);
-  const distance = numberFromState(state, getVoiceDistanceKey(voice), 0);
-  return applyLeadDistanceEnvelope(voice, {
-    attack: 0.01,
-    decay: 0.8,
-    sustain: 0.3,
-    hold,
-    release: 2,
-  }, distance).hold ?? hold;
 }
 
 function positiveU32(value: number, fallback: number): number {
@@ -340,9 +323,7 @@ function sourceFromState(
   const source = sourceDefaults(sourceId);
   switch (sourceId) {
     case CORE_PRODUCT_SOURCE_IDS.pad1:
-      source.enabled = booleanFromState(state, 'padEnabled', false) ||
-        synthEuclidUsesSourceId(state, sourceId) ||
-        synthChordSequencerUsesSourceId(state, sourceId);
+      source.enabled = booleanFromState(state, 'padEnabled', false);
       source.level = numberFromState(state, 'synthLevel', source.level);
       source.morph = numberFromState(state, 'padMorph', source.morph);
       source.distance = numberFromState(state, 'padDistance', source.distance);
@@ -362,9 +343,7 @@ function sourceFromState(
       );
       break;
     case CORE_PRODUCT_SOURCE_IDS.pad2:
-      source.enabled = booleanFromState(state, 'pad2Enabled', false) ||
-        synthEuclidUsesSourceId(state, sourceId) ||
-        synthChordSequencerUsesSourceId(state, sourceId);
+      source.enabled = booleanFromState(state, 'pad2Enabled', false);
       source.level = numberFromState(state, 'pad2Level', source.level);
       source.morph = numberFromState(state, 'pad2Morph', source.morph);
       source.distance = numberFromState(state, 'pad2Distance', source.distance);
@@ -384,13 +363,11 @@ function sourceFromState(
       );
       break;
     case CORE_PRODUCT_SOURCE_IDS.lead1:
-      source.enabled = booleanFromState(state, 'leadEnabled', false) ||
-        synthEuclidUsesSourceId(state, sourceId) ||
-        synthChordSequencerUsesSourceId(state, sourceId);
+      source.enabled = booleanFromState(state, 'leadEnabled', false);
       source.level = distanceAdjustedNumberFromState(state, 'lead1Level', 'lead1', numberFromState(state, 'leadLevel', source.level));
       source.morph = numberFromState(state, 'lead1Morph', source.morph);
       source.distance = numberFromState(state, 'lead1Distance', source.distance);
-      source.holdSeconds = distanceAdjustedLeadHoldSecondsFromState(state, 'lead1', source.holdSeconds);
+      source.holdSeconds = leadEnvelopeGateSecondsFromState(state, 0);
       source.reverbSend = distanceAdjustedNumberFromState(state, 'lead1ReverbSend', 'lead1', numberFromState(state, 'leadReverbSend', source.reverbSend));
       source.delayASend = numberFromState(state, 'lead1DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'lead1DelayBSend', source.delayBSend);
@@ -409,13 +386,11 @@ function sourceFromState(
       Object.assign(source, exactLeadPatchFromState(state, 0, source.sourcePresetAId, source.sourcePresetBId, source.morph));
       break;
     case CORE_PRODUCT_SOURCE_IDS.lead2:
-      source.enabled = booleanFromState(state, 'lead2Enabled', booleanFromState(state, 'leadEnabled', false)) ||
-        synthEuclidUsesSourceId(state, sourceId) ||
-        synthChordSequencerUsesSourceId(state, sourceId);
+      source.enabled = booleanFromState(state, 'lead2Enabled', booleanFromState(state, 'leadEnabled', false));
       source.level = distanceAdjustedNumberFromState(state, 'lead2Level', 'lead2', source.level);
       source.morph = numberFromState(state, 'lead2Morph', source.morph);
       source.distance = numberFromState(state, 'lead2Distance', source.distance);
-      source.holdSeconds = distanceAdjustedLeadHoldSecondsFromState(state, 'lead2', source.holdSeconds);
+      source.holdSeconds = leadEnvelopeGateSecondsFromState(state, 1);
       source.reverbSend = distanceAdjustedNumberFromState(state, 'lead2ReverbSend', 'lead2', numberFromState(state, 'leadReverbSend', source.reverbSend));
       source.delayASend = numberFromState(state, 'lead2DelayASend', source.delayASend);
       source.delayBSend = numberFromState(state, 'lead2DelayBSend', source.delayBSend);
@@ -448,9 +423,7 @@ function sourceFromState(
       Object.assign(source, exactDrumPatchFromState(state));
       break;
     case CORE_PRODUCT_SOURCE_IDS.piano:
-      source.enabled = booleanFromState(state, 'pianoEnabled', false) ||
-        synthEuclidUsesSourceId(state, sourceId) ||
-        synthChordSequencerUsesSourceId(state, sourceId);
+      source.enabled = booleanFromState(state, 'pianoEnabled', false);
       source.assetId = CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID;
       source.level = distanceAdjustedNumberFromState(state, 'pianoLevel', 'piano', source.level) * ENGINE_TRIMS.piano;
       source.distance = numberFromState(state, 'pianoDistance', source.distance);
@@ -508,31 +481,7 @@ function sourceFromState(
 }
 
 function laneDefaults(targetSourceId: number, midiNote: number): ProductLaneSnapshot {
-  return {
-    enabled: false,
-    targetSourceId,
-    stepCount: 16,
-    fillCount: 4,
-    rotation: 0,
-    clockDivision: 16,
-    swing: 0,
-    probability: 1,
-    ratchet: 1,
-    trigCondition: 0,
-    midiNote,
-    velocity: 0.75,
-    holdSeconds: 0.18,
-    morph: 0,
-    distance: 0,
-    expression: 0.75,
-    seed: 1,
-    barReset: true,
-    phraseReset: false,
-    manualStepMaskLow: 0,
-    manualStepMaskHigh: 0,
-    tempoMultiplier: 1,
-    initialStartDelaySeconds: -1,
-  };
+  return coreProductLaneDefaults(targetSourceId, midiNote);
 }
 
 function synthLaneFromState(
@@ -577,6 +526,24 @@ function synthLaneFromState(
   lane.holdSeconds = coreProductSynthSequencerHoldSecondsFromState(state, sourceId, lane.holdSeconds);
   lane.seed = encodedPadVoiceLaneSeed(1000 + laneNumber, synthSourcePadVoiceMaskFromState(state, `${prefix}Source`));
   Object.assign(lane, laneManualMaskFromPattern(state, prefix, resolved.steps, resolved.hits, resolved.rotation));
+  const faceSlot = synthSequencerFaceSlotsFromState(state)[laneNumber - 1] ?? synthSequencerFaceSlotsFromState(undefined)[0]!;
+  lane.sequencerMode = SEQUENCER_MODE_IDS[faceSlot.mode] ?? 0;
+  lane.anchorWalker = productAnchorWalkerFromConfig(faceSlot.anchorWalker, laneNumber - 1);
+  lane.orbit = productOrbitFromConfig(faceSlot.orbit, laneNumber - 1);
+  if (faceSlot.mode === 'anchorWalker') {
+    lane.enabled = faceSlot.anchorWalker.enabled;
+    lane.targetSourceId = faceSlot.anchorWalker.targetSourceId;
+    lane.swing = normalizeSequencerSwing(faceSlot.anchorWalker.swing);
+    lane.velocity = numberFromState(state, `${prefix}Level`, lane.velocity);
+    lane.holdSeconds = coreProductSynthSequencerHoldSecondsFromState(state, lane.targetSourceId, lane.holdSeconds);
+    lane.seed = Math.max(1, Math.round(faceSlot.anchorWalker.seed));
+  } else if (faceSlot.mode === 'orbit') {
+    lane.enabled = faceSlot.orbit.enabled;
+    lane.targetSourceId = faceSlot.orbit.targetSourceId;
+    lane.velocity = numberFromState(state, `${prefix}Level`, lane.velocity);
+    lane.holdSeconds = coreProductSynthSequencerHoldSecondsFromState(state, lane.targetSourceId, lane.holdSeconds);
+    lane.seed = Math.max(1, Math.round(faceSlot.orbit.seed));
+  }
   return lane;
 }
 

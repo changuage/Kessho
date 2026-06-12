@@ -15,12 +15,24 @@ import { getScaleNotesInRange } from './scales';
 import { chordIntervalSecondsFromState, resolveChordsPerPhrase } from './chordPhraseTiming';
 import {
   getCurrentClockIndexWall,
+  getAnchorWallForClockSource,
   getPhraseDurationForClockSource,
   getTimeUntilNextBoundaryWall,
   resolveProgressionPhraseClockSource,
   type TransportAnchors,
+  type TransportDebugSnapshot,
 } from './transport';
-import type { SliderState } from '../ui/state';
+import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
+import {
+  envelopeAmplitudeAt,
+  envelopeForSource,
+  midiNoteLabel,
+  previewRange,
+  type SimpleSequencerPhrasePreview,
+  type SimpleSequencerVizNote,
+  type SimpleSequencerVizSource,
+} from './simpleSequencerPhrasePreview';
+import type { PhraseClockSource, SliderState } from '../ui/state';
 type PostEvent = (event: CoreProductEvent) => void;
 type PublishTrigger = (name: string, ...payload: unknown[]) => void;
 function clamp(value: number, min: number, max: number): number {
@@ -43,16 +55,13 @@ function booleanFromState(state: Record<string, unknown>, key: string, fallback:
 function sliderStateFromRecord(state: Record<string, unknown>): SliderState {
   return state as unknown as SliderState;
 }
-
 function harmonyChordIntervalSeconds(state: SliderState): number {
   const phraseLength = harmonyPhraseSeconds(state);
   return chordIntervalSecondsFromState(state.chordRate, phraseLength);
 }
-
 function padChordTriggerIntervalSeconds(state: SliderState): number {
   return harmonyChordIntervalSeconds(state);
 }
-
 function harmonyParamsFromState(state: SliderState): Partial<HarmonyParams> {
   return {
     cofDriftEnabled: state.cofDriftEnabled ?? false,
@@ -80,9 +89,8 @@ function progressionPhraseSeconds(state: SliderState): number {
 }
 
 function createSchedulerHarmonyState(state: SliderState): HarmonyState {
-  const bucket = getUtcBucket(state.seedWindow === 'day' ? 'day' : 'hour');
   return createHarmonyState(
-    `${bucket}|E_ROOT`,
+    harmonySeedMaterialFromState(state),
     state.tension ?? 0.3,
     harmonyChordIntervalSeconds(state),
     state.voicingSpread ?? 0.5,
@@ -128,6 +136,51 @@ function leadRandomSourceId(source: 'lead1' | 'lead2' | 'piano'): number {
   return CORE_PRODUCT_SOURCE_IDS.lead1;
 }
 
+function runtimeSourceFromSourceId(sourceId: number): SimpleSequencerVizSource {
+  if (sourceId === CORE_PRODUCT_SOURCE_IDS.pad2) return 'pad2';
+  if (sourceId === CORE_PRODUCT_SOURCE_IDS.lead1) return 'lead1';
+  if (sourceId === CORE_PRODUCT_SOURCE_IDS.lead2) return 'lead2';
+  if (sourceId === CORE_PRODUCT_SOURCE_IDS.piano) return 'piano';
+  return 'pad1';
+}
+
+type PhraseTiming = {
+  phraseIndex: number;
+  phraseStartWallSec: number;
+};
+
+function phraseTimingForClockSource(
+  clockSource: PhraseClockSource,
+  phraseSeconds: number,
+  anchors: TransportAnchors,
+  nowWallSec: number,
+): PhraseTiming {
+  const safePhraseSeconds = Math.max(0.001, phraseSeconds);
+  const phraseIndex = getCurrentClockIndexWall(clockSource, safePhraseSeconds, anchors, nowWallSec);
+  const phraseStartWallSec = getAnchorWallForClockSource(clockSource, anchors) + phraseIndex * safePhraseSeconds;
+  return {
+    phraseIndex,
+    phraseStartWallSec,
+  };
+}
+
+function runtimePlanKey(plan: SimpleSequencerPhrasePreview): string {
+  const noteKey = plan.notes
+    .map((note) => `${note.id}:${note.source}:${Math.round(note.midi)}:${(note.triggerWallSec ?? note.triggerSeconds).toFixed(4)}:${note.velocity.toFixed(3)}`)
+    .join('|');
+  return `${plan.kind}:runtime:${plan.enabled ? 'on' : 'off'}:${plan.phraseIndex ?? 0}:${(plan.phraseStartWallSec ?? 0).toFixed(4)}:${plan.phraseSeconds.toFixed(4)}:${plan.triggerIntervalSeconds.toFixed(4)}:${noteKey}`;
+}
+
+function cloneRuntimePlan(plan: SimpleSequencerPhrasePreview | null): SimpleSequencerPhrasePreview | null {
+  if (!plan) return null;
+  return {
+    ...plan,
+    notes: plan.notes.map((note) => ({ ...note, envelope: { ...note.envelope } })),
+  };
+}
+
+const RUNTIME_NOTE_FLOOR = 0.0008;
+
 function sourceDistanceValue(state: Record<string, unknown>, key: string): number {
   return boundedNumber(state, key, 0, 0, 1);
 }
@@ -138,8 +191,41 @@ function leadRandomSourceEnabled(state: Record<string, unknown>, source: 'lead1'
   if (source === 'piano') return booleanFromState(state, 'pianoEnabled', false);
   return booleanFromState(state, 'leadEnabled', false);
 }
+
+function manualNoteSourceEnabled(state: Record<string, unknown>, sourceId: number): boolean {
+  switch (sourceId) {
+    case CORE_PRODUCT_SOURCE_IDS.pad1:
+      return booleanFromState(state, 'padEnabled', false);
+    case CORE_PRODUCT_SOURCE_IDS.pad2:
+      return booleanFromState(state, 'pad2Enabled', false);
+    case CORE_PRODUCT_SOURCE_IDS.lead1:
+      return booleanFromState(state, 'leadEnabled', false);
+    case CORE_PRODUCT_SOURCE_IDS.lead2:
+      return booleanFromState(state, 'lead2Enabled', false);
+    case CORE_PRODUCT_SOURCE_IDS.piano:
+      return booleanFromState(state, 'pianoEnabled', false);
+    case CORE_PRODUCT_SOURCE_IDS.drum:
+      return booleanFromState(state, 'drumEnabled', false);
+    default:
+      return true;
+  }
+}
+
+function padChordHasEnabledTarget(state: Record<string, unknown>): boolean {
+  if (!booleanFromState(state, 'synthChordSequencerEnabled', false)) return false;
+  const source = String(state.synthChordSequencerSource ?? 'both').trim().toLowerCase();
+  if (source === 'lead1' || source === 'lead') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.lead1);
+  if (source === 'lead2') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.lead2);
+  if (source === 'piano') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.piano);
+  if (source === 'pad1' || source === 'pad') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad1);
+  if (source === 'pad2') return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad2);
+  return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad1) ||
+    manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad2);
+}
+
 export class CoreProductArrangementScheduler {
   private state: Record<string, unknown> | null = null;
+  private phraseState: Record<string, unknown> | null = null;
   private anchors: TransportAnchors | null = null;
   private harmonyState: HarmonyState | null = null;
   private rng: (() => number) | null = null;
@@ -149,6 +235,10 @@ export class CoreProductArrangementScheduler {
   private leadPhraseTimer: number | null = null;
   private readonly padNoteTimers = new Set<number>();
   private readonly leadNoteTimers = new Set<number>();
+  private padChordPlan: SimpleSequencerPhrasePreview | null = null;
+  private previousPadChordPlan: SimpleSequencerPhrasePreview | null = null;
+  private randomTimingPlan: SimpleSequencerPhrasePreview | null = null;
+  private previousRandomTimingPlan: SimpleSequencerPhrasePreview | null = null;
   private restartKey = '';
 
   constructor(
@@ -160,8 +250,9 @@ export class CoreProductArrangementScheduler {
   start(state: Record<string, unknown> | null | undefined): void {
     this.stop();
     if (!state) return;
+    this.restartKey = arrangementRestartKey(state);
     this.state = { ...state };
-    this.restartKey = arrangementRestartKey(this.state);
+    this.phraseState = { ...state };
     this.running = true;
     const sliderState = sliderStateFromRecord(this.state);
     const nowWallSec = Date.now() / 1000;
@@ -186,22 +277,34 @@ export class CoreProductArrangementScheduler {
   update(state: Record<string, unknown> | null | undefined): void {
     if (!this.running) {
       this.state = state ? { ...state } : null;
+      this.phraseState = this.state ? { ...this.state } : null;
       this.restartKey = this.state ? arrangementRestartKey(this.state) : '';
       return;
     }
     if (!state) {
       this.stop();
       this.state = null;
+      this.phraseState = null;
       this.restartKey = '';
       return;
     }
-    const nextState = { ...state };
-    const nextRestartKey = arrangementRestartKey(nextState);
+    const nextRestartKey = arrangementRestartKey(state);
     if (nextRestartKey !== this.restartKey) {
-      this.start(nextState);
+      this.start(state);
       return;
     }
-    this.state = nextState;
+    this.state = { ...state };
+    if (!padChordHasEnabledTarget(this.state)) {
+      this.clearPadNoteTimers();
+      this.padChordPlan = null;
+      this.previousPadChordPlan = null;
+    }
+    const randomSource = leadRandomSource(this.state);
+    if (!leadRandomSourceEnabled(this.state, randomSource)) {
+      this.clearLeadNoteTimers();
+      this.randomTimingPlan = null;
+      this.previousRandomTimingPlan = null;
+    }
   }
 
   stop(): void {
@@ -217,7 +320,222 @@ export class CoreProductArrangementScheduler {
     this.padNoteTimers.clear();
     this.leadNoteTimers.clear();
     this.chordSubTickCount = 0;
+    this.padChordPlan = null;
+    this.previousPadChordPlan = null;
+    this.randomTimingPlan = null;
+    this.previousRandomTimingPlan = null;
     this.restartKey = '';
+    this.phraseState = null;
+  }
+
+  private clearPadNoteTimers(): void {
+    for (const timer of this.padNoteTimers) {
+      window.clearTimeout(timer);
+    }
+    this.padNoteTimers.clear();
+  }
+
+  private clearLeadNoteTimers(): void {
+    for (const timer of this.leadNoteTimers) {
+      window.clearTimeout(timer);
+    }
+    this.leadNoteTimers.clear();
+  }
+
+  getTransportDebugState(nowWallSec: number = Date.now() / 1000): Partial<TransportDebugSnapshot> | null {
+    if (!this.running || !this.state || !this.anchors) return null;
+    const phraseState = this.getPhraseState() ?? this.state;
+    const padSliderState = sliderStateFromRecord(phraseState);
+    const padClockSource = padSliderState.harmonyClockSource ?? 'globalPhrase';
+    const padPhraseSeconds = harmonyPhraseSeconds(padSliderState);
+    const liveSliderState = sliderStateFromRecord(this.state);
+    const randomClockSource = liveSliderState.leadRandomClockSource ?? 'globalPhrase';
+    const randomPhraseSeconds = getPhraseDurationForClockSource(liveSliderState, randomClockSource);
+    return {
+      padChordPhraseSeconds: padPhraseSeconds,
+      nextPadChordBoundaryIn: getTimeUntilNextBoundaryWall(
+        padClockSource,
+        padPhraseSeconds,
+        this.anchors,
+        nowWallSec,
+      ),
+      padChordPlan: cloneRuntimePlan(this.padChordPlan),
+      previousPadChordPlan: cloneRuntimePlan(this.previousPadChordPlan),
+      randomTimingPhraseSeconds: randomPhraseSeconds,
+      nextRandomTimingBoundaryIn: getTimeUntilNextBoundaryWall(
+        randomClockSource,
+        randomPhraseSeconds,
+        this.anchors,
+        nowWallSec,
+      ),
+      randomTimingPlan: cloneRuntimePlan(this.randomTimingPlan),
+      previousRandomTimingPlan: cloneRuntimePlan(this.previousRandomTimingPlan),
+    };
+  }
+
+  private getPhraseState(): Record<string, unknown> | null {
+    return this.phraseState ?? this.state;
+  }
+
+  private capturePhraseState(): Record<string, unknown> | null {
+    if (!this.state) return null;
+    this.phraseState = { ...this.state };
+    return this.phraseState;
+  }
+
+  private createRuntimePlan(
+    kind: 'padChord' | 'randomTiming',
+    enabled: boolean,
+    phraseSeconds: number,
+    triggerIntervalSeconds: number,
+    phraseIndex: number,
+    phraseStartWallSec: number,
+    rangeMinMidi?: number,
+    rangeMaxMidi?: number,
+  ): SimpleSequencerPhrasePreview {
+    const range = previewRange([], rangeMinMidi, rangeMaxMidi);
+    const plan: SimpleSequencerPhrasePreview = {
+      kind,
+      enabled,
+      phraseSeconds,
+      triggerIntervalSeconds,
+      notes: [],
+      ...range,
+      ...(rangeMinMidi != null ? { rangeMinMidi } : {}),
+      ...(rangeMaxMidi != null ? { rangeMaxMidi } : {}),
+      phraseIndex,
+      phraseStartWallSec,
+      key: '',
+    };
+    return { ...plan, key: runtimePlanKey(plan) };
+  }
+
+  private updateRuntimePlanNotes(
+    plan: SimpleSequencerPhrasePreview,
+    notes: readonly SimpleSequencerVizNote[],
+    rangeMinMidi = plan.rangeMinMidi,
+    rangeMaxMidi = plan.rangeMaxMidi,
+  ): SimpleSequencerPhrasePreview {
+    const sortedNotes = [...notes].sort((left, right) => {
+      const leftTime = left.triggerWallSec ?? left.triggerSeconds;
+      const rightTime = right.triggerWallSec ?? right.triggerSeconds;
+      return leftTime - rightTime || left.midi - right.midi || String(left.id).localeCompare(String(right.id));
+    });
+    const range = previewRange(sortedNotes, rangeMinMidi, rangeMaxMidi);
+    const nextPlan: SimpleSequencerPhrasePreview = {
+      ...plan,
+      notes: sortedNotes,
+      ...range,
+      ...(rangeMinMidi != null ? { rangeMinMidi } : {}),
+      ...(rangeMaxMidi != null ? { rangeMaxMidi } : {}),
+    };
+    return { ...nextPlan, key: runtimePlanKey(nextPlan) };
+  }
+
+  private createCarryoverPlan(
+    kind: 'padChord' | 'randomTiming',
+    previousPlan: SimpleSequencerPhrasePreview | null,
+    currentPlan: SimpleSequencerPhrasePreview | null,
+    phraseSeconds: number,
+    triggerIntervalSeconds: number,
+    phraseIndex: number,
+    phraseStartWallSec: number,
+    rangeMinMidi?: number,
+    rangeMaxMidi?: number,
+  ): SimpleSequencerPhrasePreview | null {
+    const notesByKey = new Map<string, SimpleSequencerVizNote>();
+    for (const plan of [previousPlan, currentPlan]) {
+      if (!plan) continue;
+      for (const note of plan.notes) {
+        const triggerWallSec = note.triggerWallSec ?? (plan.phraseStartWallSec != null ? plan.phraseStartWallSec + note.triggerSeconds : null);
+        if (triggerWallSec == null || !Number.isFinite(triggerWallSec)) continue;
+        const ageAtPhraseStart = phraseStartWallSec - triggerWallSec;
+        if (ageAtPhraseStart >= 0 && envelopeAmplitudeAt(ageAtPhraseStart, note.envelope) <= RUNTIME_NOTE_FLOOR) continue;
+        notesByKey.set(`${note.id}:${triggerWallSec.toFixed(4)}`, {
+          ...note,
+          triggerSeconds: triggerWallSec - phraseStartWallSec,
+          triggerWallSec,
+        });
+      }
+    }
+    const notes = [...notesByKey.values()];
+    if (notes.length === 0) return null;
+    return this.updateRuntimePlanNotes(
+      this.createRuntimePlan(kind, true, phraseSeconds, triggerIntervalSeconds, phraseIndex, phraseStartWallSec, rangeMinMidi, rangeMaxMidi),
+      notes,
+      rangeMinMidi,
+      rangeMaxMidi,
+    );
+  }
+
+  private ensurePadChordPlan(
+    phraseSeconds: number,
+    triggerIntervalSeconds: number,
+    phraseIndex: number,
+    phraseStartWallSec: number,
+  ): SimpleSequencerPhrasePreview {
+    if (
+      this.padChordPlan &&
+      this.padChordPlan.phraseIndex === phraseIndex &&
+      Math.abs((this.padChordPlan.phraseStartWallSec ?? 0) - phraseStartWallSec) < 0.001 &&
+      Math.abs(this.padChordPlan.phraseSeconds - phraseSeconds) < 0.001 &&
+      Math.abs(this.padChordPlan.triggerIntervalSeconds - triggerIntervalSeconds) < 0.001
+    ) {
+      return this.padChordPlan;
+    }
+    this.previousPadChordPlan = this.createCarryoverPlan(
+      'padChord',
+      this.previousPadChordPlan,
+      this.padChordPlan,
+      phraseSeconds,
+      triggerIntervalSeconds,
+      phraseIndex,
+      phraseStartWallSec,
+    );
+    this.padChordPlan = this.createRuntimePlan('padChord', true, phraseSeconds, triggerIntervalSeconds, phraseIndex, phraseStartWallSec);
+    return this.padChordPlan;
+  }
+
+  private appendPadChordPlanNotes(notes: readonly SimpleSequencerVizNote[]): void {
+    if (!this.padChordPlan || notes.length === 0) return;
+    this.padChordPlan = this.updateRuntimePlanNotes(this.padChordPlan, [...this.padChordPlan.notes, ...notes]);
+  }
+
+  private ensureRandomTimingPlan(
+    phraseSeconds: number,
+    phraseIndex: number,
+    phraseStartWallSec: number,
+    rangeMinMidi: number,
+    rangeMaxMidi: number,
+  ): SimpleSequencerPhrasePreview {
+    if (
+      this.randomTimingPlan &&
+      this.randomTimingPlan.phraseIndex === phraseIndex &&
+      Math.abs((this.randomTimingPlan.phraseStartWallSec ?? 0) - phraseStartWallSec) < 0.001 &&
+      Math.abs(this.randomTimingPlan.phraseSeconds - phraseSeconds) < 0.001 &&
+      this.randomTimingPlan.rangeMinMidi === rangeMinMidi &&
+      this.randomTimingPlan.rangeMaxMidi === rangeMaxMidi
+    ) {
+      return this.randomTimingPlan;
+    }
+    this.previousRandomTimingPlan = this.createCarryoverPlan(
+      'randomTiming',
+      this.previousRandomTimingPlan,
+      this.randomTimingPlan,
+      phraseSeconds,
+      phraseSeconds,
+      phraseIndex,
+      phraseStartWallSec,
+      rangeMinMidi,
+      rangeMaxMidi,
+    );
+    this.randomTimingPlan = this.createRuntimePlan('randomTiming', true, phraseSeconds, phraseSeconds, phraseIndex, phraseStartWallSec, rangeMinMidi, rangeMaxMidi);
+    return this.randomTimingPlan;
+  }
+
+  private setRandomTimingPlanNotes(notes: readonly SimpleSequencerVizNote[], rangeMinMidi: number, rangeMaxMidi: number): void {
+    if (!this.randomTimingPlan) return;
+    this.randomTimingPlan = this.updateRuntimePlanNotes(this.randomTimingPlan, notes, rangeMinMidi, rangeMaxMidi);
   }
 
   private clearTimer(key: 'harmonyTimer' | 'leadPhraseTimer'): void {
@@ -227,9 +545,10 @@ export class CoreProductArrangementScheduler {
       this[key] = null;
     }
   }
-
   private scheduleNote(delaySeconds: number, event: CoreProductEvent, owner: 'pad' | 'lead'): void {
     const post = () => {
+      const targetId = event.targetId;
+      if (!this.state || typeof targetId !== 'number' || !manualNoteSourceEnabled(this.state, targetId)) return;
       this.postEvent(event);
       this.publishManualNoteTrigger(event);
     };
@@ -273,7 +592,9 @@ export class CoreProductArrangementScheduler {
     if (!this.running || !this.state || !this.anchors) return;
     this.clearTimer('harmonyTimer');
     this.chordSubTickCount = 0;
-    const sliderState = sliderStateFromRecord(this.state);
+    const phraseState = this.getPhraseState();
+    if (!phraseState) return;
+    const sliderState = sliderStateFromRecord(phraseState);
     const phraseLength = harmonyPhraseSeconds(sliderState);
     const clockSource = sliderState.harmonyClockSource ?? 'globalPhrase';
     const delaySeconds = getTimeUntilNextBoundaryWall(clockSource, phraseLength, this.anchors);
@@ -286,7 +607,9 @@ export class CoreProductArrangementScheduler {
 
   private scheduleNextHarmonyTick(): void {
     if (!this.running || !this.state || !this.anchors) return;
-    const sliderState = sliderStateFromRecord(this.state);
+    const phraseState = this.getPhraseState();
+    if (!phraseState) return;
+    const sliderState = sliderStateFromRecord(phraseState);
     const phraseLength = harmonyPhraseSeconds(sliderState);
     const chordsPerPhrase = resolveChordsPerPhrase(sliderState.chordRate, phraseLength);
     const clockSource = sliderState.harmonyClockSource ?? 'globalPhrase';
@@ -310,7 +633,9 @@ export class CoreProductArrangementScheduler {
 
   private onHarmonyTick(isPhraseBoundary: boolean): void {
     if (!this.state || !this.harmonyState || !this.anchors) return;
-    const sliderState = sliderStateFromRecord(this.state);
+    const phraseState = isPhraseBoundary ? this.capturePhraseState() : this.getPhraseState();
+    if (!phraseState) return;
+    const sliderState = sliderStateFromRecord(phraseState);
     const phraseLength = harmonyPhraseSeconds(sliderState);
     const nowWallSec = Date.now() / 1000;
     const phraseIndex = getCurrentClockIndexWall(
@@ -330,7 +655,7 @@ export class CoreProductArrangementScheduler {
     );
     this.harmonyState = updateHarmonyState(
       this.harmonyState,
-      `${getUtcBucket(sliderState.seedWindow === 'day' ? 'day' : 'hour')}|${JSON.stringify(sliderState)}|E_ROOT`,
+      harmonySeedMaterialFromState(sliderState),
       phraseIndex,
       sliderState.tension ?? 0.3,
       harmonyChordIntervalSeconds(sliderState),
@@ -352,7 +677,8 @@ export class CoreProductArrangementScheduler {
 
   private triggerPadChord(): void {
     if (!this.state || !this.harmonyState || !this.rng) return;
-    const state = this.state;
+    const state = this.getPhraseState();
+    if (!state) return;
     const maskLimit = (1 << PAD_VOICE_COUNT) - 1;
     const source = String(state.synthChordSequencerSource ?? 'both').trim().toLowerCase();
     const voiceCount = boundedInteger(state, 'synthChordSequencerVoiceCount', 6, 1, PAD_VOICE_COUNT);
@@ -364,7 +690,39 @@ export class CoreProductArrangementScheduler {
       ? this.harmonyState.currentChord.midiNotes
       : [48 + boundedInteger(state, 'rootNote', 4, 0, 11)];
     const octaveShift = boundedInteger(state, 'synthOctave', 0, -2, 2) * 12;
-    const triggerIntervalSeconds = padChordTriggerIntervalSeconds(sliderStateFromRecord(this.state));
+    const sliderState = sliderStateFromRecord(state);
+    const phraseSeconds = harmonyPhraseSeconds(sliderState);
+    const triggerIntervalSeconds = padChordTriggerIntervalSeconds(sliderState);
+    const nowWallSec = Date.now() / 1000;
+    const timing = this.anchors
+      ? phraseTimingForClockSource(sliderState.harmonyClockSource ?? 'globalPhrase', phraseSeconds, this.anchors, nowWallSec)
+      : null;
+    if (timing) {
+      this.ensurePadChordPlan(phraseSeconds, triggerIntervalSeconds, timing.phraseIndex, timing.phraseStartWallSec);
+    }
+    const runtimeNotes: SimpleSequencerVizNote[] = [];
+    const addRuntimeNote = (
+      sourceId: number,
+      midi: number,
+      delaySeconds: number,
+      voiceIndex: number,
+      velocity = 1,
+    ) => {
+      if (!timing) return;
+      const vizSource = runtimeSourceFromSourceId(sourceId);
+      const triggerWallSec = nowWallSec + delaySeconds;
+      runtimeNotes.push({
+        id: `pad-runtime:${timing.phraseIndex}:${triggerWallSec.toFixed(4)}:${vizSource}:${voiceIndex}:${Math.round(midi)}:${runtimeNotes.length}`,
+        source: vizSource,
+        midi,
+        label: midiNoteLabel(midi),
+        voiceIndex,
+        triggerSeconds: triggerWallSec - timing.phraseStartWallSec,
+        triggerWallSec,
+        velocity,
+        envelope: envelopeForSource(sliderState, vizSource, delaySeconds, triggerIntervalSeconds),
+      });
+    };
     const waveSpreadSeconds =
       boundedNumber(state, 'waveSpread', 0.125, 0, 1) *
       triggerIntervalSeconds;
@@ -378,20 +736,26 @@ export class CoreProductArrangementScheduler {
           ? CORE_PRODUCT_SOURCE_IDS.piano
           : 0;
     if (nonPadSourceId !== 0) {
+      if (!manualNoteSourceEnabled(state, nonPadSourceId)) return;
       for (let index = 0; index < voiceCount; index += 1) {
         const midi = clamp(chordMidi[index % chordMidi.length]! + octaveShift, 0, 127);
         const holdSeconds = coreProductSynthSequencerHoldSecondsFromState(state, nonPadSourceId, 0.5);
+        const delaySeconds = voiceOffsets[index] ?? 0;
+        addRuntimeNote(nonPadSourceId, midi, delaySeconds, index);
         this.scheduleNote(voiceOffsets[index] ?? 0, createCoreProductManualNoteEvent(
           nonPadSourceId,
           midi,
           1,
           holdSeconds * 1000,
-        ), 'lead');
+        ), 'pad');
       }
+      this.appendPadChordPlanNotes(runtimeNotes);
       return;
     }
 
-    const { pad1Mask, pad2Mask } = padChordVoiceMasksForSource(source, availablePadMask, pad2Assign, voiceCount);
+    const rawPadMasks = padChordVoiceMasksForSource(source, availablePadMask, pad2Assign, voiceCount);
+    const pad1Mask = manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad1) ? rawPadMasks.pad1Mask : 0;
+    const pad2Mask = manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad2) ? rawPadMasks.pad2Mask : 0;
     if ((pad1Mask | pad2Mask) === 0) return;
     const pad1ChordMidi = enabledChordMidiForMask(chordMidi, pad1Mask);
     const pad2ChordMidi = enabledChordMidiForMask(chordMidi, pad2Mask);
@@ -401,10 +765,11 @@ export class CoreProductArrangementScheduler {
       if ((pad1Mask & bit) !== 0) {
         const enabledIndex = enabledVoiceRank(pad1Mask, voiceIndex);
         const midi = clamp(pad1ChordMidi[enabledIndex % pad1ChordMidi.length]! + octaveShift, 0, 127);
-        const holdSeconds = coreProductPadEnvelopeGateSecondsFromState(this.state, 'pad1', {
+        const holdSeconds = coreProductPadEnvelopeGateSecondsFromState(state, 'pad1', {
           triggerIntervalSeconds,
           voiceDelaySeconds: delaySeconds,
         });
+        addRuntimeNote(CORE_PRODUCT_SOURCE_IDS.pad1, midi, delaySeconds, voiceIndex);
         this.scheduleNote(delaySeconds, createCoreProductManualNoteEvent(
           CORE_PRODUCT_SOURCE_IDS.pad1,
           midi,
@@ -416,10 +781,11 @@ export class CoreProductArrangementScheduler {
       if ((pad2Mask & bit) !== 0) {
         const enabledIndex = enabledVoiceRank(pad2Mask, voiceIndex);
         const midi = clamp(pad2ChordMidi[enabledIndex % pad2ChordMidi.length]! + octaveShift, 0, 127);
-        const holdSeconds = coreProductPadEnvelopeGateSecondsFromState(this.state, 'pad2', {
+        const holdSeconds = coreProductPadEnvelopeGateSecondsFromState(state, 'pad2', {
           triggerIntervalSeconds,
           voiceDelaySeconds: delaySeconds,
         });
+        addRuntimeNote(CORE_PRODUCT_SOURCE_IDS.pad2, midi, delaySeconds, voiceIndex);
         this.scheduleNote(delaySeconds, createCoreProductManualNoteEvent(
           CORE_PRODUCT_SOURCE_IDS.pad2,
           midi,
@@ -429,6 +795,7 @@ export class CoreProductArrangementScheduler {
         ), 'pad');
       }
     }
+    this.appendPadChordPlanNotes(runtimeNotes);
   }
 
   private startLeadMelody(deferToBoundary: boolean): void {
@@ -455,7 +822,8 @@ export class CoreProductArrangementScheduler {
     const source = leadRandomSource(this.state);
     if (!leadRandomSourceEnabled(this.state, source)) return;
     const sliderState = sliderStateFromRecord(this.state);
-    const phraseSeconds = getPhraseDurationForClockSource(sliderState, sliderState.leadRandomClockSource ?? 'globalPhrase');
+    const phraseClock = sliderState.leadRandomClockSource ?? 'globalPhrase';
+    const phraseSeconds = getPhraseDurationForClockSource(sliderState, phraseClock);
     const phraseMs = phraseSeconds * 1000;
     const density = boundedNumber(this.state, 'lead1Density', 0.5, 0.1, 12);
     const notesThisPhrase = Math.max(1, Math.round(density * 3 + this.rng() * 2));
@@ -477,12 +845,28 @@ export class CoreProductArrangementScheduler {
       Math.min(108, baseHigh),
       this.harmonyState.effectiveRoot,
     );
+    const nowWallSec = Date.now() / 1000;
+    const timing = phraseTimingForClockSource(phraseClock, phraseSeconds, this.anchors, nowWallSec);
+    this.ensureRandomTimingPlan(phraseSeconds, timing.phraseIndex, timing.phraseStartWallSec, baseLow, baseHigh);
+    const runtimeNotes: SimpleSequencerVizNote[] = [];
     for (let index = 0; index < notesThisPhrase; index += 1) {
       const timingSeconds = (this.rng() * phraseMs) / 1000;
       if (availableNotes.length === 0) continue;
       const midi = pickChordWeightedNote(this.rng, availableNotes, this.harmonyState.currentChord?.midiNotes, chordBias);
       const velocity = 0.5 + this.rng() * 0.4;
       const sourceId = leadRandomSourceId(source);
+      const triggerWallSec = nowWallSec + timingSeconds;
+      runtimeNotes.push({
+        id: `random-runtime:${timing.phraseIndex}:${triggerWallSec.toFixed(4)}:${source}:${index}:${Math.round(midi)}`,
+        source,
+        midi,
+        label: midiNoteLabel(midi),
+        voiceIndex: index,
+        triggerSeconds: triggerWallSec - timing.phraseStartWallSec,
+        triggerWallSec,
+        velocity,
+        envelope: envelopeForSource(sliderState, source, 0, phraseSeconds),
+      });
       this.scheduleNote(timingSeconds, createCoreProductManualNoteEvent(
         sourceId,
         midi,
@@ -490,8 +874,9 @@ export class CoreProductArrangementScheduler {
         coreProductSynthSequencerHoldSecondsFromState(this.state, sourceId, 0.5) * 1000,
       ), 'lead');
     }
+    this.setRandomTimingPlanNotes(runtimeNotes, baseLow, baseHigh);
     const delaySeconds = getTimeUntilNextBoundaryWall(
-      sliderState.leadRandomClockSource ?? 'globalPhrase',
+      phraseClock,
       phraseSeconds,
       this.anchors,
     );

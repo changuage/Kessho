@@ -30,6 +30,21 @@
   lane.sequencer_start_sample_frame = 0u;
   lane.sequencer_runtime_initialized = false;
   lane.sequencer_join_pending = wait_for_join_boundary;
+  lane.anchor_walker.cursor_degree = 0;
+  lane.anchor_walker.cursor_midi = lane.anchor_walker.manual_anchor_midi;
+  lane.anchor_walker.cursor_valid = false;
+  lane.anchor_walker.anchor_midi = lane.anchor_walker.manual_anchor_midi;
+  lane.anchor_walker.anchor_valid = false;
+  lane.anchor_walker.runtime_sample_frame = 0u;
+  lane.anchor_walker.next_walk_sample = 0u;
+  lane.anchor_walker.runtime_initialized = false;
+  lane.orbit.runtime_sample_frame = 0u;
+  lane.orbit.runtime_initialized = false;
+  lane.orbit.prev_base_angle = lane.orbit.base_angle;
+  for (uint32_t i = 0u; i < kMaxOrbitSequencerNotes; ++i) {
+    lane.orbit.notes[i].prev_angle = lane.orbit.notes[i].angle;
+    lane.orbit.notes[i].flash = 0.0f;
+  }
   clearPendingRatchets(lane);
 }
 

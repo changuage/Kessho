@@ -116,11 +116,107 @@ typedef struct KesshoProductSequencerLaneSnapshot {
   uint32_t manual_step_mask_high;
   float tempo_multiplier;
   float initial_start_delay_seconds;
+  uint32_t sequencer_mode;
 } KesshoProductSequencerLaneSnapshot;
+
+typedef struct KesshoProductAnchorWalkerLayerSnapshot {
+  uint32_t enabled;
+  int32_t transpose_semitones;
+  int32_t diatonic_offset;
+  uint32_t tuning;
+  uint32_t motion;
+  float delay_seconds;
+  float gate_ratio;
+  float velocity_scale;
+  float velocity_offset;
+  uint32_t target_source_id;
+} KesshoProductAnchorWalkerLayerSnapshot;
+
+typedef struct KesshoProductAnchorWalkerSnapshot {
+  uint32_t enabled;
+  uint32_t mode;
+  uint32_t target_source_id;
+  uint32_t anchor_source;
+  float manual_anchor_midi;
+  uint32_t snap_source;
+  uint32_t custom_pitch_class_mask;
+  uint32_t auto_rate;
+  uint32_t auto_feel;
+  float swing;
+  uint32_t lead_mode;
+  uint32_t mw_to_velocity;
+  uint32_t pitch_wheel_walk;
+  int32_t gesture_pattern[16];
+  uint32_t gesture_pattern_length;
+  int32_t active_pad_delta;
+  uint32_t layer_preset;
+  float spread_seconds;
+  uint32_t layer_count;
+  KesshoProductAnchorWalkerLayerSnapshot layers[4];
+  float output_range_min;
+  float output_range_max;
+  uint32_t seed;
+  uint32_t reserved0;
+} KesshoProductAnchorWalkerSnapshot;
+
+typedef struct KesshoProductOrbitNoteSnapshot {
+  uint32_t enabled;
+  float radius_norm;
+  float phase;
+  uint32_t speed_mode;
+  float speed_value;
+  int32_t direction;
+  uint32_t pitch_mode;
+  float midi_note;
+  int32_t harmony_degree;
+  float pitch_range_min;
+  float pitch_range_max;
+  float velocity;
+  uint32_t velocity_range_enabled;
+  float velocity_min;
+  float velocity_max;
+  float gate_beats;
+  uint32_t gate_range_enabled;
+  float gate_min_beats;
+  float gate_max_beats;
+  float probability;
+  uint32_t target_source_id;
+  uint32_t seed;
+} KesshoProductOrbitNoteSnapshot;
+
+typedef struct KesshoProductOrbitSequencerSnapshot {
+  uint32_t enabled;
+  uint32_t target_source_id;
+  uint32_t trigger_line_count;
+  uint32_t clock_mode;
+  float bpm_percent;
+  uint32_t quantize_to_harmony;
+  uint32_t snap_source;
+  float pitch_range_min;
+  float pitch_range_max;
+  float spline_h1_x;
+  float spline_h1_y;
+  float spline_h2_x;
+  float spline_h2_y;
+  float spline_tip_x;
+  float spline_tip_y;
+  uint32_t spline_spin_enabled;
+  int32_t spline_spin_direction;
+  float base_angle;
+  uint32_t note_count;
+  uint32_t seed;
+  KesshoProductOrbitNoteSnapshot notes[32];
+} KesshoProductOrbitSequencerSnapshot;
+
+typedef struct KesshoProductSequencerLaneModeSnapshot {
+  KesshoProductAnchorWalkerSnapshot anchor_walker;
+  KesshoProductOrbitSequencerSnapshot orbit;
+} KesshoProductSequencerLaneModeSnapshot;
 
 typedef struct KesshoProductSequencerSnapshot {
   uint32_t lane_count;
   KesshoProductSequencerLaneSnapshot lanes[16];
+  KesshoProductSequencerLaneModeSnapshot mode_states[16];
 } KesshoProductSequencerSnapshot;
 
 typedef struct KesshoProductJourneySnapshot {

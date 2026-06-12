@@ -11,8 +11,9 @@ import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import { KESSHO_PRODUCT_PARAM_IDS, KESSHO_PRODUCT_PARAMS } from './generated/kesshoProductParams';
 import { KESSHO_PRODUCT_DRUM_PARAM_COUNT, KESSHO_PRODUCT_LEAD_PARAM_COUNT, KESSHO_PRODUCT_PAD_PARAM_COUNT } from './generated/kesshoProductSchema';
 import { HARMONY_QUALITY_IDS, type HarmonyChordQuality } from './CoreProductHarmonyControl';
+import { appendSequencerModeConfigDiffs } from './CoreProductRuntimeAdapterSequencerFaces';
 
-export const MAX_SNAPSHOT_DIFF_EVENTS = 384;
+export const MAX_SNAPSHOT_DIFF_EVENTS = 1024;
 
 export type SnapshotReloadReason =
   | 'none' | 'initial-snapshot' | 'runtime-start' | 'runtime-bootstrap' | 'manual-piano-asset' | 'explicit-reset-request' | 'asset-reference-change' | 'asset-reference-level-change' | 'soundscape-param-change' | 'harmony-mode-change' | 'source-structure-change' | 'pad-override-change' | 'lead-override-change' | 'drum-override-change' | 'sequencer-structure-change' | 'dirty-diff-event-budget' | 'product-patch';
@@ -441,6 +442,7 @@ class CoreProductRuntimeAdapter {
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneDistance, previous.distance, next.distance);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneExpression, previous.expression, next.expression);
       this.appendLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSeed, previous.seed, next.seed);
+      appendSequencerModeConfigDiffs(events, sequencer, laneIndex, previous, next);
     }
   }
 

@@ -4,6 +4,7 @@ import type {
   BeatClockSource,
   ProgressionClockSource,
 } from '../ui/state';
+import type { SimpleSequencerPhrasePreview } from './simpleSequencerRuntimePlan';
 
 export interface TransportAnchors {
   localPhraseWallStartSec: number;
@@ -27,6 +28,14 @@ export interface TransportDebugSnapshot {
   nextPhraseBoundaryIn: number;
   nextHarmonyEventIn: number | null;
   nextProgressionStepIn: number | null;
+  padChordPhraseSeconds?: number | null;
+  nextPadChordBoundaryIn?: number | null;
+  padChordPlan?: SimpleSequencerPhrasePreview | null;
+  previousPadChordPlan?: SimpleSequencerPhrasePreview | null;
+  randomTimingPhraseSeconds?: number | null;
+  nextRandomTimingBoundaryIn?: number | null;
+  randomTimingPlan?: SimpleSequencerPhrasePreview | null;
+  previousRandomTimingPlan?: SimpleSequencerPhrasePreview | null;
 }
 
 type AnyClockSource = PhraseClockSource | BeatClockSource | ProgressionClockSource;

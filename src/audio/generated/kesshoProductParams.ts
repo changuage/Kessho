@@ -62,6 +62,71 @@ export const KESSHO_PRODUCT_PARAM_IDS = Object.freeze({
   SequencerLanePitchScale: 222,
   SequencerLaneNoteRangeMin: 223,
   SequencerLaneNoteRangeMax: 224,
+  SequencerLaneMode: 225,
+  SequencerAnchorWalkerMode: 226,
+  SequencerAnchorWalkerAnchorSource: 227,
+  SequencerAnchorWalkerManualAnchorMidi: 228,
+  SequencerAnchorWalkerSnapSource: 229,
+  SequencerAnchorWalkerCustomPitchClassMask: 230,
+  SequencerAnchorWalkerAutoRate: 231,
+  SequencerAnchorWalkerAutoFeel: 232,
+  SequencerAnchorWalkerLeadMode: 233,
+  SequencerAnchorWalkerMwToVelocity: 234,
+  SequencerAnchorWalkerPitchWheelWalk: 235,
+  SequencerAnchorWalkerGesturePatternStep: 236,
+  SequencerAnchorWalkerGesturePatternLength: 237,
+  SequencerAnchorWalkerLayerPreset: 238,
+  SequencerAnchorWalkerSpreadMs: 239,
+  SequencerAnchorWalkerLayerEnabled: 240,
+  SequencerAnchorWalkerLayerTranspose: 241,
+  SequencerAnchorWalkerLayerDiatonicOffset: 242,
+  SequencerAnchorWalkerLayerTuning: 243,
+  SequencerAnchorWalkerLayerMotion: 244,
+  SequencerAnchorWalkerLayerDelayMs: 245,
+  SequencerAnchorWalkerLayerGateRatio: 246,
+  SequencerAnchorWalkerLayerVelocityScale: 247,
+  SequencerAnchorWalkerLayerVelocityOffset: 248,
+  SequencerAnchorWalkerLayerTargetSource: 249,
+  SequencerAnchorWalkerOutputRangeMin: 250,
+  SequencerAnchorWalkerOutputRangeMax: 251,
+  SequencerOrbitTriggerLineCount: 252,
+  SequencerOrbitBpmPercent: 253,
+  SequencerOrbitQuantizeToHarmony: 254,
+  SequencerOrbitSnapSource: 255,
+  SequencerOrbitPitchRangeMin: 256,
+  SequencerOrbitPitchRangeMax: 257,
+  SequencerOrbitSplineH1X: 258,
+  SequencerOrbitSplineH1Y: 259,
+  SequencerOrbitSplineH2X: 260,
+  SequencerOrbitSplineH2Y: 261,
+  SequencerOrbitSplineTipX: 262,
+  SequencerOrbitSplineTipY: 263,
+  SequencerOrbitSplineSpinEnabled: 264,
+  SequencerOrbitSplineSpinDirection: 265,
+  SequencerOrbitSplineBaseAngle: 266,
+  SequencerOrbitNoteCount: 267,
+  SequencerOrbitNoteEnabled: 268,
+  SequencerOrbitNoteRadius: 269,
+  SequencerOrbitNotePhase: 270,
+  SequencerOrbitNoteSpeedMode: 271,
+  SequencerOrbitNoteSpeedValue: 272,
+  SequencerOrbitNoteDirection: 273,
+  SequencerOrbitNotePitchMode: 274,
+  SequencerOrbitNoteMidi: 275,
+  SequencerOrbitNoteHarmonyDegree: 276,
+  SequencerOrbitNoteVelocity: 277,
+  SequencerOrbitNoteVelocityMin: 278,
+  SequencerOrbitNoteVelocityMax: 279,
+  SequencerOrbitNoteGateBeats: 280,
+  SequencerOrbitNoteGateMinBeats: 281,
+  SequencerOrbitNoteGateMaxBeats: 282,
+  SequencerOrbitNoteProbability: 283,
+  SequencerOrbitNoteTargetSource: 284,
+  SequencerOrbitNoteSeed: 285,
+  SequencerOrbitNotePitchRangeMin: 286,
+  SequencerOrbitNotePitchRangeMax: 287,
+  SequencerOrbitNoteVelocityRangeEnabled: 288,
+  SequencerOrbitNoteGateRangeEnabled: 289,
   FxGranularMix: 300,
   FxGranularEnabled: 800,
   FxGranularFreeze: 801,
@@ -717,7 +782,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "float",
     "id": 114,
     "min": 0.001,
-    "max": 2
+    "max": 16
   },
   {
     "name": "SourceDecaySeconds",
@@ -725,7 +790,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "float",
     "id": 115,
     "min": 0.01,
-    "max": 4
+    "max": 8
   },
   {
     "name": "SourceSustain",
@@ -741,7 +806,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "float",
     "id": 117,
     "min": 0,
-    "max": 20
+    "max": 44
   },
   {
     "name": "SourceReleaseSeconds",
@@ -749,7 +814,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "float",
     "id": 118,
     "min": 0.01,
-    "max": 8
+    "max": 30
   },
   {
     "name": "SourceLeadEnvelopeOverrideEnabled",
@@ -978,6 +1043,506 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "id": 224,
     "min": 24,
     "max": 108
+  },
+  {
+    "name": "SequencerLaneMode",
+    "path": "sequencers.*.lanes.*.mode",
+    "type": "uint",
+    "id": 225,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SequencerAnchorWalkerMode",
+    "path": "sequencers.*.lanes.*.anchorWalker.mode",
+    "type": "uint",
+    "id": 226,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SequencerAnchorWalkerAnchorSource",
+    "path": "sequencers.*.lanes.*.anchorWalker.anchorSource",
+    "type": "uint",
+    "id": 227,
+    "min": 0,
+    "max": 3
+  },
+  {
+    "name": "SequencerAnchorWalkerManualAnchorMidi",
+    "path": "sequencers.*.lanes.*.anchorWalker.manualAnchorMidi",
+    "type": "float",
+    "id": 228,
+    "min": 0,
+    "max": 127
+  },
+  {
+    "name": "SequencerAnchorWalkerSnapSource",
+    "path": "sequencers.*.lanes.*.anchorWalker.snapSource",
+    "type": "uint",
+    "id": 229,
+    "min": 0,
+    "max": 4
+  },
+  {
+    "name": "SequencerAnchorWalkerCustomPitchClassMask",
+    "path": "sequencers.*.lanes.*.anchorWalker.customPitchClassMask",
+    "type": "uint",
+    "id": 230,
+    "min": 1,
+    "max": 4095
+  },
+  {
+    "name": "SequencerAnchorWalkerAutoRate",
+    "path": "sequencers.*.lanes.*.anchorWalker.autoRate",
+    "type": "uint",
+    "id": 231,
+    "min": 0,
+    "max": 6
+  },
+  {
+    "name": "SequencerAnchorWalkerAutoFeel",
+    "path": "sequencers.*.lanes.*.anchorWalker.autoFeel",
+    "type": "uint",
+    "id": 232,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SequencerAnchorWalkerLeadMode",
+    "path": "sequencers.*.lanes.*.anchorWalker.leadMode",
+    "type": "bool",
+    "id": 233
+  },
+  {
+    "name": "SequencerAnchorWalkerMwToVelocity",
+    "path": "sequencers.*.lanes.*.anchorWalker.mwToVelocity",
+    "type": "bool",
+    "id": 234
+  },
+  {
+    "name": "SequencerAnchorWalkerPitchWheelWalk",
+    "path": "sequencers.*.lanes.*.anchorWalker.pitchWheelWalk",
+    "type": "bool",
+    "id": 235
+  },
+  {
+    "name": "SequencerAnchorWalkerGesturePatternStep",
+    "path": "sequencers.*.lanes.*.anchorWalker.gesturePattern.*",
+    "type": "int",
+    "id": 236,
+    "min": -7,
+    "max": 7
+  },
+  {
+    "name": "SequencerAnchorWalkerGesturePatternLength",
+    "path": "sequencers.*.lanes.*.anchorWalker.gesturePatternLength",
+    "type": "uint",
+    "id": 237,
+    "min": 1,
+    "max": 16
+  },
+  {
+    "name": "SequencerAnchorWalkerLayerPreset",
+    "path": "sequencers.*.lanes.*.anchorWalker.layerPreset",
+    "type": "uint",
+    "id": 238,
+    "min": 0,
+    "max": 6
+  },
+  {
+    "name": "SequencerAnchorWalkerSpreadMs",
+    "path": "sequencers.*.lanes.*.anchorWalker.spreadMs",
+    "type": "float",
+    "id": 239,
+    "min": 0,
+    "max": 500
+  },
+  {
+    "name": "SequencerAnchorWalkerLayerEnabled",
+    "path": "sequencers.*.lanes.*.anchorWalker.layers.*.enabled",
+    "type": "bool",
+    "id": 240
+  },
+  {
+    "name": "SequencerAnchorWalkerLayerTranspose",
+    "path": "sequencers.*.lanes.*.anchorWalker.layers.*.transposeSemitones",
+    "type": "int",
+    "id": 241,
+    "min": -48,
+    "max": 48
+  },
+  {
+    "name": "SequencerAnchorWalkerLayerDiatonicOffset",
+    "path": "sequencers.*.lanes.*.anchorWalker.layers.*.diatonicOffset",
+    "type": "int",
+    "id": 242,
+    "min": -14,
+    "max": 14
+  },
+  {
+    "name": "SequencerAnchorWalkerLayerTuning",
+    "path": "sequencers.*.lanes.*.anchorWalker.layers.*.tuning",
+    "type": "uint",
+    "id": 243,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SequencerAnchorWalkerLayerMotion",
+    "path": "sequencers.*.lanes.*.anchorWalker.layers.*.motion",
+    "type": "uint",
+    "id": 244,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SequencerAnchorWalkerLayerDelayMs",
+    "path": "sequencers.*.lanes.*.anchorWalker.layers.*.delayMs",
+    "type": "float",
+    "id": 245,
+    "min": 0,
+    "max": 500
+  },
+  {
+    "name": "SequencerAnchorWalkerLayerGateRatio",
+    "path": "sequencers.*.lanes.*.anchorWalker.layers.*.gateRatio",
+    "type": "float",
+    "id": 246,
+    "min": 0.05,
+    "max": 1
+  },
+  {
+    "name": "SequencerAnchorWalkerLayerVelocityScale",
+    "path": "sequencers.*.lanes.*.anchorWalker.layers.*.velocityScale",
+    "type": "float",
+    "id": 247,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SequencerAnchorWalkerLayerVelocityOffset",
+    "path": "sequencers.*.lanes.*.anchorWalker.layers.*.velocityOffset",
+    "type": "float",
+    "id": 248,
+    "min": -1,
+    "max": 1
+  },
+  {
+    "name": "SequencerAnchorWalkerLayerTargetSource",
+    "path": "sequencers.*.lanes.*.anchorWalker.layers.*.targetSourceId",
+    "type": "uint",
+    "id": 249,
+    "min": 0,
+    "max": 7
+  },
+  {
+    "name": "SequencerAnchorWalkerOutputRangeMin",
+    "path": "sequencers.*.lanes.*.anchorWalker.outputRangeMin",
+    "type": "float",
+    "id": 250,
+    "min": 0,
+    "max": 127
+  },
+  {
+    "name": "SequencerAnchorWalkerOutputRangeMax",
+    "path": "sequencers.*.lanes.*.anchorWalker.outputRangeMax",
+    "type": "float",
+    "id": 251,
+    "min": 0,
+    "max": 127
+  },
+  {
+    "name": "SequencerOrbitTriggerLineCount",
+    "path": "sequencers.*.lanes.*.orbit.triggerLineCount",
+    "type": "uint",
+    "id": 252,
+    "min": 1,
+    "max": 5
+  },
+  {
+    "name": "SequencerOrbitBpmPercent",
+    "path": "sequencers.*.lanes.*.orbit.bpmPercent",
+    "type": "float",
+    "id": 253,
+    "min": 1,
+    "max": 800
+  },
+  {
+    "name": "SequencerOrbitQuantizeToHarmony",
+    "path": "sequencers.*.lanes.*.orbit.quantizeToHarmony",
+    "type": "bool",
+    "id": 254
+  },
+  {
+    "name": "SequencerOrbitSnapSource",
+    "path": "sequencers.*.lanes.*.orbit.snapSource",
+    "type": "uint",
+    "id": 255,
+    "min": 0,
+    "max": 4
+  },
+  {
+    "name": "SequencerOrbitPitchRangeMin",
+    "path": "sequencers.*.lanes.*.orbit.pitchRangeMin",
+    "type": "float",
+    "id": 256,
+    "min": 0,
+    "max": 127
+  },
+  {
+    "name": "SequencerOrbitPitchRangeMax",
+    "path": "sequencers.*.lanes.*.orbit.pitchRangeMax",
+    "type": "float",
+    "id": 257,
+    "min": 0,
+    "max": 127
+  },
+  {
+    "name": "SequencerOrbitSplineH1X",
+    "path": "sequencers.*.lanes.*.orbit.spline.handle1.x",
+    "type": "float",
+    "id": 258,
+    "min": -1.2,
+    "max": 1.2
+  },
+  {
+    "name": "SequencerOrbitSplineH1Y",
+    "path": "sequencers.*.lanes.*.orbit.spline.handle1.y",
+    "type": "float",
+    "id": 259,
+    "min": -1.2,
+    "max": 1.2
+  },
+  {
+    "name": "SequencerOrbitSplineH2X",
+    "path": "sequencers.*.lanes.*.orbit.spline.handle2.x",
+    "type": "float",
+    "id": 260,
+    "min": -1.2,
+    "max": 1.2
+  },
+  {
+    "name": "SequencerOrbitSplineH2Y",
+    "path": "sequencers.*.lanes.*.orbit.spline.handle2.y",
+    "type": "float",
+    "id": 261,
+    "min": -1.2,
+    "max": 1.2
+  },
+  {
+    "name": "SequencerOrbitSplineTipX",
+    "path": "sequencers.*.lanes.*.orbit.spline.tip.x",
+    "type": "float",
+    "id": 262,
+    "min": -1.2,
+    "max": 1.2
+  },
+  {
+    "name": "SequencerOrbitSplineTipY",
+    "path": "sequencers.*.lanes.*.orbit.spline.tip.y",
+    "type": "float",
+    "id": 263,
+    "min": -1.2,
+    "max": 1.2
+  },
+  {
+    "name": "SequencerOrbitSplineSpinEnabled",
+    "path": "sequencers.*.lanes.*.orbit.spline.spinEnabled",
+    "type": "bool",
+    "id": 264
+  },
+  {
+    "name": "SequencerOrbitSplineSpinDirection",
+    "path": "sequencers.*.lanes.*.orbit.spline.spinDirection",
+    "type": "int",
+    "id": 265,
+    "min": -1,
+    "max": 1
+  },
+  {
+    "name": "SequencerOrbitSplineBaseAngle",
+    "path": "sequencers.*.lanes.*.orbit.spline.baseAngle",
+    "type": "float",
+    "id": 266,
+    "min": -6.28319,
+    "max": 6.28319
+  },
+  {
+    "name": "SequencerOrbitNoteCount",
+    "path": "sequencers.*.lanes.*.orbit.noteCount",
+    "type": "uint",
+    "id": 267,
+    "min": 0,
+    "max": 32
+  },
+  {
+    "name": "SequencerOrbitNoteEnabled",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.enabled",
+    "type": "bool",
+    "id": 268
+  },
+  {
+    "name": "SequencerOrbitNoteRadius",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.radiusNorm",
+    "type": "float",
+    "id": 269,
+    "min": 0.08,
+    "max": 1
+  },
+  {
+    "name": "SequencerOrbitNotePhase",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.phase",
+    "type": "float",
+    "id": 270,
+    "min": 0,
+    "max": 6.28319
+  },
+  {
+    "name": "SequencerOrbitNoteSpeedMode",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.speedMode",
+    "type": "uint",
+    "id": 271,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SequencerOrbitNoteSpeedValue",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.speedValue",
+    "type": "float",
+    "id": 272,
+    "min": 0.125,
+    "max": 800
+  },
+  {
+    "name": "SequencerOrbitNoteDirection",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.direction",
+    "type": "int",
+    "id": 273,
+    "min": -1,
+    "max": 1
+  },
+  {
+    "name": "SequencerOrbitNotePitchMode",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.pitchMode",
+    "type": "uint",
+    "id": 274,
+    "min": 0,
+    "max": 2
+  },
+  {
+    "name": "SequencerOrbitNoteMidi",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.midiNote",
+    "type": "float",
+    "id": 275,
+    "min": 0,
+    "max": 127
+  },
+  {
+    "name": "SequencerOrbitNoteHarmonyDegree",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.harmonyDegree",
+    "type": "int",
+    "id": 276,
+    "min": -32,
+    "max": 32
+  },
+  {
+    "name": "SequencerOrbitNoteVelocity",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.velocity",
+    "type": "float",
+    "id": 277,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SequencerOrbitNoteVelocityMin",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.velocityMin",
+    "type": "float",
+    "id": 278,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SequencerOrbitNoteVelocityMax",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.velocityMax",
+    "type": "float",
+    "id": 279,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SequencerOrbitNoteGateBeats",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.gateBeats",
+    "type": "float",
+    "id": 280,
+    "min": 0.05,
+    "max": 8
+  },
+  {
+    "name": "SequencerOrbitNoteGateMinBeats",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.gateMinBeats",
+    "type": "float",
+    "id": 281,
+    "min": 0.05,
+    "max": 8
+  },
+  {
+    "name": "SequencerOrbitNoteGateMaxBeats",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.gateMaxBeats",
+    "type": "float",
+    "id": 282,
+    "min": 0.05,
+    "max": 8
+  },
+  {
+    "name": "SequencerOrbitNoteProbability",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.probability",
+    "type": "float",
+    "id": 283,
+    "min": 0,
+    "max": 1
+  },
+  {
+    "name": "SequencerOrbitNoteTargetSource",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.targetSourceId",
+    "type": "uint",
+    "id": 284,
+    "min": 0,
+    "max": 7
+  },
+  {
+    "name": "SequencerOrbitNoteSeed",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.seed",
+    "type": "uint",
+    "id": 285
+  },
+  {
+    "name": "SequencerOrbitNotePitchRangeMin",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.pitchRangeMin",
+    "type": "float",
+    "id": 286,
+    "min": 0,
+    "max": 127
+  },
+  {
+    "name": "SequencerOrbitNotePitchRangeMax",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.pitchRangeMax",
+    "type": "float",
+    "id": 287,
+    "min": 0,
+    "max": 127
+  },
+  {
+    "name": "SequencerOrbitNoteVelocityRangeEnabled",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.velocityRangeEnabled",
+    "type": "bool",
+    "id": 288
+  },
+  {
+    "name": "SequencerOrbitNoteGateRangeEnabled",
+    "path": "sequencers.*.lanes.*.orbit.notes.*.gateRangeEnabled",
+    "type": "bool",
+    "id": 289
   },
   {
     "name": "FxGranularMix",

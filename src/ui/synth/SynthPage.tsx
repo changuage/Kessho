@@ -15,6 +15,13 @@ import { useEuclideanSequencer, type EvolveConfig, type StepOverrides, type SubL
 import { liveOverdubTargetStep, useLiveOverdubRecorder } from '../sequencer/useLiveOverdubRecorder';
 import { stepOverridesForEngineSubLaneState } from '../sequencer/engineStepOverrides';
 import { serializeStepOverrides } from '../sequencer/stepOverrideSerialization';
+import AnchorWalkerSequencerBody from '../sequencer/AnchorWalkerSequencerBody';
+import OrbitSequencerBody from '../sequencer/OrbitSequencerBody';
+import {
+  normalizeSynthSequencerFaceState,
+  type SequencerMode,
+  type SequencerSlotModeState,
+} from '../sequencer/sequencerModeTypes';
 import {
   applySequencePresetClockDivs,
   applySequencePresetEvolveConfigs,
@@ -1201,18 +1208,63 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const pad2FilterMinRuntime = sliderProps('pad2FilterCutoffMin') as RuntimeSliderProps;
   const pad2FilterMaxRuntime = sliderProps('pad2FilterCutoffMax') as RuntimeSliderProps;
   const pad2PostLpfRuntime = sliderProps('pad2PostLPF') as RuntimeSliderProps;
+  const chordRateRuntime = sliderProps('chordRate') as RuntimeSliderProps;
+  const voicingSpreadRuntime = sliderProps('voicingSpread') as RuntimeSliderProps;
+  const waveSpreadRuntime = sliderProps('waveSpread') as RuntimeSliderProps;
+  const detuneRuntime = sliderProps('detune') as RuntimeSliderProps;
+  const synthOctaveRuntime = sliderProps('synthOctave') as RuntimeSliderProps;
+  const lead1DensityRuntime = sliderProps('lead1Density') as RuntimeSliderProps;
+  const lead1OctaveRuntime = sliderProps('lead1Octave') as RuntimeSliderProps;
+  const lead1OctaveRangeRuntime = sliderProps('lead1OctaveRange') as RuntimeSliderProps;
   const livePad1FilterMinPosition = useRuntimeSliderPosition('filterCutoffMin', pad1FilterMinRuntime.mode ?? 'single', pad1FilterMinRuntime.walkPosition);
   const livePad1FilterMaxPosition = useRuntimeSliderPosition('filterCutoffMax', pad1FilterMaxRuntime.mode ?? 'single', pad1FilterMaxRuntime.walkPosition);
   const livePad1PostLpfPosition = useRuntimeSliderPosition('padPostLPF', pad1PostLpfRuntime.mode ?? 'single', pad1PostLpfRuntime.walkPosition);
   const livePad2FilterMinPosition = useRuntimeSliderPosition('pad2FilterCutoffMin', pad2FilterMinRuntime.mode ?? 'single', pad2FilterMinRuntime.walkPosition);
   const livePad2FilterMaxPosition = useRuntimeSliderPosition('pad2FilterCutoffMax', pad2FilterMaxRuntime.mode ?? 'single', pad2FilterMaxRuntime.walkPosition);
   const livePad2PostLpfPosition = useRuntimeSliderPosition('pad2PostLPF', pad2PostLpfRuntime.mode ?? 'single', pad2PostLpfRuntime.walkPosition);
+  const liveChordRatePosition = useRuntimeSliderPosition('chordRate', chordRateRuntime.mode ?? 'single', chordRateRuntime.walkPosition);
+  const liveVoicingSpreadPosition = useRuntimeSliderPosition('voicingSpread', voicingSpreadRuntime.mode ?? 'single', voicingSpreadRuntime.walkPosition);
+  const liveWaveSpreadPosition = useRuntimeSliderPosition('waveSpread', waveSpreadRuntime.mode ?? 'single', waveSpreadRuntime.walkPosition);
+  const liveDetunePosition = useRuntimeSliderPosition('detune', detuneRuntime.mode ?? 'single', detuneRuntime.walkPosition);
+  const liveSynthOctavePosition = useRuntimeSliderPosition('synthOctave', synthOctaveRuntime.mode ?? 'single', synthOctaveRuntime.walkPosition);
+  const liveLead1DensityPosition = useRuntimeSliderPosition('lead1Density', lead1DensityRuntime.mode ?? 'single', lead1DensityRuntime.walkPosition);
+  const liveLead1OctavePosition = useRuntimeSliderPosition('lead1Octave', lead1OctaveRuntime.mode ?? 'single', lead1OctaveRuntime.walkPosition);
+  const liveLead1OctaveRangePosition = useRuntimeSliderPosition('lead1OctaveRange', lead1OctaveRangeRuntime.mode ?? 'single', lead1OctaveRangeRuntime.walkPosition);
   const livePad1FilterMinBase = resolveRuntimeSliderValue(state.filterCutoffMin ?? 400, pad1FilterMinRuntime, livePad1FilterMinPosition);
   const livePad1FilterMaxBase = resolveRuntimeSliderValue(state.filterCutoffMax ?? 3000, pad1FilterMaxRuntime, livePad1FilterMaxPosition);
   const livePad1PostLpfBase = resolveRuntimeSliderValue(state.padPostLPF ?? 18000, pad1PostLpfRuntime, livePad1PostLpfPosition);
   const livePad2FilterMinBase = resolveRuntimeSliderValue(state.pad2FilterCutoffMin ?? 400, pad2FilterMinRuntime, livePad2FilterMinPosition);
   const livePad2FilterMaxBase = resolveRuntimeSliderValue(state.pad2FilterCutoffMax ?? 3000, pad2FilterMaxRuntime, livePad2FilterMaxPosition);
   const livePad2PostLpfBase = resolveRuntimeSliderValue(state.pad2PostLPF ?? 18000, pad2PostLpfRuntime, livePad2PostLpfPosition);
+  const liveSimpleSequencerState = useMemo(() => ({
+    ...state,
+    chordRate: resolveRuntimeSliderValue(state.chordRate, chordRateRuntime, liveChordRatePosition),
+    voicingSpread: resolveRuntimeSliderValue(state.voicingSpread, voicingSpreadRuntime, liveVoicingSpreadPosition),
+    waveSpread: resolveRuntimeSliderValue(state.waveSpread, waveSpreadRuntime, liveWaveSpreadPosition),
+    detune: resolveRuntimeSliderValue(state.detune, detuneRuntime, liveDetunePosition),
+    synthOctave: resolveRuntimeSliderValue(state.synthOctave, synthOctaveRuntime, liveSynthOctavePosition),
+    lead1Density: resolveRuntimeSliderValue(state.lead1Density, lead1DensityRuntime, liveLead1DensityPosition),
+    lead1Octave: resolveRuntimeSliderValue(state.lead1Octave, lead1OctaveRuntime, liveLead1OctavePosition),
+    lead1OctaveRange: resolveRuntimeSliderValue(state.lead1OctaveRange, lead1OctaveRangeRuntime, liveLead1OctaveRangePosition),
+  }), [
+    chordRateRuntime,
+    detuneRuntime,
+    lead1DensityRuntime,
+    lead1OctaveRangeRuntime,
+    lead1OctaveRuntime,
+    liveChordRatePosition,
+    liveDetunePosition,
+    liveLead1DensityPosition,
+    liveLead1OctavePosition,
+    liveLead1OctaveRangePosition,
+    liveSynthOctavePosition,
+    liveVoicingSpreadPosition,
+    liveWaveSpreadPosition,
+    state,
+    synthOctaveRuntime,
+    voicingSpreadRuntime,
+    waveSpreadRuntime,
+  ]);
   const livePad1DistanceState = useMemo(() => applyPadDistanceToState({
     ...state,
     filterCutoffMin: livePad1FilterMinBase,
@@ -2758,6 +2810,25 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, [sequenceHomeCaptureVersion, captureEvolveHome]);
 
   const activeSeq = seq.activeSeq;
+  const sequencerFaceState = useMemo(
+    () => normalizeSynthSequencerFaceState(state.synthSequencerFaces),
+    [state.synthSequencerFaces],
+  );
+  const activeSequencerSlot = sequencerFaceState.slots[seq.activeTab] ?? sequencerFaceState.slots[0];
+  const activeSequencerMode = activeSequencerSlot?.mode ?? 'euclid';
+  const updateSequencerSlot = useCallback((laneIdx: number, updater: (slot: SequencerSlotModeState) => SequencerSlotModeState): void => {
+    const safeLaneIdx = Math.max(0, Math.min(LANE_CONFIGS.length - 1, Math.round(laneIdx)));
+    const next = {
+      ...sequencerFaceState,
+      slots: sequencerFaceState.slots.map((slot, index) => (
+        index === safeLaneIdx ? updater(slot) : slot
+      )),
+    };
+    onSelectChange('synthSequencerFaces' as keyof SliderState, next as SliderState[keyof SliderState]);
+  }, [onSelectChange, sequencerFaceState]);
+  const setSequencerMode = useCallback((laneIdx: number, mode: SequencerMode): void => {
+    updateSequencerSlot(laneIdx, (slot) => ({ ...slot, mode }));
+  }, [updateSequencerSlot]);
 
   // ── Source key helpers ──
   const getSourceKey = (laneIdx: number): keyof SliderState =>
@@ -5949,7 +6020,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </div>
                   <SimplePhraseVisualizer
                     kind="padChord"
-                    state={state}
+                    state={liveSimpleSequencerState}
                     isRunning={isRunning}
                     transportDebug={transportDebug}
                   />
@@ -5991,7 +6062,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </div>
                   <SimplePhraseVisualizer
                     kind="randomTiming"
-                    state={state}
+                    state={liveSimpleSequencerState}
                     isRunning={isRunning}
                     transportDebug={transportDebug}
                   />
@@ -6051,6 +6122,25 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         <option key={s.value} value={s.value}>{s.label}</option>
                       ))}
                     </select>
+                    <label className="seq-mode-label">
+                      Type
+                      <span className="seq-mode-segmented" role="group" aria-label={`Seq ${seq.activeTab + 1} type`}>
+                        {([
+                          ['euclid', 'Euclid'],
+                          ['anchorWalker', 'Walker'],
+                          ['orbit', 'Orbit'],
+                        ] as const).map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            className={activeSequencerMode === mode ? 'active' : ''}
+                            onClick={() => setSequencerMode(seq.activeTab, mode)}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </span>
+                    </label>
                     {activeLaneUsesPadVoiceMask && (
                       <label className="seq-clock-label">
                         Voices
@@ -6110,37 +6200,43 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       />
                       <span className="seq-swing-val">{Math.round((seq.swings[seq.activeTab] ?? 0) * 100)}%</span>
                     </label>
-                    <label className="seq-pitch-bind-label" title="How pitch aligns to trigger hits or steps">
-                      Pitch
-                      <select
-                        className="seq-pitch-bind-select"
-                        value={activePitchBindingMode}
-                        onChange={(e) => setPitchBindingMode(seq.activeTab, e.target.value as PitchBindingMode)}
-                      >
-                        {PITCH_BINDING_MODE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <button
-                      className={`seq-evolve-btn${seq.evolveConfigs[seq.activeTab]?.enabled ? ' on' : ''}`}
-                      onClick={() => {
-                        seq.setEvolveConfigs(prev => prev.map((cfg, idx) => (
-                          idx === seq.activeTab ? { ...cfg, enabled: !cfg.enabled } : cfg
-                        )));
-                      }}
-                      {...bindHelp('synthSeqEvolve')}
-                    >
-                      Evolve
-                    </button>
+                    {activeSequencerMode === 'euclid' && (
+                      <>
+                        <label className="seq-pitch-bind-label" title="How pitch aligns to trigger hits or steps">
+                          Pitch
+                          <select
+                            className="seq-pitch-bind-select"
+                            value={activePitchBindingMode}
+                            onChange={(e) => setPitchBindingMode(seq.activeTab, e.target.value as PitchBindingMode)}
+                          >
+                            {PITCH_BINDING_MODE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          className={`seq-evolve-btn${seq.evolveConfigs[seq.activeTab]?.enabled ? ' on' : ''}`}
+                          onClick={() => {
+                            seq.setEvolveConfigs(prev => prev.map((cfg, idx) => (
+                              idx === seq.activeTab ? { ...cfg, enabled: !cfg.enabled } : cfg
+                            )));
+                          }}
+                          {...bindHelp('synthSeqEvolve')}
+                        >
+                          Evolve
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
-                <div className="seq-sequence-preset-row">
-                  {renderSequencePresetControl(seq.activeTab)}
-                </div>
+                {activeSequencerMode === 'euclid' ? (
+                  <>
+                    <div className="seq-sequence-preset-row">
+                      {renderSequencePresetControl(seq.activeTab)}
+                    </div>
 
-                {/* Evolution panel */}
-                <div className={`seq-evolve-panel${seq.evolveConfigs[seq.activeTab]?.enabled ? ' open' : ''}`}>
+                    {/* Evolution panel */}
+                    <div className={`seq-evolve-panel${seq.evolveConfigs[seq.activeTab]?.enabled ? ' open' : ''}`}>
                   <div className="seq-evolve-row">
                     <DragNumber
                       value={seq.evolveConfigs[seq.activeTab]?.everyBars ?? 4}
@@ -6308,7 +6404,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       ))}
                     </div>
                   </div>
-                </div>
+                    </div>
 
                 {/* ── TRIGGER LANE ── */}
                 <div className="seq-trigger-always">
@@ -6616,6 +6712,30 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     );
                   })}
                 </div>
+                  </>
+                ) : activeSequencerMode === 'anchorWalker' && activeSequencerSlot ? (
+                  <AnchorWalkerSequencerBody
+                    config={activeSequencerSlot.anchorWalker}
+                    laneIndex={seq.activeTab}
+                    color={activeSeq.color}
+                    harmonyState={harmonyState}
+                    onChange={(nextConfig) => updateSequencerSlot(seq.activeTab, (slot) => ({
+                      ...slot,
+                      anchorWalker: nextConfig,
+                    }))}
+                  />
+                ) : activeSequencerSlot ? (
+                  <OrbitSequencerBody
+                    config={activeSequencerSlot.orbit}
+                    laneIndex={seq.activeTab}
+                    color={activeSeq.color}
+                    harmonyState={harmonyState}
+                    onChange={(nextConfig) => updateSequencerSlot(seq.activeTab, (slot) => ({
+                      ...slot,
+                      orbit: nextConfig,
+                    }))}
+                  />
+                ) : null}
               </div>
 
               {/* Mini overview at bottom */}

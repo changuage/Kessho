@@ -2020,9 +2020,10 @@ for (const token of [
 }
 
 for (const token of [
-  'const SNAPSHOT_BYTES = 31788',
+  'const SNAPSHOT_BYTES = 134572',
   'const SOURCE_BYTES = 3720',
-  'const LANE_BYTES = 92',
+  'const LANE_BYTES = 96',
+  'KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES',
   'KESSHO_PRODUCT_DRUM_PARAM_COUNT',
   'KESSHO_PRODUCT_DRUM_VOICE_COUNT',
   'drumDelayFilterHz',
@@ -2841,9 +2842,9 @@ for (const token of [
   "numberFromState(state, 'pad2VoiceAssign', 0)",
   "booleanFromState(state, 'pad2Enabled', false)",
   'source.slice(\'synth\'.length)',
-  "source.enabled = booleanFromState(state, 'padEnabled', false) ||",
-  "source.enabled = booleanFromState(state, 'lead2Enabled', booleanFromState(state, 'leadEnabled', false)) ||",
-  "source.enabled = booleanFromState(state, 'pianoEnabled', false) ||",
+  "source.enabled = booleanFromState(state, 'padEnabled', false);",
+  "source.enabled = booleanFromState(state, 'lead2Enabled', booleanFromState(state, 'leadEnabled', false));",
+  "source.enabled = booleanFromState(state, 'pianoEnabled', false);",
   'drumTargetVoiceIndices',
   'CORE_PRODUCT_DEFAULT_PIANO_ASSET_ID',
   'getPrimaryCoreProductSoundscapeAssetIdForState(state)',
@@ -2855,8 +2856,8 @@ for (const token of [
   assert(snapshotSurface.includes(token), `core-product snapshot/encoder is missing ${token}`);
 }
 assert(
-  !snapshotSurface.includes("source.enabled = booleanFromState(state, 'padEnabled', true) || synthEuclidUsesSourceId(state, sourceId)"),
-  'Product snapshot must not default Pad 1 on unless Pad 1 is enabled or selected by an enabled synth sequencer lane',
+  !snapshotSurface.includes("source.enabled = booleanFromState(state, 'padEnabled', false) ||"),
+  'Product snapshot must not implicitly enable Pad 1 for sequencer ownership',
 );
 
 for (const forbidden of [
@@ -3059,7 +3060,9 @@ const snapshotImportAllowlist = new Set([
   './coreProductHarmonyScaleIds',
   './coreProductSequencerMacroDefaults',
   './coreProductSequencerHold',
+  './coreProductSequencerFaceSnapshot',
   './coreProductSoundscapesSnapshot',
+  './coreProductSnapshotDefaults',
   './coreProductSnapshotEncoder',
   './coreProductSnapshotPadVoiceRouting',
   './coreProductReverbSnapshot',

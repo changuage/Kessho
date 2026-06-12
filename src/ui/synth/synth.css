@@ -846,6 +846,37 @@
 .synth-root .seq-per-controls .seq-swing-range { width: 60px; height: 3px; accent-color: var(--page-accent); }
 .synth-root .seq-per-controls .seq-swing-val { font-size: var(--font-xs); color: var(--page-accent); min-width: 22px; }
 .synth-root .seq-per-controls .seq-clock-select { width: 52px; font-size: 0.7rem; }
+.synth-root .seq-mode-label {
+  gap: 5px;
+}
+.synth-root .seq-mode-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: rgba(0,0,0,0.28);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.synth-root .seq-mode-segmented button {
+  min-height: 24px;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(232,220,196,0.58);
+  font-size: 0.62rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.synth-root .seq-mode-segmented button.active {
+  background: var(--sc, var(--accent-cyan));
+  color: #100f0e;
+}
+.synth-root .seq-mode-segmented button:hover:not(.active) {
+  color: rgba(232,220,196,0.86);
+  background: rgba(255,255,255,0.05);
+}
 
 /* ── Link / Evolve buttons ── */
 .synth-root .seq-link-btn, .synth-root .seq-evolve-btn {

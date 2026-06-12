@@ -1,5 +1,6 @@
 import { CoreProductArrangementScheduler } from '../../coreProductArrangementScheduler';
 import type { CoreProductEvent } from '../../coreProductEvents';
+import type { TransportDebugSnapshot } from '../../transport';
 
 type CoreProductArrangementAudioContextProvider = () => AudioContext | null;
 type CoreProductArrangementPostEvent = (event: CoreProductEvent) => void;
@@ -22,11 +23,20 @@ export class CoreProductArrangementBridge {
     adapterState: Record<string, unknown>,
   ): Record<string, unknown> | null {
     if (!latestSliderState && Object.keys(adapterState).length === 0) return null;
-    return {
+    const restartState = {
       ...(latestSliderState ?? {}),
       ...adapterState,
+    };
+    const state = {
+      ...restartState,
       ...this.runtimeWalkStatePatch,
     };
+    Object.defineProperty(state, '__arrangementRestartState', {
+      value: restartState,
+      enumerable: false,
+      configurable: true,
+    });
+    return state;
   }
 
   setRuntimeWalkStatePatch(patch: Record<string, number>): void {
@@ -43,5 +53,9 @@ export class CoreProductArrangementBridge {
 
   stop(): void {
     this.scheduler.stop();
+  }
+
+  getTransportDebugState(nowWallSec?: number): Partial<TransportDebugSnapshot> | null {
+    return this.scheduler.getTransportDebugState(nowWallSec);
   }
 }

@@ -743,12 +743,13 @@ export function loadCoreProductHostHarness(options = {}) {
         this.options.publish(sequencer === 'synth' ? 'synthEvolveOverrides' : 'drumEvolveOverrides', laneIndex, { swing: normalizedSwing });
       }
     },
-    createCoreProductSequencerLaneParamEvent: (sequencer, laneIndex, paramId, value) =>
+    createCoreProductSequencerLaneParamEvent: (sequencer, laneIndex, paramId, value, flags = 0) =>
       event('sequencer-lane-param', {
         sequencer,
         laneIndex,
         paramId,
         value,
+        flags,
         eventKind: 8,
         targetId: sequencer === 'synth' ? 1 : 2,
         index: laneIndex,
@@ -1433,8 +1434,8 @@ globalThis.__generatedProductParams = KESSHO_PRODUCT_PARAMS;`, generatedParamsCo
       event('harmony-slot-set', { slotId, ...args }),
     createCoreProductParamEvent: (paramId, value, targetId = 0, index = 0) =>
       event('param', { paramId, value, targetId, index }),
-	    createCoreProductSequencerLaneParamEvent: (sequencer, laneIndex, paramId, value) =>
-	      event('sequencer-lane-param', { sequencer, laneIndex, paramId, value }),
+	    createCoreProductSequencerLaneParamEvent: (sequencer, laneIndex, paramId, value, flags = 0) =>
+	      event('sequencer-lane-param', { sequencer, laneIndex, paramId, value, flags }),
 	    createCoreProductSourcePresetEvent: (targetId, presetId) =>
 	      event('source-preset', { targetId, presetId }),
 	    createCoreProductSourcePresetEndpointEvent: (targetId, endpoint, presetId, voiceIndex = 0, morph) =>
@@ -1454,6 +1455,11 @@ globalThis.__generatedProductParams = KESSHO_PRODUCT_PARAMS;`, generatedParamsCo
   const sourcePresetSource = stripImportsAndExports(readProjectFile(sourcePresetPath));
   const sourcePresetJs = transpileForVm(sourcePresetSource, resolve(root, sourcePresetPath));
   vm.runInNewContext(sourcePresetJs, context, { filename: sourcePresetPath });
+
+  const sequencerFacesPath = 'src/audio/CoreProductRuntimeAdapterSequencerFaces.ts';
+  const sequencerFacesSource = stripImportsAndExports(readProjectFile(sequencerFacesPath));
+  const sequencerFacesJs = transpileForVm(sequencerFacesSource, resolve(root, sequencerFacesPath));
+  vm.runInNewContext(sequencerFacesJs, context, { filename: sequencerFacesPath });
 
   const path = 'src/audio/CoreProductRuntimeAdapter.ts';
   const source = stripImportsAndExports(readProjectFile(path));

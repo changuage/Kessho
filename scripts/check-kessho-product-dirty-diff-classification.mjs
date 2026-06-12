@@ -909,7 +909,7 @@ await runCheckWithReport({
       'Product Drum preset endpoint reloads must reject legacy exact patch fields instead of letting them overwrite live A/B preset state',
     );
 
-    const budgetBase = makeHydratedSnapshot({ laneCount: 24 });
+    const budgetBase = makeHydratedSnapshot({ laneCount: 40 });
     const budgetNext = clone(budgetBase);
     budgetNext.synthLanes.forEach(mutateBudgetLane);
     budgetNext.drumLanes.forEach(mutateBudgetLane);

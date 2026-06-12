@@ -152,7 +152,19 @@ class CoreProductEngineHost {
   flushSonicParityGraphCapture(tapId: number): Promise<CoreProductGraphTapCaptureChunk[]> { return this.graphTapBridge.flushCapture(tapId); }
   stopSonicParityGraphCapture(tapId: number): Promise<CoreProductGraphTapCaptureChunk[]> { return this.graphTapBridge.stopCapture(tapId); }
   getSonicParityDebugState(): Record<string, unknown> { return this.debugSurface.getSonicParityDebugState(); }
-  getTransportDebugState(): TransportDebugSnapshot | null { return this.debugSurface.getTransportDebugState(); }
+  getTransportDebugState(): TransportDebugSnapshot | null {
+    const transportDebug = this.debugSurface.getTransportDebugState();
+    const arrangementDebug = this.arrangementBridge.getTransportDebugState();
+    if (!transportDebug) return arrangementDebug ? ({
+      effectiveBpm: 0,
+      effectivePhraseSeconds: arrangementDebug.padChordPhraseSeconds ?? arrangementDebug.randomTimingPhraseSeconds ?? 0,
+      nextPhraseBoundaryIn: arrangementDebug.nextPadChordBoundaryIn ?? arrangementDebug.nextRandomTimingBoundaryIn ?? 0,
+      nextHarmonyEventIn: null,
+      nextProgressionStepIn: null,
+      ...arrangementDebug,
+    }) : null;
+    return arrangementDebug ? { ...transportDebug, ...arrangementDebug } : transportDebug;
+  }
   private refreshUiHarmonySnapshot(): boolean { return this.harmonyStateBridge.refresh(this.createLatestArrangementState(), this.latestTelemetry); }
   private createEngineState(isRunning = this.running || this.latestTelemetry?.transportRunning === true): ProductEngineState {
     return this.harmonyStateBridge.createEngineState({

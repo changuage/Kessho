@@ -502,7 +502,7 @@ float leadDistanceMultiply(float base, float distance, float slight_mul, float m
 
 float leadDistanceAttack(float base, float distance, float slight_mul, float max_mul) {
   const float effective_base = base <= 0.005f ? base + 0.1f : base;
-  return leadDistanceMultiply(effective_base, distance, slight_mul, max_mul, 0.001f, 2.0f);
+  return leadDistanceMultiply(effective_base, distance, slight_mul, max_mul, 0.001f, 16.0f);
 }
 
 void applyExpectedLeadDistance(LeadParams& params, uint32_t source_id, float distance) {
@@ -512,9 +512,9 @@ void applyExpectedLeadDistance(LeadParams& params, uint32_t source_id, float dis
   const bool lead2 = source_id == KESSHO_PRODUCT_SOURCE_LEAD2;
   const float shaped = scaleLeadDistance(distance);
   params[43] = leadDistanceAttack(params[43], distance, lead2 ? 1.25f : 1.2f, lead2 ? 3.6f : 3.2f);
-  params[44] = leadDistanceMultiply(params[44], distance, lead2 ? 0.94f : 0.95f, lead2 ? 0.74f : 0.78f, 0.01f, 4.0f);
+  params[44] = leadDistanceMultiply(params[44], distance, lead2 ? 0.94f : 0.95f, lead2 ? 0.74f : 0.78f, 0.01f, 8.0f);
   params[45] = leadDistanceAdd(params[45], distance, lead2 ? -0.05f : -0.04f, lead2 ? -0.30f : -0.26f, 0.0f, 1.0f);
-  params[46] = leadDistanceMultiply(params[46], distance, lead2 ? 1.15f : 1.12f, lead2 ? 2.0f : 1.9f, 0.01f, 8.0f);
+  params[46] = leadDistanceMultiply(params[46], distance, lead2 ? 1.15f : 1.12f, lead2 ? 2.0f : 1.9f, 0.01f, 30.0f);
   params[47] = std::max(80.0f, params[47] * (1.0f - shaped * 0.72f));
   params[48] = std::max(0.05f, params[48] * (1.0f - shaped * 0.18f));
   params[54] *= 1.0f - shaped * 0.55f;
@@ -625,6 +625,66 @@ void requireLeadEnvelopeOverrideDoesNotNeedSnapshotExact(uint32_t source_id, flo
       1.0f,
       expected,
       "lead envelope override without snapshot exact patch");
+  kessho_product_destroy(engine);
+}
+
+void requireLongLeadEnvelopeOverrideSurvivesSnapshotAndLiveEvents(uint32_t source_id, float morph) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "long lead envelope override engine create failed");
+
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
+  configureGeneratedEndpointLeadSourceWithoutSnapshotExact(source, source_id, morph);
+  source.distance = 0.0f;
+  source.lead_envelope_override_enabled = 1u;
+  source.attack_seconds = 5.0f;
+  source.decay_seconds = 5.0f;
+  source.sustain = 0.58f;
+  source.release_seconds = 12.0f;
+  require(
+      kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "long lead envelope override snapshot load failed");
+
+  LeadParams expected = expectedEndpointMorphParams(morph);
+  expected[43] = source.attack_seconds;
+  expected[44] = source.decay_seconds;
+  expected[45] = source.sustain;
+  expected[46] = source.release_seconds;
+  triggerLeadAndExpectParams(
+      engine,
+      source_id,
+      -1.0f,
+      0.0f,
+      1.0f,
+      1.0f,
+      expected,
+      "long lead envelope override snapshot exact patch");
+
+  KesshoProductEvent event{};
+  event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  event.target_id = source_id;
+  event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID;
+  event.value = 6.25f;
+  engine->applyParam(event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "long lead live attack event failed");
+  expected[43] = event.value;
+  requireLeadModuleParamsEqual(
+      engine,
+      source_id == KESSHO_PRODUCT_SOURCE_LEAD2 ? 1u : 0u,
+      expected,
+      "long lead live attack should update module");
+
+  event.param_id = KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID;
+  event.value = 18.0f;
+  engine->applyParam(event);
+  require(engine->telemetry.last_error_code == KESSHO_PRODUCT_OK, "long lead live release event failed");
+  expected[46] = event.value;
+  requireLeadModuleParamsEqual(
+      engine,
+      source_id == KESSHO_PRODUCT_SOURCE_LEAD2 ? 1u : 0u,
+      expected,
+      "long lead live release should update module");
+
   kessho_product_destroy(engine);
 }
 
@@ -813,6 +873,8 @@ int main() {
   requireGeneratedEndpointLeadSnapshotDoesNotNeedExactPatch(KESSHO_PRODUCT_SOURCE_LEAD2, 0.65f);
   requireLeadEnvelopeOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD1, 0.35f);
   requireLeadEnvelopeOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD2, 0.65f);
+  requireLongLeadEnvelopeOverrideSurvivesSnapshotAndLiveEvents(KESSHO_PRODUCT_SOURCE_LEAD1, 0.35f);
+  requireLongLeadEnvelopeOverrideSurvivesSnapshotAndLiveEvents(KESSHO_PRODUCT_SOURCE_LEAD2, 0.65f);
   requireLeadAlgorithmOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD1, 0.35f);
   requireLeadAlgorithmOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD2, 0.65f);
   requireLeadSparseOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD1, 0.35f);

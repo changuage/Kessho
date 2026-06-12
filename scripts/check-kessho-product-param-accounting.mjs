@@ -401,6 +401,14 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
+  if (key === 'synthSequencerFaces') {
+    return {
+      path: 'sequencer-face-diff',
+      evidence: ['src/audio/coreProductSnapshot.ts#synthSequencerFaceSlotsFromState', 'src/audio/CoreProductRuntimeAdapter.ts#appendSequencerModeConfigDiffs', 'cpp/KesshoCore/src/product/sequencer/SynthEuclidSequencer.cpp'],
+      reason: 'Structured synth sequencer face configs resolve into Product Core mode snapshots and generated indexed sequencer lane param events.',
+    };
+  }
+
   if (key === 'synthVoiceMask' || key === 'pad2VoiceAssign') {
     return {
       path: 'pad-voice-routing-snapshot',
@@ -925,6 +933,7 @@ const PRODUCT_SNAPSHOT_KEY_PATHS = [
   'src/audio/CoreProductDrumPatch.ts',
   'src/audio/coreProductDelaySnapshot.ts',
   'src/audio/coreProductReverbSnapshot.ts',
+  'src/audio/coreProductSequencerFaceSnapshot.ts',
   'src/audio/coreProductSequencerHold.ts',
   'src/audio/coreProductAssets.ts',
   'src/audio/coreProductArrangementScheduler.ts',
@@ -1040,6 +1049,7 @@ function collectProductParamCoverage() {
   const referencedParamNames = new Set([
     ...collectTsParamIdReferences('src/audio/coreProductEvents.ts'),
     ...collectTsParamIdReferences('src/audio/CoreProductRuntimeAdapter.ts'),
+    ...collectTsParamIdReferences('src/audio/CoreProductRuntimeAdapterSequencerFaces.ts'),
   ]);
   for (const [, paramSuffix] of GRANULAR_VOICE_RANGE_PARAM_SUFFIXES) {
     for (let voice = 1; voice <= 4; voice += 1) {

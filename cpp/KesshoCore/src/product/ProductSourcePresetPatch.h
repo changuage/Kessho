@@ -320,14 +320,14 @@ inline void applyLeadDistanceToPatch(kessho::core::KesshoSourcePresetPatch& patc
       distance,
       lead2 ? 1.25f : 1.2f,
       lead2 ? 3.6f : 3.2f,
-      2.0f);
+      16.0f);
   patch.exact_lead_params[kLeadDecayParamIndex] = patchDistanceMultiply(
       patch.exact_lead_params[kLeadDecayParamIndex],
       distance,
       lead2 ? 0.94f : 0.95f,
       lead2 ? 0.74f : 0.78f,
       0.01f,
-      4.0f);
+      8.0f);
   patch.exact_lead_params[kLeadSustainParamIndex] = patchDistanceAdd(
       patch.exact_lead_params[kLeadSustainParamIndex],
       distance,
@@ -341,7 +341,7 @@ inline void applyLeadDistanceToPatch(kessho::core::KesshoSourcePresetPatch& patc
       lead2 ? 1.15f : 1.12f,
       lead2 ? 2.0f : 1.9f,
       0.01f,
-      8.0f);
+      30.0f);
   patch.exact_lead_params[kLeadFilterFreqParamIndex] =
       std::max(80.0f, patch.exact_lead_params[kLeadFilterFreqParamIndex] * (1.0f - shaped * 0.72f));
   patch.exact_lead_params[kLeadFilterQParamIndex] =

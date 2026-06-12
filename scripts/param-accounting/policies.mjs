@@ -156,7 +156,7 @@ export function controlDomain(key) {
   if (/^delay/.test(key)) return 'fx.delay';
   if (/^reverb/.test(key) || /^spectralFreeze/.test(key) || /^(damping|predelay|width)$/.test(key)) return 'fx.reverb';
   if (/^(drift|degrade|erosion|dynamics|endComp|sidechain|masterLimiter)/.test(key)) return 'fx.dynamics';
-  if (/^(synthEuclid|drumEuclid|sequencer|transport|chordProgression|cof|harmony|randomWalk|rootNote|scaleMode|manualScale|tension|phraseLength|chordRate|voicingSpread|waveSpread|detune|seedWindow|synthChordSequencer|synthOctave|randomness)/.test(key)) return 'music.sequencer';
+  if (/^(synthEuclid|synthSequencerFaces|drumEuclid|sequencer|transport|chordProgression|cof|harmony|randomWalk|rootNote|scaleMode|manualScale|tension|phraseLength|chordRate|voicingSpread|waveSpread|detune|seedWindow|synthChordSequencer|synthOctave|randomness)/.test(key)) return 'music.sequencer';
   if (/^master/.test(key)) return 'master';
   return 'misc';
 }
@@ -242,10 +242,20 @@ export const behaviorEvidenceByAppVisibleGroup = {
     reason: 'Randomness/seed policy must preserve deterministic call-order and seed-sensitive event output.',
     evidence: ['core:product:determinism', 'ProductDeterminismTests.cpp#requireRngCallOrderIsolation', 'ProductHarmonyTests.cpp#same seed harmony event mismatch'],
   },
+  'music.sequencer|range-event': {
+    owner: 'Product Core sequencer owner',
+    reason: 'Live sequencer macro range controls must reach Product Core lane or harmony params and alter generated event output.',
+    evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#requireDirectSequencerCoverage', 'ProductHarmonyTests.cpp#requireDirectMusicCoverage', 'src/audio/coreProductEvents.ts#chordRate'],
+  },
   'music.sequencer|sequencer-lane-diff': {
     owner: 'Product Core sequencer owner',
     reason: 'Synth lane controls must apply through generated lane params and alter generated event output.',
     evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#requireDirectSequencerCoverage', 'ProductSequencerTests.cpp#SetParam sequencer lane probability should update the C++ lane'],
+  },
+  'music.sequencer|sequencer-face-diff': {
+    owner: 'Product Core sequencer owner',
+    reason: 'Structured synth sequencer face controls must apply through generated indexed lane params and alter Product Core generated event output.',
+    evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#requireProductSequencerModeEventTests', 'ProductSequencerTests.cpp#requireProductSequencerModeRuntimePreservationTests', 'src/audio/CoreProductRuntimeAdapter.ts#appendSequencerModeConfigDiffs'],
   },
   'music.sequencer|sequencer-clock-rejoin-policy': {
     owner: 'Product Core sequencer owner',
@@ -806,6 +816,10 @@ export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
   {
     key: 'manualHarmonyControl',
     reason: 'Structured manual harmony control resolves into Product Core harmony manual-intent events instead of ParamRegistry scalar params.',
+  },
+  {
+    key: 'synthSequencerFaces',
+    reason: 'Structured synth sequencer face state resolves into Product Core sequencer snapshots and generated sequencer lane param events instead of ParamRegistry scalar params.',
   },
   {
     key: 'sidechainDelayATarget',

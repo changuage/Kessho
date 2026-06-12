@@ -45,6 +45,7 @@ export type ProductSourceSnapshot = {
 
 export type ProductLaneSnapshot = {
   enabled: boolean;
+  sequencerMode: number;
   targetSourceId: number;
   stepCount: number;
   fillCount: number;
@@ -67,6 +68,96 @@ export type ProductLaneSnapshot = {
   manualStepMaskHigh: number;
   tempoMultiplier: number;
   initialStartDelaySeconds: number;
+  anchorWalker: ProductAnchorWalkerSnapshot;
+  orbit: ProductOrbitSequencerSnapshot;
+};
+
+export type ProductAnchorWalkerLayerSnapshot = {
+  enabled: boolean;
+  transposeSemitones: number;
+  diatonicOffset: number;
+  tuning: number;
+  motion: number;
+  delaySeconds: number;
+  gateRatio: number;
+  velocityScale: number;
+  velocityOffset: number;
+  targetSourceId: number;
+};
+
+export type ProductAnchorWalkerSnapshot = {
+  enabled: boolean;
+  mode: number;
+  targetSourceId: number;
+  anchorSource: number;
+  manualAnchorMidi: number;
+  snapSource: number;
+  customPitchClassMask: number;
+  autoRate: number;
+  autoFeel: number;
+  swing: number;
+  leadMode: boolean;
+  mwToVelocity: boolean;
+  pitchWheelWalk: boolean;
+  gesturePattern: number[];
+  gesturePatternLength: number;
+  activePadDelta: number;
+  layerPreset: number;
+  spreadSeconds: number;
+  layerCount: number;
+  layers: ProductAnchorWalkerLayerSnapshot[];
+  outputRangeMin: number;
+  outputRangeMax: number;
+  seed: number;
+};
+
+export type ProductOrbitNoteSnapshot = {
+  enabled: boolean;
+  radiusNorm: number;
+  phase: number;
+  speedMode: number;
+  speedValue: number;
+  direction: number;
+  pitchMode: number;
+  midiNote: number;
+  harmonyDegree: number;
+  pitchRangeMin: number;
+  pitchRangeMax: number;
+  velocity: number;
+  velocityRangeEnabled: boolean;
+  velocityMin: number;
+  velocityMax: number;
+  gateBeats: number;
+  gateRangeEnabled: boolean;
+  gateMinBeats: number;
+  gateMaxBeats: number;
+  probability: number;
+  targetSourceId: number;
+  seed: number;
+};
+
+export type ProductOrbitSequencerSnapshot = {
+  enabled: boolean;
+  targetSourceId: number;
+  triggerLineCount: number;
+  clockMode: number;
+  bpmPercent: number;
+  quantizeToHarmony: boolean;
+  snapSource: number;
+  pitchRangeMin: number;
+  pitchRangeMax: number;
+  splineH1X: number;
+  splineH1Y: number;
+  splineH2X: number;
+  splineH2Y: number;
+  splineTipX: number;
+  splineTipY: number;
+  splineSpinEnabled: boolean;
+  splineSpinDirection: number;
+  splineBaseAngle: number;
+  noteCount: number;
+  seed: number;
+  notes: ProductOrbitNoteSnapshot[];
 };
 
 import type { L4HarmonyStateExtension } from './CoreProductHarmonyControl';

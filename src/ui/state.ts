@@ -27,6 +27,11 @@ import {
   normalizeChordsPerPhrase,
 } from '../audio/chordPhraseTiming';
 import { hydrateOptimizedStatePresetData } from '../presets/statePresetOptimization';
+import {
+  createDefaultSynthSequencerFaceState,
+  normalizeSynthSequencerFaceState,
+  type SynthSequencerFaceState,
+} from './sequencer/sequencerModeTypes';
 
 export type GranularTempoDivision = '1/4' | '1/8' | '1/16' | '1/32' | '1/64' | '1/8T';
 export type GranularQuality = 'eco' | 'balanced' | 'hq';
@@ -916,6 +921,7 @@ export interface SliderState {
   synthEuclideanMasterEnabled: boolean;  // master on/off (off = random mode)
   synthEuclidBaseBPM: number;            // Base BPM mirror for synth Euclidean (40-300)
   synthEuclideanTempo: number;           // 0.25..12 - tempo multiplier for all lanes
+  synthSequencerFaces: SynthSequencerFaceState; // Per-slot UI face configs; Euclid remains default/back-compatible
   // Lane 1
   synthEuclid1Enabled: boolean;
   synthEuclid1Preset: string;
@@ -2170,6 +2176,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthEuclideanMasterEnabled',
   'synthEuclidBaseBPM',
   'synthEuclideanTempo',
+  'synthSequencerFaces',
   'synthEuclid1Enabled',
   'synthEuclid1Preset',
   'synthEuclid1Steps',
@@ -2583,6 +2590,7 @@ const HARMONY_JSON_STATE_KEYS = new Set<keyof SliderState>([
   'harmonyChordSequence',
   'harmonyChordSequenceA',
   'harmonyChordSequenceB',
+  'synthSequencerFaces',
 ]);
 
 /**
@@ -3188,6 +3196,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclideanMasterEnabled: false,
   synthEuclidBaseBPM: 120,
   synthEuclideanTempo: 1,
+  synthSequencerFaces: createDefaultSynthSequencerFaceState(),
   // Lane 1 - main pulse (lancaran) - mid register
   synthEuclid1Enabled: true,
   synthEuclid1Preset: 'lancaran',
@@ -5091,6 +5100,10 @@ function decodeHarmonyJsonStateValue(state: SliderState, key: keyof SliderState,
   }
   if (key === 'harmonyChordSequenceB') {
     state.harmonyChordSequenceB = sanitizeHarmonySequence(parsed);
+    return true;
+  }
+  if (key === 'synthSequencerFaces') {
+    state.synthSequencerFaces = normalizeSynthSequencerFaceState(parsed);
     return true;
   }
   return false;

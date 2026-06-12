@@ -15,42 +15,22 @@ import {
 import { createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange } from './scales';
 import { getPhraseDurationForClockSource } from './transport';
+import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
+import type {
+  SimpleSequencerPhrasePreview,
+  SimpleSequencerVizEnvelope,
+  SimpleSequencerVizNote,
+  SimpleSequencerVizSource,
+} from './simpleSequencerRuntimePlan';
 import type { SliderState } from '../ui/state';
 
-export type SimpleSequencerVizKind = 'padChord' | 'randomTiming';
-export type SimpleSequencerVizSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'piano';
-
-export interface SimpleSequencerVizEnvelope {
-  attack: number;
-  decay: number;
-  sustain: number;
-  gateSeconds: number;
-  release: number;
-}
-
-export interface SimpleSequencerVizNote {
-  id: string;
-  source: SimpleSequencerVizSource;
-  midi: number;
-  label: string;
-  voiceIndex?: number;
-  triggerSeconds: number;
-  velocity: number;
-  envelope: SimpleSequencerVizEnvelope;
-}
-
-export interface SimpleSequencerPhrasePreview {
-  kind: SimpleSequencerVizKind;
-  enabled: boolean;
-  phraseSeconds: number;
-  triggerIntervalSeconds: number;
-  notes: SimpleSequencerVizNote[];
-  minMidi: number;
-  maxMidi: number;
-  rangeMinMidi?: number;
-  rangeMaxMidi?: number;
-  key: string;
-}
+export type {
+  SimpleSequencerPhrasePreview,
+  SimpleSequencerVizEnvelope,
+  SimpleSequencerVizKind,
+  SimpleSequencerVizNote,
+  SimpleSequencerVizSource,
+} from './simpleSequencerRuntimePlan';
 
 const PAD_ENVELOPE_SAFETY_SECONDS = 0.05;
 const DEFAULT_NOTE_MIN = 48;
@@ -76,7 +56,7 @@ function booleanValue(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;
 }
 
-function midiNoteLabel(midi: number): string {
+export function midiNoteLabel(midi: number): string {
   const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const rounded = Math.round(clamp(midi, 0, 127));
   const name = names[((rounded % 12) + 12) % 12] ?? 'C';
@@ -102,16 +82,14 @@ function harmonyParamsFromState(state: SliderState): Partial<HarmonyParams> {
 }
 
 function corePreviewHarmonySeedMaterial(state: SliderState): string {
-  const bucket = getUtcBucket(getSeedWindow(state));
-  return `${bucket}|${JSON.stringify(state)}|E_ROOT`;
+  return harmonySeedMaterialFromState(state);
 }
 
 function createPreviewHarmonyState(state: SliderState): HarmonyState {
-  const bucket = getUtcBucket(getSeedWindow(state));
   const phraseSeconds = getPhraseDurationForClockSource(state, state.harmonyClockSource ?? 'globalPhrase');
   const chordIntervalSeconds = chordIntervalSecondsFromState(state.chordRate, phraseSeconds);
   return createHarmonyState(
-    `${bucket}|E_ROOT`,
+    corePreviewHarmonySeedMaterial(state),
     boundedNumber(state.tension, 0.3, 0, 1),
     chordIntervalSeconds,
     boundedNumber(state.voicingSpread, 0.5, 0, 1),
@@ -203,7 +181,7 @@ function leadEnvelope(state: SliderState, source: 'lead1' | 'lead2'): SimpleSequ
     attack: shaped.attack,
     decay: shaped.decay,
     sustain: shaped.sustain,
-    gateSeconds: shaped.hold ?? hold,
+    gateSeconds: clamp(shaped.attack + shaped.decay + (shaped.hold ?? hold), 0.02, 44),
     release: shaped.release,
   };
 }
@@ -226,7 +204,7 @@ function pianoEnvelope(state: SliderState): SimpleSequencerVizEnvelope {
   };
 }
 
-function envelopeForSource(
+export function envelopeForSource(
   state: SliderState,
   source: SimpleSequencerVizSource,
   voiceDelaySeconds: number,
@@ -326,7 +304,7 @@ function createPadChordTickNotes(
   return notes.sort((left, right) => left.triggerSeconds - right.triggerSeconds || left.midi - right.midi);
 }
 
-function previewRange(notes: readonly SimpleSequencerVizNote[], fallbackMin = DEFAULT_NOTE_MIN, fallbackMax = DEFAULT_NOTE_MAX): { minMidi: number; maxMidi: number } {
+export function previewRange(notes: readonly SimpleSequencerVizNote[], fallbackMin = DEFAULT_NOTE_MIN, fallbackMax = DEFAULT_NOTE_MAX): { minMidi: number; maxMidi: number } {
   if (notes.length === 0) return { minMidi: fallbackMin, maxMidi: fallbackMax };
   const midiValues = notes.map((note) => note.midi);
   const min = Math.min(...midiValues);

@@ -4,6 +4,7 @@ import { emptyDrumOverrideIndices, emptyDrumOverrideValues } from './CoreProduct
 import { emptyLeadOverrideIndices, emptyLeadOverrideValues } from './CoreProductLeadPatch';
 import { emptyPadOverrideIndices, emptyPadOverrideValues } from './CoreProductPadPatch';
 import { defaultPresetId } from './CoreProductPresetIds';
+import { anchorWalkerDefaults, orbitSequencerDefaults } from './coreProductSequencerFaceDefaults';
 import {
   KESSHO_PRODUCT_DEFAULT_SOURCE_ATTACK_SECONDS,
   KESSHO_PRODUCT_DEFAULT_SOURCE_DECAY_SECONDS,
@@ -15,7 +16,13 @@ import {
   KESSHO_PRODUCT_DEFAULT_SOURCE_SUSTAIN,
   KESSHO_PRODUCT_DRUM_VOICE_COUNT,
 } from './generated/kesshoProductSchema';
-import type { ProductGranularVoiceSnapshot, ProductLaneSnapshot, ProductSourceSnapshot } from './coreProductSnapshotTypes';
+import type {
+  ProductGranularVoiceSnapshot,
+  ProductLaneSnapshot,
+  ProductSourceSnapshot,
+} from './coreProductSnapshotTypes';
+
+export { anchorWalkerDefaults, orbitSequencerDefaults } from './coreProductSequencerFaceDefaults';
 
 export const SOURCE_ORDER = [CORE_PRODUCT_SOURCE_IDS.pad1, CORE_PRODUCT_SOURCE_IDS.pad2, CORE_PRODUCT_SOURCE_IDS.lead1, CORE_PRODUCT_SOURCE_IDS.lead2, CORE_PRODUCT_SOURCE_IDS.drum, CORE_PRODUCT_SOURCE_IDS.piano, CORE_PRODUCT_SOURCE_IDS.soundscape] as const;
 
@@ -47,11 +54,13 @@ export function sourceDefaults(sourceId: number): ProductSourceSnapshot {
 
 export function laneDefaults(targetSourceId: number, midiNote: number): ProductLaneSnapshot {
   return {
-    enabled: false, targetSourceId, stepCount: 16, fillCount: 4, rotation: 0, clockDivision: 16,
+    enabled: false, sequencerMode: 0, targetSourceId, stepCount: 16, fillCount: 4, rotation: 0, clockDivision: 16,
     swing: 0, probability: 1, ratchet: 1, trigCondition: 0, midiNote, velocity: 0.75,
     holdSeconds: 0.18, morph: 0, distance: 0, expression: 0.75, seed: 1,
     barReset: true, phraseReset: false, manualStepMaskLow: 0, manualStepMaskHigh: 0,
     tempoMultiplier: 1, initialStartDelaySeconds: -1,
+    anchorWalker: anchorWalkerDefaults(),
+    orbit: orbitSequencerDefaults(),
   };
 }
 

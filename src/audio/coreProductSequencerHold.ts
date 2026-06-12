@@ -1,6 +1,6 @@
 import type { SliderState } from '../ui/state';
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
-import { applyLeadDistanceEnvelope, getVoiceDistanceKey } from './distanceMacro';
+import { leadEnvelopeGateSecondsFromState } from './CoreProductLeadPatch';
 
 function numberFromState(state: Record<string, unknown> | undefined, key: string, fallback: number): number {
   const value = state?.[key];
@@ -19,23 +19,6 @@ type PadEnvelopeGateOptions = {
 };
 
 const PAD_CHORD_ENVELOPE_SAFETY_SECONDS = 0.05;
-
-function leadHoldSecondsFromState(
-  state: Record<string, unknown> | undefined,
-  voice: 'lead1' | 'lead2',
-  fallback: number,
-): number {
-  const holdKey = voice === 'lead2' ? 'lead2Hold' : 'lead1Hold';
-  const hold = numberFromState(state, holdKey, fallback);
-  const distance = numberFromState(state, getVoiceDistanceKey(voice), 0);
-  return applyLeadDistanceEnvelope(voice, {
-    attack: 0.01,
-    decay: 0.8,
-    sustain: 0.3,
-    hold,
-    release: 2,
-  }, distance).hold ?? hold;
-}
 
 export function coreProductPadEnvelopeGateSecondsFromState(
   state: Record<string, unknown> | undefined,
@@ -77,9 +60,9 @@ export function coreProductSynthSequencerHoldSecondsFromState(
     case CORE_PRODUCT_SOURCE_IDS.pad2:
       return coreProductPadEnvelopeGateSecondsFromState(state, 'pad2');
     case CORE_PRODUCT_SOURCE_IDS.lead1:
-      return leadHoldSecondsFromState(state, 'lead1', fallback);
+      return leadEnvelopeGateSecondsFromState(state, 0);
     case CORE_PRODUCT_SOURCE_IDS.lead2:
-      return leadHoldSecondsFromState(state, 'lead2', fallback);
+      return leadEnvelopeGateSecondsFromState(state, 1);
     case CORE_PRODUCT_SOURCE_IDS.piano:
       return numberFromState(state, 'pianoHold', 0.2);
     default:

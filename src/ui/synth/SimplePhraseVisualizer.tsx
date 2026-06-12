@@ -24,8 +24,25 @@ type PhaseAnchor = {
   phraseSeconds: number;
 };
 
+type PhrasePlanState = {
+  index: number;
+  currentState: SliderState;
+  previousState: SliderState;
+};
+
+type PhraseVisualTransition = {
+  toKey: string;
+  startedAtMs: number;
+  durationMs: number;
+  fromPhraseSeconds: number;
+  fromPhraseStartWallSec?: number;
+  fromNotes: Map<string, SimpleSequencerVizNote>;
+};
+
 const NOTE_FLOOR = 0.0008;
 const FRAME_MS = 33;
+const PHRASE_TRANSITION_MIN_MS = 480;
+const PHRASE_TRANSITION_MAX_MS = 1680;
 const PLOT_PAD_X = 30;
 const PLOT_PAD_TOP = 14;
 const PLOT_PAD_BOTTOM = 20;
@@ -42,6 +59,19 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function lerp(from: number, to: number, amount: number): number {
+  return from + (to - from) * amount;
+}
+
+function easeOutCubic(value: number): number {
+  const t = clamp(value, 0, 1);
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function phraseTransitionDurationMs(phraseSeconds: number): number {
+  return clamp(phraseSeconds * 1000 * 0.24, PHRASE_TRANSITION_MIN_MS, PHRASE_TRANSITION_MAX_MS);
+}
+
 function phraseProgress(anchor: PhaseAnchor | null, phraseSeconds: number, isRunning: boolean): number {
   if (!isRunning || !anchor) return 0;
   const now = performance.now() / 1000;
@@ -50,12 +80,68 @@ function phraseProgress(anchor: PhaseAnchor | null, phraseSeconds: number, isRun
   return ((elapsed % period) + period) % period;
 }
 
-function rangeFor(current: SimpleSequencerPhrasePreview, previous: SimpleSequencerPhrasePreview): { min: number; max: number } {
+function noteMotionKey(note: SimpleSequencerVizNote, preview: SimpleSequencerPhrasePreview): string {
+  if (typeof note.triggerWallSec === 'number' && Number.isFinite(note.triggerWallSec)) {
+    return `${preview.kind}:runtime:${note.id}`;
+  }
+  const midi = Math.round(note.midi);
+  if (preview.kind === 'padChord') {
+    const chordIndex = Math.floor((note.triggerSeconds + 0.0001) / Math.max(0.001, preview.triggerIntervalSeconds));
+    return `${preview.kind}:${note.source}:${note.voiceIndex ?? 0}:${chordIndex}:${midi}`;
+  }
+  return `${preview.kind}:${note.source}:${note.voiceIndex ?? 0}:${midi}`;
+}
+
+function motionNoteMap(preview: SimpleSequencerPhrasePreview): Map<string, SimpleSequencerVizNote> {
+  const map = new Map<string, SimpleSequencerVizNote>();
+  for (const note of preview.notes) map.set(noteMotionKey(note, preview), note);
+  return map;
+}
+
+function sequencerBoundaryIn(
+  kind: SimpleSequencerVizKind,
+  transportDebug: TransportDebugSnapshot | null | undefined,
+): number | null {
+  if (!transportDebug) return null;
+  const value = kind === 'padChord'
+    ? transportDebug.nextPadChordBoundaryIn ?? transportDebug.nextPhraseBoundaryIn
+    : transportDebug.nextRandomTimingBoundaryIn ?? transportDebug.nextPhraseBoundaryIn;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function sequencerPhraseSeconds(
+  kind: SimpleSequencerVizKind,
+  transportDebug: TransportDebugSnapshot | null | undefined,
+  fallback: number,
+): number {
+  if (!transportDebug) return fallback;
+  const value = kind === 'padChord'
+    ? transportDebug.padChordPhraseSeconds ?? transportDebug.effectivePhraseSeconds
+    : transportDebug.randomTimingPhraseSeconds ?? transportDebug.effectivePhraseSeconds;
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function runtimePlanForKind(
+  kind: SimpleSequencerVizKind,
+  transportDebug: TransportDebugSnapshot | null | undefined,
+): SimpleSequencerPhrasePreview | null {
+  const plan = kind === 'padChord' ? transportDebug?.padChordPlan : transportDebug?.randomTimingPlan;
+  return plan && plan.kind === kind ? plan : null;
+}
+
+function previousRuntimePlanForKind(
+  kind: SimpleSequencerVizKind,
+  transportDebug: TransportDebugSnapshot | null | undefined,
+): SimpleSequencerPhrasePreview | null {
+  const plan = kind === 'padChord' ? transportDebug?.previousPadChordPlan : transportDebug?.previousRandomTimingPlan;
+  return plan && plan.kind === kind ? plan : null;
+}
+
+function rangeFor(current: SimpleSequencerPhrasePreview, previous: SimpleSequencerPhrasePreview | null): { min: number; max: number } {
   const midiValues = [
     current.minMidi,
     current.maxMidi,
-    previous.minMidi,
-    previous.maxMidi,
+    ...(previous ? [previous.minMidi, previous.maxMidi] : []),
     ...(current.rangeMinMidi != null ? [current.rangeMinMidi] : []),
     ...(current.rangeMaxMidi != null ? [current.rangeMaxMidi] : []),
   ].filter((value) => Number.isFinite(value));
@@ -70,8 +156,20 @@ function noteY(note: SimpleSequencerVizNote, minMidi: number, maxMidi: number, y
   return y + (1 - clamp((note.midi - minMidi) / denom, 0, 1)) * height;
 }
 
-function noteX(note: SimpleSequencerVizNote, phraseSeconds: number, x: number, width: number): number {
-  return x + clamp(note.triggerSeconds / Math.max(0.001, phraseSeconds), 0, 1) * width;
+function noteX(
+  note: SimpleSequencerVizNote,
+  phraseSeconds: number,
+  x: number,
+  width: number,
+  phraseStartWallSec?: number | null,
+): number {
+  const triggerSeconds = typeof note.triggerWallSec === 'number' &&
+    Number.isFinite(note.triggerWallSec) &&
+    typeof phraseStartWallSec === 'number' &&
+    Number.isFinite(phraseStartWallSec)
+    ? note.triggerWallSec - phraseStartWallSec
+    : note.triggerSeconds;
+  return x + clamp(triggerSeconds / Math.max(0.001, phraseSeconds), 0, 1) * width;
 }
 
 function drawGlowingNote(
@@ -121,8 +219,10 @@ function drawGlowingNote(
 function drawVisualizer(
   canvas: HTMLCanvasElement,
   current: SimpleSequencerPhrasePreview,
-  previous: SimpleSequencerPhrasePreview,
+  previous: SimpleSequencerPhrasePreview | null,
   phaseSeconds: number,
+  transition: PhraseVisualTransition | null,
+  nowMs: number,
 ): void {
   const rect = canvas.getBoundingClientRect();
   const cssWidth = Math.max(1, rect.width);
@@ -178,26 +278,50 @@ function drawVisualizer(
 
   const range = rangeFor(current, previous);
   const drawLabel = current.notes.length <= 24 && cssWidth > 260;
+  const transitionProgress = transition && transition.toKey === current.key
+    ? clamp((nowMs - transition.startedAtMs) / Math.max(1, transition.durationMs), 0, 1)
+    : 1;
+  const transitionEase = easeOutCubic(transitionProgress);
+  const transitionActive = Boolean(transition && transition.toKey === current.key && transitionProgress < 1);
+  const currentPhraseStartWallSec = current.phraseStartWallSec ?? null;
+  const currentWallSeconds = typeof currentPhraseStartWallSec === 'number' && Number.isFinite(currentPhraseStartWallSec)
+    ? currentPhraseStartWallSec + phaseSeconds
+    : null;
 
   const drawNoteSet = (preview: SimpleSequencerPhrasePreview, isPrevious: boolean) => {
     for (const note of preview.notes) {
-      const age = isPrevious
+      const fallbackAge = isPrevious
         ? phaseSeconds + current.phraseSeconds - note.triggerSeconds
         : phaseSeconds - note.triggerSeconds;
+      const age = currentWallSeconds !== null &&
+        typeof note.triggerWallSec === 'number' &&
+        Number.isFinite(note.triggerWallSec)
+        ? currentWallSeconds - note.triggerWallSec
+        : fallbackAge;
       const amp = envelopeAmplitudeAt(age, note.envelope);
-      if (isPrevious && amp <= NOTE_FLOOR) continue;
+      if (isPrevious && age >= 0 && amp <= NOTE_FLOOR) continue;
       const future = age < 0;
       const color = sourceColor(note.source);
-      const x = noteX(note, preview.phraseSeconds, plotX, plotW);
-      const y = noteY(note, range.min, range.max, plotY, plotH);
+      let x = noteX(note, current.phraseSeconds, plotX, plotW, currentPhraseStartWallSec ?? preview.phraseStartWallSec);
+      let y = noteY(note, range.min, range.max, plotY, plotH);
       const baseAlpha = future ? 0.22 : clamp(0.14 + amp * 0.86, 0, 1);
-      const alpha = isPrevious ? baseAlpha * 0.72 : baseAlpha;
-      const radius = future ? 3.3 : 3.2 + amp * 5.2;
-      drawGlowingNote(ctx, x, y, radius, color, alpha, note.label, drawLabel && (!future || !isPrevious));
+      let alpha = isPrevious ? baseAlpha * 0.72 : baseAlpha;
+      let radius = future ? 3.3 : 3.2 + amp * 5.2;
+      if (transitionActive && transition) {
+        const fromNote = transition.fromNotes.get(noteMotionKey(note, preview));
+        if (fromNote) {
+          x = lerp(noteX(fromNote, transition.fromPhraseSeconds, plotX, plotW, transition.fromPhraseStartWallSec), x, transitionEase);
+          y = lerp(noteY(fromNote, range.min, range.max, plotY, plotH), y, transitionEase);
+        } else if (!isPrevious) {
+          alpha *= transitionEase;
+          radius = lerp(2.1, radius, transitionEase);
+        }
+      }
+      drawGlowingNote(ctx, x, y, radius, color, alpha, note.label, drawLabel && !isPrevious && !future);
     }
   };
 
-  drawNoteSet(previous, true);
+  if (previous) drawNoteSet(previous, true);
   drawNoteSet(current, false);
 
   const playheadX = plotX + clamp(phaseSeconds / Math.max(0.001, current.phraseSeconds), 0, 1) * plotW;
@@ -240,39 +364,110 @@ export const SimplePhraseVisualizer: React.FC<SimplePhraseVisualizerProps> = ({
   const animationRef = useRef<number | null>(null);
   const lastFrameRef = useRef(0);
   const lastPhaseRef = useRef(0);
-  const [phraseCounter, setPhraseCounter] = useState(0);
+  const latestStateRef = useRef(state);
+  const wasRunningRef = useRef(isRunning);
+  const previousCurrentPreviewRef = useRef<SimpleSequencerPhrasePreview | null>(null);
+  const transitionRef = useRef<PhraseVisualTransition | null>(null);
+  const [phrasePlan, setPhrasePlan] = useState<PhrasePlanState>(() => ({
+    index: 0,
+    currentState: state,
+    previousState: state,
+  }));
   const anchorRef = useRef<PhaseAnchor | null>(null);
 
+  useEffect(() => {
+    latestStateRef.current = state;
+    if (!isRunning) {
+      setPhrasePlan({
+        index: 0,
+        currentState: state,
+        previousState: state,
+      });
+    }
+  }, [isRunning, state]);
+
+  useEffect(() => {
+    if (isRunning && !wasRunningRef.current) {
+      const nextState = latestStateRef.current;
+      setPhrasePlan({
+        index: 0,
+        currentState: nextState,
+        previousState: nextState,
+      });
+    }
+    wasRunningRef.current = isRunning;
+  }, [isRunning]);
+
+  const runtimeCurrentPlan = runtimePlanForKind(kind, transportDebug);
+  const runtimePreviousPlan = previousRuntimePlanForKind(kind, transportDebug);
   const currentPreview = useMemo(
-    () => kind === 'padChord'
-      ? createPadChordPhrasePreview(state, phraseCounter)
-      : createRandomTimingPhrasePreview(state, phraseCounter),
-    [kind, phraseCounter, state],
+    () => runtimeCurrentPlan ?? (
+      kind === 'padChord'
+        ? createPadChordPhrasePreview(phrasePlan.currentState, phrasePlan.index)
+        : createRandomTimingPhrasePreview(phrasePlan.currentState, phrasePlan.index)
+    ),
+    [kind, phrasePlan, runtimeCurrentPlan?.key],
   );
   const previousPreview = useMemo(
-    () => kind === 'padChord'
-      ? createPadChordPhrasePreview(state, Math.max(0, phraseCounter - 1))
-      : createRandomTimingPhrasePreview(state, Math.max(0, phraseCounter - 1)),
-    [kind, phraseCounter, state],
+    (): SimpleSequencerPhrasePreview | null => runtimePreviousPlan ?? (
+      phrasePlan.index <= 0
+        ? null
+        : kind === 'padChord'
+        ? createPadChordPhrasePreview(phrasePlan.previousState, Math.max(0, phrasePlan.index - 1))
+        : createRandomTimingPhrasePreview(phrasePlan.previousState, Math.max(0, phrasePlan.index - 1))
+    ),
+    [kind, phrasePlan, runtimePreviousPlan?.key],
   );
 
   useEffect(() => {
-    const phraseSeconds = currentPreview.phraseSeconds;
-    const debugNext = transportDebug?.nextPhraseBoundaryIn;
-    const elapsed = Number.isFinite(debugNext)
-      ? clamp(phraseSeconds - Math.max(0, debugNext ?? phraseSeconds), 0, phraseSeconds)
+    const previousCurrent = previousCurrentPreviewRef.current;
+    if (
+      isRunning &&
+      previousCurrent &&
+      previousCurrent.kind === currentPreview.kind &&
+      previousCurrent.enabled &&
+      currentPreview.enabled &&
+      previousCurrent.key !== currentPreview.key
+    ) {
+      transitionRef.current = {
+        toKey: currentPreview.key,
+        startedAtMs: performance.now(),
+        durationMs: phraseTransitionDurationMs(currentPreview.phraseSeconds),
+        fromPhraseSeconds: previousCurrent.phraseSeconds,
+        fromPhraseStartWallSec: previousCurrent.phraseStartWallSec,
+        fromNotes: motionNoteMap(previousCurrent),
+      };
+    } else if (!isRunning || previousCurrent?.kind !== currentPreview.kind || !currentPreview.enabled) {
+      transitionRef.current = null;
+    }
+    previousCurrentPreviewRef.current = currentPreview;
+  }, [currentPreview, isRunning]);
+
+  useEffect(() => {
+    const phraseSeconds = sequencerPhraseSeconds(kind, transportDebug, currentPreview.phraseSeconds);
+    const debugNext = sequencerBoundaryIn(kind, transportDebug);
+    const elapsed = debugNext !== null
+      ? clamp(phraseSeconds - Math.max(0, debugNext), 0, phraseSeconds)
       : lastPhaseRef.current;
     anchorRef.current = {
       wallSeconds: performance.now() / 1000,
       elapsedSeconds: elapsed,
       phraseSeconds,
     };
-  }, [currentPreview.phraseSeconds, transportDebug?.nextPhraseBoundaryIn]);
+  }, [
+    currentPreview.phraseSeconds,
+    kind,
+    transportDebug?.effectivePhraseSeconds,
+    transportDebug?.nextPhraseBoundaryIn,
+    transportDebug?.nextPadChordBoundaryIn,
+    transportDebug?.nextRandomTimingBoundaryIn,
+    transportDebug?.padChordPhraseSeconds,
+    transportDebug?.randomTimingPhraseSeconds,
+  ]);
 
   useEffect(() => {
     if (!isRunning) {
       lastPhaseRef.current = 0;
-      setPhraseCounter(0);
       anchorRef.current = {
         wallSeconds: performance.now() / 1000,
         elapsedSeconds: 0,
@@ -287,11 +482,18 @@ export const SimplePhraseVisualizer: React.FC<SimplePhraseVisualizerProps> = ({
         lastFrameRef.current = time;
         const phase = phraseProgress(anchorRef.current, currentPreview.phraseSeconds, isRunning);
         if (isRunning && lastPhaseRef.current > currentPreview.phraseSeconds * 0.75 && phase < currentPreview.phraseSeconds * 0.25) {
-          setPhraseCounter((value) => value + 1);
+          setPhrasePlan((plan) => ({
+            index: plan.index + 1,
+            previousState: plan.currentState,
+            currentState: latestStateRef.current,
+          }));
         }
         lastPhaseRef.current = phase;
         const canvas = canvasRef.current;
-        if (canvas) drawVisualizer(canvas, currentPreview, previousPreview, phase);
+        if (transitionRef.current && time - transitionRef.current.startedAtMs >= transitionRef.current.durationMs) {
+          transitionRef.current = null;
+        }
+        if (canvas) drawVisualizer(canvas, currentPreview, previousPreview, phase, transitionRef.current, time);
       }
       animationRef.current = window.requestAnimationFrame(tick);
     };

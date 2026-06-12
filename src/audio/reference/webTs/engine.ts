@@ -91,6 +91,7 @@ import {
   resolveProgressionPhraseClockSource,
 } from '../../transport';
 import { chordIntervalSecondsFromState, resolveChordsPerPhrase } from '../../chordPhraseTiming';
+import { harmonySeedPayloadJsonFromState } from '../../harmonySeedMaterial';
 import { SEQUENCER_VISUAL_SYNC_OFFSET_MS } from '../../sequencerVisualSync';
 import type { StemRecordTrackId } from '../../recordingTracks';
 import { DEFAULT_REVERB_PRE_COMP, getIndexedDelayDivisionValue, getStateValueFromSliderNumber, quantize, type IndexedDelayDivisionKey, type SliderState } from '../../../ui/state';
@@ -1598,7 +1599,7 @@ export class AudioEngine {
    */
   private get sliderStateJson(): string {
     if (this._sliderStateJsonDirty && this.sliderState) {
-      this._sliderStateJsonCache = JSON.stringify(this.sliderState);
+      this._sliderStateJsonCache = harmonySeedPayloadJsonFromState(this.sliderState);
       this._sliderStateJsonDirty = false;
     }
     return this._sliderStateJsonCache;
@@ -6183,8 +6184,8 @@ export class AudioEngine {
 
     this.sliderState = sliderState;
     this.sourceSliderState = sliderState;
-    // Eagerly compute the initial JSON snapshot (used for harmony seeding)
-    this._sliderStateJsonCache = JSON.stringify(sliderState);
+    // Eagerly compute the initial harmony seed snapshot.
+    this._sliderStateJsonCache = harmonySeedPayloadJsonFromState(sliderState);
     this._sliderStateJsonDirty = false;
 
     if (this.graphBootstrapped && !this.hasRequiredBootCapabilities(sliderState)) {
@@ -8150,7 +8151,7 @@ export class AudioEngine {
     // Create harmony state with full params (CoF + progression)
     const effectiveHarmonyPhraseSeconds = this.getEffectiveHarmonyPhraseSeconds(this.sliderState);
     this.harmonyState = createHarmonyState(
-      `${this.currentBucket}|E_ROOT`,
+      `${this.currentBucket}|${this.sliderStateJson}|E_ROOT`,
       this.sliderState.tension,
       chordIntervalSecondsFromState(this.sliderState.chordRate, effectiveHarmonyPhraseSeconds),
       this.sliderState.voicingSpread,
@@ -11132,7 +11133,8 @@ export class AudioEngine {
           send: 0,
         },
       });
-      port.postMessage({ type: 'noteOn', frequency: noteFreq, velocity: effectiveVelocity, hold, leadIndex: useLead2 ? 1 : 0 });
+      const gateHold = Math.max(0.02, (noteLocalMorphed.attack ?? 0.01) + (noteLocalMorphed.decay ?? 0.3) + Math.max(0, hold));
+      port.postMessage({ type: 'noteOn', frequency: noteFreq, velocity: effectiveVelocity, hold: gateHold, leadIndex: useLead2 ? 1 : 0 });
       return;
     }
 
@@ -11634,7 +11636,7 @@ export class AudioEngine {
       this.currentSeed = computeGranularRuntimeSeed(this.currentBucket);
       const effectiveHarmonyPhraseSeconds = this.getEffectiveHarmonyPhraseSeconds(this.sliderState);
       this.harmonyState = createHarmonyState(
-        `${this.currentBucket}|E_ROOT`,
+        `${this.currentBucket}|${this.sliderStateJson}|E_ROOT`,
         this.sliderState.tension,
         chordIntervalSecondsFromState(this.sliderState.chordRate, effectiveHarmonyPhraseSeconds),
         this.sliderState.voicingSpread,

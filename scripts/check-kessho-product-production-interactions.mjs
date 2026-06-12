@@ -72,9 +72,18 @@ requireTokens('src/audio/coreProductEvents.ts', [
   'CORE_PRODUCT_ARRANGEMENT_RUNTIME_WALK_KEYS',
   'CORE_PRODUCT_LIVE_TRIGGER_RUNTIME_WALK_KEYS',
   'isCoreProductRuntimeWalkStatePatchKey',
+  "'chordRate'",
+  "'voicingSpread'",
+  "'waveSpread'",
+  "'detune'",
+  "'synthOctave'",
   "'lead1Density'",
   "'lead1Octave'",
   "'lead1OctaveRange'",
+  'controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision, key)',
+  'controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.HarmonyTension, key)',
+  'controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneSwing, key)',
+  'controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneVelocity, key)',
   'controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneProbability, key)',
   'controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMidiNote, key)',
   'controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneHoldSeconds, key)',
@@ -90,14 +99,56 @@ requireTokens('src/audio/product/host/CoreProductArrangementBridge.ts', [
   'runtimeWalkStatePatch',
   'setRuntimeWalkStatePatch',
   '...this.runtimeWalkStatePatch',
+  "'__arrangementRestartState'",
+  'Object.defineProperty(state',
+]);
+
+requireTokens('src/audio/coreProductArrangementVoiceMapping.ts', [
+  'ARRANGEMENT_RESTART_STATE_KEY',
+  'state[ARRANGEMENT_RESTART_STATE_KEY]',
 ]);
 
 requireTokens('src/audio/coreProductArrangementScheduler.ts', [
   'publishManualNoteTrigger',
+  'private phraseState',
+  'capturePhraseState()',
+  'harmonySeedMaterialFromState(sliderState)',
   "this.publishTrigger('pianoDistance'",
   "this.publishTrigger('leadDistance'",
   "this.publishTrigger('padDistance'",
 ]);
+
+requireTokens('src/audio/simpleSequencerPhrasePreview.ts', [
+  'harmonySeedMaterialFromState(state)',
+]);
+
+requireTokens('src/ui/synth/SimplePhraseVisualizer.tsx', [
+  'PhrasePlanState',
+  'latestStateRef.current',
+  'previousState: plan.currentState',
+]);
+
+{
+  const harmonySeedSource = read('src/audio/harmonySeedMaterial.ts');
+  for (const token of [
+    "'harmonyGenerationSeed'",
+    "'seedWindow'",
+  ]) {
+    assert(harmonySeedSource.includes(token), `harmony seed payload must include ${token}`);
+  }
+  for (const token of [
+    "'chordRate'",
+    "'voicingSpread'",
+    "'waveSpread'",
+    "'detune'",
+    "'synthOctave'",
+    "'lead1Density'",
+    "'lead1Octave'",
+    "'lead1OctaveRange'",
+  ]) {
+    assert(!harmonySeedSource.includes(token), `harmony seed payload must not include live sequencer key ${token}`);
+  }
+}
 
 requireTokens('cpp/KesshoCore/src/product/sources/SourceModulation.cpp', [
   'kProductControlOnlyModulationTarget',

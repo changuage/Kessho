@@ -34,6 +34,15 @@ const DISTANCE_SLIGHT_POINT = 0.25;
 const DISTANCE_STRENGTH = 2;
 const ATTACK_DISTANCE_BASE_BOOST_SECONDS = 0.1;
 const ATTACK_DISTANCE_ZERO_THRESHOLD_SECONDS = 0.005;
+const LEAD_ATTACK_MIN_SECONDS = 0.001;
+const LEAD_ATTACK_MAX_SECONDS = 16;
+const LEAD_DECAY_MIN_SECONDS = 0.01;
+const LEAD_DECAY_MAX_SECONDS = 8;
+const LEAD_RELEASE_MIN_SECONDS = 0.01;
+const LEAD_RELEASE_MAX_SECONDS = 30;
+const LEAD_HOLD_MIN_SECONDS = 0;
+const LEAD_HOLD_MAX_SECONDS = 20;
+const LEAD_GATE_MAX_SECONDS = LEAD_ATTACK_MAX_SECONDS + LEAD_DECAY_MAX_SECONDS + LEAD_HOLD_MAX_SECONDS;
 
 type SourcePreset = (typeof KESSHO_PRODUCT_SOURCE_PRESETS)[number];
 export type LeadEnvelopeOverride = {
@@ -174,9 +183,9 @@ function leadDistanceMultiply(base: number, distance: number, slightMul: number,
 }
 
 function leadDistanceAttack(base: number, distance: number, slightMul: number, maxMul: number): number {
-  if (Math.abs(distance) <= 0.0001) return clamp(base, 0.001, 2);
+  if (Math.abs(distance) <= 0.0001) return clamp(base, LEAD_ATTACK_MIN_SECONDS, LEAD_ATTACK_MAX_SECONDS);
   const effectiveBase = base <= ATTACK_DISTANCE_ZERO_THRESHOLD_SECONDS ? base + ATTACK_DISTANCE_BASE_BOOST_SECONDS : base;
-  return leadDistanceMultiply(effectiveBase, distance, slightMul, maxMul, 0.001, 2);
+  return leadDistanceMultiply(effectiveBase, distance, slightMul, maxMul, LEAD_ATTACK_MIN_SECONDS, LEAD_ATTACK_MAX_SECONDS);
 }
 
 function applyLeadDistanceParams(params: number[], leadIndex: 0 | 1, distance: number): void {
@@ -184,9 +193,9 @@ function applyLeadDistanceParams(params: number[], leadIndex: 0 | 1, distance: n
   const lead2 = leadIndex === 1;
   const shaped = scaleLeadDistance(distance);
   params[LEAD_ATTACK_PARAM_INDEX] = leadDistanceAttack(params[LEAD_ATTACK_PARAM_INDEX] ?? 0, distance, lead2 ? 1.25 : 1.2, lead2 ? 3.6 : 3.2);
-  params[LEAD_DECAY_PARAM_INDEX] = leadDistanceMultiply(params[LEAD_DECAY_PARAM_INDEX] ?? 0, distance, lead2 ? 0.94 : 0.95, lead2 ? 0.74 : 0.78, 0.01, 4);
+  params[LEAD_DECAY_PARAM_INDEX] = leadDistanceMultiply(params[LEAD_DECAY_PARAM_INDEX] ?? 0, distance, lead2 ? 0.94 : 0.95, lead2 ? 0.74 : 0.78, LEAD_DECAY_MIN_SECONDS, LEAD_DECAY_MAX_SECONDS);
   params[LEAD_SUSTAIN_PARAM_INDEX] = leadDistanceAdd(params[LEAD_SUSTAIN_PARAM_INDEX] ?? 0, distance, lead2 ? -0.05 : -0.04, lead2 ? -0.30 : -0.26, 0, 1);
-  params[LEAD_RELEASE_PARAM_INDEX] = leadDistanceMultiply(params[LEAD_RELEASE_PARAM_INDEX] ?? 0, distance, lead2 ? 1.15 : 1.12, lead2 ? 2.0 : 1.9, 0.01, 8);
+  params[LEAD_RELEASE_PARAM_INDEX] = leadDistanceMultiply(params[LEAD_RELEASE_PARAM_INDEX] ?? 0, distance, lead2 ? 1.15 : 1.12, lead2 ? 2.0 : 1.9, LEAD_RELEASE_MIN_SECONDS, LEAD_RELEASE_MAX_SECONDS);
   params[LEAD_FILTER_FREQ_PARAM_INDEX] = Math.max(80, (params[LEAD_FILTER_FREQ_PARAM_INDEX] ?? 0) * (1 - shaped * 0.72));
   params[LEAD_FILTER_Q_PARAM_INDEX] = Math.max(0.05, (params[LEAD_FILTER_Q_PARAM_INDEX] ?? 0) * (1 - shaped * 0.18));
   params[LEAD_FILTER_ENV_DEPTH_PARAM_INDEX] = (params[LEAD_FILTER_ENV_DEPTH_PARAM_INDEX] ?? 0) * (1 - shaped * 0.55);
@@ -208,10 +217,10 @@ export function leadEnvelopeOverrideFromState(
   const prefix = leadIndex === 0 ? 'lead1' : 'lead2';
   return {
     enabled: booleanFromState(state, `${prefix}UseCustomAdsr`, false),
-    attack: clamp(numberFromState(state, `${prefix}Attack`, 0.01), 0.001, 2),
-    decay: clamp(numberFromState(state, `${prefix}Decay`, 0.8), 0.01, 4),
+    attack: clamp(numberFromState(state, `${prefix}Attack`, 0.01), LEAD_ATTACK_MIN_SECONDS, LEAD_ATTACK_MAX_SECONDS),
+    decay: clamp(numberFromState(state, `${prefix}Decay`, 0.8), LEAD_DECAY_MIN_SECONDS, LEAD_DECAY_MAX_SECONDS),
     sustain: clamp(numberFromState(state, `${prefix}Sustain`, 0.3), 0, 1),
-    release: clamp(numberFromState(state, `${prefix}Release`, 2), 0.01, 8),
+    release: clamp(numberFromState(state, `${prefix}Release`, 2), LEAD_RELEASE_MIN_SECONDS, LEAD_RELEASE_MAX_SECONDS),
   };
 }
 
@@ -228,6 +237,36 @@ function applyLeadEnvelopeOverrideParams(params: number[], override: LeadEnvelop
   params[LEAD_DECAY_PARAM_INDEX] = override.decay;
   params[LEAD_SUSTAIN_PARAM_INDEX] = override.sustain;
   params[LEAD_RELEASE_PARAM_INDEX] = override.release;
+}
+
+function leadDistanceHold(hold: number, leadIndex: 0 | 1, distance: number): number {
+  if (Math.abs(distance) <= 0.0001) return clamp(hold, LEAD_HOLD_MIN_SECONDS, LEAD_HOLD_MAX_SECONDS);
+  return leadDistanceAdd(
+    hold,
+    distance,
+    leadIndex === 1 ? -0.06 : -0.05,
+    leadIndex === 1 ? -0.40 : -0.35,
+    LEAD_HOLD_MIN_SECONDS,
+    LEAD_HOLD_MAX_SECONDS,
+  );
+}
+
+export function leadEnvelopeGateSecondsFromState(
+  state: Record<string, unknown> | undefined,
+  leadIndex: 0 | 1,
+): number {
+  const params = exactLeadParamsFromState(state, leadIndex);
+  const prefix = leadIndex === 0 ? 'lead1' : 'lead2';
+  const voice = leadIndex === 0 ? 'lead1' : 'lead2';
+  const distance = clamp(numberFromState(state, getVoiceDistanceKey(voice), 0), 0, 1);
+  const hold = leadDistanceHold(
+    clamp(numberFromState(state, `${prefix}Hold`, 0.5), LEAD_HOLD_MIN_SECONDS, LEAD_HOLD_MAX_SECONDS),
+    leadIndex,
+    distance,
+  );
+  const attack = clamp(params[LEAD_ATTACK_PARAM_INDEX] ?? 0.01, LEAD_ATTACK_MIN_SECONDS, LEAD_ATTACK_MAX_SECONDS);
+  const decay = clamp(params[LEAD_DECAY_PARAM_INDEX] ?? 0.8, LEAD_DECAY_MIN_SECONDS, LEAD_DECAY_MAX_SECONDS);
+  return clamp(attack + decay + hold, 0.02, LEAD_GATE_MAX_SECONDS);
 }
 
 export function assignLeadEnvelopeOverrideFields(

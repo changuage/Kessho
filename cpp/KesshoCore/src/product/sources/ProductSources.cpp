@@ -6,6 +6,7 @@ void KesshoProductEngine::applySourceParam(const KesshoProductEvent& event) {
     return;
   }
   SourceState& source = sources[event.target_id - 1u];
+  const bool lead_source = isLeadProductSource(event.target_id);
   const auto sync_drum_module_param = [this, &event](uint32_t param_index, float value) {
     if (event.target_id != KESSHO_PRODUCT_SOURCE_DRUM || param_index >= kProductDrumRuntimeParamCount) {
       return;
@@ -63,19 +64,19 @@ void KesshoProductEngine::applySourceParam(const KesshoProductEvent& event) {
       source.post_lpf_key_tracking = clampFloat(event.value, 0.0f, 1.0f);
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_ATTACK_SECONDS_ID:
-      source.attack_seconds = clampFloat(event.value, 0.001f, 2.0f);
+      source.attack_seconds = clampFloat(event.value, 0.001f, lead_source ? 16.0f : 2.0f);
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_DECAY_SECONDS_ID:
-      source.decay_seconds = clampFloat(event.value, 0.01f, 4.0f);
+      source.decay_seconds = clampFloat(event.value, 0.01f, lead_source ? 8.0f : 4.0f);
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_SUSTAIN_ID:
       source.sustain = clampFloat(event.value, 0.0f, 1.0f);
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_HOLD_SECONDS_ID:
-      source.hold_seconds = clampFloat(event.value, 0.0f, 20.0f);
+      source.hold_seconds = clampFloat(event.value, 0.0f, lead_source ? 44.0f : 20.0f);
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_RELEASE_SECONDS_ID:
-      source.release_seconds = clampFloat(event.value, 0.01f, 8.0f);
+      source.release_seconds = clampFloat(event.value, 0.01f, lead_source ? 30.0f : 8.0f);
       break;
     case KESSHO_PRODUCT_PARAM_SOURCE_LEAD_ENVELOPE_OVERRIDE_ENABLED_ID:
       source.lead_envelope_override_enabled = event.value >= 0.5f;

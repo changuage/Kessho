@@ -4,14 +4,14 @@
 #include <stdint.h>
 
 #define KESSHO_PRODUCT_GENERATED_SCHEMA_VERSION 10u
-#define KESSHO_PRODUCT_GENERATED_SCHEMA_HASH 0x1e950df7u
+#define KESSHO_PRODUCT_GENERATED_SCHEMA_HASH 0xb5f0ef5cu
 
 #ifdef __cplusplus
 namespace kessho::product::generated {
 
 inline constexpr uint32_t KESSHO_PRODUCT_SCHEMA_VERSION = 10u;
-inline constexpr uint32_t KESSHO_PRODUCT_SCHEMA_HASH = 0x1e950df7u;
-inline constexpr const char* KESSHO_PRODUCT_SCHEMA_HASH_HEX = "1e950df77ad48be12dffb346c53acf0c8487eef2f67a69e323421e5b2c696658";
+inline constexpr uint32_t KESSHO_PRODUCT_SCHEMA_HASH = 0xb5f0ef5cu;
+inline constexpr const char* KESSHO_PRODUCT_SCHEMA_HASH_HEX = "b5f0ef5c444f1c4c096e611a0b906ebb559ca991eaa1b2c4a6f36df3156d6ea8";
 
 } // namespace kessho::product::generated
 #endif

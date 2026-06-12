@@ -1139,6 +1139,12 @@ void KesshoProductEngine::sortControlEvents() {
   if (applyRoutingParamEvent(event)) {
     return;
   }
+  if (
+      event.param_id >= KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MODE_ID &&
+      event.param_id <= KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_NOTE_GATE_RANGE_ENABLED_ID) {
+    applySequencerLaneParamEvent(event);
+    return;
+  }
   // TODO(product-core-cpp-dispatch-table): table-drive the low-risk FX families
   // in this switch after ProductAbiLayoutTests plus web graph parity cover the
   // exact before/after values. Start with Delay A/B and Reverb cases below:
